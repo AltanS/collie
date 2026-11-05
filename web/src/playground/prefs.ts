@@ -125,7 +125,7 @@ function readNotes(): boolean {
 }
 
 let notes = readNotes();
-let face: FaceId = "aldrich"; // the app's shipped default, so the page opens in its real dress
+let face: FaceId = "atkinson"; // the app's shipped default, so the page opens in its real dress
 let accent: AccentId = "default";
 const listeners = new Set<() => void>();
 

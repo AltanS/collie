@@ -49,6 +49,11 @@ Three shipped choices: `system`, `grotesk` (Space Grotesk — **stays the defaul
 > first-paint path — the face filling that role changed, and every mechanism named here followed it
 > (`DEFAULT_UI_FONT_URL`, the index.html preload, the splash mirror, the operator `var()` fallback).
 > `:root.font-grotesk` now exists instead of `:root.font-aldrich`.
+>
+> **Amended 2026-11-06:** the default is now **Atkinson Hyperlegible Next**, so a fresh phone and a
+> phone on the Collie theme draw the same face. The same mechanisms followed: Atkinson is the
+> classless `--font-sans`, the preload and `DEFAULT_UI_FONT_URL` name its file, and Aldrich is a
+> choice again with `:root.font-aldrich`. A device that stored `aldrich` keeps it.
 
 **Space Grotesk stays the default, and the default costs nothing.** A device that never opens the
 card gets byte-for-byte the first paint it got before this feature existed: the same preloaded

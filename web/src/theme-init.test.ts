@@ -156,6 +156,27 @@ const midnight = (version: number) => ({
   ],
 });
 
+// The default face is Atkinson Hyperlegible (2026-11-06): no class. Aldrich is a choice and wears
+// `font-aldrich`. A blob with no font, or with only `theme: collie`, is a fresh device.
+describe("theme-init.js, the default face", () => {
+  it("adds no face class for nothing stored", () => {
+    expect(runInit({}).classes).toEqual([]);
+  });
+
+  it("adds no face class for a blob with no font, or a stored collie and no font", () => {
+    expect(runInit({ "collie:design:v1": JSON.stringify({}) }).classes).toEqual([]);
+    expect(runInit({ "collie:design:v1": JSON.stringify({ theme: "collie" }) }).classes).toEqual([]);
+  });
+
+  it("adds no face class for a stored atkinson", () => {
+    expect(runInit({ "collie:design:v1": JSON.stringify({ font: "atkinson" }) }).classes).toEqual([]);
+  });
+
+  it("keeps Aldrich for a device that stored it", () => {
+    expect(runInit({ "collie:design:v1": JSON.stringify({ font: "aldrich" }) }).classes).toEqual(["font-aldrich"]);
+  });
+});
+
 describe("theme-init.js, run", () => {
   it("applies an imported theme from a version 1 library", () => {
     const seen = runInit({
@@ -167,7 +188,7 @@ describe("theme-init.js, run", () => {
 
   it("paints a stored collie-new as the default: no attribute and no property", () => {
     const seen = runInit({ "collie:design:v1": JSON.stringify({ font: "atkinson", theme: "collie-new" }) });
-    expect(seen).toEqual({ classes: ["font-atkinson"], attributes: [], properties: [] });
+    expect(seen).toEqual({ classes: [], attributes: [], properties: [] });
   });
 
   it("still applies an imported theme whose id is collie-new", () => {
@@ -190,7 +211,7 @@ describe("theme-init.js, run", () => {
 
   it("gives a pre-M57 design blob with no theme and a dark pin the dark class and nothing else", () => {
     const seen = runInit({
-      "collie:design:v1": JSON.stringify({ font: "aldrich" }),
+      "collie:design:v1": JSON.stringify({ font: "atkinson" }),
       "collie:theme:v1": "dark",
     });
     expect(seen.classes).toEqual(["dark"]);

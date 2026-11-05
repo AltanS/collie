@@ -49,7 +49,7 @@
          fonts.test.ts pins all three. -->
     <link
       rel="preload"
-      href="/fonts/ui-aldrich-1.002-latin.woff2"
+      href="/fonts/ui-atkinson-hyperlegible-next-2.001-latin.woff2"
       as="font"
       type="font/woff2"
       crossorigin
@@ -144,8 +144,9 @@
           U+0000-00FF, U+0100-017F, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F,
           U+20A0-20BF, U+2122, U+2190-21FF, U+2212, U+2264-2265, U+2699, U+2713-2714, U+25CF;
       }
-      /* Atkinson Hyperlegible Next, the face of the theme `harbour`. Not preloaded: a reader who
-         picked it pays its own fetch, as with Space Grotesk. Keep in step with index.css. */
+      /* Atkinson Hyperlegible Next, the DEFAULT face (since 2026-11-06), so this is the block the
+         preload above warms: the splash and React's first paint resolve to it on any device that
+         never opened the setting. Keep in step with index.css. */
       @font-face {
         font-family: "Atkinson Hyperlegible Next";
         src: url("/fonts/ui-atkinson-hyperlegible-next-2.001-latin.woff2") format("woff2");
@@ -168,12 +169,9 @@
           U+0000-00FF, U+0100-017F, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F,
           U+20A0-20BF, U+2122, U+2190-21FF, U+2212, U+2264-2265, U+2699, U+2713-2714, U+25CF;
       }
-      /* Aldrich is the DEFAULT face now, so this is the block the preload above warms — the
-         splash and React's first paint resolve to it on any device that never opened the setting.
-         One weight; the synthesized bold is index.css's note. Space Grotesk above it stays on the
-         same terms it always had, but the roles flipped: theme-init.js has already put
-         `font-grotesk` on <html> for a reader who chose it, and that face now costs its own fetch
-         while Aldrich rides the preload. Keep in step with index.css. */
+      /* Aldrich is a choice now, not the default: theme-init.js puts `font-aldrich` on <html> for a
+         reader who chose it, and that face costs its own fetch. One weight; the synthesized bold
+         is index.css's note. Keep in step with index.css. */
       @font-face {
         font-family: "Aldrich";
         src: url("/fonts/ui-aldrich-1.002-latin.woff2") format("woff2");
@@ -225,15 +223,15 @@
       }
       /* The typeface setting, mirrored from index.css (ADR 0033). The splash resolves --font-sans
          like everything else does, so the same root-class blocks decide the same thing here; otherwise
-         a reader on Aldrich would get a Space Grotesk splash and a change of voice on hand-off,
+         a reader on Aldrich would get an Atkinson splash and a change of voice on hand-off,
          which is the exact failure the block above this one exists to prevent. `font-operator` is
          NOT mirrored: an operator face has no pre-paint path (theme-init.js says why), so it
          resolves through the default below, which is what it should do. Keep in step with
          index.css. */
       :root {
         --font-sans:
-          "Aldrich", "Aldrich Fallback", ui-sans-serif, system-ui, -apple-system,
-          "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+          "Atkinson Hyperlegible Next", "Atkinson Hyperlegible Next Fallback", ui-sans-serif,
+          system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
       }
       :root.font-system {
         --font-sans:
@@ -255,10 +253,10 @@
           "Geist", "Geist Fallback", ui-sans-serif, system-ui,
           -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
       }
-      :root.font-atkinson {
+      :root.font-aldrich {
         --font-sans:
-          "Atkinson Hyperlegible Next", "Atkinson Hyperlegible Next Fallback", ui-sans-serif,
-          system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+          "Aldrich", "Aldrich Fallback", ui-sans-serif, system-ui, -apple-system,
+          "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
       }
       /* THE MARK, AND IT IS THE SAME ANIMAL EVERY OTHER SCREEN SHOWS. This used to be the gallop
          sprite, and it was the last place in the app still drawing it: <DogGallop/> was retired when

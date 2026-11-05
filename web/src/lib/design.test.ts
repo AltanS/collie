@@ -2,7 +2,17 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import { LIBRARY_STORAGE_KEY } from "@/lib/theme/store";
 
-import { DESIGN_STORAGE_KEY, RETIRED_THEME_ID, __resetDesign, designPrefs, parseDesignPrefs, setDesignFont, setDesignTheme } from "./design";
+import {
+  DEFAULT_FONT,
+  DESIGN_STORAGE_KEY,
+  RETIRED_THEME_ID,
+  __resetDesign,
+  designPrefs,
+  fontClass,
+  parseDesignPrefs,
+  setDesignFont,
+  setDesignTheme,
+} from "./design";
 
 // The device look is an object so it can grow siblings. These cases hold the newest sibling, the
 // colour theme (M57), to the rule that a field this build knows is never dropped by a write to
@@ -29,7 +39,7 @@ describe("the theme field", () => {
 
   it("round-trips through storage", () => {
     setDesignTheme("midnight");
-    expect(stored()).toEqual({ font: "aldrich", theme: "midnight" });
+    expect(stored()).toEqual({ font: "atkinson", theme: "midnight" });
     __resetDesign();
     expect(designPrefs().theme).toBe("midnight");
   });
@@ -37,7 +47,7 @@ describe("the theme field", () => {
   it("omits the field for collie, so the blob is what a device that never chose stores", () => {
     setDesignTheme("midnight");
     setDesignTheme("collie");
-    expect(stored()).toEqual({ font: "aldrich" });
+    expect(stored()).toEqual({ font: "atkinson" });
   });
 
   it("moves a stored collie-new to collie on first read, and writes the blob back", () => {
@@ -83,5 +93,45 @@ describe("the theme field", () => {
       operatorFont: { family: "Depart", basename: "depart.woff2" },
       theme: "other",
     });
+  });
+});
+
+// The default face is Atkinson Hyperlegible (2026-11-06). Three kinds of device must agree with it:
+// one that stored nothing, one that stored `collie` (which is the absence of the field), and one
+// that chose Aldrich on purpose.
+describe("the default face", () => {
+  const classes = () => document.documentElement.className;
+
+  beforeEach(() => {
+    document.documentElement.className = "";
+  });
+
+  it("is Atkinson, and wears no class", () => {
+    expect(DEFAULT_FONT).toBe("atkinson");
+    expect(fontClass(DEFAULT_FONT)).toBe("");
+    expect(fontClass("aldrich")).toBe("font-aldrich");
+  });
+
+  it("is what a device with nothing stored renders, before and after mount", () => {
+    localStorage.clear();
+    __resetDesign();
+    expect(designPrefs().font).toBe("atkinson");
+    expect(classes()).toBe("");
+  });
+
+  it("is what a device with theme collie and no font renders", () => {
+    localStorage.setItem(DESIGN_STORAGE_KEY, JSON.stringify({ theme: "collie" }));
+    __resetDesign();
+    expect(designPrefs().font).toBe("atkinson");
+    expect(classes()).toBe("");
+  });
+
+  it("keeps Aldrich for a device that stored it, and puts font-aldrich on the root", () => {
+    localStorage.setItem(DESIGN_STORAGE_KEY, JSON.stringify({ font: "aldrich" }));
+    __resetDesign();
+    expect(designPrefs().font).toBe("aldrich");
+    expect(classes()).toBe("font-aldrich");
+    setDesignFont("atkinson");
+    expect(classes()).toBe("");
   });
 });

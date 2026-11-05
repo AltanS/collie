@@ -76,8 +76,9 @@ the look, and System, Light or Dark picks which half of the colours you see.
 
 A theme that names a typeface writes it into the **Typeface** card once, when you pick the theme. After
 that the Typeface card wins: choose another face there and it stays, until you pick a theme again. The
-display face of a theme is not part of that card: titles keep it. The
-[typefaces](configure.md#your-own-typefaces) have their own section.
+display face of a theme is not part of that card: titles keep it. A phone that never chose a theme or a
+typeface draws Atkinson Hyperlegible Next, the same face the Collie theme names. Aldrich stays a choice on the
+Typeface card. The [typefaces](configure.md#your-own-typefaces) have their own section.
 
 The faces these themes use ship Latin plus Latin Extended-A only, so Cyrillic and CJK text falls to the system
 face under those themes (Aldrich keeps its Cyrillic companion).
