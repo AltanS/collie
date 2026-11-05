@@ -204,6 +204,18 @@ Batches and the review are lifted only for the default glyph preset.
 Not live-probed: a desk/phone race, non-default symbol presets for batches, multi-select toggles,
 scrolling lists or timeout dialogs. These are not claimed as supported by this change.
 
+## omp 18.16.0: the hide hint as a glyph keycap (2026-11-05)
+
+omp 18.16.0 prints the hide hint as `⌥H hide` (the editor beside it prints `⌃Q`, `⌃G`). The exact
+`Alt+H hide` match read it as an unknown control, so `modal.ts` found no way out and `ask.ts` no
+preset: the phone drew no card, the pane stayed `modal: unreadable`, and neither an answer nor `Other`
+could be reached. Both now accept `Alt+H` or `⌥H` for that one hint. `Ctrl+O expand`/`collapse` stay
+text-only until a glyph capture exists; a footer containing `⌃O expand` or `⌃O collapse` therefore
+declines rather than offering answers on unrecognised long-text controls (ask.test.ts).
+Corpus: `omp--v18-16-0-ask-single-glyph-hide*--w200.txt`, `omp--v18-16-0-answer-editor-empty--w200.txt`.
+Probed on the host: `Down` moved the pointer one row; `Enter` on `Other` opened the answer editor;
+`Escape` returned to the dialog.
+
 ## omp 18.12.6: option previews (2026-10-25)
 
 Corpus: `omp--v18-12-6-ask-previews--w120.txt` (omp-gang tester 04, case 9; plain pane read, last 30 rows).

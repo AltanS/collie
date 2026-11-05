@@ -36,6 +36,27 @@ it("a current OMP Ask offers selectable answers even with its hide hint", () => 
   expect(ompModalOnScreen(lines)).toBe(true);
 });
 
+// omp 18.16.0 prints the hide hint as a glyph keycap, `⌥H hide`; read as an unknown control, it left
+// the dialog unreadable on the phone, with no answer buttons and no way to reach `Other`.
+it("omp 18.16 Ask with the `⌥H hide` keycap offers its answers, `Other` included", () => {
+  const lines = load("omp--v18-16-0-ask-single-glyph-hide--w200.txt");
+  const model = detectAskSelect(lines);
+  expect(model?.question).toBe("과일을 고르세요");
+  expect(model?.options.map((option) => [option.label, option.keys])).toEqual([
+    ["사과", ["Enter"]],
+    ["배", ["Down", "Enter"]],
+    ["포도", ["Down", "Down", "Enter"]],
+    [OTHER, ["Down", "Down", "Down", "Enter"]],
+    ["Cancel", ["Escape"]],
+  ]);
+  expect(ompModalOnScreen(lines)).toBe(true);
+  const moved = detectAskSelect(load("omp--v18-16-0-ask-single-glyph-hide-moved--w200.txt"));
+  expect(moved?.options.map((option) => [option.label, option.keys]).slice(0, 2)).toEqual([
+    ["사과", ["Up", "Enter"]],
+    ["배", ["Enter"]],
+  ]);
+});
+
 it("answers the current question in an OMP batch with the verified pointer walk", () => {
   const model = detectAskSelect(load("omp--v18-10-ask-batch.txt"));
   expect(model?.question).toBe("Where should the note go?");
@@ -139,6 +160,22 @@ it("declines unknown controls after the current footer instead of guessing their
   expect(detectAskSelect(fromTexts(lines))).not.toBeNull();
   expect(detectAskSelect(fromTexts(lines.map((line) => line.replace("Alt+H hide", "Alt+H hide · x accept all")))))
     .toBeNull();
+});
+
+it("declines an unknown glyph control after `⌥H hide`", () => {
+  const lines = textsOf("omp--v18-16-0-ask-single-glyph-hide--w200.txt");
+  expect(detectAskSelect(fromTexts(lines.map((line) => line.replace("⌥H hide", "⌥H hide · ⌥X accept all")))))
+    .toBeNull();
+});
+
+// `Ctrl+O expand`/`collapse` are matched as text only. A glyph `⌃O` has not been captured, and the cut
+// state must never offer answers, so both the Ask grammar and the modal gate decline it.
+it.each(["⌃O expand", "⌃O collapse"])("declines `⌥H hide · %s`, a glyph expansion control not captured yet", (hint) => {
+  const lines = fromTexts(
+    textsOf("omp--v18-16-0-ask-single-glyph-hide--w200.txt").map((line) => line.replace("⌥H hide", `⌥H hide · ${hint}`)),
+  );
+  expect(detectAskSelect(lines)).toBeNull();
+  expect(ompModalOnScreen(lines)).toBe(false);
 });
 
 describe("the 18.4.10 dialog (glyph keycaps) lifts as a pointed list", () => {
@@ -755,6 +792,8 @@ describe("the grammar claims nothing else in the corpus", () => {
     "omp--v18-10-ask-long.txt",
     "omp--v18-10-ask-long-expanded.txt",
     "omp--v18-10-ask-revisited.txt",
+    "omp--v18-16-0-ask-single-glyph-hide--w200.txt",
+    "omp--v18-16-0-ask-single-glyph-hide-moved--w200.txt",
   ]);
 
   it("lifts only the supported Ask states in the complete corpus", () => {

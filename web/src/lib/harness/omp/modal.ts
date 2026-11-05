@@ -25,7 +25,8 @@
 // The match is case-insensitive only because the approval dialog spells the same word `esc`.
 //
 // Known trailing controls: the model picker's `Alt+P task model` / `Alt+P session model`, or Ask
-// `Alt+H hide`, followed optionally by `Ctrl+O expand` / `Ctrl+O collapse` (OMP 18.10 captures).
+// `Alt+H hide` (omp 18.16 prints it as the glyph keycap `⌥H hide`), followed optionally by
+// `Ctrl+O expand` / `Ctrl+O collapse` (OMP 18.10 captures).
 // These exact suffixes do not replace Escape: an arbitrary hint list mentioning Esc mid-list
 // still reads false.
 //
@@ -96,7 +97,7 @@ export function readOmpHintList(text: string): OmpFooter | null {
   let escapeAt = segments.length - 1;
   if (/^Ctrl\+O (?:expand|collapse)$/.test(segments[escapeAt]!)) escapeAt--;
   const last = segments[escapeAt]!;
-  if (TASK_MODE_SEGMENT.test(last) || last === "Alt+H hide") escapeAt--;
+  if (TASK_MODE_SEGMENT.test(last) || /^(?:Alt\+|⌥)H hide$/.test(last)) escapeAt--;
   // The close/cancel key still needs another hint before it; hide/expand are not escape keys.
   if (escapeAt < MIN_SEGMENTS - 1) return null;
   const escape = ESCAPE_SEGMENT.exec(segments[escapeAt]!);

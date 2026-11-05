@@ -86,6 +86,8 @@ const MODALS_WITH_A_WAY_OUT = [
   "omp--v18-8-ask-single-described-moved.txt",
   "omp--v18-8-ask-single-described.txt",
   "omp--v18-10-ask-single.txt",
+  "omp--v18-16-0-ask-single-glyph-hide--w200.txt",
+  "omp--v18-16-0-ask-single-glyph-hide-moved--w200.txt",
   "omp--v18-10-ask-batch.txt",
   "omp--v18-10-ask-batch-moved.txt",
   "omp--v18-10-ask-batch-second.txt",
