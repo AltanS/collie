@@ -167,14 +167,15 @@
 
 /* Update ready: three of the biggest round beads, in the colour the update band already uses
    (`ui/notice.tsx` maps the band's `caution` tone to `--status-working`). Machine busy: three
-   others, in `--status-blocked`. Never the same bead. */
+   others, in `--status-blocked`. Never the same bead. Spread around the ring, not in a block: in ring
+   order the beads run b0 b3 b7 b2 b1 b4 b5 b6, so yellow (b0 b2 b5) and red (b3 b1 b6) alternate. */
 .upd-ready .cm-b0,
 .upd-ready .cm-b2,
-.upd-ready .cm-b3 {
+.upd-ready .cm-b5 {
   --lit: var(--status-working);
 }
-.upd-busy .cm-b4,
-.upd-busy .cm-b5,
+.upd-busy .cm-b1,
+.upd-busy .cm-b3,
 .upd-busy .cm-b6 {
   --lit: var(--status-blocked);
 }
