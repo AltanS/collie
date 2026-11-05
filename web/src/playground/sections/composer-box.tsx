@@ -27,7 +27,7 @@ export const DEF: SectionDef = {
   id: "composer-box",
   title: "Composer box",
   intent:
-    "The reply box in its second layout. At rest it is one slim row: Attach, the field, and the microphone as the main button. Tapped, or holding a draft, it opens upward: the field takes the full width and the buttons drop to a row of their own, with Send as the main button and the microphone a ghost. The belt above does not change. Each card is the real composer on a Claude pane, with layout set to box.",
+    "The reply box in its second layout. At rest it is one slim row: Attach, the field, and the microphone as the main button, and a tap that only brings the caret stays one row. It opens upward when there is text, a chip or Type mode: the field takes the full width and the buttons drop to a row of their own, with Send as the main button and the microphone a small circle. The change glides in about 200 ms, and empties back to one row when the draft is cleared. The belt above does not change. Each card is the real composer on a Claude pane, with layout set to box.",
 };
 
 const PREFS = {
@@ -97,9 +97,9 @@ const CASES: readonly CaseDef[] = [
   },
   {
     n: 2,
-    title: "Tapped, still empty",
-    reach: "tap the box. Tap outside it and it closes again.",
-    note: "The field takes the full width, about three lines tall. Attach at the left of the button row, the microphone still the main button at the right. The card focuses the field once it has mounted; if you tapped elsewhere, tap the box.",
+    title: "Focused, still empty",
+    reach: "tap the box. Type a letter to open it, then delete it to close it again.",
+    note: "Focused and empty it stays one row, with the caret in the field: nothing to write yet, so no room is taken. This is the card to try the glide on: type a letter and the box grows upward, the buttons gliding to the bottom row; delete it and they glide back. The card focuses the field once it has mounted; if you tapped elsewhere, tap the box.",
     surface: IDLE,
     focused: true,
   },
@@ -107,7 +107,7 @@ const CASES: readonly CaseDef[] = [
     n: 3,
     title: "One line of text",
     reach: "type a few words.",
-    note: "Open, and it stays open without focus. Send is the filled main button, the microphone a ghost icon beside it.",
+    note: "Open, and it stays open without focus. Send is the filled main button, the microphone a small circle beside it.",
     surface: IDLE,
     draft: "Make the tab a folder tab",
   },
