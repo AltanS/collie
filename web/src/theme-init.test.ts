@@ -38,10 +38,10 @@ describe("theme-init.js and lib/theme agree", () => {
     expect(listOf("SHIPPED")).toEqual(SHIPPED_THEME_IDS.filter((id) => id !== "collie"));
   });
 
-  it("spells the closed token list, all of it and in order, the optional token last", () => {
+  it("spells the closed token list, all of it and in order, the optional tokens last", () => {
     expect(listOf("TOKENS")).toEqual([...ALL_THEME_TOKENS]);
     expect(listOf("TOKENS").slice(0, 43)).toEqual([...THEME_TOKENS]);
-    expect(listOf("TOKENS")).toHaveLength(44);
+    expect(listOf("TOKENS")).toHaveLength(45);
   });
 
   it("holds the same colour pattern and the same length cap", () => {

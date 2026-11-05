@@ -40,7 +40,7 @@ light on the left and dark on the right.
 - **Collie New** is the Collie look made bolder and easier to read. It keeps the black and white of the dog mark, with the Atkinson Hyperlegible face for the text and Aldrich for the titles, stronger text and lines, bold headings and a clear step between the page, the cards and the bars. The terminal draws a high-contrast Collie palette.
 
 The table lists every word each theme uses. The first word of each list is today's look: `sharp`, `default`,
-`flat`, `page`, `rules` and `caps`. The words are explained under [Shape](#shape), [Look](#look)
+`flat`, `page`, `rules`, `caps`, `plain` and `field`. The words are explained under [Shape](#shape), [Look](#look)
 and [Terminal palette](#terminal-palette).
 
 | | Collie | Nightwatch | Daylight | Harbour | Collie New |
@@ -57,6 +57,9 @@ and [Terminal palette](#terminal-palette).
 | Rows | `rules` | `rules` | `cards` | `rules` | `rules` |
 | Icons | `default` | `heavy` | `default` | `thin` | `default` |
 | Labels | `caps` | `caps` | `sentence` | `caps` | `sentence` |
+| Tabs | `plain` | `plain` | `plain` | `plain` | `folder` |
+| Composer | `field` | `field` | `field` | `field` | `box` |
+| Tab colour | the text colour | the text colour | the text colour | the text colour | violet |
 | Terminal palette | the app's own | amber, on `#000000` | vivid, on `#1a1612` | Solarized-based, on `#0a1216` | high contrast, on `#100f0d` |
 
 ## Pick a theme
@@ -129,6 +132,7 @@ the other parts. A floor is a contrast ratio, so a higher number is easier to re
 | `destructive` as an icon, on `background` and on `card` | 3 |
 | `rule` on `background` | 1.3 |
 | `pane-active` on `background`, only in a half that sets it | 3 |
+| `tab-active` on `background`, only in a half that sets it | 3 |
 | `status-blocked` apart from `status-done` | a distance of 0.15 |
 
 - **Destructive text is held to what Collie measures when you keep its colours.** Collie's own light red on
@@ -206,17 +210,17 @@ A file says which version it is, and Collie writes the lowest version that holds
 | --- | --- |
 | 1 | Colours in `light` and `dark`, and `fonts.ui`. |
 | 2 | Everything in version 1, and any of `surface`, `fonts.display` and `ansi`. |
-| 3 | Everything in version 2, and the optional token `pane-active`. |
+| 3 | Everything in version 2, and the optional tokens `pane-active` and `tab-active`. |
 
 - A file with a `surface` block, a `fonts.display` face or an `ansi` block must say 2. A file that says 1 and
   has one of them is refused.
-- A file with `pane-active` in `light` or `dark` must say 3. A file that says 1 or 2 and sets it is
-  refused. The cause names the token and the version.
-- A file without those blocks and without `pane-active` may say 1 or 2. Collie reads all three versions,
+- A file with `pane-active` or `tab-active` in `light` or `dark` must say 3. A file that says 1 or 2 and
+  sets one of them is refused. The cause names the token and the version.
+- A file without those blocks and without an optional token may say 1 or 2. Collie reads all three versions,
   and an export of a theme with colours and `fonts.ui` only says 1.
 - A version 2 file needs Collie 1.22.0 or newer.
 - A version 3 file needs Collie 1.24.0 or newer. An older Collie refuses it and names the version: "The
-  file is version 3. This Collie reads version 1 and 2." A theme that does not set `pane-active` keeps
+  file is version 3. This Collie reads version 1 and 2." A theme that sets no optional token keeps
   its version, so an older Collie still reads it.
 - A version 1 file means the default word of each list for every token of `surface`.
 
@@ -249,18 +253,20 @@ Each half takes any of these, in four groups.
 | **Host** |
 | `host-0` `host-1` `host-2` `host-3` `host-4` `host-5` `host-6` `host-7` `host-8` `host-9` | The ten colours that tell your machines apart. |
 
-### The optional token
+### The optional tokens
 
-One more token is optional, and it is the reason for version 3. It is not one of the 43, and a theme may
-leave it out.
+Two more tokens are optional, and they are the reason for version 3. They are not among the 43, and a theme
+may leave them out.
 
 | Token | Meaning |
 | --- | --- |
 | `pane-active` | The frame of the active pane column on a large screen. |
+| `tab-active` | The top edge of the open tab and the ring of the open pane, when the theme sets `tabs` to `folder`. |
 
-When a theme leaves out `pane-active` in a half, that half takes the sky blue of the theme Collie. Collie
-measures it only in a half that sets it. See [The contrast report](#the-contrast-report). A file that sets it
-must say [version 3](#versions).
+When a theme leaves out `pane-active` in a half, that half takes the sky blue of the theme Collie. When it
+leaves out `tab-active`, that half takes its own text colour, so a folder tab draws its top edge in ink.
+Collie measures each one only in a half that sets it. See [The contrast report](#the-contrast-report). A file
+that sets one of them must say [version 3](#versions).
 
 ## Shape
 
@@ -294,7 +300,7 @@ square control a stadium. The first word of each list is the look the app had be
 
 ## Look
 
-Six more keys of the `surface` block and one font key set the look of the page. They follow the same rule
+Eight more keys of the `surface` block and one font key set the look of the page. They follow the same rule
 of closed words.
 
 | Key | Word | What it does |
@@ -313,6 +319,10 @@ of closed words.
 | | `sentence` | The same labels as they are typed. |
 | `zoom` | `screen` | The Zoom pill on the belt shows in the Screen view, never in Chat. The default. |
 | | `none` | The Zoom pill never shows. |
+| `tabs` | `plain` | The open tab differs from the others by its text colour and weight only. The default. |
+| | `folder` | The open tab is a folder tab. It is filled with the page colour, has a line on each side and a 3px top edge in `tab-active`, and joins the row of panes under it. The open pane is a tinted cell with a ring in `tab-active`. |
+| `composer` | `field` | The composer is one text field with its row of controls. The default. |
+| | `box` | The composer is a box. |
 
 `fonts.display` names one of the six typefaces for page titles and the name in the header. A theme that
 names none draws its titles in the typeface, as before. Collie fetches a display face only when the theme
@@ -329,6 +339,9 @@ names it.
 - **`rows` reaches every list group.** That includes the list inside the Settings index.
 - **`zoom` sets no style.** It decides whether the belt carries the Zoom pill. The **Zoom pill** setting in
   Settings, under Appearance, wins over it once you have chosen there.
+- **`tabs` and `composer` set no style either.** The app reads the word and draws the tab row, the pane row
+  and the composer itself. Under `folder` the tab row grows by no pixel, and the tap targets stay where they
+  are. The colour of the edge is the optional token [`tab-active`](#the-optional-tokens).
 
 ## Terminal palette
 

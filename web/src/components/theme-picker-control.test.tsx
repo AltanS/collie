@@ -290,7 +290,7 @@ describe("ThemePickerControl", () => {
       return JSON.stringify({ ...copy("shaped", "Shaped"), version: 2, surface });
     }
 
-    it("draws the file's shape on its own sample and names the eleven words", async () => {
+    it("draws the file's shape on its own sample and names the thirteen words", async () => {
       const { ThemePickerControl } = await load();
       const { container } = render(<ThemePickerControl />);
       pick(container, fileOf(surfaceFile({ radius: "round", shadow: "lifted", density: "roomy", weight: "bold" })));
@@ -323,6 +323,8 @@ describe("ThemePickerControl", () => {
         "icons: default",
         "labels: caps",
         "zoom: screen",
+        "tabs: plain",
+        "composer: field",
       ]);
     });
 

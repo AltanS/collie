@@ -8,7 +8,7 @@
 // so a file can never smuggle a property into the page.
 //
 // VERSIONS. The parser reads 1, 2 and 3 and hands back the LOWEST version that holds the content: 3
-// when the theme sets the optional token (`pane-active`), else 2 when it carries
+// when the theme sets an optional token (`pane-active`, `tab-active`), else 2 when it carries
 // a surface block, a display face or a palette, else 1. So a colour-only theme is stored and
 // exported as version 1, and a Collie from before version 2 (1.21.x after a rollback) still reads it.
 // A version 1 file has no surface block, which means the default word for every shape token. A
@@ -107,9 +107,12 @@ export type ThemeToken = (typeof THEME_TOKENS)[number];
  * The token added in schema version 3. Unlike the 43 above a theme may leave it out, and then the
  * `:root` pair in index.css holds, so a file written before version 3 paints as it always did. A
  * component reads it as `border-pane-active` (the frame of the active pane column on a large
- * screen). It is appended after the list above, so no earlier file or order moves.
+ * screen). `tab-active` joins it: the top edge of the open folder tab and the ring of the
+ * open pane, drawn only under the surface word `tabs: folder` (lib/tab-look.ts); its `:root` pair is
+ * the foreground ink of each half. Both are appended after the list above, so no earlier file or
+ * order moves.
  */
-export const OPTIONAL_THEME_TOKENS = ["pane-active"] as const;
+export const OPTIONAL_THEME_TOKENS = ["pane-active", "tab-active"] as const;
 
 export type OptionalThemeToken = (typeof OPTIONAL_THEME_TOKENS)[number];
 
@@ -427,6 +430,12 @@ function setSurfaceWord(surface: Surface, token: SurfaceToken, value: string | u
     case "zoom":
       surface.zoom = surfaceWordOf("zoom", value);
       return surface.zoom !== undefined;
+    case "tabs":
+      surface.tabs = surfaceWordOf("tabs", value);
+      return surface.tabs !== undefined;
+    case "composer":
+      surface.composer = surfaceWordOf("composer", value);
+      return surface.composer !== undefined;
   }
 }
 
@@ -1028,6 +1037,11 @@ export function contrastReport(theme: Theme, base: Theme): Finding[] {
     // the non-text floor.
     if (theme[half]?.["pane-active"] !== undefined) {
       push("pane-active on background", contrast(values["pane-active"] ?? "", values.background ?? ""), NON_TEXT_FLOOR);
+    }
+    // The open folder tab's top edge and the open pane's ring (`tab-active`) are shapes too, drawn on
+    // the page colour the tab joins, so the same floor and the same rule: only a half that sets it.
+    if (theme[half]?.["tab-active"] !== undefined) {
+      push("tab-active on background", contrast(values["tab-active"] ?? "", values.background ?? ""), NON_TEXT_FLOOR);
     }
 
     // THE GROUND AND THE BAND (M57 spec 17). A gradient or a grain changes the page colour under the

@@ -44,6 +44,9 @@ function shipped(id: string): Theme {
 /** The token a theme may leave out (schema version 3): index.css's pair holds when it does. */
 const OPTIONAL: ReadonlySet<string> = new Set(OPTIONAL_THEME_TOKENS);
 
+/** The surface words that set no CSS property: the app reads them itself. */
+const APP_READ_WORDS: ReadonlySet<string> = new Set(["zoom", "tabs", "composer"]);
+
 describe("the theme collie equals index.css", () => {
   const tokens = rootTokens();
   const collie = shipped("collie");
@@ -125,8 +128,10 @@ describe("the shipped themes", () => {
   it.each(ids)("%s is version 2 or 3 and names a word for every shape token, so an export shows the whole shape", (id) => {
     const theme = shipped(id);
     expect(theme.version).toBeGreaterThanOrEqual(2);
-    // `zoom` is the one optional word that sets no style (lib/zoom-pill.ts): a shipped theme leaves it out.
-    expect(Object.keys(theme.surface ?? {}).toSorted()).toEqual(SURFACE_TOKENS.filter((token) => token !== "zoom").toSorted());
+    // `zoom`, `tabs` and `composer` are the words that set no style (lib/zoom-pill.ts, lib/tab-look.ts,
+    // lib/composer-layout.ts): a shipped theme names one only when it wants the app to draw it.
+    const named = Object.keys(theme.surface ?? {}).filter((token) => !APP_READ_WORDS.has(token));
+    expect(named.toSorted()).toEqual(SURFACE_TOKENS.filter((token) => !APP_READ_WORDS.has(token)).toSorted());
   });
 
   // M57 spec 18: each shipped theme uses the whole version 2 sheet, so it reads as another app and
