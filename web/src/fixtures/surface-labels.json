@@ -4490,6 +4490,21 @@
    "version": "18.12",
    "state": "draft"
   },
+  "omp--v18-16-0-answer-editor-empty--w200.txt": {
+   "harness": "omp",
+   "version": "18.16.0",
+   "state": "idle"
+  },
+  "omp--v18-16-0-ask-single-glyph-hide--w200.txt": {
+   "harness": "omp",
+   "version": "18.16.0",
+   "state": "dialog"
+  },
+  "omp--v18-16-0-ask-single-glyph-hide-moved--w200.txt": {
+   "harness": "omp",
+   "version": "18.16.0",
+   "state": "dialog"
+  },
   "omp--v18-16-0-custom-answer-empty--w200.txt": {
    "harness": "omp",
    "version": "18.16.0",

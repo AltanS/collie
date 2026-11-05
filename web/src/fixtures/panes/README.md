@@ -3427,6 +3427,17 @@ equal to its only entry, Enter cancels the popup and submits the text; the teste
 | --- | --- | --- |
 | `omp--v18-12-6-ask-previews--w120.txt` | `dialog` | The echo block `╭─── Ask 1 questions`, then the panel: three options, each with a description row and a `│ ` preview row, `Other`, and the footer ending `Alt+H hide`. Pointer on the first row. Lifts with the preview on each option (ask.ts, OPTION PREVIEWS) |
 
+## omp 18.16.0 Ask with the glyph hide keycap (captured 2026-11-05, herdr-core `hc read`, 200 columns)
+
+A real one-question `ask` call (Claude Haiku 4.5 in omp 18.16.0, the `unicode` symbol preset), trimmed to the dialog;
+the status row above it named the operator's accounts and was dropped.
+
+| Fixture | State | What it shows |
+| --- | --- | --- |
+| `omp--v18-16-0-ask-single-glyph-hide--w200.txt` | `dialog` | `과일을 고르세요` with 사과, 배, 포도 and `Other`, pointer on the first row, the footer ending `⌥H hide` instead of `Alt+H hide`. Lifts (ask.ts) |
+| `omp--v18-16-0-ask-single-glyph-hide-moved--w200.txt` | `dialog` | The same dialog after one `Down` (`hc keys … down`), pointer on 배. Its walk pair |
+| `omp--v18-16-0-answer-editor-empty--w200.txt` | `idle` | `Enter` on `Other` opened `Custom answer: 과일을 고르세요`, hint `⏎ or ⌃Q submit  ⎋ cancel  ⌃G external editor`: the same prompt-style box as the `custom-answer-*` rows above, in the glyph keycap dialect, with no Ask box above it. Reads as a free box since #704 |
+
 ## omp's rewind picker, Esc Esc (captured 2026-10-25, omp-gang tester 04 case 7)
 
 | Fixture | State | What it shows |

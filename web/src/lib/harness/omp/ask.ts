@@ -453,10 +453,13 @@ function readOption(row: string, preset: Preset, bodyRow: number, allowSelected:
   return { label: noted === null ? rest : noted[1]!, note: noted !== null, pointed, selected, bodyRow };
 }
 
+// omp 18.16 renders Alt as a glyph keycap (`⌥H hide`, omp--v18-16-0-ask-single-glyph-hide--w200.txt),
+// so that hint is accepted in both forms. `Ctrl+O` stays text-only: a glyph `⌃O expand` has not been
+// captured, and the truncated state must decline rather than offer answers on a cut screen.
 function matchesAskFooter(segments: string[], expected: string[], allowExpansion = false): boolean {
   let length = segments.length;
   if (allowExpansion && /^Ctrl\+O (?:expand|collapse)$/.test(segments[length - 1]!)) length--;
-  if (segments[length - 1] === "Alt+H hide") length--;
+  if (/^(?:Alt\+|⌥)H hide$/.test(segments[length - 1]!)) length--;
   return length === expected.length && expected.every((segment, i) => segment === segments[i]);
 }
 
