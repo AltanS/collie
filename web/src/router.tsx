@@ -8,6 +8,7 @@ import { UPDATE_MODE_HOLD, isReloadHeldBy, subscribeReloadHeld } from "@/lib/rel
 
 import { BootSplash, RootError, RootLayout } from "@/routes/root";
 import { HomeRoute } from "@/routes/home";
+import { SlotRoute } from "@/routes/slot";
 import { SpaceRoute } from "@/routes/space";
 import { NewRoute } from "@/routes/new";
 import { NewAddRoute } from "@/routes/new-add";
@@ -88,6 +89,8 @@ export const router = createBrowserRouter([
     HydrateFallback: BootSplash,
     children: [
       { index: true, element: <HomeRoute /> },
+      // A permanent address for one browser tab; it replaces itself with that tab's last pane (lib/slots.ts).
+      { path: "slot/:slot", element: <SlotRoute /> },
       { path: "space/:spaceId", element: <SpaceRoute /> },
       // The New page (M48), a page since 1.19.0 and a bottom sheet before. No loader: it reads the root
       // snapshot (for a pane's folder and branch) and asks the chosen machine's bridge for its own lists.
