@@ -475,6 +475,12 @@ Five kinds, each with its own switch under **Settings → Alerts → Notify when
 
 Finished fires when an agent goes from working to idle, so an agent you interrupt also counts as finished.
 
+By default Collie keeps one notification per machine and rewrites it as more agents need you:
+"claude needs you", then "2 agents need you". Switch on **One notification per agent**, below Finished,
+and each agent gets its own notification instead, with its name and its place. Nothing is summarised.
+Answering an agent, or opening a finished one, closes only that notification. The wait before an
+alert is the same in both modes.
+
 Machine load sends nothing until you set a rule on a machine's page. The switch turns off every rule at
 once. One alert is sent each time a value climbs and stays high, and a tap opens that machine's Status view. See
 [Machines](crew.md#machines).
