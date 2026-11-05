@@ -97,6 +97,13 @@ function gentleLog(start: number) {
         details: job(jobId, "exited", code),
       });
     },
+    stopped(id: string, callId: string, jobId: string, at: number) {
+      add(id, at, { type: "message", message: { role: "assistant", content: [{ type: "toolCall", id: callId, name: "job_stop", arguments: { job_id: jobId } }] } });
+      add(`${id}r`, at, {
+        type: "message",
+        message: { role: "toolResult", toolCallId: callId, toolName: "job_stop", content: [{ type: "text", text: `Stopped ${jobId} ("suite").` }], details: job(jobId, "stopped", null) },
+      });
+    },
     text: () => `${rows.join("\n")}\n`,
   };
 }
@@ -163,6 +170,23 @@ describe("JournalJobs, the Jobs mark from a live pi window", () => {
     await r.poll();
     expect(r.jobs.get(pane(r.log))).toEqual([
       { id: "job-1", label: "suite", command: "bun test", startedAt: iso(start), exitCode: 137, endedAt: iso(start + 3000) },
+    ]);
+  });
+
+  test("a job the agent stopped with job_stop becomes an ended row with no exit code (#697)", async () => {
+    const r = await rig();
+    const start = r.at() - 60_000;
+    const log = gentleLog(start);
+    log.background("a1", "c1", "job-1", "bun test", start);
+    await Bun.write(r.log, log.text());
+    await r.poll();
+    expect(r.jobs.get(pane(r.log))).toEqual([{ id: "job-1", label: "suite", command: "bun test", startedAt: iso(start) }]);
+
+    log.stopped("s1", "c2", "job-1", start + 5000);
+    await Bun.write(r.log, log.text());
+    await r.poll();
+    expect(r.jobs.get(pane(r.log))).toEqual([
+      { id: "job-1", label: "suite", command: "bun test", startedAt: iso(start), endedAt: iso(start + 5000) },
     ]);
   });
 

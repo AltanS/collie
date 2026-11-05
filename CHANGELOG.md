@@ -30,6 +30,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Fixed
 
+- **A stopped background job leaves the Jobs mark.** A pi job the agent ended with `job_stop` now moves to the ended list at once, with no exit code, and a later `job_list` settles a job whose exit notice was lost (#697).
 - **One tap on Send sends on iPhone with the keyboard up.** The press no longer moves focus off the field, and a Send that is busy stays under the finger instead of letting the tap fall through to the box, so the keyboard stays up and the message goes out on the first tap. Thanks @JDFS404 for the diagnosis (#691).
 - **A blockquote in Chat keeps its bullets, code and tables.** A quote's body is now parsed as blocks, so a quoted pull request body or a log with a shell snippet reads as it was written; the code stays upright, and quotes nest up to four deep. Thanks @KyongSik-Yoon (#684).
 - **pi and Oh My Pi transcripts are found when the home directory is reached through a symlink.** On hosts such as Bazzite or Kinoite (`/home` links to `/var/home`), Collie now matches the pane's folder by its real path as well, so Chat and History open. Two sessions in one folder are still refused. Thanks @wipash (#683).
