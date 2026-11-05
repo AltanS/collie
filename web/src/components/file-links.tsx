@@ -38,6 +38,7 @@ import { snapshotsTaken } from "@/lib/snapshot-clock";
 export interface PaneImageTarget {
   paneId: string;
   scope: Scope;
+  root: string;
   rel: string;
 }
 
@@ -50,7 +51,14 @@ export interface FileLinkTarget {
 }
 
 /** Where a printed path leads, or null when it leads nowhere Files can open. */
-export type FileLinkOpener = (found: PrintedPath) => FileLinkTarget | null;
+export type FileLinkOpener = ((found: PrintedPath) => FileLinkTarget | null) & {
+  /** Identifies the pane/scope/root the opener belongs to, so a pane switch clears an open image sheet. */
+  paneKey?: string;
+};
+
+function paneImageKey(paneId: string, scope: Scope, root: string): string {
+  return `${scope.host ?? ""}\0${scope.session ?? ""}\0${paneId}\0${root}`;
+}
 
 const FileLinkContext = createContext<FileLinkOpener | null>(null);
 
@@ -61,16 +69,24 @@ export function useFileLinks(): FileLinkOpener | null {
 
 export function FileLinksProvider({ value, children }: { value: FileLinkOpener | null; children: ReactNode }) {
   const [target, setTarget] = useState<PaneImageTarget | null>(null);
-  if (value === null && target !== null) setTarget(null);
+  const paneKey = value?.paneKey;
+  if (
+    target !== null &&
+    (value === null || (paneKey !== undefined && paneImageKey(target.paneId, target.scope, target.root) !== paneKey))
+  ) {
+    setTarget(null);
+  }
   const opener = useMemo<FileLinkOpener | null>(() => {
     if (value === null) return null;
-    return (found) => {
+    const wrapped: FileLinkOpener = (found) => {
       const link = value(found);
       if (link === null || link.image === undefined) return link;
       const image = link.image;
       return { ...link, onOpen: () => setTarget(image) };
     };
-  }, [value]);
+    if (paneKey !== undefined) wrapped.paneKey = paneKey;
+    return wrapped;
+  }, [value, paneKey]);
   return (
     <FileLinkContext.Provider value={opener}>
       {children}
@@ -363,10 +379,11 @@ export function usePaneFileLinks({
         onOpen: () => nav.down(href, { viaLink: true }),
       };
       if (line === undefined && isRasterImagePath(rel)) {
-        target.image = { paneId, scope: at, rel };
+        target.image = { paneId, scope: at, root, rel };
       }
       return target;
     };
+    opener.paneKey = paneImageKey(paneId, at, root);
     return opener;
   }, [root, cwd, home, paneId, host, session, nav, existence]);
 }

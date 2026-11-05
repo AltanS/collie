@@ -376,7 +376,7 @@ describe("chat prose with the existence check", () => {
     }
     function Harness({ activePane, secondPath }: { activePane: typeof pane | undefined; secondPath: boolean }) {
       const opener: FileLinkOpener | null = usePaneFileLinks({
-        paneId: "w1:p1",
+        paneId: activePane?.paneId ?? "w1:p1",
         pane: activePane,
         panes: activePane ? [activePane] : [],
         workspaces,
@@ -408,6 +408,25 @@ describe("chat prose with the existence check", () => {
     act(() => staleTarget!.onOpen());
     await waitFor(() => expect(screen.getByRole("img", { name: "first.png" })).toBeInTheDocument());
     expect(currentLocation).toBe("/");
+
+    // Switching directly to another valid pane (without going through null) also clears the open sheet.
+    rerender(
+      <MemoryRouter>
+        <LocationProbe />
+        <Harness activePane={other} secondPath={true} />
+      </MemoryRouter>,
+    );
+    expect(screen.queryByRole("img", { name: "first.png" })).toBeNull();
+
+    // Re-open on the first pane, then verify that a null opener transition also clears the stored target.
+    rerender(
+      <MemoryRouter>
+        <LocationProbe />
+        <Harness activePane={pane} secondPath={true} />
+      </MemoryRouter>,
+    );
+    act(() => staleTarget!.onOpen());
+    await waitFor(() => expect(screen.getByRole("img", { name: "first.png" })).toBeInTheDocument());
 
     // When the opener goes null, the stored target is cleared and does not reappear when the pane comes back.
     rerender(
