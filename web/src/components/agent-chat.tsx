@@ -3288,6 +3288,8 @@ export function AgentChat({
                   prefs={prefs}
                   // Settings → Hand: which thumb the belt and the reply box are laid out for.
                   hand={handOf(prefs)}
+                  // The reply box's shape. The shipped one for now; a theme will choose (`box` is the chat-box shape).
+                  layout="field"
                   // Settings → Pane navigation → Joystick: the handle band, just above the belt (ADR 0121).
                   aboveBelt={paneNav.handle}
                   todos={agent?.todos}

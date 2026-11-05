@@ -84,6 +84,7 @@ export const SECTIONS: readonly SectionEntry[] = [
   { def: { id: "dashboard-nav", title: "Dashboard nav" }, load: () => import("./sections/dashboard-nav").then((m) => ({ default: m.DashboardNavSection })) },
   { def: { id: "attention-icon", title: "Attention icon" }, load: () => import("./sections/attention-icon").then((m) => ({ default: m.AttentionIconSection })) },
   { def: { id: "left-hand", title: "Left-hand layout" }, load: () => import("./sections/left-hand").then((m) => ({ default: m.LeftHandSection })) },
+  { def: { id: "composer-box", title: "Composer box" }, load: () => import("./sections/composer-box").then((m) => ({ default: m.ComposerBoxSection })) },
   { def: { id: "dashboard-top", title: "Dashboard top" }, load: () => import("./sections/dashboard-top").then((m) => ({ default: m.DashboardTopSection })) },
   { def: { id: "usage-row", title: "Usage row" }, load: () => import("./sections/usage-row").then((m) => ({ default: m.UsageRowSection })) },
   { def: { id: "report", title: "Report a problem" }, load: () => import("./sections/report").then((m) => ({ default: m.ReportSection })) },

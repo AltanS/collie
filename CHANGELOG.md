@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Added
+
+- **The composer can open like a chat box.** A new layout for the reply box, `box`, rests as one slim row: Attach (a plus) at the left, the field's single line, and the microphone as the main button. Tap it, or type, attach a file or arm Type mode, and it grows upward: the field takes the full width on top and the buttons drop to a row of their own inside the box, so they never narrow the text. With something to send, Send is the main button and the microphone a small ghost beside it; an empty box closes again when it loses focus. The belt above does not move, every send, draft and speech behaviour is unchanged, and the shipped layout stays the default. Nothing chooses `box` yet; the Composer box page of the playground shows it.
+
 ### Fixed
 
 - **pi and Oh My Pi transcripts are found when the home directory is reached through a symlink.** On hosts such as Bazzite or Kinoite (`/home` links to `/var/home`), Collie now matches the pane's folder by its real path as well, so Chat and History open. Two sessions in one folder are still refused. Thanks @wipash (#683).
