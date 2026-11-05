@@ -16,7 +16,7 @@ import type { MenuModel } from "../menu-model";
 import { claudeBuildBlocks } from "./index";
 import { detectMenu } from "./menu";
 
-// Reading a menu's numbered rows into `nav.rows`, so the card can draw one button per option. The
+// Reading a menu's numbered rows into `rows`, so the card can draw one button per option. The
 // rows are read only when the screen leaves no doubt: every case in MENU-6 and MENU-7 is a screen
 // where a guess would put a wrong button in front of the operator.
 
@@ -47,26 +47,30 @@ function dialog(...body: string[]): MenuModel {
   return menu;
 }
 
-describe("nav.rows on the real exit dialog", () => {
+describe("rows on the real exit dialog", () => {
+  it("@req:MENU-1 @oracle:requirement the rows sit on the menu, and `nav` stays as it was", () => {
+    expect(exitMenu(1).nav).toEqual({ upDown: true });
+  });
+
   it.each([
     [1, 0],
     [2, 1],
     [3, 2],
   ] as const)("@req:MENU-1 @oracle:requirement file %i reads the three options, current %i", (n, current) => {
-    expect(exitMenu(n).nav.rows).toEqual({ labels: EXIT_LABELS, current });
+    expect(exitMenu(n).rows).toEqual({ labels: EXIT_LABELS, current });
   });
 
   it("@req:MENU-1 @oracle:requirement the rows reach the menu block the card draws", () => {
     const block = claudeBuildBlocks(load(exitFile(2))).find((b) => b.kind === "menu");
     if (block?.kind !== "menu") throw new Error("no menu block");
     expect(block.menu.title).toBe("Background work is running");
-    expect(block.menu.nav.rows).toEqual({ labels: EXIT_LABELS, current: 1 });
+    expect(block.menu.rows).toEqual({ labels: EXIT_LABELS, current: 1 });
   });
 
   it("@req:MENU-1 @oracle:requirement the `❯` prompts of the transcript above the dialog do not count", () => {
     // The capture holds two more `❯` rows above the rule: the prompts `❯ /exit` and `❯ Use the Bash…`.
     expect(raw(exitFile(1)).split("❯").length - 1).toBe(3);
-    expect(exitMenu(1).nav.rows?.labels).toHaveLength(3);
+    expect(exitMenu(1).rows?.labels).toHaveLength(3);
   });
 });
 
@@ -74,19 +78,28 @@ describe("rows are read only when they can be read honestly", () => {
   // The positive control: the same frame the refusals below use does read rows, so each refusal is a
   // refusal of its own screen and not of the frame.
   it("@req:MENU-6 @oracle:requirement the frame reads honest rows", () => {
-    expect(dialog("  ❯ 1. Alpha", "    2. Beta", "    3. Gamma").nav.rows).toEqual({
+    expect(dialog("  ❯ 1. Alpha", "    2. Beta", "    3. Gamma").rows).toEqual({
       labels: ["Alpha", "Beta", "Gamma"],
       current: 0,
     });
-    expect(dialog("    1. Alpha", "    2. Beta", "  ❯ 3. Gamma").nav.rows).toEqual({
+    expect(dialog("    1. Alpha", "    2. Beta", "  ❯ 3. Gamma").rows).toEqual({
       labels: ["Alpha", "Beta", "Gamma"],
       current: 2,
     });
   });
 
+  // A scrolled list: the numbering runs on from a row above the fold. `current` counts within the
+  // block, because a tap walks the distance between rows, never to a number.
+  it("@req:MENU-6 @oracle:requirement a scrolled block, consecutive from any start, is honest", () => {
+    expect(dialog("    2. Alpha", "  ❯ 3. Beta", "    4. Gamma").rows).toEqual({
+      labels: ["Alpha", "Beta", "Gamma"],
+      current: 1,
+    });
+  });
+
   it("@req:MENU-6 @oracle:requirement no marker: no rows", () => {
     const menu = dialog("    1. Alpha", "    2. Beta", "    3. Gamma");
-    expect(menu.nav.rows).toBeUndefined();
+    expect(menu.rows).toBeUndefined();
     expect(menu.nav.upDown).toBe(false);
   });
 
@@ -104,21 +117,21 @@ describe("rows are read only when they can be read honestly", () => {
     ["the glyph inside a label, on no row's gutter", ["    1. Go ❯ back", "    2. Stay"]],
   ])("@req:MENU-6 @oracle:requirement %s: no rows, the arrows stay", (_name, body) => {
     const menu = dialog(...body);
-    expect(menu.nav.rows).toBeUndefined();
+    expect(menu.rows).toBeUndefined();
     expect(menu.nav.upDown).toBe(true);
   });
 });
 
 describe("only the marker's contiguous block holds the options", () => {
   it("@req:MENU-7 @oracle:requirement numbered body lines above a blank line are not options", () => {
-    expect(dialog("  1. foo", "  2. bar", "", "  ❯ 1. Alpha", "    2. Beta").nav.rows).toEqual({
+    expect(dialog("  1. foo", "  2. bar", "", "  ❯ 1. Alpha", "    2. Beta").rows).toEqual({
       labels: ["Alpha", "Beta"],
       current: 0,
     });
   });
 
   it("@req:MENU-7 @oracle:requirement numbered lines below a blank line are not options", () => {
-    expect(dialog("    1. Alpha", "  ❯ 2. Beta", "", "  3. note").nav.rows).toEqual({
+    expect(dialog("    1. Alpha", "  ❯ 2. Beta", "", "  3. note").rows).toEqual({
       labels: ["Alpha", "Beta"],
       current: 1,
     });
@@ -126,12 +139,12 @@ describe("only the marker's contiguous block holds the options", () => {
 
   it("@req:MENU-7 @oracle:requirement a description line inside the block neither breaks it nor becomes a label", () => {
     expect(
-      dialog("  ❯ 1. Alpha", "       what alpha does", "    2. Beta", "       what beta does", "    3. Gamma").nav.rows,
+      dialog("  ❯ 1. Alpha", "       what alpha does", "    2. Beta", "       what beta does", "    3. Gamma").rows,
     ).toEqual({ labels: ["Alpha", "Beta", "Gamma"], current: 0 });
   });
 
   it("@req:MENU-7 @oracle:requirement a wrapped continuation counts the rows right under the marker", () => {
-    expect(dialog("    1. Alpha", "       wrapped tail", "  ❯ 2. Beta", "    3. Gamma").nav.rows).toEqual({
+    expect(dialog("    1. Alpha", "       wrapped tail", "  ❯ 2. Beta", "    3. Gamma").rows).toEqual({
       labels: ["Alpha", "Beta", "Gamma"],
       current: 1,
     });
@@ -152,16 +165,16 @@ describe("the guard's comparators with rows on the model", () => {
 
   it("@req:MENU-8 @oracle:requirement files 1 and 2 are the same screen with a moved highlight", () => {
     const [a, b] = [exitMenu(1), exitMenu(2)];
-    expect(a.nav.rows?.current).toBe(0);
-    expect(b.nav.rows?.current).toBe(1);
+    expect(a.rows?.current).toBe(0);
+    expect(b.rows?.current).toBe(1);
     expect(menusSameIdentity(a, b)).toBe(true);
     expect(menusEqual(a, b)).toBe(false);
   });
 
   it("@req:MENU-8 @oracle:requirement rows do not enter the identity", () => {
     const a = exitMenu(1);
-    const b: MenuModel = { ...a, nav: { ...a.nav, rows: { labels: ["Other", "Rows"], current: 1 } } };
-    const none: MenuModel = { ...a, nav: { upDown: a.nav.upDown } };
+    const b: MenuModel = { ...a, rows: { labels: ["Other", "Rows"], current: 1 } };
+    const none: MenuModel = { title: a.title, actions: a.actions, nav: a.nav, signature: a.signature };
     expect(menusSameIdentity(a, b)).toBe(true);
     expect(menusSameIdentity(a, none)).toBe(true);
   });
@@ -182,6 +195,19 @@ describe("the guard's comparators with rows on the model", () => {
 });
 
 describe("the cards this change must leave alone", () => {
+  it.each([
+    ["claude--menu-model-picker.txt", 5, 0],
+    ["claude--menu-model-picker-moved.txt", 5, 2],
+    ["claude-lab--menu-model-picker-v2301--w119.txt", 9, 0],
+    ["claude--v21314-core-menu-model--w120.txt", 5, 4],
+  ] as const)("@req:MENU-9 @oracle:requirement %s: reads %i rows, current %i", (name, count, current) => {
+    const rows = detectMenu(load(name))?.rows;
+    expect(rows?.labels).toHaveLength(count);
+    expect(rows?.current).toBe(current);
+    // A row also prints a description column; a label may or may not carry it. Its name comes first.
+    expect(rows?.labels[0]?.startsWith("Default (recommended)")).toBe(true);
+  });
+
   it.each([
     "claude--menu-model-picker.txt",
     "claude--menu-model-picker-moved.txt",
@@ -204,7 +230,7 @@ describe("the cards this change must leave alone", () => {
     "claude--menu-effort-slider--w60.txt",
     "claude--menu-effort-slider--w40.txt",
   ])("@req:MENU-10 @oracle:requirement %s: the slider reads no rows", (name) => {
-    expect(cardMenu(name).nav.rows).toBeUndefined();
+    expect(cardMenu(name).rows).toBeUndefined();
   });
 
   it("@req:MENU-10 @oracle:requirement the printed scale itself is unchanged", () => {

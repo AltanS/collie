@@ -112,6 +112,13 @@ describe("MenuBlock option rows", () => {
     expect(onAction.mock.calls).toEqual([[{ keys: ["Up", "Up", "Up", "Up"], nav: true }]]);
   });
 
+  it("@req:MENU-3 @oracle:requirement a scrolled block walks by distance, its printed numbers play no part", async () => {
+    const user = userEvent.setup();
+    const { onAction } = renderCard(dialog("    2. Alpha", "  ❯ 3. Beta", "    4. Gamma", "    5. Delta"));
+    await user.click(button("Delta"));
+    expect(onAction.mock.calls).toEqual([[{ keys: ["Down", "Down"], nav: true }]]);
+  });
+
   it("@req:MENU-3 @oracle:requirement after the marker moved a tap walks from where it is now", async () => {
     const user = userEvent.setup();
     const onAction = vi.fn<(a: MenuBlockAction) => void>();
@@ -242,17 +249,26 @@ describe("MenuBlock option rows", () => {
     "claude--menu-model-picker-moved.txt",
     "claude-lab--menu-model-picker-v2301--w119.txt",
     "claude--v21314-core-menu-model--w120.txt",
-  ])("@req:MENU-9 @oracle:requirement %s: a tap on anything but the footer walks arrows, never a digit", async (name) => {
+  ])("@req:MENU-9 @oracle:requirement %s: every row walks arrows only, never a digit", async (name) => {
     const user = userEvent.setup();
     const { onAction } = renderCard(capture(name));
     const footer = ["Set as default", "Use this session only", "Cancel"];
     for (const control of screen.getAllByRole("button")) {
       if (/^\d+$/.test(control.textContent ?? "")) throw new Error(`a digit button: ${control.textContent}`);
     }
-    for (const label of menuBlock(capture(name)).menu.nav.rows?.labels ?? []) {
+    const rows = menuBlock(capture(name)).menu.rows;
+    if (rows === undefined) throw new Error("the picker read no rows");
+    const expected: MenuBlockAction[] = [];
+    for (const [i, label] of rows.labels.entries()) {
       // An accessible name collapses runs of spaces; the picker's rows have them between their columns.
       const row = button(label.replace(/\s+/g, " ").trim());
-      if (!isMarkedCurrent(row)) await user.click(row);
+      expect(isMarkedCurrent(row)).toBe(i === rows.current);
+      if (i === rows.current) continue;
+      await user.click(row);
+      expected.push({
+        keys: Array.from({ length: Math.abs(i - rows.current) }, () => (i > rows.current ? "Down" : "Up")),
+        nav: true,
+      });
     }
     for (const label of footer) await user.click(button(label));
     const calls = onAction.mock.calls.map(([action]) => action);
@@ -261,10 +277,7 @@ describe("MenuBlock option rows", () => {
       { keys: ["s"], nav: false },
       { keys: ["Escape"], nav: false },
     ]);
-    for (const action of calls.slice(0, -3)) {
-      expect(action.nav).toBe(true);
-      for (const key of action.keys) expect(["Up", "Down"]).toContain(key);
-    }
+    expect(calls.slice(0, -3)).toEqual(expected);
   });
 
   it("@req:MENU-10 @oracle:requirement the /effort slider keeps its chips and draws no rows", async () => {
