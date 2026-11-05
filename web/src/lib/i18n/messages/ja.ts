@@ -1037,6 +1037,7 @@ export const ja: Dictionary = {
 
   // --- nav (app header, Collie mark, settings gear) ---
   "nav.settings.aria": "設定",
+  "nav.settings.updateAvailable.aria": "Settings, update available",
   "nav.home.aria.default": "Collie ホーム",
   "nav.home.aria.lost": "Collie ホーム (未接続)",
   "nav.home.aria.lostAt": "Collie ホーム (未接続)。{time} に保存された内容を表示しています。",
@@ -1942,6 +1943,7 @@ export const ja: Dictionary = {
   "updates.entry.status.peersBehind.other": "{count} 台のピアが未更新",
   "updates.entry.status.available": "{version} が利用可能",
   "updates.entry.status.upToDate": "最新です",
+  "updates.entry.status.upToDateVersion": "Up to date · {version}",
   "updates.entry.status.unknown": "不明、Collie に接続できません",
   "updateRibbon.starting": "更新を開始中…",
   "updateRibbon.fetching": "{version} に更新中。取得中",
@@ -2837,6 +2839,10 @@ export const ja: Dictionary = {
   "settings.report.description": "ペインで3回続けて送信に失敗すると、GitHub の Issue を開くカードが出ます。タップしない限り、この電話から何も送られません。",
   "settings.report.open": "問題を報告",
   "telemetry.card.title": "匿名のインストール数",
+  "telemetry.row.on": "On, once a day",
+  "telemetry.row.off": "Off",
+  "telemetry.row.reading": "Reading…",
+  "telemetry.row.failed": "Could not be read",
   "telemetry.card.description": "このマシンは1日に1回、ランダムなID、Collieのバージョン、OS、インストールの種類を送ります。それ以外は何も送りません。",
   "telemetry.card.reading": "このマシンから設定を読み込んでいます…",
   "telemetry.card.readFailed": "このマシンから設定を読み込めませんでした。",

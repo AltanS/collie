@@ -1045,6 +1045,7 @@ export const es: Dictionary = {
 
   // --- nav (app header, Collie mark, settings gear) ---
   "nav.settings.aria": "Configuración",
+  "nav.settings.updateAvailable.aria": "Settings, update available",
   "nav.home.aria.default": "Inicio de Collie",
   "nav.home.aria.lost": "Inicio de Collie (sin conexión)",
   "nav.home.aria.lostAt": "Inicio de Collie (sin conexión). Se muestra la copia guardada ({time}).",
@@ -1955,6 +1956,7 @@ export const es: Dictionary = {
   "updates.entry.status.peersBehind.other": "{count} pares desactualizados",
   "updates.entry.status.available": "{version} disponible",
   "updates.entry.status.upToDate": "Al día",
+  "updates.entry.status.upToDateVersion": "Up to date · {version}",
   "updates.entry.status.unknown": "Desconocido, no se puede contactar con Collie",
   "updateRibbon.starting": "Iniciando actualización…",
   "updateRibbon.fetching": "Actualizando a {version}. Descargando",
@@ -2853,6 +2855,10 @@ export const es: Dictionary = {
   "settings.report.description": "Tras 3 envíos fallidos seguidos en un pane, una tarjeta ofrece abrir una incidencia en GitHub. Nada sale de este teléfono si usted no toca.",
   "settings.report.open": "Informar de un problema",
   "telemetry.card.title": "Recuento anónimo de instalaciones",
+  "telemetry.row.on": "On, once a day",
+  "telemetry.row.off": "Off",
+  "telemetry.row.reading": "Reading…",
+  "telemetry.row.failed": "Could not be read",
   "telemetry.card.description": "Una vez al día, esta máquina envía un ID aleatorio, la versión de Collie, el sistema operativo y el tipo de instalación. Nada más.",
   "telemetry.card.reading": "Leyendo el ajuste de esta máquina…",
   "telemetry.card.readFailed": "No se pudo leer el ajuste de esta máquina.",

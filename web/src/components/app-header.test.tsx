@@ -7,7 +7,7 @@ import type { ComponentProps, ReactElement } from "react";
 import { server } from "@/test/setup";
 import { collieMark, markIsLive, markPaper } from "@/test/collie-mark";
 import { __resetOperatorCommands, loadOperatorCommands } from "@/lib/operator-config";
-import { ROOT_ROUTE_ID } from "@/lib/loaders";
+import { ROOT_ROUTE_ID, type HomeData } from "@/lib/loaders";
 import { AppHeaderHost, RouteHeader, SettingsGear } from "./app-header";
 import { StatusBadge } from "./status-badge";
 import { CONNECTION_LOST_MS, TROUBLE_MS } from "@/hooks/use-connection-lost";
@@ -16,7 +16,7 @@ import { CrewProvider } from "./crew-provider";
 import { savedAtLabel } from "@/lib/format";
 import { ServerSwitcher } from "./server-switcher";
 import { SessionSwitcher } from "./session-switcher";
-import type { BridgeStatus, ServerSummary } from "@/lib/types";
+import type { BridgeStatus, ServerSummary, UpdateInfo } from "@/lib/types";
 
 // The header shell mounts CollieHome (a button) and, via SettingsGear, useNavigate — so it needs a router.
 // A `createMemoryRouter` with the real root route id, no loader: the route initialises synchronously
@@ -819,5 +819,80 @@ describe("the ONE header — hoisted above the outlet", () => {
     const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
     expect(() => render(<RouteHeader wordmark />)).toThrow(/AppHeaderHost/);
     quiet.mockRestore();
+  });
+});
+
+// ── THE GEAR'S DOT ──────────────────────────────────────────────────────────────────────────────
+//
+// A release waiting and not put down is told on the gear, the same reading the update band makes, so
+// the home screen shows it without opening Settings. The dot is 6px inside the 44px box and the
+// accessible name says it too.
+describe("the Settings gear — the update dot", () => {
+  function updateInfo(over: Partial<UpdateInfo> = {}): UpdateInfo {
+    return {
+      current: "1.3.0",
+      latest: "1.4.0",
+      latestUrl: null,
+      releaseAvailable: true,
+      majorAvailable: null,
+      majorUrl: null,
+      bridgeStale: false,
+      checkedAt: 1_700_000_000_000,
+      ...over,
+    };
+  }
+
+  function renderGear(update: UpdateInfo | undefined) {
+    const data = {
+      bridge: "connected",
+      device: undefined,
+      agents: [],
+      shellPanes: [],
+      workspaces: [],
+      tabs: [],
+      sessions: [],
+      servers: [],
+      ts: 0,
+      scope: {},
+      viewAll: false,
+      snoozedUntil: null,
+      update,
+      error: false,
+      authError: false,
+    } satisfies HomeData;
+    const router = createMemoryRouter(
+      [{ id: ROOT_ROUTE_ID, path: "/", loader: () => data, element: <SettingsGear /> }],
+      { initialEntries: ["/"] },
+    );
+    return render(<RouterProvider router={router} />);
+  }
+
+  it("carries a 6px primary dot and says so in its name while an update is available", async () => {
+    const { container } = renderGear(updateInfo());
+    const gear = await screen.findByRole("button", { name: "Settings, update available" });
+    const dot = container.querySelector('[data-slot="update-dot"]');
+    expect(dot).not.toBeNull();
+    expect(gear.contains(dot)).toBe(true);
+    expect(dot?.className).toContain("bg-primary");
+    expect(dot?.className).toContain("size-1.5");
+    expect(dot?.getAttribute("aria-hidden")).toBe("true");
+    expect(gear.className).toContain("size-11");
+  });
+
+  it("has no dot when up to date, and the plain name", async () => {
+    const { container } = renderGear(updateInfo({ releaseAvailable: false, latest: "1.3.0" }));
+    await screen.findByRole("button", { name: "Settings" });
+    expect(container.querySelector('[data-slot="update-dot"]')).toBeNull();
+  });
+
+  it("has no dot once the offered version was dismissed, and returns for a newer one", async () => {
+    const dismissed = renderGear(updateInfo({ dismissedVersion: "1.4.0" }));
+    await screen.findByRole("button", { name: "Settings" });
+    expect(dismissed.container.querySelector('[data-slot="update-dot"]')).toBeNull();
+    dismissed.unmount();
+
+    const newer = renderGear(updateInfo({ latest: "1.4.1", dismissedVersion: "1.4.0" }));
+    await screen.findByRole("button", { name: "Settings, update available" });
+    expect(newer.container.querySelector('[data-slot="update-dot"]')).not.toBeNull();
   });
 });

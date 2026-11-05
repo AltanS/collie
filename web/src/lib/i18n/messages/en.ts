@@ -47,7 +47,7 @@ export const en = {
   "settings.section.alerts.title": "Alerts",
   "settings.section.alerts.blurb": "Notifications, quiet hours",
   "settings.section.system.title": "System",
-  "settings.section.system.blurb": "Updates, devices, crew",
+  "settings.section.system.blurb": "Devices, crew, connection",
   // The fifth section, and the only one that can be absent: it renders while `lib/experiments.ts`
   // holds something and disappears when the last experiment graduates (that file says why).
   "settings.section.experiments.title": "Experiments",
@@ -1120,6 +1120,7 @@ export const en = {
 
   // --- nav (app header, Collie mark, settings gear) ---
   "nav.settings.aria": "Settings",
+  "nav.settings.updateAvailable.aria": "Settings, update available",
   "nav.home.aria.default": "Collie home",
   "nav.home.aria.lost": "Collie home, not connected",
   "nav.home.aria.lostAt": "Collie home, not connected. Showing what was saved at {time}.",
@@ -2075,6 +2076,7 @@ export const en = {
   "updates.entry.status.peersBehind.other": "{count} peers behind",
   "updates.entry.status.available": "{version} available",
   "updates.entry.status.upToDate": "Up to date",
+  "updates.entry.status.upToDateVersion": "Up to date · {version}",
   "updates.entry.status.unknown": "Unknown, can’t reach Collie",
 
   // --- updateRibbon (the ONE top-of-app update band), M16/02 ---
@@ -3047,6 +3049,10 @@ export const en = {
   "settings.report.description": "After 3 failed sends in a row on a pane, a card offers to open a GitHub issue. Nothing leaves this phone unless you tap.",
   "settings.report.open": "Report a problem",
   "telemetry.card.title": "Anonymous install count",
+  "telemetry.row.on": "On, once a day",
+  "telemetry.row.off": "Off",
+  "telemetry.row.reading": "Reading…",
+  "telemetry.row.failed": "Could not be read",
   "telemetry.card.description": "Once a day this machine sends a random ID, the Collie version, the OS and the install kind. Nothing else.",
   "telemetry.card.reading": "Reading the setting from this machine…",
   "telemetry.card.readFailed": "The setting could not be read from this machine.",

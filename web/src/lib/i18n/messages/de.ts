@@ -1045,6 +1045,7 @@ export const de: Dictionary = {
 
   // --- nav (app header, Collie mark, settings gear) ---
   "nav.settings.aria": "Einstellungen",
+  "nav.settings.updateAvailable.aria": "Settings, update available",
   "nav.home.aria.default": "Collie-Startseite",
   "nav.home.aria.lost": "Collie-Startseite: nicht verbunden",
   "nav.home.aria.lostAt": "Collie-Startseite: nicht verbunden. Angezeigt wird der Stand von {time}.",
@@ -1958,6 +1959,7 @@ export const de: Dictionary = {
   "updates.entry.status.peersBehind.other": "{count} Peers im Rückstand",
   "updates.entry.status.available": "{version} verfügbar",
   "updates.entry.status.upToDate": "Aktuell",
+  "updates.entry.status.upToDateVersion": "Up to date · {version}",
   "updates.entry.status.unknown": "Unbekannt, Collie ist nicht erreichbar",
   "updateRibbon.starting": "Update wird gestartet…",
   "updateRibbon.fetching": "Update auf {version}. Wird geladen",
@@ -2856,6 +2858,10 @@ export const de: Dictionary = {
   "settings.report.description": "Nach 3 fehlgeschlagenen Sendungen in Folge auf einer Pane bietet eine Karte an, ein GitHub-Issue zu öffnen. Ohne deinen Tipp verlässt nichts dieses Telefon.",
   "settings.report.open": "Problem melden",
   "telemetry.card.title": "Anonyme Installationszählung",
+  "telemetry.row.on": "On, once a day",
+  "telemetry.row.off": "Off",
+  "telemetry.row.reading": "Reading…",
+  "telemetry.row.failed": "Could not be read",
   "telemetry.card.description": "Einmal am Tag sendet dieser Rechner eine zufällige ID, die Collie-Version, das Betriebssystem und die Installationsart. Sonst nichts.",
   "telemetry.card.reading": "Die Einstellung wird von diesem Rechner gelesen…",
   "telemetry.card.readFailed": "Die Einstellung konnte von diesem Rechner nicht gelesen werden.",

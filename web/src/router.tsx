@@ -26,6 +26,7 @@ import {
   SettingsVoiceHostRoute,
   SettingsVoiceModelRoute,
   SettingsSystemRoute,
+  SettingsInstallCountRoute,
 } from "@/routes/settings-sections";
 import { CrewRoute } from "@/routes/crew";
 import { MachineRoute } from "@/routes/machine";
@@ -124,6 +125,8 @@ export const router = createBrowserRouter([
       // to hold — a revoke or a pair is then the app's standard mutation shape (api call →
       // revalidate), with no second data path.
       { path: "settings/system", loader: devicesLoader, element: <SettingsSystemRoute /> },
+      // One level below System, like Voice's two pages: the install count's switch and its explanation.
+      { path: "settings/system/install-count", element: <SettingsInstallCountRoute /> },
       // The Updates page, a sibling of settings and crew. No loader of its own: everything on it is
       // either the snapshot (root loader) or the card's own read of /api/update/check. It is
       // deliberately ON the poll loop for `crew`'s stated reason — a run in progress and a member
