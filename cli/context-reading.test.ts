@@ -7,12 +7,14 @@ import { context, fakeFiles, HOME, STATE } from "./fakes.ts";
 
 const SESSION = "ff2dd3c2-e3d5-40db-9474-eea02e606c6c";
 const NOW = 1_800_000_000_000;
+/** Stored exactly as the env var is set, never through the machine's `join` (a Windows run would turn it into backslashes). */
+const CUSTOM_ROOT = "/profiles/work";
 const USAGE = `${STATE}/usage/${usageFileName(SESSION)}`;
 
 describe("context-reading configDir tracking", () => {
   test("takeSessionStart records a custom CLAUDE_CONFIG_DIR even without a model, and omits default ~/.claude", () => {
     const customFiles = fakeFiles({});
-    const customDeps = { files: customFiles, uid: 1000, ctx: context({ CLAUDE_CONFIG_DIR: "/profiles/work" }) };
+    const customDeps = { files: customFiles, uid: 1000, ctx: context({ CLAUDE_CONFIG_DIR: CUSTOM_ROOT }) };
     takeSessionStart(
       customDeps,
       { session: SESSION, harness: "claude", source: "startup", model: undefined, contextTokens: undefined },
@@ -23,11 +25,11 @@ describe("context-reading configDir tracking", () => {
       schemaVersion: 1,
       harness: "claude",
       at: NOW,
-      configDir: join("/profiles", "work"),
+      configDir: CUSTOM_ROOT,
     });
 
     const defaultFiles = fakeFiles({});
-    const defaultDeps = { files: defaultFiles, uid: 1000, ctx: context({ CLAUDE_CONFIG_DIR: join(HOME, ".claude") }) };
+    const defaultDeps = { files: defaultFiles, uid: 1000, ctx: context({ CLAUDE_CONFIG_DIR: `${HOME}/.claude` }) };
     takeSessionStart(
       defaultDeps,
       { session: SESSION, harness: "claude", source: "startup", model: "claude-opus-5-5", contextTokens: undefined },
@@ -52,7 +54,7 @@ describe("context-reading configDir tracking", () => {
   });
 
   test("takeContextReading attaches custom CLAUDE_CONFIG_DIR to the usage record", () => {
-    const customRoot = "/profiles/work";
+    const customRoot = CUSTOM_ROOT;
     const transcript = join(customRoot, "projects", "-x", "session.jsonl");
     const files = fakeFiles({
       [transcript]: `${JSON.stringify({ type: "assistant", message: { model: "claude-opus-5-5", usage: { input_tokens: 50_000 } } })}\n`,
@@ -66,7 +68,7 @@ describe("context-reading configDir tracking", () => {
       at: NOW,
       window: 200_000,
       context: 25,
-      configDir: join("/profiles", "work"),
+      configDir: CUSTOM_ROOT,
     });
 
     // Even when no model window is known yet, a custom CLAUDE_CONFIG_DIR is recorded on the turn.
@@ -83,7 +85,7 @@ describe("context-reading configDir tracking", () => {
       schemaVersion: 1,
       harness: "claude",
       at: NOW,
-      configDir: join("/profiles", "work"),
+      configDir: CUSTOM_ROOT,
     });
 
     // A default beacon turn clears a previously set configDir even without a window.
