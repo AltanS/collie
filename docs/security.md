@@ -528,7 +528,7 @@ ways. This reverses the earlier promise that Collie collects nothing
 
 ### What the ping holds
 
-The ping is one small JSON message. It holds these eight fields and nothing else:
+The ping is one small JSON message. It holds these nine fields and nothing else:
 
 | Field | What it holds |
 | --- | --- |
@@ -540,11 +540,12 @@ The ping is one small JSON message. It holds these eight fields and nothing else
 | `arch` | The CPU type, such as `x64` or `arm64`. |
 | `install` | How Collie was installed: `binary`, `linked-clone`, `detached-checkout`, `packaged` or `unknown`. |
 | `line` | The release line you follow: `stable` or `edge`. |
+| `role` | Whether this bridge runs alone, leads a crew or is a member: `solo`, `lead` or `member`. It says nothing about which crew, and it holds no crew ID or machine name. |
 
 An example, exactly as it is sent:
 
 ```json
-{"v":1,"id":"3f9c2a71d04b58e6a1c7b09e42d8f356","day":"2026-11-27","version":"1.27.0","os":"linux","arch":"x64","install":"binary","line":"stable"}
+{"v":1,"id":"3f9c2a71d04b58e6a1c7b09e42d8f356","day":"2026-11-27","version":"1.27.0","os":"linux","arch":"x64","install":"binary","line":"stable","role":"solo"}
 ```
 
 The ping holds no host name, no user name, no folder or path, no pane, no agent or multiplexer name,

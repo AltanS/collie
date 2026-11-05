@@ -19,7 +19,8 @@ holds an account id, a zone id or a token.
   "os": "linux",
   "arch": "x64",
   "install": "binary",
-  "line": "stable"
+  "line": "stable",
+  "role": "solo"
 }
 ```
 
@@ -27,7 +28,7 @@ Anything that does not match is `400` and is stored nowhere. A good ping is `204
 
 | Field     | Rule                                                                              |
 | --------- | --------------------------------------------------------------------------------- |
-| (keys)    | Exactly these eight keys. A missing or extra key is refused.                      |
+| (keys)    | Exactly these nine keys. A missing or extra key is refused.                      |
 | `v`       | The number `1`.                                                                   |
 | `id`      | 32 lowercase hex characters.                                                      |
 | `day`     | A real `YYYY-MM-DD` date, within one day of the server's UTC date.                |
@@ -36,6 +37,7 @@ Anything that does not match is `400` and is stored nowhere. A good ping is `204
 | `arch`    | `x64`, `arm64` or `other`.                                                        |
 | `install` | `binary`, `linked-clone`, `detached-checkout`, `packaged` or `unknown`.           |
 | `line`    | `stable` or `edge`.                                                               |
+| `role`    | `solo`, `lead` or `member`. A deputy or peer that is not the lead is a `member`.  |
 
 Other answers: `404` for another path, `405` for another method, `500` if D1 fails. The body of a
 refusal is one fixed word such as `bad_os`. It never repeats what was sent.
@@ -43,7 +45,7 @@ refusal is one fixed word such as `bad_os`. It never repeats what was sent.
 ## What it keeps
 
 One row per `(id, day)`. A second ping for the same id and day replaces the first, so a repeat adds
-nothing. The columns are in `schema.sql`: `id`, `day`, `version`, `os`, `arch`, `install`, `line`.
+nothing. The columns are in `schema.sql`: `id`, `day`, `version`, `os`, `arch`, `install`, `line`, `role`.
 
 There is no column for an IP address, a user agent or a country. The worker reads one request
 header, `content-length`, to refuse a large body early. It never reads `request.cf` and writes no
@@ -51,7 +53,7 @@ log line. Workers observability is off in
 `wrangler.toml`. Rows older than 400 days are deleted by a daily cron trigger at 03:17 UTC.
 
 Cloudflare is the host, so its network sees the connection like any host does. That is outside
-this code. The code decides what reaches the table, and that is the seven columns above.
+this code. The code decides what reaches the table, and that is the eight columns above.
 
 ## Deploy (Altan's steps)
 
@@ -88,7 +90,7 @@ You need a Cloudflare account that holds the `colliepwa.dev` zone. Run these fro
 
    ```
    curl -i -X POST https://ping.colliepwa.dev/v1/ping \
-     -d '{"v":1,"id":"00000000000000000000000000000000","day":"'"$(date -u +%F)"'","version":"1.27.0","os":"linux","arch":"x64","install":"binary","line":"stable"}'
+     -d '{"v":1,"id":"00000000000000000000000000000000","day":"'"$(date -u +%F)"'","version":"1.27.0","os":"linux","arch":"x64","install":"binary","line":"stable","role":"solo"}'
    curl -i -X POST https://ping.colliepwa.dev/v1/ping -d '{"v":1}'
    ```
 
@@ -149,6 +151,17 @@ Installs that pinged at least once in the last 30 days:
 SELECT COUNT(DISTINCT id) AS active_30_days
 FROM pings
 WHERE day >= date('now', '-29 days');
+```
+
+Bridges by role, on the newest day with data (a setup is a solo bridge or a lead; a member belongs
+to a setup that a lead counts):
+
+```sql
+SELECT role, COUNT(DISTINCT id) AS bridges
+FROM pings
+WHERE day = (SELECT MAX(day) FROM pings)
+GROUP BY role
+ORDER BY bridges DESC;
 ```
 
 The same shape answers `os`, `arch` and `line`: swap the grouped column.

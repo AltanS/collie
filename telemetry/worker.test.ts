@@ -27,6 +27,7 @@ interface Row {
 	arch: string;
 	install: string;
 	line: string;
+	role: string;
 }
 
 class FakeD1 implements D1Database {
@@ -49,11 +50,11 @@ class FakeD1 implements D1Database {
 	private execute(query: string, values: (string | number)[]): Promise<D1Result> {
 		if (this.failWrites) return Promise.reject(new Error("D1_ERROR secret-bound-value"));
 		if (query.startsWith("INSERT INTO pings")) {
-			const [id, day, version, os, arch, install, line] = values.map(String);
-			if (!id || !day || !version || !os || !arch || !install || !line) {
-				throw new Error("insert needs seven values");
+			const [id, day, version, os, arch, install, line, role] = values.map(String);
+			if (!id || !day || !version || !os || !arch || !install || !line || !role) {
+				throw new Error("insert needs eight values");
 			}
-			this.rows.set(`${id}|${day}`, { id, day, version, os, arch, install, line });
+			this.rows.set(`${id}|${day}`, { id, day, version, os, arch, install, line, role });
 			return Promise.resolve({ meta: { changes: 1 } });
 		}
 		if (query.startsWith("DELETE FROM pings WHERE day < ?")) {
@@ -82,6 +83,7 @@ const GOOD = {
 	arch: "x64",
 	install: "binary",
 	line: "stable",
+	role: "solo",
 };
 
 function post(body: string, headers: Record<string, string> = {}): Request {
@@ -115,7 +117,7 @@ describe("a good ping", () => {
 		expect(response.status).toBe(204);
 		expect(await response.text()).toBe("");
 		expect([...db.rows.values()]).toEqual([
-			{ id: ID, day: "2026-11-04", version: "1.27.0", os: "linux", arch: "x64", install: "binary", line: "stable" },
+			{ id: ID, day: "2026-11-04", version: "1.27.0", os: "linux", arch: "x64", install: "binary", line: "stable", role: "solo" },
 		]);
 	});
 
@@ -153,6 +155,9 @@ describe("a good ping", () => {
 		}
 		for (const line of ["stable", "edge"]) {
 			expect(parsePing(withField("line", line), NOW)).toMatchObject({ line });
+		}
+		for (const role of ["solo", "lead", "member"]) {
+			expect(parsePing(withField("role", role), NOW)).toMatchObject({ role });
 		}
 	});
 
@@ -192,6 +197,10 @@ describe("a bad ping is 400 and stored nowhere", () => {
 		["an arch off the list", withField("arch", "riscv64")],
 		["an install off the list", withField("install", "docker")],
 		["a line off the list", withField("line", "beta")],
+		["a role off the list", withField("role", "peer")],
+		["a role in capitals", withField("role", "Lead")],
+		["a role as a number", withField("role", 1)],
+		["a missing role", without("role")],
 	];
 
 	for (const [label, body] of bad) {
@@ -312,11 +321,18 @@ describe("what is kept", () => {
 		expect([...refused.headers.keys()]).toEqual(["cache-control"]);
 	});
 
-	test("a row holds exactly the seven documented columns", async () => {
+	test("a role off the list is refused with the word bad_role", async () => {
+		const { env } = setup();
+		const refused = await handleRequest(post(withField("role", "peer")), env, NOW);
+		expect(refused.status).toBe(400);
+		expect(await refused.text()).toBe("bad_role");
+	});
+
+	test("a row holds exactly the eight documented columns", async () => {
 		const { db, env } = setup();
 		await handleRequest(post(JSON.stringify(GOOD)), env, NOW);
 		const [row] = [...db.rows.values()];
-		expect(Object.keys(row ?? {}).toSorted()).toEqual(["arch", "day", "id", "install", "line", "os", "version"]);
+		expect(Object.keys(row ?? {}).toSorted()).toEqual(["arch", "day", "id", "install", "line", "os", "role", "version"]);
 	});
 
 	test("the worker logs nothing, on success or failure", async () => {
@@ -345,13 +361,13 @@ describe("what is kept", () => {
 			.split("\n")
 			.filter((line) => /^\s{2}\w+\s+(TEXT|INTEGER)/.test(line))
 			.map((line) => line.trim().split(/\s+/)[0]);
-		expect(columns).toEqual(["id", "day", "version", "os", "arch", "install", "line"]);
+		expect(columns).toEqual(["id", "day", "version", "os", "arch", "install", "line", "role"]);
 	});
 });
 
 describe("the daily prune", () => {
 	const seed = (db: FakeD1, day: string): void => {
-		db.rows.set(`${ID}|${day}`, { id: ID, day, version: "1.27.0", os: "linux", arch: "x64", install: "binary", line: "stable" });
+		db.rows.set(`${ID}|${day}`, { id: ID, day, version: "1.27.0", os: "linux", arch: "x64", install: "binary", line: "stable", role: "solo" });
 	};
 
 	test("deletes rows older than 400 days and keeps the rest", async () => {

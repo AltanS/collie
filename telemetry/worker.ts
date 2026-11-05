@@ -41,6 +41,7 @@ export const INSTALL_VALUES = [
 	"unknown",
 ] as const;
 export const LINE_VALUES = ["stable", "edge"] as const;
+export const ROLE_VALUES = ["solo", "lead", "member"] as const;
 
 export interface Ping {
 	v: 1;
@@ -51,6 +52,7 @@ export interface Ping {
 	arch: (typeof ARCH_VALUES)[number];
 	install: (typeof INSTALL_VALUES)[number];
 	line: (typeof LINE_VALUES)[number];
+	role: (typeof ROLE_VALUES)[number];
 }
 
 type Json = string | number | boolean | null | Json[] | { [key: string]: Json };
@@ -62,15 +64,15 @@ export const MAX_VERSION_LENGTH = 40;
 export const RETENTION_DAYS = 400;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-const EXPECTED_KEYS = ["arch", "day", "id", "install", "line", "os", "v", "version"].join(",");
+const EXPECTED_KEYS = ["arch", "day", "id", "install", "line", "os", "role", "v", "version"].join(",");
 const ID_PATTERN = /^[0-9a-f]{32}$/;
 const DAY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const VERSION_PATTERN = /^\d{1,9}\.\d{1,9}\.\d{1,9}(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
 
 const UPSERT_SQL =
-	"INSERT INTO pings (id, day, version, os, arch, install, line) VALUES (?, ?, ?, ?, ?, ?, ?) " +
+	"INSERT INTO pings (id, day, version, os, arch, install, line, role) VALUES (?, ?, ?, ?, ?, ?, ?, ?) " +
 	"ON CONFLICT (id, day) DO UPDATE SET version = excluded.version, os = excluded.os, " +
-	"arch = excluded.arch, install = excluded.install, line = excluded.line";
+	"arch = excluded.arch, install = excluded.install, line = excluded.line, role = excluded.role";
 const PRUNE_SQL = "DELETE FROM pings WHERE day < ?";
 
 /** Why a ping was refused. A fixed word, never a piece of the request. */
@@ -128,7 +130,7 @@ export function parsePing(body: string, now: Date): Ping {
 	if (!isRecord(parsed)) throw new PingRejected("not_object");
 	if (Object.keys(parsed).toSorted().join(",") !== EXPECTED_KEYS) throw new PingRejected("bad_keys");
 
-	const { v, id, day, version, os, arch, install, line } = parsed;
+	const { v, id, day, version, os, arch, install, line, role } = parsed;
 	if (v !== 1) throw new PingRejected("bad_v");
 	if (!isString(id) || !ID_PATTERN.test(id)) throw new PingRejected("bad_id");
 	if (!isString(day)) throw new PingRejected("bad_day");
@@ -141,7 +143,8 @@ export function parsePing(body: string, now: Date): Ping {
 	if (!isOneOf(ARCH_VALUES, arch)) throw new PingRejected("bad_arch");
 	if (!isOneOf(INSTALL_VALUES, install)) throw new PingRejected("bad_install");
 	if (!isOneOf(LINE_VALUES, line)) throw new PingRejected("bad_line");
-	return { v: 1, id, day, version, os, arch, install, line };
+	if (!isOneOf(ROLE_VALUES, role)) throw new PingRejected("bad_role");
+	return { v: 1, id, day, version, os, arch, install, line, role };
 }
 
 /** Read at most `MAX_BODY_BYTES` of the body. A longer body is refused without reading the rest. */
@@ -182,7 +185,7 @@ function reply(status: number, text: string | null, headers: Record<string, stri
 export async function storePing(db: D1Database, ping: Ping): Promise<void> {
 	await db
 		.prepare(UPSERT_SQL)
-		.bind(ping.id, ping.day, ping.version, ping.os, ping.arch, ping.install, ping.line)
+		.bind(ping.id, ping.day, ping.version, ping.os, ping.arch, ping.install, ping.line, ping.role)
 		.run();
 }
 

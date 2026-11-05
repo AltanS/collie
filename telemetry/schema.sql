@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS pings (
   arch    TEXT NOT NULL,
   install TEXT NOT NULL,
   line    TEXT NOT NULL,
+  role    TEXT NOT NULL,
   PRIMARY KEY (id, day)
 );
 
