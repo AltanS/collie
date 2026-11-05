@@ -116,3 +116,16 @@ says "No telemetry". ADR 0034 is marked superseded and its body is not edited.
 - **Revisiting.** If the receiver cannot be run without keeping addresses, or the count stops
   informing a decision, the answer is to remove the ping and say so in the CHANGELOG, not to widen
   it.
+
+## Amendment, 2026-11-06: the ping carries the trouble tally
+
+The ping gains a tenth key, `trouble` (shape B, Altan 2026-11-06), and its schema becomes `v: 2`.
+When the phone shows one of the two trouble cards, "Cannot read a dialog" or "Send not landing", it
+tells the bridge it talks to once, and the next ping carries the count since the last one: per card
+kind, with the agent program's name and version and the multiplexer, and nothing else. The reason:
+a dialog Collie cannot read, or a send that does not land, then shows up by Collie version, OS,
+agent version and multiplexer before anyone files it, so one post like "Codex cannot read this
+dialog after every send" is in the numbers the day it starts. It adds no request, no timing and no
+switch: the tally is cleared with the ID the moment the count is off for any reason, and cleared
+when the ping that carried it is sent. A row holds exactly kind, harness, version, mux and count;
+at most 20 rows, a count at most 999. `telemetry/README.md` is the contract.

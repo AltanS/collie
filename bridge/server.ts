@@ -153,7 +153,7 @@ import {
   type PreflightReport,
 } from "./update-action.ts";
 import { type ReleaseLine, type UpdateLineRecord, withLine } from "./update-line.ts";
-import { parseTelemetryRequest, type Telemetry } from "./telemetry.ts";
+import { parseTelemetryRequest, parseTroubleSignal, type Telemetry } from "./telemetry.ts";
 import { REPORT_SCREEN_ROWS, reportDoctorRows, reportScreen, type DoctorRowSource, type ReportContext, type ReportDoctorRow } from "./report.ts";
 import type { StateEngine } from "./state-engine.ts";
 import { adapterFor, buildJournalRegistry, journalAgentName } from "./journal/registry.ts";
@@ -1119,7 +1119,7 @@ export interface UpdateLineDeps {
  * A seam like {@link UpdateLineDeps}: the clock, the disk and the `fetch` are index.ts's. Undefined
  * answers 503.
  */
-export type TelemetryDeps = Pick<Telemetry, "view" | "choose">;
+export type TelemetryDeps = Pick<Telemetry, "view" | "choose" | "trouble">;
 
 export function startServer(opts: {
   cfg: Config;
@@ -3810,6 +3810,24 @@ export function startServer(opts: {
         const receipt: JsonObject = { ok: true, ...result.view, requestId: parsed.requestId };
         if (result.replay) receipt.replay = true;
         return json(receipt, req.headers.get("accept-encoding"));
+      }
+
+      if (pathname === "/api/telemetry/trouble" && req.method === "POST") {
+        // ── THE TROUBLE TALLY (M86 spec 05) ───────────────────────────────────
+        // The phone showed one of its two trouble cards. A count, not a command: no request id, no
+        // audit line, and the phone never retries it. The bridge the phone talks to counts it under
+        // its own install, a crew member's pane included.
+        const denied = browserGate("write");
+        if (denied) return denied;
+        let body: JsonValue | undefined;
+        try {
+          // SAFETY: `Request.json()` output IS a JsonValue by construction, and `parseTroubleSignal`
+          // re-checks every field of it before any of it is believed.
+          body = (await req.json()) as JsonValue;
+        } catch {
+          body = undefined;
+        }
+        return telemetryTroubleRoute(opts.telemetry, body);
       }
 
       // ── Speech-to-text (bridge/stt/) ─────────────────────────────────────
@@ -8640,6 +8658,20 @@ export async function reportContextRoute(
   const read = await rt.herdr.readGrid(pane, { scope: "recent", lines: REPORT_SCREEN_ROWS, styling: "preserve" });
   if (!read.ok) return text(`${rt.herdr.mux} read failed: ${read.detail}`, 502);
   return json({ ...context, screen: reportScreen(stripSgr(read.value.text)) } satisfies ReportContext, acceptEncoding);
+}
+
+/**
+ * `POST /api/telemetry/trouble` once the write gate passed (M86 spec 05): one trouble signal from the
+ * phone. A body that is not exactly `{ kind, harness, version, mux }` in their shapes is a 400, plain
+ * text, because the phone never shows it. A good body is a 204 whether or not it was counted: with the
+ * ping off for any reason, nothing is stored. Undefined telemetry answers 503, like the setting route.
+ */
+export function telemetryTroubleRoute(ping: Pick<Telemetry, "trouble"> | undefined, body: JsonValue | undefined): Response {
+  if (!ping) return text("telemetry unavailable", 503);
+  const signal = parseTroubleSignal(body);
+  if (signal === null) return text("telemetry.trouble_invalid", 400);
+  ping.trouble(signal);
+  return secure(new Response(null, { status: 204 }));
 }
 
 /**

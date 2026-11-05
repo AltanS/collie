@@ -1208,6 +1208,13 @@ export const handlers = [
   http.get("/api/telemetry", () =>
     HttpResponse.json({ on: false, decidedBy: "ci", setting: null, next: null }),
   ),
+  // The trouble tally (M86 spec 05): the bridge answers 204 whether or not it counted. A trouble card
+  // in any test posts here once, so the default world takes it quietly.
+  http.post("/api/telemetry/trouble", () => new HttpResponse(null, { status: 204 })),
+  // The report sheet's setup block, read by the trouble signal too.
+  http.get("/api/report/context", () =>
+    HttpResponse.json({ collie: "1.27.0", line: "stable", os: "linux", arch: "x64", mux: "herdr", harness: "claude", screenable: false }),
+  ),
   http.post("/api/update/check", () =>
     HttpResponse.json({
       current: "0.11.0",

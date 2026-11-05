@@ -1662,7 +1662,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       // Report a problem (ADR 0123): the answer joins this pane's streak. Plain rules over the outcome and
       // reason (lib/report/trouble.ts); nothing is sent and nothing is retried. This machine's panes only.
       if (reportOn && reply.outcome !== null) {
-        noteSend(reportKey, paneId, { requestId: res.requestId, outcome: reply.outcome, reason: reply.reason, cap: reply.cap !== null, at: Date.now() });
+        const settledAt = Date.now();
+        noteSend(reportKey, paneId, { requestId: res.requestId, outcome: reply.outcome, reason: reply.reason, cap: reply.cap !== null, at: settledAt }, settledAt, scope);
       }
       if (reading.clear) {
         setProtocolOffer(null);
