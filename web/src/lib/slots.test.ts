@@ -1,4 +1,4 @@
-import { enterSlot, rememberSlotPane } from "./slots";
+import { enterSlot, rememberSlotPane, slotSpace } from "./slots";
 
 // Each tile of the owner's browser is a tab pinned at its own `/slot/<n>`. These cases hold the
 // requirement «при закрытии и открытии браузера оставались те же проекты в которых я работал до
@@ -484,5 +484,175 @@ describe("the default storages are the window's own @oracle:requirement @req:SLO
     window.sessionStorage.clear();
     rememberSlotPane("/pane/other", "");
     expect(enterSlot("6")).toBe("/pane/w6");
+  });
+});
+
+// A pane id is unique only within one bridge process and a slot outlives that process, so the slot
+// also keeps the name of the workspace the pane stood in. The route compares it (routes/slot.test.tsx).
+describe("@oracle:requirement @req:SLOT-11 the workspace name a slot keeps", () => {
+  const ADDRESS = "/pane/w3%3Ap1?s=project-x";
+  const PATH = "/pane/w3%3Ap1";
+  const QUERY = "?s=project-x";
+
+  function tabInSlot(slot: string, local: FakeStorage) {
+    const session = fakeStorage();
+    enterSlot(slot, session, local);
+    return session;
+  }
+
+  it("returns the name stored with the pane, and the address is unchanged", () => {
+    const local = fakeStorage();
+    rememberSlotPane(PATH, QUERY, tabInSlot("3", local), local, "A");
+    expect(slotSpace("3", local)).toBe("A");
+    expect(addressAfterRestart("3", local)).toBe(ADDRESS);
+  });
+
+  it("keeps a name with quotes, slashes and Cyrillic letters verbatim", () => {
+    const local = fakeStorage();
+    const name = 'проект «А» "x"/y\\z {1}';
+    rememberSlotPane(PATH, QUERY, tabInSlot("3", local), local, name);
+    expect(slotSpace("3", local)).toBe(name);
+  });
+
+  it("a call without a name for the same address keeps the name stored before", () => {
+    const local = fakeStorage();
+    const session = tabInSlot("3", local);
+    rememberSlotPane(PATH, QUERY, session, local, "A");
+    rememberSlotPane(PATH, QUERY, session, local);
+    expect(slotSpace("3", local)).toBe("A");
+  });
+
+  it("a call without a name for the same address keeps the name after a restart too", () => {
+    const local = fakeStorage();
+    rememberSlotPane(PATH, QUERY, tabInSlot("3", local), local, "A");
+    rememberSlotPane(PATH, QUERY, tabInSlot("3", local), local);
+    expect(slotSpace("3", local)).toBe("A");
+  });
+
+  it("a call without a name for another pane stores no name", () => {
+    const local = fakeStorage();
+    const session = tabInSlot("3", local);
+    rememberSlotPane(PATH, QUERY, session, local, "A");
+    rememberSlotPane("/pane/other", QUERY, session, local);
+    expect(slotSpace("3", local)).toBeUndefined();
+    expect(addressAfterRestart("3", local)).toBe(`/pane/other${QUERY}`);
+  });
+
+  it("the same pane under another query is another address: it stores no name", () => {
+    const local = fakeStorage();
+    const session = tabInSlot("3", local);
+    rememberSlotPane(PATH, QUERY, session, local, "A");
+    rememberSlotPane(PATH, "?s=project-y", session, local);
+    expect(slotSpace("3", local)).toBeUndefined();
+  });
+
+  it("a new name replaces the old one, for the same address and for another", () => {
+    const local = fakeStorage();
+    const session = tabInSlot("3", local);
+    rememberSlotPane(PATH, QUERY, session, local, "A");
+    rememberSlotPane(PATH, QUERY, session, local, "B");
+    expect(slotSpace("3", local)).toBe("B");
+    rememberSlotPane("/pane/other", "", session, local, "C");
+    expect(slotSpace("3", local)).toBe("C");
+  });
+
+  it("a page that is not a pane page changes neither the address nor the name", () => {
+    const local = fakeStorage();
+    const session = tabInSlot("3", local);
+    rememberSlotPane(PATH, QUERY, session, local, "A");
+    rememberSlotPane("/settings", "", session, local, "Z");
+    rememberSlotPane("/pane/x/history", "", session, local, "Z");
+    expect(slotSpace("3", local)).toBe("A");
+    expect(addressAfterRestart("3", local)).toBe(ADDRESS);
+  });
+
+  it("a tab outside any slot stores no name", () => {
+    const local = fakeStorage();
+    rememberSlotPane(PATH, QUERY, tabInSlot("3", local), local, "A");
+    rememberSlotPane(PATH, QUERY, fakeStorage(), local, "Z");
+    expect(slotSpace("3", local)).toBe("A");
+  });
+
+  it("each slot has its own name", () => {
+    const local = fakeStorage();
+    rememberSlotPane(PATH, QUERY, tabInSlot("3", local), local, "A");
+    rememberSlotPane(PATH, QUERY, tabInSlot("4", local), local, "B");
+    expect(slotSpace("3", local)).toBe("A");
+    expect(slotSpace("4", local)).toBe("B");
+  });
+
+  it("is undefined for a pane stored with no name, and for a slot never used", () => {
+    const local = fakeStorage();
+    rememberSlotPane(PATH, QUERY, tabInSlot("3", local), local);
+    expect(slotSpace("3", local)).toBeUndefined();
+    expect(slotSpace("4", local)).toBeUndefined();
+    expect(addressAfterRestart("3", local)).toBe(ADDRESS);
+  });
+
+  it.each(["0", "100", "abc", "01", "1x", "", undefined])("is undefined for the invalid slot %j", (raw) => {
+    const local = fakeStorage();
+    rememberSlotPane(PATH, QUERY, tabInSlot("1", local), local, "A");
+    expect(slotSpace(raw, local)).toBeUndefined();
+  });
+
+  it.each(["{broken", "", "null", "true", "42", "[]", "{}", '["A"]', '{"3":42}', '{"3":null}', '{"space":42}', '{"name":42}'])(
+    "is undefined when the stored value is %j",
+    (garbage) => {
+      const local = fakeStorage();
+      rememberSlotPane(PATH, QUERY, tabInSlot("3", local), local, "A");
+      overwriteEveryValue(local, () => garbage);
+      expect(slotSpace("3", local)).toBeUndefined();
+    },
+  );
+
+  it("is undefined and does not throw when the device storage refuses", () => {
+    const refusing: FakeStorage = {
+      ...fakeStorage(),
+      getItem: () => {
+        throw new DOMException("denied", "SecurityError");
+      },
+    };
+    expect(slotSpace("3", refusing)).toBeUndefined();
+  });
+
+  it("is undefined and does not throw when reaching window.localStorage throws", () => {
+    const original = Object.getOwnPropertyDescriptor(window, "localStorage");
+    Object.defineProperty(window, "localStorage", {
+      configurable: true,
+      get: () => {
+        throw new DOMException("denied", "SecurityError");
+      },
+    });
+    try {
+      expect(slotSpace("3")).toBeUndefined();
+    } finally {
+      Reflect.deleteProperty(window, "localStorage");
+      if (original) Object.defineProperty(window, "localStorage", original);
+    }
+  });
+
+  it("rememberSlotPane with a name does not throw when a storage refuses", () => {
+    const refusing: FakeStorage = {
+      ...fakeStorage(),
+      getItem: () => {
+        throw new DOMException("denied", "SecurityError");
+      },
+      setItem: () => {
+        throw new DOMException("denied", "SecurityError");
+      },
+    };
+    const local = fakeStorage();
+    expect(() => rememberSlotPane(PATH, QUERY, tabInSlot("3", local), refusing, "A")).not.toThrow();
+    expect(() => rememberSlotPane(PATH, QUERY, refusing, local, "A")).not.toThrow();
+  });
+
+  it("uses the window's own localStorage by default", () => {
+    window.sessionStorage.clear();
+    window.localStorage.clear();
+    enterSlot("6");
+    rememberSlotPane(PATH, QUERY, undefined, undefined, "A");
+    window.sessionStorage.clear();
+    expect(slotSpace("6")).toBe("A");
+    window.localStorage.clear();
   });
 });
