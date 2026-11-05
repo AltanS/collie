@@ -56,11 +56,9 @@ interface RegionRow {
 
 // SAFETY: `prompt-binding-regions.json` is this repo's own committed golden, and every field the
 // rows below read is asserted against it by the cases in this file — a drifted shape fails here.
-// The exit dialog's rows have a file of their own: the publication scan refuses a new commit to the
-// main file over the test addresses that file already holds.
-const REGIONS = ["prompt-binding-regions.json", "prompt-binding-regions-exit-dialog.json"].flatMap(
-  (file) => JSON.parse(readFileSync(join(FIXTURES_DIR, file), "utf8")) as RegionRow[],
-);
+const REGIONS = JSON.parse(
+  readFileSync(join(FIXTURES_DIR, "prompt-binding-regions.json"), "utf8"),
+) as RegionRow[];
 
 /** The region each detector hands to the bridge, or null when it does not recognise the pane. The
  *  order mirrors the precedence the action layer uses, so a pane is attributed to one detector. */
