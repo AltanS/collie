@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { act, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { parseAnsi } from "@/lib/ansi";
@@ -15,6 +15,9 @@ import { MenuBlock, type MenuBlockAction } from "./menu-block";
 const PANES = join(import.meta.dirname, "..", "fixtures", "panes");
 const capture = (name: string) => readFileSync(join(PANES, name), "utf8");
 const exitCapture = (n: 1 | 2 | 3) => capture(`claude--background-work-exit-${n}.txt`);
+
+// How long a row's press holds the other rows back when the card does not redraw (menu-block.tsx).
+const ROW_SETTLE_MS = 2000;
 
 const EXIT = "Exit and stop tasks";
 const BACKGROUND = "Move to background and exit";
@@ -134,17 +137,23 @@ describe("MenuBlock option rows", () => {
 
   it.each([1, 2, 3] as const)("@req:MENU-3 @oracle:requirement file %i: no row ever sends Enter or a digit", async (n) => {
     const user = userEvent.setup();
-    const { onAction } = renderCard(exitCapture(n));
+    let tapped = 0;
     for (const label of [EXIT, BACKGROUND, STAY]) {
+      // A fresh card per row: a row's press holds the other rows back until the marker moves.
+      const { onAction, unmount } = renderCard(exitCapture(n));
       const row = button(label);
-      if (!isMarkedCurrent(row)) await user.click(row);
+      if (!isMarkedCurrent(row)) {
+        await user.click(row);
+        tapped++;
+        expect(onAction).toHaveBeenCalledTimes(1);
+        const action = onAction.mock.calls[0]![0];
+        expect(action.nav).toBe(true);
+        expect(action.keys.length).toBeGreaterThan(0);
+        for (const key of action.keys) expect(["Up", "Down"]).toContain(key);
+      }
+      unmount();
     }
-    expect(onAction).toHaveBeenCalledTimes(2);
-    for (const [action] of onAction.mock.calls) {
-      expect(action.nav).toBe(true);
-      expect(action.keys.length).toBeGreaterThan(0);
-      for (const key of action.keys) expect(["Up", "Down"]).toContain(key);
-    }
+    expect(tapped).toBe(2);
   });
 
   it("@req:MENU-4 @oracle:requirement Confirm sends Enter, Cancel sends Escape, neither as nav", async () => {
@@ -195,10 +204,81 @@ describe("MenuBlock option rows", () => {
     await user.click(background);
     expect(onAction).toHaveBeenCalledTimes(1);
 
+    // The send is over, so the lock lets go of the footer. The rows wait for the marker (the settle rule).
     await act(async () => flight.release());
-    expect(button(STAY)).toBeEnabled();
-    expect(button(BACKGROUND)).toBeEnabled();
     expect(button("Confirm")).toBeEnabled();
+    expect(button("Cancel")).toBeEnabled();
+    await user.click(button(BACKGROUND));
+    expect(onAction).toHaveBeenCalledTimes(1);
+  });
+
+  // The defect from review: a row's path counts from the marker of the last draw. Tap the middle row,
+  // the send ends, the card has not redrawn yet, tap Stay: [Down, Down] from the stale 0 goes past the
+  // last row, and the real marker wraps round to the first one.
+  it("@req:MENU-3 @oracle:requirement a second tap before the marker moved sends nothing, Confirm still works", async () => {
+    const user = userEvent.setup();
+    const onAction = vi.fn<(a: MenuBlockAction) => void>();
+    const first = menuBlock(exitCapture(1));
+    const { rerender } = render(<MenuBlock menu={first.menu} lines={first.lines} onAction={onAction} />);
+
+    await user.click(button(BACKGROUND));
+    expect(onAction.mock.calls).toEqual([[{ keys: ["Down"], nav: true }]]);
+
+    await user.click(button(STAY));
+    expect(onAction).toHaveBeenCalledTimes(1);
+
+    // A poll that redraws the same screen is not the marker moving.
+    const same = menuBlock(exitCapture(1));
+    rerender(<MenuBlock menu={same.menu} lines={same.lines} onAction={onAction} />);
+    await user.click(button(STAY));
+    expect(onAction).toHaveBeenCalledTimes(1);
+
+    await user.click(button("Confirm"));
+    expect(onAction.mock.calls[1]).toEqual([{ keys: ["Enter"], nav: false }]);
+  });
+
+  it("@req:MENU-3 @oracle:requirement a redraw with the moved marker lets the rows count from it", async () => {
+    const user = userEvent.setup();
+    const onAction = vi.fn<(a: MenuBlockAction) => void>();
+    const first = menuBlock(exitCapture(1));
+    const { rerender } = render(<MenuBlock menu={first.menu} lines={first.lines} onAction={onAction} />);
+
+    await user.click(button(BACKGROUND));
+    await user.click(button(STAY));
+    expect(onAction).toHaveBeenCalledTimes(1);
+
+    const moved = menuBlock(exitCapture(2));
+    rerender(<MenuBlock menu={moved.menu} lines={moved.lines} onAction={onAction} />);
+    await user.click(button(STAY));
+    expect(onAction.mock.calls).toEqual([
+      [{ keys: ["Down"], nav: true }],
+      [{ keys: ["Down"], nav: true }],
+    ]);
+  });
+
+  it("@req:MENU-5 @oracle:requirement a pane that ignored the keys lets the rows go when the settle time ends", async () => {
+    // fireEvent, not user-event: Testing Library waits on a real setTimeout after a user-event call.
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    try {
+      const tap = (name: string) => act(async () => void fireEvent.click(button(name)));
+      const { onAction } = renderCard(exitCapture(1));
+      await tap(BACKGROUND);
+      expect(onAction).toHaveBeenCalledTimes(1);
+
+      await act(async () => void vi.advanceTimersByTime(ROW_SETTLE_MS - 100));
+      await tap(STAY);
+      expect(onAction).toHaveBeenCalledTimes(1);
+
+      await act(async () => void vi.advanceTimersByTime(200));
+      await tap(STAY);
+      // The marker never moved, so the path counts from where it is drawn.
+      expect(onAction.mock.calls).toEqual([
+        [{ keys: ["Down"], nav: true }],
+        [{ keys: ["Down", "Down"], nav: true }],
+      ]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("@req:MENU-5 @oracle:requirement a Confirm in flight locks the rows", async () => {
@@ -251,33 +331,37 @@ describe("MenuBlock option rows", () => {
     "claude--v21314-core-menu-model--w120.txt",
   ])("@req:MENU-9 @oracle:requirement %s: every row walks arrows only, never a digit", async (name) => {
     const user = userEvent.setup();
-    const { onAction } = renderCard(capture(name));
-    const footer = ["Set as default", "Use this session only", "Cancel"];
-    for (const control of screen.getAllByRole("button")) {
-      if (/^\d+$/.test(control.textContent ?? "")) throw new Error(`a digit button: ${control.textContent}`);
-    }
     const rows = menuBlock(capture(name)).menu.rows;
     if (rows === undefined) throw new Error("the picker read no rows");
-    const expected: MenuBlockAction[] = [];
     for (const [i, label] of rows.labels.entries()) {
+      // A fresh card per row: a row's press holds the other rows back until the marker moves.
+      const { onAction, unmount } = renderCard(capture(name));
+      for (const control of screen.getAllByRole("button")) {
+        if (/^\d+$/.test(control.textContent ?? "")) throw new Error(`a digit button: ${control.textContent}`);
+      }
       // An accessible name collapses runs of spaces; the picker's rows have them between their columns.
       const row = button(label.replace(/\s+/g, " ").trim());
       expect(isMarkedCurrent(row)).toBe(i === rows.current);
-      if (i === rows.current) continue;
-      await user.click(row);
-      expected.push({
-        keys: Array.from({ length: Math.abs(i - rows.current) }, () => (i > rows.current ? "Down" : "Up")),
-        nav: true,
-      });
+      if (i !== rows.current) {
+        await user.click(row);
+        expect(onAction.mock.calls).toEqual([
+          [
+            {
+              keys: Array.from({ length: Math.abs(i - rows.current) }, () => (i > rows.current ? "Down" : "Up")),
+              nav: true,
+            },
+          ],
+        ]);
+      }
+      unmount();
     }
-    for (const label of footer) await user.click(button(label));
-    const calls = onAction.mock.calls.map(([action]) => action);
-    expect(calls.slice(-3)).toEqual([
+    const { onAction } = renderCard(capture(name));
+    for (const label of ["Set as default", "Use this session only", "Cancel"]) await user.click(button(label));
+    expect(onAction.mock.calls.map(([action]) => action)).toEqual([
       { keys: ["Enter"], nav: false },
       { keys: ["s"], nav: false },
       { keys: ["Escape"], nav: false },
     ]);
-    expect(calls.slice(0, -3)).toEqual(expected);
   });
 
   it("@req:MENU-10 @oracle:requirement the /effort slider keeps its chips and draws no rows", async () => {
