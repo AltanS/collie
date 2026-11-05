@@ -403,10 +403,6 @@ export const newInstallId = (): string => randomBytes(16).toString("hex");
 export const TROUBLE_KINDS = ["dialog", "send"] as const;
 export type TroubleKind = (typeof TROUBLE_KINDS)[number];
 
-/** The multiplexer words a row may carry. Anything else the phone sends as `other`. */
-export const TROUBLE_MUXES = ["herdr", "herdr-core", "tmux", "zellij", "durable", "other"] as const;
-export type TroubleMux = (typeof TROUBLE_MUXES)[number];
-
 /** The most distinct rows a tally holds; a signal for a new row past this is dropped. */
 export const TROUBLE_ROWS_MAX = 20;
 
@@ -415,6 +411,9 @@ export const TROUBLE_COUNT_MAX = 999;
 
 /** The agent program's word: lower case, digits and dashes, at most 24 characters. */
 export const TROUBLE_HARNESS = /^[a-z0-9-]{1,24}$/;
+
+/** The multiplexer's own name as the bridge reports it, in the same shape. A shape only: no list, no comparison. */
+export const TROUBLE_MUX = /^[a-z0-9-]{1,24}$/;
 
 /** A version that looks like one (`2.1.316`, `0.9.5-beta.1`), at most 40 characters. */
 export const TROUBLE_VERSION = /^v?\d+(\.\d+){1,3}([-+][0-9A-Za-z.+-]+)?$/;
@@ -425,7 +424,7 @@ export type TroubleSignal = {
   readonly kind: TroubleKind;
   readonly harness: string;
   readonly version: string | null;
-  readonly mux: TroubleMux;
+  readonly mux: string;
 };
 
 /** One row of the tally: a signal's four names and how often it came. */
@@ -440,11 +439,11 @@ const isTroubleVersion = (value: string): boolean => value.length <= TROUBLE_VER
 /** The four names off an object, or null when one is missing or not in its shape. */
 function readSignalFields(rec: JsonObject): TroubleSignal | null {
   const kind = TROUBLE_KINDS.find((word) => word === rec.kind);
-  const mux = TROUBLE_MUXES.find((word) => word === rec.mux);
+  const mux = asJsonString(rec.mux);
   const harness = asJsonString(rec.harness);
   const version = rec.version === null ? null : asJsonString(rec.version);
   if (kind === undefined || mux === undefined || harness === undefined || version === undefined) return null;
-  if (!TROUBLE_HARNESS.test(harness)) return null;
+  if (!TROUBLE_HARNESS.test(harness) || !TROUBLE_MUX.test(mux)) return null;
   if (version !== null && !isTroubleVersion(version)) return null;
   return { kind, harness, version, mux };
 }

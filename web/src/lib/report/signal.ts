@@ -19,19 +19,17 @@ import type { ReportContext } from "./context";
 /** Which trouble card showed. */
 export type TroubleKind = "dialog" | "send";
 
-/** The multiplexer words the bridge counts by. Any other word is `other`. */
-export const TROUBLE_MUXES = ["herdr", "herdr-core", "tmux", "zellij", "durable", "other"] as const;
-export type TroubleMux = (typeof TROUBLE_MUXES)[number];
-
 /** The body of `POST /api/telemetry/trouble`, exactly. */
 export interface TroubleSignal {
   readonly kind: TroubleKind;
   readonly harness: string;
   readonly version: string | null;
-  readonly mux: TroubleMux;
+  readonly mux: string;
 }
 
 const HARNESS_WORD = /^[a-z0-9-]{1,24}$/;
+/** The multiplexer is a plain word in the same shape, the bridge's own name for it. No list: the frontend reads capabilities, never a name. */
+const MUX_WORD = /^[a-z0-9-]{1,24}$/;
 const VERSION_WORD = /^v?\d+(\.\d+){1,3}([-+][0-9A-Za-z.+-]+)?$/;
 const VERSION_MAX = 40;
 
@@ -41,7 +39,7 @@ const NOT_AN_AGENT: ReadonlySet<string> = new Set(["no pane", "shell"]);
 /**
  * The signal, cleaned to the shape the bridge accepts. The harness word is lower case, digits and
  * dashes, at most 24 characters, else `other`; the version looks like one and is at most 40
- * characters, else null; the multiplexer is one of {@link TROUBLE_MUXES}, else `other`. Null for a
+ * characters, else null; the multiplexer word (the bridge's own, passed through) has the same shape, else `other`. Null for a
  * kind that is neither card. Pure.
  */
 export function troubleSignal(a: {
@@ -55,7 +53,8 @@ export function troubleSignal(a: {
   const harness = NOT_AN_AGENT.has(word) || !HARNESS_WORD.test(word) ? "other" : word;
   const raw = a.version?.trim() ?? "";
   const version = raw.length <= VERSION_MAX && VERSION_WORD.test(raw) ? raw : null;
-  const mux = TROUBLE_MUXES.find((name) => name === a.mux?.trim().toLowerCase()) ?? "other";
+  const muxWord = a.mux?.trim().toLowerCase() ?? "";
+  const mux = MUX_WORD.test(muxWord) ? muxWord : "other";
   return { kind: a.kind, harness, version, mux };
 }
 

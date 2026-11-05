@@ -810,6 +810,7 @@ describe("parseTroubleSignal: the route's body", () => {
   test("exactly kind, harness, version, mux in their shapes", () => {
     expect(parseTroubleSignal({ kind: "dialog", harness: "codex", version: "0.46.0", mux: "herdr-core" })).toEqual({ kind: "dialog", harness: "codex", version: "0.46.0", mux: "herdr-core" });
     expect(parseTroubleSignal({ kind: "send", harness: "other", version: null, mux: "other" })).toEqual({ kind: "send", harness: "other", version: null, mux: "other" });
+    expect(parseTroubleSignal({ kind: "send", harness: "claude", version: null, mux: "wezterm" })).toEqual({ kind: "send", harness: "claude", version: null, mux: "wezterm" });
   });
 
   test("anything else is null: a stray key, a missing key, a word out of its shape", () => {
@@ -821,7 +822,11 @@ describe("parseTroubleSignal: the route's body", () => {
       { ...good, paneId: "w1:p1" },
       { kind: "send", harness: "claude", mux: "herdr" },
       { ...good, kind: "crash" },
-      { ...good, mux: "screen" },
+      { ...good, mux: "Screen" },
+      { ...good, mux: "a".repeat(25) },
+      { ...good, mux: "my mux" },
+      { ...good, mux: "" },
+      { ...good, mux: 7 },
       { ...good, harness: "Claude" },
       { ...good, harness: "a".repeat(25) },
       { ...good, harness: "" },
@@ -886,7 +891,7 @@ describe("the tally in the shell (M86 spec 05)", () => {
 
   test("the record file round-trips the tally, and a bad row in it is dropped", () => {
     const record = parseTelemetryRecord(
-      JSON.stringify({ ...EMPTY_TELEMETRY_RECORD, trouble: [{ ...SIGNAL, count: 3 }, { ...SIGNAL, mux: "screen", count: 1 }, { ...SIGNAL, count: 0 }] }),
+      JSON.stringify({ ...EMPTY_TELEMETRY_RECORD, trouble: [{ ...SIGNAL, count: 3 }, { ...SIGNAL, mux: "Screen", count: 1 }, { ...SIGNAL, count: 0 }] }),
     );
     expect(record.trouble).toEqual([{ ...SIGNAL, count: 3 }]);
   });

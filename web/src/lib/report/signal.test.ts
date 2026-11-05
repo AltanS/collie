@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { harnessOf, TROUBLE_MUXES, troubleSignal } from "./signal";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
+import { harnessOf, troubleSignal } from "./signal";
 
 // The trouble signal (M86 spec 05): the four names, cleaned to the shape the bridge accepts.
 
@@ -34,10 +37,16 @@ describe("troubleSignal: the words, cleaned", () => {
     }
   });
 
-  it("keeps a multiplexer from the list, and makes any other word other", () => {
-    expect(TROUBLE_MUXES).toEqual(["herdr", "herdr-core", "tmux", "zellij", "durable", "other"]);
-    for (const mux of TROUBLE_MUXES) expect(troubleSignal({ ...base, mux })?.mux).toBe(mux);
-    for (const mux of ["screen", "", null, undefined, "unknown mux"]) expect(troubleSignal({ ...base, mux })?.mux, String(mux)).toBe("other");
+  it("passes the bridge's multiplexer word through, lower-cased, and makes an empty or malformed one other", () => {
+    expect(troubleSignal({ ...base, mux: "wezterm" })?.mux).toBe("wezterm");
+    expect(troubleSignal({ ...base, mux: " Herdr-Core " })?.mux).toBe("herdr-core");
+    for (const mux of ["", "  ", null, undefined, "unknown mux", "a".repeat(25), "mux/1"]) expect(troubleSignal({ ...base, mux })?.mux, String(mux)).toBe("other");
+  });
+
+  it("holds no multiplexer name list: the frontend reads capabilities, never a name", () => {
+    const source = readFileSync(join(import.meta.dirname, "signal.ts"), "utf8");
+    expect(source).not.toMatch(/TROUBLE_MUXES|TroubleMux/);
+    expect(source).not.toMatch(/["'`](herdr|herdr-core|tmux|zellij|durable)["'`]/i);
   });
 });
 

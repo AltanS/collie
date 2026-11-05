@@ -3910,7 +3910,7 @@ describe("the update write gate — POST api/update rides the pane path's own ga
       const dir = await mkdtemp(join(tmpdir(), "collie-trouble-route-"));
       try {
         const ping = telemetryIn(dir);
-        for (const body of [undefined, "send", { ...SIGNAL, paneId: "w1:p1" }, { ...SIGNAL, kind: "crash" }]) {
+        for (const body of [undefined, "send", { ...SIGNAL, paneId: "w1:p1" }, { ...SIGNAL, kind: "crash" }, { ...SIGNAL, mux: "bad mux" }]) {
           const res = telemetryTroubleRoute(ping, body);
           expect(res.status).toBe(400);
           expect(await res.text()).toBe("telemetry.trouble_invalid");

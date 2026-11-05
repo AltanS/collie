@@ -51,7 +51,7 @@ five keys:
 | `kind`    | `dialog` or `send`.                                                                   |
 | `harness` | The agent program's name: lowercase letters, digits and `-`, 1 to 24 characters. A plain shell, no pane and any other word are `other`. |
 | `version` | The agent program's version, semver-like, at most 40 characters, or `null`.            |
-| `mux`     | `herdr`, `herdr-core`, `tmux`, `zellij`, `durable` or `other`.                         |
+| `mux`     | The multiplexer's own name as the bridge reports it: lowercase letters, digits and `-`, 1 to 24 characters; `other` when the phone had none. |
 | `count`   | How often since the last ping, 1 to 999.                                               |
 
 A tally holds at most 20 distinct rows; a signal for a 21st is dropped. The tally is cleared when the
