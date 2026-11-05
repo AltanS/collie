@@ -531,6 +531,31 @@ host it goes to, `ping.colliepwa.dev`, in your firewall. The first ping waits a 
 start of a build that has it. The exact message is written down in the contract in the repository,
 [`telemetry/README.md`](https://github.com/AltanS/collie/blob/main/telemetry/README.md).
 
+### What did not change
+
+Besides the daily ping, the one unprompted outbound call is the update check: an anonymous HTTPS `GET` to GitHub's public
+tags API (`bridge/update.ts`) that compares your version to the newest tag. It carries no data about
+you or your machine, only the static user-agent `collie-update-check`.
+
+The Whistle model download is another outbound call. It happens only when a person taps **Download
+to host** or runs `collie stt whistle`, and it sends no data about you ([The speech engine
+(Whistle)](#the-speech-engine-whistle)).
+
+Walky talky adds no outbound call. A message to another machine rides the crew link and goes
+nowhere else ([Walky talky](#walky-talky)).
+
+Report a problem adds no outbound call. After failed sends the phone can open GitHub's new-issue
+form, filled in, as a link in your own browser. You read the whole text first and submit it yourself
+under your own account. Collie holds no GitHub token and the phone never calls GitHub
+([ADR 0123](../.adr/0123-report-a-problem-three-failed-sends-offer-a-prefilled-issue.md)).
+
+If you set `COLLIE_ACCESS_TEAM`, Collie also fetches that Cloudflare Access team's public keys, at
+start and once an hour. That call is yours to turn on, and it sends nothing about you either.
+
+If you attach a durable agent by URL, Collie calls that URL on every poll with the durable agent's bearer token in
+the `Authorization` header. That call is yours to turn on too, and nothing is sent until you attach
+one ([Security of a durable agent](durable-agents-security.md#the-token-transport)).
+
 ---
 
 [← back to the README](../README.md)
