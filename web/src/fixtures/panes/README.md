@@ -2021,6 +2021,22 @@ box covers the statusline. Every row above the box is the sandbox session's own 
 The answers were typed with `herdr pane send-text` into the sandbox session only, and the workspace was
 closed afterwards.
 
+### The same editor on omp 18.16.0 over herdr-core (captured 2026-11-05, issue 704)
+
+Four captures of the same box on omp 18.16.0, read off a lab herdr-core with `hc read` through the
+bridge's adapter, so they are plain text (no SGR). Each is cut to the tail from the Ask echo block
+down, 200 columns wide, LF line ends. No path, user, host or key appears in them. Since #704 the omp
+profile reads this box through a layout of its own (`answers`, `submit`, `newlineSubmits`,
+`trailer.hint`), so the Send Protocol types a reply from the phone into it and submits it with
+`Ctrl+Q`; `fold.answer-box.test.ts` reads each one as captured and unstyled.
+
+| Fixture | State / what's in it | Label |
+|---|---|---|
+| `omp--v18-16-0-custom-answer-empty--w200.txt` | `Enter` on `Other (type your own)`: `╭─ Custom answer: …─╮`, an empty `│ > ` row, the hint `⏎ or Ctrl+Q submit  ⎋ cancel  …` | `idle` |
+| `omp--v18-16-0-custom-answer-typed--w200.txt` | The same box holding `a ripe mango` | `draft` |
+| `omp--v18-16-0-custom-answer-wrapped--w200.txt` | A long answer soft-wrapped onto continuation rows indented by the gutter's width | `draft` |
+| `omp--v18-16-0-note-editor-empty--w200.txt` | `n` on an option: the box titled `Note for apple: …`, empty | `idle` |
+
 ## OMP 18.8 pi composer slash palette (captured 2026-10-07, oh-my-pi `omp` v18.8.0, scratch panes)
 
 Two captures of one screen: the pi-shaped composer with a slash command typed into it, which is when

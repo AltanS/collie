@@ -1425,6 +1425,10 @@ function commitKeys(state: RunState): readonly string[] {
     if (keys.steer === undefined) throw new Ended("typed_not_submitted", "changed", { detail: STEER_UNSUPPORTED });
     return keys.steer;
   }
+  // A box whose layout names its own submit keys (`idle.frame.submit`, the key its hint prints) takes
+  // those: a box that answers the agent's question has no turn to queue behind.
+  const own = state.marks.s1?.frame?.submit;
+  if (own !== undefined) return own;
   // The queued path on a harness whose Enter does not queue: S0 read a turn, or the rows above moved
   // while Collie typed. Only the queue key goes in; no other rule routes the submit keys there.
   if ((state.queued || state.streamed) && keys.enterWhileRunning !== "queues") {
@@ -1435,8 +1439,12 @@ function commitKeys(state: RunState): readonly string[] {
   return keys.submit;
 }
 
-/** Whether the box answers a question the agent asked: the profile's `idle.answerPrompt` on the frame's prompt row. */
+/**
+ * Whether the box answers a question the agent asked: a frame whose layout says so (`idle.frame.answers`),
+ * or the profile's `idle.answerPrompt` on the frame's prompt row.
+ */
 function answersQuestion(match: ProfileMatch | null, snap: Snap): boolean {
+  if (snap.frame?.answers === true) return true;
   const source = match?.profile.idle.answerPrompt;
   if (source === undefined || snap.frame === null) return false;
   const row = snap.texts[snap.frame.interior.prompt];
@@ -1532,6 +1540,12 @@ const ENTER_MISSED_BOX = "The submit key did not reach the box. A dialog may hav
 
 /** The detail of a held send that met a box answering the agent's question: it waits for an ordinary box. */
 const ANSWER_BOX = "The input box answers a question the agent asked. A held message waits for the question to close.";
+/** The detail of a send that is no person's own at a box answering the agent's question: only the person answers it. */
+const ANSWER_BOX_PERSON = "The input box answers a question the agent asked. Only a send from the phone answers it; this message waits for the question to close.";
+/** The detail of a command at a box answering the agent's question: the box would take it as the answer. */
+const ANSWER_BOX_COMMAND = "The input box answers a question the agent asked, and would take the command as the answer. Close the question first.";
+/** The detail of a text of more than one line at a box whose line break submits it (`idle.frame.newlineSubmits`). */
+const NEWLINE_SUBMITS = "This input box submits at a line break, so only one line can be sent here. Send the text as one line.";
 /**
  * Submit or Discard on a box that no longer holds the text: what the person saw is gone. The route
  * reads this exact sentence to tell a returned card's Discard that only the card may go (ADR 0122).
@@ -4120,10 +4134,24 @@ export class SendProtocol {
   /** What every S0 read is held to before the mode's own rule: a held request's answer box, the manual Send's turn rule, the pane's generation. */
   private atS0(state: RunState, s0: Snap): void {
     // A held request is a message for the agent, in every mode a release runs (a send, a command, a
-    // Replace): a box that answers the agent's question would take it as the answer. It waits.
-    if (state.released === true && answersQuestion(state.match, s0)) {
-      state.answerWait = true;
-      throw new Ended("refused", "not_free", { surface: s0.surface, detail: ANSWER_BOX });
+    // Replace): a box that answers the agent's question would take it as the answer. It waits. So does
+    // every request that is no person's own send from the phone (a walky talky message, a hook, the
+    // CLI): only the person answers the agent's question.
+    if (answersQuestion(state.match, s0)) {
+      if (state.released === true || state.request.fromPhone !== true) {
+        state.answerWait = true;
+        throw new Ended("refused", "not_free", { surface: s0.surface, detail: state.released === true ? ANSWER_BOX : ANSWER_BOX_PERSON });
+      }
+      // A command the box would take as the answer, never run.
+      const leads = state.match?.profile.reservedLeads ?? GENERIC_LEADS;
+      const lead = reservedLead(sendLines(state.request.text)[0] ?? "", leads);
+      if (state.request.mode === "command" || (state.request.mode === "replace" && lead !== null)) {
+        throw new Ended("refused", "not_free", { surface: s0.surface, detail: ANSWER_BOX_COMMAND });
+      }
+    }
+    // A box whose line break submits it takes one line: a second line would go out as a second message.
+    if (s0.frame?.newlineSubmits === true && sendLines(state.request.text).length > 1) {
+      throw new Ended("refused", "multiline", { surface: s0.surface, detail: NEWLINE_SUBMITS });
     }
     state.manual = takesManualSend(s0.surface);
     if (state.manual) this.gateSteeringTurn(state, s0);
@@ -5355,7 +5383,8 @@ export class SendProtocol {
   /**
    * S2: the box emptied or a running sign showed. Anything else after the bound is `unknown`. A
    * `command` also passes when the box went away or no longer holds the text: a command may open its
-   * own screen (a picker, a panel) in the box's place.
+   * own screen (a picker, a panel) in the box's place. So does a send into a box that answers the
+   * agent's question (`idle.frame.answers`) once two reads in a row show no box: it closes on its answer.
    */
   private async awaitSent(state: RunState, s0: Snap, landing: Landing | null, lines: readonly string[]): Promise<void> {
     const { command, manual } = state;
@@ -5379,7 +5408,10 @@ export class SendProtocol {
           dialog = true;
           return "fail";
         }
-        if (snap.frame === null) return command ? "pass" : "wait";
+        // A box that answers the agent's question closes when it takes the answer: the dialog it came from
+        // returns (a note), the next question opens or the composer comes back. S1 read the text in it and
+        // the submit key went out, so the box gone on two reads in a row (one may be torn) is the evidence.
+        if (snap.frame === null) return command || (s1Frame?.answers === true && frameless >= FRAMELESS_READS) ? "pass" : "wait";
         // A command's own screen drawn where the box stood ({@link screenInBox}) took the box as surely as no frame.
         if (command && screenInBox(snap, state)) return "pass";
         // Queued: the running sign showed before Enter, so only the box letting go of the text is

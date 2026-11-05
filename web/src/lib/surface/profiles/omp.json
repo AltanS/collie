@@ -157,6 +157,40 @@
         "continuationIndent": 0,
         "maxDraftRows": 40,
         "maxTailRows": 3
+      },
+      {
+        "walk": "interior",
+        "note": "The prompt-style answer editor (pi-tui overlays/hook-editor.ts, promptStyle) that the ask tool opens for `Other (type your own)` and `n note`, in the composer's place. Captured on OMP 18.4.4, 18.4.10 and 18.16.0 (issue 704, 2026-11-05): the title border, a spacer, the `> ` gutter row and its wrapped rows indented by the gutter's width, a spacer, the hint `<enter> or <follow-up> submit  <cancel> cancel  <external> external editor`, a spacer and a closed bottom border. Only the prompt-style branch prints ` or ` before `submit`: the hook-style editor, whose Enter inserts a newline, joins its keys with `/`, so that row is what names this box. The title is not read. Ctrl+Q, the follow-up chord, submits in both editor modes, and a raw line feed (Ctrl+J) submits this one too, so a text of more than one line is refused.",
+        "top": {
+          "pattern": "^╭─ \\S.*─╮$",
+          "column": 0
+        },
+        "prompt": {
+          "pattern": "^│ > (?<draft>.*?)(?<border>\\s*│)$",
+          "column": 0
+        },
+        "bottom": {
+          "pattern": "^╰─+╯$",
+          "minCells": 8,
+          "column": 0
+        },
+        "rows": "^(?:╭─ \\S.*─╮|│.*│)$",
+        "trailer": {
+          "row": "^│ \\S.*? or \\S.*? submit(?:\\s.*)?│$",
+          "pad": "^│\\s*│$",
+          "maxPad": 1,
+          "hint": true
+        },
+        "continuation": "^│ {3}(?<text>.*?)(?<border>\\s*│)$",
+        "continuationIndent": 2,
+        "ownPrompt": true,
+        "maxDraftRows": 60,
+        "maxTailRows": 0,
+        "answers": true,
+        "submit": [
+          "ctrl+q"
+        ],
+        "newlineSubmits": true
       }
     ],
     "placeholders": {
