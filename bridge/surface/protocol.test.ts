@@ -665,16 +665,6 @@ describe("a send that goes through", () => {
     expect(pane.keysSeen).not.toContain("Enter");
   });
 
-  test("an image path outside Collie's uploads stays text: the harness takes it, the box does not match, and nothing is submitted", async () => {
-    const shot = "/home/me/screenshots/phone-1.jpg";
-    const pane = new FakePane("claude");
-    pane.imageFiles = [shot];
-    // The file exists on this disk, but only Collie's own upload shape is taken off the paste.
-    const { send } = rig({ block: true, pane, imageFiles: [shot] });
-    expect((await send(`${"слово ".repeat(300).trim()} ${shot}`)).receipt?.outcome).toBe("typed_not_submitted");
-    expect(pane.keysSeen).not.toContain("Enter");
-  });
-
   // Claude Code 2.1.306, measured live 2026-11-05: a paste is cut at each newline and at each space before
   // an absolute path, image pieces become tokens, and the kept pieces joined by newlines fold.
   describe("an image path outside uploads in a long paste", () => {
@@ -722,7 +712,7 @@ describe("a send that goes through", () => {
         const { send } = rig({ block: true, pane, version, imageFiles: [A, B, C, DOC] });
         expect((await send(REAL)).receipt).toMatchObject({ outcome: "sent", keys: [...keys] });
         expect(enters(pane)).toBe(1);
-        expect(pane.calls).toEqual([`block:${REAL}`]);
+        expect(pane.calls.filter((call) => call.startsWith("block:"))).toEqual([`block:${REAL}`]);
         expect(pane.transcript.at(-1)).toBe("> [Image #1] [Image #2][Pasted text #3 +14 lines]");
       });
     }
@@ -3945,9 +3935,9 @@ describe("pure helpers", () => {
     expect(wholePaste(match, [`see ${shot}`, "b"], isShot)).toMatchObject({ images: 1, lines: ["see", "b"], literal: [`see ${shot}`, "b"] });
     expect(wholePaste(match, [`see ${shot} here`, "b"], isShot)).toMatchObject({ images: 0 });
     expect(wholePaste(match, ["see /srv/collie/uploads/w1_p1-mf3x9q-ffffffff.jpg", "b"], isShot)).toMatchObject({ images: 0 });
-    // Any other image file on the disk stays text: only Collie's own upload shape is taken off.
-    expect(wholePaste(match, ["see", foreign], isShot)).toMatchObject({ images: 0, lines: ["see", foreign] });
-    expect(wholePaste(match, [`see ${foreign}`, "b"], isShot)).toMatchObject({ images: 0 });
+    // Any other image file on the disk is taken off the same way (Claude Code 2.1.306, live 2026-11-05).
+    expect(wholePaste(match, ["see", foreign], isShot)).toMatchObject({ images: 1, lines: ["see"] });
+    expect(wholePaste(match, [`see ${foreign}`, "b"], isShot)).toMatchObject({ images: 1, lines: ["see", "b"] });
     expect(wholePaste(match, [`see ${windows}`, "b"], isShot)).toMatchObject({ images: 1, lines: ["see", "b"] });
     expect(wholePaste(match === null ? null : { ...match, profile: { ...match.profile, paste: { bracketed: true } } }, ["a", "b"], isShot)).toBeNull();
     expect(wholePaste(null, ["a", "b"], isShot)).toBeNull();
