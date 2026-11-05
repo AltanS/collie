@@ -151,6 +151,8 @@ export const zh: Dictionary = {
   "settings.notify.blocked.hint": "Agent 正在等待用户操作",
   "settings.notify.done.label": "任务完成",
   "settings.notify.done.hint": "Agent 已完成当前任务",
+  "settings.notify.individual.label": "One notification per agent",
+  "settings.notify.individual.hint": "Each agent that needs you gets its own notification. Off: one summary per machine.",
   "settings.notify.updates.label": "版本更新",
   "settings.notify.updates.hint": "Collie 有新版本可用",
   "settings.notify.machines.label": "机器负载持续偏高",

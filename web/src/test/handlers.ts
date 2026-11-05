@@ -1174,11 +1174,11 @@ export const handlers = [
     return HttpResponse.json({ snoozedUntil });
   }),
   http.get("/api/notifications/prefs", () =>
-    HttpResponse.json({ blocked: true, done: false, updates: true, cache: false, machines: true }),
+    HttpResponse.json({ blocked: true, done: false, individual: false, updates: true, cache: false, machines: true }),
   ),
-  http.post<never, Partial<{ blocked: boolean; done: boolean; updates: boolean; cache: boolean }>>("/api/notifications/prefs", async ({ request }) => {
+  http.post<never, Partial<{ blocked: boolean; done: boolean; individual: boolean; updates: boolean; cache: boolean }>>("/api/notifications/prefs", async ({ request }) => {
     const patch = await request.json();
-    return HttpResponse.json({ blocked: true, done: false, updates: true, cache: false, machines: true, ...patch });
+    return HttpResponse.json({ blocked: true, done: false, individual: false, updates: true, cache: false, machines: true, ...patch });
   }),
   // The prompt-cache watch list (ADR 0042). The default world watches NOTHING and has the global switch
   // off, which is a fresh install: a test that wants a watched pane overrides these three.
