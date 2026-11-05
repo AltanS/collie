@@ -33,7 +33,7 @@ import { CompactionsControl } from "@/components/compactions-control";
 import { ToolCallsControl } from "@/components/tool-calls-control";
 import { TourControl } from "@/components/tour-control";
 import { TypefaceControl } from "@/components/typeface-control";
-import { TelemetrySettingsCard } from "@/components/telemetry-settings-card";
+import { TelemetrySettingsCard, TelemetrySettingsRow } from "@/components/telemetry-settings-card";
 import { ZenControl } from "@/components/zen-control";
 import { useServerDiagnostics } from "@/hooks/use-server-diagnostics";
 import { EMPTY_DEVICES, type DevicesData } from "@/lib/loaders";
@@ -266,9 +266,10 @@ export function SettingsSystemRoute() {
   const devices = (useLoaderData() as DevicesData | undefined) ?? EMPTY_DEVICES;
   return (
     <SettingsPage title="settings.section.system.title">
-      {/* The anonymous install count (M86 spec 02, ADR 0129): the state, the switch that decided it
-          and the next message. First on this page because it is about what this machine says to Collie's host. */}
-      <TelemetrySettingsCard />
+      {/* The anonymous install count (M86 spec 02, ADR 0129): one row with its state, first on this page
+          because it is about what this machine says to Collie's host. The switch, the cause and the
+          next message are the page the row opens. */}
+      <TelemetrySettingsRow />
       {/* Access sits with the connection diagnostics — both answer "what is this device allowed to
           do, and why". Pairing is the gate you can change from here; ConnectionInfo below only
           reports the header-based one. */}
@@ -284,6 +285,16 @@ export function SettingsSystemRoute() {
       {/* Report a problem (ADR 0123): the offer's switch and the sheet's third door, with the diagnostics
           because a report is the one way those leave this phone, and only by the person's taps. */}
       <ReportControl />
+    </SettingsPage>
+  );
+}
+
+/** Settings → System → Anonymous install count: the whole card, one level below System. */
+export function SettingsInstallCountRoute() {
+  const scope = useScope();
+  return (
+    <SettingsPage title="telemetry.card.title" parent={settingsSectionPath("system", scope)}>
+      <TelemetrySettingsCard />
     </SettingsPage>
   );
 }

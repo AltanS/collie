@@ -1,11 +1,11 @@
-import { Activity, ArrowLeft, ArrowUpCircle, Bell, Bot, ChevronRight, FlaskConical, Mic, Palette, Server, SlidersHorizontal } from "lucide-react";
+import { Activity, ArrowLeft, ArrowUpCircle, Bell, Bot, FlaskConical, Mic, Palette, Server, SlidersHorizontal } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import type { ReactNode } from "react";
 
 import { RouteHeader } from "@/components/app-header";
 import { Button } from "@/components/ui/button";
 import { BuildStamp } from "@/components/build-stamp";
 import { Card } from "@/components/ui/card";
+import { SettingsNavRow } from "@/components/settings-nav-row";
 import { InstallControl } from "@/components/install-control";
 import { useUpdatesStatus } from "@/components/updates-settings-card";
 import { hasExperiments } from "@/lib/experiments";
@@ -126,20 +126,6 @@ const ROWS: Row[] = [
     : []),
 ];
 
-/** One navigation row: icon, title, a one-line caption and a chevron. The index draws every row with it. */
-function IndexRow({ icon: Icon, title, caption, onOpen }: { icon: LucideIcon; title: string; caption: ReactNode; onOpen: () => void }) {
-  return (
-    <button type="button" onClick={onOpen} className="flex w-full items-center gap-3 p-4 text-left active:bg-muted/60">
-      <Icon className="size-5 shrink-0 text-muted-foreground" />
-      <div className="min-w-0 flex-1">
-        <div className="font-medium">{title}</div>
-        <p className="truncate text-sm text-muted-foreground">{caption}</p>
-      </div>
-      <ChevronRight aria-hidden="true" className="size-5 shrink-0 text-muted-foreground" />
-    </button>
-  );
-}
-
 export function SettingsRoute() {
   const nav = useNav();
   const scope = useScope();
@@ -184,7 +170,7 @@ export function SettingsRoute() {
                 release lands, a peer falls behind. The caption is the live status (the same words the
                 Updates page opens with); a release waiting leads it with a 6px dot in the primary
                 colour. The row is not in `ROWS`, whose captions are fixed strings. */}
-            <IndexRow
+            <SettingsNavRow
               icon={ArrowUpCircle}
               title={t("updates.entry.title")}
               caption={
@@ -202,7 +188,7 @@ export function SettingsRoute() {
               onOpen={() => nav.down(updatesPath(scope))}
             />
             {ROWS.map((row) => (
-              <IndexRow
+              <SettingsNavRow
                 key={row.id}
                 icon={row.icon}
                 title={t(row.title)}
