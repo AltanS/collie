@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, renderHook, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, renderHook, screen, waitFor, within } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { createMemoryRouter, Outlet, RouterProvider } from "react-router";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
@@ -11,10 +11,11 @@ import { __resetOpenBeside } from "@/lib/open-beside";
 import { __resetOperatorCommands } from "@/lib/operator-config";
 import { paneScopeKey, type Scope } from "@/lib/scope";
 import { clearStatus, useStatus } from "@/lib/status";
-import type { ActionResponse, AgentView, DeviceAuth, MuxCapability, MuxConfig } from "@/lib/types";
+import type { ActionResponse, AgentView, DeviceAuth, MuxCapability, MuxConfig, ServerSummary } from "@/lib/types";
 import { __resetWideLayoutStore } from "@/lib/wide-layout-store";
 import { DetailRoute } from "@/routes/detail";
 import { withHeaderHost } from "@/test/header-host";
+import { CrewProvider } from "./crew-provider";
 import { server } from "@/test/setup";
 
 // «слева в панели вкладки в которых я уже сделал exit которые не нужны, я не могу закрыть через правую
@@ -63,6 +64,9 @@ const REFUSAL = "the bridge refused this close";
 let extraAgents: AgentView[] = [];
 let device: DeviceAuth | undefined;
 let rootError = false;
+// A crew case names its whole herd and roster; afterEach clears both.
+let crewAgents: AgentView[] | null = null;
+let roster: ServerSummary[] = [];
 const closed = new Set<string>();
 
 function scopeOf(request: Request): Scope {
@@ -74,13 +78,13 @@ const alive = (p: AgentView) => !closed.has(p.paneId);
 
 const home = (request: Request): HomeData => ({
   bridge: "connected",
-  agents: [A1, A2, A3, B1, ...extraAgents].filter(alive),
+  agents: crewAgents ?? [A1, A2, A3, B1, ...extraAgents].filter(alive),
   shellPanes: [SH].filter(alive),
   workspaces: [],
   tabs: [],
   device,
   sessions: [],
-  servers: [],
+  servers: roster,
   ts: 0,
   scope: scopeOf(request),
   viewAll: false,
@@ -97,7 +101,15 @@ function makeRouter(address: string) {
         id: ROOT_ROUTE_ID,
         path: "/",
         loader: ({ request }) => home(request),
-        element: withHeaderHost(<Outlet />),
+        element: withHeaderHost(
+          roster.length > 0 ? (
+            <CrewProvider servers={roster} ts={20_000} pollMs={1500}>
+              <Outlet />
+            </CrewProvider>
+          ) : (
+            <Outlet />
+          ),
+        ),
         children: [
           { index: true, element: <div data-testid="home">HOME</div> },
           {
@@ -170,6 +182,8 @@ afterEach(() => {
   extraAgents = [];
   device = undefined;
   rootError = false;
+  crewAgents = null;
+  roster = [];
   vi.unstubAllGlobals();
   __resetWideLayoutStore();
   __resetOperatorCommands();
@@ -485,5 +499,163 @@ describe("@oracle:requirement @req:CLOSE-8 a close that fails", () => {
     expect(screen.getByRole("button", { name: "Open here" })).toBeInTheDocument();
     expect(at()).toBe(panePath(A1.paneId));
     expect(sidebarRow(container, A2)).not.toBeNull();
+  });
+});
+
+describe("@oracle:requirement @req:CLOSE-9 the operator moves while the close is on its way", () => {
+  /** The close waits until the case lets it finish; the pane leaves the world only then. */
+  function holdClose() {
+    let finish: () => void = () => undefined;
+    closePane.mockImplementation(
+      (paneId: string) =>
+        new Promise<ActionResponse>((resolve) => {
+          finish = () => {
+            closed.add(paneId);
+            resolve({ ok: true });
+          };
+        }),
+    );
+    return {
+      release: () => act(async () => finish()),
+    };
+  }
+
+  async function dismissSheet() {
+    fireEvent.keyDown(window, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Open here" })).toBeNull());
+  }
+
+  /** The herd read that follows any close in the running app, so the world on screen is the new one. */
+  async function nextPoll(router: ReturnType<typeof makeRouter>) {
+    await act(async () => {
+      await router.revalidate();
+    });
+    await waitFor(() => expect(sidebarRow(document.body, A1)).toBeNull());
+  }
+
+  async function goToRow(container: HTMLElement, at: () => string, p: AgentView) {
+    fireEvent.click(sidebarRow(container, p)!);
+    await waitFor(() => expect(at()).toBe(panePath(p.paneId)));
+    await waitFor(() => expect(shownPane(container)).toBe(`pane:${p.paneId}`));
+  }
+
+  it("A: moved onto the pane being closed: the route leaves it for a live pane of the space", async () => {
+    const held = holdClose();
+    const { container, at } = await mount(panePath(A1.paneId));
+    await closeFromRow(container, A2);
+    await dismissSheet();
+    await goToRow(container, at, A2);
+
+    await held.release();
+    await waitFor(() => expect(at()).not.toBe(panePath(A2.paneId)));
+    expect([A1, A3, SH].map((p) => panePath(p.paneId))).toContain(at());
+    expect(screen.queryByTestId("home")).toBeNull();
+  });
+
+  it("B: moved away from the pane being closed: the route stays on the new pane", async () => {
+    const held = holdClose();
+    const { router, container, at } = await mount(panePath(A1.paneId));
+    await closeFromRow(container, A1);
+    await dismissSheet();
+    await goToRow(container, at, A3);
+
+    await held.release();
+    await nextPoll(router);
+    await settle();
+    expect(at()).toBe(panePath(A3.paneId));
+    expect(shownPane(container)).toBe(`pane:${A3.paneId}`);
+    expect(columns(container).map((c) => c.dataset.colKey)).toEqual([paneScopeKey({}, A3.paneId)]);
+  });
+
+  it("B: the strip built while the close was on its way is not overwritten by the old one", async () => {
+    const held = holdClose();
+    const { router, container, at } = await mount(panePath(A1.paneId));
+    await closeFromRow(container, A1);
+    await dismissSheet();
+    await goToRow(container, at, A3);
+    // Beside it the shell, not A2: A2 is A1's next neighbour, where a stale move would land anyway.
+    await openBeside(container, SH);
+    const built = [paneScopeKey({}, A3.paneId), paneScopeKey({}, SH.paneId)];
+    expect(columns(container).map((c) => c.dataset.colKey)).toEqual(built);
+
+    await held.release();
+    await nextPoll(router);
+    await settle();
+    expect(at()).toBe(panePath(SH.paneId));
+    expect(columns(container).map((c) => c.dataset.colKey)).toEqual(built);
+  });
+
+  it("B: the closed row leaves the sidebar without waiting for the next poll", async () => {
+    const held = holdClose();
+    const { container, at } = await mount(panePath(A1.paneId));
+    await closeFromRow(container, A1);
+    await dismissSheet();
+    await goToRow(container, at, A3);
+
+    await held.release();
+    await waitFor(() => expect(sidebarRow(container, A1)).toBeNull());
+  });
+
+  it("B: moved to another space: the route is not pulled back to the old one", async () => {
+    const held = holdClose();
+    const { router, container, at } = await mount(panePath(A1.paneId));
+    await closeFromRow(container, A1);
+    await dismissSheet();
+    await goToRow(container, at, B1);
+
+    await held.release();
+    await nextPoll(router);
+    await settle();
+    expect(at()).toBe(panePath(B1.paneId));
+    expect(shownPane(container)).toBe(`pane:${B1.paneId}`);
+  });
+});
+
+describe("@oracle:requirement @req:CLOSE-10 a crew: one pane id on two machines", () => {
+  const SERVERS: ServerSummary[] = [
+    { id: "bluefin", name: "bluefin", isLead: true, reachable: true, protocol: "ok", lastSeenAt: 20_000 },
+    { id: "workshop", name: "workshop", isLead: false, reachable: true, protocol: "ok", lastSeenAt: 20_000 },
+  ];
+  const HERE: AgentView = { ...pane("w1:p2", "w1", "alpha"), host: "bluefin" };
+  const LEAD: AgentView = { ...pane("w1:p1", "w1", "alpha"), host: "bluefin" };
+  const MEMBER: AgentView = { ...pane("w1:p1", "w1", "far"), host: "workshop" };
+
+  function crewWorld(servers: ServerSummary[]) {
+    roster = servers;
+    crewAgents = [HERE, LEAD, MEMBER];
+    closePane.mockImplementation(() => Promise.resolve({ ok: true }));
+  }
+
+  it("closing the member's row names that machine", async () => {
+    crewWorld(SERVERS);
+    const { container } = await mount(panePath(HERE.paneId));
+    await closeFromRow(container, MEMBER);
+    expect(closePane).toHaveBeenCalledTimes(1);
+    expect(closePane.mock.calls[0]?.[0]).toBe("w1:p1");
+    expect(closePane.mock.calls[0]?.[1]).toMatchObject({ host: "workshop" });
+  });
+
+  it("closing the lead's row names no machine", async () => {
+    crewWorld(SERVERS);
+    const { container } = await mount(panePath(HERE.paneId));
+    await closeFromRow(container, LEAD);
+    expect(closePane).toHaveBeenCalledTimes(1);
+    expect(closePane.mock.calls[0]?.[0]).toBe("w1:p1");
+    // SAFETY: the second argument of `closePane` is its `scope?: Scope` (lib/api.ts).
+    expect((closePane.mock.calls[0]?.[1] as Scope | undefined)?.host).toBeUndefined();
+  });
+
+  it("the row of a machine out of reach offers no Close pane, and the lead's row still does", async () => {
+    crewWorld([SERVERS[0]!, { ...SERVERS[1]!, reachable: false, lastSeenAt: 1_000 }]);
+    const { container } = await mount(panePath(HERE.paneId));
+    const member = await openMenu(container, MEMBER);
+    expect(member.getByRole("button", { name: "Open beside" })).toBeInTheDocument();
+    await settle();
+    expect(member.queryByRole("button", { name: CLOSE })).toBeNull();
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Open here" })).toBeNull());
+    const lead = await openMenu(container, LEAD);
+    await waitFor(() => expect(lead.queryByRole("button", { name: CLOSE })).not.toBeNull());
   });
 });
