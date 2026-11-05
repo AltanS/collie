@@ -220,8 +220,11 @@ A file says which version it is, and Collie writes the lowest version that holds
   and an export of a theme with colours and `fonts.ui` only says 1.
 - A version 2 file needs Collie 1.22.0 or newer.
 - A version 3 file needs Collie 1.24.0 or newer. An older Collie refuses it and names the version: "The
-  file is version 3. This Collie reads version 1 and 2." A theme that sets no optional token keeps
-  its version, so an older Collie still reads it.
+  file is version 3. This Collie reads version 1 and 2."
+- A newer word or token also needs a newer Collie, whatever the version says. `zoom` needs 1.26.2.
+  `tabs`, `composer` and `tab-active` need a Collie newer than 1.27.0. An older Collie refuses a
+  file that names one of them, because it does not know the key.
+- A theme that names none of those keeps working on every Collie its version allows.
 - A version 1 file means the default word of each list for every token of `surface`.
 
 ### The 43 tokens
