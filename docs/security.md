@@ -563,10 +563,11 @@ machine that runs two instances sends two.
   whether the count is on, which setting decided, when the first ping may go and how to turn it
   off. A machine with no phone gets its notice there.
 - The ping goes to `https://ping.colliepwa.dev/v1/ping` (host `ping.colliepwa.dev`, port 443), a
-  Cloudflare Worker with one database table. Name this host in a firewall allow list, or block it.
+  small receiver on the colliepwa.dev app server, with one database table. Name this host in a firewall allow list, or block it.
   Collie works the same either way, and a blocked ping is dropped like any failed one. The source of
-  the receiver is public, in the `telemetry/` folder of the repository.
-- Collie stores no IP address. Cloudflare, which runs the receiver, sees the address in transit as
+  the receiver is public, in the `collie-website` repository under `src/lib/ping/`. The
+  contract of the ping is in the `telemetry/` folder of this repository.
+- Collie stores no IP address. The server that runs the receiver sees the address in transit as
   every host does.
 - The receiver keeps one row for each ID and day and prunes rows older than 400 days. Rows deleted
   or pruned can survive up to 30 days in the database's own point-in-time backups.
