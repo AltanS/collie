@@ -47,7 +47,8 @@ test("A: dashboard, pane A, switcher to pane B, then back is the dashboard", asy
   await landed(page, PANE_A);
 
   await page.getByRole("button", { name: en["chat.switcher.aria"] }).click();
-  await page.getByRole("dialog", { name: en["chat.switcher.aria"] }).getByRole("button", { name: /^codex logo codex/u }).click();
+  // The sheet's row names its status ("codex logo working codex", #696), so the word is optional.
+  await page.getByRole("dialog", { name: en["chat.switcher.aria"] }).getByRole("button", { name: /^codex logo (?:.+ )?codex/u }).click();
   await landed(page, PANE_B);
 
   await page.goBack();
