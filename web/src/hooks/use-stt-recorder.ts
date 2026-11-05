@@ -17,7 +17,10 @@ import { encodeWav16, toPcm16k } from "@/lib/stt-pcm";
 import type { SttCapability } from "@/lib/types";
 
 /**
- * Where one clip is in its life. `requesting` is the browser's permission prompt. `failed` is only
+ * Where one clip is in its life. `requesting` is everything from the tap until the first audio
+ * arrives: the browser's permission prompt, then the phone's audio stack waking up (a host provider's
+ * clip on Android can take a second or two after the recorder was told to start). `recording` is
+ * audio flowing, and only that (#709). `failed` is only
  * the phone engine failing: the takeover stays open with the sentence, and the clip stays in memory
  * until the person sends it to the host or throws it away.
  */
@@ -130,6 +133,7 @@ export function useSttRecorder({
   const startedAtRef = useRef(0);
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const hardStopRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const audioWatchRef = useRef<number | null>(null);
   const wakeLockRef = useRef<WakeLockSentinel | null>(null);
   // Latest-value refs for the two callbacks: they are re-created every render by the composer, and
   // naming them as effect dependencies would tear down the lifecycle listeners on every poll.
@@ -158,8 +162,10 @@ export function useSttRecorder({
   function clearTimers(): void {
     if (tickRef.current !== null) clearInterval(tickRef.current);
     if (hardStopRef.current !== null) clearTimeout(hardStopRef.current);
+    if (audioWatchRef.current !== null) cancelAnimationFrame(audioWatchRef.current);
     tickRef.current = null;
     hardStopRef.current = null;
+    audioWatchRef.current = null;
   }
 
   function releaseWakeLock(): void {
@@ -364,6 +370,25 @@ export function useSttRecorder({
     }
   }, []);
 
+  /**
+   * The first audio arrived: the clip is `recording`. Everything that measures the clip starts here,
+   * the clock, the length cap and the screen wake lock, so none of them counts the time the phone's
+   * audio stack spent waking up. Called by whichever evidence comes first (see `start`); a second
+   * call, or a call for a clip that is over, does nothing.
+   */
+  const goLive = useCallback((operation: AbortController, limitMs: number): void => {
+    if (!isCurrent(operation) || phaseRef.current !== "requesting") return;
+    if (audioWatchRef.current !== null) cancelAnimationFrame(audioWatchRef.current);
+    audioWatchRef.current = null;
+    startedAtRef.current = Date.now();
+    setPhaseNow("recording");
+    void acquireWakeLock(operation);
+    tickRef.current = setInterval(() => {
+      if (isCurrent(operation)) setElapsedMs(Date.now() - startedAtRef.current);
+    }, 1000);
+    hardStopRef.current = setTimeout(() => stopAndSend(), limitMs);
+  }, [stopAndSend]);
+
   const start = useCallback(() => {
     if (!enabled || phaseRef.current !== "idle") return;
     const mimeType = pickRecordingMimeType();
@@ -416,8 +441,12 @@ export function useSttRecorder({
       recorderRef.current = recorder;
       chunksRef.current = [];
       bytesRef.current = 0;
+      const limitMs = recordingLimitMs(clipEngineNow, hostRef.current);
       recorder.addEventListener("dataavailable", (event) => {
         if (!isCurrent(operation) || event.data.size === 0) return;
+        // A chunk with bytes is audio that exists: the evidence when there is no meter, or when the
+        // meter hears nothing yet.
+        goLive(operation, limitMs);
         chunksRef.current.push(event.data);
         bytesRef.current += event.data.size;
         // Refused HERE, mid-recording, rather than after the stop: the bridge would answer 413 and
@@ -451,18 +480,26 @@ export function useSttRecorder({
         }
         void transcribe(operation, clip);
       });
-      startedAtRef.current = Date.now();
       // A timeslice, so `bytesRef` grows during the recording and the size refusal above can fire
       // before five minutes of audio exist rather than after.
       recorder.start(1000);
-      setPhaseNow("recording");
-      void acquireWakeLock(operation);
-      tickRef.current = setInterval(() => {
-        if (isCurrent(operation)) setElapsedMs(Date.now() - startedAtRef.current);
-      }, 1000);
-      hardStopRef.current = setTimeout(() => stopAndSend(), recordingLimitMs(clipEngineNow, hostRef.current));
+      // THE PHASE STAYS `requesting` UNTIL AUDIO FLOWS (#709). `start()` returning only means the
+      // recorder was told; on Android the audio stack can take a second or two to deliver anything.
+      // Two witnesses, whichever speaks first: the level meter's analyser seeing a sample (every
+      // animation frame, so the lag shows as at most one frame) and the first non-empty chunk (the
+      // `dataavailable` listener above, one timeslice in, for a browser with no Web Audio).
+      const watch = () => {
+        audioWatchRef.current = null;
+        if (!isCurrent(operation) || phaseRef.current !== "requesting") return;
+        if (levelMeter?.heard() === true) {
+          goLive(operation, limitMs);
+          return;
+        }
+        audioWatchRef.current = requestAnimationFrame(watch);
+      };
+      if (levelMeter !== null) audioWatchRef.current = requestAnimationFrame(watch);
     })();
-  }, [enabled, stopAndSend]);
+  }, [enabled, goLive]);
 
   // The effects below are LIFECYCLE handlers, not reactive computations. `discard` is stable
   // (useCallback with no dependencies), so each fires on its own condition and nothing else.

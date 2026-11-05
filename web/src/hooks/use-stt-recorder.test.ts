@@ -29,7 +29,7 @@ interface FakeMeter extends AudioMeter {
   attached: MediaStream[];
   closed: number;
 }
-const meters = vi.hoisted(() => ({ made: new Array<FakeMeter>(), available: true }));
+const meters = vi.hoisted(() => ({ made: new Array<FakeMeter>(), available: true, heard: false }));
 vi.mock("@/lib/audio-meter", () => ({
   createAudioMeter: (): AudioMeter | null => {
     if (!meters.available) return null;
@@ -37,6 +37,7 @@ vi.mock("@/lib/audio-meter", () => ({
       attached: [],
       closed: 0,
       read: () => 0,
+      heard: () => meters.heard,
       attach(stream) {
         this.attached.push(stream);
       },
@@ -73,6 +74,7 @@ beforeEach(() => {
   transcribe.calls = [];
   meters.made = [];
   meters.available = true;
+  meters.heard = false;
 });
 afterEach(() => {
   uninstallFakeMediaRecorder();
@@ -122,6 +124,82 @@ describe("useSttRecorder — discard while transcribing", () => {
     await waitFor(() => expect(transcribe.calls).toHaveLength(2));
     await act(async () => transcribe.calls[1]?.resolve({ ok: true, text: "second" }));
     expect(onTranscript).toHaveBeenCalledWith("second");
+  });
+});
+
+describe("useSttRecorder — live means audio flows (#709)", () => {
+  /** Tap the mic and wait until the recorder was told to start, with no audio delivered yet. */
+  async function beginSilent(result: { current: ReturnType<typeof useSttRecorder> }) {
+    FakeMediaRecorder.firstAudioOnStart = false;
+    act(() => result.current.start());
+    await waitFor(() => expect(FakeMediaRecorder.instances).toHaveLength(1));
+    const recorder = FakeMediaRecorder.instances[0]!;
+    await waitFor(() => expect(recorder.state).toBe("recording"));
+    return recorder;
+  }
+
+  it("is not recording when the recorder was told to start and no audio has arrived", async () => {
+    const { result } = setup();
+    await beginSilent(result);
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 60));
+    });
+    expect(result.current.phase).toBe("requesting");
+    expect(result.current.elapsedLabel).toBe("0:00");
+  });
+
+  it("goes live on the first frame the meter hears", async () => {
+    const { result } = setup();
+    await beginSilent(result);
+    expect(result.current.phase).toBe("requesting");
+    meters.heard = true;
+    await waitFor(() => expect(result.current.phase).toBe("recording"));
+  });
+
+  it("goes live on the first chunk with bytes when there is no meter", async () => {
+    meters.available = false;
+    const { result } = setup();
+    const recorder = await beginSilent(result);
+    expect(result.current.phase).toBe("requesting");
+    act(() => recorder.emit(0));
+    expect(result.current.phase).toBe("requesting");
+    act(() => recorder.emit(512));
+    expect(result.current.phase).toBe("recording");
+  });
+
+  it("keeps the clip that was recorded once it is live", async () => {
+    const { result } = setup();
+    const recorder = await beginSilent(result);
+    meters.heard = true;
+    await waitFor(() => expect(result.current.phase).toBe("recording"));
+    act(() => recorder.finish());
+    await waitFor(() => expect(transcribe.calls).toHaveLength(1));
+  });
+
+  it("cleans up when the clip is thrown away before any audio", async () => {
+    const { result, onError, onTranscript } = setup();
+    const recorder = await beginSilent(result);
+    act(() => result.current.discard());
+    expect(result.current.phase).toBe("idle");
+    expect(recorder.state).toBe("inactive");
+    expect(meters.made[0]?.closed).toBeGreaterThanOrEqual(1);
+    expect(result.current.meter).toBeNull();
+    // A late sign of audio finds a stale operation and does nothing.
+    meters.heard = true;
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 60));
+    });
+    expect(result.current.phase).toBe("idle");
+    expect(onError).not.toHaveBeenCalled();
+    expect(onTranscript).not.toHaveBeenCalled();
+  });
+
+  it("does not stop a clip that is not live yet", async () => {
+    const { result } = setup();
+    const recorder = await beginSilent(result);
+    act(() => result.current.stopAndSend());
+    expect(recorder.state).toBe("recording");
+    expect(result.current.phase).toBe("requesting");
   });
 });
 

@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Changed
+
+- **The voice takeover shows live when the first audio arrives.** It no longer shows live when the recorder is asked to start (#709).
+
 ## [1.27.0] - 2026-11-06
 
 ### Added

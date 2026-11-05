@@ -37,6 +37,13 @@ export class FakeMediaRecorder extends EventTarget {
     return FakeMediaRecorder.supported.includes(type);
   }
 
+  /**
+   * Whether `start()` is followed by a first chunk of audio, as a real recorder's timeslice would
+   * deliver one. On by default so a case that only needs a clip in progress gets one; a case about
+   * the moment BEFORE any audio switches it off and sends the chunk itself with {@link emit}.
+   */
+  static firstAudioOnStart = true;
+
   state: "inactive" | "recording" | "paused" = "inactive";
   readonly mimeType: string;
 
@@ -48,6 +55,10 @@ export class FakeMediaRecorder extends EventTarget {
 
   start(): void {
     this.state = "recording";
+    if (!FakeMediaRecorder.firstAudioOnStart) return;
+    queueMicrotask(() => {
+      if (this.state === "recording") this.emit(1);
+    });
   }
 
   stop(): void {
@@ -74,6 +85,7 @@ export class FakeMediaRecorder extends EventTarget {
  */
 export function installFakeMediaRecorder(): FakeMicrophone {
   FakeMediaRecorder.instances = [];
+  FakeMediaRecorder.firstAudioOnStart = true;
   FakeMediaRecorder.supported = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"];
   const tracks: FakeTrack[] = [];
   Object.defineProperty(globalThis, "isSecureContext", { configurable: true, value: true });

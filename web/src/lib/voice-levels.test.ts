@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { BAR_DECAY, BAR_HIGH_HZ, BAR_LOW_HZ, decayBars, fillBars, rmsOfBytes } from "./voice-levels";
+import { BAR_DECAY, BAR_HIGH_HZ, BAR_LOW_HZ, decayBars, fillBars, hasSignal, rmsOfBytes } from "./voice-levels";
 
 describe("rmsOfBytes", () => {
   it("is 0 for silence (all 128) and for an empty read", () => {
@@ -16,6 +16,21 @@ describe("rmsOfBytes", () => {
   it("is amplitude over root two for a sine", () => {
     const sine = Uint8Array.from({ length: 4096 }, (_, i) => Math.round(128 + 64 * Math.sin((i / 64) * 2 * Math.PI)));
     expect(rmsOfBytes(sine)).toBeCloseTo(0.5 / Math.SQRT2, 2);
+  });
+});
+
+describe("hasSignal", () => {
+  it("is false for digital silence and for an empty read", () => {
+    expect(hasSignal(new Float32Array(512))).toBe(false);
+    expect(hasSignal(new Float32Array(0))).toBe(false);
+  });
+
+  it("is true for any sample, however quiet, so a still room still counts as audio", () => {
+    const hiss = new Float32Array(512);
+    hiss[300] = 0.0004;
+    expect(hasSignal(hiss)).toBe(true);
+    hiss[300] = -0.0004;
+    expect(hasSignal(hiss)).toBe(true);
   });
 });
 
