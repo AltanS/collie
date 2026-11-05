@@ -153,6 +153,10 @@ box, so the message could not be sent at all. The rule the probe measured is the
 it can read the disk. A box that holds such a path as text still matches, and any other box still fails.
 The web side has no disk, so `liftedPaste` keeps the upload shape.
 
+The same probe measured the kept text more exactly: once a piece is taken as an image, the blank pieces
+and the image paths that are not files leave the kept text too. `<2 lines>\n\n<2 lines>\n\n/shot.png`
+shows `[Image #N][Pasted text #M +3 lines]`. With no image the paste stays as sent, blank lines and all.
+
 Chunking stays rejected.
 
 ## Addendum — 2026-10-25: a box that scrolls its draft is read by its last rows, and emptied only when its length is known

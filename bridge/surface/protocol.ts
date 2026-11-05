@@ -565,7 +565,7 @@ export interface SendDeps {
    * reads that show the same rows `staleFrame` until one differs. Called inside a try.
    */
   readonly staleFrame?: (paneId: string, frame: string) => void;
-  /** Whether an upload path still names a file the harness can attach (`wholePaste`). Absent: a regular file on this disk. */
+  /** Whether an image path still names a file the harness can attach (`wholePaste`). Absent: a regular file on this disk. */
   readonly imageFile?: (path: string) => boolean;
   readonly now?: () => number;
   readonly sleep?: (ms: number) => Promise<void>;
@@ -1991,8 +1991,10 @@ function isImageFile(path: string): boolean {
  * token, the pieces that are an absolute image path ({@link isImagePath}) and a file on this disk come
  * off the paste the way the harness takes them, in any folder (lab, Claude Code 2.1.305:
  * `<text> /shot.jpg` shows `[Image #1][Pasted text #2]`; 2.1.306, 2026-11-05, the same outside
- * `uploads`); the kept pieces stay, joined by newlines. A box that kept such a path as text still
- * proves the send ({@link boxMatches}, `literal`).
+ * `uploads`). The kept pieces are joined by newlines, without the blank ones and without an image path
+ * that is not a file (2.1.306, 2026-11-05: `<2 lines>\n\n<2 lines>\n\n/shot.png` shows `+3 lines`, and
+ * `<4 lines> /missing.png /shot.png` shows `+3 lines`). With no image the paste stays as sent. A box that
+ * kept such a path as text still proves the send ({@link boxMatches}, `literal`).
  */
 export function wholePaste(match: ProfileMatch | null, lines: readonly string[], imageFile: (path: string) => boolean = isImageFile): WholePaste | null {
   const paste = match?.profile.paste;
@@ -2005,9 +2007,10 @@ export function wholePaste(match: ProfileMatch | null, lines: readonly string[],
   if (paste.image === undefined) return { images: 0, image: null, lines, literal: lines };
   const image = new RegExp(paste.image, "uy");
   const pieces = pastePieces(text);
-  const kept = pieces.filter((piece) => !(isImagePath(piece) && imageFile(piece.trim())));
-  const images = pieces.length - kept.length;
-  return { images, image, lines: images === 0 ? lines : kept.join("\n").split("\n"), literal: lines };
+  const images = pieces.filter((piece) => isImagePath(piece) && imageFile(piece.trim())).length;
+  if (images === 0) return { images, image, lines, literal: lines };
+  const kept = pieces.filter((piece) => !isImagePath(piece) && piece.trim().length > 0);
+  return { images, image, lines: kept.join("\n").split("\n"), literal: lines };
 }
 
 /**

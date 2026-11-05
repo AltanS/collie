@@ -9,8 +9,9 @@
 /**
  * The shape of the path Collie's upload route hands back (`bridge/server.ts`): an absolute
  * `<stateDir>/uploads/<pane>-<base36 time>-<8 hex>.<ext>`, with a POSIX or a Windows root. The
- * composer swaps a chip's marker for that path where the marker stood (`composeLine`), so it is the
- * only image path Collie ever sends. A name merely ending `.png` in a sentence is not this shape.
+ * composer swaps a chip's marker for that path where the marker stood (`composeLine`). A person may
+ * still type another image path ({@link isImagePath}). A name merely ending `.png` in a sentence is
+ * not this shape.
  */
 const UPLOAD_PATH_TAIL = String.raw`[\\/]uploads[\\/][A-Za-z0-9_-]+-[0-9a-z]+-[0-9a-f]{8}\.(?:png|jpe?g|gif|webp)`;
 const UPLOAD_ROOT = String.raw`(?:/|[A-Za-z]:[\\/])`;
