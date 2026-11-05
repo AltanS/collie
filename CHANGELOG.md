@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Added
+
+- **Themes can draw the open tab as a folder tab.** A theme file may set the surface word `tabs` to `folder`: the open tab is filled with the page colour, has a line on each side and a 3px top edge, and joins the row of panes under it, whose open pane becomes a tinted cell with a ring. The edge takes the new optional colour `tab-active` (schema version 3, held to 3:1 on the page). The new word `composer` (`field` or `box`) is accepted too, for a boxed composer. Collie New uses all three, in the brand violet. Every other theme draws the tabs as before.
+
 ### Fixed
 
 - **pi and Oh My Pi transcripts are found when the home directory is reached through a symlink.** On hosts such as Bazzite or Kinoite (`/home` links to `/var/home`), Collie now matches the pane's folder by its real path as well, so Chat and History open. Two sessions in one folder are still refused. Thanks @wipash (#683).

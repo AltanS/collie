@@ -143,6 +143,15 @@ const DESIGN = {
     screen: [],
     none: [],
   },
+  // Two more words that set no property: the app reads them (lib/tab-look.ts, lib/composer-layout.ts).
+  tabs: {
+    plain: [],
+    folder: [],
+  },
+  composer: {
+    field: [],
+    box: [],
+  },
 };
 
 /** The reviewed declarations of one word, looked up by comparing names. */
@@ -152,8 +161,8 @@ function designOf(token: string, word: string): string[][] | undefined {
 }
 
 describe("the shape tokens", () => {
-  it("are eleven, in the order a file's words are applied", () => {
-    expect(SURFACE_TOKENS).toEqual(["radius", "shadow", "density", "weight", "border", "ground", "chrome", "rows", "icons", "labels", "zoom"]);
+  it("are thirteen, in the order a file's words are applied", () => {
+    expect(SURFACE_TOKENS).toEqual(["radius", "shadow", "density", "weight", "border", "ground", "chrome", "rows", "icons", "labels", "zoom", "tabs", "composer"]);
   });
 
   it.each(SURFACE_TOKENS)("%s: every word sets exactly the reviewed declarations", (token) => {
@@ -177,6 +186,8 @@ describe("the shape tokens", () => {
       icons: "default",
       labels: "caps",
       zoom: "screen",
+      tabs: "plain",
+      composer: "field",
     });
   });
 

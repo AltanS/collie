@@ -8,6 +8,7 @@ import { UnseenMark } from "@/components/ui/unseen-mark";
 import { useLongPress } from "@/hooks/use-long-press";
 import { useRevealActive } from "@/hooks/use-reveal-active";
 import { cn } from "@/lib/utils";
+import { useTabLook, type TabLook } from "@/lib/tab-look";
 import { TRIAGE_STATUS, worstTriage, type TriageKey } from "@/lib/triage";
 import { hostKey } from "@/lib/hosts";
 import { tabCellTitle, type TabTitle } from "@/lib/pane-name";
@@ -82,6 +83,17 @@ interface TabStripProps {
 // weird lines now" — and the call was not to tune the lines but to drop them. "Completely remove
 // horizontal borders and just have vertical ones for tab items."
 //
+// THE FOLDER LOOK IS A THEME'S CHOICE, NOT THE DEFAULT (surface word `tabs`, lib/tab-look.ts). Under
+// `tabs: folder` the open tab is drawn as a folder tab after all, and the paragraphs below describe
+// the PLAIN look, which is what every theme gets that does not ask. The folder is the plain row plus:
+// one 1px `rule` line under the whole row (an inset shadow of the nav, so nothing hangs below it and
+// the scroller's clip never meets it); an open tab filled with the page colour (`bg-background`),
+// so it joins the pane row under it, with a 1px `rule` line on each side, a 3px top edge in the
+// theme's `tab-active` colour (an inset shadow, so the hit box and the label do not move) and no
+// line below, so its fill covers the row's rule; the label stays semibold ink. Every other tab keeps
+// the plain look; it carries the same transparent side borders as the open one, so a selection moves
+// nothing, and `StableLabel` still holds the label's width. The row is exactly as tall as before.
+//
 // So this row now draws NO horizontal rule of its own, top or bottom, on the `<nav>` or on the
 // scroller inside it. It sits on the composer's own chrome ground (`bg-chrome`) rather than on a
 // ground of its own, the same fill the header above and the input row below both stand on, so the
@@ -141,6 +153,7 @@ export function TabStrip({
   className,
 }: TabStripProps) {
   useLocale();
+  const look = useTabLook();
   const [sheetTab, setSheetTab] = useState<TabView | null>(null);
   // Asked of the machine these tabs live on (M22/03); absent scope is the lead, as everywhere.
   const newTab = useMuxCapability("createTab", scope);
@@ -174,7 +187,15 @@ export function TabStrip({
         // horizontal rule of its own, and a header above it keeps whatever rule it already had.
         // `flex items-stretch` only when something is pinned to the trailing end; otherwise a
         // `flow-root` block.
-        className={cn("shrink-0 bg-chrome px-4", trailing ? "flex items-stretch" : "flow-root", className)}
+        // Under the folder look the row also carries ONE 1px `rule` line along its bottom edge, an
+        // inset shadow and not a border: the open tab fills the last pixel row and paints over it,
+        // which a border (outside the scroller's clip) could not be covered from inside.
+        className={cn(
+          "shrink-0 bg-chrome px-4",
+          trailing ? "flex items-stretch" : "flow-root",
+          look === "folder" && "shadow-[inset_0_-1px_0_0_var(--rule)]",
+          className,
+        )}
       >
         <div
           ref={scrollerRef}
@@ -214,6 +235,7 @@ export function TabStrip({
           <div className="-mx-1.5 flex shrink-0 items-stretch">
             {allowAll && (
               <Tab
+                look={look}
                 label={translate("space.tabStrip.all")}
                 active={selected === null}
                 onClick={() => onSelect(null)}
@@ -224,6 +246,7 @@ export function TabStrip({
               return (
               <Tab
                 key={t.tabId}
+                look={look}
                 label={t.label}
                 title={tabCellTitle(t.label, inTab)}
                 active={selected === t.tabId}
@@ -284,6 +307,8 @@ export function TabStrip({
 }
 
 interface TabProps {
+  /** The theme's tab look (lib/tab-look.ts): `plain` is today's row, `folder` draws the open tab as a folder tab. */
+  look: TabLook;
   /** The tab's raw label — the spoken fallback when the cell has no title to draw. */
   label: string;
   /** What the cell says ({@link tabCellTitle}); the "All" cell passes its word as a plain title. */
@@ -304,6 +329,7 @@ interface TabProps {
 
 // One plain tab cell.
 function Tab({
+  look,
   label,
   title: titleProp,
   active,
@@ -368,6 +394,16 @@ function Tab({
         active
           ? "font-semibold text-foreground"
           : "font-medium text-muted-foreground hover:text-foreground",
+        // THE FOLDER LOOK (`tabs: folder`). Both states carry the same 1px side borders, so the
+        // box is one size and only the paint changes; the open tab paints them in `rule`, fills with
+        // the page colour and wears the 3px `tab-active` edge as an inset shadow (no top border, so
+        // the 30px hit box and the label's centre stay where they are). `rounded-t-sm` is the
+        // theme's own step. No bottom border: the fill reaches the row's last pixel row and covers
+        // the nav's rule there.
+        look === "folder" &&
+          (active
+            ? "rounded-t-sm border-x-[1px] border-x-rule bg-background shadow-[inset_0_3px_0_0_var(--tab-active)]"
+            : "border-x-[1px] border-x-transparent"),
         // NO DESKTOP-FOCUS RING. `TabView.focused` (the tab the desktop TUI is looking at) used to
         // paint a dashed outline on its cell. On the phone that read as a second selection beside the
         // solid pill, and the phone's reader does not care where the desktop is looking. It is gone;
@@ -381,7 +417,7 @@ function Tab({
               not, sits on the row's bare chrome ground: no cell draws a fill of its own. */}
           <StatusDot
             status={TRIAGE_STATUS[status]}
-            surface="bg-chrome"
+            surface={look === "folder" && active ? "bg-background" : "bg-chrome"}
             className="size-2.5"
           />
           {/* The mark is a shape and a colour; say it in words for screen readers. */}

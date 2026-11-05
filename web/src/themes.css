@@ -44,6 +44,8 @@
   --host-7: light-dark(oklch(0.45 0.2 325), oklch(0.74 0.238 325));
   --host-8: light-dark(oklch(0.45 0.108 241), oklch(0.746 0.16 241));
   --host-9: light-dark(oklch(0.45 0.2 280), oklch(0.7 0.18 280));
+  --pane-active: light-dark(oklch(0.50 0.19 295), oklch(0.76 0.15 295));
+  --tab-active: light-dark(oklch(0.50 0.19 295), oklch(0.76 0.15 295));
   --radius-sm: 2px;
   --radius-md: 2px;
   --radius-lg: 2px;

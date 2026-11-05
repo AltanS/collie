@@ -1,4 +1,4 @@
-// The shape of a theme, schema version 2 (M57 specs 14 and 17): eleven tokens, each a CLOSED list of
+// The shape of a theme, schema version 2 (M57 specs 14 and 17): thirteen tokens, each a CLOSED list of
 // words, and the one table that turns a word into CSS declarations. Beside it, two more closed doors
 // of version 2 that are not words of the `surface` block: the display face (`fonts.display`, one of
 // the shipped faces) and the terminal palette (`ansi`, eighteen gate-checked colours).
@@ -15,7 +15,7 @@
 // `src/theme-init.test.ts` fails when the line in the file is not the line this module writes.
 //
 // HOW EACH TOKEN REACHES THE PAGE. Tailwind compiles some theme values into each utility and reads
-// others through var(); the first ten tokens are the ones that end in a property a utility reads at run time; the eleventh, zoom, ends in none.
+// others through var(); the first ten tokens are the ones that end in a property a utility reads at run time; the last three, zoom, tabs and composer, end in none.
 //   * radius: `--radius-sm/md/lg/xl`. index.css declares them in `@theme` (not `@theme inline`), so
 //     `rounded-md` compiles to `border-radius: var(--radius-md)`. Bare `rounded` and `rounded-full`
 //     are not steps and never move. The radius word also sets `--edge-accent`, the offsets of the
@@ -51,6 +51,12 @@
 //     in the Screen view (`screen`, today's behaviour) or never (`none`). Its words hold no
 //     declarations, so nothing reaches the page; the app reads the word itself (lib/zoom-pill.ts),
 //     and a device choice in Settings wins over it.
+//   * tabs: the second word that sets no property. It says how the open tab is drawn.
+//     `plain` is today's row, ink and weight and nothing else; `folder` draws the open tab as a
+//     folder tab that joins the page below it (components/tab-strip.tsx, pane-strip.tsx). The app
+//     reads the word itself (lib/tab-look.ts). Its colour is the optional token `tab-active`.
+//   * composer: the third. It says how the composer is laid out: `field` is today's
+//     (one text field with its row of controls), `box` a boxed composer (lib/composer-layout.ts).
 //
 // EVERY DEFAULT IS TODAY'S VALUE. `src/themes/themes.test.ts` reads index.css and Tailwind's own
 // theme.css and holds each default word equal to what the app drew before version 2.
@@ -60,7 +66,7 @@
 
 import { SHIPPED_FONTS, isShippedFont, type ShippedFont } from "../shipped-fonts";
 
-/** The eleven shape tokens, in the order a file's words are applied. */
+/** The thirteen shape tokens, in the order a file's words are applied. */
 export const SURFACE_TOKENS = [
   "radius",
   "shadow",
@@ -73,6 +79,8 @@ export const SURFACE_TOKENS = [
   "icons",
   "labels",
   "zoom",
+  "tabs",
+  "composer",
 ] as const;
 
 export type SurfaceToken = (typeof SURFACE_TOKENS)[number];
@@ -232,6 +240,14 @@ export const SURFACE = {
     screen: [],
     none: [],
   },
+  tabs: {
+    plain: [],
+    folder: [],
+  },
+  composer: {
+    field: [],
+    box: [],
+  },
 } as const satisfies { [T in SurfaceToken]: Record<string, readonly Declaration[]> };
 
 export type SurfaceWord<T extends SurfaceToken> = keyof (typeof SURFACE)[T] & string;
@@ -249,6 +265,8 @@ export interface Surface {
   icons?: SurfaceWord<"icons">;
   labels?: SurfaceWord<"labels">;
   zoom?: SurfaceWord<"zoom">;
+  tabs?: SurfaceWord<"tabs">;
+  composer?: SurfaceWord<"composer">;
 }
 
 /** The word each token has when a file does not name one: today's look. */
@@ -264,6 +282,8 @@ export const SURFACE_DEFAULTS = {
   icons: "default",
   labels: "caps",
   zoom: "screen",
+  tabs: "plain",
+  composer: "field",
 } as const satisfies Required<Surface>;
 
 export function isSurfaceToken(value: string): value is SurfaceToken {
@@ -295,6 +315,8 @@ export function resolveSurface(surface: Surface | undefined): Required<Surface> 
     icons: surface?.icons ?? SURFACE_DEFAULTS.icons,
     labels: surface?.labels ?? SURFACE_DEFAULTS.labels,
     zoom: surface?.zoom ?? SURFACE_DEFAULTS.zoom,
+    tabs: surface?.tabs ?? SURFACE_DEFAULTS.tabs,
+    composer: surface?.composer ?? SURFACE_DEFAULTS.composer,
   };
 }
 
@@ -319,6 +341,8 @@ export function surfaceDeclarations(surface: Surface | undefined): Declaration[]
   if (surface.icons !== undefined) out.push(...wordDeclarations("icons", surface.icons));
   if (surface.labels !== undefined) out.push(...wordDeclarations("labels", surface.labels));
   if (surface.zoom !== undefined) out.push(...wordDeclarations("zoom", surface.zoom));
+  if (surface.tabs !== undefined) out.push(...wordDeclarations("tabs", surface.tabs));
+  if (surface.composer !== undefined) out.push(...wordDeclarations("composer", surface.composer));
   return out;
 }
 

@@ -31,6 +31,7 @@ import { hostKey, hostName, isMultiHost, paneRowKey } from "@/lib/hosts";
 import { t } from "@/lib/i18n";
 import { useLaunchers } from "@/lib/launchers";
 import { homePath, newPath, panePath } from "@/lib/nav";
+import { useTabLook } from "@/lib/tab-look";
 import type { WorkspaceGroup } from "@/lib/pane-groups";
 import { paneName } from "@/lib/pane-name";
 import { isOpenBeside, queueOpenBeside, takeOpenBeside } from "@/lib/open-beside";
@@ -126,6 +127,7 @@ function isTypingInLayout(strip: HTMLElement): boolean {
 
 export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "flat" }: WideLayoutProps) {
   useLocale();
+  const tabLook = useTabLook();
   const root = useRootData();
   const nav = useNav();
   const open = useSidebarOpen();
@@ -498,7 +500,10 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
                 savedCopy={root.error}
                 onRenamed={revalidate}
                 onClosed={closedTab}
-                className="min-w-0 flex-1 bg-transparent"
+                // Under the folder look the row sits on the bar's bottom edge, one pixel over the
+                // bar's own rule, so the open tab covers that rule and joins the page below the bar
+                // (tab-strip.tsx). Plain: centred in the bar, as it always was.
+                className={cn("min-w-0 flex-1 bg-transparent", tabLook === "folder" && "self-end -mb-px")}
               />
             ) : (
               <span className="flex-1" />
