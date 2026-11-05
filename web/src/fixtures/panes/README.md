@@ -3671,3 +3671,15 @@ editor's frame never claims a rail in the transcript (issue 660 review, 2026-11-
 | --- | --- | --- |
 | `pi--v110-stock-idle-quote-rail.txt` | `pi--v110-stock-idle.txt`, rows 4 to 6 | composer, empty, free: the stock box, the quote is transcript |
 | `pi--v130-core-question-quote-rail--w120.txt` | `pi--v130-core-question--w120.txt`, rows 19 to 21 (blank before) | question ask, not free: no float editor |
+
+## Claude Code 2.1.306 exit dialog with background work (captured 2026-11-05)
+
+`/exit` in a disposable 110-column pane with one `sleep 600` background shell, the marker walked down
+with one Down each. Privacy: the working directory, the model and plan row and the turn's status row
+were replaced with neutral text. The bytes from the dialog's rule to the end are as captured.
+
+| Fixture | State | Reads as |
+| --- | --- | --- |
+| `claude--background-work-exit-1.txt` | `❯` on `1. Exit and stop tasks` | menu, Confirm and Cancel |
+| `claude--background-work-exit-2.txt` | `❯` on `2. Move to background and exit` | menu, same identity, new signature |
+| `claude--background-work-exit-3.txt` | `❯` on `3. Stay` | menu, same identity, new signature |
