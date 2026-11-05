@@ -1499,5 +1499,20 @@
     "fixture": "claude--v21314-core-permission--w60.txt",
     "detector": "prompt-select",
     "region": "▎ [✻] [✻] [✻] · Share Claude Code and earn $10 in usage credits · /passes\n\n❯ /model\n  ⎿  Kept model as Haiku 5.5\n\n❯ Run ls in this folder with the Bash tool, nothing else.\n\n ▐▛███▛█   Claude Code v2.1.314\n▝▜██████▀  Haiku 5.5 · Claude Max\n ▝▝   ▝▝   /…/.cache/collie-lab/m78-lab/claude/project\n\n▎ [✻] [✻] [✻] · Share Claude Code and earn $10 in usage\n▎ credits · /passes\n\n❯ /model\n  ⎿  Kept model as Haiku 5.5\n\n❯ Run ls in this folder with the Bash tool, nothing else.\n\n  Listed 1 directory (ctrl+o to expand)\n\n● The folder has one item: README.md.\n\n✻ Sautéed for 3s · done 4:17 PM\n\n❯ Run touch probe.txt in this folder with the Bash tool,\n  nothing else.\n\n● Bash(touch probe.txt)\n  ⎿  Waiting…\n\n────────────────────────────────────────────────────────────\n Bash command\n Tip: auto mode handles these prompts for you — choose\n \"switch to auto mode\" below\n Create empty probe.txt in current folder\n╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌\n touch probe.txt\n╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌\n Do you want to proceed?\n ❯ 1. Yes\n   2. Yes, and always allow access to /var/home/alice/.cache\n      /collie-lab/m78-lab/claude/project from this project\n   3. Yes, and switch to auto mode · auto mode handles these\n      prompts for you\n   4. No\n\n Esc to cancel · Tab to amend"
+  },
+  {
+    "fixture": "claude--background-work-exit-1.txt",
+    "detector": "menu",
+    "region": "──────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  Background work is running\n  The following will stop when you exit:\n\n  shell · sleep 600\n\n  ❯ 1. Exit and stop tasks\n    2. Move to background and exit\n    3. Stay\n\n  Enter to confirm · Esc to cancel"
+  },
+  {
+    "fixture": "claude--background-work-exit-2.txt",
+    "detector": "menu",
+    "region": "──────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  Background work is running\n  The following will stop when you exit:\n\n  shell · sleep 600\n\n    1. Exit and stop tasks\n  ❯ 2. Move to background and exit\n    3. Stay\n\n  Enter to confirm · Esc to cancel"
+  },
+  {
+    "fixture": "claude--background-work-exit-3.txt",
+    "detector": "menu",
+    "region": "──────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  Background work is running\n  The following will stop when you exit:\n\n  shell · sleep 600\n\n    1. Exit and stop tasks\n    2. Move to background and exit\n  ❯ 3. Stay\n\n  Enter to confirm · Esc to cancel"
   }
 ]
