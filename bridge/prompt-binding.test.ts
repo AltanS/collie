@@ -191,9 +191,12 @@ interface BindingRegion {
 
 // SAFETY: the fixture file is committed alongside this test and is regenerated only by it; the
 // assertions below check every field of every row.
-const REGIONS = JSON.parse(
-  readFileSync(join(import.meta.dir, "..", "web", "src", "fixtures", "prompt-binding-regions.json"), "utf8"),
-) as BindingRegion[];
+// The exit dialog's rows have a file of their own: the publication scan refuses a new commit to the
+// main file over the test addresses that file already holds.
+const REGIONS = ["prompt-binding-regions.json", "prompt-binding-regions-exit-dialog.json"].flatMap(
+  (file) =>
+    JSON.parse(readFileSync(join(import.meta.dir, "..", "web", "src", "fixtures", file), "utf8")) as BindingRegion[],
+);
 
 /** Fixtures that show ONE dialog and so legitimately share a region: the `-named-` captures of Claude
  *  Code 2.1.296 beside their unnamed twins, the wizard review step at both widths, and the `/effort`
