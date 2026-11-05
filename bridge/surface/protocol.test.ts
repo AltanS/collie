@@ -60,7 +60,7 @@ function framelessProfile(): Profile {
 }
 const DIALOG = [" Do you want to proceed?", " ❯ 1. Yes", "   2. No", " Esc to cancel · Enter to select"];
 /** A piece of a paste that has the shape of an image file by an absolute path, whether or not the file exists. */
-const IMAGE_SHAPED = /^(?:\/|[A-Za-z]:\\).*\.(?:png|jpe?g|gif|webp)$/iu;
+const IMAGE_NAME = /^(?:\/|[A-Za-z]:\\).*\.(?:png|jpe?g|gif|webp)$/iu;
 
 type Mode = "claude" | "generic" | "codex" | "muse";
 
@@ -297,7 +297,7 @@ class FakePane {
     const pieces = text.split(/\n| (?=\/|[A-Za-z]:\\)/u);
     const attached = this.imagesOnlyAlone && pieces.length > 1 ? [] : pieces.filter((piece) => this.imageFiles.includes(piece.trim()));
     for (const _ of attached) this.box += `[Image #${String(++this.pastes)}]`;
-    if (attached.length > 0) text = pieces.filter((piece) => piece.trim() !== "" && !IMAGE_SHAPED.test(piece.trim())).join("\n");
+    if (attached.length > 0) text = pieces.filter((piece) => piece.trim() !== "" && !IMAGE_NAME.test(piece.trim())).join("\n");
     const breaks = text.split("\n").length - 1;
     if (breaks + 1 > this.blockLiteralLines || text.length > this.collapseOver) {
       this.box += breaks > 0 ? `[Pasted text #${String(++this.pastes)} +${String(breaks)} lines]` : `[Pasted text #${String(++this.pastes)}]`;
