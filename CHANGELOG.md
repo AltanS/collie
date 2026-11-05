@@ -30,6 +30,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Fixed
 
+- **One tap on Send sends on iPhone with the keyboard up.** The press no longer moves focus off the field, and a Send that is busy stays under the finger instead of letting the tap fall through to the box, so the keyboard stays up and the message goes out on the first tap. Thanks @JDFS404 for the diagnosis (#691).
 - **A blockquote in Chat keeps its bullets, code and tables.** A quote's body is now parsed as blocks, so a quoted pull request body or a log with a shell snippet reads as it was written; the code stays upright, and quotes nest up to four deep. Thanks @KyongSik-Yoon (#684).
 - **pi and Oh My Pi transcripts are found when the home directory is reached through a symlink.** On hosts such as Bazzite or Kinoite (`/home` links to `/var/home`), Collie now matches the pane's folder by its real path as well, so Chat and History open. Two sessions in one folder are still refused. Thanks @wipash (#683).
 - **Claude beacons stay live on Linux where /bin/sh is dash.** dash runs the hook command as a child and waits, so the beacon recorded the shell's pid and expired at once; every Claude pane on herdr-core then read as a shell (Ubuntu, Debian). `collie beacon emit` now records the first non-shell ancestor, and doctor accepts a hook command that starts with `exec` (#689).

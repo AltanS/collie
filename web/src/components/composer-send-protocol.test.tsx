@@ -232,7 +232,7 @@ describe("Composer on the Send Protocol (M56 specs 05 and 06)", () => {
     const { sends } = bridge([]);
     renderComposer({ surface: { revision: 1, turn: "unknown", modal: "unknown", composer: "unreachable" }, unreachableNote: "Sending is off on this machine" });
     expect(screen.getByPlaceholderText("Sending is off on this machine")).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Send" })).toHaveAttribute("aria-disabled", "true");
     expect(sends).toEqual([]);
   });
 });
@@ -298,7 +298,7 @@ describe("Steer or queue on the Send button (M69)", () => {
     const { sends } = bridge([]);
     renderSteer({ starting: true, surface: running, canSteer: true });
     await openMenu(user, "wait for startup");
-    expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Send" })).toHaveAttribute("aria-disabled", "true");
     expect(screen.queryByRole("button", { name: STEER })).toBeNull();
     expect(screen.queryByRole("button", { name: "Send as message" })).toBeNull();
     expect(field()).toHaveValue("wait for startup");
