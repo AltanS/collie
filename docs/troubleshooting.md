@@ -394,8 +394,10 @@ known and waits for the core. Answer on the screen, or press the keys in the Key
 colour alone, and the core sends no colour. Escape works. Answer with the Keys tray. This waits for a
 colour option in the core.
 
-**A send takes about six seconds.** The core holds a key for three seconds after Collie types, and a
-send has two such waits. Nothing is wrong, and a send is not sent twice. Wait for the receipt.
+**A multiline send arrives in pieces or times out.** Multiline insertion and Oh My Pi's follow-up
+submit key use direct input to avoid the core's three-second named-key quiet wait. Other named
+keys, such as navigation chords, can still wait while the terminal is receiving input. If a send's
+outcome is unknown, inspect the terminal before trying again: some text may already have arrived.
 
 **A pane is narrow on the phone after herdr-app showed it.** The last window that looked at the
 terminal sets its width. Look at the pane in herdr-app on a wider window, or close the herdr-app view.

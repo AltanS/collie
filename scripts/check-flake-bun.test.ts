@@ -126,10 +126,10 @@ describe("the Windows check runs the flake's Bun", () => {
     expect(String(setup[0]?.with?.["bun-version"])).toBe(flakeBunVersion());
   });
 
-  test("windows-suites.ps1 gives each suite its own skip budget, 192 in all, each skip named", () => {
+  test("windows-suites.ps1 gives each suite its own skip budget, 191 in all, each skip named", () => {
     const script = readFileSync(join(ROOT, "scripts", "windows-suites.ps1"), "utf8");
     const budget = (suite: string): number => Number(new RegExp(`\\[int\\]\\$MaxSkips${suite} = (\\d+)`).exec(script)?.[1] ?? Number.NaN);
-    expect([budget("Bridge"), budget("Cli"), budget("Scripts")]).toEqual([107, 60, 25]);
+    expect([budget("Bridge"), budget("Cli"), budget("Scripts")]).toEqual([106, 60, 25]);
     // The bridge allowance is the local-cli tests that stay POSIX-only, the one real-engine Whistle
     // case that needs the uncommitted model, the one scan of real links to /etc, the one telemetry file mode, the 5 hold socket tests, the 6
     // walky mode and socket tests, the 30 durable example tests, the 10 durable-harness adapter skips and the 36 durable socket tests; the comment
@@ -169,9 +169,9 @@ describe("the Windows check runs the flake's Bun", () => {
     const fakeGitSkips = [...readFileSync(join(ROOT, "bridge", "worktree-add.test.ts"), "utf8").matchAll(/test\.skipIf\(process\.platform === "win32"\)\("([^"]+)"/g)].map((m) => m[1]!);
     expect(fakeGitSkips).toHaveLength(6);
     for (const name of fakeGitSkips) expect(script).toContain(name);
-    // The Claude-only raw Enter test (PR 637) sits in a loop over claude, omp and pi, so it skips twice on every platform.
-    const rawEnterSkips = readFileSync(join(ROOT, "bridge", "surface", "protocol.unstyled.test.ts"), "utf8").includes('test.if(harness.id === "claude")(') ? 2 : 0;
-    expect(rawEnterSkips).toBe(2);
+    // The no-named-key one-line send test sits in a loop over claude, omp and pi and runs for claude and omp (pi's Alt+Enter stays a named key), so it skips once on every platform.
+    const rawEnterSkips = readFileSync(join(ROOT, "bridge", "surface", "protocol.unstyled.test.ts"), "utf8").includes('test.if(harness.id === "claude" || harness.id === "omp")(') ? 1 : 0;
+    expect(rawEnterSkips).toBe(1);
     expect(script).toContain("protocol.unstyled.test.ts");
     expect(budget("Bridge")).toBe(posixOnly.length + 1 + etcLinks.length + holdSocket.length + walkySkips.length + telemetrySkips.length + 30 + 10 + 36 + boundedRunSkips.length + 1 + 2 + rawEnterSkips + fakeGitSkips.length);
     // The cli allowance adds the three real runs of the POSIX install leg a crew member runs, and the

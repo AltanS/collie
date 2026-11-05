@@ -126,6 +126,13 @@ describe("HcClient over a unix socket", () => {
     expect(onStream.map((f) => f.kind)).toEqual([0, 2]);
     expect(onStream[0]?.payload.toString("utf8")).toBe("echo \"$HOME\" ä");
   });
+  test("framed raw input carries LF and DC1 unchanged", async () => {
+    const core = stand(() => {});
+    const client = new HcClient(core.path, 2000);
+    await client.typeRaw("t1", "first line\nsecond line\x11");
+    const input = core.framesIn.filter((got) => got.channel === 1 && got.kind === 0);
+    expect(input.map((got) => got.payload.toString("utf8"))).toEqual(["first line\nsecond line\x11"]);
+  });
 
   test("a stream comes up on the snapshot answer, reports events and `missed`, and drops what `missed` covered", async () => {
     const sockets: Socket[] = [];
