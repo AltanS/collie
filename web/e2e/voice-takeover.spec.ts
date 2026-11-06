@@ -95,8 +95,11 @@ test.beforeEach(async ({ page }) => {
       }
     };
     // Playwright's Linux WebKit ships no MediaRecorder at all (a real iPhone has one), and without one
-    // the composer draws no mic. A bare stand-in, only there when the engine has none: it makes a
-    // small clip so the upload happens. The Web Audio graph under test stays the engine's own.
+    // the composer draws no mic. A bare stand-in, only there when the engine has none. It models what
+    // Safari's recorder does: a chunk with bytes on every timeslice (the page asks for one a second),
+    // and a final chunk on stop. The page goes live on the first chunk with bytes (#709), so a stand-in
+    // that spoke only on stop would never let OK enable in a quiet room, where the fake microphone's
+    // analyser reads exact digital silence. The Web Audio graph under test stays the engine's own.
     if (!("MediaRecorder" in window)) {
       class StandInRecorder extends EventTarget {
         static isTypeSupported(type: string) {
@@ -104,17 +107,24 @@ test.beforeEach(async ({ page }) => {
         }
         state = "inactive";
         mimeType = "audio/mp4";
-        start() {
+        private timer: ReturnType<typeof setInterval> | null = null;
+        private chunk(bytes: number) {
+          const event = new Event("dataavailable");
+          Object.defineProperty(event, "data", { value: new Blob([new Uint8Array(bytes)], { type: "audio/mp4" }) });
+          voice.recorded += bytes;
+          this.dispatchEvent(event);
+        }
+        start(timeslice?: number) {
           this.state = "recording";
-          // Ready at once: its clip is made on stop, whenever that is.
-          voice.recorded += 1;
+          if (timeslice === undefined) return;
+          this.timer = setInterval(() => this.chunk(512), timeslice);
         }
         stop() {
           if (this.state === "inactive") return;
           this.state = "inactive";
-          const event = new Event("dataavailable");
-          Object.defineProperty(event, "data", { value: new Blob([new Uint8Array(2048)], { type: "audio/mp4" }) });
-          this.dispatchEvent(event);
+          if (this.timer !== null) clearInterval(this.timer);
+          this.timer = null;
+          this.chunk(2048);
           this.dispatchEvent(new Event("stop"));
         }
       }
