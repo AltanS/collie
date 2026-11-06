@@ -118,8 +118,11 @@ describe("TabStrip", () => {
     const tab = screen.getByRole("button", { name: "tab 2" });
     expect(tab.className).toMatch(/(?:^|\s)before:inset-y-0(?=\s|$)/);
     expect(tab.className).toMatch(/(?:^|\s)h-7\.5(?=\s|$)/);
+    // The bare "+" is a 24px box centred in the 30px row, with no border: its edges are 3px inside, so `-3px` ends on them.
     const plus = screen.getByRole("button", { name: "New tab" });
-    expect(plus.className).toMatch(/(?:^|\s)before:-inset-y-\[2px\](?=\s|$)/);
+    expect(plus.className).toMatch(/(?:^|\s)size-6(?=\s|$)/);
+    expect(plus.className).not.toMatch(/(?:^|\s)border(?=\s|$)/);
+    expect(plus.className).toMatch(/(?:^|\s)before:-inset-y-\[3px\](?=\s|$)/);
   });
 
   // INK AND WEIGHT ARE THE ONLY MARK (option 3 of the 2026-09-23 top-bar deck): the open tab is

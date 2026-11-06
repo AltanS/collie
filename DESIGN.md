@@ -28,7 +28,7 @@ afterwards. A copy-paste gives you six places to remember instead.
 
 | Primitive | What it is FOR |
 | --- | --- |
-| `ui/add-button.tsx` | The dashed "+" at the end of a row that makes one more of what the row holds: a space, a tab. Two faces, 28px and 32px, a circle each; the busy spinner swaps in place. The caller passes the tap reach, because only the call site can measure what sits around it. |
+| `ui/add-button.tsx` | The "+" at the end of a row that makes one more of what the row holds: a space, a tab. The one look for New is a dashed circle, 28px or 32px; the busy spinner swaps in place. **One exception:** in the pane screen's 30px tab row the "+" is a bare glyph in a 24px box (`face="bare"`), drawn like the fold chevron beside it, because there the ring read as a placeholder (decided 2026-11-06). The caller passes the tap reach, because only the call site can measure what sits around it. |
 | `ui/branch-label.tsx` | The branch a pane's folder is on, on one line: a branch glyph and the name in 11px mono, or a commit glyph and `detached @abc1234`. A long name gives way in the middle and keeps its last eight characters. The screen reader hears the whole name in words. Owns no tap and no height of its own; the caller's line box holds it. The dashboard row's line 2, the pane header's workspace line, and the Files header. |
 | `ui/button.tsx` | Every clickable control with a label. Six variants, one box. Exports `buttonVariants` so a real `<a>` can wear the clothes. |
 | `ui/badge.tsx` | A small static label pill. Not a status chip — it carries no dot and no tap floor. |
@@ -293,7 +293,7 @@ round came back softer than the direction that was chosen.
 
 **Full-round is RESERVED** for shapes whose width equals their height, where it draws a
 circle: the status marks that ARE a circle (working, done, idle, unknown; blocked is a triangle and unseen a square, see below), the avatar, the switch thumb, a bead, the dashed "+" of
-`ui/add-button.tsx` at both its sizes, the floating New button of `ui/fab.tsx` when folded (its "+ New" pill takes 2px). Anything wider than it is tall becomes a *stadium*,
+`ui/add-button.tsx` (its ring, and the bare face's hover circle), the floating New button of `ui/fab.tsx` when folded (its "+ New" pill takes 2px). Anything wider than it is tall becomes a *stadium*,
 and there is no stadium in the mark. The chip, the pane pill and the switch track all take
 2px, each with a comment at the line saying why, so nobody "fixes" one back.
 
