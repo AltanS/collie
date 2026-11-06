@@ -78,9 +78,13 @@ export function NewTabSheet({ open, onClose, label, beside, scope, launchers, st
   const [notice, setNotice] = useState<SheetNotice | null>(null);
   // The request id of the last start nobody could confirm, kept for a retry of the same row.
   const unknownAsk = useRef<{ key: string; id: string } | null>(null);
-  // A new opening starts clean: no notice from the last workspace, no retry id.
+  // A new opening starts clean: no notice from the last workspace, no retry id. The opening counter
+  // lets a start that finishes after its sheet closed (Escape, the backdrop, a drag while it was in
+  // flight) say nothing into the next opening.
+  const opening = useRef(0);
   useEffect(() => {
     if (open) return;
+    opening.current += 1;
     setNotice(null);
     unknownAsk.current = null;
   }, [open]);
@@ -94,9 +98,13 @@ export function NewTabSheet({ open, onClose, label, beside, scope, launchers, st
     const ask: StartAsk = { what, requestId, beside: { paneId: beside.paneId, workspaceId: beside.workspaceId } };
     if (rowHarness !== undefined) ask.rowHarness = rowHarness;
     if (what.kind === "shell") ask.legacyShell = true;
+    const startedIn = opening.current;
     const outcome = await start(ask, scope);
     busyRef.current = false;
     setBusyKey(null);
+    // Closed while it ran: a `done` has already moved the phone, and anything else belongs to a sheet
+    // that is gone.
+    if (opening.current !== startedIn) return;
     if (outcome.kind === "done") {
       unknownAsk.current = null;
       onClose();

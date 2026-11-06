@@ -170,7 +170,7 @@ describe("NewTabSheet, a tap", () => {
     expect(ask.cwd).toBeUndefined();
   });
 
-  it("sends a command row by its line, and an agent row with its harness", async () => {
+  it("sends a command row by its line, with no harness", async () => {
     const { calls } = mount();
     await userEvent.click(row(/htop/));
     await waitFor(() => expect(calls.closed).toBe(1));
@@ -257,6 +257,21 @@ describe("NewTabSheet, the outcome", () => {
     await waitFor(() => expect(calls.asks).toHaveLength(3));
     expect(calls.asks[2]!.ask.requestId).not.toBe(calls.asks[0]!.ask.requestId);
     await waitFor(() => expect(calls.closed).toBe(1));
+  });
+
+  it("says nothing into the next opening when a start ends after the sheet was dismissed", async () => {
+    const { calls } = mount({ outcomes: [{ kind: "refused", message: "Too late." }] });
+    calls.hold = true;
+    await userEvent.click(row(/htop/));
+    await waitFor(() => expect(row(/htop/)).toHaveAttribute("aria-busy", "true"));
+    await userEvent.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    calls.release();
+    await waitFor(() => expect(calls.asks).toHaveLength(1));
+    await userEvent.click(screen.getByRole("button", { name: "reopen" }));
+    expect(row(/htop/)).toBeEnabled();
+    expect(sheet().queryByRole("alert")).toBeNull();
+    expect(calls.closed).toBe(1);
   });
 
   it("starts clean when opened again: no notice from the last time", async () => {
