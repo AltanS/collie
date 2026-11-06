@@ -92,7 +92,8 @@ The action row above the composer. Its harness section holds the harness's own b
 ## Pins
 
 A copy of one Chat block (your message, a reply or a tool card) that the machine owning the pane keeps
-for one [session](#session). The [belt](#belt) shows a mark with their count, and a tap opens them
+for one [session](#session). To pin a block, tap it, then its **⋯**. The [belt](#belt) shows a mark with
+their count, and a tap opens them
 ([Pinned messages](configure.md#chat-view)). They are not the **Pin to top** of a pane, which keeps the
 pane at the top of a list.
 

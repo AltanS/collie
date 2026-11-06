@@ -5,12 +5,13 @@ import { fixtureKiroChat, fixtureKiroHistory, fixtureKiroSnapshot, KIRO_PANE_ID 
 
 import { fill, installApiStub, installPaneWorld, paneCapture, pinLocale } from "./fixtures/api";
 
-// A CHAT BLOCK CAN BE PINNED (M90). On the built app, over the api stub: tap the block's ⋯, Pin, and the block wears
+// A CHAT BLOCK CAN BE PINNED (M90). On the built app, over the api stub: tap the block, then its ⋯, Pin, and the block wears
 // its mark and the belt shows the Pins mark with the count; tap the mark and the sheet lists the pin; tap the row and
 // the detail layer shows the whole text; Unpin there, and the sheet closes and the mark goes. The rules of what is
-// pinnable and what a refusal says are the unit layer's (`lib/message-pins.test.ts`, `bridge/pins/*.test.ts`); what
-// only an engine shows is that the ⋯ takes a tap on a real touch screen, the sheets stack and close, and the belt's
-// new mark draws in the room it is given.
+// pinnable and what a refusal says are the unit layer's (`lib/message-pins.test.ts`, `bridge/pins/*.test.ts`), and so
+// is what a tap reveals and what hides it again (`components/stream-block.test.tsx`); what only an engine shows is that
+// the ⋯ is not drawn at rest, that showing it moves no box, that it takes a tap on a real touch screen, that the sheets
+// stack and close, and that the belt's new mark draws in the room it is given.
 //
 // The Kiro world is the one journal with a plain reply in it: its answer is the block pinned here.
 
@@ -39,15 +40,29 @@ test.beforeEach(async ({ page }, testInfo) => {
 const answerBlock = (page: Page) => page.locator("[data-block]").filter({ has: page.getByText(ANSWER, { exact: true }) });
 const beltMark = (page: Page, count: number) => page.getByRole("button", { name: fill(en["pins.belt.label"], { count }) });
 
-test("a block is pinned from its ⋯, listed in the sheet, read in full and unpinned", async ({ page }) => {
+test("a block shows its ⋯ on a tap, and is pinned from it, listed in the sheet, read in full and unpinned", async ({ page }) => {
   // Given: the pane open on Chat, the answer on screen and nothing pinned.
   await page.goto(PANE_URL);
   await expect(page.getByText(ANSWER, { exact: true })).toBeVisible();
   await expect(page.getByRole("img", { name: en["pins.mark"] })).toHaveCount(0);
   await expect(page.locator('[data-slot="belt-pins"]')).toHaveCount(0);
 
-  // When: the ⋯ on the answer is tapped and Pin is chosen.
-  await answerBlock(page).getByRole("button", { name: en["pins.action.more"] }).click();
+  // At rest the answer's ⋯ is not drawn, and its text is not wrapped round a place for it.
+  const more = answerBlock(page).getByRole("button", { name: en["pins.action.more"] });
+  await expect(more).toHaveCSS("opacity", "0");
+  const text = page.getByText(ANSWER, { exact: true });
+  const before = { block: await answerBlock(page).boundingBox(), text: await text.boundingBox() };
+
+  // When: the answer's text is tapped.
+  await text.click();
+  // Then: its ⋯ shows, and neither the block nor its text moved.
+  await expect(answerBlock(page)).toHaveAttribute("data-revealed", "");
+  await expect(more).toHaveCSS("opacity", "1");
+  expect(await answerBlock(page).boundingBox()).toEqual(before.block);
+  expect(await text.boundingBox()).toEqual(before.text);
+
+  // When: the ⋯ is tapped and Pin is chosen.
+  await more.click();
   await page.getByRole("dialog").getByRole("button", { name: en["pins.action.pin"], exact: true }).click();
 
   // Then: the block wears its mark and the belt's Pins mark reads one.

@@ -33,6 +33,8 @@ Running a crew? Update the lead first; members follow on their own. Details:
 ### Fixed
 
 - **A slow drag down on the Switch pane sheet follows the finger.** Each poll of the pane, every 1.5 seconds while an agent works, snapped a sheet held mid-drag back to the top, and the next move pulled it under the finger again, so the sheet flickered on the way down. The sheet now keeps its drag through a poll, on every sheet that closes with a drag.
+- **A Chat block shows its ⋯ only after you tap it.** Every pinnable block wore a ⋯ at its top right all the time, and the first line of its text wrapped around it. Now a block shows nothing at rest: tap it, or hold it, and its ⋯ appears as a small chip over the corner, beside a copy button or a tool card's chevron rather than on it. The ⋯ opens the sheet as before, and hides after 4 seconds, on a tap elsewhere or on a scroll. A right click on a desktop still opens the sheet at once.
+- **The "+" at the end of the tab row sits level with the tabs.** It drew a 28px circle in the 30px row, so under the folder look its ring nearly touched the line below the tabs and read as sitting on it. It is a 24px circle now, with the same air above and below, and it still answers a tap 44px wide across the whole row.
 
 ## [1.28.0] - 2026-11-06
 

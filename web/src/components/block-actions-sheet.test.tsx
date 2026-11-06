@@ -5,7 +5,7 @@ import type { ChatItem } from "@/lib/chat-items";
 import { clearStatus, useStatus } from "@/lib/status";
 import { BlockActionsSheet } from "./block-actions-sheet";
 
-// The two rows a hold on a Chat block offers (M90 spec 02): Pin or Unpin by whether the block is pinned, and
+// The two rows the ⋯ of a Chat block offers (M90 spec 02): Pin or Unpin by whether the block is pinned, and
 // Copy text. Both close the sheet first, and Pin and Unpin hand the block to the pane view's hook.
 
 const writeText = vi.fn<(text: string) => Promise<void>>();

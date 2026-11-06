@@ -9,7 +9,8 @@ import { t } from "@/lib/i18n";
 import { itemCopyText, itemTitle } from "@/lib/message-pins";
 import { setStatus } from "@/lib/status";
 
-// WHAT A HOLD (OR THE ⋯) ON A CHAT BLOCK OFFERS (M90 spec 02): two rows, Pin or Unpin and Copy text. The title
+// WHAT THE ⋯ OF A CHAT BLOCK OFFERS (M90 spec 02): two rows, Pin or Unpin and Copy text. A tap or a hold on the block
+// shows its ⋯ and the ⋯ opens this sheet; a right click on a desk opens it at once (stream-block.tsx). The title
 // says which block it is, in words ("Your message", "Reply", "Tool: git"), because the sheet opens over the
 // stream and the block under the finger is no longer the thing in view.
 //
