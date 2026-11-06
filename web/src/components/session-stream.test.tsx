@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, createEvent, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createRef } from "react";
 
@@ -6,7 +6,9 @@ import { SessionStream, type QueuedCardAction } from "./session-stream";
 import type { ChatFeed } from "@/hooks/use-chat-window";
 import type { ChatMessageListHandle } from "@/components/ui/chat/chat-message-list";
 import { EMPTY_CHAT_WINDOW, type ChatWindow } from "@/lib/chat-window";
+import type { ChatItem } from "@/lib/chat-items";
 import type { ChatEntry } from "@/lib/types";
+import { BLOCK_HOLD_MS } from "./stream-block";
 
 // The pane view's second body. The load-bearing behaviours: the two empty answers are never drawn
 // alike, a pane with nothing to read says nothing until it has actually asked, older turns come off
@@ -1131,5 +1133,166 @@ describe("SessionStream — the prompt pin", () => {
       }),
     );
     expect(document.querySelector('[data-slot="prompt-pin"]')).toBeNull();
+  });
+});
+
+// THE WAY IN TO A BLOCK'S ACTIONS (M90 spec 02): a `⋯` button, and the hold and the right click as second ways.
+// What is pinned down: it is a real button that opens, a tap on the text does not, and a block that is growing,
+// that cannot be pinned, or that sits where Pin may not be offered gets no way in at all.
+describe("SessionStream pins", () => {
+  afterEach(() => vi.useRealTimers());
+
+  const feed = (entries: ChatEntry[]) => feedOf({ status: { kind: "live" }, entries });
+  const two = feed([entry("u", BASE, "do it", { role: "user" }), entry("a", BASE + 1, "done")]);
+
+  function renderPins(over: { feed?: ChatFeed; pins?: React.ComponentProps<typeof SessionStream>["pins"]; working?: boolean }) {
+    const listRef = createRef<ChatMessageListHandle>();
+    return render(
+      <SessionStream
+        feed={over.feed ?? two}
+        address="w1:p1"
+        working={over.working ?? false}
+        showToolCalls
+        showCompactions={false}
+        fontSize={14}
+        listRef={listRef}
+        agent="muse"
+        pins={over.pins}
+      />,
+    );
+  }
+
+  const opened = (): [ReturnType<typeof vi.fn<(item: ChatItem) => void>>, { pinned: ReadonlyMap<string, string>; onActions: (item: ChatItem) => void }] => {
+    const onActions = vi.fn<(item: ChatItem) => void>();
+    return [onActions, { pinned: new Map(), onActions }];
+  };
+
+  it("opens the actions from the ⋯ of a block, with that block's item", async () => {
+    const [onActions, pins] = opened();
+    renderPins({ pins });
+    const buttons = screen.getAllByRole("button", { name: "Message actions" });
+    expect(buttons).toHaveLength(2);
+    await userEvent.click(buttons[1]!);
+    expect(onActions).toHaveBeenCalledOnce();
+    expect(onActions.mock.calls[0]![0]).toMatchObject({ id: "a:0", kind: "reply", text: "done" });
+  });
+
+  it("opens on a hold of the block, after the hold's own delay and not before", () => {
+    vi.useFakeTimers();
+    const [onActions, pins] = opened();
+    const { container } = renderPins({ pins });
+    const block = container.querySelectorAll<HTMLElement>("[data-block]")[1]!;
+    fireEvent.pointerDown(block, { button: 0, clientX: 10, clientY: 10 });
+    act(() => vi.advanceTimersByTime(BLOCK_HOLD_MS - 1));
+    expect(onActions).not.toHaveBeenCalled();
+    act(() => vi.advanceTimersByTime(1));
+    expect(onActions).toHaveBeenCalledOnce();
+    expect(onActions.mock.calls[0]![0]).toMatchObject({ id: "a:0" });
+  });
+
+  it("opens on a right click when no text is selected, and takes the native menu away", () => {
+    const [onActions, pins] = opened();
+    const { container } = renderPins({ pins });
+    const block = container.querySelectorAll<HTMLElement>("[data-block]")[0]!;
+    const menu = createEvent.contextMenu(block);
+    fireEvent(block, menu);
+    expect(menu.defaultPrevented).toBe(true);
+    expect(onActions).toHaveBeenCalledOnce();
+  });
+
+  it("leaves the native menu to the browser when text of the block is selected", () => {
+    const [onActions, pins] = opened();
+    const { container } = renderPins({ pins });
+    const block = container.querySelectorAll<HTMLElement>("[data-block]")[1]!;
+    const text = within(block).getByText("done");
+    const range = document.createRange();
+    range.selectNodeContents(text);
+    window.getSelection()?.removeAllRanges();
+    window.getSelection()?.addRange(range);
+    const menu = createEvent.contextMenu(block);
+    fireEvent(block, menu);
+    window.getSelection()?.removeAllRanges();
+    expect(menu.defaultPrevented).toBe(false);
+    expect(onActions).not.toHaveBeenCalled();
+  });
+
+  it("does not open on a tap on the text, and a hold cut short opens nothing", () => {
+    vi.useFakeTimers();
+    const [onActions, pins] = opened();
+    const { container } = renderPins({ pins });
+    const block = container.querySelectorAll<HTMLElement>("[data-block]")[1]!;
+    fireEvent.pointerDown(block, { button: 0, clientX: 10, clientY: 10 });
+    act(() => vi.advanceTimersByTime(100));
+    fireEvent.pointerUp(block);
+    fireEvent.click(within(block).getByText("done"));
+    act(() => vi.advanceTimersByTime(BLOCK_HOLD_MS));
+    expect(onActions).not.toHaveBeenCalled();
+  });
+
+  it("does not turn a hold into a pin when the finger moves off: a scroll is not a hold", () => {
+    vi.useFakeTimers();
+    const [onActions, pins] = opened();
+    const { container } = renderPins({ pins });
+    const block = container.querySelectorAll<HTMLElement>("[data-block]")[1]!;
+    fireEvent.pointerDown(block, { button: 0, clientX: 10, clientY: 10 });
+    fireEvent.pointerMove(block, { clientX: 10, clientY: 80 });
+    act(() => vi.advanceTimersByTime(BLOCK_HOLD_MS));
+    expect(onActions).not.toHaveBeenCalled();
+  });
+
+  it("marks a pinned block with the pin glyph, named, and no other block", () => {
+    const { container } = renderPins({ pins: { pinned: new Map([["a:0", "p1"]]), onActions: vi.fn() } });
+    const blocks = container.querySelectorAll<HTMLElement>("[data-block]");
+    expect(within(blocks[1]!).getByRole("img", { name: "Pinned" })).toBeInTheDocument();
+    expect(within(blocks[0]!).queryByRole("img", { name: "Pinned" })).toBeNull();
+  });
+
+  it("still draws the mark where no way in is offered, and no ⋯", () => {
+    renderPins({ pins: { pinned: new Map([["a:0", "p1"]]) } });
+    expect(screen.getByRole("img", { name: "Pinned" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Message actions" })).toBeNull();
+  });
+
+  it("offers nothing without a pins prop: the stream is exactly what it was", () => {
+    const { container } = renderPins({});
+    expect(screen.queryByRole("button", { name: "Message actions" })).toBeNull();
+    expect(container.querySelector("[data-slot='pin-mark']")).toBeNull();
+  });
+
+  it("does not offer a reply that is still being written, and offers it once it settles", () => {
+    const writing = feed([entry("a", BASE, "typing", { partial: true })]);
+    const [, pins] = opened();
+    const view = renderPins({ feed: writing, pins, working: true });
+    expect(screen.queryByRole("button", { name: "Message actions" })).toBeNull();
+    view.unmount();
+    renderPins({ feed: writing, pins, working: false });
+    expect(screen.getAllByRole("button", { name: "Message actions" })).toHaveLength(1);
+  });
+
+  it("does not offer the compaction marker, and does offer a tool card", () => {
+    const withImage = feed([
+      entry("c", BASE, "the recap", { role: "summary" }),
+      entry("t", BASE + 1, "", { parts: [{ kind: "tool", name: "Bash", summary: "ls", id: "toolu_1" }] }),
+    ]);
+    const [, pins] = opened();
+    renderPins({ feed: withImage, pins });
+    expect(screen.getAllByRole("button", { name: "Message actions" })).toHaveLength(1);
+  });
+
+  it("gives a folded run of steps no way in: it has no one text to keep", () => {
+    const steps = feed(
+      ["1", "2", "3"].map((n, i) => entry(`t${n}`, BASE + i, "", { parts: [{ kind: "tool", name: "Bash", summary: `ls ${n}`, id: `toolu_${n}` }] })),
+    );
+    const [, pins] = opened();
+    renderPins({ feed: steps, pins });
+    expect(screen.queryByRole("button", { name: "Message actions" })).toBeNull();
+  });
+
+  it("draws the way in with no box of its own: the block's own classes are the ones it always had, plus `relative`", () => {
+    const { container } = renderPins({ pins: opened()[1] });
+    const block = container.querySelector("[data-block]")!;
+    expect(block.className).toContain("-m-3 p-3");
+    expect(block.className).toContain("relative");
+    expect(screen.getAllByRole("button", { name: "Message actions" })[0]!.className).toContain("absolute");
   });
 });

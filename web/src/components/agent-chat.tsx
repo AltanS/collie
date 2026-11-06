@@ -101,6 +101,11 @@ import { PaneSettingsSheet } from "@/components/pane-settings-sheet";
 import { WalkyOpenProvider, WalkyPanesProvider, type WalkyPanes } from "@/components/walky-log";
 import { paneAddress, takeBackNote } from "@/lib/walky";
 import { WalkySheet } from "@/components/walky-sheet";
+import { BlockActionsSheet } from "@/components/block-actions-sheet";
+import { useHostVersion } from "@/hooks/use-host-version";
+import { useMessagePins } from "@/hooks/use-message-pins";
+import type { ChatItem } from "@/lib/chat-items";
+import { hostKeepsPins } from "@/lib/message-pins";
 import { CompactStripLabels, TAB_ROW_SQUARE_TAP_TARGET } from "@/components/ui/labelled-strip";
 import { ReadOnlyBanner } from "@/components/read-only-banner";
 import { HostStaleBanner } from "@/components/host-stale-banner";
@@ -1859,6 +1864,38 @@ export function AgentChat({
   // as `savedCopy`, and the create hook above reads it through the ref. Nothing saved can act.
   const savedCopyWrites = actsDisabledByCache || !paneLive;
   structuralWritesOff.current = savedCopyWrites;
+
+  // ── PINNED MESSAGES (M90) ─────────────────────────────────────────────────────────────────────────────────────────────
+  // The pins of this pane's session, held here so the stream (a mark on each pinned block, the way in), the belt (the
+  // Pins mark and its count) and the sheets read one list. READING needs the pane to be a session the machine can
+  // answer for and the machine to be there: not a bare shell, not a pane that is gone, not a machine whose Collie
+  // predates pins (read off the lead's census for a member, hooks/use-host-version.ts), not a saved copy or a refused
+  // host. WRITING (the ⋯ and the hold on a block) needs everything a write needs on top.
+  const hostVersion = useHostVersion(agent?.host ?? scope?.host);
+  const pinsKept = agent !== undefined && agent.kind !== "shell" && !gone && hostKeepsPins(hostVersion);
+  const pinsReadable = pinsKept && !savedCopyWrites && !connecting && hostBlock === undefined;
+  const messagePins = useMessagePins({ paneId, scope, enabled: pinsReadable, wireCount: agent?.pins ?? 0 });
+  const pinsWritable = pinsReadable && !readOnly;
+  // The block whose actions sheet is open, as the stream handed it over.
+  const [blockActions, setBlockActions] = useState<ChatItem | null>(null);
+  const pinnedPinId = (item: ChatItem): string => messagePins.pinned.get(item.id) ?? "";
+  const pinBlock = (item: ChatItem) => {
+    const refusal = refuseWrite();
+    if (refusal) {
+      setStatus(refusal, "error");
+      return;
+    }
+    void messagePins.pin(item);
+  };
+  const unpinBlock = (item: ChatItem) => {
+    const refusal = refuseWrite();
+    if (refusal) {
+      setStatus(refusal, "error");
+      return;
+    }
+    const pinId = pinnedPinId(item);
+    if (pinId !== "") void messagePins.unpin(pinId);
+  };
   const handleSendQueuedNow = useCallback(
     async (keys: readonly string[]): Promise<boolean> => {
       const refusal = refuseWrite();
@@ -2784,6 +2821,9 @@ export function AgentChat({
                   // "no transcript file" reading, which is only true of a pane that should have one.
                   starting={body === "start"}
                   agent={agent?.agent}
+                  // The pinned messages (M90): the mark on a pinned block always, the way in to Pin only where a
+                  // write is allowed (`pinsWritable`).
+                  pins={{ pinned: messagePins.pinned, onActions: pinsWritable ? setBlockActions : undefined }}
                   // A pane with no screen is a durable conversation: its thread shows the person's line at once,
                   // a working row while the program thinks, and a cursor on a reply still being written.
                   durable={gridless}
@@ -3586,6 +3626,14 @@ export function AgentChat({
               ? () => nav.down(newPath({ machine: scope?.host, pane: paneId, session: scope?.session }))
               : undefined
           }
+        />
+        {/* What a hold (or the ⋯) on a Chat block offers: Pin or Unpin, and Copy text (M90). */}
+        <BlockActionsSheet
+          item={blockActions}
+          pinned={blockActions !== null && pinnedPinId(blockActions) !== ""}
+          onClose={() => setBlockActions(null)}
+          onPin={pinBlock}
+          onUnpin={unpinBlock}
         />
         {/* The pane's walky talky messages (M62). Reply hands the sender to the composer, which sends through
             the bridge's walky route with `replyTo`; the sheet itself sends nothing. A reply is a write, so a

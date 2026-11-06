@@ -1,0 +1,100 @@
+import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+
+import type { ChatItem } from "@/lib/chat-items";
+import { clearStatus, useStatus } from "@/lib/status";
+import { BlockActionsSheet } from "./block-actions-sheet";
+
+// The two rows a hold on a Chat block offers (M90 spec 02): Pin or Unpin by whether the block is pinned, and
+// Copy text. Both close the sheet first, and Pin and Unpin hand the block to the pane view's hook.
+
+const writeText = vi.fn<(text: string) => Promise<void>>();
+
+beforeEach(() => {
+  clearStatus();
+  writeText.mockReset();
+  writeText.mockResolvedValue(undefined);
+  Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+});
+
+const reply: ChatItem = { id: "a1:0", kind: "reply", text: "The answer is 42." };
+const tool: ChatItem = { id: "toolu_1", kind: "tool", status: "done", tool: { kind: "execute", command: "git status", output: "clean" } };
+
+function Status() {
+  const status = useStatus();
+  return <p data-testid="status">{status?.text ?? ""}</p>;
+}
+
+function sheet(over: Partial<React.ComponentProps<typeof BlockActionsSheet>> = {}) {
+  const props = { item: reply, pinned: false, onClose: vi.fn(), onPin: vi.fn(), onUnpin: vi.fn(), ...over };
+  render(
+    <>
+      <BlockActionsSheet {...props} />
+      <Status />
+    </>,
+  );
+  return props;
+}
+
+describe("BlockActionsSheet", () => {
+  it("draws nothing without a block", () => {
+    const { container } = render(<BlockActionsSheet item={null} pinned={false} onClose={vi.fn()} onPin={vi.fn()} onUnpin={vi.fn()} />);
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it("is titled by what the block is, a tool card by its tool", () => {
+    sheet();
+    expect(screen.getByRole("dialog", { name: "Reply" })).toBeInTheDocument();
+  });
+
+  it("titles a tool card by its tool", () => {
+    sheet({ item: tool });
+    expect(screen.getByRole("dialog", { name: "Tool: git" })).toBeInTheDocument();
+  });
+
+  it("offers Pin for a block that is not pinned, closes, and hands the block over", async () => {
+    const props = sheet();
+    expect(screen.queryByRole("button", { name: "Unpin" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Pin" }));
+    expect(props.onClose).toHaveBeenCalledOnce();
+    expect(props.onPin).toHaveBeenCalledWith(reply);
+    expect(props.onUnpin).not.toHaveBeenCalled();
+  });
+
+  it("offers Unpin for a block that is pinned", async () => {
+    const props = sheet({ pinned: true });
+    expect(screen.queryByRole("button", { name: "Pin" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Unpin" }));
+    expect(props.onClose).toHaveBeenCalledOnce();
+    expect(props.onUnpin).toHaveBeenCalledWith(reply);
+    expect(props.onPin).not.toHaveBeenCalled();
+  });
+
+  it("copies the block's text, closes, and says so", async () => {
+    const props = sheet();
+    await userEvent.click(screen.getByRole("button", { name: "Copy text" }));
+    expect(props.onClose).toHaveBeenCalledOnce();
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith("The answer is 42."));
+    await waitFor(() => expect(screen.getByTestId("status")).toHaveTextContent("Copied to clipboard"));
+  });
+
+  it("copies a tool card as its step line over what it printed", async () => {
+    sheet({ item: tool });
+    await userEvent.click(screen.getByRole("button", { name: "Copy text" }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith("git: git status\nclean"));
+  });
+
+  it("says so when the browser refuses the copy", async () => {
+    writeText.mockRejectedValue(new Error("denied"));
+    sheet();
+    await userEvent.click(screen.getByRole("button", { name: "Copy text" }));
+    await waitFor(() => expect(screen.getByTestId("status")).toHaveTextContent("Couldn't copy to clipboard"));
+  });
+
+  it("leaves the Copy row off where nothing can copy", () => {
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: undefined });
+    sheet();
+    expect(screen.queryByRole("button", { name: "Copy text" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Pin" })).toBeInTheDocument();
+  });
+});
