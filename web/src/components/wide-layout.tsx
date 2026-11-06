@@ -433,7 +433,10 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
         data-segment={book ? "left" : undefined}
         aria-label={t("wide.sidebar.label")}
         // Folded with one column, the sidebar fills the left segment; with two, it is the rail.
-        className={cn("flex shrink-0 flex-col border-r border-rule bg-card", book && sidebarShown && "fold-left-full")}
+        // `pt-[env(safe-area-inset-top)]`: the sidebar and the tab row beside it are the layout's top
+        // edge, so the two of them clear the status bar; the header docked lower down does not
+        // (app-header.tsx). The card paints under the bar, so the strip it reserves is the panel's own.
+        className={cn("flex shrink-0 flex-col border-r border-rule bg-card pt-[env(safe-area-inset-top)]", book && sidebarShown && "fold-left-full")}
         style={book && sidebarShown ? undefined : { width: sidebarShown ? SIDEBAR_WIDTH[widthClass] : RAIL_WIDTH }}
       >
         <SidebarTop open={sidebarShown} setMark={setMark} toggle={!book} />
@@ -446,9 +449,15 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
         </div>
         {/* NEW SPACE and SETTINGS, pinned under the list so both are one tap away, however long the
             list. The pane header has no gear; this is the large screen's way to Settings. */}
+        {/* The foot clears the gesture bar the way the composer beside it does (composer.tsx's
+            bottom pad), so the two columns end on one line and NEW SPACE never sits under the bar.
+            With no bottom inset it is the 4px it always was. */}
         <div
           data-slot="sidebar-foot"
-          className={cn("flex shrink-0 items-center border-t border-rule", sidebarShown ? "gap-1 px-2 py-1" : "flex-col py-1")}
+          className={cn(
+            "flex shrink-0 items-center border-t border-rule pt-1 pb-[calc(0.25rem+env(safe-area-inset-bottom))]",
+            sidebarShown ? "gap-1 px-2" : "flex-col",
+          )}
         >
           {sidebarShown ? (
             <Button variant="ghost" data-slot="new-space" className="h-11 min-w-0 flex-1 justify-start gap-2.5 px-2 text-sm font-medium" onClick={toNew}>
@@ -471,7 +480,12 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
         <div
           data-slot="space-header"
           {...swipe}
-          className={cn("flex h-12 shrink-0 touch-none items-center gap-1 border-b border-rule bg-band-ground", bookPair ? "pr-1" : "pl-4 pr-1")}
+          // The row keeps its 48px and the status bar's inset goes on top of it, in the row's own
+          // ground, beside the sidebar's (the aside above says why). With no inset it is 48px as before.
+          className={cn(
+            "flex h-[calc(3rem+env(safe-area-inset-top))] shrink-0 touch-none items-center gap-1 border-b border-rule bg-band-ground pt-[env(safe-area-inset-top)]",
+            bookPair ? "pr-1" : "pl-4 pr-1",
+          )}
         >
           {/* Folded with two columns, the header is cut at the fold like the strip under it: the name
               over the left column, the buttons over the right one, nothing on the hinge. */}
