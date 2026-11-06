@@ -1809,3 +1809,27 @@
 [data-fold="book"] .fold-left-full {
   width: var(--fold-a);
 }
+
+/* THE MARK WHILE THE APP UPDATES (2026-11-06, components/collie-home.tsx APPLYING_CLASS). While a new
+   app build downloads or waits to load, every bead of the header mark, near and far, draws as one full
+   disc in the update colour, the colour the band's old download row wore (`caution`,
+   `--status-working`). The ring and the head keep their ink. The orbit's speed is the mark's own
+   `loading` input; this is only the paint, so under reduced motion the generated stylesheet stops the
+   turning and this colour alone still says it.
+   Host-side because collie-mark.tsx is generated and sealed (DESIGN.md §8); the selectors name its
+   parts, and collie-home.test.tsx renders the real mark and fails if one stops matching every bead.
+   What each rule undoes:
+   - a disc's own fill (ink, or the two accents), but never the paper knockout ring that says a near
+     bead is IN FRONT of the head;
+   - the full weight's shading mask, the half a near bead hides behind;
+   - the rock's paper-tinted facet, so the rock is one flat colour like the rest.
+   Unlayered, so it outranks the presentation attributes it overrides whatever layer order says. */
+.collie-applying .cm-b :is(circle, polygon):not([fill^="var(--cm-paper"]) {
+  fill: var(--status-working);
+}
+.collie-applying .cm-b [mask] {
+  mask: none;
+}
+.collie-applying .cm-b polygon[fill^="var(--cm-paper"] {
+  display: none;
+}

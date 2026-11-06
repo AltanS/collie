@@ -4,6 +4,7 @@
 
 import { AlphaBar } from "@/components/alpha-bar";
 import { AppHeaderHost, RouteHeader, SettingsGear } from "@/components/app-header";
+import { APPLYING_CLASS, CollieHome } from "@/components/collie-home";
 import { CollieMark } from "@/components/collie-mark";
 import { homeSolo } from "../fixtures";
 import { RootRouter } from "../harness";
@@ -65,6 +66,24 @@ export function BrandSection() {
               <MarkSample size={40} weight="header" loading={false} muted />
               <MarkSample size={64} weight="header" loading={false} muted />
               <MarkSample size={96} weight="full" loading={false} muted />
+            </div>
+          </Stage>
+        </Card>
+
+        <Card
+          state="mark-applying"
+          label="the mark, app updating"
+          reach="leave the app open while a new build of it downloads, or while it waits to reload onto one. Tap the mark to open the dashboard's update line."
+          note="The band's old download row, moved onto the mark (2026-11-06). The loading rate, and every bead a full disc in --status-working. The paint is a class plus an index.css rule, because collie-mark.tsx is generated. Under reduced motion the orbit stops and the colour stays. The first sample is the real header button, with its updating name."
+        >
+          <Stage>
+            <div className="flex flex-wrap items-end gap-6 p-4">
+              <div className="flex flex-col items-center gap-1.5">
+                <CollieHome trouble={false} applying paper="var(--background)" />
+                <span className="font-mono text-[10px] text-muted-foreground">header button</span>
+              </div>
+              <MarkSample size={64} weight="header" loading applying />
+              <MarkSample size={96} weight="full" loading applying />
             </div>
           </Stage>
         </Card>
@@ -150,11 +169,13 @@ function MarkSample({
   weight,
   loading,
   muted = false,
+  applying = false,
 }: {
   size: number;
   weight: "full" | "header";
   loading: boolean;
   muted?: boolean;
+  applying?: boolean;
 }) {
   return (
     <div className="flex flex-col items-center gap-1.5">
@@ -163,12 +184,13 @@ function MarkSample({
         weight={weight}
         loading={loading}
         paper="var(--background)"
-        className={muted ? "opacity-40 grayscale" : undefined}
+        className={muted ? "opacity-40 grayscale" : applying ? APPLYING_CLASS : undefined}
       />
       <span className="font-mono text-[10px] text-muted-foreground">
         {size} {weight}
         {loading ? " loading" : ""}
         {muted ? " muted" : ""}
+        {applying ? " applying" : ""}
       </span>
     </div>
   );

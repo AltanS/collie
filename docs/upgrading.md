@@ -161,8 +161,12 @@ and the one case the phone cannot fix, see
 ![The Updates page on a lead, with the preflight per member and one button for the crew.](images/updates/updates-page-crew-available.png)
 
 A band across the top of every screen carries what is standing rather than what is running: the
-release on offer, a peer that could not update, and `New version — tap to update` when the app in
-your hand is behind the bridge. A running update is the sheet's, not the band's.
+release on offer, and a peer that could not update. A running update is the sheet's, not the band's.
+
+When the app in your hand is updating, the Collie mark in the header says so. Every bead turns fast
+and takes the update colour while the new version downloads and until the page reloads onto it.
+Tap the mark to open the dashboard. Its update line says `Downloading the new version…` with how
+far it is, or `New version, tap to update` when the download is done.
 
 ![The band when a new release is ready to install.](images/updates/band-available.png)
 
@@ -328,7 +332,8 @@ Expect the newest tag.
 
 **The phone's own bundle** is a separate thing. The PWA checks for a new build by itself and reloads
 within about a minute, and it holds that reload for the length of an update run. If you are mid-task
-it shows a "tap to update" banner and waits for your tap.
+the header mark turns in the update colour, and the dashboard's update line offers `New version, tap
+to update`. The page reloads on its own once you are done.
 
 ### On Windows
 

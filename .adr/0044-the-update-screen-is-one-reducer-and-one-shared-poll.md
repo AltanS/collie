@@ -117,3 +117,25 @@ The screen now covers it, and the shape of this record holds:
   cannot flash in its place. It is bounded, it is one place, and it expires on its own — but it IS a
   second piece of state beside the polls, and a third one would be the signal that this record's
   "one reducer and one shared poll" has stopped describing the screen.
+
+## Amendment, 2026-11-06: the bundle leaves the band for the mark
+
+Decision 3 kept two states in `ribbonView` that are not a run: a stale bundle (`bundle`) and a
+bundle downloading with no run behind it (`bundle-installing`). Both stay in the reading, with the
+precedence they had. The band no longer draws them. Altan asked for the app being updated to show on
+the header mark instead, and for a tap on the mark to say what is happening.
+
+- **The mark carries it.** While either state is on, every bead of the header mark, near and far,
+  turns at the loading rate and draws as a full disc in `--status-working`, the colour the download
+  row wore. `lost` still outranks it, so a dead link never looks like an update in flight. Under
+  reduced motion the orbit stops and the colour alone says it.
+- **The dashboard says it in words.** A tap on the mark while the app updates opens the dashboard
+  from any route and brings its update line into view once. That line now leads with the bundle:
+  "Downloading the new version…" with a per cent of files when one is known, or "New version, tap to
+  update", which reloads the page as the band's row did.
+- **The band says nothing in place of them.** The download still outranks a failed peer and an
+  offer, so neither is posted under a turning mark. The download row's local close went with it.
+- **The paint is the host's, for now.** `collie-mark.tsx` is generated in collie-brand and sealed, so
+  `components/collie-home.tsx` adds a class and `index.css` recolours the beads under it. A test
+  renders the real mark and fails if the rules stop reaching every bead. When collie-brand grows an
+  `applying` input, the class and its rules go.

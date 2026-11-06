@@ -98,13 +98,17 @@ const ACTIVATION_MS = STUCK_GUARD_MS - 2_000;
 /** The footer chip, by its accessible name out of the app's own dictionary. No test id was added:
  *  `src/components/build-stamp.tsx:70-77` renders a real `<button>` with this as its whole name. */
 const CHIP = en["settings.buildStamp.tapToUpdate"];
-/** The band (`src/components/update-ribbon.tsx`), the OTHER surface that calls `checkForUpdate()`.
- *  It is the repeat-tap surface: the footer chip disables itself for the rest of the page's life on
- *  the first tap, so a case about tapping three times has to address the band. */
+/** The dashboard's update line (`src/components/update-banner.tsx`), the OTHER surface that calls
+ *  `checkForUpdate()`. It is the repeat-tap surface: the footer chip disables itself for the rest of
+ *  the page's life on the first tap, so a case about tapping three times has to address this line.
+ *  Until 2026-11-06 it was the band under the header; the header mark carries the bundle now, and a
+ *  tap on the mark opens this line. Every case here starts on the dashboard, where it sits. */
 const BAND = en["pwa.updateAvailable"];
-/** What the same band says once a worker is on its way in (2026-09-12). The row does not go away on
- *  the tap, it changes its words: a download the operator can see is a download they wait out. */
+/** What the same line says once a worker is on its way in (2026-09-12). It does not go away on the
+ *  tap, it changes its words: a download the operator can see is a download they wait out. */
 const DOWNLOADING = en["pwa.updateInstalling"];
+/** The header mark's accessible name while the app updates (2026-11-06). */
+const MARK_UPDATING = en["nav.home.aria.updating"];
 
 /** Where the reload counter lives. Read back after a navigation, so `sessionStorage`, not a variable. */
 const RELOADS_KEY = "e2e:reloads";
@@ -615,9 +619,10 @@ test("three taps on an installing worker produce exactly one reload and no secon
   await openAndTakeControl(page);
   announceB();
 
-  // The band, not the footer chip: the chip disables itself on the first tap
-  // (`src/components/build-stamp.tsx:46`), so it cannot be tapped three times. The band calls the
-  // same `checkForUpdate()` and stays live, and it is what the operator was hammering on the phone.
+  // The update line, not the footer chip: the chip disables itself on the first tap
+  // (`src/components/build-stamp.tsx:46`), so it cannot be tapped three times. The line calls the
+  // same `checkForUpdate()` and stays live, as the band it replaced did when the operator was
+  // hammering it on the phone.
   // It needs two consecutive stale polls to appear (`src/lib/self-update.ts`), which is why the
   // files are still A's here: nothing can install while the offer is arriving.
   const band = page.getByRole("button", { name: BAND });
@@ -632,11 +637,10 @@ test("three taps on an installing worker produce exactly one reload and no secon
 
   await band.click(); // tap one — the install starts and is held
 
-  // THE ROW CHANGES ITS WORDS ON THE FIRST TAP (2026-09-12). It does not go away: taps two and three
-  // land on the same band, now saying a download is in progress, which is what the operator hammering
-  // the phone never had. The row is no longer a button — a download has nothing for a tap to do, and
-  // it carries a close instead so a wait on a dead link is escapable — so the taps land on the text
-  // itself, exactly as a thumb on the phone does.
+  // THE LINE CHANGES ITS WORDS ON THE FIRST TAP (2026-09-12). It does not go away: taps two and
+  // three land on the same line, now saying a download is in progress, which is what the operator
+  // hammering the phone never had. It is no longer a button, since a download has nothing for a tap
+  // to do, so the taps land on the text itself, exactly as a thumb on the phone does.
   const downloading = page.getByText(DOWNLOADING);
   await expect(downloading).toBeVisible({ timeout: 15_000 });
 
@@ -702,6 +706,73 @@ test("the stuck guard reloads onto A, and the tap after it unregisters instead o
   await expect.poll(() => reloadCount(page), { timeout: 5_000 }).toBeGreaterThanOrEqual(2);
 });
 
+
+// ── The bundle is the mark's (2026-11-06) ─────────────────────────────────────────────────────────
+
+test("a bundle installing turns the mark, posts no band, and a tap on the mark shows the dashboard's line", async ({
+  page,
+}) => {
+  // Altan, 2026-11-06: while the app bundle applies, the header mark turns in the band's colour, and
+  // a tap on it opens the dashboard's update line. Two claims only an engine can check: the stylesheet
+  // really repaints the generated mark's beads over their presentation attributes, and the line is
+  // really on screen after the tap, not merely in the tree.
+  await openAndTakeControl(page);
+  announceB();
+  const line = page.getByRole("button", { name: BAND });
+  await expect(line).toBeVisible({ timeout: 30_000 });
+
+  throttleTheInstall();
+  deployB();
+  await line.click();
+  await expect
+    .poll(() => workerOnItsWayIn(page), { timeout: 10_000, intervals: [100] })
+    .toBe(true);
+
+  // Away from the dashboard, the way a thumb leaves it: into a space, then into a pane, both
+  // client-side. In a pane the mark's own tap goes UP to the space, so a tap that lands on the
+  // dashboard below is the update's tap and not the route's.
+  await page.getByRole("main").getByRole("button", { name: /^working collie 2 panes/u }).click();
+  await expect(page).toHaveURL(/\/space\/w2$/u);
+  await page.getByRole("main").getByRole("button", { name: /^codex logo codex/u }).click();
+  await expect(page).toHaveURL(/\/pane\/w2%3Ap1$/u);
+
+  // THE MARK SAYS IT, AND THE BAND DOES NOT.
+  const mark = page.getByRole("button", { name: MARK_UPDATING });
+  await expect(mark).toBeVisible();
+  await expect(page.getByText(DOWNLOADING)).toHaveCount(0);
+  // Every bead's body computes to the update colour, and the head does not. Read inside the mark's
+  // own button, as computed style: the paint is an `index.css` rule over the generated drawing's
+  // presentation attributes, which is exactly the cascade jsdom does not run.
+  const paint = await mark.evaluate((button) => {
+    const probe = document.createElement("span");
+    probe.style.color = "var(--status-working)";
+    document.body.append(probe);
+    const working = getComputedStyle(probe).color;
+    probe.remove();
+    const svg = button.querySelector("svg");
+    const beads = [...(svg?.querySelectorAll("g[class*='cm-b'] circle, g[class*='cm-b'] polygon") ?? [])].filter(
+      (el) => !(el.getAttribute("fill") ?? "").startsWith("var(--cm-paper"),
+    );
+    const head = svg?.querySelector("path[d^='M4805']") ?? null;
+    return {
+      working,
+      beads: beads.map((el) => getComputedStyle(el).fill),
+      head: head === null ? null : getComputedStyle(head).fill,
+    };
+  });
+  expect(paint.beads.length).toBe(16);
+  for (const fill of paint.beads) expect(fill).toBe(paint.working);
+  expect(paint.head).not.toBe(paint.working);
+
+  // THE TAP OPENS THE DASHBOARD, AND THE LINE IS IN VIEW.
+  await mark.click();
+  await expect(page).toHaveURL(/:\d+\/$/u);
+  await expect(page.getByText(DOWNLOADING)).toBeInViewport();
+
+  // The download finishes, the controller swaps, and THAT is the reload, as before.
+  clearThrottle();
+  await expectRunning(page, "b", 20_000);
+});
 
 // ── The 2026-09-12 race: a tap while the new worker is still installing ──────────────────────────
 

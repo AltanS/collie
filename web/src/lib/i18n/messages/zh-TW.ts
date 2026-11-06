@@ -251,6 +251,8 @@ export const zhTW: Dictionary = {
   "settings.updateBanner.releaseAvailable": "Collie {version} 已發布",
   "settings.updateBanner.majorAvailable": "Collie {version} 發布（主要版本升級）",
   "settings.updateBanner.copyAria": "複製指令：{command}",
+  "settings.updateBanner.bundleProgress": "已下載 {percent}%",
+  "settings.updateBanner.bundleReloads": "沒有進行中的操作後，頁面會自動重新載入。",
 
   // --- settings.typeface ---
   "settings.typeface.title": "介面字型",
@@ -1030,6 +1032,7 @@ export const zhTW: Dictionary = {
   "nav.home.aria.lost": "Collie 首頁（連線中斷）",
   "nav.home.aria.lostAt": "Collie 首頁（連線中斷）。正在顯示 {time} 儲存的內容。",
   "nav.home.aria.reconnecting": "Collie 首頁（重新連線中）",
+  "nav.home.aria.updating": "Collie 正在更新應用程式。開啟儀表板。",
   "nav.mux.onPrefix": "執行於",
   "nav.prereleaseTitle": "預覽版本：{version}",
 

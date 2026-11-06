@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { createMemoryRouter, RouterProvider } from "react-router";
@@ -7,6 +7,7 @@ import { afterEach, beforeEach, vi } from "vitest";
 import { CrewProvider } from "@/components/crew-provider";
 import { ROOT_ROUTE_ID, type HomeData } from "@/lib/loaders";
 import { setPinned } from "@/lib/pins";
+import { __resetBundleFocus, BUNDLE_FOCUS_TTL_MS, bundleFocusPending, requestBundleFocus } from "@/lib/bundle-apply";
 import {
   fixtureAgents,
   fixtureCrewAgents,
@@ -1099,5 +1100,74 @@ describe("the dashboard heading's '+' and the New tab sheet", () => {
     expect(screen.queryByRole("dialog", { name: "New tab in webapp" })).toBeNull();
     expect(sent.launch).toEqual([]);
     expect(sent.tab).toEqual([]);
+  });
+});
+
+// ── THE UPDATE LINE, BROUGHT INTO VIEW ONCE (2026-11-06) ─────────────────────────────────────────
+//
+// A tap on the header mark while the app updates asks for the dashboard's update line
+// (`lib/bundle-apply.ts`). The dashboard scrolls it into view once: on arrival, or in place when the
+// tap was made here. A plain visit never scrolls.
+describe("the dashboard's update line after a tap on the updating mark", () => {
+  const withRelease = () => ({
+    ...solo(),
+    update: {
+      current: "1.4.0",
+      latest: "1.5.0",
+      latestUrl: null,
+      releaseAvailable: true,
+      majorAvailable: null,
+      majorUrl: null,
+      bridgeStale: false,
+      checkedAt: null,
+    },
+  });
+  /** The scrolls that landed on the update line, by the element they were called on. */
+  const lineScrolls = (spy: { mock: { contexts: unknown[] } }) =>
+    spy.mock.contexts.filter((el) => el instanceof Element && (el.textContent ?? "").includes("Collie 1.5.0 available"));
+
+  let spy: ReturnType<typeof vi.fn<Element["scrollIntoView"]>>;
+  beforeEach(() => {
+    __resetBundleFocus();
+    spy = vi.fn<Element["scrollIntoView"]>();
+    vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(spy);
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+    __resetBundleFocus();
+  });
+
+  it("scrolls the line into view once on arrival, centred, and takes the request", async () => {
+    requestBundleFocus();
+    renderHome(withRelease());
+    await screen.findByText("Collie 1.5.0 available");
+    await waitFor(() => expect(lineScrolls(spy)).toHaveLength(1));
+    expect(spy.mock.calls.at(-1)?.[0]).toEqual({ block: "center" });
+    expect(bundleFocusPending()).toBe(false);
+  });
+
+  it("scrolls in place when the tap is made on the dashboard itself", async () => {
+    renderHome(withRelease());
+    await screen.findByText("Collie 1.5.0 available");
+    expect(lineScrolls(spy)).toHaveLength(0);
+    act(() => requestBundleFocus());
+    await waitFor(() => expect(lineScrolls(spy)).toHaveLength(1));
+  });
+
+  it("does not scroll on a plain visit", async () => {
+    renderHome(withRelease());
+    await screen.findByText("Collie 1.5.0 available");
+    await settled();
+    expect(lineScrolls(spy)).toHaveLength(0);
+  });
+
+  it("does not scroll for a request that went stale before the dashboard arrived", async () => {
+    requestBundleFocus(Date.now() - BUNDLE_FOCUS_TTL_MS - 1);
+    renderHome(withRelease());
+    await screen.findByText("Collie 1.5.0 available");
+    await settled();
+    expect(lineScrolls(spy)).toHaveLength(0);
+    // And the stale request is gone, so a later plain visit cannot find it either.
+    expect(bundleFocusPending()).toBe(false);
   });
 });

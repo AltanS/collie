@@ -11,6 +11,7 @@ import {
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
+import { useLocation } from "react-router";
 import { Settings } from "lucide-react";
 
 import { isConnecting } from "@/lib/connection";
@@ -22,7 +23,9 @@ import { useMuxLogoUrl, useMuxName } from "@/lib/mux-capability";
 import { useConnectionLost, useConnectionTrouble } from "@/hooks/use-connection-lost";
 import { useLoadingStalled } from "@/hooks/use-loading-stalled";
 import { useOnline } from "@/hooks/use-online";
-import { settingsPath } from "@/lib/nav";
+import { homePath, settingsPath } from "@/lib/nav";
+import { requestBundleFocus, useBundleApply } from "@/lib/bundle-apply";
+import { useScope } from "@/lib/session";
 import { useOptionalRootData } from "@/lib/route-data";
 import { releaseOffered } from "@/lib/update-ribbon";
 import { CollieHome } from "@/components/collie-home";
@@ -212,6 +215,12 @@ export function AppHeaderHost({ bridge, error, lastSeenAt, children }: AppHeader
   // Which icon the lost badge on the mark wears: the phone's own offline flag, the same fact the
   // strip's sentence turns on. Read here, beside `lost`, so the mark stays a function of its props.
   const online = useOnline();
+  // A new app build being applied on this phone (`lib/bundle-apply.ts`). The mark carries it, which is
+  // the band's old download row moved onto the mark (2026-11-06), and it changes what a tap does.
+  const applying = useBundleApply() !== null;
+  const nav = useNav();
+  const scope = useScope();
+  const { pathname } = useLocation();
   // What this collie drives, printed beside the wordmark. It ALWAYS describes the LOCAL collie and
   // never changes with the viewed scope: `/api/config`'s mux block is this bridge's own, and a peer's
   // is not fetched (the crew link carries runtime data, not a second config channel). So on `?h=peer`
@@ -271,11 +280,27 @@ export function AppHeaderHost({ bridge, error, lastSeenAt, children }: AppHeader
     [dockRow, undockRow, docked, trail],
   );
   const dockedRow = docked?.row ?? null;
+  // THE MARK'S TAP. Normally the route's own (`RouteHeader`'s `onHome`, which may be up one level or
+  // nothing at all). While the app is updating it is the DASHBOARD, from every route, because that is
+  // where the update line says what is happening; the flag asks the dashboard to bring that line into
+  // view once. On the dashboard already there is nowhere to go, and the dashboard reacts to the flag
+  // in place. Up, not down: the dashboard is every route's ancestor (ADR 0067). `upTo`, the move to
+  // one NAMED parent, and not `up`: from a pane opened out of a space, `up` steps back to the space.
+  // Not while `lost`, when the mark does not show the update and the tap keeps its ordinary meaning.
+  const onHome = () => {
+    if (applying && !lost) {
+      requestBundleFocus();
+      if (pathname !== "/") nav.upTo(homePath(scope));
+      return;
+    }
+    home.current?.fn?.();
+  };
   const homeMark = (paper?: string, markSize?: number) => (
     <CollieHome
-      onHome={() => home.current?.fn?.()}
+      onHome={onHome}
       trouble={trouble}
       lost={lost}
+      applying={applying}
       online={online}
       lastSeenAt={lastSeenAt}
       {...(paper === undefined ? {} : { paper })}

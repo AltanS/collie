@@ -30,6 +30,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **The pins route.** `GET`, `POST` and `DELETE` on `/api/pane/:id/pins` list, add and drop a session's pins; the list carries excerpts, `?pin=<id>` the whole text, and a refusal carries a `pin.*` code (`pin.cap`, `pin.not_settled`, `pin.not_pinnable`, `pin.item_not_found`, `pin.no_session`).
 - **The plus offers your agents.** The "+" at the end of a workspace's tab row and on a dashboard heading opens a New tab sheet: that machine's launcher rows, agents first, then commands, then Just a shell and More options. A tap opens the row as a new tab in the workspace's folder and steps into it. A row that skips permission prompts asks first, as on the New page. A machine with nothing to start beyond a shell keeps the one-tap shell.
 
+### Changed
+
+- **The Collie mark shows when the app on your phone is updating.** While a new app build downloads, and until the page reloads onto it, every bead of the header mark turns fast in the update colour, in place of the band that said "Downloading the new version…" or "New version, tap to update". Tap the mark to open the dashboard: its update line says which of the two it is, with how far the download has come.
+
 ### Fixed
 
 - **A slow drag down on the Switch pane sheet follows the finger.** Each poll of the pane, every 1.5 seconds while an agent works, snapped a sheet held mid-drag back to the top, and the next move pulled it under the finger again, so the sheet flickered on the way down. The sheet now keeps its drag through a poll, on every sheet that closes with a drag.

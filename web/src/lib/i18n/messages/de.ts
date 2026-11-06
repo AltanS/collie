@@ -265,6 +265,8 @@ export const de: Dictionary = {
   "settings.updateBanner.releaseAvailable": "Collie {version} verfügbar",
   "settings.updateBanner.majorAvailable": "Collie {version} (Major-Release)",
   "settings.updateBanner.copyAria": "Befehl kopieren: {command}",
+  "settings.updateBanner.bundleProgress": "{percent} % heruntergeladen",
+  "settings.updateBanner.bundleReloads": "Die Seite lädt von selbst neu, sobald nichts mehr offen ist.",
 
   // --- settings.typeface ---
   "settings.typeface.title": "Schriftart",
@@ -1052,6 +1054,7 @@ export const de: Dictionary = {
   "nav.home.aria.lost": "Collie-Startseite: nicht verbunden",
   "nav.home.aria.lostAt": "Collie-Startseite: nicht verbunden. Angezeigt wird der Stand von {time}.",
   "nav.home.aria.reconnecting": "Collie-Startseite: verbindet neu",
+  "nav.home.aria.updating": "Collie aktualisiert die App. Übersicht öffnen.",
   "nav.mux.onPrefix": "auf",
   "nav.prereleaseTitle": "Vorabversion: {version}",
 

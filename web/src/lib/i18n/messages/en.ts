@@ -286,6 +286,8 @@ export const en = {
   "settings.updateBanner.releaseAvailable": "Collie {version} available",
   "settings.updateBanner.majorAvailable": "Collie {version}, a new major",
   "settings.updateBanner.copyAria": "Copy command: {command}",
+  "settings.updateBanner.bundleProgress": "{percent}% downloaded",
+  "settings.updateBanner.bundleReloads": "It reloads on its own once nothing is in progress.",
 
   // --- settings.typeface (the APP's own face — a per-device preference since ADR 0033) ---
   // FAMILY NAMES ARE NOT HERE, and must not be added: "Space Grotesk" and "Aldrich" are proper
@@ -1127,6 +1129,7 @@ export const en = {
   "nav.home.aria.lost": "Collie home, not connected",
   "nav.home.aria.lostAt": "Collie home, not connected. Showing what was saved at {time}.",
   "nav.home.aria.reconnecting": "Collie home, reconnecting",
+  "nav.home.aria.updating": "Collie is updating the app. Open the dashboard.",
   "nav.mux.onPrefix": "on",
   "nav.prereleaseTitle": "Pre-release build {version}",
 

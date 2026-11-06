@@ -1,5 +1,5 @@
 import { ListTree, Network, Rows3 } from "lucide-react";
-import { useEffect, useMemo, useState, type RefObject } from "react";
+import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { useRevalidator } from "react-router";
 
 import { RouteHeader, SettingsGear } from "@/components/app-header";
@@ -35,6 +35,7 @@ import { useNav } from "@/hooks/use-nav";
 import { usePaneOpen } from "@/hooks/use-pane-open";
 import { useScrollMemory } from "@/hooks/use-scroll-memory";
 import { showBadge } from "@/lib/app-badge";
+import { takeBundleFocus, useBundleFocusPending } from "@/lib/bundle-apply";
 import { useLaunchers } from "@/lib/launchers";
 import { useMuxCapability } from "@/lib/mux-capability";
 import { setStatus } from "@/lib/status";
@@ -288,6 +289,18 @@ export function HomeRoute() {
   // scrolls, so nothing else restores this. Keyed on the scope (host + session), so two herdr
   // sessions — or two crew members — keep independent positions. See lib/scroll-memory.ts.
   const scrollRef = useScrollMemory<HTMLDivElement>(`home:${scopeKey(data.scope)}`);
+  // THE UPDATE LINE, BROUGHT INTO VIEW ONCE (2026-11-06). A tap on the header mark while the app is
+  // updating opens this screen and asks for the line that says what is happening
+  // (`lib/bundle-apply.ts`). Taken after mount, so the scroll memory's layout effect has already put
+  // the list back where it was and this moves it on from there; and taken in place too, for a tap
+  // made on this screen. A plain visit sets no flag and scrolls nowhere. Centred, because the New
+  // button floats over the foot of the list and `nearest` would park the line under it.
+  const updateLine = useRef<HTMLDivElement>(null);
+  const focusPending = useBundleFocusPending();
+  useEffect(() => {
+    if (!focusPending || !takeBundleFocus()) return;
+    updateLine.current?.scrollIntoView({ block: "center" });
+  }, [focusPending]);
   // "+ New" shrinks to the round "+" once the list has scrolled, and grows back at the top (card 3.2).
   const scrolled = useScrolledPast(scrollRef, 24);
   // The footer's tabs: Crew while a crew is configured, the Dashboard, and Files on a machine with a screen.
@@ -436,7 +449,7 @@ export function HomeRoute() {
             available update / needed restart, then the build stamp (which bundle you're running,
             with a stale-cache nudge). The crew line self-hides on a solo install. */}
         <CrewFooterLink scope={data.scope} className="px-4 pt-3" />
-        <UpdateBanner className="px-4 pt-3" />
+        <UpdateBanner ref={updateLine} className="px-4 pt-3" />
         {/* The footer below owns the safe area now, so the stamp only keeps its own air. */}
         {/* With the New button drawn, the stamp's air grows so the last row scrolls clear of it:
             16px gap + 56px button + 8px, from the footer's top edge. Set by capability, not by the

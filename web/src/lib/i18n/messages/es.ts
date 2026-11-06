@@ -263,6 +263,8 @@ export const es: Dictionary = {
   "settings.updateBanner.releaseAvailable": "Collie {version} disponible",
   "settings.updateBanner.majorAvailable": "Collie {version}, nueva versión mayor",
   "settings.updateBanner.copyAria": "Copiar comando: {command}",
+  "settings.updateBanner.bundleProgress": "{percent} % descargado",
+  "settings.updateBanner.bundleReloads": "Se recarga sola cuando no quede nada en curso.",
 
   // --- settings.typeface ---
   "settings.typeface.title": "Tipografía",
@@ -1052,6 +1054,7 @@ export const es: Dictionary = {
   "nav.home.aria.lost": "Inicio de Collie (sin conexión)",
   "nav.home.aria.lostAt": "Inicio de Collie (sin conexión). Se muestra la copia guardada ({time}).",
   "nav.home.aria.reconnecting": "Inicio de Collie (reconectando)",
+  "nav.home.aria.updating": "Collie está actualizando la app. Abrir el panel.",
   "nav.mux.onPrefix": "en",
   "nav.prereleaseTitle": "Compilación preliminar: {version}",
 
