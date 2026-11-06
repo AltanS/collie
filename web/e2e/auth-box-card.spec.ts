@@ -32,6 +32,11 @@ async function serveAuthBoxPane(page: Page, innerWidth?: number): Promise<{ redr
 
 const DOCK = '[data-slot="card-dock"]';
 
+// No service worker: once it claims the page, WebKit sends the page's polls through it and
+// `page.route` no longer sees them, so a redraw never reaches the page (the `webServer` note in
+// playwright.config.ts). Nothing here needs the worker.
+test.use({ serviceWorkers: "block" });
+
 test("a login box taller than the dock opens at its heading and scrolls to its last link", async ({ page }) => {
   await serveAuthBoxPane(page);
   await page.goto("/pane/w1:p1");
