@@ -1,7 +1,7 @@
 import { useRef, useState, type ReactNode } from "react";
 
 import { AddButton } from "@/components/ui/add-button";
-import { STRIP_TAP_TARGET, TAB_ROW_SQUARE_TAP_TARGET } from "@/components/ui/labelled-strip";
+import { STRIP_TAP_TARGET, TAB_ROW_ADD_TAP_TARGET } from "@/components/ui/labelled-strip";
 import { TabActionsSheet } from "@/components/tab-actions-sheet";
 import { StatusDot } from "@/components/status-badge";
 import { UnseenMark } from "@/components/ui/unseen-mark";
@@ -232,8 +232,8 @@ export function TabStrip({
               the group itself has no gap, and `-mx-1.5` pulls the first LABEL back onto the route's
               16px gutter that the first tab's padding would otherwise push it off. It is its own flex
               child of the scroller so the "+" button, a sibling outside this group, keeps the
-              scroller's own `gap-3` from the group: the "+" reaches 8px sideways, and 12px of gap
-              keeps that reach off the last tab. */}
+              scroller's own `gap-3` from the group: the "+" reaches 10px sideways, and 12px of gap
+              keeps that reach off the last tab's label (TAB_ROW_ADD_TAP_TARGET has the numbers). */}
           <div className={cn("flex shrink-0 items-stretch", look === "folder" ? "-mx-3" : "-mx-1.5")}>
             {allowAll && (
               <Tab
@@ -270,13 +270,16 @@ export function TabStrip({
               adapter shipped today declares `createTab`, so this hides on none of them — it asks
               anyway, because the alternative is a fourth adapter discovering the answer by 500ing. */}
           {(newTab.capable || startersOpen) && (
-            // 28px drawn, 30x44 hit. 28 and not the old 32 because the row is 30 now: the circle
-            // must sit inside it. The hit is TAB_ROW_SQUARE_TAP_TARGET's: the row's own 30px, and
-            // 8px out on each side, where it is last in the row and the scroller's 12px gap keeps it
-            // clear of the last tab. It does not reach below the row (the scroller's comment says why).
+            // The bare glyph in a 24px box (`xs`, `face="bare"`), 30x44 hit. No ring: in this row, beside a
+            // folder tab's card and the ringless fold chevron, the dashed circle read as a placeholder, and
+            // a 28px ring sat on the folder row's bottom rule. Centred in the 30px row the box keeps 3px of
+            // air above and below, level with the labels. The hit is TAB_ROW_ADD_TAP_TARGET's: the row's own
+            // 30px, and 10px out on each side of the box, where it is last in the row. It does not reach
+            // below the row (the scroller's comment says why).
             <AddButton
-              size="sm"
-              reach={TAB_ROW_SQUARE_TAP_TARGET}
+              size="xs"
+              face="bare"
+              reach={TAB_ROW_ADD_TAP_TARGET}
               label={translate("space.tabStrip.new.aria")}
               busy={creatingTab}
               onClick={() => (newTab.capable ? onNewTab(workspaceId) : onNewStarters?.())}
