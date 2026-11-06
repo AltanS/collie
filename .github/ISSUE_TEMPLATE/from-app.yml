@@ -15,6 +15,10 @@ body:
         no text you typed, and a screen only when "Include the screen" was on. The rest is the Collie
         version, the agent and its version, the multiplexer and the codes of what went wrong.
 
+
+        If the fields below are empty, the report is still on your clipboard: paste it into "What
+        happened". The GitHub app does not fill in this form; a browser does.
+
   - type: textarea
     id: what-happened
     attributes:
