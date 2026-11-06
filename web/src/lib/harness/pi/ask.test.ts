@@ -99,6 +99,9 @@ const LIFTS_397 = new Map<string, Expect>([
   // pi 1.3.0's stock question through a herdr-core bridge: a read with no styling at all (M78 spec 07).
   ["pi--v130-core-question--w120.txt", "walk"],
   ["pi--v130-core-question-moved--w120.txt", "walk"],
+  // pi 1.5.0's example permission-gate through herdr-core with a model that has no price: the footer prints
+  // the context usage and no session cost, and the dialog still lifts.
+  ["pi--v150-core-permission-gate-no-cost--w200.txt", "walk"],
   // The same question with a quoted ` ▎ ` rail in the transcript above it (derived, issue 660 review).
   ["pi--v130-core-question-quote-rail--w120.txt", "walk"],
   // A test selector under Gentle Shell 4.5.1 (pi 1.4.0) through herdr-core, in place of its float
@@ -1198,16 +1201,71 @@ describe("a read with no styling (herdr-core)", () => {
     expect(detectPiQuestion([...core, text("● Wrote the file")])?.kind).toBe("prompt-select");
   });
 
-  it("refuses status rows that are not pi's own: no working directory first, or no session cost", () => {
+  it("refuses status rows that are not pi's own: no working directory first, or neither session cost nor context usage", () => {
     const core = load(CORE);
     const bottom = core.findLastIndex((line) => /^─{8,}$/.test(lineText(line).trimEnd()));
     const frame = core.slice(0, bottom + 1);
     expect(detectPiQuestion([...frame, text("/tmp/project"), text("↑10 ↓20 $0.000 0.0%/200k (auto)")])?.kind).toBe("prompt-select");
     expect(detectPiQuestion([...frame, text("↑10 ↓20 $0.000 0.0%/200k (auto)")])).toBeNull();
-    expect(detectPiQuestion([...frame, text("/tmp/project"), text("↑10 ↓20 0.0%/200k (auto)")])).toBeNull();
+    expect(detectPiQuestion([...frame, text("/tmp/project"), text("↑10 ↓20 0.0%/200k (auto)")])?.kind).toBe("prompt-select");
+    expect(detectPiQuestion([...frame, text("/tmp/project"), text("↑10 ↓20 some words")])).toBeNull();
+    // A percentage is not the context usage: it needs the window after the slash.
+    expect(detectPiQuestion([...frame, text("/tmp/project"), text("↑10 ↓20 50% done")])).toBeNull();
     expect(detectPiQuestion([...frame, text("Agent resumed"), text("done")])).toBeNull();
     // Nothing under the bottom rule is a frame on a styled read too (issue 455): the same limit.
     expect(detectPiQuestion(frame)?.kind).toBe("prompt-select");
+  });
+
+  // pi's footer prints the session cost only when the model has a price (or runs on a subscription); the
+  // context usage is always there. The capture is pi 1.5.0's example permission-gate on a model with no
+  // price in models.json, so its stats row is `↑1.0k ↓45 0.4%/272k (auto)` with no `$`.
+  describe("a footer that prints no session cost", () => {
+    const NO_COST = "pi--v150-core-permission-gate-no-cost--w200.txt";
+    const STATS = "↑1.0k ↓45 0.4%/272k (auto)";
+    /** The capture with its stats row replaced. */
+    const withStats = (stats: string) => linesOf(replaceLast(raw(NO_COST), STATS, stats));
+
+    it("lifts the dialog with its options, the walk and Escape, as it does with a cost", () => {
+      const model = prompt(load(NO_COST));
+      expect(model.question).toBe("⚠️ Dangerous command: chmod 777 gate-probe.txt Allow?");
+      expect(model.options.map((o) => [o.label, o.keys])).toEqual([
+        ["Yes", ["Enter"]],
+        ["No", ["Down", "Enter"]],
+        ["Cancel", ["Escape"]],
+      ]);
+      const priced = prompt(withStats("↑1.0k ↓45 $0.004 0.4%/272k (auto)"));
+      expect(promptsEqual(model, priced)).toBe(true);
+      expect(promptsSameIdentity(model, priced)).toBe(true);
+    });
+
+    it("reads as an ask on the Surface, so a phone can tap it", () => {
+      const read = readScreen(load(NO_COST), "pi", idleFor("pi"));
+      expect(modalWord(read.surface.modal)).toBe("ask");
+      expect(askOf(read.surface.modal)?.options.map((o) => o.label)).toEqual(["Yes", "No", "Cancel"]);
+    });
+
+    it.each(["?/272k (auto)", "12.5%/1.0M", "0.0%/200k", "100.0%/8.2k (auto)"])("takes the context usage %s", (usage) => {
+      expect(detectPiQuestion(withStats(`↑1.0k ↓45 ${usage}`))?.kind).toBe("prompt-select");
+    });
+
+    it("still refuses what the cost refused: a shell prompt, output, or no pi stats at all", () => {
+      const core = load(NO_COST);
+      expect(detectPiQuestion(core)?.kind).toBe("prompt-select");
+      for (const shell of ["$ ", "alice@box:~/project$ ", "# ", "❯ "]) {
+        expect(detectPiQuestion([...core, text(shell)]), shell).toBeNull();
+      }
+      expect(detectPiQuestion([...core, text("● Wrote the file"), text("  ⎿  done")])).toBeNull();
+      expect(detectPiQuestion(withStats("nothing pi would print"))).toBeNull();
+      expect(piAdapter.buildBlocks(withStats("nothing pi would print")).every((b) => b.kind === "raw")).toBe(true);
+    });
+
+    it("keeps a quoted dialog above a shell raw when pi's footer, without a cost, is quoted with it", () => {
+      // The same limit the priced footer has (pi--prose-quoted-dialog-then-shell.txt): rows after the
+      // footer that end like a shell prompt are not pi's.
+      const quoted = [...load(NO_COST), text("alice@box:~/project$")];
+      expect(detectPiQuestion(quoted)).toBeNull();
+      expect(piAdapter.buildBlocks(quoted).every((b) => b.kind === "raw")).toBe(true);
+    });
   });
 
   it("takes no key hints typed into a draft for a dialog", () => {

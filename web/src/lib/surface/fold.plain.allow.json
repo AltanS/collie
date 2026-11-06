@@ -556,62 +556,62 @@
     "why": "OmO's side panel is found from the editor's status rows at the tail (panel.ts, signs a and b, through composer.ts tailRule), and those rows must be painted (paintedStatus). A plain read finds no panel, so the rows are not cut at the panel's column, the frame's rules run into the panel's text, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
     "class": "colour-needed",
     "rule": "web/src/lib/harness/pi/panel.ts:121 anchored and :136 overrunColumn via pi/composer.ts:154 tailRule and :100 paintedStatus",
-    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: the session-cost rule of ask.ts textStatus could stand for paintedStatus in tailRule too, but tailRule also decides the editor and the send, which is out of scope for M78 spec 07.",
+    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: the stats rule of ask.ts textStatus (context usage or session cost) could stand for paintedStatus in tailRule too, but tailRule also decides the editor and the send, which is out of scope for M78 spec 07.",
     "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
   },
   "pi--v110-review-complete.txt": {
-    "why": "On a read with no styling pi's status rows are told by text: the first row opens with the working directory and one of the first two carries pi's session cost (ask.ts textStatus). The PR 397 extension replaces pi's footer with its own row (`⎇ main`), which prints no cost, so the plain read finds no frame and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
+    "why": "On a read with no styling pi's status rows are told by text: the first row opens with the working directory and one of the first two carries pi's context usage or session cost (ask.ts textStatus). The PR 397 extension replaces pi's footer with its own row (`⎇ main`), which prints neither, so the plain read finds no frame and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
     "class": "colour-needed",
-    "rule": "web/src/lib/harness/pi/ask.ts:181 textStatus (statusTailBottom on a plain read); styled: pi/composer.ts:100 paintedStatus",
+    "rule": "web/src/lib/harness/pi/ask.ts:188 textStatus (statusTailBottom on a plain read); styled: pi/composer.ts:100 paintedStatus",
     "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: accepting any footer row under the rule would also accept output under a quoted dialog, so no wider text rule is proposed.",
     "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
   },
   "pi--v110-single-desc.txt": {
-    "why": "On a read with no styling pi's status rows are told by text: the first row opens with the working directory and one of the first two carries pi's session cost (ask.ts textStatus). The PR 397 extension replaces pi's footer with its own row (`⎇ main`), which prints no cost, so the plain read finds no frame and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
+    "why": "On a read with no styling pi's status rows are told by text: the first row opens with the working directory and one of the first two carries pi's context usage or session cost (ask.ts textStatus). The PR 397 extension replaces pi's footer with its own row (`⎇ main`), which prints neither, so the plain read finds no frame and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
     "class": "colour-needed",
-    "rule": "web/src/lib/harness/pi/ask.ts:181 textStatus (statusTailBottom on a plain read); styled: pi/composer.ts:100 paintedStatus",
+    "rule": "web/src/lib/harness/pi/ask.ts:188 textStatus (statusTailBottom on a plain read); styled: pi/composer.ts:100 paintedStatus",
     "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: accepting any footer row under the rule would also accept output under a quoted dialog, so no wider text rule is proposed.",
     "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
   },
   "pi--v110-single-moved.txt": {
-    "why": "On a read with no styling pi's status rows are told by text: the first row opens with the working directory and one of the first two carries pi's session cost (ask.ts textStatus). The PR 397 extension replaces pi's footer with its own row (`⎇ main`), which prints no cost, so the plain read finds no frame and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
+    "why": "On a read with no styling pi's status rows are told by text: the first row opens with the working directory and one of the first two carries pi's context usage or session cost (ask.ts textStatus). The PR 397 extension replaces pi's footer with its own row (`⎇ main`), which prints neither, so the plain read finds no frame and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
     "class": "colour-needed",
-    "rule": "web/src/lib/harness/pi/ask.ts:181 textStatus (statusTailBottom on a plain read); styled: pi/composer.ts:100 paintedStatus",
+    "rule": "web/src/lib/harness/pi/ask.ts:188 textStatus (statusTailBottom on a plain read); styled: pi/composer.ts:100 paintedStatus",
     "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: accepting any footer row under the rule would also accept output under a quoted dialog, so no wider text rule is proposed.",
     "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
   },
   "pi--v110-single-narrow.txt": {
-    "why": "On a read with no styling pi's status rows are told by text: the first row opens with the working directory and one of the first two carries pi's session cost (ask.ts textStatus). The PR 397 extension replaces pi's footer with its own row (`⎇ main`), which prints no cost, so the plain read finds no frame and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
+    "why": "On a read with no styling pi's status rows are told by text: the first row opens with the working directory and one of the first two carries pi's context usage or session cost (ask.ts textStatus). The PR 397 extension replaces pi's footer with its own row (`⎇ main`), which prints neither, so the plain read finds no frame and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
     "class": "colour-needed",
-    "rule": "web/src/lib/harness/pi/ask.ts:181 textStatus (statusTailBottom on a plain read); styled: pi/composer.ts:100 paintedStatus",
+    "rule": "web/src/lib/harness/pi/ask.ts:188 textStatus (statusTailBottom on a plain read); styled: pi/composer.ts:100 paintedStatus",
     "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: accepting any footer row under the rule would also accept output under a quoted dialog, so no wider text rule is proposed.",
     "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
   },
   "pi--v110-single.txt": {
-    "why": "On a read with no styling pi's status rows are told by text: the first row opens with the working directory and one of the first two carries pi's session cost (ask.ts textStatus). The PR 397 extension replaces pi's footer with its own row (`⎇ main`), which prints no cost, so the plain read finds no frame and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
+    "why": "On a read with no styling pi's status rows are told by text: the first row opens with the working directory and one of the first two carries pi's context usage or session cost (ask.ts textStatus). The PR 397 extension replaces pi's footer with its own row (`⎇ main`), which prints neither, so the plain read finds no frame and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
     "class": "colour-needed",
-    "rule": "web/src/lib/harness/pi/ask.ts:181 textStatus (statusTailBottom on a plain read); styled: pi/composer.ts:100 paintedStatus",
+    "rule": "web/src/lib/harness/pi/ask.ts:188 textStatus (statusTailBottom on a plain read); styled: pi/composer.ts:100 paintedStatus",
     "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: accepting any footer row under the rule would also accept output under a quoted dialog, so no wider text rule is proposed.",
     "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
   },
   "pi--v110-tabs-compact.txt": {
-    "why": "On a read with no styling pi's status rows are told by text: the first row opens with the working directory and one of the first two carries pi's session cost (ask.ts textStatus). The PR 397 extension replaces pi's footer with its own row (`⎇ main`), which prints no cost, so the plain read finds no frame and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
+    "why": "On a read with no styling pi's status rows are told by text: the first row opens with the working directory and one of the first two carries pi's context usage or session cost (ask.ts textStatus). The PR 397 extension replaces pi's footer with its own row (`⎇ main`), which prints neither, so the plain read finds no frame and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
     "class": "colour-needed",
-    "rule": "web/src/lib/harness/pi/ask.ts:181 textStatus (statusTailBottom on a plain read); styled: pi/composer.ts:100 paintedStatus",
+    "rule": "web/src/lib/harness/pi/ask.ts:188 textStatus (statusTailBottom on a plain read); styled: pi/composer.ts:100 paintedStatus",
     "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: accepting any footer row under the rule would also accept output under a quoted dialog, so no wider text rule is proposed.",
     "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
   },
   "pi--v110-tabs-single-recorded.txt": {
-    "why": "On a read with no styling pi's status rows are told by text: the first row opens with the working directory and one of the first two carries pi's session cost (ask.ts textStatus). The PR 397 extension replaces pi's footer with its own row (`⎇ main`), which prints no cost, so the plain read finds no frame and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
+    "why": "On a read with no styling pi's status rows are told by text: the first row opens with the working directory and one of the first two carries pi's context usage or session cost (ask.ts textStatus). The PR 397 extension replaces pi's footer with its own row (`⎇ main`), which prints neither, so the plain read finds no frame and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
     "class": "colour-needed",
-    "rule": "web/src/lib/harness/pi/ask.ts:181 textStatus (statusTailBottom on a plain read); styled: pi/composer.ts:100 paintedStatus",
+    "rule": "web/src/lib/harness/pi/ask.ts:188 textStatus (statusTailBottom on a plain read); styled: pi/composer.ts:100 paintedStatus",
     "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: accepting any footer row under the rule would also accept output under a quoted dialog, so no wider text rule is proposed.",
     "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
   },
   "pi--v110-tabs-single.txt": {
-    "why": "On a read with no styling pi's status rows are told by text: the first row opens with the working directory and one of the first two carries pi's session cost (ask.ts textStatus). The PR 397 extension replaces pi's footer with its own row (`⎇ main`), which prints no cost, so the plain read finds no frame and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
+    "why": "On a read with no styling pi's status rows are told by text: the first row opens with the working directory and one of the first two carries pi's context usage or session cost (ask.ts textStatus). The PR 397 extension replaces pi's footer with its own row (`⎇ main`), which prints neither, so the plain read finds no frame and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
     "class": "colour-needed",
-    "rule": "web/src/lib/harness/pi/ask.ts:181 textStatus (statusTailBottom on a plain read); styled: pi/composer.ts:100 paintedStatus",
+    "rule": "web/src/lib/harness/pi/ask.ts:188 textStatus (statusTailBottom on a plain read); styled: pi/composer.ts:100 paintedStatus",
     "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: accepting any footer row under the rule would also accept output under a quoted dialog, so no wider text rule is proposed.",
     "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
   },
