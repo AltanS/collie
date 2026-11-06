@@ -93,3 +93,28 @@ test("a block shows its ⋯ on a tap, and is pinned from it, listed in the sheet
   await expect(page.locator('[data-slot="belt-pins"]')).toHaveCount(0);
   await expect(page.getByRole("img", { name: en["pins.mark"] })).toHaveCount(0);
 });
+
+// THE TAP THAT SHOWS THE ⋯ ENDS THERE (2026-11-06, Altan's phone). The reading area turns a tap on plain text into Tap
+// to type, and a chat block is plain text to it, so the tap that showed the chip also raised the keyboard. On a touch
+// screen: the tap shows the chip, the composer keeps no focus and the viewport does not move. A tap on the thread's
+// own ground, outside every block, still focuses the composer, which is what shows this check can see a focus at all.
+test("on a phone, the tap that shows a block's ⋯ raises no keyboard and moves nothing", async ({ page }, testInfo) => {
+  test.skip(!testInfo.project.name.startsWith("app-phone"), "a phone case");
+  await page.goto(PANE_URL);
+  const text = page.getByText(ANSWER, { exact: true });
+  await expect(text).toBeVisible();
+  const view = () => page.evaluate(() => ({ height: visualViewport!.height, top: visualViewport!.offsetTop, y: window.scrollY }));
+  const focused = () => page.evaluate(() => document.activeElement?.tagName ?? null);
+  const before = await view();
+
+  // When: the answer's text is tapped.
+  await text.tap();
+  // Then: its ⋯ shows, nothing took the focus, and the viewport is where it was.
+  await expect(answerBlock(page)).toHaveAttribute("data-revealed", "");
+  expect(await focused()).not.toBe("TEXTAREA");
+  expect(await view()).toEqual(before);
+
+  // Control: a tap on the thread's ground, outside every block, is still Tap to type.
+  await page.getByText(en["history.startOfConversation"], { exact: true }).tap();
+  await expect.poll(focused).toBe("TEXTAREA");
+});

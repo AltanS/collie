@@ -117,6 +117,12 @@ rest.
   in a person would find, and it fights selection. A tap is the gesture a person tries first, and it reveals
   rather than acts, so a tap that only meant to read costs nothing.
 - **A right click on a desk still opens the sheet at once**, and a mouse over the block shows the `⋯` too.
+- **On a touch screen the hold wins over selection.** Point 8's "the hold never takes selection away" is
+  reversed for touch: on Android the selection started first and the hold did nothing on text. The hold now
+  collapses that selection and shows the `⋯`, because Copy text is in the sheet. A mouse keeps its own menu
+  over selected text.
+- **The tap that shows the `⋯` ends there.** The reading area's Tap to type no longer sees it, so it raises
+  no keyboard.
 - **The chip moves no box and covers no control.** It is an overlay, and it steps left of a copy button, a tool
   card's chevron or a status badge in its corner. It hides on a press elsewhere or after 4 s without a press, and stays through a scroll: the stream follows new output on its own while an agent works, and that is when a person wants to pin a reply.
 
