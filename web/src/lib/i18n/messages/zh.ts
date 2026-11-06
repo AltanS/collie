@@ -2865,4 +2865,29 @@ export const zh: Dictionary = {
   "settings.zoomPill.description": "操作栏上的放大镜按钮，可全尺寸打开屏幕。在聊天中不会显示。",
   "settings.zoomPill.option.screen": "屏幕视图",
   "settings.zoomPill.option.off": "关闭",
+
+  // --- pins (M90: pinned messages): the block actions, the mark, the refusals ---
+  "pins.action.pin": "固定",
+  "pins.action.unpin": "取消固定",
+  "pins.action.copy": "复制文本",
+  "pins.action.more": "消息操作",
+  "pins.mark": "已固定",
+  "pins.sheet.kind.user": "您的消息",
+  "pins.sheet.kind.reply": "回复",
+  "pins.sheet.kind.tool": "工具：{name}",
+  "pins.sheet.kind.thinking": "思考中",
+  "pins.sheet.kind.notice": "通知",
+  "pins.reason.notFound": "该内容块已不在此会话的日志中。",
+  "pins.reason.cap": "当前会话已有 100 个固定项，请先取消固定一个。",
+  "pins.reason.noSession": "此窗格没有可保存固定项的会话。",
+  "pins.reason.notPinnable": "无法固定该内容块。",
+  "pins.reason.gone": "该固定项已不存在。",
+  "pins.reason.olderBridge": "该机器上的 Collie 版本较旧，无法保留固定项。请对其进行更新。",
+
+  // --- pins, belt mark and sheet (M90 spec 03) ---
+  "pins.belt.label": "已固定 {count} 条",
+  "pins.sheet.title": "固定的消息",
+  "pins.sheet.empty": "当前会话中没有固定内容。",
+  "pins.action.show": "在聊天中显示",
+  "pins.notice.notLoaded": "该块未加载到聊天中。向上滚动以加载更早的消息。",
 };

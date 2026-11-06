@@ -22,4 +22,10 @@ describe("belt intents", () => {
     queueBeltIntent("pane-a", { kind: "run", text: "/compact" }, 1);
     expect(takeBeltIntent("pane-a", 2)).toEqual({ kind: "run", text: "/compact" });
   });
+
+  it("carry the pins mark's tap too, taken once like the others (M90)", () => {
+    queueBeltIntent("pane-a", { kind: "pins" }, 0);
+    expect(takeBeltIntent("pane-a", 1)).toEqual({ kind: "pins" });
+    expect(takeBeltIntent("pane-a", 2)).toBeNull();
+  });
 });

@@ -76,6 +76,8 @@ import type {
   MachinesResponse,
   PaneReadResponse,
   PairFailure,
+  PinFull,
+  PinRow,
   SnapshotResponse,
   SttHostChoice,
   SttHostStatus,
@@ -1731,6 +1733,45 @@ export async function fetchWalkyWho(signal?: AbortSignal): Promise<WalkyWho> {
 export async function setWalkyOff(paneId: string, off: boolean, scope?: Scope): Promise<boolean> {
   const got = await req<{ off: boolean }>(withScope("/api/walky/off", scope), { method: "POST", body: JSON.stringify({ pane: paneId, off }) });
   return got.off;
+}
+
+/**
+ * GET /api/pane/:id/pins: the pinned messages of the pane's session, newest first (M90). Each row carries an
+ * excerpt and the length of its text, never the text, so a list of a hundred stays small. A poll read, so it
+ * takes the poll's deadline. Scoped to the pane's own host: the lead forwards it to the member that owns the
+ * pane, whose own file answers.
+ */
+export async function fetchPanePins(scope: Scope | undefined, paneId: string, signal?: AbortSignal): Promise<PinRow[]> {
+  const got = await req<{ pins: PinRow[] }>(withScope(`/api/pane/${encodeURIComponent(paneId)}/pins`, scope), {
+    signal,
+    timeoutMs: POLL_TIMEOUT_MS,
+  });
+  return got.pins;
+}
+
+/** GET /api/pane/:id/pins?pin=<id>: one pin with its whole text (M90). A pin that is gone is a 404 `pin.not_found`. */
+export async function fetchPanePin(scope: Scope | undefined, paneId: string, pinId: string, signal?: AbortSignal): Promise<PinFull> {
+  const got = await req<{ pin: PinFull }>(withScope(`/api/pane/${encodeURIComponent(paneId)}/pins?pin=${encodeURIComponent(pinId)}`, scope), { signal });
+  return got.pin;
+}
+
+/**
+ * POST /api/pane/:id/pins: pin one Chat block (M90). The phone names the block by its item id and nothing else; the
+ * bridge copies the text from its own log. A block that is already pinned answers the pin it has (200), so a
+ * second tap is not a refusal. A refusal is an {@link ApiError} whose `fields.code` is a `pin.*` word, and an
+ * older bridge's plain 404 carries none (lib/message-pins.ts tells the two apart).
+ */
+export async function pinItem(scope: Scope | undefined, paneId: string, itemId: string): Promise<PinFull> {
+  const got = await req<{ pin: PinFull }>(withScope(`/api/pane/${encodeURIComponent(paneId)}/pins`, scope), {
+    method: "POST",
+    body: JSON.stringify({ itemId }),
+  });
+  return got.pin;
+}
+
+/** DELETE /api/pane/:id/pins?pin=<id>: drop one pin (M90). A 204, also when the pin was already gone. */
+export async function unpinItem(scope: Scope | undefined, paneId: string, pinId: string): Promise<void> {
+  await req<undefined>(withScope(`/api/pane/${encodeURIComponent(paneId)}/pins?pin=${encodeURIComponent(pinId)}`, scope), { method: "DELETE" });
 }
 
 /**

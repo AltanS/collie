@@ -2903,4 +2903,29 @@ export const de: Dictionary = {
   "settings.zoomPill.description": "Die Lupen-Schaltfläche in der Aktionsleiste, die den Bildschirm in voller Größe öffnet. Im Chat erscheint sie nie.",
   "settings.zoomPill.option.screen": "Bildschirmansicht",
   "settings.zoomPill.option.off": "Aus",
+
+  // --- pins (M90: pinned messages): the block actions, the mark, the refusals ---
+  "pins.action.pin": "Anheften",
+  "pins.action.unpin": "Lösen",
+  "pins.action.copy": "Text kopieren",
+  "pins.action.more": "Nachrichtenaktionen",
+  "pins.mark": "Angeheftet",
+  "pins.sheet.kind.user": "Deine Nachricht",
+  "pins.sheet.kind.reply": "Antwort",
+  "pins.sheet.kind.tool": "Tool: {name}",
+  "pins.sheet.kind.thinking": "Überlegung",
+  "pins.sheet.kind.notice": "Hinweis",
+  "pins.reason.notFound": "Dieser Block befindet sich nicht mehr im Protokoll dieser Sitzung.",
+  "pins.reason.cap": "Diese Sitzung hat 100 angeheftete Nachrichten, löse zuerst eine.",
+  "pins.reason.noSession": "Dieses Pane hat keine Sitzung, für die Pins gespeichert werden können.",
+  "pins.reason.notPinnable": "Dieser Block kann nicht angeheftet werden.",
+  "pins.reason.gone": "Diese angeheftete Nachricht ist nicht mehr da.",
+  "pins.reason.olderBridge": "Das Collie dieser Maschine ist älter und kann keine Pins speichern. Aktualisiere es.",
+
+  // --- pins, belt mark and sheet (M90 spec 03) ---
+  "pins.belt.label": "{count} angeheftet",
+  "pins.sheet.title": "Angeheftete Nachrichten",
+  "pins.sheet.empty": "In dieser Sitzung ist nichts angeheftet.",
+  "pins.action.show": "Im Chat anzeigen",
+  "pins.notice.notLoaded": "Dieser Block ist im Chat nicht geladen. Scrolle nach oben, um ältere Nachrichten zu laden.",
 };

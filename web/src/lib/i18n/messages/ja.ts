@@ -2884,4 +2884,29 @@ export const ja: Dictionary = {
   "settings.zoomPill.description": "アクション行にある虫眼鏡のボタンで、画面を全画面で開きます。チャットでは表示されません。",
   "settings.zoomPill.option.screen": "画面ビュー",
   "settings.zoomPill.option.off": "オフ",
+
+  // --- pins (M90: pinned messages): the block actions, the mark, the refusals ---
+  "pins.action.pin": "ピン留め",
+  "pins.action.unpin": "ピン留めを解除",
+  "pins.action.copy": "テキストをコピー",
+  "pins.action.more": "メッセージのアクション",
+  "pins.mark": "ピン留め済み",
+  "pins.sheet.kind.user": "あなたのメッセージ",
+  "pins.sheet.kind.reply": "返信",
+  "pins.sheet.kind.tool": "ツール: {name}",
+  "pins.sheet.kind.thinking": "思考中",
+  "pins.sheet.kind.notice": "通知",
+  "pins.reason.notFound": "該当のブロックはこのセッションのログに存在しません。",
+  "pins.reason.cap": "このセッションのピン留め数が100件に達しています。先にいずれかのピン留めを解除してください。",
+  "pins.reason.noSession": "このペインにはピン留めを保持するセッションがありません。",
+  "pins.reason.notPinnable": "該当のブロックはピン留めできません。",
+  "pins.reason.gone": "該当のピン留めは削除されました。",
+  "pins.reason.olderBridge": "該当マシンのCollieのバージョンが古いため、ピン留めを保持できません。アップデートしてください。",
+
+  // --- pins, belt mark and sheet (M90 spec 03) ---
+  "pins.belt.label": "{count}件固定中",
+  "pins.sheet.title": "固定されたメッセージ",
+  "pins.sheet.empty": "このセッションで固定されているものはありません。",
+  "pins.action.show": "チャットで表示",
+  "pins.notice.notLoaded": "そのブロックはチャットに読み込まれていません。上にスクロールして過去のメッセージを読み込んでください。",
 };

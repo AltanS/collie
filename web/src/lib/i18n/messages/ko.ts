@@ -2877,4 +2877,29 @@ export const ko: Dictionary = {
   "settings.zoomPill.description": "작업 벨트에 있는 돋보기 버튼으로, 화면을 전체 크기로 엽니다. 채팅에서는 표시되지 않습니다.",
   "settings.zoomPill.option.screen": "화면 보기",
   "settings.zoomPill.option.off": "끄기",
+
+  // --- pins (M90: pinned messages): the block actions, the mark, the refusals ---
+  "pins.action.pin": "고정",
+  "pins.action.unpin": "고정 해제",
+  "pins.action.copy": "텍스트 복사",
+  "pins.action.more": "메시지 작업",
+  "pins.mark": "고정됨",
+  "pins.sheet.kind.user": "내 메시지",
+  "pins.sheet.kind.reply": "답변",
+  "pins.sheet.kind.tool": "도구: {name}",
+  "pins.sheet.kind.thinking": "생각 중",
+  "pins.sheet.kind.notice": "알림",
+  "pins.reason.notFound": "해당 블록은 더 이상 이 세션의 로그에 없습니다.",
+  "pins.reason.cap": "이 세션의 고정 항목이 100개입니다. 먼저 하나를 고정 해제하십시오.",
+  "pins.reason.noSession": "이 창에는 고정 항목을 유지할 세션이 없습니다.",
+  "pins.reason.notPinnable": "해당 블록은 고정할 수 없습니다.",
+  "pins.reason.gone": "해당 고정 항목이 사라졌습니다.",
+  "pins.reason.olderBridge": "해당 머신의 Collie 버전이 낮아 고정 항목을 유지할 수 없습니다. 업데이트하십시오.",
+
+  // --- pins, belt mark and sheet (M90 spec 03) ---
+  "pins.belt.label": "{count}개 고정됨",
+  "pins.sheet.title": "고정된 메시지",
+  "pins.sheet.empty": "이 세션에 고정된 항목이 없습니다.",
+  "pins.action.show": "채팅에서 보기",
+  "pins.notice.notLoaded": "해당 블록이 채팅에 로드되지 않았습니다. 이전 메시지를 로드하려면 위로 스크롤하십시오.",
 };

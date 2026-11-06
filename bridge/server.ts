@@ -236,6 +236,10 @@ import type { LaunchCheckResponse, MachineAlertsResponse } from "./types.ts";
 import { parseMachineAlerts } from "./machine-parse.ts";
 import { SPARK_MAX_MINUTES } from "./machine-history.ts";
 import type { MachineSurface } from "./machines.ts";
+import { pinSessionKey } from "./pins/key.ts";
+import { PinKeys } from "./pins/keys.ts";
+import { pinsRoute, type PinsAnswer, type PinsSession } from "./pins/routes.ts";
+import { PinStore } from "./pins/store.ts";
 import { isPaneId, parseAddress } from "./walky/address.ts";
 import { isWalkyId, parsePhoneSend } from "./walky/parse.ts";
 import { NOT_THE_SENDER, type TakeBackAnswer, type WalkyService } from "./walky/service.ts";
@@ -472,8 +476,11 @@ export function isLoopbackPeer(address: string | null | undefined): boolean {
  * `clear` (ADR 0116, the Clear paragraph) is `POST /api/pane/:id/clear` with `{ requestId }` only, on a pane
  * with a screen: it empties the harness's input box with the profile's clear key as a person's tap, reads
  * back, and answers `{ requestId, outcome: "cleared" | "refused", reason? }` (always 200). See `bridge/surface/clear.ts`.
+ *
+ * `pins` (M90) is the one segment with a read and writes: a GET lists the pins of the pane's session (a read), a
+ * POST `{ itemId }` pins a block and a DELETE `?pin=<id>` drops one (writes). See `bridge/pins/routes.ts`.
  */
-const PANE_ROUTE = /^\/api\/pane\/([^/]+)(?:\/(reply|keys|upload|close|rename|history|chat|changes|files|focus|answer|send|abort|clear|action))?$/;
+const PANE_ROUTE = /^\/api\/pane\/([^/]+)(?:\/(reply|keys|upload|close|rename|history|chat|changes|files|focus|answer|send|abort|clear|action|pins))?$/;
 
 /**
  * A pairing claim's refusal, as an error code.
@@ -653,6 +660,8 @@ export const SEEN_HEADER = "x-collie-seen";
  */
 export function marksPaneSeen(req: Request, action: string | undefined): boolean {
   if (req.headers.get(SEEN_HEADER) !== null) return true;
+  // Pins are the operator's notes on a session, not a look at the pane: only the header says "seen".
+  if (action === "pins") return false;
   return action !== undefined && !isPaneReadAction(action);
 }
 
@@ -709,10 +718,12 @@ export function afterPaneInput(engine: Pick<StateEngine, "noteInput">, res: Resp
  * The gate level a pane route asks at. A plain read for the pane itself and for `history`, `chat`
  * and `changes`; `device-read` for `files`, which is a read that needs an authorised device (ADR 0083:
  * it exposes every file under the root, which Changes does not); a write for everything that types
- * into or restructures a terminal.
+ * into or restructures a terminal. `pins` reads for a GET and writes otherwise (M90).
  */
-export function paneGateLevel(action: string | undefined): GateLevel {
+export function paneGateLevel(action: string | undefined, method?: string): GateLevel {
   if (action === "files") return "device-read";
+  // The pins list is a read; pinning and unpinning write the machine's pins file (M90). Absent, a write.
+  if (action === "pins") return method === "GET" ? "read" : "write";
   return !action || isPaneReadAction(action) ? "read" : "write";
 }
 
@@ -1338,6 +1349,12 @@ export function startServer(opts: {
   /** Whether the pane's session turned its walky talky off (M89), read at serialise time like the token. True adds `walkyOff` to the pane. */
   walkyPaneOff?: (session: string, paneId: string) => boolean;
   /**
+   * The pins of every session this machine keeps (M90, bridge/pins/store.ts), on disk under the state
+   * folder in `bridge/index.ts`. Absent keeps them in memory only, which is every test that builds this
+   * server by hand.
+   */
+  pins?: PinStore;
+  /**
    * The prompt-cache watch list — which panes the operator asked to be warned about (ADR 0042).
    *
    * Absent means the three `cache-watch` routes answer 404, which is every caller that builds this
@@ -1443,6 +1460,26 @@ export function startServer(opts: {
   const gitHeads = opts.gitHeads;
   const walkyInstance = opts.walkyInstance;
   const walkyPaneOff = opts.walkyPaneOff;
+  const pins = opts.pins ?? new PinStore(null);
+  // The key a pane's pins are filed under, for the snapshot's badge. The route's own resolver
+  // (`resolvePinSession`) is the one key function; this cache stores what it answered (bridge/pins/keys.ts).
+  const pinKeys = new PinKeys();
+  // The pane instance and every input of the resolver, so a reused pane id, a `/clear` that moved the
+  // reported ref, or a pane that changed folder drops its entry.
+  const pinFingerprint = (runtime: string, pane: AgentView): string =>
+    [walkyInstance?.(runtime, pane.paneId) ?? "", journalAgentOf(pane), pane.cwd, pane.agentSession?.kind ?? "", pane.agentSession?.value ?? ""].join("\u0000");
+  const pinCountOf = (from: SessionRuntime, pane: AgentView): number => {
+    const adapter = adapterFor(journals ?? {}, journalAgentOf(pane));
+    if (adapter === undefined) return 0;
+    // `journalRefOf` answers the reported ref itself unless the adapter reconciles it or the pane reports none.
+    const reported = pane.agentSession;
+    const derived = reported !== undefined && adapter.reconcile === undefined ? pinSessionKey(adapter.agent, reported) : undefined;
+    const key = pinKeys.keyOf(pinPaneKey(from.name, pane), pinFingerprint(from.name, pane), derived, async () => {
+      const found = await resolvePinSession(cfg, journals, from.engine, from.herdr, pane.paneId);
+      return found === null ? null : found.key;
+    });
+    return key === null ? 0 : pins.count(key);
+  };
   const walky = opts.walky;
   const pairing = opts.pairing;
   const localCredential = opts.localCredential;
@@ -1787,7 +1824,7 @@ export function startServer(opts: {
         // carries them (M53 spec 07), the same way.
         panes: pick(from).map((p) =>
           withSurface(
-            withActions(withTurn(withOpenAsks(toPaneWire(withActivity(from, p), hasJournal, discoversSessions, walkyInstance?.(from.name, p.paneId), walkyPaneOff?.(from.name, p.paneId)), from.herdr), from.herdr), from.herdr),
+            withActions(withTurn(withOpenAsks(toPaneWire(withActivity(from, p), hasJournal, discoversSessions, walkyInstance?.(from.name, p.paneId), walkyPaneOff?.(from.name, p.paneId), pinCountOf(from, p)), from.herdr), from.herdr), from.herdr),
             from,
           ),
         ),
@@ -2268,9 +2305,9 @@ export function startServer(opts: {
       // close) types into or restructures a terminal, so it additionally needs an authorised device.
       // `history` and `changes` are READS despite being action segments — one reads a log off disk,
       // the other runs read-only git over the pane's folder.
-      const isRead = !action || isPaneReadAction(action);
+      const isRead = !action || isPaneReadAction(action) || (action === "pins" && req.method === "GET");
       // `files` is a read that still needs an authorised device (ADR 0083); see paneGateLevel.
-      const denied = caller.gate(paneGateLevel(action));
+      const denied = caller.gate(paneGateLevel(action, req.method));
       if (denied) return denied;
       const rt = await caller.resolve();
       if (rt instanceof Response) return rt;
@@ -2290,7 +2327,7 @@ export function startServer(opts: {
       // forwarded response above. It reaches it on the PEER, through the crew dispatch, against the
       // peer's own ledger — which is what makes "seen" one shared fact (.adr/0003) rather than two
       // machines' guesses, and why the `x-collie-seen` header is forwarded verbatim.
-      const routed = isRead ? req.method === "GET" : req.method === "POST";
+      const routed = isRead ? req.method === "GET" : req.method === "POST" || (action === "pins" && req.method === "DELETE");
       if (routed && marksPaneSeen(req, action)) activity.noteSeen(session, paneId);
       // A pane request means a phone is looking at this collie — the second of the two routes that
       // stamp attention (state-engine.ts § noteAttention). It is stamped HERE rather than at the
@@ -2307,6 +2344,30 @@ export function startServer(opts: {
         return paneHistory(cfg, journals, transcripts, rt.engine, herdr, paneId, url, req);
       if (action === "chat" && req.method === "GET")
         return paneChat(cfg, journals, live, rt.engine, herdr, paneId, url, req, rt.send === undefined ? undefined : (pane) => rt.send!.queuedOf(rt.name, pane));
+      if (action === "pins" && (req.method === "GET" || req.method === "POST" || req.method === "DELETE")) {
+        let body: JsonValue | undefined;
+        if (req.method === "POST") {
+          try {
+            // SAFETY: `Request.json()` output IS a JsonValue by construction; `pinsRoute` checks every field.
+            body = (await req.json()) as JsonValue;
+          } catch {
+            body = undefined;
+          }
+        }
+        const answer = await pinsRoute(
+          {
+            store: pins,
+            journal: await pinsJournal(cfg, journals, transcripts, rt.engine, herdr, paneId, (pane, key) => pinKeys.remember(pinPaneKey(session, pane), pinFingerprint(session, pane), key)),
+            redact: cfg.redact,
+            audit: audit_,
+            device,
+            session,
+            paneId,
+          },
+          { method: req.method, pin: url.searchParams.get("pin"), body },
+        );
+        return pinsResponse(answer, req.headers.get("accept-encoding"));
+      }
       if (action === "changes" && req.method === "GET") return paneChanges(rt.engine, paneId, url, req, homedir(), cfg.redact);
       if (action === "files" && req.method === "GET")
         return paneFiles(rt.engine, paneId, url, req, filesPrivateFolders(cfg), homedir(), cfg.redact);
@@ -4755,6 +4816,77 @@ async function paneSubagent(
   } catch (err) {
     return text(`subagent read failed: ${errorText(err)}`, 502);
   }
+}
+
+/** The snapshot cache's key for one pane of one session (`PinKeys`). */
+function pinPaneKey(runtime: string, pane: AgentView): string {
+  return `${runtime}\u0000${pane.paneId}`;
+}
+
+/**
+ * The session the pins of a pane hang on (M90), as {@link resolvePinSession} resolves it. The entries come
+ * from the same parsed log the History route pages (`TranscriptStore.cached`), so the lookup reaches back
+ * past the live window to as far as the store reads, and is the same for every harness. `resolved` hears
+ * the key the route used, for the snapshot's badge. Null for a pane with no journal session.
+ */
+async function pinsJournal(
+  cfg: Config,
+  journals: Record<string, JournalAdapter> | null,
+  transcripts: TranscriptStore | null,
+  engine: StateEngine,
+  mux: Pick<MuxAdapter, "readGrid" | "foregroundProcesses" | "paneLabels">,
+  paneId: string,
+  resolved: (pane: AgentView, key: string | null) => void,
+): Promise<PinsSession | null> {
+  if (transcripts === null) return null;
+  const found = await resolvePinSession(cfg, journals, engine, mux, paneId);
+  if (found === null) return null;
+  const { adapter, ref, key } = found;
+  resolved(found.pane, key);
+  return {
+    key,
+    entries: async () => {
+      try {
+        return (await transcripts.cached(adapter, ref))?.entries ?? null;
+      } catch {
+        return null;
+      }
+    },
+  };
+}
+
+/**
+ * The pin session of a pane: the one key function. The pane from the live snapshot, the adapter by the
+ * agent that wrote the log, the ref `journalRefOf` settles on, filed as `pinSessionKey`. The pins route
+ * resolves with it, and so does the snapshot's background refresh (`PinKeys`), so the badge and the list
+ * cannot name two sessions. Null for a pane with no journal session: a shell, a harness with no reader,
+ * no ref found.
+ */
+export async function resolvePinSession(
+  cfg: Pick<Config, "transcript">,
+  journals: Record<string, JournalAdapter> | null,
+  engine: { current(): { readonly agents: readonly AgentView[]; readonly shellPanes: readonly AgentView[] } },
+  mux: Pick<MuxAdapter, "readGrid" | "foregroundProcesses" | "paneLabels">,
+  paneId: string,
+): Promise<{ pane: AgentView; adapter: JournalAdapter; ref: AgentSessionRef; key: string } | null> {
+  if (!cfg.transcript || journals === null) return null;
+  const { agents, shellPanes } = engine.current();
+  const panes = [...agents, ...shellPanes];
+  const pane = panes.find((a) => a.paneId === paneId);
+  if (pane === undefined) return null;
+  const adapter = adapterFor(journals, journalAgentOf(pane));
+  if (adapter === undefined) return null;
+  const ref = await journalRefOf(adapter, pane, panes, await discoveryHints(adapter, pane, mux, paneId));
+  if (ref === null) return null;
+  return { pane, adapter, ref, key: pinSessionKey(adapter.agent, ref) };
+}
+
+/** A pins answer as the Response the phone reads. Refusals are `{ error, code }` JSON, a bad request plain text. */
+function pinsResponse(answer: PinsAnswer, acceptEncoding: string | null): Response {
+  if (answer.status === 204) return secure(new Response(null, { status: 204 }));
+  if ("text" in answer) return text(answer.text, answer.status);
+  if (answer.status === 404 || answer.status === 409) return jsonError(answer.body, answer.status, acceptEncoding);
+  return json(answer.body, acceptEncoding, answer.status);
 }
 
 /**

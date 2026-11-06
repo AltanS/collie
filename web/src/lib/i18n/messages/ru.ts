@@ -2844,4 +2844,29 @@ export const ru: Dictionary = {
   "settings.zoomPill.description": "Кнопка с лупой на панели действий, которая открывает экран на весь размер. В чате она не показывается.",
   "settings.zoomPill.option.screen": "Вид экрана",
   "settings.zoomPill.option.off": "Выкл.",
+
+  // --- pins (M90: pinned messages): the block actions, the mark, the refusals ---
+  "pins.action.pin": "Закрепить",
+  "pins.action.unpin": "Открепить",
+  "pins.action.copy": "Копировать текст",
+  "pins.action.more": "Действия с сообщением",
+  "pins.mark": "Закреплено",
+  "pins.sheet.kind.user": "Ваше сообщение",
+  "pins.sheet.kind.reply": "Ответ",
+  "pins.sheet.kind.tool": "Инструмент: {name}",
+  "pins.sheet.kind.thinking": "Размышление",
+  "pins.sheet.kind.notice": "Уведомление",
+  "pins.reason.notFound": "Этот блок больше не находится в журнале этой сессии.",
+  "pins.reason.cap": "В этой сессии 100 закрепленных сообщений, сначала открепите одно.",
+  "pins.reason.noSession": "В этой панели нет сессии для сохранения закрепленных сообщений.",
+  "pins.reason.notPinnable": "Этот блок нельзя закрепить.",
+  "pins.reason.gone": "Это закрепление удалено.",
+  "pins.reason.olderBridge": "Collie на этой машине устарел и не может сохранять закрепленные сообщения. Обновите его.",
+
+  // --- pins, belt mark and sheet (M90 spec 03) ---
+  "pins.belt.label": "Закреплено: {count}",
+  "pins.sheet.title": "Закрепленные сообщения",
+  "pins.sheet.empty": "В этой сессии ничего не закреплено.",
+  "pins.action.show": "Показать в чате",
+  "pins.notice.notLoaded": "Этот блок не загружен в чате. Прокрутите вверх, чтобы загрузить более старые сообщения.",
 };

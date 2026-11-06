@@ -23,12 +23,29 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Added
+
+- **Pin a message in a session.** Tap the ⋯ on a message, a reply or a tool card in Chat, or hold it, and choose Pin. The block gets a pin mark, and the machine that owns the pane keeps a copy of the text per session, copied from its own log, so the pin outlives the pane and the log and shows on every paired device. A reply that is still being written and a running tool wait until they settle; a session holds up to 100 pins. Unpin deletes the copy.
+- **A Pins mark in the belt opens the pinned messages.** It stands beside the Agents and Jobs marks with the count, only while the session has pins. Its sheet lists the pins newest first with Unpin on every row; a tap on a row shows the whole text with Unpin and Show in Chat, and the sheet closes after the last Unpin. On a crew the lead forwards the pins to the machine that owns the pane. The playground draws it in seven cards.
+- **The pins route.** `GET`, `POST` and `DELETE` on `/api/pane/:id/pins` list, add and drop a session's pins; the list carries excerpts, `?pin=<id>` the whole text, and a refusal carries a `pin.*` code (`pin.cap`, `pin.not_settled`, `pin.not_pinnable`, `pin.item_not_found`, `pin.no_session`).
+
 ## [1.28.0] - 2026-11-06
 
 ### Added
 
 - **A session can turn its WalkyTalky off.** Run `collie walky off` in the agent's pane, and no other agent can message that session, nor can it message them. Your own messages still reach it. `collie walky on` turns it back, `collie walky who` marks it `walky off`, and the switch ends when the pane closes. ([89ec32d](https://github.com/AltanS/collie/commit/89ec32d))
 - **The phone has the WalkyTalky switch too.** The WalkyTalky sheet of a session opens with a WalkyTalky switch, and while the session is off the pane menu reads "WalkyTalky off". On a crew the switch is set on the machine that owns the pane. ([95e41f7](https://github.com/AltanS/collie/commit/95e41f7))
+- **A session can turn its WalkyTalky off.** Run `collie walky off` in the agent's pane, and no other agent can message that session, nor can it message them. Your own messages still reach it. `collie walky on` turns it back, `collie walky who` marks it `walky off`, and the switch ends when the pane closes.
+- **The phone has the WalkyTalky switch too.** The WalkyTalky sheet of a session opens with a WalkyTalky switch, and while the session is off the pane menu reads "WalkyTalky off". On a crew the switch is set on the machine that owns the pane.
+- **Pin a message in a session.** A bridge now keeps a copy of a pinned block of a session, your own message, an agent reply or a tool card, in a file under its state folder, keyed on the session. A pin outlives the pane, a restart and the Chat paging; the bridge copies the text from its own log and never stores what the phone sends. Up to 100 pins a session, and unpin is safe to repeat. On a crew the pins of a member are reached through the lead. The pane list carries the number of pins while a session has any.
+- **A pane serves the pins of its session.** `GET`, `POST` and `DELETE` on `/api/pane/:id/pins` list, add and drop pins: the phone names a block by its Chat id and the bridge copies the text from its own log. A pin or an unpin needs a paired device, and each pane in the list carries `pins` while its session has any.
+- **Pins cross a crew link.** The lead forwards the pins route to the member that owns the pane, a list as a read and a pin or an unpin as a write, and it masks a member's pins again when its own redaction is on. A lead keeps a member's pin count only as a whole number above zero.
+- **A pin list stays small, and old pins go.** The list of a session's pins carries a 400-character excerpt, the length of the text and a short anchor for each pin, and the whole text is one request away. A pin is kept once per block, a session's file goes with its last pin, and a file nobody wrote for 180 days is removed when the bridge starts.
+- **The phone speaks to the pins route.** The pane view reads a session's pins once when it opens, follows the pin count the machine reports, and pins or unpins a block with the machine's own reason when it refuses. A member on a Collie older than 1.28.0 is told so instead of failing silently.
+- **A hold on a Chat block, or its ⋯, pins it.** Every message, reply, thinking block and tool card in Chat has a small ⋯ at its top right that opens a sheet with Pin (or Unpin) and Copy text, and a hold or a right click opens the same sheet. A pinned block carries a small pin mark. A reply that is still being written, a picture, a shell pane, a read-only device, a saved copy and a machine on a Collie older than 1.28.0 offer no Pin.
+- **A Pins mark in the belt shows how many messages are pinned.** While a session has pins, a pin mark with their count stands beside the Agents and Jobs marks, and the ack manifest names how Pin and Unpin are acknowledged.
+- **The Pins mark opens the pinned messages.** Its sheet lists the pins newest first, each with an Unpin. A tap on a row opens the whole text, with Unpin and Show in Chat, which scrolls Chat to the block when it is loaded. On a wide screen a tap on the mark in another column focuses that pane and opens the sheet. The playground draws it in seven cards.
+- **A reply cannot be pinned while it is still being written.** The bridge refuses a pin on a block of a turn the program has not finished (`pin.not_settled`), so a pin never keeps half a sentence. The badge counts the session the list opens, also for an agent that moves to another session, and it drops a count when a pane's session changes.
 
 ### Changed
 

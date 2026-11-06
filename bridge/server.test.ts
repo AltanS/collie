@@ -5929,9 +5929,9 @@ describe("journalRefOf — which session the history and chat routes read", () =
   // reported ref and every case above still passes while the resumed session goes unread again.
   test("every journal route reads the ref journalRefOf settles on, never the reported one", () => {
     const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
-    // history, chat and the subagent transcript read, each handing discovery the hints built for the
-    // pane (screen and argv)
-    expect([...src.matchAll(/journalRefOf\(adapter, pane, panes, await discoveryHints\(/g)]).toHaveLength(3);
+    // history, chat, the subagent transcript read and the pins (M90), each handing discovery the hints
+    // built for the pane (screen and argv)
+    expect([...src.matchAll(/journalRefOf\(adapter, pane, panes, await discoveryHints\(/g)]).toHaveLength(4);
     expect(src).not.toMatch(/pane\.agentSession \?\?/);
   });
 });
@@ -5964,6 +5964,20 @@ describe("asks on the pane wire", () => {
     expect(durable.answerAsk).toBeInstanceOf(Function);
     // Nothing read yet: the pane carries no field until the program has been read.
     expect(withOpenAsks(wire, durable)).toBe(wire);
+  });
+});
+
+describe("the pins route (M90)", () => {
+  test("pins: a GET reads and every other method writes, it never marks the pane seen, and it crosses a crew link", () => {
+    expect(paneGateLevel("pins", "GET")).toBe("read");
+    expect(paneGateLevel("pins", "POST")).toBe("write");
+    expect(paneGateLevel("pins", "DELETE")).toBe("write");
+    expect(paneGateLevel("pins")).toBe("write");
+    expect(marksPaneSeen(new Request("http://x/api/pane/w1/pins", { method: "POST" }), "pins")).toBe(false);
+    expect(marksPaneSeen(new Request("http://x/api/pane/w1/pins", { headers: { "x-collie-seen": "1" } }), "pins")).toBe(true);
+    expect(isPaneInput("/api/pane/w1/pins", "POST")).toBe(false);
+    expect(isTopologyWrite("/api/pane/w1/pins", "POST")).toBe(false);
+    expect(crewRouteFor("/api/pane/w1/pins")).toBe("pane/w1/pins");
   });
 });
 

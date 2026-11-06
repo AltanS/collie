@@ -1,7 +1,7 @@
 import { http, HttpResponse } from "msw";
 
 import { server } from "@/test/setup";
-import { fixtureCrewSnapshot, fixtureSnapshot } from "@/test/handlers";
+import { fixtureCrewSnapshot, fixturePin, fixtureSnapshot, heldMessagePins, messagePinItemIds, setMessagePins } from "@/test/handlers";
 import { __resetConnectionHealth, isLostLatched, lastHealthyAt, markWake, NETWORK_LATCH_MS } from "./connection-health";
 import { isConnecting } from "./connection";
 import { DEAD_DEBOUNCE_MS, isLive, resetLiveness } from "./liveness";
@@ -21,6 +21,8 @@ import {
   fetchFileImage,
   fetchHistory,
   fetchPane,
+  fetchPanePin,
+  fetchPanePins,
   fetchPaneWalky,
   fetchSnapshot,
   filesImagePath,
@@ -33,6 +35,7 @@ import {
   sendKeys,
   startLaunch,
   fetchWalkyWho,
+  pinItem,
   postWalky,
   sendReply,
   textBeforeLastSend,
@@ -40,6 +43,7 @@ import {
   sttTimeoutFor,
   startRun,
   transcribeAudio,
+  unpinItem,
   fetchSttHost,
   fetchSttModel,
   fetchWhistleStatus,
@@ -1328,5 +1332,56 @@ describe("the walky talky routes (M62)", () => {
     const refusals = { counts: { "rate limit": 3 }, since: 1_700_000_000_000 };
     server.use(http.get("/api/walky/who", () => HttpResponse.json({ targets: [], skipped, refusals })));
     await expect(fetchWalkyWho()).resolves.toEqual({ targets: [], skipped, refusals });
+  });
+});
+
+describe("the pinned messages routes (M90)", () => {
+  it("lists a pane's pins newest first with an excerpt and no text, on the pane's own host", async () => {
+    const urls: string[] = [];
+    setMessagePins([fixturePin({ itemId: "u1:0", pinnedAt: 1 }), fixturePin({ itemId: "u2:0", pinnedAt: 2, text: "x".repeat(900) })]);
+    server.use(
+      http.get(/\/api\/pane\/[^/]+\/pins/, ({ request }) => {
+        urls.push(request.url);
+        return undefined;
+      }),
+    );
+    const rows = await fetchPanePins({ host: "badger" }, "w1:p1");
+    expect(urls).toEqual(["http://localhost:3000/api/pane/w1%3Ap1/pins?host=badger"]);
+    expect(rows.map((row) => row.itemId)).toEqual(["u2:0", "u1:0"]);
+    expect(rows[0]).toMatchObject({ textLength: 900 });
+    expect(rows[0]!.excerpt).toHaveLength(400);
+    expect(rows[0]).not.toHaveProperty("text");
+  });
+
+  it("reads one pin whole by its id", async () => {
+    setMessagePins([fixturePin({ itemId: "u1:0", id: "p1", text: "all of it" })]);
+    await expect(fetchPanePin(undefined, "w1:p1", "p1")).resolves.toMatchObject({ id: "p1", text: "all of it" });
+    await expect(fetchPanePin(undefined, "w1:p1", "nope")).rejects.toMatchObject({ status: 404 });
+  });
+
+  it("pins a block by its item id alone and hands back the pin, a second time as well", async () => {
+    const first = await pinItem({ host: "badger" }, "w1:p1", "u1:0");
+    const again = await pinItem({ host: "badger" }, "w1:p1", "u1:0");
+    expect(again.id).toBe(first.id);
+    expect(messagePinItemIds()).toEqual(["u1:0", "u1:0"]);
+    expect(heldMessagePins()).toHaveLength(1);
+  });
+
+  it("drops a pin with a DELETE on the pin id", async () => {
+    setMessagePins([fixturePin({ itemId: "u1:0", id: "p1" })]);
+    await expect(unpinItem(undefined, "w1:p1", "p1")).resolves.toBeUndefined();
+    expect(heldMessagePins()).toEqual([]);
+  });
+
+  it("throws a refusal that keeps the machine's pin.* code, and a plain 404 that has none", async () => {
+    server.use(
+      http.post(/\/api\/pane\/w1%3Ap1\/pins/, () => HttpResponse.json({ error: "pin.cap", code: "pin.cap", message: "full" }, { status: 409 })),
+      http.post(/\/api\/pane\/w1%3Ap2\/pins/, () => new HttpResponse("not found", { status: 404 })),
+    );
+    const capped = await pinItem(undefined, "w1:p1", "u1:0").catch(<TThrown,>(e: TThrown) => e);
+    expect(apiErrorFields(capped)?.code).toBe("pin.cap");
+    const older = await pinItem(undefined, "w1:p2", "u1:0").catch(<TThrown,>(e: TThrown) => e);
+    expect(apiErrorFields(older)?.code).toBeUndefined();
+    expect(older).toMatchObject({ status: 404 });
   });
 });

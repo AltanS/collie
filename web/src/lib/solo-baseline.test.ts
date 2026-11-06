@@ -178,6 +178,8 @@ const AGENT_VIEW_KEYS = {
   usage: true,
   // A session turned its walky talky off (M89). Present only while it is off, so a solo golden body carries no such key.
   walkyOff: true,
+  // How many pins the pane's session holds (M90). Present only above zero, so a solo golden body carries no such key.
+  pins: true,
 } satisfies Record<keyof AgentView, true>;
 
 const DEVICE_AUTH_KEYS = {
@@ -299,6 +301,7 @@ describe("solo zero-tax — the client's mirror types carry no crew dimension", 
       "model",
       "paneId",
       "paneLabel",
+      "pins",
       "progress",
       "readableLines",
       "sendProtocol",

@@ -68,6 +68,14 @@ export const ACK_MANIFEST = {
     channel: "echo",
     why: "The Send Protocol's request for a program on this machine (M56 spec 14): the field holds Sending until the bridge answers; a sent text moves to the thread as a pending line the program's own line replaces, and any other outcome lands at the thumb as the terminal composer's notice.",
   },
+  pinItem: {
+    channel: "echo",
+    why: "The hold or the ⋯ on a Chat block (M90): the block wears its pin mark at once and the Pins mark's count steps, which is the acknowledgement at the thing the person touched; a refusal (a full session, a block that left the log, an older machine) takes the mark back and is said on the status channel.",
+  },
+  unpinItem: {
+    channel: "echo",
+    why: "Unpin on a block's sheet or on a Pins sheet row (M90): the mark and the row leave at once, which is what the person asked for and where they are looking; a refusal puts the row back and is said on the status channel.",
+  },
   postWalky: {
     channel: "inline",
     why: "An operator message (M62): the receipt's state, in words, stands beside the composer box (or in the Crew sheet's receipt rows) until it is dismissed, because a message that was kept in the inbox or refused is something the operator must read and act on, and a status line would be gone by then.",

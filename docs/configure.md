@@ -264,6 +264,13 @@ Gentle Shell's `bash_background` and `monitor` fill the jobs mark, only while th
 on a phone; the Screen view and the dashboard do not show it. The pane's working light stays as the
 multiplexer reports it.
 
+The pins mark, a pin, sits right of the jobs mark while the session has pinned messages. Its badge
+counts them, and it is hidden at zero. A tap opens the **Pinned messages** sheet, newest first, each
+row with its kind, the first lines of the text, how long ago, and an **Unpin** button. A tap on a row
+opens the whole text, which scrolls, with **Unpin** and **Show in Chat**. Show in Chat scrolls to the
+block when it is loaded. After the last Unpin the sheet closes and the mark goes. On a wide screen a tap
+on the mark of another column focuses that pane and opens the sheet.
+
 While the text box holds text or an attachment, an X sits at the belt's right end too, left of the
 Switch button. One tap empties the box and its saved draft, and sends nothing to the pane. The X then
 becomes Undo, which puts the text and the attachments back. Undo stays until your next act: a
@@ -1225,6 +1232,20 @@ of disappearing. That happens when the agent sits idle with an empty box twice i
 minutes without a running turn. Its **Discard** button removes the card and sends nothing.
 
 The display gear has a **Stretchtext replies** switch, off by default. With it on, Chat, the full reply card and History show a reply written with the cc-stretch plugin as its short form, and a tap on a phrase opens it. A `{{name}}` without a bar shows as `name`.
+
+**Pinned messages.** Every message, reply, thinking block and tool card in Chat has a small **⋯**
+button, **Message actions**, at its top right. It opens a sheet with **Pin** (or **Unpin**) and
+**Copy text**. A hold on the block, or a right click on a desktop, opens the same sheet as a second way,
+and a hold never takes your text selection away. A pinned block carries a small pin mark. A pin is a
+copy: the machine that owns the pane keeps the text in a file under its state folder, one file for each
+session, so a pin outlives the pane, a restart of the bridge and the paging of Chat, and a reopened
+session shows its pins again. The machine copies the block from its own log and never stores what the
+phone sends. A session keeps at most 100 pins, and a tool card pins with its name, its input and its
+result as Chat shows them, capped as Chat caps them. A pin is a copy that outlives the log, and every
+paired device can read it, tool results included. Unpin it to delete the copy. A reply that is still
+being written, a picture, a shell pane, a read-only device, a saved copy and a machine on a Collie
+older than 1.28.0 offer no Pin. On a crew, a member keeps its own pins and the phone reaches them
+through the lead.
 
 One thing in Chat is known to be incomplete. Hermes can remove a turn from its log after Collie
 read it, for example when it compacts. Chat then keeps showing that turn until the session is read

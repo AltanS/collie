@@ -2716,4 +2716,29 @@ export const fr: Dictionary = {
   "settings.zoomPill.description": "Le bouton en forme de loupe dans la barre d'actions, qui ouvre l'écran en plein format. Il n'apparaît jamais dans le chat.",
   "settings.zoomPill.option.screen": "Vue écran",
   "settings.zoomPill.option.off": "Désactivé",
+
+  // --- pins (M90: pinned messages): the block actions, the mark, the refusals ---
+  "pins.action.pin": "Épingler",
+  "pins.action.unpin": "Désépingler",
+  "pins.action.copy": "Copier le texte",
+  "pins.action.more": "Actions du message",
+  "pins.mark": "Épinglé",
+  "pins.sheet.kind.user": "Votre message",
+  "pins.sheet.kind.reply": "Réponse",
+  "pins.sheet.kind.tool": "Outil : {name}",
+  "pins.sheet.kind.thinking": "Réflexion",
+  "pins.sheet.kind.notice": "Notification",
+  "pins.reason.notFound": "Ce bloc ne figure plus dans le journal de cette session.",
+  "pins.reason.cap": "Cette session compte 100 éléments épinglés, désépinglez-en un d'abord.",
+  "pins.reason.noSession": "Ce volet n'a aucune session pour laquelle conserver des éléments épinglés.",
+  "pins.reason.notPinnable": "Ce bloc ne peut pas être épinglé.",
+  "pins.reason.gone": "Cet élément épinglé n'existe plus.",
+  "pins.reason.olderBridge": "Le Collie de cette machine est plus ancien et ne peut pas conserver d'éléments épinglés. Mettez-le à jour.",
+
+  // --- pins, belt mark and sheet (M90 spec 03) ---
+  "pins.belt.label": "{count} épinglés",
+  "pins.sheet.title": "Messages épinglés",
+  "pins.sheet.empty": "Rien n'est épinglé dans cette session.",
+  "pins.action.show": "Afficher dans le chat",
+  "pins.notice.notLoaded": "Ce bloc n'est pas chargé dans le chat. Faites défiler vers le haut pour charger les messages plus anciens.",
 };

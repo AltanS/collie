@@ -358,6 +358,26 @@ describe("the strip", () => {
     expect(other!.className).toContain("border-transparent");
   });
 
+  it("a tap on the pins mark in a column without focus leaves a pins intent for that pane (M90)", async () => {
+    const pinned: AgentView = { ...pane("w1:p4", "w1", "alpha"), pins: 3 };
+    extraAgents = [pinned];
+    const { container, router } = await mount("w1:p1", 1200);
+    await openBesideFromSidebar(container, pinned);
+    await openBesideFromSidebar(container, A2);
+    const other = columns(container).find((c) => c.dataset.colKey === key(pinned))!;
+    fireEvent.click(within(other).getByRole("button", { name: "3 pinned" }));
+    await waitFor(() => expect(router.state.location.pathname).toBe(panePath("w1:p4")));
+    // The tap left its act for that pane's own composer, and for no other pane.
+    expect(takeBeltIntent(key(A2))).toBeNull();
+    expect(takeBeltIntent(key(pinned))).toEqual({ kind: "pins" });
+  });
+
+  it("draws no pins mark on a column whose pane has no pins", async () => {
+    const { container } = await mount("w1:p1", 1200);
+    await openBesideFromSidebar(container, A2);
+    expect(within(columns(container)[0]!).queryByRole("button", { name: /pinned$/ })).toBeNull();
+  });
+
   it("shows a belt in every column, and the reply box only where the pane view is", async () => {
     const { container } = await mount("w1:p1", 1200);
     await openBesideFromSidebar(container, A2);

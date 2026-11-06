@@ -3094,6 +3094,31 @@ export const en = {
   "settings.zoomPill.description": "The magnifier button on the belt that opens the screen full size. It never shows in Chat.",
   "settings.zoomPill.option.screen": "Screen view",
   "settings.zoomPill.option.off": "Off",
+
+  // --- pins (M90: pinned messages): the block actions, the mark, the refusals ---
+  "pins.action.pin": "Pin",
+  "pins.action.unpin": "Unpin",
+  "pins.action.copy": "Copy text",
+  "pins.action.more": "Message actions",
+  "pins.mark": "Pinned",
+  "pins.sheet.kind.user": "Your message",
+  "pins.sheet.kind.reply": "Reply",
+  "pins.sheet.kind.tool": "Tool: {name}",
+  "pins.sheet.kind.thinking": "Thinking",
+  "pins.sheet.kind.notice": "Notice",
+  "pins.reason.notFound": "That block is no longer in this session's log.",
+  "pins.reason.cap": "This session has 100 pins, unpin one first.",
+  "pins.reason.noSession": "This pane has no session to keep pins for.",
+  "pins.reason.notPinnable": "That block cannot be pinned.",
+  "pins.reason.gone": "That pin is gone.",
+  "pins.reason.olderBridge": "That machine's Collie is older and cannot keep pins. Update it.",
+
+  // --- pins, belt mark and sheet (M90 spec 03) ---
+  "pins.belt.label": "{count} pinned",
+  "pins.sheet.title": "Pinned messages",
+  "pins.sheet.empty": "Nothing is pinned in this session.",
+  "pins.action.show": "Show in Chat",
+  "pins.notice.notLoaded": "That block is not loaded in Chat. Scroll up to load older messages.",
 } as const;
 
 /** Every key that exists, as a union of string literals. The completeness contract. */

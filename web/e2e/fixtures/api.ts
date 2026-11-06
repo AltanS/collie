@@ -3,8 +3,9 @@ import { fileURLToPath } from "node:url";
 
 import type { Page, Route } from "@playwright/test";
 
+import { itemsOf, type ChatItem } from "@/lib/chat-items";
 import type { Locale } from "@/lib/i18n/locale";
-import type { MachineAlerts, PaneChatResponse, PaneHistoryResponse, SnapshotResponse } from "@/lib/types";
+import type { MachineAlerts, PaneChatResponse, PaneHistoryResponse, PinFull, SnapshotResponse } from "@/lib/types";
 import { TOUR_STORAGE_KEY, TOUR_VERSION } from "@/lib/tour";
 import {
   fixtureChangeDiff,
@@ -68,11 +69,72 @@ interface CreateSpaceBody {
 const STUB_HOME = fixtureNewSpace.pane.cwd;
 
 /**
+ * The pinned messages of the stub's pane (M90), in memory, one set for each page. A pin is a copy the bridge makes from
+ * the pane's own journal, so the stub copies the same way: {@link installPaneWorld} hands it the chat answer it serves,
+ * and a POST names an item of it by its Chat id. A page with no pane world has no journal, so a POST finds no block.
+ */
+interface PinStub {
+  readonly pins: PinFull[];
+  items: readonly ChatItem[];
+  minted: number;
+}
+
+const pinStubs = new WeakMap<Page, PinStub>();
+
+function pinStubOf(page: Page): PinStub {
+  const held = pinStubs.get(page);
+  if (held !== undefined) return held;
+  const made: PinStub = { pins: [], items: [], minted: 0 };
+  pinStubs.set(page, made);
+  return made;
+}
+
+function pinRefusal(route: Route, status: 404 | 409, code: string): Promise<void> {
+  return fulfillJson(route, { error: code, code, message: code }, status);
+}
+
+/** A pin as the list answers it: everything but the text, with an excerpt and the length (`bridge/pins/routes.ts`). */
+function pinRowOf(pin: PinFull) {
+  const { text, ...rest } = pin;
+  return { ...rest, excerpt: text.slice(0, 400), textLength: text.length };
+}
+
+/** `GET`, `POST` and `DELETE` on `/api/pane/:id/pins`, as `bridge/pins/routes.ts` answers them. */
+async function answerPins(route: Route, method: string, stub: PinStub): Promise<void> {
+  const url = new URL(route.request().url());
+  const wanted = url.searchParams.get("pin");
+  if (method === "GET" && wanted === null) {
+    return fulfillJson(route, { pins: stub.pins.toReversed().map(pinRowOf) });
+  }
+  if (method === "GET") {
+    const found = stub.pins.find((pin) => pin.id === wanted);
+    return found === undefined ? pinRefusal(route, 404, "pin.not_found") : fulfillJson(route, { pin: found });
+  }
+  if (method === "DELETE") {
+    const at = stub.pins.findIndex((pin) => pin.id === wanted);
+    if (at >= 0) stub.pins.splice(at, 1);
+    return route.fulfill({ status: 204 });
+  }
+  // SAFETY: the body is the app's own: `lib/api.ts`'s `pinItem` is the only caller and it posts `{ itemId }`.
+  const { itemId } = route.request().postDataJSON() as { itemId: string };
+  const held = stub.pins.find((pin) => pin.itemId === itemId);
+  if (held !== undefined) return fulfillJson(route, { pin: held }, 200);
+  const item = stub.items.find((candidate) => candidate.id === itemId);
+  if (item === undefined) return pinRefusal(route, 404, "pin.item_not_found");
+  if (item.kind !== "user" && item.kind !== "reply" && item.kind !== "thinking" && item.kind !== "notice") return pinRefusal(route, 409, "pin.not_pinnable");
+  stub.minted += 1;
+  const made: PinFull = { id: `pin-${String(stub.minted)}`, itemId, kind: item.kind, text: item.text, anchor: item.text.slice(0, 80), pinnedAt: Date.now() };
+  if (item.ts !== undefined) made.ts = item.ts;
+  stub.pins.push(made);
+  return fulfillJson(route, { pin: made }, 201);
+}
+
+/**
  * Answer the one request. Split out of the route so the dispatch reads as a table and so an
  * unmatched path is a loud 501 rather than a silent fall-through to the static server, which would
  * hand the app `index.html` for a JSON fetch and fail somewhere far away from the cause.
  */
-async function answer(route: Route, path: string): Promise<void> {
+async function answer(route: Route, path: string, pins: PinStub): Promise<void> {
   const method = route.request().method();
 
   if (path === "/api/snapshot") return fulfillJson(route, fixtureSnapshot);
@@ -115,6 +177,7 @@ async function answer(route: Route, path: string): Promise<void> {
       fileTruncated: false,
     });
   }
+  if (/^\/api\/pane\/[^/]+\/pins$/.test(path)) return answerPins(route, method, pins);
   if (/^\/api\/pane\/[^/]+\/subagent\/[^/]+$/.test(path)) {
     return fulfillJson(route, { paneId: "w1:p1", agentId: "a000000", available: false });
   }
@@ -230,8 +293,9 @@ async function answer(route: Route, path: string): Promise<void> {
  */
 export async function installApiStub(page: Page): Promise<void> {
   await seedTourSeen(page);
+  const pins = pinStubOf(page);
   await page.route("**/api/**", async (route) => {
-    await answer(route, new URL(route.request().url()).pathname);
+    await answer(route, new URL(route.request().url()).pathname, pins);
   });
 }
 
@@ -360,6 +424,8 @@ export async function installPaneWorld(page: Page, world: PaneWorldOptions): Pro
 
   await page.route((url) => url.pathname === "/api/snapshot", (route) => fulfillJson(route, world.snapshot));
   await page.route((url) => url.pathname === `${pane}/chat`, (route) => fulfillJson(route, world.chat));
+  // The journal a pin is copied from is the one the pane's Chat reads.
+  if (world.chat.available) pinStubOf(page).items = world.chat.upserts.flatMap((entry) => itemsOf(entry));
   const history = world.history;
   if (history !== undefined) await page.route((url) => url.pathname === `${pane}/history`, (route) => fulfillJson(route, history));
   await page.route(
