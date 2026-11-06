@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { chmodSync, existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync, mkdirSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { HOST } from "../host.ts";
 import { pinSessionKey } from "./key.ts";
-import { MAX_PIN_CHARS, MAX_PINS, PinStore, type PinDraft } from "./store.ts";
+import { ANCHOR_CHARS, MAX_PIN_CHARS, MAX_PINS, PinStore, SWEEP_DAYS, type PinDraft } from "./store.ts";
 
 // File modes are POSIX: the mode checks are skipped on Windows.
 const POSIX_ONLY = HOST.platform === "win32";
@@ -51,7 +51,7 @@ describe("the pin store", () => {
     expect(added).toEqual({
       ok: true,
       created: true,
-      pin: { id: "p1", itemId: "toolu_1", kind: "tool", text: "text of toolu_1", tool: { name: "Bash", input: "ls" }, ts: "2026-11-06T10:00:00Z", pinnedAt: T0 },
+      pin: { id: "p1", itemId: "toolu_1", kind: "tool", text: "text of toolu_1", anchor: "text of toolu_1", tool: { name: "Bash", input: "ls" }, ts: "2026-11-06T10:00:00Z", pinnedAt: T0 },
     });
   });
 
@@ -73,6 +73,22 @@ describe("the pin store", () => {
     const first = store.list("claude.s1").at(-1)!;
     expect(store.remove("claude.s1", first.id)).toEqual({ ok: true, removed: true });
     expect(store.add("claude.s1", draft("one-more:0")).ok).toBe(true);
+  });
+
+  test("keeps the first 80 characters as the anchor, and get finds one pin by id", () => {
+    const store = new PinStore(null, () => T0, counter());
+    const added = store.add("claude.s1", draft("a:0", { text: "z".repeat(500) }));
+    expect(added.ok && added.pin.anchor).toBe("z".repeat(ANCHOR_CHARS));
+    expect(store.get("claude.s1", "p1")?.itemId).toBe("a:0");
+    expect(store.get("claude.s1", "nope")).toBeUndefined();
+  });
+
+  test("a row written before the anchor existed takes it from its text", () => {
+    const folder = dir();
+    mkdirSync(folder, { recursive: true });
+    const old = { id: "p1", itemId: "a:0", kind: "user", text: "q".repeat(200), pinnedAt: T0 };
+    writeFileSync(join(folder, "claude.s1.json"), JSON.stringify({ v: 1, pins: [old] }));
+    expect(new PinStore(folder).list("claude.s1")[0]!.anchor).toBe("q".repeat(ANCHOR_CHARS));
   });
 
   test("cuts the text at the Chat cap", () => {
@@ -108,8 +124,8 @@ describe("the pin file", () => {
     expect(JSON.parse(readFileSync(file, "utf8"))).toEqual({
       v: 1,
       pins: [
-        { id: "p1", itemId: "a:0", kind: "reply", text: "text of a:0", pinnedAt: T0 },
-        { id: "p2", itemId: "toolu_1", kind: "tool", text: "text of toolu_1", tool: { name: "Read" }, pinnedAt: T0 },
+        { id: "p1", itemId: "a:0", kind: "reply", text: "text of a:0", pinnedAt: T0, anchor: "text of a:0" },
+        { id: "p2", itemId: "toolu_1", kind: "tool", text: "text of toolu_1", tool: { name: "Read" }, pinnedAt: T0, anchor: "text of toolu_1" },
       ],
     });
     expect(readdirSync(folder)).toEqual(["claude.s1.json"]);
@@ -147,7 +163,7 @@ describe("the pin file", () => {
   test("a row that is malformed is skipped and the rest are kept", () => {
     const folder = dir();
     mkdirSync(folder, { recursive: true });
-    const good = { id: "p1", itemId: "a:0", kind: "user", text: "hi", pinnedAt: T0 };
+    const good = { id: "p1", itemId: "a:0", kind: "user", text: "hi", pinnedAt: T0, anchor: "hi" };
     writeFileSync(join(folder, "claude.s1.json"), JSON.stringify({ v: 1, pins: [{ id: "p0", kind: "bogus" }, good, 7] }));
     expect(new PinStore(folder).list("claude.s1")).toEqual([good]);
   });
@@ -156,11 +172,52 @@ describe("the pin file", () => {
     const folder = dir();
     const store = new PinStore(folder, () => T0, counter());
     store.add("claude.s1", draft("a:0"));
+    store.add("claude.s1", draft("c:0"));
     // A folder where the temp file goes makes the write throw on every platform and for root too.
     mkdirSync(join(folder, "claude.s1.json.tmp"));
     expect(store.add("claude.s1", draft("b:0"))).toEqual({ ok: false, reason: "write" });
     expect(store.remove("claude.s1", "p1")).toEqual({ ok: false, reason: "write" });
-    expect(store.list("claude.s1").map((pin) => pin.itemId)).toEqual(["a:0"]);
+    expect(store.list("claude.s1").map((pin) => pin.itemId)).toEqual(["c:0", "a:0"]);
+  });
+});
+
+describe("the lifecycle of a pin file", () => {
+  test("the file goes when its last pin is removed, and a new pin makes it again", () => {
+    const folder = dir();
+    const store = new PinStore(folder, () => T0, counter());
+    store.add("claude.s1", draft("a:0"));
+    store.add("claude.s1", draft("b:0"));
+    const file = join(folder, "claude.s1.json");
+    store.remove("claude.s1", "p1");
+    expect(existsSync(file)).toBe(true);
+    store.remove("claude.s1", "p2");
+    expect(existsSync(file)).toBe(false);
+    expect(readdirSync(folder)).toEqual([]);
+    expect(new PinStore(folder).list("claude.s1")).toEqual([]);
+    expect(store.add("claude.s1", draft("c:0")).ok).toBe(true);
+    expect(existsSync(file)).toBe(true);
+  });
+
+  test("sweep removes a file not written for 180 days, keeps a newer one, and clears a stale temp file", () => {
+    const folder = dir();
+    const store = new PinStore(folder);
+    store.add("claude.old", draft("a:0"));
+    store.add("claude.fresh", draft("b:0"));
+    writeFileSync(join(folder, "claude.crash.json.tmp"), "{}");
+    const day = 86_400_000;
+    const age = (name: string, days: number) => utimesSync(join(folder, name), new Date(Date.now() - days * day), new Date(Date.now() - days * day));
+    age("claude.old.json", SWEEP_DAYS + 1);
+    age("claude.crash.json.tmp", SWEEP_DAYS + 1);
+    age("claude.fresh.json", SWEEP_DAYS - 1);
+    expect(new PinStore(folder).sweep()).toBe(2);
+    expect(readdirSync(folder)).toEqual(["claude.fresh.json"]);
+    expect(new PinStore(folder).list("claude.old")).toEqual([]);
+    expect(new PinStore(folder).sweep()).toBe(0);
+  });
+
+  test("sweep with no folder, or an in-memory store, does nothing", () => {
+    expect(new PinStore(dir()).sweep()).toBe(0);
+    expect(new PinStore(null).sweep()).toBe(0);
   });
 });
 

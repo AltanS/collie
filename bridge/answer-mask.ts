@@ -136,20 +136,28 @@ export function maskSentAnswer<T extends { entries: readonly { line: string }[] 
   return { ...answer, entries: answer.entries.map((entry) => ({ ...entry, line: redactText(entry.line) })) };
 }
 
-/** The words of one pin (M90): its text, and the one-line input of a tool card. */
+/** The words of one pin (M90): its text or, in a list, its excerpt; its anchor; and the one-line input of a tool card. */
 interface PinWords {
-  text: string;
+  text?: string;
+  excerpt?: string;
+  anchor?: string;
   tool?: { name: string; input?: string };
 }
 
-/** A pin with its text and its tool input masked. The file keeps the log's own words; only what leaves is masked. */
+/**
+ * A pin with every word that leaves it masked. The file keeps the log's own words; only what leaves is
+ * masked. Each mask is as wide as what it hides, so a `textLength` beside them stays true.
+ */
 export function maskPin<P extends PinWords>(pin: P): P {
-  const masked = { ...pin, text: redactText(pin.text) };
+  const masked = { ...pin };
+  if (pin.text !== undefined) masked.text = redactText(pin.text);
+  if (pin.excerpt !== undefined) masked.excerpt = redactText(pin.excerpt);
+  if (pin.anchor !== undefined) masked.anchor = redactText(pin.anchor);
   if (pin.tool?.input === undefined) return masked;
   return { ...masked, tool: { ...pin.tool, input: redactText(pin.tool.input) } };
 }
 
-/** A pins answer, the list of a GET or the one pin of a POST, with every pin masked. */
+/** A pins answer, the list of a GET or the one pin of a POST or a GET by id, with every pin masked. */
 export function maskPinsAnswer<T extends { pins?: readonly PinWords[]; pin?: PinWords }>(answer: T): T {
   const listed = answer.pins === undefined ? answer : { ...answer, pins: answer.pins.map(maskPin) };
   return listed.pin === undefined ? listed : { ...listed, pin: maskPin(listed.pin) };

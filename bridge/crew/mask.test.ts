@@ -240,6 +240,14 @@ describe("a member's pins reach the phone masked through the lead (M90)", () => 
     expect(maskForwardedAnswer("pins", JSON.stringify({ pin }))).toBe(JSON.stringify(maskPinsAnswer({ pin })));
   });
 
+  test("a list row carries its words as an excerpt and an anchor, and both are masked", async () => {
+    const row = { id: "p1", itemId: "u1:0", kind: "user", excerpt: `the key is ${key}`, textLength: 400, anchor: `the key is ${key}`, pinnedAt: 1 };
+    const out = await (await viaLead("/api/pane/w1:p1/pins", member(JSON.stringify({ pins: [row] })).transport)).text();
+    expect(out).not.toContain(key);
+    expect(out).toBe(JSON.stringify(maskPinsAnswer({ pins: [row] })));
+    expect(out).toContain('"textLength":400');
+  });
+
   test("an answer a member already masked comes back byte for byte", () => {
     const done = JSON.stringify(maskPinsAnswer(list));
     expect(maskForwardedAnswer("pins", done)).toBe(done);
@@ -248,6 +256,7 @@ describe("a member's pins reach the phone masked through the lead (M90)", () => 
   test("a body that is not a pins answer is refused, never passed on raw", async () => {
     expect(maskForwardedAnswer("pins", JSON.stringify({ pins: [{ id: "p1" }] }))).toBeNull();
     expect(maskForwardedAnswer("pins", JSON.stringify({ pins: "x" }))).toBeNull();
+    expect(maskForwardedAnswer("pins", JSON.stringify({ pins: [{ id: "p1", excerpt: "x", anchor: 7 }] }))).toBeNull();
     expect(maskForwardedAnswer("pins", "not json")).toBeNull();
   });
 });

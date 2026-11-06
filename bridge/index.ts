@@ -1970,6 +1970,9 @@ const walkyInstances = new WalkyInstances(join(cfg.stateDir, "walky"));
 const walkyOff = new WalkyOff(join(cfg.stateDir, "walky"));
 // The pins of every session this machine keeps, one file each (M90).
 const pinStore = new PinStore(join(cfg.stateDir, "pins"));
+// Once at boot, before any pin is read: the files nobody wrote for 180 days go.
+const sweptPins = pinStore.sweep();
+if (sweptPins > 0) console.log(`[pins] swept ${String(sweptPins)} stale pin file(s) at startup`);
 /** Every pane of every session, without its token: what the instance registry observes. */
 const walkyRawPanes = (): Omit<WalkyPane, "instance" | "off">[] =>
   registry.ordered().flatMap((rt) => {

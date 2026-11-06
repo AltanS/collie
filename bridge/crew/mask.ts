@@ -84,9 +84,19 @@ function isSentAnswer(body: JsonObject): body is JsonObject & { entries: { line:
   return Array.isArray(body.entries) && body.entries.every((entry) => isObject(entry) && typeof entry.line === "string");
 }
 
-/** A pins answer (M90) as deep as its mask reads it: a `pins` list or one `pin`, each with a string `text`. */
-function isPinsAnswer(body: JsonObject): body is JsonObject & { pins?: { text: string }[]; pin?: { text: string } } {
-  const isPin = (value: JsonValue | undefined) => isObject(value) && typeof value.text === "string" && (value.tool === undefined || (isObject(value.tool) && (value.tool.input === undefined || typeof value.tool.input === "string")));
+function isWord(value: JsonValue | undefined): boolean {
+  return value === undefined || typeof value === "string";
+}
+
+/** A pins answer (M90) as deep as its mask reads it: a `pins` list or one `pin`, each with its words as strings. */
+function isPinsAnswer(body: JsonObject): body is JsonObject & { pins?: { text?: string }[]; pin?: { text?: string } } {
+  const isPin = (value: JsonValue | undefined) =>
+    isObject(value) &&
+    (typeof value.text === "string" || typeof value.excerpt === "string") &&
+    isWord(value.text) &&
+    isWord(value.excerpt) &&
+    isWord(value.anchor) &&
+    (value.tool === undefined || (isObject(value.tool) && isWord(value.tool.input)));
   if (body.pin !== undefined) return isPin(body.pin) && body.pins === undefined;
   return Array.isArray(body.pins) && body.pins.every(isPin);
 }

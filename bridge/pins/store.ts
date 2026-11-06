@@ -10,9 +10,19 @@
 // walky talky's. A file that does not parse, or carries another version, reads as no pins and stays as
 // it is until the next write. A write that fails returns a reason and leaves memory as it was, so the
 // route can answer 500 instead of telling the phone a pin exists that a restart would lose.
+//
+// ONE WRITER. The bridge that owns the pane is the only process that writes its pins, and every write
+// here is synchronous (`writeFileSync`, `renameSync`) with no await between the read of the session's
+// pins and the write of the new list, so two requests never interleave: there is no lost update, and
+// no lock to hold. A crew lead never writes a member's file; it forwards the request to the member
+// that owns the pane, and that member's store answers.
+//
+// LIFECYCLE. The file of a session is deleted when its last pin is removed, so an emptied session leaves
+// nothing behind. `sweep()` runs once at boot and removes a file nobody wrote for {@link SWEEP_DAYS}
+// days, which is how the pins of a session that was never opened again go.
 
 import { randomBytes } from "node:crypto";
-import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { asJsonNumber, asJsonObject, asJsonString, parseJsonObject, type JsonObject } from "../../web/src/lib/json.ts";
@@ -22,6 +32,12 @@ export const MAX_PINS = 100;
 
 /** Longest pinned text, the cap Chat puts on a text part (journal/text.ts `MAX_TEXT_CHARS`). */
 export const MAX_PIN_CHARS = 20_000;
+
+/** A pin file nobody wrote for this many days is removed at boot. */
+export const SWEEP_DAYS = 180;
+
+/** How much of a pin's text its `anchor` keeps: enough to find the block again when its id changed. */
+export const ANCHOR_CHARS = 80;
 
 export type PinKind = "user" | "reply" | "thinking" | "notice" | "tool";
 
@@ -49,6 +65,8 @@ export interface PinDraft {
 export interface Pin extends PinDraft {
   readonly id: string;
   readonly pinnedAt: number;
+  /** The first {@link ANCHOR_CHARS} characters of the text, for "Show in Chat" when the block's id changed. */
+  readonly anchor: string;
 }
 
 export type PinAdd =
@@ -75,7 +93,9 @@ function pinOf(value: JsonObject | undefined): Pin | undefined {
   const name = asJsonString(tool?.name);
   const input = asJsonString(tool?.input);
   const ts = asJsonString(value?.ts);
-  const base: Pin = { id, itemId, kind, text, pinnedAt };
+  // A row written before `anchor` existed takes it from its text.
+  const anchor = asJsonString(value?.anchor) ?? text.slice(0, ANCHOR_CHARS);
+  const base: Pin = { id, itemId, kind, text, pinnedAt, anchor };
   const stamped: Pin = ts === undefined ? base : { ...base, ts };
   if (name === undefined) return stamped;
   return { ...stamped, tool: input === undefined ? { name } : { name, input } };
@@ -128,6 +148,11 @@ export class PinStore {
     return this.held(sessionKey).toReversed();
   }
 
+  /** One pin of the session by its id, or undefined. */
+  get(sessionKey: string, pinId: string): Pin | undefined {
+    return this.held(sessionKey).find((pin) => pin.id === pinId);
+  }
+
   /** How many pins the session holds. From memory once the session was read. */
   count(sessionKey: string): number {
     return this.held(sessionKey).length;
@@ -143,7 +168,8 @@ export class PinStore {
     const existing = pins.find((pin) => pin.itemId === draft.itemId);
     if (existing !== undefined) return { ok: true, pin: existing, created: false };
     if (pins.length >= MAX_PINS) return { ok: false, reason: "cap" };
-    const pin: Pin = { ...draft, text: draft.text.slice(0, MAX_PIN_CHARS), id: this.mint(), pinnedAt: this.now() };
+    const text = draft.text.slice(0, MAX_PIN_CHARS);
+    const pin: Pin = { ...draft, text, id: this.mint(), pinnedAt: this.now(), anchor: text.slice(0, ANCHOR_CHARS) };
     if (!this.write(sessionKey, [...pins, pin])) return { ok: false, reason: "write" };
     this.sessions.set(sessionKey, [...pins, pin]);
     return { ok: true, pin, created: true };
@@ -163,6 +189,11 @@ export class PinStore {
     const path = this.pathOf(sessionKey);
     if (path === null || this.dir === null) return true;
     try {
+      // The last pin gone: the session's file goes with it.
+      if (pins.length === 0) {
+        rmSync(path, { force: true });
+        return true;
+      }
       mkdirSync(this.dir, { recursive: true, mode: 0o700 });
       chmodSync(this.dir, 0o700);
       const temp = `${path}.tmp`;
@@ -172,5 +203,27 @@ export class PinStore {
     } catch {
       return false;
     }
+  }
+
+  /**
+   * Remove the pin files nobody wrote for {@link SWEEP_DAYS} days, and any temp file a crash left. Run
+   * once at boot, before a pin is read, so memory holds nothing of what goes. Answers how many went.
+   */
+  sweep(): number {
+    if (this.dir === null || !existsSync(this.dir)) return 0;
+    const cutoff = this.now() - SWEEP_DAYS * 86_400_000;
+    let removed = 0;
+    for (const name of readdirSync(this.dir)) {
+      if (!name.endsWith(".json") && !name.endsWith(".json.tmp")) continue;
+      const path = join(this.dir, name);
+      try {
+        if (statSync(path).mtimeMs >= cutoff) continue;
+        unlinkSync(path);
+        removed += 1;
+      } catch {
+        // A file that vanished or cannot be removed stays for the next boot.
+      }
+    }
+    return removed;
   }
 }
