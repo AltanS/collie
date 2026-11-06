@@ -425,7 +425,7 @@ export async function installPaneWorld(page: Page, world: PaneWorldOptions): Pro
   await page.route((url) => url.pathname === "/api/snapshot", (route) => fulfillJson(route, world.snapshot));
   await page.route((url) => url.pathname === `${pane}/chat`, (route) => fulfillJson(route, world.chat));
   // The journal a pin is copied from is the one the pane's Chat reads.
-  pinStubOf(page).items = world.chat.upserts.flatMap((entry) => itemsOf(entry));
+  if (world.chat.available) pinStubOf(page).items = world.chat.upserts.flatMap((entry) => itemsOf(entry));
   const history = world.history;
   if (history !== undefined) await page.route((url) => url.pathname === `${pane}/history`, (route) => fulfillJson(route, history));
   await page.route(
