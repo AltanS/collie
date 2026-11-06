@@ -2717,4 +2717,22 @@ export const it: Dictionary = {
   "settings.zoomPill.description": "Il pulsante a forma di lente nella barra azioni che apre lo schermo a dimensione piena. Non compare mai nella chat.",
   "settings.zoomPill.option.screen": "Vista schermo",
   "settings.zoomPill.option.off": "Disattivato",
+
+  // --- pins (M90: pinned messages): the block actions, the mark, the refusals ---
+  "pins.action.pin": "Fissa",
+  "pins.action.unpin": "Sblocca",
+  "pins.action.copy": "Copia testo",
+  "pins.action.more": "Azioni del messaggio",
+  "pins.mark": "Fissato",
+  "pins.sheet.kind.user": "Il tuo messaggio",
+  "pins.sheet.kind.reply": "Risposta",
+  "pins.sheet.kind.tool": "Strumento: {name}",
+  "pins.sheet.kind.thinking": "Ragionamento",
+  "pins.sheet.kind.notice": "Avviso",
+  "pins.reason.notFound": "Quel blocco non è più presente nel log di questa sessione.",
+  "pins.reason.cap": "Questa sessione ha 100 messaggi fissati, sblocca prima un messaggio.",
+  "pins.reason.noSession": "Questo riquadro non ha una sessione per cui conservare messaggi fissati.",
+  "pins.reason.notPinnable": "Impossibile aggiungere quel blocco ai pin.",
+  "pins.reason.gone": "Quel messaggio fissato non esiste più.",
+  "pins.reason.olderBridge": "Il Collie di quella macchina è più vecchio e non può conservare messaggi fissati. Aggiornalo.",
 };

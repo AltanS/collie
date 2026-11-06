@@ -8,9 +8,11 @@ import {
   fixtureAgents,
   fixtureCrewSnapshot,
   fixtureCrewStatus,
+  fixturePin,
   fixtureSnapshot,
   fixtureWalkyAgent,
   paneTextWithDraft,
+  setMessagePins,
   setWalkyRows,
 } from "@/test/handlers";
 
@@ -1565,5 +1567,38 @@ describe("paneLoader and the walky talky list (M62)", () => {
     failWalky();
     const failed = await paneLoader({ params: { paneId: "w1:p7" }, request: open("w1:p7") });
     expect(failed.walkyReads).toBe(second.walkyReads);
+  });
+});
+
+describe("readPins and the last list of a pane's pinned messages (M90)", () => {
+  it("answers the list newest first and keeps it, so the pane opened again starts from it", async () => {
+    setMessagePins([fixturePin({ itemId: "u1:0", pinnedAt: 1 }), fixturePin({ itemId: "u2:0", pinnedAt: 2 })]);
+    const { heldPins, readPins } = await import("./loaders");
+    expect(heldPins("w1:p1", undefined)).toBeNull();
+    const rows = await readPins("w1:p1", undefined);
+    expect(rows?.map((row) => row.itemId)).toEqual(["u2:0", "u1:0"]);
+    expect(heldPins("w1:p1", undefined)).toBe(rows);
+  });
+
+  it("keeps each pane's list under the pane's own address, host included", async () => {
+    setMessagePins([fixturePin({ itemId: "u1:0" })]);
+    const { heldPins, readPins } = await import("./loaders");
+    await readPins("w1:p1", { host: "badger" });
+    expect(heldPins("w1:p1", { host: "badger" })).toHaveLength(1);
+    expect(heldPins("w1:p1", undefined)).toBeNull();
+  });
+
+  it("keeps the list's identity across a read that changed nothing", async () => {
+    setMessagePins([fixturePin({ itemId: "u1:0" })]);
+    const { readPins } = await import("./loaders");
+    const first = await readPins("w1:p1", undefined);
+    expect(await readPins("w1:p1", undefined)).toBe(first);
+  });
+
+  it("answers null and throws nothing when the machine has no route or the pane no session", async () => {
+    server.use(http.get(/\/api\/pane\/[^/]+\/pins$/, () => new HttpResponse("not found", { status: 404 })));
+    const { heldPins, readPins } = await import("./loaders");
+    await expect(readPins("w1:p1", undefined)).resolves.toBeNull();
+    expect(heldPins("w1:p1", undefined)).toBeNull();
   });
 });

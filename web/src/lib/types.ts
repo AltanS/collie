@@ -19,6 +19,11 @@ export interface AgentView {
   instance?: string;
   /** True when the session turned its walky talky off (M89). Absent when on, and on an older machine. */
   walkyOff?: true;
+  /**
+   * How many pinned messages the pane's session holds (M90). Absent at zero, on a machine that predates pins, and on
+   * a pane whose session the bridge has not read yet, so the pane view reads the list once when it opens.
+   */
+  pins?: number;
   workspaceId: string;
   workspaceLabel: string;
   workspaceNumber: number;
@@ -652,6 +657,34 @@ export type SessionKind = "terminal" | "program";
 export type SessionWhere = "local" | "remote";
 /** {@link SessionSummary.state}. */
 export type SessionState = "ready" | "starting" | "unreachable";
+
+/** What a pinned message was, as Chat drew it (mirrors `PinKind` in bridge/pins/store.ts). */
+export type PinKind = "user" | "reply" | "thinking" | "notice" | "tool";
+
+/**
+ * One pin as the bridge's list answers it (M90): everything of the pin but its text, with the first 400
+ * characters of it and its length. The whole text is one `GET ?pin=<id>` away ({@link PinFull}).
+ */
+export interface PinRow {
+  id: string;
+  /** The Chat item id the pin was made from (lib/chat-items.ts). */
+  itemId: string;
+  kind: PinKind;
+  excerpt: string;
+  textLength: number;
+  /** The first 80 characters of the text, to find the block again when its id changed. */
+  anchor: string;
+  /** A tool card's name and the one-line gist of its input. */
+  tool?: { name: string; input?: string };
+  /** The block's own time in the log, ISO. */
+  ts?: string;
+  /** Epoch ms the pin was made. */
+  pinnedAt: number;
+}
+
+/** One pin with its whole text: `GET ?pin=<id>`, and the answer of a `POST`. */
+export type PinFull = Omit<PinRow, "excerpt" | "textLength"> & { text: string };
+
 
 /**
  * One member of the crew (CREW_PROTOCOL.md §9.2) — mirrors `ServerSummary` in bridge/types.ts field

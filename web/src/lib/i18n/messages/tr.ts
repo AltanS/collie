@@ -2715,4 +2715,22 @@ export const tr: Dictionary = {
   "settings.zoomPill.description": "Eylem çubuğundaki, ekranı tam boyutta açan büyüteç düğmesi. Sohbette hiç görünmez.",
   "settings.zoomPill.option.screen": "Ekran görünümü",
   "settings.zoomPill.option.off": "Kapalı",
+
+  // --- pins (M90: pinned messages): the block actions, the mark, the refusals ---
+  "pins.action.pin": "Sabitle",
+  "pins.action.unpin": "Sabitlemeyi kaldır",
+  "pins.action.copy": "Metni kopyala",
+  "pins.action.more": "Mesaj eylemleri",
+  "pins.mark": "Sabitlendi",
+  "pins.sheet.kind.user": "Mesajınız",
+  "pins.sheet.kind.reply": "Yanıt",
+  "pins.sheet.kind.tool": "Araç: {name}",
+  "pins.sheet.kind.thinking": "Düşünülüyor",
+  "pins.sheet.kind.notice": "Bildirim",
+  "pins.reason.notFound": "Bu blok artık bu oturumun günlüğünde değil.",
+  "pins.reason.cap": "Bu oturumda 100 sabitleme var, önce birinin sabitlemesini kaldırın.",
+  "pins.reason.noSession": "Bu bölmede sabitlemelerin tutulacağı bir oturum yok.",
+  "pins.reason.notPinnable": "Bu blok sabitlenemez.",
+  "pins.reason.gone": "Bu sabitleme kaldırılmış.",
+  "pins.reason.olderBridge": "Bu makinedeki Collie daha eski bir sürümdür ve sabitlemeleri tutamaz. Güncelleyin.",
 };

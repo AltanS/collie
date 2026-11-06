@@ -2900,4 +2900,22 @@ export const es: Dictionary = {
   "settings.zoomPill.description": "El botón de lupa de la barra de acciones que abre la pantalla a tamaño completo. Nunca aparece en el chat.",
   "settings.zoomPill.option.screen": "Vista de pantalla",
   "settings.zoomPill.option.off": "Desactivado",
+
+  // --- pins (M90: pinned messages): the block actions, the mark, the refusals ---
+  "pins.action.pin": "Fijar",
+  "pins.action.unpin": "Desfijar",
+  "pins.action.copy": "Copiar texto",
+  "pins.action.more": "Acciones del mensaje",
+  "pins.mark": "Fijado",
+  "pins.sheet.kind.user": "Tu mensaje",
+  "pins.sheet.kind.reply": "Respuesta",
+  "pins.sheet.kind.tool": "Herramienta: {name}",
+  "pins.sheet.kind.thinking": "Razonamiento",
+  "pins.sheet.kind.notice": "Aviso",
+  "pins.reason.notFound": "Ese bloque ya no está en el registro de esta sesión.",
+  "pins.reason.cap": "Esta sesión tiene 100 mensajes fijados; desfija uno primero.",
+  "pins.reason.noSession": "Este panel no tiene ninguna sesión en la que guardar mensajes fijados.",
+  "pins.reason.notPinnable": "Ese bloque no se puede fijar.",
+  "pins.reason.gone": "Ese mensaje fijado ya no existe.",
+  "pins.reason.olderBridge": "El Collie de esa máquina es más antiguo y no puede guardar mensajes fijados. Actualízalo.",
 };

@@ -2715,4 +2715,22 @@ export const pt: Dictionary = {
   "settings.zoomPill.description": "O botão de lupa da barra de ações que abre a tela em tamanho total. Ele nunca aparece no chat.",
   "settings.zoomPill.option.screen": "Vista de tela",
   "settings.zoomPill.option.off": "Desativado",
+
+  // --- pins (M90: pinned messages): the block actions, the mark, the refusals ---
+  "pins.action.pin": "Fixar",
+  "pins.action.unpin": "Desafixar",
+  "pins.action.copy": "Copiar texto",
+  "pins.action.more": "Ações da mensagem",
+  "pins.mark": "Fixado",
+  "pins.sheet.kind.user": "Sua mensagem",
+  "pins.sheet.kind.reply": "Resposta",
+  "pins.sheet.kind.tool": "Ferramenta: {name}",
+  "pins.sheet.kind.thinking": "Pensando",
+  "pins.sheet.kind.notice": "Aviso",
+  "pins.reason.notFound": "Esse bloco não está mais no log desta sessão.",
+  "pins.reason.cap": "Esta sessão tem 100 itens fixados, desafixe um primeiro.",
+  "pins.reason.noSession": "Este painel não tem uma sessão para manter itens fixados.",
+  "pins.reason.notPinnable": "Esse bloco não pode ser fixado.",
+  "pins.reason.gone": "Esse item fixado não existe mais.",
+  "pins.reason.olderBridge": "O Collie dessa máquina é mais antigo e não pode manter itens fixados. Atualize-o.",
 };

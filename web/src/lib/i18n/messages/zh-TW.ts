@@ -2859,4 +2859,22 @@ export const zhTW: Dictionary = {
   "settings.zoomPill.description": "動作列上的放大鏡按鈕，可全尺寸開啟螢幕。在聊天中不會顯示。",
   "settings.zoomPill.option.screen": "螢幕檢視",
   "settings.zoomPill.option.off": "關閉",
+
+  // --- pins (M90: pinned messages): the block actions, the mark, the refusals ---
+  "pins.action.pin": "釘選",
+  "pins.action.unpin": "取消釘選",
+  "pins.action.copy": "複製文字",
+  "pins.action.more": "訊息動作",
+  "pins.mark": "已釘選",
+  "pins.sheet.kind.user": "您的訊息",
+  "pins.sheet.kind.reply": "回覆",
+  "pins.sheet.kind.tool": "工具：{name}",
+  "pins.sheet.kind.thinking": "思考中",
+  "pins.sheet.kind.notice": "通知",
+  "pins.reason.notFound": "該區塊已不在此工作階段的記錄中。",
+  "pins.reason.cap": "本次工作階段已有 100 個釘選項目，請先取消釘選一個。",
+  "pins.reason.noSession": "此窗格沒有可保存釘選項目的工作階段。",
+  "pins.reason.notPinnable": "無法釘選該區塊。",
+  "pins.reason.gone": "該釘選項目已不存在。",
+  "pins.reason.olderBridge": "該機器上的 Collie 版本較舊，無法保存釘選項目。請更新。",
 };
