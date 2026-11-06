@@ -103,3 +103,22 @@ The numbers follow the milestone's README. Its decision 7 is a rule about when t
 - **Pins are per machine.** Moving a session to another machine does not move its pins.
 - **Not built.** A view of the pins across sessions, a search in them, a pin of an image, an edit of a
   pinned text.
+
+## Amendment 2026-11-06: the ⋯ shows on a tap
+
+Status is unchanged: **Accepted**. Point 8 above described the first cut, and it shipped in 1.28.0 that way:
+every pinnable block wore a muted `⋯` all the time. On the phone that read as a column of dots down the thread,
+and the float that kept text clear of it wrapped every first line. Altan asked for a block that shows nothing at
+rest.
+
+- **At rest a block shows nothing.** A tap on the block, or the hold, shows its `⋯` as a small chip over the
+  block's top right; neither gesture opens the sheet. The `⋯` opens it, as before.
+- **The way in stays visible after one tap.** That is what point 8 was protecting: the hold alone was not a way
+  in a person would find, and it fights selection. A tap is the gesture a person tries first, and it reveals
+  rather than acts, so a tap that only meant to read costs nothing.
+- **A right click on a desk still opens the sheet at once**, and a mouse over the block shows the `⋯` too.
+- **The chip moves no box and covers no control.** It is an overlay, and it steps left of a copy button, a tool
+  card's chevron or a status badge in its corner. It hides on a press elsewhere or after 4 s without a press, and stays through a scroll: the stream follows new output on its own while an agent works, and that is when a person wants to pin a reply.
+
+`web/src/components/stream-block.tsx` holds the details.
+

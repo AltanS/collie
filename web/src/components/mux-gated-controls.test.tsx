@@ -17,7 +17,7 @@ import { SpaceOverview } from "./space-overview";
 import { SpaceStrip } from "./space-strip";
 import { TabActionsSheet } from "./tab-actions-sheet";
 import { TabStrip } from "./tab-strip";
-import { STRIP_TAP_TARGET_SQUARE, TAB_ROW_SQUARE_TAP_TARGET } from "./ui/labelled-strip";
+import { STRIP_TAP_TARGET_SQUARE, TAB_ROW_ADD_TAP_TARGET } from "./ui/labelled-strip";
 import { cn } from "@/lib/utils";
 
 // EVERY CAPABILITY-GATED CONTROL, IN BOTH STATES (M10/06). One file rather than a case bolted onto
@@ -57,7 +57,7 @@ function declares(
  * `cn(reach, face)` call, so tailwind-merge drops the same overridden inset it dropped then. The
  * class SET on the primitive's button must equal it, token for token, nothing added or lost.
  */
-function handRolledPlus(reach: string, size: "size-7" | "size-8"): string[] {
+function handRolledPlus(reach: string, size: "size-6" | "size-7" | "size-8"): string[] {
   return cn(
     reach,
     `flex ${size} shrink-0 items-center justify-center rounded-full border border-dashed border-border text-muted-foreground transition-colors hover:bg-accent active:scale-95 disabled:opacity-100`,
@@ -249,12 +249,13 @@ describe("New tab — createTab", () => {
     expect(screen.queryByText("no tabs here.")).toBeNull();
   });
 
-  it("is the shared dashed '+', at its old 28px and its old tab-row reach, plus the folder look's 12px gap", async () => {
+  it("is the shared dashed '+', at the tab row's 24px and its own reach, plus the folder look's 12px gap", async () => {
     declares({ createTab: true });
     tabStrip();
     const plus = await screen.findByRole("button", { name: "New tab" });
     // The default look is "folder": the "+" sits 12px (ml-3) off the last tab, nothing else added.
-    expect(classSet(plus)).toEqual([...handRolledPlus(TAB_ROW_SQUARE_TAP_TARGET, "size-7"), "ml-3"].toSorted());
+    // 24px since 2026-11-06: the 28px ring read as sitting on the folder row's rule (ui/add-button.tsx).
+    expect(classSet(plus)).toEqual([...handRolledPlus(TAB_ROW_ADD_TAP_TARGET, "size-6"), "ml-3"].toSorted());
   });
 });
 

@@ -3,14 +3,24 @@ import { Loader2, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 /**
- * The face's drawn size. `sm` is 28px, for a row 30px tall or less: the pane screen's tab row and a
- * dashboard workspace heading. `md` is 32px, for the 34px pill strips: the space strip.
+ * The face's drawn size. `xs` is 24px with a 14px glyph, for the pane screen's 30px tab row alone: centred there it
+ * keeps 3px of air above and below, so its ring stands clear of the rule a folder tab row draws under itself (the
+ * 28px face kept 1px, and read as sitting on that rule). `sm` is 28px, for a dashboard workspace heading. `md` is
+ * 32px, for the 34px pill strips: the space strip.
  */
-export type AddButtonSize = "sm" | "md";
+export type AddButtonSize = "xs" | "sm" | "md";
 
 const FACE = {
+  xs: "size-6",
   sm: "size-7",
   md: "size-8",
+} as const satisfies Record<AddButtonSize, string>;
+
+/** The glyph's and the spinner's size, one box per face so the busy swap moves nothing. */
+const GLYPH = {
+  xs: "size-3.5",
+  sm: "size-4",
+  md: "size-4",
 } as const satisfies Record<AddButtonSize, string>;
 
 interface AddButtonProps {
@@ -25,7 +35,7 @@ interface AddButtonProps {
   size: AddButtonSize;
   /**
    * The hit area, as a transparent `::before` recipe: `STRIP_TAP_TARGET_SQUARE` in a pill strip,
-   * `TAB_ROW_SQUARE_TAP_TARGET` in the tab row (both `ui/labelled-strip.tsx`), the caller's own
+   * `TAB_ROW_ADD_TAP_TARGET` in the tab row (both `ui/labelled-strip.tsx`), the caller's own
    * elsewhere. Required, because no one reach fits every row: a reach is measured against what sits
    * around the button, and only the call site can see that. Every recipe carries `relative` and
    * `before:content-['']`.
@@ -44,7 +54,7 @@ interface AddButtonProps {
 // with the same class string at two sizes; the heading was its third caller, so it lives here now.
 //
 // A true square is the one shape allowed to keep `rounded-full` (DESIGN.md §3), so both faces are
-// circles. The glyph and the spinner are the same 16px in the same box, swapped in place, so the
+// circles. The glyph and the spinner are one size in the same box ({@link GLYPH}), swapped in place, so the
 // button never resizes between its idle and busy shapes (DESIGN.md §2). `disabled:opacity-100`
 // keeps a busy button at full ink: the spinner is the state, and a faded spinner reads as broken.
 //
@@ -65,7 +75,7 @@ export function AddButton({ label, onClick, busy = false, size, reach, className
         className,
       )}
     >
-      {busy ? <Loader2 className="size-4 animate-spin" aria-hidden /> : <Plus className="size-4" />}
+      {busy ? <Loader2 className={cn(GLYPH[size], "animate-spin")} aria-hidden /> : <Plus className={GLYPH[size]} />}
     </button>
   );
 }

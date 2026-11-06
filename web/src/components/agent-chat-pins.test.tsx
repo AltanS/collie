@@ -82,7 +82,7 @@ const pinsRequests = (log: string[]) =>
 
 const moreButtons = () => screen.queryAllByRole("button", { name: "Message actions" });
 
-describe("AgentChat — a hold or the ⋯ on a Chat block (M90 spec 02)", () => {
+describe("AgentChat — the ⋯ on a Chat block (M90 spec 02)", () => {
   it("offers the ⋯ on each block of the session, and Pin from it", async () => {
     const user = userEvent.setup();
     renderPane();

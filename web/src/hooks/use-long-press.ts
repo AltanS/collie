@@ -15,6 +15,9 @@ const MOVE_CANCEL_PX = 16;
 // flashes the hold's look; a finger still down past it is a hold in the making, and from here to the
 // hold's own mark the element eases toward "pressed" (`data-holding`, index.css `THE HOLD, SHOWN`).
 export const HOLD_FEEDBACK_DELAY_MS = 150;
+// A press that moved further than this is no tap. Stricter than the hold's bound: a tap is short, so a thumb has no
+// time to wander, and a scroll that starts on the element has passed 8px before the finger lifts.
+const TAP_MOVE_PX = 8;
 
 interface LongPressOptions {
   delayMs?: number;
@@ -28,6 +31,15 @@ interface LongPressOptions {
    * or the start of a text selection, and the hold there is silent until it fires (components/stream-block.tsx).
    */
   showHold?: boolean;
+  /**
+   * Runs on the `pointerup` that ends a TAP: a primary press that did not become a hold, did not move past
+   * `tapMoveTolerance` and was not cancelled. The movement is judged by the same gate the hold's is, so a scroll that
+   * starts on the element is neither a hold nor a tap. The handler gets the `pointerup` and judges its target itself.
+   * Like the hold, it is armed only while `onLongPress` is set.
+   */
+  onTap?: (event: ReactPointerEvent) => void;
+  /** How far a tap may move, in px from the press origin, and still be a tap. Default {@link TAP_MOVE_PX}. */
+  tapMoveTolerance?: number;
 }
 
 /**
@@ -67,10 +79,15 @@ export function useLongPress(
     moveTolerance = MOVE_CANCEL_PX,
     onReleaseAfterLongPress,
     showHold = true,
+    onTap,
+    tapMoveTolerance = TAP_MOVE_PX,
   }: LongPressOptions = {},
 ) {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const startPos = useRef<{ x: number; y: number } | null>(null);
+  // The origin of a press that may still end as a tap. Dropped by movement past `tapMoveTolerance`, a cancel or a
+  // leave; kept apart from `startPos` because the hold's own bound is looser and a fired hold clears that one.
+  const tapFrom = useRef<{ x: number; y: number } | null>(null);
   // A long-press fired on the in-progress gesture → suppress the ensuing click so it doesn't navigate.
   const fired = useRef(false);
   const releaseHandled = useRef(false);
@@ -124,28 +141,29 @@ export function useLongPress(
       // hold timer (right-click still opens via onContextMenu below).
       if (e.button !== 0) return;
       startPos.current = { x: e.clientX, y: e.clientY };
+      tapFrom.current = onTap === undefined ? null : { x: e.clientX, y: e.clientY };
       if (timer.current !== null) clearTimeout(timer.current);
       timer.current = setTimeout(fire, delayMs);
       if (feedback.current !== null) clearTimeout(feedback.current);
       feedback.current =
         showHold && delayMs > HOLD_FEEDBACK_DELAY_MS ? setTimeout(() => setHolding(true), HOLD_FEEDBACK_DELAY_MS) : null;
     },
-    [onLongPress, delayMs, fire, showHold],
+    [onLongPress, delayMs, fire, showHold, onTap],
   );
 
+  // THE ONE MOVEMENT GATE. A press that wanders past a bound is a scroll or a drag: past the hold's bound it is no
+  // hold, past the tap's it is no tap.
   const onPointerMove = useCallback(
     (e: ReactPointerEvent) => {
-      const s = startPos.current;
-      if (!s) return;
-      if (Math.abs(e.clientX - s.x) > moveTolerance || Math.abs(e.clientY - s.y) > moveTolerance) {
-        clear();
-      }
+      if (movedPast(tapFrom.current, e, tapMoveTolerance)) tapFrom.current = null;
+      if (movedPast(startPos.current, e, moveTolerance)) clear();
     },
-    [clear, moveTolerance],
+    [clear, moveTolerance, tapMoveTolerance],
   );
 
   const finishPointerGesture = useCallback(
     (e?: ReactPointerEvent) => {
+      tapFrom.current = null;
       clear();
       if (!fired.current) return;
       // Do not let the button's pointer-up default action reclaim focus after the completion callback
@@ -154,6 +172,16 @@ export function useLongPress(
       finish();
     },
     [clear, finish],
+  );
+
+  // The lift that ends a press: a tap when the press is still a candidate and no hold fired on it.
+  const onPointerUp = useCallback(
+    (e?: ReactPointerEvent) => {
+      const tapped = tapFrom.current !== null && !fired.current;
+      finishPointerGesture(e);
+      if (tapped && e !== undefined) onTap?.(e);
+    },
+    [finishPointerGesture, onTap],
   );
 
   // Android Chrome raises `contextmenu` at the end of a long-press (desktop does on right-click). When
@@ -187,7 +215,7 @@ export function useLongPress(
   return {
     onPointerDown,
     onPointerMove,
-    onPointerUp: finishPointerGesture,
+    onPointerUp,
     onPointerLeave: finishPointerGesture,
     onPointerCancel: finishPointerGesture,
     onContextMenu,
@@ -197,4 +225,10 @@ export function useLongPress(
     // The fill runs over the time LEFT to the hold's mark, so it reaches "pressed" as the hold fires.
     style: holding ? { animationDuration: `${delayMs - HOLD_FEEDBACK_DELAY_MS}ms` } : undefined,
   };
+}
+
+/** Whether the pointer stands further than `tolerance` px from `origin` on either axis. No origin: no press to judge. */
+function movedPast(origin: { x: number; y: number } | null, e: ReactPointerEvent, tolerance: number): boolean {
+  if (origin === null) return false;
+  return Math.abs(e.clientX - origin.x) > tolerance || Math.abs(e.clientY - origin.y) > tolerance;
 }
