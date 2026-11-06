@@ -434,6 +434,35 @@ describe("offerMode and isCommand", () => {
     expect(isCommand("@src/app.ts look here")).toBe(true);
     expect(isCommand("look at @src/app.ts")).toBe(false);
   });
+
+  describe("an attached image first (issue 713)", () => {
+    const upload = "/home/me/.local/state/collie-next/uploads/w7C_pF-mvtrpn7j-e4f81595.png";
+
+    it("a line that is only an upload path is a message", () => {
+      expect(isCommand(upload)).toBe(false);
+      expect(isCommand(`  ${upload}`)).toBe(false);
+      expect(offerMode("commit", upload)).toBe("send");
+    });
+
+    it("an upload path followed by text is a message", () => {
+      expect(isCommand(`${upload} what is wrong here?`)).toBe(false);
+      expect(isCommand(`${upload}\nsecond line`)).toBe(false);
+      expect(offerMode("commit", `${upload} what is wrong here?`)).toBe("send");
+    });
+
+    it("a slash command is still a command", () => {
+      expect(isCommand("/help")).toBe(true);
+      expect(isCommand("/model opus")).toBe(true);
+      expect(isCommand(`/compact ${upload}`)).toBe(true);
+      expect(isCommand(`!${upload}`)).toBe(true);
+    });
+
+    it("a path-like word that is not an upload path keeps its reading", () => {
+      expect(isCommand("/home/me/uploads/photo.png")).toBe(true);
+      expect(isCommand("/home/me/other/w7C_pF-mvtrpn7j-e4f81595.png")).toBe(true);
+      expect(isCommand("/usr/uploads")).toBe(true);
+    });
+  });
 });
 
 describe("a steer (M69)", () => {

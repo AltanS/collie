@@ -18,6 +18,7 @@ import {
   SEND_LATES,
   readSendCap,
   readSurfaceWords,
+  reservedLead,
   RECEIPT_DETAIL_MAX,
   type SendCap,
   type SendCause,
@@ -513,8 +514,11 @@ export function offerMode(offer: SendOffer, text = ""): SendMode | null {
 /** The leads a text is a command by: a slash command, a shell line, a file mention at the start. */
 export const COMMAND_LEADS = ["/", "!", "@"] as const;
 
-/** Whether a text is sent as a `command` (it starts with a reserved lead), not as a plain `send`. */
+/**
+ * Whether a text is sent as a `command` (it starts with a reserved lead), not as a plain `send`. It
+ * reads the lead with the bridge's own rule (`reservedLead`), so a text whose first word is the path
+ * of a saved upload (an image attached first) is a message, never a slash command.
+ */
 export function isCommand(text: string): boolean {
-  const head = text.trimStart();
-  return COMMAND_LEADS.some((lead) => head.startsWith(lead));
+  return reservedLead(text, COMMAND_LEADS) !== null;
 }
