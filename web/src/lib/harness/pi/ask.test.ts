@@ -102,6 +102,9 @@ const LIFTS_397 = new Map<string, Expect>([
   // pi 1.5.0's example permission-gate through herdr-core with a model that has no price: the footer prints
   // the context usage and no session cost, and the dialog still lifts.
   ["pi--v150-core-permission-gate-no-cost--w200.txt", "walk"],
+  // The same dialog on a real Herdr 0.9.5 with pi's default "system" theme: the dialog is painted, the three
+  // footer rows are only faint (SGR 2, no colour).
+  ["pi--v150-herdr-system-theme-permission-gate--w119.txt", "walk"],
   // The same question with a quoted ` ▎ ` rail in the transcript above it (derived, issue 660 review).
   ["pi--v130-core-question-quote-rail--w120.txt", "walk"],
   // A test selector under Gentle Shell 4.5.1 (pi 1.4.0) through herdr-core, in place of its float
@@ -1265,6 +1268,55 @@ describe("a read with no styling (herdr-core)", () => {
       const quoted = [...load(NO_COST), text("alice@box:~/project$")];
       expect(detectPiQuestion(quoted)).toBeNull();
       expect(piAdapter.buildBlocks(quoted).every((b) => b.kind === "raw")).toBe(true);
+    });
+  });
+
+  // pi's default "system" theme paints the footer rows (working directory, usage, model) faint, SGR 2, and
+  // gives them no colour; the dialog's own rows keep theirs. The capture is pi 1.5.0's example permission-gate
+  // in that theme on a real Herdr 0.9.5 pane, read through the bridge with colour.
+  describe("a footer painted only faint", () => {
+    const FAINT = "pi--v150-herdr-system-theme-permission-gate--w119.txt";
+    /** The capture with the codes of its last `count` rows removed. */
+    const bare = (count: number) => {
+      const rows = raw(FAINT).split("\r\n");
+      return linesOf([...rows.slice(0, -count), ...rows.slice(-count).map(stripSgr)].join("\r\n"));
+    };
+
+    it("lifts the dialog with its options, the walk and Escape", () => {
+      const model = prompt(load(FAINT));
+      expect(model.question).toBe("⚠️ Dangerous command: chmod 777 gate-probe.txt Allow?");
+      expect(model.options.map((o) => [o.label, o.keys])).toEqual([
+        ["Yes", ["Enter"]],
+        ["No", ["Down", "Enter"]],
+        ["Cancel", ["Escape"]],
+      ]);
+    });
+
+    it("reads as an ask on the Surface, so a phone can tap it", () => {
+      const read = readScreen(load(FAINT), "pi", idleFor("pi"));
+      expect(modalWord(read.surface.modal)).toBe("ask");
+      expect(askOf(read.surface.modal)?.options.map((o) => o.label)).toEqual(["Yes", "No", "Cancel"]);
+    });
+
+    it("reads the same on a read with no styling at all", () => {
+      expect(promptsEqual(prompt(load(FAINT)), prompt(linesOf(stripSgr(raw(FAINT)))))).toBe(true);
+    });
+
+    it("needs the paint: the same footer with its codes removed is not pi's", () => {
+      // Three footer rows, none painted: text that merely looks like pi's footer.
+      expect(detectPiQuestion(bare(3))).toBeNull();
+      expect(piAdapter.buildBlocks(bare(3)).every((b) => b.kind === "raw")).toBe(true);
+    });
+
+    it("still refuses plain output straight under the frame: a shell prompt or text", () => {
+      const core = load(FAINT);
+      expect(detectPiQuestion(core)?.kind).toBe("prompt-select");
+      // Drop the two footer rows (working directory, stats): what stands under the bottom rule is now plain.
+      const frame = core.slice(0, -2);
+      for (const shell of ["$ ", "alice@box:~/project$ ", "# ", "❯ "]) {
+        expect(detectPiQuestion([...frame, text(shell)]), shell).toBeNull();
+      }
+      expect(detectPiQuestion([...frame, text("● Wrote the file"), text("  ⎿  done")])).toBeNull();
     });
   });
 

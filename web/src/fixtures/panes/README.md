@@ -3772,3 +3772,20 @@ token, so omp printed `unavailable` for its usage), and nothing else private was
 | `omp--v18-17-0-nerd-switch-moved--w120.txt` | `dialog` | One `Down` later: the pointer on `claude-fable-5-1`. The walk pair of the capture above |
 | `omp--v18-17-0-nerd-switch-search--w120.txt` | `dialog` | `opus-5` typed in the `nerd` picker: seven results, no rule. The way out reads `Clear search` |
 | `omp--v18-17-0-usage-dashboard--w120.txt` | `dialog` | `/usage`: a full-screen `╭─ Usage` box on the alternate screen, one account row (`unavailable`), a 53-week activity heatmap, about twenty blank rows, then `r refresh · ⏎ details · ⎋ close`. No grammar lifts it: it stays raw and takes the unread-dialog card with its Escape. The cues read `⎋ close` and, since 2026-11-06, `⏎ details` |
+
+## pi 1.5.0 in its default theme on Herdr (captured 2026-11-06, 119 columns, herdr 0.9.5)
+
+pi's default theme (no `theme` in `settings.json`, pi's "system" theme) paints with the terminal's own 16
+colours, and it gives the footer rows (working directory, usage and model) faint (SGR 2) and no colour at
+all. The pi reader asked every footer row for a colour or a rule, so a dialog on that theme came back
+unreadable, and a phone could not tap it, although the same screen with the codes removed read fine. Pi's
+rgb themes (`dark`, `light`) colour the footer and were never affected. The capture is pi's example
+`permission-gate.ts` asking about `chmod 777 gate-probe.txt`, in a pane of a real Herdr 0.9.5 session
+(command line version), read through the bridge with colour (`GET /api/pane/<id>?lines=22`, the last 22
+rows, which is why the first rows are the tail of the tool call box). The working directory is a scratch
+path with no user name. Privacy: the model label at the end of the stats row was replaced with neutral text
+of the same length (`(local) example-model  • max`); nothing else was changed.
+
+| Fixture | State | Reads as |
+| --- | --- | --- |
+| `pi--v150-herdr-system-theme-permission-gate--w119.txt` | `dialog` | `⚠️ Dangerous command:` over `chmod 777 gate-probe.txt`, `Allow?`, `→ Yes` / `No`, the hint row; the dialog rows are coloured (`38;5;5`), the three footer rows (`/private/tmp/...`, `↑1.0k ↓59 0.4%/272k (auto)`, model) are only faint. Lifts: question with Yes, No and Cancel, walk |
