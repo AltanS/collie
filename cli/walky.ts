@@ -153,6 +153,9 @@ export const SENDER_OFF_WORDS = `not sent: ${SENDER_OFF}. Turn it on: collie wal
 /** What `collie walky off` prints. */
 export const OFF_WORDS = "walky talky off for this session. Other agents cannot message it; your operator still can. Turn it on: collie walky on";
 
+/** The warning beside `off` or `on` when another bridge on this machine is too old to read the verb. */
+export const OLDER_BRIDGE_SWITCH = "an older Collie bridge on this machine cannot read this switch; update it, or its panes still take agent messages";
+
 /** What `collie walky on` prints. */
 export const ON_WORDS = "walky talky on for this session.";
 
@@ -681,6 +684,11 @@ export async function cmdWalkyCancel(deps: WalkyDeps, args: readonly string[]): 
   return results.length > 0 && results.every((entry) => entry.result === "taken" || entry.result === "repeat") ? EXIT.OK : EXIT.STATE;
 }
 
+/** Whether a bridge's answer says it could not read the request: a build before the verb. */
+function unreadVerb(error: string): boolean {
+  return error === UNREAD_BY_OLDER_BRIDGE || error.startsWith(BARE_BAD_REQUEST);
+}
+
 /**
  * `walky off|on [--json]`: this pane's own flag (M89). Every bridge is asked, not only the first that
  * takes it: a machine can run two Collies on one multiplexer, both know the pane, and either could type
@@ -696,8 +704,12 @@ async function cmdWalkySwitch(deps: WalkyDeps, verb: "off" | "on", args: readonl
     const answer = await request(deps, { op: verb });
     if (!answer.ok) return failure(deps, answer);
   }
-  if (args.includes("--json")) deps.io.out(JSON.stringify({ off: verb === "off" }));
-  else deps.io.out(verb === "off" ? OFF_WORDS : ON_WORDS);
+  // A bridge that cannot read the verb may still type into this pane: say so, never claim it.
+  if (answers.some((answer) => !answer.ok && unreadVerb(answer.error))) deps.io.err(`walky talky: ${OLDER_BRIDGE_SWITCH}`);
+  // The socket sets exactly the value asked for (an idempotent set), so the verb is the value held.
+  const off = verb === "off";
+  if (args.includes("--json")) deps.io.out(JSON.stringify({ off }));
+  else deps.io.out(off ? OFF_WORDS : ON_WORDS);
   return EXIT.OK;
 }
 

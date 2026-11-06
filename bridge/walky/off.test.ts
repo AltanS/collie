@@ -31,6 +31,9 @@ describe("the off flag", () => {
     expect(off.isOff(pane())).toBe(true);
     // Another session that took the pane id is on.
     expect(off.isOff(pane("bbbb"))).toBe(false);
+    // An `on` from another token at the same id leaves this session's row alone.
+    expect(off.set(pane("bbbb"), false, "session")).toBe(false);
+    expect(off.isOff(pane())).toBe(true);
     expect(off.set(pane(), false, "session")).toBe(false);
     expect(off.isOff(pane())).toBe(false);
   });

@@ -292,8 +292,8 @@ import {
 } from "./walky/crew.ts";
 import { isResting, type RouteRemote, type SendResult, type WalkyHost, type WalkyPane } from "./walky/deliver.ts";
 import { INSTANCE_TICK_MS, WalkyInstances } from "./walky/instances.ts";
-import { WalkyOff } from "./walky/off.ts";
 import { WalkyLog } from "./walky/log.ts";
+import { WalkyOff } from "./walky/off.ts";
 import { RefusalCounter } from "./walky/refusals.ts";
 import { WalkySeen } from "./walky/seen.ts";
 import { WalkyService } from "./walky/service.ts";

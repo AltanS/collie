@@ -116,8 +116,10 @@ import { cmdApplyUpdate, cmdUpdate } from "./update.ts";
 import {
   askSocket,
   cmdWalky,
-  cmdWalkyCancel, cmdWalkyOff, cmdWalkyOn,
+  cmdWalkyCancel,
   cmdWalkyInbox,
+  cmdWalkyOff,
+  cmdWalkyOn,
   cmdWalkyReply,
   cmdWalkySend,
   cmdWalkyStatus,

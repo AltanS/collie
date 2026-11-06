@@ -85,7 +85,8 @@ export class WalkyOff {
     const key = keyOf(pane.session, pane.paneId);
     const held = this.rows.get(key);
     if (!off) {
-      if (held === undefined) return false;
+      // Only the instance that holds the row turns it on: another token at this id is another session.
+      if (held?.token !== pane.instance) return false;
       this.rows.delete(key);
       this.write();
       return false;

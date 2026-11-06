@@ -30,6 +30,7 @@ import {
   cmdWalkyWho,
   NO_SOCKET_TEXT,
   OFF_WORDS,
+  OLDER_BRIDGE_SWITCH,
   ON_WORDS,
   SENDER_OFF_WORDS,
   WALKY_OFF_WORDS,
@@ -613,6 +614,12 @@ describe("reply, inbox, status, who", () => {
     const odd = deps(a, inPane("%1"));
     expect(await cmdWalkyOff(odd, ["now"])).toBe(EXIT.USAGE);
     expect(one.off.all()).toEqual([]);
+    // A bridge too old to read the verb may still type into the pane: the CLI says so, and claims no more.
+    const older = await olderBridge();
+    const mixed = deps(a, inPane("%1"), { sockets: () => [older.path, walkySocketPath(a.stateDir)] });
+    expect(await cmdWalkyOff(mixed, [])).toBe(EXIT.OK);
+    expect(mixed.io.stderr).toEqual([`walky talky: ${OLDER_BRIDGE_SWITCH}`]);
+    expect(mixed.io.stdout).toEqual([OFF_WORDS]);
   });
 
   socketTest("who marks an off session in STATE and in --json, and tells an off asker how to turn on", async () => {
