@@ -31,6 +31,10 @@ A patch for the desk: a browser tab can keep its place.
 
 - **`/slot/<n>` reopens a browser tab on the pane it last showed.** Pin a tab on the slot's address, 1 to 99, and it survives a browser restart on the project you left it in; a pane id another workspace took since sends the tab to that workspace's home. Slots live on the device, and unpairing forgets them. Thanks @eseninik (#706).
 
+### Changed
+
+- **The "+" at the end of the tab row is a plain glyph, level with the tabs.** It drew a 28px dashed circle in the 30px row, so under the folder look its ring nearly touched the line below the tabs and read as sitting on it. It is a bare 16px glyph now, in the ink of the fold chevron beside it, centred in the row, and it still answers a tap 44px wide across the whole row. The dashboard heading and the space strip keep their dashed circle.
+
 ### Fixed
 
 - **A slow drag down on the Switch pane sheet follows the finger.** Each poll of the pane, every 1.5 seconds while an agent works, snapped a sheet held mid-drag back to the top, and the next move pulled it under the finger again, so the sheet flickered on the way down. The sheet now keeps its drag through a poll, on every sheet that closes with a drag.
