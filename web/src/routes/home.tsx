@@ -29,6 +29,7 @@ import { useKeyboardOpen } from "@/hooks/use-keyboard";
 import { useLocale } from "@/hooks/use-locale";
 import { useNotifyPrefs } from "@/hooks/use-notify-prefs";
 import { useWorkspaceChangeCounts } from "@/hooks/use-workspace-change-counts";
+import { useNewTabOrSheet } from "@/hooks/use-new-tab-or-sheet";
 import { useSpaceActions } from "@/hooks/use-spaces";
 import { useNav } from "@/hooks/use-nav";
 import { usePaneOpen } from "@/hooks/use-pane-open";
@@ -124,7 +125,11 @@ function ChangesTabBody({
 export function HomeRoute() {
   const data = useRootData();
   const nav = useNav();
-  const { creatingSpace, newTab, creatingTab, launching } = useSpaceActions();
+  const spaceActions = useSpaceActions();
+  const { creatingSpace, creatingTab, launching } = spaceActions;
+  // A workspace heading's "+" offers that machine's agents in a sheet, or makes the shell (M91). One
+  // sheet for the whole list, keyed on the heading tapped.
+  const plus = useNewTabOrSheet(spaceActions, data.scope);
   // The New page's Favourites and Recent, read once ahead of the tap so the page opens at its final
   // height (lib/folders.ts). Once per mount, for the machine this view shows.
   const folderHost = data.scope?.host;
@@ -364,7 +369,7 @@ export function HomeRoute() {
                 scope: data.scope,
                 sessions: data.sessions,
                 creating: creatingTab,
-                onNewTab: (workspaceId, at) => void newTab(workspaceId, at),
+                onNewTab: plus.request,
               }}
               isolated={isolatedSpaces}
               hidden={prefs.hiddenSpaces}
@@ -500,6 +505,8 @@ export function HomeRoute() {
         <StatusArea />
       </ToastViewport>
 
+      {/* A workspace heading's New tab sheet (M91), one for the list. */}
+      {plus.sheet}
       {/* The pane menu a row's hold opens: the pane pill's sheet, with no read rows, so Pin to top
           leads. Mounted at the route's root, a sibling of the other sheets, for the stacking reason
           agent-chat.tsx gives for its own. */}

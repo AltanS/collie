@@ -24,6 +24,7 @@ import { PaneOrderSelect, WorkspaceFilter } from "@/components/dash-selects";
 import { useFrozenRanks } from "@/hooks/use-frozen-ranks";
 import { showsPinHint, usePinHintRetired } from "@/lib/pin-hint";
 import type { Scope } from "@/lib/scope";
+import { besideOf, type NewTabTarget } from "@/hooks/use-new-tab-or-sheet";
 import { tabCreateKey } from "@/hooks/use-spaces";
 import { AgentCard } from "./agent-card";
 import { PinHint } from "./pin-hint";
@@ -174,7 +175,8 @@ export interface HeadingNewTab {
   sessions?: readonly SessionSummary[] | undefined;
   /** The tab creates in flight, keyed by `tabCreateKey` (hooks/use-spaces.ts). */
   creating: ReadonlySet<string>;
-  onNewTab: (workspaceId: string, at: Scope) => void;
+  /** The heading's tap, after its machine's refusal: `useNewTabOrSheet`'s `request` (M91). */
+  onNewTab: (target: NewTabTarget) => void;
 }
 
 /** A module-level empty list: a fresh `[]` default per render is a new reference for nothing. */
@@ -493,6 +495,9 @@ export function AgentList({
         label={g.label}
         at={at}
         host={first.host}
+        // The workspace's OWN pane: a group may list only a linked worktree's panes (issue #587), and a
+        // tab opened beside one of those would land in the worktree's space.
+        beside={besideOf(g.panes, workspaceId, first.host)}
         busy={newTab.creating.has(tabCreateKey(workspaceId, at))}
         onNewTab={newTab.onNewTab}
       />

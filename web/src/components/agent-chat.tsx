@@ -14,6 +14,7 @@ import {
 import { useKeyboardOpen } from "@/hooks/use-keyboard";
 import { useSheetPull } from "@/hooks/use-sheet-pull";
 import { usePaneNavigation } from "@/components/pane-nav";
+import { besideOf, useNewTabOrSheet } from "@/hooks/use-new-tab-or-sheet";
 import { tabCreateKey, useSpaceActions } from "@/hooks/use-spaces";
 import { shownStatus } from "@/lib/triage";
 import { useNav } from "@/hooks/use-nav";
@@ -324,7 +325,10 @@ export function AgentChat({
   // last read failed or its screen is a saved copy. Set below, once both facts exist.
   const structuralWritesOff = useRef(false);
   const canWriteHere = useCallback(() => !structuralWritesOff.current, []);
-  const { newTab, launch, launching, creatingTab } = useSpaceActions(canWriteHere);
+  const spaceActions = useSpaceActions(canWriteHere);
+  const { launch, launching, creatingTab } = spaceActions;
+  // The tab bar's "+" offers this machine's agents in a sheet, or makes the shell it always made (M91).
+  const plus = useNewTabOrSheet(spaceActions, scope);
   // The pane's light-theme inversion override (lib/mirror-invert.ts). Read once at mount, which is
   // enough: DetailRoute keys this component by `paneScopeKey(scope, paneId)` — the full address, not
   // the id, for the reason that file records — so a walk to another pane, session or host remounts it
@@ -2659,7 +2663,13 @@ export function AgentChat({
                     agents={agents}
                     selected={agent.tabId}
                     onSelect={(id) => id && goToTab(id)}
-                    onNewTab={newTab}
+                    onNewTab={(workspaceId) =>
+                      plus.request({
+                        workspaceId,
+                        label: agent.workspaceLabel,
+                        beside: besideOf(herd, workspaceId, agent.host),
+                      })
+                    }
                     onNewStarters={() => nav.down(newPath({ machine: scope?.host, pane: paneId, session: scope?.session }))}
                     creatingTab={creatingTab.has(tabCreateKey(agent.workspaceId, scope))}
                     allowAll={false}
@@ -3724,6 +3734,8 @@ export function AgentChat({
         />
         {/* "Start without prompts?" for a Launch row that skips permission prompts. */}
         {noPromptsSheet}
+        {/* The tab bar "+"'s New tab sheet (M91). */}
+        {plus.sheet}
         {/* The output, zoomed (`/pane/:id/zoom`). Mounted here, a sibling of the sheets, for their
             reason: it is a `fixed` element with no portal, so it must not sit inside the animating
             Collapse or the sticky header. It reads the LIVE text, not the mirror's frozen `display`:

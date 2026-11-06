@@ -1,5 +1,7 @@
 import { useHostWriteBlock } from "@/components/crew-provider";
+import type { NewTabBeside } from "@/components/new-tab-sheet";
 import { AddButton } from "@/components/ui/add-button";
+import type { NewTabTarget } from "@/hooks/use-new-tab-or-sheet";
 import { useLocale } from "@/hooks/use-locale";
 import { t } from "@/lib/i18n";
 import { useMuxCapability } from "@/lib/mux-capability";
@@ -38,9 +40,15 @@ interface WorkspaceNewTabProps {
    * pane sheet asks the same way. Undefined on a solo install, where nothing is refused.
    */
   host: string | undefined;
+  /**
+   * A pane of this workspace on that machine, for the New tab sheet to open the tab beside (M91).
+   * Absent when the group lists none of the workspace's own panes: the tap then makes the plain tab.
+   */
+  beside?: NewTabBeside | undefined;
   /** A create for this workspace, on this machine and session, is in flight. */
   busy: boolean;
-  onNewTab: (workspaceId: string, at: Scope) => void;
+  /** After the machine's own refusal: the sheet or the shell (`useNewTabOrSheet`). */
+  onNewTab: (target: NewTabTarget) => void;
 }
 
 // A NEW TAB FROM THE WORKSPACE'S HEADING (M40/03, issue 290). One per heading, so each heading asks
@@ -53,8 +61,9 @@ interface WorkspaceNewTabProps {
 // gets the hook's own floating status (hooks/use-spaces.ts); a machine that is not taking writes
 // gets its own reason (CREW_PROTOCOL.md §10.3), and nothing is sent. The "+" does not vanish on
 // either state, because the workspace is still listed, and a control that comes and goes with a
-// state moves what is around it.
-export function WorkspaceNewTab({ workspaceId, label, at, host, busy, onNewTab }: WorkspaceNewTabProps) {
+// state moves what is around it. Past those refusals the tap is the caller's `useNewTabOrSheet`
+// (M91): the New tab sheet of the machine's agents, or the shell.
+export function WorkspaceNewTab({ workspaceId, label, at, host, beside, busy, onNewTab }: WorkspaceNewTabProps) {
   useLocale();
   const createTab = useMuxCapability("createTab", at);
   const hostBlock = useHostWriteBlock(host);
@@ -72,7 +81,9 @@ export function WorkspaceNewTab({ workspaceId, label, at, host, busy, onNewTab }
           setStatus(hostBlock, "error");
           return;
         }
-        onNewTab(workspaceId, at);
+        const target: NewTabTarget = { workspaceId, label, at };
+        if (beside !== undefined) target.beside = beside;
+        onNewTab(target);
       }}
     />
   );
