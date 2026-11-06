@@ -1332,6 +1332,8 @@ export function startServer(opts: {
    * Absent means no pane carries the key, which is every test that builds this server by hand.
    */
   walkyInstance?: (session: string, paneId: string) => string;
+  /** Whether the pane's session turned its walky talky off (M89), read at serialise time like the token. True adds `walkyOff` to the pane. */
+  walkyPaneOff?: (session: string, paneId: string) => boolean;
   /**
    * The prompt-cache watch list — which panes the operator asked to be warned about (ADR 0042).
    *
@@ -1437,6 +1439,7 @@ export function startServer(opts: {
   const cache = opts.cache;
   const gitHeads = opts.gitHeads;
   const walkyInstance = opts.walkyInstance;
+  const walkyPaneOff = opts.walkyPaneOff;
   const walky = opts.walky;
   const pairing = opts.pairing;
   const localCredential = opts.localCredential;
@@ -1781,7 +1784,7 @@ export function startServer(opts: {
         // carries them (M53 spec 07), the same way.
         panes: pick(from).map((p) =>
           withSurface(
-            withActions(withTurn(withOpenAsks(toPaneWire(withActivity(from, p), hasJournal, discoversSessions, walkyInstance?.(from.name, p.paneId)), from.herdr), from.herdr), from.herdr),
+            withActions(withTurn(withOpenAsks(toPaneWire(withActivity(from, p), hasJournal, discoversSessions, walkyInstance?.(from.name, p.paneId), walkyPaneOff?.(from.name, p.paneId)), from.herdr), from.herdr), from.herdr),
             from,
           ),
         ),

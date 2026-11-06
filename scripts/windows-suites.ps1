@@ -14,8 +14,8 @@
 #              cannot hide behind a removed one in another. A test must not be skipped just to get
 #              green, so a higher count is a failure. Raise a number only with a reason.
 #              Bridge went from 2 to 0 when M43 spec 04 checked the access list instead of the mode.
-#              Today, 191 in all, each one named, with its reason:
-#              bridge 106. 5 are the POSIX-only and engine cases below, 1 the /etc link scan, 1 the telemetry file mode, 5 are the hold socket tests, 6 the walky ones, 30 are the
+#              Today, 192 in all, each one named, with its reason:
+#              bridge 107. 5 are the POSIX-only and engine cases below, 1 the /etc link scan, 1 the telemetry file mode, 5 are the hold socket tests, 7 the walky ones, 30 are the
 #                durable example apps, 10 are the durable-harness adapter test, 36 are the durable socket tests (see "Durable, bridge" below),
 #                5 are the pane's program reads (see "The pane's program, bridge" below), and 6 are the fake git of a new
 #                worktree (see "The fake git of a new worktree, bridge" below).
@@ -48,10 +48,11 @@
 #                - "a placed request reaches the session; the decision travels back as one line" (the same)
 #                - "a request from another multiplexer's pane is dropped without a log line, a same-namespace miss is logged" (the same)
 #                - "an unparsed line is dropped" (the same)
-#              Walky talky, bridge (6). A file mode and a Unix socket are POSIX. In bridge/walky/ the checks of
+#              Walky talky, bridge (7). A file mode and a Unix socket are POSIX. In bridge/walky/ the checks of
 #                0700 and 0600 sit in their own skipped test, and the behaviour beside them runs on Windows:
 #                - "keeps its tokens at 0600 in a 0700 folder" (instances.test.ts, "the instance registry")
 #                - "is private: a 0700 folder and a 0600 file" (log.test.ts, "the log")
+#                - "the file is 0600 in a 0700 folder" (off.test.ts, "the off flag")
 #                - "keeps its file at 0600 in a 0700 folder" (refusals.test.ts, "the refusal counter")
 #                - "keeps an id and target a day, apart from the log, on disk at 0600" (seen.test.ts, "the seen file")
 #                - "is 0600, answers one line per connection, and refuses a second bridge on the same path" (socket.test.ts, "the socket"): every part of it is the Unix socket, and Windows builds no walky socket ("Windows has no socket" runs there)
@@ -125,7 +126,7 @@
 #                  (it needs a tmux binary, and Windows has none)
 param(
   [Parameter(Mandatory = $true)][string]$Out,
-  [int]$MaxSkipsBridge = 106,
+  [int]$MaxSkipsBridge = 107,
   [int]$MaxSkipsCli = 60,
   [int]$MaxSkipsScripts = 25
 )

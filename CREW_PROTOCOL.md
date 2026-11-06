@@ -1423,6 +1423,9 @@ prevents (`web/src/lib/api.ts:201-203`).
 - **A pane may carry `instance`** (additive-optional, §7.1, added 2026-10-18): its walky talky
   instance token, four characters of `[a-z0-9]`; the merge keeps it only in that form (§21, "Pane
   instances").
+- **A pane may carry `walkyOff: true`** (additive-optional, §7.1, added 2026-11-06): the session
+  turned its walky talky off. Only `true` means off; absent reads as on, which is what every older
+  member sends. It only shows: the member that owns the pane refuses (§21, "Pane instances").
 - **A session may carry `label`** (additive-optional, §7.1, added 2026-10-19): the display label
   the member's own operator wrote in its `spaces.toml`. It is display-only: `name` stays the
   session's identity on the link and in every address. The lead keeps it only as a string and runs
@@ -3828,6 +3831,14 @@ the tokens.
 - **The wire.** Each pane on a snapshot carries `instance` (§9.2). The lead keeps a member's token
   only as four characters of `[a-z0-9]`, and its `who` prints `<member>/<pane>#<token>` when the
   member's pane has one, bare when not.
+- **A session can turn off (added 2026-11-06).** The flag belongs to the pane instance, on the bridge
+  that owns the pane (`bridge/walky/off.ts`, `<stateDir>/walky/off.json`), and that bridge alone
+  enforces it: an agent's message to the pane ends `refused: walky talky off`, and an agent in the pane
+  gets `refused: your walky talky is off`. An operator's message is typed as before. Its pane on a
+  snapshot carries `walkyOff: true` (§9.2), and the lead's `who` copies that to the row as
+  `walky: "off"`. A lead forwards a message to such a pane as to any other, so a stale sweep costs one
+  hop, never a delivery. An older member never sends the field and reads as on; an older lead passes
+  it through and ignores it. No route, no signed field and no version change.
 
 A member that sends no `instance` has its panes listed bare, and they work as before. A bridge built
 before this subsection cannot parse an address with a token. As a member it answers a routed message

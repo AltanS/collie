@@ -15,8 +15,8 @@ afterEach(() => {
 });
 
 const panes: WalkyPane[] = [
-  { session: "main", paneId: "w1:p1", agent: true, harness: "agent-x", label: "repo#a", state: "idle", activeAt: null, instance: "aaaa", terminal: true },
-  { session: "main", paneId: "w1:p2", agent: true, harness: "agent-y", label: "repo#b", state: "idle", activeAt: null, instance: "aaaa", terminal: true },
+  { session: "main", paneId: "w1:p1", agent: true, harness: "agent-x", label: "repo#a", state: "idle", activeAt: null, instance: "aaaa", terminal: true, off: false },
+  { session: "main", paneId: "w1:p2", agent: true, harness: "agent-y", label: "repo#b", state: "idle", activeAt: null, instance: "aaaa", terminal: true, off: false },
 ];
 const host: WalkyHost = { panes: () => panes, send: async () => ({ outcome: "sent" }), sendState: () => null, cancelHeld: () => undefined };
 
@@ -88,7 +88,7 @@ describe("`who` for the Crew page", () => {
   test("adds the shell panes a broadcast skips, and the refusal counts with no body", async () => {
     const root = mkdtempSync(join(tmpdir(), "walky-routes-"));
     roots.push(root);
-    const withShell: WalkyHost = { ...host, panes: () => [...panes, { session: "main", paneId: "w1:p3", agent: false, harness: null, label: "repo#c", state: "idle", activeAt: null, instance: "aaaa", terminal: true }] };
+    const withShell: WalkyHost = { ...host, panes: () => [...panes, { session: "main", paneId: "w1:p3", agent: false, harness: null, label: "repo#c", state: "idle", activeAt: null, instance: "aaaa", terminal: true, off: false }] };
     const walky = new WalkyService({ log: new WalkyLog(join(root, "walky")), host: withShell, memberId: null, enabled: () => true, machine: "desk", keyPem: () => null, now: () => 7 });
     await walky.send({ id: "wt_aaaaaaaaaaa1", to: "local/w9:p9", body: "secret words", replyTo: null }, { kind: "operator", label: "cli" });
     const body = await walkyWhoRoute(walky, null).json();
@@ -97,6 +97,19 @@ describe("`who` for the Crew page", () => {
       refusals: { since: 7, counts: { "no such pane": 1 } },
     });
     expect(JSON.stringify(body)).not.toContain("secret words");
+  });
+});
+
+describe("`who` marks a session that is off (M89)", () => {
+  test("the row carries `walky: \"off\"` only for that pane, and `state` keeps its meaning", async () => {
+    const root = mkdtempSync(join(tmpdir(), "walky-routes-"));
+    roots.push(root);
+    const offHost: WalkyHost = { ...host, panes: () => panes.map((pane) => (pane.paneId === "w1:p2" ? { ...pane, off: true } : pane)) };
+    const walky = new WalkyService({ log: new WalkyLog(join(root, "walky")), host: offHost, memberId: null, enabled: () => true, machine: "desk", keyPem: () => null });
+    // SAFETY: `walkyWhoRoute` answers `{ targets, skipped, refusals }`, and each target's fields are strings.
+    const { targets } = (await walkyWhoRoute(walky, null).json()) as { targets: Record<string, string>[] };
+    expect(targets[1]).toMatchObject({ address: "local/w1:p2#aaaa", walky: "off", state: "idle" });
+    expect("walky" in targets[0]!).toBe(false);
   });
 });
 

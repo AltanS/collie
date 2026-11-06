@@ -88,6 +88,8 @@ export interface WalkyTarget {
   harness: string | null;
   label: string;
   state: string;
+  /** Present only when the session turned its walky talky off (M89). */
+  walky?: "off";
 }
 
 /**

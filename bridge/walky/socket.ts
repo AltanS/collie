@@ -6,10 +6,12 @@
 // Requests (`v: 1`, plus `markers`: the raw multiplexer markers the CLI read from its environment):
 //   send    { id, to, body, replyTo, wake? }   → { ok, receipts, target? }
 //   inbox   { all, ack, id? }           → { ok, pane, messages }   (`id`: that one message)
-//   who     {}                          → { ok, self, targets, note? }
+//   who     {}                          → { ok, self, targets, note?, selfOff? }
 //   status  { id }                      → { ok, receipts, message, elsewhere, deliveries?, totals? }
 //   ack     { ids | null }              → { ok, acked }
 //   cancel  { id }                      → { ok, results }   (M62 spec 03: the sender takes a held message back)
+//   off     {}                          → { ok, off }       (M89: the asker's own pane turns its walky talky off)
+//   on      {}                          → { ok, off }       (M89: and on again)
 // A refusal is `{ ok: false, error }`. `not here` means the markers name no pane of this bridge, so
 // the CLI asks the next bridge on the machine; a request this bridge cannot read answers the same when
 // its markers name no pane here, else `bad request: <reason>` (refusals.ts). A send with no markers
@@ -32,6 +34,8 @@ import type { WalkyEntry, WalkyMessage, WalkyReceipt, WalkyTarget } from "./type
 export const SEND_NEEDS_A_PANE = "run this inside a pane, or send from the phone";
 /** What the socket answers a cancel that names no pane: an operator's message is cancelled on the phone. */
 export const CANCEL_NEEDS_A_PANE = "run this inside the pane that sent it, or cancel from the phone";
+/** What the socket answers `off` or `on` from outside an agent pane: the flag is the asker's own (M89). */
+export const SWITCH_NEEDS_A_PANE = "run this inside an agent pane";
 
 /** The socket of one state dir. */
 export function walkySocketPath(stateDir: string): string {
@@ -94,9 +98,10 @@ export type WalkyAnswer =
       readonly deliveries?: readonly WalkyDelivery[];
       readonly totals?: Readonly<Record<string, number>>;
     }
-  | { readonly ok: true; readonly self: string | null; readonly targets: readonly WalkyTarget[]; readonly note?: string }
+  | { readonly ok: true; readonly self: string | null; readonly targets: readonly WalkyTarget[]; readonly note?: string; readonly selfOff?: true }
   | { readonly ok: true; readonly pane: string | null; readonly messages: readonly WalkyEntry[] }
   | { readonly ok: true; readonly acked: number }
+  | { readonly ok: true; readonly off: boolean }
   | { readonly ok: true; readonly results: readonly TakeBack[] };
 
 /**
@@ -129,7 +134,8 @@ export async function answerRequest(service: WalkyService, request: WalkyRequest
     case "who": {
       const self = pane === null ? null : service.addressOf(pane.paneId, pane.instance);
       const note = service.whoNote();
-      return note === null ? { ok: true, self, targets: service.who() } : { ok: true, self, targets: service.who(), note };
+      const answer = note === null ? { ok: true as const, self, targets: service.who() } : { ok: true as const, self, targets: service.who(), note };
+      return pane?.off === true ? { ...answer, selfOff: true } : answer;
     }
     case "status": {
       const { receipts, message, elsewhere, deliveries, totals } = service.status(request.id);
@@ -165,6 +171,14 @@ export async function answerRequest(service: WalkyService, request: WalkyRequest
       const taken = service.cancel(request.id, { kind: "agent", pane });
       return !taken.ok && taken.error.startsWith("no message ") ? noMessageHere(taken.error) : taken;
     }
+    case "off":
+    case "on":
+      // The asker's own pane, placed by its markers, never named by an argument (M89, decision 3).
+      if (pane === null || !pane.agent) {
+        service.noteRefusal("no pane");
+        return { ok: false, error: SWITCH_NEEDS_A_PANE };
+      }
+      return { ok: true, off: service.setOff(pane, request.op === "off", "session") };
   }
 }
 

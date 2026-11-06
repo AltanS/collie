@@ -972,3 +972,16 @@ describe("asks on a peer's pane", () => {
     expect("turnId" in (merged.agents.find((p) => p.paneId === "w1:p1") ?? {})).toBe(false);
   });
 });
+
+describe("mergeSnapshot — a member's walky off flag (M89, §21)", () => {
+  test("a pane's `walkyOff` reaches the phone through the merge, and an on pane stays without the key", () => {
+    const merged = mergeSnapshot(localBody(), {
+      self: SELF,
+      peers: [contribution({ state: state({ memberId: "laptop" }), body: { ...peerBody, agents: [pane({ paneId: "w2:p1", walkyOff: true }), pane({ paneId: "w2:p2" })] } })],
+      now: NOW,
+    });
+    const of = (paneId: string) => merged.agents.find((row) => row.paneId === paneId && row.host === "laptop");
+    expect(of("w2:p1")?.walkyOff).toBe(true);
+    expect("walkyOff" in of("w2:p2")!).toBe(false);
+  });
+});

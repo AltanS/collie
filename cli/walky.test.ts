@@ -67,8 +67,8 @@ interface Bridge {
 function scratch(over: Partial<ConstructorParameters<typeof WalkyService>[0]> = {}): Bridge {
   const stateDir = mkdtempSync(join(tmpdir(), "walky-cli-"));
   const panes: WalkyPane[] = [
-    { session: "main", paneId: "%1", agent: true, harness: "agent-x", label: "repo#one", state: "idle", activeAt: null, instance: "aaaa", terminal: true },
-    { session: "main", paneId: "%2", agent: true, harness: "agent-y", label: "repo#two", state: "working", activeAt: null, instance: "bbbb", terminal: true },
+    { session: "main", paneId: "%1", agent: true, harness: "agent-x", label: "repo#one", state: "idle", activeAt: null, instance: "aaaa", terminal: true, off: false },
+    { session: "main", paneId: "%2", agent: true, harness: "agent-y", label: "repo#two", state: "working", activeAt: null, instance: "bbbb", terminal: true, off: false },
   ];
   const state: Bridge = { stateDir, sent: [], answer: { outcome: "sent" } };
   const host: WalkyHost = {
@@ -253,8 +253,8 @@ describe("send", () => {
     const states = new Map<string, SendResult>();
     const heldHost: WalkyHost = {
       panes: () => [
-        { session: "main", paneId: "%1", agent: true, harness: "agent-x", label: "repo#one", state: "idle", activeAt: null, instance: "aaaa", terminal: true },
-        { session: "main", paneId: "%2", agent: true, harness: "agent-y", label: "repo#two", state: "working", activeAt: null, instance: "bbbb", terminal: true },
+        { session: "main", paneId: "%1", agent: true, harness: "agent-x", label: "repo#one", state: "idle", activeAt: null, instance: "aaaa", terminal: true, off: false },
+        { session: "main", paneId: "%2", agent: true, harness: "agent-y", label: "repo#two", state: "working", activeAt: null, instance: "bbbb", terminal: true, off: false },
       ],
       send: async (_pane, sendId): Promise<SendResult> => {
         states.set(sendId, { outcome: "held", reason: "draft_present" });
@@ -506,8 +506,8 @@ describe("reply, inbox, status, who", () => {
   /** Two agent panes in one folder: `%1` asks, `%2` finished 20 minutes ago. */
   const resting = (typed: string[] = []): WalkyHost => ({
     panes: () => [
-      { session: "main", paneId: "%1", agent: true, harness: "agent-x", label: "repo#main", state: "working", activeAt: Date.now(), instance: "aaaa", terminal: true },
-      { session: "main", paneId: "%2", agent: true, harness: "agent-y", label: "repo#feat", state: "done", activeAt: Date.now() - 20 * 60_000, instance: "bbbb", terminal: true },
+      { session: "main", paneId: "%1", agent: true, harness: "agent-x", label: "repo#main", state: "working", activeAt: Date.now(), instance: "aaaa", terminal: true, off: false },
+      { session: "main", paneId: "%2", agent: true, harness: "agent-y", label: "repo#feat", state: "done", activeAt: Date.now() - 20 * 60_000, instance: "bbbb", terminal: true, off: false },
     ],
     send: async (pane) => {
       typed.push(pane.paneId);
@@ -551,8 +551,8 @@ describe("reply, inbox, status, who", () => {
   socketTest("who on a solo install with only the asking agent pane says a message needs two", async () => {
     const lone: WalkyHost = {
       panes: () => [
-        { session: "main", paneId: "%1", agent: true, harness: "agent-x", label: "repo#one", state: "idle", activeAt: null, instance: "aaaa", terminal: true },
-        { session: "main", paneId: "%2", agent: false, harness: null, label: "repo#two", state: "idle", activeAt: null, instance: "aaaa", terminal: true },
+        { session: "main", paneId: "%1", agent: true, harness: "agent-x", label: "repo#one", state: "idle", activeAt: null, instance: "aaaa", terminal: true, off: false },
+        { session: "main", paneId: "%2", agent: false, harness: null, label: "repo#two", state: "idle", activeAt: null, instance: "aaaa", terminal: true, off: false },
       ],
       send: async () => ({ outcome: "sent" }),
       sendState: () => null,
@@ -578,9 +578,9 @@ describe("reply, inbox, status, who", () => {
   /** Three agent panes in two folders, one a checkout on a branch: what a workspace filter has to tell apart. */
   const folders = (): WalkyHost => ({
     panes: () => [
-      { session: "main", paneId: "%1", agent: true, harness: "agent-x", label: "collie-workspace#main", state: "idle", activeAt: null, instance: "aaaa", terminal: true },
-      { session: "main", paneId: "%2", agent: true, harness: "agent-x", label: "other", state: "idle", activeAt: null, instance: "bbbb", terminal: true },
-      { session: "main", paneId: "%3", agent: true, harness: "agent-y", label: "collie-workspace#feat/x", state: "working", activeAt: null, instance: "cccc", terminal: true },
+      { session: "main", paneId: "%1", agent: true, harness: "agent-x", label: "collie-workspace#main", state: "idle", activeAt: null, instance: "aaaa", terminal: true, off: false },
+      { session: "main", paneId: "%2", agent: true, harness: "agent-x", label: "other", state: "idle", activeAt: null, instance: "bbbb", terminal: true, off: false },
+      { session: "main", paneId: "%3", agent: true, harness: "agent-y", label: "collie-workspace#feat/x", state: "working", activeAt: null, instance: "cccc", terminal: true, off: false },
     ],
     send: async () => ({ outcome: "sent" }),
     sendState: () => ({ outcome: "sent" }),

@@ -386,6 +386,9 @@ const PANE_WIRE_KEYS = {
   // 2026-10-18). A live solo bridge carries it on every pane, the change this baseline records on
   // purpose; the harness builds its wire with no instance registry, so no golden byte moved.
   instance: true,
+  // Not a crew dimension: a session turned its walky talky off (M89). Present only while it is off,
+  // and this harness builds its body with no reader, so no golden byte moved.
+  walkyOff: true,
   // Not a crew dimension: the pane's usage dots (bridge/usage.ts, .adr/0115). Attached at serialise
   // time from the statusLine wrapper's file, and this harness builds its body with no reader, so no
   // golden byte moved.
@@ -560,6 +563,7 @@ describe("solo zero-tax — wire shapes carry no crew dimension", () => {
       "todos",
       "turnId",
       "usage",
+      "walkyOff",
       "workspaceId",
       "workspaceLabel",
       "workspaceNumber",

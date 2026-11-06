@@ -92,7 +92,7 @@ function OPERATOR(memberId: string): Partial<WalkyMessage> {
 }
 
 function pane(paneId: string, over: Partial<WalkyPane> = {}): WalkyPane {
-  return { session: "main", paneId, agent: true, harness: "agent-x", label: `repo#${paneId}`, state: "idle", activeAt: null, instance: "aaaa", terminal: true, ...over };
+  return { session: "main", paneId, agent: true, harness: "agent-x", label: `repo#${paneId}`, state: "idle", activeAt: null, instance: "aaaa", terminal: true, off: false, ...over };
 }
 
 class FakeHost implements WalkyHost {
@@ -918,6 +918,25 @@ describe("`who` on a lead", () => {
       true,
     );
     expect(targets.map((target) => target.address)).toEqual(["laptop/w1:p1#k3f9", "laptop/w1:p2", "laptop/w1:p3"]);
+  });
+
+  test("copies a member's off flag to its row; a member body without it reads as on (M89)", () => {
+    const paneOf = (paneId: string, over: Partial<PaneWire> = {}): PaneWire =>
+      // SAFETY: a test fixture carrying the fields `crewTargets` reads; the rest of the wire shape is irrelevant here.
+      ({ paneId, agent: "agent-x", status: "idle", cwd: "/home/a/collie", ...over }) as PaneWire;
+    const targets = crewTargets(
+      [{ memberId: "laptop", name: "laptop", reachable: true, body: { sessions: [], agents: [paneOf("w1:p1", { walkyOff: true }), paneOf("w1:p2")], shellPanes: [], workspaces: [], tabs: [] } }],
+      true,
+    );
+    expect(targets[0]).toMatchObject({ address: "laptop/w1:p1", walky: "off", state: "idle" });
+    expect("walky" in targets[1]!).toBe(false);
+  });
+
+  test("only `true` means off: any other value from a member reads as on (M89)", () => {
+    // SAFETY: a member's bytes are not checked at the merge; this parsed fixture is what such a member could send.
+    const odd = JSON.parse('{"paneId":"w1:p1","agent":"agent-x","status":"idle","cwd":"/home/a/collie","walkyOff":"yes"}') as PaneWire;
+    const [target] = crewTargets([{ memberId: "laptop", name: "laptop", reachable: true, body: { sessions: [], agents: [odd], shellPanes: [], workspaces: [], tabs: [] } }], true);
+    expect("walky" in target!).toBe(false);
   });
 });
 
