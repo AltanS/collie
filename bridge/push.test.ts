@@ -808,8 +808,8 @@ describe("Push — silent pushes are cut per device", () => {
 
   test("rule 2: the device whose page read the pane gets no clear; every other device does", async () => {
     const { push, to } = await rig([
-      { endpoint: "phone", device: "pixel", closesOwn: true, badges: false },
-      { endpoint: "laptop", device: "mac", closesOwn: true, badges: false },
+      { endpoint: "phone", device: "pixel", closesOwn: true, badges: true },
+      { endpoint: "laptop", device: "mac", closesOwn: true, badges: true },
     ]);
     await push.send(render("collie:herd:p1"));
     push.noteSeen("pixel", "collie:herd:p1");
@@ -818,16 +818,29 @@ describe("Push — silent pushes are cut per device", () => {
     expect(to("laptop").map((x) => x.body.type)).toEqual([undefined, "clear"]);
   });
 
-  test("rule 2 never applies to a page that did not promise the close, or to one that shows an icon count", async () => {
+  test("rule 2 applies to every page that promised the close, an icon count or not", async () => {
+    // Android Chrome 156 reported `badges: true` live: the page zeroes the slot's count itself, so
+    // what it says about the Badging API decides nothing.
     const { push, to } = await rig([
-      { endpoint: "old-page", device: "a", badges: false },
-      { endpoint: "iphone", device: "b", closesOwn: true, badges: true },
+      { endpoint: "android", device: "a", closesOwn: true, badges: true },
+      { endpoint: "iphone", device: "b", closesOwn: true, badges: false },
       { endpoint: "unsaid", device: "c", closesOwn: true },
     ]);
     await push.send(render("collie:herd:p1"));
     for (const d of ["a", "b", "c"]) push.noteSeen(d, "collie:herd:p1");
     await push.send({ type: "clear", tag: "collie:herd:p1" });
-    for (const e of ["old-page", "iphone", "unsaid"]) expect(to(e).map((x) => x.body.type)).toEqual([undefined, "clear"]);
+    for (const e of ["android", "iphone", "unsaid"]) expect(to(e).map((x) => x.body.type)).toEqual([undefined]);
+  });
+
+  test("rule 2 never applies to a page that did not promise the close", async () => {
+    const { push, to } = await rig([
+      { endpoint: "old-page", device: "a", badges: true },
+      { endpoint: "old-android", device: "b", badges: false },
+    ]);
+    await push.send(render("collie:herd:p1"));
+    for (const d of ["a", "b"]) push.noteSeen(d, "collie:herd:p1");
+    await push.send({ type: "clear", tag: "collie:herd:p1" });
+    for (const e of ["old-page", "old-android"]) expect(to(e).map((x) => x.body.type)).toEqual([undefined, "clear"]);
   });
 
   test("rule 3: ten clears in one burst are one push per device, naming every slot, on no collapse topic", async () => {

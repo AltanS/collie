@@ -50,10 +50,10 @@ export interface StoredSubscription extends PushSubscription {
    */
   closesOwn?: boolean;
   /**
-   * `false` when the page that registered this row has no Badging API (`navigator.setAppBadge`),
-   * as on Chrome for Android. A clear is also what zeroes a slot in the icon's count
-   * (`web/src/lib/app-badge.ts`), so only a device that shows no count may go without it after a
-   * seen read. Absent = it may show one.
+   * Whether the page that registered this row has the Badging API (`navigator.setAppBadge`).
+   * Information only, for the log and `push list`: no rule reads it. It once gated rule 2, until a
+   * live Android Chrome 156 reported `true` (2026-11-06); the page now zeroes the slot's count
+   * itself on a seen read, so the clear owes the badge nothing either way.
    */
   badges?: boolean;
 }
@@ -267,8 +267,8 @@ export type SendOptions = { TTL: number; topic?: string; urgency?: "very-low" | 
 //      service worker would suppress it, and its page shows the state. If the device stops polling
 //      before it could have seen it, the render goes out late instead of never.
 //   2. A clear is skipped for a slot this bridge knows is closed on that device: the render was
-//      held, the clear already went, or the device's own page read the pane and closed it
-//      ({@link Push.noteSeen}). A slot it knows nothing about (after a restart) still gets the clear.
+//      held, the clear already went, or the device's own page read the pane, closed its notification
+//      and zeroed its icon count ({@link Push.noteSeen}). A slot it knows nothing about (after a restart) still gets the clear.
 //   3. Clears that land in one burst go to each device as ONE push naming every slot.
 /**
  * How long after its last poll a device still counts as looking. The page polls `/api/snapshot`
@@ -483,6 +483,8 @@ export class Push {
   private burstDone: Promise<void> = Promise.resolve();
   /** Device → this hour's counters, and when this hour started. */
   private tally = new Map<string, Tally>();
+  /** Device → what its page said about the Badging API, for the hourly line only. */
+  private tallyBadges = new Map<string, boolean | undefined>();
   private tallySince: number;
   private readonly clock: PushClock;
   private readonly clearBurstMs: number;
@@ -596,14 +598,14 @@ export class Push {
   /**
    * A paired device's own page read the pane whose notification sits in `tag`, as the pane view's
    * poll does. That page closes its own notification for the pane on such a read
-   * (`web/src/lib/pane-notifications.ts`), so the slot is closed on every row of that device whose
-   * page said it does, and the clear for it is not sent there (rule 2). Only on a device that shows
-   * no icon count: elsewhere the clear is also what zeroes the slot's count, so it still goes. A
-   * render held for the slot is dropped: the page that is reading the pane is showing it.
+   * (`web/src/lib/pane-notifications.ts`) and sets the slot's share of the icon count to zero, which
+   * is everything the clear would have done there. So the slot is closed on every row of that device
+   * whose page said it does, and the clear for it is not sent there (rule 2). A render held for the
+   * slot is dropped: the page that is reading the pane is showing it.
    */
   noteSeen(device: string, tag: string): void {
     for (const sub of this.subs.values()) {
-      if (sub.device !== device || sub.closesOwn !== true || sub.badges !== false) continue;
+      if (sub.device !== device || sub.closesOwn !== true) continue;
       this.setSlot(sub.endpoint, tag, "closed");
       this.unhold(sub.endpoint, tag);
     }
@@ -859,18 +861,22 @@ export class Push {
     const now = this.clock.now();
     if (now - this.tallySince >= HOUR_MS) {
       for (const [name, t] of this.tally) {
+        const badges = this.tallyBadges.get(name);
+        const said = badges === undefined ? "" : badges ? " (badges)" : " (no badges)";
         console.log(
-          `[push] last hour, ${name}: ${t.render} rendered, ${t.clear} silent clears, ${t.skipped} clears skipped, ` +
+          `[push] last hour, ${name}${said}: ${t.render} rendered, ${t.clear} silent clears, ${t.skipped} clears skipped, ` +
             `${t.held} held (${t.dropped} seen in the app, ${t.late} sent late)`,
         );
       }
       this.tally.clear();
+      this.tallyBadges.clear();
       this.tallySince = now;
     }
     const name = deviceName(sub);
     const t = this.tally.get(name) ?? emptyTally();
     t[outcome] += 1;
     this.tally.set(name, t);
+    this.tallyBadges.set(name, sub.badges);
   }
 
   /** This hour's counts so far, per device, for the tests and for a future reader. */

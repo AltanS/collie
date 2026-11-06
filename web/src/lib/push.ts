@@ -88,12 +88,12 @@ export interface SubscribeBody {
   /** The endpoint this registration supersedes — absent when there is nothing to supersede. */
   replaces?: string;
   /**
-   * This page closes its own notification for a pane on every seen read of it
-   * (lib/pane-notifications.ts), so the bridge may skip that pane's clear here (bridge/push.ts).
+   * This page closes its own notification for a pane on every seen read of it and zeroes the pane's
+   * slot in the icon count (lib/pane-notifications.ts), so the bridge may skip that pane's clear here
+   * (bridge/push.ts).
    */
   closesOwn: true;
-  /** Whether this browser has the Badging API. Without one there is no icon count a clear must
-   *  zero, which is what lets the bridge skip it. */
+  /** Whether this browser has the Badging API. Information for the bridge's log; no rule reads it. */
   badges: boolean;
 }
 
