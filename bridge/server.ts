@@ -42,7 +42,7 @@ import { createSessionFolders, createSessionLabels, resolveSessionFolder, withSe
 import { computeEtag, gzipJsonResponse, notModified, wantsGzip } from "./http-cache.ts";
 import { pluginRoot } from "./root.ts";
 import { DEFAULT_NOTIFY_PREFS, type NotifyPrefs, type NotifyPrefsStore } from "./notify-prefs.ts";
-import { paneClears } from "./notifications.ts";
+import { paneClears, paneTag } from "./notifications.ts";
 import { browseFolders, type FolderBrowseContext } from "./folder-browse.ts";
 import { MAX_FAVOURITES, MAX_FOLDER_CHARS, type FolderSurface } from "./folders.ts";
 import { isValidWorktreeBranch } from "./worktree-branch.ts";
@@ -213,6 +213,7 @@ import type { CrewLead } from "./crew/lead.ts";
 import { crewDeviceOf, crewGate, type GateLevel } from "./crew/peer-gate.ts";
 import { snapshotPlan } from "./crew/merge.ts";
 import { selectHostFrom, type HostSelector } from "./crew/registry.ts";
+import { crewHerdTagFor } from "./crew/tags.ts";
 import { machineHost } from "./crew/machine-host.ts";
 import type { CrewHandler, CrewSurface } from "./crew/router.ts";
 import type { CrewTlsOptions } from "./crew/transport.ts";
@@ -1861,6 +1862,26 @@ export function startServer(opts: {
     jsonError(apiError("session.unknown", { session: session ?? "" }), 404, acceptEncoding);
 
   /**
+   * A paired device's page read a pane and so closed its own notification for it
+   * (`web/src/lib/pane-notifications.ts`); tell push the slot is shut on that device (rule 2).
+   * Only the read the page itself marks as seen, which is the read it pairs with the close (a
+   * prefetch carries no seen header and closes nothing), and only one that succeeded.
+   */
+  const noteSeenSlot = (
+    device: string,
+    req: Request,
+    res: Response,
+    url: URL,
+    paneId: string,
+    rt: SessionRuntime | null,
+  ): void => {
+    if (req.headers.get(SEEN_HEADER) === null) return;
+    if (!res.ok && res.status !== 304) return;
+    const tag = seenSlotTag(url, paneId, rt);
+    if (tag !== null) push.noteSeen(device, tag);
+  };
+
+  /**
    * Everything session-scoped: the pane family, tab create/rename/close, workspace create.
    *
    * ── ONE BLOCK, TWO CALLERS, NO SECOND HANDLER SET ────────────────────────────
@@ -2247,8 +2268,15 @@ export function startServer(opts: {
       // `files` is a read that still needs an authorised device (ADR 0083); see paneGateLevel.
       const denied = caller.gate(paneGateLevel(action));
       if (denied) return denied;
+      // The mirror's own poll, from a paired device: stamped here, before a peer's pane is forwarded,
+      // because the push it governs is sent by this collie (bridge/push.ts, rules 1 and 2).
+      const viewer = !action && req.method === "GET" ? pairedLabel(req, pairingGate) : null;
+      if (viewer !== null) push.notePoll(viewer);
       const rt = await caller.resolve();
-      if (rt instanceof Response) return rt;
+      if (rt instanceof Response) {
+        if (viewer !== null) noteSeenSlot(viewer, req, rt, url, paneId, null);
+        return rt;
+      }
       const { herdr, name: session } = rt;
       // You are in this pane: reading it, replying, sending keys, browsing its history. That is
       // the whole definition of "seen" (.adr/0003), and this is the one place every such request
@@ -2277,7 +2305,11 @@ export function startServer(opts: {
       const device = isRead ? null : caller.device();
       const audit_ = caller.audit;
 
-      if (!action && req.method === "GET") return readPane(herdr, cfg, paneId, url, req, paneReadHint(rt.engine, paneId));
+      if (!action && req.method === "GET") {
+        const read = await readPane(herdr, cfg, paneId, url, req, paneReadHint(rt.engine, paneId));
+        if (viewer !== null) noteSeenSlot(viewer, req, read, url, paneId, rt);
+        return read;
+      }
       if (action === "history" && req.method === "GET")
         return paneHistory(cfg, journals, transcripts, rt.engine, herdr, paneId, url, req);
       if (action === "chat" && req.method === "GET")
@@ -2813,6 +2845,10 @@ export function startServer(opts: {
         // `/crew/v1/snapshot`, and a lead sweeps on its own clock whether or not anybody is reading
         // it — stamping there would pin every peer at `watched` for the life of the crew).
         registry.get(sessionName)?.engine.noteAttention();
+        // The same fact, per device, for push: a device whose page polls is looking (bridge/push.ts,
+        // rule 1). By pairing label only, so the host's CLI and an unpaired caller stamp nothing.
+        const poller = pairedLabel(req, pairingGate);
+        if (poller !== null) push.notePoll(poller);
         // `?sessions=all` WIDENS the pane lists to every session on ONE machine (see localSnapshot).
         // One exact spelling and nothing else is accepted: the parameter is a switch, not a list, and
         // a typo must read as "no" rather than as some third behaviour. It does NOT replace
@@ -3219,9 +3255,14 @@ export function startServer(opts: {
           return text("bad subscription", 400);
         }
         if (!isPushSubscription(body)) return text("bad subscription", 400);
+        // The device comes from the bearer token, never from the body: it is what joins this row
+        // to the same device's polls (bridge/push.ts § the three rules), and a body could name any.
         await push.addSubscription(body, {
           replaces: supersededEndpoint(body),
           userAgent: req.headers.get("user-agent") ?? undefined,
+          device: pairedLabel(req, pairingGate) ?? undefined,
+          closesOwn: asJsonRecord(body)?.closesOwn === true,
+          badges: subscribeBadges(body),
         });
         return secure(new Response(null, { status: 204 }));
       }
@@ -8918,6 +8959,35 @@ function isPushSubscription(v: JsonValue | undefined): v is JsonValue & PushSubs
     typeof keys.p256dh === "string" &&
     typeof keys.auth === "string"
   );
+}
+
+/**
+ * The notification slot a seen pane read stands for, or null when it stands for none this bridge
+ * can name. The slot is the one the notification sink opened for the pane (`paneTag`): of the
+ * session's herd tag for a pane here (`rt`), or of the member's for a pane the lead forwarded (`rt`
+ * null). A named session is matched only when the request named it, and a member's pane only in its
+ * primary session, the only one the lead alerts for. Every other spelling answers null, and the
+ * clear goes out as before. Pure and exported for the test.
+ */
+export function seenSlotTag(
+  url: URL,
+  paneId: string,
+  rt: Pick<SessionRuntime, "isPrimary" | "name"> | null,
+): string | null {
+  const named = url.searchParams.get("session");
+  if (rt !== null) {
+    if (named !== null && rt.isPrimary) return null;
+    return paneTag(herdTagFor(rt.isPrimary, rt.name), paneId);
+  }
+  const host = selectHostFrom(url);
+  if (host.kind !== "member" || named !== null) return null;
+  return paneTag(crewHerdTagFor(host.id, true, ""), paneId);
+}
+
+/** Whether the subscribing page has the Badging API, when it says (bridge/push.ts, `badges`). */
+function subscribeBadges(body: JsonValue | undefined): boolean | undefined {
+  const badges = asJsonRecord(body)?.badges;
+  return typeof badges === "boolean" ? badges : undefined;
 }
 
 /**

@@ -31,6 +31,10 @@ A patch for the desk: a browser tab can keep its place.
 
 - **`/slot/<n>` reopens a browser tab on the pane it last showed.** Pin a tab on the slot's address, 1 to 99, and it survives a browser restart on the project you left it in; a pane id another workspace took since sends the tab to that workspace's home. Slots live on the device, and unpairing forgets them. Thanks @eseninik (#706).
 
+### Fixed
+
+- **Chrome stops showing "This site has been updated in the background".** Chrome allows a site only a few pushes a day that leave no notification on screen, and one notification per agent sent each agent a clear of its own. Now a device that has Collie open gets no push for what it already shows, a device whose own tap already closed a notification gets no clear for it, and clears that come together reach each device as one push. The log counts each device's silent pushes per hour.
+
 ## [1.27.0] - 2026-11-06
 
 ### Added

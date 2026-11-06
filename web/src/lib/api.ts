@@ -28,6 +28,7 @@ import { pairingRefused } from "./wipe";
 import { mintRequestId } from "./worktree-name";
 import { fileVersionOf } from "./file-image-cache";
 import { isLead, normalizeScope, paneScopeKey, type Scope } from "./scope";
+import { closePaneNotifications } from "./pane-notifications";
 import { textRouteFor } from "./send-path";
 import { stampSend } from "./poll-intent";
 import { observeServerBuild, SERVER_BUILD_HEADER } from "./server-build";
@@ -688,7 +689,12 @@ export async function fetchPane(
     // paired device's polls are what keep its "last seen" honest. Same injection point as `doReq`.
     ...authHeader(),
   });
-  if (seen) headers.set("x-collie-seen", "1");
+  // A seen read is also the bridge's cue that this device closed its own notification for the pane
+  // (lib/pane-notifications.ts, bridge/push.ts rule 2), so the close goes first and is not waited on.
+  if (seen) {
+    headers.set("x-collie-seen", "1");
+    void closePaneNotifications(paneId, scope);
+  }
   if (cached) headers.set("if-none-match", cached.etag);
 
   let res: Response;

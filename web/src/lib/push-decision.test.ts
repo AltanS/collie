@@ -5,7 +5,7 @@ import { scopeSearch } from "@/lib/scope";
 
 describe("decidePush", () => {
   test("a clear retracts the slot regardless of client visibility", () => {
-    const expected = { kind: "clear", tag: "collie:herd" };
+    const expected = { kind: "clear", tag: "collie:herd", tags: ["collie:herd"] };
     expect(decidePush({ type: "clear", tag: "collie:herd" }, false)).toEqual(expected);
     expect(decidePush({ type: "clear", tag: "collie:herd" }, true)).toEqual(expected);
   });
@@ -131,12 +131,13 @@ describe("decidePush", () => {
     const cleared = decidePush({ type: "clear", data }, true);
     // SAFETY: `shown` is the "show" decision produced two lines above (the input carried a title,
     // not `type: "clear"`), and every show decision carries a `tag`.
-    expect(cleared).toEqual({ kind: "clear", tag: (shown as { tag: string }).tag });
-    expect(cleared).toEqual({ kind: "clear", tag: "collie@box2:w1:p1" });
+    expect(cleared).toMatchObject({ kind: "clear", tag: (shown as { tag: string }).tag });
+    expect(cleared).toEqual({ kind: "clear", tag: "collie@box2:w1:p1", tags: ["collie@box2:w1:p1"] });
     // …and the bridge-supplied tag still wins over the fallback, in both directions.
     expect(decidePush({ type: "clear", tag: "collie:herd@box2", data }, false)).toEqual({
       kind: "clear",
       tag: "collie:herd@box2",
+      tags: ["collie:herd@box2"],
     });
   });
 
@@ -179,6 +180,7 @@ describe("localisedTitle — the headline in this device's language (ADR 0074)",
     expect(decidePush({ type: "clear", tag: "collie:herd" }, false, korean)).toEqual({
       kind: "clear",
       tag: "collie:herd",
+      tags: ["collie:herd"],
     });
   });
 });
@@ -278,5 +280,38 @@ describe("notificationPath — where a tap lands", () => {
         `/pane/w1%3Ap1${scopeSearch(scope)}`,
       );
     }
+  });
+});
+
+// ONE CLEAR PER BURST (bridge/push.ts, rule 3): the bridge names a burst's slots in `tags`, with the
+// first also in `tag`, so the clear an older worker reads closes that one and this one closes all.
+describe("decidePush — a clear that names several slots", () => {
+  test("closes every slot it names, `tag` first, each once", () => {
+    const tags = ["collie:herd:w1:p1", "collie:herd:w2:p1", "collie:herd@box2:w1:p1"];
+    expect(decidePush({ type: "clear", tag: tags[0], tags: [...tags, tags[1]!] }, true)).toEqual({
+      kind: "clear",
+      tag: tags[0],
+      tags,
+    });
+  });
+
+  test("ignores anything in `tags` that is not a slot name", () => {
+    expect(decidePush({ type: "clear", tag: "collie:herd", tags: [1, null, { a: 1 }, "collie:herd:x"] }, false)).toEqual({
+      kind: "clear",
+      tag: "collie:herd",
+      tags: ["collie:herd", "collie:herd:x"],
+    });
+    expect(decidePush({ type: "clear", tag: "collie:herd", tags: "collie:herd:x" }, false)).toEqual({
+      kind: "clear",
+      tag: "collie:herd",
+      tags: ["collie:herd"],
+    });
+  });
+
+  test("a render carrying `tags` is still one render on its own slot", () => {
+    expect(decidePush({ title: "t", tag: "collie:herd:a", tags: ["collie:herd:b"] }, false)).toMatchObject({
+      kind: "show",
+      tag: "collie:herd:a",
+    });
   });
 });

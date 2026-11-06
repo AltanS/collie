@@ -491,6 +491,9 @@ device that has not opened Collie since it was updated. The body stays as the br
 Every switch is bridge-wide. A push fans out to every subscribed device, so there is nothing
 per-device to set.
 
+A device with Collie open on screen gets no notification, because the app already shows the alert.
+Lock the phone in the seconds before an alert, and its notification comes about ten seconds late.
+
 The cache warning can also be switched on for **one pane at a time**, from that pane's own settings:
 open the pane, tap the ⋮, then **Pane settings**. Those panes are listed under the global switch in
 Settings, with a Remove button each.
