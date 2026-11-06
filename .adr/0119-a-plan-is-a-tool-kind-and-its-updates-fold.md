@@ -36,8 +36,8 @@ its result alone shows these as done while they still run.
 2. **On pi, a list's updates fold into the card its `write` drew.** The reducer holds the newest plan
    card; a later `todo` call that is not a `write` draws nothing of its own, and its result rewrites
    the held card's tasks and names that turn in `changed` (ADR 0073). A new `write` opens a new card,
-   and a `clear` ends the held one: the card keeps the list as it last stood, and the next `add`
-   draws its own. A rewind past the held card releases it too. Other harnesses draw one plan card per
+   and a `clear` ends the held one: its empty result list empties the card (and the Tasks mark), and
+   the next `add` draws its own. A rewind past the held card releases it too. Other harnesses draw one plan card per
    call: their lists have no `write` to mark where one list ends and the next begins. A call that
    carries only the items it changed (Hermes's `todo` with `merge: true`) is not a plan.
 3. **A call can be ongoing after it returns.** `execute` and `task` carry `ongoing: true` while the

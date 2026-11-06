@@ -18,6 +18,8 @@ import {
   resolveImage,
   resolveImageUrl,
 } from "./pi.ts";
+import { ongoingSubagents } from "../subagents-journal.ts";
+import { latestPlanTodos } from "../todos.ts";
 import { LiveWindows, TICK_FLOOR_MS } from "./live.ts";
 import { TranscriptStore } from "./store.ts";
 import { MAX_TEXT_CHARS } from "./text.ts";
@@ -1539,7 +1541,8 @@ describe("parsePiTranscript — Gentle Shell's tools", () => {
   });
 
   // 14 real `clear` calls (2026-10-16): the result's list is empty, and the next `add` starts a new list.
-  test("a `clear` keeps the card's last list and lets the next `add` draw a card of its own", () => {
+  // The empty list empties the card too (#715); it used to keep the last list on screen.
+  test("a `clear` empties the card's list and lets the next `add` draw a card of its own", () => {
     const s = session();
     s.call("a1", "c1", "todo", { action: "write", tasks: [{ title: "Old" }] });
     s.result("r1", "c1", "todo", "written", todo([{ id: 1, title: "Old", status: "done" }]));
@@ -1548,9 +1551,25 @@ describe("parsePiTranscript — Gentle Shell's tools", () => {
     s.call("a3", "c3", "todo", { action: "add", title: "New" });
     s.result("r3", "c3", "todo", "added", todo([{ id: 1, title: "New", status: "pending" }]));
     expect(tools(s.rows).map((t) => [t.uuid, t.part.call])).toEqual([
-      ["a1", { kind: "plan", name: "todo", tasks: [{ title: "Old", status: "done" }] }],
+      ["a1", { kind: "plan", name: "todo", tasks: [] }],
       ["a3", { kind: "plan", name: "todo", tasks: [{ title: "New", status: "pending" }] }],
     ]);
+  });
+
+  test("a `clear` empties the Tasks mark, and a result with no list leaves the input's", () => {
+    const s = session();
+    s.call("a1", "c1", "todo", { action: "write", tasks: [{ title: "Parse" }, { title: "Ship" }] });
+    s.result("r1", "c1", "todo", "written", todo([{ id: 1, title: "Parse", status: "pending" }, { id: 2, title: "Ship", status: "pending" }]));
+    expect(latestPlanTodos(parsePiTranscript(s.rows.join("\n")))).toHaveLength(2);
+    s.call("a2", "c2", "todo", { action: "clear" });
+    s.result("r2", "c2", "todo", "cleared", todo([]));
+    const entries = parsePiTranscript(s.rows.join("\n"));
+    expect(latestPlanTodos(entries)).toBeUndefined();
+    // A result with no `gentleTodo` at all is not a clear: the write's own list stays.
+    const bare = session();
+    bare.call("a1", "c1", "todo", { action: "write", tasks: [{ title: "Parse" }] });
+    bare.result("r1", "c1", "todo", "written", {});
+    expect(tools(bare.rows)[0]?.part.call).toEqual({ kind: "plan", name: "todo", tasks: [{ title: "Parse", status: "pending" }] });
   });
 
   test("a rewind past the held card lets the next update draw on the new branch", () => {
@@ -1584,6 +1603,41 @@ describe("parsePiTranscript — Gentle Shell's tools", () => {
     expect(dismissed?.kind === "question" && dismissed.answers).toBeUndefined();
   });
 
+  // gentle-pi 4.6.0, from the issue #714 report (synthetic rows in its shape).
+  test("`ask_user_question` reads `details.answers` as a list of objects, by question index", () => {
+    const questions = [
+      { question: "Which binary?", options: [{ label: "Swap it" }, { label: "Keep" }] },
+      { question: "Which port?", options: [{ label: "8787" }, { label: "8788" }] },
+    ];
+    const s = session();
+    s.call("a1", "c1", "ask_user_question", { questions });
+    s.result("r1", "c1", "ask_user_question", "answered", {
+      answers: [
+        { questionIndex: 1, question: "Which port?", kind: "option", answer: "8788" },
+        { questionIndex: 0, question: "Which binary?", kind: "option", answer: "Swap it" },
+      ],
+    });
+    s.call("a2", "c2", "ask_user_question", { questions: questions.slice(0, 1) });
+    s.result("r2", "c2", "ask_user_question", "answered", {
+      answers: [{ questionIndex: 0, question: "Which binary?", kind: "other", answer: "something else" }],
+    });
+    const [two, one] = tools(s.rows).map((t) => t.part.call);
+    expect(two).toMatchObject({ kind: "question", answers: [["Swap it"], ["8788"]] });
+    expect(one).toMatchObject({ kind: "question", answers: [["something else"]] });
+  });
+
+  test("`ask_user_choice` takes a free-text \"Other\" answer from `details.customResponse`", () => {
+    const ask = { question: "Which?", options: [{ label: "A" }, { label: "B" }] };
+    const s = session();
+    s.call("a1", "c1", "ask_user_choice", ask);
+    s.result("r1", "c1", "ask_user_choice", "Other", { ...ask, customResponse: "something different" });
+    s.call("a2", "c2", "ask_user_choice", ask);
+    s.result("r2", "c2", "ask_user_choice", "A", { ...ask, selection: { value: "a", label: "A", index: 0 } });
+    const [custom, picked] = tools(s.rows).map((t) => t.part.call);
+    expect(custom).toMatchObject({ kind: "question", answers: [["something different"]] });
+    expect(picked).toMatchObject({ kind: "question", answers: [["A"]] });
+  });
+
   test("collie's own `ask_user` is a question card with its `details.answer`", () => {
     const s = session();
     s.call("a1", "c1", "ask_user", { question: "Which color do you prefer?", options: ["Red", "Blue"] });
@@ -1615,6 +1669,53 @@ describe("parsePiTranscript — Gentle Shell's tools", () => {
     s.call("a1", "c1", "subagent_run", { agent: "gentle-ai-explore", label: "Map it", task: "…" });
     s.result("r1", "c1", "subagent_run", "The answer.", agents("t-1", "completed", "task"));
     expect(tools(s.rows)[0]?.part.call).toEqual({ kind: "task", agent: "gentle-ai-explore", summary: "Map it" });
+  });
+
+  test("a foreground subagent is ongoing from its call until its result (#711)", () => {
+    const s = session();
+    s.call("a1", "c1", "subagent_run", { agent: "gentle-ai-explore", label: "Map it", task: "…", mode: "task" });
+    expect(tools(s.rows)[0]?.part.call).toEqual({ kind: "task", agent: "gentle-ai-explore", summary: "Map it", ongoing: true });
+    expect(ongoingSubagents(parsePiTranscript(s.rows.join("\n"))).map((r) => r.description)).toEqual(["Map it"]);
+    // A call with no `mode` is foreground too; a background call waits for its start result.
+    const bare = session();
+    bare.call("a1", "c1", "subagent_run", { agent: "gentle-ai-explore", label: "Bare", task: "…" });
+    expect(tools(bare.rows)[0]?.part.call).toMatchObject({ ongoing: true });
+    const background = session();
+    background.call("a1", "c1", "subagent_run", { agent: "gentle-ai-explore", label: "Bg", task: "…", mode: "background" });
+    expect(tools(background.rows)[0]?.part.call).not.toHaveProperty("ongoing");
+    s.result("r1", "c1", "subagent_run", "The answer.", agents("t-1", "completed", "task"));
+    expect(tools(s.rows)[0]?.part.call).toEqual({ kind: "task", agent: "gentle-ai-explore", summary: "Map it" });
+    expect(ongoingSubagents(parsePiTranscript(s.rows.join("\n")))).toEqual([]);
+  });
+
+  test("an interrupted foreground subagent (error result, no details) stops being ongoing", () => {
+    const s = session();
+    s.call("a1", "c1", "subagent_run", { agent: "gentle-ai-explore", label: "Map it", task: "…" });
+    s.result("r1", "c1", "subagent_run", "Aborted", {}, true);
+    expect(tools(s.rows)[0]?.part.call).toEqual({ kind: "task", agent: "gentle-ai-explore", summary: "Map it" });
+  });
+
+  test("a foreground subagent whose result says failed is marked failed (#716)", () => {
+    const s = session();
+    s.call("a1", "c1", "subagent_run", { agent: "gentle-ai-explore", label: "Map it", task: "…", mode: "task" });
+    s.result("r1", "c1", "subagent_run", "It broke.", agents("t-1", "failed", "task"));
+    const part = tools(s.rows)[0]?.part;
+    expect(part?.call).toEqual({ kind: "task", agent: "gentle-ai-explore", summary: "Map it" });
+    expect(part?.result?.isError).toBe(true);
+  });
+
+  test("a stale notice or stale result ends a background subagent without marking it failed (#716)", () => {
+    for (const type of ["gentle-agents.stale-notice", "gentle-agents.stale-result"]) {
+      const s = session();
+      s.call("a1", "c1", "subagent_run", { agent: "gentle-ai-explore", label: "Map it", task: "…", mode: "background" });
+      s.result("r1", "c1", "subagent_run", "Started.", agents("t-1", "queued"));
+      expect(ongoingSubagents(parsePiTranscript(s.rows.join("\n")))).toHaveLength(1);
+      s.notice("n1", type, "Subagent task t-1 went stale.", agents("t-1", "running"));
+      const part = tools(s.rows)[0]?.part;
+      expect(part?.call).toEqual({ kind: "task", agent: "gentle-ai-explore", summary: "Map it" });
+      expect(part?.result?.isError).not.toBe(true);
+      expect(ongoingSubagents(parsePiTranscript(s.rows.join("\n")))).toEqual([]);
+    }
   });
 
   test("`subagent_result` folds into its task's card and brings the answer", () => {

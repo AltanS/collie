@@ -30,6 +30,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Fixed
 
+- **A gentle-pi question card shows the answer you gave.** The card for `ask_user_question` stayed empty because gentle-pi writes its answers as a list of objects, and the free-text "Other" answer of `ask_user_choice` stayed empty because it sits in its own field. Both now fill the card. Thanks @viniciosrab (#714).
+- **A cleared gentle-pi todo list empties the plan card and the Tasks mark.** An empty list from `todo clear` was read as "no list", so the old tasks stayed on screen. An empty list now clears both. Thanks @viniciosrab (#715).
+- **A failed foreground subagent is marked failed, and a stale notice ends a background one.** A foreground `subagent_run` that reported `failed` ended as a normal success, and a `gentle-agents.stale-notice` or `stale-result` left the subagent in the Agents pill. Both now end the Agent card. Thanks @viniciosrab (#716).
+- **A foreground subagent shows in the Agents pill while it runs.** A foreground `subagent_run` writes no start row, so its card was never running and the pill stayed hidden. It now counts from its call until its result, within the same quiet limit as a background one. Thanks @viniciosrab (#711).
 - **Web search and fetch rows show their first query or address.** A pi `web_search` called with a list of `queries`, or a `fetch_content` called with a list of `urls`, showed an empty row. The row now shows the first item of the list. Thanks @viniciosrab (#717).
 - **Claude's model picker reads at once under a usage notice.** When the weekly-limit notice fills the picker's top edge, Collie read no dialog for a few seconds and showed the unread card. The notice row now counts as the edge.
 
