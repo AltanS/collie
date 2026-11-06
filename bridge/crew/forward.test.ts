@@ -291,7 +291,7 @@ describe("which routes cross a link", () => {
     // The list IS the inventory of what crosses a link; `chat` joined it with the live window, and
     // `files` with the Files view (ADR 0083).
     expect(paneActions).toEqual([
-      "abort", "action", "answer", "changes", "chat", "clear", "close", "files", "focus", "history", "keys", "rename", "reply", "send", "upload",
+      "abort", "action", "answer", "changes", "chat", "clear", "close", "files", "focus", "history", "keys", "pins", "rename", "reply", "send", "upload",
     ]);
     for (const action of paneActions) expect(crewRouteFor(`/api/pane/x/${action}`)).toBe(`pane/x/${action}`);
     const tabActions = tab.match(alternation)![1]!.split("|").toSorted();
@@ -387,6 +387,23 @@ describe("which routes cross a link", () => {
     // The image read is the same read on another cap (ADR 0090).
     expect(forwardKind("pane/w1:p1/files/image")).toBe("read");
     expect(forwardKind("workspace/w1/files/image")).toBe("read");
+  });
+
+  test("a pane's pins cross the link: the list is a read, a pin and an unpin are writes (M90)", () => {
+    expect(crewRouteFor("/api/pane/w1:p1/pins")).toBe("pane/w1:p1/pins");
+    expect(apiPathFor("pane/w1:p1/pins")).toBe("/api/pane/w1:p1/pins");
+    expect(crewRouteFor("/api/pane/w1:p1/pins/x")).toBeNull();
+    // The list is judged by its method: a GET reads, so a stale member is still asked.
+    expect(forwardKind("pane/w1:p1/pins", "GET")).toBe("read");
+    expect(forwardKind("pane/w1:p1/pins", "POST")).toBe("write");
+    expect(forwardKind("pane/w1:p1/pins", "DELETE")).toBe("write");
+    expect(forwardKind("pane/w1:p1/pins")).toBe("write");
+    // The lead writes `pins` for a forwarded pin or unpin and nothing for the list; the member writes
+    // `pin.add` or `pin.remove` itself.
+    expect(forwardAuditAction("pane/w1:p1/pins", "GET")).toBeNull();
+    expect(forwardAuditAction("pane/w1:p1/pins", "POST")).toBe("pins");
+    expect(forwardAuditAction("pane/w1:p1/pins", "DELETE")).toBe("pins");
+    expect(textAnswerOf("pane/w1:p1/pins")).toBe("pins");
   });
 
   test("the audit action a forward records is the one the peer will write", () => {

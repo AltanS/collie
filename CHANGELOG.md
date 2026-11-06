@@ -29,6 +29,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **The phone has the WalkyTalky switch too.** The WalkyTalky sheet of a session opens with a WalkyTalky switch, and while the session is off the pane menu reads "WalkyTalky off". On a crew the switch is set on the machine that owns the pane.
 - **Pin a message in a session.** A bridge now keeps a copy of a pinned block of a session, your own message, an agent reply or a tool card, in a file under its state folder, keyed on the session. A pin outlives the pane, a restart and the Chat paging; the bridge copies the text from its own log and never stores what the phone sends. Up to 100 pins a session, and unpin is safe to repeat. On a crew the pins of a member are reached through the lead. The pane list carries the number of pins while a session has any.
 - **A pane serves the pins of its session.** `GET`, `POST` and `DELETE` on `/api/pane/:id/pins` list, add and drop pins: the phone names a block by its Chat id and the bridge copies the text from its own log. A pin or an unpin needs a paired device, and each pane in the list carries `pins` while its session has any.
+- **Pins cross a crew link.** The lead forwards the pins route to the member that owns the pane, a list as a read and a pin or an unpin as a write, and it masks a member's pins again when its own redaction is on. A lead keeps a member's pin count only as a whole number above zero.
 
 ### Changed
 
