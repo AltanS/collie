@@ -3,10 +3,11 @@ import { join } from "node:path";
 
 import { Command as Program, CommanderError } from "commander";
 
-import { agentPidOf, type BeaconEmitDeps, readProcessInfo, runBeaconEmit } from "./beacon.ts";
+import { agentPidOf, type BeaconEmitDeps, readProcessArgs, readProcessInfo, runBeaconEmit } from "./beacon.ts";
 import { cmdBeaconStatusline, runShell, type StatusLineDeps } from "./statusline.ts";
 import { type HoldDeps, netConnect, runBeaconHold } from "./hold.ts";
 import { CODEX_NOTIFY_HARNESS, runCodexNotify } from "./codex-notify.ts";
+import { type CodexHookDeps, runCodexHook } from "./codex-hook.ts";
 import { cmdBuild } from "./build.ts";
 import {
   cmdConfig,
@@ -401,6 +402,23 @@ function beaconDeps(): BeaconEmitDeps {
   };
 }
 
+/**
+ * `beacon codex-hook`: the same world as `beacon emit`, but the agent is found after the payload is
+ * read, because Codex's own window must be told from its shared daemon by its arguments, and that
+ * costs a process read or two (cli/codex-hook.ts).
+ */
+function codexHookDeps(): CodexHookDeps {
+  return {
+    ctx: loadContext(() => {}),
+    files: realFiles,
+    readStdin: () => Bun.stdin.text(),
+    parentPid: process.ppid,
+    readProcess: readProcessInfo,
+    readArgs: readProcessArgs,
+    uid: process.getuid?.(),
+  };
+}
+
 /** The statusLine wrapper's world. The run and its stopping rules live in cli/statusline.ts. */
 function statusLineDeps(): StatusLineDeps {
   return {
@@ -761,7 +779,8 @@ export const COMMANDS: readonly Command[] = [
         name: "install",
         summary:
           "register the beacon hooks: `hooks install claude` (add `--hold-permissions` to hold permissions, and `--statusline` to also wrap your statusLine" +
-          " so the phone shows the 5-hour and 7-day windows; your command still runs and prints as before), or `hooks install codex`",
+          " so the phone shows the 5-hour and 7-day windows; your command still runs and prints as before), or `hooks install codex`" +
+          " (add `--native` for Codex's own hooks, which name a Codex pane's session on herdr-core)",
         run: (args, s) => cmdHooksInstall(hooksDeps(s.io), args),
       },
       {
@@ -779,7 +798,7 @@ export const COMMANDS: readonly Command[] = [
   },
   {
     name: "beacon",
-    summary: "internal: `beacon emit`, `beacon hold` and `beacon statusline`, the agent hooks Collie installs",
+    summary: "internal: `beacon emit`, `beacon hold`, `beacon statusline` and `beacon codex-hook`, the agent hooks Collie installs",
     internal: true,
     subcommands: [
       {
@@ -797,6 +816,11 @@ export const COMMANDS: readonly Command[] = [
         name: "statusline",
         summary: "internal: run the operator's own statusLine, and pass its usage numbers to the phone (.adr/0115)",
         run: (args) => cmdBeaconStatusline(statusLineDeps(), args),
+      },
+      {
+        name: "codex-hook",
+        summary: "internal: a native Codex hook (`hooks install codex --native`): name this pane's Codex session from the payload on stdin",
+        run: () => runCodexHook(codexHookDeps),
       },
     ],
     // A bare `collie beacon`, or a misspelt sub-verb, is still an invocation from a hook — so it gets

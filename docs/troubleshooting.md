@@ -185,8 +185,9 @@ steps.
 the agent's session log, and Collie finds the log only when the agent reports its session through the
 multiplexer. On Herdr that report comes from the agent's own integration, so a missing or old one hides
 both with no other symptom. `collie doctor` names the pane under `agent-sessions` and the fix under
-`integration-<agent>`. On the Herdr core (`herdr-core`) the report comes from Claude's hook instead:
-run `collie hooks install claude`, then restart the Claude in that pane.
+`integration-<agent>`. On the Herdr core (`herdr-core`) the report comes from Collie's hooks instead:
+run `collie hooks install claude`, then restart the Claude in that pane. For Codex see the Herdr core
+entries below.
 
 1. Run `herdr integration status`. If the agent is `not installed` or `outdated`, run
    `herdr integration install <agent>`. Oh My Pi is `omp`, and pi is `pi`: each needs its own.
@@ -370,6 +371,12 @@ Keys tray.
 **A pi question shows only Escape, and the pane does not say it needs you.** The core reports pi as
 working while its question waits, and the card used to read pi's colours. Fix: update Collie to 1.25.2
 or newer. The card then lists the options, and the pane says it needs you.
+
+**A Codex pane has no Chat or History.** The core does not know Codex's conversation, and Collie's
+native Codex hooks supply it. Run `collie hooks install codex --native`. Trust the Collie hooks when
+Codex shows "Hooks need review", and start Codex as `codex --no-daemon`. Plain `codex` runs its hooks
+in a shared background process that names no pane, so those hooks write nothing. A fresh pane gets
+its Chat at the first prompt. `collie doctor` says what is missing in its `beacon-hooks-codex` row.
 
 **An Oh My Pi (`omp`) pane reads as a shell, and a send to it is not checked.** The core names an agent
 from its own status report, and omp sends none. Fix: update Collie to 1.25.2 or newer. It then names

@@ -48,7 +48,7 @@ export function herdrCoreBeaconMatcher(namespace: string, endpoint: string): Bea
     notesWithoutHooks: {
       agentDetection: "herdr-core names each terminal's agent on its own.",
       agentSessionRef:
-        "herdr-core keeps an agent's status but not its conversation id. Install the hooks with `collie hooks install claude` and a pane running Claude names its session, which gives it History.",
+        "herdr-core keeps an agent's status but not its conversation id. Install the hooks with `collie hooks install claude` and a pane running Claude names its session, which gives it History. For Codex, run `collie hooks install codex --native` and start Codex as `codex --no-daemon`.",
     },
   };
 }

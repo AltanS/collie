@@ -14,7 +14,7 @@ import { hookTargetFileName } from "../bridge/beacon/hook-targets.ts";
 import { BEACON_SCHEMA_VERSION, type EdgeRecord } from "../bridge/beacon/types.ts";
 import { parseLstart, PS_LSTART, type StartTimeCommand } from "../bridge/beacon/liveness.ts";
 import { HERDR_CORE_MUX } from "../bridge/mux/herdr-core/adapter.ts";
-import { agentPidOf, BEACON_HARNESS, BEACON_HOOKS, HERDR_CORE_NAMESPACE, type BeaconEmitDeps, cmdBeaconEmit, liveHookTargets, type PidProbeDeps, parsePsProcess, parseProcStatProcess, type ProcessInfo, readEnvMarkers, runBeaconEmit, unwrapPrompt } from "./beacon.ts";
+import { agentPidOf, BEACON_HARNESS, BEACON_HOOKS, HERDR_CORE_NAMESPACE, type BeaconEmitDeps, cmdBeaconEmit, liveHookTargets, type PidProbeDeps, parseProcCmdline, parsePsArgs, parsePsProcess, parseProcStatProcess, type ProcessInfo, readEnvMarkers, runBeaconEmit, unwrapPrompt } from "./beacon.ts";
 import { context, fakeFiles, HOME, STATE } from "./fakes.ts";
 import { EXIT } from "./io.ts";
 import type { Environment } from "./context.ts";
@@ -1071,5 +1071,18 @@ describe("the process readers behind agentPidOf (#689)", () => {
     expect(parsePsProcess("77 -zsh")).toEqual({ comm: "-zsh", ppid: 77 });
     expect(parsePsProcess("")).toBeNull();
     expect(parsePsProcess("garbage")).toBeNull();
+  });
+
+  // The argument readers `beacon codex-hook` tells a Codex window from its daemon with (cli/codex-hook.ts).
+  test("a /proc cmdline is the arguments between the NULs; an empty one is none", () => {
+    expect(parseProcCmdline("codex\u0000--no-daemon\u0000")).toEqual(["codex", "--no-daemon"]);
+    expect(parseProcCmdline("/usr/bin/codex\u0000app-server\u0000--manage")).toEqual(["/usr/bin/codex", "app-server", "--manage"]);
+    expect(parseProcCmdline("")).toBeNull();
+  });
+
+  test("a ps args line is split on white space, so a path with a space names no program", () => {
+    expect(parsePsArgs("/opt/homebrew/bin/codex --no-daemon\n")).toEqual(["/opt/homebrew/bin/codex", "--no-daemon"]);
+    expect(parsePsArgs("/Users/pat/My Tools/codex")).toEqual(["/Users/pat/My", "Tools/codex"]);
+    expect(parsePsArgs("   \n")).toBeNull();
   });
 });
