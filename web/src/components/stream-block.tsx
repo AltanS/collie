@@ -4,7 +4,7 @@ import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, 
 
 import { useLocale } from "@/hooks/use-locale";
 import { useLongPress } from "@/hooks/use-long-press";
-import { endSelectText, useSelectable } from "@/lib/block-select";
+import { endSelectText, useActiveBlock, useSelectable } from "@/lib/block-select";
 import type { ChatItem } from "@/lib/chat-items";
 import { t } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
@@ -62,10 +62,14 @@ import { cn } from "@/lib/utils";
 // reply. The chip is absolute to its block and scrolls with it, so a scroll does it no harm; a touch scroll that
 // starts outside the block is a press elsewhere anyway.
 //
-// ── THE HOLD IS SILENT UNTIL IT FIRES ────────────────────────────────────────────────────────────
-// `useLongPress` shows a hold in the making (`data-holding`: a tint and a 0.97 scale from 150ms). On a block of
-// text that squeezes the message under a slow tap or the first moment of a selection, so a stream block turns the
-// look off (`showHold: false`) and nothing changes on screen until the `⋯` shows.
+// ── ON A TOUCH SCREEN THE HOLD SHOWS AS A TINT, AND THE TINT STAYS WHILE THE SHEET IS OPEN ────────────
+// `useLongPress` shows a hold in the making (`data-holding` from 150ms). Elsewhere that is a tint and a 0.97 scale;
+// on a block of text the scale squeezed the message, so a block draws the tint ONLY (index.css). It shows for a touch
+// or pen press alone (`showHold: "touch"`): a mouse still selects a block's text, and its hold stays silent. On a touch
+// screen selection no longer competes, so the tint is safe there (Altan, 2026-11-06). While the sheet is open for
+// the block, the block carries `data-active` (set by the sheet, lib/block-select.ts) and the same tint at full
+// strength, so the person sees which message the sheet is about; the hold's tint flows into it with no flash. A tint
+// is an inset shadow and changes no box (DESIGN.md §2).
 //
 // ── THE ⋯ IS AN OVERLAY. IT MOVES NOTHING AND COVERS NO CONTROL ─────────────────────────────────
 // Both marks are absolute, so a block gaining a pin or showing its `⋯` changes no box (DESIGN.md §2), and there is
@@ -240,6 +244,7 @@ export function StreamBlock({ n, item, pinned, onActions, className, children, h
   const itemId = item !== null && onActions !== undefined ? item.id : null;
   // The sheet's Select text gave this block's text back to the native selection: its own gestures stand down.
   const selectable = useSelectable(itemId);
+  const active = useActiveBlock(itemId);
   const open =
     item !== null && onActions !== undefined
       ? () => {
@@ -263,7 +268,7 @@ export function StreamBlock({ n, item, pinned, onActions, className, children, h
           swallowNextClick();
           open();
         };
-  const hold = useLongPress(onHold, { delayMs: BLOCK_HOLD_MS, showHold: false, onTap });
+  const hold = useLongPress(onHold, { delayMs: BLOCK_HOLD_MS, showHold: "touch", onTap });
   const { onContextMenu, onPointerDown, onClickCapture: afterHold, ...handlers } = hold;
 
   const onPress = (event: ReactPointerEvent<HTMLElement>) => {
@@ -357,6 +362,7 @@ export function StreamBlock({ n, item, pinned, onActions, className, children, h
       data-revealed={revealed ? "" : undefined}
       data-pinnable={open !== undefined ? "" : undefined}
       data-selectable={selectable ? "" : undefined}
+      data-active={active ? "" : undefined}
       {...handlers}
       onPointerDown={onPress}
       onPointerEnter={(event) => {

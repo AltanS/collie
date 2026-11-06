@@ -1,10 +1,10 @@
 import { Copy, Pin, PinOff, TextSelect } from "lucide-react";
-import { useEffect } from "react";
+import { useLayoutEffect } from "react";
 
 import { ActionRow } from "@/components/action-sheet-rows";
 import { BottomSheet } from "@/components/ui/sheet";
 import { useLocale } from "@/hooks/use-locale";
-import { endSelectText, selectTextIn } from "@/lib/block-select";
+import { activateBlock, deactivateBlock, endSelectText, selectTextIn } from "@/lib/block-select";
 import type { ChatItem } from "@/lib/chat-items";
 import { canCopyText, copyText } from "@/lib/clipboard";
 import { t } from "@/lib/i18n";
@@ -19,6 +19,9 @@ import { setStatus } from "@/lib/status";
 // Close-then-act, the way every action row does it (pane-actions-sheet.tsx): the copy runs inside the same tap
 // that closes the sheet, so the clipboard write still counts as the person's own. Pin and Unpin do not wait
 // on the network here; the pane view's hook marks the block at once and takes the mark back on a refusal.
+//
+// THE BLOCK IS TINTED WHILE ITS SHEET IS OPEN (2026-11-06): the sheet covers the lower half of the stream, so the
+// block it is about carries `data-active` (lib/block-select.ts) and the hold's tint until the sheet closes.
 //
 // SELECT TEXT (2026-11-06). On a touch screen a pinnable block takes no selection at rest, so that its hold opens
 // this sheet every time (index.css). The row gives that one block's text back to the native selection
@@ -41,10 +44,15 @@ const ROW_ICON = "size-4 shrink-0 text-muted-foreground";
 
 export function BlockActionsSheet({ item, pinned, pinning = false, onClose, onPin, onUnpin }: BlockActionsSheetProps) {
   useLocale();
-  // The sheet opening again ends a select mode it started.
-  useEffect(() => {
-    if (item !== null) endSelectText();
-  }, [item]);
+  // While open, its block is marked (`data-active`, a tint), set before paint so the hold's tint flows into it with no
+  // frame between. Opening again ends a select mode it started.
+  const itemId = item?.id ?? null;
+  useLayoutEffect(() => {
+    if (itemId === null) return;
+    endSelectText();
+    activateBlock(itemId);
+    return () => deactivateBlock(itemId);
+  }, [itemId]);
   if (item === null) return null;
   const copy = async () => {
     try {
