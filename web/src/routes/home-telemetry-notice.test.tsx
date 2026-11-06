@@ -16,7 +16,7 @@ import { HomeRoute } from "./home";
 
 vi.mock("@/hooks/use-loading-stalled", () => ({ useLoadingStalled: () => false }));
 
-const BODY = "Collie 1.27.0 counts installs, once a day and anonymously. Turn it off in Settings.";
+const BODY = "Collie 1.27.0 sends anonymous telemetry once a day. Turn it off in Settings.";
 
 function renderHome() {
   const data: HomeData = {

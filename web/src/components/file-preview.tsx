@@ -440,8 +440,8 @@ const IMAGE_MISS_KEY = {
 function ImageMissed({ file, why }: { file: FileText; why: ImageMiss }) {
   return (
     <Quiet>
-      {t("files.binary", { size: formatBytes(file.size) })}
-      <span className="mt-1 block text-xs">{t(IMAGE_MISS_KEY[why])}</span>
+      {file.size > 0 && t("files.binary", { size: formatBytes(file.size) })}
+      <span className={file.size > 0 ? "mt-1 block text-xs" : "block text-xs"}>{t(IMAGE_MISS_KEY[why])}</span>
     </Quiet>
   );
 }
@@ -493,7 +493,7 @@ function ImagePreview({ file, images }: { file: FileText; images: FileImages }) 
   const url = useObjectUrl(now !== null && "blob" in now ? now.blob : null);
   if (now !== null && "miss" in now) return <ImageMissed file={file} why={now.miss} />;
   if (now === null || url === null) return <FilesLoading />;
-  return <PictureView file={file} url={url} type={now.type} />;
+  return <PictureView file={file.size > 0 ? file : { ...file, size: now.blob.size }} url={url} type={now.type} />;
 }
 
 /**

@@ -1174,11 +1174,11 @@ export const handlers = [
     return HttpResponse.json({ snoozedUntil });
   }),
   http.get("/api/notifications/prefs", () =>
-    HttpResponse.json({ blocked: true, done: false, updates: true, cache: false, machines: true }),
+    HttpResponse.json({ blocked: true, done: false, individual: true, updates: true, cache: false, machines: true }),
   ),
-  http.post<never, Partial<{ blocked: boolean; done: boolean; updates: boolean; cache: boolean }>>("/api/notifications/prefs", async ({ request }) => {
+  http.post<never, Partial<{ blocked: boolean; done: boolean; individual: boolean; updates: boolean; cache: boolean }>>("/api/notifications/prefs", async ({ request }) => {
     const patch = await request.json();
-    return HttpResponse.json({ blocked: true, done: false, updates: true, cache: false, machines: true, ...patch });
+    return HttpResponse.json({ blocked: true, done: false, individual: true, updates: true, cache: false, machines: true, ...patch });
   }),
   // The prompt-cache watch list (ADR 0042). The default world watches NOTHING and has the global switch
   // off, which is a fresh install: a test that wants a watched pane overrides these three.
@@ -1207,6 +1207,13 @@ export const handlers = [
   // stands on the dashboard and no test meets a card it did not ask for.
   http.get("/api/telemetry", () =>
     HttpResponse.json({ on: false, decidedBy: "ci", setting: null, next: null }),
+  ),
+  // The trouble tally (M86 spec 05): the bridge answers 204 whether or not it counted. A trouble card
+  // in any test posts here once, so the default world takes it quietly.
+  http.post("/api/telemetry/trouble", () => new HttpResponse(null, { status: 204 })),
+  // The report sheet's setup block, read by the trouble signal too.
+  http.get("/api/report/context", () =>
+    HttpResponse.json({ collie: "1.27.0", line: "stable", os: "linux", arch: "x64", mux: "herdr", harness: "claude", screenable: false }),
   ),
   http.post("/api/update/check", () =>
     HttpResponse.json({

@@ -39,7 +39,7 @@
 // costs the reading, never the pane.
 
 import { execFile } from "node:child_process";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { lstat, open, readdir, readFile, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -81,6 +81,23 @@ export const CODEX_FILES_MAX = 3;
 
 /** The Keychain item Claude Code keeps its login in on macOS. */
 export const CLAUDE_KEYCHAIN_SERVICE = "Claude Code-credentials";
+
+/** How many custom `CLAUDE_CONFIG_DIR` slots `AccountWindows` holds in memory before evicting the oldest. */
+export const MAX_CUSTOM_CONFIG_DIRS = 16;
+
+/**
+ * The macOS Keychain service name Claude Code uses for `configDir`: `"Claude Code-credentials"` for the
+ * default `~/.claude`, or suffixed with the first 8 hex chars of `sha256(CLAUDE_CONFIG_DIR.normalize("NFC"))`
+ * (2.1.318, read in its bundle; `security dump-keychain` shows `"svce"<blob>="Claude Code-credentials-<8 hex chars>"`).
+ * `configDir` is the RAW value of `CLAUDE_CONFIG_DIR`: Claude Code hashes the string as it stands, with no
+ * trim and no path clean-up, so `/profiles/work/` and `/profiles/work` are two different items. Only a
+ * blank value means the default.
+ */
+export function claudeKeychainService(configDir?: string): string {
+  if (configDir === undefined || configDir.trim() === "") return CLAUDE_KEYCHAIN_SERVICE;
+  const suffix = createHash("sha256").update(configDir.normalize("NFC")).digest("hex").slice(0, 8);
+  return `${CLAUDE_KEYCHAIN_SERVICE}-${suffix}`;
+}
 
 /** At most one ask per harness this often, however many turns end. */
 export const POKE_EVERY_MS = 5 * 60_000;
@@ -370,18 +387,12 @@ export interface CredentialSeams {
   stat(path: string): Promise<{ readonly file: boolean; readonly mode: number; readonly size: number } | null>;
   read(path: string): Promise<string | null>;
   /** The Keychain item's text (macOS only), or null. Called only when the file is absent. */
-  keychain(): Promise<string | null>;
+  keychain(service?: string): Promise<string | null>;
   /** The plain files of a folder with their mtimes (links are not followed), or [] when it is not there. */
   list(path: string): Promise<ReadonlyArray<{ readonly name: string; readonly file: boolean; readonly mtimeMs: number }>>;
   /** The last `maxBytes` of a plain file, or null. */
   tail(path: string, maxBytes: number): Promise<string | null>;
   now(): number;
-}
-
-/** `$CLAUDE_CONFIG_DIR/.credentials.json`, else `~/.claude/.credentials.json`. */
-export function claudeCredentialsPath(env: Readonly<Record<string, string | undefined>>, home: string): string {
-  const dir = (env.CLAUDE_CONFIG_DIR ?? "").trim();
-  return join(dir === "" ? join(home, ".claude") : dir, ".credentials.json");
 }
 
 /**
@@ -423,11 +434,17 @@ export async function readLoginFile(
  * Read the operator's Claude login on this machine. The file first; on macOS, when the file is absent,
  * the Keychain item Claude Code keeps there. A file others may read is refused ({@link readLoginFile}).
  */
-export async function readClaudeLogin(seams: CredentialSeams): Promise<CredentialRead> {
-  const file = await readLoginFile(seams, claudeCredentialsPath(seams.env, seams.home));
+export async function readClaudeLogin(seams: CredentialSeams, configDir?: string): Promise<CredentialRead> {
+  // `raw` is the value as the session's environment held it: it feeds the Keychain hash untouched, and
+  // only the file path is cleaned up.
+  const raw = configDir ?? seams.env.CLAUDE_CONFIG_DIR ?? "";
+  const defaultDir = join(seams.home, ".claude");
+  const normalized = raw.trim() === "" ? defaultDir : join(raw, ".");
+  const explicitDir = normalized === defaultDir ? undefined : raw;
+  const file = await readLoginFile(seams, join(normalized, ".credentials.json"));
   if (file.ok) return claudeTokenFrom(file.text, seams.now());
   if (file.reason !== "missing" || seams.platform !== "darwin") return file;
-  const text = await seams.keychain();
+  const text = await seams.keychain(claudeKeychainService(explicitDir));
   return text === null ? { ok: false, reason: "missing" } : claudeTokenFrom(text.trim(), seams.now());
 }
 
@@ -521,13 +538,13 @@ export async function readGrokLogin(seams: CredentialSeams): Promise<CredentialR
 }
 
 /** The Keychain read, with its timeout. Its answer is the login JSON; it is never logged. */
-function keychainRead(): Promise<string | null> {
-  return new Promise((resolve) => {
+function keychainRead(service: string = CLAUDE_KEYCHAIN_SERVICE): Promise<string | null> {
+  return new Promise((done) => {
     execFile(
       "security",
-      ["find-generic-password", "-s", CLAUDE_KEYCHAIN_SERVICE, "-w"],
+      ["find-generic-password", "-s", service, "-w"],
       { timeout: KEYCHAIN_TIMEOUT_MS, maxBuffer: CREDENTIAL_MAX_BYTES, encoding: "utf8" },
-      (error, stdout) => resolve(error === null ? stdout : null),
+      (error, stdout) => done(error === null ? stdout : null),
     );
   });
 }
@@ -599,12 +616,16 @@ export interface HttpAccountSource {
   readonly kind: "http";
   readonly harness: string;
   readonly url: string;
+  /** The resolved config directory this source reads its login from, when applicable. */
+  readonly configDir?: string;
   /** The login, read fresh for each ask. */
   login(): Promise<CredentialRead>;
   /** The headers of the one ask, built around the token. */
   headers(token: string): Record<string, string>;
   /** The windows in the vendor's answer, or null for a body this build cannot read. */
   parse(text: string): AccountReading | null;
+  /** Optional factory for a session running under a non-default config directory. */
+  readonly forConfigDir?: (configDir: string) => AccountSource;
 }
 
 /** A road that reads the harness's own files on this machine: no login, no request. */
@@ -617,18 +638,25 @@ export interface LocalAccountSource {
 /** One harness's road to its account windows. */
 export type AccountSource = HttpAccountSource | LocalAccountSource;
 
-export function claudeAccountSource(seams: CredentialSeams): AccountSource {
+export function claudeAccountSource(seams: CredentialSeams, configDir?: string): AccountSource {
+  // `configDir` stays raw (see {@link claudeKeychainService}); `resolvedDir` is the cleaned path the
+  // slot is keyed on. A session on the default dir always reads `<home>/.claude`, whatever the bridge's env says.
+  const raw = configDir ?? "";
+  const resolvedDir = raw.trim() === "" ? join(seams.home, ".claude") : join(raw, ".");
+  const readDir = raw.trim() === "" ? resolvedDir : raw;
   return {
     kind: "http",
     harness: "claude",
     url: CLAUDE_USAGE_URL,
-    login: () => readClaudeLogin(seams),
+    configDir: resolvedDir,
+    login: () => readClaudeLogin(seams, readDir),
     headers: (token) => ({
       Authorization: `Bearer ${token}`,
       "anthropic-beta": CLAUDE_OAUTH_BETA,
       Accept: "application/json",
     }),
     parse: parseAccountUsage,
+    forConfigDir: (dir) => claudeAccountSource(seams, dir),
   };
 }
 
@@ -782,19 +810,28 @@ export function isTurnEnd(from: AgentStatus, to: AgentStatus): boolean {
 
 /**
  * The account windows of each harness with a source, in memory. `observe` runs on every poll,
- * `poke` when a turn ends; `limits` is synchronous and reads memory only.
+ * `poke` when a turn ends; `limits` is synchronous and reads memory (starting a background ask the
+ * first time a custom `configDir` is seen).
  */
 export class AccountWindows {
   private readonly states = new Map<string, HarnessState>();
   private readonly sources = new Map<string, AccountSource>();
+  private readonly customKeys = new Set<string>();
   /** The harnesses each mux session's last poll had panes of, so one session's poll forgets only its own. */
   private readonly scopes = new Map<string, Set<string>>();
+  /** The custom `harness\0configDir` keys each mux session's last `observeConfigDirs` named. */
+  private readonly customScopes = new Map<string, Set<string>>();
 
   constructor(private readonly opts: AccountWindowsOptions) {
     for (const source of opts.sources) {
       this.sources.set(source.harness, source);
       this.states.set(source.harness, { reading: undefined, lastAttempt: -Infinity, backoffUntil: 0, limitedInARow: 0, inFlight: null, lastNote: null });
     }
+  }
+
+  private static baseHarness(key: string): string {
+    const sep = key.indexOf("\u0000");
+    return sep === -1 ? key : key.slice(0, sep);
   }
 
   get enabled(): boolean {
@@ -807,6 +844,18 @@ export class AccountWindows {
     return false;
   }
 
+  private customKeyActive(key: string): boolean {
+    for (const keys of this.customScopes.values()) if (keys.has(key)) return true;
+    return false;
+  }
+
+  private keyPresent(key: string): boolean {
+    const harness = AccountWindows.baseHarness(key);
+    if (!this.present(harness)) return false;
+    if (!this.customKeys.has(key)) return true;
+    return this.customScopes.size === 0 || this.customKeyActive(key);
+  }
+
   /**
    * One mux session's poll: note which harnesses have panes, and ask for each that has none yet or
    * whose last ask is {@link ASK_EVERY_MS} old.
@@ -817,25 +866,95 @@ export class AccountWindows {
     for (const pane of panes) if (pane.kind !== "shell" && this.sources.has(pane.agent)) harnesses.add(pane.agent);
     this.scopes.set(scope, harnesses);
     const now = this.opts.now();
-    for (const [harness, state] of this.states) {
-      if (!this.present(harness)) continue;
-      if (state.reading === undefined || now - state.lastAttempt >= ASK_EVERY_MS) this.ask(harness, now);
+    for (const [key, state] of this.states) {
+      if (!this.keyPresent(key)) continue;
+      if (state.reading === undefined || now - state.lastAttempt >= ASK_EVERY_MS) this.ask(key, now);
     }
+  }
+
+  /**
+   * Note which custom `configDir`s have live panes of `harness` in `scope`, so closed profiles stop
+   * polling while active ones are registered and asked on schedule.
+   */
+  observeConfigDirs(harness: string, configDirs: ReadonlySet<string>, scope = ""): void {
+    if (!this.opts.enabled) return;
+    const factory = this.customFactory(harness);
+    const active = new Set<string>();
+    if (factory !== undefined) {
+      for (const dir of configDirs) {
+        const key = this.resolveKey(harness, dir, factory);
+        if (key !== undefined && key !== harness) active.add(key);
+      }
+    }
+    this.customScopes.set(scope, active);
   }
 
   /** A turn of `harness` ended: ask, unless an ask started in the last {@link POKE_EVERY_MS}. */
   poke(harness: string): void {
     if (!this.opts.enabled) return;
-    const state = this.states.get(harness);
-    if (state === undefined || !this.present(harness)) return;
+    if (!this.present(harness)) return;
     const now = this.opts.now();
-    if (now - state.lastAttempt < POKE_EVERY_MS) return;
-    this.ask(harness, now);
+    for (const [key, state] of this.states) {
+      if (AccountWindows.baseHarness(key) !== harness) continue;
+      if (!this.keyPresent(key)) continue;
+      if (now - state.lastAttempt < POKE_EVERY_MS) continue;
+      this.ask(key, now);
+    }
+  }
+
+  private customFactory(harness: string): ((configDir: string) => AccountSource) | undefined {
+    const base = this.sources.get(harness);
+    return base?.kind === "http" ? base.forConfigDir : undefined;
+  }
+
+  private resolveKey(harness: string, configDir: string, factory: (dir: string) => AccountSource): string | undefined {
+    const normalized = join(configDir, ".");
+    const base = this.sources.get(harness);
+    if (base?.kind === "http" && base.configDir !== undefined && base.configDir === normalized) return harness;
+    return this.ensureCustomKey(harness, normalized, configDir, factory);
+  }
+
+  /** The slot is keyed on the cleaned path; its source is built from `rawDir`, the value the session's env held. */
+  private ensureCustomKey(harness: string, normalized: string, rawDir: string, factory: (dir: string) => AccountSource): string | undefined {
+    const key = `${harness}\u0000${normalized}`;
+    if (this.customKeys.has(key)) {
+      this.customKeys.delete(key);
+      this.customKeys.add(key);
+      return key;
+    }
+    const now = this.opts.now();
+    if (this.customKeys.size >= MAX_CUSTOM_CONFIG_DIRS) {
+      let evict: string | undefined;
+      for (const candidate of this.customKeys) {
+        if (this.customKeyActive(candidate)) continue;
+        const st = this.states.get(candidate);
+        if (st !== undefined && (st.inFlight !== null || st.backoffUntil > now)) continue;
+        evict = candidate;
+        break;
+      }
+      if (evict === undefined) return undefined;
+      this.customKeys.delete(evict);
+      this.states.delete(evict);
+      this.sources.delete(evict);
+    }
+    this.customKeys.add(key);
+    this.sources.set(key, factory(rawDir));
+    this.states.set(key, { reading: undefined, lastAttempt: -Infinity, backoffUntil: 0, limitedInARow: 0, inFlight: null, lastNote: null });
+    if (this.present(harness)) this.ask(key, now);
+    return key;
   }
 
   /** The harness's 5-hour and 7-day windows now, or undefined when there is no fresh reading. */
-  limits(harness: string): UsageLimit[] | undefined {
-    const reading = this.fresh(harness);
+  limits(harness: string, configDir?: string): UsageLimit[] | undefined {
+    if (!this.opts.enabled) return undefined;
+    let key: string | undefined = harness;
+    if (configDir !== undefined) {
+      const factory = this.customFactory(harness);
+      if (factory === undefined) return undefined;
+      key = this.resolveKey(harness, configDir, factory);
+      if (key === undefined) return undefined;
+    }
+    const reading = this.fresh(key);
     if (reading === undefined) return undefined;
     const now = this.opts.now();
     const limits = reading.limits.filter((limit) => limit.resetsAt === undefined || limit.resetsAt > now);
@@ -993,7 +1112,7 @@ export function accountWindowsDoctorLine(
   const named = (name: string, tilde: string, path: string): string => ((env[name] ?? "").trim() === "" ? tilde : path);
   const keychain = platform === "darwin" ? " or the Keychain" : "";
   const where = {
-    claude: `reads ${named("CLAUDE_CONFIG_DIR", "~/.claude/.credentials.json", claudeCredentialsPath(env, home))}${keychain}, asks ${CLAUDE_USAGE_HOST}`,
+    claude: `reads ~/.claude/.credentials.json${keychain}${(env.CLAUDE_CONFIG_DIR ?? "").trim() === "" ? "" : ", plus the login under CLAUDE_CONFIG_DIR for each session that sets it"}, asks ${CLAUDE_USAGE_HOST}`,
     codex: `reads ${named("CODEX_HOME", "~/.codex/sessions", codexSessionsDir(env, home))}`,
     opencode: facts.opencodeGoKey
       ? `reads ${named("XDG_DATA_HOME", "~/.local/share/opencode/auth.json", opencodeAuthPath(env, home))}, asks ${OPENCODE_USAGE_HOST}`

@@ -852,6 +852,9 @@ describe("real corpus — pinned so any change to the walk shows up as a diff", 
     // Before the box was found by its own frame, the clipped row hid the box: draft null, stripped 1.
     { fixture: "autocomplete-slash-clipped", statusRows: 0, draft: "/model", stripped: 32 },
     // A reply's box table cut out of its screen (table-run.test.ts): no box, nothing to strip.
+    { fixture: "background-work-exit-1", statusRows: 0, draft: null, stripped: 14 },
+    { fixture: "background-work-exit-2", statusRows: 0, draft: null, stripped: 14 },
+    { fixture: "background-work-exit-3", statusRows: 0, draft: null, stripped: 14 },
     { fixture: "box-table-vs16-emoji", statusRows: 0, draft: null, stripped: 0 },
     { fixture: "done", statusRows: 2, draft: null, stripped: 28 },
     { fixture: "ghost-suggestion", statusRows: 4, draft: null, stripped: 21 },
@@ -1128,6 +1131,9 @@ describe("real corpus — pinned so any change to the walk shows up as a diff", 
     { fixture: "v2312-weekly-limit-row--w120", statusRows: 2, draft: null, stripped: 6 },
     // Claude Code 2.1.317 with verbose on: the token-count row under a Heads up notice (PR 668, 2026-11-03).
     { fixture: "v2317-verbose-tokens-notice-idle--w154", statusRows: 2, draft: null, stripped: 6 },
+    // Claude Code 2.1.317: the rating survey over the right-aligned `N% until auto-compact` row (issue 705), styled and plain.
+    { fixture: "v2317-survey-context-row--w160", statusRows: 1, draft: null, stripped: 4 },
+    { fixture: "v2317-survey-context-row-plain--w160", statusRows: 1, draft: null, stripped: 4 },
     // Claude Code 2.1.317 with the next-steps plugin: a dim ghost suggestion in the box under the `next:` rows, the cursor on its first letter (discussion 659, 2026-11-03).
     { fixture: "v2317-next-steps-suggestions-empty-box--w100", statusRows: 1, draft: null, stripped: 5 },
     { fixture: "v2317-next-steps-suggestions-one-line-draft--w100", statusRows: 1, draft: "also add a docstring", stripped: 5 },
@@ -1160,6 +1166,8 @@ describe("real corpus — pinned so any change to the walk shows up as a diff", 
     { fixture: "v21314-core-idle--w120", statusRows: 1, draft: null, stripped: 5 },
     { fixture: "v21314-core-idle--w60", statusRows: 1, draft: null, stripped: 5 },
     { fixture: "v21314-core-menu-model--w120", statusRows: 0, draft: null, stripped: 0 },
+    // Claude Code 2.1.318: the weekly-limit notice fills the /model picker's top edge, one trailing `▔` (2026-11-06).
+    { fixture: "v2318-model-picker-usage-notice-edge--w120", statusRows: 0, draft: null, stripped: 0 },
     { fixture: "v21314-core-permission--w120", statusRows: 0, draft: null, stripped: 0 },
     { fixture: "v21314-core-permission--w60", statusRows: 0, draft: null, stripped: 0 },
     { fixture: "v21314-core-slash-list--w120", statusRows: 0, draft: "/", stripped: 24 },

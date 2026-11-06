@@ -95,13 +95,13 @@ export const NAVIGATION_NETWORK_ONLY = [
  * offline on a device that has never loaded the app is not a font problem.
  */
 /**
- * The UI face a device gets when it has never touched the Typeface setting — Aldrich.
+ * The UI face a device gets when it has never touched the Typeface setting — Atkinson Hyperlegible Next.
  *
  * Named separately because it is the one URL that is on the CRITICAL PATH: index.html preloads it,
  * the boot splash re-declares it, and `fonts.test.ts` holds it to the ~60 KB budget. The other
  * shipped faces are opt-in, so they are fetched when a reader picks one and never before.
  */
-export const DEFAULT_UI_FONT_URL = "/fonts/ui-aldrich-1.002-latin.woff2";
+export const DEFAULT_UI_FONT_URL = "/fonts/ui-atkinson-hyperlegible-next-2.001-latin.woff2";
 
 /**
  * Every SHIPPED UI face — the ones the Typeface setting can be set to (ADR 0033). In the order
@@ -115,8 +115,8 @@ export const UI_FONT_URLS = [
   "/fonts/ui-space-grotesk-2.000-latin.woff2",
   "/fonts/ui-ibm-plex-sans-3.201-latin.woff2",
   "/fonts/ui-geist-1.800-latin.woff2",
-  "/fonts/ui-atkinson-hyperlegible-next-2.001-latin.woff2",
   DEFAULT_UI_FONT_URL,
+  "/fonts/ui-aldrich-1.002-latin.woff2",
 ] as const;
 
 /**

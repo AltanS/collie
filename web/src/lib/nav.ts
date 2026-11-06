@@ -322,12 +322,20 @@ export function updatesPath(scope?: Scope): string {
  */
 export const PAIRED_DEVICES_HASH = "paired-devices";
 
-/** The fragment naming the Anonymous install count card inside Settings → System (M86 spec 02). */
+/** The fragment naming the Telemetry card on its page (M86 spec 02). */
 export const TELEMETRY_SETTINGS_HASH = "install-count";
 
-/** Settings → System, scrolled to the Anonymous install count card: the dashboard notice's button. */
+/**
+ * Settings → System → Telemetry: the page below System that holds the switch and its
+ * explanation (the dashboard notice's button lands here). A CHILD of System, carrying the scope.
+ */
+export function installCountPath(scope?: Scope): string {
+  return `/settings/system/install-count${scopeSearch(scope)}`;
+}
+
+/** Where the dashboard notice's button opens the Telemetry card. */
 export function telemetrySettingsPath(scope?: Scope): string {
-  return `${settingsSectionPath("system", scope)}#${TELEMETRY_SETTINGS_HASH}`;
+  return installCountPath(scope);
 }
 
 /** The fragment naming the Changes card inside Settings, which `changes-control.tsx` answers to. */
@@ -440,7 +448,7 @@ const ANY_PANE = "/pane/*";
  *   L0 `/`
  *   L1 `/space/:id`, `/settings`, `/crew`, `/new` (from the dashboard, a space or a pane)
  *   L2 `/pane/:id`, `/new/add` (below the New page), `/space/:id/changes`, `/settings/:section`, `/settings/updates`, `/machines`
- *   L3 `/settings/voice/host`, `/settings/voice/model`, `/pane/:id/history`, `/pane/:id/zoom`, `/pane/:id/changes` (a file view is the same path with `?repo=&path=`),
+ *   L3 `/settings/voice/host`, `/settings/voice/model`, `/settings/system/install-count`, `/pane/:id/history`, `/pane/:id/zoom`, `/pane/:id/changes` (a file view is the same path with `?repo=&path=`),
  *      `/space/:id/changes/commit`, `/space/:id/changes/files` (a folder or a file of the tree, with
  *      `?dir=` or `?path=`)
  *   L4 `/pane/:id/changes/commit` (the commit's file view adds `&path=`), `/pane/:id/changes/files`
@@ -482,16 +490,20 @@ export function ancestorsOf(pathname: string): string[] {
   if (head === "new" && seg.length === 1) return ["/", ANY_SPACE, ANY_PANE];
   // "Add your own" is a level below the New page.
   if (head === "new" && seg.length === 2 && id === "add") return ["/new", "/", ANY_SPACE, ANY_PANE];
-  // Updates and the crew census are opened from the System section, so that is their nearest
-  // legitimate parent. `/settings` stays in the list behind it: both were reachable straight from
-  // the index before the split, and a stored `from` pointing there is still a step UP, not a push.
+  // Updates is the first row of the Settings index, so the index is its parent. `/settings/system`
+  // stays behind it: Updates sat in that section before, and a stored `from` pointing there is still
+  // a step UP, not a push. The crew census is opened from the System section.
   if (head === "settings" && seg.length === 2 && id === "updates") {
-    return ["/settings/system", "/settings", "/"];
+    return ["/settings", "/settings/system", "/"];
   }
   if (head === "settings" && seg.length === 2) return ["/settings", "/"];
   // Host speech and the Whistle model sit one level below Voice.
   if (head === "settings" && seg.length === 3 && id === "voice" && (leaf === "host" || leaf === "model")) {
     return ["/settings/voice", "/settings", "/"];
+  }
+  // The install count's page sits one level below System.
+  if (head === "settings" && seg.length === 3 && id === "system" && leaf === "install-count") {
+    return ["/settings/system", "/settings", "/"];
   }
   if (head === "crew" && seg.length === 1) return ["/settings/system", "/settings", "/"];
   // Machines is opened from the Settings index and from the crew card in System, so both are
@@ -726,11 +738,14 @@ export function parentChain(pathname: string, search: string): string[] {
     return [...chain, newPath({ machine: at.machine, pane: at.pane, beside: at.beside, session: at.session })];
   }
   if (head === "settings" && seg.length === 2 && id === "updates") {
-    return [home, `/settings${q}`, `/settings/system${q}`];
+    return [home, `/settings${q}`];
   }
   if (head === "settings" && seg.length === 2) return [home, `/settings${q}`];
   if (head === "settings" && seg.length === 3 && id === "voice" && (leaf === "host" || leaf === "model")) {
     return [home, `/settings${q}`, `/settings/voice${q}`];
+  }
+  if (head === "settings" && seg.length === 3 && id === "system" && leaf === "install-count") {
+    return [home, `/settings${q}`, `/settings/system${q}`];
   }
   if (head === "crew" && seg.length === 1) return [home, `/settings${q}`, `/settings/system${q}`];
   if (head === "machines" && seg.length === 1) return [home, `/settings${q}`];

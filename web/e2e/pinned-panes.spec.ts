@@ -33,8 +33,9 @@ const summary = (page: Page) =>
   page.getByRole("main").getByRole("button", { name: /^(\d+ needs you|Nothing needs you)/u });
 /** The Pinned group, a section named by its own heading. */
 const pinnedGroup = (scope: Page | Locator) => scope.getByRole("region", { name: en["home.pinned.title"] });
-/** A pane row by its agent: the tile's name, then the pane's own name. */
-const AGENT_ROW = { claude: /^claude logo claude/u, codex: /^codex logo codex/u } as const;
+/** A pane row by its agent: the tile's name, then the pane's own name. The Switch pane sheet's rows put
+ *  the status word between the two (#696: "codex logo working codex collie"), so it is optional. */
+const AGENT_ROW = { claude: /^claude logo (?:.+ )?claude/u, codex: /^codex logo (?:.+ )?codex/u } as const;
 const row = (scope: Page | Locator, agent: keyof typeof AGENT_ROW) =>
   scope.getByRole("button", { name: AGENT_ROW[agent] });
 const mainRow = (page: Page, agent: keyof typeof AGENT_ROW) => row(page.getByRole("main"), agent);

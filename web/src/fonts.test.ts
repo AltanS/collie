@@ -124,7 +124,7 @@ describe("the UI typefaces", () => {
   // stack. Put the stand-in last and it never renders; leave it out and the swap reflows.
   it("puts the stand-in between the webfont and the plain system stack", () => {
     const stack = /--font-sans:\s*([\s\S]*?);/.exec(css)?.[1] ?? "";
-    expect(stack).toMatch(/^\s*"Aldrich",\s*"Aldrich Fallback",/);
+    expect(stack).toMatch(/^\s*"Atkinson Hyperlegible Next",\s*"Atkinson Hyperlegible Next Fallback",/);
     expect(stack).toContain("system-ui");
   });
 
@@ -161,7 +161,7 @@ describe("the UI typefaces", () => {
     expect(html).toContain(":root.font-grotesk");
     expect(html).toContain(":root.font-plex");
     expect(html).toContain(":root.font-geist");
-    expect(html).toContain(":root.font-atkinson");
+    expect(html).toContain(":root.font-aldrich");
   });
 
   it("is small enough to sit on the critical path", () => {
@@ -320,7 +320,7 @@ describe("operator fonts stay off the shipped path", () => {
     const sheet = operatorFontCss([{ family: "Departure Mono", basename: "d.woff2" }], "op:gone.woff2");
     expect(sheet).not.toContain("--font-operator-family");
     expect(sheet).toBe("");
-    expect(cssRootOperatorStack()).toContain('var(--font-operator-family, "Aldrich")');
+    expect(cssRootOperatorStack()).toContain('var(--font-operator-family, "Atkinson Hyperlegible Next")');
   });
 
   function cssRootOperatorStack(): string {
@@ -393,7 +393,7 @@ describe("theme-init.js and lib/design.ts agree", () => {
 //
 // IBM Plex Sans, Geist and Atkinson Hyperlegible Next ship as Latin and Latin Extended subsets
 // (U+0020-017F and a few marks). Cyrillic and CJK text under Nightwatch, Daylight or Harbour falls
-// to the system face, and only Aldrich, the default, has a Cyrillic companion. That is a decision,
+// to the system face, and only Aldrich, a choice since 2026-11-06, has a Cyrillic companion. That is a decision,
 // not an accident, and it is silent when it breaks: a future subset that grew a Cyrillic range
 // would change the page's metrics for a language nobody tested. So this reads the files, not the
 // stylesheet. It parses the WOFF2 container just far enough to read the `cmap` table (the one table
@@ -476,7 +476,7 @@ describe("the Latin-only theme faces", () => {
   const faces = [
     ["plex", "ui-ibm-plex-sans-3.201-latin.woff2", "font-plex"],
     ["geist", "ui-geist-1.800-latin.woff2", "font-geist"],
-    ["atkinson", "ui-atkinson-hyperlegible-next-2.001-latin.woff2", "font-atkinson"],
+    ["atkinson", "ui-atkinson-hyperlegible-next-2.001-latin.woff2", ""],
   ] as const;
 
   // The control: the same reader finds Cyrillic in the one face that has it, so an empty answer above
@@ -501,7 +501,8 @@ describe("the Latin-only theme faces", () => {
   // The system stack is what draws the text the face cannot. A face whose stack ended at its own name
   // would paint a Russian or Japanese string in the browser's default serif.
   it.each(faces)("the %s stack names a system fallback after the face and its stand-in", (_name, _file, cls) => {
-    const block = new RegExp(`:root\\.${cls}\\s*\\{([^}]*)\\}`).exec(css)?.[1] ?? "";
+    // The default face (Atkinson) wears no class: its stack is the first `--font-sans` in the @theme block.
+    const block = cls === "" ? css : (new RegExp(`:root\\.${cls}\\s*\\{([^}]*)\\}`).exec(css)?.[1] ?? "");
     const stack = /--font-sans:\s*([\s\S]*?);/.exec(block)?.[1] ?? "";
     expect(stack).toMatch(/Fallback",\s*ui-sans-serif,\s*system-ui/);
     expect(stack.trim().endsWith("sans-serif")).toBe(true);

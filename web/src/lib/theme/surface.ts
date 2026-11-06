@@ -36,7 +36,7 @@
 //     colour) to {@link GROUND_GRADIENT_END} at the bottom; grain draws two sets of 1px diagonal lines
 //     in {@link GROUND_GRAIN_LINE}. schema.ts measures the page's text pairs on both of those colours.
 //   * chrome (spec 17): `--band-ground` and `--band-rule`, the fill and the edge of the header, the tab
-//     bar and the bottom bar. `page` is today's page colour and rule; `band` is `--secondary` with a
+//     bar and the bottom bar. `page` is the page colour and `--rule`; `band` is `--secondary` with a
 //     `--border` edge.
 //   * rows (spec 17): the rows of a list group (`[data-slot="list-group"]`, ui/list-group.tsx and the
 //     hand-rolled lists that carry the slot). `rules` is today's framed group with a line between
@@ -58,8 +58,10 @@
 //   * composer: the third. It says how the composer is laid out: `field` is today's
 //     (one text field with its row of controls), `box` a boxed composer (lib/composer-layout.ts).
 //
-// EVERY DEFAULT IS TODAY'S VALUE. `src/themes/themes.test.ts` reads index.css and Tailwind's own
-// theme.css and holds each default word equal to what the app drew before version 2.
+// EVERY DEFAULT IS THE STYLESHEET'S VALUE. `src/themes/themes.test.ts` reads index.css and holds each
+// default word equal to what `:root` declares. Since the theme Collie New became `collie`, that is the
+// flat, bold, banded look; the word named `default` of `shadow` and `weight` is Tailwind's own stock
+// value, kept as a word so a stored theme that names it still validates.
 //
 // It imports one leaf file, for the same reason `schema.ts` imports little: the build script loads it
 // with plain Bun.
@@ -159,8 +161,8 @@ export const SURFACE = {
     round: radii(8, 12, 16, 24, EDGE_RING, EDGE_SOFT),
   },
   shadow: {
-    default: shadows(SHADOW.sm, SHADOW.xs, SHADOW.sm, SHADOW.md, SHADOW.lg, SHADOW.xl, SHADOW["2xl"]),
     flat: shadows(NONE, NONE, NONE, NONE, NONE, NONE, NONE),
+    default: shadows(SHADOW.sm, SHADOW.xs, SHADOW.sm, SHADOW.md, SHADOW.lg, SHADOW.xl, SHADOW["2xl"]),
     lifted: shadows(SHADOW.md, SHADOW.sm, SHADOW.md, SHADOW.lg, SHADOW.xl, SHADOW["2xl"], SHADOW_3XL),
   },
   density: {
@@ -168,13 +170,13 @@ export const SURFACE = {
     roomy: [["--spacing", "0.28rem"]],
   },
   weight: {
-    default: [
-      ["--font-weight-medium", "500"],
-      ["--font-weight-semibold", "600"],
-    ],
     bold: [
       ["--font-weight-medium", "600"],
       ["--font-weight-semibold", "700"],
+    ],
+    default: [
+      ["--font-weight-medium", "500"],
+      ["--font-weight-semibold", "600"],
     ],
   },
   border: {
@@ -192,13 +194,13 @@ export const SURFACE = {
     ],
   },
   chrome: {
-    page: [
-      ["--band-ground", "var(--background)"],
-      ["--band-rule", "var(--rule)"],
-    ],
     band: [
       ["--band-ground", "var(--secondary)"],
       ["--band-rule", "var(--border)"],
+    ],
+    page: [
+      ["--band-ground", "var(--background)"],
+      ["--band-rule", "var(--rule)"],
     ],
   },
   rows: {
@@ -227,13 +229,13 @@ export const SURFACE = {
     heavy: [["--icon-stroke", "2.5"]],
   },
   labels: {
-    caps: [
-      ["--label-transform", "uppercase"],
-      ["--label-tracking", "0.025em"],
-    ],
     sentence: [
       ["--label-transform", "none"],
       ["--label-tracking", "normal"],
+    ],
+    caps: [
+      ["--label-transform", "uppercase"],
+      ["--label-tracking", "0.025em"],
     ],
   },
   zoom: {
@@ -269,18 +271,27 @@ export interface Surface {
   composer?: SurfaceWord<"composer">;
 }
 
-/** The word each token has when a file does not name one: today's look. */
+/**
+ * The word each token has when a file does not name one: the look of the stylesheet, which is the
+ * look of the theme `collie` (flat shadows, bold weight, a band for the chrome, sentence labels).
+ * The three words the app reads itself keep their plain words: a theme that names no `tabs` or
+ * `composer` word gets the plain tab and the field composer, and the theme `collie` names `folder`
+ * and `box` in its file. The `ground` is the same kind of exception: a theme that names none gets
+ * `flat`, and only `collie` names `grain`. index.css carries that grain on `:root` for the default
+ * theme, so every other theme that draws without a `data-theme` block (an imported one) must set
+ * `flat` itself: {@link omittedGroundDeclarations}.
+ */
 export const SURFACE_DEFAULTS = {
   radius: "sharp",
-  shadow: "default",
+  shadow: "flat",
   density: "default",
-  weight: "default",
+  weight: "bold",
   border: "default",
   ground: "flat",
-  chrome: "page",
+  chrome: "band",
   rows: "rules",
   icons: "default",
-  labels: "caps",
+  labels: "sentence",
   zoom: "screen",
   tabs: "plain",
   composer: "field",
@@ -443,6 +454,15 @@ export function versionTwoDeclarations(theme: VersionTwoParts): Declaration[] {
     ...(display !== undefined && isShippedFont(display) ? displayDeclarations(display) : []),
     ...ansiDeclarations(theme.ansi),
   ];
+}
+
+/**
+ * The ground of a theme that names none. index.css paints Collie's grain on `:root`, so a theme that
+ * leaves `ground` out has to say `flat` itself, or it would inherit the grain. Empty when the theme
+ * names a ground word (those declarations come from {@link versionTwoDeclarations}).
+ */
+export function omittedGroundDeclarations(surface: Surface | undefined): readonly Declaration[] {
+  return surface?.ground === undefined ? wordDeclarations("ground", SURFACE_DEFAULTS.ground) : [];
 }
 
 /** Every property {@link versionTwoDeclarations} can set, each once. The store removes these when it takes a theme off. */

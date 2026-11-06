@@ -250,7 +250,11 @@ export const ACK_MANIFEST = {
   },
   setTelemetry: {
     channel: "inline",
-    why: "The answer is the state the machine holds now and the switch that decided it, a standing fact the Anonymous install count card states beside the switch, and a refusal the operator reads there too (components/telemetry-settings-card.tsx).",
+    why: "The answer is the state the machine holds now and the switch that decided it, a standing fact the Telemetry card states beside the switch, and a refusal the operator reads there too (components/telemetry-settings-card.tsx).",
+  },
+  postTroubleSignal: {
+    channel: "silent",
+    why: "A count is not a command (M86 spec 05): no tap of the person's made it, the bridge answers 204 whether or not it counted, and the phone never retries, so there is nothing to acknowledge and a failure is not the person's to act on.",
   },
   setReleaseLine: {
     channel: "inline",

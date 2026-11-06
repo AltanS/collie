@@ -113,6 +113,9 @@ const LIFTED = new Set([
   "omp--v18-12-6-ask-previews--w120.txt",
   // omp 18.12.6 in plan mode: the "Gather task for plan mode" Ask, four options with descriptions and previews.
   "omp--v18-12-6-ask-plan-mode--w120.txt",
+  // omp 18.16.0's Ask, footer ending in the glyph keycap `⌥H hide` (omp/ask.ts).
+  "omp--v18-16-0-ask-single-glyph-hide--w200.txt",
+  "omp--v18-16-0-ask-single-glyph-hide-moved--w200.txt",
   "omp--v18-10-ask-single.txt",
   "omp--v18-10-ask-batch.txt",
   "omp--v18-10-ask-batch-moved.txt",
@@ -392,6 +395,12 @@ const DECLINED = new Set([
   "omp--answer-editor-typed.txt",
   "omp--answer-editor-wrapped.txt",
   "omp--v18-4-ask-note-editor.txt",
+  "omp--v18-16-0-answer-editor-empty--w200.txt",
+  // omp 18.16.0's `Other` editor, read off herdr-core as plain text (#704): the same prompt-style box.
+  "omp--v18-16-0-custom-answer-empty--w200.txt",
+  "omp--v18-16-0-custom-answer-typed--w200.txt",
+  "omp--v18-16-0-custom-answer-wrapped--w200.txt",
+  "omp--v18-16-0-note-editor-empty--w200.txt",
   // — The full-screen pickers. No `menu` block for these: `parseKeyHintFooter` (the shared, pinned
   //   key-hint grammar) returns [] for the `/model` and `/resume` footers, and for `/settings` it
   //   yields only {Jump sections, [Tab]} + {Close, [Escape]} because `menuKeyFor` rejects the
@@ -597,6 +606,13 @@ describe("the omp corpus", () => {
     "omp--v18-12-nerd-band-two-lines--w80.txt",
     "omp--v18-12-nerd-band-wrapped--w130.txt",
     "omp--v18-12-nerd-band-wrapped--w80.txt",
+    "omp--v18-16-0-answer-editor-empty--w200.txt",
+    "omp--v18-16-0-ask-single-glyph-hide--w200.txt",
+    "omp--v18-16-0-ask-single-glyph-hide-moved--w200.txt",
+    "omp--v18-16-0-custom-answer-empty--w200.txt",
+    "omp--v18-16-0-custom-answer-typed--w200.txt",
+    "omp--v18-16-0-custom-answer-wrapped--w200.txt",
+    "omp--v18-16-0-note-editor-empty--w200.txt",
     "omp--v18-4-approval-bash-moved.txt",
     "omp--v18-4-approval-bash.txt",
     "omp--v18-4-approval-write-long.txt",
@@ -791,6 +807,14 @@ const ANSWER_EDITOR_FIXTURES = [
   "omp--answer-editor-wrapped.txt",
   // omp 18.4.10's note editor, opened with `n` on Green: the same prompt-style box.
   "omp--v18-4-ask-note-editor.txt",
+  // omp 18.16.0's `Other` editor: the same prompt-style box, its hint `⏎ or ⌃Q submit  ⎋ cancel`.
+  "omp--v18-16-0-answer-editor-empty--w200.txt",
+  // omp 18.16.0's `Other` editor, plain text off herdr-core, hint `⏎ or Ctrl+Q submit  ⎋ cancel` (#704).
+  "omp--v18-16-0-custom-answer-empty--w200.txt",
+  "omp--v18-16-0-custom-answer-typed--w200.txt",
+  "omp--v18-16-0-custom-answer-wrapped--w200.txt",
+  // The same box opened with `n` on an option: `Note for apple: …`.
+  "omp--v18-16-0-note-editor-empty--w200.txt",
 ];
 const COMPOSER_FIXTURES = [
   "omp--done--tool-result.txt",
@@ -964,6 +988,8 @@ describe("composerReady — the gate the reply path pre-flights on", () => {
     expect(draft("omp--answer-editor-long.txt")).toBe(
       Array.from({ length: 700 }, (_, i) => `word${String(i).padStart(4, "0")}`).join(" "),
     );
+    expect(draft("omp--v18-16-0-custom-answer-empty--w200.txt")).toBeNull();
+    expect(draft("omp--v18-16-0-custom-answer-typed--w200.txt")).toBe("a ripe mango");
   });
 });
 

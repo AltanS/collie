@@ -42,6 +42,7 @@ import { createSessionFolders, createSessionLabels, resolveSessionFolder, withSe
 import { computeEtag, gzipJsonResponse, notModified, wantsGzip } from "./http-cache.ts";
 import { pluginRoot } from "./root.ts";
 import { DEFAULT_NOTIFY_PREFS, type NotifyPrefs, type NotifyPrefsStore } from "./notify-prefs.ts";
+import { paneClears } from "./notifications.ts";
 import { browseFolders, type FolderBrowseContext } from "./folder-browse.ts";
 import { MAX_FAVOURITES, MAX_FOLDER_CHARS, type FolderSurface } from "./folders.ts";
 import { isValidWorktreeBranch } from "./worktree-branch.ts";
@@ -135,7 +136,7 @@ import {
 } from "./prompt-binding.ts";
 import { MAX_BIND_COLUMN, type ColumnRange } from "../web/src/lib/column-range.ts";
 import { MAX_TAIL_LINES } from "../web/src/lib/tail-lines.ts";
-import type { Push, PushSubscription } from "./push.ts";
+import type { Push, PushMessage, PushSubscription } from "./push.ts";
 import { RefreshCoalescer } from "./refresh.ts";
 import { herdTagFor, selectView, type SessionRegistry, type SessionRuntime, widenedPanes } from "./sessions.ts";
 import type { Snooze } from "./snooze.ts";
@@ -152,7 +153,7 @@ import {
   type PreflightReport,
 } from "./update-action.ts";
 import { type ReleaseLine, type UpdateLineRecord, withLine } from "./update-line.ts";
-import { parseTelemetryRequest, type Telemetry } from "./telemetry.ts";
+import { parseTelemetryRequest, parseTroubleSignal, type Telemetry } from "./telemetry.ts";
 import { REPORT_SCREEN_ROWS, reportDoctorRows, reportScreen, type DoctorRowSource, type ReportContext, type ReportDoctorRow } from "./report.ts";
 import type { StateEngine } from "./state-engine.ts";
 import { adapterFor, buildJournalRegistry, journalAgentName } from "./journal/registry.ts";
@@ -1118,7 +1119,7 @@ export interface UpdateLineDeps {
  * A seam like {@link UpdateLineDeps}: the clock, the disk and the `fetch` are index.ts's. Undefined
  * answers 503.
  */
-export type TelemetryDeps = Pick<Telemetry, "view" | "choose">;
+export type TelemetryDeps = Pick<Telemetry, "view" | "choose" | "trouble">;
 
 export function startServer(opts: {
   cfg: Config;
@@ -1227,7 +1228,7 @@ export function startServer(opts: {
    * (CREW_PROTOCOL.md §5), and the lead being the only sender is what makes that fan complete.
    * Structurally typed, not the class: this file needs "fan a pref change, list the live slots".
    */
-  peerNotifier?: { applyPrefs(): void; tags(): string[] };
+  peerNotifier?: { applyPrefs(): void; tags(): string[]; paneClears(): PushMessage[] };
   /**
    * Device pairing (bridge/pairing.ts). Always supplied by index.ts — it is not an opt-in feature
    * flag: the store reads its own registry off disk, and pairing is always on (ADR 0086), so an empty
@@ -3250,6 +3251,14 @@ export function startServer(opts: {
           // raised those alerts and owns the subscription, so an unreachable peer is irrelevant here
           // — there is no policy to deliver and nothing to queue for reconnect (§5).
           for (const tag of peerNotifier?.tags() ?? []) void push.send({ type: "clear", tag });
+          // …and, with "one notification per agent" on, each pane's own notification, which no slot
+          // tag above names.
+          if (notifyPrefs.current().individual) {
+            const own = registry
+              .all()
+              .flatMap((rt) => paneClears(herdTagFor(rt.isPrimary, rt.name), rt.notifications.outstandingPaneIds()));
+            for (const msg of [...own, ...(peerNotifier?.paneClears() ?? [])]) void push.send(msg);
+          }
         }
         return json({ snoozedUntil: snooze.until() }, req.headers.get("accept-encoding"));
       }
@@ -3267,7 +3276,7 @@ export function startServer(opts: {
           let body: JsonValue;
           try {
             // SAFETY: `Request.json()` output IS a JsonValue by construction;
-            // `parseNotifyPrefsPatch` rejects anything that is not three optional booleans.
+            // `parseNotifyPrefsPatch` rejects anything that is not an optional boolean per pref.
             body = (await req.json()) as JsonValue;
           } catch {
             return text("bad request", 400);
@@ -3801,6 +3810,24 @@ export function startServer(opts: {
         const receipt: JsonObject = { ok: true, ...result.view, requestId: parsed.requestId };
         if (result.replay) receipt.replay = true;
         return json(receipt, req.headers.get("accept-encoding"));
+      }
+
+      if (pathname === "/api/telemetry/trouble" && req.method === "POST") {
+        // ── THE TROUBLE TALLY (M86 spec 05) ───────────────────────────────────
+        // The phone showed one of its two trouble cards. A count, not a command: no request id, no
+        // audit line, and the phone never retries it. The bridge the phone talks to counts it under
+        // its own install, a crew member's pane included.
+        const denied = browserGate("write");
+        if (denied) return denied;
+        let body: JsonValue | undefined;
+        try {
+          // SAFETY: `Request.json()` output IS a JsonValue by construction, and `parseTroubleSignal`
+          // re-checks every field of it before any of it is believed.
+          body = (await req.json()) as JsonValue;
+        } catch {
+          body = undefined;
+        }
+        return telemetryTroubleRoute(opts.telemetry, body);
       }
 
       // ── Speech-to-text (bridge/stt/) ─────────────────────────────────────
@@ -8631,6 +8658,20 @@ export async function reportContextRoute(
   const read = await rt.herdr.readGrid(pane, { scope: "recent", lines: REPORT_SCREEN_ROWS, styling: "preserve" });
   if (!read.ok) return text(`${rt.herdr.mux} read failed: ${read.detail}`, 502);
   return json({ ...context, screen: reportScreen(stripSgr(read.value.text)) } satisfies ReportContext, acceptEncoding);
+}
+
+/**
+ * `POST /api/telemetry/trouble` once the write gate passed (M86 spec 05): one trouble signal from the
+ * phone. A body that is not exactly `{ kind, harness, version, mux }` in their shapes is a 400, plain
+ * text, because the phone never shows it. A good body is a 204 whether or not it was counted: with the
+ * ping off for any reason, nothing is stored. Undefined telemetry answers 503, like the setting route.
+ */
+export function telemetryTroubleRoute(ping: Pick<Telemetry, "trouble"> | undefined, body: JsonValue | undefined): Response {
+  if (!ping) return text("telemetry unavailable", 503);
+  const signal = parseTroubleSignal(body);
+  if (signal === null) return text("telemetry.trouble_invalid", 400);
+  ping.trouble(signal);
+  return secure(new Response(null, { status: 204 }));
 }
 
 /**

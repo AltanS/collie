@@ -268,7 +268,7 @@ function paleTheme(): Theme {
     name: "Playground pale",
     author: "Playground",
     light: { ...base.light, foreground: "#aaaaaa" },
-    // The default theme's own dark destructive pair is 2.77:1 (a known finding); a darker ground and
+    // The first Collie look's dark destructive pair was 2.77:1 (a known finding); a darker ground and
     // a white ink keep this card at exactly the two light failures.
     dark: { ...base.dark, destructive: "#7f1d1d", "destructive-foreground": "#ffffff" },
   };
@@ -721,7 +721,7 @@ export function SettingsSection() {
           <Stage height={420}>
             <div className="p-4">
               <NotifyPrefsCard
-                prefs={{ blocked: true, done: false, updates: true, cache: false, machines: true }}
+                prefs={{ blocked: true, done: false, individual: true, updates: true, cache: false, machines: true }}
                 busy={false}
                 onToggle={() => {}}
                 entries={watchedPanes}

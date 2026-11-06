@@ -1,7 +1,7 @@
 {
  "$comment": "Hand-checked labels for every pane fixture, for the Surface fold (M56 spec 04). harness is the multiplexer agent string the fixture was captured under; version is the harness version the capture was taken on (unversioned for older captures whose name carries none); state is what owns the keyboard: idle (an empty input box, nothing over it, the turn idle), draft (text in the box), running (a turn runs), popup (a completion popup over a live box), dialog (a dialog, picker, menu, rating prompt or search box owns the keyboard), screen (a full-screen view or a shell prompt with no agent box), other (none of these, or not a keyboard question). Labels were drafted from the file names and the block readers on 2026-10-15, then read by hand. Add a row with every new fixture; web/src/lib/surface/fold.corpus.test.ts fails on a fixture with no row.",
  "incidents": {
-  "$comment": "The eight incident screens of experiments/reader-stability/NOTE.md (four sends that landed in a dialog, four latent). A fixture list names captured screens; a synthetic entry rebuilds the screen the fix's own test built, from a base fixture: drop removes every row matching a pattern, replaceLast replaces the last matching row, replace rewrites matching text on every row.",
+  "$comment": "The eight incident screens of experiments/reader-stability/NOTE.md (four sends that landed in a dialog, four latent). A fixture list names captured screens; a synthetic entry rebuilds the screen the fix's own test built, from a base fixture: drop removes every row matching a pattern, replaceLast replaces the last matching row, replace rewrites matching text on every row. 7d964012 (omp's answer editor, a box Collie did not know) lists the screens with text typed in it: since #704 the empty editor is a known input box and reads free, which is that fix; its layout's `answers` keeps every send but a person's own from the phone out of it.",
   "526d7a92": {
    "agent": "opencode",
    "fixtures": [
@@ -26,7 +26,6 @@
   "7d964012": {
    "agent": "omp",
    "fixtures": [
-    "omp--answer-editor-empty.txt",
     "omp--answer-editor-long.txt",
     "omp--answer-editor-note.txt",
     "omp--answer-editor-typed.txt",
@@ -230,6 +229,21 @@
    "harness": "claude",
    "version": "unversioned",
    "state": "popup"
+  },
+  "claude--background-work-exit-1.txt": {
+    "harness": "claude",
+    "version": "2.1.306",
+    "state": "dialog"
+  },
+  "claude--background-work-exit-2.txt": {
+    "harness": "claude",
+    "version": "2.1.306",
+    "state": "dialog"
+  },
+  "claude--background-work-exit-3.txt": {
+    "harness": "claude",
+    "version": "2.1.306",
+    "state": "dialog"
   },
   "claude--box-table-vs16-emoji.txt": {
    "harness": "claude",
@@ -1264,6 +1278,16 @@
   "claude--v2312-weekly-limit-row--w120.txt": {
    "harness": "claude",
    "version": "2.1.312",
+   "state": "idle"
+  },
+  "claude--v2317-survey-context-row--w160.txt": {
+   "harness": "claude",
+   "version": "2.1.317",
+   "state": "idle"
+  },
+  "claude--v2317-survey-context-row-plain--w160.txt": {
+   "harness": "claude",
+   "version": "2.1.317",
    "state": "idle"
   },
   "claude--v2317-verbose-tokens-notice-idle--w154.txt": {
@@ -2360,6 +2384,21 @@
    "harness": "codex",
    "version": "0.166.0",
    "state": "draft"
+  },
+  "codex--v0166-core-draft--w120.txt": {
+   "harness": "codex",
+   "version": "0.166.0",
+   "state": "draft"
+  },
+  "codex--v0166-core-idle--w120.txt": {
+   "harness": "codex",
+   "version": "0.166.0",
+   "state": "idle"
+  },
+  "codex--v0166-core-working--w120.txt": {
+   "harness": "codex",
+   "version": "0.166.0",
+   "state": "running"
   },
   "codex--v0166-warning-art-empty--w120.txt": {
    "harness": "codex",
@@ -3939,17 +3978,17 @@
   "omp--answer-editor-empty.txt": {
    "harness": "omp",
    "version": "unversioned",
-   "state": "dialog"
+   "state": "idle"
   },
   "omp--answer-editor-long.txt": {
    "harness": "omp",
    "version": "unversioned",
-   "state": "dialog"
+   "state": "draft"
   },
   "omp--answer-editor-note.txt": {
    "harness": "omp",
    "version": "unversioned",
-   "state": "dialog"
+   "state": "draft"
   },
   "omp--answer-editor-typed.txt": {
    "harness": "omp",
@@ -3959,7 +3998,7 @@
   "omp--answer-editor-wrapped.txt": {
    "harness": "omp",
    "version": "unversioned",
-   "state": "dialog"
+   "state": "draft"
   },
   "omp--approval-bash.txt": {
    "harness": "omp",
@@ -4451,6 +4490,41 @@
    "version": "18.12",
    "state": "draft"
   },
+  "omp--v18-16-0-answer-editor-empty--w200.txt": {
+   "harness": "omp",
+   "version": "18.16.0",
+   "state": "idle"
+  },
+  "omp--v18-16-0-ask-single-glyph-hide--w200.txt": {
+   "harness": "omp",
+   "version": "18.16.0",
+   "state": "dialog"
+  },
+  "omp--v18-16-0-ask-single-glyph-hide-moved--w200.txt": {
+   "harness": "omp",
+   "version": "18.16.0",
+   "state": "dialog"
+  },
+  "omp--v18-16-0-custom-answer-empty--w200.txt": {
+   "harness": "omp",
+   "version": "18.16.0",
+   "state": "idle"
+  },
+  "omp--v18-16-0-custom-answer-typed--w200.txt": {
+   "harness": "omp",
+   "version": "18.16.0",
+   "state": "draft"
+  },
+  "omp--v18-16-0-custom-answer-wrapped--w200.txt": {
+   "harness": "omp",
+   "version": "18.16.0",
+   "state": "draft"
+  },
+  "omp--v18-16-0-note-editor-empty--w200.txt": {
+   "harness": "omp",
+   "version": "18.16.0",
+   "state": "idle"
+  },
   "omp--v18-4-approval-bash-moved.txt": {
    "harness": "omp",
    "version": "18.4",
@@ -4489,7 +4563,7 @@
   "omp--v18-4-ask-note-editor.txt": {
    "harness": "omp",
    "version": "18.4",
-   "state": "dialog"
+   "state": "idle"
   },
   "omp--v18-4-ask-single-moved.txt": {
    "harness": "omp",
@@ -6045,6 +6119,11 @@
    "harness": "claude",
    "version": "2.1.314",
    "state": "popup"
+  },
+  "claude--v2318-model-picker-usage-notice-edge--w120.txt": {
+   "harness": "claude",
+   "version": "2.1.318",
+   "state": "dialog"
   },
   "pi--v130-core-idle--w120.txt": {
    "harness": "pi",

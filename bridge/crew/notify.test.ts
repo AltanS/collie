@@ -63,7 +63,9 @@ function body(agents: PaneWire[]): PeerSnapshotBody {
   return { sessions: [], agents, shellPanes: [], workspaces: [], tabs: [] };
 }
 
-function notifier(opts: { notifiable?: (s: AgentStatus) => boolean; muted?: () => boolean } = {}) {
+function notifier(
+  opts: { notifiable?: (s: AgentStatus) => boolean; muted?: () => boolean; individual?: () => boolean } = {},
+) {
   const clock = new FakeClock();
   const push = new RecordingPush();
   const peer = new PeerNotifier<number>({
@@ -72,6 +74,7 @@ function notifier(opts: { notifiable?: (s: AgentStatus) => boolean; muted?: () =
     mute: { isMuted: opts.muted ?? (() => false) },
     delayMs: 5_000,
     isNotifiable: opts.notifiable ?? ((s) => s === "blocked" || s === "done"),
+    individual: opts.individual,
   });
   return { clock, push, peer };
 }
@@ -225,6 +228,17 @@ describe("PeerNotifier — a peer's alerts on the lead's phone", () => {
     clock.fireAll();
     peer.observe("laptop", body([]));
     expect(push.sent.at(-1)).toEqual({ type: "clear", tag: "collie:herd@laptop" });
+  });
+
+  test("with one notification per agent on, each pane of a host has its own tag and paneClears names them", () => {
+    const { clock, push, peer } = notifier({ individual: () => true });
+    peer.observe("laptop", body([pane("p1", "working"), pane("p2", "working")]));
+    peer.observe("laptop", body([pane("p1", "blocked"), pane("p2", "blocked")]));
+    clock.fireAll();
+    expect(push.tags).toEqual(["collie:herd@laptop:p1", "collie:herd@laptop:p2"]);
+    expect(peer.paneClears().map((m) => m.tag)).toEqual(["collie:herd@laptop:p1", "collie:herd@laptop:p2"]);
+    peer.observe("laptop", body([pane("p1", "working"), pane("p2", "blocked")]));
+    expect(push.sent.at(-1)).toMatchObject({ type: "clear", tag: "collie:herd@laptop:p1" });
   });
 
   test("a host that leaves the crew has its outstanding alerts retracted and its slot dropped", () => {

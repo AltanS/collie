@@ -318,6 +318,8 @@ export interface TapLog {
   readonly worked: boolean;
   /** ms since the screen last changed before this tap; null when not measured. */
   readonly screenStillMs: number | null;
+  /** Set when the rig had something to say about how it pressed (for example a target that never settled). */
+  readonly note?: string;
 }
 
 // `update/line` is the Release line control's one write (crew case 15): its receipt says `ok`.
@@ -449,14 +451,52 @@ export async function tap(recorder: TapRecorder, target: Locator, label: string,
   return { label, at: new Date(t0).toISOString(), answers, worked: answers.every(accepted) && (opts.expectAnswer === false || answers.length > 0), screenStillMs: opts.screenStillMs ?? null };
 }
 
+/** How long `hold()` waits for a moving target to come to rest, and how often it looks. */
+const SETTLE_CAP_MS = 1500;
+const SETTLE_STEP_MS = 120;
+const SETTLE_TOLERANCE_PX = 0.5;
+
+type Box = { readonly x: number; readonly y: number; readonly width: number; readonly height: number };
+
+function sameBox(a: Box, b: Box): boolean {
+  return (
+    Math.abs(a.x - b.x) <= SETTLE_TOLERANCE_PX &&
+    Math.abs(a.y - b.y) <= SETTLE_TOLERANCE_PX &&
+    Math.abs(a.width - b.width) <= SETTLE_TOLERANCE_PX &&
+    Math.abs(a.height - b.height) <= SETTLE_TOLERANCE_PX
+  );
+}
+
+/**
+ * Wait until the target's box stops moving: two reads `SETTLE_STEP_MS` apart that agree. A button
+ * that glides (the box composer opens over about 200 ms and moves its buttons) is held after it has
+ * settled, as a thumb does it. Returns the last box, and whether it settled within the cap.
+ */
+async function settledBox(target: Locator, label: string): Promise<{ readonly box: Box; readonly settled: boolean }> {
+  await target.waitFor({ state: "visible", timeout: 5000 });
+  await expect(target, `${label}: the target stays disabled`).toBeEnabled({ timeout: 5000 });
+  const end = Date.now() + SETTLE_CAP_MS;
+  let last = await target.boundingBox();
+  while (true) {
+    await sleep(SETTLE_STEP_MS);
+    const next = await target.boundingBox();
+    if (next === null) throw new Error(`${label}: the target has no box to press`);
+    if (last !== null && sameBox(last, next)) return { box: next, settled: true };
+    last = next;
+    if (Date.now() >= end) return { box: next, settled: false };
+  }
+}
+
 /**
  * Press and hold, as a thumb does: one touch down, `ms` still, one touch up, through the browser's own
  * touch input (CDP), so the app sees the pointer events a phone sends. Playwright's `tap()` lifts at
  * once and cannot hold. Returns a tap row with no answers: a hold opens something, it sends nothing.
+ * The press waits for the target to be visible, enabled and at rest (a box composer that is still
+ * opening moves its buttons); when it never rests within 1.5 s the hold goes to the last box and the
+ * row's `note` says so.
  */
 export async function hold(page: Page, target: Locator, label: string, ms = 800): Promise<TapLog> {
-  const box = await target.boundingBox();
-  if (box === null) throw new Error(`${label}: the target has no box to press`);
+  const { box, settled } = await settledBox(target, label);
   const t0 = Date.now();
   const point = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
   const cdp = await page.context().newCDPSession(page);
@@ -467,7 +507,8 @@ export async function hold(page: Page, target: Locator, label: string, ms = 800)
   } finally {
     await cdp.detach().catch(() => undefined);
   }
-  return { label, at: new Date(t0).toISOString(), answers: [], worked: true, screenStillMs: null };
+  const row: TapLog = { label, at: new Date(t0).toISOString(), answers: [], worked: true, screenStillMs: null };
+  return settled ? row : { ...row, note: `the target still moved after ${String(SETTLE_CAP_MS)} ms; held at its last box` };
 }
 
 export function tapWords(log: TapLog): string {

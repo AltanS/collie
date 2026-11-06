@@ -8,16 +8,23 @@ import { settingByEnv } from "./config-schema.ts";
 import { sourceOf, type ConfigFileLayer, type Environment } from "./config-source.ts";
 import { UPDATE_MIRROR_ENV } from "./update.ts";
 import { diskWriter, type ReleaseLine, type UpdateLineWriter } from "./update-line.ts";
+import type { CrewMode } from "./types.ts";
 import { developmentBase } from "./version.ts";
 import { isRequestId } from "./worktree-receipts.ts";
 
 // ── THE ANONYMOUS INSTALL PING (M86 spec 01) ────────────────────────────────────────────────────
 //
 // Once a day, at most, a bridge tells Collie's own endpoint that one install exists: a random ID,
-// the UTC day, the version, the OS, the CPU, the install kind and the release line. Nothing else.
-// No harness or mux name, no pane, no host name, no path, no count of anything. The ID is made on
-// this machine, lives in `telemetry.json` in the state folder and is deleted the moment the ping is
-// off for any reason.
+// the UTC day, the version, the OS, the CPU, the install kind, the release line and the crew role
+// (alone, leading a crew, or a member). Nothing else.
+// No pane, no host name, no path. The ID is made on this machine, lives in `telemetry.json` in the
+// state folder and is deleted the moment the ping is off for any reason.
+//
+// THE TROUBLE TALLY (M86 spec 05, shape B, Altan 2026-11-06). When the phone shows one of its two
+// trouble cards ("Cannot read a dialog", "Send not landing") it tells this bridge once, and the next
+// ping carries how often since the last one: per kind, with the agent program's name and version and
+// the multiplexer, and a count. Exactly those five fields, never what was said or shown. The tally
+// lives in the same file, is cleared with the ID when the ping is off, and is cleared when it went out.
 //
 // FUNCTIONAL CORE, IMPERATIVE SHELL. {@link telemetryState}, {@link buildPing}, {@link shouldSend}
 // and {@link resolveTelemetryUrl} are pure and carry the whole contract. {@link createTelemetry} is
@@ -53,7 +60,7 @@ export const TELEMETRY_URL_ENV = "COLLIE_TELEMETRY_URL";
 export const TELEMETRY_FILE = "telemetry.json";
 
 /** The ping's schema number, the `v` field. */
-export const PING_SCHEMA = 1;
+export const PING_SCHEMA = 2;
 
 /** The wait before an install's first ping. A person has a day to read the notice and say no. */
 export const FIRST_PING_DELAY_MS = 24 * 60 * 60 * 1000;
@@ -254,7 +261,20 @@ export type TelemetryPing = {
   readonly arch: string;
   readonly install: InstallKind["kind"];
   readonly line: ReleaseLine;
+  readonly role: PingRole;
+  /** A fresh array per ping (mutable only so the ping is a `JsonObject`). */
+  readonly trouble: TroubleRow[];
 };
+
+/** Whether this bridge runs alone, leads a crew or is a member. The count tells setups from machines. */
+export type PingRole = "solo" | "lead" | "member";
+
+/** The crew mode as the ping names it: a peer (a member, or a deputy that is not the lead) is a `member`. */
+export function pingRole(mode: CrewMode): PingRole {
+  if (mode === "solo") return "solo";
+  if (mode === "lead") return "lead";
+  return "member";
+}
 
 export function buildPing(a: {
   readonly id: string;
@@ -264,6 +284,8 @@ export function buildPing(a: {
   readonly arch: string;
   readonly installKind: InstallKind["kind"];
   readonly line: ReleaseLine;
+  readonly role: PingRole;
+  readonly trouble: readonly TroubleRow[];
 }): TelemetryPing {
   return {
     v: PING_SCHEMA,
@@ -274,6 +296,9 @@ export function buildPing(a: {
     arch: a.arch,
     install: a.installKind,
     line: a.line,
+    role: a.role,
+    // Each row rebuilt with its five fields, so nothing a record file grew can ride along.
+    trouble: a.trouble.map(({ kind, harness, version, mux, count }) => ({ kind, harness, version, mux, count })),
   };
 }
 
@@ -309,6 +334,8 @@ export interface TelemetryRecord {
   readonly setting: TelemetrySetting | null;
   readonly changedAt: number | null;
   readonly requestId: string | null;
+  /** The trouble tally since the last ping (M86 spec 05). Empty when nothing showed, or the ping is off. */
+  readonly trouble: readonly TroubleRow[];
 }
 
 /** The reading of a machine with no file. */
@@ -319,6 +346,7 @@ export const EMPTY_TELEMETRY_RECORD: TelemetryRecord = {
   setting: null,
   changedAt: null,
   requestId: null,
+  trouble: [],
 };
 
 const INSTALL_ID = /^[0-9a-f]{32}$/;
@@ -341,6 +369,7 @@ export function parseTelemetryRecord(text: string | null): TelemetryRecord {
     setting: setting === "on" || setting === "off" ? setting : null,
     changedAt: changed !== undefined && Number.isFinite(changed) ? changed : null,
     requestId: requestId !== undefined && requestId !== "" ? requestId : null,
+    trouble: parseTroubleRows(doc.trouble),
   };
 }
 
@@ -367,6 +396,103 @@ export function writeTelemetryRecord(files: UpdateLineWriter, stateDir: string, 
 
 /** The ID, 16 random bytes as hex. */
 export const newInstallId = (): string => randomBytes(16).toString("hex");
+
+// ── THE TROUBLE TALLY (M86 spec 05) ─────────────────────────────────────────────────────────────
+
+/** The two trouble cards: "Cannot read a dialog" and "Send not landing". */
+export const TROUBLE_KINDS = ["dialog", "send"] as const;
+export type TroubleKind = (typeof TROUBLE_KINDS)[number];
+
+/** The most distinct rows a tally holds; a signal for a new row past this is dropped. */
+export const TROUBLE_ROWS_MAX = 20;
+
+/** The highest count a row reaches. */
+export const TROUBLE_COUNT_MAX = 999;
+
+/** The agent program's word: lower case, digits and dashes, at most 24 characters. */
+export const TROUBLE_HARNESS = /^[a-z0-9-]{1,24}$/;
+
+/** The multiplexer's own name as the bridge reports it, in the same shape. A shape only: no list, no comparison. */
+export const TROUBLE_MUX = /^[a-z0-9-]{1,24}$/;
+
+/** A version that looks like one (`2.1.316`, `0.9.5-beta.1`), at most 40 characters. */
+export const TROUBLE_VERSION = /^v?\d+(\.\d+){1,3}([-+][0-9A-Za-z.+-]+)?$/;
+export const TROUBLE_VERSION_MAX = 40;
+
+/** One signal from the phone: which card, and the names it showed for. Nothing else. */
+export type TroubleSignal = {
+  readonly kind: TroubleKind;
+  readonly harness: string;
+  readonly version: string | null;
+  readonly mux: string;
+};
+
+/** One row of the tally: a signal's four names and how often it came. */
+export type TroubleRow = TroubleSignal & {
+  readonly count: number;
+};
+
+const SIGNAL_KEYS = ["harness", "kind", "mux", "version"] as const;
+
+const isTroubleVersion = (value: string): boolean => value.length <= TROUBLE_VERSION_MAX && TROUBLE_VERSION.test(value);
+
+/** The four names off an object, or null when one is missing or not in its shape. */
+function readSignalFields(rec: JsonObject): TroubleSignal | null {
+  const kind = TROUBLE_KINDS.find((word) => word === rec.kind);
+  const mux = asJsonString(rec.mux);
+  const harness = asJsonString(rec.harness);
+  const version = rec.version === null ? null : asJsonString(rec.version);
+  if (kind === undefined || mux === undefined || harness === undefined || version === undefined) return null;
+  if (!TROUBLE_HARNESS.test(harness) || !TROUBLE_MUX.test(mux)) return null;
+  if (version !== null && !isTroubleVersion(version)) return null;
+  return { kind, harness, version, mux };
+}
+
+/**
+ * The body `POST /api/telemetry/trouble` accepts: exactly `kind`, `harness`, `version` and `mux`, each
+ * in its shape. Null for anything else, a stray key included, and the route answers 400.
+ */
+export function parseTroubleSignal(body: JsonValue | undefined): TroubleSignal | null {
+  const rec = body === undefined ? undefined : asJsonObject(body);
+  if (rec === undefined) return null;
+  const keys = Object.keys(rec).toSorted();
+  if (keys.length !== SIGNAL_KEYS.length || keys.some((key, at) => key !== SIGNAL_KEYS[at])) return null;
+  return readSignalFields(rec);
+}
+
+/** The tally off the record file. A bad row is dropped; the rest are kept up to the cap. */
+function parseTroubleRows(value: JsonValue | undefined): TroubleRow[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .flatMap((raw): TroubleRow[] => {
+      const rec = asJsonObject(raw);
+      const signal = rec === undefined ? null : readSignalFields(rec);
+      const count = rec === undefined ? undefined : asJsonNumber(rec.count);
+      if (signal === null || count === undefined || !Number.isInteger(count) || count < 1) return [];
+      return [{ ...signal, count: Math.min(count, TROUBLE_COUNT_MAX) }];
+    })
+    .slice(0, TROUBLE_ROWS_MAX);
+}
+
+const sameRow = (row: TroubleSignal, signal: TroubleSignal): boolean =>
+  row.kind === signal.kind && row.harness === signal.harness && row.version === signal.version && row.mux === signal.mux;
+
+/**
+ * The record after one trouble signal. Pure. Off for any reason: the signal is dropped, and the tally
+ * goes with the ID. On: the same four names count one more (up to {@link TROUBLE_COUNT_MAX}), new
+ * names make a new row, and a new row past {@link TROUBLE_ROWS_MAX} is dropped.
+ */
+export function noteTrouble(record: TelemetryRecord, signal: TroubleSignal, state: TelemetryState): TelemetryRecord {
+  if (!state.on) return { ...record, id: null, lastSentDay: null, trouble: [] };
+  const { kind, harness, version, mux } = signal;
+  const known = record.trouble.some((row) => sameRow(row, signal));
+  if (known) {
+    const trouble = record.trouble.map((row) => (sameRow(row, signal) ? { ...row, count: Math.min(row.count + 1, TROUBLE_COUNT_MAX) } : row));
+    return { ...record, trouble };
+  }
+  if (record.trouble.length >= TROUBLE_ROWS_MAX) return record;
+  return { ...record, trouble: [...record.trouble, { kind, harness, version, mux, count: 1 }] };
+}
 
 // ── THE ROUTE'S BODY ────────────────────────────────────────────────────────────────────────────
 
@@ -409,6 +535,8 @@ export interface TelemetryDeps {
   readonly installKind: InstallKind["kind"];
   /** The release line now, read at the moment of use. */
   readonly line: () => ReleaseLine;
+  /** The crew mode now, read at the moment of a ping (never cached at boot). */
+  readonly crewMode: () => CrewMode;
   readonly now: () => number;
   readonly fetch: PingFetch;
   readonly os: string;
@@ -432,6 +560,8 @@ export interface Telemetry {
   observe(): void;
   /** One timer tick. Sends at most once a UTC day and never throws. */
   tick(): Promise<void>;
+  /** One trouble signal from the phone (M86 spec 05). Stored only while the ping is on. */
+  trouble(signal: TroubleSignal): void;
 }
 
 /** The record after it was made to agree with the state, and that state. */
@@ -461,9 +591,12 @@ export function createTelemetry(deps: TelemetryDeps): Telemetry {
     const started = before.firstSeenAt ?? deps.now();
     const wanted: TelemetryRecord = state.on
       ? { ...before, id: before.id ?? newId(), firstSeenAt: started }
-      : { ...before, id: null, lastSentDay: null, firstSeenAt: started };
+      : { ...before, id: null, lastSentDay: null, firstSeenAt: started, trouble: [] };
     const changed =
-      wanted.id !== before.id || wanted.lastSentDay !== before.lastSentDay || wanted.firstSeenAt !== before.firstSeenAt;
+      wanted.id !== before.id ||
+      wanted.lastSentDay !== before.lastSentDay ||
+      wanted.firstSeenAt !== before.firstSeenAt ||
+      wanted.trouble.length !== before.trouble.length;
     return { record: changed ? save(wanted) : before, state };
   };
 
@@ -477,6 +610,8 @@ export function createTelemetry(deps: TelemetryDeps): Telemetry {
       arch: deps.arch,
       installKind: deps.installKind,
       line: deps.line(),
+      role: pingRole(deps.crewMode()),
+      trouble: record.trouble,
     });
   };
 
@@ -509,8 +644,10 @@ export function createTelemetry(deps: TelemetryDeps): Telemetry {
         const url = resolveTelemetryUrl(deps.env);
         const ping = pingOf(record);
         if (!url.ok || ping === null) return;
-        // Written BEFORE the request: a crash or a failure never sends twice in one day.
-        save({ ...record, lastSentDay: utcDay(now) });
+        // Written BEFORE the request: a crash or a failure never sends twice in one day. The tally that
+        // rides this ping is cleared in the same write, so it is never counted twice either; a failed
+        // send loses at most one day's tally, as it loses the day's ping.
+        save({ ...record, lastSentDay: utcDay(now), trouble: [] });
         await deps.fetch(url.url, {
           method: "POST",
           headers: { "content-type": "application/json", "user-agent": PING_USER_AGENT },
@@ -522,6 +659,13 @@ export function createTelemetry(deps: TelemetryDeps): Telemetry {
         // A failed send is dropped: no retry, no queue. The day is already spent.
         return;
       }
+    },
+    trouble(signal) {
+      const { record, state } = settle();
+      // Off: `settle` already cleared the tally with the ID, and the signal is not stored.
+      if (!state.on) return;
+      const next = noteTrouble(record, signal, state);
+      if (next !== record) save(next);
     },
   };
 }

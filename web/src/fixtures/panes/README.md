@@ -2021,6 +2021,22 @@ box covers the statusline. Every row above the box is the sandbox session's own 
 The answers were typed with `herdr pane send-text` into the sandbox session only, and the workspace was
 closed afterwards.
 
+### The same editor on omp 18.16.0 over herdr-core (captured 2026-11-05, issue 704)
+
+Four captures of the same box on omp 18.16.0, read off a lab herdr-core with `hc read` through the
+bridge's adapter, so they are plain text (no SGR). Each is cut to the tail from the Ask echo block
+down, 200 columns wide, LF line ends. No path, user, host or key appears in them. Since #704 the omp
+profile reads this box through a layout of its own (`answers`, `submit`, `newlineSubmits`,
+`trailer.hint`), so the Send Protocol types a reply from the phone into it and submits it with
+`Ctrl+Q`; `fold.answer-box.test.ts` reads each one as captured and unstyled.
+
+| Fixture | State / what's in it | Label |
+|---|---|---|
+| `omp--v18-16-0-custom-answer-empty--w200.txt` | `Enter` on `Other (type your own)`: `╭─ Custom answer: …─╮`, an empty `│ > ` row, the hint `⏎ or Ctrl+Q submit  ⎋ cancel  …` | `idle` |
+| `omp--v18-16-0-custom-answer-typed--w200.txt` | The same box holding `a ripe mango` | `draft` |
+| `omp--v18-16-0-custom-answer-wrapped--w200.txt` | A long answer soft-wrapped onto continuation rows indented by the gutter's width | `draft` |
+| `omp--v18-16-0-note-editor-empty--w200.txt` | `n` on an option: the box titled `Note for apple: …`, empty | `idle` |
+
 ## OMP 18.8 pi composer slash palette (captured 2026-10-07, oh-my-pi `omp` v18.8.0, scratch panes)
 
 Two captures of one screen: the pi-shaped composer with a slash command typed into it, which is when
@@ -2837,6 +2853,8 @@ Inherent to vanilla Claude Code: the model writes AskUserQuestion's question tex
 | `claude--v2304-ask-two-paragraph--w80.txt` | Plain `claude` (`--safe-mode --setting-sources ""`) at 80 columns, trimmed to the prompt bubble and the dialog: ` ☐ Release`, a two-paragraph question across seven `│` gutter rows (paragraph 1 carries `https://ci.example.test/runs/42?tab=checks`, a bare `│` row separates the paragraphs, and paragraph 2 ends in `?`), pointer on `1. Production`. `questionUnderChip` joins all non-empty rows below `☐ Release` so the first row is neither dropped at `MAX_QUESTION_ROWS = 6` nor leaked into `model.subject`, and the bare `│` row does not insert a double space. Labelled `dialog` |
 | `claude--v2312-draft-upload-path--w100.txt` | Claude Code 2.1.312 in tmux at 100 columns (lab 2026-10-30, after the field case of 2026-10-29): one bracketed paste of a two-paragraph message whose first paragraph ends with a Collie upload path (`/uploads/w7C_pF-mvtrpn7j-e4f81595.png`, an existing file). 2.1.312 keeps the path as TEXT on a row of its own after the space and drops the blank line; 2.1.305 attached it as `[Image #1]`. The box reads as a draft of all four rows joined, and `boxMatches` takes this literal form beside the image form (`WholePaste.literal`). A path that is the whole paste still becomes `[Image #1]` on 2.1.312. Labelled `draft` |
 | `claude--v2312-weekly-limit-row--w120.txt` | Claude Code 2.1.312 in tmux at 120 columns (live check 2026-10-30, release 1.25.0, a scratch bridge's watch read, plain text): a fresh pane on Haiku with an empty box, the footer `⏸ manual mode on · ? for shortcuts`, and under it the usage row `You've used 75% of your weekly limit · resets Nov 4, 2am (…) · /usage-credits to keep using Claude Code`. Claude Code drops the row once the box holds two rows, so the rows under the box went from 2 to 1 and a send ended typed_not_submitted (changed). The profile names the row a hint (`idle.volatile.below.hints`), so the Send Protocol leaves it out of that count. The time zone was replaced with `Europe/Lisbon`, same width. Reads idle, no dialog, the composer empty. Labelled `idle` |
+| `claude--v2317-survey-context-row--w160.txt` | Claude Code 2.1.317 at 160 columns (issue 705, 2026-11-05), **reconstructed**, not captured: the issue gave the screen as a redacted row-shape table, not text, so this is the 2.1.303 survey screen (`claude--v2303-titled-edge-survey--w160.txt`) with the update row replaced by Claude's right-aligned context field `4% until auto-compact`, the colours of that fixture kept (SGR). Rows: `● How is Claude doing this session? (optional)`, `  1: Bad    2: Fine   3: Good   0: Dismiss`, the field right-aligned on the row under the keys, the titled top edge (`main`), the empty box, one footer row. Without the profile's notice gap `^ +\d{1,3}% until auto(?:-[\w…]*)?$` the Surface read the key row as a dialog and refused every send (`unconfirmed`, then `stale_surface`). Reads idle, modal none, the composer empty, free, and lifts the survey card over a live box. Labelled `idle` |
+| `claude--v2317-survey-context-row-plain--w160.txt` | The same screen with every SGR byte stripped, as herdr-core hands it out (`readIsUnstyled` holds). Same reading, same label. Labelled `idle` |
 | `claude--v2317-verbose-tokens-notice-idle--w154.txt` | Claude Code 2.1.317 at 154 columns with `verbose` on (field case of 2026-11-03, PR 668): built from the PR's synthetic screen, plain text, the statusline words neutral. A `Brewed for` row, the right-aligned `[-]` mark, a `✦ Heads up · ` notice with its key row `  1: Learn more   2: Knew this already   0: Dismiss`, then the session's token count `230267 tokens` right-aligned on a row of its own, the empty box and two footer rows. Without the profile's notice gap `^ +\d+ tokens$` the Surface read the key row as a dialog and refused every send. Reads idle, modal none, the composer empty, free. Labelled `idle` |
 | `claude--v2317-next-steps-suggestions-empty-box--w100.txt` | Claude Code 2.1.317 at 100 columns with the `next-steps` plugin (discussion 659, 2026-11-03, SGR kept): after a finished turn the plugin draws `next:` and three numbered prompts plus `0: dismiss` above the box, and puts the top suggestion into the empty box as dim ghost text. Claude Code draws its cursor as one reverse-video cell on the ghost's first letter (`ESC[7m` + `A`, then `ESC[0m ESC[2m` + the dim rest). The `next:` block reads `modal: none`. The reverse-video cell is neither dim nor ghost-coloured, so before the cursor rule in `readPlaceholder` (`holeEvery`) the hole counted as typed text and the box read `composer: draft`. Reads idle, the composer empty, free. Labelled `idle` |
 | `claude--v2317-next-steps-suggestions-one-line-draft--w100.txt` | The same screen with the person's one-line draft `also add a docstring` in the box: typed text in the default ink, the cursor a reverse-video blank after it. The `next:` rows stay above the box. Reads a draft of `also add a docstring`, not a placeholder (typed cells are not dim). Labelled `draft` |
@@ -3409,6 +3427,17 @@ equal to its only entry, Enter cancels the popup and submits the text; the teste
 | --- | --- | --- |
 | `omp--v18-12-6-ask-previews--w120.txt` | `dialog` | The echo block `╭─── Ask 1 questions`, then the panel: three options, each with a description row and a `│ ` preview row, `Other`, and the footer ending `Alt+H hide`. Pointer on the first row. Lifts with the preview on each option (ask.ts, OPTION PREVIEWS) |
 
+## omp 18.16.0 Ask with the glyph hide keycap (captured 2026-11-05, herdr-core `hc read`, 200 columns)
+
+A real one-question `ask` call (Claude Haiku 4.5 in omp 18.16.0, the `unicode` symbol preset), trimmed to the dialog;
+the status row above it named the operator's accounts and was dropped.
+
+| Fixture | State | What it shows |
+| --- | --- | --- |
+| `omp--v18-16-0-ask-single-glyph-hide--w200.txt` | `dialog` | `과일을 고르세요` with 사과, 배, 포도 and `Other`, pointer on the first row, the footer ending `⌥H hide` instead of `Alt+H hide`. Lifts (ask.ts) |
+| `omp--v18-16-0-ask-single-glyph-hide-moved--w200.txt` | `dialog` | The same dialog after one `Down` (`hc keys … down`), pointer on 배. Its walk pair |
+| `omp--v18-16-0-answer-editor-empty--w200.txt` | `idle` | `Enter` on `Other` opened `Custom answer: 과일을 고르세요`, hint `⏎ or ⌃Q submit  ⎋ cancel  ⌃G external editor`: the same prompt-style box as the `custom-answer-*` rows above, in the glyph keycap dialect, with no Ask box above it. Reads as a free box since #704 |
+
 ## omp's rewind picker, Esc Esc (captured 2026-10-25, omp-gang tester 04 case 7)
 
 | Fixture | State | What it shows |
@@ -3671,3 +3700,43 @@ editor's frame never claims a rail in the transcript (issue 660 review, 2026-11-
 | --- | --- | --- |
 | `pi--v110-stock-idle-quote-rail.txt` | `pi--v110-stock-idle.txt`, rows 4 to 6 | composer, empty, free: the stock box, the quote is transcript |
 | `pi--v130-core-question-quote-rail--w120.txt` | `pi--v130-core-question--w120.txt`, rows 19 to 21 (blank before) | question ask, not free: no float editor |
+
+## Claude Code 2.1.306 exit dialog with background work (captured 2026-11-05)
+
+`/exit` in a disposable 110-column pane with one `sleep 600` background shell, the marker walked down
+with one Down each. Privacy: the working directory, the model and plan row and the turn's status row
+were replaced with neutral text. The bytes from the dialog's rule to the end are as captured.
+
+| Fixture | State | Reads as |
+| --- | --- | --- |
+| `claude--background-work-exit-1.txt` | `❯` on `1. Exit and stop tasks` | menu, Confirm and Cancel |
+| `claude--background-work-exit-2.txt` | `❯` on `2. Move to background and exit` | menu, same identity, new signature |
+| `claude--background-work-exit-3.txt` | `❯` on `3. Stay` | menu, same identity, new signature |
+
+## Claude Code 2.1.318 `/model` picker under the usage notice (captured 2026-11-06)
+
+`/model` in a disposable 120-column, 40-row pane in the first seconds of a session, read from the live
+dev lane (8788) while the picker showed the unread-dialog card. The weekly-limit notice fills the
+picker's top edge row from end to end, and only one `▔` is left at its far right (119 columns, one
+leading space). It stays for 1.5 to 5 s and goes away. Privacy: nothing private was on screen; the
+folder is a lab folder.
+
+| Fixture | State | Reads as |
+| --- | --- | --- |
+| `claude--v2318-model-picker-usage-notice-edge--w120.txt` | `/model` menu, `❯` on `2. Opus 5.5 ✔`, ten rows, effort row, the notice row as the edge | menu, the signature starts under the notice row |
+
+## Codex 0.166.0 on herdr-core (captured 2026-11-05, hc 0.1.14, the Codex report of 2026-11-05)
+
+A Codex user on Collie 1.26.1 saw the unread-dialog card after every send. These are the screens that
+showed it, read the way the bridge reads a core terminal (`terminal.read`, plain text, no escape byte):
+a scratch core with its own `HC_SOCKET`, Codex 0.166.0 in a scratch folder, a viewer of 120 by 40
+attached from a pty while each read ran. The legacy reader took no status row without its paint, so it
+found no box on any of them, and while a turn ran `esc to interrupt` stood in the last rows and the card
+came up. Privacy: the user name in the lab path became `alice` (same length); no other private text was
+on screen.
+
+| Fixture | State | What it shows |
+| --- | --- | --- |
+| `codex--v0166-core-working--w120.txt` | `running` | The turn before it (`Worked for 1s`), the new message, `• Working (7s • esc to interrupt) · 1 background terminal running`, the empty box, the status row and `← for agents · ? for shortcuts` |
+| `codex--v0166-core-idle--w120.txt` | `idle` | The same pane after the turn (`Worked for 11s`), the empty box, the status row and the hint row |
+| `codex--v0166-core-draft--w120.txt` | `draft` | `collie core draft probe` typed in the box, the status row last and no hint row |

@@ -346,7 +346,7 @@ export const ERROR_CODES = {
 
   // ── The anonymous install count: POST /api/telemetry (M86 spec 02) ───
   /** A telemetry switch whose body named no setting, or a word other than on or off. */
-  "telemetry.setting_invalid": "the install count setting must be on or off; nothing was changed",
+  "telemetry.setting_invalid": "the telemetry setting must be on or off; nothing was changed",
   /**
    * A telemetry switch without a request id. The id is the receipt a retry is answered with, so a
    * body without one could not be told from a second, different tap.

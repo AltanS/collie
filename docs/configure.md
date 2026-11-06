@@ -92,7 +92,7 @@ The config file groups every setting under a `[section]`. The environment name o
 
 | section | what it holds |
 | --- | --- |
-| `bridge` | poll cadence, how many lines are read, where state lives, the anonymous install count |
+| `bridge` | poll cadence, how many lines are read, where state lives, telemetry |
 | `network` | the port, the bind address, allowed hosts and origins |
 | `mux` | which multiplexer this collie mirrors, and where it lives |
 | `access` | the Tailscale identity gate, the device header, the audit trail, the secret mask |
@@ -108,7 +108,7 @@ The durable agents one Collie runs beside its multiplexer are not in `config.tom
 `sources.json`, in the same folder as `.env` ([Durable agents](durable-agents.md#attach-a-durable-agent)).
 | `stt` | speech-to-text, absent until `collie stt setup` runs |
 
-### The anonymous install count
+### Telemetry
 
 Two keys in `[bridge]` set the daily install ping that
 [What leaves your machine](security.md#what-leaves-your-machine) describes.
@@ -696,7 +696,7 @@ typed.
 ## Your own typefaces
 
 The interface font is a per-device setting. Under **Settings → Appearance → Typeface**, you can choose between
-System, Space Grotesk, Aldrich (the default), IBM Plex Sans, Geist and Atkinson Hyperlegible Next. A
+System, Space Grotesk, Aldrich, IBM Plex Sans, Geist and Atkinson Hyperlegible Next (the default). A
 [theme](themes.md) that names a face writes it here once, when you pick the theme. You can add custom fonts in
 `theme.toml`, the fourth configuration file:
 

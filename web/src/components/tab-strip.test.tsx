@@ -8,7 +8,7 @@ import { TabStrip } from "./tab-strip";
 import type { AgentStatus, AgentView, MuxCapability, TabView } from "@/lib/types";
 
 // The theme on screen, with its `tabs` word set by the test (lib/tab-look.ts). Left undefined it is the
-// real active theme, which is the default look.
+// real active theme with no `tabs` word, which is the plain look (the default theme itself names `folder`).
 interface ThemeTabs {
   word: "plain" | "folder" | undefined;
 }
@@ -19,7 +19,8 @@ vi.mock("@/lib/theme/store", async (importOriginal) => {
     ...original,
     useActiveTheme: () => {
       const active = original.useActiveTheme();
-      if (themeTabs.word === undefined) return active;
+      // Left undefined, the theme names no `tabs` word: the plain look, as for a theme without the word.
+      if (themeTabs.word === undefined) return { ...active, theme: { ...active.theme, surface: { ...active.theme.surface, tabs: undefined } } };
       return { ...active, theme: { ...active.theme, surface: { ...active.theme.surface, tabs: themeTabs.word } } };
     },
   };
@@ -778,7 +779,7 @@ describe("TabStrip under the folder look", () => {
     expect(cls).toMatch(/(?:^|\s)bg-background(?=\s|$)/);
     expect(cls).toMatch(/(?:^|\s)border-x-\[1px\](?=\s|$)/);
     expect(cls).toMatch(/(?:^|\s)border-x-rule(?=\s|$)/);
-    expect(cls).toMatch(/shadow-\[inset_0_3px_0_0_var\(--tab-active\)\]/);
+    expect(cls).toMatch(/shadow-\[inset_0_2px_0_0_var\(--tab-active\)\]/);
     expect(cls).toMatch(/(?:^|\s)rounded-t-sm(?=\s|$)/);
     expect(cls).toMatch(/(?:^|\s)text-foreground(?=\s|$)/);
     expect(cls).toMatch(/(?:^|\s)font-semibold(?=\s|$)/);

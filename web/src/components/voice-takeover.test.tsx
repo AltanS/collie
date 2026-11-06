@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { LevelSource } from "@/lib/audio-meter";
 import { SILENCE_FINISH_MS } from "@/lib/speech-endpoint";
 
-import { VOICE_BAR_COUNT, VoiceTakeover, type VoiceTakeoverProps } from "./voice-takeover";
+import { VOICE_BAR_COUNT, VOICE_ROW_FRAME, VoiceTakeover, type VoiceTakeoverProps } from "./voice-takeover";
 
 // The takeover's per-frame loop runs on requestAnimationFrame, so these cases drive it with fake
 // timers (which fake rAF and performance.now together) and a scripted level source, never a real
@@ -128,6 +128,18 @@ describe("VoiceTakeover — what it is", () => {
     right.unmount();
     const left = renderTakeover({ hand: "left" });
     expect(left.container.querySelector('[data-slot="voice-takeover-row"]')?.className).toContain("flex-row-reverse");
+  });
+
+  it("copies the composer's frame, so OK stands on the mic: p-1 for the field, p-1.5 for the box", () => {
+    const rowOf = (container: HTMLElement) => container.querySelector('[data-slot="voice-takeover-row"]');
+    const field = renderTakeover();
+    expect(rowOf(field.container)?.className).toContain("p-1 ");
+    expect(rowOf(field.container)?.className).not.toContain("p-1.5");
+    field.unmount();
+    const box = renderTakeover({ layout: "box" });
+    expect(rowOf(box.container)?.className).toContain("p-1.5");
+    expect(rowOf(box.container)?.className).toContain("border-rule");
+    expect(VOICE_ROW_FRAME.box).toContain("p-1.5");
   });
 
   it("reserves all its bar slots up front, and animates by scale, never by size", () => {

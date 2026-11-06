@@ -8,13 +8,17 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import type { Environment } from "./config-source.ts";
+import type { CrewMode } from "./types.ts";
 import {
   buildPing,
   createTelemetry,
   EMPTY_TELEMETRY_RECORD,
   FIRST_PING_DELAY_MS,
+  noteTrouble,
   parseTelemetryRecord,
+  parseTroubleSignal,
   parseTelemetryRequest,
+  pingRole,
   pingVersion,
   PING_TIMEOUT_MS,
   PING_USER_AGENT,
@@ -28,11 +32,16 @@ import {
   telemetrySwitchWarning,
   telemetryState,
   TELEMETRY_URL,
+  TROUBLE_COUNT_MAX,
+  TROUBLE_ROWS_MAX,
   utcDay,
   type PingFetch,
   type TelemetryDecider,
   type TelemetryOrigin,
   type TelemetrySetting,
+  type TelemetryRecord,
+  type TelemetryState,
+  type TroubleSignal,
 } from "./telemetry.ts";
 
 const RELEASE = "1.26.0+fd5a796587";
@@ -204,15 +213,37 @@ describe("resolveTelemetryUrl: the override rules", () => {
 });
 
 describe("buildPing", () => {
-  const ping = buildPing({ id: "a".repeat(32), day: "2026-11-04", version: "1.26.0", os: "linux", arch: "x64", installKind: "binary", line: "stable" });
+  const ping = buildPing({ id: "a".repeat(32), day: "2026-11-04", version: "1.26.0", os: "linux", arch: "x64", installKind: "binary", line: "stable", role: "solo", trouble: [] });
 
-  test("the key set is exactly v, id, day, version, os, arch, install, line", () => {
-    expect(Object.keys(ping)).toEqual(["v", "id", "day", "version", "os", "arch", "install", "line"]);
+  test("the key set is exactly v, id, day, version, os, arch, install, line, role, trouble (ten keys)", () => {
+    expect(Object.keys(ping)).toEqual(["v", "id", "day", "version", "os", "arch", "install", "line", "role", "trouble"]);
   });
 
-  test("the values are the ones given, and the schema is 1", () => {
+  test("an empty tally is [], and a row carries exactly kind, harness, version, mux, count", () => {
+    expect(ping.trouble).toEqual([]);
+    // A row read from a record file that grew a stray field still leaves with its five fields only.
+    const grown = { kind: "send", harness: "claude", version: "2.1.316", mux: "herdr", count: 2, paneId: "w1:p1" } as const;
+    const built = buildPing({ id: "a".repeat(32), day: "2026-11-04", version: "1.26.0", os: "linux", arch: "x64", installKind: "binary", line: "stable", role: "solo", trouble: [grown] });
+    expect(built.trouble).toEqual([{ kind: "send", harness: "claude", version: "2.1.316", mux: "herdr", count: 2 }]);
+    expect(Object.keys(built.trouble[0] ?? {})).toEqual(["kind", "harness", "version", "mux", "count"]);
+  });
+
+  test("each role value is carried as given", () => {
+    for (const role of ["solo", "lead", "member"] as const) {
+      const built = buildPing({ id: "a".repeat(32), day: "2026-11-04", version: "1.26.0", os: "linux", arch: "x64", installKind: "binary", line: "stable", role, trouble: [] });
+      expect(built.role).toBe(role);
+    }
+  });
+
+  test("pingRole: solo is solo, lead is lead, and a peer (a member or a non-lead deputy) is a member", () => {
+    expect(pingRole("solo")).toBe("solo");
+    expect(pingRole("lead")).toBe("lead");
+    expect(pingRole("peer")).toBe("member");
+  });
+
+  test("the values are the ones given, and the schema is 2", () => {
     expect(ping).toEqual({
-      v: 1,
+      v: 2,
       id: "a".repeat(32),
       day: "2026-11-04",
       version: "1.26.0",
@@ -220,6 +251,8 @@ describe("buildPing", () => {
       arch: "x64",
       install: "binary",
       line: "stable",
+      role: "solo",
+      trouble: [],
     });
   });
 
@@ -292,6 +325,7 @@ interface Sent {
 }
 
 function rig(over: { env?: Environment; origin?: TelemetryOrigin; version?: string; fail?: boolean; start?: number } = {}) {
+  let crewMode: CrewMode = "solo";
   const stateDir = mkdtempSync(join(tmpdir(), "collie-telemetry-"));
   dirs.push(stateDir);
   const clock = { now: over.start ?? Date.UTC(2026, 10, 3, 12, 0, 0) };
@@ -311,6 +345,7 @@ function rig(over: { env?: Environment; origin?: TelemetryOrigin; version?: stri
     version: over.version ?? RELEASE,
     installKind: "binary",
     line: () => "stable",
+    crewMode: () => crewMode,
     now: () => clock.now,
     fetch: fakeFetch,
     os: "linux",
@@ -319,7 +354,10 @@ function rig(over: { env?: Environment; origin?: TelemetryOrigin; version?: stri
     warn: (line) => warnings.push(line),
     log: (line) => logs.push(line),
   });
-  return { stateDir, clock, sent, telemetry, warnings, logs };
+  const setCrewMode = (mode: CrewMode): void => {
+    crewMode = mode;
+  };
+  return { stateDir, clock, setCrewMode, sent, telemetry, warnings, logs };
 }
 
 describe("createTelemetry", () => {
@@ -347,6 +385,22 @@ describe("createTelemetry", () => {
     expect(days[0]).not.toBe(days[1]);
   });
 
+  test("the role is read at ping time: a mode that changes between pings changes the role", async () => {
+    const r = rig();
+    r.telemetry.observe();
+    r.clock.now += FIRST_PING_DELAY_MS;
+    await r.telemetry.tick();
+    r.setCrewMode("lead");
+    r.clock.now += FIRST_PING_DELAY_MS;
+    await r.telemetry.tick();
+    r.setCrewMode("peer");
+    expect(r.telemetry.view().next?.role).toBe("member");
+    r.clock.now += FIRST_PING_DELAY_MS;
+    await r.telemetry.tick();
+    const roles = r.sent.map((s) => JSON.parse(String(s.init.body)).role);
+    expect(roles).toEqual(["solo", "lead", "member"]);
+  });
+
   test("the request: POST, JSON, the fixed user agent, the default URL, exactly the ping", async () => {
     const r = rig();
     r.telemetry.observe();
@@ -357,7 +411,7 @@ describe("createTelemetry", () => {
     expect(call?.init.method).toBe("POST");
     expect(call?.init.headers).toEqual({ "content-type": "application/json", "user-agent": PING_USER_AGENT });
     expect(JSON.parse(String(call?.init.body))).toEqual({
-      v: 1,
+      v: 2,
       id: "1".repeat(32),
       day: utcDay(r.clock.now),
       version: "1.26.0",
@@ -365,6 +419,8 @@ describe("createTelemetry", () => {
       arch: "x64",
       install: "binary",
       line: "stable",
+      role: "solo",
+      trouble: [],
     });
     expect(call?.init.signal).toBeDefined();
   });
@@ -409,6 +465,7 @@ describe("createTelemetry", () => {
       version: RELEASE,
       installKind: "binary",
       line: () => "stable",
+      crewMode: () => "solo",
       now: () => r.clock.now,
       fetch: async () => {
         seen.push(readTelemetryRecord(r.stateDir).lastSentDay);
@@ -449,7 +506,7 @@ describe("createTelemetry", () => {
     expect(one.next?.id).toBe("1".repeat(32));
     expect(two.next?.id).toBe("1".repeat(32));
     expect(one.next).toEqual({
-      v: 1,
+      v: 2,
       id: "1".repeat(32),
       day: utcDay(r.clock.now),
       version: "1.26.0",
@@ -457,6 +514,8 @@ describe("createTelemetry", () => {
       arch: "x64",
       install: "binary",
       line: "stable",
+      role: "solo",
+      trouble: [],
     });
   });
 
@@ -616,6 +675,7 @@ describe("the send is hardened (M86 spec 01)", () => {
         version: RELEASE,
         installKind: "binary",
         line: () => "stable",
+        crewMode: () => "solo",
         now: () => now,
         fetch: (url, init) => fetch(url, init),
         os: "linux",
@@ -630,6 +690,7 @@ describe("the send is hardened (M86 spec 01)", () => {
         version: RELEASE,
         installKind: "binary",
         line: () => "stable",
+        crewMode: () => "solo",
         now: () => now + FIRST_PING_DELAY_MS,
         fetch: (url, init) => fetch(url, init),
         os: "linux",
@@ -662,7 +723,7 @@ describe("the send is hardened (M86 spec 01)", () => {
     const hostile = new Response(body, { status: 200, headers: { "set-cookie": "a=b", location: "http://evil.example/" } });
     let now = Date.UTC(2026, 10, 3, 12, 0, 0);
     const t = createTelemetry({
-      stateDir, env: {}, origin: "env", version: RELEASE, installKind: "binary", line: () => "stable",
+      stateDir, env: {}, origin: "env", version: RELEASE, installKind: "binary", line: () => "stable", crewMode: () => "solo",
       now: () => now, fetch: async () => hostile, os: "linux", arch: "x64",
     });
     t.observe();
@@ -690,5 +751,148 @@ describe("telemetryDoctorLine", () => {
     expect(line("mirror", false)).toBe("off (COLLIE_UPDATE_MIRROR is set)");
     expect(line("dev_build", false)).toBe("off (development build)");
     expect(line("url", false, { COLLIE_TELEMETRY_URL: "http://example.com" })).toBe("off (COLLIE_TELEMETRY_URL is not an https URL)");
+  });
+});
+
+// ── THE TROUBLE TALLY (M86 spec 05) ─────────────────────────────────────────────────────────────
+
+describe("noteTrouble: the tally, pure", () => {
+  const ON: TelemetryState = { on: true, decidedBy: "default" };
+  const OFF: TelemetryState = { on: false, decidedBy: "settings" };
+  const DIALOG: TroubleSignal = { kind: "dialog", harness: "codex", version: "0.46.0", mux: "herdr" };
+  const SEND: TroubleSignal = { kind: "send", harness: "claude", version: "2.1.316", mux: "tmux" };
+  const base = { ...EMPTY_TELEMETRY_RECORD, id: "a".repeat(32), firstSeenAt: 1 };
+
+  test("a new signal makes a row of exactly kind, harness, version, mux, count", () => {
+    const next = noteTrouble(base, DIALOG, ON);
+    expect(next.trouble).toEqual([{ ...DIALOG, count: 1 }]);
+    expect(Object.keys(next.trouble[0] ?? {}).toSorted()).toEqual(["count", "harness", "kind", "mux", "version"]);
+  });
+
+  test("the same four names count one more; any other name is its own row", () => {
+    let record = noteTrouble(base, DIALOG, ON);
+    record = noteTrouble(record, DIALOG, ON);
+    record = noteTrouble(record, SEND, ON);
+    record = noteTrouble(record, { ...SEND, version: null }, ON);
+    expect(record.trouble).toEqual([
+      { ...DIALOG, count: 2 },
+      { ...SEND, count: 1 },
+      { ...SEND, version: null, count: 1 },
+    ]);
+  });
+
+  test(`at most ${String(TROUBLE_ROWS_MAX)} distinct rows: a new row past the cap is dropped, a known row still counts`, () => {
+    let record: TelemetryRecord = base;
+    for (let n = 0; n < TROUBLE_ROWS_MAX; n++) record = noteTrouble(record, { ...SEND, harness: `agent-${String(n)}` }, ON);
+    expect(record.trouble).toHaveLength(TROUBLE_ROWS_MAX);
+    const full = record;
+    expect(noteTrouble(full, { ...SEND, harness: "one-more" }, ON)).toBe(full);
+    expect(noteTrouble(full, { ...SEND, harness: "agent-0" }, ON).trouble[0]?.count).toBe(2);
+  });
+
+  test(`a count stops at ${String(TROUBLE_COUNT_MAX)}`, () => {
+    const record = { ...base, trouble: [{ ...DIALOG, count: TROUBLE_COUNT_MAX - 1 }] };
+    const once = noteTrouble(record, DIALOG, ON);
+    expect(once.trouble[0]?.count).toBe(TROUBLE_COUNT_MAX);
+    expect(noteTrouble(once, DIALOG, ON).trouble[0]?.count).toBe(TROUBLE_COUNT_MAX);
+  });
+
+  test("off for any reason: the signal is dropped and the tally goes with the ID", () => {
+    const record = { ...base, lastSentDay: "2026-11-05", trouble: [{ ...DIALOG, count: 4 }] };
+    const next = noteTrouble(record, SEND, OFF);
+    expect(next.trouble).toEqual([]);
+    expect(next.id).toBeNull();
+    expect(next.lastSentDay).toBeNull();
+  });
+});
+
+describe("parseTroubleSignal: the route's body", () => {
+  test("exactly kind, harness, version, mux in their shapes", () => {
+    expect(parseTroubleSignal({ kind: "dialog", harness: "codex", version: "0.46.0", mux: "herdr-core" })).toEqual({ kind: "dialog", harness: "codex", version: "0.46.0", mux: "herdr-core" });
+    expect(parseTroubleSignal({ kind: "send", harness: "other", version: null, mux: "other" })).toEqual({ kind: "send", harness: "other", version: null, mux: "other" });
+    expect(parseTroubleSignal({ kind: "send", harness: "claude", version: null, mux: "wezterm" })).toEqual({ kind: "send", harness: "claude", version: null, mux: "wezterm" });
+  });
+
+  test("anything else is null: a stray key, a missing key, a word out of its shape", () => {
+    const good = { kind: "send", harness: "claude", version: "2.1.316", mux: "herdr" };
+    const bad = [
+      undefined,
+      "send",
+      [],
+      { ...good, paneId: "w1:p1" },
+      { kind: "send", harness: "claude", mux: "herdr" },
+      { ...good, kind: "crash" },
+      { ...good, mux: "Screen" },
+      { ...good, mux: "a".repeat(25) },
+      { ...good, mux: "my mux" },
+      { ...good, mux: "" },
+      { ...good, mux: 7 },
+      { ...good, harness: "Claude" },
+      { ...good, harness: "a".repeat(25) },
+      { ...good, harness: "" },
+      { ...good, version: "latest" },
+      { ...good, version: `1.${"2".repeat(40)}` },
+      { ...good, version: 2 },
+    ];
+    for (const body of bad) expect(parseTroubleSignal(body), JSON.stringify(body)).toBeNull();
+  });
+});
+
+describe("the tally in the shell (M86 spec 05)", () => {
+  const SIGNAL: TroubleSignal = { kind: "dialog", harness: "codex", version: "0.46.0", mux: "herdr" };
+
+  test("a signal in the first 24 hours rides the first ping, and the send clears it in the lastSentDay write", async () => {
+    const r = rig();
+    r.telemetry.observe();
+    r.telemetry.trouble(SIGNAL);
+    r.telemetry.trouble(SIGNAL);
+    expect(r.telemetry.view().next?.trouble).toEqual([{ ...SIGNAL, count: 2 }]);
+    await r.telemetry.tick();
+    expect(r.sent).toHaveLength(0);
+    r.clock.now += FIRST_PING_DELAY_MS;
+    await r.telemetry.tick();
+    expect(r.sent).toHaveLength(1);
+    expect(JSON.parse(String(r.sent[0]?.init.body)).trouble).toEqual([{ ...SIGNAL, count: 2 }]);
+    const after = readTelemetryRecord(r.stateDir);
+    expect(after.trouble).toEqual([]);
+    expect(after.lastSentDay).toBe(utcDay(r.clock.now));
+  });
+
+  test("a failed send still clears the tally: at most one day's tally is lost, never counted twice", async () => {
+    const r = rig({ fail: true });
+    r.telemetry.observe();
+    r.telemetry.trouble(SIGNAL);
+    r.clock.now += FIRST_PING_DELAY_MS;
+    await r.telemetry.tick();
+    expect(r.sent).toHaveLength(1);
+    expect(readTelemetryRecord(r.stateDir).trouble).toEqual([]);
+  });
+
+  test("the phone's off clears the tally with the ID, and a signal while off stores nothing", () => {
+    const r = rig();
+    r.telemetry.observe();
+    r.telemetry.trouble(SIGNAL);
+    expect(readTelemetryRecord(r.stateDir).trouble).toHaveLength(1);
+    r.telemetry.choose({ setting: "off", requestId: REQUEST_ID });
+    expect(readTelemetryRecord(r.stateDir).trouble).toEqual([]);
+    const before = readFileSync(telemetryPath(r.stateDir), "utf8");
+    r.telemetry.trouble(SIGNAL);
+    expect(readFileSync(telemetryPath(r.stateDir), "utf8")).toBe(before);
+  });
+
+  test("an env off switch: nothing is stored and no file is written for the signal", () => {
+    const r = rig({ env: { COLLIE_TELEMETRY: "0" } });
+    r.telemetry.observe();
+    const before = readFileSync(telemetryPath(r.stateDir), "utf8");
+    r.telemetry.trouble(SIGNAL);
+    expect(readFileSync(telemetryPath(r.stateDir), "utf8")).toBe(before);
+    expect(readTelemetryRecord(r.stateDir).trouble).toEqual([]);
+  });
+
+  test("the record file round-trips the tally, and a bad row in it is dropped", () => {
+    const record = parseTelemetryRecord(
+      JSON.stringify({ ...EMPTY_TELEMETRY_RECORD, trouble: [{ ...SIGNAL, count: 3 }, { ...SIGNAL, mux: "Screen", count: 1 }, { ...SIGNAL, count: 0 }] }),
+    );
+    expect(record.trouble).toEqual([{ ...SIGNAL, count: 3 }]);
   });
 });

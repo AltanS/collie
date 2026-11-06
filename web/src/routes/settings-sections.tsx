@@ -33,8 +33,7 @@ import { CompactionsControl } from "@/components/compactions-control";
 import { ToolCallsControl } from "@/components/tool-calls-control";
 import { TourControl } from "@/components/tour-control";
 import { TypefaceControl } from "@/components/typeface-control";
-import { TelemetrySettingsCard } from "@/components/telemetry-settings-card";
-import { UpdatesSettingsCard } from "@/components/updates-settings-card";
+import { TelemetrySettingsCard, TelemetrySettingsRow } from "@/components/telemetry-settings-card";
 import { ZenControl } from "@/components/zen-control";
 import { useServerDiagnostics } from "@/hooks/use-server-diagnostics";
 import { EMPTY_DEVICES, type DevicesData } from "@/lib/loaders";
@@ -267,12 +266,6 @@ export function SettingsSystemRoute() {
   const devices = (useLoaderData() as DevicesData | undefined) ?? EMPTY_DEVICES;
   return (
     <SettingsPage title="settings.section.system.title">
-      {/* ONE row for the whole subject: updating is a flow with a lead, N peers, progress and a
-          rollback state, so it lives on `/settings/updates` and this is the row that opens it. */}
-      <UpdatesSettingsCard />
-      {/* The anonymous install count (M86 spec 02, ADR 0129): the state, the switch that decided it
-          and the next message. Under the Updates row because both are about what this machine says to Collie's host. */}
-      <TelemetrySettingsCard />
       {/* Access sits with the connection diagnostics — both answer "what is this device allowed to
           do, and why". Pairing is the gate you can change from here; ConnectionInfo below only
           reports the header-based one. */}
@@ -285,9 +278,23 @@ export function SettingsSystemRoute() {
         build={diagnostics.build}
         redact={diagnostics.redact}
       />
+      {/* The anonymous install count (M86 spec 02, ADR 0129): one row with its state, above the report
+          card because both are about what this machine says to Collie's host. The switch, the cause
+          and the next message are the page the row opens. */}
+      <TelemetrySettingsRow />
       {/* Report a problem (ADR 0123): the offer's switch and the sheet's third door, with the diagnostics
           because a report is the one way those leave this phone, and only by the person's taps. */}
       <ReportControl />
+    </SettingsPage>
+  );
+}
+
+/** Settings → System → Telemetry: the whole card, one level below System. */
+export function SettingsInstallCountRoute() {
+  const scope = useScope();
+  return (
+    <SettingsPage title="telemetry.card.title" parent={settingsSectionPath("system", scope)}>
+      <TelemetrySettingsCard />
     </SettingsPage>
   );
 }

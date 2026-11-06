@@ -42,31 +42,32 @@ const HC_NAMED_KEYS = {
   F12: "f12",
 } satisfies Record<MuxNamedKey, string>;
 
-const NAMED_BY_CONTRACT_SPELLING = new Map<string, string>(Object.entries(HC_NAMED_KEYS));
-
 const _EVERY_NAMED_KEY_IS_TRANSLATED: readonly (typeof MUX_NAMED_KEYS)[number][] = MUX_NAMED_KEYS;
 void _EVERY_NAMED_KEY_IS_TRANSLATED;
 
 /**
- * The unmodified keys typed as raw input instead of by name, in the bytes hc's own encoder gives them
- * in every keyboard mode (its `keys.rs` test; the kitty keyboard's disambiguate mode leaves all three
- * alone). `terminal.keys` is the core's "someone else wants to type" path: it waits until nobody has
- * typed for about 3 s, and Collie's own raw write counts as somebody typing, so an Enter after typed
- * text waited out the rest of the hold. Raw input goes in at once (herdr-core#52, the maintainer's
- * advice: send the Enter the way the text went).
+ * Raw bytes for the unmodified Enter, Backspace and Tab, plus the two exact Ctrl chords OMP and
+ * Claude read as LF and DC1 on herdr-core in legacy and extended keyboard modes. Named Ctrl keys still
+ * incur the core's about-3-second quiet hold after text; these exact raw writes do not.
  */
-const RAW_BY_CONTRACT_SPELLING = new Map<string, string>([
-  ["Enter", "\r"],
-  ["Backspace", "\x7f"],
-  ["Tab", "\t"],
-]);
+const RAW_BY_CONTRACT_SPELLING = {
+  Enter: "\r",
+  Backspace: "\x7f",
+  Tab: "\t",
+} satisfies Record<string, string>;
 
-/** True for the raw bytes of an unmodified Enter, Backspace or Tab: the writes the adapter paces (`RAW_KEY_GAP_MS`). */
+const RAW_KEY_TEXTS = {
+  "\r": true,
+  "\x7f": true,
+  "\t": true,
+  "\n": true,
+  "\x11": true,
+} satisfies Record<string, true>;
+
+/** True for the raw control keys whose individual writes the adapter paces (`RAW_KEY_GAP_MS`). */
 export function isRawKeyText(text: string): boolean {
-  return RAW_KEY_TEXTS.has(text);
+  return Object.hasOwn(RAW_KEY_TEXTS, text);
 }
-
-const RAW_KEY_TEXTS: ReadonlySet<string> = new Set(RAW_BY_CONTRACT_SPELLING.values());
 
 /**
  * The single characters hc names as keys (probed): letters, digits and the unshifted punctuation of
@@ -97,11 +98,13 @@ function withCase(modifiers: readonly string[], key: string): readonly string[] 
 /**
  * One neutral chord in hc's spelling.
  *
- * - Enter, Backspace and Tab with no modifier are typed as raw input (`RAW_BY_CONTRACT_SPELLING`).
- * - A named key or a nameable character, with or without modifiers, is a key name. A capital
- *   letter keeps its case as `shift+<letter>`, because the core takes names case-insensitively.
+ * - Exactly Ctrl-only `j`/`J` and `q`/`Q` chords are raw LF and DC1. The parser preserves single-letter
+ *   case and canonicalizes modifiers, so the explicit cases preserve accepted upper-case aliases
+ *   without mapping any chord that carries another modifier.
+ * - A named key or nameable character remains a key name (with modifiers, except where the normal
+ *   refusal rules below reject it); a capital letter keeps case as `shift+<letter>`.
  * - A single printable character hc has no name for (`$`, `!`, `ä`), with NO modifier, is typed as
- *   raw input: a plain character is its own bytes, which is exactly what a terminal sends for it.
+ *   raw input: its own bytes are exactly what a terminal sends for it.
  * - A modifier on such a character (`ctrl+$`) has no encoding to fall back on, and is refused.
  * - A `meta` chord is refused: hc accepts `super+a`, and whether a program receives it as itself
  *   depends on its keyboard mode, which was not probed. `ctrl+Enter` is refused for the same reason
@@ -113,10 +116,20 @@ export function toHcKey(spelling: string): HcKeyResult {
   if (parsed.modifiers.includes("meta")) return { ok: false, reason: "meta" };
   if (isExtendedOnlyChord(spelling)) return { ok: false, reason: "extended" };
   if (parsed.modifiers.length === 0) {
-    const raw = RAW_BY_CONTRACT_SPELLING.get(parsed.key);
+    // SAFETY: hasOwn checks the spelling against this table before indexing its inferred keys.
+    const raw = Object.hasOwn(RAW_BY_CONTRACT_SPELLING, parsed.key)
+      ? RAW_BY_CONTRACT_SPELLING[parsed.key as keyof typeof RAW_BY_CONTRACT_SPELLING] : undefined;
     if (raw !== undefined) return { ok: true, key: { kind: "text", text: raw } };
   }
-  const named = NAMED_BY_CONTRACT_SPELLING.get(parsed.key);
+  if (
+    parsed.modifiers.length === 1 &&
+    parsed.modifiers[0] === "ctrl" &&
+    (parsed.key === "j" || parsed.key === "J" || parsed.key === "q" || parsed.key === "Q")
+  ) {
+    return { ok: true, key: { kind: "text", text: parsed.key === "j" || parsed.key === "J" ? "\n" : "\x11" } };
+  }
+  // SAFETY: HC_NAMED_KEYS covers MuxNamedKey, and hasOwn admits only those keys.
+  const named = Object.hasOwn(HC_NAMED_KEYS, parsed.key) ? HC_NAMED_KEYS[parsed.key as MuxNamedKey] : undefined;
   if (named !== undefined) return { ok: true, key: { kind: "key", name: [...parsed.modifiers, named].join("+") } };
   if (parsed.key === " ") return { ok: true, key: { kind: "key", name: [...parsed.modifiers, "space"].join("+") } };
   if (HC_NAMEABLE_CHAR.test(parsed.key)) return { ok: true, key: { kind: "key", name: [...withCase(parsed.modifiers, parsed.key), parsed.key.toLowerCase()].join("+") } };

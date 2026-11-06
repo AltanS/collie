@@ -15,7 +15,7 @@
 // error, a pane switch, a hidden page and an unmount all pass through. A context left open keeps the
 // phone's audio session claimed.
 
-import { decayBars, fillBars, rmsOfBytes } from "@/lib/voice-levels";
+import { decayBars, fillBars, hasSignal, rmsOfBytes } from "@/lib/voice-levels";
 
 /** What the takeover reads, per animation frame. Also what the states playground fakes. */
 export interface LevelSource {
@@ -26,6 +26,12 @@ export interface LevelSource {
 export interface AudioMeter extends LevelSource {
   /** Connect the recorder's stream. Idempotent per meter; a no-op once closed. */
   attach: (stream: MediaStream) => void;
+  /**
+   * True once the analyser has seen a sample that is not digital silence: the first proof that audio
+   * flows from the microphone, which `MediaRecorder.start()` returning is not (#709). False before
+   * `attach`, after `close`, and while the audio stack has delivered nothing.
+   */
+  heard: () => boolean;
   /** Disconnect and close the context. Safe to call twice. */
   close: () => void;
 }
@@ -65,6 +71,8 @@ export function createAudioMeter(): AudioMeter | null {
   analyser.smoothingTimeConstant = 0.4;
   const timeBytes = new Uint8Array(analyser.fftSize);
   const freqBytes = new Uint8Array(analyser.frequencyBinCount);
+  // Floats, not the bytes `read` uses: a byte rounds a quiet room's hiss to the silence value.
+  const floats = new Float32Array(analyser.fftSize);
   let source: MediaStreamAudioSourceNode | null = null;
   let closed = false;
 
@@ -87,6 +95,11 @@ export function createAudioMeter(): AudioMeter | null {
       analyser.getByteFrequencyData(freqBytes);
       fillBars(freqBytes, bars, context.sampleRate);
       return rmsOfBytes(timeBytes);
+    },
+    heard() {
+      if (closed || source === null) return false;
+      analyser.getFloatTimeDomainData(floats);
+      return hasSignal(floats);
     },
     close() {
       if (closed) return;

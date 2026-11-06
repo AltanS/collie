@@ -7,6 +7,7 @@ import {
   defaultSocketPath,
   envBool,
   isLoopbackBindHost,
+  listenFailureLine,
   loadConfig,
   nonLoopbackBindRefusal,
   resolveBridgeHost,
@@ -494,6 +495,42 @@ describe("loadConfig", () => {
   test("an unrecognised dial mode falls back to auto rather than dialling nothing", () => {
     process.env.COLLIE_HERDR_DIAL = "carrier-pigeon";
     expect(loadConfig().dialMode).toBe("auto");
+  });
+});
+
+describe("listenFailureLine", () => {
+  const base = { door: "front door", port: 8787, code: "EADDRNOTAVAIL", message: "Failed to start server", interfaces: ["127.0.0.1", "192.168.1.5"] } as const;
+
+  test("names the door, the address, the port, the code and the message in one FATAL line", () => {
+    const line = listenFailureLine({ ...base, host: "127.0.0.1" });
+    expect(line.startsWith("[bridge] FATAL: front door cannot listen on 127.0.0.1:8787")).toBe(true);
+    expect(line).toContain("EADDRNOTAVAIL");
+    expect(line).toContain("Failed to start server");
+    expect(line).not.toContain("\n");
+  });
+
+  test("a loopback host gets no Tailscale hint, even when no interface lists it", () => {
+    expect(listenFailureLine({ ...base, host: "127.0.0.1", interfaces: [] })).not.toContain("Tailscale");
+    expect(listenFailureLine({ ...base, host: "::1", interfaces: [] })).not.toContain("Tailscale");
+  });
+
+  test("a wildcard host gets no hint", () => {
+    expect(listenFailureLine({ ...base, host: "0.0.0.0", interfaces: [] })).not.toContain("Tailscale");
+    expect(listenFailureLine({ ...base, host: "", interfaces: [] })).toContain("every interface");
+  });
+
+  test("a tailnet host that no interface holds gets the hint", () => {
+    const line = listenFailureLine({ ...base, host: "100.64.0.8", door: "standby door" });
+    expect(line).toContain("standby door cannot listen on 100.64.0.8:8787");
+    expect(line).toContain("address not on any interface yet (is Tailscale up?)");
+  });
+
+  test("a tailnet host that an interface holds gets no hint", () => {
+    expect(listenFailureLine({ ...base, host: "100.64.0.8", interfaces: ["127.0.0.1", "100.64.0.8"] })).not.toContain("Tailscale");
+  });
+
+  test("a missing code is said in words", () => {
+    expect(listenFailureLine({ ...base, host: "127.0.0.1", code: undefined })).toContain("no code");
   });
 });
 

@@ -31,7 +31,7 @@ import { repoFactsOf } from "./repo-facts.ts";
 import { withRepoFacts } from "./repo-facts-mux.ts";
 import { gitBinary } from "./changes.ts";
 import { withWorktreeCapability } from "./worktree-capability.ts";
-import { holdPrivateFile, loadConfig, loadConfigLayer, nonLoopbackBindRefusal, resolveConfigDir, type Config } from "./config.ts";
+import { holdPrivateFile, interfaceAddresses, listenFailureLine, loadConfig, loadConfigLayer, nonLoopbackBindRefusal, resolveConfigDir, type Config } from "./config.ts";
 import { applyConfigLayer } from "./config-source.ts";
 import {
   aclRepairAllowed,
@@ -1266,6 +1266,8 @@ const telemetry = createTelemetry({
   version: crewVersion,
   installKind: installKind,
   line: () => readUpdateLineSync(cfg.stateDir).line,
+  // Read at ping time. A peer (a member, or a deputy that is not the lead) is a member in the ping.
+  crewMode: () => crew.mode,
   now: Date.now,
   fetch: (url, init) => fetch(url, init),
   os: HOST.platform,
@@ -1654,8 +1656,12 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
   const sink = makeNotifySink(push, herdPushGate(crew.mode, snooze), herdTagFor(isPrimary, name), {
     session: isPrimary ? undefined : name,
   });
-  const notifications = new NotificationCoordinator(clock, sink, cfg.notifyDelayMs, (status) =>
-    notifyPrefs.isNotifiable(status),
+  const notifications = new NotificationCoordinator(
+    clock,
+    sink,
+    cfg.notifyDelayMs,
+    (status) => notifyPrefs.isNotifiable(status),
+    () => notifyPrefs.current().individual,
   );
   // A pane whose adapter raises asks as data (ADR 0100) does not push on its way into `blocked`: the
   // ask guard decides, once per ask, after each poll. Every other pane, and every other transition,
@@ -2116,6 +2122,7 @@ const peerNotifier =
         mute: snooze,
         delayMs: cfg.notifyDelayMs,
         isNotifiable: (status) => notifyPrefs.isNotifiable(status),
+        individual: () => notifyPrefs.current().individual,
         asks: askPush,
       })
     : undefined;
@@ -3040,10 +3047,34 @@ const standbyDoor = standbyStore === null ? null : createStandbyDoor({
  * one question — *should anything route here?* — and a lead answers it `200` on both of its ports.
  */
 const standbyPort = standbyPortOf(process.env);
+/**
+ * Run a listen, or end the process (issue 699). Bun throws when a door cannot listen, and this
+ * module starts at top level, so the throw would fail the import while the hold socket, the walky
+ * socket, the poll loop and the timers kept a bridge with no listener alive. launchd, systemd and
+ * the Windows task restart only an exit, so the line below is printed and the process exits 1.
+ */
+function listenOrExit<T>(door: "front door" | "standby door", host: string, port: number, listen: () => T): T {
+  try {
+    return listen();
+  } catch (err) {
+    console.error(
+      listenFailureLine({
+        door,
+        host,
+        port,
+        code: err instanceof Error && "code" in err ? String(err.code) : undefined,
+        message: err instanceof Error ? err.message : String(err),
+        interfaces: interfaceAddresses(),
+      }),
+    );
+    process.exit(1);
+  }
+}
+
 const standbyServer =
   standbyPort === null || bootTrust === null
     ? null
-    : Bun.serve({
+    : listenOrExit("standby door", standbyHostOf(process.env), standbyPort, () => Bun.serve({
         hostname: standbyHostOf(process.env),
         port: standbyPort,
         fetch: async (req) => {
@@ -3066,7 +3097,7 @@ const standbyServer =
           // machine mid-update is most likely to meet (M15/05).
           return withStandbyVersion(answered ?? new Response("not found", { status: 404 }), crewVersion);
         },
-      });
+      }));
 
 if (standbyServer !== null && standbyDoor !== null) {
   console.log(
@@ -3081,7 +3112,7 @@ if (standbyServer !== null && standbyDoor !== null) {
   );
 }
 
-const server = startServer({
+const server = listenOrExit("front door", cfg.host, cfg.port, () => startServer({
   cfg,
   registry,
   push,
@@ -3250,7 +3281,7 @@ const server = startServer({
     }
     return null;
   },
-});
+}));
 
 const shutdown = async () => {
   console.log("\n[bridge] shutting down");

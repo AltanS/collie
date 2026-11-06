@@ -17,6 +17,7 @@ import { abortSignalAfter, abortSignalAny } from "./env";
 import { asJsonObject, asJsonString, parseJsonObject, type JsonObject } from "./json";
 import { readHeldCancelAnswer, readSendReceipts, readSendReply, type SendReply } from "./send-protocol";
 import { readReportContext, type ReportContext } from "./report/context";
+import type { TroubleSignal } from "./report/signal";
 import { REQUEST_ID, type HeldCancelAnswer, type SendReceiptRow, type SendRequestBody } from "./surface/send";
 import type { AnswerBody } from "./surface/ask";
 import { boundedDraft, CLEAR_OUTCOMES, CLEAR_REASONS, type ClearBody, type ClearReceipt } from "./surface/clear";
@@ -2500,6 +2501,15 @@ export function setTelemetry(a: { setting: TelemetrySetting; requestId: string }
     method: "POST",
     body: JSON.stringify({ setting: a.setting, requestId: a.requestId }),
   });
+}
+
+/**
+ * One trouble signal (M86 spec 05): a trouble card showed, and the bridge counts it for its next ping.
+ * Fire and forget, through the transport below the busy signal: a count is no tap of the person's, so
+ * the progress bar never shows it. The bridge answers 204 whether or not it counted.
+ */
+export async function postTroubleSignal(signal: TroubleSignal): Promise<void> {
+  await doReq<undefined>("/api/telemetry/trouble", { method: "POST", body: JSON.stringify(signal) });
 }
 
 /**

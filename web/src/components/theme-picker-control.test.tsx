@@ -20,9 +20,10 @@ const DESIGN_KEY = "collie:design:v1";
 function collie(): Theme {
   const parsed = parseTheme(COLLIE_RAW, { maxBytes: 64 * 1024, allowReservedId: true });
   if (!parsed.ok) throw new Error("collie.json no longer parses");
-  // The fixtures are version 1 copies of collie's 43 required tokens; the optional ones (version 3) are left out.
+  // The fixtures are version 1 copies of collie's 43 required tokens; the optional ones (version 3), the surface and the palette are left out.
   const strip = (half: Theme["light"]) => Object.fromEntries(Object.entries(half ?? {}).filter(([token]) => !isOptionalThemeToken(token)));
-  return { ...parsed.theme, version: 1, light: strip(parsed.theme.light), dark: strip(parsed.theme.dark) };
+  const { surface: _surface, ansi: _ansi, ...rest } = parsed.theme;
+  return { ...rest, version: 1, fonts: { ui: "aldrich" }, light: strip(parsed.theme.light), dark: strip(parsed.theme.dark) };
 }
 
 /** A complete imported theme: collie's tokens under another id and name. */
@@ -72,7 +73,7 @@ describe("ThemePickerControl", () => {
     const select = screen.getByRole("combobox", { name: "Theme" });
     const options = within(select).getAllByRole("option");
     const shipped = store.shippedThemes().map((theme) => theme.name);
-    expect(shipped).toEqual(["Collie", "Nightwatch", "Daylight", "Harbour", "Collie New"]);
+    expect(shipped).toEqual(["Collie", "Nightwatch", "Daylight", "Harbour"]);
     expect(options.map((option) => option.textContent)).toEqual([...shipped, "Zed", "Mine"]);
     expect(select).toHaveValue("collie");
     // The chip strip is gone: no radio group, no radios.
@@ -211,7 +212,7 @@ describe("ThemePickerControl", () => {
     it("passes a clean theme with one success line", async () => {
       const { ThemePickerControl } = await load();
       const { container } = render(<ThemePickerControl />);
-      // collie's own dark destructive pair is 2.77:1 (a known finding, pinned in themes.test.ts), so
+      // collie's own dark destructive pair is 2.77:1 (a known finding of the first Collie look), so
       // the clean copy gives it a black ink. The light red itself stays: it is also drawn as text and
       // as a mark on the page, where a dark red would fail the destructive pairs (M57 spec 12).
       const clean = copy("same", "Same", (theme) => {
@@ -318,10 +319,10 @@ describe("ThemePickerControl", () => {
         "weight: bold",
         "border: default",
         "ground: flat",
-        "chrome: page",
+        "chrome: band",
         "rows: rules",
         "icons: default",
-        "labels: caps",
+        "labels: sentence",
         "zoom: screen",
         "tabs: plain",
         "composer: field",

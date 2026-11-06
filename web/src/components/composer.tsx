@@ -48,6 +48,7 @@ import { ActionRow } from "@/components/action-sheet-rows";
 import { AnchoredMenu } from "@/components/ui/anchored-menu";
 import { WalkyAimStrip, WalkyHeldStrip, WalkyNoteStrip } from "@/components/walky-composer-strip";
 import { WalkyIcon } from "@/components/walky-icon";
+import { useFlip } from "@/hooks/use-flip";
 import { useLongPress } from "@/hooks/use-long-press";
 import { useWalkyComposer, type WalkyAim } from "@/hooks/use-walky-composer";
 import * as api from "@/lib/api";
@@ -310,7 +311,7 @@ interface ComposerProps {
    * How the reply box is laid out. `"field"` (default) is the shipped box: one row, the field with
    * Attach and the primary action beside it, always. `"box"` is the chat-box shape with two states:
    * at rest ONE slim row (Attach, the field's single line, the microphone as the main button), and
-   * open (focused, or holding a draft, a chip or Type mode) the field takes the full width on top and
+   * open (holding a draft, a chip or Type mode; focus alone does not open it) the field takes the full width on top and
    * the buttons drop to a row of their own inside the box, so they never narrow the text. Layout
    * only: the same buttons, the same send logic, the same placeholder, the same field element.
    */
@@ -1661,7 +1662,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       // Report a problem (ADR 0123): the answer joins this pane's streak. Plain rules over the outcome and
       // reason (lib/report/trouble.ts); nothing is sent and nothing is retried. This machine's panes only.
       if (reportOn && reply.outcome !== null) {
-        noteSend(reportKey, paneId, { requestId: res.requestId, outcome: reply.outcome, reason: reply.reason, cap: reply.cap !== null, at: Date.now() });
+        const settledAt = Date.now();
+        noteSend(reportKey, paneId, { requestId: res.requestId, outcome: reply.outcome, reason: reply.reason, cap: reply.cap !== null, at: settledAt }, settledAt, scope);
       }
       if (reading.clear) {
         setProtocolOffer(null);
@@ -2388,13 +2390,16 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // a row of buttons that never shares a line with the text. The box grows upward because the
   // composer is anchored to the bottom edge.
   //
-  // OPEN is: the field has focus, or something sits in it (a draft, a chip, Type mode, which shows
-  // the line in the field). A recording or a transcribing clip does NOT open it: the voice takeover
+  // OPEN is: something sits in it (a draft, a chip, Type mode, which shows the line in the field).
+  // FOCUS ALONE DOES NOT OPEN IT: a focused empty box is a caret in one line, and three lines of
+  // empty space under a blinking caret is room taken from the mirror for nothing (Altan, 2026-11-05).
+  // It opens on the first character and closes when the draft is empty again, caret still in it. The
+  // change between the two shapes is played by `useFlip` below. A recording or a transcribing clip does NOT open it: the voice takeover
   // covers this block and relies on the block keeping exactly the height it had (the note at the
   // block's `invisible` below, and components/voice-takeover.tsx), so the shape is held for as long as
   // the takeover stands, even if `inert` takes the focus away from the field underneath.
   const box = layout === "box";
-  const boxOpenNow = boxFocused || input !== "" || attachments.length > 0 || direct.active;
+  const boxOpenNow = input !== "" || attachments.length > 0 || direct.active;
   const boxWasOpen = useRef(boxOpenNow);
   if (!takeoverOpen) boxWasOpen.current = boxOpenNow;
   const boxOpen = box && boxWasOpen.current;
@@ -2404,6 +2409,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // control, and the field is the control. The press is held back from the browser's focus move so a
   // field that already has focus keeps it (a blur here would close an empty box for one frame).
   const boxRef = useRef<HTMLDivElement>(null);
+  // The change of shape glides (hooks/use-flip.ts): the box's height, and each button from its old
+  // cell to its new one. Nothing is played in the field layout, which has one shape.
+  useFlip(boxRef, boxOpen, box);
   useEffect(() => {
     const el = boxRef.current;
     if (!box || el === null) return;
@@ -3003,15 +3011,20 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           ref={boxRef}
           className={cn(
             box
-              ? // A grid, because the same children change cells between the two shapes. `gap-x-1` is
-                // the 4px the buttons' hit areas reach, and there is no row gap: the field's own
-                // padding takes the reach of the row under it. The frame is the theme's own: the
-                // rule colour, the card fill, the house corner, and the foreground colour for focus.
-                "relative grid items-center gap-x-1 rounded-xl border border-rule bg-card p-1 focus-within:border-foreground"
+              ? // A grid, because the same children change cells between the two shapes. `p-1.5` and
+                // `gap-x-1.5` are 6px of air between the circles and the border and between each
+                // other (the drawn circle stays 36px; its hit area reaches 4px, inside both). There
+                // is no row gap: the field's own padding takes the reach of the row under it. The
+                // frame is the theme's own: the rule colour, the card fill, the house corner, and
+                // the foreground colour for focus.
+                "relative grid items-center gap-x-1.5 rounded-xl border border-rule bg-card p-1.5 focus-within:border-foreground"
               : "relative flex items-end gap-1 rounded-xl border border-input bg-background p-1 focus-within:border-ring focus-within:ring-1 focus-within:ring-ring",
-            box && !boxOpen && "grid-cols-[auto_1fr_auto]",
-            box && boxOpen && !mirrored && "grid-cols-[auto_1fr_auto_auto]",
-            box && boxOpen && mirrored && "grid-cols-[auto_auto_1fr_auto]",
+            // Rest: [field][Attach][main]. Open, bottom row: [grow space][Attach][mic][Send]. Mirrored
+            // for `hand="left"`: the buttons at the left, the field after them.
+            box && !boxOpen && !mirrored && "grid-cols-[1fr_auto_auto]",
+            box && !boxOpen && mirrored && "grid-cols-[auto_auto_1fr]",
+            box && boxOpen && !mirrored && "grid-cols-[1fr_auto_auto_auto]",
+            box && boxOpen && mirrored && "grid-cols-[auto_auto_auto_1fr]",
             // `hand="left"`: the whole row runs mirrored, so Send stands on the box's left edge, then
             // Attach, then the field. The DOM order is untouched, so the tab and reading order are
             // too. With chips, `flex-wrap` still stacks the chip strip ABOVE the row.
@@ -3131,12 +3144,12 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               // is what keeps the text off it.
               box
                 ? boxOpen
-                  ? // OPEN: the full width, about three lines at the least (`lh` is the field's own
-                    // line height, so a larger draft text keeps three lines), then the base cap and a scroll.
-                    // `pb-1` takes the 4px the buttons' hit area reaches up into this field.
-                    "col-span-full col-start-1 row-start-2 min-w-0 min-h-[calc(3lh+0.75rem)] px-2 pt-2 pb-1"
-                  : // AT REST: the one slim line between Attach and the primary action.
-                    "col-start-2 row-start-1 min-w-0 min-h-9 pl-2 pr-1 py-1.5"
+                  ? // OPEN: the full width and the height of its own text, no minimum (one line to
+                    // start), growing to the base cap and then scrolling. `pb-1` takes the 4px the
+                    // buttons' hit area reaches up into this field.
+                    "col-span-full col-start-1 row-start-2 min-w-0 px-2 pt-1.5 pb-1"
+                  : // AT REST: the one slim line beside Attach and the primary action.
+                    cn("row-start-1 min-w-0 min-h-9 py-1.5", mirrored ? "col-start-3 pl-1 pr-2" : "col-start-1 pl-2 pr-1")
                 : "min-w-0 flex-1 min-h-9 pl-2 py-1.5",
               // The Steer hint is longer than the reply words, so it is drawn smaller. The FIELD'S HEIGHT
               // does not change with it: `text-base` gives the field a unitless line-height, so the
@@ -3176,8 +3189,10 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             className={cn(
               TOOLBAR_TAP_TARGET,
               "size-9 rounded-full text-muted-foreground",
+              // Box layout: a filled circle, so the icon stands on something (Altan, 2026-11-05).
+              box && "bg-secondary text-foreground",
               box && (boxOpen ? "row-start-3" : "row-start-1"),
-              box && (mirrored ? (boxOpen ? "col-start-4" : "col-start-3") : "col-start-1"),
+              box && (mirrored ? (boxOpen ? "col-start-3" : "col-start-2") : "col-start-2"),
               // The press echo, in the tone this app already uses for "your press landed" —
               // `variant="default"`, which is what a tapped quick reply and a busy dialog option
               // both flip to. It was `bg-accent` first, and that was a token chosen by name
@@ -3223,6 +3238,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               className={cn(
                 TOOLBAR_TAP_TARGET,
                 "size-9 rounded-full text-muted-foreground",
+                box && "bg-secondary text-foreground",
                 // Box layout: the small mic stands in the open shape's button row, beside Send.
                 box && (mirrored ? "col-start-2 row-start-3" : "col-start-3 row-start-3"),
               )}
@@ -3255,8 +3271,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             onClose={() => setPicking(false)}
             label={translate("composer.attach.title")}
             // Attach stands near the box's LEFT edge under `hand="left"`; the panel follows it. In the
-            // box layout Attach is the LEFT button and the mirrored hand puts it at the right.
-            className={mirrored !== box ? "right-auto left-0" : undefined}
+            // box layout it stands beside the microphone, at the right, and the mirrored hand at the left.
+            className={mirrored ? "right-auto left-0" : undefined}
           >
             <ActionRow
               icon={<Image aria-hidden="true" className="size-4 shrink-0" />}
@@ -3435,6 +3451,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           elapsed={recorder.elapsedLabel}
           source={recorder.meter}
           hand={hand}
+          layout={layout}
           padClassName={blockPad}
           keyboardOpened={openedByKeyboard.current}
           sends={!starting && handsFree && !hasDraft && noEcho === null}

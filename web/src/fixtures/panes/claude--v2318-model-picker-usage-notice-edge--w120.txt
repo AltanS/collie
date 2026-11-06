@@ -1,0 +1,40 @@
+
+ ▐▛███▛█   Claude Code v2.1.318
+▝▜██████▀  Opus 5.5 with high effort · Claude Ultra
+ ▝▝   ▝▝   ~/.cache/collie-lab/model-switch/project
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ You've used 80% of your weekly limit · resets Nov 11, 2am (Europe/Berlin) · /usage-credits to keep using Claude Code ▔
+   Select model
+   Switch between Claude models. Your pick becomes the default for new sessions. For other/previous model names,
+   specify with --model.
+
+     1.  Default (recommended)  Sonnet 5.5 · Efficient for routine tasks
+   ❯ 2.  Opus 5.5 ✔             For complex work and everyday tasks
+     3.  Fable 5.1              For your toughest challenges
+     4.  Sonnet 5.5             Most efficient for simpler tasks
+     5.  Haiku 5.5              Fastest for quick answers
+     6.  Haiku 4.5              Fastest for quick answers
+     7.  Sonnet 5               Efficient for routine tasks
+     8.  Opus 5                 Best for everyday, complex tasks
+     9.  Fable 5                Most capable for your hardest and longest-running tasks
+   ↓ 10. Opus 4.8               Best for everyday, complex tasks
+      … +3 models
+
+   ● High effort ←/→ to adjust
+
+   Enter to set as default · s to use this session only · Esc to cancel

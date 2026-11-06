@@ -2576,6 +2576,9 @@ export interface NotifyPrefs {
   blocked: boolean;
   /** Push when an agent finishes its task. Default off. */
   done: boolean;
+  /** Send each alert as its own notification, one per agent, instead of one summary per machine.
+   *  Default off. */
+  individual: boolean;
   /** Push when a new Collie version is available (a restart or upgrade is waiting). Default on. */
   updates: boolean;
   /** Push before an agent pane's prompt cache expires. Default off, and it covers EVERY pane — the

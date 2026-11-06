@@ -1,16 +1,15 @@
 import { useMemo, useRef, type ReactNode } from "react";
-import { EyeOff, Keyboard, ListEnd, ListTodo, Monitor, Settings2, Slash, Terminal, TerminalSquare, Zap } from "lucide-react";
+import { EyeOff, Keyboard, ListEnd, ListTodo, Monitor, Settings2, Slash, Terminal, Zap } from "lucide-react";
 
 import { ActionsRow, type GeneralAction } from "@/components/actions-row";
-import { AgentIcon } from "@/components/agent-icon";
 import { HostChip } from "@/components/host-chip";
 import { ModelTag } from "@/components/model-tag";
 import { RawMirror } from "@/components/raw-mirror";
 import { SessionStream } from "@/components/session-stream";
-import { StatusDot } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
 import { ChatMessageList, type ChatMessageListHandle } from "@/components/ui/chat/chat-message-list";
 import { BranchLabel } from "@/components/ui/branch-label";
+import { PaneGlyph } from "@/components/ui/pane-glyph";
 import { UnseenMark } from "@/components/ui/unseen-mark";
 import { useChatWindow } from "@/hooks/use-chat-window";
 import { useDashPrefs } from "@/hooks/use-dash-prefs";
@@ -120,14 +119,7 @@ export function ColumnHeader({ pane, controls, onFocus }: { pane: AgentView; con
   const head = paneGitHead(pane);
   return (
     <div data-slot="column-header" className="flex min-h-15 shrink-0 items-center gap-1 border-b border-band-rule bg-band-ground py-1 pl-4 pr-2">
-      <span className="relative inline-flex shrink-0">
-        {pane.kind === "shell" ? (
-          <TerminalSquare className="size-8 text-muted-foreground" aria-hidden />
-        ) : (
-          <AgentIcon agent={pane.agent} className="size-8" />
-        )}
-        <StatusDot status={shownStatus(pane)} backed surface="bg-band-ground" label={statusLabel(shownStatus(pane))} className="absolute -bottom-1 -right-1" />
-      </span>
+      <PaneGlyph pane={pane} className="size-8" markOn="bg-band-ground" named />
       {/* The name is the column's way in for a keyboard: Enter on it gives the column the focus. */}
       <button type="button" onClick={own(onFocus)} className="min-h-11 min-w-0 flex-1 pl-2 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
         <div className="flex min-w-0 items-center gap-1.5">

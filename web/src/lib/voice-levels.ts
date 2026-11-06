@@ -29,6 +29,18 @@ export function rmsOfBytes(samples: Uint8Array): number {
 }
 
 /**
+ * Whether a time-domain read holds any audio at all: some sample that is not exactly zero. An
+ * analyser fed by a stream that has delivered nothing reads all zeros; a live microphone, even in a
+ * silent room, never does. It is the "first audio" test (#709), so it asks for presence, not loudness.
+ */
+export function hasSignal(samples: Float32Array): boolean {
+  for (const sample of samples) {
+    if (sample !== 0) return true;
+  }
+  return false;
+}
+
+/**
  * Fill `bars` (0 to 1 each) from one frequency read. The bars are log-spaced between
  * {@link BAR_LOW_HZ} and {@link BAR_HIGH_HZ}, because pitch is heard in ratios: a linear split puts
  * every bar of a voice in the first two. A bar takes the loudest bin it covers, rises at once and

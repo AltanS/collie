@@ -12,7 +12,7 @@ import { TelemetryNotice } from "./telemetry-notice";
 // The one-time install-count notice (M86 spec 02): shown once on the dashboard while the count is on
 // by default, gone when it is off, gone for good once dismissed.
 
-const BODY = "Collie 1.27.0 counts installs, once a day and anonymously. Turn it off in Settings.";
+const BODY = "Collie 1.27.0 sends anonymous telemetry once a day. Turn it off in Settings.";
 const KEY = "collie.telemetryNotice.v1";
 
 const view = (over: Partial<TelemetryView> = {}): TelemetryView => ({ on: true, decidedBy: "default", setting: null, next: null, ...over });
@@ -33,7 +33,7 @@ function renderNotice(initial: TelemetryView | "fail") {
   const router = createMemoryRouter(
     [
       { path: "/", element: <TelemetryNotice /> },
-      { path: "/settings/system", element: <Where /> },
+      { path: "/settings/system/install-count", element: <Where /> },
     ],
     { initialEntries: ["/"] },
   );
@@ -117,11 +117,11 @@ describe("the install-count notice", () => {
     expect(await screen.findByText(BODY)).toBeInTheDocument();
   });
 
-  it("the button opens the card in Settings, System, and spends the notice", async () => {
+  it("the button opens the card on its page in Settings, System, and spends the notice", async () => {
     const user = userEvent.setup();
     renderNotice(view());
     await user.click(await screen.findByRole("button", { name: "Open Settings" }));
-    expect(await screen.findByTestId("where")).toHaveTextContent("/settings/system#install-count");
+    expect(await screen.findByTestId("where")).toHaveTextContent("/settings/system/install-count");
     expect(localStorage.getItem(KEY)).toBe("1");
   });
 });

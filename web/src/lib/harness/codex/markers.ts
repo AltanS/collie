@@ -397,12 +397,51 @@ function isStyledStatusRow(text: string, line: StyledLine): boolean {
   return paint === null || !paint.startsWith("fg:") || !fieldColours.has(paint.slice(3));
 }
 
+// THE STATUS ROW ON A READ WITH NO STYLING (herdr-core's `terminal.read`, reported 2026-11-05 on
+// Codex 0.166.0 and Collie 1.26.1). Every acceptor above but the `Context` one keys on paint, and the
+// core hands out plain text: no segment carries a colour, so the default status row never passed and
+// every Codex pane on the core had no composer. While a turn ran, `esc to interrupt` stood in the last
+// rows, and the unread-dialog card covered the live box after every send
+// (codex--v0166-core-working--w120.txt). On such a read (`readIsUnstyled` over the whole screen, the
+// test the pi and Claude readers take for the same mux) the paint stands for one text fact, the shape
+// the Codex profile's frame bottom already reads on every multiplexer (profiles/codex.json,
+// idle.frame.bottom): the two-space indent, a field, ` · ` and at least one more field, in bounds.
+// Two rows the paint kept out are kept out by their words: a key-hint row (`← for agents · ? for
+// shortcuts`, `⚠ 1 warning · f2 to view`), which leads with its key or its sign; and a dialog footer
+// (`enter continue · esc quit`, `enter select · esc back`), whose fields open with a key name and a
+// lower-case verb. A right-aligned notice (`Pursuing goal (17h 43m)`) stands after a gap of two spaces
+// or more, as on a styled read: the part left of the gap must be a whole status row on its own, and the
+// notice is only bounded (codex--v0158-goal-notice.txt read with no styling). A row that names the
+// context metric (`Context 50% left`) is judged by the `Context` shape above alone, on every read, so
+// the prose row of the review repro (`  model · Context 50% left`) stays refused. The tail shape in
+// chrome.ts must still hold on top. A styled read never takes this path, so the prose-shaped row a
+// styled screen shows stays refused ("refuses the same text with no styling at all", codex.test.ts).
+const PLAIN_STATUS_ROW = /^ {2}(?![←?⚠] )\S(?:.*\S)? · \S/u;
+const KEY_HINT_FIELD = /^(?:enter|esc|tab|space|ctrl\+\S+|shift\+\S+) [a-z]/u;
+const NOTICE_GAP = / {2,}/u;
+const CONTEXT_METRIC = /\bContext \d+% (?:left|used)\b/u;
+
+/** The status row by its text alone, for a read with no styling anywhere (see above). */
+function isPlainStatusRow(row: string): boolean {
+  if (!PLAIN_STATUS_ROW.test(row) || hasControlChar(row) || CONTEXT_METRIC.test(row)) return false;
+  if (codePointCount(row) > MAX_STATUS_ROW_CHARS) return false;
+  const body = row.slice(STATUS_INDENT.length);
+  const gap = body.search(NOTICE_GAP);
+  if (gap >= 0 && codePointCount(body.slice(gap).trim()) > MAX_STATUS_FIELD_CHARS) return false;
+  const fields = (gap < 0 ? body : body.slice(0, gap)).split(STATUS_SEPARATOR);
+  if (fields.length < MIN_STATUS_FIELDS || fields.length > MAX_STATUS_FIELDS) return false;
+  return fields.every((field) => field.trim() !== "" && codePointCount(field) <= MAX_STATUS_FIELD_CHARS && !KEY_HINT_FIELD.test(field));
+}
+
 /** True when the row could be the composer's status line. Never decisive alone — the composer
  *  is located by the prompt-row-above-status shape at the buffer tail, not by any single row.
- *  `line` is the same row, styled; without it only the `Context`-bearing shape can be accepted. */
-export function isStatusRow(text: string, line?: StyledLine): boolean {
+ *  `line` is the same row, styled; without it only the `Context`-bearing shape can be accepted.
+ *  `plain` says the whole screen carries no styling (a plain-text multiplexer): the row's text then
+ *  stands for its paint (`isPlainStatusRow`). */
+export function isStatusRow(text: string, line?: StyledLine, plain = false): boolean {
   const row = rstrip(text);
   if (STATUS_ROW.test(row) || INLINE_QUEUE_CONTEXT_ROW.test(row)) return true;
+  if (plain) return isPlainStatusRow(row);
   return line !== undefined && isStyledStatusRow(text, line);
 }
 
@@ -421,13 +460,13 @@ const HINT_ROW = /^ {2,}\S/;
  * True when the row could be the key-hint row under a 0.157.0 status row: indented (column 0 is
  * blank, which no transcript bullet and no prompt row is), bounded, no control bytes, and not a
  * status row itself. Never decisive alone: locateComposer accepts it only as the last non-blank row
- * and only straight under a status row.
+ * and only straight under a status row. `plain` as in {@link isStatusRow}.
  */
-export function isHintRow(text: string, line?: StyledLine): boolean {
+export function isHintRow(text: string, line?: StyledLine, plain = false): boolean {
   const row = rstrip(text);
   if (!HINT_ROW.test(row) || hasControlChar(row)) return false;
   if (codePointCount(row) > MAX_STATUS_ROW_CHARS) return false;
-  return !isStatusRow(text, line);
+  return !isStatusRow(text, line, plain);
 }
 
 /** The glyphs Codex draws in front of the composer: `›` (U+203A) at most efforts, `»` (U+00BB) at

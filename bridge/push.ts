@@ -156,6 +156,26 @@ export function machineTopic(id: string, metric: string): string {
   return `${MACHINE_TOPIC_PREFIX}${hash.slice(0, MACHINE_TOPIC_HASH)}`;
 }
 
+/** The fixed start of every per-pane topic: 5 characters, plus {@link PANE_TOPIC_HASH} = 20. */
+const PANE_TOPIC_PREFIX = "herd-";
+/** Base64url characters of the hash kept: 90 bits. 5 + 15 = 20 characters, a length base64 can produce
+ *  (12 would make 17, which is 1 mod 4, and Apple refuses it; see the topic note above). */
+const PANE_TOPIC_HASH = 15;
+
+/**
+ * The collapse topic of one pane's own notification, for the "one notification per agent" preference:
+ * `herd-` and the first 15 base64url characters of the SHA-256 of the pane's notification tag. One
+ * topic per pane, so a phone that is offline while two panes alert gets both, where the shared
+ * `collie-herd` topic kept only the last. A tag holds a host and a pane id, free text of any length,
+ * which is why it is hashed and not spelled. Its `clear` rides the same topic, so a queued alert and
+ * its retraction replace each other. 20 characters, inside RFC 8030's alphabet and ceiling
+ * ({@link topicIsSendable}).
+ */
+export function paneTopic(tag: string): string {
+  const hash = createHash("sha256").update(tag).digest("base64url");
+  return `${PANE_TOPIC_PREFIX}${hash.slice(0, PANE_TOPIC_HASH)}`;
+}
+
 /** Whether a collapse topic is one every push service will accept: RFC 8030's alphabet and 32-char
  *  ceiling, plus the length base64 can actually produce (Apple decodes it; ≡ 1 mod 4 is impossible).
  *  Exported for the test that guards the constants above — a topic edited for tidiness would

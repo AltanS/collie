@@ -13,6 +13,7 @@ import { updateDeps } from "./deps.ts";
 import { INSTALLER_SH } from "./installer-embed.ts";
 import { detectInstall, PACKAGED_SENTENCE, updateRepoOf, type InstallKind } from "./install-kind.ts";
 import { realLinkFs } from "./link.ts";
+import { identityHeader } from "./snapshot-read.ts";
 import { EXIT, type Io } from "./io.ts";
 import { parseCrewArgs, probeMembers } from "./crew.ts";
 import {
@@ -809,7 +810,7 @@ async function bankedPeerVerdicts(deps: CrewUpdateDeps): Promise<readonly CrewUp
       signal: AbortSignal.timeout(BANKED_BUDGET_MS),
       // The bridge's local read credential (bridge/local-secret.ts): reads need a token since ADR
       // 0086, and this process holds none. No file means no header, and the empty answer below.
-      headers: localAuthHeader(readLocalSecret(deps.ctx.stateDir, (p) => deps.files.read(p))),
+      headers: { ...identityHeader(deps), ...localAuthHeader(readLocalSecret(deps.ctx.stateDir, (p) => deps.files.read(p))) },
     });
     if (!answer.ok) return [];
     // SAFETY: `Response.json()` answers a JSON value, and `parseCrewRows` validates every field of

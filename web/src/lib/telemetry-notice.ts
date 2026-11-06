@@ -2,8 +2,8 @@ import { useSyncExternalStore } from "react";
 
 import type { TelemetryView } from "@/lib/types";
 
-// THE INSTALL-COUNT NOTICE (M86 spec 02): whether this device still needs to be told that Collie
-// counts installs, once a day and anonymously, and where to turn that off.
+// THE TELEMETRY NOTICE (M86 spec 02): whether this device still needs to be told that Collie
+// sends anonymous telemetry once a day, and where to turn that off.
 //
 // ── WHEN IT STANDS ────────────────────────────────────────────────────────────
 // Only while the machine's count is on by the DEFAULT, which is the one state where nobody chose

@@ -1,5 +1,8 @@
-import { act, renderHook } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
+import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
+
+import { server } from "@/test/setup";
 
 import { closeReport, closeTrouble, EPISODE_MAX, EPISODE_MAX_AGE_MS, noteSend, openReport, readEpisodes, streakIds, troubleOf, useReportTarget, useTroubleOffer } from "./store";
 
@@ -60,5 +63,30 @@ describe("the streak store (ADR 0123)", () => {
     expect(result.current).toEqual({ paneId: "w1:p1", requestIds: ["a"] });
     act(() => closeReport());
     expect(result.current).toBeNull();
+  });
+});
+
+describe("the trouble signal from a streak (M86 spec 05)", () => {
+  it("posts once per streak, when the card is first offered, with the four names and no pane id", async () => {
+    const posted: unknown[] = [];
+    server.use(
+      http.get("/api/report/context", () => HttpResponse.json({ collie: "1.27.0", line: "stable", os: "linux", arch: "x64", mux: "herdr-core", harness: "codex", screenable: false })),
+      http.post("/api/telemetry/trouble", async ({ request }) => {
+        posted.push(await request.json());
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+    const key = "lead|default|w9:p1";
+    noteSend(key, "w9:p1", fail(1));
+    noteSend(key, "w9:p1", fail(2));
+    expect(posted).toEqual([]);
+    noteSend(key, "w9:p1", fail(3));
+    await waitFor(() => expect(posted).toHaveLength(1));
+    // The fourth and fifth failure of the same streak keep the card; they are not new signals.
+    noteSend(key, "w9:p1", fail(4));
+    noteSend(key, "w9:p1", fail(5));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(posted).toEqual([{ kind: "send", harness: "codex", version: null, mux: "herdr-core" }]);
+    expect(JSON.stringify(posted)).not.toContain("w9:p1");
   });
 });

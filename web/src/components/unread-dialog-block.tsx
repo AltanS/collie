@@ -31,6 +31,13 @@ export interface UnreadDialogBlockProps {
    * a read, so a read-only device keeps it.
    */
   onReport?: () => void;
+  /**
+   * Called once per card instance for each pane and dialog it shows (M86 spec 05): the trouble signal.
+   * A re-render of the same dialog is not a new call. Absent, nothing is called.
+   */
+  onShown?: () => void;
+  /** The pane the card shows, so an instance another pane reuses calls {@link onShown} again. */
+  paneId?: string;
 }
 
 // The UNREAD-DIALOG CARD — one declared key over a screen Collie could not read (.adr/0053).
@@ -60,7 +67,7 @@ export interface UnreadDialogBlockProps {
 // the screen's own rows print `esc dismiss`; otherwise it names the key, never a verb.
 const NAMES_A_DISMISS = /\besc\s+dismiss\b/i;
 
-export function UnreadDialogBlock({ cancel, lines, onAction, disabled, wrap, onReport }: UnreadDialogBlockProps) {
+export function UnreadDialogBlock({ cancel, lines, onAction, disabled, wrap, onReport, onShown, paneId }: UnreadDialogBlockProps) {
   useLocale();
   const [sending, setSending] = useState(false);
   const locked = disabled || sending;
@@ -74,6 +81,15 @@ export function UnreadDialogBlock({ cancel, lines, onAction, disabled, wrap, onR
   const dismissWording = lines.some((l) => NAMES_A_DISMISS.test(lineText(l)));
 
   useEffect(() => () => clearTimeout(timer.current), []);
+  // The trouble signal (M86 spec 05): once per instance for each pane and dialog identity, the same
+  // identity the arm keys on. A poll that re-renders the same dialog calls nothing.
+  const shownKey = `${paneId ?? ""}\n${identity}`;
+  const shownFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (onShown === undefined || shownFor.current === shownKey) return;
+    shownFor.current = shownKey;
+    onShown();
+  }, [shownKey, onShown]);
   // A card that stops being pressable (read-only device, gone pane) also stops being armed.
   useEffect(() => {
     if (!disabled) return;

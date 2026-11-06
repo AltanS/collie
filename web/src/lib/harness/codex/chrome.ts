@@ -18,6 +18,7 @@
 // walk reaches, not the thing that decides whether the composer exists.
 
 import { trimTrailingBlank, type StyledLine } from "../../blocks";
+import { readIsUnstyled } from "../../surface/frame";
 import {
   isBlank,
   isHintRow,
@@ -64,10 +65,13 @@ const CONTINUATION = /^ {2}\s*\S/;
 
 /** The exact placeholder text is still a valid thing an operator might deliberately type. Codex
  * distinguishes its empty hint by painting the whole body dim, so extraction should use that
- * renderer evidence too instead of discarding an ordinary non-dim draft with those words. */
-function isEmptyPlaceholder(line: StyledLine): boolean {
+ * renderer evidence too instead of discarding an ordinary non-dim draft with those words. On a read
+ * with no styling anywhere (`plain`, herdr-core) there is no dim to read, and the words alone are the
+ * empty box, the same trade the Codex profile makes (profiles/codex.json, idle.placeholders). */
+function isEmptyPlaceholder(line: StyledLine, plain: boolean): boolean {
   const text = rstrip(lineText(line));
   if (promptText(text) !== PLACEHOLDER) return false;
+  if (plain) return true;
 
   const bodyStart = PROMPT_HEAD_LENGTH;
   const bodyEnd = bodyStart + PLACEHOLDER.length;
@@ -85,31 +89,43 @@ function isEmptyPlaceholder(line: StyledLine): boolean {
   return sawBody;
 }
 
+// A dialog's pointed option row (`› 1. Trust and continue`, `› 1. Yes, proceed (y)`) has the prompt's
+// own glyph at column 0. On a styled read the dialog's bold footer keeps it from ever reaching the walk
+// below; on a read with no styling the footer is plain text too, so the row itself is refused, as the
+// Codex profile's prompt pattern refuses it on every read (profiles/codex.json, idle.frame.prompt).
+const POINTED_OPTION = /^\d{1,2}\. /u;
+
 /** The composer at the buffer tail, or null (a dialog owns the screen, or the frame is torn). */
 export function locateComposer(lines: StyledLine[]): ComposerBox | null {
   const clean = lines.map(withoutSparkles);
   const texts = clean.map((l) => rstrip(lineText(l)));
-  const statusRow = locateStatusRow(texts, clean);
+  // A read with no styling anywhere (herdr-core): the status and hint rows are read by their text.
+  const plain = readIsUnstyled(lines);
+  const statusRow = locateStatusRow(texts, clean, plain);
   if (statusRow < 0) return null;
 
   for (let i = statusRow - 1; i >= 0 && statusRow - 1 - i <= MAX_DRAFT_ROWS; i--) {
     const t = texts[i]!;
-    if (promptText(t) !== null) return { top: bandTop(lines, texts, i), promptRow: i, statusRow };
+    const body = promptText(t);
+    if (body !== null) {
+      if (plain && POINTED_OPTION.test(body)) return null;
+      return { top: bandTop(lines, texts, i), promptRow: i, statusRow };
+    }
     // Transcript at column 0, or a second status row: the walk has left this frame.
-    if (/^\S/.test(t) || isStatusRow(t, clean[i])) return null;
+    if (/^\S/.test(t) || isStatusRow(t, clean[i], plain)) return null;
   }
   return null;
 }
 
 /** The status row: the last non-blank row, or the row straight above it when that last row is the
  *  0.157.0 key-hint row (`isHintRow`). No blank row may sit between the two. -1 when neither. */
-function locateStatusRow(texts: string[], clean: StyledLine[]): number {
+function locateStatusRow(texts: string[], clean: StyledLine[], plain: boolean): number {
   const last = lastNonBlankIndex(texts);
   if (last < 0) return -1;
-  if (isStatusRow(texts[last]!, clean[last])) return last;
+  if (isStatusRow(texts[last]!, clean[last], plain)) return last;
   const above = last - 1;
-  if (above < 0 || !isHintRow(texts[last]!, clean[last])) return -1;
-  return isStatusRow(texts[above]!, clean[above]) ? above : -1;
+  if (above < 0 || !isHintRow(texts[last]!, clean[last], plain)) return -1;
+  return isStatusRow(texts[above]!, clean[above], plain) ? above : -1;
 }
 
 /** The starfield rows directly above the prompt belong to the composer band, and leave the mirror
@@ -165,7 +181,7 @@ export function extractInputDraft(lines: StyledLine[]): string | null {
     if (CONTINUATION.test(texts[i]!)) parts.push(texts[i]!.trim());
   }
   const draft = parts.filter((p) => p !== "").join(" ");
-  if (draft === "" || (draft === PLACEHOLDER && isEmptyPlaceholder(clean[box.promptRow]!))) {
+  if (draft === "" || (draft === PLACEHOLDER && isEmptyPlaceholder(clean[box.promptRow]!, readIsUnstyled(lines)))) {
     return null;
   }
   return draft;

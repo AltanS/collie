@@ -520,12 +520,14 @@ error, with the fix. A folder that Collie cannot check is a warning: `cannot con
 
 From 1.27.0 each Collie bridge sends one small anonymous ping a day to our own analytics. It carries
 the Collie version, the operating system, how Collie was installed, and whether the bridge runs
-alone or in a crew, under a random ID made on your machine. No IP address is stored with the ping, and
-nothing else is sent: no host name, no folder, no agent, nothing you type or read. We need these numbers to
+alone or in a crew, under a random ID made on your machine. No IP address is stored with the ping.
+When Collie shows one of its two trouble cards, the next ping also carries how often, with the name
+and version of the agent program and the multiplexer it ran on, never what was said or shown.
+Nothing else is sent: no host name, no folder, nothing you type or read. We need these numbers to
 spot regressions and slow degradations after a release, and to steer what gets built next. Up to
 1.26.x Collie sent nothing ([ADR 0129](../.adr/0129-an-anonymous-install-count-on-by-default.md)).
 
-Turning it off is one switch: Settings, System, **Anonymous install count**. `COLLIE_TELEMETRY=0`,
+Turning it off is one switch: Settings, System, **Telemetry**. `COLLIE_TELEMETRY=0`,
 `telemetry = false` in `config.toml` or `DO_NOT_TRACK=1` do the same, and so does blocking the one
 host it goes to, `ping.colliepwa.dev`, in your firewall. The first ping waits a day after the first
 start of a build that has it. The exact message is written down in the contract in the repository,
