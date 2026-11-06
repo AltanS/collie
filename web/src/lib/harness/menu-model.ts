@@ -55,25 +55,12 @@ export interface MenuNav {
   leftRight?: MenuLeftRight;
 }
 
-/** The options of a menu as its own rows printed them, in order. */
-export interface MenuRows {
-  labels: string[];
-  current: number;
-}
-
 /** A recognised generic menu: its title, the keys it named, and its freshness signature. */
 export interface MenuModel {
   /** The screen's own heading — e.g. "Select model". */
   title: string;
   actions: MenuAction[];
   nav: MenuNav;
-  /**
-   * The numbered rows of the block holding the `❯` marker, when they read cleanly; `current` is the
-   * marker's place among them, not its printed number. A tap on a row walks the marker there with
-   * Up/Down and commits nothing. Absent on any screen that does not read cleanly. Stays out of the
-   * identity: the arrows' whole effect is to move `current`.
-   */
-  rows?: MenuRows;
   /**
    * A byte-signature of the region the menu was derived from. The race guard compares it so a tap on
    * a stale render (the highlight has since moved, or a different picker is up) can't fire its key at
