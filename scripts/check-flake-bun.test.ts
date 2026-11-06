@@ -126,12 +126,12 @@ describe("the Windows check runs the flake's Bun", () => {
     expect(String(setup[0]?.with?.["bun-version"])).toBe(flakeBunVersion());
   });
 
-  test("windows-suites.ps1 gives each suite its own skip budget, 191 in all, each skip named", () => {
+  test("windows-suites.ps1 gives each suite its own skip budget, 195 in all, each skip named", () => {
     const script = readFileSync(join(ROOT, "scripts", "windows-suites.ps1"), "utf8");
     const budget = (suite: string): number => Number(new RegExp(`\\[int\\]\\$MaxSkips${suite} = (\\d+)`).exec(script)?.[1] ?? Number.NaN);
-    expect([budget("Bridge"), budget("Cli"), budget("Scripts")]).toEqual([106, 60, 25]);
+    expect([budget("Bridge"), budget("Cli"), budget("Scripts")]).toEqual([107, 63, 25]);
     // The bridge allowance is the local-cli tests that stay POSIX-only, the one real-engine Whistle
-    // case that needs the uncommitted model, the one scan of real links to /etc, the one telemetry file mode, the 5 hold socket tests, the 6
+    // case that needs the uncommitted model, the one scan of real links to /etc, the one telemetry file mode, the 5 hold socket tests, the 7
     // walky mode and socket tests, the 30 durable example tests, the 10 durable-harness adapter skips and the 36 durable socket tests; the comment
     // names them all.
     const localCli = readFileSync(join(ROOT, "bridge", "stt", "local-cli.test.ts"), "utf8");
@@ -141,10 +141,10 @@ describe("the Windows check runs the flake's Bun", () => {
     expect(holdSocket).toHaveLength(5);
     for (const name of holdSocket) expect(script).toContain(name);
     // The walky tests: a file mode or a Unix socket, each one a skipped test beside a part that runs on Windows.
-    const walkySkips = ["instances", "log", "refusals", "seen", "socket"].flatMap((file) =>
+    const walkySkips = ["instances", "log", "off", "refusals", "seen", "socket"].flatMap((file) =>
       [...readFileSync(join(ROOT, "bridge", "walky", `${file}.test.ts`), "utf8").matchAll(/test\.skipIf\(POSIX_ONLY\)\("([^"]+)"/g)].map((m) => m[1]!),
     );
-    expect(walkySkips).toHaveLength(6);
+    expect(walkySkips).toHaveLength(7);
     for (const name of walkySkips) expect(script).toContain(name);
     expect(script).toContain("bridge/mux/durable/example-durable-harness.test.ts");
     // The /etc link scan: the one skip in bridge/claude-commands.test.ts.
@@ -175,9 +175,9 @@ describe("the Windows check runs the flake's Bun", () => {
     expect(script).toContain("protocol.unstyled.test.ts");
     expect(budget("Bridge")).toBe(posixOnly.length + 1 + etcLinks.length + holdSocket.length + walkySkips.length + telemetrySkips.length + 30 + 10 + 36 + boundedRunSkips.length + 1 + 2 + rawEnterSkips + fakeGitSkips.length);
     // The cli allowance adds the three real runs of the POSIX install leg a crew member runs, and the
-    // 38 tests of cli/walky.test.ts that talk to a real walky socket (`socketTest`).
+    // 41 tests of cli/walky.test.ts that talk to a real walky socket (`socketTest`).
     const walkySocketTests = readFileSync(join(ROOT, "cli", "walky.test.ts"), "utf8").match(/^ {2}socketTest\(/gm) ?? [];
-    expect(walkySocketTests).toHaveLength(38);
+    expect(walkySocketTests).toHaveLength(41);
     // The statusLine wrapper's "runShell stops the whole command" block (3 tests) is skipped off Linux.
     expect(readFileSync(join(ROOT, "cli", "statusline.test.ts"), "utf8")).toContain('describe.skipIf(process.platform !== "linux")("runShell stops the whole command"');
     expect(script).toContain("runShell stops the whole command");

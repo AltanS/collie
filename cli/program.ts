@@ -118,6 +118,8 @@ import {
   cmdWalky,
   cmdWalkyCancel,
   cmdWalkyInbox,
+  cmdWalkyOff,
+  cmdWalkyOn,
   cmdWalkyReply,
   cmdWalkySend,
   cmdWalkyStatus,
@@ -324,6 +326,16 @@ const WALKY_TREE: readonly Subcommand[] = [
     name: "cancel",
     summary: "take back a held message you sent: `walky cancel <id>` (it stays in the inbox, not typed)",
     run: (args, s) => cmdWalkyCancel(walkyDeps(s.io), args),
+  },
+  {
+    name: "off",
+    summary: "turn this session's walky talky off: other agents cannot message it, your operator still can",
+    run: (args, s) => cmdWalkyOff(walkyDeps(s.io), args),
+  },
+  {
+    name: "on",
+    summary: "turn this session's walky talky on again",
+    run: (args, s) => cmdWalkyOn(walkyDeps(s.io), args),
   },
 ];
 

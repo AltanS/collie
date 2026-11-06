@@ -283,6 +283,7 @@ the same handlers. There is no second handler set, no second semantic, and no He
 | `POST` | `/crew/v1/sent/clear` | `POST /api/sent/clear` | forwarded, additive-optional (§7.1), since 1.23.0 (ADR 0107). Empties that member's `sent.jsonl`, as above, audited as `sent.clear` |
 | `GET` | `/crew/v1/folders` | `GET /api/folders` | forwarded — additive-optional (§7.1), added 2026-09-27 (M40/02, #289). That member's own new-space folder list, `{ recent, favourites, home }` off its own `folders.json`: a folder exists on one machine, so the list is read where the folder is and the lead keeps no copy. A lead that predates it never calls it, and a peer that predates it answers 404 to a lead that does, which the phone reads as "no list" and never as an error |
 | `POST` | `/crew/v1/folders/star` | `POST /api/folders/star` | forwarded — additive-optional (§7.1), same pairing as above. A WRITE on that member's own `folders.json`, `{ folder, starred }`, refused before it is attempted when the member is not taking writes (§10.3) and by the member's own device gate (§12). Not audited on either side: it is a preference, like `notifications/prefs`, and touches no terminal |
+| `POST` | `/crew/v1/walky/off` | `POST /api/walky/off` | forwarded — additive-optional (§7.1), added 2026-11-06 (M89). The phone's walky talky switch for one session, `{ pane, off }`: the flag lives on the member that owns the pane, which alone enforces it (§21), so the set lands there, `by: "operator"`. A WRITE, refused before it is attempted when the member is not taking writes (§10.3) and by the member's own device gate (§12); an idempotent set, so it carries no request id. Audited on both sides as `walky.off`. A peer that predates it answers 404, which the phone shows as a failed switch |
 | `GET` | `/crew/v1/folders/browse` | `GET /api/folders/browse` | proxied byte-for-byte — additive-optional (§7.1), added 2026-10-19 (#467). The New page's folder browser: the sub-folders of one folder under **the member's own home**, by name, with a `git` bit, off its own disk (`bridge/folder-browse.ts`, ADR 0083's bound with home as the root); `?path=` rides through untouched and the member resolves it by its own New page rule. A READ for forwarding (attempted against a stale member, read budget, audited on neither side, never masked: names only), answered only for a device the member's **own** device policy authorises, as the Files read is (§12, `crewGate`'s write branch). A refusal is the Files view's `404 { "error": "unknown-path" }`; a peer that predates it answers a plain 404, which the phone reads as "update this member" |
 | `GET` | `/crew/v1/blobs/:hash` | `GET /api/blobs/:hash` | proxied byte-for-byte — additive-optional (§7.1). The image an agent's own journal named, off the disk that holds it; a lead that predates it never calls it, and a peer that predates it answers 404 to a lead that does |
 | `GET` | `/crew/v1/config` | `GET /api/config` (`:288`) | consumed by the lead, not proxied |
@@ -1423,6 +1424,9 @@ prevents (`web/src/lib/api.ts:201-203`).
 - **A pane may carry `instance`** (additive-optional, §7.1, added 2026-10-18): its walky talky
   instance token, four characters of `[a-z0-9]`; the merge keeps it only in that form (§21, "Pane
   instances").
+- **A pane may carry `walkyOff: true`** (additive-optional, §7.1, added 2026-11-06): the session
+  turned its walky talky off. Only `true` means off; absent reads as on, which is what every older
+  member sends. It only shows: the member that owns the pane refuses (§21, "Pane instances").
 - **A session may carry `label`** (additive-optional, §7.1, added 2026-10-19): the display label
   the member's own operator wrote in its `spaces.toml`. It is display-only: `name` stays the
   session's identity on the link and in every address. The lead keeps it only as a string and runs
@@ -3828,6 +3832,15 @@ the tokens.
 - **The wire.** Each pane on a snapshot carries `instance` (§9.2). The lead keeps a member's token
   only as four characters of `[a-z0-9]`, and its `who` prints `<member>/<pane>#<token>` when the
   member's pane has one, bare when not.
+- **A session can turn off (added 2026-11-06).** The flag belongs to the pane instance, on the bridge
+  that owns the pane (`bridge/walky/off.ts`, `<stateDir>/walky/off.json`), and that bridge alone
+  enforces it: an agent's message to the pane ends `refused: walky talky off`, and an agent in the pane
+  gets `refused: your walky talky is off`. An operator's message is typed as before. Its pane on a
+  snapshot carries `walkyOff: true` (§9.2), and the lead's `who` copies that to the row as
+  `walky: "off"`. A lead forwards a message to such a pane as to any other, so a stale sweep costs one
+  hop, never a delivery. An older member never sends the field and reads as on; an older lead passes
+  it through and ignores it. The phone sets the flag through `POST /api/walky/off` (§5), forwarded to
+  the member with `?host=` like a pane write. No signed field and no version change.
 
 A member that sends no `instance` has its panes listed bare, and they work as before. A bridge built
 before this subsection cannot parse an address with a token. As a member it answers a routed message

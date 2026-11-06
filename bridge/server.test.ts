@@ -3654,11 +3654,11 @@ describe("the host gate — `?host=` selects among enrolled members and nothing 
     // read that checks a typed line before it runs (ADR 0095, amendment), and a durable program's
     // conversation list and the items or reopen of one (M53 spec 11), and Sent's read and its two
     // writes, served by one function with one resolve for the read and one for the writes (ADR 0107),
-    // and the New page's folder browser (#467)) reach their runtime through the caller's resolver and
+    // and the New page's folder browser (#467), and a session's walky talky off switch (M89 spec 04)) reach their runtime through the caller's resolver and
     // nothing else. One of them, the launcher rows, hands the resolver the lead's merge (ADR 0127), and
     // two, the launch and the branch create, hand it the lead's row carry (ADR 0127 point 3).
     const carry = String.raw`undefined, leadRowCarry\(allowedLaunchers, homedir\(\)\)`;
-    expect([...src.matchAll(new RegExp(String.raw`await caller\.resolve\((?:leadRows|${carry})?\);`, "g"))]).toHaveLength(27);
+    expect([...src.matchAll(new RegExp(String.raw`await caller\.resolve\((?:leadRows|${carry})?\);`, "g"))]).toHaveLength(28);
     expect([...src.matchAll(/await caller\.resolve\(leadRows\);/g)]).toHaveLength(1);
     expect([...src.matchAll(new RegExp(String.raw`await caller\.resolve\(${carry}\);`, "g"))]).toHaveLength(2);
     // Exactly eight `registry.get(` calls remain, and each is a sanctioned one, named here rather
@@ -5525,6 +5525,8 @@ describe("an input written to a pane makes its engine hot", () => {
     }
     expect(isTopologyWrite("/api/pane/w1%3Ap1/close", "POST")).toBe(true);
     expect(isTopologyWrite("/api/pane/w1%3Ap1/rename", "POST")).toBe(true);
+    // A walky talky switch set on a member buys the same hot spell (M89 spec 04).
+    expect(isTopologyWrite("/api/walky/off", "POST")).toBe(true);
     expect(isTopologyWrite("/api/launch", "GET")).toBe(false);
     expect(isTopologyWrite("/api/worktree/plan", "GET")).toBe(false);
     for (const path of ["/api/launch/recent/clear", "/api/launch/check", "/api/launchers", "/api/folders/star", "/api/pane/w1%3Ap1/reply", "/api/pane/w1%3Ap1/focus", "/api/pane/w1%3Ap1/upload"]) {

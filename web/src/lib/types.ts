@@ -17,6 +17,8 @@ export interface AgentView {
    * that session. Absent on a machine that predates it.
    */
   instance?: string;
+  /** True when the session turned its walky talky off (M89). Absent when on, and on an older machine. */
+  walkyOff?: true;
   workspaceId: string;
   workspaceLabel: string;
   workspaceNumber: number;

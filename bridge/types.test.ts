@@ -26,6 +26,15 @@ describe("toPaneWire instance", () => {
   });
 });
 
+describe("toPaneWire walkyOff (M89)", () => {
+  test("carries `walkyOff: true` only when the flag is set, and no key otherwise", () => {
+    expect(toPaneWire(pane(), () => false, () => false, "k3f9", true).walkyOff).toBe(true);
+    expect("walkyOff" in toPaneWire(pane(), () => false, () => false, "k3f9", false)).toBe(false);
+    expect("walkyOff" in toPaneWire(pane(), () => false, () => false, "k3f9")).toBe(false);
+    expect("walkyOff" in toPaneWire(pane(), () => false)).toBe(false);
+  });
+});
+
 describe("toPaneWire hasSession", () => {
   test("a reported ref plus an adapter offers History", () => {
     const wire = toPaneWire(pane({ agentSession: { ...REF } }), () => true);

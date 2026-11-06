@@ -293,6 +293,7 @@ import {
 import { isResting, type RouteRemote, type SendResult, type WalkyHost, type WalkyPane } from "./walky/deliver.ts";
 import { INSTANCE_TICK_MS, WalkyInstances } from "./walky/instances.ts";
 import { WalkyLog } from "./walky/log.ts";
+import { WalkyOff } from "./walky/off.ts";
 import { RefusalCounter } from "./walky/refusals.ts";
 import { WalkySeen } from "./walky/seen.ts";
 import { WalkyService } from "./walky/service.ts";
@@ -1964,11 +1965,13 @@ hookTarget =
 // a multiplexer reuses a pane id, and the token tells the pane a sender meant from a new session that
 // took its id. A pane out of sight for 30 seconds loses its token, and its inbox goes with it.
 const walkyInstances = new WalkyInstances(join(cfg.stateDir, "walky"));
+// A session that turned its walky talky off (M89, `<stateDir>/walky/off.json`). Read through the pane row.
+const walkyOff = new WalkyOff(join(cfg.stateDir, "walky"));
 /** Every pane of every session, without its token: what the instance registry observes. */
-const walkyRawPanes = (): Omit<WalkyPane, "instance">[] =>
+const walkyRawPanes = (): Omit<WalkyPane, "instance" | "off">[] =>
   registry.ordered().flatMap((rt) => {
     const { agents, shellPanes } = rt.engine.current();
-    const of = (view: AgentView, agent: boolean): Omit<WalkyPane, "instance"> => {
+    const of = (view: AgentView, agent: boolean): Omit<WalkyPane, "instance" | "off"> => {
       const head = gitHeads.get(view.cwd);
       const facts = { paneId: view.paneId, cwd: view.cwd, branch: head?.kind === "branch" ? head.name : null, paneLabel: view.paneLabel, terminalTitle: view.terminalTitle };
       // The last status change comes from the activity ledger: the engine's views carry no time (it rides the wire at serialise time).
@@ -1985,7 +1988,8 @@ function walkyResult(sendId: string, outcome: string, reason: string | undefined
   return why === undefined ? { outcome } : { outcome, reason: why };
 }
 const walkyHost: WalkyHost = {
-  panes: () => walkyInstances.stamp(walkyRawPanes()),
+  // `stamp` builds fresh rows, so adding the flag to each one here touches nothing else.
+  panes: () => walkyInstances.stamp(walkyRawPanes()).map((pane) => Object.assign(pane, { off: walkyOff.isOff(pane) })),
   // A walky send is marked (M62 spec 02): a draft holds it, and its hold ends on walky's one clock.
   send: async (pane, sendId, text, hold): Promise<SendResult> => {
     const protocol = registry.get(pane.session)?.send;
@@ -2012,6 +2016,8 @@ const walkyMemberId = crew.mode === "solo" ? null : (trustStore.current()?.self.
 const walkyLog = new WalkyLog(join(cfg.stateDir, "walky"));
 // A pane instance that went takes its inbox with it: a new session that takes the id starts empty.
 walkyInstances.onDrop((session, paneId, token) => walkyLog.inboxDrop(session, paneId, token));
+// The same for the off flag (M89): it belongs to the session, and ends with it.
+walkyInstances.onDrop((session, paneId, token) => walkyOff.drop(session, paneId, token));
 // Look at the panes every 10 seconds even when no message asks, so a closed pane is dropped on time.
 const walkyInstanceTimer = setInterval(() => walkyInstances.observe(walkyRawPanes()), INSTANCE_TICK_MS);
 walkyInstanceTimer.unref();
@@ -2040,6 +2046,7 @@ const walky = new WalkyService({
   log: walkyLog,
   seen: walkySeen,
   refusals: walkyRefusals,
+  off: walkyOff,
   host: walkyHost,
   memberId: walkyMemberId,
   enabled: () => cfg.walky,
@@ -3150,6 +3157,10 @@ const server = listenOrExit("front door", cfg.host, cfg.port, () => startServer(
   usage,
   gitHeads,
   walkyInstance: (session, paneId) => walkyInstances.tokenOf(session, paneId),
+  walkyPaneOff: (session, paneId) => {
+    const instance = walkyInstances.peek(session, paneId);
+    return instance !== null && walkyOff.isOff({ session, paneId, instance });
+  },
   walky,
   cacheWatch,
   folders,

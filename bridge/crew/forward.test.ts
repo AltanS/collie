@@ -196,6 +196,19 @@ describe("which routes cross a link", () => {
     expect(calls[0]!.params).toEqual({ cwd: ["~/src", "/srv/data"] });
   });
 
+  test("a session's walky talky off switch crosses the link to the member that owns the pane (M89)", () => {
+    // The flag lives on the owner, which enforces it (§21): a `?host=` set reaches that member.
+    expect(crewRouteFor("/api/walky/off")).toBe("walky/off");
+    expect(apiPathFor("walky/off")).toBe("/api/walky/off");
+    // Nothing else under `walky/` rides the link: a message routes by its address, and `who` is the lead's.
+    expect(crewRouteFor("/api/walky")).toBeNull();
+    expect(crewRouteFor("/api/walky/who")).toBeNull();
+    expect(crewRouteFor("/api/walky/off/x")).toBeNull();
+    expect(forwardKind("walky/off", "POST")).toBe("write");
+    // The member writes the same audit name.
+    expect(forwardAuditAction("walky/off", "POST")).toBe("walky.off");
+  });
+
   test("the folder list and a star on it cross the link — folders live on the member that has them", () => {
     // #289: the new-space sheet's list is that member's own `folders.json`, so a `?host=` read or star
     // reaches the member, never the lead's file.
@@ -1050,6 +1063,7 @@ describe("a forwarded write carries its own budget (§10.1)", () => {
       "/api/workspace",
       "/api/launch",
       "/api/folders/star",
+      "/api/walky/off",
     ];
     for (const path of writes) {
       const { transport, calls } = transportOf(() => ok(new Response("{}")));

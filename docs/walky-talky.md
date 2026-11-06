@@ -94,6 +94,8 @@ server/t1#9m3x              server   claude   my-app#main       idle
 - **STATE** is the pane's own status: `idle`, `working`, `blocked`, `done` or `unknown`. A crew
   member the lead cannot reach shows `unreachable`. A pane that is `working` or `blocked` still
   takes a message. Collie queues it or holds it, as in [Into a busy pane](#into-a-busy-pane).
+- **`, walky off` after STATE** means that session turned its walky talky off. It takes messages
+  from you only ([Turn it off for one session](#turn-it-off-for-one-session)).
 
 `send` waits up to 15 seconds for the receipt, then prints three lines: the id, the pane, and the
 state in words.
@@ -417,7 +419,7 @@ a crew, a message whose clock is more than 10 minutes off is refused `stale`.
 | `accepted` | queued, or held with the reason | Logged, not typed yet. `held: draft present` or `held: turn running`: Collie types it when the box clears or the turn ends, up to 60 minutes. Do not send it again |
 | `delivered` | typed into the pane | The text went into the pane and was submitted |
 | `inbox-only` | waiting in the inbox, not typed | Not typed, for the reason shown: `held past 60 minutes` (a draft, a busy pane or an open dialog outlasted the hold), `cancelled by sender`, `dropped by the pane's owner`, `box not free`, `pane busy`, `pane replaced`, `no terminal`, `bridge restarted`, `resting` (a scope or `all` met a session that rests, printed as "the session rests"; send with `--wake` to type it). It waits in the pane's inbox |
-| `refused` | not sent | Not taken, for the reason shown: no such pane, pane replaced, not an agent pane, a limit, an older member or lead, or walky talky off on that machine |
+| `refused` | not sent | Not taken, for the reason shown: no such pane, pane replaced, not an agent pane, a limit, an older member or lead, a session with its walky talky off, or walky talky off on that machine |
 | `unknown` | may have arrived, will not be sent again | The outcome was not read, a hold was still pending after 60 minutes, or the log lost the record. Collie never sends it again |
 
 The words are what the CLI and the phone show. `--json` and the receipt keep the state names.
@@ -600,6 +602,40 @@ This removes the Claude file and cuts out the block. It leaves the rest of each 
 Collie records the uninstall under its state directory, so the next update does not put the skill
 back. `collie skill install <harness>` removes that record again.
 
+## Turn it off for one session
+
+```sh
+collie walky off
+collie walky on
+```
+
+Run `off` inside the agent's own pane, or use the Walky talky switch at the top of the session's
+Messages sheet on the phone. From then on, no other agent can message that session, and
+the session cannot message other agents. Your own messages still reach it, from the phone or from
+a terminal outside any pane. `on` turns it back. Both print one line and exit 0, and a second `off`
+changes nothing. With two Collie instances on one multiplexer, the command sets both. The phone
+sets the instance it is connected to, and across a crew the machine that owns the pane. While the
+session is off, the pane menu's Messages row reads "Messages, walky talky off".
+
+- **An agent's message to that session is refused.** Nothing is typed and nothing waits in its
+  inbox. The sender reads
+  `not sent: walky talky off. This session takes messages from its operator only. Ask your operator.`
+- **A message from that session is refused.** The agent reads
+  `not sent: your walky talky is off. Turn it on: collie walky on`.
+- **A message that was already queued or held is checked again.** It is refused the same way
+  before it is typed, and it leaves the inbox.
+- **`who` marks the session** with `, walky off` after STATE. Inside an off session, `who` ends
+  with `Your walky talky is off. Turn it on: collie walky on`.
+- **The switch belongs to one session in one pane.** It stays through a bridge restart and an agent
+  restart in the same open pane. It ends when the pane closes, so a new session in that pane
+  starts on.
+
+> A bridge that is down for more than about 30 seconds forgets which session held each pane. The
+> panes then start on again.
+
+The session itself can also turn the switch on again. The switch keeps other agents out. It is not
+a lock against the agent in that pane.
+
 ## Limits and switches
 
 What walky talky refuses, and how to turn it off.
@@ -632,6 +668,8 @@ These are the limits that stay on. Each bridge counts them for its own panes, on
 | A pane id that two sessions on one machine both use, in an address with no token | `ambiguous pane` |
 | An address whose token names a pane that closed, and another pane holds the id now | `pane replaced` |
 | A reply whose sender pane closed, now sits in another session, or holds a new token | `sender gone` |
+| An agent's message to a session that turned its walky talky off | `walky talky off` |
+| An agent's message from a session that turned its walky talky off | `your walky talky is off` |
 
 - **Collie never answers a message on its own**, and never answers a dialog with one. A send over an
   open dialog is held: nothing enters the dialog, the message is typed after the dialog is answered,
@@ -658,6 +696,8 @@ Find the receipt, then follow the symptom. `collie walky status <id>` prints the
   `collie crew update --all` ([Across a crew](#across-a-crew)).
 - **`not sent: unreachable`.** The lead cannot reach that machine. Collie does not retry it
   ([Send to a workspace](#send-to-a-workspace)).
+- **`not sent: walky talky off`.** That session takes messages from you only. Pass the message on
+  yourself ([Turn it off for one session](#turn-it-off-for-one-session)).
 - **`not sent: off`, `rate limit` or `pair limit`.** A switch or a limit refused it
   ([Limits and switches](#limits-and-switches)).
 - **The message is typed and the agent does nothing.** The agent may not have the skill yet

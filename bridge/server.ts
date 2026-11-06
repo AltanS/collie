@@ -688,10 +688,13 @@ export function isPaneInput(pathname: string, method: string): boolean {
  * these the same hot spell an input buys.
  */
 const TOPOLOGY_CREATES: ReadonlySet<string> = new Set(["/api/launch", "/api/workspace", "/api/tab", "/api/worktree"]);
+/** Not topology, but the same wait: a walky talky switch set on a member shows on the phone only through the lead's sweep (M89 spec 04). */
+const SWEEP_WAITS: ReadonlySet<string> = new Set(["/api/walky/off"]);
 export function isTopologyWrite(pathname: string, method: string): boolean {
   if (method !== "POST") return false;
   if (TOPOLOGY_CREATES.has(pathname)) return true;
   if (TAB_ACTION_ROUTE.test(pathname)) return true;
+  if (SWEEP_WAITS.has(pathname)) return true;
   const action = pathname.match(PANE_ROUTE)?.[2];
   return action === "close" || action === "rename";
 }
@@ -1332,6 +1335,8 @@ export function startServer(opts: {
    * Absent means no pane carries the key, which is every test that builds this server by hand.
    */
   walkyInstance?: (session: string, paneId: string) => string;
+  /** Whether the pane's session turned its walky talky off (M89), read at serialise time like the token. True adds `walkyOff` to the pane. */
+  walkyPaneOff?: (session: string, paneId: string) => boolean;
   /**
    * The prompt-cache watch list — which panes the operator asked to be warned about (ADR 0042).
    *
@@ -1437,6 +1442,7 @@ export function startServer(opts: {
   const cache = opts.cache;
   const gitHeads = opts.gitHeads;
   const walkyInstance = opts.walkyInstance;
+  const walkyPaneOff = opts.walkyPaneOff;
   const walky = opts.walky;
   const pairing = opts.pairing;
   const localCredential = opts.localCredential;
@@ -1781,7 +1787,7 @@ export function startServer(opts: {
         // carries them (M53 spec 07), the same way.
         panes: pick(from).map((p) =>
           withSurface(
-            withActions(withTurn(withOpenAsks(toPaneWire(withActivity(from, p), hasJournal, discoversSessions, walkyInstance?.(from.name, p.paneId)), from.herdr), from.herdr), from.herdr),
+            withActions(withTurn(withOpenAsks(toPaneWire(withActivity(from, p), hasJournal, discoversSessions, walkyInstance?.(from.name, p.paneId), walkyPaneOff?.(from.name, p.paneId)), from.herdr), from.herdr), from.herdr),
             from,
           ),
         ),
@@ -1899,6 +1905,25 @@ export function startServer(opts: {
       rt.engine.noteAttention();
       await refreshes.run(rt.name, () => lookNow(rt));
       return json({ ok: true } satisfies ActionResponse, req.headers.get("accept-encoding"));
+    }
+
+    // ── Walky talky off for one session (M89 spec 04) ─────────────────────
+    // The phone's switch in a pane's Messages sheet. Session-scoped, so a `?host=` set is forwarded to
+    // the member that owns the pane (§21) and lands on its own `off.json`: the owner enforces the flag.
+    // An idempotent set of one value, so a retry is safe and carries no request id.
+    if (pathname === "/api/walky/off" && req.method === "POST") {
+      const denied = caller.gate("write");
+      if (denied) return denied;
+      const rt = await caller.resolve();
+      if (rt instanceof Response) return rt;
+      let body: JsonValue | undefined;
+      try {
+        // SAFETY: `Request.json()` output IS a JsonValue by construction; `walkyOffRoute` checks every field.
+        body = (await req.json()) as JsonValue;
+      } catch {
+        body = undefined;
+      }
+      return walkyOffRoute(walky, rt.name, body, { audit: caller.audit, device: caller.device(), acceptEncoding: req.headers.get("accept-encoding") });
     }
 
     // ── Structural creates: new tab / new space (each opens a fresh shell pane) ──
@@ -8517,6 +8542,30 @@ export async function walkyPostRoute(
   // One pane answers one receipt; a fan-out (`all`, `<member>/all`) answers one per pane.
   if (parseAddress(input.to)?.kind === "pane" && answer.receipts.length === 1) return json({ receipt: answer.receipts[0] }, context.acceptEncoding);
   return json({ receipts: answer.receipts }, context.acceptEncoding);
+}
+
+/**
+ * `POST /api/walky/off` (M89 spec 04): the operator turns one session's walky talky off or on from the
+ * phone, `{ pane, off }`. The pane is this bridge's own, in the session the request resolved to. Answers
+ * `{ off }`, the value now held; one audit line, `walky.off`, as the CLI's own switch writes none.
+ */
+export function walkyOffRoute(
+  walky: WalkyService | undefined,
+  session: string,
+  body: JsonValue | undefined,
+  context: { readonly audit: AuditLog; readonly device: string | null; readonly acceptEncoding: string | null },
+): Response {
+  if (walky === undefined) return text(WALKY_OFF_TEXT, 404);
+  const row = asJsonRecord(body);
+  const paneId = row?.pane;
+  const off = row?.off;
+  if (typeof paneId !== "string" || !isPaneId(paneId) || typeof off !== "boolean") return text("bad body", 400);
+  const pane = walky.paneAt(session, paneId);
+  if (pane === null) return text("no such pane", 404);
+  if (!pane.agent) return text("not an agent pane", 400);
+  const now = walky.setOff(pane, off, "operator");
+  context.audit.record({ action: "walky.off", device: context.device, session, paneId, detail: { off: now } });
+  return json({ off: now }, context.acceptEncoding);
 }
 
 /**

@@ -1,12 +1,13 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { AuditLog } from "../audit.ts";
-import { walkyCancelRoute, walkyDropRoute, walkyOlderMemberAnswer, walkyPaneRoute, walkyPostRoute, walkyWhoRoute, WALKY_OFF_TEXT, WALKY_OLDER_MEMBER_TEXT } from "../server.ts";
+import { walkyCancelRoute, walkyDropRoute, walkyOffRoute, walkyOlderMemberAnswer, walkyPaneRoute, walkyPostRoute, walkyWhoRoute, WALKY_OFF_TEXT, WALKY_OLDER_MEMBER_TEXT } from "../server.ts";
 import type { SendResult, WalkyHost, WalkyPane } from "./deliver.ts";
 import { WalkyLog } from "./log.ts";
+import { WalkyOff } from "./off.ts";
 import { WalkyService } from "./service.ts";
 
 const roots: string[] = [];
@@ -15,8 +16,8 @@ afterEach(() => {
 });
 
 const panes: WalkyPane[] = [
-  { session: "main", paneId: "w1:p1", agent: true, harness: "agent-x", label: "repo#a", state: "idle", activeAt: null, instance: "aaaa", terminal: true },
-  { session: "main", paneId: "w1:p2", agent: true, harness: "agent-y", label: "repo#b", state: "idle", activeAt: null, instance: "aaaa", terminal: true },
+  { session: "main", paneId: "w1:p1", agent: true, harness: "agent-x", label: "repo#a", state: "idle", activeAt: null, instance: "aaaa", terminal: true, off: false },
+  { session: "main", paneId: "w1:p2", agent: true, harness: "agent-y", label: "repo#b", state: "idle", activeAt: null, instance: "aaaa", terminal: true, off: false },
 ];
 const host: WalkyHost = { panes: () => panes, send: async () => ({ outcome: "sent" }), sendState: () => null, cancelHeld: () => undefined };
 
@@ -88,7 +89,7 @@ describe("`who` for the Crew page", () => {
   test("adds the shell panes a broadcast skips, and the refusal counts with no body", async () => {
     const root = mkdtempSync(join(tmpdir(), "walky-routes-"));
     roots.push(root);
-    const withShell: WalkyHost = { ...host, panes: () => [...panes, { session: "main", paneId: "w1:p3", agent: false, harness: null, label: "repo#c", state: "idle", activeAt: null, instance: "aaaa", terminal: true }] };
+    const withShell: WalkyHost = { ...host, panes: () => [...panes, { session: "main", paneId: "w1:p3", agent: false, harness: null, label: "repo#c", state: "idle", activeAt: null, instance: "aaaa", terminal: true, off: false }] };
     const walky = new WalkyService({ log: new WalkyLog(join(root, "walky")), host: withShell, memberId: null, enabled: () => true, machine: "desk", keyPem: () => null, now: () => 7 });
     await walky.send({ id: "wt_aaaaaaaaaaa1", to: "local/w9:p9", body: "secret words", replyTo: null }, { kind: "operator", label: "cli" });
     const body = await walkyWhoRoute(walky, null).json();
@@ -97,6 +98,19 @@ describe("`who` for the Crew page", () => {
       refusals: { since: 7, counts: { "no such pane": 1 } },
     });
     expect(JSON.stringify(body)).not.toContain("secret words");
+  });
+});
+
+describe("`who` marks a session that is off (M89)", () => {
+  test("the row carries `walky: \"off\"` only for that pane, and `state` keeps its meaning", async () => {
+    const root = mkdtempSync(join(tmpdir(), "walky-routes-"));
+    roots.push(root);
+    const offHost: WalkyHost = { ...host, panes: () => panes.map((pane) => (pane.paneId === "w1:p2" ? { ...pane, off: true } : pane)) };
+    const walky = new WalkyService({ log: new WalkyLog(join(root, "walky")), host: offHost, memberId: null, enabled: () => true, machine: "desk", keyPem: () => null });
+    // SAFETY: `walkyWhoRoute` answers `{ targets, skipped, refusals }`, and each target's fields are strings.
+    const { targets } = (await walkyWhoRoute(walky, null).json()) as { targets: Record<string, string>[] };
+    expect(targets[1]).toMatchObject({ address: "local/w1:p2#aaaa", walky: "off", state: "idle" });
+    expect("walky" in targets[0]!).toBe(false);
   });
 });
 
@@ -224,5 +238,65 @@ describe("the take-backs (M62 spec 03)", () => {
     expect(audit.join("")).not.toContain('"hi"');
     // The message stays in the pane's inbox, readable.
     expect(walky.inbox("main", "w1:p2", "aaaa", false).map((entry) => entry.id)).toEqual(["wt_aaaaaaaaaaa1"]);
+  });
+});
+
+describe("POST /api/walky/off, the phone's switch (M89 spec 04)", () => {
+  /** A service whose panes carry the flag a real store holds, as bridge/index.ts wires it, with one shell pane. */
+  function switched() {
+    const root = mkdtempSync(join(tmpdir(), "walky-routes-"));
+    roots.push(root);
+    const off = new WalkyOff(join(root, "walky"));
+    const shell: WalkyPane = { session: "main", paneId: "w1:p9", agent: false, harness: null, label: "repo", state: "idle", activeAt: null, instance: "cccc", terminal: true, off: false };
+    const offHost: WalkyHost = { ...host, panes: () => [...panes, shell].map((pane): WalkyPane => Object.assign({}, pane, { off: off.isOff(pane) })) };
+    const walky = new WalkyService({ log: new WalkyLog(join(root, "walky")), host: offHost, memberId: null, enabled: () => true, machine: "desk", keyPem: () => null, off });
+    return { walky, off };
+  }
+
+  test("sets the flag as the operator, answers the value held, writes one audit line, and is idempotent", async () => {
+    const { walky, off } = switched();
+    const audit: string[] = [];
+    const res = walkyOffRoute(walky, "main", { pane: "w1:p1", off: true }, context(audit));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ off: true });
+    expect(off.all()).toMatchObject([{ session: "main", paneId: "w1:p1", token: "aaaa", by: "operator" }]);
+    expect(audit).toHaveLength(1);
+    expect(JSON.parse(audit[0]!)).toMatchObject({ action: "walky.off", device: "phone-altan", session: "main", paneId: "w1:p1", detail: { off: true } });
+    // A retry sets the same value: the same answer, the same one row.
+    expect(await walkyOffRoute(walky, "main", { pane: "w1:p1", off: true }, context([])).json()).toEqual({ off: true });
+    expect(off.all()).toHaveLength(1);
+    // `who` now marks it, and the phone's own message still goes in.
+    expect(await walkyWhoRoute(walky, null).json()).toMatchObject({ targets: [{ address: "local/w1:p1#aaaa", walky: "off" }, { address: "local/w1:p2#aaaa" }] });
+    expect(await walky.send({ id: "wt_aaaaaaaaaaa1", to: "local/w1:p1", body: "still you", replyTo: null }, { kind: "operator", label: "phone" })).toMatchObject({ ok: true, receipts: [{ state: "accepted" }] });
+    expect(await walkyOffRoute(walky, "main", { pane: "w1:p1", off: false }, context([])).json()).toEqual({ off: false });
+    expect(off.all()).toEqual([]);
+  });
+
+  test("refuses a bad body, a pane that is not here, a shell pane, and a bridge with no walky talky", async () => {
+    const { walky, off } = switched();
+    for (const body of [undefined, null, {}, { pane: "w1:p1" }, { pane: "w1:p1", off: "yes" }, { pane: 7, off: true }, { pane: "", off: true }]) {
+      expect(walkyOffRoute(walky, "main", body, context([])).status).toBe(400);
+    }
+    expect(walkyOffRoute(walky, "main", { pane: "w1:p7", off: true }, context([])).status).toBe(404);
+    expect(walkyOffRoute(walky, "other", { pane: "w1:p1", off: true }, context([])).status).toBe(404);
+    const shell = walkyOffRoute(walky, "main", { pane: "w1:p9", off: true }, context([]));
+    expect(shell.status).toBe(400);
+    expect(await shell.text()).toBe("not an agent pane");
+    expect(walkyOffRoute(undefined, "main", { pane: "w1:p1", off: true }, context([])).status).toBe(404);
+    expect(off.all()).toEqual([]);
+  });
+
+  test("the route sits behind the write gate, inside the session block a crew lead forwards with `?host=` (off)", () => {
+    const src = readFileSync(join(import.meta.dir, "..", "server.ts"), "utf8");
+    const block = src.indexOf("const serveSessionRoute = async");
+    const at = src.indexOf('if (pathname === "/api/walky/off" && req.method === "POST") {');
+    expect(block).toBeGreaterThan(-1);
+    expect(at).toBeGreaterThan(block);
+    // The one dispatch: no second copy of the route in the browser or the crew path.
+    expect(src.indexOf('"/api/walky/off"', at + 40)).toBe(-1);
+    const body = src.slice(at, src.indexOf("if (pathname ===", at + 40));
+    expect(body.indexOf('caller.gate("write")')).toBeGreaterThan(-1);
+    expect(body.indexOf('caller.gate("write")')).toBeLessThan(body.indexOf("caller.resolve()"));
+    expect(body.indexOf("caller.resolve()")).toBeLessThan(body.indexOf("req.json()"));
   });
 });

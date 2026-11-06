@@ -16,3 +16,16 @@ export const WalkyIcon = createLucideIcon("walky-talky", [
   ["path", { d: "M13 7a4 4 0 0 1 4 4", key: "arc-near" }],
   ["path", { d: "M13 3a8 8 0 0 1 8 8", key: "arc-far" }],
 ]);
+
+/**
+ * The same radio, struck through: a session that turned its walky talky off (M89). The pane menu's
+ * Messages row and the switch in the Messages sheet wear it while the session is off.
+ */
+export const WalkyOffIcon = createLucideIcon("walky-talky-off", [
+  ["rect", { x: "3", y: "10", width: "8", height: "12", rx: "2", key: "body" }],
+  ["path", { d: "M5 10V6", key: "antenna" }],
+  ["path", { d: "M6 16h2", key: "slot" }],
+  ["path", { d: "M13 7a4 4 0 0 1 4 4", key: "arc-near" }],
+  ["path", { d: "M13 3a8 8 0 0 1 8 8", key: "arc-far" }],
+  ["path", { d: "M2 2l20 20", key: "strike" }],
+]);

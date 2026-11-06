@@ -160,6 +160,10 @@ const FORWARDABLE: readonly RegExp[] = [
   // one-for-one. Additive-optional (§7.1): a member that predates them answers 404.
   /^durable\/conversations$/,
   /^durable\/conversation\/[^/]+\/(?:items|reopen)$/,
+  // A session's walky talky off switch (M89 spec 04): the flag lives on the member that owns the pane,
+  // which is the one that enforces it (§21), so a `?host=` set goes there. A WRITE: an idempotent set,
+  // and the pane rides in the body as `pane`. Additive-optional (§7.1): a member that predates it answers 404.
+  /^walky\/off$/,
 ];
 
 /**
@@ -341,6 +345,8 @@ export function forwardAuditAction(route: string, method?: string): string | nul
   if (route.startsWith("durable/")) return route.endsWith("/reopen") ? "durable.reopen" : null; // the list and the items are reads
   if (route.startsWith("tab/")) return route.endsWith("/close") ? "tab.close" : "tab.rename";
   if (route.startsWith("space/")) return "space.rename";
+  // The member writes the same name for the switch (bridge/server.ts `walkyOffRoute`).
+  if (route === "walky/off") return "walky.off";
   const action = route.split("/")[2];
   if (isPaneRead(action)) return null; // reads, and a read is audited on neither side
   // close, rename and focus namespace themselves on the peer's own handler; the rest stay bare.

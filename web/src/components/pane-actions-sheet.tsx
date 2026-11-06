@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Bug, Copy, GitBranchPlus, Maximize2, MessagesSquare, Monitor, Pencil, Pin, PinOff, ScrollText, Search, SlidersHorizontal, SquareTerminal, XCircle } from "lucide-react";
 
 import { BottomSheet } from "@/components/ui/sheet";
-import { WalkyIcon } from "@/components/walky-icon";
+import { WalkyIcon, WalkyOffIcon } from "@/components/walky-icon";
 import { ActionRow, DestructiveActionRow, RenameView } from "@/components/action-sheet-rows";
 import { HostChip } from "@/components/host-chip";
 import { useHostWriteBlock, useCrew } from "@/components/crew-provider";
@@ -166,6 +166,9 @@ type Mode = "actions" | "rename";
 // two stay identical. The label is user text rendered only into an <input> value / text node — never
 // markup — so it stays within the pane-output XSS boundary. Both actions are writes, so under
 // read-only they're replaced by a note.
+/** The icon of a row of this sheet. */
+const ROW_ICON = "size-4 shrink-0 text-muted-foreground";
+
 export function PaneActionsSheet({
   open,
   onClose,
@@ -196,6 +199,8 @@ export function PaneActionsSheet({
   // on every door (lib/pins.ts).
   const pins = usePins();
   const pinned = pane !== null && pinMatcher(pins)(pane);
+  // A session that turned its walky talky off (M89): the Messages row says so.
+  const walkyOff = pane?.walkyOff === true;
   const [mode, setMode] = useState<Mode>("actions");
   const [label, setLabel] = useState("");
   const [saving, setSaving] = useState(false);
@@ -443,8 +448,9 @@ export function PaneActionsSheet({
               the looking rows. Close-then-act, for the reason the find row states. */}
           {onMessages && (
             <ActionRow
-              icon={<WalkyIcon className="size-4 shrink-0 text-muted-foreground" />}
-              label={t("walky.sheet.row")}
+              // A session that turned its walky talky off (M89) wears the struck radio, and the row says so.
+              icon={walkyOff ? <WalkyOffIcon className={ROW_ICON} /> : <WalkyIcon className={ROW_ICON} />}
+              label={t(walkyOff ? "walky.off.row" : "walky.sheet.row")}
               onClick={() => {
                 onClose();
                 onMessages();

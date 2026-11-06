@@ -10,10 +10,11 @@ import { ItemView, ToolCard } from "@/components/chat-cards";
 import { MarkdownText } from "@/components/markdown-text";
 import { confirmQuestion, WalkyConfirm } from "@/components/walky-broadcast-sheet";
 import { WalkyLogProvider, WalkyOpenProvider } from "@/components/walky-log";
+import { PaneActionsSheet } from "@/components/pane-actions-sheet";
 import { WalkySheet } from "@/components/walky-sheet";
 import type { ChatItem, ChatToolCall } from "@/lib/chat-items";
 import { signerOf, stateWord, verifiedWord, type WalkyReceipt, type WalkyRow, type WalkyState, type WalkyTarget, type WalkyVerified } from "@/lib/walky";
-import { fixtureWalkyAgent, fixtureWalkyOperator, fixtureWalkySelf, fixtureWalkySent } from "@/test/handlers";
+import { fixtureAgents, fixtureWalkyAgent, fixtureWalkyOperator, fixtureWalkySelf, fixtureWalkySent } from "@/test/handlers";
 
 import { Card, Group, Section, Stage, type SectionDef } from "../layout";
 
@@ -176,6 +177,42 @@ function TappedCard() {
   );
 }
 
+/** The Messages sheet with the walky talky switch (M89 spec 04): a tap flips it, as the bridge would answer. */
+function OffSwitchSheet({ start }: { start: boolean }) {
+  const [off, setOff] = useState(start);
+  return (
+    <Stage height={420}>
+      <WalkyLogProvider rows={LOG} reads={1}>
+        <WalkyOpenProvider open={null} self={fixtureWalkySelf}>
+          <WalkySheet
+            open
+            onClose={() => undefined}
+            onReply={() => undefined}
+            canReply
+            self={fixtureWalkySelf}
+            walkyOff={off}
+            onWalkyOff={async (next) => {
+              setOff(next);
+              return null;
+            }}
+          />
+        </WalkyOpenProvider>
+      </WalkyLogProvider>
+    </Stage>
+  );
+}
+
+/** The pane menu of a session that is off: the Messages row says so and wears the struck radio. */
+function OffMenu() {
+  const pane = fixtureAgents[0];
+  if (pane === undefined) return null;
+  return (
+    <Stage height={860}>
+      <PaneActionsSheet open onClose={() => undefined} pane={{ ...pane, walkyOff: true }} onRenamed={() => undefined} onClosed={() => undefined} onMessages={() => undefined} />
+    </Stage>
+  );
+}
+
 const STATES: readonly WalkyState[] = ["accepted", "delivered", "inbox-only", "unknown", "refused", "expired"];
 const VERIFIED: readonly WalkyVerified[] = ["origin", "lead", "local", "none"];
 
@@ -317,6 +354,18 @@ export function WalkySection() {
           span={2}
         >
           <TappedCard />
+        </Card>
+      </Group>
+
+      <Group title="Off for one session">
+        <Card state="walky-off-switch-on" label="1. Switch on, agents get in" reach="open a pane's Messages sheet.">
+          <OffSwitchSheet start={false} />
+        </Card>
+        <Card state="walky-off-switch-off" label="2. Switch off, operator only" reach="turn the switch at the top of Messages off.">
+          <OffSwitchSheet start />
+        </Card>
+        <Card state="walky-off-menu" label="3. Pane menu marks it" reach="open the ⋮ menu of a session that is off.">
+          <OffMenu />
         </Card>
       </Group>
 
