@@ -249,11 +249,12 @@ describe("New tab — createTab", () => {
     expect(screen.queryByText("no tabs here.")).toBeNull();
   });
 
-  it("is the shared dashed '+', at its old 28px and its old tab-row reach", async () => {
+  it("is the shared dashed '+', at its old 28px and its old tab-row reach, plus the folder look's 12px gap", async () => {
     declares({ createTab: true });
     tabStrip();
     const plus = await screen.findByRole("button", { name: "New tab" });
-    expect(classSet(plus)).toEqual(handRolledPlus(TAB_ROW_SQUARE_TAP_TARGET, "size-7"));
+    // The default look is "folder": the "+" sits 12px (ml-3) off the last tab, nothing else added.
+    expect(classSet(plus)).toEqual([...handRolledPlus(TAB_ROW_SQUARE_TAP_TARGET, "size-7"), "ml-3"].toSorted());
   });
 });
 
