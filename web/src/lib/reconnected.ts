@@ -15,11 +15,14 @@ import { useSyncExternalStore } from "react";
 //
 // WHAT COUNTS. Only the end of a bar the operator SAW: amber (trouble) or red (lost). A first paint
 // that is already healthy has nothing to recover from, a healthy re-render is not a new event, and a
-// blip that never showed a bar recovers silently, as the green strip always did. Two refusals on top:
-//   - The app being updated wins (`lib/bundle-apply.ts`): the mark is already turning in the update
-//     colour, and a green turn would cut across it. The green turn is SKIPPED, not delayed.
-//   - A red strip the operator dismissed recovers quietly, the rule the green strip kept for the
-//     reason in the strip's own file: they asked for quiet.
+// blip that never showed a bar recovers silently, as the green strip always did. One refusal on top:
+// the app being updated wins (`lib/bundle-apply.ts`). The mark is already turning in the update
+// colour, and a green turn would cut across it, so the green turn is SKIPPED, not delayed.
+//
+// A DISMISSED RED STRIP STILL GETS THE TURN (2026-11-07). The green strip recovered quietly after a
+// dismiss, because a strip was the one thing on screen the operator had asked not to see. A dismiss
+// hides the strip, not the fact: the mark's lost badge stayed up the whole time, and one quiet turn
+// as it clears asks nothing of anyone. So the turn and the word fire there too.
 
 /** The strip's visible tone, or null while no bar is up. */
 export type LinkTone = "amber" | "red" | null;
@@ -31,14 +34,12 @@ export interface LinkChange {
   next: LinkTone;
   /** A new app build is being applied on this phone (`useBundleApply() !== null`). */
   applying: boolean;
-  /** The operator hid the red strip for this outage. */
-  dismissed: boolean;
 }
 
 /** Whether this change of the link is a reconnection the mark should show. */
-export function reconnects({ shown, next, applying, dismissed }: LinkChange): boolean {
+export function reconnects({ shown, next, applying }: LinkChange): boolean {
   if (shown === null || next !== null) return false;
-  return !applying && !dismissed;
+  return !applying;
 }
 
 let showing = false;

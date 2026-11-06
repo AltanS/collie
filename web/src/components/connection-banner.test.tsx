@@ -636,7 +636,7 @@ describe("ConnectionBanner — dismissing the red strip", () => {
     expect(row()).toBeNull();
   });
 
-  it("recovers quietly after a dismiss: no strip, no green turn, no word", async () => {
+  it("a dismiss hides the strip, not the fact: the recovery still turns the mark and says so", async () => {
     h.lost = true;
     renderBanner({ error: true, stale: true, lastSeenAt: SAVED_AT });
     await act(async () => {});
@@ -646,10 +646,13 @@ describe("ConnectionBanner — dismissing the red strip", () => {
     h.lost = false;
     liveStale = false;
     act(() => rerenderBanner());
-    expect(reconnectedShowing()).toBe(false);
-    expect(currentStatus()).toBeNull();
+    expect(reconnectedShowing()).toBe(true);
+    expect(currentStatus()).toMatchObject({ text: "Reconnected", tone: "success" });
+    // The strip stays gone: the dismissed red strip does not come back, and no other takes its place.
+    expect(row()).toBeNull();
     act(() => vi.advanceTimersByTime(ORBIT_TURN_MS + COLLAPSE_MS + 16));
     expect(row()).toBeNull();
+    expect(reconnectedShowing()).toBe(false);
   });
 
   it("shows the strip again on a new outage", async () => {
