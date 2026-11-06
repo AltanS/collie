@@ -72,6 +72,16 @@ export function summarizeToolInput(input: JsonValue | undefined): string {
     }
     return undefined;
   };
+  // A batch call (pi-web-access `web_search` with `queries`, `fetch_content` with `urls`) holds its
+  // words in a list; the first item is its one line.
+  const firstListed = (...keys: string[]): string | undefined => {
+    for (const k of keys) {
+      const v = named[k];
+      const first = Array.isArray(v) ? v.find((x): x is string => typeof x === "string" && x.trim() !== "") : undefined;
+      if (first !== undefined) return first;
+    }
+    return undefined;
+  };
   // Order matters, and it is load-bearing: Grep carries both `pattern` and `path`, and the pattern is
   // what you actually searched for, so `pattern` MUST outrank the bare `path` (a test pins this). A
   // subagent call carries both `description`/`task` and `prompt`, and the short one is already the
@@ -96,6 +106,7 @@ export function summarizeToolInput(input: JsonValue | undefined): string {
       "task",
       "prompt",
     ) ??
+    firstListed("queries", "urls") ??
     // Unknown tool: first string value wins, so the line is never empty for no reason.
     values.find((v): v is string => typeof v === "string" && v.trim() !== "");
   return chosen === undefined ? "" : oneLine(chosen);

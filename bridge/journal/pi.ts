@@ -57,7 +57,7 @@ import {
 } from "./reduce.ts";
 import { clamp, type Clamped, MAX_RESULT_CHARS, MAX_TEXT_CHARS, stripAnsi, summarizeToolInput } from "./text.ts";
 import { parseUnifiedDiff } from "./diff.ts";
-import { answerLabels, classifyToolCall, planTasks, questionKey, type ToolCall } from "./tool-call.ts";
+import { answerLabels, classifyToolCall, type PlanTask, planTasks, questionKey, type ToolCall } from "./tool-call.ts";
 import type {
   AgentSessionRef,
   JournalAdapter,
@@ -301,11 +301,10 @@ function enrichCall(
   }
   if (call.kind === "plan") {
     // Gentle Shell's `todo` result holds the WHOLE list whatever the action was (277 of 277 local
-    // results, 2026-10-16); the input of an `update` holds one task. An empty or absent list leaves
-    // what the input said.
-    const gentle = details?.gentleTodo;
-    const tasks = gentle !== null && typeof gentle === "object" && !Array.isArray(gentle) ? planTasks(gentle.tasks) : [];
-    if (tasks.length > 0) call.tasks = tasks;
+    // results, 2026-10-16); the input of an `update` holds one task. An absent list leaves what the
+    // input said; an explicit empty list (a `clear`) empties the card (#715).
+    const tasks = gentleTasks(details);
+    if (tasks !== undefined) call.tasks = tasks;
     return;
   }
   if (call.kind === "execute") {
@@ -322,8 +321,12 @@ function enrichCall(
     // `ask_user` as `details.answer`, both for a one-question call. A dismissal
     // (`details.cancelled`) carries neither and fills nothing.
     const selection = details?.selection;
-    const picked =
+    const chosen =
       selection !== null && typeof selection === "object" && !Array.isArray(selection) ? selection.label : details?.answer;
+    // The free-text "Other" of `ask_user_choice` is written to `details.customResponse` and carries
+    // no selection; the words typed are the answer (#714).
+    const custom = details?.customResponse;
+    const picked = typeof custom === "string" && custom.trim() !== "" ? custom : chosen;
     if (call.questions.length === 1 && typeof picked === "string" && picked.trim() !== "") {
       const labels = answerLabels(picked);
       if (labels.length > 0) {
@@ -343,6 +346,23 @@ function enrichCall(
     ) {
       // SAFETY: every element was just checked to be an array of strings.
       call.answers = answers as string[][];
+      return;
+    }
+    // gentle-pi's `ask_user_question` writes `details.answers` as a LIST OF OBJECTS, one per question:
+    // `[{ questionIndex, question, kind, answer }]` (gentle-pi 4.6.0, from the issue #714 report; not
+    // read off a local log). An entry lands on the question at its `questionIndex`, else the one
+    // whose text it names, else its own place in the list. `answer` is a label or a list of labels.
+    const entries = Array.isArray(answers) ? answers.map(asRecord) : [];
+    if (entries.length > 0 && entries.every((entry) => entry !== null)) {
+      const lists: string[][] = call.questions.map(() => []);
+      entries.forEach((entry, at) => {
+        const index = entry?.questionIndex;
+        const named = questionKey(entry?.question);
+        const byText = named === undefined ? -1 : call.questions.findIndex((q) => q.question === named);
+        const slot = typeof index === "number" && Number.isInteger(index) && index >= 0 ? index : byText >= 0 ? byText : at;
+        if (slot < lists.length) lists[slot] = answerLabels(entry?.answer);
+      });
+      if (lists.some((list) => list.length > 0)) call.answers = lists;
       return;
     }
     // OmO records `details.answers` beside `status: "answered"`, in two shapes (OmO 5.1.30, read off
@@ -393,6 +413,19 @@ function detailsOf(details: JsonValue | undefined, key: string): JsonObject | un
 function field(o: JsonObject | undefined, key: string): string | undefined {
   const v = o?.[key];
   return typeof v === "string" && v.trim() !== "" ? v : undefined;
+}
+
+/**
+ * The task list a Gentle Shell `todo` result holds in `details.gentleTodo.tasks`. UNDEFINED when the
+ * result carries no list at all (the input's list stays); an explicit empty list is `[]`, which is a
+ * `clear` and must empty the card (issue #715). A non-empty list whose rows all fail to read stays
+ * undefined rather than wiping the card on a shape this build cannot read.
+ */
+function gentleTasks(details: JsonValue | undefined): PlanTask[] | undefined {
+  const list = detailsOf(details, "gentleTodo")?.tasks;
+  if (!Array.isArray(list)) return undefined;
+  const tasks = planTasks(list);
+  return list.length === 0 || tasks.length > 0 ? tasks : undefined;
 }
 
 /** The info `endNotice` hands `settle`: a status, and an exit code only when it is a number. */
@@ -612,6 +645,10 @@ export function createPiReducer(): RowReducer {
   // An Oh My Pi job card → its progress names, the `label` an end row may name it by. Weak, so a card
   // the window and `workCards` both let go of costs nothing here.
   const jobLabels = new WeakMap<PendingTool, readonly string[]>();
+  // A Gentle Shell `subagent_run` that is not `mode: "background"` writes no start result: its next
+  // row is the final one. Its card is ongoing from the call until that result (#711), so these parts
+  // are remembered to be released when any result lands.
+  const foregroundRuns = new WeakSet<object>();
 
   /**
    * Oh My Pi's `task` start (OMP 18.6.1, read off a real session on 2026-10-25). The result answers at
@@ -693,7 +730,7 @@ export function createPiReducer(): RowReducer {
    * A Gentle Shell job also keeps its job id and `ts`, the start result's time, as when it started
    * (bridge/jobs-journal.ts reads both).
    */
-  function startWork(target: PendingTool, raw: JsonValue | undefined, ts: string): void {
+  function startWork(target: PendingTool, raw: JsonValue | undefined, ts: string, changed: Set<string>): void {
     const call = target.part.call;
     if (call?.kind !== "task" && call?.kind !== "execute") return;
     if (detailsOf(raw, "gentleAgents") === undefined && startOmpJob(target, raw)) return;
@@ -714,6 +751,10 @@ export function createPiReducer(): RowReducer {
     }
     const status = field(info, "status");
     if (status === "queued" || status === "running") call.ongoing = true;
+    // A foreground run answers once, with its final status. The settle path of a later result skips
+    // the card the result belongs to (`other !== target`), so the card settles itself here, which is
+    // what marks a failed run failed (#716).
+    if (call.kind === "task" && agents !== undefined) settle(target, agents, ts, changed);
   }
 
   /** A `gentle-agents.result` / `gentle-jobs.notice` row: the work it names has ended. */
@@ -724,10 +765,29 @@ export function createPiReducer(): RowReducer {
       settleOmpJobs(detailRows(row.details, "jobs"), (job, id) => field(job, "status") ?? asyncResultStatus(content, id), ts, changed);
       return;
     }
+    // A stale notice or stale result is Gentle Shell saying a subagent's end reached the session late
+    // or without its result (issue #716; the row shape is a guess, see `staleInfo`).
+    if (type === "gentle-agents.stale-notice" || type === "gentle-agents.stale-result") {
+      const info = staleInfo(row.details);
+      if (info !== undefined) settle(workCards.get(field(info, "taskId") ?? ""), info, ts, changed);
+      return;
+    }
     if (type !== "gentle-agents.result" && type !== "gentle-jobs.notice") return;
     const agents = type === "gentle-agents.result";
     const info = detailsOf(row.details, agents ? "gentleAgents" : "gentleJobs");
     if (info !== undefined) settle(workCards.get(field(info, agents ? "taskId" : "jobId") ?? ""), info, ts, changed);
+  }
+
+  /**
+   * The record a stale notice names its subagent by: `details.gentleAgents`, else `details` itself
+   * when it carries a `taskId`. It always ends the card, so a status that is not a final one (or is
+   * missing) reads as `stopped`, which marks no failure: stale says the end is lost, not that it failed.
+   */
+  function staleInfo(details: JsonValue | undefined): JsonObject | undefined {
+    const inner = detailsOf(details, "gentleAgents") ?? asRecord(details) ?? undefined;
+    if (inner === undefined || field(inner, "taskId") === undefined) return undefined;
+    const status = field(inner, "status");
+    return { ...inner, status: status !== undefined && FINAL_WORK_STATUS.has(status) ? status : "stopped" };
   }
 
   /**
@@ -913,8 +973,8 @@ export function createPiReducer(): RowReducer {
         const card = target.foldInto;
         pendingTools.delete(id);
         if (card.part.call?.kind === "plan") {
-          const tasks = planTasks(detailsOf(m.details, "gentleTodo")?.tasks);
-          if (tasks.length > 0) card.part.call.tasks = tasks;
+          const tasks = gentleTasks(m.details);
+          if (tasks !== undefined) card.part.call.tasks = tasks;
         } else {
           // `subagent_result`: the answer replaces the start notice's text. The work is over only
           // when the status it reports says so: one asked for too early answers "running".
@@ -931,7 +991,10 @@ export function createPiReducer(): RowReducer {
         // `details` rides on the RESULT ROW, not on a content block — it is pi's own record of what
         // the call did, and the only place a patch or an answer ever appears.
         if (target.part.call) enrichCall(target.part.call, m.details, resultText, isError, target.questionIds);
-        if (!isError) startWork(target, m.details, ts);
+        // A foreground run was ongoing from its call (see `toolCall` below); any result ends that,
+        // a failed or interrupted one too. A start result that says the work runs on sets it again.
+        if (foregroundRuns.has(target.part) && target.part.call?.kind === "task") delete target.part.call.ongoing;
+        if (!isError) startWork(target, m.details, ts, changed);
         // Both mutations above landed in a turn that went out rows ago. Name it.
         changed.add(target.uuid);
         // A status call about ANOTHER card's task (`subagent_status`, `subagent_cancel`).
@@ -1026,6 +1089,11 @@ export function createPiReducer(): RowReducer {
           continue;
         }
         if (lower === "todo") heldPlan = { part, uuid };
+        // A foreground subagent counts as running from its call until its result (#711).
+        if (lower === "subagent_run" && part.call?.kind === "task" && input.mode !== "background") {
+          part.call.ongoing = true;
+          foregroundRuns.add(part);
+        }
         if (typeof b.id === "string") {
           part.id = b.id;
           // The turn is named here, before it exists, because `uuid` is read off the row above and
