@@ -23,14 +23,16 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+## [1.28.0] - 2026-11-06
+
 ### Added
 
-- **A session can turn its WalkyTalky off.** Run `collie walky off` in the agent's pane, and no other agent can message that session, nor can it message them. Your own messages still reach it. `collie walky on` turns it back, `collie walky who` marks it `walky off`, and the switch ends when the pane closes.
-- **The phone has the WalkyTalky switch too.** The WalkyTalky sheet of a session opens with a WalkyTalky switch, and while the session is off the pane menu reads "WalkyTalky off". On a crew the switch is set on the machine that owns the pane.
+- **A session can turn its WalkyTalky off.** Run `collie walky off` in the agent's pane, and no other agent can message that session, nor can it message them. Your own messages still reach it. `collie walky on` turns it back, `collie walky who` marks it `walky off`, and the switch ends when the pane closes. ([89ec32d](https://github.com/AltanS/collie/commit/89ec32d))
+- **The phone has the WalkyTalky switch too.** The WalkyTalky sheet of a session opens with a WalkyTalky switch, and while the session is off the pane menu reads "WalkyTalky off". On a crew the switch is set on the machine that owns the pane. ([95e41f7](https://github.com/AltanS/collie/commit/95e41f7))
 
 ### Changed
 
-- **The feature is called WalkyTalky.** It is one word, in the app, the docs and the CLI help, and the Messages sheet is the WalkyTalky sheet. The commands (`collie walky …`) and the skill name do not change.
+- **The feature is called WalkyTalky.** It is one word, in the app, the docs and the CLI help, and the Messages sheet is the WalkyTalky sheet. The commands (`collie walky …`) and the skill name do not change. ([549c559](https://github.com/AltanS/collie/commit/549c559))
 
 ## [1.27.0] - 2026-11-06
 
