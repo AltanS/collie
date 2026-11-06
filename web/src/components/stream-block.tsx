@@ -31,8 +31,11 @@ import { cn } from "@/lib/utils";
 //
 // ── ONE BLOCK AT A TIME, AND IT GOES AWAY BY ITSELF ───────────────────────────────────────────────
 // One module store holds which block shows its `⋯`, so a reveal on one block hides the one before. It hides on a
-// press outside the block, on a scroll of anything that holds the block, on the sheet opening, and after
-// {@link REVEAL_MS} without a press on the block (a press inside starts the wait again).
+// press outside the block, on the sheet opening, and after {@link REVEAL_MS} without a press on the block (a press
+// inside starts the wait again). A SCROLL DOES NOT HIDE IT. The stream follows new output on its own while an agent
+// works, so a hide on scroll took the chip away at once on a working session, the moment a person wants to pin a
+// reply. The chip is absolute to its block and scrolls with it, so a scroll does it no harm; a touch scroll that
+// starts outside the block is a press elsewhere anyway.
 //
 // ── THE HOLD IS SILENT UNTIL IT FIRES ────────────────────────────────────────────────────────────
 // `useLongPress` shows a hold in the making (`data-holding`: a tint and a 0.97 scale from 150ms). On a block of
@@ -238,7 +241,7 @@ export function StreamBlock({ n, item, pinned, onActions, className, children, h
     if (revealed) place();
   }, [revealed, place]);
 
-  // While shown: a press elsewhere hides it, a press on the block renews its wait, a scroll of what holds it hides it.
+  // While shown: a press elsewhere hides it, and a press on the block renews its wait. No scroll hides it (above).
   useEffect(() => {
     const block = blockRef.current;
     if (!tapped || block === null) return;
@@ -246,15 +249,8 @@ export function StreamBlock({ n, item, pinned, onActions, className, children, h
       if (event.target instanceof Node && block.contains(event.target)) reveal(id);
       else conceal(id);
     };
-    const onScroll = (event: Event) => {
-      if (event.target === document || (event.target instanceof Node && event.target.contains(block))) conceal(id);
-    };
     document.addEventListener("pointerdown", onDown, true);
-    document.addEventListener("scroll", onScroll, { capture: true, passive: true });
-    return () => {
-      document.removeEventListener("pointerdown", onDown, true);
-      document.removeEventListener("scroll", onScroll, { capture: true });
-    };
+    return () => document.removeEventListener("pointerdown", onDown, true);
   }, [tapped, id]);
 
   // A block that leaves the stream takes its `⋯` with it.

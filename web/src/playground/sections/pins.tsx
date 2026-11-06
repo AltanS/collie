@@ -313,7 +313,7 @@ export function PinsSection() {
           state="pins-blocks-at-rest"
           label="1: blocks at rest"
           reach="Open a pane in Chat. A message, a reply, a thinking block, a notice and a tool card show no ⋯ and no room for one; the text runs to the edge."
-          note="Tap a block here to show its ⋯, as in the app. It hides after 4 s, on a tap elsewhere or on a scroll."
+          note="Tap a block here to show its ⋯, as in the app. It hides after 4 s or on a tap elsewhere, and stays through a scroll."
         >
           <CardHead n={1} title="Blocks at rest" />
           <BlocksCard items={[USER_ITEM, REPLY_ITEM, THINKING_ITEM, NOTICE_ITEM]} />

@@ -190,7 +190,7 @@ describe("StreamBlock reveal", () => {
     expect(blockEl(container)).not.toHaveAttribute("data-revealed");
   });
 
-  it("hides on a scroll of what holds the block, and not on a scroll inside it", () => {
+  it("stays shown through a scroll, of what holds the block or inside it: the stream follows new output on its own", () => {
     const { container } = render(
       <div className="scroller">
         <StreamBlock n={1} item={item} pinned={false} onActions={vi.fn()} className={BLOCK}>
@@ -204,7 +204,8 @@ describe("StreamBlock reveal", () => {
     fireEvent.scroll(screen.getByText("wide table"));
     expect(el).toHaveAttribute("data-revealed");
     fireEvent.scroll(container.querySelector(".scroller")!);
-    expect(el).not.toHaveAttribute("data-revealed");
+    fireEvent.scroll(document);
+    expect(el).toHaveAttribute("data-revealed");
   });
 
   it("hides after its wait without a press, and a press on the block starts the wait again", () => {

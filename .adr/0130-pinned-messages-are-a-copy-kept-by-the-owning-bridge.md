@@ -118,7 +118,7 @@ rest.
   rather than acts, so a tap that only meant to read costs nothing.
 - **A right click on a desk still opens the sheet at once**, and a mouse over the block shows the `⋯` too.
 - **The chip moves no box and covers no control.** It is an overlay, and it steps left of a copy button, a tool
-  card's chevron or a status badge in its corner. It hides on a press elsewhere, a scroll, or 4 s without a press.
+  card's chevron or a status badge in its corner. It hides on a press elsewhere or after 4 s without a press, and stays through a scroll: the stream follows new output on its own while an agent works, and that is when a person wants to pin a reply.
 
 `web/src/components/stream-block.tsx` holds the details.
 
