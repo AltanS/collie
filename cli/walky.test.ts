@@ -8,7 +8,9 @@ import type { BeaconMatcher } from "../bridge/beacon/decorate.ts";
 import { HOST } from "../bridge/host.ts";
 import type { SendResult, WalkyHost, WalkyPane } from "../bridge/walky/deliver.ts";
 import { WalkyLog } from "../bridge/walky/log.ts";
+import { WalkyOff } from "../bridge/walky/off.ts";
 import { UNREAD_BY_OLDER_BRIDGE } from "../bridge/walky/refusals.ts";
+import { SENDER_OFF, WALKY_OFF } from "../bridge/walky/types.ts";
 import { WalkyService } from "../bridge/walky/service.ts";
 import { walkySocketPath, WalkyServer, type PlaceTarget } from "../bridge/walky/socket.ts";
 import { parseJsonObject } from "../web/src/lib/json.ts";
@@ -20,11 +22,18 @@ import {
   cmdWalky,
   cmdWalkyCancel,
   cmdWalkyInbox,
+  cmdWalkyOff,
+  cmdWalkyOn,
   cmdWalkyReply,
   cmdWalkySend,
   cmdWalkyStatus,
   cmdWalkyWho,
   NO_SOCKET_TEXT,
+  OFF_WORDS,
+  ON_WORDS,
+  SENDER_OFF_WORDS,
+  WALKY_OFF_WORDS,
+  YOU_ARE_OFF_WORDS,
   parseSendArgs,
   receiptLine,
   shown,
@@ -548,6 +557,99 @@ describe("reply, inbox, status, who", () => {
     expect(stateWords({ ...receipt, reason: "no terminal" })).toBe("waiting in the inbox, not typed: no terminal");
   });
 
+  test("the receipt wording for the two off refusals names the next step (M89)", () => {
+    const receipt = { id: "wt_aaaaaaaaaaa1", target: "local/%2", state: "refused", reason: WALKY_OFF, verified: "local", at: 1, by: "solo" } as const;
+    expect(stateWords(receipt)).toBe("not sent: walky talky off. This session takes messages from its operator only. Ask your operator.");
+    expect(stateWords({ ...receipt, reason: SENDER_OFF })).toBe("not sent: your walky talky is off. Turn it on: collie walky on");
+    expect(WALKY_OFF_WORDS).toBe(stateWords(receipt));
+    expect(SENDER_OFF_WORDS).toBe(stateWords({ ...receipt, reason: SENDER_OFF }));
+    // The machine-wide switch keeps its bare word.
+    expect(stateWords({ ...receipt, reason: "off" })).toBe("not sent: off");
+  });
+
+  /** A bridge whose panes carry the flag a real `WalkyOff` holds, as bridge/index.ts wires it. */
+  const switchable = () => {
+    const off = new WalkyOff(null);
+    const rows: WalkyPane[] = [
+      { session: "main", paneId: "%1", agent: true, harness: "agent-x", label: "repo#one", state: "idle", activeAt: null, instance: "aaaa", terminal: true, off: false },
+      { session: "main", paneId: "%2", agent: true, harness: "agent-y", label: "repo#two", state: "working", activeAt: null, instance: "bbbb", terminal: true, off: false },
+    ];
+    const host: WalkyHost = {
+      panes: () => rows.map((pane) => Object.assign({}, pane, { off: off.isOff(pane) })),
+      send: async () => ({ outcome: "sent" }),
+      sendState: () => ({ outcome: "sent" }),
+      cancelHeld: () => undefined,
+    };
+    return { host, off };
+  };
+
+  socketTest("off and on set this pane's flag on every bridge that knows it, in words and in --json; outside a pane it is refused", async () => {
+    const one = switchable();
+    const two = switchable();
+    const a = await bridge({ host: one.host, off: one.off });
+    const b = await bridge({ host: two.host, off: two.off });
+    const both = { sockets: () => [walkySocketPath(a.stateDir), walkySocketPath(b.stateDir)] };
+    const d = deps(a, inPane("%1"), both);
+    expect(await cmdWalkyOff(d, [])).toBe(EXIT.OK);
+    expect(d.io.stdout).toEqual([OFF_WORDS]);
+    expect(OFF_WORDS).toBe("walky talky off for this session. Other agents cannot message it; your operator still can. Turn it on: collie walky on");
+    // Two Collies on one multiplexer: both know the pane, and either could type into it.
+    expect(one.off.isOff({ session: "main", paneId: "%1", instance: "aaaa" })).toBe(true);
+    expect(two.off.isOff({ session: "main", paneId: "%1", instance: "aaaa" })).toBe(true);
+    const again = deps(a, inPane("%1"), both);
+    expect(await cmdWalkyOff(again, ["--json"])).toBe(EXIT.OK);
+    expect(again.io.stdout).toEqual(['{"off":true}']);
+    const on = deps(a, inPane("%1"), both);
+    expect(await cmdWalkyOn(on, [])).toBe(EXIT.OK);
+    expect(on.io.stdout).toEqual([ON_WORDS]);
+    expect(one.off.all()).toEqual([]);
+    expect(two.off.all()).toEqual([]);
+    const onJson = deps(a, inPane("%1"), both);
+    expect(await cmdWalkyOn(onJson, ["--json"])).toBe(EXIT.OK);
+    expect(onJson.io.stdout).toEqual(['{"off":false}']);
+    const outside = deps(a);
+    expect(await cmdWalkyOff(outside, [])).toBe(EXIT.STATE);
+    expect(outside.io.stderr).toEqual(["walky talky: run this inside an agent pane"]);
+    const odd = deps(a, inPane("%1"));
+    expect(await cmdWalkyOff(odd, ["now"])).toBe(EXIT.USAGE);
+    expect(one.off.all()).toEqual([]);
+  });
+
+  socketTest("who marks an off session in STATE and in --json, and tells an off asker how to turn on", async () => {
+    const sw = switchable();
+    const b = await bridge({ host: sw.host, off: sw.off });
+    sw.off.set({ session: "main", paneId: "%2", instance: "bbbb" }, true, "operator");
+    const d = deps(b, inPane("%1"));
+    expect(await cmdWalkyWho(d, [])).toBe(EXIT.OK);
+    expect(d.io.stdout).toEqual([
+      "ADDRESS        MACHINE  HARNESS  LABEL     STATE",
+      "local/%1#aaaa  desk     agent-x  repo#one  idle  (you)",
+      "local/%2#bbbb  desk     agent-y  repo#two  working, walky off",
+    ]);
+    const json = deps(b, inPane("%1"));
+    expect(await cmdWalkyWho(json, ["--json"])).toBe(EXIT.OK);
+    // SAFETY: `who --json` prints one object whose `targets` rows carry `address` and, when off, `walky`.
+    const rows = (JSON.parse(json.io.stdout[0]!) as { targets: { address: string; walky?: string }[] }).targets;
+    expect(rows.map((row) => row.walky ?? null)).toEqual([null, "off"]);
+    sw.off.set({ session: "main", paneId: "%1", instance: "aaaa" }, true, "session");
+    const self = deps(b, inPane("%1"));
+    expect(await cmdWalkyWho(self, [])).toBe(EXIT.OK);
+    expect(self.io.stdout.at(-1)).toBe(YOU_ARE_OFF_WORDS);
+    expect(YOU_ARE_OFF_WORDS).toBe("Your walky talky is off. Turn it on: collie walky on");
+  });
+
+  socketTest("a send to an off session, and from one, exits REFUSED with the next step in words", async () => {
+    const sw = switchable();
+    const b = await bridge({ host: sw.host, off: sw.off });
+    sw.off.set({ session: "main", paneId: "%1", instance: "aaaa" }, true, "session");
+    const to = deps(b, inPane("%2"));
+    expect(await cmdWalkySend(to, ["local/%1", "hi"])).toBe(EXIT.REFUSED);
+    expect(to.io.stdout.at(-1)).toBe(WALKY_OFF_WORDS);
+    const from = deps(b, inPane("%1"), { mintId: () => "wt_aaaaaaaaaaa2" });
+    expect(await cmdWalkySend(from, ["local/%2", "hi"])).toBe(EXIT.REFUSED);
+    expect(from.io.stdout.at(-1)).toBe(SENDER_OFF_WORDS);
+  });
+
   socketTest("who on a solo install with only the asking agent pane says a message needs two", async () => {
     const lone: WalkyHost = {
       panes: () => [
@@ -562,6 +664,11 @@ describe("reply, inbox, status, who", () => {
     const d = deps(b, inPane("%1"));
     expect(await cmdWalkyWho(d, [])).toBe(EXIT.OK);
     expect(d.io.stdout).toEqual(["You are local/%1#aaaa. No other agent pane yet. A message needs two."]);
+    // An asker that is off hears it here too, where the table is not printed.
+    lone.panes = () => [{ session: "main", paneId: "%1", agent: true, harness: "agent-x", label: "repo#one", state: "idle", activeAt: null, instance: "aaaa", terminal: true, off: true }];
+    const offAsker = deps(b, inPane("%1"));
+    expect(await cmdWalkyWho(offAsker, [])).toBe(EXIT.OK);
+    expect(offAsker.io.stdout).toEqual(["You are local/%1#aaaa. No other agent pane yet. A message needs two.", YOU_ARE_OFF_WORDS]);
   });
 
   socketTest("who lists the panes and marks the asking one", async () => {
@@ -688,7 +795,7 @@ describe("reply, inbox, status, who", () => {
   test("a bare `walky` prints the sub-verbs and exits USAGE", () => {
     const io = capture();
     expect(cmdWalky({ io }, [])).toBe(EXIT.USAGE);
-    expect(io.stderr[0]).toBe("usage: collie walky {who|send|reply|inbox|status|cancel}");
+    expect(io.stderr[0]).toBe("usage: collie walky {who|send|reply|inbox|status|cancel|off|on}");
   });
 });
 

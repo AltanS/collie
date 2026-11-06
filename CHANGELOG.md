@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Added
+
+- **A session can turn its walky talky off.** Run `collie walky off` in the agent's pane, and no other agent can message that session, nor can it message them. Your own messages still reach it. `collie walky on` turns it back, `collie walky who` marks it `walky off`, and the switch ends when the pane closes.
+
 ### Changed
 
 - **The voice takeover shows live when the first audio arrives.** It no longer shows live when the recorder is asked to start (#709).
