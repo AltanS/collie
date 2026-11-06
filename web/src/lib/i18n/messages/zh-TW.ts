@@ -2888,4 +2888,12 @@ export const zhTW: Dictionary = {
   // --- pins, review fixes (M90) ---
   "pins.sheet.kind.toolPlain": "工具",
   "pins.reason.notSettled": "該回覆仍在撰寫中。完成後再釘選。",
+  // --- newTab: the New tab sheet behind a workspace's "+" (M91) ---
+  "newTab.title": "在 {workspace} 中新增分頁",
+  "newTab.folder": "位於 {folder}",
+  "newTab.group.agents": "代理",
+  "newTab.group.commands": "命令",
+  "newTab.more": "更多選項",
+  "newTab.fromLead": "Lead",
+  "newTab.loading": "正在讀取此機器上的代理…",
 };

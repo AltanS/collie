@@ -2873,4 +2873,12 @@ export const ru: Dictionary = {
   // --- pins, review fixes (M90) ---
   "pins.sheet.kind.toolPlain": "Инструмент",
   "pins.reason.notSettled": "Этот ответ еще пишется. Закрепите его, когда он будет готов.",
+  // --- newTab: the New tab sheet behind a workspace's "+" (M91) ---
+  "newTab.title": "Новая вкладка в {workspace}",
+  "newTab.folder": "В {folder}",
+  "newTab.group.agents": "Агенты",
+  "newTab.group.commands": "Команды",
+  "newTab.more": "Другие параметры",
+  "newTab.fromLead": "Lead",
+  "newTab.loading": "Читаем агентов этой машины…",
 };

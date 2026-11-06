@@ -2906,4 +2906,12 @@ export const ko: Dictionary = {
   // --- pins, review fixes (M90) ---
   "pins.sheet.kind.toolPlain": "도구",
   "pins.reason.notSettled": "해당 답글은 아직 작성 중입니다. 작성이 완료되면 고정하십시오.",
+  // --- newTab: the New tab sheet behind a workspace's "+" (M91) ---
+  "newTab.title": "{workspace}에서 새 탭",
+  "newTab.folder": "{folder}에서 열기",
+  "newTab.group.agents": "에이전트",
+  "newTab.group.commands": "명령",
+  "newTab.more": "추가 옵션",
+  "newTab.fromLead": "Lead",
+  "newTab.loading": "이 머신의 에이전트를 읽는 중…",
 };

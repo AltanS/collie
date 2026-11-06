@@ -2745,4 +2745,12 @@ export const fr: Dictionary = {
   // --- pins, review fixes (M90) ---
   "pins.sheet.kind.toolPlain": "Outil",
   "pins.reason.notSettled": "Cette réponse est encore en cours de rédaction. Épinglez-la lorsqu'elle sera terminée.",
+  // --- newTab: the New tab sheet behind a workspace's "+" (M91) ---
+  "newTab.title": "Nouvel onglet dans {workspace}",
+  "newTab.folder": "Dans {folder}",
+  "newTab.group.agents": "Agents",
+  "newTab.group.commands": "Commandes",
+  "newTab.more": "Plus d'options",
+  "newTab.fromLead": "Lead",
+  "newTab.loading": "Lecture des agents de cette machine…",
 };

@@ -2932,4 +2932,12 @@ export const de: Dictionary = {
   // --- pins, review fixes (M90) ---
   "pins.sheet.kind.toolPlain": "Tool",
   "pins.reason.notSettled": "Diese Antwort wird noch verfasst. Hefte sie an, wenn sie fertig ist.",
+  // --- newTab: the New tab sheet behind a workspace's "+" (M91) ---
+  "newTab.title": "Neuer Tab in {workspace}",
+  "newTab.folder": "In {folder}",
+  "newTab.group.agents": "Agenten",
+  "newTab.group.commands": "Befehle",
+  "newTab.more": "Weitere Optionen",
+  "newTab.fromLead": "Lead",
+  "newTab.loading": "Die Agenten dieser Maschine werden gelesen…",
 };
