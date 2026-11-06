@@ -1876,6 +1876,10 @@ export function AgentChat({
   const pinsReadable = pinsKept && !savedCopyWrites && !connecting && hostBlock === undefined;
   const messagePins = useMessagePins({ paneId, scope, enabled: pinsReadable, wireCount: agent?.pins ?? 0 });
   const pinsWritable = pinsReadable && !readOnly;
+  // The belt's mark and its sheet follow the wire like the Agents and Jobs marks (and like a column's belt,
+  // components/strip-column.tsx), so a pane the phone cannot ask right now (connecting, a saved copy, a refused
+  // host) still shows the mark the machine last counted; only the reading and the writing are gated above.
+  const pinsOnBelt = agent !== undefined && agent.kind !== "shell" && !gone;
   // The block whose actions sheet is open, as the stream handed it over.
   const [blockActions, setBlockActions] = useState<ChatItem | null>(null);
   // Filled by the stream with "scroll to the block this pin came from" (Show in Chat on the Pins sheet).
@@ -3354,7 +3358,7 @@ export function AgentChat({
                   subagents={agent?.subagents}
                   jobs={agent?.jobs}
                   pins={
-                    pinsReadable
+                    pinsOnBelt
                       ? { count: messagePins.count, rows: messagePins.rows, onUnpin: unpinById, onOpened: messagePins.refresh, onShow: showPin }
                       : undefined
                   }
@@ -3638,7 +3642,8 @@ export function AgentChat({
         {/* What a hold (or the ⋯) on a Chat block offers: Pin or Unpin, and Copy text (M90). */}
         <BlockActionsSheet
           item={blockActions}
-          pinned={blockActions !== null && pinnedPinId(blockActions) !== ""}
+          pinned={blockActions !== null && messagePins.pinned.has(blockActions.id)}
+          pinning={blockActions !== null && messagePins.pinned.get(blockActions.id) === ""}
           onClose={() => setBlockActions(null)}
           onPin={pinBlock}
           onUnpin={unpinBlock}

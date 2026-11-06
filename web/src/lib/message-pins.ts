@@ -31,8 +31,9 @@ export function hostKeepsPins(version: string | undefined): boolean {
 
 /**
  * Whether a Chat block can be pinned: its text, a reply, a thinking block, a notice or a tool card. Not a
- * picture, not the compaction marker (decision 5), and not a text the program is still writing, which is
- * pinnable only once it settles (decision 8).
+ * picture, not the compaction marker (decision 5), not a text the program is still writing, which is
+ * pinnable only once it settles (decision 8), and not a tool call that is still running. `partial` marks a
+ * growing text on a durable pane only; {@link writingItemId} names the one a normal pane is writing.
  */
 export function isPinnable(item: ChatItem): boolean {
   switch (item.kind) {
@@ -46,8 +47,21 @@ export function isPinnable(item: ChatItem): boolean {
     case "notice":
       return item.partial !== true;
     case "tool":
-      return true;
+      return item.status !== "running";
   }
+}
+
+/**
+ * The id of the item the agent is still writing, on a pane that does not mark it `partial`: the LAST reply or
+ * thinking block of the stream while the agent is working, the same fact the stream draws its cursor from. A block
+ * after it (a tool call, a person's line) means the text is done. `undefined` when the agent is idle or the stream
+ * ends in anything else.
+ */
+export function writingItemId(blocks: readonly (readonly ChatItem[])[], working: boolean): string | undefined {
+  if (!working) return undefined;
+  const last = blocks.at(-1)?.at(-1);
+  if (last === undefined) return undefined;
+  return last.kind === "reply" || last.kind === "thinking" ? last.id : undefined;
 }
 
 /** The kind a pin of this block is filed under. Only called for a pinnable block. */
@@ -105,9 +119,15 @@ function toolGist(call: ToolCall): string {
   }
 }
 
+/** "Tool: git", or the plain word "Tool" for a call that carries no name, never "Tool: ". */
+function toolTitle(name: string): string {
+  const trimmed = name.trim();
+  return trimmed === "" ? t("pins.sheet.kind.toolPlain") : t("pins.sheet.kind.tool", { name: trimmed });
+}
+
 /** The title of a block's actions sheet: what the block is, in words. */
 export function itemTitle(item: ChatItem): string {
-  if (item.kind === "tool") return t("pins.sheet.kind.tool", { name: toolNameOf(item.tool) });
+  if (item.kind === "tool") return toolTitle(toolNameOf(item.tool));
   return t(`pins.sheet.kind.${pinKindOf(item)}`, { name: "" });
 }
 
@@ -132,7 +152,7 @@ export function itemCopyText(item: ChatItem): string {
 
 /** The title of a pin: its kind in words, a tool card by its name. */
 export function pinTitle(pin: Pick<PinRow, "kind" | "tool">): string {
-  if (pin.kind === "tool") return t("pins.sheet.kind.tool", { name: pin.tool?.name ?? "" });
+  if (pin.kind === "tool") return toolTitle(pin.tool?.name ?? "");
   return t(`pins.sheet.kind.${pin.kind}`, { name: "" });
 }
 
@@ -189,6 +209,7 @@ const REASONS = {
   "pin.item_not_found": "pins.reason.notFound",
   "pin.not_found": "pins.reason.gone",
   "pin.not_pinnable": "pins.reason.notPinnable",
+  "pin.not_settled": "pins.reason.notSettled",
   "pin.cap": "pins.reason.cap",
 } as const;
 

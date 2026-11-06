@@ -2909,4 +2909,8 @@ export const ja: Dictionary = {
   "pins.sheet.empty": "このセッションで固定されているものはありません。",
   "pins.action.show": "チャットで表示",
   "pins.notice.notLoaded": "そのブロックはチャットに読み込まれていません。上にスクロールして過去のメッセージを読み込んでください。",
+
+  // --- pins, review fixes (M90) ---
+  "pins.sheet.kind.toolPlain": "ツール",
+  "pins.reason.notSettled": "その返信はまだ書き込み中です。完了したら固定してください。",
 };

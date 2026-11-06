@@ -2925,4 +2925,8 @@ export const es: Dictionary = {
   "pins.sheet.empty": "No hay nada fijado en esta sesión.",
   "pins.action.show": "Mostrar en el chat",
   "pins.notice.notLoaded": "Ese bloque no está cargado en el chat. Desplázate hacia arriba para cargar los mensajes más antiguos.",
+
+  // --- pins, review fixes (M90) ---
+  "pins.sheet.kind.toolPlain": "Herramienta",
+  "pins.reason.notSettled": "Esa respuesta todavía se está escribiendo. Fíjala cuando haya terminado.",
 };

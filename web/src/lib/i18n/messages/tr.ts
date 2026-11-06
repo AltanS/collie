@@ -2740,4 +2740,8 @@ export const tr: Dictionary = {
   "pins.sheet.empty": "Bu oturumda sabitlenmiş hiçbir şey yok.",
   "pins.action.show": "Sohbette Göster",
   "pins.notice.notLoaded": "Bu blok Sohbette yüklenmedi. Daha eski iletileri yüklemek için yukarı kaydırın.",
+
+  // --- pins, review fixes (M90) ---
+  "pins.sheet.kind.toolPlain": "Araç",
+  "pins.reason.notSettled": "Bu yanıt hâlâ yazılıyor. Tamamlandığında sabitleyin.",
 };

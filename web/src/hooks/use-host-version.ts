@@ -14,6 +14,9 @@ import { fetchCrew } from "@/lib/api";
 
 const MEMBER_VERSIONS = new Map<string, string>();
 let inflight: Promise<void> | null = null;
+// The roster the versions were last read for. A member that updates restarts, and the roster shows it (reachable,
+// protocol), so a changed roster reads the census again and a member updated to 1.28 stops being hidden.
+let readFor: string | null = null;
 
 async function fetchCensus(): Promise<void> {
   try {
@@ -28,7 +31,8 @@ async function fetchCensus(): Promise<void> {
   }
 }
 
-function readCensus(): Promise<void> {
+function readCensus(roster: string): Promise<void> {
+  readFor = roster;
   inflight ??= fetchCensus();
   return inflight;
 }
@@ -37,20 +41,23 @@ function readCensus(): Promise<void> {
 export function forgetHostVersions(): void {
   MEMBER_VERSIONS.clear();
   inflight = null;
+  readFor = null;
 }
 
 /** The version a member's Collie reports, or `undefined` for the lead, a solo install or an unknown. */
 export function useHostVersion(host: string | undefined): string | undefined {
-  const { multi, lead } = useCrew();
+  const { multi, lead, servers } = useCrew();
+  // Who is on the crew and whether each answers: the facts a member's update moves. Not `lastSeenAt`, which moves each poll.
+  const roster = servers.map((server) => `${server.id}:${server.reachable ? 1 : 0}:${server.protocol}`).join(",");
   const member = multi && host !== undefined && host !== lead ? host : undefined;
   const [, bump] = useState(0);
   useEffect(() => {
-    if (member === undefined || MEMBER_VERSIONS.has(member)) return;
+    if (member === undefined || (MEMBER_VERSIONS.has(member) && readFor === roster)) return;
     let live = true;
-    void readCensus().then(() => live && bump((n) => n + 1));
+    void readCensus(roster).then(() => live && bump((n) => n + 1));
     return () => {
       live = false;
     };
-  }, [member]);
+  }, [member, roster]);
   return member === undefined ? undefined : MEMBER_VERSIONS.get(member);
 }

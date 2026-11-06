@@ -24,6 +24,30 @@ describe("useHostVersion", () => {
     expect(reads).toEqual(["census"]);
   });
 
+  it("reads the census again when the roster changes, so a member updated to 1.28 stops being hidden", async () => {
+    let version = "1.27.0";
+    server.use(
+      http.get("/api/crew", () => {
+        const members = structuredClone(fixtureCrewStatus.members);
+        members.find((m) => m.id === "workshop")!.version = version;
+        return HttpResponse.json({ ...fixtureCrewStatus, members });
+      }),
+    );
+    let servers = structuredClone(fixtureServers);
+    const view = renderHook(() => useHostVersion("workshop"), {
+      wrapper: ({ children }: { children: ReactNode }) => <CrewProvider servers={servers}>{children}</CrewProvider>,
+    });
+    await waitFor(() => expect(view.result.current).toBe("1.27.0"));
+    // The member updates and restarts: its row goes unreachable and comes back, and the census is read again.
+    version = "1.28.0";
+    servers = structuredClone(fixtureServers);
+    servers.find((row) => row.id === "workshop")!.reachable = false;
+    view.rerender();
+    servers = structuredClone(fixtureServers);
+    view.rerender();
+    await waitFor(() => expect(view.result.current).toBe("1.28.0"));
+  });
+
   it("answers nothing for the lead, a pane with no host and a solo install, and reads nothing", () => {
     const reads: string[] = [];
     server.use(http.get("/api/crew", () => (reads.push("census"), HttpResponse.json(fixtureCrewStatus))));

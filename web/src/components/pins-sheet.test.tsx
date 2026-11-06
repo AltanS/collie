@@ -179,4 +179,15 @@ describe("PinsSheet, the detail", () => {
     expect(screen.queryByRole("dialog", { name: /^Reply · / })).toBeNull();
     expect(screen.getByRole("dialog", { name: "Pinned messages" })).toBeInTheDocument();
   });
+
+  it("moves focus to the list's title when the detail's own Unpin removed the row it was opened from", async () => {
+    const user = userEvent.setup();
+    whole();
+    mount();
+    await user.click(screen.getByText("One commit: abc1234."));
+    const detail = await screen.findByRole("dialog", { name: /^Reply · / });
+    await user.click(within(detail).getByRole("button", { name: "Unpin" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: /^Reply · / })).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByText("Pinned messages")));
+  });
 });

@@ -2890,4 +2890,8 @@ export const zh: Dictionary = {
   "pins.sheet.empty": "当前会话中没有固定内容。",
   "pins.action.show": "在聊天中显示",
   "pins.notice.notLoaded": "该块未加载到聊天中。向上滚动以加载更早的消息。",
+
+  // --- pins, review fixes (M90) ---
+  "pins.sheet.kind.toolPlain": "工具",
+  "pins.reason.notSettled": "该回复仍在撰写中。完成后再固定。",
 };

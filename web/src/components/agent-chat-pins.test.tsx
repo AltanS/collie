@@ -296,5 +296,38 @@ describe("AgentChat — the Pins mark and sheet", () => {
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(document.querySelector('[data-slot="belt-pins"]')).toBeNull();
   });
-});
 
+  it("keeps the mark the wire counts on a saved copy, where nothing can be asked, as a column's belt draws it", async () => {
+    const at = Date.now() - 60_000;
+    await saveChatTail(undefined, journalAgent().paneId, [{ uuid: "s1", seq: 7, ts: "", role: "assistant", parts: [{ kind: "text", text: "the saved reply" }] }], "1d", at);
+    server.use(http.get(/\/api\/pane\/[^/]+\/chat/, () => HttpResponse.error()));
+    renderPane({ agent: { ...journalAgent(), pins: 2 }, stale: true, lastSeenAt: at, error: true });
+    expect(await screen.findByText("the saved reply")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "2 pinned" })).toBeInTheDocument();
+  });
+
+  it("shows Unpin, dimmed, on a block whose pin is still on its way, and takes no tap", async () => {
+    const user = userEvent.setup();
+    let release!: () => void;
+    server.use(
+      http.post(/\/api\/pane\/[^/]+\/pins$/, async () => {
+        await new Promise<void>((resolve) => {
+          release = resolve;
+        });
+        const made = fixturePin({ itemId: "t2:1", id: "late" });
+        setMessagePins([...heldMessagePins(), made]);
+        return HttpResponse.json({ pin: made }, { status: 201 });
+      }),
+    );
+    renderPane();
+    await screen.findByText(ANSWERED);
+    await user.click(moreButtons()[2]!);
+    await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Pin" }));
+    await screen.findByRole("img", { name: "Pinned" });
+    await user.click(moreButtons()[2]!);
+    const row = within(await screen.findByRole("dialog")).getByRole("button", { name: "Unpin" });
+    expect(row).toBeDisabled();
+    release();
+    await waitFor(() => expect(within(screen.getByRole("dialog")).getByRole("button", { name: "Unpin" })).toBeEnabled());
+  });
+});

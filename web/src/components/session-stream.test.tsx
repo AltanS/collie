@@ -1272,11 +1272,43 @@ describe("SessionStream pins", () => {
   it("does not offer the compaction marker, and does offer a tool card", () => {
     const withImage = feed([
       entry("c", BASE, "the recap", { role: "summary" }),
-      entry("t", BASE + 1, "", { parts: [{ kind: "tool", name: "Bash", summary: "ls", id: "toolu_1" }] }),
+      entry("t", BASE + 1, "", { parts: [{ kind: "tool", name: "Bash", summary: "ls", id: "toolu_1", result: { text: "a b" } }] }),
     ]);
     const [, pins] = opened();
     renderPins({ feed: withImage, pins });
     expect(screen.getAllByRole("button", { name: "Message actions" })).toHaveLength(1);
+  });
+
+  it("does not offer a tool call that is still running, and does once it has a result", () => {
+    const running = feed([entry("t", BASE, "", { parts: [{ kind: "tool", name: "Bash", summary: "ls", id: "toolu_1" }] })]);
+    const [, pins] = opened();
+    const view = renderPins({ feed: running, pins });
+    expect(screen.queryByRole("button", { name: "Message actions" })).toBeNull();
+    view.unmount();
+    const done = feed([entry("t", BASE, "", { parts: [{ kind: "tool", name: "Bash", summary: "ls", id: "toolu_1", result: { text: "a" } }] })]);
+    renderPins({ feed: done, pins });
+    expect(screen.getAllByRole("button", { name: "Message actions" })).toHaveLength(1);
+  });
+
+  it("does not offer the last reply while the agent works, though no item says `partial`, and offers it once it is idle", () => {
+    const [, pins] = opened();
+    const view = renderPins({ pins, working: true });
+    // The person's line is offered, the reply being written is not.
+    expect(screen.getAllByRole("button", { name: "Message actions" })).toHaveLength(1);
+    expect(screen.getByText("do it").closest("[data-block]")!.querySelector("[data-slot='block-more']")).not.toBeNull();
+    view.unmount();
+    renderPins({ pins, working: false });
+    expect(screen.getAllByRole("button", { name: "Message actions" })).toHaveLength(2);
+  });
+
+  it("offers a reply that a later block has followed, though the agent still works", () => {
+    const later = feed([
+      entry("a", BASE, "first thought"),
+      entry("t", BASE + 1, "", { parts: [{ kind: "tool", name: "Bash", summary: "ls", id: "toolu_1", result: { text: "a" } }] }),
+    ]);
+    const [, pins] = opened();
+    renderPins({ feed: later, pins, working: true });
+    expect(screen.getAllByRole("button", { name: "Message actions" })).toHaveLength(2);
   });
 
   it("gives a folded run of steps no way in: it has no one text to keep", () => {

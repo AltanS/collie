@@ -28,7 +28,7 @@ import type { PinRow } from "@/lib/types";
 export interface MessagePins {
   /** The pins, newest first. Empty until the first read lands, or when the session has none. */
   readonly rows: readonly PinRow[];
-  /** How many pins the session holds: this phone's own list once read, else the wire count. */
+  /** How many pins the session holds: this phone's own list once read and while it can be read, else the wire count. */
   readonly count: number;
   /** Chat item id to pin id; `""` while a pin is on its way. */
   readonly pinned: ReadonlyMap<string, string>;
@@ -104,9 +104,11 @@ export function useMessagePins({
         await unpinItem(scope, paneId, pinId);
         refresh();
       } catch (thrown) {
-        // Put the row back where the list had it.
+        // Put the row back where the list had it, then read the list: a refusal can mean the pin is gone already (another
+        // phone dropped it), and the machine's list is the truth either way.
         if (removed !== undefined) setList((rows) => newestFirst([...(rows ?? []).filter((row) => row.id !== pinId), removed]));
         setStatus(pinFailure(thrown), "warn");
+        refresh();
       }
     },
     [enabled, list, paneId, scope, refresh],
@@ -114,5 +116,7 @@ export function useMessagePins({
 
   const rows = list ?? NO_ROWS;
   const pinned = useMemo(() => pinnedByItem(rows, pending), [rows, pending]);
-  return { rows, count: list === null ? wireCount : list.length, pinned, pin, unpin, refresh };
+  // The list counts while it can be kept fresh. Where nothing can be asked (`enabled` false: connecting, a saved copy) the
+  // wire's own count stands, the one every column's belt draws (components/strip-column.tsx), so the two never disagree.
+  return { rows, count: enabled && list !== null ? list.length : wireCount, pinned, pin, unpin, refresh };
 }

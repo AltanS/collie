@@ -2742,4 +2742,8 @@ export const it: Dictionary = {
   "pins.sheet.empty": "Nessun elemento fissato in questa sessione.",
   "pins.action.show": "Mostra nella Chat",
   "pins.notice.notLoaded": "Quel blocco non è caricato nella Chat. Scorri verso l'alto per caricare i messaggi precedenti.",
+
+  // --- pins, review fixes (M90) ---
+  "pins.sheet.kind.toolPlain": "Strumento",
+  "pins.reason.notSettled": "Quella risposta è ancora in fase di scrittura. Fissala quando è finita.",
 };

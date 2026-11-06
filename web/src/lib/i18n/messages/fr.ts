@@ -2741,4 +2741,8 @@ export const fr: Dictionary = {
   "pins.sheet.empty": "Rien n'est épinglé dans cette session.",
   "pins.action.show": "Afficher dans le chat",
   "pins.notice.notLoaded": "Ce bloc n'est pas chargé dans le chat. Faites défiler vers le haut pour charger les messages plus anciens.",
+
+  // --- pins, review fixes (M90) ---
+  "pins.sheet.kind.toolPlain": "Outil",
+  "pins.reason.notSettled": "Cette réponse est encore en cours de rédaction. Épinglez-la lorsqu'elle sera terminée.",
 };

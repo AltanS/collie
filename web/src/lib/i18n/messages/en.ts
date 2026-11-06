@@ -3119,6 +3119,10 @@ export const en = {
   "pins.sheet.empty": "Nothing is pinned in this session.",
   "pins.action.show": "Show in Chat",
   "pins.notice.notLoaded": "That block is not loaded in Chat. Scroll up to load older messages.",
+
+  // --- pins, review fixes (M90) ---
+  "pins.sheet.kind.toolPlain": "Tool",
+  "pins.reason.notSettled": "That reply is still being written. Pin it when it is done.",
 } as const;
 
 /** Every key that exists, as a union of string literals. The completeness contract. */

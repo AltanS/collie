@@ -2928,4 +2928,8 @@ export const de: Dictionary = {
   "pins.sheet.empty": "In dieser Sitzung ist nichts angeheftet.",
   "pins.action.show": "Im Chat anzeigen",
   "pins.notice.notLoaded": "Dieser Block ist im Chat nicht geladen. Scrolle nach oben, um ältere Nachrichten zu laden.",
+
+  // --- pins, review fixes (M90) ---
+  "pins.sheet.kind.toolPlain": "Tool",
+  "pins.reason.notSettled": "Diese Antwort wird noch verfasst. Hefte sie an, wenn sie fertig ist.",
 };

@@ -36,6 +36,23 @@ function sheet(over: Partial<React.ComponentProps<typeof BlockActionsSheet>> = {
   return props;
 }
 
+describe("BlockActionsSheet, while a pin is on its way", () => {
+  it("shows Unpin, dimmed and dead, because there is no pin id to drop yet", async () => {
+    const props = sheet({ pinned: true, pinning: true });
+    const row = screen.getByRole("button", { name: "Unpin" });
+    expect(row).toBeDisabled();
+    await userEvent.click(row);
+    expect(props.onUnpin).not.toHaveBeenCalled();
+    expect(props.onClose).not.toHaveBeenCalled();
+  });
+
+  it("takes the tap once the pin has landed", async () => {
+    const props = sheet({ pinned: true, pinning: false });
+    await userEvent.click(screen.getByRole("button", { name: "Unpin" }));
+    expect(props.onUnpin).toHaveBeenCalledWith(reply);
+  });
+});
+
 describe("BlockActionsSheet", () => {
   it("draws nothing without a block", () => {
     const { container } = render(<BlockActionsSheet item={null} pinned={false} onClose={vi.fn()} onPin={vi.fn()} onUnpin={vi.fn()} />);

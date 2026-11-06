@@ -2869,4 +2869,8 @@ export const ru: Dictionary = {
   "pins.sheet.empty": "В этой сессии ничего не закреплено.",
   "pins.action.show": "Показать в чате",
   "pins.notice.notLoaded": "Этот блок не загружен в чате. Прокрутите вверх, чтобы загрузить более старые сообщения.",
+
+  // --- pins, review fixes (M90) ---
+  "pins.sheet.kind.toolPlain": "Инструмент",
+  "pins.reason.notSettled": "Этот ответ еще пишется. Закрепите его, когда он будет готов.",
 };

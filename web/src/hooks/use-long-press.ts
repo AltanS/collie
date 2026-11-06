@@ -22,6 +22,12 @@ interface LongPressOptions {
   // Runs from the trusted pointer/contextmenu event that ends a completed hold. Use this for browser
   // APIs (notably opening a phone keyboard) that reject calls made from the hold timer itself.
   onReleaseAfterLongPress?: () => void;
+  /**
+   * Whether a hold in the making shows (`data-holding`, index.css `THE HOLD, SHOWN`). Default true. A surface that
+   * is made of selectable text turns it off: the tint and the 0.97 scale would squeeze a message under a slow tap
+   * or the start of a text selection, and the hold there is silent until it fires (components/stream-block.tsx).
+   */
+  showHold?: boolean;
 }
 
 /**
@@ -60,6 +66,7 @@ export function useLongPress(
     delayMs = LONG_PRESS_MS,
     moveTolerance = MOVE_CANCEL_PX,
     onReleaseAfterLongPress,
+    showHold = true,
   }: LongPressOptions = {},
 ) {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -121,9 +128,9 @@ export function useLongPress(
       timer.current = setTimeout(fire, delayMs);
       if (feedback.current !== null) clearTimeout(feedback.current);
       feedback.current =
-        delayMs > HOLD_FEEDBACK_DELAY_MS ? setTimeout(() => setHolding(true), HOLD_FEEDBACK_DELAY_MS) : null;
+        showHold && delayMs > HOLD_FEEDBACK_DELAY_MS ? setTimeout(() => setHolding(true), HOLD_FEEDBACK_DELAY_MS) : null;
     },
-    [onLongPress, delayMs, fire],
+    [onLongPress, delayMs, fire, showHold],
   );
 
   const onPointerMove = useCallback(

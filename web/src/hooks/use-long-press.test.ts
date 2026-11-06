@@ -223,6 +223,17 @@ describe("useLongPress", () => {
   describe("the holding state", () => {
     const holding = (props: ReturnType<typeof useLongPress>) => props["data-holding"];
 
+    it("shows no hold at all when `showHold` is off, though the hold still fires on time", () => {
+      const onLongPress = vi.fn();
+      const { result } = renderHook(() => useLongPress(onLongPress, { showHold: false }));
+      act(() => result.current.onPointerDown(down()));
+      act(() => vi.advanceTimersByTime(HOLD_FEEDBACK_DELAY_MS + 100));
+      expect(holding(result.current)).toBeUndefined();
+      expect(result.current.style).toBeUndefined();
+      act(() => vi.advanceTimersByTime(400));
+      expect(onLongPress).toHaveBeenCalledOnce();
+    });
+
     it("starts at rest: no attribute and no style", () => {
       const { result } = renderHook(() => useLongPress(vi.fn()));
       expect(holding(result.current)).toBeUndefined();
