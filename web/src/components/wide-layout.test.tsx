@@ -452,6 +452,18 @@ describe("width", () => {
       expect(within(col).queryByRole("button", { name: /^Width / })).toBeNull();
     }
   });
+
+  it("out of wide mode a column may be no wider than its basis, so a wide line inside it cannot widen the strip", async () => {
+    // 946 by 1344, a two-screen phone held the long way: 946 less the 320 sidebar leaves 626, under two
+    // panes. A flex item sizes to its content unless it can shrink to zero, so the column carries
+    // `min-w-0` and no inline `minWidth`; its frame clips what does not fit.
+    const { container } = await mount("w1:p1", 946);
+    const col = columns(container)[0]!;
+    expect(col.className).toContain("min-w-0");
+    expect(col.style.flex).toBe("0 0 100%");
+    expect(col.style.minWidth).toBe("");
+    expect(q(col, '[data-slot="column-frame"]')!.className).toMatch(/\bmin-w-0\b.*\boverflow-hidden\b/);
+  });
 });
 
 describe("the sidebar's structure", () => {

@@ -31,6 +31,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 ### Fixed
 
 - **Claude's model picker reads at once under a usage notice.** When the weekly-limit notice fills the picker's top edge, Collie read no dialog for a few seconds and showed the unread card. The notice row now counts as the edge.
+- **The wide layout no longer scrolls sideways on a tall screen.** On a two-screen phone opened the long way, a wide row in the pane (a status footer, a table) made the content column wider than the screen, so the chat ran off the right edge. The column now keeps the screen's width and the pane clips or scrolls what does not fit inside its own box.
 
 ## [1.27.0] - 2026-11-06
 

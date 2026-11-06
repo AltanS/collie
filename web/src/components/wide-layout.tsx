@@ -563,7 +563,11 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
                   aria-label={pane ? paneName(pane) : undefined}
                   aria-current={isFocus && framed ? "true" : undefined}
                   className={cn(
-                    "flex h-full shrink-0 border-r border-rule",
+                    // `min-w-0`: a flex item's automatic minimum is its content's width, so a column
+                    // whose pane holds a wide line (a mirror row, a table, a status footer) grew past
+                    // its 100% basis and the strip scrolled sideways inside the content. Out of wide
+                    // mode the inline `minWidth` below is not set, so this is the column's floor.
+                    "flex h-full min-w-0 shrink-0 border-r border-rule",
                     COLUMN_SNAP_CLASSES,
                     // A sideways wheel over a column must reach the strip. The transcript list is
                     // `overscroll-contain` on both axes for the phone, which stopped the chain inside
