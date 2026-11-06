@@ -170,6 +170,56 @@ describe("BottomSheet — backdrop dismiss requires press AND release on the bac
   });
 });
 
+// DRAG-TO-DISMISS SURVIVES A RE-RENDER OF ITS CALLER. The switcher passes `onClose` as an inline
+// arrow, so every poll handed the sheet a new function; with that function in the drag effect's
+// deps, the effect re-ran and `setDragY(0)` snapped a held sheet back to the top on each poll, the
+// flicker a slow drag showed on the phone (2026-11-06). The drag must hold its offset across it.
+describe("BottomSheet: drag-to-dismiss", () => {
+  const at = (y: number) => ({ clientX: 100, clientY: y, identifier: 1 });
+
+  it("keeps the dragged offset when the caller re-renders with a new onClose mid-drag", () => {
+    const { container, rerender } = render(
+      <BottomSheet open onClose={() => {}} title="Switch pane">
+        body
+      </BottomSheet>,
+    );
+    const panel = container.querySelector<HTMLElement>('div[tabindex="-1"]')!;
+    fireEvent.touchStart(panel, { touches: [at(100)] });
+    fireEvent.touchMove(panel, { touches: [at(140)] });
+    expect(panel.style.transform).toBe("translateY(40px)");
+
+    // A poll: the caller renders again and hands over a fresh arrow.
+    rerender(
+      <BottomSheet open onClose={() => {}} title="Switch pane">
+        body
+      </BottomSheet>,
+    );
+    expect(panel.style.transform).toBe("translateY(40px)");
+  });
+
+  it("closes through the onClose of the latest render when released past the threshold", () => {
+    const first = vi.fn();
+    const latest = vi.fn();
+    const { container, rerender } = render(
+      <BottomSheet open onClose={first} title="Switch pane">
+        body
+      </BottomSheet>,
+    );
+    const panel = container.querySelector<HTMLElement>('div[tabindex="-1"]')!;
+    fireEvent.touchStart(panel, { touches: [at(100)] });
+    fireEvent.touchMove(panel, { touches: [at(150)] });
+    rerender(
+      <BottomSheet open onClose={latest} title="Switch pane">
+        body
+      </BottomSheet>,
+    );
+    fireEvent.touchMove(panel, { touches: [at(220)] });
+    fireEvent.touchEnd(panel, { touches: [] });
+    expect(latest).toHaveBeenCalledTimes(1);
+    expect(first).not.toHaveBeenCalled();
+  });
+});
+
 // The native-feel drag reveal (use-sheet-pull.ts): while `!open && pull > 0` the sheet peeks up
 // under the finger, mounted but not yet a modal, and when `open` follows right after, the
 // entrance continues the transform rather than restarting the slide-in keyframe from 100%.
