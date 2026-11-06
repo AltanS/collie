@@ -2864,6 +2864,8 @@ export const zhTW: Dictionary = {
   "pins.action.pin": "釘選",
   "pins.action.unpin": "取消釘選",
   "pins.action.copy": "複製文字",
+  "pins.action.selectText": "選取文字",
+  "pins.selectText.hint": "長按文字即可選取。點一下訊息外部即可結束。",
   "pins.action.more": "訊息動作",
   "pins.mark": "已釘選",
   "pins.sheet.kind.user": "您的訊息",

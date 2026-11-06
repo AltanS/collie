@@ -117,10 +117,17 @@ rest.
   in a person would find, and it fights selection. A tap is the gesture a person tries first, and it reveals
   rather than acts, so a tap that only meant to read costs nothing.
 - **A right click on a desk still opens the sheet at once**, and a mouse over the block shows the `⋯` too.
-- **On a touch screen the hold wins over selection.** Point 8's "the hold never takes selection away" is
-  reversed for touch: on Android the selection started first and the hold did nothing on text. The hold now
-  collapses that selection and shows the `⋯`, because Copy text is in the sheet. A mouse keeps its own menu
-  over selected text.
+- **On a touch screen a block takes no selection at rest, and the hold opens the sheet.** Point 8's "the hold
+  never takes selection away" is reversed for touch. A phone's browser starts a selection at about 500 ms and
+  cancels the pointer, so the 650 ms hold never fired on text; revealing from Android's `contextmenu` after
+  that hung on its timing, and on Altan's Android phone the hold did nothing at all. So under `pointer: coarse`
+  a pinnable block has `user-select: none` and no callout, the timer fires every time (iOS included), and the
+  hold opens the sheet directly, as the first cut did. The tap still only reveals the `⋯`. A mouse and a desk
+  keep selection as ever, and a right click over selected text keeps the native menu.
+- **Select text is a row of the sheet.** It gives that one block's text back to the native selection and says
+  how in a status line. While it is on, the block's own hold and tap stand down; it ends on a press outside the
+  block, when the sheet opens again, or when the block leaves the stream. One block at a time. The row is in
+  the sheet on a desk too: one sheet everywhere.
 - **The tap that shows the `⋯` ends there.** The reading area's Tap to type no longer sees it, so it raises
   no keyboard.
 - **The chip moves no box and covers no control.** It is an overlay, and it steps left of a copy button, a tool

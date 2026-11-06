@@ -2889,6 +2889,8 @@ export const ja: Dictionary = {
   "pins.action.pin": "ピン留め",
   "pins.action.unpin": "ピン留めを解除",
   "pins.action.copy": "テキストをコピー",
+  "pins.action.selectText": "テキストを選択",
+  "pins.selectText.hint": "テキストを長押しして選択します。メッセージの外をタップすると終了します。",
   "pins.action.more": "メッセージのアクション",
   "pins.mark": "ピン留め済み",
   "pins.sheet.kind.user": "あなたのメッセージ",

@@ -3099,6 +3099,8 @@ export const en = {
   "pins.action.pin": "Pin",
   "pins.action.unpin": "Unpin",
   "pins.action.copy": "Copy text",
+  "pins.action.selectText": "Select text",
+  "pins.selectText.hint": "Hold the text to select it. Tap outside the message to end.",
   "pins.action.more": "Message actions",
   "pins.mark": "Pinned",
   "pins.sheet.kind.user": "Your message",

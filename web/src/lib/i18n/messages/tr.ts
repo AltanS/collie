@@ -2720,6 +2720,8 @@ export const tr: Dictionary = {
   "pins.action.pin": "Sabitle",
   "pins.action.unpin": "Sabitlemeyi kaldır",
   "pins.action.copy": "Metni kopyala",
+  "pins.action.selectText": "Metni seç",
+  "pins.selectText.hint": "Seçmek için metne basılı tutun. Bitirmek için mesajın dışına dokunun.",
   "pins.action.more": "Mesaj eylemleri",
   "pins.mark": "Sabitlendi",
   "pins.sheet.kind.user": "Mesajınız",

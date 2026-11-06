@@ -342,7 +342,7 @@ export function PinsSection() {
         <Card
           state="pins-block-actions"
           label="4: actions sheet"
-          reach="Tap a block, then its ⋯. A right click on a desk opens the sheet at once. The title says what the block is; Pin becomes Unpin on a pinned block."
+          reach="Tap a block, then its ⋯, or hold the block. A right click on a desk opens the sheet at once. The title says what the block is; Pin becomes Unpin on a pinned block. Select text gives the block's text back to the selection."
           note="A tap on Pin or Unpin flips the mark, as the pane view's hook does. Nothing is sent."
         >
           <CardHead n={4} title="Actions sheet" />

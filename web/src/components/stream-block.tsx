@@ -4,20 +4,21 @@ import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, 
 
 import { useLocale } from "@/hooks/use-locale";
 import { useLongPress } from "@/hooks/use-long-press";
+import { endSelectText, useSelectable } from "@/lib/block-select";
 import type { ChatItem } from "@/lib/chat-items";
 import { t } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
 // ONE BLOCK OF THE STREAM, with the two things M90 hangs on it: the way in to its actions and the mark of a pin.
 //
-// ── AT REST A BLOCK SHOWS NOTHING. A TAP OR A HOLD SHOWS ITS ⋯ ───────────────────────────────────
+// ── AT REST A BLOCK SHOWS NOTHING. A TAP SHOWS ITS ⋯, A HOLD OPENS ITS SHEET ──────────────────────
 // The first cut wore a muted `⋯` on every pinnable block all the time, with a float that made the first line wrap
 // around it. On a phone that was a column of dots down the right edge of the thread (Altan, 2026-11-06). So the `⋯`
-// waits: a tap on the block, or a hold, REVEALS it on that block, and only the `⋯` opens the block actions sheet.
-// Neither gesture opens the sheet by itself, so a tap that only meant to read never covers the thread. A right click
-// with a mouse opens the sheet at once, as a desk expects; a mouse hovering the block shows the `⋯` too (Tailwind's
-// `hover:` only matches a device that can hover). The `⋯` is in the DOM at rest, transparent and deaf to the
-// pointer, so Tab still reaches it and it shows while it has the focus; no block takes the focus for this.
+// waits: a tap on the block REVEALS it on that block, and the `⋯` opens the block actions sheet. A tap that only
+// meant to read covers nothing. The hold ({@link BLOCK_HOLD_MS}) opens the sheet at once, as a right click with a
+// mouse does; a mouse hovering the block shows the `⋯` too (Tailwind's `hover:` only matches a device that can
+// hover). The `⋯` is in the DOM at rest, transparent and deaf to the pointer, so Tab still reaches it and it shows
+// while it has the focus; no block takes the focus for this.
 //
 // ── WHAT A TAP IS ─────────────────────────────────────────────────────────────────────────────────
 // `useLongPress` owns the movement gate: its `onTap` fires on a lift that did not hold and did not move more than
@@ -33,14 +34,25 @@ import { cn } from "@/lib/utils";
 // a hold. A press starts every gesture clean. A tap the block does not take (a link, a button, the ground between
 // blocks, a block that cannot reveal) and every tap on the mirror keep Tap to type.
 //
-// ── ON A TOUCH SCREEN THE HOLD WINS OVER SELECTION ───────────────────────────────────────────────
-// Nothing here calls `preventDefault` on a touch or sets `user-select: none`, and the hold waits longer than the
-// browsers' own selection starts ({@link BLOCK_HOLD_MS}), so on text the browser's selection begins first and its
-// pointer cancel ends the hold. Android then raises `contextmenu`. That one is a touch hold, and it REVEALS: its
-// native menu is taken away, the selection it started is collapsed, and the chip shows, because Copy text is in
-// the actions sheet. A pinnable block also carries `-webkit-touch-callout: none`, so iOS raises no callout over
-// it. A mouse is the other way round: a right click with text selected in the block leaves the native menu alone,
-// so Copy stays the browser's.
+// ── ON A TOUCH SCREEN A BLOCK TAKES NO SELECTION, UNTIL SELECT TEXT ASKS FOR IT ──────────────────
+// A phone's browser starts a text selection at about 500ms of a long press and cancels the pointer, which ended the
+// hold; revealing from Android's `contextmenu` after that hung on its timing, and on Altan's Android phone a hold did
+// nothing at all (2026-11-06). So under `pointer: coarse` a pinnable block (`data-pinnable`) takes no selection and
+// raises no callout at rest (index.css). No selection starts, no pointer is cancelled, and the hold's timer fires
+// every time, on iOS too, which raises no `contextmenu` at all. The `contextmenu` path stays as a fallback: a touch
+// one collapses any selection, takes the native menu away and opens the sheet. A mouse and a desk keep selection as
+// ever, and a right click with text selected in the block leaves the native menu to the browser.
+//
+// THE LIFT AFTER A HOLD TAPS NOTHING. The hold opens the sheet while the finger is still down, so its rows can come up
+// under the finger, and the lift's click landed on whichever row was there: in Chromium the hold pinned the block
+// (pins.spec.ts, 2026-11-06). The sheet is not inside the block, so `useLongPress`'s own click guard never sees that
+// click. So the hold swallows the next click anywhere on the page ({@link swallowNextClick}), and the next press
+// clears that, so a browser that sends no click after a hold costs the next tap nothing.
+//
+// Text is one row away: the sheet's Select text (lib/block-select.ts) marks this block `data-selectable`, which
+// gives its text back to the native selection. While it is, the block's own hold, tap and `contextmenu` stand down
+// and a tap in it never reaches Tap to type, so the press is the selection's. The mode ends on a press outside the
+// block, when the sheet opens again, or when the block leaves the stream. One block at a time.
 //
 // ── ONE BLOCK AT A TIME, AND IT GOES AWAY BY ITSELF ───────────────────────────────────────────────
 // One module store holds which block shows its `⋯`, so a reveal on one block hides the one before. It hides on a
@@ -66,7 +78,7 @@ import { cn } from "@/lib/utils";
 // chip steps left of it ({@link chipShift}), measured when it shows. A user message, a thinking block, a notice and
 // a tool card's head hold nothing there (measured 2026-11-06 in the playground's cards 2 and 3).
 
-/** How long the hold waits. Past the 500ms where a phone's browser starts a selection, so selection wins on text. */
+/** How long the hold waits before it opens the sheet. Long enough that a slow tap is still a tap. */
 export const BLOCK_HOLD_MS = 650;
 
 /** How long a shown `⋯` waits for a press on its block before it hides again. */
@@ -197,6 +209,24 @@ function selectingIn(block: Element): boolean {
   return block.contains(selection.anchorNode);
 }
 
+/**
+ * Stop the next click anywhere on the page, once: the lift of the hold that just opened a sheet over the finger. The
+ * next press clears it unused, so a browser that sends no click after a hold loses nothing.
+ */
+function swallowNextClick(): void {
+  const stop = (event: MouseEvent) => {
+    event.stopPropagation();
+    event.preventDefault();
+    done();
+  };
+  const done = () => {
+    document.removeEventListener("click", stop, true);
+    document.removeEventListener("pointerdown", done, true);
+  };
+  document.addEventListener("click", stop, true);
+  document.addEventListener("pointerdown", done, true);
+}
+
 export function StreamBlock({ n, item, pinned, onActions, className, children, held = false }: StreamBlockProps) {
   useLocale();
   const id = useId();
@@ -207,8 +237,17 @@ export function StreamBlock({ n, item, pinned, onActions, className, children, h
   const swallow = useRef(false);
   const [shift, setShift] = useState(0);
   const tapped = useSyncExternalStore(subscribe, () => shown === id);
-  const open = item !== null && onActions !== undefined ? () => onActions(item) : undefined;
-  const show = open === undefined ? undefined : () => reveal(id);
+  const itemId = item !== null && onActions !== undefined ? item.id : null;
+  // The sheet's Select text gave this block's text back to the native selection: its own gestures stand down.
+  const selectable = useSelectable(itemId);
+  const open =
+    item !== null && onActions !== undefined
+      ? () => {
+          conceal(id);
+          endSelectText();
+          onActions(item);
+        }
+      : undefined;
   const revealed = open !== undefined && (tapped || held);
 
   const onTap = (event: ReactPointerEvent) => {
@@ -217,7 +256,14 @@ export function StreamBlock({ n, item, pinned, onActions, className, children, h
     swallow.current = true;
     reveal(id);
   };
-  const hold = useLongPress(show, { delayMs: BLOCK_HOLD_MS, showHold: false, onTap });
+  const onHold =
+    open === undefined || selectable
+      ? undefined
+      : () => {
+          swallowNextClick();
+          open();
+        };
+  const hold = useLongPress(onHold, { delayMs: BLOCK_HOLD_MS, showHold: false, onTap });
   const { onContextMenu, onPointerDown, onClickCapture: afterHold, ...handlers } = hold;
 
   const onPress = (event: ReactPointerEvent<HTMLElement>) => {
@@ -227,8 +273,13 @@ export function StreamBlock({ n, item, pinned, onActions, className, children, h
   };
   // Capture phase, so the reading area's Tap to type under the block never sees the click of a revealing tap.
   // A click on a control (the chip itself, by a key) is never the revealing tap's, so it passes whatever the flag says.
+  // In the select mode no tap in the block is Tap to type either: it ends or moves the selection.
   const onClickCapture = (event: ReactMouseEvent<HTMLElement>) => {
     const onControl = event.target instanceof Element && event.target.closest(NOT_A_REVEAL) !== null;
+    if (selectable && !onControl) {
+      event.stopPropagation();
+      return;
+    }
     if (!swallow.current || onControl) {
       afterHold(event);
       return;
@@ -237,9 +288,9 @@ export function StreamBlock({ n, item, pinned, onActions, className, children, h
     event.stopPropagation();
   };
   const onRightClick = (event: ReactMouseEvent<HTMLElement>) => {
-    if (open === undefined) return;
-    // A touch hold that ends in `contextmenu` (Android) is a hold: it reveals, over a selection it started too. A
-    // mouse, or a menu key, opens the sheet, unless text is selected in the block: then the menu is the browser's.
+    if (open === undefined || selectable) return;
+    // A touch hold that ends in `contextmenu` (Android) is a hold: it opens the sheet, over a selection it started too.
+    // A mouse, or a menu key, opens the sheet, unless text is selected in the block: then the menu is the browser's.
     if (lastPointer.current === "touch" || lastPointer.current === "pen") {
       window.getSelection()?.removeAllRanges();
       onContextMenu(event);
@@ -247,12 +298,7 @@ export function StreamBlock({ n, item, pinned, onActions, className, children, h
     }
     if (selectingIn(event.currentTarget)) return;
     event.preventDefault();
-    conceal(id);
     open();
-  };
-  const onMore = () => {
-    conceal(id);
-    open?.();
   };
 
   // Where the chip stands, measured against the block's controls whenever it is about to show. Its home spot comes off
@@ -284,8 +330,24 @@ export function StreamBlock({ n, item, pinned, onActions, className, children, h
     return () => document.removeEventListener("pointerdown", onDown, true);
   }, [tapped, id]);
 
-  // A block that leaves the stream takes its `⋯` with it.
+  // While its text is selectable: a press outside the block ends the select mode.
+  useEffect(() => {
+    const block = blockRef.current;
+    if (!selectable || block === null || itemId === null) return;
+    const onDown = (event: PointerEvent) => {
+      if (event.target instanceof Node && block.contains(event.target)) return;
+      endSelectText(itemId);
+    };
+    document.addEventListener("pointerdown", onDown, true);
+    return () => document.removeEventListener("pointerdown", onDown, true);
+  }, [selectable, itemId]);
+
+  // A block that leaves the stream takes its `⋯` and its select mode with it.
   useEffect(() => () => conceal(id), [id]);
+  useEffect(() => {
+    if (itemId === null) return;
+    return () => endSelectText(itemId);
+  }, [itemId]);
 
   return (
     <div
@@ -293,6 +355,8 @@ export function StreamBlock({ n, item, pinned, onActions, className, children, h
       data-block
       data-n={n}
       data-revealed={revealed ? "" : undefined}
+      data-pinnable={open !== undefined ? "" : undefined}
+      data-selectable={selectable ? "" : undefined}
       {...handlers}
       onPointerDown={onPress}
       onPointerEnter={(event) => {
@@ -300,7 +364,7 @@ export function StreamBlock({ n, item, pinned, onActions, className, children, h
       }}
       onContextMenu={onRightClick}
       onClickCapture={onClickCapture}
-      className={cn(className, (pinned || open !== undefined) && "relative", open !== undefined && "group/block [-webkit-touch-callout:none]")}
+      className={cn(className, (pinned || open !== undefined) && "relative", open !== undefined && "group/block")}
     >
       {children}
       {pinned && <PinnedMark />}
@@ -310,7 +374,7 @@ export function StreamBlock({ n, item, pinned, onActions, className, children, h
           type="button"
           data-slot="block-more"
           aria-label={t("pins.action.more")}
-          onClick={onMore}
+          onClick={open}
           onFocus={place}
           style={shift === 0 ? undefined : { translate: `-${shift}px 0` }}
           className={cn(
