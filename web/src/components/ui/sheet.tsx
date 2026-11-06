@@ -170,6 +170,15 @@ export function BottomSheet({
   // the browser's pull-to-refresh (otherwise a pull-down at the top would reload the whole app
   // instead of closing the sheet). A gesture that starts mid-scroll falls through to normal list
   // scrolling; only a pull that begins at the top engages the dismiss.
+  //
+  // `onClose` IS READ THROUGH A REF, NOT A DEPENDENCY. A caller may pass a fresh function on every
+  // render (the switcher passes `closeDrawer`, an inline arrow), and with `onClose` in the deps every
+  // re-render of the caller re-ran this effect, whose `setDragY(0)` snapped a sheet held mid-drag
+  // back to the top. The pane polls every 1.5s while an agent works, so a slow drag flickered back to
+  // 0 on each poll and jumped under the finger again on the next move (2026-11-06). The reset below
+  // belongs to a new open only.
+  const onCloseRef = React.useRef(onClose);
+  onCloseRef.current = onClose;
   React.useEffect(() => {
     const panel = panelRef.current;
     if (!open || !panel || !dragToDismiss) return;
@@ -200,7 +209,7 @@ export function BottomSheet({
     const onEnd = () => {
       const off = drag.current.dy;
       drag.current = { startY: 0, atTop: false, engaged: false, dy: 0 };
-      if (off > CLOSE) onClose();
+      if (off > CLOSE) onCloseRef.current();
       else setDragY(0);
     };
 
@@ -214,7 +223,7 @@ export function BottomSheet({
       panel.removeEventListener("touchend", onEnd);
       panel.removeEventListener("touchcancel", onEnd);
     };
-  }, [open, onClose, dragToDismiss]);
+  }, [open, dragToDismiss]);
 
   // Read BEFORE updating: this render's "did the one before me peek" answer, which is what tells a
   // fresh open from a drag continuing into one. Updated for the NEXT render right after.

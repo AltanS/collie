@@ -29,6 +29,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **A Pins mark in the belt opens the pinned messages.** It stands beside the Agents and Jobs marks with the count, only while the session has pins. Its sheet lists the pins newest first with Unpin on every row; a tap on a row shows the whole text with Unpin and Show in Chat, and the sheet closes after the last Unpin. On a crew the lead forwards the pins to the machine that owns the pane. The playground draws it in seven cards.
 - **The pins route.** `GET`, `POST` and `DELETE` on `/api/pane/:id/pins` list, add and drop a session's pins; the list carries excerpts, `?pin=<id>` the whole text, and a refusal carries a `pin.*` code (`pin.cap`, `pin.not_settled`, `pin.not_pinnable`, `pin.item_not_found`, `pin.no_session`).
 
+### Fixed
+
+- **A slow drag down on the Switch pane sheet follows the finger.** Each poll of the pane, every 1.5 seconds while an agent works, snapped a sheet held mid-drag back to the top, and the next move pulled it under the finger again, so the sheet flickered on the way down. The sheet now keeps its drag through a poll, on every sheet that closes with a drag.
+
 ## [1.28.0] - 2026-11-06
 
 ### Added
