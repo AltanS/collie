@@ -23,11 +23,24 @@ import { cn } from "@/lib/utils";
 // `useLongPress` owns the movement gate: its `onTap` fires on a lift that did not hold and did not move more than
 // 8px, so a scroll that starts on a block reveals nothing. A tap reveals only on the block's own ground: never on a
 // link, a button (a code block's copy, a tool card's toggle, the `⋯` itself), a field, a picture
-// ({@link NOT_A_REVEAL}), and never while the person has text selected in the block. The hold never takes selection
-// away: nothing here calls `preventDefault` on a touch or sets `user-select: none`, and the hold waits longer than
-// the browsers' own selection starts ({@link BLOCK_HOLD_MS}), so on text the browser's selection begins first and
-// its pointer cancel ends the hold. A right click with text selected in the block leaves the native menu alone, so
-// Copy stays the browser's. Android raises `contextmenu` at the end of a touch hold; that one reveals, as the hold.
+// ({@link NOT_A_REVEAL}), and never while the person has text selected in the block.
+//
+// ── A TAP THAT REVEALS ENDS THERE ─────────────────────────────────────────────────────────────────
+// The pane's reading area turns a tap on plain text into Tap to type (`focusFromMirror`, agent-chat.tsx), and a
+// chat block is plain text to it, so the tap that showed the chip also focused the composer and raised the
+// keyboard over the thread (Altan's phone, 2026-11-06). So the tap that reveals arms a one-shot flag, and the click
+// that follows it is stopped at the block in the capture phase, the pattern `useLongPress` uses for the click after
+// a hold. A press starts every gesture clean. A tap the block does not take (a link, a button, the ground between
+// blocks, a block that cannot reveal) and every tap on the mirror keep Tap to type.
+//
+// ── ON A TOUCH SCREEN THE HOLD WINS OVER SELECTION ───────────────────────────────────────────────
+// Nothing here calls `preventDefault` on a touch or sets `user-select: none`, and the hold waits longer than the
+// browsers' own selection starts ({@link BLOCK_HOLD_MS}), so on text the browser's selection begins first and its
+// pointer cancel ends the hold. Android then raises `contextmenu`. That one is a touch hold, and it REVEALS: its
+// native menu is taken away, the selection it started is collapsed, and the chip shows, because Copy text is in
+// the actions sheet. A pinnable block also carries `-webkit-touch-callout: none`, so iOS raises no callout over
+// it. A mouse is the other way round: a right click with text selected in the block leaves the native menu alone,
+// so Copy stays the browser's.
 //
 // ── ONE BLOCK AT A TIME, AND IT GOES AWAY BY ITSELF ───────────────────────────────────────────────
 // One module store holds which block shows its `⋯`, so a reveal on one block hides the one before. It hides on a
@@ -190,6 +203,8 @@ export function StreamBlock({ n, item, pinned, onActions, className, children, h
   const blockRef = useRef<HTMLDivElement>(null);
   const chipRef = useRef<HTMLButtonElement>(null);
   const lastPointer = useRef<string | null>(null);
+  // The tap that revealed the chip owns the click that follows it (A TAP THAT REVEALS ENDS THERE, above).
+  const swallow = useRef(false);
   const [shift, setShift] = useState(0);
   const tapped = useSyncExternalStore(subscribe, () => shown === id);
   const open = item !== null && onActions !== undefined ? () => onActions(item) : undefined;
@@ -199,22 +214,38 @@ export function StreamBlock({ n, item, pinned, onActions, className, children, h
   const onTap = (event: ReactPointerEvent) => {
     if (event.target instanceof Element && event.target.closest(NOT_A_REVEAL) !== null) return;
     if (selectingIn(event.currentTarget)) return;
+    swallow.current = true;
     reveal(id);
   };
   const hold = useLongPress(show, { delayMs: BLOCK_HOLD_MS, showHold: false, onTap });
-  const { onContextMenu, onPointerDown, ...handlers } = hold;
+  const { onContextMenu, onPointerDown, onClickCapture: afterHold, ...handlers } = hold;
 
   const onPress = (event: ReactPointerEvent<HTMLElement>) => {
     lastPointer.current = event.pointerType;
+    swallow.current = false;
     onPointerDown(event);
   };
+  // Capture phase, so the reading area's Tap to type under the block never sees the click of a revealing tap.
+  // A click on a control (the chip itself, by a key) is never the revealing tap's, so it passes whatever the flag says.
+  const onClickCapture = (event: ReactMouseEvent<HTMLElement>) => {
+    const onControl = event.target instanceof Element && event.target.closest(NOT_A_REVEAL) !== null;
+    if (!swallow.current || onControl) {
+      afterHold(event);
+      return;
+    }
+    swallow.current = false;
+    event.stopPropagation();
+  };
   const onRightClick = (event: ReactMouseEvent<HTMLElement>) => {
-    if (open === undefined || selectingIn(event.currentTarget)) return;
-    // A touch hold that ends in `contextmenu` (Android) is a hold: it reveals. A mouse, or a menu key, opens the sheet.
+    if (open === undefined) return;
+    // A touch hold that ends in `contextmenu` (Android) is a hold: it reveals, over a selection it started too. A
+    // mouse, or a menu key, opens the sheet, unless text is selected in the block: then the menu is the browser's.
     if (lastPointer.current === "touch" || lastPointer.current === "pen") {
+      window.getSelection()?.removeAllRanges();
       onContextMenu(event);
       return;
     }
+    if (selectingIn(event.currentTarget)) return;
     event.preventDefault();
     conceal(id);
     open();
@@ -268,7 +299,8 @@ export function StreamBlock({ n, item, pinned, onActions, className, children, h
         if (event.pointerType === "mouse" && open !== undefined) place();
       }}
       onContextMenu={onRightClick}
-      className={cn(className, (pinned || open !== undefined) && "relative", open !== undefined && "group/block")}
+      onClickCapture={onClickCapture}
+      className={cn(className, (pinned || open !== undefined) && "relative", open !== undefined && "group/block [-webkit-touch-callout:none]")}
     >
       {children}
       {pinned && <PinnedMark />}

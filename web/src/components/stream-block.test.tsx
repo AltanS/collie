@@ -30,11 +30,23 @@ function tap(target: Element, at = { x: 10, y: 10 }, lift = at, pointerType = "t
   fireEvent.pointerUp(target, { button: 0, clientX: lift.x, clientY: lift.y, pointerType });
 }
 
+let above: (() => void) | null = null;
+
+/** A click listener above the stream, where the reading area's Tap to type listens. */
+function listenAbove() {
+  const spy = vi.fn();
+  document.body.addEventListener("click", spy);
+  above = () => document.body.removeEventListener("click", spy);
+  return spy;
+}
+
 beforeEach(() => {
   vi.useFakeTimers();
 });
 
 afterEach(() => {
+  above?.();
+  above = null;
   vi.useRealTimers();
 });
 
@@ -73,6 +85,9 @@ describe("StreamBlock at rest", () => {
     expect(more().className).toContain("focus-visible:opacity-100");
     expect(more().className).toContain("group-hover/block:opacity-100");
     expect(el.className).toContain("group/block");
+    // iOS raises no callout over a pinnable block; its text stays selectable.
+    expect(el.className).toContain("[-webkit-touch-callout:none]");
+    expect(el.className).not.toContain("select-none");
     // No spacer and no wrapper: the block's first child is the content itself.
     expect(container.querySelector("[data-slot='block-more-spacer']")).toBeNull();
     expect(el.firstElementChild!.textContent).toBe("done");
@@ -243,6 +258,76 @@ describe("StreamBlock reveal", () => {
     expect(menu.defaultPrevented).toBe(true);
     expect(onActions).not.toHaveBeenCalled();
     expect(el).toHaveAttribute("data-revealed");
+  });
+
+  it("keeps the click of a tap that reveals from the reading area under the block: no Tap to type", () => {
+    const readingArea = listenAbove();
+    render(
+      <StreamBlock n={1} item={item} pinned={false} onActions={vi.fn()} className={BLOCK}>
+        <p>done</p>
+        <a href="#x">a link</a>
+      </StreamBlock>,
+    );
+    tap(screen.getByText("done"));
+    fireEvent.click(screen.getByText("done"));
+    expect(readingArea).not.toHaveBeenCalled();
+    // A tap the block does not take keeps its click: the link's, and the next press starts clean.
+    tap(screen.getByText("a link"));
+    fireEvent.click(screen.getByText("a link"));
+    expect(readingArea).toHaveBeenCalledOnce();
+    tap(screen.getByText("done"), { x: 10, y: 10 }, { x: 10, y: 40 });
+    fireEvent.click(screen.getByText("done"));
+    expect(readingArea).toHaveBeenCalledTimes(2);
+  });
+
+  it("passes the click of a block that cannot reveal to the reading area", () => {
+    const readingArea = listenAbove();
+    render(
+      <StreamBlock n={1} item={item} pinned={false} onActions={undefined} className={BLOCK}>
+        <p>done</p>
+      </StreamBlock>,
+    );
+    tap(screen.getByText("done"));
+    fireEvent.click(screen.getByText("done"));
+    expect(readingArea).toHaveBeenCalledOnce();
+  });
+
+  it("reveals on a touch hold over text it selected, takes the native menu away and collapses the selection", () => {
+    const onActions = vi.fn();
+    const { container } = block({ onActions });
+    const el = blockEl(container);
+    fireEvent.pointerDown(el, { button: 0, clientX: 10, clientY: 10, pointerType: "touch" });
+    // Android's selection starts first: its pointer cancel ends the hold, then `contextmenu` arrives.
+    const range = document.createRange();
+    range.selectNodeContents(screen.getByText("done"));
+    window.getSelection()?.removeAllRanges();
+    window.getSelection()?.addRange(range);
+    fireEvent.pointerCancel(el, { pointerType: "touch" });
+    const menu = createEvent.contextMenu(el);
+    fireEvent(el, menu);
+    expect(menu.defaultPrevented).toBe(true);
+    expect(window.getSelection()?.isCollapsed ?? true).toBe(true);
+    expect(el).toHaveAttribute("data-revealed");
+    expect(onActions).not.toHaveBeenCalled();
+  });
+
+  it("leaves a mouse's right click over selected text to the browser's menu", () => {
+    const onActions = vi.fn();
+    const { container } = block({ onActions });
+    const el = blockEl(container);
+    fireEvent.pointerDown(el, { button: 2, clientX: 10, clientY: 10, pointerType: "mouse" });
+    const range = document.createRange();
+    range.selectNodeContents(screen.getByText("done"));
+    window.getSelection()?.removeAllRanges();
+    window.getSelection()?.addRange(range);
+    const menu = createEvent.contextMenu(el);
+    fireEvent(el, menu);
+    const selected = window.getSelection()?.isCollapsed === false;
+    window.getSelection()?.removeAllRanges();
+    expect(menu.defaultPrevented).toBe(false);
+    expect(selected).toBe(true);
+    expect(onActions).not.toHaveBeenCalled();
+    expect(el).not.toHaveAttribute("data-revealed");
   });
 
   it("leaves a block with no way in alone: a tap shows nothing and a right click keeps the native menu", () => {

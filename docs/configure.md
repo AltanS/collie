@@ -1255,8 +1255,9 @@ The display gear has a **Stretchtext replies** switch, off by default. With it o
 
 **Pinned messages.** Tap a message, a reply, a thinking block or a tool card in Chat, then its **⋯**,
 **Message actions**, which shows at the block's top right. The **⋯** opens a sheet with **Pin** (or
-**Unpin**) and **Copy text**. A hold on the block shows the **⋯** too, and never takes your text selection
-away. The **⋯** hides again after 4 seconds or on a tap elsewhere. On a desktop the
+**Unpin**) and **Copy text**. The tap that shows the **⋯** does not open the keyboard. A hold on the block
+shows the **⋯** too; on a phone it wins over selecting text, and **Copy text** is in the sheet. The **⋯**
+hides again after 4 seconds or on a tap elsewhere. On a desktop the
 **⋯** shows while the pointer is over the block, and a right click opens the sheet at once. A pinned block
 carries a small pin mark. A pin is a
 copy: the machine that owns the pane keeps the text in a file under its state folder, one file for each
