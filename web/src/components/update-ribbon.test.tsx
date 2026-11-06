@@ -429,6 +429,51 @@ describe("the app bundle is the mark's, not the band's (2026-11-06)", () => {
   });
 });
 
+describe("while the app is being applied, the band says nothing about updates (2026-11-06)", () => {
+  // The automatic lane: a worker controls the page and downloads the new build, and the
+  // self-updater's flag stays down. The reading would post the offer or the failed peer; the
+  // component posts nothing, because the mark and the dashboard line own the update then.
+  beforeEach(() => {
+    Object.defineProperty(navigator, "serviceWorker", { configurable: true, value: { controller: {} } });
+  });
+  afterEach(() => {
+    Reflect.deleteProperty(navigator, "serviceWorker");
+  });
+
+  it("posts no offer while the automatic lane downloads", async () => {
+    pwaStage.current = "installing";
+    const { container } = await renderBand(info());
+    expect(band(container)).toBeNull();
+    expect(screen.queryByText("Collie 1.5.0 available.")).not.toBeInTheDocument();
+  });
+
+  it("posts no failed peer either", async () => {
+    pwaStage.current = "installing";
+    const peers: UpdatePeerLeg[] = [
+      { name: "minibuch", state: "rolled-back", reason: "health gate timed out" },
+    ];
+    const { container } = await renderBand(info({ run: run("done", { peers }) }));
+    expect(band(container)).toBeNull();
+    expect(screen.queryByText(/Could not update minibuch/)).not.toBeInTheDocument();
+  });
+
+  it("still posts the offer with a worker in control and nothing downloading", async () => {
+    const { container } = await renderBand(info());
+    expect(band(container)).not.toBeNull();
+  });
+
+  it("brings the offer back when the download is over", async () => {
+    pwaStage.current = "installing";
+    const { container } = await renderBand(info());
+    expect(band(container)).toBeNull();
+    await act(async () => {
+      pwaStage.set("idle");
+    });
+    expect(band(container)).not.toBeNull();
+    expect(screen.getByText("Collie 1.5.0 available.")).toBeInTheDocument();
+  });
+});
+
 describe("auto-reload unless held", () => {
   it("with nothing held the app reloads itself and the band never asks for a tap", async () => {
     const reload = vi.fn();

@@ -138,7 +138,8 @@ the header mark instead, and for a tap on the mark to say what is happening.
   when a service worker already controls the page. The stage is `installing` on a first install too,
   and no controller is what keeps that one quiet (`web/src/lib/bundle-apply.ts`).
 - **The band says nothing in place of them.** The download still outranks a failed peer and an
-  offer, so neither is posted under a turning mark. The download row's local close went with it.
+  offer, so neither is posted under a turning mark. On the automatic lane the reading never sees a
+  bundle state, so the band also stands down whenever the app is being applied at all. The download row's local close went with it.
 - **The paint is the host's, for now.** `collie-mark.tsx` is generated in collie-brand and sealed, so
   `components/collie-home.tsx` adds a class and `index.css` recolours the beads under it. A test
   renders the real mark and fails if the rules stop reaching every bead. When collie-brand grows an

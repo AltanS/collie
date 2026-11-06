@@ -12,6 +12,7 @@ import { updatesPath } from "@/lib/nav";
 import { getUpdateStage, subscribeUpdateStage } from "@/lib/pwa";
 import { useOptionalRootData } from "@/lib/route-data";
 import { useScope } from "@/lib/session";
+import { useBundleApply } from "@/lib/bundle-apply";
 import { useSelfUpdate } from "@/lib/self-update";
 import { useUpdateRun } from "@/lib/update-run-store";
 import {
@@ -87,6 +88,9 @@ export function UpdateRibbon() {
   const data = useOptionalRootData();
   // The self-updater's own flag. Reading it here is also what MOUNTS the controller — see the header.
   const bundleStale = useSelfUpdate();
+  // The app on this phone being applied, the fact the mark and the dashboard line read. It covers
+  // the automatic lane as well, where `bundleStale` stays down (`lib/bundle-apply.ts`).
+  const applying = useBundleApply();
   // The service worker's own progress (`lib/pwa.ts`). Read for the reading's precedence only: while
   // a download is on, the mark carries it and this row says nothing else either.
   const stage = useSyncExternalStore(subscribeUpdateStage, getUpdateStage, getUpdateStage);
@@ -119,6 +123,11 @@ export function UpdateRibbon() {
   // The mark carries the bundle (see the header), and the row stays gone rather than falling back to
   // the states it outranks: the band and the mark would be talking about two updates at once.
   if (carriedByMark(view)) return null;
+  // WHILE THE APP IS BEING APPLIED THE BAND SAYS NOTHING ABOUT UPDATES AT ALL (2026-11-06). The mark
+  // and the dashboard line own the subject then, so an offer or a failed peer never shows beside a
+  // turning mark. This reaches past `carriedByMark` for one case: the automatic lane, where the
+  // reading never sees a bundle state because the self-updater's flag never rises.
+  if (applying !== null) return null;
 
   const skin = skinOf(view);
   // Which states can be put down, and what a dismiss records, is the reading's own decision — see

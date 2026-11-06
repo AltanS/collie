@@ -165,6 +165,7 @@ release on offer, and a peer that could not update. A running update is the shee
 
 When the app in your hand is updating, the Collie mark in the header says so. Every bead turns fast
 and takes the update colour while the new version downloads and until the page reloads onto it.
+The band stays empty while it does.
 Tap the mark to open the dashboard. Its update line says `Downloading the new version…` with how
 far it is, or `New version, tap to update` when the download is done.
 
