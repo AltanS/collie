@@ -237,6 +237,7 @@ import { parseMachineAlerts } from "./machine-parse.ts";
 import { SPARK_MAX_MINUTES } from "./machine-history.ts";
 import type { MachineSurface } from "./machines.ts";
 import { pinSessionKey } from "./pins/key.ts";
+import { PinKeys } from "./pins/keys.ts";
 import { pinsRoute, type PinsAnswer, type PinsSession } from "./pins/routes.ts";
 import { PinStore } from "./pins/store.ts";
 import { isPaneId, parseAddress } from "./walky/address.ts";
@@ -1460,15 +1461,24 @@ export function startServer(opts: {
   const walkyInstance = opts.walkyInstance;
   const walkyPaneOff = opts.walkyPaneOff;
   const pins = opts.pins ?? new PinStore(null);
-  // The pin key of a pane whose session its journal DISCOVERS (no reported ref), learned when a pins route
-  // resolves it. Until then such a pane shows no count. A pane that reports its session needs no entry.
-  const discoveredPinKeys = new Map<string, string>();
-  const pinCountOf = (runtime: string, pane: AgentView): number => {
+  // The key a pane's pins are filed under, for the snapshot's badge. The route's own resolver
+  // (`resolvePinSession`) is the one key function; this cache stores what it answered (bridge/pins/keys.ts).
+  const pinKeys = new PinKeys();
+  // The pane instance and every input of the resolver, so a reused pane id, a `/clear` that moved the
+  // reported ref, or a pane that changed folder drops its entry.
+  const pinFingerprint = (runtime: string, pane: AgentView): string =>
+    [walkyInstance?.(runtime, pane.paneId) ?? "", journalAgentOf(pane), pane.cwd, pane.agentSession?.kind ?? "", pane.agentSession?.value ?? ""].join("\u0000");
+  const pinCountOf = (from: SessionRuntime, pane: AgentView): number => {
     const adapter = adapterFor(journals ?? {}, journalAgentOf(pane));
     if (adapter === undefined) return 0;
+    // `journalRefOf` answers the reported ref itself unless the adapter reconciles it or the pane reports none.
     const reported = pane.agentSession;
-    const key = reported === undefined ? discoveredPinKeys.get(`${runtime}\u0000${pane.paneId}`) : pinSessionKey(adapter.agent, reported);
-    return key === undefined ? 0 : pins.count(key);
+    const derived = reported !== undefined && adapter.reconcile === undefined ? pinSessionKey(adapter.agent, reported) : undefined;
+    const key = pinKeys.keyOf(pinPaneKey(from.name, pane), pinFingerprint(from.name, pane), derived, async () => {
+      const found = await resolvePinSession(cfg, journals, from.engine, from.herdr, pane.paneId);
+      return found === null ? null : found.key;
+    });
+    return key === null ? 0 : pins.count(key);
   };
   const walky = opts.walky;
   const pairing = opts.pairing;
@@ -1814,7 +1824,7 @@ export function startServer(opts: {
         // carries them (M53 spec 07), the same way.
         panes: pick(from).map((p) =>
           withSurface(
-            withActions(withTurn(withOpenAsks(toPaneWire(withActivity(from, p), hasJournal, discoversSessions, walkyInstance?.(from.name, p.paneId), walkyPaneOff?.(from.name, p.paneId), pinCountOf(from.name, p)), from.herdr), from.herdr), from.herdr),
+            withActions(withTurn(withOpenAsks(toPaneWire(withActivity(from, p), hasJournal, discoversSessions, walkyInstance?.(from.name, p.paneId), walkyPaneOff?.(from.name, p.paneId), pinCountOf(from, p)), from.herdr), from.herdr), from.herdr),
             from,
           ),
         ),
@@ -2347,7 +2357,7 @@ export function startServer(opts: {
         const answer = await pinsRoute(
           {
             store: pins,
-            journal: await pinsJournal(cfg, journals, transcripts, rt.engine, herdr, paneId, (key) => discoveredPinKeys.set(`${session}\u0000${paneId}`, key)),
+            journal: await pinsJournal(cfg, journals, transcripts, rt.engine, herdr, paneId, (pane, key) => pinKeys.remember(pinPaneKey(session, pane), pinFingerprint(session, pane), key)),
             redact: cfg.redact,
             audit: audit_,
             device,
@@ -4808,12 +4818,16 @@ async function paneSubagent(
   }
 }
 
+/** The snapshot cache's key for one pane of one session (`PinKeys`). */
+function pinPaneKey(runtime: string, pane: AgentView): string {
+  return `${runtime}\u0000${pane.paneId}`;
+}
+
 /**
- * The session the pins of a pane hang on, resolved exactly as the Chat route resolves it (M90): the pane
- * from the live snapshot, the adapter by the agent that wrote the log, the ref reported or discovered. The
- * entries come from the same parsed log the History route pages (`TranscriptStore.cached`), so the lookup
- * reaches back past the live window to as far as the store reads, and is the same for every harness.
- * Null for a pane with no journal session: a shell, a harness with no reader, no ref found.
+ * The session the pins of a pane hang on (M90), as {@link resolvePinSession} resolves it. The entries come
+ * from the same parsed log the History route pages (`TranscriptStore.cached`), so the lookup reaches back
+ * past the live window to as far as the store reads, and is the same for every harness. `resolved` hears
+ * the key the route used, for the snapshot's badge. Null for a pane with no journal session.
  */
 async function pinsJournal(
   cfg: Config,
@@ -4822,19 +4836,13 @@ async function pinsJournal(
   engine: StateEngine,
   mux: Pick<MuxAdapter, "readGrid" | "foregroundProcesses" | "paneLabels">,
   paneId: string,
-  discovered: (key: string) => void,
+  resolved: (pane: AgentView, key: string | null) => void,
 ): Promise<PinsSession | null> {
-  if (!cfg.transcript || transcripts === null || journals === null) return null;
-  const { agents, shellPanes } = engine.current();
-  const panes = [...agents, ...shellPanes];
-  const pane = panes.find((a) => a.paneId === paneId);
-  if (pane === undefined) return null;
-  const adapter = adapterFor(journals, journalAgentOf(pane));
-  if (adapter === undefined) return null;
-  const ref = await journalRefOf(adapter, pane, panes, await discoveryHints(adapter, pane, mux, paneId));
-  if (ref === null) return null;
-  const key = pinSessionKey(adapter.agent, ref);
-  if (pane.agentSession === undefined) discovered(key);
+  if (transcripts === null) return null;
+  const found = await resolvePinSession(cfg, journals, engine, mux, paneId);
+  if (found === null) return null;
+  const { adapter, ref, key } = found;
+  resolved(found.pane, key);
   return {
     key,
     entries: async () => {
@@ -4845,6 +4853,32 @@ async function pinsJournal(
       }
     },
   };
+}
+
+/**
+ * The pin session of a pane: the one key function. The pane from the live snapshot, the adapter by the
+ * agent that wrote the log, the ref `journalRefOf` settles on, filed as `pinSessionKey`. The pins route
+ * resolves with it, and so does the snapshot's background refresh (`PinKeys`), so the badge and the list
+ * cannot name two sessions. Null for a pane with no journal session: a shell, a harness with no reader,
+ * no ref found.
+ */
+export async function resolvePinSession(
+  cfg: Pick<Config, "transcript">,
+  journals: Record<string, JournalAdapter> | null,
+  engine: { current(): { readonly agents: readonly AgentView[]; readonly shellPanes: readonly AgentView[] } },
+  mux: Pick<MuxAdapter, "readGrid" | "foregroundProcesses" | "paneLabels">,
+  paneId: string,
+): Promise<{ pane: AgentView; adapter: JournalAdapter; ref: AgentSessionRef; key: string } | null> {
+  if (!cfg.transcript || journals === null) return null;
+  const { agents, shellPanes } = engine.current();
+  const panes = [...agents, ...shellPanes];
+  const pane = panes.find((a) => a.paneId === paneId);
+  if (pane === undefined) return null;
+  const adapter = adapterFor(journals, journalAgentOf(pane));
+  if (adapter === undefined) return null;
+  const ref = await journalRefOf(adapter, pane, panes, await discoveryHints(adapter, pane, mux, paneId));
+  if (ref === null) return null;
+  return { pane, adapter, ref, key: pinSessionKey(adapter.agent, ref) };
 }
 
 /** A pins answer as the Response the phone reads. Refusals are `{ error, code }` JSON, a bad request plain text. */
