@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { classifyToolCall, type ToolCall } from "./tool-call.ts";
+import { summarizeToolInput } from "./text.ts";
 
 // The classifier is pure and harness-blind: name plus input in, one branch of the union out. It gets
 // table coverage here, and the per-harness RESULT folding (diff hunks, exit codes) is tested with the
@@ -301,6 +302,22 @@ describe("classifyToolCall: Gentle Shell's other tools", () => {
     expect(classifyToolCall("fetch_content", { url: "https://a.dev" }, "")).toEqual({ kind: "fetch", url: "https://a.dev" });
     expect(classifyToolCall("google_search", { query: "bun test" }, "")).toEqual({ kind: "search", query: "bun test", where: "web" });
     expect(classifyToolCall("source_check", { claim: "Bun is fast" }, "")).toEqual({ kind: "search", query: "Bun is fast", where: "web" });
+  });
+
+  test("a batch call reads its first query or url, with no count of the rest (pi-web-access)", () => {
+    expect(classifyToolCall("web_search", { queries: ["collie herdr", "gentle pi"] }, "")).toEqual({
+      kind: "search",
+      query: "collie herdr",
+      where: "web",
+    });
+    expect(classifyToolCall("fetch_content", { urls: ["https://a.example", "https://b.example"] }, "")).toEqual({
+      kind: "fetch",
+      url: "https://a.example",
+    });
+    // The single form still outranks the list form.
+    expect(classifyToolCall("web_search", { query: "one", queries: ["two"] }, "")).toMatchObject({ query: "one" });
+    expect(summarizeToolInput({ queries: ["collie herdr", "gentle pi"] })).toBe("collie herdr");
+    expect(summarizeToolInput({ urls: ["https://a.example", "https://b.example"] })).toBe("https://a.example");
   });
 
   test("bookkeeping tools are `other` drawn quietly, and `codemode` stays plain `other`", () => {

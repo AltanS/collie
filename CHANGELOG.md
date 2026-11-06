@@ -30,6 +30,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Fixed
 
+- **Web search and fetch rows show their first query or address.** A pi `web_search` called with a list of `queries`, or a `fetch_content` called with a list of `urls`, showed an empty row. The row now shows the first item of the list. Thanks @viniciosrab (#717).
 - **Claude's model picker reads at once under a usage notice.** When the weekly-limit notice fills the picker's top edge, Collie read no dialog for a few seconds and showed the unread card. The notice row now counts as the edge.
 
 ## [1.27.0] - 2026-11-06

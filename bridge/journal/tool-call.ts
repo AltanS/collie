@@ -195,6 +195,20 @@ function str(o: JsonObject, ...keys: string[]): string | undefined {
   return undefined;
 }
 
+/**
+ * The first non-empty string of a list field (`queries: ["a", "b"]`, `urls: [...]`). pi-web-access
+ * spells a batch call as a list; the first item is the row's one line and the rest are not counted.
+ */
+function firstOf(o: JsonObject, ...keys: string[]): string | undefined {
+  for (const k of keys) {
+    const v = o[k];
+    if (!Array.isArray(v)) continue;
+    const first = v.find((x): x is string => typeof x === "string" && x.trim() !== "");
+    if (first !== undefined) return first;
+  }
+  return undefined;
+}
+
 /** Read a number field. A harness that writes a numeric string still counts. */
 function num(o: JsonObject, ...keys: string[]): number | undefined {
   for (const k of keys) {
@@ -410,14 +424,14 @@ export function classifyToolCall(name: string, input: JsonValue | undefined, sum
     case "search": {
       // `pattern` outranks `path` for the same reason it does in `summarizeToolInput`: a Grep carries
       // both, and the pattern is what you searched for. A test pins that order there; this follows it.
-      const call: ToolCall = { kind: "search", query: str(o, "pattern", "query", "q", "claim") ?? "" };
+      const call: ToolCall = { kind: "search", query: str(o, "pattern", "query", "q", "claim") ?? firstOf(o, "queries") ?? "" };
       const lower = name.toLowerCase();
       const where = str(o, "path", "glob", "include") ?? (lower.includes("web") || WEB_SEARCH.has(lower) ? "web" : undefined);
       if (where !== undefined) call.where = where;
       return call;
     }
     case "fetch":
-      return { kind: "fetch", url: str(o, "url", "uri") ?? "" };
+      return { kind: "fetch", url: str(o, "url", "uri") ?? firstOf(o, "urls") ?? "" };
     case "delete":
     case "move": {
       const call: ToolCall = { kind, path: str(o, "file_path", "path", "source", "from") ?? "" };
