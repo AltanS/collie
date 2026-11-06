@@ -34,26 +34,30 @@ describe("subscribeBody", () => {
   const json = { endpoint: "https://push/new", keys: { p256dh: "P", auth: "A" } };
 
   it("carries exactly endpoint + keys when this device has registered nothing before", () => {
-    expect(subscribeBody(json, null)).toEqual({
+    expect(subscribeBody(json, null, false)).toEqual({
       endpoint: "https://push/new",
       keys: { p256dh: "P", auth: "A" },
+      closesOwn: true,
+      badges: false,
     });
   });
 
   it("supersedes the endpoint this device last registered", () => {
-    expect(subscribeBody(json, "https://push/old")).toEqual({
+    expect(subscribeBody(json, "https://push/old", true)).toEqual({
       endpoint: "https://push/new",
       keys: { p256dh: "P", auth: "A" },
+      closesOwn: true,
+      badges: true,
       replaces: "https://push/old",
     });
   });
 
   it("does not claim to supersede ITSELF — a re-register of the same endpoint replaces nothing", () => {
-    expect(subscribeBody(json, "https://push/new").replaces).toBeUndefined();
+    expect(subscribeBody(json, "https://push/new", false).replaces).toBeUndefined();
   });
 
   it("ignores an empty remembered endpoint", () => {
-    expect(subscribeBody(json, "").replaces).toBeUndefined();
+    expect(subscribeBody(json, "", false).replaces).toBeUndefined();
   });
 
   it("never forwards a field the browser happened to put on the subscription", () => {
@@ -61,6 +65,6 @@ describe("subscribeBody", () => {
     // carrying fields the type does not declare, which is exactly what a browser may hand us. The
     // case then pins that `subscribeBody` forwards none of them.
     const extra = { ...json, expirationTime: 123, junk: "x" } as PushSubscriptionJSON;
-    expect(Object.keys(subscribeBody(extra, null)).toSorted()).toEqual(["endpoint", "keys"]);
+    expect(Object.keys(subscribeBody(extra, null, false)).toSorted()).toEqual(["badges", "closesOwn", "endpoint", "keys"]);
   });
 });

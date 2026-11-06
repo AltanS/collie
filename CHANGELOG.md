@@ -25,7 +25,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [1.27.1] - 2026-11-06
 
-A patch for the desk: a browser tab can keep its place.
+A patch for the phone and the desk: Chrome's "updated in the background" notice stops, and a browser tab can keep its place.
 
 ### Added
 
@@ -37,6 +37,7 @@ A patch for the desk: a browser tab can keep its place.
 
 ### Fixed
 
+- **Chrome stops showing "This site has been updated in the background".** Chrome allows a site only a few pushes a day that leave no notification on screen, and one notification per agent sent each agent a clear of its own. Now a device that has Collie open gets no push for what it already shows, a device whose own tap already closed a notification gets no clear for it, and clears that come together reach each device as one push. The log counts each device's silent pushes per hour.
 - **A slow drag down on the Switch pane sheet follows the finger.** Each poll of the pane, every 1.5 seconds while an agent works, snapped a sheet held mid-drag back to the top, and the next move pulled it under the finger again, so the sheet flickered on the way down. The sheet now keeps its drag through a poll, on every sheet that closes with a drag.
 
 ## [1.27.0] - 2026-11-06

@@ -35,6 +35,27 @@ export interface StoredSubscription extends PushSubscription {
   /** The `User-Agent` of the request that registered it, trimmed and capped. The only thing that
    *  tells "my iPhone" from "the Mac I used once" in a list of opaque Apple endpoints. */
   userAgent?: string;
+  /**
+   * The pairing label of the device that registered it, taken from the request's bearer token and
+   * never from the body (`pairedLabel`, bridge/server.ts). It is what joins a subscription to the
+   * polls of the page on the same device, so {@link Push} can tell a device that is looking at
+   * Collie now from one in a pocket. A row without it (registered before the field existed, or by
+   * the host's own CLI) gets every push, which is the behaviour before 1.27.1.
+   */
+  device?: string;
+  /**
+   * The page that registered this row closes its own notification for a pane whenever it reads that
+   * pane (`web/src/lib/pane-notifications.ts`). Only then may a seen read stand in for the clear
+   * ({@link Push.noteSeen}). A row from an older page never says so and keeps getting the clear.
+   */
+  closesOwn?: boolean;
+  /**
+   * `false` when the page that registered this row has no Badging API (`navigator.setAppBadge`),
+   * as on Chrome for Android. A clear is also what zeroes a slot in the icon's count
+   * (`web/src/lib/app-badge.ts`), so only a device that shows no count may go without it after a
+   * seen read. Absent = it may show one.
+   */
+  badges?: boolean;
 }
 
 /** What a registration knows about itself beyond the subscription — see {@link Push.addSubscription}. */
@@ -49,6 +70,12 @@ export interface SubscriptionMeta {
    */
   replaces?: string;
   userAgent?: string;
+  /** The pairing label of the requesting device ({@link StoredSubscription.device}). */
+  device?: string;
+  /** The page closes its own pane notifications on a read ({@link StoredSubscription.closesOwn}). */
+  closesOwn?: boolean;
+  /** Whether the page has the Badging API ({@link StoredSubscription.badges}). */
+  badges?: boolean;
 }
 
 /**
@@ -59,7 +86,7 @@ export interface SubscriptionMeta {
 export type PushDeliveryResult = { statusCode?: number; body?: string; headers?: unknown } | void;
 
 /** One row of {@link PushStore.listSubscriptions} — metadata only, never the sending keys. */
-export type SubscriptionRow = { endpoint: string; createdAt?: string; userAgent?: string };
+export type SubscriptionRow = { endpoint: string; createdAt?: string; userAgent?: string; device?: string };
 
 /** The deep-link fields the service worker reads off a push payload (see web/src/sw.ts). */
 type PushPayloadData = {
@@ -95,6 +122,9 @@ function coerceStored(v: JsonValue | undefined): StoredSubscription | null {
   };
   if (typeof o.createdAt === "string") row.createdAt = o.createdAt;
   if (typeof o.userAgent === "string") row.userAgent = o.userAgent.slice(0, USER_AGENT_MAX);
+  if (typeof o.device === "string" && o.device !== "") row.device = o.device;
+  if (o.closesOwn === true) row.closesOwn = true;
+  if (typeof o.badges === "boolean") row.badges = o.badges;
   return row;
 }
 
@@ -214,8 +244,96 @@ function describeSendError<T>(err: T): string {
   return `${message}${status}${body}`;
 }
 
-/** web-push delivery options (collapse topic + TTL + urgency), derived per message from its `type`. */
-export type SendOptions = { TTL: number; topic: string; urgency?: "very-low" | "low" | "normal" | "high" };
+/** web-push delivery options (collapse topic + TTL + urgency), derived per message from its `type`.
+ *  `topic` is absent only on a clear that names several slots ({@link Push} § one clear per burst). */
+export type SendOptions = { TTL: number; topic?: string; urgency?: "very-low" | "low" | "normal" | "high" };
+
+// ── WHY A PUSH IS NOW ADDRESSED PER DEVICE (1.27.1) ─────────────────────────────────────────────
+// Every subscription is `userVisibleOnly`. Chrome holds a site to that with a budget, read in
+// Chromium's `push_messaging_notification_manager.cc` and `budget_database.cc`: a push that ends
+// with NO notification of this service worker on screen, and no visible tab of the origin, costs 2
+// points; points accrue only from site engagement, at most 0.5 an hour, kept for 4 days (so about 6
+// silent pushes a day for a site used every day). A notification shown does not refill it. When the
+// budget is spent Chrome shows its own "This site has been updated in the background". Whether an
+// installed PWA in its own window passes the "visible tab" exemption is not settled by that code, so
+// a push the service worker suppresses is treated as one that may cost. `Urgency` and `TTL` are not
+// inputs to the rule.
+//
+// 1.27.0's "one notification per agent" turned one shared slot into one render and one clear per
+// agent, sent to every device, so the silent count followed the number of agents. Three rules cut it
+// here, at the one place every push passes through, and nothing about what a person sees changes:
+//
+//   1. A render is HELD from a device that is looking at Collie now ({@link LOOKING_MS}). Its
+//      service worker would suppress it, and its page shows the state. If the device stops polling
+//      before it could have seen it, the render goes out late instead of never.
+//   2. A clear is skipped for a slot this bridge knows is closed on that device: the render was
+//      held, the clear already went, or the device's own page read the pane and closed it
+//      ({@link Push.noteSeen}). A slot it knows nothing about (after a restart) still gets the clear.
+//   3. Clears that land in one burst go to each device as ONE push naming every slot.
+/**
+ * How long after its last poll a device still counts as looking. The page polls `/api/snapshot`
+ * (and the open pane) only while it is visible, and its longest gap is `IDLE_MS`, 6 s, in
+ * `web/src/hooks/use-polling.ts`; the retry backoff only shortens it. 5 s of slack covers a slow
+ * answer and the timer's own drift. A case in `push.test.ts` reads the web constant, so a slower
+ * cadence there fails here first.
+ */
+export const LOOKING_MS = 6_000 + 5_000;
+
+/** How long clears wait for company before they go: the burst rule 3 coalesces. One poll's retract
+ *  across every session and the snooze route's fan both land well inside it. */
+export const CLEAR_BURST_MS = 400;
+
+/** Slots remembered per subscription. A tag is a session and a pane id, so this bounds a ledger that
+ *  would otherwise grow with every pane ever opened; the oldest goes first, and a slot forgotten is
+ *  only a slot whose clear is sent again. */
+const SLOT_MEMORY = 512;
+
+/** What a subscription's notification slot holds, as far as this bridge knows. Absent = unknown. */
+type SlotState = "open" | "closed";
+
+/** A push's JSON body before it is serialised for one device ({@link Push} § deliver): the message
+ *  less its topic, its tap data, and a clear's slots. */
+type PushBody = Omit<PushMessage, "topic"> & { data: PushPayloadData; tags?: readonly string[] };
+
+/** One push to one subscription. `names` are the slots its own body sets, so a badge correction for
+ *  the same slot is not sent beside it. */
+type Delivery = { sub: StoredSubscription; body: PushBody; options: SendOptions; names: readonly string[] };
+
+/** A render held from a looking device, when it was held, and the badge count its slot carried. */
+type HeldRender = {
+  body: PushBody;
+  options: SendOptions;
+  at: number;
+  label: string;
+  kind: string;
+  badge: number | undefined;
+};
+
+/** The timer and clock {@link Push} schedules held renders and clear bursts against. Nothing it
+ *  schedules is ever cancelled: each callback checks whether it is still wanted when it runs. */
+export interface PushClock {
+  now(): number;
+  schedule(fn: () => void, delayMs: number): void;
+}
+
+const realClock: PushClock = {
+  now: () => Date.now(),
+  schedule: (fn, delayMs) => void setTimeout(fn, delayMs),
+};
+
+/** How {@link Push} is wired beyond its config. Absent in a test or a CLI: real time, and clears that
+ *  coalesce only within one tick. */
+export interface PushOptions {
+  clock?: PushClock;
+  /** {@link CLEAR_BURST_MS} in the bridge; 0 = flush on the next microtask. */
+  clearBurstMs?: number;
+}
+
+/** One tally line's counters for one device. `clear` is the silent count: every clear sent ends
+ *  with no notification shown by design. */
+type Tally = { render: number; clear: number; held: number; late: number; dropped: number; skipped: number };
+const emptyTally = (): Tally => ({ render: 0, clear: 0, held: 0, late: 0, dropped: 0, skipped: 0 });
+const HOUR_MS = 3_600_000;
 
 /** Delivers one payload to one subscription with the given options. Injectable so the prune/log
  *  logic is testable. */
@@ -309,6 +427,33 @@ export function redactPushMessage(message: PushMessage): PushMessage {
   return { ...plain, title };
 }
 
+/** What a log line and a tally call a subscription: its device's pairing label, or its endpoint's tail. */
+function deviceName(sub: StoredSubscription): string {
+  return sub.device ?? `…${sub.endpoint.slice(-8)}`;
+}
+
+/** One device's share of a clear burst, before it is addressed. */
+type ClearDelivery = Omit<Delivery, "sub">;
+
+/** The payload and options of one device's share of a clear burst ({@link Push} § flushClears). */
+function clearDelivery(
+  due: readonly string[],
+  burst: ReadonlyMap<string, string | undefined>,
+): ClearDelivery {
+  const [first] = due;
+  if (due.length === 1 && first !== undefined) {
+    // Byte for byte the clear every earlier bridge sent, on the slot's own topic.
+    const topic = burst.get(first);
+    const options = topic === undefined ? SEND_OPTIONS : { ...SEND_OPTIONS, topic };
+    return { body: { type: "clear", tag: first, data: {} }, options, names: due };
+  }
+  return {
+    body: { type: "clear", tag: first, tags: due, data: {} },
+    options: { TTL: SEND_OPTIONS.TTL, urgency: SEND_OPTIONS.urgency },
+    names: due,
+  };
+}
+
 export class Push {
   private lib: WebPushModule | null = null;
   private subs = new Map<string, StoredSubscription>();
@@ -323,13 +468,35 @@ export class Push {
   // Saves are funnelled through this chain so concurrent writes never interleave (last enqueued
   // wins deterministically); a failed write is swallowed here so it can't poison later saves.
   private saveChain: Promise<void> = Promise.resolve();
+  // ── Per-device state for the three rules above. All of it in memory: a restart forgets, and every
+  // forgotten fact falls back to sending, which is the behaviour before the rules existed. ──
+  /** Pairing label → when that device's page last polled ({@link notePoll}). */
+  private polls = new Map<string, number>();
+  /** Endpoint → slot tag → what that slot holds on the device, as far as this bridge knows. */
+  private slots = new Map<string, Map<string, SlotState>>();
+  /** Endpoint → slot tag → the render held from it while it was looking (rule 1). */
+  private held = new Map<string, Map<string, HeldRender>>();
+  /** Endpoint → slot tag → the icon count its service worker missed, owed on the next push there. */
+  private badgeDue = new Map<string, Map<string, number>>();
+  /** The clears waiting for their burst to close (rule 3), in arrival order, one per tag. */
+  private burst: Map<string, string | undefined> | null = null;
+  private burstDone: Promise<void> = Promise.resolve();
+  /** Device → this hour's counters, and when this hour started. */
+  private tally = new Map<string, Tally>();
+  private tallySince: number;
+  private readonly clock: PushClock;
+  private readonly clearBurstMs: number;
 
   constructor(
     private readonly cfg: Config,
     sender?: PushSender,
+    opts: PushOptions = {},
   ) {
     this.file = join(cfg.stateDir, "push-subscriptions.json");
     this.sender = sender ?? ((sub, payload, options) => this.lib!.sendNotification(sub, payload, options));
+    this.clock = opts.clock ?? realClock;
+    this.clearBurstMs = opts.clearBurstMs ?? 0;
+    this.tallySince = this.clock.now();
   }
 
   /** Whether push is live (VAPID keys configured and `web-push` installed). Set once in init(). */
@@ -364,10 +531,10 @@ export class Push {
     // and only when it is a different endpoint — a device re-registering the endpoint it already
     // holds is naming itself, not a predecessor.
     if (meta.replaces !== undefined && meta.replaces !== sub.endpoint) {
-      if (this.subs.delete(meta.replaces)) {
+      if (this.subs.has(meta.replaces)) {
         console.log(`[push] replaced superseded subscription: ${meta.replaces}`);
       }
-      this.failures.delete(meta.replaces);
+      this.drop(meta.replaces);
     }
     const previous = this.subs.get(sub.endpoint);
     const userAgent = meta.userAgent?.trim().slice(0, USER_AGENT_MAX) ?? previous?.userAgent;
@@ -375,6 +542,12 @@ export class Push {
     // Re-subscribing does not restart the clock: `createdAt` is when this endpoint first appeared.
     row.createdAt = previous?.createdAt ?? new Date().toISOString();
     if (userAgent !== undefined && userAgent !== "") row.userAgent = userAgent;
+    // The device and its page's promise are what THIS registration says, never carried over: a row
+    // re-registered by an older page, or by a request no device token resolved, goes back to
+    // getting every push.
+    if (meta.device !== undefined && meta.device !== "") row.device = meta.device;
+    if (meta.closesOwn === true && row.device !== undefined) row.closesOwn = true;
+    if (meta.badges !== undefined) row.badges = meta.badges;
     this.subs.set(sub.endpoint, row);
     // A re-subscribe is fresh evidence even when the endpoint string is unchanged — the device just
     // told us it wants pushes, so it doesn't inherit the failure history of its predecessor.
@@ -387,10 +560,11 @@ export class Push {
    * the keys are a sending credential and have no business on a terminal.
    */
   listSubscriptions(): readonly SubscriptionRow[] {
-    return [...this.subs.values()].map(({ endpoint, createdAt, userAgent }) => {
+    return [...this.subs.values()].map(({ endpoint, createdAt, userAgent, device }) => {
       const row: SubscriptionRow = { endpoint };
       if (createdAt !== undefined) row.createdAt = createdAt;
       if (userAgent !== undefined) row.userAgent = userAgent;
+      if (device !== undefined) row.device = device;
       return row;
     });
   }
@@ -406,15 +580,47 @@ export class Push {
   async forget(match: string): Promise<number> {
     const doomed = [...this.subs.keys()].filter((e) => match === "*" || e.includes(match));
     if (doomed.length === 0) return 0;
-    for (const endpoint of doomed) {
-      this.subs.delete(endpoint);
-      this.failures.delete(endpoint);
-    }
+    for (const endpoint of doomed) this.drop(endpoint);
     await this.save();
     return doomed.length;
   }
 
-  /** Send a notification instruction (render, clear, or update) to every subscribed device. */
+  /**
+   * A paired device's page polled (`/api/snapshot`, or the open pane's read). Only a visible page
+   * polls, so for {@link LOOKING_MS} after this the device counts as looking at Collie.
+   */
+  notePoll(device: string): void {
+    this.polls.set(device, this.clock.now());
+  }
+
+  /**
+   * A paired device's own page read the pane whose notification sits in `tag`, as the pane view's
+   * poll does. That page closes its own notification for the pane on such a read
+   * (`web/src/lib/pane-notifications.ts`), so the slot is closed on every row of that device whose
+   * page said it does, and the clear for it is not sent there (rule 2). Only on a device that shows
+   * no icon count: elsewhere the clear is also what zeroes the slot's count, so it still goes. A
+   * render held for the slot is dropped: the page that is reading the pane is showing it.
+   */
+  noteSeen(device: string, tag: string): void {
+    for (const sub of this.subs.values()) {
+      if (sub.device !== device || sub.closesOwn !== true || sub.badges !== false) continue;
+      this.setSlot(sub.endpoint, tag, "closed");
+      this.unhold(sub.endpoint, tag);
+    }
+  }
+
+  /** Whether `device` polled within {@link LOOKING_MS} of `at`. */
+  private looking(device: string | undefined, at: number): boolean {
+    if (device === undefined) return false;
+    const last = this.polls.get(device);
+    return last !== undefined && at - last < LOOKING_MS;
+  }
+
+  /**
+   * Send a notification instruction (render, clear, update or machine alert) to the subscribed
+   * devices, each by its own rules (the note above {@link LOOKING_MS}). A clear resolves once its
+   * burst has gone out.
+   */
   async send(message: PushMessage): Promise<void> {
     // The SW reads deep-link fields from `data`. `session` is omitted for the primary and `host` for
     // this collie's own sessions (both absent on the message), keeping that payload identical to the
@@ -430,7 +636,20 @@ export class Push {
     const base =
       msg.type === "update" ? UPDATE_SEND_OPTIONS : msg.type === "machine" ? MACHINE_SEND_OPTIONS : SEND_OPTIONS;
     const options = topic !== undefined && topicIsSendable(topic) ? { ...base, topic } : base;
-    await this.broadcast(JSON.stringify({ ...msg, data }), options);
+    if (!this.enabled) return;
+    // A clear with a slot waits for its burst (rule 3). One without a slot names nothing a ledger
+    // could hold, so it goes to everyone at once, as every push did before.
+    if (msg.type === "clear" && msg.tag !== undefined) return this.queueClear(msg.tag, options.topic);
+    const body = { ...msg, data };
+    // A machine alert is the one push a visible app does not stand in for (web/src/lib/push-decision.ts),
+    // so it is never held; a clear without a slot has nothing to hold.
+    if (msg.type === "machine" || msg.type === "clear") {
+      this.log(msg.type, msg.tag, [...this.subs.values()].map((sub) => `${deviceName(sub)} sent`));
+      for (const sub of this.subs.values()) this.count(sub, msg.type === "clear" ? "clear" : "render");
+      await this.broadcast(body, options, msg.tag);
+      return;
+    }
+    await this.sendRender(body, options, msg.tag ?? "", msg.type ?? "render", msg.badge);
   }
 
   /** Convenience for a one-off render (used by the manual push-test script). */
@@ -438,13 +657,242 @@ export class Push {
     await this.send({ title, body, paneId: data.paneId });
   }
 
-  private async broadcast(payload: string, options: SendOptions): Promise<void> {
-    if (!this.enabled) return;
+  /** Rule 1: every device gets the render now, except one that is looking, which has it held. */
+  private async sendRender(
+    body: PushBody,
+    options: SendOptions,
+    tag: string,
+    kind: string,
+    badge: number | undefined,
+  ): Promise<void> {
+    const now = this.clock.now();
+    const out: StoredSubscription[] = [];
+    const verdicts: string[] = [];
+    for (const sub of this.subs.values()) {
+      if (sub.device !== undefined && this.looking(sub.device, now)) {
+        this.hold(sub.endpoint, tag, { body, options, at: now, label: sub.device, kind, badge });
+        this.count(sub, "held");
+        verdicts.push(`${deviceName(sub)} held (looking)`);
+        continue;
+      }
+      this.unhold(sub.endpoint, tag);
+      // Open from the moment it is sent, not from a 201: a clear racing this send must still go.
+      if (tag !== "") this.setSlot(sub.endpoint, tag, "open");
+      this.count(sub, "render");
+      verdicts.push(`${deviceName(sub)} sent`);
+      out.push(sub);
+    }
+    this.log(kind, tag, verdicts);
+    await this.deliver(out.map((sub) => ({ sub, body, options, names: tag === "" ? [] : [tag] })));
+  }
+
+  /**
+   * Hold a render from a looking device, and look again once the device would have polled. A poll
+   * since means its page showed the state, which is all its service worker would have done with the
+   * push, so the render is dropped. No poll means the page went away first (the phone locked a
+   * moment before), and the render goes out late rather than never.
+   */
+  private hold(endpoint: string, tag: string, held: HeldRender): void {
+    let perSub = this.held.get(endpoint);
+    if (perSub === undefined) {
+      perSub = new Map();
+      this.held.set(endpoint, perSub);
+    }
+    perSub.set(tag, held);
+    const last = this.polls.get(held.label) ?? held.at;
+    // +1: the look runs strictly after the window has closed, never on its edge.
+    this.clock.schedule(() => void this.lookAgain(endpoint, tag, held), Math.max(0, last + LOOKING_MS - held.at) + 1);
+  }
+
+  private async lookAgain(endpoint: string, tag: string, held: HeldRender): Promise<void> {
+    const perSub = this.held.get(endpoint);
+    // Superseded by a newer render or a clear for the slot, or seen: someone else decided.
+    if (perSub?.get(tag) !== held) return;
+    perSub.delete(tag);
+    const sub = this.subs.get(endpoint);
+    if (sub === undefined) return;
+    const last = this.polls.get(held.label);
+    if (last !== undefined && last > held.at) {
+      // Its service worker never counted this slot's alerts (`web/src/lib/app-badge.ts`), which a
+      // suppressed push used to do, so the count rides the next push this device gets.
+      if (held.badge !== undefined && tag !== "") this.oweBadge(endpoint, tag, held.badge);
+      this.count(sub, "dropped");
+      this.log(held.kind, tag, [`${deviceName(sub)} dropped (seen in the app)`]);
+      return;
+    }
+    if (tag !== "") this.setSlot(endpoint, tag, "open");
+    this.count(sub, "late");
+    this.log(held.kind, tag, [`${deviceName(sub)} sent late (stopped looking)`]);
+    await this.deliver([{ sub, body: held.body, options: held.options, names: tag === "" ? [] : [tag] }]);
+  }
+
+  private unhold(endpoint: string, tag: string): void {
+    this.held.get(endpoint)?.delete(tag);
+  }
+
+  /** Rule 3: a clear joins the open burst, or opens one. Resolves when that burst has gone out. */
+  private queueClear(tag: string, topic: string | undefined): Promise<void> {
+    if (this.burst === null) {
+      const burst = new Map<string, string | undefined>();
+      this.burst = burst;
+      this.burstDone = new Promise<void>((resolve) => {
+        const flush = () => {
+          if (this.burst === burst) this.burst = null;
+          this.flushClears(burst).then(resolve, resolve);
+        };
+        if (this.clearBurstMs <= 0) queueMicrotask(flush);
+        else this.clock.schedule(flush, this.clearBurstMs);
+      });
+    }
+    // One entry per slot, at its latest position: two clears of one slot are one clear.
+    this.burst.delete(tag);
+    this.burst.set(tag, topic);
+    return this.burstDone;
+  }
+
+  /**
+   * Send one burst of clears: to each device, the slots it may still show (rule 2), as one push.
+   * One slot keeps the exact shape and collapse topic a clear always had, so an older service
+   * worker and an offline phone see no change. Several go as `tags`, with the first also in `tag`,
+   * so an older service worker closes that one and the newer one closes all.
+   *
+   * Several slots ride NO collapse topic: a topic is one slot's, and putting this push on one of
+   * them would let that slot's next render replace it in an offline phone's queue, taking the other
+   * slots' clears with it. The cost is that the push service no longer drops a queued render this
+   * clear makes stale; the phone shows it and closes it on the same reconnect.
+   */
+  private async flushClears(burst: Map<string, string | undefined>): Promise<void> {
+    const tags = [...burst.keys()];
+    const out: Delivery[] = [];
+    const verdicts: string[] = [];
+    for (const sub of this.subs.values()) {
+      const due = tags.filter((tag) => this.slotOf(sub.endpoint, tag) !== "closed");
+      // A slot whose count is owed and whose clear is skipped is owed a zero instead.
+      for (const tag of tags) if (!due.includes(tag) && this.badgeDue.get(sub.endpoint)?.has(tag)) this.oweBadge(sub.endpoint, tag, 0);
+      for (const tag of tags) {
+        this.unhold(sub.endpoint, tag);
+        this.setSlot(sub.endpoint, tag, "closed");
+      }
+      if (due.length === 0) {
+        this.count(sub, "skipped");
+        verdicts.push(`${deviceName(sub)} skipped (closed)`);
+        continue;
+      }
+      this.count(sub, "clear");
+      verdicts.push(`${deviceName(sub)} sent ${due.length}`);
+      out.push({ sub, ...clearDelivery(due, burst) });
+    }
+    this.log("clear", tags.length === 1 ? tags[0] : `${tags.length} slots`, verdicts);
+    await this.deliver(out);
+  }
+
+  private slotOf(endpoint: string, tag: string): SlotState | undefined {
+    return this.slots.get(endpoint)?.get(tag);
+  }
+
+  private setSlot(endpoint: string, tag: string, state: SlotState): void {
+    let perSub = this.slots.get(endpoint);
+    if (perSub === undefined) {
+      perSub = new Map();
+      this.slots.set(endpoint, perSub);
+    }
+    // Re-inserted, so the Map's order is last-touched and the oldest slot is the first key.
+    perSub.delete(tag);
+    perSub.set(tag, state);
+    if (perSub.size <= SLOT_MEMORY) return;
+    const oldest = perSub.keys().next().value;
+    if (oldest !== undefined) perSub.delete(oldest);
+  }
+
+  /** Forget a subscription and everything kept about it. */
+  private drop(endpoint: string): void {
+    this.subs.delete(endpoint);
+    this.failures.delete(endpoint);
+    this.slots.delete(endpoint);
+    this.held.delete(endpoint);
+    this.badgeDue.delete(endpoint);
+  }
+
+  /** Owe one device the icon count of one slot, to ride its next push. */
+  private oweBadge(endpoint: string, tag: string, count: number): void {
+    let perSub = this.badgeDue.get(endpoint);
+    if (perSub === undefined) {
+      perSub = new Map();
+      this.badgeDue.set(endpoint, perSub);
+    }
+    perSub.delete(tag);
+    perSub.set(tag, count);
+    if (perSub.size <= SLOT_MEMORY) return;
+    const oldest = perSub.keys().next().value;
+    if (oldest !== undefined) perSub.delete(oldest);
+  }
+
+  /**
+   * The JSON one device receives: the body, plus `badgeSlots` when that device is owed counts its
+   * service worker missed. A slot the body itself sets is not owed any more, its own push says it.
+   * An older service worker ignores the field, and its icon count is what it was before.
+   */
+  private payloadFor(endpoint: string, body: PushBody, names: readonly string[]): string {
+    const owed = this.badgeDue.get(endpoint);
+    if (owed === undefined) return JSON.stringify(body);
+    for (const name of names) owed.delete(name);
+    this.badgeDue.delete(endpoint);
+    if (owed.size === 0) return JSON.stringify(body);
+    return JSON.stringify({ ...body, badgeSlots: Object.fromEntries(owed) });
+  }
+
+  /**
+   * One line per push decision, for the journal: what kind, which slot, and each device's verdict.
+   * Named by the pairing label where the row has one, else by the endpoint's tail.
+   */
+  private log(kind: string, tag: string | undefined, verdicts: readonly string[]): void {
+    if (verdicts.length === 0) return;
+    console.log(`[push] ${kind} ${tag === undefined || tag === "" ? "-" : tag} → ${verdicts.join(", ")}`);
+  }
+
+  /**
+   * Count one outcome for one device, and once an hour print the last hour's counts, one line per
+   * device: the line to read for "how many silent pushes did this phone get". Every clear sent is
+   * silent by design; a render can be silent too when the app was open and the bridge did not know.
+   */
+  private count(sub: StoredSubscription, outcome: keyof Tally): void {
+    const now = this.clock.now();
+    if (now - this.tallySince >= HOUR_MS) {
+      for (const [name, t] of this.tally) {
+        console.log(
+          `[push] last hour, ${name}: ${t.render} rendered, ${t.clear} silent clears, ${t.skipped} clears skipped, ` +
+            `${t.held} held (${t.dropped} seen in the app, ${t.late} sent late)`,
+        );
+      }
+      this.tally.clear();
+      this.tallySince = now;
+    }
+    const name = deviceName(sub);
+    const t = this.tally.get(name) ?? emptyTally();
+    t[outcome] += 1;
+    this.tally.set(name, t);
+  }
+
+  /** This hour's counts so far, per device, for the tests and for a future reader. */
+  tallies(): ReadonlyMap<string, Readonly<Tally>> {
+    return this.tally;
+  }
+
+  private async broadcast(body: PushBody, options: SendOptions, tag: string | undefined): Promise<void> {
+    const names = tag === undefined ? [] : [tag];
+    await this.deliver([...this.subs.values()].map((sub) => ({ sub, body, options, names })));
+  }
+
+  /** Deliver each body to its subscription, then prune and evict from what came back. */
+  private async deliver(deliveries: readonly Delivery[]): Promise<void> {
+    if (!this.enabled || deliveries.length === 0) return;
     const dead: string[] = [];
+    // Serialised per device now, before anything is awaited, so an owed count is taken exactly once.
+    const sends = deliveries.map((d) => ({ ...d, payload: this.payloadFor(d.sub.endpoint, d.body, d.names) }));
     // One entry per subscription attempted this round, so the eviction pass below can ask which
     // push services proved themselves healthy before it holds a failure against any one device.
     const results = await Promise.all(
-      [...this.subs.values()].map(async (sub) => {
+      sends.map(async ({ sub, payload, options }) => {
         try {
           // `{ endpoint, keys }` and nothing else: the stored row also carries operator metadata,
           // and web-push serialises what it is handed.
@@ -499,10 +947,7 @@ export class Push {
     }
 
     if (dead.length) {
-      for (const e of dead) {
-        this.subs.delete(e);
-        this.failures.delete(e);
-      }
+      for (const e of dead) this.drop(e);
       await this.save();
     }
   }

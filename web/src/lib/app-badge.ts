@@ -11,7 +11,7 @@
 //
 // Imported by both sides, so this module holds no state and has no side effect at load.
 
-import { asJsonNumber, asJsonString, parseJsonObject } from "./json";
+import { asJsonNumber, asJsonObject, asJsonString, parseJsonObject, type JsonValue } from "./json";
 
 /** The Badging API's two calls, optional because most browsers have neither. */
 export interface BadgeTarget {
@@ -32,11 +32,16 @@ export async function showBadge(target: BadgeTarget | undefined, count: number):
 /** Every herd slot's tag starts with this (bridge/crew/tags.ts); an update or machine push does not. */
 const HERD_TAG = "collie:herd";
 
-/** What a push says about its slot. Only the three fields read here. */
+/** What a push says about its slots. Only the fields read here. */
 export interface BadgePush {
   type?: string;
   tag?: string;
   badge?: number;
+  /** A clear's other slots (bridge/push.ts, one clear per burst): each one goes to zero. Read off
+   *  the wire, so typed as what it may be, not as what it should be. */
+  tags?: JsonValue;
+  /** Counts this worker missed while its device was looking at the app (bridge/push.ts § payloadFor). */
+  badgeSlots?: JsonValue;
 }
 
 /**
@@ -51,6 +56,28 @@ export function slotCount(push: BadgePush): number | undefined {
   if (push.type !== undefined) return undefined;
   const n = push.badge;
   return n !== undefined && Number.isInteger(n) && n >= 0 ? n : undefined;
+}
+
+/**
+ * Every slot count a push carries, in the order to apply them: the counts owed from pushes this
+ * worker never saw, then the push's own slot, then a clear's other slots at zero. Only herd slots,
+ * and only whole counts, as {@link slotCount} reads them. Empty when the push says nothing.
+ */
+export function slotUpdates(push: BadgePush): [string, number][] {
+  const out: [string, number][] = [];
+  for (const [tag, value] of Object.entries(asJsonObject(push.badgeSlots) ?? {})) {
+    const n = asJsonNumber(value);
+    if (tag.startsWith(HERD_TAG) && n !== undefined && Number.isInteger(n) && n >= 0) out.push([tag, n]);
+  }
+  const own = slotCount(push);
+  const ownTag = asJsonString(push.tag);
+  if (own !== undefined && ownTag !== undefined) out.push([ownTag, own]);
+  if (push.type !== "clear" || !Array.isArray(push.tags)) return out;
+  for (const extra of push.tags) {
+    const tag = asJsonString(extra);
+    if (tag !== undefined && tag !== ownTag && tag.startsWith(HERD_TAG)) out.push([tag, 0]);
+  }
+  return out;
 }
 
 /** Each slot's last count, keyed by its tag. A slot at zero is absent. */
@@ -95,17 +122,28 @@ export interface BadgeCaches {
 }
 
 /** Store one slot's new count and answer the new total. */
-export async function recordSlot(
+export function recordSlot(
   caches: BadgeCaches,
   origin: string,
   mount: string,
   tag: string,
   count: number,
 ): Promise<number> {
+  return recordSlots(caches, origin, mount, [[tag, count]]);
+}
+
+/** Store several slots' new counts in one write, in order, and answer the new total. */
+export async function recordSlots(
+  caches: BadgeCaches,
+  origin: string,
+  mount: string,
+  updates: readonly (readonly [string, number])[],
+): Promise<number> {
   const cache = await caches.open(badgeCacheName(mount));
   const key = badgeKey(origin, mount);
   const hit = await cache.match(key);
-  const slots = withSlot(hit === undefined ? {} : parseBadgeSlots(await hit.text()), tag, count);
+  let slots = hit === undefined ? {} : parseBadgeSlots(await hit.text());
+  for (const [tag, count] of updates) slots = withSlot(slots, tag, count);
   await cache.put(key, new Response(JSON.stringify(slots), { headers: { "content-type": "application/json" } }));
   return badgeTotal(slots);
 }

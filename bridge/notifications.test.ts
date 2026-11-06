@@ -9,7 +9,8 @@ import {
   type NotifyClock,
   type NotifySink,
 } from "./notifications.ts";
-import { paneTopic, topicIsSendable, type PushMessage } from "./push.ts";
+import { loadConfig } from "./config.ts";
+import { paneTopic, Push, topicIsSendable, type PushMessage } from "./push.ts";
 import type { AgentStatus, AgentView } from "./types.ts";
 
 // The coordinator decides whether/when a blocked/done transition becomes a push, and collapses the
@@ -896,5 +897,39 @@ describe("NotificationCoordinator — Bidi and C0/C1 control character stripping
     clock.fireAll();
     expect(sink.last?.title).toBe("Triage: Run exe.sh");
     expect(sink.last?.body).toBe("Line one");
+  });
+});
+
+// ── The ten-session case, through the real Push (1.27.1) ─────────────────────────────────────────
+// "One notification per agent" made each agent its own render and its own clear. With ten sessions
+// those clears are what spent Chrome's silent-push budget. Each session's coordinator still retracts
+// its own pane; the device gets them as one push.
+describe("one notification per agent — ten sessions retracting at once", () => {
+  test("ten coordinators clearing in one tick reach each device as ONE clear naming all ten slots", async () => {
+    const sent: { endpoint: string; body: { type?: string; tags?: string[] } }[] = [];
+    const push = new Push({ ...loadConfig(), stateDir: "/nonexistent" }, (s, payload) => {
+      sent.push({ endpoint: s.endpoint, body: JSON.parse(payload) });
+      return Promise.resolve();
+    });
+    push["_enabled"] = true;
+    for (const endpoint of ["phone", "laptop"]) push["subs"].set(endpoint, { endpoint, keys: { p256dh: "p", auth: "a" } });
+    const coords = Array.from({ length: 10 }, (_, i) => {
+      const clock = new FakeClock();
+      const sink = makeNotifySink(push, { isMuted: () => false }, `collie:herd:s${i}`, { session: `s${i}` });
+      const coord = new NotificationCoordinator(clock, sink, 0, (s) => s === "blocked", () => true);
+      coord.onTransition(agent("p1", "blocked"), "working", "blocked");
+      clock.fireAll();
+      return coord;
+    });
+    await Bun.sleep(0);
+    expect(sent.filter((x) => x.body.type === undefined)).toHaveLength(20);
+    sent.length = 0;
+    for (const coord of coords) coord.onTransition(agent("p1", "working"), "blocked", "working");
+    await Bun.sleep(0);
+    expect(sent).toHaveLength(2);
+    for (const { body } of sent) {
+      expect(body.type).toBe("clear");
+      expect(body.tags).toEqual(Array.from({ length: 10 }, (_, i) => paneTag(`collie:herd:s${i}`, "p1")));
+    }
   });
 });
