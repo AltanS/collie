@@ -105,6 +105,11 @@ const TOOL_ITEM: ChatItem = {
 };
 /** A message and a reply: the blocks most cards draw. */
 const TWO_ITEMS: readonly ChatItem[] = [USER_ITEM, REPLY_ITEM];
+/**
+ * Card 4's own copies of the two blocks. The block the open sheet is about is a page-wide fact (lib/block-select.ts),
+ * so a card that opens on the reply must not share its id with the reply every other card draws, or all of them tint.
+ */
+const SHEET_ITEMS: readonly ChatItem[] = TWO_ITEMS.map((item) => ({ ...item, id: `pg-sheet-${item.id}` }));
 const RUN_ITEM: ChatItem = {
   id: "pg-tool-run:0",
   kind: "tool",
@@ -154,14 +159,14 @@ function BlocksCard({ items, held = false }: { items?: readonly ChatItem[]; held
   );
 }
 
-/** Card 4: the sheet the ⋯ opens, open on the reply. A tap on Pin or Unpin flips the block's mark. */
+/** Card 4: the sheet the ⋯ opens, open on the reply, which is tinted while it is. A tap on Pin or Unpin flips the mark. */
 function ActionsSheetCard() {
-  const [open, setOpen] = useState<ChatItem | null>(REPLY_ITEM);
+  const [open, setOpen] = useState<ChatItem | null>(SHEET_ITEMS[1]!);
   const [pinned, setPinned] = useState<ReadonlySet<string>>(new Set());
   const flip = (item: ChatItem, on: boolean) => setPinned((now) => (on ? new Set(now).add(item.id) : new Set([...now].filter((id) => id !== item.id))));
   return (
     <Phone height="520px">
-      <Blocks pinned={pinned} onActions={setOpen} />
+      <Blocks items={SHEET_ITEMS} pinned={pinned} onActions={setOpen} />
       <BlockActionsSheet item={open} pinned={open !== null && pinned.has(open.id)} onClose={() => setOpen(null)} onPin={(item) => flip(item, true)} onUnpin={(item) => flip(item, false)} />
     </Phone>
   );
@@ -342,7 +347,7 @@ export function PinsSection() {
         <Card
           state="pins-block-actions"
           label="4: actions sheet"
-          reach="Tap a block, then its ⋯, or hold the block. A right click on a desk opens the sheet at once. The title says what the block is; Pin becomes Unpin on a pinned block. Select text gives the block's text back to the selection."
+          reach="Tap a block, then its ⋯, or hold the block. A right click on a desk opens the sheet at once. The block is tinted while its sheet is open. The title says what the block is; Pin becomes Unpin on a pinned block. Select text gives the block's text back to the selection."
           note="A tap on Pin or Unpin flips the mark, as the pane view's hook does. Nothing is sent."
         >
           <CardHead n={4} title="Actions sheet" />

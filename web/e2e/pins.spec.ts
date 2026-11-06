@@ -119,7 +119,8 @@ test("on a phone, the tap that shows a block's ⋯ raises no keyboard and moves 
   await expect.poll(focused).toBe("TEXTAREA");
 });
 
-// ON A PHONE THE HOLD OPENS THE SHEET, AND SELECT TEXT TURNS SELECTION ON (2026-11-06, Altan's Android phone). A
+// ON A PHONE THE HOLD OPENS THE SHEET, AND SELECT TEXT TURNS SELECTION ON (2026-11-06, Altan's Android phone). The
+// hold shows as a tint with no scale, and the block stays tinted while its sheet is open. A
 // phone's browser started a selection at its own long-press mark and cancelled the pointer, so the block's hold did
 // nothing. Under `pointer: coarse` a pinnable block takes no selection at rest, and the hold opens its sheet. The hold
 // is a real touch, sent through the DevTools protocol (`Input.dispatchTouchEvent`, as `sheet-drag.spec.ts` does), so
@@ -142,12 +143,17 @@ test("on a phone, a hold on a block opens its sheet, and Select text lets that b
   const touch = (type: "touchStart" | "touchEnd", points: { x: number; y: number }[]) =>
     cdp.send("Input.dispatchTouchEvent", { type, touchPoints: points.map((p) => ({ ...p, radiusX: 4, radiusY: 4, force: 1 })) });
   await touch("touchStart", [at]);
+  // While it is held, the block shows the hold as a tint and nothing else: no scale squeezes its text.
+  await expect(answerBlock(page)).toHaveAttribute("data-holding", "");
+  expect(await answerBlock(page).evaluate((el) => getComputedStyle(el).transform)).toBe("none");
   await page.waitForTimeout(900);
   await touch("touchEnd", []);
 
-  // Then: the sheet is open, no text is selected and the keyboard did not come up.
+  // Then: the sheet is open, its block is tinted, no text is selected and the keyboard did not come up.
   const sheet = page.getByRole("dialog");
   await expect(sheet.getByRole("button", { name: en["pins.action.pin"], exact: true })).toBeVisible();
+  await expect(answerBlock(page)).toHaveAttribute("data-active", "");
+  await expect(answerBlock(page)).not.toHaveAttribute("data-holding");
   expect(await page.evaluate(() => window.getSelection()?.isCollapsed ?? true)).toBe(true);
   expect(await page.evaluate(() => document.activeElement?.tagName ?? null)).not.toBe("TEXTAREA");
 
@@ -155,6 +161,7 @@ test("on a phone, a hold on a block opens its sheet, and Select text lets that b
   await sheet.getByRole("button", { name: en["pins.action.selectText"], exact: true }).click();
   // Then: the sheet closes, the hint shows and the block takes a selection.
   await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(answerBlock(page)).not.toHaveAttribute("data-active");
   await expect(page.getByText(en["pins.selectText.hint"], { exact: true })).toBeVisible();
   await expect(answerBlock(page)).toHaveAttribute("data-selectable", "");
   expect(await userSelect()).toBe("text");

@@ -26,11 +26,11 @@ interface LongPressOptions {
   // APIs (notably opening a phone keyboard) that reject calls made from the hold timer itself.
   onReleaseAfterLongPress?: () => void;
   /**
-   * Whether a hold in the making shows (`data-holding`, index.css `THE HOLD, SHOWN`). Default true. A surface that
-   * is made of selectable text turns it off: the tint and the 0.97 scale would squeeze a message under a slow tap
-   * or the start of a text selection, and the hold there is silent until it fires (components/stream-block.tsx).
+   * Whether a hold in the making shows (`data-holding`, index.css `THE HOLD, SHOWN`). Default true. `"touch"` shows it
+   * for a touch or pen press only, and a mouse's hold stays silent: a chat block, whose text a mouse still selects
+   * (components/stream-block.tsx).
    */
-  showHold?: boolean;
+  showHold?: boolean | "touch";
   /**
    * Runs on the `pointerup` that ends a TAP: a primary press that did not become a hold, did not move past
    * `tapMoveTolerance` and was not cancelled. The movement is judged by the same gate the hold's is, so a scroll that
@@ -145,8 +145,9 @@ export function useLongPress(
       if (timer.current !== null) clearTimeout(timer.current);
       timer.current = setTimeout(fire, delayMs);
       if (feedback.current !== null) clearTimeout(feedback.current);
+      const show = showHold === "touch" ? e.pointerType === "touch" || e.pointerType === "pen" : showHold;
       feedback.current =
-        showHold && delayMs > HOLD_FEEDBACK_DELAY_MS ? setTimeout(() => setHolding(true), HOLD_FEEDBACK_DELAY_MS) : null;
+        show && delayMs > HOLD_FEEDBACK_DELAY_MS ? setTimeout(() => setHolding(true), HOLD_FEEDBACK_DELAY_MS) : null;
     },
     [onLongPress, delayMs, fire, showHold, onTap],
   );

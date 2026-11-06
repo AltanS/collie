@@ -1,7 +1,11 @@
 import { act, createEvent, fireEvent, render, screen, within } from "@testing-library/react";
+import { useState } from "react";
+
+import { HOLD_FEEDBACK_DELAY_MS } from "@/hooks/use-long-press";
 
 import { endSelectText, selectTextIn } from "@/lib/block-select";
 import type { ChatItem } from "@/lib/chat-items";
+import { BlockActionsSheet } from "./block-actions-sheet";
 import { BLOCK_HOLD_MS, chipShift, PinnedMark, REVEAL_MS, StreamBlock } from "./stream-block";
 
 // The two marks a stream block can wear (M90 spec 02, reworked 2026-11-06): the pin glyph of a pinned block, and the
@@ -166,14 +170,12 @@ describe("StreamBlock reveal", () => {
     expect(blockEl(container)).not.toHaveAttribute("data-revealed");
   });
 
-  it("opens the sheet on a touch hold after 650ms, silently until it fires, with no contextmenu", () => {
+  it("opens the sheet on a touch hold after 650ms, with no contextmenu", () => {
     const onActions = vi.fn();
     const { container } = block({ onActions });
     const el = blockEl(container);
     fireEvent.pointerDown(el, { button: 0, clientX: 10, clientY: 10, pointerType: "touch" });
     act(() => vi.advanceTimersByTime(BLOCK_HOLD_MS - 50));
-    expect(el).not.toHaveAttribute("data-holding");
-    expect(el.getAttribute("style")).toBeNull();
     expect(onActions).not.toHaveBeenCalled();
     act(() => vi.advanceTimersByTime(50));
     expect(onActions).toHaveBeenCalledExactlyOnceWith(item);
@@ -363,6 +365,61 @@ describe("StreamBlock reveal", () => {
     fireEvent(el, menu);
     expect(menu.defaultPrevented).toBe(false);
     expect(within(el).queryByRole("button")).toBeNull();
+  });
+});
+
+describe("StreamBlock tint", () => {
+  it("shows a touch hold in the making from 150ms, and drops it as the hold fires", () => {
+    const { container } = block({ onActions: vi.fn() });
+    const el = blockEl(container);
+    fireEvent.pointerDown(el, { button: 0, clientX: 10, clientY: 10, pointerType: "touch" });
+    act(() => vi.advanceTimersByTime(HOLD_FEEDBACK_DELAY_MS - 1));
+    expect(el).not.toHaveAttribute("data-holding");
+    act(() => vi.advanceTimersByTime(1));
+    expect(el).toHaveAttribute("data-holding");
+    act(() => vi.advanceTimersByTime(BLOCK_HOLD_MS - HOLD_FEEDBACK_DELAY_MS));
+    expect(el).not.toHaveAttribute("data-holding");
+  });
+
+  it("keeps a mouse's hold silent", () => {
+    const { container } = block({ onActions: vi.fn() });
+    const el = blockEl(container);
+    fireEvent.pointerDown(el, { button: 0, clientX: 10, clientY: 10, pointerType: "mouse" });
+    act(() => vi.advanceTimersByTime(BLOCK_HOLD_MS - 1));
+    expect(el).not.toHaveAttribute("data-holding");
+    expect(el.getAttribute("style")).toBeNull();
+  });
+
+  it("marks the block the open sheet is about, from the hold that opened it until the sheet closes", () => {
+    function Wired() {
+      const [open, setOpen] = useState<ChatItem | null>(null);
+      return (
+        <>
+          <StreamBlock n={1} item={item} pinned={false} onActions={setOpen} className={BLOCK}>
+            <p>done</p>
+          </StreamBlock>
+          <StreamBlock n={1} item={other} pinned={false} onActions={setOpen} className={BLOCK}>
+            <p>other</p>
+          </StreamBlock>
+          <BlockActionsSheet item={open} pinned={false} onClose={() => setOpen(null)} onPin={vi.fn()} onUnpin={vi.fn()} />
+        </>
+      );
+    }
+    const { container } = render(<Wired />);
+    const [a, b] = container.querySelectorAll<HTMLElement>("[data-block]");
+    expect(a).not.toHaveAttribute("data-active");
+    fireEvent.pointerDown(a!, { button: 0, clientX: 10, clientY: 10, pointerType: "touch" });
+    act(() => vi.advanceTimersByTime(BLOCK_HOLD_MS));
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(a).toHaveAttribute("data-active");
+    expect(a).not.toHaveAttribute("data-holding");
+    expect(b).not.toHaveAttribute("data-active");
+    // A tap of its own: its press clears the guard on the hold's lift.
+    const pin = screen.getByRole("button", { name: "Pin" });
+    fireEvent.pointerDown(pin, { button: 0, pointerType: "touch" });
+    fireEvent.click(pin);
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(a).not.toHaveAttribute("data-active");
   });
 });
 

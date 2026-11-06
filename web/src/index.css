@@ -1578,6 +1578,17 @@
   -webkit-touch-callout: default;
 }
 
+/* A CHAT BLOCK'S TINT (components/stream-block.tsx). The hold in the making on a block is the tint ONLY: the 0.97
+   scale squeezed a message of text. It shows for a touch or pen press alone (the hook's `showHold: "touch"`). While
+   the actions sheet is open for the block, `data-active` holds the same tint at the strength the hold's fill ends on,
+   so one flows into the other with no flash. */
+[data-block][data-holding] {
+  animation-name: hold-tint;
+}
+[data-block][data-active] {
+  box-shadow: inset 0 0 0 100vmax color-mix(in oklab, currentColor 12%, transparent);
+}
+
 /* THE PANE NAVIGATION PAD'S STEP PULSE (components/pane-nav-overlay.tsx, ADR 0121). Each step of the
    two-finger or joystick move rings the arrow it took once: a square of the arrow's own size grows and
    fades in 350ms. Transform and opacity only, on a layer that takes no pointer and holds no space, so
