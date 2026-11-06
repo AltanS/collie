@@ -25,6 +25,11 @@ interface CollieHomeProps {
    *  colour, which is the band's old download row moved onto the mark (2026-11-06). Outranks the
    *  bloom, a round and busy work; `lost` outranks it. */
   applying?: boolean;
+  /** The link just came back after a bar the operator saw (`lib/reconnected.ts`). For exactly one
+   *  turn of the orbit at the loading rate, every bead draws in the done colour, which is the band's
+   *  old green "Connected" strip moved onto the mark (2026-11-07). `lost` and `applying` outrank it;
+   *  it outranks the bloom, a round and busy work. */
+  reconnected?: boolean;
   /** `navigator.onLine`, read by the host (the mark never calls the hook). Only picks which icon the
    *  lost badge wears, the same two the connection strip uses so the two agree: false is the phone's
    *  own fact (WifiOff), anything else is a bridge that does not answer (CloudOff). */
@@ -65,8 +70,10 @@ interface CollieHomeProps {
 // rate (`TURN.live`, collie-mark.tsx) and does not export it, so this number is a copy and has to
 // stay in step with it: shorter cuts the round off part way, longer starts a second one. The rate
 // is set in the collie-brand repo (`SPRINT` in src/geometry.ts) — a change there has to be walked
-// over to here by hand, and this is the only thing on this side that knows the number.
-const ORBIT_TURN_MS = 1800;
+// over to here by hand, and this is the only thing on this side that knows the number. The
+// reconnection's green turn (`lib/reconnected.ts`) is timed by it too, through the strip that
+// fires it.
+export const ORBIT_TURN_MS = 1800;
 
 /**
  * The round's SHAPE, as a multiplier on the mark's own live rate: a raised cosine on a WARPED clock.
@@ -139,6 +146,13 @@ const SPIN_SKEW = 0.5;
  */
 export const APPLYING_CLASS = "collie-applying";
 
+/**
+ * The same door, for a restored connection (2026-11-07): every bead in `--status-done` for the one
+ * turn the mark makes when the link comes back. Same selectors as APPLYING_CLASS, in index.css, and
+ * the same coupling test; only the colour differs.
+ */
+export const RECONNECTED_CLASS = "collie-reconnected";
+
 export function spinRate(elapsedMs: number, totalMs = ORBIT_TURN_MS): number {
   if (totalMs <= 0) return 1;
   const at = Math.min(Math.max(elapsedMs, 0), totalMs);
@@ -156,6 +170,7 @@ export function CollieHome({
   trouble,
   lost = false,
   applying = false,
+  reconnected = false,
   online = true,
   lastSeenAt,
   paper = "var(--band-ground)",
@@ -167,6 +182,9 @@ export function CollieHome({
   // A dead link must not look like an update in flight, so `lost` outranks this as it outranks
   // everything else the mark can say.
   const applies = applying && !lost;
+  // The green turn, below both. The strip already declines to fire it while the app updates, and this
+  // guard covers an update that starts inside the turn: the update colour takes over at once.
+  const greets = reconnected && !lost && !applies;
   const LostIcon = online ? CloudOff : WifiOff;
 
   // ONE FULL ROUND OF THE ORBIT whenever the app publishes a status — a send landing, an agent
@@ -234,6 +252,15 @@ export function CollieHome({
   // downloads or waits to load, the mark turns at the loading rate and every bead takes the update
   // colour (APPLYING_CLASS above). Not the round's curve, a steady turn, for the bloom's reason. It
   // does not outrank `lost`.
+  //
+  // ── THE FIFTH: THE LINK COMING BACK (2026-11-07) ─────────────────────────────────────────────
+  //
+  // `reconnected` is an EVENT with a fixed length, one turn, and it is drawn as a steady turn rather
+  // than the round's thrown wheel: the operator asked for exactly one full turn at the loading speed.
+  // A turn at that rate for ORBIT_TURN_MS brings every bead back to where it started, so the drift
+  // picks up where it left off. The word "Reconnected" is a status publish, which would start a round
+  // of its own over the same time; `steady` below keeps that round from ramping, so the two are one
+  // turn. Under reduced motion nothing turns and the colour alone holds for the same time.
   const busy = useOperatorBusy();
 
   const status = useStatus();
@@ -280,7 +307,7 @@ export function CollieHome({
   // Whether a STATE is turning the mark right now, read by the ramp at the round's first frame. A ref
   // and not a dependency, because the round's effect must not re-run when it changes.
   const steady = useRef(false);
-  steady.current = bloom || applies;
+  steady.current = bloom || applies || greets;
 
   // Every `cm-*` CSS animation under the mark, or null where the ramp cannot run: no element yet, no
   // `getAnimations` (jsdom under test, older engines), or reduced motion — where the stylesheet has
@@ -292,8 +319,8 @@ export function CollieHome({
     // all — jsdom under test does not, and neither do older engines — which is a fact about the
     // object, not about the shape of a value we were handed.
     if (el === null || !("getAnimations" in el)) return null;
-    // A state already turns the mark steadily (the bloom, or the app updating): a wheel-throw over it
-    // would read as an event that keeps happening. The round runs on, unseen, as it always did.
+    // A state already turns the mark steadily (the bloom, the app updating, the link coming back): a
+    // wheel-throw over it would read as an event that keeps happening. The round runs on, unseen, as it always did.
     if (steady.current) return null;
     if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true) return null;
     return el.getAnimations({ subtree: true }).filter((a) => {
@@ -363,7 +390,7 @@ export function CollieHome({
       onClick={onHome}
       // The bloom conveys connection state visually; fold it into the button's accessible name too,
       // so screen-reader users get it (inside a pane there's no other cue).
-      aria-label={homeLabel({ trouble, lost, applying: applies, lastSeenAt })}
+      aria-label={homeLabel({ trouble, lost, applying: applies, reconnected: greets, lastSeenAt })}
       className={cn(
         "-mx-1 flex items-center rounded px-1 transition-opacity active:opacity-70",
         className,
@@ -401,9 +428,9 @@ export function CollieHome({
         <CollieMark
           size={markSize}
           weight="header"
-          loading={applies || bloom || ((round || busy) && !lost)}
+          loading={applies || greets || bloom || ((round || busy) && !lost)}
           paper={paper}
-          className={cn("transition-opacity", lost && "opacity-40 grayscale", applies && APPLYING_CLASS)}
+          className={cn("transition-opacity", lost && "opacity-40 grayscale", applies && APPLYING_CLASS, greets && RECONNECTED_CLASS)}
         />
         {/* THE LOST BADGE. The strip under the header says the connection is gone, and the operator can
             hide it; this is what stays after that, so the state is never only a dimmed dog. It sits in
@@ -429,17 +456,20 @@ export function CollieHome({
 
 /**
  * The button's accessible name: what the mark is showing, folded into the name, because inside a pane
- * there is no other cue for a screen reader. `lost` first, then the app updating, then the bloom.
+ * there is no other cue for a screen reader. `lost` first, then the app updating, then the link
+ * coming back, then the bloom.
  */
 function homeLabel({
   trouble,
   lost,
   applying,
+  reconnected,
   lastSeenAt,
 }: {
   trouble: boolean;
   lost: boolean;
   applying: boolean;
+  reconnected: boolean;
   lastSeenAt: number | undefined;
 }): string {
   // `trouble` as well, exactly as before: the lost names were only ever reached through it.
@@ -449,6 +479,7 @@ function homeLabel({
       : t("nav.home.aria.lostAt", { time: savedAtLabel(lastSeenAt) });
   }
   if (applying) return t("nav.home.aria.updating");
+  if (reconnected) return t("nav.home.aria.reconnected");
   if (trouble) return t("nav.home.aria.reconnecting");
   return t("nav.home.aria.default");
 }

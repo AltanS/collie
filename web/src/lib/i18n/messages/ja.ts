@@ -1047,6 +1047,7 @@ export const ja: Dictionary = {
   "nav.home.aria.lostAt": "Collie ホーム (未接続)。{time} に保存された内容を表示しています。",
   "nav.home.aria.reconnecting": "Collie ホーム (再接続中)",
   "nav.home.aria.updating": "Collie がアプリを更新しています。ダッシュボードを開きます。",
+  "nav.home.aria.reconnected": "Collie ホーム (再接続しました)",
   "nav.mux.onPrefix": "オン",
   "nav.prereleaseTitle": "プレリリースビルド: {version}",
 
@@ -1361,7 +1362,7 @@ export const ja: Dictionary = {
   "connection.dismiss.aria": "この通知を閉じる",
   "common.closeAria": "閉じる",
   "common.scrollToLatestAria": "最新の位置へスクロール",
-  "connection.connected": "接続済み",
+  "connection.reconnected": "再接続しました",
   "connection.reconnecting": "再接続中…",
   "connection.herdrDown": "ホスト上のHerdrが停止しています",
   "connection.tokenRefused": "durable agentがトークンを拒否しました。このピアのCOLLIE_DURABLE_TOKENを確認してください。",

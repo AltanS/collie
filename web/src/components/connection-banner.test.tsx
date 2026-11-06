@@ -9,7 +9,10 @@ import * as api from "@/lib/api";
 import type { ServerSummary } from "@/lib/types";
 import { fixtureServers } from "@/test/handlers";
 import { markNotPaired } from "@/lib/pairing";
-import { ConnectionBanner, GREEN_MS } from "./connection-banner";
+import { __resetReconnected, reconnectedShowing } from "@/lib/reconnected";
+import { clearStatus, currentStatus, setStatus } from "@/lib/status";
+import { ORBIT_TURN_MS } from "./collie-home";
+import { ConnectionBanner } from "./connection-banner";
 
 // THE BAR IS A STRIP, and this file mounts the band it appears in. `ConnectionBanner` registers a
 // `StripSlot` and draws nothing where it sits, so a case that rendered it alone would be asserting
@@ -17,7 +20,9 @@ import { ConnectionBanner, GREEN_MS } from "./connection-banner";
 // longer asserted here: the enter/exit animation (`ui/collapse.tsx` and the host's ghost own it, on
 // one duration shared with everything else in flow — hence COLLAPSE_MS below where EXIT_MS used to
 // be), and the tint recipe (`ui/notice.tsx`'s one table). What is still this file's is the
-// amber→red→green state machine, the probe, and the words.
+// amber→red→recovered state machine, the probe, and the words. Recovery draws NOTHING in the band
+// since 2026-11-07: it hands the mark one green turn (`lib/reconnected.ts`) and the status channel
+// the word "Reconnected", and both are asserted here, at the moment the strip decides it.
 //
 // A ROW IS ADDRESSED BY `data-slot`, NEVER BY `role="status"`. The host keeps two permanent empty
 // live regions mounted so a strip appearing is a change inside a region that already existed, and a
@@ -32,6 +37,12 @@ vi.mock("@/hooks/use-connection-lost", () => ({
   useConnectionLost: () => h.lost,
 }));
 vi.mock("@/hooks/use-loading-stalled", () => ({ useLoadingStalled: () => false }));
+// Whether a new app build is being applied: staged, so a case can recover while the app updates.
+const bundle = vi.hoisted(() => ({ applying: false }));
+vi.mock("@/lib/bundle-apply", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/bundle-apply")>()),
+  useBundleApply: () => (bundle.applying ? "installing" : null),
+}));
 
 // The /api/config probe (red only) — controllable + counted, so we don't lean on MSW timing under fake
 // timers. `reachable` false makes fetchConfig throw (bridge unreachable).
@@ -114,9 +125,14 @@ beforeEach(() => {
   h.lost = false;
   cfg.reachable = true;
   cfg.calls = 0;
+  bundle.applying = false;
   setOnline(true);
+  __resetReconnected();
+  clearStatus();
 });
 afterEach(() => {
+  __resetReconnected();
+  clearStatus();
   vi.useRealTimers();
   setOnline(true);
 });
@@ -382,35 +398,90 @@ describe("ConnectionBanner — the single connection surface", () => {
     expect(container.querySelectorAll("[class*='safe-area-inset-top']")).toHaveLength(0);
   });
 
-  it("flashes green 'Connected' only after a visible bar recovers, then the band closes over it", () => {
+  it("draws NOTHING in the band when a visible bar recovers: the mark turns green once instead (2026-11-07)", () => {
     h.trouble = true;
     renderBanner();
     expect(screen.getByText("Reconnecting…")).toBeInTheDocument();
+    expect(reconnectedShowing()).toBe(false);
 
-    // Recover: the signals go healthy → because a bar WAS visible, a green confirmation appears.
+    // Recover: the signals go healthy. The strip simply goes; no green strip takes its place.
     h.trouble = false;
     act(() => rerenderBanner());
-    expect(announced("status")).toHaveTextContent("Connected");
-    expect(row()?.className).toMatch(/bg-status-done/); // green = established
-
-    // It lingers ~1.8s — that duration is still this component's, because how long a confirmation is
-    // worth reading is a fact about what the operator is being told. What follows it is not: the
-    // slot deregisters and the BAND keeps painting the strip while it closes, on the one collapse
-    // duration the whole app moves in flow at.
-    act(() => vi.advanceTimersByTime(GREEN_MS));
-    expect(screen.getByText("Connected")).toBeInTheDocument(); // still there, collapsing
     act(() => vi.advanceTimersByTime(COLLAPSE_MS + 16));
+    expect(row()).toBeNull();
+    expect(document.querySelector("[class*='bg-status-done']")).toBeNull();
     expect(screen.queryByText("Connected")).toBeNull();
+
+    // The mark's turn and the word, for exactly one turn of the orbit.
+    expect(reconnectedShowing()).toBe(true);
+    expect(currentStatus()).toMatchObject({ text: "Reconnected", tone: "success" });
+    act(() => vi.advanceTimersByTime(ORBIT_TURN_MS - COLLAPSE_MS - 16));
+    expect(reconnectedShowing()).toBe(false);
+    expect(currentStatus()).toBeNull();
+  });
+
+  it("turns the mark on red → green too", () => {
+    h.lost = true;
+    renderBanner({ error: true });
+    expect(row()).not.toBeNull();
+    h.lost = false;
+    act(() => rerenderBanner());
+    expect(reconnectedShowing()).toBe(true);
+  });
+
+  it("does nothing on a first paint that is already healthy, or on a healthy re-render", () => {
+    renderBanner({ bridge: "connected" });
+    expect(reconnectedShowing()).toBe(false);
+    // Never troubled → never showed a bar → a later re-render is not a recovery.
+    act(() => rerenderBanner());
+    act(() => vi.advanceTimersByTime(ORBIT_TURN_MS + COLLAPSE_MS + 16));
+    expect(reconnectedShowing()).toBe(false);
+    expect(currentStatus()).toBeNull();
     expect(row()).toBeNull();
   });
 
-  it("shows nothing on a blip that never reached trouble — green needs a visible bar first", () => {
-    renderBanner({ bridge: "connected" });
-    // Never troubled → never showed a bar → a later 'recovery' re-render must not flash green.
+  it("fires once per recovery: a second healthy re-render inside the turn starts nothing", () => {
+    h.trouble = true;
+    renderBanner();
+    h.trouble = false;
     act(() => rerenderBanner());
-    act(() => vi.advanceTimersByTime(GREEN_MS + COLLAPSE_MS + 16));
-    expect(screen.queryByText("Connected")).toBeNull();
+    const word = currentStatus()?.id;
+    act(() => rerenderBanner());
+    expect(currentStatus()?.id).toBe(word);
+  });
+
+  it("skips the green turn while the app is being updated: the update colour wins", () => {
+    h.trouble = true;
+    renderBanner();
+    bundle.applying = true;
+    h.trouble = false;
+    act(() => rerenderBanner());
+    expect(reconnectedShowing()).toBe(false);
+    expect(currentStatus()).toBeNull();
+    act(() => vi.advanceTimersByTime(COLLAPSE_MS + 16));
     expect(row()).toBeNull();
+  });
+
+  it("does not replace an error on the status channel, but still turns the mark", () => {
+    h.trouble = true;
+    renderBanner();
+    act(() => setStatus("Send failed", "error"));
+    h.trouble = false;
+    act(() => rerenderBanner());
+    expect(reconnectedShowing()).toBe(true);
+    expect(currentStatus()).toMatchObject({ text: "Send failed", tone: "error" });
+  });
+
+  it("ends the turn at once when the link drops again inside it", () => {
+    h.trouble = true;
+    renderBanner();
+    h.trouble = false;
+    act(() => rerenderBanner());
+    expect(reconnectedShowing()).toBe(true);
+    h.trouble = true;
+    act(() => rerenderBanner());
+    expect(reconnectedShowing()).toBe(false);
+    expect(screen.getByText("Reconnecting…")).toBeInTheDocument();
   });
 });
 
@@ -501,13 +572,12 @@ describe("ConnectionBanner — offline states", () => {
     expect(row()).toHaveTextContent(/Can't reach Collie. Last seen/);
   });
 
-  it("the stale marks clear when the bridge answers: a green flash, then nothing", () => {
+  it("the stale marks clear when the bridge answers: the strip goes and the mark turns green", () => {
     renderBanner({ error: true, stale: true, lastSeenAt: SAVED_AT });
     expect(row()).toHaveTextContent(/Showing what was saved/);
     liveStale = false;
     act(() => rerenderBanner());
-    expect(announced("status")).toHaveTextContent("Connected");
-    act(() => vi.advanceTimersByTime(GREEN_MS));
+    expect(reconnectedShowing()).toBe(true);
     act(() => vi.advanceTimersByTime(COLLAPSE_MS + 16));
     expect(row()).toBeNull();
   });
@@ -566,7 +636,7 @@ describe("ConnectionBanner — dismissing the red strip", () => {
     expect(row()).toBeNull();
   });
 
-  it("recovers quietly after a dismiss: no green Connected flash", async () => {
+  it("recovers quietly after a dismiss: no strip, no green turn, no word", async () => {
     h.lost = true;
     renderBanner({ error: true, stale: true, lastSeenAt: SAVED_AT });
     await act(async () => {});
@@ -576,9 +646,9 @@ describe("ConnectionBanner — dismissing the red strip", () => {
     h.lost = false;
     liveStale = false;
     act(() => rerenderBanner());
-    expect(screen.queryByText("Connected")).toBeNull();
-    act(() => vi.advanceTimersByTime(GREEN_MS + COLLAPSE_MS + 16));
-    expect(screen.queryByText("Connected")).toBeNull();
+    expect(reconnectedShowing()).toBe(false);
+    expect(currentStatus()).toBeNull();
+    act(() => vi.advanceTimersByTime(ORBIT_TURN_MS + COLLAPSE_MS + 16));
     expect(row()).toBeNull();
   });
 
@@ -592,7 +662,7 @@ describe("ConnectionBanner — dismissing the red strip", () => {
     h.lost = false;
     liveStale = false;
     act(() => rerenderBanner());
-    act(() => vi.advanceTimersByTime(GREEN_MS + COLLAPSE_MS + 16));
+    act(() => vi.advanceTimersByTime(ORBIT_TURN_MS + COLLAPSE_MS + 16));
     expect(row()).toBeNull();
 
     h.lost = true;
@@ -604,12 +674,13 @@ describe("ConnectionBanner — dismissing the red strip", () => {
     expect(dismiss()).toBeInTheDocument();
   });
 
-  it("still flashes green after a recovery that was never dismissed", async () => {
+  it("still turns the mark green after a recovery that was never dismissed", async () => {
     h.lost = true;
     renderBanner();
     await act(async () => {});
     h.lost = false;
     act(() => rerenderBanner());
-    expect(announced("status")).toHaveTextContent("Connected");
+    expect(reconnectedShowing()).toBe(true);
+    expect(currentStatus()).toMatchObject({ text: "Reconnected" });
   });
 });

@@ -1856,9 +1856,14 @@
 .collie-applying .cm-b :is(circle, polygon):not([fill^="var(--cm-paper"]) {
   fill: var(--status-working);
 }
-.collie-applying .cm-b [mask] {
+/* The link coming back (2026-11-07, lib/reconnected.ts): the same three rules for one turn of the
+   mark, in the done colour the band's green "Connected" strip used to wear. */
+.collie-reconnected .cm-b :is(circle, polygon):not([fill^="var(--cm-paper"]) {
+  fill: var(--status-done);
+}
+:is(.collie-applying, .collie-reconnected) .cm-b [mask] {
   mask: none;
 }
-.collie-applying .cm-b polygon[fill^="var(--cm-paper"] {
+:is(.collie-applying, .collie-reconnected) .cm-b polygon[fill^="var(--cm-paper"] {
   display: none;
 }

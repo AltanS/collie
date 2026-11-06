@@ -1037,6 +1037,7 @@ export const zh: Dictionary = {
   "nav.home.aria.lostAt": "Collie 首页（连接中断）。正在显示 {time} 保存的内容。",
   "nav.home.aria.reconnecting": "Collie 首页（重新连接中）",
   "nav.home.aria.updating": "Collie 正在更新应用。打开仪表盘。",
+  "nav.home.aria.reconnected": "Collie 首页（已重新连接）",
   "nav.mux.onPrefix": "运行于",
   "nav.prereleaseTitle": "预览版本: {version}",
 
@@ -1351,7 +1352,7 @@ export const zh: Dictionary = {
   "connection.dismiss.aria": "隐藏此通知",
   "common.closeAria": "关闭",
   "common.scrollToLatestAria": "滚动到底部最新内容",
-  "connection.connected": "已连接",
+  "connection.reconnected": "已重新连接",
   "connection.reconnecting": "正在重新连接…",
   "connection.herdrDown": "主机上的 Herdr 服务已停止",
   "connection.tokenRefused": "持久代理拒绝了该令牌。请检查此对等节点上的 COLLIE_DURABLE_TOKEN。",
