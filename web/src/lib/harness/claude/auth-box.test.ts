@@ -512,3 +512,45 @@ describe("a turn spinner row between the box and the input box leaves the card l
     expect(liftsNoCard(withUnderBox(under))).toBe(true);
   });
 });
+
+describe("the API retry row Claude prints while it refreshes expired credentials leaves the card lifted", () => {
+  const RETRY_ROW = "✻ API error · Retrying in 0s · attempt 1/2";
+  const screenOf = (rows: readonly string[]): StyledLine[] => rowsOf(rows.join("\n"));
+  const withRowFor = (name: string, spinner: string, under: readonly string[]): StyledLine[] => {
+    const rows = lines(name).map(lineText);
+    const at = rows.findIndex((row) => row.startsWith(spinner));
+    return screenOf([...rows.slice(0, at), ...under, ...rows.slice(at + 1)]);
+  };
+  const waitingWith = (under: readonly string[]) => withRowFor(SPINNER_WAITING, "✢ Whirlpooling", under);
+  const filledWith = (under: readonly string[]) => withRowFor(SPINNER_FILLED, "✶ Garnishing", under);
+  const liftsNoCard = (screen: StyledLine[]): boolean => !kinds(claudeBuildBlocks(screen)).includes("box-text");
+
+  it("lifts the waiting card from a title-only box with the retry row under it", () => {
+    expect(cardOf(waitingWith([RETRY_ROW]))).toEqual({ title: "Authentication", phase: "waiting", text: [] });
+  });
+
+  it("lifts the filled card, with the retry row left out of it", () => {
+    const card = cardOf(filledWith([RETRY_ROW]));
+    expect(card.phase).toBe("filled");
+    expect(card.text.map(textOf).join("\n")).not.toContain("Retrying");
+  });
+
+  it.each([
+    "✻ API error · Retrying in 0s · attempt 1/2",
+    "✻ API error · Retrying in 1m 5s · attempt 2/10",
+    "✻ The security token included in the request is expired · Retrying in 32s · attempt 2/2",
+    "✻ Usage limit reached · Retrying in 5m (resets 3pm) · attempt 4/10",
+  ])("lifts the card with %j under the box's bottom edge", (row) => {
+    expect(liftsNoCard(filledWith([row]))).toBe(false);
+  });
+
+  it.each([
+    ["a retry row beside a spinner row", [RETRY_ROW, "✶ Garnishing… "]],
+    ["two retry rows", [RETRY_ROW, "✻ API error · Retrying in 1s · attempt 2/2"]],
+    ["a retry row with text after the attempt count", [`${RETRY_ROW} · giving up`]],
+    ["an API error row with no retry", ["✻ API error · Request failed"]],
+    ["a retry row with no countdown", ["✻ API error · Retrying in · attempt 1/2"]],
+  ])("lifts no card with %s under the box's bottom edge", (_name, under) => {
+    expect(liftsNoCard(filledWith(under))).toBe(true);
+  });
+});
