@@ -280,6 +280,12 @@ export function TabStrip({
               label={translate("space.tabStrip.new.aria")}
               busy={creatingTab}
               onClick={() => (newTab.capable ? onNewTab(workspaceId) : onNewStarters?.())}
+              // Under `folder` the group's `-mx-3` cancels the tab's `px-3`, so the last tab's CARD
+              // (its side rule, when it is the open one) ends exactly where the scroller's 12px gap
+              // would start, and the "+" touched it. `ml-3` adds the 12px back, the same air a
+              // folder tab leaves from its card to the next label. Plain draws no card: its `-mx-1.5`
+              // leaves the 12px between two labels already.
+              className={look === "folder" ? "ml-3" : undefined}
             />
           )}
         </div>

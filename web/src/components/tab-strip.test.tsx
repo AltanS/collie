@@ -815,7 +815,17 @@ describe("TabStrip under the folder look", () => {
     }
   });
 
+  it("keeps the new-tab button 12px clear of the last tab's card, open or not", () => {
+    themeTabs.word = "folder";
+    renderStrip();
+    expect(screen.getByRole("button", { name: "New tab" }).className).toMatch(/(?:^|\s)ml-3(?=\s|$)/);
+  });
+
   it("draws exactly the plain look when the theme says plain or says nothing", () => {
+    themeTabs.word = "plain";
+    const plain = renderStrip();
+    expect(screen.getByRole("button", { name: "New tab" }).className).not.toMatch(/(?:^|\s)ml-3(?=\s|$)/);
+    plain.unmount();
     for (const word of ["plain", undefined] as const) {
       themeTabs.word = word;
       const { unmount } = renderStrip();
