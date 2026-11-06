@@ -39,6 +39,10 @@ import type {
   CacheWatchListEntry,
   CacheWatchState,
   PaneCache,
+  PaneJob,
+  PaneSubagent,
+  PinFull,
+  PinRow,
   ServerSummary,
   SessionSummary,
   TabView,
@@ -1296,3 +1300,86 @@ export const cacheWatchOff: CacheWatchState = { on: false, global: false, watcha
  *  the render it exists to be checked against. Verbatim off the mirror, the way the real notice quotes it. */
 export const noEchoPrompt =
   "Password for deploy@prod-db-03.internal.corp (sudo -u postgres psql -h 10.20.30.41 -p 5432 -d production_replica):";
+
+// ── Pinned messages (M90) ────────────────────────────────────────────────────────────────────────
+
+const PIN_LONG_REPLY = [
+  "The retry in sync.ts swallows the final error. Three things to change before you merge:",
+  "",
+  "1. Rethrow after the last attempt, so the caller sees the real failure and not an empty list.",
+  "2. The test for the empty list passes for the wrong reason: it never reaches the loader. Give it a loader that throws.",
+  "3. The changelog line is missing. One bullet under Unreleased, in the house voice.",
+  "",
+  "Everything else reads fine. The cache key now carries the session, so two panes on one conversation share a copy, and the sweep that removes a stale file is bounded at one pass a boot.",
+  "",
+  "When the three are in, run the unit gate once and then the browser leg. Do not run the leg before the gate is green: a red unit test makes the leg's first case fail for the wrong reason.",
+].join("\n");
+
+/** Three pins of one session, oldest first as the bridge's file holds them: a message, a long reply, a tool card. */
+export const messagePins: PinFull[] = [
+  {
+    id: "pin-a1",
+    itemId: "pg-user-1:0",
+    kind: "user",
+    text: "Review fix-465 before I merge it, and tell me what you would change.",
+    anchor: "Review fix-465 before I merge it, and tell me what you would change.",
+    ts: new Date(TS - 50 * MIN).toISOString(),
+    pinnedAt: TS - 48 * MIN,
+  },
+  {
+    id: "pin-a2",
+    itemId: "pg-reply-1:0",
+    kind: "reply",
+    text: PIN_LONG_REPLY,
+    anchor: PIN_LONG_REPLY.slice(0, 80),
+    ts: new Date(TS - 40 * MIN).toISOString(),
+    pinnedAt: TS - 30 * MIN,
+  },
+  {
+    id: "pin-a3",
+    itemId: "toolu_pg_01",
+    kind: "tool",
+    tool: { name: "Bash", input: "bun test cli/install-kind.test.ts" },
+    text: "bun test v1.3.0\n\ncli/install-kind.test.ts:\n(pass) the kind of a binary install\n(pass) the kind of a linked clone\n(pass) the kind of a packaged install\n\n 3 pass\n 0 fail\nRan 3 tests across 1 file. [41.00ms]",
+    anchor: "bun test v1.3.0\n\ncli/install-kind.test.ts:\n(pass) the kind of a binary install\n(pa".slice(0, 80),
+    ts: new Date(TS - 12 * MIN).toISOString(),
+    pinnedAt: TS - 5 * MIN,
+  },
+];
+
+/** The list as the bridge answers it: an excerpt and the length, no text. */
+export function messagePinRows(pins: readonly PinFull[]): PinRow[] {
+  return pins.map(({ text, ...rest }) => ({ ...rest, excerpt: text.slice(0, 400), textLength: text.length }));
+}
+
+/** `n` pins for a belt that must show a two-digit badge. Only the count and the rows' number matter there. */
+export function manyMessagePins(n: number): PinRow[] {
+  return messagePinRows(
+    Array.from({ length: n }, (_, i): PinFull => {
+      const text = `Pinned note ${String(i + 1)}`;
+      return { id: `pin-n${String(i)}`, itemId: `pg-n${String(i)}:0`, kind: "reply", text, anchor: text, pinnedAt: TS - (n - i) * MIN };
+    }),
+  );
+}
+
+/** `n` background jobs, all running, so the jobs badge counts them. */
+export function manyRunningJobs(n: number): PaneJob[] {
+  return Array.from({ length: n }, (_, i) => ({
+    id: `job-${String(i)}`,
+    label: `watch ${String(i + 1)}`,
+    command: `bun test shard-${String(i + 1)}`,
+    startedAt: new Date(TS - (i + 2) * MIN).toISOString(),
+  }));
+}
+
+/** `n` running subagents, so the agents badge counts them. */
+export function manySubagents(n: number): PaneSubagent[] {
+  return Array.from({ length: n }, (_, i) => ({
+    agentId: `agent-${String(i)}`,
+    agentType: "general-purpose",
+    model: "opus",
+    description: `Check shard ${String(i + 1)}`,
+    startedAt: new Date(TS - (i + 1) * MIN).toISOString(),
+    spawnDepth: 1,
+  }));
+}
