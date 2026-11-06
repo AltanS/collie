@@ -533,11 +533,12 @@ harness = "claude"
 no_prompts = true
 ```
 
-Your rows appear in three places:
+Your rows appear in four places:
 
 - **On the New page** (tap **+ New** on the dashboard). The switch at the top reads **Agent** | **Shell**.
   A row with `harness` is in the **Agent** select. A row without `harness` is in the **Command** select,
   which is the select under **Shell**.
+- **In the New tab sheet** behind a workspace's **+** (below). Agents first, then commands.
 - **In a Launch section on the dashboard.** It folds like Spaces.
 - **In a Launch section in the switcher sheet** (swipe up from a pane).
 
@@ -567,6 +568,25 @@ select under **Shell**, starts in a pane like any command, and Collie shows no s
 
 To verify, reload the dashboard and look under the herd. If a row fails to load,
 `journalctl --user -u collie -n 20` prints the error.
+
+### A new tab from the plus
+
+The **+** at the end of a workspace's tab row, and the **+** on a workspace heading of the dashboard,
+open the **New tab** sheet for that workspace. Its title names the workspace, and the line under it
+shows the workspace's folder.
+
+The sheet lists that machine's agents, then its command rows, in the New page's order. An agent that
+is not installed there stays in the list, dimmed, with its reason. A row with a fixed `cwd` says where
+it always runs. On a crew, a lead's row on a member says **Lead**.
+
+A tap opens the row as a new tab in that workspace, in its folder, and the phone steps into the new
+pane. A row with `no_prompts` asks first, as on the New page. **Just a shell** is last: it opens the
+plain shell the **+** opened before. **More options** opens the New page for that workspace, for
+another folder, a worktree or a one-off line.
+
+A machine with nothing to start beyond a shell (no agent installed, no row) shows no sheet: the **+**
+opens the shell at once. On a large screen the tab row's **+** still opens a shell, and the space
+header's **New agent in this space** opens the New page.
 
 ### Launchers added from a phone
 
