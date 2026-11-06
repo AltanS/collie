@@ -103,6 +103,13 @@ const MODALS_WITH_A_WAY_OUT = [
   // pane clips (CLIPPED below), so the cohort is DERIVED: every `omp--v18-4-switch*` capture but that one.
   // A new capture of the picker joins by its name.
   ...SWITCH_WITH_A_WAY_OUT,
+  // omp 18.17.0 (2026-11-06): the picker in the `unicode` and `nerd` presets, and the `/usage` dashboard,
+  // a full-screen modal whose footer is `r refresh · ⏎ details · ⎋ close`.
+  "omp--v18-17-0-nerd-switch--w120.txt",
+  "omp--v18-17-0-nerd-switch-moved--w120.txt",
+  "omp--v18-17-0-nerd-switch-search--w120.txt",
+  "omp--v18-17-0-switch--w120.txt",
+  "omp--v18-17-0-usage-dashboard--w120.txt",
 ];
 
 // The `/tree` picker is a modal that prints NO way out: omp clips its hint row and neither capture

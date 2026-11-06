@@ -137,7 +137,7 @@ const KEY_ATOM =
 const KEY = `${KEY_ATOM}(?:\\s*/\\s*${KEY_ATOM})*`;
 /** What a dialog's footer says a key does. A composer's footer says send, newline, mode or cycle. */
 const VERB =
-  "(?:confirm|select|cancel|submit|continue|choose|proceed|approve|deny|reject|accept|go back|back|exit|close|dismiss|navigate|toggle|answer|adjust|amend|move|pick|view|stop|quit|filter|search|scroll|switch|apply|save|skip|next|previous|prev|open|allow|decline|change|clear|reset|focus|use)";
+  "(?:confirm|select|cancel|submit|continue|choose|proceed|approve|deny|reject|accept|go back|back|exit|close|dismiss|navigate|toggle|answer|adjust|amend|move|pick|view|stop|quit|filter|search|scroll|switch|apply|save|skip|next|previous|prev|open|allow|decline|change|clear|reset|focus|use|details)";
 const KEY_HINT_SOURCE = `(?:^|[^\\w+])(?:press\\s+)?${KEY}\\s*(?:to\\s+|:\\s*|=\\s*|\\s+)${VERB}s?\\b`;
 const KEY_HINT = new RegExp(KEY_HINT_SOURCE, "iu");
 const KEY_HINTS = new RegExp(KEY_HINT_SOURCE, "giu");

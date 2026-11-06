@@ -52,12 +52,13 @@
 // FAIL CLOSED. Every piece below is required, and any one missing returns null, which leaves the raw
 // mirror and the unread-dialog card's Escape (omp/modal.ts):
 //   * the bottom border is the last non-blank row, and the footer above it is exactly the session
-//     footer, character for character: `↑/↓ models · ⏎ use for this session · type to search · @ quick
-//     roles · ⎋ close · Alt+P task model`. So the `@` quick-roles state, the task-model state (Alt+P), a
-//     rebound key, the Nerd Font and ascii presets and a footer omp clipped with `…` all decline;
+//     footer of one symbol preset, character for character: `↑/↓ models · ⏎ use for this session · type
+//     to search · @ quick roles · ⎋ close · Alt+P task model` (`unicode`), or the same list with the two
+//     private-use keycaps (`nerd`, below). So the `@` quick-roles state, the task-model state (Alt+P), a
+//     rebound key, the ascii preset and a footer omp clipped with `…` all decline;
 //   * the title is exactly `Switch Model` and the status row exactly `Session-only switch — role models
 //     stay unchanged` (a config error replaces that row, and declines);
-//   * the search row `🔍 >`, a blank row, then the window: five to sixty rows (omp sizes it to the
+//   * the search row, `🔍 >` in the preset's own glyph, a blank row, then the window: five to sixty rows (omp sizes it to the
 //     terminal, `max(5, floor(rows × 0.4) − 9)`; captured at 5, 15 and 16), each a model row or the rule;
 //     with no scrollbar, blank rows may pad the window after the last model row; with a scrollbar every
 //     row carries a scrollbar cell and none is blank;
@@ -103,12 +104,60 @@ export interface SwitchPickerRegion {
   startLine: number;
 }
 
-/** The session footer, exactly (`footerHint("session")` plus the task-mode toggle, model-picker.ts). */
-const FOOTER = "↑/↓ models · ⏎ use for this session · type to search · @ quick roles · ⎋ close · Alt+P task model";
+/**
+ * The glyphs of one omp symbol preset (`symbolPreset` in omp's config), the only part of this screen
+ * that changes between presets. Each preset is read whole: the footer decides which one, and every
+ * other glyph must then be that preset's own, so a screen that mixes two presets declines.
+ *
+ * `unicode` is the default (omp 18.4.10, captures `omp--v18-4-switch*.txt`; 18.17.0, `omp--v18-17-0-*`).
+ * `nerd` is read from the same picker in 18.4.10 (`omp--v18-4-switch-nerd.txt`) and 18.17.0
+ * (`omp--v18-17-0-nerd-switch*.txt`): the same glyph codepoints in both. The over-context mark and
+ * the unselected role dot of `nerd` are not captured, so `nerd` has no spelling for them and a screen
+ * that prints one declines. `ascii` is not captured at all and declines.
+ */
+interface SwitchPreset {
+  /** The session footer (`footerHint("session")` plus the task-mode toggle, model-picker.ts). */
+  footer: string;
+  /** The search row's icon, before the input's `>` prompt. */
+  searchIcon: string;
+  /** The pointer column's glyph. */
+  pointer: string;
+  /** The status dot on the current model and on a role chip. */
+  dot: string;
+  /** The intelligence badge's icon, then the context window badge's icon. */
+  brain: string;
+  window: string;
+  /** The over-context mark and the chips of the unselected roles, or null when never captured. */
+  overContext: string | null;
+  hollowDot: string | null;
+}
+
+const PRESETS: readonly SwitchPreset[] = [
+  {
+    footer: "↑/↓ models · ⏎ use for this session · type to search · @ quick roles · ⎋ close · Alt+P task model",
+    searchIcon: "🔍",
+    pointer: "❯",
+    dot: "●",
+    brain: "🧠",
+    window: "◫",
+    overContext: "⦸",
+    hollowDot: "○",
+  },
+  {
+    footer:
+      "↑/↓ models · \u{F0311} use for this session · type to search · @ quick roles · \u{F12B7} close · Alt+P task model",
+    searchIcon: "\u{F002}",
+    pointer: "\u{F054}",
+    dot: "\u{F111}",
+    brain: "\u{EE9C}",
+    window: "\u{E70F}",
+    overContext: null,
+    hollowDot: null,
+  },
+];
+
 const TITLE = /^╭─ Switch Model ─+╮$/;
 const STATUS = /^│ {2}Session-only switch — role models stay unchanged\s*│$/;
-/** The search row: the `unicode` preset's search icon, the input's `>` prompt, then the query. */
-const SEARCH = /^│ {2}🔍 >(?: ([\s\S]*?))?\s*│$/u;
 const BOTTOM = /^╰─+╯$/;
 const BLANK_ROW = /^│\s*│$/;
 const BOXED = /^│ ([\s\S]*?)\s*│$/;
@@ -120,6 +169,8 @@ const MAX_WINDOW = 60;
 /** How far above the footer the title may sit: the window bound plus the fixed rows. */
 const TITLE_SCAN_WINDOW = MAX_WINDOW + 12;
 
+/** The pointer the CARD shows on the pointed row, whatever glyph the screen printed: a private-use
+ *  glyph may not exist in the card's face, so the card says `❯` for every preset (as ask.ts does). */
 const POINTER = "❯";
 /** What the core signature keeps of the two detail rows, which follow the pointer (see below). */
 const DETAIL_FACTS_BLANK = "<detail facts>";
@@ -128,29 +179,56 @@ const DETAIL_CHIPS_BLANK = "<detail chips>";
 const CLEAR_SEARCH = "Clear search";
 const CURRENT_MARK = "●";
 const SCROLL_CELLS = new Set(["█", "│"]);
-
-/** A model row's text after the pointer column: the id (no spaces, at least one `/`), ` ●` for the
- *  current model, ` ⦸ context>N` for an over-context one, then the badge columns. The id is the whole
- *  `provider/id`: the session state always prints the provider (`setShowProvider(!roleMode)` in
- *  model-picker.ts), and only the declined role state drops it. */
-const MODEL_ROW = /^(\S+\/\S+)( ●)?( ⦸ context>\S+)?(?: +(\S[\s\S]*))?$/u;
 /** The rule omp draws between the recents and the rest: two spaces, then dashes (its two trailing
  *  spaces are padding, taken off with the rest). */
 const RULE = /^ {2}─+$/;
 
-/** The badge columns, one per kind (model-browser.ts `#renderRow`), in the `unicode` preset. Each cell
- *  is padded on the left and separated by two spaces. A cell that matches none of them is text this
- *  grammar does not know, and the row is read as unknown. */
-const BADGE_CELLS: readonly RegExp[] = [
-  /^🧠 \d+$/u, // intelligence
-  /^(?:\d+(?:\.\d+)?s )?~?\d+(?:\.\d+)?t\/s$/, // speed: estimated `~95t/s`, measured `118t/s` or `0.9s 118t/s`
-  /^\d+(?:\.\d+)?[kmbt]? ◫$/, // context window
-  /^(?:\$[\d.?]+\/[\d.?]+(?: [\d.?]+×)?|[\d.?]+×|free|included|varies|unknown)$/, // price, `?` for an unknown leg
-];
+const escapeRegExp = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-/** The second detail row: chips that each open with a status dot, or the over-context warning. */
-const CHIP = /^[●○] \S(?:[^·]*\S)?$/u;
-const OVER_CONTEXT_WARNING = /^⦸ context \S+ exceeds \S+ limit/u;
+/** The patterns one preset's glyphs build, made once per preset. */
+interface SwitchReader {
+  preset: SwitchPreset;
+  /** The search row: the preset's icon, the input's `>` prompt, then the query. */
+  search: RegExp;
+  /** A model row's text after the pointer column: the id (no spaces, at least one `/`), the dot for the
+   *  current model, ` ⦸ context>N` for an over-context one, then the badge columns. The id is the whole
+   *  `provider/id`: the session state always prints the provider (`setShowProvider(!roleMode)` in
+   *  model-picker.ts), and only the declined role state drops it. */
+  modelRow: RegExp;
+  /** The badge columns, one per kind (model-browser.ts `#renderRow`). Each cell is padded on the left and
+   *  separated by two spaces. A cell that matches none of them is text this grammar does not know, and
+   *  the row is read as unknown. */
+  badgeCells: readonly RegExp[];
+  /** The second detail row: chips that each open with a status dot, or the over-context warning. */
+  chip: RegExp;
+  overContextWarning: RegExp | null;
+}
+
+const NEVER = /(?!)/u;
+
+function readerOf(preset: SwitchPreset): SwitchReader {
+  const dot = escapeRegExp(preset.dot);
+  const dots = [dot, ...(preset.hollowDot === null ? [] : [escapeRegExp(preset.hollowDot)])].join("|");
+  const over = preset.overContext === null ? NEVER.source : `${escapeRegExp(preset.overContext)} context>\\S+`;
+  return {
+    preset,
+    search: new RegExp(`^│ {2}${escapeRegExp(preset.searchIcon)} >(?: ([\\s\\S]*?))?\\s*│$`, "u"),
+    modelRow: new RegExp(`^(\\S+\\/\\S+)( ${dot})?( ${over})?(?: +(\\S[\\s\\S]*))?$`, "u"),
+    badgeCells: [
+      new RegExp(`^${escapeRegExp(preset.brain)} \\d+$`, "u"), // intelligence
+      /^(?:\d+(?:\.\d+)?s )?~?\d+(?:\.\d+)?t\/s$/, // speed: estimated `~95t/s`, measured `118t/s` or `0.9s 118t/s`
+      new RegExp(`^\\d+(?:\\.\\d+)?[kmbt]? ${escapeRegExp(preset.window)}$`, "u"), // context window
+      /^(?:\$[\d.?]+\/[\d.?]+(?: [\d.?]+×)?|[\d.?]+×|free|included|varies|unknown)$/, // price, `?` for an unknown leg
+    ],
+    chip: new RegExp(`^(?:${dots}) \\S(?:[^·]*\\S)?$`, "u"),
+    overContextWarning:
+      preset.overContext === null
+        ? null
+        : new RegExp(`^${escapeRegExp(preset.overContext)} context \\S+ exceeds \\S+ limit`, "u"),
+  };
+}
+
+const READERS: readonly SwitchReader[] = PRESETS.map(readerOf);
 
 interface ModelRow {
   kind: "model";
@@ -177,7 +255,10 @@ export function detectSwitchPickerRegion(lines: StyledLine[]): SwitchPickerRegio
   while (end >= 0 && isBlank(texts[end]!)) end--;
   if (end < 0 || !BOTTOM.test(texts[end]!)) return null;
   const footerText = BOXED.exec(texts[end - 1] ?? "")?.[1];
-  if (footerText !== FOOTER) return null;
+  // The footer, character for character, names the symbol preset; every other glyph is then read as
+  // that preset's own.
+  const reader = READERS.find((r) => r.preset.footer === footerText);
+  if (reader === undefined || footerText === undefined) return null;
   const footer = readOmpHintList(footerText);
   if (footer === null) return null;
   const detailFacts = texts[end - 3];
@@ -195,7 +276,7 @@ export function detectSwitchPickerRegion(lines: StyledLine[]): SwitchPickerRegio
   }
   if (titleAt < 0) return null;
   if (!STATUS.test(texts[titleAt + 1] ?? "")) return null;
-  const search = SEARCH.exec(texts[titleAt + 2] ?? "");
+  const search = reader.search.exec(texts[titleAt + 2] ?? "");
   if (search === null) return null;
   // omp's first Escape clears a typed search and closes the picker only when the search is empty. The
   // typed text is the row's text after the `>` prompt (the input's own cursor cell is padding).
@@ -207,7 +288,7 @@ export function detectSwitchPickerRegion(lines: StyledLine[]): SwitchPickerRegio
   const windowEnd = end - 5; // inclusive
   const windowRows = windowEnd - windowStart + 1;
   if (windowRows < MIN_WINDOW || windowRows > MAX_WINDOW) return null;
-  const rows = readWindow(texts.slice(windowStart, windowEnd + 1));
+  const rows = readWindow(texts.slice(windowStart, windowEnd + 1), reader);
   if (rows === null) return null;
   const models = rows.filter((r): r is ModelRow => r.kind === "model");
   if (models.filter((m) => m.pointed).length !== 1) return null;
@@ -218,7 +299,7 @@ export function detectSwitchPickerRegion(lines: StyledLine[]): SwitchPickerRegio
 
   // 4. The detail rows describe the pointed model, and must agree with it.
   if (!/^│ {3}\S/.test(detailFacts)) return null;
-  const chips = readChips(detailChips);
+  const chips = readChips(detailChips, reader);
   if (chips === null) return null;
   // omp prints the over-context warning INSTEAD of the chips (model-browser.ts `#detailLines`), so a
   // warning says nothing about the current mark, and the chips say both. A shortened pointed row has
@@ -272,7 +353,7 @@ export function detectSwitchPickerRegion(lines: StyledLine[]): SwitchPickerRegio
     .map((row, i) => {
       if (i === detailFactsAt) return DETAIL_FACTS_BLANK;
       if (i === detailChipsAt) return DETAIL_CHIPS_BLANK;
-      return titleAt + i === pointedRow ? row.replace(POINTER, " ") : row;
+      return titleAt + i === pointedRow ? row.replace(reader.preset.pointer, " ") : row;
     })
     .join("\n");
 
@@ -284,7 +365,8 @@ export function detectSwitchPickerRegion(lines: StyledLine[]): SwitchPickerRegio
     question: [
       title,
       boxedText(texts[titleAt + 1]!),
-      boxedText(texts[titleAt + 2]!),
+      // The search row as the card's face can print it: the unicode icon for every preset.
+      boxedText(texts[titleAt + 2]!).replace(reader.preset.searchIcon, PRESETS[0]!.searchIcon),
       ...(current === undefined ? [] : [`${CURRENT_MARK} current: ${current}`]),
     ].join("\n"),
     caption: title,
@@ -306,7 +388,7 @@ export function detectSwitchPicker(lines: StyledLine[]): PromptModel | null {
  * scrollbar cell, blank rows to the window's end. A blank row between two model rows, a scrollbar on
  * some rows and not others, or a row of any other shape is not this layout.
  */
-function readWindow(rows: string[]): WindowRow[] | null {
+function readWindow(rows: string[], reader: SwitchReader): WindowRow[] | null {
   const read: WindowRow[] = [];
   let scrollbar: boolean | null = null;
   let padding = false;
@@ -328,7 +410,7 @@ function readWindow(rows: string[]): WindowRow[] | null {
       read.push({ kind: "rule" });
       continue;
     }
-    const model = readModelRow(content);
+    const model = readModelRow(content, reader);
     if (model === null) return null;
     read.push(model);
   }
@@ -339,31 +421,42 @@ function readWindow(rows: string[]): WindowRow[] | null {
 }
 
 /** One model row's content (the pointer column on), or null when it is not one. */
-function readModelRow(content: string): ModelRow | null {
-  const head = /^([❯ ]) (\S[\s\S]*)$/u.exec(content);
+function readModelRow(content: string, reader: SwitchReader): ModelRow | null {
+  const head = new RegExp(`^(${escapeRegExp(reader.preset.pointer)}| ) (\\S[\\s\\S]*)$`, "u").exec(content);
   if (head === null) return null;
-  const pointed = head[1] === POINTER;
+  const pointed = head[1] === reader.preset.pointer;
   const body = head[2]!;
   // omp shortened the row to fit the pane (`truncateToWidth`, which ends in `…`). The row is still a
   // model the arrows stop on, but its id may not all be on screen, so it is never offered.
   if (body.includes("…")) return { kind: "model", pointed, id: null, current: false, overContext: false, badges: [] };
-  const m = MODEL_ROW.exec(body);
+  const m = reader.modelRow.exec(body);
   if (m === null) return null;
   const badges = m[4] === undefined ? [] : m[4].trim().split(/\s{2,}/);
-  if (!badges.every((cell) => BADGE_CELLS.some((re) => re.test(cell)))) return null;
-  return { kind: "model", pointed, id: m[1]!, current: m[2] !== undefined, overContext: m[3] !== undefined, badges };
+  if (!badges.every((cell) => reader.badgeCells.some((re) => re.test(cell)))) return null;
+  // The card prints the badges in the `unicode` glyphs, whatever preset the screen used.
+  const shown = badges.map((cell) =>
+    cell.replace(reader.preset.brain, PRESETS[0]!.brain).replace(reader.preset.window, PRESETS[0]!.window),
+  );
+  return {
+    kind: "model",
+    pointed,
+    id: m[1]!,
+    current: m[2] !== undefined,
+    overContext: m[3] !== undefined,
+    badges: shown,
+  };
 }
 
 /** The second detail row read for what it says about the pointed model, or null when it is a row this
  *  grammar does not know. */
-function readChips(row: string): { current: boolean; overContext: boolean } | null {
+function readChips(row: string, reader: SwitchReader): { current: boolean; overContext: boolean } | null {
   if (BLANK_ROW.test(row)) return { current: false, overContext: false };
   const text = /^│ {3}(\S[\s\S]*?)\s*│$/u.exec(row)?.[1];
   if (text === undefined) return null;
-  if (OVER_CONTEXT_WARNING.test(text)) return { current: false, overContext: true };
+  if (reader.overContextWarning?.test(text)) return { current: false, overContext: true };
   const chips = text.split(" · ");
-  if (!chips.every((chip) => CHIP.test(chip))) return null;
-  return { current: chips[0] === `${CURRENT_MARK} current`, overContext: false };
+  if (!chips.every((chip) => reader.chip.test(chip))) return null;
+  return { current: chips[0] === `${reader.preset.dot} current`, overContext: false };
 }
 
 function boxedText(row: string): string {

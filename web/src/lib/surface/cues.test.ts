@@ -230,6 +230,8 @@ describe("cue shapes", () => {
     expect(isKeyHintRow("Enter to select · ↑/↓ to navigate · Esc to cancel")).toBe(true);
     expect(isKeyHintRow("Use Up/Down or 1/2, then Enter. Esc quits.")).toBe(true);
     expect(isKeyHintRow("󰌑 select · n note · ↑/↓ move")).toBe(true);
+    // omp's `/usage` dashboard: `⏎ details` and `⎋ close` are two hints, the second makes the footer strong.
+    expect(isKeyHintRow("│ r refresh · ⏎ details · ⎋ close │")).toBe(true);
     expect(isKeyHintRow("Enter:send  │  Shift+Enter:newline  │  Shift+Tab:mode")).toBe(false);
     expect(isKeyHintRow("⏵⏵ bypass permissions on (shift+tab to cycle) · esc to interrupt")).toBe(false);
   });

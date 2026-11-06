@@ -185,12 +185,34 @@ it when the footer still names its way out.
 | a search with no match | `-nomatch` | `No matching models`: no row to walk from |
 | the `@` quick-roles state | `-quick-roles` | another action: it applies a role's model AND its thinking level |
 | the task-model state (Alt+P) | `-task` | another action: it sets the model spawned task agents use |
-| the Nerd Font preset | `-nerd` | other glyphs in the footer, pointer, search row and marks; not captured as a lift |
 | a 74-column pane | `-clipped` | omp clips the footer to `… @ quick roles …`, so no way out is on screen |
 
-The first four keep the Escape card: the modal gate (`modal.ts`) accepts one task-mode segment,
+The first three keep the Escape card: the modal gate (`modal.ts`) accepts one task-mode segment,
 `Alt+P task model` or `Alt+P session model`, after the way out. The clipped picker gets no card,
 like `/tree`: nothing on screen names a key that closes it.
+
+## The Nerd Font preset (omp `symbolPreset: nerd`), lifted since 2026-11-06
+
+Before, a Nerd Font omp (the one omp's own start tip asks for) got the Escape card for `/switch`, because
+the footer, the search icon, the pointer, the status dot and two badge icons are private-use glyphs.
+`PRESETS` in `switch.ts` now holds the glyph set of each preset, and the footer, character for character,
+picks which one reads the rest. A screen that mixes two presets declines.
+
+| Glyph | `unicode` | `nerd` |
+|---|---|---|
+| Enter keycap in the footer | `⏎` | U+F0311 |
+| Escape keycap in the footer | `⎋` | U+F12B7 |
+| search icon | `🔍` | U+F002 |
+| pointer | `❯` | U+F054 |
+| status dot (current model, role chips) | `●` | U+F111 |
+| intelligence badge | `🧠` | U+EE9C |
+| context badge | `◫` | U+E70F |
+
+The codepoints are the same in omp 18.4.10 (`omp--v18-4-switch-nerd.txt`) and 18.17.0
+(`omp--v18-17-0-nerd-switch*.txt`). The card prints the unicode glyphs for every preset (a private-use
+glyph may not exist in the card's face), while the signature keeps the screen verbatim. Not captured in
+`nerd`, so a screen that prints one declines: the over-context mark (`⦸` in `unicode`) and the dot of an
+unselected role chip (`○`).
 
 Also declined, read from source and not captured: the `ascii` preset (`>` pointer, `[/]` search,
 `[x]` mark), a config error in place of the status row, a rebound key in the footer, and a row with
@@ -207,8 +229,8 @@ a word or badge the grammar does not know.
   across a window scrolled to the list's end. No `Enter` was sent, so no model was switched.
 - **Not probed:** a tap through the paired card (the bridge's signature check on this screen, and
   now the split walk of ADR 0080 on it; the live walk checks above were made with the one-batch
-  plan), the Close and `Clear search` rows, a desk keystroke between render and tap, and the Nerd Font
-  preset.
+  plan), the Close and `Clear search` rows, and a desk keystroke between render and tap. The Nerd Font
+  preset was read from captures only, with no tap sent (2026-11-06).
 - **Shapes read from source, none captured:** measured speed badges (`118t/s`, `0.9s 118t/s`), the
   credit price `N×`, the `included`, `varies` and `unknown` prices. The grammar accepts their
   spellings from the source. A badge it does not know declines the screen.

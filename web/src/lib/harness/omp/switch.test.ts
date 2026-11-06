@@ -13,7 +13,8 @@ import { detectSwitchPicker, detectSwitchPickerRegion } from "./switch";
 // session runs, so these tests pin three things above all: that every option's label is the whole id
 // of a row omp printed in full, that every tap is an arrow walk the footer printed and lands on that
 // row (counted independently below, from the screen), and that the grammar declines every shape it was
-// not built against. All captures are omp 18.4.10, `unicode` preset, `omp--v18-4-switch*.txt`.
+// not built against. The captures are omp 18.4.10, `unicode` preset (`omp--v18-4-switch*.txt`, bar the
+// one `nerd` capture), and omp 18.17.0 in both presets (`omp--v18-17-0-*switch*.txt`, 2026-11-06).
 //
 // The CURRENT model (`●`) is never offered: Enter on it re-applies the model, resets omp's provider
 // session and loses the prompt cache. It still counts in every other row's walk, and its id is the
@@ -29,12 +30,20 @@ const textsOf = (name: string): string[] => load(name).map(lineText);
 const fromTexts = (texts: string[]): StyledLine[] => splitLines(parseAnsi(texts.join("\n")));
 
 const FOOTER = "↑/↓ models · ⏎ use for this session · type to search · @ quick roles · ⎋ close · Alt+P task model";
+/** The same footer in omp's `nerd` preset: the Enter and Escape keycaps are private-use glyphs. */
+const NERD_FOOTER =
+  "↑/↓ models · \u{F0311} use for this session · type to search · @ quick roles · \u{F12B7} close · Alt+P task model";
 
 const LIFTED = [
+  "omp--v18-17-0-nerd-switch--w120.txt",
+  "omp--v18-17-0-nerd-switch-moved--w120.txt",
+  "omp--v18-17-0-nerd-switch-search--w120.txt",
+  "omp--v18-17-0-switch--w120.txt",
   "omp--v18-4-switch-moved-up.txt",
   "omp--v18-4-switch-moved.txt",
   "omp--v18-4-switch-narrow-moved.txt",
   "omp--v18-4-switch-narrow.txt",
+  "omp--v18-4-switch-nerd.txt",
   "omp--v18-4-switch-overcontext-moved.txt",
   "omp--v18-4-switch-overcontext.txt",
   "omp--v18-4-switch-ptr-fable.txt",
@@ -66,14 +75,14 @@ const SHORT_TITLE_AT = 16;
 
 /** The current model's id as the screen prints it (`<id> ●`), or null when no row carries the mark. */
 const currentOnScreen = (texts: string[]): string | null =>
-  texts.map((t) => /^│ [❯ ] (\S+\/\S+) ●/u.exec(t)?.[1]).find((id) => id !== undefined) ?? null;
+  texts.map((t) => /^│ [❯\u{F054} ] (\S+\/\S+) [●\u{F111}]/u.exec(t)?.[1]).find((id) => id !== undefined) ?? null;
 
 const CLOSE = { label: "Close", description: "type to search", keys: ["Escape"], keyLabel: "Esc" };
 const CLEAR_SEARCH = { ...CLOSE, label: "Clear search" };
 
 /** The text typed in the search row as the screen prints it (`🔍 > <text>`), empty when none is. */
 const searchOnScreen = (texts: string[]): string =>
-  texts.map((t) => /^│ {2}🔍 >(?: (.*?))?\s*│$/u.exec(t)).find((m) => m !== null && m !== undefined)?.[1]?.trim() ?? "";
+  texts.map((t) => /^│ {2}(?:🔍|\u{F002}) >(?: (.*?))?\s*│$/u.exec(t)).find((m) => m !== null && m !== undefined)?.[1]?.trim() ?? "";
 
 /** The last row each capture should end in: `Clear search` while omp holds a typed search, else `Close`. */
 const wayOut = (name: string) => (searchOnScreen(textsOf(name)) === "" ? CLOSE : CLEAR_SEARCH);
@@ -258,9 +267,9 @@ function screenModels(texts: string[]): { id: string; pointed: boolean }[] {
   const bottom = texts.findLastIndex((t) => t.startsWith("╰─"));
   return texts
     .slice(title + 4, bottom - 4)
-    .map((t) => /^│ ([❯ ]) (\S+)/u.exec(t))
+    .map((t) => /^│ ([❯\u{F054} ]) (\S+)/u.exec(t))
     .filter((m): m is RegExpExecArray => m !== null && !m[2]!.startsWith("─"))
-    .map((m) => ({ id: m[2]!, pointed: m[1] === "❯" }));
+    .map((m) => ({ id: m[2]!, pointed: m[1] !== " " }));
 }
 
 describe("a pointer on an edge of the window walks to the other edge over model rows, the rule skipped", () => {
@@ -453,7 +462,7 @@ describe("the way out carries the footer's own segment", () => {
 describe("every tap is a walk the footer printed, and lands on the row it names", () => {
   it.each(LIFTED)("%s", (name) => {
     const texts = textsOf(name);
-    expect(texts.join("\n")).toContain(FOOTER);
+    expect([FOOTER, NERD_FOOTER].some((footer) => texts.join("\n").includes(footer))).toBe(true);
     const rows = screenModels(texts);
     const from = rows.findIndex((r) => r.pointed);
     expect(from).toBeGreaterThanOrEqual(0);
@@ -596,7 +605,6 @@ describe("fails closed", () => {
     ["omp--v18-4-switch-nomatch.txt", "a search with no match: no row to walk from"],
     ["omp--v18-4-switch-quick-roles.txt", "the `@` quick-roles state: another action under another footer"],
     ["omp--v18-4-switch-task.txt", "the task-model state (Alt+P): another title, status and footer"],
-    ["omp--v18-4-switch-nerd.txt", "the Nerd Font preset: other glyphs in the footer, pointer and search row"],
     ["omp--v18-4-switch-clipped.txt", "a 74-column pane: omp clipped the footer"],
   ])("%s: %s", (name) => {
     expect(detectSwitchPickerRegion(load(name))).toBeNull();
@@ -717,6 +725,150 @@ describe("fails closed", () => {
     // Positive control: the same edit, narrower, still lifts, so the length is what declines.
     expect(detectSwitchPicker(fromTexts(widen(1000)))).not.toBeNull();
     expect(detectSwitchPicker(fromTexts(widen(2100)))).toBeNull();
+  });
+});
+
+// THE NERD FONT PRESET (omp `symbolPreset: nerd`). The same picker with private-use glyphs for the keycaps
+// in the footer, the search icon, the pointer, the status dot and the two badge icons. Before this block
+// the grammar declined it, and a phone on a Nerd Font omp (omp's own tip tells everyone to use one) got
+// the unread-dialog card for `/switch`. Two captures of two omp versions hold the same codepoints:
+// 18.4.10 (`omp--v18-4-switch-nerd.txt`, 103 columns, roles set) and 18.17.0 (`omp--v18-17-0-nerd-switch*`).
+describe("the nerd preset lifts as the unicode one does", () => {
+  const NERD = "omp--v18-17-0-nerd-switch--w120.txt";
+  const NERD_MOVED = "omp--v18-17-0-nerd-switch-moved--w120.txt";
+
+  it("positive control: the capture prints the nerd glyphs, not the unicode ones", () => {
+    const texts = textsOf(NERD);
+    const at = texts.findIndex((t) => t.startsWith("╭─ Switch Model"));
+    expect(texts[at + 2]).toContain("\u{F002} >");
+    expect(texts.some((t) => t.includes("│ \u{F054} anthropic/claude-opus-5-5 \u{F111}"))).toBe(true);
+    expect(texts.some((t) => t.includes(NERD_FOOTER))).toBe(true);
+    expect(texts.join("\n")).not.toMatch(/[🔍🧠◫●❯]/u);
+  });
+
+  it("18.17.0: the card names the picker, offers every full row but the current model, and ends in Close", () => {
+    const model = detectSwitchPicker(load(NERD))!;
+    expect(model.family).toBe("select");
+    expect(model.caption).toBe("Switch Model");
+    // The card's face has no private-use glyphs: the search icon and the dot are the unicode ones.
+    expect(model.question).toBe(
+      "Switch Model\nSession-only switch — role models stay unchanged\n🔍 >\n● current: anthropic/claude-opus-5-5",
+    );
+    expect(model.options.map((o) => o.label)).toEqual([
+      "anthropic/claude-haiku-5-5",
+      "openrouter/openai/gpt-5.6-sol",
+      "anthropic/claude-sonnet-5-5",
+      "anthropic/claude-fable-5-1",
+      "anthropic/claude-mythos-5-1",
+      "Close",
+    ]);
+    // The badges are read in nerd glyphs and shown in unicode ones.
+    expect(model.options[1]).toMatchObject({ description: "🧠 61 · ~77t/s · 1.1m ◫ · $4/20" });
+    expect(model.options[4]).toMatchObject({ description: "1m ◫ · $10/50" });
+    expect(model.options.map((o) => o.description).join("")).not.toMatch(/[\u{E000}-\u{F8FF}]/u);
+    expect(model.options.at(-1)).toEqual(CLOSE);
+  });
+
+  it("the walks count model rows from the pointer, the rule skipped, and Enter ends each one", () => {
+    const keys = (name: string) => Object.fromEntries(detectSwitchPicker(load(name))!.options.map((o) => [o.label, o.keys]));
+    // The pointer on the current model (opus): three recents above it, the rule between, two models below.
+    expect(keys(NERD)).toMatchObject({
+      "anthropic/claude-haiku-5-5": ["Up", "Up", "Up", "Enter"],
+      "anthropic/claude-sonnet-5-5": ["Up", "Enter"],
+      "anthropic/claude-fable-5-1": ["Down", "Enter"],
+      "anthropic/claude-mythos-5-1": ["Down", "Down", "Enter"],
+      Close: ["Escape"],
+    });
+    // One Down: the pointer on fable. The current model (hidden) still counts, so sonnet is two Ups away.
+    expect(keys(NERD_MOVED)).toMatchObject({
+      "anthropic/claude-sonnet-5-5": ["Up", "Up", "Enter"],
+      "anthropic/claude-fable-5-1": ["Enter"],
+      "anthropic/claude-mythos-5-1": ["Down", "Enter"],
+    });
+    expect(detectSwitchPicker(load(NERD_MOVED))!.options.find((o) => o.keyLabel === "❯")!.label).toBe(
+      "anthropic/claude-fable-5-1",
+    );
+  });
+
+  it("a typed search turns the way out into Clear search, and the card shows the unicode search icon", () => {
+    const model = detectSwitchPicker(load("omp--v18-17-0-nerd-switch-search--w120.txt"))!;
+    expect(model.question.split("\n")[2]).toBe("🔍 > opus-5");
+    expect(model.options.at(-1)).toEqual(CLEAR_SEARCH);
+    expect(model.options[0]).toMatchObject({ label: "anthropic/claude-opus-5", keys: ["Down", "Enter"] });
+  });
+
+  it("18.17.0 in the unicode preset lifts too, with the same labels", () => {
+    const model = detectSwitchPicker(load("omp--v18-17-0-switch--w120.txt"))!;
+    expect(model.options.map((o) => o.label)).toEqual(labels(NERD));
+    expect(model.question).toBe(detectSwitchPicker(load(NERD))!.question);
+  });
+
+  it("18.4.10 with roles set: the chips row carries `default` and a role glyph, and the screen lifts", () => {
+    const model = detectSwitchPicker(load("omp--v18-4-switch-nerd.txt"))!;
+    expect(model.options.at(-1)).toEqual(CLOSE);
+    expect(model.options.map((o) => o.label)).not.toContain("anthropic/claude-opus-5-5");
+    expect(model.question.split("\n").at(-1)).toBe("● current: anthropic/claude-opus-5-5");
+  });
+
+  it("one pointer move is the same picker: the pointer glyph is blank in the core signature (ADR 0080)", () => {
+    const before = detectSwitchPicker(load(NERD))!;
+    const after = detectSwitchPicker(load(NERD_MOVED))!;
+    expect(before.signature).not.toBe(after.signature);
+    expect(before.coreSignature).toBe(after.coreSignature);
+    expect(promptsSameIdentity(before, after)).toBe(true);
+    // The signature holds the screen verbatim, private-use glyphs included: the bridge finds it in the raw read.
+    expect(before.signature).toContain("\u{F054}");
+    expect(before.coreSignature).not.toContain("\u{F054}");
+  });
+
+  it("the region starts at the same window row as the unicode picker's", () => {
+    const region = detectSwitchPickerRegion(load(NERD))!;
+    const texts = textsOf(NERD);
+    expect(texts[region.startLine - 4]!.startsWith("╭─ Switch Model")).toBe(true);
+  });
+
+  describe("fails closed", () => {
+    const nerd = textsOf(NERD);
+    const unicode = textsOf("omp--v18-17-0-switch--w120.txt");
+    /** The first row with `from` in it, edited; the picker read from the result. */
+    const swap = (texts: string[], from: string | RegExp, to: string) => {
+      const at = texts.findIndex((t) => t.search(from) >= 0);
+      expect(at, `no row holds ${String(from)}`).toBeGreaterThanOrEqual(0);
+      return detectSwitchPicker(fromTexts(texts.map((t, i) => (i === at ? t.replace(from, to) : t))));
+    };
+
+    it("positive controls: both captures lift unedited", () => {
+      expect(detectSwitchPicker(fromTexts(nerd))).not.toBeNull();
+      expect(detectSwitchPicker(fromTexts(unicode))).not.toBeNull();
+    });
+
+    it("a screen that mixes two presets declines, whichever glyph is the odd one", () => {
+      expect(swap(nerd, "\u{F002} >", "🔍 >")).toBeNull();
+      expect(swap(nerd, "\u{F054} anthropic", "❯ anthropic")).toBeNull();
+      expect(swap(nerd, "\u{EE9C} 61", "🧠 61")).toBeNull();
+      expect(swap(nerd, "1.1m \u{E70F}", "1.1m ◫")).toBeNull();
+      expect(swap(nerd, "claude-opus-5-5 \u{F111}", "claude-opus-5-5 ●")).toBeNull();
+      expect(swap(unicode, "🔍 >", "\u{F002} >")).toBeNull();
+      expect(swap(unicode, "❯ anthropic", "\u{F054} anthropic")).toBeNull();
+      expect(swap(unicode, "↑/↓ models · ⏎ use", "↑/↓ models · \u{F0311} use")).toBeNull();
+    });
+
+    it("the nerd over-context mark and the unselected role dot were never captured, so each declines", () => {
+      // An over-context row in the unicode preset reads (over-context.test above); in nerd the mark is unknown.
+      expect(swap(nerd, "claude-sonnet-5-5   ", "claude-sonnet-5-5 ⦸ context>8.2k")).toBeNull();
+      expect(swap(nerd, /\u{F111} current/u, "○ current")).toBeNull();
+      expect(swap(nerd, /\u{F111} current/u, "\u{F10C} advisor")).toBeNull();
+    });
+
+    it("a footer of another preset's keycaps, or text keycaps, declines", () => {
+      expect(swap(nerd, "\u{F12B7} close", "⎋ close")).toBeNull();
+      expect(swap(nerd, "\u{F0311} use", "Enter use")).toBeNull();
+      expect(swap(nerd, "\u{F12B7} close", "Esc close")).toBeNull();
+    });
+
+    it("the ascii preset was never captured: its footer is not one this grammar knows", () => {
+      expect(swap(unicode, "↑/↓ models · ⏎ use for this session", "up/down models · enter use for this session")).toBeNull();
+    });
   });
 });
 
