@@ -41,6 +41,8 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **Web search and fetch rows show their first query or address.** A pi `web_search` called with a list of `queries`, or a `fetch_content` called with a list of `urls`, showed an empty row. The row now shows the first item of the list. Thanks @viniciosrab (#717).
 - **Claude's model picker reads at once under a usage notice.** When the weekly-limit notice fills the picker's top edge, Collie read no dialog for a few seconds and showed the unread card. The notice row now counts as the edge.
 - **The wide layout no longer scrolls sideways on a tall screen.** On a two-screen phone opened the long way, a wide row in the pane (a status footer, a table) made the content column wider than the screen, so the chat ran off the right edge. The column now keeps the screen's width and the pane clips or scrolls what does not fit inside its own box.
+- **omp's `/switch` picker reads on a Nerd Font setup.** With omp's Nerd Font symbol set, the keycaps, the search icon, the pointer and the dots of the model picker are private-use glyphs, so Collie did not read it and showed "Collie cannot read this dialog" with only Escape. It now reads that set as it reads the default one, so you can tap a model on the card.
+- **omp's `/usage` dashboard counts as an open dialog.** The full-screen Usage box has three key hints and Collie read only one of them, so it took the screen for an unknown one, not a dialog. It now reads `⏎ details` too. The dashboard still shows the Escape card, because Collie has no card of its own for it.
 
 ## [1.27.0] - 2026-11-06
 

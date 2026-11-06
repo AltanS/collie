@@ -1954,7 +1954,7 @@ are counted in every walk and not offered; the card's name ends `● current: <i
 | `omp--v18-4-switch-nomatch.txt` | `zzqqxx` typed: `No matching models`, no detail rows. Declines; gets the card | not recorded |
 | `omp--v18-4-switch-quick-roles.txt` | `@` typed: `Quick role switch — applies its model and thinking for this session`, `@smol`, `❯ @default ●`, `@slow`, footer `↑/↓ roles · ⏎ apply role model · type to search · ⎋ close`. Declines; gets the card | not recorded |
 | `omp--v18-4-switch-task.txt` | Alt+P: `╭─ Switch Task Model ─╮`, footer `… · ⎋ close · Alt+P session model`. Declines; gets the card | not recorded |
-| `omp--v18-4-switch-nerd.txt` | 103 columns, `symbolPreset: nerd` set in the sandbox config: private-use glyphs for the pointer, marks, search icon and two keycaps. Declines; gets the card | not recorded |
+| `omp--v18-4-switch-nerd.txt` | 103 columns, `symbolPreset: nerd` set in the sandbox config: private-use glyphs for the pointer, marks, search icon and two keycaps. Lifts since 2026-11-06 (omp/switch.ts, the `nerd` preset) | not recorded |
 | `omp--v18-4-switch-clipped.txt` | 74 columns: the footer clipped to `… @ quick roles …`, so no way out is on screen. Declines, and no card, like `/tree` | not recorded |
 
 **Five more, 2026-10-03, for the walk pairs** ([ADR 0080](../../../../.adr/0080-a-pointed-list-is-walked-verified-then-confirmed.md)
@@ -3755,3 +3755,20 @@ neutral text of the same length (`(local) example-model • max`); nothing else 
 | Fixture | State | Reads as |
 | --- | --- | --- |
 | `pi--v150-core-permission-gate-no-cost--w200.txt` | `⚠️ Dangerous command:` over `chmod 777 gate-probe.txt`, `Allow?`, `→ Yes` / `No`, `↑↓ navigate  enter select  escape/ctrl+c cancel`; stats row `↑1.0k ↓45 0.4%/272k (auto)` with no cost | question ask, Yes / No and Cancel, walk |
+
+## omp 18.17.0, `/switch` and `/usage` on a phone (captured 2026-11-06, 120 columns by 40 rows, herdr 0.9.5)
+
+A reviewer reported that Collie's Chat view does not show `/usage` and `/switch` properly with omp. Each
+screen was read as the bridge reads it (`GET /api/pane/<id>`, escape codes kept) from a lab pane in a lab
+folder, with dummy provider keys, so the picker lists the whole catalog and no model turn ran. The `nerd`
+captures use `symbolPreset: nerd` in the lab config. Privacy: the folder shows as `~/.cache/collie-lab/...`,
+the account on the usage screen is the made-up `lab-user@example.invalid` (a stored login with a dummy
+token, so omp printed `unavailable` for its usage), and nothing else private was on screen.
+
+| Fixture | State | What it shows |
+| --- | --- | --- |
+| `omp--v18-17-0-switch--w120.txt` | `dialog` | `/switch` in the `unicode` preset: three recents, the rule, the pointer on the current `anthropic/claude-opus-5-5 ●`. Lifts (switch.ts) |
+| `omp--v18-17-0-nerd-switch--w120.txt` | `dialog` | The same picker in the `nerd` preset: `U+F002` search icon, `U+F054` pointer, `U+F111` dot, `U+EE9C` and `U+E70F` badge icons, `U+F0311` and `U+F12B7` keycaps in the footer. Before the `nerd` preset was read it declined and showed the unread-dialog card. Lifts |
+| `omp--v18-17-0-nerd-switch-moved--w120.txt` | `dialog` | One `Down` later: the pointer on `claude-fable-5-1`. The walk pair of the capture above |
+| `omp--v18-17-0-nerd-switch-search--w120.txt` | `dialog` | `opus-5` typed in the `nerd` picker: seven results, no rule. The way out reads `Clear search` |
+| `omp--v18-17-0-usage-dashboard--w120.txt` | `dialog` | `/usage`: a full-screen `╭─ Usage` box on the alternate screen, one account row (`unavailable`), a 53-week activity heatmap, about twenty blank rows, then `r refresh · ⏎ details · ⎋ close`. No grammar lifts it: it stays raw and takes the unread-dialog card with its Escape. The cues read `⎋ close` and, since 2026-11-06, `⏎ details` |

@@ -76,12 +76,14 @@ const allOmpModalFixtures = allOmpFixtures.filter(
 // capture and must lift; a new one that does not fails conformance and gets filed here by a person.
 const DECLINED_SWITCH = [
   "omp--v18-4-switch-clipped.txt",
-  "omp--v18-4-switch-nerd.txt",
   "omp--v18-4-switch-nomatch.txt",
   "omp--v18-4-switch-quick-roles.txt",
   "omp--v18-4-switch-task.txt",
 ];
-const SWITCH_COHORT = allOmpFixtures.filter((name) => name.startsWith("omp--v18-4-switch"));
+// omp 18.17.0's picker captures (`unicode` and `nerd` presets, 2026-11-06) join the 18.4.10 cohort by name.
+const SWITCH_COHORT = allOmpFixtures.filter(
+  (name) => name.startsWith("omp--v18-4-switch") || /^omp--v18-17-0-(?:nerd-)?switch/.test(name),
+);
 const SWITCH_LIFTED = SWITCH_COHORT.filter((name) => !DECLINED_SWITCH.includes(name));
 
 // The screens this adapter lifts. The `/resume` captures that list at least one session, seven of the
@@ -401,6 +403,9 @@ const DECLINED = new Set([
   "omp--v18-16-0-custom-answer-typed--w200.txt",
   "omp--v18-16-0-custom-answer-wrapped--w200.txt",
   "omp--v18-16-0-note-editor-empty--w200.txt",
+  // omp 18.17.0's `/usage` dashboard (2026-11-06): a full-screen modal with a way out (`⎋ close`) and no
+  // list to point at. It stays raw and gets the unread-dialog card with its Escape, like `/settings`.
+  "omp--v18-17-0-usage-dashboard--w120.txt",
   // — The full-screen pickers. No `menu` block for these: `parseKeyHintFooter` (the shared, pinned
   //   key-hint grammar) returns [] for the `/model` and `/resume` footers, and for `/settings` it
   //   yields only {Jump sections, [Tab]} + {Close, [Escape]} because `menuKeyFor` rejects the
@@ -613,6 +618,11 @@ describe("the omp corpus", () => {
     "omp--v18-16-0-custom-answer-typed--w200.txt",
     "omp--v18-16-0-custom-answer-wrapped--w200.txt",
     "omp--v18-16-0-note-editor-empty--w200.txt",
+    "omp--v18-17-0-nerd-switch--w120.txt",
+    "omp--v18-17-0-nerd-switch-moved--w120.txt",
+    "omp--v18-17-0-nerd-switch-search--w120.txt",
+    "omp--v18-17-0-switch--w120.txt",
+    "omp--v18-17-0-usage-dashboard--w120.txt",
     "omp--v18-4-approval-bash-moved.txt",
     "omp--v18-4-approval-bash.txt",
     "omp--v18-4-approval-write-long.txt",

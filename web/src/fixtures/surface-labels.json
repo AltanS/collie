@@ -4525,6 +4525,31 @@
    "version": "18.16.0",
    "state": "idle"
   },
+  "omp--v18-17-0-nerd-switch--w120.txt": {
+   "harness": "omp",
+   "version": "18.17.0",
+   "state": "dialog"
+  },
+  "omp--v18-17-0-nerd-switch-moved--w120.txt": {
+   "harness": "omp",
+   "version": "18.17.0",
+   "state": "dialog"
+  },
+  "omp--v18-17-0-nerd-switch-search--w120.txt": {
+   "harness": "omp",
+   "version": "18.17.0",
+   "state": "dialog"
+  },
+  "omp--v18-17-0-switch--w120.txt": {
+   "harness": "omp",
+   "version": "18.17.0",
+   "state": "dialog"
+  },
+  "omp--v18-17-0-usage-dashboard--w120.txt": {
+   "harness": "omp",
+   "version": "18.17.0",
+   "state": "dialog"
+  },
   "omp--v18-4-approval-bash-moved.txt": {
    "harness": "omp",
    "version": "18.4",

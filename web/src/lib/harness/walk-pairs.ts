@@ -94,6 +94,8 @@ export const WALK_PAIRS: readonly WalkPair[] = [
   ["omp", "omp--v18-4-switch-overcontext.txt", "omp--v18-4-switch-overcontext-moved.txt"],
   ["omp", "omp--v18-4-switch-search-short.txt", "omp--v18-4-switch-search-short-moved.txt"],
   ["omp", "omp--v18-4-switch-top-edge.txt", "omp--v18-4-switch-wrapped.txt"],
+  // The same picker in omp 18.17.0's `nerd` preset (private-use pointer, dot, icons and keycaps), one `Down` apart.
+  ["omp", "omp--v18-17-0-nerd-switch--w120.txt", "omp--v18-17-0-nerd-switch-moved--w120.txt"],
   // opencode permission dialog: horizontal chips, the pointer is a background colour and not a glyph,
   // so the TEXT of each pair is identical and only the option plans differ (Right × d, then Enter).
   // `promptsEqual` still tells them apart because it compares the exact plans (prompt-model.ts).
