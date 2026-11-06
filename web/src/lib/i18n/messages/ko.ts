@@ -1045,6 +1045,7 @@ export const ko: Dictionary = {
   "nav.home.aria.lostAt": "Collie 홈, 연결 끊김. {time}에 저장된 내용을 표시합니다.",
   "nav.home.aria.reconnecting": "Collie 홈, 재연결 중",
   "nav.home.aria.updating": "Collie가 앱을 업데이트하는 중입니다. 대시보드를 엽니다.",
+  "nav.home.aria.reconnected": "Collie 홈, 다시 연결됨",
   "nav.mux.onPrefix": "기반:",
   "nav.prereleaseTitle": "프리릴리스 빌드 {version}",
 
@@ -1359,7 +1360,7 @@ export const ko: Dictionary = {
   "connection.dismiss.aria": "이 알림 숨기기",
   "common.closeAria": "닫기",
   "common.scrollToLatestAria": "최신 위치로 스크롤",
-  "connection.connected": "연결됨",
+  "connection.reconnected": "다시 연결됨",
   "connection.reconnecting": "재연결 중…",
   "connection.herdrDown": "호스트의 Herdr 프로세스가 중단되었습니다.",
   "connection.tokenRefused": "durable agent가 토큰을 거부했습니다. 이 피어에서 COLLIE_DURABLE_TOKEN을 확인하세요.",

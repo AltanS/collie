@@ -9,7 +9,8 @@ import { collieMark, markIsLive, markPaper } from "@/test/collie-mark";
 import { __resetOperatorCommands, loadOperatorCommands } from "@/lib/operator-config";
 import { ROOT_ROUTE_ID, type HomeData } from "@/lib/loaders";
 import { AppHeaderHost, RouteHeader, SettingsGear } from "./app-header";
-import { APPLYING_CLASS } from "./collie-home";
+import { APPLYING_CLASS, ORBIT_TURN_MS, RECONNECTED_CLASS } from "./collie-home";
+import { __resetReconnected, showReconnected } from "@/lib/reconnected";
 import { __resetBundleFocus, bundleFocusPending, subscribeBundleFocus } from "@/lib/bundle-apply";
 import { __resetReloadGuard, holdReload } from "@/lib/reload-guard";
 import { __resetSelfUpdate, __setReloadImpl, startSelfUpdate } from "@/lib/self-update";
@@ -1031,5 +1032,43 @@ describe("the header — the mark while the app updates", () => {
     expect(routeHome).toHaveBeenCalledOnce();
     expect(screen.getByTestId("loc").textContent).toBe("/settings");
     expect(bundleFocusPending()).toBe(false);
+  });
+});
+
+// ── THE LINK COMING BACK (2026-11-07) ───────────────────────────────────────────────────────────
+// The connection strip fires the reconnection (`lib/reconnected.ts`); the host reads it and passes it
+// to the mark for exactly one turn. These cases hold the host's half: the class arrives, it leaves
+// after one turn, and the tap keeps its ordinary meaning in between.
+describe("the header — the mark when the link comes back", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    __resetReconnected();
+  });
+  afterEach(() => {
+    __resetReconnected();
+    vi.useRealTimers();
+  });
+
+  it("paints the mark green and turns it for one turn, then rests", () => {
+    const { container } = renderHeader(<Header bridge="connected" error={false} wordmark />);
+    expect(markIsLive(container)).toBe(false);
+    act(() => showReconnected(ORBIT_TURN_MS));
+    expect(markIsLive(container)).toBe(true);
+    expect(collieMark(container)?.classList.contains(RECONNECTED_CLASS)).toBe(true);
+    expect(screen.getByRole("button", { name: "Collie home, reconnected" })).toBeInTheDocument();
+    act(() => vi.advanceTimersByTime(ORBIT_TURN_MS - 1));
+    expect(collieMark(container)?.classList.contains(RECONNECTED_CLASS)).toBe(true);
+    act(() => vi.advanceTimersByTime(1));
+    expect(collieMark(container)?.classList.contains(RECONNECTED_CLASS)).toBe(false);
+    expect(markIsLive(container)).toBe(false);
+    expect(screen.getByRole("button", { name: "Collie home" })).toBeInTheDocument();
+  });
+
+  it("keeps the route's own tap during the turn", () => {
+    const onHome = vi.fn();
+    renderHeader(<Header bridge="connected" error={false} onHome={onHome} />);
+    act(() => showReconnected(ORBIT_TURN_MS));
+    act(() => screen.getByRole("button", { name: "Collie home, reconnected" }).click());
+    expect(onHome).toHaveBeenCalledTimes(1);
   });
 });

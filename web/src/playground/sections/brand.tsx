@@ -4,7 +4,7 @@
 
 import { AlphaBar } from "@/components/alpha-bar";
 import { AppHeaderHost, RouteHeader, SettingsGear } from "@/components/app-header";
-import { APPLYING_CLASS, CollieHome } from "@/components/collie-home";
+import { APPLYING_CLASS, CollieHome, RECONNECTED_CLASS } from "@/components/collie-home";
 import { CollieMark } from "@/components/collie-mark";
 import { homeSolo } from "../fixtures";
 import { RootRouter } from "../harness";
@@ -82,8 +82,25 @@ export function BrandSection() {
                 <CollieHome trouble={false} applying paper="var(--background)" />
                 <span className="font-mono text-[10px] text-muted-foreground">header button</span>
               </div>
-              <MarkSample size={64} weight="header" loading applying />
-              <MarkSample size={96} weight="full" loading applying />
+              <MarkSample size={64} weight="header" loading paint="applying" />
+              <MarkSample size={96} weight="full" loading paint="applying" />
+            </div>
+          </Stage>
+        </Card>
+        <Card
+          state="mark-reconnected"
+          label="the mark, reconnected"
+          reach="let the connection drop until the strip shows, then let it come back. The mark turns once in green and the status line says Reconnected."
+          note="The band's old green Connected strip, moved onto the mark (2026-11-07, lib/reconnected.ts). One full turn at the loading rate, every bead in --status-done, then rest. The same class-and-rule door as the update paint. The samples here hold the state; in the app it lasts one turn, 1.8s. Under reduced motion the orbit stays still and the colour holds for the same time."
+        >
+          <Stage>
+            <div className="flex flex-wrap items-end gap-6 p-4">
+              <div className="flex flex-col items-center gap-1.5">
+                <CollieHome trouble={false} reconnected paper="var(--background)" />
+                <span className="font-mono text-[10px] text-muted-foreground">header button</span>
+              </div>
+              <MarkSample size={64} weight="header" loading paint="reconnected" />
+              <MarkSample size={96} weight="full" loading paint="reconnected" />
             </div>
           </Stage>
         </Card>
@@ -169,14 +186,16 @@ function MarkSample({
   weight,
   loading,
   muted = false,
-  applying = false,
+  paint,
 }: {
   size: number;
   weight: "full" | "header";
   loading: boolean;
   muted?: boolean;
-  applying?: boolean;
+  /** A host paint on the beads: the app updating, or the link coming back. */
+  paint?: "applying" | "reconnected";
 }) {
+  const painted = paint === "applying" ? APPLYING_CLASS : paint === "reconnected" ? RECONNECTED_CLASS : undefined;
   return (
     <div className="flex flex-col items-center gap-1.5">
       <CollieMark
@@ -184,13 +203,13 @@ function MarkSample({
         weight={weight}
         loading={loading}
         paper="var(--background)"
-        className={muted ? "opacity-40 grayscale" : applying ? APPLYING_CLASS : undefined}
+        className={muted ? "opacity-40 grayscale" : painted}
       />
       <span className="font-mono text-[10px] text-muted-foreground">
         {size} {weight}
         {loading ? " loading" : ""}
         {muted ? " muted" : ""}
-        {applying ? " applying" : ""}
+        {paint === undefined ? "" : ` ${paint}`}
       </span>
     </div>
   );

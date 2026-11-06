@@ -1055,6 +1055,7 @@ export const es: Dictionary = {
   "nav.home.aria.lostAt": "Inicio de Collie (sin conexión). Se muestra la copia guardada ({time}).",
   "nav.home.aria.reconnecting": "Inicio de Collie (reconectando)",
   "nav.home.aria.updating": "Collie está actualizando la app. Abrir el panel.",
+  "nav.home.aria.reconnected": "Inicio de Collie (reconectado)",
   "nav.mux.onPrefix": "en",
   "nav.prereleaseTitle": "Compilación preliminar: {version}",
 
@@ -1369,7 +1370,7 @@ export const es: Dictionary = {
   "connection.dismiss.aria": "Ocultar este aviso",
   "common.closeAria": "Cerrar",
   "common.scrollToLatestAria": "Desplazarse a lo más reciente",
-  "connection.connected": "Conectado",
+  "connection.reconnected": "Reconectado",
   "connection.reconnecting": "Reconectando…",
   "connection.herdrDown": "Herdr no responde en el host",
   "connection.tokenRefused": "El agente duradero rechazó el token. Compruebe COLLIE_DURABLE_TOKEN en este par.",

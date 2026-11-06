@@ -1055,6 +1055,7 @@ export const de: Dictionary = {
   "nav.home.aria.lostAt": "Collie-Startseite: nicht verbunden. Angezeigt wird der Stand von {time}.",
   "nav.home.aria.reconnecting": "Collie-Startseite: verbindet neu",
   "nav.home.aria.updating": "Collie aktualisiert die App. Übersicht öffnen.",
+  "nav.home.aria.reconnected": "Collie-Startseite: wieder verbunden",
   "nav.mux.onPrefix": "auf",
   "nav.prereleaseTitle": "Vorabversion: {version}",
 
@@ -1369,7 +1370,7 @@ export const de: Dictionary = {
   "connection.dismiss.aria": "Hinweis ausblenden",
   "common.closeAria": "Schließen",
   "common.scrollToLatestAria": "Zum Neuesten scrollen",
-  "connection.connected": "Verbunden",
+  "connection.reconnected": "Wieder verbunden",
   "connection.reconnecting": "Verbindung wird wiederhergestellt…",
   "connection.herdrDown": "Herdr läuft auf dem Host nicht",
   "connection.tokenRefused": "Der Durable Agent hat das Token abgelehnt. Prüfe COLLIE_DURABLE_TOKEN auf diesem Peer.",

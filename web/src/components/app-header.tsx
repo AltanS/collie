@@ -25,6 +25,7 @@ import { useLoadingStalled } from "@/hooks/use-loading-stalled";
 import { useOnline } from "@/hooks/use-online";
 import { homePath, settingsPath } from "@/lib/nav";
 import { requestBundleFocus, useBundleApply } from "@/lib/bundle-apply";
+import { useReconnected } from "@/lib/reconnected";
 import { useScope } from "@/lib/session";
 import { useOptionalRootData } from "@/lib/route-data";
 import { releaseOffered } from "@/lib/update-ribbon";
@@ -218,6 +219,10 @@ export function AppHeaderHost({ bridge, error, lastSeenAt, children }: AppHeader
   // A new app build being applied on this phone (`lib/bundle-apply.ts`). The mark carries it, which is
   // the band's old download row moved onto the mark (2026-11-06), and it changes what a tap does.
   const applying = useBundleApply() !== null;
+  // The link just came back after a bar the operator saw (`lib/reconnected.ts`): one green turn of
+  // the mark, which is the band's old "Connected" strip moved onto the mark (2026-11-07). The tap
+  // keeps its ordinary meaning.
+  const reconnected = useReconnected();
   const nav = useNav();
   const scope = useScope();
   const { pathname } = useLocation();
@@ -301,6 +306,7 @@ export function AppHeaderHost({ bridge, error, lastSeenAt, children }: AppHeader
       trouble={trouble}
       lost={lost}
       applying={applying}
+      reconnected={reconnected}
       online={online}
       lastSeenAt={lastSeenAt}
       {...(paper === undefined ? {} : { paper })}

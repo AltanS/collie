@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRevalidator } from "react-router";
 import {
-  CheckCircle2,
   CloudOff,
   KeyRound,
   Loader2,
@@ -13,6 +12,7 @@ import {
   WifiOff,
 } from "lucide-react";
 
+import { ORBIT_TURN_MS } from "@/components/collie-home";
 import { useCrew, useHostHealth } from "@/components/crew-provider";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Notice, NOTICE_ACTION, NOTICE_ACTION_TAP } from "@/components/ui/notice";
@@ -23,9 +23,12 @@ import { PROXY_AUTH_PATH } from "@/lib/sw-routes";
 import { useConnectionLost, useConnectionTrouble } from "@/hooks/use-connection-lost";
 import { useLoadingStalled } from "@/hooks/use-loading-stalled";
 import { useOnline } from "@/hooks/use-online";
+import { useBundleApply } from "@/lib/bundle-apply";
 import { isConnecting } from "@/lib/connection";
 import { clockTime, savedAtLabel } from "@/lib/format";
 import { writeRefusal } from "@/lib/host-health";
+import { clearReconnected, reconnects, showReconnected, type LinkTone } from "@/lib/reconnected";
+import { currentStatus, setStatus } from "@/lib/status";
 import * as api from "@/lib/api";
 import type { BridgeStatus, MuxFault } from "@/lib/types";
 import { mounted } from "@/lib/base-path";
@@ -65,31 +68,27 @@ interface ConnectionBannerProps {
 // /api/config probes the lead's HTTP surface, never a member or a mux.
 type Probe = "unknown" | "reachable" | "unreachable";
 
-// The three color-coded states, plus null = nothing. green = established, amber = checking, red = failed.
-type Tone = "amber" | "red" | "green";
-
-// How long the "Connected" confirmation lingers after a visible bar recovers, then it exits.
+// The two color-coded states, plus null = nothing. amber = checking, red = failed.
 //
-// This one is BUSINESS LOGIC and stays here: how long a confirmation is worth reading is a fact
-// about what the operator is being told, not about how a row leaves the screen. The exit itself was
-// this file's own (`EXIT_MS`, a delayed unmount through a hand-rolled 0fr↔1fr grid) and is now the
-// band's — `ui/strip-host.tsx` keeps painting the last strip while `ui/collapse.tsx` closes it, on
-// one duration shared with everything else in the app that moves in flow.
-export const GREEN_MS = 1_800;
+// THERE IS NO GREEN ANY MORE (2026-11-07). A visible bar that clears used to become a green
+// "Connected" strip for 1.8s. The strip now simply goes, and the MARK says the link is back: one
+// turn in the done colour, with "Reconnected" on the app's status channel for the same time
+// (`lib/reconnected.ts`). This file still decides WHEN that happened, because it is the one place
+// that knows a bar was shown.
+type Tone = Exclude<LinkTone, null>;
 
 // The ONE connection surface: a single, thin bar in the ribbon band under the header — `ui/strip-host.tsx`,
 // registered from here as a StripSlot — that is the app's entire connection UI; the header pill is
-// gone. It appears only on SUSTAINED trouble, escalates from amber → red on a real outage, flashes
-// green on recovery, and otherwise renders nothing. It reads the SAME two shared-clock signals
-// the header dog does (useConnectionTrouble at 4s, useConnectionLost at 15s), so bar and dog can never
-// disagree; `connecting` is poll-truth (isConnecting) — navigator.onLine is COPY-only (it picks the
-// red cause), never a gate. Threshold lockstep with the shared clock is proven in use-connection-lost;
-// here we own the amber→red→green state machine and nothing else.
+// gone. It appears only on SUSTAINED trouble, escalates from amber → red on a real outage, hands
+// the recovery to the mark (see `Tone`), and otherwise renders nothing. It reads the SAME two
+// shared-clock signals the header dog does (useConnectionTrouble at 4s, useConnectionLost at 15s),
+// so bar and dog can never disagree; `connecting` is poll-truth (isConnecting) — navigator.onLine
+// is COPY-only (it picks the red cause), never a gate. Threshold lockstep with the shared clock is proven in use-connection-lost;
+// here we own the amber→red→recovered state machine and nothing else.
 //
-// ONE SLOT, THREE TONES, TWO RANKS. The tone changes inside the slot the way it always did, and the
-// slot's PRIORITY moves with it: a lost connection is `OUTAGE`, trouble and the recovery flash are
-// `DEGRADED` (`lib/strip-priority.ts`). Green is not a fifth level — it is this same fact, resolved,
-// and it outranks the update offer for the second it stands for exactly the reason amber does.
+// ONE SLOT, TWO TONES, TWO RANKS. The tone changes inside the slot the way it always did, and the
+// slot's PRIORITY moves with it: a lost connection is `OUTAGE`, trouble is `DEGRADED`
+// (`lib/strip-priority.ts`).
 //
 // THREE OFFLINE STATES, TOLD APART HERE AND NOWHERE ELSE (M46 spec 10, reworded in pass 3):
 //   1. The phone says it is offline (`navigator.onLine` false): "You are offline. Showing what was
@@ -214,19 +213,24 @@ function ConnectionStateBanner({
   const lost = useConnectionLost(isConnecting({ bridge, error }));
 
   // What the live signals want on screen right now — red wins over amber; null = healthy (or a blip
-  // that never reached trouble). Green is NOT derived here: it's a timed confirmation the state machine
-  // adds only when a VISIBLE bar recovers, so it can't come from the instantaneous signals.
+  // that never reached trouble).
   //
   // A saved copy on screen is red at once (see `stale`): the escalation clock exists to keep a blip
-  // quiet, and a herd drawn from the store is already past being one. Recovery from it flashes green
+  // quiet, and a herd drawn from the store is already past being one. Recovery from it turns the mark
   // like any other visible bar.
-  const activeTone: Exclude<Tone, "green"> | null = stale || lost ? "red" : trouble ? "amber" : null;
+  const activeTone: LinkTone = stale || lost ? "red" : trouble ? "amber" : null;
 
-  // The rendered tone. Adds the recovery "connected" flash on top of the live signals.
+  // The rendered tone: the live signals, held through the state machine below.
   const [tone, setTone] = useState<Tone | null>(null);
-  // Has an amber/red bar actually been shown since the last time we went hidden? Gates the green flash
-  // so a sub-trouble blip (which never showed a bar) recovers silently.
-  const shownBar = useRef(false);
+  // Which bar the operator last SAW, since the last time we went hidden. Gates the mark's green turn so
+  // a sub-trouble blip (which never showed a bar) recovers silently.
+  const shown = useRef<LinkTone>(null);
+  // Whether a new app build is being applied, read at the moment of recovery: the update colour on the
+  // mark wins, and the green turn is skipped (`lib/reconnected.ts`). A ref, so the effect below keeps
+  // running on `activeTone` alone.
+  const applying = useBundleApply() !== null;
+  const applyingRef = useRef(applying);
+  applyingRef.current = applying;
   // The operator hid the red strip for THIS outage. The state draws (or does not draw) the strip; the
   // ref is the same fact for the effect below, which must read it at recovery without re-running when
   // it flips. Both reset together when the outage ends (`activeTone` goes null).
@@ -235,31 +239,31 @@ function ConnectionStateBanner({
 
   useEffect(() => {
     if (activeTone) {
-      shownBar.current = true;
+      shown.current = activeTone;
       setTone(activeTone);
+      // The link dropped again inside the green turn: the turn ends now, so the mark can show trouble.
+      clearReconnected();
       return;
     }
     // activeTone === null → recovered, or never troubled. Either way the outage the operator hid, if
-    // they hid one, is over: the next one shows its strip again.
+    // they hid one, is over: the next one shows its strip again, and the strip goes.
     const wasDismissed = dismissedRef.current;
     dismissedRef.current = false;
     setDismissed(false);
-    if (!shownBar.current) {
-      setTone(null); // a blip that never showed a bar → show nothing.
-      return;
-    }
-    // The operator asked for quiet by hiding the strip, so a green "Connected" would be the one thing
-    // on screen they did not ask for. The bar they dismissed was shown, so the latch still clears.
-    if (wasDismissed) {
-      shownBar.current = false;
-      setTone(null);
-      return;
-    }
-    // Recovery FROM a visible bar → a brief green "connected", then hide.
-    shownBar.current = false;
-    setTone("green");
-    const id = window.setTimeout(() => setTone(null), GREEN_MS);
-    return () => clearTimeout(id);
+    setTone(null);
+    const fires = reconnects({
+      shown: shown.current,
+      next: null,
+      applying: applyingRef.current,
+      dismissed: wasDismissed,
+    });
+    shown.current = null;
+    if (!fires) return;
+    // Recovery FROM a visible bar → the mark turns once in the done colour, and the word rides the
+    // status channel for exactly that turn. Not over an error on that channel: an error waits for the
+    // operator's own ✕, and "Reconnected" must not wipe it. The mark turns either way.
+    showReconnected(ORBIT_TURN_MS);
+    if (currentStatus()?.tone !== "error") setStatus(t("connection.reconnected"), "success", ORBIT_TURN_MS);
   }, [activeTone]);
 
   // NO EXIT MACHINERY HERE ANY MORE. This component used to run its own delayed unmount, its own
@@ -295,7 +299,7 @@ function ConnectionStateBanner({
 
   if (tone === null) return null;
   // Dismissed: nothing is registered in the band, and the band's own leave animation closes the row.
-  // Only red can be dismissed (amber and green carry no ✕), but the guard states what it hides.
+  // Only red can be dismissed (amber carries no ✕), but the guard states what it hides.
   if (tone === "red" && dismissed) return null;
 
   function onDismiss() {
@@ -326,13 +330,12 @@ function ConnectionStateBanner({
   const dismissProps = tone === "red" ? { onDismiss, dismissLabel: t("connection.dismiss.aria") } : {};
 
   return (
-    // A lost connection outranks trouble, and both outrank the update offer. Green rides at
-    // DEGRADED with amber: it is the same fact resolved, not a level of its own.
+    // A lost connection outranks trouble, and both outrank the update offer.
     <StripSlot priority={tone === "red" ? OUTAGE : DEGRADED}>
       <Notice
         tone={view.tone}
         variant="strip"
-        // Red is an actionable error (assertive); amber and green are ambient. One attribute either
+        // Red is an actionable error (assertive); amber is ambient. One attribute either
         // way — the `aria-live="polite"` that used to sit beside the role is gone, and cannot come
         // back: `ui/notice.tsx` has no way to spell a role and a liveness at the same time.
         announce={view.tone === "danger" ? "alert" : "status"}
@@ -345,7 +348,7 @@ function ConnectionStateBanner({
         // is an overlay on the header's bottom edge now (`ui/strip-host.tsx`), so a taller sentence
         // covers a little more of the strip beneath it and moves nothing. The strip is as tall as
         // its words.
-        // Actions only in red — amber is ambient (no buttons), green is a passing confirmation. ONE
+        // Actions only in red — amber is ambient (no buttons). ONE
         // button, Retry, and the ✕ the Notice draws beside it. A Reload icon stood here too and the
         // operator read two buttons for one problem; Retry already revalidates and re-probes, and the
         // auth strip above keeps its Reload because a refusal is not cured by asking again.
@@ -386,11 +389,8 @@ function ConnectionStateBanner({
 }
 
 // A durable program refused this machine's bearer token (M50 spec 14). The fix is on this machine, in
-// its `.env`, so the sentence names the variable. Green still says "Connected" once the token works.
+// its `.env`, so the sentence names the variable. Once the token works, the mark says the link is back.
 function tokenRefusedView(tone: Tone) {
-  if (tone === "green") {
-    return { copy: t("connection.connected"), Icon: CheckCircle2, tone: "success", saved: false, hint: undefined } as const;
-  }
   return {
     copy: t("connection.tokenRefused"),
     Icon: KeyRound,
@@ -409,10 +409,11 @@ function tokenRefusedView(tone: Tone) {
 // rather than replaced by a flat "Disconnected", because "Herdr is down on the host" is a different
 // (and more actionable) fact than "we can't reach Collie", and both can be undated or dated.
 //
-// The three tones are `ui/notice.tsx`'s and name the SAME three tokens this file used to mix for
-// itself: `success` is `--status-done`, `caution` is `--status-working`, `danger` is
-// `--status-blocked`. Nothing here changed colour; the recipe moved to the one table allowed to
-// hold it, which is what stops the next banner drifting an alpha.
+// The tones are `ui/notice.tsx`'s and name the SAME tokens this file used to mix for itself:
+// `caution` is `--status-working`, `danger` is `--status-blocked`. (`success`, `--status-done`, was
+// the green strip's; that colour is the mark's now, on a reconnection.) Nothing here changed
+// colour; the recipe moved to the one table allowed to hold it, which is what stops the next banner
+// drifting an alpha.
 function resolveView(
   tone: Tone,
   online: boolean,
@@ -422,9 +423,6 @@ function resolveView(
   lastSeenAt?: number,
   stale = false,
 ) {
-  if (tone === "green") {
-    return { copy: t("connection.connected"), Icon: CheckCircle2, tone: "success", saved: false, hint: undefined } as const;
-  }
   if (tone === "amber") {
     // Static Plug (no spinner) — the galloping dog carries the motion, and a spinner would fight
     // prefers-reduced-motion. Ambient by design.

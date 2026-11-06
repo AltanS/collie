@@ -1130,6 +1130,7 @@ export const en = {
   "nav.home.aria.lostAt": "Collie home, not connected. Showing what was saved at {time}.",
   "nav.home.aria.reconnecting": "Collie home, reconnecting",
   "nav.home.aria.updating": "Collie is updating the app. Open the dashboard.",
+  "nav.home.aria.reconnected": "Collie home, reconnected",
   "nav.mux.onPrefix": "on",
   "nav.prereleaseTitle": "Pre-release build {version}",
 
@@ -1447,7 +1448,7 @@ export const en = {
   "connection.dismiss.aria": "Hide this notice",
   "common.closeAria": "Close",
   "common.scrollToLatestAria": "Scroll to latest",
-  "connection.connected": "Connected",
+  "connection.reconnected": "Reconnected",
   "connection.reconnecting": "Reconnecting…",
   "connection.herdrDown": "Herdr is down on the host",
   "connection.tokenRefused": "The durable agent refused the token. Check COLLIE_DURABLE_TOKEN on this peer.",

@@ -34,6 +34,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 ### Changed
 
 - **The Collie mark shows when the app on your phone is updating.** While a new app build downloads, whether you asked for it or the app updates itself after a deploy, and until the page reloads onto it, every bead of the header mark turns fast in the update colour, in place of the band that said "Downloading the new version…" or "New version, tap to update". The band shows no update row at all while this lasts. Tap the mark to open the dashboard: its update line says which of the two it is, with how far the download has come. The first install of the app shows nothing, since it replaces nothing.
+- **The Collie mark says when the connection is back.** The green "Connected" strip under the header is gone. When a lost or troubled connection returns, every bead of the mark turns once in green and "Reconnected" shows for that one turn, in the header on a pane and in the status line elsewhere, then the mark rests. A connection that was fine from the start, or a strip you closed, stays quiet. While the app is updating, the update colour wins.
 
 ### Fixed
 

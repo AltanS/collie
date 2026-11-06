@@ -9,7 +9,7 @@ import { clearStatus, setStatus } from "@/lib/status";
 import { collieMark, markIsLive } from "@/test/collie-mark";
 import { savedAtLabel } from "@/lib/format";
 import { CollieMark } from "./collie-mark";
-import { APPLYING_CLASS, CollieHome, spinRate } from "./collie-home";
+import { APPLYING_CLASS, CollieHome, RECONNECTED_CLASS, spinRate } from "./collie-home";
 
 // THE ROUND IS AN EVENT, NOT A STATE. Any status the app publishes turns the orbit exactly once, at
 // the loading rate, before handing it back to the resting drift. These cases hold the two halves of
@@ -334,72 +334,137 @@ describe("CollieHome — the app updating", () => {
   });
 });
 
-describe("index.css — the applying paint reaches every bead of the generated mark", () => {
-  const css = readFileSync(join(import.meta.dirname, "..", "index.css"), "utf8");
-  /** Every rule whose selector starts with the applying class, as selector and body. */
-  const rules = [...css.matchAll(/(\.collie-applying[^{]*)\{([^}]*)\}/g)].map((m) => ({
-    at: m.index,
-    selector: (m[1] ?? "").trim(),
-    body: (m[2] ?? "").trim(),
-  }));
-  const ruleWith = (decl: RegExp) => {
-    const found = rules.find((r) => decl.test(r.body));
-    if (found === undefined) throw new Error(`no applying rule declares ${decl}`);
-    return found;
-  };
-  const fillRule = ruleWith(/fill:\s*var\(--status-working\)/);
-  const maskRule = ruleWith(/mask:\s*none/);
-  const facetRule = ruleWith(/display:\s*none/);
-  const isPaper = (el: Element) => (el.getAttribute("fill") ?? "").startsWith("var(--cm-paper");
+// ── THE LINK COMING BACK (2026-11-07) ───────────────────────────────────────────────────────────
+//
+// One turn in the done colour, in place of the band's old green "Connected" strip. The host passes
+// `reconnected` for exactly that turn (`lib/reconnected.ts`); these cases hold the precedence, the
+// name and the paint. The turn's length is the host's and the store's, asserted in app-header.test.
+describe("CollieHome — the link coming back", () => {
+  const greenClass = (root: ParentNode) => collieMark(root)?.classList.contains(RECONNECTED_CLASS) ?? false;
 
-  it("is unconditional, so reduced motion keeps the colour when the orbit stops", () => {
-    // Brace depth zero at each rule: none of them sits inside an @media block. The generated
-    // stylesheet's own reduced-motion rule turns the ANIMATION off and nothing else.
-    for (const rule of rules) {
-      const before = css.slice(0, rule.at);
-      const depth = (before.match(/\{/g)?.length ?? 0) - (before.match(/\}/g)?.length ?? 0);
-      expect(depth, rule.selector).toBe(0);
-    }
-    expect(rules.length).toBe(3);
+  it("turns the orbit and paints the beads green, with the reconnected name", () => {
+    const { container, getByRole } = render(<CollieHome trouble={false} reconnected />);
+    expect(markIsLive(container)).toBe(true);
+    expect(greenClass(container)).toBe(true);
+    expect(getByRole("button", { name: "Collie home, reconnected" })).toBeInTheDocument();
   });
 
-  for (const weight of ["header", "full"] as const) {
-    it(`paints every bead of the ${weight} weight, near and far, and leaves the knockout, ring and head alone`, () => {
-      const { container } = render(<CollieMark size={64} weight={weight} className={APPLYING_CLASS} />);
-      const beads = [...container.querySelectorAll(".cm-b")];
-      // Eight beads, each drawn once in the near group and once in the far one.
-      expect(beads.length).toBe(16);
-      for (const bead of beads) {
-        const drawn = [...bead.querySelectorAll("circle, polygon")];
-        const discs = drawn.filter((el) => !isPaper(el));
-        // Every bead has a body, and every body takes the update colour.
-        expect(discs.length).toBeGreaterThan(0);
-        for (const el of discs) expect(el.matches(fillRule.selector), bead.outerHTML.slice(0, 80)).toBe(true);
-        // The paper ring that says "in front of the head" is not painted over.
-        for (const el of drawn.filter((e) => e.tagName === "circle" && isPaper(e))) {
-          expect(el.matches(fillRule.selector)).toBe(false);
-        }
-        // A full planet: no shading mask, no paper-tinted facet.
-        for (const el of bead.querySelectorAll("[mask]")) expect(el.matches(maskRule.selector)).toBe(true);
-        for (const el of drawn.filter((e) => e.tagName === "polygon" && isPaper(e))) {
-          expect(el.matches(facetRule.selector)).toBe(true);
-        }
+  it("gives way to the app updating: the update paint and name, never both colours", () => {
+    const { container, getByRole } = render(<CollieHome trouble={false} applying reconnected />);
+    expect(greenClass(container)).toBe(false);
+    expect(collieMark(container)?.classList.contains(APPLYING_CLASS)).toBe(true);
+    expect(getByRole("button", { name: "Collie is updating the app. Open the dashboard." })).toBeInTheDocument();
+  });
+
+  it("gives way to lost", () => {
+    const { container } = render(<CollieHome trouble lost reconnected />);
+    expect(greenClass(container)).toBe(false);
+    expect(markIsLive(container)).toBe(false);
+  });
+
+  it("changes the paint on the SAME mark, and the mark rests again when it ends", () => {
+    const { container, rerender } = render(<CollieHome trouble={false} />);
+    const before = collieMark(container);
+    rerender(<CollieHome trouble={false} reconnected />);
+    expect(collieMark(container)).toBe(before);
+    expect(greenClass(container)).toBe(true);
+    rerender(<CollieHome trouble={false} />);
+    expect(collieMark(container)).toBe(before);
+    expect(greenClass(container)).toBe(false);
+    expect(markIsLive(container)).toBe(false);
+  });
+});
+
+// The two host paints, each a class on the mark's root and three rules in index.css. The update
+// paint (2026-11-06) and the reconnection's green turn (2026-11-07) share two of the rules through
+// `:is(...)` and differ only in the fill.
+const PAINTS = [
+  { name: "applying", cls: APPLYING_CLASS, token: "--status-working", other: RECONNECTED_CLASS },
+  { name: "reconnected", cls: RECONNECTED_CLASS, token: "--status-done", other: APPLYING_CLASS },
+] as const;
+
+// index.css with its comments blanked to spaces, so a brace inside a comment cannot open a rule and
+// every offset still points where it did.
+const css = readFileSync(join(import.meta.dirname, "..", "index.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, (c) =>
+  " ".repeat(c.length),
+);
+
+/** Every innermost rule whose selector names `cls`, as offset, selector and body. */
+function rulesFor(cls: string) {
+  const named = new RegExp(`\\.${cls}(?![\\w-])`);
+  return [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+    .map((m) => ({ at: m.index, selector: (m[1] ?? "").trim(), body: (m[2] ?? "").trim() }))
+    .filter((r) => named.test(r.selector));
+}
+
+for (const paint of PAINTS) {
+  describe(`index.css — the ${paint.name} paint reaches every bead of the generated mark`, () => {
+    const rules = rulesFor(paint.cls);
+    const ruleWith = (decl: RegExp) => {
+      const found = rules.find((r) => decl.test(r.body));
+      if (found === undefined) throw new Error(`no ${paint.name} rule declares ${decl}`);
+      return found;
+    };
+    const fillRule = ruleWith(new RegExp(`fill:\\s*var\\(${paint.token}\\)`));
+    const maskRule = ruleWith(/mask:\s*none/);
+    const facetRule = ruleWith(/display:\s*none/);
+    const isPaper = (el: Element) => (el.getAttribute("fill") ?? "").startsWith("var(--cm-paper");
+
+    it("is unconditional, so reduced motion keeps the colour when the orbit stops", () => {
+      // Brace depth zero at each rule: none of them sits inside an @media block. The generated
+      // stylesheet's own reduced-motion rule turns the ANIMATION off and nothing else.
+      for (const rule of rules) {
+        const before = css.slice(0, rule.at);
+        const depth = (before.match(/\{/g)?.length ?? 0) - (before.match(/\}/g)?.length ?? 0);
+        expect(depth, rule.selector).toBe(0);
       }
-      // The ring and the head keep their ink: nothing outside a bead is matched by any rule.
-      const outside = [...container.querySelectorAll("svg path, svg circle, svg polygon, svg g")].filter(
-        (el) => el.closest(".cm-b") === null,
-      );
-      expect(outside.length).toBeGreaterThan(0);
-      for (const el of outside) {
+      expect(rules.length).toBe(3);
+    });
+
+    for (const weight of ["header", "full"] as const) {
+      it(`paints every bead of the ${weight} weight, near and far, and leaves the knockout, ring and head alone`, () => {
+        const { container } = render(<CollieMark size={64} weight={weight} className={paint.cls} />);
+        const beads = [...container.querySelectorAll(".cm-b")];
+        // Eight beads, each drawn once in the near group and once in the far one.
+        expect(beads.length).toBe(16);
+        // The other paint's colour never reaches a bead under this class.
+        const otherFill = rulesFor(paint.other).find((r) => /fill:/.test(r.body));
+        for (const bead of beads) {
+          const drawn = [...bead.querySelectorAll("circle, polygon")];
+          const discs = drawn.filter((el) => !isPaper(el));
+          // Every bead has a body, and every body takes the paint's colour.
+          expect(discs.length).toBeGreaterThan(0);
+          for (const el of discs) {
+            expect(el.matches(fillRule.selector), bead.outerHTML.slice(0, 80)).toBe(true);
+            if (otherFill !== undefined) expect(el.matches(otherFill.selector)).toBe(false);
+          }
+          // The paper ring that says "in front of the head" is not painted over.
+          for (const el of drawn.filter((e) => e.tagName === "circle" && isPaper(e))) {
+            expect(el.matches(fillRule.selector)).toBe(false);
+          }
+          // A full planet: no shading mask, no paper-tinted facet.
+          for (const el of bead.querySelectorAll("[mask]")) expect(el.matches(maskRule.selector)).toBe(true);
+          for (const el of drawn.filter((e) => e.tagName === "polygon" && isPaper(e))) {
+            expect(el.matches(facetRule.selector)).toBe(true);
+          }
+        }
+        // The ring and the head keep their ink: nothing outside a bead is matched by any rule.
+        const outside = [...container.querySelectorAll("svg path, svg circle, svg polygon, svg g")].filter(
+          (el) => el.closest(".cm-b") === null,
+        );
+        expect(outside.length).toBeGreaterThan(0);
+        for (const el of outside) {
+          for (const rule of rules) expect(el.matches(rule.selector)).toBe(false);
+        }
+      });
+    }
+
+    it("reaches nothing without the class: the resting mark is untouched", () => {
+      const { container } = render(<CollieMark size={64} weight="header" />);
+      for (const el of container.querySelectorAll("svg *")) {
         for (const rule of rules) expect(el.matches(rule.selector)).toBe(false);
       }
     });
-  }
-
-  it("reaches nothing without the class: the resting mark is untouched", () => {
-    const { container } = render(<CollieMark size={64} weight="header" />);
-    for (const el of container.querySelectorAll("svg *")) {
-      for (const rule of rules) expect(el.matches(rule.selector)).toBe(false);
-    }
   });
-});
+}
+
