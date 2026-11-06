@@ -72,6 +72,19 @@ describe("POST /pins", () => {
     expect(await call({ method: "POST", body: { itemId: "s1:0" } })).toMatchObject({ status: 409, body: { code: "pin.not_pinnable" } });
   });
 
+  test("409 pin.not_settled for a reply still being written, nothing is stored or audited, and it pins once it settles", async () => {
+    let entries: readonly TranscriptEntry[] = [{ uuid: "g1", ts: "", role: "assistant", partial: true, parts: [{ kind: "text", text: "half a sent" }] }];
+    const { call, store, audit } = rig({}, async () => entries);
+    expect(await call({ method: "POST", body: { itemId: "g1:0" } })).toEqual({
+      status: 409,
+      body: { error: "pin.not_settled", code: "pin.not_settled", message: "that reply is still being written, pin it when it settles" },
+    });
+    expect(store.count("claude.s1")).toBe(0);
+    expect(audit).toEqual([]);
+    entries = [{ uuid: "g1", ts: "", role: "assistant", parts: [{ kind: "text", text: "half a sentence, done." }] }];
+    expect(await call({ method: "POST", body: { itemId: "g1:0" } })).toMatchObject({ status: 201, body: { pin: { text: "half a sentence, done." } } });
+  });
+
   test("409 pin.cap on the 101st pin, and every refusal carries its pin.* word as `error`, as `code`, and a sentence as `message`", async () => {
     const { call, store, audit } = rig();
     for (let i = 0; i < MAX_PINS; i += 1) store.add("claude.s1", { itemId: `e${i}:0`, kind: "reply", text: "t" });

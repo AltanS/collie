@@ -10,7 +10,8 @@
 // Refusals carry `{ error, code, message }` with `error` and `code` the same `pin.*` word, so the phone
 // tells them from the plain-text 404 an older bridge answers for a route it lacks: 409 `pin.no_session`
 // (a pane with no journal session: a shell, a harness with no reader), 404 `pin.item_not_found`, 404
-// `pin.not_found`, 409 `pin.not_pinnable` (an image, a compaction marker), 409 `pin.cap`. A bad body or
+// `pin.not_found`, 409 `pin.not_pinnable` (an image, a compaction marker), 409 `pin.not_settled` (an
+// entry the program is still writing), 409 `pin.cap`. A bad body or
 // query is a 400 and a failed write a 500, both plain text.
 //
 // The phone names a block by its Chat item id and nothing else. The text comes from the journal the
@@ -30,12 +31,13 @@ export const EXCERPT_CHARS = 400;
 /** A pin as the list shows it: everything but `text`, with the first {@link EXCERPT_CHARS} of it and its length. */
 export type PinRow = Omit<Pin, "text"> & { readonly excerpt: string; readonly textLength: number };
 
-export type PinReason = "pin.no_session" | "pin.item_not_found" | "pin.not_found" | "pin.not_pinnable" | "pin.cap";
+export type PinReason = "pin.no_session" | "pin.item_not_found" | "pin.not_found" | "pin.not_pinnable" | "pin.not_settled" | "pin.cap";
 
 const SENTENCES = {
   "pin.no_session": "this pane has no session to keep pins for",
   "pin.item_not_found": "that block is not in this session's log any more",
   "pin.not_found": "that pin does not exist",
+  "pin.not_settled": "that reply is still being written, pin it when it settles",
   "pin.not_pinnable": "that block cannot be pinned",
   "pin.cap": `a session keeps at most ${MAX_PINS} pins; unpin one first`,
 } satisfies Record<PinReason, string>;
@@ -106,7 +108,7 @@ async function add(deps: PinsDeps, journal: PinsSession, body: JsonValue | undef
   // A log that cannot be read now holds no block to copy: the same answer as a block that is not in it.
   if (entries === null) return refusal(404, "pin.item_not_found");
   const found = findPinnable(entries, itemId);
-  if (!found.ok) return refusal(found.reason === "not_found" ? 404 : 409, found.reason === "not_found" ? "pin.item_not_found" : "pin.not_pinnable");
+  if (!found.ok) return found.reason === "not_found" ? refusal(404, "pin.item_not_found") : refusal(409, `pin.${found.reason}`);
   const added = deps.store.add(journal.key, found.draft);
   if (!added.ok) return added.reason === "cap" ? refusal(409, "pin.cap") : { status: 500, text: "could not keep the pin" };
   if (added.created) {

@@ -31,6 +31,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **A pane serves the pins of its session.** `GET`, `POST` and `DELETE` on `/api/pane/:id/pins` list, add and drop pins: the phone names a block by its Chat id and the bridge copies the text from its own log. A pin or an unpin needs a paired device, and each pane in the list carries `pins` while its session has any.
 - **Pins cross a crew link.** The lead forwards the pins route to the member that owns the pane, a list as a read and a pin or an unpin as a write, and it masks a member's pins again when its own redaction is on. A lead keeps a member's pin count only as a whole number above zero.
 - **A pin list stays small, and old pins go.** The list of a session's pins carries a 400-character excerpt, the length of the text and a short anchor for each pin, and the whole text is one request away. A pin is kept once per block, a session's file goes with its last pin, and a file nobody wrote for 180 days is removed when the bridge starts.
+- **A reply cannot be pinned while it is still being written.** The bridge refuses a pin on a block of a turn the program has not finished (`pin.not_settled`), so a pin never keeps half a sentence. The badge counts the session the list opens, also for an agent that moves to another session, and it drops a count when a pane's session changes.
 
 ### Changed
 

@@ -67,6 +67,16 @@ describe("findPinnable", () => {
     expect(findPinnable([], "u1:0")).toEqual({ ok: false, reason: "not_found" });
   });
 
+  test("a block of an entry the program is still writing is not settled, and settles into a pin", () => {
+    const growing: TranscriptEntry[] = [{ uuid: "g1", ts: "", role: "assistant", partial: true, parts: [{ kind: "text", text: "half a sent" }, { kind: "tool", name: "Bash", summary: "ls", id: "toolu_g" }] }];
+    expect(findPinnable(growing, "g1:0")).toEqual({ ok: false, reason: "not_settled" });
+    expect(findPinnable(growing, "toolu_g")).toEqual({ ok: false, reason: "not_settled" });
+    // An id nothing holds is still not found, never "not settled".
+    expect(findPinnable(growing, "g1:9")).toEqual({ ok: false, reason: "not_found" });
+    const { partial: _done, ...settled } = growing[0]!;
+    expect(findPinnable([settled], "g1:0")).toMatchObject({ ok: true, draft: { text: "half a sent" } });
+  });
+
   test("a text longer than the journal cap is cut at it", () => {
     const long: TranscriptEntry[] = [{ uuid: "l1", ts: "", role: "assistant", parts: [{ kind: "text", text: "y".repeat(MAX_TEXT_CHARS + 10) }] }];
     const found = findPinnable(long, "l1:0");
