@@ -31,6 +31,10 @@ A patch for the desk: a browser tab can keep its place.
 
 - **`/slot/<n>` reopens a browser tab on the pane it last showed.** Pin a tab on the slot's address, 1 to 99, and it survives a browser restart on the project you left it in; a pane id another workspace took since sends the tab to that workspace's home. Slots live on the device, and unpairing forgets them. Thanks @eseninik (#706).
 
+### Fixed
+
+- **A slow drag down on the Switch pane sheet follows the finger.** Each poll of the pane, every 1.5 seconds while an agent works, snapped a sheet held mid-drag back to the top, and the next move pulled it under the finger again, so the sheet flickered on the way down. The sheet now keeps its drag through a poll, on every sheet that closes with a drag.
+
 ## [1.27.0] - 2026-11-06
 
 ### Added
