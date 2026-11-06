@@ -2895,4 +2895,11 @@ export const ko: Dictionary = {
   "pins.reason.notPinnable": "해당 블록은 고정할 수 없습니다.",
   "pins.reason.gone": "해당 고정 항목이 사라졌습니다.",
   "pins.reason.olderBridge": "해당 머신의 Collie 버전이 낮아 고정 항목을 유지할 수 없습니다. 업데이트하십시오.",
+
+  // --- pins, belt mark and sheet (M90 spec 03) ---
+  "pins.belt.label": "{count}개 고정됨",
+  "pins.sheet.title": "고정된 메시지",
+  "pins.sheet.empty": "이 세션에 고정된 항목이 없습니다.",
+  "pins.action.show": "채팅에서 보기",
+  "pins.notice.notLoaded": "해당 블록이 채팅에 로드되지 않았습니다. 이전 메시지를 로드하려면 위로 스크롤하십시오.",
 };

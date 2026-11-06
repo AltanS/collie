@@ -3112,6 +3112,13 @@ export const en = {
   "pins.reason.notPinnable": "That block cannot be pinned.",
   "pins.reason.gone": "That pin is gone.",
   "pins.reason.olderBridge": "That machine's Collie is older and cannot keep pins. Update it.",
+
+  // --- pins, belt mark and sheet (M90 spec 03) ---
+  "pins.belt.label": "{count} pinned",
+  "pins.sheet.title": "Pinned messages",
+  "pins.sheet.empty": "Nothing is pinned in this session.",
+  "pins.action.show": "Show in Chat",
+  "pins.notice.notLoaded": "That block is not loaded in Chat. Scroll up to load older messages.",
 } as const;
 
 /** Every key that exists, as a union of string literals. The completeness contract. */

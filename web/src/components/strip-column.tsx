@@ -178,6 +178,9 @@ export function PaneColumnBody({
   const subagents = pane.subagents ?? [];
   const jobs = pane.jobs ?? [];
   const runningJobs = jobs.filter((job) => job.endedAt === undefined).length;
+  // The pinned messages the machine counts for this pane (M90). A column holds no list: the tap focuses the pane and
+  // its composer opens the sheet (lib/belt-intent.ts).
+  const pinCount = isShell ? 0 : (pane.pins ?? 0);
 
   const pill = (id: string): (() => void) => () => onIntent({ kind: "action", id });
   const general: GeneralAction[] = [
@@ -270,6 +273,16 @@ export function PaneColumnBody({
                   label: t("belt.jobs.label", { count: runningJobs }),
                   expanded: false,
                   onClick: () => onIntent({ kind: "jobs" }),
+                }
+              : undefined
+          }
+          pins={
+            pinCount > 0
+              ? {
+                  count: pinCount,
+                  label: t("pins.belt.label", { count: pinCount }),
+                  expanded: false,
+                  onClick: () => onIntent({ kind: "pins" }),
                 }
               : undefined
           }

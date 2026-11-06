@@ -17,6 +17,7 @@ vi.mock("@/lib/liveness", async (importOriginal) => ({
 import { clearStatus, useStatus } from "@/lib/status";
 import { fixtureAgents, fixtureCrewStatus, fixturePin, fixtureServers, fixtureShellPanes, heldMessagePins, messagePinItemIds, paneTextWithDraft, setMessagePins } from "@/test/handlers";
 import { forgetHostVersions } from "@/hooks/use-host-version";
+import { resetPinsForTests } from "@/lib/loaders";
 import { saveChatTail } from "@/lib/chat-tail";
 import { withHeaderHost } from "@/test/header-host";
 import { server } from "@/test/msw";
@@ -30,6 +31,8 @@ beforeAll(() => {
 beforeEach(() => {
   clearStatus();
   forgetHostVersions();
+  // The list each pane last answered outlives a pane view (lib/loaders.ts), so one case's pins would mark the next case's blocks.
+  resetPinsForTests();
   liveness.live = true;
   localStorage.setItem("collie:dash-prefs:v1", JSON.stringify({ paneView: "chat", showToolCalls: true }));
 });
@@ -231,3 +234,67 @@ describe("AgentChat — pins that already exist", () => {
     expect(mark.closest("[data-block]")).toHaveTextContent(ASKED);
   });
 });
+
+// The belt's Pins mark and its sheet inside the pane view (M90 spec 03).
+describe("AgentChat — the Pins mark and sheet", () => {
+  it("draws no mark for a session without pins", async () => {
+    renderPane();
+    await screen.findByText(ANSWERED);
+    expect(document.querySelector('[data-slot="belt-pins"]')).toBeNull();
+  });
+
+  it("lists the pins in the sheet, and unpinning the last one takes the mark away", async () => {
+    const user = userEvent.setup();
+    setMessagePins([fixturePin({ id: "pin-a", itemId: "t2:1", text: ANSWERED, pinnedAt: 1_700_000_000_000 })]);
+    renderPane();
+    const mark = await screen.findByRole("button", { name: "1 pinned" });
+    await user.click(mark);
+    const sheet = await screen.findByRole("dialog", { name: "Pinned messages" });
+    expect(within(sheet).getByText(ANSWERED)).toBeInTheDocument();
+    await user.click(within(sheet).getByRole("button", { name: "Unpin" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Pinned messages" })).toBeNull());
+    await waitFor(() => expect(document.querySelector('[data-slot="belt-pins"]')).toBeNull());
+    expect(heldMessagePins()).toEqual([]);
+  });
+
+  it("Show in Chat closes the sheets with no notice when the block is in Chat", async () => {
+    const user = userEvent.setup();
+    setMessagePins([fixturePin({ id: "pin-a", itemId: "t2:1", text: ANSWERED })]);
+    renderPane();
+    await user.click(await screen.findByRole("button", { name: "1 pinned" }));
+    await user.click(within(await screen.findByRole("dialog", { name: "Pinned messages" })).getByText(ANSWERED));
+    await user.click(await screen.findByRole("button", { name: "Show in Chat" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(screen.getByTestId("notice")).toHaveTextContent("");
+  });
+
+  it("Show in Chat says so when the block is not among the blocks Chat holds", async () => {
+    const user = userEvent.setup();
+    setMessagePins([fixturePin({ id: "pin-old", itemId: "long-ago:3", anchor: "an old line", text: "an old line" })]);
+    renderPane();
+    await user.click(await screen.findByRole("button", { name: "1 pinned" }));
+    await user.click(within(await screen.findByRole("dialog", { name: "Pinned messages" })).getByText("an old line"));
+    await user.click(await screen.findByRole("button", { name: "Show in Chat" }));
+    await waitFor(() => expect(screen.getByTestId("notice")).toHaveTextContent("That block is not loaded in Chat. Scroll up to load older messages."));
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("keeps the mark on a read-only device, and refuses its Unpin", async () => {
+    const user = userEvent.setup();
+    setMessagePins([fixturePin({ id: "pin-a", itemId: "t2:1", text: ANSWERED })]);
+    renderPane({ device: { enforced: true, device: "spare-phone", authorized: false } });
+    await user.click(await screen.findByRole("button", { name: "1 pinned" }));
+    await user.click(within(await screen.findByRole("dialog", { name: "Pinned messages" })).getByRole("button", { name: "Unpin" }));
+    expect(heldMessagePins()).toHaveLength(1);
+    expect(screen.getByTestId("notice").textContent).not.toBe("");
+  });
+
+  it("draws no mark on a bare shell, though the machine counts pins for the pane", async () => {
+    setMessagePins([fixturePin({ id: "pin-a", itemId: "t2:1", text: ANSWERED })]);
+    const shell = fixtureShellPanes[0]!;
+    renderPane({ agent: { ...shell, pins: 2 }, paneId: shell.paneId, agents: [], shellPanes: [shell] });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(document.querySelector('[data-slot="belt-pins"]')).toBeNull();
+  });
+});
+

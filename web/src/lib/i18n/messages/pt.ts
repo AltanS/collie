@@ -2733,4 +2733,11 @@ export const pt: Dictionary = {
   "pins.reason.notPinnable": "Esse bloco não pode ser fixado.",
   "pins.reason.gone": "Esse item fixado não existe mais.",
   "pins.reason.olderBridge": "O Collie dessa máquina é mais antigo e não pode manter itens fixados. Atualize-o.",
+
+  // --- pins, belt mark and sheet (M90 spec 03) ---
+  "pins.belt.label": "{count} fixadas",
+  "pins.sheet.title": "Mensagens fixadas",
+  "pins.sheet.empty": "Nada está fixado nesta sessão.",
+  "pins.action.show": "Mostrar no Chat",
+  "pins.notice.notLoaded": "Esse bloco não está carregado no Chat. Role para cima para carregar mensagens mais antigas.",
 };

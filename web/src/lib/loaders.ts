@@ -756,6 +756,11 @@ async function readWalky(paneId: string, scope: Scope, signal: AbortSignal | und
 /** The last list of pins each pane answered, so a pane opened again shows its mark before the next read lands (M90). */
 const lastPins = new Map<string, PinRow[]>();
 
+/** Forget every list of pins held, for a test: the lists outlive a pane view, so one case's would open the next. */
+export function resetPinsForTests(): void {
+  lastPins.clear();
+}
+
 /** The pins this phone last read for a pane, or `null` when it has not read any. */
 export function heldPins(paneId: string, scope: Scope | undefined): PinRow[] | null {
   return lastPins.get(paneKey(paneId, scope)) ?? null;

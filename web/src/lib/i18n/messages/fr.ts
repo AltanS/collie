@@ -2734,4 +2734,11 @@ export const fr: Dictionary = {
   "pins.reason.notPinnable": "Ce bloc ne peut pas être épinglé.",
   "pins.reason.gone": "Cet élément épinglé n'existe plus.",
   "pins.reason.olderBridge": "Le Collie de cette machine est plus ancien et ne peut pas conserver d'éléments épinglés. Mettez-le à jour.",
+
+  // --- pins, belt mark and sheet (M90 spec 03) ---
+  "pins.belt.label": "{count} épinglés",
+  "pins.sheet.title": "Messages épinglés",
+  "pins.sheet.empty": "Rien n'est épinglé dans cette session.",
+  "pins.action.show": "Afficher dans le chat",
+  "pins.notice.notLoaded": "Ce bloc n'est pas chargé dans le chat. Faites défiler vers le haut pour charger les messages plus anciens.",
 };

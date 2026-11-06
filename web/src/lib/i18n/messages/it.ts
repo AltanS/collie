@@ -2735,4 +2735,11 @@ export const it: Dictionary = {
   "pins.reason.notPinnable": "Impossibile aggiungere quel blocco ai pin.",
   "pins.reason.gone": "Quel messaggio fissato non esiste più.",
   "pins.reason.olderBridge": "Il Collie di quella macchina è più vecchio e non può conservare messaggi fissati. Aggiornalo.",
+
+  // --- pins, belt mark and sheet (M90 spec 03) ---
+  "pins.belt.label": "{count} fissati",
+  "pins.sheet.title": "Messaggi fissati",
+  "pins.sheet.empty": "Nessun elemento fissato in questa sessione.",
+  "pins.action.show": "Mostra nella Chat",
+  "pins.notice.notLoaded": "Quel blocco non è caricato nella Chat. Scorri verso l'alto per caricare i messaggi precedenti.",
 };

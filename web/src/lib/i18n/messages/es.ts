@@ -2918,4 +2918,11 @@ export const es: Dictionary = {
   "pins.reason.notPinnable": "Ese bloque no se puede fijar.",
   "pins.reason.gone": "Ese mensaje fijado ya no existe.",
   "pins.reason.olderBridge": "El Collie de esa máquina es más antiguo y no puede guardar mensajes fijados. Actualízalo.",
+
+  // --- pins, belt mark and sheet (M90 spec 03) ---
+  "pins.belt.label": "{count} fijados",
+  "pins.sheet.title": "Mensajes fijados",
+  "pins.sheet.empty": "No hay nada fijado en esta sesión.",
+  "pins.action.show": "Mostrar en el chat",
+  "pins.notice.notLoaded": "Ese bloque no está cargado en el chat. Desplázate hacia arriba para cargar los mensajes más antiguos.",
 };

@@ -2862,4 +2862,11 @@ export const ru: Dictionary = {
   "pins.reason.notPinnable": "Этот блок нельзя закрепить.",
   "pins.reason.gone": "Это закрепление удалено.",
   "pins.reason.olderBridge": "Collie на этой машине устарел и не может сохранять закрепленные сообщения. Обновите его.",
+
+  // --- pins, belt mark and sheet (M90 spec 03) ---
+  "pins.belt.label": "Закреплено: {count}",
+  "pins.sheet.title": "Закрепленные сообщения",
+  "pins.sheet.empty": "В этой сессии ничего не закреплено.",
+  "pins.action.show": "Показать в чате",
+  "pins.notice.notLoaded": "Этот блок не загружен в чате. Прокрутите вверх, чтобы загрузить более старые сообщения.",
 };

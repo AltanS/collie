@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type MutableRefObject, type RefObject } from "react";
 import { ArrowUpToLine, CornerDownLeft, History, Loader2 } from "lucide-react";
 
 import { ItemView, PendingTurn, ToolGroup, groupRuns, standsAlone } from "@/components/chat-cards";
@@ -15,8 +15,8 @@ import { finished, itemsOf, type ChatItem } from "@/lib/chat-items";
 import type { ChatStatus } from "@/lib/chat-window";
 import { dropPending, unmatched, usePending } from "@/lib/durable-pending";
 import { t, type MessageKey } from "@/lib/i18n";
-import { isPinnable } from "@/lib/message-pins";
-import type { Ask, QueuedSendRow } from "@/lib/types";
+import { blockOfPin, isPinnable } from "@/lib/message-pins";
+import type { Ask, PinRow, QueuedSendRow } from "@/lib/types";
 import { AskCard, type AskCardProps } from "@/components/ask-card";
 import { pinAt, promptMap } from "@/lib/prompt-pin";
 import { recallScroll, rememberScroll } from "@/lib/scroll-memory";
@@ -545,7 +545,12 @@ export function SessionStream({
    * it. Leave `onActions` out wherever Pin may not be offered (a shell, a read-only device, a saved copy, an
    * older machine) and the blocks draw no way in; the marks of pins that exist still show.
    */
-  pins?: { pinned: ReadonlyMap<string, string>; onActions?: (item: ChatItem) => void };
+  pins?: {
+    pinned: ReadonlyMap<string, string>;
+    onActions?: (item: ChatItem) => void;
+    /** Filled with a function that scrolls to the block a pin came from, and says whether the stream holds it (M90). */
+    reveal?: MutableRefObject<((pin: Pick<PinRow, "itemId" | "anchor">) => boolean) | null>;
+  };
 }) {
   // The subscription every `t()` caller owes, plus the counter the memo below needs.
   const { revision } = useLocale();
@@ -776,6 +781,22 @@ export function SessionStream({
     }
     setSeeking(null);
   }, [seeking, loadingOlder, blocks, window.hasOlder, onLoadOlder, jumpToBlock]);
+
+  // The Pins sheet's Show in Chat (M90): the block a pin came from, when this stream holds it. A block older than the
+  // loaded window is not fetched for it; the sheet says so instead.
+  const revealRef = pins?.reveal;
+  useEffect(() => {
+    if (revealRef === undefined) return;
+    revealRef.current = (target) => {
+      const index = blockOfPin(blocks, target);
+      if (index < 0) return false;
+      jumpToBlock(index);
+      return true;
+    };
+    return () => {
+      revealRef.current = null;
+    };
+  }, [revealRef, blocks, jumpToBlock]);
 
   const onPinTap = () => {
     if (pin === null) return;

@@ -2921,4 +2921,11 @@ export const de: Dictionary = {
   "pins.reason.notPinnable": "Dieser Block kann nicht angeheftet werden.",
   "pins.reason.gone": "Diese angeheftete Nachricht ist nicht mehr da.",
   "pins.reason.olderBridge": "Das Collie dieser Maschine ist älter und kann keine Pins speichern. Aktualisiere es.",
+
+  // --- pins, belt mark and sheet (M90 spec 03) ---
+  "pins.belt.label": "{count} angeheftet",
+  "pins.sheet.title": "Angeheftete Nachrichten",
+  "pins.sheet.empty": "In dieser Sitzung ist nichts angeheftet.",
+  "pins.action.show": "Im Chat anzeigen",
+  "pins.notice.notLoaded": "Dieser Block ist im Chat nicht geladen. Scrolle nach oben, um ältere Nachrichten zu laden.",
 };

@@ -34,6 +34,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **The phone speaks to the pins route.** The pane view reads a session's pins once when it opens, follows the pin count the machine reports, and pins or unpins a block with the machine's own reason when it refuses. A member on a Collie older than 1.28.0 is told so instead of failing silently.
 - **A hold on a Chat block, or its ⋯, pins it.** Every message, reply, thinking block and tool card in Chat has a small ⋯ at its top right that opens a sheet with Pin (or Unpin) and Copy text, and a hold or a right click opens the same sheet. A pinned block carries a small pin mark. A reply that is still being written, a picture, a shell pane, a read-only device, a saved copy and a machine on a Collie older than 1.28.0 offer no Pin.
 - **A Pins mark in the belt shows how many messages are pinned.** While a session has pins, a pin mark with their count stands beside the Agents and Jobs marks, and the ack manifest names how Pin and Unpin are acknowledged.
+- **The Pins mark opens the pinned messages.** Its sheet lists the pins newest first, each with an Unpin. A tap on a row opens the whole text, with Unpin and Show in Chat, which scrolls Chat to the block when it is loaded. On a wide screen a tap on the mark in another column focuses that pane and opens the sheet.
 
 ### Changed
 

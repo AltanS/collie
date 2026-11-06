@@ -2877,4 +2877,11 @@ export const zhTW: Dictionary = {
   "pins.reason.notPinnable": "無法釘選該區塊。",
   "pins.reason.gone": "該釘選項目已不存在。",
   "pins.reason.olderBridge": "該機器上的 Collie 版本較舊，無法保存釘選項目。請更新。",
+
+  // --- pins, belt mark and sheet (M90 spec 03) ---
+  "pins.belt.label": "{count} 個已釘選",
+  "pins.sheet.title": "已釘選的訊息",
+  "pins.sheet.empty": "此工作階段中沒有釘選任何內容。",
+  "pins.action.show": "在聊天中顯示",
+  "pins.notice.notLoaded": "該區塊尚未載入聊天中。向上捲動以載入較早的訊息。",
 };

@@ -155,7 +155,7 @@ import { paneFilesDir } from "@/lib/file-paths";
 import { changesPath, filesPath, historyPath, newPath, panePath, spacePath } from "@/lib/nav";
 import { isReadOnly, statusLabel } from "@/lib/types";
 import { usePairing } from "@/lib/pairing";
-import type { AgentView, BridgeStatus, DeviceAuth, ServerSummary, TabView } from "@/lib/types";
+import type { AgentView, BridgeStatus, DeviceAuth, PinRow, ServerSummary, TabView } from "@/lib/types";
 import type {
   MenuModel,
   MultiSelectModel,
@@ -1878,6 +1878,9 @@ export function AgentChat({
   const pinsWritable = pinsReadable && !readOnly;
   // The block whose actions sheet is open, as the stream handed it over.
   const [blockActions, setBlockActions] = useState<ChatItem | null>(null);
+  // Filled by the stream with "scroll to the block this pin came from" (Show in Chat on the Pins sheet).
+  const revealPin = useRef<((pin: Pick<PinRow, "itemId" | "anchor">) => boolean) | null>(null);
+  const showPin = (pin: PinRow): boolean => revealPin.current?.(pin) ?? false;
   const pinnedPinId = (item: ChatItem): string => messagePins.pinned.get(item.id) ?? "";
   const pinBlock = (item: ChatItem) => {
     const refusal = refuseWrite();
@@ -1887,15 +1890,15 @@ export function AgentChat({
     }
     void messagePins.pin(item);
   };
-  const unpinBlock = (item: ChatItem) => {
+  const unpinById = (pinId: string) => {
     const refusal = refuseWrite();
     if (refusal) {
       setStatus(refusal, "error");
       return;
     }
-    const pinId = pinnedPinId(item);
     if (pinId !== "") void messagePins.unpin(pinId);
   };
+  const unpinBlock = (item: ChatItem) => unpinById(pinnedPinId(item));
   const handleSendQueuedNow = useCallback(
     async (keys: readonly string[]): Promise<boolean> => {
       const refusal = refuseWrite();
@@ -2823,7 +2826,7 @@ export function AgentChat({
                   agent={agent?.agent}
                   // The pinned messages (M90): the mark on a pinned block always, the way in to Pin only where a
                   // write is allowed (`pinsWritable`).
-                  pins={{ pinned: messagePins.pinned, onActions: pinsWritable ? setBlockActions : undefined }}
+                  pins={{ pinned: messagePins.pinned, onActions: pinsWritable ? setBlockActions : undefined, reveal: revealPin }}
                   // A pane with no screen is a durable conversation: its thread shows the person's line at once,
                   // a working row while the program thinks, and a cursor on a reply still being written.
                   durable={gridless}
@@ -3350,6 +3353,11 @@ export function AgentChat({
                   todos={agent?.todos}
                   subagents={agent?.subagents}
                   jobs={agent?.jobs}
+                  pins={
+                    pinsReadable
+                      ? { count: messagePins.count, rows: messagePins.rows, onUnpin: unpinById, onOpened: messagePins.refresh, onShow: showPin }
+                      : undefined
+                  }
                   // The belt's ⚙: the button is the composer's, the sheet it opens is mounted below
                   // beside the switcher's, for the stacking-context reason the pane-menu note gives.
                   display={{

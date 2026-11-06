@@ -2733,4 +2733,11 @@ export const tr: Dictionary = {
   "pins.reason.notPinnable": "Bu blok sabitlenemez.",
   "pins.reason.gone": "Bu sabitleme kaldırılmış.",
   "pins.reason.olderBridge": "Bu makinedeki Collie daha eski bir sürümdür ve sabitlemeleri tutamaz. Güncelleyin.",
+
+  // --- pins, belt mark and sheet (M90 spec 03) ---
+  "pins.belt.label": "{count} sabitlendi",
+  "pins.sheet.title": "Sabitlenen iletiler",
+  "pins.sheet.empty": "Bu oturumda sabitlenmiş hiçbir şey yok.",
+  "pins.action.show": "Sohbette Göster",
+  "pins.notice.notLoaded": "Bu blok Sohbette yüklenmedi. Daha eski iletileri yüklemek için yukarı kaydırın.",
 };

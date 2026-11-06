@@ -2883,4 +2883,11 @@ export const zh: Dictionary = {
   "pins.reason.notPinnable": "无法固定该内容块。",
   "pins.reason.gone": "该固定项已不存在。",
   "pins.reason.olderBridge": "该机器上的 Collie 版本较旧，无法保留固定项。请对其进行更新。",
+
+  // --- pins, belt mark and sheet (M90 spec 03) ---
+  "pins.belt.label": "已固定 {count} 条",
+  "pins.sheet.title": "固定的消息",
+  "pins.sheet.empty": "当前会话中没有固定内容。",
+  "pins.action.show": "在聊天中显示",
+  "pins.notice.notLoaded": "该块未加载到聊天中。向上滚动以加载更早的消息。",
 };

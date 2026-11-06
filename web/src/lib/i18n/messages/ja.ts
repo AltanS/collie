@@ -2902,4 +2902,11 @@ export const ja: Dictionary = {
   "pins.reason.notPinnable": "該当のブロックはピン留めできません。",
   "pins.reason.gone": "該当のピン留めは削除されました。",
   "pins.reason.olderBridge": "該当マシンのCollieのバージョンが古いため、ピン留めを保持できません。アップデートしてください。",
+
+  // --- pins, belt mark and sheet (M90 spec 03) ---
+  "pins.belt.label": "{count}件固定中",
+  "pins.sheet.title": "固定されたメッセージ",
+  "pins.sheet.empty": "このセッションで固定されているものはありません。",
+  "pins.action.show": "チャットで表示",
+  "pins.notice.notLoaded": "そのブロックはチャットに読み込まれていません。上にスクロールして過去のメッセージを読み込んでください。",
 };
