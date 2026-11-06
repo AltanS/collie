@@ -1,19 +1,25 @@
 // ── A PANE YOU ARE READING NEEDS NO NOTIFICATION ON THIS DEVICE ─────────────────────────────────
 //
-// Every read the page marks as seen (`fetchPane`, the `x-collie-seen` header) closes this device's
-// own notification for that pane first. The bridge counts on it: after such a read it skips the
-// pane's clear to this device (bridge/push.ts, rule 2), because a clear that leaves nothing on screen
-// is a silent push, and Chrome shows "This site has been updated in the background" once a site has
-// sent too many. The page says it does this when it subscribes (`closesOwn` in lib/push.ts), so a
-// page that predates this file keeps getting the clear.
+// Every read the page marks as seen (`fetchPane`, the `x-collie-seen` header) first does on this
+// device what the pane's clear would do there: it closes the pane's own notification, and it sets
+// the pane's slot in the icon's count to zero (lib/app-badge.ts) and shows the new total. The bridge
+// counts on it: after such a read it skips the pane's clear to this device (bridge/push.ts, rule 2),
+// because a clear that leaves nothing on screen is a silent push, and Chrome shows "This site has
+// been updated in the background" once a site has sent too many. The page says it does this when it
+// subscribes (`closesOwn` in lib/push.ts), so a page that predates this file keeps getting the clear.
 //
 // So the close must cover at least the slot the bridge then calls closed: the pane's own
 // notification, on the machine and in the session the read named. It matches on the notification's
 // `data`, which the bridge stamped (bridge/notifications.ts), by the same normalised scope the read
 // put on the wire. A notification it cannot match it leaves alone; the bridge's clear still covers
-// those.
+// those. The slot it zeroes is named the way the bridge names it (`seenSlotTag`, bridge/server.ts).
+// A pane that is still blocked comes back into the count with its next push; the page that is open
+// shows its own count meanwhile (routes/home.tsx).
 
-import type { NotifData } from "./push-decision";
+import { recordSlot, showBadge, type BadgeCaches, type BadgeTarget } from "./app-badge";
+import { basePath } from "./base-path";
+import { cacheStorage } from "./env";
+import { hostSlot, type NotifData } from "./push-decision";
 import { normalizeScope, type Scope } from "./scope";
 
 /** Whether a shown notification's data is this pane's own, on this machine and in this session. */
@@ -25,6 +31,20 @@ export function isPaneNotification(data: NotifData | null | undefined, paneId: s
   const got = normalizeScope({ host: data.host, session: data.session });
   return want.host === got.host && want.session === got.session;
 }
+
+/**
+ * The pane's own notification slot, as the bridge's sink names it: `paneTag` of the session's herd
+ * tag (bridge/notifications.ts, bridge/sessions.ts, bridge/crew/tags.ts). A member's pane is alerted
+ * from its primary session only, so a member's named session names no slot.
+ */
+export function paneSlotTag(paneId: string, scope?: Scope): string | null {
+  const { host, session } = normalizeScope(scope);
+  if (host !== undefined) return session === undefined ? `${hostSlot(HERD_SLOT, host)}:${paneId}` : null;
+  return session === undefined ? `${HERD_SLOT}:${paneId}` : `${HERD_SLOT}:${session}:${paneId}`;
+}
+
+/** The base of every herd slot, `herdTagFor`'s in bridge/sessions.ts. */
+const HERD_SLOT = "collie:herd";
 
 /** The slice of a service worker registration this needs, so a test can hand in a fake. */
 export interface NotificationSource {
@@ -48,8 +68,29 @@ export async function closePaneNotificationsIn(
   }
 }
 
-/** Close this device's notification for a pane, through the page's service worker registration. */
+/** Where the icon's count lives and is shown, so a test can hand in fakes. */
+export interface BadgeHome {
+  caches: BadgeCaches;
+  origin: string;
+  mount: string;
+  target: BadgeTarget;
+}
+
+/** Set the pane's slot in the icon's count to zero and show the new total. Never throws. */
+export async function zeroPaneSlotIn(home: BadgeHome, paneId: string, scope?: Scope): Promise<void> {
+  const tag = paneSlotTag(paneId, scope);
+  if (tag === null) return;
+  try {
+    await showBadge(home.target, await recordSlot(home.caches, home.origin, home.mount, tag, 0));
+  } catch {
+    // Cache Storage refused: the count stays as the worker last left it.
+  }
+}
+
+/** Do on this device what the pane's clear would: close its notification and zero its count. */
 export async function closePaneNotifications(paneId: string, scope?: Scope): Promise<void> {
+  const caches = cacheStorage();
+  if (caches !== null) await zeroPaneSlotIn({ caches, origin: location.origin, mount: basePath(), target: navigator }, paneId, scope);
   if (!("serviceWorker" in navigator)) return;
   try {
     const registration = await navigator.serviceWorker.getRegistration();
