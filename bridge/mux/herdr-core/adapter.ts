@@ -94,7 +94,7 @@ const HERDR_CORE_CAPABILITIES = declareCapabilities({
     agentDetection:
       "herdr-core names the agent in a terminal from the agent's own status report. A program that sends no report is named from the process in the foreground, through the same table (omp sends none), and then has no status. A shell, or a process Collie has no harness for, reads as a shell.",
     agentSessionRef:
-      "herdr-core keeps an agent's status but not its conversation id. The agent's own hook supplies it: install the hooks with `collie hooks install claude`. A `<harness>.session_file` terminal label is read as a discovery hint (ADR 0024), not reported as a ref.",
+      "herdr-core keeps an agent's status but not its conversation id. The agent's own hook supplies it: install the hooks with `collie hooks install claude`, and for Codex `collie hooks install codex --native`. A `<harness>.session_file` terminal label is read as a discovery hint (ADR 0024), not reported as a ref.",
     sendKeys:
       "herdr-core presses keys by name. A Super or Command chord, Ctrl+Enter, and a modified key it has no name for (such as Ctrl+$) are refused.",
     renamePane: "herdr-core has no command that renames a terminal.",

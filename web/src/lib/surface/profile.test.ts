@@ -160,6 +160,9 @@ describe("the codex profile (M56 spec 13)", () => {
     expect(codex.probe).toMatchObject({ char: "⌁", status: "verified" });
     expect(codex.hooks["agent-turn-complete"]).toBe("edge");
     expect(codex.edges?.events["agent-turn-complete"]).toBe("stop");
+    // The native hooks (`collie hooks install codex --native`): the four events `beacon codex-hook` keeps.
+    expect(codex.edges?.events).toMatchObject({ SessionStart: "start", UserPromptSubmit: "prompt", Stop: "stop", SessionEnd: "end" });
+    expect(codex.hold).toBeUndefined();
   });
 
   it("codex: the prompt anchor takes the box and its draft, and never a numbered dialog row", () => {

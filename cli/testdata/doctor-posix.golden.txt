@@ -38,6 +38,9 @@ local:
                                     `/opt/collie/bin/collie`; herdr names agents
                                     itself and does not need them for that, so
                                     they give hook edges only
+  ✓        beacon-hooks-codex       not needed — herdr names Codex panes and
+                                    their sessions itself; native hooks
+                                    installed: no
   skipped: beacons                  no agent has written one yet — the emitter
                                     is installed, and a beacon appears at an
                                     agent's first hook event → start (or prompt)
@@ -161,6 +164,9 @@ local:
                                     `/opt/collie/bin/collie`; herdr names agents
                                     itself and does not need them for that, so
                                     they give hook edges only
+  ✓        beacon-hooks-codex       not needed — herdr names Codex panes and
+                                    their sessions itself; native hooks
+                                    installed: no
   skipped: beacons                  no agent has written one yet — the emitter
                                     is installed, and a beacon appears at an
                                     agent's first hook event → start (or prompt)

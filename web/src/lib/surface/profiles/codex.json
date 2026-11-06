@@ -134,13 +134,21 @@
     "lifetimeMs": 5000
   },
   "hooks": {
-    "agent-turn-complete": "edge"
+    "agent-turn-complete": "edge",
+    "SessionStart": "edge",
+    "UserPromptSubmit": "edge",
+    "Stop": "edge",
+    "SessionEnd": "edge"
   },
   "edges": {
     "rereadMs": 700,
     "settleMs": 1500,
     "events": {
-      "agent-turn-complete": "stop"
+      "agent-turn-complete": "stop",
+      "SessionStart": "start",
+      "UserPromptSubmit": "prompt",
+      "Stop": "stop",
+      "SessionEnd": "end"
     }
   }
 }

@@ -327,6 +327,20 @@ describe("the history section", () => {
     expect(present.get("agent-sessions")?.status).toBe("ok");
   });
 
+  test("where a hook adds the session, a Codex pane with none is pointed at the native hooks and --no-daemon, never at Herdr", async () => {
+    const found = await run({ snapshot: snapshotOf([{ paneId: "t1kh", agent: "codex" }]), sessionsFromHooks: true });
+    const row = found.get("agent-sessions");
+    // Still not a fault: Codex names its session only at its first prompt.
+    expect(row?.status).toBe("ok");
+    expect(row?.detail).toContain("t1kh (codex)");
+    expect(row?.detail).toContain("collie hooks install codex --native");
+    expect(row?.detail).toContain("codex --no-daemon");
+    expect(row?.detail).not.toContain("herdr integration install");
+    // Under the Herdr TUI the note still names Herdr's own integration.
+    const herdr = await run({ snapshot: snapshotOf([{ paneId: "w2:p5", agent: "codex" }]) });
+    expect(herdr.get("agent-sessions")?.detail).toContain("herdr integration install codex");
+  });
+
   // An omp pane reads through pi's adapter, so the bridge hides its History and Chat when it names no
   // session, and `collie doctor` has to say so and name omp's own hook.
   test("an omp pane with no session is named, and its own hook is the remedy", async () => {

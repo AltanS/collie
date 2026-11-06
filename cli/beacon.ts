@@ -269,6 +269,11 @@ export const BEACON_HARNESS = "claude";
  */
 const SESSION_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
 
+/** The payload's `session_id`, pattern-checked as {@link SESSION_ID} says, or null. */
+export function sessionIdOf(payload: JsonObject): string | null {
+  return readField(payload, "session_id", SESSION_ID);
+}
+
 /** The parsed payload as an object, or null. A payload that is not an object tells us nothing. */
 function asObject(value: JsonValue): JsonObject | null {
   return value instanceof Object && !Array.isArray(value) ? value : null;
@@ -405,6 +410,47 @@ export function readProcessInfo(pid: number): ProcessInfo | null {
   }
 }
 
+/** Linux's per-process argument list: every argument, each ended by a NUL. */
+export const procCmdlinePath = (pid: number): string => `/proc/${pid}/cmdline`;
+
+/** `/proc/<pid>/cmdline` as the argument list, or null when it holds none (a kernel thread, a zombie). */
+export function parseProcCmdline(text: string): string[] | null {
+  const args = text.split("\u0000").filter((arg) => arg !== "");
+  return args.length === 0 ? null : args;
+}
+
+/**
+ * One `ps -o args=` line as the argument list, or null when it is empty. `ps` joins the arguments
+ * with spaces, so they are split on white space: a program path with a space in it comes back in two
+ * parts and then names no program, which every caller reads as "not the process I look for".
+ */
+export function parsePsArgs(text: string): string[] | null {
+  const args = text.trim().split(/\s+/u).filter((arg) => arg !== "");
+  return args.length === 0 ? null : args;
+}
+
+/**
+ * The arguments a process runs with: `/proc/<pid>/cmdline` on Linux, one `ps -ww -o args=` run on
+ * macOS (about 20 ms, the same bound as the start-time probe). Any other platform, and any failure, is
+ * null. Read by `collie beacon codex-hook` (cli/codex-hook.ts), which must tell a Codex window from
+ * Codex's shared app-server before it names a pane's session.
+ */
+export function readProcessArgs(pid: number): string[] | null {
+  try {
+    if (HOST.platform === "linux") return parseProcCmdline(readFileSync(procCmdlinePath(pid), "utf8"));
+    if (HOST.platform !== "darwin") return null;
+    const text = execFileSync("/bin/ps", ["-ww", "-o", "args=", "-p", String(pid)], {
+      encoding: "utf8",
+      env: { LC_ALL: "C" },
+      timeout: 1000,
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    return parsePsArgs(text);
+  } catch {
+    return null;
+  }
+}
+
 /**
  * The pid's start time, from the platform's probe (`bridge/beacon/liveness.ts`): the stat file on
  * Linux, one `ps -o lstart=` run on macOS (`darwin`), where there is no stat file (M80 spec 11,
@@ -432,7 +478,7 @@ export function readPidStartTime(deps: Pick<BeaconEmitDeps, "files" | "pidProbe"
  * this one, never half of either. The temp name carries the pid so two hooks firing at once in two
  * panes cannot collide on it.
  */
-function writeBeacon(deps: BeaconEmitDeps, stateDir: string, record: BeaconRecord): void {
+export function writeBeacon(deps: Pick<BeaconEmitDeps, "files">, stateDir: string, record: BeaconRecord): void {
   const dir = beaconsDir(stateDir);
   const key = beaconKey(record.markers);
   const temp = join(dir, `.${key}.${record.pid}.tmp`);
@@ -569,7 +615,7 @@ export function liveHookTargets(deps: EdgeTargetDeps): HookTargetRecord[] {
 }
 
 /** True when every marker is a Herdr one: Herdr names its agents itself, so no beacon is written. */
-function herdrOnly(markers: readonly BeaconMarker[]): boolean {
+export function herdrOnly(markers: readonly BeaconMarker[]): boolean {
   return markers.every((marker) => marker.namespace === HERDR_NAMESPACE);
 }
 

@@ -2,6 +2,7 @@ import { basename, dirname, isAbsolute, join } from "node:path";
 
 import { BEACON_HOOKS, type HookRegistration } from "./beacon.ts";
 import { cmdCodexHooksInstall, cmdCodexHooksUninstall, codexHooksStatusLine } from "./codex-hooks.ts";
+import { cmdCodexNativeInstall, cmdCodexNativeUninstall, codexNativeStatusLine, NATIVE_FLAG } from "./codex-native.ts";
 import { hookTargetsDir } from "../bridge/beacon/hook-targets.ts";
 import type { JsonObject, JsonValue } from "../bridge/json.ts";
 import type { CliContext } from "./context.ts";
@@ -62,7 +63,8 @@ import { statusLineBehind, statusLineState, unwrapStatusLine, wrapStatusLine } f
 
 /**
  * The harnesses that have an emitter. Claude takes the hooks in its settings files; Codex takes one
- * notify command in its config.toml (cli/codex-hooks.ts, M56 spec 13).
+ * notify command in its config.toml (cli/codex-hooks.ts, M56 spec 13), or with `--native` its own
+ * lifecycle hooks in hooks.json (cli/codex-native.ts).
  */
 export const HOOK_HARNESSES = ["claude", "codex"] as const;
 
@@ -622,9 +624,12 @@ function readHarness(deps: HooksDeps, args: readonly string[], verb: string): st
 export function cmdHooksInstall(deps: HooksDeps, args: readonly string[]): number {
   const harness = readHarness(deps, args, "install");
   if (harness === null) return EXIT.USAGE;
-  const unknown = args.slice(1).filter((arg) => arg !== HOLD_FLAG && arg !== STATUSLINE_FLAG);
+  // `--native` belongs to codex alone; `--statusline` is known to codex only to refuse it by name below.
+  const known = harness === "codex" ? [HOLD_FLAG, STATUSLINE_FLAG, NATIVE_FLAG] : [HOLD_FLAG, STATUSLINE_FLAG];
+  const unknown = args.slice(1).filter((arg) => !known.includes(arg));
   if (unknown.length > 0) {
-    deps.io.err(`error: unknown option \`${unknown[0]!}\`. The options are \`${HOLD_FLAG}\` and \`${STATUSLINE_FLAG}\`.`);
+    const options = harness === "codex" ? `\`${NATIVE_FLAG}\`` : `\`${HOLD_FLAG}\` and \`${STATUSLINE_FLAG}\``;
+    deps.io.err(`error: unknown option \`${unknown[0]!}\`. The ${harness === "codex" ? "option is" : "options are"} ${options}.`);
     return EXIT.USAGE;
   }
   const { command, binary, source } = resolveHookCommand(deps.ctx, deps.fs);
@@ -635,11 +640,14 @@ export function cmdHooksInstall(deps: HooksDeps, args: readonly string[]): numbe
       deps.io.err(`error: \`codex\` has no statusLine to wrap. Run \`collie hooks install codex\` without \`${STATUSLINE_FLAG}\`.`);
       return EXIT.USAGE;
     }
-    // Codex has no permission hook to hold: its install writes the notify hook only.
+    // Collie holds no Codex permission: neither install writes a permission hook.
     if (wantsHold) {
-      deps.io.err(`error: \`codex\` has no permission hold. Run \`collie hooks install codex\` without \`${HOLD_FLAG}\`.`);
+      const bare = args.includes(NATIVE_FLAG) ? `codex ${NATIVE_FLAG}` : "codex";
+      deps.io.err(`error: \`codex\` has no permission hold. Run \`collie hooks install ${bare}\` without \`${HOLD_FLAG}\`.`);
       return EXIT.USAGE;
     }
+    // Codex's own lifecycle hooks in hooks.json (cli/codex-native.ts), beside the notify line, never instead of it.
+    if (args.includes(NATIVE_FLAG)) return cmdCodexNativeInstall(deps, binary, PINNED_NOTE[source]);
     return cmdCodexHooksInstall(deps, binary, PINNED_NOTE[source]);
   }
   const hold = wantsHold ? holdInstallFor(harness, binary) : null;
@@ -739,7 +747,7 @@ export function cmdHooksInstall(deps: HooksDeps, args: readonly string[]): numbe
 export function cmdHooksUninstall(deps: HooksDeps, args: readonly string[]): number {
   const harness = readHarness(deps, args, "uninstall");
   if (harness === null) return EXIT.USAGE;
-  if (harness === "codex") return cmdCodexHooksUninstall(deps);
+  if (harness === "codex") return uninstallCodex(deps, args.slice(1));
   let failed = false;
   let removed = 0;
 
@@ -772,6 +780,21 @@ export function cmdHooksUninstall(deps: HooksDeps, args: readonly string[]): num
   if (failed) return EXIT.FAIL;
   if (removed === 0) deps.io.out("nothing to remove — no settings file here carries a collie-beacon entry.");
   return EXIT.OK;
+}
+
+/**
+ * `collie hooks uninstall codex`: the notify line and the native hooks, each removing only its own, so
+ * the operator need not remember which one they installed. `--native` removes the native hooks alone.
+ */
+function uninstallCodex(deps: HooksDeps, flags: readonly string[]): number {
+  const unknown = flags.filter((flag) => flag !== NATIVE_FLAG);
+  if (unknown.length > 0) {
+    deps.io.err(`error: unknown option \`${unknown[0]!}\`. The option is \`${NATIVE_FLAG}\`.`);
+    return EXIT.USAGE;
+  }
+  const legacy = flags.includes(NATIVE_FLAG) ? EXIT.OK : cmdCodexHooksUninstall(deps);
+  const native = cmdCodexNativeUninstall(deps);
+  return legacy !== EXIT.OK ? legacy : native;
 }
 
 /**
@@ -867,6 +890,7 @@ export function cmdHooksStatus(deps: HooksDeps, args: readonly string[] = []): n
     deps.io.out(`${target.path}: ${describeTarget(deps, target)}`);
   }
   deps.io.out(codexHooksStatusLine(deps, binary));
+  deps.io.out(codexNativeStatusLine(deps, binary));
   return EXIT.OK;
 }
 
@@ -938,6 +962,7 @@ export function cmdHooks(deps: HooksDeps, args: readonly string[]): number {
       deps.io.err(hooksUsage());
       deps.io.err("  install     register the beacon hooks: `hooks install claude` (add `--hold-permissions` to hold permissions, and `--statusline` to also wrap your statusLine");
       deps.io.err("              so the phone shows the 5-hour and 7-day windows; your command still runs and prints as before), or `hooks install codex`");
+      deps.io.err("              (add `--native` for Codex's own hooks, which name a Codex pane's session on herdr-core)");
       deps.io.err("  uninstall   remove only the entries collie owns: `hooks uninstall claude`, or `hooks uninstall codex`");
       deps.io.err("  status      what each settings file carries right now (reads only)");
       return EXIT.USAGE;

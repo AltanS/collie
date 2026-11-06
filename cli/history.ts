@@ -168,8 +168,26 @@ export const reportsOnFirstPrompt = (agent: string): boolean => REPORTS_SESSION_
 const namePanes = (panes: readonly PaneVerdict[]): string =>
   panes.map((v) => `${v.pane.paneId} (${v.pane.agent})`).join(", ");
 
-/** The one explanation both findings give for a first-prompt pane with no session yet. */
-export function firstPromptNote(agent: string): string {
+/** The first-prompt agent whose session a Collie hook supplies on herdr-core. */
+const CODEX = "codex";
+
+/**
+ * The one explanation both findings give for a first-prompt pane with no session yet.
+ *
+ * `fromHooks` is a multiplexer that names agents but not their sessions (herdr-core, M74), where Herdr's
+ * integration does nothing and the session comes from Collie's own hook. Codex is the one first-prompt
+ * agent, and its hook there is the native one (cli/codex-native.ts), which names a pane only from a Codex
+ * started without its shared app-server.
+ */
+export function firstPromptNote(agent: string, fromHooks = false): string {
+  if (fromHooks && agent === CODEX) {
+    return (
+      `${agent} names its session only after its first prompt, so a pane with no turn yet has none;` +
+      ` here Collie's native Codex hooks name it: \`collie hooks install codex --native\`, trust them when` +
+      ` ${agent} shows "Hooks need review", and start it as \`codex --no-daemon\` (plain \`codex\` runs its hooks` +
+      " in a shared app-server that names no pane)"
+    );
+  }
   return (
     `${agent} reports its session to Herdr only after its first prompt, so a pane with no turn yet has none;` +
     ` if one still has none after a reply, review its hooks with \`/hooks\` in ${agent} (a hook left` +
@@ -268,7 +286,7 @@ export async function historyFindings(deps: HistoryDeps): Promise<Finding[]> {
     ...JOURNAL_AGENT_NAMES.map((agent) => integration(agent, status, verdicts)),
     python(deps),
     deps.noSessionRefs === undefined
-      ? sessions(verdicts, read, deps.sessionsFromHooks === true ? HOOK_REMEDY : undefined)
+      ? sessions(verdicts, read, deps.sessionsFromHooks === true)
       : skipped(
           "agent-sessions",
           `no pane can report an agent session here: ${deps.noSessionRefs}`,
@@ -425,7 +443,7 @@ function python(deps: HistoryDeps): Finding {
  * observed consequence. A journalled agent pane without `hasSession` is precisely the pane whose
  * History link the phone will not draw.
  */
-function sessions(verdicts: readonly PaneVerdict[] | null, read: SnapshotRead, remedy?: string): Finding {
+function sessions(verdicts: readonly PaneVerdict[] | null, read: SnapshotRead, fromHooks: boolean): Finding {
   const check = "agent-sessions";
   if (verdicts === null) {
     // A REFUSAL IS NOT A SILENCE (issue #238). The bridge fails closed on a request carrying no
@@ -469,14 +487,15 @@ function sessions(verdicts: readonly PaneVerdict[] | null, read: SnapshotRead, r
     waiting.length === 0
       ? ""
       : `; ${String(waiting.length)} report no session YET: ${namePanes(waiting)} — ` +
-        waitingAgents.map((agent) => firstPromptNote(agent)).join("; ");
+        waitingAgents.map((agent) => firstPromptNote(agent, fromHooks)).join("; ");
   if (faulty.length === 0) return ok(check, `${summary}${notYet}`);
   return bad(
     check,
     `${summary}; ${String(faulty.length)} report NO session: ${namePanes(faulty)} — their History link and icon are` +
       ` hidden, and the pane looks otherwise normal${notYet}`,
-    remedy ??
-      `\`herdr integration install <agent>\` for each agent named above (the \`integration-…\` lines say which),` +
+    fromHooks
+      ? HOOK_REMEDY
+      : `\`herdr integration install <agent>\` for each agent named above (the \`integration-…\` lines say which),` +
         ` ${INSTALL_NOTE}`,
   );
 }

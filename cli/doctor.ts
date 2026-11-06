@@ -11,6 +11,7 @@ import {
   resolveHookCommand,
   type HookTarget,
 } from "./hooks.ts";
+import { NATIVE_FLAG, NATIVE_MARKER_VERSION, readNativeState, type NativeReading } from "./codex-native.ts";
 import { skillReport } from "./skill-install.ts";
 import { HOST, type Host } from "../bridge/host.ts";
 import { beaconReader } from "../bridge/beacon-io.ts";
@@ -239,6 +240,10 @@ export async function cmdDoctor(deps: DoctorDeps, args: readonly string[]): Prom
   // The emitter's two findings ride together: the second one's wording depends on whether an install
   // was found, and reading the settings files twice would be two answers to one question.
   const hookEntries = installedEntries(deps);
+  // Codex's own hooks (`hooks install codex --native`), read once: their row, and whether ANY emitter
+  // is installed, which the beacon and session rows ask (the bridge's own probe counts both too).
+  const codexNative = readNativeState({ files: deps.files, fs: deps.link, ctx: deps.ctx }, resolveHookCommand(deps.ctx, deps.link).binary);
+  const anyHooks = hookEntries.length > 0 || codexNativeInstalled(codexNative);
   // The third thing that rides with them: whether the configured multiplexer names its own agents.
   // An unknown mux name reads as `true` here — `mux` is already an error about exactly that, and a
   // second red line derived from the same typo teaches an operator to skim.
@@ -303,7 +308,8 @@ export async function cmdDoctor(deps: DoctorDeps, args: readonly string[]): Prom
     // on POSIX the mode bits are checked where the files are read, as before.
     ...(deps.host.platform === "win32" ? [windowsTask(deps), windowsLongPaths(deps), secretsPrivate(deps)] : []),
     beaconHooks(deps, hookEntries, declaration?.supports.agentDetection ?? true, sessionsFromHooks),
-    await beacons(deps, hookEntries.length > 0),
+    codexHooks(deps, codexNative, declaration?.supports.agentDetection ?? true, sessionsFromHooks),
+    await beacons(deps, anyHooks),
     skillWalkyTalky(deps),
     ...walkyRefusals(deps),
     accountWindowsFinding(deps),
@@ -321,7 +327,7 @@ export async function cmdDoctor(deps: DoctorDeps, args: readonly string[]): Prom
       files: deps.files,
       snapshot: ownRead,
       host: deps.host,
-      ...sessionRefDeps(declaration, chosen, sessionsFromHooks, hookEntries.length > 0),
+      ...sessionRefDeps(declaration, chosen, sessionsFromHooks, anyHooks),
     })),
     // Whether the prompt-cache chip is telling the truth: every TTL's date, and the one variable
     // `doctor` can read that the bridge deliberately cannot (ADR 0041). Its own module for the same
@@ -1573,8 +1579,9 @@ function sessionRefDeps(
     return hooksInstalled
       ? { noSessionRefs: undefined, noSessionRefsRemedy: undefined, sessionsFromHooks: true }
       : {
-          noSessionRefs: "the hooks are not installed, and a hook is what adds a Claude pane's session",
-          noSessionRefsRemedy: "`collie hooks install claude`, then relaunch the Claude in the pane",
+          noSessionRefs: "the hooks are not installed, and a hook is what adds a Claude or Codex pane's session",
+          noSessionRefsRemedy:
+            "`collie hooks install claude` for Claude, `collie hooks install codex --native` for Codex (started as `codex --no-daemon`), then relaunch the agent in the pane",
           sessionsFromHooks: false,
         };
   }
@@ -1895,6 +1902,60 @@ function beaconHooks(
     `v${String(HOOK_MARKER_VERSION)} in ${String(perFile.size)} settings file${perFile.size === 1 ? "" : "s"},` +
       ` running \`${hookBinaryOf(entries[0]?.command ?? "") ?? would.binary}\`${spare}${holds}`,
   );
+}
+
+/** Whether the native Codex hooks are in the file at all, current or not: an emitter is installed. */
+function codexNativeInstalled(reading: NativeReading): boolean {
+  const kind = reading.state.kind;
+  return kind === "installed" || kind === "behind" || kind === "partial" || kind === "duplicate";
+}
+
+/**
+ * `beacon-hooks-codex` — are Codex's own hooks (`collie hooks install codex --native`) in its
+ * `hooks.json`, complete, and running a binary that is still there?
+ *
+ * The verdict is `readNativeState`'s, the one `hooks status` prints, so the two never disagree. A
+ * missing install is tiered by the multiplexer, as `beacon-hooks-claude` tiers it: where only a hook
+ * can name a Codex pane or its session (tmux, zellij, herdr-core) the row is skipped and names the
+ * install; under Herdr, which names both itself, the hooks add edges only and the row is ok.
+ */
+function codexHooks(deps: DoctorDeps, reading: NativeReading, muxReportsAgents: boolean, hooksGiveSessions: boolean): Finding {
+  const check = "beacon-hooks-codex";
+  const { path, state } = reading;
+  const name = muxSettings(deps).name;
+  const install = `\`collie hooks install codex ${NATIVE_FLAG}\`, trust the hooks when Codex shows "Hooks need review", then start Codex as \`codex --no-daemon\``;
+  const rerun = `\`collie hooks install codex ${NATIVE_FLAG}\``;
+  switch (state.kind) {
+    case "absent":
+    case "not-installed":
+      if (!muxReportsAgents || hooksGiveSessions) {
+        const gives = muxReportsAgents ? "a Codex pane's session, which gives it Chat and History" : "a Codex pane and its session";
+        return skipped(check, `${name} cannot name ${gives} on its own; Collie's native Codex hooks do. Hooks installed: no`, install);
+      }
+      return ok(check, `not needed — ${name} names Codex panes and their sessions itself; native hooks installed: no`);
+    case "symlink":
+      return warn(check, `${path} is a symlink, so the install will not write it`, `replace it with the real file, then ${rerun}`);
+    case "unreadable":
+      return warn(check, `${path} is there and cannot be read, so the install will not merge into it`, `give your user read access to it, then ${rerun}`);
+    case "invalid":
+      return warn(check, `${path} is not valid JSON, so Codex cannot read its hooks and the install will not merge into it`, `fix it or move it aside, then ${rerun}`);
+    case "duplicate":
+      return warn(check, `${path} has two Collie entries on ${state.event}`, `remove one by hand, then ${rerun}`);
+    case "partial":
+      return warn(check, `${path} carries only some of the native hooks; ${state.missing.join(", ")} missing`, `${rerun} to complete it`);
+    case "behind":
+    case "installed": {
+      // The path first: a hook that points at nothing never runs, whatever its version.
+      if (!deps.files.exists(state.binary)) {
+        return warn(check, `the native hooks run \`${state.binary}\`, which is not there any more, so they fire and do nothing`, `\`collie link\` here, then ${rerun} to re-pin them`);
+      }
+      if (state.kind === "behind" && state.version !== NATIVE_MARKER_VERSION) {
+        return warn(check, `installed at v${String(state.version)}, and this build writes v${String(NATIVE_MARKER_VERSION)}`, `${rerun} — it replaces only Collie's own entries`);
+      }
+      const daemon = hooksGiveSessions ? `; on ${name} start Codex as \`codex --no-daemon\`, or its hooks name no pane` : "";
+      return ok(check, `installed in ${path}, running \`${state.binary}\`; Codex runs them once you trust them${daemon}`);
+    }
+  }
 }
 
 /**
