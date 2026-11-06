@@ -42,14 +42,18 @@ The bridge lists every agent Collie knows on every machine, installed or not, wi
    it. "More options" opens the New page for that workspace (`/new?beside=`) for a folder, a worktree or
    a one-off line. A row with a pinned folder runs there, and says so.
 4. **Nothing to offer, no sheet.** When the machine's answer holds no row that can start beyond the
-   shell, the "+" makes the shell at once, as it always did. A tap before the answer is in opens the
+   shell, the "+" makes the shell at once, as it always did. So does a dashboard heading whose group
+   lists only a linked worktree's panes, because no pane of the workspace itself is there to start
+   beside. A tap before the answer is in opens the
    sheet, which says it is reading and lists no other machine's rows; an answer with nothing to offer
    then closes it for the shell.
 5. **Busy and refusals.** One start at a time: the tapped row spins and every row is inert. A refusal
    shows in the open sheet with the New page's words. An outcome nobody can confirm stays open with the
    New page's notice, and a second tap on that row sends the same request id, so a start that did run
-   lands on its receipt (ADR 0091). A device that may not write, a saved copy on screen and a machine
-   not taking writes get their refusal on the "+" tap, before any sheet.
+   lands on its receipt (ADR 0091). "Just a shell" has no request id, so its notice says to look at the
+   tabs first. A device that may not write and a saved copy on screen get their refusal on the "+" tap,
+   before any sheet, and so does a dashboard heading on a machine not taking writes. A tab row's "+"
+   on such a machine opens the sheet, and the machine's refusal shows inside it.
 6. **"Just a shell" is the old "+".** It sends `POST /api/tab` with the workspace and nothing else, as
    the "+" did. A row that skips permission prompts asks first, through the guard every launch path
    uses (ADR 0094).

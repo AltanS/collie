@@ -580,12 +580,12 @@ is not installed there stays in the list, dimmed, with its reason. A row with a 
 it always runs. On a crew, a lead's row on a member says **Lead**.
 
 A tap opens the row as a new tab in that workspace, in its folder, and the phone steps into the new
-pane. A row with `no_prompts` asks first, as on the New page. **Just a shell** is last: it opens the
+pane. A row with `no_prompts` asks before its first start, as on the New page. **Just a shell** is last: it opens the
 plain shell the **+** opened before. **More options** opens the New page for that workspace, for
 another folder, a worktree or a one-off line.
 
 A machine with nothing to start beyond a shell (no agent installed, no row) shows no sheet: the **+**
-opens the shell at once. On a large screen the tab row's **+** still opens a shell, and the space
+opens the shell at once. So does a dashboard heading that lists only a worktree's panes. On a large screen the tab row's **+** still opens a shell, and the space
 header's **New agent in this space** opens the New page.
 
 ### Launchers added from a phone
