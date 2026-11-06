@@ -9,7 +9,7 @@ import { HEADING_ADD_REACH } from "./workspace-new-tab";
 import { tabCreateKey } from "@/hooks/use-spaces";
 import { __resetOperatorCommands } from "@/lib/operator-config";
 import { useStatus, clearStatus } from "@/lib/status";
-import type { Scope } from "@/lib/scope";
+import type { NewTabTarget } from "@/hooks/use-new-tab-or-sheet";
 import { groupPanesByWorkspace, type WorkspaceGroup } from "@/lib/pane-groups";
 import { paneName } from "@/lib/pane-name";
 import { workspacePrefKey } from "./agent-list";
@@ -1131,7 +1131,7 @@ describe("AgentList — the heading's new tab (M40/03)", () => {
   });
 
   it("new tab: sends the heading's own machine and session, never the ambient ones", async () => {
-    const onNewTab = vi.fn<(workspaceId: string, at: Scope) => void>();
+    const onNewTab = vi.fn<(target: NewTabTarget) => void>();
     const user = userEvent.setup();
     // The URL is on the PEER: the lead's heading must still go to the lead.
     render(
@@ -1140,15 +1140,20 @@ describe("AgentList — the heading's new tab (M40/03)", () => {
     await user.click(await screen.findByRole("button", { name: "New tab in moonward" }));
     await user.click(screen.getByRole("button", { name: "New tab in webapp" }));
     expect(onNewTab).toHaveBeenCalledTimes(2);
-    expect(onNewTab.mock.calls[0]).toEqual(["w1", { host: PEER }]);
+    const peer = onNewTab.mock.calls[0]![0];
+    expect(peer).toMatchObject({ workspaceId: "w1", label: "moonward", at: { host: PEER } });
+    // The sheet opens the tab beside the workspace's own pane, on its own machine.
+    const peerPane = crew.find((a) => a.host === PEER && a.workspaceId === "w1")!;
+    expect(peer.beside).toEqual({ paneId: peerPane.paneId, workspaceId: "w1", cwd: peerPane.cwd });
     // The lead normalises to no host at all: absent means the lead (lib/scope.ts).
-    const [, leadAt] = onNewTab.mock.calls[1]!;
-    expect(onNewTab.mock.calls[1]![0]).toBe("w1");
-    expect(leadAt.host).toBeUndefined();
+    const lead = onNewTab.mock.calls[1]![0];
+    expect(lead.workspaceId).toBe("w1");
+    expect(lead.at?.host).toBeUndefined();
+    expect(lead.beside?.paneId).toBe(crew.find((a) => a.host === LEAD && a.workspaceId === "w1")!.paneId);
   });
 
   it("new tab: a widened list's heading carries its own session", async () => {
-    const onNewTab = vi.fn<(workspaceId: string, at: Scope) => void>();
+    const onNewTab = vi.fn<(target: NewTabTarget) => void>();
     const widened = [
       agent("w1:p1", "idle", { workspaceId: "w1", workspaceLabel: "notes", workspaceNumber: 1, session: "work" }),
     ];
@@ -1166,7 +1171,7 @@ describe("AgentList — the heading's new tab (M40/03)", () => {
       />,
     );
     await userEvent.setup().click(await screen.findByRole("button", { name: "New tab in notes" }));
-    expect(onNewTab).toHaveBeenCalledWith("w1", expect.objectContaining({ session: "work" }));
+    expect(onNewTab).toHaveBeenCalledWith(expect.objectContaining({ workspaceId: "w1", at: expect.objectContaining({ session: "work" }) }));
   });
 
   it("new tab: refuses on a machine not taking writes, with its reason, and sends nothing", async () => {

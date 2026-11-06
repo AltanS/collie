@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 
 import type { Page, Route } from "@playwright/test";
 
+import type { StartLaunchBody } from "@/lib/api";
 import { itemsOf, type ChatItem } from "@/lib/chat-items";
 import type { Locale } from "@/lib/i18n/locale";
 import type { MachineAlerts, PaneChatResponse, PaneHistoryResponse, PinFull, SnapshotResponse } from "@/lib/types";
@@ -18,6 +19,8 @@ import {
   fixtureFileRead,
   fixtureFilesDir,
   FIXTURE_FILES_UNKNOWN,
+  fixtureLaunchedTab,
+  fixtureLaunchersWithAgents,
   fixtureNewSpace,
   fixtureNewTab,
   fixtureSnapshot,
@@ -364,6 +367,34 @@ export async function installMachinesWorld(page: Page): Promise<{ posted: { id: 
     },
   );
   return { posted };
+}
+
+/** A `POST /api/launch` the stub received: the machine it was addressed to, and the body. */
+export interface SentLaunch {
+  host: string | null;
+  body: StartLaunchBody;
+}
+
+/**
+ * Give every machine launcher rows to offer (M91): `/api/launchers` answers
+ * `fixtureLaunchersWithAgents`, so a "+" opens the New tab sheet, and `POST /api/launch` answers
+ * `fixtureLaunchedTab`. Returns the launches posted, in order.
+ *
+ * Call it AFTER {@link installApiStub}: Playwright checks the newest handler first.
+ */
+export async function installLauncherWorld(page: Page): Promise<{ launches: SentLaunch[] }> {
+  const launches: SentLaunch[] = [];
+  await page.route((url) => url.pathname === "/api/launchers", (route) => fulfillJson(route, fixtureLaunchersWithAgents));
+  await page.route(
+    (url) => url.pathname === "/api/launch",
+    (route) => {
+      // SAFETY: the body is the app's own: `lib/api.ts`'s `startLaunch` is the only caller and it posts a `StartLaunchBody`.
+      const body = route.request().postDataJSON() as StartLaunchBody;
+      launches.push({ host: new URL(route.request().url()).searchParams.get("host"), body });
+      return fulfillJson(route, fixtureLaunchedTab);
+    },
+  );
+  return { launches };
 }
 
 /** A `POST /api/pane/:id/keys` body, as `lib/api.ts`'s `sendKeys` posts it. */

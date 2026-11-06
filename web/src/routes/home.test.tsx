@@ -20,6 +20,7 @@ import {
   fixtureTabs,
   fixtureWorkspaces,
 } from "@/test/handlers";
+import type { StartLaunchBody } from "@/lib/api";
 import type { SnapshotResponse } from "@/lib/types";
 import { withHeaderHost } from "@/test/header-host";
 import { server } from "@/test/setup";
@@ -1013,5 +1014,90 @@ describe("the dashboard on a saved copy", () => {
     await userEvent.click(screen.getByRole("button", { name: "New tab in webapp" }));
     expect(await screen.findByText(REFUSAL)).toBeInTheDocument();
     expect(created).toEqual([]);
+  });
+});
+
+// THE HEADING "+" OFFERS THE MACHINE'S AGENTS (M91 spec 02). With a row to offer, the "+" opens the
+// New tab sheet for that workspace; a tap starts the row as a tab beside the workspace's pane and steps
+// into it. With nothing beyond the shell it makes the shell at once, which the default world above
+// (no `items`) already pins for every other heading test in this file.
+describe("the dashboard heading's '+' and the New tab sheet", () => {
+  const items = [
+    { key: "harness:claude", start: { harness: "claude" }, group: "agents", label: "Claude Code", harness: "claude", source: "builtin", noPrompts: false, branch: true, available: true },
+    { key: "shell", start: { shell: true }, group: "commands", label: "Shell", source: "builtin", noPrompts: false, branch: true, available: true },
+  ];
+  const first = fixtureAgents.find((a) => a.workspaceLabel === "webapp")!;
+  const created = (paneId: string) => ({
+    ok: true,
+    pane: { paneId, workspaceId: first.workspaceId, workspaceLabel: first.workspaceLabel, tabId: `${first.workspaceId}:t9`, cwd: first.cwd },
+  });
+
+  function world() {
+    const sent = { launch: new Array<StartLaunchBody>(), tab: new Array<string>() };
+    server.use(
+      http.get("/api/launchers", () => HttpResponse.json({ launchers: [], home: "/home/you", harnesses: [], items })),
+      http.post("/api/launch", async ({ request }) => {
+        // SAFETY: the body is the app's own: `lib/api.ts`'s `startLaunch` is the only caller and it posts a `StartLaunchBody`.
+        sent.launch.push((await request.json()) as StartLaunchBody);
+        return HttpResponse.json(created("w1:p7"));
+      }),
+      http.post("/api/tab", async ({ request }) => {
+        sent.tab.push(await request.text());
+        return HttpResponse.json(created("w1:p8"));
+      }),
+    );
+    return sent;
+  }
+
+  it("opens the sheet for that workspace, and an agent starts as a tab beside its pane", async () => {
+    const sent = world();
+    const router = renderHome(solo());
+    await settled();
+    await userEvent.click(screen.getByRole("button", { name: "New tab in webapp" }));
+    const sheet = within(await screen.findByRole("dialog", { name: "New tab in webapp" }));
+    await userEvent.click(await sheet.findByRole("button", { name: /Claude Code/ }));
+    await waitFor(() => expect(url(router)).toBe("/pane/w1%3Ap7"));
+    expect(sent.launch).toHaveLength(1);
+    expect(sent.launch[0]).toMatchObject({ harness: "claude", paneId: first.paneId });
+    expect(sent.launch[0]!.requestId).toEqual(expect.any(String));
+    expect(sent.tab).toEqual([]);
+  });
+
+  it("Just a shell sends the create the '+' always sent", async () => {
+    const sent = world();
+    const router = renderHome(solo());
+    await settled();
+    await userEvent.click(screen.getByRole("button", { name: "New tab in webapp" }));
+    const sheet = within(await screen.findByRole("dialog", { name: "New tab in webapp" }));
+    await userEvent.click(sheet.getByRole("button", { name: "Just a shell" }));
+    await waitFor(() => expect(url(router)).toBe("/pane/w1%3Ap8"));
+    expect(sent.tab).toEqual([JSON.stringify({ workspaceId: first.workspaceId })]);
+    expect(sent.launch).toEqual([]);
+  });
+
+  it("mounts one sheet for the list: another heading's '+' retitles it", async () => {
+    world();
+    renderHome(solo());
+    await settled();
+    const headings = fixtureWorkspaces.filter((w) => fixtureAgents.some((a) => a.workspaceId === w.workspaceId));
+    expect(headings.length).toBeGreaterThan(1);
+    await userEvent.click(screen.getByRole("button", { name: `New tab in ${headings[0]!.label}` }));
+    await screen.findByRole("dialog", { name: `New tab in ${headings[0]!.label}` });
+    await userEvent.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await userEvent.click(screen.getByRole("button", { name: `New tab in ${headings[1]!.label}` }));
+    await screen.findByRole("dialog", { name: `New tab in ${headings[1]!.label}` });
+    expect(screen.getAllByRole("dialog")).toHaveLength(1);
+  });
+
+  it("on a saved copy refuses on the tap, before any sheet", async () => {
+    const sent = world();
+    renderHome({ ...solo(), stale: true });
+    await settled();
+    await userEvent.click(screen.getByRole("button", { name: "New tab in webapp" }));
+    expect(await screen.findByText("Saved copy. Reconnect to make changes.")).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "New tab in webapp" })).toBeNull();
+    expect(sent.launch).toEqual([]);
+    expect(sent.tab).toEqual([]);
   });
 });

@@ -3123,6 +3123,15 @@ export const en = {
   // --- pins, review fixes (M90) ---
   "pins.sheet.kind.toolPlain": "Tool",
   "pins.reason.notSettled": "That reply is still being written. Pin it when it is done.",
+  // --- newTab: the New tab sheet behind a workspace's "+" (M91) ---
+  "newTab.title": "New tab in {workspace}",
+  "newTab.folder": "In {folder}",
+  "newTab.group.agents": "Agents",
+  "newTab.group.commands": "Commands",
+  "newTab.more": "More options",
+  "newTab.fromLead": "Lead",
+  "newTab.loading": "Reading the agents on this machine…",
+  "newTab.shellUnknown": "Collie could not confirm the new tab. Look at the workspace's tabs before you try again, or you may get two.",
 } as const;
 
 /** Every key that exists, as a union of string literals. The completeness contract. */

@@ -2913,4 +2913,13 @@ export const ja: Dictionary = {
   // --- pins, review fixes (M90) ---
   "pins.sheet.kind.toolPlain": "ツール",
   "pins.reason.notSettled": "その返信はまだ書き込み中です。完了したら固定してください。",
+  // --- newTab: the New tab sheet behind a workspace's "+" (M91) ---
+  "newTab.title": "{workspace}で新しいタブ",
+  "newTab.folder": "{folder} で開く",
+  "newTab.group.agents": "エージェント",
+  "newTab.group.commands": "コマンド",
+  "newTab.more": "その他のオプション",
+  "newTab.fromLead": "Lead",
+  "newTab.loading": "このマシンのエージェントを読み込み中…",
+  "newTab.shellUnknown": "Collie は新しいタブを確認できませんでした。もう一度試す前にワークスペースのタブを確認してください。二つ開く場合があります。",
 };

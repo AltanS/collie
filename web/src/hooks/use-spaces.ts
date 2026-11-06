@@ -159,6 +159,16 @@ export function useSpaceActions(canWrite?: () => boolean) {
     [nav],
   );
 
+  // The create gates, asked BEFORE a create is chosen: the "+" that opens the New tab sheet (M91) gives
+  // the refusal `newTab` would give, on the tap, and opens no sheet. True when it refused.
+  const refuseCreate = useCallback((): boolean => {
+    if (readOnlyRef.current) {
+      setStatus(blockedText(), "error");
+      return true;
+    }
+    return refusedAsSavedCopy();
+  }, [blockedText, refusedAsSavedCopy]);
+
   // ONE create per Space's "+" at a time — the same shape as `launch` below, and for the same
   // reason: a create is a round trip, an impatient second tap on a phone is normal, and every tap
   // that gets through makes another throwaway tab the operator then has to close. Keyed by the
@@ -316,6 +326,7 @@ export function useSpaceActions(canWrite?: () => boolean) {
 
   return {
     start,
+    refuseCreate,
     newTab,
     newSpace,
     launch,

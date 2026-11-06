@@ -92,6 +92,7 @@ export const SECTIONS: readonly SectionEntry[] = [
   { def: { id: "update-signal", title: "Update signal" }, load: () => import("./sections/update-signal").then((m) => ({ default: m.UpdateSignalSection })) },
   { def: { id: "backdrop", title: "Backdrop" }, load: () => import("./sections/backdrop").then((m) => ({ default: m.BackdropSection })) },
   { def: { id: "pins", title: "Pinned messages" }, load: () => import("./sections/pins").then((m) => ({ default: m.PinsSection })) },
+  { def: { id: "new-tab", title: "New tab sheet" }, load: () => import("./sections/new-tab").then((m) => ({ default: m.NewTabSection })) },
   { def: { id: "report", title: "Report a problem" }, load: () => import("./sections/report").then((m) => ({ default: m.ReportSection })) },
 ];
 

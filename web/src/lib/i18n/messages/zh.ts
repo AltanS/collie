@@ -2894,4 +2894,13 @@ export const zh: Dictionary = {
   // --- pins, review fixes (M90) ---
   "pins.sheet.kind.toolPlain": "工具",
   "pins.reason.notSettled": "该回复仍在撰写中。完成后再固定。",
+  // --- newTab: the New tab sheet behind a workspace's "+" (M91) ---
+  "newTab.title": "在 {workspace} 中新建标签页",
+  "newTab.folder": "位于 {folder}",
+  "newTab.group.agents": "智能体",
+  "newTab.group.commands": "命令",
+  "newTab.more": "更多选项",
+  "newTab.fromLead": "Lead",
+  "newTab.loading": "正在读取此机器上的智能体…",
+  "newTab.shellUnknown": "Collie 无法确认新标签页。重试前请先查看该工作区的标签页，否则可能会出现两个。",
 };

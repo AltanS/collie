@@ -27,6 +27,11 @@ tmux session is a space, a zellij session is a space, and a [durable agent](#dur
 A group of panes. A Herdr tab is a tab, and a tmux window is a tab
 ([Terminals](multiplexers.md#what-changes-compared-with-herdr)).
 
+## New tab sheet
+
+The sheet a workspace's **+** opens: that machine's agents and command rows, then **Just a shell** and
+**More options** ([A new tab from the plus](configure.md#a-new-tab-from-the-plus)).
+
 ## Pane
 
 One thing you can open on the phone. In a terminal it is a pane with a screen. In a durable agent it is

@@ -2929,4 +2929,13 @@ export const es: Dictionary = {
   // --- pins, review fixes (M90) ---
   "pins.sheet.kind.toolPlain": "Herramienta",
   "pins.reason.notSettled": "Esa respuesta todavía se está escribiendo. Fíjala cuando haya terminado.",
+  // --- newTab: the New tab sheet behind a workspace's "+" (M91) ---
+  "newTab.title": "Nueva pestaña en {workspace}",
+  "newTab.folder": "En {folder}",
+  "newTab.group.agents": "Agentes",
+  "newTab.group.commands": "Comandos",
+  "newTab.more": "Más opciones",
+  "newTab.fromLead": "Lead",
+  "newTab.loading": "Leyendo los agentes de esta máquina…",
+  "newTab.shellUnknown": "Collie no pudo confirmar la nueva pestaña. Mira las pestañas del espacio antes de volver a intentarlo, o puede que tengas dos.",
 };

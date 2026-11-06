@@ -26,6 +26,7 @@ import type {
   WorkspaceView,
   PinFull,
   PinRow,
+  LaunchersResponse,
 } from "@/lib/types";
 import { asJsonObject, asJsonString, parseJsonObject, type JsonObject } from "@/lib/json";
 import type { Surface } from "@/lib/surface/surface";
@@ -295,6 +296,42 @@ export const fixtureNewTab: Extract<CreateResponse, { ok: true }> = {
     workspaceLabel: "collie",
     tabId: "w2:t9",
     cwd: "/home/you/collie",
+  },
+};
+
+/**
+ * A machine's launcher list with something to offer (M91, the New tab sheet): two agents Collie knows,
+ * one not installed, an operator's agent row that skips prompts, the shell, and one command row. The
+ * default `/api/launchers` world below sends none of this, so every "+" there still makes a bare shell;
+ * a case that wants the sheet serves this. Shared by the unit layer and the browser tier's stub.
+ */
+export const fixtureLaunchersWithAgents: LaunchersResponse = {
+  launchers: [],
+  home: "/home/you",
+  harnesses: [
+    { id: "claude", label: "Claude Code", found: true },
+    { id: "codex", label: "Codex", found: false },
+  ],
+  items: [
+    { key: "harness:claude", start: { harness: "claude" }, group: "agents", label: "Claude Code", harness: "claude", source: "builtin", noPrompts: false, branch: true, available: true },
+    { key: "harness:codex", start: { harness: "codex" }, group: "agents", label: "Codex", harness: "codex", source: "builtin", noPrompts: false, branch: true, available: false, reason: "not_found" },
+    { key: "shell", start: { shell: true }, group: "commands", label: "Shell", source: "builtin", noPrompts: false, branch: true, available: true },
+    { key: "row:htop", start: { command: "htop" }, group: "commands", label: "htop", command: "htop", source: "operator", noPrompts: false, branch: false, available: true },
+  ],
+};
+
+/**
+ * What `POST /api/launch` answers for a start beside a pane: the fresh pane of a new tab in `webapp`
+ * (w1), running what was asked. Shared by the unit layer and the browser tier's stub.
+ */
+export const fixtureLaunchedTab: Extract<CreateResponse, { ok: true }> = {
+  ok: true,
+  pane: {
+    paneId: "w1:p7",
+    workspaceId: "w1",
+    workspaceLabel: "webapp",
+    tabId: "w1:t7",
+    cwd: "/home/you/webapp",
   },
 };
 

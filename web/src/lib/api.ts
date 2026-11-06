@@ -2047,8 +2047,8 @@ export type StartWhat =
 /** What can start on a new worktree: everything but a one-off line (`launch.run_no_branch`). */
 export type BranchableWhat = Exclude<StartWhat, { kind: "run" }>;
 
-/** POST /api/launch's body from the New page. A named contract so `startLaunch` infers against it. */
-interface StartLaunchBody {
+/** POST /api/launch's body from the New page. A named contract so `startLaunch` infers against it, and a test reads it. */
+export interface StartLaunchBody {
   command?: string;
   harness?: string;
   shell?: true;

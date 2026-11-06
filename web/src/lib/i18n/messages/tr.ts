@@ -2744,4 +2744,13 @@ export const tr: Dictionary = {
   // --- pins, review fixes (M90) ---
   "pins.sheet.kind.toolPlain": "Araç",
   "pins.reason.notSettled": "Bu yanıt hâlâ yazılıyor. Tamamlandığında sabitleyin.",
+  // --- newTab: the New tab sheet behind a workspace's "+" (M91) ---
+  "newTab.title": "{workspace} içinde yeni sekme",
+  "newTab.folder": "{folder} içinde",
+  "newTab.group.agents": "Ajanlar",
+  "newTab.group.commands": "Komutlar",
+  "newTab.more": "Diğer seçenekler",
+  "newTab.fromLead": "Lead",
+  "newTab.loading": "Bu makinedeki ajanlar okunuyor…",
+  "newTab.shellUnknown": "Collie yeni sekmeyi doğrulayamadı. Yeniden denemeden önce çalışma alanının sekmelerine bakın, yoksa iki sekme açılabilir.",
 };
