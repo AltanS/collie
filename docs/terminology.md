@@ -84,6 +84,13 @@ once. Collie never answers for you ([Durable agents](durable-agents.md#what-the-
 The action row above the composer. Its harness section holds the harness's own buttons
 ([Configure](configure.md#one-off-commands-and-their-history)).
 
+## Pins
+
+A copy of one Chat block (your message, a reply or a tool card) that the machine owning the pane keeps
+for one [session](#session). The [belt](#belt) shows a mark with their count, and a tap opens them
+([Pinned messages](configure.md#chat-view)). They are not the **Pin to top** of a pane, which keeps the
+pane at the top of a list.
+
 ## Starter
 
 A row on the New page that makes a new pane in a durable agent
