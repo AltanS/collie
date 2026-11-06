@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Bug, Copy, GitBranchPlus, Maximize2, MessagesSquare, Monitor, Pencil, Pin, PinOff, ScrollText, Search, SlidersHorizontal, SquareTerminal, XCircle } from "lucide-react";
 
 import { BottomSheet } from "@/components/ui/sheet";
-import { WalkyIcon } from "@/components/walky-icon";
+import { WalkyIcon, WalkyOffIcon } from "@/components/walky-icon";
 import { ActionRow, DestructiveActionRow, RenameView } from "@/components/action-sheet-rows";
 import { HostChip } from "@/components/host-chip";
 import { useHostWriteBlock, useCrew } from "@/components/crew-provider";
@@ -443,8 +443,9 @@ export function PaneActionsSheet({
               the looking rows. Close-then-act, for the reason the find row states. */}
           {onMessages && (
             <ActionRow
-              icon={<WalkyIcon className="size-4 shrink-0 text-muted-foreground" />}
-              label={t("walky.sheet.row")}
+              // A session that turned its walky talky off (M89) wears the struck radio, and the row says so.
+              icon={pane?.walkyOff === true ? <WalkyOffIcon className="size-4 shrink-0 text-muted-foreground" /> : <WalkyIcon className="size-4 shrink-0 text-muted-foreground" />}
+              label={t(pane?.walkyOff === true ? "walky.off.row" : "walky.sheet.row")}
               onClick={() => {
                 onClose();
                 onMessages();

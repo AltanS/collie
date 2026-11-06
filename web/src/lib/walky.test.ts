@@ -233,6 +233,15 @@ describe("the words", () => {
     expect(stateWord({ ...receipt, state: "accepted", reason: "outcome known on the lead" })).toBe("on its way, the lead reports the result");
   });
 
+  it("words the two off refusals for a person (M89 spec 04)", () => {
+    expect(reasonWord("walky talky off")).toBe("the session has its walky talky off");
+    expect(reasonWord("your walky talky is off")).toBe("the sending session has its walky talky off");
+    expect(stateWord({ ...receipt, state: "refused", reason: "walky talky off" })).toBe("not sent: the session has its walky talky off");
+    expect(stateWord({ ...receipt, state: "refused", reason: "your walky talky is off" })).toBe("not sent: the sending session has its walky talky off");
+    // The machine-wide switch keeps the bridge's word.
+    expect(stateWord({ ...receipt, state: "refused", reason: "off" })).toBe("not sent: off");
+  });
+
   it("gives a refusal its reason", () => {
     expect(stateWord({ ...receipt, state: "refused", reason: "rate limit" })).toBe("not sent: rate limit");
     expect(stateWord({ ...receipt, state: "refused" })).toBe("not sent");

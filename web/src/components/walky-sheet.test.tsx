@@ -395,3 +395,66 @@ describe("WalkySheet names sessions", () => {
     expect(screen.getByText("held: that session is busy")).toBeInTheDocument();
   });
 });
+
+describe("the walky talky switch at the head of the sheet (M89 spec 04)", () => {
+  const switchOf = () => screen.getByRole("switch", { name: "Walky talky" });
+
+  it("shows the session's flag: on reads checked, off reads unchecked with the struck radio and the hint", () => {
+    sheet([fixtureWalkyAgent], { onWalkyOff: vi.fn(async () => null) });
+    expect(switchOf()).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByText("Off: other agents cannot message this session. You still can.")).toBeInTheDocument();
+    expect(document.querySelector('[data-slot="walky-off"] svg.lucide-walky-talky')).not.toBeNull();
+    cleanup();
+    sheet([fixtureWalkyAgent], { walkyOff: true, onWalkyOff: vi.fn(async () => null) });
+    expect(switchOf()).toHaveAttribute("aria-checked", "false");
+    expect(document.querySelector('[data-slot="walky-off"] svg.lucide-walky-talky-off')).not.toBeNull();
+  });
+
+  it("shows on an empty list and on a list the machine could not read", () => {
+    sheet([], { onWalkyOff: vi.fn(async () => null) });
+    expect(switchOf()).toBeInTheDocument();
+    cleanup();
+    sheet(null, { onWalkyOff: vi.fn(async () => null) });
+    expect(switchOf()).toBeInTheDocument();
+  });
+
+  it("is a 44 px row, and the label is part of the target", async () => {
+    const user = userEvent.setup();
+    const onWalkyOff = vi.fn(async () => null);
+    sheet([fixtureWalkyAgent], { onWalkyOff });
+    const row = document.querySelector('[data-slot="walky-off"] label');
+    if (!(row instanceof HTMLElement)) throw new Error("no switch row");
+    expect(row).toHaveClass("min-h-11");
+    await user.click(screen.getByText("Walky talky"));
+    expect(onWalkyOff).toHaveBeenCalledExactlyOnceWith(true);
+  });
+
+  it("posts once per tap, takes no second tap while the call runs, and holds the new place", async () => {
+    const user = userEvent.setup();
+    let done: (value: string | null) => void = () => undefined;
+    const onWalkyOff = vi.fn(() => new Promise<string | null>((resolve) => (done = resolve)));
+    sheet([fixtureWalkyAgent], { onWalkyOff });
+    await user.click(switchOf());
+    expect(switchOf()).toHaveAttribute("aria-checked", "false");
+    expect(switchOf()).toBeDisabled();
+    await user.click(switchOf());
+    expect(onWalkyOff).toHaveBeenCalledExactlyOnceWith(true);
+    done(null);
+    await vi.waitFor(() => expect(switchOf()).toHaveAttribute("aria-checked", "false"));
+  });
+
+  it("puts the switch back and says why when the call fails", async () => {
+    const user = userEvent.setup();
+    sheet([fixtureWalkyAgent], { onWalkyOff: vi.fn(async () => "Not changed: offline") });
+    await user.click(switchOf());
+    expect(await screen.findByText("Not changed: offline")).toBeInTheDocument();
+    expect(switchOf()).toHaveAttribute("aria-checked", "true");
+    expect(switchOf()).not.toBeDisabled();
+  });
+
+  it("is not there for a door that passes no switch: a read-only device, a saved copy, a quiet machine", () => {
+    sheet([fixtureWalkyAgent], { canReply: false, walkyOff: true });
+    expect(screen.queryByRole("switch")).toBeNull();
+    expect(document.querySelector('[data-slot="walky-off"]')).toBeNull();
+  });
+});

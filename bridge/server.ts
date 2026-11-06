@@ -1904,6 +1904,25 @@ export function startServer(opts: {
       return json({ ok: true } satisfies ActionResponse, req.headers.get("accept-encoding"));
     }
 
+    // ── Walky talky off for one session (M89 spec 04) ─────────────────────
+    // The phone's switch in a pane's Messages sheet. Session-scoped, so a `?host=` set is forwarded to
+    // the member that owns the pane (§21) and lands on its own `off.json`: the owner enforces the flag.
+    // An idempotent set of one value, so a retry is safe and carries no request id.
+    if (pathname === "/api/walky/off" && req.method === "POST") {
+      const denied = caller.gate("write");
+      if (denied) return denied;
+      const rt = await caller.resolve();
+      if (rt instanceof Response) return rt;
+      let body: JsonValue | undefined;
+      try {
+        // SAFETY: `Request.json()` output IS a JsonValue by construction; `walkyOffRoute` checks every field.
+        body = (await req.json()) as JsonValue;
+      } catch {
+        body = undefined;
+      }
+      return walkyOffRoute(walky, rt.name, body, { audit: caller.audit, device: caller.device(), acceptEncoding: req.headers.get("accept-encoding") });
+    }
+
     // ── Structural creates: new tab / new space (each opens a fresh shell pane) ──
     if (pathname === "/api/tab" && req.method === "POST") {
       const denied = caller.gate("write");
@@ -8520,6 +8539,30 @@ export async function walkyPostRoute(
   // One pane answers one receipt; a fan-out (`all`, `<member>/all`) answers one per pane.
   if (parseAddress(input.to)?.kind === "pane" && answer.receipts.length === 1) return json({ receipt: answer.receipts[0] }, context.acceptEncoding);
   return json({ receipts: answer.receipts }, context.acceptEncoding);
+}
+
+/**
+ * `POST /api/walky/off` (M89 spec 04): the operator turns one session's walky talky off or on from the
+ * phone, `{ pane, off }`. The pane is this bridge's own, in the session the request resolved to. Answers
+ * `{ off }`, the value now held; one audit line, `walky.off`, as the CLI's own switch writes none.
+ */
+export function walkyOffRoute(
+  walky: WalkyService | undefined,
+  session: string,
+  body: JsonValue | undefined,
+  context: { readonly audit: AuditLog; readonly device: string | null; readonly acceptEncoding: string | null },
+): Response {
+  if (walky === undefined) return text(WALKY_OFF_TEXT, 404);
+  const row = asJsonRecord(body);
+  const paneId = row?.pane;
+  const off = row?.off;
+  if (typeof paneId !== "string" || !isPaneId(paneId) || typeof off !== "boolean") return text("bad body", 400);
+  const pane = walky.paneAt(session, paneId);
+  if (pane === null) return text("no such pane", 404);
+  if (!pane.agent) return text("not an agent pane", 400);
+  const now = walky.setOff(pane, off, "operator");
+  context.audit.record({ action: "walky.off", device: context.device, session, paneId, detail: { off: now } });
+  return json({ off: now }, context.acceptEncoding);
 }
 
 /**

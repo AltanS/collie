@@ -1724,6 +1724,16 @@ export async function fetchWalkyWho(signal?: AbortSignal): Promise<WalkyWho> {
 }
 
 /**
+ * POST /api/walky/off (M89 spec 04): the operator turns one session's walky talky off or on. Scoped like
+ * a pane write, so a pane on a crew member is set on that member, which enforces it. An idempotent set:
+ * the bridge answers the value it now holds, and a retry of the same value changes nothing.
+ */
+export async function setWalkyOff(paneId: string, off: boolean, scope?: Scope): Promise<boolean> {
+  const got = await req<{ off: boolean }>(withScope("/api/walky/off", scope), { method: "POST", body: JSON.stringify({ pane: paneId, off }) });
+  return got.off;
+}
+
+/**
  * POST /api/walky/<id>/cancel (M62 spec 03): the sender takes a held operator message back. The bridge
  * answers one result per target; a message that typed, or is going out now, keeps its receipt and the
  * result says `already typed`. An agent's message is not the phone's to cancel (403, an error here).

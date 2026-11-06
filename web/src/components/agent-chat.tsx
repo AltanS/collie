@@ -71,7 +71,7 @@ import { paneSurface } from "@/lib/send-slot";
 import { answerAsk, cardHashOf, type AskTapResult } from "@/lib/dialog-ask";
 import { holdAskOfNote, screenCardMayAnswer } from "@/lib/surface/hold";
 import { askOptionFor } from "@/lib/ask-reply";
-import { cancelHeldSend, cancelWalky, dropWalky, refreshNow } from "@/lib/api";
+import { cancelHeldSend, cancelWalky, dropWalky, refreshNow, setWalkyOff } from "@/lib/api";
 import { describeThrownError } from "@/lib/api-error-message";
 import { sameKeys } from "@/lib/harness/prompt-model";
 import { askOf, type Ask } from "@/lib/surface/surface";
@@ -3617,6 +3617,21 @@ export function AgentChat({
               return t("walky.sheet.takeBackFailed", { error: describeThrownError(thrown) });
             }
           }}
+          // The session's walky talky switch (M89 spec 04): a write, behind the gates Reply rides, on an agent pane only.
+          walkyOff={agent?.walkyOff === true}
+          onWalkyOff={
+            !readOnly && !savedCopyWrites && hostBlock === undefined && !gone && agent !== undefined && agent.kind !== "shell"
+              ? async (off) => {
+                  try {
+                    await setWalkyOff(paneId, off, scope);
+                    revalidator.revalidate();
+                    return null;
+                  } catch (thrown) {
+                    return t("walky.off.failed", { error: describeThrownError(thrown) });
+                  }
+                }
+              : undefined
+          }
           onReply={(row) => {
             closeDrawer();
             if (row.from.address === null) return;

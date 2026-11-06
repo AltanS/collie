@@ -962,6 +962,9 @@ describe("solo zero-tax — routes", () => {
       // the list of reachable targets (a read). SOLO routes; an address on another member is the crew
       // seam's business, never a route here.
       "/api/walky",
+      // A session's walky talky off switch (M89 spec 04): a write under the device gate, session-scoped,
+      // so a `?host=` set is forwarded to the member that owns the pane. Solo, it sets this bridge's own flag.
+      "/api/walky/off",
       "/api/walky/who",
       "/api/workspace",
       // The New sheet's branch from a FOLDER (M48, ADR 0093): the plan it shows before Start, and the

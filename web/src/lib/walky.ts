@@ -535,6 +535,11 @@ export function reasonWord(reason: string): string {
       return t("walky.reason.turnRunning");
     case "resting":
       return t("walky.reason.resting");
+    // A session that turned its walky talky off (M89): the target, or the sender itself.
+    case "walky talky off":
+      return t("walky.reason.walkyOff");
+    case "your walky talky is off":
+      return t("walky.reason.senderOff");
     default:
       return reason;
   }

@@ -80,6 +80,10 @@ export const ACK_MANIFEST = {
     channel: "inline",
     why: "The pane owner's Drop on a held walky talky message (M62 spec 03): the row's receipt turns to `dropped by the pane's owner` on the next read and the held mark goes; an `already typed` answer and a failed call land as a line under the row.",
   },
+  setWalkyOff: {
+    channel: "inline",
+    why: "The walky talky switch in a pane's Messages sheet (M89 spec 04): the switch itself is the receipt, it holds the new place while the call runs and the pane row's flag then confirms it; a failed call puts the switch back and lands as a line under it, because the operator asked for something that did not happen.",
+  },
   cancelHeldSend: {
     channel: "silent",
     why: "Cancel or Dismiss on a held send's queued row (M56 spec 15): the row leaving the composer IS the receipt, so a success says nothing more; a Cancel that came too late, and a failed call, land as a status line.",

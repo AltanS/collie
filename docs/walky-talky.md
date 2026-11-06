@@ -609,10 +609,13 @@ collie walky off
 collie walky on
 ```
 
-Run `off` inside the agent's own pane. From then on, no other agent can message that session, and
+Run `off` inside the agent's own pane, or use the Walky talky switch at the top of the session's
+Messages sheet on the phone. From then on, no other agent can message that session, and
 the session cannot message other agents. Your own messages still reach it, from the phone or from
 a terminal outside any pane. `on` turns it back. Both print one line and exit 0, and a second `off`
-changes nothing. With two Collie instances on one multiplexer, the command sets both.
+changes nothing. With two Collie instances on one multiplexer, the command sets both. The phone
+sets the instance it is connected to, and across a crew the machine that owns the pane. While the
+session is off, the pane menu's Messages row reads "Messages, walky talky off".
 
 - **An agent's message to that session is refused.** Nothing is typed and nothing waits in its
   inbox. The sender reads

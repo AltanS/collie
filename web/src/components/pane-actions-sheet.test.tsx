@@ -709,6 +709,22 @@ describe("PaneActionsSheet — Messages (M62)", () => {
   });
 });
 
+describe("PaneActionsSheet — a session with its walky talky off (M89 spec 04)", () => {
+  it("names the Messages row `Messages, walky talky off` and wears the struck radio while the session is off", () => {
+    renderSheet({ onMessages: vi.fn(), pane: { ...agent, walkyOff: true } });
+    const row = screen.getByRole("button", { name: "Messages, walky talky off" });
+    expect(row.querySelector("svg.lucide-walky-talky-off")).not.toBeNull();
+    expect(screen.queryByRole("button", { name: "Messages" })).toBeNull();
+  });
+
+  it("keeps the plain row and the plain radio for a session that is on", () => {
+    renderSheet({ onMessages: vi.fn() });
+    const row = screen.getByRole("button", { name: "Messages" });
+    expect(row.querySelector("svg.lucide-walky-talky")).not.toBeNull();
+    expect(row.querySelector("svg.lucide-walky-talky-off")).toBeNull();
+  });
+});
+
 describe("PaneActionsSheet — report a problem (ADR 0123)", () => {
   it("trails Pin, closes the sheet first, then opens the report", async () => {
     const user = userEvent.setup();
