@@ -2538,7 +2538,7 @@ export const it: Dictionary = {
   "walky.reason.walkyOff": "la sessione ha il walky talky disattivato",
   "walky.reason.senderOff": "la sessione mittente ha il walky talky disattivato",
   "walky.off.label": "Walky talky",
-  "walky.off.hint": "Disattivato: gli altri agenti non possono inviare messaggi a questa sessione. Lei può ancora farlo.",
+  "walky.off.hint": "Spento: gli altri agenti non possono inviare messaggi a questa sessione. Tu puoi ancora farlo.",
   "walky.off.row": "Messaggi, walky talky disattivato",
   "walky.off.failed": "Non modificato: {error}",
   "walky.state.delivered": "digitato nel riquadro",

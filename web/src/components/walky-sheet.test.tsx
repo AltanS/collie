@@ -440,7 +440,30 @@ describe("the walky talky switch at the head of the sheet (M89 spec 04)", () => 
     await user.click(switchOf());
     expect(onWalkyOff).toHaveBeenCalledExactlyOnceWith(true);
     done(null);
-    await vi.waitFor(() => expect(switchOf()).toHaveAttribute("aria-checked", "false"));
+    // Free again once the call answered, still showing the value asked for until the row confirms it.
+    await vi.waitFor(() => expect(switchOf()).not.toBeDisabled());
+    expect(switchOf()).toHaveAttribute("aria-checked", "false");
+  });
+
+  it("names the hint as the switch's description", () => {
+    sheet([fixtureWalkyAgent], { onWalkyOff: vi.fn(async () => null) });
+    expect(switchOf()).toHaveAccessibleDescription("Off: other agents cannot message this session. You still can.");
+  });
+
+  it("lets the row speak again after the hold when the row never confirmed the ask", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+      sheet([fixtureWalkyAgent], { onWalkyOff: vi.fn(async () => null) });
+      await user.click(switchOf());
+      await vi.waitFor(() => expect(switchOf()).not.toBeDisabled());
+      expect(switchOf()).toHaveAttribute("aria-checked", "false");
+      // Another hand turned it on again before the row showed off: the row's value wins after the hold.
+      await vi.advanceTimersByTimeAsync(15_000);
+      await vi.waitFor(() => expect(switchOf()).toHaveAttribute("aria-checked", "true"));
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("puts the switch back and says why when the call fails", async () => {

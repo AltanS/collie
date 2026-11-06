@@ -688,10 +688,13 @@ export function isPaneInput(pathname: string, method: string): boolean {
  * these the same hot spell an input buys.
  */
 const TOPOLOGY_CREATES: ReadonlySet<string> = new Set(["/api/launch", "/api/workspace", "/api/tab", "/api/worktree"]);
+/** Not topology, but the same wait: a walky talky switch set on a member shows on the phone only through the lead's sweep (M89 spec 04). */
+const SWEEP_WAITS: ReadonlySet<string> = new Set(["/api/walky/off"]);
 export function isTopologyWrite(pathname: string, method: string): boolean {
   if (method !== "POST") return false;
   if (TOPOLOGY_CREATES.has(pathname)) return true;
   if (TAB_ACTION_ROUTE.test(pathname)) return true;
+  if (SWEEP_WAITS.has(pathname)) return true;
   const action = pathname.match(PANE_ROUTE)?.[2];
   return action === "close" || action === "rename";
 }

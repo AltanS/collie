@@ -2651,7 +2651,7 @@ export const ru: Dictionary = {
   "walky.reason.walkyOff": "в сессии выключен walky talky",
   "walky.reason.senderOff": "в отправляющей сессии выключен walky talky",
   "walky.off.label": "Walky talky",
-  "walky.off.hint": "В выключенном состоянии: другие агенты не могут отправлять сообщения в эту сессию. Вы по-прежнему можете.",
+  "walky.off.hint": "Выключено: другие агенты не могут отправлять сообщения в эту сессию. Вы по-прежнему можете.",
   "walky.off.row": "Сообщения, walky talky выключен",
   "walky.off.failed": "Не изменено: {error}",
   "walky.state.delivered": "введено в панель",

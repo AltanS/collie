@@ -294,7 +294,7 @@ describe("POST /api/walky/off, the phone's switch (M89 spec 04)", () => {
     expect(at).toBeGreaterThan(block);
     // The one dispatch: no second copy of the route in the browser or the crew path.
     expect(src.indexOf('"/api/walky/off"', at + 40)).toBe(-1);
-    const body = src.slice(at, at + 600);
+    const body = src.slice(at, src.indexOf("if (pathname ===", at + 40));
     expect(body.indexOf('caller.gate("write")')).toBeGreaterThan(-1);
     expect(body.indexOf('caller.gate("write")')).toBeLessThan(body.indexOf("caller.resolve()"));
     expect(body.indexOf("caller.resolve()")).toBeLessThan(body.indexOf("req.json()"));

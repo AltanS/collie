@@ -2721,7 +2721,7 @@ export const es: Dictionary = {
   "walky.reason.walkyOff": "la sesión tiene su walky talky desactivado",
   "walky.reason.senderOff": "la sesión emisora tiene su walky talky desactivado",
   "walky.off.label": "Walky talky",
-  "walky.off.hint": "Desactivado: otros agentes no pueden enviar mensajes a esta sesión. El usuario todavía puede hacerlo.",
+  "walky.off.hint": "Apagado: otros agentes no pueden enviar mensajes a esta sesión. Tú todavía puedes.",
   "walky.off.row": "Mensajes, walky talky desactivado",
   "walky.off.failed": "No modificado: {error}",
   "walky.state.delivered": "escrito en el panel",

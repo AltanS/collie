@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { Send } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -137,24 +137,38 @@ export function WalkySheet({ open, onClose, onReply, canReply, focusId = null, s
   );
 }
 
+/** How long the switch shows a value the pane row has not confirmed yet: a crew sweep (about 12 s) and some. */
+const ASKED_HOLD_MS = 15_000;
+
 /**
  * The walky talky switch at the head of the sheet (M89 spec 04): off, no other agent can message this
  * session and it cannot message them; the operator still can. The whole row is the tap target, at least
  * 44 px tall, and the switch is named by its label. While the call runs the switch shows the new place
- * and takes no second tap; the pane row's flag then confirms it. A failed call puts it back with a line.
+ * and takes no second tap. After the call it is free again and keeps showing the value asked for until
+ * the pane row's flag moves, or for {@link ASKED_HOLD_MS} at most: a crew member's row can reach the lead
+ * a sweep late, and another hand (the session's own `collie walky on`) can change the flag meanwhile.
+ * A failed call puts it back with a line.
  */
 function WalkyOffSwitch({ off, onChange }: { off: boolean; onChange: (off: boolean) => Promise<string | null> }) {
-  const [asked, setAsked] = useState<boolean | null>(null);
+  // The value asked for, and the row's value when it was asked: any move of the row ends the wait.
+  const [asked, setAsked] = useState<{ value: boolean; from: boolean } | null>(null);
+  const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
-  // The pane row caught up with the value asked for: the row's flag speaks again.
-  if (asked !== null && asked === off) setAsked(null);
-  const busy = asked !== null;
-  const shown = asked ?? off;
+  const hintId = useId();
+  if (asked !== null && off !== asked.from) setAsked(null);
+  useEffect(() => {
+    if (asked === null || busy) return;
+    const timer = setTimeout(() => setAsked(null), ASKED_HOLD_MS);
+    return () => clearTimeout(timer);
+  }, [asked, busy]);
+  const shown = asked?.value ?? off;
   const onToggle = async (next: boolean) => {
     if (busy) return;
-    setAsked(next);
+    setAsked({ value: next, from: off });
     setNote(null);
+    setBusy(true);
     const failed = await onChange(next);
+    setBusy(false);
     if (failed === null) return;
     setAsked(null);
     setNote(failed);
@@ -167,11 +181,13 @@ function WalkyOffSwitch({ off, onChange }: { off: boolean; onChange: (off: boole
           <Icon className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
           <span className="min-w-0">
             <span className="block text-sm font-medium">{t("walky.off.label")}</span>
-            <span className="block text-xs leading-snug text-muted-foreground">{t("walky.off.hint")}</span>
+            <span id={hintId} className="block text-xs leading-snug text-muted-foreground">
+              {t("walky.off.hint")}
+            </span>
           </span>
         </span>
         {/* The switch reads ON while messages from agents get in, so off means the walky talky is off. */}
-        <Switch checked={!shown} disabled={busy} onCheckedChange={(on) => void onToggle(!on)} aria-label={t("walky.off.label")} />
+        <Switch checked={!shown} disabled={busy} onCheckedChange={(on) => void onToggle(!on)} aria-label={t("walky.off.label")} aria-describedby={hintId} />
       </label>
       {note !== null && (
         <p data-slot="walky-off-note" role="status" className="mt-1 text-[11px] text-status-blocked">

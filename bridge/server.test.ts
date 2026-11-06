@@ -5525,6 +5525,8 @@ describe("an input written to a pane makes its engine hot", () => {
     }
     expect(isTopologyWrite("/api/pane/w1%3Ap1/close", "POST")).toBe(true);
     expect(isTopologyWrite("/api/pane/w1%3Ap1/rename", "POST")).toBe(true);
+    // A walky talky switch set on a member buys the same hot spell (M89 spec 04).
+    expect(isTopologyWrite("/api/walky/off", "POST")).toBe(true);
     expect(isTopologyWrite("/api/launch", "GET")).toBe(false);
     expect(isTopologyWrite("/api/worktree/plan", "GET")).toBe(false);
     for (const path of ["/api/launch/recent/clear", "/api/launch/check", "/api/launchers", "/api/folders/star", "/api/pane/w1%3Ap1/reply", "/api/pane/w1%3Ap1/focus", "/api/pane/w1%3Ap1/upload"]) {
