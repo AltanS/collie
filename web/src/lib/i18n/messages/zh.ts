@@ -252,6 +252,8 @@ export const zh: Dictionary = {
   "settings.updateBanner.releaseAvailable": "Collie {version} 已发布",
   "settings.updateBanner.majorAvailable": "Collie {version} 发布（主版本升级）",
   "settings.updateBanner.copyAria": "复制命令：{command}",
+  "settings.updateBanner.bundleProgress": "已下载 {percent}%",
+  "settings.updateBanner.bundleReloads": "没有进行中的操作后，页面会自动重新加载。",
 
   // --- settings.typeface ---
   "settings.typeface.title": "界面字体",
@@ -1034,6 +1036,7 @@ export const zh: Dictionary = {
   "nav.home.aria.lost": "Collie 首页（连接中断）",
   "nav.home.aria.lostAt": "Collie 首页（连接中断）。正在显示 {time} 保存的内容。",
   "nav.home.aria.reconnecting": "Collie 首页（重新连接中）",
+  "nav.home.aria.updating": "Collie 正在更新应用。打开仪表盘。",
   "nav.mux.onPrefix": "运行于",
   "nav.prereleaseTitle": "预览版本: {version}",
 

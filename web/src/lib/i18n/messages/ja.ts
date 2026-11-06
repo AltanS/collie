@@ -260,6 +260,8 @@ export const ja: Dictionary = {
   "settings.updateBanner.releaseAvailable": "Collie {version} が利用可能です",
   "settings.updateBanner.majorAvailable": "Collie {version} (メジャーアップデート)",
   "settings.updateBanner.copyAria": "コマンドをコピー: {command}",
+  "settings.updateBanner.bundleProgress": "{percent}% ダウンロード済み",
+  "settings.updateBanner.bundleReloads": "進行中の操作がなくなると自動で再読み込みします。",
 
   // --- settings.typeface ---
   "settings.typeface.title": "UIフォント",
@@ -1044,6 +1046,7 @@ export const ja: Dictionary = {
   "nav.home.aria.lost": "Collie ホーム (未接続)",
   "nav.home.aria.lostAt": "Collie ホーム (未接続)。{time} に保存された内容を表示しています。",
   "nav.home.aria.reconnecting": "Collie ホーム (再接続中)",
+  "nav.home.aria.updating": "Collie がアプリを更新しています。ダッシュボードを開きます。",
   "nav.mux.onPrefix": "オン",
   "nav.prereleaseTitle": "プレリリースビルド: {version}",
 

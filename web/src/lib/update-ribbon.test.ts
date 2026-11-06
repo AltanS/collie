@@ -5,7 +5,7 @@ import {
   CLAIM_MAX_AGE_MS,
   noteMemberSkipped,
   clearUpdateStarted,
-  dismissesLocally,
+  carriedByMark,
   dismissTarget,
   DONE_WINDOW_MS,
   getUpdateStarted,
@@ -386,19 +386,21 @@ describe("what carries a close", () => {
     expect(dismissTarget({ kind: "silent" })).toBeNull();
   });
 
-  it("the DOWNLOAD row closes in this document and posts nothing (2026-09-12)", () => {
-    // It is closable for the reason the others are not: the wait has no end of its own. A worker
-    // stuck in `installing` on a dead link is waited on with no timer and no forced reload, so the
-    // close is the operator's only way back to the app they already have.
-    expect(dismissesLocally({ kind: "bundle-installing" })).toBe(true);
-    // And it is NOT a dismissal: nothing was declined, so no version goes to the bridge.
+  it("the DOWNLOAD row posts no version either: nothing was declined (2026-09-12)", () => {
     expect(dismissTarget({ kind: "bundle-installing" })).toBeNull();
   });
+});
 
-  it("every other state is put down on the bridge or not at all", () => {
-    expect(dismissesLocally({ kind: "bundle" })).toBe(false);
-    expect(dismissesLocally({ kind: "available", version: "1.5.0" })).toBe(false);
-    expect(dismissesLocally({ kind: "silent" })).toBe(false);
+// ── The bundle is the mark's (2026-11-06) ───────────────────────────────────
+
+describe("the two bundle states are carried by the header mark, not the band", () => {
+  it("names both bundle states, and only those", () => {
+    expect(carriedByMark({ kind: "bundle-installing" })).toBe(true);
+    expect(carriedByMark({ kind: "bundle" })).toBe(true);
+    expect(carriedByMark({ kind: "silent" })).toBe(false);
+    expect(carriedByMark({ kind: "available", version: "1.5.0" })).toBe(false);
+    expect(carriedByMark({ kind: "available-packaged", version: "1.5.0", manager: null })).toBe(false);
+    expect(carriedByMark({ kind: "peer-failed", name: "minibuch", reason: "gate", target: "1.5.0" })).toBe(false);
   });
 });
 

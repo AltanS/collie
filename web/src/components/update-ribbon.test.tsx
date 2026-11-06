@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { checkForUpdate, type UpdateStage } from "@/lib/pwa";
 import { ROOT_ROUTE_ID, type HomeData } from "@/lib/loaders";
 import { __resetReloadGuard, holdReload } from "@/lib/reload-guard";
-import { __resetSelfUpdate, __setReloadImpl, startSelfUpdate } from "@/lib/self-update";
+import { __resetSelfUpdate, __setReloadImpl, selfUpdateBannerVisible, startSelfUpdate } from "@/lib/self-update";
 import { __resetServerBuild, observeServerBuild } from "@/lib/server-build";
 import { clearUpdateStarted, noteUpdateStarted } from "@/lib/update-ribbon";
 import type { UpdateInfo, UpdatePeerLeg, UpdateRun, UpdateRunState } from "@/lib/types";
@@ -31,15 +31,13 @@ import { UpdateRibbon } from "./update-ribbon";
 // build id that is not ours, observed twice (the hysteresis), with or without a reload hold.
 
 // The update STAGE is part of this seam too (2026-09-12): the band reads `lib/pwa.ts`'s own store to
-// know a new bundle is downloading. A box rather than a constant, so the one case about the download
-// row can set it; `vi.hoisted` because a mock factory may not reach an ordinary module variable.
+// know a new bundle is downloading, which still outranks everything the band can say even though the
+// band posts nothing for it now (the mark carries it, 2026-11-06). A box rather than a constant, so a
+// case can set it; `vi.hoisted` because a mock factory may not reach an ordinary module variable.
 
 /**
  * The box the stub reads. Named, so the stage is the module's own type and not a widened string.
- *
- * It carries the real module's SUBSCRIPTION too, not just its value: the band drops the download
- * row on a close and raises it again for the next worker, and "the next worker" is nothing but the
- * stage leaving `installing` and coming back. A no-op subscribe could not express that.
+ * It carries the real module's SUBSCRIPTION too, so a case can move the stage under a mounted band.
  */
 interface StageBox {
   current: UpdateStage;
@@ -386,77 +384,93 @@ describe("a reload prompt does not look like an offer (M20/05)", () => {
     const { container } = await renderBand(info());
     expect(icon(container)).toBe("lucide-circle-arrow-up");
   });
-
-  it("a stale BUNDLE asks for a reload, and wears the reload mark", async () => {
-    holdReload("an-open-composer-draft");
-    confirmStaleBundle();
-    const { container } = await renderBand(info({ releaseAvailable: false }));
-    expect(icon(container)).toBe("lucide-refresh-cw");
-  });
-
 });
 
-describe("pwa path unchanged", () => {
-  it("with no Collie update running, the band is the same PWA row it has always been", async () => {
-    const user = userEvent.setup();
+describe("the app bundle is the mark's, not the band's (2026-11-06)", () => {
+  // The header mark turns in the update colour for both states, and the dashboard's update line says
+  // which one it is (`components/update-banner.test.tsx`). The band posts nothing for either.
+  it("a stale bundle with a hold posts no row, and no reload offer anywhere in the band", async () => {
     holdReload("an-open-composer-draft");
     confirmStaleBundle();
-    await renderBand(info({ releaseAvailable: false }));
-    expect(
-      screen.getByRole("button", { name: "New version, tap to update" }),
-    ).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "New version, tap to update" }));
-    expect(checkForUpdate).toHaveBeenCalledTimes(1);
-  });
-
-  it("says the new version is DOWNLOADING while a worker is on its way in (2026-09-12)", async () => {
-    // The incident's missing word. The band offered "tap to update", the operator tapped, and for
-    // the two minutes the download took the row went on saying the same thing — so the tap read as
-    // ignored and the next one was a reload that landed on a shell about to be deleted.
-    pwaStage.current = "installing";
-    holdReload("an-open-composer-draft");
-    confirmStaleBundle();
-    await renderBand(info({ releaseAvailable: false }));
-    expect(screen.getByText("Downloading the new version…")).toBeInTheDocument();
+    const { container } = await renderBand(info({ releaseAvailable: false }));
+    expect(band(container)).toBeNull();
     expect(screen.queryByText("New version, tap to update")).not.toBeInTheDocument();
+    expect(checkForUpdate).not.toHaveBeenCalled();
   });
 
-  it("the download row carries a named close, and the close puts it down", async () => {
-    // The counsel finding on the 2026-09-12 fix: a worker that never leaves `installing` — a dead
-    // link — is waited on forever and on purpose, since reloading early is the incident. So the row
-    // that says so must be closable, or the operator reads "Downloading" with no way out over an
-    // app that is running perfectly well underneath.
-    const user = userEvent.setup();
+  it("a download in progress posts no row either: no 'Downloading', no close", async () => {
     pwaStage.current = "installing";
     holdReload("an-open-composer-draft");
     confirmStaleBundle();
     const { container } = await renderBand(info({ releaseAvailable: false }));
-    await user.click(screen.getByRole("button", { name: "Hide this notice" }));
-    await settleBand();
     expect(band(container)).toBeNull();
-    // NOTHING WAS DECLINED, so nothing is posted: the install carries on and the controller swap
-    // still reloads this page when it lands.
-    expect(dismissUpdate).not.toHaveBeenCalled();
+    expect(screen.queryByText("Downloading the new version…")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Hide this notice" })).toBeNull();
   });
 
-  it("a LATER worker raises the row again — a close covers one download, not every one", async () => {
-    const user = userEvent.setup();
-    pwaStage.current = "installing";
+  it("the offer a stale bundle outranks stays down: the band and the mark never talk about two updates", async () => {
     holdReload("an-open-composer-draft");
     confirmStaleBundle();
-    await renderBand(info({ releaseAvailable: false }));
-    await user.click(screen.getByRole("button", { name: "Hide this notice" }));
-    await settleBand();
-    expect(screen.queryByText("Downloading the new version…")).not.toBeInTheDocument();
+    const { container } = await renderBand(info());
+    expect(band(container)).toBeNull();
+    expect(screen.queryByText("Collie 1.5.0 available.")).not.toBeInTheDocument();
+  });
 
-    // That worker is over and a second `updatefound` starts another. The close was about the first.
+  it("the offer comes back the moment the bundle is current again", async () => {
+    holdReload("an-open-composer-draft");
+    confirmStaleBundle();
+    const { container } = await renderBand(info());
+    expect(band(container)).toBeNull();
+    await act(async () => {
+      observeServerBuild("test");
+    });
+    expect(band(container)).not.toBeNull();
+    expect(screen.getByText("Collie 1.5.0 available.")).toBeInTheDocument();
+  });
+});
+
+describe("while the app is being applied, the band says nothing about updates (2026-11-06)", () => {
+  // The automatic lane: a worker controls the page and downloads the new build, and the
+  // self-updater's flag stays down. The reading would post the offer or the failed peer; the
+  // component posts nothing, because the mark and the dashboard line own the update then.
+  beforeEach(() => {
+    Object.defineProperty(navigator, "serviceWorker", { configurable: true, value: { controller: {} } });
+  });
+  afterEach(() => {
+    Reflect.deleteProperty(navigator, "serviceWorker");
+  });
+
+  it("posts no offer while the automatic lane downloads", async () => {
+    pwaStage.current = "installing";
+    const { container } = await renderBand(info());
+    expect(band(container)).toBeNull();
+    expect(screen.queryByText("Collie 1.5.0 available.")).not.toBeInTheDocument();
+  });
+
+  it("posts no failed peer either", async () => {
+    pwaStage.current = "installing";
+    const peers: UpdatePeerLeg[] = [
+      { name: "minibuch", state: "rolled-back", reason: "health gate timed out" },
+    ];
+    const { container } = await renderBand(info({ run: run("done", { peers }) }));
+    expect(band(container)).toBeNull();
+    expect(screen.queryByText(/Could not update minibuch/)).not.toBeInTheDocument();
+  });
+
+  it("still posts the offer with a worker in control and nothing downloading", async () => {
+    const { container } = await renderBand(info());
+    expect(band(container)).not.toBeNull();
+  });
+
+  it("brings the offer back when the download is over", async () => {
+    pwaStage.current = "installing";
+    const { container } = await renderBand(info());
+    expect(band(container)).toBeNull();
     await act(async () => {
       pwaStage.set("idle");
     });
-    await act(async () => {
-      pwaStage.set("installing");
-    });
-    expect(screen.getByText("Downloading the new version…")).toBeInTheDocument();
+    expect(band(container)).not.toBeNull();
+    expect(screen.getByText("Collie 1.5.0 available.")).toBeInTheDocument();
   });
 });
 
@@ -470,39 +484,19 @@ describe("auto-reload unless held", () => {
     expect(band(container)).toBeNull(); // the band did not turn an auto-reload into a tap
   });
 
-  it("with a hold active the band offers the tap the self-updater was going to offer anyway", async () => {
+  it("with a hold active the self-updater waits, and the band still asks for nothing (the mark does)", async () => {
     const reload = vi.fn();
     __setReloadImpl(reload);
     holdReload("an-open-composer-draft");
     confirmStaleBundle();
-    await renderBand(info({ releaseAvailable: false, run: run("done") }));
+    const { container } = await renderBand(info({ releaseAvailable: false, run: run("done") }));
     expect(reload).not.toHaveBeenCalled();
-    expect(screen.getByText("New version, tap to update")).toBeInTheDocument();
-  });
-
-  it("the reload row's tap takes the same path the footer button does", async () => {
-    const user = userEvent.setup();
-    holdReload("an-open-composer-draft");
-    confirmStaleBundle();
-    await renderBand(info({ releaseAvailable: false, run: run("done") }));
-    // By role, not by the text node: the row's tap target is a sibling overlay button rather than a
-    // wrapper around the copy (see ui/notice.tsx), so a real tap lands on the overlay because it
-    // paints on top, but a synthetic click dispatched straight at the text node has no DOM ancestor
-    // to bubble to it through. Addressing the button by its name is what the click actually is.
-    await user.click(screen.getByRole("button", { name: "New version, tap to update" }));
-    expect(checkForUpdate).toHaveBeenCalledTimes(1);
+    expect(selfUpdateBannerVisible()).toBe(true);
+    expect(band(container)).toBeNull();
   });
 });
 
 describe("dismissal is per version, and it belongs to the machine", () => {
-  it("the DOWNLOAD row carries no version dismiss — nothing was declined (2026-09-12)", async () => {
-    holdReload("an-open-composer-draft");
-    confirmStaleBundle();
-    pwaStage.set("installing");
-    await renderBand(info({ releaseAvailable: false }));
-    expect(screen.queryByRole("button", { name: "Dismiss this version" })).toBeNull();
-  });
-
   it("dismissing closes the band on the tap and tells the bridge which version", async () => {
     const user = userEvent.setup();
     const { container } = await renderBand(info());

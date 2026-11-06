@@ -262,6 +262,8 @@ export const ko: Dictionary = {
   "settings.updateBanner.releaseAvailable": "Collie {version} 업데이트 가능",
   "settings.updateBanner.majorAvailable": "Collie {version} 메이저 업데이트 출시",
   "settings.updateBanner.copyAria": "명령어 복사: {command}",
+  "settings.updateBanner.bundleProgress": "{percent}% 다운로드됨",
+  "settings.updateBanner.bundleReloads": "진행 중인 작업이 없으면 자동으로 다시 불러옵니다.",
 
   // --- settings.typeface ---
   "settings.typeface.title": "UI 글꼴",
@@ -1042,6 +1044,7 @@ export const ko: Dictionary = {
   "nav.home.aria.lost": "Collie 홈, 연결 끊김",
   "nav.home.aria.lostAt": "Collie 홈, 연결 끊김. {time}에 저장된 내용을 표시합니다.",
   "nav.home.aria.reconnecting": "Collie 홈, 재연결 중",
+  "nav.home.aria.updating": "Collie가 앱을 업데이트하는 중입니다. 대시보드를 엽니다.",
   "nav.mux.onPrefix": "기반:",
   "nav.prereleaseTitle": "프리릴리스 빌드 {version}",
 

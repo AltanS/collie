@@ -9,6 +9,11 @@ import { collieMark, markIsLive, markPaper } from "@/test/collie-mark";
 import { __resetOperatorCommands, loadOperatorCommands } from "@/lib/operator-config";
 import { ROOT_ROUTE_ID, type HomeData } from "@/lib/loaders";
 import { AppHeaderHost, RouteHeader, SettingsGear } from "./app-header";
+import { APPLYING_CLASS } from "./collie-home";
+import { __resetBundleFocus, bundleFocusPending, subscribeBundleFocus } from "@/lib/bundle-apply";
+import { __resetReloadGuard, holdReload } from "@/lib/reload-guard";
+import { __resetSelfUpdate, __setReloadImpl, startSelfUpdate } from "@/lib/self-update";
+import { __resetServerBuild, observeServerBuild } from "@/lib/server-build";
 import { StatusBadge } from "./status-badge";
 import { CONNECTION_LOST_MS, TROUBLE_MS } from "@/hooks/use-connection-lost";
 import { __resetConnectionHealth, isLostLatched } from "@/lib/connection-health";
@@ -894,5 +899,137 @@ describe("the Settings gear — the update dot", () => {
     const newer = renderGear(updateInfo({ latest: "1.4.1", dismissedVersion: "1.4.0" }));
     await screen.findByRole("button", { name: "Settings, update available" });
     expect(newer.container.querySelector('[data-slot="update-dot"]')).not.toBeNull();
+  });
+});
+
+// ── THE APP UPDATING (2026-11-06) ────────────────────────────────────────────────────────────────
+//
+// The host reads `lib/bundle-apply.ts` and hands the mark `applying`; a tap on the mark then opens
+// the DASHBOARD from any route, and asks it to bring its update line into view. Driven through the
+// real self-updater the way the real poll drives it: a newer build id seen twice, under a hold, so
+// the self-updater waits instead of reloading and publishes its flag.
+describe("the header — the mark while the app updates", () => {
+  let stop: () => void;
+  beforeEach(() => {
+    __resetConnectionHealth();
+    sessionStorage.clear();
+    __resetServerBuild();
+    __resetReloadGuard();
+    __resetSelfUpdate();
+    __setReloadImpl(() => {});
+    __resetBundleFocus();
+    stop = startSelfUpdate();
+  });
+  afterEach(() => {
+    stop();
+    __resetReloadGuard();
+    __resetSelfUpdate();
+    __resetBundleFocus();
+  });
+
+  function applyBundle() {
+    act(() => {
+      holdReload("an-open-composer-draft");
+      observeServerBuild("1.5.0+new.1");
+      observeServerBuild("1.5.0+new.1");
+    });
+  }
+
+  /** The host above an outlet, a dashboard that reports where it is, and a settings route with a
+   *  mark tap of its own, so a case can tell the route's tap from the update's. */
+  function renderApp(initial: string, routeHome = vi.fn()) {
+    const router = createMemoryRouter(
+      [
+        {
+          id: ROOT_ROUTE_ID,
+          path: "/",
+          element: (
+            <AppHeaderHost bridge="connected" error={false}>
+              <Outlet />
+            </AppHeaderHost>
+          ),
+          children: [
+            { index: true, element: <><RouteHeader wordmark /><LocationProbe /></> },
+            { path: "settings", element: <><RouteHeader onHome={routeHome} /><LocationProbe /></> },
+          ],
+        },
+      ],
+      { initialEntries: [initial] },
+    );
+    return { ...render(<RouterProvider router={router} />), routeHome };
+  }
+
+  it("turns the mark in the update paint and names it, from the self-updater's own flag", () => {
+    const { container } = renderApp("/");
+    expect(markIsLive(container)).toBe(false);
+    applyBundle();
+    expect(markIsLive(container)).toBe(true);
+    expect(collieMark(container)?.classList.contains(APPLYING_CLASS)).toBe(true);
+    expect(screen.getByRole("button", { name: "Collie is updating the app. Open the dashboard." })).toBeInTheDocument();
+  });
+
+  it("a tap opens the dashboard from another route, in the same scope, and asks for the update line", async () => {
+    const { routeHome } = renderApp("/settings?s=collie-demo");
+    applyBundle();
+    await userEvent.click(screen.getByRole("button", { name: "Collie is updating the app. Open the dashboard." }));
+    expect(screen.getByTestId("loc").textContent).toBe("/?s=collie-demo");
+    expect(routeHome).not.toHaveBeenCalled();
+  });
+
+  it("from a pane opened out of a space, the tap skips the space and lands on the dashboard", async () => {
+    // `up` would step back onto the space, the pane's nearest parent. The update's tap names the
+    // dashboard itself.
+    const router = createMemoryRouter(
+      [
+        {
+          id: ROOT_ROUTE_ID,
+          path: "/",
+          element: (
+            <AppHeaderHost bridge="connected" error={false}>
+              <Outlet />
+            </AppHeaderHost>
+          ),
+          children: [
+            { index: true, element: <><RouteHeader wordmark /><LocationProbe /></> },
+            { path: "space/:id", element: <><RouteHeader /><LocationProbe /></> },
+            { path: "pane/:id", element: <><RouteHeader onHome={() => {}} /><LocationProbe /></> },
+          ],
+        },
+      ],
+      {
+        initialEntries: [
+          "/",
+          { pathname: "/space/w2", state: { from: "/" } },
+          { pathname: "/pane/w2:p1", state: { from: "/space/w2" } },
+        ],
+      },
+    );
+    render(<RouterProvider router={router} />);
+    applyBundle();
+    await userEvent.click(screen.getByRole("button", { name: "Collie is updating the app. Open the dashboard." }));
+    expect(screen.getByTestId("loc").textContent).toBe("/");
+  });
+
+  it("a tap on the dashboard stays there and still asks for the update line", async () => {
+    renderApp("/");
+    applyBundle();
+    const asked = vi.fn();
+    const off = subscribeBundleFocus(asked);
+    try {
+      await userEvent.click(screen.getByRole("button", { name: "Collie is updating the app. Open the dashboard." }));
+    } finally {
+      off();
+    }
+    expect(screen.getByTestId("loc").textContent).toBe("/");
+    expect(asked).toHaveBeenCalled();
+    expect(bundleFocusPending()).toBe(true);
+  });
+
+  it("with nothing updating, the tap is the route's own and asks for nothing", async () => {
+    const { routeHome } = renderApp("/settings");
+    await userEvent.click(screen.getByRole("button", { name: "Collie home" }));
+    expect(routeHome).toHaveBeenCalledOnce();
+    expect(screen.getByTestId("loc").textContent).toBe("/settings");
+    expect(bundleFocusPending()).toBe(false);
   });
 });

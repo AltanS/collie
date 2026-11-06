@@ -20,6 +20,11 @@ interface CollieHomeProps {
    *  the mark goes still again, muted — a mark that blooms forever reads as "still trying" when
    *  we've in fact given up; muted says "not connected" at a glance, matching the boot splash. */
   lost?: boolean;
+  /** A new app build is being applied on this phone: downloading, or waiting to reload onto
+   *  (`lib/bundle-apply.ts`). The orbit turns at the loading rate and every bead draws in the update
+   *  colour, which is the band's old download row moved onto the mark (2026-11-06). Outranks the
+   *  bloom, a round and busy work; `lost` outranks it. */
+  applying?: boolean;
   /** `navigator.onLine`, read by the host (the mark never calls the hook). Only picks which icon the
    *  lost badge wears, the same two the connection strip uses so the two agree: false is the phone's
    *  own fact (WifiOff), anything else is a bridge that does not answer (CloudOff). */
@@ -118,6 +123,22 @@ const ORBIT_TURN_MS = 1800;
  */
 const SPIN_SKEW = 0.5;
 
+/**
+ * THE APPLYING PAINT, as a class on the mark's root (2026-11-06). The rules are in `index.css`
+ * ("THE MARK WHILE THE APP UPDATES"), and they recolour every bead, near and far, as a full disc in
+ * `--status-working`.
+ *
+ * WHY A CLASS AND A STYLESHEET, AND NOT A PROP ON <CollieMark/>. The brief asked for the prop, and
+ * that is where it belongs, but collie-mark.tsx is generated in the collie-brand repo and sealed by
+ * a sha256 a test recomputes (DESIGN.md §8). A prop added here would fail that test, and a prop added
+ * upstream is a change to another repo. So the host paints it, through the one door the mark leaves
+ * open for that: `className` lands on the root untouched, and a document-scoped rule can reach
+ * the beads under it. `collie-home.test.tsx` renders the real mark and proves the rules reach every
+ * bead, so a regenerated mark that renamed its parts fails a test rather than turning grey quietly.
+ * When collie-brand grows an `applying` input, this class and its rules go.
+ */
+export const APPLYING_CLASS = "collie-applying";
+
 export function spinRate(elapsedMs: number, totalMs = ORBIT_TURN_MS): number {
   if (totalMs <= 0) return 1;
   const at = Math.min(Math.max(elapsedMs, 0), totalMs);
@@ -134,6 +155,7 @@ export function CollieHome({
   onHome,
   trouble,
   lost = false,
+  applying = false,
   online = true,
   lastSeenAt,
   paper = "var(--band-ground)",
@@ -142,6 +164,9 @@ export function CollieHome({
 }: CollieHomeProps) {
   useLocale();
   const bloom = trouble && !lost;
+  // A dead link must not look like an update in flight, so `lost` outranks this as it outranks
+  // everything else the mark can say.
+  const applies = applying && !lost;
   const LostIcon = online ? CloudOff : WifiOff;
 
   // ONE FULL ROUND OF THE ORBIT whenever the app publishes a status — a send landing, an agent
@@ -202,6 +227,13 @@ export function CollieHome({
   // by hand (collie-mark.tsx), so a 200ms spin joins the drift where it left it and rejoins it where
   // it lands. Short work reads as a brief accelerate/decelerate, never as a flicker — which is what
   // lets the spin last exactly as long as the work and not one frame more.
+  //
+  // ── THE FOURTH: THE APP ITSELF BEING UPDATED (2026-11-06) ────────────────────────────────────
+  //
+  // `applying` is a state, like the bloom, and it outranks the other three: while a new app build
+  // downloads or waits to load, the mark turns at the loading rate and every bead takes the update
+  // colour (APPLYING_CLASS above). Not the round's curve, a steady turn, for the bloom's reason. It
+  // does not outrank `lost`.
   const busy = useOperatorBusy();
 
   const status = useStatus();
@@ -245,6 +277,10 @@ export function CollieHome({
   const mark = useRef<HTMLSpanElement>(null);
   const frame = useRef<number | null>(null);
   const ramp = useRef<((rate: number) => void) | null>(null);
+  // Whether a STATE is turning the mark right now, read by the ramp at the round's first frame. A ref
+  // and not a dependency, because the round's effect must not re-run when it changes.
+  const steady = useRef(false);
+  steady.current = bloom || applies;
 
   // Every `cm-*` CSS animation under the mark, or null where the ramp cannot run: no element yet, no
   // `getAnimations` (jsdom under test, older engines), or reduced motion — where the stylesheet has
@@ -256,6 +292,9 @@ export function CollieHome({
     // all — jsdom under test does not, and neither do older engines — which is a fact about the
     // object, not about the shape of a value we were handed.
     if (el === null || !("getAnimations" in el)) return null;
+    // A state already turns the mark steadily (the bloom, or the app updating): a wheel-throw over it
+    // would read as an event that keeps happening. The round runs on, unseen, as it always did.
+    if (steady.current) return null;
     if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true) return null;
     return el.getAnimations({ subtree: true }).filter((a) => {
       // SAFETY: `getAnimations` returns transitions as well as animations, and only a CSSAnimation
@@ -324,15 +363,7 @@ export function CollieHome({
       onClick={onHome}
       // The bloom conveys connection state visually; fold it into the button's accessible name too,
       // so screen-reader users get it (inside a pane there's no other cue).
-      aria-label={
-        !trouble
-          ? t("nav.home.aria.default")
-          : !lost
-            ? t("nav.home.aria.reconnecting")
-            : lastSeenAt === undefined
-              ? t("nav.home.aria.lost")
-              : t("nav.home.aria.lostAt", { time: savedAtLabel(lastSeenAt) })
-      }
+      aria-label={homeLabel({ trouble, lost, applying: applies, lastSeenAt })}
       className={cn(
         "-mx-1 flex items-center rounded px-1 transition-opacity active:opacity-70",
         className,
@@ -370,9 +401,9 @@ export function CollieHome({
         <CollieMark
           size={markSize}
           weight="header"
-          loading={bloom || ((round || busy) && !lost)}
+          loading={applies || bloom || ((round || busy) && !lost)}
           paper={paper}
-          className={cn("transition-opacity", lost && "opacity-40 grayscale")}
+          className={cn("transition-opacity", lost && "opacity-40 grayscale", applies && APPLYING_CLASS)}
         />
         {/* THE LOST BADGE. The strip under the header says the connection is gone, and the operator can
             hide it; this is what stays after that, so the state is never only a dimmed dog. It sits in
@@ -394,4 +425,30 @@ export function CollieHome({
       </span>
     </button>
   );
+}
+
+/**
+ * The button's accessible name: what the mark is showing, folded into the name, because inside a pane
+ * there is no other cue for a screen reader. `lost` first, then the app updating, then the bloom.
+ */
+function homeLabel({
+  trouble,
+  lost,
+  applying,
+  lastSeenAt,
+}: {
+  trouble: boolean;
+  lost: boolean;
+  applying: boolean;
+  lastSeenAt: number | undefined;
+}): string {
+  // `trouble` as well, exactly as before: the lost names were only ever reached through it.
+  if (trouble && lost) {
+    return lastSeenAt === undefined
+      ? t("nav.home.aria.lost")
+      : t("nav.home.aria.lostAt", { time: savedAtLabel(lastSeenAt) });
+  }
+  if (applying) return t("nav.home.aria.updating");
+  if (trouble) return t("nav.home.aria.reconnecting");
+  return t("nav.home.aria.default");
 }
