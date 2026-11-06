@@ -5739,6 +5739,19 @@ describe("Composer pins mark and sheet (M90 spec 03)", () => {
     await waitFor(() => expect(document.querySelector('[data-slot="belt-pins"]')).toBeNull());
   });
 
+  it("moves focus to the belt when the last Unpin takes the sheet and the mark away", async () => {
+    const user = userEvent.setup();
+    mountPinned();
+    await user.click(screen.getByRole("button", { name: "2 pinned" }));
+    for (let left = 2; left > 0; left -= 1) {
+      const sheet = screen.getByRole("dialog", { name: "Pinned messages" });
+      await user.click(within(sheet).getAllByRole("button", { name: "Unpin" })[0]!);
+    }
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    const belt = document.querySelector('[data-slot="composer-actions"]')!;
+    await waitFor(() => expect(belt.contains(document.activeElement)).toBe(true));
+  });
+
   it("opens the sheet for a pins intent a column's tap left, once", async () => {
     queueBeltIntent(paneScopeKey(undefined, "w1:p1"), { kind: "pins" });
     mountPinned();

@@ -15,7 +15,7 @@ import { finished, itemsOf, type ChatItem } from "@/lib/chat-items";
 import type { ChatStatus } from "@/lib/chat-window";
 import { dropPending, unmatched, usePending } from "@/lib/durable-pending";
 import { t, type MessageKey } from "@/lib/i18n";
-import { blockOfPin, isPinnable } from "@/lib/message-pins";
+import { blockOfPin, isPinnable, writingItemId } from "@/lib/message-pins";
 import type { Ask, PinRow, QueuedSendRow } from "@/lib/types";
 import { AskCard, type AskCardProps } from "@/components/ask-card";
 import { pinAt, promptMap } from "@/lib/prompt-pin";
@@ -602,6 +602,8 @@ export function SessionStream({
 
   // What the end of a durable thread says. The newest thing is the person's own when a line of theirs is waiting, or when
   // the last item is a user turn. A text still growing says it is working by itself, with its cursor.
+  // The reply a normal pane is still writing is not pinnable yet, whether or not the item says `partial`.
+  const writing = writingItemId(blocks, working);
   const newest = blocks.at(-1)?.at(-1);
   const personsNewest = lines.some((line) => line.state !== "notSent") || newest?.kind === "user";
   const growing = newest !== undefined && "partial" in newest && newest.partial === true;
@@ -870,7 +872,7 @@ export function SessionStream({
         const drawn = group.length === 1 && (showToolCalls || group[0]!.kind !== "tool" || standsAlone(group[0]!));
         // The block a pin can hang on is a single drawn item; a folded run is several, and has no one text to keep.
         const item = drawn ? group[0]! : null;
-        const pinnable = item !== null && isPinnable(item);
+        const pinnable = item !== null && isPinnable(item) && item.id !== writing;
         return (
           <StreamBlock
             key={group[0]!.id}

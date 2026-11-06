@@ -2884,4 +2884,8 @@ export const zhTW: Dictionary = {
   "pins.sheet.empty": "此工作階段中沒有釘選任何內容。",
   "pins.action.show": "在聊天中顯示",
   "pins.notice.notLoaded": "該區塊尚未載入聊天中。向上捲動以載入較早的訊息。",
+
+  // --- pins, review fixes (M90) ---
+  "pins.sheet.kind.toolPlain": "工具",
+  "pins.reason.notSettled": "該回覆仍在撰寫中。完成後再釘選。",
 };

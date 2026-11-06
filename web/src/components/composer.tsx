@@ -1484,9 +1484,12 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const pinsLabel = pinCount > 0 ? translate("pins.belt.label", { count: pinCount }) : "";
   const [pinsOpen, setPinsOpen] = useState(false);
   // The last Unpin shuts the sheet for good: a pin made later must not find it still "open" and pop it up.
+  // The sheet and the mark it was opened from both leave then, so focus goes to the belt instead of nowhere.
   useEffect(() => {
-    if (pinCount === 0) setPinsOpen(false);
-  }, [pinCount]);
+    if (pinCount > 0 || !pinsOpen) return;
+    setPinsOpen(false);
+    document.querySelector<HTMLElement>('[data-slot="composer-actions"] button')?.focus();
+  }, [pinCount, pinsOpen]);
   // The suggestions above the box read the agent's command list only (the shipped catalog, or the
   // operator's rows): never the skill and command files the palette finds on disk.
   const commandSuggestions = locked || direct.active || isShell ? [] : suggestCommands(input, commandsFor(agent, operatorCommands));

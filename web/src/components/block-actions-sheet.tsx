@@ -22,6 +22,8 @@ interface BlockActionsSheetProps {
   item: ChatItem | null;
   /** Whether the block is pinned (or on its way to being): the row reads Unpin. */
   pinned: boolean;
+  /** The pin is still on its way, so there is no pin id to drop yet: the Unpin row stands dimmed and takes no tap. */
+  pinning?: boolean;
   onClose: () => void;
   onPin: (item: ChatItem) => void;
   onUnpin: (item: ChatItem) => void;
@@ -29,7 +31,7 @@ interface BlockActionsSheetProps {
 
 const ROW_ICON = "size-4 shrink-0 text-muted-foreground";
 
-export function BlockActionsSheet({ item, pinned, onClose, onPin, onUnpin }: BlockActionsSheetProps) {
+export function BlockActionsSheet({ item, pinned, pinning = false, onClose, onPin, onUnpin }: BlockActionsSheetProps) {
   useLocale();
   if (item === null) return null;
   const copy = async () => {
@@ -46,7 +48,9 @@ export function BlockActionsSheet({ item, pinned, onClose, onPin, onUnpin }: Blo
         <ActionRow
           icon={pinned ? <PinOff className={ROW_ICON} /> : <Pin className={ROW_ICON} />}
           label={t(pinned ? "pins.action.unpin" : "pins.action.pin")}
+          disabled={pinned && pinning}
           onClick={() => {
+            if (pinned && pinning) return;
             onClose();
             if (pinned) onUnpin(item);
             else onPin(item);

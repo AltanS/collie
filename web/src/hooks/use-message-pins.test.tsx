@@ -106,6 +106,31 @@ describe("useMessagePins", () => {
     expect(view.result.current.status?.text).toBe("That machine's Collie is older and cannot keep pins. Update it.");
   });
 
+  it("reads the list again after a refused unpin, so a pin another phone dropped does not come back", async () => {
+    setMessagePins([fixturePin({ itemId: "a:0", id: "p1", pinnedAt: 1 }), fixturePin({ itemId: "b:0", id: "p2", pinnedAt: 2 })]);
+    const view = open();
+    await waitFor(() => expect(view.result.current.pins.count).toBe(2));
+    // The machine refuses the delete, and by then its list no longer holds the pin.
+    server.use(
+      http.delete(/\/api\/pane\/[^/]+\/pins$/, () => {
+        setMessagePins([fixturePin({ itemId: "b:0", id: "p2", pinnedAt: 2 })]);
+        return HttpResponse.json({ error: "pin.not_found", code: "pin.not_found", message: "gone" }, { status: 404 });
+      }),
+    );
+    await act(() => view.result.current.pins.unpin("p1"));
+    await waitFor(() => expect(view.result.current.pins.rows.map((row) => row.id)).toEqual(["p2"]));
+    expect(view.result.current.status?.text).toBe("That pin is gone.");
+  });
+
+  it("counts by the wire, not the list, where nothing can be asked, so a column's belt and the pane's agree", async () => {
+    const view = open({ wireCount: 2 });
+    setMessagePins([fixturePin({ itemId: "a:0" })]);
+    view.rerender({ enabled: true, wireCount: 2 });
+    await waitFor(() => expect(view.result.current.pins.count).toBe(1));
+    view.rerender({ enabled: false, wireCount: 2 });
+    expect(view.result.current.pins.count).toBe(2);
+  });
+
   it("asks nothing where pins are off: an older machine, a saved copy, a pane with no session", async () => {
     setMessagePins([fixturePin({ itemId: "a:0" })]);
     const view = open({ enabled: false, wireCount: 2 });

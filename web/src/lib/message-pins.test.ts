@@ -6,6 +6,7 @@ import type { ChatItem } from "./chat-items";
 import { setLocale } from "./i18n";
 import {
   blockOfPin,
+  writingItemId,
   hostKeepsPins,
   isPinnable,
   itemCopyText,
@@ -14,6 +15,7 @@ import {
   pinAsItem,
   pinFailure,
   pinnedByItem,
+  pinTitle,
   rowOf,
 } from "./message-pins";
 import type { PinFull, PinRow } from "./types";
@@ -62,6 +64,14 @@ describe("isPinnable", () => {
     expect(isPinnable({ id: "c:0", kind: "compacted" })).toBe(false);
   });
 
+  it("waits for a tool call that is still running, and takes one that ended, however it ended", () => {
+    const call = { kind: "execute", command: "ls" } as const;
+    expect(isPinnable({ id: "t:0", kind: "tool", status: "running", tool: call })).toBe(false);
+    expect(isPinnable({ id: "t:0", kind: "tool", status: "done", tool: call })).toBe(true);
+    expect(isPinnable({ id: "t:0", kind: "tool", status: "failed", tool: call })).toBe(true);
+    expect(isPinnable({ id: "t:0", kind: "tool", status: "denied", tool: call })).toBe(true);
+  });
+
   it("waits for a reply the program is still writing", () => {
     expect(isPinnable({ id: "a1:0", kind: "reply", text: "do", partial: true })).toBe(false);
     expect(isPinnable({ id: "a1:0", kind: "thinking", text: "hm", partial: true })).toBe(false);
@@ -69,7 +79,30 @@ describe("isPinnable", () => {
   });
 });
 
+describe("writingItemId", () => {
+  const blocks = (...items: ChatItem[]) => items.map((item) => [item]);
+
+  it("names the last reply or thinking block while the agent works, and nothing once it is idle", () => {
+    expect(writingItemId(blocks(user, reply), true)).toBe("a1:0");
+    expect(writingItemId(blocks(user, { id: "a2:0", kind: "thinking", text: "hm" }), true)).toBe("a2:0");
+    expect(writingItemId(blocks(user, reply), false)).toBeUndefined();
+  });
+
+  it("names nothing when the stream ends in a person's line, a tool call or nothing", () => {
+    expect(writingItemId(blocks(reply, user), true)).toBeUndefined();
+    expect(writingItemId(blocks(reply, tool), true)).toBeUndefined();
+    expect(writingItemId([], true)).toBeUndefined();
+  });
+});
+
 describe("what a block says about itself", () => {
+  it("titles a tool without a name by the plain word, never 'Tool: '", () => {
+    expect(itemTitle({ id: "t:0", kind: "tool", status: "done", tool: { kind: "other", name: "", summary: "" } })).toBe("Tool");
+    expect(pinTitle({ kind: "tool" })).toBe("Tool");
+    expect(pinTitle({ kind: "tool", tool: { name: "  " } })).toBe("Tool");
+    expect(pinTitle({ kind: "tool", tool: { name: "Bash" } })).toBe("Tool: Bash");
+  });
+
   it("titles a block by its kind in words and a tool card by its tool", () => {
     expect(itemTitle(user)).toBe("Your message");
     expect(itemTitle(reply)).toBe("Reply");
@@ -146,6 +179,7 @@ describe("pinFailure", () => {
     [409, "pin.cap", "This session has 100 pins, unpin one first."],
     [409, "pin.no_session", "This pane has no session to keep pins for."],
     [409, "pin.not_pinnable", "That block cannot be pinned."],
+    [409, "pin.not_settled", "That reply is still being written. Pin it when it is done."],
   ])("says the machine's own %s %s in words", async (status, code, sentence) => {
     refuse(status, code);
     expect(pinFailure(await failed())).toBe(sentence);

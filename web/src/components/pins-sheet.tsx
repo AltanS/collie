@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Bot, PinOff, User, Wrench, type LucideIcon } from "lucide-react";
 
 import { ItemView } from "@/components/chat-cards";
@@ -56,8 +56,18 @@ export function PinsSheet({ open, onClose, scope, paneId, rows, onUnpin, onOpene
     if (detailId !== null && detail === null) setDetailId(null);
   }, [detailId, detail]);
 
+  // The row the detail was opened from leaves with its pin, and the detail's own button goes with it: focus would be
+  // lost, so it goes to the list's title instead.
+  const titleRef = useRef<HTMLSpanElement>(null);
+  const [refocus, setRefocus] = useState(0);
+  useEffect(() => {
+    if (refocus > 0) titleRef.current?.focus();
+  }, [refocus]);
   const unpin = (pin: PinRow) => {
-    if (pin.id === detailId) setDetailId(null);
+    if (pin.id === detailId) {
+      setDetailId(null);
+      setRefocus((n) => n + 1);
+    }
     onUnpin(pin.id);
   };
   const show = (pin: PinRow) => {
@@ -74,7 +84,11 @@ export function PinsSheet({ open, onClose, scope, paneId, rows, onUnpin, onOpene
         onClose={() => {
           if (detail === null) onClose();
         }}
-        title={t("pins.sheet.title")}
+        title={
+          <span ref={titleRef} tabIndex={-1} className="outline-none">
+            {t("pins.sheet.title")}
+          </span>
+        }
         className={cn("h-[85dvh] max-h-[85dvh]", TALL_SHEET_CLEARANCE)}
       >
         {sorted.length === 0 ? (

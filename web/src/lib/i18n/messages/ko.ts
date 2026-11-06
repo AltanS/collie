@@ -2902,4 +2902,8 @@ export const ko: Dictionary = {
   "pins.sheet.empty": "이 세션에 고정된 항목이 없습니다.",
   "pins.action.show": "채팅에서 보기",
   "pins.notice.notLoaded": "해당 블록이 채팅에 로드되지 않았습니다. 이전 메시지를 로드하려면 위로 스크롤하십시오.",
+
+  // --- pins, review fixes (M90) ---
+  "pins.sheet.kind.toolPlain": "도구",
+  "pins.reason.notSettled": "해당 답글은 아직 작성 중입니다. 작성이 완료되면 고정하십시오.",
 };

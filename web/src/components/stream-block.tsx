@@ -18,13 +18,26 @@ import { cn } from "@/lib/utils";
 // and its pointer cancel ends the hold, and the hold fires where nothing selectable is under the finger. A right
 // click with text selected in the block leaves the native menu alone, so Copy stays the browser's.
 //
-// ── NOTHING MOVES ────────────────────────────────────────────────────────────
-// Both marks sit in the 12px padding the stream's block already owns (`-m-3 p-3`, session-stream.tsx), absolute,
-// so a block gaining a pin or a way in changes no box (DESIGN.md §2). The `⋯` is a transparent 44px target
-// drawn as a 14px glyph, the `CopyableBlock` way (ui/copyable-block.tsx).
+// ── THE HOLD IS SILENT UNTIL IT FIRES ────────────────────────────────────────
+// `useLongPress` shows a hold in the making (`data-holding`: a tint and a 0.97 scale from 150ms). On a block of
+// text that squeezes the message under a slow tap or the first moment of a selection, so a stream block turns the
+// look off (`showHold: false`) and nothing changes on screen until the sheet opens.
+//
+// ── THE ⋯ OWNS A CORNER, AND THE TEXT STEPS AROUND IT ────────────────────────
+// Both marks sit in the block's own padding corner, absolute, so a block gaining a pin or a way in changes no
+// box (DESIGN.md §2). The `⋯` is drawn as a 14px glyph in a 20px button at `right-0.5`, as `CopyableBlock` places
+// its copy button (ui/copyable-block.tsx): the block is `content-visibility: auto`, which paints no further than
+// its padding box, so a button flush at `right-0` lost its focus ring and half its reach to the clip. The button
+// covers the block's right 22px and the block's content starts 12px in, so the first 20px of height is held by a
+// `float-right` spacer 16px wide ({@link MORE_SPACER}): the first lines of a text wrap around it and a card (a
+// block formatting context) stands beside it, and no text and no control (a tool card's toggle) is under the button.
+// The spacer is there whenever the button is, so a block's lines do not move when the button comes or goes.
 
 /** How long the hold waits. Past the 500ms where a phone's browser starts a selection, so selection wins on text. */
 export const BLOCK_HOLD_MS = 650;
+
+/** The float that keeps the first 20px of height, 16px of width, of a block's content clear of the `⋯`. */
+export const MORE_SPACER = "float-right h-5 w-4";
 
 /** The mark of a pinned block, in the corner of the block's own padding. A glyph of the padding's width. */
 export function PinnedMark() {
@@ -59,7 +72,7 @@ function selectingIn(block: HTMLElement): boolean {
 export function StreamBlock({ n, item, pinned, onActions, className, children }: StreamBlockProps) {
   useLocale();
   const open = item !== null && onActions !== undefined ? () => onActions(item) : undefined;
-  const hold = useLongPress(open, { delayMs: BLOCK_HOLD_MS });
+  const hold = useLongPress(open, { delayMs: BLOCK_HOLD_MS, showHold: false });
   const { onContextMenu, ...handlers } = hold;
   const onRightClick = (event: ReactMouseEvent<HTMLElement>) => {
     if (selectingIn(event.currentTarget)) return;
@@ -67,7 +80,14 @@ export function StreamBlock({ n, item, pinned, onActions, className, children }:
   };
   return (
     <div data-block data-n={n} {...handlers} onContextMenu={onRightClick} className={cn(className, (pinned || open !== undefined) && "relative")}>
-      {children}
+      {open === undefined ? (
+        children
+      ) : (
+        <div data-slot="block-body" className="flow-root min-w-0">
+          <span aria-hidden data-slot="block-more-spacer" className={MORE_SPACER} />
+          {children}
+        </div>
+      )}
       {pinned && <PinnedMark />}
       {open !== undefined && (
         <button
@@ -75,7 +95,7 @@ export function StreamBlock({ n, item, pinned, onActions, className, children }:
           data-slot="block-more"
           aria-label={t("pins.action.more")}
           onClick={open}
-          className="absolute top-3 right-0 grid size-5 place-items-center rounded-sm text-muted-foreground/70 before:absolute before:-inset-3 before:content-[''] hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+          className="absolute top-3 right-0.5 grid size-5 place-items-center rounded-sm text-muted-foreground/70 before:absolute before:-inset-3 before:content-[''] hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-ring"
         >
           <Ellipsis aria-hidden className="size-3.5" />
         </button>

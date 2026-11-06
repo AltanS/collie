@@ -25,22 +25,26 @@ export function ActionRow({
   icon,
   label,
   hint,
+  disabled = false,
   onClick,
 }: {
   icon: ReactNode;
   label: string;
   hint?: string;
+  /** The row stays and reads as not yet available (dimmed, no tap). Absent on every other row. */
+  disabled?: boolean;
   onClick: () => void;
 }) {
   return (
     <button
       type="button"
+      disabled={disabled}
       onClick={onClick}
       // `min-h-11` — a REAL 44px hit box, stated (DESIGN.md §6). `px-3 py-2.5` around a 20px
       // `text-sm` line drew 40px, five under the floor, on rows a thumb reaches for in a sheet that
       // has just slid up under it. A floor rather than a fixed height, so a row whose label wraps on
       // a narrow phone still grows instead of clipping — and so a row carrying a hint grows too.
-      className="flex min-h-11 w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition-colors hover:bg-accent active:bg-muted"
+      className="flex min-h-11 w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition-colors hover:bg-accent active:bg-muted disabled:opacity-60 disabled:hover:bg-transparent"
     >
       {icon}
       {hint === undefined ? (
