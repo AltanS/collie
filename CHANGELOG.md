@@ -23,6 +23,14 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+## [1.27.1] - 2026-11-06
+
+A patch for the desk: a browser tab can keep its place.
+
+### Added
+
+- **`/slot/<n>` reopens a browser tab on the pane it last showed.** Pin a tab on the slot's address, 1 to 99, and it survives a browser restart on the project you left it in; a pane id another workspace took since sends the tab to that workspace's home. Slots live on the device, and unpairing forgets them. Thanks @eseninik (#706).
+
 ## [1.27.0] - 2026-11-06
 
 ### Added
