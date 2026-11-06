@@ -250,7 +250,7 @@ export const CONFIG_SETTINGS: readonly ConfigSetting[] = [
     section: "bridge",
     kind: "bool",
     default: true,
-    doc: "Take walky talky messages for this machine's agent panes. Off refuses each one; the CLI here still sends.",
+    doc: "Take WalkyTalky messages for this machine's agent panes. Off refuses each one; the CLI here still sends.",
     configField: "walky",
   },
   {
@@ -857,7 +857,7 @@ export const CONFIG_SETTINGS: readonly ConfigSetting[] = [
     section: "update",
     kind: "bool",
     default: true,
-    doc: "After each update, install the walky talky skill into every harness on this machine and keep it current. Off only prints a note when it is behind.",
+    doc: "After each update, install the WalkyTalky skill into every harness on this machine and keep it current. Off only prints a note when it is behind.",
   },
 
   // ── serve ──────────────────────────────────────────────────────────────────
