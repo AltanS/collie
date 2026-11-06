@@ -5,8 +5,8 @@
   "legs": {
     "solo": {
       "model": "openrouter/anthropic/claude-haiku-4.5",
-      "skill": "08449a37b87aa7f8",
-      "recordedAt": "2026-11-03T08:34:05.468Z",
+      "skill": "33651c67cc3c3f16",
+      "recordedAt": "2026-11-06T13:59:38.648Z",
       "cases": [
         "claude.walky-broadcast",
         "pi.load-older",
@@ -22,8 +22,8 @@
     },
     "crew": {
       "model": "openrouter/anthropic/claude-haiku-4.5",
-      "skill": "08449a37b87aa7f8",
-      "recordedAt": "2026-11-03T09:51:27.930Z",
+      "skill": "33651c67cc3c3f16",
+      "recordedAt": "2026-11-06T14:03:50.274Z",
       "cases": [
         "claude.walky-crew-agents",
         "claude.walky-crew-broadcast",
