@@ -270,13 +270,15 @@ export function TabStrip({
               adapter shipped today declares `createTab`, so this hides on none of them — it asks
               anyway, because the alternative is a fourth adapter discovering the answer by 500ing. */}
           {(newTab.capable || startersOpen) && (
-            // 24px drawn (`xs`), 30x44 hit. Centred in the 30px row it keeps 3px of air above and below,
-            // level with the labels and with a folder tab's card; the 28px face kept 1px and read as
-            // sitting on the folder row's bottom rule. The hit is TAB_ROW_ADD_TAP_TARGET's: the row's own
-            // 30px, and 10px out on each side of the circle, where it is last in the row. It does not
-            // reach below the row (the scroller's comment says why).
+            // The bare glyph in a 24px box (`xs`, `face="bare"`), 30x44 hit. No ring: in this row, beside a
+            // folder tab's card and the ringless fold chevron, the dashed circle read as a placeholder, and
+            // a 28px ring sat on the folder row's bottom rule. Centred in the 30px row the box keeps 3px of
+            // air above and below, level with the labels. The hit is TAB_ROW_ADD_TAP_TARGET's: the row's own
+            // 30px, and 10px out on each side of the box, where it is last in the row. It does not reach
+            // below the row (the scroller's comment says why).
             <AddButton
               size="xs"
+              face="bare"
               reach={TAB_ROW_ADD_TAP_TARGET}
               label={translate("space.tabStrip.new.aria")}
               busy={creatingTab}

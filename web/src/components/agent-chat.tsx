@@ -2684,10 +2684,10 @@ export function AgentChat({
                     onClosed={(tabId) => (agent?.tabId === tabId ? closeCurrentTab(tabId) : revalidator.revalidate())}
                     // The fold's own control, pinned to the row's trailing end where it costs no height:
                     // a 28px circle centred in the 30px tab row, its hit box the row itself and no
-                    // lower (the way every tab's is: a reach below the row steals taps from the content). The same
-                    // rule as the "+" in the row, transparent border included (the reach's numbers assume one). The
-                    // "+" draws 24px since its ring read as sitting on the folder row's rule; this one draws no ring
-                    // at rest, so it keeps 28px and its own recipe.
+                    // lower (the way every tab's is: a reach below the row steals taps from the content). A transparent
+                    // border is reserved (the reach's numbers assume one). The "+" in the row is drawn like this one,
+                    // a bare glyph with the same ink, hover and press, in a 24px box with its own reach
+                    // (TAB_ROW_ADD_TAP_TARGET); this one keeps its 28px box.
                     trailing={
                       <button
                         type="button"
