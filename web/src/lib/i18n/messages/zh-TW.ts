@@ -2896,4 +2896,5 @@ export const zhTW: Dictionary = {
   "newTab.more": "更多選項",
   "newTab.fromLead": "Lead",
   "newTab.loading": "正在讀取此機器上的代理…",
+  "newTab.shellUnknown": "Collie 無法確認新分頁。重試前請先查看該工作區的分頁，否則可能會出現兩個。",
 };

@@ -2753,4 +2753,5 @@ export const fr: Dictionary = {
   "newTab.more": "Plus d'options",
   "newTab.fromLead": "Lead",
   "newTab.loading": "Lecture des agents de cette machine…",
+  "newTab.shellUnknown": "Collie n'a pas pu confirmer le nouvel onglet. Regardez les onglets de l'espace avant de réessayer, sinon vous risquez d'en avoir deux.",
 };

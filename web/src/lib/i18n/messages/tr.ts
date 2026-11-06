@@ -2752,4 +2752,5 @@ export const tr: Dictionary = {
   "newTab.more": "Diğer seçenekler",
   "newTab.fromLead": "Lead",
   "newTab.loading": "Bu makinedeki ajanlar okunuyor…",
+  "newTab.shellUnknown": "Collie yeni sekmeyi doğrulayamadı. Yeniden denemeden önce çalışma alanının sekmelerine bakın, yoksa iki sekme açılabilir.",
 };

@@ -2754,4 +2754,5 @@ export const it: Dictionary = {
   "newTab.more": "Altre opzioni",
   "newTab.fromLead": "Lead",
   "newTab.loading": "Lettura degli agenti di questa macchina…",
+  "newTab.shellUnknown": "Collie non ha potuto confermare la nuova scheda. Guarda le schede dello spazio prima di riprovare, o potresti averne due.",
 };

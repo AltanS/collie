@@ -2921,4 +2921,5 @@ export const ja: Dictionary = {
   "newTab.more": "その他のオプション",
   "newTab.fromLead": "Lead",
   "newTab.loading": "このマシンのエージェントを読み込み中…",
+  "newTab.shellUnknown": "Collie は新しいタブを確認できませんでした。もう一度試す前にワークスペースのタブを確認してください。二つ開く場合があります。",
 };

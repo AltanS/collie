@@ -2881,4 +2881,5 @@ export const ru: Dictionary = {
   "newTab.more": "Другие параметры",
   "newTab.fromLead": "Lead",
   "newTab.loading": "Читаем агентов этой машины…",
+  "newTab.shellUnknown": "Collie не смог подтвердить новую вкладку. Посмотрите вкладки пространства, прежде чем пробовать снова, иначе их может стать две.",
 };

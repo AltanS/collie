@@ -2937,4 +2937,5 @@ export const es: Dictionary = {
   "newTab.more": "Más opciones",
   "newTab.fromLead": "Lead",
   "newTab.loading": "Leyendo los agentes de esta máquina…",
+  "newTab.shellUnknown": "Collie no pudo confirmar la nueva pestaña. Mira las pestañas del espacio antes de volver a intentarlo, o puede que tengas dos.",
 };

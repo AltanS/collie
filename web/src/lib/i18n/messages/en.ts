@@ -3131,6 +3131,7 @@ export const en = {
   "newTab.more": "More options",
   "newTab.fromLead": "Lead",
   "newTab.loading": "Reading the agents on this machine…",
+  "newTab.shellUnknown": "Collie could not confirm the new tab. Look at the workspace's tabs before you try again, or you may get two.",
 } as const;
 
 /** Every key that exists, as a union of string literals. The completeness contract. */

@@ -2914,4 +2914,5 @@ export const ko: Dictionary = {
   "newTab.more": "추가 옵션",
   "newTab.fromLead": "Lead",
   "newTab.loading": "이 머신의 에이전트를 읽는 중…",
+  "newTab.shellUnknown": "Collie가 새 탭을 확인하지 못했습니다. 다시 시도하기 전에 워크스페이스의 탭을 확인하세요. 탭이 두 개 생길 수 있습니다.",
 };

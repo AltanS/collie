@@ -2902,4 +2902,5 @@ export const zh: Dictionary = {
   "newTab.more": "更多选项",
   "newTab.fromLead": "Lead",
   "newTab.loading": "正在读取此机器上的智能体…",
+  "newTab.shellUnknown": "Collie 无法确认新标签页。重试前请先查看该工作区的标签页，否则可能会出现两个。",
 };

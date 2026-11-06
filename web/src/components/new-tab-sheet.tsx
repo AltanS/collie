@@ -63,7 +63,9 @@ export interface NewTabSheetProps {
 
 const SHELL_KEY = "shell";
 
-type SheetNotice = { kind: "refused"; message: string } | { kind: "unknown" };
+// `shell`: the outcome of "Just a shell" is unknown. That row is the plain create, which carries no request id,
+// so its notice promises no safe retry.
+type SheetNotice = { kind: "refused"; message: string } | { kind: "unknown"; shell: boolean };
 
 export function NewTabSheet({ open, onClose, label, beside, scope, launchers, start }: NewTabSheetProps) {
   useLocale();
@@ -80,7 +82,8 @@ export function NewTabSheet({ open, onClose, label, beside, scope, launchers, st
   const unknownAsk = useRef<{ key: string; id: string } | null>(null);
   // A new opening starts clean: no notice from the last workspace, no retry id. The opening counter
   // lets a start that finishes after its sheet closed (Escape, the backdrop, a drag while it was in
-  // flight) say nothing into the next opening.
+  // flight) say nothing into the next opening. It guards a caller that keeps the sheet mounted (its
+  // tests, the playground); `useNewTabOrSheet` unmounts it on close and guards with its own `close`.
   const opening = useRef(0);
   useEffect(() => {
     if (open) return;
@@ -111,8 +114,10 @@ export function NewTabSheet({ open, onClose, label, beside, scope, launchers, st
       return;
     }
     if (outcome.kind === "unknown") {
-      unknownAsk.current = { key, id: requestId };
-      setNotice({ kind: "unknown" });
+      const shell = what.kind === "shell";
+      // Only a start by id can be retried safely: the plain create has no receipt to land on.
+      unknownAsk.current = shell ? null : { key, id: requestId };
+      setNotice({ kind: "unknown", shell });
       return;
     }
     unknownAsk.current = null;
@@ -154,7 +159,7 @@ export function NewTabSheet({ open, onClose, label, beside, scope, launchers, st
               </Notice>
             ) : (
               <Notice tone="caution" variant="box" announce="status">
-                {t("newPage.unknown")}
+                {notice.shell ? t("newTab.shellUnknown") : t("newPage.unknown")}
               </Notice>
             )}
           </Collapse>

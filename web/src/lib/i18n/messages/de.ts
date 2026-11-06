@@ -2940,4 +2940,5 @@ export const de: Dictionary = {
   "newTab.more": "Weitere Optionen",
   "newTab.fromLead": "Lead",
   "newTab.loading": "Die Agenten dieser Maschine werden gelesen…",
+  "newTab.shellUnknown": "Collie konnte den neuen Tab nicht bestätigen. Sieh dir die Tabs des Workspace an, bevor du es erneut versuchst, sonst bekommst du vielleicht zwei.",
 };

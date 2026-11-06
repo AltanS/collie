@@ -259,6 +259,18 @@ describe("NewTabSheet, the outcome", () => {
     await waitFor(() => expect(calls.closed).toBe(1));
   });
 
+  it("promises no safe retry for Just a shell: the plain create carries no request id", async () => {
+    const { calls } = mount({ outcomes: [{ kind: "unknown" }, { kind: "unknown" }] });
+    await userEvent.click(row(/Just a shell/));
+    expect(await sheet().findByText(/Collie could not confirm the new tab/)).toBeInTheDocument();
+    expect(sheet().queryByText(/Collie could not confirm the start/)).toBeNull();
+    expect(calls.closed).toBe(0);
+    // A second tap is a new intention: no kept id rides along.
+    await userEvent.click(row(/Just a shell/));
+    await waitFor(() => expect(calls.asks).toHaveLength(2));
+    expect(calls.asks[1]!.ask.requestId).not.toBe(calls.asks[0]!.ask.requestId);
+  });
+
   it("says nothing into the next opening when a start ends after the sheet was dismissed", async () => {
     const { calls } = mount({ outcomes: [{ kind: "refused", message: "Too late." }] });
     calls.hold = true;

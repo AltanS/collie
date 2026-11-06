@@ -2752,4 +2752,5 @@ export const pt: Dictionary = {
   "newTab.more": "Mais opções",
   "newTab.fromLead": "Lead",
   "newTab.loading": "Lendo os agentes desta máquina…",
+  "newTab.shellUnknown": "O Collie não conseguiu confirmar a nova aba. Veja as abas do espaço antes de tentar de novo, ou você pode ficar com duas.",
 };
