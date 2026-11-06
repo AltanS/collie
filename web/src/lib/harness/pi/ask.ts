@@ -107,6 +107,10 @@ const DESCRIPTION_ROW = /^ {4}(\S.*)$/;
 const QUOTED_ROW = /^ {2,}\S/;
 /** pi's own footer prints the session's cost to three decimals: stock `$0.000`, OmO `$0.064 (sub)`. */
 const SESSION_COST = /(?:^|\s)\$\d+\.\d{3}(?=\s|$)/;
+/** pi's footer always prints the context usage, cost or not: `0.0%/272k (auto)`, `12.5%/1.0M`, or `?/272k`
+ *  before the first reply. The cost is printed only when the session spent something or the model runs on
+ *  a subscription (pi's footer.js), so a model without a price in `models.json` has this token and no `$`. */
+const CONTEXT_USAGE = /(?:^|\s)(?:\d+(?:\.\d+)?%|\?)\/\d+(?:\.\d+)?[kM]?(?: \(auto\))?(?=\s|$)/;
 /** The end of a shell prompt (`$ `, `# `, `> `, `❯ `): what stands under pi's rows once pi exited. */
 const SHELL_PROMPT_END = /[$#>❯]$/;
 /** The first status row opens with the working directory: `/tmp/…`, `~/project`, OmO's `…/work`. */
@@ -169,19 +173,22 @@ function statusTailBottom(lines: StyledLine[], texts: string[], end: number, pla
 
 /**
  * `paintedStatus` on a read with no styling, by the shape of pi's own footer: one to three rows, the
- * first opening with the working directory, the first or the second carrying the session cost (stock
- * pi: the path row, then the stats row, pi--v130-core-question--w120.txt; OmO: both on its first row),
- * and the last not ending like a shell prompt. So output written under the status rows (two rows or
+ * first opening with the working directory, the first or the second carrying the stats pi always prints:
+ * the context usage, or the session cost (stock pi: the path row, then the stats row,
+ * pi--v130-core-question--w120.txt; OmO: both on its first row), and the last not ending like a shell
+ * prompt. So output written under the status rows (two rows or
  * more, the conformance suite's tail-anchoring case) and a dialog quoted in prose above a shell after
  * pi exited (pi--prose-quoted-dialog-then-shell.txt, stripped, also with pi's status rows quoted) stay
  * raw. One plain row under stock pi's two is an extension's status row on a styled read too, so one
- * output row there is the limit the paint test has as well. A footer that prints no cost (the PR 397
- * footer's `⎇ main`) declines here; Gentle Shell's empty footer is the bare rule and needs none.
+ * output row there is the limit the paint test has as well. A footer that prints neither (the PR 397
+ * footer's `⎇ main`) declines here; Gentle Shell's empty footer is the bare rule and needs none. The
+ * cost alone was the test until a pi whose model has no price in `models.json` printed no `$` and every
+ * dialog on a herdr-core read came back unreadable (pi--v150-core-permission-gate-no-cost--w200.txt).
  */
 function textStatus(rows: string[]): boolean {
   const filled = rows.map((row) => row.trim()).filter((row) => row !== "");
   if (filled.length === 0 || filled.length > MAX_PLAIN_STATUS_ROWS || !STATUS_PATH.test(filled[0]!)) return false;
-  if (!filled.slice(0, 2).some((row) => SESSION_COST.test(row))) return false;
+  if (!filled.slice(0, 2).some((row) => SESSION_COST.test(row) || CONTEXT_USAGE.test(row))) return false;
   return !SHELL_PROMPT_END.test(filled.at(-1)!);
 }
 

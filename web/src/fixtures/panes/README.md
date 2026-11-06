@@ -3740,3 +3740,18 @@ on screen.
 | `codex--v0166-core-working--w120.txt` | `running` | The turn before it (`Worked for 1s`), the new message, `• Working (7s • esc to interrupt) · 1 background terminal running`, the empty box, the status row and `← for agents · ? for shortcuts` |
 | `codex--v0166-core-idle--w120.txt` | `idle` | The same pane after the turn (`Worked for 11s`), the empty box, the status row and the hint row |
 | `codex--v0166-core-draft--w120.txt` | `draft` | `collie core draft probe` typed in the box, the status row last and no hint row |
+
+## pi 1.5.0 on herdr-core, a model with no price (captured 2026-11-06, hc 0.1.18)
+
+pi prints the session cost in its footer only when the model has a price in `models.json` (or runs on a
+subscription); the context usage (`0.4%/272k (auto)`) is always printed. A pi whose models carry no price
+therefore draws a stats row with no `$`, and the herdr-core reader, which found pi's status rows by the
+cost, took every dialog of such a pi for unreadable. The capture is pi's example `permission-gate.ts`
+(pi 1.5.0) asking about `chmod 777 gate-probe.txt`, in a disposable 200 x 40 terminal of an isolated
+herdr-core session, read through the bridge (`scripts/capture-fixture.sh`). The working directory is a
+scratch path with no user name. Privacy: the model label at the end of the stats row was replaced with
+neutral text of the same length (`(local) example-model • max`); nothing else was changed.
+
+| Fixture | State | Reads as |
+| --- | --- | --- |
+| `pi--v150-core-permission-gate-no-cost--w200.txt` | `⚠️ Dangerous command:` over `chmod 777 gate-probe.txt`, `Allow?`, `→ Yes` / `No`, `↑↓ navigate  enter select  escape/ctrl+c cancel`; stats row `↑1.0k ↓45 0.4%/272k (auto)` with no cost | question ask, Yes / No and Cancel, walk |
