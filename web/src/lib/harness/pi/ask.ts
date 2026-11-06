@@ -140,6 +140,16 @@ function styledRow(line: StyledLine): boolean {
   return line.segments.some((s) => s.text.trim() !== "" && (s.fg !== undefined || s.muted));
 }
 
+/**
+ * Whether a footer row is painted. A footer row may be faint alone: pi's default "system" theme paints the
+ * working directory, usage and model rows with SGR 2 and no colour at all, so `styledRow` (colour or a rule)
+ * would refuse a dialog on that theme. Faint counts only here. A dialog's title, top row and notes still need
+ * real colour, so a faint line of agent prose cannot open a dialog.
+ */
+function paintedFooterRow(line: StyledLine): boolean {
+  return styledRow(line) || line.segments.some((s) => s.text.trim() !== "" && s.dim);
+}
+
 function ruleColor(line: StyledLine): string | undefined {
   return line.segments.find((s) => s.text.trim() !== "")?.fg;
 }
@@ -153,7 +163,7 @@ function ruleColor(line: StyledLine): string | undefined {
  * reader then demands the same colour too. Such a block is byte for byte a dialog quoted in agent
  * prose that ends the buffer, a case the screen cannot tell apart (pi/ask.test.ts, "a quoted dialog is
  * not a dialog"). Status rows are never a rule, and they are painted as `paintedStatus` (composer.ts)
- * says: pi paints its own rows muted or coloured, and only the last row, the extension-status line,
+ * says: pi paints its own rows muted, coloured or faint, and only the last row, the extension-status line,
  * may be plain. A plain row straight under the frame is output written after it, such as the shell
  * prompt after pi exited (pi--prose-quoted-dialog-then-shell.txt).
  */
@@ -207,7 +217,7 @@ function footerAt(
     // A footer row is painted (dim or coloured) in every capture. A plain row is text someone typed,
     // such as a key hint quoted in a draft (pi/ask.test.ts, "quoted key hints"). A plain read has no
     // paint anywhere, so the parse alone counts there (see the header).
-    if (start <= 0 || !indent.test(texts[start]!) || (!plain && !styledRow(lines[start]!))) break;
+    if (start <= 0 || !indent.test(texts[start]!) || (!plain && !paintedFooterRow(lines[start]!))) break;
     const rows = texts.slice(start, footerEnd + 1).map((t) => t.trim());
     const footer = wrappedFooter(rows);
     if (footer !== null) best = { start, footer };
