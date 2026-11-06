@@ -1560,6 +1560,24 @@
   }
 }
 
+/* A CHAT BLOCK ON A TOUCH SCREEN (components/stream-block.tsx, lib/block-select.ts). A pinnable block takes no text
+   selection and raises no callout at rest, so a phone's browser starts no selection at its own long-press mark and
+   cancels no pointer, and the block's 650ms hold opens its actions sheet every time. The sheet's Select text marks one
+   block `data-selectable`, which gives its text back to the native selection until a press outside it. A mouse and a
+   desk (`pointer: fine`) are untouched. */
+@media (pointer: coarse) {
+  [data-block][data-pinnable]:not([data-selectable]) {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+  }
+}
+[data-block][data-selectable] {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
+}
+
 /* THE PANE NAVIGATION PAD'S STEP PULSE (components/pane-nav-overlay.tsx, ADR 0121). Each step of the
    two-finger or joystick move rings the arrow it took once: a square of the arrow's own size grows and
    fades in 350ms. Transform and opacity only, on a layer that takes no pointer and holds no space, so

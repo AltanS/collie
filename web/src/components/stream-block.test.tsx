@@ -1,5 +1,6 @@
 import { act, createEvent, fireEvent, render, screen, within } from "@testing-library/react";
 
+import { endSelectText, selectTextIn } from "@/lib/block-select";
 import type { ChatItem } from "@/lib/chat-items";
 import { BLOCK_HOLD_MS, chipShift, PinnedMark, REVEAL_MS, StreamBlock } from "./stream-block";
 
@@ -85,8 +86,10 @@ describe("StreamBlock at rest", () => {
     expect(more().className).toContain("focus-visible:opacity-100");
     expect(more().className).toContain("group-hover/block:opacity-100");
     expect(el.className).toContain("group/block");
-    // iOS raises no callout over a pinnable block; its text stays selectable.
-    expect(el.className).toContain("[-webkit-touch-callout:none]");
+    // index.css turns selection and the callout off for `data-pinnable` under `pointer: coarse` only; no class does it,
+    // so a mouse and a desk keep selection.
+    expect(el).toHaveAttribute("data-pinnable");
+    expect(el).not.toHaveAttribute("data-selectable");
     expect(el.className).not.toContain("select-none");
     // No spacer and no wrapper: the block's first child is the content itself.
     expect(container.querySelector("[data-slot='block-more-spacer']")).toBeNull();
@@ -163,19 +166,21 @@ describe("StreamBlock reveal", () => {
     expect(blockEl(container)).not.toHaveAttribute("data-revealed");
   });
 
-  it("shows the ⋯ on a hold, silently until it fires, and the hold opens nothing", () => {
+  it("opens the sheet on a touch hold after 650ms, silently until it fires, with no contextmenu", () => {
     const onActions = vi.fn();
     const { container } = block({ onActions });
     const el = blockEl(container);
-    fireEvent.pointerDown(el, { button: 0, clientX: 10, clientY: 10 });
+    fireEvent.pointerDown(el, { button: 0, clientX: 10, clientY: 10, pointerType: "touch" });
     act(() => vi.advanceTimersByTime(BLOCK_HOLD_MS - 50));
     expect(el).not.toHaveAttribute("data-holding");
     expect(el.getAttribute("style")).toBeNull();
-    expect(el).not.toHaveAttribute("data-revealed");
-    act(() => vi.advanceTimersByTime(100));
-    expect(el).toHaveAttribute("data-revealed");
-    fireEvent.pointerUp(el, { button: 0, clientX: 10, clientY: 10 });
     expect(onActions).not.toHaveBeenCalled();
+    act(() => vi.advanceTimersByTime(50));
+    expect(onActions).toHaveBeenCalledExactlyOnceWith(item);
+    fireEvent.pointerUp(el, { button: 0, clientX: 10, clientY: 10, pointerType: "touch" });
+    // The hold is not also a tap: no chip after it, and its click is the hold's.
+    expect(el).not.toHaveAttribute("data-revealed");
+    expect(onActions).toHaveBeenCalledOnce();
     expect(el).not.toHaveAttribute("data-holding");
   });
 
@@ -248,7 +253,25 @@ describe("StreamBlock reveal", () => {
     expect(el).not.toHaveAttribute("data-revealed");
   });
 
-  it("reveals on the contextmenu that ends a touch hold (Android), and opens nothing", () => {
+  it("swallows the one click the hold's lift sends wherever it lands, and the next press clears that", () => {
+    const elsewhere = listenAbove();
+    const { container } = block({ onActions: vi.fn() });
+    const el = blockEl(container);
+    fireEvent.pointerDown(el, { button: 0, clientX: 10, clientY: 10, pointerType: "touch" });
+    act(() => vi.advanceTimersByTime(BLOCK_HOLD_MS));
+    fireEvent.pointerUp(el, { button: 0, clientX: 10, clientY: 10, pointerType: "touch" });
+    // The lift's click lands on what opened under the finger, outside the block.
+    fireEvent.click(document.body);
+    expect(elsewhere).not.toHaveBeenCalled();
+    // A browser that sent no click: the next press clears the guard, and its click goes through.
+    fireEvent.pointerDown(el, { button: 0, clientX: 10, clientY: 10, pointerType: "touch" });
+    act(() => vi.advanceTimersByTime(BLOCK_HOLD_MS));
+    fireEvent.pointerDown(document.body, { button: 0, pointerType: "touch" });
+    fireEvent.click(document.body);
+    expect(elsewhere).toHaveBeenCalledOnce();
+  });
+
+  it("opens the sheet on the contextmenu that ends a touch hold (Android), the fallback, and only once", () => {
     const onActions = vi.fn();
     const { container } = block({ onActions });
     const el = blockEl(container);
@@ -256,8 +279,10 @@ describe("StreamBlock reveal", () => {
     const menu = createEvent.contextMenu(el);
     fireEvent(el, menu);
     expect(menu.defaultPrevented).toBe(true);
-    expect(onActions).not.toHaveBeenCalled();
-    expect(el).toHaveAttribute("data-revealed");
+    expect(onActions).toHaveBeenCalledOnce();
+    // The timer that was still running is the same gesture: it opens nothing more.
+    act(() => vi.advanceTimersByTime(BLOCK_HOLD_MS));
+    expect(onActions).toHaveBeenCalledOnce();
   });
 
   it("keeps the click of a tap that reveals from the reading area under the block: no Tap to type", () => {
@@ -292,7 +317,7 @@ describe("StreamBlock reveal", () => {
     expect(readingArea).toHaveBeenCalledOnce();
   });
 
-  it("reveals on a touch hold over text it selected, takes the native menu away and collapses the selection", () => {
+  it("opens the sheet on a touch hold over text it selected, takes the native menu away and collapses the selection", () => {
     const onActions = vi.fn();
     const { container } = block({ onActions });
     const el = blockEl(container);
@@ -307,8 +332,7 @@ describe("StreamBlock reveal", () => {
     fireEvent(el, menu);
     expect(menu.defaultPrevented).toBe(true);
     expect(window.getSelection()?.isCollapsed ?? true).toBe(true);
-    expect(el).toHaveAttribute("data-revealed");
-    expect(onActions).not.toHaveBeenCalled();
+    expect(onActions).toHaveBeenCalledOnce();
   });
 
   it("leaves a mouse's right click over selected text to the browser's menu", () => {
@@ -339,6 +363,77 @@ describe("StreamBlock reveal", () => {
     fireEvent(el, menu);
     expect(menu.defaultPrevented).toBe(false);
     expect(within(el).queryByRole("button")).toBeNull();
+  });
+});
+
+describe("StreamBlock select mode (the sheet's Select text)", () => {
+  it("marks the block selectable, and its own hold, tap and contextmenu stand down", () => {
+    const onActions = vi.fn();
+    const { container } = block({ onActions });
+    const el = blockEl(container);
+    act(() => selectTextIn(item.id));
+    expect(el).toHaveAttribute("data-selectable");
+    tap(screen.getByText("done"));
+    expect(el).not.toHaveAttribute("data-revealed");
+    fireEvent.pointerDown(el, { button: 0, clientX: 10, clientY: 10, pointerType: "touch" });
+    act(() => vi.advanceTimersByTime(BLOCK_HOLD_MS * 2));
+    const menu = createEvent.contextMenu(el);
+    fireEvent(el, menu);
+    expect(menu.defaultPrevented).toBe(false);
+    expect(onActions).not.toHaveBeenCalled();
+  });
+
+  it("keeps a tap in the selectable block from Tap to type, and lets a link's click through", () => {
+    const readingArea = listenAbove();
+    block({ onActions: vi.fn() });
+    act(() => selectTextIn(item.id));
+    fireEvent.click(screen.getByText("done"));
+    expect(readingArea).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByText("a link"));
+    expect(readingArea).toHaveBeenCalledOnce();
+  });
+
+  it("ends on a press outside the block, and not on a press inside it", () => {
+    const { container } = block({ onActions: vi.fn() });
+    const el = blockEl(container);
+    act(() => selectTextIn(item.id));
+    fireEvent.pointerDown(screen.getByText("done"), { button: 0, pointerType: "touch" });
+    expect(el).toHaveAttribute("data-selectable");
+    fireEvent.pointerDown(document.body, { button: 0, pointerType: "touch" });
+    expect(el).not.toHaveAttribute("data-selectable");
+  });
+
+  it("ends when the block opens its sheet again, and holds one block at a time", () => {
+    const onActions = vi.fn();
+    const { container } = render(
+      <>
+        <StreamBlock n={1} item={item} pinned={false} onActions={onActions} className={BLOCK}>
+          <p>done</p>
+        </StreamBlock>
+        <StreamBlock n={1} item={other} pinned={false} onActions={onActions} className={BLOCK}>
+          <p>other</p>
+        </StreamBlock>
+      </>,
+    );
+    const [a, b] = container.querySelectorAll<HTMLElement>("[data-block]");
+    act(() => selectTextIn(item.id));
+    act(() => selectTextIn(other.id));
+    expect(a).not.toHaveAttribute("data-selectable");
+    expect(b).toHaveAttribute("data-selectable");
+    act(() => endSelectText());
+    tap(screen.getByText("other"));
+    act(() => selectTextIn(other.id));
+    fireEvent.click(within(b!).getByRole("button", { name: "Message actions" }));
+    expect(onActions).toHaveBeenCalledOnce();
+    expect(b).not.toHaveAttribute("data-selectable");
+  });
+
+  it("ends when the block leaves the stream", () => {
+    const view = block({ onActions: vi.fn() });
+    act(() => selectTextIn(item.id));
+    view.unmount();
+    const again = block({ onActions: vi.fn() });
+    expect(blockEl(again.container)).not.toHaveAttribute("data-selectable");
   });
 });
 

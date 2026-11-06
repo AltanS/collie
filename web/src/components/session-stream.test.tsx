@@ -1177,23 +1177,15 @@ describe("SessionStream pins", () => {
     expect(onActions.mock.calls[0]![0]).toMatchObject({ id: "a:0", kind: "reply", text: "done" });
   });
 
-  it("shows the block's ⋯ on a hold, after the hold's own delay and not before, and its ⋯ opens that block", () => {
+  it("opens the block's sheet on a hold, after the hold's own delay and not before", () => {
     vi.useFakeTimers();
     const [onActions, pins] = opened();
     const { container } = renderPins({ pins });
     const block = container.querySelectorAll<HTMLElement>("[data-block]")[1]!;
-    fireEvent.pointerDown(block, { button: 0, clientX: 10, clientY: 10 });
+    fireEvent.pointerDown(block, { button: 0, clientX: 10, clientY: 10, pointerType: "touch" });
     act(() => vi.advanceTimersByTime(BLOCK_HOLD_MS - 1));
-    expect(block).not.toHaveAttribute("data-revealed");
-    act(() => vi.advanceTimersByTime(1));
-    expect(block).toHaveAttribute("data-revealed");
     expect(onActions).not.toHaveBeenCalled();
-    fireEvent.pointerUp(block, { button: 0, clientX: 10, clientY: 10 });
-    // A real tap on the ⋯: its press starts a new gesture, so the click is not taken for the hold's own release.
-    const more = within(block).getByRole("button", { name: "Message actions" });
-    fireEvent.pointerDown(more, { button: 0, clientX: 300, clientY: 20 });
-    fireEvent.pointerUp(more, { button: 0, clientX: 300, clientY: 20 });
-    fireEvent.click(more);
+    act(() => vi.advanceTimersByTime(1));
     expect(onActions).toHaveBeenCalledOnce();
     expect(onActions.mock.calls[0]![0]).toMatchObject({ id: "a:0" });
   });

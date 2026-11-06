@@ -2908,6 +2908,8 @@ export const de: Dictionary = {
   "pins.action.pin": "Anheften",
   "pins.action.unpin": "Lösen",
   "pins.action.copy": "Text kopieren",
+  "pins.action.selectText": "Text auswählen",
+  "pins.selectText.hint": "Halte den Text gedrückt, um ihn auszuwählen. Tippe außerhalb der Nachricht, um zu beenden.",
   "pins.action.more": "Nachrichtenaktionen",
   "pins.mark": "Angeheftet",
   "pins.sheet.kind.user": "Deine Nachricht",

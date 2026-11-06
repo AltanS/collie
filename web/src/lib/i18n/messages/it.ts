@@ -2722,6 +2722,8 @@ export const it: Dictionary = {
   "pins.action.pin": "Fissa",
   "pins.action.unpin": "Sblocca",
   "pins.action.copy": "Copia testo",
+  "pins.action.selectText": "Seleziona testo",
+  "pins.selectText.hint": "Tieni premuto il testo per selezionarlo. Tocca fuori dal messaggio per terminare.",
   "pins.action.more": "Azioni del messaggio",
   "pins.mark": "Fissato",
   "pins.sheet.kind.user": "Il tuo messaggio",

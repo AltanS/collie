@@ -4,9 +4,9 @@ import userEvent from "@testing-library/user-event";
 import { cn } from "@/lib/utils";
 
 import { AddButton } from "./add-button";
-import { STRIP_TAP_TARGET_SQUARE, TAB_ROW_SQUARE_TAP_TARGET } from "./labelled-strip";
+import { STRIP_TAP_TARGET_SQUARE, TAB_ROW_ADD_TAP_TARGET, TAB_ROW_SQUARE_TAP_TARGET } from "./labelled-strip";
 
-/** The one face every size shares: a dashed circle, muted ink, no fade while busy. */
+/** The ring face every size can wear: a dashed circle, muted ink, no fade while busy. */
 const FACE = [
   "rounded-full",
   "border",
@@ -34,12 +34,26 @@ function mount(props: Partial<Parameters<typeof AddButton>[0]> = {}) {
   return { button, onClick };
 }
 
-describe("AddButton — the dashed '+'", () => {
+describe("AddButton — the '+'", () => {
   it("draws both sizes the strips used, as circles", () => {
     const sm = mount({ size: "sm" }).button;
     expect(sm).toHaveClass("size-7", ...FACE);
     const md = mount({ size: "md", reach: STRIP_TAP_TARGET_SQUARE, label: "New space" }).button;
     expect(md).toHaveClass("size-8", ...FACE);
+  });
+
+  it("draws the tab row's bare face: the glyph alone in a 24px box, the ring's ink, hover and press, no border", () => {
+    const { button } = mount({ size: "xs", face: "bare", reach: TAB_ROW_ADD_TAP_TARGET });
+    expect(button).toHaveClass("size-6", "rounded-full", "text-muted-foreground", "hover:bg-accent", "active:scale-95", "disabled:opacity-100");
+    for (const ring of ["border", "border-dashed", "border-border"]) expect(button).not.toHaveClass(ring);
+    expect(button.querySelector(".lucide-plus")).toHaveClass("size-4");
+    expect(button).toHaveClass(...tokens(TAB_ROW_ADD_TAP_TARGET));
+  });
+
+  it("keeps the spinner in the bare face's box while busy", () => {
+    const { button } = mount({ size: "xs", face: "bare", reach: TAB_ROW_ADD_TAP_TARGET, busy: true });
+    expect(button.querySelector(".animate-spin")).toHaveClass("size-4");
+    expect(button.querySelector(".lucide-plus")).toBeNull();
   });
 
   it("wears the reach its caller passes, whole", () => {

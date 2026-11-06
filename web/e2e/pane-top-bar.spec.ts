@@ -174,14 +174,15 @@ test("opening a tab moves no neighbour", async ({ page }) => {
   expect(await widths()).toEqual(before);
 });
 
-// THE "+" SITS LEVEL IN ITS ROW (2026-11-06). The 28px face kept 1px of air above and below in the 30px row, and under
-// the folder look its ring read as sitting on the row's bottom rule. The 24px face keeps 3px each way: level with the
-// labels, and with the open tab's card under the folder look. Its hit stays the row's 30px and 44px across, and a text
+// THE "+" SITS LEVEL IN ITS ROW, AS A BARE GLYPH (2026-11-06). The 28px ring kept 1px of air above and below in the
+// 30px row and read as sitting on the folder row's bottom rule; then a 24px ring read as a placeholder. It is the bare
+// glyph in a 24px box now, no border, keeping 3px each way: level with the labels, and with the open tab's card under
+// the folder look. Its hit stays the row's 30px and 44px across, and a text
 // tab keeps at least 40px of its own under the plain look, where the reach takes the last pixels of its padding. The
 // plain look is collie's own colours in an imported theme that names no `tabs` word.
 for (const look of ["folder", "plain"] as const) {
   for (const pane of ["w2:p1", "w2:p2"]) {
-    test(`the tab row's "+" is a 24px circle level with the tabs, ${look} look, ${pane} open`, async ({ page }) => {
+    test(`the tab row's "+" is a bare 24px box level with the tabs, ${look} look, ${pane} open`, async ({ page }) => {
       if (look === "plain") {
         await page.addInitScript(
           ([design, library]) => {
@@ -199,6 +200,9 @@ for (const look of ["folder", "plain"] as const) {
       const nav = (await tabNav(page).boundingBox())!;
       expect(face.width).toBeCloseTo(24, 0);
       expect(face.height).toBeCloseTo(24, 0);
+      // No ring: no border drawn at rest, and the glyph is the chevron's 16px.
+      expect(await plus.evaluate((el) => getComputedStyle(el).borderTopWidth)).toBe("0px");
+      expect((await plus.locator("svg").boundingBox())!.width).toBeCloseTo(16, 0);
       // The same air above and below, against the open tab's box: under the folder look that box is the card.
       expect(face.y - open.y).toBeCloseTo(3, 0);
       expect(open.y + open.height - (face.y + face.height)).toBeCloseTo(3, 0);

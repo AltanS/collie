@@ -2882,6 +2882,8 @@ export const ko: Dictionary = {
   "pins.action.pin": "고정",
   "pins.action.unpin": "고정 해제",
   "pins.action.copy": "텍스트 복사",
+  "pins.action.selectText": "텍스트 선택",
+  "pins.selectText.hint": "텍스트를 길게 눌러 선택하세요. 메시지 밖을 탭하면 끝납니다.",
   "pins.action.more": "메시지 작업",
   "pins.mark": "고정됨",
   "pins.sheet.kind.user": "내 메시지",
