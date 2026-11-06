@@ -489,6 +489,33 @@ test("the automatic lane picks up build B with no tap", async ({ page }) => {
   expect(await reloadCount(page)).toBe(1);
 });
 
+test("the automatic lane turns the mark while it downloads, with no stale flag behind it", async ({ page }) => {
+  // The dev lane after every deploy (2026-11-06): nothing is held, so the page reloads by itself and
+  // the self-updater's flag never rises. The mark must say it anyway, from the download alone, because
+  // a worker already controls the page. Build B is never ANNOUNCED here, so the stamp stays A and the
+  // flag cannot be what turns the mark.
+  await openAndTakeControl(page);
+  throttleTheInstall();
+  deployB();
+  await page.evaluate(async () => {
+    const registration = await navigator.serviceWorker.getRegistration();
+    await registration?.update();
+  });
+  await expect
+    .poll(() => workerOnItsWayIn(page), { timeout: 10_000, intervals: [100] })
+    .toBe(true);
+
+  await expect(page.getByRole("button", { name: MARK_UPDATING })).toBeVisible();
+  await expect(page.getByText(DOWNLOADING)).toBeVisible();
+  // The premise: no stale flag. Its two surfaces, the chip and the reload line, are absent.
+  await expect(page.getByRole("button", { name: CHIP })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: BAND })).toHaveCount(0);
+
+  clearThrottle();
+  await expectRunning(page, "b", 20_000);
+  expect(await reloadCount(page)).toBe(1);
+});
+
 test("a tap after an incomplete automatic attempt still reloads (the 2026-09-07 latch)", async ({
   page,
 }) => {

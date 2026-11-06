@@ -15,13 +15,18 @@ import { selfUpdateBannerVisible, subscribeBanner } from "@/lib/self-update";
 // `AppHeaderHost`), the dashboard's update line, and the band, which reads it to stay quiet. This
 // file is that fact, read ONCE, so the three cannot disagree about whether an update is applying.
 //
-// ── IT IS THE BAND'S OWN TWO STATES, NOT A NEW READING ───────────────────────────────────────────
+// ── THE BAND'S TWO STATES, PLUS THE AUTOMATIC LANE ──────────────────────────────────────────────
 // Both ribbon kinds require `bundleStale`, the self-updater's own flag (`lib/self-update.ts`): it is
 // true only when the bridge serves a newer build AND the self-updater may not reload by itself right
-// now (a hold is active, or it already spent its one automatic reload on this build). The stage
-// then only picks which of the two it is. Nothing here widens that. A worker installing with no
-// stale flag behind it is either the first install of the app (nothing is being replaced) or the
-// automatic lane already reloading, and the band said nothing about either before this change.
+// now (a hold is active, or it already spent its one automatic reload on this build). Either way the
+// app is being applied, and the stage picks which of the two it is.
+//
+// The flag is false on the AUTOMATIC LANE, which is the common case: nothing is held, so the
+// self-updater (or the worker's own 60 s check) starts the download and the page reloads by itself
+// when it lands. On the dev lane that is every deploy, and Altan saw the page reload with nothing
+// having said so (2026-11-06). So a download counts on its own as well, but only with a worker
+// ALREADY IN CONTROL: the stage is `installing` on the app's very first install too, when nothing
+// is being replaced and there is nothing to announce. A controller is what tells the two apart.
 //
 // ── IT READS; IT DOES NOT MOUNT THE CONTROLLER ───────────────────────────────────────────────────
 // `useSelfUpdate()` is a controller as well as a flag, and its `started` guard hands a second
@@ -32,20 +37,40 @@ import { selfUpdateBannerVisible, subscribeBanner } from "@/lib/self-update";
 /** Which bundle state is on, or null when no new app build is being applied. */
 export type BundleApply = "installing" | "ready" | null;
 
+/** The three facts the reading needs. */
+export interface BundleSignals {
+  /** The self-updater's flag: a newer build is confirmed and the page may not reload by itself. */
+  bundleStale: boolean;
+  /** The service worker's stage (`lib/pwa.ts`). */
+  stage: UpdateStage;
+  /** A worker already controls this document, so a download REPLACES an app (see the header). */
+  controlled: boolean;
+}
+
 /**
  * The fact, decided once. `installing`: this document's worker is downloading the new bundle.
  * `ready`: the bundle on screen is behind, and the page reloads onto the new one when it may.
  */
-export function bundleApply(bundleStale: boolean, stage: UpdateStage): BundleApply {
-  if (!bundleStale) return null;
-  return stage === "installing" ? "installing" : "ready";
+export function bundleApply({ bundleStale, stage, controlled }: BundleSignals): BundleApply {
+  if (stage === "installing" && (bundleStale || controlled)) return "installing";
+  if (bundleStale) return "ready";
+  return null;
 }
 
-/** The same fact, live. Reads the self-updater's flag and the service worker's stage. */
+/**
+ * Whether a service worker controls this document. Read at render, not subscribed: it changes only
+ * on a controller swap, which reloads the page, and the first claim of a first install comes with
+ * the stage leaving `installing`, which re-renders every reader anyway.
+ */
+export function swControlled(): boolean {
+  return "serviceWorker" in navigator && navigator.serviceWorker.controller !== null;
+}
+
+/** The same fact, live. Reads the self-updater's flag, the service worker's stage and its control. */
 export function useBundleApply(): BundleApply {
-  const stale = useSyncExternalStore(subscribeBanner, selfUpdateBannerVisible, selfUpdateBannerVisible);
+  const bundleStale = useSyncExternalStore(subscribeBanner, selfUpdateBannerVisible, selfUpdateBannerVisible);
   const stage = useSyncExternalStore(subscribeUpdateStage, getUpdateStage, getUpdateStage);
-  return bundleApply(stale, stage);
+  return bundleApply({ bundleStale, stage, controlled: swControlled() });
 }
 
 // ── THE ONE-SHOT SCROLL TO THE UPDATE LINE ───────────────────────────────────────────────────────

@@ -6,23 +6,51 @@ import {
   bundleApply,
   bundleFocusPending,
   requestBundleFocus,
+  swControlled,
   subscribeBundleFocus,
   takeBundleFocus,
 } from "./bundle-apply";
 
 // The fact the mark, the dashboard's update line and the band all read, and the one-shot request a
 // tap on the updating mark leaves for the dashboard.
-describe("bundleApply — the band's two bundle states, as one fact", () => {
-  it("is nothing while the bundle on screen is current, whatever the worker is doing", () => {
-    // A worker installing with no stale flag is the app's first install, or the automatic lane
-    // already reloading. The band said nothing about either, and neither does the mark.
-    expect(bundleApply(false, "idle")).toBeNull();
-    expect(bundleApply(false, "installing")).toBeNull();
+describe("bundleApply — when the app on this phone is being applied", () => {
+  it("is nothing on the app's FIRST install: a download with no worker in control replaces nothing", () => {
+    expect(bundleApply({ bundleStale: false, stage: "installing", controlled: false })).toBeNull();
   });
 
-  it("is the download while the worker installs, and the waiting build otherwise", () => {
-    expect(bundleApply(true, "installing")).toBe("installing");
-    expect(bundleApply(true, "idle")).toBe("ready");
+  it("is the download on the automatic lane: no stale flag, but a worker in control (2026-11-06)", () => {
+    expect(bundleApply({ bundleStale: false, stage: "installing", controlled: true })).toBe("installing");
+  });
+
+  it("is the band's two states whenever the self-updater's flag is up, controller or not", () => {
+    expect(bundleApply({ bundleStale: true, stage: "installing", controlled: true })).toBe("installing");
+    expect(bundleApply({ bundleStale: true, stage: "installing", controlled: false })).toBe("installing");
+    expect(bundleApply({ bundleStale: true, stage: "idle", controlled: true })).toBe("ready");
+    expect(bundleApply({ bundleStale: true, stage: "idle", controlled: false })).toBe("ready");
+  });
+
+  it("is nothing at rest, controller or not", () => {
+    expect(bundleApply({ bundleStale: false, stage: "idle", controlled: true })).toBeNull();
+    expect(bundleApply({ bundleStale: false, stage: "idle", controlled: false })).toBeNull();
+  });
+});
+
+describe("swControlled", () => {
+  afterEach(() => {
+    // jsdom has no `navigator.serviceWorker`. Each case below defines it, configurable, and this
+    // removes it again so no other case sees a worker.
+    Reflect.deleteProperty(navigator, "serviceWorker");
+  });
+
+  it("is false with no service worker API at all (plain HTTP, jsdom)", () => {
+    expect(swControlled()).toBe(false);
+  });
+
+  it("is false while nothing controls the page, and true once a worker does", () => {
+    Object.defineProperty(navigator, "serviceWorker", { configurable: true, value: { controller: null } });
+    expect(swControlled()).toBe(false);
+    Object.defineProperty(navigator, "serviceWorker", { configurable: true, value: { controller: {} } });
+    expect(swControlled()).toBe(true);
   });
 });
 

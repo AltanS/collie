@@ -33,6 +33,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 ### Changed
 
 - **The Collie mark shows when the app on your phone is updating.** While a new app build downloads, and until the page reloads onto it, every bead of the header mark turns fast in the update colour, in place of the band that said "Downloading the new version…" or "New version, tap to update". Tap the mark to open the dashboard: its update line says which of the two it is, with how far the download has come.
+- **The mark also turns when the app updates itself.** After a deploy the app usually downloads its new build and reloads on its own, and nothing said so. The mark now turns in the update colour for that download too, and the dashboard's update line shows it. The first install of the app shows nothing, since it replaces nothing.
 
 ### Fixed
 

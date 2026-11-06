@@ -18,7 +18,9 @@ import { useOptionalRootData } from "@/lib/route-data";
 // While a new app build is being applied on this phone the header mark turns in the update colour,
 // and a tap on it lands here (`components/app-header.tsx`). So this line says what the mark means,
 // ahead of anything about Collie on the host: "downloading" with how far, or "tap to update" when the
-// new build is in and waiting. These are the two lines the strip band used to carry. The download
+// new build is in and waiting. These are the two lines the strip band used to carry, and the
+// download line also shows on the automatic lane, where the band said nothing (`lib/bundle-apply.ts`
+// says when a download counts). The download
 // outranks the release lines because it is happening now and is the answer the tap came for; a
 // release offer is still standing when it is done.
 

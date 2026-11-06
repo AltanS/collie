@@ -383,6 +383,32 @@ describe("UpdateBanner — the app bundle, from the real self-updater", () => {
     expect(screen.queryByText("It reloads on its own once nothing is in progress.")).toBeNull();
   });
 
+  it("says the download on the AUTOMATIC lane too, with no stale flag, once a worker controls the page", async () => {
+    // Nothing is held, so the page will reload by itself and the self-updater's flag never rises.
+    Object.defineProperty(navigator, "serviceWorker", { configurable: true, value: { controller: {} } });
+    try {
+      sw.stage = "installing";
+      sw.progress = { done: 1, total: 4, at: Date.now() };
+      renderBanner(undefined);
+      expect(await screen.findByText("Downloading the new version…")).toBeInTheDocument();
+      expect(screen.getByText("25% downloaded")).toBeInTheDocument();
+    } finally {
+      Reflect.deleteProperty(navigator, "serviceWorker");
+    }
+  });
+
+  it("says nothing on the app's FIRST install, when no worker controls the page yet", async () => {
+    Object.defineProperty(navigator, "serviceWorker", { configurable: true, value: { controller: null } });
+    try {
+      sw.stage = "installing";
+      renderBanner(undefined);
+      await screen.findByTestId("root");
+      expect(screen.queryByText("Downloading the new version…")).toBeNull();
+    } finally {
+      Reflect.deleteProperty(navigator, "serviceWorker");
+    }
+  });
+
   it("goes back to the release line once the bundle on screen is current", async () => {
     holdReload("an-open-composer-draft");
     staleBundle();

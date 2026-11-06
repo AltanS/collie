@@ -133,6 +133,10 @@ the header mark instead, and for a tap on the mark to say what is happening.
   from any route and brings its update line into view once. That line now leads with the bundle:
   "Downloading the new version…" with a per cent of files when one is known, or "New version, tap to
   update", which reloads the page as the band's row did.
+- **The mark also turns on the automatic lane.** With nothing held, the page reloads by itself and
+  the self-updater's flag never rises, so the band never spoke there. The mark does: a download counts
+  when a service worker already controls the page. The stage is `installing` on a first install too,
+  and no controller is what keeps that one quiet (`web/src/lib/bundle-apply.ts`).
 - **The band says nothing in place of them.** The download still outranks a failed peer and an
   offer, so neither is posted under a turning mark. The download row's local close went with it.
 - **The paint is the host's, for now.** `collie-mark.tsx` is generated in collie-brand and sealed, so
