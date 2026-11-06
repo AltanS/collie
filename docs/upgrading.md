@@ -247,7 +247,7 @@ A deputy's standby door serves it at `/standby/update` while the main port is do
 If a new beacon hook event is available, `update` prints a notice to re-run `hooks install claude`.
 
 After each successful update, rollback or switch, the new build runs `collie skill sync`. It
-installs the walky talky skill into every agent harness on this machine and updates a copy that is
+installs the WalkyTalky skill into every agent harness on this machine and updates a copy that is
 behind, so your agents know the build you now run. It prints one line per file it changed, and it
 never fails the update: if it cannot run, `update` prints one note and you run `collie skill sync`
 by hand. It leaves out a harness where you ran `collie skill uninstall`. Set `COLLIE_SKILL_SYNC=off`

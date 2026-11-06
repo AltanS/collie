@@ -383,11 +383,11 @@ member that sent it. Run `collie walky status <id>` on the sender's machine or o
 ([Across a crew](walky-talky.md#across-a-crew)).
 
 On the phone, a pane on a member shows its messages as a lead's own pane does. The lead reads the
-list from that member's log, so the cards and the Messages sheet look the same on every machine
+list from that member's log, so the cards and the WalkyTalky sheet look the same on every machine
 ([On the phone](walky-talky.md#on-the-phone)).
 
 On the phone, a message names the sessions and senders in it by name. In the terminal and in `collie walky who`,
-the same message carries addresses and ids. The walky talky skill asks an agent to write the full address of
+the same message carries addresses and ids. The WalkyTalky skill asks an agent to write the full address of
 any session it names, as `who` prints it, never a bare pane id, a window id or a label alone, so both
 read well.
 
@@ -420,7 +420,7 @@ When a machine runs two instances, a pane's chip reads `<host> · <mux>`, for ex
 name as before. `collie status` and `collie crew status` group members under their host in the same
 way.
 
-Only the view is grouped. The member id stays the key: it is what a walky talky address, the
+Only the view is grouped. The member id stays the key: it is what a WalkyTalky address, the
 `--member` filters and the `?h=` link in the app use.
 
 `collie crew status --json` carries the same facts for a program. Each member has `id`, `role`,

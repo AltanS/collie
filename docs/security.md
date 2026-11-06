@@ -343,10 +343,10 @@ entirely.
 Why it is built this way: [ADR 0096](../.adr/0096-speech-can-stay-on-the-phone.md). The setup steps
 are in [Voice input and Web Push](voice-and-push.md#whistle-speech-to-text-on-your-phone-or-your-host).
 
-## Walky talky
+## WalkyTalky
 
-Walky talky carries messages between agent sessions, so this section says what a message proves and
-what it does not. The commands are in [Walky talky](walky-talky.md).
+WalkyTalky carries messages between agent sessions, so this section says what a message proves and
+what it does not. The commands are in [WalkyTalky](walky-talky.md).
 
 ```sh
 # in .env, then run `collie restart`
@@ -386,7 +386,7 @@ That line makes this machine refuse every message for its panes. The CLI on the 
 > way between machines and tells the receiver which machine sent it. It does not protect you from a
 > program on the same machine that lies about itself.
 
-Walky talky adds no outbound call. A message to another machine rides the crew link that already
+WalkyTalky adds no outbound call. A message to another machine rides the crew link that already
 exists, and no model, cloud service or third party sees it.
 
 ## What leaves the machine is masked
@@ -543,8 +543,8 @@ The Whistle model download is another outbound call. It happens only when a pers
 to host** or runs `collie stt whistle`, and it sends no data about you ([The speech engine
 (Whistle)](#the-speech-engine-whistle)).
 
-Walky talky adds no outbound call. A message to another machine rides the crew link and goes
-nowhere else ([Walky talky](#walky-talky)).
+WalkyTalky adds no outbound call. A message to another machine rides the crew link and goes
+nowhere else ([WalkyTalky](#walkytalky)).
 
 Report a problem adds no outbound call. After failed sends the phone can open GitHub's new-issue
 form, filled in, as a link in your own browser. You read the whole text first and submit it yourself
