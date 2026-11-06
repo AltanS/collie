@@ -34,6 +34,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **The Authentication card lifts when credentials expire mid-session.** Claude's API retry row under the box no longer hides it. Thanks @cooldaemon (#719, #542).
 - **A pi dialog reads on herdr-core when the model has no price.** Collie found pi's status rows by the session cost, which pi prints only after a priced turn, so every pi question showed Escape alone. It now also reads pi's context usage. Thanks @mithyer (#721).
 - **Claude's model picker reads at once under a usage notice.** When the weekly-limit notice fills the picker's top edge, Collie read no dialog for a few seconds and showed the unread card. The notice row now counts as the edge.
+- **The wide layout no longer scrolls sideways on a tall screen.** On a two-screen phone opened the long way, a wide row in the pane (a status footer, a table) made the content column wider than the screen, so the chat ran off the right edge. The column now keeps the screen's width and the pane clips or scrolls what does not fit inside its own box.
 
 ## [1.27.0] - 2026-11-06
 

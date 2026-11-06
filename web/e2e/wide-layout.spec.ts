@@ -32,3 +32,26 @@ test("on Off the same window keeps the phone pane screen", async ({ page }) => {
   await expect(page.getByRole("button", { name: en["chat.switcher.aria"] })).toBeVisible();
   await expect(page.locator('[data-slot="wide-layout"]')).toHaveCount(0);
 });
+
+test("a wide line inside a column never widens the column or the page", async ({ page }) => {
+  // 820 less the 320 sidebar leaves 500, under two panes: not wide mode, one column at the strip's width.
+  await page.goto("/pane/w1:p1");
+  const column = page.locator('[data-slot="wide-layout"] section[data-col-key]').first();
+  await expect(column).toBeVisible();
+  // A mirror row, a table or a status footer that will not wrap: 2000px of unbreakable text.
+  await column.locator('[data-strip-focus]').evaluate((el) => {
+    const wide = document.createElement("div");
+    wide.style.cssText = "width:2000px;height:8px;flex:none";
+    el.prepend(wide);
+  });
+  const strip = page.locator('[data-slot="wide-layout"] [data-slot="strip"]');
+  const widths = await page.evaluate(() => ({
+    column: document.querySelector('[data-slot="wide-layout"] section[data-col-key]')!.getBoundingClientRect().width,
+    strip: document.querySelector('[data-slot="wide-layout"] [data-slot="strip"]')!.clientWidth,
+    page: document.documentElement.scrollWidth,
+    view: document.documentElement.clientWidth,
+  }));
+  expect(widths.column).toBe(widths.strip);
+  expect(widths.page).toBe(widths.view);
+  await expect(strip).toBeVisible();
+});
