@@ -1395,6 +1395,7 @@ export const ja: Dictionary = {
   "connection.stale.messageTemplate": "{reason}。{detail}",
   "connection.session.title": "セッション",
   "connection.session.aria": "セッション: {name}。セッションを切り替え",
+  "connection.session.moveAria": "{name} を移動",
   "connection.session.primary": "プライマリ",
   "connection.session.unreachable": "到達不能",
   "connection.session.ariaIn": "セッション: {name}",

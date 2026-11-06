@@ -84,17 +84,17 @@ describe("SessionSwitcher — sheet + selection", () => {
     await user.click(screen.getByRole("button", { name: /switch session/i }));
 
     const sheet = within(screen.getByRole("dialog"));
-    expect(sheet.getByRole("button", { name: /default/ })).toBeInTheDocument();
-    expect(sheet.getByRole("button", { name: /collie-demo/ })).toBeInTheDocument();
+    expect(sheet.getByRole("button", { name: /^default/ })).toBeInTheDocument();
+    expect(sheet.getByRole("button", { name: /^collie-demo/ })).toBeInTheDocument();
     // The crashed session is greyed out and non-clickable.
-    expect(sheet.getByRole("button", { name: /crashed/ })).toBeDisabled();
+    expect(sheet.getByRole("button", { name: /^crashed/ })).toBeDisabled();
   });
 
   it("navigates to a named session with ?s= on select", async () => {
     const user = userEvent.setup();
     const router = renderSwitcher([primary, demo], undefined);
     await user.click(screen.getByRole("button", { name: /switch session/i }));
-    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: /collie-demo/ }));
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: /^collie-demo/ }));
 
     await waitFor(() => expect(location(router)).toBe("/?s=collie-demo"));
   });
@@ -103,7 +103,7 @@ describe("SessionSwitcher — sheet + selection", () => {
     const user = userEvent.setup();
     const router = renderSwitcher([primary, demo], "collie-demo", "/?s=collie-demo");
     await user.click(screen.getByRole("button", { name: /switch session/i }));
-    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: /default/ }));
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: /^default/ }));
 
     await waitFor(() => expect(location(router)).toBe("/"));
   });
@@ -161,7 +161,7 @@ describe("SessionSwitcher — the widened view", () => {
   it("still offers a way back to a single session", async () => {
     const router = renderSwitcher([primary, demo], undefined, "/?all=1", true);
     await open(/showing every session/i);
-    await userEvent.click(screen.getByRole("button", { name: /collie-demo/i }));
+    await userEvent.click(screen.getByRole("button", { name: /^collie-demo/i }));
     expect(location(router)).toBe("/?s=collie-demo");
   });
 
@@ -185,7 +185,7 @@ describe("SessionSwitcher — operator labels", () => {
     const router = renderSwitcher([primary, labelled], undefined);
     await user.click(screen.getByRole("button", { name: /switch session/i }));
 
-    const row = within(screen.getByRole("dialog")).getByRole("button", { name: /УТ ОП/ });
+    const row = within(screen.getByRole("dialog")).getByRole("button", { name: /^УТ ОП/ });
     expect(row).toHaveTextContent("collie-demo");
     await user.click(row);
     await waitFor(() => expect(location(router)).toBe("/?s=collie-demo"));
@@ -201,7 +201,7 @@ describe("SessionSwitcher — operator labels", () => {
     const user = userEvent.setup();
     renderSwitcher([primary, labelled], undefined);
     await user.click(screen.getByRole("button", { name: /switch session/i }));
-    const row = within(screen.getByRole("dialog")).getByRole("button", { name: /default/ });
+    const row = within(screen.getByRole("dialog")).getByRole("button", { name: /^default/ });
     expect(within(row).getAllByText("default")).toHaveLength(1);
   });
 
@@ -209,7 +209,7 @@ describe("SessionSwitcher — operator labels", () => {
     const user = userEvent.setup();
     renderSwitcher([primary, { ...demo, label: "" }], undefined);
     await user.click(screen.getByRole("button", { name: /switch session/i }));
-    const row = within(screen.getByRole("dialog")).getByRole("button", { name: /collie-demo/ });
+    const row = within(screen.getByRole("dialog")).getByRole("button", { name: /^collie-demo/ });
     expect(within(row).getAllByText("collie-demo")).toHaveLength(1);
   });
 });

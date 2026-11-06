@@ -1381,6 +1381,7 @@ export const zhTW: Dictionary = {
   "connection.stale.messageTemplate": "{reason}。{detail}",
   "connection.session.title": "工作階段",
   "connection.session.aria": "工作階段：{name}。切換工作階段",
+  "connection.session.moveAria": "移動 {name}",
   "connection.session.primary": "主要工作階段",
   "connection.session.unreachable": "無法連線",
   "connection.session.ariaIn": "目前工作階段：{name}",

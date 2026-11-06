@@ -1385,6 +1385,7 @@ export const zh: Dictionary = {
   "connection.stale.messageTemplate": "{reason}。{detail}",
   "connection.session.title": "会话",
   "connection.session.aria": "会话：{name}。切换会话",
+  "connection.session.moveAria": "移动 {name}",
   "connection.session.primary": "主会话",
   "connection.session.unreachable": "不可达",
   "connection.session.ariaIn": "当前会话：{name}",

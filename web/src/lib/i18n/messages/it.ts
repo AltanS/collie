@@ -1297,6 +1297,7 @@ export const it: Dictionary = {
   "connection.stale.messageTemplate": "{reason}. {detail}",
   "connection.session.title": "Sessioni",
   "connection.session.aria": "Sessione: {name}. Cambia sessione",
+  "connection.session.moveAria": "Sposta {name}",
   "connection.session.primary": "principale",
   "connection.session.unreachable": "non raggiungibile",
   "connection.session.ariaIn": "Nella sessione: {name}",

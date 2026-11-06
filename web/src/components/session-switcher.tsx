@@ -1,12 +1,14 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Check, Layers } from "lucide-react";
+import { Check, GripVertical, Layers } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { useNav } from "@/hooks/use-nav";
+import { DRAG_ROW, useGripDrag } from "@/hooks/use-grip-drag";
 import { BottomSheet } from "@/components/ui/sheet";
 import { homePath } from "@/lib/nav";
 import { sessionDisplayName } from "@/lib/hosts";
+import { moveSession, orderSessions } from "@/lib/session-order";
 import type { Scope } from "@/lib/scope";
 import type { SessionSummary } from "@/lib/types";
 import { t, tn } from "@/lib/i18n";
@@ -32,6 +34,18 @@ export function SessionSwitcher({ sessions, scope, viewAll }: SessionSwitcherPro
   const current = scope.session;
   const [open, setOpen] = useState(false);
   const nav = useNav();
+  const list = useRef<HTMLUListElement>(null);
+  // Read on every draw, and a move draws: the order lives in this device's storage (lib/session-order.ts).
+  const [, drawMove] = useState(0);
+  const ordered = orderSessions(sessions, scope.host);
+  const names = ordered.map((s) => s.name);
+  const { drag, gripProps } = useGripDrag(list, (name, to) => {
+    const from = names.indexOf(name);
+    if (from < 0 || from === to) return;
+    moveSession(names, from, to, scope.host);
+    drawMove((moves) => moves + 1);
+  });
+  const dragFrom = drag === null ? -1 : names.indexOf(drag.key);
 
   const reachableCount = sessions.filter((s) => s.reachable).length;
   const onNonPrimary = current !== undefined;
@@ -100,7 +114,7 @@ export function SessionSwitcher({ sessions, scope, viewAll }: SessionSwitcherPro
           backdrop-blur before) would make it the containing block and clip the sheet to the header band. */}
       {createPortal(
         <BottomSheet open={open} onClose={() => setOpen(false)} title={t("connection.session.title")}>
-          <ul className="flex flex-col gap-1">
+          <ul ref={list} className="flex flex-col gap-1">
             {/* FIRST, above the sessions rather than among them. A session name answers "which one";
                 this answers "do I have to choose at all", and putting it in the list would make
                 "All sessions" look like a session called that. The Check and the inset rail are the
@@ -129,19 +143,29 @@ export function SessionSwitcher({ sessions, scope, viewAll }: SessionSwitcherPro
                 {viewAll && <Check className="size-4 shrink-0 text-primary" />}
               </button>
             </li>
-            {sessions.map((s) => {
+            {ordered.map((s, index) => {
               const active = isActive(s);
               // The label is display-only; the row still selects by `s.name`.
               const shown = sessionDisplayName(s);
               return (
-                <li key={s.name}>
+                <li
+                  key={s.name}
+                  {...{ [DRAG_ROW]: s.name }}
+                  className={cn(
+                    "flex items-stretch rounded-lg",
+                    dragFrom === index && "opacity-50",
+                    // Where a release puts the row: the line on the side it comes in from.
+                    drag?.to === index && dragFrom > index && "shadow-[0_-2px_0_var(--primary)]",
+                    drag?.to === index && dragFrom < index && dragFrom >= 0 && "shadow-[0_2px_0_var(--primary)]",
+                  )}
+                >
                   <button
                     type="button"
                     disabled={!s.reachable}
                     onClick={() => select(s)}
                     aria-current={active ? "true" : undefined}
                     className={cn(
-                      "flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left transition-colors",
+                      "flex min-w-0 flex-1 items-center gap-2.5 rounded-lg px-3 py-2.5 text-left transition-colors",
                       // "Current" is a 2px inset cut in --primary, not a fill. The fill it replaces
                       // was bg-accent inside a bg-background sheet: 1.17:1 light, 1.31:1 dark, i.e.
                       // barely a surface — while putting the status count pills on rgb(228)/rgb(38),
@@ -194,6 +218,17 @@ export function SessionSwitcher({ sessions, scope, viewAll }: SessionSwitcherPro
                       )}
                     </div>
                     {active && <Check className="size-4 shrink-0 text-primary" />}
+                  </button>
+                  {/* Beside the row's button, not in it: a swipe on the row still scrolls the sheet and a
+                      tap still selects, and an unreachable session can still be moved. No hold: on a
+                      grip, a finger has only this one meaning. */}
+                  <button
+                    type="button"
+                    aria-label={t("connection.session.moveAria", { name: shown })}
+                    {...gripProps(s.name)}
+                    className="flex w-11 shrink-0 cursor-grab touch-none select-none items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent active:cursor-grabbing"
+                  >
+                    <GripVertical className="size-4" />
                   </button>
                 </li>
               );
