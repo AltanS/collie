@@ -47,6 +47,7 @@ import { mounted } from "@/lib/base-path";
 import { forgetAllDiffComments } from "@/lib/diff-comment-store";
 import { clearAllDrafts, clearDraft } from "@/lib/drafts";
 import { forgetAgain } from "@/lib/new-page";
+import { forgetSlots } from "@/lib/slots";
 import { forgetNoPromptsConfirms } from "@/lib/no-prompts";
 import {
   clearDeviceToken,
@@ -177,6 +178,13 @@ const BUILT_IN: readonly (readonly [string, WipeCleaner])[] = [
     "new-page",
     (context) => {
       if (context.reason !== "password") forgetAgain();
+    },
+  ],
+  [
+    // Each browser tile's last pane (lib/slots.ts): its address and its workspace name.
+    "slots",
+    (context) => {
+      if (context.reason !== "password") forgetSlots();
     },
   ],
   [

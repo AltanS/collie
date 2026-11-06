@@ -10,6 +10,7 @@ import {
 } from "react-router";
 
 import { useNavTrail } from "@/hooks/use-nav";
+import { useSlotMemory } from "@/hooks/use-slot-memory";
 import { readAgentLaunch } from "@/lib/agent-startup";
 import { usePolling } from "@/hooks/use-polling";
 import { usePollBusy } from "@/hooks/use-poll-busy";
@@ -106,6 +107,8 @@ export function RootLayout() {
   useBusyWhile(useNavigation().state !== "idle");
   // The history the tab has walked, for the Files breadcrumb's pop (lib/nav-trail.ts).
   useNavTrail();
+  // Which pane this tab reopens on, when it came through `/slot/<n>` (lib/slots.ts).
+  useSlotMemory();
   // The open pane as a ROW, so a peer's pane that shares its id is not silenced along with it.
   const openPane =
     paneId === undefined
