@@ -315,8 +315,14 @@ export function AppHeaderHost({ bridge, error, lastSeenAt, children }: AppHeader
            * hand the inset to the band while a strip showed above it (a context flag and a 240ms
            * padding transition kept the two in step); moving the band below the bar on 2026-10-07
            * made that handover, and the jog of the whole page it caused, unnecessary.
+           *
+           * DOCKED, IT IS NOT AT THE TOP EDGE, so it reserves nothing. On the large screen the bar
+           * sits in the focused column, under the space's tab row, and the layout's two top rows
+           * (the sidebar and the tab row, wide-layout.tsx) take the inset instead. Padding here as
+           * well pushed the pane's title down by the inset while those rows sat under the status bar
+           * (a foldable's screen recording, 1.27.1).
            */
-          "[padding-top:env(safe-area-inset-top)]",
+          dockedRow === null && "[padding-top:env(safe-area-inset-top)]",
           // The rule is RECOLOURED, never removed — DESIGN.md §2's own technique, and the width stays
           // reserved in the base string above. While a route has the row hidden (zen) there are no
           // two regions left to cut apart, so the edge goes transparent; nothing moves by a pixel
