@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test";
 
-import { itemsOf } from "../../web/src/lib/chat-items.ts";
 import { MAX_TEXT_CHARS } from "../journal/text.ts";
 import type { TranscriptEntry } from "../journal/types.ts";
 import { findPinnable } from "./lookup.ts";
@@ -25,16 +24,16 @@ const entries: TranscriptEntry[] = [
 ];
 
 describe("findPinnable", () => {
-  test("agrees with the phone on the id of every block Chat draws", () => {
-    const ids = entries.flatMap((entry) => itemsOf(entry, true).map((item) => item.id));
-    expect(ids).toEqual(["u1:0", "a1:0", "a1:2", "toolu_9", "a1:4", "a1:5", "n1:0", "s1:0"]);
-    for (const entry of entries) {
-      for (const item of itemsOf(entry, true)) {
-        const found = findPinnable(entries, item.id);
-        // Every drawn block is found; the two unpinnable kinds say so and nothing else is "not found".
-        expect(found.ok || found.reason === "not_pinnable").toBe(true);
-        expect(found.ok === (item.kind !== "image" && item.kind !== "compacted")).toBe(true);
-      }
+  test("names every block by the id the phone draws, and finds each one", () => {
+    // The ids `itemsOf` (web/src/lib/chat-items.ts) gives these entries, written out: a tool part's own id,
+    // else `<uuid>:<partIndex>`, a blank text part drawing nothing, one `<uuid>:0` for a compaction.
+    // `web/src/lib/chat-items.test.ts` holds the phone's side of the same rule.
+    const drawn = ["u1:0", "a1:0", "a1:2", "toolu_9", "a1:4", "a1:5", "n1:0", "s1:0"];
+    const unpinnable = new Set(["a1:5", "s1:0"]);
+    for (const id of drawn) {
+      const found = findPinnable(entries, id);
+      expect(found.ok).toBe(!unpinnable.has(id));
+      if (!found.ok) expect(found.reason).toBe("not_pinnable");
     }
   });
 

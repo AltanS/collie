@@ -389,6 +389,9 @@ const PANE_WIRE_KEYS = {
   // Not a crew dimension: a session turned its walky talky off (M89). Present only while it is off,
   // and this harness builds its body with no reader, so no golden byte moved.
   walkyOff: true,
+  // Not a crew dimension: how many pins the pane's session holds (M90). Present only above zero, and this
+  // harness builds its body with no pin store, so no golden byte moved.
+  pins: true,
   // Not a crew dimension: the pane's usage dots (bridge/usage.ts, .adr/0115). Attached at serialise
   // time from the statusLine wrapper's file, and this harness builds its body with no reader, so no
   // golden byte moved.
@@ -545,6 +548,7 @@ describe("solo zero-tax — wire shapes carry no crew dimension", () => {
       "model",
       "paneId",
       "paneLabel",
+      "pins",
       "progress",
       "readableLines",
       "sendProtocol",

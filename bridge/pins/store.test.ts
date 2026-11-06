@@ -163,7 +163,7 @@ describe("the pin file", () => {
   test("a row that is malformed is skipped and the rest are kept", () => {
     const folder = dir();
     mkdirSync(folder, { recursive: true });
-    const good = { id: "p1", itemId: "a:0", kind: "user", text: "hi", pinnedAt: T0, anchor: "hi" };
+    const good = { id: "p1", itemId: "a:0", kind: "user" as const, text: "hi", pinnedAt: T0, anchor: "hi" };
     writeFileSync(join(folder, "claude.s1.json"), JSON.stringify({ v: 1, pins: [{ id: "p0", kind: "bogus" }, good, 7] }));
     expect(new PinStore(folder).list("claude.s1")).toEqual([good]);
   });
