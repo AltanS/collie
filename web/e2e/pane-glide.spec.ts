@@ -250,7 +250,12 @@ test("a dashboard row glides its dot, tile and name into the pane header, with n
     type: "timing",
     description: `pointerdown→click ${Math.round(taps.click - taps.down)}ms, click→start ${Math.round(forward!.startAt - taps.click)}ms, start→ready ${Math.round(frozen)}ms, longest frame gap ${Math.round(gap)}ms`,
   });
-  expect(frozen).toBeLessThan(400);
+  // The render budget is a CPU measurement, not a behaviour check. This screen renders in 190-200 ms
+  // idle under WebKit locally, 508-834 ms pinned to one busy core, and 441-525 ms on GitHub's WebKit
+  // runner (two workers), so 400 ms failed there on nearly every run since 2026-10-29. The arrive cap
+  // (ARRIVE_TIMEOUT_MS) never fired in any of them; the no-slide check above guards the behaviour.
+  // Chromium keeps 400 ms, WebKit gets 1000 ms.
+  expect(frozen).toBeLessThan(testInfo.project.name === "app-phone-webkit" ? 1000 : 400);
   await expectNoGlideLeft(page);
 });
 
