@@ -28,6 +28,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **A session can turn its walky talky off.** Run `collie walky off` in the agent's pane, and no other agent can message that session, nor can it message them. Your own messages still reach it. `collie walky on` turns it back, `collie walky who` marks it `walky off`, and the switch ends when the pane closes.
 - **The phone has the walky talky switch too.** The Messages sheet of a session opens with a Walky talky switch, and while the session is off the pane menu reads "Messages, walky talky off". On a crew the switch is set on the machine that owns the pane.
 
+### Changed
+
+- **The feature is called WalkyTalky.** It is one word, in the app, the docs and the CLI help, and the Messages sheet is the WalkyTalky sheet. The commands (`collie walky …`) and the skill name do not change.
+
 ## [1.27.0] - 2026-11-06
 
 ### Added

@@ -50,7 +50,7 @@ const walkyCard = () => document.querySelector('[data-slot="walky-card"]');
 describe("a tool card that ran collie walky", () => {
   it("wears the badge by the tool's name, for every verb, and claims nothing else", () => {
     draw(exec("collie walky who", "You are local/w1:p1#aaaa."), [fixtureWalkyAgent]);
-    expect(badge()).toHaveTextContent("walky talky");
+    expect(badge()).toHaveTextContent("WalkyTalky");
     expect(receipt()).toBeNull();
     expect(walkyCard()).toBeNull();
   });
@@ -168,7 +168,7 @@ describe("a tool card that ran collie walky", () => {
 
   it("reads a harness tool the chat model calls `other` by its one-line summary", () => {
     draw({ kind: "other", name: "shell", summary: 'collie walky send bluefin/w6:p3 "x"', output: SEND_OUTPUT }, [fixtureWalkySent]);
-    expect(badge()).toHaveTextContent("walky talky");
+    expect(badge()).toHaveTextContent("WalkyTalky");
     expect(receipt()).toHaveTextContent("Message to bluefin/w6:p3: typed into the pane");
   });
 

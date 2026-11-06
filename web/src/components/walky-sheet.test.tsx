@@ -397,7 +397,7 @@ describe("WalkySheet names sessions", () => {
 });
 
 describe("the walky talky switch at the head of the sheet (M89 spec 04)", () => {
-  const switchOf = () => screen.getByRole("switch", { name: "Walky talky" });
+  const switchOf = () => screen.getByRole("switch", { name: "WalkyTalky" });
 
   it("shows the session's flag: on reads checked, off reads unchecked with the struck radio and the hint", () => {
     sheet([fixtureWalkyAgent], { onWalkyOff: vi.fn(async () => null) });
@@ -425,7 +425,7 @@ describe("the walky talky switch at the head of the sheet (M89 spec 04)", () => 
     const row = document.querySelector('[data-slot="walky-off"] label');
     if (!(row instanceof HTMLElement)) throw new Error("no switch row");
     expect(row).toHaveClass("min-h-11");
-    await user.click(screen.getByText("Walky talky"));
+    await user.click(within(row).getByText("WalkyTalky"));
     expect(onWalkyOff).toHaveBeenCalledExactlyOnceWith(true);
   });
 

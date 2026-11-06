@@ -2885,7 +2885,7 @@ export const en = {
   // `{sheet}` is the sheet's own title (`walky.sheet.title`), so the two can never name it differently.
   "walky.card.open": "Open in {sheet}",
   // The small word on a tool card that ran `collie walky`. The product's name; it claims nothing about a message.
-  "walky.tool.badge": "walky talky",
+  "walky.tool.badge": "WalkyTalky",
   // A message id in text, when the log holds it: a chip that opens the sheet on that message.
   "walky.chip.aria": "Open message {id}",
   "walky.chip.ariaNamed": "Open the message from {words}",
@@ -2909,11 +2909,11 @@ export const en = {
   "walky.reason.draftPresent": "that session has unsent text",
   "walky.reason.turnRunning": "that session is busy",
   "walky.reason.resting": "that session rests",
-  "walky.reason.walkyOff": "the session has its walky talky off",
-  "walky.reason.senderOff": "the sending session has its walky talky off",
-  "walky.off.label": "Walky talky",
+  "walky.reason.walkyOff": "the session has its WalkyTalky off",
+  "walky.reason.senderOff": "the sending session has its WalkyTalky off",
+  "walky.off.label": "WalkyTalky",
   "walky.off.hint": "Off: other agents cannot message this session. You still can.",
-  "walky.off.row": "Messages, walky talky off",
+  "walky.off.row": "WalkyTalky off",
   "walky.off.failed": "Not changed: {error}",
   "walky.state.delivered": "typed into the pane",
   "walky.state.inboxOnly": "waiting in the inbox, not typed",
@@ -2926,8 +2926,8 @@ export const en = {
   "walky.state.held": "held: {reason}",
   "walky.state.heldHint": "Typed when the box clears or the turn ends, up to 60 minutes. Do not send it again.",
   // The pane sheet's row and the sheet it opens.
-  "walky.sheet.row": "Messages",
-  "walky.sheet.title": "Messages",
+  "walky.sheet.row": "WalkyTalky",
+  "walky.sheet.title": "WalkyTalky",
   "walky.sheet.empty": "No messages for this pane yet.",
   "walky.sheet.unavailable": "This machine does not keep messages yet.",
   "walky.sheet.reply": "Reply",

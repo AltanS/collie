@@ -263,7 +263,7 @@ describe("an ordinary user turn", () => {
   });
 });
 
-describe("a walky card that opens the Messages sheet", () => {
+describe("a walky card that opens the WalkyTalky sheet", () => {
   const TURN = () => turn(`${HEADER_AGENT}\nbody`, fixtureWalkyAgent.id);
 
   function withOpener(open: ((id: string) => void) | null) {
@@ -292,8 +292,8 @@ describe("a walky card that opens the Messages sheet", () => {
     withOpener(vi.fn());
     const card = theCard();
     expect(card.className).toContain("min-h-11");
-    expect(within(card).getByText("Open in Messages")).toHaveClass("sr-only");
-    expect(card).toHaveAccessibleName(/Message from collie-workspace#fix-465.*Open in Messages/);
+    expect(within(card).getByText("Open in WalkyTalky")).toHaveClass("sr-only");
+    expect(card).toHaveAccessibleName(/Message from collie-workspace#fix-465.*Open in WalkyTalky/);
     expect(card.querySelector("button, a, input")).toBeNull();
   });
 
@@ -302,7 +302,7 @@ describe("a walky card that opens the Messages sheet", () => {
     const card = theCard();
     expect(card.tagName).toBe("DIV");
     expect(screen.queryByRole("button")).toBeNull();
-    expect(screen.queryByText("Open in Messages")).toBeNull();
+    expect(screen.queryByText("Open in WalkyTalky")).toBeNull();
   });
 
   it("still carries the log's kind, tone and verified word as a button", () => {
@@ -337,7 +337,7 @@ describe("the card's screen-reader words", () => {
         </WalkyOpenProvider>
       </WalkyLogProvider>,
     );
-    expect(screen.getByText("Open in Messages")).toBeInTheDocument();
+    expect(screen.getByText("Open in WalkyTalky")).toBeInTheDocument();
   });
 });
 
