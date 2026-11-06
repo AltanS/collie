@@ -62,6 +62,17 @@ async function openTab(context: BrowserContext, path: string): Promise<Page> {
 const paneRow = (page: Page, agent: Agent) =>
   page.getByRole("main").getByRole("button", { name: new RegExp(`^${agent} logo ${agent}`, "u") });
 
+const STATUS_WORDS = [
+  en["status.label.blocked"],
+  en["status.label.working"],
+  en["status.label.idle"],
+  en["status.label.done"],
+  en["status.label.unknown"],
+].join("|");
+
+/** A row of the switcher or the wide sidebar: the mark on its logo may say the pane's status, so the name is "codex logo working codex ...". */
+const sidebarRow = (agent: Agent) => ({ name: new RegExp(`^${agent} logo (?:(?:${STATUS_WORDS}) )?${agent}`, "u") });
+
 const paneSwitcher = (page: Page) => page.getByRole("button", { name: en["chat.switcher.aria"] });
 
 /** The wide layout has a pane rail instead of the switcher, and no phone header. */
@@ -81,7 +92,7 @@ async function paneShown(page: Page, address: string) {
 
 /** A move from one pane to another by the app's own control for this layout. */
 async function moveToPane(page: Page, agent: Agent) {
-  const row = { name: new RegExp(`^${agent} logo ${agent}`, "u") };
+  const row = sidebarRow(agent);
   if (isWide(page)) {
     await page.getByRole("complementary", { name: en["wide.sidebar.label"] }).getByRole("button", row).click();
     return;
@@ -178,7 +189,7 @@ test("@oracle:requirement @req:SLOT-4 a restored tile keeps storing: the next re
   const restored = await openTab(context, "/slot/1");
   await paneShown(restored, PANE_A);
   await paneSwitcher(restored).click();
-  await restored.getByRole("dialog", { name: en["chat.switcher.aria"] }).getByRole("button", { name: /^codex logo codex/u }).click();
+  await restored.getByRole("dialog", { name: en["chat.switcher.aria"] }).getByRole("button", sidebarRow("codex")).click();
   await paneShown(restored, PANE_B);
   await restored.close();
 
