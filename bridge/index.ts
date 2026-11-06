@@ -293,6 +293,7 @@ import {
 import { isResting, type RouteRemote, type SendResult, type WalkyHost, type WalkyPane } from "./walky/deliver.ts";
 import { INSTANCE_TICK_MS, WalkyInstances } from "./walky/instances.ts";
 import { WalkyLog } from "./walky/log.ts";
+import { PinStore } from "./pins/store.ts";
 import { WalkyOff } from "./walky/off.ts";
 import { RefusalCounter } from "./walky/refusals.ts";
 import { WalkySeen } from "./walky/seen.ts";
@@ -1967,6 +1968,8 @@ hookTarget =
 const walkyInstances = new WalkyInstances(join(cfg.stateDir, "walky"));
 // A session that turned its walky talky off (M89, `<stateDir>/walky/off.json`). Read through the pane row.
 const walkyOff = new WalkyOff(join(cfg.stateDir, "walky"));
+// The pins of every session this machine keeps, one file each (M90).
+const pinStore = new PinStore(join(cfg.stateDir, "pins"));
 /** Every pane of every session, without its token: what the instance registry observes. */
 const walkyRawPanes = (): Omit<WalkyPane, "instance" | "off">[] =>
   registry.ordered().flatMap((rt) => {
@@ -3162,6 +3165,7 @@ const server = listenOrExit("front door", cfg.host, cfg.port, () => startServer(
     return instance !== null && walkyOff.isOff({ session, paneId, instance });
   },
   walky,
+  pins: pinStore,
   cacheWatch,
   folders,
   worktreeReceipts,

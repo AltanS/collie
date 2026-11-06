@@ -766,7 +766,7 @@ describe("solo zero-tax — routes", () => {
       // pane whose adapter raises asks as data takes it, so a solo Herdr bridge answers it the refusal.
       // `send` and `abort` name the turn the phone saw (ADR 0101): writes, forwarded the same way, and
       // only a pane whose adapter takes guarded controls takes them; a Herdr pane gets the refusal.
-      "/^\\/api\\/pane\\/([^/]+)(?:\\/(reply|keys|upload|close|rename|history|chat|changes|files|focus|answer|send|abort|clear|action))?$/",
+      "/^\\/api\\/pane\\/([^/]+)(?:\\/(reply|keys|upload|close|rename|history|chat|changes|files|focus|answer|send|abort|clear|action|pins))?$/",
       // The slash commands Claude Code would load in the pane's cwd: a read of this machine's disk,
       // asked only when the palette opens, so a solo instance pays nothing per poll.
       "/^\\/api\\/pane\\/([^/]+)\\/claude-commands$/",
@@ -1284,6 +1284,9 @@ const STATE_DIR_ENTRIES = [
   // never does keeps writing exactly the six entries above it.
   "paired-devices.json",
   "pairing-pending.json",
+  // The pins of a session (M90): a folder, one file per session, written by use and by nothing else. Absent
+  // until the first pin from a phone; a read of the list or a bridge that is merely started never makes it.
+  "pins",
   "push-subscriptions.json",
   // The Send Protocol's request files and receipts (M56 spec 05), one per request id in this folder.
   // Created by a bridge that sends text, which is the default since spec 06: with COLLIE_SEND_PROTOCOL=0
