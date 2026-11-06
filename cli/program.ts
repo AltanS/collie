@@ -329,12 +329,12 @@ const WALKY_TREE: readonly Subcommand[] = [
   },
   {
     name: "off",
-    summary: "turn this session's walky talky off: other agents cannot message it, your operator still can",
+    summary: "turn this session's WalkyTalky off: other agents cannot message it, your operator still can",
     run: (args, s) => cmdWalkyOff(walkyDeps(s.io), args),
   },
   {
     name: "on",
-    summary: "turn this session's walky talky on again",
+    summary: "turn this session's WalkyTalky on again",
     run: (args, s) => cmdWalkyOn(walkyDeps(s.io), args),
   },
 ];
@@ -988,7 +988,7 @@ export const COMMANDS: readonly Command[] = [
   // One spelling: `wt` was dropped before release, since Windows Terminal's binary is `wt.exe`.
   {
     name: "walky",
-    summary: `walky talky, messages between agent sessions: ${WALKY_SUBCOMMANDS.join(", ")}`,
+    summary: `WalkyTalky, messages between agent sessions: ${WALKY_SUBCOMMANDS.join(", ")}`,
     subcommands: WALKY_TREE,
     run: (args, s) => cmdWalky({ io: s.io }, args),
   },
@@ -1043,11 +1043,11 @@ export const COMMANDS: readonly Command[] = [
   {
     name: "skill",
     summary:
-      "print the agent-facing brief on Collie (also `collie --skill`), or install the walky talky skill into a harness: install, uninstall, sync, status, print",
+      "print the agent-facing brief on Collie (also `collie --skill`), or install the WalkyTalky skill into a harness: install, uninstall, sync, status, print",
     subcommands: [
       {
         name: "install",
-        summary: "write the walky talky skill: `skill install <claude|codex|opencode|pi|gemini|all>`",
+        summary: "write the WalkyTalky skill: `skill install <claude|codex|opencode|pi|gemini|all>`",
         run: (args, s) => cmdSkillInstall(skillDeps(s.io), args),
       },
       {

@@ -24,7 +24,7 @@
 //      nothing. (Herdr does not give a closed pane's id to the next pane, so the refusal here is
 //      `no such pane`; `pane replaced` needs a multiplexer that reuses ids, see the unit tests.)
 //   22 a held message cancelled by its sender (M62 spec 03): the operator's message over a draft is
-//      held; Cancel in the pane's Messages sheet ends it as `inbox-only: cancelled by sender`, the
+//      held; Cancel in the pane's WalkyTalky sheet ends it as `inbox-only: cancelled by sender`, the
 //      draft is untouched, and nothing is typed after the draft clears.
 //   23 a held message dropped from the held mark (M62 spec 03): an agent's message over a draft is
 //      held; the phone shows "1 message waits for the box to clear", a tap opens the sheet, Drop ends
@@ -390,11 +390,11 @@ test.describe("walky talky", () => {
         const posted = await rig.post("/api/walky", { id, to: addressOf(pane), body: `Walky cancel check ${mark}: answer with only the word NEVER-TYPED, nothing else.` });
         const heldRow = await firstRow(rig, pane, (row) => row.id === id && stateOf(row) === "accepted" && reasonOf(row) === "draft present", 15_000);
         notes.push(`POST /api/walky ${String(posted.status)}, receipt ${heldRow === null ? "NOT held: draft present" : "accepted (draft present)"}`);
-        // The sender is the operator, so the Cancel is the phone's: on the row in the Messages sheet.
+        // The sender is the operator, so the Cancel is the phone's: on the row in the WalkyTalky sheet.
         log.push(await tap(recorder, page.getByRole("button", { name: "Pane actions" }), "Pane actions", { expectAnswer: false }));
-        log.push(await tap(recorder, page.getByRole("button", { name: "Messages", exact: true }), "Messages", { expectAnswer: false }));
+        log.push(await tap(recorder, page.getByRole("button", { name: "WalkyTalky", exact: true }), "WalkyTalky", { expectAnswer: false }));
         const row = page.locator(`[data-slot="walky-list-row"][data-id="${id}"]`);
-        await expect(row, "no row for the held message in the Messages sheet").toBeVisible({ timeout: 15_000 });
+        await expect(row, "no row for the held message in the WalkyTalky sheet").toBeVisible({ timeout: 15_000 });
         const cancel = row.getByRole("button", { name: /^Cancel the message/ });
         await expect(cancel, "no Cancel on the held row").toBeVisible({ timeout: 5000 });
         trail.captures.push(await capture(page, "walky-22-held-row"));
@@ -452,7 +452,7 @@ test.describe("walky talky", () => {
         trail.captures.push(await capture(page, "walky-23-held-mark"));
         log.push(await tap(recorder, markOnPhone, "the held mark", { expectAnswer: false }));
         const row = page.locator(`[data-slot="walky-list-row"][data-id="${id}"]`);
-        await expect(row, "the Messages sheet did not open on the held message").toBeVisible({ timeout: 10_000 });
+        await expect(row, "the WalkyTalky sheet did not open on the held message").toBeVisible({ timeout: 10_000 });
         const drop = row.getByRole("button", { name: /^Drop the message/ });
         await expect(drop, "no Drop on the held row").toBeVisible({ timeout: 5000 });
         log.push(await tap(recorder, drop, "Drop", { expectAnswer: false }));

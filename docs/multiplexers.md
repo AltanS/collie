@@ -666,9 +666,9 @@ free polls at least two seconds apart, or five over ten seconds if Collie saw no
 runs `/goal` at once during a turn, so Collie sends `/goal`, `/goal pause` or `/goal resume` right
 away with Enter. It never holds them, and they do not wait behind other held sends. A
 later message on that pane waits behind the held ones. A held text lasts 30 minutes, a held command
-10 minutes. After that the row says the message was not sent, and offers Resend. A walky talky
+10 minutes. After that the row says the message was not sent, and offers Resend. A WalkyTalky
 message is also held over a draft, never typed into it, and its hold lasts 60 minutes
-([Walky talky](walky-talky.md)). Your own send over a draft is still refused, with Append and Replace. Before Collie refuses, adds to or clears a draft, it types one probe character and removes it, to prove that the box takes keys; when the box on the screen does not take keys, the send is refused and nothing is deleted. Focus that pane on the desktop or resize it, so the agent draws its screen again, then send again. A busy agent can also show typed keys seconds late, for example Claude Code with a subagent running under its agents footer. Collie waits about 3 seconds for the probe character when the agent is not in a turn, and the send goes on when it shows. When it shows later than that, the first send is refused because the probe character did not show, and Collie's characters (⌁) show in the box a little later. When the box holds only those characters and its probe is late again, the refusal says so: wait a moment and send again, and Collie takes them out first. A pane Collie reads at fewer rows than the box takes (a tab full of splits squeezes each pane) is refused with the rows read and the rows the box needs: zoom or resize it, or close the panes beside it. Some commands never
+([WalkyTalky](walky-talky.md)). Your own send over a draft is still refused, with Append and Replace. Before Collie refuses, adds to or clears a draft, it types one probe character and removes it, to prove that the box takes keys; when the box on the screen does not take keys, the send is refused and nothing is deleted. Focus that pane on the desktop or resize it, so the agent draws its screen again, then send again. A busy agent can also show typed keys seconds late, for example Claude Code with a subagent running under its agents footer. Collie waits about 3 seconds for the probe character when the agent is not in a turn, and the send goes on when it shows. When it shows later than that, the first send is refused because the probe character did not show, and Collie's characters (⌁) show in the box a little later. When the box holds only those characters and its probe is late again, the refusal says so: wait a moment and send again, and Collie takes them out first. A pane Collie reads at fewer rows than the box takes (a tab full of splits squeezes each pane) is refused with the rows read and the rows the box needs: zoom or resize it, or close the panes beside it. Some commands never
 wait, and Collie refuses them during a turn. On Claude Code these are `/clear`, `/exit`, `/quit`,
 `/logout`, `/resume`, `/branch` and every `!` line. On Codex these are `/quit`, `/exit`, `/new`,
 `/resume`, `/logout` and every `!` line. On Hermes these are `/exit`, `/quit`, `/clear`, `/new`,
@@ -986,7 +986,7 @@ The receipt tells you what happened:
 If the turn ends while Collie types, the line goes as a normal send. Collie does not hold a steer.
 A long steer may end without a clear sign. The receipt then says Collie does not know, and the text is not sent again.
 
-An agent's message to another agent ([Walky talky](walky-talky.md)) never steers. It always waits for the turn.
+An agent's message to another agent ([WalkyTalky](walky-talky.md)) never steers. It always waits for the turn.
 
 ---
 

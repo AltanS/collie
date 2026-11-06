@@ -73,7 +73,7 @@ Prefer to have your agent do it? Ask it to run `collie skill` and follow the bri
 - **File attachments**: images from the camera roll, and markdown, text and code files
 - **Device pairing** always on: a device needs its token for every request, reads and writes, and an unpaired browser sees only the pair screen
 - **Crews**: several machines' Collies behind one URL, with operator-triggered failover
-- **Walky talky**: one agent session sends a short message to another, on any harness and across a crew, and you can message sessions from the phone; every message gets a receipt and a log entry, an address carries the pane's token so a message does not reach a new session in a reused pane id, and a crew machine signs it
+- **WalkyTalky**: one agent session sends a short message to another, on any harness and across a crew, and you can message sessions from the phone; every message gets a receipt and a log entry, an address carries the pane's token so a message does not reach a new session in a reused pane id, and a crew machine signs it
 - **Durable agents**: a long-running durable agent is a session on the phone, with approvals and history (experimental)
 - **Twelve UI languages** and a per-device typeface setting
 - **Herdr session switching** managed from the web interface
@@ -173,7 +173,7 @@ and that is the only way to install it on a phone.
 | --- | --- |
 | [**Install in five minutes**](./docs/five-minute-install.md) | The recommended setup, step by step: Tailscale, Herdr and Collie on your computer, then a paired phone with Collie on its home screen |
 | [**Claude Code in tmux or Herdr, on your phone**](./docs/claude-code-on-your-phone.md) | Keep Claude Code running in tmux or Herdr when SSH drops. Manage sessions, start new agents and worktrees, approve prompts, and send Esc or Ctrl from your phone with push alerts. |
-| [**Walky talky**](./docs/walky-talky.md) | Messages between agent sessions: `collie walky who`, `send`, `reply`, `inbox` and `status`, pane tokens, receipts, how a message crosses a crew and how its outcome comes back, the phone's cards and composer, installing the skill into your agents, and the limits |
+| [**WalkyTalky**](./docs/walky-talky.md) | Messages between agent sessions: `collie walky who`, `send`, `reply`, `inbox` and `status`, pane tokens, receipts, how a message crosses a crew and how its outcome comes back, the phone's cards and composer, installing the skill into your agents, and the limits |
 
 ### Sessions
 

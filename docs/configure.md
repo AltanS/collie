@@ -348,7 +348,7 @@ Collie refuses before it presses when pressing could do harm:
 If no answer comes back from a crew machine in time, Collie says so. The Stop may have gone in, so
 check the pane before you tap Stop again.
 
-A Stop is always your tap. A walky talky message, a hook, the command line and a queued action never
+A Stop is always your tap. A WalkyTalky message, a hook, the command line and a queued action never
 press one. Over a crew, the machine that runs the pane presses the key, reads the screen and sends
 the receipt back through the lead.
 
