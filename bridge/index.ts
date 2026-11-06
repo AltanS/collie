@@ -202,7 +202,7 @@ import {
   type Warrant,
 } from "./crew/trust-store.ts";
 import { currentWarrant, discardForeignWarrant, refreshWarrant, type WarrantPush } from "./crew/warrant.ts";
-import { Push } from "./push.ts";
+import { CLEAR_BURST_MS, Push } from "./push.ts";
 import { currentNotesReader } from "./release-notes.ts";
 import { pluginRoot } from "./root.ts";
 import { buildId, startServer } from "./server.ts";
@@ -752,7 +752,9 @@ function crewStoreChanged(): void {
 }
 
 // ── Process-global services, shared across every session ─────────────────────
-const push = new Push(cfg);
+// Clears wait CLEAR_BURST_MS for company, so one retract across many agents is one push per device
+// (bridge/push.ts § the three rules). The CLI's own Push sends at once.
+const push = new Push(cfg, undefined, { clearBurstMs: CLEAR_BURST_MS });
 await push.init();
 
 const snooze = new Snooze(cfg);

@@ -37,6 +37,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Fixed
 
+- **Chrome stops showing "This site has been updated in the background".** Chrome allows a site only a few pushes a day that leave no notification on screen, and one notification per agent sent each agent a clear of its own. Now a device that has Collie open gets no push for what it already shows, a device whose own tap already closed a notification gets no clear for it, and clears that come together reach each device as one push. The log counts each device's silent pushes per hour.
 - **A slow drag down on the Switch pane sheet follows the finger.** Each poll of the pane, every 1.5 seconds while an agent works, snapped a sheet held mid-drag back to the top, and the next move pulled it under the finger again, so the sheet flickered on the way down. The sheet now keeps its drag through a poll, on every sheet that closes with a drag.
 - **A Chat block shows its ⋯ only after you tap it, and a hold opens its sheet.** Every pinnable block wore a ⋯ at its top right all the time, and the first line of its text wrapped around it. Now a block shows nothing at rest: tap it and its ⋯ appears as a small chip over the corner, beside a copy button or a tool card's chevron rather than on it. That tap does not open the keyboard. The ⋯ hides after 4 seconds or on a tap elsewhere. A hold on a block opens the sheet at once, as a right click does on a desktop. On a phone the block tints while you hold it, and it stays tinted while its sheet is open, so you see which message the sheet is about. On a phone a block no longer selects text, so the hold works every time; the sheet's new Select text row turns selection on for that block until you tap outside it.
 - **The "+" at the end of the tab row is a plain glyph, level with the tabs.** It drew a 28px dashed circle in the 30px row, so under the folder look the ring nearly touched the line below the tabs and read as a placeholder. It is now a bare "+" like the fold arrow beside it, with the same air above and below, and it still answers a tap 44px wide across the whole row. The dashboard heading and the space strip keep the dashed circle.
@@ -62,6 +63,9 @@ Running a crew? Update the lead first; members follow on their own. Details:
 ### Changed
 
 - **The feature is called WalkyTalky.** It is one word, in the app, the docs and the CLI help, and the Messages sheet is the WalkyTalky sheet. The commands (`collie walky …`) and the skill name do not change. ([549c559](https://github.com/AltanS/collie/commit/549c559))
+
+### Fixed
+
 
 ## [1.27.0] - 2026-11-06
 
