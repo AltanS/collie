@@ -231,11 +231,9 @@ function ConnectionStateBanner({
   const applying = useBundleApply() !== null;
   const applyingRef = useRef(applying);
   applyingRef.current = applying;
-  // The operator hid the red strip for THIS outage. The state draws (or does not draw) the strip; the
-  // ref is the same fact for the effect below, which must read it at recovery without re-running when
-  // it flips. Both reset together when the outage ends (`activeTone` goes null).
+  // The operator hid the red strip for THIS outage. It resets when the outage ends (`activeTone` goes
+  // null). It hides the strip and nothing else: the recovery still turns the mark (`lib/reconnected.ts`).
   const [dismissed, setDismissed] = useState(false);
-  const dismissedRef = useRef(false);
 
   useEffect(() => {
     if (activeTone) {
@@ -247,15 +245,12 @@ function ConnectionStateBanner({
     }
     // activeTone === null → recovered, or never troubled. Either way the outage the operator hid, if
     // they hid one, is over: the next one shows its strip again, and the strip goes.
-    const wasDismissed = dismissedRef.current;
-    dismissedRef.current = false;
     setDismissed(false);
     setTone(null);
     const fires = reconnects({
       shown: shown.current,
       next: null,
       applying: applyingRef.current,
-      dismissed: wasDismissed,
     });
     shown.current = null;
     if (!fires) return;
@@ -303,7 +298,6 @@ function ConnectionStateBanner({
   if (tone === "red" && dismissed) return null;
 
   function onDismiss() {
-    dismissedRef.current = true;
     setDismissed(true);
   }
 

@@ -8,7 +8,7 @@ import {
 } from "./reconnected";
 
 describe("reconnects — when a change of the link is a reconnection the mark shows", () => {
-  const at = { applying: false, dismissed: false };
+  const at = { applying: false };
 
   it("fires on amber → green", () => {
     expect(reconnects({ ...at, shown: "amber", next: null })).toBe(true);
@@ -32,13 +32,10 @@ describe("reconnects — when a change of the link is a reconnection the mark sh
   });
 
   it("is skipped while the app is being applied: the update colour wins", () => {
-    expect(reconnects({ shown: "amber", next: null, applying: true, dismissed: false })).toBe(false);
-    expect(reconnects({ shown: "red", next: null, applying: true, dismissed: false })).toBe(false);
+    expect(reconnects({ shown: "amber", next: null, applying: true })).toBe(false);
+    expect(reconnects({ shown: "red", next: null, applying: true })).toBe(false);
   });
 
-  it("is skipped after the operator dismissed the red strip: they asked for quiet", () => {
-    expect(reconnects({ shown: "red", next: null, applying: false, dismissed: true })).toBe(false);
-  });
 });
 
 describe("the reconnected store — one turn, then rest", () => {
