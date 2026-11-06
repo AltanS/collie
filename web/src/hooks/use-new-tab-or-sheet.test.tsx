@@ -39,7 +39,7 @@ function serve(byHost: Record<string, LauncherItem[]>) {
 
 const BESIDE = { paneId: "w1:p1", workspaceId: "w1", cwd: "/home/op/webapp" };
 
-function mount(opts: { refuse?: boolean; ambient?: Scope } = {}) {
+function mount(opts: { refuse?: boolean; ambient?: Scope; enabled?: boolean } = {}) {
   const calls = { newTab: new Array<[string, Scope | undefined]>(), start: 0 };
   const actions: NewTabActions = {
     newTab: async (workspaceId, at) => {
@@ -53,7 +53,7 @@ function mount(opts: { refuse?: boolean; ambient?: Scope } = {}) {
   };
   let request: (t: NewTabTarget) => void = () => {};
   function Harness() {
-    const plus = useNewTabOrSheet(actions, opts.ambient);
+    const plus = useNewTabOrSheet(actions, opts.ambient, opts.enabled);
     request = plus.request;
     return <>{plus.sheet}</>;
   }
@@ -77,14 +77,28 @@ describe("useNewTabOrSheet", () => {
   it("makes the shell at once, with no sheet, when nothing beyond the shell can start", async () => {
     const world = serve({ "": [CODEX_OFF, SHELL] });
     const { calls, tap } = mount();
-    await waitFor(() => expect(world.reads).toHaveLength(1));
-    // Wait for the answer itself, not only the request: the decision is made on the tap.
-    await new Promise((r) => setTimeout(r, 50));
+    // A tap before any answer is in opens the sheet; the empty answer then closes it for the shell.
     act(() => tap({ workspaceId: "w1", label: "webapp", beside: BESIDE }));
+    await waitFor(() => expect(calls.newTab).toEqual([["w1", undefined]]));
     expect(dialog("New tab in webapp")).toBeNull();
-    expect(calls.newTab).toEqual([["w1", undefined]]);
+    // Now the answer is in, so the next tap decides on it: the shell inside the tap, no sheet at all.
+    const reads = world.reads.length;
+    act(() => tap({ workspaceId: "w1", label: "webapp", beside: BESIDE }));
+    expect(calls.newTab).toEqual([["w1", undefined], ["w1", undefined]]);
+    expect(dialog("New tab in webapp")).toBeNull();
     // It reads again behind the shell, so a row added since shows on the next "+".
-    await waitFor(() => expect(world.reads.length).toBeGreaterThan(1));
+    await waitFor(() => expect(world.reads.length).toBeGreaterThan(reads));
+  });
+
+  it("reads nothing while the caller draws no + (a desk strip), and reads on the tap", async () => {
+    const world = serve({ "": [CLAUDE, SHELL] });
+    const { tap } = mount({ enabled: false });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(world.reads).toEqual([]);
+    act(() => tap({ workspaceId: "w1", label: "webapp", beside: BESIDE }));
+    const sheet = within(await screen.findByRole("dialog", { name: "New tab in webapp" }));
+    expect(await sheet.findByRole("button", { name: /Claude Code/ })).toBeEnabled();
+    expect(world.reads).toEqual([""]);
   });
 
   it("gives the refusal first: no sheet, no create", async () => {

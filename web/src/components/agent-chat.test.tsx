@@ -53,7 +53,8 @@ import { __resetOperatorCommands } from "@/lib/operator-config";
 import { paneMirrorOverride, setPaneMirrorOverride } from "@/lib/mirror-invert";
 import { submitPromptOption } from "@/lib/prompt-action";
 import { submitWizardKeys } from "@/lib/wizard-action";
-import { fixtureAgents, fixtureShellPanes, fixtureTabs, fixtureTranscriptWithImage, paneTextWithDraft, recordedSends, sendAnswer, sendHandler } from "@/test/handlers";
+import { fixtureAgents, fixtureLaunchedTab, fixtureLaunchersWithAgents, fixtureShellPanes, fixtureTabs, fixtureTranscriptWithImage, paneTextWithDraft, recordedSends, sendAnswer, sendHandler } from "@/test/handlers";
+import type { StartLaunchBody } from "@/lib/api";
 import type { Ask, Surface } from "@/lib/surface/surface";
 import { parseAnsi } from "@/lib/ansi";
 import { splitLines } from "@/lib/blocks";
@@ -1417,6 +1418,31 @@ describe("AgentChat — status rides the header title slot, not the tab strip", 
 
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
     expect(screen.getByText("webapp")).toBeInTheDocument();
+  });
+});
+
+// The tab bar's "+" (M91): with an agent to offer it opens the New tab sheet, and a row starts as a tab
+// beside this workspace's own pane, through the same `POST /api/launch` the New page uses.
+describe("AgentChat \u2014 the tab bar's + opens the New tab sheet", () => {
+  it("lists the machine's agents and starts one beside the workspace's pane", async () => {
+    const launches: StartLaunchBody[] = [];
+    server.use(
+      http.get("/api/launchers", () => HttpResponse.json(fixtureLaunchersWithAgents)),
+      http.post("/api/launch", async ({ request }) => {
+        // SAFETY: the body is the app's own: `lib/api.ts`'s `startLaunch` is the only caller and it posts a `StartLaunchBody`.
+        launches.push((await request.json()) as StartLaunchBody);
+        return HttpResponse.json(fixtureLaunchedTab);
+      }),
+    );
+    const user = userEvent.setup();
+    renderChat({ tabs: fixtureTabs });
+
+    await user.click(screen.getByRole("button", { name: "New tab" }));
+    const sheet = within(await screen.findByRole("dialog", { name: "New tab in webapp" }));
+    await user.click(await sheet.findByRole("button", { name: /Claude Code/ }));
+
+    await waitFor(() => expect(launches).toHaveLength(1));
+    expect(launches[0]).toMatchObject({ harness: "claude", paneId: fixtureAgents[0]!.paneId });
   });
 });
 

@@ -58,11 +58,15 @@ export interface NewTabOrSheet {
   sheet: ReactNode;
 }
 
-export function useNewTabOrSheet(actions: NewTabActions, ambient: Scope | undefined): NewTabOrSheet {
+/**
+ * `enabled` false skips the launcher read while the caller draws no "+" (a pane in a desk strip, which
+ * shows no tab bar and skips its own launcher read too, ADR 0120). A tap still reads on demand.
+ */
+export function useNewTabOrSheet(actions: NewTabActions, ambient: Scope | undefined, enabled = true): NewTabOrSheet {
   // The machine whose list is read: the ambient one until a tap names another.
   const [listAt, setListAt] = useState<Scope | undefined>(ambient);
   const [target, setTarget] = useState<NewTabTarget | null>(null);
-  const launchers = useLaunchers(listAt);
+  const launchers = useLaunchers(listAt, enabled || target !== null);
   const { newTab, start, refuseCreate } = actions;
   const { reload } = launchers;
 
@@ -105,7 +109,9 @@ export function useNewTabOrSheet(actions: NewTabActions, ambient: Scope | undefi
     void newTab(target.workspaceId, target.at);
   }, [empty, target, newTab]);
 
-  const close = useCallback(() => setTarget(null), []);
+  // A close closes only its own sheet: a start that ends after a dismiss must not close the next one.
+  const shown = target;
+  const close = useCallback(() => setTarget((now) => (now === shown ? null : now)), [shown]);
   const sheet =
     target === null || target.beside === undefined ? null : (
       <NewTabSheet

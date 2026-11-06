@@ -328,7 +328,7 @@ export function AgentChat({
   const spaceActions = useSpaceActions(canWriteHere);
   const { launch, launching, creatingTab } = spaceActions;
   // The tab bar's "+" offers this machine's agents in a sheet, or makes the shell it always made (M91).
-  const plus = useNewTabOrSheet(spaceActions, scope);
+  const plus = useNewTabOrSheet(spaceActions, scope, !inStrip);
   // The pane's light-theme inversion override (lib/mirror-invert.ts). Read once at mount, which is
   // enough: DetailRoute keys this component by `paneScopeKey(scope, paneId)` — the full address, not
   // the id, for the reason that file records — so a walk to another pane, session or host remounts it
