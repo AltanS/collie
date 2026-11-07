@@ -1,4 +1,4 @@
-import { forwardRef, useContext, useEffect, useImperativeHandle, useRef, useState } from "react";
+import { forwardRef, useContext, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { ChangeEvent, ClipboardEvent, CSSProperties, MouseEvent, ReactNode } from "react";
 import { useRevalidator } from "react-router";
@@ -49,6 +49,8 @@ import { AnchoredMenu } from "@/components/ui/anchored-menu";
 import { WalkyAimStrip, WalkyHeldStrip, WalkyNoteStrip } from "@/components/walky-composer-strip";
 import { WalkyIcon } from "@/components/walky-icon";
 import { useFlip } from "@/hooks/use-flip";
+import { useVisibleHeight } from "@/hooks/use-visible-height";
+import { draftCapPx } from "@/lib/draft-cap";
 import { useLongPress } from "@/hooks/use-long-press";
 import { useWalkyComposer, type WalkyAim } from "@/hooks/use-walky-composer";
 import * as api from "@/lib/api";
@@ -520,7 +522,17 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // — the field has a size of its own now, so there is no "leave it alone" value — while
   // `fontFamily` is written ONLY for a non-default family, so an install that never opened the
   // setting renders from the stylesheet's own `--font-mono`, byte for byte as before.
-  const draftStyle: CSSProperties = { fontSize: `${draftFontPx}px` };
+  //
+  // `--draft-cap` is the field's max height (lib/draft-cap.ts): the smaller of five rows and a fifth
+  // of the visible height, measured with the keyboard up. A variable rather than `maxHeight`, so the
+  // tabletop fold's own `max-height: none` (index.css) still wins inside its bottom segment. The
+  // padding is the field's larger one, 12px (`py-1.5`); the open box's 10px leaves 2px more text.
+  const visiblePx = useVisibleHeight();
+  const draftCap = draftCapPx({ fontPx: draftFontPx, paddingPx: 12, visiblePx });
+  // SAFETY: `CSSProperties` has no index signature for custom properties, and React passes them to
+  // the DOM as written. Every value here is a string built on this line, so the assertion widens the
+  // key names only and asserts nothing about the values.
+  const draftStyle = { fontSize: `${draftFontPx}px`, "--draft-cap": `${draftCap}px` } as CSSProperties;
   if (terminalFace !== undefined) draftStyle.fontFamily = terminalFace;
   // THE SEND SLOT (M56 spec 06): one pure function of the pane's Surface and three facts (gone,
   // read-only, offline), in lib/send-slot.ts. The multiplexer underneath that cannot type into a pane
@@ -2442,6 +2454,15 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // 2026-11-07). The key changes with the shape and with the set of buttons, never per keystroke. The
   // field layout has one shape, so there only the entrances play: Send taking the microphone's place
   // and the small microphone beside it.
+  // When the cap shrinks under a caret at the end of the draft (the keyboard came up over a long
+  // draft), the field scrolls to keep that caret in view. A caret the person put elsewhere is left
+  // where they put it; the browser keeps a typing caret in view by itself.
+  useLayoutEffect(() => {
+    const field = inputRef.current;
+    if (field === null || document.activeElement !== field) return;
+    if (field.selectionEnd !== field.value.length) return;
+    field.scrollTop = field.scrollHeight;
+  }, [draftCap]);
   const flipKey = `${boxOpen ? "open" : "rest"}:${micIsPrimary ? "mic" : "send"}:${draftMicShown ? "draft-mic" : ""}`;
   useFlip(boxRef, flipKey, { enabled: true, grows: box });
   useEffect(() => {
@@ -3221,6 +3242,10 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               // That fact is now handled where it belongs, as a floor inside `applyDraftFontSize`,
               // so every other browser gets the smaller default the operator asked for.
               "font-mono",
+              // The cap (lib/draft-cap.ts, `--draft-cap` in `draftStyle`), in both layouts. It
+              // replaces the primitive's `min(10rem,30dvh)`, which left the reader six lines of chat
+              // on a phone with the keyboard up (Altan, 2026-11-07).
+              "max-h-[var(--draft-cap)]",
             )}
             // Built above, where the two halves and their reasons sit together.
             style={draftStyle}

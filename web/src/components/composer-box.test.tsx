@@ -1,5 +1,5 @@
 import type { ComponentProps } from "react";
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { createMemoryRouter, RouterProvider } from "react-router";
@@ -212,6 +212,17 @@ describe("Composer layout=box", () => {
     expect(box.className).toMatch(/grid-cols-\[auto_1fr_auto_auto\]/);
     expect(attach.className).toMatch(/col-start-1/);
     expect(attach.className).toMatch(/row-start-3/);
+  });
+
+  it("caps the field at the draft cap in both layouts (lib/draft-cap.ts)", async () => {
+    for (const layout of ["box", "field"] as const) {
+      renderComposer({ layout });
+      await readyBox();
+      expect(field().className).toMatch(/max-h-\[var\(--draft-cap\)\]/);
+      expect(field().className).not.toMatch(/max-h-\[min\(10rem/);
+      expect(field().style.getPropertyValue("--draft-cap")).toMatch(/^\d+px$/);
+      cleanup();
+    }
   });
 
   it("gives the circles 6px of air from the border and from each other", async () => {

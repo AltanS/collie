@@ -27,6 +27,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 - **The composer's plus is back at the left of the box.** At rest the box reads Attach, the field and the main button; open, Attach keeps the left of the button row and the small microphone and Send stand at the right. Under the left hand it mirrors, and the attach picker opens from Attach's own edge again. The one-line open box, the 6px padding and the 36px circles stay.
 - **The composer's buttons appear sideways, and nothing drops from above.** When the box opens it still grows upward, but no button moves up or down: the row they stand on holds still, and a button that appears, such as the small microphone, slides in from its own edge and fades in over 150 ms. The classic field layout plays the same sideways entrance. With reduced motion on, nothing moves.
+- **A long draft no longer takes over the screen.** The reply field grows with its text up to five lines or a fifth of the visible height, whichever is smaller, measured with the keyboard up, and then scrolls inside itself. On a phone with the keyboard up that leaves the chat above about 50px more than before. It holds in both composer layouts, and the box still opens one line tall.
 
 ## [1.28.0] - 2026-11-06
 
