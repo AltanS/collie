@@ -85,6 +85,29 @@ export const TAB_ROW_ADD_TAP_TARGET =
   "relative before:absolute before:-inset-y-[3px] before:-inset-x-[10px] before:content-['']";
 
 /**
+ * {@link TAB_ROW_ADD_TAP_TARGET} one step up, for the tab row at the medium width class (`tab-strip.tsx` § STEP):
+ * the "+" is the 28px `sm` box in a 36px row. The same rule, re-measured:
+ *
+ *  - top and bottom `-4px`: 28 + 8 = 36, the reach starts and ends on the row's edges.
+ *  - sideways `-8px`: 28 + 16 = 44 across. Under the folder look the "+" stands 10px clear of the last tab's card
+ *    (the group's `-mx-3.5` against the tab's `px-3.5`), so the reach stops 2px short of it. Under the plain look
+ *    it takes the last 4px of the last tab's 8px padding, never its label.
+ */
+export const TAB_ROW_ADD_TAP_TARGET_MEDIUM =
+  "relative before:absolute before:-inset-y-[4px] before:-inset-x-[8px] before:content-['']";
+
+/**
+ * {@link TAB_ROW_ADD_TAP_TARGET} two steps up, for the tab row at the expanded width class: the "+" is the 32px
+ * `md` box in a 40px row.
+ *
+ *  - top and bottom `-4px`: 32 + 8 = 40, on the row's edges.
+ *  - sideways `-6px`: 32 + 12 = 44 across. Under the folder look 8px clear of the last card (`-mx-4` against
+ *    `px-4`), so 2px short of it again; under the plain look the last 4px of the last tab's 10px padding.
+ */
+export const TAB_ROW_ADD_TAP_TARGET_EXPANDED =
+  "relative before:absolute before:-inset-y-[4px] before:-inset-x-[6px] before:content-['']";
+
+/**
  * The sideways scroller the composer's thin rows are built on — the key rail and the actions row.
  *
  * Written down once because the recipe is three decisions that only work together: `py-1.5` is the
