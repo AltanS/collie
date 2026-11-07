@@ -25,8 +25,10 @@
 // LINUX ONLY: the lock table is read from /proc. Elsewhere the reader answers null and discovery
 // finds nothing, which is the safe answer: the pane keeps its terminal view.
 
+import { execFile } from "node:child_process";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { promisify } from "node:util";
 import { zstdDecompressSync } from "node:zlib";
 import { HOST } from "../host.ts";
 import type { JsonValue } from "../json.ts";
@@ -48,12 +50,50 @@ export interface ProcReader {
   flocks(pid: number): Promise<Set<string> | null>;
 }
 
+/** The promisified execFile, bound at each call so tests can spy on node:child_process. */
+const runLsof = ((...args: Parameters<typeof execFile>) => promisify(execFile)(...args)) as typeof execFile;
+
 /** The real /proc. Off Linux every answer is null. */
 export const LINUX_PROC: ProcReader = {
   async flocks(pid) {
     if (HOST.platform !== "linux") return null;
     const table = await readFile("/proc/locks", "utf8").catch(() => null);
     return table === null ? null : flocksOf(table, pid);
+  },
+};
+
+/**
+ * The real macOS lock table: `lsof` lists the pid's open files, and a `session.lock` among them is
+ * one dsh's session writer holds FLOCK on ("readers never touch the lock"). The lock file is only
+ * ever opened by the holder, so the open file names the same fact /proc/locks names on Linux.
+ * Null off darwin or when `lsof` cannot be run.
+ */
+export const DARWIN_PROC: ProcReader = {
+  async flocks(pid) {
+    if (HOST.platform !== "darwin") return null;
+    const { stdout } = await runLsof("lsof", ["-nP", "-a", "-p", String(pid), "-Fn"], {
+      timeout: 1000,
+      maxBuffer: 1024 * 1024,
+      windowsHide: true,
+    }).catch(() => ({ stdout: "" }));
+    const held = new Set<string>();
+    for (const line of stdout.split("\n")) {
+      if (!line.startsWith("n") || !line.endsWith(`/${DSH_LOCK_NAME}`)) continue;
+      const path = line.slice(1);
+      const st = await stat(path, { bigint: true }).catch(() => null);
+      if (st === null || !st.isFile()) continue;
+      held.add(fileKey(st.dev, st.ino));
+    }
+    return held;
+  },
+};
+
+/** The real lock table, per platform. Elsewhere every answer is null. */
+export const DEFAULT_PROC: ProcReader = {
+  async flocks(pid) {
+    if (HOST.platform === "linux") return LINUX_PROC.flocks(pid);
+    if (HOST.platform === "darwin") return DARWIN_PROC.flocks(pid);
+    return null;
   },
 };
 
@@ -152,7 +192,7 @@ async function lockedSessions(roots: readonly string[], locked: ReadonlySet<stri
 export function createDshDiscovery(
   roots: readonly string[],
   source: TranscriptSource,
-  proc: ProcReader = LINUX_PROC,
+  proc: ProcReader = DEFAULT_PROC,
 ): (cwd: string, hints?: DiscoverHints) => Promise<AgentSessionRef | null> {
   return async (_cwd, hints): Promise<AgentSessionRef | null> => {
     const listed = hints?.processes;
