@@ -90,6 +90,22 @@ async function paneShown(page: Page, address: string) {
   await expect(paneControl(page, address)).toBeVisible();
 }
 
+/**
+ * The slot's localStorage record names this address. The app writes it in a passive effect, after
+ * the URL has changed, so a page closed the moment the URL shows can lose the write under load.
+ * Wait for the record before the tab closes (collie:slot:v1:<n> holds {address, space}).
+ */
+async function slotRecorded(page: Page, slot: number, address: string) {
+  await expect
+    .poll(() =>
+      page.evaluate((n) => {
+        const stored = localStorage.getItem(`collie:slot:v1:${n}`);
+        return stored === null ? null : JSON.parse(stored)?.address;
+      }, slot),
+    )
+    .toBe(address);
+}
+
 /** A move from one pane to another by the app's own control for this layout. */
 async function moveToPane(page: Page, agent: Agent) {
   const row = sidebarRow(agent);
@@ -112,11 +128,13 @@ async function moveInsideApp(page: Page, tile: Tile) {
   await paneRow(page, tile.opens).click();
   if (tile.movesTo === undefined) {
     await paneShown(page, tile.address);
+    await slotRecorded(page, tile.slot, tile.address);
     return;
   }
   await expect(paneControl(page, tile.opens === "claude" ? PANE_A : PANE_B)).toBeVisible();
   await moveToPane(page, tile.movesTo);
   await paneShown(page, tile.address);
+  await slotRecorded(page, tile.slot, tile.address);
 }
 
 /** Every tile opens its slot while all the others are open, then each moves inside the app in turn. */
@@ -132,6 +150,7 @@ async function workInFiveTiles(context: BrowserContext) {
 }
 
 test("@oracle:requirement @req:SLOT-4 after a browser restart each of five tiles returns to its own pane", async ({ context }) => {
+  test.slow(); // fifteen page loads, see the budget note at "going back from a restored tile"
   await workInFiveTiles(context);
 
   for (const tile of TILES) {
@@ -151,6 +170,7 @@ test("@oracle:requirement @req:SLOT-4 five tiles that move in the same moment ea
 
   await Promise.all(TILES.map((tile, idx) => paneRow(pages[idx]!, agentOf(tile.slot)).click()));
   await Promise.all(TILES.map((tile, idx) => paneShown(pages[idx]!, addressOf(tile.slot))));
+  await Promise.all(TILES.map((tile, idx) => slotRecorded(pages[idx]!, tile.slot, addressOf(tile.slot))));
   await Promise.all(pages.map((page) => page.close()));
 
   for (const tile of TILES) {
@@ -161,6 +181,11 @@ test("@oracle:requirement @req:SLOT-4 five tiles that move in the same moment ea
 
 test("@oracle:requirement @req:SLOT-4 going back from a restored tile does not return to /slot/n", async ({ context }) => {
   // Twenty page loads: 19 to 30 s measured on a loaded host, against a default budget of 30 s.
+  // The two cases with fifteen page loads need the slow budget too: WebKit takes about 15 s idle and
+  // over 30 s on a loaded runner (Chromium about 6 s). They carry test.slow() as well.
+  // In CI this case once restored the first pane (w1) instead of the last (w2) on its first attempt.
+  // The slot write runs in a passive effect (use-slot-memory.ts) and the spec closed the page right
+  // after the URL showed, so a write could be lost under load. slotRecorded waits for the record.
   test.slow();
   await workInFiveTiles(context);
 
@@ -170,6 +195,7 @@ test("@oracle:requirement @req:SLOT-4 going back from a restored tile does not r
     await paneShown(page, tile.address);
     await page.goBack();
     await landed(page, "/settings");
+    await slotRecorded(page, tile.slot, tile.address);
     await page.close();
   }
 
@@ -177,6 +203,7 @@ test("@oracle:requirement @req:SLOT-4 going back from a restored tile does not r
   for (const tile of TILES) {
     const page = await openTab(context, `/slot/${tile.slot}`);
     await paneShown(page, tile.address);
+    await slotRecorded(page, tile.slot, tile.address);
     await page.goBack();
     expect(page.url()).not.toContain("/slot/");
     await page.close();
@@ -191,6 +218,7 @@ test("@oracle:requirement @req:SLOT-4 a restored tile keeps storing: the next re
   await paneSwitcher(restored).click();
   await restored.getByRole("dialog", { name: en["chat.switcher.aria"] }).getByRole("button", sidebarRow("codex")).click();
   await paneShown(restored, PANE_B);
+  await slotRecorded(restored, 1, PANE_B);
   await restored.close();
 
   const reopened = await openTab(context, "/slot/1");
@@ -204,6 +232,7 @@ test.describe("on the owner's laptop", () => {
   test.use({ viewport: { width: 1280, height: 800 } });
 
   test("@oracle:requirement @req:SLOT-4 after a browser restart each of five wide tiles returns to its own pane", async ({ context }) => {
+    test.slow(); // fifteen page loads, see the budget note at "going back from a restored tile"
     await workInFiveTiles(context);
 
     for (const tile of TILES) {
