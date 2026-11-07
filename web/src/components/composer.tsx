@@ -3247,14 +3247,18 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                 // `gap-x-1.5` are 6px of air between the circles and the border and between each
                 // other (the drawn circle stays 36px; its hit area reaches 4px, inside both). There
                 // is no row gap: the field's own padding takes the reach of the row under it. The
-                // frame is the theme's own: the rule colour, the card fill, the house corner, and
-                // the foreground colour for focus.
-                "relative grid items-center gap-x-1.5 rounded-xl border border-rule bg-card p-1.5 focus-within:border-foreground"
+                // frame is the theme's own: the component edge (`--border`), the card fill and the
+                // house corner. Focus no longer turns that edge bright (Altan, 2026-11-08, "Soft ring
+                // on focus"): the edge keeps its colour and a 1px ring of the primary at 30% stands
+                // outside it, a soft 2px line in all. It is a box-shadow, so no state moves the box
+                // (DESIGN.md §2), and armed Type mode keeps its own primary frame without it, below.
+                "relative grid items-center gap-x-1.5 rounded-xl border border-border bg-card p-1.5"
               : "relative flex items-end gap-1 rounded-xl border border-input bg-background p-1 focus-within:border-ring focus-within:ring-1 focus-within:ring-ring",
             // Rest: [Attach][field][main]. Open, bottom row: [Attach][grow space][mic][Send]. Mirrored
             // for `hand="left"`: [main][field][Attach], and open [Send][mic][grow space][Attach].
             // Attach keeps its edge in both shapes, so it never moves when the box opens (Altan,
             // 2026-11-07: the + belongs at the left, as first built).
+            box && !direct.active && "focus-within:shadow-[0_0_0_1px_color-mix(in_oklab,var(--primary)_30%,transparent)]",
             box && !boxOpen && "grid-cols-[auto_1fr_auto]",
             // Open, Expand stands between the space and the small mic: [Attach][space][Expand][mic][Send],
             // mirrored [Send][mic][Expand][space][Attach]. A column with no button in it (no Expand in a

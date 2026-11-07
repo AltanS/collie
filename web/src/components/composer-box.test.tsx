@@ -225,6 +225,19 @@ describe("Composer layout=box", () => {
     }
   });
 
+  it("draws a soft ring on focus, not a bright edge (Altan, 2026-11-08)", async () => {
+    const user = userEvent.setup();
+    renderComposer({ layout: "box" });
+    const box = await readyBox();
+    await user.click(field());
+    expect(field()).toHaveFocus();
+    // The component edge at rest and in focus; focus adds a 1px ring of the primary at 30% outside it.
+    expect(box.className).toMatch(/(?:^|\s)border-border(?=\s|$)/);
+    expect(box.className).not.toMatch(/focus-within:border-foreground/);
+    expect(box.className).not.toMatch(/(?:^|\s)border-rule(?=\s|$)/);
+    expect(box.className).toMatch(/focus-within:shadow-\[0_0_0_1px_color-mix\(in_oklab,var\(--primary\)_30%,transparent\)\]/);
+  });
+
   it("gives the circles 6px of air from the border and from each other", async () => {
     renderComposer({ layout: "box" });
     const box = await readyBox();
