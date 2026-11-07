@@ -60,6 +60,9 @@ export const WALK_PAIRS: readonly WalkPair[] = [
   ["omp", "omp--v18-8-ask-single-described.txt", "omp--v18-8-ask-single-described-moved.txt"],
   ["omp", "omp--v18-10-ask-batch.txt", "omp--v18-10-ask-batch-moved.txt"],
   ["omp", "omp--v18-16-0-ask-single-glyph-hide--w200.txt", "omp--v18-16-0-ask-single-glyph-hide-moved--w200.txt"],
+  // omp 18.16.0's plan review (omp/plan-review.ts): one `Down`, and a two-`Down` walk under the slider.
+  ["omp", "omp--v18-16-0-plan-review--w80.txt", "omp--v18-16-0-plan-review-moved--w80.txt"],
+  ["omp", "omp--v18-16-0-plan-review-slider--w140.txt", "omp--v18-16-0-plan-review-slider-moved--w140.txt"],
   // omp `/resume` picker. The unboxed pair differs in the ages too (`1 minute ago` against
   // `2 minutes ago`); `coreSignature` blanks them, so the pair holds.
   ["omp", "omp--v18-4-resume.txt", "omp--v18-4-resume-moved.txt"],
