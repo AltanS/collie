@@ -80,6 +80,14 @@ describe("/math/* is served from the store, else the build, else 404", () => {
     expect(res.status).toBe(404);
   });
 
+  test("a 404 under /math is never cached as immutable, only a served file is", async () => {
+    for (const path of ["/math/katex/missing-abc.js", "/math/missing-abc.js"]) {
+      const res = await serveStatic(path, null, root);
+      expect(res.status, path).toBe(404);
+      expect(res.headers.get("cache-control") ?? "", path).not.toContain("immutable");
+    }
+  });
+
   test("a climbing path reaches neither pack.json nor anything above the root", async () => {
     const { store } = fakeStore({ status: { state: "absent" }, root });
     // As the bridge sees it: the URL parser has already folded the dot segments.

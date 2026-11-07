@@ -205,6 +205,18 @@ describe("the download", () => {
     expect(tree(webDist)).toEqual(["build-info.json"]);
   });
 
+  test("asks for the identity encoding, on the manifest and on the pack", async () => {
+    const github = fakeGithub({ pack: Bun.gzipSync(GOOD) });
+    const seen: Array<string | null> = [];
+    const s = store(async (url, init) => {
+      seen.push(new Headers(init.headers).get("accept-encoding"));
+      return github.fetch(url, init);
+    });
+    await s.start();
+    await s.settled();
+    expect(seen).toEqual(["identity", "identity"]);
+  });
+
   test("keeps nothing when the hash is not the manifest's", async () => {
     const pack = Bun.gzipSync(GOOD);
     const github = fakeGithub({ pack, manifest: manifest(VERSION, { size: pack.byteLength, sha256: "b".repeat(64) }) });
@@ -604,6 +616,24 @@ describe("the download under load and failure (review 2 to 5, 8, 10, 11)", () =>
     const status = await s.status();
     expect(status.state).toBe("absent");
     expect(status).not.toEqual({ state: "absent", error: "bad-pack" });
+  });
+
+  test("a remove right after the rename takes the installed folder out again", async () => {
+    let removed: Promise<unknown> | null = null;
+    let s!: ReturnType<typeof store>;
+    // The abort lands after the check before the rename and before the install ends.
+    s = store(fakeGithub({ pack: Bun.gzipSync(GOOD) }).fetch, {
+      afterRename: () => {
+        removed ??= s.remove();
+      },
+    });
+    await s.start();
+    await s.settled();
+    // The install itself took the folder out; nothing waited on the remove's own delete.
+    expect(tree(mathPackDir(stateDir)).filter((name) => name.startsWith(VERSION))).toEqual([]);
+    expect(await within(removed!, 2000)).toEqual({ state: "absent" });
+    expect(await s.status()).toEqual({ state: "absent" });
+    expect(s.serveRoot()).toBeNull();
   });
 
   test("a remove during the install stops it, keeps nothing and returns", async () => {

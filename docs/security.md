@@ -486,6 +486,16 @@ the line. Every line goes through the secret mask before it leaves the machine.
 
 Why it is built this way: [ADR 0107](../.adr/0107-sent-keeps-shell-lines-per-machine.md).
 
+## Pinned messages
+
+A pin is a copy of the message text. The machine that owns the pane keeps it in `<stateDir>/pins/`,
+one file for each session, mode 0600 in a folder at 0700. The file holds the whole text, tool results
+included, and every paired device can read it. `COLLIE_REDACT` masks the text that leaves the machine,
+not the file: the file keeps the copy as it was. Unpin a message to delete its copy.
+
+A rollback to an older build leaves `pins/` and `math/` in the state folder. An older build does not
+read them, so they do no harm, and you can delete both folders by hand.
+
 ## Secret files on Windows
 
 On Windows (experimental), Collie keeps its secret files private to your account, SYSTEM and

@@ -304,4 +304,38 @@ describe("the cache", () => {
     expect(realSiblingFs.readTail(join(root, "missing"), 15)).toBeNull();
     expect(realSiblingFs.stat(root)).toBeNull();
   });
+
+  test("a last line with no newline is a sibling mid-write: only the complete lines are read", () => {
+    const root = tempRoot();
+    const path = join(root, "log.jsonl");
+    writeFileSync(path, "first line\nsecond line\nthi");
+    expect(realSiblingFs.readTail(path, 1024)).toBe("first line\nsecond line\n");
+    expect(realSiblingFs.readTail(path, 20)).toBe("second line\n");
+    writeFileSync(path, "no newline at all");
+    expect(realSiblingFs.readTail(path, 1024)).toBe("");
+  });
+
+  test("a torn last record is not parsed, and the next poll reads it once it is whole", () => {
+    const { stable } = twoInstances();
+    const path = join(stable, "walky", "log.jsonl");
+    const whole = readFileSync(path, "utf8");
+    // The fixture's last line (the delivered receipt) is whole JSON but its newline is not there yet:
+    // the sibling is mid-write, so the line does not count until the newline lands.
+    writeFileSync(path, whole.trimEnd());
+    const reader = injected(stable);
+    const stateOf = () => reader.forPane(SESSION, PANE, 50, true).map((found) => found.entry.receipt?.state);
+    expect(stateOf()).toEqual(["accepted"]);
+    writeFileSync(path, whole);
+    expect(stateOf()).toEqual(["delivered"]);
+  });
+
+  test.skipIf(process.platform === "win32")("a FIFO or a folder where a log should be is skipped, never opened", () => {
+    const root = tempRoot();
+    const fifo = join(root, "fifo.jsonl");
+    expect(Bun.spawnSync(["mkfifo", fifo]).exitCode).toBe(0);
+    expect(realSiblingFs.stat(fifo)).toBeNull();
+    // A read of a FIFO with no writer would block the open for good; this must return at once.
+    expect(realSiblingFs.readTail(fifo, 1024)).toBeNull();
+    expect(realSiblingFs.readTail(root, 1024)).toBeNull();
+  });
 });

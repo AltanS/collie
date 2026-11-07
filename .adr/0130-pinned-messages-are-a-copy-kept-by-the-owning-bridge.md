@@ -101,6 +101,7 @@ The numbers follow the milestone's README. Its decision 7 is a rule about when t
 - **The count on the wire is a number.** Each pane row carries `pins` while its session has any. A lead
   keeps a member's count only as a whole number above zero.
 - **Pins are per machine.** Moving a session to another machine does not move its pins.
+- **Two bridges on one state folder do not serialize pin writes.** The one writer is one process; a second bridge sharing the folder (a release and a dev lane) can overwrite a file the first just wrote, and the last writer wins. A known limit.
 - **Not built.** A view of the pins across sessions, a search in them, a pin of an image, an edit of a
   pinned text.
 

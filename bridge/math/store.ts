@@ -91,6 +91,8 @@ export interface MathPackDeps {
   now?: () => number;
   /** The free bytes where `dir` is. The disk unless a test names its own. */
   freeBytes?: (dir: string) => Promise<number | null>;
+  /** Called at once after the folder is renamed into place. For tests: a remove lands here. */
+  afterRename?: () => void;
   capBytes?: number;
   timeoutMs?: number;
 }
@@ -314,12 +316,16 @@ export function createMathPackStore(deps: MathPackDeps): MathPackStore {
     await chmod(dir, 0o700);
   }
 
-  /** A GET with the mirror's rules: no redirect off a mirror, GitHub's own redirects otherwise. */
+  /**
+   * A GET with the mirror's rules: no redirect off a mirror, GitHub's own redirects otherwise.
+   * `accept-encoding: identity`, so a transparent gzip layer cannot make the declared length differ
+   * from the manifest's size and read as a false hash mismatch.
+   */
   async function get(name: string, version: string, signal: AbortSignal, accept: string): Promise<Response> {
     const mirror = updateMirror(deps.env);
     if (!mirror.ok) throw new MathRefusal("download-failed");
     const url = `${mirror.base ?? "https://github.com"}/${deps.repo}/releases/download/v${version}/${name}`;
-    const init: RequestInit = { headers: { accept, "user-agent": `Collie/${version}` }, signal };
+    const init: RequestInit = { headers: { accept, "accept-encoding": "identity", "user-agent": `Collie/${version}` }, signal };
     if (mirror.base !== null) init.redirect = MIRROR_FETCH.redirect;
     try {
       return await fetchImpl(url, init);
@@ -438,6 +444,13 @@ export function createMathPackStore(deps: MathPackDeps): MathPackStore {
       // A half folder at the target (a crash between the two steps below): this one replaces it.
       await rm(target, { recursive: true, force: true });
       await rename(temp, target);
+      deps.afterRename?.();
+      // A remove or the timeout won the race between the check above and the rename: the pack must
+      // not be installed after the "removed" answer, so it goes again.
+      if (signal.aborted) {
+        await rm(target, { recursive: true, force: true });
+        throw new MathRefusal("download-failed");
+      }
     } catch (err) {
       await rm(temp, { recursive: true, force: true }).catch(() => undefined);
       throw err;
