@@ -26,6 +26,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 ### Fixed
 
 - **The math engine files carry no content hash.** The release check refused the Edge build because its one math pack named engine files by a hash that differed on every platform build, so the engines now keep fixed names under `math/`.
+- **A build's stamp time can be set with `COLLIE_BUILD_TIME`.** The browser tests build the app twice from one commit and need two different ids, which a release build's commit-time stamp no longer gave them.
 
 ## [1.28.0] - 2026-11-06
 
