@@ -28,7 +28,6 @@
 import { execFile } from "node:child_process";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { promisify } from "node:util";
 import { zstdDecompressSync } from "node:zlib";
 import { HOST } from "../host.ts";
 import type { JsonValue } from "../json.ts";
@@ -50,8 +49,34 @@ export interface ProcReader {
   flocks(pid: number): Promise<Set<string> | null>;
 }
 
-/** The promisified execFile, bound at each call so tests can spy on node:child_process. */
-const runLsof = ((...args: Parameters<typeof execFile>) => promisify(execFile)(...args)) as typeof execFile;
+/**
+ * execFile as a promise, typed for the one call this file makes (no overloads) so tests can spy on
+ * node:child_process.
+ */
+const runLsof = (
+  file: string,
+  args: readonly string[],
+  options?: { timeout?: number; maxBuffer?: number; windowsHide?: boolean },
+): Promise<{ stdout: string; stderr: string }> =>
+  new Promise((resolve, reject) => {
+    execFile(
+      file,
+      // SAFETY: runLsof takes readonly so callers can pass frozen arrays; execFile's type wants string[].
+      args as string[],
+      options ?? {},
+      (err, stdout, stderr) => {
+        if (err) reject(err);
+        else {
+          // SAFETY: the mock in tests passes { stdout } objects; a real lsof passes a Buffer.
+          const out =
+            typeof stdout === "object" && stdout !== null && "stdout" in stdout
+              ? String((stdout as { stdout: unknown }).stdout ?? "")
+              : String(stdout ?? "");
+          resolve({ stdout: out, stderr: String(stderr ?? "") });
+        }
+      },
+    );
+  });
 
 /** The real /proc. Off Linux every answer is null. */
 export const LINUX_PROC: ProcReader = {
