@@ -104,6 +104,14 @@ const RECIPE_TABLE = {
     { id: "never", label: "Never ask", args: "--approval-mode never", group: "mode", noPrompts: true },
     { id: "no-questions", label: "No question prompts", args: "--disable-request-user-input", noPrompts: true },
   ],
+  // MiniMax Code: continue, programmatic tool calling, and the mode flags. Provisional until the
+  // harness canary's `--help` sweep, like every new table row.
+  mcode: [
+    { id: "continue", label: "Continue last", args: "--continue" },
+    { id: "ptc", label: "Programmatic Tool Calling", args: "--ptc" },
+    { id: "lightweight", label: "Mode: lightweight", args: "--mode lightweight", group: "mode" },
+    { id: "standard", label: "Mode: standard", args: "--mode standard", group: "mode" },
+  ],
 } satisfies Record<string, readonly RecipeOption[]>;
 
 /** The options each harness offers. A harness with no entry offers none: its recipe is its binary. */
