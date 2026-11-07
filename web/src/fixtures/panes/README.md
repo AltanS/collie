@@ -3765,6 +3765,26 @@ neutral text of the same length (`(local) example-model • max`); nothing else 
 | --- | --- | --- |
 | `pi--v150-core-permission-gate-no-cost--w200.txt` | `⚠️ Dangerous command:` over `chmod 777 gate-probe.txt`, `Allow?`, `→ Yes` / `No`, `↑↓ navigate  enter select  escape/ctrl+c cancel`; stats row `↑1.0k ↓45 0.4%/272k (auto)` with no cost | question ask, Yes / No and Cancel, walk |
 
+## pi with `❯` in column 0 of its own editor, a newline draft (issue 722)
+
+The reporter's extension keeps pi's editor and its two rules and puts `❯ ` in column 0 on the first input
+row, in the border colour; the rows under it keep two columns of lead. A draft typed with newlines then
+lines up under the glyph like a pointed list between two rules, and every send stopped at "Enter was not
+pressed". `pi--v150-gentle-quiet-two-line-draft.txt` is the screen of the report, plain text as the
+report card printed it (pi 1.5.0, herdr). The `pi--v130-quiet-prompt-*` captures are a repro of the same
+editor (an extension that subclasses `CustomEditor` and prefixes its rows), on pi 1.3.0, the version on
+the capture host, in a disposable 140 x 40 tmux server with `PI_SKIP_VERSION_CHECK=1` and no model
+configured, read with `tmux capture-pane -e -p`. Privacy: the install path in pi's no-model warning was
+replaced with neutral text of the same length; the working directory is a scratch path.
+
+| Fixture | State | What it shows |
+| --- | --- | --- |
+| `pi--v150-gentle-quiet-two-line-draft.txt` | `draft` | The report's screen: two widget boxes at column 138, blank rows, the rule, `❯ a`, `  Olá`, the rule. No styling, so no caret cell: the box stays a list, unreadable, never free |
+| `pi--v130-quiet-prompt-two-line-draft--w140.txt` | `draft` | `❯ a`, then `  Olá` with pi's caret cell (`ESC[7m` space) after it. Reads as the draft `a Olá` (`frame.draftCaret`) |
+| `pi--v130-quiet-prompt-three-line-draft--w140.txt` | `draft` | A third row, `  tudo bem`, the caret cell after it |
+| `pi--v130-quiet-prompt-three-line-cursor-up--w140.txt` | `draft` | The same draft after `Up Up`: the caret cell on the prompt row, after `a` |
+| `pi--v130-quiet-prompt-settings--w140.txt` | `dialog` | `/settings` over the same editor: a search field with its own caret cell, a `→` pointer and a key hint. Stays a dialog |
+
 ## omp 18.17.0, `/switch` and `/usage` on a phone (captured 2026-11-06, 120 columns by 40 rows, herdr 0.9.5)
 
 A reviewer reported that Collie's Chat view does not show `/usage` and `/switch` properly with omp. Each

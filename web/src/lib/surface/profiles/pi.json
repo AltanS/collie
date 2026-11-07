@@ -41,6 +41,7 @@
         "column": 0
       },
       "continuationIndent": 0,
+      "draftCaret": true,
       "maxDraftRows": 30,
       "maxTailRows": 60,
       "under": "^(?:[~/…⎇]|[A-Za-z]:\\\\|\\d[\\d.]*%)",
