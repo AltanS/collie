@@ -52,6 +52,7 @@ export const HARNESS_LAUNCHES: readonly HarnessLaunch[] = [
   { id: "muse", label: "Muse", binary: "muse" },
   { id: "agy", label: "Antigravity", binary: "agy" },
   { id: "dsh-tui", label: "dsh-TUI", binary: "dsh-tui" },
+  { id: "mcode", label: "MiniMax Code", binary: "mcode" },
 ];
 
 /**
