@@ -140,10 +140,10 @@ describe("Composer layout=box", () => {
     // A small filled circle, not the main button (Altan, 2026-11-05: bare icons looked loose).
     expect(ghost.className).toMatch(/bg-secondary/);
     expect(ghost.className).not.toMatch(/bg-primary/);
-    // The bottom row reads Attach, the small mic, Send: all three at the right, the field's own
-    // space growing before them.
+    // The bottom row reads Attach at the left, the field's own space growing, then the small mic
+    // and Send at the right.
     const attach = screen.getByRole("button", { name: /attach file/i });
-    expect(attach.className).toMatch(/col-start-2/);
+    expect(attach.className).toMatch(/col-start-1/);
     expect(ghost.className).toMatch(/col-start-3/);
     expect(primary().className).toMatch(/col-start-4/);
   });
@@ -194,19 +194,24 @@ describe("Composer layout=box", () => {
     expect(field()).toHaveFocus();
   });
 
-  it("rests as [field][Attach][main] and opens to a field of its own text, with no minimum height", async () => {
+  it("rests as [Attach][field][main] and opens to a field of its own text, with no minimum height", async () => {
     const user = userEvent.setup();
     renderComposer({ layout: "box" });
-    await readyBox();
+    const box = await readyBox();
     const attach = screen.getByRole("button", { name: /attach file/i });
-    // At rest Attach stands beside the main button, at the right, and the field takes the first cell.
-    expect(field().className).toMatch(/col-start-1/);
-    expect(attach.className).toMatch(/col-start-2/);
+    // At rest Attach stands at the left edge, the field between it and the main button (Altan,
+    // 2026-11-07: the + goes back to the left).
+    expect(box.className).toMatch(/grid-cols-\[auto_1fr_auto\]/);
+    expect(attach.className).toMatch(/col-start-1/);
+    expect(field().className).toMatch(/col-start-2/);
     expect(primary().className).toMatch(/col-start-3/);
     await user.type(field(), "a");
     // Open, the field is as tall as its text: nothing reserves three lines.
     expect(field().className).not.toMatch(/min-h-/);
-    expect(attach.className).toMatch(/col-start-2/);
+    // Attach keeps its edge: the first cell of the bottom row, the space growing after it.
+    expect(box.className).toMatch(/grid-cols-\[auto_1fr_auto_auto\]/);
+    expect(attach.className).toMatch(/col-start-1/);
+    expect(attach.className).toMatch(/row-start-3/);
   });
 
   it("gives the circles 6px of air from the border and from each other", async () => {
@@ -216,17 +221,19 @@ describe("Composer layout=box", () => {
     expect(box.className).toMatch(/gap-x-1\.5/);
   });
 
-  it("mirrors for the left hand: Send on the outer left, Attach beside it, the field after them", async () => {
+  it("mirrors for the left hand: Send on the outer left, the field, Attach at the right", async () => {
     const user = userEvent.setup();
     renderComposer({ layout: "box", hand: "left" });
     await readyBox();
     const attach = screen.getByRole("button", { name: /attach file/i });
     expect(primary().className).toMatch(/col-start-1/);
-    expect(attach.className).toMatch(/col-start-2/);
-    expect(field().className).toMatch(/col-start-3/);
-    await user.type(field(), "a");
-    expect(primary().className).toMatch(/col-start-1/);
+    expect(field().className).toMatch(/col-start-2/);
     expect(attach.className).toMatch(/col-start-3/);
+    await user.type(field(), "a");
+    // Open: [Send][mic][space][Attach], Attach still at the right edge.
+    expect(primary().className).toMatch(/col-start-1/);
+    expect(document.querySelector<HTMLElement>('[data-slot="composer-mic-draft"]')!.className).toMatch(/col-start-2/);
+    expect(attach.className).toMatch(/col-start-4/);
   });
 
   describe("the change of shape is played", () => {

@@ -27,7 +27,7 @@ export const DEF: SectionDef = {
   id: "composer-box",
   title: "Composer box",
   intent:
-    "The reply box in its second layout. At rest it is one slim row: the field, then Attach, then the microphone as the main button, and a tap that only brings the caret stays one row. It opens upward when there is text, a chip or Type mode: the field takes the full width, one line tall to start, and the buttons drop to a row of their own at the right: Attach, the small microphone, and Send as the main button. The change glides in about 200 ms, and empties back to one row when the draft is cleared. The belt above does not change. Each card is the real composer on a Claude pane, with layout set to box.",
+    "The reply box in its second layout. At rest it is one slim row: Attach at the left, the field, and the microphone as the main button, and a tap that only brings the caret stays one row. It opens upward when there is text, a chip or Type mode: the field takes the full width, one line tall to start, and the buttons take a row of their own: Attach still at the left, the small microphone and Send, the main button, at the right. The change glides in about 200 ms, and empties back to one row when the draft is cleared. The belt above does not change. Each card is the real composer on a Claude pane, with layout set to box.",
 };
 
 const PREFS = {
@@ -85,6 +85,8 @@ interface CaseDef {
   draft?: string;
   /** Focus the field after mount, as a tap on the box does. */
   focused?: boolean;
+  /** Settings -> Hand. Absent is the right hand. */
+  hand?: "left";
 }
 
 const CASES: readonly CaseDef[] = [
@@ -92,14 +94,14 @@ const CASES: readonly CaseDef[] = [
     n: 1,
     title: "At rest",
     reach: "Settings -> Appearance -> Composer, once a theme chooses it. An empty pane box that is not tapped.",
-    note: "One row. The field's one line, Attach (Plus) beside the microphone, and the microphone as the filled main button. No Send: an empty box has none today either.",
+    note: "One row. Attach (Plus) at the left, the field's one line, the microphone as the filled main button. No Send: an empty box has none today either.",
     surface: IDLE,
   },
   {
     n: 2,
     title: "Focused, still empty",
     reach: "tap the box. Type a letter to open it, then delete it to close it again.",
-    note: "Focused and empty it stays one row, with the caret in the field: nothing to write yet, so no room is taken. This is the card to try the glide on: type a letter and the box grows upward, Attach and the main button gliding down to the bottom row; delete it and they glide back. The card focuses the field once it has mounted; if you tapped elsewhere, tap the box.",
+    note: "Focused and empty it stays one row, with the caret in the field: nothing to write yet, so no room is taken. This is the card to try the glide on: type a letter and the box grows upward, Attach staying at the left and the main button gliding to the bottom row; delete it and they glide back. The card focuses the field once it has mounted; if you tapped elsewhere, tap the box.",
     surface: IDLE,
     focused: true,
   },
@@ -107,7 +109,7 @@ const CASES: readonly CaseDef[] = [
     n: 3,
     title: "One line of text",
     reach: "type a few words.",
-    note: "Open, and it stays open without focus. The field is one line tall. The bottom row reads Attach, a small microphone and Send, with Send the filled main button.",
+    note: "Open, and it stays open without focus. The field is one line tall. The bottom row reads Attach at the left, then a small microphone and Send at the right, with Send the filled main button.",
     surface: IDLE,
     draft: "Make the tab a folder tab",
   },
@@ -115,7 +117,7 @@ const CASES: readonly CaseDef[] = [
     n: 4,
     title: "Several lines",
     reach: "type a few lines.",
-    note: "The field grows with its text up to its cap, then scrolls. The buttons stay on the bottom row at the right and never share a line with the text.",
+    note: "The field grows with its text up to its cap, then scrolls. The buttons stay on the bottom row and never share a line with the text.",
     surface: IDLE,
     draft:
       "Make the tab a folder tab.\n\nThen check the settings page for the same corner, and look at how the belt reads once the box is open.\n\nAfter that, run the gates and tell me what changed.",
@@ -126,6 +128,23 @@ const CASES: readonly CaseDef[] = [
     reach: "a pane whose turn is running, with nothing typed.",
     note: "The belt above carries Stop (the harness decides); the box is the same one row as at rest. A send during a turn queues, as before.",
     surface: RUNNING,
+  },
+  {
+    n: 6,
+    title: "Left hand, at rest",
+    reach: "Settings -> Hand: left, an empty pane box.",
+    note: "The mirror of card 1: the microphone as the main button at the left, the field, and Attach (Plus) at the right edge.",
+    surface: IDLE,
+    hand: "left",
+  },
+  {
+    n: 7,
+    title: "Left hand, one line",
+    reach: "Settings -> Hand: left, then type a few words.",
+    note: "The mirror of card 3: Send and the small microphone at the left, Attach still at the right edge. Type a letter into card 6 to see the small microphone slide in from the left.",
+    surface: IDLE,
+    draft: "Make the tab a folder tab",
+    hand: "left",
   },
 ];
 
@@ -178,6 +197,7 @@ function BoxPhone({ def, speech }: { def: CaseDef; speech: boolean }) {
                 display={{ open: false, onToggle: () => {} }}
                 onSent={() => {}}
                 layout="box"
+                hand={def.hand ?? "right"}
                 screen={{ on: false, onToggle: () => {} }}
               />
             </ChromeBlock>
@@ -224,6 +244,8 @@ export function ComposerBoxSection() {
         <BoxCard state="composer-box-one-line" def={CASES[2]!} speech={speech} />
         <BoxCard state="composer-box-several-lines" def={CASES[3]!} speech={speech} />
         <BoxCard state="composer-box-working" def={CASES[4]!} speech={speech} />
+        <BoxCard state="composer-box-left-rest" def={CASES[5]!} speech={speech} />
+        <BoxCard state="composer-box-left-one-line" def={CASES[6]!} speech={speech} />
       </Group>
     </Section>
   );

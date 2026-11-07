@@ -3059,12 +3059,13 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                 // the foreground colour for focus.
                 "relative grid items-center gap-x-1.5 rounded-xl border border-rule bg-card p-1.5 focus-within:border-foreground"
               : "relative flex items-end gap-1 rounded-xl border border-input bg-background p-1 focus-within:border-ring focus-within:ring-1 focus-within:ring-ring",
-            // Rest: [field][Attach][main]. Open, bottom row: [grow space][Attach][mic][Send]. Mirrored
-            // for `hand="left"`: the buttons at the left, the field after them.
-            box && !boxOpen && !mirrored && "grid-cols-[1fr_auto_auto]",
-            box && !boxOpen && mirrored && "grid-cols-[auto_auto_1fr]",
-            box && boxOpen && !mirrored && "grid-cols-[1fr_auto_auto_auto]",
-            box && boxOpen && mirrored && "grid-cols-[auto_auto_auto_1fr]",
+            // Rest: [Attach][field][main]. Open, bottom row: [Attach][grow space][mic][Send]. Mirrored
+            // for `hand="left"`: [main][field][Attach], and open [Send][mic][grow space][Attach].
+            // Attach keeps its edge in both shapes, so it never moves when the box opens (Altan,
+            // 2026-11-07: the + belongs at the left, as first built).
+            box && !boxOpen && "grid-cols-[auto_1fr_auto]",
+            box && boxOpen && !mirrored && "grid-cols-[auto_1fr_auto_auto]",
+            box && boxOpen && mirrored && "grid-cols-[auto_auto_1fr_auto]",
             // `hand="left"`: the whole row runs mirrored, so Send stands on the box's left edge, then
             // Attach, then the field. The DOM order is untouched, so the tab and reading order are
             // too. With chips, `flex-wrap` still stacks the chip strip ABOVE the row.
@@ -3188,8 +3189,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                     // start), growing to the base cap and then scrolling. `pb-1` takes the 4px the
                     // buttons' hit area reaches up into this field.
                     "col-span-full col-start-1 row-start-2 min-w-0 px-2 pt-1.5 pb-1"
-                  : // AT REST: the one slim line beside Attach and the primary action.
-                    cn("row-start-1 min-w-0 min-h-9 py-1.5", mirrored ? "col-start-3 pl-1 pr-2" : "col-start-1 pl-2 pr-1")
+                  : // AT REST: the one slim line between Attach and the primary action.
+                    "col-start-2 row-start-1 min-w-0 min-h-9 pl-2 pr-1 py-1.5"
                 : "min-w-0 flex-1 min-h-9 pl-2 py-1.5",
               // The Steer hint is longer than the reply words, so it is drawn smaller. The FIELD'S HEIGHT
               // does not change with it: `text-base` gives the field a unitless line-height, so the
@@ -3232,7 +3233,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               // Box layout: a filled circle, so the icon stands on something (Altan, 2026-11-05).
               box && "bg-secondary text-foreground",
               box && (boxOpen ? "row-start-3" : "row-start-1"),
-              box && (mirrored ? (boxOpen ? "col-start-3" : "col-start-2") : "col-start-2"),
+              // Attach stands at the box's outer edge: the left, or the right under `hand="left"`.
+              box && (mirrored ? (boxOpen ? "col-start-4" : "col-start-3") : "col-start-1"),
               // The press echo, in the tone this app already uses for "your press landed" —
               // `variant="default"`, which is what a tapped quick reply and a busy dialog option
               // both flip to. It was `bg-accent` first, and that was a token chosen by name
@@ -3311,8 +3313,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             onClose={() => setPicking(false)}
             label={translate("composer.attach.title")}
             // Attach stands near the box's LEFT edge under `hand="left"`; the panel follows it. In the
-            // box layout it stands beside the microphone, at the right, and the mirrored hand at the left.
-            className={mirrored ? "right-auto left-0" : undefined}
+            // box layout Attach is the LEFT button and the mirrored hand puts it at the right.
+            className={mirrored !== box ? "right-auto left-0" : undefined}
           >
             <ActionRow
               icon={<Image aria-hidden="true" className="size-4 shrink-0" />}

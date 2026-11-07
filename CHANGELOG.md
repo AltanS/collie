@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Changed
+
+- **The composer's plus is back at the left of the box.** At rest the box reads Attach, the field and the main button; open, Attach keeps the left of the button row and the small microphone and Send stand at the right. Under the left hand it mirrors, and the attach picker opens from Attach's own edge again. The one-line open box, the 6px padding and the 36px circles stay.
+
 ## [1.28.0] - 2026-11-06
 
 ### Added
