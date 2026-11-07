@@ -9,6 +9,7 @@ import {
   isMcodeSessionId,
   McodeTranscriptSource,
   mcodeJournal,
+  parseMcodeArgv,
   parseMcodeTranscript,
 } from "./mcode.ts";
 
@@ -19,6 +20,18 @@ const dirs: string[] = [];
 afterEach(async () => {
   for (const d of dirs.splice(0)) await rm(d, { recursive: true, force: true });
 });
+
+async function writeSession(root: string, id: string, rows: readonly string[] = [userRow], time = "12-00-00-000"): Promise<string> {
+  // SAFETY: Buffer.from of a validated id always encodes; base64url emits no path separators.
+  const dir = join(root, "2026", "11", "03", `${time}-session_${Buffer.from(id).toString("base64url")}`);
+  await mkdir(dir, { recursive: true });
+  await writeFile(
+    join(dir, "manifest.json"),
+    JSON.stringify({ schemaVersion: 1, sessionId: id, createdAtMs: 0, updatedAtMs: 0, paths: {} }),
+  );
+  await writeFile(join(dir, "messages.jsonl"), rows.join("\n") + "\n");
+  return dir;
+}
 
 /** One mcode message row. */
 function row(message: { role: string; content?: unknown; toolCallId?: string; toolName?: string; isError?: boolean; timestamp?: number; canonicalTextRange?: unknown }, messageId = "msg-1"): string {
@@ -161,18 +174,6 @@ describe("McodeTranscriptSource", () => {
     return root;
   }
 
-  async function writeSession(root: string, id: string, rows: readonly string[] = [userRow], time = "12-00-00-000"): Promise<string> {
-    // SAFETY: Buffer.from of a validated id always encodes; base64url emits no path separators.
-    const dir = join(root, "2026", "11", "03", `${time}-session_${Buffer.from(id).toString("base64url")}`);
-    await mkdir(dir, { recursive: true });
-    await writeFile(
-      join(dir, "manifest.json"),
-      JSON.stringify({ schemaVersion: 1, sessionId: id, createdAtMs: 0, updatedAtMs: 0, paths: {} }),
-    );
-    await writeFile(join(dir, "messages.jsonl"), rows.join("\n") + "\n");
-    return dir;
-  }
-
   test("resolves an id to its messages.jsonl under the dated folder", async () => {
     const root = await sessionRoot();
     const src = new McodeTranscriptSource(root);
@@ -273,6 +274,123 @@ describe("McodeTranscriptSource", () => {
     const empty = await realpath(await mkdtemp(join(tmpdir(), "collie-mcode-")));
     dirs.push(empty);
     expect(await new McodeTranscriptSource(empty).discoverSession(CWD)).toBeNull();
+  });
+});
+
+describe("discoverSession pipeline", () => {
+  const CWD = "/Users/you/proj";
+
+  /** A sessions root plus its SQLite index, with one row naming `SID` for `CWD`. */
+  async function indexedRoot(opts?: { updatedAtMs?: number; sessionId?: string }): Promise<string> {
+    const base = await realpath(await mkdtemp(join(tmpdir(), "collie-mcode-")));
+    dirs.push(base);
+    const root = join(base, "v2", "sessions");
+    await writeSession(root, opts?.sessionId ?? SID);
+    await mkdir(join(root, "..", "sqlite"), { recursive: true });
+    const { Database } = await import("bun:sqlite");
+    const db = new Database(join(root, "..", "sqlite", "runtime-state.sqlite"));
+    db.run(
+      "CREATE TABLE local_runtime_sessions (session_id TEXT PRIMARY KEY, workspace_dir TEXT, history_relative_dir TEXT, status TEXT, archived INTEGER, updated_at_ms INTEGER, created_at_ms INTEGER)",
+    );
+    const at = opts?.updatedAtMs ?? Date.now();
+    // SAFETY: test fixture binding of literals this test just built.
+    db.run("INSERT INTO local_runtime_sessions VALUES (?, ?, ?, 'started', 0, ?, ?)", [opts?.sessionId ?? SID, CWD, "x", at, at]);
+    db.close();
+    return root;
+  }
+
+  /** Silence lsof (no open files) for the test's duration. */
+  async function withLsofEmpty(run: () => Promise<void>): Promise<void> {
+    const lsof = spyOn(cp, "execFile").mockImplementation(
+      // SAFETY: test mock casting
+      ((_f: string, _a: readonly string[], _o: { timeout: number }, cb: (e: Error | null, r: { stdout: string }) => void) => {
+        cb(null, { stdout: "" });
+        // SAFETY: test mock casting
+        return undefined as never;
+      }) as never,
+    );
+    try {
+      await run();
+    } finally {
+      lsof.mockRestore();
+    }
+  }
+
+  test("parseMcodeArgv reads the start intent off the argv", () => {
+    expect(parseMcodeArgv(["mcode"])).toEqual({ kind: "fresh" });
+    expect(parseMcodeArgv(["mcode", "-c"])).toEqual({ kind: "continue" });
+    expect(parseMcodeArgv(["mcode", "--continue"])).toEqual({ kind: "continue" });
+    expect(parseMcodeArgv(["mcode", "--session", "mvs_abc123"])).toEqual({ kind: "resume_id", sessionId: "mvs_abc123" });
+    expect(parseMcodeArgv(["mcode", "--session=mvs_abc123"])).toEqual({ kind: "resume_id", sessionId: "mvs_abc123" });
+    expect(parseMcodeArgv(["mcode", "--resume", "mvs_abc123"])).toEqual({ kind: "resume_id", sessionId: "mvs_abc123" });
+    expect(parseMcodeArgv(["mcode", "--resume=mvs_abc123"])).toEqual({ kind: "resume_id", sessionId: "mvs_abc123" });
+    expect(parseMcodeArgv(["mcode", "--session"])).toEqual({ kind: "resume_picker" });
+    expect(parseMcodeArgv(["mcode", "--resume"])).toEqual({ kind: "resume_picker" });
+    expect(parseMcodeArgv(["mcode", "--session", "-c"])).toEqual({ kind: "resume_picker" });
+  });
+
+  test("a fresh mcode process never inherits a past session from the index", async () => {
+    // The session row predates the process: a pane opened on the welcome screen must stay blank.
+    const past = Date.now() - 45 * 60_000;
+    const root = await indexedRoot({ updatedAtMs: past });
+    const startMs = past + 60_000; // process started after the session was last touched
+    await withLsofEmpty(async () => {
+      const src = new McodeTranscriptSource(root, async () => startMs);
+      expect(await src.discoverSession(CWD, { processes: [{ argv: ["mcode"], pid: 10 }] })).toBeNull();
+      // An unreadable start time fails closed too.
+      const blind = new McodeTranscriptSource(root, async () => null);
+      expect(await blind.discoverSession(CWD, { processes: [{ argv: ["mcode"], pid: 10 }] })).toBeNull();
+    });
+  });
+
+  test("--continue binds to the past session in the index", async () => {
+    const past = Date.now() - 45 * 60_000;
+    const root = await indexedRoot({ updatedAtMs: past });
+    const startMs = past + 60_000;
+    await withLsofEmpty(async () => {
+      const src = new McodeTranscriptSource(root, async () => startMs);
+      for (const argv of [["mcode", "-c"], ["mcode", "--continue"]]) {
+        expect(await src.discoverSession(CWD, { processes: [{ argv, pid: 10 }] })).toEqual({ kind: "id", value: SID });
+      }
+    });
+  });
+
+  test("--session <id> binds to that session directly", async () => {
+    const root = await indexedRoot();
+    await withLsofEmpty(async () => {
+      const src = new McodeTranscriptSource(root, async () => null);
+      expect(await src.discoverSession(CWD, { processes: [{ argv: ["mcode", "--session", SID], pid: 10 }] })).toEqual({
+        kind: "id",
+        value: SID,
+      });
+      expect(await src.discoverSession(CWD, { processes: [{ argv: [`--resume=${SID}`], pid: 10 }] })).toEqual({
+        kind: "id",
+        value: SID,
+      });
+    });
+  });
+
+  test("a bare --session (picker) answers null", async () => {
+    const root = await indexedRoot();
+    await withLsofEmpty(async () => {
+      const src = new McodeTranscriptSource(root, async () => null);
+      expect(await src.discoverSession(CWD, { processes: [{ argv: ["mcode", "--session"], pid: 10 }] })).toBeNull();
+    });
+  });
+
+  test("a session updated after the process start stays bound between turns", async () => {
+    const startMs = Date.now() - 10 * 60_000;
+    // The index row was touched after the process started.
+    const root = await indexedRoot({ updatedAtMs: startMs + 30_000 });
+    await withLsofEmpty(async () => {
+      const src = new McodeTranscriptSource(root, async () => startMs);
+      expect(await src.discoverSession(CWD, { processes: [{ argv: ["mcode"], pid: 10 }] })).toEqual({ kind: "id", value: SID });
+    });
+  });
+
+  test("shared-folder hints answer null without process hints", async () => {
+    const root = await indexedRoot();
+    expect(await new McodeTranscriptSource(root).discoverSession(CWD, { shared: true })).toBeNull();
   });
 });
 
