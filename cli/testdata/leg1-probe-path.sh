@@ -89,7 +89,7 @@ if [ -n "$CHECKOUT" ] && [ -n "$GIT" ]; then
   COMMIT=$("$GIT" -C "$CHECKOUT" rev-parse HEAD 2>/dev/null) || COMMIT=""
   BRANCH=$("$GIT" -C "$CHECKOUT" symbolic-ref -q --short HEAD 2>/dev/null) || BRANCH=""
   if [ -n "$COMMIT" ]; then
-    DIRTYFILES=$("$GIT" -C "$CHECKOUT" status --porcelain 2>/dev/null | head -n 5 | tr "\n" " ")
+    DIRTYFILES=$("$GIT" -C "$CHECKOUT" status --porcelain --untracked-files=no 2>/dev/null | head -n 5 | tr "\n" " ")
     if [ -n "$DIRTYFILES" ]; then DIRTY=yes; else DIRTY=no; fi
   fi
 fi

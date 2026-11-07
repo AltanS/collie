@@ -2923,3 +2923,57 @@ describe("a member with the Herdr core and no Herdr TUI", () => {
     },
   );
 });
+
+// A checkout at `~/.collie` shares its folder with the machine config `~/.collie/config.toml`.
+// That file is untracked, and `checkout --detach` keeps it, so it is no reason to refuse the member.
+describe.skipIf(process.platform === "win32")("the probe's dirty check, run for real", () => {
+  function memberCheckout() {
+    const home = mkdtempSync(join(tmpdir(), "collie-probe-dirty-"));
+    const root = join(home, ".collie");
+    mkdirSync(root);
+    const env = { ...gitEnv(), HOME: home };
+    const git = (...args: string[]) => execFileSync("git", ["-C", root, ...args], { env, encoding: "utf8" });
+    git("init", "-q");
+    git("config", "user.email", "test@example.com");
+    git("config", "user.name", "Test");
+    writeFileSync(join(root, "herdr-plugin.toml"), 'id = "herdr.collie"\n');
+    git("add", "herdr-plugin.toml");
+    git("commit", "-q", "-m", "init");
+    const probe = () => {
+      const out = execFileSync("/bin/sh", ["-s"], {
+        input: probeScript({ path: null, port: 8787 }),
+        env,
+        cwd: home,
+        encoding: "utf8",
+      });
+      const parsed = parseProbe(out);
+      if (parsed === null) throw new Error(`no probe answer in:\n${out}`);
+      return parsed;
+    };
+    return { home, root, probe, cleanup: () => rmSync(home, { recursive: true, force: true }) };
+  }
+
+  test("an untracked machine config in the checkout does not make it dirty", () => {
+    const m = memberCheckout();
+    try {
+      writeFileSync(join(m.root, "config.toml"), "[bridge]\nwalky_pair_limit = 20\n");
+      const p = m.probe();
+      expect(p.checkout).toBe(m.root);
+      expect([p.dirty, p.dirtyfiles]).toEqual(["no", ""]);
+    } finally {
+      m.cleanup();
+    }
+  });
+
+  test("a change to a tracked file still makes it dirty", () => {
+    const m = memberCheckout();
+    try {
+      writeFileSync(join(m.root, "herdr-plugin.toml"), 'id = "herdr.collie"\n# edited\n');
+      const p = m.probe();
+      expect(p.dirty).toBe("yes");
+      expect(p.dirtyfiles).toContain("herdr-plugin.toml");
+    } finally {
+      m.cleanup();
+    }
+  });
+});
