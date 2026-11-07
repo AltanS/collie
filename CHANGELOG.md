@@ -39,7 +39,6 @@ A patch for the tablet and the foldable, with two fixes for the desk.
 - **The pinned prompt in Chat skips walky talky messages.** A message another agent sent into the pane used to take the pin's place, so the top of the thread showed its envelope line instead of what you last asked. The pin now holds your own last message, and the walky talky card stays in the thread where it was.
 - **A walky talky message another Collie on the same machine delivered draws its card.** With two Collie instances on one machine watching the same panes, an agent's `collie walky send` reaches the instance whose binary is on its PATH, and only that one kept the record. The phone looking at the other instance showed the message as plain text marked "no log record on this machine". Now a pane's message list also reads, read-only, what the other running instances on the machine recorded for that pane, so the card draws there too, and a message the pane sent still reads as sent.
 
-
 ## [1.27.1] - 2026-11-06
 
 A patch for the phone and the desk: Chrome's "updated in the background" notice stops, and a browser tab can keep its place.
