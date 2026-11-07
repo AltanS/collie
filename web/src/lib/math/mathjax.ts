@@ -18,12 +18,12 @@ import { MathJaxNewcmFont } from "@mathjax/mathjax-newcm-font/js/svg.js";
 import type { ElementContent } from "hast";
 import { fromHtml } from "hast-util-from-html";
 
-import type { MathEngineModule, MathMarkup } from "./engine-files";
+import type { MathEngineModule, MathMarkup } from "./engine-contract";
 import "./mathjax.css";
 
 // MathJax 4: TeX in, SVG out. THIS FILE IS THE ENTRY OF A BUNDLE OF ITS OWN, `math/mathjax/mathjax.js`
 // (vite.math.ts), never a module of the app: the app loads it by URL and calls `typeset` (the contract
-// is in engine-files.ts). The markup is parsed into a hast tree here, so the parser stays in this
+// is in engine-contract.ts). The markup is parsed into a hast tree here, so the parser stays in this
 // bundle; only MathJax's own output reaches it. MathJax runs in the page on its own DOM-free adaptor
 // (liteAdaptor), so it never touches the document. SVG rather than CHTML because the glyphs are paths: no web font to
 // fetch, nothing for the CSP's font-src to refuse, and `currentColor` follows the theme.
