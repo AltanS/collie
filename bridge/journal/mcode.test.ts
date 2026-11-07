@@ -100,6 +100,38 @@ describe("parseMcodeTranscript", () => {
     expect(part.result?.isError).toBe(true);
   });
 
+  test("canonicalTextRange slices the spoken prompt out of the injected plumbing", () => {
+    const plumbing = "<system-reminder>\nskills\n</system-reminder>\n\nwhy is this not chat?";
+    const envelope = row(
+      {
+        role: "user",
+        content: [{ type: "text", text: plumbing }],
+        canonicalTextRange: { startOffset: plumbing.indexOf("why"), endOffset: plumbing.length },
+      },
+      "msg-canonical",
+    );
+    const [entry] = parseMcodeTranscript(envelope);
+    expect(entry!.parts).toEqual([{ kind: "text", text: "why is this not chat?" }]);
+  });
+
+  test("a user row without canonicalTextRange keeps the whole text, and a bad range is ignored", () => {
+    const plain = row({ role: "user", content: [{ type: "text", text: "just ask" }] }, "msg-plain");
+    expect(parseMcodeTranscript(plain)[0]!.parts).toEqual([{ kind: "text", text: "just ask" }]);
+    for (const range of [
+      { startOffset: 5, endOffset: 2 }, // reversed
+      { startOffset: -1, endOffset: 4 },
+      { startOffset: 0, endOffset: 999 },
+      "not an object",
+      null,
+    ]) {
+      const bad = row(
+        { role: "user", content: [{ type: "text", text: "just ask" }], canonicalTextRange: range },
+        "msg-bad",
+      );
+      expect(parseMcodeTranscript(bad)[0]!.parts).toEqual([{ kind: "text", text: "just ask" }]);
+    }
+  });
+
   test("a result with no waiting call stands alone, and garbage rows are skipped", () => {
     const orphan = row(
       { role: "toolResult", toolCallId: "none", toolName: "t", content: [{ type: "text", text: "late" }] },
