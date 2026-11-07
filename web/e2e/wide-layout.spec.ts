@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 import { en } from "@/lib/i18n/messages/en";
+import { fixtureSnapshot } from "@/test/handlers";
 
 import { installApiStub } from "./fixtures/api";
 import { keepPhoneLayout } from "./fixtures/layout";
@@ -166,4 +167,50 @@ test("with no inset the tab row and the sidebar foot keep the height they always
   expect(row.y).toBe(header.y);
   // The sidebar's foot: a 1px rule, 4px of air, the 44px buttons, 4px of air.
   expect((await page.locator('[data-slot="sidebar-foot"]').boundingBox())!.height).toBe(53);
+});
+
+// THE PAGE ITSELF NEVER SCROLLS (1.27.1, round two). An absolute mark in a sidebar row (a dot's ring,
+// a badge) with no positioned box between it and the page had the page as its containing block. Far
+// down a long list it escaped the list's scroller and the app's `overflow-hidden` root and made the
+// document taller than the screen. A wheel or a drag over the header then scrolled the whole app up
+// under the status bar, the operator's screen recording. Which row carries such a mark changes from
+// release to release, so the case plants one at the list's end, where a real one sat.
+test("a long sidebar list never makes the page taller than the screen, and nothing scrolls it", async ({ page }) => {
+  const many = Array.from({ length: 40 }, (_, i) =>
+    Object.assign({}, fixtureSnapshot.agents[1], { paneId: `w2:p${i + 10}`, focused: false, status: i % 2 ? "working" : "idle" }),
+  );
+  await page.route("**/api/snapshot", (route) =>
+    route.fulfill({ contentType: "application/json", body: JSON.stringify({ ...fixtureSnapshot, agents: [...fixtureSnapshot.agents, ...many] }) }),
+  );
+  await page.goto("/pane/w1:p1");
+  const list = page.locator('[data-slot="wide-sidebar"] > div.overflow-y-auto');
+  await expect(list).toBeVisible();
+  // The list is longer than its box, or this case proves nothing.
+  expect(await list.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true);
+  await list.evaluate((el) => {
+    const mark = document.createElement("span");
+    mark.style.cssText = "position:absolute;width:12px;height:12px";
+    el.append(mark);
+  });
+  const look = () =>
+    page.evaluate(() => ({
+      height: document.documentElement.scrollHeight,
+      view: window.innerHeight,
+      scrollY: window.scrollY,
+      tabRow: document.querySelector('[data-slot="space-header"]')!.getBoundingClientRect().top,
+    }));
+  const rest = await look();
+  expect(rest.height).toBe(rest.view);
+
+  const header = (await page.locator('[data-slot="space-header"]').boundingBox())!;
+  const side = (await list.boundingBox())!;
+  await page.mouse.move(header.x + header.width / 2, header.y + header.height / 2);
+  await page.mouse.wheel(0, 600);
+  await page.mouse.move(side.x + side.width / 2, side.y + side.height / 2);
+  // Past the end of the list: the overscroll must not reach the page.
+  for (let i = 0; i < 4; i += 1) await page.mouse.wheel(0, 2000);
+  await expect.poll(() => list.evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
+  expect(await look()).toEqual(rest);
+  expect(rest.scrollY).toBe(0);
+  expect(rest.tabRow).toBe(0);
 });

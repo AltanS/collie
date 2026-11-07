@@ -440,7 +440,12 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
         style={book && sidebarShown ? undefined : { width: sidebarShown ? SIDEBAR_WIDTH[widthClass] : RAIL_WIDTH }}
       >
         <SidebarTop open={sidebarShown} setMark={setMark} toggle={!book} />
-        <div {...hostProps} className="min-h-0 flex-1 overflow-y-auto [-webkit-touch-callout:none]">
+        {/* `relative`: the list's scroller is the containing block of everything absolute in it. A
+            row's `sr-only` word is `position: absolute`, and with no positioned box above it its
+            containing block was the page: a word far down a long list escaped this scroller and the
+            app's root and made the document taller than the screen, so a drag on the header scrolled
+            the whole app up under the status bar (1.27.1). */}
+        <div {...hostProps} className="relative min-h-0 flex-1 overflow-y-auto [-webkit-touch-callout:none]">
           {sidebarShown ? (
             <SidebarList agent={agent} paneId={paneId} scope={scope} onSelect={goTo} />
           ) : (
