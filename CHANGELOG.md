@@ -23,6 +23,14 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+## [1.27.2] - 2026-11-07
+
+A patch for the tablet and the foldable, with two fixes for the desk.
+
+### Changed
+
+- **On a medium screen the tab row keeps room for its tabs.** On a foldable about 700px wide, a long space name and "space 1 of 2" left the tabs under 90px, so the open tab was cut and its "+" fell off the end. At that size the space name now takes less of the row and the position text is not shown. The arrows still step through the spaces, and a larger screen looks as before.
+
 ## [1.27.1] - 2026-11-06
 
 A patch for the phone and the desk: Chrome's "updated in the background" notice stops, and a browser tab can keep its place.
@@ -41,7 +49,6 @@ A patch for the phone and the desk: Chrome's "updated in the background" notice 
 - **A slow drag down on the Switch pane sheet follows the finger.** Each poll of the pane, every 1.5 seconds while an agent works, snapped a sheet held mid-drag back to the top, and the next move pulled it under the finger again, so the sheet flickered on the way down. The sheet now keeps its drag through a poll, on every sheet that closes with a drag.
 - **On a large phone the two-column layout clears the status bar and the gesture bar.** A foldable draws the page under both bars. The sidebar's top row and the tab row sat under the status bar, cut off, while the pane's title row was pushed down by the bar's height, so the page looked scrolled. At the bottom, New space sat under the gesture bar while the reply box beside it stood clear of it. Now both columns make room for both bars and end on one line. A screen with no bars over the page looks as before.
 - **The two-column layout no longer scrolls the whole page.** A mark in a sidebar row, far down a long list, made the page taller than the screen, so a drag on the tab row or a scroll past the end of the list moved the whole app up under the status bar. The list and the app now hold everything inside them, and only the lists scroll.
-- **On a medium screen the tab row keeps room for its tabs.** On a foldable about 700px wide, a long space name and "space 1 of 2" left the tabs under 90px, so the open tab was cut and its "+" fell off the end. At that size the space name now takes less of the row and the position text is not shown. The arrows still step through the spaces, and a larger screen looks as before.
 
 ## [1.27.0] - 2026-11-06
 
