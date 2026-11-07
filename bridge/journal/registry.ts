@@ -18,6 +18,7 @@ import { durableJournal } from "./durable.ts";
 import { grokJournal } from "./grok.ts";
 import { hermesJournal } from "./hermes.ts";
 import { kiroJournal } from "./kiro.ts";
+import { mcodeJournal } from "./mcode.ts";
 import { museJournal } from "./muse.ts";
 import { openclawJournal } from "./openclaw.ts";
 import { opencodeJournal } from "./opencode.ts";
@@ -65,6 +66,9 @@ export interface JournalRoots {
   /** OpenClaw's state folder (`$OPENCLAW_STATE_DIR`, `~/.openclaw`), one SQLite per agent under
    *  `agents/<id>/agent/`. */
   openclaw: readonly string[];
+  /** MiniMax Code's `$MINIMAX_HOME/v2/sessions` — dated `…-session_<base64url(id)>` folders under
+   *  it, and the SQLite index at `../sqlite/runtime-state.sqlite`. */
+  mcode: readonly string[];
 }
 
 /**
@@ -96,6 +100,7 @@ export function buildJournalRegistry(roots: JournalRoots, catalogs: ModelCatalog
     museJournal(roots.muse),
     openclawJournal(roots.openclaw),
     dshJournal(roots["dsh-tui"]),
+    mcodeJournal(roots.mcode),
   ];
   if (roots.durable !== undefined) adapters.push(durableJournal(roots.durable));
   return Object.fromEntries(adapters.map((a) => [a.agent, a]));
@@ -164,7 +169,7 @@ export const DRAWS_IMAGES_OFF_GRID: readonly string[] = ["omp", "pi"];
  * history section must not advise `herdr integration install` for an agent no hook could ever
  * report. Pinned against the adapters themselves in registry.test.ts, so the two cannot drift.
  */
-export const DISCOVERS_OWN_SESSIONS: readonly string[] = ["agy", "muse", "openclaw", "kiro", "dsh-tui", "grok", "pi"];
+export const DISCOVERS_OWN_SESSIONS: readonly string[] = ["agy", "muse", "openclaw", "kiro", "dsh-tui", "grok", "mcode", "pi"];
 
 /**
  * The same pairs as a Map, which is how {@link adapterFor} asks.
@@ -214,5 +219,5 @@ export function journalAgents(registry: Record<string, JournalAdapter>): string[
  * identity off a match against it — see `bridge/mux/types.ts` § `MuxPane.agent`.
  */
 export const KNOWN_HARNESS_NAMES: readonly string[] = journalAgents(
-  buildJournalRegistry({ agy: [], claude: [], codex: [], pi: [], opencode: [], grok: [], hermes: [], muse: [], openclaw: [], kiro: [], "dsh-tui": [] }),
+  buildJournalRegistry({ agy: [], claude: [], codex: [], pi: [], opencode: [], grok: [], hermes: [], muse: [], openclaw: [], kiro: [], "dsh-tui": [], mcode: [] }),
 );
