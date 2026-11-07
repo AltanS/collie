@@ -450,7 +450,7 @@ describe("the strip", () => {
 
 describe("width", () => {
   it("in wide mode a new column is 1/2 and the button cycles 1/2, 4/5, Full", async () => {
-    // 1200 less the 320 sidebar leaves 880, at least two panes of 360.
+    // 1200 less the 320 sidebar leaves 880, two panes of 440.
     const { container } = await mount("w1:p1", 1200);
     await openBesideFromSidebar(container, A2);
     const col = columns(container)[0]!;
@@ -628,10 +628,10 @@ describe("the add column", () => {
     fireEvent.click(widthButton());
     await waitFor(() => expect(widthButton().textContent).toBe("4/5"));
     // 1/5 of 880 is under a pane: the add column is a pane wide, so the strip scrolls to it.
-    expect(addColumn(container)?.style.flex).toBe("0 0 360px");
+    expect(addColumn(container)?.style.flex).toBe("0 0 440px");
     fireEvent.click(widthButton());
     await waitFor(() => expect(widthButton().textContent).toBe("Full"));
-    expect(addColumn(container)?.style.flex).toBe("0 0 360px");
+    expect(addColumn(container)?.style.flex).toBe("0 0 440px");
   });
 
   it("keeps its plus in the part of it that is in view", async () => {
@@ -652,7 +652,7 @@ describe("the add column", () => {
 
   it("stands out of wide mode too, a pane wide, and not in a book or below 600 px", async () => {
     const { container } = await mount("w1:p1", 700);
-    expect(addColumn(container)?.style.flex).toBe("0 0 360px");
+    expect(addColumn(container)?.style.flex).toBe("0 0 440px");
     cleanup();
     posture = "book";
     const book = await mount("w1:p1", 1200);

@@ -32,6 +32,11 @@ A patch for the tablet and the foldable, with two fixes for the desk.
 - **On a medium screen the tab row keeps room for its tabs.** On a foldable about 700px wide, a long space name and "space 1 of 2" left the tabs under 90px, so the open tab was cut and its "+" fell off the end. At that size the space name now takes less of the row and the position text is not shown. The arrows still step through the spaces, and a larger screen looks as before.
 - **On a tablet or an open foldable the tabs are larger.** The tab row at the top of a pane steps up with the screen: from 600px wide the tabs are 36px tall with 12px text, and from 900px wide 40px with 13px text, each a little wider, with a larger "+". The size changes in these fixed steps, not with every pixel of width. A phone keeps its 30px row of 11px text, exactly as before.
 
+### Fixed
+
+- **On a tablet one pane fills the screen beside the sidebar.** On an 11-inch iPad in landscape and a two-screen phone held sideways, a pane took half the room and an empty "Add a pane" took the other half, so the chat was barely wider than on a phone. On an iPad in portrait, closing the sidebar made the chat narrower. A pane is now never narrower than 440px, so these screens show one pane at the full width: 860px on the iPad in landscape, 794px on the two-screen phone, 764px on the iPad in portrait with the sidebar closed. Two panes side by side need a wider screen, or the sidebar closed. A phone looks as before.
+
+
 ## [1.27.1] - 2026-11-06
 
 A patch for the phone and the desk: Chrome's "updated in the background" notice stops, and a browser tab can keep its place.
