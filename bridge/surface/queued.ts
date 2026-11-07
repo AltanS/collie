@@ -14,6 +14,13 @@
 //                the card offers Send and Discard. Ends when a later read shows the box without it, on
 //                its Send or Discard, or when the journal shows the prompt.
 //
+// A SUBMITTED send (a receipt that settled `sent` or `effective` with no `queued`: the harness started a
+// turn with it) is kept the same quiet way. A Stop early in that turn makes the harness give the prompt
+// back to the box and take it out of the transcript (Claude Code 2.1.319, lab 2026-11-07: Escape seven
+// seconds into the turn), and then the box held a draft nobody had typed at the desk, every later send
+// was refused `draft_present`, and nothing said whose text it was. Like a steer it is a card only once a
+// read shows it back, and a prompt edge does not end it: the edge comes at the submit, before the Stop.
+//
 // A STEER (a send whose receipt settled `steered`) is a candidate too, but never a card of its own: it
 // is not waiting for the turn to end, the harness takes it at the next step. It is kept only so that a
 // Stop which makes the harness give back its steers AND its queued texts together (steers first, then a
@@ -90,8 +97,10 @@ interface Entry {
   idleEmptyAt?: number;
   /** The first id of the run of returned texts this one came back with; absent when it came back alone. */
   group?: string;
-  /** A steer, not a queued send: never drawn until it is returned, and dropped silently when it landed. */
+  /** A steer or a submitted send, not a queued send: never drawn until it is returned, and dropped silently when it landed. */
   readonly steer: boolean;
+  /** A submitted send (see the header): a prompt edge does not end it. */
+  readonly submitted: boolean;
 }
 
 /** One card the live window is handed for a pane, oldest first. A returned run is one card. */
@@ -115,6 +124,8 @@ export interface QueuedSendInput {
   readonly at: number;
   /** The send settled `steered`, not `sent` + `queued` (see the header). */
   readonly steer?: boolean;
+  /** The send settled `sent` or `effective` with no `queued`: the harness started a turn with it (see the header). */
+  readonly submitted?: boolean;
 }
 
 /** One read of a pane, as {@link QueuedSends.boxRead} takes it. */
@@ -174,9 +185,19 @@ export class QueuedSends {
       state: "queued",
       busyAt: input.at,
       idleEmpty: 0,
-      steer: input.steer === true,
+      steer: input.steer === true || input.submitted === true,
+      submitted: input.submitted === true,
     });
     this.age();
+  }
+
+  /**
+   * A prompt edge took the send: a queued send or a steer is not waiting any more and goes, with its run.
+   * A submitted send stays: its edge comes at the submit, and a Stop after it may still give it back.
+   */
+  taken(id: string): void {
+    if (this.entries.some((entry) => entry.id === id && entry.submitted)) return;
+    this.drop(id);
   }
 
   /** The send closed another way (a prompt edge confirmed it, a Send from its card took it): it goes, with its run. */
@@ -396,6 +417,7 @@ export class QueuedSends {
         busyAt: at,
         idleEmpty: 0,
         steer: false,
+        submitted: false,
       });
     }
     this.entries.sort((a, b) => a.at - b.at);
