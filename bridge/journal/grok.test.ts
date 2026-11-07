@@ -461,7 +461,7 @@ describe("GrokTranscriptSource.discoverSession", () => {
       const src = new GrokTranscriptSource(root, alive);
       const ref = await src.discoverSession(CWD, { processes: [{ argv: ["/usr/local/bin/grok"], pid: 10 }] });
       expect(ref).toEqual({ kind: "id", value: SID });
-      expect(lsof).toHaveBeenCalledWith("lsof", ["-nP", "-a", "-p", "10", "-Fn"], expect.objectContaining({ timeout: 1000, maxBuffer: 1024 * 1024 }), expect.any(Function));
+      expect(lsof).toHaveBeenCalledWith("lsof", ["-nP", "-p", "10", "-g", "10", "-Fn"], expect.objectContaining({ timeout: 1000, maxBuffer: 1024 * 1024 }), expect.any(Function));
     } finally {
       lsof.mockRestore();
     }

@@ -595,7 +595,7 @@ export class GrokTranscriptSource implements TranscriptSource {
       if (fromList !== null && (await this.resolve(fromList)) !== null) return fromList;
     }
     for (const pid of pids) {
-      const { stdout } = await runLsof("lsof", ["-nP", "-a", "-p", String(pid), "-Fn"], {
+      const { stdout } = await runLsof("lsof", ["-nP", "-p", String(pid), "-g", String(pid), "-Fn"], {
         timeout: 1000,
         maxBuffer: 1024 * 1024,
         windowsHide: true,
