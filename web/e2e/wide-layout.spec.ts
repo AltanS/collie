@@ -214,3 +214,33 @@ test("a long sidebar list never makes the page taller than the screen, and nothi
   expect(rest.scrollY).toBe(0);
   expect(rest.tabRow).toBe(0);
 });
+
+// THE TAB ROW AT THE MEDIUM TIER (1.27.1). On a 705px foldable a long space name and "space 1 of 2"
+// left the tabs under 90px: the open tab was cut and its "+" fell off the end. The medium tier gives
+// the tabs the room; this is the narrowest real screen it has to hold on.
+test("at the medium tier a long space name still leaves the tabs and their + in view", async ({ page }) => {
+  const label = "decision-model-eval-harness";
+  await page.route("**/api/snapshot", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        ...fixtureSnapshot,
+        workspaces: fixtureSnapshot.workspaces.map((w) => (w.workspaceId === "w1" ? Object.assign({}, w, { label }) : w)),
+        agents: fixtureSnapshot.agents.map((a) => (a.workspaceId === "w1" ? Object.assign({}, a, { workspaceLabel: label }) : a)),
+      }),
+    }),
+  );
+  await page.setViewportSize({ width: 705, height: 1114 });
+  await page.goto("/pane/w1:p1");
+  await expect(page.locator('[data-slot="wide-layout"]')).toHaveAttribute("data-width-class", "medium");
+  const tabs = page.locator('[data-slot="space-header"] nav').first();
+  await expect(tabs).toBeVisible();
+  // Every control in the row, the open tab and its "+" too, ends inside the row's own box.
+  const fit = await tabs.evaluate((nav) => ({
+    right: nav.getBoundingClientRect().right,
+    controls: [...nav.querySelectorAll("button")].map((b) => b.getBoundingClientRect().right),
+  }));
+  expect(fit.controls.length).toBeGreaterThan(1);
+  for (const right of fit.controls) expect(right).toBeLessThanOrEqual(fit.right);
+  await expect(page.locator('[data-slot="space-title"]')).toContainText("decision");
+});

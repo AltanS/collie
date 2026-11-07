@@ -902,6 +902,20 @@ describe("the space header", () => {
     fireEvent.click(within(q(container, '[data-slot="space-header"]')!).getByRole("button", { name: "Previous space" }));
     await waitFor(() => expect(router.state.location.pathname).toBe(panePath("w1:p1")));
   });
+
+  it("gives the tabs more of the row at the medium tier: a narrower title and no position text", async () => {
+    const medium = await mount("w1:p1", 700);
+    const header = q(medium.container, '[data-slot="space-header"]')!;
+    expect(q(header, '[data-slot="space-title"]')?.className).toContain("max-w-[30%]");
+    expect(q(header, '[data-slot="space-position"]')).toBeNull();
+    // The chevrons still step through the spaces.
+    expect(within(header).getByRole("button", { name: "Next space" })).toBeEnabled();
+    cleanup();
+    const expanded = await mount("w1:p1", 1200);
+    const wide = q(expanded.container, '[data-slot="space-header"]')!;
+    expect(q(wide, '[data-slot="space-title"]')?.className).toContain("max-w-[45%]");
+    expect(q(wide, '[data-slot="space-position"]')?.textContent).toBe("space 1 of 2");
+  });
 });
 
 /** A soft keyboard for `useKeyboardOpen`, which reads `visualViewport` (jsdom has none). */

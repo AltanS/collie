@@ -495,8 +495,14 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
           {/* Folded with two columns, the header is cut at the fold like the strip under it: the name
               over the left column, the buttons over the right one, nothing on the hinge. */}
           <div className={cn("flex min-w-0 items-center", bookPair ? "fold-left-col pl-4" : "flex-1")}>
-            {/* The bar's title: the space, in the face and weight of the pane names under it. */}
-            <div data-slot="space-title" className="min-w-0 max-w-[45%] shrink-0 truncate text-sm font-semibold">
+            {/* The bar's title: the space, in the face and weight of the pane names under it. At the
+                medium tier it gives up more of the row to the tabs: there a long name and the position
+                left the tab row under 90px on a 705px foldable, so the open tab was cut and its "+"
+                fell off the end (1.27.1). */}
+            <div
+              data-slot="space-title"
+              className={cn("min-w-0 shrink-0 truncate text-sm font-semibold", widthClass === "medium" ? "max-w-[30%]" : "max-w-[45%]")}
+            >
               {space?.label ?? ""}
               {machine !== undefined && <span className="font-normal text-muted-foreground"> · {machine}</span>}
             </div>
@@ -527,7 +533,9 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
             ) : (
               <span className="flex-1" />
             )}
-            {spaceAt >= 0 && (
+            {/* "space 1 of 2" only where the row has room for it. At the medium tier the chevrons beside
+                it still step through the spaces and the sidebar lists them all. */}
+            {spaceAt >= 0 && widthClass !== "medium" && (
               <span data-slot="space-position" className="shrink-0 px-2 text-xs tabular-nums text-muted-foreground">
                 {t("wide.space.position", { index: spaceAt + 1, total: spaces.length })}
               </span>
