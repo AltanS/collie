@@ -52,7 +52,10 @@
         "^隨便問點什麼，或輸入 / 查看指令…$",
         "^輸入以改變本輪方向 · Tab 排到之後$",
         "^輸入以引導本輪 · Tab 排到之後$",
-        "^輸入以排隊一則本輪結束後的訊息$"
+        "^輸入以排隊一則本輪結束後的訊息$",
+        "^有什麼想問的？…$",
+        "^Try \"[^\"]+\"$",
+        "^Ctrl\\+C 中斷…$"
       ],
       "sgr": 3
     },
@@ -67,7 +70,8 @@
     },
     "runningRows": [
       "^☤(?: ❯)?(?: |$)",
-      "^ {2}(?!❓|💻|🔐|🔑)\\S.*  \\((?: *\\d+\\.\\d+s|\\d+m\\d+s)(?: · [^()]+)?\\)$"
+      "^ {2}(?!❓|💻|🔐|🔑)\\S.*  \\((?: *\\d+\\.\\d+s|\\d+m\\d+s)(?: · [^()]+)?\\)$",
+      "^ ─ [^│]*…\\s+· (?:\\d+[hms] ?)+ │ "
     ],
     "answerPrompt": "^✎(?: ❯)?(?: |$)",
     "overlayRows": [
@@ -101,6 +105,28 @@
         "continuationIndent": 0,
         "maxDraftRows": 8,
         "maxTailRows": 16
+      },
+      {
+        "walk": "interior",
+        "top": {
+          "pattern": "^ ─ \\S.*? │ .*$",
+          "minCells": 8,
+          "column": 1
+        },
+        "prompt": {
+          "pattern": "^ ❯(?: (?<draft>.*))?$",
+          "column": 1
+        },
+        "bottom": {
+          "pattern": "^",
+          "column": 0,
+          "maxColumn": 3,
+          "open": true
+        },
+        "rows": "^(?: ─ \\S.*? │ .*| ❯(?: .*)?| {3}\\S.*|)$",
+        "continuationIndent": 3,
+        "maxDraftRows": 8,
+        "maxTailRows": 0
       }
     ]
   },

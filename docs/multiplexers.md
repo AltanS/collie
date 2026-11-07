@@ -906,13 +906,16 @@ Collie checks that the character lands in the box, then removes it.
   The list of background tasks under the box reads as unknown, and a send needs your tap.
   A running turn shows a row with a timer and `esc to interrupt`.
 
-- **Hermes** (the classic CLI; `hermes --tui` is not read) draws its box as a rule, a `❯` row and a rule.
+- **Hermes** draws its classic CLI box as a rule, a `❯` row and a rule.
   Below 64 columns it draws no rule under the box. A named profile shows its name before the `❯`.
   A session with a title carries it inside the top rule (`── Session Title ─`). Collie reads that rule,
   in Chat too, where the status line, the draft preview and the dialog cards keep working. Collie also
   reads the Traditional Chinese hint lines Hermes shows in an empty box.
   A newline goes in as Alt+Enter: Ctrl+J sends the message when `display.cli_multiline_shortcuts` is off.
   The box shows at most eight rows. A longer message cannot be read back, so the send stops before Enter.
+  The Ink TUI (`hermes --tui`) draws no rules: its top edge is the status row, ` ─ ready │ …`,
+  and its `❯` row sits one column in, with nothing under it. A verb with a timer on the status row
+  is a running turn. The hint of a fresh session reads as an empty box only on a read with no colours.
   Submit sends it, and the phone then cannot confirm it went.
   Hermes may show the rest of an earlier message in grey after your text.
   That send stops before Enter too, and Submit sends only what you typed.
@@ -955,7 +958,7 @@ OpenCode and OMP passed live sends on a version above the checked one.
 Collie probes every send on them until a send passes inside the checked range.
 Hermes (the classic CLI) passed live sends on 0.22.2, inside its range, on Herdr only.
 Hermes 0.22.3 to 0.22.5 is provisional until a live probed send passes there.
-The Ink TUI (`hermes --tui`, or a config that starts it) is not read yet; tap Type here to send.
+The Ink TUI (`hermes --tui`) is read from plain-text captures and has passed no live send yet.
 The probe has not been tried in each Hermes dialog, so Collie probes every send there too.
 
 A version above the checked one still works, and the receipt says `provisional`.

@@ -2880,6 +2880,51 @@
    "version": "0.22.2",
    "state": "popup"
   },
+  "hermes--tui-busy-echo.txt": {
+   "harness": "hermes",
+   "version": "unversioned",
+   "state": "running"
+  },
+  "hermes--tui-busy-fresh.txt": {
+   "harness": "hermes",
+   "version": "unversioned",
+   "state": "running"
+  },
+  "hermes--tui-busy-title.txt": {
+   "harness": "hermes",
+   "version": "unversioned",
+   "state": "running"
+  },
+  "hermes--tui-busy.txt": {
+   "harness": "hermes",
+   "version": "unversioned",
+   "state": "running"
+  },
+  "hermes--tui-draft-title.txt": {
+   "harness": "hermes",
+   "version": "unversioned",
+   "state": "draft"
+  },
+  "hermes--tui-draft.txt": {
+   "harness": "hermes",
+   "version": "unversioned",
+   "state": "draft"
+  },
+  "hermes--tui-idle-en.txt": {
+   "harness": "hermes",
+   "version": "0.22.2",
+   "state": "idle"
+  },
+  "hermes--tui-idle-hint.txt": {
+   "harness": "hermes",
+   "version": "unversioned",
+   "state": "idle"
+  },
+  "hermes--tui-idle-title.txt": {
+   "harness": "hermes",
+   "version": "unversioned",
+   "state": "idle"
+  },
   "hermes--v0225-title-idle.txt": {
    "harness": "hermes",
    "version": "0.22.5",
