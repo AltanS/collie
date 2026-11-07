@@ -4,6 +4,22 @@ import type { ChatItem } from "./chat-items";
 import { pinAt, promptMap } from "./prompt-pin";
 
 const user = (id: string, text: string): ChatItem[] => [{ id, kind: "user", text }];
+const walky = (id: string): ChatItem[] => [
+  {
+    id,
+    kind: "user",
+    text: "[walky-talky wt_abc123def456] from agent codex\nthe tests are green",
+    walky: { id: "wt_abc123def456", kind: "agent", replyTo: null },
+  },
+];
+const operatorWalky = (id: string): ChatItem[] => [
+  {
+    id,
+    kind: "user",
+    text: "[walky-talky wt_abc123def456] from operator the phone\nrun the tests again",
+    walky: { id: "wt_abc123def456", kind: "operator", replyTo: null },
+  },
+];
 const reply = (id: string): ChatItem[] => [{ id, kind: "reply", text: "done" }];
 const tools = (id: string): ChatItem[] => [
   { id: `${id}a`, kind: "tool", tool: { kind: "read", path: "a.ts" }, status: "done" },
@@ -26,6 +42,40 @@ describe("promptMap", () => {
     const map = promptMap([user("u1:0", "look at this"), user("u1:1", "and this"), reply("r1")]);
     expect(map.runs).toEqual([{ start: 0, text: "look at this\n\nand this" }]);
     expect(map.owner).toEqual([0, 0, 0]);
+  });
+});
+
+describe("promptMap with walky talky turns", () => {
+  test("a walky turn between two prompts closes the first run, and the blocks after it keep following it", () => {
+    const map = promptMap([user("u1", "first"), reply("r1"), walky("w1"), tools("t1"), reply("r2"), user("u2", "second"), reply("r3")]);
+    expect(map.runs).toEqual([
+      { start: 0, text: "first" },
+      { start: 5, text: "second" },
+    ]);
+    expect(map.owner).toEqual([0, 0, 0, 0, 0, 1, 1]);
+  });
+
+  test("a walky turn right after a prompt does not join it", () => {
+    const map = promptMap([user("u1", "first"), walky("w1"), reply("r1")]);
+    expect(map.runs).toEqual([{ start: 0, text: "first" }]);
+    expect(map.owner).toEqual([0, 0, 0]);
+  });
+
+  test("a walky turn as the last block is not a run, and the blocks before keep their owner", () => {
+    const map = promptMap([user("u1", "first"), reply("r1"), walky("w1")]);
+    expect(map.runs).toEqual([{ start: 0, text: "first" }]);
+    expect(map.owner).toEqual([0, 0, 0]);
+  });
+});
+
+describe("promptMap with an operator walky talky turn", () => {
+  test("an operator walky turn is the person's own prompt and pins like one", () => {
+    const map = promptMap([user("u1", "first"), reply("r1"), operatorWalky("w1"), tools("t1")]);
+    expect(map.runs).toEqual([
+      { start: 0, text: "first" },
+      { start: 2, text: "[walky-talky wt_abc123def456] from operator the phone\nrun the tests again" },
+    ]);
+    expect(map.owner).toEqual([0, 0, 1, 1]);
   });
 });
 
@@ -68,5 +118,20 @@ describe("pinAt", () => {
   test("a capped report says so", () => {
     const capped = { ...reported, truncated: true };
     expect(pinAt(map, 0, capped, false, true)).toEqual({ kind: "reported", text: "the newest prompt", truncated: true });
+  });
+
+  test("a reported prompt that is a walky talky message pins as if none was reported", () => {
+    const envelope = { uuid: "p8", ts: "", text: "[walky-talky wt_abc123def456] from agent codex\nthe tests are green" };
+    for (const top of [-1, 0]) {
+      expect(pinAt(map, top, envelope, false, true)).toEqual(pinAt(map, top, null, false, true));
+      expect(pinAt(map, top, envelope, false, false)).toEqual(pinAt(map, top, null, false, false));
+    }
+    expect(pinAt(map, 0, envelope, false, true)).toEqual({ kind: "earlier" });
+    expect(pinAt(map, 0, envelope, false, false)).toBeNull();
+  });
+
+  test("a reported prompt that is the operator's walky talky message still pins", () => {
+    const operator = { uuid: "p7", ts: "", text: "[walky-talky wt_abc123def456] from operator the phone\nrun the tests again" };
+    expect(pinAt(map, 0, operator, false, true)).toEqual({ kind: "reported", text: operator.text, truncated: false });
   });
 });

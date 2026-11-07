@@ -11,9 +11,14 @@
 //     it, because it is the newest prompt there is.
 //  3. Neither: the turns on screen answer a prompt further back than anything held, and the pin can
 //     only offer to load older turns.
+//
+// A walky talky message from another AGENT (a turn opened by an agent envelope header) is no prompt in
+// any of the three: the pin shows the person's last words, never an agent's envelope. The operator's
+// own walky message, sent from the phone, is the person's words and pins like any prompt.
 
 import type { ChatItem } from "./chat-items";
 import type { ChatPrompt } from "./types";
+import { firstLine, parseEnvelopeHeader } from "./walky";
 
 /** One prompt as the stream holds it: where its first block sits, and its words. */
 export interface PromptRun {
@@ -35,10 +40,16 @@ export type Pin =
   | { kind: "earlier" }
   | null;
 
-/** The words of a block that is a prompt, or null. `groupRuns` never folds a user item into a run. */
+/**
+ * The words of a block that is a prompt, or null. `groupRuns` never folds a user item into a run.
+ * A walky talky turn from another agent is a message typed into the pane, not the person's question,
+ * so it is no prompt: it neither starts a run nor extends one, and it closes an open one like any
+ * other block that is not a prompt. An operator walky turn is the person's own words and stays one.
+ */
 function promptText(group: readonly ChatItem[]): string | null {
   const item = group[0];
-  return group.length === 1 && item?.kind === "user" ? item.text : null;
+  if (group.length !== 1 || item?.kind !== "user") return null;
+  return item.walky?.kind === "agent" ? null : item.text;
 }
 
 /**
@@ -86,6 +97,9 @@ export function pinAt(
   holdsLastPrompt: boolean,
   hasOlder: boolean,
 ): Pin {
+  // A reported prompt that is another agent's walky talky message is not the person's last words: read it as none.
+  const reportedPrompt =
+    lastPrompt !== null && parseEnvelopeHeader(firstLine(lastPrompt.text))?.kind === "agent" ? null : lastPrompt;
   const visible = Math.max(top, 0);
   if (visible >= map.owner.length) return null;
   const at = map.owner[visible]!;
@@ -93,8 +107,8 @@ export function pinAt(
     const run = map.runs[at]!;
     return run.start < visible ? { kind: "held", text: run.text, start: run.start } : null;
   }
-  if (lastPrompt !== null && !holdsLastPrompt) {
-    return { kind: "reported", text: lastPrompt.text, truncated: lastPrompt.truncated === true };
+  if (reportedPrompt !== null && !holdsLastPrompt) {
+    return { kind: "reported", text: reportedPrompt.text, truncated: reportedPrompt.truncated === true };
   }
   return hasOlder ? { kind: "earlier" } : null;
 }
