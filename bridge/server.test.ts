@@ -228,6 +228,7 @@ function cfg(overrides: Partial<Config> = {}): Config {
       openclaw: ["/nope/openclaw"],
       kiro: ["/nope/kiro"],
       "dsh-tui": ["/nope/dsh"],
+      mcode: ["/nope/mcode"],
     },
     submitKeys: ["Enter"],
     commandsFile: "/nope/commands.toml",
