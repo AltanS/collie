@@ -132,6 +132,7 @@ async function workInFiveTiles(context: BrowserContext) {
 }
 
 test("@oracle:requirement @req:SLOT-4 after a browser restart each of five tiles returns to its own pane", async ({ context }) => {
+  test.slow(); // fifteen page loads, see the budget note at "going back from a restored tile"
   await workInFiveTiles(context);
 
   for (const tile of TILES) {
@@ -161,6 +162,11 @@ test("@oracle:requirement @req:SLOT-4 five tiles that move in the same moment ea
 
 test("@oracle:requirement @req:SLOT-4 going back from a restored tile does not return to /slot/n", async ({ context }) => {
   // Twenty page loads: 19 to 30 s measured on a loaded host, against a default budget of 30 s.
+  // The two cases with fifteen page loads need the slow budget too: WebKit takes about 15 s idle and
+  // over 30 s on a loaded runner (Chromium about 6 s). They carry test.slow() as well.
+  // Open question, not fixed here: in CI this case once restored the first pane (w1) instead of the
+  // last (w2) on its first attempt. The slot write runs in a passive effect (use-slot-memory.ts) and
+  // the spec closes the page right after the URL shows, so a write may be lost under load.
   test.slow();
   await workInFiveTiles(context);
 
@@ -204,6 +210,7 @@ test.describe("on the owner's laptop", () => {
   test.use({ viewport: { width: 1280, height: 800 } });
 
   test("@oracle:requirement @req:SLOT-4 after a browser restart each of five wide tiles returns to its own pane", async ({ context }) => {
+    test.slow(); // fifteen page loads, see the budget note at "going back from a restored tile"
     await workInFiveTiles(context);
 
     for (const tile of TILES) {
