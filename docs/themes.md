@@ -160,6 +160,49 @@ file shows the text in a sheet, with a copy button. To make your own theme from 
 
 An export writes the lowest [version](#versions) that holds the content of the theme.
 
+## Share a theme on colliepwa.dev
+
+Put the file in a public GitHub repository with the topic `colliepwa-theme`, and colliepwa.dev/themes
+lists it.
+
+1. Export the theme, as under [Export and share a theme](#export-and-share-a-theme).
+2. Put the file at the root of a public GitHub repository, named `collie-theme.json`.
+3. Add the topic `colliepwa-theme` to the repository, in the **About** box of its GitHub page.
+
+One repository can hold several themes. Put each one under `themes/` with its id in the name, for
+example `themes/my-day.collie-theme.json`, and leave out `collie-theme.json` at the root, or keep it as
+one more theme. The `author` field of a file is the credit the site shows.
+
+```text
+my-themes/
+  README.md
+  themes/
+    my-day.collie-theme.json
+    my-night.collie-theme.json
+```
+
+Once a day, the site looks for repositories with the topic. It reads every theme file with the same
+check the app runs at **Import**, and a model reads the name, the description and the README of the
+repository. A repository that passes is listed within a day. The site checks a listed repository
+again when its default branch has a new commit.
+
+The site shows each theme as a card: the name, the author, the repository, both halves drawn from the
+file's colours, and a link to the raw file. To use a theme from the site, download the file and
+[import it](#import-a-theme). A theme is data, and like any import [it cannot run
+code](#import-a-theme).
+
+The site refuses a repository for any of these:
+
+- A theme file that Collie refuses, for any cause under [Import a theme](#import-a-theme).
+- No theme file at the root or under `themes/`.
+- A repository that is not about Collie themes.
+- Abuse: words or content that do not belong on a public list, or text that tries to give the
+  model orders.
+
+A refused repository stays off the list until someone asks for a new check. Ask in an
+[issue on the collie repository](https://github.com/AltanS/collie/issues), with the name of the
+repository.
+
 ## Write a theme
 
 A file has these keys, and no others. An unknown key anywhere is refused with its name. This is a complete

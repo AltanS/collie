@@ -58,6 +58,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 - **The math engines are a download of their own, not part of the install.** KaTeX and MathJax ship as one release asset, `collie-math-<version>.tar.gz`, about 4 MB, listed in the release manifest with role `math-pack`, its size and its sha256. No install tarball, no Windows zip and no `web-dist` asset carries `web/dist/math`, and a release whose payload names an engine file the pack lacks does not publish (ADR 0132).
 
+### Docs
+
+- **A theme in a public repository can be listed on colliepwa.dev.** The themes page gains "Share a theme on colliepwa.dev": export the theme, put it in a public GitHub repository as `collie-theme.json` or as `themes/<id>.collie-theme.json`, and add the topic `colliepwa-theme`. The page says what the site refuses, and that a refused repository is checked again when someone asks in an issue.
+
 ## [1.28.0] - 2026-11-06
 
 ### Added
