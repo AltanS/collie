@@ -19,18 +19,21 @@
   "idle": {
     "frame": {
       "top": {
-        "pattern": "^─+$",
+        "pattern": "^\\s*─+$",
         "minCells": 8,
-        "column": 0
+        "column": 0,
+        "maxColumn": 8
       },
       "prompt": {
-        "pattern": "^\\s*›(?: (?<draft>.*))?$",
-        "column": 0
+        "pattern": "^\\s*›(?:\\s+(?<draft>.*))?$",
+        "column": 0,
+        "maxColumn": 8
       },
       "bottom": {
-        "pattern": "^─+$",
+        "pattern": "^\\s*─+$",
         "minCells": 8,
-        "column": 0
+        "column": 0,
+        "maxColumn": 8
       },
       "continuationIndent": 4,
       "maxDraftRows": 60,
@@ -52,7 +55,7 @@
       },
       "below": {
         "maxRows": 8,
-        "footerMaxRows": 2
+        "footerMaxRows": 4
       }
     },
     "runningRows": [
