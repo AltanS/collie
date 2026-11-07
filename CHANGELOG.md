@@ -25,7 +25,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Added
 
-- **A long reply can be written fullscreen.** When the reply box is open, an Expand button (diagonal arrows) stands between the space and the small microphone. It opens the same draft over the pane view, from the top of the chat to the bottom of the box, with no line cap, Collapse at the top right and Send at the bottom right. Collapse, Send, Escape or a pane switch closes it, and the draft and the caret stay where they were. The keyboard stays up across the open and the close.
+- **A long reply can be written fullscreen.** Once a draft grows past the box's height cap and starts to scroll, an Expand button (diagonal arrows) slides in between the space and the small microphone, and it slides out again when the draft is a line shorter than the cap. It opens the same draft over the pane view, from the top of the chat to the bottom of the box, with no line cap, Collapse at the top right and Send at the bottom right. Collapse, Send, Escape or a pane switch closes it, and the draft and the caret stay where they were. The keyboard stays up across the open and the close.
 
 ### Changed
 

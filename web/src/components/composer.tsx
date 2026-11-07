@@ -48,10 +48,10 @@ import { ActionRow } from "@/components/action-sheet-rows";
 import { AnchoredMenu } from "@/components/ui/anchored-menu";
 import { WalkyAimStrip, WalkyHeldStrip, WalkyNoteStrip } from "@/components/walky-composer-strip";
 import { WalkyIcon } from "@/components/walky-icon";
-import { useFlip } from "@/hooks/use-flip";
+import { slideOut, useFlip } from "@/hooks/use-flip";
 import { ExpandedEditor } from "@/components/composer-expanded";
 import { useVisibleHeight } from "@/hooks/use-visible-height";
-import { draftCapPx } from "@/lib/draft-cap";
+import { DRAFT_LINE_HEIGHT, draftCapPx, pastDraftCap } from "@/lib/draft-cap";
 import { useLongPress } from "@/hooks/use-long-press";
 import { useWalkyComposer, type WalkyAim } from "@/hooks/use-walky-composer";
 import * as api from "@/lib/api";
@@ -2473,11 +2473,6 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // control, and the field is the control. The press is held back from the browser's focus move so a
   // field that already has focus keeps it (a blur here would close an empty box for one frame).
   const boxRef = useRef<HTMLDivElement>(null);
-  // The change of shape is played (hooks/use-flip.ts): the box's height, with every row held still,
-  // and a button that appears slides in sideways from its own edge, never from above (Altan,
-  // 2026-11-07). The key changes with the shape and with the set of buttons, never per keystroke. The
-  // field layout has one shape, so there only the entrances play: Send taking the microphone's place
-  // and the small microphone beside it.
   // When the cap shrinks under a caret at the end of the draft (the keyboard came up over a long
   // draft), the field scrolls to keep that caret in view. A caret the person put elsewhere is left
   // where they put it; the browser keeps a typing caret in view by itself.
@@ -2487,8 +2482,6 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     if (field.selectionEnd !== field.value.length) return;
     field.scrollTop = field.scrollHeight;
   }, [draftCap]);
-  const flipKey = `${boxOpen ? "open" : "rest"}:${micIsPrimary ? "mic" : "send"}:${draftMicShown ? "draft-mic" : ""}`;
-  useFlip(boxRef, flipKey, { enabled: true, grows: box });
 
   // ── THE FULLSCREEN EDITOR (components/composer-expanded.tsx) ─────────────────────────────────────
   // One draft: the layer's field is bound to `input` through `onDraftChange`, as the box's field is.
@@ -2498,7 +2491,39 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // (ADR 0067: a layer with a history entry would be a level).
   const [expanded, setExpanded] = useState(false);
   const expandedRef = useRef<HTMLTextAreaElement>(null);
-  const expandShown = box && boxOpen && !direct.active && !locked && expandArea !== undefined && expandArea !== null;
+  // EXPAND SHOWS ONLY PAST THE CAP (Altan, 2026-11-08: "only when we've passed the point where the
+  // input box stops growing"). The draft's content height is read after every change against the cap,
+  // with one row of hysteresis (lib/draft-cap.ts, `pastDraftCap`), so a draft on the boundary cannot
+  // make it blink. It leaves the way it came, sideways (`slideOut`), and stays drawn until that ends.
+  const [pastCap, setPastCap] = useState(false);
+  useLayoutEffect(() => {
+    const field = inputRef.current;
+    if (field === null) return;
+    setPastCap((was) => pastDraftCap({ was, contentPx: field.scrollHeight, capPx: draftCap, rowPx: draftFontPx * DRAFT_LINE_HEIGHT }));
+  }, [input, draftCap, draftFontPx, boxOpen]);
+  const expandWanted = box && boxOpen && pastCap && !direct.active && !locked && expandArea !== undefined && expandArea !== null;
+  const expandButtonRef = useRef<HTMLButtonElement>(null);
+  const [expandShown, setExpandShown] = useState(expandWanted);
+  if (expandWanted && !expandShown) setExpandShown(true);
+  useEffect(() => {
+    if (expandWanted || !expandShown) return;
+    const button = expandButtonRef.current;
+    const container = boxRef.current;
+    if (button === null || container === null) {
+      setExpandShown(false);
+      return;
+    }
+    const leaving = slideOut(button, container);
+    if (leaving === null) {
+      setExpandShown(false);
+      return;
+    }
+    leaving.onfinish = () => setExpandShown(false);
+    return () => {
+      leaving.onfinish = null;
+      leaving.cancel();
+    };
+  }, [expandWanted, expandShown]);
   const expandedOpen = expanded && !direct.active && !locked && expandArea !== undefined && expandArea !== null;
   useEffect(() => {
     setExpanded(false);
@@ -2520,6 +2545,14 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     if (askOwnsKeys) return;
     onSendClick();
   }
+
+  // The change of shape is played (hooks/use-flip.ts): the box's height, with every row held still,
+  // and a button that appears slides in sideways from its own edge, never from above (Altan,
+  // 2026-11-07). The key changes with the shape and with the set of buttons, never per keystroke. The
+  // field layout has one shape, so there only the entrances play: Send taking the microphone's place
+  // and the small microphone beside it.
+  const flipKey = `${boxOpen ? "open" : "rest"}:${micIsPrimary ? "mic" : "send"}:${draftMicShown ? "draft-mic" : ""}:${expandShown ? "expand" : ""}`;
+  useFlip(boxRef, flipKey, { enabled: true, grows: box });
   useEffect(() => {
     const el = boxRef.current;
     if (!box || el === null) return;
@@ -3352,6 +3385,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             // long reply (components/composer-expanded.tsx). Only in the open row, between the space and
             // the small mic, and only where there is a pane view to cover.
             <Button
+              ref={expandButtonRef}
               data-slot="composer-expand"
               type="button"
               variant="ghost"

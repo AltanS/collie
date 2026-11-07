@@ -317,11 +317,32 @@ describe("Composer layout=box", () => {
 // view; Collapse, Send, Escape and a pane switch close it, and the draft is never copied or lost.
 describe("Composer layout=box, the fullscreen editor", () => {
   let area: HTMLElement;
+  // jsdom lays nothing out, so a field's content height is given here: 21px a line (14px text at
+  // 1.5) plus 12px of padding. The cap in this window is five rows, 117px (lib/draft-cap.ts).
+  const ROW = 21;
+  const contentHeight = (value: string) => value.split("\n").length * ROW + 12;
   beforeEach(() => {
     area = document.createElement("div");
     document.body.append(area);
+    Object.defineProperty(HTMLTextAreaElement.prototype, "scrollHeight", {
+      configurable: true,
+      get(this: HTMLTextAreaElement) {
+        return contentHeight(this.value);
+      },
+    });
   });
-  afterEach(() => area.remove());
+  afterEach(() => {
+    area.remove();
+    Reflect.deleteProperty(HTMLTextAreaElement.prototype, "scrollHeight");
+  });
+  /** A draft of `rows` lines, the last one `last`. */
+  const lines = (rows: number, last = "end") => [...Array.from({ length: rows - 1 }, (_, i) => `line ${String(i + 1)}`), last].join("\n");
+  /** Put a long draft into the box's field, past the cap. */
+  // A change event, not a paste: a long paste becomes a paste chip in this composer (ADR 0060).
+  async function typeLong(user: ReturnType<typeof userEvent.setup>, last = "end") {
+    await user.click(field());
+    fireEvent.change(field(), { target: { value: lines(8, last) } });
+  }
 
   /** A composer whose pane can be switched, as a pane switch keeps the composer mounted. */
   function Switchable() {
@@ -343,21 +364,41 @@ describe("Composer layout=box, the fullscreen editor", () => {
   const layer = () => document.querySelector<HTMLElement>('[data-slot="composer-expanded"]');
   const layerField = () => layer()!.querySelector("textarea")!;
 
-  it("offers Expand in the open row only, between the space and the small mic", async () => {
+  it("offers Expand in the open row, between the space and the small mic, once the draft is past the cap", async () => {
     const user = userEvent.setup();
     renderComposer({ layout: "box", expandArea: area });
     await readyBox();
     expect(expand()).toBeNull();
-    await user.type(field(), "a");
+    await typeLong(user);
     expect(expand()!.className).toMatch(/col-start-3/);
     expect(expand()!.className).toMatch(/row-start-3/);
+  });
+
+  it("shows Expand only past the cap, and takes it away a row under it (Altan, 2026-11-08)", async () => {
+    const user = userEvent.setup();
+    renderComposer({ layout: "box", expandArea: area });
+    await readyBox();
+    // Five lines are exactly the cap: the field has not started to scroll.
+    await user.click(field());
+    fireEvent.change(field(), { target: { value: lines(5) } });
+    expect(expand()).toBeNull();
+    // A sixth line is past it.
+    await user.type(field(), "{Enter}six");
+    expect(expand()).not.toBeNull();
+    // Back to five lines: inside the hysteresis row, it stays.
+    await user.type(field(), "{Backspace}{Backspace}{Backspace}{Backspace}");
+    expect(field().value.split("\n")).toHaveLength(5);
+    expect(expand()).not.toBeNull();
+    // Down to three lines, a row and more under the cap: it leaves.
+    fireEvent.change(field(), { target: { value: lines(3) } });
+    await waitFor(() => expect(expand()).toBeNull());
   });
 
   it("offers no Expand where there is no pane view to cover", async () => {
     const user = userEvent.setup();
     renderComposer({ layout: "box" });
     await readyBox();
-    await user.type(field(), "a");
+    await typeLong(user);
     expect(expand()).toBeNull();
   });
 
@@ -365,16 +406,17 @@ describe("Composer layout=box, the fullscreen editor", () => {
     const user = userEvent.setup();
     renderComposer({ layout: "box", expandArea: area });
     await readyBox();
-    await user.type(field(), "hello world");
+    await typeLong(user, "hello world");
+    const draft = lines(8, "hello world");
     field().setSelectionRange(5, 5);
     await user.click(expand()!);
-    expect(layerField()).toHaveValue("hello world");
+    expect(layerField()).toHaveValue(draft);
     expect(layerField()).toHaveFocus();
     expect(layerField().selectionStart).toBe(5);
-    await user.type(layerField(), " there", { initialSelectionStart: 11, initialSelectionEnd: 11 });
+    await user.type(layerField(), " there", { initialSelectionStart: draft.length, initialSelectionEnd: draft.length });
     await user.click(screen.getByRole("button", { name: "Collapse" }));
     expect(layer()).toBeNull();
-    expect(field()).toHaveValue("hello world there");
+    expect(field()).toHaveValue(`${draft} there`);
     expect(field()).toHaveFocus();
   });
 
@@ -382,11 +424,11 @@ describe("Composer layout=box, the fullscreen editor", () => {
     const user = userEvent.setup();
     renderComposer({ layout: "box", expandArea: area });
     await readyBox();
-    await user.type(field(), "keep me");
+    await typeLong(user, "keep me");
     await user.click(expand()!);
     await user.keyboard("{Escape}");
     expect(layer()).toBeNull();
-    expect(field()).toHaveValue("keep me");
+    expect(field()).toHaveValue(lines(8, "keep me"));
   });
 
   it("sends from the layer through the composer's own send, and closes", async () => {
@@ -394,7 +436,7 @@ describe("Composer layout=box, the fullscreen editor", () => {
     const user = userEvent.setup();
     renderComposer({ layout: "box", expandArea: area, onSent });
     await readyBox();
-    await user.type(field(), "ship it");
+    await typeLong(user, "ship it");
     await user.click(expand()!);
     await user.click(within(layer()!).getByRole("button", { name: "Send" }));
     expect(layer()).toBeNull();
@@ -405,7 +447,7 @@ describe("Composer layout=box, the fullscreen editor", () => {
     const user = userEvent.setup();
     renderSwitchable();
     await readyBox();
-    await user.type(field(), "draft");
+    await typeLong(user);
     await user.click(expand()!);
     expect(layer()).not.toBeNull();
     await user.click(screen.getByRole("button", { name: "switch pane" }));

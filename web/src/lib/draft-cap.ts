@@ -41,3 +41,25 @@ export function draftCapPx({ fontPx, paddingPx, visiblePx }: DraftCapInput): num
   const floor = line + paddingPx;
   return Math.round(Math.max(floor, Math.min(rows, share)));
 }
+
+export interface PastCapInput {
+  /** Whether the draft was past the cap at the last reading. */
+  readonly was: boolean;
+  /** The draft's content height in px (the field's `scrollHeight`, padding included). */
+  readonly contentPx: number;
+  /** The cap in px ({@link draftCapPx}). */
+  readonly capPx: number;
+  /** One text row in px. */
+  readonly rowPx: number;
+}
+
+/**
+ * Whether the draft is past the cap, so the field scrolls inside itself and Expand is offered: true
+ * once the content is taller than the cap, false again only once it is shorter than the cap less one
+ * row. The row between the two is the hysteresis: a draft on the boundary keeps the answer it had.
+ */
+export function pastDraftCap({ was, contentPx, capPx, rowPx }: PastCapInput): boolean {
+  if (contentPx > capPx + 0.5) return true;
+  if (contentPx < capPx - rowPx) return false;
+  return was;
+}

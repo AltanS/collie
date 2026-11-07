@@ -1,4 +1,4 @@
-import { DRAFT_CAP_ROWS, draftCapPx } from "./draft-cap";
+import { DRAFT_CAP_ROWS, draftCapPx, pastDraftCap } from "./draft-cap";
 
 describe("draftCapPx", () => {
   it("stops at a fifth of the visible height with the keyboard up (the owner's phone)", () => {
@@ -22,5 +22,23 @@ describe("draftCapPx", () => {
 
   it("follows the draft text size", () => {
     expect(draftCapPx({ fontPx: 12, paddingPx: 12, visiblePx: 2000 })).toBe(5 * 18 + 12);
+  });
+});
+
+describe("pastDraftCap", () => {
+  const cap = { capPx: 117, rowPx: 21 };
+  it("is past the cap once the content is taller than it, and not before", () => {
+    expect(pastDraftCap({ was: false, contentPx: 117, ...cap })).toBe(false);
+    expect(pastDraftCap({ was: false, contentPx: 138, ...cap })).toBe(true);
+  });
+
+  it("holds its answer within one row under the cap, so a boundary draft does not blink", () => {
+    expect(pastDraftCap({ was: true, contentPx: 117, ...cap })).toBe(true);
+    expect(pastDraftCap({ was: true, contentPx: 97, ...cap })).toBe(true);
+    expect(pastDraftCap({ was: false, contentPx: 97, ...cap })).toBe(false);
+  });
+
+  it("lets go once the content is a row shorter than the cap", () => {
+    expect(pastDraftCap({ was: true, contentPx: 95, ...cap })).toBe(false);
   });
 });

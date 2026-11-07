@@ -79,6 +79,18 @@ export function entranceOffset(rect: Box, container: Box): number {
 }
 
 /**
+ * Play a button out the way it came in: sideways towards its own edge of `container`, fading, over
+ * {@link ENTER_MS}. The caller keeps it drawn until the returned animation finishes. Null under
+ * reduced motion or where the browser cannot animate: the caller removes it at once.
+ */
+export function slideOut(element: HTMLElement, container: HTMLElement): Animation | null {
+  if (reducedMotion() || !("animate" in element)) return null;
+  const box = container.getBoundingClientRect();
+  const to = entranceOffset(relativeTo(element.getBoundingClientRect(), box), box);
+  return element.animate({ opacity: [1, 0], transform: ["translateX(0)", `translateX(${to}px)`] }, { duration: ENTER_MS, easing: FLIP_EASE, fill: "forwards" });
+}
+
+/**
  * The edge of the box that stays put when its height changes, from its rectangle before and after
  * (viewport coordinates): `end` when the bottom edge moved no more than the top did (the box grows
  * upward, as on the pane screen), `start` when it grows downward.
