@@ -21,7 +21,7 @@ afterEach(async () => {
 });
 
 /** One mcode message row. */
-function row(message: { role: string; content?: unknown; toolCallId?: string; toolName?: string; isError?: boolean; timestamp?: number }, messageId = "msg-1"): string {
+function row(message: { role: string; content?: unknown; toolCallId?: string; toolName?: string; isError?: boolean; timestamp?: number; canonicalTextRange?: unknown }, messageId = "msg-1"): string {
   return JSON.stringify({ message_id: messageId, turn_id: "turn-1", message });
 }
 
