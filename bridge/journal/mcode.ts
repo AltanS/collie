@@ -183,7 +183,24 @@ export function createMcodeReducer(): RowReducer {
     const uuid = typeof row.message_id === "string" && row.message_id !== "" ? row.message_id : "";
 
     if (role === "user") {
-      const text = stripAnsi(contentText(message.content)).trim();
+      let raw = contentText(message.content);
+      // The envelope carries injected plumbing (system reminders, plugin hooks) beside the operator's
+      // own words; `canonicalTextRange` is mcode's own mark of where the spoken text sits in it. A
+      // range that does not land inside the text is ignored, not trusted.
+      const range = message.canonicalTextRange;
+      if (
+        range !== null &&
+        typeof range === "object" &&
+        !Array.isArray(range) &&
+        typeof range.startOffset === "number" &&
+        typeof range.endOffset === "number" &&
+        range.startOffset >= 0 &&
+        range.endOffset <= raw.length &&
+        range.startOffset < range.endOffset
+      ) {
+        raw = raw.slice(range.startOffset, range.endOffset);
+      }
+      const text = stripAnsi(raw).trim();
       if (text === "") return NO_CHANGE;
       entries.push({ uuid, ts: "", role: "user", parts: [{ kind: "text", ...clamp(text, MAX_TEXT_CHARS) }] });
       return reduction(entries, changed);
