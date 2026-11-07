@@ -195,6 +195,9 @@ file shows the text in a sheet, with a copy button. To make your own theme from 
 
 An export writes the lowest [version](#versions) that holds the content of the theme.
 
+To have an AI agent write a theme for you, tell it to run `collie theme skill`. It prints the steps and
+every key a theme file may use, and it tells the agent to check the file with `collie theme check`.
+
 ## Share a theme on colliepwa.dev
 
 Put the file in a public GitHub repository with the topic `colliepwa-theme`, and colliepwa.dev/themes

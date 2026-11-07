@@ -15,6 +15,7 @@ import {
 } from "../web/src/lib/theme/schema.ts";
 import collieFile from "../web/src/themes/collie.json";
 import { EXIT, type Io } from "./io.ts";
+import { cmdThemeSkill } from "./theme-skill.ts";
 
 // `collie theme check <file>...` (M59 spec 05): validate theme files with the app's own parser and
 // print the refusals and the contrast report, with an exit code a CI job can branch on.
@@ -33,7 +34,7 @@ import { EXIT, type Io } from "./io.ts";
 // Apply a theme that warns), 1 when a file is refused or cannot be read, 2 on a usage error.
 
 /** The sub-verbs of `theme`, in the order the usage line prints them. */
-export const THEME_SUBCOMMANDS = ["check"] as const;
+export const THEME_SUBCOMMANDS = ["check", "skill"] as const;
 
 /** What the verb needs from the filesystem: a regular file's size and its text. */
 export interface ThemeFiles {
@@ -92,11 +93,12 @@ export type FileReport =
   | { file: string; ok: true; id: string; name: string; version: number; warnings: CheckWarning[] }
   | { file: string; ok: false; error?: string; refusals: CheckRefusal[] };
 
-const USAGE = "usage: collie theme check [--json] [--shipped] <file>...";
+const USAGE = "usage: collie theme check [--json] [--shipped] <file>... | collie theme skill";
 
 function usage(io: Io): void {
   io.err(USAGE);
   io.err("  check   validate theme files with the app's parser and print the refusals and the contrast report");
+  io.err("  skill   print the brief for an AI agent that writes a theme (also `collie theme --skill`)");
   io.err("  --json     print the report as one JSON object");
   io.err("  --shipped  accept the id of a shipped theme (for Collie's own files; an import refuses one)");
 }
@@ -183,10 +185,14 @@ export function cmdThemeCheck(deps: ThemeCheckDeps, args: readonly string[]): nu
   return ok ? EXIT.OK : EXIT.FAIL;
 }
 
-/** `collie theme`: the tree's fallback, for a bare `theme` and an unknown sub-verb. */
+/**
+ * `collie theme`: the tree's fallback, for a bare `theme`, `theme --skill` and an unknown sub-verb.
+ * `--skill` is the flag spelling of `theme skill`, as `collie --skill` is of `collie skill`.
+ */
 export function cmdTheme(deps: ThemeCheckDeps, args: readonly string[]): number {
   const [sub, ...rest] = args;
   if (sub === "check") return cmdThemeCheck(deps, rest);
+  if (sub === "skill" || sub === "--skill") return cmdThemeSkill(deps.io);
   deps.io.err(sub === undefined ? "error: name a sub-verb" : `error: unknown theme subcommand \`${sub}\``);
   usage(deps.io);
   return EXIT.USAGE;
