@@ -1,31 +1,45 @@
 import { useLayoutEffect, useRef } from "react";
 import type { RefObject } from "react";
 
-// FLIP (First, Last, Invert, Play) for the composer box's two shapes (`layout="box"`). The box
-// changes shape by moving its buttons between grid cells, so the change is instant by default. This
-// hook records where the box and its buttons stood, lets the new layout land, then plays the way
-// from the old place to the new one with the Web Animations API: the box's height grows or shrinks,
-// and each button glides from its old cell to its new one.
+// FLIP (First, Last, Invert, Play) for the composer box's two shapes (`layout="box"`), and the way a
+// button enters in either layout. The box changes shape by moving its buttons between grid cells, so
+// the change is instant by default. This hook records where the box and its buttons stood, lets the
+// new layout land, then plays the way from the old shape to the new one with the Web Animations API.
 //
-// EVERYTHING IS MEASURED AGAINST THE BOX'S OWN TOP LEFT, not the viewport. The composer is anchored
-// at the bottom of the screen, so when the box grows its top edge climbs while its bottom edge stays
-// put. In viewport terms the buttons barely move; in the box's own terms they slide from the first
-// row to the last as the bottom edge runs away from the top. Playing the glide in the box's frame
-// keeps the buttons in lockstep with that edge, so the box clips them for exactly as long as the
-// edge has not yet reached their new row, and the text stays where the top edge carries it.
+// THE BUTTONS MOVE ON THE X-AXIS ONLY, AND NOTHING DROPS (Altan, 2026-11-07: "it looks like they
+// bounce down from the top"). The first version played each button from its old cell to its new one
+// in the box's own frame. That was meant to hold the button row still while the box grew, but the
+// box's height is animated on the grid itself, and a grid squeezed below its content shrinks the
+// field's row first (a scrolling textarea has no automatic minimum height). So the button row was
+// laid out ~20px too high when the flight began and fell to its place as the height grew: a drop of
+// about 21px on the pane screen and 50px where the box grows downward, measured in Chromium.
 //
-// WHEN IT RUNS. Only when `key` changes, never per keystroke: a shape change is one tap, a keystroke
-// inside an open box changes no key. The "before" is read during the render that sees the new key,
-// because the DOM still shows the old shape then; the "after" is read in the layout effect of the
-// same commit, before the browser paints, so no frame shows the new layout un-animated.
+// So now, for the length of the flight, the grid keeps the new shape's own row heights and stands
+// them against the edge of the box that does not move (`anchorEdge`): the bottom on the pane screen,
+// where the composer is anchored to the screen's foot, the top where the box grows downward. The
+// moving edge then only uncovers or covers what already stands at its final place. A button that is
+// in both shapes plays only its horizontal move, if it has one (with Attach at its edge in both
+// shapes, none does today), and a button that is new slides in sideways from the edge it lives on
+// and fades in (`entranceOffset`). The field is not played: it never glides under a button.
 //
-// Under `prefers-reduced-motion: reduce`, or where the browser has no `element.animate`, nothing
-// is played and the change is instant.
+// WHEN IT RUNS. Only when `key` changes, never per keystroke: the caller's key changes with the shape
+// and with the set of buttons, which a keystroke inside an open box does not touch. The "before" is
+// read during the render that sees the new key, because the DOM still shows the old shape then; the
+// "after" is read in the layout effect of the same commit, before the browser paints, so no frame
+// shows the new layout un-animated.
+//
+// `grows` false (the field layout, which has one shape) plays the entrances only: no height, no
+// rows, no moves. Under `prefers-reduced-motion: reduce`, or where the browser has no
+// `element.animate`, nothing is played and the change is instant.
 
 /** How long the shape change takes, in ms. */
 export const FLIP_MS = 200;
-/** Fast out of the gate, a soft landing. */
+/** Fast out of the gate, a soft landing. No overshoot: nothing bounces. */
 export const FLIP_EASE = "cubic-bezier(0.2, 0, 0, 1)";
+/** How long a button takes to slide in, in ms. Shorter than the box, so it lands first. */
+export const ENTER_MS = 150;
+/** How far a new button slides in from its own edge, in px. */
+export const ENTER_PX = 12;
 
 /** A rectangle, as `getBoundingClientRect` reports it. */
 export interface Box {
@@ -44,14 +58,35 @@ export function relativeTo(rect: Box, origin: Box): Box {
 const MOVE_EPSILON = 0.5;
 
 /**
- * The translate that makes an element, standing at `after`, look as if it still stood at `before`
- * (both measured from the same origin), to be played back to nothing. Null when it did not move.
+ * The horizontal translate that makes an element, standing at `after`, look as if it still stood at
+ * `before` (both measured from the same origin), to be played back to nothing. Null when it did not
+ * move sideways. A change of row is never played: the row is held still (see the header).
  */
-export function invertOffset(before: Box, after: Box): { readonly x: number; readonly y: number } | null {
+export function invertOffset(before: Box, after: Box): number | null {
   const x = before.left - after.left;
-  const y = before.top - after.top;
-  if (Math.abs(x) < MOVE_EPSILON && Math.abs(y) < MOVE_EPSILON) return null;
-  return { x, y };
+  if (Math.abs(x) < MOVE_EPSILON) return null;
+  return x;
+}
+
+/**
+ * Where a new button slides in from, as a signed px offset: from the right (+) when its centre stands
+ * in the right half of `container` (both measured from the same origin), from the left (-) otherwise.
+ * So Send and the small microphone come in from the right, and from the left under `hand="left"`.
+ */
+export function entranceOffset(rect: Box, container: Box): number {
+  const centre = rect.left + rect.width / 2;
+  return centre > container.width / 2 ? ENTER_PX : -ENTER_PX;
+}
+
+/**
+ * The edge of the box that stays put when its height changes, from its rectangle before and after
+ * (viewport coordinates): `end` when the bottom edge moved no more than the top did (the box grows
+ * upward, as on the pane screen), `start` when it grows downward.
+ */
+export function anchorEdge(before: Pick<Box, "top" | "height">, after: Pick<Box, "top" | "height">): "start" | "end" {
+  const topMoved = Math.abs(after.top - before.top);
+  const bottomMoved = Math.abs(after.top + after.height - (before.top + before.height));
+  return bottomMoved <= topMoved ? "end" : "start";
 }
 
 /** The height keyframes of the box, or null when the two shapes are the same height. */
@@ -65,15 +100,9 @@ interface Snapshot {
   readonly children: ReadonlyMap<Element, Box>;
 }
 
-/**
- * The elements whose move is played: the box's direct children that are buttons, and the field. The
- * field is in because a button that glides over it would otherwise cover its first characters: it
- * starts beside Attach, where it stood at rest, and slides to the left edge as Attach leaves.
- */
-function movers(container: HTMLElement): HTMLElement[] {
-  return Array.from(container.children).filter(
-    (child): child is HTMLButtonElement | HTMLTextAreaElement => child instanceof HTMLButtonElement || child instanceof HTMLTextAreaElement,
-  );
+/** The elements that are played: the box's direct children that are buttons. */
+function movers(container: HTMLElement): HTMLButtonElement[] {
+  return Array.from(container.children).filter((child): child is HTMLButtonElement => child instanceof HTMLButtonElement);
 }
 
 function take(container: HTMLElement): Snapshot {
@@ -88,11 +117,17 @@ function reducedMotion(): boolean {
 }
 
 /**
- * Animate `container` when `key` changes: its height from the old shape to the new one, and each
- * direct button child, and its field, from its old place to its new one. A button that is new in the new shape fades
- * in. `enabled` false (a layout with no second shape) records and plays nothing.
+ * Animate `container` when `key` changes. With `grows`: its height from the old shape to the new one,
+ * its rows held at the new shape's against the edge that stays put, and each direct button child's
+ * sideways move. Always: a button that is new slides in from its own edge. `enabled` false records
+ * and plays nothing.
  */
-export function useFlip(container: RefObject<HTMLElement | null>, key: boolean | string, enabled: boolean): void {
+export function useFlip(
+  container: RefObject<HTMLElement | null>,
+  key: boolean | string,
+  options: { readonly enabled: boolean; readonly grows: boolean },
+): void {
+  const { enabled, grows } = options;
   const seen = useRef(key);
   const before = useRef<Snapshot | null>(null);
   const running = useRef<Animation[]>([]);
@@ -116,23 +151,37 @@ export function useFlip(container: RefObject<HTMLElement | null>, key: boolean |
     for (const animation of running.current) animation.cancel();
     running.current = [];
     const now = take(element);
-    const timing = { duration: FLIP_MS, easing: FLIP_EASE } as const;
-    const span = heightSpan(was.box.height, now.box.height);
-    // `overflow: hidden` for the length of the flight only: the buttons that have not reached their
-    // new row yet are clipped by the box's moving edge, and a menu anchored to the box is not.
-    if (span !== null) running.current.push(element.animate({ height: [...span], overflow: ["hidden", "hidden"] }, timing));
+    const span = grows ? heightSpan(was.box.height, now.box.height) : null;
+    if (span !== null) {
+      // `overflow: hidden` for the length of the flight only: what the moving edge has not reached
+      // yet is clipped, and a menu anchored to the box is not. The rows are the new shape's own, in
+      // pixels, stood against the edge that does not move, so no row is squeezed and nothing in the
+      // box moves up or down while the edge travels (the header says why).
+      const rows = getComputedStyle(element).gridTemplateRows;
+      const edge = anchorEdge(was.box, now.box) === "end" ? "unsafe end" : "unsafe start";
+      const held = rows !== "" && rows !== "none" ? { gridTemplateRows: [rows, rows] } : {};
+      running.current.push(
+        element.animate(
+          { height: [...span], overflow: ["hidden", "hidden"], alignContent: [edge, edge], ...held },
+          { duration: FLIP_MS, easing: FLIP_EASE },
+        ),
+      );
+    }
+    const enter = { duration: ENTER_MS, easing: FLIP_EASE } as const;
     for (const [child, rect] of now.children) {
       if (!(child instanceof HTMLElement)) continue;
       const old = was.children.get(child);
       if (old === undefined) {
-        running.current.push(child.animate({ opacity: [0, 1] }, timing));
+        const from = entranceOffset(rect, now.box);
+        running.current.push(child.animate({ opacity: [0, 1], transform: [`translateX(${from}px)`, "translateX(0)"] }, enter));
         continue;
       }
-      const move = invertOffset(old, rect);
-      if (move === null) continue;
-      running.current.push(child.animate({ transform: [`translate(${move.x}px, ${move.y}px)`, "translate(0, 0)"] }, timing));
+      if (!grows) continue;
+      const x = invertOffset(old, rect);
+      if (x === null) continue;
+      running.current.push(child.animate({ transform: [`translateX(${x}px)`, "translateX(0)"] }, enter));
     }
-  }, [key, container]);
+  }, [key, container, grows]);
 
   useLayoutEffect(
     () => () => {

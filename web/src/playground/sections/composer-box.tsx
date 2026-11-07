@@ -27,7 +27,7 @@ export const DEF: SectionDef = {
   id: "composer-box",
   title: "Composer box",
   intent:
-    "The reply box in its second layout. At rest it is one slim row: Attach at the left, the field, and the microphone as the main button, and a tap that only brings the caret stays one row. It opens upward when there is text, a chip or Type mode: the field takes the full width, one line tall to start, and the buttons take a row of their own: Attach still at the left, the small microphone and Send, the main button, at the right. The change glides in about 200 ms, and empties back to one row when the draft is cleared. The belt above does not change. Each card is the real composer on a Claude pane, with layout set to box.",
+    "The reply box in its second layout. At rest it is one slim row: Attach at the left, the field, and the microphone as the main button, and a tap that only brings the caret stays one row. It opens upward when there is text, a chip or Type mode: the field takes the full width, one line tall to start, and the buttons take a row of their own: Attach still at the left, the small microphone and Send, the main button, at the right. The box grows in about 200 ms, nothing in it moves up or down, and a button that appears slides in sideways from its own edge, and empties back to one row when the draft is cleared. The belt above does not change. Each card is the real composer on a Claude pane, with layout set to box.",
 };
 
 const PREFS = {
@@ -101,7 +101,7 @@ const CASES: readonly CaseDef[] = [
     n: 2,
     title: "Focused, still empty",
     reach: "tap the box. Type a letter to open it, then delete it to close it again.",
-    note: "Focused and empty it stays one row, with the caret in the field: nothing to write yet, so no room is taken. This is the card to try the glide on: type a letter and the box grows upward, Attach staying at the left and the main button gliding to the bottom row; delete it and they glide back. The card focuses the field once it has mounted; if you tapped elsewhere, tap the box.",
+    note: "Focused and empty it stays one row, with the caret in the field: nothing to write yet, so no room is taken. This is the card to try the glide on: type a letter and the box grows upward: Attach and the main button stay where they stand, and the small microphone slides in from the right. Delete it and the box shrinks back. The card focuses the field once it has mounted; if you tapped elsewhere, tap the box.",
     surface: IDLE,
     focused: true,
   },

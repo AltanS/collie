@@ -237,7 +237,15 @@ describe("Composer layout=box", () => {
   });
 
   describe("the change of shape is played", () => {
-    const animate = vi.fn(() => ({ cancel: vi.fn() }));
+    // Typed like `Element.animate`, so each recorded call carries its keyframes and timing as such.
+    const animate = vi.fn((_frames: PropertyIndexedKeyframes, _timing: KeyframeAnimationOptions) => ({ cancel: vi.fn() }));
+    /** Every transform keyframe the composer asked for, as written. */
+    const transforms = (): string[] =>
+      animate.mock.calls.flatMap(([frames]) => {
+        const value = frames.transform;
+        if (value === undefined || value === null) return [];
+        return (Array.isArray(value) ? value : [value]).map(String);
+      });
     beforeEach(() => {
       animate.mockClear();
       Object.defineProperty(HTMLElement.prototype, "animate", { value: animate, configurable: true, writable: true });
@@ -254,9 +262,21 @@ describe("Composer layout=box", () => {
       await user.click(field());
       expect(animate).not.toHaveBeenCalled();
       await user.type(field(), "a");
-      // The ghost microphone is new in the open shape and fades in (jsdom measures every rect as
-      // zero, so no move is played; the geometry is covered in hooks/use-flip.test.ts).
+      // The ghost microphone and Send are new in the open shape and slide in (jsdom measures every
+      // rect as zero, so no move is played; the geometry is covered in hooks/use-flip.test.ts).
       expect(animate).toHaveBeenCalled();
+    });
+
+    it("moves the buttons along the x-axis only, never up or down", async () => {
+      const user = userEvent.setup();
+      renderComposer({ layout: "box" });
+      await readyBox();
+      await user.type(field(), "a");
+      // The small microphone slides in sideways (Altan, 2026-11-07: the buttons looked as if they
+      // bounced down from the top).
+      expect(transforms().length).toBeGreaterThan(0);
+      for (const transform of transforms()) expect(transform).toMatch(/^translateX\(-?[\d.]+px\)$|^translateX\(0\)$/);
+      for (const [, timing] of animate.mock.calls) expect(timing.duration).toBeLessThanOrEqual(200);
     });
 
     it("plays nothing under prefers-reduced-motion", async () => {
@@ -268,12 +288,16 @@ describe("Composer layout=box", () => {
       expect(animate).not.toHaveBeenCalled();
     });
 
-    it("plays nothing in the field layout", async () => {
+    it("plays only the sideways entrance in the field layout: no height, no row", async () => {
       const user = userEvent.setup();
       renderComposer();
       await readyBox();
       await user.type(field(), "a");
-      expect(animate).not.toHaveBeenCalled();
+      // Send takes the microphone's place and the small microphone appears beside it: both slide in.
+      expect(animate).toHaveBeenCalled();
+      for (const [frames] of animate.mock.calls) expect(frames).not.toHaveProperty("height");
+      expect(transforms().length).toBeGreaterThan(0);
+      for (const transform of transforms()) expect(transform).toMatch(/^translateX/);
     });
   });
 });

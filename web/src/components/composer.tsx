@@ -2437,9 +2437,13 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // control, and the field is the control. The press is held back from the browser's focus move so a
   // field that already has focus keeps it (a blur here would close an empty box for one frame).
   const boxRef = useRef<HTMLDivElement>(null);
-  // The change of shape glides (hooks/use-flip.ts): the box's height, and each button from its old
-  // cell to its new one. Nothing is played in the field layout, which has one shape.
-  useFlip(boxRef, boxOpen, box);
+  // The change of shape is played (hooks/use-flip.ts): the box's height, with every row held still,
+  // and a button that appears slides in sideways from its own edge, never from above (Altan,
+  // 2026-11-07). The key changes with the shape and with the set of buttons, never per keystroke. The
+  // field layout has one shape, so there only the entrances play: Send taking the microphone's place
+  // and the small microphone beside it.
+  const flipKey = `${boxOpen ? "open" : "rest"}:${micIsPrimary ? "mic" : "send"}:${draftMicShown ? "draft-mic" : ""}`;
+  useFlip(boxRef, flipKey, { enabled: true, grows: box });
   useEffect(() => {
     const el = boxRef.current;
     if (!box || el === null) return;

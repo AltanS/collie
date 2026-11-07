@@ -26,6 +26,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 ### Changed
 
 - **The composer's plus is back at the left of the box.** At rest the box reads Attach, the field and the main button; open, Attach keeps the left of the button row and the small microphone and Send stand at the right. Under the left hand it mirrors, and the attach picker opens from Attach's own edge again. The one-line open box, the 6px padding and the 36px circles stay.
+- **The composer's buttons appear sideways, and nothing drops from above.** When the box opens it still grows upward, but no button moves up or down: the row they stand on holds still, and a button that appears, such as the small microphone, slides in from its own edge and fades in over 150 ms. The classic field layout plays the same sideways entrance. With reduced motion on, nothing moves.
 
 ## [1.28.0] - 2026-11-06
 
