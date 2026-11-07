@@ -367,6 +367,9 @@ export function forwardAuditAction(route: string, method?: string): string | nul
   if (route.startsWith("space/")) return "space.rename";
   // The member writes the same name for the switch (bridge/server.ts `walkyOffRoute`).
   if (route === "walky/off") return "walky.off";
+  // The member writes `send-cancel` for the Cancel or Dismiss on a queued row (bridge/server.ts
+  // `heldCancelRoute`, issue 740), so the lead's line names the same act. Only a DELETE is one.
+  if (/^pane\/[^/]+\/held$/.test(route)) return method === undefined || method === "DELETE" ? "send-cancel" : null;
   const action = route.split("/")[2];
   if (isPaneRead(action)) return null; // reads, and a read is audited on neither side
   // close, rename and focus namespace themselves on the peer's own handler; the rest stay bare.

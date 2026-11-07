@@ -711,6 +711,15 @@ export function isTopologyWrite(pathname: string, method: string): boolean {
   return action === "close" || action === "rename";
 }
 
+/**
+ * Is this request the Cancel or Dismiss on a queued row, by the pane it sits on (`DELETE
+ * /api/pane/:id/held?request=<id>`, issue 740)? Only a DELETE is: a GET or a POST at `held` is no cancel
+ * and falls to the pane block's 405, so nothing but the person's tap ends a held send.
+ */
+export function isHeldCancel(pathname: string, method: string): boolean {
+  return method === "DELETE" && pathname.match(PANE_ROUTE)?.[2] === "held";
+}
+
 /** Answer `res`, and when it landed, tell `engine` an input was written (§ isPaneInput). */
 export function afterPaneInput(engine: Pick<StateEngine, "noteInput">, res: Response): Response {
   if (res.ok) engine.noteInput();
@@ -2421,7 +2430,7 @@ export function startServer(opts: {
       // `DELETE /api/pane/:id/held?request=<id>`: the Cancel or Dismiss on a queued row, by the pane it
       // sits on, so the crew link carries it to the member that holds the row (issue 740). The same
       // answer as `DELETE /api/send/<id>?pane=<id>`, which stays for this collie's own panes.
-      if (action === "held" && req.method === "DELETE") {
+      if (isHeldCancel(pathname, req.method)) {
         return heldCancelRoute(rt, url.searchParams.get("request") ?? "", paneId, { audit: audit_, device, acceptEncoding: req.headers.get("accept-encoding") });
       }
       if (action === "changes" && req.method === "GET") return paneChanges(rt.engine, paneId, url, req, homedir(), cfg.redact);

@@ -293,8 +293,13 @@ describe("which routes cross a link", () => {
     expect(paneActions).toEqual([
       "abort", "action", "answer", "changes", "chat", "clear", "close", "files", "focus", "held", "history", "keys", "pins", "rename", "reply", "send", "upload",
     ]);
-    // The Cancel or Dismiss on a member's queued row changes that member's hold queue: a write.
+    // The Cancel or Dismiss on a member's queued row changes that member's hold queue: a write, audited on
+    // the lead under the member's own name for the act (issue 740).
     expect(forwardKind("pane/x/held", "DELETE")).toBe("write");
+    expect(forwardAuditAction("pane/x/held", "DELETE")).toBe("send-cancel");
+    expect(forwardAuditAction("pane/x/held", "GET")).toBeNull();
+    expect(apiPathFor("pane/x/held")).toBe("/api/pane/x/held");
+    expect(crewRouteFor("/api/pane/x/held/req00001")).toBeNull();
     for (const action of paneActions) expect(crewRouteFor(`/api/pane/x/${action}`)).toBe(`pane/x/${action}`);
     const tabActions = tab.match(alternation)![1]!.split("|").toSorted();
     expect(tabActions).toEqual(["close", "rename"]);
