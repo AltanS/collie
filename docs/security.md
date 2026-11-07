@@ -141,6 +141,7 @@ bridge is out of reach. Every item below has a size bound and a lifetime.
 | Pairing token | localStorage | until unpair, revoke or expiry | deleted |
 | Settings: theme, language, pins | localStorage | until you change them | kept |
 | Unsent drafts | localStorage | 48 hours | deleted |
+| A theme you are trying | sessionStorage | until Keep, Back or the tab closes | kept |
 | Push endpoint | localStorage | until it changes | deleted |
 | App shell | Cache Storage | until the next build | kept |
 | Fonts and push titles | Cache Storage | until replaced | deleted |

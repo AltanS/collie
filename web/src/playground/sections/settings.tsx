@@ -309,7 +309,7 @@ function useStagedRegistry(): void {
 
 function ThemeBrowseDemo() {
   useStagedRegistry();
-  return <ThemeBrowseSheet open onClose={() => {}} onInstall={() => {}} />;
+  return <ThemeBrowseSheet open onClose={() => {}} onInstall={() => {}} onTry={() => {}} />;
 }
 
 /** The real card over a library that holds one imported theme, put there for as long as the card is mounted. */

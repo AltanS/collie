@@ -119,6 +119,12 @@ export const en = {
   "theme.browse.install": "Install",
   "theme.browse.report": "Report",
   "theme.browse.reportAria": "Report {name} on GitHub",
+  // Try a theme (M59 spec 08). English only until the translation pass, like the browse keys.
+  "theme.trial.try": "Try",
+  "theme.trial.trying": "Trying {name}",
+  "theme.trial.keep": "Keep",
+  "theme.trial.back": "Back",
+  "theme.trial.region": "Theme trial",
   "theme.refusal.size": "This file is too big for a theme.",
   "theme.refusal.json": "This file is not a JSON object.",
   "theme.refusal.version": "This file uses a theme version this Collie does not read.",
@@ -3240,6 +3246,11 @@ export const PENDING_TRANSLATION = [
   "theme.browse.install",
   "theme.browse.report",
   "theme.browse.reportAria",
+  "theme.trial.try",
+  "theme.trial.trying",
+  "theme.trial.keep",
+  "theme.trial.back",
+  "theme.trial.region",
 ] as const satisfies readonly MessageKey[];
 
 /** A key a bundle may leave out until the translation pass. */

@@ -190,6 +190,16 @@ export function addImported(theme: Theme): AddResult {
 }
 
 /**
+ * Keep a theme and switch to it: the one path an import's Apply and a trial's Keep both take
+ * (M59 spec 08), so the cap, the shipped-id rule and the duplicate check cannot differ between them.
+ */
+export function installTheme(theme: Theme): AddResult {
+  const added = addImported(theme);
+  if (added.ok) setActiveTheme(theme.id);
+  return added;
+}
+
+/**
  * Delete an imported theme. When it is the one on screen, the device goes back to `collie` in the
  * same call. The typeface is left alone: removing a file is not a request to change the face.
  */

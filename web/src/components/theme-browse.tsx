@@ -42,6 +42,8 @@ interface BrowseSheetProps {
   onClose: () => void;
   /** Install: the card opens its preview sheet over this theme. */
   onInstall: (theme: Theme) => void;
+  /** Try: the card starts a trial of this theme (M59 spec 08). Absent draws no Try button. */
+  onTry?: (theme: Theme) => void;
 }
 
 /** The entries of a status the phone accepts, in the registry's own order. */
@@ -52,7 +54,13 @@ export function acceptedThemes(status: ThemeRegistryStatus): RegistryTheme[] {
   });
 }
 
-function ThemeRow({ item, onInstall }: { item: RegistryTheme; onInstall: (theme: Theme) => void }) {
+interface RowProps {
+  item: RegistryTheme;
+  onInstall: (theme: Theme) => void;
+  onTry?: (theme: Theme) => void;
+}
+
+function ThemeRow({ item, onInstall, onTry }: RowProps) {
   const { entry, theme } = item;
   return (
     <li className="flex flex-col gap-2 rounded-md border border-border p-3">
@@ -85,9 +93,16 @@ function ThemeRow({ item, onInstall }: { item: RegistryTheme; onInstall: (theme:
           {t("theme.browse.report")}
         </a>
       </div>
-      <Button type="button" className="h-11" onClick={() => onInstall(theme)}>
-        {t("theme.browse.install")}
-      </Button>
+      <div className={onTry === undefined ? "grid grid-cols-1 gap-2" : "grid grid-cols-2 gap-2"}>
+        {onTry !== undefined && (
+          <Button type="button" variant="outline" className="h-11" onClick={() => onTry(theme)}>
+            {t("theme.trial.try")}
+          </Button>
+        )}
+        <Button type="button" className="h-11" onClick={() => onInstall(theme)}>
+          {t("theme.browse.install")}
+        </Button>
+      </div>
     </li>
   );
 }
@@ -98,7 +113,7 @@ function ageLine(status: ThemeRegistryStatus): string {
   return t("theme.browse.age", { age: timeAgo(Date.now() - status.ageMs) });
 }
 
-export function ThemeBrowseSheet({ open, onClose, onInstall }: BrowseSheetProps) {
+export function ThemeBrowseSheet({ open, onClose, onInstall, onTry }: BrowseSheetProps) {
   useLocale();
   const [state, setState] = useState<BrowseState>({ kind: "loading" });
   const [refreshing, setRefreshing] = useState(false);
@@ -192,7 +207,7 @@ export function ThemeBrowseSheet({ open, onClose, onInstall }: BrowseSheetProps)
           {items.length > 0 && (
             <ul className="flex flex-col gap-3">
               {items.map((item) => (
-                <ThemeRow key={`${item.entry.repo}/${item.entry.path}`} item={item} onInstall={onInstall} />
+                <ThemeRow key={`${item.entry.repo}/${item.entry.path}`} item={item} onInstall={onInstall} onTry={onTry} />
               ))}
             </ul>
           )}

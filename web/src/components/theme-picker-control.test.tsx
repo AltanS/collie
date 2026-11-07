@@ -679,4 +679,32 @@ describe("ThemePickerControl", () => {
       expect(dialog).toHaveTextContent("You already hold 8 imported themes.");
     });
   });
+
+  describe("try a theme (M59 spec 08)", () => {
+    it("Try on the preview wears the theme, keeps nothing, and closes the sheet", async () => {
+      sessionStorage.clear();
+      const { ThemePickerControl, store } = await load();
+      const trial = await import("@/lib/theme/trial");
+      const { container } = render(<ThemePickerControl />);
+      pick(container, fileOf(JSON.stringify(copy("tried", "Tried", (theme) => (theme.dark = { ...theme.dark, background: "#123456" })))));
+      const preview = await screen.findByRole("dialog", { name: "Import this theme?" });
+      await userEvent.click(within(preview).getByRole("button", { name: "Try" }));
+      await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+      expect(trial.currentTrial()?.theme.id).toBe("tried");
+      expect(store.library()).toEqual([]);
+      expect(store.activeThemeId()).toBe("collie");
+      expect(document.documentElement.style.getPropertyValue("--background")).toContain("#123456");
+    });
+
+    it("a pick in the Theme row ends the trial", async () => {
+      sessionStorage.clear();
+      const { ThemePickerControl, store } = await load();
+      const trial = await import("@/lib/theme/trial");
+      render(<ThemePickerControl />);
+      act(() => void trial.startTrial(copy("tried", "Tried")));
+      await userEvent.selectOptions(screen.getByRole("combobox", { name: "Theme" }), "Harbour");
+      expect(trial.currentTrial()).toBeNull();
+      expect(store.activeThemeId()).toBe("harbour");
+    });
+  });
 });

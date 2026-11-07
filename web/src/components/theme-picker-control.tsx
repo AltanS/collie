@@ -24,7 +24,7 @@ import {
 import {
   LIBRARY_MAX,
   THEME_MAX_BYTES,
-  addImported,
+  installTheme,
   removeImported,
   setActiveTheme,
   shippedThemes,
@@ -40,6 +40,7 @@ import {
 } from "@/lib/theme/surface";
 import { CONTRAST_FAIL_KEY, HALF_KEYS, REFUSAL_KEYS, isMoreLine } from "@/lib/theme/report-words";
 import { ThemeBrowseSheet } from "@/components/theme-browse";
+import { dropTrial, startTrial } from "@/lib/theme/trial";
 import { PageSample, collieTheme, displayOf, styleOf } from "@/components/theme-page-sample";
 
 // The Theme card (M57): which colour theme this device wears, and the way in and out for a theme
@@ -124,6 +125,8 @@ interface PreviewSheetProps {
   theme: Theme | null;
   onApply: () => void;
   onCancel: () => void;
+  /** Try: wear the theme without keeping it (M59 spec 08). Absent draws no Try button. */
+  onTry?: () => void;
 }
 
 /**
@@ -252,7 +255,7 @@ function failureText(finding: Finding): string {
  * file carries, a swatch row per half, the shape drawn and in words, and the contrast report. A failed floor WARNS and Apply stays
  * on; only a refusal, which never reaches this sheet, stops an import.
  */
-export function ThemePreviewSheet({ theme, onApply, onCancel }: PreviewSheetProps) {
+export function ThemePreviewSheet({ theme, onApply, onCancel, onTry }: PreviewSheetProps) {
   useLocale();
   const findings = theme === null ? [] : contrastReport(theme, collieTheme());
   const failing = findings.filter((finding) => !finding.pass);
@@ -305,7 +308,12 @@ export function ThemePreviewSheet({ theme, onApply, onCancel }: PreviewSheetProp
             )}
           </div>
 
-          <div className="grid grid-cols-2 gap-2">
+          <div className={onTry === undefined ? "grid grid-cols-2 gap-2" : "grid grid-cols-3 gap-2"}>
+            {onTry !== undefined && (
+              <Button type="button" variant="outline" className="h-11" onClick={onTry}>
+                {t("theme.trial.try")}
+              </Button>
+            )}
             <Button type="button" className="h-11" onClick={onApply}>
               {t("theme.preview.apply")}
             </Button>
@@ -461,6 +469,12 @@ function libraryEntry(reason: "full" | "duplicate" | "invalid"): RefusalEntry {
   return { headline: t(LIBRARY_REFUSALS[reason], { count: LIBRARY_MAX }), tone: "danger" };
 }
 
+/** A pick in the card puts a theme on itself, so a running trial ends without re-applying anything. */
+function pickTheme(id: string): void {
+  dropTrial();
+  setActiveTheme(id);
+}
+
 /** Settings card: pick a theme, browse the community list, import one from a file or pasted text, export or remove the one on screen. */
 export function ThemePickerControl() {
   useLocale();
@@ -530,9 +544,16 @@ export function ThemePickerControl() {
     setPreview(parsed.theme);
   }
 
+  /** Try: wear the theme across the app with the ribbon, and close whichever sheet offered it. */
+  function tryTheme(theme: Theme) {
+    setPreview(null);
+    setBrowsing(false);
+    startTrial(theme);
+  }
+
   function apply() {
     if (preview === null) return;
-    const added = addImported(preview);
+    const added = installTheme(preview);
     if (!added.ok) {
       setPreview(null);
       setRefused([
@@ -542,7 +563,7 @@ export function ThemePickerControl() {
       ]);
       return;
     }
-    setActiveTheme(preview.id);
+    dropTrial();
     setPreview(null);
   }
 
@@ -578,7 +599,7 @@ export function ThemePickerControl() {
             <select
               id="pref-theme"
               value={active.id}
-              onChange={(event) => setActiveTheme(event.target.value)}
+              onChange={(event) => pickTheme(event.target.value)}
               className="min-h-11 max-w-[60vw] appearance-none truncate rounded-md border border-border/60 bg-background py-2 pl-3 pr-9 text-sm font-medium text-foreground"
             >
               {all.map((theme) => (
@@ -613,7 +634,10 @@ export function ThemePickerControl() {
           variant="outline"
           className="h-11"
           disabled={active.source !== "imported"}
-          onClick={() => removeImported(active.id)}
+          onClick={() => {
+            dropTrial();
+            removeImported(active.id);
+          }}
         >
           {t("theme.remove")}
         </Button>
@@ -630,7 +654,7 @@ export function ThemePickerControl() {
         onChange={(event) => void onFile(event.target.files?.[0])}
       />
 
-      <ThemeBrowseSheet open={browsing} onClose={() => setBrowsing(false)} onInstall={installFromBrowse} />
+      <ThemeBrowseSheet open={browsing} onClose={() => setBrowsing(false)} onInstall={installFromBrowse} onTry={tryTheme} />
       <ThemePasteSheet
         open={pasting}
         value={pasted}
@@ -638,7 +662,7 @@ export function ThemePickerControl() {
         onRead={readPaste}
         onCancel={() => setPasting(false)}
       />
-      <ThemePreviewSheet theme={preview} onApply={apply} onCancel={() => setPreview(null)} />
+      <ThemePreviewSheet theme={preview} onApply={apply} onCancel={() => setPreview(null)} onTry={preview === null ? undefined : () => tryTheme(preview)} />
       <ThemeRefusalSheet entries={refused} onClose={() => setRefused(null)} />
       <BottomSheet open={exported !== null} onClose={() => setExported(null)} title={t("theme.export.title")}>
         {exported !== null && (

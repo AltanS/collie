@@ -8,6 +8,7 @@ import { onPreloadError } from "./lib/chunk-reload";
 import { designPrefs, initDesign, mathEngineOf } from "./lib/design";
 import { isMathLoadError, loadMathEngine } from "./lib/math/engine";
 import { initTheme } from "./lib/theme/store";
+import { resumeTrial } from "./lib/theme/trial";
 import { initOperatorFonts } from "./lib/operator-config";
 import "./index.css";
 // Registers the service worker (precaches the app shell, enables install) and wires auto/manual
@@ -31,6 +32,8 @@ void loadMathEngine(mathEngineOf(designPrefs()));
 // that script leaves out (the theme-color metas, a token an imported theme sets in one half only).
 // For the default theme it removes nothing and adds nothing.
 initTheme();
+// A theme being tried in this tab (M59 spec 08) goes back on after a reload, over the device's own.
+resumeTrial();
 // After it, and separately: this one injects the operator face design.ts mirrored into storage, so a
 // device set to one paints in it from the first frame instead of swapping when /api/config lands.
 initOperatorFonts();

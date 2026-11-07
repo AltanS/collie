@@ -113,6 +113,19 @@ Every theme is checked three times: by the site, by your host and by your phone.
 any check is left out, and the sheet counts how many were. **Report** opens a new issue on the collie
 repository with the theme's repository filled in. You read it and send it yourself.
 
+### Try a theme before you keep it
+
+Tap **Try** in the preview or on a row of **Browse community themes**, and the whole app wears the
+theme. A ribbon at the bottom edge says "Trying" and the theme's name. Tap **Keep** to keep it, the
+same as **Apply**, or **Back** to go back to your own theme.
+
+A trial keeps nothing. It stays on through a reload of the same tab, and a new tab or a new start of
+the app shows your own theme. A **Keep** that Collie refuses, for example a ninth imported theme,
+shows the reason in the ribbon, and the trial goes on. A pick in the **Theme** card ends the trial.
+
+The ribbon keeps its own colours and its own typeface whatever the theme sets, so **Back** is always
+there to tap. While it shows, the app ends above it and nothing hides under it.
+
 A **warning** is a contrast report line, such as "dark: status-blocked chip on card measures 3.9. The floor is
 4.5". It means the theme is hard to read in one place. **Apply** stays on, because the choice is yours.
 

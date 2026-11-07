@@ -3,6 +3,7 @@ import { RouterProvider } from "react-router";
 import { router } from "./router";
 import { BusyBar } from "@/components/busy-bar";
 import { IdleLock } from "@/components/idle-lock";
+import { ThemeTrialRibbon } from "@/components/theme-trial-ribbon";
 import { UpdateScreen } from "@/components/update-screen";
 import { UpdateScreenProvider, useUpdateScreenValue } from "@/components/update-screen-provider";
 import { useIdleLock } from "@/hooks/use-idle-lock";
@@ -54,6 +55,9 @@ function AppShell() {
       </div>
       {covered && <IdleLock onUnlock={unlock} catchingUp={catchingUp} />}
       <UpdateScreen screen={screen} />
+      {/* A theme being tried (M59 spec 08): outside the inert wrapper and over everything, so the way
+          back stands whatever covers the app and whatever the theme does to it. */}
+      <ThemeTrialRibbon />
     </>
   );
 }
