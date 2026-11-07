@@ -1,0 +1,61 @@
+ 
+  [0m[38;2;99;168;248m>_ [0m[1mOpenAI Codex[0m[2m (v0.167.0)[0m
+     [0m[2m/tmp/collie-codex-lab[0m
+ 
+[0m[48;2;55;55;55m                                                                                                                         [0m
+[0m[1m[2m[48;2;55;55;55m› [0m[48;2;55;55;55mRun ls, then cat calc.py, then reply with one short sentence about what calc.py does.                                  [0m
+[0m[48;2;55;55;55m                                                                                                                         [0m
+ 
+[0m[2m• [0mI’ll inspect the directory listing and then read [0m[38;2;166;227;161mcalc.py[0m.
+ 
+[0m[2m• [0m[1mExplored[0m
+[0m[2m  └ [0m[38;2;99;168;248mList [0mls
+    [0m[38;2;99;168;248mRead[0m calc.py
+[0m[2m    + Show details                                                                                                       [0m
+ 
+[0m[2m• [0m[38;2;166;227;161mcalc.py [0mdefines an [0m[38;2;166;227;161madd(a, b) [0mfunction that returns the sum of its two arguments.
+ 
+[0m[2m  Worked for 4s • 11:00 PM                                                                                               [0m
+ 
+[0m[48;2;55;55;55m                                                                                                                         [0m
+[0m[1m[2m[48;2;55;55;55m› [0m[48;2;55;55;55mRun the shell command: sleep 6 && echo done. Then run: curl -sI https://example.com | head -1. Then reply in one       [0m
+[0m[48;2;55;55;55m  sentence.                                                                                                              [0m
+[0m[48;2;55;55;55m                                                                                                                         [0m
+ 
+[0m[2m• [0mI’ll run the requested commands in order.
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+[0m[1m[38;2;191;191;191m• [0m[38;2;104;104;104mWorking [0m[2m(4s • [0m[1m[38;2;191;191;191mesc[0m[2m to interrupt) · 1 background terminal running · /ps to view · /stop to close[0m
+ 
+[0m[48;2;46;46;46m                                                                                                                         [0m
+[0m[1m[48;2;46;46;46m›[0m[48;2;46;46;46m [0m[2m[48;2;46;46;46mAsk Codex to do anything[0m[48;2;46;46;46m                                                                                               [0m
+[0m[48;2;46;46;46m                                                                                                                         [0m
+  [0m[38;2;246;226;183mGPT-6-Luna low[0m[38;2;125;125;125m · [0m[38;2;171;223;167m/tmp/collie-codex-lab[0m[38;2;125;125;125m · [0m[38;2;180;190;254mInspect calc.py[0m
+  [0m[1m[38;2;191;191;191m←[0m[38;2;125;125;125m for agents · [0m[1m[38;2;191;191;191m?[0m[38;2;125;125;125m for shortcuts[0m
