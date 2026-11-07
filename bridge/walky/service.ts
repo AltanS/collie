@@ -126,9 +126,14 @@ function entryOf(message: WalkyMessage, receipt: WalkyReceipt): WalkyEntry {
   return { ...message, receipt };
 }
 
+/** How many audited sibling rows the service remembers before it starts over (one more audit line each). */
+const MERGED_SEEN_MAX = 4096;
+
 export class WalkyService {
   readonly deliverer: WalkyDeliverer;
   private readonly now: () => number;
+  /** The sibling rows already audited, as session, pane id and message id ({@link newSiblingRows}). */
+  private readonly mergedSeen = new Set<string>();
 
   constructor(private readonly deps: WalkyServiceDeps) {
     this.deliverer = new WalkyDeliverer(deps);
@@ -305,6 +310,19 @@ export class WalkyService {
    */
   paneList(session: string, paneId: string, instance: string, limit: number): WalkyEntry[] {
     return this.deps.log.forPane(session, paneId, instance, limit, true);
+  }
+
+  /**
+   * The rows of a pane's list that a sibling instance recorded (siblings.ts) and no earlier list of
+   * that pane held: what the route writes its one audit line about. A pane polls its list every few
+   * seconds, so a line for every answer that merged a row would fill the audit log with reads and
+   * rotate the writes out of it; one per newly merged row set keeps the trail.
+   */
+  newSiblingRows(session: string, paneId: string, entries: readonly WalkyEntry[]): WalkyEntry[] {
+    const fresh = entries.filter((entry) => entry.recordedBy !== undefined && !this.mergedSeen.has(`${session}\u0000${paneId}\u0000${entry.id}`));
+    if (this.mergedSeen.size + fresh.length > MERGED_SEEN_MAX) this.mergedSeen.clear();
+    for (const entry of fresh) this.mergedSeen.add(`${session}\u0000${paneId}\u0000${entry.id}`);
+    return fresh;
   }
 
   /**

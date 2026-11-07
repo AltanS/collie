@@ -3,6 +3,7 @@ import { mkdir, readFile as readFileAsync, realpath as realpathAsync, stat as st
 import { cpus, freemem, homedir, hostname, loadavg, totalmem } from "node:os";
 import { join } from "node:path";
 
+import { liveHookTargets } from "../cli/beacon.ts";
 import { classifyInstall, probeInstall } from "../cli/install-kind.ts";
 import { realLinkFs } from "../cli/link.ts";
 import { packageCommand } from "../cli/package-command.ts";
@@ -296,6 +297,7 @@ import { WalkyLog } from "./walky/log.ts";
 import { RefusalCounter } from "./walky/refusals.ts";
 import { WalkySeen } from "./walky/seen.ts";
 import { WalkyService } from "./walky/service.ts";
+import { siblingDirsOf, SiblingLogs } from "./walky/siblings.ts";
 import { walkySocketPath, WalkyServer } from "./walky/socket.ts";
 
 // How often the registry rescans the filesystem for sessions that appeared/disappeared after boot.
@@ -2011,7 +2013,12 @@ const walkyHost: WalkyHost = {
   },
 };
 const walkyMemberId = crew.mode === "solo" ? null : (trustStore.current()?.self.memberId ?? null);
-const walkyLog = new WalkyLog(join(cfg.stateDir, "walky"));
+// A sibling instance on this machine (siblings.ts) may have recorded a message typed into a pane both
+// bridges watch: the pane's list merges its rows, read-only, off the hook target registry's live bridges.
+const walkySiblings = new SiblingLogs({
+  dirs: () => siblingDirsOf(liveHookTargets({ ctx: { env: process.env, home: homedir() }, files: realFiles, uid: process.getuid?.() }), cfg.stateDir, (path) => realFiles.realpath(path)),
+});
+const walkyLog = new WalkyLog(join(cfg.stateDir, "walky"), Date.now, walkySiblings);
 // A pane instance that went takes its inbox with it: a new session that takes the id starts empty.
 walkyInstances.onDrop((session, paneId, token) => walkyLog.inboxDrop(session, paneId, token));
 // Look at the panes every 10 seconds even when no message asks, so a closed pane is dropped on time.

@@ -6,8 +6,9 @@ import { join } from "node:path";
 import { AuditLog } from "../audit.ts";
 import { walkyCancelRoute, walkyDropRoute, walkyOlderMemberAnswer, walkyPaneRoute, walkyPostRoute, walkyWhoRoute, WALKY_OFF_TEXT, WALKY_OLDER_MEMBER_TEXT } from "../server.ts";
 import type { SendResult, WalkyHost, WalkyPane } from "./deliver.ts";
-import { WalkyLog } from "./log.ts";
+import { WalkyLog, type SiblingSource } from "./log.ts";
 import { WalkyService } from "./service.ts";
+import type { WalkyEntry } from "./types.ts";
 
 const roots: string[] = [];
 afterEach(() => {
@@ -145,6 +146,44 @@ describe("the reads", () => {
     });
     expect(walky.inbox("main", "w1:p1", "aaaa", true).map((entry) => entry.id)).toEqual(["wt_aaaaaaaaaaa2"]);
     expect(walky.inbox("main", "w1:p1", "aaaa", false).map((entry) => entry.id)).not.toContain("wt_aaaaaaaaaaa1");
+  });
+
+  test("a pane's list merges a row a sibling instance recorded, and audits it once, never its body", async () => {
+    const root = mkdtempSync(join(tmpdir(), "walky-routes-"));
+    roots.push(root);
+    const sibling: WalkyEntry = {
+      v: 1,
+      id: "wt_aaaaaaaaaaa9",
+      kind: "agent",
+      from: { memberId: "crew-other", address: "crew-other/w1:p2#zzzz", harness: "agent-y", label: "repo#b" },
+      to: "crew-other/w1:p1#yyyy",
+      replyTo: null,
+      at: 5,
+      body: "sibling words",
+      signer: null,
+      signature: null,
+      receipt: { id: "wt_aaaaaaaaaaa9", target: "crew-other/w1:p1", state: "delivered", verified: "local", at: 5, by: "crew-other" },
+      recordedBy: "collie",
+      recordedAs: "crew-other/w1:p1",
+    };
+    const siblings: SiblingSource = { forPane: (session, paneId) => (session === "main" && paneId === "w1:p1" ? [{ entry: sibling, acceptedAt: 5 }] : []) };
+    const walky = new WalkyService({ log: new WalkyLog(join(root, "walky"), Date.now, siblings), host, memberId: null, enabled: () => true, machine: "desk", keyPem: () => null });
+    await walky.send({ id: "wt_aaaaaaaaaaa1", to: "local/w1:p1", body: "one", replyTo: null }, { kind: "operator", label: "cli" });
+    await walky.deliverer.settled();
+    const audit: string[] = [];
+    expect(await walkyPaneRoute(walky, "main", "w1:p1", null, null, context(audit)).json()).toMatchObject({
+      messages: [{ id: "wt_aaaaaaaaaaa1" }, { id: "wt_aaaaaaaaaaa9", recordedBy: "collie", receipt: { state: "delivered" } }],
+    });
+    expect(audit).toHaveLength(1);
+    expect(audit[0]).toContain("walky.list.sibling");
+    expect(audit[0]).toContain('"merged":1');
+    expect(audit[0]).not.toContain("sibling words");
+    // The next poll merges the same row: no second line.
+    await walkyPaneRoute(walky, "main", "w1:p1", null, null, context(audit)).json();
+    expect(audit).toHaveLength(1);
+    // A list with no sibling row writes nothing.
+    await walkyPaneRoute(walky, "main", "w1:p2", null, null, context(audit)).json();
+    expect(audit).toHaveLength(1);
   });
 
   test("a bad pane id or limit is a 400", () => {

@@ -480,6 +480,12 @@ const NOTIFICATION_TYPE = /^[a-z_]{1,64}$/u;
 export type EdgeTargetDeps = Pick<BeaconEmitDeps, "ctx" | "files" | "uid" | "pidProbe">;
 
 /**
+ * What {@link liveHookTargets} alone reads: where the registry is, the disk and the pid probe. Narrower
+ * than {@link EdgeTargetDeps}, so the bridge can walk the registry too (bridge/walky/siblings.ts).
+ */
+export type HookTargetsDeps = Omit<EdgeTargetDeps, "ctx"> & { readonly ctx: Pick<CliContext, "env" | "home"> };
+
+/**
  * Write one edge file into a state dir's spool (M56 spec 11): a temp name, then a rename, so the
  * bridge never reads half of one. A spool at {@link EDGE_SPOOL_MAX} files first loses its edges older
  * than {@link EDGE_MAX_AGE_MS}, which no bridge would take anyway; still full, it takes nothing more,
@@ -550,7 +556,7 @@ export function edgeStateDirs(deps: EdgeTargetDeps): string[] {
  * dead or reused pid's file is deleted. Read by the emitter ({@link edgeStateDirs}) and by `collie
  * mux list`, so both agree on what "live" means. A registry folder that is not private reads as empty.
  */
-export function liveHookTargets(deps: EdgeTargetDeps): HookTargetRecord[] {
+export function liveHookTargets(deps: HookTargetsDeps): HookTargetRecord[] {
   const live: HookTargetRecord[] = [];
   const registry = hookTargetsDir(deps.ctx.env, deps.ctx.home);
   if (!privateDir(deps, registry)) return live;
