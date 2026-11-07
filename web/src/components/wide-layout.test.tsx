@@ -290,9 +290,9 @@ describe("the sidebar", () => {
     expect(list.className).toMatch(/(^|\s)relative(\s|$)/);
   });
 
-  it("is 280 px wide at medium", async () => {
+  it("is 264 px wide at medium", async () => {
     const { container } = await mount("w1:p1", 700);
-    expect(q(container, "aside")?.style.width).toBe("280px");
+    expect(q(container, "aside")?.style.width).toBe("264px");
   });
 
   it("closes to a rail of icons with status marks, remembered on this device", async () => {
@@ -489,7 +489,7 @@ describe("width", () => {
   });
 
   it("out of wide mode every column is full width and there is no width button", async () => {
-    // 700 less the 280 sidebar leaves 420, under two panes of 360.
+    // 700 less the 264 sidebar leaves 436, under two panes at the minimum width.
     const { container } = await mount("w1:p1", 700);
     await openBesideFromSidebar(container, A2);
     for (const col of columns(container)) {

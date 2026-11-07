@@ -269,6 +269,22 @@ test("at the medium tier a long space name still leaves the tabs and their + in 
   await expect(page.locator('[data-slot="space-title"]')).toContainText("decision");
 });
 
+// THE MEDIUM SIDEBAR GIVES THE CHAT MORE ROOM (1.27.2). At 280 it took 40% of a 705px two-screen phone
+// and left the chat 425px; at 264 the chat is 441px, and every tap in the sidebar keeps its 44px.
+test("at the medium tier the sidebar is 264px and the chat takes the rest", async ({ page }) => {
+  await page.setViewportSize({ width: 705, height: 1000 });
+  await page.goto("/pane/w1:p1");
+  const aside = page.locator('[data-slot="wide-sidebar"]');
+  await expect(aside).toBeVisible();
+  expect(Math.round((await aside.boundingBox())!.width)).toBe(264);
+  const col = page.locator('[data-slot="wide-layout"] section[data-col-key]').first();
+  expect(Math.round((await col.boundingBox())!.width)).toBe(441);
+  for (const slot of ["sidebar-toggle", "new-space"]) {
+    const box = (await aside.locator(`[data-slot="${slot}"]`).boundingBox())!;
+    expect(box.height).toBeGreaterThanOrEqual(44);
+  }
+});
+
 // THE TAB ROW STEPS UP BY WIDTH CLASS (tab-strip.tsx § STEP). The phone keeps its 30px tab; the medium
 // tier draws 36px and the expanded tier 40px, fixed steps and never a scale. Measured on the viewports
 // this suite's projects use: the phone's 390x844, the tablet's 820x1180, and the tablet turned on its
