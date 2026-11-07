@@ -80,6 +80,20 @@ describe("/math/* is served from the store, else the build, else 404", () => {
     expect(res.status).toBe(404);
   });
 
+  test("a climbing path reaches neither pack.json nor anything above the root", async () => {
+    const { store } = fakeStore({ status: { state: "absent" }, root });
+    // As the bridge sees it: the URL parser has already folded the dot segments.
+    for (const raw of ["/math/%2e%2e/pack.json", "/math/katex/%2E%2E/%2e%2e/pack.json", "/math/katex/..%2fpack.json"]) {
+      const pathname = new URL(`http://collie.test${raw}`).pathname;
+      const served = mathServeRoot(store, pathname);
+      if (served === null) continue;
+      const res = await serveStatic(pathname, null, served);
+      expect(res.status, raw).not.toBe(200);
+    }
+    // And a raw path that skipped the parser is refused by the pack's own path rule.
+    expect(mathServeRoot(store, "/math/../pack.json")).toBeNull();
+  });
+
   test("no root, or a path with no extension, is a 404 before any file is looked at", () => {
     expect(mathServeRoot(fakeStore({ status: { state: "absent" } }).store, "/math/katex/katex-abc.js")).toBeNull();
     expect(mathServeRoot(fakeStore({ status: { state: "absent" }, root }).store, "/math/katex")).toBeNull();

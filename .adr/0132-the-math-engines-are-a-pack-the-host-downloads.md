@@ -62,14 +62,18 @@ the tests use.
 fetches nothing, not even the manifest. A boot, an update and a page load download nothing. One
 download runs at a time in the process; a second POST joins it.
 
-**6. The host checks before it keeps anything.** A declared size above 64 MB is refused before the
-body. The body streams to `<stateDir>/math/collie-math-<version>.<pid>.<seq>.part`, created exclusively
+**6. The host checks before it keeps anything.** The manifest is read up to 1 MB and no further. A
+declared size above 64 MB is refused before the body. The body streams to `<stateDir>/math/collie-math-<version>.<pid>.<seq>.part`, created exclusively
 at 0600, counted against both the 64 MB cap and the manifest's size, hashed as it arrives. A size or
 hash that is not the manifest's keeps nothing. Then the archive is read IN THE PROCESS, never by a
 spawned `tar`: Collie spawns no child for content (the security posture). Only regular files and
-folders are taken; every name must be under `math/`, with no `..`, no absolute path, no backslash and
-no empty segment; a link, a device or any other entry refuses the whole pack. The inflated size is
-capped at 64 MB and the entries at 4,096. The files go to `<stateDir>/math/<version>.tmp-<pid>-<seq>/`
+folders are taken; every name must be under `math/`, with no `..`, no absolute path, no backslash, no
+empty segment and no Windows device name (`con`, `nul`, `com1`, …), at most 255 bytes and 8 segments
+long; two names that differ only in case are refused, because they are one file on Windows and macOS;
+a link, a device or any other entry refuses the whole pack. A pax record is read on its bytes, as the
+format counts them. The archive inflates in one call that stops at the cap (64 MB of files and 4 MB
+for the headers), so a gzip bomb costs at most the cap and never leaves a stream waiting; the entries
+are capped at 4,096. The timeout covers the download, the inflate and the install. The files go to `<stateDir>/math/<version>.tmp-<pid>-<seq>/`
 (folders 0700, files 0600) with a `pack.json` naming the hash, the size and the fetch time, and that
 folder is renamed to `<stateDir>/math/<version>/` in one step. Other versions are then removed.
 
@@ -99,7 +103,10 @@ total once the download has it. After an update, the new version's pack is absen
 the operator's earlier tap is not taken as consent to fetch again. The old version's folder stays until
 the next download or a remove, so a rollback finds its own pack. There is no cross-process lock: the
 bridge is the only writer, there is no CLI verb, and each download writes a part file and a folder of
-its own pid and sequence.
+its own pid and sequence. Two bridges on one state dir stay out of each other's way: a part file or a
+half folder of another pid is left alone until it is older than the timeout (10 minutes), and swept
+after that at the start of the next download, which also sweeps this process's own leftovers from a
+crash. A download that finds its version already installed by the other bridge keeps that copy.
 
 ## Consequences
 

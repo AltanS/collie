@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -13,7 +13,7 @@ import {
   resetMathPackState,
 } from "./store.ts";
 import type { JsonObject } from "../json.ts";
-import { readPackTar } from "./tar.ts";
+import { MAX_PACK_ENTRIES, readPackTar } from "./tar.ts";
 
 /** Bytes on an ordinary buffer, which is what `Response`, `gzipSync` and `createHash` take. */
 type Bytes = Uint8Array<ArrayBuffer>;
@@ -26,6 +26,8 @@ interface TarEntry {
   type?: string;
   data?: string | Bytes;
   linkname?: string;
+  /** The ustar prefix field, joined to the name with a slash by a reader. */
+  prefix?: string;
 }
 
 function header(entry: TarEntry, size: number): Bytes {
@@ -42,6 +44,7 @@ function header(entry: TarEntry, size: number): Bytes {
   put(entry.linkname ?? "", 157, 100);
   put("ustar\0", 257, 6);
   put("00", 263, 2);
+  put(entry.prefix ?? "", 345, 155);
   let sum = 0;
   for (let i = 0; i < 512; i++) sum += i >= 148 && i < 156 ? 32 : block[i]!;
   put(`${sum.toString(8).padStart(6, "0")}\0 `, 148, 8);
@@ -308,8 +311,12 @@ describe("the download", () => {
 
   test("removes every other version once a new one is in", async () => {
     mkdirSync(join(mathPackDir(stateDir), "1.28.0", "math"), { recursive: true });
-    writeFileSync(join(mathPackDir(stateDir), "collie-math-1.28.0.tar.gz.1.1.part"), "x");
-    const s = store(fakeGithub({ pack: Bun.gzipSync(GOOD) }).fetch);
+    // A part file another process left long ago; a fresh one would be kept (see review round one).
+    const stale = join(mathPackDir(stateDir), "collie-math-1.28.0.1.1.part");
+    writeFileSync(stale, "x");
+    const old = new Date(Date.now() - 2 * 60 * 60 * 1000);
+    utimesSync(stale, old, old);
+    const s = store(fakeGithub({ pack: Bun.gzipSync(GOOD) }).fetch, { timeoutMs: 60 * 60 * 1000 });
     await s.start();
     await s.settled();
     expect(readdirSync(mathPackDir(stateDir))).toEqual([VERSION]);
@@ -425,5 +432,210 @@ describe("remove", () => {
     expect(await removed).toEqual({ state: "absent" });
     await s.settled();
     expect(tree(stateDir)).toEqual([]);
+  });
+});
+
+// ── Review round one (REVIEW-1.md): each case failed before its fix ─────────────────────────────
+
+/** A pax record, its length counted in BYTES as the format says. */
+function paxRecord(key: string, value: string): string {
+  const body = ` ${key}=${value}\n`;
+  const bytes = new TextEncoder().encode(body).byteLength;
+  let length = bytes + String(bytes).length;
+  if (String(length).length !== String(bytes).length) length += 1;
+  return `${length}${body}`;
+}
+
+/** Wait for `promise`, or fail after `ms`: a hang must fail the case, not the run. */
+async function within<T>(promise: Promise<T>, ms: number): Promise<T | "timed out"> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<"timed out">((resolve) => {
+    timer = setTimeout(() => resolve("timed out"), ms);
+  });
+  try {
+    return await Promise.race([promise, late]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+describe("the archive's names (review 1, 6, 7, 11)", () => {
+  const refused: [string, TarEntry[]][] = [
+    ["a name of nine segments", [{ name: "math/a/b/c/d/e/f/g/h.js", data: "x" }]],
+    ["a name above 255 bytes", [{ name: "PaxHeader", type: "x", data: paxRecord("path", `math/${"a".repeat(100)}/${"b".repeat(100)}/${"c".repeat(100)}.js`) }, { name: "x", data: "x" }]],
+    ["a Windows device name", [{ name: "math/con.js", data: "x" }]],
+    ["a Windows device name in capitals", [{ name: "math/katex/NUL", data: "x" }]],
+    ["a numbered device name", [{ name: "math/katex/com1.woff2", data: "x" }]],
+    ["two files that differ in case only", [{ name: "math/a.js", data: "x" }, { name: "math/A.js", data: "y" }]],
+    ["two folders that differ in case only", [{ name: "math/Katex/a.js", data: "x" }, { name: "math/katex/b.js", data: "y" }]],
+    ["a ustar prefix that climbs out", [{ name: "a.js", prefix: "math/..", data: "x" }]],
+    ["a NUL inside a pax path", [{ name: "PaxHeader", type: "x", data: paxRecord("path", "math/a\0.js") }, { name: "x", data: "x" }]],
+    ["a name beside math/", [{ name: "mathx/a.js", data: "x" }]],
+    ["math itself as a file", [{ name: "math", data: "x" }]],
+    ["the same file twice", [{ name: "math/a.js", data: "x" }, { name: "math/a.js", data: "y" }]],
+    ["a folder and a file of one name", [{ name: "math/a.js/", type: "5" }, { name: "math/a.js", data: "y" }]],
+    ["a pax record with no newline", [{ name: "PaxHeader", type: "x", data: "21 path=math/a/b.jsX" }, { name: "x", data: "x" }]],
+  ];
+
+  test.each(refused)("refuses %s", (_label, entries) => {
+    expect(() => readPackTar(makeTar([{ name: "math/ok.js", data: "fine" }, ...entries]))).toThrow();
+  });
+
+  test("refuses deep names fast, and without building every folder above them", () => {
+    const deep = Array.from({ length: 25 }, (_, i) => ({ name: "PaxHeader", type: "x", data: paxRecord("path", `math/${i}/${"a/".repeat(2000)}x.js`) }));
+    const entries = deep.flatMap((pax) => [pax, { name: "x", data: "x" }]);
+    const started = performance.now();
+    expect(() => readPackTar(makeTar(entries))).toThrow();
+    expect(performance.now() - started).toBeLessThan(500);
+  });
+
+  test("reads a GNU long name", () => {
+    const long = `math/${"k".repeat(60)}/${"f".repeat(60)}.js`;
+    const read = readPackTar(makeTar([{ name: "././@LongLink", type: "L", data: `${long}\0` }, { name: "trimmed", data: "x" }]));
+    expect(read.files.map((f) => f.path)).toEqual([long]);
+  });
+
+  test("counts pax lengths in bytes, so a record with non-ASCII text before the path still reads", () => {
+    const data = paxRecord("comment", "Grüße aus dem Bündel") + paxRecord("path", "math/long/name.js");
+    const read = readPackTar(makeTar([{ name: "PaxHeader", type: "x", data }, { name: "ignored", data: "x" }]));
+    expect(read.files.map((f) => f.path)).toEqual(["math/long/name.js"]);
+  });
+
+  test(`refuses more than ${MAX_PACK_ENTRIES} entries`, () => {
+    const entries = Array.from({ length: MAX_PACK_ENTRIES + 1 }, (_, i) => ({ name: `math/f${i}.js`, data: "" }));
+    expect(() => readPackTar(makeTar(entries))).toThrow(/entries/);
+  });
+
+  test("refuses an archive cut off before its end blocks", () => {
+    const whole = makeTar([{ name: "math/a.js", data: "x".repeat(600) }]);
+    expect(() => readPackTar(whole.subarray(0, 512 + 512))).toThrow();
+  });
+});
+
+describe("the download under load and failure (review 2 to 5, 8, 10, 11)", () => {
+  const packDir = () => mathPackDir(stateDir);
+
+  test("a gzip bomb with the right size and hash ends as bad-pack, keeps nothing, and remove() returns", async () => {
+    const bomb = Bun.gzipSync(new Uint8Array(80 * 1024 * 1024));
+    const s = store(fakeGithub({ pack: bomb }).fetch);
+    expect((await s.start()).outcome).toBe("downloading");
+    expect(await within(s.settled(), 5000)).not.toBe("timed out");
+    expect(await s.status()).toEqual({ state: "absent", error: "bad-pack" });
+    expect(tree(packDir())).toEqual([]);
+    expect(await within(s.remove(), 2000)).toEqual({ state: "absent" });
+  });
+
+  test("two starts in one tick run one download", async () => {
+    const github = fakeGithub({ pack: Bun.gzipSync(GOOD) });
+    const s = store(github.fetch);
+    const outcomes = (await Promise.all([s.start(), s.start()])).map((r) => r.outcome).toSorted();
+    expect(outcomes).toEqual(["downloading", "joined"]);
+    await s.settled();
+    expect(github.asked.filter((url) => url.endsWith(PACK_NAME))).toHaveLength(1);
+    expect(tree(packDir()).filter((name) => !name.includes("/"))).toEqual([VERSION]);
+  });
+
+  test("names its part file collie-math-<version>.<pid>.<seq>.part, as ADR 0132 says", async () => {
+    let release!: () => void;
+    const hold = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const seen: string[] = [];
+    const github = fakeGithub({ pack: Bun.gzipSync(GOOD), hold });
+    const s = store(async (url, init) => {
+      const res = await github.fetch(url, init);
+      seen.push(...readdirSync(packDir()));
+      return res;
+    });
+    await s.start();
+    while (github.asked.length < 2) await Bun.sleep(1);
+    release();
+    await s.settled();
+    const part = new RegExp(`^collie-math-${VERSION.replaceAll(".", "\\.")}\\.${process.pid}\\.\\d+\\.part$`);
+    expect(seen.some((name) => part.test(name))).toBe(true);
+  });
+
+  test("keeps another process's fresh part file and folder, and removes stale leftovers before it fetches", async () => {
+    mkdirSync(packDir(), { recursive: true });
+    const otherPid = process.pid + 1;
+    const fresh = [`collie-math-${VERSION}.${otherPid}.1.part`, `${VERSION}.tmp-${otherPid}-1`];
+    const stale = [`collie-math-${VERSION}.${otherPid}.2.part`, `${VERSION}.tmp-${otherPid}-2`, `collie-math-${VERSION}.${process.pid}.9.part`];
+    for (const name of [...fresh, ...stale]) {
+      if (name.includes(".tmp-")) mkdirSync(join(packDir(), name));
+      else writeFileSync(join(packDir(), name), "x");
+    }
+    const old = new Date(Date.now() - 2 * 60 * 60 * 1000);
+    for (const name of stale.slice(0, 2)) utimesSync(join(packDir(), name), old, old);
+    // The manifest is missing: the download fails, and the stale leftovers are gone all the same.
+    const s = store(fakeGithub({ pack: Bun.gzipSync(GOOD), manifest: null }).fetch, { timeoutMs: 60 * 60 * 1000 });
+    await s.start();
+    await s.settled();
+    expect(readdirSync(packDir()).toSorted()).toEqual(fresh.toSorted());
+    // A successful download keeps them too.
+    resetMathPackState();
+    const ok = store(fakeGithub({ pack: Bun.gzipSync(GOOD) }).fetch, { timeoutMs: 60 * 60 * 1000 });
+    await ok.start();
+    await ok.settled();
+    expect(readdirSync(packDir()).toSorted()).toEqual([...fresh, VERSION].toSorted());
+  });
+
+  test("a part file that vanishes before it is read is download-failed, not bad-pack", async () => {
+    const pack = Bun.gzipSync(GOOD);
+    const github = fakeGithub({ pack });
+    const s = store(async (url, init) => {
+      if (!url.endsWith(PACK_NAME)) return github.fetch(url, init);
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(pack);
+          controller.close();
+        },
+        cancel() {},
+      });
+      const res = new Response(body, { headers: { "content-length": String(pack.byteLength) } });
+      // Another process's sweep takes the part file while this one still writes it.
+      setTimeout(() => {
+        for (const name of readdirSync(packDir())) if (name.endsWith(".part")) rmSync(join(packDir(), name));
+      }, 0);
+      await Bun.sleep(5);
+      return res;
+    });
+    await s.start();
+    await s.settled();
+    const status = await s.status();
+    expect(status.state).toBe("absent");
+    expect(status).not.toEqual({ state: "absent", error: "bad-pack" });
+  });
+
+  test("a remove during the install stops it, keeps nothing and returns", async () => {
+    let removed: Promise<unknown> | null = null;
+    let s!: ReturnType<typeof store>;
+    // `now` is read while the files are written, just before the rename: a remove lands there.
+    s = store(fakeGithub({ pack: Bun.gzipSync(GOOD) }).fetch, {
+      now: () => {
+        removed ??= s.remove();
+        return 0;
+      },
+    });
+    await s.start();
+    await s.settled();
+    expect(removed).not.toBeNull();
+    expect(await within(removed!, 2000)).toEqual({ state: "absent" });
+    expect(tree(stateDir)).toEqual([]);
+    expect(s.serveRoot()).toBeNull();
+  });
+
+  test("refuses a manifest above 1 MB before it parses it, and fetches no pack", async () => {
+    const pack = Bun.gzipSync(GOOD);
+    const body = JSON.stringify(manifest(VERSION, { size: pack.byteLength, sha256: sha(pack) })).replace("{", `{${" ".repeat(1024 * 1024)}`);
+    const asked: string[] = [];
+    const s = store(async (url) => {
+      asked.push(url);
+      if (url.endsWith(".manifest.json")) return new Response(body, { headers: { "content-type": "application/json" } });
+      return new Response(pack, { headers: { "content-length": String(pack.byteLength) } });
+    });
+    await s.start();
+    await s.settled();
+    expect(await s.status()).toEqual({ state: "absent", error: "download-failed" });
+    expect(asked.some((url) => url.endsWith(PACK_NAME))).toBe(false);
   });
 });

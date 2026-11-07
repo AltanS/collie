@@ -1,6 +1,7 @@
 import { extname } from "node:path";
 
 import type { MathPackStatus, MathPackStore } from "./store.ts";
+import { isPackPath } from "./tar.ts";
 
 // ── THE MATH PACK'S ROUTES, AWAY FROM Bun.serve (ADR 0132) ─────────────────────────────────
 //
@@ -54,6 +55,8 @@ export async function mathRemove(store: MathPackStore): Promise<MathRouteResult>
  * server's app-shell fallback: a missing engine is an error the engine loader turns into source text.
  */
 export function mathServeRoot(store: Pick<MathPackStore, "serveRoot">, pathname: string): string | null {
-  if (!pathname.startsWith("/math/") || extname(pathname) === "") return null;
+  // Held to the pack's own name rule, so a path that skipped the URL parser's dot folding (`..`), or
+  // that names the store's `pack.json` beside `math/`, is a 404 before any file is looked at.
+  if (!pathname.startsWith("/math/") || extname(pathname) === "" || !isPackPath(pathname.slice(1))) return null;
   return store.serveRoot();
 }

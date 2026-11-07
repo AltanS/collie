@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, statSync } from "node:fs";
-import { type FileHandle, chmod, lstat, mkdir, open, readdir, rename, rm, statfs, writeFile } from "node:fs/promises";
+import { type FileHandle, chmod, lstat, mkdir, open, readFile, readdir, rename, rm, stat, statfs, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { createGunzip } from "node:zlib";
+import { gunzipSync } from "node:zlib";
 
 import type { JsonValue } from "../json.ts";
 import { jsonNumberField, jsonRecord, jsonStringField } from "../stt/json.ts";
@@ -24,9 +24,14 @@ import { MAX_PACK_BYTES, PackRefusal, readPackTar } from "./tar.ts";
 //   • A declared size above {@link MATH_PACK_CAP_BYTES} is refused before the body; the body is
 //     counted against the cap and the manifest's size as it arrives, hashed as it arrives, and
 //     streamed to `math/collie-math-<version>.<pid>.<seq>.part` (0600, created exclusively).
-//   • The archive is inflated (bounded) and read here, never by a spawned `tar` (bridge/math/tar.ts).
-//     Its files go to `math/<version>.tmp-<pid>-<seq>/` (folders 0700, files 0600) with `pack.json`,
-//     and that folder is renamed to `math/<version>/` in one step. Other versions are then removed.
+//   • The archive is inflated in one bounded call (`maxOutputLength`: a gzip bomb stops at the cap,
+//     it never streams) and read here, never by a spawned `tar` (bridge/math/tar.ts). Its files go to
+//     `math/<version>.tmp-<pid>-<seq>/` (folders 0700, files 0600) with `pack.json`, and that folder
+//     is renamed to `math/<version>/` in one step. Other versions are then removed. The timeout covers
+//     all of it, manifest to rename.
+//   • Several bridges may share a state dir. A part file or a half folder of another process is left
+//     alone while it is younger than the timeout, and swept once it is older; this process's own are
+//     swept at the start of a download, since one process runs one download at a time.
 //   • A development build never fetches: its engines are `web/dist/math/` beside the build, or none.
 //   • One download in flight per process; a second start joins it. Every failure removes this
 //     download's part file and folder and records one word for Settings, never a path or a body.
@@ -41,6 +46,16 @@ export const MATH_PACK_TIMEOUT_MS = 10 * 60 * 1000;
 
 /** How long the manifest may take. It is a few kilobytes. */
 const MANIFEST_TIMEOUT_MS = 30 * 1000;
+
+/** The most bytes a manifest may be. A release's is a few kilobytes. */
+const MANIFEST_CAP_BYTES = 1024 * 1024;
+
+/** The most bytes the pack may inflate to: the files, and room for the tar headers around them. */
+const INFLATE_CAP_BYTES = MAX_PACK_BYTES + 4 * 1024 * 1024;
+
+/** This download's part file and half folder, and another process's: the pid is the second field. */
+const PART_FILE = /^collie-math-.+\.([0-9]+)\.[0-9]+\.part$/;
+const HALF_FOLDER = /^.+\.tmp-([0-9]+)-[0-9]+$/;
 
 /** The free space a download asks for, as a multiple of the pack: the part file, then the files. */
 const SPACE_FACTOR = 5;
@@ -186,42 +201,42 @@ async function diskFreeBytes(dir: string): Promise<number | null> {
   }
 }
 
-/** Inflate a gzip file, refusing past `cap` bytes. */
+/**
+ * Inflate the part file in one call that stops at `cap` bytes, so a gzip bomb costs at most the cap
+ * and can never leave a stream waiting. A file that cannot be read is `download-failed` (another
+ * process's sweep, a full disk); bytes that do not inflate are a refusal of the pack.
+ */
 async function inflate(path: string, cap: number): Promise<Uint8Array> {
+  let compressed: Buffer;
+  try {
+    compressed = await readFile(path);
+  } catch {
+    throw new MathRefusal("download-failed");
+  }
+  try {
+    const out = gunzipSync(compressed, { maxOutputLength: cap });
+    return new Uint8Array(out.buffer, out.byteOffset, out.byteLength);
+  } catch {
+    throw new PackRefusal("the math pack does not inflate, or inflates past its cap");
+  }
+}
+
+/** A response body as text, refusing past `cap` bytes before it is parsed. */
+async function readCapped(body: ReadableStream<Uint8Array>, cap: number): Promise<string> {
+  const reader = body.getReader();
   const chunks: Uint8Array[] = [];
   let size = 0;
-  const gunzip = createGunzip();
-  const source = Bun.file(path).stream();
-  const done = new Promise<void>((resolve, reject) => {
-    gunzip.on("data", (chunk: Buffer) => {
-      size += chunk.byteLength;
-      if (size > cap) {
-        gunzip.destroy(new PackRefusal("the math pack inflates past its cap"));
-        return;
-      }
-      chunks.push(new Uint8Array(chunk));
-    });
-    gunzip.on("end", resolve);
-    gunzip.on("error", reject);
-  });
-  try {
-    for await (const chunk of source) {
-      if (gunzip.destroyed) break;
-      if (!gunzip.write(chunk)) await new Promise<void>((resolve) => gunzip.once("drain", resolve));
+  for (;;) {
+    const chunk = await reader.read();
+    if (chunk.done) break;
+    size += chunk.value.byteLength;
+    if (size > cap) {
+      await reader.cancel().catch(() => undefined);
+      throw new MathRefusal("download-failed");
     }
-    gunzip.end();
-    await done;
-  } catch (err) {
-    if (err instanceof PackRefusal) throw err;
-    throw new MathRefusal("bad-pack");
+    chunks.push(chunk.value);
   }
-  const out = new Uint8Array(size);
-  let at = 0;
-  for (const chunk of chunks) {
-    out.set(chunk, at);
-    at += chunk.byteLength;
-  }
-  return out;
+  return Buffer.concat(chunks).toString("utf8");
 }
 
 export function createMathPackStore(deps: MathPackDeps): MathPackStore {
@@ -265,7 +280,8 @@ export function createMathPackStore(deps: MathPackDeps): MathPackStore {
     }
   }
 
-  async function status(): Promise<MathPackStatus> {
+  /** Where the pack stands, read without a pause, so `start()` can decide and claim in one tick. */
+  function statusNow(): MathPackStatus {
     const flight = inFlight.get(dir);
     if (flight !== undefined) return { state: "downloading", received: flight.received, total: flight.total };
     const version = releaseVersionOf(buildInfo());
@@ -278,6 +294,10 @@ export function createMathPackStore(deps: MathPackDeps): MathPackStore {
     if (noPack.get(dir) === version) return { state: "unavailable", reason: "no-pack" };
     const error = lastFailure.get(dir);
     return error === undefined ? { state: "absent" } : { state: "absent", error };
+  }
+
+  async function status(): Promise<MathPackStatus> {
+    return statusNow();
   }
 
   function serveRoot(): string | null {
@@ -312,11 +332,11 @@ export function createMathPackStore(deps: MathPackDeps): MathPackStore {
   async function readEntry(version: string, signal: AbortSignal): Promise<{ name: string; size: number; sha256: string }> {
     const res = await get(`collie-${version}.manifest.json`, version, AbortSignal.any([signal, AbortSignal.timeout(MANIFEST_TIMEOUT_MS)]), "application/json");
     if (res.status === 404) throw new MathRefusal("no-pack");
-    if (!res.ok) throw new MathRefusal("download-failed");
+    if (!res.ok || res.body === null) throw new MathRefusal("download-failed");
     let data: JsonValue;
     try {
-      // SAFETY: `Response.json()` output IS a JsonValue by construction; `mathPackEntry` checks it.
-      data = (await res.json()) as JsonValue;
+      // SAFETY: `JSON.parse` output IS a JsonValue by construction; `mathPackEntry` checks it.
+      data = JSON.parse(await readCapped(res.body, MANIFEST_CAP_BYTES)) as JsonValue;
     } catch {
       throw new MathRefusal("download-failed");
     }
@@ -370,19 +390,32 @@ export function createMathPackStore(deps: MathPackDeps): MathPackStore {
   }
 
   /** Write the pack's files into a folder of this download's own, then rename it into place. */
-  async function install(version: string, entry: { name: string; size: number; sha256: string }, part: string): Promise<void> {
+  async function install(
+    version: string,
+    entry: { name: string; size: number; sha256: string },
+    part: string,
+    signal: AbortSignal,
+  ): Promise<void> {
+    /** A remove or the timeout stops the install between two steps. */
+    const halt = () => {
+      if (signal.aborted) throw new MathRefusal("download-failed");
+    };
     let contents;
     try {
-      contents = readPackTar(await inflate(part, MAX_PACK_BYTES + 4 * 1024 * 1024));
+      contents = readPackTar(await inflate(part, INFLATE_CAP_BYTES));
     } catch (err) {
       if (err instanceof PackRefusal) throw new MathRefusal("bad-pack");
       throw err;
     }
+    halt();
     const temp = join(dir, `${version}.tmp-${process.pid}-${++writeSeq}`);
     try {
       await mkdir(temp, { mode: 0o700 });
       for (const folder of contents.folders) await mkdir(join(temp, folder), { mode: 0o700 });
-      for (const { path, data } of contents.files) await writeFile(join(temp, path), data, { mode: 0o600, flag: "wx" });
+      for (const { path, data } of contents.files) {
+        halt();
+        await writeFile(join(temp, path), data, { mode: 0o600, flag: "wx" });
+      }
       const record: PackRecord = {
         version: 1,
         pack: {
@@ -395,8 +428,14 @@ export function createMathPackStore(deps: MathPackDeps): MathPackStore {
         },
       };
       await writeFile(join(temp, "pack.json"), `${JSON.stringify(record, null, 2)}\n`, { mode: 0o600, flag: "wx" });
+      halt();
       const target = join(dir, version);
-      // A half folder from a crash, or a pack of this version a remove left: this one replaces it.
+      // Another bridge on this state dir installed the same version meanwhile: keep its copy.
+      if (stored(version) !== null) {
+        await rm(temp, { recursive: true, force: true });
+        return;
+      }
+      // A half folder at the target (a crash between the two steps below): this one replaces it.
       await rm(target, { recursive: true, force: true });
       await rename(temp, target);
     } catch (err) {
@@ -405,7 +444,24 @@ export function createMathPackStore(deps: MathPackDeps): MathPackStore {
     }
   }
 
-  /** Remove every other version, every leftover part file and every half folder but `keep`. */
+  /**
+   * Whether a part file or a half folder may go: this process's own (its one download is not
+   * running, or has none of them yet), or another process's once it is older than the timeout.
+   * Null for a name that is neither.
+   */
+  async function leftoverMayGo(name: string): Promise<boolean | null> {
+    const pid = (PART_FILE.exec(name) ?? HALF_FOLDER.exec(name))?.[1];
+    if (pid === undefined) return null;
+    if (Number(pid) === process.pid) return true;
+    const entry = await stat(join(dir, name)).catch(() => null);
+    return entry === null || Date.now() - entry.mtimeMs > timeoutMs;
+  }
+
+  /**
+   * Remove what a download leaves behind. `keep` names the version to keep, and every other version
+   * goes; null keeps every version and sweeps only the leftovers. Another process's fresh part file
+   * or half folder is never touched.
+   */
   async function sweep(keep: string | null): Promise<void> {
     let names: string[];
     try {
@@ -415,6 +471,8 @@ export function createMathPackStore(deps: MathPackDeps): MathPackStore {
     }
     for (const name of names) {
       if (name === keep) continue;
+      const leftover = await leftoverMayGo(name);
+      if (leftover === false || (leftover === null && keep === null)) continue;
       // `rm` on a link removes the link, never its target.
       await rm(join(dir, name), { recursive: true, force: true }).catch(() => undefined);
     }
@@ -423,15 +481,17 @@ export function createMathPackStore(deps: MathPackDeps): MathPackStore {
   async function download(flight: InFlight, version: string): Promise<void> {
     const signal = AbortSignal.any([flight.controller.signal, AbortSignal.timeout(timeoutMs)]);
     await prepareDir();
+    // A crash leaves its part file and half folder: they go now, whatever this download comes to.
+    await sweep(null);
     const entry = await readEntry(version, signal);
     flight.total = entry.size;
     const free = await freeBytes(dir);
     if (free !== null && free < entry.size * SPACE_FACTOR) throw new MathRefusal("low-space");
-    const part = join(dir, `${entry.name}.${process.pid}.${++writeSeq}.part`);
+    const part = join(dir, `collie-math-${version}.${process.pid}.${++writeSeq}.part`);
     try {
       await fetchPack(flight, version, entry, await open(part, "wx", 0o600), signal);
       if (signal.aborted) throw new MathRefusal("download-failed");
-      await install(version, entry, part);
+      await install(version, entry, part, signal);
     } finally {
       await rm(part, { force: true }).catch(() => undefined);
     }
@@ -439,15 +499,16 @@ export function createMathPackStore(deps: MathPackDeps): MathPackStore {
   }
 
   async function start(): Promise<MathPackStart> {
-    const joined = inFlight.get(dir);
-    if (joined !== undefined) return { outcome: "joined", status: await status() };
-    const current = await status();
+    // Decided and claimed with no pause in between: two starts in one tick run one download.
+    if (inFlight.has(dir)) return { outcome: "joined", status: statusNow() };
+    const current = statusNow();
     if (current.state === "ready") return { outcome: "ready", status: current };
     const version = releaseVersionOf(buildInfo());
     if (version === null) return { outcome: "unavailable", status: current };
     lastFailure.delete(dir);
     noPack.delete(dir);
     const flight: InFlight = { done: Promise.resolve(), received: 0, total: null, controller: new AbortController() };
+    inFlight.set(dir, flight);
     flight.done = (async () => {
       try {
         await download(flight, version);
@@ -466,8 +527,7 @@ export function createMathPackStore(deps: MathPackDeps): MathPackStore {
         if (inFlight.get(dir) === flight) inFlight.delete(dir);
       }
     })();
-    inFlight.set(dir, flight);
-    return { outcome: "downloading", status: await status() };
+    return { outcome: "downloading", status: statusNow() };
   }
 
   async function remove(): Promise<MathPackStatus> {
