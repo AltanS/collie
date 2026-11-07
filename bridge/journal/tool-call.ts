@@ -124,6 +124,7 @@ const NAMES = {
   // Muse's file verbs (bridge/journal/muse.ts): without these its workhorse calls read as `other`.
   edit_file: "edit",
   write_file: "edit",
+  write_to_file: "edit",
   // Kiro's file verbs (bridge/journal/kiro.ts).
   fs_write: "edit",
   str_replace: "edit",
@@ -137,6 +138,7 @@ const NAMES = {
   run: "execute",
   bashoutput: "execute",
   exec_command: "execute",
+  run_command: "execute",
   // Kiro's shell tool.
   execute_bash: "execute",
   // Gentle Shell's jobs return at once and end later; `background` marks them (see below).
@@ -146,13 +148,18 @@ const NAMES = {
   read: "read",
   read_file: "read",
   view: "read",
+  view_file: "read",
   // search
   grep: "search",
+  grep_search: "search",
   glob: "search",
   websearch: "search",
   web_search: "search",
+  search_web: "search",
   search: "search",
   list: "search",
+  list_dir: "search",
+  list_directory: "search",
   ls: "search",
   google_search: "search",
   source_check: "search",
@@ -171,6 +178,7 @@ const NAMES = {
   task: "task",
   agent: "task",
   subagent: "task",
+  invoke_subagent: "task",
   subagent_run: "task",
   subagent_continue: "task",
   subagent_result: "task",
@@ -334,6 +342,7 @@ function readLoneQuestion(o: JsonObject): ToolQuestion[] | undefined {
   if (o.header !== undefined) entry.header = o.header;
   if (o.multiple !== undefined) entry.multiple = o.multiple;
   if (o.multiSelect !== undefined) entry.multiSelect = o.multiSelect;
+  if (o.is_multi_select !== undefined) entry.is_multi_select = o.is_multi_select;
   return readQuestions({ questions: [entry] });
 }
 
@@ -366,7 +375,7 @@ function readQuestions(o: JsonObject): ToolQuestion[] | undefined {
     const selectionMultiple = isRecord(q.selection) && q.selection.mode === "multiple";
     const parsed: ToolQuestion = {
       question,
-      multiple: q.multiple === true || q.multiSelect === true || selectionMultiple,
+      multiple: q.multiple === true || q.multiSelect === true || q.is_multi_select === true || selectionMultiple,
       options,
     };
     const header = text(q.header, MAX_HEADER_CHARS);
@@ -401,13 +410,18 @@ export function classifyToolCall(name: string, input: JsonValue | undefined, sum
   const kind: ToolCall["kind"] | undefined = NAMES[name.toLowerCase() as keyof typeof NAMES];
   switch (kind) {
     case "edit":
-      return { kind: "edit", path: str(o, "file_path", "notebook_path", "path", "filePath") ?? "", added: 0, removed: 0 };
+      return {
+        kind: "edit",
+        path: str(o, "file_path", "notebook_path", "path", "filePath", "Path", "TargetFile") ?? "",
+        added: 0,
+        removed: 0,
+      };
     case "execute": {
       // Optional fields are ASSIGNED, never set to `undefined`: a key holding `undefined` survives a
       // deep compare and a structured clone, so "absent" has to mean absent (the repo's convention,
       // see `toolResult`).
-      const call: ToolCall = { kind: "execute", command: str(o, "command", "cmd", "script") ?? "" };
-      const description = str(o, "description", "label");
+      const call: ToolCall = { kind: "execute", command: str(o, "command", "cmd", "script", "CommandLine") ?? "" };
+      const description = str(o, "description", "label", "toolSummary");
       if (description !== undefined) call.description = description;
       if (BACKGROUND.has(name.toLowerCase())) call.background = true;
       return call;
@@ -415,18 +429,29 @@ export function classifyToolCall(name: string, input: JsonValue | undefined, sum
     case "read": {
       const offset = num(o, "offset", "line", "startLine");
       const limit = num(o, "limit", "count");
+      const start = num(o, "startLine", "StartLine");
+      const end = num(o, "endLine", "EndLine");
       // A range is only meaningful when the call asked for one. `offset` alone means "from here to
       // the end", which has no last line to name, so it reads as a whole-file read with a start.
-      const call: ToolCall = { kind: "read", path: str(o, "file_path", "path", "filePath") ?? "" };
+      const call: ToolCall = {
+        kind: "read",
+        path: str(o, "file_path", "path", "filePath", "Path", "AbsolutePath") ?? "",
+      };
       if (offset !== undefined && limit !== undefined) call.range = [offset, offset + limit];
+      else if (start !== undefined && end !== undefined && end >= start) call.range = [start, end];
       return call;
     }
     case "search": {
       // `pattern` outranks `path` for the same reason it does in `summarizeToolInput`: a Grep carries
       // both, and the pattern is what you searched for. A test pins that order there; this follows it.
-      const call: ToolCall = { kind: "search", query: str(o, "pattern", "query", "q", "claim") ?? firstOf(o, "queries") ?? "" };
+      const call: ToolCall = {
+        kind: "search",
+        query: str(o, "pattern", "query", "q", "claim", "Query") ?? firstOf(o, "queries") ?? "",
+      };
       const lower = name.toLowerCase();
-      const where = str(o, "path", "glob", "include") ?? (lower.includes("web") || WEB_SEARCH.has(lower) ? "web" : undefined);
+      const where =
+        str(o, "path", "glob", "include", "SearchPath", "DirectoryPath", "Path") ??
+        (lower.includes("web") || WEB_SEARCH.has(lower) ? "web" : undefined);
       if (where !== undefined) call.where = where;
       return call;
     }
@@ -444,8 +469,8 @@ export function classifyToolCall(name: string, input: JsonValue | undefined, sum
       // carries its `model` ("opus", "sonnet") instead, and that says more than the word "agent" did.
       // With neither, the field is absent and the card draws plain "Agent".
       // Never `prompt`: it is the whole message to the agent, and the one-line summary is its name.
-      const call: ToolCall = { kind: "task", summary: str(o, "description", "label", "task") ?? summary };
-      const agent = str(o, "subagent_type", "agent", "agent_type") ?? str(o, "model");
+      const call: ToolCall = { kind: "task", summary: str(o, "description", "label", "task", "Role") ?? summary };
+      const agent = str(o, "subagent_type", "agent", "agent_type", "TypeName") ?? str(o, "model", "Model");
       if (agent !== undefined) call.agent = agent;
       return call;
     }
