@@ -318,6 +318,54 @@ describe("HerdrCoreMux over a fake core", () => {
     expect(refused.ok ? "ok" : refused.reason).toBe("refused");
   });
 
+  test("screen reads honour preserve and strip without changing the pane", async () => {
+    const { fake, adapter } = build();
+    fake.setScreen("t1", ["\u001b[31mRed\u001b[0m"]);
+    const styled = await adapter.readGrid("t1", { scope: "viewport", lines: 40, styling: "preserve" });
+    const plain = await adapter.readGrid("t1", { scope: "recent", lines: 40, styling: "strip" });
+    if (!styled.ok || !plain.ok) throw new Error("screen read failed");
+    expect(styled.value.text).toContain("\u001b[31mRed\u001b[0m");
+    expect(plain.value.text).toBe("Red\n\n\n\n\n");
+    expect(fake.writes()).toEqual([]);
+  });
+
+  test("style-only changes advance once, while plain, styled and history reads share a revision", async () => {
+    const { fake, adapter } = build();
+    const read = async (styling: "preserve" | "strip", older = false) => {
+      const result = await adapter.readGrid("t1", { scope: "recent", lines: 80, styling, purpose: older ? "older" : "poll" });
+      if (!result.ok) throw new Error("screen read failed");
+      return result.value.revision;
+    };
+    fake.setScreen("t1", ["\u001b[31mSame\u001b[0m"]);
+    const initial = await read("preserve");
+    expect(await read("strip")).toBe(initial);
+    fake.setScreen("t1", ["\u001b[34mSame\u001b[0m"]);
+    expect(await read("strip")).toBe(initial); // No style fact was observed yet.
+    expect(await read("preserve")).toBe(initial + 1);
+    expect(await read("strip")).toBe(initial + 1);
+    expect(await read("preserve", true)).toBe(initial + 1);
+    expect(await read("preserve")).toBe(initial + 1);
+    fake.setScreen("t1", ["Same"]); // Removing the highlight is a style change too.
+    expect(await read("preserve")).toBe(initial + 2);
+    expect(await read("strip")).toBe(initial + 2);
+    fake.setScreen("t1", ["Changed"]);
+    expect(await read("strip")).toBe(initial + 3);
+    expect(await read("preserve")).toBe(initial + 3);
+  });
+
+  test("a changed trailing Unicode cell advances the revision", async () => {
+    const { fake, adapter } = build();
+    const read = async () => {
+      const result = await adapter.readGrid("t1", { scope: "viewport", lines: 40, styling: "strip" });
+      if (!result.ok) throw new Error("screen read failed");
+      return result.value.revision;
+    };
+    fake.setScreen("t1", ["Text\u00a0"]);
+    const before = await read();
+    fake.setScreen("t1", ["Text"]);
+    expect(await read()).toBe(before + 1);
+  });
+
   test("the derived revision moves with one view's text and not across views", async () => {
     const { fake, adapter } = build();
     const viewport = () => adapter.readGrid("t1", { scope: "viewport", lines: 40, styling: "preserve" });

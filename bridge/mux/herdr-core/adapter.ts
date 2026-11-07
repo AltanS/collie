@@ -3,7 +3,7 @@
 //
 // Everything above this file talks the mux port (../types.ts); everything below it (client.ts,
 // keys.ts, layout.ts, events.ts) talks the core. Every fact cited here is in HC_API.md, probed on
-// hc 0.1.14, protocol generation 1, on 2026-10-29.
+// hc 0.1.14 on 2026-10-29 and 0.1.15 on 2026-10-31, protocol generation 1.
 //
 // NOT THE `herdr` ADAPTER. `herdr` drives the Herdr TUI over `herdr.sock`; this one drives the
 // core that herdr-app draws on. They run side by side on one host, they share no socket and no
@@ -22,7 +22,7 @@
 //
 // ── WHAT IS DECLARED, AND WHAT IS NOT ────────────────────────────────────────────────────────────
 //
-// Declared, each from a probe: the grid (plain text, a derived revision), scrollback, agent
+// Declared, each from a probe: the grid (validated SGR or plain fallback, a derived revision), scrollback, agent
 // detection (the program's own OSC 7501 report; where a program sends none, an exact, known foreground
 // program name from the same table is a provisional identity with status `unknown`, never a status word), typing (a framed attach, see client.ts), keys,
 // closing a pane, a new tab and a new space (a shell carrying herdr-app's labels), and both push channels.
@@ -32,6 +32,7 @@
 
 import { randomUUID } from "node:crypto";
 import { homedir } from "node:os";
+import { stripSgr } from "../../../web/src/lib/surface/plain.ts";
 import { declareCapabilities } from "../capabilities.ts";
 import type { ForegroundProcess } from "../../journal/types.ts";
 import { EXTENDED_ONLY_CHORDS } from "../keys.ts";
@@ -90,7 +91,7 @@ const HERDR_CORE_CAPABILITIES = declareCapabilities({
   // document changing, which is every structure change Collie shows. So no census and no number.
   topologyLatency: { kind: "push" },
   notes: {
-    paneGrid: "herdr-core hands out the screen as plain text, so the mirror shows no colour.",
+    paneGrid: "A styled screen poll validates one temporary read-only observer against the plain grid. Unsupported paint and history stay plain.",
     agentDetection:
       "herdr-core names the agent in a terminal from the agent's own status report. A program that sends no report is named from the process in the foreground, through the same table (omp sends none), and then has no status. A shell, or a process Collie has no harness for, reads as a shell.",
     agentSessionRef:
@@ -138,6 +139,7 @@ function remoteRefusal(paneId: string): MuxRefusalOutcome | null {
 interface PaneRevision {
   revision: number;
   lastScreen: string;
+  lastStyled: string | undefined;
 }
 
 /**
@@ -311,8 +313,8 @@ export class HerdrCoreMux implements MuxAdapter {
   }
 
   /**
-   * One pane's rendered screen, as plain text: the core gives no colour, so `preserve` and `strip`
-   * read the same text, which carries no escape at all.
+   * One pane's rendered screen: `preserve` validates a bounded read-only observer against the
+   * independent plain grid. Unsupported paint, `strip` and history retain the plain read.
    *
    * A read the core calls incomplete (`complete: false`, HC_API.md § terminal.read: part of it may be
    * missing while a full-screen app works) is handed over with `partial` set, on any read: the mirror
@@ -337,11 +339,11 @@ export class HerdrCoreMux implements MuxAdapter {
     const lines = Math.max(1, request.lines);
     try {
       if (request.scope === "viewport") {
-        const screen = await this.rpc.readTerminal(paneId, 0);
+        const screen = await this.rpc.readTerminal(paneId, 0, request.styling);
         return muxOk(this.gridOf(paneId, screen, screen, { keep: null, truncated: false }));
       }
       if (request.purpose !== "older") {
-        const screen = await this.rpc.readTerminal(paneId, 0);
+        const screen = await this.rpc.readTerminal(paneId, 0, request.styling);
         return muxOk(this.gridOf(paneId, screen, screen, { keep: lines, truncated: true }));
       }
       const answered = await this.olderRows(paneId, lines, request.hint?.blocked === true);
@@ -403,7 +405,7 @@ export class HerdrCoreMux implements MuxAdapter {
   private gridOf(paneId: string, read: WireRead, screen: WireRead, cut: { keep: number | null; truncated: boolean; note?: string | undefined }): MuxGrid {
     const rows = read.text.replace(/\n$/u, "").split("\n");
     const text = (cut.keep === null ? rows : rows.slice(-cut.keep)).join("\n");
-    const grid: MutableGrid = { paneId, text, truncated: cut.truncated, revision: this.revisionFor(paneId, screen.text.replace(/\n$/u, "")) };
+    const grid: MutableGrid = { paneId, text, truncated: cut.truncated, revision: this.revisionFor(paneId, screen) };
     if (!read.complete) grid.partial = true;
     if (cut.note !== undefined) grid.olderNote = cut.note;
     return grid;
@@ -653,15 +655,21 @@ export class HerdrCoreMux implements MuxAdapter {
    * screen. A counter per view bumped once per view for one change and made the guard refuse a tap
    * right after the screen changed as "changed". History and stitched rows never feed it.
    */
-  private revisionFor(paneId: string, screenText: string): number {
+  private revisionFor(paneId: string, screen: WireRead): number {
+    const raw = screen.text.replace(/\n$/u, "");
+    // The formatter paints trailing blank cells that plain terminal.read trims. They are the same
+    // text grid. Trusted styles are remembered separately, never replaced by a strip/history read.
+    const plain = stripSgr(raw).split("\n").map((row) => row.replace(/ +$/u, "")).join("\n");
+    const styled = screen.styled === true ? raw : undefined;
     const entry = this.revisions.get(paneId);
     if (entry === undefined) {
-      this.revisions.set(paneId, { revision: 1, lastScreen: screenText });
+      this.revisions.set(paneId, { revision: 1, lastScreen: plain, lastStyled: styled });
       return 1;
     }
-    if (entry.lastScreen === screenText) return entry.revision;
-    entry.revision += 1;
-    entry.lastScreen = screenText;
+    const textChanged = entry.lastScreen !== plain;
+    if (textChanged || (styled !== undefined && entry.lastStyled !== undefined && entry.lastStyled !== styled)) entry.revision += 1;
+    entry.lastScreen = plain;
+    if (textChanged || styled !== undefined) entry.lastStyled = styled;
     return entry.revision;
   }
 

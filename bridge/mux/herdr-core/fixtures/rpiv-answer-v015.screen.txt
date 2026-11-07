@@ -1,0 +1,120 @@
+
+ ▀▀█  v1.4.0
+ █▀ █ escape interrupt · ctrl+c/ctrl+d clear/exit · / commands · ! bash · ctrl+o more
+ Press ctrl+o to show full startup help and loaded resources.
+
+ Pi can explain its own features and look up its docs. Ask it how to use or extend Pi.
+
+[Extensions]
+  rpiv-ask-user-question
+
+
+ <file name="/home/wlucas/Development/collie/web/e2e/rig/editor-questions.json">
+ {"questions":[{"question":"Which implementation should the Collie probe use?","header":"Plan","options":[{"label":"Sequential","description":"Keep the steps ordered.","preview":"Plan A\nRead ->
+ Write\nKeep ordering"},{"label":"Parallel","description":"Run independent work together.","preview":"Plan B\nRead + Check\nThen write"}]},{"question":"Which checks should the Collie probe
+ run?","header":"Checks","multiSelect":true,"options":[{"label":"Unit tests","description":"Verify local behavior."},{"label":"Integration tests","description":"Verify the real
+ interaction."}]},{"question":"How should the Collie probe describe delivery?","header":"Delivery","options":[{"label":"Standard","description":"Use a standard
+ answer."},{"label":"Custom","description":"Use a custom answer instead."}]},{"question":"Which optional platform should the Collie probe
+ name?","header":"Optional","options":[{"label":"Linux","description":"Test the Linux host."},{"label":"Mac","description":"Test the Mac host."}]}]}
+
+ </file>
+ Call ask_user_question exactly once using these exact parameters. Await the user answers. Do not select any answers yourself.
+
+
+
+ Ask Plan · Checks · Delivery · Optional
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ ←  □ Plan   □ Checks   □ Delivery   □ Optional   ✓ Submit  →
+
+
+ Which implementation should the Collie probe use?
+
+  1. Sequential
+     Keep the steps ordered.
+  2. Parallel
+     Run independent work together.
+❯ 3. Core first line
+       Core second 😀 
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+ Enter to select · ↑/↓ to navigate · Tab to switch questions · Esc to cancel · Ctrl+] to collapse · Shift+Enter for newline · Ctrl+U to clear
+
+
+
+
+/tmp/collie-rpiv-core.fgOSJp/pi
+↑1.8k ↓295 $0.003 1.1%/200k (auto)                                                                                                                             anthropic/claude-haiku-4.5 • thinking off

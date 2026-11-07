@@ -1,0 +1,40 @@
+ {"questions":[{"question":"Which implementation should
+ the Collie probe
+ use?","header":"Plan","options":[{"label":"Sequential","d
+ escription":"Keep the steps ordered.","preview":"Plan
+ A\nRead -> Write\nKeep
+ ordering"},{"label":"Parallel","description":"Run
+ independent work together.","preview":"Plan B\nRead +
+ Check\nThen write"}]},{"question":"Which checks should
+ the Collie probe
+ run?","header":"Checks","multiSelect":true,"options":[{"l
+ abel":"Unit tests","description":"Verify local
+ behavior."},{"label":"Integration
+ tests","description":"Verify the real
+ interaction."}]},{"question":"How should the Collie probe
+ describe
+ delivery?","header":"Delivery","options":[{"label":"Stand
+ ard","description":"Use a standard
+ answer."},{"label":"Custom","description":"Use a custom
+ answer instead."}]},{"question":"Which optional platform
+ should the Collie probe
+ name?","header":"Optional","options":[{"label":"Linux","d
+ escription":"Test the Linux
+ host."},{"label":"Mac","description":"Test the Mac
+ host."}]}]}
+
+ </file>
+ Call ask_user_question exactly once using these exact
+ parameters. Await the user answers. Do not choose any
+ answers yourself.
+
+
+
+ Ask Plan · Checks · Delivery · Optional
+
+
+── ⠏ Working ──────────────────────────────────────────────
+
+───────────────────────────────────────────────────────────
+/tmp/collie-rpiv-core-validation.2MQAlf/home/.cache/coll...
+0.7%/200k (auto)  anthropic/claude-haiku-4.5 • thinking off

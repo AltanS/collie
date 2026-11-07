@@ -250,9 +250,9 @@ does not bound the harnesses on the core.
 **What differs from Herdr** (`HC_API.md` has the probes). These are operational facts, and each one is
 handled; none of them holds a case red:
 
-- **A plain mirror.** The core hands out text with no colour and no SGR attribute, so a reader that
-  keys on a dim or inverse cell sees none. Collie reads the text shapes instead (`HC_API.md`, "What
-  Collie handles now").
+- **A styled poll adds an observer.** For every core pane, Collie validates one bounded read-only
+  observer paint against the independent plain screen. Unsupported forms and history stay plain,
+  so readers still need their text-only fallbacks (`HC_API.md`, "Styled screen reads").
 - **The key hold.** The core answers a named key about 3 s after a raw write. Collie types an unmodified
   Enter, Backspace and Tab as raw input, which the core takes at once, so a Claude send pays no hold.
   A pi or omp send pays one hold, about 3 s, for its `ctrl+q` submit, against well under a second on
@@ -301,8 +301,8 @@ handled; none of them holds a case red:
 **What stays open.** These limits remain on hc 0.1.14. Each has its upstream ask in `HC_API.md`, "What
 stays an upstream ask", under the name given here. Collie works around each one.
 
-- **Colour.** The core has no styled read, so a dialog of pi, opencode or omp whose pointer is colour
-  only cannot be answered from the phone.
+- **A direct styled read.** The observer can supply proved colours, but each styled poll costs an
+  extra connection. A direct SGR-only read would remove it; plain fallbacks still lose colour-only facts.
 - **A history read that answers, and keys that do not wait for it.** The core runs one terminal's
   history reads and key presses one at a time, and a history read under a dialog can take 25 s. Collie
   reads history only on Load older (above).

@@ -1,0 +1,40 @@
+[!p[?2026l[?9l[?1000l[?1001l[?1002l[?1003l[?1004l[?1005l[?1006l[?1015l[?1016l[?2004l[?1l[?66l[?2031l[?2048l[=0;1u[?1049l[?1047l[?47l[H[2J[?1049h[?7l[?25l[?1000h[?1002h[?1003h[?1004h[?1006h[?2004h[?2031h[3g[9GH[17GH[25GH[33GH[41GH[49GH[57GH[H[0m[48;2;45;59;71m {"questions":[{"question":"Which implementation should    [0m
+[0m[48;2;45;59;71m the Collie probe                                          [0m
+[0m[48;2;45;59;71m use?","header":"Plan","options":[{"label":"Sequential","d [0m
+[0m[48;2;45;59;71m escription":"Keep the steps ordered.","preview":"Plan     [0m
+[0m[48;2;45;59;71m A\nRead -> Write\nKeep                                    [0m
+[0m[48;2;45;59;71m ordering"},{"label":"Parallel","description":"Run         [0m
+[0m[48;2;45;59;71m independent work together.","preview":"Plan B\nRead +     [0m
+[0m[48;2;45;59;71m Check\nThen write"}]},{"question":"Which checks should    [0m
+[0m[48;2;45;59;71m the Collie probe                                          [0m
+[0m[48;2;45;59;71m run?","header":"Checks","multiSelect":true,"options":[{"l [0m
+[0m[48;2;45;59;71m abel":"Unit tests","description":"Verify local            [0m
+[0m[48;2;45;59;71m behavior."},{"label":"Integration                         [0m
+[0m[48;2;45;59;71m tests","description":"Verify the real                     [0m
+[0m[48;2;45;59;71m interaction."}]},{"question":"How should the Collie probe [0m
+[0m[48;2;45;59;71m describe                                                  [0m
+[0m[48;2;45;59;71m delivery?","header":"Delivery","options":[{"label":"Stand [0m
+[0m[48;2;45;59;71m ard","description":"Use a standard                        [0m
+[0m[48;2;45;59;71m answer."},{"label":"Custom","description":"Use a custom   [0m
+[0m[48;2;45;59;71m answer instead."}]},{"question":"Which optional platform  [0m
+[0m[48;2;45;59;71m should the Collie probe                                   [0m
+[0m[48;2;45;59;71m name?","header":"Optional","options":[{"label":"Linux","d [0m
+[0m[48;2;45;59;71m escription":"Test the Linux                               [0m
+[0m[48;2;45;59;71m host."},{"label":"Mac","description":"Test the Mac        [0m
+[0m[48;2;45;59;71m host."}]}]}                                               [0m
+[0m[48;2;45;59;71m                                                           [0m
+[0m[48;2;45;59;71m </file>                                                   [0m
+[0m[48;2;45;59;71m Call ask_user_question exactly once using these exact     [0m
+[0m[48;2;45;59;71m parameters. Await the user answers. Do not choose any     [0m
+[0m[48;2;45;59;71m answers yourself.                                         [0m
+[0m[48;2;45;59;71m                                                           [0m
+
+[0m[48;2;57;57;57m                                                           [0m
+[0m[48;2;57;57;57m [0m[1m[48;2;57;57;57mAsk[0m[48;2;57;57;57m [0m[38;2;181;152;189m[48;2;57;57;57mPlan · Checks · Delivery · Optional[0m[48;2;57;57;57m                   [0m
+[0m[48;2;57;57;57m                                                           [0m
+
+[0m[38;2;117;117;117m── ⠏[0m [0m[38;2;117;117;117mWorking ──────────────────────────────────────────────[0m
+[0m[7m [0m                                                          
+[0m[38;2;117;117;117m───────────────────────────────────────────────────────────[0m
+[0m[38;2;134;134;134m/tmp/collie-rpiv-core-validation.2MQAlf/home/.cache/coll...[0m
+[0m[38;2;134;134;134m0.7%/200k (auto)  anthropic/claude-haiku-4.5 • thinking off[0m[37;1H[0m[=7;1u]2;π - rpiv-readback\[?9001l]7501;state=working:app=pi\
