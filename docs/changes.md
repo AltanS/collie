@@ -272,9 +272,10 @@ Code spans and fenced code blocks stay literal. Write `\$` for a literal dollar 
 such as `$5 and $10` stay text. Incomplete delimiters, unsupported TeX and oversized
 expressions stay readable as source. A macro defined in one equation never applies to another.
 
-> **Note.** The engine downloads the first time you choose it, and the phone keeps it for
-> offline use. After an update it downloads again on first use; until then, offline, equations
-> show as their TeX source.
+> **Note.** The engines are a separate download to the host, one tap on the same card
+> ([Math](configure.md#math)). The phone fetches the engine from the host the first time it draws
+> an equation, and keeps it for offline use. After an update it fetches it again on first use;
+> until then, offline, equations show as their TeX source.
 
 ### Paths the agent prints
 

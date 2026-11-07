@@ -145,6 +145,7 @@ bridge is out of reach. Every item below has a size bound and a lifetime.
 | App shell | Cache Storage | until the next build | kept |
 | Fonts and push titles | Cache Storage | until replaced | deleted |
 | Whistle speech model and engine files (only if you chose to copy them) | Cache Storage | until you remove them | deleted |
+| Math engine files this device used (only with an engine chosen) | Cache Storage | until the next build | deleted |
 | Herd and pane text, as last seen | IndexedDB `collie-store` | 24 hours | deleted |
 | Newest Chat turns of each pane | IndexedDB `collie-store` | 1 day, or the "Keep chat on this phone" setting | deleted |
 
@@ -542,6 +543,23 @@ you or your machine, only the static user-agent `collie-update-check`.
 The Whistle model download is another outbound call. It happens only when a person taps **Download
 to host** or runs `collie stt whistle`, and it sends no data about you ([The speech engine
 (Whistle)](#the-speech-engine-whistle)).
+
+The math engines download is another outbound call, and it also happens only on a tap: **Download
+the math engines**, or picking an engine in **Settings → Appearance → Math** while the host has
+none. The bridge makes two anonymous HTTPS `GET`s to GitHub, with the user-agent `Collie/<version>`
+and nothing about you:
+
+```text
+https://github.com/<repo>/releases/download/v<version>/collie-<version>.manifest.json
+https://github.com/<repo>/releases/download/v<version>/collie-math-<version>.tar.gz
+```
+
+`<version>` is the version the bridge runs. `<repo>` is `AltanS/collie`, or `COLLIE_UPDATE_REPO` when you set it. The
+bridge takes the pack's size and sha256 from that release's manifest, refuses a file over 64 MiB or
+with another hash, and unpacks it itself, with no child process. It keeps the engines in the `math`
+folder of its state folder until you remove them on the same card. The routes need a write device,
+run on the lead only, allow one download at a time and are audited. A development build never
+makes the call ([ADR 0132](../.adr/0132-the-math-engines-are-a-pack-the-host-downloads.md)).
 
 WalkyTalky adds no outbound call. A message to another machine rides the crew link and goes
 nowhere else ([WalkyTalky](#walkytalky)).
