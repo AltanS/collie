@@ -46,7 +46,7 @@ describe("isMathLoadError", () => {
   });
 });
 
-// THE CONTRACT (engine-files.ts): an engine's module exports `typeset`, which answers a hast tree or
+// THE CONTRACT (engine-contract.ts): an engine's module exports `typeset`, which answers a hast tree or
 // null. The renderer around it caps the length, makes React elements, and turns a throw into source.
 describe("the renderer around an engine's typeset", () => {
   const tree = (value: string) => ({

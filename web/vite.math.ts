@@ -13,7 +13,7 @@ import { MATH_ENGINE_NAMES, type MathEngineName } from "./src/lib/math/engine-fi
 // Nothing under `math/` imports a file outside `math/<engine>/`, and the two engines share no file. So
 // the one pack the release builds from one build fits every platform's app build, whatever the app's
 // own chunks are called on that runner: the pack owes nothing to the app build. The app loads an
-// engine by URL (src/lib/math/engine.ts); the contract is one function (src/lib/math/engine-files.ts).
+// engine by URL (src/lib/math/engine.ts); the contract is one function (src/lib/math/engine-contract.ts).
 //
 // One build per engine, not one build with two entries: two entries would share a chunk (the hast
 // parser both use), and a file one engine needs from the other's folder is the coupling this rules out.

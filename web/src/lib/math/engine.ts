@@ -4,7 +4,8 @@ import { mounted } from "@/lib/base-path";
 import type { MathEngine } from "@/lib/design";
 import { MAX_MATH_CHARS } from "@/lib/markdown-math";
 
-import { mathEngineFiles, type MathEngineModule, type MathMarkup } from "./engine-files";
+import type { MathEngineModule, MathMarkup } from "./engine-contract";
+import { mathEngineFiles } from "./engine-files";
 
 // THE MATH ENGINES, loaded on demand. A device chooses Off, KaTeX or MathJax (Settings → Appearance,
 // `DesignPrefs.math`). Off is the default and loads nothing. A chosen engine is loaded once, the first
@@ -14,7 +15,7 @@ import { mathEngineFiles, type MathEngineModule, type MathMarkup } from "./engin
 // apart from the app (vite.math.ts) and shipped as the host's math pack (ADR 0132), so this file loads
 // it BY URL, `import()` of `<mount>/math/<engine>/<engine>.js`, and links its stylesheet beside it. The
 // app bundle holds no engine code and no chunk under `math/`, and the pack owes nothing to the app's
-// build. The module's contract, one `typeset` function, is in engine-files.ts.
+// build. The module's contract, one `typeset` function, is in engine-contract.ts.
 //
 // Both engines meet the renderer at the same seam: TeX in, React nodes out, or `null` when the TeX
 // does not typeset, and the caller then shows the source as text. Neither writes HTML into the DOM:
@@ -58,8 +59,8 @@ function linkStylesheet(href: string): Promise<void> {
 async function importFromHost(engine: Loaded): Promise<MathEngineModule> {
   const files = mathEngineFiles(engine);
   // SAFETY: the module is the engine bundle at the path engine-files.ts names, built from katex.ts or
-  // mathjax.ts, whose `typeset` is typed as the contract there. A module that broke it would throw on
-  // its first formula, and the renderer below turns a throw into the formula's source.
+  // mathjax.ts, whose `typeset` is typed as the contract in engine-contract.ts. A module that broke it
+  // would throw on its first formula, and the renderer below turns a throw into the formula's source.
   const [module] = await Promise.all([
     import(/* @vite-ignore */ mounted(`/${files.module}`)) as Promise<MathEngineModule>,
     linkStylesheet(mounted(`/${files.stylesheet}`)),

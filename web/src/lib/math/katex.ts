@@ -4,11 +4,11 @@ import "katex/dist/katex.min.css";
 
 import "./katex.css";
 
-import type { MathEngineModule, MathMarkup } from "./engine-files";
+import type { MathEngineModule, MathMarkup } from "./engine-contract";
 
 // KaTeX: small, synchronous, its own web fonts. THIS FILE IS THE ENTRY OF A BUNDLE OF ITS OWN,
 // `math/katex/katex.js` (vite.math.ts), never a module of the app: the app loads it by URL and calls
-// `typeset` (the contract is in engine-files.ts). Its stylesheet lands beside it as `katex.css`, and
+// `typeset` (the contract is in engine-contract.ts). Its stylesheet lands beside it as `katex.css`, and
 // its fonts are same-origin files there (vite.math.ts keeps them out of `data:` URIs, which the CSP
 // refuses).
 //

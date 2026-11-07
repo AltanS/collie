@@ -14,7 +14,7 @@
   `.github/workflows/release.yml` · `scripts/math-pack.ts` · `scripts/build-windows-payload.ps1` ·
   `bridge/math/store.ts` · `bridge/math/http.ts` · `bridge/server.ts` (`/api/math`, `/math/*`) ·
   `web/src/components/math-control.tsx` · `web/src/lib/math-pack.ts` · `web/vite.math.ts` ·
-  `web/src/lib/math/engine-files.ts`
+  `web/src/lib/math/engine-files.ts` · `web/src/lib/math/engine-contract.ts`
 
 ## Context
 
@@ -51,7 +51,8 @@ into the same `dist/math/`: one ES entry `math/<engine>/<engine>.js`, its styles
 since the pack is keyed by the release version. The app holds no engine code and no chunk under `math/`:
 it loads an engine by URL, `import()` of `<mount>/math/<engine>/<engine>.js`, links the stylesheet, and
 calls the one export, `typeset(tex, display)`, which answers a hast tree or null
-(`web/src/lib/math/engine-files.ts`, read by the loader, the engine build and the release check). Why:
+(`engine-contract.ts`; the file names are in `engine-files.ts`, read by the loader, the engine build
+and the release check). Why:
 the payloads build `web/dist` on their own runners and the pack comes from the release job's build. In
 the first cut the engine chunks imported the app's entry chunk for shared helpers. Its hash moved with
 the build stamp, and once the stamp was pinned to the commit time, the Windows runner still made another
