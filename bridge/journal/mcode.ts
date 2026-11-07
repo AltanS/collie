@@ -347,13 +347,15 @@ export class McodeTranscriptSource implements TranscriptSource {
           if ((await this.resolve(ref)) !== null) return ref;
         }
       }
-      // Processes were named but hold no session file: a fresh mcode, not a fault. No pane should
-      // read a past session here, so the answer is null rather than the index's newest row.
-      return null;
+      // mcode does NOT keep `messages.jsonl` open between turns, so an empty open-file list is
+      // ordinary, not proof of a fresh session. A live process in this folder is still the best
+      // evidence of which session this pane holds, so the index answers with a wide window
+      // (12 hours) rather than the five minutes the pid-less path uses.
     }
     if (cwd.trim() === "") return null;
+    const maxAgeMs = pids.length > 0 ? 12 * 3600_000 : 300_000;
     for (const root of this.roots) {
-      const indexed = await this.fromSqlite(root, cwd);
+      const indexed = await this.fromSqlite(root, cwd, { maxAgeMs });
       if (indexed !== null) {
         const ref: AgentSessionRef = { kind: "id", value: indexed };
         if ((await this.resolve(ref)) !== null) return ref;
@@ -362,8 +364,14 @@ export class McodeTranscriptSource implements TranscriptSource {
     return null;
   }
 
-  /** The newest unarchived session the index lists for `cwd`, or null. Read-only; never writes. */
-  private async fromSqlite(root: string, cwd: string): Promise<string | null> {
+  /**
+   * The newest unarchived session the index lists for `cwd`, or null. Read-only; never writes.
+   *
+   * mcode sets `status` to `idle` between turns and through most active use, so the status filter
+   * reads the whole live set. The window is `maxAgeMs` over `updated_at_ms` OR `created_at_ms`:
+   * a long session updated recently and a fresh one both count, a stale row does not.
+   */
+  private async fromSqlite(root: string, cwd: string, options?: { maxAgeMs?: number }): Promise<string | null> {
     const dbPath = join(root, "..", "sqlite", "runtime-state.sqlite");
     let db: Database;
     try {
@@ -374,13 +382,14 @@ export class McodeTranscriptSource implements TranscriptSource {
     try {
       // SAFETY: `bun:sqlite`'s `.get` is typed as unknown rows; the SELECT names exactly the one
       // column this cast reads, and the shape check guards it.
-      // Only a session started in the last five minutes counts: without pid hints there is no
-      // proof a live pane is writing it, and a stale row would fill a new pane with old turns.
+      const since = Date.now() - (options?.maxAgeMs ?? 300_000);
+      // SAFETY: `bun:sqlite`'s `.get` is typed as unknown rows; the SELECT names exactly the one
+      // column this cast reads, and the shape check guards it.
       const row = db
         .query(
-          "SELECT session_id FROM local_runtime_sessions WHERE workspace_dir = ? AND archived = 0 AND created_at_ms > ? AND status IN ('started', 'running') ORDER BY updated_at_ms DESC LIMIT 1",
+          "SELECT session_id FROM local_runtime_sessions WHERE workspace_dir = ? AND archived = 0 AND (updated_at_ms > ? OR created_at_ms > ?) AND status IN ('idle', 'started', 'running', 'interrupted') ORDER BY updated_at_ms DESC LIMIT 1",
         )
-        .get(cwd, Date.now() - 300_000) as { session_id?: unknown } | null;
+        .get(cwd, since, since) as { session_id?: unknown } | null;
       const id = row?.session_id;
       return typeof id === "string" && isMcodeSessionId(id) ? id : null;
     } catch {
@@ -420,6 +429,5 @@ export function mcodeJournal(roots: string | readonly string[]): JournalAdapter 
     parse: parseMcodeTranscript,
     reducer: createMcodeReducer,
     discover: (cwd, hints) => source.discoverSession(cwd, hints),
-    sharedFolderBlind: true,
   };
 }
