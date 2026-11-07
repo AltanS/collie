@@ -1,0 +1,52 @@
+                                                                                                                       
+ [0m[38;2;228;138;122m[48;2;79;142;179m▀[0m[38;2;228;138;122m▀█[0m  [0m[38;2;127;127;127mv1.5.0[0m                                                                                                           
+ [0m[38;2;79;142;179m█▀[0m [0m[38;2;234;182;93m█[0m [0m[38;2;127;127;127mescape[0m[38;2;157;157;157m interrupt · [0m[38;2;127;127;127mctrl+c/ctrl+d[0m[38;2;157;157;157m clear/exit · [0m[38;2;127;127;127m/[0m[38;2;157;157;157m commands · [0m[38;2;127;127;127m![0m[38;2;157;157;157m bash · [0m[38;2;127;127;127mctrl+o[0m[38;2;157;157;157m more[0m                                  
+ [0m[38;2;127;127;127mPress ctrl+o to show full startup help.[0m                                                                               
+                                                                                                                       
+ [0m[38;2;127;127;127mPi can explain its own features and look up its docs. Ask it how to use or extend Pi.[0m                                 
+                                                                                                                       
+                                                                                                                       
+ [0m[38;2;127;127;127mconfirm -> false[0m                                                                                                      
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                                                                                [0m[38;2;127;127;127mclaude-opus-5-5 · high[0m 
+
+[0m[1m[38;2;157;157;157mReview consent[0m
+Gentle AI can review this change before you call it done.
+this change gets a deeper review because it touches code that starts other processes in internal/runner/runner.go.
+[0m[38;2;157;157;157m→ 1. Run the review now[0m
+  2. Not now, just this once
+  3. Review and allow this session
+
+[0m[38;2;157;157;157mEffect: Reviews this exact frozen candidate now; nothing is granted for later candidates, so each later medium- or[0m
+[0m[38;2;157;157;157m        high-risk candidate asks again.[0m
+
+[0m[38;2;127;127;127m↑↓ choose · Enter confirm · Esc cancel · D details[0m
+[0m[38;2;157;157;157m~/proj[0m [0m[38;2;127;127;127m·[0m  master [0m[38;2;157;157;157m±1[0m [0m[38;2;157;157;157m+18[0m [0m[38;2;157;157;157m-0[0m                                                          [0m[38;2;157;157;157mctx[0m [0m[38;2;149;149;149m󰝦[0m 0% [0m[38;2;127;127;127m0/1.0M[0m [0m[38;2;127;127;127m·[0m [0m[38;2;157;157;157mclaude[0m [0m[38;2;157;157;157m5h[0m [0m[38;2;157;157;157m󰪡[0m 53% 
