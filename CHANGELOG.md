@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+## [1.27.3] - 2026-11-07
+
+A patch for two things that went wrong on the phone: a long slash command is sent again, and the reply box stays on screen after a break.
+
 ### Fixed
 
 - **A long slash command typed into Claude Code is submitted again.** On a full Herdr screen a command whose text wraps grows the box a row up, the transcript scrolls one row, and Claude Code keeps the screen's first row in place. Collie read that row as new text above the box and stopped before Enter, so a `/subtask` of a few hundred characters stayed in the box as "typed, not submitted". The check of the rows above a command now accepts one first row that stays put while the rows under it scroll; a row with new text still stops the send.
