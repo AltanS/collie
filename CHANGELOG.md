@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Fixed
+
+- **The composer stays on screen when you come back to the app after a break.** An installed Android app restored from the background could keep a page height taller than the screen, which pushed the reply box past the bottom edge until a hard refresh. On each return Collie now compares the page height with the visible height and, when they differ, holds the page at the visible height until the next resize.
+
 ## [1.27.2] - 2026-11-07
 
 A patch for the tablet and the foldable, with two fixes for the desk.
