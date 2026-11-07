@@ -99,7 +99,10 @@ export function siblingDirsOf(targets: readonly { readonly stateDir: string }[],
 export interface SiblingFs {
   /** A regular file's mtime and size, or null when it is missing or cannot be read. */
   stat(path: string): { readonly mtimeMs: number; readonly size: number } | null;
-  /** The file's text, at most `maxBytes` off its end with a cut first line dropped, or null. */
+  /**
+   * The file's text, at most `maxBytes` off its end with a cut first line dropped, or null. A last
+   * line with no newline is a sibling mid-write and is dropped too. Anything but a regular file is null.
+   */
   readTail(path: string, maxBytes: number): string | null;
 }
 
@@ -115,16 +118,22 @@ export const realSiblingFs: SiblingFs = {
   readTail(path, maxBytes) {
     let fd: number;
     try {
+      // A FIFO would block the open for good, so the type is read before the file is opened.
+      if (!statSync(path).isFile()) return null;
       fd = openSync(path, "r");
     } catch {
       return null;
     }
     try {
-      const size = fstatSync(fd).size;
+      const opened = fstatSync(fd);
+      if (!opened.isFile()) return null;
+      const size = opened.size;
       const length = Math.min(size, maxBytes);
       const buffer = Buffer.alloc(length);
       const got = readSync(fd, buffer, 0, length, size - length);
-      const text = buffer.subarray(0, got).toString("utf8");
+      const read = buffer.subarray(0, got).toString("utf8");
+      // The sibling may be mid-write: what follows the last newline is a torn line, so it goes.
+      const text = read.slice(0, read.lastIndexOf("\n") + 1);
       // Read from the middle of the file: the first line is cut, so it goes.
       return length < size ? text.slice(text.indexOf("\n") + 1) : text;
     } catch {
