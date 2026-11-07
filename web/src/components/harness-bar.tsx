@@ -96,6 +96,8 @@ const ICONS = new Map<string, IconKey>([
   ["compact", "harness-compact"], // fold the context up
   ["resume", "harness-resume"], // go back to an earlier session
   ["tree", "harness-tree"], // the session tree
+  ["plan", "harness-plan"], // plan mode on, off or read
+  ["history", "harness-history"], // branch from an earlier prompt
 ]);
 
 /** An operator's own row gets the slash — it is their command, and we know nothing else about it. */
