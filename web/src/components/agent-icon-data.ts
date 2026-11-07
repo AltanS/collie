@@ -50,6 +50,7 @@ export const AGENT_BRANDS = new Map<string, AgentBrand>([
   ["opencode", { bg: "#080808", fg: "#FFFFFF", mode: "stroke", d: "M8.75 8.75V2.75H21.25V15.25H15.25M15.25 8.75H2.75V21.25H15.25V8.75Z" }],
   ["agy", { bg: "#1A73E8", fg: "#FFFFFF", accent: "#1A73E8", mode: "fill", d: "M12 2L2 22h4.5l2-4.5h7l2 4.5H22L12 2zm0 6.5L14.2 14H9.8L12 8.5z" }],
   ["antigravity", { bg: "#1A73E8", fg: "#FFFFFF", accent: "#1A73E8", mode: "fill", d: "M12 2L2 22h4.5l2-4.5h7l2 4.5H22L12 2zm0 6.5L14.2 14H9.8L12 8.5z" }],
+  ["mcode", { bg: "#5B50E6", fg: "#FFFFFF", accent: "#5B50E6", mode: "fill", d: "M3 4h4.5l4.5 7 4.5-7H21v16h-4V9.5l-5 7.5h-1l-5-7.5V20H3V4z" }],
   // program: the speech bubble of a durable program's own mark (bridge/mux/durable/logo.ts), as one
   // 24×24 silhouette, for the belt section that holds its Steer and Stop. Keyed by what the mark IS,
   // not by the multiplexer's name, which the frontend never spells (scripts/check-mux-names.sh). It is
