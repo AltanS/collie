@@ -282,6 +282,14 @@ describe("the sidebar", () => {
     expect(q(container, '[data-slot="sidebar-foot"]')?.className).toContain("pb-[calc(0.25rem+env(safe-area-inset-bottom))]");
   });
 
+  it("is the containing block of everything absolute in its list, so a row's mark never grows the page", async () => {
+    // A mark far down a long list with no positioned box above it took the page as its containing
+    // block and made the document taller than the screen (1.27.1). The real layout is in e2e.
+    const { container } = await mount("w1:p1", 1200);
+    const list = q(container, '[data-slot="wide-sidebar"] > div.overflow-y-auto')!;
+    expect(list.className).toMatch(/(^|\s)relative(\s|$)/);
+  });
+
   it("is 280 px wide at medium", async () => {
     const { container } = await mount("w1:p1", 700);
     expect(q(container, "aside")?.style.width).toBe("280px");
