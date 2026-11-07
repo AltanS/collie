@@ -34,6 +34,7 @@ import { ToolCallsControl } from "@/components/tool-calls-control";
 import { TourControl } from "@/components/tour-control";
 import { TypefaceControl } from "@/components/typeface-control";
 import { TelemetrySettingsCard, TelemetrySettingsRow } from "@/components/telemetry-settings-card";
+import { MathControl } from "@/components/math-control";
 import { ZenControl } from "@/components/zen-control";
 import { useServerDiagnostics } from "@/hooks/use-server-diagnostics";
 import { EMPTY_DEVICES, type DevicesData } from "@/lib/loaders";
@@ -94,6 +95,9 @@ export function SettingsAppearanceRoute() {
           Reading them one after the other is what makes the split obvious. */}
       <TypefaceControl />
       <FontSettingsControl />
+      {/* How agent prose draws LaTeX. Under the two font cards, because it is the same question —
+          what text looks like — asked of a formula, and above the cards that arrange surfaces. */}
+      <MathControl />
       {/* The harness bar, then the belt's size directly under what it carries: one factor for
           band, pills, icons and words (components/actions-row.tsx, `--belt-scale`). */}
       <HarnessBarControl />

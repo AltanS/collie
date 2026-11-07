@@ -194,16 +194,17 @@ describe("the service worker's runtime caching", () => {
     .filter((line) => !/^\s*(\/\/|\*|\/\*)/.test(line))
     .join("\n");
 
-  it("registers exactly three routes: the navigation fallback, the /fonts/ cache and the /stt/ cache", () => {
-    expect(SW_CODE.match(/registerRoute\(/g)?.length).toBe(3);
+  it("registers exactly four routes: the navigation fallback and the /fonts/, /stt/ and /math/ caches", () => {
+    expect(SW_CODE.match(/registerRoute\(/g)?.length).toBe(4);
     expect(SW_CODE).toContain("new NavigationRoute(createHandlerBoundToURL(");
     expect(SW_CODE).toContain('url.pathname.startsWith(under("/fonts/"))');
     expect(SW_CODE).toContain('url.pathname.startsWith(under("/stt/"))');
+    expect(SW_CODE).toContain('url.pathname.startsWith(under("/math/"))');
   });
 
-  it("opens two runtime caches, the font cache and the speech cache, and never names an /api path", () => {
+  it("opens three runtime caches, the font, speech and math caches, and never names an /api path", () => {
     const opened = [...SW_CODE.matchAll(/caches\.open\(([^)]*)\)/g)].map((m) => m[1]);
-    expect(new Set(opened)).toEqual(new Set(["FONT_CACHE", "STT_CACHE"]));
+    expect(new Set(opened)).toEqual(new Set(["FONT_CACHE", "STT_CACHE", "MATH_CACHE"]));
     expect(SW_CODE).not.toMatch(/["'`]\/api\//);
     expect(SW_CODE).not.toMatch(/files\/image/);
   });
@@ -217,5 +218,12 @@ describe("the service worker's runtime caching", () => {
   it("stores only what sttStorable admits, and sweeps with sttSweepKeeps", () => {
     expect(SW_CODE).toContain("sttStorable(response,");
     expect(SW_CODE).toContain("sttSweepKeeps(");
+  });
+
+  it("opens the math cache only inside a /math/ request, and an update empties it", () => {
+    // A device on Off never requests /math/, so it never gets the cache; activate only deletes.
+    expect(SW_CODE.match(/caches\.open\(MATH_CACHE\)/g)?.length).toBe(1);
+    expect(SW_CODE).toContain("event.waitUntil(caches.delete(MATH_CACHE))");
+    expect(SW_CODE).toContain("mathStorable(response)");
   });
 });

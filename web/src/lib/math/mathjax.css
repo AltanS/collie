@@ -1,0 +1,34 @@
+/* MathJax 4's SVG output stylesheet, the rules that apply here (svg.styleSheet() would build the
+   same at runtime). Imported by mathjax.ts, so it ships in the lazy `math/` chunk with the engine.
+   Left out: the speech-rule highlighter and link colours, since neither the explorer nor \href is
+   enabled. */
+mjx-container[jax="SVG"] {
+  direction: ltr;
+  white-space: nowrap;
+}
+
+/* `display: inline` undoes Tailwind's preflight, which makes every svg a block. MathJax assumes the
+   browser default: a block svg ignores the container's `text-align: center`, so a display equation
+   sat at the left, and drops the `vertical-align` MathJax sets on it to seat an inline formula on
+   the text's baseline. */
+mjx-container[jax="SVG"] > svg {
+  display: inline;
+  overflow: visible;
+  min-height: 1px;
+  min-width: 1px;
+}
+
+mjx-container[jax="SVG"][display] {
+  display: block;
+  text-align: center;
+  margin: 0.5em 0;
+  padding: 0.3em 2px;
+}
+
+/* A wide display equation pans inside `.math-display` (index.css). Centring a box wider than its
+   scroller would put its left edge out of reach, so it starts at the left once it no longer fits. */
+.math-display mjx-container[jax="SVG"][display] {
+  width: max-content;
+  min-width: 100%;
+  box-sizing: border-box;
+}

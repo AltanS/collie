@@ -1,0 +1,11 @@
+/* KaTeX's own box inside `.math-display` (index.css). Imported by katex.ts, so it ships in the lazy
+   `math/` chunk. The display equation's intrinsic width keeps its left edge reachable when KaTeX
+   centres an expression wider than the scroller. */
+.math-display .katex-display {
+  margin: 0.5em 0;
+}
+
+.math-display .katex-display > .katex {
+  width: max-content;
+  min-width: 100%;
+}
