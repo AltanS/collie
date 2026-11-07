@@ -2,7 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-11-08
-- **Shipped in:** (pending)
+- **Shipped in:** 1.27.4
 - **Amends:** [ADR 0076](./0076-the-omp-resume-picker-is-lifted-and-every-omp-modal-has-a-way-out.md),
   in scope. The plan review was one of the omp modals that 0076 left raw with the Escape card. It is a
   card now. The modal gate of 0076 point 1 is unchanged, and so are
