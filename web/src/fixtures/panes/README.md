@@ -3824,3 +3824,23 @@ token, so omp printed `unavailable` for its usage), and nothing else private was
 | `omp--v18-17-0-nerd-switch-moved--w120.txt` | `dialog` | One `Down` later: the pointer on `claude-fable-5-1`. The walk pair of the capture above |
 | `omp--v18-17-0-nerd-switch-search--w120.txt` | `dialog` | `opus-5` typed in the `nerd` picker: seven results, no rule. The way out reads `Clear search` |
 | `omp--v18-17-0-usage-dashboard--w120.txt` | `dialog` | `/usage`: a full-screen `╭─ Usage` box on the alternate screen, one account row (`unavailable`), a 53-week activity heatmap, about twenty blank rows, then `r refresh · ⏎ details · ⎋ close`. No grammar lifts it: it stays raw and takes the unread-dialog card with its Escape. The cues read `⎋ close` and, since 2026-11-06, `⏎ details` |
+
+## Codex 0.166.0 and 0.167.0 dialogs behind the trouble tally (captured 2026-11-07)
+
+The daily ping of 2026-11-07 counted 13 unread-dialog cards on `codex@0.167.0/herdr` from one solo
+install. A lab Codex 0.167.0 (and 0.166.0 beside it) ran in a Herdr pane of 120 and of 80 columns, 61
+rows, with its own `CODEX_HOME` holding the SessionStart hook Herdr's Codex integration installs. Every
+running turn read (composer found, no card); these screens did not. Privacy: the lab folder became
+`/tmp/collie-codex-lab`, and the command center's detail pane keeps only `/tmp/` and the folder's name.
+
+| Fixture | State | Reads as |
+| --- | --- | --- |
+| `codex--v0166-trust--w120.txt` | 0.166.0 folder trust, `2. Back to Agent Command Center`, `enter continue · esc back` | prompt-select, trust |
+| `codex--v0167-trust--w120.txt` | The same on 0.167.0 | prompt-select, trust |
+| `codex--v0167-trust--w80.txt` | The same at 80 columns, the paragraph on four rows | prompt-select, trust |
+| `codex--v0167-hooks-review--w120.txt` | `Hooks need review`, three rows, `›` on `1. Review hooks`, `enter confirm · esc skip` | prompt-select, trust (HOOKS_NOTES.md) |
+| `codex--v0167-hooks-review--w80.txt` | The same at 80 columns | prompt-select, trust |
+| `codex--v0167-hooks-review-moved--w80.txt` | The same after one `Down`, `›` on `2. Trust all and continue` | prompt-select, trust; the walk pair |
+| `codex--v0167-resume-tall--w120.txt` | `/resume` with one session: the title on row 1, the footer on rows 59 and 60 | menu (the title used to be out of reach) |
+| `codex--v0167-working--w120.txt` | A turn running: `• Working (4s • esc to interrupt) · 1 background terminal running`, the box, the status row, `← for agents · ? for shortcuts` | raw, composer found, no card |
+| `codex--v0167-command-center--w120.txt` | The agent command center, one task, a detail pane, `? help  esc back  ↑/↓ move  enter open  n new` | the unread-dialog card, by design |
