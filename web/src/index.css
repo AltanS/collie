@@ -1172,7 +1172,9 @@
  * screen plus the bar. A correct WebKit gives `100dvh` either way. iOS never resizes the layout
  * for the keyboard, so nothing here has to track it. Android keeps `dvh`, which is what tracks its
  * keyboard (`interactive-widget=resizes-content`). The expression is its own token so the e2e
- * tier can resolve it in WebKit, which cannot emulate a home-screen launch. */
+ * tier can resolve it in WebKit, which cannot emulate a home-screen launch. A page Android restores
+ * from the background can keep a stale, taller height; lib/viewport-pin.ts then sets `--app-h` inline
+ * to the visible height until the next resize. */
 :root {
   --app-h: 100dvh;
   --app-h-ios-standalone: min(100lvh, calc(100dvh + env(safe-area-inset-top, 0px)));

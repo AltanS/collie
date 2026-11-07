@@ -17,6 +17,7 @@ import "./lib/pwa";
 // `beforeinstallprompt`, which is long before any Settings component mounts (lib/install.ts).
 import "./lib/install";
 import { startPushTitleSync } from "./lib/push-titles";
+import { startViewportPin } from "./lib/viewport-pin";
 
 // RECONCILES the typeface class, it does not apply it: public/theme-init.js has already put the
 // right one on <html> before first paint for every shipped face. This call is what covers the two
@@ -37,6 +38,10 @@ initOperatorFonts();
 // Leaves this device's push titles, in its own language, where the service worker can read them —
 // a worker woken by a push cannot see the language setting itself (lib/push-titles.ts, ADR 0074).
 startPushTitleSync();
+// A page Android restored from the background can keep a layout height taller than the glass, which
+// pushed the composer off the bottom edge until a hard refresh. This pins the app's height to the
+// visible one on each return until the next real resize (lib/viewport-pin.ts).
+startViewportPin();
 
 // An old page asking for a chunk the new build dropped (the worker deletes the old precache at once):
 // reload once onto the new build rather than leave a blank app. lib/chunk-reload.ts has the guards.
