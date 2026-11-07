@@ -9,9 +9,10 @@
 // sheet makes (the pane's send receipts and `GET /api/report/context`); the multiplexer is that
 // context's `mux`. A harness is data here, never a branch.
 //
-// FIRE AND FORGET. One request per card instance or per streak, never retried; a failed read or a
-// failed send is dropped. With the count off on the bridge, the bridge drops it too. This file is
-// pure; the one request is `signalTrouble` in store.ts.
+// FIRE AND FORGET. One request per card instance or per streak, and at most one per kind, pane and UTC
+// day on this device (once.ts), because a card that re-mounts is the same trouble. Never retried; a
+// failed read or a failed send is dropped. With the count off on the bridge, the bridge drops it too.
+// This file is pure; the one request is `signalTrouble` in store.ts.
 
 import type { SendReceiptRow } from "../surface/send";
 import type { ReportContext } from "./context";

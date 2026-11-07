@@ -19,6 +19,7 @@ import { asJsonNumber, asJsonObject, asJsonString, parseJson, type JsonValue } f
 import { SEND_OUTCOMES, SEND_REASONS, type SendOutcome, type SendReason, type SendReceiptRow } from "../surface/send";
 import type { DetectorVerdict, UnreadDialogModel } from "../harness/unread-dialog-model";
 import { isLead, type Scope } from "../scope";
+import { signalOncePerDay } from "./once";
 import { harnessOf, reportedSends, troubleSignal, type TroubleKind } from "./signal";
 import { closeOffer, NO_TROUBLE, noteSettled, offersReport, type SettledSend, type Trouble } from "./trouble";
 
@@ -207,8 +208,9 @@ export function streakIds(key: string): string[] {
 
 /**
  * Tell the bridge a trouble card showed. Reads the same facts the report sheet reads, cleans them to
- * {@link troubleSignal} and posts them once. Never throws and never retries. A crew member's pane has
- * no report context on the lead (the lead refuses it), so its signal carries the card's agent and an
+ * {@link troubleSignal} and posts them once. A kind signals at most once per pane and UTC day on this
+ * device ({@link signalOncePerDay}), so a card that re-mounts is not counted again. Never throws and
+ * never retries. A crew member's pane has no report context on the lead (the lead refuses it), so its signal carries the card's agent and an
  * `other` multiplexer, the same facts its report would have.
  */
 export async function signalTrouble(a: {
@@ -220,6 +222,10 @@ export async function signalTrouble(a: {
   /** The unread-dialog card's agent. */
   readonly agent?: string | undefined;
 }): Promise<void> {
+  await signalOncePerDay(a.kind, `${a.scope?.host ?? "lead"}|${a.paneId}`, () => postSignal(a));
+}
+
+async function postSignal(a: Parameters<typeof signalTrouble>[0]): Promise<void> {
   try {
     const [context, rows] = await Promise.all([
       isLead(a.scope) ? getReportContext(a.paneId, false, a.scope).catch(() => null) : Promise.resolve(null),
