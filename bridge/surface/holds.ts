@@ -275,12 +275,16 @@ export class HoldStore {
     return this.write({ ...known, state: "held", tries: counted ? known.tries + 1 : known.tries });
   }
 
-  /** The request closed without reaching the agent: the text stays for the phone's Resend. */
-  end(id: string, outcome: SendOutcome, reason?: SendReason): HeldEntry | null {
+  /**
+   * The request closed without reaching the agent: the text stays for the phone's Resend. `at` is the
+   * end time when it is not now: a budget that ran out while the bridge was down ended at its own
+   * `expiresAt` (protocol.ts `expireHoldsOnStart`), so the keep window counts from there.
+   */
+  end(id: string, outcome: SendOutcome, reason?: SendReason, at?: number): HeldEntry | null {
     const known = this.get(id);
     if (known === null) return null;
     const { reason: _old, ...rest } = known;
-    const ended: HeldEntry = { ...rest, state: "ended", outcome, endedAt: this.now() };
+    const ended: HeldEntry = { ...rest, state: "ended", outcome, endedAt: at ?? this.now() };
     return this.write(reason === undefined ? ended : { ...ended, reason });
   }
 

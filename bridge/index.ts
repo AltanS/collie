@@ -1499,25 +1499,26 @@ if (sendStore !== null) {
   if (recoveredAsks.length > 0) console.log(`[ask] ${String(recoveredAsks.length)} ask answer(s) left unsettled by the last run read as unknown`);
   sendStore.prune();
 }
+// The Surface counters (M56 spec 09): one ledger for the bridge, a day file under `<stateDir>/surface/`.
+// Created with either flag, so an instance that computes no Surface touches no new file. It never
+// blocks a send and never changes a verdict. Made before the hold queue, whose start counts expired sends.
+const surfaceLedger = cfg.sendProtocol || cfg.surfaceShadow ? new SurfaceLedger(cfg.stateDir) : null;
 // The hold queue (M56 spec 15): a send the harness cannot take during its turn waits here, one file per
 // request under `<stateDir>/held/`, and is replayed on start. A request that was going out when the
 // last run stopped was settled `unknown` above; its row ends with that, the text kept for a Resend.
 const holdStore = sendStore === null ? null : new HoldStore(join(cfg.stateDir, "held"));
 if (holdStore !== null && sendStore !== null) {
   const changed = SendProtocol.reconcileHolds(holdStore, sendStore);
-  // A request whose budget ran out while the bridge was down, and a row that ended expired, never come back (issue 740).
-  const expired = SendProtocol.dropExpiredHolds(holdStore, sendStore, Date.now());
-  if (expired > 0) console.log(`[send] hold queue: ${String(expired)} request(s) past their budget dropped, not replayed`);
+  // A request whose budget ran out while the bridge was down ends at its own expiry, never at the first poll (issue 740).
+  const expired = SendProtocol.expireHoldsOnStart(holdStore, sendStore, Date.now(), surfaceLedger ?? undefined);
+  if (expired.ended.length > 0) console.log(`[send] hold queue: ${String(expired.ended.length)} request(s) ran out their budget while the bridge was down, ended expired: ${expired.ended.join(", ")}`);
+  if (expired.dropped.length > 0) console.log(`[send] hold queue: ${String(expired.dropped.length)} expired row(s) past the keep window dropped, not replayed: ${expired.dropped.join(", ")}`);
   const waiting = holdStore.list().filter((entry) => entry.state === "held").length;
   if (changed > 0 || waiting > 0) console.log(`[send] hold queue replayed: ${String(waiting)} held, ${String(changed)} row(s) settled after the last run`);
 }
 // Walky talky's last word before a held send goes out (M62 spec 02), set once its service exists below:
 // a message meant for a pane instance that is gone never reaches the pane that took its id.
 let walkyReleaseCheck: ((requestId: string, session: string, paneId: string) => boolean) | null = null;
-// The Surface counters (M56 spec 09): one ledger for the bridge, a day file under `<stateDir>/surface/`.
-// Created with either flag, so an instance that computes no Surface touches no new file. It never
-// blocks a send and never changes a verdict.
-const surfaceLedger = cfg.sendProtocol || cfg.surfaceShadow ? new SurfaceLedger(cfg.stateDir) : null;
 // The hook edges (M56 spec 11): the harness's own hook writes one file per event into
 // `<stateDir>/edges/`, and this router places each on one pane of a terminal session. Built with the
 // Surface, so an instance that computes no Surface takes no edge. Each session that can take edges

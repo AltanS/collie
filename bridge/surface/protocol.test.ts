@@ -17,10 +17,10 @@ import { findInputFrame } from "../../web/src/lib/surface/frame.ts";
 import { surfaceOfScreen } from "../../web/src/lib/surface/fold.ts";
 import { isFree, type Surface, type SurfaceTurn } from "../../web/src/lib/surface/surface.ts";
 import { KeyGate } from "./key-gate.ts";
-import { BOUNDS, BOX_CHANGED, LATE_PROBE, boxMatches, COMMAND_SETTLE_MS, boxMatchesTail, commandBoxMatches, GENERIC_PROBE, uploadAlone, wholePaste, LOCK_BOUND_MS, locateText, neverHeldEntry, probeLanding, RowRing, runsInTurnEntry, SendProtocol, SessionLocks, STALE_SCREEN, steadyRow, type SendDeps, type SendRequest } from "./protocol.ts";
+import { BOUNDS, BOX_CHANGED, LATE_PROBE, boxMatches, COMMAND_SETTLE_MS, boxMatchesTail, commandBoxMatches, GENERIC_PROBE, uploadAlone, wholePaste, LOCK_BOUND_MS, locateText, neverHeldEntry, probeLanding, RowRing, runsInTurnEntry, SendProtocol, SessionLocks, STALE_SCREEN, steadyRow, type SendDeps, type SendLedger, type SendRequest } from "./protocol.ts";
 import { RequestStore } from "./requests.ts";
 import { SurfaceLedger } from "./counters.ts";
-import { HoldStore } from "./holds.ts";
+import { HOLD_ENDED_KEEP_MS, HoldStore } from "./holds.ts";
 import { StopService } from "./stop.ts";
 import { AuditLog } from "../audit.ts";
 import { heldCancelRoute, sendReceiptsRoute, sendRoute, type SendRouteRuntime } from "../server.ts";
@@ -5222,37 +5222,84 @@ describe("the held send (M56 spec 15)", () => {
 
   // Issue 740: three held sends past their 30 minutes came back after every restart as "Not sent" cards,
   // each with a fresh hour to stand, until the files were deleted by hand.
-  test("a held send whose budget ran out while the bridge was down is dropped on boot, settled expired, never replayed (issue 740)", async () => {
+  /** A ledger that keeps the outcomes it is told, for the boot step's count. */
+  const countingLedger = (outcomes: string[]): SendLedger => ({
+    send: (_key, end) => {
+      outcomes.push(end.outcome);
+    },
+    noteManual: () => undefined,
+    capState: () => {
+      throw new Error("not asked on start");
+    },
+    inbox: () => undefined,
+    example: () => undefined,
+  });
+
+  test("a held send whose budget ran out while the bridge was down ends expired at its own expiry, counted once, and stands only the rest of the hour (issue 740)", async () => {
     const first = untrusted();
     await first.send("then give it a title", { id: "held-000090" });
-    const later = 1_000_000 + 31 * 60 * 1000;
+    const expiresAt = first.holds.get("held-000090")!.expiresAt;
+    const later = expiresAt + 60 * 1000;
     const store = new RequestStore(join(dir, "sends"), () => later);
     store.recover(SendProtocol.crashReceipt);
     const holds = new HoldStore(join(dir, "held"), () => later);
     expect(SendProtocol.reconcileHolds(holds, store)).toBe(0);
-    expect(SendProtocol.dropExpiredHolds(holds, store, later)).toBe(1);
-    expect(holds.list()).toEqual([]);
-    expect(existsSync(join(dir, "held", "held-000090.json"))).toBe(false);
+    const counted: string[] = [];
+    expect(SendProtocol.expireHoldsOnStart(holds, store, later, countingLedger(counted))).toEqual({ ended: ["held-000090"], dropped: [] });
+    // The card stays, so a person who has not seen it still does; its hour runs from the expiry, not from now.
+    expect(holds.get("held-000090")).toMatchObject({ state: "ended", outcome: "expired", endedAt: expiresAt });
     expect(store.get("held-000090")?.receipt).toMatchObject({ outcome: "expired" });
-    // A second restart finds nothing to drop and nothing to replay.
-    expect(SendProtocol.dropExpiredHolds(new HoldStore(join(dir, "held"), () => later), store, later)).toBe(0);
+    expect(counted).toEqual(["expired"]);
+    // A second restart a minute later changes nothing: no fresh end time, no second count.
+    const again = new HoldStore(join(dir, "held"), () => later + 60 * 1000);
+    expect(SendProtocol.expireHoldsOnStart(again, store, later + 60 * 1000, countingLedger(counted))).toEqual({ ended: [], dropped: [] });
+    expect(again.get("held-000090")?.endedAt).toBe(expiresAt);
+    expect(counted).toEqual(["expired"]);
+    // Past the hour from the expiry, the row goes and is never replayed.
+    const past = expiresAt + HOLD_ENDED_KEEP_MS + 1;
+    const last = new HoldStore(join(dir, "held"), () => past);
+    expect(SendProtocol.expireHoldsOnStart(last, store, past)).toEqual({ ended: [], dropped: ["held-000090"] });
+    expect(existsSync(join(dir, "held", "held-000090.json"))).toBe(false);
   });
 
-  test("a row that already ended expired is dropped on boot; a held send inside its budget and other ended rows stay (issue 740)", async () => {
+  test("a held send past its budget by more than the hour goes outright, settled expired and counted (issue 740)", async () => {
+    const first = untrusted();
+    await first.send("then give it a title", { id: "held-000094" });
+    const past = first.holds.get("held-000094")!.expiresAt + HOLD_ENDED_KEEP_MS + 1;
+    const store = new RequestStore(join(dir, "sends"), () => past);
+    store.recover(SendProtocol.crashReceipt);
+    const holds = new HoldStore(join(dir, "held"), () => past);
+    const counted: string[] = [];
+    expect(SendProtocol.expireHoldsOnStart(holds, store, past, countingLedger(counted))).toEqual({ ended: [], dropped: ["held-000094"] });
+    expect(holds.list()).toEqual([]);
+    expect(store.get("held-000094")?.receipt).toMatchObject({ outcome: "expired" });
+    expect(counted).toEqual(["expired"]);
+  });
+
+  test("a row that ended expired a few minutes ago stays on start; one older than the hour goes; other rows are not this step's (issue 740)", async () => {
     const first = untrusted();
     await first.send("then give it a title", { id: "held-000091" });
     await first.send("and a second one", { id: "held-000092" });
     await first.send("and a third one", { id: "held-000093" });
     first.holds.end("held-000091", "expired");
     first.holds.end("held-000092", "refused", "pane_gone");
-    const soon = 1_000_000 + 5 * 60 * 1000;
+    const endedAt = first.holds.get("held-000091")!.endedAt!;
+    const soon = endedAt + 5 * 60 * 1000;
     const store = new RequestStore(join(dir, "sends"), () => soon);
     store.recover(SendProtocol.crashReceipt);
     const holds = new HoldStore(join(dir, "held"), () => soon);
-    expect(SendProtocol.dropExpiredHolds(holds, store, soon)).toBe(1);
+    expect(SendProtocol.expireHoldsOnStart(holds, store, soon)).toEqual({ ended: [], dropped: [] });
     expect(holds.list().map((entry) => [entry.id, entry.state])).toEqual([
+      ["held-000091", "ended"],
       ["held-000092", "ended"],
       ["held-000093", "held"],
+    ]);
+    const late = endedAt + HOLD_ENDED_KEEP_MS + 1;
+    const after = new HoldStore(join(dir, "held"), () => late);
+    expect(SendProtocol.expireHoldsOnStart(after, store, late)).toEqual({ ended: ["held-000093"], dropped: ["held-000091"] });
+    expect(after.list().map((entry) => [entry.id, entry.state, entry.outcome])).toEqual([
+      ["held-000092", "ended", "refused"],
+      ["held-000093", "ended", "expired"],
     ]);
   });
 

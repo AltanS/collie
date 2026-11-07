@@ -284,7 +284,7 @@ import type { CapState, CounterKey, ExampleEntry, InboxEntry } from "./counters.
 import { askLifetimeOf, type AskBook } from "./ask.ts";
 import type { KeyGate } from "./key-gate.ts";
 import type { RequestStore, SendRecord } from "./requests.ts";
-import { HOLD_BRIDGE_MAX, HOLD_PANE_MAX, heldRow, type HeldEntry, type HoldCause, type HoldStore } from "./holds.ts";
+import { HOLD_BRIDGE_MAX, HOLD_ENDED_KEEP_MS, HOLD_PANE_MAX, heldRow, type HeldEntry, type HoldCause, type HoldStore } from "./holds.ts";
 import { QueuedSends, type BoxReading, type ReceiptQueued } from "./queued.ts";
 import { PROBE_MARKER, probeCharOf, probeResidue } from "./probe-marker.ts";
 
@@ -464,6 +464,12 @@ export interface SendTarget {
   readonly paneId: string;
   /** The agent string the multiplexer reports; it picks the profile by id. */
   readonly harness: string;
+}
+
+/** What {@link SendProtocol.expireHoldsOnStart} did on start: the ids it ended `expired`, and the ids it dropped. */
+export interface HoldsOnStart {
+  readonly ended: string[];
+  readonly dropped: string[];
 }
 
 /**
@@ -3499,27 +3505,49 @@ export class SendProtocol {
   }
 
   /**
-   * On start, before the first poll: a held request whose budget ran out while the bridge was down, and
-   * a row that already ended `expired`, go, text and all (issue 740). Replayed, the first would end
-   * `expired` at the first poll with a fresh end time and its "Not sent" card would stand for another
-   * hour (`HOLD_ENDED_KEEP_MS`); the second is a card from a run that is over. A request still held
-   * settles `expired`, so its receipt says what happened. Returns how many rows went; the caller says
-   * so once.
+   * On start, before the first poll (issue 740). A held request whose budget ran out while the bridge was
+   * down ends `expired` at its own `expiresAt`, not at the first poll: replayed, it ended with a fresh end
+   * time, so its "Not sent" card stood for another {@link HOLD_ENDED_KEEP_MS} after every restart. Its
+   * request settles `expired` and the counters take it, as {@link endHeld} does. The row stays only for
+   * what is left of that window, so a person who has not seen the card yet still does; a row whose end
+   * (now or earlier, `expired`) is older than the window goes outright, text and all. Returns the ids of
+   * both, for the one log line on start.
    */
-  static dropExpiredHolds(holds: HoldStore, store: RequestStore, now: number): number {
-    let dropped = 0;
+  static expireHoldsOnStart(holds: HoldStore, store: RequestStore, now: number, ledger?: SendLedger): HoldsOnStart {
+    const ended: string[] = [];
+    const dropped: string[] = [];
     for (const entry of holds.list()) {
-      const pastBudget = entry.state !== "ended" && now >= entry.expiresAt;
-      const endedExpired = entry.state === "ended" && entry.outcome === "expired";
-      if (!pastBudget && !endedExpired) continue;
-      const record = store.get(entry.id);
-      if (pastBudget && record !== null && record.phase === "held" && record.receipt !== undefined) {
-        const { reason: _none, queued: _never, detail: _noDetail, saw: _noSaw, ...rest } = record.receipt;
-        store.settle(entry.id, { ...rest, outcome: "expired" });
+      if (entry.state === "held" && now >= entry.expiresAt) {
+        SendProtocol.settleExpired(store, entry.id, ledger);
+        if (now - entry.expiresAt > HOLD_ENDED_KEEP_MS) {
+          if (holds.remove(entry.id)) dropped.push(entry.id);
+          continue;
+        }
+        if (holds.end(entry.id, "expired", undefined, entry.expiresAt) !== null) ended.push(entry.id);
+        continue;
       }
-      if (holds.remove(entry.id)) dropped++;
+      if (entry.state !== "ended" || entry.outcome !== "expired") continue;
+      if (now - (entry.endedAt ?? entry.heldAt) <= HOLD_ENDED_KEEP_MS) continue;
+      if (holds.remove(entry.id)) dropped.push(entry.id);
     }
-    return dropped;
+    return { ended, dropped };
+  }
+
+  /** The request of a held row whose budget ran out settles `expired`, and the counters take it ({@link expireHoldsOnStart}). */
+  private static settleExpired(store: RequestStore, id: string, ledger: SendLedger | undefined): void {
+    const record = store.get(id);
+    const held = record?.receipt;
+    if (record === null || held === undefined || record.phase !== "held") return;
+    const { reason: _none, queued: _never, detail: _noDetail, saw: _noSaw, ...rest } = held;
+    store.settle(id, { ...rest, outcome: "expired" });
+    try {
+      ledger?.send(
+        { harness: held.harness === "" ? "-" : held.harness, version: held.version ?? "-", profileId: held.profileId ?? "-", status: held.profileStatus ?? "-" },
+        { outcome: "expired", reason: undefined, probed: false },
+      );
+    } catch (err) {
+      console.warn(`[surface] counters failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
 
   /**
