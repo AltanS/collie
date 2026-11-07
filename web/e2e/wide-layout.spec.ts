@@ -244,3 +244,23 @@ test("at the medium tier a long space name still leaves the tabs and their + in 
   for (const right of fit.controls) expect(right).toBeLessThanOrEqual(fit.right);
   await expect(page.locator('[data-slot="space-title"]')).toContainText("decision");
 });
+
+// THE TAB ROW STEPS UP BY WIDTH CLASS (tab-strip.tsx § STEP). The phone keeps its 30px tab; the medium
+// tier draws 36px and the expanded tier 40px, fixed steps and never a scale. Measured on the viewports
+// this suite's projects use: the phone's 390x844, the tablet's 820x1180, and the tablet turned on its
+// side, 1180x820, which is past the expanded line.
+test("a tab is 30px on a phone, 36px at the medium tier and 40px at the expanded tier", async ({ page }) => {
+  for (const [width, height, widthClass, tall] of [
+    [390, 844, "compact", 30],
+    [820, 1180, "medium", 36],
+    [1180, 820, "expanded", 40],
+  ] as const) {
+    await page.setViewportSize({ width, height });
+    await page.goto("/pane/w1:p1");
+    if (widthClass === "compact") await expect(page.locator('[data-slot="wide-layout"]')).toHaveCount(0);
+    else await expect(page.locator('[data-slot="wide-layout"]')).toHaveAttribute("data-width-class", widthClass);
+    const tab = page.getByRole("navigation", { name: en["space.tabStrip.title"] }).first().getByRole("button").first();
+    await expect(tab).toBeVisible();
+    expect((await tab.boundingBox())!.height, `${widthClass} at ${width}x${height}`).toBe(tall);
+  }
+});

@@ -35,6 +35,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 - **The Collie mark shows when the app on your phone is updating.** While a new app build downloads, whether you asked for it or the app updates itself after a deploy, and until the page reloads onto it, every bead of the header mark turns fast in the update colour, in place of the band that said "Downloading the new version…" or "New version, tap to update". The band shows no update row at all while this lasts. Tap the mark to open the dashboard: its update line says which of the two it is, with how far the download has come. The first install of the app shows nothing, since it replaces nothing.
 - **The Collie mark says when the connection is back.** The green "Connected" strip under the header is gone. When a lost or troubled connection returns, every bead of the mark turns once in green and "Reconnected" shows for that one turn, in the header on a pane and in the status line elsewhere, then the mark rests. A connection that was fine from the start stays quiet. A red strip you closed still gets the turn when the connection returns. While the app is updating, the update colour wins.
+- **On a tablet or an open foldable the tabs are larger.** The tab row at the top of a pane steps up with the screen: from 600px wide the tabs are 36px tall with 12px text, and from 900px wide 40px with 13px text, each a little wider, with a larger "+". The size changes in these fixed steps, not with every pixel of width. A phone keeps its 30px row of 11px text, exactly as before.
 
 ### Fixed
 
