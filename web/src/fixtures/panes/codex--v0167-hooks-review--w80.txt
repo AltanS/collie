@@ -1,0 +1,61 @@
+[0m[48;2;46;46;46m                                                                                 [0m
+[0m[48;2;46;46;46m  [0m[1m[48;2;46;46;46mHooks need review[0m[48;2;46;46;46m                                                              [0m
+[0m[48;2;46;46;46m  [0m[38;5;3m[48;2;46;46;46m1 hook is new or changed.[0m[48;2;46;46;46m                                                      [0m
+[0m[48;2;46;46;46m  [0m[2m[48;2;46;46;46mHooks can run outside the sandbox after you trust them.[0m[48;2;46;46;46m                        [0m
+[0m[48;2;46;46;46m                                                                                 [0m
+[0m[48;2;46;46;46m                                                                                 [0m
+[0m[1m[38;2;0;0;46m[48;2;99;168;248m› 1. Review hooks                                                                [0m
+[0m[48;2;46;46;46m  2. Trust all and continue                                                      [0m
+[0m[48;2;46;46;46m  3. Continue without trusting (hooks won't run)                                 [0m
+[0m[48;2;46;46;46m                                                                                 [0m
+  [0m[1m[38;2;191;191;191menter[0m[2m confirm · [0m[1m[38;2;191;191;191mesc[0m[2m skip                                                       [0m
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 

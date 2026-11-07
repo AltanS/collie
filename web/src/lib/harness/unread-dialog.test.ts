@@ -266,6 +266,9 @@ const CARD_FIXTURES = {
       // /resume list is read (session-picker.ts) and lifts as a menu, so it is not here.
       "codex--v0162-picker-model.txt",
       "codex--v0162-picker-permissions.txt",
+      // Codex 0.167.0's agent command center (`codex agents`, `/agents`, `←` on an empty box, and the
+      // trust prompt's `esc back`): a full-screen task list nothing lifts, `esc back` its way out.
+      "codex--v0167-command-center--w120.txt",
     ],
     notModals: [],
   },

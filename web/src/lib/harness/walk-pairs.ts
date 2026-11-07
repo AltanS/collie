@@ -170,6 +170,8 @@ export const WALK_PAIRS: readonly WalkPair[] = [
   ["kiro", "kiro--v3-write-trusted-allow-w120.txt", "kiro--v3-write-trusted-deny-w120.txt"],
   ["kiro", "kiro--v3-write-trusted-always-w120.txt", "kiro--v3-write-trusted-deny-w120.txt"],
   ["kiro", "kiro--v3-replace-trusted-allow-w120.txt", "kiro--v3-replace-trusted-deny-w120.txt"],
+  // Codex 0.167.0 hook-trust prompt (codex/hooks.ts): the pointer on Review hooks, then on Trust all.
+  ["codex", "codex--v0167-hooks-review--w80.txt", "codex--v0167-hooks-review-moved--w80.txt"],
 ];
 
 /**
