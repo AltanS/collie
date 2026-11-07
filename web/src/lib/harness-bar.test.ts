@@ -43,6 +43,7 @@ describe("the shipped bar", () => {
       "claude",
       "codex",
       "grok",
+      "mcode",
       "muse",
       "omp",
       "opencode",
@@ -71,6 +72,11 @@ describe("the shipped bar", () => {
   it("gives opencode its own spellings: /models and /sessions", () => {
     expect(barFor("opencode").map((i) => i.id)).toEqual(["model", "compact", "resume"]);
     expect(barFor("opencode").map((i) => i.command)).toEqual(["/models", "/compact", "/sessions"]);
+  });
+
+  it("gives mcode plan, compact, history and a resume keyed to /sessions", () => {
+    expect(barFor("mcode").map((i) => i.id)).toEqual(["plan", "compact", "history", "resume"]);
+    expect(barFor("mcode").map((i) => i.command)).toEqual(["/plan", "/compact", "/history", "/sessions"]);
   });
 
   it("gives Grok no Effort button, because a bare /effort opens no picker", () => {

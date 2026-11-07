@@ -96,6 +96,8 @@ const ICONS = new Map<string, LucideIcon>([
   ["compact", Shrink], // fold the context up
   ["resume", History], // go back to an earlier session
   ["tree", ListTree], // the session tree
+  ["plan", ListTree], // plan mode on, off or read
+  ["history", History], // branch from an earlier prompt
 ]);
 
 /** An operator's own row gets the slash — it is their command, and we know nothing else about it. */
