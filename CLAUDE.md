@@ -779,7 +779,7 @@ address, and kept only when its sha256 matches a pin in this release
 ([ADR 0096](./.adr/0096-speech-can-stay-on-the-phone.md)), and the math pack: the running
 version's release manifest and the one asset it names, fetched on a write device's tap only, kept
 only when the size and sha256 match, and unpacked in the bridge with no child, never under `web/dist`
-([ADR 0132](./.adr/0132-the-math-engines-are-a-pack-the-host-downloads.md)). A `durable` peer configured with `COLLIE_DURABLE_URL` makes a third, to the program's URL the
+([ADR 0132](./.adr/0132-the-math-engines-are-a-pack-the-host-downloads.md)). A `durable` peer configured with `COLLIE_DURABLE_URL` makes a fourth, to the program's URL the
 operator set, with the bearer token from `COLLIE_DURABLE_TOKEN`, and it is declined by setting
 nothing ([ADR 0103](./.adr/0103-the-wire-has-two-transports-a-private-socket-or-tls-with-a-token.md)). Speech-to-text (`bridge/stt/`, CLI
 `cli/stt.ts`) is a registered provider seam, absent until `stt.json` names a provider. Then it may
