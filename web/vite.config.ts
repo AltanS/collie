@@ -157,12 +157,26 @@ const pkgVersion = (
   }
 ).version;
 const buildSha = gitSha();
-const buildTime = new Date().toISOString();
 // channelFor(pkgVersion's evidence) is computed ONCE and drives both the version stamp above and
 // the icon/manifest channel below — never call it twice, the two must always agree.
 const channel: Channel = channelFor(gitEvidence(pkgVersion));
 const releaseBuild = channel === "release";
 const stampedVersion = releaseBuild ? pkgVersion : `${pkgVersion}-dev`;
+// THE STAMP'S TIME IS THE COMMIT'S ON A RELEASE BUILD. The stamp is baked into the entry chunk, and the
+// math engine chunks import that chunk by its hashed name (ADR 0132), so a clock reading in it makes
+// every build's entry chunk differ, and the one math pack built on the release job could name an entry
+// chunk no payload has. A release build is a clean tree on the tagged commit, so the commit's own time
+// says when it was made and two runners stamp one string. A dev build keeps the clock: its `-dirty`
+// and rebuild-by-rebuild distinction is what the stale-cache check reads.
+function commitTime(): string | null {
+  try {
+    const seconds = Number(git("git log -1 --format=%ct HEAD"));
+    return Number.isSafeInteger(seconds) && seconds > 0 ? new Date(seconds * 1000).toISOString() : null;
+  } catch {
+    return null;
+  }
+}
+const buildTime = (releaseBuild && !buildSha.endsWith("-dirty") ? commitTime() : null) ?? new Date().toISOString();
 const BUILD_INFO = {
   version: stampedVersion,
   sha: buildSha,
@@ -426,9 +440,22 @@ export default defineConfig({
         // is already its own chunk; the folder is what keeps it out of the precache (`math/**` in
         // globIgnores) and lets src/sw.ts cache it on first use instead. A device on Off — the
         // default — never downloads or stores a byte of either engine.
-        chunkFileNames: (chunk) => `${mathFolder(chunk.moduleIds) ?? "assets"}/[name]-[hash].js`,
-        assetFileNames: (asset) =>
-          `${mathFolder(asset.originalFileNames, asset.names) ?? "assets"}/[name]-[hash][extname]`,
+        //
+        // THE ENGINE FILES CARRY NO CONTENT HASH. The release builds ONE pack (`collie-math-<v>.tar.gz`,
+        // ADR 0132) from one build and serves it to the payloads of every platform, each of which built
+        // `web/dist` on its own runner. A hash in the name is a promise that the bytes are the ones this
+        // build made, and the pack cannot keep it: an engine chunk imports the entry chunk, whose bytes
+        // hold the build stamp, so the hash moved with every build, on one machine too. The pack is
+        // keyed by the release version (`<stateDir>/math/<version>/`), which is the cache key the hash
+        // was standing in for, so the name is just `math/katex/katex.js`. Everything else keeps its hash.
+        chunkFileNames: (chunk) => {
+          const folder = mathFolder(chunk.moduleIds);
+          return folder === null ? "assets/[name]-[hash].js" : `${folder}/[name].js`;
+        },
+        assetFileNames: (asset) => {
+          const folder = mathFolder(asset.originalFileNames, asset.names);
+          return folder === null ? "assets/[name]-[hash][extname]" : `${folder}/[name][extname]`;
+        },
       },
     },
   },

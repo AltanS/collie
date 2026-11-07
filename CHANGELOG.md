@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Fixed
+
+- **The math engine files carry no content hash.** The release check refused the Edge build because its one math pack named engine files by a hash that differed on every platform build, so the engines now keep fixed names under `math/`.
+
 ## [1.28.0] - 2026-11-06
 
 ### Added

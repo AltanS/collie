@@ -42,12 +42,17 @@ and lists it in `collie-<version>.manifest.json` under `extras` with role `math-
 job proves both before it publishes: it lists every payload and fails when one holds a file under
 `web/dist/math/`.
 
-**3. Every payload's bundle must find its engines in the pack.** The payloads build `web/dist` on
-their own runners, and the pack comes from the release job's build. A dynamic import names a hashed
-file, so a pack from a build that differs would leave every formula as source. The release job reads
-each payload's `web/dist/assets/*.js`, collects every `math/…` file name it references, and fails when
-one is not in the pack (`scripts/math-pack.ts check`). A Vite build is deterministic for one lockfile
-and one flake, so this holds; the check is what makes it a fact rather than a hope.
+**3. Every payload's bundle must find its engines in the pack, and the pack must find its shell.** The
+payloads build `web/dist` on their own runners, and the pack comes from the release job's build. The
+engine files carry no content hash (`math/katex/katex.js`, `math/mathjax/greek.js`; every other file
+of the build keeps its hash): the pack is keyed by the release version, which is what a hash would
+stand in for, and a hash cannot hold across builds, because an engine chunk imports the entry chunk and
+the entry chunk holds the build stamp. A release build therefore stamps the commit's time, not the
+clock's, so every runner makes one entry chunk. The release job reads each payload's
+`web/dist/assets/*.js` and fails when it names a `math/…` file the pack lacks; it also reads every
+engine file in the pack and fails when one imports a shell file (`../assets/index-<hash>.js`) that a
+payload's `web/dist` lacks (`scripts/math-pack.ts check`). A name that is missing fails the release; it
+never reaches a phone as formulas left as source.
 
 **4. The trust is the release manifest of the running version, nothing new.** The host fetches
 `https://github.com/<repo>/releases/download/v<version>/collie-<version>.manifest.json`, where `<repo>`
@@ -80,8 +85,10 @@ folder is renamed to `<stateDir>/math/<version>/` in one step. Other versions ar
 **7. `/math/*` is served from the store, else from the build, else 404.** The store's folder of the
 running version first. Then `web/dist/math/` beside the build, which a source build has: `collie build`
 builds the engines, and the bridge never writes under `web/dist`. Then 404, and never the app shell:
-a missing engine is an error the engine loader turns into source text. The files keep the PR's
-`immutable` cache rule, and the service worker's cache-first route for `/math/**` is unchanged.
+a missing engine is an error the engine loader turns into source text. The files have no hash
+in their names, so they cannot be `immutable` (one name is another file in the next release): they
+revalidate like the app shell, and the service worker's cache-first route for `/math/**`, emptied on
+every activation, is unchanged.
 
 **8. A development build never fetches a manifest.** A build stamped `-dev` (or a checkout with no
 build stamp) has no release to read. It serves `web/dist/math/` when that folder is there and reports
