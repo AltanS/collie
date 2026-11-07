@@ -14,8 +14,8 @@
 #              cannot hide behind a removed one in another. A test must not be skipped just to get
 #              green, so a higher count is a failure. Raise a number only with a reason.
 #              Bridge went from 2 to 0 when M43 spec 04 checked the access list instead of the mode.
-#              Today, 200 in all, each one named, with its reason:
-#              bridge 112. 5 are the POSIX-only and engine cases below, 1 the /etc link scan, 1 the telemetry file mode, 5 are the hold socket tests, 7 the walky ones, 5 the walky sibling registry ones, 30 are the
+#              Today, 201 in all, each one named, with its reason:
+#              bridge 113. 5 are the POSIX-only and engine cases below, 1 the /etc link scan, 1 the telemetry file mode, 5 are the hold socket tests, 7 the walky ones, 6 the walky sibling registry ones, 30 are the
 #                durable example apps, 10 are the durable-harness adapter test, 36 are the durable socket tests (see "Durable, bridge" below),
 #                5 are the pane's program reads (see "The pane's program, bridge" below), and 6 are the fake git of a new
 #                worktree (see "The fake git of a new worktree, bridge" below).
@@ -57,7 +57,7 @@
 #                - "keeps an id and target a day, apart from the log, on disk at 0600" (seen.test.ts, "the seen file")
 #                - "is 0600, answers one line per connection, and refuses a second bridge on the same path" (socket.test.ts, "the socket"): every part of it is the Unix socket, and Windows builds no walky socket ("Windows has no socket" runs there)
 #                - "the server answers an unread line with its reason or `not here`, never the bare word" (socket.test.ts, "the socket"): the answer travels over the Unix socket
-#              The walky sibling registry, bridge (5). bridge/walky/siblings.test.ts walks a live hook target registry
+#              The walky sibling registry, bridge (6). bridge/walky/siblings.test.ts walks a live hook target registry
 #                (liveHookTargets), which needs a pid start-time probe, and win32 has none: every target reads as dead, so
 #                the registry is empty there in production and there is nothing to merge. The rule, the merge, the cache and
 #                the fixture with the siblings handed in run on Windows. Each name sits on one line, so the pin test can find it:
@@ -66,6 +66,7 @@
 #                - "a registry that is not private reads as no siblings, and the list is the own one"
 #                - "a missing registry reads as no siblings"
 #                - "a sibling with no walky log adds nothing"
+#                - "a FIFO or a folder where a log should be is skipped, never opened" (mkfifo is POSIX only)
 #              Durable, bridge (30 + 36). Windows has no socket transport (WIRE.md section 1A), so a test
 #                that is about the Unix socket itself cannot run there. The tests about the wire (controls,
 #                asks, answers, receipts, events, Chat, starters, the conformance suite) run on Windows
@@ -135,7 +136,7 @@
 #                  (it needs a tmux binary, and Windows has none)
 param(
   [Parameter(Mandatory = $true)][string]$Out,
-  [int]$MaxSkipsBridge = 112,
+  [int]$MaxSkipsBridge = 113,
   [int]$MaxSkipsCli = 63,
   [int]$MaxSkipsScripts = 25
 )

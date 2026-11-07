@@ -126,13 +126,13 @@ describe("the Windows check runs the flake's Bun", () => {
     expect(String(setup[0]?.with?.["bun-version"])).toBe(flakeBunVersion());
   });
 
-  test("windows-suites.ps1 gives each suite its own skip budget, 200 in all, each skip named", () => {
+  test("windows-suites.ps1 gives each suite its own skip budget, 201 in all, each skip named", () => {
     const script = readFileSync(join(ROOT, "scripts", "windows-suites.ps1"), "utf8");
     const budget = (suite: string): number => Number(new RegExp(`\\[int\\]\\$MaxSkips${suite} = (\\d+)`).exec(script)?.[1] ?? Number.NaN);
-    expect([budget("Bridge"), budget("Cli"), budget("Scripts")]).toEqual([112, 63, 25]);
+    expect([budget("Bridge"), budget("Cli"), budget("Scripts")]).toEqual([113, 63, 25]);
     // The bridge allowance is the local-cli tests that stay POSIX-only, the one real-engine Whistle
     // case that needs the uncommitted model, the one scan of real links to /etc, the one telemetry file mode, the 5 hold socket tests, the 7
-    // walky mode and socket tests, the 5 walky sibling registry tests, the 30 durable example tests, the 10 durable-harness adapter skips and the 36 durable socket tests; the comment
+    // walky mode and socket tests, the 6 walky sibling registry tests, the 30 durable example tests, the 10 durable-harness adapter skips and the 36 durable socket tests; the comment
     // names them all.
     const localCli = readFileSync(join(ROOT, "bridge", "stt", "local-cli.test.ts"), "utf8");
     const posixOnly = [...localCli.matchAll(/test\.if\(posix\)\("([^"]+)"/g)].map((m) => m[1]!);
@@ -157,7 +157,7 @@ describe("the Windows check runs the flake's Bun", () => {
     for (const name of telemetrySkips) expect(script).toContain(name);
     // The walky sibling registry: the cases that walk a live hook target registry, which needs a pid start-time probe win32 lacks.
     const siblingSkips = [...readFileSync(join(ROOT, "bridge", "walky", "siblings.test.ts"), "utf8").matchAll(/test\.skipIf\(process\.platform === "win32"\)\("([^"]+)"/g)].map((m) => m[1]!);
-    expect(siblingSkips).toHaveLength(5);
+    expect(siblingSkips).toHaveLength(6);
     for (const name of siblingSkips) expect(script).toContain(name);
     // The pane's program reads (.adr/0124): two boundedRun tests start a POSIX sh, the live /proc probe is
     // Linux only, and the "two copies" describe's one test and its hook use POSIX sh fakes.
