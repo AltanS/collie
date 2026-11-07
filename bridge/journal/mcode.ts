@@ -19,6 +19,7 @@
 // folder apart, so it is the fallback, not the answer.
 
 import { Database } from "bun:sqlite";
+import { execFile } from "node:child_process";
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -34,11 +35,12 @@ import {
   type Reduction,
   rememberPending,
   type RowReducer,
-} from "./reduce.ts";import { containedRealpath, exists, loadTail, readSinceFile, rootList, statFile } from "./files.ts";
+} from "./reduce.ts";import { containedRealpath, loadTail, readSinceFile, rootList, statFile } from "./files.ts";
 import { clamp, MAX_RESULT_CHARS, MAX_TEXT_CHARS, stripAnsi, summarizeToolInput } from "./text.ts";
 import { classifyToolCall } from "./tool-call.ts";
 import type {
   AgentSessionRef,
+  DiscoverHints,
   JournalAdapter,
   TranscriptEntry,
   TranscriptPart,
@@ -46,8 +48,55 @@ import type {
 } from "./types.ts";
 
 /** MiniMax Code names sessions `mvs_<hex-or-base64url>`. */
-const SESSION_ID_RE = /^mvs_[0-9a-zA-Z_-]+$/;
+/**
+ * execFile as a promise, typed for the one call this file makes (no overloads) so tests can spy on
+ * node:child_process. Bound at each call so a spy on the module is the one that runs.
+ */
+const runLsof = (
+  file: string,
+  args: readonly string[],
+  options?: { timeout?: number; maxBuffer?: number; windowsHide?: boolean },
+): Promise<{ stdout: string; stderr: string }> =>
+  new Promise((resolve, reject) => {
+    // SAFETY: runLsof takes readonly so callers can pass frozen arrays; execFile's type wants string[].
+    execFile(file, args as string[], options ?? {}, (err, stdout, stderr) => {
+      if (err) reject(err);
+      else {
+        // SAFETY: the mock in tests passes { stdout } objects; a real lsof passes a Buffer.
+        const out =
+          typeof stdout === "object" && stdout !== null && "stdout" in stdout
+            ? String((stdout as { stdout: unknown }).stdout ?? "")
+            : String(stdout ?? "");
+        resolve({ stdout: out, stderr: String(stderr ?? "") });
+      }
+    });
+  });
 
+/** The log files a live mcode process may hold open, each naming the session it is writing. */
+const OPEN_SESSION_PATHS: readonly { pattern: RegExp; decode?: boolean }[] = [
+  // The observability log: the raw session id sits in the path itself.
+  { pattern: /\/logs\/sessions\/(mvs_[0-9a-f]+)\// },
+  // The transcript: the folder suffix is the base64url of the id, which decodes to it.
+  { pattern: /-session_([A-Za-z0-9_-]+)\/messages\.jsonl/, decode: true },
+];
+
+/** The session ids these open-file paths name, decoded and shape-checked. */
+function sessionIdsOfPaths(paths: readonly string[]): string[] {
+  const ids: string[] = [];
+  for (const path of paths) {
+    for (const { pattern, decode } of OPEN_SESSION_PATHS) {
+      const match = pattern.exec(path);
+      const captured = match?.[1];
+      if (captured === undefined) continue;
+      // SAFETY: base64url of an mvs_ id decodes to the id itself; the shape check guards it.
+      const id = decode ? Buffer.from(captured, "base64url").toString("utf8") : captured;
+      if (isMcodeSessionId(id)) ids.push(id);
+    }
+  }
+  return ids;
+}
+
+const SESSION_ID_RE = /^mvs_[0-9a-zA-Z_-]+$/;
 export function isMcodeSessionId(value: string): boolean {
   return SESSION_ID_RE.test(value);
 }
@@ -267,12 +316,41 @@ export class McodeTranscriptSource implements TranscriptSource {
   }
 
   /**
-   * The session running in `cwd`. First the SQLite index mcode itself keeps, read-only: the newest
-   * unarchived session whose workspace_dir is the pane's folder, resolved through the
-   * `history_relative_dir` the row names. Then the disk walk's newest `messages.jsonl`, which
-   * cannot tell two panes in one folder apart — the index is the answer, the walk the fallback.
+   * The session the pane's foreground mcode process is writing, read off the files it holds open
+   * (`lsof`), the way agy and grok bind to a live process. A process that has opened no session
+   * file yet — a fresh mcode waiting for its first prompt — answers null, so no pane ever inherits
+   * a past session from the SQLite index. Only when the hints name no process at all (a
+   * multiplexer without pid reporting) does the index answer, and then only a session started in
+   * the last five minutes, so a stale row cannot fill a new pane.
    */
-  async discoverSession(cwd: string): Promise<AgentSessionRef | null> {
+  async discoverSession(cwd: string, hints?: DiscoverHints): Promise<AgentSessionRef | null> {
+    const pids = (hints?.processes ?? [])
+      .filter((p) => {
+        const name = p.argv[0]?.split(/[/\\]/).pop()?.replace(/\.exe$/i, "");
+        return name === "mcode" || name === "minimax-code" || name === "node";
+      })
+      .map((p) => p.pid)
+      .filter((pid): pid is number => pid !== undefined && Number.isSafeInteger(pid) && pid > 0);
+    if (pids.length > 0) {
+      for (const pid of pids) {
+        const { stdout } = await runLsof("lsof", ["-nP", "-p", String(pid), "-g", String(pid), "-Fn"], {
+          timeout: 1000,
+          maxBuffer: 1024 * 1024,
+          windowsHide: true,
+        }).catch(() => ({ stdout: "" }));
+        const paths = stdout
+          .split("\n")
+          .filter((line) => line.startsWith("n"))
+          .map((line) => line.slice(1));
+        for (const id of sessionIdsOfPaths(paths)) {
+          const ref: AgentSessionRef = { kind: "id", value: id };
+          if ((await this.resolve(ref)) !== null) return ref;
+        }
+      }
+      // Processes were named but hold no session file: a fresh mcode, not a fault. No pane should
+      // read a past session here, so the answer is null rather than the index's newest row.
+      return null;
+    }
     if (cwd.trim() === "") return null;
     for (const root of this.roots) {
       const indexed = await this.fromSqlite(root, cwd);
@@ -280,11 +358,6 @@ export class McodeTranscriptSource implements TranscriptSource {
         const ref: AgentSessionRef = { kind: "id", value: indexed };
         if ((await this.resolve(ref)) !== null) return ref;
       }
-    }
-    for (const root of this.roots) {
-      const newest = await this.newestUnder(root);
-      if (newest === null) continue;
-      return { kind: "id", value: newest };
     }
     return null;
   }
@@ -301,11 +374,13 @@ export class McodeTranscriptSource implements TranscriptSource {
     try {
       // SAFETY: `bun:sqlite`'s `.get` is typed as unknown rows; the SELECT names exactly the one
       // column this cast reads, and the shape check guards it.
+      // Only a session started in the last five minutes counts: without pid hints there is no
+      // proof a live pane is writing it, and a stale row would fill a new pane with old turns.
       const row = db
         .query(
-          "SELECT session_id FROM local_runtime_sessions WHERE workspace_dir = ? AND archived = 0 ORDER BY updated_at_ms DESC LIMIT 1",
+          "SELECT session_id FROM local_runtime_sessions WHERE workspace_dir = ? AND archived = 0 AND created_at_ms > ? AND status IN ('started', 'running') ORDER BY updated_at_ms DESC LIMIT 1",
         )
-        .get(cwd) as { session_id?: unknown } | null;
+        .get(cwd, Date.now() - 300_000) as { session_id?: unknown } | null;
       const id = row?.session_id;
       return typeof id === "string" && isMcodeSessionId(id) ? id : null;
     } catch {
@@ -313,38 +388,6 @@ export class McodeTranscriptSource implements TranscriptSource {
     } finally {
       db.close();
     }
-  }
-
-  /** The newest `messages.jsonl` under `root`, by folder-name time, as its session id. Bounded. */
-  private async newestUnder(root: string): Promise<string | null> {
-    const MAX_CANDIDATES = 500;
-    let seen = 0;
-    for (const year of await descending(root)) {
-      for (const month of await descending(join(root, year))) {
-        for (const day of await descending(join(root, year, month))) {
-          const dir = join(root, year, month, day);
-          let names: string[];
-          try {
-            names = await readdir(dir);
-          } catch {
-            continue;
-          }
-          // Newest first, and the folder name IS the time mcode sorts by: the first candidate
-          // whose messages.jsonl exists is the answer. The caps bound the worst case.
-          for (const name of names.toSorted((a, b) => (a < b ? 1 : a > b ? -1 : 0))) {
-            seen += 1;
-            if (seen > MAX_CANDIDATES) return null;
-            const mark = name.lastIndexOf("-session_");
-            if (mark === -1) continue;
-            // SAFETY: base64url of an mvs_ id decodes to the id itself; the shape check guards it.
-            const id = Buffer.from(name.slice(mark + "-session_".length), "base64url").toString("utf8");
-            if (!isMcodeSessionId(id)) continue;
-            if (await exists(join(dir, name, "messages.jsonl"))) return id;
-          }
-        }
-      }
-    }
-    return null;
   }
 
   stat = statFile;
@@ -376,6 +419,7 @@ export function mcodeJournal(roots: string | readonly string[]): JournalAdapter 
     source,
     parse: parseMcodeTranscript,
     reducer: createMcodeReducer,
-    discover: (cwd) => source.discoverSession(cwd),
+    discover: (cwd, hints) => source.discoverSession(cwd, hints),
+    sharedFolderBlind: true,
   };
 }

@@ -1,7 +1,8 @@
 import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, spyOn, test } from "bun:test";
+import * as cp from "node:child_process";
 
 import {
   createMcodeReducer,
@@ -177,32 +178,66 @@ describe("McodeTranscriptSource", () => {
     const { Database } = await import("bun:sqlite");
     const db = new Database(join(root, "..", "sqlite", "runtime-state.sqlite"));
     db.run(
-      "CREATE TABLE local_runtime_sessions (session_id TEXT PRIMARY KEY, workspace_dir TEXT, history_relative_dir TEXT, status TEXT, archived INTEGER, updated_at_ms INTEGER)",
+      "CREATE TABLE local_runtime_sessions (session_id TEXT PRIMARY KEY, workspace_dir TEXT, history_relative_dir TEXT, status TEXT, archived INTEGER, updated_at_ms INTEGER, created_at_ms INTEGER)",
     );
     // SAFETY: test fixture binding of literals this test just built.
-    db.run("INSERT INTO local_runtime_sessions VALUES (?, ?, ?, 'idle', 0, 1)", [SID, CWD, "x"]);
+    db.run("INSERT INTO local_runtime_sessions VALUES (?, ?, ?, 'started', 0, ?, ?)", [SID, CWD, "x", Date.now(), Date.now()]);
     db.close();
 
     const src = new McodeTranscriptSource(root);
     expect(await src.discoverSession(CWD)).toEqual({ kind: "id", value: SID });
   });
 
-  test("falls back to the newest messages.jsonl when the index says nothing", async () => {
+  test("binds to the session file the pane's process holds open (lsof)", async () => {
     const root = await sessionRoot(SID);
-    await writeSession(root, OTHER, [userRow], "11-00-00-000");
-    const src = new McodeTranscriptSource(root);
-    // No index beside this root: the disk walk answers the newest, and the test root holds one
-    // session folder, so there is exactly one candidate and no ambiguity to refuse.
-    const ref = await src.discoverSession(join(root, "anything-else"));
-    expect(ref).toEqual({ kind: "id", value: SID });
-    expect(await src.resolve(ref!)).not.toBeNull();
+    // A stale index row would be the old answer; the live process decides now.
+    const lsof = spyOn(cp, "execFile").mockImplementation(
+      // SAFETY: test mock casting — the mock only answers the one lsof call discovery makes.
+      ((_file: string, _args: readonly string[], _opts: { timeout: number }, cb: (e: Error | null, r: { stdout: string }) => void) => {
+        const log = join(root, "2026", "11", "03", `12-00-00-000-session_${Buffer.from(SID).toString("base64url")}`, "messages.jsonl");
+        const observability = `/Users/x/.minimax/v2/observability/logs/sessions/${OTHER}/events.jsonl`;
+        cb(null, { stdout: ["p10", "f3", `n${log}`, `n${observability}`].join("\n") });
+        // SAFETY: test mock casting
+        return undefined as never;
+      }) as never,
+    );
+    try {
+      const src = new McodeTranscriptSource(root);
+      const ref = await src.discoverSession(CWD, { processes: [{ argv: ["mcode"], pid: 10 }] });
+      expect(ref).toEqual({ kind: "id", value: SID });
+      expect(await src.resolve(ref!)).not.toBeNull();
+    } finally {
+      lsof.mockRestore();
+    }
   });
 
-  test("answers null with no hints, an empty cwd and an empty root", async () => {
-    const root = await sessionRoot();
+  test("a process with no session file open means no session — never a past one", async () => {
+    const root = await sessionRoot(SID);
+    const lsof = spyOn(cp, "execFile").mockImplementation(
+      // SAFETY: test mock casting
+      ((_file: string, _args: readonly string[], _opts: { timeout: number }, cb: (e: Error | null, r: { stdout: string }) => void) => {
+        cb(null, { stdout: ["p10", "f1", "n/etc/hosts"].join("\n") });
+        // SAFETY: test mock casting
+        return undefined as never;
+      }) as never,
+    );
+    try {
+      const src = new McodeTranscriptSource(root);
+      expect(await src.discoverSession(CWD, { processes: [{ argv: ["mcode"], pid: 10 }] })).toBeNull();
+      // No pid at all falls to the index, which holds only a stale row: still null.
+      expect(await src.discoverSession(CWD)).toBeNull();
+    } finally {
+      lsof.mockRestore();
+    }
+  });
+
+  test("without pid hints only a recent started session in the index answers", async () => {
+    // No index beside this root, and the disk walk is gone: discovery reads a live process or a
+    // fresh index row, never the newest folder on disk.
+    const root = await sessionRoot(SID);
     const src = new McodeTranscriptSource(root);
     expect(await src.discoverSession("")).toBeNull();
-    expect(await src.discoverSession(CWD)).toEqual({ kind: "id", value: SID });
+    expect(await src.discoverSession(CWD)).toBeNull();
     const empty = await realpath(await mkdtemp(join(tmpdir(), "collie-mcode-")));
     dirs.push(empty);
     expect(await new McodeTranscriptSource(empty).discoverSession(CWD)).toBeNull();
