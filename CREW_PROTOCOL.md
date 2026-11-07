@@ -3529,7 +3529,10 @@ is two hops, A to the lead and the lead to B.
   other pane read (§9.1): `host=` dropped, `session=` and `limit=` passed on, the read budget, attempted
   against a stale member too, never audited. The member answers from its own log, under its own read
   gate (§6), with the list its own phone route answers: `{ messages }`, the messages that reached the pane and
-  the ones it sent, newest first, each with its newest receipt, `verified` as the member wrote it. The answer goes back byte for byte with its ETag. The lead
+  the ones it sent, newest first, each with its newest receipt, `verified` as the member wrote it. A row
+  another Collie instance on the member's machine recorded for the same pane carries `recordedBy` (that
+  instance's state dir name) and `recordedAs` (the pane's address in that instance's words), both
+  additive-optional (§7.1, added 2026-11-07): a lead or phone that predates them reads the row as any other. The answer goes back byte for byte with its ETag. The lead
   does not mask it, because a member's own route does not mask that body either. See "The phone reads
   a member's list" below.
 - The first two answer `{ receipts }`, one receipt per pane reached, at `accepted` or a refusal, within the

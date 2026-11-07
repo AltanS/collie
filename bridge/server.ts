@@ -2576,6 +2576,7 @@ export function startServer(opts: {
         } catch {
           return text("malformed URL", 400);
         }
+        // Never audited (CREW_PROTOCOL §21): the member merges its siblings' rows as its phone route does, and writes no line.
         return walkyPaneRoute(walky, rt.name, paneId, url.searchParams.get("limit"), req.headers.get("accept-encoding"));
       }
       if (walkyPane && req.method === "POST") {
@@ -3133,7 +3134,7 @@ export function startServer(opts: {
         } catch {
           return text("malformed URL", 400);
         }
-        return walkyPaneRoute(walky, rt.name, paneId, url.searchParams.get("limit"), req.headers.get("accept-encoding"));
+        return walkyPaneRoute(walky, rt.name, paneId, url.searchParams.get("limit"), req.headers.get("accept-encoding"), { audit, device: whois(req).device });
       }
       // ── Ask v1 (M56 spec 08) ─────────────────────────────────────────────
       // `POST /api/ask/<id>?session=<name>`: a tap on a dialog card, as one Answer to a single-use ask
@@ -8805,13 +8806,28 @@ export function walkyDropRoute(
  * ones it sent, newest first. A pane id no pane holds now lists nothing: a new session that takes the
  * id starts empty.
  */
-export function walkyPaneRoute(walky: WalkyService | undefined, session: string, paneId: string, limitRaw: string | null, acceptEncoding: string | null): Response {
+export function walkyPaneRoute(
+  walky: WalkyService | undefined,
+  session: string,
+  paneId: string,
+  limitRaw: string | null,
+  acceptEncoding: string | null,
+  context?: { readonly audit: AuditLog; readonly device: string | null },
+): Response {
   if (walky === undefined) return text(WALKY_OFF_TEXT, 404);
   if (!isPaneId(paneId)) return text("bad pane", 400);
   const limit = limitRaw === null ? WALKY_LIST_DEFAULT : Number(limitRaw);
   if (!Number.isInteger(limit) || limit < 1 || limit > WALKY_LIST_MAX) return text("bad limit", 400);
   const instance = walky.instanceOf(session, paneId);
-  return json({ messages: instance === null ? [] : walky.paneList(session, paneId, instance, limit) }, acceptEncoding);
+  const messages = instance === null ? [] : walky.paneList(session, paneId, instance, limit);
+  // A row a sibling instance on this machine recorded (bridge/walky/siblings.ts): one line for the
+  // answer that first merged it, never one per row, and never the body.
+  const fresh = context === undefined ? [] : walky.newSiblingRows(session, paneId, messages);
+  if (context !== undefined && fresh.length > 0) {
+    const recordedBy = [...new Set(fresh.map((entry) => entry.recordedBy))].join(",");
+    context.audit.record({ action: "walky.list.sibling", paneId, session, device: context.device, detail: { merged: fresh.length, recordedBy } });
+  }
+  return json({ messages }, acceptEncoding);
 }
 
 export function sendReceiptsRoute(rt: Pick<SendRouteRuntime, "send" | "driver"> & { readonly name?: string }, pane: string | null, acceptEncoding: string | null): Response {
