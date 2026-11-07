@@ -73,9 +73,6 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 - **The feature is called WalkyTalky.** It is one word, in the app, the docs and the CLI help, and the Messages sheet is the WalkyTalky sheet. The commands (`collie walky …`) and the skill name do not change. ([549c559](https://github.com/AltanS/collie/commit/549c559))
 
-### Fixed
-
-
 ## [1.27.0] - 2026-11-06
 
 ### Added
