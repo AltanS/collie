@@ -314,14 +314,17 @@ function refuse(refusals: Refusal[]): ParsedTheme {
 }
 
 /**
- * True when the text holds a control character: below U+0020, U+007F, or the C1 range U+0080 to
- * U+009F. A name or an author is shown in Settings and written into an export, and a line break or
- * a NUL there is never what the author meant.
+ * True when the text holds a control character: below U+0020, U+007F, the C1 range U+0080 to
+ * U+009F, or a bidi embedding, override or isolate (U+202A to U+202E, U+2066 to U+2069). A name or
+ * an author is shown in Settings, in the community list and in the trial ribbon, and written into an
+ * export. A line break or a NUL there is never what the author meant, and a bidi control can make a
+ * name read as another one (M59 review).
  */
 function hasControlCharacter(value: string): boolean {
   for (const ch of value) {
     const code = ch.codePointAt(0) ?? 0;
     if (code < 0x20 || (code >= 0x7f && code <= 0x9f)) return true;
+    if ((code >= 0x202a && code <= 0x202e) || (code >= 0x2066 && code <= 0x2069)) return true;
   }
   return false;
 }

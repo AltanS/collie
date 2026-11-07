@@ -107,7 +107,8 @@ preview as **Import**, and **Apply** keeps the theme.
 
 The list comes from your host, not from the internet. **Refresh** asks the host to fetch it once from
 colliepwa.dev, and nothing else fetches it: not a timer, not opening Settings. The line above the list
-says how old the host's copy is. A refresh needs a device that may write.
+says how old the host's copy is. A refresh needs a device that may write. A refresh within a minute
+of the last good one shows the same copy, and a copy older than a week is not shown.
 
 Every theme is checked three times: by the site, by your host and by your phone. A theme that fails
 any check is left out, and the sheet counts how many were. **Report** opens a new issue on the collie

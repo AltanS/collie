@@ -34,7 +34,7 @@ export async function themeRegistryGet(store: ThemeRegistryStore): Promise<Respo
 /** `POST /api/themes/registry`. */
 export async function themeRegistryRefresh(store: ThemeRegistryStore): Promise<RegistryRouteResult> {
   const { outcome, status } = await store.refresh();
-  const code = outcome === "fetched" || outcome === "joined" ? 200 : 502;
+  const code = outcome === "fetched" || outcome === "joined" || outcome === "held" ? 200 : 502;
   return {
     response: json(status, code),
     attempt: { status: code, outcome, themes: status.themes.length, dropped: status.dropped },

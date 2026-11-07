@@ -397,10 +397,12 @@ https://colliepwa.dev/themes/registry.json
 ```
 
 The address is fixed in the bridge, and no setting changes it. The bridge follows a redirect only
-on colliepwa.dev, refuses a file over 1 MB or with more than 500 themes, and keeps a theme only when
-Collie's own theme parser accepts it. It keeps the list in the `themes` folder of its state folder.
+on colliepwa.dev, refuses a file that is not typed as JSON, over 1 MB or with more than 500 themes,
+and keeps a theme only when Collie's own theme parser accepts it. It keeps the list in the `themes` folder of its state folder.
 The phone checks every theme again before it draws one, and the page itself never calls colliepwa.dev.
 The refresh needs a write device, runs on the lead only, allows one fetch at a time and is audited.
+A refresh within a minute of a good fetch answers that copy and fetches nothing. A copy older than a
+week is not listed, so the next tap fetches again.
 
 WalkyTalky adds no outbound call. A message to another machine rides the crew link that already
 exists, and no model, cloud service or third party sees it.

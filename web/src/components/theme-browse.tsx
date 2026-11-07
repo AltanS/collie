@@ -207,7 +207,7 @@ export function ThemeBrowseSheet({ open, onClose, onInstall, onTry }: BrowseShee
           {items.length > 0 && (
             <ul className="flex flex-col gap-3">
               {items.map((item) => (
-                <ThemeRow key={`${item.entry.repo}/${item.entry.path}`} item={item} onInstall={onInstall} onTry={onTry} />
+                <ThemeRow key={`${item.entry.repo}/${item.entry.path}@${item.entry.sha}`} item={item} onInstall={onInstall} onTry={onTry} />
               ))}
             </ul>
           )}

@@ -196,6 +196,17 @@ describe("parseTheme", () => {
     },
   );
 
+  it("refuses a bidi embedding, override or isolate in a name, on every path that parses (M59 review)", () => {
+    for (const code of [0x202a, 0x202b, 0x202c, 0x202d, 0x202e, 0x2066, 0x2067, 0x2068, 0x2069]) {
+      const name = `My ${String.fromCodePoint(code)}day`;
+      const named = refusals(parseTheme(file({ name }), CAP));
+      expect(named.map((r) => `${r.code} ${r.path}`), code.toString(16)).toEqual(["name name"]);
+      expect(named[0]?.detail).toContain("control character");
+    }
+    // Their neighbours stay: a left-to-right mark, a word joiner and U+2065 are not on the list.
+    expect(parseTheme(file({ name: "My \u200e\u2060\u2065day" }), CAP).ok).toBe(true);
+  });
+
   it("keeps a name with characters past the C1 range", () => {
     expect(parseTheme(file({ name: "Caf\u00e9 \u00a0Nuit" }), CAP).ok).toBe(true);
   });

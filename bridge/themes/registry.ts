@@ -42,6 +42,10 @@ export const REGISTRY_TIMEOUT_MS = 10 * 1000;
 
 /** How long the copy is held in memory before the next read takes the file again. */
 export const REGISTRY_MEMORY_MS = 60 * 60 * 1000;
+/** A refresh this soon after a good fetch answers the copy it has, and fetches nothing. */
+export const REGISTRY_MIN_INTERVAL_MS = 60 * 1000;
+/** A copy older than this is not listed: the host answers as if it had none, and the tap fetches. */
+export const REGISTRY_STALE_MS = 7 * 24 * 60 * 60 * 1000;
 
 const MAX_REDIRECTS = 3;
 /** The longest `generated` stamp kept: an ISO date with milliseconds and an offset fits. */
@@ -68,7 +72,8 @@ export interface RegistryStatus {
 
 /** What `refresh()` did, for the route's status code and audit line. */
 export interface RegistryRefresh {
-  outcome: "fetched" | "joined" | RegistryError;
+  /** `held`: a refresh under a minute after a good fetch, answered from that copy. */
+  outcome: "fetched" | "joined" | "held" | RegistryError;
   status: RegistryStatus;
 }
 
@@ -127,11 +132,19 @@ export function readRegistry(text: string): RegistryRead {
   const stamp = asJsonString(doc.generated);
   const generated = stamp !== undefined && stamp.length <= GENERATED_MAX && /^[0-9A-Za-z:.+-]+$/.test(stamp) ? stamp : null;
   const themes: RegistryEntry[] = [];
+  const seen = new Set<string>();
   let dropped = 0;
   for (const value of doc.themes) {
     const read = readRegistryEntry(value);
-    if (read === undefined) dropped += 1;
-    else themes.push(read.entry);
+    if (read === undefined) {
+      dropped += 1;
+      continue;
+    }
+    // The same file at the same commit, listed twice, is one theme. The phone keys its rows on these three.
+    const key = JSON.stringify([read.entry.repo, read.entry.path, read.entry.sha]);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    themes.push(read.entry);
   }
   return { ok: true, generated, themes, dropped };
 }
@@ -169,6 +182,8 @@ export function createThemeRegistryStore(deps: ThemeRegistryDeps): ThemeRegistry
   async function readDisk(): Promise<Copy | null> {
     let text: string;
     try {
+      const folder = await lstat(dir);
+      if (folder.isSymbolicLink() || !folder.isDirectory()) return null;
       const entry = await lstat(file);
       if (!entry.isFile() || entry.size > REGISTRY_CAP_BYTES * 2) return null;
       text = await readFile(file, "utf8");
@@ -180,7 +195,7 @@ export function createThemeRegistryStore(deps: ThemeRegistryDeps): ThemeRegistry
     if (doc === undefined || fetchedAt === undefined || Number.isNaN(Date.parse(fetchedAt))) return null;
     const read = readRegistry(text);
     if (!read.ok) return null;
-    return { fetchedAt, generated: read.generated, themes: read.themes, dropped: asJsonNumber(doc.dropped) ?? read.dropped };
+    return { fetchedAt, generated: read.generated, themes: read.themes, dropped: read.dropped };
   }
 
   async function current(): Promise<Copy | null> {
@@ -190,7 +205,14 @@ export function createThemeRegistryStore(deps: ThemeRegistryDeps): ThemeRegistry
     return copy;
   }
 
-  function statusOf(copy: Copy | null, fetching = flight !== null): RegistryStatus {
+  /** The copy the routes list: none when it is older than a week, so the next tap fetches. */
+  function listed(copy: Copy | null): Copy | null {
+    if (copy === null || now() - Date.parse(copy.fetchedAt) > REGISTRY_STALE_MS) return null;
+    return copy;
+  }
+
+  function statusOf(found: Copy | null, fetching = flight !== null): RegistryStatus {
+    const copy = listed(found);
     const status: RegistryStatus = {
       fetchedAt: copy?.fetchedAt ?? null,
       ageMs: copy === null ? null : Math.max(0, now() - Date.parse(copy.fetchedAt)),
@@ -265,6 +287,10 @@ export function createThemeRegistryStore(deps: ThemeRegistryDeps): ThemeRegistry
       await res.body?.cancel().catch(() => undefined);
       throw new RegistryRefusal("fetch-failed");
     }
+    if (!/^application\/json\s*(?:;|$)/i.test(res.headers.get("content-type")?.trim() ?? "")) {
+      await res.body.cancel().catch(() => undefined);
+      throw new RegistryRefusal("bad-registry");
+    }
     const declared = Number(res.headers.get("content-length") ?? "");
     if (Number.isFinite(declared) && declared > REGISTRY_CAP_BYTES) {
       await res.body.cancel().catch(() => undefined);
@@ -303,6 +329,10 @@ export function createThemeRegistryStore(deps: ThemeRegistryDeps): ThemeRegistry
       if (flight !== null) {
         const joined = await flight;
         return { outcome: "joined", status: joined.status };
+      }
+      const copy = listed(await current());
+      if (copy !== null && now() - Date.parse(copy.fetchedAt) < REGISTRY_MIN_INTERVAL_MS) {
+        return { outcome: "held", status: statusOf(copy, false) };
       }
       flight = run();
       try {
