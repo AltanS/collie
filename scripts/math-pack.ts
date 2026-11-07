@@ -11,13 +11,17 @@
 //   • the pack is not one the host would accept (the same reader, bridge/math/tar.ts);
 //   • a payload's `web/dist` still holds a `math/` folder: no install carries the engines;
 //   • a payload's bundle names no engine file at all, so the check would prove nothing;
-//   • a payload's bundle names an engine file the pack does not hold.
+//   • a payload's bundle names an engine file the pack does not hold;
+//   • an engine file in the pack imports a file outside `math/` (the entry chunk, the runtime chunk)
+//     that a payload's `web/dist` does not hold. The engine files carry no hash in their names, but
+//     they still import the shell's hashed files, and a pack made beside another build would load
+//     nothing there.
 //
 // Each `<web/dist>` is a folder the workflow extracted from a payload tarball, the Windows zip or the
 // `web-dist` asset. Exit 0 and one line per folder, or exit 1 and the reason.
 
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
-import { join, relative } from "node:path";
+import { join, posix, relative } from "node:path";
 
 import { readPackTar } from "../bridge/math/tar.ts";
 
@@ -27,6 +31,33 @@ const ENGINE_REFERENCE = /(?<![A-Za-z0-9_-])(?:\.\.\/|\/)?(math\/[A-Za-z0-9_@+./
 /** The engine files a bundle file's text names, as pack paths. */
 export function engineReferences(text: string): string[] {
   return [...new Set([...text.matchAll(ENGINE_REFERENCE)].map((m) => m[1]!))];
+}
+
+/**
+ * A relative file a pack file imports or points a `url()` at. A bare string that merely looks like a
+ * path (MathJax names its font ranges so) is not a reference.
+ * For example: `from"../assets/index-abc.js"`, `import("./svg.js")`, `url(./a.woff2)`. */
+const RELATIVE_REFERENCE =
+  /(?:\b(?:from|import)\s*\(?\s*["'`]|\burl\(\s*["']?)((?:\.\.?\/)[A-Za-z0-9_@+./-]+\.(?:js|css|woff2))(?=["'`)\s])/g;
+
+/**
+ * The files the pack's own files name, resolved to paths under the web root (`assets/index-abc.js`,
+ * `math/katex/katex.js`), once each. A reference that climbs out of the web root is kept as it is.
+ */
+export function packImports(files: readonly { path: string; text: string }[]): string[] {
+  const out = new Set<string>();
+  for (const file of files) {
+    if (!/\.(?:js|css)$/.test(file.path)) continue;
+    for (const m of file.text.matchAll(RELATIVE_REFERENCE)) out.add(posix.normalize(posix.join(posix.dirname(file.path), m[1]!)));
+  }
+  return [...out];
+}
+
+/** What is wrong with the pack's imports, given what the pack and one payload's web root hold, or null. */
+export function checkPackImports(imports: readonly string[], pack: ReadonlySet<string>, distHas: (rel: string) => boolean): string | null {
+  const missing = imports.filter((rel) => (rel.startsWith("math/") ? !pack.has(rel) : !distHas(rel)));
+  if (missing.length === 0) return null;
+  return `the pack's engine files import ${missing.length} file(s) it or this build lacks, first ${missing[0]}`;
 }
 
 /** Every file of the build that is not under `math/`, as (relative name, text). */
@@ -66,8 +97,11 @@ function main(argv: readonly string[]): number {
     return 2;
   }
   let pack: Set<string>;
+  let imports: string[];
   try {
-    pack = new Set(readPackTar(Bun.gunzipSync(readFileSync(packFile))).files.map((f) => f.path));
+    const files = readPackTar(Bun.gunzipSync(readFileSync(packFile))).files;
+    pack = new Set(files.map((f) => f.path));
+    imports = packImports(files.map((f) => ({ path: f.path, text: new TextDecoder().decode(f.data) })));
   } catch (err) {
     console.error(`✗ ${packFile} is not a pack the host would accept: ${String(err)}`);
     return 1;
@@ -81,8 +115,9 @@ function main(argv: readonly string[]): number {
       continue;
     }
     const hasMath = existsSync(join(dist, "math")) && statSync(join(dist, "math")).isDirectory();
-    const problem = checkBuild(pack, bundleFiles(dist), hasMath);
-    if (problem === null) console.log(`✓ ${dist}: every engine file its bundle names is in the pack`);
+    const problem =
+      checkBuild(pack, bundleFiles(dist), hasMath) ?? checkPackImports(imports, pack, (rel) => existsSync(join(dist, rel)));
+    if (problem === null) console.log(`✓ ${dist}: every engine file its bundle names is in the pack, and the pack's own imports resolve`);
     else {
       console.error(`✗ ${dist}: ${problem}`);
       failed = true;

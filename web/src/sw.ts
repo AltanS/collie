@@ -194,9 +194,9 @@ self.addEventListener("activate", (event: ExtendableEvent) => {
 // three types the folder holds: an unredirected 200 that claims to be a script, a stylesheet or a
 // font, so a proxy's sign-in page is never cached as an engine.
 //
-// The names are content hashes that change with every build, and this worker does not know the
-// new build's list (it is not in the precache manifest). So an update empties the cache rather than
-// guessing which entries are stale: the engine is fetched again on its next use. The cost, stated
+// The names carry no hash (one name is another file in the next release), and this worker does not
+// know the new build's list (it is not in the precache manifest). So an update empties the cache
+// rather than guessing which entries are stale: the engine is fetched again on its next use. The cost, stated
 // plainly: offline right after an update, a formula reads as its TeX source until the phone is
 // online once.
 const MATH_CACHE = MOUNT === "/" ? "collie-math" : `collie-math:${MOUNT}`;

@@ -2638,14 +2638,14 @@ describe("cacheControlFor", () => {
     expect(cacheControlFor("assets/index-abc.css")).toBe("public, max-age=31536000, immutable");
   });
 
-  test("the hashed math engines under math/ are immutable too", () => {
+  test("the math engines under math/ carry no hash, so they revalidate", () => {
     for (const rel of [
-      "math/math-markup-DWsmPqrZ.js",
-      "math/katex/katex-CmI2jWGS.js",
-      "math/katex/KaTeX_Main-Regular-B22Nviop.woff2",
-      "math/mathjax/greek-DhDqSTV9.js",
+      "math/math-markup.js",
+      "math/katex/katex.js",
+      "math/katex/KaTeX_Main-Regular.woff2",
+      "math/mathjax/greek.js",
     ]) {
-      expect(cacheControlFor(rel)).toBe("public, max-age=31536000, immutable");
+      expect(cacheControlFor(rel)).toBe("no-cache");
     }
   });
 

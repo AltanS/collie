@@ -59,29 +59,29 @@ describe("/math/* is served from the store, else the build, else 404", () => {
   beforeEach(() => {
     root = mkdtempSync(join(tmpdir(), "collie-math-serve-"));
     mkdirSync(join(root, "math", "katex"), { recursive: true });
-    writeFileSync(join(root, "math", "katex", "katex-abc.js"), "export {};\n");
+    writeFileSync(join(root, "math", "katex", "katex.js"), "export {};\n");
     writeFileSync(join(root, "pack.json"), "{}");
   });
 
   afterEach(() => rmSync(root, { recursive: true, force: true }));
 
-  test("an engine file comes from the root the store names, immutable", async () => {
+  test("an engine file comes from the root the store names, and revalidates", async () => {
     const { store } = fakeStore({ status: { state: "absent" }, root });
-    const served = mathServeRoot(store, "/math/katex/katex-abc.js");
+    const served = mathServeRoot(store, "/math/katex/katex.js");
     expect(served).toBe(root);
-    const res = await serveStatic("/math/katex/katex-abc.js", null, served!);
+    const res = await serveStatic("/math/katex/katex.js", null, served!);
     expect(res.status).toBe(200);
-    expect(res.headers.get("cache-control")).toBe("public, max-age=31536000, immutable");
+    expect(res.headers.get("cache-control")).toBe("no-cache");
     expect(await res.text()).toBe("export {};\n");
   });
 
   test("a file the pack lacks is a 404, never the app shell", async () => {
-    const res = await serveStatic("/math/katex/missing-abc.js", null, root);
+    const res = await serveStatic("/math/katex/missing.js", null, root);
     expect(res.status).toBe(404);
   });
 
-  test("a 404 under /math is never cached as immutable, only a served file is", async () => {
-    for (const path of ["/math/katex/missing-abc.js", "/math/missing-abc.js"]) {
+  test("a 404 under /math is never cached as immutable", async () => {
+    for (const path of ["/math/katex/missing.js", "/math/missing.js"]) {
       const res = await serveStatic(path, null, root);
       expect(res.status, path).toBe(404);
       expect(res.headers.get("cache-control") ?? "", path).not.toContain("immutable");
@@ -103,7 +103,7 @@ describe("/math/* is served from the store, else the build, else 404", () => {
   });
 
   test("no root, or a path with no extension, is a 404 before any file is looked at", () => {
-    expect(mathServeRoot(fakeStore({ status: { state: "absent" } }).store, "/math/katex/katex-abc.js")).toBeNull();
+    expect(mathServeRoot(fakeStore({ status: { state: "absent" } }).store, "/math/katex/katex.js")).toBeNull();
     expect(mathServeRoot(fakeStore({ status: { state: "absent" }, root }).store, "/math/katex")).toBeNull();
     expect(mathServeRoot(fakeStore({ status: { state: "absent" }, root }).store, "/assets/x.js")).toBeNull();
   });
