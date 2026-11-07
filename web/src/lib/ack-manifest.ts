@@ -316,6 +316,10 @@ export const ACK_MANIFEST = {
     channel: "inline",
     why: "The two-tap confirm sits in the Math card and its outcome is the card going back to the download button; a refusal is written under it.",
   },
+  refreshThemeRegistry: {
+    channel: "inline",
+    why: "The Browse sheet is the acknowledgement: the button reads Refreshing while the host fetches, then the list and its age line change in place. A failed fetch, a too-big or bad list and a read-only device are each written inside that sheet, above the list they are about.",
+  },
   setSttHost: {
     channel: "inline",
     why: "The Host speech provider card is the acknowledgement: the chosen row turns selected and the status line names the provider the host answered with. A refusal (another provider set up in a terminal, no model, Codex not signed in, the probe refused) is written inside that card, or inside the consent sheet while it is open, because the reason is about that one choice.",

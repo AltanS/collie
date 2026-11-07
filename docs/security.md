@@ -387,6 +387,20 @@ That line makes this machine refuse every message for its panes. The CLI on the 
 > way between machines and tells the receiver which machine sent it. It does not protect you from a
 > program on the same machine that lies about itself.
 
+The community theme list is another outbound call, and it also happens only on a tap: **Refresh** in
+the **Browse community themes** sheet of the **Theme** card. The bridge makes one anonymous HTTPS
+`GET`, with the user-agent `Collie/<version>` and nothing about you:
+
+```text
+https://colliepwa.dev/themes/registry.json
+```
+
+The address is fixed in the bridge, and no setting changes it. The bridge follows a redirect only
+on colliepwa.dev, refuses a file over 1 MB or with more than 500 themes, and keeps a theme only when
+Collie's own theme parser accepts it. It keeps the list in the `themes` folder of its state folder.
+The phone checks every theme again before it draws one, and the page itself never calls colliepwa.dev.
+The refresh needs a write device, runs on the lead only, allows one fetch at a time and is audited.
+
 WalkyTalky adds no outbound call. A message to another machine rides the crew link that already
 exists, and no model, cloud service or third party sees it.
 

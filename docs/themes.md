@@ -96,6 +96,23 @@ To import the text of a theme file instead of a file, tap **Paste**, paste the t
 Collie shows the same preview, and it refuses the same files for the same causes. Collie does not
 fetch a theme from a link. Open the link, copy the text of the file, and paste that.
 
+### Browse community themes
+
+Tap **Browse community themes** in the **Theme** card, then **Install** on a theme you like.
+
+The sheet lists the themes people share on GitHub with the topic `colliepwa-theme` (see
+[Share a theme on colliepwa.dev](#share-a-theme-on-colliepwadev)). Each row draws the theme small, in
+light and in dark, with its name, its author and a link to its repository. **Install** opens the same
+preview as **Import**, and **Apply** keeps the theme.
+
+The list comes from your host, not from the internet. **Refresh** asks the host to fetch it once from
+colliepwa.dev, and nothing else fetches it: not a timer, not opening Settings. The line above the list
+says how old the host's copy is. A refresh needs a device that may write.
+
+Every theme is checked three times: by the site, by your host and by your phone. A theme that fails
+any check is left out, and the sheet counts how many were. **Report** opens a new issue on the collie
+repository with the theme's repository filled in. You read it and send it yourself.
+
 A **warning** is a contrast report line, such as "dark: status-blocked chip on card measures 3.9. The floor is
 4.5". It means the theme is hard to read in one place. **Apply** stays on, because the choice is yours.
 
@@ -211,7 +228,8 @@ check the app runs at **Import**, and a model reads the name, the description an
 repository. A repository that passes is listed within a day. The site checks a listed repository
 again when its default branch has a new commit.
 
-The site shows each theme as a card: the name, the author, the repository, both halves drawn from the
+The Theme card lists every listed theme under **Browse community themes**, after a **Refresh** on
+your host. The site shows each theme as a card: the name, the author, the repository, both halves drawn from the
 file's colours, and a link to the raw file. To use a theme from the site, download the file and
 [import it](#import-a-theme), or copy the text of the file and paste it under **Paste**. A theme is data, and like any import [it cannot run
 code](#import-a-theme).

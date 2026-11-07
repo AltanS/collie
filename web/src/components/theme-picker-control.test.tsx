@@ -3,9 +3,11 @@ import { resolve } from "node:path";
 
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { en } from "@/lib/i18n/messages/en";
+import { server } from "@/test/setup";
 import { THEME_TOKENS, isOptionalThemeToken, parseTheme, type Theme } from "@/lib/theme/schema";
 
 // The Theme card. The store keeps module-scope state (design prefs, the library), so each case
@@ -629,6 +631,52 @@ describe("ThemePickerControl", () => {
       const dialog = await screen.findByRole("dialog");
       expect(dialog).toHaveTextContent("You already hold 8 imported themes.");
       expect(screen.queryByRole("dialog", { name: "Paste a theme" })).toBeNull();
+    });
+  });
+
+  describe("browse community themes (M59 spec 06)", () => {
+    const SHA = "0123456789abcdef0123456789abcdef01234567";
+
+    function registry(themes: Theme[]) {
+      server.use(
+        http.get("/api/themes/registry", () =>
+          HttpResponse.json({
+            fetchedAt: "2026-11-07T10:00:00.000Z",
+            ageMs: 60_000,
+            generated: null,
+            dropped: 0,
+            fetching: false,
+            themes: themes.map((theme) => ({ repo: `sam/${theme.id}`, sha: SHA, path: "collie-theme.json", text: JSON.stringify(theme) })),
+          }),
+        ),
+      );
+    }
+
+    it("Install opens the file's preview, and Apply keeps the theme", async () => {
+      registry([copy("shared", "Shared")]);
+      const { ThemePickerControl, store } = await load();
+      render(<ThemePickerControl />);
+      await userEvent.click(screen.getByRole("button", { name: "Browse community themes" }));
+      const sheet = await screen.findByRole("dialog", { name: "Community themes" });
+      await userEvent.click(await within(sheet).findByRole("button", { name: "Install" }));
+      const preview = await screen.findByRole("dialog", { name: "Import this theme?" });
+      expect(screen.queryByRole("dialog", { name: "Community themes" })).toBeNull();
+      await userEvent.click(within(preview).getByRole("button", { name: "Apply" }));
+      await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+      expect(store.library().map((theme) => theme.id)).toEqual(["shared"]);
+      expect(store.activeThemeId()).toBe("shared");
+    });
+
+    it("Install with eight imported themes refuses before the preview", async () => {
+      registry([copy("shared", "Shared")]);
+      const full = Array.from({ length: 8 }, (_, i) => copy(`t${i}`, `Theme ${i}`));
+      const { ThemePickerControl } = await load(full);
+      render(<ThemePickerControl />);
+      await userEvent.click(screen.getByRole("button", { name: "Browse community themes" }));
+      const sheet = await screen.findByRole("dialog", { name: "Community themes" });
+      await userEvent.click(await within(sheet).findByRole("button", { name: "Install" }));
+      const dialog = await screen.findByRole("dialog", { name: "This file was not imported" });
+      expect(dialog).toHaveTextContent("You already hold 8 imported themes.");
     });
   });
 });

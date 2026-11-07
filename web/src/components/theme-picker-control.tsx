@@ -1,4 +1,4 @@
-import { useRef, useState, type CSSProperties } from "react";
+import { useRef, useState } from "react";
 import { ChevronDown, Palette } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -10,8 +10,6 @@ import { useLocale } from "@/hooks/use-locale";
 import { hasDocument } from "@/lib/env";
 import { t, type MessageKey } from "@/lib/i18n";
 import {
-  DEFAULT_THEME_ID,
-  THEME_TOKENS,
   contrastReport,
   fillHalves,
   parseTheme,
@@ -36,15 +34,13 @@ import {
 import {
   ANSI_KEYS,
   SURFACE_TOKENS,
-  displayDeclarations,
   fullSurfaceDeclarations,
   resolveSurface,
   type Ansi,
-  type Declaration,
 } from "@/lib/theme/surface";
-import { isShippedFont } from "@/lib/shipped-fonts";
 import { CONTRAST_FAIL_KEY, HALF_KEYS, REFUSAL_KEYS, isMoreLine } from "@/lib/theme/report-words";
-import { SectionLabel } from "@/components/ui/section-label";
+import { ThemeBrowseSheet } from "@/components/theme-browse";
+import { PageSample, collieTheme, displayOf, styleOf } from "@/components/theme-page-sample";
 
 // The Theme card (M57): which colour theme this device wears, and the way in and out for a theme
 // file. It sits directly ABOVE the Appearance three-way (System, Light, Dark) on purpose: the first
@@ -56,7 +52,7 @@ import { SectionLabel } from "@/components/ui/section-label";
 // refused, and it does not trust its own preview: Apply goes through `addImported`, which parses the
 // theme again, because the store is the door to storage and checks at the door.
 //
-// NOTHING MOVES (DESIGN.md §2). The theme is one select row, the four buttons are always
+// NOTHING MOVES (DESIGN.md §2). The theme is one select row, the five buttons are always
 // there (Remove is a disabled slot while the active theme is not an imported one), and the promise
 // line is static. The only thing that floats is the sheet.
 
@@ -74,12 +70,6 @@ const PREVIEW_TOKENS: readonly ThemeToken[] = [
 
 /** The most contrast failures a preview lists before it says how many more there are. */
 const FAILURES_SHOWN = 6;
-
-function collieTheme(): Theme {
-  const found = shippedThemes().find((theme) => theme.id === DEFAULT_THEME_ID);
-  if (found === undefined) throw new Error(`the shipped theme ${DEFAULT_THEME_ID} is missing`);
-  return found;
-}
 
 /** The sRGB hex of a token in one half of a theme, a half or a token it leaves out filled from `collie`. */
 function hexOf(theme: Theme, half: "light" | "dark", token: ThemeToken): string {
@@ -168,20 +158,6 @@ function Swatches({ theme, half }: { theme: Theme; half: "light" | "dark" }) {
   );
 }
 
-/** The display face a file names, or the UI face: the declaration a sample box sets for its titles. */
-function displayOf(theme: Theme): readonly Declaration[] {
-  const face = theme.fonts?.display;
-  return face !== undefined && isShippedFont(face) ? displayDeclarations(face) : [["--font-display", "var(--font-sans)"]];
-}
-
-/** Declarations as a style object. */
-function styleOf(declarations: readonly Declaration[]): CSSProperties {
-  // SAFETY: React passes custom properties through to the style attribute verbatim; the cast exists
-  // only because CSSProperties has no index signature for `--*`. Names come from surface.ts and the
-  // token list, values from the table or from the parser's checked colours.
-  return Object.fromEntries(declarations) as CSSProperties;
-}
-
 /**
  * The file's shape, drawn: a small card with a line of text and a button-like block, inside a box
  * that carries the declarations of the file's shape words (a word it leaves out is the default one).
@@ -224,42 +200,6 @@ function SurfaceSample({ theme }: { theme: Theme }) {
         ))}
         {display !== undefined && <li>display: {display}</li>}
       </ul>
-    </div>
-  );
-}
-
-/**
- * One half of the file as a small page: the half's colours (a token it leaves out from `collie`) and
- * the file's words as custom properties on one box, its `color-scheme` set to the half. The band reads
- * `--band-ground` and `--band-rule`, the ground `--background` and `--ground-image`, the title the
- * display face, the icon the stroke, the label the label case, and the two rows the rows rule in
- * index.css. Decorative: the words below say the same in text.
- */
-function PageSample({ theme, half }: { theme: Theme; half: "light" | "dark" }) {
-  const filled = fillHalves(theme, collieTheme())[half];
-  const colours = THEME_TOKENS.flatMap((token): Declaration[] => {
-    const value = filled[token];
-    return value === undefined ? [] : [[`--${token}`, value]];
-  });
-  const style = { ...styleOf([...colours, ...fullSurfaceDeclarations(theme.surface), ...displayOf(theme)]), colorScheme: half };
-  return (
-    <div
-      aria-hidden
-      data-testid={`theme-page-sample-${half}`}
-      style={style}
-      className="overflow-hidden rounded-md border border-border text-foreground"
-    >
-      <div className="flex h-7 items-center gap-1.5 border-b border-band-rule bg-band-ground px-2">
-        <Palette className="size-3.5 shrink-0" />
-        <span className="truncate text-xs font-semibold [font-family:var(--font-display)]">{theme.name}</span>
-      </div>
-      <div className="bg-background px-2 pt-1.5 pb-2 [background-image:var(--ground-image)]">
-        <SectionLabel placement="above">{t(HALF_KEYS[half])}</SectionLabel>
-        <div data-slot="list-group" className="flex flex-col rounded-sm border-[length:var(--row-rule)] border-rule">
-          <div className="h-4" />
-          <div className="h-4" />
-        </div>
-      </div>
     </div>
   );
 }
@@ -521,7 +461,7 @@ function libraryEntry(reason: "full" | "duplicate" | "invalid"): RefusalEntry {
   return { headline: t(LIBRARY_REFUSALS[reason], { count: LIBRARY_MAX }), tone: "danger" };
 }
 
-/** Settings card: pick a theme, import one from a file or pasted text, export or remove the one on screen. */
+/** Settings card: pick a theme, browse the community list, import one from a file or pasted text, export or remove the one on screen. */
 export function ThemePickerControl() {
   useLocale();
   const active = useActiveTheme();
@@ -532,6 +472,7 @@ export function ThemePickerControl() {
   const [exported, setExported] = useState<string | null>(null);
   const [pasting, setPasting] = useState(false);
   const [pasted, setPasted] = useState("");
+  const [browsing, setBrowsing] = useState(false);
 
   const all: Theme[] = [...shippedThemes(), ...imported];
 
@@ -549,6 +490,16 @@ export function ThemePickerControl() {
       return;
     }
     setPasting(true);
+  }
+
+  /** Install from the Browse sheet: the same preview a file opens, after the same cap check. */
+  function installFromBrowse(theme: Theme) {
+    setBrowsing(false);
+    if (imported.length >= LIBRARY_MAX) {
+      setRefused([libraryEntry("full")]);
+      return;
+    }
+    setPreview(theme);
   }
 
   function readPaste() {
@@ -645,6 +596,9 @@ export function ThemePickerControl() {
       </div>
 
       <div className="grid grid-cols-2 gap-2 border-t border-border p-3">
+        <Button type="button" variant="outline" className="col-span-2 h-11" onClick={() => setBrowsing(true)}>
+          {t("theme.browse")}
+        </Button>
         <Button type="button" variant="outline" className="h-11" onClick={startImport}>
           {t("theme.import")}
         </Button>
@@ -676,6 +630,7 @@ export function ThemePickerControl() {
         onChange={(event) => void onFile(event.target.files?.[0])}
       />
 
+      <ThemeBrowseSheet open={browsing} onClose={() => setBrowsing(false)} onInstall={installFromBrowse} />
       <ThemePasteSheet
         open={pasting}
         value={pasted}

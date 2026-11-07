@@ -944,6 +944,10 @@ describe("solo zero-tax — routes", () => {
       // The trouble tally (M86 spec 05): the phone's one count when a trouble card showed. Solo for the
       // same reason: the bridge the phone talks to counts it under its own install.
       "/api/telemetry/trouble",
+      // The community theme registry (M59 spec 06): a SOLO route that legitimately extends this list,
+      // named here rather than exempted. Lead-local like the math pack, and not forwardable. A bridge
+      // whose operator never taps Refresh in the Theme card fetches nothing and writes nothing.
+      "/api/themes/registry",
       // Starting an update from the phone (M15/05) — a SOLO route that legitimately extends this
       // list, named here rather than exempted. Write-gated through the same closure a send rides,
       // and it registers no crew sibling: a peer is levelled from the lead's terminal
@@ -1327,6 +1331,9 @@ const STATE_DIR_ENTRIES = [
   // last day sent, the phone's switch and the trouble tally (M86 spec 05). A NEW file; the ID and the
   // tally are deleted the moment the ping is off, and an older build ignores the file.
   "telemetry.json",
+  // The community theme registry (M59 spec 06): `<stateDir>/themes/registry.json`, the copy a tap on
+  // Refresh in the Theme card fetched. Written by that tap and by nothing else.
+  "themes",
   // The detached updater's own stdout and stderr (#283), with the run before it kept beside it as
   // `update-runner.log.1`. Absent until the first update started from the phone: the bridge opens it
   // only to hand the descriptor to the runner it spawns.

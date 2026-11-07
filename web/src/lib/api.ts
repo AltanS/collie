@@ -100,6 +100,7 @@ import type {
   WhistleStatus,
   WorktreePlanResponse,
   MathPackStatus,
+  ThemeRegistryStatus,
 } from "./types";
 import type { SubscribeBody } from "./push";
 
@@ -2893,6 +2894,18 @@ export function startMathPack(): Promise<MathPackStatus> {
 /** Remove every math pack from the host (write-gated). */
 export function removeMathPack(): Promise<MathPackStatus> {
   return req<MathPackStatus>("/api/math", { method: "DELETE" });
+}
+
+// ── THE COMMUNITY THEME REGISTRY ON THE HOST (M59 spec 06) ────────────────────────────────────
+
+/** The host's copy of the community theme list. A read: the host fetches nothing for it. */
+export function fetchThemeRegistry(signal?: AbortSignal): Promise<ThemeRegistryStatus> {
+  return req<ThemeRegistryStatus>("/api/themes/registry", { signal });
+}
+
+/** Ask the host to fetch the list once (write-gated). A failed fetch answers 502; read the status again for its word. */
+export function refreshThemeRegistry(): Promise<ThemeRegistryStatus> {
+  return req<ThemeRegistryStatus>("/api/themes/registry", { method: "POST" });
 }
 
 // ── THE HOST'S SPEECH PROVIDER (ADR 0097) ─────────────────────────────────────────────────────
