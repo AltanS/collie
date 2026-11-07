@@ -1302,6 +1302,8 @@ export const zh: Dictionary = {
   "harnessBar.effort": "Effort",
   "harnessBar.compact": "紧凑",
   "harnessBar.resume": "恢复",
+  "harnessBar.plan": "计划",
+  "harnessBar.history": "历史",
   "harnessBar.tree": "树",
   "harnessBar.confirmAria": "再次点击以确认 {command}",
   "belt.jobs.label": "作业 {count}",

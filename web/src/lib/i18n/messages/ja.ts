@@ -1312,6 +1312,8 @@ export const ja: Dictionary = {
   "harnessBar.effort": "Effort",
   "harnessBar.compact": "Compact",
   "harnessBar.resume": "再開",
+  "harnessBar.plan": "プラン",
+  "harnessBar.history": "履歴",
   "harnessBar.tree": "ツリー",
   "harnessBar.confirmAria": "もう一度タップして {command} を確定",
   "belt.jobs.label": "ジョブ {count}",

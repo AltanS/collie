@@ -1219,6 +1219,8 @@ export const tr: Dictionary = {
   "harnessBar.effort": "Efor",
   "harnessBar.compact": "Kompakt",
   "harnessBar.resume": "Sürdür",
+  "harnessBar.plan": "Plan",
+  "harnessBar.history": "Geçmiş",
   "harnessBar.tree": "Ağaç",
   "harnessBar.confirmAria": "{command} komutunu onaylamak için tekrar dokunun",
   "belt.jobs.label": "İşler {count}",

@@ -1283,6 +1283,8 @@ export const ru: Dictionary = {
   "harnessBar.effort": "Усилие",
   "harnessBar.compact": "Компактный",
   "harnessBar.resume": "Возобновить",
+  "harnessBar.plan": "План",
+  "harnessBar.history": "История",
   "harnessBar.tree": "Дерево",
   "harnessBar.confirmAria": "Нажмите еще раз, чтобы подтвердить {command}",
   "belt.jobs.label": "Задания {count}",
