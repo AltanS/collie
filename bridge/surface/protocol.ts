@@ -3439,6 +3439,30 @@ export class SendProtocol {
   }
 
   /**
+   * On start, before the first poll: a held request whose budget ran out while the bridge was down, and
+   * a row that already ended `expired`, go, text and all (issue 740). Replayed, the first would end
+   * `expired` at the first poll with a fresh end time and its "Not sent" card would stand for another
+   * hour (`HOLD_ENDED_KEEP_MS`); the second is a card from a run that is over. A request still held
+   * settles `expired`, so its receipt says what happened. Returns how many rows went; the caller says
+   * so once.
+   */
+  static dropExpiredHolds(holds: HoldStore, store: RequestStore, now: number): number {
+    let dropped = 0;
+    for (const entry of holds.list()) {
+      const pastBudget = entry.state !== "ended" && now >= entry.expiresAt;
+      const endedExpired = entry.state === "ended" && entry.outcome === "expired";
+      if (!pastBudget && !endedExpired) continue;
+      const record = store.get(entry.id);
+      if (pastBudget && record !== null && record.phase === "held" && record.receipt !== undefined) {
+        const { reason: _none, queued: _never, detail: _noDetail, saw: _noSaw, ...rest } = record.receipt;
+        store.settle(entry.id, { ...rest, outcome: "expired" });
+      }
+      if (holds.remove(entry.id)) dropped++;
+    }
+    return dropped;
+  }
+
+  /**
    * After a start, once the sessions are known: held requests of a session that no longer exists go,
    * text and all. A request still held settles `refused(pane_gone)`. Returns how many rows went.
    */

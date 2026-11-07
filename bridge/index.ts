@@ -1505,6 +1505,9 @@ if (sendStore !== null) {
 const holdStore = sendStore === null ? null : new HoldStore(join(cfg.stateDir, "held"));
 if (holdStore !== null && sendStore !== null) {
   const changed = SendProtocol.reconcileHolds(holdStore, sendStore);
+  // A request whose budget ran out while the bridge was down, and a row that ended expired, never come back (issue 740).
+  const expired = SendProtocol.dropExpiredHolds(holdStore, sendStore, Date.now());
+  if (expired > 0) console.log(`[send] hold queue: ${String(expired)} request(s) past their budget dropped, not replayed`);
   const waiting = holdStore.list().filter((entry) => entry.state === "held").length;
   if (changed > 0 || waiting > 0) console.log(`[send] hold queue replayed: ${String(waiting)} held, ${String(changed)} row(s) settled after the last run`);
 }

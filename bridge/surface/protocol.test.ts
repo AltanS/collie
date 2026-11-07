@@ -5220,6 +5220,42 @@ describe("the held send (M56 spec 15)", () => {
     expect(pane.transcript.at(-1)).toBe("> then give it a title");
   });
 
+  // Issue 740: three held sends past their 30 minutes came back after every restart as "Not sent" cards,
+  // each with a fresh hour to stand, until the files were deleted by hand.
+  test("a held send whose budget ran out while the bridge was down is dropped on boot, settled expired, never replayed (issue 740)", async () => {
+    const first = untrusted();
+    await first.send("then give it a title", { id: "held-000090" });
+    const later = 1_000_000 + 31 * 60 * 1000;
+    const store = new RequestStore(join(dir, "sends"), () => later);
+    store.recover(SendProtocol.crashReceipt);
+    const holds = new HoldStore(join(dir, "held"), () => later);
+    expect(SendProtocol.reconcileHolds(holds, store)).toBe(0);
+    expect(SendProtocol.dropExpiredHolds(holds, store, later)).toBe(1);
+    expect(holds.list()).toEqual([]);
+    expect(existsSync(join(dir, "held", "held-000090.json"))).toBe(false);
+    expect(store.get("held-000090")?.receipt).toMatchObject({ outcome: "expired" });
+    // A second restart finds nothing to drop and nothing to replay.
+    expect(SendProtocol.dropExpiredHolds(new HoldStore(join(dir, "held"), () => later), store, later)).toBe(0);
+  });
+
+  test("a row that already ended expired is dropped on boot; a held send inside its budget and other ended rows stay (issue 740)", async () => {
+    const first = untrusted();
+    await first.send("then give it a title", { id: "held-000091" });
+    await first.send("and a second one", { id: "held-000092" });
+    await first.send("and a third one", { id: "held-000093" });
+    first.holds.end("held-000091", "expired");
+    first.holds.end("held-000092", "refused", "pane_gone");
+    const soon = 1_000_000 + 5 * 60 * 1000;
+    const store = new RequestStore(join(dir, "sends"), () => soon);
+    store.recover(SendProtocol.crashReceipt);
+    const holds = new HoldStore(join(dir, "held"), () => soon);
+    expect(SendProtocol.dropExpiredHolds(holds, store, soon)).toBe(1);
+    expect(holds.list().map((entry) => [entry.id, entry.state])).toEqual([
+      ["held-000092", "ended"],
+      ["held-000093", "held"],
+    ]);
+  });
+
   test("a release the bridge died in ends unknown(crash) on boot, its text kept, and is never sent again", async () => {
     const first = untrusted();
     await first.send("then give it a title", { id: "held-000017" });
