@@ -20,9 +20,11 @@
 
 import { Database } from "bun:sqlite";
 import { execFile } from "node:child_process";
-import { readdir } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
+import { homedir } from "node:os";
 import { join } from "node:path";
 
+import { processStartMs } from "./process-start.ts";
 import type { JsonObject, JsonValue } from "../json.ts";
 import {
   parseWith,
@@ -99,6 +101,64 @@ function sessionIdsOfPaths(paths: readonly string[]): string[] {
 const SESSION_ID_RE = /^mvs_[0-9a-zA-Z_-]+$/;
 export function isMcodeSessionId(value: string): boolean {
   return SESSION_ID_RE.test(value);
+}
+
+/** How the pane's mcode process was told to pick its session. */
+export type McodeStartIntent =
+  | { kind: "resume_id"; sessionId: string }
+  | { kind: "resume_picker" }
+  | { kind: "continue" }
+  | { kind: "fresh" };
+
+/**
+ * The execution intent of one mcode argv, as far as the flags say. PURE — no fs, no clock. A bare
+ * `--session` / `--resume` (or one followed by another flag) opens the picker; `-c` / `--continue`
+ * means the newest session in the folder; no flag means mcode starts a fresh session that only
+ * exists once the first prompt is submitted.
+ */
+export function parseMcodeArgv(argv: readonly string[]): McodeStartIntent {
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
+    if (arg === "-c" || arg === "--continue") return { kind: "continue" };
+    if (arg === "--session" || arg === "--resume") {
+      const next = argv[i + 1];
+      if (next !== undefined && next !== "" && !next.startsWith("-")) {
+        return isMcodeSessionId(next) ? { kind: "resume_id", sessionId: next } : { kind: "resume_picker" };
+      }
+      return { kind: "resume_picker" };
+    }
+    for (const flag of ["--session=", "--resume="]) {
+      if (arg?.startsWith(flag)) {
+        const id = arg.slice(flag.length);
+        return isMcodeSessionId(id) ? { kind: "resume_id", sessionId: id } : { kind: "resume_picker" };
+      }
+    }
+  }
+  return { kind: "fresh" };
+}
+
+/**
+ * When the mcode process started, read first from mcode's own active-process marker
+ * (`~/.minimax-code/.mcode-active/<pid>.json`), then from the platform source. Null when neither
+ * answers, in which case the caller fails closed.
+ */
+export async function readActiveFileStartMs(
+  pid: number,
+  startMsReader: (pid: number) => Promise<number | null> = processStartMs,
+): Promise<number | null> {
+  try {
+    const text = await readFile(join(homedir(), ".minimax-code", ".mcode-active", `${pid}.json`), "utf8");
+    // SAFETY: JSON.parse of active process file returns arbitrary JSON values.
+    const parsed: JsonValue = JSON.parse(text) as JsonValue;
+    if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)) {
+      // SAFETY: parsed is checked to be non-null object and non-array above.
+      const start = (parsed as JsonObject).startedAtMs;
+      if (typeof start === "number" && Number.isFinite(start) && start > 0) return start;
+    }
+  } catch {
+    // Fall through to the platform reader.
+  }
+  return startMsReader(pid);
 }
 
 /** The session folder's suffix for a session id, as mcode writes it: base64url of the id. */
@@ -284,8 +344,11 @@ export class McodeTranscriptSource implements TranscriptSource {
 
   private readonly roots: string[];
 
-  constructor(roots: string | readonly string[]) {
+  private readonly startMsReader: (pid: number) => Promise<number | null>;
+
+  constructor(roots: string | readonly string[], startMsReader?: (pid: number) => Promise<number | null>) {
     this.roots = rootList(roots);
+    this.startMsReader = startMsReader ?? processStartMs;
   }
 
   async resolve(ref: AgentSessionRef): Promise<string | null> {
@@ -333,22 +396,22 @@ export class McodeTranscriptSource implements TranscriptSource {
   }
 
   /**
-   * The session the pane's foreground mcode process is writing, read off the files it holds open
-   * (`lsof`), the way agy and grok bind to a live process. A process that has opened no session
-   * file yet — a fresh mcode waiting for its first prompt — answers null, so no pane ever inherits
-   * a past session from the SQLite index. Only when the hints name no process at all (a
-   * multiplexer without pid reporting) does the index answer, and then only a session started in
-   * the last five minutes, so a stale row cannot fill a new pane.
+   * The session the pane's foreground mcode process is writing, resolved through a four-tier
+   * pipeline: an open session file (`lsof`), the process's argv intent, the index bounded by the
+   * process start, and finally the index bounded to the last five minutes when no process is
+   * known. A fresh mcode waiting for its first prompt answers null, so no pane ever inherits a
+   * past session.
    */
   async discoverSession(cwd: string, hints?: DiscoverHints): Promise<AgentSessionRef | null> {
-    const pids = (hints?.processes ?? [])
-      .filter((p) => {
-        const name = p.argv[0]?.split(/[/\\]/).pop()?.replace(/\.exe$/i, "");
-        return name === "mcode" || name === "minimax-code" || name === "node";
-      })
+    const targetProcs = (hints?.processes ?? []).filter((p) => {
+      const name = p.argv[0]?.split(/[/\\]/).pop()?.replace(/\.exe$/i, "");
+      return name === "mcode" || name === "minimax-code" || name === "node";
+    });
+    const pids = targetProcs
       .map((p) => p.pid)
       .filter((pid): pid is number => pid !== undefined && Number.isSafeInteger(pid) && pid > 0);
     if (pids.length > 0) {
+      // Tier 1: a session file a target process holds open names the session outright.
       for (const pid of pids) {
         const { stdout } = await runLsof("lsof", ["-nP", "-p", String(pid), "-g", String(pid), "-Fn"], {
           timeout: 1000,
@@ -364,13 +427,46 @@ export class McodeTranscriptSource implements TranscriptSource {
           if ((await this.resolve(ref)) !== null) return ref;
         }
       }
-      // mcode does NOT keep `messages.jsonl` open between turns, so an empty open-file list is
-      // ordinary, not proof of a fresh session. A live process in this folder is still the best
-      // evidence of which session this pane holds, so the index answers with a wide window
-      // (12 hours) rather than the five minutes the pid-less path uses.
+      // Tier 2: the argv says what the process meant to do, and the index answers only within it.
+      const intents = targetProcs.map((p) => parseMcodeArgv(p.argv));
+      for (const intent of intents) {
+        if (intent.kind !== "resume_id") continue;
+        const ref: AgentSessionRef = { kind: "id", value: intent.sessionId };
+        if ((await this.resolve(ref)) !== null) return ref;
+      }
+      if (intents.some((i) => i.kind === "resume_picker")) return null;
+      if (cwd.trim() === "") return null;
+      if (intents.some((i) => i.kind === "continue")) {
+        // --continue means the newest session in this folder, however old it is.
+        for (const root of this.roots) {
+          const indexed = await this.fromSqlite(root, cwd);
+          if (indexed !== null) {
+            const ref: AgentSessionRef = { kind: "id", value: indexed };
+            if ((await this.resolve(ref)) !== null) return ref;
+          }
+        }
+        return null;
+      }
+      // Fresh mcode: the session only exists once the first prompt lands, so the index may only
+      // name a session created or updated since the process started (with a small slack). With no
+      // readable start time, fail closed — never a past session.
+      const starts = await Promise.all(pids.map((pid) => readActiveFileStartMs(pid, this.startMsReader)));
+      const valid = starts.filter((s): s is number => s !== null);
+      if (valid.length === 0) return null;
+      const sinceMs = Math.min(...valid) - 5000;
+      for (const root of this.roots) {
+        const indexed = await this.fromSqlite(root, cwd, { sinceMs });
+        if (indexed !== null) {
+          const ref: AgentSessionRef = { kind: "id", value: indexed };
+          if ((await this.resolve(ref)) !== null) return ref;
+        }
+      }
+      return null;
     }
+    // Tier 3: no process hints — the multiplexer fallback, five minutes only.
+    if (hints?.shared === true) return null;
     if (cwd.trim() === "") return null;
-    const maxAgeMs = pids.length > 0 ? 12 * 3600_000 : 300_000;
+    const maxAgeMs = 300_000;
     for (const root of this.roots) {
       const indexed = await this.fromSqlite(root, cwd, { maxAgeMs });
       if (indexed !== null) {
@@ -388,7 +484,11 @@ export class McodeTranscriptSource implements TranscriptSource {
    * reads the whole live set. The window is `maxAgeMs` over `updated_at_ms` OR `created_at_ms`:
    * a long session updated recently and a fresh one both count, a stale row does not.
    */
-  private async fromSqlite(root: string, cwd: string, options?: { maxAgeMs?: number }): Promise<string | null> {
+  private async fromSqlite(
+    root: string,
+    cwd: string,
+    options?: { sinceMs?: number; maxAgeMs?: number },
+  ): Promise<string | null> {
     const dbPath = join(root, "..", "sqlite", "runtime-state.sqlite");
     let db: Database;
     try {
@@ -397,16 +497,17 @@ export class McodeTranscriptSource implements TranscriptSource {
       return null;
     }
     try {
+      // `sinceMs` answers "since this process started"; `maxAgeMs` answers "recently"; neither
+      // answers "whatever is newest", which is what --continue wants.
+      const since = options?.sinceMs ?? (options?.maxAgeMs !== undefined ? Date.now() - options.maxAgeMs : null);
+      const sql = since === null
+        ? "SELECT session_id FROM local_runtime_sessions WHERE workspace_dir = ? AND archived = 0 AND status IN ('idle', 'started', 'running', 'interrupted') ORDER BY updated_at_ms DESC LIMIT 1"
+        : "SELECT session_id FROM local_runtime_sessions WHERE workspace_dir = ? AND archived = 0 AND (updated_at_ms > ? OR created_at_ms > ?) AND status IN ('idle', 'started', 'running', 'interrupted') ORDER BY updated_at_ms DESC LIMIT 1";
       // SAFETY: `bun:sqlite`'s `.get` is typed as unknown rows; the SELECT names exactly the one
       // column this cast reads, and the shape check guards it.
-      const since = Date.now() - (options?.maxAgeMs ?? 300_000);
-      // SAFETY: `bun:sqlite`'s `.get` is typed as unknown rows; the SELECT names exactly the one
-      // column this cast reads, and the shape check guards it.
-      const row = db
-        .query(
-          "SELECT session_id FROM local_runtime_sessions WHERE workspace_dir = ? AND archived = 0 AND (updated_at_ms > ? OR created_at_ms > ?) AND status IN ('idle', 'started', 'running', 'interrupted') ORDER BY updated_at_ms DESC LIMIT 1",
-        )
-        .get(cwd, since, since) as { session_id?: unknown } | null;
+      const row = (
+        since === null ? db.query(sql).get(cwd) : db.query(sql).get(cwd, since, since)
+      ) as { session_id?: unknown } | null;
       const id = row?.session_id;
       return typeof id === "string" && isMcodeSessionId(id) ? id : null;
     } catch {
