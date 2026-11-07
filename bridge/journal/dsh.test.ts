@@ -367,7 +367,7 @@ describe("dsh discovery", () => {
     try {
       const discover = createDshDiscovery([root], source, DARWIN_PROC);
       expect(await discover("/home/operator/project", { processes: [{ argv: ["node", "dsh"], pid: 10 }] })).toEqual({ kind: "id", value: ID });
-      expect(lsof).toHaveBeenCalledWith("lsof", ["-nP", "-a", "-p", "10", "-Fn"], expect.objectContaining({ timeout: 1000, maxBuffer: 1024 * 1024 }), expect.any(Function));
+      expect(lsof).toHaveBeenCalledWith("lsof", ["-nP", "-p", "10", "-g", "10", "-Fn"], expect.objectContaining({ timeout: 1000, maxBuffer: 1024 * 1024 }), expect.any(Function));
     } finally {
       lsof.mockRestore();
     }
