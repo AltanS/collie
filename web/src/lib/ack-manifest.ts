@@ -308,6 +308,14 @@ export const ACK_MANIFEST = {
     channel: "inline",
     why: "The two-tap confirm sits in the Whistle card and its outcome is the card itself going back to the setup button; a refusal is written under it.",
   },
+  startMathPack: {
+    channel: "inline",
+    why: "The Math card swaps the download button for the host's own progress bar, and a refusal is written inside that card, under the button the person tapped.",
+  },
+  removeMathPack: {
+    channel: "inline",
+    why: "The two-tap confirm sits in the Math card and its outcome is the card going back to the download button; a refusal is written under it.",
+  },
   setSttHost: {
     channel: "inline",
     why: "The Host speech provider card is the acknowledgement: the chosen row turns selected and the status line names the provider the host answered with. A refusal (another provider set up in a terminal, no model, Codex not signed in, the probe refused) is written inside that card, or inside the consent sheet while it is open, because the reason is about that one choice.",

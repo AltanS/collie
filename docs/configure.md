@@ -1135,6 +1135,36 @@ This implementation has two practical consequences:
 > the background. iOS does not allow web apps to update this value dynamically. Run Collie directly
 > in the browser instead of as an installed PWA to avoid this limitation.
 
+## Math
+
+Math is off by default. To draw LaTeX as equations, a write device downloads the math engines to
+the host once, then each device picks its engine.
+
+1. Open **Settings → Appearance → Math**.
+2. Tap **Download the math engines (about 4 MB)**, or pick **KaTeX** or **MathJax** to download and choose in one tap.
+3. Wait for the progress bar to finish; the engine you picked becomes the choice.
+
+The download is one file that holds both engines. The host keeps it in the `math` folder of its
+state folder, `~/.local/state/collie/math/` unless `COLLIE_STATE_DIR` moves it, and serves it to
+every paired device. Each device then picks **Off**, **KaTeX** or **MathJax** for itself. Nothing
+downloads until someone taps, and a read-only device cannot start the download.
+
+| Card says | What it means |
+| --- | --- |
+| The download did not finish | The connection to GitHub broke. Nothing was kept; tap again. |
+| The host is short of disk space | The host needs about five times the pack's size free. |
+| The download did not match the release | The file's hash is not the one the release lists. Nothing was kept. |
+| This build has no math engines to download | A development build. A build from source serves `web/dist/math/` instead. |
+
+To remove the engines, tap **Remove the math engines** on the same card. That deletes them from
+the host and sets this device to Off. Another device that chose an engine then shows formulas as
+their source until the engines are downloaded again.
+
+> **Note.** An update does not bring the engines along. After an update the card offers the
+> download again, and until then equations show as their TeX source.
+
+What the engines draw, and how to write an equation, is in [Equations](changes.md#equations).
+
 ## Zen mode
 
 > **Note.** Zen mode is off by default.

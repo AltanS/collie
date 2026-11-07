@@ -256,3 +256,26 @@ describe("liftStretches", () => {
     expect(liftStretches([{ kind: "code", lang: "", text: "a\uE0052s\uE001b\uE006c" }], noMarks)).toEqual([{ kind: "code", lang: "", text: "abc" }]);
   });
 });
+
+// With math on, a formula's braces are TeX: `{{2n}}` is a group inside a superscript, not a stretch.
+describe("parseStretches with math on", () => {
+  const source = (reply: string, math: boolean) => composeStretches(parseStretches(reply, math), new Map()).source;
+
+  it.each([
+    String.raw`Let $x^{{2n}}$ grow.`,
+    String.raw`Then $\frac{{|x|}}{2}$ holds.`,
+    String.raw`Inline \(\frac{a}{{c+d}}\) too.`,
+    "$$\n\\frac{{a+b}}{{c+d}}\n$$",
+    String.raw`- $$x^{{2}}$$`,
+  ])("copies the formula in %s as written", (reply) => {
+    expect(source(reply, true)).toBe(reply);
+  });
+
+  it("still finds a stretch beside a formula", () => {
+    expect(stretches(parseStretches(String.raw`$x^{{2}}$ and {{short|long}}`, true))).toHaveLength(1);
+  });
+
+  it("reads the braces as a stretch with math off, as before", () => {
+    expect(source(String.raw`Let $x^{{2n}}$ grow.`, false)).toBe(String.raw`Let $x^2n$ grow.`);
+  });
+});

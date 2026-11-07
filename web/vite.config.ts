@@ -205,6 +205,41 @@ const channelManifest = manifestFor(channel);
 // The speech worker's entry, the one worker built under `stt/` (the `worker` block below).
 const STT_WORKER_ENTRY = resolve(import.meta.dirname, "src/stt/worker.ts");
 
+// A module of a math engine, or of a package only an engine imports. vite.config's output naming
+// sends the chunks and assets that hold one under `math/`, in a folder per engine: `math/katex/` and
+// `math/mathjax/`. What both engines share (lib/math/math-markup.ts and the hast packages behind it)
+// stays at `math/` itself. The lib/math files are NAMED, not matched by folder: lib/math/engine.ts
+// is app-shell code that main.tsx imports eagerly, and a chunk holding it under `math/` would be
+// left out of the precache and cleared on every update, so the app could not start offline.
+const MATH_MODULE =
+  /[\\/](?:src[\\/]lib[\\/]math[\\/](?:katex|mathjax|math-markup)\.|node_modules[\\/](?:katex|@mathjax)[\\/])/;
+const KATEX_MODULE = /[\\/](?:node_modules[\\/]katex[\\/]|src[\\/]lib[\\/]math[\\/]katex\.)/;
+const MATHJAX_MODULE = /[\\/](?:node_modules[\\/]@mathjax[\\/]|src[\\/]lib[\\/]math[\\/]mathjax\.)/;
+const KATEX_NAME = /^katex(?![a-z])/i;
+const MATHJAX_NAME = /^mathjax(?![a-z])/i;
+
+/** The folder an output file of the math engines goes in, or `null` for the app's own `assets/`. */
+function mathFolder(ids: readonly string[], names: readonly string[] = []): string | null {
+  const katex = ids.some((id) => KATEX_MODULE.test(id)) || names.some((name) => KATEX_NAME.test(name));
+  const mathjax = ids.some((id) => MATHJAX_MODULE.test(id)) || names.some((name) => MATHJAX_NAME.test(name));
+  if (katex !== mathjax) return katex ? "math/katex" : "math/mathjax";
+  return katex || ids.some((id) => MATH_MODULE.test(id)) ? "math" : null;
+}
+
+// KaTeX's stylesheet offers each face as .woff2, then .woff and .ttf. Every browser Collie runs on
+// takes the .woff2, so the other two are files no device ever fetches: about 0.8 MB in the release.
+// Dropping them from the `src` lists here, before Vite resolves the URLs, means they are never
+// emitted at all. The bridge would also serve them as octet-stream, which the CSS loader refuses.
+const KATEX_STYLESHEET = /[\\/]node_modules[\\/]katex[\\/]dist[\\/]katex(?:\.min)?\.css$/;
+const katexWoff2OnlyPlugin: Plugin = {
+  name: "collie-katex-woff2-only",
+  enforce: "pre",
+  transform(code, id) {
+    if (!KATEX_STYLESHEET.test(id)) return null;
+    return code.replace(/,\s*url\([^)]*\.(?:woff|ttf)\)\s*format\("(?:woff|truetype)"\)/g, "");
+  },
+};
+
 // ADR 0052: ONE BUILD SERVES ANY MOUNT. The shell (index.html) is built ROOT-ABSOLUTE, every
 // reference `/…`, and the bridge resolves it to the mount it was started with when it serves the
 // file (bridge/server.ts, `mountIndexHtml`); at the root it is served as it lies on disk. Inside the
@@ -252,6 +287,7 @@ export default defineConfig({
   plugins: [
     react(),
     tailwindcss(),
+    katexWoff2OnlyPlugin,
     buildInfoPlugin,
     channelIconsPlugin,
     VitePWA({
@@ -345,7 +381,9 @@ export default defineConfig({
         // The vendored speech engine (public/stt/, ADR 0096) stays out of the precache for the
         // reason the Nerd Font faces do: its glue is a .js file the glob would otherwise take, and
         // nobody who never taps Whistle should pay for it on install. It loads on first use.
-        globIgnores: [...precacheIgnoresFor(channel), "stt/**"],
+        // The math engines (`math/`, set by build.rolldownOptions below) stay out for the same
+        // reason: they are a device's opt-in, and Off is the default.
+        globIgnores: [...precacheIgnoresFor(channel), "stt/**", "math/**"],
       },
       // Over plain HTTP (insecure context) the SW can't register; in dev we don't want it anyway.
       devOptions: { enabled: false },
@@ -375,6 +413,8 @@ export default defineConfig({
   build: {
     outDir: "dist",
     emptyOutDir: true,
+    // Fonts stay same-origin files, including the small KaTeX faces: the CSP does not allow data fonts.
+    assetsInlineLimit: (filePath) => (/[\\/]KaTeX_[^\\/]+\.woff2$/.test(filePath) ? false : undefined),
     // A couple of small chunks beat one big one on a phone over the tailnet.
     chunkSizeWarningLimit: 900,
     rolldownOptions: {
@@ -382,6 +422,13 @@ export default defineConfig({
         codeSplitting: {
           groups: [{ name: "router", test: /node_modules\/(?:react-router|@remix-run)\// }],
         },
+        // THE MATH ENGINES ARE UNDER `math/` (lib/math/engine.ts). Each is a dynamic import, so it
+        // is already its own chunk; the folder is what keeps it out of the precache (`math/**` in
+        // globIgnores) and lets src/sw.ts cache it on first use instead. A device on Off — the
+        // default — never downloads or stores a byte of either engine.
+        chunkFileNames: (chunk) => `${mathFolder(chunk.moduleIds) ?? "assets"}/[name]-[hash].js`,
+        assetFileNames: (asset) =>
+          `${mathFolder(asset.originalFileNames, asset.names) ?? "assets"}/[name]-[hash][extname]`,
       },
     },
   },

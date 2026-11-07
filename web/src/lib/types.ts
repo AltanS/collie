@@ -2517,6 +2517,17 @@ export interface SttCapability {
 export type WhistleState = "absent" | "downloading" | "ready" | "failed";
 
 /**
+ * The math pack on the host (ADR 0132), as `GET`, `POST` and `DELETE /api/math` answer it. Mirrors
+ * `MathPackStatus` in bridge/math/store.ts. A status read fetches nothing; only the POST downloads.
+ * `error` is one word for the line under the rows, never an upstream body.
+ */
+export type MathPackStatus =
+  | { state: "absent"; error?: "download-failed" | "low-space" | "hash-mismatch" | "bad-pack" }
+  | { state: "downloading"; received: number; total: number | null }
+  | { state: "ready"; version: string; source: "store" | "build"; bytes: number | null }
+  | { state: "unavailable"; reason: "dev-build" | "no-pack" };
+
+/**
  * The Whistle model on the host and the host engine's switch, as `GET /api/stt/whistle` and
  * `/api/config` report them. Mirrors `WhistleStatus` in bridge/types.ts.
  */

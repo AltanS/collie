@@ -40,6 +40,7 @@ const ELSEWHERE: readonly Elsewhere[] = [
   { file: "cli/codex-hooks.ts", count: 2, why: "an agent's own config file ($CODEX_HOME/config.toml), not Collie's; the same case as cli/hooks.ts" },
   { file: "cli/skill-install.ts", count: 1, why: "the one-time `.collie-backup` copy beside an agent's own instruction file (~/.codex/AGENTS.md and kin), not Collie's; the same case as cli/hooks.ts" },
   { file: "cli/update.ts", count: 1, why: "the staging log is `stagingLogPath(deps.ctx.stateDir, runId)`, set further up the same function" },
+  { file: "bridge/math/store.ts", count: 7, why: "every path is under `mathPackDir(deps.stateDir)`, `<stateDir>/math` (ADR 0132): the folder, a download's part file, and a version's temporary folder with its files and `pack.json`" },
   { file: "bridge/stt/whistle-model.ts", count: 6, why: "every path is `whistlePaths(deps.stateDir)`, the model's folder inside the state folder" },
   { file: "bridge/stt/local-cli.ts", count: 2, why: "one recording's mkdtemp folder under the OS temp dir, the user's own; removed in finally" },
   { file: "bridge/durable/log.ts", count: 8, why: "every path is `<stateDir>/durable/<source>/<pane>.jsonl` or the cursor beside it, `<pane>.cursor.json` (the two chmods hold the folder at 0700 and the file at 0600 when they were there before): `DurableLogs` is handed `sourceLogDir(cfg.stateDir, source.name)` by index.ts for each program, and `moveFlatLogs` makes `durable/default/` once, at boot" },

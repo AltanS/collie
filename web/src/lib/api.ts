@@ -99,6 +99,7 @@ import type {
   WorktreeFolderChoice,
   WhistleStatus,
   WorktreePlanResponse,
+  MathPackStatus,
 } from "./types";
 import type { SubscribeBody } from "./push";
 
@@ -2874,6 +2875,24 @@ export function startWhistleSetup(): Promise<WhistleStatus> {
 /** Remove the model from the host, and the `whistle` provider with it when it was the host's (write-gated). */
 export function removeWhistleModel(): Promise<WhistleStatus> {
   return req<WhistleStatus>("/api/stt/whistle", { method: "DELETE" });
+}
+
+// ── THE MATH PACK ON THE HOST (ADR 0132) ──────────────────────────────────────────────────────
+
+/** Where the host's math pack stands. A read that fetches nothing on the host; polled while it downloads. */
+export function fetchMathPack(signal?: AbortSignal): Promise<MathPackStatus> {
+  return req<MathPackStatus>("/api/math", { signal, timeoutMs: POLL_TIMEOUT_MS });
+}
+
+/** Ask the host to download the math pack (write-gated): `202` while it runs, `200` when it is there,
+ *  `409` when this build has none to offer. Every answer carries the status. */
+export function startMathPack(): Promise<MathPackStatus> {
+  return req<MathPackStatus>("/api/math", { method: "POST" });
+}
+
+/** Remove every math pack from the host (write-gated). */
+export function removeMathPack(): Promise<MathPackStatus> {
+  return req<MathPackStatus>("/api/math", { method: "DELETE" });
 }
 
 // ── THE HOST'S SPEECH PROVIDER (ADR 0097) ─────────────────────────────────────────────────────

@@ -149,7 +149,8 @@ function activeLocale(): Locale {
 
 /** Translate one key into the active language, filling any `{slot}`s. */
 export function t(key: MessageKey, vars?: TemplateVars): string {
-  return interpolate(activeDictionary()[key], vars);
+  // A key on the pending-translation list may be missing from a bundle; it reads English alone.
+  return interpolate(activeDictionary()[key] ?? en[key], vars);
 }
 
 const pluralRules = new Map<Locale, Intl.PluralRules>();

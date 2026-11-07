@@ -11,6 +11,9 @@ import { cn } from "@/lib/utils";
  *
  * It owns the look and the `progressbar` role. It owns no words: the caller passes `label` for the
  * screen reader and draws any visible text beside it.
+ *
+ * `value: null` is a bar that does not know its total yet: the track with no fill and NO
+ * `aria-valuenow`, which is how ARIA says "indeterminate". Never a bar that claims 0%.
  */
 export function Progress({
   value,
@@ -18,29 +21,30 @@ export function Progress({
   size = "thin",
   className,
 }: {
-  /** 0 to 100. Anything outside is clamped, so a bad number never draws past the track. */
-  value: number;
+  /** 0 to 100. Anything outside is clamped, so a bad number never draws past the track. Null: not known yet. */
+  value: number | null;
   /** What the bar measures, for a screen reader. */
   label: string;
   size?: "thin" | "hairline";
   className?: string;
 }) {
-  const percent = Math.min(100, Math.max(0, value));
+  const percent = value === null ? null : Math.min(100, Math.max(0, value));
   return (
     <div
       role="progressbar"
       aria-label={label}
       aria-valuemin={0}
       aria-valuemax={100}
-      aria-valuenow={Math.round(percent)}
+      aria-valuenow={percent === null ? undefined : Math.round(percent)}
       data-slot="progress"
       data-size={size}
+      data-indeterminate={percent === null ? "" : undefined}
       className={cn("w-full overflow-hidden rounded-sm", size === "thin" ? "h-1 bg-muted" : "h-px", className)}
     >
       <div
         data-slot="progress-fill"
         className="h-full rounded-sm bg-primary transition-[width] duration-300 ease-out motion-reduce:transition-none"
-        style={{ width: `${percent}%` }}
+        style={{ width: `${percent ?? 0}%` }}
       />
     </div>
   );

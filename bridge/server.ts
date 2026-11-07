@@ -220,6 +220,8 @@ import type { CrewTlsOptions } from "./crew/transport.ts";
 import { createSttAdmission, MAX_STT_AUDIO_BYTES, sttCapability, transcribeRequest } from "./stt/http.ts";
 import type { SttProvider } from "./stt/provider.ts";
 import { createWhistleModelStore, type WhistleModelStore } from "./stt/whistle-model.ts";
+import { mathGet, mathRemove, mathServeRoot, mathStart } from "./math/http.ts";
+import { createMathPackStore, type MathPackStore } from "./math/store.ts";
 import type { CodexDetector } from "./stt/codex-detect.ts";
 import { HOST, isInside } from "./host.ts";
 import { createHostCodexDetector, sttHostGet, sttHostPut, type SttHostRouteDeps } from "./stt/host-http.ts";
@@ -1295,6 +1297,12 @@ export function startServer(opts: {
    */
   whistle?: WhistleModelStore;
   /**
+   * The math pack on this host (ADR 0132). Absent means this function builds the store over
+   * `cfg.stateDir` and the served `web/dist`, which is what the real bridge does; a test passes one
+   * with a fake fetch.
+   */
+  mathPack?: MathPackStore;
+  /**
    * Whether the host's `codex` is installed and signed in, for Settings' Host speech provider card
    * (ADR 0097). Absent means this function builds the real one (`codex login status`, cached); a test
    * passes a fake so no `codex` runs.
@@ -1518,6 +1526,16 @@ export function startServer(opts: {
     stateDir: cfg.stateDir,
     env: process.env,
   };
+  // The math pack (ADR 0132): fetched only on a tap, from the running version's release manifest on
+  // the update repo; never forwarded, like the Whistle routes.
+  const mathPack =
+    opts.mathPack ??
+    createMathPackStore({
+      stateDir: cfg.stateDir,
+      webDist: WEB_DIR,
+      repo: process.env.COLLIE_UPDATE_REPO?.trim() || "AltanS/collie",
+      env: process.env,
+    });
   // The host's speech provider (ADR 0097): the same `stt.json` and model store, the gate's provider for
   // what the microphone gets, one Codex sign-in check shared by every device, one switch at a time.
   const sttHostDeps: SttHostRouteDeps = {
@@ -3999,6 +4017,27 @@ export function startServer(opts: {
         });
         return secure(response);
       }
+      // ── The math pack (bridge/math/http.ts, ADR 0132) ─────────────────────────────────────
+      // Lead-local like the Whistle routes: none reads `?host=` and none is in the crew's FORWARDABLE
+      // list. The read needs the pairing token and is not audited (Settings polls it while a download
+      // runs); each write is one audit line of route metadata, never a path.
+      if (pathname === "/api/math") {
+        if (req.method === "GET") {
+          const denied = guard(req, cfg, "read", pairingGate);
+          if (denied) return denied;
+          return secure(await mathGet(mathPack));
+        }
+        if (req.method !== "POST" && req.method !== "DELETE") return text("method not allowed", 405);
+        const denied = guard(req, cfg, "write", pairingGate);
+        if (denied) return denied;
+        const { response, attempt } = req.method === "POST" ? await mathStart(mathPack) : await mathRemove(mathPack);
+        audit.record({
+          action: req.method === "POST" ? "math.download" : "math.remove",
+          device: whois(req).device,
+          detail: { ...attempt },
+        });
+        return secure(response);
+      }
       // ── The host's speech provider (bridge/stt/host-http.ts, ADR 0097) ───────────────────
       // Lead-local like the routes above: neither reads `?host=` and neither is forwardable. The read
       // needs the pairing token and is not audited (Settings reads it when Voice opens). The write is
@@ -4240,6 +4279,15 @@ export function startServer(opts: {
       // proxy claimed it — say so, instead of letting the SPA fallback answer with the app shell and
       // leave the operator staring at the UI they were trying to escape.
       if (isReservedAuthPath(pathname)) return reservedAuthPlaceholder(cfg.basePath);
+
+      // ── The math engines (ADR 0132) ──────────────────────────────────────
+      // From the store's pack of the running version, else `web/dist/math/` beside a source build,
+      // else 404, and never the app shell. Static like every other file: no gate, as before.
+      if (pathname.startsWith("/math/")) {
+        const root = mathServeRoot(mathPack, pathname);
+        if (root === null) return text("not found", 404);
+        return serveStatic(pathname, req.headers.get("accept-encoding"), root, cfg.basePath);
+      }
 
       // ── Static PWA (with SPA fallback) ───────────────────────────────────
       return serveStatic(pathname, req.headers.get("accept-encoding"), WEB_DIR, cfg.basePath);
@@ -9561,7 +9609,8 @@ function gzippedBytes(
 
 /**
  * Cache-Control for a served dist file, keyed by its path relative to web/dist. Hashed assets under
- * `assets/` are content-addressed, so cache them hard + immutable. EVERYTHING else — index.html,
+ * `assets/` are content-addressed, so cache them hard + immutable, and so are the math engines under
+ * `math/`, every file of which carries a content hash too (web/vite.config.ts names them). EVERYTHING else — index.html,
  * sw.js, manifest.webmanifest, build-info.json, the favicons — is MUTABLE across a rebuild and must
  * always be revalidated (`no-cache`), so neither the browser NOR an intermediary reverse proxy can
  * pin a stale copy. This matters most for sw.js: a proxy that heuristically caches it (it shipped
@@ -9570,5 +9619,5 @@ function gzippedBytes(
  * but which this header prevents at the source. Pure + exported for unit tests.
  */
 export function cacheControlFor(rel: string): string {
-  return rel.startsWith("assets/") ? "public, max-age=31536000, immutable" : "no-cache";
+  return rel.startsWith("assets/") || rel.startsWith("math/") ? "public, max-age=31536000, immutable" : "no-cache";
 }

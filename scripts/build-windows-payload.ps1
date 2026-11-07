@@ -112,6 +112,10 @@ Need-Exit0 "compiling bin\collie.exe"
 # The same files the Linux payload carries, in the same layout. `herdr-plugin.toml` is the bridge's
 # root marker and the canonical version; `package.json` is where the bridge reads its version.
 Copy-Item -Recurse -LiteralPath (Join-Path $repo "web\dist") -Destination (Join-Path $stage "web\dist")
+# The math engines are not in any install (ADR 0132): they are the `collie-math-<version>` asset the
+# host downloads on a tap. The release job proves this folder is gone from the zip.
+$mathDir = Join-Path $stage "web\dist\math"
+if (Test-Path -LiteralPath $mathDir) { Remove-Item -Recurse -Force -LiteralPath $mathDir }
 foreach ($f in "herdr-plugin.toml", "package.json", ".env.example", "CHANGELOG.md", "LICENSE", "README.md") {
   Copy-Item -LiteralPath (Join-Path $repo $f) -Destination (Join-Path $stage $f)
 }
