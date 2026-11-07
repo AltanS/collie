@@ -11,6 +11,7 @@ import {
   ScrollText,
   TerminalSquare,
 } from "lucide-react";
+import { useReadingReleasesKeyboard } from "@/hooks/use-reading-releases-keyboard";
 import { useKeyboardOpen } from "@/hooks/use-keyboard";
 import { useSheetPull } from "@/hooks/use-sheet-pull";
 import { usePaneNavigation } from "@/components/pane-nav";
@@ -713,6 +714,20 @@ export function AgentChat({
             setDrawer("switcher");
           },
   });
+  // The reading area is the pane-nav gesture's surface and also where a finger scroll up closes the
+  // keyboard while the reply box keeps its draft (hooks/use-reading-releases-keyboard.ts, Altan,
+  // 2026-11-07). One element, one ref callback for both; `paneNav.setReading` is a state setter, so
+  // this callback is stable.
+  const [readingArea, setReadingArea] = useState<HTMLElement | null>(null);
+  const setPaneNavReading = paneNav.setReading;
+  const setReading = useCallback(
+    (node: HTMLElement | null) => {
+      setPaneNavReading(node);
+      setReadingArea(node);
+    },
+    [setPaneNavReading],
+  );
+  useReadingReleasesKeyboard(readingArea);
   // ── COMPOSING MODE — read ONCE, here, for the whole pane ──────────────────────
   // The soft keyboard takes roughly 45% of a phone. What is left has to hold the header, the tab
   // strip, the agent's statusline, the grab handle, the status band, the controls row and the draft
@@ -2794,7 +2809,7 @@ export function AgentChat({
               and `focusFromMirror` deliberately declines a tap that landed on a control or a text
               selection. It is a touch convenience layered over an already-reachable action. */}
           <div
-            ref={paneNav.setReading}
+            ref={setReading}
             role="presentation"
             data-slot="pane-reading"
             className={cn(
