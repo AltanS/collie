@@ -302,6 +302,10 @@ export const es: Dictionary = {
   "settings.appearance.math.remove.confirm": "¿Eliminar los motores matemáticos del host?",
   "settings.appearance.math.remove.cancel": "Cancelar",
   "settings.appearance.math.remove.action": "Eliminar",
+  "settings.appearance.math.unreachable": "El host no respondió, por lo que aún no se pueden elegir los motores. Collie continúa preguntando.",
+  "settings.appearance.math.refused.denied": "El host rechazó la solicitud. Este dispositivo no puede cambiar los motores matemáticos.",
+  "settings.appearance.math.refused.server": "El host no pudo hacerlo. Inténtalo de nuevo más tarde.",
+  "settings.appearance.math.refused.offline": "El host no respondió. Comprueba la conexión e inténtalo de nuevo.",
 
   // --- settings.fonts ---
   "settings.fonts.title": "Fuente del terminal",

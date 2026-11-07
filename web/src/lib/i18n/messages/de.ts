@@ -304,6 +304,10 @@ export const de: Dictionary = {
   "settings.appearance.math.remove.confirm": "Mathematik-Engines vom Host entfernen?",
   "settings.appearance.math.remove.cancel": "Abbrechen",
   "settings.appearance.math.remove.action": "Entfernen",
+  "settings.appearance.math.unreachable": "Der Host hat nicht geantwortet, daher können die Engines noch nicht ausgewählt werden. Collie fragt weiterhin an.",
+  "settings.appearance.math.refused.denied": "Der Host hat abgelehnt. Dieses Gerät darf die Mathematik-Engines nicht ändern.",
+  "settings.appearance.math.refused.server": "Der Host konnte es nicht ausführen. Versuche es später noch einmal.",
+  "settings.appearance.math.refused.offline": "Der Host hat nicht geantwortet. Prüfe die Verbindung und versuche es noch einmal.",
 
   // --- settings.fonts ---
   "settings.fonts.title": "Terminal-Schrift",

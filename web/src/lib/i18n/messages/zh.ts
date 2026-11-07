@@ -291,6 +291,10 @@ export const zh: Dictionary = {
   "settings.appearance.math.remove.confirm": "从主机移除数学引擎？",
   "settings.appearance.math.remove.cancel": "取消",
   "settings.appearance.math.remove.action": "移除",
+  "settings.appearance.math.unreachable": "主机没有应答，因此还不能选择引擎。Collie 会继续询问。",
+  "settings.appearance.math.refused.denied": "主机拒绝了。此设备不能更改数学引擎。",
+  "settings.appearance.math.refused.server": "主机无法完成操作。请稍后再试。",
+  "settings.appearance.math.refused.offline": "主机没有应答。请检查连接后再试。",
 
   // --- settings.fonts ---
   "settings.fonts.title": "终端字体",

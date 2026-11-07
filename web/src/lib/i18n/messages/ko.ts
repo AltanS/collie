@@ -301,6 +301,10 @@ export const ko: Dictionary = {
   "settings.appearance.math.remove.confirm": "호스트에서 수학 엔진을 제거하시겠습니까?",
   "settings.appearance.math.remove.cancel": "취소",
   "settings.appearance.math.remove.action": "제거",
+  "settings.appearance.math.unreachable": "호스트가 응답하지 않아 엔진을 아직 선택할 수 없습니다. Collie가 계속 요청하고 있습니다.",
+  "settings.appearance.math.refused.denied": "호스트가 거부했습니다. 이 기기에서는 수학 엔진을 변경할 수 없습니다.",
+  "settings.appearance.math.refused.server": "호스트가 처리하지 못했습니다. 나중에 다시 시도하세요.",
+  "settings.appearance.math.refused.offline": "호스트가 응답하지 않았습니다. 연결을 확인하고 다시 시도하세요.",
 
   // --- settings.fonts ---
   "settings.fonts.title": "터미널 글꼴",

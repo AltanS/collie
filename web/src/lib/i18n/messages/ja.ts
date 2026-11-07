@@ -299,6 +299,10 @@ export const ja: Dictionary = {
   "settings.appearance.math.remove.confirm": "ホストから数式エンジンを削除しますか？",
   "settings.appearance.math.remove.cancel": "キャンセル",
   "settings.appearance.math.remove.action": "削除",
+  "settings.appearance.math.unreachable": "ホストから応答がないため、まだエンジンを選択できません。Collie は再試行を続けています。",
+  "settings.appearance.math.refused.denied": "ホストによって拒否されました。この端末では数式エンジンを変更できない可能性があります。",
+  "settings.appearance.math.refused.server": "ホストで処理できませんでした。後でもう一度お試しください。",
+  "settings.appearance.math.refused.offline": "ホストから応答がありませんでした。接続を確認して、もう一度お試しください。",
 
   // --- settings.fonts ---
   "settings.fonts.title": "ターミナルフォント",

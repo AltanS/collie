@@ -290,6 +290,10 @@ export const zhTW: Dictionary = {
   "settings.appearance.math.remove.confirm": "從主機移除數學引擎？",
   "settings.appearance.math.remove.cancel": "取消",
   "settings.appearance.math.remove.action": "移除",
+  "settings.appearance.math.unreachable": "主機沒有回應，因此還不能選擇引擎。Collie 會繼續詢問。",
+  "settings.appearance.math.refused.denied": "主機拒絕了。此裝置不能變更數學引擎。",
+  "settings.appearance.math.refused.server": "主機無法完成操作。請稍後再試。",
+  "settings.appearance.math.refused.offline": "主機沒有回應。請檢查連線後再試。",
 
   // --- settings.fonts ---
   "settings.fonts.title": "終端機字型",
