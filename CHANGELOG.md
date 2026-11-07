@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Added
+
+- **MiniMax Code (mcode) gains first-class harness support.** Collie can now discover active mcode sessions from live processes using open observability runtime logs, read session transcripts in Chat and History views, launch mcode with recipe option chips (Continue, PTC, mode flags), trigger slash commands from the command palette and harness bar, and display the official purple M brand icon.
+
 ## [1.29.0] - 2026-11-12
 
 ### Added
