@@ -35,6 +35,7 @@ A patch for the tablet and the foldable, with two fixes for the desk.
 ### Fixed
 
 - **On a tablet one pane fills the screen beside the sidebar.** On an 11-inch iPad in landscape and a two-screen phone held sideways, a pane took half the room and an empty "Add a pane" took the other half, so the chat was barely wider than on a phone. On an iPad in portrait, closing the sidebar made the chat narrower. A pane is now never narrower than 440px, so these screens show one pane at the full width: 860px on the iPad in landscape, 794px on the two-screen phone, 764px on the iPad in portrait with the sidebar closed. Two panes side by side need a wider screen, or the sidebar closed. A phone looks as before.
+- **On a foldable or a small tablet the sidebar is narrower.** On a two-screen phone about 700px wide the sidebar took 280px, 40% of the screen. From 600px to 899px wide it is now 264px, so the chat gets 16px more: 441px on the two-screen phone, 480px on an iPad mini in portrait. Every row and button in the sidebar keeps its size. A larger screen and a phone look as before.
 
 
 ## [1.27.1] - 2026-11-06

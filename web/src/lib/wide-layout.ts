@@ -46,8 +46,12 @@ export function widthClassOf(px: number): WidthClass {
   return "compact";
 }
 
-/** The sidebar's width by width class, and the rail it collapses to. Compact has neither. */
-export const SIDEBAR_WIDTH = { medium: 280, expanded: 320 } as const satisfies Record<Exclude<WidthClass, "compact">, number>;
+/** The sidebar's width by width class, and the rail it collapses to. Compact has neither.
+ *  MEDIUM IS 264, down from 280: on a 705px two-screen phone 280 was 40% of the screen. 264 is the
+ *  floor where the summary line's commonest English word still fits ("12 unseen", 77px of an 83px
+ *  slot); at 256 it fell back to a dot and a number. "1 needs you" wants 88px and drops its word
+ *  below 269 (status-counts.tsx's ladder: the dot and the number stay, nothing is cut). */
+export const SIDEBAR_WIDTH = { medium: 264, expanded: 320 } as const satisfies Record<Exclude<WidthClass, "compact">, number>;
 export const RAIL_WIDTH = 56;
 
 // ── Column widths ───────────────────────────────────────────────────────────────────────────────
