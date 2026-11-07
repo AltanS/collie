@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, sep } from "node:path";
 
 import {
   type MathPackFetch,
@@ -124,7 +124,7 @@ function store(fetch: MathPackFetch, extra: Partial<Parameters<typeof createMath
 /** Everything under a folder, as relative names. */
 function tree(dir: string): string[] {
   try {
-    return readdirSync(dir, { recursive: true }).map(String).toSorted();
+    return readdirSync(dir, { recursive: true }).map((name) => String(name).split(sep).join("/")).toSorted();
   } catch {
     return [];
   }
@@ -196,9 +196,12 @@ describe("the download", () => {
     const served = s.serveRoot();
     expect(served).toBe(join(mathPackDir(stateDir), VERSION));
     expect(readFileSync(join(served!, "math/katex/katex-abc123.js"), "utf8")).toContain("katexRenderer");
-    expect(statSync(join(served!, "math/katex/katex-abc123.js")).mode & 0o777).toBe(0o600);
-    expect(statSync(join(served!, "math/katex")).mode & 0o777).toBe(0o700);
-    expect(statSync(mathPackDir(stateDir)).mode & 0o777).toBe(0o700);
+    // Windows has no POSIX mode bits.
+    if (process.platform !== "win32") {
+      expect(statSync(join(served!, "math/katex/katex-abc123.js")).mode & 0o777).toBe(0o600);
+      expect(statSync(join(served!, "math/katex")).mode & 0o777).toBe(0o700);
+      expect(statSync(mathPackDir(stateDir)).mode & 0o777).toBe(0o700);
+    }
     // Nothing but the version's folder is left: no part file, no temporary folder.
     expect(readdirSync(mathPackDir(stateDir))).toEqual([VERSION]);
     // The bridge never writes under web/dist.
