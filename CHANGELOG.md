@@ -48,6 +48,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **The math engine files carry no content hash.** The release check refused the Edge build because its one math pack named engine files by a hash that differed on every platform build, so the engines now keep fixed names under `math/`.
 - **A build's stamp time can be set with `COLLIE_BUILD_TIME`.** The browser tests build the app twice from one commit and need two different ids, which a release build's commit-time stamp no longer gave them.
 - **gentle-pi 4.6.0's review-consent dialog lifts a card on pi 1.5.0.** The screen was left as raw text with no buttons, because its Effect paragraph now wraps under its label, eight columns in, and Gentle Shell draws a status row under the key hints, with or without one blank row between. The reader now accepts a paragraph whose wrapped rows hang under its label, and one painted status row under the footer. Anything else under the footer still keeps the screen raw. With Gentle Shell's side rail beside the dialog the screen stays raw for now. Thanks @viniciosrab (#712).
+- **The math engines are bundles of their own.** The release check refused the second Edge build on Windows because the engines imported the app's entry chunk, which that runner built differently, so the engines now import nothing outside `math/` and one pack fits every platform's build.
 
 ## [1.28.0] - 2026-11-06
 

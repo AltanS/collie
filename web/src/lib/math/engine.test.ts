@@ -1,13 +1,16 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { renderToStaticMarkup } from "react-dom/server";
+import { afterEach, describe, expect, it } from "vitest";
 
-import { __resetMathEngines, isMathLoadError, loadMathEngine } from "./engine";
+import { MAX_MATH_CHARS } from "@/lib/markdown-math";
+
+import { __resetMathEngines, __setMathEngineImport, isMathLoadError, loadMathEngine } from "./engine";
 
 // An engine that cannot load (offline with nothing cached) stays unloaded for the page: formulas keep
 // their source, and nothing asks the network again on every render.
-const imports = vi.hoisted(() => ({ katex: 0 }));
-vi.mock("./katex", () => {
+const imports = { katex: 0 };
+__setMathEngineImport(() => {
   imports.katex++;
-  throw new Error("Failed to fetch dynamically imported module: http://phone.test/math/katex/katex-x.js");
+  return Promise.reject(new TypeError("Failed to fetch dynamically imported module: http://phone.test/math/katex/katex.js"));
 });
 
 afterEach(() => __resetMathEngines());
@@ -40,5 +43,43 @@ describe("isMathLoadError", () => {
     expect(isMathLoadError(safari)).toBe(false);
     void loadMathEngine("katex");
     expect(isMathLoadError(safari)).toBe(true);
+  });
+});
+
+// THE CONTRACT (engine-files.ts): an engine's module exports `typeset`, which answers a hast tree or
+// null. The renderer around it caps the length, makes React elements, and turns a throw into source.
+describe("the renderer around an engine's typeset", () => {
+  const tree = (value: string) => ({
+    type: "root" as const,
+    children: [{ type: "element" as const, tagName: "b", properties: { className: ["x"] }, children: [{ type: "text" as const, value }] }],
+  });
+
+  afterEach(() => __setMathEngineImport(null));
+
+  it("draws the tree as React elements, sync or awaited, and null as source", async () => {
+    __setMathEngineImport(() =>
+      Promise.resolve({ typeset: (tex: string) => (tex === "bad" ? null : tex === "later" ? Promise.resolve(tree(tex)) : tree(tex)) }),
+    );
+    const renderer = (await loadMathEngine("mathjax"))!;
+    expect(renderToStaticMarkup(await renderer.render("now", false))).toBe('<b class="x">now</b>');
+    expect(renderToStaticMarkup(await renderer.render("later", true))).toBe('<b class="x">later</b>');
+    expect(renderer.render("bad", false)).toBeNull();
+  });
+
+  it("answers null past the length cap and for an engine that throws, without calling it twice", async () => {
+    let calls = 0;
+    __setMathEngineImport(() =>
+      Promise.resolve({
+        typeset: () => {
+          calls++;
+          throw new Error("boom");
+        },
+      }),
+    );
+    const renderer = (await loadMathEngine("katex"))!;
+    expect(renderer.render("x".repeat(MAX_MATH_CHARS + 1), false)).toBeNull();
+    expect(calls).toBe(0);
+    expect(renderer.render("x", false)).toBeNull();
+    expect(calls).toBe(1);
   });
 });

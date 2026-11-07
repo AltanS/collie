@@ -1,19 +1,22 @@
+import { fromHtml } from "hast-util-from-html";
 import { renderToString } from "katex";
 import "katex/dist/katex.min.css";
 
 import "./katex.css";
 
-import { MAX_MATH_CHARS } from "@/lib/markdown-math";
+import type { MathEngineModule, MathMarkup } from "./engine-files";
 
-import type { MathRenderer, Typeset } from "./engine";
-import { markupToReact } from "./math-markup";
+// KaTeX: small, synchronous, its own web fonts. THIS FILE IS THE ENTRY OF A BUNDLE OF ITS OWN,
+// `math/katex/katex.js` (vite.math.ts), never a module of the app: the app loads it by URL and calls
+// `typeset` (the contract is in engine-files.ts). Its stylesheet lands beside it as `katex.css`, and
+// its fonts are same-origin files there (vite.math.ts keeps them out of `data:` URIs, which the CSP
+// refuses).
+//
+// The markup is parsed into a hast tree here, so the parser stays in the engine's bundle; only KaTeX's
+// own output reaches it, never Markdown or user HTML, and KaTeX runs with its URL, HTML and
+// macro-definition extensions off. The app turns the tree into React elements (math-markup.ts).
 
-// KaTeX: small, synchronous, its own web fonts. The stylesheet comes with this module, so it lands
-// in the lazy `math/` chunk and a device on Off never downloads it. Its fonts are same-origin files
-// (vite.config.ts keeps them out of `data:` URIs, which the CSP refuses).
-
-function typeset(text: string, display: boolean): Typeset {
-  if (text.length > MAX_MATH_CHARS) return null;
+export const typeset: MathEngineModule["typeset"] = (text, display): MathMarkup => {
   try {
     const markup = renderToString(text, {
       displayMode: display,
@@ -28,11 +31,9 @@ function typeset(text: string, display: boolean): Typeset {
       // A definition in one equation must not change a later message's meaning.
       macros: {},
     });
-    return markupToReact(markup);
+    return fromHtml(markup, { fragment: true });
   } catch {
     // An error's message may quote the input. The caller shows the source through React instead.
     return null;
   }
-}
-
-export const katexRenderer: MathRenderer = { render: typeset };
+};

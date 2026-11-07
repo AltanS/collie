@@ -13,7 +13,8 @@
   add five megabytes to everyone downloading the setup. Same as the speech models.") · milestone M93 ·
   `.github/workflows/release.yml` · `scripts/math-pack.ts` · `scripts/build-windows-payload.ps1` ·
   `bridge/math/store.ts` · `bridge/math/http.ts` · `bridge/server.ts` (`/api/math`, `/math/*`) ·
-  `web/src/components/math-control.tsx` · `web/src/lib/math-pack.ts`
+  `web/src/components/math-control.tsx` · `web/src/lib/math-pack.ts` · `web/vite.math.ts` ·
+  `web/src/lib/math/engine-files.ts`
 
 ## Context
 
@@ -42,17 +43,25 @@ and lists it in `collie-<version>.manifest.json` under `extras` with role `math-
 job proves both before it publishes: it lists every payload and fails when one holds a file under
 `web/dist/math/`.
 
-**3. Every payload's bundle must find its engines in the pack, and the pack must find its shell.** The
-payloads build `web/dist` on their own runners, and the pack comes from the release job's build. The
-engine files carry no content hash (`math/katex/katex.js`, `math/mathjax/greek.js`; every other file
-of the build keeps its hash): the pack is keyed by the release version, which is what a hash would
-stand in for, and a hash cannot hold across builds, because an engine chunk imports the entry chunk and
-the entry chunk holds the build stamp. A release build therefore stamps the commit's time, not the
-clock's, so every runner makes one entry chunk. The release job reads each payload's
-`web/dist/assets/*.js` and fails when it names a `math/…` file the pack lacks; it also reads every
-engine file in the pack and fails when one imports a shell file (`../assets/index-<hash>.js`) that a
-payload's `web/dist` lacks (`scripts/math-pack.ts check`). A name that is missing fails the release; it
-never reaches a phone as formulas left as source.
+**3. The engines are self-contained bundles, so the pack owes nothing to the app build (2026-11-08).**
+Nothing under `math/` imports a file outside `math/`, and nothing under `math/<engine>/` imports a file
+outside its own folder. Each engine is its own Vite build (`web/vite.math.ts`), run after the app build
+into the same `dist/math/`: one ES entry `math/<engine>/<engine>.js`, its stylesheet
+`math/<engine>/<engine>.css`, its fonts and (MathJax) its lazy font ranges, none with a hash in the name,
+since the pack is keyed by the release version. The app holds no engine code and no chunk under `math/`:
+it loads an engine by URL, `import()` of `<mount>/math/<engine>/<engine>.js`, links the stylesheet, and
+calls the one export, `typeset(tex, display)`, which answers a hast tree or null
+(`web/src/lib/math/engine-files.ts`, read by the loader, the engine build and the release check). Why:
+the payloads build `web/dist` on their own runners and the pack comes from the release job's build. In
+the first cut the engine chunks imported the app's entry chunk for shared helpers. Its hash moved with
+the build stamp, and once the stamp was pinned to the commit time, the Windows runner still made another
+entry chunk than Linux and macOS (run 2 of 1.28.0-edge.2). A release must not rest on two runners
+building one app byte for byte, so the engines lean on nothing the app build makes, and the stamp reads
+the clock again. `scripts/math-pack.ts check` fails the release when the pack lacks a file the loader
+names, when a pack file imports outside its engine's folder or a file the pack lacks, when a payload's
+`web/dist` holds engine code outside `math/` (a marker string of each engine, which must be in the
+pack), or when it holds a `math/` that is not the pack byte for byte. A failure never reaches a phone as
+formulas left as source.
 
 **4. The trust is the release manifest of the running version, nothing new.** The host fetches
 `https://github.com/<repo>/releases/download/v<version>/collie-<version>.manifest.json`, where `<repo>`
@@ -138,8 +147,8 @@ document.
   location nor made by this run is no longer "plainly Collie's" under the one-level rule in
   `bridge/acl-policy.ts`: start-up checks its access list and warns instead of repairing it. The
   default locations are unaffected.
-- A release whose payload bundles name an engine file the pack lacks does not publish. That is the
-  point of the check, and the fix is a rebuild, not a waiver.
+- A release whose pack lacks an engine file, imports outside an engine's folder, or whose payload carries
+  engine code does not publish. That is the point of the check, and the fix is a rebuild, not a waiver.
 - Revisit if a second optional download arrives: two packs make a generic "extras the host downloads"
   module worth writing, and one does not.
 

@@ -18,8 +18,8 @@ import type { MathPackStatus } from "@/lib/types";
 // a person chose while the host had no pack (`wanted`) is applied when the pack is ready, by whichever
 // answer brings `ready` first. A failed download clears it.
 //
-// AN ENGINE THAT FAILED ON THIS PAGE IS NOT IMPORTED AGAIN (engine.ts says why: Vite's preload helper
-// would skip its stylesheet). When the pack arrives and the device's engine failed earlier on this page,
+// AN ENGINE THAT FAILED ON THIS PAGE IS NOT IMPORTED AGAIN (engine.ts says why: the browser keeps the
+// failed module). When the pack arrives and the device's engine failed earlier on this page,
 // the page reloads ONCE, and the next load starts clean. A guard in sessionStorage stops a loop.
 //
 // `null` is "not read yet", or a bridge older than the pack that answers 404: the card then draws the

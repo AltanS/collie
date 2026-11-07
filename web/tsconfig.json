@@ -31,6 +31,6 @@
   // `e2e` and `playwright.config.ts` are in the app project on purpose: the browser cases import the
   // unit layer's fixtures out of `src/test/`, so a fixture that changes shape has to break
   // `bun run typecheck` rather than a browser run five minutes later.
-  "include": ["src", "vite.config.ts", "vite.playground.config.ts", "playwright.config.ts", "e2e", "playground-fixtures"],
+  "include": ["src", "vite.config.ts", "vite.playground.config.ts", "vite.math.ts", "playwright.config.ts", "e2e", "playground-fixtures"],
   "exclude": ["src/sw.ts", "src/stt/worker.ts"]
 }

@@ -2,7 +2,7 @@ import { cleanup, render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { setDesignMath } from "@/lib/design";
-import { __resetMathEngines, loadMathEngine } from "@/lib/math/engine";
+import { __resetMathEngines, __setMathEngineImport, loadMathEngine } from "@/lib/math/engine";
 
 import { MarkdownText } from "./markdown-text";
 
@@ -10,9 +10,9 @@ import { MarkdownText } from "./markdown-text";
 // pack (never downloaded, removed, or lost with an update) asks for `/math/katex/…` and gets a 404.
 // The import fails, and Chat must still draw every formula as the source the agent wrote, never a
 // broken or empty message.
-vi.mock("@/lib/math/katex", () => {
-  throw new Error("Failed to fetch dynamically imported module: http://phone.test/math/katex/katex-x.js");
-});
+__setMathEngineImport(() =>
+  Promise.reject(new TypeError("Failed to fetch dynamically imported module: http://phone.test/math/katex/katex.js")),
+);
 vi.mock("@/lib/clipboard", () => ({ canCopyText: () => true, copyText: vi.fn().mockResolvedValue(undefined) }));
 vi.mock("@/lib/status", () => ({ setStatus: vi.fn() }));
 

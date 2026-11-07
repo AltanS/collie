@@ -15,6 +15,7 @@ import {
   type Channel,
   type ChannelEvidence,
 } from "./vite-icons";
+import { mathEnginesPlugin } from "./vite.math";
 
 // The bridge (Bun server) serves the built app from `web/dist` and proxies nothing — the
 // browser talks to the same origin for both static files and /api. In `vite dev`, proxy the
@@ -162,30 +163,17 @@ const buildSha = gitSha();
 const channel: Channel = channelFor(gitEvidence(pkgVersion));
 const releaseBuild = channel === "release";
 const stampedVersion = releaseBuild ? pkgVersion : `${pkgVersion}-dev`;
-// THE STAMP'S TIME IS THE COMMIT'S ON A RELEASE BUILD. The stamp is baked into the entry chunk, and the
-// math engine chunks import that chunk by its hashed name (ADR 0132), so a clock reading in it makes
-// every build's entry chunk differ, and the one math pack built on the release job could name an entry
-// chunk no payload has. A release build is a clean tree on the tagged commit, so the commit's own time
-// says when it was made and two runners stamp one string. A dev build keeps the clock: its `-dirty`
-// and rebuild-by-rebuild distinction is what the stale-cache check reads.
-// `COLLIE_BUILD_TIME` (an ISO time) wins over both, for a caller that must make builds of one commit
-// differ: the e2e fixture builds the app twice and needs two ids (web/e2e/fixtures/builds.ts). The
-// release job never sets it.
-function commitTime(): string | null {
-  try {
-    const seconds = Number(git("git log -1 --format=%ct HEAD"));
-    return Number.isSafeInteger(seconds) && seconds > 0 ? new Date(seconds * 1000).toISOString() : null;
-  } catch {
-    return null;
-  }
-}
+// `COLLIE_BUILD_TIME` (an ISO time) wins over the clock, for a caller that must pin the stamp: the e2e
+// fixture builds the app twice and hands each build its own second (web/e2e/fixtures/builds.ts). The
+// release job never sets it. Nothing needs two builds to agree: the math engines, which once imported
+// the entry chunk that holds this stamp, are bundles of their own (vite.math.ts, ADR 0132).
 function stampTime(): string {
   const forced = process.env.COLLIE_BUILD_TIME;
   if (forced !== undefined && forced !== "") {
     if (Number.isNaN(Date.parse(forced))) throw new Error(`COLLIE_BUILD_TIME is not a time: ${forced}`);
     return new Date(forced).toISOString();
   }
-  return (releaseBuild && !buildSha.endsWith("-dirty") ? commitTime() : null) ?? new Date().toISOString();
+  return new Date().toISOString();
 }
 const buildTime = stampTime();
 const BUILD_INFO = {
@@ -229,41 +217,6 @@ const channelManifest = manifestFor(channel);
 
 // The speech worker's entry, the one worker built under `stt/` (the `worker` block below).
 const STT_WORKER_ENTRY = resolve(import.meta.dirname, "src/stt/worker.ts");
-
-// A module of a math engine, or of a package only an engine imports. vite.config's output naming
-// sends the chunks and assets that hold one under `math/`, in a folder per engine: `math/katex/` and
-// `math/mathjax/`. What both engines share (lib/math/math-markup.ts and the hast packages behind it)
-// stays at `math/` itself. The lib/math files are NAMED, not matched by folder: lib/math/engine.ts
-// is app-shell code that main.tsx imports eagerly, and a chunk holding it under `math/` would be
-// left out of the precache and cleared on every update, so the app could not start offline.
-const MATH_MODULE =
-  /[\\/](?:src[\\/]lib[\\/]math[\\/](?:katex|mathjax|math-markup)\.|node_modules[\\/](?:katex|@mathjax)[\\/])/;
-const KATEX_MODULE = /[\\/](?:node_modules[\\/]katex[\\/]|src[\\/]lib[\\/]math[\\/]katex\.)/;
-const MATHJAX_MODULE = /[\\/](?:node_modules[\\/]@mathjax[\\/]|src[\\/]lib[\\/]math[\\/]mathjax\.)/;
-const KATEX_NAME = /^katex(?![a-z])/i;
-const MATHJAX_NAME = /^mathjax(?![a-z])/i;
-
-/** The folder an output file of the math engines goes in, or `null` for the app's own `assets/`. */
-function mathFolder(ids: readonly string[], names: readonly string[] = []): string | null {
-  const katex = ids.some((id) => KATEX_MODULE.test(id)) || names.some((name) => KATEX_NAME.test(name));
-  const mathjax = ids.some((id) => MATHJAX_MODULE.test(id)) || names.some((name) => MATHJAX_NAME.test(name));
-  if (katex !== mathjax) return katex ? "math/katex" : "math/mathjax";
-  return katex || ids.some((id) => MATH_MODULE.test(id)) ? "math" : null;
-}
-
-// KaTeX's stylesheet offers each face as .woff2, then .woff and .ttf. Every browser Collie runs on
-// takes the .woff2, so the other two are files no device ever fetches: about 0.8 MB in the release.
-// Dropping them from the `src` lists here, before Vite resolves the URLs, means they are never
-// emitted at all. The bridge would also serve them as octet-stream, which the CSS loader refuses.
-const KATEX_STYLESHEET = /[\\/]node_modules[\\/]katex[\\/]dist[\\/]katex(?:\.min)?\.css$/;
-const katexWoff2OnlyPlugin: Plugin = {
-  name: "collie-katex-woff2-only",
-  enforce: "pre",
-  transform(code, id) {
-    if (!KATEX_STYLESHEET.test(id)) return null;
-    return code.replace(/,\s*url\([^)]*\.(?:woff|ttf)\)\s*format\("(?:woff|truetype)"\)/g, "");
-  },
-};
 
 // ADR 0052: ONE BUILD SERVES ANY MOUNT. The shell (index.html) is built ROOT-ABSOLUTE, every
 // reference `/…`, and the bridge resolves it to the mount it was started with when it serves the
@@ -312,7 +265,7 @@ export default defineConfig({
   plugins: [
     react(),
     tailwindcss(),
-    katexWoff2OnlyPlugin,
+    mathEnginesPlugin(),
     buildInfoPlugin,
     channelIconsPlugin,
     VitePWA({
@@ -406,8 +359,8 @@ export default defineConfig({
         // The vendored speech engine (public/stt/, ADR 0096) stays out of the precache for the
         // reason the Nerd Font faces do: its glue is a .js file the glob would otherwise take, and
         // nobody who never taps Whistle should pay for it on install. It loads on first use.
-        // The math engines (`math/`, set by build.rolldownOptions below) stay out for the same
-        // reason: they are a device's opt-in, and Off is the default.
+        // The math engines (`math/`, their own build, vite.math.ts) stay out for the same reason:
+        // they are a device's opt-in, and Off is the default.
         globIgnores: [...precacheIgnoresFor(channel), "stt/**", "math/**"],
       },
       // Over plain HTTP (insecure context) the SW can't register; in dev we don't want it anyway.
@@ -438,8 +391,6 @@ export default defineConfig({
   build: {
     outDir: "dist",
     emptyOutDir: true,
-    // Fonts stay same-origin files, including the small KaTeX faces: the CSP does not allow data fonts.
-    assetsInlineLimit: (filePath) => (/[\\/]KaTeX_[^\\/]+\.woff2$/.test(filePath) ? false : undefined),
     // A couple of small chunks beat one big one on a phone over the tailnet.
     chunkSizeWarningLimit: 900,
     rolldownOptions: {
@@ -447,26 +398,9 @@ export default defineConfig({
         codeSplitting: {
           groups: [{ name: "router", test: /node_modules\/(?:react-router|@remix-run)\// }],
         },
-        // THE MATH ENGINES ARE UNDER `math/` (lib/math/engine.ts). Each is a dynamic import, so it
-        // is already its own chunk; the folder is what keeps it out of the precache (`math/**` in
-        // globIgnores) and lets src/sw.ts cache it on first use instead. A device on Off — the
-        // default — never downloads or stores a byte of either engine.
-        //
-        // THE ENGINE FILES CARRY NO CONTENT HASH. The release builds ONE pack (`collie-math-<v>.tar.gz`,
-        // ADR 0132) from one build and serves it to the payloads of every platform, each of which built
-        // `web/dist` on its own runner. A hash in the name is a promise that the bytes are the ones this
-        // build made, and the pack cannot keep it: an engine chunk imports the entry chunk, whose bytes
-        // hold the build stamp, so the hash moved with every build, on one machine too. The pack is
-        // keyed by the release version (`<stateDir>/math/<version>/`), which is the cache key the hash
-        // was standing in for, so the name is just `math/katex/katex.js`. Everything else keeps its hash.
-        chunkFileNames: (chunk) => {
-          const folder = mathFolder(chunk.moduleIds);
-          return folder === null ? "assets/[name]-[hash].js" : `${folder}/[name].js`;
-        },
-        assetFileNames: (asset) => {
-          const folder = mathFolder(asset.originalFileNames, asset.names);
-          return folder === null ? "assets/[name]-[hash][extname]" : `${folder}/[name][extname]`;
-        },
+        // NOTHING OF THE MATH ENGINES IS IN THIS BUILD. They are bundles of their own under `math/`,
+        // built after this one by mathEnginesPlugin (vite.math.ts), and the app loads them by URL
+        // (lib/math/engine.ts), so no chunk here imports one and none of them imports a chunk here.
       },
     },
   },

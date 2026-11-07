@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, renderHook } from "@testing-library/react";
 
 import { __resetDesign, designPrefs, mathEngineOf, setDesignMath } from "@/lib/design";
-import { __resetMathEngines, loadMathEngine, mathEngineFailed } from "@/lib/math/engine";
+import { __resetMathEngines, __setMathEngineImport, loadMathEngine, mathEngineFailed } from "@/lib/math/engine";
 import type { MathPackStatus } from "@/lib/types";
 import { server } from "@/test/setup";
 
@@ -18,9 +18,9 @@ import {
 
 // The host's pack as the phone holds it (ADR 0132). The engine below cannot load, the way a 404 under
 // `/math/` leaves it after an update took the pack away.
-vi.mock("@/lib/math/katex", () => {
-  throw new Error("Failed to fetch dynamically imported module: http://phone.test/math/katex/katex-x.js");
-});
+__setMathEngineImport(() =>
+  Promise.reject(new TypeError("Failed to fetch dynamically imported module: http://phone.test/math/katex/katex.js")),
+);
 
 const READY: MathPackStatus = { state: "ready", version: "1.29.0", source: "store", bytes: 3_994_976 };
 

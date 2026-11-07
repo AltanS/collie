@@ -501,11 +501,13 @@ jobs:
             -cf - -C web/dist math | gzip -9n > "$RUNNER_TEMP/assets/collie-math-$version.tar.gz"
           ls -l "$RUNNER_TEMP/assets/collie-math-$version.tar.gz"
 
-      # No install carries the engines, and every install finds its own in the pack. Every payload
-      # (each tarball, the Windows zip when there is one) and the web-dist asset is unpacked and read:
-      # a `web/dist/math` left in one fails the release, and so does an engine file its bundle names
-      # that the pack lacks. The payloads build `web/dist` on their own runners, so this is the step
-      # that makes "the pack fits every payload" a fact. `scripts/math-pack.test.ts` pins the rules.
+      # No install carries the engines, and every install finds its own in the pack. The engines are
+      # self-contained bundles (web/vite.math.ts), so the pack must hold the files the app's loader
+      # names and import nothing outside each engine's folder. Every payload (each tarball, the Windows
+      # zip when there is one) and the web-dist asset is unpacked and read: engine code in its app
+      # bundle fails the release, and so does a `web/dist/math` that is not the pack. The payloads build
+      # `web/dist` on their own runners, so this is the step that makes "the pack fits every payload" a
+      # fact. `scripts/math-pack.test.ts` pins the rules.
       - name: Check the math pack against every payload
         run: |
           set -euo pipefail
