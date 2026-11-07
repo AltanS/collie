@@ -128,6 +128,7 @@ import {
   type WalkyDeps,
 } from "./walky.ts";
 import { cmdUpdateCheck, updateCheckDeps, wantsCheck } from "./update-check.ts";
+import { cmdTheme, cmdThemeCheck, realThemeFiles, THEME_SUBCOMMANDS } from "./theme-check.ts";
 
 // The `collie` binary's dispatch: argv in, exit code out. This module owns ONLY the dispatch —
 // every verb's behaviour lives in its own module under `cli/`, taking the resolved context as an
@@ -991,6 +992,21 @@ export const COMMANDS: readonly Command[] = [
     summary: `WalkyTalky, messages between agent sessions: ${WALKY_SUBCOMMANDS.join(", ")}`,
     subcommands: WALKY_TREE,
     run: (args, s) => cmdWalky({ io: s.io }, args),
+  },
+  // ── Themes (M59 spec 05) ───────────────────────────────────────────────────
+  // `theme check` runs the app's own theme parser and contrast report over files on disk, for a
+  // theme repository's CI. No context and no state dir: it reads the files it is named and prints.
+  {
+    name: "theme",
+    summary: `check a theme file before you share it: ${THEME_SUBCOMMANDS.join(", ")}`,
+    subcommands: [
+      {
+        name: "check",
+        summary: "validate theme files with the app's parser; refusals, contrast warnings, exit 1 on a refusal (--json, --shipped)",
+        run: (args, s) => cmdThemeCheck({ io: s.io, files: realThemeFiles }, args),
+      },
+    ],
+    run: (args, s) => cmdTheme({ io: s.io, files: realThemeFiles }, args),
   },
   // ── The crew (M4/07, renamed in M24) ──────────────────────────────────────
   // The only way a machine enters or leaves a crew. The verb is `crew`; `crew` is an alias onto the

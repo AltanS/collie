@@ -231,21 +231,29 @@ function charCount(value: string): number {
   return [...value].length;
 }
 
+/** The size cap on a theme file: an import, a link, a paste, a stored theme and `collie theme check`. */
+export const THEME_MAX_BYTES = 64 * 1024;
+
+/**
+ * The refusal for a file over the cap. Its own function because three readers stop before the parser
+ * would see the text (a file picked in the card, a link's body, a file on disk), and all three must
+ * say what the parser says.
+ */
+export function sizeRefusal(bytes: number, maxBytes: number): Refusal {
+  return {
+    code: "size",
+    path: "$",
+    detail: `The file is ${bytes} bytes. A theme may be at most ${maxBytes} bytes.`,
+  };
+}
+
 /**
  * Parse an untrusted theme file. Total: any string gives a theme or a non-empty list of refusals,
  * and every refusal in the file is collected, not only the first.
  */
 export function parseTheme(raw: string, opts: ParseThemeOptions): ParsedTheme {
   const bytes = new TextEncoder().encode(raw).length;
-  if (bytes > opts.maxBytes) {
-    return refuse([
-      {
-        code: "size",
-        path: "$",
-        detail: `The file is ${bytes} bytes. A theme may be at most ${opts.maxBytes} bytes.`,
-      },
-    ]);
-  }
+  if (bytes > opts.maxBytes) return refuse([sizeRefusal(bytes, opts.maxBytes)]);
   const doc = parseJsonObject(raw);
   if (doc === undefined) {
     return refuse([{ code: "json", path: "$", detail: "The file is not a JSON object." }]);

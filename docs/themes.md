@@ -181,6 +181,27 @@ my-themes/
     my-night.collie-theme.json
 ```
 
+### Check a theme before you share it
+
+```sh
+collie theme check collie-theme.json
+```
+
+The verb runs the check the app runs at **Import**, on a file on your computer. It prints one line per
+refusal and one per contrast warning, in the words Settings shows. Name several files to check them
+all, for example `collie theme check themes/*.collie-theme.json`.
+
+| Exit code | Meaning |
+| --- | --- |
+| 0 | Every file passes. A contrast warning does not fail it. |
+| 1 | A file is refused, or cannot be read. |
+| 2 | A usage error, such as no file named. |
+
+`--json` prints the report as one JSON object, for a CI job. `--shipped` accepts the id of a shipped
+theme, for Collie's own files. The verb reads only the files you name, and it needs no running Collie.
+
+### What the site does with it
+
 Once a day, the site looks for repositories with the topic. It reads every theme file with the same
 check the app runs at **Import**, and a model reads the name, the description and the README of the
 repository. A repository that passes is listed within a day. The site checks a listed repository

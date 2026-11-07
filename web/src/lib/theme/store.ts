@@ -37,6 +37,7 @@ import {
   SHIPPED_THEME_IDS,
   ALL_THEME_TOKENS,
   OPTIONAL_THEME_TOKENS,
+  THEME_MAX_BYTES,
   THEME_TOKENS,
   fillHalves,
   isShippedThemeId,
@@ -54,8 +55,8 @@ export const LIBRARY_STORAGE_KEY = "collie:themes:v1";
 /** Imported themes per device. */
 export const LIBRARY_MAX = 8;
 
-/** The size cap on an imported file, and on a theme the store re-reads. */
-export const THEME_MAX_BYTES = 64 * 1024;
+/** The size cap on an imported file, and on a theme the store re-reads. It lives in `schema.ts`, beside the parser. */
+export { THEME_MAX_BYTES };
 
 /** An imported theme: the same shape as any theme, from the library and never from the build. */
 export type ImportedTheme = Theme;

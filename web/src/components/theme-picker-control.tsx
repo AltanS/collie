@@ -15,10 +15,10 @@ import {
   contrastReport,
   fillHalves,
   parseTheme,
+  sizeRefusal,
   toSrgbHex,
   type Finding,
   type Refusal,
-  type RefusalCode,
   type Theme,
   type ThemeToken,
   versionOf,
@@ -43,6 +43,7 @@ import {
   type Declaration,
 } from "@/lib/theme/surface";
 import { isShippedFont } from "@/lib/shipped-fonts";
+import { CONTRAST_FAIL_KEY, HALF_KEYS, REFUSAL_KEYS, isMoreLine } from "@/lib/theme/report-words";
 import { SectionLabel } from "@/components/ui/section-label";
 
 // The Theme card (M57): which colour theme this device wears, and the way in and out for a theme
@@ -74,30 +75,6 @@ const PREVIEW_TOKENS: readonly ThemeToken[] = [
 /** The most contrast failures a preview lists before it says how many more there are. */
 const FAILURES_SHOWN = 6;
 
-/** The refusal headlines, one per parser code. A record, so a new code cannot skip a sentence. */
-const REFUSAL_KEYS = {
-  size: "theme.refusal.size",
-  json: "theme.refusal.json",
-  version: "theme.refusal.version",
-  id: "theme.refusal.id",
-  name: "theme.refusal.name",
-  author: "theme.refusal.author",
-  "unknown-key": "theme.refusal.unknown-key",
-  value: "theme.refusal.value",
-  font: "theme.refusal.font",
-  "no-half": "theme.refusal.no-half",
-  "reserved-id": "theme.refusal.reserved-id",
-  surface: "theme.refusal.surface",
-  ansi: "theme.refusal.ansi",
-} as const satisfies Record<RefusalCode, MessageKey>;
-
-const HALF_KEYS = {
-  light: "settings.theme.option.light",
-  dark: "settings.theme.option.dark",
-} as const satisfies Record<"light" | "dark", MessageKey>;
-
-const MORE_PATTERN = /^and \d+ more$/;
-
 function collieTheme(): Theme {
   const found = shippedThemes().find((theme) => theme.id === DEFAULT_THEME_ID);
   if (found === undefined) throw new Error(`the shipped theme ${DEFAULT_THEME_ID} is missing`);
@@ -109,15 +86,6 @@ function hexOf(theme: Theme, half: "light" | "dark", token: ThemeToken): string 
   return toSrgbHex(fillHalves(theme, collieTheme())[half][token] ?? "");
 }
 
-/** The size refusal for a file the card will not even read. The same words the parser uses. */
-function tooBig(bytes: number): Refusal {
-  return {
-    code: "size",
-    path: "$",
-    detail: `The file is ${bytes} bytes. A theme may be at most ${THEME_MAX_BYTES} bytes.`,
-  };
-}
-
 async function readCapped(file: File): Promise<string> {
   // `slice` first: a file that claims a small size and is read in one piece stays small, and nothing
   // past the cap is ever turned into a string.
@@ -126,7 +94,7 @@ async function readCapped(file: File): Promise<string> {
 
 /** A file's text, or the refusal that says why it was not read. */
 async function openFile(file: File): Promise<{ text: string } | { refusals: Refusal[] }> {
-  if (file.size > THEME_MAX_BYTES) return { refusals: [tooBig(file.size)] };
+  if (file.size > THEME_MAX_BYTES) return { refusals: [sizeRefusal(file.size, THEME_MAX_BYTES)] };
   return { text: await readCapped(file) };
 }
 
@@ -331,7 +299,7 @@ function AnsiStrip({ ansi }: { ansi: Ansi }) {
 }
 
 function failureText(finding: Finding): string {
-  return t("theme.preview.contrast.fail", {
+  return t(CONTRAST_FAIL_KEY, {
     half: t(HALF_KEYS[finding.half]),
     check: finding.check,
     ratio: finding.ratio,
@@ -426,7 +394,7 @@ export interface RefusalEntry {
 
 /** A parser refusal as a sheet line. The reserved id says it all in its headline, so it adds no detail. */
 export function entryOfRefusal(refusal: Refusal): RefusalEntry {
-  if (refusal.code === "json" && refusal.path === "$" && MORE_PATTERN.test(refusal.detail)) {
+  if (isMoreLine(refusal)) {
     return { headline: refusal.detail, tone: "neutral" };
   }
   return {
