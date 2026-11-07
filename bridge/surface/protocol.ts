@@ -2583,6 +2583,12 @@ const CLEARED_FREE_POLLS = 1;
 const DRAFT_LEFT_MS = 2000;
 /** Polls in a row with no pane before its held requests end `pane_gone`. */
 const MISSING_POLLS = 3;
+/**
+ * Poll reads in a row, each taken after the row ended, that show the pane's box empty under no modal
+ * before a held row that ended `typed_not_submitted` goes ({@link SendProtocol.tickTyped}). Two, as a
+ * queued card's idle-and-empty exit (queued.ts `IDLE_EMPTY_POLLS`): one read can be a frame on its way.
+ */
+const TYPED_GONE_POLLS = 2;
 
 /** The agent part of a pane generation (`<agent>:<session id>`): a session id that resolves or a /clear keeps it. */
 function agentOfGeneration(generation: string): string {
@@ -2705,6 +2711,8 @@ export class SendProtocol {
   private readonly openSends: OpenSend[] = [];
   /** Sends that settled `sent` + `queued`, with their texts, until the journal or the box closes them (ADR 0122). */
   private readonly queuedSends: QueuedSends;
+  /** Per ended `typed_not_submitted` row: the empty-box polls in a row since it ended, and the newest one's time ({@link tickTyped}). */
+  private readonly typedEmpty = new Map<string, { count: number; at: number }>();
   /** Releases that went back because their box was still starting ({@link RunState.startWait}): no turn can come from them. */
   private readonly startWaits = new Set<string>();
 
@@ -2755,6 +2763,58 @@ export class SendProtocol {
       const read = boxOf(paneId);
       if (read !== null) this.boxRead(session, paneId, { ...read, poll: true });
     }
+  }
+
+  /**
+   * The poll's tick for the held rows that ended `typed_not_submitted` (#739). Such a row says its text
+   * is still in the box and offers Submit and Discard on that box. It used to have no exit but a tap or
+   * the hour of {@link HoldStore.prune}: on a crew member's pane, where the card has no buttons, it stood
+   * over an empty box until the hour ran out, and a restart read it back from disk. It now ends the way
+   * a returned queued card does (queued.ts, ADR 0122), when a later read shows the box without it, with
+   * the stricter reading of "without it" that cannot misread a wrapped, folded or scrolled draft: the
+   * box found and EMPTY, under no modal, on {@link TYPED_GONE_POLLS} poll reads in a row, each taken
+   * after the row ended and while no send runs on the pane (during a run the box holds that send's own
+   * text). Any other read starts the count again. The row's file goes and nothing is pressed; a box that
+   * shows only Collie's probe characters is not empty here, the safe side. No harness name: every
+   * profile reads its empty box as `""` (`SurfaceShadow.boxOf`, a placeholder included).
+   * Returns the ids that went, for a test. Never throws.
+   */
+  tickTyped(session: string, readOf: (paneId: string) => { readonly box: string | null; readonly at: number } | null, surfaceOf: (paneId: string) => Surface | undefined): string[] {
+    const holds = this.deps.holds;
+    if (holds === undefined) return [];
+    const gone: string[] = [];
+    const open = new Set<string>();
+    try {
+      for (const entry of holds.list(session)) {
+        if (entry.state !== "ended" || entry.outcome !== "typed_not_submitted") continue;
+        open.add(entry.id);
+        const read = readOf(entry.paneId);
+        const surface = surfaceOf(entry.paneId);
+        // A read from before the row ended, or one already counted, says nothing new.
+        const last = this.typedEmpty.get(entry.id);
+        if (read === null || read.at <= (entry.endedAt ?? entry.heldAt) || (last !== undefined && read.at <= last.at)) continue;
+        const running = this.deps.locks.busy(`${session}\u0000${entry.paneId}`, this.now());
+        if (running) continue;
+        const empty = read.box === "" && surface !== undefined && surface.modal === "none";
+        if (!empty) {
+          this.typedEmpty.delete(entry.id);
+          continue;
+        }
+        const count = (last?.count ?? 0) + 1;
+        if (count < TYPED_GONE_POLLS) {
+          this.typedEmpty.set(entry.id, { count, at: read.at });
+          continue;
+        }
+        this.typedEmpty.delete(entry.id);
+        if (holds.remove(entry.id)) gone.push(entry.id);
+      }
+    } catch (err) {
+      console.warn(`[send] typed rows on ${session} failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+    // The count of a row that went another way (Dismiss, Submit, Discard, the hour) goes with it.
+    for (const id of this.typedEmpty.keys()) if (!open.has(id) && holds.get(id) === null) this.typedEmpty.delete(id);
+    if (gone.length > 0) console.log(`[send] ${String(gone.length)} typed row(s) on ${session} retired: the box reads empty`);
+    return gone;
   }
 
   /**

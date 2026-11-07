@@ -10,7 +10,8 @@
 // A file lives through three states: `held` (waiting for a free pane), `running` (going out now, as a
 // fresh run of the protocol under the same request id) and `ended` (closed without reaching the agent:
 // expired, the pane gone, or a refusal at release; the text stays for the phone's Resend). A send that
-// went out, and a cancelled one, leave no file. An ended file goes when the person dismisses it, or
+// went out, and a cancelled one, leave no file. An ended file goes when the person dismisses it, when
+// it ended `typed_not_submitted` and two polls read its box empty (protocol.ts `tickTyped`, #739), or
 // after {@link HOLD_ENDED_KEEP_MS}, and a pane keeps at most {@link HOLD_ENDED_PANE_MAX} of them.
 //
 // The text is kept on disk in plain form (the file is 0600): the bridge must type it later. So the
