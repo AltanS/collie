@@ -121,3 +121,27 @@ describe("hermes Ink TUI composer: a dialog near it is never free (issue 549)", 
     }
   });
 });
+
+// Review of the first cut: the TUI's hints were profile-wide placeholder shapes, so on a plain read a
+// classic-CLI draft typed as exactly `Try "…"` read as an empty box. They are the TUI layout's own now
+// (`idle.frame.placeholderPatterns`), and the classic box keeps its draft.
+describe("the TUI's hints hold for the TUI box alone", () => {
+  const plainRowsOf = (name: string): string[] => fixtureRows(name).map((row) => row.segments.map((segment) => segment.text).join(""));
+
+  it("a classic-CLI draft typed as Try \"…\", read plain, stays a draft, not free", () => {
+    const rows = plainRowsOf("hermes--draft.txt");
+    const at = rows.findIndex((row) => row.startsWith("❯ "));
+    expect(at).toBeGreaterThan(0);
+    const draft = 'Try "explain this codebase"';
+    const got = readRows(rows.map((row, i) => (i === at ? `❯ ${draft}` : row)));
+    expect(got.frame).toMatchObject({ placeholder: false, interior: { text: draft } });
+    expect(got.surface.composer).toBe("draft");
+    expect(isFree(got.surface)).toBe(false);
+  });
+
+  it("the profile keeps no TUI hint as a shape for every box; the TUI layout names them", () => {
+    expect(IDLE.placeholders.patterns ?? []).not.toContain('^Try "[^"]+"$');
+    const tui = (IDLE.frameAlternates ?? []).find((frame) => frame.placeholderPatterns !== undefined);
+    expect(tui?.placeholderPatterns).toEqual(["^有什麼想問的？…$", '^Try "[^"]+"$', "^Ctrl\\+C 中斷…$"]);
+  });
+});

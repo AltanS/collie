@@ -377,6 +377,12 @@ export interface FrameLayout {
    * `renderFakeCursor`) and an extension may put `❯` in front of it (#722). Optional.
    */
   readonly draftCaret?: boolean;
+  /**
+   * More placeholder shapes (`idle.placeholders.patterns`, the same plain-read-only fallback) that hold
+   * for THIS layout alone. A profile with several layouts (`idle.frameAlternates`) whose hints differ
+   * names them here, so a hint of one box never reads a draft typed in another as empty. Optional.
+   */
+  readonly placeholderPatterns?: readonly string[];
   readonly maxDraftRows: number;
   /** How many rows above the last non-blank row the bottom edge may sit (the frame module's
    *  search bound, M56 spec 03): the tallest thing the harness draws under a live box. */
@@ -1422,7 +1428,11 @@ function parseFrame(frameNode: JsonObject): FrameLayout {
   const withLines = frameNode.draftLines === true ? { ...withIndent, draftLines: true } : withIndent;
   if (frameNode.draftCaret !== undefined && frameNode.draftCaret !== true && frameNode.draftCaret !== false) fail("idle.frame.draftCaret", "must be true or false");
   const withCaretCell = frameNode.draftCaret === true ? { ...withLines, draftCaret: true } : withLines;
-  const scrolled = frameNode.scroll === undefined ? withCaretCell : { ...withCaretCell, scroll: parseScroll(frameNode.scroll, maxDraftRows) };
+  const withHints =
+    frameNode.placeholderPatterns === undefined
+      ? withCaretCell
+      : { ...withCaretCell, placeholderPatterns: textList(frameNode.placeholderPatterns, "idle.frame.placeholderPatterns", 1).map((item, i) => pattern(item, `idle.frame.placeholderPatterns[${String(i)}]`).source) };
+  const scrolled = frameNode.scroll === undefined ? withHints : { ...withHints, scroll: parseScroll(frameNode.scroll, maxDraftRows) };
   const base = { ...scrolled, ...parseAnswerBox(frameNode) };
   if (walk === "edges") {
     for (const key of ["rows", "trailer", "continuation", "ownPrompt", "maxWidgetRows"] as const) {
