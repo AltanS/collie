@@ -278,7 +278,7 @@ import {
   type HeldRow,
   STALE_SCREEN,
 } from "../../web/src/lib/surface/send.ts";
-import { askOf, frameImageKey, isFree, shortHash, type Surface } from "../../web/src/lib/surface/surface.ts";
+import { askOf, frameImageKey, isFree, shortHash, type Surface, type SurfaceTurn } from "../../web/src/lib/surface/surface.ts";
 import { closingReceipt, normalizePrompt, receiptWindowMs, type OpenReceipt } from "../../web/src/lib/surface/edges.ts";
 import type { CapState, CounterKey, ExampleEntry, InboxEntry } from "./counters.ts";
 import { askLifetimeOf, type AskBook } from "./ask.ts";
@@ -2595,6 +2595,13 @@ const MISSING_POLLS = 3;
  * queued card's idle-and-empty exit (queued.ts `IDLE_EMPTY_POLLS`): one read can be a frame on its way.
  */
 const TYPED_GONE_POLLS = 2;
+/**
+ * The least time between two reads that count for {@link SendProtocol.tickTyped}. A poke after a send
+ * takes two reads a few milliseconds apart, and those are one look at the pane, not two.
+ */
+const TYPED_GONE_GAP_MS = 1500;
+/** No typed row goes sooner than this after it ended, so the person sees its card ({@link SendProtocol.tickTyped}). */
+const TYPED_GONE_SEEN_MS = 5000;
 
 /** The agent part of a pane generation (`<agent>:<session id>`): a session id that resolves or a /clear keeps it. */
 function agentOfGeneration(generation: string): string {
@@ -2778,14 +2785,16 @@ export class SendProtocol {
    * over an empty box until the hour ran out, and a restart read it back from disk. It now ends the way
    * a returned queued card does (queued.ts, ADR 0122), when a later read shows the box without it, with
    * the stricter reading of "without it" that cannot misread a wrapped, folded or scrolled draft: the
-   * box found and EMPTY, under no modal, on {@link TYPED_GONE_POLLS} poll reads in a row, each taken
-   * after the row ended and while no send runs on the pane (during a run the box holds that send's own
-   * text). Any other read starts the count again. The row's file goes and nothing is pressed; a box that
+   * box found and EMPTY, under no modal and with no turn running, on {@link TYPED_GONE_POLLS} poll reads
+   * in a row, each taken after the row ended, at least {@link TYPED_GONE_GAP_MS} after the one before it,
+   * and while no send runs on the pane (during a run the box holds that send's own text). Any other read
+   * starts the count again. No row goes before {@link TYPED_GONE_SEEN_MS} after it ended, so a person
+   * sees its card. The row's file goes and nothing is pressed; a box that
    * shows only Collie's probe characters is not empty here, the safe side. No harness name: every
    * profile reads its empty box as `""` (`SurfaceShadow.boxOf`, a placeholder included).
    * Returns the ids that went, for a test. Never throws.
    */
-  tickTyped(session: string, readOf: (paneId: string) => { readonly box: string | null; readonly at: number } | null, surfaceOf: (paneId: string) => Surface | undefined): string[] {
+  tickTyped(session: string, readOf: (paneId: string) => { readonly box: string | null; readonly at: number; readonly turn: SurfaceTurn } | null, surfaceOf: (paneId: string) => Surface | undefined): string[] {
     const holds = this.deps.holds;
     if (holds === undefined) return [];
     const gone: string[] = [];
@@ -2796,18 +2805,22 @@ export class SendProtocol {
         open.add(entry.id);
         const read = readOf(entry.paneId);
         const surface = surfaceOf(entry.paneId);
+        const endedAt = entry.endedAt ?? entry.heldAt;
         // A read from before the row ended, or one already counted, says nothing new.
         const last = this.typedEmpty.get(entry.id);
-        if (read === null || read.at <= (entry.endedAt ?? entry.heldAt) || (last !== undefined && read.at <= last.at)) continue;
+        if (read === null || read.at <= endedAt || (last !== undefined && read.at <= last.at)) continue;
         const running = this.deps.locks.busy(`${session}\u0000${entry.paneId}`, this.now());
         if (running) continue;
-        const empty = read.box === "" && surface !== undefined && surface.modal === "none";
+        // Empty, and at rest: a turn that runs may still draw into the box.
+        const empty = read.box === "" && read.turn !== "running" && surface !== undefined && surface.modal === "none" && surface.turn !== "running";
         if (!empty) {
           this.typedEmpty.delete(entry.id);
           continue;
         }
-        const count = (last?.count ?? 0) + 1;
-        if (count < TYPED_GONE_POLLS) {
+        // A read too soon after the one counted is the same look at the pane.
+        if (last !== undefined && read.at - last.at < TYPED_GONE_GAP_MS) continue;
+        const count = Math.min((last?.count ?? 0) + 1, TYPED_GONE_POLLS);
+        if (count < TYPED_GONE_POLLS || read.at < endedAt + TYPED_GONE_SEEN_MS) {
           this.typedEmpty.set(entry.id, { count, at: read.at });
           continue;
         }

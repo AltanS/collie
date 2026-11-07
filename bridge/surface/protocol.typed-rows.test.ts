@@ -45,6 +45,9 @@ const DRAFT = readOf("oc--draft-single.txt");
 const DIALOG = readOf("oc--permission-bash.txt");
 const PICKER = readOf("oc--agents-picker.txt");
 
+/** The rig's poll step: longer than the gap between two counted reads, and two of them pass the row's 5 s. */
+const POLL_STEP_MS = 3000;
+
 function rig(heldDir = join(dir, "held")) {
   const clock = { now: 1_000_000 };
   const now = (): number => clock.now;
@@ -71,11 +74,14 @@ function rig(heldDir = join(dir, "held")) {
       return Promise.resolve();
     },
   });
-  /** One poll: the clock moves on, the read is taken now, the tick runs. Returns the ids that went. */
-  const poll = (read: Read): string[] => {
-    clock.now += 1000;
+  /**
+   * One poll: the clock moves on, the read is taken now, the tick runs. Returns the ids that went. The
+   * step is 3 s: two reads 1.5 s apart or more count, and the second lands past the row's 5 s.
+   */
+  const poll = (read: Read, step = POLL_STEP_MS): string[] => {
+    clock.now += step;
     const at = clock.now;
-    return protocol.tickTyped("main", () => ({ box: read.box, at }), () => read.surface);
+    return protocol.tickTyped("main", () => ({ box: read.box, at, turn: read.surface.turn }), () => read.surface);
   };
   return { holds, clock, protocol, locks, poll };
 }
@@ -120,13 +126,45 @@ describe("a held row that ended typed_not_submitted, over opencode's empty box (
     expect(r.holds.list()).toEqual([]);
   });
 
-  test("the placeholder, and an empty box while a turn runs, read as empty too", () => {
-    for (const read of [PLACEHOLDER, RUNNING_EMPTY]) {
-      const r = rig(join(dir, `held-${String(read.surface.turn)}-${String(read.box)}`));
-      const id = typedRow(r.holds);
-      r.poll(read);
-      expect(r.poll(read)).toEqual([id]);
-    }
+  test("the placeholder reads as empty too", () => {
+    const r = rig();
+    const id = typedRow(r.holds);
+    r.poll(PLACEHOLDER);
+    expect(r.poll(PLACEHOLDER)).toEqual([id]);
+  });
+
+  test("an empty box while a turn runs never counts, and a running read between two idle ones starts the count again", () => {
+    const r = rig();
+    const id = typedRow(r.holds);
+    for (let i = 0; i < 4; i++) expect(r.poll(RUNNING_EMPTY)).toEqual([]);
+    r.poll(IDLE_EMPTY);
+    r.poll(RUNNING_EMPTY);
+    expect(r.poll(IDLE_EMPTY)).toEqual([]);
+    expect(r.holds.get(id)?.state).toBe("ended");
+    expect(r.poll(IDLE_EMPTY)).toEqual([id]);
+  });
+
+  test("two reads less than 1.5 s apart are one look: a poke after a send does not retire the row", () => {
+    const r = rig();
+    const id = typedRow(r.holds);
+    r.clock.now += 10_000;
+    expect(r.poll(IDLE_EMPTY, 5)).toEqual([]);
+    expect(r.poll(IDLE_EMPTY, 5)).toEqual([]);
+    expect(r.poll(IDLE_EMPTY, 1400)).toEqual([]);
+    expect(r.holds.get(id)).not.toBeNull();
+    // 1.5 s after the first counted read, the second counts.
+    expect(r.poll(IDLE_EMPTY, 100)).toEqual([id]);
+  });
+
+  test("no row goes in the first 5 s after it ended, whatever the reads say", () => {
+    const r = rig();
+    const id = typedRow(r.holds);
+    expect(r.poll(IDLE_EMPTY, 1600)).toEqual([]);
+    expect(r.poll(IDLE_EMPTY, 1600)).toEqual([]);
+    expect(r.poll(IDLE_EMPTY, 1600)).toEqual([]);
+    expect(r.holds.get(id)).not.toBeNull();
+    // 6.4 s after it ended, two counted reads behind it: the row goes.
+    expect(r.poll(IDLE_EMPTY, 1600)).toEqual([id]);
   });
 
   test("a draft in the box between two empty reads starts the count again", () => {
@@ -151,11 +189,11 @@ describe("a held row that ended typed_not_submitted, over opencode's empty box (
     const r = rig();
     const id = typedRow(r.holds);
     const before = r.clock.now - 1;
-    expect(r.protocol.tickTyped("main", () => ({ box: "", at: before }), () => IDLE_EMPTY.surface)).toEqual([]);
-    r.clock.now += 1000;
+    expect(r.protocol.tickTyped("main", () => ({ box: "", at: before, turn: "idle" }), () => IDLE_EMPTY.surface)).toEqual([]);
+    r.clock.now += 2000;
     const once = r.clock.now;
-    expect(r.protocol.tickTyped("main", () => ({ box: "", at: once }), () => IDLE_EMPTY.surface)).toEqual([]);
-    expect(r.protocol.tickTyped("main", () => ({ box: "", at: once }), () => IDLE_EMPTY.surface)).toEqual([]);
+    expect(r.protocol.tickTyped("main", () => ({ box: "", at: once, turn: "idle" }), () => IDLE_EMPTY.surface)).toEqual([]);
+    expect(r.protocol.tickTyped("main", () => ({ box: "", at: once, turn: "idle" }), () => IDLE_EMPTY.surface)).toEqual([]);
     expect(r.holds.get(id)).not.toBeNull();
     expect(r.poll(IDLE_EMPTY)).toEqual([id]);
   });
