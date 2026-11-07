@@ -1,6 +1,6 @@
 /* MathJax 4's SVG output stylesheet, the rules that apply here (svg.styleSheet() would build the
-   same at runtime). Imported by mathjax.ts, so it ships in the lazy `math/` chunk with the engine.
-   Left out: the speech-rule highlighter and link colours, since neither the explorer nor \href is
+   same at runtime). Imported by mathjax.ts, so it ships beside the engine as
+   `math/mathjax/mathjax.css`. Left out: the speech-rule highlighter and link colours, since neither the explorer nor \href is
    enabled. */
 mjx-container[jax="SVG"] {
   direction: ltr;

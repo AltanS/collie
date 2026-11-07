@@ -1,74 +1,76 @@
 import { describe, expect, test } from "bun:test";
 
-import { checkBuild, checkPackImports, engineReferences, packImports } from "./math-pack.ts";
+import { checkBuild, checkPack, ENGINE_MARKERS } from "./math-pack.ts";
 
-// ADR 0132 Decision 3: every engine file a payload's bundle names must be in the pack. The bundle's
-// spelling is the one Vite emits today (`../math/katex/katex.js` inside `assets/index-*.js`): the engine
-// files carry no content hash, and only the shell's files they import do.
+// ADR 0132 Decision 3: the engines are self-contained bundles under `math/<engine>/`, so the one pack
+// fits every payload. The pack must hold what the app's loader names and import nothing outside each
+// engine's own folder; a payload must carry no engine code outside `math/`, and no `math/` but the pack.
 
-const pack = new Set(["math/katex/katex.js", "math/katex/katex.css", "math/math-markup.js"]);
-const bundle = (text: string) => [{ name: "assets/index-abc.js", text }];
+const text = (path: string, body: string) => ({ path, text: body });
+const file = (path: string, body: string) => ({ path, data: new TextEncoder().encode(body) });
 
-describe("engineReferences", () => {
-  test("reads the relative, the absolute and the bare spelling, once each", () => {
-    const text = 'import("../math/katex/katex.js");m(["../math/katex/katex.css","/math/math-markup.js"]);"math/math-markup.js"';
-    expect(engineReferences(text).toSorted()).toEqual([...pack].toSorted());
+/** A pack shaped like the one web/vite.math.ts builds today. */
+const packTexts = () => [
+  text("math/katex/katex.js", `function p(){throw new Error("${ENGINE_MARKERS.katex}")}export{p as typeset}`),
+  text("math/katex/katex.css", "@font-face{src:url(./KaTeX_Main-Regular.woff2)}"),
+  text("math/katex/KaTeX_Main-Regular.woff2", 'binary from"../../assets/never.js"'),
+  text("math/mathjax/mathjax.js", 'import{t}from"./svg.js";const m={"../../../node_modules/x/greek.js":()=>import(`./greek.js`)};export{t as typeset}'),
+  text("math/mathjax/svg.js", `const e="${ENGINE_MARKERS.mathjax}";export{e as t}`),
+  text("math/mathjax/greek.js", 'import{t as e}from"./svg.js";e.dynamicSetup(``,`greek`)'),
+  text("math/mathjax/mathjax.css", "mjx-container{direction:ltr}"),
+];
+
+describe("checkPack", () => {
+  test("passes a pack whose engines import only their own files", () => {
+    expect(checkPack(packTexts())).toBeNull();
   });
 
-  test("takes no word that merely ends in math, and no folder without a file", () => {
-    expect(engineReferences('const isMathLoadError = e.includes("/math/"); "aftermath/x.js"')).toEqual([]);
+  test("fails a pack that lacks an entry or a stylesheet the loader names", () => {
+    expect(checkPack(packTexts().filter((f) => f.path !== "math/mathjax/mathjax.js"))).toContain("math/mathjax/mathjax.js");
+    expect(checkPack(packTexts().filter((f) => f.path !== "math/katex/katex.css"))).toContain("math/katex/katex.css");
+  });
+
+  test("fails an engine that imports the app's entry chunk, the case run 2 of 1.28.0-edge.2 hit", () => {
+    const files = [...packTexts(), text("math/katex/extra.js", 'import{_ as r}from"../../assets/index-CQCUTi4-.js";')];
+    expect(checkPack(files)).toContain("assets/index-CQCUTi4-.js, outside its own engine folder");
+  });
+
+  test("fails an engine that imports the other engine's folder, or a file at math/ itself", () => {
+    expect(checkPack([...packTexts(), text("math/katex/x.js", 'import"../mathjax/svg.js";')])).toContain("outside its own engine folder");
+    expect(checkPack([...packTexts(), text("math/shared.js", 'import"./katex/katex.js";')])).toContain("outside its own engine folder");
+  });
+
+  test("fails an import of its own folder that the pack lacks", () => {
+    expect(checkPack([...packTexts(), text("math/mathjax/x.js", 'import(`./fraktur.js`)')])).toContain("math/mathjax/fraktur.js, which the pack lacks");
+  });
+
+  test("fails a pack whose engine lost its marker, rather than passing the app check on nothing", () => {
+    const files = packTexts().map((f) => (f.path === "math/mathjax/svg.js" ? text(f.path, "export{}") : f));
+    expect(checkPack(files)).toContain(ENGINE_MARKERS.mathjax);
   });
 });
 
 describe("checkBuild", () => {
-  test("passes a build whose every engine file is in the pack", () => {
-    expect(checkBuild(pack, bundle('import("../math/katex/katex.js")'), false)).toBeNull();
+  const pack = packTexts().map((f) => file(f.path, f.text));
+  const app = [file("index.html", "<html>"), file("assets/index-abc.js", 'const s="settings.math.note.katex";'), file("assets/index-abc.css", ".math-display{}")];
+
+  test("passes a payload with no math/ and no engine code, whatever its chunks are called", () => {
+    expect(checkBuild(pack, app)).toBeNull();
+    expect(checkBuild(pack, app.map((f) => (f.path.startsWith("assets/") ? { ...f, path: f.path.replace("abc", "xyz") } : f)))).toBeNull();
   });
 
-  test("fails a build that still carries web/dist/math", () => {
-    expect(checkBuild(pack, bundle('import("../math/katex/katex.js")'), true)).toContain("web/dist/math");
+  test("passes a source build whose math/ is the pack, byte for byte", () => {
+    expect(checkBuild(pack, [...app, ...pack])).toBeNull();
   });
 
-  test("fails a build that names a file the pack lacks", () => {
-    expect(checkBuild(pack, bundle('import("../math/katex/katex-other.js")'), false)).toContain("math/katex/katex-other.js");
+  test("fails a build whose math/ differs from the pack in one byte, or one file", () => {
+    const changed = pack.map((f) => (f.path === "math/katex/katex.css" ? file(f.path, "@font-face{}") : f));
+    expect(checkBuild(pack, [...app, ...changed])).toContain("math/katex/katex.css is not the pack's");
+    expect(checkBuild(pack, [...app, ...pack.slice(1)])).toContain("a math/ it carries must be the pack");
   });
 
-  test("fails a build that names no engine file, rather than passing on nothing", () => {
-    expect(checkBuild(pack, bundle("console.log(1)"), false)).toContain("names no engine file");
-  });
-});
-
-describe("packImports", () => {
-  test("resolves what an engine file imports against its own folder, once each", () => {
-    const files = [
-      { path: "math/math-markup.js", text: 'import{n as e}from"../assets/rolldown-runtime-QTnfLwEv.js";import{_ as r}from"../assets/index-Bo8qjcMF.js";' },
-      { path: "math/katex/katex.js", text: 'import"../../assets/index-Bo8qjcMF.js";import{t}from"../math-markup.js";' },
-      { path: "math/katex/katex.css", text: "@font-face{src:url(./KaTeX_Main-Regular.woff2)}" },
-      { path: "math/katex/KaTeX_Main-Regular.woff2", text: 'binary from"../assets/never.js"' },
-      { path: "math/mathjax/greek.js", text: 'const dynamic = "../node_modules/@mathjax/font/mjs/svg/dynamic/PUA.js";' },
-    ];
-    expect(packImports(files).toSorted()).toEqual([
-      "assets/index-Bo8qjcMF.js",
-      "assets/rolldown-runtime-QTnfLwEv.js",
-      "math/katex/KaTeX_Main-Regular.woff2",
-      "math/math-markup.js",
-    ]);
-  });
-});
-
-describe("checkPackImports", () => {
-  const imports = ["assets/index-Bo8qjcMF.js", "math/math-markup.js"];
-  const packSet = new Set(["math/math-markup.js"]);
-
-  test("passes when the build holds the shell files and the pack holds its own", () => {
-    expect(checkPackImports(imports, packSet, (rel) => rel === "assets/index-Bo8qjcMF.js")).toBeNull();
-  });
-
-  test("fails when the build's entry chunk has another name, the case a per-build hash makes", () => {
-    expect(checkPackImports(imports, packSet, () => false)).toContain("assets/index-Bo8qjcMF.js");
-  });
-
-  test("fails when the pack imports one of its own files it does not hold", () => {
-    expect(checkPackImports(imports, new Set(), () => true)).toContain("math/math-markup.js");
+  test("fails a build that carries engine code in an app chunk", () => {
+    expect(checkBuild(pack, [...app, file("assets/katex-abc.js", `throw new Error("${ENGINE_MARKERS.katex}")`)])).toContain("holds katex code");
+    expect(checkBuild(pack, [...app, file("assets/svg-abc.js", `"${ENGINE_MARKERS.mathjax}"`)])).toContain("holds mathjax code");
   });
 });

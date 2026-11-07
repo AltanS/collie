@@ -4,7 +4,7 @@ import { vi } from "vitest";
 import { copyText } from "@/lib/clipboard";
 import { setDesignMath, type MathEngine } from "@/lib/design";
 import { MAX_MATH_CHARS } from "@/lib/markdown-math";
-import { loadMathEngine } from "@/lib/math/engine";
+import { __setMathEngineImport, loadMathEngine } from "@/lib/math/engine";
 import { fixtureMathMarkdown } from "@/test/math-fixtures";
 
 import { MarkdownText, StretchTextContext } from "./markdown-text";
@@ -12,6 +12,10 @@ import { MathText } from "./math-text";
 
 vi.mock("@/lib/clipboard", () => ({ canCopyText: () => true, copyText: vi.fn().mockResolvedValue(undefined) }));
 vi.mock("@/lib/status", () => ({ setStatus: vi.fn() }));
+
+// jsdom cannot `import()` the host's `math/<engine>/<engine>.js`, so the engines come from their
+// source modules, the entries of those bundles (web/vite.math.ts).
+__setMathEngineImport((engine) => (engine === "katex" ? import("@/lib/math/katex") : import("@/lib/math/mathjax")));
 
 /** The device chose `engine`, and it has loaded, as main.tsx's startup load leaves it. */
 function useEngine(engine: MathEngine) {

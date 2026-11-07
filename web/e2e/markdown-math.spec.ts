@@ -239,7 +239,7 @@ test.describe("the math pack on the host", () => {
     await expect(page.getByRole("math")).toHaveCount(5);
   });
 
-  // Review 2, item 1, in a real engine: Vite's preload helper will not load a stylesheet twice, so an
+  // Review 2, item 1, in a real engine: a browser keeps a module that failed to fetch, so an
   // engine that failed on this page comes back by ONE reload when the pack arrives, never a second import.
   test("an engine that failed on this page comes back after the download, by one reload", async ({ page }) => {
     await chooseEngine(page, "katex");
