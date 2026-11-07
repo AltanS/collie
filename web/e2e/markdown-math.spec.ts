@@ -2,6 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 
 import { fixtureAgents } from "@/test/handlers";
 import { fixtureMathFile, fixtureMathTranscript } from "@/test/math-fixtures";
+import type { MathPackStatus } from "@/lib/types";
 
 import { installApiStub } from "./fixtures/api";
 import { serveWithShellCsp } from "./fixtures/csp";
@@ -166,5 +167,73 @@ test.describe("a math engine under the service worker", () => {
     await expect(page.getByRole("math")).toHaveCount(5);
     expect(fromWorker.length).toBeGreaterThan(0);
     expect(fromWorker.every(Boolean)).toBe(true);
+  });
+});
+
+// THE ENGINES ARE A PACK THE HOST DOWNLOADS (ADR 0132). This target serves `web/dist`, which holds
+// `math/` the way a host with the pack serves it. A host without the pack answers 404 under `/math/`,
+// which only a real dynamic import can show failing; a host with it serves the files a tap fetched.
+// The download itself (manifest, hash, unpack) is the bridge's, in bridge/math/store.test.ts.
+test.describe("the math pack on the host", () => {
+  test.use({ serviceWorkers: "block" });
+
+  /** What the stubbed host holds: the status it answers and how many downloads were asked for. */
+  interface HostPack {
+    status: MathPackStatus;
+    posts: number;
+  }
+
+  /** `GET /api/math` answers `state.status`; a `POST` starts the download and counts. */
+  async function hostPack(page: Page, initial: MathPackStatus): Promise<HostPack> {
+    const state: HostPack = { status: initial, posts: 0 };
+    await page.route("**/api/math", async (route) => {
+      if (route.request().method() === "POST") {
+        state.posts++;
+        state.status = { state: "downloading", received: 0, total: 3_994_976 };
+        return route.fulfill({ status: 202, json: state.status });
+      }
+      return route.fulfill({ json: state.status });
+    });
+    return state;
+  }
+
+  test("absent: the card offers the download, and an engine chosen before draws the source", async ({ page }) => {
+    await chooseEngine(page, "katex");
+    await installMathStub(page);
+    const state = await hostPack(page, { state: "absent" });
+    const engineRequests: string[] = [];
+    await page.route((url) => url.pathname.startsWith("/math/"), (route) => {
+      engineRequests.push(route.request().url());
+      return route.fulfill({ status: 404, body: "not found" });
+    });
+
+    await page.goto(FILE);
+    await expect(page.getByText("Prices remain $5 and $10.")).toBeVisible();
+    await expect.poll(() => engineRequests.length).toBeGreaterThan(0);
+    await expect(page.getByRole("math")).toHaveCount(0);
+    await expect(page.getByText(/\\sum_\{i=1\}/).first()).toBeVisible();
+
+    await page.goto("/settings/appearance");
+    await expect(page.getByRole("button", { name: /Download the math engines/ })).toBeVisible();
+    await expect(page.getByLabel("Engine", { exact: true })).toHaveValue("off");
+    expect(state.posts).toBe(0);
+  });
+
+  test("downloaded: choosing KaTeX on the card fetches the pack, then equations render", async ({ page }) => {
+    await installMathStub(page);
+    const state = await hostPack(page, { state: "absent" });
+
+    await page.goto("/settings/appearance");
+    await expect(page.getByRole("button", { name: /Download the math engines/ })).toBeVisible();
+    await page.getByLabel("Engine", { exact: true }).selectOption("katex");
+    await expect(page.getByRole("progressbar", { name: "Math engines download" })).toBeVisible();
+    expect(state.posts).toBe(1);
+
+    state.status = { state: "ready", version: "1.29.0", source: "store", bytes: 3_994_976 };
+    await expect(page.getByLabel("Engine", { exact: true })).toHaveValue("katex");
+    await expect(page.getByRole("button", { name: "Remove the math engines" })).toBeVisible();
+
+    await page.goto(FILE);
+    await expect(page.getByRole("math")).toHaveCount(5);
   });
 });
