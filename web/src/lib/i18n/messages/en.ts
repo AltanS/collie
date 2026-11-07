@@ -335,6 +335,10 @@ export const en = {
   "settings.appearance.math.remove.confirm": "Remove the math engines from the host?",
   "settings.appearance.math.remove.cancel": "Cancel",
   "settings.appearance.math.remove.action": "Remove",
+  "settings.appearance.math.unreachable": "The host did not answer, so the engines cannot be chosen yet. Collie keeps asking.",
+  "settings.appearance.math.refused.denied": "The host refused. This device may not change the math engines.",
+  "settings.appearance.math.refused.server": "The host could not do it. Try again later.",
+  "settings.appearance.math.refused.offline": "The host did not answer. Check the connection and try again.",
 
   // --- settings.fonts (the terminal face: the mirror's size and the draft field's; NOT the app's own typeface) ---
   "settings.fonts.title": "Terminal font",
@@ -3180,7 +3184,12 @@ export type Messages = typeof en;
  * already carries, so the list cannot outlive its translations. Never a way to skip translating a
  * key for good: a key stays here only between a feature and its translation pass.
  */
-export const PENDING_TRANSLATION = [] as const satisfies readonly MessageKey[];
+export const PENDING_TRANSLATION = [
+  "settings.appearance.math.unreachable",
+  "settings.appearance.math.refused.denied",
+  "settings.appearance.math.refused.server",
+  "settings.appearance.math.refused.offline",
+] as const satisfies readonly MessageKey[];
 
 /** A key a bundle may leave out until the translation pass. */
 export type PendingKey = (typeof PENDING_TRANSLATION)[number];

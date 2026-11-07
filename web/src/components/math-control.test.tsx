@@ -5,6 +5,7 @@ import { createMemoryRouter, RouterProvider } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { MathControl } from "@/components/math-control";
+import { ROOT_ROUTE_ID } from "@/lib/loaders";
 import { __resetDesign, designPrefs, mathEngineOf, setDesignMath } from "@/lib/design";
 import { t } from "@/lib/i18n";
 import { __resetMathPack, MATH_PACK_POLL_MS } from "@/lib/math-pack";
@@ -30,8 +31,10 @@ const shownNote = () => document.querySelector("[data-active]")?.textContent;
 const READY: MathPackStatus = { state: "ready", version: "1.29.0", source: "store", bytes: 3_994_976 };
 const ABSENT: MathPackStatus = { state: "absent" };
 
-function renderCard() {
-  const router = createMemoryRouter([{ path: "/settings/appearance", element: <MathControl /> }], {
+function renderCard(opts: { readOnly?: boolean } = {}) {
+  // A device that may only read is one whose root data says the device gate refused it.
+  const loader = opts.readOnly === true ? () => ({ device: { enforced: true, authorized: false } }) : undefined;
+  const router = createMemoryRouter([{ id: ROOT_ROUTE_ID, path: "/settings/appearance", element: <MathControl />, loader }], {
     initialEntries: ["/settings/appearance"],
   });
   return render(<RouterProvider router={router} />);
@@ -97,6 +100,8 @@ describe("MathControl with the pack on the host", () => {
     setDesignMath("mathjax");
     renderCard();
     await userEvent.click(await screen.findByRole("button", { name: t("settings.appearance.math.remove") }));
+    // The confirm replaced the button that had the focus: the focus is on Cancel, the safe answer.
+    expect(screen.getByRole("button", { name: t("settings.appearance.math.remove.cancel") })).toHaveFocus();
     await userEvent.click(screen.getByRole("button", { name: t("settings.appearance.math.remove.action") }));
     expect(state.deletes).toBe(1);
     expect(await screen.findByRole("button", { name: /Download the math engines/ })).toBeInTheDocument();
@@ -164,14 +169,106 @@ describe("MathControl with no pack on the host", () => {
     expect(screen.getByRole("button", { name: /Download the math engines/ })).toBeEnabled();
   });
 
-  it("a refused download is said in the card, and the download is offered again", async () => {
+  it.each([
+    ["a refusal", () => HttpResponse.json({ error: "secret upstream words" }, { status: 403 }), "settings.appearance.math.refused.denied"],
+    ["a host failure", () => HttpResponse.json({ error: "secret upstream words" }, { status: 502 }), "settings.appearance.math.refused.server"],
+    ["a lost connection", () => HttpResponse.error(), "settings.appearance.math.refused.offline"],
+  ] as const)("%s on the download is one line of Collie's own, never the body", async (_label, answer, key) => {
     host(ABSENT);
-    server.use(http.post("/api/math", () => HttpResponse.json({ error: "device is read-only" }, { status: 403 })));
+    server.use(http.post("/api/math", answer));
     renderCard();
     await userEvent.click(await screen.findByRole("button", { name: /Download the math engines/ }));
-    expect(await screen.findByText(/read-only/)).toBeInTheDocument();
+    expect(await screen.findByText(t(key))).toBeInTheDocument();
+    expect(screen.queryByText(/secret upstream words|Failed to fetch/)).toBeNull();
     expect(screen.getByRole("button", { name: /Download the math engines/ })).toBeEnabled();
     expect(select()).toHaveValue("off");
+  });
+
+  it("a 409 says nothing of its own: the host's status says there is nothing to offer", async () => {
+    const state = host(ABSENT);
+    server.use(
+      http.post("/api/math", () => {
+        state.status = { state: "unavailable", reason: "no-pack" };
+        return HttpResponse.json(state.status, { status: 409 });
+      }),
+    );
+    renderCard();
+    await userEvent.click(await screen.findByRole("button", { name: /Download the math engines/ }));
+    expect(await screen.findByText(t("settings.appearance.math.unavailable.noPack"))).toBeInTheDocument();
+    expect(screen.queryByRole("status")).toBeNull();
+  });
+
+  it("a download that answered nothing but did start shows the progress, no red line, and keeps the choice", async () => {
+    const state = host(ABSENT);
+    server.use(
+      http.post("/api/math", () => {
+        state.status = { state: "downloading", received: 0, total: 3_994_976 };
+        return HttpResponse.error();
+      }),
+    );
+    renderCard();
+    await screen.findByRole("button", { name: /Download the math engines/ });
+    await userEvent.selectOptions(select(), "katex");
+    expect(await screen.findByText(t("settings.appearance.math.downloading"))).toBeInTheDocument();
+    expect(screen.queryByText(t("settings.appearance.math.refused.offline"))).toBeNull();
+    state.status = READY;
+    await waitFor(() => expect(mathEngineOf(designPrefs())).toBe("katex"), { timeout: MATH_PACK_POLL_MS * 3 });
+  });
+
+  it("the chosen engine survives leaving Settings while the host downloads", async () => {
+    const state = host(ABSENT);
+    const first = renderCard();
+    await screen.findByRole("button", { name: /Download the math engines/ });
+    await userEvent.selectOptions(select(), "mathjax");
+    await screen.findByText(t("settings.appearance.math.downloading"));
+    first.unmount();
+    state.status = READY;
+    renderCard();
+    await waitFor(() => expect(mathEngineOf(designPrefs())).toBe("mathjax"));
+  });
+
+  it("a host that does not answer the first read leaves the engines disabled, says so, and recovers", async () => {
+    const state = host(ABSENT);
+    let fail = true;
+    server.use(http.get("/api/math", () => (fail ? HttpResponse.error() : HttpResponse.json(state.status))));
+    renderCard();
+    expect(await screen.findByText(t("settings.appearance.math.unreachable"))).toBeInTheDocument();
+    expect(within(select()).getByRole("option", { name: "KaTeX" })).toBeDisabled();
+    fail = false;
+    state.status = READY;
+    act(() => window.dispatchEvent(new Event("online")));
+    await waitFor(() => expect(within(select()).getByRole("option", { name: "KaTeX" })).toBeEnabled());
+  });
+
+  it("an older bridge (404) leaves the three choices open and draws no pack row", async () => {
+    server.use(http.get("/api/math", () => new HttpResponse("not found", { status: 404 })));
+    renderCard();
+    await act(async () => undefined);
+    await waitFor(() => expect(within(select()).getByRole("option", { name: "KaTeX" })).toBeEnabled());
+    expect(screen.queryByRole("button", { name: /Download the math engines/ })).toBeNull();
+    expect(screen.queryByText(t("settings.appearance.math.unreachable"))).toBeNull();
+  });
+
+  it("a read-only device is told it cannot download, and its engines stay closed", async () => {
+    const state = host(ABSENT);
+    renderCard({ readOnly: true });
+    expect(await screen.findByText(t("settings.appearance.math.readOnly"))).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Download the math engines/ })).toBeNull();
+    expect(within(select()).getByRole("option", { name: "KaTeX" })).toBeDisabled();
+    expect(state.posts).toBe(0);
+  });
+
+  it("a second device that opens the card mid-download shows the progress, then the engine it chose before", async () => {
+    const state = host({ state: "downloading", received: 0, total: null });
+    setDesignMath("katex");
+    renderCard();
+    expect(await screen.findByText(t("settings.appearance.math.downloading"))).toBeInTheDocument();
+    // The total is not known yet: a bar that claims no value.
+    expect(screen.getByRole("progressbar", { name: t("settings.appearance.math.progressAria") })).not.toHaveAttribute("aria-valuenow");
+    expect(select()).toHaveValue("off");
+    expect(state.posts).toBe(0);
+    state.status = READY;
+    await waitFor(() => expect(select()).toHaveValue("katex"), { timeout: MATH_PACK_POLL_MS * 3 });
   });
 
   it("a build with no pack disables the engines and says why", async () => {

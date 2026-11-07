@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Download, Loader2, Sigma, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -6,11 +6,18 @@ import { Card } from "@/components/ui/card";
 import { OneOf } from "@/components/ui/one-of";
 import { Progress } from "@/components/ui/progress";
 import { Select } from "@/components/ui/select";
-import { removeMathPack, startMathPack } from "@/lib/api";
-import { describeThrownError } from "@/lib/api-error-message";
+import { apiErrorStatus, removeMathPack, startMathPack } from "@/lib/api";
 import { MATH_ENGINES, isMathEngine, mathEngineOf, setDesignMath, useDesignPrefs, type MathEngine } from "@/lib/design";
 import { loadMathEngine } from "@/lib/math/engine";
-import { MATH_PACK_APPROX_BYTES, mathEnginesServed, noteMathPack, refreshMathPack, useMathPack } from "@/lib/math-pack";
+import {
+  MATH_PACK_APPROX_BYTES,
+  mathEnginesServed,
+  noteMathPack,
+  refreshMathPack,
+  setWantedMathEngine,
+  useMathPack,
+  type MathPackView,
+} from "@/lib/math-pack";
 import { formatDownloadSize } from "@/lib/machine-units";
 import { usePairing } from "@/lib/pairing";
 import { useOptionalRootData } from "@/lib/route-data";
@@ -33,6 +40,15 @@ import { t, type MessageKey } from "@/lib/i18n";
 // why. A ready pack the host downloaded can be removed; the engines a source build carries cannot,
 // because the bridge never writes under `web/dist`.
 //
+// A REFUSED POST OR DELETE is said in the card, as one line keyed on what kind of answer it was
+// (refused, the host failed, no answer), never the body or a transport message. A 409 says nothing
+// here: the host's status then says "nothing to offer" itself. The line belongs to the answer it
+// was written for, so the next answer (the poll finding the download running after all) hides it.
+//
+// A STORED ENGINE WITH NO PACK ON THE HOST (an update left the pack behind) shows as Off, and comes
+// back by itself once the pack is downloaded again: it is the person's own earlier choice, and the
+// update did not ask them to make it twice (review 2, item 8).
+//
 // ENGINE NAMES ARE PROPER NOUNS and are not translated; "Off" and the notes are phrases and go
 // through the dictionary.
 
@@ -53,6 +69,13 @@ const ERROR_KEYS = {
   "bad-pack": "settings.appearance.math.error.badPack",
 } as const satisfies Record<NonNullable<Extract<MathPackStatus, { state: "absent" }>["error"]>, MessageKey>;
 
+/** What a refused POST or DELETE says, by its HTTP status; `undefined` is no answer at all. */
+function refusalKey(status: number | undefined): MessageKey | null {
+  if (status === 409) return null;
+  if (status === undefined) return "settings.appearance.math.refused.offline";
+  return status >= 500 ? "settings.appearance.math.refused.server" : "settings.appearance.math.refused.denied";
+}
+
 const UNAVAILABLE_KEYS = {
   "dev-build": "settings.appearance.math.unavailable.devBuild",
   "no-pack": "settings.appearance.math.unavailable.noPack",
@@ -66,38 +89,31 @@ export function MathControl() {
   const root = useOptionalRootData();
   const { refused } = usePairing();
   const canWrite = !isReadOnly(root?.device) && !refused;
-  // The engine the person chose while the host had no pack: it becomes the choice once the pack is in.
-  const [wanted, setWanted] = useState<Engine | null>(null);
   const [busy, setBusy] = useState(false);
   const [confirmingRemove, setConfirmingRemove] = useState(false);
-  // A refused POST or DELETE, said in the card where the person tapped (lib/ack-manifest.ts).
-  const [failure, setFailure] = useState<string | null>(null);
+  // A refused POST or DELETE, said in the card where the person tapped (lib/ack-manifest.ts), for as
+  // long as the answer it was written against is the one on screen.
+  const [failure, setFailure] = useState<{ key: MessageKey; on: MathPackView } | null>(null);
 
   const served = mathEnginesServed(pack);
   const shown: MathEngine = served ? engine : "off";
   const canDownload = canWrite && pack?.state === "absent";
   const enginesOpen = served || canDownload;
 
-  useEffect(() => {
-    if (pack?.state !== "ready" || wanted === null) return;
-    setDesignMath(wanted);
-    void loadMathEngine(wanted);
-    setWanted(null);
-  }, [pack, wanted]);
-
   async function download(next: Engine | null): Promise<void> {
-    setWanted(next);
+    // Held by lib/math-pack.ts, not here: leaving Settings mid-download keeps the choice.
+    setWantedMathEngine(next);
     setBusy(true);
     setFailure(null);
     try {
       noteMathPack(await startMathPack());
     } catch (error) {
-      // A refused write or a lost connection is said here. A 409 is not: the host's status then says
-      // "nothing to offer" in its own line.
-      setWanted(null);
-      const message = describeThrownError(error);
+      const key = refusalKey(apiErrorStatus(error));
       const after = await refreshMathPack();
-      if (after?.state !== "unavailable") setFailure(message);
+      // A POST that timed out while the host did start: the progress says it, not a red line.
+      const moved = after?.state === "downloading" || after?.state === "ready" || after?.state === "unavailable";
+      if (!moved) setWantedMathEngine(null);
+      if (key !== null && !moved) setFailure({ key, on: after });
     } finally {
       setBusy(false);
     }
@@ -110,8 +126,9 @@ export function MathControl() {
       noteMathPack(await removeMathPack());
       setDesignMath("off");
     } catch (error) {
-      setFailure(describeThrownError(error));
-      await refreshMathPack();
+      const key = refusalKey(apiErrorStatus(error));
+      const after = await refreshMathPack();
+      if (key !== null && after?.state === "ready") setFailure({ key, on: after });
     } finally {
       setBusy(false);
       setConfirmingRemove(false);
@@ -146,7 +163,7 @@ export function MathControl() {
               const next = event.target.value;
               if (!isMathEngine(next)) return;
               if (next === "off") {
-                setWanted(null);
+                setWantedMathEngine(null);
                 setDesignMath("off");
                 return;
               }
@@ -183,9 +200,9 @@ export function MathControl() {
           onCancelRemove={() => setConfirmingRemove(false)}
           onRemove={() => void remove()}
         />
-        {failure !== null && (
+        {failure !== null && failure.on === pack && (
           <p role="status" className="px-4 py-3 text-xs text-status-blocked">
-            {failure}
+            {t(failure.key)}
           </p>
         )}
       </div>
@@ -194,7 +211,7 @@ export function MathControl() {
 }
 
 interface PackRowProps {
-  pack: MathPackStatus | null;
+  pack: MathPackView;
   canWrite: boolean;
   busy: boolean;
   confirmingRemove: boolean;
@@ -212,6 +229,11 @@ function Line({ text }: { text: MessageKey }) {
 /** What the host's pack asks of this card, under the select. Nothing for an older bridge. */
 function PackRow(props: PackRowProps) {
   const { pack, canWrite, busy, confirmingRemove } = props;
+  const cancel = useRef<HTMLButtonElement>(null);
+  // The confirm replaces the button that had the focus: the focus moves to Cancel, the safe answer.
+  useEffect(() => {
+    if (confirmingRemove) cancel.current?.focus();
+  }, [confirmingRemove]);
   if (pack === null) return null;
 
   switch (pack.state) {
@@ -245,7 +267,7 @@ function PackRow(props: PackRowProps) {
         <div className="space-y-1.5 px-4 py-3">
           <Line text="settings.appearance.math.downloading" />
           <Progress
-            value={total !== null && total > 0 ? (pack.received / total) * 100 : 0}
+            value={total !== null && total > 0 ? (pack.received / total) * 100 : null}
             label={t("settings.appearance.math.progressAria")}
           />
           {total !== null && (
@@ -259,6 +281,12 @@ function PackRow(props: PackRowProps) {
         </div>
       );
     }
+    case "unreachable":
+      return (
+        <div className="px-4 py-3">
+          <Line text="settings.appearance.math.unreachable" />
+        </div>
+      );
     case "unavailable":
       return <div className="px-4 py-3"><Line text={UNAVAILABLE_KEYS[pack.reason]} /></div>;
     case "ready":
@@ -269,7 +297,7 @@ function PackRow(props: PackRowProps) {
             <>
               <p className="text-xs text-foreground">{t("settings.appearance.math.remove.confirm")}</p>
               <div className="flex gap-2">
-                <Button variant="ghost" className="h-11" disabled={busy} onClick={props.onCancelRemove}>
+                <Button ref={cancel} variant="ghost" className="h-11" disabled={busy} onClick={props.onCancelRemove}>
                   {t("settings.appearance.math.remove.cancel")}
                 </Button>
                 <Button variant="destructive" className="h-11" disabled={busy} onClick={props.onRemove}>

@@ -36,7 +36,8 @@ const pending = new Map<Loaded, Promise<MathRenderer | null>>();
 // An engine whose import failed stays failed for the life of the page: formulas show their source.
 // A retry could not be trusted to bring the engine back whole, because Vite's preload helper marks a
 // dependency as seen BEFORE it loads, so a second import after a failed stylesheet would get KaTeX's
-// code without its CSS. The next page load starts clean.
+// code without its CSS (checked in the built helper: it sets `seen[href]` before the link loads, and it
+// also skips a `<link>` already in the document). The next page load starts clean.
 const failed = new Set<Loaded>();
 const listeners = new Set<() => void>();
 
@@ -65,6 +66,14 @@ export function loadMathEngine(engine: MathEngine): Promise<MathRenderer | null>
     .finally(() => pending.delete(engine));
   pending.set(engine, load);
   return load;
+}
+
+/**
+ * Whether `engine` failed to load on this page. It stays failed (see `failed` above): the one way back
+ * is a page load, which lib/math-pack.ts makes once when the host's pack arrives after a failure.
+ */
+export function mathEngineFailed(engine: MathEngine): boolean {
+  return engine !== "off" && failed.has(engine);
 }
 
 /**

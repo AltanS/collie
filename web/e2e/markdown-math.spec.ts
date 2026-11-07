@@ -9,6 +9,8 @@ import { serveWithShellCsp } from "./fixtures/csp";
 
 const PANE = encodeURIComponent(fixtureAgents[0]!.paneId);
 const FILE = `/pane/${PANE}/changes/files?path=README.md`;
+/** Long enough for a second reload to show if the guard failed: two of the card's polls. */
+const SETTLE_MS = 2500;
 
 async function installMathStub(page: Page) {
   await installApiStub(page);
@@ -232,6 +234,40 @@ test.describe("the math pack on the host", () => {
     state.status = { state: "ready", version: "1.29.0", source: "store", bytes: 3_994_976 };
     await expect(page.getByLabel("Engine", { exact: true })).toHaveValue("katex");
     await expect(page.getByRole("button", { name: "Remove the math engines" })).toBeVisible();
+
+    await page.goto(FILE);
+    await expect(page.getByRole("math")).toHaveCount(5);
+  });
+
+  // Review 2, item 1, in a real engine: Vite's preload helper will not load a stylesheet twice, so an
+  // engine that failed on this page comes back by ONE reload when the pack arrives, never a second import.
+  test("an engine that failed on this page comes back after the download, by one reload", async ({ page }) => {
+    await chooseEngine(page, "katex");
+    await installMathStub(page);
+    const state = await hostPack(page, { state: "absent" });
+    let served = false;
+    await page.route((url) => url.pathname.startsWith("/math/"), (route) =>
+      served ? route.fallback() : route.fulfill({ status: 404, body: "not found" }),
+    );
+    let loads = 0;
+    page.on("load", () => loads++);
+
+    // The page starts with the stored engine and the host has no pack: KaTeX fails on this page.
+    await page.goto("/settings/appearance");
+    await page.getByRole("button", { name: /Download the math engines/ }).click();
+    await expect(page.getByRole("progressbar", { name: "Math engines download" })).toBeVisible();
+    const before = loads;
+
+    served = true;
+    state.status = { state: "ready", version: "1.29.0", source: "store", bytes: 3_994_976 };
+    await expect.poll(() => loads).toBe(before + 1);
+    await expect(page.getByLabel("Engine", { exact: true })).toHaveValue("katex");
+    // The reloaded page has KaTeX whole: its stylesheet is in, and nothing reloads again.
+    await expect
+      .poll(() => page.evaluate(() => [...document.styleSheets].some((sheet) => sheet.href?.includes("/math/katex/") === true)))
+      .toBe(true);
+    await page.waitForTimeout(SETTLE_MS);
+    expect(loads).toBe(before + 1);
 
     await page.goto(FILE);
     await expect(page.getByRole("math")).toHaveCount(5);
