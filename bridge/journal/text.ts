@@ -97,14 +97,24 @@ export function summarizeToolInput(input: JsonValue | undefined): string {
     (typeof asked === "string" && asked.trim() !== "" ? asked : undefined) ??
     pick(
       "file_path",
+      "TargetFile",
+      "AbsolutePath",
       "command",
+      "CommandLine",
       "pattern",
+      "Query",
       "query",
       "url",
       "path",
+      "Path",
+      "DirectoryPath",
+      "SearchPath",
       "description",
+      "toolSummary",
+      "Role",
       "task",
       "prompt",
+      "Prompt",
     ) ??
     firstListed("queries", "urls") ??
     // Unknown tool: first string value wins, so the line is never empty for no reason.

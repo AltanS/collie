@@ -12,12 +12,16 @@ import { summarizeToolInput } from "./text.ts";
 describe("classifyToolCall", () => {
   test("the same tool under every harness's spelling lands on one kind", () => {
     // The whole point of a shared table: seven adapters, one answer per tool.
-    for (const name of ["Bash", "bash", "shell", "exec_command"])
+    for (const name of ["Bash", "bash", "shell", "exec_command", "run_command"])
       expect(classifyToolCall(name, { command: "ls" }, "ls").kind).toBe("execute");
-    for (const name of ["Edit", "MultiEdit", "Write", "apply_patch", "edit_file", "write_file"])
+    for (const name of ["Edit", "MultiEdit", "Write", "apply_patch", "edit_file", "write_file", "write_to_file"])
       expect(classifyToolCall(name, { file_path: "/a.ts" }, "/a.ts").kind).toBe("edit");
-    for (const name of ["Read", "read", "read_file", "view"])
+    for (const name of ["Read", "read", "read_file", "view", "view_file"])
       expect(classifyToolCall(name, { file_path: "/a.ts" }, "/a.ts").kind).toBe("read");
+    for (const name of ["Grep", "grep_search", "list_dir", "list_directory", "search_web"])
+      expect(classifyToolCall(name, { query: "q" }, "q").kind).toBe("search");
+    for (const name of ["Task", "Agent", "subagent", "invoke_subagent"])
+      expect(classifyToolCall(name, { description: "d" }, "d").kind).toBe("task");
   });
 
   test("a tool nobody has heard of is `other`, carrying the one-line summary unchanged", () => {
@@ -144,14 +148,17 @@ describe("classifyToolCall: a question is recognised by its input", () => {
     });
   });
 
-  test("Claude's `multiSelect` and opencode's `multiple` both mean multiple", () => {
+  test("Claude's `multiSelect`, opencode's `multiple` and AGY's `is_multi_select` all mean multiple", () => {
     const ask = (flag: Record<string, boolean>) => {
       const call = classifyToolCall("q", { questions: [{ question: "Q?", options: ["a"], ...flag }] }, "");
       return call.kind === "question" ? call.questions[0]?.multiple : undefined;
     };
     expect(ask({ multiSelect: true })).toBe(true);
     expect(ask({ multiple: true })).toBe(true);
+    expect(ask({ is_multi_select: true })).toBe(true);
     expect(ask({})).toBe(false);
+    const lone = classifyToolCall("ask_question", { question: "Q?", options: ["a"], is_multi_select: true }, "");
+    expect(lone.kind === "question" && lone.questions[0]?.multiple).toBe(true);
   });
 
   test("an option may be a bare string", () => {
@@ -324,5 +331,97 @@ describe("classifyToolCall: Gentle Shell's other tools", () => {
     for (const name of ["mem_save", "mem_search", "gentle_odd_phase", "job_list"])
       expect(classifyToolCall(name, {}, "s")).toEqual({ kind: "other", name, summary: "s", quiet: true });
     expect(classifyToolCall("codemode", { code: "x" }, "x")).toEqual({ kind: "other", name: "codemode", summary: "x" });
+  });
+});
+
+describe("classifyToolCall: Antigravity (AGY) tools and PascalCase arguments", () => {
+  test("`run_command` extracts `CommandLine` and `toolSummary`", () => {
+    expect(
+      classifyToolCall("run_command", { CommandLine: "bun test", toolSummary: "Unit test execution", WaitMsBeforeAsync: 5000 }, "bun test"),
+    ).toEqual({
+      kind: "execute",
+      command: "bun test",
+      description: "Unit test execution",
+    });
+  });
+
+  test("`read_file` and `view_file` extract `Path`/`AbsolutePath` and inclusive `[StartLine, EndLine]` ranges", () => {
+    expect(classifyToolCall("read_file", { Path: "/repo/a.ts", StartLine: 10, EndLine: 25 }, "/repo/a.ts")).toEqual({
+      kind: "read",
+      path: "/repo/a.ts",
+      range: [10, 25],
+    });
+    expect(classifyToolCall("read_file", { Path: "/repo/a.ts", StartLine: 10 }, "/repo/a.ts")).toEqual({
+      kind: "read",
+      path: "/repo/a.ts",
+    });
+    expect(classifyToolCall("view_file", { AbsolutePath: "/repo/b.ts", StartLine: 1, EndLine: 50 }, "/repo/b.ts")).toEqual({
+      kind: "read",
+      path: "/repo/b.ts",
+      range: [1, 50],
+    });
+  });
+
+  test("`edit_file`, `write_file` and `write_to_file` extract `Path` and `TargetFile`", () => {
+    expect(classifyToolCall("edit_file", { Path: "/repo/a.ts", Target: "old", Replacement: "new" }, "/repo/a.ts")).toEqual({
+      kind: "edit",
+      path: "/repo/a.ts",
+      added: 0,
+      removed: 0,
+    });
+    expect(classifyToolCall("write_file", { Path: "/repo/b.ts", Content: "x" }, "/repo/b.ts")).toEqual({
+      kind: "edit",
+      path: "/repo/b.ts",
+      added: 0,
+      removed: 0,
+    });
+    expect(classifyToolCall("write_to_file", { TargetFile: "/repo/c.ts", CodeContent: "x" }, "/repo/c.ts")).toEqual({
+      kind: "edit",
+      path: "/repo/c.ts",
+      added: 0,
+      removed: 0,
+    });
+  });
+
+  test("`grep_search`, `list_dir`, `list_directory` and `search_web` extract query and where", () => {
+    expect(classifyToolCall("grep_search", { Query: "classifyToolCall", SearchPath: "/repo/bridge" }, "classifyToolCall")).toEqual({
+      kind: "search",
+      query: "classifyToolCall",
+      where: "/repo/bridge",
+    });
+    expect(classifyToolCall("list_dir", { DirectoryPath: "/repo/bridge" }, "/repo/bridge")).toEqual({
+      kind: "search",
+      query: "",
+      where: "/repo/bridge",
+    });
+    expect(classifyToolCall("list_directory", { Path: "/repo/web" }, "/repo/web")).toEqual({
+      kind: "search",
+      query: "",
+      where: "/repo/web",
+    });
+    expect(classifyToolCall("search_web", { query: "collie tailscale", domain: "github.com" }, "collie tailscale")).toEqual({
+      kind: "search",
+      query: "collie tailscale",
+      where: "web",
+    });
+  });
+
+  test("`invoke_subagent` extracts `TypeName` (or `Model`) as agent and `Role` as summary", () => {
+    expect(
+      classifyToolCall(
+        "invoke_subagent",
+        { TypeName: "research", Role: "Codebase Researcher", Prompt: "Long instructions", Model: "pro" },
+        "Codebase Researcher",
+      ),
+    ).toEqual({
+      kind: "task",
+      agent: "research",
+      summary: "Codebase Researcher",
+    });
+    expect(classifyToolCall("invoke_subagent", { Role: "Database Debugger", Model: "flash" }, "Database Debugger")).toEqual({
+      kind: "task",
+      agent: "flash",
+      summary: "Database Debugger",
+    });
   });
 });
