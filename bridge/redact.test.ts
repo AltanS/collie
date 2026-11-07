@@ -173,6 +173,16 @@ describe("redact — layout holds", () => {
     const out = redactAnsi(`${"-".repeat(40)}\npassword=placeholder1\nls -la`).split("\n");
     expect(out[2]).toBe("ls -la");
   });
+
+  test("layout: redactAnsi(text, false) masks a secret split by SGR escapes without unwrapping across widest-row line breaks", () => {
+    const red = `${ESC}[31m`;
+    const reset = `${ESC}[0m`;
+    // A secret split by colour escapes on one logical line is masked across the escapes, while a
+    // newline after the widest row is treated as a real line break rather than a terminal wrap.
+    const text = `token=place${red}holder123456${reset}\nmore_text_after_break`;
+    const out = redactAnsi(text, false);
+    expect(out).toBe(`token=${MASK.repeat(5)}${red}${MASK.repeat(12)}${reset}\nmore_text_after_break`);
+  });
 });
 
 describe("redact — cost", () => {

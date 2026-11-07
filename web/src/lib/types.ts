@@ -1379,9 +1379,11 @@ export interface PaneReadResponse {
   /** Herdr's monotonic pane revision — the prompt-select race guard checks a tapped menu against it. */
   revision: number;
   /**
-   * The same rows with soft wraps undone, sent only when {@link text} shows a URL the pane's column
-   * edge cut in two. `lib/links.ts` uses it to give every fragment of that URL the href of the whole
-   * URL; absent for every other pane.
+   * The same rows with soft wraps undone. By default, sent (with SGR stripped) only when {@link text}
+   * shows a URL the pane's column edge cut in two: `lib/links.ts` uses it to give every fragment of
+   * that URL the href of the whole URL, and it is absent for every other pane. With `?logical=1`,
+   * always sent on a multiplexer that implements `readLogicalText` (Herdr, Tern) with SGR styling
+   * preserved; still absent when the multiplexer has no logical read.
    */
   logicalText?: string;
   /**

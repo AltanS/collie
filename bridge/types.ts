@@ -1318,10 +1318,12 @@ export interface PaneReadResponse {
   /** Herdr's monotonic pane revision — passed through for the client's prompt-select race guard. */
   revision: number;
   /**
-   * The same rows with soft wraps undone, present only when the grid shows a URL the pane's width
-   * cut in two (`hasSplitUrl`). The mirror keeps rendering `text`; the client uses this to give the
-   * fragments of one URL the href of the whole URL. ABSENT rather than empty when there is nothing
-   * to repair — the payload stays byte-identical to what it was for every other pane.
+   * The same rows with soft wraps undone. By default, present (with SGR stripped) only when the grid
+   * shows a URL the pane's width cut in two (`hasSplitUrl`): the mirror keeps rendering `text`, and
+   * the client uses this to give the fragments of one URL the href of the whole URL, while the
+   * payload stays byte-identical for every other pane. With `?logical=1`, always present on a
+   * multiplexer that implements `readLogicalText` (Herdr, Tern) with SGR styling preserved; still
+   * absent when the multiplexer has no logical read.
    */
   logicalText?: string;
   /**

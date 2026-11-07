@@ -321,16 +321,17 @@ const ESCAPE_RE = new RegExp(
 );
 
 /**
- * {@link redactSegments} over a terminal read that still carries its escapes: the mirror's `text`.
+ * {@link redactSegments} over a terminal read that still carries its escapes: the mirror's `text`,
+ * or `logicalText` when `?logical=1` keeps its SGR styling (`wrapped = false`).
  *
  * Strip-aware. The patterns see the text a person sees, never an escape, and every escape comes back
  * byte for byte where it was, so colours and the client's parse are untouched. An OSC string (a
  * title, a hyperlink target) is not shown by the phone but does travel, so its payload is masked on
  * its own with {@link redactText}.
  */
-export function redactAnsi(text: string): string {
+export function redactAnsi(text: string, wrapped = true): string {
   if (text === "") return text;
-  if (!text.includes(ESC)) return redactSegments([text], true)[0]!;
+  if (!text.includes(ESC)) return redactSegments([text], wrapped)[0]!;
   const pieces: string[] = [];
   const escapes: string[] = [];
   let at = 0;
@@ -341,7 +342,7 @@ export function redactAnsi(text: string): string {
     at = m.index + m[0].length;
   }
   pieces.push(text.slice(at));
-  const masked = redactSegments(pieces, true);
+  const masked = redactSegments(pieces, wrapped);
   let out = masked[0]!;
   for (let i = 0; i < escapes.length; i++) out += escapes[i]! + masked[i + 1]!;
   return out;
