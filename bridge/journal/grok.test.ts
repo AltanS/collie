@@ -1,7 +1,8 @@
 import { chmod, mkdir, mkdtemp, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, spyOn, test } from "bun:test";
+import * as cp from "node:child_process";
 
 import {
   extractUserQuery,
@@ -411,3 +412,88 @@ describe("GrokTranscriptSource.reconcile", () => {
     expect(await src.reconcile({ kind: "id", value: STALE }, CWD)).toEqual({ kind: "id", value: RESUMED });
   });
 });
+
+describe("GrokTranscriptSource.discoverSession", () => {
+  const dirs: string[] = [];
+  afterEach(async () => {
+    for (const d of dirs.splice(0)) await rm(d, { recursive: true, force: true });
+  });
+
+  const CWD = "/Users/you/proj";
+  const alive = (): boolean => true;
+
+  async function grokHome(active: string | null): Promise<string> {
+    const base = await realpath(await mkdtemp(join(tmpdir(), "collie-grok-")));
+    dirs.push(base);
+    await mkdir(join(base, "sessions"), { recursive: true });
+    if (active !== null) await writeFile(join(base, "active_sessions.json"), active);
+    return join(base, "sessions");
+  }
+
+  const row = (sessionId: string, cwd = CWD, pid = 4242) => ({
+    session_id: sessionId,
+    pid,
+    cwd,
+    opened_at: "2026-01-01T00:00:00.000000Z",
+  });
+
+  test("finds a session through active_sessions.json's pid match", async () => {
+    const root = await grokHome(JSON.stringify([row(SID)]));
+    await sessionDir(root, SID);
+    const src = new GrokTranscriptSource(root, alive);
+    const ref = await src.discoverSession(CWD, { processes: [{ argv: ["grok"], pid: 4242 }] });
+    expect(ref).toEqual({ kind: "id", value: SID });
+    expect(await src.resolve(ref!)).not.toBeNull();
+  });
+
+  test("finds a session through lsof's open-file list when active_sessions.json is absent", async () => {
+    const root = await grokHome(null);
+    const { log } = await sessionDir(root, SID);
+    const lsof = spyOn(cp, "execFile").mockImplementation(
+      // SAFETY: test mock casting — the mock only answers the one lsof call discovery makes.
+      ((_file: string, _args: readonly string[], _opts: { timeout: number }, cb: (e: Error | null, r: { stdout: string }) => void) => {
+        cb(null, { stdout: ["p10", "f3", `n${log}`, "n/some/other/file"].join("\n") });
+        // SAFETY: test mock casting
+        return undefined as never;
+      }) as never,
+    );
+    try {
+      const src = new GrokTranscriptSource(root, alive);
+      const ref = await src.discoverSession(CWD, { processes: [{ argv: ["/usr/local/bin/grok"], pid: 10 }] });
+      expect(ref).toEqual({ kind: "id", value: SID });
+      expect(lsof).toHaveBeenCalledWith("lsof", ["-nP", "-p", "10", "-g", "10", "-Fn"], expect.objectContaining({ timeout: 1000, maxBuffer: 1024 * 1024 }), expect.any(Function));
+    } finally {
+      lsof.mockRestore();
+    }
+  });
+
+  test("answers null with no grok process, no match, and a non-uuid path id", async () => {
+    // No hints at all, and lsof spuriously called: without a grok pid nothing runs.
+    const lsof = spyOn(cp, "execFile").mockImplementation(
+      // SAFETY: test mock casting
+      (() => {
+        throw new Error("lsof must not run");
+      }) as never,
+    );
+    try {
+      const root = await grokHome(null);
+      await sessionDir(root, SID);
+      const src = new GrokTranscriptSource(root, alive);
+      expect(await src.discoverSession(CWD)).toBeNull();
+      expect(await src.discoverSession(CWD, { processes: [{ argv: ["node"], pid: 4242 }] })).toBeNull();
+      expect(await src.discoverSession(CWD, { processes: [{ argv: ["grok"], pid: 4242 }] })).toBeNull();
+      expect(await src.discoverSession(CWD, { processes: [{ argv: [] }] })).toBeNull();
+    } finally {
+      lsof.mockRestore();
+    }
+  });
+});
+
+async function sessionDir(root: string, id: string): Promise<{ root: string; log: string }> {
+  const cwdDir = join(root, encodeURIComponent("/Users/you/proj"));
+  const sess = join(cwdDir, id);
+  await mkdir(sess, { recursive: true });
+  const log = join(sess, "chat_history.jsonl");
+  await writeFile(log, "{}\n");
+  return { root, log };
+}
