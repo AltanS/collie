@@ -316,6 +316,25 @@ export const en = {
   "settings.math.note.off": "Dollar signs stay text. Downloads nothing.",
   "settings.math.note.katex": "Fast and compact. Loads its fonts on first use.",
   "settings.math.note.mathjax": "Broader TeX support, drawn as SVG. A larger download.",
+  // The math pack on the host (ADR 0132). English only until the translation pass: every key here is
+  // listed in PENDING_TRANSLATION below.
+  "settings.appearance.math.download": "Download the math engines (about {size})",
+  "settings.appearance.math.downloadNote": "One download holds both engines. The host keeps it for every device.",
+  "settings.appearance.math.downloading": "Downloading the math engines to the host…",
+  "settings.appearance.math.progress": "{received} of {total}",
+  "settings.appearance.math.progressAria": "Math engines download",
+  "settings.appearance.math.readOnly": "This device can only read, so it cannot download the math engines.",
+  "settings.appearance.math.unavailable.devBuild": "This build has no math engines to download.",
+  "settings.appearance.math.unavailable.noPack": "This release has no math engines to download.",
+  "settings.appearance.math.error.downloadFailed": "The download did not finish. Nothing was kept.",
+  "settings.appearance.math.error.lowSpace": "The host is short of disk space. Nothing was kept.",
+  "settings.appearance.math.error.hashMismatch": "The download did not match the release. Nothing was kept.",
+  "settings.appearance.math.error.badPack": "The download is not a math pack this version accepts. Nothing was kept.",
+  "settings.appearance.math.remove": "Remove the math engines",
+  "settings.appearance.math.removeNote": "Math goes back to Off on this device. Other devices show formulas as text.",
+  "settings.appearance.math.remove.confirm": "Remove the math engines from the host?",
+  "settings.appearance.math.remove.cancel": "Cancel",
+  "settings.appearance.math.remove.action": "Remove",
 
   // --- settings.fonts (the terminal face: the mirror's size and the draft field's; NOT the app's own typeface) ---
   "settings.fonts.title": "Terminal font",
@@ -3154,10 +3173,41 @@ export type MessageKey = keyof typeof en;
 /** The English bundle's exact shape (literal values). Other locales are `Dictionary`, not this. */
 export type Messages = typeof en;
 
+/**
+ * Keys that are English only until the next translation pass, and nothing else. A bundle may leave
+ * them out, and `t()` then reads English for that key alone. The pass translates them into every
+ * bundle and empties this list in the same commit; `i18n.test.ts` fails a listed key that a bundle
+ * already carries, so the list cannot outlive its translations. Never a way to skip translating a
+ * key for good: a key stays here only between a feature and its translation pass.
+ */
+export const PENDING_TRANSLATION = [
+  "settings.appearance.math.download",
+  "settings.appearance.math.downloadNote",
+  "settings.appearance.math.downloading",
+  "settings.appearance.math.progress",
+  "settings.appearance.math.progressAria",
+  "settings.appearance.math.readOnly",
+  "settings.appearance.math.unavailable.devBuild",
+  "settings.appearance.math.unavailable.noPack",
+  "settings.appearance.math.error.downloadFailed",
+  "settings.appearance.math.error.lowSpace",
+  "settings.appearance.math.error.hashMismatch",
+  "settings.appearance.math.error.badPack",
+  "settings.appearance.math.remove",
+  "settings.appearance.math.removeNote",
+  "settings.appearance.math.remove.confirm",
+  "settings.appearance.math.remove.cancel",
+  "settings.appearance.math.remove.action",
+] as const satisfies readonly MessageKey[];
+
+/** A key a bundle may leave out until the translation pass. */
+export type PendingKey = (typeof PENDING_TRANSLATION)[number];
+
 /** What a translated bundle must be: every key, any string. `Record` over a finite union of
  *  literals is complete in BOTH directions — a missing key fails the assignment, an extra one is
- *  caught as an excess property. That is the entire enforcement mechanism; don't loosen it. */
-export type Dictionary = Record<MessageKey, string> & Partial<Record<ExtraPluralKey, string>>;
+ *  caught as an excess property. That is the entire enforcement mechanism; don't loosen it. The one
+ *  exception is named, not open: {@link PENDING_TRANSLATION}. */
+export type Dictionary = Record<Exclude<MessageKey, PendingKey>, string> & Partial<Record<PendingKey | ExtraPluralKey, string>>;
 
 /** The base of every `.one`/`.other` pair English has. */
 type PluralBaseOf<K> = K extends `${infer Base}.one`

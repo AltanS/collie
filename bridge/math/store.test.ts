@@ -12,7 +12,11 @@ import {
   releaseVersionOf,
   resetMathPackState,
 } from "./store.ts";
+import type { JsonObject } from "../json.ts";
 import { readPackTar } from "./tar.ts";
+
+/** Bytes on an ordinary buffer, which is what `Response`, `gzipSync` and `createHash` take. */
+type Bytes = Uint8Array<ArrayBuffer>;
 
 // ── A tar writer for the cases: ustar headers, by hand, so a bad entry can be made on purpose ──
 
@@ -20,11 +24,11 @@ interface TarEntry {
   name: string;
   /** `0` a file (the default), `5` a folder, `2` a symlink, `x` a pax header. */
   type?: string;
-  data?: string | Uint8Array;
+  data?: string | Bytes;
   linkname?: string;
 }
 
-function header(entry: TarEntry, size: number): Uint8Array {
+function header(entry: TarEntry, size: number): Bytes {
   const block = new Uint8Array(512);
   const enc = new TextEncoder();
   const put = (text: string, at: number, length: number) => block.set(enc.encode(text).subarray(0, length), at);
@@ -44,8 +48,8 @@ function header(entry: TarEntry, size: number): Uint8Array {
   return block;
 }
 
-function makeTar(entries: TarEntry[]): Uint8Array {
-  const parts: Uint8Array[] = [];
+function makeTar(entries: TarEntry[]): Bytes {
+  const parts: Bytes[] = [];
   for (const entry of entries) {
     const data = entry.data instanceof Uint8Array ? entry.data : new TextEncoder().encode(entry.data ?? "");
     parts.push(header(entry, data.byteLength));
@@ -71,7 +75,7 @@ const GOOD = makeTar([
   { name: "math/math-markup-def.js", data: "export {};\n" },
 ]);
 
-const sha = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex");
+const sha = (bytes: Bytes) => createHash("sha256").update(bytes).digest("hex");
 
 const VERSION = "1.29.0-edge.1";
 const PACK_NAME = `collie-math-${VERSION}.tar.gz`;
@@ -84,14 +88,14 @@ function writeBuildInfo(version: string, extra: Record<string, string> = {}) {
   writeFileSync(join(webDist, "build-info.json"), JSON.stringify({ version, sha: "abc1234", ...extra }));
 }
 
-function manifest(version: string, pack: { name?: string; size: number; sha256: string } | null) {
-  const extras: object[] = [{ name: `web-dist-${version}.tar.gz`, role: "web-bundle", size: 10, sha256: "0".repeat(64) }];
+function manifest(version: string, pack: { name?: string; size: number; sha256: string } | null): JsonObject {
+  const extras: JsonObject[] = [{ name: `web-dist-${version}.tar.gz`, role: "web-bundle", size: 10, sha256: "0".repeat(64) }];
   if (pack !== null) extras.push({ name: pack.name ?? `collie-math-${version}.tar.gz`, role: "math-pack", size: pack.size, sha256: pack.sha256 });
   return { schemaVersion: 1, repo: "AltanS/collie", tag: `v${version}`, version, prerelease: true, artifacts: [], extras };
 }
 
 /** A fake GitHub: the manifest and the pack under `releases/download/v<version>/`, and a log. */
-function fakeGithub(opts: { pack: Uint8Array; manifest?: object | null; packHeaders?: Record<string, string>; hold?: Promise<void> }) {
+function fakeGithub(opts: { pack: Bytes; manifest?: JsonObject | null; packHeaders?: Record<string, string>; hold?: Promise<void> }) {
   const asked: string[] = [];
   const fetch: MathPackFetch = async (url) => {
     asked.push(url);

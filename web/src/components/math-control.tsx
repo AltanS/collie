@@ -1,12 +1,22 @@
-import { Sigma } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Download, Loader2, Sigma, Trash2 } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { OneOf } from "@/components/ui/one-of";
+import { Progress } from "@/components/ui/progress";
 import { Select } from "@/components/ui/select";
+import { removeMathPack, startMathPack } from "@/lib/api";
+import { describeThrownError } from "@/lib/api-error-message";
 import { MATH_ENGINES, isMathEngine, mathEngineOf, setDesignMath, useDesignPrefs, type MathEngine } from "@/lib/design";
 import { loadMathEngine } from "@/lib/math/engine";
+import { MATH_PACK_APPROX_BYTES, mathEnginesServed, noteMathPack, refreshMathPack, useMathPack } from "@/lib/math-pack";
+import { formatDownloadSize } from "@/lib/machine-units";
+import { usePairing } from "@/lib/pairing";
+import { useOptionalRootData } from "@/lib/route-data";
+import { isReadOnly, type MathPackStatus } from "@/lib/types";
 import { useLocale } from "@/hooks/use-locale";
-import { t } from "@/lib/i18n";
+import { t, type MessageKey } from "@/lib/i18n";
 
 // The Math card — which engine typesets LaTeX in Markdown, per device. Off is the default, and Off
 // is exactly the app before math existed: `$` is a dollar and no engine is downloaded.
@@ -15,10 +25,20 @@ import { t } from "@/lib/i18n";
 // a note under it. The three notes share one cell (`ui/one-of.tsx`), so the card is as tall as the
 // longest note in this locale and choosing never changes its height (DESIGN.md §2).
 //
+// THE ENGINES ARE A DOWNLOAD ON THE HOST (ADR 0132, lib/math-pack.ts). While the host has no pack,
+// the select shows Off, and choosing KaTeX or MathJax is the tap that downloads it: the progress shows
+// under the select, and on ready the engine that was chosen becomes the choice. The button under the
+// select downloads the pack without choosing. One pack holds both engines. A device that may not write,
+// a build with no pack and a download in flight leave the two engines disabled, with one line saying
+// why. A ready pack the host downloaded can be removed; the engines a source build carries cannot,
+// because the bridge never writes under `web/dist`.
+//
 // ENGINE NAMES ARE PROPER NOUNS and are not translated; "Off" and the notes are phrases and go
 // through the dictionary.
 
-const ENGINE_LABELS = { katex: "KaTeX", mathjax: "MathJax" } satisfies Record<Exclude<MathEngine, "off">, string>;
+type Engine = Exclude<MathEngine, "off">;
+
+const ENGINE_LABELS = { katex: "KaTeX", mathjax: "MathJax" } satisfies Record<Engine, string>;
 
 const NOTE_KEYS = {
   off: "settings.math.note.off",
@@ -26,10 +46,77 @@ const NOTE_KEYS = {
   mathjax: "settings.math.note.mathjax",
 } as const satisfies Record<MathEngine, `settings.math.note.${string}`>;
 
-/** Settings card: the math engine. Device-local, like the typeface. */
+const ERROR_KEYS = {
+  "download-failed": "settings.appearance.math.error.downloadFailed",
+  "low-space": "settings.appearance.math.error.lowSpace",
+  "hash-mismatch": "settings.appearance.math.error.hashMismatch",
+  "bad-pack": "settings.appearance.math.error.badPack",
+} as const satisfies Record<NonNullable<Extract<MathPackStatus, { state: "absent" }>["error"]>, MessageKey>;
+
+const UNAVAILABLE_KEYS = {
+  "dev-build": "settings.appearance.math.unavailable.devBuild",
+  "no-pack": "settings.appearance.math.unavailable.noPack",
+} as const satisfies Record<Extract<MathPackStatus, { state: "unavailable" }>["reason"], MessageKey>;
+
+/** Settings card: the math engine. Device-local, like the typeface; the pack it needs is the host's. */
 export function MathControl() {
   useLocale();
   const engine = mathEngineOf(useDesignPrefs());
+  const pack = useMathPack();
+  const root = useOptionalRootData();
+  const { refused } = usePairing();
+  const canWrite = !isReadOnly(root?.device) && !refused;
+  // The engine the person chose while the host had no pack: it becomes the choice once the pack is in.
+  const [wanted, setWanted] = useState<Engine | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [confirmingRemove, setConfirmingRemove] = useState(false);
+  // A refused POST or DELETE, said in the card where the person tapped (lib/ack-manifest.ts).
+  const [failure, setFailure] = useState<string | null>(null);
+
+  const served = mathEnginesServed(pack);
+  const shown: MathEngine = served ? engine : "off";
+  const canDownload = canWrite && pack?.state === "absent";
+  const enginesOpen = served || canDownload;
+
+  useEffect(() => {
+    if (pack?.state !== "ready" || wanted === null) return;
+    setDesignMath(wanted);
+    void loadMathEngine(wanted);
+    setWanted(null);
+  }, [pack, wanted]);
+
+  async function download(next: Engine | null): Promise<void> {
+    setWanted(next);
+    setBusy(true);
+    setFailure(null);
+    try {
+      noteMathPack(await startMathPack());
+    } catch (error) {
+      // A refused write or a lost connection is said here. A 409 is not: the host's status then says
+      // "nothing to offer" in its own line.
+      setWanted(null);
+      const message = describeThrownError(error);
+      const after = await refreshMathPack();
+      if (after?.state !== "unavailable") setFailure(message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function remove(): Promise<void> {
+    setBusy(true);
+    setFailure(null);
+    try {
+      noteMathPack(await removeMathPack());
+      setDesignMath("off");
+    } catch (error) {
+      setFailure(describeThrownError(error));
+      await refreshMathPack();
+    } finally {
+      setBusy(false);
+      setConfirmingRemove(false);
+    }
+  }
 
   return (
     <Card className="gap-0 py-0">
@@ -51,18 +138,28 @@ export function MathControl() {
           <Select
             id="pref-math"
             className="shrink-0"
-            value={engine}
+            value={shown}
             // A DOM value is a plain string, so it is parsed back here rather than asserted. The
-            // engine starts loading on the change, so Chat finds it ready.
+            // engine starts loading on the change, so Chat finds it ready. With no pack on the host,
+            // choosing an engine is the tap that downloads it.
             onChange={(event) => {
               const next = event.target.value;
               if (!isMathEngine(next)) return;
-              setDesignMath(next);
-              void loadMathEngine(next);
+              if (next === "off") {
+                setWanted(null);
+                setDesignMath("off");
+                return;
+              }
+              if (served) {
+                setDesignMath(next);
+                void loadMathEngine(next);
+                return;
+              }
+              if (canDownload && !busy) void download(next);
             }}
           >
             {MATH_ENGINES.map((choice) => (
-              <option key={choice} value={choice}>
+              <option key={choice} value={choice} disabled={choice !== "off" && !enginesOpen}>
                 {choice === "off" ? t("settings.math.off") : ENGINE_LABELS[choice]}
               </option>
             ))}
@@ -70,13 +167,126 @@ export function MathControl() {
         </div>
         <OneOf
           className="px-4 py-2.5"
-          active={engine}
+          active={shown}
           options={MATH_ENGINES.map((choice) => ({
             key: choice,
             node: <p className="text-xs text-muted-foreground">{t(NOTE_KEYS[choice])}</p>,
           }))}
         />
+        <PackRow
+          pack={pack}
+          canWrite={canWrite}
+          busy={busy}
+          confirmingRemove={confirmingRemove}
+          onDownload={() => void download(null)}
+          onAskRemove={() => setConfirmingRemove(true)}
+          onCancelRemove={() => setConfirmingRemove(false)}
+          onRemove={() => void remove()}
+        />
+        {failure !== null && (
+          <p role="status" className="px-4 py-3 text-xs text-status-blocked">
+            {failure}
+          </p>
+        )}
       </div>
     </Card>
   );
+}
+
+interface PackRowProps {
+  pack: MathPackStatus | null;
+  canWrite: boolean;
+  busy: boolean;
+  confirmingRemove: boolean;
+  onDownload: () => void;
+  onAskRemove: () => void;
+  onCancelRemove: () => void;
+  onRemove: () => void;
+}
+
+/** One muted line under the select. */
+function Line({ text }: { text: MessageKey }) {
+  return <p className="text-xs text-muted-foreground">{t(text)}</p>;
+}
+
+/** What the host's pack asks of this card, under the select. Nothing for an older bridge. */
+function PackRow(props: PackRowProps) {
+  const { pack, canWrite, busy, confirmingRemove } = props;
+  if (pack === null) return null;
+
+  switch (pack.state) {
+    case "absent":
+      return (
+        <div className="space-y-2 px-4 py-3">
+          {canWrite ? (
+            <>
+              <Button className="h-auto min-h-11 w-full whitespace-normal py-2" disabled={busy} onClick={props.onDownload}>
+                {busy ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />}
+                {t("settings.appearance.math.download", {
+                  // A no-break space, so a wrapped label never leaves the unit alone on a line.
+                  size: formatDownloadSize(MATH_PACK_APPROX_BYTES).replace(" ", "\u00a0"),
+                })}
+              </Button>
+              <Line text="settings.appearance.math.downloadNote" />
+            </>
+          ) : (
+            <Line text="settings.appearance.math.readOnly" />
+          )}
+          {pack.error !== undefined && (
+            <p role="status" className="text-xs text-status-blocked">
+              {t(ERROR_KEYS[pack.error])}
+            </p>
+          )}
+        </div>
+      );
+    case "downloading": {
+      const total = pack.total;
+      return (
+        <div className="space-y-1.5 px-4 py-3">
+          <Line text="settings.appearance.math.downloading" />
+          <Progress
+            value={total !== null && total > 0 ? (pack.received / total) * 100 : 0}
+            label={t("settings.appearance.math.progressAria")}
+          />
+          {total !== null && (
+            <p className="text-xs tabular-nums text-muted-foreground">
+              {t("settings.appearance.math.progress", {
+                received: formatDownloadSize(pack.received),
+                total: formatDownloadSize(total),
+              })}
+            </p>
+          )}
+        </div>
+      );
+    }
+    case "unavailable":
+      return <div className="px-4 py-3"><Line text={UNAVAILABLE_KEYS[pack.reason]} /></div>;
+    case "ready":
+      if (pack.source !== "store" || !canWrite) return null;
+      return (
+        <div className="space-y-2 px-4 py-3">
+          {confirmingRemove ? (
+            <>
+              <p className="text-xs text-foreground">{t("settings.appearance.math.remove.confirm")}</p>
+              <div className="flex gap-2">
+                <Button variant="ghost" className="h-11" disabled={busy} onClick={props.onCancelRemove}>
+                  {t("settings.appearance.math.remove.cancel")}
+                </Button>
+                <Button variant="destructive" className="h-11" disabled={busy} onClick={props.onRemove}>
+                  {busy ? <Loader2 className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
+                  {t("settings.appearance.math.remove.action")}
+                </Button>
+              </div>
+            </>
+          ) : (
+            <>
+              <Button variant="outline" className="h-11" onClick={props.onAskRemove}>
+                {t("settings.appearance.math.remove")}
+              </Button>
+              <Line text="settings.appearance.math.removeNote" />
+            </>
+          )}
+        </div>
+      );
+  }
 }

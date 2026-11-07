@@ -20,7 +20,7 @@ import { MAX_PACK_BYTES, PackRefusal, readPackTar } from "./tar.ts";
 //     already stakes the install on: `releases/download/v<version>/collie-<version>.manifest.json`
 //     on the update repo, its one `extras` entry with role `math-pack`. The asset's URL is built from
 //     (repo, tag, name), never read from the document, and the name must be exactly the pack's.
-//     The loopback rehearsal mirror (`COLLIE_UPDATE_MIRROR`) is honoured as the update honours it.
+//     The loopback rehearsal mirror is honoured as the update honours it (`updateMirror`).
 //   • A declared size above {@link MATH_PACK_CAP_BYTES} is refused before the body; the body is
 //     counted against the cap and the manifest's size as it arrives, hashed as it arrives, and
 //     streamed to `math/collie-math-<version>.<pid>.<seq>.part` (0600, created exclusively).
