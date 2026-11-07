@@ -878,6 +878,10 @@ describe("solo zero-tax — routes", () => {
       "/api/launchers/added/rename",
       // Machines (ADR 0084): the list with each machine's latest sample. A read, gated as one.
       "/api/machines",
+      // The math pack (ADR 0132): a SOLO route that legitimately extends this list, named here rather
+      // than exempted. Lead-local like the Whistle route, gated like it, and not forwardable. A bridge
+      // whose operator never taps "Download the math engines" fetches nothing and writes nothing.
+      "/api/math",
       // The prompt-cache watch list (M28/03, ADR 0042). Three SOLO routes in the notifications family,
       // named here rather than exempted: the preference lives on the collie holding the subscription, so
       // none of the three is forwardable and `bridge/crew/router.test.ts` pins all three as 404 across a
@@ -978,6 +982,9 @@ describe("solo zero-tax — routes", () => {
       "/api/worktree/plan",
       "/auth",
       "/auth/*",
+      // The math engines' files (ADR 0132): static, ungated like every other file of the web app,
+      // served from the store's pack or from `web/dist/math/` beside a source build.
+      "/math/*",
     ]);
   });
 
@@ -1283,6 +1290,9 @@ const STATE_DIR_ENTRIES = [
   // and a bridge only started and stopped does not. Both are driven in "the machine files appear …".
   "machine-alerts.json",
   "machine-history.json",
+  // The math pack (ADR 0132): `<stateDir>/math/<version>/`, the engines a tap in Settings fetched.
+  // Written by that tap and by nothing else: absent on every bridge whose operator never taps it.
+  "math",
   "notify-prefs.json",
   // Device pairing. Both are absent until the operator runs `collie pair`, and an install that
   // never does keeps writing exactly the six entries above it.
