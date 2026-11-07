@@ -88,6 +88,32 @@ describe("inline equations", () => {
     },
   );
 
+  // bsdz's corpus run on PR 634: 19 of 21 false formulas were shell or template variables, and a
+  // closer followed by `{` or `(` refusing to close removed all 19 and none of 2,947 real formulas.
+  it.each([
+    "-I${GTEST_DIR}/include -I${GTEST_DIR}",
+    "uid=$(id -u) gid=$(id -g)",
+    // After an escaped backtick, so no code span claims it first.
+    "\\`${Prefix}/${K}\\`",
+    "PATH=${HOME}/bin:$(pwd)",
+  ])("keeps the shell or template variables in %s as text", (source) => {
+    expect(parseInline(source).some((span) => span.kind === "math")).toBe(false);
+  });
+
+  it("still reads a real formula beside a shell or template variable", () => {
+    expect(parseInline("g++ -I${GTEST_DIR}/include -I${GTEST_DIR} and $x^2$")).toEqual([
+      text("g++ -I${GTEST_DIR}/include -I${GTEST_DIR} and "),
+      math("x^2", "$x^2$"),
+    ]);
+    expect(parseInline("uid=$(id -u) gid=$(id -g) for $f(x) = y$ here")).toEqual([
+      text("uid=$(id -u) gid=$(id -g) for "),
+      math("f(x) = y", "$f(x) = y$"),
+      text(" here"),
+    ]);
+    // A formula may OPEN on a brace or a parenthesis; only the closer is held back.
+    expect(parseInline("${a}$ and $(b)$.")).toEqual([math("{a}", "${a}$"), text(" and "), math("(b)", "$(b)$"), text(".")]);
+  });
+
   it("does not let currency steal the next equation", () => {
     expect(parseInline("Costs $5 or $10; compute $2+2$."))
       .toEqual([text("Costs $5 or $10; compute "), math("2+2", "$2+2$"), text(".")]);
