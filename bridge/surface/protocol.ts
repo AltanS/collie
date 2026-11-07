@@ -2900,8 +2900,8 @@ export class SendProtocol {
     if (match === null) return null;
     const entry = this.openSends.find((open) => open.id === match.id);
     if (entry === undefined) return null;
-    // The harness took the prompt: a queued send is not waiting any more.
-    this.queuedSends.drop(entry.id);
+    // The harness took the prompt: a queued send is not waiting any more. A submitted one stays: a Stop may give it back.
+    this.queuedSends.taken(entry.id);
     if (!entry.settled) {
       entry.effective = true;
       return entry.id;
@@ -3902,8 +3902,10 @@ export class SendProtocol {
     const receipt = this.receiptOf(state, outcome, outcome === "effective" ? undefined : end.reason, end.extra.cap, end.extra);
     this.deps.store.settle(state.record.id, receipt);
     // A send the harness holds for after the turn: a card until the journal or the box closes it (ADR 0122).
-    // A steer is kept too, with no card of its own: a Stop may give it back together with the queue.
-    if ((receipt.outcome === "sent" && receipt.queued === true) || receipt.outcome === "steered") {
+    // A steer is kept too, with no card of its own: a Stop may give it back together with the queue. So is a
+    // send that started a turn: a Stop early in it gives the prompt back to the box (queued.ts, SUBMITTED).
+    const submitted = (receipt.outcome === "sent" || receipt.outcome === "effective") && receipt.queued !== true;
+    if ((receipt.outcome === "sent" && receipt.queued === true) || receipt.outcome === "steered" || submitted) {
       this.queuedSends.add({
         id: state.record.id,
         session: state.target.session,
@@ -3913,6 +3915,7 @@ export class SendProtocol {
         collapse: state.match?.profile.collapse.pattern ?? null,
         at: this.now(),
         steer: receipt.outcome === "steered",
+        submitted,
       });
     }
     this.count(state, receipt, end.extra.surface);
