@@ -5,7 +5,8 @@ import { cn } from "@/lib/utils";
 /**
  * The button's box. `xs` is 24px, for the pane screen's 30px tab row alone, where it draws {@link AddButtonFace}
  * `bare`: centred there it keeps 3px of air above and below. `sm` is 28px, for a dashboard workspace heading. `md`
- * is 32px, for the 34px pill strips: the space strip.
+ * is 32px, for the 34px pill strips: the space strip. The tab row takes `sm` and `md` too, bare, at the larger
+ * width classes, where its row is 36px and 40px (`tab-strip.tsx` § STEP).
  */
 export type AddButtonSize = "xs" | "sm" | "md";
 

@@ -30,6 +30,7 @@ A patch for the tablet and the foldable, with two fixes for the desk.
 ### Changed
 
 - **On a medium screen the tab row keeps room for its tabs.** On a foldable about 700px wide, a long space name and "space 1 of 2" left the tabs under 90px, so the open tab was cut and its "+" fell off the end. At that size the space name now takes less of the row and the position text is not shown. The arrows still step through the spaces, and a larger screen looks as before.
+- **On a tablet or an open foldable the tabs are larger.** The tab row at the top of a pane steps up with the screen: from 600px wide the tabs are 36px tall with 12px text, and from 900px wide 40px with 13px text, each a little wider, with a larger "+". The size changes in these fixed steps, not with every pixel of width. A phone keeps its 30px row of 11px text, exactly as before.
 
 ## [1.27.1] - 2026-11-06
 
