@@ -450,8 +450,10 @@ describe("GrokTranscriptSource.discoverSession", () => {
     const root = await grokHome(null);
     const { log } = await sessionDir(root, SID);
     const lsof = spyOn(cp, "execFile").mockImplementation(
-      ((_file: string, _args: readonly string[], _opts: object, cb: (e: Error | null, r: { stdout: string }) => void) => {
+      // SAFETY: test mock casting — the mock only answers the one lsof call discovery makes.
+      ((_file: string, _args: readonly string[], _opts: { timeout: number }, cb: (e: Error | null, r: { stdout: string }) => void) => {
         cb(null, { stdout: ["p10", "f3", `n${log}`, "n/some/other/file"].join("\n") });
+        // SAFETY: test mock casting
         return undefined as never;
       }) as never,
     );
@@ -467,9 +469,12 @@ describe("GrokTranscriptSource.discoverSession", () => {
 
   test("answers null with no grok process, no match, and a non-uuid path id", async () => {
     // No hints at all, and lsof spuriously called: without a grok pid nothing runs.
-    const lsof = spyOn(cp, "execFile").mockImplementation((() => {
-      throw new Error("lsof must not run");
-    }) as never);
+    const lsof = spyOn(cp, "execFile").mockImplementation(
+      // SAFETY: test mock casting
+      (() => {
+        throw new Error("lsof must not run");
+      }) as never,
+    );
     try {
       const root = await grokHome(null);
       await sessionDir(root, SID);

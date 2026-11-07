@@ -356,9 +356,11 @@ describe("dsh discovery", () => {
     const { root, source, lock } = setup();
     writeSession(root, ID, batches());
     const lsof = spyOn(cp, "execFile").mockImplementation(
-      ((_file: string, _args: readonly string[], _opts: object, cb: (e: Error | null, r: { stdout: string }) => void) => {
+      // SAFETY: test mock casting — the mock only answers the one lsof call discovery makes.
+      ((_file: string, _args: readonly string[], _opts: { timeout: number }, cb: (e: Error | null, r: { stdout: string }) => void) => {
         const out = ["p10", "f5", `n${lock(ID)}`, `n${join(root, "other.jsonl")}`, "n/some/dir/"];
         cb(null, { stdout: out.join("\n") });
+        // SAFETY: test mock casting
         return undefined as never;
       }) as never,
     );
@@ -375,8 +377,10 @@ describe("dsh discovery", () => {
     const { root, source } = setup();
     writeSession(root, ID, batches());
     const lsof = spyOn(cp, "execFile").mockImplementation(
-      ((_file: string, _args: readonly string[], _opts: object, cb: (e: Error, r: object) => void) => {
+      // SAFETY: test mock casting — the mock only answers the one lsof call discovery makes.
+      ((_file: string, _args: readonly string[], _opts: { timeout: number }, cb: (e: Error, r: { stdout: string }) => void) => {
         cb(Object.assign(new Error("spawn lsof ENOENT"), { code: "ENOENT" }), { stdout: "" });
+        // SAFETY: test mock casting
         return undefined as never;
       }) as never,
     );
