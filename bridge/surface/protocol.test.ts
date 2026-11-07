@@ -5,7 +5,7 @@
 // glyph, a rule, a status row), or, for a harness with no profile, a bare editor between two rules.
 
 import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { muxAck, muxOk, muxRefused, muxUnreachable, type MuxAck, type MuxGrid, type MuxGridRequest, type MuxOutcome } from "../mux/types.ts";
@@ -59,6 +59,8 @@ function framelessProfile(): Profile {
   };
 }
 const DIALOG = [" Do you want to proceed?", " ❯ 1. Yes", "   2. No", " Esc to cancel · Enter to select"];
+/** A piece of a paste that has the shape of an image file by an absolute path, whether or not the file exists. */
+const IMAGE_NAME = /^(?:\/|[A-Za-z]:\\).*\.(?:png|jpe?g|gif|webp)$/iu;
 
 type Mode = "claude" | "generic" | "codex" | "muse";
 
@@ -289,12 +291,13 @@ class FakePane {
     void paneId;
     this.calls.push(`block:${text}`);
     if (this.now !== null) this.lastWriteAt = this.now();
-    // Claude cuts the paste at each newline and at a space before an absolute path, and attaches the
-    // pieces that are image files (lab, 2.1.305); the kept pieces stay, joined by newlines.
-    const pieces = text.split(/\n| (?=\/)/u);
-    const kept = this.imagesOnlyAlone && pieces.length > 1 ? pieces : pieces.filter((piece) => !this.imageFiles.includes(piece.trim()));
-    for (let i = kept.length; i < pieces.length; i++) this.box += `[Image #${String(++this.pastes)}]`;
-    if (kept.length < pieces.length) text = kept.join("\n");
+    // Claude cuts the paste at each newline and at a space before an absolute path (live, 2.1.306). With
+    // at least one existing image piece, each becomes a token, and blank pieces and missing or directory
+    // image-shaped pieces drop out of the kept text; with none, the paste stays exactly as sent.
+    const pieces = text.split(/\n| (?=\/|[A-Za-z]:\\)/u);
+    const attached = this.imagesOnlyAlone && pieces.length > 1 ? [] : pieces.filter((piece) => this.imageFiles.includes(piece.trim()));
+    for (const _ of attached) this.box += `[Image #${String(++this.pastes)}]`;
+    if (attached.length > 0) text = pieces.filter((piece) => piece.trim() !== "" && !IMAGE_NAME.test(piece.trim())).join("\n");
     const breaks = text.split("\n").length - 1;
     if (breaks + 1 > this.blockLiteralLines || text.length > this.collapseOver) {
       this.box += breaks > 0 ? `[Pasted text #${String(++this.pastes)} +${String(breaks)} lines]` : `[Pasted text #${String(++this.pastes)}]`;
@@ -665,14 +668,308 @@ describe("a send that goes through", () => {
     expect(pane.keysSeen).not.toContain("Enter");
   });
 
-  test("an image path outside Collie's uploads stays text: the harness takes it, the box does not match, and nothing is submitted", async () => {
-    const shot = "/home/me/screenshots/phone-1.jpg";
-    const pane = new FakePane("claude");
-    pane.imageFiles = [shot];
-    // The file exists on this disk, but only Collie's own upload shape is taken off the paste.
-    const { send } = rig({ block: true, pane, imageFiles: [shot] });
-    expect((await send(`${"слово ".repeat(300).trim()} ${shot}`)).receipt?.outcome).toBe("typed_not_submitted");
-    expect(pane.keysSeen).not.toContain("Enter");
+  // Claude Code 2.1.306, measured live 2026-11-05: a paste is cut at each newline and at each space before
+  // an absolute path, image pieces become tokens, and the kept pieces joined by newlines fold.
+  describe("an image path outside uploads in a long paste", () => {
+    const FIVE = ["строка один", "строка два", "строка три", "строка четыре", "строка пять"];
+    const A = "/home/admin/herdr-companion/screenshots/2026-11-05-e00844bbcdb5e24a.png";
+    const B = "/home/admin/herdr-companion/screenshots/2026-11-05-b.png";
+    const C = "/home/admin/herdr-companion/screenshots/2026-11-05-c.png";
+    const DOC = "/home/admin/files/spec.docx";
+    const SEVEN = (name: string): string => Array.from({ length: 7 }, (_, i) => `${name} ${String(i + 1)}`).join("\n");
+    // Twelve typed line breaks; the two cuts before a.png and doc.docx make it +14 once images are taken off.
+    const REAL = `${SEVEN("задача один")} ${A} и задача 2 - ${SEVEN("задача два")} ${DOC} ${B} ${C}`;
+    const STRANDED = "[Image #1] [Image #2][Pasted text #3 +14 lines]";
+
+    /** The fake's cut and counts, with the space Claude Code draws between two image tokens. */
+    function drawsMeasuredTokens(pane: FakePane): void {
+      pane.afterInput = (p, what) => {
+        if (what.startsWith("block:")) p.box = p.box.replace(/(\[Image #\d+\])(?=\[Image)/gu, "$1 ");
+      };
+    }
+
+    function realPane(): FakePane {
+      const pane = new FakePane("claude");
+      pane.imageFiles = [B, C];
+      drawsMeasuredTokens(pane);
+      return pane;
+    }
+
+    function enters(pane: FakePane): number {
+      return pane.keysSeen.filter((key) => key === "Enter").length;
+    }
+
+    /** A box the harness draws, whatever the paste held. */
+    function drawing(box: string): FakePane {
+      const pane = new FakePane("claude");
+      pane.afterInput = (p, what) => {
+        if (what.startsWith("block:")) p.box = box;
+      };
+      return pane;
+    }
+
+    // The rig pins Claude's verified range through 2.1.296, so the measured 2.1.306 takes the probed path.
+    for (const [version, keys] of [["2.1.200", ["Enter"]], ["2.1.306", ["probe", "Backspace", "Enter"]]] as const) {
+      test(`PI-1: the real message sends with two image tokens then the fold (profile at ${version})`, async () => {
+        const pane = realPane();
+        const { send } = rig({ block: true, pane, version, imageFiles: [A, B, C, DOC] });
+        expect((await send(REAL)).receipt).toMatchObject({ outcome: "sent", keys: [...keys] });
+        expect(enters(pane)).toBe(1);
+        expect(pane.calls.filter((call) => call.startsWith("block:"))).toEqual([`block:${REAL}`]);
+        expect(pane.transcript.at(-1)).toBe("> [Image #1] [Image #2][Pasted text #3 +14 lines]");
+      });
+    }
+
+    for (const path of ["/home/me/shots/x.png", "/home/me/shots/X.PNG", "/home/me/shots/x.jpg", "/home/me/shots/x.jpeg", "/home/me/shots/x.gif", "/home/me/shots/x.webp", "/home/me/my shots/with space.png"]) {
+      for (const [name, gap] of [["after a space", " "], ["on a line of its own", "\n"]] as const) {
+        test(`PI-2: ${path} ${name}, ending a long message, sends`, async () => {
+          const pane = new FakePane("claude");
+          pane.imageFiles = [path];
+          const { send } = rig({ block: true, pane, imageFiles: [path] });
+          expect((await send(`${FIVE.join("\n")}${gap}${path}`)).receipt).toMatchObject({ outcome: "sent", keys: ["Enter"] });
+          expect(enters(pane)).toBe(1);
+          expect(pane.transcript.at(-1)).toBe("> [Image #1][Pasted text #2 +4 lines]");
+        });
+      }
+    }
+
+    test("PI-2: a foreign image path ending a long one-line dictation sends", async () => {
+      const shot = "/home/me/screenshots/phone-1.jpg";
+      const pane = new FakePane("claude");
+      pane.imageFiles = [shot];
+      const { send } = rig({ block: true, pane, imageFiles: [shot] });
+      expect((await send(`${"слово ".repeat(300).trim()} ${shot}`)).receipt).toMatchObject({ outcome: "sent", keys: ["Enter"] });
+      expect(pane.transcript.at(-1)).toBe("> [Image #1][Pasted text #2]");
+    });
+
+    const TEXT_ENDINGS: readonly (readonly [string, string, boolean])[] = [
+      ["an existing .bmp", "/home/me/shots/x.bmp", true],
+      ["an existing .svg", "/home/me/shots/x.svg", true],
+      ["an existing .heic", "/home/me/shots/x.heic", true],
+      ["a .png with no file", "/home/me/shots/gone.png", false],
+      ["a directory named d.png", "/home/me/shots/d.png", false],
+      ["a relative path", "shots/a.png", true],
+      ["a home path", "~/x.png", true],
+      ["an image path with words after it", "/home/me/shots/a.png слова", true],
+    ];
+    const MEASURED = profileFor("claude", "2.1.304", { log: () => undefined });
+
+    for (const [name, ending, exists] of TEXT_ENDINGS) {
+      test(`PI-3: ${name} is text: no image expected, and the send goes`, async () => {
+        const path = ending.replace(" слова", "");
+        const onDisk = (candidate: string): boolean => exists && candidate === path;
+        expect(wholePaste(MEASURED, [...FIVE.slice(0, 4), `${FIVE[4]} ${ending}`], onDisk)?.images).toBe(0);
+        expect(wholePaste(MEASURED, [...FIVE, ending], onDisk)?.images).toBe(0);
+        const { pane, send } = rig({ block: true, imageFiles: exists ? [path] : [] });
+        expect((await send(`${FIVE.join("\n")} ${ending}`)).receipt).toMatchObject({ outcome: "sent", keys: ["Enter"] });
+        expect(pane.transcript.at(-1)).toBe("> [Pasted text #1 +4 lines]");
+      });
+    }
+
+    test("PI-4: a harness that leaves the path as text folds every typed line break, and the send goes", async () => {
+      const shot = "/home/me/shots/x.png";
+      const { pane, send } = rig({ block: true, imageFiles: [shot] });
+      expect((await send(`${FIVE.join("\n")}\n${shot}`)).receipt).toMatchObject({ outcome: "sent", keys: ["Enter"] });
+      expect(pane.transcript.at(-1)).toBe("> [Pasted text #1 +5 lines]");
+    });
+
+    test("PI-4: the real message left as text folds its twelve typed line breaks, and the send goes", async () => {
+      const { pane, send } = rig({ block: true, imageFiles: [A, B, C, DOC] });
+      expect((await send(REAL)).receipt).toMatchObject({ outcome: "sent", keys: ["Enter"] });
+      expect(pane.transcript.at(-1)).toBe("> [Pasted text #1 +12 lines]");
+    });
+
+    for (const box of ["[Image #1][Pasted text #2 +3 lines]", "[Image #1][Pasted text #2 +5 lines]", "[Pasted text #1 +4 lines]", "[Image #1] [Image #2][Pasted text #3 +4 lines]"]) {
+      test(`PI-5: one image expected, the box ${box} gets no Enter`, async () => {
+        const shot = "/home/me/shots/x.png";
+        const pane = drawing(box);
+        const { send } = rig({ block: true, pane, imageFiles: [shot] });
+        expect((await send(`${FIVE.join("\n")}\n${shot}`)).receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "mismatch" });
+        expect(pane.keysSeen).not.toContain("Enter");
+      });
+    }
+
+    for (const box of [
+      "[Image #1] [Image #2][Pasted text #3 +13 lines]",
+      "[Image #1] [Image #2][Pasted text #3 +15 lines]",
+      "[Image #1] [Image #2][Pasted text #3 +12 lines]",
+      "[Image #1][Pasted text #2 +14 lines]",
+      "[Pasted text #1 +14 lines]",
+      "[Image #1] [Image #2] [Image #3][Pasted text #4 +14 lines]",
+      "[Image #1] [Image #2] [Image #3][Pasted text #4 +13 lines]",
+    ]) {
+      test(`PI-5: the real message, the box ${box} gets no Enter`, async () => {
+        const pane = drawing(box);
+        const { send } = rig({ block: true, pane, imageFiles: [A, B, C, DOC] });
+        expect((await send(REAL)).receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "mismatch" });
+        expect(pane.keysSeen).not.toContain("Enter");
+      });
+    }
+
+    test("PI-6: Replace over a stranded box empties it and sends the same message", async () => {
+      const pane = realPane();
+      pane.box = STRANDED;
+      pane.pastes = 3;
+      const { send } = rig({ block: true, pane, imageFiles: [A, B, C, DOC] });
+      expect((await send(REAL, { mode: "replace" })).receipt).toMatchObject({ outcome: "sent", keys: expect.arrayContaining(["Enter"]) });
+      expect(pane.keysSeen).toContain("Backspace");
+      expect(enters(pane)).toBe(1);
+      expect(pane.box).toBe("");
+      expect(pane.transcript.at(-1)).toBe("> [Image #4] [Image #5][Pasted text #6 +14 lines]");
+    });
+
+    test("PI-6: Add to a stranded box sends the old tokens and the new message together", async () => {
+      const pane = realPane();
+      pane.box = STRANDED;
+      pane.pastes = 3;
+      const { send } = rig({ block: true, pane, imageFiles: [A, B, C, DOC] });
+      expect((await send(REAL, { mode: "append" })).receipt).toMatchObject({ outcome: "sent", keys: expect.arrayContaining(["Enter"]) });
+      expect(enters(pane)).toBe(1);
+      expect(pane.transcript.at(-1)).toBe(`> ${STRANDED}[Image #4] [Image #5][Pasted text #6 +14 lines]`);
+    });
+
+    // The second live measure on 2.1.306: real line feeds, the box emptied between cases.
+    const P = "/home/me/shots/p.png";
+    const D = "/home/me/shots/d.png";
+    const N = "/home/me/shots/gone.png";
+    const BODY = (count: number, from = 1): string[] => Array.from({ length: count }, (_, i) => `строка ${String(from + i)} ${"слово ".repeat(20).trim()}`);
+    const TWO = BODY(2).join("\n");
+    const NEXT_TWO = BODY(2, 3).join("\n");
+    const FOUR = BODY(4).join("\n");
+
+    async function expectSent(text: string, box: string, attaches: readonly string[] = [P], onDisk: readonly string[] = attaches): Promise<void> {
+      const pane = new FakePane("claude");
+      pane.imageFiles = attaches;
+      drawsMeasuredTokens(pane);
+      const { send } = rig({ block: true, pane, imageFiles: onDisk });
+      expect((await send(text)).receipt).toMatchObject({ outcome: "sent", keys: ["Enter"] });
+      expect(enters(pane)).toBe(1);
+      expect(pane.transcript.at(-1)).toBe(`> ${box}`);
+    }
+
+    async function expectNoEnter(text: string, box: string): Promise<void> {
+      const pane = drawing(box);
+      const { send } = rig({ block: true, pane, imageFiles: [P] });
+      expect((await send(text)).receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "mismatch" });
+      expect(pane.keysSeen).not.toContain("Enter");
+    }
+
+    const onlyP = (path: string): boolean => path === P;
+
+    for (const [name, text] of [
+      ["two blank lines around a body", `${TWO}\n\n${NEXT_TWO}\n\n${P}`],
+      ["the path between blank lines", `${TWO}\n\n${P}\n\n${NEXT_TWO}`],
+      ["four line feeds in a row", `${TWO}\n\n\n\n${NEXT_TWO} ${P}`],
+    ] as const) {
+      test(`PI-8: ${name}: the blank pieces drop out, and the box with +3 sends`, async () => {
+        expect(wholePaste(MEASURED, text.split("\n"), onlyP)).toMatchObject({ images: 1, lines: BODY(4) });
+        await expectSent(text, "[Image #1][Pasted text #2 +3 lines]");
+      });
+
+      test(`PI-8: ${name}: a wrong count gets no Enter`, async () => {
+        for (const box of ["[Image #1][Pasted text #2 +2 lines]", "[Image #1][Pasted text #2 +4 lines]", "[Image #1][Pasted text #2 +5 lines]", "[Image #1][Pasted text #2 +6 lines]", "[Pasted text #1 +3 lines]"]) {
+          await expectNoEnter(text, box);
+        }
+      });
+    }
+
+    for (const [name, text] of [
+      ["a line of spaces", `${TWO}\n   \n${NEXT_TWO} ${P}`],
+      ["a line with one tab", `${TWO}\n\t\n${NEXT_TWO} ${P}`],
+      ["a path indented by two spaces", `${FOUR}\n  ${P}`],
+      ["a path indented by one space", `${FOUR}\n ${P}`],
+      ["two spaces before the path", `${FOUR}  ${P}`],
+      ["a newline after the path", `${FOUR} ${P}\n`],
+      ["a space after the path", `${FOUR} ${P} `],
+    ] as const) {
+      test(`PI-9: ${name} leaves no line in the kept text: +3`, async () => {
+        const whole = wholePaste(MEASURED, text.split("\n"), onlyP);
+        expect(whole?.images).toBe(1);
+        expect(whole?.lines.map((line) => line.trim())).toEqual(BODY(4));
+        await expectSent(text, "[Image #1][Pasted text #2 +3 lines]");
+      });
+    }
+
+    for (const [name, text] of [
+      ["indented words", `${TWO}\n   слово\n${NEXT_TWO} ${P}`],
+      ["words under a line that ends in spaces", `${TWO}   \nслово\n${NEXT_TWO} ${P}`],
+    ] as const) {
+      test(`PI-9: ${name} keep their line: +4`, async () => {
+        const whole = wholePaste(MEASURED, text.split("\n"), onlyP);
+        expect(whole?.images).toBe(1);
+        expect(whole?.lines.map((line) => line.trim())).toEqual([...BODY(2), "слово", ...BODY(2, 3)]);
+        await expectSent(text, "[Image #1][Pasted text #2 +4 lines]");
+      });
+    }
+
+    for (const [name, gone] of [["a directory named d.png", D], ["a missing png", N]] as const) {
+      const text = `${FOUR} ${gone} ${P}`;
+      test(`PI-10: ${name} beside an existing image vanishes from the kept text: +3`, async () => {
+        expect(wholePaste(MEASURED, text.split("\n"), onlyP)).toMatchObject({ images: 1, lines: BODY(4) });
+        await expectSent(text, "[Image #1][Pasted text #2 +3 lines]");
+      });
+
+      test(`PI-10: ${name} beside an existing image: a count that keeps it gets no Enter`, async () => {
+        await expectNoEnter(text, "[Image #1][Pasted text #2 +4 lines]");
+      });
+    }
+
+    test("PI-10: a path that is no image shape beside an existing image stays in the kept text: +4", async () => {
+      const text = `${TWO}\n\n${NEXT_TWO} /etc/hosts ${P}`;
+      expect(wholePaste(MEASURED, text.split("\n"), onlyP)).toMatchObject({ images: 1, lines: [...BODY(4), "/etc/hosts"] });
+      await expectSent(text, "[Image #1][Pasted text #2 +4 lines]");
+    });
+
+    for (const [name, text, box] of [
+      ["blank lines", `${TWO}\n\n${NEXT_TWO}`, "[Pasted text #1 +4 lines]"],
+      ["a directory and a missing png after a space", `${FOUR} ${D} ${N}`, "[Pasted text #1 +3 lines]"],
+      ["a directory and a missing png on their own lines", `${FOUR}\n${D}\n${N}`, "[Pasted text #1 +5 lines]"],
+    ] as const) {
+      test(`PI-10: with no existing image the paste stays as sent: ${name}`, async () => {
+        expect(wholePaste(MEASURED, text.split("\n"), () => false)).toMatchObject({ images: 0, lines: text.split("\n") });
+        await expectSent(text, box, [], []);
+      });
+    }
+
+    test("PI-11: the default file check takes a real png and leaves a real directory named d.png", () => {
+      const png = join(dir, "a.png");
+      const directory = join(dir, "d.png");
+      writeFileSync(png, Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+      mkdirSync(directory);
+      expect(wholePaste(MEASURED, ["see", png])).toMatchObject({ images: 1, lines: ["see"] });
+      expect(wholePaste(MEASURED, ["see", directory])).toMatchObject({ images: 0, lines: ["see", directory] });
+    });
+
+    test("PI-11: a foreign Windows path counts only when the check says it exists", () => {
+      const path = String.raw`C:\shots\a.png`;
+      expect(wholePaste(MEASURED, ["see", path], () => true)).toMatchObject({ images: 1, lines: ["see"] });
+      expect(wholePaste(MEASURED, ["see", path], () => false)).toMatchObject({ images: 0, lines: ["see", path] });
+    });
+
+    // A first line that starts with a POSIX slash is a reserved lead, so an opening path goes through Windows paths.
+    test("PI-12: one Windows path opening the message is lifted, and the rest folds: +4", async () => {
+      const path = String.raw`C:\shots\a.png`;
+      const text = `${path}\n${BODY(5).join("\n")}`;
+      expect(wholePaste(MEASURED, text.split("\n"), () => true)).toMatchObject({ images: 1, lines: BODY(5) });
+      await expectSent(text, "[Image #1][Pasted text #2 +4 lines]", [path]);
+    });
+
+    test("PI-12: two Windows paths opening the message are lifted, and the rest folds: +4", async () => {
+      const first = String.raw`C:\shots\a.png`;
+      const second = String.raw`C:\shots\b.png`;
+      const text = `${first} ${second}\n${BODY(5).join("\n")}`;
+      expect(wholePaste(MEASURED, text.split("\n"), () => true)).toMatchObject({ images: 2, lines: BODY(5) });
+      await expectSent(text, "[Image #1] [Image #2][Pasted text #3 +4 lines]", [first, second]);
+    });
+
+    test("PI-12: a short kept text lands literally after the token", async () => {
+      const pane = new FakePane("claude");
+      pane.imageFiles = [P];
+      pane.collapseOver = 1000;
+      const { send } = rig({ block: true, pane, imageFiles: [P] });
+      expect((await send(`раз\nдва\nтри ${P}`)).receipt).toMatchObject({ outcome: "sent", keys: ["Enter"] });
+      expect(pane.transcript.at(-1)).toBe("> [Image #1]раз два три");
+    });
   });
 
   test("Submit finds a box that holds the image token and the folded paste", async () => {
@@ -3768,7 +4065,7 @@ describe("pure helpers", () => {
     expect(boxMatches("[Image #1]see", "", [`see ${shot}`], collapse, null)).toBe(false);
   });
 
-  test("wholePaste: only a profile that measured it, only a long or multi-line text without a reserved lead, upload images taken off", () => {
+  test("wholePaste: only a profile that measured it, only a long or multi-line text without a reserved lead, image files taken off", () => {
     const match = profileFor("claude", "2.1.304", { log: () => undefined });
     expect(match?.profile.paste?.block).toBe(true);
     const shot = "/srv/collie/uploads/w1_p1-mf3x9q-0a1b2c3d.jpg";
@@ -3784,9 +4081,9 @@ describe("pure helpers", () => {
     expect(wholePaste(match, [`see ${shot}`, "b"], isShot)).toMatchObject({ images: 1, lines: ["see", "b"], literal: [`see ${shot}`, "b"] });
     expect(wholePaste(match, [`see ${shot} here`, "b"], isShot)).toMatchObject({ images: 0 });
     expect(wholePaste(match, ["see /srv/collie/uploads/w1_p1-mf3x9q-ffffffff.jpg", "b"], isShot)).toMatchObject({ images: 0 });
-    // Any other image file on the disk stays text: only Collie's own upload shape is taken off.
-    expect(wholePaste(match, ["see", foreign], isShot)).toMatchObject({ images: 0, lines: ["see", foreign] });
-    expect(wholePaste(match, [`see ${foreign}`, "b"], isShot)).toMatchObject({ images: 0 });
+    // Any other image file on the disk is taken off the same way (Claude Code 2.1.306, live 2026-11-05).
+    expect(wholePaste(match, ["see", foreign], isShot)).toMatchObject({ images: 1, lines: ["see"] });
+    expect(wholePaste(match, [`see ${foreign}`, "b"], isShot)).toMatchObject({ images: 1, lines: ["see", "b"] });
     expect(wholePaste(match, [`see ${windows}`, "b"], isShot)).toMatchObject({ images: 1, lines: ["see", "b"] });
     expect(wholePaste(match === null ? null : { ...match, profile: { ...match.profile, paste: { bracketed: true } } }, ["a", "b"], isShot)).toBeNull();
     expect(wholePaste(null, ["a", "b"], isShot)).toBeNull();
