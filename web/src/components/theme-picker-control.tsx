@@ -56,7 +56,7 @@ import { SectionLabel } from "@/components/ui/section-label";
 // refused, and it does not trust its own preview: Apply goes through `addImported`, which parses the
 // theme again, because the store is the door to storage and checks at the door.
 //
-// NOTHING MOVES (DESIGN.md §2). The theme is one select row, the three buttons are always
+// NOTHING MOVES (DESIGN.md §2). The theme is one select row, the four buttons are always
 // there (Remove is a disabled slot while the active theme is not an imported one), and the promise
 // line is static. The only thing that floats is the sheet.
 
@@ -442,6 +442,72 @@ export function ThemeRefusalSheet({ entries, onClose }: RefusalSheetProps) {
   );
 }
 
+// ── The paste sheet ─────────────────────────────────────────────────────────────────────────────
+
+/** Text that opens with a scheme and `//`: a link, which the card never fetches (ADR 0106, 2026-11-07). */
+const LINK_PATTERN = /^[a-z][a-z0-9+.-]*:\/\//i;
+
+/**
+ * Pasted text as a theme, or the lines that say why not. The same parser, cap and refusal words as a
+ * file: `parseTheme` measures the UTF-8 length before it parses anything. A link is refused before
+ * the parser, with a sentence that says what to paste instead, because the card fetches nothing.
+ */
+export function readPasted(text: string): { theme: Theme } | { entries: RefusalEntry[] } {
+  const value = text.trim();
+  if (LINK_PATTERN.test(value)) return { entries: [{ headline: t("theme.paste.refusal.link"), tone: "danger" }] };
+  const parsed = parseTheme(value, { maxBytes: THEME_MAX_BYTES });
+  if (!parsed.ok) return { entries: parsed.refusals.map(entryOfRefusal) };
+  return { theme: parsed.theme };
+}
+
+interface PasteSheetProps {
+  open: boolean;
+  value: string;
+  onChange: (value: string) => void;
+  onRead: () => void;
+  onCancel: () => void;
+}
+
+/**
+ * One text field for the JSON text of a theme, and Read. Read goes to the same preview or refusal
+ * sheet a file goes to. The field keeps its text when a refusal closes the sheet, so a person can fix
+ * one character and read it again.
+ */
+export function ThemePasteSheet({ open, value, onChange, onRead, onCancel }: PasteSheetProps) {
+  useLocale();
+  return (
+    <BottomSheet open={open} onClose={onCancel} title={t("theme.paste.title")}>
+      {open && (
+        <div className="flex flex-col gap-3">
+          <label htmlFor="theme-paste-text" className="text-sm font-medium">
+            {t("theme.paste.label")}
+          </label>
+          <textarea
+            id="theme-paste-text"
+            value={value}
+            onChange={(event) => onChange(event.target.value)}
+            rows={6}
+            autoCapitalize="off"
+            autoCorrect="off"
+            spellCheck={false}
+            placeholder='{ "version": 2, "id": "my-day", ... }'
+            className="min-h-32 w-full resize-y rounded-md border border-input bg-background p-3 font-mono text-xs text-foreground"
+          />
+          <p className="text-xs text-muted-foreground">{t("theme.paste.hint")}</p>
+          <div className="grid grid-cols-2 gap-2">
+            <Button type="button" className="h-11" disabled={value.trim() === ""} onClick={onRead}>
+              {t("theme.paste.read")}
+            </Button>
+            <Button type="button" variant="outline" className="h-11" onClick={onCancel}>
+              {t("theme.preview.cancel")}
+            </Button>
+          </div>
+        </div>
+      )}
+    </BottomSheet>
+  );
+}
+
 // ── The card ────────────────────────────────────────────────────────────────────────────────────
 
 const LIBRARY_REFUSALS = {
@@ -455,7 +521,7 @@ function libraryEntry(reason: "full" | "duplicate" | "invalid"): RefusalEntry {
   return { headline: t(LIBRARY_REFUSALS[reason], { count: LIBRARY_MAX }), tone: "danger" };
 }
 
-/** Settings card: pick a theme, import one from a file, export or remove the one on screen. */
+/** Settings card: pick a theme, import one from a file or pasted text, export or remove the one on screen. */
 export function ThemePickerControl() {
   useLocale();
   const active = useActiveTheme();
@@ -464,6 +530,8 @@ export function ThemePickerControl() {
   const [preview, setPreview] = useState<Theme | null>(null);
   const [refused, setRefused] = useState<readonly RefusalEntry[] | null>(null);
   const [exported, setExported] = useState<string | null>(null);
+  const [pasting, setPasting] = useState(false);
+  const [pasted, setPasted] = useState("");
 
   const all: Theme[] = [...shippedThemes(), ...imported];
 
@@ -473,6 +541,25 @@ export function ThemePickerControl() {
       return;
     }
     input.current?.click();
+  }
+
+  function startPaste() {
+    if (imported.length >= LIBRARY_MAX) {
+      setRefused([libraryEntry("full")]);
+      return;
+    }
+    setPasting(true);
+  }
+
+  function readPaste() {
+    const read = readPasted(pasted);
+    setPasting(false);
+    if ("entries" in read) {
+      setRefused(read.entries);
+      return;
+    }
+    setPasted("");
+    setPreview(read.theme);
   }
 
   async function onFile(file: File | undefined) {
@@ -557,9 +644,12 @@ export function ThemePickerControl() {
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-2 border-t border-border p-3">
+      <div className="grid grid-cols-2 gap-2 border-t border-border p-3">
         <Button type="button" variant="outline" className="h-11" onClick={startImport}>
           {t("theme.import")}
+        </Button>
+        <Button type="button" variant="outline" className="h-11" onClick={startPaste}>
+          {t("theme.paste")}
         </Button>
         <Button type="button" variant="outline" className="h-11" onClick={exportActive}>
           {t("theme.export")}
@@ -586,6 +676,13 @@ export function ThemePickerControl() {
         onChange={(event) => void onFile(event.target.files?.[0])}
       />
 
+      <ThemePasteSheet
+        open={pasting}
+        value={pasted}
+        onChange={setPasted}
+        onRead={readPaste}
+        onCancel={() => setPasting(false)}
+      />
       <ThemePreviewSheet theme={preview} onApply={apply} onCancel={() => setPreview(null)} />
       <ThemeRefusalSheet entries={refused} onClose={() => setRefused(null)} />
       <BottomSheet open={exported !== null} onClose={() => setExported(null)} title={t("theme.export.title")}>

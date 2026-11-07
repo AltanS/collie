@@ -149,3 +149,14 @@ Where it says "version 1" or "never themeable", this amendment is the current ru
   colour, which is also 1.23.0 work.
 - **Shipped ids stay reserved.** An import with the id of Collie, Nightwatch, Daylight or Harbour is refused,
   so an edited export needs its own `id`.
+
+## Amendment, 2026-11-07: a shared theme arrives by paste, never by a link the phone fetches
+
+**The Theme card imports a file or pasted text. It never fetches a link, and the page's
+`connect-src 'self'` stays as it is.** M59 asked for an import by link (piece 3), and the first draft
+of spec 04 fetched an https link in the phone's browser. Altan, 2026-11-07, chose paste only: the page
+never talks to a third party, every outside fetch in Collie is the host's and follows a tap (the Whistle
+model, the math pack), and a theme is not worth a new outbound call. A pasted link is refused with a
+sentence that says to copy the file's text instead. Pasted text goes through the same `parseTheme`,
+the same 64 KiB cap and the same preview as a file. This closes the "import from a URL" item that the
+Consequences above left for later.

@@ -5,6 +5,7 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { en } from "@/lib/i18n/messages/en";
 import { THEME_TOKENS, isOptionalThemeToken, parseTheme, type Theme } from "@/lib/theme/schema";
 
 // The Theme card. The store keeps module-scope state (design prefs, the library), so each case
@@ -524,6 +525,110 @@ describe("ThemePickerControl", () => {
       const dialog = await screen.findByRole("dialog", { name: "Copy this theme" });
       const shown = within(dialog).getByText(/"id": "collie"/);
       expect(JSON.parse(shown.textContent ?? "").id).toBe("collie");
+    });
+  });
+
+  describe("paste a theme (M59 spec 04)", () => {
+    async function openPaste() {
+      await userEvent.click(screen.getByRole("button", { name: "Paste" }));
+      return screen.findByRole("dialog", { name: "Paste a theme" });
+    }
+
+    function paste(dialog: HTMLElement, text: string): void {
+      fireEvent.change(within(dialog).getByLabelText("The text of a theme file"), { target: { value: text } });
+    }
+
+    it("previews pasted text with the file's preview, and Apply keeps it", async () => {
+      const { ThemePickerControl, store } = await load();
+      render(<ThemePickerControl />);
+      const sheet = await openPaste();
+      paste(sheet, `  ${JSON.stringify(copy("pasted", "Pasted"))}\n`);
+      await userEvent.click(within(sheet).getByRole("button", { name: "Read" }));
+      const preview = await screen.findByRole("dialog", { name: "Import this theme?" });
+      expect(preview).toHaveTextContent("Pasted");
+      expect(screen.queryByRole("dialog", { name: "Paste a theme" })).toBeNull();
+      await userEvent.click(within(preview).getByRole("button", { name: "Apply" }));
+      await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+      expect(store.library().map((theme) => theme.id)).toEqual(["pasted"]);
+      expect(store.activeThemeId()).toBe("pasted");
+    });
+
+    it("keeps Read off while the field is empty or blank", async () => {
+      const { ThemePickerControl } = await load();
+      render(<ThemePickerControl />);
+      const sheet = await openPaste();
+      expect(within(sheet).getByRole("button", { name: "Read" })).toBeDisabled();
+      paste(sheet, "   ");
+      expect(within(sheet).getByRole("button", { name: "Read" })).toBeDisabled();
+    });
+
+    it("refuses a pasted https link and fetches nothing", async () => {
+      const fetching = vi.spyOn(globalThis, "fetch");
+      const { ThemePickerControl, store } = await load();
+      render(<ThemePickerControl />);
+      paste(await openPaste(), "https://raw.githubusercontent.com/sam/my-day/main/collie-theme.json");
+      await userEvent.click(screen.getByRole("button", { name: "Read" }));
+      const dialog = await screen.findByRole("dialog", { name: "This file was not imported" });
+      expect(dialog).toHaveTextContent(en["theme.paste.refusal.link"]);
+      expect(fetching).not.toHaveBeenCalled();
+      expect(store.library()).toHaveLength(0);
+    });
+
+    it("refuses a pasted http link the same way, before the parser", async () => {
+      const fetching = vi.spyOn(globalThis, "fetch");
+      const { ThemePickerControl } = await load();
+      render(<ThemePickerControl />);
+      paste(await openPaste(), "http://example.com/theme.json");
+      await userEvent.click(screen.getByRole("button", { name: "Read" }));
+      const dialog = await screen.findByRole("dialog", { name: "This file was not imported" });
+      expect(within(dialog).getAllByRole("listitem")).toHaveLength(1);
+      expect(dialog).toHaveTextContent(en["theme.paste.refusal.link"]);
+      expect(dialog).not.toHaveTextContent(en["theme.refusal.json"]);
+      expect(fetching).not.toHaveBeenCalled();
+    });
+
+    it("refuses a paste over the cap with the real size", async () => {
+      const { ThemePickerControl } = await load();
+      render(<ThemePickerControl />);
+      paste(await openPaste(), `{"pad":"${"x".repeat(65 * 1024)}"}`);
+      await userEvent.click(screen.getByRole("button", { name: "Read" }));
+      const dialog = await screen.findByRole("dialog", { name: "This file was not imported" });
+      expect(dialog).toHaveTextContent(en["theme.refusal.size"]);
+      expect(dialog).toHaveTextContent(`${65 * 1024 + 10} bytes`);
+    });
+
+    it("refuses bad JSON with the file's refusal words, and keeps the text to fix", async () => {
+      const { ThemePickerControl } = await load();
+      render(<ThemePickerControl />);
+      paste(await openPaste(), '{ "version": 1, "id": ');
+      await userEvent.click(screen.getByRole("button", { name: "Read" }));
+      const dialog = await screen.findByRole("dialog", { name: "This file was not imported" });
+      expect(dialog).toHaveTextContent(en["theme.refusal.json"]);
+      // The sheet's own close and the Close button carry the same name; either shuts it.
+      await userEvent.click(within(dialog).getAllByRole("button", { name: "Close" })[0]!);
+      await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+      const again = await openPaste();
+      expect(within(again).getByLabelText("The text of a theme file")).toHaveValue('{ "version": 1, "id": ');
+    });
+
+    it("refuses pasted text the parser refuses, naming the key", async () => {
+      const { ThemePickerControl } = await load();
+      render(<ThemePickerControl />);
+      paste(await openPaste(), JSON.stringify({ ...copy("odd", "Odd"), extra: true }));
+      await userEvent.click(screen.getByRole("button", { name: "Read" }));
+      const dialog = await screen.findByRole("dialog", { name: "This file was not imported" });
+      expect(dialog).toHaveTextContent(en["theme.refusal.unknown-key"]);
+      expect(dialog).toHaveTextContent("extra");
+    });
+
+    it("refuses at the Paste button when the library is full", async () => {
+      const full = Array.from({ length: 8 }, (_, i) => copy(`t${i}`, `Theme ${i}`));
+      const { ThemePickerControl } = await load(full);
+      render(<ThemePickerControl />);
+      await userEvent.click(screen.getByRole("button", { name: "Paste" }));
+      const dialog = await screen.findByRole("dialog");
+      expect(dialog).toHaveTextContent("You already hold 8 imported themes.");
+      expect(screen.queryByRole("dialog", { name: "Paste a theme" })).toBeNull();
     });
   });
 });

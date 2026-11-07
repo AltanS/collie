@@ -9,7 +9,7 @@ import { FolderBrowse } from "@/components/new-space-browse";
 import { NoPromptsSheet } from "@/components/no-prompts-sheet";
 import { NotifyPrefsCard } from "@/components/notify-prefs-control";
 import { SpaceOverview } from "@/components/space-overview";
-import { ThemePickerControl, ThemePreviewSheet } from "@/components/theme-picker-control";
+import { ThemePasteSheet, ThemePickerControl, ThemePreviewSheet } from "@/components/theme-picker-control";
 import { CodexConsentSheet, SpeechCards, type SpeechCardsProps } from "@/components/speech-control";
 import { DEFAULT_THEME_ID, type Theme } from "@/lib/theme/schema";
 import { addImported, removeImported, shippedThemes } from "@/lib/theme/store";
@@ -334,6 +334,23 @@ export function SettingsSection() {
         >
           <PhoneFrameCard height={880}>
             <ThemePreviewSheet theme={paleTheme()} onApply={() => {}} onCancel={() => {}} />
+          </PhoneFrameCard>
+        </Card>
+
+        <Card
+          state="theme-paste"
+          label="the paste sheet, filled"
+          reach="open Settings, Appearance, and tap Paste in the Theme card."
+          note="One field and Read. Read opens the same preview or refusal sheet as Import. A pasted link is refused with a sentence, and nothing is fetched (ADR 0106, 2026-11-07)."
+        >
+          <PhoneFrameCard height={844}>
+            <ThemePasteSheet
+              open
+              value={'{\n  "version": 1,\n  "id": "my-day",\n  "name": "My day",\n  "light": { "background": "#fdfaf3" }\n}'}
+              onChange={() => {}}
+              onRead={() => {}}
+              onCancel={() => {}}
+            />
           </PhoneFrameCard>
         </Card>
       </Group>

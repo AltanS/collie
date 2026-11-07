@@ -92,6 +92,10 @@ Import a `.json` file in the **Theme** card, read the preview, and tap **Apply**
    small page for each half, the shape on a sample, the terminal colours, and a contrast report.
 3. Tap **Apply** to keep the theme and switch to it, or **Cancel** to keep nothing.
 
+To import the text of a theme file instead of a file, tap **Paste**, paste the text, and tap **Read**.
+Collie shows the same preview, and it refuses the same files for the same causes. Collie does not
+fetch a theme from a link. Open the link, copy the text of the file, and paste that.
+
 A **warning** is a contrast report line, such as "dark: status-blocked chip on card measures 3.9. The floor is
 4.5". It means the theme is hard to read in one place. **Apply** stays on, because the choice is yours.
 
@@ -108,8 +112,8 @@ list shows at most 25 causes, then one line "and N more". A file is refused for 
 - Its `ansi` block lacks a key, has a colour with an alpha, or fails a gate under
   [Terminal palette](#terminal-palette).
 - It has a bad `id`, `name` or `author`, or the `id` belongs to a shipped theme.
-- It would be a ninth imported theme. Collie refuses at the **Import** tap, before you pick a file, and again
-  at **Apply**.
+- It would be a ninth imported theme. Collie refuses at the **Import** or **Paste** tap, before you pick a
+  file, and again at **Apply**.
 
 Collie checks one more thing at **Apply**. A file whose `id` is already on the device is refused with "already
 imported". Remove the old theme first, or change the `id`.
@@ -209,7 +213,7 @@ again when its default branch has a new commit.
 
 The site shows each theme as a card: the name, the author, the repository, both halves drawn from the
 file's colours, and a link to the raw file. To use a theme from the site, download the file and
-[import it](#import-a-theme). A theme is data, and like any import [it cannot run
+[import it](#import-a-theme), or copy the text of the file and paste it under **Paste**. A theme is data, and like any import [it cannot run
 code](#import-a-theme).
 
 The site refuses a repository for any of these:

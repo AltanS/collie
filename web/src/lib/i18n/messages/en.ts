@@ -90,6 +90,14 @@ export const en = {
   "theme.library.duplicate": "A theme with this id is already imported. Remove it first, or change \"id\" in the file.",
   "theme.library.invalid": "This theme did not pass the check. Pick the file again.",
   "theme.export.title": "Copy this theme",
+  // Paste a theme (M59 spec 04). English only until the translation pass: every key here is listed in
+  // PENDING_TRANSLATION below.
+  "theme.paste": "Paste",
+  "theme.paste.title": "Paste a theme",
+  "theme.paste.label": "The text of a theme file",
+  "theme.paste.hint": "Paste the JSON text of a theme file. Read shows the same preview as Import.",
+  "theme.paste.read": "Read",
+  "theme.paste.refusal.link": "Collie does not fetch a theme from a link. Open the link, copy the text of the file, and paste that.",
   "theme.refusal.size": "This file is too big for a theme.",
   "theme.refusal.json": "This file is not a JSON object.",
   "theme.refusal.version": "This file uses a theme version this Collie does not read.",
@@ -3184,7 +3192,14 @@ export type Messages = typeof en;
  * already carries, so the list cannot outlive its translations. Never a way to skip translating a
  * key for good: a key stays here only between a feature and its translation pass.
  */
-export const PENDING_TRANSLATION = [] as const satisfies readonly MessageKey[];
+export const PENDING_TRANSLATION = [
+  "theme.paste",
+  "theme.paste.title",
+  "theme.paste.label",
+  "theme.paste.hint",
+  "theme.paste.read",
+  "theme.paste.refusal.link",
+] as const satisfies readonly MessageKey[];
 
 /** A key a bundle may leave out until the translation pass. */
 export type PendingKey = (typeof PENDING_TRANSLATION)[number];
