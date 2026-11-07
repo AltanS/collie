@@ -118,6 +118,13 @@ const LIFTED = new Set([
   // omp 18.16.0's Ask, footer ending in the glyph keycap `⌥H hide` (omp/ask.ts).
   "omp--v18-16-0-ask-single-glyph-hide--w200.txt",
   "omp--v18-16-0-ask-single-glyph-hide-moved--w200.txt",
+  // omp 18.16.0's plan review, options focused (omp/plan-review.ts): plain, under the Contents sidebar,
+  // and with the model-tier slider.
+  "omp--v18-16-0-plan-review--w80.txt",
+  "omp--v18-16-0-plan-review-contents--w140.txt",
+  "omp--v18-16-0-plan-review-moved--w80.txt",
+  "omp--v18-16-0-plan-review-slider--w140.txt",
+  "omp--v18-16-0-plan-review-slider-moved--w140.txt",
   "omp--v18-10-ask-single.txt",
   "omp--v18-10-ask-batch.txt",
   "omp--v18-10-ask-batch-moved.txt",
@@ -403,6 +410,11 @@ const DECLINED = new Set([
   "omp--v18-16-0-custom-answer-typed--w200.txt",
   "omp--v18-16-0-custom-answer-wrapped--w200.txt",
   "omp--v18-16-0-note-editor-empty--w200.txt",
+  // — omp 18.16.0's plan review in states omp/plan-review.ts declines: focus on the plan body (the
+  //   footer names scroll keys, no `⏎ confirm`), and the slider footer clipped with `…` at 80 columns.
+  //   Neither names a way out, so neither draws the card either.
+  "omp--v18-16-0-plan-review-regions--w80.txt",
+  "omp--v18-16-0-plan-review-slider-clipped--w80.txt",
   // omp 18.17.0's `/usage` dashboard (2026-11-06): a full-screen modal with a way out (`⎋ close`) and no
   // list to point at. It stays raw and gets the unread-dialog card with its Escape, like `/settings`.
   "omp--v18-17-0-usage-dashboard--w120.txt",
@@ -618,6 +630,13 @@ describe("the omp corpus", () => {
     "omp--v18-16-0-custom-answer-typed--w200.txt",
     "omp--v18-16-0-custom-answer-wrapped--w200.txt",
     "omp--v18-16-0-note-editor-empty--w200.txt",
+    "omp--v18-16-0-plan-review--w80.txt",
+    "omp--v18-16-0-plan-review-contents--w140.txt",
+    "omp--v18-16-0-plan-review-moved--w80.txt",
+    "omp--v18-16-0-plan-review-regions--w80.txt",
+    "omp--v18-16-0-plan-review-slider--w140.txt",
+    "omp--v18-16-0-plan-review-slider-clipped--w80.txt",
+    "omp--v18-16-0-plan-review-slider-moved--w140.txt",
     "omp--v18-17-0-nerd-switch--w120.txt",
     "omp--v18-17-0-nerd-switch-moved--w120.txt",
     "omp--v18-17-0-nerd-switch-search--w120.txt",

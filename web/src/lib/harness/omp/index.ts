@@ -3,10 +3,12 @@
 // (markers.ts) live alongside this file; this module composes them into the HarnessAdapter block and
 // chrome re-surfacing surfaces. The `/resume` picker grammar is resume.ts, the `ask` tool's
 // single-select grammar is ask.ts, the tool-approval grammar is approval.ts, the compact model picker
-// grammar is switch.ts, and the modal gate that lets the unread-dialog card stand over every other omp
-// modal is modal.ts.
+// grammar is switch.ts, the plan-mode review grammar is plan-review.ts, and the modal gate that lets
+// the unread-dialog card stand over every other omp modal is modal.ts.
 //
-// This adapter is TIER 1 EVERYWHERE EXCEPT FOUR SCREENS. `ompBuildBlocks` lifts the `/resume` session
+// This adapter is TIER 1 EVERYWHERE EXCEPT FIVE SCREENS. The fifth is omp's plan review (plan-review.ts,
+// added 2026-11-07 against omp 18.16.0; its header carries its own corpus and choreography), and the
+// rest of this paragraph is about the first four. `ompBuildBlocks` lifts the `/resume` session
 // picker (resume.ts, .adr/0076), Ask single-select questions and batch review (ask.ts,
 // .adr/0077), the `bash` and `write` tool-approval dialog (approval.ts, .adr/0078) and the compact
 // session-only model picker that `/switch` and Alt+P open (switch.ts, .adr/0079) as `prompt-select`
@@ -130,6 +132,7 @@ import { detectApprovalRegion } from "./approval";
 import { detectAskSelectRegion } from "./ask";
 import { detectResumePickerRegion } from "./resume";
 import { detectSwitchPickerRegion } from "./switch";
+import { detectPlanReviewRegion } from "./plan-review";
 
 /**
  * omp's block pipeline: the `/resume` session picker (resume.ts, .adr/0076), the `ask` tool's
@@ -160,15 +163,17 @@ const OMP_DIALOG_DETECTORS: readonly DialogDetector[] = [
   { name: "ask-select", detect: detectAskSelectRegion },
   { name: "approval", detect: detectApprovalRegion },
   { name: "switch-picker", detect: detectSwitchPickerRegion },
+  { name: "plan-review", detect: detectPlanReviewRegion },
 ];
 
 export function ompBuildBlocks(lines: StyledLine[]): Block[] {
-  // The four lifted screens never share a tail: each is anchored on its own bottom border and footer.
+  // The five lifted screens never share a tail: each is anchored on its own bottom border and footer.
   const lifted =
     detectResumePickerRegion(lines) ??
     detectAskSelectRegion(lines) ??
     detectApprovalRegion(lines) ??
-    detectSwitchPickerRegion(lines);
+    detectSwitchPickerRegion(lines) ??
+    detectPlanReviewRegion(lines);
   if (lifted !== null) {
     const before = trimTrailingBlank(lines.slice(0, lifted.startLine));
     const blocks: Block[] = [];

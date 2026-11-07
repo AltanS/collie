@@ -3447,6 +3447,23 @@ the status row above it named the operator's accounts and was dropped.
 | `omp--v18-16-0-ask-single-glyph-hide-moved--w200.txt` | `dialog` | The same dialog after one `Down` (`hc keys … down`), pointer on 배. Its walk pair |
 | `omp--v18-16-0-answer-editor-empty--w200.txt` | `idle` | `Enter` on `Other` opened `Custom answer: 과일을 고르세요`, hint `⏎ or ⌃Q submit  ⎋ cancel  ⌃G external editor`: the same prompt-style box as the `custom-answer-*` rows above, in the glyph keycap dialect, with no Ask box above it. Reads as a free box since #704 |
 
+## omp 18.16.0 plan review (captured 2026-11-07, Herdr 0.9.5, 80 and 140 columns)
+
+A real plan-mode turn in a scratch repo (Claude Haiku 5.5 over OpenRouter, the `unicode` symbol preset),
+captured with `herdr pane read --source recent --format ansi`. The overlay fills the pane, so each capture
+is the whole screen. omp 18.18.0 draws the same overlay (its `plan-review-overlay.ts` is unchanged). No
+private text was present. Grammar: `omp/plan-review.ts`.
+
+| Fixture | State | What it shows |
+| --- | --- | --- |
+| `omp--v18-16-0-plan-review--w80.txt` | `dialog` | `Plan Review` box, the plan, then `Plan mode - next step` and the five options, pointer on `Approve and execute`, footer `↑/↓ select · ⏎ confirm · c copy · ⇥ regions · Ctrl+G editor · ⎋ cancel`. Lifts |
+| `omp--v18-16-0-plan-review-moved--w80.txt` | `dialog` | The same review after one `Down`, pointer on `Approve and compact context`. Its walk pair |
+| `omp--v18-16-0-plan-review-regions--w80.txt` | `dialog` | After `Tab`: focus on the plan body, the footer names scroll keys and no `⏎ confirm`. Declines, and names no way out |
+| `omp--v18-16-0-plan-review-contents--w140.txt` | `dialog` | A plan with two headings: the Contents sidebar splits the top border (`┬`) and the divider (`┴`). Lifts |
+| `omp--v18-16-0-plan-review-slider--w140.txt` | `dialog` | Two role models: the `continue with  ◂  smol  ◀ default ▶  ▸` slider and its `↳ Claude Haiku 5.5` row above the options, footer with `←/→ model`. Lifts, the tier in the question |
+| `omp--v18-16-0-plan-review-slider-moved--w140.txt` | `dialog` | The same after two `Down`, pointer on `Approve and keep context`. Its walk pair |
+| `omp--v18-16-0-plan-review-slider-clipped--w80.txt` | `dialog` | The slider at 80 columns: omp cuts the footer with `…` before `⎋ cancel`. Declines, and names no way out |
+
 ## omp's rewind picker, Esc Esc (captured 2026-10-25, omp-gang tester 04 case 7)
 
 | Fixture | State | What it shows |

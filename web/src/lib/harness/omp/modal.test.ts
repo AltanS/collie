@@ -110,6 +110,14 @@ const MODALS_WITH_A_WAY_OUT = [
   "omp--v18-17-0-nerd-switch-search--w120.txt",
   "omp--v18-17-0-switch--w120.txt",
   "omp--v18-17-0-usage-dashboard--w120.txt",
+  // omp 18.16.0's plan review, options focused: the footer ends `· ⎋ cancel`. Lifted (omp/plan-review.ts),
+  // so these draw no card; the gate still reads the modal. The regions-focused and clipped captures
+  // name no way out and stay below.
+  "omp--v18-16-0-plan-review--w80.txt",
+  "omp--v18-16-0-plan-review-contents--w140.txt",
+  "omp--v18-16-0-plan-review-moved--w80.txt",
+  "omp--v18-16-0-plan-review-slider--w140.txt",
+  "omp--v18-16-0-plan-review-slider-moved--w140.txt",
 ];
 
 // The `/tree` picker is a modal that prints NO way out: omp clips its hint row and neither capture
