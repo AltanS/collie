@@ -770,7 +770,9 @@ describe("solo zero-tax — routes", () => {
       // pane whose adapter raises asks as data takes it, so a solo Herdr bridge answers it the refusal.
       // `send` and `abort` name the turn the phone saw (ADR 0101): writes, forwarded the same way, and
       // only a pane whose adapter takes guarded controls takes them; a Herdr pane gets the refusal.
-      "/^\\/api\\/pane\\/([^/]+)(?:\\/(reply|keys|upload|close|rename|history|chat|changes|files|focus|answer|send|abort|clear|action|pins))?$/",
+      // `held` (issue 740) is the Cancel or Dismiss on a queued row, by pane, so it forwards to the member
+      // whose hold queue keeps the row; on a solo collie it answers what `DELETE /api/send/<id>` does.
+      "/^\\/api\\/pane\\/([^/]+)(?:\\/(reply|keys|upload|close|rename|history|chat|changes|files|focus|answer|send|abort|clear|action|pins|held))?$/",
       // The slash commands Claude Code would load in the pane's cwd: a read of this machine's disk,
       // asked only when the palette opens, so a solo instance pays nothing per poll.
       "/^\\/api\\/pane\\/([^/]+)\\/claude-commands$/",

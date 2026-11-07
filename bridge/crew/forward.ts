@@ -82,7 +82,9 @@ const FORWARDABLE: readonly RegExp[] = [
   // pane, where its receipt lives. Additive-optional the same way.
   // `pins` (M90): the pins of the pane's session live on the machine that owns the pane. A GET lists them
   // (a read), a POST pins a block and a DELETE drops one (writes). Additive-optional the same way.
-  /^pane\/[^/]+(?:\/(?:reply|keys|upload|close|rename|history|chat|changes|files|focus|answer|send|abort|clear|action|pins))?$/,
+  // `held` (issue 740): the Cancel or Dismiss on a queued row, a WRITE (`DELETE`) to the member whose hold
+  // queue keeps the row. Additive-optional the same way: a member that predates it answers 404.
+  /^pane\/[^/]+(?:\/(?:reply|keys|upload|close|rename|history|chat|changes|files|focus|answer|send|abort|clear|action|pins|held))?$/,
   // One picture under the Files root, as bytes (ADR 0090): off the disk of the member that owns the
   // pane or the space, like the Files read it sits beside. Mirrors `PANE_FILES_IMAGE_ROUTE` and
   // `WORKSPACE_FILES_IMAGE_ROUTE` in bridge/server.ts one-for-one. Additive-optional (§7.1).

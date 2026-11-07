@@ -483,7 +483,7 @@ export function isLoopbackPeer(address: string | null | undefined): boolean {
  * `pins` (M90) is the one segment with a read and writes: a GET lists the pins of the pane's session (a read), a
  * POST `{ itemId }` pins a block and a DELETE `?pin=<id>` drops one (writes). See `bridge/pins/routes.ts`.
  */
-const PANE_ROUTE = /^\/api\/pane\/([^/]+)(?:\/(reply|keys|upload|close|rename|history|chat|changes|files|focus|answer|send|abort|clear|action|pins))?$/;
+const PANE_ROUTE = /^\/api\/pane\/([^/]+)(?:\/(reply|keys|upload|close|rename|history|chat|changes|files|focus|answer|send|abort|clear|action|pins|held))?$/;
 
 /**
  * A pairing claim's refusal, as an error code.
@@ -2417,6 +2417,12 @@ export function startServer(opts: {
           { method: req.method, pin: url.searchParams.get("pin"), body },
         );
         return pinsResponse(answer, req.headers.get("accept-encoding"));
+      }
+      // `DELETE /api/pane/:id/held?request=<id>`: the Cancel or Dismiss on a queued row, by the pane it
+      // sits on, so the crew link carries it to the member that holds the row (issue 740). The same
+      // answer as `DELETE /api/send/<id>?pane=<id>`, which stays for this collie's own panes.
+      if (action === "held" && req.method === "DELETE") {
+        return heldCancelRoute(rt, url.searchParams.get("request") ?? "", paneId, { audit: audit_, device, acceptEncoding: req.headers.get("accept-encoding") });
       }
       if (action === "changes" && req.method === "GET") return paneChanges(rt.engine, paneId, url, req, homedir(), cfg.redact);
       if (action === "files" && req.method === "GET")
