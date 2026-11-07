@@ -23,6 +23,7 @@ import type { PaneSubagent, PaneTodo } from "@/lib/types";
 import { markLive } from "@/lib/liveness";
 import { saveDraft } from "@/lib/drafts";
 import type { HeldRow } from "@/lib/surface/send";
+import type { Scope } from "@/lib/scope";
 import { wayOutCase, type WayOutCase } from "@/test/way-out-states";
 import type { WayOutState } from "@/lib/way-out";
 
@@ -137,7 +138,7 @@ function WayOutCard({ state, c }: { state: string; c: WayOutCase }) {
 
 const of = (state: WayOutState): WayOutCase => wayOutCase(state);
 
-// ── THE HELD-SEND CARD (14 to 18) ───────────────────────────────────────────────────────────────────
+// ── THE HELD-SEND CARD (14 to 19) ───────────────────────────────────────────────────────────────────
 // A send the bridge holds while the agent's turn runs floats over the mirror's bottom edge as ONE card.
 // These cards mount the real Composer on a Claude pane with the rows the snapshot would carry, inside a
 // mirror box that keeps the same absolute notice slot the pane view keeps (agent-chat.tsx), so the card
@@ -160,6 +161,14 @@ const MIXED = [
   heldRow(2, "held", "Then update the changelog line for the queue card."),
   heldRow(3, "held", "After that, open the pull request with a short description of the change."),
 ];
+
+/** A crew member's pane (issue 740): a send that ran out its 30 minutes, and one still held. */
+const MEMBER = [
+  heldRow(1, "ended", "Run the full test suite when you are done, then fix whatever fails.", { outcome: "expired" }),
+  heldRow(2, "held", "Then update the changelog line for the queue card."),
+];
+/** The crew member these cards stand on. */
+const MEMBER_SCOPE: Scope = { host: "badger" };
 
 const MIRROR_LINES = [
   "● Read(web/src/components/composer-held.tsx)",
@@ -190,7 +199,7 @@ const MIRROR_LINES = [
  */
 const HeldStageContext = createContext<{ slot: HTMLElement | null; held: readonly HeldRow[] }>({ slot: null, held: [] });
 
-function HeldComposer({ paneId, draft }: { paneId: string; draft?: string }) {
+function HeldComposer({ paneId, draft, scope }: { paneId: string; draft?: string; scope?: Scope }) {
   const { slot, held } = useContext(HeldStageContext);
   return (
     <ChromeBlock>
@@ -209,12 +218,13 @@ function HeldComposer({ paneId, draft }: { paneId: string; draft?: string }) {
         onSent={() => {}}
         held={held}
         draftNoticeSlot={slot}
+        {...(scope === undefined ? {} : { scope })}
       />
     </ChromeBlock>
   );
 }
 
-function HeldPhone({ paneId, held, draft, showAll = false }: { paneId: string; held: readonly HeldRow[]; draft?: string; showAll?: boolean }) {
+function HeldPhone({ paneId, held, draft, scope, showAll = false }: { paneId: string; held: readonly HeldRow[]; draft?: string; scope?: Scope; showAll?: boolean }) {
   const [slot, setSlot] = useState<HTMLElement | null>(null);
   // A live stamp, renewed, so the card is not drawn over an "offline" composer.
   useEffect(() => {
@@ -237,7 +247,7 @@ function HeldPhone({ paneId, held, draft, showAll = false }: { paneId: string; h
   }, [showAll, slot]);
   const stage = useMemo(() => ({ slot, held }), [slot, held]);
   const [router] = useState(() =>
-    createMemoryRouter([{ path: "/", element: <HeldComposer paneId={paneId} {...(draft === undefined ? {} : { draft })} /> }], { initialEntries: ["/"] }),
+    createMemoryRouter([{ path: "/", element: <HeldComposer paneId={paneId} {...(draft === undefined ? {} : { draft })} {...(scope === undefined ? {} : { scope })} /> }], { initialEntries: ["/"] }),
   );
   return (
     <PhoneMock>
@@ -253,7 +263,7 @@ function HeldPhone({ paneId, held, draft, showAll = false }: { paneId: string; h
   );
 }
 
-function HeldCardCase({ n, state, title, reach, note, paneId, held, draft, showAll }: { n: number; state: string; title: string; reach: string; note?: string; paneId: string; held: readonly HeldRow[]; draft?: string; showAll?: boolean }) {
+function HeldCardCase({ n, state, title, reach, note, paneId, held, draft, scope, showAll }: { n: number; state: string; title: string; reach: string; note?: string; paneId: string; held: readonly HeldRow[]; draft?: string; scope?: Scope; showAll?: boolean }) {
   return (
     <Card state={state} label={`${String(n)}: ${title}`} reach={reach} {...(note === undefined ? {} : { note })}>
       <CardControls className="flex items-center gap-3">
@@ -262,18 +272,18 @@ function HeldCardCase({ n, state, title, reach, note, paneId, held, draft, showA
           {n}: {title}
         </p>
       </CardControls>
-      <HeldPhone paneId={paneId} held={held} {...(draft === undefined ? {} : { draft })} {...(showAll === undefined ? {} : { showAll })} />
+      <HeldPhone paneId={paneId} held={held} {...(draft === undefined ? {} : { draft })} {...(scope === undefined ? {} : { scope })} {...(showAll === undefined ? {} : { showAll })} />
     </Card>
   );
 }
 
-// ── THE BELT'S LISTS (19 to 22) ─────────────────────────────────────────────────────────────────────
+// ── THE BELT'S LISTS (20 to 23) ─────────────────────────────────────────────────────────────────────
 // The agents mark: the count of the pane's subagents that have not finished yet, above a small Bot
 // glyph in the belt's fixed block, right of the X and left of Files and the Switch mark. Tasks stays on
-// the scrolling run. Card 21 is the same belt with no subagent running, so the mark is absent and
-// nothing else moves; card 22 has a draft in the box, so the X stands left of the mark. Card 19 has a
+// the scrolling run. Card 22 is the same belt with no subagent running, so the mark is absent and
+// nothing else moves; card 23 has a draft in the box, so the X stands left of the mark. Card 20 has a
 // toggle that takes the subagents away and brings them back, to watch the mark ease out and in. Card
-// 20 is the tap on the mark: the Agents sheet over the page, with nothing in flow moving. The real
+// 21 is the tap on the mark: the Agents sheet over the page, with nothing in flow moving. The real
 // Composer inside the real subagent sheet's provider, so a row tap opens the same sheet an Agent card
 // in Chat opens, over the list. There is no bridge behind this page, so the sheet answers that it cannot read
 // the transcript; that is the sheet's own state for an unreadable log.
@@ -437,10 +447,20 @@ export function wayOutGroups(): ReactNode[] {
         held={ONE_HELD}
         draft="bun run build -- --watch"
       />
+      <HeldCardCase
+        n={19}
+        state="held-crew-member"
+        title="On a crew member"
+        reach="A held send on a member's pane ran out its 30 minutes, a second still waits. Cancel and Dismiss show; Resend, Submit and Discard do not."
+        paneId="held:member"
+        held={MEMBER}
+        scope={MEMBER_SCOPE}
+        showAll
+      />
     </Group>,
     <Group key="belt-lists" title="The belt's lists">
       <BeltListsCase
-        n={19}
+        n={20}
         state="belt-agents-mark"
         title="Agents mark at 2"
         reach="A Claude Code session with two subagents still running. A small Bot mark with the count above it stands in the belt's fixed block, left of Files and the Switch mark; Tasks stays on the scrolling run."
@@ -449,7 +469,7 @@ export function wayOutGroups(): ReactNode[] {
         toggle
       />
       <BeltListsCase
-        n={20}
+        n={21}
         state="belt-agents-sheet"
         title="Agents sheet"
         reach="Tap the agents mark. A sheet titled Agents 2 opens over the page and the belt does not move. Each row is the label an Agent card uses, the task, and how long it has run. A tap on a row opens the subagent transcript over the list, and sends nothing; closing it comes back to the list."
@@ -457,7 +477,7 @@ export function wayOutGroups(): ReactNode[] {
         paneId="belt:agents-sheet"
       />
       <BeltListsCase
-        n={21}
+        n={22}
         state="belt-agents-none"
         title="Agents mark at 0"
         reach="No subagent running. The mark is not drawn; Files and the Switch mark stand alone, and the scrolling run is the same as on card 19."
@@ -465,7 +485,7 @@ export function wayOutGroups(): ReactNode[] {
         agents={false}
       />
       <BeltListsCase
-        n={22}
+        n={23}
         state="belt-agents-with-clear"
         title="Agents mark right of the X"
         reach="Type in the box while two subagents run. The fixed block reads X, the agents mark, Files, the Switch mark."

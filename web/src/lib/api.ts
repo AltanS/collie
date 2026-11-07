@@ -1803,15 +1803,18 @@ export async function dropWalky(paneId: string, id: string, scope?: Scope): Prom
 }
 
 /**
- * DELETE /api/send/<id>: take back a held send, or dismiss an ended one (M56 spec 15). `refused` is an
- * answer, not an error: the request is going out now, and a 409 carries it. This machine's own panes
- * only; the route does not cross a crew link, so a pane on a member never comes here.
+ * Take back a held send, or dismiss an ended one (M56 spec 15). `refused` is an answer, not an error:
+ * the request is going out now, and a 409 carries it. This machine's own panes use
+ * `DELETE /api/send/<id>?pane=<id>`; a pane on a crew member uses `DELETE /api/pane/<id>/held?request=<id>`,
+ * which the lead forwards to the member whose queue keeps the row (issue 740).
  */
 export async function cancelHeldSend(requestId: string, paneId: string, scope?: Scope): Promise<HeldCancelAnswer> {
-  if (!isLead(scope)) throw new ApiError("A held send on a crew member is cancelled on that machine.", 400);
   stampSend(paneId);
+  const path = isLead(scope)
+    ? `/api/send/${encodeURIComponent(requestId)}?pane=${encodeURIComponent(paneId)}`
+    : `/api/pane/${encodeURIComponent(paneId)}/held?request=${encodeURIComponent(requestId)}`;
   const got = await req<JsonObject>(
-    withScope(`/api/send/${encodeURIComponent(requestId)}?pane=${encodeURIComponent(paneId)}`, scope),
+    withScope(path, scope),
     { method: "DELETE" },
     // A 409 is the answer "it is going out now", a value; an unknown id (404) stays an error.
     sendRecover((status, detail) => (status === 409 ? (parseJsonObject(detail) ?? null) : null)),

@@ -10,7 +10,8 @@
 // A file lives through three states: `held` (waiting for a free pane), `running` (going out now, as a
 // fresh run of the protocol under the same request id) and `ended` (closed without reaching the agent:
 // expired, the pane gone, or a refusal at release; the text stays for the phone's Resend). A send that
-// went out, and a cancelled one, leave no file. An ended file goes when the person dismisses it, or
+// went out, and a cancelled one, leave no file. An ended file goes when the person dismisses it, when
+// it ended `typed_not_submitted` and two polls read its box empty (protocol.ts `tickTyped`, #739), or
 // after {@link HOLD_ENDED_KEEP_MS}, and a pane keeps at most {@link HOLD_ENDED_PANE_MAX} of them.
 //
 // The text is kept on disk in plain form (the file is 0600): the bridge must type it later. So the
@@ -274,12 +275,16 @@ export class HoldStore {
     return this.write({ ...known, state: "held", tries: counted ? known.tries + 1 : known.tries });
   }
 
-  /** The request closed without reaching the agent: the text stays for the phone's Resend. */
-  end(id: string, outcome: SendOutcome, reason?: SendReason): HeldEntry | null {
+  /**
+   * The request closed without reaching the agent: the text stays for the phone's Resend. `at` is the
+   * end time when it is not now: a budget that ran out while the bridge was down ended at its own
+   * `expiresAt` (protocol.ts `expireHoldsOnStart`), so the keep window counts from there.
+   */
+  end(id: string, outcome: SendOutcome, reason?: SendReason, at?: number): HeldEntry | null {
     const known = this.get(id);
     if (known === null) return null;
     const { reason: _old, ...rest } = known;
-    const ended: HeldEntry = { ...rest, state: "ended", outcome, endedAt: this.now() };
+    const ended: HeldEntry = { ...rest, state: "ended", outcome, endedAt: at ?? this.now() };
     return this.write(reason === undefined ? ended : { ...ended, reason });
   }
 

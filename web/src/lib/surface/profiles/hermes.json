@@ -67,7 +67,8 @@
     },
     "runningRows": [
       "^☤(?: ❯)?(?: |$)",
-      "^ {2}(?!❓|💻|🔐|🔑)\\S.*  \\((?: *\\d+\\.\\d+s|\\d+m\\d+s)(?: · [^()]+)?\\)$"
+      "^ {2}(?!❓|💻|🔐|🔑)\\S.*  \\((?: *\\d+\\.\\d+s|\\d+m\\d+s)(?: · [^()]+)?\\)$",
+      "^ ─ [^│]*…\\s+· (?:\\d+[hms] ?)+ │ "
     ],
     "answerPrompt": "^✎(?: ❯)?(?: |$)",
     "overlayRows": [
@@ -101,6 +102,33 @@
         "continuationIndent": 0,
         "maxDraftRows": 8,
         "maxTailRows": 16
+      },
+      {
+        "walk": "interior",
+        "top": {
+          "pattern": "^ ─ \\S.*? │ .*$",
+          "minCells": 8,
+          "column": 1
+        },
+        "prompt": {
+          "pattern": "^ ❯(?: (?<draft>.*))?$",
+          "column": 1
+        },
+        "bottom": {
+          "pattern": "^",
+          "column": 0,
+          "maxColumn": 3,
+          "open": true
+        },
+        "rows": "^(?: ─ \\S.*? │ .*| ❯(?: .*)?| {3}\\S.*|)$",
+        "placeholderPatterns": [
+          "^有什麼想問的？…$",
+          "^Try \"[^\"]+\"$",
+          "^Ctrl\\+C 中斷…$"
+        ],
+        "continuationIndent": 3,
+        "maxDraftRows": 8,
+        "maxTailRows": 0
       }
     ]
   },

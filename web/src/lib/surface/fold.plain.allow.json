@@ -642,5 +642,26 @@
     "rule": "web/src/lib/harness/pi/ask.ts:285 framelessFrame (skipped on a plain read in readPiFrame :234)",
     "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: none; with no rules and no status rows, numbered rows over a key-hint line are also what agent prose quoting the screen looks like.",
     "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "pi--v130-quiet-prompt-two-line-draft--w140.txt": {
+    "why": "An extension draws pi's editor with `❯` in column 0, and a draft typed with newlines lines up under it like a pointed list between two rules. Only the editor's own cursor, one reverse-video cell, proves the rows are the draft's lines (#722). A plain read has no cell, so the box stays a list.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/surface/cues.ts draftWrap / oneCaretCell (profile pi.json idle.frame.draftCaret)",
+    "propose": "Upstream: the cursor position in the read. Text only: none, a newline draft and a two-row menu under the glyph are the same rows.",
+    "effect": "SAFE SIDE: a newline draft under the glyph reads unreadable, so a send is refused, never typed into a dialog"
+  },
+  "pi--v130-quiet-prompt-three-line-draft--w140.txt": {
+    "why": "An extension draws pi's editor with `❯` in column 0, and a draft typed with newlines lines up under it like a pointed list between two rules. Only the editor's own cursor, one reverse-video cell, proves the rows are the draft's lines (#722). A plain read has no cell, so the box stays a list.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/surface/cues.ts draftWrap / oneCaretCell (profile pi.json idle.frame.draftCaret)",
+    "propose": "Upstream: the cursor position in the read. Text only: none, a newline draft and a two-row menu under the glyph are the same rows.",
+    "effect": "SAFE SIDE: a newline draft under the glyph reads unreadable, so a send is refused, never typed into a dialog"
+  },
+  "pi--v130-quiet-prompt-three-line-cursor-up--w140.txt": {
+    "why": "An extension draws pi's editor with `❯` in column 0, and a draft typed with newlines lines up under it like a pointed list between two rules. Only the editor's own cursor, one reverse-video cell, proves the rows are the draft's lines (#722). A plain read has no cell, so the box stays a list.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/surface/cues.ts draftWrap / oneCaretCell (profile pi.json idle.frame.draftCaret)",
+    "propose": "Upstream: the cursor position in the read. Text only: none, a newline draft and a two-row menu under the glyph are the same rows.",
+    "effect": "SAFE SIDE: a newline draft under the glyph reads unreadable, so a send is refused, never typed into a dialog"
   }
 }

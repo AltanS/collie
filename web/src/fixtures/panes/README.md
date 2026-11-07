@@ -3116,6 +3116,15 @@ this corpus. Recipes: [`hermes/CLARIFY_NOTES.md`](../../lib/harness/hermes/CLARI
 | `hermes--slash-popup` | `/mo` typed, grey auto-suggestion `a`, completion menu under the input | composer, draft `/mo` |
 | `hermes--model-picker` | `/model`, the model list; status slot blank, input still idle | picker, Ctrl+C card |
 | `hermes--palette` | Ctrl+P palette; status slot blank, input still idle | picker, Ctrl+C card |
+| `hermes--tui-idle-hint` | Ink TUI (`hermes --tui`), issue 549, a fresh session: status row ` ─ 就緒 │ … ─ ~/workspace` one column in, ` ❯ 有什麼想問的？…` under it, no rule rows. From NCheuk's plain-text capture of 2026-11-04 (no SGR); the two transcript rows above are invented and the rows are padded to one width | composer, hint read as an empty box, free |
+| `hermes--tui-idle-title` | The same once the session has a title: the status row ends in the title and ` ❯` is bare (Ink shows no hint after the first turn) | composer, empty, free |
+| `hermes--tui-idle-en` | The English idle screen of the issue body (MigueMercedes, Hermes 0.22.2): ` ─ ready │ …` over ` ❯ Try "explain this codebase"`; the shell row above is the capture's | composer, hint read as an empty box, free |
+| `hermes--tui-draft` | A one-line draft ` ❯ testing idle with draft` under the status row, no title (NCheuk, 2026-11-04) | composer, draft read back |
+| `hermes--tui-draft-title` | The same with a titled status row | composer, draft read back |
+| `hermes--tui-busy` | A turn running: ` ─ (⊙_⊙) formulating…   · 13m 32s │ …` over ` ❯ Ctrl+C 中斷…`. NCheuk's capture of 2026-11-03 (issue 549 and PR 661): plain text, 215 columns, transcript rows invented | composer, turn running, the busy hint no draft (a send is held) |
+| `hermes--tui-busy-echo` | The same with an echoed ` ❯ some earlier echoed command` row in the transcript above | same read: the lowest box wins |
+| `hermes--tui-busy-fresh` | A turn running in a fresh session, ` ─ ヽ(>∀<☆)☆ deliberating…  · 0s │ …` (NCheuk, 2026-11-04) | composer, turn running |
+| `hermes--tui-busy-title` | The same with a titled status row | composer, turn running |
 | `hermes--exited` | The shell after `/exit` | no input, no card |
 | `hermes--v0225-title-idle` | Hermes 0.22.5, issue 657: the session title sits in the top rule, `── Session Title ─`, over the `❯` row and a 120-cell bottom rule. Three rows only, from the reporter's report; the styling, the placeholder row and the bottom rule's width (Hermes draws it across the pane) come from `hermes--idle`, and the rows start in column 0 (the report's one-space indent is Markdown, and a leading space fails the column-0 anchors). Not a `herdr pane read` of ours | composer, no draft, free |
 | `hermes--clarify-choices` | One question, three choices and Other, `❯` on 1, countdown `(3547s)` | digits 1 to 4 |
@@ -3755,6 +3764,26 @@ neutral text of the same length (`(local) example-model • max`); nothing else 
 | Fixture | State | Reads as |
 | --- | --- | --- |
 | `pi--v150-core-permission-gate-no-cost--w200.txt` | `⚠️ Dangerous command:` over `chmod 777 gate-probe.txt`, `Allow?`, `→ Yes` / `No`, `↑↓ navigate  enter select  escape/ctrl+c cancel`; stats row `↑1.0k ↓45 0.4%/272k (auto)` with no cost | question ask, Yes / No and Cancel, walk |
+
+## pi with `❯` in column 0 of its own editor, a newline draft (issue 722)
+
+The reporter's extension keeps pi's editor and its two rules and puts `❯ ` in column 0 on the first input
+row, in the border colour; the rows under it keep two columns of lead. A draft typed with newlines then
+lines up under the glyph like a pointed list between two rules, and every send stopped at "Enter was not
+pressed". `pi--v150-gentle-quiet-two-line-draft.txt` is the screen of the report, plain text as the
+report card printed it (pi 1.5.0, herdr). The `pi--v130-quiet-prompt-*` captures are a repro of the same
+editor (an extension that subclasses `CustomEditor` and prefixes its rows), on pi 1.3.0, the version on
+the capture host, in a disposable 140 x 40 tmux server with `PI_SKIP_VERSION_CHECK=1` and no model
+configured, read with `tmux capture-pane -e -p`. Privacy: the install path in pi's no-model warning was
+replaced with neutral text of the same length; the working directory is a scratch path.
+
+| Fixture | State | What it shows |
+| --- | --- | --- |
+| `pi--v150-gentle-quiet-two-line-draft.txt` | `draft` | The report's screen: two widget boxes at column 138, blank rows, the rule, `❯ a`, `  Olá`, the rule. No styling, so no caret cell: the box stays a list, unreadable, never free |
+| `pi--v130-quiet-prompt-two-line-draft--w140.txt` | `draft` | `❯ a`, then `  Olá` with pi's caret cell (`ESC[7m` space) after it. Reads as the draft `a Olá` (`frame.draftCaret`) |
+| `pi--v130-quiet-prompt-three-line-draft--w140.txt` | `draft` | A third row, `  tudo bem`, the caret cell after it |
+| `pi--v130-quiet-prompt-three-line-cursor-up--w140.txt` | `draft` | The same draft after `Up Up`: the caret cell on the prompt row, after `a` |
+| `pi--v130-quiet-prompt-settings--w140.txt` | `dialog` | `/settings` over the same editor: a search field with its own caret cell, a `→` pointer and a key hint. Stays a dialog |
 
 ## omp 18.17.0, `/switch` and `/usage` on a phone (captured 2026-11-06, 120 columns by 40 rows, herdr 0.9.5)
 

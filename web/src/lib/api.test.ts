@@ -1288,11 +1288,17 @@ describe("cancelHeldSend (M56 spec 15)", () => {
     await expect(cancelHeldSend("req00001", "w1:p1")).rejects.toMatchObject({ status: 502 });
   });
 
-  it("never leaves this machine: a crew member's pane throws before any request", async () => {
-    const urls: string[] = [];
-    server.use(http.delete("/api/send/:id", ({ request }) => (urls.push(request.url), HttpResponse.json({ result: "cancelled" }))));
-    await expect(cancelHeldSend("req00001", "w1:p1", { host: "badger" })).rejects.toMatchObject({ status: 400 });
-    expect(urls).toEqual([]);
+  it("a crew member's pane goes through the pane route the lead forwards, never /api/send (issue 740)", async () => {
+    const local: string[] = [];
+    const forwarded: string[] = [];
+    server.use(
+      http.delete("/api/send/:id", ({ request }) => (local.push(request.url), HttpResponse.json({ result: "cancelled" }))),
+      http.delete("/api/pane/:pane/held", ({ request }) => (forwarded.push(request.url), HttpResponse.json({ result: "dismissed" }))),
+    );
+    await expect(cancelHeldSend("req00001", "w1:p1", { host: "badger" })).resolves.toEqual({ result: "dismissed" });
+    expect(local).toEqual([]);
+    expect(forwarded).toHaveLength(1);
+    expect(forwarded[0]).toMatch(/\/api\/pane\/w1%3Ap1\/held\?request=req00001&host=badger$/u);
   });
 });
 

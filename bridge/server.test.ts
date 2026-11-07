@@ -5,6 +5,7 @@ import { encodeStyledRegion, styledRegionLines } from "../web/src/lib/styled-reg
 
 import {
   afterPaneInput,
+  isHeldCancel,
   isPaneInput,
   isTopologyWrite,
   freeSpaceName,
@@ -5543,6 +5544,20 @@ describe("an input written to a pane makes its engine hot", () => {
     for (const path of ["/api/launch/recent/clear", "/api/launch/check", "/api/launchers", "/api/folders/star", "/api/pane/w1%3Ap1/reply", "/api/pane/w1%3Ap1/focus", "/api/pane/w1%3Ap1/upload"]) {
       expect(isTopologyWrite(path, "POST")).toBe(false);
     }
+  });
+
+  // Issue 740: the Cancel or Dismiss on a crew member's queued row rides the pane route. Only a DELETE
+  // ends a held send; any other method at `held` is answered 405 by the pane block.
+  test("isHeldCancel takes a DELETE at a pane's held route and nothing else", () => {
+    expect(isHeldCancel("/api/pane/w1%3Ap1/held", "DELETE")).toBe(true);
+    for (const method of ["GET", "HEAD", "POST", "PUT"]) expect(isHeldCancel("/api/pane/w1%3Ap1/held", method)).toBe(false);
+    expect(isHeldCancel("/api/pane/w1%3Ap1/held/req00001", "DELETE")).toBe(false);
+    expect(isHeldCancel("/api/pane/w1%3Ap1", "DELETE")).toBe(false);
+    expect(isHeldCancel("/api/pane/w1%3Ap1/pins", "DELETE")).toBe(false);
+    expect(isHeldCancel("/api/send/req00001", "DELETE")).toBe(false);
+    // The gate asks for an authorised device on every method at `held`, a GET included.
+    expect(paneGateLevel("held", "GET")).toBe("write");
+    expect(paneGateLevel("held", "DELETE")).toBe("write");
   });
 
   test("afterPaneInput tells the engine only when the write landed, and hands the response back", () => {

@@ -154,7 +154,7 @@ interface Compiled {
   readonly hint: ReadonlySet<string> | null;
   /** The placeholder's colours (`idle.placeholders.fg`); null for a profile that names none. */
   readonly placeholderFg: ReadonlySet<string> | null;
-  /** The placeholder's shapes (`idle.placeholders.patterns`); empty for a profile that names none. */
+  /** The placeholder's shapes (`idle.placeholders.patterns` and the layout's own); empty when neither names one. */
   readonly placeholderPatterns: readonly RegExp[];
 }
 
@@ -193,7 +193,8 @@ function compile(idle: IdleProfile): Compiled {
     },
     hint: idle.inlineHint === undefined ? null : new Set(idle.inlineHint.fg),
     placeholderFg: idle.placeholders.fg === undefined ? null : new Set(idle.placeholders.fg),
-    placeholderPatterns: (idle.placeholders.patterns ?? []).map((source) => new RegExp(source, "u")),
+    // The profile's shapes hold for every layout; a layout's own (`idle.frame.placeholderPatterns`) for it alone.
+    placeholderPatterns: [...(idle.placeholders.patterns ?? []), ...(idle.frame.placeholderPatterns ?? [])].map((source) => new RegExp(source, "u")),
   };
   compiledByIdle.set(idle, compiled);
   return compiled;
