@@ -47,7 +47,8 @@
       "prefixes": [
         "Ask Mcode to do anything"
       ],
-      "sgr": 2
+      "sgr": 2,
+      "anyText": true
     },
     "volatile": {
       "above": {
