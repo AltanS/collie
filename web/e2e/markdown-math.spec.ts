@@ -157,9 +157,9 @@ test.describe("a math engine under the service worker", () => {
       const cache = await caches.open("collie-math");
       return (await cache.keys()).map((request) => new URL(request.url).pathname);
     });
-    expect(cached.some((path) => /^\/math\/katex\/katex-[^/]+\.js$/.test(path))).toBe(true);
-    expect(cached.some((path) => /^\/math\/katex\/katex-[^/]+\.css$/.test(path))).toBe(true);
-    expect(cached.some((path) => /^\/math\/katex\/KaTeX_Main-Regular-[^/]+\.woff2$/.test(path))).toBe(true);
+    expect(cached.some((path) => /^\/math\/katex\/katex\.js$/.test(path))).toBe(true);
+    expect(cached.some((path) => /^\/math\/katex\/katex\.css$/.test(path))).toBe(true);
+    expect(cached.some((path) => /^\/math\/katex\/KaTeX_Main-Regular\.woff2$/.test(path))).toBe(true);
 
     const fromWorker: boolean[] = [];
     page.on("response", (response) => {
