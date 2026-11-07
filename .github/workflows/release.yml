@@ -211,6 +211,9 @@ jobs:
           esac
 
           cp -R web/dist "$stage/web/dist"
+          # The math engines are not in any install (ADR 0132): they are the `collie-math-<version>`
+          # asset the host downloads on a tap. The release job proves this folder is gone.
+          rm -rf "$stage/web/dist/math"
           # The files the bridge and the installer's closing text read at run time. `herdr-plugin.toml`
           # is bridge/root.ts's MARKER and the canonical version; `package.json` is what
           # bridge/index.ts reads `currentVersion` from — without it the bridge crashes at boot.
@@ -484,7 +487,51 @@ jobs:
           set -euo pipefail
           version="${GITHUB_REF_NAME#v}"
           nix develop --command bash -c "cd web && bun install --frozen-lockfile && bun run build"
-          tar -czf "$RUNNER_TEMP/assets/web-dist-$version.tar.gz" -C web dist
+          tar -czf "$RUNNER_TEMP/assets/web-dist-$version.tar.gz" --exclude='dist/math' -C web dist
+
+      # THE MATH PACK (ADR 0132). Both engines, every file under `math/`, from this job's build, as a
+      # ustar archive with sorted names, owner 0 and a fixed mtime, so the same build makes the same
+      # bytes. It is listed in the manifest's `extras` with role `math-pack`; the host fetches it only
+      # when someone taps "Download the math engines" in Settings, and checks it against that entry.
+      - name: Build the math pack
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          tar --format=ustar --sort=name --owner=0 --group=0 --numeric-owner --mtime=@0 \
+            -cf - -C web/dist math | gzip -9n > "$RUNNER_TEMP/assets/collie-math-$version.tar.gz"
+          ls -l "$RUNNER_TEMP/assets/collie-math-$version.tar.gz"
+
+      # No install carries the engines, and every install finds its own in the pack. Every payload
+      # (each tarball, the Windows zip when there is one) and the web-dist asset is unpacked and read:
+      # a `web/dist/math` left in one fails the release, and so does an engine file its bundle names
+      # that the pack lacks. The payloads build `web/dist` on their own runners, so this is the step
+      # that makes "the pack fits every payload" a fact. `scripts/math-pack.test.ts` pins the rules.
+      - name: Check the math pack against every payload
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          work="$RUNNER_TEMP/math-check"
+          mkdir -p "$work"
+          dists=()
+          for f in "$RUNNER_TEMP"/assets/collie-"$version"-*.tar.gz; do
+            d="$work/$(basename "$f" .tar.gz)"
+            mkdir -p "$d"
+            tar -xzf "$f" -C "$d"
+            dists+=("$d"/*/web/dist)
+          done
+          for f in "$RUNNER_TEMP"/assets/*.zip; do
+            [ -e "$f" ] || continue
+            d="$work/$(basename "$f" .zip)"
+            mkdir -p "$d"
+            unzip -q "$f" -d "$d"
+            dists+=("$d"/*/web/dist)
+          done
+          mkdir -p "$work/web-dist"
+          tar -xzf "$RUNNER_TEMP/assets/web-dist-$version.tar.gz" -C "$work/web-dist"
+          dists+=("$work/web-dist/dist")
+          nix develop --command bun scripts/math-pack.ts check \
+            --pack "$RUNNER_TEMP/assets/collie-math-$version.tar.gz" "${dists[@]}"
+          rm -rf "$work"
 
       - name: Write the integrity manifest
         run: |
@@ -518,6 +565,12 @@ jobs:
             printf '      "role": "web-bundle",\n'
             printf '      "size": %s,\n' "$(wc -c < "web-dist-$version.tar.gz" | tr -d ' ')"
             printf '      "sha256": "%s"\n' "$(sha256sum "web-dist-$version.tar.gz" | cut -d' ' -f1)"
+            printf '    },\n'
+            printf '    {\n'
+            printf '      "name": "collie-math-%s.tar.gz",\n' "$version"
+            printf '      "role": "math-pack",\n'
+            printf '      "size": %s,\n' "$(wc -c < "collie-math-$version.tar.gz" | tr -d ' ')"
+            printf '      "sha256": "%s"\n' "$(sha256sum "collie-math-$version.tar.gz" | cut -d' ' -f1)"
             printf '    }\n'
             printf '  ]\n'
             printf '}\n'

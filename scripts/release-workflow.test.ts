@@ -189,3 +189,52 @@ describe("release.yml: an Edge tag (M60 spec 01)", () => {
     expect(notes?.run).toContain(`git describe --tags --abbrev=0 --match 'v*' "\${exclude[@]}" "\${GITHUB_REF_NAME}^"`);
   });
 });
+
+// ADR 0132: the math engines are one release asset the host downloads, and no install carries them.
+describe("release.yml: the math pack", () => {
+  const steps = job("release").steps ?? [];
+  const step = (name: string): Step => {
+    const found = steps.find((s) => s.name === name);
+    if (found === undefined) throw new Error(`the release job has no step ${name}`);
+    return found;
+  };
+  const at = (name: string): number => steps.findIndex((s) => s.name === name);
+
+  test("every payload drops web/dist/math after it copies web/dist, and so does the Windows script", () => {
+    const build = scripts(job("payload"));
+    expect(build.indexOf('rm -rf "$stage/web/dist/math"')).toBeGreaterThan(build.indexOf('cp -R web/dist "$stage/web/dist"'));
+    const ps1 = readFileSync(join(import.meta.dir, "build-windows-payload.ps1"), "utf8");
+    expect(ps1.indexOf('Join-Path $stage "web\\dist\\math"')).toBeGreaterThan(ps1.indexOf('Copy-Item -Recurse -LiteralPath (Join-Path $repo "web\\dist")'));
+  });
+
+  test("the web-dist asset leaves the engines out", () => {
+    expect(step("Build and package web/dist").run).toContain(`"$RUNNER_TEMP/assets/web-dist-$version.tar.gz" --exclude='dist/math' -C web dist`);
+  });
+
+  test("the pack is built from the release job's own web/dist, reproducibly, under its one name", () => {
+    const run = step("Build the math pack").run ?? "";
+    expect(run).toContain("--format=ustar --sort=name --owner=0 --group=0 --numeric-owner --mtime=@0");
+    expect(run).toContain('-cf - -C web/dist math | gzip -9n > "$RUNNER_TEMP/assets/collie-math-$version.tar.gz"');
+    expect(at("Build the math pack")).toBeGreaterThan(at("Build and package web/dist"));
+  });
+
+  test("the tested check reads every payload, the Windows zip and the web-dist asset before the manifest", () => {
+    const run = step("Check the math pack against every payload").run ?? "";
+    expect(run).toContain('"$RUNNER_TEMP"/assets/collie-"$version"-*.tar.gz');
+    expect(run).toContain('"$RUNNER_TEMP"/assets/*.zip');
+    expect(run).toContain('web-dist-$version.tar.gz');
+    expect(run).toContain("bun scripts/math-pack.ts check");
+    expect(at("Check the math pack against every payload")).toBeGreaterThan(at("Build the math pack"));
+    expect(at("Check the math pack against every payload")).toBeLessThan(at("Write the integrity manifest"));
+  });
+
+  test("the manifest lists the pack under extras with role math-pack, its size and its sha256", () => {
+    const run = step("Write the integrity manifest").run ?? "";
+    expect(run).toContain(`printf '      "name": "collie-math-%s.tar.gz",\\n' "$version"`);
+    expect(run).toContain(`printf '      "role": "math-pack",\\n'`);
+    expect(run).toContain(`"$(wc -c < "collie-math-$version.tar.gz" | tr -d ' ')"`);
+    expect(run).toContain(`"$(sha256sum "collie-math-$version.tar.gz" | cut -d' ' -f1)"`);
+    // Every .tar.gz gets a sidecar, the pack included.
+    expect(run).toContain("for f in *.tar.gz *.manifest.json; do");
+  });
+});

@@ -52,6 +52,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **On a tablet one pane fills the screen beside the sidebar.** On an 11-inch iPad in landscape and a two-screen phone held sideways, a pane took half the room and an empty "Add a pane" took the other half, so the chat was barely wider than on a phone. On an iPad in portrait, closing the sidebar made the chat narrower. A pane is now never narrower than 440px, so these screens show one pane at the full width: 860px on the iPad in landscape, 794px on the two-screen phone, 764px on the iPad in portrait with the sidebar closed. Two panes side by side need a wider screen, or the sidebar closed. A phone looks as before.
 - **On a foldable or a small tablet the sidebar is narrower.** On a two-screen phone about 700px wide the sidebar took 280px, 40% of the screen. From 600px to 899px wide it is now 264px, so the chat gets 16px more: 441px on the two-screen phone, 480px on an iPad mini in portrait. Every row and button in the sidebar keeps its size. A larger screen and a phone look as before.
 
+### Packaging
+
+- **The math engines are a download of their own, not part of the install.** KaTeX and MathJax ship as one release asset, `collie-math-<version>.tar.gz`, about 4 MB, listed in the release manifest with role `math-pack`, its size and its sha256. No install tarball, no Windows zip and no `web-dist` asset carries `web/dist/math`, and a release whose payload names an engine file the pack lacks does not publish (ADR 0132).
+
 ## [1.28.0] - 2026-11-06
 
 ### Added
