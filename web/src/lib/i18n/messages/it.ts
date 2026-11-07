@@ -1341,6 +1341,8 @@ export const it: Dictionary = {
   "harnessBar.effort": "Sforzo",
   "harnessBar.compact": "Compatta",
   "harnessBar.resume": "Riprendi",
+  "harnessBar.plan": "Piano",
+  "harnessBar.history": "Cronologia",
   "harnessBar.tree": "Albero",
   "harnessBar.confirmAria": "Tocca di nuovo per confermare {command}",
   "belt.jobs.label": "Job {count}",

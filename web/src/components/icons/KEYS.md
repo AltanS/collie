@@ -6,7 +6,7 @@ Every glyph the app draws is named by what it means. A theme's `glyphs` picks th
 them (ADR 0137). A family with no fitting glyph for a key draws the lucide one, shown as `(lucide)`.
 Phosphor's three sets share one map; the fill and duotone files add `-fill` and `-duotone`.
 
-326 keys.
+328 keys.
 
 Phosphor Fill draws these keys in the regular weight, so a cross stays a cross and an empty or
 not-started state stays empty: `action-check`, `action-x`, `answered`, `clear`, `close`, `confirm`, `copied`, `copy-failed`, `dismiss`, `done`, `mod-icon-check`, `mod-icon-x`, `mod-step-done`, `mod-step-failed`, `mod-step-todo`, `ok`, `plan-done`, `plan-pending`, `remove`, `selected`, `sent-ok`, `update-step-done`, `update-step-failed`, `update-step-skipped`, `voice-setup`, `zoom-out`.
@@ -29,7 +29,9 @@ not-started state stays empty: `action-check`, `action-x`, `answered`, `clear`, 
 | `action-x` | a program action drawn as an X | `X` | `x` | `xmark` |
 | `harness-compact` | compact the context (agent command) | `Shrink` | `arrows-in` | `compress` |
 | `harness-effort` | set effort (agent command) | `Gauge` | `gauge` | `dashboard-speed` |
+| `harness-history` | branch from an earlier prompt (agent command) | `History` | `clock-counter-clockwise` | `clock-rotate-right` |
 | `harness-model` | pick the model (agent command) | `Cpu` | `cpu` | `cpu` |
+| `harness-plan` | plan mode on, off or read (agent command) | `ListTree` | `tree-view` | `view-structure-down` |
 | `harness-resume` | resume an earlier session (agent command) | `History` | `clock-counter-clockwise` | `clock-rotate-right` |
 | `harness-tree` | session tree (agent command) | `ListTree` | `tree-view` | `view-structure-down` |
 | `jobs` | running jobs | `Timer` | `timer` | `timer` |

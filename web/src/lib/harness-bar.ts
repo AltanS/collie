@@ -249,6 +249,14 @@ export function stopFor(pane: Pick<AgentView, "canStop"> | undefined | null): bo
 
 // A Map for the same reason the command catalog uses one: the key tested against it is Herdr's
 // agent string, so an object lookup would answer for inherited names that ship no bar at all.
+// ── mcode (MiniMax Code) ─────────────────────────────────────────────────────
+const MCODE: readonly HarnessBarItem[] = [
+  { id: "plan", label: "harnessBar.plan", command: "/plan" },
+  { id: "compact", label: "harnessBar.compact", command: "/compact" },
+  { id: "history", label: "harnessBar.history", command: "/history" },
+  { id: "resume", label: "harnessBar.resume", command: "/sessions" },
+];
+
 const BARS = new Map<string, readonly HarnessBarItem[]>([
   ["claude", CLAUDE],
   ["codex", CODEX],
@@ -260,6 +268,7 @@ const BARS = new Map<string, readonly HarnessBarItem[]>([
   // Both names, as the catalog files them: canonicalAgent() folds neither onto the other.
   ["agy", AGY],
   ["antigravity", AGY],
+  ["mcode", MCODE],
 ]);
 
 /** The agent names a shipped bar is filed under — pinned in the tests. */

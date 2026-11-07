@@ -1405,6 +1405,8 @@ export const zhTW: Dictionary = {
   "harnessBar.effort": "Effort",
   "harnessBar.compact": "精簡",
   "harnessBar.resume": "繼續",
+  "harnessBar.plan": "計畫",
+  "harnessBar.history": "歷史",
   "harnessBar.tree": "樹狀圖",
   "harnessBar.confirmAria": "再次輕點以確認 {command}",
   "belt.jobs.label": "工作 {count}",
