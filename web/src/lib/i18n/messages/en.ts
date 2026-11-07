@@ -3180,25 +3180,7 @@ export type Messages = typeof en;
  * already carries, so the list cannot outlive its translations. Never a way to skip translating a
  * key for good: a key stays here only between a feature and its translation pass.
  */
-export const PENDING_TRANSLATION = [
-  "settings.appearance.math.download",
-  "settings.appearance.math.downloadNote",
-  "settings.appearance.math.downloading",
-  "settings.appearance.math.progress",
-  "settings.appearance.math.progressAria",
-  "settings.appearance.math.readOnly",
-  "settings.appearance.math.unavailable.devBuild",
-  "settings.appearance.math.unavailable.noPack",
-  "settings.appearance.math.error.downloadFailed",
-  "settings.appearance.math.error.lowSpace",
-  "settings.appearance.math.error.hashMismatch",
-  "settings.appearance.math.error.badPack",
-  "settings.appearance.math.remove",
-  "settings.appearance.math.removeNote",
-  "settings.appearance.math.remove.confirm",
-  "settings.appearance.math.remove.cancel",
-  "settings.appearance.math.remove.action",
-] as const satisfies readonly MessageKey[];
+export const PENDING_TRANSLATION = [] as const satisfies readonly MessageKey[];
 
 /** A key a bundle may leave out until the translation pass. */
 export type PendingKey = (typeof PENDING_TRANSLATION)[number];
