@@ -1,5 +1,5 @@
-import type { ComponentProps } from "react";
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { useState, type ComponentProps } from "react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { createMemoryRouter, RouterProvider } from "react-router";
@@ -141,11 +141,11 @@ describe("Composer layout=box", () => {
     expect(ghost.className).toMatch(/bg-secondary/);
     expect(ghost.className).not.toMatch(/bg-primary/);
     // The bottom row reads Attach at the left, the field's own space growing, then the small mic
-    // and Send at the right.
+    // and Send at the right (column 3 is Expand's, where a pane view is there to cover).
     const attach = screen.getByRole("button", { name: /attach file/i });
     expect(attach.className).toMatch(/col-start-1/);
-    expect(ghost.className).toMatch(/col-start-3/);
-    expect(primary().className).toMatch(/col-start-4/);
+    expect(ghost.className).toMatch(/col-start-4/);
+    expect(primary().className).toMatch(/col-start-5/);
   });
 
   it("closes when the draft is emptied with the focus still in the field, and keeps the same field", async () => {
@@ -209,7 +209,7 @@ describe("Composer layout=box", () => {
     // Open, the field is as tall as its text: nothing reserves three lines.
     expect(field().className).not.toMatch(/min-h-/);
     // Attach keeps its edge: the first cell of the bottom row, the space growing after it.
-    expect(box.className).toMatch(/grid-cols-\[auto_1fr_auto_auto\]/);
+    expect(box.className).toMatch(/grid-cols-\[auto_1fr_auto_auto_auto\]/);
     expect(attach.className).toMatch(/col-start-1/);
     expect(attach.className).toMatch(/row-start-3/);
   });
@@ -241,10 +241,10 @@ describe("Composer layout=box", () => {
     expect(field().className).toMatch(/col-start-2/);
     expect(attach.className).toMatch(/col-start-3/);
     await user.type(field(), "a");
-    // Open: [Send][mic][space][Attach], Attach still at the right edge.
+    // Open: [Send][mic][Expand][space][Attach], Attach still at the right edge.
     expect(primary().className).toMatch(/col-start-1/);
     expect(document.querySelector<HTMLElement>('[data-slot="composer-mic-draft"]')!.className).toMatch(/col-start-2/);
-    expect(attach.className).toMatch(/col-start-4/);
+    expect(attach.className).toMatch(/col-start-5/);
   });
 
   describe("the change of shape is played", () => {
@@ -310,5 +310,105 @@ describe("Composer layout=box", () => {
       expect(transforms().length).toBeGreaterThan(0);
       for (const transform of transforms()) expect(transform).toMatch(/^translateX/);
     });
+  });
+});
+
+// THE FULLSCREEN EDITOR (Altan, 2026-11-08): Expand in the open row opens the same draft over the pane
+// view; Collapse, Send, Escape and a pane switch close it, and the draft is never copied or lost.
+describe("Composer layout=box, the fullscreen editor", () => {
+  let area: HTMLElement;
+  beforeEach(() => {
+    area = document.createElement("div");
+    document.body.append(area);
+  });
+  afterEach(() => area.remove());
+
+  /** A composer whose pane can be switched, as a pane switch keeps the composer mounted. */
+  function Switchable() {
+    const [paneId, setPaneId] = useState("w1:p1");
+    return (
+      <>
+        <button type="button" onClick={() => setPaneId("w1:p2")}>
+          switch pane
+        </button>
+        <Composer {...baseProps({ paneId, layout: "box", expandArea: area })} />
+      </>
+    );
+  }
+  function renderSwitchable() {
+    const router = createMemoryRouter([{ path: "/", element: <Switchable /> }]);
+    render(<RouterProvider router={router} />);
+  }
+  const expand = () => screen.queryByRole("button", { name: "Expand" });
+  const layer = () => document.querySelector<HTMLElement>('[data-slot="composer-expanded"]');
+  const layerField = () => layer()!.querySelector("textarea")!;
+
+  it("offers Expand in the open row only, between the space and the small mic", async () => {
+    const user = userEvent.setup();
+    renderComposer({ layout: "box", expandArea: area });
+    await readyBox();
+    expect(expand()).toBeNull();
+    await user.type(field(), "a");
+    expect(expand()!.className).toMatch(/col-start-3/);
+    expect(expand()!.className).toMatch(/row-start-3/);
+  });
+
+  it("offers no Expand where there is no pane view to cover", async () => {
+    const user = userEvent.setup();
+    renderComposer({ layout: "box" });
+    await readyBox();
+    await user.type(field(), "a");
+    expect(expand()).toBeNull();
+  });
+
+  it("opens the same draft with the focus and the caret, and a change there is the composer's draft", async () => {
+    const user = userEvent.setup();
+    renderComposer({ layout: "box", expandArea: area });
+    await readyBox();
+    await user.type(field(), "hello world");
+    field().setSelectionRange(5, 5);
+    await user.click(expand()!);
+    expect(layerField()).toHaveValue("hello world");
+    expect(layerField()).toHaveFocus();
+    expect(layerField().selectionStart).toBe(5);
+    await user.type(layerField(), " there", { initialSelectionStart: 11, initialSelectionEnd: 11 });
+    await user.click(screen.getByRole("button", { name: "Collapse" }));
+    expect(layer()).toBeNull();
+    expect(field()).toHaveValue("hello world there");
+    expect(field()).toHaveFocus();
+  });
+
+  it("closes on Escape and keeps the draft", async () => {
+    const user = userEvent.setup();
+    renderComposer({ layout: "box", expandArea: area });
+    await readyBox();
+    await user.type(field(), "keep me");
+    await user.click(expand()!);
+    await user.keyboard("{Escape}");
+    expect(layer()).toBeNull();
+    expect(field()).toHaveValue("keep me");
+  });
+
+  it("sends from the layer through the composer's own send, and closes", async () => {
+    const onSent = vi.fn();
+    const user = userEvent.setup();
+    renderComposer({ layout: "box", expandArea: area, onSent });
+    await readyBox();
+    await user.type(field(), "ship it");
+    await user.click(expand()!);
+    await user.click(within(layer()!).getByRole("button", { name: "Send" }));
+    expect(layer()).toBeNull();
+    await waitFor(() => expect(onSent).toHaveBeenCalled());
+  });
+
+  it("closes on a pane switch", async () => {
+    const user = userEvent.setup();
+    renderSwitchable();
+    await readyBox();
+    await user.type(field(), "draft");
+    await user.click(expand()!);
+    expect(layer()).not.toBeNull();
+    await user.click(screen.getByRole("button", { name: "switch pane" }));
+    expect(layer()).toBeNull();
   });
 });

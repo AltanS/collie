@@ -417,6 +417,8 @@ export const en = {
   "composer.voice.sendToHostAria": "Send the recording to the host to transcribe",
   "composer.mic.discardAria": "Discard recording",
   "composer.attach.aria": "Attach file",
+  "composer.expand": "Expand",
+  "composer.collapse": "Collapse",
   "composer.attach.title": "Attach",
   "composer.attach.photos": "Photos",
   "composer.attach.files": "Files",
@@ -3184,7 +3186,7 @@ export type Messages = typeof en;
  * already carries, so the list cannot outlive its translations. Never a way to skip translating a
  * key for good: a key stays here only between a feature and its translation pass.
  */
-export const PENDING_TRANSLATION = [] as const satisfies readonly MessageKey[];
+export const PENDING_TRANSLATION = ["composer.expand", "composer.collapse"] as const satisfies readonly MessageKey[];
 
 /** A key a bundle may leave out until the translation pass. */
 export type PendingKey = (typeof PENDING_TRANSLATION)[number];

@@ -3438,6 +3438,8 @@ export function AgentChat({
                       : undefined
                   }
                   draftNoticeSlot={draftNoticeSlot}
+                  // The fullscreen editor covers the reading area down to the composer.
+                  expandArea={readingArea}
                   floatingHint={paneNav.hint}
                 />
                 )}

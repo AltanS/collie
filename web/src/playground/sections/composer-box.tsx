@@ -10,7 +10,7 @@
 //
 // DEV-ONLY, unreachable from the app entry.
 
-import { useEffect, useRef, useState } from "react";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { createMemoryRouter, RouterProvider } from "react-router";
 
 import { Composer } from "@/components/composer";
@@ -87,6 +87,8 @@ interface CaseDef {
   focused?: boolean;
   /** Settings -> Hand. Absent is the right hand. */
   hand?: "left";
+  /** Open the fullscreen editor after mount, as a tap on Expand does. */
+  expanded?: boolean;
 }
 
 const CASES: readonly CaseDef[] = [
@@ -146,6 +148,16 @@ const CASES: readonly CaseDef[] = [
     draft: "Make the tab a folder tab",
     hand: "left",
   },
+  {
+    n: 8,
+    title: "Fullscreen editor",
+    reach: "type a long reply, then tap Expand (the diagonal arrows) in the open row.",
+    note: "The same draft over the pane view, from the top of the reading area to the bottom of the box: the field fills it with no row cap, Collapse at the top right, Send at the bottom right. Collapse or Escape returns to the box with the draft and the caret where they were.",
+    surface: IDLE,
+    draft:
+      "Make the tab a folder tab.\n\nThen check the settings page for the same corner, and look at how the belt reads once the box is open. The belt should not move when the box grows, and the buttons should not drop from the top.\n\nAfter that, run the gates: both typechecks, the lint and the composer suites. Then take the shots at 390 by 844 in the light theme, both hands, at rest and open.\n\nTell me what changed, with the commit and the test counts, and leave the branch unpushed until I have looked at it on the phone.",
+    expanded: true,
+  },
 ];
 
 function NumberBadge({ n }: { n: number }) {
@@ -159,9 +171,40 @@ function NumberBadge({ n }: { n: number }) {
   );
 }
 
+/** The card's reading-area stand-in, handed past the memory router, which is built once. */
+const ExpandArea = createContext<HTMLElement | null>(null);
+
+/** The real composer on the card's pane, with the fullscreen editor's area read from the card. */
+function BoxComposer({ def, paneId }: { def: CaseDef; paneId: string }) {
+  const area = useContext(ExpandArea);
+  return (
+    <Composer
+      paneId={paneId}
+      agent="claude"
+      isShell={false}
+      gone={false}
+      readOnly={false}
+      surface={def.surface}
+      stopOffered={def.surface.turn === "running"}
+      text="pane output"
+      terminalDraft={null}
+      rawTerminalDraft={null}
+      prefs={PREFS}
+      display={{ open: false, onToggle: () => {} }}
+      onSent={() => {}}
+      layout="box"
+      hand={def.hand ?? "right"}
+      expandArea={area}
+      screen={{ on: false, onToggle: () => {} }}
+    />
+  );
+}
+
 function BoxPhone({ def, speech }: { def: CaseDef; speech: boolean }) {
   const paneId = `composer-box:${String(def.n)}`;
   const host = useRef<HTMLDivElement>(null);
+  // The card's stand-in for the reading area: the fullscreen editor covers it down to the box.
+  const [area, setArea] = useState<HTMLDivElement | null>(null);
   useEffect(() => {
     const stamp = () => markLive(paneId);
     stamp();
@@ -174,6 +217,12 @@ function BoxPhone({ def, speech }: { def: CaseDef; speech: boolean }) {
     const frame = requestAnimationFrame(() => host.current?.querySelector("textarea")?.focus());
     return () => cancelAnimationFrame(frame);
   }, [def.focused, speech]);
+  // The tap on Expand, taken once for you when the box has been drawn open with Expand in it.
+  useEffect(() => {
+    if (def.expanded !== true || !speech || area === null) return;
+    const frame = requestAnimationFrame(() => host.current?.querySelector<HTMLButtonElement>('[data-slot="composer-expand"]')?.click());
+    return () => cancelAnimationFrame(frame);
+  }, [def.expanded, speech, area]);
   const [router] = useState(() => {
     if (def.draft !== undefined) saveDraft(undefined, paneId, def.draft);
     return createMemoryRouter(
@@ -182,24 +231,7 @@ function BoxPhone({ def, speech }: { def: CaseDef; speech: boolean }) {
           path: "/",
           element: (
             <ChromeBlock>
-              <Composer
-                paneId={paneId}
-                agent="claude"
-                isShell={false}
-                gone={false}
-                readOnly={false}
-                surface={def.surface}
-                stopOffered={def.surface.turn === "running"}
-                text="pane output"
-                terminalDraft={null}
-                rawTerminalDraft={null}
-                prefs={PREFS}
-                display={{ open: false, onToggle: () => {} }}
-                onSent={() => {}}
-                layout="box"
-                hand={def.hand ?? "right"}
-                screen={{ on: false, onToggle: () => {} }}
-              />
+              <BoxComposer def={def} paneId={paneId} />
             </ChromeBlock>
           ),
         },
@@ -210,10 +242,12 @@ function BoxPhone({ def, speech }: { def: CaseDef; speech: boolean }) {
   return (
     <div ref={host}>
       <PhoneMock>
-        <div className="h-16 bg-background px-3 pt-2 font-mono text-[11px] text-muted-foreground">
+        <div ref={setArea} className="h-16 bg-background px-3 pt-2 font-mono text-[11px] text-muted-foreground">
           The review is done. The build is live on 8788.
         </div>
-        <RouterProvider router={router} />
+        <ExpandArea.Provider value={area}>
+          <RouterProvider router={router} />
+        </ExpandArea.Provider>
       </PhoneMock>
     </div>
   );
@@ -246,6 +280,7 @@ export function ComposerBoxSection() {
         <BoxCard state="composer-box-working" def={CASES[4]!} speech={speech} />
         <BoxCard state="composer-box-left-rest" def={CASES[5]!} speech={speech} />
         <BoxCard state="composer-box-left-one-line" def={CASES[6]!} speech={speech} />
+        <BoxCard state="composer-box-expanded" def={CASES[7]!} speech={speech} />
       </Group>
     </Section>
   );

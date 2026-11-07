@@ -1,8 +1,8 @@
 import { forwardRef, useContext, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
+import { createPortal, flushSync } from "react-dom";
 import type { ChangeEvent, ClipboardEvent, CSSProperties, MouseEvent, ReactNode } from "react";
 import { useRevalidator } from "react-router";
-import { ArrowUp, Check, FileText, Image, Keyboard, ListEnd, ListTodo, Loader2, Mic, Monitor, Navigation, Paperclip, Pencil, Plus, Send, Settings2, Slash, Square, Terminal, TriangleAlert, X, Zap } from "lucide-react";
+import { ArrowUp, Check, FileText, Image, Keyboard, ListEnd, ListTodo, Loader2, Maximize2, Mic, Monitor, Navigation, Paperclip, Pencil, Plus, Send, Settings2, Slash, Square, Terminal, TriangleAlert, X, Zap } from "lucide-react";
 
 import { StatusDot } from "@/components/status-badge";
 import { applyDraftFontSize, fontStack, inputFocusZoomsPage, reportOfferOf, sentSuggestionsOf } from "@/hooks/use-display-prefs";
@@ -49,6 +49,7 @@ import { AnchoredMenu } from "@/components/ui/anchored-menu";
 import { WalkyAimStrip, WalkyHeldStrip, WalkyNoteStrip } from "@/components/walky-composer-strip";
 import { WalkyIcon } from "@/components/walky-icon";
 import { useFlip } from "@/hooks/use-flip";
+import { ExpandedEditor } from "@/components/composer-expanded";
 import { useVisibleHeight } from "@/hooks/use-visible-height";
 import { draftCapPx } from "@/lib/draft-cap";
 import { useLongPress } from "@/hooks/use-long-press";
@@ -285,6 +286,13 @@ interface ComposerProps {
    */
   draftNoticeSlot?: HTMLElement | null;
 
+  /**
+   * The pane's reading area (the mirror or the Chat stream), which the fullscreen editor covers down
+   * to this composer's chrome block (components/composer-expanded.tsx). Absent, the open box shows no
+   * Expand button: a composer mounted alone has no pane view to cover.
+   */
+  expandArea?: HTMLElement | null;
+
   /** EXPERIMENT (operator, 2026-09-23): the Changes pill on the belt's pinned block, beside the
    *  switcher mark (actions-row.tsx's `changes`). Absent when the pane reports no folder. */
   changesPill?: { onClick: () => void; label: string };
@@ -504,8 +512,17 @@ interface ClearedDraft {
 }
 
 
+/** Focus `to` with the caret (or the selection) `from` held, so a draft moved between fields keeps its place. */
+function moveCaret(from: HTMLTextAreaElement | null, to: HTMLTextAreaElement | null) {
+  if (to === null) return;
+  const start = from?.selectionStart ?? to.value.length;
+  const end = from?.selectionEnd ?? start;
+  to.focus();
+  to.setSelectionRange(start, end);
+}
+
 export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
-  { paneId, instance, surface, starting = false, unreachableNote, scope, stopOffered = false, agent, canSteer, returnedDraft = false, isShell, cwd, gone, readOnly, composing, onAnswerDialog, dialogCard = false, text, terminalDraft, rawTerminalDraft, prefs, display, onSent, onOpenMessages, held: heldRows, chatEntries, pullHandle, draftNoticeSlot, changesPill, zoomPill, stale, hand = "right", layout = "field", aboveBelt, floatingHint, screen, todos, subagents, jobs, pins },
+  { paneId, instance, surface, starting = false, unreachableNote, scope, stopOffered = false, agent, canSteer, returnedDraft = false, isShell, cwd, gone, readOnly, composing, onAnswerDialog, dialogCard = false, text, terminalDraft, rawTerminalDraft, prefs, display, onSent, onOpenMessages, held: heldRows, chatEntries, pullHandle, draftNoticeSlot, expandArea, changesPill, zoomPill, stale, hand = "right", layout = "field", aboveBelt, floatingHint, screen, todos, subagents, jobs, pins },
   ref,
 ) {
   const revalidator = useRevalidator();
@@ -672,6 +689,13 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
    * The in-memory draft is untouched: a false positive costs one draft its ability to survive the OS
    * killing the PWA, which is a cheap price for never storing a real one.
    */
+  /** The draft field's change, for the box's field and the fullscreen editor's alike: one draft. */
+  function onDraftChange(e: ChangeEvent<HTMLTextAreaElement>) {
+    rememberCaret(e);
+    updateInput(e.target.value);
+    noteOfflineKeystroke(e.target.value);
+  }
+
   function updateInput(value: string) {
     // Anything written INTO the box ends the belt X's Undo window (M40 spec 04): a keystroke, a
     // chip's marker, a transcript, a Take over, a slash command. An Undo after that would overwrite
@@ -2465,6 +2489,37 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   }, [draftCap]);
   const flipKey = `${boxOpen ? "open" : "rest"}:${micIsPrimary ? "mic" : "send"}:${draftMicShown ? "draft-mic" : ""}`;
   useFlip(boxRef, flipKey, { enabled: true, grows: box });
+
+  // ── THE FULLSCREEN EDITOR (components/composer-expanded.tsx) ─────────────────────────────────────
+  // One draft: the layer's field is bound to `input` through `onDraftChange`, as the box's field is.
+  // The focus and the caret cross from one field to the other inside the tap that opens or closes it
+  // (`flushSync` mounts or unmounts the layer first), so the soft keyboard never drops. It closes on
+  // Collapse, Send, Escape, a pane switch and a pane nobody may write to any more; never on Back
+  // (ADR 0067: a layer with a history entry would be a level).
+  const [expanded, setExpanded] = useState(false);
+  const expandedRef = useRef<HTMLTextAreaElement>(null);
+  const expandShown = box && boxOpen && !direct.active && !locked && expandArea !== undefined && expandArea !== null;
+  const expandedOpen = expanded && !direct.active && !locked && expandArea !== undefined && expandArea !== null;
+  useEffect(() => {
+    setExpanded(false);
+  }, [paneId]);
+  function openExpanded() {
+    const caret = inputRef.current;
+    flushSync(() => setExpanded(true));
+    moveCaret(caret, expandedRef.current);
+  }
+  function closeExpanded() {
+    const caret = expandedRef.current;
+    flushSync(() => setExpanded(false));
+    moveCaret(caret, inputRef.current);
+  }
+  function sendExpanded() {
+    closeExpanded();
+    // A dialog that owns the agent's keys is answered first: the box's Send slot says so once the
+    // layer is gone, and nothing is sent from here.
+    if (askOwnsKeys) return;
+    onSendClick();
+  }
   useEffect(() => {
     const el = boxRef.current;
     if (!box || el === null) return;
@@ -3089,8 +3144,11 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             // Attach keeps its edge in both shapes, so it never moves when the box opens (Altan,
             // 2026-11-07: the + belongs at the left, as first built).
             box && !boxOpen && "grid-cols-[auto_1fr_auto]",
-            box && boxOpen && !mirrored && "grid-cols-[auto_1fr_auto_auto]",
-            box && boxOpen && mirrored && "grid-cols-[auto_auto_1fr_auto]",
+            // Open, Expand stands between the space and the small mic: [Attach][space][Expand][mic][Send],
+            // mirrored [Send][mic][Expand][space][Attach]. A column with no button in it (no Expand in a
+            // composer mounted alone, no mic without speech) takes no width; the space gives way.
+            box && boxOpen && !mirrored && "grid-cols-[auto_1fr_auto_auto_auto]",
+            box && boxOpen && mirrored && "grid-cols-[auto_auto_auto_1fr_auto]",
             // `hand="left"`: the whole row runs mirrored, so Send stands on the box's left edge, then
             // Attach, then the field. The DOM order is untouched, so the tab and reading order are
             // too. With chips, `flex-wrap` still stacks the chip strip ABOVE the row.
@@ -3146,15 +3204,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           <ChatInput
             ref={inputRef}
             value={direct.active ? direct.value : input}
-            onChange={
-              direct.active
-                ? direct.onChange
-                : (e) => {
-                    rememberCaret(e);
-                    updateInput(e.target.value);
-                    noteOfflineKeystroke(e.target.value);
-                  }
-            }
+            onChange={direct.active ? direct.onChange : onDraftChange}
             onSelect={direct.active ? undefined : rememberCaret}
             onFocus={() => setBoxFocused(true)}
             onBlur={(e) => {
@@ -3263,7 +3313,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               box && "bg-secondary text-foreground",
               box && (boxOpen ? "row-start-3" : "row-start-1"),
               // Attach stands at the box's outer edge: the left, or the right under `hand="left"`.
-              box && (mirrored ? (boxOpen ? "col-start-4" : "col-start-3") : "col-start-1"),
+              box && (mirrored ? (boxOpen ? "col-start-5" : "col-start-3") : "col-start-1"),
               // The press echo, in the tone this app already uses for "your press landed" —
               // `variant="default"`, which is what a tapped quick reply and a busy dialog option
               // both flip to. It was `bg-accent` first, and that was a token chosen by name
@@ -3297,6 +3347,46 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               box ? <Plus className="size-4" /> : <Paperclip className="size-4" />
             )}
           </Button>
+          {expandShown && (
+            // EXPAND (Altan, 2026-11-08): the same draft in a fullscreen editor over the pane view, for a
+            // long reply (components/composer-expanded.tsx). Only in the open row, between the space and
+            // the small mic, and only where there is a pane view to cover.
+            <Button
+              data-slot="composer-expand"
+              type="button"
+              variant="ghost"
+              size="icon"
+              className={cn(
+                TOOLBAR_TAP_TARGET,
+                "size-9 rounded-full bg-secondary text-foreground",
+                "col-start-3 row-start-3",
+              )}
+              disabled={locked}
+              onPointerDown={(e) => e.preventDefault()}
+              onClick={openExpanded}
+              aria-label={translate("composer.expand")}
+            >
+              <Maximize2 className="size-4" />
+            </Button>
+          )}
+          {expandedOpen && expandArea && boxRef.current && (
+            <ExpandedEditor
+              area={expandArea}
+              box={boxRef.current}
+              fieldRef={expandedRef}
+              value={input}
+              onChange={onDraftChange}
+              onSelect={rememberCaret}
+              placeholder={placeholderWords}
+              fieldStyle={{ fontSize: draftStyle.fontSize, fontFamily: draftStyle.fontFamily }}
+              hand={hand}
+              collapseLabel={translate("composer.collapse")}
+              sendLabel={offline ? translate("composer.send.reconnect") : translate("composer.send.sendAria")}
+              sendInert={sendInert || !hasDraft}
+              onCollapse={closeExpanded}
+              onSend={sendExpanded}
+            />
+          )}
           {draftMicShown && (
             // The second microphone (issue 573), beside Attach and so mirrored with it under
             // `hand="left"`. It opens the same takeover, and the transcript lands at the caret
@@ -3311,7 +3401,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                 "size-9 rounded-full text-muted-foreground",
                 box && "bg-secondary text-foreground",
                 // Box layout: the small mic stands in the open shape's button row, beside Send.
-                box && (mirrored ? "col-start-2 row-start-3" : "col-start-3 row-start-3"),
+                box && (mirrored ? "col-start-2 row-start-3" : "col-start-4 row-start-3"),
               )}
               disabled={micDisabled}
               aria-pressed={recorder.busy}
@@ -3403,7 +3493,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               className={cn(
                 TOOLBAR_TAP_TARGET,
                 "h-9 shrink-0 rounded-md px-3 text-sm font-semibold",
-                box && (mirrored ? "col-start-1" : boxOpen ? "col-start-4" : "col-start-3"),
+                box && (mirrored ? "col-start-1" : boxOpen ? "col-start-5" : "col-start-3"),
                 box && (boxOpen ? "row-start-3" : "row-start-1"),
               )}
               onClick={() => onAnswerDialog?.()}
@@ -3417,7 +3507,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               className={cn(
                 TOOLBAR_TAP_TARGET,
                 "h-9 shrink-0 rounded-md px-3 text-sm font-semibold",
-                box && (mirrored ? "col-start-1" : boxOpen ? "col-start-4" : "col-start-3"),
+                box && (mirrored ? "col-start-1" : boxOpen ? "col-start-5" : "col-start-3"),
                 box && (boxOpen ? "row-start-3" : "row-start-1"),
               )}
               onClick={() => onSendClick(armedWhen.current)}
@@ -3444,7 +3534,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               className={cn(
                 TOOLBAR_TAP_TARGET,
                 "size-9 shrink-0 rounded-full",
-                box && (mirrored ? "col-start-1" : boxOpen ? "col-start-4" : "col-start-3"),
+                box && (mirrored ? "col-start-1" : boxOpen ? "col-start-5" : "col-start-3"),
                 box && (boxOpen ? "row-start-3" : "row-start-1"),
               )}
               disabled={micDisabled}
@@ -3471,7 +3561,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                 TOOLBAR_TAP_TARGET,
                 "size-9 shrink-0 select-none rounded-full [-webkit-touch-callout:none]",
                 sendInert && "opacity-50",
-                box && (mirrored ? "col-start-1" : boxOpen ? "col-start-4" : "col-start-3"),
+                box && (mirrored ? "col-start-1" : boxOpen ? "col-start-5" : "col-start-3"),
                 box && (boxOpen ? "row-start-3" : "row-start-1"),
               )}
               // INERT, NOT `disabled`. A disabled button has `pointer-events: none` (ui/button.tsx), so a tap on
