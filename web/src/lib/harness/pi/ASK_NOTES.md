@@ -134,6 +134,15 @@ dialog. The pair is in `walk-pairs.ts`.
 
 Not proven: a walked tap on this screen end to end through the phone.
 
+gentle-pi 4.6.0 on pi 1.5.0 (issue 712, `pi--v150-gentle-review-consent-*.txt`) changed two things, and
+`ask.ts` reads both by shape. The `Effect:` paragraph wraps under its label, so a continuation row hangs
+by the label's width (`Effect: ` is eight columns) and `framelessNote` accepts rows at exactly that
+indent, inside the same three-row cap. And one status row stands under the footer: `framelessFooter`
+takes the row above one painted status row (as `paintedStatus` says, no rule, not ending like a shell
+prompt), with at most one blank row between; the status row is outside the signature. A widget row
+at an indent straight over the title no longer joins the header block. With Gentle Shell's side rail
+beside the dialog (issue 710, open) the rows are cut by the rail and the screen stays raw.
+
 ## OmO, probed by the PR 412 author
 
 Captured on 2026-10-12 with OmO 5.1.30 (Senpi 2026.10.11), Herdr 0.9.3, a 113-column sandbox tab.

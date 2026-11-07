@@ -250,6 +250,12 @@ user, host or path is in either file.
 | `pi--v130-gentle-choice-moved.txt` | The same dialog after `herdr pane send-keys <pane> Down`, ` → Green` | walk (the pair in `walk-pairs.ts`) |
 | `pi--v130-gentle-review-consent.txt` | gentle-pi 4.2.0 on pi 1.3.0, the review-consent screen: NO rule frame and no editor or status row, a bold title, two prose rows, three numbered options with `→` at column 0 on option 1, an `Effect:` paragraph, and `↑↓ choose · Enter confirm · Esc cancel · D details` as the screen's last row | walk |
 | `pi--v130-gentle-review-consent-moved.txt` | The same screen after `herdr pane send-keys <pane> Down`: `→` on option 2, and the `Effect:` paragraph describes option 2 | walk (the pair in `walk-pairs.ts`) |
+| `pi--v150-gentle-review-consent--w119.txt` | gentle-pi 4.6.0 on pi 1.5.0 (issue 712, reporter's capture): the same screen, the `Effect:` paragraph wrapped with an 8-space hanging indent, and the git and context status row straight under the footer | walk |
+| `pi--v150-gentle-review-consent-moved--w119.txt` | **Derived**: the capture above with `→` on option 2 (the `Effect:` text is not re-captured; the note rows are blanked in the core signature) | walk (the pair in `walk-pairs.ts`) |
+| `pi--v150-gentle-review-consent-fullscreen--w129.txt`, `-fullscreen--w198.txt` | Gentle Shell fullscreen: one blank row under the footer, then a right-aligned `branch │ mode … ctx … $` row | walk |
+| `pi--v150-gentle-review-consent-regular--w69.txt` | Gentle Shell regular mode: a `✿ gentle shell ⟡ …` row under the footer, and an indented widget row straight over the title. The reporter's user name is cut to `someuse` | walk |
+| `pi--v150-gentle-review-consent-rail-tall--w198.txt` | Gentle Shell's side rail over the top rows, the dialog under it, no status row | walk |
+| `pi--v150-gentle-review-consent-rail-beside--w198.txt` | The dialog's rows beside the rail's boxes (issue 710, open) | raw, Escape card |
 
 ## gentle-pi soft-wrapped draft on pi 1.3.0 (issue 553, captured 2026-10-21, Herdr 0.9.5)
 

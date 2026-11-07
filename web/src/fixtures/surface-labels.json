@@ -6120,6 +6120,41 @@
    "version": "1.3.0",
    "state": "dialog"
   },
+  "pi--v150-gentle-review-consent--w119.txt": {
+   "harness": "pi",
+   "version": "1.5.0",
+   "state": "dialog"
+  },
+  "pi--v150-gentle-review-consent-moved--w119.txt": {
+   "harness": "pi",
+   "version": "1.5.0",
+   "state": "dialog"
+  },
+  "pi--v150-gentle-review-consent-fullscreen--w129.txt": {
+   "harness": "pi",
+   "version": "1.5.0",
+   "state": "dialog"
+  },
+  "pi--v150-gentle-review-consent-fullscreen--w198.txt": {
+   "harness": "pi",
+   "version": "1.5.0",
+   "state": "dialog"
+  },
+  "pi--v150-gentle-review-consent-regular--w69.txt": {
+   "harness": "pi",
+   "version": "1.5.0",
+   "state": "dialog"
+  },
+  "pi--v150-gentle-review-consent-rail-beside--w198.txt": {
+   "harness": "pi",
+   "version": "1.5.0",
+   "state": "dialog"
+  },
+  "pi--v150-gentle-review-consent-rail-tall--w198.txt": {
+   "harness": "pi",
+   "version": "1.5.0",
+   "state": "dialog"
+  },
   "omp--v18-6-1-queued-before-stop--w119.txt": {
    "harness": "omp",
    "version": "18.6.1",

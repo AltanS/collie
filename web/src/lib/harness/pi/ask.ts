@@ -278,20 +278,23 @@ export function readPiFrame(lines: StyledLine[]): PiFrame | null {
 }
 
 /**
- * A dialog with no rules at all: its footer is the last non-blank row of the screen, painted, at
- * column 0, and above it stand the numbered options with one pointer and a header block of rows at
- * column 0 whose first row is painted (the title). That is the Gentle AI review-consent screen
+ * A dialog with no rules at all: its footer is the last non-blank row of the screen, or the row above
+ * one status row (see `framelessFooter`), painted, at column 0, and above it stand the numbered
+ * options with one pointer and a header block of rows at column 0 whose first row is painted (the title). That is the Gentle AI review-consent screen
  * (pi--v130-gentle-review-consent.txt, pi 1.3.0 with gentle-pi 4.2.0): the extension draws it
- * under the transcript with no rule frame and no editor or status row under it. Read by shape and
- * footer, never by title or labels. Plain agent prose that quotes such rows never gets here, for
+ * under the transcript with no rule frame and no editor or status row under it. gentle-pi 4.6.0 draws
+ * a status row under the footer (pi--v150-gentle-review-consent-*.txt). Read by shape and footer,
+ * never by title or labels. Plain agent prose that quotes such rows never gets here, for
  * three reasons: pi's real editor, with its rules, is the last thing on the screen while pi runs
- * (so `statusTailBottom` takes it), the footer must be painted, and nothing may follow it.
+ * (so `statusTailBottom` takes it), the footer must be painted, and nothing may follow it but one
+ * painted status row.
  * `top` is the title row, the first row of the block that holds the first option; null when no
  * painted footer ends the screen or no `1.` option row with a header above it is found.
  */
 function framelessFrame(lines: StyledLine[], texts: string[], end: number): PiFrame | null {
-  const best = footerAt(lines, texts, end, false, NO_INDENT);
-  if (best === null) return null;
+  const found = framelessFooter(lines, texts, end);
+  if (found === null) return null;
+  const { best, footerEnd } = found;
   let first = -1;
   for (let r = best.start - 1; r >= 0 && best.start - r <= MAX_BODY_ROWS; r--) {
     if (RULE.test(texts[r]!)) return null;
@@ -302,9 +305,34 @@ function framelessFrame(lines: StyledLine[], texts: string[], end: number): PiFr
   }
   if (first < 1) return null;
   let top = first;
-  while (top > 0 && texts[top - 1] !== "" && !RULE.test(texts[top - 1]!)) top--;
+  // The header block is the rows at column 0 just above the options: an indented row stands outside
+  // it (a widget line gentle-pi draws straight over the title, pi--v150-gentle-review-consent-regular--w69.txt).
+  while (top > 0 && NO_INDENT.test(texts[top - 1]!) && !RULE.test(texts[top - 1]!)) top--;
   if (top === first || !styledRow(lines[top]!)) return null;
-  return { top, bottom: end, open: false, frameless: true, footerStart: best.start, footerEnd: end, footer: best.footer, texts };
+  return { top, bottom: footerEnd, open: false, frameless: true, footerStart: best.start, footerEnd, footer: best.footer, texts };
+}
+
+/**
+ * The footer of a frameless dialog and the row it ends on. Either the screen's last non-blank row, or
+ * the row above exactly one status row: painted as `paintedStatus` says, no rule, not ending like a
+ * shell prompt (what stands under pi once it exited), with at most one blank row between the footer
+ * and it. Anything else under the footer declines, so output written after a quoted dialog stays
+ * prose. The status row is the extension's, a shape and not a product: pi's own footer is the same
+ * one painted row under the editor (`statusTailBottom`).
+ */
+function framelessFooter(
+  lines: StyledLine[],
+  texts: string[],
+  end: number,
+): { best: { start: number; footer: PiFooter }; footerEnd: number } | null {
+  const last = footerAt(lines, texts, end, false, NO_INDENT);
+  if (last !== null) return { best: last, footerEnd: end };
+  const row = texts[end]!;
+  if (RULE.test(row) || SHELL_PROMPT_END.test(row) || !paintedStatus([lines[end]!])) return null;
+  const footerEnd = texts[end - 1] === "" ? end - 2 : end - 1;
+  if (footerEnd < 1 || texts[footerEnd] === "") return null;
+  const best = footerAt(lines, texts, footerEnd, false, NO_INDENT);
+  return best === null ? null : { best, footerEnd };
 }
 
 /**
@@ -635,19 +663,30 @@ export function detectPiQuestion(lines: StyledLine[]): PiQuestion | null {
 
 /**
  * What a frameless dialog may print between its options and its footer: one blank row, one painted
- * description paragraph of at most `MAX_NOTE_ROWS` rows at column 0 (the pointed option's effect, in
- * the capture), one blank row; every part optional. Anything else declines.
+ * description paragraph of at most `MAX_NOTE_ROWS` rows (the pointed option's effect, in the capture),
+ * one blank row; every part optional. The paragraph starts at column 0. A row it wraps onto may hang
+ * under its label: `Effect: …` continues eight spaces in, the label's width (gentle-pi 4.6.0,
+ * pi--v150-gentle-review-consent-*.txt), and every continuation row stands at exactly that indent.
+ * Anything else declines.
  */
 function framelessNote(lines: StyledLine[], texts: string[], from: number, to: number): boolean {
   let r = from;
   if (r < to && texts[r] === "") r++;
   const start = r;
+  const hang = hangingIndent(texts[start] ?? "");
   while (r < to && texts[r] !== "") {
-    if (!NO_INDENT.test(texts[r]!) || !styledRow(lines[r]!) || r - start >= MAX_NOTE_ROWS) return false;
+    const indented = r > start && hang > 0 && texts[r]!.startsWith(" ".repeat(hang)) && /^\S/.test(texts[r]!.slice(hang));
+    if (!(r === start ? NO_INDENT.test(texts[r]!) : indented) || !styledRow(lines[r]!) || r - start >= MAX_NOTE_ROWS) return false;
     r++;
   }
   if (r < to && texts[r] === "") r++;
   return r === to;
+}
+
+/** The width of a paragraph's leading label, `Effect: ` for `Effect: Reviews …`: where its wrapped rows
+ *  hang. 0 when the row opens with no label. */
+function hangingIndent(row: string): number {
+  return /^\S+: (?=\S)/.exec(row)?.[0].length ?? 0;
 }
 
 /** The pointer column (0 or 1) when `text` is the first option row, `1.`, else null. */
