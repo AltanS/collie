@@ -79,3 +79,12 @@ export async function signalOncePerDay(kind: TroubleKind, paneKey: string, send:
     }
   }
 }
+
+/** Forget the record. The unpair wipe runs it: the entries name panes of the bridge this phone was paired to. */
+export function forgetTroubleSignals(): void {
+  try {
+    storage()?.removeItem(KEY);
+  } catch {
+    // Blocked storage holds nothing to forget.
+  }
+}
