@@ -168,6 +168,9 @@ const stampedVersion = releaseBuild ? pkgVersion : `${pkgVersion}-dev`;
 // chunk no payload has. A release build is a clean tree on the tagged commit, so the commit's own time
 // says when it was made and two runners stamp one string. A dev build keeps the clock: its `-dirty`
 // and rebuild-by-rebuild distinction is what the stale-cache check reads.
+// `COLLIE_BUILD_TIME` (an ISO time) wins over both, for a caller that must make builds of one commit
+// differ: the e2e fixture builds the app twice and needs two ids (web/e2e/fixtures/builds.ts). The
+// release job never sets it.
 function commitTime(): string | null {
   try {
     const seconds = Number(git("git log -1 --format=%ct HEAD"));
@@ -176,7 +179,15 @@ function commitTime(): string | null {
     return null;
   }
 }
-const buildTime = (releaseBuild && !buildSha.endsWith("-dirty") ? commitTime() : null) ?? new Date().toISOString();
+function stampTime(): string {
+  const forced = process.env.COLLIE_BUILD_TIME;
+  if (forced !== undefined && forced !== "") {
+    if (Number.isNaN(Date.parse(forced))) throw new Error(`COLLIE_BUILD_TIME is not a time: ${forced}`);
+    return new Date(forced).toISOString();
+  }
+  return (releaseBuild && !buildSha.endsWith("-dirty") ? commitTime() : null) ?? new Date().toISOString();
+}
+const buildTime = stampTime();
 const BUILD_INFO = {
   version: stampedVersion,
   sha: buildSha,

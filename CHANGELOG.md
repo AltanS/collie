@@ -46,6 +46,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **The composer stays on screen when you come back to the app after a break.** An installed Android app restored from the background could keep a page height taller than the screen, which pushed the reply box past the bottom edge until a hard refresh. On each return Collie now compares the page height with the visible height and, when they differ, holds the page at the visible height until the next resize.
 - **A trouble card counts once per pane and day.** The "Cannot read a dialog" and "Send not landing" cards told the bridge each time they mounted, so a pane switch or a reload counted the same trouble again, and one install sent twelve for one pane in a day. The phone now keeps a small list of what it already signalled and sends a kind for a pane at most once per UTC day, before it makes any request. The list stays on the device, holds only today, and a phone with blocked storage signals as before. The bridge and the signal are unchanged.
 - **The math engine files carry no content hash.** The release check refused the Edge build because its one math pack named engine files by a hash that differed on every platform build, so the engines now keep fixed names under `math/`.
+- **A build's stamp time can be set with `COLLIE_BUILD_TIME`.** The browser tests build the app twice from one commit and need two different ids, which a release build's commit-time stamp no longer gave them.
 
 ## [1.28.0] - 2026-11-06
 
