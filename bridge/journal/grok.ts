@@ -33,8 +33,12 @@
 // The reconcile step is a workaround for herdrdev/herdr#2683 and is to be removed once the Herdr
 // version Collie requires takes a grok session start with source `load`.
 
+import { execFile } from "node:child_process";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { promisify } from "node:util";
+
+import type { DiscoverHints } from "./types.ts";
 
 import type { JsonObject, JsonValue } from "../json.ts";
 import {
@@ -62,6 +66,9 @@ import type {
 } from "./types.ts";
 
 const SESSION_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** The promisified execFile, bound at each call so tests can spy on node:child_process. */
+const runLsof = ((...args: Parameters<typeof execFile>) => promisify(execFile)(...args)) as typeof execFile;
 
 export function isGrokSessionId(value: string): boolean {
   return SESSION_ID_RE.test(value);
@@ -532,6 +539,56 @@ export class GrokTranscriptSource implements TranscriptSource {
 
   /** The live read, byte-counted like every harness that writes a JSONL file. */
   readSince = readSinceFile;
+
+  /**
+   * The session one of the pane's foreground grok processes holds. First grok's own list, the
+   * `active_sessions.json` its writer keeps: the latest session of a listed pid wins, or failing
+   * any pid match, the one live session whose cwd is this pane's. Then the process's open files,
+   * where a `chat_history.jsonl` names the session directly. Both answers are keys for `resolve`,
+   * which still finds and contains the file; nothing short of one unambiguous match answers.
+   */
+  async discoverSession(cwd: string, hints?: DiscoverHints): Promise<AgentSessionRef | null> {
+    const pids = (hints?.processes ?? [])
+      .filter((p) => p.argv.some((arg) => /(^|\/)grok$/.test(arg)))
+      .map((p) => p.pid)
+      .filter((pid): pid is number => pid !== undefined && pid > 0);
+    const sessions = await this.activeSessions();
+    const ref = (id: string): AgentSessionRef | null => {
+      if (!isGrokSessionId(id)) return null;
+      return { kind: "id", value: id };
+    };
+    if (sessions !== null) {
+      const live = sessions.filter((s) => this.isAlive(s.pid));
+      const byPid = pids.length === 0 ? [] : live.filter((s) => pids.includes(s.pid));
+      const pick =
+        byPid.length > 0
+          ? latestOpened(byPid)?.sessionId
+          : live.filter((s) => s.cwd === cwd).length === 1
+            ? live.find((s) => s.cwd === cwd)?.sessionId
+            : undefined;
+      const fromList = pick === undefined ? null : ref(pick);
+      if (fromList !== null && (await this.resolve(fromList)) !== null) return fromList;
+    }
+    for (const pid of pids) {
+      const { stdout } = await runLsof("lsof", ["-nP", "-a", "-p", String(pid), "-Fn"], {
+        timeout: 1000,
+        maxBuffer: 1024 * 1024,
+        windowsHide: true,
+      }).catch(() => ({ stdout: "" }));
+      const seen = new Set<string>();
+      for (const line of stdout.split("\n")) {
+        if (!line.startsWith("n")) continue;
+        const path = line.slice(1);
+        const m = /(?:^|\/)([0-9a-f-]{36})\/chat_history\.jsonl$/.exec(path);
+        const id = m?.[1];
+        if (id === undefined || !isGrokSessionId(id) || seen.has(id)) continue;
+        seen.add(id);
+        const fromLsof = ref(id);
+        if (fromLsof !== null && (await this.resolve(fromLsof)) !== null) return fromLsof;
+      }
+    }
+    return null;
+  }
 }
 
 export function grokJournal(roots: string | readonly string[]): JournalAdapter {
@@ -542,5 +599,6 @@ export function grokJournal(roots: string | readonly string[]): JournalAdapter {
     parse: parseGrokTranscript,
     reducer: createGrokReducer,
     reconcile: (ref, cwd) => source.reconcile(ref, cwd),
+    discover: (cwd, hints) => source.discoverSession(cwd, hints),
   };
 }
