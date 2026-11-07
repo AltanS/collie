@@ -287,9 +287,9 @@ interface ComposerProps {
   draftNoticeSlot?: HTMLElement | null;
 
   /**
-   * The pane's reading area (the mirror or the Chat stream), which the fullscreen editor covers down
-   * to this composer's chrome block (components/composer-expanded.tsx). Absent, the open box shows no
-   * Expand button: a composer mounted alone has no pane view to cover.
+   * The pane's reading area (the mirror or the Chat stream). The fullscreen editor takes its left edge
+   * and width, so a wide layout covers only this pane's column (components/composer-expanded.tsx).
+   * Absent, the open box shows no Expand button: a composer mounted alone has no pane to cover.
    */
   expandArea?: HTMLElement | null;
 
@@ -2553,6 +2553,85 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // and the small microphone beside it.
   const flipKey = `${boxOpen ? "open" : "rest"}:${micIsPrimary ? "mic" : "send"}:${draftMicShown ? "draft-mic" : ""}:${expandShown ? "expand" : ""}`;
   useFlip(boxRef, flipKey, { enabled: true, grows: box });
+
+  // Attach's tap and its picker's two rows, drawn by the box and by the fullscreen editor's row alike:
+  // one behaviour in two places, never two.
+  const onAttachClick = () => {
+    echoAttachPress();
+    if (asksWhich) setPicking(true);
+    else photoRef.current?.click();
+  };
+  const attachRows = (
+    <>
+      <ActionRow
+        icon={<Image aria-hidden="true" className="size-4 shrink-0" />}
+        label={translate("composer.attach.photos")}
+        onClick={() => {
+          setPicking(false);
+          photoRef.current?.click();
+        }}
+      />
+      <ActionRow
+        icon={<FileText aria-hidden="true" className="size-4 shrink-0" />}
+        label={translate("composer.attach.files")}
+        onClick={() => {
+          setPicking(false);
+          fileRef.current?.click();
+        }}
+      />
+    </>
+  );
+  // The fullscreen editor's row (Altan, 2026-11-08: "we're not showing the attach + microphone icon,
+  // kinda looks like a wasted opportunity"): the box's own Attach, its picker opening above the row,
+  // and the small mic, with the same handlers. Send is the layer's.
+  const expandedLeading = (
+    <>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className={cn(
+          TOOLBAR_TAP_TARGET,
+          "size-9 shrink-0 rounded-full bg-secondary text-foreground",
+          (pressed || picking) && "scale-95 bg-primary text-primary-foreground duration-0",
+        )}
+        disabled={uploading || locked || direct.active}
+        onPointerDown={(e) => e.preventDefault()}
+        onClick={onAttachClick}
+        aria-label={translate("composer.attach.aria")}
+        aria-haspopup="dialog"
+        aria-expanded={asksWhich ? picking : undefined}
+      >
+        {uploading ? <Loader2 className="size-4 animate-spin" /> : <Plus className="size-4" />}
+      </Button>
+      <AnchoredMenu
+        open={picking}
+        onClose={() => setPicking(false)}
+        label={translate("composer.attach.title")}
+        // Attach is the row's first button, at the left; the left hand puts it at the right.
+        className={mirrored ? undefined : "right-auto left-0"}
+      >
+        {attachRows}
+      </AnchoredMenu>
+    </>
+  );
+  const expandedTrailing = micShown && !direct.active && !askOwnsKeys && (
+    <Button
+      data-slot="composer-mic-expanded"
+      type="button"
+      variant="ghost"
+      size="icon"
+      className={cn(TOOLBAR_TAP_TARGET, "size-9 shrink-0 rounded-full bg-secondary text-foreground")}
+      disabled={micDisabled}
+      aria-pressed={recorder.busy}
+      aria-label={micAriaLabel}
+      title={micAvailable ? undefined : stt?.reason}
+      onPointerDown={(e) => e.preventDefault()}
+      onClick={(e) => onMicClick(e, "draft")}
+    >
+      {micIcon}
+    </Button>
+  );
   useEffect(() => {
     const el = boxRef.current;
     if (!box || el === null) return;
@@ -3365,11 +3444,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             )}
             disabled={uploading || locked || direct.active}
             onPointerDown={(e) => e.preventDefault()}
-            onClick={() => {
-              echoAttachPress();
-              if (asksWhich) setPicking(true);
-              else photoRef.current?.click();
-            }}
+            onClick={onAttachClick}
             aria-label={translate("composer.attach.aria")}
             aria-haspopup="dialog"
             aria-expanded={asksWhich ? picking : undefined}
@@ -3419,6 +3494,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               sendInert={sendInert || !hasDraft}
               onCollapse={closeExpanded}
               onSend={sendExpanded}
+              leading={expandedLeading}
+              trailing={expandedTrailing}
+              hidden={takeoverOpen}
             />
           )}
           {draftMicShown && (
@@ -3462,29 +3540,15 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               system UI, and the click still counts as the user gesture the browser requires
               because both happen in this one handler. */}
           <AnchoredMenu
-            open={picking}
+            // Under the fullscreen editor the picker opens from the editor's own row instead.
+            open={picking && !expandedOpen}
             onClose={() => setPicking(false)}
             label={translate("composer.attach.title")}
             // Attach stands near the box's LEFT edge under `hand="left"`; the panel follows it. In the
             // box layout Attach is the LEFT button and the mirrored hand puts it at the right.
             className={mirrored !== box ? "right-auto left-0" : undefined}
           >
-            <ActionRow
-              icon={<Image aria-hidden="true" className="size-4 shrink-0" />}
-              label={translate("composer.attach.photos")}
-              onClick={() => {
-                setPicking(false);
-                photoRef.current?.click();
-              }}
-            />
-            <ActionRow
-              icon={<FileText aria-hidden="true" className="size-4 shrink-0" />}
-              label={translate("composer.attach.files")}
-              onClick={() => {
-                setPicking(false);
-                fileRef.current?.click();
-              }}
-            />
+            {attachRows}
           </AnchoredMenu>
           {/* The Send button's long-press menu, anchored the same way as the attach picker (see above).
               One row, a named choice: the text goes to this pane as a walky talky message from the

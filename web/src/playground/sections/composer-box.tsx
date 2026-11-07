@@ -152,7 +152,7 @@ const CASES: readonly CaseDef[] = [
     n: 8,
     title: "Fullscreen editor",
     reach: "type a long reply, then tap Expand (the diagonal arrows) in the open row.",
-    note: "The same draft over the pane view, from the top of the reading area to the bottom of the box: the field fills it with no row cap, Collapse at the top right, Send at the bottom right. Collapse or Escape returns to the box with the draft and the caret where they were.",
+    note: "The same draft full screen, over the header and the tabs: the field fills it with no row cap, Collapse at the top right, and the box's own row at the bottom, Attach, the small microphone and Send. On this page it covers the card's column, the whole window high. Collapse or Escape returns to the box with the draft and the caret where they were.",
     surface: IDLE,
     draft:
       "Make the tab a folder tab.\n\nThen check the settings page for the same corner, and look at how the belt reads once the box is open. The belt should not move when the box grows, and the buttons should not drop from the top.\n\nAfter that, run the gates: both typechecks, the lint and the composer suites. Then take the shots at 390 by 844 in the light theme, both hands, at rest and open.\n\nTell me what changed, with the commit and the test counts, and leave the branch unpushed until I have looked at it on the phone.",

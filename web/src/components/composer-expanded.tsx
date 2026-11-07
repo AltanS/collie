@@ -1,5 +1,5 @@
 import { useCallback, useLayoutEffect, useState } from "react";
-import type { ChangeEvent, CSSProperties, KeyboardEvent, RefObject, SyntheticEvent } from "react";
+import type { ChangeEvent, CSSProperties, KeyboardEvent, ReactNode, RefObject, SyntheticEvent } from "react";
 import { createPortal } from "react-dom";
 import { ArrowUp, Minimize2 } from "lucide-react";
 
@@ -9,25 +9,30 @@ import { hasResizeObserver } from "@/lib/env";
 import { cn } from "@/lib/utils";
 
 // THE FULLSCREEN EDITOR (Altan, 2026-11-08: "we'd want this expand input button to go fullscreen for
-// very long inputs"). The composer's Expand button opens it; it is the composer's draft written in a
-// bigger room, nothing more.
+// very long inputs", and after his phone test: "what do we need the header and the tabs row for in this
+// expanded view? it should be a full screen modal"). The composer's Expand button opens it; it is the
+// composer's draft written in a bigger room, with the composer's own row of buttons under it.
 //
 // ONE DRAFT. The layer's field is bound to the composer's own draft state through the composer's own
 // change handler, so nothing is copied in or out and nothing can be lost between the two. The
 // composer opens and closes it in one tap each, moving the focus and the caret from one field to the
 // other inside that tap, so the soft keyboard stays up.
 //
-// WHERE IT STANDS. Over the pane view only: from the top of the reading area (the mirror or the Chat
-// stream) to the bottom of the composer's chrome block, as wide as the reading area, so the header and
-// the tab strip stay visible and on a wide layout only this pane's column is covered. It is portalled
-// to <body> and `fixed`, so no ancestor's overflow or transform can clip it, and it is measured from
-// those two elements on open and again on every resize (the keyboard) and scroll. With
-// `interactive-widget=resizes-content` the chrome block's bottom is the keyboard's top.
+// WHERE IT STANDS. The whole app height, `--app-h` (the layout viewport, so above the keyboard, with
+// the iOS standalone correction index.css carries), from the top of the screen: the header and the
+// tab row are under it, as in the output zoom. Its top padding is the safe area. Its left edge and
+// width are the pane's reading area's, so on a phone it is the full width and on a wide layout only
+// this pane's column. It is portalled to <body> and `fixed`, so no ancestor's overflow or transform
+// can clip it, and the column is measured again on every resize and scroll.
 //
-// WHAT IS IN IT. The field, filling the layer with no row cap, at the composer's text size; Collapse
-// at the top right; Send at the bottom right (the bottom left for the left hand, where the composer's
-// Send stands too). No title and no hint. A dialog card or a queued row that arrives meanwhile is drawn
-// where it always is, under the layer, and is there when the layer closes.
+// WHAT IS IN IT. The field, filling everything between the safe area and the bottom row, with no row
+// cap, at the composer's text size; Collapse at the top right, for either hand; and the composer's
+// open row without Expand: Attach, the space, the small mic, Send, mirrored for the left hand. Attach
+// and the mic are the composer's own (`leading`, `trailing`), with their behaviour: Attach's picker
+// opens from this row, and the mic dictates into the same draft. While a recording stands the layer
+// steps aside (`hidden`) so the voice takeover, drawn over the composer, is seen; it comes back when
+// the clip lands. A dialog card or a queued row that arrives meanwhile is drawn where it always is,
+// under the layer, and is there when the layer closes.
 //
 // WHAT CLOSES IT is the composer's business (Collapse, Send, Escape, a pane switch, the pane going
 // away), never a tap outside, because there is no outside. Android's Back and the iOS edge swipe are
@@ -42,30 +47,25 @@ import { cn } from "@/lib/utils";
 export const EXPANDED_OPEN_MS = 150;
 
 interface Frame {
-  readonly top: number;
   readonly left: number;
   readonly width: number;
-  readonly height: number;
   /** The composer's box centre, from the layer's top left: where the opening scale grows from. */
   readonly originX: number;
   readonly originY: number;
 }
 
-/** The layer's rectangle: the reading area's top, left and width, down to the chrome block's bottom. */
-export function layerFrame(area: DOMRectReadOnly, bottom: number, box: DOMRectReadOnly): Frame {
+/** The layer's column: the reading area's left edge and width; the height is the app's own. */
+export function layerFrame(area: DOMRectReadOnly, box: DOMRectReadOnly): Frame {
   return {
-    top: area.top,
     left: area.left,
     width: area.width,
-    height: Math.max(0, bottom - area.top),
     originX: box.left + box.width / 2 - area.left,
-    originY: box.top + box.height / 2 - area.top,
+    originY: box.top + box.height / 2,
   };
 }
 
 function measure(area: HTMLElement, box: HTMLElement): Frame {
-  const block = box.closest<HTMLElement>('[data-slot="chrome-block"]') ?? box;
-  return layerFrame(area.getBoundingClientRect(), block.getBoundingClientRect().bottom, box.getBoundingClientRect());
+  return layerFrame(area.getBoundingClientRect(), box.getBoundingClientRect());
 }
 
 function reducedMotion(): boolean {
@@ -73,9 +73,9 @@ function reducedMotion(): boolean {
 }
 
 export interface ExpandedEditorProps {
-  /** The reading area: the layer's top, left and width. */
+  /** The pane's reading area: the layer's left edge and width. */
   readonly area: HTMLElement;
-  /** The composer's box: the bottom of its chrome block is the layer's bottom. */
+  /** The composer's box: where the opening grows from. */
   readonly box: HTMLElement;
   readonly fieldRef: RefObject<HTMLTextAreaElement | null>;
   readonly value: string;
@@ -91,6 +91,12 @@ export interface ExpandedEditorProps {
   readonly sendInert: boolean;
   readonly onCollapse: () => void;
   readonly onSend: () => void;
+  /** The composer's Attach button and its picker, first in the row (last for the left hand). */
+  readonly leading: ReactNode;
+  /** The composer's small mic, beside Send. */
+  readonly trailing: ReactNode;
+  /** A recording stands: the layer steps aside so the voice takeover is seen. */
+  readonly hidden: boolean;
 }
 
 export function ExpandedEditor({
@@ -108,6 +114,9 @@ export function ExpandedEditor({
   sendInert,
   onCollapse,
   onSend,
+  leading,
+  trailing,
+  hidden,
 }: ExpandedEditorProps) {
   const [frame, setFrame] = useState<Frame>(() => measure(area, box));
   const [layer, setLayer] = useState<HTMLDivElement | null>(null);
@@ -156,12 +165,13 @@ export function ExpandedEditor({
     <div
       ref={setLayer}
       data-slot="composer-expanded"
-      className="fixed z-40 flex flex-col bg-background"
+      role="dialog"
+      aria-modal="true"
+      aria-label={collapseLabel}
+      className={cn("fixed top-0 z-40 flex h-(--app-h) flex-col bg-background pt-[env(safe-area-inset-top)]", hidden && "invisible")}
       style={{
-        top: frame.top,
         left: frame.left,
         width: frame.width,
-        height: frame.height,
         transformOrigin: `${frame.originX}px ${frame.originY}px`,
       }}
     >
@@ -174,32 +184,39 @@ export function ExpandedEditor({
         placeholder={placeholder}
         spellCheck={false}
         style={fieldStyle}
-        // The whole layer, 16px of air, and room kept clear of Collapse (top) and Send (bottom), so
-        // neither button sits on a line of text. No cap: this field is the room the cap leaves out.
-        className="field-sizing-fixed h-full max-h-none min-h-0 flex-1 overflow-y-auto p-4 pt-4 pr-14 pb-16 font-mono"
+        // Everything above the row, 16px of air, and room kept clear of Collapse at the top right. No
+        // cap: this field is the room the cap leaves out.
+        className="field-sizing-fixed min-h-0 max-h-none flex-1 overflow-y-auto p-4 pr-14 font-mono"
       />
       <Button
         type="button"
         variant="ghost"
         size="icon"
-        className="absolute top-2 right-2 size-9 rounded-full text-foreground"
+        className="absolute top-[calc(env(safe-area-inset-top)+0.5rem)] right-2 size-9 rounded-full text-foreground"
         onPointerDown={(event) => event.preventDefault()}
         onClick={onCollapse}
         aria-label={collapseLabel}
       >
         <Minimize2 className="size-4" />
       </Button>
-      <Button
-        type="button"
-        size="icon"
-        className={cn("absolute bottom-3 size-9 rounded-full", hand === "left" ? "left-3" : "right-3", sendInert && "opacity-50")}
-        onMouseDown={(event) => event.preventDefault()}
-        aria-disabled={sendInert ? true : undefined}
-        onClick={sendInert ? undefined : onSend}
-        aria-label={sendLabel}
-      >
-        <ArrowUp className="size-4" />
-      </Button>
+      {/* The composer's open row without Expand: [Attach][space][mic][Send], mirrored for the left
+          hand. `relative` is the anchor of Attach's picker, which opens above this row. */}
+      <div data-slot="composer-expanded-row" className={cn("relative flex shrink-0 items-center gap-1.5 px-3 pt-1.5 pb-3", hand === "left" && "flex-row-reverse")}>
+        {leading}
+        <span className="flex-1" />
+        {trailing}
+        <Button
+          type="button"
+          size="icon"
+          className={cn("size-9 shrink-0 rounded-full", sendInert && "opacity-50")}
+          onMouseDown={(event) => event.preventDefault()}
+          aria-disabled={sendInert ? true : undefined}
+          onClick={sendInert ? undefined : onSend}
+          aria-label={sendLabel}
+        >
+          <ArrowUp className="size-4" />
+        </Button>
+      </div>
     </div>,
     document.body,
   );

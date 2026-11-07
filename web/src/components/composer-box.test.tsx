@@ -420,6 +420,62 @@ describe("Composer layout=box, the fullscreen editor", () => {
     expect(field()).toHaveFocus();
   });
 
+  it("is a full-screen modal with the box's own row: Attach, the mic and Send (Altan, 2026-11-08)", async () => {
+    const user = userEvent.setup();
+    renderComposer({ layout: "box", expandArea: area });
+    await readyBox();
+    await typeLong(user);
+    await user.click(expand()!);
+    const modal = layer()!;
+    // The whole app height from the top of the screen: the header and the tab row are under it.
+    expect(modal).toHaveAttribute("aria-modal", "true");
+    expect(modal.className).toMatch(/\bfixed\b/);
+    expect(modal.className).toMatch(/\btop-0\b/);
+    expect(modal.className).toMatch(/h-\(--app-h\)/);
+    const row = within(modal.querySelector<HTMLElement>('[data-slot="composer-expanded-row"]')!);
+    expect(row.getByRole("button", { name: /attach file/i })).toBeInTheDocument();
+    expect(row.getByRole("button", { name: /record a voice message/i })).toBeInTheDocument();
+    expect(row.getByRole("button", { name: "Send" })).toBeInTheDocument();
+    expect(row.queryByRole("button", { name: "Expand" })).toBeNull();
+    // Collapse stands at the top right for either hand.
+    expect(within(modal).getByRole("button", { name: "Collapse" }).className).toMatch(/right-2/);
+  });
+
+  it("mirrors the row for the left hand, Collapse still at the top right", async () => {
+    const user = userEvent.setup();
+    renderComposer({ layout: "box", hand: "left", expandArea: area });
+    await readyBox();
+    await typeLong(user);
+    await user.click(expand()!);
+    expect(layer()!.querySelector('[data-slot="composer-expanded-row"]')!.className).toMatch(/flex-row-reverse/);
+    expect(within(layer()!).getByRole("button", { name: "Collapse" }).className).toMatch(/right-2/);
+  });
+
+  it("opens Attach's picker from the editor's row, not under the layer", async () => {
+    // A bridge that takes text files too: Attach asks which, through its picker.
+    server.use(
+      http.get("/api/config", () =>
+        HttpResponse.json({
+          push: false,
+          vapidPublicKey: "",
+          stt: { provider: "openai-compatible", available: true },
+          upload: { maxBytes: 10 * 1024 * 1024, imageTypes: ["png"], textTypes: ["md"] },
+        }),
+      ),
+    );
+    const user = userEvent.setup();
+    renderComposer({ layout: "box", expandArea: area });
+    await readyBox();
+    await waitFor(() => expect(screen.getByTestId("attach-files")).toHaveAttribute("accept", "image/*,.png,.md"));
+    await typeLong(user);
+    await user.click(expand()!);
+    const row = layer()!.querySelector<HTMLElement>('[data-slot="composer-expanded-row"]')!;
+    await user.click(within(row).getByRole("button", { name: /attach file/i }));
+    const photos = await screen.findByRole("button", { name: /photos/i });
+    expect(row.contains(photos)).toBe(true);
+    expect(screen.getAllByRole("button", { name: /photos/i })).toHaveLength(1);
+  });
+
   it("closes on Escape and keeps the draft", async () => {
     const user = userEvent.setup();
     renderComposer({ layout: "box", expandArea: area });

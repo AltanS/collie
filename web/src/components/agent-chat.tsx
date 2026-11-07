@@ -3438,7 +3438,7 @@ export function AgentChat({
                       : undefined
                   }
                   draftNoticeSlot={draftNoticeSlot}
-                  // The fullscreen editor covers the reading area down to the composer.
+                  // The fullscreen editor takes the reading area's column, the whole app height.
                   expandArea={readingArea}
                   floatingHint={paneNav.hint}
                 />
