@@ -395,6 +395,11 @@ read well.
 > message to an older member is refused `not sent: older member`, and a member under an older lead
 > gets `not sent: older lead`. Run `collie crew update --all` to level the crew ([Update a crew](upgrading.md#updating-the-rest-of-the-crew)).
 
+> **Note.** Pinned messages need every member on a build with pins, 1.28.0 or later. A member keeps
+> the pins of its own panes, so a pane on an older member offers no Pin, and a pin call that reaches it
+> answers "That machine's Collie is older and cannot keep pins. Update it." Run `collie crew update --all`
+> to level the crew ([Update a crew](upgrading.md#updating-the-rest-of-the-crew)).
+
 ## A machine can run several Collies
 
 A crew member is one Collie instance: one bridge and one multiplexer. One machine can run more than

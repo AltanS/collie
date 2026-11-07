@@ -108,6 +108,16 @@ half folder of another pid is left alone until it is older than the timeout (10 
 after that at the start of the next download, which also sweeps this process's own leftovers from a
 crash. A download that finds its version already installed by the other bridge keeps that copy.
 
+## Trust
+
+The sha256 comes from the manifest of the same release as the asset, so it proves the file arrived
+whole, not where it came from: it guards against corruption and a wrong file, not against a release
+that was itself altered. The root of trust is TLS to github.com, the same root `collie update` stands
+on, and nothing here widens it. The engines then run in the app's origin, as any script of the build
+does, so a pack that was altered would run with the page's rights. That is why the pack is fetched on
+a tap, from the running version's own release, and never by a boot, an update or a name from the
+document.
+
 ## Consequences
 
 - An install and an update are about 4 MB smaller than with the engines inside, and a host that
