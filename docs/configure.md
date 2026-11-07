@@ -1175,7 +1175,7 @@ The layout has three parts.
   work in moves you to a pane of the tab beside it. Its two buttons, or a vertical swipe, move to the space
   above or below.
 
-Each pane has a width: **1/2**, **4/5** or **Full** of the row. A pane is never narrower than 360
+Each pane has a width: **1/2**, **4/5** or **Full** of the row. A pane is never narrower than 440
 pixels, so a width that would make it narrower is not offered. When the row cannot hold two panes at
 that size, every pane is **Full** width and the control is hidden. The row snaps to the start of a
 pane when you stop scrolling, and a scroll to the side never goes back a page in the browser. The row

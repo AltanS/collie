@@ -65,17 +65,28 @@ describe("column widths", () => {
   });
 
   it("is wide when the strip holds two panes at minimum width, and no sooner", () => {
-    expect(MIN_PANE_WIDTH).toBe(360);
-    expect(isWideMode(719)).toBe(false);
-    expect(isWideMode(720)).toBe(true);
+    expect(MIN_PANE_WIDTH).toBe(440);
+    expect(isWideMode(879)).toBe(false);
+    expect(isWideMode(880)).toBe(true);
     expect(isWideMode(639, 320)).toBe(false);
     expect(isWideMode(640, 320)).toBe(true);
   });
 
   it("hides the width button when no choice is left", () => {
     expect(hasWidthChoice(520)).toBe(false);
-    expect(hasWidthChoice(744)).toBe(true);
-    expect(hasWidthChoice(720)).toBe(true);
+    expect(hasWidthChoice(860)).toBe(false);
+    expect(hasWidthChoice(880)).toBe(true);
+    expect(hasWidthChoice(1046)).toBe(true);
+  });
+
+  it("draws one full column, not 1/2 beside an empty add column, on the tablets that showed it", () => {
+    // The strip is the window less the sidebar (320 at expanded) or the rail (56). At 360 these three
+    // were wide mode, so a lone column stood at 1/2 with an empty add column beside it.
+    expect(isWideMode(1114 - 320)).toBe(false); // a two-screen phone held sideways, 794
+    expect(isWideMode(1180 - 320)).toBe(false); // an 11-inch tablet in landscape, 860
+    expect(isWideMode(820 - 56)).toBe(false); // an 11-inch tablet in portrait, sidebar closed, 764
+    // A 13-inch tablet in landscape still holds two panes side by side, 1046.
+    expect(isWideMode(1366 - 320)).toBe(true);
   });
 
   it("draws a column at the next wider allowed preset when its own is too narrow", () => {

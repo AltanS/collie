@@ -35,7 +35,7 @@ test("on Off the same window keeps the phone pane screen", async ({ page }) => {
 });
 
 test("a wide line inside a column never widens the column or the page", async ({ page }) => {
-  // 820 less the 320 sidebar leaves 500, under two panes: not wide mode, one column at the strip's width.
+  // 820 less the medium sidebar leaves a strip under two panes: not wide mode, one column at the strip's width.
   await page.goto("/pane/w1:p1");
   const column = page.locator('[data-slot="wide-layout"] section[data-col-key]').first();
   await expect(column).toBeVisible();
@@ -56,6 +56,30 @@ test("a wide line inside a column never widens the column or the page", async ({
   expect(widths.page).toBe(widths.view);
   await expect(strip).toBeVisible();
 });
+
+// ONE PANE FILLS A TABLET (1.27.2). With a 360px minimum, wide mode began at a 720px strip, so on these
+// three screens a lone column stood at 1/2 beside an empty "Add a pane" of the same width, and on the
+// portrait tablet closing the sidebar made the chat narrower. From 440 each draws one full column.
+for (const { name, width, height, closed, column } of [
+  { name: "a two-screen phone held sideways", width: 1114, height: 705, closed: false, column: 794 },
+  { name: "an 11-inch tablet in landscape", width: 1180, height: 820, closed: false, column: 860 },
+  { name: "an 11-inch tablet in portrait with the sidebar closed", width: 820, height: 1180, closed: true, column: 764 },
+]) {
+  test(`on ${name} one pane is the strip's full width, ${column}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height });
+    if (closed) await page.addInitScript(() => localStorage.setItem("collie:wide-sidebar:v1", "0"));
+    await page.goto("/pane/w1:p1");
+    const col = page.locator('[data-slot="wide-layout"] section[data-col-key]').first();
+    await expect(col).toBeVisible();
+    await expect(page.locator(closed ? '[data-slot="rail"]' : '[data-slot="wide-sidebar"]')).toBeVisible();
+    const box = (await col.boundingBox())!;
+    expect(Math.round(box.width)).toBe(column);
+    // Not wide mode: the column has no width button, and the add column is past the right edge.
+    await expect(col.getByRole("button", { name: /^Width / })).toHaveCount(0);
+    const add = (await page.locator('[data-slot="add-column"]').boundingBox())!;
+    expect(Math.round(add.x)).toBeGreaterThanOrEqual(width);
+  });
+}
 
 // THE STATUS BAR ON A LARGE PHONE (1.27.1). A foldable draws the page under its status bar, and the
 // layout's top rows stood under it: the sidebar's top row and the tab row were cut off, while the

@@ -52,8 +52,12 @@ export const RAIL_WIDTH = 56;
 
 // ── Column widths ───────────────────────────────────────────────────────────────────────────────
 
-/** A pane is never narrower than this many CSS px. */
-export const MIN_PANE_WIDTH = 360;
+/** A pane is never narrower than this many CSS px. It is 440, not the 360 of the first cut: at 360
+ *  wide mode began at a 720px strip, so a lone column stood at 1/2 beside an empty add column on a
+ *  1114 or 1180px tablet in landscape (392 and 425px of chat), and closing the sidebar on an 820px
+ *  tablet in portrait made the chat NARROWER, 535 to 377px. From 440 wide mode begins at an 880px
+ *  strip, and those three screens draw one full column (ADR 0120, addendum 2026-11-07). */
+export const MIN_PANE_WIDTH = 440;
 
 /** A column's width as a share of the strip, in wide mode only. Niri's preset column widths. */
 export type Preset = "half" | "fourfifths" | "full";
