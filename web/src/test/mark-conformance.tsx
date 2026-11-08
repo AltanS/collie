@@ -2,7 +2,7 @@
 // mark it is given, and `components/mark-conformance.test.tsx` gives it the whole registry.
 //
 // What it asks is only what `components/mark-contract.ts` makes public: the props, the `--mark-*`
-// variables, `data-mark`, `data-state`, `data-bead`, `data-still` and `setRate`. A mark's own class
+// variables, `data-mark`, `data-state`, `data-bead`, `data-still`, `data-rest` and `setRate`. A mark's own class
 // names and parts are never asked for, so a regeneration that renames them cannot break this suite.
 // What it DOES ask about private names is the opposite question: that they stay private, which means
 // every keyframe and every inline custom property a mark invents starts with its own prefix.
@@ -12,11 +12,12 @@
 // The fakes are the contract's own words: an animation named like one of the mark's keyframes is
 // paced, one named like anything else is the host's and is never touched.
 
-import { render } from "@testing-library/react";
+import { act, render } from "@testing-library/react";
 import { createRef, type ComponentType } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  MARK_HOME,
   MARK_STATES,
   MARK_STATE_LOOK,
   MARK_STYLE,
@@ -74,6 +75,7 @@ function colourVars(root: SVGSVGElement): Record<string, string> {
 class FakeAnimation {
   readonly animationName: string;
   currentTime: number;
+  readonly playbackRate = 1;
   readonly rates: number[] = [];
   readonly effect = { getTiming: () => ({ delay: 0, duration: 1800 }) };
 
@@ -109,6 +111,7 @@ function resolveTurnLikeABrowser(): void {
 }
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.restoreAllMocks();
   Reflect.deleteProperty(SVGSVGElement.prototype, "getAnimations");
 });
@@ -229,6 +232,55 @@ export function describeMarkConformance(entries: readonly MarkEntry[]): void {
       expect(held.hasAttribute("data-still")).toBe(true);
       expect(sheetOf(held)).toContain(MARK_STYLE);
       expect(rootOf(render(<Mark state="loading" turn={2} />).container).hasAttribute("data-still")).toBe(false);
+    });
+
+    // Issue 748: a resting mark runs no animation. The engine half of this (no running animation
+    // in a real browser, for every character) is web/e2e/mark-rest.spec.ts.
+    it("holds still in rest and idle, and only there", () => {
+      for (const state of MARK_STATES) {
+        const root = rootOf(render(<Mark state={state} />).container);
+        expect(root.hasAttribute("data-rest"), state).toBe(MARK_STATE_LOOK[state].pace === "rest");
+      }
+      const root = rootOf(render(<Mark />).container);
+      expect(sheetOf(root)).toContain(MARK_STYLE);
+      expect(MARK_STYLE).toContain("[data-mark][data-rest] *{animation:none!important}");
+      // A host that asks for a turn at rest gets the turn, so nothing holds it still.
+      expect(rootOf(render(<Mark turn={48} />).container).hasAttribute("data-rest")).toBe(false);
+    });
+
+    it("finishes the lap it is on, at the live pace, before it rests", () => {
+      vi.useFakeTimers();
+      const names = keyframeNames(sheetOf(rootOf(render(<Mark />).container)));
+      // 30% of the way round a live turn of 1800 ms: 1260 ms to go.
+      const fakes = names.map((name) => new FakeAnimation(name, 540));
+      installAnimations(fakes);
+      const { container, rerender } = render(<Mark state="loading" />);
+      const liveClass = rootOf(container).getAttribute("class");
+      rerender(<Mark state="rest" />);
+      const root = rootOf(container);
+      expect(root.getAttribute("data-state")).toBe("rest");
+      expect(root.hasAttribute("data-rest")).toBe(false);
+      expect(root.getAttribute("class")).toBe(liveClass);
+      expect(inlineVars(root)[turnVarOf(root)]).toBe(`var(--mark-turn, ${MARK_TURN.live}s)`);
+      act(() => vi.advanceTimersByTime(1250));
+      expect(root.hasAttribute("data-rest")).toBe(false);
+      act(() => vi.advanceTimersByTime(20));
+      expect(root.hasAttribute("data-rest")).toBe(true);
+      expect(inlineVars(root)[turnVarOf(root)]).toBe(`var(--mark-turn, ${MARK_TURN.rest}s)`);
+    });
+
+    it("rests at once when the orbit is already home, or nothing turns", () => {
+      const names = keyframeNames(sheetOf(rootOf(render(<Mark />).container)));
+      // A spin round lands within a frame or two of home, a hair past it here.
+      installAnimations(names.map((name) => new FakeAnimation(name, 1800 * (1 + MARK_HOME / 2))));
+      const { container, rerender } = render(<Mark state="loading" />);
+      rerender(<Mark state="rest" />);
+      expect(rootOf(container).hasAttribute("data-rest")).toBe(true);
+      // No animations at all (reduced motion, or an engine without getAnimations): rest now too.
+      installAnimations([]);
+      const other = render(<Mark state="applying" />);
+      other.rerender(<Mark state="idle" />);
+      expect(rootOf(other.container).hasAttribute("data-rest")).toBe(true);
     });
 
     it("hands the caller's paper to the knockout, and falls back to --mark-paper", () => {

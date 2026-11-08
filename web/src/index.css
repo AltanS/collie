@@ -1463,6 +1463,21 @@
   color: var(--wordmark-lit);
 }
 
+/* A HIDDEN PAGE RUNS NO ANIMATION (issue 748, ADR 0138). lib/page-hidden.ts puts the attribute on <html> while
+   `document.visibilityState` is hidden; this pauses every animation, pseudo-elements included, and a
+   paused animation resumes where it stopped. Important, because it must beat every rule that sets
+   an `animation` shorthand, and the shorthand resets the play state.
+   The second pair is the app under a veil (App.tsx, `data-app-covered`): the idle lock and the update
+   screen blur or dim the app behind them, and an animation under a veil keeps the veil redrawing. */
+:root[data-page-hidden] *,
+:root[data-page-hidden] *::before,
+:root[data-page-hidden] *::after,
+[data-app-covered] *,
+[data-app-covered] *::before,
+[data-app-covered] *::after {
+  animation-play-state: paused !important;
+}
+
 /* Submission progress bar — a slim indeterminate strip across the very top of the viewport while a
    mutation is in flight (components/busy-bar). The `appear` animation holds it fully invisible for
    120ms (delay + `both` fill), so an action that resolves and unmounts within that window never
@@ -1523,9 +1538,13 @@
    as a strobe, and the turn is visible in the silhouette at any size and to any eye. It REPLACED the
    opacity breathe this rule used to hold (issue 420): a fade is carried by hue and lightness, which
    is what the mark no longer depends on. Only the ONE mark the operator is watching carries the
-   class; every other mark is still. */
+   class; every other mark is still.
+   IN 24 STEPS, NOT LINEAR (issue 748): a linear turn asks the browser for a new frame 60 times a
+   second for as long as an agent works, and on one Android phone that frame rate, all day, drove
+   Chrome's GPU process past the system's file limit. 24 ticks of 15 degrees are about 13 frames a
+   second, and at the dot's size the turn still reads as smooth. */
 .status-turn {
-  animation: status-turn 1.8s linear infinite;
+  animation: status-turn 1.8s steps(24) infinite;
 }
 @keyframes status-turn {
   to {
@@ -1566,15 +1585,17 @@
 
 /* THE WORKING ROW OF A DURABLE THREAD (components/session-stream.tsx `WorkingRow`): three dots in the muted ink, each
    rising and falling a third of a cycle after the one before. Opacity only, so nothing moves and the row keeps its box.
-   Under reduced motion the dots stand still at a middling weight. */
+   Under reduced motion the dots stand still at a middling weight.
+   STEPPED, on one grid (issue 748): each rise and each fall is five steps of 96 ms, and the delays are two and four of
+   them, so all three dots change on the same ticks, about 10 frames a second instead of 60. */
 .working-dots > span {
-  animation: working-dot 1.2s ease-in-out infinite;
+  animation: working-dot 1.2s steps(5) infinite;
 }
 .working-dots > span:nth-child(2) {
-  animation-delay: 0.2s;
+  animation-delay: 0.192s;
 }
 .working-dots > span:nth-child(3) {
-  animation-delay: 0.4s;
+  animation-delay: 0.384s;
 }
 @keyframes working-dot {
   0%,

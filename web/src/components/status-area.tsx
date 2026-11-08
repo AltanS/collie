@@ -61,7 +61,9 @@ export function StatusArea({ className }: { className?: string }) {
         className={cn(
           // `rounded-full` over the house `rounded-md`: the house radius is for things that hold
           // space, and §3's own rule is that a pill is what a passing, self-sized thing wears.
-          "flex items-center justify-center gap-1.5 rounded-full border bg-background/95 px-3 py-1 text-xs font-medium shadow-sm backdrop-blur duration-200 animate-in fade-in",
+          // Solid, with no `backdrop-blur`: the pill floats over the pane, which animates while an agent
+          // works, and a blur over an animation redraws every frame (issue 748).
+          "flex items-center justify-center gap-1.5 rounded-full border bg-background px-3 py-1 text-xs font-medium shadow-sm duration-200 animate-in fade-in",
           dismissable ? "border-status-blocked/50" : "border-border/60",
           TONE[status.tone],
         )}

@@ -118,9 +118,11 @@ export function UpdateScreen({
 
   return (
     <div role="dialog" aria-modal="true" aria-labelledby={headingId} className="fixed inset-x-0 top-0 z-50 h-(--app-h)">
-      {/* THE VEIL. The app stays in view, dimmed and softened, so the operator can see what is locked
-          and that it is still there. It takes no pointer: `App.tsx` makes the app behind it inert. */}
-      <div aria-hidden="true" className="absolute inset-0 bg-background/70 backdrop-blur-[2px]" />
+      {/* THE VEIL. The app stays in view, dimmed, so the operator can see what is locked and that it
+          is still there. It takes no pointer: `App.tsx` makes the app behind it inert and pauses its
+          animations. No blur: the panel above it animates for the whole update, and a blur under an
+          animation redraws every frame (issue 748). */}
+      <div aria-hidden="true" className="absolute inset-0 bg-background/80" />
       {!ready && <Band screen={screen} />}
       <div
         ref={panelRef}

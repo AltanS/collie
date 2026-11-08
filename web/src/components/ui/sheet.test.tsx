@@ -166,7 +166,9 @@ describe("BottomSheet — backdrop dismiss requires press AND release on the bac
     // The sticky title row rides the same surface — a header in the page's colour would cut the
     // panel in two at the top.
     const header = container.querySelector('[data-slot="sheet-title-row"]')!.parentElement!;
-    expect(header.className).toContain("bg-card/95");
+    expect(header.className).toMatch(/(?:^|\s)bg-card(?=\s|$)/);
+    // Solid: the rows under it animate, and a blur over an animation redraws every frame (issue 748).
+    expect(header.className).not.toContain("backdrop-blur");
   });
 });
 

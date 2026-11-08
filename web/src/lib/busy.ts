@@ -102,9 +102,9 @@ export function isOperatorBusy(): boolean {
  * remember to close. Unmounting mid-work releases, so a pane switch cannot strand the orbit.
  *
  * SHORT WORK IS NOT A FLICKER, and that is a property of the mark rather than of a debounce here.
- * Every brand mark carries the orbit's PHASE across a state change (the mark contract's `useMark`), so a spin
- * that lasts 200ms joins the resting drift where it left it and rejoins it where it lands — it reads
- * as a short accelerate/decelerate, not as a jump to a different picture and back. Nothing needs a
+ * A brand mark that leaves a live state finishes the lap it is on before it rests (the mark contract's
+ * `useMark`), so a spin that lasts 200ms reads as one lap that comes home, not as a jump to a different
+ * picture and back. Nothing needs a
  * minimum duration, and adding one would make the orbit outlive the work it is reporting.
  */
 export function useBusyWhile(active: boolean): void {

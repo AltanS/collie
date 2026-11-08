@@ -73,6 +73,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **Browse checks the host's answer before it draws it.** The phone reads the host's status of the theme list field by field: a field of the wrong type takes its empty value, an error word it does not know is left out, and an answer that is not an object shows the read error, so an older or newer host cannot break the sheet.
 - **The first paint never takes a stored theme that claims the id `collie`.** The script that paints the theme before the app loads now skips such an entry, as the app already did once it loaded.
 - **The app and colliepwa.dev share one rule for a theme's repository and file.** An owner is a name GitHub issues (a letter or digit first, then letters, digits and hyphens), and a file under `themes/` has a stem of at most 80 characters. A test on each side pins the same four patterns, so an entry the site lists is never dropped by the app.
+- **Collie no longer keeps the phone's graphics busy while nothing happens.** The header logo turned slowly all the time, so the browser drew a new frame 60 times a second for as long as Collie was open, and on one Android phone that made the system force-stop Chrome. Now the logo holds still at rest and finishes its turn before it stops, the working dot turns in steps, a hidden page or a page under the idle lock or the update screen pauses every animation, and no blur covers a moving part. Thanks @mfrep (#748).
 
 ### Packaging
 

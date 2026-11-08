@@ -22,7 +22,11 @@ import "./lib/pwa";
 // `beforeinstallprompt`, which is long before any Settings component mounts (lib/install.ts).
 import "./lib/install";
 import { startPushTitleSync } from "./lib/push-titles";
+import { installHiddenPause } from "./lib/page-hidden";
 
+// A hidden page runs no animation (issue 748): the root carries an attribute while it is hidden, and
+// index.css pauses every animation under it. First, so a page opened in the background never starts.
+installHiddenPause();
 // RECONCILES the typeface class, it does not apply it: public/theme-init.js has already put the
 // right one on <html> before first paint for every shipped face. This call is what covers the two
 // cases that script deliberately cannot — an operator-supplied face (no pre-paint path; it has no
