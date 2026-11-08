@@ -5,11 +5,11 @@ import { createMemoryRouter, Outlet, RouterProvider, useLocation } from "react-r
 import type { ComponentProps, ReactElement } from "react";
 
 import { server } from "@/test/setup";
-import { collieMark, markIsLive, markPaper } from "@/test/collie-mark";
+import { collieMark, markIsLive, markPaper, markState } from "@/test/collie-mark";
 import { __resetOperatorCommands, loadOperatorCommands } from "@/lib/operator-config";
 import { ROOT_ROUTE_ID, type HomeData } from "@/lib/loaders";
 import { AppHeaderHost, RouteHeader, SettingsGear } from "./app-header";
-import { APPLYING_CLASS, ORBIT_TURN_MS, RECONNECTED_CLASS } from "./collie-home";
+import { ORBIT_TURN_MS } from "./collie-home";
 import { __resetReconnected, showReconnected } from "@/lib/reconnected";
 import { __resetBundleFocus, bundleFocusPending, subscribeBundleFocus } from "@/lib/bundle-apply";
 import { __resetReloadGuard, holdReload } from "@/lib/reload-guard";
@@ -218,7 +218,7 @@ describe("the header — the dog keys on trouble/lost, not the first not-live fr
     const { container } = renderHeader(<Header bridge="connected" error onHome={() => {}} />);
     // A single not-live frame is NOT trouble yet: the orbit stays still, full colour.
     expect(markIsLive(container)).toBe(false);
-    expect(collieMark(container)?.getAttribute("class") ?? "").not.toMatch(/grayscale/);
+    expect(markState(container)).toBe("rest");
 
     // Sustained trouble (4s) → the mark blooms (agreeing with the amber bar).
     act(() => vi.advanceTimersByTime(TROUBLE_MS));
@@ -227,7 +227,7 @@ describe("the header — the dog keys on trouble/lost, not the first not-live fr
     // Escalated to lost (15s) → the bloom stops, the orbit stills again and the mark is muted.
     act(() => vi.advanceTimersByTime(CONNECTION_LOST_MS - TROUBLE_MS));
     expect(markIsLive(container)).toBe(false);
-    expect(collieMark(container)?.getAttribute("class") ?? "").toMatch(/grayscale/);
+    expect(markState(container)).toBe("idle");
   });
 
   // The strip can be dismissed; the badge on the mark is what stays. The host reads the phone's own
@@ -965,7 +965,7 @@ describe("the header — the mark while the app updates", () => {
     expect(markIsLive(container)).toBe(false);
     applyBundle();
     expect(markIsLive(container)).toBe(true);
-    expect(collieMark(container)?.classList.contains(APPLYING_CLASS)).toBe(true);
+    expect(markState(container)).toBe("applying");
     expect(screen.getByRole("button", { name: "Collie is updating the app. Open the dashboard." })).toBeInTheDocument();
   });
 
@@ -1049,17 +1049,17 @@ describe("the header — the mark when the link comes back", () => {
     vi.useRealTimers();
   });
 
-  it("paints the mark green and turns it for one turn, then rests", () => {
+  it("turns the mark in the reconnected state for one turn, then rests", () => {
     const { container } = renderHeader(<Header bridge="connected" error={false} wordmark />);
     expect(markIsLive(container)).toBe(false);
     act(() => showReconnected(ORBIT_TURN_MS));
     expect(markIsLive(container)).toBe(true);
-    expect(collieMark(container)?.classList.contains(RECONNECTED_CLASS)).toBe(true);
+    expect(markState(container)).toBe("reconnected");
     expect(screen.getByRole("button", { name: "Collie home, reconnected" })).toBeInTheDocument();
     act(() => vi.advanceTimersByTime(ORBIT_TURN_MS - 1));
-    expect(collieMark(container)?.classList.contains(RECONNECTED_CLASS)).toBe(true);
+    expect(markState(container)).toBe("reconnected");
     act(() => vi.advanceTimersByTime(1));
-    expect(collieMark(container)?.classList.contains(RECONNECTED_CLASS)).toBe(false);
+    expect(markState(container)).toBe("rest");
     expect(markIsLive(container)).toBe(false);
     expect(screen.getByRole("button", { name: "Collie home" })).toBeInTheDocument();
   });

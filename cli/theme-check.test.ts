@@ -64,6 +64,33 @@ describe("collie theme check", () => {
     ]);
   });
 
+  test("a version 4 file with a mark passes, and the report says version 4", () => {
+    for (const mark of ["collie", "kawaii", "kawaii-tilt", "pixel"]) {
+      const file = JSON.stringify({ version: 4, id: "my-day", name: "My day", mark, light: { background: "#ffffff" } });
+      const { deps, io } = world({ "mark.json": file });
+      expect(cmdThemeCheck(deps, ["mark.json"])).toBe(EXIT.OK);
+      expect(io.stdout).toEqual(['mark.json: ok, "My day" (my-day), version 4, every contrast check passes']);
+    }
+  });
+
+  test("a mark in a file that says version 3 is refused with the version it needs", () => {
+    const file = JSON.stringify({ version: 3, id: "my-day", name: "My day", mark: "pixel", light: { background: "#ffffff" } });
+    const { deps, io } = world({ "mark.json": file });
+    expect(cmdThemeCheck(deps, ["mark.json"])).toBe(EXIT.FAIL);
+    expect(io.stdout).toEqual([
+      `mark.json: refused: ${en["theme.refusal.version"]} (mark: A file with "mark" must say version 4. This one says version 3.)`,
+    ]);
+  });
+
+  test("an unknown mark word is refused with the mark headline and the list of words", () => {
+    const file = JSON.stringify({ version: 4, id: "my-day", name: "My day", mark: "dog", light: { background: "#ffffff" } });
+    const { deps, io } = world({ "mark.json": file });
+    expect(cmdThemeCheck(deps, ["mark.json"])).toBe(EXIT.FAIL);
+    expect(io.stdout).toEqual([
+      `mark.json: refused: ${en["theme.refusal.mark"]} (mark: "mark" must be one of: collie, kawaii, kawaii-tilt, pixel.)`,
+    ]);
+  });
+
   test("text that is not JSON is refused with the json headline", () => {
     const { deps, io } = world({ "bad.json": "{ not json" });
     expect(cmdThemeCheck(deps, ["bad.json"])).toBe(EXIT.FAIL);

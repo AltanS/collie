@@ -9635,7 +9635,8 @@ function gzippedBytes(
 /**
  * Cache-Control for a served dist file, keyed by its path relative to web/dist. Hashed assets under
  * `assets/` are content-addressed, so cache them hard + immutable, and so are the math engines under
- * `math/`, every file of which carries a content hash too (web/vite.config.ts names them). EVERYTHING else — index.html,
+ * `math/` and the theme marks under `marks/`, every file of which carries a content hash too
+ * (web/vite.config.ts names them). EVERYTHING else — index.html,
  * sw.js, manifest.webmanifest, build-info.json, the favicons — is MUTABLE across a rebuild and must
  * always be revalidated (`no-cache`), so neither the browser NOR an intermediary reverse proxy can
  * pin a stale copy. This matters most for sw.js: a proxy that heuristically caches it (it shipped
@@ -9644,5 +9645,7 @@ function gzippedBytes(
  * but which this header prevents at the source. Pure + exported for unit tests.
  */
 export function cacheControlFor(rel: string): string {
-  return rel.startsWith("assets/") || rel.startsWith("math/") ? "public, max-age=31536000, immutable" : "no-cache";
+  return rel.startsWith("assets/") || rel.startsWith("math/") || rel.startsWith("marks/")
+    ? "public, max-age=31536000, immutable"
+    : "no-cache";
 }

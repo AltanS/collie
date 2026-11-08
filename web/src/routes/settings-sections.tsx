@@ -35,6 +35,7 @@ import { ToolCallsControl } from "@/components/tool-calls-control";
 import { TourControl } from "@/components/tour-control";
 import { TypefaceControl } from "@/components/typeface-control";
 import { TelemetrySettingsCard, TelemetrySettingsRow } from "@/components/telemetry-settings-card";
+import { MarkControl } from "@/components/mark-control";
 import { MathControl } from "@/components/math-control";
 import { ZenControl } from "@/components/zen-control";
 import { useServerDiagnostics } from "@/hooks/use-server-diagnostics";
@@ -94,6 +95,9 @@ export function SettingsAppearanceRoute() {
           should find the other. */}
       <ThemePickerControl />
       <ThemeControl />
+      {/* Which logo the header draws, per device. Under the theme because its default is "From the
+          theme": a theme may name a mark, and this is where a device overrides it. */}
+      <MarkControl />
       {/* Beside appearance because both are "how this phone presents itself". */}
       <LanguageControl />
       {/* TWO FONT CARDS, ADJACENT, IN THIS ORDER. Adjacency answers the only question either one

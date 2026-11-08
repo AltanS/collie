@@ -258,7 +258,7 @@ describe("the library", () => {
           { ...midnight("urlish"), light: { background: "url(https://x.test/a.png)" } },
           { ...midnight("extra"), surprise: true },
           midnight("nightwatch"),
-          { ...midnight("future"), version: 4 },
+          { ...midnight("future"), version: 5 },
           "not an object",
           midnight("good"),
         ],

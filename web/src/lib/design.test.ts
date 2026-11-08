@@ -12,6 +12,7 @@ import {
   mathEngineOf,
   parseDesignPrefs,
   setDesignFont,
+  setDesignMark,
   setDesignMath,
   setDesignTheme,
 } from "./design";
@@ -183,5 +184,53 @@ describe("the math field", () => {
       theme: "midnight",
       math: "mathjax",
     });
+  });
+});
+
+describe("the mark field", () => {
+  it("reads one of the ids and treats anything else as absence", () => {
+    expect(parseDesignPrefs('{"font":"aldrich","mark":"kawaii"}')).toEqual({ font: "aldrich", mark: "kawaii" });
+    expect(parseDesignPrefs('{"font":"aldrich","mark":"pixel"}').mark).toBe("pixel");
+    expect(parseDesignPrefs('{"font":"aldrich","mark":"kawaii-tilt"}').mark).toBe("kawaii-tilt");
+    expect(parseDesignPrefs('{"font":"aldrich","mark":"collie"}').mark).toBe("collie");
+    for (const bad of ['"Kawaii"', '"theme"', '""', '"dog"', "1", "null", "true", '["pixel"]']) {
+      expect(parseDesignPrefs(`{"font":"aldrich","mark":${bad}}`)).toEqual({ font: "aldrich" });
+    }
+  });
+
+  it("is absent on a device that never chose", () => {
+    expect(designPrefs().mark).toBeUndefined();
+  });
+
+  it("round-trips through storage, and null (From the theme) stores what a device that never chose stores", () => {
+    setDesignMark("pixel");
+    expect(stored()).toEqual({ font: "atkinson", mark: "pixel" });
+    __resetDesign();
+    expect(designPrefs().mark).toBe("pixel");
+    setDesignMark(null);
+    expect(stored()).toEqual({ font: "atkinson" });
+  });
+
+  it("ignores a value that is not an id", () => {
+    setDesignMark("kawaii");
+    setDesignMark("dog");
+    setDesignMark("");
+    expect(designPrefs().mark).toBe("kawaii");
+  });
+
+  it("survives a change of face, theme and math, and they survive it", () => {
+    setDesignMark("kawaii");
+    setDesignFont("system");
+    setDesignTheme("midnight");
+    setDesignMath("katex");
+    expect(stored()).toEqual({ font: "system", theme: "midnight", math: "katex", mark: "kawaii" });
+    setDesignMark("pixel");
+    expect(stored()).toEqual({ font: "system", theme: "midnight", math: "katex", mark: "pixel" });
+  });
+
+  it("is kept when a retired theme id is moved to collie on load", () => {
+    localStorage.setItem(DESIGN_STORAGE_KEY, JSON.stringify({ font: "aldrich", theme: RETIRED_THEME_ID, math: "katex", mark: "pixel" }));
+    __resetDesign();
+    expect(stored()).toEqual({ font: "aldrich", math: "katex", mark: "pixel" });
   });
 });

@@ -226,6 +226,18 @@ function mathFolder(ids: readonly string[], names: readonly string[] = []): stri
   return katex || ids.some((id) => MATH_MODULE.test(id)) ? "math" : null;
 }
 
+// The theme marks (components/brand-mark.tsx). Each is a dynamic import and goes under `marks/`,
+// out of the precache like `math/`: the Collie mark is the default, and a device that never picks
+// another never downloads a byte of the others. Any `<id>-mark.tsx` but the Collie one and the host, so a new mark
+// needs no change here. src/sw.ts caches the chosen one on first use.
+const MARK_MODULE = /[\\/]src[\\/]components[\\/](?!(?:collie|brand)-mark\.tsx)[a-z][a-z-]*-mark\.tsx$/;
+
+/** The folder an output chunk goes in: `math/...`, `marks`, or `null` for the app's own `assets/`. */
+function chunkFolder(ids: readonly string[]): string | null {
+  if (ids.length > 0 && ids.every((id) => MARK_MODULE.test(id))) return "marks";
+  return mathFolder(ids);
+}
+
 // KaTeX's stylesheet offers each face as .woff2, then .woff and .ttf. Every browser Collie runs on
 // takes the .woff2, so the other two are files no device ever fetches: about 0.8 MB in the release.
 // Dropping them from the `src` lists here, before Vite resolves the URLs, means they are never
@@ -383,7 +395,8 @@ export default defineConfig({
         // nobody who never taps Whistle should pay for it on install. It loads on first use.
         // The math engines (`math/`, set by build.rolldownOptions below) stay out for the same
         // reason: they are a device's opt-in, and Off is the default.
-        globIgnores: [...precacheIgnoresFor(channel), "stt/**", "math/**"],
+        // The theme marks (`marks/`) stay out too: Collie is the default mark.
+        globIgnores: [...precacheIgnoresFor(channel), "stt/**", "math/**", "marks/**"],
       },
       // Over plain HTTP (insecure context) the SW can't register; in dev we don't want it anyway.
       devOptions: { enabled: false },
@@ -426,7 +439,7 @@ export default defineConfig({
         // is already its own chunk; the folder is what keeps it out of the precache (`math/**` in
         // globIgnores) and lets src/sw.ts cache it on first use instead. A device on Off — the
         // default — never downloads or stores a byte of either engine.
-        chunkFileNames: (chunk) => `${mathFolder(chunk.moduleIds) ?? "assets"}/[name]-[hash].js`,
+        chunkFileNames: (chunk) => `${chunkFolder(chunk.moduleIds) ?? "assets"}/[name]-[hash].js`,
         assetFileNames: (asset) =>
           `${mathFolder(asset.originalFileNames, asset.names) ?? "assets"}/[name]-[hash][extname]`,
       },
