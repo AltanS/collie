@@ -6,10 +6,10 @@ Every glyph the app draws is named by what it means. A theme's `glyphs` picks th
 them (ADR 0137). A family with no fitting glyph for a key draws the lucide one, shown as `(lucide)`.
 Phosphor's three sets share one map; the fill and duotone files add `-fill` and `-duotone`.
 
-271 keys.
+326 keys.
 
 Phosphor Fill draws these keys in the regular weight, so a cross stays a cross and an empty or
-not-started state stays empty: `action-check`, `action-x`, `answered`, `clear`, `close`, `confirm`, `copied`, `copy-failed`, `dismiss`, `done`, `ok`, `plan-done`, `plan-pending`, `remove`, `selected`, `sent-ok`, `update-step-done`, `update-step-failed`, `update-step-skipped`, `voice-setup`, `zoom-out`.
+not-started state stays empty: `action-check`, `action-x`, `answered`, `clear`, `close`, `confirm`, `copied`, `copy-failed`, `dismiss`, `done`, `mod-icon-check`, `mod-icon-x`, `mod-step-done`, `mod-step-failed`, `mod-step-todo`, `ok`, `plan-done`, `plan-pending`, `remove`, `selected`, `sent-ok`, `update-step-done`, `update-step-failed`, `update-step-skipped`, `voice-setup`, `zoom-out`.
 
 ## Belt
 
@@ -56,6 +56,8 @@ not-started state stays empty: `action-check`, `action-x`, `answered`, `clear`, 
 | `direct-typing` | keystrokes go straight to the terminal | `Keyboard` | `keyboard` | `dialpad` |
 | `discard` | discard the recording | `Trash2` | `trash` | `trash` |
 | `display-settings` | display settings | `Settings2` | `faders-horizontal` | `control-slider` |
+| `editor-close` | leave the full-screen editor | `Minimize2` | `arrows-in-simple` | `reduce` |
+| `editor-open` | open the full-screen editor | `Maximize2` | `arrows-out-simple` | `enlarge` |
 | `file-text` | a text file | `FileText` | `file-text` | `page` |
 | `image` | an image | `Image` | `image` | `media-image` |
 | `key-down` | the Down arrow key sent to the agent | `ArrowDown` | `arrow-down` | `arrow-down` |
@@ -263,6 +265,7 @@ not-started state stays empty: `action-check`, `action-x`, `answered`, `clear`, 
 | `machine-activity` | machine activity | `Activity` | `pulse` | `activity` |
 | `math` | math setting | `Sigma` | `sigma` | `sigma-function` |
 | `mic` | microphone | `Mic` | `microphone` | `microphone` |
+| `mods` | the Mods settings section | `Plug` | `plug` | `plug-type-a` |
 | `notifications-snooze` | snooze notifications | `BellOff` | `bell-z` | `bell-off` |
 | `pane-navigation` | pane navigation setting | `Move` | `arrows-out-cardinal` | `drag` |
 | `phone` | this phone | `Smartphone` | `device-mobile` | `smartphone-device` |
@@ -341,3 +344,60 @@ not-started state stays empty: `action-check`, `action-x`, `answered`, `clear`, 
 | `search` | search | `Search` | `magnifying-glass` | `search` |
 | `select-caret` | caret of a dropdown | `ChevronDown` | `caret-down` | `nav-arrow-down` |
 | `shell-pane` | a pane that is a bare shell | `SquareTerminal` | `terminal-window` | `terminal` |
+
+## Mods
+
+| key | meaning | lucide | phosphor | iconoir |
+| --- | --- | --- | --- | --- |
+| `mod-age` | how old a mod's facts are | `Clock` | `clock` | `clock` |
+| `mod-icon-activity` | a mod's own icon, the word `activity` | `Activity` | `pulse` | `activity` |
+| `mod-icon-alert` | a mod's own icon, the word `alert` | `TriangleAlert` | `warning` | `warning-triangle` |
+| `mod-icon-archive` | a mod's own icon, the word `archive` | `Archive` | `archive` | `archive` |
+| `mod-icon-bell` | a mod's own icon, the word `bell` | `Bell` | `bell` | `bell` |
+| `mod-icon-bot` | a mod's own icon, the word `bot` | `Bot` | `robot` | `sparks` |
+| `mod-icon-branch` | a mod's own icon, the word `branch` | `GitBranch` | `git-branch` | `git-branch` |
+| `mod-icon-bug` | a mod's own icon, the word `bug` | `Bug` | `bug` | `bug` |
+| `mod-icon-chart` | a mod's own icon, the word `chart` | `ChartColumn` | `chart-bar` | `stats-report` |
+| `mod-icon-check` | a mod's own icon, the word `check` | `Check` | `check` | `check` |
+| `mod-icon-clock` | a mod's own icon, the word `clock` | `Clock` | `clock` | `clock` |
+| `mod-icon-commit` | a mod's own icon, the word `commit` | `GitCommitHorizontal` | `git-commit` | `git-commit` |
+| `mod-icon-cpu` | a mod's own icon, the word `cpu` | `Cpu` | `cpu` | `cpu` |
+| `mod-icon-disk` | a mod's own icon, the word `disk` | `HardDrive` | `hard-drive` | `hard-drive` |
+| `mod-icon-file` | a mod's own icon, the word `file` | `FileText` | `file-text` | `page` |
+| `mod-icon-flag` | a mod's own icon, the word `flag` | `Flag` | `flag` | `triangle-flag` |
+| `mod-icon-flask` | a mod's own icon, the word `flask` | `FlaskConical` | `flask` | `flask` |
+| `mod-icon-folder` | a mod's own icon, the word `folder` | `Folder` | `folder` | `folder` |
+| `mod-icon-gauge` | a mod's own icon, the word `gauge` | `Gauge` | `gauge` | `dashboard-speed` |
+| `mod-icon-globe` | a mod's own icon, the word `globe` | `Globe` | `globe` | `globe` |
+| `mod-icon-inbox` | a mod's own icon, the word `inbox` | `Inbox` | `tray` | `drawer` |
+| `mod-icon-info` | a mod's own icon, the word `info` | `Info` | `info` | `info-circle` |
+| `mod-icon-link` | a mod's own icon, the word `link` | `ExternalLink` | `arrow-square-out` | `open-new-window` |
+| `mod-icon-list` | a mod's own icon, the word `list` | `ListTodo` | `list-checks` | `task-list` |
+| `mod-icon-lock` | a mod's own icon, the word `lock` | `Lock` | `lock` | `lock` |
+| `mod-icon-message` | a mod's own icon, the word `message` | `MessageSquare` | `chat` | `message` |
+| `mod-icon-more` | a mod's own icon, the word `more` | `Ellipsis` | `dots-three` | `more-horiz` |
+| `mod-icon-note` | a mod's own icon, the word `note` | `StickyNote` | `note` | `notes` |
+| `mod-icon-pause` | a mod's own icon, the word `pause` | `Pause` | `pause` | `pause` |
+| `mod-icon-play` | a mod's own icon, the word `play` | `Play` | `play` | `play` |
+| `mod-icon-plug` | a mod's own icon, the word `plug` | `Plug` | `plug` | `plug-type-a` |
+| `mod-icon-refresh` | a mod's own icon, the word `refresh` | `RefreshCw` | `arrows-clockwise` | `refresh` |
+| `mod-icon-search` | a mod's own icon, the word `search` | `Search` | `magnifying-glass` | `search` |
+| `mod-icon-send` | a mod's own icon, the word `send` | `Send` | `paper-plane-right` | `send` |
+| `mod-icon-server` | a mod's own icon, the word `server` | `Server` | `hard-drives` | `server` |
+| `mod-icon-settings` | a mod's own icon, the word `settings` | `Settings2` | `faders-horizontal` | `control-slider` |
+| `mod-icon-shield` | a mod's own icon, the word `shield` | `Shield` | `shield` | `shield` |
+| `mod-icon-star` | a mod's own icon, the word `star` | `Star` | `star` | `star` |
+| `mod-icon-terminal` | a mod's own icon, the word `terminal` | `SquareTerminal` | `terminal-window` | `terminal` |
+| `mod-icon-timer` | a mod's own icon, the word `timer` | `Timer` | `timer` | `timer` |
+| `mod-icon-trash` | a mod's own icon, the word `trash` | `Trash2` | `trash` | `trash` |
+| `mod-icon-user` | a mod's own icon, the word `user` | `User` | `user` | `user` |
+| `mod-icon-wrench` | a mod's own icon, the word `wrench` | `Wrench` | `wrench` | `wrench` |
+| `mod-icon-x` | a mod's own icon, the word `x` | `X` | `x` | `xmark` |
+| `mod-icon-zap` | a mod's own icon, the word `zap` | `Zap` | `lightning` | `flash` |
+| `mod-paused` | a mod that is paused | `Pause` | `pause` | `pause` |
+| `mod-step-done` | a mod's step: done | `Check` | `check` | `check` |
+| `mod-step-failed` | a mod's step: failed | `X` | `x` | `xmark` |
+| `mod-step-running` | a mod's step: running | `Play` | `play` | `play` |
+| `mod-step-todo` | a mod's step: not started | `Minus` | `minus` | `minus` |
+| `mod-trouble` | a mod that failed or cannot be reached | `TriangleAlert` | `warning` | `warning-triangle` |
+| `mod-unknown` | a mod mark whose state is not known | `CircleQuestionMark` | `question` | `help-circle` |

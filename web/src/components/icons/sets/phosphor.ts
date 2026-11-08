@@ -65,6 +65,8 @@ export const PHOSPHOR = {
   "done": "check", // done, finished · lucide Check
   "download": "download-simple", // download · lucide Download
   "edit": "pencil-simple", // edit or rename · lucide Pencil
+  "editor-close": "arrows-in-simple", // leave the full-screen editor · lucide Minimize2
+  "editor-open": "arrows-out-simple", // open the full-screen editor · lucide Maximize2
   "empty-state": "tray", // nothing to show here · lucide Inbox
   "error": "warning-circle", // an error · lucide CircleAlert
   "expand": "caret-down", // expand or collapse (drawn pointing down) · lucide ChevronDown
@@ -129,7 +131,60 @@ export const PHOSPHOR = {
   "message-tool": "wrench", // message tool · lucide Wrench
   "messages": "chats", // messages · lucide MessagesSquare
   "mic": "microphone", // microphone · lucide Mic
+  "mod-age": "clock", // how old a mod's facts are · lucide Clock
+  "mod-icon-activity": "pulse", // a mod's own icon, the word `activity` · lucide Activity
+  "mod-icon-alert": "warning", // a mod's own icon, the word `alert` · lucide TriangleAlert
+  "mod-icon-archive": "archive", // a mod's own icon, the word `archive` · lucide Archive
+  "mod-icon-bell": "bell", // a mod's own icon, the word `bell` · lucide Bell
+  "mod-icon-bot": "robot", // a mod's own icon, the word `bot` · lucide Bot
+  "mod-icon-branch": "git-branch", // a mod's own icon, the word `branch` · lucide GitBranch
+  "mod-icon-bug": "bug", // a mod's own icon, the word `bug` · lucide Bug
+  "mod-icon-chart": "chart-bar", // a mod's own icon, the word `chart` · lucide ChartColumn
+  "mod-icon-check": "check", // a mod's own icon, the word `check` · lucide Check
+  "mod-icon-clock": "clock", // a mod's own icon, the word `clock` · lucide Clock
+  "mod-icon-commit": "git-commit", // a mod's own icon, the word `commit` · lucide GitCommitHorizontal
+  "mod-icon-cpu": "cpu", // a mod's own icon, the word `cpu` · lucide Cpu
+  "mod-icon-disk": "hard-drive", // a mod's own icon, the word `disk` · lucide HardDrive
+  "mod-icon-file": "file-text", // a mod's own icon, the word `file` · lucide FileText
+  "mod-icon-flag": "flag", // a mod's own icon, the word `flag` · lucide Flag
+  "mod-icon-flask": "flask", // a mod's own icon, the word `flask` · lucide FlaskConical
+  "mod-icon-folder": "folder", // a mod's own icon, the word `folder` · lucide Folder
+  "mod-icon-gauge": "gauge", // a mod's own icon, the word `gauge` · lucide Gauge
+  "mod-icon-globe": "globe", // a mod's own icon, the word `globe` · lucide Globe
+  "mod-icon-inbox": "tray", // a mod's own icon, the word `inbox` · lucide Inbox
+  "mod-icon-info": "info", // a mod's own icon, the word `info` · lucide Info
+  "mod-icon-link": "arrow-square-out", // a mod's own icon, the word `link` · lucide ExternalLink
+  "mod-icon-list": "list-checks", // a mod's own icon, the word `list` · lucide ListTodo
+  "mod-icon-lock": "lock", // a mod's own icon, the word `lock` · lucide Lock
+  "mod-icon-message": "chat", // a mod's own icon, the word `message` · lucide MessageSquare
+  "mod-icon-more": "dots-three", // a mod's own icon, the word `more` · lucide Ellipsis
+  "mod-icon-note": "note", // a mod's own icon, the word `note` · lucide StickyNote
+  "mod-icon-pause": "pause", // a mod's own icon, the word `pause` · lucide Pause
+  "mod-icon-play": "play", // a mod's own icon, the word `play` · lucide Play
+  "mod-icon-plug": "plug", // a mod's own icon, the word `plug` · lucide Plug
+  "mod-icon-refresh": "arrows-clockwise", // a mod's own icon, the word `refresh` · lucide RefreshCw
+  "mod-icon-search": "magnifying-glass", // a mod's own icon, the word `search` · lucide Search
+  "mod-icon-send": "paper-plane-right", // a mod's own icon, the word `send` · lucide Send
+  "mod-icon-server": "hard-drives", // a mod's own icon, the word `server` · lucide Server
+  "mod-icon-settings": "faders-horizontal", // a mod's own icon, the word `settings` · lucide Settings2
+  "mod-icon-shield": "shield", // a mod's own icon, the word `shield` · lucide Shield
+  "mod-icon-star": "star", // a mod's own icon, the word `star` · lucide Star
+  "mod-icon-terminal": "terminal-window", // a mod's own icon, the word `terminal` · lucide SquareTerminal
+  "mod-icon-timer": "timer", // a mod's own icon, the word `timer` · lucide Timer
+  "mod-icon-trash": "trash", // a mod's own icon, the word `trash` · lucide Trash2
+  "mod-icon-user": "user", // a mod's own icon, the word `user` · lucide User
+  "mod-icon-wrench": "wrench", // a mod's own icon, the word `wrench` · lucide Wrench
+  "mod-icon-x": "x", // a mod's own icon, the word `x` · lucide X
+  "mod-icon-zap": "lightning", // a mod's own icon, the word `zap` · lucide Zap
+  "mod-paused": "pause", // a mod that is paused · lucide Pause
+  "mod-step-done": "check", // a mod's step: done · lucide Check
+  "mod-step-failed": "x", // a mod's step: failed · lucide X
+  "mod-step-running": "play", // a mod's step: running · lucide Play
+  "mod-step-todo": "minus", // a mod's step: not started · lucide Minus
+  "mod-trouble": "warning", // a mod that failed or cannot be reached · lucide TriangleAlert
+  "mod-unknown": "question", // a mod mark whose state is not known · lucide CircleQuestionMark
   "modifier-lock": "lock", // a modifier key is locked · lucide Lock
+  "mods": "plug", // the Mods settings section · lucide Plug
   "more-actions": "dots-three", // open the actions menu of a block · lucide Ellipsis
   "needs-you": "radio-button", // only panes that need me · lucide CircleDot
   "new-agent": "plus", // start a new agent · lucide Plus
