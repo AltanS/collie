@@ -147,6 +147,9 @@ function subscribe(fn: Listener): () => void {
   };
 }
 
+/** Hear every change of the trial. */
+export const subscribeTrial = subscribe;
+
 /** The running trial, reactive. */
 export function useTrial(): Trial | null {
   return useSyncExternalStore(subscribe, currentTrial, currentTrial);

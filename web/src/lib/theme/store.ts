@@ -590,6 +590,13 @@ function subscribe(fn: () => void): () => void {
   };
 }
 
+/**
+ * Hear every change of the store: the theme, the library, the origins and the design prefs. For a
+ * reader that derives a value of its own and hands React that value, so it re-renders only when the
+ * value moves (`lib/glyphs.ts`).
+ */
+export const subscribeThemeStore = subscribe;
+
 /** The theme on screen. A new object only when the id, the body or the source changed. */
 export function useActiveTheme(): ActiveTheme {
   return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);

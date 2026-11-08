@@ -1,7 +1,9 @@
+import { useSyncExternalStore } from "react";
+
 import { DEFAULT_GLYPH_SET, type GlyphSetId } from "@/lib/glyph-sets";
 import { knownGlyphs, type Theme } from "@/lib/theme/schema";
-import { activeTheme, useActiveTheme } from "@/lib/theme/store";
-import { currentTrial, useTrial } from "@/lib/theme/trial";
+import { activeTheme, subscribeThemeStore } from "@/lib/theme/store";
+import { currentTrial, subscribeTrial } from "@/lib/theme/trial";
 
 // WHICH GLYPH SET THE APP DRAWS. One rule, in one place, read by every icon (`components/icons/icon.tsx`)
 // and by the startup preload (`main.tsx`), so the two never disagree about which chunk to fetch. The
@@ -39,9 +41,20 @@ export function storedGlyphSetId(): GlyphSetId {
   return resolveGlyphSetId({ trial: null, active: activeTheme().theme });
 }
 
-/** The set to draw, reactive to the stored theme and a trial. */
+function subscribeGlyphSetId(fn: () => void): () => void {
+  const stopStore = subscribeThemeStore(fn);
+  const stopTrial = subscribeTrial(fn);
+  return () => {
+    stopStore();
+    stopTrial();
+  };
+}
+
+/**
+ * The set to draw, reactive to the stored theme and a trial. The snapshot is the set's id, a string,
+ * so a change that leaves the id alone (a library add, a font, another theme drawn in the same set)
+ * never re-renders an icon: React compares the id, not the theme object behind it.
+ */
 export function useGlyphSetId(): GlyphSetId {
-  const trial = useTrial()?.theme ?? null;
-  const active = useActiveTheme().theme;
-  return resolveGlyphSetId({ trial, active });
+  return useSyncExternalStore(subscribeGlyphSetId, currentGlyphSetId, currentGlyphSetId);
 }
