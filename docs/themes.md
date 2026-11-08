@@ -68,8 +68,9 @@ table above.
 - **The preview shows it.** The preview of an import and each card in **Browse community themes** show the
   character a theme names, beside its name.
 - **An older Collie refuses the file.** A version 4 file needs a Collie newer than 1.28.0. Collie 1.28.0
-  and older refuse it whole and name the version: "The file is version 4. This Collie reads version 1, 2
-  and 3." To share a theme that an older Collie can read, leave `character` out.
+  refuses the whole file with two causes: "The file is version 4. This Collie reads version 1, 2 and 3."
+  and "character" is not part of a theme file. To share a theme that an older Collie can read, leave
+  `character` out and say version 3 or lower.
 
 ## The four themes
 
