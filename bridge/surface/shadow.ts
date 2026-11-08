@@ -252,6 +252,17 @@ export class SurfaceShadow {
     return state === undefined ? undefined : { harness: state.harness, version: state.version, profileId: state.profileId, status: state.status ?? "-" };
   }
 
+  /**
+   * The binary version this shadow last read for an agent's profile, from its cache: no read is
+   * started. Null when the agent has no profile, the binary was not read yet, or the read found no
+   * version. Report a problem and the trouble signal name it (1.27.4).
+   */
+  cachedVersion(harness: string): string | null {
+    const profile = findProfile(loadProfiles(), harness);
+    if (profile === undefined) return null;
+    return this.versions.get(profile.id)?.version ?? null;
+  }
+
   /** The counter key of a pane: `harness@version`. */
   keyOf(paneId: string): string | undefined {
     const state = this.panes.get(paneId);

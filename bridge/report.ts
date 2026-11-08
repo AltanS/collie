@@ -38,6 +38,11 @@ export interface ReportContext {
   readonly mux: string;
   /** The pane's agent string, `""` for a bare shell, null when no pane was named. */
   readonly harness: string | null;
+  /**
+   * That agent's binary version as the Surface shadow last read it (its version cache, 1.27.4). Null
+   * with no pane, a bare shell, no shadow on this session, or no version read yet.
+   */
+  readonly harnessVersion: string | null;
   /** Whether this pane has a screen to include (a program session has none). */
   readonly screenable: boolean;
   /** On `screen=1` only: the last {@link REPORT_SCREEN_ROWS} rows, escapes stripped, masked. */

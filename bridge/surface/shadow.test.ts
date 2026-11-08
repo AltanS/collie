@@ -211,6 +211,30 @@ describe("surface shadow", () => {
     expect(shadow.surfaceOf("w1:p1")).toBeDefined();
   });
 
+  test("cachedVersion answers the version cache and never starts a binary read (1.27.4)", async () => {
+    let reads = 0;
+    let found: string | null = "2.1.296";
+    const mux = new FakeMux();
+    const shadow = new SurfaceShadow({ mux, pollMs: 1000, log: () => {}, now: () => 1_000_000, compare: false, version: async () => {
+      reads++;
+      return found;
+    } });
+    expect(shadow.cachedVersion(HARNESS)).toBeNull();
+    expect(reads).toBe(0);
+    mux.set("w1:p1", AGENTS, 11);
+    await shadow.observe([agent("w1:p1")]);
+    expect(reads).toBe(1);
+    expect(shadow.cachedVersion(HARNESS)).toBe("2.1.296");
+    expect(reads).toBe(1);
+    // An agent with no profile has no version.
+    expect(shadow.cachedVersion("no-such-agent")).toBeNull();
+    // A binary read that found no version reads as null, never "unread".
+    found = null;
+    const unread = new SurfaceShadow({ mux, pollMs: 1000, log: () => {}, now: () => 1_000_000, compare: false, version: async () => found });
+    await unread.observe([agent("w1:p1")]);
+    expect(unread.cachedVersion(HARNESS)).toBeNull();
+  });
+
   test("the same revision is counted and logged once, however many polls see it", async () => {
     const r = rig();
     r.mux.set("w1:p1", AGENTS, 11);
