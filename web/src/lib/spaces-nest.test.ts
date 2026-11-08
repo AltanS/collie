@@ -204,3 +204,43 @@ describe("paneSpace", () => {
     expect(paneSpace({ workspaceId: "w1" }, undefined)).toBeUndefined();
   });
 });
+
+describe("a repo opened twice (issue #743)", () => {
+  const rootA = space("w1", { number: 1, label: "jmds-a", repoRoot: REPO, isWorktree: false });
+  const rootB = space("w2", { number: 2, label: "jmds-b", repoRoot: REPO, isWorktree: false });
+  const wt = space("w3", { number: 3, label: "lucky-meadow", repoRoot: REPO, isWorktree: true });
+  const isolateKey = (w: WorkspaceView) => `${w.host ?? ""}\u0000\u0000${w.label}`;
+
+  it("nests nothing with two roots, whichever order they come in", () => {
+    for (const list of [[rootA, rootB, wt], [wt, rootB, rootA]]) {
+      expect(nestWorktrees(list).map((r) => r.depth)).toEqual([0, 0, 0]);
+      expect(nestWorktrees(list).map((r) => r.space)).toEqual(list);
+    }
+  });
+
+  it("nests under the one root when the repo is open once", () => {
+    expect(nestWorktrees([rootA, wt])).toEqual([
+      { space: rootA, depth: 0 },
+      { space: wt, depth: 1 },
+    ]);
+  });
+
+  it("nests a worktree only under a root on its own machine", () => {
+    const lodgeRoot = { ...rootA, host: "lodge" };
+    const atticWt = { ...wt, host: "attic" };
+    const lodgeWt = { ...wt, workspaceId: "w4", host: "lodge" };
+    expect(nestWorktrees([lodgeRoot, atticWt, lodgeWt]).map((r) => [r.space.workspaceId, r.depth])).toEqual([
+      ["w1", 0],
+      ["w4", 1],
+      ["w3", 0],
+    ]);
+  });
+
+  it("isolating one of two roots pulls in no worktree", () => {
+    expect(isolateSpaces([rootA, rootB, wt], [isolateKey(rootA)])).toEqual([rootA]);
+  });
+
+  it("isolating the only root still pulls in its worktrees", () => {
+    expect(isolateSpaces([rootA, wt], [isolateKey(rootA)])).toEqual([rootA, wt]);
+  });
+});

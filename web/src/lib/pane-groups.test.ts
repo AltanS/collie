@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { groupPanesByWorkspace, workspaceGroupKey } from "./pane-groups";
+import { groupPanesByWorkspace, resolveIsolatedPrefKeys, workspaceGroupKey } from "./pane-groups";
 import type { AgentView, WorkspaceView } from "./types";
 
 function pane(paneId: string, over: Partial<AgentView> = {}): AgentView {
@@ -376,6 +376,49 @@ describe("groupPanesByWorkspace — linked worktrees (issue #587)", () => {
     expect(wide.map((g) => ({ key: g.key, label: g.label, panes: g.panes.map((p) => p.paneId) }))).toEqual([
       { key: "attic\u0000default\u0000w1", label: "membero", panes: ["peer-def-wide"] },
       { key: "attic\u0000secondary\u0000w2", label: "unrelated-b", panes: ["peer-sec-wide"] },
+    ]);
+  });
+});
+
+describe("groupPanesByWorkspace — a repo opened twice (issue #743)", () => {
+  const REPO = "/repo/membero";
+  const rootA = space("w1", { number: 1, label: "membero-a", repoRoot: REPO, isWorktree: false });
+  const rootB = space("w2", { number: 2, label: "membero-b", repoRoot: REPO, isWorktree: false });
+  const wt = space("w3", { number: 3, label: "lucky-meadow-d1ec", repoRoot: REPO, isWorktree: true });
+  const wtPane = pane("wt-pane", { workspaceId: "w3", workspaceLabel: "lucky-meadow-d1ec", workspaceNumber: 3, tabId: "w3:t1" });
+  const aPane = pane("a-pane", { workspaceId: "w1", workspaceLabel: "membero-a", workspaceNumber: 1, tabId: "w1:t1" });
+  const bPane = pane("b-pane", { workspaceId: "w2", workspaceLabel: "membero-b", workspaceNumber: 2, tabId: "w2:t1" });
+
+  it("folds nothing with two roots, whatever order they arrive in", () => {
+    for (const workspaces of [[rootA, rootB, wt], [wt, rootB, rootA]]) {
+      const groups = groupPanesByWorkspace([wtPane, aPane, bPane], [], { order: "fixed", workspaces });
+      expect(labels(groups)).toEqual(["membero-a", "membero-b", "lucky-meadow-d1ec"]);
+      expect(ids(groups)).toEqual([["a-pane"], ["b-pane"], ["wt-pane"]]);
+    }
+  });
+
+  it("still folds under the one root when the repo is opened once", () => {
+    const groups = groupPanesByWorkspace([wtPane, aPane], [], { order: "fixed", workspaces: [rootA, wt] });
+    expect(labels(groups)).toEqual(["membero-a"]);
+    expect(ids(groups)).toEqual([["a-pane", "wt-pane"]]);
+  });
+
+  it("does not fold across machines that hold the same path", () => {
+    const lodgeRoot = { ...rootA, host: "lodge" };
+    const atticWt = { ...wt, host: "attic" };
+    const groups = groupPanesByWorkspace(
+      [pane("attic-wt", { host: "attic", workspaceId: "w3", workspaceLabel: "lucky-meadow-d1ec", workspaceNumber: 3, tabId: "w3:t1" })],
+      [],
+      { order: "fixed", workspaces: [lodgeRoot, atticWt] },
+    );
+    expect(labels(groups)).toEqual(["lucky-meadow-d1ec"]);
+  });
+
+  it("does not promote an isolate key to a root when there are two", () => {
+    const key = `\u0000\u0000${wt.label}`;
+    expect(resolveIsolatedPrefKeys([key], { workspaces: [rootA, rootB, wt] })).toEqual([key]);
+    expect(resolveIsolatedPrefKeys([key], { workspaces: [rootA, wt] })).toEqual([
+      `\u0000\u0000${rootA.label}`,
     ]);
   });
 });

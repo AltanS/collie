@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Fixed
+
+- **A repo opened in two workspaces no longer pulls its worktrees into one of them.** The pane list, the Spaces rows and the workspace filter picked a different "root" for the worktree, so it showed up under one workspace in one view and under the other in the next. Now a worktree folds under a root only when exactly one open workspace on that machine holds the repo. With two, each worktree stays its own group, as before 1.24.2. Thanks @rafaferry (#743).
+
 ## [1.28.0] - 2026-11-06
 
 ### Added

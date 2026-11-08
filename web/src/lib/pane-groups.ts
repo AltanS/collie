@@ -30,7 +30,7 @@
 // Pure and host-aware, so a crew's two `w1`s are two workspaces (lib/hosts.ts § spaceKey).
 import { hostKey, leadHost, paneSpaceKey, primarySession, scopeHostKey, sessionsOnHost, spaceKey } from "./hosts";
 import { PLACE_SEP, panePlaceParts } from "./pane-name";
-import { repoNameOf } from "./spaces";
+import { repoNameOf, repoRootKey, uniqueRootByRepo } from "./spaces";
 import type { AgentView, ServerSummary, SessionSummary, TabView, WorkspaceView } from "./types";
 
 /**
@@ -166,13 +166,7 @@ export function resolveIsolatedPrefKeys(
   { workspaces, scope, servers, sessions }: Pick<GroupOptions, "workspaces" | "scope" | "servers" | "sessions"> = {},
 ): string[] {
   if (isolated.length === 0 || workspaces === undefined || workspaces.length === 0) return [...isolated];
-  const rootByRepo = new Map<string, WorkspaceView>();
-  for (const w of workspaces) {
-    if (w.repoRoot !== undefined && w.isWorktree === false) {
-      const repoKey = `${hostKey(w)}${KEY_SEP}${w.repoRoot}`;
-      if (!rootByRepo.has(repoKey)) rootByRepo.set(repoKey, w);
-    }
-  }
+  const rootByRepo = uniqueRootByRepo(workspaces);
   if (rootByRepo.size === 0) return [...isolated];
   return isolated.map((key) => {
     const firstCut = key.indexOf(KEY_SEP);
@@ -188,7 +182,7 @@ export function resolveIsolatedPrefKeys(
       (w) => hostKey(w) === host && (w.label.trim() || w.workspaceId) === label,
     );
     if (match === undefined || match.isWorktree !== true || match.repoRoot === undefined) return key;
-    const parent = rootByRepo.get(`${host}${KEY_SEP}${match.repoRoot}`);
+    const parent = rootByRepo.get(repoRootKey(match));
     if (parent === undefined) return key;
     return `${host}${KEY_SEP}${session}${KEY_SEP}${parent.label.trim() || parent.workspaceId}`;
   });
@@ -221,21 +215,15 @@ export function groupPanesByWorkspace(
   const parentBySpace = new Map<string, WorkspaceView>();
   const minNumberBySpace = new Map<string, number>();
   if (workspaces !== undefined && workspaces.length > 0) {
-    const rootByRepo = new Map<string, WorkspaceView>();
-    for (const w of workspaces) {
-      if (w.repoRoot !== undefined && w.isWorktree === false) {
-        const host = hostKey(w);
-        const repoKey = `${host}${KEY_SEP}${w.repoRoot}`;
-        if (!rootByRepo.has(repoKey)) {
-          rootByRepo.set(repoKey, w);
-          minNumberBySpace.set(`${host}${KEY_SEP}${w.workspaceId}`, w.number);
-        }
-      }
+    // Issue #743: a repo opened twice has no root, so its worktrees stay their own groups.
+    const rootByRepo = uniqueRootByRepo(workspaces);
+    for (const root of rootByRepo.values()) {
+      minNumberBySpace.set(`${hostKey(root)}${KEY_SEP}${root.workspaceId}`, root.number);
     }
     for (const w of workspaces) {
       if (w.repoRoot === undefined || w.isWorktree !== true) continue;
       const host = hostKey(w);
-      const parent = rootByRepo.get(`${host}${KEY_SEP}${w.repoRoot}`);
+      const parent = rootByRepo.get(repoRootKey(w));
       if (parent !== undefined) {
         parentBySpace.set(`${host}${KEY_SEP}${w.workspaceId}`, parent);
         const parentSpaceKey = `${host}${KEY_SEP}${parent.workspaceId}`;
