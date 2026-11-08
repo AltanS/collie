@@ -7,6 +7,7 @@ import {
   DEFAULT_THEME_ID,
   THEME_MAX_BYTES,
   contrastReport,
+  escapedText,
   parseTheme,
   sizeRefusal,
   type Finding,
@@ -144,21 +145,34 @@ export function checkFile(files: ThemeFiles, file: string, opts: { allowReserved
   return { file, ok: true, id: theme.id, name: theme.name, version: theme.version, warnings };
 }
 
+/** The longest file name printed bare. */
+const FILE_SHOWN_MAX = 200;
+
+/**
+ * A file name as the text report prints it: bare when it is printable ASCII and not too long, else
+ * escaped and quoted (F4). A name is chosen by whoever named the file, and a glob over a theme
+ * repository can hand this verb a name with a line break or a terminal escape in it.
+ */
+export function shownFile(file: string): string {
+  return /^[\x20-\x7e]+$/.test(file) && file.length <= FILE_SHOWN_MAX ? file : escapedText(file, FILE_SHOWN_MAX);
+}
+
 function printText(io: Io, report: FileReport): void {
+  const file = shownFile(report.file);
   if (report.ok) {
     const count = report.warnings.length;
     const tail = count === 0 ? "every contrast check passes" : `${count} contrast ${count === 1 ? "warning" : "warnings"}`;
-    io.out(`${report.file}: ok, "${report.name}" (${report.id}), version ${report.version}, ${tail}`);
-    for (const warning of report.warnings) io.out(`${report.file}: warning: ${warning.text}`);
+    io.out(`${file}: ok, "${report.name}" (${report.id}), version ${report.version}, ${tail}`);
+    for (const warning of report.warnings) io.out(`${file}: warning: ${warning.text}`);
     return;
   }
   if (report.error !== undefined) {
-    io.out(`${report.file}: refused: ${report.error}`);
+    io.out(`${file}: refused: ${report.error}`);
     return;
   }
   for (const refusal of report.refusals) {
     const where = refusal.path === undefined ? "" : ` (${refusal.path}${refusal.detail === undefined ? "" : `: ${refusal.detail}`})`;
-    io.out(`${report.file}: refused: ${refusal.headline}${where}`);
+    io.out(`${file}: refused: ${refusal.headline}${where}`);
   }
 }
 

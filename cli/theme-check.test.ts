@@ -48,6 +48,17 @@ describe("collie theme check", () => {
     expect(io.stdout).toEqual([`harbour.json: refused: ${en["theme.refusal.reserved-id"]} (id)`]);
   });
 
+  test("a file name or a key with a terminal escape prints as escaped printable ASCII (F4)", () => {
+    const esc = String.fromCharCode(0x1b);
+    const name = `themes/a${esc}]0;owned${String.fromCharCode(7)}\nb.collie-theme.json`;
+    const keyed = `{"version":1,"id":"x","name":"X","light":{"background":"#ffffff"},"k${"\\u001b"}[2J":1}`;
+    const { deps, io } = world({ [name]: GOOD, "keyed.json": keyed });
+    cmdThemeCheck(deps, [name, "keyed.json"]);
+    expect(io.stdout.length).toBeGreaterThan(1);
+    for (const line of io.stdout) expect(line).toMatch(/^[\x20-\x7e]+$/);
+    expect(io.stdout[0]).toStartWith('"themes/a\\u001b]0;owned\\u0007\\u000ab.collie-theme.json": ok');
+  });
+
   test("a theme of one's own passes", () => {
     const { deps, io } = world({ "collie-theme.json": GOOD });
     expect(cmdThemeCheck(deps, ["collie-theme.json"])).toBe(EXIT.OK);

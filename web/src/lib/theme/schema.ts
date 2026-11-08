@@ -27,7 +27,7 @@
 // because `scripts/build-themes.ts` at the collie root imports it, and the bridge may validate an
 // operator theme with it later. Its two imports are leaf files with no imports of their own.
 
-import { asJsonNumber, asJsonObject, asJsonString, parseJsonObject, type JsonObject } from "../json";
+import { asJsonNumber, asJsonObject, asJsonString, parseJsonObject, type JsonObject, type JsonValue } from "../json";
 import { MARK_IDS, isMarkId, type MarkId } from "../mark-ids";
 import { SHIPPED_FONTS } from "../shipped-fonts";
 import {
@@ -268,7 +268,7 @@ export function parseTheme(raw: string, opts: ParseThemeOptions): ParsedTheme {
 
   const refusals: Refusal[] = [];
   for (const key of Object.keys(doc)) {
-    if (!isTopKey(key)) refusals.push(unknownKey(key));
+    if (!isTopKey(key)) refusals.push(unknownKey("", key));
   }
 
   const version = readVersion(doc, refusals);
@@ -342,11 +342,47 @@ function hasControlCharacter(value: string): boolean {
   return false;
 }
 
-function unknownKey(path: string): Refusal {
+// ── Untrusted names in a refusal (F4) ───────────────────────────────────────────────────────────
+//
+// A refusal is read in Settings, printed by `collie theme check` to a terminal, and logged by the
+// site's sweep in CI. A key name comes from the file and may hold a line break, an escape sequence
+// (a terminal title, a clipboard write), a bidi control or 60 KiB of text. So a name the parser did
+// not choose is shown bare only when it is a plain token, and otherwise as an escaped, quoted string
+// of printable ASCII, cut to a length a line can carry.
+
+/** A key shown bare: the characters a real token, word or palette key uses, at most 64 of them. */
+const PLAIN_KEY = /^[A-Za-z0-9_.-]{1,64}$/;
+
+/** The most characters of an untrusted name a refusal shows. */
+export const SHOWN_MAX = 64;
+
+/**
+ * Untrusted text as one quoted string of printable ASCII, for a refusal or a log line. `"` and `\`
+ * are escaped, every other character outside U+0020 to U+007E becomes `\uXXXX` (a pair for one
+ * past U+FFFF), and text past `max` characters is cut, with `...` after the closing quote.
+ */
+export function escapedText(value: string, max: number = SHOWN_MAX): string {
+  const chars = [...value];
+  let out = '"';
+  for (const ch of chars.slice(0, max)) {
+    if (ch === '"' || ch === "\\") out += `\\${ch}`;
+    else if (/^[\x20-\x7e]$/.test(ch)) out += ch;
+    else for (let i = 0; i < ch.length; i++) out += `\\u${ch.charCodeAt(i).toString(16).padStart(4, "0")}`;
+  }
+  return `${out}"${chars.length > max ? "..." : ""}`;
+}
+
+/** `prefix` and an untrusted key, the key bare when plain and escaped when not. */
+function keyPath(prefix: string, key: string): string {
+  return `${prefix}${PLAIN_KEY.test(key) ? key : escapedText(key)}`;
+}
+
+function unknownKey(prefix: string, key: string): Refusal {
+  const path = keyPath(prefix, key);
   return {
     code: "unknown-key",
     path,
-    detail: `"${path}" is not part of a theme file. Remove it.`,
+    detail: PLAIN_KEY.test(key) ? `"${path}" is not part of a theme file. Remove it.` : `${path} is not part of a theme file. Remove it.`,
   };
 }
 
@@ -368,6 +404,12 @@ function olderThanBlock(block: string): Refusal {
   };
 }
 
+/** The `version` a file gave, as the refusal shows it: a short plain value bare, anything else escaped and cut. */
+function shownVersion(value: JsonValue): string {
+  const text = JSON.stringify(value);
+  return /^[\x20-\x7e]{1,16}$/.test(text) ? text : escapedText(text, 16);
+}
+
 function readVersion(doc: JsonObject, refusals: Refusal[]): ThemeVersion | undefined {
   const value = asJsonNumber(doc.version);
   const version = THEME_VERSIONS_READ.find((v) => v === value);
@@ -378,7 +420,7 @@ function readVersion(doc: JsonObject, refusals: Refusal[]): ThemeVersion | undef
     detail:
       doc.version === undefined
         ? `The file has no version. This Collie reads version ${READ_TEXT}.`
-        : `The file is version ${JSON.stringify(doc.version)}. This Collie reads version ${READ_TEXT}.`,
+        : `The file is version ${shownVersion(doc.version)}. This Collie reads version ${READ_TEXT}.`,
   });
   return undefined;
 }
@@ -402,11 +444,11 @@ function readSurface(doc: JsonObject, version: ThemeVersion | undefined, refusal
   }
   const surface: Surface = {};
   for (const key of Object.keys(block)) {
-    const path = `surface.${key}`;
     if (!isSurfaceToken(key)) {
-      refusals.push(unknownKey(path));
+      refusals.push(unknownKey("surface.", key));
       continue;
     }
+    const path = `surface.${key}`;
     // A number, a list or an object is no word: `asJsonString` gives `undefined` and the token is refused.
     if (!setSurfaceWord(surface, key, asJsonString(block[key]))) {
       refusals.push({
@@ -562,11 +604,11 @@ function readHalf(
     return half;
   }
   for (const key of Object.keys(obj)) {
-    const path = `${which}.${key}`;
     if (!isThemeToken(key) && !isOptionalThemeToken(key)) {
-      refusals.push(unknownKey(path));
+      refusals.push(unknownKey(`${which}.`, key));
       continue;
     }
+    const path = `${which}.${key}`;
     // An optional token is older than any file that says version 1 or 2: the file is refused, as a
     // surface block in a version 1 file is, and the value is still read so its own fault shows too.
     if (isOptionalThemeToken(key) && version !== undefined && version < 3) {
@@ -600,7 +642,7 @@ function readFonts(doc: JsonObject, version: ThemeVersion | undefined, refusals:
     return undefined;
   }
   for (const key of Object.keys(fonts)) {
-    if (key !== "ui" && key !== "display") refusals.push(unknownKey(`fonts.${key}`));
+    if (key !== "ui" && key !== "display") refusals.push(unknownKey("fonts.", key));
   }
   const out: ThemeFonts = {};
   const ui = readFace(fonts, "ui", refusals);
@@ -663,7 +705,7 @@ function readAnsi(doc: JsonObject, version: ThemeVersion | undefined, refusals: 
     return undefined;
   }
   for (const key of Object.keys(block)) {
-    if (!ANSI_KEYS.some((k) => k === key)) refusals.push(unknownKey(`ansi.${key}`));
+    if (!ANSI_KEYS.some((k) => k === key)) refusals.push(unknownKey("ansi.", key));
   }
   const missing = ANSI_KEYS.filter((key) => block[key] === undefined);
   if (missing.length > 0) {

@@ -15,6 +15,7 @@ import {
   THEME_VERSIONS_READ,
   ANSI_BRIGHT_LUMINANCE,
   contrast,
+  escapedText,
   COLLIE_TEXT_GROUND,
   HARD_TEXT_FLOOR,
   mixOklab,
@@ -332,6 +333,51 @@ describe("parseTheme", () => {
         expect(r.detail).not.toMatch(/\u2014/);
       }
     }
+  });
+});
+
+// F4: a key name comes from the file and reaches Settings, a terminal (`collie theme check`) and the
+// site's CI log. A plain name shows bare; anything else is escaped to printable ASCII and cut.
+describe("untrusted names in a refusal", () => {
+  const ESC = String.fromCharCode(0x1b);
+
+  it("shows a plain key bare, as before", () => {
+    const r = parseTheme(file({ light: { background: "#ffffff", popover: "#ffffff" } }), CAP);
+    expect(r.ok ? [] : r.refusals.map((x) => [x.path, x.detail])).toEqual([
+      ["light.popover", '"light.popover" is not part of a theme file. Remove it.'],
+    ]);
+  });
+
+  it("escapes a key with a line break, an escape sequence or a bidi control, and keeps it on one line", () => {
+    const keys = [`x\n::error title=x::spoof`, `${ESC}]52;c;aGk=${String.fromCharCode(7)}`, "a\u202eb"];
+    for (const key of keys) {
+      const raw = `{"version":1,"id":"mine","name":"Mine","light":{"background":"#ffffff"},${JSON.stringify(key)}:1}`;
+      const r = parseTheme(raw, CAP);
+      const refusal = r.ok ? undefined : r.refusals[0];
+      expect(refusal?.code).toBe("unknown-key");
+      for (const text of [refusal?.path ?? "", refusal?.detail ?? ""]) expect(text).toMatch(/^[\x20-\x7e]+$/);
+    }
+    const r = parseTheme(`{"version":1,"id":"mine","name":"Mine","light":{"background":"#ffffff","a\\u001bb":"#000000"}}`, CAP);
+    expect(r.ok ? "" : r.refusals[0]?.path).toBe('light."a\\u001bb"');
+  });
+
+  it("cuts a long key to 64 characters", () => {
+    const key = "k".repeat(65) + "!";
+    const r = parseTheme(`{"version":1,"id":"mine","name":"Mine","light":{"background":"#ffffff"},"${key}":1}`, CAP);
+    expect(r.ok ? "" : r.refusals[0]?.path).toBe(`"${"k".repeat(64)}"...`);
+  });
+
+  it("cuts and escapes a strange version", () => {
+    const r = parseTheme(`{"version":"${"9".repeat(40)}${"\\u202e"}","id":"mine","name":"Mine","light":{"background":"#ffffff"}}`, CAP);
+    const detail = r.ok ? "" : (r.refusals.find((x) => x.code === "version")?.detail ?? "");
+    expect(detail).toMatch(/^[\x20-\x7e]+$/);
+    expect(detail.length).toBeLessThan(120);
+  });
+
+  it("escapedText escapes quotes, backslashes and anything outside printable ASCII", () => {
+    expect(escapedText('a"b\\c')).toBe('"a\\"b\\\\c"');
+    expect(escapedText("é😀")).toBe('"\\u00e9\\ud83d\\ude00"');
+    expect(escapedText("abcdef", 3)).toBe('"abc"...');
   });
 });
 
