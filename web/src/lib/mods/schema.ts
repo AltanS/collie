@@ -704,6 +704,11 @@ export interface SessionPart {
   /** The session's name on the Dashboard. Absent: the manifest's `name`. */
   name?: string;
   icon?: ModIcon;
+  /**
+   * The session's tone (slice 03). `working` makes the pane read as working on the snapshot; every
+   * other tone reads idle, because a mod session is outside triage and push and never "needs you".
+   */
+  tone?: Tone;
   subtitle?: string;
   badge?: Badge;
   progress?: PartProgress;
@@ -1082,6 +1087,8 @@ function utf8Bytes(text: string): number {
   return new TextEncoder().encode(text).length;
 }
 
+/** The prefix every mod session id, mod tab id and Mods Space id starts with. Reserved: no real pane takes it. */
+export const MOD_SESSION_PREFIX = "mod:";
 /**
  * A real session's scope key, `host:paneId` (design §3.1). The pane id follows the mux id rule and
  * may hold colons itself (`w6X:3`). A name (`composer`) has no host and is not one. A mod session's
@@ -1094,19 +1101,48 @@ export function isScopeKey(text: string): boolean {
   const paneId = text.slice(colon + 1);
   if (!isHostName(host)) return false;
   if (paneId.length === 0 || utf8Bytes(paneId) > MUX_ID_MAX_BYTES) return false;
+  // A pane id that starts with `mod:` is a mod session's (`bluefin:mod:bluefin:legs:legs`): it has no
+  // reply box, so it is never a real session's key. The prefix is reserved on the bridge too: the
+  // durable adapter drops a pane, tab or space of that name (WIRE.md, the id rule).
+  if (paneId.startsWith(MOD_SESSION_PREFIX)) return false;
   return !UNSAFE_ID_CHAR.test(paneId);
 }
-/** A mod session's id, `mod:<host>:<id>` (design §2). */
-export function isModSessionId(text: string): boolean {
-  const pieces = text.split(":");
-  if (pieces.length !== 3 || pieces[0] !== "mod") return false;
-  const host = pieces[1] ?? "";
-  const id = pieces[2] ?? "";
-  return isHostName(host) && isModId(id);
+/** A mod session id read back: the host and the mod, and the part when the id names one. */
+export interface ModSessionAddress {
+  host: string;
+  mod: string;
+  part?: string;
 }
-/** The id of a mod's session. */
-export function modSessionId(host: string, mod: string): string {
-  return `mod:${host}:${mod}`;
+/**
+ * Read a mod session's id: `mod:<host>:<id>` names the mod (its first session part), and
+ * `mod:<host>:<id>:<part>` one session part of it. DECISION (slice 03): the part rides after a colon,
+ * not a `/`, because the id is a pane id on the snapshot and a pane id is one URL path segment
+ * (bridge/mux/identity.ts, rule 5). A host holds no colon and neither id does, so it splits back.
+ */
+export function parseModSessionId(text: string): ModSessionAddress | undefined {
+  const pieces = text.split(":");
+  if ((pieces.length !== 3 && pieces.length !== 4) || pieces[0] !== "mod") return undefined;
+  const host = pieces[1] ?? "";
+  const mod = pieces[2] ?? "";
+  if (!isHostName(host) || !isModId(mod)) return undefined;
+  if (pieces.length === 3) return { host, mod };
+  const part = pieces[3] ?? "";
+  return isPartId(part) ? { host, mod, part } : undefined;
+}
+/** A mod session's id, `mod:<host>:<id>` or `mod:<host>:<id>:<part>` (design §2). */
+export function isModSessionId(text: string): boolean {
+  return parseModSessionId(text) !== undefined;
+}
+/**
+ * The id of a mod's session: the mod's own address, or with `part` the pane id of one session part.
+ * The mod's address is also the id of its tab in the Mods Space; the Space's own id is {@link modSpaceId}.
+ */
+export function modSessionId(host: string, mod: string, part?: string): string {
+  return part === undefined ? `mod:${host}:${mod}` : `mod:${host}:${mod}:${part}`;
+}
+/** The id of a host's Mods Space, the one workspace its mod sessions live in. */
+export function modSpaceId(host: string): string {
+  return `mod:${host}`;
 }
 
 /** An ISO 8601 instant with a zone, as `asOf` and `time.at` need. */
@@ -2108,7 +2144,7 @@ function readMarkInto<T extends Mark>(node: T, f: Fields, tappable: boolean): T 
 
 const PART_KEYS = {
   belt: ["at", "id", "mark"],
-  session: ["at", "id", "name", "icon", "subtitle", "badge", "progress", "actions", "view"],
+  session: ["at", "id", "name", "icon", "tone", "subtitle", "badge", "progress", "actions", "view"],
   "tab-mark": ["at", "id", "mark"],
   tab: ["at", "id", "title", "icon", "space", "view"],
   view: ["at", "id", "title", "icon", "view"],
@@ -2380,6 +2416,7 @@ function readSessionPart(f: Fields, id: string, view: ViewNode | undefined): Par
   const subtitle = f.text("subtitle", { max: SUBTITLE_MAX });
   if (name !== undefined) part.name = name;
   if (icon !== undefined) part.icon = icon;
+  setTone(part, f);
   if (subtitle !== undefined) part.subtitle = subtitle;
   const badgeFields = f.object("badge", 'an object with "count" or "text"');
   if (badgeFields !== undefined) {

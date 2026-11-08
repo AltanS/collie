@@ -31,6 +31,13 @@ Draw `ViewNode` by `kind`. The reserved heights are `text.lines`, `list.rows`, `
 `log.lines`; `VIEW_LIMITS` holds the ranges. Ink comes from `TONE_TEXT_CLASS` only, and icons
 from `MOD_ICON_LUCIDE` only. A part past its fresh window draws as tone `unknown`.
 
+## Slice 03, the two first places
+
+`places.ts` takes the panes of `kind: "mod"` out of the snapshot's lists into
+`HomeData.modSessions`, so no count, triage or push path meets one. The root loader calls
+`syncMods(snap.modsRev)`. A mod session id is `mod:<host>:<mod>:<part>`, with a colon because
+a pane id is one path segment. `hooks/use-mod-handlers.ts` places a draft only in an empty box.
+
 ## Fixtures
 
 `fixtures/index.ts` exports one document per place (`PLACE_DOCUMENTS`), one node per kind

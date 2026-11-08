@@ -183,6 +183,8 @@ const AGENT_VIEW_KEYS = {
   walkyOff: true,
   // How many pins the pane's session holds (M90). Present only above zero, so a solo golden body carries no such key.
   pins: true,
+  // A mod session's part key (M94 slice 03). Present only on a pane of `kind: "mod"`, so a solo golden body carries no such key.
+  view: true,
 } satisfies Record<keyof AgentView, true>;
 
 const DEVICE_AUTH_KEYS = {
@@ -324,6 +326,7 @@ describe("solo zero-tax — the client's mirror types carry no crew dimension", 
       "todos",
       "turnId",
       "usage",
+      "view",
       "walkyOff",
       "workspaceId",
       "workspaceLabel",

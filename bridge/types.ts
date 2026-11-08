@@ -55,8 +55,12 @@ export interface AgentView {
   status: AgentStatus;
   cwd: string;
   focused: boolean;
-  /** "agent" for an agent-bearing pane, "shell" for a bare shell. Defaults to "agent" when absent. */
-  kind?: "agent" | "shell";
+  /**
+   * "agent" for an agent-bearing pane, "shell" for a bare shell. Defaults to "agent" when absent.
+   * "mod" for a mod's own session (M94, bridge/mods/panes.ts): no terminal behind it, its body is a
+   * view, and it sits in the host's Mods Space, outside triage, push and the session counts.
+   */
+  kind?: "agent" | "shell" | "mod";
   /** User-set pane label (herdr `pane.rename`), when one is set; absent when the pane is unlabelled. */
   paneLabel?: string;
   /**
@@ -384,6 +388,12 @@ export type PaneWire = Omit<AgentView, "agentSession" | "sessionAgent"> & {
    * only when there is at least one; the text takes the mirror's mask like a title does.
    */
   held?: HeldRow[];
+  /**
+   * A mod session's part (M94), as its `partKey` (`host/mod/part`): the part whose view is the pane's
+   * body. The view itself travels on `GET /api/mods`, never on the snapshot. Present only on a pane of
+   * `kind: "mod"`, so every other pane and every body with no mods stays what it was.
+   */
+  view?: string;
 };
 
 /** The icon names a program may give a belt action. The phone maps each to one of its own glyphs. */
@@ -807,7 +817,12 @@ export type SessionState = "ready" | "starting" | "unreachable";
  */
 export interface SessionCard {
   name: string;
-  kind: "terminal" | "program";
+  /**
+   * `mod` is reserved for Collie mods (M94) so the phone can tell one from a program. DECISION (slice
+   * 03): no card of that kind is sent yet. A mod session rides as a pane of `kind: "mod"` in the
+   * ambient session; a card would grow `sessions` and wake the session switcher for nothing.
+   */
+  kind: "terminal" | "program" | "mod";
   /** herdr, tmux, zellij, tuios, tern, or the program's hello `host.name` cleaned, else "durable". */
   mux: string;
   /** The capability set of this session, the same shape `/api/config` answers today. */

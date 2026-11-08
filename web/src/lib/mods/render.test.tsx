@@ -143,10 +143,17 @@ const PAIRS = {
   ],
 } satisfies { readonly [K in (typeof CORE_NODE_KINDS)[number]]: readonly [ViewNode, ViewNode] };
 
+/** A list's rows in order: the filled rows inside its group, then the empty hairline rows under it. */
+function listRows(root: HTMLElement): HTMLElement[] {
+  const filled = [...root.querySelectorAll<HTMLElement>('[data-slot="list-group"] > *')];
+  const empty = [...root.querySelectorAll<HTMLElement>(':scope > [data-slot="mod-list-empty"]')];
+  return [...filled, ...empty];
+}
+
 /** What fixes a box's height in the DOM: its own stated height, and for a list its reserved rows. */
 function heightEvidence(container: HTMLElement): string {
   const root = rootOf(container);
-  const rows = root.dataset.modNode === "list" ? [...root.children].map((row) => (row.classList.contains("h-11") ? "h-11" : "?")).join(",") : "";
+  const rows = root.dataset.modNode === "list" ? listRows(root).map((row) => (row.classList.contains("h-11") ? "h-11" : "?")).join(",") : "";
   return `${root.style.height}|${rows}`;
 }
 
@@ -187,7 +194,7 @@ describe("a node's height is its form's, not its data's", () => {
 describe("a list", () => {
   it("draws its reserved rows, and '+n more' in the last one past them", () => {
     const { container } = draw(PAIRS.list[1]);
-    const rows = rootOf(container).children;
+    const rows = listRows(rootOf(container));
     expect(rows).toHaveLength(3);
     expect(rows[2]?.textContent).toBe("+3 more");
   });
@@ -197,9 +204,33 @@ describe("a list", () => {
     expect(container.querySelectorAll('[data-slot="mod-list-empty"]')).toHaveLength(2);
   });
 
+  it("draws an empty slot as a hairline row in the border token, outside the group's frame (slice 03 look fix)", () => {
+    const { container } = draw(PAIRS.list[0]);
+    const group = container.querySelector('[data-slot="list-group"]');
+    const empties = [...container.querySelectorAll<HTMLElement>('[data-slot="mod-list-empty"]')];
+    expect(empties).toHaveLength(2);
+    for (const empty of empties) {
+      // Not a box: no frame of the group around it, no edge of its own but the one line at its foot.
+      expect(group?.contains(empty)).toBe(false);
+      expect(empty.className).toContain("border-b");
+      expect(empty.className).toContain("border-border");
+      expect(empty.className).not.toMatch(/(^|\s)border(\s|$)/);
+      expect(empty.className).toContain("h-11");
+      expect(empty.childElementCount).toBe(0);
+    }
+    // The group frames the filled rows only.
+    expect(group?.childElementCount).toBe(1);
+  });
+
+  it("keeps a list with no item at its reserved height, with no empty frame", () => {
+    const { container } = draw({ kind: "list", rows: 3, items: [] });
+    expect(container.querySelector('[data-slot="list-group"]')).toBeNull();
+    expect(container.querySelectorAll('[data-slot="mod-list-empty"]')).toHaveLength(3);
+  });
+
   it("puts the count in the end slot of a one-row list", () => {
     const { container } = draw({ kind: "list", rows: 1, items: [{ text: "one" }, { text: "two" }, { text: "three" }] });
-    expect(rootOf(container).children).toHaveLength(1);
+    expect(listRows(rootOf(container))).toHaveLength(1);
     expect(rootOf(container).textContent).toContain("+2 more");
   });
 
@@ -269,10 +300,23 @@ describe("a button", () => {
     expect(container.querySelectorAll("button [data-active], button [aria-hidden]").length).toBe(restCells);
   });
 
-  it("takes a spinner in the label's cell when it has no glyph", () => {
+  it("keeps its label while busy and puts the spinner beside it when it has no glyph (slice 03 look fix)", () => {
     const { getByRole } = draw({ kind: "button", label: "Go", intent: "go" }, { tap: busy("v") });
-    const active = getByRole("button").querySelector("[data-active]");
-    expect(active?.querySelector(".animate-spin")).not.toBeNull();
+    const button = getByRole("button");
+    // The shown cell is the spinner beside the label, not a lone spinner.
+    const active = button.querySelector("[data-active]");
+    expect(active?.textContent).toBe("Go");
+    expect(active?.querySelector('[data-slot="mod-button-busy"]')).not.toBeNull();
+  });
+
+  it("keeps the busy cell in the button at rest too, so a tap moves nothing", () => {
+    const rest = draw({ kind: "button", label: "Go", intent: "go" });
+    const cells = (el: HTMLElement) => el.querySelectorAll("[data-active], [inert]").length;
+    const before = cells(rest.getByRole("button"));
+    expect(rest.getByRole("button").querySelector('[data-slot="mod-button-busy"]')).not.toBeNull();
+    rest.unmount();
+    const { getByRole } = draw({ kind: "button", label: "Go", intent: "go" }, { tap: busy("v") });
+    expect(cells(getByRole("button"))).toBe(before);
   });
 
   it("ignores a second tap while a tap on its part is in flight", () => {

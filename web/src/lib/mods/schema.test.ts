@@ -44,11 +44,13 @@ import {
   matchesSession,
   matchesTab,
   modSessionId,
+  modSpaceId,
   parseAt,
   parseDuration,
   parseFacts,
   parseManifest,
   parseModDocument,
+  parseModSessionId,
   parseModDocumentText,
   parsePartKey,
   parseSessionMatch,
@@ -472,6 +474,32 @@ describe("ids and keys", () => {
     expect(isModSessionId(modSessionId("bluefin", "legs"))).toBe(true);
     expect(isModSessionId("mod:bluefin:Legs")).toBe(false);
     expect(isModSessionId("bluefin:w6X:3")).toBe(false);
+  });
+
+  it("names one session part of a mod, splits it back, and never reads it as a scope key (slice 03)", () => {
+    expect(modSessionId("bluefin", "legs", "runs")).toBe("mod:bluefin:legs:runs");
+    expect(modSpaceId("bluefin")).toBe("mod:bluefin");
+    expect(parseModSessionId("mod:bluefin:legs:runs")).toEqual({ host: "bluefin", mod: "legs", part: "runs" });
+    expect(parseModSessionId("mod:bluefin:legs")).toEqual({ host: "bluefin", mod: "legs" });
+    for (const bad of ["mod:bluefin:legs/runs", "mod:bluefin:legs:Runs", "mod:bluefin:legs:runs:x", "mod:mod:legs", "mod:bluefin"]) {
+      expect(parseModSessionId(bad), bad).toBeUndefined();
+    }
+    // The pane id carries no `/`: it is one URL path segment, like every pane id (mux id rule 5).
+    expect(modSessionId("bluefin", "legs", "runs")).not.toContain("/");
+    // A host's key around a mod session's pane id is not a real session's key, so no draft reaches it.
+    expect(isScopeKey(`bluefin:${modSessionId("bluefin", "legs", "runs")}`)).toBe(false);
+    expect(isScopeKey("bluefin:mod:x")).toBe(false);
+    expect(isScopeKey("bluefin:modx:3")).toBe(true);
+  });
+
+  it("reads a session part's tone, and refuses a status word there", () => {
+    const view = { kind: "text", text: "ok", lines: 1 };
+    const ok = parseModDocument({ v: 1, parts: [{ at: "session", id: "s", tone: "working", view }] });
+    const part = ok.parts[0];
+    expect(part?.place === "session" ? part.part.tone : undefined).toBe("working");
+    const refused = parseModDocument({ v: 1, parts: [{ at: "session", id: "s", tone: "blocked", view }] });
+    expect(refused.refusedParts).toEqual(["s"]);
+    expect(refused.refusals[0]?.path).toBe("/parts/0/tone");
   });
 
   it("opens an https or an http address and nothing else", () => {

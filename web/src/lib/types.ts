@@ -32,8 +32,13 @@ export interface AgentView {
   status: AgentStatus;
   cwd: string;
   focused: boolean;
-  /** "agent" for an agent-bearing pane, "shell" for a bare shell. Absent = "agent". */
-  kind?: "agent" | "shell";
+  /**
+   * "agent" for an agent-bearing pane, "shell" for a bare shell. Absent = "agent". "mod" for a mod's
+   * own session (M94): no terminal, a view for a body, in the host's Mods Space. The root loader takes
+   * those out of `agents` into `HomeData.modSessions` (lib/mods/places.ts), so no list, count, triage
+   * or push path that reads `agents` ever meets one.
+   */
+  kind?: "agent" | "shell" | "mod";
   /** User-set pane label (herdr `pane.rename`), when one is set; absent when the pane is unlabelled. */
   paneLabel?: string;
   /**
@@ -284,6 +289,11 @@ export interface AgentView {
    * queued row per entry, with the text and Cancel (Resend on an ended one).
    */
   held?: HeldRow[];
+  /**
+   * A mod session's part, as its `partKey` (`host/mod/part`): the part whose view is the body. Mirrors
+   * `PaneWire.view` in bridge/types.ts. Present only on a pane of `kind: "mod"`.
+   */
+  view?: string;
 }
 
 /** The icon names a program may give a belt action. Mirrors `PANE_ACTION_ICONS` in bridge/types.ts. */
@@ -651,8 +661,8 @@ export interface SessionSummary {
   notice?: string;
 }
 
-/** {@link SessionSummary.kind}. */
-export type SessionKind = "terminal" | "program";
+/** {@link SessionSummary.kind}. `mod` is reserved for Collie mods (M94); no bridge sends a card of it yet. */
+export type SessionKind = "terminal" | "program" | "mod";
 /** {@link SessionSummary.where}. */
 export type SessionWhere = "local" | "remote";
 /** {@link SessionSummary.state}. */

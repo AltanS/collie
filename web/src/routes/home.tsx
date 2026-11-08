@@ -10,6 +10,7 @@ import { AgentList } from "@/components/agent-list";
 import { DurableHome } from "@/components/durable-home";
 import { PaneActionsSheet } from "@/components/pane-actions-sheet";
 import { ProgramSection } from "@/components/program-section";
+import { ModSpaceSection } from "@/components/mod-session";
 import { LaunchStrip } from "@/components/launch-strip";
 import { SpaceOverview } from "@/components/space-overview";
 import { StatusArea } from "@/components/status-area";
@@ -47,7 +48,7 @@ import type { DashView } from "@/lib/dash-view";
 import { t, tn } from "@/lib/i18n";
 import { prefetchFolders } from "@/lib/folders";
 import { glideForward } from "@/lib/glide";
-import { homePath, newPath, spaceChangesPath, spacePath } from "@/lib/nav";
+import { homePath, modSessionPath, newPath, spaceChangesPath, spacePath } from "@/lib/nav";
 import { resolveIsolatedPrefKeys, workspaceGroupKey, type WorkspaceGroup } from "@/lib/pane-groups";
 import { panePlaceParts } from "@/lib/pane-name";
 import { scopeKey, type Scope } from "@/lib/scope";
@@ -58,6 +59,8 @@ import { programScope, programSessions, programsAbove, waitingPrograms } from "@
 import { cn } from "@/lib/utils";
 import { isReadOnly, type AgentView, type ServerSummary, type SessionSummary } from "@/lib/types";
 import { useRootData } from "@/lib/route-data";
+
+const NO_MOD_SESSIONS: readonly AgentView[] = [];
 
 /**
  * The Changes tab's body (ADR 0066). Mounted only while that tab is selected, so its 5-second
@@ -244,6 +247,7 @@ export function HomeRoute() {
   // takes above Launch when a question waits, and draws nothing when none does.
   const programsWaiting = useMemo(() => waitingPrograms(programs), [programs]);
   const openProgram = (session: SessionSummary) => nav.down(homePath(programScope(session, data.servers)));
+  const openModSession = (pane: AgentView) => nav.down(modSessionPath(pane.paneId));
 
   // THE ROW HOLD (ADR 0070): a hold on a dashboard row opens that pane's own actions sheet, Pin to
   // top / Unpin first, then the writes. The sheet writes with the PANE's scope, for the reason a tap
@@ -441,6 +445,9 @@ export function HomeRoute() {
                 scope={data.scope}
               />
               {!programsFirst && <ProgramSection programs={programs} servers={data.servers} onOpen={openProgram} />}
+              {/* The Mods Space (M94 slice 03): a mod's own sessions, after the Programs, outside the
+                  herd's groups and counts. Nothing when no mod has a session part. */}
+              <ModSpaceSection sessions={data.modSessions ?? NO_MOD_SESSIONS} onOpen={openModSession} />
             </>
           )}
         </main>

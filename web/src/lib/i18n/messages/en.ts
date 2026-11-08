@@ -3194,6 +3194,14 @@ export const en = {
   "mods.frame.hide": "Hide",
   "mods.frame.fix": "Ask the agent to fix it",
   "mods.frame.fixDraft": "The mod `{id}` failed: `{error}`",
+  "mods.space.title": "Mods",
+  "mods.mark.open": "Open {mod}",
+  "mods.session.back": "Back",
+  "mods.session.gone": "This mod session is not here any more.",
+  "mods.draft.boxHasText": "Reply box has text, draft not placed",
+  "mods.draft.gone": "That session is not here any more.",
+  "mods.draft.pick": "Put the draft in",
+  "mods.draft.none": "No session to put the draft in.",
 } as const;
 
 /** Every key that exists, as a union of string literals. The completeness contract. */
@@ -3234,6 +3242,14 @@ export const PENDING_TRANSLATION = [
   "mods.frame.hide",
   "mods.frame.fix",
   "mods.frame.fixDraft",
+  "mods.space.title",
+  "mods.mark.open",
+  "mods.session.back",
+  "mods.session.gone",
+  "mods.draft.boxHasText",
+  "mods.draft.gone",
+  "mods.draft.pick",
+  "mods.draft.none",
 ] as const satisfies readonly MessageKey[];
 
 /** A key a bundle may leave out until the translation pass. */

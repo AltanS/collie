@@ -95,6 +95,7 @@ export const SECTIONS: readonly SectionEntry[] = [
   { def: { id: "new-tab", title: "New tab sheet" }, load: () => import("./sections/new-tab").then((m) => ({ default: m.NewTabSection })) },
   { def: { id: "report", title: "Report a problem" }, load: () => import("./sections/report").then((m) => ({ default: m.ReportSection })) },
   { def: { id: "mod-render", title: "Mod render" }, load: () => import("./sections/mod-render").then((m) => ({ default: m.ModRenderSection })) },
+  { def: { id: "mod-places", title: "Mod places" }, load: () => import("./sections/mod-places").then((m) => ({ default: m.ModPlacesSection })) },
 ];
 
 /** One `lazy` per section, made once: a fresh `lazy()` per render would suspend on every render. */

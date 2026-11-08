@@ -212,6 +212,7 @@ import type { CrewRuntime } from "./crew/config.ts";
 import type { CrewLead } from "./crew/lead.ts";
 import { crewDeviceOf, crewGate, type GateLevel } from "./crew/peer-gate.ts";
 import { modsTapRoute, parseSince } from "./mods/routes.ts";
+import { placeModSessions } from "./mods/panes.ts";
 import type { ModsSurface } from "./mods/service.ts";
 import { snapshotPlan } from "./crew/merge.ts";
 import { selectHostFrom, type HostSelector } from "./crew/registry.ts";
@@ -1885,6 +1886,20 @@ export function startServer(opts: {
     // Only when a mods folder exists (M94): an install with no mods sends the bytes it always sent.
     const modsRev = opts.mods?.rev();
     if (modsRev !== undefined) body.modsRev = modsRev;
+    // The mod sessions (M94 slice 03, bridge/mods/panes.ts): the Mods Space after the real Spaces, a
+    // tab per mod, a pane per session part. Added AFTER `sessions` took its counts and outside every
+    // state engine, so no count, triage or push ever sees one. None without a mod session.
+    const modSessions = opts.mods?.sessionPanes();
+    if (modSessions !== undefined) {
+      const placed = placeModSessions(modSessions, {
+        numbers: body.workspaces.map((w) => w.number),
+        // A widened body tags every pane with its session (types.ts says why); a mod pane takes the primary's.
+        session: widen ? registry.primary : undefined,
+      });
+      body.workspaces = [...body.workspaces, placed.workspace];
+      body.tabs = [...body.tabs, ...placed.tabs];
+      body.agents = [...body.agents, ...placed.panes];
+    }
     return body;
   };
 

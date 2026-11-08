@@ -27,7 +27,7 @@ import { SentSheet } from "@/components/sent-sheet";
 import { SuggestionStrip } from "@/components/suggestion-strip";
 import { useSentSuggestions } from "@/hooks/use-sent-suggestions";
 import { QuickActionsContent } from "@/components/quick-actions";
-import { ActionsRow, type GeneralAction } from "@/components/actions-row";
+import { ActionsRow, type BeltMark, type GeneralAction } from "@/components/actions-row";
 import { SectionLabel } from "@/components/ui/section-label";
 import { Collapse } from "@/components/ui/collapse";
 import { BottomSheet } from "@/components/ui/sheet";
@@ -141,6 +141,11 @@ export interface ComposerHandle {
    * until the person turns it off or the message leaves.
    */
   startMessage: (aim: WalkyAim) => void;
+  /**
+   * Put a mod's draft in the reply box (M94 slice 03) and focus it, only when the box is empty (no text
+   * and no chip). Returns false, and changes nothing, when the box holds something.
+   */
+  placeDraft: (text: string) => boolean;
 }
 
 interface ComposerProps {
@@ -323,6 +328,8 @@ interface ComposerProps {
    * Settings → Pane navigation is Joystick (ADR 0121). The pane decides; absent, nothing is drawn.
    */
   aboveBelt?: ReactNode;
+  /** The mods' marks on the belt's pinned block (M94 slice 03), in manifest order. Absent: the belt is what it was. */
+  beltMarks?: readonly BeltMark[];
 
   /**
    * One more floating notice from the pane, nearest the belt in the floating group (ADR 0061): the Two
@@ -503,7 +510,7 @@ interface ClearedDraft {
 
 
 export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
-  { paneId, instance, surface, starting = false, unreachableNote, scope, stopOffered = false, agent, canSteer, returnedDraft = false, isShell, cwd, gone, readOnly, composing, onAnswerDialog, dialogCard = false, text, terminalDraft, rawTerminalDraft, prefs, display, onSent, onOpenMessages, held: heldRows, chatEntries, pullHandle, draftNoticeSlot, changesPill, zoomPill, stale, hand = "right", layout = "field", aboveBelt, floatingHint, screen, todos, subagents, jobs, pins },
+  { paneId, instance, surface, starting = false, unreachableNote, scope, stopOffered = false, agent, canSteer, returnedDraft = false, isShell, cwd, gone, readOnly, composing, onAnswerDialog, dialogCard = false, text, terminalDraft, rawTerminalDraft, prefs, display, onSent, onOpenMessages, held: heldRows, chatEntries, pullHandle, draftNoticeSlot, changesPill, zoomPill, stale, hand = "right", layout = "field", aboveBelt, beltMarks, floatingHint, screen, todos, subagents, jobs, pins },
   ref,
 ) {
   const revalidator = useRevalidator();
@@ -681,6 +688,10 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     if (noEchoRef.current !== null) return;
     saveDraft(scope, paneId, inputValueRef.current, attachmentsRef.current, nextAttachmentRef.current);
   }
+
+  // The latest `updateInput`, for the imperative handle (`placeDraft`), which is made once.
+  const updateInputRef = useRef(updateInput);
+  updateInputRef.current = updateInput;
 
   /** {@link updateInput} for the appenders, which need the current value to build the next one.
    *  Split from it rather than overloaded on the argument: the two callers are different shapes,
@@ -1201,6 +1212,14 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       startMessage: (aim) => {
         startMessage(aim);
         focusInputImmediately();
+      },
+      placeDraft: (incoming) => {
+        // A mod's draft (M94 slice 03) fills an EMPTY box and never overwrites: text or a chip in the
+        // box refuses it, and the caller says so in a toast. Through the ref, so the handle is made once.
+        if (inputValueRef.current.trim() !== "" || attachmentsRef.current.length > 0) return false;
+        updateInputRef.current(incoming);
+        focusInputImmediately();
+        return true;
       },
     }),
     [startMessage],
@@ -2806,6 +2825,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           // The X on the pinned block while the box holds a draft, then Undo in its place until
           // the next act (M40 spec 04). See `clearSlot` for when it shows.
           clear={clearSlot()}
+          marks={beltMarks}
         />
         {/* ── THE FOOTER'S NOTICE STRIPS, SORTED BY KIND (DESIGN.md §1, §2) ─────────────────────
             Every strip below arrives and leaves through `Collapse`, which is the only sanctioned way

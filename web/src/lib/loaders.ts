@@ -27,6 +27,8 @@ import {
   readFailureKind,
 } from "@/lib/api";
 import { parseAnsi } from "@/lib/ansi";
+import { splitModSessions } from "@/lib/mods/places";
+import { syncMods } from "@/lib/mods/store";
 import { noteUpdateRun } from "./self-update";
 import { splitLines } from "@/lib/blocks";
 import { type CacheHold, holdCacheReadings } from "@/lib/cache-hold";
@@ -123,6 +125,12 @@ export interface HomeData {
   /** Every machine's workspaces from the snapshot (issue #587), so the herd list folds linked worktrees on peers too. */
   herdWorkspaces?: WorkspaceView[];
   tabs: TabView[];
+  /**
+   * The mod sessions (M94 slice 03): the panes of `kind: "mod"`, out of `agents` and the Mods Space out of
+   * `workspaces` and `tabs`, in the bridge's order. Optional in the TYPE only, so hand-built fixtures stay
+   * valid; every loader return sets it, empty on a body with no mod session.
+   */
+  modSessions?: AgentView[];
   /** The bridge's session registry (primary-first); empty on a single-session / older bridge. */
   sessions: SessionSummary[];
   /**
@@ -373,9 +381,14 @@ function toHomeData(
   // merged into the next one, so a pane that moves between the two lists keeps its reading and a pane
   // in neither list drops it. This runs on the stale path as well, because the same snapshot read
   // twice may not answer twice.
+  // THE MOD SESSIONS (M94 slice 03) leave the herd here, with their Space and tabs, into a list of
+  // their own (lib/mods/places.ts says why). A body with none hands every list back unchanged. A live
+  // answer also brings the mods store to the body's `modsRev`: no timer of its own, the snapshot's cadence.
+  const split = splitModSessions({ agents: snap.agents, shellPanes: snap.shellPanes ?? [], workspaces: snap.workspaces ?? [], tabs: snap.tabs ?? [] });
+  if (!error) void syncMods(snap.modsRev);
   const holdIn = paneCacheHold;
-  const agents = holdCacheReadings(holdIn, snap.agents);
-  const shells = holdCacheReadings(holdIn, snap.shellPanes ?? []);
+  const agents = holdCacheReadings(holdIn, split.agents);
+  const shells = holdCacheReadings(holdIn, split.shellPanes);
   paneCacheHold = new Map([...agents.held, ...shells.held]);
   const home: HomeData = {
     lastSeenAt,
@@ -388,9 +401,10 @@ function toHomeData(
     // beside them: the navigator is a tree of ONE machine, and on a crew the lead's merged body now
     // carries every machine's spaces. A solo body carries no host on any row, so both calls pass
     // everything through by identity and nothing about a solo dashboard changes.
-    workspaces: ambientSpaces(snap.workspaces ?? [], scope, snap.servers),
-    herdWorkspaces: snap.workspaces ?? [],
-    tabs: ambientSpaces(snap.tabs ?? [], scope, snap.servers),
+    workspaces: ambientSpaces(split.workspaces, scope, snap.servers),
+    herdWorkspaces: split.workspaces,
+    tabs: ambientSpaces(split.tabs, scope, snap.servers),
+    modSessions: split.modSessions,
     sessions: snap.sessions ?? [],
     servers: snap.servers ?? [],
     ts: snap.ts ?? 0,
@@ -444,6 +458,7 @@ async function staleHome(scope: Scope, viewAll: boolean): Promise<HomeData> {
     shellPanes: [],
     workspaces: [],
     tabs: [],
+    modSessions: [],
     sessions: [],
     servers: [],
     ts: 0,

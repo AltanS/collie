@@ -399,6 +399,9 @@ const PANE_WIRE_KEYS = {
   // time from the statusLine wrapper's file, and this harness builds its body with no reader, so no
   // golden byte moved.
   usage: true,
+  // Not a crew dimension: a mod session's part key (M94 slice 03). Present only on a pane of
+  // `kind: "mod"`, and this harness has no mods folder, so no golden byte moved.
+  view: true,
 } satisfies Record<keyof PaneWire, true>;
 
 const DEVICE_AUTH_KEYS = {
@@ -571,6 +574,7 @@ describe("solo zero-tax — wire shapes carry no crew dimension", () => {
       "todos",
       "turnId",
       "usage",
+      "view",
       "walkyOff",
       "workspaceId",
       "workspaceLabel",

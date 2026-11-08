@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Added
+
+- **A mod can show a mark on the belt and a session of its own.** A mod's belt mark stands between the pins mark and Changes, in its own frame. A tap runs the mod's action and shows a spinner until the answer comes, or opens the mod's session. Each mod session is a row in a Mods group on the Dashboard and in Switch session. Its screen shows the mod's view and up to four buttons, with no reply box. A draft from a mod fills a session's reply box only when the box is empty.
+
 ### Fixed
 
 - **The math engine files carry no content hash.** The release check refused the Edge build because its one math pack named engine files by a hash that differed on every platform build, so the engines now keep fixed names under `math/`.

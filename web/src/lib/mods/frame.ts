@@ -8,7 +8,8 @@
 //   2. The mod stopped after repeated failures, or is paused.  (nothing will change on its own soon)
 //   3. The last run failed and this is the last good version.
 //   4. The part is older than its fresh window.                 (the tone goes)
-//   5. Nothing: the part is fresh, and the line is empty.
+//   5. The part is fresh: the line says its age in muted text, "just now", "2 min ago" (slice 03), so
+//      it is never a blank band, and it still never moves.
 //
 // A part past its window loses its tone whatever the line says, so a bridge that is down cannot leave
 // "deploy green" on the glass.
@@ -17,7 +18,8 @@ import { freshWindowMs, parseDuration, type WireModInfo, type WireModPart } from
 import type { TapState } from "./store";
 
 export type FrameLine =
-  | { kind: "none" }
+  /** Fresh. The line carries the part's age, when it has one. */
+  | { kind: "none"; asOf?: string }
   | { kind: "age"; asOf: string }
   | { kind: "failed"; asOf: string | undefined; problem: string | undefined }
   | { kind: "paused"; retryAt: string | undefined; problem: string | undefined }
@@ -63,7 +65,7 @@ export function readFrame(part: WireModPart, mod: WireModInfo | undefined, tap: 
   if (mod?.state === "failing") return { stale, line: { kind: "paused", retryAt, problem } };
   if (part.stale === true) return { stale, line: { kind: "failed", asOf: part.asOf, problem } };
   if (stale && part.asOf !== undefined) return { stale, line: { kind: "age", asOf: part.asOf } };
-  return { stale, line: { kind: "none" } };
+  return { stale, line: part.asOf === undefined ? { kind: "none" } : { kind: "none", asOf: part.asOf } };
 }
 
 function cleanProblem(problem: string | undefined): string | undefined {

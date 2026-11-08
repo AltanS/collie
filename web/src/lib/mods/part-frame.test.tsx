@@ -50,7 +50,7 @@ describe("freshness", () => {
   it("keeps the tone inside the fresh window, and takes it away past it", () => {
     const fresh = frame(stored(GREEN), T0 + 30_000);
     expect(fresh.container.querySelector("p")?.className).toContain(TONE_TEXT_CLASS.ok);
-    expect(lineOf(fresh.container).textContent).toBe("");
+    expect(lineOf(fresh.container).textContent).toBe("just now");
     fresh.unmount();
     const stale = frame(stored(GREEN), T0 + 3 * 60_000);
     expect(stale.container.querySelector("p")?.className).toContain(TONE_TEXT_CLASS.unknown);
@@ -67,6 +67,25 @@ describe("freshness", () => {
     const staleLine = lineOf(stale.container);
     expect(`${staleLine.className}|${stale.container.querySelector('[data-slot="mod-part"]')?.childElementCount}`).toBe(freshBox);
     expect(staleLine.className).toContain("h-6");
+  });
+
+  it("never leaves a fresh part's line blank: it carries the age in muted text (slice 03 look fix)", () => {
+    const now = frame(stored(GREEN), T0 + 20_000);
+    const line = lineOf(now.container);
+    expect(line.textContent).toBe("just now");
+    expect(line.className).toContain("text-muted-foreground");
+    expect(line.className).toContain("h-6");
+    now.unmount();
+    // Still inside the 90 s window, two minutes would be past it: a minute-old part reads its minutes.
+    const minute = frame(stored(GREEN, { fresh: "5m" }), T0 + 2 * 60_000 + 5_000);
+    expect(lineOf(minute.container).textContent).toBe("2 min ago");
+    // No glyph on a fresh line: the clock glyph is the stale line's, so the two still read apart.
+    expect(lineOf(minute.container).querySelector("svg")).toBeNull();
+    minute.unmount();
+    // A part with no `asOf` (a crew member on another version) has no age to say, and the line stays reserved.
+    const bare = frame(stored(GREEN, { asOf: undefined }), T0);
+    expect(lineOf(bare.container).textContent).toBe("");
+    expect(lineOf(bare.container).className).toContain("h-6");
   });
 
   it("measures the window from the part's own `fresh`, else the default", () => {

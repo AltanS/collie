@@ -279,12 +279,34 @@ function ListView({ node, ctx, path }: { node: ListNode; ctx: RenderCtx; path: s
       </div>,
     );
   }
-  // The rows nobody fills are drawn empty, so the list's height is its `rows`, not its items.
-  for (let i = slots.length; i < rows; i += 1) slots.push(<div key={`empty-${i}`} aria-hidden data-slot="mod-list-empty" className="h-11" />);
+  // THE ROWS NOBODY FILLS (slice 03, a look fix). They keep the list's height at its `rows`, not its
+  // items, but they draw as hairline rows under the group, not as blank boxes inside its frame: each is
+  // a 44px row whose only mark is one line in the border token, inset to the rows' text. Each takes the
+  // theme's row gap above it, as a row of the group does, so a list that gains or loses an item is the
+  // same height under every `rows` word. A list with no item at all keeps the frame's two lines of
+  // height as air, so it is the same height as one with items.
+  const filled = slots.length;
+  const empties: ReactNode[] = [];
+  for (let i = filled; i < rows; i += 1) {
+    empties.push(
+      <div
+        key={`empty-${i}`}
+        aria-hidden
+        data-slot="mod-list-empty"
+        style={i === 0 ? undefined : { marginTop: "var(--row-gap)" }}
+        className="mx-3.5 h-11 border-b border-border"
+      />,
+    );
+  }
   return (
-    <ListGroup data-mod-node="list" className="min-w-0 overflow-hidden">
-      {slots}
-    </ListGroup>
+    <div data-mod-node="list" className="flex min-w-0 flex-col">
+      {filled > 0 ? (
+        <ListGroup className="min-w-0 overflow-hidden">{slots}</ListGroup>
+      ) : (
+        <div aria-hidden style={{ height: "calc(2 * var(--row-rule))" }} />
+      )}
+      {empties}
+    </div>
   );
 }
 
@@ -292,17 +314,33 @@ function ListView({ node, ctx, path }: { node: ListNode; ctx: RenderCtx; path: s
 
 function ButtonView({ node, ctx, path }: { node: ButtonNode; ctx: RenderCtx; path: string }) {
   const state = controlState(ctx, path);
+  const busy = state === "busy";
   const Icon = node.icon === undefined ? null : modIconOf(node.icon);
-  // With a glyph, the glyph turns into the spinner in its own box, as the belt's actions do. Without
-  // one, the spinner takes the label's cell, so the button's width never moves (ui/one-of.tsx).
+  // THE LABEL STAYS WHILE BUSY (slice 03, a look fix): a person reads what is running, not a lone
+  // spinner. With a glyph, the glyph turns into the spinner in its own box, as the belt's actions do.
+  // Without one, the busy cell is the spinner AND the label, stacked in one grid cell with the label
+  // alone (ui/one-of.tsx), so the button is as wide as the busy cell at rest too and never moves.
+  // "Unknown" takes the same cell.
   const label = (
     <OneOf
-      active={state === "busy" && Icon === null ? "busy" : state === "unknown" ? "unknown" : "label"}
+      active={state === "unknown" ? "unknown" : busy && Icon === null ? "busy" : "label"}
       className="min-w-0 justify-items-center"
       options={[
         { key: "label", node: <span className="truncate">{node.label}</span> },
         { key: "unknown", node: <span className="truncate">{t("mods.tap.unknown")}</span> },
-        ...(Icon === null ? [{ key: "busy", node: <Loader2 aria-hidden className={SPINNER} /> }] : []),
+        ...(Icon === null
+          ? [
+              {
+                key: "busy",
+                node: (
+                  <span className="inline-flex min-w-0 items-center gap-2">
+                    <Loader2 aria-hidden data-slot="mod-button-busy" className={SPINNER} />
+                    <span className="truncate">{node.label}</span>
+                  </span>
+                ),
+              },
+            ]
+          : []),
       ]}
     />
   );
@@ -311,13 +349,13 @@ function ButtonView({ node, ctx, path }: { node: ButtonNode; ctx: RenderCtx; pat
       <Button
         type="button"
         variant={node.primary === true ? "default" : "outline"}
-        aria-busy={state === "busy"}
+        aria-busy={busy}
         aria-label={state === "unknown" ? `${node.label}, ${t("mods.tap.unknown")}` : undefined}
         disabled={node.disabled === true || partBusy(ctx)}
         onClick={() => ctx.onTap(ctx.partKey, node.intent, node.args, path)}
         className="h-11 w-full min-w-0 px-4"
       >
-        {Icon !== null && (state === "busy" ? <Loader2 aria-hidden className={SPINNER} /> : <Icon aria-hidden />)}
+        {Icon !== null && (busy ? <Loader2 aria-hidden data-slot="mod-button-busy" className={SPINNER} /> : <Icon aria-hidden />)}
         {label}
       </Button>
     </div>

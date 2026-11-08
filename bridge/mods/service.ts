@@ -22,6 +22,7 @@ import { createModScanner, type FoundMod, type ModsScan } from "./discover.ts";
 import { scrubEnv, type ProviderEnv } from "./env.ts";
 import { buildFacts, type FactsWorld } from "./facts.ts";
 import { modsConfigDir, modStateDir } from "./paths.ts";
+import { modSessionPanes, type ModSessionPanes } from "./panes.ts";
 import { outcomeProblem, runProvider, type RunOutcome, type RunSpec } from "./run.ts";
 import { ModsStore, problemLine } from "./store.ts";
 import { createSwitchReader, type Switches } from "./switches.ts";
@@ -79,6 +80,12 @@ export interface ModsSurface {
   reply(since: number | undefined): Promise<ModsReply>;
   /** `POST /api/mods/<host>/<id>/tap`. */
   tap(host: string, id: string, body: JsonValue | undefined): Promise<TapAnswer>;
+  /**
+   * The Mods Space of this host (slice 03, panes.ts): one pane per `session` part of a mod that is on,
+   * read from memory, never a run. Undefined when there is none, so a body with no mod session is the
+   * body it always was.
+   */
+  sessionPanes(): ModSessionPanes | undefined;
 }
 
 /** A tap route's answer: the HTTP status and the JSON body. */
@@ -214,6 +221,18 @@ export class ModsService implements ModsSurface {
   async reply(since: number | undefined): Promise<ModsReply> {
     await this.refresh();
     return this.store.reply(since, this.folderExists ? this.runnerPath() : undefined);
+  }
+
+  sessionPanes(): ModSessionPanes | undefined {
+    if (!this.folderExists) return undefined;
+    const all = this.store.reply(undefined);
+    return modSessionPanes({
+      host: this.deps.host(),
+      mods: all.mods,
+      parts: all.parts,
+      dirOf: (id) => this.runtimes.get(id)?.found.dir,
+      now: this.now(),
+    });
   }
 
   /**

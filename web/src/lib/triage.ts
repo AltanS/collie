@@ -60,6 +60,9 @@ export function shownStatus(a: AgentView): AgentStatus {
 /** Which section an agent belongs to. The single classifier — {@link triage} and
  *  {@link worstTriage} both route through it, so a list and a chip can't disagree. */
 export function bucketOf(a: AgentView): TriageKey {
+  // A mod session is outside triage (M94): it never needs you, is never ready and never counts as
+  // working. The root loader keeps it out of every list this reads; this holds if one slips through.
+  if (a.kind === "mod") return "recent";
   if (a.status === "blocked") return "needs";
   if (isUnseen(a)) return "ready";
   if (a.status === "working") return "working";

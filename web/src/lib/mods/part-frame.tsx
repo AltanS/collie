@@ -4,7 +4,7 @@
 // The frame reserves ONE line under the part, always, so a part going stale, failing or coming back
 // repaints that line and moves nothing (DESIGN.md section 2). The line says the one thing that matters
 // most (lib/mods/frame.ts): a tap that failed or got no answer, a paused or stopped mod, a failed run,
-// or the age of a part past its fresh window. A failure's masked line opens on a tap, through
+// the age of a part past its fresh window, and for a fresh part its age alone, in muted text. A failure's masked line opens on a tap, through
 // `Collapse` (the one sanctioned way in-flow content appears), with one button, "Ask the agent to fix
 // it", which hands a draft to `onDraft`; slice 03 asks which session's empty reply box it goes to.
 //
@@ -48,11 +48,11 @@ function ageText(asOf: string | undefined, now: number): string {
   return asOf === undefined ? "" : (modTimeText(asOf, "ago", now) ?? "");
 }
 
-/** The words of the frame line. Empty for a fresh part, whose line is reserved and blank. */
+/** The words of the frame line. A fresh part's line is its age alone, muted, never a blank band. */
 function lineWords(line: FrameLine, now: number): string {
   switch (line.kind) {
     case "none":
-      return "";
+      return ageText(line.asOf, now);
     case "age":
       return t("mods.frame.updated", { time: ageText(line.asOf, now) });
     case "failed":

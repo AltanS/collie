@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { Bot, Layers, ListTree, Pin, Timer, Undo2, X, ZoomIn } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -582,9 +582,30 @@ export interface ActionsRowProps {
     /** The Pins sheet is open: `aria-expanded`. */
     expanded: boolean;
   };
+  /** The mods' marks on the pinned block ({@link BeltMark}), in manifest order. Absent or empty: the block is unchanged. */
+  marks?: readonly BeltMark[];
 }
 
-export function ActionsRow({ general, agent, mine, onRun, disabled, durable, stop, hand = "right", handle, changes, zoom, clear, agents, jobs, pins }: ActionsRowProps) {
+/**
+ * A MOD'S MARK ON THE PINNED BLOCK (M94 slice 03): right of the pins mark, left of Changes, in manifest
+ * order. `face` is the whole control, drawn in its own frame (lib/mods/mark.tsx): it is never a status
+ * mark and never a belt pill, so the row draws no button around it. Each mark comes and goes through
+ * `Collapse` on its x axis, like the agents mark; a mod that has no belt part leaves no gap.
+ */
+export interface BeltMark {
+  /** Stable, for React's key: the part key. Never shown. */
+  id: string;
+  face: ReactNode;
+  /** `false` lets the mark leave through its `Collapse`. Default `true`. */
+  open?: boolean;
+  /** The mod that added the mark, as `data-mod`. */
+  mod?: string;
+}
+
+/** One stable empty, so an omitted prop is one reference. */
+const NO_MARKS: readonly BeltMark[] = [];
+
+export function ActionsRow({ general, agent, mine, onRun, disabled, durable, stop, hand = "right", handle, changes, zoom, clear, agents, jobs, pins, marks = NO_MARKS }: ActionsRowProps) {
   useLocale();
 
   const harnessItems = useHarnessBarItems(agent, mine);
@@ -592,7 +613,8 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, durable, sto
   // Anything pinned at the pinned end (right, or left under `hand="left"`): the composer's X, the agents mark, the jobs
   // mark, the pins mark, the Changes pill, the Zoom pill, the Switch mark, in any mix. The drag surface (`handle.ref`, `touch-pan-x`) stays
   // tied to `handle` alone.
-  const pinnedCount = (agents ? 1 : 0) + (jobs ? 1 : 0) + (pins ? 1 : 0) + (clear ? 1 : 0) + (changes ? 1 : 0) + (zoom ? 1 : 0) + (handle ? 1 : 0);
+  const modMarks = marks.length > 0;
+  const pinnedCount = (agents ? 1 : 0) + (jobs ? 1 : 0) + (pins ? 1 : 0) + marks.length + (clear ? 1 : 0) + (changes ? 1 : 0) + (zoom ? 1 : 0) + (handle ? 1 : 0);
   const pinned = pinnedCount > 0;
   const switchBlock = useSwitchBlockWidth(pinned);
   const switchInset = switchBlock.width ?? switchPillInset(beltScale, pinnedCount);
@@ -880,7 +902,7 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, durable, sto
                     }}
                     className={cn(
                       `${STRIP_ROW_PILL} ${PINNED_PILL}`,
-                      pinnedReach(true, !agents && !jobs && !pins && !changes && !zoom && !handle, hand),
+                      pinnedReach(true, !agents && !jobs && !pins && !modMarks && !changes && !zoom && !handle, hand),
                       clear.inert === true && "opacity-50",
                     )}
                   >
@@ -915,7 +937,7 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, durable, sto
                     aria-label={agents.label}
                     aria-expanded={agents.expanded}
                     onClick={agents.onClick}
-                    className={cn(`${STRIP_ROW_PILL} ${PINNED_PILL}`, pinnedReach(!clear, !jobs && !pins && !changes && !zoom && !handle, hand))}
+                    className={cn(`${STRIP_ROW_PILL} ${PINNED_PILL}`, pinnedReach(!clear, !jobs && !pins && !modMarks && !changes && !zoom && !handle, hand))}
                   >
                     <Bot className={cn(BELT_ICON, "text-primary")} />
                     <span
@@ -946,7 +968,7 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, durable, sto
                     aria-label={jobs.label}
                     aria-expanded={jobs.expanded}
                     onClick={jobs.onClick}
-                    className={cn(`${STRIP_ROW_PILL} ${PINNED_PILL}`, pinnedReach(!clear && !agents, !pins && !changes && !zoom && !handle, hand))}
+                    className={cn(`${STRIP_ROW_PILL} ${PINNED_PILL}`, pinnedReach(!clear && !agents, !pins && !modMarks && !changes && !zoom && !handle, hand))}
                   >
                     <Timer className={cn(BELT_ICON, "text-primary")} />
                     {jobs.count > 0 && (
@@ -979,7 +1001,7 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, durable, sto
                     aria-label={pins.label}
                     aria-expanded={pins.expanded}
                     onClick={pins.onClick}
-                    className={cn(`${STRIP_ROW_PILL} ${PINNED_PILL}`, pinnedReach(!clear && !agents && !jobs, !changes && !zoom && !handle, hand))}
+                    className={cn(`${STRIP_ROW_PILL} ${PINNED_PILL}`, pinnedReach(!clear && !agents && !jobs, !modMarks && !changes && !zoom && !handle, hand))}
                   >
                     <Pin className={cn(BELT_ICON, "text-primary")} />
                     <span
@@ -996,6 +1018,14 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, durable, sto
                 </span>
               )}
             </Collapse>
+            {/* THE MODS' MARKS (the `marks` prop, M94 slice 03): each one in its own frame, a 44px reach. */}
+            {marks.map((mark) => (
+              <Collapse key={mark.id} axis="x" appear open={mark.open ?? true} className="-mr-1.5">
+                <span data-slot="belt-mod-mark" data-mod={mark.mod} className="flex items-center pr-1.5">
+                  {mark.face}
+                </span>
+              </Collapse>
+            ))}
             {/* EXPERIMENT (operator, 2026-09-23): the Changes entry, moved here from the pane actions
                 sheet. Same box as the Switch mark beside it; it navigates rather than opening a sheet,
                 so no `aria-haspopup`. Revert with the `changes` prop above. */}
@@ -1008,7 +1038,7 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, durable, sto
                 onClick={changes.onClick}
                 // `PINNED_PILL` below, and a hit box set by where the pill stands (`pinnedReach`):
                 // 7px out on an end of the block, 3px toward a neighbour, so two reaches never meet.
-                className={cn(`${STRIP_ROW_PILL} ${PINNED_PILL}`, pinnedReach(!clear && !agents && !jobs && !pins, !zoom && !handle, hand))}
+                className={cn(`${STRIP_ROW_PILL} ${PINNED_PILL}`, pinnedReach(!clear && !agents && !jobs && !pins && !modMarks, !zoom && !handle, hand))}
               >
                 <ListTree className={cn(BELT_ICON, "text-primary")} />
               </Button>
@@ -1022,7 +1052,7 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, durable, sto
                 size="sm"
                 aria-label={zoom.label}
                 onClick={zoom.onClick}
-                className={cn(`${STRIP_ROW_PILL} ${PINNED_PILL}`, pinnedReach(!clear && !agents && !jobs && !pins && !changes, !handle, hand))}
+                className={cn(`${STRIP_ROW_PILL} ${PINNED_PILL}`, pinnedReach(!clear && !agents && !jobs && !pins && !modMarks && !changes, !handle, hand))}
               >
                 <ZoomIn className={cn(BELT_ICON, "text-primary")} />
               </Button>
@@ -1046,7 +1076,7 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, durable, sto
                 // square with the pill's own scaled height, 37px at the default scale. Its hit box
                 // reaches 3px left (half the 6px gap to a pill beside it, 7px when it stands alone)
                 // and 7px right (into `pr-3`), 47px across.
-                className={cn(`${STRIP_ROW_PILL} ${PINNED_PILL}`, pinnedReach(!agents && !jobs && !pins && !clear && !changes && !zoom, true, hand))}
+                className={cn(`${STRIP_ROW_PILL} ${PINNED_PILL}`, pinnedReach(!agents && !jobs && !pins && !modMarks && !clear && !changes && !zoom, true, hand))}
               >
                 <Layers className={cn(BELT_ICON, "text-primary")} />
                 {/* The needs-you mark (the triangle), on the mark's top-right corner, absolutely placed

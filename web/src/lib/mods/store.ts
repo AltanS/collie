@@ -258,9 +258,11 @@ export function createModsStore(transport: ModsTransport, clock: () => number = 
 
 /** The app's one store, over the real routes. */
 export const modsStore: ModsStore = createModsStore({
+  // Each route is read at call time, not when this module loads: the root loader imports this store,
+  // so every module that imports the loader would otherwise need `tapMod` from the api module first.
   fetchMods: (since) => fetchMods(since),
-  tapMod,
-  mintRequestId,
+  tapMod: (host, mod, body) => tapMod(host, mod, body),
+  mintRequestId: () => mintRequestId(),
 });
 
 /** Bring the app's store to the snapshot's `modsRev`. Called by whoever holds the snapshot (slice 03). */

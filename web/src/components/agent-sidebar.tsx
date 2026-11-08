@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils";
 import { CacheChip } from "@/components/cache-chip";
 import { HostChip } from "@/components/host-chip";
 import { PaneOrderToggle } from "@/components/pane-order-toggle";
+import { ModSessionRow } from "@/components/mod-session";
 import { SectionHeader } from "@/components/section-header";
 import { StatusCounts, StatusSummaryLine } from "@/components/status-counts";
 import { pinnedRows, shownGroups } from "@/lib/dash-view";
@@ -41,6 +42,14 @@ interface ThreadSidebarProps {
    * pane id is unique only within one machine, so an id alone cannot say which row was tapped.
    */
   onSelect: (pane: AgentView) => void;
+  /**
+   * The mod sessions (M94 slice 03, `HomeData.modSessions`), listed in a trailing Mods section in the
+   * Dashboard's own row, with no status mark. Absent or empty: no section. They never enter the
+   * pane lists above, their counts or their order.
+   */
+  modSessions?: readonly AgentView[];
+  /** Open a mod session. Absent: the Mods section is not drawn. */
+  onSelectMod?: (pane: AgentView) => void;
   /** The raw tab list, for the multiplexer's own tab order inside a workspace (lib/pane-groups.ts). */
   tabs?: readonly TabView[];
   /** The snapshot's machine list, for the order machines run in: the lead first. */
@@ -147,6 +156,8 @@ export function ThreadSidebar({
   shellPanes = NO_PANES,
   currentPaneKey,
   onSelect,
+  modSessions = NO_PANES,
+  onSelectMod,
   tabs,
   servers,
   workspaces,
@@ -173,10 +184,11 @@ export function ThreadSidebar({
   const { ranks, reread } = useFrozenRanks(order, [...agents, ...shellPanes]);
   const showLaunch = launchers.length > 0 && onLaunch !== undefined;
   const noPanes = agents.length === 0 && shellPanes.length === 0;
+  const showMods = modSessions.length > 0 && onSelectMod !== undefined;
 
   // An operator with no panes but a launchers.toml still has something to reach in here, so the
   // empty-panes text and the Launch section coexist rather than the text winning outright.
-  if (noPanes && !showLaunch) {
+  if (noPanes && !showLaunch && !showMods) {
     return (
       <div className="px-4 py-12 text-center text-sm text-muted-foreground">
         {t("home.empty.noAgents")}
@@ -372,6 +384,14 @@ export function ThreadSidebar({
             </Section>
           )}
         </>
+      )}
+
+      {showMods && (
+        <Section roomy={roomy} id="switch-mods" label={t("mods.space.title")} count={modSessions.length} tone={roomy ? "quiet" : "strong"}>
+          {modSessions.map((pane) => (
+            <ModSessionRow key={pane.paneId} pane={pane} variant="switch" active={pane.paneId === currentPaneKey} onOpen={onSelectMod} />
+          ))}
+        </Section>
       )}
 
       {launchers.length > 0 && onLaunch && (
