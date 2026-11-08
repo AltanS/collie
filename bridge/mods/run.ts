@@ -1,0 +1,222 @@
+import { HOST } from "../host.ts";
+import { redactText } from "../redact.ts";
+
+// ONE RUN OF A PROVIDER (M94 slice 01): spawn, feed the facts, read with caps, kill on time.
+//
+// The limits are the point of this file:
+//   * 10 s, then the whole process GROUP is killed. The provider is started as a group leader, so a
+//     `sh -c` that started `curl` takes `curl` down with it. A provider that starts long work must
+//     detach it and return (design §3.2: long work is the provider's to detach).
+//   * 64 KiB of stdout, then the run FAILS and the group is killed: a document past the cap is refused
+//     whole by the parser anyway, and reading on would let a runaway provider fill the bridge's memory.
+//   * 8 KiB of stderr is kept for the error line; the rest is read and dropped, so a chatty provider
+//     cannot block on a full pipe.
+// Every byte that leaves this file has been through the secret mask (`redactText`), stdout before the
+// parser sees it and stderr before a log line or the doctor row does.
+
+/** How long one run may take. */
+export const RUN_TIMEOUT_MS = 10_000;
+/** The most stdout a run may print. The document cap of the schema, so the parser never sees more. */
+export const STDOUT_CAP_BYTES = 64 * 1024;
+/** The most stderr kept for the error line. */
+export const STDERR_CAP_BYTES = 8 * 1024;
+
+export interface RunSpec {
+  /** The manifest's `run` line, run by the shell in `cwd`. */
+  command: string;
+  cwd: string;
+  env: Record<string, string>;
+  /** The facts document, written to stdin and then closed. */
+  stdin: string;
+  timeoutMs?: number;
+  stdoutCap?: number;
+  stderrCap?: number;
+  /** The platform, for the shell. Default `HOST.platform` (bridge/host.ts). */
+  platform?: NodeJS.Platform;
+}
+
+/** How a run ended. Every text here is masked. */
+export type RunOutcome =
+  | { kind: "exited"; code: number; stdout: string; stderr: string; ms: number }
+  | { kind: "timeout"; stderr: string; ms: number; limitMs: number }
+  | { kind: "overflow"; stderr: string; ms: number }
+  | { kind: "spawn-failed"; message: string; ms: number };
+
+/** The argv that runs a `run` line: the shell, so `./legs.sh` and `bun provider.ts` both work. */
+export function shellArgv(command: string, platform: NodeJS.Platform): string[] {
+  return platform === "win32" ? ["cmd.exe", "/d", "/s", "/c", command] : ["/bin/sh", "-c", command];
+}
+
+/** Kill the whole group the provider leads. A group that is gone already is not an error. */
+function killGroup(pid: number, platform: NodeJS.Platform): void {
+  try {
+    if (platform === "win32") {
+      Bun.spawnSync(["taskkill", "/pid", String(pid), "/t", "/f"], { stdout: "ignore", stderr: "ignore" });
+      return;
+    }
+    process.kill(-pid, "SIGKILL");
+  } catch {
+    // ESRCH: the group exited between the decision and the kill.
+  }
+}
+
+/** Once the provider has exited, how long a pipe its detached work still holds may stay open. */
+export const PIPE_GRACE_MS = 250;
+
+interface Capped {
+  text: string;
+  /** More bytes came than the cap allowed. */
+  over: boolean;
+}
+
+/** A stream read to its end with a cap, which the runner can also cut short. */
+interface CappedRead {
+  done: Promise<Capped>;
+  cancel(): void;
+}
+
+/**
+ * Read a stream to its end, keeping at most `cap` bytes. `onOver` is called once, as soon as the cap
+ * is passed, and with `stopAtCap` the reading stops there (stdout); without it the rest is drained and
+ * dropped (stderr), so the child never blocks on a full pipe. `cancel` ends the read with what it has.
+ */
+function readCapped(stream: ReadableStream<Uint8Array>, cap: number, stopAtCap: boolean, onOver: () => void): CappedRead {
+  const reader = stream.getReader();
+  const chunks: Uint8Array[] = [];
+  let kept = 0;
+  let over = false;
+  let cancelled = false;
+  const cancel = (): void => {
+    if (cancelled) return;
+    cancelled = true;
+    void reader.cancel().catch(() => {});
+  };
+  const done = (async (): Promise<Capped> => {
+    for (;;) {
+      if (cancelled) break;
+      let next: Awaited<ReturnType<typeof reader.read>>;
+      try {
+        next = await reader.read();
+      } catch {
+        break;
+      }
+      if (next.done) break;
+      const chunk = next.value;
+      if (over) continue;
+      if (kept + chunk.length > cap) {
+        const room = cap - kept;
+        if (room > 0) chunks.push(chunk.subarray(0, room));
+        kept = cap;
+        over = true;
+        onOver();
+        if (stopAtCap) cancel();
+        continue;
+      }
+      chunks.push(chunk);
+      kept += chunk.length;
+    }
+    const bytes = new Uint8Array(kept);
+    let at = 0;
+    for (const c of chunks) {
+      bytes.set(c, at);
+      at += c.length;
+    }
+    return { text: new TextDecoder().decode(bytes), over };
+  })();
+  return { done, cancel };
+}
+
+/**
+ * Run a provider once. Never throws: a spawn that fails, a timeout and an overflow are outcomes, and
+ * the caller decides what each costs (the backoff in `service.ts`).
+ *
+ * A normal exit kills nothing: work the provider started in the background and left running is the
+ * provider's choice. Its pipes get {@link PIPE_GRACE_MS} after the exit and are then let go, so a
+ * background job that kept stdout open cannot hold the run open.
+ */
+export async function runProvider(spec: RunSpec): Promise<RunOutcome> {
+  const platform = spec.platform ?? HOST.platform;
+  const timeoutMs = spec.timeoutMs ?? RUN_TIMEOUT_MS;
+  const started = performance.now();
+  const elapsed = (): number => Math.round(performance.now() - started);
+  let child: ReturnType<typeof Bun.spawn<"pipe", "pipe", "pipe">>;
+  try {
+    child = Bun.spawn(shellArgv(spec.command, platform), {
+      cwd: spec.cwd,
+      env: spec.env,
+      stdin: "pipe",
+      stdout: "pipe",
+      stderr: "pipe",
+      // A group of its own, so the kill below reaches every process the provider started.
+      detached: platform !== "win32",
+    });
+  } catch (err) {
+    return { kind: "spawn-failed", message: redactText(err instanceof Error ? err.message : String(err)), ms: elapsed() };
+  }
+  const pid = child.pid;
+  let ended: "timeout" | "overflow" | null = null;
+  const out = readCapped(child.stdout, spec.stdoutCap ?? STDOUT_CAP_BYTES, true, () => stop("overflow"));
+  const err = readCapped(child.stderr, spec.stderrCap ?? STDERR_CAP_BYTES, false, () => {});
+  function stop(why: "timeout" | "overflow"): void {
+    if (ended !== null) return;
+    ended = why;
+    killGroup(pid, platform);
+    // A process outside the group (one that called setsid) may still hold a pipe: let go of both.
+    out.cancel();
+    err.cancel();
+  }
+  const timer = setTimeout(() => stop("timeout"), timeoutMs);
+  let grace: ReturnType<typeof setTimeout> | undefined;
+  try {
+    try {
+      child.stdin.write(spec.stdin);
+      await child.stdin.end();
+    } catch {
+      // The provider closed stdin without reading it, which a provider that needs no facts may do.
+    }
+    const code = await child.exited;
+    grace = setTimeout(() => {
+      out.cancel();
+      err.cancel();
+    }, PIPE_GRACE_MS);
+    const [stdout, stderrRead] = await Promise.all([out.done, err.done]);
+    const stderr = redactText(stderrRead.text);
+    if (ended === "timeout") return { kind: "timeout", stderr, ms: elapsed(), limitMs: timeoutMs };
+    if (ended === "overflow" || stdout.over) return { kind: "overflow", stderr, ms: elapsed() };
+    return { kind: "exited", code, stdout: redactText(stdout.text), stderr, ms: elapsed() };
+  } finally {
+    clearTimeout(timer);
+    if (grace !== undefined) clearTimeout(grace);
+  }
+}
+
+/** `: <the last non-empty stderr line>`, or nothing. */
+function tail(stderr: string): string {
+  const last = stderr
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .findLast((l) => l !== "");
+  return last === undefined ? "" : `: ${last}`;
+}
+
+/**
+ * One masked line for the doctor row, the CLI and a part's `problem`: what went wrong, at most `max`
+ * characters, the last non-empty stderr line after it when there is one.
+ */
+export function outcomeProblem(outcome: RunOutcome, max: number): string | null {
+  const line = ((): string | null => {
+    switch (outcome.kind) {
+      case "spawn-failed":
+        return `The provider did not start: ${outcome.message}`;
+      case "timeout":
+        return `The provider ran past ${Math.round(outcome.limitMs / 1000)} s and was stopped${tail(outcome.stderr)}`;
+      case "overflow":
+        return `The provider printed more than ${STDOUT_CAP_BYTES / 1024} KiB and was stopped${tail(outcome.stderr)}`;
+      case "exited":
+        return outcome.code === 0 ? null : `The provider exited with ${outcome.code}${tail(outcome.stderr)}`;
+    }
+  })();
+  if (line === null) return null;
+  const flat = line.replace(/[\p{Cc}]/gu, " ");
+  return flat.length > max ? `${flat.slice(0, max - 1)}…` : flat;
+}

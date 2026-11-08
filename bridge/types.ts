@@ -874,6 +874,12 @@ export interface SnapshotResponse {
    * precisely true. Present ⇒ `host` is stamped on every session and every pane; absent ⇒ on none.
    */
   servers?: ServerSummary[];
+  /**
+   * Collie mods (M94): the runner's rev. When it moves, the phone asks `GET /api/mods?since=<rev>` for
+   * the parts that changed. **Absent when there is no mods folder**, like `servers`, so an install
+   * without mods sends the bytes and the ETag it always sent (solo-baseline.test.ts).
+   */
+  modsRev?: number;
   /** Notification quiet-hours: the active snooze deadline (epoch ms) or null. */
   notifications?: { snoozedUntil: number | null };
   /** Update-availability signal. Optional — a stale bridge that predates the field simply omits it,

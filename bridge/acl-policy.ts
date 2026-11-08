@@ -146,6 +146,10 @@ const KNOWN_FOLDERS: ReadonlyMap<string, RegExp> = new Map([
   ["fonts", /^[^\\/]+\.woff2$/i],
   ["acl-backups", /^acl-backup-.+\.sddl$/i],
   ["whistle", /^whistle\.(?:cact|json|lock)$|^whistle\.cact\.\d+\.\d+\.part$|^whistle\.json\.\d+\.\d+\.tmp$/],
+  // Collie mods (M94, bridge/mods/paths.ts): the switch file and its temporary. A `mods/` that also
+  // holds a mod's own state folder, or the config folder's `mods/` with the operator's mod folders,
+  // has subfolders and so is not Collie's by this one-level rule: checked, never changed.
+  ["mods", /^switches\.json(?:\.tmp)?$/],
 ]);
 
 /**

@@ -1,0 +1,7 @@
+# A fixture mod for `collie mod check` (M94 slice 01). It prints one belt mark.
+id = "hello"
+name = "Hello"
+run = "./provider.sh"
+every = "30s"
+icon = "plug"
+places = ["belt"]

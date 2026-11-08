@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, readlinkSync, statSync } from "node:fs";
 import { mkdir, readFile as readFileAsync, realpath as realpathAsync, stat as statAsync, statfs as statfsAsync, writeFile } from "node:fs/promises";
 import { cpus, freemem, homedir, hostname, loadavg, totalmem } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 import { liveHookTargets } from "../cli/beacon.ts";
 import { classifyInstall, probeInstall } from "../cli/install-kind.ts";
@@ -277,6 +277,9 @@ import { counterWordOf, HoldBook, HoldServer, takeHold, type HoldTarget } from "
 import { holdSocketPath } from "./beacon/paths.ts";
 import { VersionCache } from "./surface/binary-version.ts";
 import { findProfile, loadProfiles } from "../web/src/lib/surface/profile.ts";
+import { factsWorldOf, modsHostName } from "./mods/facts.ts";
+import { ModsService } from "./mods/service.ts";
+import { createSessionFolders, createSessionLabels } from "./operator-space-labels.ts";
 import { labelOf } from "./walky/address.ts";
 import {
   crewSkipped,
@@ -3134,6 +3137,40 @@ if (standbyServer !== null && standbyDoor !== null) {
   );
 }
 
+// Collie mods (M94 slice 01): the runner over `<configDir>/mods/`. It reads nothing but a missing
+// folder until the operator makes one, writes nothing until a mod is switched on and runs, and its
+// timers wait for a paired phone to look (bridge/mods/service.ts).
+const modsFolders = createSessionFolders(cfg.spacesFile ?? null);
+const modsLabels = createSessionLabels(cfg.spacesFile ?? null);
+const mods =
+  cfg.modsDir === undefined
+    ? undefined
+    : new ModsService({
+        configDir: dirname(cfg.modsDir),
+        stateDir: cfg.stateDir,
+        host: () => {
+          const data = trustStore.current();
+          return modsHostName(data === null ? null : data.self.memberId);
+        },
+        world: (host) => {
+          void modsFolders.refresh();
+          void modsLabels.refresh();
+          const world = factsWorldOf({
+            host,
+            runtimes: registry.all().map((rt) => {
+              const now = rt.engine.current();
+              return { name: rt.name, agents: now.agents, shellPanes: now.shellPanes, workspaces: now.workspaces };
+            }),
+            folderOf: (name) => modsFolders.folderOf(name),
+            labelOf: (name) => modsLabels.labelOf(name),
+            activeAt: (session, paneId) => activity.get(session, paneId)?.activeAt,
+          });
+          return { sessions: world.sessions, spaces: world.spaces };
+        },
+        env: process.env,
+      });
+mods?.start();
+
 const server = listenOrExit("front door", cfg.host, cfg.port, () => startServer({
   cfg,
   registry,
@@ -3198,6 +3235,7 @@ const server = listenOrExit("front door", cfg.host, cfg.port, () => startServer(
   },
   // Every machine's load and its alert rules (ADR 0084). Undefined on a peer, whose routes then 404.
   machines: machineWatch,
+  mods,
   crew,
   pairing,
   launcherCopy: launcherCopySeam,

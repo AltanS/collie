@@ -935,6 +935,25 @@ export interface WireModInfo {
   places: PlaceKind[];
   /** One masked line, at most `PROBLEM_MAX`. */
   error?: string;
+  /** When the provider last ran, an instant. Absent before the first run (added by slice 01). */
+  lastRunAt?: string;
+  /**
+   * The refusals of the manifest and of the last document, capped like the parser's, so Settings →
+   * Mods and the doctor row can say why a mod is skipped or a part stale (added by slice 01).
+   */
+  refusals?: Refusal[];
+  /** Who added the mod, when and from where (design §6). Slice 01 knows only that a folder is there. */
+  provenance?: ModProvenance;
+}
+/**
+ * How a mod came to be on the machine. `folder` is a folder made by hand or by `collie mod init`;
+ * `cli`, `agent` and `repo` are for `collie mod add` (slice 09), which records `at`, `repo` and `sha`.
+ */
+export interface ModProvenance {
+  via: "folder" | "cli" | "agent" | "repo";
+  at?: string;
+  repo?: string;
+  sha?: string;
 }
 /**
  * `GET /api/mods?since=<rev>`. The snapshot carries `modsRev`; when it moves, the phone asks for the
@@ -949,6 +968,11 @@ export interface ModsReply {
   parts: WireModPart[];
   /** Every part key present now (`partKey`). A key the phone holds and this list lacks is gone. */
   present: string[];
+  /**
+   * The PATH the bridge's runner gives providers, for `collie doctor` (added by slice 01). The phone
+   * may ignore it.
+   */
+  path?: string;
 }
 
 /** The string key of a stored part. None of the three may hold `/`, so it splits back. */
