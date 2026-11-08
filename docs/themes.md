@@ -182,15 +182,20 @@ For a theme from the list, the sheet compares it with your host's copy of the li
 | A newer version is listed. | The list holds another commit of the same file. Tap **Update**. |
 | No newer version is listed. | You have the commit the list holds. |
 | No longer listed. | The list no longer holds the file. Your copy stays. |
-| **Check for updates** | The host's copy is older than your install. The tap fetches the list once. |
+| The listed version needs a newer Collie. | The list holds the file at a version this Collie cannot read. Update Collie to get it. Your copy keeps working. |
+| **Check for updates** | Your host has no copy of the list yet. The tap fetches the list once. |
 
 **Update** opens the same preview as **Install**, with the same contrast report. Tap **Update** there
 to put the new file in place of the old one. The theme stays on if you wore it, and the eight-theme
 limit does not stop an update.
 
 Collie matches the repository and the file, never the theme's id. A theme copied from another
-repository with the same id is never offered as an update. A copy of the list made before your install
-never offers an update, so an update never takes you back to an older commit.
+repository with the same id is never offered as an update. The repository matches in any case, as
+on GitHub.
+
+Any other commit of the file counts as newer, because the list holds the commit the site saw last.
+Collie compares no clocks. To be sure the host's copy is fresh, tap **Refresh** in **Browse community
+themes** first.
 
 ### Try a theme before you keep it
 

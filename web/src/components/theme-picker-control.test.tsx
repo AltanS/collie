@@ -689,17 +689,23 @@ describe("ThemePickerControl", () => {
     const ORIGIN: ThemeOrigin = { kind: "registry", repo: "sam/shared", path: "collie-theme.json", sha: OLD, at: AT };
 
     /** The host's copy: `listed` at `sha`, made at `generated`. Counts the reads and the refreshes. */
-    function hostList(listed: Theme[], opts: { sha?: string; generated?: string | null; afterPost?: { sha: string; generated: string } } = {}) {
+    /** The host's copy of the list. `none`: the host never fetched one, until a POST fetches `afterPost`. */
+    function hostList(listed: Theme[], opts: { sha?: string; none?: boolean; afterPost?: { sha: string }; texts?: string[] } = {}) {
       const calls = { gets: 0, posts: 0 };
-      const body = (sha: string, generated: string | null) => ({
-        fetchedAt: "2026-11-08T12:00:00.000Z",
-        ageMs: 60_000,
-        generated,
+      const body = (sha: string, none: boolean) => ({
+        fetchedAt: none ? null : "2026-11-08T12:00:00.000Z",
+        ageMs: none ? null : 60_000,
+        generated: none ? null : "2026-11-08T06:00:00Z",
         dropped: 0,
         fetching: false,
-        themes: listed.map((theme) => ({ repo: `sam/${theme.id}`, sha, path: "collie-theme.json", text: JSON.stringify(theme) })),
+        themes: none
+          ? []
+          : [
+              ...listed.map((theme) => ({ repo: `sam/${theme.id}`, sha, path: "collie-theme.json", text: JSON.stringify(theme) })),
+              ...(opts.texts ?? []).map((text) => ({ repo: "sam/shared", sha, path: "collie-theme.json", text })),
+            ],
       });
-      let current = body(opts.sha ?? NEW, opts.generated === undefined ? "2026-11-09T06:00:00Z" : opts.generated);
+      let current = body(opts.sha ?? NEW, opts.none === true);
       server.use(
         http.get("/api/themes/registry", () => {
           calls.gets += 1;
@@ -707,7 +713,7 @@ describe("ThemePickerControl", () => {
         }),
         http.post("/api/themes/registry", () => {
           calls.posts += 1;
-          if (opts.afterPost !== undefined) current = body(opts.afterPost.sha, opts.afterPost.generated);
+          if (opts.afterPost !== undefined) current = body(opts.afterPost.sha, false);
           return HttpResponse.json(current);
         }),
       );
@@ -798,11 +804,8 @@ describe("ThemePickerControl", () => {
       expect(calls.posts).toBe(0);
     });
 
-    it("never offers a commit from a copy older than the install; Check for updates is the one tap that fetches", async () => {
-      const calls = hostList([copy("shared", "Shared 2")], {
-        generated: "2026-11-08T06:00:00Z",
-        afterPost: { sha: NEW, generated: "2026-11-09T06:00:00Z" },
-      });
+    it("Check for updates is the one tap that fetches, shown while the host has no copy", async () => {
+      const calls = hostList([copy("shared", "Shared 2")], { none: true, afterPost: { sha: NEW } });
       const { ThemePickerControl, store } = await load([copy("shared", "Shared")], { shared: ORIGIN });
       act(() => store.setActiveTheme("shared"));
       render(<ThemePickerControl />);
@@ -814,6 +817,18 @@ describe("ThemePickerControl", () => {
       await userEvent.click(check);
       expect(await within(about).findByText("A newer version is listed.")).toBeInTheDocument();
       expect(calls.posts).toBe(1);
+    });
+
+    it("says the listed version needs a newer Collie, with no Update, when this Collie cannot read it", async () => {
+      const future = JSON.stringify({ ...copy("shared", "Shared 9"), version: 99 });
+      hostList([], { texts: [future] });
+      const { ThemePickerControl, store } = await load([copy("shared", "Shared")], { shared: ORIGIN });
+      act(() => store.setActiveTheme("shared"));
+      render(<ThemePickerControl />);
+      await userEvent.click(aboutButton("Shared"));
+      const about = await screen.findByRole("dialog", { name: "About this theme" });
+      expect(await within(about).findByText(/needs a newer Collie/)).toBeInTheDocument();
+      expect(within(about).queryByRole("button", { name: /Update|Check for updates/ })).toBeNull();
     });
 
     it("says No longer listed when a newer list no longer holds the file", async () => {
