@@ -1,4 +1,4 @@
-import { X } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -56,7 +56,7 @@ export function KeyQueueStrip({
             )}
           >
             <span>{label}</span>
-            <X className="size-3 opacity-60" />
+            <Icon name="remove" className="size-3 opacity-60" />
           </button>
         );
       })}
@@ -107,7 +107,7 @@ export function KeyQueueStrip({
           onClick={onClear}
           aria-label={t("keys.queue.clearAria")}
         >
-          <X className="size-4" />
+          <Icon name="clear" className="size-4" />
         </Button>
       </div>
     </div>

@@ -521,7 +521,7 @@ describe("every default word of spec 17 is the stylesheet's CSS", () => {
     const lucide = read("node_modules/lucide-react/dist/esm/defaultAttributes.mjs");
     const stroke = /strokeWidth:\s*(\d+(?:\.\d+)?)/.exec(lucide)?.[1];
     expect(new Map(defaultOf("icons")).get("--icon-stroke")).toBe(stroke);
-    expect(bare).toMatch(/svg\.lucide \{\s*stroke-width: var\(--icon-stroke\);/);
+    expect(bare).toMatch(/svg\.icon \{\s*stroke-width: var\(--icon-stroke\);/);
   });
 
   it("labels: sentence is the default, and the word `caps` is `uppercase` and Tailwind's `tracking-wide`", () => {

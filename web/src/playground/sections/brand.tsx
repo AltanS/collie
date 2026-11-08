@@ -7,6 +7,11 @@ import { AppHeaderHost, RouteHeader, SettingsGear } from "@/components/app-heade
 import { CollieHome } from "@/components/collie-home";
 import type { MarkState } from "@/components/mark-contract";
 import { CollieMark } from "@/components/collie-mark";
+import { Icon } from "@/components/icons/icon";
+import { ICON_AREAS, ICON_KEYS, ICON_KEY_LIST } from "@/components/icons/keys";
+import { ICONOIR } from "@/components/icons/sets/iconoir";
+import { PHOSPHOR } from "@/components/icons/sets/phosphor";
+import { GLYPH_SETS, type GlyphSetId } from "@/lib/glyph-sets";
 import { homeSolo } from "../fixtures";
 import { RootRouter } from "../harness";
 import { Card, Group, Section, Stage, type SectionDef } from "../layout";
@@ -16,7 +21,7 @@ export const DEF: SectionDef = {
   id: "brand",
   title: "Brand",
   intent:
-    "The app's own voice: the UI typeface under a live switcher, then the three marks it wears. The Collie mark in every weight and state, the multiplexer's own logo as the header prints it, and the installed-app icons at the sizes a launcher actually asks for.",
+    "The app's own voice: the UI typeface under a live switcher, then the three marks it wears. The Collie mark in every weight and state, the multiplexer's own logo as the header prints it, and the installed-app icons at the sizes a launcher actually asks for. Then every icon key in each glyph set a theme can name (ADR 0137), one column per set; a faded cell is a key that set draws in lucide.",
 };
 
 export function BrandSection() {
@@ -146,6 +151,17 @@ export function BrandSection() {
         </Card>
       </Group>
 
+      <Group title="Glyph sets">
+        <Card
+          state="glyph-sets-every-key"
+          label="1 every key, five sets"
+          reach="a theme file that names glyphs (docs/themes.md, Glyphs). The key list is components/icons/KEYS.md."
+          span={2}
+        >
+          <GlyphGrid />
+        </Card>
+      </Group>
+
       <Group title="App icons">
         <Card
           state="app-icons-real-sizes"
@@ -198,6 +214,58 @@ function IconSample({ src, size, label }: { src: string; size: number; label: st
     <div className="flex flex-col items-center gap-1.5">
       <img src={src} width={size} height={size} alt={label} className="max-w-full" />
       <span className="font-mono text-[10px] text-muted-foreground">{label}</span>
+    </div>
+  );
+}
+
+/** The family map behind a set, so a cell can say whether the set draws the key or falls back. */
+function familyGlyph(set: GlyphSetId, key: (typeof ICON_KEY_LIST)[number]): string | null {
+  const family = GLYPH_SETS.find((row) => row.id === set)?.family;
+  if (family === "phosphor") return PHOSPHOR[key];
+  if (family === "iconoir") return ICONOIR[key];
+  return ICON_KEYS[key].lucide;
+}
+
+/** Every key in a row, one column per set, grouped by the area of the app it shows in. */
+function GlyphGrid() {
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full border-collapse text-xs">
+        <thead>
+          <tr className="text-left text-muted-foreground">
+            <th className="py-1 pr-3 font-normal">key</th>
+            {GLYPH_SETS.map((set) => (
+              <th key={set.id} className="px-2 py-1 text-center font-normal">
+                {set.name}
+              </th>
+            ))}
+            <th className="py-1 pl-3 font-normal">meaning</th>
+          </tr>
+        </thead>
+        {Object.entries(ICON_AREAS).map(([area, title]) => (
+          <tbody key={area}>
+            <tr>
+              <th colSpan={GLYPH_SETS.length + 2} className="pt-3 pb-1 text-left font-mono text-[11px] uppercase tracking-wide">
+                {title}
+              </th>
+            </tr>
+            {ICON_KEY_LIST.filter((key) => ICON_KEYS[key].area === area).map((key) => (
+              <tr key={key} className="border-t border-rule">
+                <td className="py-1 pr-3 font-mono">{key}</td>
+                {GLYPH_SETS.map((set) => {
+                  const name = familyGlyph(set.id, key);
+                  return (
+                    <td key={set.id} title={name ?? "lucide fallback"} className="px-2 py-1 text-center">
+                      <Icon name={key} set={set.id} className={name === null ? "inline size-5 opacity-30" : "inline size-5"} />
+                    </td>
+                  );
+                })}
+                <td className="py-1 pl-3 text-muted-foreground">{ICON_KEYS[key].meaning}</td>
+              </tr>
+            ))}
+          </tbody>
+        ))}
+      </table>
     </div>
   );
 }

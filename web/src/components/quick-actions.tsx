@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { Check, Loader2 } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -75,8 +75,8 @@ function Group({
                 phase !== "idle" && "disabled:opacity-100",
               )}
             >
-              {phase === "pending" && <Loader2 className="size-4 animate-spin" />}
-              {phase === "done" && <Check className="size-4" />}
+              {phase === "pending" && <Icon name="busy" className="size-4 animate-spin" />}
+              {phase === "done" && <Icon name="sent-ok" className="size-4" />}
               {t}
             </Button>
           );

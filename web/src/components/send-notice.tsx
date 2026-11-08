@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Check, TriangleAlert } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 
 import { Notice } from "@/components/ui/notice";
 import { capSentence, noteKey, type SendNote, type SendReading, type SendReply } from "@/lib/send-protocol";
@@ -175,7 +175,7 @@ export function refusalKey(refusal: SendRefusal, surface: Surface | null): strin
 /** The box at the thumb. `action` is the composer's own buttons, or undefined for none. `onDismiss`
  *  adds the ✕ that hides the notice. */
 export function SendRefusalNotice({ refusal, action, onDismiss }: { refusal: SendRefusal; action?: ReactNode; onDismiss?: () => void }) {
-  const icon = refusal.tone === "caution" ? <TriangleAlert /> : <Check />;
+  const icon = refusal.tone === "caution" ? <Icon name="warning" /> : <Icon name="ok" />;
   const words = (
     <>
       <span data-slot="composer-refusal">{refusal.sentence}</span>

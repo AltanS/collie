@@ -34,6 +34,7 @@
     "tailwind-merge": "^3.6.0"
   },
   "devDependencies": {
+    "@phosphor-icons/core": "2.1.1",
     "@playwright/test": "^1.62.1",
     "@tailwindcss/vite": "^4.3.1",
     "@testing-library/jest-dom": "^6.9.1",
@@ -43,6 +44,7 @@
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.3",
+    "iconoir": "^7.12.1",
     "jsdom": "^29.1.1",
     "msw": "^2.14.6",
     "tailwindcss": "^4.3.1",

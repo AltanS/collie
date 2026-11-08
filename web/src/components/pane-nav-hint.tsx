@@ -1,4 +1,4 @@
-import { Hand } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 
 import { DismissButton, FLOATING_CARD } from "@/components/terminal-draft-preview";
 import { useLocale } from "@/hooks/use-locale";
@@ -14,7 +14,7 @@ export function PaneNavHint({ onDismiss }: { onDismiss: () => void }) {
   useLocale();
   return (
     <div data-slot="pane-nav-hint" role="status" className={FLOATING_CARD}>
-      <Hand aria-hidden className="mt-0.5 size-3 shrink-0" />
+      <Icon name="hand" aria-hidden className="mt-0.5 size-3 shrink-0" />
       <div className="min-w-0 flex-1 self-center leading-snug">{t("paneNav.firstHint")}</div>
       <DismissButton onDismiss={onDismiss} label={t("paneNav.firstHint.dismissAria")} />
     </div>

@@ -1,4 +1,4 @@
-import { Pin } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 import { useRef } from "react";
 
 import { Collapse } from "@/components/ui/collapse";
@@ -46,7 +46,7 @@ export function PinHint({ open, onFocusLeaves }: PinHintProps) {
           <Notice
             tone="neutral"
             variant="box"
-            icon={<Pin />}
+            icon={<Icon name="pin" />}
             dismissLabel={t("home.pinHint.dismiss")}
             onDismiss={() => {
               const hadFocus = box.current?.contains(document.activeElement) ?? false;

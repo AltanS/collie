@@ -2,7 +2,6 @@ import { forwardRef, useContext, useEffect, useImperativeHandle, useRef, useStat
 import { createPortal } from "react-dom";
 import type { ChangeEvent, ClipboardEvent, CSSProperties, MouseEvent, ReactNode } from "react";
 import { useRevalidator } from "react-router";
-import { ArrowUp, Check, FileText, Image, Keyboard, ListEnd, ListTodo, Loader2, Mic, Monitor, Navigation, Paperclip, Pencil, Plus, Send, Settings2, Slash, Square, Terminal, TriangleAlert, X, Zap } from "lucide-react";
 
 import { StatusDot } from "@/components/status-badge";
 import { applyDraftFontSize, fontStack, inputFocusZoomsPage, reportOfferOf, sentSuggestionsOf } from "@/hooks/use-display-prefs";
@@ -115,6 +114,7 @@ import type { TranscriptEntry } from "@/lib/types";
 import { findUnknownSendMatch, type UnknownSend } from "@/lib/unknown-send";
 import { clearNotice, phoneRefusal, readingRefusal, refusalKey, SendRefusalNotice, stopNotice, type SendRefusal } from "@/components/send-notice";
 import { mintRequestId } from "@/lib/worktree-name";
+import { Icon } from "@/components/icons/icon";
 
 /** The status line a verified send leaves, by where the text went. */
 const STATUS_KEY = {
@@ -426,7 +426,7 @@ function ComposerDock({
               onClick={onEdit}
               aria-label={translate("composer.dock.editKeys")}
             >
-              <Pencil className="size-3.5" />
+              <Icon name="edit" className="size-3.5" />
             </Button>
           )}
         </div>
@@ -437,7 +437,7 @@ function ComposerDock({
           onClick={onClose}
           aria-label={translate("composer.dock.closeAria", { title })}
         >
-          <X className="size-4" />
+          <Icon name="close" className="size-4" />
         </Button>
       </div>
       <div className="max-h-[45dvh] min-h-0 overflow-y-auto">{children}</div>
@@ -1805,11 +1805,11 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       : translate("composer.mic.recordAria");
   const micIcon =
     recorder.phase === "transcribing" ? (
-      <Loader2 className="size-4 animate-spin" />
+      <Icon name="busy" className="size-4 animate-spin" />
     ) : recorder.phase === "recording" ? (
-      <Square className="size-4 fill-current" />
+      <Icon name="stop" className="size-4 fill-current" />
     ) : (
-      <Mic className="size-4" />
+      <Icon name="mic" className="size-4" />
     );
   const micDisabled = !micAvailable || locked || offline || sending || recorder.phase === "transcribing";
   function onMicClick(e: MouseEvent, opener: "primary" | "draft") {
@@ -2486,7 +2486,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             truncate to a line of chrome, which is the one thing this must not do. */}
         <Collapse open={lastSent !== null}>
           <div className="mb-2 flex items-center gap-1.5 rounded-md bg-muted/40 px-2.5 py-1.5 text-xs text-muted-foreground">
-            <Loader2 className="size-3 shrink-0 animate-spin" />
+            <Icon name="busy" className="size-3 shrink-0 animate-spin" />
             <span className="truncate">
               <span className="font-medium">{translate("composer.sentPreview.label")}</span> {lastSent}
             </span>
@@ -2629,7 +2629,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               // closes the other.
               {
                 id: "keys",
-                icon: Keyboard,
+                icon: "keys-drawer",
                 label: translate("composer.controls.keys"),
                 on: drawer === "keys",
                 expanded: drawer === "keys",
@@ -2645,14 +2645,14 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                 : [
                     {
                       id: "screen",
-                      icon: Monitor,
+                      icon: "screen",
                       label: translate("composer.controls.screenAria"),
                       word: translate("composer.controls.screen"),
                       on: screen.on,
                       pressed: screen.on,
                       onSelect: screen.onToggle,
                     },
-                  ]),
+                  ] satisfies GeneralAction[]),
               // "Type into terminal" lives HERE, beside Keys, rather than on the Send button.
               // It is the same problem split in half: Keys exists because the phone keyboard
               // cannot send Esc/Tab/arrows/chords, this exists because it cannot send bare
@@ -2667,7 +2667,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               // keyboard to a live terminal; see use-direct-typing.ts for the rest.
               {
                 id: "type",
-                icon: Terminal,
+                icon: "type-into-terminal",
                 // Announced in full, drawn short: the pill has one word of room beside its glyph,
                 // and "Type into terminal" is the name a reader must still hear.
                 label: translate("composer.controls.typeAria"),
@@ -2690,7 +2690,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               },
               {
                 id: "quick",
-                icon: Zap,
+                icon: "quick-actions",
                 label: translate("composer.controls.quick"),
                 on: drawer === "quick",
                 expanded: drawer === "quick",
@@ -2703,12 +2703,12 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                 ? [
                     {
                       id: "sent",
-                      icon: ListEnd,
+                      icon: "sent-history",
                       label: translate("sent.button"),
                       disabled: locked,
                       onSelect: () => setSentOpen(true),
                     },
-                  ]
+                  ] satisfies GeneralAction[]
                 : []),
               // Withdrawn rather than greyed when this pane has no commands at all: there is no
               // palette to open, which is a different thing from one this device may not use.
@@ -2716,30 +2716,30 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                 ? [
                     {
                       id: "agent",
-                      icon: Slash,
+                      icon: "agent-commands",
                       label: translate("composer.controls.agent"),
                       disabled: locked,
                       onSelect: () => requestDrawer("cmd"),
                     },
-                  ]
+                  ] satisfies GeneralAction[]
                 : []),
               ...(todoList.length > 0
                 ? [
                     {
                       id: "todos",
-                      icon: ListTodo,
+                      icon: "todos",
                       label: todoLabel,
                       on: drawer === "todos",
                       expanded: drawer === "todos",
                       onSelect: () => requestDrawer(drawer === "todos" ? null : "todos"),
                     },
-                  ]
+                  ] satisfies GeneralAction[]
                 : []),
               // Display prefs. Not gated on `locked`: wrap/font/raw-terminal are local view
               // state, so a read-only device or a gone pane can still make its mirror readable.
               {
                 id: "display",
-                icon: Settings2,
+                icon: "display-settings",
                 label: translate("composer.controls.displayAria"),
                 word: translate("composer.controls.display"),
                 on: display.open,
@@ -2957,7 +2957,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             act on (M56 spec 07). */}
         <Collapse open={confirmingSend && destructiveNote !== null && !direct.active}>
           {destructiveNote !== null && (
-            <Notice tone="danger" variant="box" className="mb-2" icon={<TriangleAlert />}>
+            <Notice tone="danger" variant="box" className="mb-2" icon={<Icon name="error" />}>
               <span data-slot="composer-destructive">{destructiveNote}</span>
             </Notice>
           )}
@@ -3261,9 +3261,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             aria-expanded={asksWhich ? picking : undefined}
           >
             {uploading ? (
-              <Loader2 className="size-4 animate-spin" />
+              <Icon name="busy" className="size-4 animate-spin" />
             ) : (
-              box ? <Plus className="size-4" /> : <Paperclip className="size-4" />
+              box ? <Icon name="attach-open" className="size-4" /> : <Icon name="attach" className="size-4" />
             )}
           </Button>
           {draftMicShown && (
@@ -3315,7 +3315,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             className={mirrored ? "right-auto left-0" : undefined}
           >
             <ActionRow
-              icon={<Image aria-hidden="true" className="size-4 shrink-0" />}
+              icon={<Icon name="image" aria-hidden="true" className="size-4 shrink-0" />}
               label={translate("composer.attach.photos")}
               onClick={() => {
                 setPicking(false);
@@ -3323,7 +3323,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               }}
             />
             <ActionRow
-              icon={<FileText aria-hidden="true" className="size-4 shrink-0" />}
+              icon={<Icon name="file-text" aria-hidden="true" className="size-4 shrink-0" />}
               label={translate("composer.attach.files")}
               onClick={() => {
                 setPicking(false);
@@ -3343,7 +3343,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           >
             {steerRow && (
               <ActionRow
-                icon={<Navigation aria-hidden="true" className="size-4 shrink-0" />}
+                icon={<Icon name="steer" aria-hidden="true" className="size-4 shrink-0" />}
                 label={translate("composer.steer.row")}
                 onClick={() => {
                   setSendMenu(false);
@@ -3466,15 +3466,15 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               aria-pressed={direct.active}
             >
               {direct.active ? (
-                <Keyboard className="size-4" />
+                <Icon name="direct-typing" className="size-4" />
               ) : sending ? (
-                <Loader2 className="size-4 animate-spin" />
+                <Icon name="busy" className="size-4 animate-spin" />
               ) : justSent ? (
-                <Check className="size-4" />
+                <Icon name="sent-ok" className="size-4" />
               ) : box ? (
-                <ArrowUp className="size-4" />
+                <Icon name="send-ready" className="size-4" />
               ) : (
-                <Send className="size-4" />
+                <Icon name="send" className="size-4" />
               )}
             </Button>
           )}

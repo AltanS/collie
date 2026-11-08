@@ -2,6 +2,8 @@ import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 import { resolve } from "node:path";
 
+import { glyphSetsPlugin } from "./vite-glyphs";
+
 // Vitest runs without the PWA/Tailwind plugins (tests don't need a service worker or compiled CSS).
 // jsdom + Testing Library + MSW cover components and the /api fetch layer; no headless browser.
 //
@@ -69,7 +71,7 @@ export default defineConfig({
       channel: "dev",
     }),
   },
-  plugins: [react()],
+  plugins: [react(), glyphSetsPlugin(import.meta.dirname)],
   resolve: {
     alias: {
       "@": resolve(import.meta.dirname, "src"),

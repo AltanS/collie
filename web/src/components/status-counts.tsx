@@ -1,4 +1,4 @@
-import { Check } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 import { useLayoutEffect, useRef, useState } from "react";
 
 import { StatusDot } from "@/components/status-badge";
@@ -282,7 +282,7 @@ export function StatusSummaryLine({
     >
       {allClear && (
         <span className="flex min-w-0 items-center gap-1.5 leading-none">
-          <Check className="size-4 shrink-0 text-status-done" aria-hidden />
+          <Icon name="done" className="size-4 shrink-0 text-status-done" aria-hidden />
           <span className="min-w-0 truncate">{t("home.allClear")}</span>
         </span>
       )}

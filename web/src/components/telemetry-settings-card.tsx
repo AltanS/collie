@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, type Dispatch, type SetStateAction } from "react";
-import { BarChart3, ChevronDown, Loader2 } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 import { useLocation } from "react-router";
 
 import { useCrew } from "@/components/crew-provider";
@@ -123,7 +123,7 @@ export function TelemetrySettingsRow() {
         : t(load.view.on ? "telemetry.row.on" : "telemetry.row.off");
   return (
     <Card className="gap-0 py-0" data-slot="telemetry-row">
-      <SettingsNavRow icon={BarChart3} title={t("telemetry.card.title")} caption={caption} onOpen={() => nav.down(installCountPath(scope))} />
+      <SettingsNavRow icon="telemetry" title={t("telemetry.card.title")} caption={caption} onOpen={() => nav.down(installCountPath(scope))} />
     </Card>
   );
 }
@@ -185,7 +185,7 @@ export function TelemetrySettingsCard() {
     <Card id={TELEMETRY_SETTINGS_HASH} ref={cardRef} tabIndex={-1} className="gap-0 py-0 outline-none" data-slot="telemetry-card">
       <div className="flex items-center justify-between gap-4 p-4">
         <div className="flex min-w-0 items-start gap-3">
-          <BarChart3 className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
+          <Icon name="telemetry" className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
           <div className="min-w-0">
             <div className="font-medium">{t("telemetry.card.title")}</div>
             <p className="text-sm text-muted-foreground">{t("telemetry.card.description")}</p>
@@ -205,7 +205,7 @@ export function TelemetrySettingsCard() {
       {/* Always rendered, so a reading, a receipt or a refusal arriving grows nothing above it. */}
       <div className="flex flex-col gap-2 border-t border-border px-4 py-3">
         <p id={causeId} role="status" className="flex items-center gap-2 text-sm text-muted-foreground">
-          {saving && <Loader2 className="size-4 shrink-0 animate-spin" aria-hidden="true" />}
+          {saving && <Icon name="busy" className="size-4 shrink-0 animate-spin" aria-hidden="true" />}
           {saving ? t("telemetry.card.saving") : error !== null ? "" : cause}
         </p>
         {error !== null && <p className="text-sm text-status-blocked">{error}</p>}
@@ -228,7 +228,7 @@ export function TelemetrySettingsCard() {
             className="flex min-h-11 w-full items-center justify-between gap-3 px-4 text-left text-sm active:bg-muted/60"
           >
             <span>{nextOpen ? t("telemetry.card.next.hide") : t("telemetry.card.next.show")}</span>
-            <ChevronDown aria-hidden="true" className={cn("size-4 shrink-0 text-muted-foreground transition-transform", nextOpen && "rotate-180")} />
+            <Icon name="expand" aria-hidden="true" className={cn("size-4 shrink-0 text-muted-foreground transition-transform", nextOpen && "rotate-180")} />
           </button>
           <Collapse open={nextOpen}>
             <div id={nextId} className="px-4 pb-3">

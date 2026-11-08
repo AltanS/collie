@@ -1,6 +1,6 @@
 import { useId, useState } from "react";
 import { createPortal } from "react-dom";
-import { Check, Network, Server } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 
 import { cn } from "@/lib/utils";
 import { useNav } from "@/hooks/use-nav";
@@ -124,7 +124,7 @@ export function ServerSwitcher({ servers, scope, agents = NO_PANES }: ServerSwit
         aria-label={t("connection.server.aria", { name: currentName })}
         className="flex min-w-0 items-center gap-1 rounded-md border border-border px-2 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent active:scale-95"
       >
-        <Server className="size-3.5 shrink-0" />
+        <Icon name="machine" className="size-3.5 shrink-0" />
         <span className="min-w-0 max-w-[6rem] truncate">{currentName}</span>
       </button>
 
@@ -177,7 +177,8 @@ export function ServerSwitcher({ servers, scope, agents = NO_PANES }: ServerSwit
                         dimmed && "opacity-60",
                       )}
                     >
-                      <Server
+                      <Icon
+                        name="machine"
                         className={cn(
                           "size-4 shrink-0",
                           slot === null ? "text-muted-foreground" : HOST_TEXT_CLASSES[slot],
@@ -250,7 +251,7 @@ export function ServerSwitcher({ servers, scope, agents = NO_PANES }: ServerSwit
                           </div>
                         )}
                       </div>
-                      {active && <Check className="size-4 shrink-0 text-primary" />}
+                      {active && <Icon name="selected" className="size-4 shrink-0 text-primary" />}
                     </button>
                     {/* Its own 44px target beside the row. A <label> around the switch makes the whole
                         cell answer a tap (a button is labelable); the name still comes from
@@ -296,7 +297,7 @@ export function ServerSwitcher({ servers, scope, agents = NO_PANES }: ServerSwit
             }}
             className="mt-1 flex w-full items-center gap-2.5 rounded-lg border-t border-rule px-3 py-2.5 text-left text-sm text-muted-foreground transition-colors hover:bg-accent active:bg-accent"
           >
-            <Network className="size-4 shrink-0" />
+            <Icon name="crew" className="size-4 shrink-0" />
             {t("crew.entry.title")}
           </button>
         </BottomSheet>,

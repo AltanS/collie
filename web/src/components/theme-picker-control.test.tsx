@@ -364,7 +364,7 @@ describe("ThemePickerControl", () => {
       expect(dark.style.getPropertyValue("--font-display")).toBe("var(--face-geist)");
       expect(dark.querySelector(".bg-band-ground")).not.toBeNull();
       expect(dark.querySelector('[data-slot="list-group"]')?.children).toHaveLength(2);
-      expect(dark.querySelector("svg.lucide")).not.toBeNull();
+      expect(dark.querySelector("svg[data-icon]")).not.toBeNull();
       expect(within(dialog).getByTestId("theme-page-sample-light").style.colorScheme).toBe("light");
       const words = [...within(dialog).getByTestId("theme-shape-words").querySelectorAll("li")].map((li) => li.textContent);
       expect(words).toEqual(expect.arrayContaining(["ground: grain", "chrome: band", "rows: cards", "icons: thin", "labels: sentence", "display: geist"]));
@@ -726,6 +726,18 @@ describe("ThemePickerControl and the header character", () => {
     pick(container, fileOf(JSON.stringify(copy("plain", "Plain"))));
     const dialog = await screen.findByRole("dialog", { name: "Import this theme?" });
     expect(within(dialog).queryByTestId("theme-mark-line")).toBeNull();
+  });
+
+  it("shows the five sample icons of a file's glyph set, in that set, and no line for a file without one", async () => {
+    const { ThemePickerControl } = await load();
+    const { container } = render(<ThemePickerControl />);
+    pick(container, fileOf(JSON.stringify({ ...copy("duo-day", "Duo day"), version: 4, glyphs: "phosphor-duotone" })));
+    const dialog = await screen.findByRole("dialog", { name: "Import this theme?" });
+    const line = within(dialog).getByTestId("theme-glyphs-line");
+    expect(line).toHaveTextContent("Icons: Phosphor Duotone");
+    const shown = [...line.querySelectorAll("svg")].map((svg) => svg.getAttribute("data-icon"));
+    expect(shown).toEqual(["close", "send", "settings", "back", "attach"]);
+    await waitFor(() => expect(line.querySelector('svg[data-glyphs="phosphor-duotone"]')).not.toBeNull());
   });
 
   it("refuses a character in a file that says version 3, and names the version it needs", async () => {

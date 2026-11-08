@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { BellRing, Check, CircleAlert, Loader2 } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -145,7 +145,7 @@ export function MachineAlertsControl({
     return (
       <Card className="gap-0 py-0" data-slot="machine-alerts-update">
         <div className="flex items-start gap-3 p-4">
-          <BellRing className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
+          <Icon name="notifications" className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
           <div className="min-w-0">
             <div className="font-medium">{t("machines.alerts.title")}</div>
             <p className="text-sm text-muted-foreground">{t("machines.alerts.needsUpdate")}</p>
@@ -159,7 +159,7 @@ export function MachineAlertsControl({
     <Card className="gap-0 py-0">
       <div className="flex items-center justify-between gap-4 p-4">
         <div className="flex min-w-0 items-start gap-3">
-          <BellRing className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
+          <Icon name="notifications" className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
           <div className="min-w-0">
             <div className="font-medium">{t("machines.alerts.title")}</div>
             <p className="text-sm text-muted-foreground">{t("machines.alerts.description")}</p>
@@ -296,8 +296,8 @@ function statusWords(state: SaveState): string {
 
 /** The mark beside the words: a spinner while saving, a check once saved, a warning on a failure. */
 function StatusMark({ state }: { state: SaveState }) {
-  if (state === "saving") return <Loader2 className="size-3.5 shrink-0 motion-safe:animate-spin" aria-hidden />;
-  if (state === "saved") return <Check className="size-3.5 shrink-0 text-status-done" aria-hidden />;
-  if (state === "failed" || state === "unpaired") return <CircleAlert className="size-3.5 shrink-0" aria-hidden />;
+  if (state === "saving") return <Icon name="busy" className="size-3.5 shrink-0 motion-safe:animate-spin" aria-hidden />;
+  if (state === "saved") return <Icon name="done" className="size-3.5 shrink-0 text-status-done" aria-hidden />;
+  if (state === "failed" || state === "unpaired") return <Icon name="error" className="size-3.5 shrink-0" aria-hidden />;
   return null;
 }

@@ -1,9 +1,9 @@
-import { Info } from "lucide-react";
 
 import { BUILD, prereleaseLabel } from "@/lib/build";
 import { cn } from "@/lib/utils";
 import { t } from "@/lib/i18n";
 import { useLocale } from "@/hooks/use-locale";
+import { Icon } from "@/components/icons/icon";
 
 interface AlphaBarProps {
   /** Defaults to this bundle's own build version; injectable so tests don't have to fake the define. */
@@ -52,7 +52,7 @@ export function AlphaBar({ version = BUILD.version, className }: AlphaBarProps) 
         className,
       )}
     >
-      <Info className="size-3 shrink-0" aria-hidden="true" />
+      <Icon name="info" className="size-3 shrink-0" aria-hidden="true" />
       {/* The version wears the app's face, not the terminal's. A bare semver is the app talking
           about itself — chrome (F-D2) — and `font-mono` here was only ever the look of a build
           stamp. The split the app now keeps: semver alone is chrome; a semver carrying a git hash

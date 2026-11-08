@@ -1,4 +1,4 @@
-import { Lock } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 import { useState } from "react";
 
 import { AgentIcon } from "@/components/agent-icon";
@@ -156,7 +156,7 @@ export function LauncherAddedList({
         })}
         {operator.map((row) => (
           <li key={row.key} data-testid="launcher-operator-row" className="flex items-start gap-2 rounded-md border border-border px-3 py-2">
-            <Lock className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+            <Icon name="locked" className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
             <div className="min-w-0 flex-1">
               <RowText row={row} />
               <p className="text-[11px] leading-tight text-muted-foreground">{t("launcherAdd.manage.operator")}</p>

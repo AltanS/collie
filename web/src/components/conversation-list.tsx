@@ -1,4 +1,3 @@
-import { Archive, Loader2 } from "lucide-react";
 import { useId } from "react";
 
 import { StatusDot } from "@/components/status-badge";
@@ -12,6 +11,7 @@ import { timeAgoShort } from "@/lib/format";
 import { t, tn } from "@/lib/i18n";
 import { statusLabel, statusLabelPast, type AgentStatus } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { Icon } from "@/components/icons/icon";
 
 // THE DURABLE HOME: a durable program's conversations as the dashboard's whole body, the way a messaging
 // app lists its chats.
@@ -96,7 +96,7 @@ export function ConversationRow({
           <div id={`${id}-title`} data-slot="conversation-title" className="flex h-5 min-w-0 items-center gap-2">
             {mark === null ? (
               <span aria-hidden className="flex size-3 shrink-0 items-center justify-center text-muted-foreground">
-                <Archive className="size-3" />
+                <Icon name="archived" className="size-3" />
               </span>
             ) : (
               <StatusDot status={mark} glide="dot" className="-mx-px" />
@@ -228,7 +228,7 @@ export function ConversationList({
       )}
       {foot.kind === "more" && (
         <Button variant="ghost" className="h-11 self-center" onClick={foot.onMore} disabled={foot.busy}>
-          {foot.busy && <Loader2 className="animate-spin" />}
+          {foot.busy && <Icon name="busy" className="animate-spin" />}
           {foot.busy ? t("conversations.loading") : t("conversations.loadMore")}
         </Button>
       )}

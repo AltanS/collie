@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { useId } from "react";
-import { X } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 
 import { cn } from "@/lib/utils";
 
@@ -316,7 +316,7 @@ export function Notice({
                 "before:-inset-x-[11px]",
               )}
             >
-              <X className="size-3.5" />
+              <Icon name="dismiss" className="size-3.5" />
             </button>
           ) : null}
         </div>

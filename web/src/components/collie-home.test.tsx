@@ -238,19 +238,17 @@ describe("CollieHome — the lost badge", () => {
 
   it("wears CloudOff when lost and the phone reports online", () => {
     const { container } = render(<CollieHome trouble lost online />);
-    expect(badge(container)?.getAttribute("data-icon")).toBe("cloud-off");
-    expect(badge(container)?.getAttribute("class")).toMatch(/lucide-cloud-off/);
+    expect(badge(container)?.getAttribute("data-icon")).toBe("bridge-unreachable");
   });
 
   it("wears CloudOff by default, since online is the unremarkable case", () => {
     const { container } = render(<CollieHome trouble lost />);
-    expect(badge(container)?.getAttribute("data-icon")).toBe("cloud-off");
+    expect(badge(container)?.getAttribute("data-icon")).toBe("bridge-unreachable");
   });
 
   it("wears WifiOff when lost and the phone reports offline", () => {
     const { container } = render(<CollieHome trouble lost online={false} />);
-    expect(badge(container)?.getAttribute("data-icon")).toBe("wifi-off");
-    expect(badge(container)?.getAttribute("class")).toMatch(/lucide-wifi-off/);
+    expect(badge(container)?.getAttribute("data-icon")).toBe("offline");
   });
 
   it("is decorative: hidden from assistive tech, the button's label names the state", () => {

@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { ChevronDown, Palette } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -41,7 +41,7 @@ import {
 import { CONTRAST_FAIL_KEY, HALF_KEYS, REFUSAL_KEYS, isMoreLine } from "@/lib/theme/report-words";
 import { ThemeBrowseSheet } from "@/components/theme-browse";
 import { dropTrial, startTrial } from "@/lib/theme/trial";
-import { PageSample, ThemeMarkLine, collieTheme, displayOf, styleOf } from "@/components/theme-page-sample";
+import { PageSample, ThemeGlyphsLine, ThemeMarkLine, collieTheme, displayOf, styleOf } from "@/components/theme-page-sample";
 
 // The Theme card (M57): which colour theme this device wears, and the way in and out for a theme
 // file. It sits directly ABOVE the Appearance three-way (System, Light, Dark) on purpose: the first
@@ -272,6 +272,7 @@ export function ThemePreviewSheet({ theme, onApply, onCancel, onTry }: PreviewSh
             )}
             <div className="text-sm text-muted-foreground">{t(`theme.preview.halves.${halves}`)}</div>
             <ThemeMarkLine theme={theme} />
+            <ThemeGlyphsLine theme={theme} />
           </div>
 
           <div className="flex flex-col gap-2">
@@ -577,7 +578,7 @@ export function ThemePickerControl() {
     <Card className="gap-0 py-0">
       <div className="flex items-center justify-between gap-4 p-4">
         <div className="flex min-w-0 items-start gap-3">
-          <Palette className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
+          <Icon name="theme" className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
           <div className="min-w-0">
             <div className="font-medium">{t("theme.title")}</div>
             <p className="text-sm text-muted-foreground">{t("theme.description")}</p>
@@ -609,7 +610,8 @@ export function ThemePickerControl() {
                 </option>
               ))}
             </select>
-            <ChevronDown
+            <Icon
+              name="select-caret"
               aria-hidden="true"
               className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
             />

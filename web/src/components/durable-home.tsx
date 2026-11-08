@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { TriangleAlert } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 
 import { ConversationList, type ConversationListFoot } from "@/components/conversation-list";
 import { Collapse } from "@/components/ui/collapse";
@@ -147,7 +147,7 @@ export function DurableHome({
       <Collapse open={notice !== undefined}>
         {notice !== undefined ? (
           <div className="px-4 pt-4">
-            <Notice tone="caution" variant="box" announce="status" icon={<TriangleAlert />}>
+            <Notice tone="caution" variant="box" announce="status" icon={<Icon name="warning" />}>
               {notice}
             </Notice>
           </div>

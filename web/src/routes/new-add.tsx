@@ -1,6 +1,6 @@
+import { Icon } from "@/components/icons/icon";
 import { useMemo, useRef, useState } from "react";
 import { useLocation } from "react-router";
-import { ArrowLeft, Lock } from "lucide-react";
 
 import { AgentIcon } from "@/components/agent-icon";
 import { RouteHeader } from "@/components/app-header";
@@ -187,7 +187,7 @@ function NewAddPage({ search }: { search: string }) {
               onClick={() => nav.up(newPath({ machine: at.machine, pane: at.pane, beside: at.beside, session: at.session }))}
               aria-label={backLabel}
             >
-              <ArrowLeft className="size-5" />
+              <Icon name="back" className="size-5" />
             </Button>
             <h1 className="min-w-0 truncate text-lg font-semibold tracking-tight">{t("newPage.add")}</h1>
           </>
@@ -286,7 +286,7 @@ function NewAddPage({ search }: { search: string }) {
                   data-testid="launcher-add-off"
                   className="flex items-start gap-3 rounded-md border border-dashed border-border px-3 py-3 text-muted-foreground"
                 >
-                  <Lock className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+                  <Icon name="locked" className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
                   <div className="flex flex-col gap-1">
                     <span className="text-sm font-medium text-foreground">{t("launcherAdd.off.title", { machine: leadName })}</span>
                     <span className="text-xs leading-snug">{t("launcherAdd.off.reason")}</span>

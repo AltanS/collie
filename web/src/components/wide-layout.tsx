@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useRevalidator } from "react-router";
-import { ChevronDown, ChevronUp, Columns2, PanelLeftClose, PanelLeftOpen, Plus, Replace } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 
 import { ActionRow } from "@/components/action-sheet-rows";
 import { ThreadSidebar } from "@/components/agent-sidebar";
@@ -466,12 +466,12 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
         >
           {sidebarShown ? (
             <Button variant="ghost" data-slot="new-space" className="h-11 min-w-0 flex-1 justify-start gap-2.5 px-2 text-sm font-medium" onClick={toNew}>
-              <Plus className="size-5" aria-hidden />
+              <Icon name="new-space" className="size-5" aria-hidden />
               <span className="truncate">{t("wide.newSpace")}</span>
             </Button>
           ) : (
             <Button variant="ghost" size="lg" data-slot="new-space" className="size-11 px-0" aria-label={t("wide.newSpace")} onClick={toNew}>
-              <Plus className="size-5" aria-hidden />
+              <Icon name="new-space" className="size-5" aria-hidden />
             </Button>
           )}
           <SettingsGear scope={scope} />
@@ -544,7 +544,7 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
           {bookPair && <span aria-hidden className="fold-gutter shrink-0" />}
           {bookPair && <span aria-hidden className="flex-1" />}
           <Button variant="ghost" size="lg" className="size-11 px-0" aria-label={t("wide.space.previous")} disabled={spaceAt <= 0} onClick={() => moveSpace(-1)}>
-            <ChevronUp className="size-5" />
+            <Icon name="space-prev" className="size-5" />
           </Button>
           <Button
             variant="ghost"
@@ -554,7 +554,7 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
             disabled={spaceAt < 0 || spaceAt >= spaces.length - 1}
             onClick={() => moveSpace(1)}
           >
-            <ChevronDown className="size-5" />
+            <Icon name="space-next" className="size-5" />
           </Button>
         </div>
 
@@ -660,7 +660,7 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
                       and stays in the visible part, at either edge of the strip. */}
                   <Button variant="ghost" data-slot="add-button" className="sticky inset-x-3 h-auto flex-col gap-2 px-3 py-2 text-sm text-muted-foreground" onClick={() => setAdding(true)}>
                     <span aria-hidden className="grid size-11 place-items-center rounded-md border border-rule bg-card text-foreground">
-                      <Plus className="size-5" />
+                      <Icon name="add" className="size-5" />
                     </span>
                     {t("wide.add.label")}
                   </Button>
@@ -712,7 +712,7 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
           ))}
           {agent !== undefined && space !== undefined && (
             <ActionRow
-              icon={<Plus className="size-5" />}
+              icon={<Icon name="new-agent" className="size-5" />}
               label={t("wide.add.newAgentHere")}
               onClick={() => {
                 setAdding(false);
@@ -721,7 +721,7 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
             />
           )}
           <ActionRow
-            icon={<Plus className="size-5" />}
+            icon={<Icon name="new-agent" className="size-5" />}
             label={t("wide.add.newAgent")}
             onClick={() => {
               setAdding(false);
@@ -734,7 +734,7 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
       <BottomSheet open={menuPane !== undefined} onClose={() => setMenuRow(null)} title={menuPane ? paneName(menuPane) : undefined}>
         <div className="flex flex-col py-1">
           <ActionRow
-            icon={<Replace className="size-5" />}
+            icon={<Icon name="open-here" className="size-5" />}
             label={t("wide.openHere")}
             onClick={() => {
               setMenuRow(null);
@@ -742,7 +742,7 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
             }}
           />
           <ActionRow
-            icon={<Columns2 className="size-5" />}
+            icon={<Icon name="open-beside" className="size-5" />}
             label={t("wide.openBeside")}
             onClick={() => {
               setMenuRow(null);
@@ -772,7 +772,7 @@ function SidebarTop({ open, setMark, toggle: hasToggle }: { open: boolean; setMa
       {/* 20px, like every icon button around it (the order glyphs, the space chevrons). A lucide stroke
           scales with its drawing, so at 24px this glyph drew a 2px line beside their 1.7px ones and
           read as another icon set. */}
-      {open ? <PanelLeftClose className="size-5 shrink-0" /> : <PanelLeftOpen className="size-5 shrink-0" />}
+      {open ? <Icon name="sidebar-hide" className="size-5 shrink-0" /> : <Icon name="sidebar-show" className="size-5 shrink-0" />}
     </Button>
   );
   if (!open) {

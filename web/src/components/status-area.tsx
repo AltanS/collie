@@ -1,4 +1,5 @@
-import { AlertCircle, AlertTriangle, CheckCircle2, Info, X } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
+import type { IconKey } from "@/components/icons/keys";
 
 import { cn } from "@/lib/utils";
 import { clearStatus, useStatus, type StatusTone } from "@/lib/status";
@@ -18,18 +19,18 @@ const TONE = {
 } satisfies Record<StatusTone, string>;
 
 const ICONS = {
-  info: Info,
-  note: Info,
-  success: CheckCircle2,
-  warn: AlertTriangle,
-  error: AlertCircle,
-} as const;
+  info: "info",
+  note: "info",
+  success: "success",
+  warn: "warning",
+  error: "error",
+} as const satisfies Record<StatusTone, IconKey>;
 
 export function StatusArea({ className }: { className?: string }) {
   useLocale();
   const status = useStatus();
   if (!status) return null;
-  const Icon = ICONS[status.tone];
+  const icon = ICONS[status.tone];
   const dismissable = status.tone === "error";
   return (
     // Two elements, because there are two jobs. The <output> is the ANNOUNCEMENT (role=status +
@@ -65,9 +66,9 @@ export function StatusArea({ className }: { className?: string }) {
           TONE[status.tone],
         )}
       >
-        <Icon className="size-3.5 shrink-0" />
+        <Icon name={icon} className="size-3.5 shrink-0" />
         <span className="truncate">{status.text}</span>
-        {dismissable && <X className="size-3.5 shrink-0 opacity-70" />}
+        {dismissable && <Icon name="dismiss" className="size-3.5 shrink-0 opacity-70" />}
       </output>
       {dismissable && (
         <button

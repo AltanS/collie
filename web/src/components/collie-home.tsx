@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from "react";
-import { CloudOff, WifiOff } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { savedAtLabel } from "@/lib/format";
@@ -9,6 +8,7 @@ import { t } from "@/lib/i18n";
 import { useStatus } from "@/lib/status";
 import { useOperatorBusy } from "@/lib/busy";
 import { useLocale } from "@/hooks/use-locale";
+import { Icon } from "@/components/icons/icon";
 
 interface CollieHomeProps {
   /** Return to the dashboard. */
@@ -168,7 +168,7 @@ export function CollieHome({
   // The green turn, below both. The strip already declines to fire it while the app updates, and this
   // guard covers an update that starts inside the turn: the update colour takes over at once.
   const greets = reconnected && !lost && !applies;
-  const LostIcon = online ? CloudOff : WifiOff;
+  const lostIcon = online ? "bridge-unreachable" : "offline";
 
   // ONE FULL ROUND OF THE ORBIT whenever the app publishes a status — a send landing, an agent
   // finishing somewhere in the herd, a refusal, the pane closing under you.
@@ -381,9 +381,9 @@ export function CollieHome({
             is the danger token the red strip uses. It is a sibling of the mark, so the
             ramp never touches it. */}
         {lost ? (
-          <LostIcon
+          <Icon
+            name={lostIcon}
             data-slot="collie-lost-badge"
-            data-icon={online ? "cloud-off" : "wifi-off"}
             aria-hidden
             className="absolute bottom-0.5 right-0.5 size-3.5 rounded-full bg-band-ground p-px text-status-blocked ring-2 ring-band-ground"
           />

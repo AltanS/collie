@@ -249,14 +249,14 @@ describe("the header — the dog keys on trouble/lost, not the first not-live fr
       setOnline(true);
       const { container } = renderHeader(<Header bridge="connected" error onHome={() => {}} />);
       act(() => vi.advanceTimersByTime(CONNECTION_LOST_MS));
-      expect(badge(container)?.getAttribute("data-icon")).toBe("cloud-off");
+      expect(badge(container)?.getAttribute("data-icon")).toBe("bridge-unreachable");
     });
 
     it("is WifiOff while the phone says offline", () => {
       setOnline(false);
       const { container } = renderHeader(<Header bridge="connected" error onHome={() => {}} />);
       act(() => vi.advanceTimersByTime(CONNECTION_LOST_MS));
-      expect(badge(container)?.getAttribute("data-icon")).toBe("wifi-off");
+      expect(badge(container)?.getAttribute("data-icon")).toBe("offline");
     });
 
     // The saved-copy time left the bar with the "as of" badge (2026-10-07); the ribbon under the

@@ -1,4 +1,4 @@
-import { ChevronRight } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 
 import { TranscriptView } from "@/components/transcript-view";
 import { useLocale } from "@/hooks/use-locale";
@@ -45,7 +45,8 @@ export function LatestReply({
         aria-expanded={open}
         className="flex w-full items-center gap-1.5 px-2.5 py-2 text-left transition-colors active:bg-muted/60"
       >
-        <ChevronRight
+        <Icon
+          name="disclosure"
           className={cn(
             "size-3.5 shrink-0 text-muted-foreground transition-transform",
             open && "rotate-90",

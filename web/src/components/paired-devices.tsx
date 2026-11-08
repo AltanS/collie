@@ -1,5 +1,5 @@
 import { type RefObject, useEffect, useRef, useState } from "react";
-import { KeyRound, Loader2, Smartphone } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 import { useLocation, useRevalidator, useSearchParams } from "react-router";
 
 import { Button } from "@/components/ui/button";
@@ -94,7 +94,7 @@ export function PairedDevices({ data }: { data: DevicesData }) {
   return (
     <Card id={PAIRED_DEVICES_HASH} ref={cardRef} tabIndex={-1} className="gap-0 py-0 outline-none">
       <div className="flex items-start gap-3 p-4 pb-3">
-        <KeyRound className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
+        <Icon name="pairing" className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
         <div className="min-w-0">
           <div className="font-medium">{t("settings.devices.title")}</div>
           {/* Pairing is always on (ADR 0086): there is no "open" bridge left to describe. */}
@@ -207,7 +207,7 @@ function DeviceRow({
     <li className="flex items-center justify-between gap-3 px-4 py-2.5">
       <div className="min-w-0">
         <div className="flex items-center gap-2">
-          <Smartphone className="size-4 shrink-0 text-muted-foreground" />
+          <Icon name="phone" className="size-4 shrink-0 text-muted-foreground" />
           {/* A device name the operator typed, in the app's own face — the same face the field
               that captures it uses below. Only the pairing CODE is monospaced, because that one is
               eight characters you compare against a terminal. */}
@@ -245,7 +245,7 @@ function DeviceRow({
             {t("settings.devices.cancel")}
           </Button>
           <Button variant="destructive" size="sm" disabled={busy} onClick={revoke}>
-            {busy && <Loader2 className="size-3.5 animate-spin" />}
+            {busy && <Icon name="busy" className="size-3.5 animate-spin" />}
             {current ? t("settings.devices.unpairSelf") : t("settings.devices.revoke")}
           </Button>
         </div>
@@ -390,7 +390,7 @@ function PairForm({
       </label>
       {error && <p className="text-xs text-status-blocked">{error}</p>}
       <Button className="h-11" disabled={!ready} onClick={submit}>
-        {busy && <Loader2 className="size-4 animate-spin" />}
+        {busy && <Icon name="busy" className="size-4 animate-spin" />}
         {title}
       </Button>
     </div>

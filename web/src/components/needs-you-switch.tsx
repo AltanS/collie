@@ -1,4 +1,4 @@
-import { CircleDot } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 
 import { ToggleButton } from "@/components/ui/toggle-button";
 import { useLocale } from "@/hooks/use-locale";
@@ -23,7 +23,7 @@ export function NeedsYouSwitch({ on, onChange }: { on: boolean; onChange: (on: b
       pressed={on}
       onPressedChange={onChange}
       label={t("home.needsYouOnly")}
-      icon={<CircleDot className="size-4 shrink-0" />}
+      icon={<Icon name="needs-you" className="size-4 shrink-0" />}
     />
   );
 }

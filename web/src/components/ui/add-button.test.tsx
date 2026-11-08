@@ -46,14 +46,14 @@ describe("AddButton — the '+'", () => {
     const { button } = mount({ size: "xs", face: "bare", reach: TAB_ROW_ADD_TAP_TARGET });
     expect(button).toHaveClass("size-6", "rounded-full", "text-muted-foreground", "hover:bg-accent", "active:scale-95", "disabled:opacity-100");
     for (const ring of ["border", "border-dashed", "border-border"]) expect(button).not.toHaveClass(ring);
-    expect(button.querySelector(".lucide-plus")).toHaveClass("size-4");
+    expect(button.querySelector('[data-icon="add"]')).toHaveClass("size-4");
     expect(button).toHaveClass(...tokens(TAB_ROW_ADD_TAP_TARGET));
   });
 
   it("keeps the spinner in the bare face's box while busy", () => {
     const { button } = mount({ size: "xs", face: "bare", reach: TAB_ROW_ADD_TAP_TARGET, busy: true });
     expect(button.querySelector(".animate-spin")).toHaveClass("size-4");
-    expect(button.querySelector(".lucide-plus")).toBeNull();
+    expect(button.querySelector('[data-icon="add"]')).toBeNull();
   });
 
   it("wears the reach its caller passes, whole", () => {
@@ -78,7 +78,7 @@ describe("AddButton — the '+'", () => {
     expect(button).toBeDisabled();
     expect(button).toHaveAttribute("aria-busy", "true");
     expect(button.querySelector(".animate-spin")).not.toBeNull();
-    expect(button.querySelector(".lucide-plus")).toBeNull();
+    expect(button.querySelector('[data-icon="add"]')).toBeNull();
     await userEvent.setup().click(button);
     expect(onClick).not.toHaveBeenCalled();
   });
@@ -88,6 +88,6 @@ describe("AddButton — the '+'", () => {
     expect(button).toBeEnabled();
     expect(button).toHaveAttribute("aria-busy", "false");
     expect(button.querySelector(".animate-spin")).toBeNull();
-    expect(button.querySelector(".lucide-plus")).not.toBeNull();
+    expect(button.querySelector('[data-icon="add"]')).not.toBeNull();
   });
 });

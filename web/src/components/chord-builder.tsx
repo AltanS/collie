@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { Plus, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { SectionLabel } from "@/components/ui/section-label";
@@ -28,6 +27,7 @@ import {
 import { MODIFIER_ORDER, type Modifier } from "@/lib/key-queue";
 import { keysSendable } from "@/lib/mux-capability";
 import { cn } from "@/lib/utils";
+import { Icon } from "@/components/icons/icon";
 
 // The chord builder (M48 spec 03): hold any of Ctrl, Alt and Shift, press one key, and the preview
 // shows the whole chord on its own line, up to four keys at once (Ctrl+Alt+Shift+T). A key may also
@@ -189,7 +189,7 @@ export function ChordBuilder({
             aria-label={t("keys.builder.addStep")}
             className="h-9 shrink-0 gap-1 px-2 text-muted-foreground"
           >
-            <Plus className="size-4" aria-hidden="true" />
+            <Icon name="add" className="size-4" aria-hidden="true" />
             {t("keys.builder.addStep")}
           </Button>
           <Button
@@ -201,7 +201,7 @@ export function ChordBuilder({
             aria-label={t("keys.builder.removeStep")}
             className="size-9 shrink-0 text-muted-foreground"
           >
-            <X className="size-4" aria-hidden="true" />
+            <Icon name="remove" className="size-4" aria-hidden="true" />
           </Button>
         </div>
         <div

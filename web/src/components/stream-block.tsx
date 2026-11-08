@@ -1,4 +1,4 @@
-import { Ellipsis, Pin } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, ReactNode } from "react";
 
@@ -183,7 +183,7 @@ export function PinnedMark() {
   useLocale();
   return (
     <span role="img" aria-label={t("pins.mark")} data-slot="pin-mark" className="pointer-events-none absolute top-0 right-0 grid size-3 place-items-center text-muted-foreground">
-      <Pin aria-hidden className="size-2.5" />
+      <Icon name="pinned-mark" aria-hidden className="size-2.5" />
     </span>
   );
 }
@@ -390,7 +390,7 @@ export function StreamBlock({ n, item, pinned, onActions, className, children, h
             revealed && "pointer-events-auto opacity-100",
           )}
         >
-          <Ellipsis aria-hidden className="size-3.5" />
+          <Icon name="more-actions" aria-hidden className="size-3.5" />
         </button>
       )}
     </div>

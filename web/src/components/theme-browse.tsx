@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 
-import { PageSample, ThemeMarkLine } from "@/components/theme-page-sample";
+import { PageSample, ThemeGlyphsLine, ThemeMarkLine } from "@/components/theme-page-sample";
 import { Button } from "@/components/ui/button";
 import { Notice } from "@/components/ui/notice";
 import { BottomSheet } from "@/components/ui/sheet";
@@ -75,6 +75,7 @@ function ThemeRow({ item, onInstall, onTry }: RowProps) {
             <div className="truncate text-sm text-muted-foreground">{t("theme.preview.by", { author: theme.author })}</div>
           )}
           <ThemeMarkLine theme={theme} />
+          <ThemeGlyphsLine theme={theme} />
           <a
             href={repoUrl(entry.repo)}
             target="_blank"

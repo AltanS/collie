@@ -1,4 +1,5 @@
-import { Clock, FolderTree, Hourglass } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
+import type { IconKey } from "@/components/icons/keys";
 
 import { cn } from "@/lib/utils";
 import { PANE_ORDERS, type PaneOrder } from "@/lib/pane-order";
@@ -24,12 +25,12 @@ import { useLocale } from "@/hooks/use-locale";
 // in words anyway ("Newest first", "Going cold first"). Settings keeps the labelled form, because
 // nobody arrives there already knowing which glyph is which.
 export const PANE_ORDER_SEGMENTS = {
-  place: { label: "paneOrder.place", Icon: FolderTree },
-  activity: { label: "paneOrder.activity", Icon: Clock },
+  place: { label: "paneOrder.place", icon: "sort-by-place" },
+  activity: { label: "paneOrder.activity", icon: "time" },
   // The chip's own glyph (components/cache-chip.tsx), so the control and the number it sorts by are
   // obviously about the same thing.
-  cache: { label: "paneOrder.cache", Icon: Hourglass },
-} as const satisfies Record<PaneOrder, { label: MessageKey; Icon: typeof Clock }>;
+  cache: { label: "paneOrder.cache", icon: "cache-age" },
+} as const satisfies Record<PaneOrder, { label: MessageKey; icon: IconKey }>;
 
 export function PaneOrderToggle({
   order,
@@ -54,7 +55,7 @@ export function PaneOrderToggle({
       className={cn("flex gap-1", compact && "shrink-0", className)}
     >
       {PANE_ORDERS.map((value) => {
-        const { label, Icon } = PANE_ORDER_SEGMENTS[value];
+        const { label, icon } = PANE_ORDER_SEGMENTS[value];
         const selected = value === order;
         return (
           <button
@@ -74,7 +75,7 @@ export function PaneOrderToggle({
               selected ? "bg-muted text-foreground" : "text-muted-foreground active:bg-muted",
             )}
           >
-            <Icon className={cn(iconClassName, "shrink-0")} aria-hidden />
+            <Icon name={icon} className={cn(iconClassName, "shrink-0")} aria-hidden />
             {!compact && t(label)}
           </button>
         );

@@ -13,7 +13,6 @@
 //
 // DEV-ONLY, unreachable from the app entry.
 
-import { Settings2 } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { ActionsRow } from "@/components/actions-row";
@@ -52,7 +51,7 @@ function Durable({ working }: { working: boolean }) {
       general={[
         {
           id: "display",
-          icon: Settings2,
+          icon: "display-settings",
           label: "Display settings",
           word: "Display",
           on: display,

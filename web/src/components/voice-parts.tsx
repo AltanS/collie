@@ -1,5 +1,6 @@
 import { useId, type ReactNode } from "react";
-import { Check, CircleCheck, CircleDashed, CirclePause, CircleX, Globe, Info, Loader2, Lock } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
+import type { IconKey } from "@/components/icons/keys";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -60,7 +61,7 @@ export function ReadOnlyHostBanner() {
   useLocale();
   return (
     // shrink-0 for the reason LockedNote gives: a direct child of the settings scroller.
-    <Notice tone="info" variant="box" icon={<Lock />} className="shrink-0">
+    <Notice tone="info" variant="box" icon={<Icon name="locked" />} className="shrink-0">
       {t("settings.voice.readOnly")}
     </Notice>
   );
@@ -70,7 +71,7 @@ export function ReadOnlyHostBanner() {
 export function LeavesMarker() {
   return (
     <Badge variant="outline" className="mt-1 gap-1 rounded-sm font-medium">
-      <Globe aria-hidden />
+      <Icon name="leaves-network" aria-hidden />
       {t("settings.voice.leaves")}
     </Badge>
   );
@@ -116,18 +117,18 @@ export function AudioLine({ reach, text }: { reach: Reach | null; text?: string 
 }
 
 const STATE_LOOK = {
-  works: { icon: CircleCheck, ink: "text-status-done" },
-  setup: { icon: CircleDashed, ink: "text-status-working" },
-  paused: { icon: CirclePause, ink: "text-status-blocked" },
-  broken: { icon: CircleX, ink: "text-status-blocked" },
-} satisfies Record<VoiceState, { icon: typeof CircleCheck; ink: string }>;
+  works: { icon: "voice-ready", ink: "text-status-done" },
+  setup: { icon: "voice-setup", ink: "text-status-working" },
+  paused: { icon: "voice-paused", ink: "text-status-blocked" },
+  broken: { icon: "voice-broken", ink: "text-status-blocked" },
+} satisfies Record<VoiceState, { icon: IconKey; ink: string }>;
 
 /** A state as an icon in its status ink and a word in the foreground ink: never colour alone. */
 export function StateWord({ state, word }: { state: VoiceState; word: string }) {
-  const { icon: Icon, ink } = STATE_LOOK[state];
+  const { icon, ink } = STATE_LOOK[state];
   return (
     <span className="inline-flex items-center gap-1.5 text-sm font-medium">
-      <Icon aria-hidden className={cn("size-4 shrink-0", ink)} />
+      <Icon name={icon} aria-hidden className={cn("size-4 shrink-0", ink)} />
       {word}
     </span>
   );
@@ -138,10 +139,10 @@ export function StateWord({ state, word }: { state: VoiceState; word: string }) 
  * ink. The words carry the meaning on their own; the colour only repeats it.
  */
 export function StateLine({ state, children }: { state: VoiceState; children: ReactNode }) {
-  const { icon: Icon, ink } = STATE_LOOK[state];
+  const { icon, ink } = STATE_LOOK[state];
   return (
     <span className="flex items-start gap-1.5 text-xs font-medium leading-relaxed">
-      <Icon aria-hidden className={cn("mt-px size-4 shrink-0", ink)} />
+      <Icon name={icon} aria-hidden className={cn("mt-px size-4 shrink-0", ink)} />
       <span className="min-w-0 break-words">{children}</span>
     </span>
   );
@@ -192,7 +193,7 @@ export function Ring({ checked, busy = false }: { checked: boolean; busy?: boole
       className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full border-2 border-muted-foreground"
     >
       {busy ? (
-        <Loader2 className="size-3 animate-spin" />
+        <Icon name="busy" className="size-3 animate-spin" />
       ) : (
         <span className={cn("size-2.5 rounded-full", checked ? "bg-primary" : "bg-transparent")} />
       )}
@@ -215,7 +216,7 @@ export function InfoButton({ name, onClick, className }: { name: string; onClick
       className={cn("absolute top-1.5 right-1.5 size-11 text-muted-foreground", className)}
       onClick={onClick}
     >
-      <Info className="size-4" />
+      <Icon name="info" className="size-4" />
     </Button>
   );
 }
@@ -425,7 +426,7 @@ export function StepList({ steps }: { steps: readonly StepView[] }) {
               step.mark === "next" ? "border-primary bg-primary text-primary-foreground" : "border-muted-foreground text-muted-foreground",
             )}
           >
-            {step.mark === "done" ? <Check className="size-3" /> : i + 1}
+            {step.mark === "done" ? <Icon name="done" className="size-3" /> : i + 1}
           </span>
           <div className="min-w-0 flex-1 space-y-2">
             <p className="text-xs leading-relaxed">
