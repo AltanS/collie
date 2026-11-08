@@ -23,9 +23,8 @@ export const MARKS = [
   { id: "pixel", name: "Pixel", prefix: "cp" },
   { id: "glass", name: "Glass", prefix: "cg" },
   { id: "glass-front", name: "Glass Front", prefix: "ch" },
-  { id: "delft", name: "Delft", prefix: "cd" },
-  { id: "delft-front", name: "Delft Front", prefix: "ce" },
   { id: "sheep", name: "Sheep", prefix: "cs" },
+  { id: "owl", name: "Owl", prefix: "co" },
 ] as const;
 
 export type MarkId = (typeof MARKS)[number]["id"];

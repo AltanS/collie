@@ -55,9 +55,8 @@ The favicon, the app icon and the splash always stay Collie. A theme may name on
 | `pixel` | An 8-bit pixel-art collie head with square beads that hop. |
 | `glass` | A collie head in profile as a leaded stained-glass panel, with jewels set in the ring. |
 | `glass-front` | The same stained glass, the head from the front. |
-| `delft` | A collie head in profile hand-painted in cobalt on white glaze, like a Delft tile. |
-| `delft-front` | The same Delft painting, the head from the front. |
 | `sheep` | A sheep in profile, the one the collie herds: a charcoal face in cream wool. |
+| `owl` | An owl from the front, the one that watches through the night, with huge amber eyes. |
 
 - Set `"character": "<id>"` only when the operator asks for a character. Without it the header keeps the
   character the device chose, else Collie.
@@ -66,7 +65,7 @@ The favicon, the app icon and the splash always stay Collie. A theme may name on
 - A device choice in Settings other than "From the theme" wins over the theme's character.
 - Pair the character with the look of the theme. `pixel` suits sharp corners and a mono display face.
   `kawaii` suits round corners and soft pastel accents. `glass` suits deep slate and jewel accents.
-  `delft` suits a white page with cobalt blue.
+  `sheep` and `owl` suit warm, earthy colours and a soft, friendly face.
 
 ## Share it
 

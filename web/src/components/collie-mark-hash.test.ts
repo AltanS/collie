@@ -14,9 +14,8 @@ describe.each([
   "pixel-mark.tsx",
   "glass-mark.tsx",
   "glass-front-mark.tsx",
-  "delft-mark.tsx",
-  "delft-front-mark.tsx",
   "sheep-mark.tsx",
+  "owl-mark.tsx",
   "mark-contract.ts",
 ])("%s generated hash", (file) => {
   it("matches the sha256 recorded in its own header", () => {
