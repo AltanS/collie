@@ -35,6 +35,12 @@ The same box in the other two keycap dialects:
 | text keycaps (17.x) | `Enter select · n note · ↑/↓ move · Esc cancel` | `❯` | `○` | `omp--select-menu.txt` |
 | Nerd Font (`nerd`) | `U+F0311 select · n note · ↑/↓ move · U+F12B7 cancel` | U+F054 | U+F10C | `omp--select-menu-other.txt` |
 
+A batch under the Nerd Font preset (omp 18.18.0, `omp--v18-18-0-nerd-ask-*--w250.txt`, 2026-11-08) prints
+the tab segment as `U+F0312/←/→ question`, a saved answer as U+F192 (`radio.selected`), and the review as
+`U+F0311 submit · ↑/↓ scroll · U+F12B7 cancel` over `U+F054 Submit`. The glyphs live in `omp/keycaps.ts`,
+and every one of them must come from the same preset as the footer. The text keycaps of 17.x never drew a
+batch in a capture, so a batch footer in that dialect declines.
+
 A row with a saved note ends in `  ✎ note` (`omp--select-menu-noted.txt`).
 
 An option with a `description` prints it on rows of its own under the label, six columns in,

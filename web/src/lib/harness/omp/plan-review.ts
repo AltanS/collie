@@ -56,17 +56,20 @@
 // FAIL CLOSED. Every piece below is required, and any one missing returns null, which leaves the raw
 // mirror and the unread-dialog card's Escape (omp/modal.ts):
 //   * the bottom border is the last non-blank row, and the row above it is the options-focused footer of
-//     the `unicode` symbol preset, segment for segment: `↑/↓ select`, `⏎ confirm`, `←/→ model` exactly
-//     when the slider is up, an optional `c copy`, `⇥ regions`, an optional `<key> editor`, `⎋ cancel`.
+//     one symbol preset (omp/keycaps.ts: `unicode`, or `nerd` since omp 18.18.0,
+//     `omp--v18-18-0-nerd-plan-review--w250.txt`), segment for segment: `↑/↓ select`, `⏎ confirm`,
+//     `←/→ model` exactly when the slider is up, an optional `c copy`, `⇥ regions`, an optional
+//     `<key> editor`, `⎋ cancel`, each keycap in that preset's glyph.
 //     So focus on the plan body or the sidebar (their footers name scroll keys and no `⏎ confirm`,
 //     `omp--v18-16-0-plan-review-regions--w80.txt`), the annotation editor, the `submitting…` state, a
 //     footer omp clipped with `…` (`omp--v18-16-0-plan-review-slider-clipped--w80.txt`), a rebound key and
-//     the uncaptured `nerd` and `ascii` presets all decline;
+//     the `ascii` preset all decline;
 //   * a plain divider above the footer, then exactly the five option rows in omp's order, each the pointer
-//     column (`❯ ` or two spaces) and the label; exactly one pointer; a row with any other text (a hovered
-//     row's band shifts its label by one space) declines;
+//     column (the same preset's pointer and a space, or two spaces) and the label; exactly one pointer; a
+//     row with any other text (a hovered row's band shifts its label by one space) declines;
 //   * above the options, the slider's track row and its optional `↳` detail row when the footer says
-//     `←/→ model`, nothing otherwise; then exactly `Plan mode - next step`;
+//     `←/→ model`, nothing otherwise, the active tier between the same preset's `◀ ` and ` ▶` (U+E0B2
+//     and U+E0B0 under `nerd`); then exactly `Plan mode - next step`;
 //   * above the title, a divider (`├─┤`, or `├─┴─┤` under a sidebar), then only box rows up to the top
 //     border `╭─ Plan Review ─…╮`, which carries a `┬` exactly when that divider carries a `┴`;
 //   * the keep-context row below 90 percent, or with no numbers (omp then never disables it);
@@ -86,6 +89,7 @@ import { MAX_REGION_CHARS } from "../bound-region";
 import { pointerWalk } from "../menu-hints";
 import type { PromptModel, PromptOption } from "../prompt-model";
 import { isBlank, lineText, rstrip } from "./markers";
+import { OMP_GLYPH_PRESETS, type OmpGlyphPreset } from "./keycaps";
 import { readOmpHintList } from "./modal";
 
 export interface PlanReviewRegion {
@@ -100,11 +104,8 @@ const DIVIDER = /^├─+(┴─+)?┤$/;
 const BOTTOM = /^╰─+╯$/;
 const BOXED = /^│ ([\s\S]*?)\s*│$/;
 const BOX_ROW = /^│[\s\S]*│$/;
-const OPTION_ROW = /^│ (?:(❯) | {2})(\S[\s\S]*?)\s*│$/;
 const SLIDER_TRACK = /^│ continue with {2}◂ {2}(\S[\s\S]*?) {2}▸\s*│$/;
 const SLIDER_DETAIL = /^│ {3}↳ (\S[\s\S]*?)\s*│$/;
-/** The tier the slider points at: omp wraps the active segment in `◀ … ▶`. */
-const SLIDER_ACTIVE = /◀ (\S[\s\S]*?) ▶/;
 
 /** The keep-context row: omp prints the session's context against the window when it knows it. */
 const KEEP_CONTEXT = /^Approve and keep context(?: \(~(\d+(?:\.\d+)?[kmb]?) \/ (\d+(?:\.\d+)?[kmb]?)\))?$/;
@@ -123,23 +124,45 @@ const KEEP_CONTEXT_DECLINE_RATIO = 0.9;
 /** The longest plan box the scan walks up through: a 300-row pane is far past any real terminal. */
 const MAX_BOX_ROWS = 300;
 
-/** The card shows `❯` on the pointed row, as every other omp lift does. */
+/** The card shows `❯` on the pointed row, as every other omp lift does: the nerd preset's chevron is a
+ *  private-use glyph the card's face may not carry. */
 const POINTER = "❯";
 
-/** The options-focused footer of the `unicode` preset, read segment by segment (see the header). */
-function footerSlider(text: string): { slider: boolean } | null {
+/** One preset's options-focused footer, read segment by segment (see the header). */
+function footerSlider(text: string, preset: OmpGlyphPreset): { slider: boolean } | null {
   if (readOmpHintList(text) === null) return null;
   const segments = text.split(" · ");
   let i = 0;
   if (segments[i++] !== "↑/↓ select") return null;
-  if (segments[i++] !== "⏎ confirm") return null;
+  if (segments[i++] !== `${preset.enter} confirm`) return null;
   const slider = segments[i] === "←/→ model";
   if (slider) i++;
   if (segments[i] === "c copy") i++;
-  if (segments[i++] !== "⇥ regions") return null;
+  if (segments[i++] !== `${preset.tab} regions`) return null;
   if (/^\S+ editor$/.test(segments[i] ?? "")) i++;
-  if (segments[i++] !== "⎋ cancel") return null;
+  if (segments[i++] !== `${preset.escape} cancel`) return null;
   return i === segments.length ? { slider } : null;
+}
+
+/** An option row: `│ `, the preset's pointer and a space or two spaces, the label. */
+function readOptionRow(text: string, preset: OmpGlyphPreset): { pointed: boolean; label: string } | null {
+  const inner = BOXED.exec(text)?.[1];
+  if (inner === undefined) return null;
+  const pointed = inner.startsWith(`${preset.pointer} `);
+  if (!pointed && !inner.startsWith("  ")) return null;
+  const label = inner.slice(pointed ? preset.pointer.length + 1 : 2);
+  return /^\S/.test(label) ? { pointed, label } : null;
+}
+
+/** The tier the slider points at: omp wraps the active segment in the preset's `◀ … ▶`. */
+function sliderActive(track: string, preset: OmpGlyphPreset): string | null {
+  const open = track.indexOf(`${preset.activeOpen} `);
+  if (open < 0) return null;
+  const from = open + preset.activeOpen.length + 1;
+  const close = track.indexOf(` ${preset.activeClose}`, from);
+  if (close < 0) return null;
+  const tier = track.slice(from, close);
+  return /^\S/.test(tier) ? tier : null;
 }
 
 /** `20k`, `1.1m`, `950` as a number. */
@@ -163,8 +186,16 @@ export function detectPlanReviewRegion(lines: StyledLine[]): PlanReviewRegion | 
   if (end < 0 || !BOTTOM.test(texts[end]!)) return null;
   const footerText = BOXED.exec(texts[end - 1] ?? "")?.[1];
   if (footerText === undefined) return null;
-  const footer = footerSlider(footerText);
-  if (footer === null) return null;
+  let preset: OmpGlyphPreset | undefined;
+  let footer: { slider: boolean } | null = null;
+  for (const candidate of OMP_GLYPH_PRESETS) {
+    footer = footerSlider(footerText, candidate);
+    if (footer !== null) {
+      preset = candidate;
+      break;
+    }
+  }
+  if (footer === null || preset === undefined) return null;
   if (!/^├─+┤$/.test(texts[end - 2] ?? "")) return null;
 
   // 2. The five options, bottom up.
@@ -173,11 +204,11 @@ export function detectPlanReviewRegion(lines: StyledLine[]): PlanReviewRegion | 
   let pointedAt = -1;
   const labels: string[] = [];
   for (let i = 0; i < OPTION_LABELS.length; i++) {
-    const row = OPTION_ROW.exec(texts[firstOption + i]!);
+    const row = readOptionRow(texts[firstOption + i]!, preset);
     if (row === null) return null;
-    const label = row[2]!;
+    const label = row.label;
     if (!OPTION_LABELS[i]!.test(label)) return null;
-    if (row[1] !== undefined) {
+    if (row.pointed) {
       if (pointedAt >= 0) return null;
       pointedAt = i;
     }
@@ -203,9 +234,9 @@ export function detectPlanReviewRegion(lines: StyledLine[]): PlanReviewRegion | 
     }
     const track = SLIDER_TRACK.exec(texts[at] ?? "");
     if (track === null) return null;
-    const active = SLIDER_ACTIVE.exec(track[1]!);
+    const active = sliderActive(track[1]!, preset);
     if (active === null) return null;
-    tier = detail === null ? active[1]! : `${active[1]!} · ${detail}`;
+    tier = detail === null ? active : `${active} · ${detail}`;
     at--;
   }
   const titleAt = at;
@@ -244,7 +275,7 @@ export function detectPlanReviewRegion(lines: StyledLine[]): PlanReviewRegion | 
   const signature = region.join("\n");
   if (signature.length > MAX_REGION_CHARS) return null;
   const pointedRow = firstOption + pointedAt - topAt;
-  const coreSignature = region.map((row, i) => (i === pointedRow ? row.replace(POINTER, " ") : row)).join("\n");
+  const coreSignature = region.map((row, i) => (i === pointedRow ? row.replace(preset.pointer, " ") : row)).join("\n");
 
   const model: PromptModel = {
     question: tier === null ? PROMPT_TITLE : `${PROMPT_TITLE}\ncontinue with: ${tier}`,

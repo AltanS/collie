@@ -172,3 +172,58 @@ describe("the plan review declines what it was not built against", () => {
     expect(edit(topAt, "Plan Review", "Plan Revue")).toBeNull();
   });
 });
+
+// omp 18.18.0 under `symbolPreset: nerd` (2026-11-08, omp/keycaps.ts): the footer keycaps, the pointer and
+// the slider's active marks are the preset's glyphs; every other row is the `unicode` one.
+describe("omp 18.18.0 plan review under the `nerd` preset", () => {
+  const NERD = "omp--v18-18-0-nerd-plan-review--w250.txt";
+  const NERD_MOVED = "omp--v18-18-0-nerd-plan-review-moved--w250.txt";
+  const nerd = textsOf(NERD);
+  const footerAt = rowOf(nerd, /↑\/↓ select/);
+  const trackAt = rowOf(nerd, /continue with/);
+  const pointedAt = rowOf(nerd, /│ \u{F054} Approve and execute/u);
+  const edit = (at: number, from: string, to: string): PromptModel | null =>
+    detectPlanReview(fromTexts(nerd.map((t, i) => (i === at ? t.replaceAll(from, to) : t))));
+
+  it.each([NERD, NERD_MOVED])("%s builds a prompt-select, not the unread-dialog card", (name) => {
+    const kinds = buildBlocks(load(name), { agent: "omp" }).map((b) => b.kind);
+    expect(kinds).toEqual(["raw", "prompt-select"]);
+  });
+
+  it("offers the five options and Cancel, the `❯` badge, and the slider's tier in the question", () => {
+    const model = detectPlanReview(load(NERD))!;
+    model.options.forEach((option, i) => expect(option.label).toMatch(LABELS[i]!));
+    expect(model.options.map((o) => o.keyLabel)).toEqual(["❯", "", "", "", "", "Esc"]);
+    expect(model.question).toBe("Plan mode - next step\ncontinue with: default · Claude Haiku 5.5");
+  });
+
+  it("keeps its identity across a walk: the core signature blanks the chevron and nothing else", () => {
+    const x = detectPlanReview(load(NERD))!;
+    const y = detectPlanReview(load(NERD_MOVED))!;
+    expect(y.options.map((o) => o.keys)).toEqual([
+      ["Up", "Enter"],
+      ["Enter"],
+      ["Down", "Enter"],
+      ["Down", "Down", "Enter"],
+      ["Down", "Down", "Down", "Enter"],
+      ["Escape"],
+    ]);
+    expect(promptsSameIdentity(x, y)).toBe(true);
+    expect(x.coreSignature).toBe(y.coreSignature);
+    expect(x.signature).not.toBe(y.signature);
+  });
+
+  it("reads the untouched capture (the controls below start from a lift)", () => {
+    expect(detectPlanReview(fromTexts(nerd))).not.toBeNull();
+  });
+
+  it.each([
+    ["the unicode confirm keycap in the nerd footer", footerAt, "\u{F0311}", "⏎"],
+    ["the unicode regions keycap in the nerd footer", footerAt, "\u{F0312}", "⇥"],
+    ["the unicode cancel keycap in the nerd footer", footerAt, "\u{F12B7}", "⎋"],
+    ["the unicode pointer under the nerd footer", pointedAt, "\u{F054}", "❯"],
+    ["the unicode slider marks under the nerd footer", trackAt, "\u{E0B2}", "◀"],
+  ])("%s declines: a screen omp never draws", (_name, at, from, to) => {
+    expect(edit(at, from, to)).toBeNull();
+  });
+});

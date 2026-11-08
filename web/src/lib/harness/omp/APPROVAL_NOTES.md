@@ -222,8 +222,11 @@ Not proven by the captures, and so not lifted or not probed:
   first two lift because the source lays them out the same way; the rest decline.
 - **A command the box clips.** Declined by its trailing `…`; no capture holds one. The same goes for a
   multi-line command, whose compact row ends in ` …`.
-- **The nerd preset.** Its pointer is U+F054 and its keycaps are private-use glyphs; the footer comparison
-  declines it.
+- **The nerd preset, lifted since 2026-11-08 (omp 18.18.0, `omp--v18-18-0-nerd-approval-bash--w250.txt`).**
+  Its pointer is U+F054 and its footer keycaps are U+F0311 (Enter) and U+F12B7 (Escape); every other row is
+  the `unicode` one, byte for byte. The footer and the pointer must come from one preset (`omp/keycaps.ts`):
+  a pair from two presets declines. The 250-column `unicode` panel lifts as before
+  (`omp--v18-18-0-approval-bash--w250.txt`). Not probed: a tap through the paired card on a nerd install.
 - **Ctrl+O details.** The desk key swaps the full prompt in, wrapped, and the footer's last hint reads
   `less` (source: `#footerHint`). The footer no longer matches, so the grammar declines, which is the safe
   answer.

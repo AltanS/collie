@@ -353,6 +353,8 @@ const CARD_FIXTURES = {
       "omp--v18-4-resume-nomatch.txt",
       // omp 18.17.0's `/usage` dashboard, a full-screen modal nothing lifts (lab, 2026-11-06).
       "omp--v18-17-0-usage-dashboard--w120.txt",
+      // omp 18.18.0's `nerd` review with every question unanswered: ask.ts reads only a complete review.
+      "omp--v18-18-0-nerd-ask-review-unanswered--w250.txt",
       "omp--v18-4-switch-nomatch.txt",
       "omp--v18-4-switch-quick-roles.txt",
       "omp--v18-4-switch-task.txt",
