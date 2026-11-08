@@ -11,8 +11,7 @@ import { designPrefs, initDesign, mathEngineOf } from "./lib/design";
 import { currentGlyphSetId, storedGlyphSetId } from "./lib/glyphs";
 import { currentMarkId } from "./lib/mark";
 import { isMathLoadError, loadMathEngine } from "./lib/math/engine";
-import { resumeLookConfirm } from "./lib/theme/confirm";
-import { initTheme, themeEscaped } from "./lib/theme/store";
+import { initTheme } from "./lib/theme/store";
 import { resumeTrial } from "./lib/theme/trial";
 import { initOperatorFonts } from "./lib/operator-config";
 import "./index.css";
@@ -47,8 +46,6 @@ void loadMathEngine(mathEngineOf(designPrefs()));
 initTheme();
 // A theme being tried in this tab (M59 spec 08) goes back on after a reload, over the device's own.
 resumeTrial();
-// An open "Keep this look?" goes on after a reload, or goes back if its countdown ran out meanwhile.
-resumeLookConfirm(themeEscaped());
 // The header logo, the same way: a theme that names a character other than Collie starts
 // fetching its chunk now, after the theme and the trial are settled (the resolver reads both), so the
 // header rarely draws its empty box. The Collie mark is in this bundle and loads nothing.
