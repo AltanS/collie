@@ -81,6 +81,7 @@ export const en = {
   "theme.preview.shape": "Shape",
   "theme.preview.shape.sample": "Sample",
   "theme.preview.ansi": "Terminal colours",
+  "theme.preview.mark": "Mark: {name}",
   "theme.preview.contrast.pass": "Every contrast check passes.",
   "theme.preview.contrast.fail": "{half}: {check} measures {ratio}. The floor is {floor}.",
   "theme.preview.contrast.more": "and {count} more checks fail",
@@ -137,6 +138,7 @@ export const en = {
   "theme.refusal.no-half": "The file sets no colours.",
   "theme.refusal.surface": "A shape word is not valid.",
   "theme.refusal.ansi": "A terminal colour is not valid, or it fails its contrast floor.",
+  "theme.refusal.mark": "The mark choice is not valid.",
   "theme.refusal.reserved-id": "This id belongs to a shipped theme. Change \"id\" in the file to import your copy.",
 
   // --- settings.haptics ---
@@ -344,6 +346,10 @@ export const en = {
   "settings.typeface.note.atkinson": "Made for low vision, with clear letters and a real bold.",
   "settings.typeface.note.operator": "Added by this collie's operator.",
   // --- settings.math (which engine typesets LaTeX in Markdown — a per-device preference) ---
+  "settings.mark.title": "Mark",
+  "settings.mark.description": "The logo in the header, on this device.",
+  "settings.mark.fromTheme": "From the theme",
+  "settings.mark.note": "Only the header changes. The app icon and the splash stay the Collie mark.",
   "settings.math.title": "Math",
   "settings.math.description": "LaTeX in chat and Markdown files, on this device.",
   "settings.math.engine": "Engine",
@@ -3220,6 +3226,12 @@ export type Messages = typeof en;
  * key for good: a key stays here only between a feature and its translation pass.
  */
 export const PENDING_TRANSLATION = [
+  "settings.mark.title",
+  "settings.mark.description",
+  "settings.mark.fromTheme",
+  "settings.mark.note",
+  "theme.preview.mark",
+  "theme.refusal.mark",
   "theme.paste",
   "theme.paste.title",
   "theme.paste.label",

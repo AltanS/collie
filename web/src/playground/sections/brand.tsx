@@ -4,7 +4,8 @@
 
 import { AlphaBar } from "@/components/alpha-bar";
 import { AppHeaderHost, RouteHeader, SettingsGear } from "@/components/app-header";
-import { APPLYING_CLASS, CollieHome, RECONNECTED_CLASS } from "@/components/collie-home";
+import { CollieHome } from "@/components/collie-home";
+import type { MarkState } from "@/components/mark-contract";
 import { CollieMark } from "@/components/collie-mark";
 import { homeSolo } from "../fixtures";
 import { RootRouter } from "../harness";
@@ -34,10 +35,10 @@ export function BrandSection() {
         >
           <Stage>
             <div className="flex flex-wrap items-end gap-6 p-4">
-              <MarkSample size={40} weight="header" loading={false} />
-              <MarkSample size={40} weight="header" loading />
-              <MarkSample size={64} weight="header" loading={false} />
-              <MarkSample size={64} weight="header" loading />
+              <MarkSample size={40} weight="header" state="rest" />
+              <MarkSample size={40} weight="header" state="loading" />
+              <MarkSample size={64} weight="header" state="rest" />
+              <MarkSample size={64} weight="header" state="loading" />
             </div>
           </Stage>
         </Card>
@@ -49,9 +50,9 @@ export function BrandSection() {
         >
           <Stage>
             <div className="flex flex-wrap items-end gap-6 p-4">
-              <MarkSample size={96} weight="full" loading={false} />
-              <MarkSample size={96} weight="full" loading />
-              <MarkSample size={132} weight="full" loading />
+              <MarkSample size={96} weight="full" state="rest" />
+              <MarkSample size={96} weight="full" state="loading" />
+              <MarkSample size={132} weight="full" state="loading" />
             </div>
           </Stage>
         </Card>
@@ -63,9 +64,9 @@ export function BrandSection() {
         >
           <Stage>
             <div className="flex flex-wrap items-end gap-6 p-4">
-              <MarkSample size={40} weight="header" loading={false} muted />
-              <MarkSample size={64} weight="header" loading={false} muted />
-              <MarkSample size={96} weight="full" loading={false} muted />
+              <MarkSample size={40} weight="header" state="idle" />
+              <MarkSample size={64} weight="header" state="idle" />
+              <MarkSample size={96} weight="full" state="idle" />
             </div>
           </Stage>
         </Card>
@@ -74,7 +75,7 @@ export function BrandSection() {
           state="mark-applying"
           label="the mark, app updating"
           reach="leave the app open while a new build of it downloads, or while it waits to reload onto one. Tap the mark to open the dashboard's update line."
-          note="The band's old download row, moved onto the mark (2026-11-06). The loading rate, and every bead a full disc in --status-working. The paint is a class plus an index.css rule, because collie-mark.tsx is generated. Under reduced motion the orbit stops and the colour stays. The first sample is the real header button, with its updating name."
+          note="The band's old download row, moved onto the mark (2026-11-06). The loading rate, and every bead a full disc in --status-working. The mark paints it itself, from the applying state. Under reduced motion the orbit stops and the colour stays. The first sample is the real header button, with its updating name."
         >
           <Stage>
             <div className="flex flex-wrap items-end gap-6 p-4">
@@ -82,8 +83,8 @@ export function BrandSection() {
                 <CollieHome trouble={false} applying paper="var(--background)" />
                 <span className="font-mono text-[10px] text-muted-foreground">header button</span>
               </div>
-              <MarkSample size={64} weight="header" loading paint="applying" />
-              <MarkSample size={96} weight="full" loading paint="applying" />
+              <MarkSample size={64} weight="header" state="applying" />
+              <MarkSample size={96} weight="full" state="applying" />
             </div>
           </Stage>
         </Card>
@@ -91,7 +92,7 @@ export function BrandSection() {
           state="mark-reconnected"
           label="the mark, reconnected"
           reach="let the connection drop until the strip shows, then let it come back. The mark turns once in green and the status line says Reconnected."
-          note="The band's old green Connected strip, moved onto the mark (2026-11-07, lib/reconnected.ts). One full turn at the loading rate, every bead in --status-done, then rest. The same class-and-rule door as the update paint. The samples here hold the state; in the app it lasts one turn, 1.8s. Under reduced motion the orbit stays still and the colour holds for the same time."
+          note="The band's old green Connected strip, moved onto the mark (2026-11-07, lib/reconnected.ts). One full turn at the loading rate, every bead in --status-done, then rest. The same contract door. The samples here hold the state; in the app it lasts one turn, 1.8s. Under reduced motion the orbit stays still and the colour holds for the same time."
         >
           <Stage>
             <div className="flex flex-wrap items-end gap-6 p-4">
@@ -99,8 +100,8 @@ export function BrandSection() {
                 <CollieHome trouble={false} reconnected paper="var(--background)" />
                 <span className="font-mono text-[10px] text-muted-foreground">header button</span>
               </div>
-              <MarkSample size={64} weight="header" loading paint="reconnected" />
-              <MarkSample size={96} weight="full" loading paint="reconnected" />
+              <MarkSample size={64} weight="header" state="reconnected" />
+              <MarkSample size={96} weight="full" state="reconnected" />
             </div>
           </Stage>
         </Card>
@@ -181,35 +182,12 @@ export function BrandSection() {
   );
 }
 
-function MarkSample({
-  size,
-  weight,
-  loading,
-  muted = false,
-  paint,
-}: {
-  size: number;
-  weight: "full" | "header";
-  loading: boolean;
-  muted?: boolean;
-  /** A host paint on the beads: the app updating, or the link coming back. */
-  paint?: "applying" | "reconnected";
-}) {
-  const painted = paint === "applying" ? APPLYING_CLASS : paint === "reconnected" ? RECONNECTED_CLASS : undefined;
+function MarkSample({ size, weight, state }: { size: number; weight: "full" | "header"; state: MarkState }) {
   return (
     <div className="flex flex-col items-center gap-1.5">
-      <CollieMark
-        size={size}
-        weight={weight}
-        loading={loading}
-        paper="var(--background)"
-        className={muted ? "opacity-40 grayscale" : painted}
-      />
+      <CollieMark size={size} weight={weight} state={state} paper="var(--background)" />
       <span className="font-mono text-[10px] text-muted-foreground">
-        {size} {weight}
-        {loading ? " loading" : ""}
-        {muted ? " muted" : ""}
-        {paint === undefined ? "" : ` ${paint}`}
+        {size} {weight} {state}
       </span>
     </div>
   );

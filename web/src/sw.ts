@@ -204,21 +204,34 @@ const MATH_CACHE = MOUNT === "/" ? "collie-math" : `collie-math:${MOUNT}`;
 const mathStorable = (r: Response) =>
   r.status === 200 && !r.redirected && /javascript|css|font/.test(r.headers.get("content-type") ?? "");
 
-registerRoute(
-  ({ url, sameOrigin }) => sameOrigin && url.pathname.startsWith(under("/math/")),
-  async ({ request }) => {
-    const cache = await caches.open(MATH_CACHE);
-    const hit = await cache.match(request);
-    if (hit) return hit;
-    const response = await fetch(request);
-    // Best-effort and off the response path, like the font cache's write.
-    if (mathStorable(response)) void cache.put(request, response.clone()).catch(() => null);
-    return response;
-  },
-);
+// The two theme marks (components/brand-mark.tsx) live under `marks/` on the same terms and the
+// same reasoning: out of the precache, because Collie is the default mark, kept on first use so the
+// chosen one starts offline, emptied on an update. Offline right after an update the header draws the
+// Collie mark until the phone is online once (brand-mark.tsx's boundary), never an empty box.
+const MARK_CACHE = MOUNT === "/" ? "collie-marks" : `collie-marks:${MOUNT}`;
+
+/** Cache-first under `prefix`, keeping only what `keeps` accepts. */
+function keepOnFirstUse(prefix: string, cacheName: string, keeps: (r: Response) => boolean): void {
+  registerRoute(
+    ({ url, sameOrigin }) => sameOrigin && url.pathname.startsWith(under(prefix)),
+    async ({ request }) => {
+      const cache = await caches.open(cacheName);
+      const hit = await cache.match(request);
+      if (hit) return hit;
+      const response = await fetch(request);
+      // Best-effort and off the response path, like the font cache's write.
+      if (keeps(response)) void cache.put(request, response.clone()).catch(() => null);
+      return response;
+    },
+  );
+}
+
+keepOnFirstUse("/math/", MATH_CACHE, mathStorable);
+keepOnFirstUse("/marks/", MARK_CACHE, (r) =>
+  r.status === 200 && !r.redirected && /javascript/.test(r.headers.get("content-type") ?? ""));
 
 self.addEventListener("activate", (event: ExtendableEvent) => {
-  event.waitUntil(caches.delete(MATH_CACHE));
+  event.waitUntil(Promise.all([caches.delete(MATH_CACHE), caches.delete(MARK_CACHE)]));
 });
 
 // `registerType: "autoUpdate"` means a fresh build should take over without a user gesture. With

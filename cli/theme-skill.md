@@ -35,7 +35,9 @@ CSS in it.
 - A colour is `#rrggbb`, `#rrggbbaa` or `oklch(L C H)` with an optional `/ A`. No named colour, no
   `rgb()`, no `var()`.
 - Write the lowest `version` that holds the file: 1 for colours and `fonts.ui` only, 2 with `surface`,
-  `fonts.display` or `ansi`, 3 with `pane-active` or `tab-active`.
+  `fonts.display` or `ansi`, 3 with `pane-active` or `tab-active`, 4 with `mark`.
+- `mark` is optional and is one of `collie`, `kawaii`, `kawaii-tilt` or `pixel`. Set it only when the operator asks for a
+  header logo. A device choice in Settings wins over it.
 - A font is one of the six names under "Write a theme". A theme cannot add a font.
 - Give both halves when you change the page colours. A dark half left out takes Collie's dark colours,
   which rarely match a new light half.

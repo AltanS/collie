@@ -4,7 +4,8 @@ import { resolve } from "node:path";
 import { describe, expect, test } from "bun:test";
 
 import { SHIPPED_FONTS } from "../web/src/lib/shipped-fonts.ts";
-import { ALL_THEME_TOKENS } from "../web/src/lib/theme/schema.ts";
+import { MARK_IDS } from "../web/src/lib/mark-ids.ts";
+import { ALL_THEME_TOKENS, THEME_VERSIONS_READ } from "../web/src/lib/theme/schema.ts";
 import { ANSI_KEYS, SURFACE_TOKENS, surfaceWords } from "../web/src/lib/theme/surface.ts";
 import { SKILL_TEMPLATE, THEME_SKILL_TEMPLATE } from "./docs-embed.ts";
 import { capture } from "./fakes.ts";
@@ -55,6 +56,21 @@ describe("collie theme skill", () => {
     }
     for (const font of SHIPPED_FONTS) expect(BRIEF).toContain(`\`${font}\``);
     for (const key of ANSI_KEYS) expect(BRIEF).toContain(`"${key}"`);
+  });
+
+  test("the brief teaches the mark key: its four words, and the version that holds it", () => {
+    expect(BRIEF).toContain("`mark`");
+    for (const mark of MARK_IDS) expect(BRIEF).toContain(`\`${mark}\``);
+    expect(BRIEF).toContain("4 with `mark`");
+    expect(THEME_VERSIONS_READ.at(-1)).toBe(4);
+  });
+
+  test("a mark example in the brief's own words passes `collie theme check`", () => {
+    const file = JSON.stringify({ version: 4, id: "my-day", name: "My day", mark: "kawaii", light: { background: "#ffffff" } });
+    const io = capture();
+    const code = cmdThemeCheck({ io, files: filesOf({ "m.collie-theme.json": file }) }, ["m.collie-theme.json"]);
+    expect(io.stderr).toEqual([]);
+    expect(code).toBe(EXIT.OK);
   });
 
   test("the complete example the brief starts an agent from passes `collie theme check`", () => {

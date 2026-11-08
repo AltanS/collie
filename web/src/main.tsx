@@ -4,8 +4,10 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
 import { App } from "./App";
+import { preloadMark } from "./components/brand-mark";
 import { onPreloadError } from "./lib/chunk-reload";
 import { designPrefs, initDesign, mathEngineOf } from "./lib/design";
+import { currentMarkId } from "./lib/mark";
 import { isMathLoadError, loadMathEngine } from "./lib/math/engine";
 import { initTheme } from "./lib/theme/store";
 import { resumeTrial } from "./lib/theme/trial";
@@ -34,6 +36,10 @@ void loadMathEngine(mathEngineOf(designPrefs()));
 initTheme();
 // A theme being tried in this tab (M59 spec 08) goes back on after a reload, over the device's own.
 resumeTrial();
+// The header logo, the same way: a device or a theme that names the Kawaii or the Pixel mark starts
+// fetching its chunk now, after the theme and the trial are settled (the resolver reads both), so the
+// header rarely draws its empty box. The Collie mark is in this bundle and loads nothing.
+void preloadMark(currentMarkId());
 // After it, and separately: this one injects the operator face design.ts mirrored into storage, so a
 // device set to one paints in it from the first frame instead of swapping when /api/config lands.
 initOperatorFonts();
