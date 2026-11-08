@@ -36,6 +36,7 @@ These are the characters today. More may follow.
 | `glass` | **Glass**, a collie head in profile as a leaded stained-glass panel, with jewels in the ring. |
 | `glass-front` | **Glass Front**, the same stained glass, the head from the front. |
 | `sheep` | **Sheep**, the sheep the collie herds: a charcoal face in cream wool, in profile. |
+| `owl` | **Owl**, the owl that watches through the night, from the front, with huge amber eyes. |
 
 ### Pick a character
 
