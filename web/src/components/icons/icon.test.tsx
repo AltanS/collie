@@ -77,6 +77,16 @@ describe("a glyph set", () => {
     expect(svg(container).classList.contains("lucide-loader-circle")).toBe(true);
   });
 
+  it("Phosphor Fill keeps the outline of a cross, a tick and an empty ring", async () => {
+    await Promise.all([preloadGlyphSet("phosphor"), preloadGlyphSet("phosphor-fill")]);
+    const regular = glyphSetData("phosphor")?.glyphs;
+    const fill = glyphSetData("phosphor-fill")?.glyphs;
+    for (const key of ["close", "selected", "plan-pending", "voice-setup", "update-step-skipped"] as const) {
+      expect(fill?.[key], key).toEqual(regular?.[key]);
+    }
+    expect(fill?.send).not.toEqual(regular?.send);
+  });
+
   it("holds only the mapped glyphs, as flat shapes", async () => {
     await preloadGlyphSet("phosphor-duotone");
     const data = glyphSetData("phosphor-duotone");

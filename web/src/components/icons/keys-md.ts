@@ -1,6 +1,6 @@
 import { ICON_AREAS, ICON_KEYS, ICON_KEY_LIST } from "./keys";
 import { ICONOIR } from "./sets/iconoir";
-import { PHOSPHOR } from "./sets/phosphor";
+import { PHOSPHOR, PHOSPHOR_FILL_KEEPS_REGULAR } from "./sets/phosphor";
 
 // The text of `KEYS.md`, from the key table and the family maps. `bun scripts/glyph-keys.ts` writes the
 // file and `keys.test.ts` fails when the file on disk is not this text.
@@ -20,6 +20,16 @@ export function keysMarkdown(): string {
     "Phosphor's three sets share one map; the fill and duotone files add `-fill` and `-duotone`.",
     "",
     `${ICON_KEY_LIST.length} keys.`,
+    "",
+    "Phosphor Fill draws these keys in the regular weight, so a cross stays a cross and an empty or",
+    "not-started state stays empty: " +
+      ICON_KEY_LIST.filter((key) => {
+        const name = PHOSPHOR[key];
+        return name !== null && PHOSPHOR_FILL_KEEPS_REGULAR.includes(name);
+      })
+        .map((key) => `\`${key}\``)
+        .join(", ") +
+      ".",
   ];
   for (const [area, title] of Object.entries(ICON_AREAS)) {
     const keys = ICON_KEY_LIST.filter((key) => ICON_KEYS[key].area === area);

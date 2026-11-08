@@ -8,6 +8,9 @@ Phosphor's three sets share one map; the fill and duotone files add `-fill` and 
 
 271 keys.
 
+Phosphor Fill draws these keys in the regular weight, so a cross stays a cross and an empty or
+not-started state stays empty: `action-check`, `action-x`, `answered`, `clear`, `close`, `confirm`, `copied`, `copy-failed`, `dismiss`, `done`, `ok`, `plan-done`, `plan-pending`, `remove`, `selected`, `sent-ok`, `update-step-done`, `update-step-failed`, `update-step-skipped`, `voice-setup`, `zoom-out`.
+
 ## Belt
 
 | key | meaning | lucide | phosphor | iconoir |

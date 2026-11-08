@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import type { Plugin } from "vite";
 
 import { ICONOIR } from "./src/components/icons/sets/iconoir";
-import { PHOSPHOR } from "./src/components/icons/sets/phosphor";
+import { PHOSPHOR, PHOSPHOR_FILL_KEEPS_REGULAR } from "./src/components/icons/sets/phosphor";
 import type { GlyphNode } from "./src/components/icons/glyph-data";
 import type { GlyphSetId } from "./src/lib/glyph-sets";
 
@@ -46,7 +46,11 @@ export const SOURCES = {
   },
   "phosphor-fill": {
     map: PHOSPHOR,
-    file: (name) => `@phosphor-icons/core/assets/fill/${name}-fill.svg`,
+    // A few names keep their outline in the fill set (PHOSPHOR_FILL_KEEPS_REGULAR says why).
+    file: (name) =>
+      PHOSPHOR_FILL_KEEPS_REGULAR.includes(name)
+        ? `@phosphor-icons/core/assets/regular/${name}.svg`
+        : `@phosphor-icons/core/assets/fill/${name}-fill.svg`,
     viewBox: "0 0 256 256",
     root: PHOSPHOR_ROOT,
   },

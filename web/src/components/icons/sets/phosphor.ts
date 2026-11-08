@@ -278,3 +278,11 @@ export const PHOSPHOR = {
   "zoom-in": "plus", // zoom in · lucide Plus
   "zoom-out": "minus", // zoom out · lucide Minus
 } as const satisfies Record<IconKey, string | null>;
+
+/**
+ * Phosphor names the Fill set draws in the REGULAR weight. Phosphor's fill drawings of these put the
+ * mark inside a solid square (x, check, minus) or turn an empty ring solid (circle, circle-dashed), so
+ * a cross would stop reading as a cross and "not started" would read as done. Every key mapped to one
+ * of these names keeps the regular outline under `phosphor-fill`; KEYS.md lists them.
+ */
+export const PHOSPHOR_FILL_KEEPS_REGULAR: readonly string[] = ["x", "check", "minus", "circle", "circle-dashed"];
