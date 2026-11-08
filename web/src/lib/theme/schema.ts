@@ -212,6 +212,18 @@ export interface Refusal {
   code: RefusalCode;
   path: string;
   detail: string;
+  /** On a `version` refusal: the version the file says, when it is a whole number above the newest this Collie reads. */
+  newerVersion?: number;
+  /** On a contrast refusal: the two colours by path, what they measure and the floor, for a headline that names them. */
+  contrast?: RefusalContrast;
+}
+
+/** The parts of a contrast refusal: `ink` on `ground` (each a path such as `light.foreground`) measures `ratio`, below `floor`. */
+export interface RefusalContrast {
+  ink: string;
+  ground: string;
+  ratio: number;
+  floor: number;
 }
 
 export type ParsedTheme = { ok: true; theme: Theme } | { ok: false; refusals: Refusal[] };
@@ -442,14 +454,17 @@ function readVersion(doc: JsonObject, refusals: Refusal[]): ThemeVersion | undef
   const value = asJsonNumber(doc.version);
   const version = THEME_VERSIONS_READ.find((v) => v === value);
   if (version !== undefined) return version;
-  refusals.push({
+  const refusal: Refusal = {
     code: "version",
     path: "version",
     detail:
       doc.version === undefined
         ? `The file has no version. This Collie reads version ${READ_TEXT}.`
         : `The file is version ${shownVersion(doc.version)}. This Collie reads version ${READ_TEXT}.`,
-  });
+  };
+  const newest = THEME_VERSIONS_READ[THEME_VERSIONS_READ.length - 1] ?? 0;
+  if (value !== undefined && Number.isSafeInteger(value) && value > newest) refusal.newerVersion = value;
+  refusals.push(refusal);
   return undefined;
 }
 
@@ -586,7 +601,7 @@ function setSurfaceWord(surface: Surface, token: SurfaceToken, value: string | u
  * at most. Every word on every decoration list has it, so a newer Collie's word will too. A string of
  * another shape is not a word anyone will ship (a sentence, a URL, a control character), and is refused.
  */
-const DECORATION_WORD = /^[a-z0-9][a-z0-9-]{0,31}$/;
+export const DECORATION_WORD = /^[a-z0-9][a-z0-9-]{0,31}$/;
 
 /** A decoration word as written, or undefined for a value that is not one (another type, another shape). */
 function decorationWord(value: JsonValue | undefined): string | undefined {
@@ -910,6 +925,7 @@ function readAnsi(doc: JsonObject, version: ThemeVersion | undefined, refusals: 
       code: "ansi",
       path: "ansi.ink",
       detail: `"ansi.ink" on "ansi.ground" measures ${round2(inkRatio)}. The floor is ${TEXT_FLOOR}.`,
+      contrast: { ink: "ansi.ink", ground: "ansi.ground", ratio: round2(inkRatio), floor: TEXT_FLOOR },
     });
   }
   if (luminance(ground) >= luminance(ink)) {
@@ -929,6 +945,7 @@ function readAnsi(doc: JsonObject, version: ThemeVersion | undefined, refusals: 
         code: "ansi",
         path: `ansi.${key}`,
         detail: `"ansi.${key}" on "ansi.ground" measures ${round2(r)}. The floor is ${ANSI_SLOT_FLOOR}.`,
+        contrast: { ink: `ansi.${key}`, ground: "ansi.ground", ratio: round2(r), floor: ANSI_SLOT_FLOOR },
       });
     }
     const bright = ANSI_BRIGHT_SLOTS.includes(key);
@@ -1189,6 +1206,7 @@ function readabilityRefusals(light: Half, dark: Half): Refusal[] {
         code: "unreadable",
         path: `${which}.foreground`,
         detail: `In the ${which} half, foreground on background measures ${measured}. Text needs at least ${HARD_TEXT_FLOOR}.`,
+        contrast: { ink: `${which}.foreground`, ground: `${which}.background`, ratio: measured, floor: HARD_TEXT_FLOOR },
       });
     }
   }

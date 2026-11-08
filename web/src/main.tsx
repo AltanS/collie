@@ -5,13 +5,14 @@ import { createRoot } from "react-dom/client";
 
 import { App } from "./App";
 import { preloadMark } from "./components/brand-mark";
-import { preloadGlyphSet } from "./components/icons/glyphs";
+import { glyphSetSettled, preloadGlyphSet } from "./components/icons/glyphs";
 import { onPreloadError } from "./lib/chunk-reload";
 import { designPrefs, initDesign, mathEngineOf } from "./lib/design";
-import { currentGlyphSetId } from "./lib/glyphs";
+import { currentGlyphSetId, storedGlyphSetId } from "./lib/glyphs";
 import { currentMarkId } from "./lib/mark";
 import { isMathLoadError, loadMathEngine } from "./lib/math/engine";
-import { initTheme } from "./lib/theme/store";
+import { resumeLookConfirm } from "./lib/theme/confirm";
+import { initTheme, themeEscaped } from "./lib/theme/store";
 import { resumeTrial } from "./lib/theme/trial";
 import { initOperatorFonts } from "./lib/operator-config";
 import "./index.css";
@@ -28,6 +29,9 @@ import { installHiddenPause } from "./lib/page-hidden";
 // A hidden page runs no animation (issue 748): the root carries an attribute while it is hidden, and
 // index.css pauses every animation under it. First, so a page opened in the background never starts.
 installHiddenPause();
+/** The longest the first paint waits for the worn glyph set's chunk. */
+const FIRST_PAINT_GLYPH_WAIT_MS = 150;
+
 // RECONCILES the typeface class, it does not apply it: public/theme-init.js has already put the
 // right one on <html> before first paint for every shipped face. This call is what covers the two
 // cases that script deliberately cannot — an operator-supplied face (no pre-paint path; it has no
@@ -43,12 +47,16 @@ void loadMathEngine(mathEngineOf(designPrefs()));
 initTheme();
 // A theme being tried in this tab (M59 spec 08) goes back on after a reload, over the device's own.
 resumeTrial();
+// An open "Keep this look?" goes on after a reload, or goes back if its countdown ran out meanwhile.
+resumeLookConfirm(themeEscaped());
 // The header logo, the same way: a theme that names a character other than Collie starts
 // fetching its chunk now, after the theme and the trial are settled (the resolver reads both), so the
 // header rarely draws its empty box. The Collie mark is in this bundle and loads nothing.
 void preloadMark(currentMarkId());
-// The glyph set too (ADR 0137): a theme that names one starts its chunk now, and lucide draws until it lands.
-void preloadGlyphSet(currentGlyphSetId());
+// The glyph set too (ADR 0137): a theme that names one starts its chunk now, and the first paint waits
+// for it below. The stored theme's set as well, when a trial wears another, so Back finds it ready.
+const firstGlyphs = glyphSetSettled(currentGlyphSetId(), FIRST_PAINT_GLYPH_WAIT_MS);
+void preloadGlyphSet(storedGlyphSetId());
 // After it, and separately: this one injects the operator face design.ts mirrored into storage, so a
 // device set to one paints in it from the first frame instead of swapping when /api/config lands.
 initOperatorFonts();
@@ -72,8 +80,15 @@ window.addEventListener("vite:preloadError", (event) => {
 const root = document.getElementById("root");
 if (!root) throw new Error("missing #root");
 
-createRoot(root).render(
-  <StrictMode>
-    <App />
-  </StrictMode>,
-);
+// The first paint waits for the worn glyph set, at most FIRST_PAINT_GLYPH_WAIT_MS: a set the browser
+// has cached lands in a few milliseconds, so the icons paint in it and never flash lucide first. A
+// device on lucide, the default, waits for nothing.
+function paint(): void {
+  if (!root) return;
+  createRoot(root).render(
+    <StrictMode>
+      <App />
+    </StrictMode>,
+  );
+}
+void firstGlyphs.finally(paint);

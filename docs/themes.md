@@ -35,8 +35,10 @@ A theme that passes both is listed, with the repository's star count from GitHub
 the file format, and then `collie theme check` on its file until the check is clean. See
 [Let your coding agent write it](#let-your-coding-agent-write-it).
 
-**The way back.** Add `#theme=collie` to the app's address, and Collie's own theme comes back,
-whatever a theme did. See [Troubleshooting](#troubleshooting).
+**The way back.** After you apply, install, keep or update an imported theme, a bar at the bottom asks
+**Keep this look?** and counts 15 seconds down. Tap **Keep**, or wait, and your previous theme comes
+back by itself. In a browser you can also add `#theme=collie` to the app's address. See
+[Troubleshooting](#troubleshooting).
 
 ## Make Collie your own
 
@@ -161,7 +163,9 @@ says how old the host's copy is. A refresh needs a device that may write. A refr
 of the last good one shows the same copy, and a copy older than a week is not shown.
 
 Every theme is checked three times: by the site, by your host and by your phone. A theme that fails
-any check is left out, and the sheet counts how many were. **Report** opens a new issue on the collie
+any check is left out, and the sheet counts how many were. A theme whose file says a version newer
+than your Collie reads is listed anyway, as a muted row that says "Needs a newer Collie". It has its
+repository link and **Report**, and no **Install** or **Try**. **Report** opens a new issue on the collie
 repository with the theme's repository filled in. You read it and send it yourself.
 
 ### See where a theme came from, and update it
@@ -181,16 +185,21 @@ For a theme from the list, the sheet compares it with your host's copy of the li
 | --- | --- |
 | A newer version is listed. | The list holds another commit of the same file. Tap **Update**. |
 | No newer version is listed. | You have the commit the list holds. |
-| No longer listed. | The list no longer holds the file. Your copy stays. |
-| **Check for updates** | The host's copy is older than your install. The tap fetches the list once. |
+| No longer listed. Your installed copy keeps working. | The list no longer holds the file. Your copy stays. |
+| The listed version needs a newer Collie. | The list holds the file at a version this Collie cannot read. Update Collie to get it. Your copy keeps working. |
+| **Check for updates** | Your host has no copy of the list yet. The tap fetches the list once. |
 
 **Update** opens the same preview as **Install**, with the same contrast report. Tap **Update** there
 to put the new file in place of the old one. The theme stays on if you wore it, and the eight-theme
 limit does not stop an update.
 
 Collie matches the repository and the file, never the theme's id. A theme copied from another
-repository with the same id is never offered as an update. A copy of the list made before your install
-never offers an update, so an update never takes you back to an older commit.
+repository with the same id is never offered as an update. The repository matches in any case, as
+on GitHub.
+
+Any other commit of the file counts as newer, because the list holds the commit the site saw last.
+Collie compares no clocks. To be sure the host's copy is fresh, tap **Refresh** in **Browse community
+themes** first.
 
 ### Try a theme before you keep it
 
@@ -225,12 +234,17 @@ list shows at most 25 causes, then one line "and N more". A file is refused for 
 - It has a bad `id`, `name` or `author`, or the `id` belongs to a shipped theme.
 - Its body text cannot be read: `foreground` on `background` measures under 3 in a half, or a text colour
   (`foreground` or a `*-foreground` token) is fully transparent. A token the file leaves out is measured
-  with Collie's value, the one the app fills it with.
+  with Collie's value, the one the app fills it with. The line names both colours and the ratio:
+  "light.foreground on light.background measures 2.1. It needs at least 3."
 - It would be a ninth imported theme. Collie refuses at the **Import** or **Paste** tap, before you pick a
   file, and again at **Apply**.
 
 Collie checks one more thing at **Apply**. A file whose `id` is already on the device is refused with "already
 imported". Remove the old theme first, or change the `id`.
+
+An **Update** that Collie refuses changes nothing. The sheet says why in one sentence and says that your
+current theme is unchanged: the new version fails the check, its `id` is taken, the device could not
+save it, or the theme was removed or installed again after **About** checked it.
 
 A theme changes how the app looks and nothing else. It cannot run code, load files or reach a server.
 
@@ -434,13 +448,23 @@ A file says which version it is, and Collie writes the lowest version that holds
 - A version 2 file needs Collie 1.22.0 or newer.
 - A version 3 file needs Collie 1.24.0 or newer. An older Collie refuses it and names the version: "The
   file is version 3. This Collie reads version 1 and 2."
-- A version 4 file needs a Collie newer than 1.28.0. An older Collie refuses it and names the version: "The
+- A version 4 file needs Collie 1.28.0 or newer. An older Collie refuses it and names the version: "The
   file is version 4. This Collie reads version 1, 2 and 3."
+- From 1.28, a file of a version newer than this Collie reads says so: "This file was made for a newer
+  Collie (version 5). Update Collie to use it."
 - A newer word or token also needs a newer Collie, whatever the version says. `zoom` needs 1.26.2.
-  `tabs`, `composer` and `tab-active` need a Collie newer than 1.27.0. An older Collie refuses a
+  `tabs`, `composer` and `tab-active` need Collie 1.27.0 or newer. An older Collie refuses a
   file that names one of them, because it does not know the key.
 - A theme that names none of those keeps working on every Collie its version allows.
 - A version 1 file means the default word of each list for every token of `surface`.
+
+After a rollback to 1.27, your version 4 themes and where they came from stay in the phone's storage.
+1.27 does not show them, and a device that wore one shows Collie. They come back when you update
+again. Adding or removing a theme on 1.27 saves the library without them, so do neither until then.
+
+From 1.28 on, that care is not needed. Collie keeps a stored theme it cannot read exactly as written,
+and every save writes it back. It does not show it or count it toward the eight themes. So after a
+rollback from a later Collie, its themes come back when you update again.
 
 ### A word this Collie does not know
 
@@ -546,7 +570,7 @@ These are the characters today. More may follow.
 - **A character downloads when it is needed.** A device that never wears a theme with one never fetches it.
 - **Only the header changes.** The favicon, the home-screen icon and the splash stay Collie under every
   theme. So do the boot screen, the idle lock and the tour.
-- **An older Collie refuses the file.** A version 4 file needs a Collie newer than 1.28.0. Collie 1.28.0
+- **An older Collie refuses the file.** A version 4 file needs Collie 1.28.0 or newer. Collie 1.27
   refuses the whole file with two causes: "The file is version 4. This Collie reads version 1, 2 and 3."
   and "character" is not part of a theme file. To share a theme that an older Collie can read, leave
   `character` out and say version 3 or lower.
@@ -595,7 +619,7 @@ shows Lucide, the icons Collie has always drawn.
 - **The preview shows it.** The preview of an import and each card in **Browse community themes** show
   five icons in the theme's set: close, send, settings, back and attach. While the ribbon of
   [Try a theme](#try-a-theme-before-you-keep-it) is on, the app draws the set of the tried theme.
-- **An older Collie refuses the file.** A version 4 file needs a Collie newer than 1.28.0. To share a
+- **An older Collie refuses the file.** A version 4 file needs Collie 1.28.0 or newer. To share a
   theme that an older Collie can read, leave `glyphs` out and say version 3 or lower.
 - **Another icon set comes in as a pull request.** See
   [Add an icon set to Collie](#add-an-icon-set-to-collie).
@@ -855,6 +879,20 @@ follows the theme's two page colours, or its two band colours when the theme say
 ## Troubleshooting
 
 These are the problems people meet most, with the cause and the fix for each.
+
+- **A theme you just put on makes the app hard to read.** Do nothing. The **Keep this look?** bar at the
+  bottom counts 15 seconds down and then puts your previous theme and typeface back. **Back** does it at
+  once. The bar keeps its own colours whatever the theme does, and it works in an installed app, where
+  there is no address bar.
+
+  | You tapped | The bar asks | Back puts back |
+  | --- | --- | --- |
+  | **Apply**, **Install** or a trial's **Keep** | yes | the theme and face you wore; the new theme stays in your list |
+  | **Update** of the theme you wear | yes | the old file and its source, in the same place |
+  | A shipped theme in the list | no | nothing to put back |
+
+  The countdown goes on after a reload. With reduced motion on, only the number counts down. **Keep**
+  ends the question and changes nothing.
 
 - **A theme makes the app hard to read, and you cannot reach the Theme card.** Open the app's address with
   `#theme=collie` at the end, for example `https://my-host.example.ts.net/#theme=collie`. The device wears

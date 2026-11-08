@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useLocale } from "@/hooks/use-locale";
 import { t, type MessageKey } from "@/lib/i18n";
 import { LIBRARY_MAX, type AddResult } from "@/lib/theme/store";
+import { confirmLook, lookBefore } from "@/lib/theme/confirm";
 import { endTrial, keepTrial, useTrial } from "@/lib/theme/trial";
 
 import "./theme-trial-ribbon.css";
@@ -47,8 +48,11 @@ export function ThemeTrialRibbon() {
   const name = [...trial.theme.name].slice(0, NAME_MAX).join("");
 
   function keep() {
+    const before = lookBefore();
     const kept = keepTrial();
     if (!kept.ok) setRefused(REFUSAL_KEYS[kept.reason]);
+    // Kept and worn: the same question every newly worn imported theme gets.
+    else confirmLook(before);
   }
 
   return (

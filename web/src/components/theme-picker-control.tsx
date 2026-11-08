@@ -24,10 +24,12 @@ import {
 import {
   LIBRARY_MAX,
   THEME_MAX_BYTES,
+  activeThemeId,
   installTheme,
   replaceImported,
   removeImported,
   setActiveTheme,
+  type ReplaceResult,
   shippedThemes,
   useActiveTheme,
   useLibrary,
@@ -41,9 +43,10 @@ import {
   resolveSurface,
   type Ansi,
 } from "@/lib/theme/surface";
-import { CONTRAST_FAIL_KEY, HALF_KEYS, REFUSAL_KEYS, isMoreLine } from "@/lib/theme/report-words";
+import { CONTRAST_FAIL_KEY, HALF_KEYS, headlineVars, isMoreLine, refusalHeadline } from "@/lib/theme/report-words";
 import { ThemeBrowseSheet } from "@/components/theme-browse";
 import { ThemeAboutSheet } from "@/components/theme-about";
+import { confirmLook, dropLookConfirm, lookBefore } from "@/lib/theme/confirm";
 import { dropTrial, startTrial } from "@/lib/theme/trial";
 import { registryRef, stamp, type ThemeSourceRef } from "@/lib/theme/origin";
 import type { RegistryTheme } from "@/lib/theme/registry";
@@ -362,8 +365,9 @@ export function entryOfRefusal(refusal: Refusal): RefusalEntry {
   if (isMoreLine(refusal)) {
     return { headline: refusal.detail, tone: "neutral" };
   }
+  const headline = refusalHeadline(refusal);
   return {
-    headline: t(REFUSAL_KEYS[refusal.code]),
+    headline: t(headline.key, headlineVars(headline)),
     where: refusal.path,
     detail: refusal.code === "reserved-id" ? undefined : refusal.detail,
     tone: "danger",
@@ -486,9 +490,19 @@ function libraryEntry(reason: "full" | "duplicate" | "invalid"): RefusalEntry {
   return { headline: t(LIBRARY_REFUSALS[reason], { count: LIBRARY_MAX }), tone: "danger" };
 }
 
-/** A pick in the card puts a theme on itself, so a running trial ends without re-applying anything. */
+/** Why an update was refused, one sentence each, and each says the theme on the device is unchanged. */
+const UPDATE_REFUSALS = {
+  invalid: "theme.update.invalid",
+  duplicate: "theme.update.duplicate",
+  "reserved-id": "theme.update.reserved-id",
+  storage: "theme.update.storage",
+  changed: "theme.update.changed",
+} as const satisfies Record<Extract<ReplaceResult, { ok: false }>["reason"], MessageKey>;
+
+/** A pick in the card puts a theme on itself, so a running trial and an open "Keep this look?" end without re-applying anything. */
 function pickTheme(id: string): void {
   dropTrial();
+  dropLookConfirm();
   setActiveTheme(id);
 }
 
@@ -496,8 +510,8 @@ function pickTheme(id: string): void {
 interface Pending {
   theme: Theme;
   source: ThemeSourceRef;
-  /** Update: the id of the kept theme whose slot this takes. */
-  replaces?: string;
+  /** Update: the kept theme whose slot this takes, and the commit its origin held when About compared. */
+  replaces?: { id: string; sha: string };
 }
 
 /** Settings card: pick a theme, browse the community list, import one from a file or pasted text, export or remove the one on screen. */
@@ -521,7 +535,9 @@ export function ThemePickerControl() {
   /** Update from About: the listed file, previewed over the same sheet, to take the old theme's slot. */
   function updateFromAbout(oldId: string, item: RegistryTheme) {
     setAbout(null);
-    setPreview({ theme: item.theme, source: registryRef(item.entry), replaces: oldId });
+    const held = origins.get(oldId);
+    if (held?.kind !== "registry") return;
+    setPreview({ theme: item.theme, source: registryRef(item.entry), replaces: { id: oldId, sha: held.sha } });
   }
 
   function startImport() {
@@ -582,14 +598,30 @@ export function ThemePickerControl() {
   function tryTheme(theme: Theme, source: ThemeSourceRef) {
     setPreview(null);
     setBrowsing(false);
+    dropLookConfirm();
     startTrial(theme, source);
   }
 
   function apply() {
     if (preview === null) return;
     const origin = stamp(preview.source, Date.now());
-    const added =
-      preview.replaces === undefined ? installTheme(preview.theme, origin) : replaceImported(preview.replaces, preview.theme, origin);
+    dropLookConfirm();
+    if (preview.replaces !== undefined) {
+      const before = lookBefore(preview.replaces.id);
+      const worn = activeThemeId() === preview.replaces.id;
+      const replaced = replaceImported(preview.replaces.id, preview.theme, origin, preview.replaces.sha);
+      setPreview(null);
+      if (!replaced.ok) {
+        setRefused([{ headline: t(UPDATE_REFUSALS[replaced.reason]), tone: "danger" }]);
+        return;
+      }
+      dropTrial();
+      // Only a worn theme changes the screen, so only a worn theme asks.
+      if (worn) confirmLook(before, Date.now(), preview.theme.id);
+      return;
+    }
+    const before = lookBefore();
+    const added = installTheme(preview.theme, origin);
     if (!added.ok) {
       setPreview(null);
       setRefused([
@@ -601,6 +633,7 @@ export function ThemePickerControl() {
     }
     dropTrial();
     setPreview(null);
+    confirmLook(before);
   }
 
   function exportActive() {
@@ -685,6 +718,7 @@ export function ThemePickerControl() {
           disabled={active.source !== "imported"}
           onClick={() => {
             dropTrial();
+            dropLookConfirm();
             removeImported(active.id);
           }}
         >

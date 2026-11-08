@@ -8,7 +8,7 @@ import { useLocale } from "@/hooks/use-locale";
 import { apiErrorStatus, fetchThemeRegistry, refreshThemeRegistry } from "@/lib/api";
 import { timeAgo } from "@/lib/format";
 import { t, type MessageKey } from "@/lib/i18n";
-import { ownerOf, readRegistryEntry, repoUrl, reportUrl, type RegistryTheme } from "@/lib/theme/registry";
+import { ownerOf, readNewerEntry, readRegistryEntry, repoUrl, reportUrl, type NewerListing, type RegistryTheme } from "@/lib/theme/registry";
 import type { ThemeRegistryStatus } from "@/lib/types";
 
 // The community Browse sheet (M59 spec 06): the themes people share with the topic
@@ -21,6 +21,11 @@ import type { ThemeRegistryStatus } from "@/lib/types";
 // repo link and the Report link are built here from a checked slug; the registry names no URL.
 // Install hands a parsed theme to the card, which opens the same preview sheet a file opens, so the
 // contrast report, the eight-theme cap and the shipped-id rule all hold.
+//
+// A THEME MADE FOR A NEWER COLLIE is listed, not hidden: an entry refused only because its file says a
+// newer version (`readNewerEntry`, run here whatever the host flagged) is a muted row that says it
+// needs a newer Collie, with its repo link and Report, and no Install or Try. Nothing of its file is
+// drawn but its name, as a text node.
 
 type BrowseState =
   | { kind: "loading" }
@@ -51,6 +56,46 @@ export function acceptedThemes(status: ThemeRegistryStatus): RegistryTheme[] {
     const read = readRegistryEntry(value);
     return read === undefined ? [] : [read];
   });
+}
+
+/** The entries of a status this Collie cannot read yet, refused only for a newer version, in the registry's order. */
+export function newerListings(status: ThemeRegistryStatus): NewerListing[] {
+  return status.themes.flatMap((value) => {
+    if (readRegistryEntry(value) !== undefined) return [];
+    const listing = readNewerEntry(value);
+    return listing === undefined ? [] : [listing];
+  });
+}
+
+/** A muted row for a listed theme this Collie cannot read: its name or repo, the maker, the line, the links. */
+function NewerRow({ listing }: { listing: NewerListing }) {
+  const name = listing.name ?? listing.repo;
+  return (
+    <li className="flex items-start justify-between gap-3 rounded-md border border-border p-3 text-muted-foreground">
+      <div className="min-w-0">
+        <div className="truncate font-medium">{name}</div>
+        <MakerLine repo={listing.repo} stars={listing.stars} />
+        <p className="text-sm">{t("theme.browse.needsNewer")}</p>
+        <a
+          href={repoUrl(listing.repo)}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="block truncate font-mono text-xs underline underline-offset-2"
+        >
+          {listing.repo}
+        </a>
+      </div>
+      <a
+        href={reportUrl(listing)}
+        target="_blank"
+        rel="noopener noreferrer"
+        aria-label={t("theme.browse.reportAria", { name })}
+        className="inline-flex min-h-11 shrink-0 items-center text-xs underline underline-offset-2"
+      >
+        {t("theme.browse.report")}
+      </a>
+    </li>
+  );
 }
 
 interface RowProps {
@@ -180,7 +225,8 @@ export function ThemeBrowseSheet({ open, onClose, onInstall, onTry }: BrowseShee
 
   const status = state.kind === "ready" ? state.status : null;
   const items = useMemo(() => (status === null ? [] : acceptedThemes(status)), [status]);
-  const leftOut = status === null ? 0 : status.dropped + (status.themes.length - items.length);
+  const newer = useMemo(() => (status === null ? [] : newerListings(status)), [status]);
+  const leftOut = status === null ? 0 : status.dropped + (status.themes.length - items.length - newer.length);
 
   return (
     <BottomSheet open={open} onClose={onClose} title={t("theme.browse.title")}>
@@ -219,17 +265,20 @@ export function ThemeBrowseSheet({ open, onClose, onInstall, onTry }: BrowseShee
               {t(ERROR_KEYS[status.error])}
             </Notice>
           )}
-          {status !== null && items.length === 0 && (
+          {status !== null && items.length === 0 && newer.length === 0 && (
             <Notice tone="neutral" variant="box" wrap>
               {t("theme.browse.empty")}
             </Notice>
           )}
           {leftOut > 0 && <p className="text-xs text-muted-foreground">{t("theme.browse.dropped", { count: leftOut })}</p>}
 
-          {items.length > 0 && (
+          {(items.length > 0 || newer.length > 0) && (
             <ul className="flex flex-col gap-3">
               {items.map((item) => (
                 <ThemeRow key={`${item.entry.repo}/${item.entry.path}@${item.entry.sha}`} item={item} onInstall={onInstall} onTry={onTry} />
+              ))}
+              {newer.map((listing) => (
+                <NewerRow key={`${listing.repo}/${listing.path}@${listing.sha}`} listing={listing} />
               ))}
             </ul>
           )}

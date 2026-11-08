@@ -9,7 +9,8 @@
 // This file imports types only, like `schema.ts`, so the CLI can load it without a DOM or React.
 
 import type { MessageKey } from "../i18n/messages/en";
-import type { FallbackPart, Refusal, RefusalCode } from "./schema";
+import type { TemplateVars } from "../i18n/template";
+import type { FallbackPart, Refusal, RefusalCode, RefusalContrast } from "./schema";
 
 /** The refusal headlines, one per parser code. A record, so a new code cannot skip a sentence. */
 export const REFUSAL_KEYS = {
@@ -30,6 +31,37 @@ export const REFUSAL_KEYS = {
   unreadable: "theme.refusal.unreadable",
   glyphs: "theme.refusal.glyphs",
 } as const satisfies Record<RefusalCode, MessageKey>;
+
+/** The headline of a file made for a newer Collie: `{version}` is the version it says. */
+export const NEWER_VERSION_KEY = "theme.refusal.version-newer" satisfies MessageKey;
+
+/** The headline of a contrast refusal: `{ink} on {ground} measures {ratio}`, below `{floor}`. */
+export const CONTRAST_REFUSAL_KEY = "theme.refusal.contrast" satisfies MessageKey;
+
+/** A refusal's headline: its key, and the values its slots take. */
+export type RefusalHeadline =
+  | { key: MessageKey }
+  | { key: typeof NEWER_VERSION_KEY; vars: { version: number } }
+  | { key: typeof CONTRAST_REFUSAL_KEY; vars: RefusalContrast };
+
+/**
+ * The headline of a refusal, in one place for both readers. A file that says a newer version reads
+ * "made for a newer Collie" with the version; a contrast refusal names its two colours, the measured
+ * ratio and the floor; every other refusal reads its code's sentence.
+ */
+export function refusalHeadline(refusal: Refusal): RefusalHeadline {
+  if (refusal.newerVersion !== undefined) return { key: NEWER_VERSION_KEY, vars: { version: refusal.newerVersion } };
+  if (refusal.contrast !== undefined) return { key: CONTRAST_REFUSAL_KEY, vars: refusal.contrast };
+  return { key: REFUSAL_KEYS[refusal.code] };
+}
+
+/** The values a headline's slots take, or undefined for a headline with none. */
+export function headlineVars(headline: RefusalHeadline): TemplateVars | undefined {
+  if (!("vars" in headline)) return undefined;
+  if (headline.key === NEWER_VERSION_KEY) return { version: headline.vars.version };
+  const { ink, ground, ratio, floor } = headline.vars;
+  return { ink, ground, ratio, floor };
+}
 
 /** The line for a decoration word this Collie does not know, one per part. `{word}` is escaped and quoted. */
 export const FALLBACK_KEYS = {

@@ -114,6 +114,30 @@ describe("ThemeBrowseSheet", () => {
     expect(within(sheet).queryByText("@someone-else")).toBeNull();
   });
 
+  it("lists a theme made for a newer Collie as a muted row with the repo and Report, and no Install or Try", async () => {
+    const future = JSON.stringify({ version: 9, id: "later", name: "Later <b>", light: { background: "anything" } });
+    host(status([entry("ok", "Kept"), entry("later", "x", { text: future, newer: true, stars: 2 })], { dropped: 1 }));
+    render(<ThemeBrowseSheet open onClose={() => {}} onInstall={vi.fn()} onTry={vi.fn()} />);
+    const sheet = screen.getByRole("dialog", { name: en["theme.browse.title"] });
+    const name = await within(sheet).findByText("Later <b>");
+    const row = name.closest("li");
+    if (row === null) throw new Error("no row");
+    expect(within(row).getByText(en["theme.browse.needsNewer"])).toBeInTheDocument();
+    expect(within(row).getByRole("link", { name: "sam/later" })).toHaveAttribute("href", "https://github.com/sam/later");
+    expect(within(row).getByRole("link", { name: en["theme.browse.reportAria"].replace("{name}", "Later <b>") })).toBeInTheDocument();
+    expect(within(row).queryByRole("button")).toBeNull();
+    // The readable row keeps its buttons; the newer row is not counted as left out.
+    expect(within(sheet).getAllByRole("button", { name: en["theme.browse.install"] })).toHaveLength(1);
+    expect(within(sheet).getByText(en["theme.browse.dropped"].replace("{count}", "1"))).toBeInTheDocument();
+  });
+
+  it("does not take the host's flag on trust: a broken entry flagged newer is left out", async () => {
+    host(status([entry("ok", "Kept"), entry("bad", "x", { text: "{}", newer: true })]));
+    const { sheet } = open();
+    expect(await within(sheet).findByText("Kept", SEEN)).toBeInTheDocument();
+    expect(within(sheet).queryByText(en["theme.browse.needsNewer"])).toBeNull();
+  });
+
   it("draws a name that holds markup as text", async () => {
     host(status([entry("x", "<img src=x onerror=alert(1)>")]));
     const { sheet } = open();

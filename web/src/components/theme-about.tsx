@@ -48,7 +48,6 @@ interface UpdatePartProps {
 /** The update half of a registry theme's sheet: the answer from the host's copy, and the one tap. */
 function UpdatePart({ origin, onUpdate }: UpdatePartProps) {
   const [copy, setCopy] = useState<CopyState>({ kind: "loading" });
-  const [checked, setChecked] = useState(false);
   const [checking, setChecking] = useState(false);
   const [note, setNote] = useState<MessageKey | null>(null);
 
@@ -69,7 +68,6 @@ function UpdatePart({ origin, onUpdate }: UpdatePartProps) {
     setNote(null);
     try {
       setCopy({ kind: "ready", status: await refreshThemeRegistry() });
-      setChecked(true);
     } catch (err) {
       const code = apiErrorStatus(err);
       if (code === 404) setCopy({ kind: "older" });
@@ -88,7 +86,7 @@ function UpdatePart({ origin, onUpdate }: UpdatePartProps) {
       </Notice>
     );
   }
-  const answer = copy.kind === "ready" ? checkForUpdate(origin, copy.status, checked) : { kind: "unknown" as const };
+  const answer = copy.kind === "ready" ? checkForUpdate(origin, copy.status) : { kind: "unknown" as const };
   return (
     <div className="flex flex-col gap-2">
       {copy.kind === "failed" && (
@@ -113,6 +111,7 @@ function UpdatePart({ origin, onUpdate }: UpdatePartProps) {
       )}
       {answer.kind === "current" && <p className="text-sm text-muted-foreground">{t("theme.about.current")}</p>}
       {answer.kind === "unlisted" && <p className="text-sm text-muted-foreground">{t("theme.about.unlisted")}</p>}
+      {answer.kind === "needs-newer" && <p className="text-sm text-muted-foreground">{t("theme.about.needsNewer")}</p>}
       {answer.kind === "unknown" && (
         <>
           <Button type="button" variant="outline" className="h-11" disabled={checking} onClick={() => void check()}>
