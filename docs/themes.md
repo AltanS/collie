@@ -451,6 +451,10 @@ After a rollback to 1.27, your version 4 themes and where they came from stay in
 1.27 does not show them, and a device that wore one shows Collie. They come back when you update
 again. Adding or removing a theme on 1.27 saves the library without them, so do neither until then.
 
+From 1.28 on, that care is not needed. Collie keeps a stored theme it cannot read exactly as written,
+and every save writes it back. It does not show it or count it toward the eight themes. So after a
+rollback from a later Collie, its themes come back when you update again.
+
 ### A word this Collie does not know
 
 A theme made for a newer Collie still loads here, with the default for each word this Collie lacks.

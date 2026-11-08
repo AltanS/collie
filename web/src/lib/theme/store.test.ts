@@ -315,6 +315,53 @@ describe("a library another version wrote (rollback)", () => {
     expect(localStorage.getItem(LIBRARY_KEY)).toBe(written);
   });
 
+  const LATER_SHA = "abcdefabcdefabcdefabcdefabcdefabcdefabcd";
+  /** A theme a later Collie wrote: version 5, which this one refuses. */
+  const v5 = { version: 5, id: "future", name: "Future", light: { background: "#101010" }, sparkle: "much" };
+  const v5Origin = { kind: "registry", repo: "sam/future", path: "collie-theme.json", sha: LATER_SHA, at: 7, extra: "kept" };
+
+  it("round-trips a later Collie's blob: an unknown key and a version 5 theme survive a save unchanged", async () => {
+    const written = { later: { any: ["thing", 1] }, version: 1, themes: [midnight("a"), v5], origins: { future: v5Origin } };
+    const { store } = await boot({ library: blob(written) });
+    expect(store.library().map((t) => t.id)).toEqual(["a"]);
+    store.addImported(midnight("b"));
+    const stored = JSON.parse(localStorage.getItem(LIBRARY_KEY) ?? "{}");
+    expect(stored).toEqual({ ...written, themes: [midnight("a"), midnight("b"), v5] });
+    store.removeImported("b");
+    expect(JSON.parse(localStorage.getItem(LIBRARY_KEY) ?? "{}")).toEqual(written);
+  });
+
+  it("keeps the held part when the last readable theme goes, and never applies or counts it", async () => {
+    const { store } = await boot({ design: blob({ theme: "future" }), library: blob({ version: 1, themes: [midnight("a"), v5] }) });
+    expect(store.activeThemeId()).toBe("collie");
+    store.removeImported("a");
+    expect(JSON.parse(localStorage.getItem(LIBRARY_KEY) ?? "{}")).toEqual({ version: 1, themes: [v5] });
+    // A held entry takes no slot: eight readable themes still fit beside it.
+    for (let i = 0; i < 8; i += 1) expect(store.addImported(midnight(`t${i}`))).toEqual({ ok: true });
+    expect(store.addImported(midnight("t8"))).toEqual({ ok: false, reason: "full" });
+  });
+
+  it("caps the held bytes: what passes the cap is dropped, in file order", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const big = (id: string) => ({ ...v5, id, pad: "x".repeat(60 * 1024) });
+    const { store } = await boot({ library: blob({ version: 1, themes: [midnight("a"), big("h1"), big("h2"), big("h3"), big("h4"), big("h5")] }) });
+    store.addImported(midnight("b"));
+    const stored = JSON.parse(localStorage.getItem(LIBRARY_KEY) ?? "{}");
+    expect(stored.themes.map((t: { id: string }) => t.id)).toEqual(["a", "b", "h1", "h2", "h3", "h4"]);
+    expect(warn).toHaveBeenCalledWith("[theme] a stored theme is dropped: past the held cap");
+    expect(store.HELD_MAX_BYTES).toBe(4 * 64 * 1024);
+  });
+
+  it("gives a kept theme's origin to the kept theme when a held entry has the same id", async () => {
+    const mine = { kind: "paste", at: 3 };
+    const { store } = await boot({ library: blob({ version: 1, themes: [midnight("future"), v5], origins: { future: mine } }) });
+    expect(store.originOf("future")).toEqual(mine);
+    store.addImported(midnight("b"));
+    const stored = JSON.parse(localStorage.getItem(LIBRARY_KEY) ?? "{}");
+    expect(stored.origins).toEqual({ future: mine });
+    expect(stored.themes).toHaveLength(3);
+  });
+
   it("loads a blob with a sibling key it does not know, and a later save keeps the themes", async () => {
     const { store } = await boot({ library: blob({ version: 1, themes: [midnight("a")], later: { any: "thing" } }) });
     expect(store.library().map((t) => t.id)).toEqual(["a"]);
