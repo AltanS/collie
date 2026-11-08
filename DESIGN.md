@@ -343,7 +343,7 @@ holds the measurement), and the summary line drops its words on a phone, leaving
 This is the rule of the `chrome: page` word. Since 2026-11-05 the default theme Collie sets `chrome: band`:
 the header and the bars stand on `--secondary` with a `--border` edge, which is a deliberate step off the page
 that a theme file chose and the contrast gate measures (`foreground`, `muted-foreground` and `status-blocked`
-on the band). Nightwatch does the same. Daylight and Harbour keep `page`. Read the rest of this section as
+on the band). Nightwatch and Petal do the same. Daylight and Harbour keep `page`. Read the rest of this section as
 the case for `page`, and do not put `--muted` behind chrome under either word.
 
 The header used to be a `bg-muted` band. It existed only because the line it competed with
