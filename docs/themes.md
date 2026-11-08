@@ -404,7 +404,7 @@ A theme may name the character in the header with the key `character`, at the to
 shows Collie.
 
 A character is the figure in the header of the app. Every character keeps the same states. Beads circle it on
-an orbit and drift slowly at rest. While an agent works they turn fast, in the character's own colours. An
+an orbit and hold still at rest. While Collie works for you they turn fast, in the character's own colours. An
 update and a reconnect turn them in the same colours for every character.
 
 These are the characters today. More may follow.

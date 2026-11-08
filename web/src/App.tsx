@@ -49,7 +49,10 @@ function AppShell() {
   // BusyBar overlays every route (fixed, top of viewport) — a mutation anywhere shows the strip.
   return (
     <>
-      <div style={{ display: "contents" }} inert={covered || screen.blocking}>
+      {/* `data-app-covered` pauses every animation in the covered app (index.css, issue 748): the idle
+          lock and the update screen lay a veil over it, and an animation under a veil keeps the
+          whole screen redrawing for as long as the veil is up. Nobody can see it move there anyway. */}
+      <div style={{ display: "contents" }} inert={covered || screen.blocking} data-app-covered={covered || screen.blocking ? "" : undefined}>
         <BusyBar />
         <RouterProvider router={router} />
       </div>

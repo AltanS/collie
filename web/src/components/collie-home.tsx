@@ -49,7 +49,7 @@ interface CollieHomeProps {
 }
 
 // The single, shared Collie mark: brand + home button + connection loader in one, so the top-left of
-// every screen means the same thing. ONE element for every connection state: it drifts at rest, turns
+// every screen means the same thing. ONE element for every connection state: it holds still at rest, turns
 // (the "bloom") once the connection has been not-live for a sustained beat (`trouble`), and goes still
 // again, dimmed, once the outage escalates (`lost`). Nothing is ever swapped, so nothing can resize as
 // the connection settles.
@@ -190,9 +190,9 @@ export function CollieHome({
   // notice, it is worth a round. That also keeps the two from ever disagreeing about what happened.
   //
   // It is the ORBIT that turns, not the whole SVG (the head would span round with it). The round
-  // sets `state="loading"`: the same beads on the same path, at 27x the resting drift. Every mark
-  // carries the phase across that change (the contract's `useMark`), so the round joins the drift where
-  // it left it and rejoins it where it lands. Every state differs from `rest` by colour too, so under
+  // sets `state="loading"`: the same beads on the same path, at the live pace. A round is exactly one
+  // turn, so it starts from the rest pose and lands back on it, and the mark holds still again (the
+  // contract's `useMark`, issue 748: a resting mark runs no animation). Every state differs from `rest` by colour too, so under
   // `prefers-reduced-motion`, when the turning stops, the colour still says something happened.
   //
   // It never fights the connection state. `bloom` is already `loading` and outranks this, since a
@@ -220,10 +220,9 @@ export function CollieHome({
   // and a send the operator fires into a dead link must not make it look like the app is trying
   // again. Same guard the round already carries, for the same reason.
   //
-  // No debounce, and none is wanted: the mark carries the orbit's phase across the state change
-  // (the contract's `useMark`), so a 200ms spin joins the drift where it left it and rejoins it where
-  // it lands. Short work reads as a brief accelerate/decelerate, never as a flicker — which is what
-  // lets the spin last exactly as long as the work and not one frame more.
+  // No debounce, and none is wanted: a mark that leaves a live state finishes the lap it is on before
+  // it rests (the contract's `useMark`), so a 200ms spin reads as one lap that comes home, never as a
+  // flicker. The live state lasts exactly as long as the work; only the lap's last stretch outlives it.
   //
   // ── THE FOURTH: THE APP ITSELF BEING UPDATED (2026-11-06) ────────────────────────────────────
   //
@@ -236,8 +235,8 @@ export function CollieHome({
   //
   // `reconnected` is an EVENT with a fixed length, one turn, and it is drawn as a steady turn rather
   // than the round's thrown wheel: the operator asked for exactly one full turn at the loading speed.
-  // A turn at that rate for ORBIT_TURN_MS brings every bead back to where it started, so the drift
-  // picks up where it left off. The word "Reconnected" is a status publish, which would start a round
+  // A turn at that rate for ORBIT_TURN_MS brings every bead back to where it started, so the mark
+  // comes to rest in its rest pose. The word "Reconnected" is a status publish, which would start a round
   // of its own over the same time; `steady` below keeps that round from ramping, so the two are one
   // turn. Under reduced motion nothing turns and the colour alone holds for the same time.
   const busy = useOperatorBusy();
@@ -303,9 +302,9 @@ export function CollieHome({
     timer.current = setTimeout(() => {
       timer.current = null;
       // Rate restored BEFORE the state flips, and in this order deliberately. Dropping `round`
-      // re-renders the mark at `rest`, which runs its phase carry, and that correction is written for
-      // animations playing at rate 1. Handing it animations still at the curve's final rate (0)
-      // would leave the orbit stopped on the resting drift. The loop is cancelled first so it cannot
+      // re-renders the mark at `rest`, which measures what is left of the lap, and that measure is
+      // written for animations playing at rate 1. Handing it animations still at the curve's final
+      // rate (0) would find nothing turning and rest them wherever they stopped. The loop is cancelled first so it cannot
       // write a rate back after this.
       if (frame.current !== null) cancelAnimationFrame(frame.current);
       frame.current = null;

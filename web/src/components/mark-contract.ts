@@ -1,4 +1,4 @@
-// generated: sha256=bbbbb7b9ed9fbe952d33579ca31df1f21b51a0f96b4519eae224cd0ccd57ca6a from=collie-brand/src/mark-contract.ts@85dbc70ab551
+// generated: sha256=ec40341a2cff16e00dd17332b1badf1e577b3879a4bf9d4465cc8d5e7f739593 from=collie-brand/src/mark-contract.ts@5f4070f42f5e
 // COPIED WHOLE from collie-brand/src/mark-contract.ts. Edit it there, in collie-brand, and nowhere else.
 /**
  * THE MARK CONTRACT. One file that every Collie brand mark implements, the Collie mark included.
@@ -23,7 +23,8 @@
  *   variables    --mark-turn, --mark-bead, --mark-bead-<i>, --mark-accent-1, --mark-accent-2,
  *                --mark-ink, --mark-paper, read on the mark's root or inherited from an ancestor
  *   attributes   data-mark="<id>" and data-state="<state>" on the root; data-bead while a bead
- *                colour is forced, data-still while the turn is held
+ *                colour is forced, data-still while the turn is held, data-rest while the mark
+ *                holds its rest pose
  *   handle       setRate(rate), through `ref`
  * EVERYTHING ELSE IS PRIVATE: a mark's class names, part names, keyframe names and its own custom
  * properties (`--cm-*`, `--ck-*` and so on) may change in any regeneration.
@@ -33,7 +34,7 @@
  * `--mark-bead` from a stylesheet, because those states ARE the colour. Only the `beads` prop beats it.
  */
 import type { CSSProperties, Ref, SVGProps } from "react";
-import { useEffect, useId, useImperativeHandle, useRef } from "react";
+import { useEffect, useId, useImperativeHandle, useRef, useState } from "react";
 
 // ─── the states ─────────────────────────────────────────────────────────────────────────────────
 
@@ -41,11 +42,20 @@ import { useEffect, useId, useImperativeHandle, useRef } from "react";
  * What the mark says, never how it says it. Each mark draws each state in its own idiom (glass
  * lights up, pixel beads hop), and the meaning is shared:
  *
- *   rest         nothing is happening. A very slow drift.
+ *   rest         nothing is happening. The mark holds still in its rest pose.
  *   loading      something is being fetched or worked on. Fast, and the mark's live colours.
  *   applying     the app itself is updating. Fast, every bead in the status "working" colour.
  *   reconnected  the link came back. Fast, every bead in the status "done" colour, for one turn.
- *   idle         not connected, or put aside. The resting drift, dimmed and grey.
+ *   idle         not connected, or put aside. The rest pose, dimmed and grey.
+ *
+ * REST IS STILL. Until issue 748 (collie) rest was a slow drift, one turn in 48 s. Slow is not
+ * cheap: a running animation asks the browser for a new frame 60 times a second whatever its pace,
+ * so the header alone kept the GPU busy for as long as the app was open, and on one Android build
+ * it drove Chrome's GPU process past the system's file limit until the system killed it. So a resting mark runs no animation at all (`data-rest`, and `MARK_STYLE` stops every
+ * animation under it), and it shows the pose its drawing has with no animation, the same pose
+ * `prefers-reduced-motion` shows. A mark that leaves a live state first finishes the lap it is on, at
+ * the live pace, so it comes to rest in that pose instead of jumping to it. A host that wants the old
+ * drift asks for it with `turn`.
  *
  * EVERY STATE DIFFERS FROM `rest` BY COLOUR, not only by movement. Under `prefers-reduced-motion`
  * every mark stops turning, and the colour is then the whole message.
@@ -152,11 +162,21 @@ export interface MarkSpec {
 }
 
 /**
- * The rule every mark's stylesheet starts with: a held turn pauses every animation in the mark, so
- * the phase is exactly where it was when the turn comes back. Scoped by `data-mark`, which only a
- * mark's root carries.
+ * The rules every mark's stylesheet starts with. A held turn pauses every animation in the mark, so
+ * the phase is exactly where it was when the turn comes back. A mark at rest runs no animation at
+ * all: `animation: none` leaves every part on the attributes its drawing gives it, which is the rest
+ * pose, and a paused animation would still be one the engine keeps and a test would have to tell
+ * apart from a running one. Scoped by `data-mark`, which only a mark's root carries.
  */
-export const MARK_STYLE = "[data-mark][data-still] *{animation-play-state:paused!important}";
+export const MARK_STYLE =
+  "[data-mark][data-still] *{animation-play-state:paused!important}[data-mark][data-rest] *{animation:none!important}";
+
+/**
+ * How near the end of a lap, as a share of one turn, counts as already home. A spin round travels
+ * exactly one turn, and the frames it is timed by land it a little short or a little past; without
+ * this a round that ends a hair past home would run a whole second lap before it rests.
+ */
+export const MARK_HOME = 0.04;
 
 // ─── the runtime ────────────────────────────────────────────────────────────────────────────────
 
@@ -177,6 +197,29 @@ function paced(el: SVGSVGElement, pattern: RegExp): Animation[] {
     const name = "animationName" in a ? String((a as CSSAnimation).animationName) : "";
     return pattern.test(name);
   });
+}
+
+/**
+ * Milliseconds until the orbit next comes home, at its current rate, or 0 when it is home already
+ * (within `MARK_HOME`) or when nothing is turning (no `getAnimations`, reduced motion, a held turn).
+ *
+ * Home is an elapsed time that is a whole number of turns. Every paced animation starts there with
+ * the mark's live state, and a bead's place on the orbit is its delay, a fixed share of the turn, so
+ * at that time every bead stands where its drawing puts it. The longest wait wins: on one timeline
+ * they are all the same, and the longest is the safe answer if they ever are not.
+ */
+function lapLeft(el: SVGSVGElement, pattern: RegExp): number {
+  let left = 0;
+  for (const a of paced(el, pattern)) {
+    const at = Number(a.currentTime ?? Number.NaN);
+    const span = Number(a.effect?.getTiming().duration ?? Number.NaN);
+    const rate = a.playbackRate;
+    if (!Number.isFinite(at) || !Number.isFinite(span) || span <= 0 || !(rate > 0)) continue;
+    const share = (((at / span) % 1) + 1) % 1;
+    if (share < MARK_HOME || share > 1 - MARK_HOME) continue;
+    left = Math.max(left, ((1 - share) * span) / rate);
+  }
+  return left;
 }
 
 export interface MarkRoot {
@@ -203,13 +246,26 @@ export function useMark(spec: MarkSpec, props: MarkProps): MarkRoot {
   const { size = 32, weight = "full", paper, title, className, beads, turn, ref } = props;
   const state: MarkState = props.state ?? (props.loading === true ? "loading" : "rest");
   const look: StateLook = MARK_STATE_LOOK[state];
-  const live = look.pace === "live";
+  // THE LAST LAP. A state with the live pace that gives way to one with the resting pace keeps the
+  // live pace (and the live class) until the orbit is home, then rests. The colours change at once:
+  // only the movement finishes. Adjusted while rendering, React's own pattern for state that follows
+  // a prop, so the commit that drops the live state is already the one that keeps the lap going.
+  const asked = look.pace === "live";
+  const [lap, setLap] = useState(false);
+  const [wasLive, setWasLive] = useState(asked);
+  if (wasLive !== asked) {
+    setWasLive(asked);
+    setLap(!asked && turn === undefined);
+  }
+  const live = asked || lap;
+  const pace: keyof typeof MARK_TURN = live ? "live" : "rest";
+  const resting = !live && turn === undefined;
   const uid = useId().replace(/[^A-Za-z0-9_-]/g, "");
   const el = useRef<SVGSVGElement>(null);
 
   const vars: Record<string, string> = {};
   const held = turn === 0;
-  vars[spec.turnVar] = turn !== undefined && turn > 0 ? `${turn}s` : `var(--mark-turn, ${MARK_TURN[look.pace]}s)`;
+  vars[spec.turnVar] = turn !== undefined && turn > 0 ? `${turn}s` : `var(--mark-turn, ${MARK_TURN[pace]}s)`;
   for (const [k, v] of Object.entries(spec.look[look.look])) vars[k] = v;
   if (spec.accents !== undefined) {
     vars[spec.accents[0]] = `var(--mark-accent-1, ${spec.look[look.look][spec.accents[0]]})`;
@@ -252,7 +308,21 @@ export function useMark(spec: MarkSpec, props: MarkProps): MarkRoot {
     }
     // Keyed on what can change the turn from a prop. A `--mark-turn` a stylesheet changes later is
     // read at the next change of either; between them the orbit keeps its elapsed time, as CSS does.
-  }, [look.pace, turn, spec]);
+  }, [pace, turn, spec]);
+
+  // The lap's end. Read once, when the lap starts: the rate is the host's to set and is 1 here (the
+  // header puts it back before it lets a state go). Nothing to wait for means rest now.
+  useEffect(() => {
+    if (!lap) return;
+    const node = el.current;
+    const left = node === null ? 0 : lapLeft(node, spec.paced);
+    if (left <= 0) {
+      setLap(false);
+      return;
+    }
+    const timer = setTimeout(() => setLap(false), left);
+    return () => clearTimeout(timer);
+  }, [lap, spec]);
 
   useImperativeHandle(ref, () => ({
     setRate(rate: number) {
@@ -287,6 +357,7 @@ export function useMark(spec: MarkSpec, props: MarkProps): MarkRoot {
       "data-state": state,
       "data-bead": forced ? "" : undefined,
       "data-still": held ? "" : undefined,
+      "data-rest": resting ? "" : undefined,
     },
     live,
     weight,

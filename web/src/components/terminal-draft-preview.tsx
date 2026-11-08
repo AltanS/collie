@@ -25,9 +25,13 @@ interface TerminalDraftPreviewProps {
  */
 export const DISMISS_TAP_TARGET = "relative before:absolute before:-inset-2.5 before:content-['']";
 
-/** The translucent card the floating notices stand on: it covers terminal text and moves nothing. */
+/**
+ * The card the floating notices stand on: it covers terminal text and moves nothing. Solid, with no
+ * `backdrop-blur`: the chat under it animates while an agent works, and a blur over an animation
+ * redraws every frame (issue 748).
+ */
 export const FLOATING_CARD =
-  "pointer-events-auto flex items-start gap-1.5 rounded-lg border border-foreground/20 bg-card/95 py-1.5 pr-1.5 pl-2.5 text-xs text-muted-foreground shadow-md backdrop-blur-sm";
+  "pointer-events-auto flex items-start gap-1.5 rounded-lg border border-foreground/20 bg-card py-1.5 pr-1.5 pl-2.5 text-xs text-muted-foreground shadow-md";
 
 // A read-only notice for a draft stranded on the terminal's "❯" line (a message queued then recalled
 // on the HOST, which stripChrome hides from the mirror). The composer input is exclusively
