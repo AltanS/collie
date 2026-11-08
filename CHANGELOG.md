@@ -23,10 +23,6 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
-### Fixed
-
-- **omp with the Nerd Font symbols shows its dialog buttons again.** With `symbolPreset: nerd`, omp 18.18 draws its keycaps, pointer and markers as Nerd Font glyphs, and the phone showed only the Escape card on a tool approval, a batch of Ask questions and its review, and the plan review. It now reads those screens in both symbol sets, as it already did for `/switch`, and reads the empty role dot `/switch` shows there too.
-
 ## [1.28.0] - 2026-11-06
 
 ### Added
@@ -74,6 +70,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Fixed
 
+- **omp with the Nerd Font symbols shows its dialog buttons again.** With `symbolPreset: nerd`, omp 18.18 draws its keycaps, pointer and markers as Nerd Font glyphs, and the phone showed only the Escape card on a tool approval, a batch of Ask questions and its review, and the plan review. It now reads those screens in both symbol sets, as it already did for `/switch`, and reads the empty role dot `/switch` shows there too.
 - **The pinned prompt in Chat skips walky talky messages.** A message another agent sent into the pane used to take the pin's place, so the top of the thread showed its envelope line instead of what you last asked. The pin now holds your own last message, and the walky talky card stays in the thread where it was. ([3d33f90](https://github.com/AltanS/collie/commit/3d33f90))
 - **On a medium screen the tab row keeps room for its tabs.** On a foldable about 700px wide, a long space name and "space 1 of 2" left the tabs under 90px, so the open tab was cut and its "+" fell off the end. At that size the space name now takes less of the row and the position text is not shown. The arrows still step through the spaces, and a larger screen looks as before. ([d3dc8eb](https://github.com/AltanS/collie/commit/d3dc8eb))
 - **The two-column layout no longer scrolls the whole page.** A mark in a sidebar row, far down a long list, made the page taller than the screen, so a drag on the tab row or a scroll past the end of the list moved the whole app up under the status bar. The list and the app now hold everything inside them, and only the lists scroll. ([9b4ede7](https://github.com/AltanS/collie/commit/9b4ede7))
