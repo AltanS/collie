@@ -29,10 +29,10 @@ These are the characters today. More may follow.
 
 | Word | Character |
 | --- | --- |
-| `collie` | **Collie**, the black and white dog. The default. |
-| `kawaii` | **Kawaii**, a round puppy with big eyes and blush, face on. |
+| `collie` | **Collie**, the collie head in profile, in the ink of the page. The default. |
+| `kawaii` | **Kawaii**, a round puppy face from the front, with big glossy eyes and candy pearls. |
 | `kawaii-tilt` | **Kawaii Tilt**, the same puppy with its head tilted. |
-| `pixel` | **Pixel**, a dog's head as an 8-bit sprite of square cells. |
+| `pixel` | **Pixel**, an 8-bit collie head with square beads that hop. |
 
 ### Pick a character
 
