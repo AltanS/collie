@@ -479,10 +479,14 @@ const LIBRARY_REFUSALS = {
   full: "theme.library.full",
   duplicate: "theme.library.duplicate",
   invalid: "theme.library.invalid",
-} as const satisfies Record<"full" | "duplicate" | "invalid", MessageKey>;
+  storage: "theme.library.storage",
+  changed: "theme.library.changed",
+} as const satisfies Record<LibraryReason, MessageKey>;
 
-/** A line for a reason only the library knows: it is full, the id is taken, or the store said no. */
-function libraryEntry(reason: "full" | "duplicate" | "invalid"): RefusalEntry {
+type LibraryReason = "full" | "duplicate" | "invalid" | "storage" | "changed";
+
+/** A line for a reason only the library knows: it is full, the id is taken, storage refused, the slot moved, or the store said no. */
+function libraryEntry(reason: LibraryReason): RefusalEntry {
   return { headline: t(LIBRARY_REFUSALS[reason], { count: LIBRARY_MAX }), tone: "danger" };
 }
 
@@ -496,8 +500,8 @@ function pickTheme(id: string): void {
 interface Pending {
   theme: Theme;
   source: ThemeSourceRef;
-  /** Update: the id of the kept theme whose slot this takes. */
-  replaces?: string;
+  /** Update: the kept theme whose slot this takes, and the commit its origin held when About compared. */
+  replaces?: { id: string; sha: string };
 }
 
 /** Settings card: pick a theme, browse the community list, import one from a file or pasted text, export or remove the one on screen. */
@@ -521,7 +525,9 @@ export function ThemePickerControl() {
   /** Update from About: the listed file, previewed over the same sheet, to take the old theme's slot. */
   function updateFromAbout(oldId: string, item: RegistryTheme) {
     setAbout(null);
-    setPreview({ theme: item.theme, source: registryRef(item.entry), replaces: oldId });
+    const held = origins.get(oldId);
+    if (held?.kind !== "registry") return;
+    setPreview({ theme: item.theme, source: registryRef(item.entry), replaces: { id: oldId, sha: held.sha } });
   }
 
   function startImport() {
@@ -589,7 +595,9 @@ export function ThemePickerControl() {
     if (preview === null) return;
     const origin = stamp(preview.source, Date.now());
     const added =
-      preview.replaces === undefined ? installTheme(preview.theme, origin) : replaceImported(preview.replaces, preview.theme, origin);
+      preview.replaces === undefined
+        ? installTheme(preview.theme, origin)
+        : replaceImported(preview.replaces.id, preview.theme, origin, preview.replaces.sha);
     if (!added.ok) {
       setPreview(null);
       setRefused([

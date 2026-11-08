@@ -178,11 +178,21 @@ function readLibrary(raw: string): StoredLibrary {
 }
 
 function persistLibrary(): void {
+  // Add and remove keep the library in memory when storage refuses: it still works for this session.
+  writeLibrary(imported, origins);
+}
+
+/**
+ * Write a library to storage. False when storage refused (quota, private mode, no storage at all):
+ * the caller decides whether that refuses the change.
+ */
+function writeLibrary(themes: readonly ImportedTheme[], map: ReadonlyMap<string, ThemeOrigin>): boolean {
   try {
-    if (imported.length === 0) localStorage.removeItem(LIBRARY_STORAGE_KEY);
-    else localStorage.setItem(LIBRARY_STORAGE_KEY, JSON.stringify(libraryBlob()));
+    if (themes.length === 0) localStorage.removeItem(LIBRARY_STORAGE_KEY);
+    else localStorage.setItem(LIBRARY_STORAGE_KEY, JSON.stringify(libraryBlob(themes, map)));
+    return true;
   } catch {
-    // Ignore quota / SSR write errors: the in-memory library still works for this session.
+    return false;
   }
 }
 
@@ -194,9 +204,9 @@ interface LibraryBlob {
 }
 
 /** The stored blob: the themes, and their origins only when there are any, so a library without one writes what it always wrote. */
-function libraryBlob(): LibraryBlob {
-  const blob: LibraryBlob = { version: 1, themes: imported };
-  if (origins.size > 0) blob.origins = Object.fromEntries(origins);
+function libraryBlob(themes: readonly ImportedTheme[], map: ReadonlyMap<string, ThemeOrigin>): LibraryBlob {
+  const blob: LibraryBlob = { version: 1, themes };
+  if (map.size > 0) blob.origins = Object.fromEntries(map);
   return blob;
 }
 
@@ -236,24 +246,36 @@ export function addImported(theme: Theme, origin?: ThemeOrigin): AddResult {
   return { ok: true };
 }
 
+export type ReplaceResult =
+  | { ok: true }
+  | { ok: false; reason: Extract<AddResult, { ok: false }>["reason"] | "storage" | "changed" };
+
 /**
  * Update: put `theme` in the slot of the imported theme `oldId`, with its new origin. The cap never
  * refuses an update, because the library does not grow. A new id takes the old slot and the active
  * choice follows it; a new id that another kept theme holds is a duplicate, and a shipped id is
  * refused as an import's is. The theme is parsed again here, as `addImported` parses it.
+ *
+ * `expectedSha` is the commit the About sheet compared: a slot that is gone, or whose origin is no
+ * longer that commit (deleted and installed again between the check and the tap), is `changed`, and
+ * nothing moves. The new library is written first and kept only when storage took it: a refused
+ * write is `storage`, and the old theme stays, in memory and on screen.
  */
-export function replaceImported(oldId: string, theme: Theme, origin: ThemeOrigin): AddResult {
+export function replaceImported(oldId: string, theme: Theme, origin: ThemeOrigin, expectedSha: string): ReplaceResult {
   const slot = imported.findIndex((t) => t.id === oldId);
-  if (slot < 0) return { ok: false, reason: "invalid" };
+  const held = origins.get(oldId);
+  if (slot < 0 || held?.kind !== "registry" || held.sha !== expectedSha) return { ok: false, reason: "changed" };
   if (isShippedThemeId(theme.id)) return { ok: false, reason: "reserved-id" };
   const parsed = parseTheme(JSON.stringify(theme), { maxBytes: THEME_MAX_BYTES });
   if (!parsed.ok) return { ok: false, reason: "invalid" };
   const next = parsed.theme;
   if (next.id !== oldId && imported.some((t) => t.id === next.id)) return { ok: false, reason: "duplicate" };
+  const nextThemes = imported.map((t, i) => (i === slot ? next : t));
+  const nextOrigins = withOrigin(withOrigin(origins, oldId, undefined), next.id, origin);
+  if (!writeLibrary(nextThemes, nextOrigins)) return { ok: false, reason: "storage" };
   const wasActive = designPrefs().theme === oldId;
-  imported = imported.map((t, i) => (i === slot ? next : t));
-  origins = withOrigin(withOrigin(origins, oldId, undefined), next.id, origin);
-  persistLibrary();
+  imported = nextThemes;
+  origins = nextOrigins;
   // The active choice follows the slot. Applied directly, not through `setActiveTheme`: an update is
   // not a pick, so it leaves the Typeface card alone.
   if (wasActive) {

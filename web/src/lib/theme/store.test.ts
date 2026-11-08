@@ -364,7 +364,7 @@ describe("origins (theme sources)", () => {
     const fontBefore = design.designPrefs().font;
     const next = { ...midnight("t3"), name: "Night 2" };
     const moved = { ...FROM_LIST, sha: NEXT_SHA, at: FROM_LIST.at + 1 };
-    expect(store.replaceImported("t3", next, moved)).toEqual({ ok: true });
+    expect(store.replaceImported("t3", next, moved, FROM_LIST.sha)).toEqual({ ok: true });
     expect(store.library()).toHaveLength(8);
     expect(store.library()[3]?.name).toBe("Night 2");
     expect(store.originOf("t3")).toEqual(moved);
@@ -378,7 +378,7 @@ describe("origins (theme sources)", () => {
     store.addImported(midnight("old"), FROM_LIST);
     store.addImported(midnight("c"));
     store.setActiveTheme("old");
-    expect(store.replaceImported("old", midnight("new"), FROM_LIST)).toEqual({ ok: true });
+    expect(store.replaceImported("old", midnight("new"), FROM_LIST, FROM_LIST.sha)).toEqual({ ok: true });
     expect(store.library().map((t) => t.id)).toEqual(["a", "new", "c"]);
     expect(store.originOf("old")).toBeUndefined();
     expect(store.originOf("new")).toEqual(FROM_LIST);
@@ -389,14 +389,49 @@ describe("origins (theme sources)", () => {
     const { store } = await boot();
     store.addImported(midnight("a"));
     store.addImported(midnight("b"), FROM_LIST);
-    expect(store.replaceImported("b", midnight("nightwatch"), FROM_LIST)).toEqual({ ok: false, reason: "reserved-id" });
-    expect(store.replaceImported("b", midnight("a"), FROM_LIST)).toEqual({ ok: false, reason: "duplicate" });
-    expect(store.replaceImported("b", { ...midnight("b"), light: { background: "red" } }, FROM_LIST)).toEqual({
+    expect(store.replaceImported("b", midnight("nightwatch"), FROM_LIST, FROM_LIST.sha)).toEqual({ ok: false, reason: "reserved-id" });
+    expect(store.replaceImported("b", midnight("a"), FROM_LIST, FROM_LIST.sha)).toEqual({ ok: false, reason: "duplicate" });
+    expect(store.replaceImported("b", { ...midnight("b"), light: { background: "red" } }, FROM_LIST, FROM_LIST.sha)).toEqual({
       ok: false,
       reason: "invalid",
     });
-    expect(store.replaceImported("gone", midnight("b"), FROM_LIST)).toEqual({ ok: false, reason: "invalid" });
     expect(store.library().map((t) => t.id)).toEqual(["a", "b"]);
+  });
+
+  it("an update refuses as changed when the slot is gone or holds another commit, and changes nothing", async () => {
+    const { store } = await boot();
+    store.addImported(midnight("a"));
+    store.addImported(midnight("b"), FROM_LIST);
+    const before = localStorage.getItem(LIBRARY_KEY);
+    const moved = { ...FROM_LIST, sha: NEXT_SHA };
+    expect(store.replaceImported("gone", midnight("gone"), moved, FROM_LIST.sha)).toEqual({ ok: false, reason: "changed" });
+    // Deleted and installed again at another commit between the check and the tap.
+    expect(store.replaceImported("b", midnight("b"), moved, NEXT_SHA)).toEqual({ ok: false, reason: "changed" });
+    // A theme with no list origin (a file, or kept before origins) has no commit to match.
+    expect(store.replaceImported("a", midnight("a"), moved, FROM_LIST.sha)).toEqual({ ok: false, reason: "changed" });
+    expect(store.originOf("b")).toEqual(FROM_LIST);
+    expect(localStorage.getItem(LIBRARY_KEY)).toBe(before);
+  });
+
+  it("an update storage refuses keeps the old theme, in memory, in storage and on screen", async () => {
+    const { store } = await boot();
+    store.addImported(midnight("b"), FROM_LIST);
+    store.setActiveTheme("b");
+    const before = localStorage.getItem(LIBRARY_KEY);
+    const { result } = renderHook(() => store.useLibrary());
+    const library = result.current;
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new DOMException("full", "QuotaExceededError");
+    });
+    const next = { ...midnight("b2"), name: "Night 2" };
+    expect(store.replaceImported("b", next, { ...FROM_LIST, sha: NEXT_SHA }, FROM_LIST.sha)).toEqual({ ok: false, reason: "storage" });
+    vi.restoreAllMocks();
+    expect(store.library().map((t) => t.id)).toEqual(["b"]);
+    expect(result.current).toBe(library);
+    expect(store.originOf("b")).toEqual(FROM_LIST);
+    expect(store.originOf("b2")).toBeUndefined();
+    expect(store.activeThemeId()).toBe("b");
+    expect(localStorage.getItem(LIBRARY_KEY)).toBe(before);
   });
 });
 

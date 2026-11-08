@@ -99,6 +99,8 @@ export const en = {
   "theme.library.full": "You already hold {count} imported themes. Remove one, then import again.",
   "theme.library.duplicate": "A theme with this id is already imported. Remove it first, or change \"id\" in the file.",
   "theme.library.invalid": "This theme did not pass the check. Pick the file again.",
+  "theme.library.storage": "This device could not save the update. Your theme is unchanged.",
+  "theme.library.changed": "This theme changed since you opened About. Your theme is unchanged; open About again.",
   "theme.export.title": "Copy this theme",
   // Paste a theme (M59 spec 04). English only until the translation pass: every key here is listed in
   // PENDING_TRANSLATION below.
@@ -3312,6 +3314,8 @@ export const PENDING_TRANSLATION = [
   "theme.about.current",
   "theme.about.unlisted",
   "theme.about.needsNewer",
+  "theme.library.storage",
+  "theme.library.changed",
   "theme.browse.stars",
   "theme.browse.starsAria",
   "theme.browse.report",
