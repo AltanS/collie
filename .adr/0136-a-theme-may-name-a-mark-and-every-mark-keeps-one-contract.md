@@ -32,7 +32,7 @@ each further mark would break it quietly: a bead drawn as a `rect` instead of a 
 ## Decision
 
 1. **A theme may name a mark.** The optional `character` key takes one word from the registry's closed list
-   (`collie`, `kawaii`, `kawaii-tilt`, `pixel`, `glass`, `glass-front`, `delft`, `delft-front`, `sheep`). A file
+   (`collie`, `kawaii`, `kawaii-tilt`, `pixel`, `glass`, `glass-front`, `sheep`, `owl`). A file
    that sets it is version 4, the lowest version that holds
    it; a file without it reads and exports exactly as before. Collie is the default everywhere. A person reads
    the word "Character" for a mark, in Settings and in the docs; the code says mark. The key is not `mark`,

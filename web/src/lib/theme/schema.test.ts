@@ -873,8 +873,8 @@ describe("the optional tokens", () => {
 // ── Schema version 4: the header character ─────────────────────────────────────────────────────────
 
 describe("the character key", () => {
-  it("is a closed list of nine words, collie first", () => {
-    expect(MARK_IDS).toEqual(["collie", "kawaii", "kawaii-tilt", "pixel", "glass", "glass-front", "delft", "delft-front", "sheep"]);
+  it("is a closed list of eight words, collie first", () => {
+    expect(MARK_IDS).toEqual(["collie", "kawaii", "kawaii-tilt", "pixel", "glass", "glass-front", "sheep", "owl"]);
   });
 
   it.each(MARK_IDS)("reads %s from a version 4 file, and hands the theme back as version 4", (character) => {
@@ -900,7 +900,7 @@ describe("the character key", () => {
   it.each([["Kawaii"], ["kawaii_tilt"], ["Kawaii-Tilt"], ["dog"], [""], [3], [null], [["pixel"]], [{ id: "pixel" }]])("refuses %j as a character, and names the list", (character) => {
     const result = parseTheme(file({ version: 4, character }), CAP);
     expect(codes(result)).toEqual(["character character"]);
-    expect(refusals(result)[0]?.detail).toBe('"character" must be one of: collie, kawaii, kawaii-tilt, pixel, glass, glass-front, delft, delft-front, sheep.');
+    expect(refusals(result)[0]?.detail).toBe('"character" must be one of: collie, kawaii, kawaii-tilt, pixel, glass, glass-front, sheep, owl.');
   });
 
   it("reports the version and the word together, so one round trip fixes both", () => {
