@@ -49,6 +49,7 @@ import {
 } from "./schema";
 import { isThemeEscape, withoutThemeEscape } from "./escape";
 import { readOrigin, type ThemeOrigin } from "./origin";
+import { sameTheme } from "./registry-match";
 import { VERSION_TWO_PROPERTIES, omittedGroundDeclarations, resolveSurface, versionTwoDeclarations } from "./surface";
 
 /** The library's storage key. `public/theme-init.js` reads the same string; `theme-init.test.ts` holds them equal. */
@@ -341,6 +342,17 @@ export function addImported(theme: Theme, origin?: ThemeOrigin): AddResult {
   return { ok: true };
 }
 
+/** What an Update expects the slot to hold: the commit of a stored list origin, or a derived source's theme. */
+export type UpdateExpected = { sha: string } | { content: Theme };
+
+/** True when a slot still holds what About compared. */
+function holdsExpected(held: ImportedTheme | undefined, origin: ThemeOrigin | undefined, expected: UpdateExpected): boolean {
+  if (held === undefined) return false;
+  if ("sha" in expected) return origin?.kind === "registry" && origin.sha === expected.sha;
+  // A derived source belongs to a theme with no list origin, and only while its content is unchanged.
+  return origin?.kind !== "registry" && sameTheme(held, expected.content);
+}
+
 export type ReplaceResult =
   | { ok: true }
   | { ok: false; reason: "invalid" | "duplicate" | "reserved-id" | "storage" | "changed" };
@@ -351,15 +363,15 @@ export type ReplaceResult =
  * choice follows it; a new id that another kept theme holds is a duplicate, and a shipped id is
  * refused as an import's is. The theme is parsed again here, as `addImported` parses it.
  *
- * `expectedSha` is the commit the About sheet compared: a slot that is gone, or whose origin is no
- * longer that commit (deleted and installed again between the check and the tap), is `changed`, and
- * nothing moves. The new library is written first and kept only when storage took it: a refused
+ * `expected` is what the About sheet compared: the commit of a stored list origin, or, for a theme
+ * whose source About derived from the list (registry-match.ts), the theme itself. A slot that is gone,
+ * or no longer holds what About saw (deleted and installed again between the check and the tap), is
+ * `changed`, and nothing moves. The new library is written first and kept only when storage took it: a refused
  * write is `storage`, and the old theme stays, in memory and on screen.
  */
-export function replaceImported(oldId: string, theme: Theme, origin: ThemeOrigin, expectedSha: string): ReplaceResult {
+export function replaceImported(oldId: string, theme: Theme, origin: ThemeOrigin, expected: UpdateExpected): ReplaceResult {
   const slot = imported.findIndex((t) => t.id === oldId);
-  const was = origins.get(oldId);
-  if (slot < 0 || was?.kind !== "registry" || was.sha !== expectedSha) return { ok: false, reason: "changed" };
+  if (slot < 0 || !holdsExpected(imported[slot], origins.get(oldId), expected)) return { ok: false, reason: "changed" };
   if (isShippedThemeId(theme.id)) return { ok: false, reason: "reserved-id" };
   const parsed = parseTheme(JSON.stringify(theme), { maxBytes: THEME_MAX_BYTES });
   if (!parsed.ok) return { ok: false, reason: "invalid" };

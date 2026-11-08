@@ -10,6 +10,8 @@ import { t, type MessageKey } from "@/lib/i18n";
 import { fileUrl, shortSha, type ThemeOrigin } from "@/lib/theme/origin";
 import { repoUrl, reportUrl, type RegistryTheme } from "@/lib/theme/registry";
 import type { Theme } from "@/lib/theme/schema";
+import { matchRegistryOrigin } from "@/lib/theme/registry-match";
+import type { UpdateExpected } from "@/lib/theme/store";
 import { checkForUpdate } from "@/lib/theme/update-check";
 import type { ThemeRegistryStatus } from "@/lib/types";
 
@@ -18,6 +20,11 @@ import type { ThemeRegistryStatus } from "@/lib/types";
 //
 // Every link is built here from the parts the store checked on read (origin.ts): the repo slug, the
 // path and the full sha. Nothing stored is a URL, and the sheet draws every stored word as a text node.
+//
+// A FILE OR A PASTE THAT IS A LISTED THEME gets the same rows (registry-match.ts). A theme with no list
+// origin is compared with the host's copy on content; exactly one matching entry gives the repository,
+// the file at its commit, Report and Update. That source is derived each time the sheet opens and never
+// stored, so no false install date appears: the line that said how the theme arrived stays.
 //
 // FETCHES NOTHING BY ITSELF. Opening the sheet reads the host's copy (`GET`, which fetches nothing on
 // the host either). Check for updates is the one tap that asks the host to fetch the list, the same
@@ -40,28 +47,20 @@ function localSource(origin: ThemeOrigin | undefined): string {
   return t("theme.about.paste", { date: dateTime(origin.at) });
 }
 
+/** The commit a list theme is at: a stored origin's parts, or a source derived from the host's copy. */
+type ListedAt = Pick<RegistryOrigin, "repo" | "path" | "sha">;
+
 interface UpdatePartProps {
-  origin: RegistryOrigin;
+  origin: ListedAt;
+  copy: CopyState;
+  setCopy: (copy: CopyState) => void;
   onUpdate: (item: RegistryTheme) => void;
 }
 
 /** The update half of a registry theme's sheet: the answer from the host's copy, and the one tap. */
-function UpdatePart({ origin, onUpdate }: UpdatePartProps) {
-  const [copy, setCopy] = useState<CopyState>({ kind: "loading" });
+function UpdatePart({ origin, copy, setCopy, onUpdate }: UpdatePartProps) {
   const [checking, setChecking] = useState(false);
   const [note, setNote] = useState<MessageKey | null>(null);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    fetchThemeRegistry(controller.signal).then(
-      (status) => setCopy({ kind: "ready", status }),
-      (err: Error) => {
-        if (controller.signal.aborted) return;
-        setCopy(apiErrorStatus(err) === 404 ? { kind: "older" } : { kind: "failed" });
-      },
-    );
-    return () => controller.abort();
-  }, []);
 
   async function check() {
     setChecking(true);
@@ -130,13 +129,40 @@ interface AboutSheetProps {
   /** Where it came from, as the store holds it. Undefined: kept before origins, or a bad record. */
   origin: ThemeOrigin | undefined;
   onClose: () => void;
-  /** Update: the card opens its preview over the listed file, to replace this theme in its slot. */
-  onUpdate: (item: RegistryTheme) => void;
+  /**
+   * Update: the card opens its preview over the listed file, to replace this theme in its slot.
+   * `expected` is what the slot held when the sheet compared (store.ts `replaceImported`).
+   */
+  onUpdate: (item: RegistryTheme, expected: UpdateExpected) => void;
+}
+
+/** The host's copy of the list, read once each time the sheet opens on a theme (`GET`, which fetches nothing). */
+function useHostCopy(themeId: string | null): [CopyState, (copy: CopyState) => void] {
+  const [copy, setCopy] = useState<CopyState>({ kind: "loading" });
+  useEffect(() => {
+    if (themeId === null) return;
+    setCopy({ kind: "loading" });
+    const controller = new AbortController();
+    fetchThemeRegistry(controller.signal).then(
+      (status) => setCopy({ kind: "ready", status }),
+      (err: Error) => {
+        if (controller.signal.aborted) return;
+        setCopy(apiErrorStatus(err) === 404 ? { kind: "older" } : { kind: "failed" });
+      },
+    );
+    return () => controller.abort();
+  }, [themeId]);
+  return [copy, setCopy];
 }
 
 /** The About sheet of one imported theme: its name and author, where it came from, and Update. */
 export function ThemeAboutSheet({ theme, origin, onClose, onUpdate }: AboutSheetProps) {
   useLocale();
+  const [copy, setCopy] = useHostCopy(theme === null ? null : theme.id);
+  const stored = origin?.kind === "registry" ? origin : undefined;
+  // A theme with no list origin: the one listed entry with the same content, if the copy has one.
+  const derived = stored !== undefined || theme === null || copy.kind !== "ready" ? undefined : matchRegistryOrigin(theme, copy.status.themes);
+  const listed: ListedAt | undefined = stored ?? derived;
   return (
     <BottomSheet open={theme !== null} onClose={onClose} title={t("theme.about.title")}>
       {theme !== null && (
@@ -148,28 +174,34 @@ export function ThemeAboutSheet({ theme, origin, onClose, onUpdate }: AboutSheet
             )}
           </div>
 
-          {origin?.kind === "registry" ? (
+          {listed !== undefined ? (
             <>
               <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
                 <dt className="text-muted-foreground">{t("theme.about.repo")}</dt>
                 <dd className="min-w-0">
-                  <a href={repoUrl(origin.repo)} target="_blank" rel="noopener noreferrer" className={LINK}>
-                    {t("theme.about.repoLink", { repo: origin.repo })}
+                  <a href={repoUrl(listed.repo)} target="_blank" rel="noopener noreferrer" className={LINK}>
+                    {t("theme.about.repoLink", { repo: listed.repo })}
                   </a>
                 </dd>
                 <dt className="text-muted-foreground">{t("theme.about.path")}</dt>
                 <dd className="min-w-0">
-                  <a href={fileUrl(origin)} target="_blank" rel="noopener noreferrer" className={`${LINK} font-mono text-xs`}>
-                    {origin.path}
+                  <a href={fileUrl(listed)} target="_blank" rel="noopener noreferrer" className={`${LINK} font-mono text-xs`}>
+                    {listed.path}
                   </a>
                 </dd>
                 <dt className="text-muted-foreground">{t("theme.about.commit")}</dt>
-                <dd className="font-mono text-xs leading-5">{shortSha(origin.sha)}</dd>
-                <dt className="text-muted-foreground">{t("theme.about.installed")}</dt>
-                <dd>{dateTime(origin.at)}</dd>
+                <dd className="font-mono text-xs leading-5">{shortSha(listed.sha)}</dd>
+                {stored !== undefined && (
+                  <>
+                    <dt className="text-muted-foreground">{t("theme.about.installed")}</dt>
+                    <dd>{dateTime(stored.at)}</dd>
+                  </>
+                )}
               </dl>
+              {/* A derived source has no install date: the line that says how the theme arrived stays. */}
+              {stored === undefined && <p className="text-sm text-muted-foreground">{localSource(origin)}</p>}
               <a
-                href={reportUrl(origin)}
+                href={reportUrl(listed)}
                 target="_blank"
                 rel="noopener noreferrer"
                 aria-label={t("theme.browse.reportAria", { name: theme.name })}
@@ -177,8 +209,14 @@ export function ThemeAboutSheet({ theme, origin, onClose, onUpdate }: AboutSheet
               >
                 {t("theme.browse.report")}
               </a>
-              {/* Keyed on the commit: after an update the sheet asks the host again for the new one. */}
-              <UpdatePart key={origin.sha} origin={origin} onUpdate={onUpdate} />
+              {/* Keyed on the commit: after an update the sheet answers again for the new one. */}
+              <UpdatePart
+                key={listed.sha}
+                origin={listed}
+                copy={copy}
+                setCopy={setCopy}
+                onUpdate={(item) => onUpdate(item, stored !== undefined ? { sha: stored.sha } : { content: theme })}
+              />
             </>
           ) : (
             <p className="text-sm text-muted-foreground">{localSource(origin)}</p>
