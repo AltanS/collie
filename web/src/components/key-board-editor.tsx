@@ -1,19 +1,6 @@
 import { useRef, useState } from "react";
 import type { ReactNode } from "react";
-import {
-  ArrowDown,
-  ArrowLeft,
-  ArrowRight,
-  ArrowUp,
-  Check,
-  ClipboardPaste,
-  Copy,
-  Pencil,
-  Plus,
-  RotateCcw,
-  Rows3,
-  X,
-} from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 
 import { ChordBuilder } from "@/components/chord-builder";
 import { Button } from "@/components/ui/button";
@@ -255,7 +242,7 @@ export function KeyBoardEditor({
                           onClick={() => setBuilder({ cell: i, key: null })}
                           className="grid h-full w-full place-items-center rounded-sm border border-dashed border-border/70 text-muted-foreground/60 hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
                         >
-                          <Plus className="size-3.5" aria-hidden="true" />
+                          <Icon name="add" className="size-3.5" aria-hidden="true" />
                         </button>
                       )}
                     </div>
@@ -338,10 +325,10 @@ export function KeyBoardEditor({
                       : t("keys.editor.selected", { label: keyLabel(selectedKey), keys: wordsOf(selectedKey) })}
             </p>
             <div className="flex h-11 items-center gap-2">
-              {arrow(t("keys.editor.moveLeft"), -1, 0, <ArrowLeft className="size-5" aria-hidden="true" />)}
-              {arrow(t("keys.editor.moveRight"), 1, 0, <ArrowRight className="size-5" aria-hidden="true" />)}
-              {arrow(t("keys.editor.moveUp"), 0, -1, <ArrowUp className="size-5" aria-hidden="true" />)}
-              {arrow(t("keys.editor.moveDown"), 0, 1, <ArrowDown className="size-5" aria-hidden="true" />)}
+              {arrow(t("keys.editor.moveLeft"), -1, 0, <Icon name="key-left" className="size-5" aria-hidden="true" />)}
+              {arrow(t("keys.editor.moveRight"), 1, 0, <Icon name="key-right" className="size-5" aria-hidden="true" />)}
+              {arrow(t("keys.editor.moveUp"), 0, -1, <Icon name="key-up" className="size-5" aria-hidden="true" />)}
+              {arrow(t("keys.editor.moveDown"), 0, 1, <Icon name="key-down" className="size-5" aria-hidden="true" />)}
               <span className="min-w-0 truncate text-xs text-muted-foreground">{t("keys.editor.swapsIfFull")}</span>
             </div>
             <div className="flex h-11 items-center gap-1" role="group" aria-label={t("keys.editor.sizeAria")}>
@@ -358,7 +345,7 @@ export function KeyBoardEditor({
                 disabled={selectedKey === null}
                 onClick={() => selected !== null && selectedKey !== null && setBuilder({ cell: selected, key: selectedKey })}
               >
-                <Pencil className="size-4" aria-hidden="true" />
+                <Icon name="edit" className="size-4" aria-hidden="true" />
                 {t("keys.editor.change")}
               </Button>
               <Button
@@ -372,7 +359,7 @@ export function KeyBoardEditor({
                   choose(null);
                 }}
               >
-                <X className="size-4" aria-hidden="true" />
+                <Icon name="remove" className="size-4" aria-hidden="true" />
                 {t("keys.editor.remove")}
               </Button>
             </div>
@@ -403,7 +390,7 @@ export function KeyBoardEditor({
               disabled={board.rows >= MAX_ROWS}
               onClick={() => setKeyBoard(addRow(board))}
             >
-              <Rows3 className="size-4" aria-hidden="true" />
+              <Icon name="add-row" className="size-4" aria-hidden="true" />
               {t("keys.editor.addRow")}
             </Button>
             <Button
@@ -413,7 +400,7 @@ export function KeyBoardEditor({
               disabled={!canRemoveRow(board)}
               onClick={() => setKeyBoard(removeRow(board))}
             >
-              <X className="size-4" aria-hidden="true" />
+              <Icon name="remove" className="size-4" aria-hidden="true" />
               {t("keys.editor.removeRow")}
             </Button>
           </div>
@@ -444,7 +431,7 @@ export function KeyBoardEditor({
             className="h-11 gap-2 self-start"
             onClick={() => setPending({ title: t("keys.editor.restore"), board: DEFAULT_BOARD })}
           >
-            <RotateCcw className="size-4" aria-hidden="true" />
+            <Icon name="restore" className="size-4" aria-hidden="true" />
             {t("keys.editor.restore")}
           </Button>
         </div>
@@ -486,7 +473,7 @@ function PresetRow({ preset, inUse, onPick }: { preset: BoardPreset; inUse: bool
       </span>
       {inUse && (
         <span className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
-          <Check className="size-3.5" aria-hidden="true" />
+          <Icon name="selected" className="size-3.5" aria-hidden="true" />
           {t("keys.editor.inUse")}
         </span>
       )}
@@ -612,7 +599,7 @@ function CopyImport({ board, onReview }: { board: KeyBoard; onReview: (board: Ke
         className="h-11 w-full min-w-0 rounded-sm border border-border bg-background px-3 font-mono text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
       />
       <Button type="button" variant="outline" className="h-11 w-full gap-2" onClick={() => void copy()}>
-        {copied === "done" ? <Check className="size-4" aria-hidden="true" /> : <Copy className="size-4" aria-hidden="true" />}
+        {copied === "done" ? <Icon name="copied" className="size-4" aria-hidden="true" /> : <Icon name="copy" className="size-4" aria-hidden="true" />}
         <OneOf
           active={copied === "done" ? "done" : "idle"}
           className="justify-items-center"
@@ -639,7 +626,7 @@ function CopyImport({ board, onReview }: { board: KeyBoard; onReview: (board: Ke
           className="h-11 min-w-0 flex-1 rounded-sm border border-border bg-background px-3 font-mono text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
         />
         <Button type="button" variant="outline" className="h-11 gap-2" onClick={() => void paste()}>
-          <ClipboardPaste className="size-4" aria-hidden="true" />
+          <Icon name="paste" className="size-4" aria-hidden="true" />
           {t("keys.editor.paste")}
         </Button>
       </div>

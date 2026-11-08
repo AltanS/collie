@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Pencil, CircleX } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 
 import { BottomSheet } from "@/components/ui/sheet";
 import { ActionRow, DestructiveActionRow, RenameView } from "@/components/action-sheet-rows";
@@ -179,7 +179,7 @@ export function TabActionsSheet({
               is why the rows themselves are shared components. */}
           {canRename.capable && (
             <ActionRow
-              icon={<Pencil className="size-4 shrink-0 text-muted-foreground" />}
+              icon={<Icon name="edit" className="size-4 shrink-0 text-muted-foreground" />}
               label={t("space.tab.rename")}
               onClick={() => setMode("rename")}
             />
@@ -192,7 +192,7 @@ export function TabActionsSheet({
           )}
           {canClose.capable && (
             <DestructiveActionRow
-              icon={<CircleX className="size-4 shrink-0" />}
+              icon={<Icon name="close-pane" className="size-4 shrink-0" />}
               label={t("space.tab.close")}
               confirmLabel={confirmLabel}
               closingLabel={t("space.tab.closing")}

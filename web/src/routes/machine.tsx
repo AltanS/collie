@@ -1,5 +1,5 @@
+import { Icon } from "@/components/icons/icon";
 import { useState } from "react";
-import { ArrowLeft, Clock } from "lucide-react";
 import { useLoaderData, useLocation, useParams, useRevalidator } from "react-router";
 
 import { RouteHeader } from "@/components/app-header";
@@ -99,7 +99,7 @@ function MachineDetail({ id, given }: { id: string; given: MachineHistoryState |
               onClick={() => nav.up(machinesPath(scope))}
               aria-label={t("machines.nav.back")}
             >
-              <ArrowLeft className="size-5" />
+              <Icon name="back" className="size-5" />
             </Button>
             <h1 className="min-w-0 truncate text-lg font-semibold tracking-tight">
               {row === undefined ? t("machines.title") : row.name || row.id}
@@ -204,7 +204,7 @@ function NowCard({ row, ts, multi, onOpenAlerts }: { row: MachineRow; ts: number
                 stale ? "font-medium text-status-working" : "text-muted-foreground",
               )}
             >
-              {stale && <Clock className="size-3.5" aria-hidden />}
+              {stale && <Icon name="time" className="size-3.5" aria-hidden />}
               {readingLine(row, ts)}
             </span>
           )}

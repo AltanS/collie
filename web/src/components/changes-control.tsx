@@ -1,4 +1,3 @@
-import { GitCompare } from "lucide-react";
 import { useEffect, useRef } from "react";
 
 import { Card } from "@/components/ui/card";
@@ -8,6 +7,7 @@ import { useLocale } from "@/hooks/use-locale";
 import { t, tn } from "@/lib/i18n";
 import { CHANGES_SETTINGS_HASH } from "@/lib/nav";
 import { cn } from "@/lib/utils";
+import { Icon } from "@/components/icons/icon";
 
 // How a pane's Changes view finds repos (ADR 0065). Two per-device choices, sent as query params on
 // every Changes request: whether to look for repos INSIDE the pane's folder, and how deep. ZenControl's
@@ -30,7 +30,7 @@ export function ChangesControl() {
     <Card id={CHANGES_SETTINGS_HASH} ref={cardRef} tabIndex={-1} className="gap-0 py-0 outline-none">
       <div className="flex items-center justify-between gap-4 p-4">
         <div className="flex min-w-0 items-start gap-3">
-          <GitCompare className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
+          <Icon name="changes" className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
           <div className="min-w-0">
             <div className="font-medium">{t("settings.changes.title")}</div>
             <p className="text-sm text-muted-foreground">{t("settings.changes.description")}</p>

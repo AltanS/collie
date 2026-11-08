@@ -1,5 +1,5 @@
 import { Fragment, useState, type ReactNode } from "react";
-import { FolderPlus, LayoutGrid, LoaderCircle, Search } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 
 import { cn } from "@/lib/utils";
 import { useMuxCapability } from "@/lib/mux-capability";
@@ -135,9 +135,9 @@ export function SpaceOverview({
                 className="flex size-9 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:scale-95 disabled:opacity-100"
               >
                 {creatingSpace ? (
-                  <LoaderCircle className="size-4 animate-spin" aria-hidden />
+                  <Icon name="busy" className="size-4 animate-spin" aria-hidden />
                 ) : (
-                  <FolderPlus className="size-4" />
+                  <Icon name="new-space" className="size-4" />
                 )}
               </button>
             )}
@@ -164,7 +164,7 @@ export function SpaceOverview({
               the group's rounded corner, and at Collie's 2px the radius is 0. */}
           {workspaces.length > 1 && (
             <label className="sticky top-0 z-10 flex items-center gap-2 rounded-t-[var(--row-top,0px)] bg-background px-3.5 py-2">
-              <Search className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+              <Icon name="search" className="size-4 shrink-0 text-muted-foreground" aria-hidden />
               <input
                 type="search"
                 value={query}
@@ -271,7 +271,7 @@ export function SpaceOverview({
                       aria-label={tn("space.overview.paneCount", w.paneCount)}
                       className="inline-flex shrink-0 items-center gap-1 rounded-md bg-muted px-1.5 py-0.5 text-xs font-medium tabular-nums text-muted-foreground"
                     >
-                      <LayoutGrid className="size-3.5" aria-hidden />
+                      <Icon name="pane-count" className="size-3.5" aria-hidden />
                       {w.paneCount}
                     </span>
                   </div>

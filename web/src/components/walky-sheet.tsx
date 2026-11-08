@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from "react";
-import { Send } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -173,12 +173,12 @@ function WalkyOffSwitch({ off, onChange }: { off: boolean; onChange: (off: boole
     setAsked(null);
     setNote(failed);
   };
-  const Icon = shown ? WalkyOffIcon : WalkyIcon;
+  const Mark = shown ? WalkyOffIcon : WalkyIcon;
   return (
     <div data-slot="walky-off" data-off={shown ? "true" : "false"} className="mb-3">
       <label className="flex min-h-11 cursor-pointer items-center justify-between gap-4">
         <span className="flex min-w-0 items-start gap-2">
-          <Icon className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+          <Mark className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
           <span className="min-w-0">
             <span className="block text-sm font-medium">{t("walky.off.label")}</span>
             <span id={hintId} className="block text-xs leading-snug text-muted-foreground">
@@ -255,7 +255,7 @@ function WalkyListRow({
       className={cn("rounded-md border px-3 py-2 transition-colors", focused ? "border-status-working/60 bg-status-working/8" : "border-border")}
     >
       <div className="mb-1 flex items-center gap-1.5 text-[11px] text-muted-foreground">
-        {sent ? <Send className="size-3.5 shrink-0" aria-hidden="true" /> : <WalkyIcon className="size-3.5 shrink-0" aria-hidden="true" />}
+        {sent ? <Icon name="message-sent" className="size-3.5 shrink-0" aria-hidden="true" /> : <WalkyIcon className="size-3.5 shrink-0" aria-hidden="true" />}
         {sent ? (
           <span data-slot="walky-sent-to" className="min-w-0 flex-1 truncate font-medium text-foreground">
             {t("walky.sheet.sentTo", { target })}

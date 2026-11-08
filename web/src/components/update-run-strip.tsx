@@ -1,4 +1,4 @@
-import { LoaderCircle } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 
 import { Button } from "@/components/ui/button";
 import { NOTICE_ACTION, Notice } from "@/components/ui/notice";
@@ -50,7 +50,7 @@ export function UpdateRunStrip({ screen }: { screen: UpdateScreenState }) {
         tone="caution"
         variant="strip"
         announce="status"
-        icon={<LoaderCircle className="motion-safe:animate-spin" />}
+        icon={<Icon name="busy" className="motion-safe:animate-spin" />}
         action={
           <Button size="sm" variant="ghost" className={NOTICE_ACTION} onClick={() => screen.setExpanded(true)}>
             {t("updateScreen.strip.view")}

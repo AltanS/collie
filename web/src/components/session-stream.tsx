@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type MutableRefObject, type RefObject } from "react";
-import { ArrowUpToLine, CornerDownLeft, History, LoaderCircle } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 
 import { ItemView, PendingTurn, ToolGroup, groupRuns, standsAlone } from "@/components/chat-cards";
 import { StreamBlock } from "@/components/stream-block";
@@ -151,7 +151,7 @@ function QueuedCard({ queued, sendNow }: { queued: readonly string[]; sendNow: (
             aria-label={t("chat.stream.sendNowAria")}
             onClick={onTap}
           >
-            {pending ? <LoaderCircle aria-hidden className="size-3.5 animate-spin" /> : <CornerDownLeft aria-hidden className="size-3.5" />}
+            {pending ? <Icon name="busy" aria-hidden className="size-3.5 animate-spin" /> : <Icon name="send-now" aria-hidden className="size-3.5" />}
             {t("chat.stream.sendNow")}
           </Button>
         )}
@@ -293,9 +293,9 @@ function ReceiptCard({
                 onClick={() => onTap(button.action)}
               >
                 {pending === button.action ? (
-                  <LoaderCircle aria-hidden className="size-3.5 animate-spin" />
+                  <Icon name="busy" aria-hidden className="size-3.5 animate-spin" />
                 ) : (
-                  button.action === "submit" && <CornerDownLeft aria-hidden className="size-3.5" />
+                  button.action === "submit" && <Icon name="send-now" aria-hidden className="size-3.5" />
                 )}
                 {t(button.word)}
               </Button>
@@ -383,7 +383,7 @@ export function SavedCopyRow({ text }: { text: string }) {
       data-slot="saved-copy"
       className="mb-3 flex items-start justify-center gap-1.5 px-2 text-center text-[11px] leading-snug text-muted-foreground"
     >
-      <History aria-hidden className="mt-px size-3 shrink-0" />
+      <Icon name="saved-copy" aria-hidden className="mt-px size-3 shrink-0" />
       <span className="text-balance">{text}</span>
     </div>
   );
@@ -854,7 +854,7 @@ export function SessionStream({
         <SavedCopyRow text={savedCopy} />
       ) : window.hasOlder ? (
         <button type="button" onClick={onLoadOlder} disabled={loadingOlder} className={EDGE_ROW}>
-          {loadingOlder ? <LoaderCircle className="size-3.5 animate-spin" /> : <ArrowUpToLine className="size-3.5" />}
+          {loadingOlder ? <Icon name="busy" className="size-3.5 animate-spin" /> : <Icon name="load-earlier" className="size-3.5" />}
           {loadingOlder ? t("chat.scrollback.loading") : t("chat.scrollback.loadOlder")}
         </button>
       ) : (

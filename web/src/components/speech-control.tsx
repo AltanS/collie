@@ -1,21 +1,6 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
-import {
-  AudioLines,
-  ChevronDown,
-  ChevronRight,
-  Download,
-  Info,
-  ListChecks,
-  LoaderCircle,
-  Mic,
-  RefreshCw,
-  Server,
-  SlidersHorizontal,
-  Smartphone,
-  Trash2,
-  TriangleAlert,
-  Wrench,
-} from "lucide-react";
+import { Icon } from "@/components/icons/icon";
+import type { IconKey } from "@/components/icons/keys";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -632,7 +617,7 @@ function GuidedProgress({ whistle, copy, local }: Pick<SpeechCardsProps, "whistl
   return (
     <div className="space-y-1.5">
       <p className="flex items-center gap-1.5 text-xs font-medium">
-        <LoaderCircle aria-hidden className="size-3.5 animate-spin" />
+        <Icon name="busy" aria-hidden className="size-3.5 animate-spin" />
         {label}
       </p>
       <Progress received={received} total={total} label={label} />
@@ -664,7 +649,7 @@ function GuidedAction({ plan, props }: { plan: GuidedPlan; props: SpeechCardsPro
             key: "idle",
             node: (
               <Button className="h-11" onClick={props.onGuidedSetup}>
-                {failed !== null ? <RefreshCw className="size-4" /> : <Smartphone className="size-4" />}
+                {failed !== null ? <Icon name="refresh" className="size-4" /> : <Icon name="voice-on-phone" className="size-4" />}
                 {t(failed !== null ? "settings.speech.host.retry" : "settings.voice.guided.action")}
               </Button>
             ),
@@ -686,14 +671,14 @@ function StatusAction({ view, props }: { view: StatusView; props: SpeechCardsPro
   if (status.kind === "paused" && status.action === "restore") {
     return (
       <Button className="h-11" disabled={props.copy !== null || browserBlock(props.block) !== null} onClick={props.onPhoneDownload}>
-        {props.copy !== null ? <LoaderCircle className="size-4 animate-spin" /> : <Download className="size-4" />}
+        {props.copy !== null ? <Icon name="busy" className="size-4 animate-spin" /> : <Icon name="download" className="size-4" />}
         {t("settings.voice.restore", { size: modelSize(props.whistle, props.local) })}
       </Button>
     );
   }
   const fix = status.kind === "host" && status.action === "fix" && (
     <Button variant="outline" className="h-11" onClick={() => props.onOpenPage("host")}>
-      <Wrench className="size-4" />
+      <Icon name="fix" className="size-4" />
       {t("settings.voice.fix")}
     </Button>
   );
@@ -780,7 +765,7 @@ function InUseCard({ views, active, props }: { views: readonly StatusView[]; act
 function ChoiceCard({
   checked,
   disabled,
-  icon: Icon,
+  icon,
   title,
   what,
   recommended = false,
@@ -792,7 +777,7 @@ function ChoiceCard({
 }: {
   checked: boolean;
   disabled: boolean;
-  icon: typeof Smartphone;
+  icon: IconKey;
   title: string;
   what: ReactNode;
   /** The "Recommended" badge beside the title. It may stand with "In use". */
@@ -819,7 +804,7 @@ function ChoiceCard({
         <span className={cn("min-w-0 flex-1 space-y-1", disabled && !checked && "opacity-60")}>
           <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <span className="text-sm font-medium">{title}</span>
-            <Icon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+            <Icon name={icon} aria-hidden className="size-4 shrink-0 text-muted-foreground" />
             <InUseBadge shown={checked} />
             {/* After In use, whose slot is held while hidden: on a narrow phone Recommended wraps
                 below, rather than pushing the empty slot onto a line of its own. */}
@@ -876,7 +861,7 @@ function PhoneChoices(props: WithAbout) {
       <ChoiceCard
         checked={inForce === "phone"}
         disabled={!open.phone}
-        icon={Smartphone}
+        icon="voice-on-phone"
         title={t("settings.speech.phone.heading")}
         what={t("settings.voice.choice.phone.what")}
         recommended
@@ -889,7 +874,7 @@ function PhoneChoices(props: WithAbout) {
       <ChoiceCard
         checked={inForce === "host"}
         disabled={!open.host}
-        icon={Server}
+        icon="voice-on-host"
         title={t("settings.speech.host.heading")}
         what={
           <>
@@ -937,7 +922,7 @@ function PhoneCopyLine(props: SpeechCardsProps) {
     line = (
       <>
         <Button variant="outline" className="h-11" disabled={local === undefined} onClick={onPhoneDownload}>
-          <Download className="size-4" />
+          <Icon name="download" className="size-4" />
           {t("settings.voice.copy.toPhone", { size })}
         </Button>
         <p className="text-xs text-muted-foreground">{t("settings.voice.copy.toPhone.note")}</p>
@@ -961,7 +946,7 @@ function PhoneCopyLine(props: SpeechCardsProps) {
       <>
         {whistle.state === "failed" && <p className="text-xs font-medium">{t("settings.speech.host.failed")}</p>}
         <Button variant="outline" className="h-11" disabled={hostBusy || local === undefined} onClick={onSetupBoth}>
-          {hostBusy ? <LoaderCircle className="size-4 animate-spin" /> : <Download className="size-4" />}
+          {hostBusy ? <Icon name="busy" className="size-4 animate-spin" /> : <Icon name="download" className="size-4" />}
           {t("settings.voice.copy.setup", { size })}
         </Button>
         <p className="text-xs text-muted-foreground">{t("settings.voice.copy.setup.note")}</p>
@@ -991,7 +976,7 @@ function HostSummaryRow(props: SpeechCardsProps) {
         onClick={() => props.onOpenPage("host")}
         className="flex min-h-11 w-full items-start gap-3 p-4 text-left transition-colors active:bg-muted/60"
       >
-        <Server aria-hidden className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
+        <Icon name="voice-on-host" aria-hidden className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
         <span className="min-w-0 flex-1 space-y-1">
           <span className="block text-sm font-medium">{hostOptionLabel(props)}</span>
           {broken && (
@@ -1006,7 +991,7 @@ function HostSummaryRow(props: SpeechCardsProps) {
             <LastChanged host={props.host} />
           </span>
         </span>
-        <ChevronRight aria-hidden className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
+        <Icon name="row-go" aria-hidden className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
       </button>
     </Card>
   );
@@ -1021,9 +1006,9 @@ function AllOptionsRow({ onOpenPage }: Pick<SpeechCardsProps, "onOpenPage">) {
         onClick={() => onOpenPage("host")}
         className="flex min-h-11 w-full items-center gap-3 px-4 py-3 text-left transition-colors active:bg-muted/60"
       >
-        <ListChecks aria-hidden className="size-5 shrink-0 text-muted-foreground" />
+        <Icon name="all-options" aria-hidden className="size-5 shrink-0 text-muted-foreground" />
         <span className="min-w-0 flex-1 text-sm font-medium">{t("settings.voice.host.allOptions")}</span>
-        <ChevronRight aria-hidden className="size-5 shrink-0 text-muted-foreground" />
+        <Icon name="row-go" aria-hidden className="size-5 shrink-0 text-muted-foreground" />
       </button>
     </Card>
   );
@@ -1042,7 +1027,7 @@ function HandsFreeCard(props: SpeechCardsProps) {
     <Card className="gap-0 py-0">
       <div className="flex items-center justify-between gap-4 p-4">
         <div className="flex min-w-0 items-start gap-3">
-          <Mic className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
+          <Icon name="mic" className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
           <div className="min-w-0">
             <div className="font-medium">{t("settings.handsFree.title")}</div>
             <p className="text-sm text-muted-foreground">{t("settings.handsFree.description")}</p>
@@ -1054,7 +1039,7 @@ function HandsFreeCard(props: SpeechCardsProps) {
       </div>
       <Collapse open={warn}>
         <div className="px-4 pb-4">
-          <Notice tone="caution" variant="box" icon={<TriangleAlert />}>
+          <Notice tone="caution" variant="box" icon={<Icon name="warning" />}>
             {t(option === "chatgpt" ? "settings.voice.handsFree.warn.chatgpt" : "settings.voice.handsFree.warn.service")}
           </Notice>
         </div>
@@ -1084,7 +1069,7 @@ function ModelHubRow(props: SpeechCardsProps) {
         onClick={() => props.onOpenPage("model")}
         className="flex min-h-11 w-full items-center gap-3 p-4 text-left transition-colors active:bg-muted/60"
       >
-        <AudioLines aria-hidden className="size-5 shrink-0 text-muted-foreground" />
+        <Icon name="voice-model" aria-hidden className="size-5 shrink-0 text-muted-foreground" />
         <span className="min-w-0 flex-1">
           <span className="block text-sm font-medium">{t("settings.voice.model.title")}</span>
           <span className="block text-xs text-muted-foreground">{t("settings.voice.model.by", { size: modelSize(props.whistle, props.local) })}</span>
@@ -1093,7 +1078,7 @@ function ModelHubRow(props: SpeechCardsProps) {
           <span aria-hidden className={cn("size-2 rounded-full bg-current", chip.ink)} />
           {t(chip.word)}
         </Badge>
-        <ChevronRight aria-hidden className="size-5 shrink-0 text-muted-foreground" />
+        <Icon name="row-go" aria-hidden className="size-5 shrink-0 text-muted-foreground" />
       </button>
     </Card>
   );
@@ -1117,9 +1102,9 @@ function ChangeDisclosure({ open, onToggle, children }: { open: boolean; onToggl
           onClick={onToggle}
           className="flex min-h-11 w-full items-center gap-3 px-4 py-3 text-left transition-colors active:bg-muted/60"
         >
-          <SlidersHorizontal aria-hidden className="size-5 shrink-0 text-muted-foreground" />
+          <Icon name="change-options" aria-hidden className="size-5 shrink-0 text-muted-foreground" />
           <span className="min-w-0 flex-1 text-sm font-medium">{t("settings.voice.change")}</span>
-          <ChevronDown aria-hidden className={cn("size-5 shrink-0 text-muted-foreground transition-transform", open && "rotate-180")} />
+          <Icon name="expand" aria-hidden className={cn("size-5 shrink-0 text-muted-foreground transition-transform", open && "rotate-180")} />
         </button>
       </Card>
       <div id={id}>
@@ -1219,7 +1204,7 @@ function LockedNote({ lock }: { lock: HostLock }) {
     // shrink-0: a direct child of the settings scroller, which is a flex column. The box's own
     // min-h-[42px] replaces min-height:auto, so without it the column squeezed this note to one
     // line and its commands drew over the options below.
-    <Notice tone="info" variant="box" icon={<Info />} className="shrink-0">
+    <Notice tone="info" variant="box" icon={<Icon name="info" />} className="shrink-0">
       <div className="space-y-2">
         {lock === "terminal" ? (
           <>
@@ -1279,7 +1264,7 @@ function OptionFacts({ option, inUse }: { option: HostOption; inUse: boolean }) 
       </span>
       {caveat !== null && (
         <span className="flex gap-1.5 pt-1 text-xs text-muted-foreground">
-          <Info aria-hidden className="mt-0.5 size-3.5 shrink-0" />
+          <Icon name="info" aria-hidden className="mt-0.5 size-3.5 shrink-0" />
           <span>{t(caveat)}</span>
         </span>
       )}
@@ -1437,7 +1422,7 @@ function WhistleDownload({
     <div className="space-y-1">
       {whistle.state === "failed" && <p className="text-xs font-medium">{t("settings.speech.host.failed")}</p>}
       <Button variant="outline" className="h-11" disabled={hostBusy} onClick={onSetup}>
-        {hostBusy ? <LoaderCircle className="size-4 animate-spin" /> : <Download className="size-4" />}
+        {hostBusy ? <Icon name="busy" className="size-4 animate-spin" /> : <Icon name="download" className="size-4" />}
         {t("settings.speech.host.download", { size: formatDownloadSize(whistle.bytes) })}
       </Button>
     </div>
@@ -1469,7 +1454,7 @@ function stepView(step: SetupStep, props: RowProps): StepView {
         text: t("settings.voice.setup.whistle.use"),
         body: inUse ? undefined : (
           <Button variant="outline" className="h-11" disabled={!open} onClick={() => onChooseProvider("whistle")}>
-            {switching === "whistle" ? <LoaderCircle className="size-4 animate-spin" /> : <Server className="size-4" />}
+            {switching === "whistle" ? <Icon name="busy" className="size-4 animate-spin" /> : <Icon name="voice-on-host" className="size-4" />}
             {t("settings.voice.setup.whistle.useAction")}
           </Button>
         ),
@@ -1552,7 +1537,7 @@ function SetupDisclosure(props: RowProps) {
     <div>
       <Button type="button" variant="ghost" className="-ml-2 h-11 px-2 text-xs" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
         {t("settings.voice.setup.how")}
-        <ChevronDown aria-hidden className={cn("size-4 transition-transform", open && "rotate-180")} />
+        <Icon name="expand" aria-hidden className={cn("size-4 transition-transform", open && "rotate-180")} />
       </Button>
       <Collapse open={open}>
         <div className="space-y-3 pt-1 pb-3">
@@ -1567,7 +1552,7 @@ function SetupDisclosure(props: RowProps) {
           {option !== "off" && (
             <div className="space-y-1">
               <Button type="button" variant="outline" className="h-11" disabled={checking} onClick={onCheckAgain}>
-                {checking ? <LoaderCircle className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
+                {checking ? <Icon name="busy" className="size-4 animate-spin" /> : <Icon name="retry" className="size-4" />}
                 {t("settings.voice.checkAgain")}
               </Button>
               <p className="text-xs text-muted-foreground">{t("settings.voice.terminal.check")}</p>
@@ -1734,7 +1719,7 @@ export function CodexConsentSheet({
             {t("dialog.cancel")}
           </Button>
           <Button type="button" className="h-11 flex-1" disabled={busy} onClick={onAccept}>
-            {busy && <LoaderCircle className="size-4 animate-spin" />}
+            {busy && <Icon name="busy" className="size-4 animate-spin" />}
             {t("settings.speech.provider.consent.accept")}
           </Button>
         </div>
@@ -1750,7 +1735,7 @@ function ModelCredit() {
   return (
     <Card className="gap-0 py-0">
       <div className="flex items-start gap-3 p-4">
-        <AudioLines className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
+        <Icon name="voice-model" className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
         <div className="min-w-0 space-y-1">
           <div className="font-medium">{t("settings.speech.whistle.title")}</div>
           <p className="text-sm text-muted-foreground">
@@ -1779,7 +1764,7 @@ function Details({ rows, initial }: { rows: { label: string; value: ReactNode }[
     <div>
       <Button type="button" variant="ghost" className="-ml-2 h-11 px-2 text-xs" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
         {t("settings.voice.details")}
-        <ChevronDown className={cn("size-4 transition-transform", open && "rotate-180")} />
+        <Icon name="expand" className={cn("size-4 transition-transform", open && "rotate-180")} />
       </Button>
       <Collapse open={open}>
         <div className="pb-1">
@@ -1794,13 +1779,13 @@ function Details({ rows, initial }: { rows: { label: string; value: ReactNode }[
 function CopyCard({
   id,
   where,
-  icon: Icon,
+  icon,
   state,
   children,
 }: {
   id: string;
   where: string;
-  icon: typeof Server;
+  icon: IconKey;
   state: { look: VoiceStatus["state"]; word: string };
   children: ReactNode;
 }) {
@@ -1808,7 +1793,7 @@ function CopyCard({
     <Card className="gap-0 py-0">
       <section aria-labelledby={id} className="space-y-2 p-4">
         <h2 id={id} className="flex items-center gap-2">
-          <Icon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+          <Icon name={icon} aria-hidden className="size-4 shrink-0 text-muted-foreground" />
           <span className="text-sm font-medium">{where}</span>
         </h2>
         <StateWord state={state.look} word={state.word} />
@@ -1842,12 +1827,12 @@ function HostCopy(props: SpeechCardsProps & { whistle: WhistleStatus }) {
   const size = formatDownloadSize(whistle.bytes);
   const hostUsesIt = hostOptionNow(props) === "whistle";
   return (
-    <CopyCard id="speech-host-step" where={t("settings.speech.host.heading")} icon={Server} state={hostCopyState(whistle)}>
+    <CopyCard id="speech-host-step" where={t("settings.speech.host.heading")} icon="voice-on-host" state={hostCopyState(whistle)}>
       {whistle.state === "absent" &&
         (canWrite ? (
           <div className="space-y-2">
             <Button className="h-11" disabled={hostBusy} onClick={onSetup}>
-              {hostBusy ? <LoaderCircle className="size-4 animate-spin" /> : <Download className="size-4" />}
+              {hostBusy ? <Icon name="busy" className="size-4 animate-spin" /> : <Icon name="download" className="size-4" />}
               {t("settings.speech.host.download", { size })}
             </Button>
             <p className="text-xs text-muted-foreground">{t("settings.speech.host.absent")}</p>
@@ -1866,7 +1851,7 @@ function HostCopy(props: SpeechCardsProps & { whistle: WhistleStatus }) {
           {whistle.reason !== undefined && <p className="text-xs text-muted-foreground">{whistle.reason}</p>}
           {canWrite ? (
             <Button className="h-11" variant="outline" disabled={hostBusy} onClick={onSetup}>
-              {hostBusy && <LoaderCircle className="size-4 animate-spin" />}
+              {hostBusy && <Icon name="busy" className="size-4 animate-spin" />}
               {t("settings.speech.host.retry")}
             </Button>
           ) : (
@@ -1921,7 +1906,7 @@ function HostCopy(props: SpeechCardsProps & { whistle: WhistleStatus }) {
                   {t("settings.speech.host.remove.cancel")}
                 </Button>
                 <Button variant="destructive" className="h-11" disabled={hostBusy} onClick={onRemove}>
-                  {hostBusy ? <LoaderCircle className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
+                  {hostBusy ? <Icon name="busy" className="size-4 animate-spin" /> : <Icon name="delete" className="size-4" />}
                   {t("settings.speech.host.remove.action")}
                 </Button>
               </div>
@@ -1953,7 +1938,7 @@ function PhoneCopy(props: SpeechCardsProps) {
       ? { look: "paused", word: t("settings.voice.copyState.gone") }
       : { look: "setup", word: t("settings.voice.copyState.notSetUp") };
   return (
-    <CopyCard id="speech-phone-step" where={t("settings.speech.phone.heading")} icon={Smartphone} state={state}>
+    <CopyCard id="speech-phone-step" where={t("settings.speech.phone.heading")} icon="voice-on-phone" state={state}>
       {copy !== null ? (
         <div className="space-y-2">
           <p className="text-xs">{t("settings.speech.phone.copying")}</p>
@@ -1992,7 +1977,7 @@ function PhoneCopy(props: SpeechCardsProps) {
         <p className="text-xs">{t(BLOCK_KEYS[why])}</p>
       ) : hostReady ? (
         <Button variant={gone ? "default" : "outline"} className="h-11" disabled={local === undefined} onClick={onPhoneDownload}>
-          <Download className="size-4" />
+          <Icon name="download" className="size-4" />
           {t(gone ? "settings.voice.restore" : "settings.voice.copy.toPhone", { size })}
         </Button>
       ) : (

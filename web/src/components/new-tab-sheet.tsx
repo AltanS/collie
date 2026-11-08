@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { ChevronRight, FolderOpen, LoaderCircle, SquareTerminal } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 
 import { AgentIcon } from "@/components/agent-icon";
 import { NoPromptsBadge } from "@/components/no-prompts-badge";
@@ -149,7 +149,7 @@ export function NewTabSheet({ open, onClose, label, beside, scope, launchers, st
       <BottomSheet open={open} onClose={onClose} title={t("newTab.title", { workspace: label })}>
         <div data-slot="new-tab-sheet" aria-busy={busy || undefined} className="flex flex-col gap-3">
           <p className="-mt-1 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
-            <FolderOpen aria-hidden className="size-3.5 shrink-0" />
+            <Icon name="folder-open" aria-hidden className="size-3.5 shrink-0" />
             <span className="min-w-0 truncate font-mono">{t("newTab.folder", { folder })}</span>
           </p>
           <Collapse open={notice !== null}>
@@ -172,14 +172,14 @@ export function NewTabSheet({ open, onClose, label, beside, scope, launchers, st
           <RowGroup label={t("newTab.group.commands")} rows={rows.commands} busyKey={busyKey} home={home} onTap={tapRow} />
           <ListGroup>
             <SheetButton
-              icon={<SquareTerminal aria-hidden className="size-5 text-muted-foreground" />}
+              icon={<Icon name="new-shell" aria-hidden className="size-5 text-muted-foreground" />}
               label={t("newPage.shell.option")}
               disabled={busy}
               spinning={busyKey === SHELL_KEY}
               onClick={() => void run(SHELL_KEY, { kind: "shell" }, undefined)}
             />
             <SheetButton
-              icon={<ChevronRight aria-hidden className="size-5 text-muted-foreground" />}
+              icon={<Icon name="row-go" aria-hidden className="size-5 text-muted-foreground" />}
               label={t("newTab.more")}
               disabled={busy}
               spinning={false}
@@ -218,7 +218,7 @@ function RowGroup({
               row.harness !== undefined ? (
                 <AgentIcon agent={row.harness} className="size-5 rounded-sm" />
               ) : (
-                <SquareTerminal aria-hidden className="size-5 text-muted-foreground" />
+                <Icon name="new-shell" aria-hidden className="size-5 text-muted-foreground" />
               )
             }
             label={row.label}
@@ -292,7 +292,7 @@ function SheetButton({
       </span>
       {/* A reserved slot, so the spinner coming and going moves nothing (DESIGN.md §2). */}
       <span aria-hidden className="flex size-4 shrink-0 items-center justify-center">
-        {spinning ? <LoaderCircle className="size-4 animate-spin" /> : null}
+        {spinning ? <Icon name="busy" className="size-4 animate-spin" /> : null}
       </span>
     </button>
   );

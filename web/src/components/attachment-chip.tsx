@@ -1,10 +1,11 @@
-import { ArrowLeftToLine, ClipboardPaste, FileText, Image, Pencil, X } from "lucide-react";
 
 import { useLocale } from "@/hooks/use-locale";
 import { pasteLineCount, shortName } from "@/lib/attachments";
 import type { DraftAttachment } from "@/lib/drafts";
 import { t, tn } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
+import { Icon } from "@/components/icons/icon";
+import type { IconKey } from "@/components/icons/keys";
 
 /** A chip as the composer holds it: the stored draft attachment plus, for a photo picked in this
  *  page session, the blob URL its thumbnail draws from. */
@@ -73,7 +74,7 @@ export function AttachmentChip({
 }) {
   useLocale();
   const isPaste = attachment.kind === "paste";
-  const Icon = attachment.kind === "image" ? Image : isPaste ? ClipboardPaste : FileText;
+  const kindIcon: IconKey = attachment.kind === "image" ? "image" : isPaste ? "paste" : "file-text";
   const inFrontNote = inFront ? t("composer.attach.inFront", { name: attachment.name }) : null;
   const edge = inFront ? "border-dashed border-foreground/60" : "border-border";
   const pasteStats = isPaste
@@ -104,7 +105,7 @@ export function AttachmentChip({
             aria-hidden="true"
             className="pointer-events-none absolute right-0.5 bottom-0.5 grid size-4 place-items-center rounded-sm border border-border bg-background text-foreground"
           >
-            <Pencil className="size-2.5" />
+            <Icon name="edit" className="size-2.5" />
           </span>
         </button>
       ) : attachment.previewUrl !== undefined ? (
@@ -126,7 +127,7 @@ export function AttachmentChip({
           )}
         >
           <span className="flex items-center gap-1 font-medium leading-none">
-            <Icon aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground" />
+            <Icon name={kindIcon} aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground" />
             <span className="truncate">{pasteStats}</span>
           </span>
           <span className="truncate font-mono text-[10px] leading-tight text-muted-foreground">
@@ -140,12 +141,12 @@ export function AttachmentChip({
             edge,
           )}
         >
-          <Icon aria-hidden="true" className="size-4 shrink-0" />
+          <Icon name={kindIcon} aria-hidden="true" className="size-4 shrink-0" />
           <span className="truncate">{shortName(attachment.name)}</span>
         </div>
       )}
       <span className="pointer-events-none absolute -top-1 -left-1 flex items-center gap-0.5 rounded border border-border bg-background px-1 font-mono text-[10px] leading-3.5 text-foreground">
-        {inFront && <ArrowLeftToLine aria-hidden="true" className="size-2.5" />}#{attachment.n}
+        {inFront && <Icon name="attachment-in-front" aria-hidden="true" className="size-2.5" />}#{attachment.n}
       </span>
       {inFrontNote !== null && <span className="sr-only">{inFrontNote}</span>}
       <button
@@ -158,7 +159,7 @@ export function AttachmentChip({
           "absolute -top-1 -right-1 grid size-5 place-items-center rounded-full border border-border bg-background text-muted-foreground disabled:opacity-50",
         )}
       >
-        <X className="size-3" />
+        <Icon name="remove" className="size-3" />
       </button>
     </li>
   );

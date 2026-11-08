@@ -1,4 +1,3 @@
-import { Copy, Pin, PinOff, SquareDashedText } from "lucide-react";
 import { useLayoutEffect } from "react";
 
 import { ActionRow } from "@/components/action-sheet-rows";
@@ -10,6 +9,7 @@ import { canCopyText, copyText } from "@/lib/clipboard";
 import { t } from "@/lib/i18n";
 import { itemCopyText, itemTitle } from "@/lib/message-pins";
 import { setStatus } from "@/lib/status";
+import { Icon } from "@/components/icons/icon";
 
 // WHAT A CHAT BLOCK OFFERS (M90 spec 02): Pin or Unpin, Copy text and Select text. A tap on the block shows its ⋯ and
 // the ⋯ opens this sheet; a hold, or a right click on a desk, opens it at once (stream-block.tsx). The title
@@ -66,7 +66,7 @@ export function BlockActionsSheet({ item, pinned, pinning = false, onClose, onPi
     <BottomSheet open onClose={onClose} title={itemTitle(item)}>
       <div data-slot="block-actions" className="flex flex-col gap-1">
         <ActionRow
-          icon={pinned ? <PinOff className={ROW_ICON} /> : <Pin className={ROW_ICON} />}
+          icon={pinned ? <Icon name="unpin" className={ROW_ICON} /> : <Icon name="pin" className={ROW_ICON} />}
           label={t(pinned ? "pins.action.unpin" : "pins.action.pin")}
           disabled={pinned && pinning}
           onClick={() => {
@@ -78,7 +78,7 @@ export function BlockActionsSheet({ item, pinned, pinning = false, onClose, onPi
         />
         {canCopyText() && (
           <ActionRow
-            icon={<Copy className={ROW_ICON} />}
+            icon={<Icon name="copy" className={ROW_ICON} />}
             label={t("pins.action.copy")}
             onClick={() => {
               onClose();
@@ -87,7 +87,7 @@ export function BlockActionsSheet({ item, pinned, pinning = false, onClose, onPi
           />
         )}
         <ActionRow
-          icon={<SquareDashedText className={ROW_ICON} />}
+          icon={<Icon name="select-text" className={ROW_ICON} />}
           label={t("pins.action.selectText")}
           onClick={() => {
             onClose();

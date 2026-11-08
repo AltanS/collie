@@ -1,5 +1,5 @@
 import { useEffect, useRef, type ReactNode } from "react";
-import { LoaderCircle, MessageSquarePlus } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 
 /**
  * The short text a person types ON a card: a bordered box holding a labelled textarea, a help line,
@@ -80,7 +80,7 @@ export function InlineEditor({
         htmlFor={id}
         className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground"
       >
-        <MessageSquarePlus className="size-3.5 shrink-0" />
+        <Icon name="add-note" className="size-3.5 shrink-0" />
         {label}
       </label>
       {notice}
@@ -112,7 +112,8 @@ export function InlineEditor({
           className="flex items-center gap-1.5 rounded-md border border-primary/60 bg-primary/15 px-2.5 py-1.5 text-xs font-medium text-foreground transition-colors active:bg-primary/25 disabled:opacity-60"
         >
           {busy ? (
-            <LoaderCircle
+            <Icon
+              name="busy"
               className="size-3.5 shrink-0 animate-spin text-muted-foreground"
               aria-label={busyAriaLabel}
             />
@@ -144,7 +145,7 @@ export function InlineEditorOffer({ label, onClick, disabled }: InlineEditorOffe
       onClick={onClick}
       className="flex w-full items-center gap-2 rounded-lg border border-dashed border-border/60 px-3 py-1.5 text-left text-xs text-muted-foreground transition-colors active:bg-muted disabled:opacity-60"
     >
-      <MessageSquarePlus className="size-3.5 shrink-0" />
+      <Icon name="add-note" className="size-3.5 shrink-0" />
       {label}
     </button>
   );

@@ -1,6 +1,6 @@
+import { Icon } from "@/components/icons/icon";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useLocation, useNavigate, useParams, useSearchParams } from "react-router";
-import { ArrowLeft, ChevronLeft, ChevronRight, Code, Eye, GitCompareArrows, LoaderCircle, RefreshCw } from "lucide-react";
 
 import { RouteHeader } from "@/components/app-header";
 import { FilesLoading, RefusedBody, TreeFolderBody, useFilesRead, type FilesReadState, type TreeRead } from "@/routes/changes-files";
@@ -302,9 +302,9 @@ const TREE_VIEW_LABEL = {
 
 /** The switcher draws a glyph per view; the word rides along as the segment's name and tooltip. */
 export const TREE_VIEW_ICON = {
-  diff: <GitCompareArrows />,
-  source: <Code />,
-  preview: <Eye />,
+  diff: <Icon name="view-diff" />,
+  source: <Icon name="view-source" />,
+  preview: <Icon name="view-preview" />,
 } satisfies Record<TreeView, ReactNode>;
 
 /**
@@ -1214,7 +1214,7 @@ function ChangesScreen() {
                 onClick={back.go}
                 aria-label={back.label}
               >
-                <ArrowLeft className="size-5" />
+                <Icon name="back" className="size-5" />
               </Button>
               {/* ONE header on every level of the screen (2026-10-06): the title "Files", and under it
                   the workspace's label and the root folder's last name. The totals `+12 −4` left it
@@ -1273,7 +1273,7 @@ function ChangesScreen() {
                 aria-label={t("changes.refreshAria")}
                 disabled={refreshing}
               >
-                <RefreshCw className={cn("size-5", refreshing && "animate-spin")} />
+                <Icon name="refresh" className={cn("size-5", refreshing && "animate-spin")} />
               </Button>
             </>
           }
@@ -1674,7 +1674,7 @@ function ListBody({
 function Loading({ label }: { label: string }) {
   return (
     <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted-foreground">
-      <LoaderCircle className="size-4 animate-spin" />
+      <Icon name="busy" className="size-4 animate-spin" />
       {label}
     </div>
   );
@@ -1810,12 +1810,12 @@ export function FileScreen({
       >
         {back && hand === "left" && <BackButton back={back} className="px-3" />}
         <Button variant="outline" className={cn("h-11", STEP_OFF, back && STEP_TIGHT)} disabled={!prev} onClick={() => prev && onStep(prev)}>
-          <ChevronLeft className="size-4 shrink-0" />
+          <Icon name="file-prev" className="size-4 shrink-0" />
           <span className="min-w-0 truncate">{t("changes.file.prev")}</span>
         </Button>
         <Button variant="outline" className={cn("h-11", STEP_OFF, back && STEP_TIGHT)} disabled={!next} onClick={() => next && onStep(next)}>
           <span className="min-w-0 truncate">{t("changes.file.next")}</span>
-          <ChevronRight className="size-4 shrink-0" />
+          <Icon name="file-next" className="size-4 shrink-0" />
         </Button>
         {back && hand !== "left" && <BackButton back={back} className="px-3" />}
       </BottomBar>

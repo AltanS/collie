@@ -1,5 +1,5 @@
+import { Icon } from "@/components/icons/icon";
 import { useLoaderData } from "react-router";
-import { FlaskConical } from "lucide-react";
 
 import { AppearanceIntro } from "@/components/appearance-intro";
 import { SettingsPage } from "@/components/settings-page";
@@ -235,7 +235,7 @@ export function SettingsAlertsRoute() {
 function ExperimentsContract() {
   useLocale();
   return (
-    <Notice variant="box" tone="caution" icon={<FlaskConical className="size-4" />}>
+    <Notice variant="box" tone="caution" icon={<Icon name="experiments" className="size-4" />}>
       {t("settings.experiments.contract")}
     </Notice>
   );

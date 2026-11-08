@@ -1,4 +1,4 @@
-import { TextCursorInput } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 
 import { Card } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
@@ -19,7 +19,7 @@ export function SentSuggestionsControl() {
     <Card className="gap-0 py-0">
       <div className="flex items-center justify-between gap-4 p-4">
         <div className="flex min-w-0 items-start gap-3">
-          <TextCursorInput className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
+          <Icon name="sent-suggestions" className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
           <div className="min-w-0">
             <div className="font-medium">{t("settings.sentSuggestions.title")}</div>
             <p className="text-sm text-muted-foreground">{t("settings.sentSuggestions.description")}</p>

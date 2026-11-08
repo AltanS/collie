@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { BellOff, LoaderCircle } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 import { useRevalidator } from "react-router";
 
 import { Button } from "@/components/ui/button";
@@ -50,7 +50,7 @@ export function SnoozeControl({ snoozedUntil }: { snoozedUntil: number | null })
     <Card className="gap-0 py-0">
       <div className="flex items-center justify-between gap-4 p-4">
         <div className="flex min-w-0 items-start gap-3">
-          <BellOff className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
+          <Icon name="notifications-snooze" className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
           <div className="min-w-0">
             <div className="font-medium">{t("settings.snooze.title")}</div>
             <p className="text-sm text-muted-foreground">
@@ -60,7 +60,7 @@ export function SnoozeControl({ snoozedUntil }: { snoozedUntil: number | null })
             </p>
           </div>
         </div>
-        {busy && <LoaderCircle className="size-4 shrink-0 animate-spin text-muted-foreground" />}
+        {busy && <Icon name="busy" className="size-4 shrink-0 animate-spin text-muted-foreground" />}
       </div>
 
       <div className="flex items-center gap-2 border-t border-border p-3">

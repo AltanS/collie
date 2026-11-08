@@ -1,4 +1,3 @@
-import { ChevronRight, Network } from "lucide-react";
 
 import { useCrew } from "@/components/crew-provider";
 import { useNav } from "@/hooks/use-nav";
@@ -8,6 +7,7 @@ import { groupByHost, hasSharedHost } from "@/lib/machines";
 import { crewPath } from "@/lib/nav";
 import type { Scope } from "@/lib/scope";
 import { cn } from "@/lib/utils";
+import { Icon } from "@/components/icons/icon";
 
 /**
  * The dashboard's way into /crew — the third entry point, beside the switcher sheet's footer and the
@@ -64,9 +64,9 @@ export function CrewFooterLink({ scope, className }: { scope?: Scope; className?
         className,
       )}
     >
-      <Network className="size-3 shrink-0" />
+      <Icon name="crew" className="size-3 shrink-0" />
       <span>{t("crew.footer.label", counts)}</span>
-      <ChevronRight className="size-3 shrink-0" />
+      <Icon name="row-go" className="size-3 shrink-0" />
     </button>
   );
 }

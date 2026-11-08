@@ -1,5 +1,6 @@
 import * as React from "react";
-import { KeyRound, MonitorDown, FolderPlus, Bell } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
+import type { IconKey } from "@/components/icons/keys";
 
 import { Button } from "@/components/ui/button";
 import { useNav } from "@/hooks/use-nav";
@@ -101,7 +102,7 @@ export interface TourSheetProps {
 /** One "Do this next" row: a fact, a remedy, and one button that carries it out. */
 interface NextCard {
   id: "pair" | "space" | "push" | "install";
-  icon: typeof KeyRound;
+  icon: IconKey;
   title: string;
   body: string;
   action: React.ReactNode;
@@ -173,7 +174,7 @@ export function TourSheet({
   if (readOnly) {
     next.push({
       id: "pair",
-      icon: KeyRound,
+      icon: "pairing",
       title: t("tour.pair.title"),
       body: t("tour.pair.body"),
       action: (
@@ -186,7 +187,7 @@ export function TourSheet({
   if (panes === 0) {
     next.push({
       id: "space",
-      icon: FolderPlus,
+      icon: "new-space",
       title: t("tour.space.title"),
       body: t("tour.space.body"),
       action: (
@@ -203,7 +204,7 @@ export function TourSheet({
   if (pushOffer) {
     next.push({
       id: "push",
-      icon: Bell,
+      icon: "notifications",
       title: t("tour.pushCard.title"),
       body: t("tour.pushCard.body"),
       action: <TourPushBlock busy={pushBusy} onEnable={onEnablePush} />,
@@ -212,7 +213,7 @@ export function TourSheet({
   if (installOffer) {
     next.push({
       id: "install",
-      icon: MonitorDown,
+      icon: "install-app",
       title: t("tour.install.title"),
       body: t("tour.install.body"),
       action: (
@@ -284,7 +285,7 @@ export function TourSheet({
                 <Card key={card.id} className="gap-0 py-0">
                   <div className="flex items-center justify-between gap-4 p-4">
                     <div className="flex min-w-0 items-start gap-3">
-                      <card.icon className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
+                      <Icon name={card.icon} className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
                       <div className="min-w-0">
                         <div className="font-medium">{card.title}</div>
                         <p className="text-sm text-muted-foreground">{card.body}</p>

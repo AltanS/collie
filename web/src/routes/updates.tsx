@@ -1,5 +1,5 @@
-import { ArrowLeft } from "lucide-react";
 
+import { Icon } from "@/components/icons/icon";
 import { RouteHeader } from "@/components/app-header";
 import { Button } from "@/components/ui/button";
 import { UpdateCard } from "@/components/update-card";
@@ -56,7 +56,7 @@ export function UpdatesRoute() {
               onClick={() => nav.up(settingsPath(scope))}
               aria-label={t("updates.nav.back")}
             >
-              <ArrowLeft className="size-5" />
+              <Icon name="back" className="size-5" />
             </Button>
             <h1 className="min-w-0 truncate text-lg font-semibold tracking-tight">{t("updates.title")}</h1>
           </>

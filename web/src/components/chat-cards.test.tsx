@@ -1,5 +1,4 @@
 import type { ReactNode } from "react";
-import { ChevronRight } from "lucide-react";
 import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
@@ -542,7 +541,7 @@ describe("Disclosure", () => {
   it("keeps its body out of the DOM until it is opened", async () => {
     const user = userEvent.setup();
     render(
-      <Disclosure label="Details" icon={ChevronRight}>
+      <Disclosure label="Details" icon="disclosure">
         {() => <p>the body</p>}
       </Disclosure>,
     );

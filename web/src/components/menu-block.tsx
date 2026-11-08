@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { ReactNode } from "react";
-import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, LoaderCircle } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 
 import { cn } from "@/lib/utils";
 import type { MenuModel, StyledLine } from "@/lib/blocks";
@@ -79,7 +79,7 @@ export function MenuBlock({ menu, lines, onAction, disabled }: MenuBlockProps) {
   }
 
   const spinner = (
-    <LoaderCircle className="size-3.5 shrink-0 animate-spin text-muted-foreground" aria-label={t("dialog.sendingAria")} />
+    <Icon name="busy" className="size-3.5 shrink-0 animate-spin text-muted-foreground" aria-label={t("dialog.sendingAria")} />
   );
 
   // THE PRINTED SCALE (.adr/0054). When the screen printed the whole scale the arrows move along,
@@ -151,9 +151,9 @@ export function MenuBlock({ menu, lines, onAction, disabled }: MenuBlockProps) {
       {(menu.nav.upDown || (leftRight !== undefined && !readsBody)) && (
         <div className="flex items-center gap-1.5">
           {menu.nav.upDown &&
-            navButton("up", t("dialog.menu.moveUp"), MENU_UP_KEYS, <ArrowUp className="size-4" />)}
+            navButton("up", t("dialog.menu.moveUp"), MENU_UP_KEYS, <Icon name="key-up" className="size-4" />)}
           {menu.nav.upDown &&
-            navButton("down", t("dialog.menu.moveDown"), MENU_DOWN_KEYS, <ArrowDown className="size-4" />)}
+            navButton("down", t("dialog.menu.moveDown"), MENU_DOWN_KEYS, <Icon name="key-down" className="size-4" />)}
           {/* The ←/→ pair sits AROUND the value it adjusts ("←  ◐ Medium effort  →"): the arrows are
               meaningless without it, and the row is re-derived every poll, so the label tracks the
               live value. Rendered in app space, not mirror space — no `dark:` question arises. */}
@@ -163,7 +163,7 @@ export function MenuBlock({ menu, lines, onAction, disabled }: MenuBlockProps) {
                 "left",
                 t("dialog.menu.leftAria", { verb: leftRight.verb, label: leftRight.label }),
                 MENU_LEFT_KEYS,
-                <ArrowLeft className="size-4" />,
+                <Icon name="key-left" className="size-4" />,
               )}
               <span className="min-w-0 flex-1 truncate text-center font-mono text-[11px] text-muted-foreground">
                 {leftRight.label}
@@ -172,7 +172,7 @@ export function MenuBlock({ menu, lines, onAction, disabled }: MenuBlockProps) {
                 "right",
                 t("dialog.menu.rightAria", { verb: leftRight.verb, label: leftRight.label }),
                 MENU_RIGHT_KEYS,
-                <ArrowRight className="size-4" />,
+                <Icon name="key-right" className="size-4" />,
               )}
             </div>
           )}

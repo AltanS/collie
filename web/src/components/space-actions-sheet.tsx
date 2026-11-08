@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Pencil } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 
 import { BottomSheet } from "@/components/ui/sheet";
 import { ActionRow, RenameView } from "@/components/action-sheet-rows";
@@ -118,7 +118,7 @@ export function SpaceActionsSheet({
           <HostChip host={host} variant="target" className="mb-1 self-start" />
           {canRename ? (
             <ActionRow
-              icon={<Pencil className="size-4 shrink-0 text-muted-foreground" />}
+              icon={<Icon name="edit" className="size-4 shrink-0 text-muted-foreground" />}
               label={t("space.tab.rename")}
               onClick={() => setMode("rename")}
             />

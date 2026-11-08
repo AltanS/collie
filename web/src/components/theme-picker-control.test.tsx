@@ -364,7 +364,7 @@ describe("ThemePickerControl", () => {
       expect(dark.style.getPropertyValue("--font-display")).toBe("var(--face-geist)");
       expect(dark.querySelector(".bg-band-ground")).not.toBeNull();
       expect(dark.querySelector('[data-slot="list-group"]')?.children).toHaveLength(2);
-      expect(dark.querySelector("svg.lucide")).not.toBeNull();
+      expect(dark.querySelector("svg[data-icon]")).not.toBeNull();
       expect(within(dialog).getByTestId("theme-page-sample-light").style.colorScheme).toBe("light");
       const words = [...within(dialog).getByTestId("theme-shape-words").querySelectorAll("li")].map((li) => li.textContent);
       expect(words).toEqual(expect.arrayContaining(["ground: grain", "chrome: band", "rows: cards", "icons: thin", "labels: sentence", "display: geist"]));

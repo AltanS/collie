@@ -1,4 +1,4 @@
-import { Check, Smartphone, Terminal, TriangleAlert, X } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 
 import type { SendRefusal } from "@/components/send-notice";
 import { Button } from "@/components/ui/button";
@@ -46,7 +46,7 @@ export function TerminalDraftPreview({ text, onTakeOver, onDismiss }: TerminalDr
   useLocale();
   return (
     <div className={FLOATING_CARD}>
-      <Terminal className="mt-0.5 size-3 shrink-0" />
+      <Icon name="terminal-draft" className="mt-0.5 size-3 shrink-0" />
       <div className="min-w-0 flex-1">
         <div className="font-medium">{t("composer.draftPreview.title")}</div>
         <div className="mt-0.5 line-clamp-2 whitespace-pre-wrap break-words font-mono text-[11px] leading-snug text-muted-foreground/90">
@@ -80,7 +80,7 @@ export function OfflineDraftNote({ onDismiss }: { onDismiss: () => void }) {
   useLocale();
   return (
     <div className={FLOATING_CARD}>
-      <Smartphone className="mt-0.5 size-3 shrink-0" />
+      <Icon name="phone-draft" className="mt-0.5 size-3 shrink-0" />
       <div className="min-w-0 flex-1 self-center leading-snug">{t("composer.offline.draftNote")}</div>
       <DismissButton onDismiss={onDismiss} label={t("composer.offline.draftNote.dismissAria")} />
     </div>
@@ -96,10 +96,10 @@ export function OfflineDraftNote({ onDismiss }: { onDismiss: () => void }) {
  */
 export function ClearNotice({ refusal, onRestore, restoring, onDismiss }: { refusal: SendRefusal; onRestore: (() => void) | null; restoring: boolean; onDismiss: () => void }) {
   useLocale();
-  const Icon = refusal.tone === "caution" ? TriangleAlert : Check;
+  const icon = refusal.tone === "caution" ? "warning" : "ok";
   return (
     <div data-slot="clear-notice" className={FLOATING_CARD}>
-      <Icon className="mt-0.5 size-3 shrink-0" />
+      <Icon name={icon} className="mt-0.5 size-3 shrink-0" />
       <div data-slot="clear-notice-sentence" className="min-w-0 flex-1 self-center leading-snug">
         {refusal.sentence}
       </div>
@@ -129,7 +129,7 @@ export function DismissButton({ onDismiss, label }: { onDismiss: () => void; lab
       aria-label={label}
       className={`${DISMISS_TAP_TARGET} grid size-6 shrink-0 self-center place-items-center rounded-full text-muted-foreground transition-colors active:bg-muted/60`}
     >
-      <X className="size-3.5" />
+      <Icon name="dismiss" className="size-3.5" />
     </button>
   );
 }

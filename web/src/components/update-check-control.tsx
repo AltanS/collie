@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { LoaderCircle, RefreshCw } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 import { useRevalidator } from "react-router";
 
 import { Button } from "@/components/ui/button";
@@ -69,7 +69,7 @@ export function UpdateCheckControl() {
     <Card className="gap-0 py-0">
       <div className="flex items-center justify-between gap-4 p-4">
         <div className="flex min-w-0 items-start gap-3">
-          <RefreshCw className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
+          <Icon name="check-for-updates" className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
           <div className="min-w-0">
             <div className="font-medium">{t("settings.update.title")}</div>
             <p className="text-sm text-muted-foreground">{describe(update)}</p>
@@ -81,7 +81,7 @@ export function UpdateCheckControl() {
         <Button variant="outline" size="sm" disabled={busy} onClick={check}>
           {busy ? (
             <>
-              <LoaderCircle className="size-4 animate-spin" />
+              <Icon name="busy" className="size-4 animate-spin" />
               {t("settings.update.checking")}
             </>
           ) : (

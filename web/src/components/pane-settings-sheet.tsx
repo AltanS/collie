@@ -1,4 +1,4 @@
-import { Pencil } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 
 import { ActionRow } from "@/components/action-sheet-rows";
 import { Switch } from "@/components/ui/switch";
@@ -111,7 +111,7 @@ export function PaneSettingsView({
       {onRename && (
         <div className="px-1">
           <ActionRow
-            icon={<Pencil className="size-4 shrink-0 text-muted-foreground" />}
+            icon={<Icon name="edit" className="size-4 shrink-0 text-muted-foreground" />}
             label={t("paneActions.rename.label")}
             onClick={onRename}
           />

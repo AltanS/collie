@@ -1,5 +1,5 @@
 import { useState, useSyncExternalStore } from "react";
-import { CircleArrowUp, CircleAlert } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 
 import { Notice } from "@/components/ui/notice";
 import { useNav } from "@/hooks/use-nav";
@@ -144,7 +144,7 @@ export function UpdateRibbon() {
     tone: skin.tone,
     variant: "strip",
     announce: "status",
-    icon: <skin.Icon />,
+    icon: <Icon name={skin.icon} />,
     children: ribbonText(view, update?.linkChange ?? null, update?.urgent ?? null),
   } as const;
 
@@ -200,7 +200,7 @@ function dismissedIn(
  *  here; what changes is that the recipe is written once, in the one table allowed to hold it. */
 function skinOf(view: RibbonView) {
   if (view.kind === "peer-failed") {
-    return { Icon: CircleAlert, tone: "danger" } as const;
+    return { icon: "error", tone: "danger" } as const;
   }
-  return { Icon: CircleArrowUp, tone: "caution" } as const;
+  return { icon: "update-available", tone: "caution" } as const;
 }

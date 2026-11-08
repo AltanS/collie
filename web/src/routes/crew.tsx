@@ -1,7 +1,7 @@
+import { Icon } from "@/components/icons/icon";
 import type { ReactNode } from "react";
 import { useId, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { Activity, ArrowLeft, Crown, Network, Shield } from "lucide-react";
 import { useLoaderData } from "react-router";
 
 import { RouteHeader } from "@/components/app-header";
@@ -124,7 +124,7 @@ export function CrewRoute() {
               onClick={() => nav.up(homePath(scope))}
               aria-label={t("crew.nav.back")}
             >
-              <ArrowLeft className="size-5" />
+              <Icon name="back" className="size-5" />
             </Button>
             <h1 className="min-w-0 truncate text-lg font-semibold tracking-tight">{t("crew.title")}</h1>
           </>
@@ -288,9 +288,9 @@ function MemberSheet({
         // is reserved for shapes whose width equals their height.
         <span className="flex w-fit items-center gap-1 rounded-md bg-muted px-2 py-0.5 text-[10px] font-medium label-caps text-muted-foreground">
           {member.isLead ? (
-            <Crown className="size-2.5" aria-hidden />
+            <Icon name="role-lead" className="size-2.5" aria-hidden />
           ) : (
-            <Shield className="size-2.5" aria-hidden />
+            <Icon name="role-deputy" className="size-2.5" aria-hidden />
           )}
           {member.isLead ? t("connection.host.lead") : t("crew.role.deputy")}
         </span>
@@ -400,7 +400,7 @@ function MemberSheet({
       {/* Where its load, history and alert rules live. A link to the page, never a switch of machine:
           "Go to this machine" below is the one that moves the phone. */}
       <Button variant="outline" className="w-full" onClick={onLoad}>
-        <Activity className="size-4" aria-hidden />
+        <Icon name="machine-activity" className="size-4" aria-hidden />
         {t("machines.memberSheet.link")}
       </Button>
       <Button className="w-full" onClick={onGo}>
@@ -415,7 +415,7 @@ function EmptyCard({ error }: { error: boolean }) {
   return (
     <Card className="gap-0 py-0">
       <div className="flex items-start gap-3 p-4">
-        <Network className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
+        <Icon name="crew" className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
         <div className="min-w-0">
           <div className="font-medium">{error ? t("crew.error.title") : t("crew.solo.title")}</div>
           <p className="text-sm text-muted-foreground">

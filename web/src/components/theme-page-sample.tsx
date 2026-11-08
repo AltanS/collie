@@ -1,5 +1,5 @@
 import type { CSSProperties } from "react";
-import { Palette } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 
 import { BrandMark } from "@/components/brand-mark";
 import { SectionLabel } from "@/components/ui/section-label";
@@ -60,7 +60,7 @@ export function PageSample({ theme, half }: { theme: Theme; half: "light" | "dar
       className="overflow-hidden rounded-md border border-border text-foreground"
     >
       <div className="flex h-7 items-center gap-1.5 border-b border-band-rule bg-band-ground px-2">
-        <Palette className="size-3.5 shrink-0" />
+        <Icon name="theme" className="size-3.5 shrink-0" />
         <span className="truncate text-xs font-semibold [font-family:var(--font-display)]">{theme.name}</span>
       </div>
       <div className="bg-background px-2 pt-1.5 pb-2 [background-image:var(--ground-image)]">

@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { TriangleAlert, Check, LoaderCircle } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 
 import { AnswerFieldSurface, answerFieldCopy, stepOf, useAnswerEditor } from "@/components/answer-field-surface";
 import { AnswerList } from "@/components/answer-list";
@@ -95,7 +95,7 @@ export function WizardBlock({ wizard, lines, onAction, onAnswer, disabled, paneI
   // When no chip reads as current (an unknown theme's highlight), both stay enabled — the TUI still
   // clamps, and keeping nav available is the safer degradation.
   const busyIcon = (
-    <LoaderCircle className="size-3.5 shrink-0 animate-spin text-muted-foreground" aria-label={t("dialog.sendingAria")} />
+    <Icon name="busy" className="size-3.5 shrink-0 animate-spin text-muted-foreground" aria-label={t("dialog.sendingAria")} />
   );
 
   return (
@@ -183,9 +183,9 @@ function QuestionStep({
               onClick={() => onPress(id, option.keys)}
               trailing={
                 busy ? (
-                  <LoaderCircle className="mt-0.5 size-4 shrink-0 animate-spin text-muted-foreground" aria-label={t("dialog.sendingAria")} />
+                  <Icon name="busy" className="mt-0.5 size-4 shrink-0 animate-spin text-muted-foreground" aria-label={t("dialog.sendingAria")} />
                 ) : option.chosen ? (
-                  <Check className="mt-0.5 size-4 shrink-0 text-primary" aria-label={t("dialog.preview.currentAnswerAria")} />
+                  <Icon name="selected" className="mt-0.5 size-4 shrink-0 text-primary" aria-label={t("dialog.preview.currentAnswerAria")} />
                 ) : null
               }
             />
@@ -210,7 +210,7 @@ function QuestionStep({
               <span className="text-muted-foreground"> {t("dialog.endsQuestionsSuffix")}</span>
             </span>
             {sendingId === id ? (
-              <LoaderCircle className="size-3.5 shrink-0 animate-spin" aria-label={t("dialog.sendingAria")} />
+              <Icon name="busy" className="size-3.5 shrink-0 animate-spin" aria-label={t("dialog.sendingAria")} />
             ) : null}
           </button>
         );
@@ -237,7 +237,7 @@ function ReviewStep({
       <AnswerList answers={wizard.answers} />
       {wizard.incomplete && (
         <div className="flex items-center gap-1.5 text-xs text-status-working">
-          <TriangleAlert className="size-3.5 shrink-0" />
+          <Icon name="warning" className="size-3.5 shrink-0" />
           {t("dialog.incomplete")}
         </div>
       )}
@@ -249,7 +249,7 @@ function ReviewStep({
           className="flex w-full items-center justify-center gap-2 rounded-lg border border-primary/60 bg-primary/15 px-3 py-2 text-sm font-medium text-foreground transition-colors active:bg-primary/25 disabled:opacity-60"
         >
           {sendingId === "submit" ? (
-            <LoaderCircle className="size-4 shrink-0 animate-spin text-muted-foreground" aria-label={t("dialog.sendingAria")} />
+            <Icon name="busy" className="size-4 shrink-0 animate-spin text-muted-foreground" aria-label={t("dialog.sendingAria")} />
           ) : null}
           {t("dialog.submitAnswers")}
         </button>
@@ -260,7 +260,7 @@ function ReviewStep({
           className="flex w-full items-center justify-center gap-2 rounded-lg border border-border px-3 py-1.5 text-xs text-muted-foreground transition-colors active:bg-muted disabled:opacity-60"
         >
           {sendingId === "cancel" ? (
-            <LoaderCircle className="size-3.5 shrink-0 animate-spin" aria-label={t("dialog.sendingAria")} />
+            <Icon name="busy" className="size-3.5 shrink-0 animate-spin" aria-label={t("dialog.sendingAria")} />
           ) : null}
           {wizard.cancelLabel ?? t("dialog.cancel")}
         </button>

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { LoaderCircle } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 
 import type {
   PromptFamily,
@@ -301,7 +301,7 @@ export function PromptSelectBlock({ prompt, lines, onAction, disabled, paneId, s
   }
 
   const busyIcon = (
-    <LoaderCircle className="size-3.5 shrink-0 animate-spin text-muted-foreground" aria-label={t("prompt.sendingAria")} />
+    <Icon name="busy" className="size-3.5 shrink-0 animate-spin text-muted-foreground" aria-label={t("prompt.sendingAria")} />
   );
 
   return (
@@ -342,7 +342,8 @@ export function PromptSelectBlock({ prompt, lines, onAction, disabled, paneId, s
               onClick={() => press(id, { kind: "option", option })}
               trailing={
                 busy ? (
-                  <LoaderCircle
+                  <Icon
+                    name="busy"
                     className="mt-0.5 size-4 shrink-0 animate-spin text-muted-foreground"
                     aria-label={t("prompt.sendingAria")}
                   />

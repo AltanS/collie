@@ -1,6 +1,6 @@
+import { Icon } from "@/components/icons/icon";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useLoaderData, useParams } from "react-router";
-import { ArrowUpToLine, ChevronDown, ChevronUp, LoaderCircle, ScrollText, Search, X } from "lucide-react";
 
 import { RouteHeader } from "@/components/app-header";
 import { ChatMessageList, type ChatMessageListHandle } from "@/components/ui/chat/chat-message-list";
@@ -255,7 +255,7 @@ export function HistoryRoute() {
               aria-label={t("history.findAria")}
               className="flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors active:bg-muted/60"
             >
-              <Search className="size-4" />
+              <Icon name="find-in-pane" className="size-4" />
             </button>
             {data.total > 0 && (
               <span className="text-xs text-muted-foreground tabular-nums">
@@ -274,13 +274,13 @@ export function HistoryRoute() {
             aria-label={t("history.closeAria")}
             className="flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors active:bg-muted/60"
           >
-            <X className="size-4" />
+            <Icon name="close" className="size-4" />
           </button>
         }
       >
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
-            <ScrollText className="size-3.5 shrink-0 text-muted-foreground" />
+            <Icon name="history-screen" className="size-3.5 shrink-0 text-muted-foreground" />
             <span className="truncate font-semibold leading-tight">{t("history.title")}</span>
           </div>
           <div className="truncate text-xs leading-tight text-muted-foreground">{title}</div>
@@ -313,9 +313,9 @@ export function HistoryRoute() {
                   className="mb-3 flex w-full items-center justify-center gap-1.5 rounded-md py-2 text-xs font-medium text-muted-foreground transition-colors active:bg-muted/50 disabled:opacity-60"
                 >
                   {loading ? (
-                    <LoaderCircle className="size-3.5 animate-spin" />
+                    <Icon name="busy" className="size-3.5 animate-spin" />
                   ) : (
-                    <ArrowUpToLine className="size-3.5" />
+                    <Icon name="load-earlier" className="size-3.5" />
                   )}
                   {loading ? t("history.loading") : t("history.loadOlder")}
                 </button>
@@ -348,7 +348,7 @@ export function HistoryRoute() {
               aria-label={t("history.prevMessageAria")}
               className="flex size-9 items-center justify-center text-muted-foreground transition-colors active:bg-muted"
             >
-              <ChevronUp className="size-4" />
+              <Icon name="find-prev" className="size-4" />
             </button>
             <button
               type="button"
@@ -356,7 +356,7 @@ export function HistoryRoute() {
               aria-label={t("history.nextMessageAria")}
               className="flex size-9 items-center justify-center border-t text-muted-foreground transition-colors active:bg-muted"
             >
-              <ChevronDown className="size-4" />
+              <Icon name="find-next" className="size-4" />
             </button>
           </div>
         )}

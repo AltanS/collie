@@ -1,4 +1,4 @@
-import { KeyRound, X } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 
 import { Button } from "@/components/ui/button";
 import { useLocale } from "@/hooks/use-locale";
@@ -41,7 +41,7 @@ export function NoEchoNotice({ prompt, typed, onUseType, onDismiss }: NoEchoNoti
   useLocale();
   return (
     <div className="mb-2 flex items-start gap-1.5 rounded-md bg-muted/40 px-2.5 py-1.5 text-xs text-muted-foreground">
-      <KeyRound className="mt-0.5 size-3 shrink-0" />
+      <Icon name="secret-input" className="mt-0.5 size-3 shrink-0" />
       <div className="min-w-0 flex-1">
         <div className="font-medium">{t("composer.noEcho.title")}</div>
         <div className="mt-0.5 truncate font-mono text-[11px] leading-snug text-muted-foreground/90">
@@ -79,7 +79,7 @@ export function NoEchoNotice({ prompt, typed, onUseType, onDismiss }: NoEchoNoti
         aria-label={t("composer.noEcho.dismissAria")}
         onClick={onDismiss}
       >
-        <X className="size-3" />
+        <Icon name="dismiss" className="size-3" />
       </Button>
     </div>
   );

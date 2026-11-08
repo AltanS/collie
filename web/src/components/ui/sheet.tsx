@@ -1,5 +1,5 @@
 import * as React from "react";
-import { X } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -350,7 +350,7 @@ export function BottomSheet({
               onClick={onClose}
               aria-label={translate("common.closeAria")}
             >
-              <X className="size-4" />
+              <Icon name="close" className="size-4" />
             </Button>
           </div>
         </div>

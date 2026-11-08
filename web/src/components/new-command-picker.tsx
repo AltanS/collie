@@ -1,4 +1,4 @@
-import { SquareTerminal } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 import { useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -62,7 +62,7 @@ export function CommandPicker({ options, value, onChoose, typed, recent }: Comma
       <Select
         aria-label={t("newPage.kind.command")}
         value={value}
-        lead={<SquareTerminal className="size-4" />}
+        lead={<Icon name="command" className="size-4" />}
         onChange={(event) => onChoose(event.target.value)}
       >
         {rows.map((o) => (

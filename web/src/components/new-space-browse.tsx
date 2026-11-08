@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from "react";
-import { ChevronDown, CornerLeftUp, Folder } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -136,9 +136,10 @@ export function FolderBrowse({ value, home, scope, onNavigate, onUse, read = fet
           onClick={toggle}
           className={cn(ROW, LIST_ROW_CORNERS)}
         >
-          <Folder aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+          <Icon name="folder" aria-hidden className="size-4 shrink-0 text-muted-foreground" />
           <span className="min-w-0 flex-1 text-sm">{t("newPage.browse")}</span>
-          <ChevronDown
+          <Icon
+            name="expand"
             aria-hidden
             className={cn("size-4 shrink-0 text-muted-foreground transition-transform", open && "rotate-180")}
           />
@@ -237,7 +238,7 @@ function Listing({ body, home, listId, onGo, onUse }: ListingProps) {
                 aria-label={t("newPage.browse.upTo", { path: shortenHome(body.parent, home) })}
                 className={cn(ROW, LIST_ROW_CORNERS)}
               >
-                <CornerLeftUp aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+                <Icon name="folder-up" aria-hidden className="size-4 shrink-0 text-muted-foreground" />
                 <span className="text-sm">{t("newPage.browse.up")}</span>
               </button>
             </li>
@@ -252,7 +253,7 @@ function Listing({ body, home, listId, onGo, onUse }: ListingProps) {
                   aria-label={f.git ? t("newPage.browse.openRepo", { name: f.name }) : t("newPage.browse.open", { name: f.name })}
                   className={cn(ROW, LIST_ROW_CORNERS)}
                 >
-                  <Folder aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+                  <Icon name="folder" aria-hidden className="size-4 shrink-0 text-muted-foreground" />
                   <span className="min-w-0 flex-1 truncate font-mono text-sm">{f.name}</span>
                   {/* A text badge, never a disc: a disc is a status (DESIGN.md §3). "git" is a name. */}
                   {f.git ? (

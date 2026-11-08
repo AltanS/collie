@@ -1,4 +1,3 @@
-import { SquareTerminal } from "lucide-react";
 
 import { shownStatus } from "@/lib/triage";
 import { cn } from "@/lib/utils";
@@ -20,6 +19,7 @@ import { statusLabel, statusLabelPast } from "@/lib/types";
 import type { AgentView } from "@/lib/types";
 import { useLocale } from "@/hooks/use-locale";
 import { useLongPress } from "@/hooks/use-long-press";
+import { Icon } from "@/components/icons/icon";
 
 interface AgentCardProps {
   agent: AgentView;
@@ -320,7 +320,7 @@ export function AgentCard({
                 when the row opens it (`data-glide`, lib/glide.ts); they mean nothing otherwise. */}
             {isShell ? (
               <div data-glide="tile" className="flex size-4 shrink-0 items-center justify-center rounded-sm border bg-muted">
-                <SquareTerminal className="size-2.5 text-muted-foreground" />
+                <Icon name="shell-pane" className="size-2.5 text-muted-foreground" />
               </div>
             ) : (
               <AgentIcon agent={agent.agent} className="size-4" glide="tile" />

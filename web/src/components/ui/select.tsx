@@ -1,4 +1,4 @@
-import { ChevronDown } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 import type { ComponentProps, ReactNode } from "react";
 
 import { cn } from "@/lib/utils";
@@ -51,7 +51,8 @@ export function Select({ className, lead, children, ...props }: SelectProps) {
           {lead}
         </span>
       )}
-      <ChevronDown
+      <Icon
+        name="select-caret"
         aria-hidden
         className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
       />

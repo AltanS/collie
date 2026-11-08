@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Check, LoaderCircle, Send, Settings2 } from "lucide-react";
 
 import { ActionsRow, type Hand } from "@/components/actions-row";
 import { useDurableBarItems } from "@/components/harness-bar";
@@ -35,6 +34,7 @@ import { setStatus } from "@/lib/status";
 import type { AgentStatus, Ask, PaneAction } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { mintRequestId } from "@/lib/worktree-name";
+import { Icon } from "@/components/icons/icon";
 
 // THE COMPOSER OF A PANE WITH NO SCREEN (ADR 0101).
 //
@@ -359,7 +359,7 @@ export function DurableComposer({
         general={[
           {
             id: "display",
-            icon: Settings2,
+            icon: "display-settings",
             label: t("composer.controls.displayAria"),
             word: t("composer.controls.display"),
             on: display.open,
@@ -431,7 +431,7 @@ export function DurableComposer({
           title={offline ? t("composer.send.reconnect") : undefined}
           onClick={() => void send()}
         >
-          {sending ? <LoaderCircle className="size-4 animate-spin" /> : justSent ? <Check className="size-4" /> : <Send className="size-4" />}
+          {sending ? <Icon name="busy" className="size-4 animate-spin" /> : justSent ? <Icon name="sent-ok" className="size-4" /> : <Icon name="send" className="size-4" />}
         </Button>
       </div>
     </div>

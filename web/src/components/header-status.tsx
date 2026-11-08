@@ -1,4 +1,5 @@
-import { CircleAlert, TriangleAlert, CircleCheck, Info, X } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
+import type { IconKey } from "@/components/icons/keys";
 import { useEffect, useState, type ReactNode } from "react";
 
 import { cn } from "@/lib/utils";
@@ -37,12 +38,12 @@ const TONE = {
 } satisfies Record<StatusTone, string>;
 
 const ICONS = {
-  info: Info,
-  note: Info,
-  success: CircleCheck,
-  warn: TriangleAlert,
-  error: CircleAlert,
-} as const;
+  info: "info",
+  note: "info",
+  success: "success",
+  warn: "warning",
+  error: "error",
+} as const satisfies Record<StatusTone, IconKey>;
 
 export function HeaderStatus({ children }: { children: ReactNode }) {
   useLocale();
@@ -58,7 +59,6 @@ export function HeaderStatus({ children }: { children: ReactNode }) {
     setDetail(false);
   }, [statusId]);
   if (!status) return <>{children}</>;
-  const Icon = ICONS[status.tone];
   // Errors persist (lib/status.ts's own default ttl) until dismissed. The row used to be ONE target
   // that dismissed them outright, which was the only thing you could do with a sentence the row had
   // cut in half. It is now two: the text opens the whole message, and the ✕ beside it still clears
@@ -80,7 +80,7 @@ export function HeaderStatus({ children }: { children: ReactNode }) {
           TONE[status.tone],
         )}
       >
-        <Icon className="size-4 shrink-0" />
+        <Icon name={ICONS[status.tone]} className="size-4 shrink-0" />
         <span className="truncate">{status.text}</span>
       </output>
       {dismissable && (
@@ -100,7 +100,7 @@ export function HeaderStatus({ children }: { children: ReactNode }) {
             onClick={() => clearStatus()}
             className="relative flex size-11 shrink-0 items-center justify-center rounded-lg"
           >
-            <X className="size-4 opacity-70" />
+            <Icon name="dismiss" className="size-4 opacity-70" />
           </button>
           <StatusDetailSheet
             open={detail}

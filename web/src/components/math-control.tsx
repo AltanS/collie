@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Download, LoaderCircle, Sigma, Trash2 } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -139,7 +139,7 @@ export function MathControl() {
     <Card className="gap-0 py-0">
       <div className="flex items-center justify-between gap-4 p-4">
         <div className="flex min-w-0 items-start gap-3">
-          <Sigma className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
+          <Icon name="math" className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
           <div className="min-w-0">
             <div className="font-medium">{t("settings.math.title")}</div>
             <p className="text-sm text-muted-foreground">{t("settings.math.description")}</p>
@@ -243,7 +243,7 @@ function PackRow(props: PackRowProps) {
           {canWrite ? (
             <>
               <Button className="h-auto min-h-11 w-full whitespace-normal py-2" disabled={busy} onClick={props.onDownload}>
-                {busy ? <LoaderCircle className="size-4 animate-spin" /> : <Download className="size-4" />}
+                {busy ? <Icon name="busy" className="size-4 animate-spin" /> : <Icon name="download" className="size-4" />}
                 {t("settings.appearance.math.download", {
                   // A no-break space, so a wrapped label never leaves the unit alone on a line.
                   size: formatDownloadSize(MATH_PACK_APPROX_BYTES).replace(" ", "\u00a0"),
@@ -301,7 +301,7 @@ function PackRow(props: PackRowProps) {
                   {t("settings.appearance.math.remove.cancel")}
                 </Button>
                 <Button variant="destructive" className="h-11" disabled={busy} onClick={props.onRemove}>
-                  {busy ? <LoaderCircle className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
+                  {busy ? <Icon name="busy" className="size-4 animate-spin" /> : <Icon name="delete" className="size-4" />}
                   {t("settings.appearance.math.remove.action")}
                 </Button>
               </div>

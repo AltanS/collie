@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ChartColumn } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 
 import { Button } from "@/components/ui/button";
 import { Collapse } from "@/components/ui/collapse";
@@ -51,7 +51,7 @@ export function TelemetryNotice() {
             tone="info"
             variant="box"
             announce="status"
-            icon={<ChartColumn />}
+            icon={<Icon name="telemetry" />}
             action={
               <Button
                 type="button"

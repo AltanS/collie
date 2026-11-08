@@ -1,4 +1,4 @@
-import { SquareTerminal } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 
 import { cn } from "@/lib/utils";
 import { AgentIcon } from "@/components/agent-icon";
@@ -38,7 +38,7 @@ export function PaneGlyph({
   useLocale();
   const glyph =
     pane.kind === "shell" ? (
-      <SquareTerminal className={cn(className, "text-muted-foreground")} aria-hidden />
+      <Icon name="shell-pane" className={cn(className, "text-muted-foreground")} aria-hidden />
     ) : (
       <AgentIcon agent={pane.agent} className={className} />
     );

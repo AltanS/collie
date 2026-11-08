@@ -1,4 +1,4 @@
-import { EyeOff } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 
 import { Collapse } from "@/components/ui/collapse";
 import { Notice } from "@/components/ui/notice";
@@ -29,7 +29,7 @@ export function MaskedHint({ open, className }: MaskedHintProps) {
         <Notice
           tone="neutral"
           variant="box"
-          icon={<EyeOff />}
+          icon={<Icon name="masked" />}
           className={className}
           dismissLabel={t("pane.maskedHint.dismiss")}
           onDismiss={retireMaskedHint}

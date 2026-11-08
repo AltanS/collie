@@ -1,5 +1,5 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
-import { GitBranch, LoaderCircle } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -91,7 +91,7 @@ export function ReleaseLineCard() {
   return (
     <Card className="gap-0 py-0" data-slot="release-line">
       <div className="flex items-start gap-3 p-4">
-        <GitBranch className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
+        <Icon name="release-line" className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
         <div className="min-w-0">
           <div className="font-medium">{t("updates.line.title")}</div>
           <p className="text-sm text-muted-foreground">{t("updates.line.description")}</p>
@@ -115,7 +115,7 @@ export function ReleaseLineCard() {
       {/* Always rendered, so a receipt or a refusal arriving grows nothing above it. */}
       <div className="flex flex-col gap-2 border-t border-border px-4 py-3">
         <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground">
-          {saving && <LoaderCircle className="size-4 animate-spin" aria-hidden="true" />}
+          {saving && <Icon name="busy" className="size-4 animate-spin" aria-hidden="true" />}
           {saving
             ? t("updates.line.saving")
             : error !== null

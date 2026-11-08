@@ -1,4 +1,4 @@
-import { GitBranch, GitCommitHorizontal } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 
 import { t } from "@/lib/i18n";
 import { shortSha } from "@/lib/git-head";
@@ -42,9 +42,9 @@ export function BranchLabel({ head, className }: { head: GitHead; className?: st
       className={cn("flex min-w-0 items-baseline gap-1 font-mono text-[11px] leading-4", className)}
     >
       {branch ? (
-        <GitBranch aria-hidden className="size-3 shrink-0 self-center" />
+        <Icon name="branch" aria-hidden className="size-3 shrink-0 self-center" />
       ) : (
-        <GitCommitHorizontal aria-hidden className="size-3 shrink-0 self-center" />
+        <Icon name="detached-head" aria-hidden className="size-3 shrink-0 self-center" />
       )}
       <span aria-hidden className="flex min-w-0">
         {branch ? (

@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { TriangleAlert, Check, LoaderCircle } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 
 import { cn } from "@/lib/utils";
 import type { MultiSelectModel, StyledLine } from "@/lib/blocks";
@@ -134,10 +134,10 @@ export function MultiSelectBlock({ multi, lines, onAction, onAnswer, disabled, p
 }
 
 function SpinnerSm() {
-  return <LoaderCircle className="size-3.5 shrink-0 animate-spin text-muted-foreground" aria-label={t("dialog.sendingAria")} />;
+  return <Icon name="busy" className="size-3.5 shrink-0 animate-spin text-muted-foreground" aria-label={t("dialog.sendingAria")} />;
 }
 function SpinnerMd() {
-  return <LoaderCircle className="mt-0.5 size-4 shrink-0 animate-spin text-muted-foreground" aria-label={t("dialog.sendingAria")} />;
+  return <Icon name="busy" className="mt-0.5 size-4 shrink-0 animate-spin text-muted-foreground" aria-label={t("dialog.sendingAria")} />;
 }
 
 /** One checkbox row: an option, or a typed answer field (its label in the content face). */
@@ -179,7 +179,7 @@ function CheckboxRow({
           checked ? "border-primary bg-primary/20 text-primary" : "border-border bg-background",
         )}
       >
-        {checked ? <Check className="size-3" /> : null}
+        {checked ? <Icon name="selected" className="size-3" /> : null}
       </span>
       <KeyBadge tone={tone}>{n}</KeyBadge>
       <span className="min-w-0 flex-1">
@@ -308,7 +308,7 @@ function ReviewPhase({
         // role="alert" so a screen reader announces the incomplete-answers warning when the review
         // screen mounts — otherwise a user could confirm a partial set without ever hearing it.
         <div role="alert" className="flex items-center gap-1.5 text-xs text-status-working">
-          <TriangleAlert className="size-3.5 shrink-0" />
+          <Icon name="warning" className="size-3.5 shrink-0" />
           {t("dialog.incomplete")}
         </div>
       ) : null}

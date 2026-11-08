@@ -187,7 +187,7 @@ describe("VoiceTakeover — transcribing", () => {
     expect(screen.getByRole("button", { name: /finish and transcribe/i })).toBeDisabled();
     expect(screen.getByRole("button", { name: /discard recording/i })).toBeEnabled();
     // One moving thing: no separate spinner glyph anywhere in the takeover.
-    expect(container.querySelector(".lucide-loader-circle, .lucide-loader-2, [class*='lucide-loader']")).toBeNull();
+    expect(container.querySelector('[data-icon="busy"]')).toBeNull();
     const spinner = container.querySelector(".animate-spin");
     expect(spinner).not.toBeNull();
     // The arc turns INSIDE the svg, never as a rotated box: a rotated box sweeps its corners past the

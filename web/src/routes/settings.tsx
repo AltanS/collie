@@ -1,5 +1,5 @@
-import { Activity, ArrowLeft, CircleArrowUp, Bell, Bot, FlaskConical, Mic, Palette, Server, SlidersHorizontal } from "lucide-react";
-import type { LucideIcon } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
+import type { IconKey } from "@/components/icons/keys";
 
 import { RouteHeader } from "@/components/app-header";
 import { Button } from "@/components/ui/button";
@@ -44,7 +44,7 @@ interface Row {
   id: string;
   /** Where the row opens. A section is `/settings/<section>`; Machines is a page of its own. */
   to: (scope: Scope | undefined) => string;
-  icon: LucideIcon;
+  icon: IconKey;
   title: MessageKey;
   blurb: MessageKey;
 }
@@ -67,49 +67,49 @@ const ROWS: Row[] = [
   {
     id: "appearance",
     to: (scope) => settingsSectionPath("appearance", scope),
-    icon: Palette,
+    icon: "theme",
     title: "settings.section.appearance.title",
     blurb: "settings.section.appearance.blurb",
   },
   {
     id: "harnesses",
     to: (scope) => settingsSectionPath("harnesses", scope),
-    icon: Bot,
+    icon: "harnesses",
     title: "settings.section.harnesses.title",
     blurb: "settings.section.harnesses.blurb",
   },
   {
     id: "device",
     to: (scope) => settingsSectionPath("device", scope),
-    icon: SlidersHorizontal,
+    icon: "section-device",
     title: "settings.section.device.title",
     blurb: "settings.section.device.blurb",
   },
   {
     id: "voice",
     to: (scope) => settingsSectionPath("voice", scope),
-    icon: Mic,
+    icon: "mic",
     title: "settings.section.voice.title",
     blurb: "settings.section.voice.blurb",
   },
   {
     id: "alerts",
     to: (scope) => settingsSectionPath("alerts", scope),
-    icon: Bell,
+    icon: "notifications",
     title: "settings.section.alerts.title",
     blurb: "settings.section.alerts.blurb",
   },
   {
     id: "system",
     to: (scope) => settingsSectionPath("system", scope),
-    icon: Server,
+    icon: "machine",
     title: "settings.section.system.title",
     blurb: "settings.section.system.blurb",
   },
   {
     id: "machines",
     to: (scope) => machinesPath(scope),
-    icon: Activity,
+    icon: "machine-activity",
     title: "settings.section.machines.title",
     blurb: "settings.section.machines.blurb",
   },
@@ -118,7 +118,7 @@ const ROWS: Row[] = [
         {
           id: "experiments",
           to: (scope) => settingsSectionPath("experiments", scope),
-          icon: FlaskConical,
+          icon: "experiments",
           title: "settings.section.experiments.title",
           blurb: "settings.section.experiments.blurb",
         } satisfies Row,
@@ -150,7 +150,7 @@ export function SettingsRoute() {
               onClick={() => nav.up(homePath(scope))}
               aria-label={t("settings.nav.back")}
             >
-              <ArrowLeft className="size-5" />
+              <Icon name="back" className="size-5" />
             </Button>
             <h1 className="min-w-0 truncate text-lg font-semibold tracking-tight">{t("settings.title")}</h1>
           </>
@@ -171,7 +171,7 @@ export function SettingsRoute() {
                 Updates page opens with); a release waiting leads it with a 6px dot in the primary
                 colour. The row is not in `ROWS`, whose captions are fixed strings. */}
             <SettingsNavRow
-              icon={CircleArrowUp}
+              icon="update-available"
               title={t("updates.entry.title")}
               caption={
                 <>

@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { ArrowLeft } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 
 import { AddButton } from "@/components/ui/add-button";
 import { Chip } from "@/components/ui/chip";
@@ -122,7 +122,7 @@ export function SpaceStrip({
               "flex shrink-0 items-center gap-0.5 rounded-md border border-border bg-background py-1.5 pl-1.5 pr-3 text-sm font-medium text-foreground transition-colors hover:bg-muted active:scale-95",
             )}
           >
-            <ArrowLeft className="size-4" />
+            <Icon name="back" className="size-4" />
             {t("space.strip.back")}
           </button>
         ) : (

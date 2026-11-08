@@ -1,5 +1,5 @@
 import { useMemo, useRef, type ReactNode } from "react";
-import { EyeOff, Keyboard, ListEnd, ListTodo, Monitor, Settings2, Slash, Terminal, Zap } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 
 import { ActionsRow, type GeneralAction } from "@/components/actions-row";
 import { HostChip } from "@/components/host-chip";
@@ -103,7 +103,7 @@ export function ColumnControls({
         disabled={!removable}
         onClick={own(onRemove)}
       >
-        <EyeOff className="size-5" />
+        <Icon name="remove-from-view" className="size-5" />
       </Button>
     </>
   );
@@ -184,25 +184,25 @@ export function PaneColumnBody({
 
   const pill = (id: string): (() => void) => () => onIntent({ kind: "action", id });
   const general: GeneralAction[] = [
-    { id: "keys", icon: Keyboard, label: t("composer.controls.keys"), onSelect: pill("keys") },
+    { id: "keys", icon: "keys-drawer", label: t("composer.controls.keys"), onSelect: pill("keys") },
     ...(gridless
       ? []
-      : [{ id: "screen", icon: Monitor, label: t("composer.controls.screenAria"), word: t("composer.controls.screen"), onSelect: pill("screen") }]),
-    { id: "type", icon: Terminal, label: t("composer.controls.typeAria"), word: t("composer.controls.type"), onSelect: pill("type") },
-    { id: "quick", icon: Zap, label: t("composer.controls.quick"), onSelect: pill("quick") },
-    ...(isShell ? [{ id: "sent", icon: ListEnd, label: t("sent.button"), onSelect: pill("sent") }] : []),
-    ...(commands.length > 0 ? [{ id: "agent", icon: Slash, label: t("composer.controls.agent"), onSelect: pill("agent") }] : []),
+      : [{ id: "screen", icon: "screen", label: t("composer.controls.screenAria"), word: t("composer.controls.screen"), onSelect: pill("screen") } satisfies GeneralAction]),
+    { id: "type", icon: "type-into-terminal", label: t("composer.controls.typeAria"), word: t("composer.controls.type"), onSelect: pill("type") },
+    { id: "quick", icon: "quick-actions", label: t("composer.controls.quick"), onSelect: pill("quick") },
+    ...(isShell ? [{ id: "sent", icon: "sent-history", label: t("sent.button"), onSelect: pill("sent") } satisfies GeneralAction] : []),
+    ...(commands.length > 0 ? [{ id: "agent", icon: "agent-commands", label: t("composer.controls.agent"), onSelect: pill("agent") } satisfies GeneralAction] : []),
     ...(todos.length > 0
       ? [
           {
             id: "todos",
-            icon: ListTodo,
+            icon: "todos",
             label: t("composer.controls.tasks", { done: todos.filter((item) => item.status === "completed").length, total: todos.length }),
             onSelect: pill("todos"),
-          },
+          } satisfies GeneralAction,
         ]
       : []),
-    { id: "display", icon: Settings2, label: t("composer.controls.displayAria"), word: t("composer.controls.display"), onSelect: pill("display") },
+    { id: "display", icon: "display-settings", label: t("composer.controls.displayAria"), word: t("composer.controls.display"), onSelect: pill("display") },
   ];
 
   return (

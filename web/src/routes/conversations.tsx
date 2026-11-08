@@ -1,6 +1,6 @@
+import { Icon } from "@/components/icons/icon";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useParams } from "react-router";
-import { ArrowLeft, LoaderCircle, RotateCcw } from "lucide-react";
 
 import { RouteHeader } from "@/components/app-header";
 import { useAmbientHost, useHostWriteBlock } from "@/components/crew-provider";
@@ -89,7 +89,7 @@ function PageHeader({ onBack, title, trail }: { onBack: () => void; title: strin
             onClick={onBack}
             aria-label={t("conversations.back")}
           >
-            <ArrowLeft className="size-5" />
+            <Icon name="back" className="size-5" />
           </Button>
           <h1 className="min-w-0 flex-1 truncate text-lg font-semibold tracking-tight">{title}</h1>
           {trail}
@@ -234,7 +234,7 @@ export function ConversationsRoute() {
             </ul>
             {list.next !== undefined && (
               <Button variant="ghost" className="mt-3 h-11 self-center" onClick={() => void loadMore()} disabled={more}>
-                {more && <LoaderCircle className="animate-spin" />}
+                {more && <Icon name="busy" className="animate-spin" />}
                 {more ? t("conversations.loading") : t("conversations.loadMore")}
               </Button>
             )}
@@ -388,7 +388,7 @@ export function ConversationRoute() {
                 onClick={() => void reopen()}
                 disabled={reopening || reopened}
               >
-                {reopening ? <LoaderCircle className="animate-spin" /> : <RotateCcw />}
+                {reopening ? <Icon name="busy" className="animate-spin" /> : <Icon name="reopen" />}
                 {reopening ? t("conversations.reopening") : t("conversations.reopen")}
               </Button>
             )}
@@ -413,7 +413,7 @@ export function ConversationRoute() {
             <TranscriptView entries={items.entries} scope={scope} />
             {items.more && (
               <Button variant="ghost" className="mt-3 h-11 w-full" onClick={() => void loadMore()} disabled={more}>
-                {more && <LoaderCircle className="animate-spin" />}
+                {more && <Icon name="busy" className="animate-spin" />}
                 {more ? t("conversations.loading") : t("conversations.loadMore")}
               </Button>
             )}

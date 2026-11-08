@@ -1,10 +1,10 @@
 import type { KeyboardEvent as ReactKeyboardEvent, ReactNode, RefObject } from "react";
-import { ArrowLeft, LoaderCircle } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { t } from "@/lib/i18n";
 import { useLocale } from "@/hooks/use-locale";
+import { Icon } from "@/components/icons/icon";
 
 // Shared building blocks for the long-press action sheets — pane AND tab — so the two stay visually
 // and behaviourally identical (the user's ask: "they should be the same"). The plain action row, the
@@ -96,7 +96,7 @@ export function DestructiveActionRow({
           : "text-destructive hover:bg-destructive/10 active:bg-destructive/15",
       )}
     >
-      {closing ? <LoaderCircle className="size-4 shrink-0 animate-spin" /> : icon}
+      {closing ? <Icon name="busy" className="size-4 shrink-0 animate-spin" /> : icon}
       {closing ? closingLabel : armed ? confirmLabel : label}
     </button>
   );
@@ -142,7 +142,7 @@ export function RenameView({
         onClick={onBack}
         className="flex items-center gap-1 self-start rounded-md py-1 pr-2 text-xs font-medium text-muted-foreground transition-colors active:bg-muted"
       >
-        <ArrowLeft className="size-3.5" />
+        <Icon name="back" className="size-3.5" />
         {t("actionSheet.back")}
       </button>
       <label className="flex flex-col gap-1">
@@ -158,7 +158,7 @@ export function RenameView({
         />
       </label>
       <Button onClick={onSave} disabled={saving || !canSave} className="h-11">
-        {saving ? <LoaderCircle className="size-4 animate-spin" /> : t("actionSheet.save")}
+        {saving ? <Icon name="busy" className="size-4 animate-spin" /> : t("actionSheet.save")}
       </Button>
     </div>
   );

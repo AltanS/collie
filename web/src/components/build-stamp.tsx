@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { LoaderCircle } from "lucide-react";
 
 import { useLocale } from "@/hooks/use-locale";
 import { t } from "@/lib/i18n";
@@ -8,6 +7,7 @@ import { fetchConfig } from "@/lib/api";
 import { BUILD, buildLabel, isStaleBuild } from "@/lib/build";
 import { getServerBuild, observeServerBuild, useServerBuild } from "@/lib/server-build";
 import { checkForUpdate } from "@/lib/pwa";
+import { Icon } from "@/components/icons/icon";
 
 // Tiny build stamp for the UI footer. The id is baked into THIS bundle, so it travels with the
 // cached bundle — meaning the footer tells you which bundle you're actually running. It reads the
@@ -101,7 +101,7 @@ export function BuildStamp({ className, version = BUILD.version }: { className?:
           >
             {updating ? (
               <span className="inline-flex items-center gap-1 align-middle">
-                <LoaderCircle className="size-3 animate-spin" />
+                <Icon name="busy" className="size-3 animate-spin" />
                 {t("settings.buildStamp.updating")}
               </span>
             ) : (

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { createPortal } from "react-dom";
-import { Check, Layers } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 
 import { cn } from "@/lib/utils";
 import { useNav } from "@/hooks/use-nav";
@@ -91,7 +91,7 @@ export function SessionSwitcher({ sessions, scope, viewAll }: SessionSwitcherPro
         // treatment the sibling trigger already used.
         className="flex min-w-0 items-center gap-1 rounded-md border border-border px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent active:scale-95"
       >
-        <Layers className="size-3.5 shrink-0" />
+        <Icon name="session" className="size-3.5 shrink-0" />
         <span className="min-w-0 max-w-[7rem] truncate">{currentName}</span>
       </button>
 
@@ -117,7 +117,7 @@ export function SessionSwitcher({ sessions, scope, viewAll }: SessionSwitcherPro
                     : "hover:bg-accent active:bg-accent",
                 )}
               >
-                <Layers className="size-4 shrink-0 text-muted-foreground" />
+                <Icon name="session" className="size-4 shrink-0 text-muted-foreground" />
                 <div className="min-w-0 flex-1">
                   <span className="block truncate text-sm font-medium">
                     {t("connection.session.all")}
@@ -126,7 +126,7 @@ export function SessionSwitcher({ sessions, scope, viewAll }: SessionSwitcherPro
                     {t("connection.session.allDescription")}
                   </span>
                 </div>
-                {viewAll && <Check className="size-4 shrink-0 text-primary" />}
+                {viewAll && <Icon name="selected" className="size-4 shrink-0 text-primary" />}
               </button>
             </li>
             {sessions.map((s) => {
@@ -155,7 +155,7 @@ export function SessionSwitcher({ sessions, scope, viewAll }: SessionSwitcherPro
                       !s.reachable && "cursor-not-allowed opacity-50 hover:bg-transparent",
                     )}
                   >
-                    <Layers className="size-4 shrink-0 text-muted-foreground" />
+                    <Icon name="session" className="size-4 shrink-0 text-muted-foreground" />
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-1.5">
                         <span className="truncate text-sm font-medium">{shown}</span>
@@ -193,7 +193,7 @@ export function SessionSwitcher({ sessions, scope, viewAll }: SessionSwitcherPro
                         </div>
                       )}
                     </div>
-                    {active && <Check className="size-4 shrink-0 text-primary" />}
+                    {active && <Icon name="selected" className="size-4 shrink-0 text-primary" />}
                   </button>
                 </li>
               );
