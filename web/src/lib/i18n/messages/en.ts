@@ -350,10 +350,10 @@ export const en = {
   "settings.typeface.note.atkinson": "Made for low vision, with clear letters and a real bold.",
   "settings.typeface.note.operator": "Added by this collie's operator.",
   // --- settings.math (which engine typesets LaTeX in Markdown — a per-device preference) ---
-  "settings.mark.title": "Mark",
-  "settings.mark.description": "The logo in the header, on this device.",
+  "settings.mark.title": "Character",
+  "settings.mark.description": "Who sits in the header, on this device.",
   "settings.mark.fromTheme": "From the theme",
-  "settings.mark.note": "Only the header changes. The app icon and the splash stay the Collie mark.",
+  "settings.mark.note": "The app icon and the splash stay Collie.",
   "settings.math.title": "Math",
   "settings.math.description": "LaTeX in chat and Markdown files, on this device.",
   "settings.math.engine": "Engine",

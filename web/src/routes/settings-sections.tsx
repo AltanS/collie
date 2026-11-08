@@ -90,14 +90,15 @@ export function SettingsAppearanceRoute() {
           first thing that looks like you; then the theme (Paste, Browse and Try live in its card);
           then which half of the theme you see. */}
       <AppearanceIntro />
+      {/* The Character card: which mark the header draws, per device. Above the theme although its
+          default is "From the theme", because it is the choice people come here for first; the
+          card's own first row says that the theme may name one. */}
+      <MarkControl />
       {/* Which theme, then which half of it: the picker sits directly above the three-way (System,
           Light, Dark) because the two are one question asked twice, and a person who finds one
           should find the other. */}
       <ThemePickerControl />
       <ThemeControl />
-      {/* Which logo the header draws, per device. Under the theme because its default is "From the
-          theme": a theme may name a mark, and this is where a device overrides it. */}
-      <MarkControl />
       {/* Beside appearance because both are "how this phone presents itself". */}
       <LanguageControl />
       {/* TWO FONT CARDS, ADJACENT, IN THIS ORDER. Adjacency answers the only question either one
