@@ -1,17 +1,17 @@
 # Themes
 
 A theme is the look of the app. It sets the colours, the typefaces, the shape of controls, the feel of the
-page and the colours of the terminal. It is one small JSON file. Collie ships five. You can import more
+page and the colours of the terminal. It is one small JSON file. Collie ships four. You can import more
 from a file, and you can export any theme to copy and edit. A theme is a setting of one device, kept in
 that browser, and it changes nothing on the bridge.
 
 Every theme has two halves. The light half is the set of colours for light mode. The dark half is the set
 for dark mode. A colour in a theme has a name, such as `background` or `primary`, and that name is a token.
 
-## The five themes
+## The four themes
 
-Collie ships five themes, and every one of them uses every part of a theme file. Petal also names a
-[character](#the-character) for the header. Each picture shows the Dashboard,
+Collie ships four themes, and every one of them uses every part of a theme file except the
+[`character`](#the-character). Each picture shows the Dashboard,
 light on the left and dark on the right.
 
 - **Collie** is the default. It is black and white like the dog mark, with warm neutral greys, the black ink
@@ -41,38 +41,30 @@ light on the left and dark on the right.
 
   ![The Harbour theme on the Dashboard, light and dark.](images/themes/harbour-home.png)
 
-- **Petal** is soft and friendly. Pastel pink and lavender stand on a cream page in light, and on a deep
-  berry night in dark. It has round corners, soft shadows, roomy steps and rows as blush cards with a
-  rose edge. A pink band stands behind the header and the bottom bar, the page runs from cream to pink
-  toward the foot, the open tab and Send are rose, and lavender marks hover and switches. Titles are in
-  the rounded Nunito, and the composer opens like a chat box. The terminal draws a pastel palette.
-
-  ![The Petal theme on the Dashboard, light and dark.](images/themes/petal-home.png)
-
 The table lists every word each theme uses. The first word of each list is the word a theme gets when its file
 names none: `sharp`, `flat`, `default`, `bold`, `default`, `flat`, `band`, `rules`, `default`, `sentence`,
 `screen`, `plain` and `field`. That is what the Collie theme draws, except for `ground`, `tabs` and `composer`,
 which the Collie theme sets to `grain`, `folder` and `box`. The words are explained under [Shape](#shape), [Look](#look) and
 [Terminal palette](#terminal-palette).
 
-| | Collie | Nightwatch | Daylight | Harbour | Petal |
-| --- | --- | --- | --- | --- | --- |
-| Typeface | Atkinson Hyperlegible Next | IBM Plex Sans | Geist | Atkinson Hyperlegible Next | Atkinson Hyperlegible Next |
-| Display face | Aldrich | IBM Plex Sans | Atkinson Hyperlegible Next | Space Grotesk | Nunito |
-| Radius | `sharp` | `sharp` | `round` | `soft` | `round` |
-| Shadow | `flat` | `flat` | `lifted` | `lifted` | `default` |
-| Density | `default` | `default` | `roomy` | `default` | `roomy` |
-| Weight | `bold` | `bold` | `default` | `default` | `default` |
-| Border | `default` | `strong` | `default` | `default` | `default` |
-| Ground | `grain` | `flat` | `gradient` | `grain` | `gradient` |
-| Chrome | `band` | `band` | `page` | `page` | `band` |
-| Rows | `rules` | `rules` | `cards` | `rules` | `cards` |
-| Icons | `default` | `heavy` | `default` | `thin` | `default` |
-| Labels | `sentence` | `caps` | `sentence` | `caps` | `sentence` |
-| Tabs | `folder` | `plain` | `plain` | `plain` | `folder` |
-| Composer | `box` | `field` | `field` | `field` | `box` |
-| Tab colour | the text colour | the text colour | the text colour | the text colour | the rose of `primary` |
-| Terminal palette | high contrast, on `#100f0d` | amber, on `#000000` | vivid, on `#1a1612` | Solarized-based, on `#0a1216` | pastel, on `#140a10` |
+| | Collie | Nightwatch | Daylight | Harbour |
+| --- | --- | --- | --- | --- |
+| Typeface | Atkinson Hyperlegible Next | IBM Plex Sans | Geist | Atkinson Hyperlegible Next |
+| Display face | Aldrich | IBM Plex Sans | Atkinson Hyperlegible Next | Space Grotesk |
+| Radius | `sharp` | `sharp` | `round` | `soft` |
+| Shadow | `flat` | `flat` | `lifted` | `lifted` |
+| Density | `default` | `default` | `roomy` | `default` |
+| Weight | `bold` | `bold` | `default` | `default` |
+| Border | `default` | `strong` | `default` | `default` |
+| Ground | `grain` | `flat` | `gradient` | `grain` |
+| Chrome | `band` | `band` | `page` | `page` |
+| Rows | `rules` | `rules` | `cards` | `rules` |
+| Icons | `default` | `heavy` | `default` | `thin` |
+| Labels | `sentence` | `caps` | `sentence` | `caps` |
+| Tabs | `folder` | `plain` | `plain` | `plain` |
+| Composer | `box` | `field` | `field` | `field` |
+| Tab colour | the text colour | the text colour | the text colour | the text colour |
+| Terminal palette | high contrast, on `#100f0d` | amber, on `#000000` | vivid, on `#1a1612` | Solarized-based, on `#0a1216` |
 
 ## Pick a theme
 
@@ -202,7 +194,7 @@ the other parts. A floor is a contrast ratio, so a higher number is easier to re
 Pick the theme, then tap **Export**. Collie saves `<id>.collie-theme.json`. A browser that cannot save a
 file shows the text in a sheet, with a copy button. To make your own theme from a shipped one:
 
-1. Export Nightwatch, Daylight, Harbour, Petal or Collie.
+1. Export Nightwatch, Daylight, Harbour or Collie.
 2. Change `id` and `name`. An id of a shipped theme is refused.
 3. Edit the colours and the words, and delete any token you do not want to change.
 4. Send the file to your phone, then import it.
@@ -486,9 +478,9 @@ of closed words.
 | `zoom` | `screen` | The Zoom pill on the belt shows in the Screen view, never in Chat. The default. |
 | | `none` | The Zoom pill never shows. |
 | `tabs` | `plain` | The open tab differs from the others by its text colour and weight only. The default for a theme that names none. |
-| | `folder` | The open tab is a folder tab. It is filled with the page colour, has a line on each side and a 2px top edge in `tab-active`, and joins the row of panes under it. The Collie and Petal themes use it. The open pane is a tinted cell with a ring in `tab-active`. |
+| | `folder` | The open tab is a folder tab. It is filled with the page colour, has a line on each side and a 2px top edge in `tab-active`, and joins the row of panes under it. The Collie theme uses it. The open pane is a tinted cell with a ring in `tab-active`. |
 | `composer` | `field` | The composer is one text field with its row of controls. The default for a theme that names none. |
-| | `box` | The composer is a box. The Collie and Petal themes use it. |
+| | `box` | The composer is a box. The Collie theme uses it. |
 
 `fonts.display` names one of the seven typefaces for page titles and the name in the header. A theme that
 names none draws its titles in Aldrich, the display face of the Collie theme. Collie fetches a display face only when the theme

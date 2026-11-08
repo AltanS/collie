@@ -65,7 +65,7 @@ export const FACES = {
       '"Atkinson Hyperlegible Next", "Atkinson Hyperlegible Next Fallback", ui-sans-serif, system-ui, sans-serif',
     note: "23 KB. Drawn for the Braille Institute for low vision: I, l and 1, and 0 and O, are told apart. Real 400 to 700 weights.",
   },
-  // Shipped with the theme `petal`. Self-hosted in index.css with its computed twin, like Atkinson
+  // The rounded face a theme may name. Self-hosted in index.css with its computed twin, like Atkinson
   // above, so this switcher renders the bytes the app renders.
   nunito: {
     label: "Nunito",

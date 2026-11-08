@@ -76,7 +76,7 @@ describe("ThemePickerControl", () => {
     const select = screen.getByRole("combobox", { name: "Theme" });
     const options = within(select).getAllByRole("option");
     const shipped = store.shippedThemes().map((theme) => theme.name);
-    expect(shipped).toEqual(["Collie", "Nightwatch", "Daylight", "Harbour", "Petal"]);
+    expect(shipped).toEqual(["Collie", "Nightwatch", "Daylight", "Harbour"]);
     expect(options.map((option) => option.textContent)).toEqual([...shipped, "Zed", "Mine"]);
     expect(select).toHaveValue("collie");
     // The chip strip is gone: no radio group, no radios.

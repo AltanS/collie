@@ -54,7 +54,7 @@ describe("the token list", () => {
     expect(THEME_TOKENS).not.toContain("popover");
     expect(THEME_TOKENS).not.toContain("radius");
     expect(THEME_VERSION).toBe(4);
-    expect(SHIPPED_THEME_IDS).toEqual(["collie", "nightwatch", "daylight", "harbour", "petal"]);
+    expect(SHIPPED_THEME_IDS).toEqual(["collie", "nightwatch", "daylight", "harbour"]);
   });
 });
 
@@ -932,19 +932,14 @@ describe("the character key", () => {
     expect(JSON.stringify({ ...second.theme, version: versionOf(second.theme) }, null, 2)).toBe(exported);
   });
 
-  // Petal is the one shipped theme that names a character (the Kawaii one);
-  // every other shipped theme names none, so its header keeps the Collie mark.
-  const shippedCharacter = (id: string): string | undefined => (id === "petal" ? "kawaii" : undefined);
-
-  it("gives Petal the Kawaii character and every other shipped theme none, at the version its file says", () => {
+  it("leaves every shipped theme without a character, at the version its file says", () => {
     for (const id of SHIPPED_THEME_IDS) {
       const raw = read(`src/themes/${id}.json`);
       const doc = JSON.parse(raw);
+      expect(doc).not.toHaveProperty("character");
       const parsed = parseTheme(raw, { ...CAP, allowReservedId: true });
-      expect(parsed.ok && parsed.theme.character, id).toBe(shippedCharacter(id));
-      expect(doc.character, id).toBe(shippedCharacter(id));
-      expect(parsed.ok && parsed.theme.version, id).toBe(doc.version);
+      expect(parsed.ok && parsed.theme.character).toBeUndefined();
+      expect(parsed.ok && parsed.theme.version).toBe(doc.version);
     }
-    expect(read("src/themes/petal.json")).toContain('"version": 4');
   });
 });

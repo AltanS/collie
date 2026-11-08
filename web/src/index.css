@@ -1004,8 +1004,9 @@
     U+20A0-20BF, U+2122, U+2190-21FF, U+2212, U+2264-2265, U+2699, U+2713-2714, U+25CF;
 }
 
-/* Nunito, the display face of the theme `petal` (its titles; the text stays Atkinson). Rounded terminals on every stroke end, which is the whole
- * reason it is here: a soft hand for a soft palette. Built by the same scripts/build-ui-font.sh run
+/* Nunito, a rounded face a theme may name for its text or its titles, as the starter theme does for
+ * its titles. Rounded terminals on every stroke end, which is the whole reason it is here: a soft
+ * hand for a soft palette. Built by the same scripts/build-ui-font.sh run
  * (UI_FONT_ONLY=nunito), subset to the same ranges, 30 KB, instanced to wght 400 to 700 like Space
  * Grotesk, so the 500 and 600 the app asks for are drawn, not synthesised. Opt-in like every face
  * but the default: fetched when a reader or a theme picks it, never preloaded, never precached.

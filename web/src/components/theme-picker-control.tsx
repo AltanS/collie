@@ -587,7 +587,7 @@ export function ThemePickerControl() {
 
       {/* One row, built like the Typeface card's Family row: the label on the left, a native select on
           the right. The chip strip it replaces wrapped onto two rows and grew with every imported
-          theme; a select takes the five shipped themes and up to eight imported ones in one row. The
+          theme; a select takes the four shipped themes and up to eight imported ones in one row. The
           wrapper owns the border and the chevron, `appearance-none` removes the engine's caret, and
           `shrink-0` keeps a long theme name from resizing the row. A change is a chip tap as it was:
           `setActiveTheme`, which ignores an id it does not hold. */}

@@ -125,7 +125,7 @@ export const ALL_THEME_TOKENS = [...THEME_TOKENS, ...OPTIONAL_THEME_TOKENS] as c
 export type AnyThemeToken = ThemeToken | OptionalThemeToken;
 
 /** The shipped ids. An imported file may not use one, so a download can never replace a shipped look. */
-export const SHIPPED_THEME_IDS = ["collie", "nightwatch", "daylight", "harbour", "petal"] as const;
+export const SHIPPED_THEME_IDS = ["collie", "nightwatch", "daylight", "harbour"] as const;
 
 export type ShippedThemeId = (typeof SHIPPED_THEME_IDS)[number];
 

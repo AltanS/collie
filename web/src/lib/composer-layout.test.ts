@@ -14,14 +14,13 @@ describe("composerLayout", () => {
     expect(composerLayout("box")).toBe("box");
   });
 
-  it("is the box for the default theme and Petal, and the field for every shipped theme that names no word", () => {
+  it("is the box for the default theme, and the field for every shipped theme that names no word", () => {
     const words = shippedThemes().map((theme) => [theme.id, composerLayout(theme.surface?.composer)]);
     expect(words).toEqual([
       ["collie", "box"],
       ["nightwatch", "field"],
       ["daylight", "field"],
       ["harbour", "field"],
-      ["petal", "box"],
     ]);
   });
 });

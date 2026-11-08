@@ -167,7 +167,7 @@ describe("TypefaceControl", () => {
     expect(container.textContent).toContain("a real bold");
   });
 
-  // Nunito is the petal theme's face. Its note is English until the translation pass, so this reads it.
+  // Nunito is the rounded face a theme may name. Its note is English until the translation pass, so this reads it.
   it("picks Nunito with its own class and its own note", async () => {
     config({});
     const user = userEvent.setup();
