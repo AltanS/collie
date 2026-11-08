@@ -70,7 +70,7 @@
     for (var i = 0; i < SHIPPED.length; i++) {
       if (SHIPPED[i] === id) return root.setAttribute("data-theme", SHIPPED[i]);
     }
-    if (typeof id !== "string") return;
+    if (typeof id !== "string" || id === "collie") return; // collie writes nothing, whatever the library holds
     var lib = JSON.parse(localStorage.getItem("collie:themes:v1") || "null");
     var list = lib && lib.version === 1 && Array.isArray(lib.themes) ? lib.themes : [];
     for (var j = 0; j < list.length; j++) {

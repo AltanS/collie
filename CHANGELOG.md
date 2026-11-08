@@ -66,6 +66,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **A theme whose text cannot be read is refused, and `#theme=collie` puts Collie back.** Import, Paste, Browse, Try and `collie theme check` refuse a file whose `foreground` on `background` measures under 3 in a half, or whose text colour is fully transparent, with one sentence: "The text of this theme cannot be read." A stored theme that fails it is dropped at load. The softer floors stay warnings. Opening the app with `#theme=collie` on its address wears Collie again and drops a trial, whatever the theme drew, and leaves the library, the typeface and the pairing alone.
 - **A refusal and `collie theme check` print a strange key or file name as escaped text.** A key name or a file name that is not a plain word shows as a quoted string of printable ASCII, with line breaks, terminal escapes and bidi controls written as `\uXXXX`, and cut after 64 characters (200 for a file name). A theme file can no longer write to the terminal that checks it.
 - **Browse checks the host's answer before it draws it.** The phone reads the host's status of the theme list field by field: a field of the wrong type takes its empty value, an error word it does not know is left out, and an answer that is not an object shows the read error, so an older or newer host cannot break the sheet.
+- **The first paint never takes a stored theme that claims the id `collie`.** The script that paints the theme before the app loads now skips such an entry, as the app already did once it loaded.
 
 ### Packaging
 

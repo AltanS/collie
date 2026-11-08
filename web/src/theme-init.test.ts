@@ -207,6 +207,15 @@ describe("theme-init.js, run", () => {
     expect(sheet).toContain(`--ground-image: ${grain};`);
   });
 
+  it("paints nothing from a library entry that claims the id collie (F12)", () => {
+    const entry = { ...midnight(1).themes[0], id: "collie" };
+    const seen = runInit({
+      "collie:design:v1": JSON.stringify({ theme: "collie" }),
+      "collie:themes:v1": JSON.stringify({ version: 1, themes: [entry] }),
+    });
+    expect(seen).toEqual({ classes: [], attributes: [], properties: [] });
+  });
+
   it("paints a stored collie-new as the default: no attribute and no property", () => {
     const seen = runInit({ "collie:design:v1": JSON.stringify({ font: "atkinson", theme: "collie-new" }) });
     expect(seen).toEqual({ classes: [], attributes: [], properties: [] });
