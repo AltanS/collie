@@ -194,17 +194,21 @@ describe("the service worker's runtime caching", () => {
     .filter((line) => !/^\s*(\/\/|\*|\/\*)/.test(line))
     .join("\n");
 
-  it("registers exactly four routes: the navigation fallback and the /fonts/, /stt/ and /math/ caches", () => {
+  it("registers the navigation fallback, the /fonts/ and /stt/ caches, and keeps /math/ and /marks/ on first use", () => {
+    // Four `registerRoute` calls: three direct, and the one inside `keepOnFirstUse`, which serves the
+    // math engines and the theme characters on the same terms and is called for exactly those two.
     expect(SW_CODE.match(/registerRoute\(/g)?.length).toBe(4);
     expect(SW_CODE).toContain("new NavigationRoute(createHandlerBoundToURL(");
     expect(SW_CODE).toContain('url.pathname.startsWith(under("/fonts/"))');
     expect(SW_CODE).toContain('url.pathname.startsWith(under("/stt/"))');
-    expect(SW_CODE).toContain('url.pathname.startsWith(under("/math/"))');
+    expect(SW_CODE).toContain("url.pathname.startsWith(under(prefix))");
+    const kept = [...SW_CODE.matchAll(/keepOnFirstUse\("([^"]*)", (\w+),/g)].map((m) => `${m[1]} ${m[2]}`);
+    expect(kept).toEqual(["/math/ MATH_CACHE", "/marks/ MARK_CACHE"]);
   });
 
-  it("opens three runtime caches, the font, speech and math caches, and never names an /api path", () => {
+  it("opens the font and speech caches directly, the math and character caches through keepOnFirstUse, and never names an /api path", () => {
     const opened = [...SW_CODE.matchAll(/caches\.open\(([^)]*)\)/g)].map((m) => m[1]);
-    expect(new Set(opened)).toEqual(new Set(["FONT_CACHE", "STT_CACHE", "MATH_CACHE"]));
+    expect(new Set(opened)).toEqual(new Set(["FONT_CACHE", "STT_CACHE", "cacheName"]));
     expect(SW_CODE).not.toMatch(/["'`]\/api\//);
     expect(SW_CODE).not.toMatch(/files\/image/);
   });
@@ -220,10 +224,11 @@ describe("the service worker's runtime caching", () => {
     expect(SW_CODE).toContain("sttSweepKeeps(");
   });
 
-  it("opens the math cache only inside a /math/ request, and an update empties it", () => {
-    // A device on Off never requests /math/, so it never gets the cache; activate only deletes.
-    expect(SW_CODE.match(/caches\.open\(MATH_CACHE\)/g)?.length).toBe(1);
-    expect(SW_CODE).toContain("event.waitUntil(caches.delete(MATH_CACHE))");
-    expect(SW_CODE).toContain("mathStorable(response)");
+  it("opens the math and character caches only inside their own requests, and an update empties both", () => {
+    // A device on Off never requests /math/, and one on the Collie mark never requests /marks/, so
+    // neither gets a cache; activate only deletes.
+    expect(SW_CODE.match(/caches\.open\(cacheName\)/g)?.length).toBe(1);
+    expect(SW_CODE).toContain("caches.delete(MATH_CACHE), caches.delete(MARK_CACHE)");
+    expect(SW_CODE).toContain('keepOnFirstUse("/math/", MATH_CACHE, mathStorable)');
   });
 });

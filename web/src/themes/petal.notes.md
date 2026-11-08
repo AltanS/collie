@@ -98,7 +98,7 @@ figures stay proportional under `tabular-nums`, and every count in the app would
 it ticks (DESIGN.md §2, no state may move content). The titles carry the rounded hand; the text
 and the counts stay on Atkinson.
 
-## The whole sheet (schema version 3)
+## The whole sheet (schema version 4)
 
 Soft and friendly: round corners, soft shadows, roomy spacing, rows as cards, a cream to blush
 gradient under the page, a blush band behind the header and bars, a rose folder tab, the composer
@@ -119,5 +119,5 @@ as a chat box, and sentence-case labels.
 | `tabs` | `folder` | the open tab in rose |
 | `composer` | `box` | the composer reads as a chat box |
 
-It sets `tab-active`, so the file is version 3. The Kawaii character (`character: "kawaii"`) is
-added when the theme-marks branch lands; that key makes the file version 4.
+It sets `character: "kawaii"`, so the header wears the Kawaii character and the file is version 4
+(a Collie newer than 1.28.0). A device's own choice in Settings → Appearance → Mark still wins.

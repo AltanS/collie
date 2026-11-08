@@ -35,11 +35,32 @@ CSS in it.
 - A colour is `#rrggbb`, `#rrggbbaa` or `oklch(L C H)` with an optional `/ A`. No named colour, no
   `rgb()`, no `var()`.
 - Write the lowest `version` that holds the file: 1 for colours and `fonts.ui` only, 2 with `surface`,
-  `fonts.display` or `ansi`, 3 with `pane-active` or `tab-active`.
+  `fonts.display` or `ansi`, 3 with `pane-active` or `tab-active`, 4 with `character`.
+- `character` is optional. See "Characters" below.
 - A font is one of the six names under "Write a theme". A theme cannot add a font.
 - Give both halves when you change the page colours. A dark half left out takes Collie's dark colours,
   which rarely match a new light half.
 - `collie theme check --json <file>` prints the report as one JSON object, if you want to read it as data.
+
+## Characters
+
+A character is the animated creature in the app header: a dog head with beads that circle it on an orbit.
+The favicon, the app icon and the splash always stay Collie. A theme may name one character.
+
+| `character` | What it is |
+| --- | --- |
+| `collie` | The original profile collie head, drawn in the ink of the page. |
+| `kawaii` | A round anime puppy face from the front, with big glossy eyes and candy pearls. |
+| `kawaii-tilt` | The same puppy, with its head tilted. |
+| `pixel` | An 8-bit pixel-art collie head with square beads that hop. |
+
+- Set `"character": "<id>"` only when the operator asks for a character. Without it the header keeps the
+  character the device chose, else Collie.
+- A file with `character` is version 4. It needs a Collie newer than 1.28.0. An older Collie refuses it.
+  A file that says a version below 4 and holds `character` is refused, with the version named.
+- A device choice in Settings other than "From the theme" wins over the theme's character.
+- Pair the character with the look of the theme. `pixel` suits sharp corners and a mono display face.
+  `kawaii` suits round corners and soft pastel accents.
 
 ## Share it
 

@@ -1,9 +1,11 @@
 import type { CSSProperties } from "react";
 import { Palette } from "lucide-react";
 
+import { BrandMark } from "@/components/brand-mark";
 import { SectionLabel } from "@/components/ui/section-label";
 import { useLocale } from "@/hooks/use-locale";
 import { t } from "@/lib/i18n";
+import { markName } from "@/lib/mark-ids";
 import { isShippedFont } from "@/lib/shipped-fonts";
 import { HALF_KEYS } from "@/lib/theme/report-words";
 import { DEFAULT_THEME_ID, THEME_TOKENS, fillHalves, type Theme } from "@/lib/theme/schema";
@@ -72,3 +74,21 @@ export function PageSample({ theme, half }: { theme: Theme; half: "light" | "dar
   );
 }
 
+
+/**
+ * The character a theme names, drawn small beside its name ("Character: Kawaii"), or nothing when the theme names
+ * none. The mark is passed explicitly: the preview shows the theme's own logo whatever this device chose.
+ * It is drawn on the card colour, because both sheets that show it sit on the card.
+ */
+export function ThemeMarkLine({ theme }: { theme: Theme }) {
+  useLocale();
+  if (theme.character === undefined) return null;
+  return (
+    <div data-testid="theme-mark-line" className="mt-1 flex items-center gap-2 text-sm text-muted-foreground">
+      <span className="grid size-7 shrink-0 place-items-center">
+        <BrandMark mark={theme.character} size={28} weight="header" paper="var(--card)" />
+      </span>
+      <span className="min-w-0 truncate">{t("theme.preview.mark", { name: markName(theme.character) })}</span>
+    </div>
+  );
+}

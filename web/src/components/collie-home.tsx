@@ -3,7 +3,8 @@ import { CloudOff, WifiOff } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { savedAtLabel } from "@/lib/format";
-import { CollieMark } from "@/components/collie-mark";
+import { BrandMark } from "@/components/brand-mark";
+import { ORBIT_TURN_MS, type MarkHandle, type MarkState } from "@/components/mark-contract";
 import { t } from "@/lib/i18n";
 import { useStatus } from "@/lib/status";
 import { useOperatorBusy } from "@/lib/busy";
@@ -48,13 +49,10 @@ interface CollieHomeProps {
 }
 
 // The single, shared Collie mark: brand + home button + connection loader in one, so the top-left of
-// every screen means the same thing. ONE element in all three states — <CollieMark/>, which is a
-// still drawing while live, starts turning (the "bloom") once the connection has been not-live for a
-// sustained beat (`trouble`), and goes still again, muted, once the outage escalates (`lost`). That
-// is why this no longer swaps a sprite for a still image: the old sprite had no rest frame (frame 0
-// is a full-stretch mid-stride pose that reads as frozen mid-run), so rest had to be a different
-// picture. This mark rests by not animating at all, so nothing is ever swapped and nothing can
-// resize as the connection settles.
+// every screen means the same thing. ONE element for every connection state: it drifts at rest, turns
+// (the "bloom") once the connection has been not-live for a sustained beat (`trouble`), and goes still
+// again, dimmed, once the outage escalates (`lost`). Nothing is ever swapped, so nothing can resize as
+// the connection settles.
 // The mark is now the app's ONLY animal: the boot splash and the idle cover bloom this same mark, so
 // "Collie is fetching" looks the same wherever it appears. The old gallop sprite and its component
 // were removed in 1.20.0.
@@ -66,14 +64,11 @@ interface CollieHomeProps {
 // the mark with one of them trapped in here. See app-header.tsx, which now owns both lines. What is
 // left is exactly the 44px tap box DESIGN.md §6 asks for, and every header renders THIS component —
 // the consistency is structural, not a convention two files have to keep agreeing on.
-// One full round of the orbit at the mark's LOADING rate, in milliseconds. <CollieMark/> owns that
-// rate (`TURN.live`, collie-mark.tsx) and does not export it, so this number is a copy and has to
-// stay in step with it: shorter cuts the round off part way, longer starts a second one. The rate
-// is set in the collie-brand repo (`SPRINT` in src/geometry.ts) — a change there has to be walked
-// over to here by hand, and this is the only thing on this side that knows the number. The
-// reconnection's green turn (`lib/reconnected.ts`) is timed by it too, through the strip that
-// fires it.
-export const ORBIT_TURN_MS = 1800;
+// The header says WHAT through the mark contract (`mark-contract.ts`): ONE `state` computed below, and
+// a `MarkHandle` for the spin round. It never names a part of a mark. One full round of the orbit is
+// `ORBIT_TURN_MS`, the contract's number, so the round and the reconnection's turn mean the same on
+// every mark; it is re-exported because the connection banner times its strip by it.
+export { ORBIT_TURN_MS };
 
 /**
  * The round's SHAPE, as a multiplier on the mark's own live rate: a raised cosine on a WARPED clock.
@@ -130,29 +125,6 @@ export const ORBIT_TURN_MS = 1800;
  */
 const SPIN_SKEW = 0.5;
 
-/**
- * THE APPLYING PAINT, as a class on the mark's root (2026-11-06). The rules are in `index.css`
- * ("THE MARK WHILE THE APP UPDATES"), and they recolour every bead, near and far, as a full disc in
- * `--status-working`.
- *
- * WHY A CLASS AND A STYLESHEET, AND NOT A PROP ON <CollieMark/>. The brief asked for the prop, and
- * that is where it belongs, but collie-mark.tsx is generated in the collie-brand repo and sealed by
- * a sha256 a test recomputes (DESIGN.md §8). A prop added here would fail that test, and a prop added
- * upstream is a change to another repo. So the host paints it, through the one door the mark leaves
- * open for that: `className` lands on the root untouched, and a document-scoped rule can reach
- * the beads under it. `collie-home.test.tsx` renders the real mark and proves the rules reach every
- * bead, so a regenerated mark that renamed its parts fails a test rather than turning grey quietly.
- * When collie-brand grows an `applying` input, this class and its rules go.
- */
-export const APPLYING_CLASS = "collie-applying";
-
-/**
- * The same door, for a restored connection (2026-11-07): every bead in `--status-done` for the one
- * turn the mark makes when the link comes back. Same selectors as APPLYING_CLASS, in index.css, and
- * the same coupling test; only the colour differs.
- */
-export const RECONNECTED_CLASS = "collie-reconnected";
-
 export function spinRate(elapsedMs: number, totalMs = ORBIT_TURN_MS): number {
   if (totalMs <= 0) return 1;
   const at = Math.min(Math.max(elapsedMs, 0), totalMs);
@@ -163,6 +135,17 @@ export function spinRate(elapsedMs: number, totalMs = ORBIT_TURN_MS): number {
   const u = theta + SPIN_SKEW * theta * (1 - theta);
   const du = 1 + SPIN_SKEW * (1 - 2 * theta);
   return (1 - Math.cos(2 * Math.PI * u)) * du;
+}
+
+/**
+ * ONE state for the mark, by precedence: a dead link outranks everything (dimmed, no turning), then
+ * the app updating, then the link coming back, then any loading input, else rest.
+ */
+function markStateOf(input: { lost: boolean; applies: boolean; greets: boolean; loading: boolean }): MarkState {
+  if (input.lost) return "idle";
+  if (input.applies) return "applying";
+  if (input.greets) return "reconnected";
+  return input.loading ? "loading" : "rest";
 }
 
 export function CollieHome({
@@ -206,19 +189,15 @@ export function CollieHome({
   // So the rule is the simple one, and `lib/status.ts` is its whole definition: if it was worth a
   // notice, it is worth a round. That also keeps the two from ever disagreeing about what happened.
   //
-  // It is the ORBIT that turns, not the mark. The whole SVG was rotated first and that was wrong:
-  // the head span round with it, which is not a thing the drawing does. So this uses the mark's own
-  // `loading` input instead — the same beads on the same path, at 27x the resting drift. The mark
-  // carries the phase across the rate change by hand (collie-mark.tsx says how), so the round joins
-  // the drift where it left it and rejoins it where it lands. Nothing jumps at either end.
+  // It is the ORBIT that turns, not the whole SVG (the head would span round with it). The round
+  // sets `state="loading"`: the same beads on the same path, at 27x the resting drift. Every mark
+  // carries the phase across that change (the contract's `useMark`), so the round joins the drift where
+  // it left it and rejoins it where it lands. Every state differs from `rest` by colour too, so under
+  // `prefers-reduced-motion`, when the turning stops, the colour still says something happened.
   //
-  // The accents come up to full chroma for the round as well. That is the mark's own coupling, not
-  // an extra: under `prefers-reduced-motion` the turning stops and the colour is the only thing
-  // left saying anything happened.
-  //
-  // It never fights the connection state. `bloom` is already the loading input and outranks this —
-  // a round would tell the reader nothing there — and while `lost` the mark stays still and muted,
-  // which is a state a passing event must not overwrite.
+  // It never fights the connection state. `bloom` is already `loading` and outranks this, since a
+  // round would tell the reader nothing there, and while `lost` the mark stays dimmed, which is a
+  // state a passing event must not overwrite.
   //
   // ONE round per burst, not one per status. A single action often publishes more than one, and a
   // herd finishing together publishes several within a poll; each one restarting the timer would run
@@ -241,8 +220,8 @@ export function CollieHome({
   // and a send the operator fires into a dead link must not make it look like the app is trying
   // again. Same guard the round already carries, for the same reason.
   //
-  // No debounce, and none is wanted: <CollieMark/> carries the orbit's phase across the rate change
-  // by hand (collie-mark.tsx), so a 200ms spin joins the drift where it left it and rejoins it where
+  // No debounce, and none is wanted: the mark carries the orbit's phase across the state change
+  // (the contract's `useMark`), so a 200ms spin joins the drift where it left it and rejoins it where
   // it lands. Short work reads as a brief accelerate/decelerate, never as a flicker — which is what
   // lets the spin last exactly as long as the work and not one frame more.
   //
@@ -250,7 +229,7 @@ export function CollieHome({
   //
   // `applying` is a state, like the bloom, and it outranks the other three: while a new app build
   // downloads or waits to load, the mark turns at the loading rate and every bead takes the update
-  // colour (APPLYING_CLASS above). Not the round's curve, a steady turn, for the bloom's reason. It
+  // colour (`state="applying"`). Not the round's curve, a steady turn, for the bloom's reason. It
   // does not outrank `lost`.
   //
   // ── THE FIFTH: THE LINK COMING BACK (2026-11-07) ─────────────────────────────────────────────
@@ -270,38 +249,19 @@ export function CollieHome({
 
   // ── THE THROW: the round's rate is ramped, not switched ──────────────────────
   //
-  // Everything above decides WHETHER the orbit turns. This decides HOW. `spinRate` is the curve and
-  // states why it is that curve; this is the machinery that applies it, and there are three reasons
-  // it is done HERE, in JavaScript, rather than as an easing in the stylesheet.
-  //
-  //  1. **The stylesheet is not ours to edit.** components/collie-mark.tsx is GENERATED and
-  //     hash-sealed — a test recomputes the digest and fails on any hand-edit; changes belong in the
-  //     collie-brand repo's scripts/logo-ship.ts. The `linear` on the bead animations is emitted
-  //     there.
-  //  2. **An `animation-timing-function` would tear the mark in two.** Each bead runs TWO animations
-  //     off one clock: `cm-tN` moves it, and `cm-nN`/`cm-fN` are `step-end` switches that swap it
-  //     between the near group (drawn over the head, with a knockout) and the far group. Easing the
-  //     first and not the second makes the bead cross in front of the head at the wrong angle. They
-  //     have to stay on ONE timeline, which is exactly what a playback rate is and a timing function
-  //     is not.
-  //  3. **It would fight the phase carry.** collie-mark.tsx hand-corrects every animation's
-  //     `currentTime` across a rate change, because a running CSS animation keeps its elapsed time
-  //     and not its progress. That correction preserves the FRACTION, and under a non-linear timing
-  //     function the fraction and the rendered position stop being the same thing — so the round
-  //     would begin and end with the beads jumping up to ~35°, which is the exact glitch that code
-  //     exists to prevent. `updatePlaybackRate` has no such problem: it is specified to hold the
-  //     current time and change only the rate from here on, so progress and time stay identified and
-  //     the `step-end` switches keep landing where the beads actually are.
-  //
-  // It costs one `requestAnimationFrame` loop for 1.8 seconds per round and nothing at all between
-  // rounds. That is not the "never per frame" the mark's own phase-carry comment rules out — that
-  // rule is about the RESTING mark, where a per-frame cost would be permanent.
+  // Everything above decides WHETHER the orbit turns. This decides HOW: `spinRate` is the curve, and
+  // the mark's handle applies it, `setRate(r)`, a playback rate on top of the turn. It is a rate and
+  // not a timing function or a per-frame `turn`, for three reasons that belong to the contract:
+  // the beads' animations must stay on ONE timeline (an easing would tear the near and far groups
+  // apart), a rate keeps the phase by definition (so it cannot fight the phase carry), and a `turn`
+  // changed every frame would recompute style every frame. It costs one `requestAnimationFrame`
+  // loop for 1.8 seconds per round and nothing between rounds.
   //
   // ONLY THE ROUND IS RAMPED, never the bloom. `bloom` is a sustained connection state and must turn
   // steadily; a wheel-throw there would read as an event that keeps happening. So the ramp is
-  // declined whenever the bloom is what is driving the mark, and the round below still runs — it is
-  // simply invisible under a bloom that is already turning, which was already true.
-  const mark = useRef<HTMLSpanElement>(null);
+  // declined whenever a state is already turning the mark, and the round below still runs, simply
+  // invisible under a bloom that is already turning.
+  const markHandle = useRef<MarkHandle>(null);
   const frame = useRef<number | null>(null);
   const ramp = useRef<((rate: number) => void) | null>(null);
   // Whether a STATE is turning the mark right now, read by the ramp at the round's first frame. A ref
@@ -309,49 +269,31 @@ export function CollieHome({
   const steady = useRef(false);
   steady.current = bloom || applies || greets;
 
-  // Every `cm-*` CSS animation under the mark, or null where the ramp cannot run: no element yet, no
-  // `getAnimations` (jsdom under test, older engines), or reduced motion — where the stylesheet has
-  // already switched every animation off and there is nothing to rate. In each case the round falls
-  // back to exactly the square wave it has always been, which is why none of them is an error.
-  function collect(): Animation[] | null {
-    const el = mark.current;
-    // `in`, not a `typeof` probe: the question is whether this DOM implementation HAS the method at
-    // all — jsdom under test does not, and neither do older engines — which is a fact about the
-    // object, not about the shape of a value we were handed.
-    if (el === null || !("getAnimations" in el)) return null;
-    // A state already turns the mark steadily (the bloom, the app updating, the link coming back): a
-    // wheel-throw over it would read as an event that keeps happening. The round runs on, unseen, as it always did.
+  // The handle to ramp, or null where the ramp must not run. A state already turns the mark steadily
+  // (the bloom, the app updating, the link coming back): a wheel-throw over it would read as an event
+  // that keeps happening, and the round runs on, unseen. Under reduced motion nothing turns, so there
+  // is nothing to rate. In each case the round is simply the state change it always was.
+  function rampTarget(): MarkHandle | null {
     if (steady.current) return null;
     if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true) return null;
-    return el.getAnimations({ subtree: true }).filter((a) => {
-      // SAFETY: `getAnimations` returns transitions as well as animations, and only a CSSAnimation
-      // carries `animationName`. The `in` check IS the discriminator — anything without the property
-      // is filtered out before the cast is read, so the cast can only ever see a CSSAnimation. The
-      // name prefix then keeps this to the mark's own animations, never a caller's `className`.
-      const named = "animationName" in a ? (a as CSSAnimation).animationName : "";
-      return named.startsWith("cm-");
-    });
+    return markHandle.current;
   }
 
   useEffect(() => {
     if (roundId === 0 || timer.current !== null) return;
     setRound(true);
-    // Started in the NEXT frame, not this one: `loading` has only just flipped, so the mark has not
-    // yet re-rendered with its sprint rate and collie-mark.tsx's phase-carry effect has not yet run.
-    // Collecting now would rate a set of animations that is about to be re-timed underneath us.
+    // Started in the NEXT frame, not this one: `state` has only just flipped, so the mark has not yet
+    // re-rendered at its live pace and its phase carry has not yet run. Rating now would rate
+    // animations that are about to be re-timed underneath us.
     const started = performance.now();
     let collected = false;
     const step = () => {
-      // Collected ONCE, on the first frame, and never re-attempted — `collected` flips whether or not
-      // there was anything to collect. Retrying would walk the subtree 108 times a round on exactly
-      // the environments that already told us they cannot answer (no `getAnimations`, reduced
-      // motion), which are the ones least able to afford it.
+      // Decided ONCE, on the first frame, and never re-attempted: retrying would ask again 108 times
+      // a round on exactly the environments that already declined (reduced motion).
       if (!collected) {
         collected = true;
-        const anims = collect();
-        ramp.current = anims === null ? () => {} : (rate) => {
-          for (const a of anims) a.updatePlaybackRate(rate);
-        };
+        const handle = rampTarget();
+        ramp.current = handle === null ? () => {} : (rate) => handle.setRate(rate);
       }
       const elapsed = performance.now() - started;
       ramp.current?.(spinRate(elapsed, ORBIT_TURN_MS));
@@ -361,10 +303,10 @@ export function CollieHome({
     timer.current = setTimeout(() => {
       timer.current = null;
       // Rate restored BEFORE the state flips, and in this order deliberately. Dropping `round`
-      // re-renders the mark with `loading` false, which runs its phase carry — and that correction
-      // is written for animations playing at rate 1. Handing it a set still playing at the curve's
-      // final rate (0) would leave the orbit stopped on the resting drift. The loop is cancelled
-      // first so it cannot write a rate back after this.
+      // re-renders the mark at `rest`, which runs its phase carry, and that correction is written for
+      // animations playing at rate 1. Handing it animations still at the curve's final rate (0)
+      // would leave the orbit stopped on the resting drift. The loop is cancelled first so it cannot
+      // write a rate back after this.
       if (frame.current !== null) cancelAnimationFrame(frame.current);
       frame.current = null;
       ramp.current?.(1);
@@ -384,6 +326,7 @@ export function CollieHome({
     },
     [],
   );
+  const state = markStateOf({ lost, applies, greets, loading: bloom || round || busy });
   return (
     <button
       type="button"
@@ -417,20 +360,16 @@ export function CollieHome({
 
           Muted while lost — grayscale + dimmed, to read asleep/inactive — and the orbit stops
           turning again. Mirrors the boot splash's not-connected state. */}
-      {/* The ramp's scope, and the reason this wrapper carries a ref at all: `getAnimations` is
-          collected from HERE and not from the button, so the button's own `transition-opacity` — and
-          anything a caller's `className` animates — is never handed a playback rate. */}
-      {/* `data-slot` is a HANDLE FOR MEASUREMENT, and it is here rather than on the mark because
-          collie-mark.tsx is generated upstream and copied in whole (a sha256 in its own first line
-          guards it against exactly that edit). The agent-start handoff flies a second mark out of
+      {/* `data-slot` is a HANDLE FOR MEASUREMENT. The agent-start handoff flies a second mark out of
           this one, so it needs this box on screen; it reads the `<svg>` inside for the true size. */}
-      <span ref={mark} data-slot="collie-mark" className="relative grid size-11 shrink-0 place-items-center">
-        <CollieMark
+      <span data-slot="collie-mark" className="relative grid size-11 shrink-0 place-items-center">
+        <BrandMark
           size={markSize}
           weight="header"
-          loading={applies || greets || bloom || ((round || busy) && !lost)}
+          ref={markHandle}
+          state={state}
           paper={paper}
-          className={cn("transition-opacity", lost && "opacity-40 grayscale", applies && APPLYING_CLASS, greets && RECONNECTED_CLASS)}
+          className="transition-opacity"
         />
         {/* THE LOST BADGE. The strip under the header says the connection is gone, and the operator can
             hide it; this is what stays after that, so the state is never only a dimmed dog. It sits in
@@ -439,8 +378,8 @@ export function CollieHome({
             cut of that ground, like the one the status dot in agent-chat wears, which keeps
             it legible over the orbit. The same two icons as the strip, picked by the host's `online`
             flag. Decorative: the button's own label already says "not connected". `text-status-blocked`
-            is the danger token the red strip uses. It is outside the ramped subtree's animation set
-            (`getAnimations` filters on the mark's `cm-` names), so it never takes a playback rate. */}
+            is the danger token the red strip uses. It is a sibling of the mark, so the
+            ramp never touches it. */}
         {lost ? (
           <LostIcon
             data-slot="collie-lost-badge"

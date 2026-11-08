@@ -1,0 +1,299 @@
+// generated: sha256=a6f8c2b8ff0749f6f195605e351b55aa673196571f8d87b870ab92cc3deb8538 from=collie-brand/src/mark-contract.ts@0c3d6f1980fc
+// COPIED WHOLE from collie-brand/src/mark-contract.ts. Edit it there, in collie-brand, and nowhere else.
+/**
+ * THE MARK CONTRACT. One file that every Collie brand mark implements, the Collie mark included.
+ *
+ * HAND-WRITTEN, here, in collie-brand. The generators (`scripts/logo-ship.ts` for the Collie mark,
+ * `scripts/logo-ship-theme.ts` for the theme marks) emit components that import THIS file and do
+ * nothing a mark could do differently: every mark is its drawing (stylesheet, bodies, view boxes,
+ * the colours of its two looks) plus one call to `useMark`. `logo-ship.ts` seals a copy into
+ * `assets/mark-contract.ts`, and a consumer copies that file whole, beside the marks, exactly as it
+ * copies a mark.
+ *
+ * WHY THE HOST NEEDS IT. Collie started using the mark for loading states: a spin round on every
+ * status, a steady turn while busy, a recolour while the app updates and for one turn when the link
+ * returns, a dimmed mark while offline. Before this file the host did that by reaching INTO the
+ * Collie mark: a stylesheet that named its bead parts, and a filter over `getAnimations()` keyed on
+ * its keyframe names. With more than one mark that breaks quietly. Here the host says WHAT (a state,
+ * bead colours, a turn) and each mark decides HOW, in its own idiom.
+ *
+ * WHAT IS PUBLIC, all of it named here:
+ *   props        size, weight, paper, title, className, state, beads, turn, ref (and `loading`,
+ *                deprecated, an alias for state="loading")
+ *   variables    --mark-turn, --mark-bead, --mark-bead-<i>, --mark-accent-1, --mark-accent-2,
+ *                --mark-ink, --mark-paper, read on the mark's root or inherited from an ancestor
+ *   attributes   data-mark="<id>" and data-state="<state>" on the root; data-bead while a bead
+ *                colour is forced, data-still while the turn is held
+ *   handle       setRate(rate), through `ref`
+ * EVERYTHING ELSE IS PRIVATE: a mark's class names, part names, keyframe names and its own custom
+ * properties (`--cm-*`, `--ck-*` and so on) may change in any regeneration.
+ *
+ * PRECEDENCE, for every value: a prop beats a `--mark-*` variable, which beats the state's default.
+ * One exception, on purpose: a state that forces a bead colour (`applying`, `reconnected`) beats a
+ * `--mark-bead` from a stylesheet, because those states ARE the colour. Only the `beads` prop beats it.
+ */
+import type { CSSProperties, Ref, SVGProps } from "react";
+import { useEffect, useId, useImperativeHandle, useRef } from "react";
+
+// ─── the states ─────────────────────────────────────────────────────────────────────────────────
+
+/**
+ * What the mark says, never how it says it. Each mark draws each state in its own idiom (glass
+ * lights up, pixel beads hop), and the meaning is shared:
+ *
+ *   rest         nothing is happening. A very slow drift.
+ *   loading      something is being fetched or worked on. Fast, and the mark's live colours.
+ *   applying     the app itself is updating. Fast, every bead in the status "working" colour.
+ *   reconnected  the link came back. Fast, every bead in the status "done" colour, for one turn.
+ *   idle         not connected, or put aside. The resting drift, dimmed and grey.
+ *
+ * EVERY STATE DIFFERS FROM `rest` BY COLOUR, not only by movement. Under `prefers-reduced-motion`
+ * every mark stops turning, and the colour is then the whole message.
+ */
+export const MARK_STATES = ["rest", "loading", "applying", "reconnected", "idle"] as const;
+export type MarkState = (typeof MARK_STATES)[number];
+
+export function isMarkState(value: string): value is MarkState {
+  return MARK_STATES.some((state) => state === value);
+}
+
+/**
+ * Seconds for one turn, at the two paces. ONE table for every mark: a spin round, the busy turn and
+ * the reconnection's single turn are timed in turns, so they only mean the same thing on every mark
+ * if every mark turns at the same pace. `live` is collie-brand's `SPRINT`, `rest` its `DRIFT`.
+ */
+export const MARK_TURN = { rest: 48, live: 1.8 } as const;
+
+/** One full turn at the live pace, in milliseconds. The header's spin round is exactly this long. */
+export const ORBIT_TURN_MS = MARK_TURN.live * 1000;
+
+/** The dimmed look of `idle`: what the host used to add as `opacity-40 grayscale`. */
+export const MARK_DIM = { opacity: 0.4, filter: "grayscale(1)" } as const;
+
+interface StateLook {
+  /** Which turn the state uses. */
+  pace: keyof typeof MARK_TURN;
+  /** Which of the mark's own two looks. */
+  look: "rest" | "live";
+  /** A colour every bead takes, or null for the mark's own bead colours. */
+  bead: string | null;
+  dim: boolean;
+}
+
+/**
+ * The states, as a table. The two forced bead colours are Collie's status tokens; the fallbacks are
+ * their dark-ground values, for a page that does not define them (the website).
+ */
+export const MARK_STATE_LOOK = {
+  rest: { pace: "rest", look: "rest", bead: null, dim: false },
+  loading: { pace: "live", look: "live", bead: null, dim: false },
+  applying: { pace: "live", look: "live", bead: "var(--status-working, oklch(0.84 0.15 82))", dim: false },
+  reconnected: { pace: "live", look: "live", bead: "var(--status-done, oklch(0.77 0.16 152))", dim: false },
+  idle: { pace: "rest", look: "rest", bead: null, dim: true },
+} as const satisfies Record<MarkState, StateLook>;
+
+// ─── what a mark takes, and what it offers ──────────────────────────────────────────────────────
+
+export interface MarkProps {
+  /** Rendered width and height, in pixels. */
+  size?: number;
+  /** `header` below about 80 px: cropped, heavier, with the smallest beads dropped. */
+  weight?: "full" | "header";
+  /**
+   * Whatever the mark is sitting on: the colour of the knockout that makes a bead read as IN FRONT
+   * of the head. A wrong value shows as a halo. Default: `--mark-paper`, else `--background`.
+   */
+  paper?: string;
+  /** An accessible name. Without one the mark is decorative and hidden from assistive tech. */
+  title?: string;
+  /** Forwarded to the root. Never reach a mark's parts through it: they are private. */
+  className?: string;
+  /** What the mark says. Default `rest`. */
+  state?: MarkState;
+  /** @deprecated Use `state="loading"`. Kept until every call site has moved, then deleted. */
+  loading?: boolean;
+  /** Bead colours: one for every bead, or a list applied in bead order and repeated. */
+  beads?: string | readonly string[];
+  /** Seconds per turn, overriding the state's pace. `0` holds the orbit where it is. */
+  turn?: number;
+  /** The imperative half of the contract. */
+  ref?: Ref<MarkHandle>;
+}
+
+export interface MarkHandle {
+  /**
+   * A playback rate for the orbit, on top of its turn: 1 is the turn as set, 0 holds it. For a curve
+   * the host animates frame by frame (the header's spin round), where changing `turn` every frame
+   * would recompute style every frame. The mark carries no phase across it: a rate keeps the phase
+   * by definition. Set it back to 1 before the next state change.
+   */
+  setRate(rate: number): void;
+}
+
+/** What a generated mark tells the runtime about itself. Private to the generators. */
+export interface MarkSpec {
+  /** The id the host registers the mark under. Becomes `data-mark`. */
+  id: string;
+  /** The number of beads, for a `beads` list. */
+  beads: number;
+  /** The animations the turn paces: their phase is carried and their rate is set. */
+  paced: RegExp;
+  /** The class the root carries while the pace is live (the mark's stylesheet keys on it). */
+  liveClass: string;
+  /** The mark's own colours, per look, as its private custom properties. */
+  look: { rest: Record<string, string>; live: Record<string, string> };
+  /** The private properties that ARE accent 1 and 2, if the mark has accents. */
+  accents?: readonly [string, string];
+  /** The private property the drawing reads for the turn. */
+  turnVar: string;
+  /** The private property the drawing reads for the paper. */
+  paperVar: string;
+  view: { full: string; header: string };
+}
+
+/**
+ * The rule every mark's stylesheet starts with: a held turn pauses every animation in the mark, so
+ * the phase is exactly where it was when the turn comes back. Scoped by `data-mark`, which only a
+ * mark's root carries.
+ */
+export const MARK_STYLE = "[data-mark][data-still] *{animation-play-state:paused!important}";
+
+// ─── the runtime ────────────────────────────────────────────────────────────────────────────────
+
+/** A resolved `animation-duration` style value in seconds, or null when it is not one. */
+function seconds(value: string): number | null {
+  const m = /^\s*([\d.]+)(m?s)\s*$/.exec(value);
+  if (m === null) return null;
+  const n = Number(m[1]);
+  return m[2] === "ms" ? n / 1000 : n;
+}
+
+/** The paced CSS animations under `el`. Empty where the engine has no `getAnimations` (jsdom). */
+function paced(el: SVGSVGElement, pattern: RegExp): Animation[] {
+  if (!("getAnimations" in el)) return [];
+  return el.getAnimations({ subtree: true }).filter((a) => {
+    // SAFETY: `getAnimations` also returns transitions; only a CSSAnimation has `animationName`, and
+    // the `in` check is the discriminator before the property is read.
+    const name = "animationName" in a ? String((a as CSSAnimation).animationName) : "";
+    return pattern.test(name);
+  });
+}
+
+export interface MarkRoot {
+  /** Spread onto the mark's `<svg>`. */
+  root: SVGProps<SVGSVGElement> & { ref: Ref<SVGSVGElement> } & Record<`data-${string}`, string | undefined>;
+  /** Whether the pace is live: a mark with a resting drift class puts it on its body while not. */
+  live: boolean;
+  weight: "full" | "header";
+  /** A per-instance id fragment for the mark's own `id`s (`useId`, stripped to a safe set). */
+  uid: string;
+}
+
+/**
+ * Everything a mark does that is not drawing. A generated mark calls this once and spreads `root`.
+ *
+ * KEEP THE PHASE ACROSS A TURN CHANGE. A running CSS animation keeps its ELAPSED time when its
+ * duration changes, not its progress, so a new pace alone slides every bead to a different point of
+ * the orbit. After each change the runtime reads the turn the root now resolves to, compares it with
+ * the one before, and moves every paced animation back to the progress it had. It runs once per
+ * change and never per frame. Where there is no `getAnimations` the pace still changes; it steps
+ * once on the way.
+ */
+export function useMark(spec: MarkSpec, props: MarkProps): MarkRoot {
+  const { size = 32, weight = "full", paper, title, className, beads, turn, ref } = props;
+  const state: MarkState = props.state ?? (props.loading === true ? "loading" : "rest");
+  const look: StateLook = MARK_STATE_LOOK[state];
+  const live = look.pace === "live";
+  const uid = useId().replace(/[^A-Za-z0-9_-]/g, "");
+  const el = useRef<SVGSVGElement>(null);
+
+  const vars: Record<string, string> = {};
+  const held = turn === 0;
+  vars[spec.turnVar] = turn !== undefined && turn > 0 ? `${turn}s` : `var(--mark-turn, ${MARK_TURN[look.pace]}s)`;
+  for (const [k, v] of Object.entries(spec.look[look.look])) vars[k] = v;
+  if (spec.accents !== undefined) {
+    vars[spec.accents[0]] = `var(--mark-accent-1, ${spec.look[look.look][spec.accents[0]]})`;
+    vars[spec.accents[1]] = `var(--mark-accent-2, ${spec.look[look.look][spec.accents[1]]})`;
+  }
+  vars[spec.paperVar] = paper ?? "var(--mark-paper, var(--background))";
+  // One colour, or a list in bead order. A list of one is the same as the one colour.
+  // Every per-bead variable is set too, never only `--mark-bead`: a bead reads its own variable first,
+  // so a `--mark-bead-<i>` a stylesheet set on an ancestor would otherwise beat the forced colour.
+  const list: readonly string[] = beads === undefined ? [] : [beads].flat();
+  const colours = list.length > 0 ? list : look.bead === null ? [] : [look.bead];
+  if (colours.length > 0) {
+    vars["--mark-bead"] = colours[0];
+    for (let i = 0; i < spec.beads; i += 1) vars[`--mark-bead-${i}`] = colours[i % colours.length];
+  }
+  const forced = colours.length > 0;
+
+  // The phase carry. `prev` is the turn, in seconds, the last commit resolved to.
+  const prev = useRef<number | null>(null);
+  const rated = useRef<Animation[] | null>(null);
+  useEffect(() => {
+    const node = el.current;
+    if (node === null) return;
+    rated.current = null;
+    const now = seconds(getComputedStyle(node).getPropertyValue(spec.turnVar));
+    const before = prev.current;
+    prev.current = now;
+    if (now === null || before === null || now === before) return;
+    const ratio = before / now;
+    for (const a of paced(node, spec.paced)) {
+      const t = a.effect?.getTiming();
+      // The Web Animations API answers in unions (a time may be null or a typed value, a duration
+      // may be "auto"). Each is parsed to a plain number here, and anything else is skipped.
+      const at = Number(a.currentTime ?? Number.NaN);
+      const delay = Number(t?.delay ?? 0);
+      const span = Number(t?.duration ?? Number.NaN);
+      if (!Number.isFinite(at) || !Number.isFinite(delay) || !Number.isFinite(span) || span <= 0) continue;
+      const progress = (at - delay * ratio) / (span * ratio);
+      a.currentTime = delay + (progress - Math.floor(progress)) * span;
+    }
+    // Keyed on what can change the turn from a prop. A `--mark-turn` a stylesheet changes later is
+    // read at the next change of either; between them the orbit keeps its elapsed time, as CSS does.
+  }, [look.pace, turn, spec]);
+
+  useImperativeHandle(ref, () => ({
+    setRate(rate: number) {
+      const node = el.current;
+      if (node === null) return;
+      rated.current ??= paced(node, spec.paced);
+      for (const a of rated.current) a.updatePlaybackRate(rate);
+    },
+  }), [spec]);
+
+  // SAFETY: every key `vars` adds is a CSS custom property and every value a string; React passes
+  // unknown style keys through to the DOM as written. CSSProperties has no index signature for
+  // `--*`, which is the only reason for the cast.
+  const style = { display: "block", flex: "none", ...vars } as CSSProperties;
+  if (look.dim) Object.assign(style, MARK_DIM);
+  const classes = [live ? spec.liveClass : "", className ?? ""].join(" ").trim();
+  return {
+    root: {
+      ref: el,
+      width: size,
+      height: size,
+      className: classes === "" ? undefined : classes,
+      viewBox: spec.view[weight],
+      role: title === undefined ? "presentation" : "img",
+      "aria-label": title,
+      style,
+      "data-mark": spec.id,
+      "data-state": state,
+      "data-bead": forced ? "" : undefined,
+      "data-still": held ? "" : undefined,
+    },
+    live,
+    weight,
+    uid,
+  };
+}
+
+/** The fill a bead's body reads, so `beads`, `--mark-bead` and the state colours reach it. */
+export function beadFill(index: number, own: string): string {
+  return `var(--mark-bead-${index}, var(--mark-bead, ${own}))`;
+}
+
+/** The ink every mark draws its line in. Follows the text colour unless `--mark-ink` says otherwise. */
+export const MARK_INK = "var(--mark-ink, var(--collie-ink, currentColor))";

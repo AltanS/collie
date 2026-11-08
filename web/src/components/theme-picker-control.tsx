@@ -41,7 +41,7 @@ import {
 import { CONTRAST_FAIL_KEY, HALF_KEYS, REFUSAL_KEYS, isMoreLine } from "@/lib/theme/report-words";
 import { ThemeBrowseSheet } from "@/components/theme-browse";
 import { dropTrial, startTrial } from "@/lib/theme/trial";
-import { PageSample, collieTheme, displayOf, styleOf } from "@/components/theme-page-sample";
+import { PageSample, ThemeMarkLine, collieTheme, displayOf, styleOf } from "@/components/theme-page-sample";
 
 // The Theme card (M57): which colour theme this device wears, and the way in and out for a theme
 // file. It sits directly ABOVE the Appearance three-way (System, Light, Dark) on purpose: the first
@@ -111,8 +111,8 @@ function downloadText(name: string, text: string): boolean {
 
 /**
  * The text of an exported file: the theme as the parser kept it, two-space indent, and the lowest
- * version that holds it: 2 only when it carries a shape, so a colour-only export still imports into
- * a Collie that reads version 1 alone.
+ * version that holds it: 2 only when it carries a shape, and 4 only when it names a character, so a
+ * colour-only export still imports into a Collie that reads version 1 alone.
  */
 export function themeFileText(theme: Theme): string {
   return JSON.stringify({ ...theme, version: versionOf(theme) }, null, 2);
@@ -271,6 +271,7 @@ export function ThemePreviewSheet({ theme, onApply, onCancel, onTry }: PreviewSh
               <div className="text-sm text-muted-foreground">{t("theme.preview.by", { author: theme.author })}</div>
             )}
             <div className="text-sm text-muted-foreground">{t(`theme.preview.halves.${halves}`)}</div>
+            <ThemeMarkLine theme={theme} />
           </div>
 
           <div className="flex flex-col gap-2">

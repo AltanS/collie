@@ -350,6 +350,11 @@ function emit(): void {
   for (const fn of listeners) fn();
 }
 
+/** The theme on screen, read once and not reactive: for code that is not a component (the startup preload). */
+export function activeTheme(): ActiveTheme {
+  return getSnapshot();
+}
+
 function getSnapshot(): ActiveTheme {
   const next = resolveActive();
   if (next.id === snapshot.id && next.theme === snapshot.theme && next.source === snapshot.source) {

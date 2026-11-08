@@ -2637,6 +2637,11 @@ describe("cacheControlFor", () => {
     expect(cacheControlFor("assets/index-abc.css")).toBe("public, max-age=31536000, immutable");
   });
 
+  test("the hashed theme marks under marks/ are immutable too", () => {
+    expect(cacheControlFor("marks/kawaii-mark-DkeR4B3b.js")).toBe("public, max-age=31536000, immutable");
+    expect(cacheControlFor("marks/pixel-mark-axLcestm.js")).toBe("public, max-age=31536000, immutable");
+  });
+
   test("the hashed math engines under math/ are immutable too", () => {
     for (const rel of [
       "math/math-markup-DWsmPqrZ.js",

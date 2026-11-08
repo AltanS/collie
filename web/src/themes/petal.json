@@ -1,8 +1,9 @@
 {
-  "version": 3,
+  "version": 4,
   "id": "petal",
   "name": "Petal",
   "author": "Collie",
+  "character": "kawaii",
   "light": {
     "background": "oklch(0.975 0.016 75)",
     "foreground": "oklch(0.3 0.07 340)",

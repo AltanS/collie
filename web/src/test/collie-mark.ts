@@ -1,38 +1,39 @@
-// Reading the Collie mark's state out of the DOM, in one place.
+// Reading a brand mark's state out of the DOM, in one place.
 //
-// <CollieMark/> has no "running" class to assert on and no second element to look for. Its <style>
-// is a module constant shared by every instance on the page (a stylesheet inside an inline SVG is
-// document-scoped), so the whole difference between rest and the bloom is a set of CSS custom
-// properties on the element itself, plus the `cm-live` class that starts the animation. That is
-// where these read it from — and every suite that asks (CollieHome, the header, BootSplash) would
-// otherwise spell the same query.
-//
-// There is no longer a "resting turn" — at rest the mark is a still drawing with no animation
-// running at all. `cm-live` is what starts the orbit, and it is only ever present while `loading`.
+// Every mark implements the mark contract (components/mark-contract.ts), so what a test may ask is
+// what the contract makes public: the root's `data-mark` and `data-state`, and the `--mark-*`
+// variables. The mark's own classes and keyframes are private and are never asked for here. Every
+// suite that asks (CollieHome, the header, the boot screen) would otherwise spell the same query.
 
-/**
- * The one <CollieMark/> inside `root`, or `null`. Identified by the inline stylesheet it carries —
- * a lucide icon in the same tree is also an <svg>, and nothing else in the app ships CSS inside one.
- */
+import { MARK_STATE_LOOK, isMarkState, type MarkState } from "@/components/mark-contract";
+
+/** The one brand mark inside `root`, or `null`. Identified by the contract's `data-mark` on its root. */
 export function collieMark(root: ParentNode): SVGSVGElement | null {
-  return root.querySelector<SVGSVGElement>("svg:has(> style)");
+  return root.querySelector<SVGSVGElement>("svg[data-mark]");
 }
 
-/** Whether the mark's orbit is animating — i.e. it carries the `cm-live` class. */
+/** The state the mark says it is in (`data-state`), or `null` if no mark is mounted. */
+export function markState(root: ParentNode): MarkState | null {
+  const state = collieMark(root)?.getAttribute("data-state");
+  return state !== undefined && state !== null && isMarkState(state) ? state : null;
+}
+
+/** Whether the mark's orbit turns at the live pace: loading, applying or reconnected. */
 export function markIsLive(root: ParentNode): boolean {
-  return collieMark(root)?.classList.contains("cm-live") ?? false;
+  const state = markState(root);
+  return state !== null && MARK_STATE_LOOK[state].pace === "live";
 }
 
 /**
- * The first accent colour, or `""` if no mark is mounted. The bloom is a COLOUR as well as a speed:
- * the accents come up to full chroma, and that half is the one a reduced-motion reader still gets,
- * because the media query stops the turning and cannot stop a variable.
+ * The knockout colour the mark was told to paint with, or `""` if no mark is mounted. The paper is
+ * the one value the contract hands to a mark's private property (`--<prefix>-paper`) rather than to a
+ * `--mark-*` one, so this finds it by that naming and skips the public `--mark-paper`.
  */
-export function markAccent(root: ParentNode): string {
-  return collieMark(root)?.style.getPropertyValue("--cm-a1") ?? "";
-}
-
-/** The knockout colour the mark was told to paint with, or `""` if no mark is mounted. */
 export function markPaper(root: ParentNode): string {
-  return collieMark(root)?.style.getPropertyValue("--cm-paper") ?? "";
+  const style = collieMark(root)?.style;
+  if (style === undefined) return "";
+  for (const name of Array.from({ length: style.length }, (_, i) => style.item(i))) {
+    if (/^--c[a-z]-paper$/.test(name)) return style.getPropertyValue(name);
+  }
+  return "";
 }

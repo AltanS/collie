@@ -3,6 +3,8 @@
 - **Status:** Accepted
 - **Date:** 2026-10-15
 - **Shipped in:** 1.22.0
+- **Amended in scope by:** [ADR 0136](./0136-a-theme-may-name-a-mark-and-every-mark-keeps-one-contract.md):
+  a theme may name a header mark again, from a closed list (reverses item 1 of the 2026-10-16 amendment)
 - **Amends in scope:** [ADR 0033](./0033-the-app-face-is-a-device-preference.md), the line that the design store
   grows siblings: it grows one, `theme`, and a radius or a density never joins it
 - **Trail:** M57 (Themes) README, the shared contract · `web/src/themes/` (the shipped files) ·

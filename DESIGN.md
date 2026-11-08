@@ -627,8 +627,21 @@ fails loudly.
 - **Light `--background` is `oklch(0.97)` on purpose.** It rasterises to rgb(245,245,245),
   which is exactly the inverted mirror's background, so the mirror shows no seam against the
   page. It is not "off-white for taste"; moving it re-opens that seam.
-- **`components/collie-mark.tsx` is GENERATED** from the sibling `collie-brand` repo. Never
-  hand-edit it. Change the brand repo and regenerate.
+- **Every brand mark is GENERATED** from the sibling `collie-brand` repo: `collie-mark.tsx`,
+  `kawaii-mark.tsx`, `kawaii-tilt-mark.tsx`, `pixel-mark.tsx` and `mark-contract.ts` beside
+  them. Never hand-edit one. Change the brand repo and regenerate.
+- **Every mark keeps ONE contract, and a call site says what, never how.**
+  [`components/mark-contract.ts`](./web/src/components/mark-contract.ts) names everything public:
+  the props (`state`, `beads`, `turn`, `ref`, besides `size`, `weight`, `paper`, `title`,
+  `className`), the `--mark-*` variables, `data-mark` and `data-state` on the root, and
+  `setRate` on the handle. A header, a cover or a boot screen passes a `state` (`rest`, `loading`,
+  `applying`, `reconnected`, `idle`) and nothing else about movement or colour: no
+  `opacity-40 grayscale` on a mark, no class that recolours its beads, no filter over its
+  animations by name. A mark's class names, parts and keyframes are private and may change in any
+  regeneration. The host picks a mark through `BrandMark`; the header's spin round drives it
+  through the handle. `mark-conformance.test.tsx` runs the contract over the whole registry
+  (`lib/mark-ids.ts`), so a mark that fails it cannot ship. The reasoning is in
+  [ADR 0136](./.adr/0136-a-theme-may-name-a-mark-and-every-mark-keeps-one-contract.md).
 
 ---
 
