@@ -46,7 +46,7 @@ export const ko: Dictionary = {
   "settings.theme.option.dark": "다크",
 
   "theme.title": "테마",
-  "theme.description": "모양을 선택하거나 파일에서 가져옵니다.",
+  "theme.description": "모양을 선택하거나, 새로 추가해 유지하기 전에 먼저 써 봅니다.",
   "theme.import": "가져오기",
   "theme.export": "내보내기",
   "theme.remove": "제거",

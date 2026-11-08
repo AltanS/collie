@@ -1,5 +1,5 @@
 import { useState, useSyncExternalStore, type Ref } from "react";
-import { Check, Copy } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 
 import { useLocale } from "@/hooks/use-locale";
 import { useBundleApply, type BundleApply } from "@/lib/bundle-apply";
@@ -224,9 +224,9 @@ export function UpdateNoticeLine({
           >
             <code>{notice.command}</code>
             {copied ? (
-              <Check className="size-3 text-status-working" />
+              <Icon name="copied" className="size-3 text-status-working" />
             ) : (
-              <Copy className="size-3 opacity-60" />
+              <Icon name="copy" className="size-3 opacity-60" />
             )}
           </button>
         </>

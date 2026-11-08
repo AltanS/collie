@@ -2,14 +2,24 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-// collie-mark.tsx is generated upstream (collie-brand/scripts/logo-ship.ts) and copied in
-// whole. Its first line records a sha256 of everything after it; this test recomputes that
-// hash and fails on ANY hand edit made to the file in this repo — re-copy it from
-// collie-brand/assets/ instead of editing.
-describe("collie-mark.tsx generated hash", () => {
+// The four marks and their contract are generated upstream (collie-brand/scripts/logo-ship.ts for
+// collie-mark.tsx and mark-contract.ts,
+// collie-brand/scripts/logo-ship-theme.ts for the three theme marks) and copied in whole. Each file's
+// first line records a sha256 of everything after it; this test recomputes that hash and fails on ANY
+// hand edit made to the file in this repo. Re-copy it from collie-brand/assets/ instead of editing.
+describe.each([
+  "collie-mark.tsx",
+  "kawaii-mark.tsx",
+  "kawaii-tilt-mark.tsx",
+  "pixel-mark.tsx",
+  "glass-mark.tsx",
+  "glass-front-mark.tsx",
+  "sheep-mark.tsx",
+  "owl-mark.tsx",
+  "mark-contract.ts",
+])("%s generated hash", (file) => {
   it("matches the sha256 recorded in its own header", () => {
-    const path = join(import.meta.dirname, "collie-mark.tsx");
-    const source = readFileSync(path, "utf-8");
+    const source = readFileSync(join(import.meta.dirname, file), "utf-8");
     const newlineIndex = source.indexOf("\n");
     const header = source.slice(0, newlineIndex);
     const body = source.slice(newlineIndex + 1);

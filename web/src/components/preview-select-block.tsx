@@ -1,12 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import {
-  Check,
-  ChevronRight,
-  Loader2,
-  Pencil,
-  StickyNote,
-  Trash2,
-} from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 
 import { WizardStepper } from "@/components/wizard-stepper";
 import { cn } from "@/lib/utils";
@@ -90,7 +83,7 @@ export function PreviewSelectBlock({ preview, lines, onAction, disabled }: Previ
   const wizard = preview.steps !== null;
   const pointedLabel = preview.options.find((o) => o.pointed)?.label;
   const busyIcon = (
-    <Loader2 className="size-3.5 shrink-0 animate-spin text-muted-foreground" aria-label={t("dialog.sendingAria")} />
+    <Icon name="busy" className="size-3.5 shrink-0 animate-spin text-muted-foreground" aria-label={t("dialog.sendingAria")} />
   );
 
   return (
@@ -128,7 +121,8 @@ export function PreviewSelectBlock({ preview, lines, onAction, disabled }: Previ
               onClick={() => press(id, { kind: "option", option })}
               className={optionSurface(tone)}
             >
-              <ChevronRight
+              <Icon
+                name="option-pointer"
                 className={cn(
                   "mt-[3px] size-3.5 shrink-0",
                   option.pointed ? "text-primary" : "text-transparent",
@@ -140,12 +134,13 @@ export function PreviewSelectBlock({ preview, lines, onAction, disabled }: Previ
                 {option.label}
               </span>
               {busy ? (
-                <Loader2
+                <Icon
+                  name="busy"
                   className="mt-0.5 size-4 shrink-0 animate-spin text-muted-foreground"
                   aria-label={t("dialog.sendingAria")}
                 />
               ) : option.chosen ? (
-                <Check className="mt-0.5 size-4 shrink-0 text-primary" aria-label={t("dialog.preview.currentAnswerAria")} />
+                <Icon name="selected" className="mt-0.5 size-4 shrink-0 text-primary" aria-label={t("dialog.preview.currentAnswerAria")} />
               ) : null}
             </button>
           );
@@ -181,7 +176,7 @@ export function PreviewSelectBlock({ preview, lines, onAction, disabled }: Previ
             htmlFor="preview-note-text"
             className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground"
           >
-            <StickyNote className="size-3.5 shrink-0" />
+            <Icon name="note" className="size-3.5 shrink-0" />
             {t("dialog.preview.noteForQuestion")}
           </label>
           <textarea
@@ -217,7 +212,7 @@ export function PreviewSelectBlock({ preview, lines, onAction, disabled }: Previ
         </div>
       ) : preview.note.state === "attached" ? (
         <div className="flex items-start gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2">
-          <StickyNote className="mt-0.5 size-3.5 shrink-0 text-primary" aria-label={t("dialog.preview.noteAria")} />
+          <Icon name="note" className="mt-0.5 size-3.5 shrink-0 text-primary" aria-label={t("dialog.preview.noteAria")} />
           <span className="font-content min-w-0 flex-1 text-xs text-foreground/90">{preview.note.text}</span>
           <button
             type="button"
@@ -229,7 +224,7 @@ export function PreviewSelectBlock({ preview, lines, onAction, disabled }: Previ
             }}
             className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors active:bg-muted disabled:opacity-50"
           >
-            <Pencil className="size-3.5" />
+            <Icon name="edit" className="size-3.5" />
           </button>
           <button
             type="button"
@@ -238,7 +233,7 @@ export function PreviewSelectBlock({ preview, lines, onAction, disabled }: Previ
             onClick={() => void press("note-remove", { kind: "note", text: "" })}
             className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors active:bg-muted disabled:opacity-50"
           >
-            {sending === "note-remove" ? busyIcon : <Trash2 className="size-3.5" />}
+            {sending === "note-remove" ? busyIcon : <Icon name="delete" className="size-3.5" />}
           </button>
         </div>
       ) : (
@@ -251,7 +246,7 @@ export function PreviewSelectBlock({ preview, lines, onAction, disabled }: Previ
           }}
           className="flex w-full items-center gap-2 rounded-lg border border-dashed border-border px-3 py-1.5 text-left text-xs text-muted-foreground transition-colors active:bg-muted disabled:opacity-60"
         >
-          <StickyNote className="size-3.5 shrink-0" />
+          <Icon name="note" className="size-3.5 shrink-0" />
           {t("dialog.preview.addNote")}
         </button>
       )}

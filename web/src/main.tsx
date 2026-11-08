@@ -4,10 +4,15 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
 import { App } from "./App";
+import { preloadMark } from "./components/brand-mark";
+import { preloadGlyphSet } from "./components/icons/glyphs";
 import { onPreloadError } from "./lib/chunk-reload";
 import { designPrefs, initDesign, mathEngineOf } from "./lib/design";
+import { currentGlyphSetId } from "./lib/glyphs";
+import { currentMarkId } from "./lib/mark";
 import { isMathLoadError, loadMathEngine } from "./lib/math/engine";
 import { initTheme } from "./lib/theme/store";
+import { resumeTrial } from "./lib/theme/trial";
 import { initOperatorFonts } from "./lib/operator-config";
 import "./index.css";
 // Registers the service worker (precaches the app shell, enables install) and wires auto/manual
@@ -18,7 +23,11 @@ import "./lib/pwa";
 import "./lib/install";
 import { startPushTitleSync } from "./lib/push-titles";
 import { startViewportPin } from "./lib/viewport-pin";
+import { installHiddenPause } from "./lib/page-hidden";
 
+// A hidden page runs no animation (issue 748): the root carries an attribute while it is hidden, and
+// index.css pauses every animation under it. First, so a page opened in the background never starts.
+installHiddenPause();
 // RECONCILES the typeface class, it does not apply it: public/theme-init.js has already put the
 // right one on <html> before first paint for every shipped face. This call is what covers the two
 // cases that script deliberately cannot — an operator-supplied face (no pre-paint path; it has no
@@ -32,6 +41,14 @@ void loadMathEngine(mathEngineOf(designPrefs()));
 // that script leaves out (the theme-color metas, a token an imported theme sets in one half only).
 // For the default theme it removes nothing and adds nothing.
 initTheme();
+// A theme being tried in this tab (M59 spec 08) goes back on after a reload, over the device's own.
+resumeTrial();
+// The header logo, the same way: a theme that names a character other than Collie starts
+// fetching its chunk now, after the theme and the trial are settled (the resolver reads both), so the
+// header rarely draws its empty box. The Collie mark is in this bundle and loads nothing.
+void preloadMark(currentMarkId());
+// The glyph set too (ADR 0137): a theme that names one starts its chunk now, and lucide draws until it lands.
+void preloadGlyphSet(currentGlyphSetId());
 // After it, and separately: this one injects the operator face design.ts mirrored into storage, so a
 // device set to one paints in it from the first frame instead of swapping when /api/config lands.
 initOperatorFonts();

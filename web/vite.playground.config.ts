@@ -3,6 +3,7 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { readFileSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { glyphSetsPlugin } from "./vite-glyphs";
 
 import { mathEnginesPlugin } from "./vite.math";
 
@@ -53,7 +54,7 @@ export default defineConfig({
     },
   },
   define: { __BUILD_INFO__: JSON.stringify(BUILD_INFO) },
-  plugins: [react(), tailwindcss(), mathEnginesPlugin(), trimPublicPlugin],
+  plugins: [react(), tailwindcss(), mathEnginesPlugin(), trimPublicPlugin, glyphSetsPlugin(import.meta.dirname)],
   resolve: { alias: { "@": resolve(WEB, "src") } },
   build: {
     outDir: OUT,

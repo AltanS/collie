@@ -1,6 +1,4 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
-import { Bot, Layers, ListTree, Pin, Timer, Undo2, X, ZoomIn } from "lucide-react";
-import type { LucideIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Collapse } from "@/components/ui/collapse";
@@ -23,6 +21,8 @@ import { hasResizeObserver } from "@/lib/env";
 import { t as translate } from "@/lib/i18n";
 import type { OperatorCommand } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { Icon } from "@/components/icons/icon";
+import type { IconKey } from "@/components/icons/keys";
 
 // ONE ROW OF ACTIONS, DIRECTLY ABOVE THE INPUT. Stop stands at the belt's start (in view at rest, no
 // scroll needed; dimmed while no turn runs, so the belt never reflows); then Collie's own controls —
@@ -384,7 +384,7 @@ function useSwitchBlockWidth(active: boolean): SwitchBlockWidth {
 export interface GeneralAction {
   /** Stable, for React's key. Never shown. */
   id: string;
-  icon: LucideIcon;
+  icon: IconKey;
   /** ALREADY TRANSLATED. The button's accessible name — what a reader announces and what a test
    *  addresses. It is never shortened for the paint. */
   label: string;
@@ -752,7 +752,7 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, durable, sto
                     onClick={action.onSelect}
                     className={cn(`${STRIP_ROW_PILL} gap-1.5`, action.on === true ? ON : OFF, left && "[direction:ltr]")}
                   >
-                    <action.icon className={BELT_ICON} />
+                    <Icon name={action.icon} className={BELT_ICON} />
                     {action.word ?? action.label}
                   </Button>
                 ))}
@@ -885,9 +885,9 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, durable, sto
                     )}
                   >
                     {clear.mode === "undo" ? (
-                      <Undo2 className={cn(BELT_ICON, "text-primary")} />
+                      <Icon name="undo" className={cn(BELT_ICON, "text-primary")} />
                     ) : (
-                      <X className={cn(BELT_ICON, "text-primary")} />
+                      <Icon name="clear" className={cn(BELT_ICON, "text-primary")} />
                     )}
                   </Button>
                 </span>
@@ -917,7 +917,7 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, durable, sto
                     onClick={agents.onClick}
                     className={cn(`${STRIP_ROW_PILL} ${PINNED_PILL}`, pinnedReach(!clear, !jobs && !pins && !changes && !zoom && !handle, hand))}
                   >
-                    <Bot className={cn(BELT_ICON, "text-primary")} />
+                    <Icon name="subagent" className={cn(BELT_ICON, "text-primary")} />
                     <span
                       aria-hidden
                       data-slot="belt-agents-count"
@@ -948,7 +948,7 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, durable, sto
                     onClick={jobs.onClick}
                     className={cn(`${STRIP_ROW_PILL} ${PINNED_PILL}`, pinnedReach(!clear && !agents, !pins && !changes && !zoom && !handle, hand))}
                   >
-                    <Timer className={cn(BELT_ICON, "text-primary")} />
+                    <Icon name="jobs" className={cn(BELT_ICON, "text-primary")} />
                     {jobs.count > 0 && (
                       <span
                         aria-hidden
@@ -981,7 +981,7 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, durable, sto
                     onClick={pins.onClick}
                     className={cn(`${STRIP_ROW_PILL} ${PINNED_PILL}`, pinnedReach(!clear && !agents && !jobs, !changes && !zoom && !handle, hand))}
                   >
-                    <Pin className={cn(BELT_ICON, "text-primary")} />
+                    <Icon name="pins-list" className={cn(BELT_ICON, "text-primary")} />
                     <span
                       aria-hidden
                       data-slot="belt-pins-count"
@@ -1010,7 +1010,7 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, durable, sto
                 // 7px out on an end of the block, 3px toward a neighbour, so two reaches never meet.
                 className={cn(`${STRIP_ROW_PILL} ${PINNED_PILL}`, pinnedReach(!clear && !agents && !jobs && !pins, !zoom && !handle, hand))}
               >
-                <ListTree className={cn(BELT_ICON, "text-primary")} />
+                <Icon name="files" className={cn(BELT_ICON, "text-primary")} />
               </Button>
             )}
             {/* THE OUTPUT, ZOOMED: the `zoom` prop above. Same box and tap feedback as the pills
@@ -1024,7 +1024,7 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, durable, sto
                 onClick={zoom.onClick}
                 className={cn(`${STRIP_ROW_PILL} ${PINNED_PILL}`, pinnedReach(!clear && !agents && !jobs && !pins && !changes, !handle, hand))}
               >
-                <ZoomIn className={cn(BELT_ICON, "text-primary")} />
+                <Icon name="zoom" className={cn(BELT_ICON, "text-primary")} />
               </Button>
             )}
             {handle && (
@@ -1048,7 +1048,7 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, durable, sto
                 // and 7px right (into `pr-3`), 47px across.
                 className={cn(`${STRIP_ROW_PILL} ${PINNED_PILL}`, pinnedReach(!agents && !jobs && !pins && !clear && !changes && !zoom, true, hand))}
               >
-                <Layers className={cn(BELT_ICON, "text-primary")} />
+                <Icon name="pane-switcher" className={cn(BELT_ICON, "text-primary")} />
                 {/* The needs-you mark (the triangle), on the mark's top-right corner, absolutely placed
                     so it never moves the belt. The chrome-coloured disc and ring cut it out of the
                     glyph it overlaps. 10px since 2026-10-14: at 12px the triangle read as heavy as the

@@ -1,15 +1,17 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
-
-import { act, render } from "@testing-library/react";
+import { act, render, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { __resetOperatorBusy, beginBusy } from "@/lib/busy";
+import { LIBRARY_STORAGE_KEY, __resetThemeStore, setActiveTheme } from "@/lib/theme/store";
 import { clearStatus, setStatus } from "@/lib/status";
-import { collieMark, markIsLive } from "@/test/collie-mark";
+import { collieMark, markIsLive, markState } from "@/test/collie-mark";
 import { savedAtLabel } from "@/lib/format";
-import { CollieMark } from "./collie-mark";
-import { APPLYING_CLASS, CollieHome, RECONNECTED_CLASS, spinRate } from "./collie-home";
+import { CollieHome, spinRate } from "./collie-home";
+
+// The chunked marks are replaced by a marker each, so the header can be asked which mark it draws.
+vi.mock("./kawaii-mark", () => ({ KawaiiMark: () => <span data-mark="kawaii" /> }));
+vi.mock("./kawaii-tilt-mark", () => ({ KawaiiTiltMark: () => <span data-mark="kawaii-tilt" /> }));
+vi.mock("./pixel-mark", () => ({ PixelMark: () => <span data-mark="pixel" /> }));
 
 // THE ROUND IS AN EVENT, NOT A STATE. Any status the app publishes turns the orbit exactly once, at
 // the loading rate, before handing it back to the resting drift. These cases hold the two halves of
@@ -60,6 +62,17 @@ describe("CollieHome — the event round", () => {
     const { container } = render(<CollieHome trouble lost />);
     act(() => setStatus("claude is done · moonward", "success"));
     expect(markIsLive(container)).toBe(false);
+  });
+
+  // The header says ONE state, by precedence, and never dims or paints the mark itself.
+  it("says idle while lost and rest otherwise, whatever else is going on", () => {
+    const { container, rerender } = render(<CollieHome trouble={false} />);
+    expect(markState(container)).toBe("rest");
+    rerender(<CollieHome trouble lost />);
+    expect(markState(container)).toBe("idle");
+    expect(collieMark(container)?.getAttribute("class") ?? "").not.toContain("opacity-40");
+    rerender(<CollieHome trouble />);
+    expect(markState(container)).toBe("loading");
   });
 
   // The connection bloom outranks the round: it is already the loading input, and it must still be
@@ -225,19 +238,17 @@ describe("CollieHome — the lost badge", () => {
 
   it("wears CloudOff when lost and the phone reports online", () => {
     const { container } = render(<CollieHome trouble lost online />);
-    expect(badge(container)?.getAttribute("data-icon")).toBe("cloud-off");
-    expect(badge(container)?.getAttribute("class")).toMatch(/lucide-cloud-off/);
+    expect(badge(container)?.getAttribute("data-icon")).toBe("bridge-unreachable");
   });
 
   it("wears CloudOff by default, since online is the unremarkable case", () => {
     const { container } = render(<CollieHome trouble lost />);
-    expect(badge(container)?.getAttribute("data-icon")).toBe("cloud-off");
+    expect(badge(container)?.getAttribute("data-icon")).toBe("bridge-unreachable");
   });
 
   it("wears WifiOff when lost and the phone reports offline", () => {
     const { container } = render(<CollieHome trouble lost online={false} />);
-    expect(badge(container)?.getAttribute("data-icon")).toBe("wifi-off");
-    expect(badge(container)?.getAttribute("class")).toMatch(/lucide-wifi-off/);
+    expect(badge(container)?.getAttribute("data-icon")).toBe("offline");
   });
 
   it("is decorative: hidden from assistive tech, the button's label names the state", () => {
@@ -274,14 +285,13 @@ describe("CollieHome — the lost badge", () => {
 // ── THE APP UPDATING (2026-11-06) ────────────────────────────────────────────────────────────────
 //
 // While a new app build downloads or waits to load, the mark turns at the loading rate and every
-// bead takes the update colour. The orbit is the mark's own `loading` input; the colour is a class
-// on its root that `index.css` paints, because collie-mark.tsx is generated and sealed. So these
-// cases hold three things: the precedence, the accessible name, and that the stylesheet's rules
-// actually reach every bead of the real, generated drawing.
+// bead takes the update colour. The header says only `state="applying"`; the mark does the rest
+// (mark-conformance.test.tsx holds every mark to it). So these cases hold two things: the
+// precedence, and the accessible name.
 describe("CollieHome — the app updating", () => {
-  const applyingClass = (root: ParentNode) => collieMark(root)?.classList.contains(APPLYING_CLASS) ?? false;
+  const applyingClass = (root: ParentNode) => markState(root) === "applying";
 
-  it("turns the orbit and paints the beads while the app updates", () => {
+  it("turns the orbit in the applying state while the app updates", () => {
     const { container, getByRole } = render(<CollieHome trouble={false} applying />);
     expect(markIsLive(container)).toBe(true);
     expect(applyingClass(container)).toBe(true);
@@ -321,7 +331,7 @@ describe("CollieHome — the app updating", () => {
     expect(getByRole("button", { name: "Collie home, not connected" })).toBeInTheDocument();
   });
 
-  it("changes the paint on the SAME mark: no remount when the update starts or ends", () => {
+  it("changes the state of the SAME mark: no remount when the update starts or ends", () => {
     const { container, rerender } = render(<CollieHome trouble={false} />);
     const before = collieMark(container);
     rerender(<CollieHome trouble={false} applying />);
@@ -337,22 +347,22 @@ describe("CollieHome — the app updating", () => {
 // ── THE LINK COMING BACK (2026-11-07) ───────────────────────────────────────────────────────────
 //
 // One turn in the done colour, in place of the band's old green "Connected" strip. The host passes
-// `reconnected` for exactly that turn (`lib/reconnected.ts`); these cases hold the precedence, the
-// name and the paint. The turn's length is the host's and the store's, asserted in app-header.test.
+// `reconnected` for exactly that turn (`lib/reconnected.ts`); these cases hold the precedence and
+// the name. The turn's length is the host's and the store's, asserted in app-header.test.
 describe("CollieHome — the link coming back", () => {
-  const greenClass = (root: ParentNode) => collieMark(root)?.classList.contains(RECONNECTED_CLASS) ?? false;
+  const greenClass = (root: ParentNode) => markState(root) === "reconnected";
 
-  it("turns the orbit and paints the beads green, with the reconnected name", () => {
+  it("turns the orbit in the reconnected state, with the reconnected name", () => {
     const { container, getByRole } = render(<CollieHome trouble={false} reconnected />);
     expect(markIsLive(container)).toBe(true);
     expect(greenClass(container)).toBe(true);
     expect(getByRole("button", { name: "Collie home, reconnected" })).toBeInTheDocument();
   });
 
-  it("gives way to the app updating: the update paint and name, never both colours", () => {
+  it("gives way to the app updating: the update state and name, never both colours", () => {
     const { container, getByRole } = render(<CollieHome trouble={false} applying reconnected />);
     expect(greenClass(container)).toBe(false);
-    expect(collieMark(container)?.classList.contains(APPLYING_CLASS)).toBe(true);
+    expect(markState(container)).toBe("applying");
     expect(getByRole("button", { name: "Collie is updating the app. Open the dashboard." })).toBeInTheDocument();
   });
 
@@ -362,7 +372,7 @@ describe("CollieHome — the link coming back", () => {
     expect(markIsLive(container)).toBe(false);
   });
 
-  it("changes the paint on the SAME mark, and the mark rests again when it ends", () => {
+  it("changes the state of the SAME mark, and the mark rests again when it ends", () => {
     const { container, rerender } = render(<CollieHome trouble={false} />);
     const before = collieMark(container);
     rerender(<CollieHome trouble={false} reconnected />);
@@ -375,96 +385,38 @@ describe("CollieHome — the link coming back", () => {
   });
 });
 
-// The two host paints, each a class on the mark's root and three rules in index.css. The update
-// paint (2026-11-06) and the reconnection's green turn (2026-11-07) share two of the rules through
-// `:is(...)` and differ only in the fill.
-const PAINTS = [
-  { name: "applying", cls: APPLYING_CLASS, token: "--status-working", other: RECONNECTED_CLASS },
-  { name: "reconnected", cls: RECONNECTED_CLASS, token: "--status-done", other: APPLYING_CLASS },
-] as const;
-
-// index.css with its comments blanked to spaces, so a brace inside a comment cannot open a rule and
-// every offset still points where it did.
-const css = readFileSync(join(import.meta.dirname, "..", "index.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, (c) =>
-  " ".repeat(c.length),
-);
-
-/** Every innermost rule whose selector names `cls`, as offset, selector and body. */
-function rulesFor(cls: string) {
-  const named = new RegExp(`\\.${cls}(?![\\w-])`);
-  return [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
-    .map((m) => ({ at: m.index, selector: (m[1] ?? "").trim(), body: (m[2] ?? "").trim() }))
-    .filter((r) => named.test(r.selector));
-}
-
-for (const paint of PAINTS) {
-  describe(`index.css — the ${paint.name} paint reaches every bead of the generated mark`, () => {
-    const rules = rulesFor(paint.cls);
-    const ruleWith = (decl: RegExp) => {
-      const found = rules.find((r) => decl.test(r.body));
-      if (found === undefined) throw new Error(`no ${paint.name} rule declares ${decl}`);
-      return found;
-    };
-    const fillRule = ruleWith(new RegExp(`fill:\\s*var\\(${paint.token}\\)`));
-    const maskRule = ruleWith(/mask:\s*none/);
-    const facetRule = ruleWith(/display:\s*none/);
-    const isPaper = (el: Element) => (el.getAttribute("fill") ?? "").startsWith("var(--cm-paper");
-
-    it("is unconditional, so reduced motion keeps the colour when the orbit stops", () => {
-      // Brace depth zero at each rule: none of them sits inside an @media block. The generated
-      // stylesheet's own reduced-motion rule turns the ANIMATION off and nothing else.
-      for (const rule of rules) {
-        const before = css.slice(0, rule.at);
-        const depth = (before.match(/\{/g)?.length ?? 0) - (before.match(/\}/g)?.length ?? 0);
-        expect(depth, rule.selector).toBe(0);
-      }
-      expect(rules.length).toBe(3);
-    });
-
-    for (const weight of ["header", "full"] as const) {
-      it(`paints every bead of the ${weight} weight, near and far, and leaves the knockout, ring and head alone`, () => {
-        const { container } = render(<CollieMark size={64} weight={weight} className={paint.cls} />);
-        const beads = [...container.querySelectorAll(".cm-b")];
-        // Eight beads, each drawn once in the near group and once in the far one.
-        expect(beads.length).toBe(16);
-        // The other paint's colour never reaches a bead under this class.
-        const otherFill = rulesFor(paint.other).find((r) => /fill:/.test(r.body));
-        for (const bead of beads) {
-          const drawn = [...bead.querySelectorAll("circle, polygon")];
-          const discs = drawn.filter((el) => !isPaper(el));
-          // Every bead has a body, and every body takes the paint's colour.
-          expect(discs.length).toBeGreaterThan(0);
-          for (const el of discs) {
-            expect(el.matches(fillRule.selector), bead.outerHTML.slice(0, 80)).toBe(true);
-            if (otherFill !== undefined) expect(el.matches(otherFill.selector)).toBe(false);
-          }
-          // The paper ring that says "in front of the head" is not painted over.
-          for (const el of drawn.filter((e) => e.tagName === "circle" && isPaper(e))) {
-            expect(el.matches(fillRule.selector)).toBe(false);
-          }
-          // A full planet: no shading mask, no paper-tinted facet.
-          for (const el of bead.querySelectorAll("[mask]")) expect(el.matches(maskRule.selector)).toBe(true);
-          for (const el of drawn.filter((e) => e.tagName === "polygon" && isPaper(e))) {
-            expect(el.matches(facetRule.selector)).toBe(true);
-          }
-        }
-        // The ring and the head keep their ink: nothing outside a bead is matched by any rule.
-        const outside = [...container.querySelectorAll("svg path, svg circle, svg polygon, svg g")].filter(
-          (el) => el.closest(".cm-b") === null,
-        );
-        expect(outside.length).toBeGreaterThan(0);
-        for (const el of outside) {
-          for (const rule of rules) expect(el.matches(rule.selector)).toBe(false);
-        }
-      });
-    }
-
-    it("reaches nothing without the class: the resting mark is untouched", () => {
-      const { container } = render(<CollieMark size={64} weight="header" />);
-      for (const el of container.querySelectorAll("svg *")) {
-        for (const rule of rules) expect(el.matches(rule.selector)).toBe(false);
-      }
-    });
+// THE HEADER DRAWS THE WORN THEME'S CHARACTER, inside the same measurement box (`data-slot="collie-mark"`) whichever
+// one it is, so the agent-start handoff finds its anchor under every mark.
+describe("CollieHome — the mark", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    __resetThemeStore();
   });
-}
+  afterEach(() => {
+    localStorage.clear();
+    __resetThemeStore();
+  });
 
+  it("draws the Collie mark in its box by default", () => {
+    const { container } = render(<CollieHome trouble={false} />);
+    const box = container.querySelector('[data-slot="collie-mark"]');
+    expect(box).not.toBeNull();
+    expect(box?.querySelector('svg[data-mark="collie"]')).not.toBeNull();
+  });
+
+  it("draws the worn theme's character, in the same box, and Collie again under a theme with none", async () => {
+    const themes = [
+      { version: 4, id: "sunroom", name: "Sunroom", character: "kawaii", light: { background: "#fdfaf3" } },
+      { version: 1, id: "plain", name: "Plain", light: { background: "#fdfaf3" } },
+    ];
+    localStorage.setItem(LIBRARY_STORAGE_KEY, JSON.stringify({ version: 1, themes }));
+    __resetThemeStore();
+    const { container } = render(<CollieHome trouble={false} />);
+    const box = () => container.querySelector('[data-slot="collie-mark"]');
+    act(() => setActiveTheme("sunroom"));
+    await waitFor(() => expect(box()?.querySelector('[data-mark="kawaii"]')).not.toBeNull());
+    expect(collieMark(container)).toBeNull();
+    act(() => setActiveTheme("plain"));
+    expect(box()?.querySelector('svg[data-mark="collie"]')).not.toBeNull();
+  });
+});

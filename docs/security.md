@@ -141,6 +141,7 @@ bridge is out of reach. Every item below has a size bound and a lifetime.
 | Pairing token | localStorage | until unpair, revoke or expiry | deleted |
 | Settings: theme, language, pins | localStorage | until you change them | kept |
 | Unsent drafts | localStorage | 48 hours | deleted |
+| A theme you are trying | sessionStorage | until Keep, Back or the tab closes | kept |
 | Push endpoint | localStorage | until it changes | deleted |
 | App shell | Cache Storage | until the next build | kept |
 | Fonts and push titles | Cache Storage | until replaced | deleted |
@@ -386,6 +387,23 @@ That line makes this machine refuse every message for its panes. The CLI on the 
 > could sign a message or claim a pane that is not its own. The signature protects a message on its
 > way between machines and tells the receiver which machine sent it. It does not protect you from a
 > program on the same machine that lies about itself.
+
+The community theme list is another outbound call, and it also happens only on a tap: **Refresh** in
+the **Browse community themes** sheet of the **Theme** card. The bridge makes one anonymous HTTPS
+`GET`, with the user-agent `Collie/<version>` and nothing about you:
+
+```text
+https://colliepwa.dev/themes/registry.json
+```
+
+The address is fixed in the bridge. The one exception is `COLLIE_THEME_REGISTRY_URL`, for a test
+against a staged copy of the site ([Configure](configure.md#the-community-theme-list)). The bridge
+follows a redirect only on the address's own site, refuses a file that is not typed as JSON, over 1 MB or with more than 500 themes,
+and keeps a theme only when Collie's own theme parser accepts it. It keeps the list in the `themes` folder of its state folder.
+The phone checks every theme again before it draws one, and the page itself never calls colliepwa.dev.
+The refresh needs a write device, runs on the lead only, allows one fetch at a time and is audited.
+A refresh within a minute of a good fetch answers that copy and fetches nothing. A copy older than a
+week is not listed, so the next tap fetches again.
 
 WalkyTalky adds no outbound call. A message to another machine rides the crew link that already
 exists, and no model, cloud service or third party sees it.

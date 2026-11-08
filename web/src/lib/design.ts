@@ -108,7 +108,7 @@ export function isDesignFont(value: string): boolean {
 /**
  * The class `<html>` should carry for `font`, or `""` for the default (which wears none).
  *
- * The one place a stored string turns into a class name, and it can only ever return one of five
+ * The one place a stored string turns into a class name, and it can only ever return one of seven
  * literals spelled right here. public/theme-init.js holds the pre-paint twin of this function —
  * minus the operator branch, which has no pre-paint path by design.
  */
@@ -117,12 +117,13 @@ export function fontClass(font: string): string {
   if (font === "grotesk") return "font-grotesk";
   if (font === "plex") return "font-plex";
   if (font === "geist") return "font-geist";
+  if (font === "nunito") return "font-nunito";
   if (font === "aldrich") return "font-aldrich";
   if (font.startsWith(OPERATOR_FONT_PREFIX)) return "font-operator";
   return "";
 }
 
-const FONT_CLASSES = ["font-system", "font-grotesk", "font-plex", "font-geist", "font-aldrich", "font-operator"] as const;
+const FONT_CLASSES = ["font-system", "font-grotesk", "font-plex", "font-geist", "font-nunito", "font-aldrich", "font-operator"] as const;
 
 function load(): DesignPrefs {
   try {

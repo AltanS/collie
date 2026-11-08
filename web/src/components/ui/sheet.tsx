@@ -1,5 +1,5 @@
 import * as React from "react";
-import { X } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -324,7 +324,9 @@ export function BottomSheet({
           className,
         )}
       >
-        <div className="sticky top-0 z-10 border-b border-rule bg-card/95 backdrop-blur-md">
+        {/* Solid, never a blur: a sheet's rows animate (a working dot, a spinner) as they scroll under
+            this row, and a blur over an animation redraws every frame (issue 748). */}
+        <div className="sticky top-0 z-10 border-b border-rule bg-card">
           {/* Grab handle — pull down (from anywhere at the top) to dismiss. */}
           <div className="flex justify-center pt-2 pb-1">
             {/* 4px tall, 36px wide — a stadium, so it takes the house 2px rather than full-round. */}
@@ -350,7 +352,7 @@ export function BottomSheet({
               onClick={onClose}
               aria-label={translate("common.closeAria")}
             >
-              <X className="size-4" />
+              <Icon name="close" className="size-4" />
             </Button>
           </div>
         </div>

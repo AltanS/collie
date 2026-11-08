@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
-import { Minus, Plus, X } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 
 import { AnsiOutput } from "@/components/ansi-output";
 import { BackBar, PHONE_QUERY, type BackControl } from "@/components/back-bar";
@@ -287,7 +287,7 @@ export function OutputZoom({ text, logicalText, fontSize, agent, nativeMirror, f
     >
       <div className="flex min-h-12 shrink-0 items-center gap-1 border-b border-rule bg-chrome px-1 pt-[env(safe-area-inset-top)]">
         <Button type="button" variant="ghost" size="icon" className="size-11" aria-label={back.label} onClick={back.go}>
-          <X className="size-5" />
+          <Icon name="close" className="size-5" />
         </Button>
         <h2 className="min-w-0 flex-1 truncate text-sm font-medium">{title}</h2>
         <Button
@@ -299,7 +299,7 @@ export function OutputZoom({ text, logicalText, fontSize, agent, nativeMirror, f
           disabled={scale <= MIN_ZOOM}
           onClick={() => zoomCentred(stepScale(scale, -1))}
         >
-          <Minus className="size-5" />
+          <Icon name="zoom-out" className="size-5" />
         </Button>
         <Button
           type="button"
@@ -319,7 +319,7 @@ export function OutputZoom({ text, logicalText, fontSize, agent, nativeMirror, f
           disabled={scale >= MAX_ZOOM}
           onClick={() => zoomCentred(stepScale(scale, 1))}
         >
-          <Plus className="size-5" />
+          <Icon name="zoom-in" className="size-5" />
         </Button>
       </div>
       <div

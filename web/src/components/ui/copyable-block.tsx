@@ -1,4 +1,4 @@
-import { Check, Copy, X } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -58,11 +58,11 @@ export function CopyableBlock({ text, children, label, className }: CopyableBloc
           onClick={() => void copy()}
         >
           {state === "done" ? (
-            <Check aria-hidden className="size-3.5 text-status-working" />
+            <Icon name="copied" aria-hidden className="size-3.5 text-status-working" />
           ) : state === "failed" ? (
-            <X aria-hidden className="size-3.5 text-status-blocked" />
+            <Icon name="copy-failed" aria-hidden className="size-3.5 text-status-blocked" />
           ) : (
-            <Copy aria-hidden className="size-3.5" />
+            <Icon name="copy" aria-hidden className="size-3.5" />
           )}
         </Button>
       )}

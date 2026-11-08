@@ -1,5 +1,5 @@
 import { useId } from "react";
-import { Star } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 
 import { Collapse } from "@/components/ui/collapse";
 import { LIST_ROW_CORNERS_END, LIST_ROW_CORNERS_START, ListGroup } from "@/components/ui/list-group";
@@ -113,7 +113,7 @@ function Section({ title, rows, starred, home, onUse, onStar }: SectionProps) {
                       LIST_ROW_CORNERS_END,
                     )}
                   >
-                    <Star aria-hidden className={cn("size-4", starred && "fill-current text-foreground")} />
+                    <Icon name="star-folder" aria-hidden className={cn("size-4", starred && "fill-current text-foreground")} />
                   </button>
                 </li>
               );

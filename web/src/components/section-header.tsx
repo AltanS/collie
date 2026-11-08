@@ -1,4 +1,4 @@
-import { ChevronRight } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 import type { ReactNode } from "react";
 
 import { StatusDot } from "@/components/status-badge";
@@ -81,7 +81,8 @@ export function SectionHeader({
   const inner = (
     <>
       {foldable && (
-        <ChevronRight
+        <Icon
+          name="disclosure"
           className={cn("size-3.5 shrink-0 transition-transform", open && "rotate-90")}
           aria-hidden
         />

@@ -983,6 +983,14 @@ export const CONFIG_SETTINGS: readonly ConfigSetting[] = [
     default: "",
     doc: "Test seam: where the ping goes.",
   },
+  {
+    key: "theme_registry_url",
+    env: "COLLIE_THEME_REGISTRY_URL",
+    section: "bridge",
+    kind: "string",
+    default: "",
+    doc: "Where Refresh fetches the community theme list, for a test against a staged copy of the site. Empty takes colliepwa.dev.",
+  },
 ];
 
 /** Every environment name the table answers to, aliases included. Built once. */

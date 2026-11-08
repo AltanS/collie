@@ -1,4 +1,4 @@
-import { ChevronRight } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 
 import { Badge } from "@/components/ui/badge";
 import { useWalkyLive, useWalkyLog, useWalkyOpen, useWalkySelf } from "@/components/walky-log";
@@ -81,7 +81,7 @@ export function WalkyCard({ row }: { row: WalkyRow }) {
         <Badge variant="outline" className="ml-auto px-1.5 py-0 text-[10px] font-medium">
           {t(row.kind === "agent" ? "walky.kind.agent" : "walky.kind.operator")}
         </Badge>
-        {open !== null && <ChevronRight className="size-3.5 shrink-0" aria-hidden="true" />}
+        {open !== null && <Icon name="row-go" className="size-3.5 shrink-0" aria-hidden="true" />}
       </span>
       <span className="font-content line-clamp-3 whitespace-pre-wrap break-words text-sm" data-slot="walky-body">
         <WalkyBodyText text={row.body} interactive={open === null} />

@@ -1,5 +1,5 @@
 import { useId, useRef, useState, type ReactNode } from "react";
-import { Check, Loader2, Lock, Minus, TriangleAlert, X } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 
 import { Button } from "@/components/ui/button";
 import { Notice } from "@/components/ui/notice";
@@ -118,9 +118,11 @@ export function UpdateScreen({
 
   return (
     <div role="dialog" aria-modal="true" aria-labelledby={headingId} className="fixed inset-x-0 top-0 z-50 h-(--app-h)">
-      {/* THE VEIL. The app stays in view, dimmed and softened, so the operator can see what is locked
-          and that it is still there. It takes no pointer: `App.tsx` makes the app behind it inert. */}
-      <div aria-hidden="true" className="absolute inset-0 bg-background/70 backdrop-blur-[2px]" />
+      {/* THE VEIL. The app stays in view, dimmed, so the operator can see what is locked and that it
+          is still there. It takes no pointer: `App.tsx` makes the app behind it inert and pauses its
+          animations. No blur: the panel above it animates for the whole update, and a blur under an
+          animation redraws every frame (issue 748). */}
+      <div aria-hidden="true" className="absolute inset-0 bg-background/80" />
       {!ready && <Band screen={screen} />}
       <div
         ref={panelRef}
@@ -183,7 +185,7 @@ function Band({ screen }: { screen: UpdateScreenState }) {
       <Notice
         tone={tone === "blocked" ? "danger" : tone === "done" ? "success" : "caution"}
         variant="strip"
-        icon={tone === "blocked" ? <TriangleAlert /> : tone === "done" ? <Check /> : <Lock />}
+        icon={tone === "blocked" ? <Icon name="error" /> : tone === "done" ? <Icon name="ok" /> : <Icon name="locked" />}
         action={clock !== null ? <span className="text-xs tabular-nums">{clock}</span> : undefined}
       >
         {text}
@@ -256,19 +258,19 @@ function Row({ row }: { row: UpdateScreenRow }) {
 function RowIcon({ status }: { status: UpdateScreenRow["status"] }) {
   switch (status) {
     case "active":
-      return <Loader2 className="size-4 text-status-working motion-safe:animate-spin" />;
+      return <Icon name="busy" className="size-4 text-status-working motion-safe:animate-spin" />;
     case "offline":
       return <span className="size-3 rounded-full border-2 border-status-info motion-safe:animate-pulse" />;
     case "queued":
       return <span className="size-3 rounded-full border-[1.5px] border-rule" />;
     case "ok":
-      return <Check className="size-4 text-status-done" />;
+      return <Icon name="update-step-done" className="size-4 text-status-done" />;
     case "failed":
-      return <X className="size-4 text-status-blocked" />;
+      return <Icon name="update-step-failed" className="size-4 text-status-blocked" />;
     case "attention":
-      return <TriangleAlert className="size-4 text-status-working" />;
+      return <Icon name="update-step-warning" className="size-4 text-status-working" />;
     case "skipped":
-      return <Minus className="size-4 text-status-idle" />;
+      return <Icon name="update-step-skipped" className="size-4 text-status-idle" />;
   }
 }
 
@@ -353,7 +355,7 @@ function Footer({
   if (view.phase === "ready") {
     first = (
       <Button size="lg" className="flex-1" disabled={busy} onClick={onStart}>
-        {busy && <Loader2 aria-hidden="true" className="size-4 motion-safe:animate-spin" />}
+        {busy && <Icon name="busy" aria-hidden="true" className="size-4 motion-safe:animate-spin" />}
         {screen.ask?.kind === "rollback"
           ? t("updateScreen.action.startRollback")
           : screen.ask?.kind === "back"
@@ -369,7 +371,7 @@ function Footer({
   } else if (phaseInFlight(view.phase)) {
     first = view.locked ? (
       <p className="flex flex-1 items-center gap-2 text-xs leading-4 text-muted-foreground">
-        <Lock aria-hidden="true" className="size-4 shrink-0" />
+        <Icon name="locked" aria-hidden="true" className="size-4 shrink-0" />
         <span className="line-clamp-2">{t("updateScreen.lock")}</span>
       </p>
     ) : (

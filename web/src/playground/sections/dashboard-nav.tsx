@@ -26,7 +26,7 @@
 // the attention filter, the per-workspace Changes screen) is new and exists only here, because
 // `AgentList` has no attention filter and no heading slot for a Changes entry yet.
 
-import { BellRing, ChevronLeft, ChevronRight, CircleDot, GitCompare, Rows3, Settings } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 import { useRef, useState, type ReactNode } from "react";
 
 import { AgentCard } from "@/components/agent-card";
@@ -123,7 +123,7 @@ function MockHeader() {
     <header className="flex min-h-15 shrink-0 items-center gap-2 border-b border-rule px-4 py-1">
       <span className="flex-1 text-lg font-semibold tracking-tight">collie</span>
       <span className="flex size-11 items-center justify-center text-muted-foreground" aria-hidden>
-        <Settings className="size-5" />
+        <Icon name="settings" className="size-5" />
       </span>
     </header>
   );
@@ -316,7 +316,7 @@ function WorkspaceChangesIndex({ onOpen }: { onOpen: (ws: string) => void }) {
                 <span className="truncate text-sm font-medium">{g.label}</span>
                 <Counts ws={g.label} />
               </span>
-              {!clean && <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden />}
+              {!clean && <Icon name="row-go" className="size-4 shrink-0 text-muted-foreground" aria-hidden />}
             </button>
           </li>
         );
@@ -342,7 +342,7 @@ function WorkspaceChangesScreen({ ws, onBack }: { ws: string; onBack: () => void
     <div className="flex flex-col">
       <div className="flex min-h-13 items-center gap-1 border-b border-rule pr-4">
         <button type="button" aria-label="Back" onClick={onBack} className="flex size-11 shrink-0 items-center justify-center">
-          <ChevronLeft className="size-5" />
+          <Icon name="back" className="size-5" />
         </button>
         <span className="flex min-w-0 flex-1 flex-col">
           <span className="text-base font-semibold leading-tight">Changes</span>
@@ -406,15 +406,15 @@ function OptionThreeTabs({ initial, openWs = null }: { initial: View; openWs?: s
         onSelect={select}
         className="pb-[max(env(safe-area-inset-bottom),var(--sim-sab,0px))]"
         items={[
-          { value: "panes", label: "Panes", icon: <Rows3 className={ICON} /> },
+          { value: "panes", label: "Panes", icon: <Icon name="tab-dashboard" className={ICON} /> },
           {
             value: "focus",
             label: "Focus",
-            icon: <CircleDot className={ICON} />,
+            icon: <Icon name="needs-you" className={ICON} />,
             badge: ATTENTION_COUNT,
             badgeLabel: `${ATTENTION_COUNT} need you`,
           },
-          { value: "changes", label: "Changes", icon: <GitCompare className={ICON} /> },
+          { value: "changes", label: "Changes", icon: <Icon name="changes" className={ICON} /> },
         ]}
       />
     </>
@@ -434,7 +434,7 @@ function HeadingChangesChip({ ws, onOpen }: { ws: string; onOpen: (ws: string) =
       onClick={() => onOpen(ws)}
       className="relative flex h-6 items-center gap-1 rounded-sm border border-rule px-1.5 font-mono text-[11px] text-foreground tabular-nums before:absolute before:-inset-x-1 before:-inset-y-2.5 before:content-['']"
     >
-      <GitCompare className="size-3.5" aria-hidden />
+      <Icon name="changes" className="size-3.5" aria-hidden />
       {files}
     </button>
   );
@@ -465,8 +465,8 @@ function OptionTwoTabsHeadingChip({ initial, openWs = null }: { initial: Filter;
           setWs(null);
         }}
         items={[
-          { value: "all", label: "All", icon: <Rows3 className={ICON} /> },
-          { value: "needs", label: "Needs you", icon: <BellRing className={ICON} />, badge: ATTENTION_COUNT },
+          { value: "all", label: "All", icon: <Icon name="tab-dashboard" className={ICON} /> },
+          { value: "needs", label: "Needs you", icon: <Icon name="needs-you" className={ICON} />, badge: ATTENTION_COUNT },
         ]}
       />
     </>
@@ -566,7 +566,7 @@ function OptionToggleAndSheet({
               on ? "text-status-blocked" : "text-foreground",
             )}
           >
-            <BellRing className={ICON} aria-hidden />
+            <Icon name="needs-you" className={ICON} aria-hidden />
             <span className="tabular-nums">Needs you · {ATTENTION_COUNT}</span>
             <Switch
               checked={on}
@@ -582,7 +582,7 @@ function OptionToggleAndSheet({
             onClick={() => setSheet(true)}
             className="flex min-h-14 flex-1 items-center justify-center gap-2 text-sm font-medium"
           >
-            <GitCompare className={ICON} aria-hidden />
+            <Icon name="changes" className={ICON} aria-hidden />
             Changes
             <span className="font-mono text-[11px] text-muted-foreground tabular-nums">{TOTAL_CHANGED_FILES}</span>
           </button>

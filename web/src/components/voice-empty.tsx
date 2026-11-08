@@ -1,4 +1,4 @@
-import { Mic } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 
 import { Card } from "@/components/ui/card";
 import { useLocale } from "@/hooks/use-locale";
@@ -19,7 +19,7 @@ export function VoiceEmpty() {
   return (
     <Card className="gap-0 py-0">
       <div className="flex items-start gap-3 p-4">
-        <Mic className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
+        <Icon name="mic" className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
         <p className="min-w-0 text-sm text-muted-foreground">{t("settings.voice.empty")}</p>
       </div>
     </Card>

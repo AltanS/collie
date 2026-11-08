@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { ChevronDown, ChevronUp, Search, X } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 
 import { Button } from "@/components/ui/button";
 import { t } from "@/lib/i18n";
@@ -44,7 +44,7 @@ export function FindBar({
 
   return (
     <div className="flex min-w-0 flex-1 items-center gap-1.5">
-      <Search className="pointer-events-none size-4 shrink-0 text-muted-foreground" />
+      <Icon name="search" className="pointer-events-none size-4 shrink-0 text-muted-foreground" />
       <input
         ref={inputRef}
         type="text"
@@ -83,7 +83,7 @@ export function FindBar({
         onClick={onPrev}
         aria-label={t("find.prevAria")}
       >
-        <ChevronUp className="size-4" />
+        <Icon name="find-prev" className="size-4" />
       </Button>
       <Button
         variant="ghost"
@@ -93,7 +93,7 @@ export function FindBar({
         onClick={onNext}
         aria-label={t("find.nextAria")}
       >
-        <ChevronDown className="size-4" />
+        <Icon name="find-next" className="size-4" />
       </Button>
       <Button
         variant="ghost"
@@ -102,7 +102,7 @@ export function FindBar({
         onClick={onClose}
         aria-label={t("find.closeAria")}
       >
-        <X className="size-4" />
+        <Icon name="close" className="size-4" />
       </Button>
     </div>
   );

@@ -772,14 +772,19 @@ exemption is granted by POSITION — the peer check sits after the federated dis
 its own `COLLIE_STANDBY_HOST` and neither gate reaches it; don't route it through the front door's
 `fetch` to share them.
 
-**The bridge makes three outbound calls of its own, and spawns no child for content unless
-`stt.json` names a speech provider.** The three calls are the update check, the Whistle
+**The bridge makes four outbound calls of its own, and spawns no child for content unless
+`stt.json` names a speech provider.** The four calls are the update check, the Whistle
 model download: one file, fetched on a write device's tap or `collie stt whistle`, from a pinned
 address, and kept only when its sha256 matches a pin in this release
 ([ADR 0096](./.adr/0096-speech-can-stay-on-the-phone.md)), and the math pack: the running
 version's release manifest and the one asset it names, fetched on a write device's tap only, kept
 only when the size and sha256 match, and unpacked in the bridge with no child, never under `web/dist`
-([ADR 0132](./.adr/0132-the-math-engines-are-a-pack-the-host-downloads.md)). A `durable` peer configured with `COLLIE_DURABLE_URL` makes a fourth, to the program's URL the
+([ADR 0132](./.adr/0132-the-math-engines-are-a-pack-the-host-downloads.md)), and the community theme
+registry: one fixed file, `https://colliepwa.dev/themes/registry.json` (the operator's
+`COLLIE_THEME_REGISTRY_URL` replaces it for a test against a staged site, https or tailnet http
+only), fetched on a write device's tap only, never forwarded, refused past 1 MB or 500 entries, each entry kept only when `parseTheme`
+passes it, and stored under `<stateDir>/themes` (M59 spec 06; the page itself keeps
+`connect-src 'self'`, ADR 0106). A `durable` peer configured with `COLLIE_DURABLE_URL` makes a fifth, to the program's URL the
 operator set, with the bearer token from `COLLIE_DURABLE_TOKEN`, and it is declined by setting
 nothing ([ADR 0103](./.adr/0103-the-wire-has-two-transports-a-private-socket-or-tls-with-a-token.md)). Speech-to-text (`bridge/stt/`, CLI
 `cli/stt.ts`) is a registered provider seam, absent until `stt.json` names a provider. Then it may

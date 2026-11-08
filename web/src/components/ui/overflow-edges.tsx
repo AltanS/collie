@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 
 import { hasResizeObserver } from "@/lib/env";
 import { cn } from "@/lib/utils";
@@ -257,7 +257,7 @@ export function OverflowEdges({
       </div>
       {cue !== "none" && (paintEdge === "left" || paintEdge === "both") && (
         <span aria-hidden className="pointer-events-none absolute top-1/2 left-1 flex -translate-y-1/2 items-center justify-center">
-          <ChevronLeft className={CUE_GLYPH[cue]} />
+          <Icon name="scroll-hint-left" className={CUE_GLYPH[cue]} />
         </span>
       )}
       {cue !== "none" && (paintEdge === "right" || paintEdge === "both") && (
@@ -268,7 +268,7 @@ export function OverflowEdges({
           style={insetRight > 0 ? { right: `${insetRight + 4}px` } : undefined}
           className="pointer-events-none absolute top-1/2 right-1 flex -translate-y-1/2 items-center justify-center"
         >
-          <ChevronRight className={CUE_GLYPH[cue]} />
+          <Icon name="scroll-hint-right" className={CUE_GLYPH[cue]} />
         </span>
       )}
     </div>

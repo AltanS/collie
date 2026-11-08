@@ -59,6 +59,10 @@ changing a banner, the mark, the boot splash, the idle lock, or the crew page. E
 carries a `data-state` handle, so a browser case can address it directly instead of matching its
 prose label.
 
+To add an icon set that a theme can name, follow
+[Add an icon set to Collie](./docs/themes.md#add-an-icon-set-to-collie): one pull request that maps
+an open-licensed icon library to every icon key.
+
 ## Decisions that are already settled
 
 [`.adr/`](./.adr/) records decisions whose rationale would otherwise stay buried in PR threads. It

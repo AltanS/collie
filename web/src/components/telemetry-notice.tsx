@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { BarChart3 } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 
 import { Button } from "@/components/ui/button";
 import { Collapse } from "@/components/ui/collapse";
@@ -58,7 +58,7 @@ export function TelemetryNotice() {
             tone="info"
             variant="box"
             announce="status"
-            icon={<BarChart3 />}
+            icon={<Icon name="telemetry" />}
             action={
               <Button
                 type="button"

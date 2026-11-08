@@ -1,7 +1,7 @@
 import { useCallback, useLayoutEffect, useState } from "react";
 import type { ChangeEvent, CSSProperties, KeyboardEvent, ReactNode, RefObject, SyntheticEvent } from "react";
 import { createPortal } from "react-dom";
-import { ArrowUp, Minimize2 } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 
 import { Button } from "@/components/ui/button";
 import { ChatInput } from "@/components/ui/chat/chat-input";
@@ -197,7 +197,7 @@ export function ExpandedEditor({
         onClick={onCollapse}
         aria-label={collapseLabel}
       >
-        <Minimize2 className="size-4" />
+        <Icon name="editor-close" className="size-4" />
       </Button>
       {/* The composer's open row without Expand: [Attach][space][mic][Send], mirrored for the left
           hand. `relative` is the anchor of Attach's picker, which opens above this row. */}
@@ -214,7 +214,7 @@ export function ExpandedEditor({
           onClick={sendInert ? undefined : onSend}
           aria-label={sendLabel}
         >
-          <ArrowUp className="size-4" />
+          <Icon name="send-ready" className="size-4" />
         </Button>
       </div>
     </div>,

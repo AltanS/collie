@@ -1264,7 +1264,7 @@ describe("AgentList — the pin hint", () => {
     // The quiet register: the neutral notice, muted ink, a uniform edge and no status colour.
     expect(line).toHaveClass("border", "text-muted-foreground");
     expect(line.className).not.toMatch(/status-|border-l-|primary/u);
-    expect(line.querySelector("svg.lucide-pin")).not.toBeNull();
+    expect(line.querySelector('svg[data-icon="pin"]')).not.toBeNull();
     const summary = screen.getByRole("button", { name: /^\d+ needs you/ });
     expect(summary.compareDocumentPosition(line) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(line.compareDocumentPosition(groupSection("one")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();

@@ -1,4 +1,4 @@
-import { ChevronDown } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 
 import { StatusDot } from "@/components/status-badge";
 import { cn } from "@/lib/utils";
@@ -143,7 +143,7 @@ export function StripsSummary({
         )}
       </span>
 
-      <ChevronDown aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
+      <Icon name="expand" aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
     </button>
   );
 }

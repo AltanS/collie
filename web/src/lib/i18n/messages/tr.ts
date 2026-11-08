@@ -39,7 +39,7 @@ export const tr: Dictionary = {
   "settings.theme.option.dark": "Koyu",
 
   "theme.title": "Tema",
-  "theme.description": "Bir görünüm seçin veya dosyadan içe aktarın.",
+  "theme.description": "Bir görünüm seçin veya bir tane ekleyip saklamadan önce deneyin.",
   "theme.import": "İçe aktar",
   "theme.export": "Dışa aktar",
   "theme.remove": "Kaldır",

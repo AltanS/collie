@@ -44,7 +44,7 @@ export const zhTW: Dictionary = {
   "settings.theme.option.dark": "深色",
 
   "theme.title": "主題",
-  "theme.description": "選擇外觀，或從檔案匯入。",
+  "theme.description": "選擇外觀，或新增一個，保留前先試用。",
   "theme.import": "匯入",
   "theme.export": "匯出",
   "theme.remove": "移除",

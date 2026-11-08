@@ -1,20 +1,7 @@
 import { Fragment, useEffect, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
-import type { LucideIcon } from "lucide-react";
-import {
-  ArrowBigUp,
-  ArrowDown,
-  ArrowLeft,
-  ArrowRight,
-  ArrowRightToLine,
-  ArrowUp,
-  Check,
-  CornerDownLeft,
-  Eraser,
-  Loader2,
-  Lock,
-  Space,
-} from "lucide-react";
+import { Icon } from "@/components/icons/icon";
+import type { IconKey } from "@/components/icons/keys";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -117,14 +104,14 @@ interface NavTrayProps {
 const NO_REFUSED_KEYS: readonly string[] = [];
 
 // The icon a default-faced key wears, keyed by its step. Everything else shows its text face.
-const FACE_ICON = new Map<string, LucideIcon>([
-  ["Tab", ArrowRightToLine],
-  ["Space", Space],
-  ["Enter", CornerDownLeft],
-  ["Up", ArrowUp],
-  ["Down", ArrowDown],
-  ["Left", ArrowLeft],
-  ["Right", ArrowRight],
+const FACE_ICON = new Map<string, IconKey>([
+  ["Tab", "key-tab"],
+  ["Space", "key-space"],
+  ["Enter", "key-enter"],
+  ["Up", "key-up"],
+  ["Down", "key-down"],
+  ["Left", "key-left"],
+  ["Right", "key-right"],
 ]);
 
 // Hold-to-repeat, WHITELISTED to the arrows (see navBtn). A whitelist rather than a blacklist: Enter,
@@ -312,7 +299,7 @@ export function NavTray({
             {repeat.count > 1 && <span className="text-xs tabular-nums">×{repeat.count}</span>}
           </span>
         ) : phase === "done" && !armed ? (
-          <Check className="mx-auto size-4" />
+          <Icon name="confirm" className="mx-auto size-4" />
         ) : armed ? (
           <span className="truncate text-xs">{t("keys.confirm.short")}</span>
         ) : (
@@ -340,7 +327,7 @@ export function NavTray({
         style={style}
         className={cn("h-9 px-0 text-sm font-medium", extraClassName)}
       >
-        {mode === "locked" && <Lock className="size-3" />}
+        {mode === "locked" && <Icon name="modifier-lock" className="size-3" />}
         {label}
       </Button>
     );
@@ -383,7 +370,7 @@ export function NavTray({
       <Fragment key={cell}>
         {modBtn(
           key.mod,
-          key.mod === "shift" ? <ArrowBigUp className="size-4" aria-hidden="true" /> : word,
+          key.mod === "shift" ? <Icon name="key-shift" className="size-4" aria-hidden="true" /> : word,
           word,
           cn("w-full min-w-0", KEY_TAP_TARGET, tall(key)),
           areaCss(cell, key),
@@ -397,9 +384,9 @@ export function NavTray({
     const words = stepsWords(key.steps, t("keys.pad.then"));
     const aria = key.label === undefined ? words : t("keys.pad.sends", { label: key.label, keys: words });
     // An icon stands for a key that wears its own default face. A key the person named shows the name.
-    const Icon = key.label === undefined && only !== undefined ? FACE_ICON.get(only) : undefined;
+    const faceIcon = key.label === undefined && only !== undefined ? FACE_ICON.get(only) : undefined;
     const content =
-      Icon !== undefined ? <Icon className="size-4" aria-hidden="true" /> : textLabel(keyLabel(key));
+      faceIcon !== undefined ? <Icon name={faceIcon} className="size-4" aria-hidden="true" /> : textLabel(keyLabel(key));
     const isEnter = only === "Enter";
     return (
       <Fragment key={cell}>
@@ -462,7 +449,7 @@ export function NavTray({
             onClick={() => void runClear()}
             className={cn("ml-auto h-9 gap-1.5 px-3 text-sm font-medium touch-manipulation select-none", "relative before:absolute before:inset-x-0 before:-inset-y-[4px] before:content-['']")}
           >
-            {clearing ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <Eraser className="size-4" aria-hidden="true" />}
+            {clearing ? <Icon name="busy" className="size-4 animate-spin" aria-hidden="true" /> : <Icon name="clear-keys" className="size-4" aria-hidden="true" />}
             {t("keys.clear.label")}
           </Button>
         )}
@@ -492,7 +479,7 @@ export function NavTray({
                   item.danger && !isPending && phase === "idle" && "text-destructive",
                 )}
               >
-                {isPending ? t("keys.confirm.label") : phase === "done" ? <Check className="size-4" /> : item.label}
+                {isPending ? t("keys.confirm.label") : phase === "done" ? <Icon name="sent-ok" className="size-4" /> : item.label}
               </Button>
             );
           })}

@@ -12,7 +12,6 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { useLocation } from "react-router";
-import { Settings } from "lucide-react";
 
 import { isConnecting } from "@/lib/connection";
 import { useNav } from "@/hooks/use-nav";
@@ -35,6 +34,7 @@ import { Collapse } from "@/components/ui/collapse";
 import { SectionLabel } from "@/components/ui/section-label";
 import type { BridgeStatus } from "@/lib/types";
 import type { Scope } from "@/lib/scope";
+import { Icon } from "@/components/icons/icon";
 
 /** What a route claims about the SHAPE of the shared row, as opposed to the content it portals into
  *  it. These are the three things the shell itself has to draw differently, and every one of them is
@@ -702,7 +702,7 @@ export function SettingsGear({ scope }: { scope?: Scope }) {
       // breadcrumb absorbs — it already truncates by design.
       className="relative grid size-11 shrink-0 place-items-center text-muted-foreground transition-colors hover:text-foreground"
     >
-      <Settings className="size-5" />
+      <Icon name="settings" className="size-5" />
       {offered && (
         // 6px, in the corner of the icon and inside the 44px box: a fact about the app, not a control.
         <span

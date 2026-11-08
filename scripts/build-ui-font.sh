@@ -72,6 +72,19 @@ CANDIDATES=(
   "ibmplexsans:IBMPlexSans[wdth,wght].ttf:3.201:ibm-plex-sans:wdth=100"
   "geist:Geist[wght].ttf:1.800:geist:"
   "atkinsonhyperlegiblenext:AtkinsonHyperlegibleNext[wght].ttf:2.001:atkinson-hyperlegible-next:"
+  "nunito:Nunito[wght].ttf:3.602:nunito:"
+)
+
+# A candidate listed here is fetched from this google/fonts commit and sha256-checked, not read off
+# `main`: a face that moved under a fixed filename would be a silent change. slug -> value.
+declare -A PINNED_COMMIT=(
+  [nunito]=8b0a1d0f5983c89bc2b93f1b5fb55f9e252744b5
+)
+declare -A PINNED_TTF_SHA256=(
+  [nunito]=bb55a5ca5c2042335b3991af27c4d0705d0ef41cac6164ac737fd8f2a1e85207
+)
+declare -A PINNED_OFL_SHA256=(
+  [nunito]=580df76c95a1ec5ab878ceb25bb3d85c6a076804e9c970c8c6972aea775fdf65
 )
 
 # What the app prints. Basic Latin + Latin-1 + Latin-Ext-A (German and Spanish copy, and any Latin
@@ -85,11 +98,19 @@ FEATURES='kern,ccmp,locl,liga,calt,tnum,case,mark,mkmk'
 mkdir -p "$OUT"
 for entry in "${CANDIDATES[@]}"; do
   IFS=':' read -r dir file version slug axes <<<"$entry"
+  # UI_FONT_ONLY=<slug> rebuilds one face. The others' files are not touched.
+  if [ -n "${UI_FONT_ONLY:-}" ] && [ "$UI_FONT_ONLY" != "$slug" ]; then continue; fi
   echo "→ $slug $version"
   # `[` and `]` are literal in the upstream filename and must be percent-encoded for curl.
   url_file="${file//\[/%5B}"; url_file="${url_file//\]/%5D}"
-  curl -fsSL -o "$WORK/$slug.ttf" "https://raw.githubusercontent.com/google/fonts/main/ofl/$dir/$url_file"
-  curl -fsSL -o "$OUT/LICENSE-$slug.txt" "https://raw.githubusercontent.com/google/fonts/main/ofl/$dir/OFL.txt"
+  ref="${PINNED_COMMIT[$slug]:-main}"
+  curl -fsSL -o "$WORK/$slug.ttf" "https://raw.githubusercontent.com/google/fonts/$ref/ofl/$dir/$url_file"
+  curl -fsSL -o "$WORK/$slug-OFL.txt" "https://raw.githubusercontent.com/google/fonts/$ref/ofl/$dir/OFL.txt"
+  if [ -n "${PINNED_COMMIT[$slug]:-}" ]; then
+    echo "${PINNED_TTF_SHA256[$slug]}  $WORK/$slug.ttf" | sha256sum -c - >/dev/null || { echo "$file does not match the pinned sha256" >&2; exit 1; }
+    echo "${PINNED_OFL_SHA256[$slug]}  $WORK/$slug-OFL.txt" | sha256sum -c - >/dev/null || { echo "$slug OFL.txt does not match the pinned sha256" >&2; exit 1; }
+  fi
+  cp "$WORK/$slug-OFL.txt" "$OUT/LICENSE-$slug.txt"
 
   if [ "$axes" = "static" ]; then
     # No fvar, so nothing to instance: the file IS its own instance. Copied rather than symlinked so
@@ -104,6 +125,7 @@ for entry in "${CANDIDATES[@]}"; do
     --output-file="$OUT/ui-$slug-$version-latin.woff2"
 done
 
+if [ -z "${UI_FONT_ONLY:-}" ]; then
 # ── The Cyrillic companion ──────────────────────────────────────────────────────────────────────
 # Source pinned to a google/fonts commit; both downloads are sha256-checked and the script stops if
 # either differs. Bumping Play means a new commit, new hashes and a new version in the filename.
@@ -126,6 +148,7 @@ cp "$WORK/play-OFL.txt" "$OUT/LICENSE-play.txt"
 pyftsubset "$WORK/play.ttf" --unicodes="$PLAY_RANGES" --layout-features="$FEATURES" \
   --no-hinting --desubroutinize --flavor=woff2 \
   --output-file="$OUT/ui-play-$PLAY_VERSION-cyrillic.woff2"
+fi
 
 echo
 echo "→ fallback metric overrides for index.css (recomputed, do not hand-edit)"
@@ -169,7 +192,10 @@ def metrics(path, loc):
 refs = {"Arial": metrics(f"{work}/arimo.ttf", {"wght": 400}),
         "Roboto": metrics(f"{work}/roboto.ttf", {"wght": 400, "wdth": 100})}
 print(f"  reference spread: Roboto is {refs['Roboto'][0]/refs['Arial'][0]*100 - 100:+.2f}% vs Arial")
-for slug in ("space-grotesk", "aldrich", "ibm-plex-sans", "geist", "atkinson-hyperlegible-next"):
+only = os.environ.get("UI_FONT_ONLY")
+for slug in ("space-grotesk", "aldrich", "ibm-plex-sans", "geist", "atkinson-hyperlegible-next", "nunito"):
+    if only and only != slug:
+        continue
     width, asc, desc, gap = metrics(f"{work}/{slug}-inst.ttf", {"wght": 400})
     sa = width / refs["Arial"][0]
     print(f"  {slug:14}  size-adjust: {sa*100:.2f}%  "
@@ -177,6 +203,7 @@ for slug in ("space-grotesk", "aldrich", "ibm-plex-sans", "geist", "atkinson-hyp
           f"line-gap-override: {gap/sa*100:.2f}%")
 PY
 
+if [ -z "${UI_FONT_ONLY:-}" ]; then
 echo
 echo "→ Play's overrides for index.css: scaled so its letters match Aldrich's, line box = Aldrich's"
 WORK="$WORK" python3 - <<'PY'
@@ -213,6 +240,7 @@ print(f"  play          size-adjust: {sa*100:.2f}%  "
       f"ascent-override: {ald['asc']/sa*100:.2f}%  descent-override: {ald['desc']/sa*100:.2f}%  "
       f"line-gap-override: {ald['gap']/sa*100:.2f}%")
 PY
+fi
 
 ls -l "$OUT"
 echo "→ update the filenames, the quoted sizes and the override percentages in web/src/index.css"

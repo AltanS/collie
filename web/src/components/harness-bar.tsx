@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Archive, Check, Cpu, Ellipsis, Flag, Gauge, History, ListTree, Loader2, Pause, Play, RefreshCw, Search, Send, Shrink, Slash, Square, Star, StickyNote, Wind, X } from "lucide-react";
-import type { LucideIcon } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
+import type { IconKey } from "@/components/icons/keys";
 
 import { AgentIcon } from "@/components/agent-icon";
 import { AGENT_BRANDS } from "@/components/agent-icon-data";
@@ -90,17 +90,17 @@ function labelText(label: string): string {
  * A Map, not an object literal, for the reason the table itself gives: an operator row's id is
  * `op:/whatever`, which an object lookup would answer for inherited names.
  */
-const ICONS = new Map<string, LucideIcon>([
-  ["model", Cpu], // which brain is answering
-  ["effort", Gauge], // how hard it is told to think
-  ["compact", Shrink], // fold the context up
-  ["resume", History], // go back to an earlier session
-  ["tree", ListTree], // the session tree
+const ICONS = new Map<string, IconKey>([
+  ["model", "harness-model"], // which brain is answering
+  ["effort", "harness-effort"], // how hard it is told to think
+  ["compact", "harness-compact"], // fold the context up
+  ["resume", "harness-resume"], // go back to an earlier session
+  ["tree", "harness-tree"], // the session tree
 ]);
 
 /** An operator's own row gets the slash — it is their command, and we know nothing else about it. */
-function iconFor(id: string): LucideIcon {
-  return ICONS.get(id) ?? Slash;
+function iconFor(id: string): IconKey {
+  return ICONS.get(id) ?? "slash-command";
 }
 
 export interface HarnessBarProps {
@@ -159,7 +159,7 @@ export function HarnessBar({ agent, mine, onRun, disabled, hand = "right" }: Har
       {items.map((item) => {
         const phase = echo.phaseOf(item.id);
         const armed = pending === item.id;
-        const Icon = iconFor(item.id);
+        const iconKey = iconFor(item.id);
         return (
           <Button
             key={item.id}
@@ -196,12 +196,12 @@ export function HarnessBar({ agent, mine, onRun, disabled, hand = "right" }: Har
                 is a 700ms echo, not a resting label — that is why the icon's 3:1/4.5:1 contrast
                 note below does not gate it (the operator chose this on 2026-09-21). */}
             {phase === "done" ? (
-              <Check className={BELT_ICON} />
+              <Icon name="confirm" className={BELT_ICON} />
             ) : (
               /* The icon takes the brand colour and the word does not. An icon is held to 3:1
                  (non-text contrast) and clears it on both themes; a 12px word in #D97757 would
                  not, so the label keeps the app's own text colour and stays readable. */
-              <Icon className={BELT_ICON} style={accent ? { color: accent } : undefined} />
+              <Icon name={iconKey} className={BELT_ICON} style={accent ? { color: accent } : undefined} />
             )}
             {labelText(item.label)}
           </Button>
@@ -300,22 +300,22 @@ export interface DurableBarState {
 
 /** The glyph a program's icon name draws. A name outside the fixed set draws none (the label stands alone). */
 const ACTION_GLYPHS = {
-  play: Play,
-  pause: Pause,
-  check: Check,
-  x: X,
-  refresh: RefreshCw,
-  archive: Archive,
-  flag: Flag,
-  star: Star,
-  send: Send,
-  note: StickyNote,
-  search: Search,
-  more: Ellipsis,
-} satisfies Record<PaneActionIcon, LucideIcon>;
+  play: "action-play",
+  pause: "action-pause",
+  check: "action-check",
+  x: "action-x",
+  refresh: "action-refresh",
+  archive: "action-archive",
+  flag: "action-flag",
+  star: "action-star",
+  send: "action-send",
+  note: "action-note",
+  search: "action-search",
+  more: "action-more",
+} satisfies Record<PaneActionIcon, IconKey>;
 
 /** The glyph for a name the program sent, or undefined. A Map-free lookup that cannot answer for `constructor`. */
-function glyphFor(icon: string | undefined): LucideIcon | undefined {
+function glyphFor(icon: string | undefined): IconKey | undefined {
   if (icon === undefined) return undefined;
   for (const name of PANE_ACTION_ICONS) if (name === icon) return ACTION_GLYPHS[name];
   return undefined;
@@ -377,7 +377,7 @@ export function DurableBar({ items, state, disabled, hand = "right" }: DurableBa
               onClick={() => state.steer.onPressedChange(!pressed)}
               className={cn(base, pressed ? BELT_PRESSED : "text-foreground", left && "[direction:ltr]")}
             >
-              <Wind className={BELT_ICON} />
+              <Icon name="steer" className={BELT_ICON} />
               {translate("durable.composer.steer")}
             </Button>
           );
@@ -387,7 +387,7 @@ export function DurableBar({ items, state, disabled, hand = "right" }: DurableBa
           // bridge), the glyph one of twelve names or none. Dimmed in place when the program says it is
           // unavailable or busy, or while this tap is in flight; a busy one swaps its glyph for a spinner.
           const { action } = item;
-          const Glyph = glyphFor(action.icon);
+          const glyph = glyphFor(action.icon);
           const waiting = action.busy === true || state.action?.running === action.id;
           return (
             <Button
@@ -400,7 +400,7 @@ export function DurableBar({ items, state, disabled, hand = "right" }: DurableBa
               onClick={() => state.action?.onRun(action)}
               className={cn(base, "text-foreground", left && "[direction:ltr]")}
             >
-              {waiting ? <Loader2 className={cn(BELT_ICON, "animate-spin")} /> : Glyph === undefined ? null : <Glyph className={BELT_ICON} />}
+              {waiting ? <Icon name="busy" className={cn(BELT_ICON, "animate-spin")} /> : glyph === undefined ? null : <Icon name={glyph} className={BELT_ICON} />}
               {action.label}
             </Button>
           );
@@ -416,7 +416,7 @@ export function DurableBar({ items, state, disabled, hand = "right" }: DurableBa
             onClick={state.stop.onStop}
             className={cn(base, "text-foreground", left && "[direction:ltr]")}
           >
-            {state.stop.busy ? <Loader2 className={cn(BELT_ICON, "animate-spin")} /> : <Square className={BELT_ICON} />}
+            {state.stop.busy ? <Icon name="busy" className={cn(BELT_ICON, "animate-spin")} /> : <Icon name="stop" className={BELT_ICON} />}
             {translate("durable.composer.stop")}
           </Button>
         );
@@ -522,7 +522,7 @@ export function ScreenStop({ onStop, paneId, running, disabled, hand = "right" }
         hand === "left" && "[direction:ltr]",
       )}
     >
-      {busy ? <Loader2 className={cn(BELT_ICON, "animate-spin")} /> : <Square className={BELT_ICON} />}
+      {busy ? <Icon name="busy" className={cn(BELT_ICON, "animate-spin")} /> : <Icon name="stop" className={BELT_ICON} />}
       {translate(armed ? "belt.stopArmed" : "belt.stop")}
     </Button>
   );

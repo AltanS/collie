@@ -259,7 +259,9 @@
   --edge-shadow: 0 0 #0000;
   /* THE SEVEN MORE A THEME MAY PICK (M57 spec 17, lib/theme/surface.ts). Each is the value the app
      draws by default, so the Collie theme sets none of them and looks the same:
-       ground  `--ground-image`, painted on `html` over the page colour (the html rule below);
+       ground  `--ground-image` and `--ground-size`, painted on `html` over the page colour (the
+               html rule below), and the six a pattern reads: `--ground-ink`, `--ground-scale` and
+               the four paints `--ground-line`, `--ground-dot`, `--ground-area`, `--ground-tint`;
        chrome  `--band-ground` and `--band-rule`, the fill and edge of the header, the tab bar and the
                bottom bar (`bg-band-ground`, `border-band-rule`), today the page colour and --rule;
        rows    the rows of a list group (the `[data-slot="list-group"]` rule below): `--row-gap`
@@ -274,7 +276,14 @@
      The mirror's own ink and ground are NOT declared here: lib/ansi.ts and components/mirror-space.ts
      read `var(--mirror-ink, #fafafa)` and `var(--mirror-ground, #0a0a0a)`, so only a theme's `ansi`
      block sets them. src/themes/themes.test.ts holds every default word equal to these. */
-  --ground-image: repeating-linear-gradient(45deg, color-mix(in oklab, var(--background) 96%, var(--foreground)) 0 1px, transparent 1px 4px), repeating-linear-gradient(-45deg, color-mix(in oklab, var(--background) 96%, var(--foreground)) 0 1px, transparent 1px 4px);
+  --ground-image: repeating-linear-gradient(45deg, var(--ground-line) 0 1px, transparent 1px calc(4px * var(--ground-scale))), repeating-linear-gradient(-45deg, var(--ground-line) 0 1px, transparent 1px calc(4px * var(--ground-scale)));
+  --ground-size: auto;
+  --ground-ink: var(--foreground);
+  --ground-scale: 1;
+  --ground-line: color-mix(in oklab, var(--background) 96%, var(--ground-ink));
+  --ground-dot: color-mix(in oklab, var(--background) 93%, var(--ground-ink));
+  --ground-area: color-mix(in oklab, var(--background) 97%, var(--ground-ink));
+  --ground-tint: color-mix(in oklab, var(--background) 88%, var(--ground-ink));
   --band-ground: var(--secondary);
   --band-rule: var(--border);
   --row-gap: 0px;
@@ -288,7 +297,7 @@
   --label-transform: none;
   --label-tracking: normal;
   --font-display: var(--face-aldrich);
-  /* The six shipped faces as stacks a theme's display face can name (`--font-display:
+  /* The seven shipped faces as stacks a theme's display face can name (`--font-display:
      var(--face-<id>)`). The same stacks as the `:root.font-*` blocks and the @theme default below,
      held equal by src/fonts.test.ts. A stack names a family; the browser fetches its file only when a
      drawn element asks for it, so a stack nobody uses costs no byte. */
@@ -310,6 +319,9 @@
   --face-atkinson:
     "Atkinson Hyperlegible Next", "Atkinson Hyperlegible Next Fallback", ui-sans-serif,
     system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --face-nunito:
+    "Nunito", "Nunito Fallback", ui-sans-serif, system-ui,
+    -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   /* Light deviates from stock shadcn in two places, both measured rather than taste:
      --background is a step off white (stock has background == card == popover == pure white, so the
      entire dashboard hierarchy rests on one 1.26:1 hairline), and --muted-foreground is darkened
@@ -1001,6 +1013,48 @@
     U+20A0-20BF, U+2122, U+2190-21FF, U+2212, U+2264-2265, U+2699, U+2713-2714, U+25CF;
 }
 
+/* Nunito, a rounded face a theme may name for its text or its titles, as the starter theme does for
+ * its titles. Rounded terminals on every stroke end, which is the whole reason it is here: a soft
+ * hand for a soft palette. Built by the same scripts/build-ui-font.sh run
+ * (UI_FONT_ONLY=nunito), subset to the same ranges, 30 KB, instanced to wght 400 to 700 like Space
+ * Grotesk, so the 500 and 600 the app asks for are drawn, not synthesised. Opt-in like every face
+ * but the default: fetched when a reader or a theme picks it, never preloaded, never precached.
+ *
+ * ONE COST, SAID OUT LOUD: Nunito carries no `tnum` feature, so `tabular-nums` has nothing to
+ * switch on and its figures stay proportional. The counts column does not align digit for digit.
+ *
+ * `unicode-range` is the subset's own Latin range, so Cyrillic and every other script skip this
+ * face and its stand-in and fall to the system stack.
+ *
+ * Nunito 3.602 is SIL OFL 1.1, from github.com/google/fonts at commit 8b0a1d0f (pinned, with its
+ * sha256, in scripts/build-ui-font.sh): public/fonts/LICENSE-nunito.txt. */
+@font-face {
+  font-family: "Nunito";
+  src: url("/fonts/ui-nunito-3.602-latin.woff2") format("woff2");
+  font-weight: 400 700;
+  font-style: normal;
+  font-display: swap;
+  unicode-range:
+    U+0000-00FF, U+0100-017F, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F,
+    U+20A0-20BF, U+2122, U+2190-21FF, U+2212, U+2264-2265, U+2699, U+2713-2714, U+25CF;
+}
+/* Its metric-matched stand-in, on the same terms as the faces above: `local()` only, the same one
+   metric family, Latin only, and every number printed by scripts/build-ui-font.sh. Do not
+   hand-edit. Keep in step with the same block in index.html. */
+@font-face {
+  font-family: "Nunito Fallback";
+  src:
+    local("Arial"), local("Helvetica Neue"), local("Helvetica"),
+    local("Liberation Sans"), local("Arimo"), local("Roboto");
+  size-adjust: 102.23%;
+  ascent-override: 98.9%;
+  descent-override: 34.53%;
+  line-gap-override: 0%;
+  unicode-range:
+    U+0000-00FF, U+0100-017F, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F,
+    U+20A0-20BF, U+2122, U+2190-21FF, U+2212, U+2264-2265, U+2699, U+2713-2714, U+25CF;
+}
+
 /* Aldrich — a SHIPPED face a reader picks deliberately (the default until 2026-11-06). Built by the same
  * scripts/build-ui-font.sh run, subset to the same ranges, 8 KB.
  *
@@ -1123,6 +1177,12 @@
 :root.font-geist {
   --font-sans:
     "Geist", "Geist Fallback", ui-sans-serif, system-ui,
+    -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --default-font-family: var(--font-sans);
+}
+:root.font-nunito {
+  --font-sans:
+    "Nunito", "Nunito Fallback", ui-sans-serif, system-ui,
     -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --default-font-family: var(--font-sans);
 }
@@ -1263,12 +1323,17 @@
   [data-slot="collie-mark"] {
     --spacing: 0.25rem;
   }
-  /* THE ICON STROKE (M57 spec 17). lucide-react puts the class `lucide` and the attribute
-     `stroke-width="2"` on every icon it draws; a CSS value beats a presentation attribute, and the
-     paths inherit it. The default is lucide's own 2. Hand-drawn svgs carry no `lucide` class and keep
-     their own widths. In the base layer, so a `stroke-*` utility on one icon still wins. */
-  svg.lucide {
+  /* THE ICON STROKE (M57 spec 17). Every glyph the app draws carries the class `icon`
+     (components/icons/icon.tsx) and lucide's attribute `stroke-width="2"`; a CSS value beats a
+     presentation attribute, and the paths inherit it. The default is lucide's own 2. A fill set
+     (Phosphor) draws no stroke, so the rule changes nothing there; Iconoir is drawn at 1.5 on the
+     same grid, so it takes three quarters of the width. Hand-drawn svgs carry no `icon` class and
+     keep their own widths. In the base layer, so a `stroke-*` utility on one icon still wins. */
+  svg.icon {
     stroke-width: var(--icon-stroke);
+  }
+  svg.icon[data-glyphs="iconoir"] {
+    stroke-width: calc(var(--icon-stroke) * 0.75);
   }
   /* THE DISPLAY FACE (M57 spec 17). The page titles and the header's brand line wear
      `--font-display`, which is the UI face unless a theme names another. Every `h1` and `h2` the app
@@ -1293,6 +1358,7 @@
     min-height: 100%;
     background-color: var(--background);
     background-image: var(--ground-image);
+    background-size: var(--ground-size);
   }
   body {
     /* No fill of its own: a body fill would cover the ground on html. The canvas under it is
@@ -1399,6 +1465,21 @@
   color: var(--wordmark-lit);
 }
 
+/* A HIDDEN PAGE RUNS NO ANIMATION (issue 748, ADR 0138). lib/page-hidden.ts puts the attribute on <html> while
+   `document.visibilityState` is hidden; this pauses every animation, pseudo-elements included, and a
+   paused animation resumes where it stopped. Important, because it must beat every rule that sets
+   an `animation` shorthand, and the shorthand resets the play state.
+   The second pair is the app under a veil (App.tsx, `data-app-covered`): the idle lock and the update
+   screen blur or dim the app behind them, and an animation under a veil keeps the veil redrawing. */
+:root[data-page-hidden] *,
+:root[data-page-hidden] *::before,
+:root[data-page-hidden] *::after,
+[data-app-covered] *,
+[data-app-covered] *::before,
+[data-app-covered] *::after {
+  animation-play-state: paused !important;
+}
+
 /* Submission progress bar — a slim indeterminate strip across the very top of the viewport while a
    mutation is in flight (components/busy-bar). The `appear` animation holds it fully invisible for
    120ms (delay + `both` fill), so an action that resolves and unmounts within that window never
@@ -1459,9 +1540,13 @@
    as a strobe, and the turn is visible in the silhouette at any size and to any eye. It REPLACED the
    opacity breathe this rule used to hold (issue 420): a fade is carried by hue and lightness, which
    is what the mark no longer depends on. Only the ONE mark the operator is watching carries the
-   class; every other mark is still. */
+   class; every other mark is still.
+   IN 24 STEPS, NOT LINEAR (issue 748): a linear turn asks the browser for a new frame 60 times a
+   second for as long as an agent works, and on one Android phone that frame rate, all day, drove
+   Chrome's GPU process past the system's file limit. 24 ticks of 15 degrees are about 13 frames a
+   second, and at the dot's size the turn still reads as smooth. */
 .status-turn {
-  animation: status-turn 1.8s linear infinite;
+  animation: status-turn 1.8s steps(24) infinite;
 }
 @keyframes status-turn {
   to {
@@ -1502,15 +1587,17 @@
 
 /* THE WORKING ROW OF A DURABLE THREAD (components/session-stream.tsx `WorkingRow`): three dots in the muted ink, each
    rising and falling a third of a cycle after the one before. Opacity only, so nothing moves and the row keeps its box.
-   Under reduced motion the dots stand still at a middling weight. */
+   Under reduced motion the dots stand still at a middling weight.
+   STEPPED, on one grid (issue 748): each rise and each fall is five steps of 96 ms, and the delays are two and four of
+   them, so all three dots change on the same ticks, about 10 frames a second instead of 60. */
 .working-dots > span {
-  animation: working-dot 1.2s ease-in-out infinite;
+  animation: working-dot 1.2s steps(5) infinite;
 }
 .working-dots > span:nth-child(2) {
-  animation-delay: 0.2s;
+  animation-delay: 0.192s;
 }
 .working-dots > span:nth-child(3) {
-  animation-delay: 0.4s;
+  animation-delay: 0.384s;
 }
 @keyframes working-dot {
   0%,
@@ -1856,33 +1943,4 @@
 }
 [data-fold="book"] .fold-left-full {
   width: var(--fold-a);
-}
-
-/* THE MARK WHILE THE APP UPDATES (2026-11-06, components/collie-home.tsx APPLYING_CLASS). While a new
-   app build downloads or waits to load, every bead of the header mark, near and far, draws as one full
-   disc in the update colour, the colour the band's old download row wore (`caution`,
-   `--status-working`). The ring and the head keep their ink. The orbit's speed is the mark's own
-   `loading` input; this is only the paint, so under reduced motion the generated stylesheet stops the
-   turning and this colour alone still says it.
-   Host-side because collie-mark.tsx is generated and sealed (DESIGN.md §8); the selectors name its
-   parts, and collie-home.test.tsx renders the real mark and fails if one stops matching every bead.
-   What each rule undoes:
-   - a disc's own fill (ink, or the two accents), but never the paper knockout ring that says a near
-     bead is IN FRONT of the head;
-   - the full weight's shading mask, the half a near bead hides behind;
-   - the rock's paper-tinted facet, so the rock is one flat colour like the rest.
-   Unlayered, so it outranks the presentation attributes it overrides whatever layer order says. */
-.collie-applying .cm-b :is(circle, polygon):not([fill^="var(--cm-paper"]) {
-  fill: var(--status-working);
-}
-/* The link coming back (2026-11-07, lib/reconnected.ts): the same three rules for one turn of the
-   mark, in the done colour the band's green "Connected" strip used to wear. */
-.collie-reconnected .cm-b :is(circle, polygon):not([fill^="var(--cm-paper"]) {
-  fill: var(--status-done);
-}
-:is(.collie-applying, .collie-reconnected) .cm-b [mask] {
-  mask: none;
-}
-:is(.collie-applying, .collie-reconnected) .cm-b polygon[fill^="var(--cm-paper"] {
-  display: none;
 }

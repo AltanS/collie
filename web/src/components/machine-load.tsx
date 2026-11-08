@@ -1,4 +1,4 @@
-import { ChevronRight, TriangleAlert } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 
 import { useLocale } from "@/hooks/use-locale";
 import { timeAgo } from "@/lib/format";
@@ -116,7 +116,7 @@ export function MachineLoad({
 export function FiringLine({ words, onOpen, className }: { words: string; onOpen?: () => void; className?: string }) {
   const body = (
     <>
-      <TriangleAlert className="size-4 shrink-0" aria-hidden />
+      <Icon name="warning" className="size-4 shrink-0" aria-hidden />
       <span className="min-w-0">{words}</span>
     </>
   );
@@ -134,7 +134,7 @@ export function FiringLine({ words, onOpen, className }: { words: string; onOpen
       )}
     >
       {body}
-      <ChevronRight className="size-4 shrink-0" aria-hidden />
+      <Icon name="row-go" className="size-4 shrink-0" aria-hidden />
     </button>
   );
 }

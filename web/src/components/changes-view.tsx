@@ -1,5 +1,4 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, Fragment } from "react";
-import { ChevronRight, ListFilter, ListTree, MessageSquare, Search, X } from "lucide-react";
 
 import { LIST_ROW_CORNERS, ListGroup } from "@/components/ui/list-group";
 import { SectionLabel } from "@/components/ui/section-label";
@@ -28,6 +27,7 @@ import {
 } from "@/lib/diff-highlight";
 import { parseUnifiedDiff, type DiffRow } from "@/lib/unified-diff";
 import { cn } from "@/lib/utils";
+import { Icon } from "@/components/icons/icon";
 
 // The Changes view's two drawings (ADR 0065): the list of changed files, grouped by repo, and one
 // file's diff as monospace rows, syntax-coloured once sugar-high loads. Presentational only, so the
@@ -330,7 +330,8 @@ function TreeRows({
                 style={indent(node.depth)}
                 className={cn("flex min-h-11 w-full items-center gap-3 py-2 pr-3.5 text-left transition-colors active:bg-muted", LIST_ROW_CORNERS)}
               >
-                <ChevronRight
+                <Icon
+                  name="disclosure"
                   aria-hidden
                   className={cn("size-3 shrink-0 text-muted-foreground transition-transform", open && "rotate-90")}
                 />
@@ -421,7 +422,7 @@ export function ChangesLayoutToggle({
       onPressedChange={(tree) => onChange(tree ? "tree" : "list")}
       label={t("changes.layout.tree")}
       title={t("changes.layout.tree")}
-      icon={<ListTree className="size-5" />}
+      icon={<Icon name="files" className="size-5" />}
     />
   );
 }
@@ -455,7 +456,7 @@ export function ChangesFilterButton({
         active ? "bg-primary/10 text-primary" : open ? "bg-muted text-foreground" : "text-muted-foreground active:bg-muted",
       )}
     >
-      <ListFilter className="size-5" />
+      <Icon name="filter" className="size-5" />
       {active && (
         <span
           aria-hidden
@@ -530,7 +531,7 @@ export function FilterRow({
   return (
     <div className="flex flex-col gap-1 px-4 pt-2 pb-1" data-slot={slot}>
       <div className="relative">
-        <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+        <Icon name="search" className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
         <input
           type="text"
           inputMode="search"
@@ -552,7 +553,7 @@ export function FilterRow({
             onClick={() => onQuery("")}
             className="absolute right-0 top-0 flex size-11 items-center justify-center text-muted-foreground"
           >
-            <X className="size-4" />
+            <Icon name="clear" className="size-4" />
           </button>
         )}
       </div>
@@ -973,12 +974,12 @@ export function DiffView({
               >
                 <span className="min-w-0 flex-1 truncate text-left">
                   <span className="font-mono font-semibold text-primary">
-                    <MessageSquare aria-hidden className="mr-1 inline size-3 align-[-1px]" />
+                    <Icon name="comment" aria-hidden className="mr-1 inline size-3 align-[-1px]" />
                     {c.lineLabel}:{" "}
                   </span>
                   {c.note}
                 </span>
-                <ChevronRight aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
+                <Icon name="disclosure" aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
               </button>
             ))}
           </Fragment>
@@ -993,12 +994,12 @@ export function DiffView({
         >
           <span className="min-w-0 flex-1 truncate text-left">
             <span className="font-mono font-semibold text-primary">
-              <MessageSquare aria-hidden className="mr-1 inline size-3 align-[-1px]" />
+              <Icon name="comment" aria-hidden className="mr-1 inline size-3 align-[-1px]" />
               {c.lineLabel}:{" "}
             </span>
             {c.note}
           </span>
-          <ChevronRight aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
+          <Icon name="disclosure" aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
         </button>
       ))}
     </div>

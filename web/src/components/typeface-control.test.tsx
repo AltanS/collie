@@ -46,6 +46,7 @@ describe("TypefaceControl", () => {
       "IBM Plex Sans",
       "Geist",
       "Atkinson Hyperlegible Next",
+      "Nunito",
     ]);
     expect(select).toHaveValue("atkinson");
     // The default wears no class — that is what keeps JavaScript off the first-paint path for a
@@ -104,6 +105,7 @@ describe("TypefaceControl", () => {
       "IBM Plex Sans",
       "Geist",
       "Atkinson Hyperlegible Next",
+      "Nunito",
       "Departure Mono",
     ]);
 
@@ -163,5 +165,17 @@ describe("TypefaceControl", () => {
     expect(document.documentElement).toHaveClass("font-geist");
     expect(JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "{}")).toEqual({ font: "geist" });
     expect(container.textContent).toContain("a real bold");
+  });
+
+  // Nunito is the rounded face a theme may name. Its note is English until the translation pass, so this reads it.
+  it("picks Nunito with its own class and its own note", async () => {
+    config({});
+    const user = userEvent.setup();
+    const { container } = render(<TypefaceControl />);
+
+    await user.selectOptions(await screen.findByLabelText("Family"), "nunito");
+    expect(document.documentElement).toHaveClass("font-nunito");
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "{}")).toEqual({ font: "nunito" });
+    expect(container.textContent).toContain("Soft and rounded");
   });
 });

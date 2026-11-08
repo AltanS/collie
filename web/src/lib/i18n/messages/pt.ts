@@ -39,7 +39,7 @@ export const pt: Dictionary = {
   "settings.theme.option.dark": "Escuro",
 
   "theme.title": "Tema",
-  "theme.description": "Escolha um visual ou importe um de um arquivo.",
+  "theme.description": "Escolha um visual ou adicione um e experimente antes de ficar com ele.",
   "theme.import": "Importar",
   "theme.export": "Exportar",
   "theme.remove": "Remover",

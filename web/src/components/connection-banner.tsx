@@ -1,16 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRevalidator } from "react-router";
-import {
-  CloudOff,
-  KeyRound,
-  Loader2,
-  LogIn,
-  Plug,
-  RefreshCw,
-  RotateCw,
-  TriangleAlert,
-  WifiOff,
-} from "lucide-react";
 
 import { ORBIT_TURN_MS } from "@/components/collie-home";
 import { useCrew, useHostHealth } from "@/components/crew-provider";
@@ -35,6 +24,8 @@ import { mounted } from "@/lib/base-path";
 import { usePairing } from "@/lib/pairing";
 import { t } from "@/lib/i18n";
 import { useLocale } from "@/hooks/use-locale";
+import { Icon } from "@/components/icons/icon";
+import type { IconKey } from "@/components/icons/keys";
 
 interface ConnectionBannerProps {
   /** Herdr link from the last snapshot (undefined before the first successful poll). */
@@ -154,7 +145,7 @@ function AuthErrorBanner() {
         tone="danger"
         variant="strip"
         announce="alert"
-        icon={<TriangleAlert />}
+        icon={<Icon name="error" />}
         action={
           <>
             {/* An <a>, not a button, so it is an ordinary navigation the service worker sees as
@@ -167,7 +158,7 @@ function AuthErrorBanner() {
                 NOTICE_ACTION_TAP,
               )}
             >
-              <LogIn className="size-3.5" />
+              <Icon name="sign-in" className="size-3.5" />
               {t("connection.auth.signIn")}
             </a>
             <Button
@@ -177,7 +168,7 @@ function AuthErrorBanner() {
               className={cn("size-6 text-muted-foreground", NOTICE_ACTION_TAP)}
               onClick={() => window.location.reload()}
             >
-              <RefreshCw className="size-3.5" />
+              <Icon name="refresh" className="size-3.5" />
             </Button>
           </>
         }
@@ -333,7 +324,7 @@ function ConnectionStateBanner({
         // way — the `aria-live="polite"` that used to sit beside the role is gone, and cannot come
         // back: `ui/notice.tsx` has no way to spell a role and a liveness at the same time.
         announce={view.tone === "danger" ? "alert" : "status"}
-        icon={<view.Icon />}
+        icon={<Icon name={view.icon} />}
         // The saved-copy sentence names the cause and the saved time, and both matter: at 390px
         // beside Retry it truncated mid-word. It wraps to a second line instead.
         wrap={view.saved}
@@ -356,9 +347,9 @@ function ConnectionStateBanner({
               disabled={retrying}
             >
               {retrying ? (
-                <Loader2 className="size-3.5 animate-spin" />
+                <Icon name="busy" className="size-3.5 animate-spin" />
               ) : (
-                <RotateCw className="size-3.5" />
+                <Icon name="retry" className="size-3.5" />
               )}
               {t("connection.retry")}
             </Button>
@@ -387,7 +378,7 @@ function ConnectionStateBanner({
 function tokenRefusedView(tone: Tone) {
   return {
     copy: t("connection.tokenRefused"),
-    Icon: KeyRound,
+    icon: "auth-token",
     tone: tone === "amber" ? "caution" : "danger",
     saved: false,
     hint: undefined,
@@ -420,14 +411,14 @@ function resolveView(
   if (tone === "amber") {
     // Static Plug (no spinner) — the galloping dog carries the motion, and a spinner would fight
     // prefers-reduced-motion. Ambient by design.
-    return { copy: t("connection.reconnecting"), Icon: Plug, tone: "caution", saved: false, hint: undefined } as const;
+    return { copy: t("connection.reconnecting"), icon: "connecting", tone: "caution", saved: false, hint: undefined } as const;
   }
   // The lead answered, so the fault is one it can name. A mux that is down belongs to the machine
   // being viewed only when that machine is the lead (or there is no crew); on a member the lead's
   // own `bridge` says nothing, and what the lead knows about that member is its health. The member's
   // sentence carries its own "last seen", so it is not dated a second time below.
   if (probe === "reachable" && !muxDisconnected && memberFault !== undefined) {
-    return { copy: memberFault, Icon: TriangleAlert, tone: "danger", saved: false, hint: undefined } as const;
+    return { copy: memberFault, icon: "error", tone: "danger", saved: false, hint: undefined } as const;
   }
   // THE SAVED COPY, in the quiet tone: it is not an error state, it is the screen the operator left,
   // dated (M46 spec 10). `online` false is the phone's own fact and needs no probe. Anything else is
@@ -442,21 +433,21 @@ function resolveView(
       ? ({
           copy: t("connection.saved.noBridge", { time }),
           hint: t("connection.saved.hint"),
-          Icon: CloudOff,
+          icon: "bridge-unreachable",
           tone: "neutral",
           saved: true,
         } as const)
-      : ({ copy: t("connection.saved.offline", { time }), Icon: WifiOff, tone: "neutral", saved: true, hint: undefined } as const);
+      : ({ copy: t("connection.saved.offline", { time }), icon: "offline", tone: "neutral", saved: true, hint: undefined } as const);
   }
-  const cause =
+  const cause: { copy: string; icon: IconKey } =
     probe === "reachable" && muxDisconnected
-      ? { copy: t("connection.herdrDown"), Icon: TriangleAlert }
+      ? { copy: t("connection.herdrDown"), icon: "error" }
       : probe === "unreachable" && !online
-        ? { copy: t("connection.offlineCantReach"), Icon: WifiOff }
-        : { copy: t("connection.cantReach"), Icon: TriangleAlert };
+        ? { copy: t("connection.offlineCantReach"), icon: "offline" }
+        : { copy: t("connection.cantReach"), icon: "error" };
   const copy =
     lastSeenAt === undefined
       ? cause.copy
       : t("connection.withLastSeen", { cause: cause.copy, time: clockTime(lastSeenAt) });
-  return { copy, Icon: cause.Icon, tone: "danger", saved: false, hint: undefined } as const;
+  return { copy, icon: cause.icon, tone: "danger", saved: false, hint: undefined } as const;
 }

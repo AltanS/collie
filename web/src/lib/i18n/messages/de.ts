@@ -44,7 +44,7 @@ export const de: Dictionary = {
   "settings.theme.option.dark": "Dunkel",
 
   "theme.title": "Design",
-  "theme.description": "Wähle ein Aussehen oder importiere eines aus einer Datei.",
+  "theme.description": "Wähle ein Aussehen, oder füge eines hinzu und probiere es aus, bevor du es behältst.",
   "theme.import": "Importieren",
   "theme.export": "Exportieren",
   "theme.remove": "Entfernen",

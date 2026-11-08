@@ -222,6 +222,8 @@ import type { SttProvider } from "./stt/provider.ts";
 import { createWhistleModelStore, type WhistleModelStore } from "./stt/whistle-model.ts";
 import { mathGet, mathRemove, mathServeRoot, mathStart } from "./math/http.ts";
 import { createMathPackStore, type MathPackStore } from "./math/store.ts";
+import { themeRegistryGet, themeRegistryRefresh } from "./themes/registry-http.ts";
+import { createThemeRegistryStore, registryUrlFromEnv, THEME_REGISTRY_URL_ENV, type ThemeRegistryStore } from "./themes/registry.ts";
 import type { CodexDetector } from "./stt/codex-detect.ts";
 import { HOST, isInside } from "./host.ts";
 import { createHostCodexDetector, sttHostGet, sttHostPut, type SttHostRouteDeps } from "./stt/host-http.ts";
@@ -1311,6 +1313,8 @@ export function startServer(opts: {
    * with a fake fetch.
    */
   mathPack?: MathPackStore;
+  /** The community theme registry (M59 spec 06). Tests pass one over an injected fetch. */
+  themeRegistry?: ThemeRegistryStore;
   /**
    * Whether the host's `codex` is installed and signed in, for Settings' Host speech provider card
    * (ADR 0097). Absent means this function builds the real one (`codex login status`, cached); a test
@@ -1545,6 +1549,14 @@ export function startServer(opts: {
       repo: process.env.COLLIE_UPDATE_REPO?.trim() || "AltanS/collie",
       env: process.env,
     });
+  // The community theme registry (M59 spec 06): fetched only on a tap, from one fixed address on
+  // colliepwa.dev; never forwarded, like the math pack. `COLLIE_THEME_REGISTRY_URL` replaces the
+  // address for a test against a staged copy of the site; a value Collie refuses is said once here.
+  const themeRegistry = opts.themeRegistry ?? createThemeRegistryStore({
+    stateDir: cfg.stateDir,
+    version: opts.version,
+    url: registryUrlFromEnv(process.env[THEME_REGISTRY_URL_ENV], (line) => console.warn(line)),
+  });
   // The host's speech provider (ADR 0097): the same `stt.json` and model store, the gate's provider for
   // what the microphone gets, one Codex sign-in check shared by every device, one switch at a time.
   const sttHostDeps: SttHostRouteDeps = {
@@ -4051,6 +4063,24 @@ export function startServer(opts: {
           device: whois(req).device,
           detail: { ...attempt },
         });
+        return secure(response);
+      }
+      // ── The community theme registry (bridge/themes/registry-http.ts, M59 spec 06) ────────────
+      // Lead-local like the math pack: neither route reads `?host=` and neither is in the crew's
+      // FORWARDABLE list. The read needs the pairing token and is not audited; it answers the host's
+      // copy and fetches nothing. The refresh is write-gated, because it makes the host reach out,
+      // and is one audit line of route metadata: the outcome and two counts, never the body.
+      if (pathname === "/api/themes/registry") {
+        if (req.method === "GET") {
+          const denied = guard(req, cfg, "read", pairingGate);
+          if (denied) return denied;
+          return secure(await themeRegistryGet(themeRegistry));
+        }
+        if (req.method !== "POST") return text("method not allowed", 405);
+        const denied = guard(req, cfg, "write", pairingGate);
+        if (denied) return denied;
+        const { response, attempt } = await themeRegistryRefresh(themeRegistry);
+        audit.record({ action: "themes.registry.refresh", device: whois(req).device, detail: { ...attempt } });
         return secure(response);
       }
       // ── The host's speech provider (bridge/stt/host-http.ts, ADR 0097) ───────────────────
@@ -9632,7 +9662,8 @@ function gzippedBytes(
  * NOT: their names carry no hash (web/vite.config.ts), so one name is a different file in the next
  * release, and a browser that pinned it as immutable would keep the old engine after an update. They
  * revalidate like everything else; the service worker's cache-first route keeps them for the life of
- * one build. EVERYTHING else — index.html,
+ * one build. The theme marks under `marks/` carry a content hash, so they are immutable like
+ * `assets/`. EVERYTHING else — index.html,
  * sw.js, manifest.webmanifest, build-info.json, the favicons — is MUTABLE across a rebuild and must
  * always be revalidated (`no-cache`), so neither the browser NOR an intermediary reverse proxy can
  * pin a stale copy. This matters most for sw.js: a proxy that heuristically caches it (it shipped
@@ -9641,5 +9672,5 @@ function gzippedBytes(
  * but which this header prevents at the source. Pure + exported for unit tests.
  */
 export function cacheControlFor(rel: string): string {
-  return rel.startsWith("assets/") ? "public, max-age=31536000, immutable" : "no-cache";
+  return rel.startsWith("assets/") || rel.startsWith("marks/") ? "public, max-age=31536000, immutable" : "no-cache";
 }
