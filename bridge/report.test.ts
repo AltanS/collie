@@ -51,9 +51,9 @@ function runtime(screen: string, program = false, versions?: Readonly<Record<str
     noteInput: () => {},
     pokeNow: () => {},
   };
-  // The Surface shadow's version cache: the agents it read a binary for (1.27.4). Absent: no shadow.
+  // The Surface shadow's version cache, keyed `<pane> <agent>`: the panes it read a binary for. Absent: no shadow.
   if (versions === undefined) return { rt: { engine, herdr }, reads };
-  const surface: NonNullable<ReportRouteRuntime["surface"]> = { cachedVersion: (harness) => versions[harness] ?? null };
+  const surface: NonNullable<ReportRouteRuntime["surface"]> = { cachedVersion: (pane, harness) => versions[`${pane} ${harness}`] ?? null };
   return { rt: { engine, herdr, surface }, reads };
 }
 
@@ -127,8 +127,8 @@ describe("reportContextRoute (ADR 0123)", () => {
     expect(JSON.stringify(body)).not.toMatch(/\/(?:home|Users|root)\b/u);
   });
 
-  test("names the agent's binary version from the shadow's cache, null when it has none (1.27.4)", async () => {
-    const { rt } = runtime("x", false, { claude: "2.1.316" });
+  test("names the pane's agent binary version from the shadow's cache, null when it has none (1.27.4)", async () => {
+    const { rt } = runtime("x", false, { "%1 claude": "2.1.316" });
     expect((await (await reportContextRoute(rt, "%1", false, MACHINE, null)).json()).harnessVersion).toBe("2.1.316");
     // A bare shell and the machine's half name no version, even with a cache.
     expect((await (await reportContextRoute(rt, "%2", false, MACHINE, null)).json()).harnessVersion).toBeNull();

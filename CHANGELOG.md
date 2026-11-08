@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Fixed
+
+- **The trouble count and the report name an agent installed off the login PATH.** The bridge read the agent's version only from the login shell's PATH, so an agent installed under nvm, volta, mise or its own folder showed its version as unknown on a pane with no send. It now reads the program each pane runs, as a send already does, so two panes on two installs each name their own version, and the steer check sees that version too.
+
 ## [1.28.0] - 2026-11-06
 
 ### Added
