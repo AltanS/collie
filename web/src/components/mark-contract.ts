@@ -1,4 +1,4 @@
-// generated: sha256=a6f8c2b8ff0749f6f195605e351b55aa673196571f8d87b870ab92cc3deb8538 from=collie-brand/src/mark-contract.ts@0c3d6f1980fc
+// generated: sha256=bbbbb7b9ed9fbe952d33579ca31df1f21b51a0f96b4519eae224cd0ccd57ca6a from=collie-brand/src/mark-contract.ts@85dbc70ab551
 // COPIED WHOLE from collie-brand/src/mark-contract.ts. Edit it there, in collie-brand, and nowhere else.
 /**
  * THE MARK CONTRACT. One file that every Collie brand mark implements, the Collie mark included.
@@ -258,8 +258,12 @@ export function useMark(spec: MarkSpec, props: MarkProps): MarkRoot {
     setRate(rate: number) {
       const node = el.current;
       if (node === null) return;
-      rated.current ??= paced(node, spec.paced);
-      for (const a of rated.current) a.updatePlaybackRate(rate);
+      // Cached only when non-empty: a call before the first frame finds no animations yet, and an
+      // empty cache would rate nothing for the rest of the mount. The cache is dropped on every pace
+      // or turn change (the effect above), the only times the mark's animations are re-timed.
+      const found = rated.current ?? paced(node, spec.paced);
+      if (found.length > 0) rated.current = found;
+      for (const a of found) a.updatePlaybackRate(rate);
     },
   }), [spec]);
 
