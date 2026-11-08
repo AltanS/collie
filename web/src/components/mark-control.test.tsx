@@ -82,7 +82,7 @@ describe("MarkControl", () => {
   it("draws the worn theme's mark on the From the theme row", async () => {
     localStorage.setItem(
       LIBRARY_STORAGE_KEY,
-      JSON.stringify({ version: 1, themes: [{ version: 4, id: "sunroom", name: "Sunroom", mark: "pixel", light: { background: "#fdfaf3" } }] }),
+      JSON.stringify({ version: 1, themes: [{ version: 4, id: "sunroom", name: "Sunroom", character: "pixel", light: { background: "#fdfaf3" } }] }),
     );
     __resetThemeStore();
     act(() => setActiveTheme("sunroom"));

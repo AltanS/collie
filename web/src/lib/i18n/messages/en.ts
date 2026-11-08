@@ -81,7 +81,7 @@ export const en = {
   "theme.preview.shape": "Shape",
   "theme.preview.shape.sample": "Sample",
   "theme.preview.ansi": "Terminal colours",
-  "theme.preview.mark": "Mark: {name}",
+  "theme.preview.mark": "Character: {name}",
   "theme.preview.contrast.pass": "Every contrast check passes.",
   "theme.preview.contrast.fail": "{half}: {check} measures {ratio}. The floor is {floor}.",
   "theme.preview.contrast.more": "and {count} more checks fail",
@@ -138,7 +138,7 @@ export const en = {
   "theme.refusal.no-half": "The file sets no colours.",
   "theme.refusal.surface": "A shape word is not valid.",
   "theme.refusal.ansi": "A terminal colour is not valid, or it fails its contrast floor.",
-  "theme.refusal.mark": "The mark choice is not valid.",
+  "theme.refusal.mark": "The character choice is not valid.",
   "theme.refusal.reserved-id": "This id belongs to a shipped theme. Change \"id\" in the file to import your copy.",
 
   // --- settings.haptics ---
