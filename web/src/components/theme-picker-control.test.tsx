@@ -40,13 +40,16 @@ function copy(id: string, name: string, edit: (theme: Theme) => void = () => {})
 
 async function load(library: Theme[] = [], origins?: Record<string, ThemeOrigin>) {
   localStorage.clear();
+  // An open "Keep this look?" from an earlier case lives in the session: each case starts without one.
+  sessionStorage.removeItem("collie:theme-confirm:v1");
   if (library.length > 0) localStorage.setItem(LIBRARY_KEY, JSON.stringify({ version: 1, themes: library, origins }));
   document.documentElement.removeAttribute("style");
   document.documentElement.removeAttribute("data-theme");
   vi.resetModules();
   const component = await import("./theme-picker-control");
   const store = await import("@/lib/theme/store");
-  return { ...component, store };
+  const confirm = await import("@/lib/theme/confirm");
+  return { ...component, store, confirm };
 }
 
 function fileOf(text: string, name = "theme.json"): File {
@@ -841,6 +844,24 @@ describe("ThemePickerControl", () => {
       expect(store.library().map((theme) => theme.name)).toEqual(["Shared again"]);
     });
 
+    it("asks Keep this look? after an Update of the worn theme, and Back puts the old file back", async () => {
+      hostList([copy("shared", "Shared 2")]);
+      const { ThemePickerControl, store, confirm } = await load([copy("shared", "Shared")], { shared: ORIGIN });
+      act(() => store.setActiveTheme("shared"));
+      render(<ThemePickerControl />);
+      await userEvent.click(aboutButton("Shared"));
+      const about = await screen.findByRole("dialog", { name: "About this theme" });
+      await userEvent.click(await within(about).findByRole("button", { name: "Update" }));
+      const preview = await screen.findByRole("dialog", { name: "Import this theme?" });
+      await userEvent.click(within(preview).getByRole("button", { name: "Update" }));
+      await waitFor(() => expect(confirm.currentLookConfirm()).not.toBeNull());
+      expect(store.library().map((theme) => theme.name)).toEqual(["Shared 2"]);
+      act(() => confirm.backLook());
+      expect(store.library().map((theme) => theme.name)).toEqual(["Shared"]);
+      expect(store.originOf("shared")).toEqual(ORIGIN);
+      expect(store.activeThemeId()).toBe("shared");
+    });
+
     it("Check for updates is the one tap that fetches, shown while the host has no copy", async () => {
       const calls = hostList([copy("shared", "Shared 2")], { none: true, afterPost: { sha: NEW } });
       const { ThemePickerControl, store } = await load([copy("shared", "Shared")], { shared: ORIGIN });
@@ -877,6 +898,30 @@ describe("ThemePickerControl", () => {
       const about = await screen.findByRole("dialog", { name: "About this theme" });
       expect(await within(about).findByText("No longer listed. Your installed copy keeps working.")).toBeInTheDocument();
       expect(within(about).queryByRole("button", { name: /Update|Check for updates/ })).toBeNull();
+    });
+  });
+
+  describe("Keep this look? (the way back in an installed app)", () => {
+    it("asks after Apply of an imported theme, and Back from it restores the theme before", async () => {
+      const { ThemePickerControl, store, confirm } = await load();
+      act(() => store.setActiveTheme("harbour"));
+      const { container } = render(<ThemePickerControl />);
+      pick(container, fileOf(JSON.stringify(copy("mine", "Mine"))));
+      const preview = await screen.findByRole("dialog", { name: "Import this theme?" });
+      await userEvent.click(within(preview).getByRole("button", { name: "Apply" }));
+      await waitFor(() => expect(confirm.currentLookConfirm()).not.toBeNull());
+      expect(store.activeThemeId()).toBe("mine");
+      act(() => confirm.backLook());
+      expect(store.activeThemeId()).toBe("harbour");
+    });
+
+    it("never asks for a shipped theme, and a pick ends an open question", async () => {
+      const { ThemePickerControl, store, confirm } = await load([copy("mine", "Mine")]);
+      render(<ThemePickerControl />);
+      act(() => confirm.confirmLook(confirm.lookBefore()));
+      await userEvent.selectOptions(screen.getByRole("combobox"), "harbour");
+      expect(store.activeThemeId()).toBe("harbour");
+      expect(confirm.currentLookConfirm()).toBeNull();
     });
   });
 

@@ -35,8 +35,10 @@ A theme that passes both is listed, with the repository's star count from GitHub
 the file format, and then `collie theme check` on its file until the check is clean. See
 [Let your coding agent write it](#let-your-coding-agent-write-it).
 
-**The way back.** Add `#theme=collie` to the app's address, and Collie's own theme comes back,
-whatever a theme did. See [Troubleshooting](#troubleshooting).
+**The way back.** After you apply, install, keep or update an imported theme, a bar at the bottom asks
+**Keep this look?** and counts 15 seconds down. Tap **Keep**, or wait, and your previous theme comes
+back by itself. In a browser you can also add `#theme=collie` to the app's address. See
+[Troubleshooting](#troubleshooting).
 
 ## Make Collie your own
 
@@ -877,6 +879,20 @@ follows the theme's two page colours, or its two band colours when the theme say
 ## Troubleshooting
 
 These are the problems people meet most, with the cause and the fix for each.
+
+- **A theme you just put on makes the app hard to read.** Do nothing. The **Keep this look?** bar at the
+  bottom counts 15 seconds down and then puts your previous theme and typeface back. **Back** does it at
+  once. The bar keeps its own colours whatever the theme does, and it works in an installed app, where
+  there is no address bar.
+
+  | You tapped | The bar asks | Back puts back |
+  | --- | --- | --- |
+  | **Apply**, **Install** or a trial's **Keep** | yes | the theme and face you wore; the new theme stays in your list |
+  | **Update** of the theme you wear | yes | the old file and its source, in the same place |
+  | A shipped theme in the list | no | nothing to put back |
+
+  The countdown goes on after a reload. With reduced motion on, only the number counts down. **Keep**
+  ends the question and changes nothing.
 
 - **A theme makes the app hard to read, and you cannot reach the Theme card.** Open the app's address with
   `#theme=collie` at the end, for example `https://my-host.example.ts.net/#theme=collie`. The device wears

@@ -24,6 +24,7 @@ import {
 import {
   LIBRARY_MAX,
   THEME_MAX_BYTES,
+  activeThemeId,
   installTheme,
   replaceImported,
   removeImported,
@@ -45,6 +46,7 @@ import {
 import { CONTRAST_FAIL_KEY, HALF_KEYS, headlineVars, isMoreLine, refusalHeadline } from "@/lib/theme/report-words";
 import { ThemeBrowseSheet } from "@/components/theme-browse";
 import { ThemeAboutSheet } from "@/components/theme-about";
+import { confirmLook, dropLookConfirm, lookBefore } from "@/lib/theme/confirm";
 import { dropTrial, startTrial } from "@/lib/theme/trial";
 import { registryRef, stamp, type ThemeSourceRef } from "@/lib/theme/origin";
 import type { RegistryTheme } from "@/lib/theme/registry";
@@ -497,9 +499,10 @@ const UPDATE_REFUSALS = {
   changed: "theme.update.changed",
 } as const satisfies Record<Extract<ReplaceResult, { ok: false }>["reason"], MessageKey>;
 
-/** A pick in the card puts a theme on itself, so a running trial ends without re-applying anything. */
+/** A pick in the card puts a theme on itself, so a running trial and an open "Keep this look?" end without re-applying anything. */
 function pickTheme(id: string): void {
   dropTrial();
+  dropLookConfirm();
   setActiveTheme(id);
 }
 
@@ -595,19 +598,29 @@ export function ThemePickerControl() {
   function tryTheme(theme: Theme, source: ThemeSourceRef) {
     setPreview(null);
     setBrowsing(false);
+    dropLookConfirm();
     startTrial(theme, source);
   }
 
   function apply() {
     if (preview === null) return;
     const origin = stamp(preview.source, Date.now());
+    dropLookConfirm();
     if (preview.replaces !== undefined) {
+      const before = lookBefore(preview.replaces.id);
+      const worn = activeThemeId() === preview.replaces.id;
       const replaced = replaceImported(preview.replaces.id, preview.theme, origin, preview.replaces.sha);
       setPreview(null);
-      if (replaced.ok) dropTrial();
-      else setRefused([{ headline: t(UPDATE_REFUSALS[replaced.reason]), tone: "danger" }]);
+      if (!replaced.ok) {
+        setRefused([{ headline: t(UPDATE_REFUSALS[replaced.reason]), tone: "danger" }]);
+        return;
+      }
+      dropTrial();
+      // Only a worn theme changes the screen, so only a worn theme asks.
+      if (worn) confirmLook(before, Date.now(), preview.theme.id);
       return;
     }
+    const before = lookBefore();
     const added = installTheme(preview.theme, origin);
     if (!added.ok) {
       setPreview(null);
@@ -620,6 +633,7 @@ export function ThemePickerControl() {
     }
     dropTrial();
     setPreview(null);
+    confirmLook(before);
   }
 
   function exportActive() {
@@ -704,6 +718,7 @@ export function ThemePickerControl() {
           disabled={active.source !== "imported"}
           onClick={() => {
             dropTrial();
+            dropLookConfirm();
             removeImported(active.id);
           }}
         >
