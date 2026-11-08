@@ -297,6 +297,20 @@ export function describeMarkConformance(entries: readonly MarkEntry[]): void {
       expect(fakes.find((a) => a.animationName === HOST_ANIMATION)?.rates).toEqual([]);
     });
 
+    it("still rates its animations when setRate first ran before they existed", () => {
+      // A call on the first frame can find no animations yet. An empty answer must not be cached, or
+      // every later call would rate nothing for the rest of the mount (found by the website's copy).
+      installAnimations([]);
+      const ref = createRef<MarkHandle>();
+      render(<Mark ref={ref} />);
+      ref.current?.setRate(2);
+      const names = keyframeNames(sheetOf(rootOf(render(<Mark />).container)));
+      const fakes = names.map((name) => new FakeAnimation(name, 0));
+      installAnimations(fakes);
+      ref.current?.setRate(3);
+      expect(fakes.some((a) => a.rates.includes(3))).toBe(true);
+    });
+
     it("carries the orbit's phase across a change of pace, and leaves the host's animations alone", () => {
       resolveTurnLikeABrowser();
       const names = keyframeNames(sheetOf(rootOf(render(<Mark />).container)));
