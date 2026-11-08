@@ -227,6 +227,14 @@ function withGitBuildFixture<T>(
     writeFileSync(join(root, "cli", "main.ts"), "export {};\n");
     copyFileSync(join(sourceRoot, "web", "vite.config.ts"), join(web, "vite.config.ts"));
     copyFileSync(join(sourceRoot, "web", "vite-icons.ts"), join(web, "vite-icons.ts"));
+    // The config imports the glyph sets' build plugin, which imports the two family maps (their
+    // only import, the key type, is erased).
+    copyFileSync(join(sourceRoot, "web", "vite-glyphs.ts"), join(web, "vite-glyphs.ts"));
+    mkdirSync(join(web, "src", "components", "icons", "sets"), { recursive: true });
+    for (const family of ["phosphor", "iconoir"]) {
+      const set = join("src", "components", "icons", "sets", `${family}.ts`);
+      copyFileSync(join(sourceRoot, "web", set), join(web, set));
+    }
     // The config imports the math engines' build plugin, which imports the engines' file list.
     copyFileSync(join(sourceRoot, "web", "vite.math.ts"), join(web, "vite.math.ts"));
     mkdirSync(join(web, "src", "lib", "math"), { recursive: true });
