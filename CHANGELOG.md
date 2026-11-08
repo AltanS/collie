@@ -67,6 +67,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **A refusal and `collie theme check` print a strange key or file name as escaped text.** A key name or a file name that is not a plain word shows as a quoted string of printable ASCII, with line breaks, terminal escapes and bidi controls written as `\uXXXX`, and cut after 64 characters (200 for a file name). A theme file can no longer write to the terminal that checks it.
 - **Browse checks the host's answer before it draws it.** The phone reads the host's status of the theme list field by field: a field of the wrong type takes its empty value, an error word it does not know is left out, and an answer that is not an object shows the read error, so an older or newer host cannot break the sheet.
 - **The first paint never takes a stored theme that claims the id `collie`.** The script that paints the theme before the app loads now skips such an entry, as the app already did once it loaded.
+- **The app and colliepwa.dev share one rule for a theme's repository and file.** An owner is a name GitHub issues (a letter or digit first, then letters, digits and hyphens), and a file under `themes/` has a stem of at most 80 characters. A test on each side pins the same four patterns, so an entry the site lists is never dropped by the app.
 
 ### Packaging
 

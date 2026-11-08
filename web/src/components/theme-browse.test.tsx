@@ -173,8 +173,8 @@ describe("ThemeBrowseSheet", () => {
 describe("the registry entry rules on the phone", () => {
   it("accepts a plain slug and refuses a URL, a path and a dot half", () => {
     expect(isRepoSlug("sam/my-day")).toBe(true);
-    expect(isRepoSlug("Sam_1/my.day-2")).toBe(true);
-    for (const bad of ["https://github.com/sam/x", "sam", "sam/x/y", "../x", "sam/..", "./x", "sam/x?y", "sam /x"]) {
+    expect(isRepoSlug("Sam-1/my.day_2")).toBe(true);
+    for (const bad of ["https://github.com/sam/x", "sam", "sam/x/y", "../x", "sam/..", "./x", "sam/x?y", "sam /x", "Sam_1/x", "-sam/x", ".sam/x"]) {
       expect(isRepoSlug(bad), bad).toBe(false);
     }
   });

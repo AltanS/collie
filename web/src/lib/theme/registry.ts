@@ -21,10 +21,18 @@
 import { asJsonObject, asJsonString, type JsonValue } from "../json";
 import { THEME_MAX_BYTES, parseTheme, type Theme } from "./schema";
 
-/** A GitHub `owner/name`: GitHub's own limits on both halves, and no `..` as a whole half. */
-export const REPO_PATTERN = /^[A-Za-z0-9_.-]{1,39}\/[A-Za-z0-9_.-]{1,100}$/;
-const SHA_PATTERN = /^[0-9a-f]{40}$/;
-const PATH_PATTERN = /^(?:collie-theme\.json|themes\/[A-Za-z0-9_-][A-Za-z0-9_.-]{0,99}\.collie-theme\.json)$/;
+// ONE RULE WITH THE SITE (F13). The site's sweep and its registry schema use these four patterns,
+// character for character, and a test on each side pins the sources, so an entry one side lists the
+// other never refuses. Change them on both sides in the same breath.
+
+/** A GitHub owner as GitHub issues one: a letter or digit first, then letters, digits and hyphens, 39 at most. */
+export const OWNER_PATTERN = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/;
+/** A GitHub `owner/name`: the owner rule above, and a name of 1 to 100 that is not `.` or `..`. */
+export const REPO_PATTERN = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\/(?!\.\.?$)[A-Za-z0-9._-]{1,100}$/;
+/** A full commit sha, lower-case hex. */
+export const SHA_PATTERN = /^[0-9a-f]{40}$/;
+/** `collie-theme.json` at the root, or `themes/<stem>.collie-theme.json` with a stem of at most 80. */
+export const PATH_PATTERN = /^(?:collie-theme\.json|themes\/[A-Za-z0-9_-][A-Za-z0-9._-]{0,79}\.collie-theme\.json)$/;
 
 /** One kept entry, as the host stores it and the phone reads it. */
 export interface RegistryEntry {
@@ -40,10 +48,9 @@ export interface RegistryTheme {
   theme: Theme;
 }
 
-/** True for a repo slug the phone may build a link from. `.` and `..` are never a half. */
+/** True for a repo slug the phone may build a link from. */
 export function isRepoSlug(value: string): boolean {
-  if (!REPO_PATTERN.test(value)) return false;
-  return value.split("/").every((half) => half !== "." && half !== "..");
+  return REPO_PATTERN.test(value);
 }
 
 /** An entry and its parsed theme, or undefined when any field fails its rule. */
