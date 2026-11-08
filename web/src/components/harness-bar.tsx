@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Archive, Check, Cpu, Ellipsis, Flag, Gauge, History, ListTree, Loader2, Pause, Play, RefreshCw, Search, Send, Shrink, Slash, Square, Star, StickyNote, Wind, X } from "lucide-react";
+import { Archive, Check, Cpu, Ellipsis, Flag, Gauge, History, ListTree, LoaderCircle, Pause, Play, RefreshCw, Search, Send, Shrink, Slash, Square, Star, StickyNote, Wind, X } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 import { AgentIcon } from "@/components/agent-icon";
@@ -400,7 +400,7 @@ export function DurableBar({ items, state, disabled, hand = "right" }: DurableBa
               onClick={() => state.action?.onRun(action)}
               className={cn(base, "text-foreground", left && "[direction:ltr]")}
             >
-              {waiting ? <Loader2 className={cn(BELT_ICON, "animate-spin")} /> : Glyph === undefined ? null : <Glyph className={BELT_ICON} />}
+              {waiting ? <LoaderCircle className={cn(BELT_ICON, "animate-spin")} /> : Glyph === undefined ? null : <Glyph className={BELT_ICON} />}
               {action.label}
             </Button>
           );
@@ -416,7 +416,7 @@ export function DurableBar({ items, state, disabled, hand = "right" }: DurableBa
             onClick={state.stop.onStop}
             className={cn(base, "text-foreground", left && "[direction:ltr]")}
           >
-            {state.stop.busy ? <Loader2 className={cn(BELT_ICON, "animate-spin")} /> : <Square className={BELT_ICON} />}
+            {state.stop.busy ? <LoaderCircle className={cn(BELT_ICON, "animate-spin")} /> : <Square className={BELT_ICON} />}
             {translate("durable.composer.stop")}
           </Button>
         );
@@ -522,7 +522,7 @@ export function ScreenStop({ onStop, paneId, running, disabled, hand = "right" }
         hand === "left" && "[direction:ltr]",
       )}
     >
-      {busy ? <Loader2 className={cn(BELT_ICON, "animate-spin")} /> : <Square className={BELT_ICON} />}
+      {busy ? <LoaderCircle className={cn(BELT_ICON, "animate-spin")} /> : <Square className={BELT_ICON} />}
       {translate(armed ? "belt.stopArmed" : "belt.stop")}
     </Button>
   );

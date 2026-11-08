@@ -1,4 +1,4 @@
-import { Activity, ArrowLeft, ArrowUpCircle, Bell, Bot, FlaskConical, Mic, Palette, Server, SlidersHorizontal } from "lucide-react";
+import { Activity, ArrowLeft, CircleArrowUp, Bell, Bot, FlaskConical, Mic, Palette, Server, SlidersHorizontal } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 import { RouteHeader } from "@/components/app-header";
@@ -171,7 +171,7 @@ export function SettingsRoute() {
                 Updates page opens with); a release waiting leads it with a 6px dot in the primary
                 colour. The row is not in `ROWS`, whose captions are fixed strings. */}
             <SettingsNavRow
-              icon={ArrowUpCircle}
+              icon={CircleArrowUp}
               title={t("updates.entry.title")}
               caption={
                 <>

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Download, Loader2, Sigma, Trash2 } from "lucide-react";
+import { Download, LoaderCircle, Sigma, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -243,7 +243,7 @@ function PackRow(props: PackRowProps) {
           {canWrite ? (
             <>
               <Button className="h-auto min-h-11 w-full whitespace-normal py-2" disabled={busy} onClick={props.onDownload}>
-                {busy ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />}
+                {busy ? <LoaderCircle className="size-4 animate-spin" /> : <Download className="size-4" />}
                 {t("settings.appearance.math.download", {
                   // A no-break space, so a wrapped label never leaves the unit alone on a line.
                   size: formatDownloadSize(MATH_PACK_APPROX_BYTES).replace(" ", "\u00a0"),
@@ -301,7 +301,7 @@ function PackRow(props: PackRowProps) {
                   {t("settings.appearance.math.remove.cancel")}
                 </Button>
                 <Button variant="destructive" className="h-11" disabled={busy} onClick={props.onRemove}>
-                  {busy ? <Loader2 className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
+                  {busy ? <LoaderCircle className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
                   {t("settings.appearance.math.remove.action")}
                 </Button>
               </div>

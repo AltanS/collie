@@ -1,4 +1,4 @@
-import { AlertCircle, AlertTriangle, CheckCircle2, Info, X } from "lucide-react";
+import { CircleAlert, TriangleAlert, CircleCheck, Info, X } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 
 import { cn } from "@/lib/utils";
@@ -39,9 +39,9 @@ const TONE = {
 const ICONS = {
   info: Info,
   note: Info,
-  success: CheckCircle2,
-  warn: AlertTriangle,
-  error: AlertCircle,
+  success: CircleCheck,
+  warn: TriangleAlert,
+  error: CircleAlert,
 } as const;
 
 export function HeaderStatus({ children }: { children: ReactNode }) {

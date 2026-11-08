@@ -1,4 +1,4 @@
-import { Loader2, Plus } from "lucide-react";
+import { LoaderCircle, Plus } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
@@ -88,7 +88,7 @@ export function AddButton({ label, onClick, busy = false, size, face = "ring", r
         className,
       )}
     >
-      {busy ? <Loader2 className="size-4 animate-spin" aria-hidden /> : <Plus className="size-4" />}
+      {busy ? <LoaderCircle className="size-4 animate-spin" aria-hidden /> : <Plus className="size-4" />}
     </button>
   );
 }

@@ -1,5 +1,5 @@
 import type { KeyboardEvent as ReactKeyboardEvent, ReactNode, RefObject } from "react";
-import { ChevronLeft, Loader2 } from "lucide-react";
+import { ChevronLeft, LoaderCircle } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -96,7 +96,7 @@ export function DestructiveActionRow({
           : "text-destructive hover:bg-destructive/10 active:bg-destructive/15",
       )}
     >
-      {closing ? <Loader2 className="size-4 shrink-0 animate-spin" /> : icon}
+      {closing ? <LoaderCircle className="size-4 shrink-0 animate-spin" /> : icon}
       {closing ? closingLabel : armed ? confirmLabel : label}
     </button>
   );
@@ -158,7 +158,7 @@ export function RenameView({
         />
       </label>
       <Button onClick={onSave} disabled={saving || !canSave} className="h-11">
-        {saving ? <Loader2 className="size-4 animate-spin" /> : t("actionSheet.save")}
+        {saving ? <LoaderCircle className="size-4 animate-spin" /> : t("actionSheet.save")}
       </Button>
     </div>
   );

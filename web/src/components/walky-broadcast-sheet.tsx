@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, type Ref } from "react";
-import { Loader2 } from "lucide-react";
+import { LoaderCircle } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
@@ -295,7 +295,7 @@ export function WalkyBroadcastSheet({
           />
         ) : (
           <Button ref={sendRef} className="h-11" onClick={() => setConfirming(true)} disabled={body === "" || tooLong || sending}>
-            {sending ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : null}
+            {sending ? <LoaderCircle className="size-4 animate-spin" aria-hidden="true" /> : null}
             {sending ? t("walky.crew.sending") : t("walky.crew.send")}
           </Button>
         )}

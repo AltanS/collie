@@ -21,7 +21,7 @@ const OPTIONS: ReadonlyArray<{ value: Theme; labelKey: MessageKey; icon: LucideI
 
 /** The icon names the CURRENT mode, not the next one — so the button reads as a status display you
  *  can also press. Tapping advances System → Light → Dark → System. */
-export function themeIcon(theme: Theme): LucideIcon {
+function themeIcon(theme: Theme): LucideIcon {
   return OPTIONS.find((o) => o.value === theme)?.icon ?? MonitorSmartphone;
 }
 

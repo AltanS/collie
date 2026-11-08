@@ -1,4 +1,4 @@
-import { Copy, Pin, PinOff, TextSelect } from "lucide-react";
+import { Copy, Pin, PinOff, SquareDashedText } from "lucide-react";
 import { useLayoutEffect } from "react";
 
 import { ActionRow } from "@/components/action-sheet-rows";
@@ -87,7 +87,7 @@ export function BlockActionsSheet({ item, pinned, pinning = false, onClose, onPi
           />
         )}
         <ActionRow
-          icon={<TextSelect className={ROW_ICON} />}
+          icon={<SquareDashedText className={ROW_ICON} />}
           label={t("pins.action.selectText")}
           onClick={() => {
             onClose();

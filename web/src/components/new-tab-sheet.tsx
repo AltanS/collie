@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { ChevronRight, FolderOpen, Loader2, SquareTerminal } from "lucide-react";
+import { ChevronRight, FolderOpen, LoaderCircle, SquareTerminal } from "lucide-react";
 
 import { AgentIcon } from "@/components/agent-icon";
 import { NoPromptsBadge } from "@/components/no-prompts-badge";
@@ -292,7 +292,7 @@ function SheetButton({
       </span>
       {/* A reserved slot, so the spinner coming and going moves nothing (DESIGN.md §2). */}
       <span aria-hidden className="flex size-4 shrink-0 items-center justify-center">
-        {spinning ? <Loader2 className="size-4 animate-spin" /> : null}
+        {spinning ? <LoaderCircle className="size-4 animate-spin" /> : null}
       </span>
     </button>
   );

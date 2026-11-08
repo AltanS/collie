@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   Check,
   ChevronRight,
-  Loader2,
+  LoaderCircle,
   Pencil,
   StickyNote,
   Trash2,
@@ -90,7 +90,7 @@ export function PreviewSelectBlock({ preview, lines, onAction, disabled }: Previ
   const wizard = preview.steps !== null;
   const pointedLabel = preview.options.find((o) => o.pointed)?.label;
   const busyIcon = (
-    <Loader2 className="size-3.5 shrink-0 animate-spin text-muted-foreground" aria-label={t("dialog.sendingAria")} />
+    <LoaderCircle className="size-3.5 shrink-0 animate-spin text-muted-foreground" aria-label={t("dialog.sendingAria")} />
   );
 
   return (
@@ -140,7 +140,7 @@ export function PreviewSelectBlock({ preview, lines, onAction, disabled }: Previ
                 {option.label}
               </span>
               {busy ? (
-                <Loader2
+                <LoaderCircle
                   className="mt-0.5 size-4 shrink-0 animate-spin text-muted-foreground"
                   aria-label={t("dialog.sendingAria")}
                 />

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { ReactNode } from "react";
-import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Loader2 } from "lucide-react";
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, LoaderCircle } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import type { MenuModel, StyledLine } from "@/lib/blocks";
@@ -79,7 +79,7 @@ export function MenuBlock({ menu, lines, onAction, disabled }: MenuBlockProps) {
   }
 
   const spinner = (
-    <Loader2 className="size-3.5 shrink-0 animate-spin text-muted-foreground" aria-label={t("dialog.sendingAria")} />
+    <LoaderCircle className="size-3.5 shrink-0 animate-spin text-muted-foreground" aria-label={t("dialog.sendingAria")} />
   );
 
   // THE PRINTED SCALE (.adr/0054). When the screen printed the whole scale the arrows move along,

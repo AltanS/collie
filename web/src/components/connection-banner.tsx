@@ -3,7 +3,7 @@ import { useRevalidator } from "react-router";
 import {
   CloudOff,
   KeyRound,
-  Loader2,
+  LoaderCircle,
   LogIn,
   Plug,
   RefreshCw,
@@ -356,7 +356,7 @@ function ConnectionStateBanner({
               disabled={retrying}
             >
               {retrying ? (
-                <Loader2 className="size-3.5 animate-spin" />
+                <LoaderCircle className="size-3.5 animate-spin" />
               ) : (
                 <RotateCw className="size-3.5" />
               )}

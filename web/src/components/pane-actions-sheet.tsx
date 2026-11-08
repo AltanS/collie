@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Bug, Copy, GitBranchPlus, Maximize2, MessagesSquare, Monitor, Pencil, Pin, PinOff, ScrollText, Search, SlidersHorizontal, SquareTerminal, XCircle } from "lucide-react";
+import { Bug, Copy, GitBranchPlus, Maximize2, MessagesSquare, Monitor, Pencil, Pin, PinOff, ScrollText, Search, SlidersHorizontal, SquareTerminal, CircleX } from "lucide-react";
 
 import { BottomSheet } from "@/components/ui/sheet";
 import { WalkyIcon, WalkyOffIcon } from "@/components/walky-icon";
@@ -590,7 +590,7 @@ export function PaneActionsSheet({
           )}
           {canClose.capable && (
             <DestructiveActionRow
-              icon={<XCircle className="size-4 shrink-0" />}
+              icon={<CircleX className="size-4 shrink-0" />}
               label={conversation ? t("paneActions.close.conversation") : t("paneActions.close.label")}
               confirmLabel={t("paneActions.close.confirm")}
               closingLabel={t("paneActions.close.closing")}

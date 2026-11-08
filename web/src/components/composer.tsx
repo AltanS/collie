@@ -2,7 +2,7 @@ import { forwardRef, useContext, useEffect, useImperativeHandle, useRef, useStat
 import { createPortal } from "react-dom";
 import type { ChangeEvent, ClipboardEvent, CSSProperties, MouseEvent, ReactNode } from "react";
 import { useRevalidator } from "react-router";
-import { ArrowUp, Check, FileText, Image, Keyboard, ListEnd, ListTodo, Loader2, Mic, Monitor, Navigation, Paperclip, Pencil, Plus, Send, Settings2, Slash, Square, Terminal, TriangleAlert, X, Zap } from "lucide-react";
+import { ArrowUp, Check, FileText, Image, Keyboard, ListEnd, ListTodo, LoaderCircle, Mic, Monitor, Navigation, Paperclip, Pencil, Plus, Send, Settings2, Slash, Square, Terminal, TriangleAlert, X, Zap } from "lucide-react";
 
 import { StatusDot } from "@/components/status-badge";
 import { applyDraftFontSize, fontStack, inputFocusZoomsPage, reportOfferOf, sentSuggestionsOf } from "@/hooks/use-display-prefs";
@@ -1805,7 +1805,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       : translate("composer.mic.recordAria");
   const micIcon =
     recorder.phase === "transcribing" ? (
-      <Loader2 className="size-4 animate-spin" />
+      <LoaderCircle className="size-4 animate-spin" />
     ) : recorder.phase === "recording" ? (
       <Square className="size-4 fill-current" />
     ) : (
@@ -2486,7 +2486,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             truncate to a line of chrome, which is the one thing this must not do. */}
         <Collapse open={lastSent !== null}>
           <div className="mb-2 flex items-center gap-1.5 rounded-md bg-muted/40 px-2.5 py-1.5 text-xs text-muted-foreground">
-            <Loader2 className="size-3 shrink-0 animate-spin" />
+            <LoaderCircle className="size-3 shrink-0 animate-spin" />
             <span className="truncate">
               <span className="font-medium">{translate("composer.sentPreview.label")}</span> {lastSent}
             </span>
@@ -3261,7 +3261,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             aria-expanded={asksWhich ? picking : undefined}
           >
             {uploading ? (
-              <Loader2 className="size-4 animate-spin" />
+              <LoaderCircle className="size-4 animate-spin" />
             ) : (
               box ? <Plus className="size-4" /> : <Paperclip className="size-4" />
             )}
@@ -3468,7 +3468,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               {direct.active ? (
                 <Keyboard className="size-4" />
               ) : sending ? (
-                <Loader2 className="size-4 animate-spin" />
+                <LoaderCircle className="size-4 animate-spin" />
               ) : justSent ? (
                 <Check className="size-4" />
               ) : box ? (

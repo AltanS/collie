@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { BellOff, Loader2 } from "lucide-react";
+import { BellOff, LoaderCircle } from "lucide-react";
 import { useRevalidator } from "react-router";
 
 import { Button } from "@/components/ui/button";
@@ -60,7 +60,7 @@ export function SnoozeControl({ snoozedUntil }: { snoozedUntil: number | null })
             </p>
           </div>
         </div>
-        {busy && <Loader2 className="size-4 shrink-0 animate-spin text-muted-foreground" />}
+        {busy && <LoaderCircle className="size-4 shrink-0 animate-spin text-muted-foreground" />}
       </div>
 
       <div className="flex items-center gap-2 border-t border-border p-3">

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Pencil, XCircle } from "lucide-react";
+import { Pencil, CircleX } from "lucide-react";
 
 import { BottomSheet } from "@/components/ui/sheet";
 import { ActionRow, DestructiveActionRow, RenameView } from "@/components/action-sheet-rows";
@@ -192,7 +192,7 @@ export function TabActionsSheet({
           )}
           {canClose.capable && (
             <DestructiveActionRow
-              icon={<XCircle className="size-4 shrink-0" />}
+              icon={<CircleX className="size-4 shrink-0" />}
               label={t("space.tab.close")}
               confirmLabel={confirmLabel}
               closingLabel={t("space.tab.closing")}

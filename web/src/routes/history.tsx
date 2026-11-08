@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useLoaderData, useParams } from "react-router";
-import { ArrowUpToLine, ChevronDown, ChevronUp, Loader2, ScrollText, Search, X } from "lucide-react";
+import { ArrowUpToLine, ChevronDown, ChevronUp, LoaderCircle, ScrollText, Search, X } from "lucide-react";
 
 import { RouteHeader } from "@/components/app-header";
 import { ChatMessageList, type ChatMessageListHandle } from "@/components/ui/chat/chat-message-list";
@@ -313,7 +313,7 @@ export function HistoryRoute() {
                   className="mb-3 flex w-full items-center justify-center gap-1.5 rounded-md py-2 text-xs font-medium text-muted-foreground transition-colors active:bg-muted/50 disabled:opacity-60"
                 >
                   {loading ? (
-                    <Loader2 className="size-3.5 animate-spin" />
+                    <LoaderCircle className="size-3.5 animate-spin" />
                   ) : (
                     <ArrowUpToLine className="size-3.5" />
                   )}

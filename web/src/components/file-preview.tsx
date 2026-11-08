@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ChevronDown, ChevronRight, Loader2 } from "lucide-react";
+import { ChevronDown, ChevronRight, LoaderCircle } from "lucide-react";
 
 import { MarkdownText, type ImageResolver, type LinkResolver } from "@/components/markdown-text";
 import { TokenLine } from "@/components/changes-view";
@@ -55,7 +55,7 @@ export function FilesLoading() {
   useLocale();
   return (
     <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted-foreground">
-      <Loader2 className="size-4 animate-spin" />
+      <LoaderCircle className="size-4 animate-spin" />
       {t("files.loading")}
     </div>
   );

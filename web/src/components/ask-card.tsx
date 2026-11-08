@@ -1,5 +1,5 @@
 import { useId, useState, useSyncExternalStore } from "react";
-import { Check, Loader2 } from "lucide-react";
+import { Check, LoaderCircle } from "lucide-react";
 
 import { OptionButton, OptionGroupCaption, optionSurface, PromptPanel } from "@/components/option-button";
 import { Button } from "@/components/ui/button";
@@ -245,7 +245,7 @@ export function AskCardFace({ card, program, disabled = false, offline = false, 
                   onClick={() => onPress(option)}
                   trailing={
                     inFlight ? (
-                      <Loader2 className="mt-0.5 size-4 shrink-0 animate-spin text-muted-foreground" aria-label={t("prompt.sendingAria")} />
+                      <LoaderCircle className="mt-0.5 size-4 shrink-0 animate-spin text-muted-foreground" aria-label={t("prompt.sendingAria")} />
                     ) : null
                   }
                 />
@@ -344,7 +344,7 @@ interface BodyProps {
 function SendButton({ ready, frozen, busy, onClick }: { ready: boolean; frozen: boolean; busy: boolean; onClick: () => void }) {
   return (
     <Button type="button" data-slot="ask-send" className="h-11" disabled={frozen || !ready} onClick={onClick}>
-      {busy ? <Loader2 className="size-4 animate-spin" aria-label={t("prompt.sendingAria")} /> : null}
+      {busy ? <LoaderCircle className="size-4 animate-spin" aria-label={t("prompt.sendingAria")} /> : null}
       {t("ask.send")}
     </Button>
   );
@@ -404,7 +404,7 @@ function ChoiceBody({
             onClick={() => onSend({ optionIds: [option.id] })}
             trailing={
               inFlight ? (
-                <Loader2 className="mt-0.5 size-4 shrink-0 animate-spin text-muted-foreground" aria-label={t("prompt.sendingAria")} />
+                <LoaderCircle className="mt-0.5 size-4 shrink-0 animate-spin text-muted-foreground" aria-label={t("prompt.sendingAria")} />
               ) : null
             }
           />

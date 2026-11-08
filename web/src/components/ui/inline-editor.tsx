@@ -1,5 +1,5 @@
 import { useEffect, useRef, type ReactNode } from "react";
-import { Loader2, MessageSquarePlus } from "lucide-react";
+import { LoaderCircle, MessageSquarePlus } from "lucide-react";
 
 /**
  * The short text a person types ON a card: a bordered box holding a labelled textarea, a help line,
@@ -112,7 +112,7 @@ export function InlineEditor({
           className="flex items-center gap-1.5 rounded-md border border-primary/60 bg-primary/15 px-2.5 py-1.5 text-xs font-medium text-foreground transition-colors active:bg-primary/25 disabled:opacity-60"
         >
           {busy ? (
-            <Loader2
+            <LoaderCircle
               className="size-3.5 shrink-0 animate-spin text-muted-foreground"
               aria-label={busyAriaLabel}
             />

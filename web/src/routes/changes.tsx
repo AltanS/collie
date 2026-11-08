@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useLocation, useNavigate, useParams, useSearchParams } from "react-router";
-import { ArrowLeft, ChevronLeft, ChevronRight, Code, Eye, GitCompareArrows, Loader2, RefreshCw } from "lucide-react";
+import { ArrowLeft, ChevronLeft, ChevronRight, Code, Eye, GitCompareArrows, LoaderCircle, RefreshCw } from "lucide-react";
 
 import { RouteHeader } from "@/components/app-header";
 import { FilesLoading, RefusedBody, TreeFolderBody, useFilesRead, type FilesReadState, type TreeRead } from "@/routes/changes-files";
@@ -1674,7 +1674,7 @@ function ListBody({
 function Loading({ label }: { label: string }) {
   return (
     <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted-foreground">
-      <Loader2 className="size-4 animate-spin" />
+      <LoaderCircle className="size-4 animate-spin" />
       {label}
     </div>
   );

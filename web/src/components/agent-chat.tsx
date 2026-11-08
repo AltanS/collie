@@ -6,10 +6,10 @@ import {
   ArrowUpToLine,
   ChevronUp,
   EllipsisVertical,
-  Loader2,
+  LoaderCircle,
   Minimize2,
   ScrollText,
-  TerminalSquare,
+  SquareTerminal,
 } from "lucide-react";
 import { useKeyboardOpen } from "@/hooks/use-keyboard";
 import { useSheetPull } from "@/hooks/use-sheet-pull";
@@ -2401,7 +2401,7 @@ export function AgentChat({
                   <div className="relative shrink-0">
                     {isShell ? (
                       <div data-glide="tile" className="flex size-4 items-center justify-center rounded-sm border bg-muted">
-                        <TerminalSquare className="size-2.5 text-muted-foreground" />
+                        <SquareTerminal className="size-2.5 text-muted-foreground" />
                         {/* A shell pane has no agent status, so there is no dot to name — and the
                             composer's status band, which used to say "shell" in words a thumb's
                             width below, is gone. Unpainted the word costs nothing and a reader
@@ -2938,7 +2938,7 @@ export function AgentChat({
                       className="mb-2 flex w-full items-center justify-center gap-1.5 rounded-md py-2 text-xs font-medium text-muted-foreground transition-colors active:bg-muted/50 disabled:opacity-60"
                     >
                       {loadingOlder ? (
-                        <Loader2 className="size-3.5 animate-spin" />
+                        <LoaderCircle className="size-3.5 animate-spin" />
                       ) : (
                         <ArrowUpToLine className="size-3.5" />
                       )}

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Bell, Loader2 } from "lucide-react";
+import { Bell, LoaderCircle } from "lucide-react";
 
 import { Card } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
@@ -57,7 +57,7 @@ export function PushControl() {
               aria-label={t("settings.push.title")}
             />
           ) : (
-            <Loader2 className="size-4 animate-spin text-muted-foreground" />
+            <LoaderCircle className="size-4 animate-spin text-muted-foreground" />
           )}
         </div>
       </div>

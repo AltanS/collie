@@ -1,5 +1,5 @@
 import { useId, type ReactNode } from "react";
-import { Check, CircleCheck, CircleDashed, CirclePause, CircleX, Globe, Info, Loader2, Lock } from "lucide-react";
+import { Check, CircleCheck, CircleDashed, CirclePause, CircleX, Globe, Info, LoaderCircle, Lock } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -192,7 +192,7 @@ export function Ring({ checked, busy = false }: { checked: boolean; busy?: boole
       className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full border-2 border-muted-foreground"
     >
       {busy ? (
-        <Loader2 className="size-3 animate-spin" />
+        <LoaderCircle className="size-3 animate-spin" />
       ) : (
         <span className={cn("size-2.5 rounded-full", checked ? "bg-primary" : "bg-transparent")} />
       )}

@@ -1,4 +1,4 @@
-import { Loader2, Play, TerminalSquare } from "lucide-react";
+import { LoaderCircle, Play, SquareTerminal } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { CacheChip } from "@/components/cache-chip";
@@ -521,7 +521,7 @@ function PaneRow({
       )}
     >
       {isShell ? (
-        <TerminalSquare className="size-3.5 shrink-0 text-muted-foreground" />
+        <SquareTerminal className="size-3.5 shrink-0 text-muted-foreground" />
       ) : (
         // EVERY ROW SAYS ITS OWN STATUS (issue #695): the mark on the logo's corner, as the closed rail
         // draws it. Before ADR 0063 the row's section said it. The heading's counts say how many panes
@@ -621,7 +621,7 @@ function LaunchRow({
       className="flex w-full min-h-11 items-center gap-2.5 rounded-lg border border-transparent px-2.5 py-2 text-left transition-colors hover:bg-muted/60 active:bg-muted disabled:opacity-60"
     >
       {busy ? (
-        <Loader2 className="size-4 shrink-0 animate-spin text-muted-foreground" aria-hidden />
+        <LoaderCircle className="size-4 shrink-0 animate-spin text-muted-foreground" aria-hidden />
       ) : (
         <Play className="size-4 shrink-0 text-muted-foreground" aria-hidden />
       )}

@@ -1,5 +1,5 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
-import { GitBranch, Loader2 } from "lucide-react";
+import { GitBranch, LoaderCircle } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -115,7 +115,7 @@ export function ReleaseLineCard() {
       {/* Always rendered, so a receipt or a refusal arriving grows nothing above it. */}
       <div className="flex flex-col gap-2 border-t border-border px-4 py-3">
         <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground">
-          {saving && <Loader2 className="size-4 animate-spin" aria-hidden="true" />}
+          {saving && <LoaderCircle className="size-4 animate-spin" aria-hidden="true" />}
           {saving
             ? t("updates.line.saving")
             : error !== null

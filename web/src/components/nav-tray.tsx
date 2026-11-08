@@ -11,7 +11,7 @@ import {
   Check,
   CornerDownLeft,
   Eraser,
-  Loader2,
+  LoaderCircle,
   Lock,
   Space,
 } from "lucide-react";
@@ -462,7 +462,7 @@ export function NavTray({
             onClick={() => void runClear()}
             className={cn("ml-auto h-9 gap-1.5 px-3 text-sm font-medium touch-manipulation select-none", "relative before:absolute before:inset-x-0 before:-inset-y-[4px] before:content-['']")}
           >
-            {clearing ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <Eraser className="size-4" aria-hidden="true" />}
+            {clearing ? <LoaderCircle className="size-4 animate-spin" aria-hidden="true" /> : <Eraser className="size-4" aria-hidden="true" />}
             {t("keys.clear.label")}
           </Button>
         )}

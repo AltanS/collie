@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Loader2, RefreshCw } from "lucide-react";
+import { LoaderCircle, RefreshCw } from "lucide-react";
 import { useRevalidator } from "react-router";
 
 import { Button } from "@/components/ui/button";
@@ -81,7 +81,7 @@ export function UpdateCheckControl() {
         <Button variant="outline" size="sm" disabled={busy} onClick={check}>
           {busy ? (
             <>
-              <Loader2 className="size-4 animate-spin" />
+              <LoaderCircle className="size-4 animate-spin" />
               {t("settings.update.checking")}
             </>
           ) : (

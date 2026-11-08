@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Loader2 } from "lucide-react";
+import { LoaderCircle } from "lucide-react";
 
 import { useLocale } from "@/hooks/use-locale";
 import { t } from "@/lib/i18n";
@@ -101,7 +101,7 @@ export function BuildStamp({ className, version = BUILD.version }: { className?:
           >
             {updating ? (
               <span className="inline-flex items-center gap-1 align-middle">
-                <Loader2 className="size-3 animate-spin" />
+                <LoaderCircle className="size-3 animate-spin" />
                 {t("settings.buildStamp.updating")}
               </span>
             ) : (

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { ArrowUpCircle, CheckCircle2, Loader2, RotateCcw } from "lucide-react";
+import { CircleArrowUp, CircleCheck, LoaderCircle, RotateCcw } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -338,9 +338,9 @@ export function UpdateCard() {
     <Card className="gap-0 py-0">
       <div className="flex items-start gap-3 p-4">
         {upToDate ? (
-          <CheckCircle2 className="mt-0.5 size-5 shrink-0 text-status-done" />
+          <CircleCheck className="mt-0.5 size-5 shrink-0 text-status-done" />
         ) : (
-          <ArrowUpCircle className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
+          <CircleArrowUp className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
         )}
         <div className="min-w-0 flex-1">
           <div className="font-medium">{t("settings.updateCard.title")}</div>
@@ -435,7 +435,7 @@ export function UpdateCard() {
                     )
                   }
                 >
-                  {pending && <Loader2 aria-hidden="true" className="size-4 shrink-0 animate-spin" />}
+                  {pending && <LoaderCircle aria-hidden="true" className="size-4 shrink-0 animate-spin" />}
                   {pending ? t("settings.updateCard.checking") : crewActionLabel(action, latest ?? current, retryNames)}
                 </Button>
               )}
@@ -714,7 +714,7 @@ function PeerSection({
         {rows.map((row) => (
           <li key={row.name} className="flex items-start gap-2 text-xs">
             {row.inFlight ? (
-              <Loader2 aria-hidden="true" className="mt-0.5 size-3 shrink-0 animate-spin text-status-working" />
+              <LoaderCircle aria-hidden="true" className="mt-0.5 size-3 shrink-0 animate-spin text-status-working" />
             ) : (
               <span
                 aria-hidden="true"
@@ -919,7 +919,7 @@ function RunSection({ run, onRetry }: { run: UpdateRun; onRetry: () => void }) {
         )}
         role="status"
       >
-        {inFlight && <Loader2 className="mt-0.5 size-4 shrink-0 animate-spin" />}
+        {inFlight && <LoaderCircle className="mt-0.5 size-4 shrink-0 animate-spin" />}
         <span className="min-w-0">{rollback ? rollbackLine(run, version, still, restartOver) : stateLine(run, version, still, restartOver)}</span>
       </div>
 

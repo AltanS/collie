@@ -1,4 +1,4 @@
-import { TerminalSquare } from "lucide-react";
+import { SquareTerminal } from "lucide-react";
 
 import { shownStatus } from "@/lib/triage";
 import { cn } from "@/lib/utils";
@@ -320,7 +320,7 @@ export function AgentCard({
                 when the row opens it (`data-glide`, lib/glide.ts); they mean nothing otherwise. */}
             {isShell ? (
               <div data-glide="tile" className="flex size-4 shrink-0 items-center justify-center rounded-sm border bg-muted">
-                <TerminalSquare className="size-2.5 text-muted-foreground" />
+                <SquareTerminal className="size-2.5 text-muted-foreground" />
               </div>
             ) : (
               <AgentIcon agent={agent.agent} className="size-4" glide="tile" />

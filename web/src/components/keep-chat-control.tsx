@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { HardDrive, Loader2, Trash2 } from "lucide-react";
+import { HardDrive, LoaderCircle, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -73,7 +73,7 @@ export function KeepChatControl() {
           {cleared ? t("settings.keepChat.cleared") : ""}
         </p>
         <Button variant="outline" size="sm" className="h-9 shrink-0" disabled={clearing} onClick={clearNow}>
-          {clearing ? <Loader2 className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
+          {clearing ? <LoaderCircle className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
           {t("settings.keepChat.clearNow")}
         </Button>
       </div>

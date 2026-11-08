@@ -1,5 +1,5 @@
 import { useState, useSyncExternalStore } from "react";
-import { ArrowUpCircle, TriangleAlert } from "lucide-react";
+import { CircleArrowUp, TriangleAlert } from "lucide-react";
 
 import { Notice } from "@/components/ui/notice";
 import { useNav } from "@/hooks/use-nav";
@@ -202,5 +202,5 @@ function skinOf(view: RibbonView) {
   if (view.kind === "peer-failed") {
     return { Icon: TriangleAlert, tone: "danger" } as const;
   }
-  return { Icon: ArrowUpCircle, tone: "caution" } as const;
+  return { Icon: CircleArrowUp, tone: "caution" } as const;
 }

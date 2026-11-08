@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type MutableRefObject, type RefObject } from "react";
-import { ArrowUpToLine, CornerDownLeft, History, Loader2 } from "lucide-react";
+import { ArrowUpToLine, CornerDownLeft, History, LoaderCircle } from "lucide-react";
 
 import { ItemView, PendingTurn, ToolGroup, groupRuns, standsAlone } from "@/components/chat-cards";
 import { StreamBlock } from "@/components/stream-block";
@@ -151,7 +151,7 @@ function QueuedCard({ queued, sendNow }: { queued: readonly string[]; sendNow: (
             aria-label={t("chat.stream.sendNowAria")}
             onClick={onTap}
           >
-            {pending ? <Loader2 aria-hidden className="size-3.5 animate-spin" /> : <CornerDownLeft aria-hidden className="size-3.5" />}
+            {pending ? <LoaderCircle aria-hidden className="size-3.5 animate-spin" /> : <CornerDownLeft aria-hidden className="size-3.5" />}
             {t("chat.stream.sendNow")}
           </Button>
         )}
@@ -293,7 +293,7 @@ function ReceiptCard({
                 onClick={() => onTap(button.action)}
               >
                 {pending === button.action ? (
-                  <Loader2 aria-hidden className="size-3.5 animate-spin" />
+                  <LoaderCircle aria-hidden className="size-3.5 animate-spin" />
                 ) : (
                   button.action === "submit" && <CornerDownLeft aria-hidden className="size-3.5" />
                 )}
@@ -854,7 +854,7 @@ export function SessionStream({
         <SavedCopyRow text={savedCopy} />
       ) : window.hasOlder ? (
         <button type="button" onClick={onLoadOlder} disabled={loadingOlder} className={EDGE_ROW}>
-          {loadingOlder ? <Loader2 className="size-3.5 animate-spin" /> : <ArrowUpToLine className="size-3.5" />}
+          {loadingOlder ? <LoaderCircle className="size-3.5 animate-spin" /> : <ArrowUpToLine className="size-3.5" />}
           {loadingOlder ? t("chat.scrollback.loading") : t("chat.scrollback.loadOlder")}
         </button>
       ) : (

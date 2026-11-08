@@ -1,5 +1,5 @@
 import { useId, useRef, useState, type ReactNode } from "react";
-import { Check, Loader2, Lock, Minus, TriangleAlert, X } from "lucide-react";
+import { Check, LoaderCircle, Lock, Minus, TriangleAlert, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Notice } from "@/components/ui/notice";
@@ -256,7 +256,7 @@ function Row({ row }: { row: UpdateScreenRow }) {
 function RowIcon({ status }: { status: UpdateScreenRow["status"] }) {
   switch (status) {
     case "active":
-      return <Loader2 className="size-4 text-status-working motion-safe:animate-spin" />;
+      return <LoaderCircle className="size-4 text-status-working motion-safe:animate-spin" />;
     case "offline":
       return <span className="size-3 rounded-full border-2 border-status-info motion-safe:animate-pulse" />;
     case "queued":
@@ -353,7 +353,7 @@ function Footer({
   if (view.phase === "ready") {
     first = (
       <Button size="lg" className="flex-1" disabled={busy} onClick={onStart}>
-        {busy && <Loader2 aria-hidden="true" className="size-4 motion-safe:animate-spin" />}
+        {busy && <LoaderCircle aria-hidden="true" className="size-4 motion-safe:animate-spin" />}
         {screen.ask?.kind === "rollback"
           ? t("updateScreen.action.startRollback")
           : screen.ask?.kind === "back"

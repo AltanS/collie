@@ -1,5 +1,5 @@
 import { type RefObject, useEffect, useRef, useState } from "react";
-import { KeyRound, Loader2, Smartphone } from "lucide-react";
+import { KeyRound, LoaderCircle, Smartphone } from "lucide-react";
 import { useLocation, useRevalidator, useSearchParams } from "react-router";
 
 import { Button } from "@/components/ui/button";
@@ -245,7 +245,7 @@ function DeviceRow({
             {t("settings.devices.cancel")}
           </Button>
           <Button variant="destructive" size="sm" disabled={busy} onClick={revoke}>
-            {busy && <Loader2 className="size-3.5 animate-spin" />}
+            {busy && <LoaderCircle className="size-3.5 animate-spin" />}
             {current ? t("settings.devices.unpairSelf") : t("settings.devices.revoke")}
           </Button>
         </div>
@@ -390,7 +390,7 @@ function PairForm({
       </label>
       {error && <p className="text-xs text-status-blocked">{error}</p>}
       <Button className="h-11" disabled={!ready} onClick={submit}>
-        {busy && <Loader2 className="size-4 animate-spin" />}
+        {busy && <LoaderCircle className="size-4 animate-spin" />}
         {title}
       </Button>
     </div>

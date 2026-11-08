@@ -6,7 +6,7 @@ import {
   Download,
   Info,
   ListChecks,
-  Loader2,
+  LoaderCircle,
   Mic,
   RefreshCw,
   Server,
@@ -632,7 +632,7 @@ function GuidedProgress({ whistle, copy, local }: Pick<SpeechCardsProps, "whistl
   return (
     <div className="space-y-1.5">
       <p className="flex items-center gap-1.5 text-xs font-medium">
-        <Loader2 aria-hidden className="size-3.5 animate-spin" />
+        <LoaderCircle aria-hidden className="size-3.5 animate-spin" />
         {label}
       </p>
       <Progress received={received} total={total} label={label} />
@@ -686,7 +686,7 @@ function StatusAction({ view, props }: { view: StatusView; props: SpeechCardsPro
   if (status.kind === "paused" && status.action === "restore") {
     return (
       <Button className="h-11" disabled={props.copy !== null || browserBlock(props.block) !== null} onClick={props.onPhoneDownload}>
-        {props.copy !== null ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />}
+        {props.copy !== null ? <LoaderCircle className="size-4 animate-spin" /> : <Download className="size-4" />}
         {t("settings.voice.restore", { size: modelSize(props.whistle, props.local) })}
       </Button>
     );
@@ -961,7 +961,7 @@ function PhoneCopyLine(props: SpeechCardsProps) {
       <>
         {whistle.state === "failed" && <p className="text-xs font-medium">{t("settings.speech.host.failed")}</p>}
         <Button variant="outline" className="h-11" disabled={hostBusy || local === undefined} onClick={onSetupBoth}>
-          {hostBusy ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />}
+          {hostBusy ? <LoaderCircle className="size-4 animate-spin" /> : <Download className="size-4" />}
           {t("settings.voice.copy.setup", { size })}
         </Button>
         <p className="text-xs text-muted-foreground">{t("settings.voice.copy.setup.note")}</p>
@@ -1437,7 +1437,7 @@ function WhistleDownload({
     <div className="space-y-1">
       {whistle.state === "failed" && <p className="text-xs font-medium">{t("settings.speech.host.failed")}</p>}
       <Button variant="outline" className="h-11" disabled={hostBusy} onClick={onSetup}>
-        {hostBusy ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />}
+        {hostBusy ? <LoaderCircle className="size-4 animate-spin" /> : <Download className="size-4" />}
         {t("settings.speech.host.download", { size: formatDownloadSize(whistle.bytes) })}
       </Button>
     </div>
@@ -1469,7 +1469,7 @@ function stepView(step: SetupStep, props: RowProps): StepView {
         text: t("settings.voice.setup.whistle.use"),
         body: inUse ? undefined : (
           <Button variant="outline" className="h-11" disabled={!open} onClick={() => onChooseProvider("whistle")}>
-            {switching === "whistle" ? <Loader2 className="size-4 animate-spin" /> : <Server className="size-4" />}
+            {switching === "whistle" ? <LoaderCircle className="size-4 animate-spin" /> : <Server className="size-4" />}
             {t("settings.voice.setup.whistle.useAction")}
           </Button>
         ),
@@ -1567,7 +1567,7 @@ function SetupDisclosure(props: RowProps) {
           {option !== "off" && (
             <div className="space-y-1">
               <Button type="button" variant="outline" className="h-11" disabled={checking} onClick={onCheckAgain}>
-                {checking ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
+                {checking ? <LoaderCircle className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
                 {t("settings.voice.checkAgain")}
               </Button>
               <p className="text-xs text-muted-foreground">{t("settings.voice.terminal.check")}</p>
@@ -1734,7 +1734,7 @@ export function CodexConsentSheet({
             {t("dialog.cancel")}
           </Button>
           <Button type="button" className="h-11 flex-1" disabled={busy} onClick={onAccept}>
-            {busy && <Loader2 className="size-4 animate-spin" />}
+            {busy && <LoaderCircle className="size-4 animate-spin" />}
             {t("settings.speech.provider.consent.accept")}
           </Button>
         </div>
@@ -1847,7 +1847,7 @@ function HostCopy(props: SpeechCardsProps & { whistle: WhistleStatus }) {
         (canWrite ? (
           <div className="space-y-2">
             <Button className="h-11" disabled={hostBusy} onClick={onSetup}>
-              {hostBusy ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />}
+              {hostBusy ? <LoaderCircle className="size-4 animate-spin" /> : <Download className="size-4" />}
               {t("settings.speech.host.download", { size })}
             </Button>
             <p className="text-xs text-muted-foreground">{t("settings.speech.host.absent")}</p>
@@ -1866,7 +1866,7 @@ function HostCopy(props: SpeechCardsProps & { whistle: WhistleStatus }) {
           {whistle.reason !== undefined && <p className="text-xs text-muted-foreground">{whistle.reason}</p>}
           {canWrite ? (
             <Button className="h-11" variant="outline" disabled={hostBusy} onClick={onSetup}>
-              {hostBusy && <Loader2 className="size-4 animate-spin" />}
+              {hostBusy && <LoaderCircle className="size-4 animate-spin" />}
               {t("settings.speech.host.retry")}
             </Button>
           ) : (
@@ -1921,7 +1921,7 @@ function HostCopy(props: SpeechCardsProps & { whistle: WhistleStatus }) {
                   {t("settings.speech.host.remove.cancel")}
                 </Button>
                 <Button variant="destructive" className="h-11" disabled={hostBusy} onClick={onRemove}>
-                  {hostBusy ? <Loader2 className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
+                  {hostBusy ? <LoaderCircle className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
                   {t("settings.speech.host.remove.action")}
                 </Button>
               </div>

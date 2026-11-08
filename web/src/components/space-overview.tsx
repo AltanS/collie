@@ -1,5 +1,5 @@
 import { Fragment, useState, type ReactNode } from "react";
-import { FolderPlus, LayoutGrid, Loader2, Search } from "lucide-react";
+import { FolderPlus, LayoutGrid, LoaderCircle, Search } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { useMuxCapability } from "@/lib/mux-capability";
@@ -135,7 +135,7 @@ export function SpaceOverview({
                 className="flex size-9 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:scale-95 disabled:opacity-100"
               >
                 {creatingSpace ? (
-                  <Loader2 className="size-4 animate-spin" aria-hidden />
+                  <LoaderCircle className="size-4 animate-spin" aria-hidden />
                 ) : (
                   <FolderPlus className="size-4" />
                 )}

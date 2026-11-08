@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { BellRing, Check, CircleAlert, Loader2 } from "lucide-react";
+import { BellRing, Check, CircleAlert, LoaderCircle } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -296,7 +296,7 @@ function statusWords(state: SaveState): string {
 
 /** The mark beside the words: a spinner while saving, a check once saved, a warning on a failure. */
 function StatusMark({ state }: { state: SaveState }) {
-  if (state === "saving") return <Loader2 className="size-3.5 shrink-0 motion-safe:animate-spin" aria-hidden />;
+  if (state === "saving") return <LoaderCircle className="size-3.5 shrink-0 motion-safe:animate-spin" aria-hidden />;
   if (state === "saved") return <Check className="size-3.5 shrink-0 text-status-done" aria-hidden />;
   if (state === "failed" || state === "unpaired") return <CircleAlert className="size-3.5 shrink-0" aria-hidden />;
   return null;

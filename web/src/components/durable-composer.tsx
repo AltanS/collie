@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Check, Loader2, Send, Settings2 } from "lucide-react";
+import { Check, LoaderCircle, Send, Settings2 } from "lucide-react";
 
 import { ActionsRow, type Hand } from "@/components/actions-row";
 import { useDurableBarItems } from "@/components/harness-bar";
@@ -431,7 +431,7 @@ export function DurableComposer({
           title={offline ? t("composer.send.reconnect") : undefined}
           onClick={() => void send()}
         >
-          {sending ? <Loader2 className="size-4 animate-spin" /> : justSent ? <Check className="size-4" /> : <Send className="size-4" />}
+          {sending ? <LoaderCircle className="size-4 animate-spin" /> : justSent ? <Check className="size-4" /> : <Send className="size-4" />}
         </Button>
       </div>
     </div>

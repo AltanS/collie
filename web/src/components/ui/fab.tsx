@@ -1,4 +1,4 @@
-import { Loader2, Plus } from "lucide-react";
+import { LoaderCircle, Plus } from "lucide-react";
 import { createPortal } from "react-dom";
 
 import { cn } from "@/lib/utils";
@@ -76,7 +76,7 @@ export function Fab({ label, onClick, busy = false, bottom, collapsed = false }:
           collapsed ? "w-12 rounded-[24px]" : "w-24 rounded-md",
         )}
       >
-        {busy ? <Loader2 className="size-5 shrink-0 animate-spin" aria-hidden /> : <Plus className="size-5 shrink-0" aria-hidden />}
+        {busy ? <LoaderCircle className="size-5 shrink-0 animate-spin" aria-hidden /> : <Plus className="size-5 shrink-0" aria-hidden />}
         {/* The word fades and folds with the width. aria-hidden: the label above already names it. */}
         <span
           aria-hidden

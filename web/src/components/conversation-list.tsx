@@ -1,4 +1,4 @@
-import { Archive, Loader2 } from "lucide-react";
+import { Archive, LoaderCircle } from "lucide-react";
 import { useId } from "react";
 
 import { StatusDot } from "@/components/status-badge";
@@ -228,7 +228,7 @@ export function ConversationList({
       )}
       {foot.kind === "more" && (
         <Button variant="ghost" className="h-11 self-center" onClick={foot.onMore} disabled={foot.busy}>
-          {foot.busy && <Loader2 className="animate-spin" />}
+          {foot.busy && <LoaderCircle className="animate-spin" />}
           {foot.busy ? t("conversations.loading") : t("conversations.loadMore")}
         </Button>
       )}

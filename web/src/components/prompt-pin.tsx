@@ -1,4 +1,4 @@
-import { ArrowUpToLine, Loader2, User } from "lucide-react";
+import { ArrowUpToLine, LoaderCircle, User } from "lucide-react";
 
 import { t } from "@/lib/i18n";
 import type { Pin } from "@/lib/prompt-pin";
@@ -21,7 +21,7 @@ const PIN_TEXT = "font-content line-clamp-2 min-w-0 flex-1 text-sm leading-5 wra
 
 export function PromptPin({ pin, busy, onTap }: { pin: Exclude<Pin, null>; busy: boolean; onTap: () => void }) {
   const earlier = pin.kind === "earlier";
-  const Icon = busy ? Loader2 : earlier ? ArrowUpToLine : User;
+  const Icon = busy ? LoaderCircle : earlier ? ArrowUpToLine : User;
   return (
     <button type="button" data-slot="prompt-pin" className={PIN} onClick={onTap} disabled={busy} aria-busy={busy}>
       <span className={PIN_WELL}>
