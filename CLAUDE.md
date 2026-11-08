@@ -780,8 +780,9 @@ address, and kept only when its sha256 matches a pin in this release
 version's release manifest and the one asset it names, fetched on a write device's tap only, kept
 only when the size and sha256 match, and unpacked in the bridge with no child, never under `web/dist`
 ([ADR 0132](./.adr/0132-the-math-engines-are-a-pack-the-host-downloads.md)), and the community theme
-registry: one fixed file, `https://colliepwa.dev/themes/registry.json`, fetched on a write device's
-tap only, never forwarded, refused past 1 MB or 500 entries, each entry kept only when `parseTheme`
+registry: one fixed file, `https://colliepwa.dev/themes/registry.json` (the operator's
+`COLLIE_THEME_REGISTRY_URL` replaces it for a test against a staged site, https or tailnet http
+only), fetched on a write device's tap only, never forwarded, refused past 1 MB or 500 entries, each entry kept only when `parseTheme`
 passes it, and stored under `<stateDir>/themes` (M59 spec 06; the page itself keeps
 `connect-src 'self'`, ADR 0106). A `durable` peer configured with `COLLIE_DURABLE_URL` makes a fifth, to the program's URL the
 operator set, with the bearer token from `COLLIE_DURABLE_TOKEN`, and it is declined by setting

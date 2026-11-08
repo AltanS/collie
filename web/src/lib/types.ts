@@ -2542,6 +2542,8 @@ export interface ThemeRegistryStatus {
   dropped: number;
   fetching: boolean;
   error?: "fetch-failed" | "too-big" | "bad-registry";
+  /** The address in use, only when the operator's `COLLIE_THEME_REGISTRY_URL` replaced the default. */
+  address?: string;
 }
 
 /**

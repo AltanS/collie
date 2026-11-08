@@ -1135,6 +1135,21 @@ This implementation has two practical consequences:
 > the background. iOS does not allow web apps to update this value dynamically. Run Collie directly
 > in the browser instead of as an installed PWA to avoid this limitation.
 
+## The community theme list
+
+Refresh in **Browse community themes** fetches the list from colliepwa.dev, unless you name
+another address for a test against a staged copy of the site:
+
+```bash
+# in your .env
+COLLIE_THEME_REGISTRY_URL=http://myhost:8834/themes/registry.json
+```
+
+The address takes `https://` to any host. Plain `http://` works only for this machine, a tailnet
+address (`100.64.0.0/10` or a `.ts.net` name) or a name without a dot. Any other value prints one
+warning when the bridge starts, and colliepwa.dev is used. A list fetched from one address is not
+shown under another, so the next Refresh fetches again. Leave it unset for normal use.
+
 ## Math
 
 Math is off by default. To draw LaTeX as equations, a write device downloads the math engines to
