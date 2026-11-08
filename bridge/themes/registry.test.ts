@@ -13,12 +13,14 @@ import {
   THEME_REGISTRY_URL,
   createThemeRegistryStore,
   readRegistry,
+  registryUrlFromEnv,
+  resolveRegistryAddress,
   themesDir,
   type RegistryError,
   type RegistryFetch,
 } from "./registry.ts";
 import { themeRegistryGet, themeRegistryRefresh } from "./registry-http.ts";
-import type { JsonObject, JsonValue } from "../../web/src/lib/json.ts";
+import { parseJsonObject, type JsonObject, type JsonValue } from "../../web/src/lib/json.ts";
 import type { RegistryEntry } from "../../web/src/lib/theme/registry.ts";
 
 // The community theme registry on the host (M59 spec 06), driven through an injected fetch and a
@@ -67,9 +69,12 @@ function fakeFetch(answer: (url: string, n: number) => Response | Promise<Respon
   return { fetch, calls };
 }
 
-function store(over: { fetch: RegistryFetch; dir?: string; now?: () => number; timeoutMs?: number }) {
+function store(over: { fetch: RegistryFetch; dir?: string; now?: () => number; timeoutMs?: number; url?: string }) {
   const dir = over.dir ?? stateDir();
-  return { dir, store: createThemeRegistryStore({ stateDir: dir, version: "1.28.1", fetch: over.fetch, now: over.now, timeoutMs: over.timeoutMs }) };
+  return {
+    dir,
+    store: createThemeRegistryStore({ stateDir: dir, version: "1.28.1", fetch: over.fetch, now: over.now, timeoutMs: over.timeoutMs, url: over.url }),
+  };
 }
 
 describe("readRegistry", () => {
@@ -425,5 +430,138 @@ describe("the address", () => {
     const root = resolve(import.meta.dirname, "../..");
     const source = readFileSync(join(root, "bridge/themes/registry.ts"), "utf8");
     expect(source.split("colliepwa.dev/themes/registry.json").length - 1).toBe(1);
+  });
+});
+
+describe("the operator's override (COLLIE_THEME_REGISTRY_URL)", () => {
+  const STAGED = "http://bluefin:8834/themes/registry.json";
+
+  test("unset, empty or blank takes the default address with no warning", () => {
+    expect(resolveRegistryAddress(undefined)).toEqual({ url: THEME_REGISTRY_URL });
+    expect(resolveRegistryAddress("")).toEqual({ url: THEME_REGISTRY_URL });
+    expect(resolveRegistryAddress("   ")).toEqual({ url: THEME_REGISTRY_URL });
+  });
+
+  test("https is accepted to any host", () => {
+    expect(resolveRegistryAddress("https://staging.example.com/themes/registry.json")).toEqual({
+      url: "https://staging.example.com/themes/registry.json",
+    });
+  });
+
+  test("http is accepted for loopback, the tailnet range, .ts.net and a name without a dot", () => {
+    for (const url of [
+      "http://127.0.0.1:8834/themes/registry.json",
+      "http://127.9.8.7/r.json",
+      "http://localhost:8834/r.json",
+      "http://[::1]:8834/r.json",
+      "http://100.64.0.8:8834/r.json",
+      "http://100.127.255.254/r.json",
+      "http://bluefin.tail1234.ts.net/r.json",
+      STAGED,
+    ]) {
+      expect(resolveRegistryAddress(url)).toEqual({ url });
+    }
+  });
+
+  test("http to any other host, another scheme, a credential or a non-URL is refused for the default", () => {
+    for (const raw of [
+      "http://example.com/r.json",
+      "http://100.63.255.255/r.json",
+      "http://100.128.0.1/r.json",
+      "http://192.168.1.10/r.json",
+      "http://10.0.0.1/r.json",
+      "http://bluefin./r.json",
+      "http://evil.ts.net.example.com/r.json",
+      "http://[fd7a:115c:a1e0::1]/r.json",
+      "ftp://bluefin/r.json",
+      "file:///etc/passwd",
+      "https://user:secret@staging.example.com/r.json",
+      "not a url",
+      "bluefin:8834/themes/registry.json",
+    ]) {
+      const resolved = resolveRegistryAddress(raw);
+      expect(resolved.url).toBe(THEME_REGISTRY_URL);
+      expect(resolved.refused).toBeDefined();
+    }
+  });
+
+  test("a refused value says one warning line, without the value, and never throws", () => {
+    const lines: string[] = [];
+    expect(registryUrlFromEnv("https://user:secret@staging.example.com/r.json", (l) => lines.push(l))).toBe(THEME_REGISTRY_URL);
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain("COLLIE_THEME_REGISTRY_URL");
+    expect(lines[0]).not.toContain("secret");
+    expect(registryUrlFromEnv(STAGED, (l) => lines.push(l))).toBe(STAGED);
+    expect(registryUrlFromEnv(undefined, (l) => lines.push(l))).toBe(THEME_REGISTRY_URL);
+    expect(lines).toHaveLength(1);
+  });
+
+  test("the store fetches the override, and the status names it; the default's status does not", async () => {
+    const { fetch, calls } = fakeFetch(() => json(doc([entry()])));
+    const { store: s } = store({ fetch, url: STAGED });
+    const done = await s.refresh();
+    expect(done.outcome).toBe("fetched");
+    expect(calls.map((call) => call.url)).toEqual([STAGED]);
+    expect(done.status.address).toBe(STAGED);
+    const { store: plain } = store({ fetch: fakeFetch(() => json(doc([entry()]))).fetch });
+    expect("address" in (await plain.refresh()).status).toBe(false);
+  });
+
+  test("a redirect follows the override's origin, not colliepwa.dev", async () => {
+    const onSite = fakeFetch((url) =>
+      url === STAGED ? new Response(null, { status: 302, headers: { location: "/themes/registry-2.json" } }) : json(doc([entry()])),
+    );
+    expect((await store({ fetch: onSite.fetch, url: STAGED }).store.refresh()).outcome).toBe("fetched");
+    expect(onSite.calls.map((call) => call.url)).toEqual([STAGED, "http://bluefin:8834/themes/registry-2.json"]);
+    const toSite = fakeFetch(() => new Response(null, { status: 302, headers: { location: THEME_REGISTRY_URL } }));
+    expect((await store({ fetch: toSite.fetch, url: STAGED }).store.refresh()).outcome).toBe("fetch-failed");
+    expect(toSite.calls).toHaveLength(1);
+  });
+
+  test("the default writes the copy exactly as before, with no address in it", async () => {
+    const { dir } = await (async () => {
+      const made = store({ fetch: fakeFetch(() => json(doc([entry()]))).fetch, now: () => Date.parse("2026-11-07T10:00:00Z") });
+      await made.store.refresh();
+      return made;
+    })();
+    const written = parseJsonObject(readFileSync(join(themesDir(dir), "registry.json"), "utf8"));
+    expect(Object.keys(written ?? {})).toEqual(["v", "fetchedAt", "generated", "themes", "dropped"]);
+  });
+
+  test("a copy is not listed across an address change, either way, and the next tap fetches", async () => {
+    const clock = Date.parse("2026-11-07T10:00:00Z");
+    const dir = stateDir();
+    await store({ fetch: fakeFetch(() => json(doc([entry()]))).fetch, dir, now: () => clock }).store.refresh();
+
+    // The default's copy, read by a bridge on the staged address: absent, and a tap fetches at once.
+    const staged = fakeFetch(() => json(doc([entry({ repo: "sam/staged" })])));
+    const onStaged = store({ fetch: staged.fetch, dir, now: () => clock, url: STAGED }).store;
+    expect((await onStaged.status()).themes).toEqual([]);
+    const fetched = await onStaged.refresh();
+    expect(fetched.outcome).toBe("fetched");
+    expect(fetched.status.themes.map((t) => t.repo)).toEqual(["sam/staged"]);
+    expect(staged.calls).toHaveLength(1);
+
+    // The staged copy, read back on the default address: absent too, and never served.
+    const back = fakeFetch(() => json(doc([entry()])));
+    const onDefault = store({ fetch: back.fetch, dir, now: () => clock }).store;
+    expect((await onDefault.status()).themes).toEqual([]);
+    expect((await onDefault.refresh()).outcome).toBe("fetched");
+    expect(back.calls).toHaveLength(1);
+
+    // Another override is another address.
+    const other = store({ fetch: fakeFetch(() => json(doc([]))).fetch, dir, now: () => clock, url: "http://minibuch:8834/themes/registry.json" }).store;
+    expect((await other.status()).themes).toEqual([]);
+  });
+
+  test("a copy whose address is not a string reads as absent", async () => {
+    const dir = stateDir();
+    mkdirSync(themesDir(dir), { mode: 0o700 });
+    const body = { v: 1, fetchedAt: new Date().toISOString(), generated: null, dropped: 0, themes: [entry()] };
+    writeFileSync(join(themesDir(dir), "registry.json"), JSON.stringify({ ...body, url: 42 }));
+    const { fetch } = fakeFetch(() => new Response("never"));
+    expect((await store({ fetch, dir }).store.status()).themes).toEqual([]);
+    writeFileSync(join(themesDir(dir), "registry.json"), JSON.stringify({ ...body, url: THEME_REGISTRY_URL }));
+    expect((await store({ fetch, dir }).store.status()).themes).toEqual([KEPT]);
   });
 });

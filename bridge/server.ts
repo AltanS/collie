@@ -223,7 +223,7 @@ import { createWhistleModelStore, type WhistleModelStore } from "./stt/whistle-m
 import { mathGet, mathRemove, mathServeRoot, mathStart } from "./math/http.ts";
 import { createMathPackStore, type MathPackStore } from "./math/store.ts";
 import { themeRegistryGet, themeRegistryRefresh } from "./themes/registry-http.ts";
-import { createThemeRegistryStore, type ThemeRegistryStore } from "./themes/registry.ts";
+import { createThemeRegistryStore, registryUrlFromEnv, THEME_REGISTRY_URL_ENV, type ThemeRegistryStore } from "./themes/registry.ts";
 import type { CodexDetector } from "./stt/codex-detect.ts";
 import { HOST, isInside } from "./host.ts";
 import { createHostCodexDetector, sttHostGet, sttHostPut, type SttHostRouteDeps } from "./stt/host-http.ts";
@@ -1541,8 +1541,13 @@ export function startServer(opts: {
       env: process.env,
     });
   // The community theme registry (M59 spec 06): fetched only on a tap, from one fixed address on
-  // colliepwa.dev; never forwarded, like the math pack.
-  const themeRegistry = opts.themeRegistry ?? createThemeRegistryStore({ stateDir: cfg.stateDir, version: opts.version });
+  // colliepwa.dev; never forwarded, like the math pack. `COLLIE_THEME_REGISTRY_URL` replaces the
+  // address for a test against a staged copy of the site; a value Collie refuses is said once here.
+  const themeRegistry = opts.themeRegistry ?? createThemeRegistryStore({
+    stateDir: cfg.stateDir,
+    version: opts.version,
+    url: registryUrlFromEnv(process.env[THEME_REGISTRY_URL_ENV], (line) => console.warn(line)),
+  });
   // The host's speech provider (ADR 0097): the same `stt.json` and model store, the gate's provider for
   // what the microphone gets, one Codex sign-in check shared by every device, one switch at a time.
   const sttHostDeps: SttHostRouteDeps = {

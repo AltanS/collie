@@ -11,8 +11,12 @@ import { readRegistryEntry, type RegistryEntry } from "../../web/src/lib/theme/r
 // (`POST /api/themes/registry`, bridge/themes/registry-http.ts). A boot, a timer, a status read and
 // an open of Settings fetch nothing. The page never fetches it: `connect-src 'self'` (ADR 0106).
 //
-//   • The address is {@link THEME_REGISTRY_URL}, a constant. No setting, header or request body can
-//     change it. A redirect is followed only while it stays on that origin, at most three times.
+//   • The address is {@link THEME_REGISTRY_URL}, a constant. No header or request body can change
+//     it. The one exception is the operator's `COLLIE_THEME_REGISTRY_URL`, read once at boot, for a
+//     test against a staged copy of the site ({@link resolveRegistryAddress}). A redirect is followed
+//     only while it stays on the origin of the address in use, at most three times.
+//   • A copy written for one address is never listed under another: a copy from an override names
+//     its address in the file, and a copy without one belongs to the default address.
 //   • One fetch in flight; a second tap joins it. The whole fetch, body included, has
 //     {@link REGISTRY_TIMEOUT_MS}. A declared size over {@link REGISTRY_CAP_BYTES} is refused before
 //     the body, and the body is counted against the cap as it arrives.
@@ -29,7 +33,8 @@ import { readRegistryEntry, type RegistryEntry } from "../../web/src/lib/theme/r
 /** The one address the host fetches the registry from. */
 export const THEME_REGISTRY_URL = "https://colliepwa.dev/themes/registry.json";
 
-const REGISTRY_ORIGIN = new URL(THEME_REGISTRY_URL).origin;
+/** The operator's override of {@link THEME_REGISTRY_URL}, for a test against a staged copy of the site. */
+export const THEME_REGISTRY_URL_ENV = "COLLIE_THEME_REGISTRY_URL";
 
 /** The most bytes the registry may be. 500 themes of a few kilobytes each fit with room. */
 export const REGISTRY_CAP_BYTES = 1024 * 1024;
@@ -54,6 +59,64 @@ const GENERATED_MAX = 40;
 /** The words Settings shows when a refresh fails. Collie's own, never an upstream body. */
 export type RegistryError = "fetch-failed" | "too-big" | "bad-registry";
 
+/** The address the host fetches from, and why an override was refused when one was. */
+export interface RegistryAddress {
+  url: string;
+  /** Why the override was not used, for one boot warning. Absent when it was used or unset. */
+  refused?: string;
+}
+
+/** 100.64.0.0/10, the tailnet range. */
+function inTailnetRange(host: string): boolean {
+  const m = /^(\d+)\.(\d+)\.\d+\.\d+$/.exec(host);
+  return m !== null && Number(m[1]) === 100 && Number(m[2]) >= 64 && Number(m[2]) <= 127;
+}
+
+/** A host plain `http://` may be used for: loopback, the tailnet, or a single-label name. */
+function plainHttpHost(host: string): boolean {
+  if (host === "localhost" || host === "[::1]") return true;
+  if (/^127\.\d+\.\d+\.\d+$/.test(host)) return true;
+  if (inTailnetRange(host)) return true;
+  if (host.endsWith(".ts.net")) return true;
+  return host !== "" && !host.includes(".") && !host.includes(":") && !host.includes("[");
+}
+
+/**
+ * The address the host fetches the registry from: {@link THEME_REGISTRY_URL}, or the operator's
+ * override when it is one Collie accepts. `https://` to any host; `http://` only to a loopback
+ * host, a 100.64.0.0/10 address, a `.ts.net` name or a single-label name such as `bluefin`. Pure;
+ * the caller prints `refused` once.
+ */
+export function resolveRegistryAddress(raw: string | undefined): RegistryAddress {
+  const value = (raw ?? "").trim();
+  if (value === "") return { url: THEME_REGISTRY_URL };
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    return { url: THEME_REGISTRY_URL, refused: "it is not a URL" };
+  }
+  if (parsed.username !== "" || parsed.password !== "") {
+    return { url: THEME_REGISTRY_URL, refused: "it carries a user name or a password" };
+  }
+  if (parsed.protocol === "https:") return { url: parsed.href };
+  if (parsed.protocol !== "http:") return { url: THEME_REGISTRY_URL, refused: `${parsed.protocol} is not http or https` };
+  if (plainHttpHost(parsed.hostname)) return { url: parsed.href };
+  return {
+    url: THEME_REGISTRY_URL,
+    refused: "http is accepted only for loopback, a tailnet address, a .ts.net name or a name without a dot",
+  };
+}
+
+/** The address to use, from the override's raw value, saying a refusal in one line through `warn`. */
+export function registryUrlFromEnv(raw: string | undefined, warn: (line: string) => void): string {
+  const resolved = resolveRegistryAddress(raw);
+  if (resolved.refused !== undefined) {
+    warn(`[themes] ${THEME_REGISTRY_URL_ENV} is not used because ${resolved.refused}; using ${THEME_REGISTRY_URL}`);
+  }
+  return resolved.url;
+}
+
 /** What `GET /api/themes/registry` answers. */
 export interface RegistryStatus {
   /** When this host last fetched a good copy, ISO, or null when it never did. */
@@ -68,6 +131,8 @@ export interface RegistryStatus {
   fetching: boolean;
   /** Why the last refresh failed. Absent after a good one. */
   error?: RegistryError;
+  /** The address in use, present only when the operator's override replaced the default. */
+  address?: string;
 }
 
 /** What `refresh()` did, for the route's status code and audit line. */
@@ -86,6 +151,8 @@ export interface ThemeRegistryDeps {
   fetch?: RegistryFetch;
   now?: () => number;
   timeoutMs?: number;
+  /** The address to fetch, from {@link resolveRegistryAddress}. Defaults to {@link THEME_REGISTRY_URL}. */
+  url?: string;
 }
 
 export interface ThemeRegistryStore {
@@ -173,6 +240,9 @@ export function createThemeRegistryStore(deps: ThemeRegistryDeps): ThemeRegistry
   const fetchImpl: RegistryFetch = deps.fetch ?? ((url, init) => fetch(url, init));
   const now = deps.now ?? Date.now;
   const timeoutMs = deps.timeoutMs ?? REGISTRY_TIMEOUT_MS;
+  const address = deps.url ?? THEME_REGISTRY_URL;
+  const origin = new URL(address).origin;
+  const overridden = address !== THEME_REGISTRY_URL;
 
   let held: { copy: Copy | null; at: number } | null = null;
   let lastError: RegistryError | undefined;
@@ -193,6 +263,8 @@ export function createThemeRegistryStore(deps: ThemeRegistryDeps): ThemeRegistry
     const doc = parseJsonObject(text);
     const fetchedAt = asJsonString(doc?.fetchedAt);
     if (doc === undefined || fetchedAt === undefined || Number.isNaN(Date.parse(fetchedAt))) return null;
+    // A copy names its address only when an override wrote it; without one it is the default's.
+    if ((doc.url === undefined ? THEME_REGISTRY_URL : asJsonString(doc.url)) !== address) return null;
     const read = readRegistry(text);
     if (!read.ok) return null;
     return { fetchedAt, generated: read.generated, themes: read.themes, dropped: read.dropped };
@@ -222,6 +294,7 @@ export function createThemeRegistryStore(deps: ThemeRegistryDeps): ThemeRegistry
       fetching,
     };
     if (lastError !== undefined) status.error = lastError;
+    if (overridden) status.address = address;
     return status;
   }
 
@@ -238,7 +311,7 @@ export function createThemeRegistryStore(deps: ThemeRegistryDeps): ThemeRegistry
     const temp = join(dir, `registry.json.${process.pid}.${seq}.part`);
     const handle = await open(temp, "wx", 0o600);
     try {
-      await handle.writeFile(JSON.stringify({ v: 1, ...copy }));
+      await handle.writeFile(JSON.stringify(overridden ? { v: 1, url: address, ...copy } : { v: 1, ...copy }));
     } finally {
       await handle.close();
     }
@@ -250,9 +323,9 @@ export function createThemeRegistryStore(deps: ThemeRegistryDeps): ThemeRegistry
     }
   }
 
-  /** GET the fixed address, following a redirect only while it stays on the registry's origin. */
+  /** GET the address, following a redirect only while it stays on that address's origin. */
   async function get(signal: AbortSignal): Promise<Response> {
-    let url = THEME_REGISTRY_URL;
+    let url = address;
     for (let hop = 0; hop <= MAX_REDIRECTS; hop += 1) {
       let res: Response;
       try {
@@ -274,7 +347,7 @@ export function createThemeRegistryStore(deps: ThemeRegistryDeps): ThemeRegistry
       } catch {
         throw new RegistryRefusal("fetch-failed");
       }
-      if (next.origin !== REGISTRY_ORIGIN) throw new RegistryRefusal("fetch-failed");
+      if (next.origin !== origin) throw new RegistryRefusal("fetch-failed");
       url = next.href;
     }
     throw new RegistryRefusal("fetch-failed");

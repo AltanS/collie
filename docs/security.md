@@ -396,8 +396,9 @@ the **Browse community themes** sheet of the **Theme** card. The bridge makes on
 https://colliepwa.dev/themes/registry.json
 ```
 
-The address is fixed in the bridge, and no setting changes it. The bridge follows a redirect only
-on colliepwa.dev, refuses a file that is not typed as JSON, over 1 MB or with more than 500 themes,
+The address is fixed in the bridge. The one exception is `COLLIE_THEME_REGISTRY_URL`, for a test
+against a staged copy of the site ([Configure](configure.md#the-community-theme-list)). The bridge
+follows a redirect only on the address's own site, refuses a file that is not typed as JSON, over 1 MB or with more than 500 themes,
 and keeps a theme only when Collie's own theme parser accepts it. It keeps the list in the `themes` folder of its state folder.
 The phone checks every theme again before it draws one, and the page itself never calls colliepwa.dev.
 The refresh needs a write device, runs on the lead only, allows one fetch at a time and is audited.
