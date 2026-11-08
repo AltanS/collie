@@ -76,8 +76,8 @@ card, which holds System, Light and Dark. These are two settings. The theme pick
 the look, and System, Light or Dark picks which half of the colours you see.
 
 The **Mark** card sits under the Appearance card. It picks the logo in the header for this device. Its first choice,
-**From the theme**, is the default: the app draws the mark the theme names, or the Collie mark if the theme names none. A choice of Collie,
-Kawaii, Kawaii Tilt or Pixel wins over every theme. See [The character](#the-character).
+**From the theme**, is the default: the app draws the mark the theme names, or the Collie mark if the theme names none. A choice of one of
+the nine characters wins over every theme. See [The character](#the-character).
 
 A theme that names a typeface writes it into the **Typeface** card once, when you pick the theme. After
 that the Typeface card wins: choose another face there and it stays, until you pick a theme again. The
@@ -145,7 +145,7 @@ list shows at most 25 causes, then one line "and N more". A file is refused for 
 - A shape word is not on its list, or a number stands where a word goes.
 - It has a `surface` block, a `fonts.display` face or an `ansi` block, and says version 1.
 - It sets `pane-active`, and says version 1 or 2.
-- It sets `character`, and says version 1, 2 or 3. Or `character` is not one of `collie`, `kawaii`, `kawaii-tilt` and `pixel`.
+- It sets `character`, and says version 1, 2 or 3. Or `character` is not one of `collie`, `kawaii`, `kawaii-tilt`, `pixel`, `glass`, `glass-front`, `delft`, `delft-front` and `sheep`.
 - Its `ansi` block lacks a key, has a colour with an alpha, or fails a gate under
   [Terminal palette](#terminal-palette).
 - It has a bad `id`, `name` or `author`, or the `id` belongs to a shipped theme.
@@ -310,7 +310,7 @@ version 2 file: it is Daylight with a shorter list of colours and the full palet
 - `surface` is optional. Every key in it is optional too, and a key you leave out takes the default word of its list.
   See [Shape](#shape) and [Look](#look).
 - `ansi` is optional, and it holds all 18 keys or none. See [Terminal palette](#terminal-palette).
-- `character` is optional: `collie`, `kawaii`, `kawaii-tilt` or `pixel`. It needs version 4. See [The character](#the-character).
+- `character` is optional: `collie`, `kawaii`, `kawaii-tilt`, `pixel`, `glass`, `glass-front`, `delft`, `delft-front` or `sheep`. It needs version 4. See [The character](#the-character).
 - `$schema` is allowed and ignored. The file is at most 64 KiB.
 
 A value is `#rrggbb`, `#rrggbbaa`, or `oklch(L C H)` and `oklch(L C H / A)` in plain numbers. L is 0 to 1, C is
@@ -393,7 +393,7 @@ that sets one of them must say [version 3](#versions).
 ### The character
 
 A theme may name the character in the header. The key is `character`, at the top level of the file, and it
-takes one of four words.
+takes one of nine words.
 
 | Word | Character |
 | --- | --- |
@@ -401,6 +401,11 @@ takes one of four words.
 | `kawaii` | The Kawaii mark. |
 | `kawaii-tilt` | The Kawaii Tilt mark. |
 | `pixel` | The Pixel mark. |
+| `glass` | The Glass mark. |
+| `glass-front` | The Glass Front mark. |
+| `delft` | The Delft mark. |
+| `delft-front` | The Delft Front mark. |
+| `sheep` | The Sheep mark. |
 
 ```json
 {
@@ -415,8 +420,7 @@ takes one of four words.
 - **The file says version 4.** A file that sets `character` and says 1, 2 or 3 is refused. Collie writes version 4 for a
   theme that sets it, and the lowest version for every theme that does not. An export of a theme without `character`
   is the same text as before.
-- **The device wins.** In **Settings → Appearance → Mark**, a choice of Collie, Kawaii, Kawaii Tilt or Pixel wins over the
-  theme. **From the theme** is the default, and it draws the `character` of the theme on screen, or the Collie mark if
+- **The device wins.** In **Settings → Appearance → Mark**, a choice of any of the nine wins over the theme. **From the theme** is the default, and it draws the `character` of the theme on screen, or the Collie mark if
   that theme sets none.
 - **A theme you try counts.** While the ribbon of [Try a theme](#try-a-theme-before-you-keep-it) is on, the
   character of the tried theme counts as the theme's character.
@@ -568,7 +572,7 @@ These are the problems people meet most, with the cause and the fix for each.
   must pass its gate. The refusal names the key and the number it measured.
 - **The header shows the Collie mark under a theme that names another.** Settings → Appearance → Mark may be set to
   Collie, which wins over the theme. Set it to **From the theme**.
-- **The file is refused and names `character`.** The word must be `collie`, `kawaii`, `kawaii-tilt` or `pixel`, and the file must say
-  version 4.
+- **The file is refused and names `character`.** The word must be one of the nine under
+  [The character](#the-character), and the file must say version 4.
 - **The theme is gone after clearing browser data.** Imported themes live in this browser only. Import the
   file again.

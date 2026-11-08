@@ -737,13 +737,13 @@ describe("ThemePickerControl and the header character", () => {
     expect(store.library()).toHaveLength(0);
   });
 
-  it("refuses an unknown character word and lists the four", async () => {
+  it("refuses an unknown character word and lists every one", async () => {
     const { ThemePickerControl } = await load();
     const { container } = render(<ThemePickerControl />);
     pick(container, fileOf(JSON.stringify({ ...copy("odd", "Odd"), version: 4, character: "dog" })));
     const dialog = await screen.findByRole("dialog", { name: "This file was not imported" });
     expect(dialog).toHaveTextContent("The character choice is not valid.");
-    expect(dialog).toHaveTextContent('"character" must be one of: collie, kawaii, kawaii-tilt, pixel.');
+    expect(dialog).toHaveTextContent('"character" must be one of: collie, kawaii, kawaii-tilt, pixel, glass, glass-front, delft, delft-front, sheep.');
   });
 
   it("exports a theme with a character as version 4, and the file imports back to the same theme", async () => {
