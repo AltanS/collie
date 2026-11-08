@@ -1,6 +1,7 @@
 import { useLoaderData } from "react-router";
 import { FlaskConical } from "lucide-react";
 
+import { AppearanceIntro } from "@/components/appearance-intro";
 import { SettingsPage } from "@/components/settings-page";
 import { Notice } from "@/components/ui/notice";
 import { useLocale } from "@/hooks/use-locale";
@@ -83,9 +84,14 @@ import { useScope } from "@/lib/session";
 export function SettingsAppearanceRoute() {
   return (
     <SettingsPage title="settings.section.appearance.title">
+      {/* "Make Collie your own": one line and a docs link over the three cards that make the app
+          yours, in the order a person decides them. Character first, because the header dog is the
+          first thing that looks like you; then the theme (Paste, Browse and Try live in its card);
+          then which half of the theme you see. */}
+      <AppearanceIntro />
       {/* Which theme, then which half of it: the picker sits directly above the three-way (System,
           Light, Dark) because the two are one question asked twice, and a person who finds one
-          should find the other. First on the page, because it is the one people come here for. */}
+          should find the other. */}
       <ThemePickerControl />
       <ThemeControl />
       {/* Beside appearance because both are "how this phone presents itself". */}

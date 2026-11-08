@@ -44,7 +44,7 @@ export const zh: Dictionary = {
   "settings.theme.option.dark": "深色",
 
   "theme.title": "主题",
-  "theme.description": "选择一种外观，或从文件导入。",
+  "theme.description": "选择一种外观，或添加一个，保留前先试用。",
   "theme.import": "导入",
   "theme.export": "导出",
   "theme.remove": "移除",

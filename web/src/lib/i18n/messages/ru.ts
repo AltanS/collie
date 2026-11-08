@@ -41,7 +41,7 @@ export const ru: Dictionary = {
   "settings.theme.option.dark": "Темная",
 
   "theme.title": "Тема",
-  "theme.description": "Выберите вид или импортируйте его из файла.",
+  "theme.description": "Выберите вид или добавьте новый и примерьте его, прежде чем оставить.",
   "theme.import": "Импорт",
   "theme.export": "Экспорт",
   "theme.remove": "Удалить",

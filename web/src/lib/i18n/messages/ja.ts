@@ -43,7 +43,7 @@ export const ja: Dictionary = {
   "settings.theme.option.dark": "ダーク",
 
   "theme.title": "テーマ",
-  "theme.description": "外観を選択するか、ファイルからインポートします。",
+  "theme.description": "外観を選ぶか、新しく追加して、残す前に試します。",
   "theme.import": "インポート",
   "theme.export": "エクスポート",
   "theme.remove": "削除",

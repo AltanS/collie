@@ -57,6 +57,10 @@ export const en = {
   "settings.nav.back": "Back",
 
   // --- settings.theme ---
+  // The opening of Settings → Appearance (components/appearance-intro.tsx).
+  "settings.appearance.intro.title": "Make Collie your own",
+  "settings.appearance.intro.body": "Pick a character for the header, a theme for the colours and shape, and light or dark.",
+  "settings.appearance.intro.docs": "How themes and characters work",
   "settings.theme.title": "Appearance",
   "settings.theme.description": "Follow your phone, or pin one.",
   "settings.theme.option.system": "System",
@@ -65,7 +69,7 @@ export const en = {
 
   // --- theme (the picker, the importer; M57) ---
   "theme.title": "Theme",
-  "theme.description": "Pick a look, or import one from a file.",
+  "theme.description": "Pick a look, or add one and try it before you keep it.",
   "theme.import": "Import",
   "theme.export": "Export",
   "theme.remove": "Remove",
@@ -3220,6 +3224,9 @@ export type Messages = typeof en;
  * key for good: a key stays here only between a feature and its translation pass.
  */
 export const PENDING_TRANSLATION = [
+  "settings.appearance.intro.title",
+  "settings.appearance.intro.body",
+  "settings.appearance.intro.docs",
   "theme.paste",
   "theme.paste.title",
   "theme.paste.label",
