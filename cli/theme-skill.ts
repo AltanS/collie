@@ -19,6 +19,7 @@ const DOCS_TOKEN = "{{COLLIE_THEME_DOCS}}";
 /** The `## ` sections of `docs/themes.md` the brief carries, in the order it prints them. */
 export const THEME_SKILL_SECTIONS = [
   "Write a theme",
+  "Characters",
   "Shape",
   "Look",
   "Terminal palette",
