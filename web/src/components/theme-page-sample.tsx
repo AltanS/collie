@@ -77,7 +77,7 @@ export function PageSample({ theme, half }: { theme: Theme; half: "light" | "dar
 
 /**
  * The character a theme names, drawn small beside its name ("Character: Kawaii"), or nothing when the theme names
- * none. The mark is passed explicitly: the preview shows the theme's own logo whatever this device chose.
+ * none. The mark is passed explicitly: the preview shows this theme's character, not the worn theme's.
  * It is drawn on the card colour, because both sheets that show it sit on the card.
  */
 export function ThemeMarkLine({ theme }: { theme: Theme }) {

@@ -1,15 +1,14 @@
 import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { __resetDesign, setDesignMark } from "@/lib/design";
-import { currentMarkId, resolveMarkId, useMarkId, useThemeMarkId } from "@/lib/mark";
+import { currentMarkId, resolveMarkId, useMarkId } from "@/lib/mark";
 import type { MarkId } from "@/lib/mark-ids";
 import { LIBRARY_STORAGE_KEY, __resetThemeStore, setActiveTheme } from "@/lib/theme/store";
 import { __resetTrial, endTrial, startTrial } from "@/lib/theme/trial";
 import type { Theme } from "@/lib/theme/schema";
 
-// Which header mark the app draws: the device's choice, else the worn theme's, else Collie. A theme
-// being TRIED is the worn theme, so it wins over the stored one even when it names no mark.
+// Which header mark the app draws: the worn theme's character, else Collie. There is no device choice.
+// A theme being TRIED is the worn theme, so it wins over the stored one even when it names none.
 
 function theme(id: string, character?: MarkId): Theme {
   const base: Theme = { version: 1, id, name: id, light: { background: "#fdfaf3" } };
@@ -20,26 +19,17 @@ function theme(id: string, character?: MarkId): Theme {
 const COLLIE = theme("base");
 
 describe("resolveMarkId", () => {
-  it("falls to Collie when nothing names a mark", () => {
-    expect(resolveMarkId({ device: undefined, trial: null, active: COLLIE })).toBe("collie");
+  it("falls to Collie when the theme names no character", () => {
+    expect(resolveMarkId({ trial: null, active: COLLIE })).toBe("collie");
   });
 
-  it("takes the active theme's mark when the device says nothing", () => {
-    expect(resolveMarkId({ device: undefined, trial: null, active: theme("a", "kawaii") })).toBe("kawaii");
+  it("takes the active theme's character", () => {
+    expect(resolveMarkId({ trial: null, active: theme("a", "kawaii") })).toBe("kawaii");
   });
 
-  it("lets a device choice win over the theme, including a choice of Collie", () => {
-    expect(resolveMarkId({ device: "pixel", trial: null, active: theme("a", "kawaii") })).toBe("pixel");
-    expect(resolveMarkId({ device: "collie", trial: null, active: theme("a", "kawaii") })).toBe("collie");
-  });
-
-  it("lets a trial replace the stored theme, even a trial that names no mark", () => {
-    expect(resolveMarkId({ device: undefined, trial: theme("t", "pixel"), active: theme("a", "kawaii") })).toBe("pixel");
-    expect(resolveMarkId({ device: undefined, trial: theme("t"), active: theme("a", "kawaii") })).toBe("collie");
-  });
-
-  it("still lets the device win over a trial", () => {
-    expect(resolveMarkId({ device: "kawaii", trial: theme("t", "pixel"), active: COLLIE })).toBe("kawaii");
+  it("lets a trial replace the stored theme, even a trial that names no character", () => {
+    expect(resolveMarkId({ trial: theme("t", "pixel"), active: theme("a", "kawaii") })).toBe("pixel");
+    expect(resolveMarkId({ trial: theme("t"), active: theme("a", "kawaii") })).toBe("collie");
   });
 });
 
@@ -48,7 +38,6 @@ describe("the stores behind it", () => {
     endTrial();
     localStorage.clear();
     sessionStorage.clear();
-    __resetDesign();
     __resetTrial();
     __resetThemeStore();
   });
@@ -63,21 +52,20 @@ describe("the stores behind it", () => {
     expect(renderHook(() => useMarkId()).result.current).toBe("collie");
   });
 
-  it("follows the active imported theme and the device choice, live", () => {
+  it("follows the active imported theme, live", () => {
     importLibrary(theme("sunroom", "kawaii"));
     const { result } = renderHook(() => useMarkId());
     expect(result.current).toBe("collie");
-
     act(() => setActiveTheme("sunroom"));
     expect(result.current).toBe("kawaii");
     expect(currentMarkId()).toBe("kawaii");
+  });
 
-    act(() => setDesignMark("pixel"));
-    expect(result.current).toBe("pixel");
-    expect(currentMarkId()).toBe("pixel");
-
-    act(() => setDesignMark(null));
-    expect(result.current).toBe("kawaii");
+  it("ignores a device mark a build of this branch once stored, because no device choice exists", () => {
+    localStorage.setItem("collie:design:v1", JSON.stringify({ font: "atkinson", mark: "pixel" }));
+    importLibrary(theme("sunroom", "kawaii"));
+    act(() => setActiveTheme("sunroom"));
+    expect(renderHook(() => useMarkId()).result.current).toBe("kawaii");
   });
 
   it("follows a trial while it runs and goes back when it ends", () => {
@@ -89,13 +77,5 @@ describe("the stores behind it", () => {
     expect(currentMarkId()).toBe("pixel");
     act(() => endTrial());
     expect(result.current).toBe("collie");
-  });
-
-  it("gives the theme's own mark through useThemeMarkId whatever the device chose", () => {
-    importLibrary(theme("sunroom", "kawaii"));
-    act(() => setActiveTheme("sunroom"));
-    act(() => setDesignMark("pixel"));
-    expect(renderHook(() => useThemeMarkId()).result.current).toBe("kawaii");
-    expect(renderHook(() => useMarkId()).result.current).toBe("pixel");
   });
 });

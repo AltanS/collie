@@ -9,6 +9,8 @@
   Altan called the first marks on quality · Altan's brief of 2026-11-08 for the theming release (two more
   marks for a different crowd, pickable in Appearance and in a theme file), then the same day: "make sure we
   have the right internal contract for these brand marks, so that we can colour the beads, spin speed etc."
+  · and later that day, after a device picker had been built: "the character switch should be way down or
+  even entirely hidden, kind of like a goodie for people creating their own themes."
   · the host code that reached into the Collie mark: `index.css` (`.collie-applying .cm-b circle…`,
   `.collie-reconnected …`) and `components/collie-home.tsx` (a `getAnimations()` filter on keyframe names)
   · `web/src/components/mark-contract.ts` (a sealed copy of collie-brand `src/mark-contract.ts`) ·
@@ -20,7 +22,7 @@
 ADR 0106 kept the Collie dog the same under every theme, after a first `mark` field shipped marks that did not
 meet the bar. On 2026-11-08 Altan asked for the opposite: the current mark reads as masculine, and the theming
 release should offer marks in other design languages, each still a border collie with beads on an orbit,
-chosen per device in Appearance and named by a theme. The new marks come out of the collie-brand pipeline
+named by a theme. The new marks come out of the collie-brand pipeline
 (one artwork origin, one generator, a sealed file), and Altan picked them by name from a playground.
 
 The same day showed the second problem. Collie now uses the mark for its loading states: a spin round on a
@@ -35,12 +37,13 @@ each further mark would break it quietly: a bead drawn as a `rect` instead of a 
    (`collie`, `kawaii`, `kawaii-tilt`, `pixel`, `glass`, `glass-front`, `sheep`, `owl`). A file
    that sets it is version 4, the lowest version that holds
    it; a file without it reads and exports exactly as before. Collie is the default everywhere. A person reads
-   the word "Character" for a mark, in Settings and in the docs; the code says mark. The key is not `mark`,
+   the word "Character" for a mark, in the docs and the theme preview; the code says mark. The key is not `mark`,
    the name the removed field of M57 spec 09 had, so a file written for that design is refused, not misread.
-2. **The device decides first.** Appearance offers "From the theme" (the default) and every character. A device
-   choice other than "From the theme" wins over the theme; a theme without `character` draws Collie. The favicon,
-   the app icons, the splash and the link card stay the Collie mark.
-3. **A mark other than Collie costs nothing until it is chosen.** Each is a lazy chunk under `marks/`, outside
+2. **Only the theme names a character.** There is no device setting: a character is a goodie for whoever
+   writes a theme, not a switch in Appearance (Altan, 2026-11-08, after a Settings card had been built). The
+   header draws the worn theme's character, a tried theme's while the trial runs, and Collie when the theme
+   names none. The favicon, the app icons, the splash and the link card stay the Collie mark.
+3. **A mark other than Collie costs nothing until a theme wears it.** Each is a lazy chunk under `marks/`, outside
    the precache, kept by the service worker on first use. A chunk that cannot load draws the Collie mark.
 4. **Every mark implements one contract, `mark-contract.ts`.** It is hand-written in collie-brand, where the
    generators emit against it, and consumers copy a sealed copy beside the marks. It holds the semantic states

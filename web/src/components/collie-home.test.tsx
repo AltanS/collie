@@ -2,7 +2,7 @@ import { act, render, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { __resetOperatorBusy, beginBusy } from "@/lib/busy";
-import { __resetDesign, setDesignMark } from "@/lib/design";
+import { LIBRARY_STORAGE_KEY, __resetThemeStore, setActiveTheme } from "@/lib/theme/store";
 import { clearStatus, setStatus } from "@/lib/status";
 import { collieMark, markIsLive, markState } from "@/test/collie-mark";
 import { savedAtLabel } from "@/lib/format";
@@ -387,16 +387,16 @@ describe("CollieHome — the link coming back", () => {
   });
 });
 
-// THE HEADER DRAWS THE CHOSEN MARK, inside the same measurement box (`data-slot="collie-mark"`) whichever
+// THE HEADER DRAWS THE WORN THEME'S CHARACTER, inside the same measurement box (`data-slot="collie-mark"`) whichever
 // one it is, so the agent-start handoff finds its anchor under every mark.
 describe("CollieHome — the mark", () => {
   beforeEach(() => {
     localStorage.clear();
-    __resetDesign();
+    __resetThemeStore();
   });
   afterEach(() => {
     localStorage.clear();
-    __resetDesign();
+    __resetThemeStore();
   });
 
   it("draws the Collie mark in its box by default", () => {
@@ -406,13 +406,19 @@ describe("CollieHome — the mark", () => {
     expect(box?.querySelector('svg[data-mark="collie"]')).not.toBeNull();
   });
 
-  it("draws the mark the device chose, in the same box, and Collie again when it goes back", async () => {
+  it("draws the worn theme's character, in the same box, and Collie again under a theme with none", async () => {
+    const themes = [
+      { version: 4, id: "sunroom", name: "Sunroom", character: "kawaii", light: { background: "#fdfaf3" } },
+      { version: 1, id: "plain", name: "Plain", light: { background: "#fdfaf3" } },
+    ];
+    localStorage.setItem(LIBRARY_STORAGE_KEY, JSON.stringify({ version: 1, themes }));
+    __resetThemeStore();
     const { container } = render(<CollieHome trouble={false} />);
     const box = () => container.querySelector('[data-slot="collie-mark"]');
-    act(() => setDesignMark("kawaii"));
+    act(() => setActiveTheme("sunroom"));
     await waitFor(() => expect(box()?.querySelector('[data-mark="kawaii"]')).not.toBeNull());
     expect(collieMark(container)).toBeNull();
-    act(() => setDesignMark(null));
+    act(() => setActiveTheme("plain"));
     expect(box()?.querySelector('svg[data-mark="collie"]')).not.toBeNull();
   });
 });
