@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Fixed
+
+- **omp with the Nerd Font symbols shows its dialog buttons again.** With `symbolPreset: nerd`, omp 18.18 draws its keycaps, pointer and markers as Nerd Font glyphs, and the phone showed only the Escape card on a tool approval, a batch of Ask questions and its review, and the plan review. It now reads those screens in both symbol sets, as it already did for `/switch`, and reads the empty role dot `/switch` shows there too.
+
 ## [1.28.0] - 2026-11-06
 
 ### Added

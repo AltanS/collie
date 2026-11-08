@@ -207,12 +207,14 @@ picks which one reads the rest. A screen that mixes two presets declines.
 | status dot (current model, role chips) | `●` | U+F111 |
 | intelligence badge | `🧠` | U+EE9C |
 | context badge | `◫` | U+E70F |
+| unselected role chip | `○` | U+F10C |
 
 The codepoints are the same in omp 18.4.10 (`omp--v18-4-switch-nerd.txt`) and 18.17.0
 (`omp--v18-17-0-nerd-switch*.txt`). The card prints the unicode glyphs for every preset (a private-use
-glyph may not exist in the card's face), while the signature keeps the screen verbatim. Not captured in
-`nerd`, so a screen that prints one declines: the over-context mark (`⦸` in `unicode`) and the dot of an
-unselected role chip (`○`).
+glyph may not exist in the card's face), while the signature keeps the screen verbatim. omp 18.18.0
+printed the dot of an unselected role chip under `nerd` as U+F10C (`○` in `unicode`,
+`omp--v18-18-0-nerd-switch--w250.txt`, 2026-11-08), so it reads since. Still not captured in `nerd`, so a
+screen that prints it declines: the over-context mark (`⦸` in `unicode`).
 
 Also declined, read from source and not captured: the `ascii` preset (`>` pointer, `[/]` search,
 `[x]` mark), a config error in place of the status row, a rebound key in the footer, and a row with

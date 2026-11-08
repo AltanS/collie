@@ -70,6 +70,8 @@ const GOAL = ["omp--v18-6-1-approval-goal--w120.txt"];
 const DIVIDED = ["omp--v18-12-6-approval-bash--w120.txt", "omp--v18-12-6-approval-bash-later--w120.txt"];
 // omp 18.12.6's `Allow tool: task`: the divided panel with a summary row that omp always clips (approval.ts, SUMMARY_TOOLS).
 const TASK = ["omp--v18-12-6-approval-task--w120.txt"];
+// omp 18.18.0's divided panel at 250 columns, in the `unicode` and the `nerd` preset (omp/keycaps.ts).
+const DIVIDED_18_18 = ["omp--v18-18-0-approval-bash--w250.txt", "omp--v18-18-0-nerd-approval-bash--w250.txt"];
 
 describe("omp 18.4.10 (`unicode` preset) lifts as Approve, Deny, Cancel", () => {
   it("approval-bash: the pointer on Approve, the command on the card", () => {
@@ -544,11 +546,11 @@ describe("tail anchoring", () => {
 });
 
 describe("the grammar claims nothing else in the corpus", () => {
-  it("lifts exactly the eleven approval captures, out of every capture in the corpus", () => {
+  it("lifts exactly the thirteen approval captures, out of every capture in the corpus", () => {
     const all = readdirSync(PANES_DIR).filter((f) => f.endsWith(".txt"));
     expect(all.length).toBeGreaterThan(300);
     const lifted = all.filter((name) => detectApproval(load(name)) !== null);
-    expect(lifted.toSorted()).toEqual([...LIFTED, ...GOAL, ...DIVIDED, ...TASK].toSorted());
+    expect(lifted.toSorted()).toEqual([...LIFTED, ...GOAL, ...DIVIDED, ...TASK, ...DIVIDED_18_18].toSorted());
   });
 });
 
@@ -658,6 +660,56 @@ describe("omp 18.12.6 (`unicode` preset) lifts the divided panel as Approve, the
   });
 });
 
+// ── omp 18.18.0: the divided panel in both presets (omp/keycaps.ts) ─────────────────────────────────────
+
+const NERD_DIVIDED_FOOTER =
+  "↑/↓ choose · \u{F0311} select · Ctrl+\u{F0311}/Ctrl+Q approve · \u{F12B7} deny · Ctrl+O details · type to deny and steer";
+
+describe("omp 18.18.0 lifts the divided panel under the `unicode` and the `nerd` preset alike", () => {
+  it.each(DIVIDED_18_18)("%s: the three rows, `ls -la` on the card, the `❯` badge, Deny as Escape", (name) => {
+    const model = detectApproval(load(name))!;
+    expect(model.caption).toBe("Allow tool: bash");
+    expect(model.question).toBe("Allow tool: bash\nCommand: ls -la");
+    expect(model.options).toEqual([
+      { label: "Approve", description: "Command: ls -la", keys: ["Enter"], keyLabel: "❯" },
+      { label: "Approve bash for this session", keys: ["Down", "Enter"], keyLabel: "" },
+      { label: "Deny", keys: ["Escape"], keyLabel: "Esc" },
+    ]);
+  });
+
+  it("the nerd capture differs from the unicode one in the footer keycaps and the pointer only", () => {
+    const nerd = textsOf("omp--v18-18-0-nerd-approval-bash--w250.txt");
+    const unicode = textsOf("omp--v18-18-0-approval-bash--w250.txt");
+    const region = (texts: string[]) => texts.slice(texts.findIndex((t) => t.startsWith("╭─ Allow tool")), texts.findLastIndex((t) => /^╰─+╯$/.test(t)) + 1);
+    const mapped = region(nerd).map((row) =>
+      row.replaceAll("\u{F0311}", "⏎").replaceAll("\u{F12B7}", "⎋").replace("\u{F054} ", "❯ "),
+    );
+    expect(mapped).toEqual(region(unicode));
+  });
+
+  it("a walk on the nerd panel moves the signature and not the coreSignature", () => {
+    const at = panel({ footer: NERD_DIVIDED_FOOTER, choices: ["\u{F054} Approve", "  Approve bash for this session", "  Deny"] });
+    const moved = panel({ footer: NERD_DIVIDED_FOOTER, choices: ["  Approve", "\u{F054} Approve bash for this session", "  Deny"] });
+    const a = detectApproval(fromTexts(at))!;
+    const b = detectApproval(fromTexts(moved))!;
+    expect(b.options.map((o) => [o.keys, o.keyLabel])).toEqual([
+      [["Up", "Enter"], ""],
+      [["Enter"], "❯"],
+      [["Escape"], "Esc"],
+    ]);
+    expect(a.signature).not.toBe(b.signature);
+    expect(a.coreSignature).toBe(b.coreSignature);
+  });
+
+  it.each([
+    ["the nerd footer over the unicode pointer", NERD_DIVIDED_FOOTER, ["❯ Approve", "  Approve bash for this session", "  Deny"]],
+    ["the unicode footer over the nerd pointer", DIVIDED_FOOTER, ["\u{F054} Approve", "  Approve bash for this session", "  Deny"]],
+    ["one keycap from each preset", NERD_DIVIDED_FOOTER.replace("\u{F12B7}", "⎋"), ["\u{F054} Approve", "  Approve bash for this session", "  Deny"]],
+  ])("%s declines: a screen omp never draws", (_name, footer, choices) => {
+    expect(detectApproval(fromTexts(panel({ footer, choices })))).toBeNull();
+  });
+});
+
 describe("the divided panel declines everything it was not built against", () => {
   const declines = (rows: string[]) => expect(detectApproval(fromTexts(rows))).toBeNull();
 
@@ -666,7 +718,7 @@ describe("the divided panel declines everything it was not built against", () =>
   });
 
   it.each([
-    ["a nerd preset footer", "up/down choose · enter select · Ctrl+Enter/Ctrl+Q approve · esc deny · Ctrl+O details · type to deny and steer"],
+    ["a text keycap footer", "up/down choose · enter select · Ctrl+Enter/Ctrl+Q approve · esc deny · Ctrl+O details · type to deny and steer"],
     ["a rebound approve key", DIVIDED_FOOTER.replace("Ctrl+Q", "Ctrl+Y")],
     ["a footer that scrolls", `${DIVIDED_FOOTER} · PgUp/PgDn scroll`],
     ["a footer with a draft in the composer", "⏎ deny and send · Ctrl+⏎/Ctrl+Q approve · ⎋ deny · Ctrl+O details"],

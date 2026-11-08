@@ -118,6 +118,17 @@ const MODALS_WITH_A_WAY_OUT = [
   "omp--v18-16-0-plan-review-moved--w80.txt",
   "omp--v18-16-0-plan-review-slider--w140.txt",
   "omp--v18-16-0-plan-review-slider-moved--w140.txt",
+  // omp 18.18.0 under the `nerd` preset (2026-11-08): the batched Ask, its review (complete and unanswered),
+  // the plan review and the picker. Every footer ends in the preset's own escape keycap and its verb. The
+  // divided approval is not here in any preset: its footer ends `type to deny and steer`.
+  "omp--v18-18-0-nerd-ask-batch--w250.txt",
+  "omp--v18-18-0-nerd-ask-batch-q2--w250.txt",
+  "omp--v18-18-0-nerd-ask-batch-saved--w250.txt",
+  "omp--v18-18-0-nerd-ask-review--w250.txt",
+  "omp--v18-18-0-nerd-ask-review-unanswered--w250.txt",
+  "omp--v18-18-0-nerd-plan-review--w250.txt",
+  "omp--v18-18-0-nerd-plan-review-moved--w250.txt",
+  "omp--v18-18-0-nerd-switch--w250.txt",
 ];
 
 // The `/tree` picker is a modal that prints NO way out: omp clips its hint row and neither capture
