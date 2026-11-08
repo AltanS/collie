@@ -218,6 +218,61 @@ describe("discovery and the switch", () => {
   });
 });
 
+describe("the switch route", () => {
+  test("on then off writes the file the CLI reads, moves modsRev, and answers the mod as listed", async () => {
+    const r = await rig([exited(belt("1"))]);
+    await makeMod(r.configDir, "legs", MANIFEST, { "legs.sh": "#!/bin/sh\n" });
+    await r.service.refresh(true);
+    const before = (await r.service.reply(undefined)).rev;
+    const on = await r.service.setSwitch(HOST, "legs", true);
+    expect(on.status).toBe(200);
+    if (on.status !== 200) return;
+    expect(on.body).toMatchObject({ host: HOST, id: "legs", on: true });
+    expect(on.body.state).not.toBe("off");
+    expect((await r.service.reply(undefined)).rev).toBeGreaterThan(before);
+    const file = JSON.parse(await readFile(join(r.stateDir, "mods", "switches.json"), "utf8"));
+    expect(file.v).toBe(1);
+    expect(Object.keys(file.on)).toEqual(["legs"]);
+    const off = await r.service.setSwitch(HOST, "legs", false);
+    expect(off).toMatchObject({ status: 200, body: { id: "legs", on: false, state: "off" } });
+    expect(JSON.parse(await readFile(join(r.stateDir, "mods", "switches.json"), "utf8")).on).toEqual({});
+  });
+
+  test("a switch keeps the other mods' switches", async () => {
+    const r = await rig([exited(belt("1"))]);
+    await makeMod(r.configDir, "legs", MANIFEST);
+    await makeMod(r.configDir, "other", MANIFEST.replace('"legs"', '"other"'));
+    await switchOn(r.stateDir, "other");
+    await r.service.setSwitch(HOST, "legs", true);
+    expect(Object.keys(JSON.parse(await readFile(join(r.stateDir, "mods", "switches.json"), "utf8")).on).toSorted()).toEqual(["legs", "other"]);
+  });
+
+  test("a mod whose manifest is refused can still be switched off", async () => {
+    const r = await rig([exited(belt("x"))]);
+    await makeMod(r.configDir, "bad", 'id = "bad"\nname = "Bad"\nrun = "./x.sh"\nplaces = ["nowhere"]\n');
+    await switchOn(r.stateDir, "bad");
+    await r.service.refresh(true);
+    const off = await r.service.setSwitch(HOST, "bad", false);
+    expect(off).toMatchObject({ status: 200, body: { id: "bad", on: false, state: "skipped" } });
+  });
+
+  test("a foreign host and an unknown mod are 404 and write no file", async () => {
+    const r = await rig([exited(belt("1"))]);
+    await makeMod(r.configDir, "legs", MANIFEST);
+    expect(await r.service.setSwitch("minibuch", "legs", true)).toEqual({ status: 404, body: { error: "unknown-host" } });
+    expect(await r.service.setSwitch(HOST, "nope", true)).toEqual({ status: 404, body: { error: "unknown-mod" } });
+    expect(await Bun.file(join(r.stateDir, "mods", "switches.json")).exists()).toBe(false);
+  });
+
+  test("two switches at once both land", async () => {
+    const r = await rig([exited(belt("1"))]);
+    await makeMod(r.configDir, "legs", MANIFEST);
+    await makeMod(r.configDir, "other", MANIFEST.replace('"legs"', '"other"'));
+    await Promise.all([r.service.setSwitch(HOST, "legs", true), r.service.setSwitch(HOST, "other", true)]);
+    expect(Object.keys(JSON.parse(await readFile(join(r.stateDir, "mods", "switches.json"), "utf8")).on).toSorted()).toEqual(["legs", "other"]);
+  });
+});
+
 describe("the watched gate and the timer", () => {
   test("no run until a phone watched; timers stop five minutes after the last look", async () => {
     const r = await rig([exited(belt("1"))]);

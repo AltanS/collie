@@ -35,6 +35,7 @@ import { TourControl } from "@/components/tour-control";
 import { TypefaceControl } from "@/components/typeface-control";
 import { TelemetrySettingsCard, TelemetrySettingsRow } from "@/components/telemetry-settings-card";
 import { MathControl } from "@/components/math-control";
+import { ModsSettingsCard } from "@/components/mods-settings-card";
 import { ZenControl } from "@/components/zen-control";
 import { useServerDiagnostics } from "@/hooks/use-server-diagnostics";
 import { EMPTY_DEVICES, type DevicesData } from "@/lib/loaders";
@@ -255,6 +256,20 @@ export function SettingsExperimentsRoute() {
     <SettingsPage title="settings.section.experiments.title">
       <ExperimentsContract />
       {/* Nothing is filed here since Chat graduated (ADR 0082). The next experiment is a card here. */}
+    </SettingsPage>
+  );
+}
+
+/**
+ * Settings → Mods (M94 slice 04): one card, one switch per mod. Its own section rather than a card
+ * on System, because the rows are per MOD, a list that grows with every folder the operator makes
+ * (the same reason Harnesses is a page of its own). The index offers the row only while the phone
+ * holds a mods reply; the route is reachable by URL either way, and the card then draws nothing.
+ */
+export function SettingsModsRoute() {
+  return (
+    <SettingsPage title="settings.section.mods.title">
+      <ModsSettingsCard />
     </SettingsPage>
   );
 }

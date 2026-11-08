@@ -324,6 +324,10 @@ export const ACK_MANIFEST = {
     channel: "inline",
     why: "The ask card is the acknowledgement: a taken answer closes it, and already answered, changed, may-not-have-arrived (Try again) and refused are written in the card itself, because each is about that one question and must outlast the next tap.",
   },
+  switchMod: {
+    channel: "echo",
+    why: "The mod's switch flips on the spot and holds that position until the bridge's list agrees (components/mods-settings-card.tsx); a refused or lost post puts it back and says so in the status line, because the reason is about that one mod.",
+  },
   tapMod: {
     channel: "echo",
     why: "A mod's control swaps its glyph for Collie's spinner on the spot it was tapped until the receipt lands, and the mod's new parts redraw in place; a failed or unknown receipt is written in that part's own frame line, under the control, because it is about that one part (lib/mods/part-frame.tsx).",

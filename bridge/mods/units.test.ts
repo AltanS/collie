@@ -9,7 +9,7 @@ import { parseFacts } from "../../web/src/lib/mods/schema.ts";
 import { createModScanner, diskScanIo, readManifestText, type ScanIo } from "./discover.ts";
 import { buildFacts, factsWorldOf, modsHostName } from "./facts.ts";
 import { switchesPath } from "./paths.ts";
-import { modsTapRoute, parseSince } from "./routes.ts";
+import { modsSwitchRoute, modsTapRoute, parseSince } from "./routes.ts";
 import type { ModsSurface } from "./service.ts";
 import { createSwitchReader, parseSwitches, renderSwitches, withSwitch, writeSwitches } from "./switches.ts";
 
@@ -183,6 +183,7 @@ describe("the routes", () => {
         calls.push([host, id]);
         return { status: 404, body: { error: "unknown-mod" } };
       },
+      setSwitch: async () => ({ status: 404, body: { error: "unknown-mod" } }),
     };
     const route = /^\/api\/mods\/([^/]+)\/([^/]+)\/tap$/;
     const match = route.exec("/api/mods/blue%66in/legs/tap");
@@ -194,13 +195,42 @@ describe("the routes", () => {
     expect(await modsTapRoute(surface, broken, {})).toEqual({ status: 404, body: { error: "unknown-host" } });
   });
 
-  test("server.ts gates the list as a read and the tap as a write, stamps the watch for a paired phone only, and declares the tap route", () => {
+  test("the switch path is decoded, the body must be exactly { on: boolean }", async () => {
+    const calls: [string, string, boolean][] = [];
+    const surface: ModsSurface = {
+      rev: () => 1,
+      noteWatched: () => {},
+      reply: async () => ({ rev: 1, mods: [], parts: [], present: [] }),
+      tap: async () => ({ status: 404, body: { error: "unknown-mod" } }),
+      setSwitch: async (host, id, on) => {
+        calls.push([host, id, on]);
+        return { status: 404, body: { error: "unknown-mod" } };
+      },
+    };
+    const route = /^\/api\/mods\/([^/]+)\/([^/]+)\/switch$/;
+    const match = route.exec("/api/mods/blue%66in/legs/switch");
+    if (match === null) throw new Error("no match");
+    await modsSwitchRoute(surface, match, { on: false });
+    expect(calls).toEqual([["bluefin", "legs", false]]);
+    for (const body of [undefined, null, [], {}, { on: "yes" }, { on: true, extra: 1 }]) {
+      expect(await modsSwitchRoute(surface, match, body)).toEqual({ status: 400, body: { error: "switch-invalid" } });
+    }
+    expect(calls.length).toBe(1);
+    const broken = route.exec("/api/mods/%E0%A4%A/legs/switch");
+    if (broken === null) throw new Error("no match");
+    expect(await modsSwitchRoute(surface, broken, { on: true })).toEqual({ status: 404, body: { error: "unknown-host" } });
+  });
+
+  test("server.ts gates the list as a read and the tap as a write, stamps the watch for a paired phone only, the switch as a write, and declares both routes", () => {
     const src = readFileSync(join(import.meta.dir, "..", "server.ts"), "utf8");
     const list = src.slice(src.indexOf('if (pathname === "/api/mods" && req.method === "GET")'));
     expect(list.slice(0, 400)).toContain('guard(req, cfg, "read", pairingGate)');
     expect(list.slice(0, 600)).toContain("if (pairedLabel(req, pairingGate) !== null) mods.noteWatched();");
     const tap = src.slice(src.indexOf("const modsTap = MODS_TAP_ROUTE.exec(pathname);"));
     expect(tap.slice(0, 300)).toContain('guard(req, cfg, "write", pairingGate)');
+    const sw = src.slice(src.indexOf("const modsSwitch = MODS_SWITCH_ROUTE.exec(pathname);"));
+    expect(sw.slice(0, 300)).toContain('guard(req, cfg, "write", pairingGate)');
+    expect(src).toContain("const MODS_SWITCH_ROUTE = /^\\/api\\/mods\\/([^/]+)\\/([^/]+)\\/switch$/;");
     expect(src).toContain("const MODS_TAP_ROUTE = /^\\/api\\/mods\\/([^/]+)\\/([^/]+)\\/tap$/;");
     expect(src).toContain("if (poller !== null) opts.mods?.noteWatched();");
     expect(src).toContain("if (modsRev !== undefined) body.modsRev = modsRev;");

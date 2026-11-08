@@ -277,10 +277,11 @@ export function readNewAt(search: string): NewAt {
  * instead of a page that renders nothing.
  *
  * The fifth is the only one that can be absent from the index: Experiments renders while
- * `lib/experiments.ts` holds something. Its path needs nothing here — the two ladders below already
- * read every `/settings/<x>` as a child of the index.
+ * `lib/experiments.ts` holds something; Mods (M94) renders while the phone holds a mods reply. Their
+ * paths need nothing here — the two ladders below already read every `/settings/<x>` as a child of
+ * the index.
  */
-export type SettingsSection = "appearance" | "harnesses" | "device" | "voice" | "alerts" | "system" | "experiments";
+export type SettingsSection = "appearance" | "harnesses" | "device" | "voice" | "alerts" | "system" | "mods" | "experiments";
 
 /** One Settings section — a CHILD of the index, carrying the scope like every other path helper. */
 export function settingsSectionPath(section: SettingsSection, scope?: Scope): string {

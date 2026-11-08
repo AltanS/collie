@@ -767,6 +767,9 @@ describe("solo zero-tax — routes", () => {
       // Collie mods (M94 slice 01): a tap on a mod's control. A SOLO route that legitimately extends
       // this list, named here rather than exempted: this bridge's own host only (another host is 404
       // until the crew merge), write-gated because it runs the provider, and 404 with no runner.
+      // And its off switch (slice 04): the same file `collie mod on|off` writes, write-gated, this
+      // bridge's own host only, 404 with no runner.
+      "/^\\/api\\/mods\\/([^/]+)\\/([^/]+)\\/switch$/",
       "/^\\/api\\/mods\\/([^/]+)\\/([^/]+)\\/tap$/",
       // `changes` is the Changes view (ADR 0065): read-only git over the pane's folder, read-gated
       // like `history` beside it and forwarded to the member that owns the pane. `chat` is the live
