@@ -10,8 +10,9 @@ import { fetchTelemetry } from "@/lib/api";
 import { t } from "@/lib/i18n";
 import { telemetrySettingsPath } from "@/lib/nav";
 import { useScope } from "@/lib/session";
-import { shouldShowTelemetryNotice, spendTelemetryNotice, useTelemetryNoticeSpent } from "@/lib/telemetry-notice";
+import { shouldShowTelemetryNotice, spendTelemetryNotice, useTelemetryNoticeKind } from "@/lib/telemetry-notice";
 import type { TelemetryView } from "@/lib/types";
+import { TELEMETRY_DOCS_URL } from "./telemetry-settings-card";
 
 // THE ONE-TIME INSTALL-COUNT NOTICE (M86 spec 02): on the dashboard, a device that has not yet read it
 // is told that Collie 1.27.0 sends anonymous telemetry once a day, and where to turn that off.
@@ -20,16 +21,21 @@ import type { TelemetryView } from "@/lib/types";
 // list below never jumps. It stands only while the machine says the count is on BY DEFAULT
 // (lib/telemetry-notice.ts holds the rule), and it reads that with one best-effort GET: a failed read
 // draws nothing, because a notice that guesses is worse than none. A device that spent it asks nothing.
+//
+// TWO NOTICES, ONE BOX (ADR 0134). A device that never read the first one gets the 1.27.0 notice and
+// its Open Settings button. A device that read only that one gets the update notice once: the same box,
+// one button, "What is sent", that opens the docs in a new tab. Either button and the X spend both.
 // The Settings card is the permanent second surface, so the X is final.
 export function TelemetryNotice() {
   useLocale();
   const nav = useNav();
   const scope = useScope();
-  const isSpent = useTelemetryNoticeSpent();
+  const kind = useTelemetryNoticeKind();
+  const spent = kind === "none";
   const [view, setView] = useState<TelemetryView | null>(null);
 
   useEffect(() => {
-    if (isSpent) return;
+    if (spent) return;
     const ac = new AbortController();
     void (async () => {
       try {
@@ -39,9 +45,10 @@ export function TelemetryNotice() {
       }
     })();
     return () => ac.abort();
-  }, [isSpent]);
+  }, [spent]);
 
-  const open = shouldShowTelemetryNotice({ isSpent, view });
+  const open = shouldShowTelemetryNotice({ kind, view });
+  const update = kind === "update";
 
   return (
     <Collapse open={open}>
@@ -60,16 +67,20 @@ export function TelemetryNotice() {
                 className={NOTICE_ACTION}
                 onClick={() => {
                   spendTelemetryNotice();
+                  if (update) {
+                    window.open(TELEMETRY_DOCS_URL, "_blank", "noopener,noreferrer");
+                    return;
+                  }
                   nav.down(telemetrySettingsPath(scope));
                 }}
               >
-                {t("telemetry.notice.open")}
+                {update ? t("telemetry.notice.docs") : t("telemetry.notice.open")}
               </Button>
             }
             onDismiss={spendTelemetryNotice}
             dismissLabel={t("telemetry.notice.dismiss")}
           >
-            {t("telemetry.notice.body")}
+            {update ? t("telemetry.notice.updateBody") : t("telemetry.notice.body")}
           </Notice>
         </div>
       ) : null}

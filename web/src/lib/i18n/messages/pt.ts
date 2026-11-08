@@ -2698,6 +2698,8 @@ export const pt: Dictionary = {
   "telemetry.card.next.aria": "A próxima mensagem, em JSON",
   "telemetry.card.more": "O que é enviado",
   "telemetry.notice.body": "O Collie 1.27.0 envia telemetria anônima uma vez por dia. Desative isso em Configurações.",
+  "telemetry.notice.updateBody": "A contagem diária do Collie agora também identifica um diálogo que não conseguiu ler, por um código curto feito a partir das dicas de teclas do diálogo, nunca a partir do seu texto.",
+  "telemetry.notice.docs": "O que é enviado",
   "telemetry.notice.open": "Abrir Configurações",
   "telemetry.notice.dismiss": "Dispensar aviso",
   "apiError.telemetry.setting_invalid": "A configuração de telemetria deve ser Ativado ou Desativado. Nada foi alterado.",

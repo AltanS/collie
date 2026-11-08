@@ -2698,6 +2698,8 @@ export const tr: Dictionary = {
   "telemetry.card.next.aria": "Sonraki ileti, JSON olarak",
   "telemetry.card.more": "Neler gönderilir",
   "telemetry.notice.body": "Collie 1.27.0 günde bir kez anonim telemetri gönderir. Ayarlar içinden kapatabilirsiniz.",
+  "telemetry.notice.updateBody": "Collie'nin günlük sayımı artık okuyamadığı bir iletişim kutusunu da, kutunun tuş ipuçlarından üretilen kısa bir kodla belirtir; kodu asla metninizden üretmez.",
+  "telemetry.notice.docs": "Neler gönderilir",
   "telemetry.notice.open": "Ayarlar'ı aç",
   "telemetry.notice.dismiss": "Bildirimi kapat",
   "apiError.telemetry.setting_invalid": "Telemetri ayarı Açık veya Kapalı olmalıdır. Hiçbir şey değiştirilmedi.",

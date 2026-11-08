@@ -2699,6 +2699,8 @@ export const fr: Dictionary = {
   "telemetry.card.next.aria": "Le prochain message, en JSON",
   "telemetry.card.more": "Ce qui est envoyé",
   "telemetry.notice.body": "Collie 1.27.0 envoie des données de télémétrie anonymes une fois par jour. Désactivez cette option dans Paramètres.",
+  "telemetry.notice.updateBody": "Le décompte quotidien de Collie nomme désormais aussi une boîte de dialogue qu'il n'a pas pu lire, par un code court tiré des indications de touches de cette boîte, jamais de votre texte.",
+  "telemetry.notice.docs": "Ce qui est envoyé",
   "telemetry.notice.open": "Ouvrir les Paramètres",
   "telemetry.notice.dismiss": "Ignorer l'avis",
   "apiError.telemetry.setting_invalid": "Le paramètre de télémétrie doit être Activée ou Désactivée. Rien n'a été modifié.",
