@@ -21,8 +21,8 @@
 //
 // Like `schema.ts`, this file loads without a DOM or React, because the bridge imports it.
 
-import { asJsonNumber, asJsonObject, asJsonString, type JsonValue } from "../json";
-import { THEME_MAX_BYTES, parseTheme, type Theme } from "./schema";
+import { asJsonNumber, asJsonObject, asJsonString, parseJsonObject, type JsonValue } from "../json";
+import { THEME_MAX_BYTES, THEME_VERSIONS_READ, parseTheme, type Theme } from "./schema";
 
 // ONE RULE WITH THE SITE (F13). The site's sweep and its registry schema use these four patterns,
 // character for character, and a test on each side pins the sources, so an entry one side lists the
@@ -48,6 +48,12 @@ export interface RegistryEntry {
   text: string;
   /** The repo's star count when the site gave one that passes the check. */
   stars?: number;
+  /**
+   * Set by the host on an entry kept only because its file says a version newer than this Collie
+   * reads ({@link readNewerEntry}). A flag for the reader of the copy, never trusted: the phone runs
+   * both readers itself.
+   */
+  newer?: true;
 }
 
 /** A kept entry and the theme its text parsed to. */
@@ -77,6 +83,51 @@ export function readRegistryEntry(value: JsonValue | undefined): RegistryTheme |
   const stars = asJsonNumber(record.stars);
   if (stars !== undefined && Number.isSafeInteger(stars) && stars >= 0 && stars <= STARS_MAX) entry.stars = stars;
   return { entry, theme: parsed.theme };
+}
+
+/** The longest name a listing this Collie cannot read may show, as the parser caps a name. */
+const NEWER_NAME_MAX = 40;
+
+/** A listed theme this Collie cannot read yet: its file says a version newer than this Collie reads. */
+export interface NewerListing {
+  repo: string;
+  sha: string;
+  path: string;
+  /** The version the file says. */
+  version: number;
+  /** The file's `name`, when it is one short line of text. Drawn as a text node only. */
+  name?: string;
+  stars?: number;
+}
+
+/**
+ * A listed theme refused ONLY because its file says a newer version: the repo, sha and path pass
+ * their rules, the text is within the import cap and is a JSON object, and its `version` is a whole
+ * number above the newest this Collie reads. Nothing else of the file is read, because a newer
+ * version may hold anything; the theme is never drawn, applied or installed. Undefined for any other
+ * entry, including one {@link readRegistryEntry} keeps.
+ */
+export function readNewerEntry(value: JsonValue | undefined): NewerListing | undefined {
+  const record = asJsonObject(value);
+  if (record === undefined) return undefined;
+  const repo = asJsonString(record.repo);
+  const sha = asJsonString(record.sha);
+  const path = asJsonString(record.path);
+  const text = asJsonString(record.text);
+  if (repo === undefined || sha === undefined || path === undefined || text === undefined) return undefined;
+  if (!isRepoSlug(repo) || !SHA_PATTERN.test(sha) || !PATH_PATTERN.test(path)) return undefined;
+  if (new TextEncoder().encode(text).length > THEME_MAX_BYTES) return undefined;
+  const doc = parseJsonObject(text);
+  const version = asJsonNumber(doc?.version);
+  const newest = THEME_VERSIONS_READ[THEME_VERSIONS_READ.length - 1] ?? 0;
+  if (version === undefined || !Number.isSafeInteger(version) || version <= newest) return undefined;
+  const listing: NewerListing = { repo, sha, path, version };
+  const name = asJsonString(doc?.name);
+  // One line of printable text, as a name is: no control character, at most the parser's cap.
+  if (name !== undefined && name.trim() !== "" && [...name].length <= NEWER_NAME_MAX && !/\p{Cc}/u.test(name)) listing.name = name;
+  const stars = asJsonNumber(record.stars);
+  if (stars !== undefined && Number.isSafeInteger(stars) && stars >= 0 && stars <= STARS_MAX) listing.stars = stars;
+  return listing;
 }
 
 /** The maker of a listed theme: the owner half of its checked slug, never a field of the registry. */

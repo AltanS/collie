@@ -122,6 +122,30 @@ describe("readRegistry", () => {
     expect(readRegistry(doc(many.slice(1))).ok).toBe(true);
   });
 
+  test("keeps a file refused only for a newer version, flagged, and drops every other refusal", () => {
+    const future = JSON.stringify({ version: 5, id: "my-day", name: "My day", sparkle: "x", light: { background: "nope" } });
+    const read = readRegistry(
+      doc([
+        entry({ text: future, stars: 3 }),
+        // A newer version with a broken slug, a non-integer version, or the newest this Collie reads: dropped.
+        entry({ repo: "evil/../x", text: future }),
+        entry({ path: "themes/b.collie-theme.json", text: JSON.stringify({ version: 4.5, id: "b", name: "B" }) }),
+        entry({ path: "themes/c.collie-theme.json", text: JSON.stringify({ version: 4, id: "c", name: "C", light: { background: "nope" } }) }),
+        entry({ path: "themes/d.collie-theme.json", text: "not json" }),
+      ]),
+    );
+    expect(read.ok).toBe(true);
+    if (!read.ok) return;
+    expect(read.themes).toEqual([{ repo: "sam/my-day", sha: SHA, path: "collie-theme.json", text: future, newer: true, stars: 3 }]);
+    expect(read.dropped).toBe(4);
+  });
+
+  test("never trusts a stored newer flag: a readable entry reads as readable, a broken one is dropped", () => {
+    const read = readRegistry(doc([entry({ newer: true }), entry({ path: "themes/x.collie-theme.json", text: "{}", newer: true })]));
+    expect(read.ok && read.themes).toEqual([KEPT]);
+    expect(read.ok && read.dropped).toBe(1);
+  });
+
   test("drops a generated stamp that is not a plain date", () => {
     const read = readRegistry(doc([], { generated: "<b>now</b>" }));
     expect(read.ok && read.generated).toBeNull();

@@ -1,8 +1,8 @@
 import { chmod, lstat, mkdir, open, readFile, rename, rm } from "node:fs/promises";
 import { join } from "node:path";
 
-import { asJsonNumber, asJsonString, parseJsonObject } from "../../web/src/lib/json.ts";
-import { readRegistryEntry, type RegistryEntry } from "../../web/src/lib/theme/registry.ts";
+import { asJsonNumber, asJsonObject, asJsonString, parseJsonObject, type JsonValue } from "../../web/src/lib/json.ts";
+import { readNewerEntry, readRegistryEntry, type RegistryEntry } from "../../web/src/lib/theme/registry.ts";
 
 // ── THE COMMUNITY THEME REGISTRY ON THE HOST (M59 spec 06) ──────────────────────────────────
 //
@@ -22,8 +22,11 @@ import { readRegistryEntry, type RegistryEntry } from "../../web/src/lib/theme/r
 //     the body, and the body is counted against the cap as it arrives.
 //   • The document must say `"v": 1` and hold at most {@link REGISTRY_MAX_ENTRIES} entries, else it
 //     is refused whole. Each entry goes through `readRegistryEntry` (web/src/lib/theme/registry.ts):
-//     the slug, the sha and the path patterns, and `parseTheme` on its text. A failing entry is
-//     dropped and counted, never repaired. Only the four checked fields are stored.
+//     the slug, the sha and the path patterns, and `parseTheme` on its text. One entry more is kept:
+//     a file refused ONLY because it says a version newer than this Collie reads (`readNewerEntry`),
+//     flagged `newer: true`, so Browse and About can say it needs a newer Collie instead of hiding it.
+//     Any other failing entry is dropped and counted, never repaired. Only the checked fields are
+//     stored.
 //   • The copy is written to `<stateDir>/themes/registry.json` (folder 0700, file 0600) through an
 //     exclusively created temp file and one rename, and held in memory for an hour; after that the
 //     next read takes the file again, so two bridges on one state dir converge. The file is checked
@@ -202,18 +205,35 @@ export function readRegistry(text: string): RegistryRead {
   const seen = new Set<string>();
   let dropped = 0;
   for (const value of doc.themes) {
-    const read = readRegistryEntry(value);
-    if (read === undefined) {
+    const entry = keptEntry(value);
+    if (entry === undefined) {
       dropped += 1;
       continue;
     }
     // The same file at the same commit, listed twice, is one theme. The phone keys its rows on these three.
-    const key = JSON.stringify([read.entry.repo, read.entry.path, read.entry.sha]);
+    const key = JSON.stringify([entry.repo, entry.path, entry.sha]);
     if (seen.has(key)) continue;
     seen.add(key);
-    themes.push(read.entry);
+    themes.push(entry);
   }
   return { ok: true, generated, themes, dropped };
+}
+
+/**
+ * One registry entry as the copy keeps it: a theme this Collie reads, or one refused ONLY because its
+ * file says a newer version, kept with `newer: true` so Browse can say it needs a newer Collie and
+ * About can say the listed version does (`readNewerEntry`). Every other entry is dropped. Both are
+ * re-read from the four checked fields every time the copy is read, so the flag is never trusted.
+ */
+function keptEntry(value: JsonValue): RegistryEntry | undefined {
+  const read = readRegistryEntry(value);
+  if (read !== undefined) return read.entry;
+  const newer = readNewerEntry(value);
+  const text = asJsonString(asJsonObject(value)?.text);
+  if (newer === undefined || text === undefined) return undefined;
+  const entry: RegistryEntry = { repo: newer.repo, sha: newer.sha, path: newer.path, text, newer: true };
+  if (newer.stars !== undefined) entry.stars = newer.stars;
+  return entry;
 }
 
 /** A response body as text, refusing past `cap` bytes before it is parsed. */

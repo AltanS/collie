@@ -161,7 +161,9 @@ says how old the host's copy is. A refresh needs a device that may write. A refr
 of the last good one shows the same copy, and a copy older than a week is not shown.
 
 Every theme is checked three times: by the site, by your host and by your phone. A theme that fails
-any check is left out, and the sheet counts how many were. **Report** opens a new issue on the collie
+any check is left out, and the sheet counts how many were. A theme whose file says a version newer
+than your Collie reads is listed anyway, as a muted row that says "Needs a newer Collie". It has its
+repository link and **Report**, and no **Install** or **Try**. **Report** opens a new issue on the collie
 repository with the theme's repository filled in. You read it and send it yourself.
 
 ### See where a theme came from, and update it
