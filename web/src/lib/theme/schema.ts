@@ -586,7 +586,7 @@ function setSurfaceWord(surface: Surface, token: SurfaceToken, value: string | u
  * at most. Every word on every decoration list has it, so a newer Collie's word will too. A string of
  * another shape is not a word anyone will ship (a sentence, a URL, a control character), and is refused.
  */
-const DECORATION_WORD = /^[a-z0-9][a-z0-9-]{0,31}$/;
+export const DECORATION_WORD = /^[a-z0-9][a-z0-9-]{0,31}$/;
 
 /** A decoration word as written, or undefined for a value that is not one (another type, another shape). */
 function decorationWord(value: JsonValue | undefined): string | undefined {
