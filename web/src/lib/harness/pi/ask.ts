@@ -30,7 +30,8 @@
 // (` → 1.`, OmO). The pointer glyph is `>` or `→`, the two the captures show; Claude's `❯` is not one.
 //
 // Unnumbered rows are read at column 1 only: ` → Label` and `   Label`, a description row one column
-// further in (`    Primeira opção`), and gentle-pi's `Other…` as the free-text row. That is pi's own
+// further in (`    Primeira opção`) and the rows a long description wraps onto, back at column 1
+// (issue 746), and gentle-pi's `Other…` as the free-text row. That is pi's own
 // selector behind `ctx.ui.confirm` and `ctx.ui.select` (ExtensionSelectorComponent) and gentle-pi's
 // ask_user_choice (pi--v130-gentle-choice.txt). Column 0 unnumbered (`→ name`) is pi's slash palette
 // and its pickers, never read here. Unnumbered rows lift by plan (a) only: there is no digit to send.
@@ -103,6 +104,10 @@ const MAX_NOTE_ROWS = 3;
 const UNNUMBERED_ROW = /^ ([→ ]) (\S.*)$/;
 /** A description row under an unnumbered option, four columns in. */
 const DESCRIPTION_ROW = /^ {4}(\S.*)$/;
+/** A description row wrapped back to the padding column, one column in. pi-tui's `Text` wraps the
+ *  `   description` line with no hanging indent, so every row after its first stands at column 1
+ *  (`readUnnumbered`). Read only under a description row, never straight under a label. */
+const WRAPPED_DESCRIPTION_ROW = /^ (\S.*)$/;
 /** A title row indented deeper than one space: the command pi's permission gate quotes (`unnumberedStart`). */
 const QUOTED_ROW = /^ {2,}\S/;
 /** pi's own footer prints the session's cost to three decimals: stock `$0.000`, OmO `$0.064 (sub)`. */
@@ -777,7 +782,18 @@ function unnumberedStart(texts: string[], from: number, to: number): number | nu
   for (let r = from; r < to; r++) if (UNNUMBERED_ROW.exec(texts[r]!)?.[1] === "→") pointed.push(r);
   if (pointed.length !== 1) return null;
   let start = pointed[0]!;
-  while (start > from && (UNNUMBERED_ROW.test(texts[start - 1]!) || DESCRIPTION_ROW.test(texts[start - 1]!))) start--;
+  while (start > from) {
+    if (UNNUMBERED_ROW.test(texts[start - 1]!) || DESCRIPTION_ROW.test(texts[start - 1]!)) {
+      start--;
+      continue;
+    }
+    // A wrapped description above the pointer (the pointer walked past an option whose description
+    // wraps): a run of rows at column 1 counts only when a description row stands right over it.
+    let run = start - 1;
+    while (run > from && wrappedDescription(texts[run]!)) run--;
+    if (run === start - 1 || !DESCRIPTION_ROW.test(texts[run]!)) break;
+    start = run;
+  }
   if (!UNNUMBERED_ROW.test(texts[start]!)) return null;
   const separated = start > from && texts[start - 1] === "";
   let titled = false;
@@ -794,12 +810,16 @@ function unnumberedStart(texts: string[], from: number, to: number): number | nu
  * Unnumbered option rows from `start`, contiguous: ` → Label` or `   Label`, each with optional
  * description rows four columns in (gentle-pi's NativeChoiceList draws `\n   description` inside a
  * one-column padding), then an optional free-text row, `Other…` or `Type …`, last. Exactly one row
- * carries the pointer. A label wrapped back to column 1 ends the list here, and the caller declines
- * the row it stops at.
+ * carries the pointer. A description longer than the pane wraps, and pi-tui sets its later rows at
+ * column 1 (issue 746, gentle-pi 4.7.0 on pi 1.5.0): such a row joins the description it follows. A
+ * label wrapped back to column 1, straight under its option row, still ends the list here, and the
+ * caller declines the row it stops at.
  */
 function readUnnumbered(texts: string[], start: number, end: number): { rows: OptionRow[]; end: number } | null {
   const rows: OptionRow[] = [];
   let at = start;
+  // Whether the row above is a description row, so a row at column 1 under it is that description wrapped.
+  let inDescription = false;
   for (; at < end; at++) {
     const t = texts[at]!;
     if (t === "") break;
@@ -809,12 +829,14 @@ function readUnnumbered(texts: string[], start: number, end: number): { rows: Op
       const label = option[2]!;
       const freeText = OTHER.test(label) || FREE_TEXT.test(label);
       rows.push({ label, n: null, pointed: option[1] === "→", checkbox: false, freeText, row: at });
+      inDescription = false;
       continue;
     }
-    const desc = DESCRIPTION_ROW.exec(t);
     const owner = rows.at(-1);
+    const desc = DESCRIPTION_ROW.exec(t) ?? (inDescription ? WRAPPED_DESCRIPTION_ROW.exec(t) : null);
     if (desc !== null && owner !== undefined) {
       owner.description = owner.description === undefined ? desc[1]! : `${owner.description} ${desc[1]!}`;
+      inDescription = true;
       continue;
     }
     break;
@@ -822,6 +844,11 @@ function readUnnumbered(texts: string[], start: number, end: number): { rows: Op
   if (rows.length === 0 || rows.length > 9) return null;
   if (rows.filter((r) => r.pointed).length !== 1) return null;
   return { rows, end: at };
+}
+
+/** A row at column 1 that is not an option row: the shape of a description wrapped back to the padding. */
+function wrappedDescription(text: string): boolean {
+  return WRAPPED_DESCRIPTION_ROW.test(text) && !UNNUMBERED_ROW.test(text);
 }
 
 /**
