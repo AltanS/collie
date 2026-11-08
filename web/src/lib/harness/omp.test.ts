@@ -135,6 +135,12 @@ const LIFTED = new Set([
   "omp--v18-10-ask-long.txt",
   "omp--v18-10-ask-long-expanded.txt",
   "omp--v18-10-ask-revisited.txt",
+  // omp 18.18.2's batch: the current tab on a background with no bold (omp/ask.ts readTabs).
+  "omp--v18-18-2-ask-batch--w120.txt",
+  "omp--v18-18-2-ask-batch-moved--w120.txt",
+  "omp--v18-18-2-ask-batch-second--w120.txt",
+  "omp--v18-18-2-ask-batch-third--w120.txt",
+  "omp--v18-18-2-ask-batch-review--w120.txt",
   "omp--approval-bash.txt",
   "omp--approval-write--deny.txt",
   "omp--approval-write.txt",
@@ -432,6 +438,9 @@ const DECLINED = new Set([
   // omp 18.18.0's `nerd` review with every question unanswered: ask.ts reads a review only when every
   // answer is present, so it stays raw with the card's Escape, as in `unicode`.
   "omp--v18-18-0-nerd-ask-review-unanswered--w250.txt",
+  // omp 18.18.2's review with questions still unanswered (`3 unanswered questions; ⏎ still submits.`).
+  // Only a complete review submits, so it stays raw and takes the card with its Escape.
+  "omp--v18-18-2-ask-batch-review-unanswered--w120.txt",
   // — The full-screen pickers. No `menu` block for these: `parseKeyHintFooter` (the shared, pinned
   //   key-hint grammar) returns [] for the `/model` and `/resume` footers, and for `/settings` it
   //   yields only {Jump sections, [Tab]} + {Close, [Escape]} because `menuKeyFor` rejects the
@@ -666,6 +675,12 @@ describe("the omp corpus", () => {
     "omp--v18-18-0-nerd-plan-review--w250.txt",
     "omp--v18-18-0-nerd-plan-review-moved--w250.txt",
     "omp--v18-18-0-nerd-switch--w250.txt",
+    "omp--v18-18-2-ask-batch--w120.txt",
+    "omp--v18-18-2-ask-batch-moved--w120.txt",
+    "omp--v18-18-2-ask-batch-review--w120.txt",
+    "omp--v18-18-2-ask-batch-review-unanswered--w120.txt",
+    "omp--v18-18-2-ask-batch-second--w120.txt",
+    "omp--v18-18-2-ask-batch-third--w120.txt",
     "omp--v18-4-approval-bash-moved.txt",
     "omp--v18-4-approval-bash.txt",
     "omp--v18-4-approval-write-long.txt",

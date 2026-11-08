@@ -222,6 +222,19 @@ Corpus: `omp--v18-16-0-ask-single-glyph-hide*--w200.txt`, `omp--v18-16-0-answer-
 Probed on the host: `Down` moved the pointer one row; `Enter` on `Other` opened the answer editor;
 `Escape` returned to the dialog.
 
+## omp 18.18: a batch's current tab on a background alone (2026-11-09)
+
+omp 18.18 paints the current question tab with a background and no bold; 18.10 drew it bold on a
+background, and `readTabs` required both, so every 18.18 batch declined even on a styled read. The
+current tab is now the one label whose every cell carries a background. Two labels painted, a label
+painted in part, or a background past the current label's one padding cell (over the border, a
+neighbour, the whole row) declines: a theme that paints every tab is unreadable rather than guessed.
+omp 18.18's review adds `N unanswered questions; ⏎ still submits.` and marks each open question
+`unanswered`. Only a complete review submits, so both the warning row and an `unanswered` value decline.
+Corpus: `omp--v18-18-2-ask-batch*--w120.txt` (tmux `capture-pane -e`). On herdr-core the read is plain
+until herdr-core #74 (`terminal.read` `format: "ansi"`) ships and the adapter asks for it, so a batch
+there still shows the card with Escape.
+
 ## omp 18.12.6: option previews (2026-10-25)
 
 Corpus: `omp--v18-12-6-ask-previews--w120.txt` (omp-gang tester 04, case 9; plain pane read, last 30 rows).

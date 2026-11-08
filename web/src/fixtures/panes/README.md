@@ -3453,6 +3453,22 @@ the status row above it named the operator's accounts and was dropped.
 | `omp--v18-16-0-ask-single-glyph-hide-moved--w200.txt` | `dialog` | The same dialog after one `Down` (`hc keys … down`), pointer on 배. Its walk pair |
 | `omp--v18-16-0-answer-editor-empty--w200.txt` | `idle` | `Enter` on `Other` opened `Custom answer: 과일을 고르세요`, hint `⏎ or ⌃Q submit  ⎋ cancel  ⌃G external editor`: the same prompt-style box as the `custom-answer-*` rows above, in the glyph keycap dialect, with no Ask box above it. Reads as a free box since #704 |
 
+## omp 18.18.2 Ask batch with a background-only current tab (captured 2026-11-09, tmux 3.8 `capture-pane -e`, 120 columns)
+
+A real three-question `ask` call (Claude Haiku 4.5 in omp 18.18.2, the `unicode` symbol preset), trimmed to
+the dialog; the status row above it named the operator's accounts and was dropped. omp 18.18 paints the
+current tab with a background only, where 18.10 painted it bold on a background. A plain read (herdr-core
+0.1.19 `hc read`) carries no style, so none of these lifts there (`fold.plain.allow.json`).
+
+| Fixture | State | What it shows |
+| --- | --- | --- |
+| `omp--v18-18-2-ask-batch--w120.txt` | `dialog` | Fruit/Color/Size/Submit tabs, Fruit current, `Which fruit?` with Apple pointed. Lifts |
+| `omp--v18-18-2-ask-batch-moved--w120.txt` | `dialog` | The same question after `Down`, Pear pointed. Its walk pair |
+| `omp--v18-18-2-ask-batch-second--w120.txt` | `dialog` | `Enter` saved Pear and advanced to Color |
+| `omp--v18-18-2-ask-batch-third--w120.txt` | `dialog` | `Enter` saved Red and advanced to Size |
+| `omp--v18-18-2-ask-batch-review--w120.txt` | `dialog` | `Enter` saved Small: Pear/Red/Small recorded, a blank row, `❯ Submit`. Lifts as the review |
+| `omp--v18-18-2-ask-batch-review-unanswered--w120.txt` | `dialog` | `→ → →` from the first question with nothing answered: `3 unanswered questions; ⏎ still submits.` and `unanswered` on every row. Never lifts; takes the card |
+
 ## omp 18.16.0 plan review (captured 2026-11-07, Herdr 0.9.5, 80 and 140 columns)
 
 A real plan-mode turn in a scratch repo (Claude Haiku 5.5 over OpenRouter, the `unicode` symbol preset),

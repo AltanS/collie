@@ -155,6 +155,50 @@ it("never submits an incomplete review or a question with two saved single-choic
   expect(detectAskSelect(doubled)).toBeNull();
 });
 
+// omp 18.18 paints the current question tab with a background and no bold (captured over tmux
+// `capture-pane -e`, omp 18.18.2). The reader takes the one wholly painted label as the step.
+it("reads an omp 18.18 batch, whose current tab has a background and no bold", () => {
+  const first = detectAskSelect(load("omp--v18-18-2-ask-batch--w120.txt"));
+  expect(first?.question).toBe("Which fruit?");
+  expect(first?.caption).toBe("Ask (1/3) · Fruit");
+  expect(first?.options.map((option) => option.label)).toEqual(["Apple", "Pear", "Plum", OTHER, "Cancel"]);
+  const moved = detectAskSelect(load("omp--v18-18-2-ask-batch-moved--w120.txt"));
+  expect(moved?.coreSignature).toBe(first?.coreSignature);
+  expect(moved?.options.find((option) => option.label === "Pear")?.keys).toEqual(["Enter"]);
+  expect(detectAskSelect(load("omp--v18-18-2-ask-batch-second--w120.txt"))?.caption).toBe("Ask (2/3) · Color");
+  expect(detectAskSelect(load("omp--v18-18-2-ask-batch-third--w120.txt"))?.question).toBe("Which size?");
+  const review = detectAskSelect(load("omp--v18-18-2-ask-batch-review--w120.txt"));
+  expect(review?.question).toBe("Review answers\n1. Fruit: Pear\n2. Color: Red\n3. Size: Small");
+  expect(review?.options.map((option) => option.keys)).toEqual([["Enter"], ["Escape"]]);
+});
+
+it("never submits an omp 18.18 review that still has unanswered questions", () => {
+  const lines = load("omp--v18-18-2-ask-batch-review-unanswered--w120.txt");
+  expect(detectAskSelect(lines)).toBeNull();
+  // Without the warning row the `unanswered` marks alone still decline.
+  expect(detectAskSelect(lines.filter((line) => !lineText(line).includes("still submits")))).toBeNull();
+});
+
+it("declines an omp 18.18 tab strip unless the background covers exactly one whole label", () => {
+  const lines = load("omp--v18-18-2-ask-batch--w120.txt");
+  expect(detectAskSelect(lines)).not.toBeNull();
+  const paint = lines[1]!.segments.find((segment) => segment.bg !== undefined)!.bg;
+
+  const two = structuredClone(lines);
+  for (const segment of two[1]!.segments) if (segment.text.trim() === "Color") segment.bg = paint;
+  expect(detectAskSelect(two)).toBeNull();
+
+  const border = structuredClone(lines);
+  for (const segment of border[1]!.segments) if (segment.text.includes("│")) segment.bg = paint;
+  expect(detectAskSelect(border)).toBeNull();
+
+  const part = structuredClone(lines);
+  const at = part[1]!.segments.findIndex((segment) => segment.bg !== undefined);
+  const whole = part[1]!.segments[at]!;
+  part[1]!.segments.splice(at, 1, { ...whole, text: " Fr" }, { ...whole, text: "uit ", bg: undefined });
+  expect(detectAskSelect(part)).toBeNull();
+});
+
 it("declines unknown controls after the current footer instead of guessing their meaning", () => {
   const lines = textsOf("omp--v18-10-ask-single.txt");
   expect(detectAskSelect(fromTexts(lines))).not.toBeNull();
@@ -876,6 +920,11 @@ describe("the grammar claims nothing else in the corpus", () => {
     "omp--v18-18-0-nerd-ask-batch-q2--w250.txt",
     "omp--v18-18-0-nerd-ask-batch-saved--w250.txt",
     "omp--v18-18-0-nerd-ask-review--w250.txt",
+    "omp--v18-18-2-ask-batch--w120.txt",
+    "omp--v18-18-2-ask-batch-moved--w120.txt",
+    "omp--v18-18-2-ask-batch-second--w120.txt",
+    "omp--v18-18-2-ask-batch-third--w120.txt",
+    "omp--v18-18-2-ask-batch-review--w120.txt",
   ]);
 
   it("lifts only the supported Ask states in the complete corpus", () => {

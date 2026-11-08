@@ -338,6 +338,9 @@ function readReview(lines: StyledLine[], texts: string[], end: number, footer: s
   for (let i = 0; i < tabs.labels.length - 1; i++) {
     const prefix = `${i + 1}. ${tabs.labels[i]}: `;
     if (!rows[i]!.startsWith(prefix) || rows[i]!.length === prefix.length) return null;
+    // Only a complete review submits (ASK_NOTES.md): omp 18.18 marks a question with no answer
+    // `unanswered` and adds a warning row, and either declines.
+    if (rows[i]!.slice(prefix.length) === "unanswered") return null;
   }
   const signature = texts.slice(titleAt, end + 1).join("\n");
   if (signature.length > MAX_REGION_CHARS) return null;
@@ -362,32 +365,46 @@ interface AskTabs {
   current: number;
 }
 
-/** The current tab is bold with a background; its text alone never identifies the step. */
+/**
+ * The current tab is the one label whose every cell carries a background; its text alone never
+ * identifies the step. omp 18.10 drew it bold on a background, omp 18.18 on a background only, so
+ * bold is not required. Fail closed on anything else: no label or two labels covered, a label
+ * covered in part, or a background reaching past the current label's one padding cell on each
+ * side (over a border, a neighbour, the whole row). A theme that paints every tab is unreadable.
+ */
 function readTabs(line: StyledLine): AskTabs | null {
   const text = rstrip(lineText(line));
   const inner = BOX_ROW.exec(text)?.[1];
   if (inner === undefined) return null;
   const labels = inner.trim().split(/ {2,}/);
   if (labels.length < 2 || labels.at(-1) !== "Submit") return null;
-  let offset = 0;
-  let current = -1;
+  const painted: boolean[] = [];
   for (const segment of line.segments) {
-    const label = segment.text.trim();
-    if (segment.bg !== undefined && segment.bold && label.length > 0) {
-      if (current !== -1) return null;
-      const start = offset + segment.text.indexOf(label);
-      let searchAt = 2;
-      for (let i = 0; i < labels.length; i++) {
-        const at = text.indexOf(labels[i]!, searchAt);
-        if (at < 0) return null;
-        if (at === start && label === labels[i]) current = i;
-        searchAt = at + labels[i]!.length;
-      }
-      if (current === -1) return null;
-    }
-    offset += segment.text.length;
+    for (let i = 0; i < segment.text.length; i++) painted.push(segment.bg !== undefined);
   }
-  return current === -1 ? null : { labels, current };
+  const starts: number[] = [];
+  let searchAt = 2;
+  for (const label of labels) {
+    const at = text.indexOf(label, searchAt);
+    if (at < 0) return null;
+    starts.push(at);
+    searchAt = at + label.length;
+  }
+  let current = -1;
+  for (let i = 0; i < labels.length; i++) {
+    let cells = 0;
+    for (let at = starts[i]!; at < starts[i]! + labels[i]!.length; at++) if (painted[at] === true) cells++;
+    if (cells === 0) continue;
+    if (cells !== labels[i]!.length || current !== -1) return null;
+    current = i;
+  }
+  if (current === -1) return null;
+  const from = starts[current]! - 1;
+  const to = starts[current]! + labels[current]!.length;
+  for (let at = 0; at < painted.length; at++) {
+    if (painted[at] === true && (at < from || at > to)) return null;
+  }
+  return { labels, current };
 }
 
 /**
