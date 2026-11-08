@@ -6,8 +6,10 @@
 //
 // THE NAMES ARE THE REPORT'S OWN. The agent program and its version come from {@link harnessOf}, the
 // same rule the report sheet titles its issue with (lib/report/body.ts), over the same two reads the
-// sheet makes (the pane's send receipts and `GET /api/report/context`); the multiplexer is that
-// context's `mux`. A harness is data here, never a branch.
+// sheet makes (the pane's send receipts and `GET /api/report/context`); with no receipt that names a
+// version, the version is the context's `harnessVersion`, the bridge's own read of the binary. The
+// multiplexer is that context's `mux`, and on a crew member's pane the member's own, from the lead's
+// `/api/config` for that host. A harness is data here, never a branch.
 //
 // FIRE AND FORGET. One request per card instance or per streak, and at most one per kind, pane and UTC
 // day on this device (once.ts), because a card that re-mounts is the same trouble. Never retried; a
@@ -76,17 +78,25 @@ export interface HarnessFacts {
 /** What {@link harnessOf} reads: the sends newest first, the bridge's context, and the dialog card's agent. */
 export interface HarnessSources {
   readonly sends: readonly Pick<SendReceiptRow, "harness" | "version">[];
-  readonly context: Pick<ReportContext, "harness"> | null;
+  readonly context: Pick<ReportContext, "harness" | "harnessVersion"> | null;
   readonly dialog?: { readonly agent: string } | undefined;
 }
 
 /**
  * The newest receipt names the harness and its version; the context names the pane's agent when none
- * does, and the unread-dialog card's adapter when the context did not answer.
+ * does, and the unread-dialog card's adapter when the context did not answer. When no receipt names a
+ * version, the context's `harnessVersion` fills it, but only for the agent the context names: a
+ * receipt from another agent on the same pane keeps its null.
  */
 export function harnessOf(input: HarnessSources): HarnessFacts {
   const newest = input.sends[0];
-  if (newest !== undefined) return { harness: harnessWord(newest.harness), version: newest.version };
+  const known = input.context?.harnessVersion ?? null;
+  if (newest !== undefined) {
+    const harness = harnessWord(newest.harness);
+    const sameAgent = input.context !== null && harnessWord(input.context.harness) === harness;
+    return { harness, version: newest.version ?? (sameAgent ? known : null) };
+  }
+  if (input.context !== null && input.context.harness !== null) return { harness: harnessWord(input.context.harness), version: known };
   return { harness: harnessWord(input.context?.harness ?? input.dialog?.agent), version: null };
 }
 

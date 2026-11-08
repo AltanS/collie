@@ -10,7 +10,7 @@ import type { SendReceiptRow } from "@/lib/surface/send";
 import { server } from "@/test/setup";
 import { ReportSheet, ReportSheetView, reportedSends } from "./report-sheet";
 
-const CONTEXT: ReportContext = { collie: "1.24.1", line: "stable", os: "linux", arch: "x64", mux: "herdr", harness: "claude", screenable: true };
+const CONTEXT: ReportContext = { collie: "1.24.1", line: "stable", os: "linux", arch: "x64", mux: "herdr", harness: "claude", harnessVersion: null, screenable: true };
 
 function row(n: number, extra: Partial<SendReceiptRow> = {}): SendReceiptRow {
   return {
