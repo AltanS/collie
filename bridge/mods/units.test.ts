@@ -203,6 +203,7 @@ describe("the routes", () => {
       noteWatched: () => {},
       reply: async () => ({ rev: 1, mods: [], parts: [], present: [] }),
       tap: async () => ({ status: 404, body: { error: "unknown-mod" } }),
+      sessionPanes: () => undefined,
       setSwitch: async (host, id, on) => {
         calls.push([host, id, on]);
         return { status: 404, body: { error: "unknown-mod" } };
