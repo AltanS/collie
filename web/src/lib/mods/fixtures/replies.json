@@ -21,5 +21,10 @@
     "v": 1,
     "parts": [],
     "open": { "url": "https://github.com/sprqvntrs/collie/actions/runs/1234" }
+  },
+  "legs-open-tailnet": {
+    "v": 1,
+    "parts": [],
+    "open": { "url": "http://bluefin:8080/report.html" }
   }
 }

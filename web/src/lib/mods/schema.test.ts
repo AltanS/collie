@@ -39,6 +39,7 @@ import {
   freshWindowMs,
   globMatches,
   isModSessionId,
+  isModUrl,
   isScopeKey,
   matchesSession,
   matchesTab,
@@ -471,6 +472,14 @@ describe("ids and keys", () => {
     expect(isModSessionId(modSessionId("bluefin", "legs"))).toBe(true);
     expect(isModSessionId("mod:bluefin:Legs")).toBe(false);
     expect(isModSessionId("bluefin:w6X:3")).toBe(false);
+  });
+
+  it("opens an https or an http address and nothing else", () => {
+    for (const url of ["https://github.com/sprqvntrs/collie", "http://bluefin:8080/", "http://100.64.0.8:8795/x?y=1"]) expect(isModUrl(url), url).toBe(true);
+    for (const url of ["javascript:alert(1)", "file:///etc/passwd", "data:text/html,x", "ftp://bluefin/", "//bluefin:8080/", "http://a b/", "HTTP://bluefin/"]) {
+      expect(isModUrl(url), url).toBe(false);
+    }
+    expect(parseModDocument(REPLY_DOCUMENTS["legs-open-tailnet"], { afterTap: true }).open).toEqual({ url: "http://bluefin:8080/report.html" });
   });
 
   it("round-trips a part key", () => {

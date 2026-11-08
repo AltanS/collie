@@ -1115,14 +1115,16 @@ export function isInstant(text: string): boolean {
 }
 
 /**
- * A URL a mod may open. DECISION: `https://` only, as WIRE.md's link item. A tailnet page on plain
- * http (`http://bluefin:8080`) is refused; see the report for why that may hurt.
+ * A URL a mod may open: `https://` or `http://`. Plain http is allowed because the operator opens
+ * tailnet pages that have no certificate (`http://bluefin:8080`); the tailnet is the transport's
+ * guard there. Every other scheme (`javascript:`, `file:`, `data:`) is refused.
  */
 export function isModUrl(text: string): boolean {
-  if (text.length > URL_MAX || !text.startsWith("https://")) return false;
+  if (text.length > URL_MAX || !(text.startsWith("https://") || text.startsWith("http://"))) return false;
   if (/[\s\p{C}]/u.test(text)) return false;
   try {
-    return new URL(text).protocol === "https:";
+    const protocol = new URL(text).protocol;
+    return protocol === "https:" || protocol === "http:";
   } catch {
     return false;
   }
@@ -1963,7 +1965,7 @@ function readUrl(f: Fields, key: string): string | undefined {
   const value = f.text(key, { max: URL_MAX, required: true });
   if (value === undefined) return undefined;
   if (isModUrl(value)) return value;
-  f.push("target", key, `"${key}" must be an https:// address of at most ${URL_MAX} characters.`);
+  f.push("target", key, `"${key}" must be an https:// or http:// address of at most ${URL_MAX} characters.`);
   return undefined;
 }
 

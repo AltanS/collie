@@ -3169,6 +3169,31 @@ export const en = {
   "newTab.fromLead": "Lead",
   "newTab.loading": "Reading the agents on this machine…",
   "newTab.shellUnknown": "Collie could not confirm the new tab. Look at the workspace's tabs before you try again, or you may get two.",
+  // --- mods (M94 slice 02): the renderer's own words; the mod's words are the mod's ---
+  "mods.placeholder": "This Collie cannot draw this part",
+  "mods.list.more": "+{count} more",
+  "mods.time.ago": "{time} ago",
+  "mods.time.in": "in {time}",
+  "mods.steps.of": "{n} of {m}",
+  "mods.steps.done": "done",
+  "mods.steps.running": "running",
+  "mods.steps.todo": "to do",
+  "mods.steps.failed": "failed",
+  "mods.mark.named": "{mod}: {face}",
+  "mods.tap.unknown": "unknown",
+  "mods.tap.refused": "The bridge refused the tap ({status}).",
+  "mods.frame.updated": "Updated {time}",
+  "mods.frame.failed": "Last run failed, updated {time}",
+  "mods.frame.failedBare": "Last run failed",
+  "mods.frame.paused": "Paused, retry {time}",
+  "mods.frame.pausedSoon": "Paused after a failure",
+  "mods.frame.stopped": "Stopped after repeated failures",
+  "mods.frame.tapFailed": "The tap failed",
+  "mods.frame.tapUnknown": "No answer. It may have run.",
+  "mods.frame.why": "Why",
+  "mods.frame.hide": "Hide",
+  "mods.frame.fix": "Ask the agent to fix it",
+  "mods.frame.fixDraft": "The mod `{id}` failed: `{error}`",
 } as const;
 
 /** Every key that exists, as a union of string literals. The completeness contract. */
@@ -3184,7 +3209,32 @@ export type Messages = typeof en;
  * already carries, so the list cannot outlive its translations. Never a way to skip translating a
  * key for good: a key stays here only between a feature and its translation pass.
  */
-export const PENDING_TRANSLATION = [] as const satisfies readonly MessageKey[];
+export const PENDING_TRANSLATION = [
+  "mods.placeholder",
+  "mods.list.more",
+  "mods.time.ago",
+  "mods.time.in",
+  "mods.steps.of",
+  "mods.steps.done",
+  "mods.steps.running",
+  "mods.steps.todo",
+  "mods.steps.failed",
+  "mods.mark.named",
+  "mods.tap.unknown",
+  "mods.tap.refused",
+  "mods.frame.updated",
+  "mods.frame.failed",
+  "mods.frame.failedBare",
+  "mods.frame.paused",
+  "mods.frame.pausedSoon",
+  "mods.frame.stopped",
+  "mods.frame.tapFailed",
+  "mods.frame.tapUnknown",
+  "mods.frame.why",
+  "mods.frame.hide",
+  "mods.frame.fix",
+  "mods.frame.fixDraft",
+] as const satisfies readonly MessageKey[];
 
 /** A key a bundle may leave out until the translation pass. */
 export type PendingKey = (typeof PENDING_TRANSLATION)[number];
