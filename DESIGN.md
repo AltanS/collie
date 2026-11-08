@@ -628,8 +628,8 @@ fails loudly.
   which is exactly the inverted mirror's background, so the mirror shows no seam against the
   page. It is not "off-white for taste"; moving it re-opens that seam.
 - **Every brand mark is GENERATED** from the sibling `collie-brand` repo: `collie-mark.tsx`,
-  `kawaii-mark.tsx`, `kawaii-tilt-mark.tsx`, `pixel-mark.tsx` and `mark-contract.ts` beside
-  them. Never hand-edit one. Change the brand repo and regenerate.
+  one `<id>-mark.tsx` per character in `lib/mark-ids.ts`, and `mark-contract.ts` beside them.
+  Never hand-edit one. Change the brand repo and regenerate.
 - **Every mark keeps ONE contract, and a call site says what, never how.**
   [`components/mark-contract.ts`](./web/src/components/mark-contract.ts) names everything public:
   the props (`state`, `beads`, `turn`, `ref`, besides `size`, `weight`, `paper`, `title`,

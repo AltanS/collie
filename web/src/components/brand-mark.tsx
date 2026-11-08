@@ -43,6 +43,16 @@ function loadChunk(id: ChunkedMarkId) {
       return import("./kawaii-tilt-mark").then((m) => ({ default: m.KawaiiTiltMark }));
     case "pixel":
       return import("./pixel-mark").then((m) => ({ default: m.PixelMark }));
+    case "glass":
+      return import("./glass-mark").then((m) => ({ default: m.GlassMark }));
+    case "glass-front":
+      return import("./glass-front-mark").then((m) => ({ default: m.GlassFrontMark }));
+    case "delft":
+      return import("./delft-mark").then((m) => ({ default: m.DelftMark }));
+    case "delft-front":
+      return import("./delft-front-mark").then((m) => ({ default: m.DelftFrontMark }));
+    case "sheep":
+      return import("./sheep-mark").then((m) => ({ default: m.SheepMark }));
   }
 }
 
@@ -51,6 +61,11 @@ const LAZY = {
   kawaii: lazy(() => loadChunk("kawaii")),
   "kawaii-tilt": lazy(() => loadChunk("kawaii-tilt")),
   pixel: lazy(() => loadChunk("pixel")),
+  glass: lazy(() => loadChunk("glass")),
+  "glass-front": lazy(() => loadChunk("glass-front")),
+  delft: lazy(() => loadChunk("delft")),
+  "delft-front": lazy(() => loadChunk("delft-front")),
+  sheep: lazy(() => loadChunk("sheep")),
 } as const satisfies Record<ChunkedMarkId, ComponentType<MarkProps>>;
 
 /**

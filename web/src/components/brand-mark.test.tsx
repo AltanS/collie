@@ -156,8 +156,8 @@ describe("the chunked marks", () => {
     });
   }
 
-  it("are three, each with a generated file beside the host", () => {
-    expect(chunked).toEqual(["kawaii", "kawaii-tilt", "pixel"]);
+  it("are every character but Collie, each with a generated file beside the host", () => {
+    expect(chunked).toEqual(["kawaii", "kawaii-tilt", "pixel", "glass", "glass-front", "delft", "delft-front", "sheep"]);
     for (const id of chunked) expect(readFileSync(join(import.meta.dirname, `${id}-mark.tsx`), "utf8")).toContain("// generated: sha256=");
   });
 

@@ -7,7 +7,18 @@ import { join } from "node:path";
 // collie-brand/scripts/logo-ship-theme.ts for the three theme marks) and copied in whole. Each file's
 // first line records a sha256 of everything after it; this test recomputes that hash and fails on ANY
 // hand edit made to the file in this repo. Re-copy it from collie-brand/assets/ instead of editing.
-describe.each(["collie-mark.tsx", "kawaii-mark.tsx", "kawaii-tilt-mark.tsx", "pixel-mark.tsx", "mark-contract.ts"])("%s generated hash", (file) => {
+describe.each([
+  "collie-mark.tsx",
+  "kawaii-mark.tsx",
+  "kawaii-tilt-mark.tsx",
+  "pixel-mark.tsx",
+  "glass-mark.tsx",
+  "glass-front-mark.tsx",
+  "delft-mark.tsx",
+  "delft-front-mark.tsx",
+  "sheep-mark.tsx",
+  "mark-contract.ts",
+])("%s generated hash", (file) => {
   it("matches the sha256 recorded in its own header", () => {
     const source = readFileSync(join(import.meta.dirname, file), "utf-8");
     const newlineIndex = source.indexOf("\n");

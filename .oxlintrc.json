@@ -38,16 +38,7 @@
     "experiments/**",
     // Vendored byte for byte and pinned by hash (ADR 0096 Decision 6): a lint fix would change the served bytes.
     "web/public/stt/**",
-    "assets/**",
-    // Generated in collie-brand, installed byte-identical, and guarded by collie-mark-hash.test.ts —
-    // a lint fix here cannot be applied in place. The flagged `typeof`s narrow the Web Animations
-    // API's own unions (`CSSNumberish | null` currentTime, `number | string | undefined` delay/duration),
-    // which is what that API returns, not a representation smell. The three theme marks are generated
-    // by the same repo with the same phase-carrying effect, and the same test seals them.
-    "web/src/components/collie-mark.tsx",
-    "web/src/components/kawaii-mark.tsx",
-    "web/src/components/kawaii-tilt-mark.tsx",
-    "web/src/components/pixel-mark.tsx"
+    "assets/**"
   ],
   "jsPlugins": [
     {

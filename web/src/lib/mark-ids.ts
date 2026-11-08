@@ -3,7 +3,7 @@
 // the theme schema (`theme/schema.ts`, which `collie theme check` and the build script import), the
 // design store (`design.ts`) and the host component (`components/brand-mark.tsx`).
 //
-// The ids are fixed. A theme file names one with the top-level key `mark` (version 4), and a device
+// The ids are fixed. A theme file names one with the top-level key `character` (version 4), and a device
 // may name one in Settings. Nothing else about a mark is a setting: the drawings are generated files
 // (`components/<id>-mark.tsx`), and the favicon, the app icon and the splash stay the Collie mark.
 //
@@ -21,6 +21,11 @@ export const MARKS = [
   { id: "kawaii", name: "Kawaii", prefix: "ck" },
   { id: "kawaii-tilt", name: "Kawaii Tilt", prefix: "ct" },
   { id: "pixel", name: "Pixel", prefix: "cp" },
+  { id: "glass", name: "Glass", prefix: "cg" },
+  { id: "glass-front", name: "Glass Front", prefix: "ch" },
+  { id: "delft", name: "Delft", prefix: "cd" },
+  { id: "delft-front", name: "Delft Front", prefix: "ce" },
+  { id: "sheep", name: "Sheep", prefix: "cs" },
 ] as const;
 
 export type MarkId = (typeof MARKS)[number]["id"];

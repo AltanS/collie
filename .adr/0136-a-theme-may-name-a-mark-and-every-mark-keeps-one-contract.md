@@ -32,12 +32,13 @@ each further mark would break it quietly: a bead drawn as a `rect` instead of a 
 ## Decision
 
 1. **A theme may name a mark.** The optional `character` key takes one word from the registry's closed list
-   (`collie`, `kawaii`, `kawaii-tilt`, `pixel`). A file that sets it is version 4, the lowest version that holds
+   (`collie`, `kawaii`, `kawaii-tilt`, `pixel`, `glass`, `glass-front`, `delft`, `delft-front`, `sheep`). A file
+   that sets it is version 4, the lowest version that holds
    it; a file without it reads and exports exactly as before. Collie is the default everywhere. A person reads
    the word "Character" for a mark, in Settings and in the docs; the code says mark. The key is not `mark`,
    the name the removed field of M57 spec 09 had, so a file written for that design is refused, not misread.
 2. **The device decides first.** Appearance offers "From the theme" (the default) and every character. A device
-   choice other than "From the theme" wins over the theme; a theme without `mark` draws Collie. The favicon,
+   choice other than "From the theme" wins over the theme; a theme without `character` draws Collie. The favicon,
    the app icons, the splash and the link card stay the Collie mark.
 3. **A mark other than Collie costs nothing until it is chosen.** Each is a lazy chunk under `marks/`, outside
    the precache, kept by the service worker on first use. A chunk that cannot load draws the Collie mark.

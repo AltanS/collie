@@ -58,7 +58,7 @@ describe("collie theme skill", () => {
     for (const key of ANSI_KEYS) expect(BRIEF).toContain(`"${key}"`);
   });
 
-  test("the brief teaches the character key: its four ids, and the version that holds it", () => {
+  test("the brief teaches the character key: every id, and the version that holds it", () => {
     expect(BRIEF).toContain("`character`");
     for (const id of MARK_IDS) expect(BRIEF).toContain(`\`${id}\``);
     expect(BRIEF).toContain("4 with `character`");
