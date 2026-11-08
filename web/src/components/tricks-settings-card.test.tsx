@@ -31,7 +31,7 @@ const TRACKER: WireTrickInfo = {
   host: "bluefin",
   id: "tracker",
   name: "Tracker",
-  icon: "list",
+  icon: "file",
   on: false,
   state: "off",
   places: ["session"],
@@ -103,7 +103,7 @@ describe("TricksSettingsCard: the rows", () => {
 
   it("says no parts for a manifest with no places, and the CLI and hand provenances in words", () => {
     expect(placesLine([])).toBe("No parts");
-    expect(placesLine(["belt", "belt", "tab-mark", "header.line"])).toBe("belt, tab mark, header");
+    expect(placesLine(["belt", "belt", "tab", "dashboard"])).toBe("belt, tab, dashboard");
     expect(provenanceLine({ ...LEGS, provenance: { via: "cli" } }, NOW)).toBe("Added by CLI");
     expect(provenanceLine({ ...LEGS, provenance: { via: "folder" } }, NOW)).toBe("Added by hand");
     expect(provenanceLine({ ...LEGS, provenance: undefined }, NOW)).toBe("Added by hand");

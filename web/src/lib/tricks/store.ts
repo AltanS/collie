@@ -5,40 +5,39 @@
 // merges them: a changed part replaces the held one, a key missing from `present` is dropped. So the
 // tricks ride the snapshot's cadence, and a clock trick does not resend twenty tricks every five seconds.
 //
-// A TAP IS AN ACTION WITH A RECEIPT (v2 question 8). It carries a fresh request id; the pressed
-// control draws Collie's busy state until the reply lands; `applied` and `replayed` apply the reply's
-// parts at once; `failed` puts the masked reason in the part's frame; `unknown` is shown and NEVER sent
-// again on its own. A second tap on the same part while one is in flight does nothing. When the
-// operator taps the same control again after an `unknown`, the tap goes out with the SAME request id,
-// so a run that did happen the first time answers `replayed` and runs nothing twice.
+// A TAP IS AN ACTION WITH A RECEIPT (v2 question 8), in the tree's intent shape `{ rid, node, intent,
+// value }`. It carries a fresh rid; the pressed control draws Collie's busy state until the reply lands;
+// `ok` and `changed` apply the reply's parts at once; `rejected`, `gone` and `denied` put the masked
+// reason in the part's frame; `unknown` is shown and NEVER sent again on its own. A second tap on the
+// same part while one is in flight does nothing. When the operator taps the same control again after an
+// `unknown`, the tap goes out with the SAME rid, so a run that did happen the first time answers the
+// same receipt from the bridge's log and runs nothing twice.
 
 import { useMemo, useSyncExternalStore } from "react";
 
 import { apiErrorStatus, fetchTricks, tapTrick } from "../api";
 import { t } from "../i18n";
-import type { JsonObject } from "../json";
 import { mintRequestId } from "../worktree-name";
 import {
   parsePartKey,
   partKey,
-  type Draft,
   type TrickPartKey,
   type TrickTapReply,
   type TricksReply,
-  type OpenTarget,
   type PlaceKind,
+  type TapCode,
   type TapFrom,
-  type TapOutcome,
   type TapRequest,
+  type TapValue,
   type WireTrickInfo,
   type WireTrickPart,
 } from "./schema";
 
 /** The state of the last tap on one part. A part with no entry has no tap to show. */
 export type TapState =
-  | { phase: "busy"; requestId: string; control: string; intent: string; args?: JsonObject }
-  | { phase: "failed"; requestId: string; control: string; intent: string; args?: JsonObject; message: string }
-  | { phase: "unknown"; requestId: string; control: string; intent: string; args?: JsonObject };
+  | { phase: "busy"; rid: string; control: string; intent: string; value?: TapValue }
+  | { phase: "failed"; rid: string; control: string; intent: string; value?: TapValue; message: string }
+  | { phase: "unknown"; rid: string; control: string; intent: string; value?: TapValue };
 
 export interface TricksState {
   /** The `tricksRev` the held parts are at. `null` until the first reply. */
@@ -65,9 +64,19 @@ export interface DraftRequest {
   session?: string;
 }
 
-/** Where a tap's reply sends the draft and the open. Wired by slice 03 to the reply box and navigation. */
+/**
+ * Where the renderer sends a person who taps a row's `href` or a `link`: a session (a scope key or a
+ * trick session id) one level down, or an http(s) address in a new tab. The renderer's own, not the
+ * wire's: since the re-cut a tap's reply carries no `open`.
+ */
+export type OpenTarget = { session: string; url?: undefined } | { url: string; session?: undefined };
+
+/**
+ * The renderer's handlers beside a tap. `onDraft` is Collie's own frame button ("Ask the agent to fix
+ * it") and `onOpen` a row's or a link's target; since the re-cut no tap reply fires either.
+ */
 export interface TapHandlers {
-  onDraft?: (draft: Draft) => void;
+  onDraft?: (draft: DraftRequest) => void;
   onOpen?: (target: OpenTarget) => void;
   /** The session open on the phone, sent with the tap. */
   from?: TapFrom;
@@ -76,12 +85,12 @@ export interface TapHandlers {
 /** One tap, as the renderer asks for it. `control` names the pressed control inside its part. */
 export interface TapInput extends TrickPartKey {
   intent: string;
-  args?: JsonObject;
+  value?: TapValue;
   control: string;
 }
 
-/** What a tap came to: the receipt's outcome, or `ignored` for a second tap while one is in flight. */
-export type TapResult = TapOutcome | "ignored";
+/** What a tap came to: the receipt's code, or `ignored` for a second tap while one is in flight. */
+export type TapResult = TapCode | "ignored";
 
 export interface TricksStore {
   getState: () => TricksState;
@@ -98,7 +107,7 @@ export const SYNC_RETRY_MS = 30_000;
 
 const EMPTY: TricksState = { rev: null, tricks: [], parts: new Map(), taps: new Map() };
 
-function sameArgs(a: JsonObject | undefined, b: JsonObject | undefined): boolean {
+function sameValue(a: TapValue | undefined, b: TapValue | undefined): boolean {
   return JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 }
 
@@ -202,26 +211,27 @@ export function createTricksStore(transport: TricksTransport, clock: () => numbe
     commit({ ...state, parts, taps });
   }
 
-  function settle(key: string, input: TapInput, requestId: string, outcome: "failed" | "unknown", message?: string): TapResult {
-    const base = { requestId, control: input.control, intent: input.intent };
-    const entry: TapState = outcome === "failed" ? { phase: "failed", ...base, message: message ?? t("tricks.frame.tapFailed") } : { phase: "unknown", ...base };
-    if (input.args !== undefined) entry.args = input.args;
+  function settle(key: string, input: TapInput, rid: string, code: Exclude<TapCode, "ok" | "changed">, message?: string): TapResult {
+    const base = { rid, control: input.control, intent: input.intent };
+    const entry: TapState = code === "unknown" ? { phase: "unknown", ...base } : { phase: "failed", ...base, message: message ?? t("tricks.frame.tapFailed") };
+    if (input.value !== undefined) entry.value = input.value;
     commit({ ...state, taps: withTap(key, entry) });
-    return outcome;
+    return code;
   }
 
   async function runTap(input: TapInput, handlers: TapHandlers = {}): Promise<TapResult> {
     const key = partKey(input);
     const current = state.taps.get(key);
     if (current?.phase === "busy") return "ignored";
-    const retry = current?.phase === "unknown" && current.control === input.control && current.intent === input.intent && sameArgs(current.args, input.args);
-    const requestId = retry ? current.requestId : transport.mintRequestId();
-    const busy: TapState = { phase: "busy", requestId, control: input.control, intent: input.intent };
-    if (input.args !== undefined) busy.args = input.args;
+    const retry = current?.phase === "unknown" && current.control === input.control && current.intent === input.intent && sameValue(current.value, input.value);
+    const rid = retry ? current.rid : transport.mintRequestId();
+    const busy: TapState = { phase: "busy", rid, control: input.control, intent: input.intent };
+    if (input.value !== undefined) busy.value = input.value;
     commit({ ...state, taps: withTap(key, busy) });
 
-    const body: TapRequest = { requestId, intent: input.intent, part: input.part };
-    if (input.args !== undefined) body.args = input.args;
+    // STEP 3: a decision's answer taps `hill/<key>`; the store keys taps by part, so it sends the part id.
+    const body: TapRequest = { rid, node: input.part, intent: input.intent };
+    if (input.value !== undefined) body.value = input.value;
     if (handlers.from !== undefined) body.from = handlers.from;
     let reply: TrickTapReply;
     try {
@@ -230,17 +240,14 @@ export function createTricksStore(transport: TricksTransport, clock: () => numbe
       // A refusal before the run (a 4xx) ran nothing, so it is a plain failure. No answer at all, a
       // deadline or a 5xx may have come after the provider ran, so the phone does not know.
       const status = apiErrorStatus(error);
-      if (status !== undefined && status >= 400 && status < 500) return settle(key, input, requestId, "failed", t("tricks.tap.refused", { status }));
-      return settle(key, input, requestId, "unknown");
+      if (status !== undefined && status >= 400 && status < 500) return settle(key, input, rid, "rejected", t("tricks.tap.refused", { status }));
+      return settle(key, input, rid, "unknown");
     }
-    if (reply.requestId !== requestId) return settle(key, input, requestId, "unknown");
+    if (reply.rid !== rid) return settle(key, input, rid, "unknown");
     applyTapReply(input, reply);
-    if (reply.outcome === "failed") return settle(key, input, requestId, "failed", reply.message);
-    if (reply.outcome === "unknown") return settle(key, input, requestId, "unknown");
+    if (reply.code !== "ok" && reply.code !== "changed") return settle(key, input, rid, reply.code, reply.message);
     commit({ ...state, taps: withTap(key, undefined) });
-    if (reply.draft !== undefined) handlers.onDraft?.(reply.draft);
-    if (reply.open !== undefined) handlers.onOpen?.(reply.open);
-    return reply.outcome;
+    return reply.code;
   }
 
   return {
@@ -277,10 +284,9 @@ export function useTricksState(store: TricksStore = tricksStore): TricksState {
 
 /** The place an `at` names, read by its prefix. The match inside it is the place's own business. */
 export function placeOfAt(at: string): PlaceKind | undefined {
-  if (at === "belt" || at === "session" || at === "tab" || at === "dashboard" || at === "header.line" || at === "settings") return at;
-  if (at.startsWith("tab:")) return "tab-mark";
+  if (at === "belt" || at === "session" || at === "dashboard") return at;
+  if (at.startsWith("tab:")) return "tab";
   if (at.startsWith("view:")) return "view";
-  if (at.startsWith("menu:")) return "menu";
   return undefined;
 }
 
@@ -314,14 +320,14 @@ export function useTrickPart(key: string, store: TricksStore = tricksStore): { p
 
 /**
  * The tap function a renderer's context takes: it reads the part key back into host, trick and part
- * and hands the reply's draft and open to `handlers`.
+ * and sends the tap with `handlers.from`.
  */
-export function trickTapper(handlers: TapHandlers, store: TricksStore = tricksStore): (key: string, intent: string, args: JsonObject | undefined, control: string) => void {
-  return (key, intent, args, control) => {
+export function trickTapper(handlers: TapHandlers, store: TricksStore = tricksStore): (key: string, intent: string, value: TapValue | undefined, control: string) => void {
+  return (key, intent, value, control) => {
     const parsed = parsePartKey(key);
     if (parsed === undefined) return;
     const input: TapInput = { ...parsed, intent, control };
-    if (args !== undefined) input.args = args;
+    if (value !== undefined) input.value = value;
     void store.tap(input, handlers);
   };
 }

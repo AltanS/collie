@@ -1,22 +1,32 @@
 // Collie tricks, the schema: every type a trick reads or writes, and the one total parser for each
-// document that crosses the line between a trick and Collie (the "Collie tricks" milestone, slice 00).
+// document that crosses the line between a trick and Collie (the "Collie tricks" milestone, M94).
 //
 // WHAT CROSSES. Four documents, each versioned or closed:
 //   * the manifest, `trick.toml` after the TOML parse (`parseManifest`);
-//   * the facts, the JSON the bridge writes to the provider's stdin (`parseFacts`, for the CLI's
+//   * the facts, the JSON the bridge writes to the program's stdin (`parseFacts`, for the CLI's
 //     fixture check; the bridge builds them, it does not parse them);
-//   * the output, the JSON the provider prints (`parseTrickDocument`, `parseTrickDocumentText`);
-//   * a tap, the body the phone posts (`parseTapRequest`).
+//   * the output, the JSON the program prints (`parseTrickDocument`, `parseTrickDocumentText`):
+//     the parts it draws and the decisions it wants open on the Hill;
+//   * a tap, the body the phone posts (`parseTapRequest`), in the Tree UI's intent shape.
 // The wire between the bridge and the phone (`TricksReply`, `TrickTapReply`) is types only: the bridge
 // writes it from parts this file already accepted.
 //
+// THE VOCABULARY IS TREE UI'S (the re-cut of 2026-11-08). A part's `view` is a list of nodes in the
+// Tree UI vocabulary (experiments/tree-ui/VOCABULARY.md, draft 4), a closed subset of its kinds with
+// its kind names, its attribute names and its value lists, plus one kind of its own, `number`. A node
+// is `{ kind, text?, attrs?, kids? }` and every attribute value is text, as in the tree. So a trick
+// draws the same whether the shell is React (today) or the tree (later): a shell decision costs a
+// renderer, not a contract. A kind of the first schema is refused BY NAME, with the node or the
+// attribute that replaces it (`REMOVED_KINDS`).
+//
 // WHY THE PARSER IS TOTAL AND REFUSES PER PART. The theme parser is the model: it never throws, walks
 // the whole document and returns every refusal with a path and a sentence a person can read. A trick
-// adds one rule: a bad part is refused ALONE, and the other parts still draw (design §4 rule 1). The
-// runner keeps the last good version of a refused part and marks it stale; `refusedParts` names them.
+// adds one rule: a bad part is refused ALONE, and the other parts still draw. The runner keeps the
+// last good version of a refused part and marks it stale; `refusedParts` names them. A decision is
+// refused alone in the same way (`refusedDecisions`).
 //
-// CLOSED, NOT CLEANED. Unknown keys, kinds, places, tones and icons are refused, never dropped, and a
-// string over its cap is refused, never cut (design §4 rule 2). The durable adapter cuts, because a
+// CLOSED, NOT CLEANED. Unknown keys, kinds, attributes, places, tones and icons are refused, never
+// dropped, and a string over its cap is refused, never cut. The durable adapter cuts, because a
 // program's pane must still show; a trick's part has a last good version to fall back on, and a cut
 // string would hide a bug the author can fix with one `collie trick check`.
 //
@@ -24,22 +34,22 @@
 // bridge and the CLI import it by relative path, as they import `../json`. It must also pass the root
 // tsconfig, which is stricter than the web one (`noUncheckedIndexedAccess`).
 
-import { asJsonBoolean, asJsonNumber, asJsonObject, asJsonString, parseJson, type JsonObject, type JsonValue } from "../json";
+import { asJsonNumber, asJsonObject, asJsonString, asJsonBoolean, parseJson, type JsonObject, type JsonValue } from "../json";
 
 // ── Versions and byte caps ───────────────────────────────────────────────────────────────────
 
-/** The output document version this build reads (`"v": 1`). */
+/** The output document version this build reads (`"v": 1`). The tree re-cut is v1: no outside trick existed before it. */
 export const DOCUMENT_VERSION = 1;
 /** The facts document version this build writes. A manifest that needs a higher one is skipped. */
 export const FACTS_VERSION = 1;
 
-/** One part, serialised as compact JSON, at most this many UTF-8 bytes (design §4 rule 3). */
+/** One part, serialised as compact JSON, at most this many UTF-8 bytes. */
 export const PART_MAX_BYTES = 16 * 1024;
-/** One document at most this many UTF-8 bytes. Equal to the runner's stdout cap (design §3.2). */
+/** One document at most this many UTF-8 bytes. Equal to the runner's stdout cap. */
 export const DOCUMENT_MAX_BYTES = 64 * 1024;
-/** An intent's `args`, serialised, at most this many bytes. They go back to the provider on a tap. */
-export const ARGS_MAX_BYTES = 1024;
-/** An `image` file, checked by the runner on disk and by the phone on fetch (design §5). */
+/** A button's `value`, an action's `value` and a tap's text value, at most this many UTF-8 bytes. */
+export const VALUE_MAX_BYTES = 1024;
+/** An `image` file and a decision's media file, checked by the runner on disk and by the phone on fetch. */
 export const IMAGE_MAX_BYTES = 512 * 1024;
 /** Parts per document. One trick in many places, not a page of widgets. */
 export const PARTS_MAX = 24;
@@ -49,67 +59,59 @@ export const REFUSALS_MAX = 40;
 // ── Text caps, in characters (code points) unless the name says bytes ────────────────────────
 //
 // WIRE.md §6 fixes the four a trick session shares with a program pane: subtitle 120, badge text 12,
-// action label 16, step label 60. The rest are chosen here for a 390 px phone: a cap is the most
-// text the slot can show before it wraps or truncates, so a longer string is an author's bug.
+// action label 16, step label 60. The rest are chosen for a 390 px phone: a cap is the most text the
+// slot can show before it wraps or truncates, so a longer string is an author's bug.
 
 /** `subtitle` of a trick session (WIRE.md §6, `Pane.subtitle`). */
 export const SUBTITLE_MAX = 120;
-/** `badge.text` (WIRE.md §6, `Pane.badge.text`). */
+/** A session part's `badge.text` (WIRE.md §6, `Pane.badge.text`). */
 export const BADGE_TEXT_MAX = 12;
-/** `badge.count` and a mark's `count` (WIRE.md §6, `Pane.badge.count`): an integer 0 to 9999. */
+/** A count: a session part's `badge.count` and a `badge` attribute (WIRE.md §6): a whole number 0 to 9999. */
 export const COUNT_MAX = 9999;
 /** A trick session action's `label` (WIRE.md §6, `PaneAction.label`). */
 export const ACTION_LABEL_MAX = 16;
 /** Actions on a trick session (WIRE.md §6, `Pane.actions`). */
 export const ACTIONS_MAX = 4;
-/** A step's `label` and a percent's `label` (WIRE.md §6, `Step.label`). */
-export const STEP_LABEL_MAX = 60;
-/** Steps in a progress or a `steps` figure (WIRE.md §6, `Pane.progress.steps`). */
-export const STEPS_MAX = 12;
-/** A mark's `face`, the live word in the belt (`23/34`). Same rule as a badge's text. */
+/** The most a `progress` counts to: a `meter` with `role` `progress` and a session's `progress` (WIRE.md §6, 12 steps). */
+export const PROGRESS_MAX = 12;
+/** A mark's `label`, the live word in the belt (`23/34`). Same rule as a badge's text. */
 export const FACE_MAX = 12;
-/** A mark's `label`, its accessible name. */
-export const MARK_LABEL_MAX = 60;
 /** The trick's `name` in the manifest, and a trick session's `name`. */
 export const NAME_MAX = 40;
-/** A trick tab's `title` in the Tab row. */
-export const TAB_TITLE_MAX = 40;
 /** A view's `title` in the view picker, beside "Conversation" and "Terminal". */
 export const VIEW_TITLE_MAX = 24;
-/** A `section` title, a `settings` page title. */
+/** A `group`'s `label`. */
 export const TITLE_MAX = 60;
-/** A `text` node's text, newlines included. `lines` reserves its height. */
+/** A `para`'s text, and a `run`'s. One paragraph: no line break (the tree strips control characters). */
 export const TEXT_MAX = 2000;
-/** A `button` label. Wider than an action's, because a view's button has the row to itself. */
+/** A `button`'s `label` and its `confirm` label. */
 export const BUTTON_LABEL_MAX = 24;
-/** A short label beside a figure or a number (`number`, `spark`, `ring`, `time`, `kv` label). */
+/** A short label beside a figure (`meter`, `number`, `spacer`, a bar's name, a `para`'s `term`). */
 export const LABEL_MAX = 40;
-/** A `kv` value, a `list` item's text and detail, a `link` label, an image's `alt`, a header line. */
+/** A `row`'s title, a `link`'s text, an image's `alt`, a button's `hint`, a `disabled` reason. */
 export const LINE_MAX = 120;
-/** A `number` node's value as text (`23/34`, `1.2k`). */
+/** A `number` node's figure as text (`23/34`, `1.2k`). */
 export const NUMBER_TEXT_MAX = 12;
-/** A `list` item's trailing word, a `bar` item's label, a `table` column's label. */
+/** A `row`'s `end`, a `number`'s `unit`, a `code`'s `lang`. */
 export const WORD_MAX = 24;
-/** A `table` cell. */
-export const CELL_MAX = 80;
-/** One `log` line. */
-export const LOG_LINE_MAX = 240;
-/** `log.tail` entries; the node draws the last `lines` of them. */
-export const LOG_TAIL_MAX = 200;
-/** `list.items` and `table.items`; past `rows` the renderer draws "+n more". */
-export const ITEMS_MAX = 200;
-/** A `menu:<match>` row's label (a later place). */
-export const MENU_LABEL_MAX = 40;
-/** Rows in a `menu:<match>` part (a later place). */
-export const MENU_ROWS_MAX = 6;
-/** A draft's text. It fills an empty reply box, so a page of prose is never what a trick meant. */
-export const DRAFT_TEXT_MAX = 4000;
-/** A URL in `open` or a `link` (WIRE.md §6, `Item.href`). */
+/** A `chip`'s text (WIRE.md §6, a step label). */
+export const CHIP_TEXT_MAX = 60;
+/** A `chip`'s `short`, the text shown when the box is narrow. */
+export const SHORT_MAX = 12;
+/** A `para`'s `bullet` marker (`-`, `1.`, `12.`). */
+export const BULLET_MAX = 4;
+/** One `line`, a mono screen line; a tab is allowed. */
+export const LINE_TEXT_MAX = 240;
+/** A URL in a `link`, a `row` or a `run` `href` (WIRE.md §6, `Item.href`). */
 export const URL_MAX = 2048;
+/** A file path in a `link` with `rel` `file`. */
+export const FILE_PATH_MAX = 1024;
 /** The whole `at` string, match included. */
 export const AT_MAX = 160;
-/** An image's `src`, a path relative to the trick folder. */
+/** An image's `src` and a decision's media `file`, a path relative to the trick folder. */
 export const IMAGE_SRC_MAX = 256;
+/** An image's `w` and `h`, in pixels. */
+export const IMAGE_SIDE_MAX = 4096;
 /** The manifest's `run` command line. */
 export const RUN_MAX = 1024;
 /** One `watch` path in the manifest, and the number of them. */
@@ -120,43 +122,68 @@ export const FACT_TEXT_MAX_BYTES = 4096;
 /** Sessions and spaces in one facts document (WIRE.md §6, panes and workspaces per snapshot). */
 export const FACT_SESSIONS_MAX = 256;
 export const FACT_SPACES_MAX = 64;
+/** A facts session's opaque `sessionId`. */
+export const SESSION_ID_MAX = 256;
 /** A refused tap's or a failed run's one line of words on the wire. */
 export const PROBLEM_MAX = 200;
 
+// ── Decision caps (the Hill's decision shape) ────────────────────────────────────────────────
+
+/** Open decisions one document may list. The Hill's cap per sender, and a trick is one sender. */
+export const DECISIONS_MAX = 20;
+/** A decision `key`: 1 to 64 of `a-z 0-9 -`, unique in the document. */
+export const DECISION_KEY_MAX = 64;
+/** A decision's `title`, one line. */
+export const DECISION_TITLE_MAX = 120;
+/** A decision's `summary`, the plain words the card shows. Required. */
+export const DECISION_SUMMARY_MAX = 280;
+/** A decision's `body`, Markdown, the detail behind a tap (the walky cap). */
+export const DECISION_BODY_MAX = 4000;
+/** Options of one decision. Zero is a decision answered by text alone. */
+export const DECISION_OPTIONS_MAX = 5;
+/** A decision option's `label` (a button's) and its `detail` (a line). */
+export const OPTION_LABEL_MAX = BUTTON_LABEL_MAX;
+export const OPTION_DETAIL_MAX = LINE_MAX;
+/** `recommends.why`, one line of why. */
+export const RECOMMENDS_WHY_MAX = 200;
+/** Media files of one decision, and a caption. */
+export const DECISION_MEDIA_MAX = 4;
+export const MEDIA_CAPTION_MAX = LINE_MAX;
+/** Links of one decision, and a link's label. */
+export const DECISION_LINKS_MAX = 5;
+export const DECISION_LINK_LABEL_MAX = LINE_MAX;
+/** The person's typed or spoken answer to a decision, as the tap carries it. */
+export const ANSWER_TEXT_MAX = 4000;
+
 /** Limits the view tree holds, as data, so the renderer and the docs read the same numbers. */
 export const VIEW_LIMITS = {
-  /** `text.lines`, required: the lines it reserves. */
-  textLines: { min: 1, max: 12 },
-  /** `list.rows` and `table.rows`, required: the rows they reserve. */
-  listRows: { min: 1, max: 50 },
-  tableRows: { min: 1, max: 50 },
-  /** `table.columns`. */
-  tableColumns: { min: 1, max: 4 },
-  /** `log.lines`, required: the mono lines it reserves. */
-  logLines: { min: 1, max: 40 },
-  /** `grid.cols`, required. */
-  gridCols: { min: 2, max: 4 },
-  /** `kv.cols`, optional, default 1. */
-  kvCols: { min: 1, max: 2 },
-  /** `kv.rows`. */
-  kvRows: { min: 1, max: 12 },
-  /** `spark.values`. */
-  sparkValues: { min: 2, max: 24 },
-  /** `bar.items`. */
-  barItems: { min: 1, max: 12 },
-  /** `steps.steps` and a progress's steps (WIRE.md §7.12). */
-  steps: { min: 1, max: STEPS_MAX },
-  /** Children of one layout node. */
-  children: { min: 1, max: 24 },
-  /** Nesting: the view's root is depth 1. */
+  /** Nodes in a part's `view`, the kids of the place's frame. */
+  root: { min: 1, max: 24 },
+  /** Kids of a `card`, a `group` or a `row`. */
+  kids: { min: 1, max: 24 },
+  /** Kids of a `list`: its rows and groups. The rows it reserves are its kids, so there is no `rows`. */
+  listKids: { min: 0, max: 50 },
+  /** Kids of a `bar`. */
+  barKids: { min: 1, max: 12 },
+  /** Kids of a `para` or a `line`: its runs and links. */
+  runs: { min: 1, max: 64 },
+  /** Kids of a `code`: its lines. */
+  codeLines: { min: 1, max: 200 },
+  /** `code.max`: the lines shown before the block scrolls on its own. */
+  codeMax: { min: 1, max: 40 },
+  /** `meter.max` with `role` `progress`, and a session's `progress.max`. */
+  progressMax: { min: 1, max: PROGRESS_MAX },
+  /** `image.w` and `image.h`. */
+  imageSide: { min: 1, max: IMAGE_SIDE_MAX },
+  /** Nesting: a node in the view list is depth 1. */
   depth: { min: 1, max: 6 },
-  /** Nodes in one view, every child counted. */
+  /** Nodes in one view, every kid counted. */
   nodes: { min: 1, max: 300 },
 } as const;
 
 // ── Durations ────────────────────────────────────────────────────────────────────────────────
 
-/** `every` in the manifest: at least 5 s (design §3.2), at most a day. */
+/** `every` in the manifest: at least 5 s, at most a day. */
 export const EVERY_MIN_MS = 5_000;
 export const EVERY_MAX_MS = 24 * 60 * 60_000;
 /** `fresh` in a document: at least 5 s, at most a day. */
@@ -182,43 +209,51 @@ export function parseDuration(text: string): number | undefined {
 /**
  * How long a part keeps its tone after `asOf`. DECISION (the design is silent on a document with no
  * `fresh`): three ticks of `every`, at least a minute; ten minutes for a trick with no timer. A part
- * always has a window, so a bridge that is down cannot leave "deploy green" on the glass.
+ * always has a window, so a bridge that is down cannot leave "deploy green" on the glass. The window
+ * never passes `FRESH_MAX_MS`, the same day a `fresh` may name (an `every` of 9 h would give 27 h).
  */
 export function freshWindowMs(freshMs: number | undefined, everyMs: number | undefined): number {
-  if (freshMs !== undefined) return freshMs;
-  if (everyMs !== undefined) return Math.max(3 * everyMs, 60_000);
+  if (freshMs !== undefined) return Math.min(freshMs, FRESH_MAX_MS);
+  if (everyMs !== undefined) return Math.min(Math.max(3 * everyMs, 60_000), FRESH_MAX_MS);
   return 10 * 60_000;
 }
 
 // ── Closed lists ─────────────────────────────────────────────────────────────────────────────
 
-/** The tones a trick may name. Each maps to a token that already exists (`TONE_TOKENS`). */
-export const TONES = ["plain", "muted", "ok", "warn", "error", "working", "unknown"] as const;
+/** The tones a trick may name: the tree's list (VOCABULARY.md 2.2). Each maps to a token that already exists. */
+export const TONES = ["plain", "accent", "warn", "danger", "ok", "muted"] as const;
 export type Tone = (typeof TONES)[number];
+/**
+ * The inks the renderer draws: the six tones and `unknown`, the grey a part takes past its `fresh`
+ * window. `unknown` is the phone's, never a trick's: a trick does not say it does not know.
+ */
+export const DRAW_TONES = [...TONES, "unknown"] as const;
+export type DrawTone = (typeof DRAW_TONES)[number];
 
 /**
- * THE TONE MAP. Each tone to a colour token of `index.css` (DESIGN.md §13). No new colour.
- *   * `ok` is `status-done`, `error` is `status-blocked`, `unknown` is `status-unknown`.
+ * THE TONE MAP. Each tone to a colour token of `index.css` (DESIGN.md §13). No new colour, no amber.
+ *   * `ok` is `status-done`, `danger` is `status-blocked`, `unknown` is `status-unknown`.
  *   * `warn` has no status token of its own. It takes `status-working`, the token the app's caution
- *     Notice already uses (components/ui/notice.tsx, `caution`). So `warn` and `working` draw in one
- *     colour; a trick tells them apart with its icon and its words, as Collie's own caution notice does.
+ *     Notice already uses (components/ui/notice.tsx, `caution`). `accent`, the tree's word for "this is
+ *     live" (the first schema's `working`), takes it too. So `warn` and `accent` draw in one colour; a
+ *     trick tells them apart with its icon and its words, as Collie's own caution notice does.
  *   * `plain` and `muted` are the two inks, `foreground` and `muted-foreground`: a trick's part is not
  *     a status and most of it is plain text.
- * A part past its `fresh` window draws as `unknown` whatever it says (design §4, freshness).
+ * A part past its `fresh` window draws as `unknown` whatever it says.
  */
 export const TONE_TOKENS = {
   plain: "foreground",
   muted: "muted-foreground",
   ok: "status-done",
   warn: "status-working",
-  error: "status-blocked",
-  working: "status-working",
+  danger: "status-blocked",
+  accent: "status-working",
   unknown: "status-unknown",
-} as const satisfies { readonly [T in Tone]: string };
-export type ToneToken = (typeof TONE_TOKENS)[Tone];
+} as const satisfies { readonly [T in DrawTone]: string };
+export type ToneToken = (typeof TONE_TOKENS)[DrawTone];
 
 /**
- * The text class of each tone, spelled out so Tailwind's scan of this file finds every one (a class
+ * The text class of each ink, spelled out so Tailwind's scan of this file finds every one (a class
  * built as `text-${token}` is never generated). The renderer uses these and nothing else for ink.
  */
 export const TONE_TEXT_CLASS = {
@@ -226,106 +261,162 @@ export const TONE_TEXT_CLASS = {
   muted: "text-muted-foreground",
   ok: "text-status-done",
   warn: "text-status-working",
-  error: "text-status-blocked",
-  working: "text-status-working",
+  danger: "text-status-blocked",
+  accent: "text-status-working",
   unknown: "text-status-unknown",
-} as const satisfies { readonly [T in Tone]: `text-${(typeof TONE_TOKENS)[T]}` };
+} as const satisfies { readonly [T in DrawTone]: `text-${(typeof TONE_TOKENS)[T]}` };
 
-/** The colour token a tone draws in. */
-export function toneToken(tone: Tone): ToneToken {
+/** The colour token an ink draws in. */
+export function toneToken(tone: DrawTone): ToneToken {
   return TONE_TOKENS[tone];
 }
 
 /**
- * Session status words that are NOT tones. A provider that writes `"tone": "blocked"` meant a status,
- * and a trick's red is never read as "an agent needs you" (ADR 0063 point 3), so it gets its own reason.
+ * Session status words that are NOT tones. A program that writes `"tone": "blocked"` meant a status,
+ * and a trick's red is never read as "an agent needs you" (ADR 0063 point 3), so it gets its own
+ * reason. `working` is here since the re-cut: it is a `chip` state now, and the tone is `accent`.
  */
-const STATUS_WORDS = ["blocked", "done", "idle", "waiting"] as const;
+const STATUS_WORDS = ["blocked", "done", "idle", "waiting", "working"] as const;
+/** Tones of the first schema, refused with the tree's word for them. */
+const OLD_TONES = {
+  error: 'use "danger"',
+  working: 'use "accent"',
+  unknown: "the phone draws a part grey itself once it is past its fresh window",
+} as const satisfies Readonly<Record<string, string>>;
 
 /**
  * Keys that would make a trick's mark look like Collie's status mark. Refused with their own reason:
- * a trick mark draws the trick's icon and face word in its own frame, never a status dot (design §2).
+ * a trick mark draws the trick's icon and face word in its own frame, never a status dot.
  */
 export const STATUS_MARK_KEYS = ["status", "dot", "state", "pulse"] as const;
 
-export const GAPS = ["tight", "normal", "loose"] as const;
-export type Gap = (typeof GAPS)[number];
-export const ALIGNS = ["start", "center", "end", "between"] as const;
-export type Align = (typeof ALIGNS)[number];
-export const TEXT_ROLES = ["display", "title", "body", "caption", "mono"] as const;
-export type TextRole = (typeof TEXT_ROLES)[number];
-/** `time.style`: "3 min ago", "09:41", "8 Nov", "in 4 min". The phone ticks it itself. */
-export const TIME_STYLES = ["ago", "clock", "date", "until"] as const;
-export type TimeStyle = (typeof TIME_STYLES)[number];
-/** `image.ratio`, width to height. The image is letterboxed into it, so its height never moves. */
-export const IMAGE_RATIOS = ["1:1", "4:3", "3:2", "16:9", "2:1", "3:4"] as const;
-export type ImageRatio = (typeof IMAGE_RATIOS)[number];
-/** `table.columns[].align`. */
-export const COLUMN_ALIGNS = ["start", "end"] as const;
-export type ColumnAlign = (typeof COLUMN_ALIGNS)[number];
-/** A progress step's state (WIRE.md §7.12). */
-export const STEP_STATES = ["done", "running", "todo"] as const;
-export type StepState = (typeof STEP_STATES)[number];
-/**
- * A `steps` figure's step state. DECISION: the figure adds `failed`, because a trick's steps are often
- * checks (the legs trick's red leg). A session part's `progress` keeps WIRE.md's three, since it rides
- * the pane fields that a program pane also fills.
- */
-export const FIGURE_STEP_STATES = ["done", "running", "todo", "failed"] as const;
-export type FigureStepState = (typeof FIGURE_STEP_STATES)[number];
+/** The 16 ANSI colour names of `style` `fg-<name>` and `bg-<name>` (VOCABULARY.md 2.1). */
+export const ANSI_NAMES = [
+  "black",
+  "red",
+  "green",
+  "yellow",
+  "blue",
+  "magenta",
+  "cyan",
+  "white",
+  "bright-black",
+  "bright-red",
+  "bright-green",
+  "bright-yellow",
+  "bright-blue",
+  "bright-magenta",
+  "bright-cyan",
+  "bright-white",
+] as const;
+/** Every word `style` may hold, space separated (VOCABULARY.md 2.1, 2.13). */
+export const STYLE_WORDS = [
+  ...ANSI_NAMES.map((name) => `fg-${name}`),
+  ...ANSI_NAMES.map((name) => `bg-${name}`),
+  "bold",
+  "dim",
+  "italic",
+  "underline",
+  "inverse",
+  "strike",
+  "box",
+  "syn-keyword",
+  "syn-string",
+  "syn-comment",
+  "syn-number",
+  "syn-type",
+  "syn-func",
+  "syn-const",
+  "syn-punct",
+] as const;
+
+/** `group.fold`: a hint for the first draw; the phone owns the toggle after it. */
+export const FOLDS = ["open", "closed"] as const;
+export type Fold = (typeof FOLDS)[number];
+/** `chip.clock` and `run.clock` with `at` (VOCABULARY.md 2.14). */
+export const CLOCKS = ["ago", "elapsed", "left", "time"] as const;
+export type Clock = (typeof CLOCKS)[number];
+/** `chip.state`: the tree's row state list, one list, the steps of a bar of chips. A chip draws a dot. */
+export const CHIP_STATES = ["working", "waiting", "idle", "done", "gone"] as const;
+export type ChipState = (typeof CHIP_STATES)[number];
+/** `button.pressed` (VOCABULARY.md 2.8). */
+export const PRESSED_STATES = ["true", "false", "mixed"] as const;
+export type Pressed = (typeof PRESSED_STATES)[number];
+/** `button.does`: a trick may only copy. `install`, `notify`, `reload` and `wipe` are Collie's own. */
+export const BUTTON_DOES = ["copy"] as const;
+export type ButtonDoes = (typeof BUTTON_DOES)[number];
+/** `link.rel`: what the `href` names. Absent is `url`. */
+export const LINK_RELS = ["url", "file", "pane"] as const;
+export type LinkRel = (typeof LINK_RELS)[number];
+/** `bar.role`: a trick's bar sits in its view, or is the one `strip` band; the fixed bars are Collie's. */
+export const BAR_ROLES = ["strip"] as const;
+/** `bar.scroll`. */
+export const BAR_SCROLLS = ["x"] as const;
+/** `para.role`. */
+export const PARA_ROLES = ["heading", "quote"] as const;
+/** `line.role`. */
+export const LINE_ROLES = ["text", "status", "note"] as const;
+/** `meter.role`. Absent is `meter`. */
+export const METER_ROLES = ["progress", "meter"] as const;
+/** `row.cut`: where a long title is cut. */
+export const CUTS = ["end", "mid"] as const;
 
 /**
- * THE ICON SET a trick may name: a closed list of words, each a lucide icon the phone already ships in
- * the app's own code under `web/src` (so a trick adds no glyph to the bundle). `TRICK_ICON_LUCIDE` names the lucide
- * export for each; the test holds every one to `lucide-react`. Left out on purpose: the spinner
- * (`Loader2`, Collie's own busy state), and the filled status circles (`CircleDot`, `CheckCircle2`,
- * `XCircle`, `CircleAlert`), which read as Collie's status marks.
+ * THE ICON SET a trick may name: the tree's list (VOCABULARY.md 2.15) and the words the first tricks
+ * add (`flask`, `plug`, `tag`, `git-pull-request`, `x`, `play`, `pause`, `flag`, `camera`). One list,
+ * each word a lucide export (`TRICK_ICON_LUCIDE`); the test holds every one to `lucide-react`. Left out
+ * on purpose: the spinner (`Loader2`, Collie's own busy state) and the filled status circles
+ * (`CircleDot`, `CheckCircle2`, `XCircle`, `CircleAlert`), which read as Collie's status marks.
  */
 export const TRICK_ICON_LUCIDE = {
-  activity: "Activity",
-  alert: "TriangleAlert",
-  archive: "Archive",
+  back: "ArrowLeft",
   bell: "Bell",
-  bot: "Bot",
   branch: "GitBranch",
-  bug: "Bug",
-  chart: "BarChart3",
+  camera: "Camera",
+  chat: "MessageSquare",
   check: "Check",
   clock: "Clock",
-  commit: "GitCommitHorizontal",
-  cpu: "Cpu",
-  disk: "HardDrive",
+  close: "X",
+  copy: "Copy",
+  crew: "Users",
+  delete: "Trash2",
+  down: "ArrowDown",
+  download: "Download",
+  edit: "Pencil",
+  eye: "Eye",
   file: "FileText",
   flag: "Flag",
   flask: "FlaskConical",
   folder: "Folder",
-  gauge: "Gauge",
-  globe: "Globe",
-  inbox: "Inbox",
+  "git-pull-request": "GitPullRequest",
+  image: "Image",
   info: "Info",
+  key: "KeyRound",
   link: "ExternalLink",
-  list: "ListTodo",
   lock: "Lock",
-  message: "MessageSquare",
+  machine: "Server",
+  menu: "Menu",
+  mic: "Mic",
+  minus: "Minus",
   more: "Ellipsis",
-  note: "StickyNote",
+  move: "Move",
+  next: "ChevronRight",
   pause: "Pause",
+  pin: "Pin",
   play: "Play",
   plug: "Plug",
+  plus: "Plus",
   refresh: "RefreshCw",
   search: "Search",
-  send: "Send",
-  server: "Server",
   settings: "Settings2",
-  shield: "Shield",
+  share: "Share2",
   star: "Star",
+  tag: "Tag",
   terminal: "SquareTerminal",
-  timer: "Timer",
-  trash: "Trash2",
-  user: "User",
-  wrench: "Wrench",
+  up: "ArrowUp",
+  upload: "Upload",
+  warn: "TriangleAlert",
   x: "X",
-  zap: "Zap",
 } as const;
 export type TrickIcon = keyof typeof TRICK_ICON_LUCIDE;
 /** The icon words, sorted. */
@@ -336,15 +427,16 @@ export const DEFAULT_TRICK_ICON: TrickIcon = "plug";
 /**
  * A trick session action's icon: the twelve words of `PANE_ACTION_ICONS` (bridge/types.ts), because a
  * trick session's actions ride the pane fields as `PaneAction`s. Restated, not imported, so this file
- * loads without the bridge; the test reads both and fails on drift.
+ * loads without the bridge; the test reads both and fails on drift. Not the trick icon set: these are
+ * the program pane's words, and three of them (`archive`, `send`, `note`) are not in the tree's list.
  */
 export const ACTION_ICONS = ["play", "pause", "check", "x", "refresh", "archive", "flag", "star", "send", "note", "search", "more"] as const;
 export type ActionIcon = (typeof ACTION_ICONS)[number];
 
-/** The events a manifest may name in `on` (slice 10, the event bus). */
+/** The events a manifest may name in `on` (a later slice, the event bus). */
 export const TRICK_EVENTS = ["session.status", "turn.end", "ask.open"] as const;
 export type TrickEvent = (typeof TRICK_EVENTS)[number];
-/** `mode`: `once` runs per trigger; `serve` keeps the provider running (slice 10). */
+/** `mode`: `once` runs per trigger; `serve` keeps the program running (a later slice). */
 export const TRICK_MODES = ["once", "serve"] as const;
 export type TrickMode = (typeof TRICK_MODES)[number];
 /** The parts of a manifest that a later slice builds. Refused as "later" until a caller enables them. */
@@ -359,301 +451,304 @@ export type SessionStatus = (typeof SESSION_STATUSES)[number];
 
 /**
  * Where a part draws, by kind. The `at` of a part names one (`belt`, `tab:fix`, `view:agent:claude`)
- * and the manifest's `places` lists the kinds it uses. DECISION: the manifest declares kinds, not
- * whole `at` strings, so a trick may compute its matches at run time; `tab-mark` is `tab:<tabmatch>`,
- * `view` is `view:<match>`, `menu` is `menu:<match>`.
+ * and the manifest's `places` lists the kinds it uses. The place word is the `at` word before its
+ * match: `tab` is `tab:<tabmatch>`, the mark after a tab's title; `view` is `view:<match>`.
+ * DECISION: the manifest declares kinds, not whole `at` strings, so a trick may compute its matches at
+ * run time.
  */
-export const PLACE_KINDS = ["belt", "session", "tab-mark", "tab", "view", "dashboard", "header.line", "menu", "settings"] as const;
+export const PLACE_KINDS = ["belt", "session", "tab", "view", "dashboard"] as const;
 export type PlaceKind = (typeof PLACE_KINDS)[number];
-/** The places slices 03 to 07 build. A parser call with no `places` accepts these. */
-export const NEAR_PLACES = ["belt", "session", "tab-mark", "tab", "view"] as const satisfies readonly PlaceKind[];
-/** The places slice 11 builds. Refused with "not in this Collie" unless a caller enables them. */
-export const LATER_PLACES = ["dashboard", "header.line", "menu", "settings"] as const satisfies readonly PlaceKind[];
+/** The places this Collie draws. A parser call with no `places` accepts these. */
+export const NEAR_PLACES = ["belt", "session", "tab", "view"] as const satisfies readonly PlaceKind[];
+/** The places a later slice builds. Refused with "not in this Collie" unless a caller enables them. */
+export const LATER_PLACES = ["dashboard"] as const satisfies readonly PlaceKind[];
+/**
+ * `at` words of the first schema, refused with what to write instead. The trick's own tab, the
+ * header line, the menu rows and the settings page were never drawn; they come back when a slice
+ * builds them, in the tree's shape.
+ */
+export const REMOVED_PLACES = {
+  tab: 'A trick\'s own tab is not in this Collie. A mark after a tab\'s title is "tab:<tabmatch>".',
+  "header.line": '"header.line" is not a place in this Collie.',
+  menu: '"menu:<match>" is not a place in this Collie.',
+  settings: '"settings" is not a place in this Collie.',
+  "tab-mark": 'The tab mark\'s "at" is "tab:<tabmatch>".',
+} as const satisfies Readonly<Record<string, string>>;
 
 // ── Node kinds ───────────────────────────────────────────────────────────────────────────────
 
-/** Slice 02 draws these. The two first real tricks (`legs`, `tracker`) use only these. */
-export const CORE_NODE_KINDS = ["stack", "row", "text", "number", "kv", "list", "button", "progress", "steps", "mark", "time"] as const;
-/** Slice 08 draws these. Typed and parsed now. */
-export const MORE_NODE_KINDS = ["grid", "spacer", "divider", "section", "card", "badge", "icon", "link", "log", "table", "image", "bar", "spark", "ring"] as const;
-export const NODE_KINDS = [...CORE_NODE_KINDS, ...MORE_NODE_KINDS] as const;
+/**
+ * The kinds a trick's view may hold: sixteen of the tree's thirty, with its names, plus `number`, the
+ * one kind of its own (a big figure with a label; not in the tree yet).
+ */
+export const NODE_KINDS = [
+  "card",
+  "group",
+  "list",
+  "row",
+  "bar",
+  "chip",
+  "button",
+  "para",
+  "line",
+  "run",
+  "code",
+  "link",
+  "image",
+  "meter",
+  "spacer",
+  "number",
+] as const;
 export type NodeKind = (typeof NODE_KINDS)[number];
-/** The layout kinds, the ones with `children`. */
-export const LAYOUT_KINDS = ["stack", "row", "grid", "section", "card"] as const;
-/** The kinds a tap reaches through an `intent`, and the list item. Nothing else is tappable. */
-export const TAPPABLE_KINDS = ["button", "link", "mark", "list"] as const;
 
-/** Every key each node kind takes, `kind` included. Anything else is refused. */
-export const NODE_KEYS = {
-  stack: ["kind", "children", "gap", "align"],
-  row: ["kind", "children", "gap", "align"],
-  grid: ["kind", "children", "gap", "align", "cols"],
-  spacer: ["kind", "size"],
-  divider: ["kind"],
-  section: ["kind", "children", "gap", "align", "title"],
-  card: ["kind", "children", "gap", "align"],
-  text: ["kind", "text", "role", "tone", "lines"],
-  number: ["kind", "value", "label", "tone"],
-  mark: ["kind", "icon", "face", "count", "tone", "label", "intent", "args"],
-  badge: ["kind", "text", "count", "tone"],
-  icon: ["kind", "name", "tone", "label"],
-  kv: ["kind", "rows", "cols"],
-  list: ["kind", "rows", "items"],
-  link: ["kind", "label", "detail", "icon", "session", "url", "intent", "args"],
-  button: ["kind", "label", "intent", "args", "primary", "icon", "disabled"],
-  progress: ["kind", "value", "label", "steps"],
-  log: ["kind", "lines", "tail"],
-  time: ["kind", "at", "style", "label"],
-  table: ["kind", "columns", "rows", "items"],
-  image: ["kind", "src", "ratio", "alt"],
-  bar: ["kind", "items", "max", "tone"],
-  spark: ["kind", "values", "label", "tone"],
-  steps: ["kind", "steps"],
-  ring: ["kind", "value", "label", "tone"],
+/** The keys a node object takes, as in the tree. The bridge gives each node its `id`. */
+export const NODE_KEYS = ["kind", "text", "attrs", "kids"] as const;
+
+/** Every attribute each kind takes. Anything else is refused. The tree's names, a subset of each kind's. */
+export const NODE_ATTRS = {
+  card: ["tone"],
+  group: ["label", "fold", "badge"],
+  list: [],
+  row: ["href", "end", "badge", "tone", "cut", "icon", "disabled"],
+  bar: ["role", "scroll", "label"],
+  chip: ["tone", "icon", "at", "clock", "state", "current", "short"],
+  button: ["intent", "label", "tone", "disabled", "pressed", "confirm", "badge", "icon", "hint", "does", "value"],
+  para: ["role", "bullet", "term"],
+  line: ["style", "role"],
+  run: ["style", "code", "href", "at", "clock"],
+  code: ["lang", "max"],
+  link: ["href", "rel", "badge", "icon"],
+  image: ["src", "alt", "w", "h"],
+  meter: ["value", "max", "tone", "label", "role"],
+  spacer: ["label"],
+  number: ["label", "tone", "unit"],
 } as const satisfies { readonly [K in NodeKind]: readonly string[] };
 
-// ── Types: the view tree (design §5) ────────────────────────────────────────────────────────
+/** The attributes a kind must carry. */
+export const NODE_REQUIRED_ATTRS = {
+  button: ["label"],
+  link: ["href"],
+  image: ["src", "alt", "w", "h"],
+} as const satisfies { readonly [K in NodeKind]?: readonly (typeof NODE_ATTRS)[K][number][] };
 
-/** Something a tap names: the intent goes back to the provider with its args (design §4). */
-export interface Intent {
-  intent: string;
-  /** Any JSON object, at most `ARGS_MAX_BYTES` serialised. Handed back unchanged on the tap. */
-  args?: JsonObject;
-}
+/** The kinds each container holds, in the tree's words (VOCABULARY.md 2, 2.12). A kind not listed holds no kids. */
+export const NODE_KIDS = {
+  card: ["para", "line", "chip", "button", "meter", "image", "bar", "group", "number", "spacer"],
+  group: ["row", "group", "bar", "para", "line", "meter", "number", "spacer"],
+  list: ["group", "row"],
+  row: ["para", "chip", "button"],
+  bar: ["button", "chip", "link"],
+  para: ["run", "link"],
+  line: ["run", "link"],
+  code: ["line"],
+} as const satisfies { readonly [K in NodeKind]?: readonly NodeKind[] };
+export type ContainerKind = keyof typeof NODE_KIDS;
 
-interface LayoutBase {
-  children: ViewNode[];
-  gap?: Gap;
-  align?: Align;
-}
+/** The kinds a part's `view` lists, the kids of the place's frame. They flow down the frame; there is no `stack`. */
+export const VIEW_ROOT_KINDS = ["card", "group", "list", "bar", "para", "line", "code", "meter", "image", "spacer", "number"] as const satisfies readonly NodeKind[];
 
-export interface StackNode extends LayoutBase {
-  kind: "stack";
-}
-export interface RowNode extends LayoutBase {
-  kind: "row";
-}
-export interface GridNode extends LayoutBase {
-  kind: "grid";
-  cols: number;
-}
-export interface SpacerNode {
-  kind: "spacer";
-  size?: Gap;
-}
-export interface DividerNode {
-  kind: "divider";
-}
-export interface SectionNode extends LayoutBase {
-  kind: "section";
-  title: string;
-}
-export interface CardNode extends LayoutBase {
-  kind: "card";
-}
-export interface TextNode {
-  kind: "text";
-  text: string;
-  role?: TextRole;
-  tone?: Tone;
-  /** The lines it reserves, always, whatever the text: 1 to 12. */
-  lines: number;
-}
-export interface NumberNode {
-  kind: "number";
-  value: string | number;
-  label?: string;
-  tone?: Tone;
-}
+/** What a kind's `text` is: its cap, whether it is required, and the characters it allows. A kind not listed takes no text. */
+export const NODE_TEXT = {
+  row: { max: LINE_MAX, required: true },
+  chip: { max: CHIP_TEXT_MAX },
+  para: { max: TEXT_MAX },
+  line: { max: LINE_TEXT_MAX, tabs: true },
+  run: { max: TEXT_MAX, required: true, blank: true },
+  link: { max: LINE_MAX, required: true },
+  number: { max: NUMBER_TEXT_MAX, required: true },
+} as const satisfies { readonly [K in NodeKind]?: TextRule };
 
 /**
- * A trick's mark: its icon (the manifest's when absent), a face word, a count, a tone and one intent.
- * At least one of icon, face and count. A part that should show nothing is left out of the document;
- * the renderer keeps its slot (design §5). The same type serves a `belt` part, a `tab:` part and the
- * `mark` node.
+ * Kinds that are not in a trick's vocabulary, each refused by name with what to write instead: the
+ * first schema's kinds, and the tree's kinds that only Collie draws.
  */
-export interface Mark {
-  icon?: TrickIcon;
-  face?: string;
-  count?: number;
-  tone?: Tone;
-  /** The accessible name. Absent: the renderer composes one from the trick's name and the face. */
-  label?: string;
-  intent?: string;
-  args?: JsonObject;
-}
-export interface MarkNode extends Mark {
-  kind: "mark";
-}
+export const REMOVED_KINDS = {
+  stack: "the nodes of a view, a card or a group flow down on their own; list them there",
+  grid: "use a list of row with end",
+  table: "use a list of row with end",
+  kv: "use a list of row with end",
+  steps: "use a bar of chip with state and current",
+  time: "use a chip or a run with at and clock",
+  section: "use a group with label",
+  divider: "use a spacer, with label for a divider with words",
+  log: "use a code with line kids",
+  text: "use a para, or a line for one mono screen line",
+  progress: 'use a meter with role "progress"',
+  badge: "badge is an attribute now, on row, button, link and group",
+  icon: "icon is an attribute now, on row, chip, button and link",
+  spark: "figures come later, as an image the bridge draws",
+  ring: "figures come later, as an image the bridge draws",
+  mark: "mark is Collie's working mark; a trick's mark is the part's mark, or a button in a bar",
+  screen: "a trick part is not a screen; the place gives the frame",
+  sheet: "sheets are Collie's own",
+  toast: "toasts are Collie's own",
+  form: "forms are not in a trick's vocabulary yet",
+  field: "fields are not in a trick's vocabulary yet",
+  select: "selects are not in a trick's vocabulary yet",
+  option: "selects are not in a trick's vocabulary yet",
+  composer: "the composer is Collie's own; a trick never writes into a reply box",
+  prompt: "a prompt is an agent's dialog; a trick asks the person through a decision",
+  tool: "tool calls are an agent's",
+  turn: "turns are an agent's",
+  chat: "Chat is Collie's own",
+  pane: "the Terminal is Collie's own",
+  think: "thinking blocks are an agent's",
+} as const;
 
-/** A badge: a count or a short word, never both (WIRE.md §7.11). */
-export type Badge = { count: number } | { text: string };
-export type BadgeNode = { kind: "badge"; tone?: Tone } & ({ count: number; text?: never } | { text: string; count?: never });
+/**
+ * Tree attributes a trick may not use, each with its reason. `state` on a row reads as "an agent needs
+ * you"; the rest are device preferences, Collie's own sheets and gestures, and the bridge's bookkeeping.
+ */
+const TREE_ONLY_ATTRS = {
+  state: "would draw Collie's status mark. A trick never draws a session state; use \"tone\"",
+  pref: "names a device preference, which is Collie's closed list",
+  key: "draws a key cap, which is Collie's keyboard",
+  holds: "opens one of Collie's sheets",
+  opens: "opens one of Collie's sheets",
+  repeat: "repeats an intent while held, which a trick may not ask for",
+  span: "belongs to Collie's key grid",
+  anchor: "is the bridge's to set",
+  hue: "is the colour slot of a machine or a harness, which the bridge sets",
+  since: "is the bridge's to set; a trick's time is a chip with at and clock",
+  live: "is the bridge's to set",
+  busy: "is the bridge's to set",
+  when: "belongs to a form, which a trick does not draw",
+  needs: "is the bridge's to set",
+  id: "is the bridge's to set; it gives every node its id",
+} as const satisfies Readonly<Record<string, string>>;
 
-export interface IconNode {
-  kind: "icon";
-  name: TrickIcon;
-  tone?: Tone;
-  label?: string;
+// ── Types: the view tree ─────────────────────────────────────────────────────────────────────
+//
+// Every attribute value is text, as in the tree. A flag (`current`, `code`) is present with the
+// empty string, or absent. `disabled` carries its reason, the empty string for none. Numbers are
+// digit strings (`"68"`, `"0.5"`); an instant (`at`) is epoch milliseconds as digits.
+
+export interface CardNode {
+  kind: "card";
+  attrs?: { tone?: Tone };
+  kids: ViewNode[];
 }
-export interface KvRow {
-  label: string;
-  value: string;
-  tone?: Tone;
+export interface GroupNode {
+  kind: "group";
+  attrs?: { label?: string; fold?: Fold; badge?: string };
+  kids: ViewNode[];
 }
-export interface KvNode {
-  kind: "kv";
-  rows: KvRow[];
-  cols?: number;
-}
-export interface ListItem {
-  text: string;
-  detail?: string;
-  icon?: TrickIcon;
-  tone?: Tone;
-  /** A word at the row's end (`3d`, `red`). */
-  trailing?: string;
-  intent?: string;
-  args?: JsonObject;
-}
+/** A list of rows and groups. It reserves the height of its kids, so a data change inside one row moves nothing. */
 export interface ListNode {
   kind: "list";
-  /** The rows it reserves, 1 to 50. Past them the renderer draws "+n more". */
-  rows: number;
-  items: ListItem[];
+  kids?: ViewNode[];
 }
-/** A row that opens a session or a URL, or names an intent. Exactly one of the three. */
-export interface LinkNode {
-  kind: "link";
-  label: string;
-  detail?: string;
-  icon?: TrickIcon;
-  session?: string;
-  url?: string;
-  intent?: string;
-  args?: JsonObject;
-}
-export interface ButtonNode {
-  kind: "button";
-  label: string;
-  intent: string;
-  args?: JsonObject;
-  primary?: boolean;
-  icon?: TrickIcon;
-  disabled?: boolean;
-}
-export interface ProgressStep {
-  label: string;
-  state: StepState;
-}
-/** A progress bar: a percent (with an optional label) or steps, never both. */
-export interface PercentProgressNode {
-  kind: "progress";
-  /** 0 to 100. */
-  value: number;
-  label?: string;
-  steps?: never;
-}
-export interface StepProgressNode {
-  kind: "progress";
-  steps: ProgressStep[];
-  value?: never;
-  label?: never;
-}
-export type ProgressNode = PercentProgressNode | StepProgressNode;
-export interface LogNode {
-  kind: "log";
-  /** The mono lines it reserves, 1 to 40. It draws the last `lines` entries of `tail`. */
-  lines: number;
-  tail: string[];
-}
-export interface TimeNode {
-  kind: "time";
-  /** An ISO 8601 instant with `Z` or an offset. */
-  at: string;
-  style?: TimeStyle;
-  label?: string;
-}
-export interface TableColumn {
-  label: string;
-  align?: ColumnAlign;
-}
-export interface TableNode {
-  kind: "table";
-  columns: TableColumn[];
-  /** The rows it reserves, 1 to 50. */
-  rows: number;
-  /** One array of cells per row, each as long as `columns`. */
-  items: string[][];
-}
-export interface ImageNode {
-  kind: "image";
-  /** A `.png`, `.jpg` or `.jpeg` file, relative to the trick folder, no `..`. */
-  src: string;
-  ratio: ImageRatio;
-  alt: string;
-}
-export interface BarItem {
-  label: string;
-  value: number;
+/**
+ * One row: a title, at most one `para` (the second line), any `chip`, at most one trailing `button`.
+ * `href` makes it tappable; a row that fires an intent takes the trailing button. Never a `state`.
+ */
+export interface RowNode {
+  kind: "row";
+  text: string;
+  attrs?: { href?: string; end?: string; badge?: string; tone?: Tone; cut?: (typeof CUTS)[number]; icon?: TrickIcon; disabled?: string };
+  kids?: ViewNode[];
 }
 export interface BarNode {
   kind: "bar";
-  items: BarItem[];
-  /** The full length. Absent: the largest value. */
-  max?: number;
-  tone?: Tone;
+  attrs?: { role?: (typeof BAR_ROLES)[number]; scroll?: (typeof BAR_SCROLLS)[number]; label?: string };
+  kids: ViewNode[];
 }
-export interface SparkNode {
-  kind: "spark";
-  values: number[];
-  label?: string;
-  tone?: Tone;
+/** A small label. `state` draws a dot, `current` marks the step; `at` with `clock` makes it a live time. */
+export interface ChipNode {
+  kind: "chip";
+  text?: string;
+  attrs?: { tone?: Tone; icon?: TrickIcon; at?: string; clock?: Clock; state?: ChipState; current?: ""; short?: string };
 }
-export interface FigureStep {
-  label: string;
-  state: FigureStepState;
+/** Sends one intent on tap, or copies `value` with `does` `copy`. `confirm` is the second label (two taps, one intent). */
+export interface ButtonNode {
+  kind: "button";
+  attrs: {
+    label: string;
+    intent?: string;
+    tone?: Tone;
+    disabled?: string;
+    pressed?: Pressed;
+    confirm?: string;
+    badge?: string;
+    icon?: TrickIcon;
+    hint?: string;
+    does?: ButtonDoes;
+    value?: string;
+  };
 }
-export interface StepsNode {
-  kind: "steps";
-  steps: FigureStep[];
+/** One paragraph: `text`, or `run` and `link` kids, never both. */
+export interface ParaNode {
+  kind: "para";
+  text?: string;
+  attrs?: { role?: (typeof PARA_ROLES)[number]; bullet?: string; term?: string };
+  kids?: ViewNode[];
 }
-export interface RingNode {
-  kind: "ring";
-  /** 0 to 100. */
-  value: number;
-  label?: string;
-  tone?: Tone;
+/** One mono screen line: `text`, or `run` and `link` kids, never both; neither is a blank line. */
+export interface LineNode {
+  kind: "line";
+  text?: string;
+  attrs?: { style?: string; role?: (typeof LINE_ROLES)[number] };
+  kids?: ViewNode[];
+}
+export interface RunNode {
+  kind: "run";
+  text: string;
+  attrs?: { style?: string; code?: ""; href?: string; at?: string; clock?: Clock };
+}
+export interface CodeNode {
+  kind: "code";
+  attrs?: { lang?: string; max?: string };
+  kids: ViewNode[];
+}
+export interface LinkNode {
+  kind: "link";
+  text: string;
+  attrs: { href: string; rel?: LinkRel; badge?: string; icon?: TrickIcon };
+}
+/** A file of the trick folder, PNG or JPEG. The bridge serves it under a signed URL. `w` and `h` reserve its box. */
+export interface ImageNode {
+  kind: "image";
+  attrs: { src: string; alt: string; w: string; h: string };
+}
+/** An amount (`role` `meter`) or a task (`role` `progress`; no `value` is indeterminate). `max` defaults to 1. */
+export interface MeterNode {
+  kind: "meter";
+  attrs?: { value?: string; max?: string; tone?: Tone; label?: string; role?: (typeof METER_ROLES)[number] };
+}
+/** Layout only. With `label` it is a divider with words. */
+export interface SpacerNode {
+  kind: "spacer";
+  attrs?: { label?: string };
+}
+/** A big figure (`text`, `23/34`) with a label. A trick's own kind, not in the tree yet. */
+export interface NumberNode {
+  kind: "number";
+  text: string;
+  attrs?: { label?: string; tone?: Tone; unit?: string };
 }
 
 export type ViewNode =
-  | StackNode
-  | RowNode
-  | GridNode
-  | SpacerNode
-  | DividerNode
-  | SectionNode
   | CardNode
-  | TextNode
-  | NumberNode
-  | MarkNode
-  | BadgeNode
-  | IconNode
-  | KvNode
+  | GroupNode
   | ListNode
-  | LinkNode
-  | ButtonNode
-  | ProgressNode
-  | LogNode
-  | TimeNode
-  | TableNode
-  | ImageNode
+  | RowNode
   | BarNode
-  | SparkNode
-  | StepsNode
-  | RingNode;
+  | ChipNode
+  | ButtonNode
+  | ParaNode
+  | LineNode
+  | RunNode
+  | CodeNode
+  | LinkNode
+  | ImageNode
+  | MeterNode
+  | SpacerNode
+  | NumberNode;
 
-// ── Types: matches (design §2) ──────────────────────────────────────────────────────────────
+/** A part's view: the nodes of the place's frame, top to bottom. */
+export type View = ViewNode[];
+
+// ── Types: matches ───────────────────────────────────────────────────────────────────────────
 
 /**
  * One term of a session match. A match is one or more terms separated by single spaces, and ALL must
@@ -678,20 +773,40 @@ export interface TabMatch {
   terms: TabMatchTerm[];
 }
 
-// ── Types: parts (design §2, §4) ────────────────────────────────────────────────────────────
+// ── Types: parts ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * A trick's mark: the attributes of a `button` in a `bar` (the tree's belt). Its icon (the manifest's
+ * when absent), its face word as `label`, a `badge` (a count, or a dot when empty), a tone and, on the
+ * belt only, one intent. At least one of icon, label and badge; a part that should show nothing is
+ * left out of the document. Never `state`: a trick's red is not "an agent needs you".
+ */
+export interface Mark {
+  icon?: TrickIcon;
+  label?: string;
+  badge?: string;
+  tone?: Tone;
+  intent?: string;
+}
 
 /** A trick session's action, on the belt of its session (`PaneAction`, plus the intent it taps). */
 export interface TrickAction {
   id: string;
   label: string;
   intent: string;
-  args?: JsonObject;
+  /** Sent as the intent's value, as a button's `value` is. */
+  value?: string;
   icon?: ActionIcon;
   disabled?: boolean;
 }
 
-/** The progress of a trick session, WIRE.md §7.12's shape: it rides the pane field `progress`. */
-export type PartProgress = { kind: "percent"; value: number; label?: string } | { kind: "steps"; steps: ProgressStep[] };
+/** The progress of a trick session, a `meter` with `role` `progress`: `value` of `max` (1 to 12, default 1). No `value` is indeterminate. */
+export interface PartProgress {
+  value?: number;
+  max?: number;
+}
+/** A badge on a trick session: a count or a short word, never both (WIRE.md §7.11). */
+export type Badge = { count: number } | { text: string };
 
 export interface BeltPart {
   at: "belt";
@@ -705,15 +820,15 @@ export interface SessionPart {
   name?: string;
   icon?: TrickIcon;
   /**
-   * The session's tone (slice 03). `working` makes the pane read as working on the snapshot; every
-   * other tone reads idle, because a trick session is outside triage and push and never "needs you".
+   * The session's tone. `accent` makes the pane read as working on the snapshot; every other tone
+   * reads idle, because a trick session is outside triage and push and never "needs you".
    */
   tone?: Tone;
   subtitle?: string;
   badge?: Badge;
   progress?: PartProgress;
   actions?: TrickAction[];
-  view: ViewNode;
+  view: View;
 }
 export interface TabMarkPart {
   at: `tab:${string}`;
@@ -721,100 +836,96 @@ export interface TabMarkPart {
   /** No `intent`: a tap on the tab opens the tab. */
   mark: Mark;
 }
-export interface TabPart {
-  at: "tab";
-  id: string;
-  title: string;
-  icon?: TrickIcon;
-  /** A Space name glob. The tab joins the first Space in Collie's order that matches, and stays. */
-  space: string;
-  view: ViewNode;
-}
 export interface ViewPart {
   at: `view:${string}`;
   id: string;
   /** The view's name in the picker. */
   title: string;
   icon?: TrickIcon;
-  view: ViewNode;
+  view: View;
 }
 export interface DashboardPart {
   at: "dashboard";
   id: string;
-  view: ViewNode;
+  view: View;
 }
-export interface HeaderLine {
-  text: string;
-  icon?: TrickIcon;
-  tone?: Tone;
-  intent?: string;
-  args?: JsonObject;
-}
-export interface HeaderLinePart {
-  at: "header.line";
-  id: string;
-  line: HeaderLine;
-}
-export interface MenuRow {
-  label: string;
-  icon?: TrickIcon;
-  intent: string;
-  args?: JsonObject;
-}
-export interface MenuPart {
-  at: `menu:${string}`;
-  id: string;
-  rows: MenuRow[];
-}
-export interface SettingsPart {
-  at: "settings";
-  id: string;
-  title: string;
-  view: ViewNode;
-}
-export type TrickPart =
-  | BeltPart
-  | SessionPart
-  | TabMarkPart
-  | TabPart
-  | ViewPart
-  | DashboardPart
-  | HeaderLinePart
-  | MenuPart
-  | SettingsPart;
+export type TrickPart = BeltPart | SessionPart | TabMarkPart | ViewPart | DashboardPart;
 
 /** A part the parser accepted, with its place kind and its match read out of `at`. */
 export type ParsedPart =
   | { place: "belt"; part: BeltPart }
   | { place: "session"; part: SessionPart }
-  | { place: "tab-mark"; part: TabMarkPart; tabMatch: TabMatch }
-  | { place: "tab"; part: TabPart }
+  | { place: "tab"; part: TabMarkPart; tabMatch: TabMatch }
   | { place: "view"; part: ViewPart; match: SessionMatch }
-  | { place: "dashboard"; part: DashboardPart }
-  | { place: "header.line"; part: HeaderLinePart }
-  | { place: "menu"; part: MenuPart; match: SessionMatch }
-  | { place: "settings"; part: SettingsPart };
+  | { place: "dashboard"; part: DashboardPart };
 
-/** A draft for a session's reply box. Only after a tap; fills an EMPTY box; never sends. */
-export interface Draft {
-  /** A real session's scope key (`host:paneId`), never a name and never a trick session. */
-  session: string;
-  text: string;
+// ── Types: decisions (the Hill's decision shape, as a trick lists it) ───────────────────────
+
+/** `priority`: a request, not a fact. Only `now` pushes. Absent is `today`. */
+export const DECISION_PRIORITIES = ["now", "today", "later"] as const;
+export type DecisionPriority = (typeof DECISION_PRIORITIES)[number];
+export const DEFAULT_DECISION_PRIORITY: DecisionPriority = "today";
+/** The Hill's own answer intents. A trick's option may not take them. */
+export const HILL_INTENTS = ["answer", "dismiss"] as const;
+
+/** An option: a named intent in the tree's shape. Collie runs none; it routes the chosen intent to the trick. */
+export interface DecisionOption {
+  intent: string;
+  label: string;
+  detail?: string;
 }
-/** Where a tap's reply takes the phone. Only after a tap. Back still goes up one level. */
-export type OpenTarget = { session: string; url?: never } | { url: string; session?: never };
+/** The trick's pick, never an answer: never pre-selected, never taken on a timeout. */
+export interface DecisionRecommends {
+  intent: string;
+  why: string;
+}
+export interface DecisionMedia {
+  /** A PNG or JPEG of the trick folder. The runner copies it into the Hill's media store. */
+  file: string;
+  caption?: string;
+}
+export interface DecisionLink {
+  label: string;
+  href: string;
+}
+/**
+ * One decision the trick wants open on the Hill. The list is declarative: the runner diffs it after
+ * every run, posts a new key once, withdraws a dropped key, and supersedes a key whose content changed.
+ * The answer comes back as a tap with `node` `hill/<key>`.
+ */
+export interface TrickDecision {
+  key: string;
+  title: string;
+  summary: string;
+  body?: string;
+  options?: DecisionOption[];
+  recommends?: DecisionRecommends | null;
+  priority?: DecisionPriority;
+  /** A session's scope key from the facts: the card opens its Chat. */
+  about?: string;
+  /** A session's scope key: the person's words reach it as the person's own walky message. */
+  replyTo?: string;
+  media?: DecisionMedia[];
+  links?: DecisionLink[];
+  /** Epoch ms. Past it the decision closes as expired. */
+  expiresAt?: number;
+}
 
-/** The provider's output, as written (design §4). */
+/** A decision's priority, its default filled. */
+export function decisionPriority(decision: TrickDecision): DecisionPriority {
+  return decision.priority ?? DEFAULT_DECISION_PRIORITY;
+}
+
+/** The program's output, as written. There is no `draft` and no `open`: a trick never writes into a reply box. */
 export interface TrickDocument {
   v: 1;
   parts: TrickPart[];
   asOf?: string;
   fresh?: string;
-  draft?: Draft;
-  open?: OpenTarget;
+  decisions?: TrickDecision[];
 }
 
-// ── Types: the manifest and the facts (design §1, §3) ───────────────────────────────────────
+// ── Types: the manifest and the facts ────────────────────────────────────────────────────────
 
 /** `trick.toml`, read and with its defaults filled. A runtime value, not a file to write back. */
 export interface TrickManifest {
@@ -826,25 +937,38 @@ export interface TrickManifest {
   watch?: string[];
   on?: TrickEvent[];
   mode: TrickMode;
-  /** The facts version the provider needs. */
+  /** The facts version the program needs. */
   facts: number;
   icon: TrickIcon;
   places: PlaceKind[];
 }
 
+/**
+ * What a tap carries back to the program: a button's `value` (text), or a decision's answer, the
+ * person's words (`{ text }`, `null` when they only tapped an option).
+ */
+export type TapValue = string | { text: string | null };
+
 export type FactsTrigger =
   | { kind: "start" }
   | { kind: "timer" }
-  | { kind: "tap"; requestId: string; intent: string; args?: JsonObject; part: string; from?: TapFrom }
-  /** Slice 10: a watched file changed. */
+  | { kind: "tap"; rid: string; node: string; intent: string; value?: TapValue; from?: TapFrom }
+  /** A later slice: a watched file changed. */
   | { kind: "watch"; path: string }
-  /** Slice 10: an event of the bus, with the session it is about. */
+  /** A later slice: an event of the bus, with the session it is about. */
   | { kind: "event"; event: TrickEvent; session?: string };
 
 export interface FactsSession {
-  /** The scope key `host:paneId` until v2 session ids exist (design §3.1). */
+  /** The scope key `host:paneId`, the address a decision's `about` and `replyTo` name. */
   id: string;
+  /** The crew member the session runs on (the machine's own name on a solo install). */
+  memberId: string;
+  /** The session's id, an opaque string. UNSTABLE until v2 session ids exist; never parse it. */
+  sessionId: string;
+  /** The multiplexer pane the session is bound to now. */
   paneId: string;
+  /** The machine's name, for display only. Never a key. */
+  host: string;
   name?: string;
   agent?: string;
   status: SessionStatus;
@@ -868,32 +992,41 @@ export interface TrickFacts {
   session?: FactsSession;
 }
 
-// ── Types: taps and the wire (design §4) ────────────────────────────────────────────────────
+// ── Types: taps and the wire ─────────────────────────────────────────────────────────────────
 
 /** Where a tap came from: the session open on the phone, when there is one. */
 export interface TapFrom {
   session?: string;
 }
-/** `POST /api/tricks/<host>/<id>/tap`. */
+/**
+ * `POST /api/tricks/<host>/<id>/tap`, the tree's `POST /intent` shape `{ rid, node, intent, value }`.
+ * `node` is the id of the part that holds the control, or `hill/<key>` for a decision's answer.
+ * A `confirm` button sends one intent, after the phone's second tap.
+ */
 export interface TapRequest {
-  /** A UUID, the shape every receipt route keys on (bridge/worktree-receipts.ts `isRequestId`). */
-  requestId: string;
+  /** A UUID minted by the phone. A known `rid` answers its receipt again and runs nothing. */
+  rid: string;
+  node: string;
   intent: string;
-  args?: JsonObject;
-  /** The id of the part that holds the control. The trick and the host are in the path. */
-  part: string;
+  value?: TapValue;
   from?: TapFrom;
 }
-export const TAP_OUTCOMES = ["applied", "replayed", "failed", "unknown"] as const;
-export type TapOutcome = (typeof TAP_OUTCOMES)[number];
 /**
- * The tap reply: the receipt and the trick's new parts, which the phone applies at once. `replayed`
- * returns the first reply's parts and runs nothing. `unknown` is shown and never resent.
+ * The receipt codes, the tree's (VOCABULARY.md 5). The first schema's codes map onto them: `applied`
+ * is `ok`; `replayed` is the same receipt again, from the receipt log; `failed` (the program exited
+ * badly, its output was refused, the trick is off) is `rejected`; a timeout is `unknown`. `changed`,
+ * `gone` and `denied` are the tree's race guard, a closed decision, and a device with no write right.
+ */
+export const TAP_CODES = ["ok", "changed", "rejected", "gone", "denied", "unknown"] as const;
+export type TapCode = (typeof TAP_CODES)[number];
+/**
+ * The tap reply: the receipt and the trick's new parts, which the phone applies at once. A repeat
+ * `rid` returns the first reply and runs nothing. `unknown` is shown and never resent.
  */
 export interface TrickTapReply {
-  requestId: string;
-  outcome: TapOutcome;
-  /** One masked line, at most `PROBLEM_MAX`, for `failed` and `unknown`. */
+  rid: string;
+  code: TapCode;
+  /** One masked line, at most `PROBLEM_MAX`, for every code but `ok`. */
   message?: string;
   /** `tricksRev` after the run. */
   rev?: number;
@@ -901,8 +1034,6 @@ export interface TrickTapReply {
   parts?: WireTrickPart[];
   /** This trick's part keys now present. */
   present?: string[];
-  draft?: Draft;
-  open?: OpenTarget;
 }
 
 /** The (host, trick, part) a stored part is keyed on, from slice 1, so the crew merge needs no rename. */
@@ -925,8 +1056,8 @@ export interface WireTrickPart extends TrickPartKey {
 }
 export const TRICK_STATES = ["ok", "failing", "stopped", "off", "skipped"] as const;
 /**
- * A trick's state on the wire: `ok`; `failing` (backing off, design §3.2); `stopped` (backoff ran
- * out); `off` (the switch); `skipped` (the manifest was refused, or needs a newer facts version).
+ * A trick's state on the wire: `ok`; `failing` (backing off); `stopped` (backoff ran out); `off` (the
+ * switch); `skipped` (the manifest was refused, or needs a newer facts version).
  */
 export type TrickState = (typeof TRICK_STATES)[number];
 /** One trick as the phone lists it: belt order, Settings → Tricks, the doctor row's summary. */
@@ -940,19 +1071,19 @@ export interface WireTrickInfo {
   places: PlaceKind[];
   /** One masked line, at most `PROBLEM_MAX`. */
   error?: string;
-  /** When the provider last ran, an instant. Absent before the first run (added by slice 01). */
+  /** When the program last ran, an instant. Absent before the first run. */
   lastRunAt?: string;
   /**
    * The refusals of the manifest and of the last document, capped like the parser's, so Settings →
-   * Tricks and the doctor row can say why a trick is skipped or a part stale (added by slice 01).
+   * Tricks and the doctor row can say why a trick is skipped or a part stale.
    */
   refusals?: Refusal[];
-  /** Who added the trick, when and from where (design §6). Slice 01 knows only that a folder is there. */
+  /** Who added the trick, when and from where. */
   provenance?: TrickProvenance;
 }
 /**
  * How a trick came to be on the machine. `folder` is a folder made by hand or by `collie trick init`;
- * `cli`, `agent` and `repo` are for `collie trick add` (slice 09), which records `at`, `repo` and `sha`.
+ * `cli`, `agent` and `repo` are for `collie trick add`, which records `at`, `repo` and `sha`.
  */
 export interface TrickProvenance {
   via: "folder" | "cli" | "agent" | "repo";
@@ -973,10 +1104,7 @@ export interface TricksReply {
   parts: WireTrickPart[];
   /** Every part key present now (`partKey`). A key the phone holds and this list lacks is gone. */
   present: string[];
-  /**
-   * The PATH the bridge's runner gives providers, for `collie doctor` (added by slice 01). The phone
-   * may ignore it.
-   */
+  /** The PATH the bridge's runner gives programs, for `collie doctor`. The phone may ignore it. */
   path?: string;
 }
 
@@ -996,40 +1124,46 @@ export function parsePartKey(text: string): TrickPartKey | undefined {
 
 // ── Refusals ─────────────────────────────────────────────────────────────────────────────────
 
-export type RefusalCode =
-  | "size"
-  | "json"
-  | "version"
-  | "unknown-key"
-  | "unknown-kind"
-  | "place"
-  | "later"
-  | "undeclared"
-  | "missing"
-  | "type"
-  | "text"
-  | "range"
-  | "count"
-  | "word"
-  | "icon"
-  | "id"
-  | "duplicate"
-  | "target"
-  | "status"
-  | "tap-only"
-  | "depth"
-  | "more";
+/** Every refusal code, as data, so the contract reference lists them from here. */
+export const REFUSAL_CODES = [
+  "size",
+  "json",
+  "version",
+  "unknown-key",
+  "unknown-kind",
+  "removed",
+  "parent",
+  "place",
+  "later",
+  "undeclared",
+  "missing",
+  "type",
+  "text",
+  "range",
+  "count",
+  "word",
+  "icon",
+  "id",
+  "duplicate",
+  "target",
+  "status",
+  "depth",
+  "more",
+] as const;
+export type RefusalCode = (typeof REFUSAL_CODES)[number];
 
 /**
- * Why something was refused. `path` is a JSON pointer into the document (`/parts/0/view/lines`;
+ * Why something was refused. `path` is a JSON pointer into the document (`/parts/0/view/2/attrs/tone`;
  * `""` is the whole document). `reason` is a sentence the doctor row and `collie trick check` print as
- * they are. `part` is the id of the refused part, when it had a readable one.
+ * they are. `part` is the id of the refused part, `decision` the key of the refused decision, when it
+ * had a readable one.
  */
 export interface Refusal {
   code: RefusalCode;
   path: string;
   reason: string;
   part?: string;
+  decision?: string;
 }
 
 /** A JSON pointer one step down (RFC 6901 escaping, so a key with `/` or `~` stays one step). */
@@ -1047,10 +1181,15 @@ function capRefusals(refusals: Refusal[]): Refusal[] {
 
 const TRICK_ID = /^[a-z0-9][a-z0-9-]{0,31}$/;
 const PART_ID = /^[a-z0-9][a-z0-9-]{0,31}$/;
+const DECISION_KEY = /^[a-z0-9-]{1,64}$/;
 const INTENT = /^[a-z0-9][a-z0-9._-]{0,47}$/;
 const AGENT = /^[a-z0-9][a-z0-9._-]{0,31}$/;
 const HOST = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const LANG = /^[a-z0-9][a-z0-9+#._-]{0,23}$/;
+const EPOCH_MS = /^\d{1,16}$/;
+const DECIMAL = /^(0|[1-9]\d{0,14})(\.\d{1,6})?$/;
+const WHOLE = /^(0|[1-9]\d{0,8})$/;
 /** The mux id rule (bridge/mux/identity.ts): no control character, no whitespace, no `/`, `?`, `#`. */
 const UNSAFE_ID_CHAR = /[\p{C}\s/?#]/u;
 const MUX_ID_MAX_BYTES = 128;
@@ -1058,6 +1197,10 @@ const MUX_ID_MAX_BYTES = 128;
 const INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,9})?)?(Z|[+-]\d{2}:\d{2})$/;
 const INSTANT_MAX = 40;
 const IMAGE_SRC = /^(?!\/)(?!.*(^|\/)\.\.?(\/|$))[A-Za-z0-9._\-/]+\.(png|jpe?g)$/i;
+/** The latest instant `Date` holds, in ms. */
+const EPOCH_MAX_MS = 8_640_000_000_000_000;
+/** The prefix of a decision's node in a tap: `hill/<key>`. */
+export const HILL_NODE_PREFIX = "hill/";
 
 /** A trick id: what `trick.toml` names and the folder is called. 1 to 32 of `a-z 0-9 -`. */
 export function isTrickId(text: string): boolean {
@@ -1067,9 +1210,18 @@ export function isTrickId(text: string): boolean {
 export function isPartId(text: string): boolean {
   return PART_ID.test(text);
 }
+/** A decision key, unique inside its document: 1 to 64 of `a-z 0-9 -`. */
+export function isDecisionKey(text: string): boolean {
+  return DECISION_KEY.test(text);
+}
 /** An intent name: 1 to 48 of `a-z 0-9 . _ -`. */
 export function isIntentName(text: string): boolean {
   return INTENT.test(text);
+}
+/** A tap's `node`: a part id, or `hill/<decision key>`. */
+export function isTapNode(text: string): boolean {
+  if (text.startsWith(HILL_NODE_PREFIX)) return isDecisionKey(text.slice(HILL_NODE_PREFIX.length));
+  return isPartId(text);
 }
 /**
  * A host name as the crew names machines. DECISION: `trick` is reserved, so `trick:<host>:<id>` (a trick
@@ -1078,9 +1230,13 @@ export function isIntentName(text: string): boolean {
 export function isHostName(text: string): boolean {
   return HOST.test(text) && text !== "trick";
 }
-/** A tap's request id: a UUID, as every receipt route in the bridge keys on. */
+/** A tap's `rid`: a UUID, as every receipt route in the bridge keys on. */
 export function isRequestId(text: string): boolean {
   return UUID.test(text);
+}
+/** An instant in epoch milliseconds as digits, the tree's `at` (VOCABULARY.md 1). */
+export function isEpochMs(text: string): boolean {
+  return EPOCH_MS.test(text) && Number(text) <= EPOCH_MAX_MS;
 }
 
 function utf8Bytes(text: string): number {
@@ -1090,9 +1246,9 @@ function utf8Bytes(text: string): number {
 /** The prefix every trick session id, trick tab id and Tricks Space id starts with. Reserved: no real pane takes it. */
 export const TRICK_SESSION_PREFIX = "trick:";
 /**
- * A real session's scope key, `host:paneId` (design §3.1). The pane id follows the mux id rule and
- * may hold colons itself (`w6X:3`). A name (`composer`) has no host and is not one. A trick session's
- * id (`trick:bluefin:legs`) is not one either: it has no reply box and no terminal.
+ * A real session's scope key, `host:paneId`. The pane id follows the mux id rule and may hold colons
+ * itself (`w6X:3`). A name (`composer`) has no host and is not one. A trick session's id
+ * (`trick:bluefin:legs`) is not one either: it has no reply box and no terminal.
  */
 export function isScopeKey(text: string): boolean {
   const colon = text.indexOf(":");
@@ -1129,7 +1285,7 @@ export function parseTrickSessionId(text: string): TrickSessionAddress | undefin
   const part = pieces[3] ?? "";
   return isPartId(part) ? { host, trick, part } : undefined;
 }
-/** A trick session's id, `trick:<host>:<id>` or `trick:<host>:<id>:<part>` (design §2). */
+/** A trick session's id, `trick:<host>:<id>` or `trick:<host>:<id>:<part>`. */
 export function isTrickSessionId(text: string): boolean {
   return parseTrickSessionId(text) !== undefined;
 }
@@ -1145,7 +1301,7 @@ export function trickSpaceId(host: string): string {
   return `trick:${host}`;
 }
 
-/** An ISO 8601 instant with a zone, as `asOf` and `time.at` need. */
+/** An ISO 8601 instant with a zone, as `asOf` and a facts session's `lastActiveAt` need. */
 export function isInstant(text: string): boolean {
   return text.length <= INSTANT_MAX && INSTANT.test(text) && !Number.isNaN(Date.parse(text));
 }
@@ -1166,9 +1322,21 @@ export function isTrickUrl(text: string): boolean {
   }
 }
 
-/** An image `src`: relative to the trick folder, no `..` or `.` step, a `.png`, `.jpg` or `.jpeg`. */
+/** An image `src` or media `file`: relative to the trick folder, no `..` or `.` step, a `.png`, `.jpg` or `.jpeg`. */
 export function isImageSrc(text: string): boolean {
   return text.length <= IMAGE_SRC_MAX && IMAGE_SRC.test(text) && !text.includes("//");
+}
+
+/** A file a `link` with `rel` `file` names: an absolute path or one under `~/`, no control character. */
+export function isFilePath(text: string): boolean {
+  if (codePoints(text) > FILE_PATH_MAX) return false;
+  if (!(text.startsWith("/") || text.startsWith("~/"))) return false;
+  return !/\p{C}/u.test(text);
+}
+
+/** A session a `link` with `rel` `pane` or a `row` opens: a real session's scope key, or a trick session's id. */
+export function isPaneTarget(text: string): boolean {
+  return isScopeKey(text) || isTrickSessionId(text);
 }
 
 function codePoints(text: string): number {
@@ -1212,6 +1380,15 @@ function keyStrings<T extends string>(record: { readonly [K in T]: string }): T[
   return (Object.keys(record) as T[]).toSorted();
 }
 
+function hasKey<T extends object>(record: T, key: string): key is Extract<keyof T, string> {
+  return Object.hasOwn(record, key);
+}
+
+/** The reason a table of words gives for `key`, or undefined when the word is not in it. */
+function reasonOf<T extends Readonly<Record<string, string>>>(record: T, key: string): string | undefined {
+  return hasKey(record, key) ? record[key] : undefined;
+}
+
 function quoteList(list: readonly string[]): string {
   return list.join(", ");
 }
@@ -1222,12 +1399,16 @@ function quoteList(list: readonly string[]): string {
 // `undefined`, and pushes a refusal for a present-but-wrong value or a missing required one.
 
 interface TextRule {
-  max: number;
-  required?: boolean;
+  readonly max: number;
+  readonly required?: boolean;
   /** Keeps `\n` and `\t`, as WIRE.md's multi-line fields do. */
-  multiline?: boolean;
-  /** Keeps `\t` alone: a log line. */
-  tabs?: boolean;
+  readonly multiline?: boolean;
+  /** Keeps `\t` alone: a screen line. */
+  readonly tabs?: boolean;
+  /** Allows text of spaces only (a `run` keeps the spaces between words). The empty string is still refused. */
+  readonly blank?: boolean;
+  /** Allows the empty string (a `disabled` reason). */
+  readonly empty?: boolean;
 }
 interface IntRule {
   min: number;
@@ -1239,7 +1420,7 @@ class Fields {
   readonly obj: JsonObject;
   readonly path: string;
   readonly sink: Refusal[];
-  /** What the object is, in words, for the unknown-key sentence ("a belt part", "a list item"). */
+  /** What the object is, in words, for the unknown-key sentence ("a belt part", "a decision"). */
   readonly what: string;
 
   constructor(obj: JsonObject, path: string, sink: Refusal[], what: string) {
@@ -1349,16 +1530,13 @@ class Fields {
     const raw = this.obj[key];
     if (raw === undefined) return undefined;
     const value = asJsonString(raw);
-    if (value !== undefined && isOneOf(TONES, value)) return value;
-    if (value !== undefined && isOneOf(STATUS_WORDS, value)) {
-      this.push(
-        "status",
-        key,
-        `"${value}" is a session status, not a tone. A trick never draws Collie's status; use one of: ${quoteList(TONES)}.`,
-      );
+    if (value === undefined) {
+      this.push("word", key, `"${key}" must be one of: ${quoteList(TONES)}.`);
       return undefined;
     }
-    this.push("word", key, `"${key}" must be one of: ${quoteList(TONES)}.`);
+    if (isOneOf(TONES, value)) return value;
+    const problem = toneProblem(value) ?? { code: "word" as const, reason: `must be one of: ${quoteList(TONES)}.` };
+    this.push(problem.code, key, `"${key}" ${problem.reason}`);
     return undefined;
   }
 
@@ -1370,7 +1548,7 @@ class Fields {
     }
     const value = asJsonString(raw);
     if (value !== undefined && isOneOf(TRICK_ICONS, value)) return value;
-    this.push("icon", key, `"${key}" must be one of Collie's trick icons: ${quoteList(TRICK_ICONS)}.`);
+    this.push("icon", key, iconReason(key));
     return undefined;
   }
 
@@ -1405,46 +1583,74 @@ class Fields {
     return new Fields(value, this.at(key), this.sink, what);
   }
 
-  /** `intent` and `args` as a pair. `args` without an `intent` is refused. */
-  intent(required: boolean): Intent | undefined {
-    const name = this.obj.intent;
-    if (name === undefined) {
-      if (required) this.missing("intent", "the intent a tap sends to the provider");
-      if (this.has("args")) this.push("target", "args", '"args" goes with an "intent". Add one or remove "args".');
+  /** An intent name. */
+  intent(key: string, required: boolean): string | undefined {
+    const raw = this.obj[key];
+    if (raw === undefined) {
+      if (required) this.missing(key, "the intent a tap sends to the program");
       return undefined;
     }
-    const value = asJsonString(name);
+    const value = asJsonString(raw);
     if (value === undefined || !isIntentName(value)) {
-      this.push("id", "intent", '"intent" must be 1 to 48 of: lower-case letters, digits, ".", "_" and "-".');
+      this.push("id", key, `"${key}" must be 1 to 48 of: lower-case letters, digits, ".", "_" and "-".`);
       return undefined;
     }
-    const out: Intent = { intent: value };
-    if (!this.has("args")) return out;
-    const args = asJsonObject(this.obj.args);
-    if (args === undefined) {
-      this.push("type", "args", '"args" must be an object.');
+    return value;
+  }
+
+  /** A fixed value sent with an intent: text of at most `VALUE_MAX_BYTES` bytes. */
+  value(key: string): string | undefined {
+    const raw = this.obj[key];
+    if (raw === undefined) return undefined;
+    const value = asJsonString(raw);
+    if (value === undefined) {
+      this.push("type", key, `"${key}" must be text. A tap sends it as the intent's value.`);
       return undefined;
     }
-    const bytes = utf8Bytes(JSON.stringify(args));
-    if (bytes > ARGS_MAX_BYTES) {
-      this.push("size", "args", `"args" is ${bytes} bytes. At most ${ARGS_MAX_BYTES}.`);
-      return undefined;
-    }
-    out.args = args;
-    return out;
+    const problem = valueProblem(value);
+    if (problem !== undefined) this.push(problem.code, key, `"${key}" ${problem.reason}`);
+    return problem === undefined ? value : undefined;
   }
 }
 
 function textProblem(value: string, rule: TextRule): string | undefined {
-  if (value.trim() === "") return "is empty.";
+  if (value === "") return rule.empty === true ? undefined : "is empty.";
+  if (value.trim() === "" && rule.blank !== true) return "is empty.";
   const n = codePoints(value);
   if (n > rule.max) return `is ${n} characters. At most ${rule.max}.`;
   const multiline = rule.multiline === true;
   if (hasControl(value, multiline, multiline || rule.tabs === true)) {
-    return multiline ? "holds a control character. Only a line break and a tab are allowed." : "holds a control character or a line break.";
+    if (multiline) return "holds a control character. Only a line break and a tab are allowed.";
+    return rule.tabs === true ? "holds a control character or a line break. Only a tab is allowed." : "holds a control character or a line break.";
   }
   if (hasInvisible(value)) return "holds an invisible direction or tag character. Remove it.";
   return undefined;
+}
+
+function valueProblem(value: string): { code: RefusalCode; reason: string } | undefined {
+  const bytes = utf8Bytes(value);
+  if (bytes > VALUE_MAX_BYTES) return { code: "size", reason: `is ${bytes} bytes. At most ${VALUE_MAX_BYTES}.` };
+  if (value === "") return { code: "text", reason: "is empty." };
+  if (hasControl(value, true, true) || hasInvisible(value)) return { code: "text", reason: "holds a control or an invisible character." };
+  return undefined;
+}
+
+/** Why a word is not a tone, said after the attribute's name, or undefined for a tone. */
+function toneProblem(value: string): { code: RefusalCode; reason: string } | undefined {
+  if (isOneOf(TONES, value)) return undefined;
+  if (isOneOf(STATUS_WORDS, value)) {
+    return {
+      code: "status",
+      reason: `is "${value}", a session status, not a tone. A trick never draws Collie's status; use one of: ${quoteList(TONES)}.`,
+    };
+  }
+  const old = reasonOf(OLD_TONES, value);
+  if (old !== undefined) return { code: "word", reason: `is "${value}", which is not a tone since the tree vocabulary: ${old}. Tones: ${quoteList(TONES)}.` };
+  return { code: "word", reason: `must be one of: ${quoteList(TONES)}.` };
+}
+
+function iconReason(key: string): string {
+  return `"${key}" must be one of Collie's trick icons: ${quoteList(TRICK_ICONS)}.`;
 }
 
 /** A refusal-free check: an array of short strings. */
@@ -1588,7 +1794,7 @@ export function globMatches(glob: string, text: string): boolean {
 /**
  * What a session match is held against. The caller passes `cwd` already through realpath, and
  * `home` to expand a leading `~/` in a `cwd:` glob; the caller realpaths the glob's folder too when it
- * must (design §2: `/home` is a link on Fedora Atomic). This file touches no disk.
+ * must (`/home` is a link on Fedora Atomic). This file touches no disk.
  */
 export interface MatchSubject {
   name?: string;
@@ -1636,32 +1842,24 @@ export function matchesTab(match: TabMatch, tab: { title: string; space?: string
 }
 
 /** What an `at` string says: the place kind, and its match when it has one. */
-export type AtReading =
-  | { place: "belt" | "session" | "tab" | "dashboard" | "header.line" | "settings" }
-  | { place: "tab-mark"; tabMatch: TabMatch }
-  | { place: "view" | "menu"; match: SessionMatch };
+export type AtReading = { place: "belt" | "session" | "dashboard" } | { place: "tab"; tabMatch: TabMatch } | { place: "view"; match: SessionMatch };
 
 /** Read a part's `at`. */
 export function parseAt(at: string): AtReading | { reason: string } {
   if (codePoints(at) > AT_MAX) return { reason: `"at" is longer than ${AT_MAX} characters.` };
-  if (at === "belt" || at === "session" || at === "tab" || at === "dashboard" || at === "header.line" || at === "settings") {
-    return { place: at };
-  }
+  if (at === "belt" || at === "session" || at === "dashboard") return { place: at };
   if (at.startsWith("tab:")) {
     const read = parseTabMatch(at.slice("tab:".length));
-    return "reason" in read ? read : { place: "tab-mark", tabMatch: read.match };
+    return "reason" in read ? read : { place: "tab", tabMatch: read.match };
   }
-  for (const [prefix, place] of [
-    ["view:", "view"],
-    ["menu:", "menu"],
-  ] as const) {
-    if (!at.startsWith(prefix)) continue;
-    const read = parseSessionMatch(at.slice(prefix.length));
-    return "reason" in read ? read : { place, match: read.match };
+  if (at.startsWith("view:")) {
+    const read = parseSessionMatch(at.slice("view:".length));
+    return "reason" in read ? read : { place: "view", match: read.match };
   }
-  return {
-    reason: `"${at}" is not a place. Use belt, session, tab, tab:<tabmatch> or view:<match> (later: dashboard, header.line, menu:<match>, settings).`,
-  };
+  const word = at.startsWith("menu:") ? "menu" : at;
+  const removed = reasonOf(REMOVED_PLACES, word);
+  if (removed !== undefined) return { reason: removed };
+  return { reason: `"${at}" is not a place. Use belt, session, tab:<tabmatch> or view:<match> (later: dashboard).` };
 }
 
 // ── The view tree reader ─────────────────────────────────────────────────────────────────────
@@ -1673,17 +1871,155 @@ interface ViewContext {
   overflow: boolean;
 }
 
-function readView(value: JsonValue | undefined, path: string, sink: Refusal[], kinds: readonly NodeKind[]): ViewNode | undefined {
+type AttrRule =
+  | { readonly kind: "word"; readonly list: readonly string[] }
+  | { readonly kind: "tone" }
+  | { readonly kind: "icon" }
+  | { readonly kind: "text"; readonly rule: TextRule }
+  | { readonly kind: "flag" }
+  | { readonly kind: "badge" }
+  | { readonly kind: "whole"; readonly min: number; readonly max: number }
+  | { readonly kind: "decimal" }
+  | { readonly kind: "epoch" }
+  | { readonly kind: "style" }
+  | { readonly kind: "intent" }
+  | { readonly kind: "value" }
+  | { readonly kind: "url" }
+  | { readonly kind: "href" }
+  | { readonly kind: "src" }
+  | { readonly kind: "lang" };
+
+const TONE_RULE = { kind: "tone" } as const;
+const ICON_RULE = { kind: "icon" } as const;
+const BADGE_RULE = { kind: "badge" } as const;
+const FLAG_RULE = { kind: "flag" } as const;
+const DISABLED_RULE = { kind: "text", rule: { max: LINE_MAX, empty: true } } as const;
+const EPOCH_RULE = { kind: "epoch" } as const;
+const CLOCK_RULE = { kind: "word", list: CLOCKS } as const;
+const STYLE_RULE = { kind: "style" } as const;
+
+/** Each attribute's rule, by kind. The compiler holds the names to `NODE_ATTRS`. */
+const NODE_ATTR_RULES = {
+  card: { tone: TONE_RULE },
+  group: { label: { kind: "text", rule: { max: TITLE_MAX } }, fold: { kind: "word", list: FOLDS }, badge: BADGE_RULE },
+  list: {},
+  row: {
+    href: { kind: "href" },
+    end: { kind: "text", rule: { max: WORD_MAX } },
+    badge: BADGE_RULE,
+    tone: TONE_RULE,
+    cut: { kind: "word", list: CUTS },
+    icon: ICON_RULE,
+    disabled: DISABLED_RULE,
+  },
+  bar: { role: { kind: "word", list: BAR_ROLES }, scroll: { kind: "word", list: BAR_SCROLLS }, label: { kind: "text", rule: { max: LABEL_MAX } } },
+  chip: {
+    tone: TONE_RULE,
+    icon: ICON_RULE,
+    at: EPOCH_RULE,
+    clock: CLOCK_RULE,
+    state: { kind: "word", list: CHIP_STATES },
+    current: FLAG_RULE,
+    short: { kind: "text", rule: { max: SHORT_MAX } },
+  },
+  button: {
+    intent: { kind: "intent" },
+    label: { kind: "text", rule: { max: BUTTON_LABEL_MAX } },
+    tone: TONE_RULE,
+    disabled: DISABLED_RULE,
+    pressed: { kind: "word", list: PRESSED_STATES },
+    confirm: { kind: "text", rule: { max: BUTTON_LABEL_MAX } },
+    badge: BADGE_RULE,
+    icon: ICON_RULE,
+    hint: { kind: "text", rule: { max: LINE_MAX } },
+    does: { kind: "word", list: BUTTON_DOES },
+    value: { kind: "value" },
+  },
+  para: { role: { kind: "word", list: PARA_ROLES }, bullet: { kind: "text", rule: { max: BULLET_MAX } }, term: { kind: "text", rule: { max: LABEL_MAX } } },
+  line: { style: STYLE_RULE, role: { kind: "word", list: LINE_ROLES } },
+  run: { style: STYLE_RULE, code: FLAG_RULE, href: { kind: "url" }, at: EPOCH_RULE, clock: CLOCK_RULE },
+  code: { lang: { kind: "lang" }, max: { kind: "whole", ...VIEW_LIMITS.codeMax } },
+  link: { href: { kind: "href" }, rel: { kind: "word", list: LINK_RELS }, badge: BADGE_RULE, icon: ICON_RULE },
+  image: {
+    src: { kind: "src" },
+    alt: { kind: "text", rule: { max: LINE_MAX, empty: true } },
+    w: { kind: "whole", ...VIEW_LIMITS.imageSide },
+    h: { kind: "whole", ...VIEW_LIMITS.imageSide },
+  },
+  meter: {
+    value: { kind: "decimal" },
+    max: { kind: "decimal" },
+    tone: TONE_RULE,
+    label: { kind: "text", rule: { max: LABEL_MAX } },
+    role: { kind: "word", list: METER_ROLES },
+  },
+  spacer: { label: { kind: "text", rule: { max: LABEL_MAX } } },
+  number: { label: { kind: "text", rule: { max: LABEL_MAX } }, tone: TONE_RULE, unit: { kind: "text", rule: { max: WORD_MAX } } },
+} as const satisfies { readonly [K in NodeKind]: { readonly [A in (typeof NODE_ATTRS)[K][number]]: AttrRule } };
+
+/** The kids count each container takes. */
+const KIDS_COUNT = {
+  card: VIEW_LIMITS.kids,
+  group: VIEW_LIMITS.kids,
+  list: VIEW_LIMITS.listKids,
+  row: { min: 0, max: VIEW_LIMITS.kids.max },
+  bar: VIEW_LIMITS.barKids,
+  para: VIEW_LIMITS.runs,
+  line: VIEW_LIMITS.runs,
+  code: VIEW_LIMITS.codeLines,
+} as const satisfies { readonly [K in ContainerKind]: { min: number; max: number } };
+
+/** What a parent is, in words, for a refusal about its kids. */
+type Parent = ContainerKind | "view";
+
+function kindsUnder(parent: Parent): readonly NodeKind[] {
+  return parent === "view" ? VIEW_ROOT_KINDS : NODE_KIDS[parent];
+}
+
+function parentWords(parent: Parent): string {
+  return parent === "view" ? "a view" : `a ${parent}`;
+}
+
+function isContainer(kind: NodeKind): kind is ContainerKind {
+  return hasKey(NODE_KIDS, kind);
+}
+
+function readView(value: JsonValue | undefined, path: string, sink: Refusal[], kinds: readonly NodeKind[]): View | undefined {
+  if (asJsonObject(value) !== undefined) {
+    sink.push({ code: "type", path, reason: '"view" is a list of nodes now, the kids of the place\'s frame. Wrap the node in [ ].' });
+    return undefined;
+  }
+  if (!Array.isArray(value)) {
+    sink.push({ code: "type", path, reason: '"view" must be a list of nodes.' });
+    return undefined;
+  }
+  if (value.length < VIEW_LIMITS.root.min || value.length > VIEW_LIMITS.root.max) {
+    sink.push({ code: "count", path, reason: `"view" holds ${value.length}. It must hold ${VIEW_LIMITS.root.min} to ${VIEW_LIMITS.root.max} nodes.` });
+    return undefined;
+  }
   const ctx: ViewContext = { kinds, nodes: 0, overflow: false };
-  const node = readNode(value, path, sink, ctx, 1);
+  const before = sink.length;
+  const out: ViewNode[] = [];
+  value.forEach((item, i) => {
+    const node = readNode(item, pointer(path, i), sink, ctx, 1, "view");
+    if (node !== undefined) out.push(node);
+  });
   if (ctx.overflow) {
     sink.push({ code: "count", path, reason: `The view holds more than ${VIEW_LIMITS.nodes.max} nodes. Draw less, or split it.` });
     return undefined;
   }
-  return node;
+  return sink.length === before ? out : undefined;
 }
 
-function readNode(value: JsonValue | undefined, path: string, sink: Refusal[], ctx: ViewContext, depth: number): ViewNode | undefined {
+/** A node as the parser builds it, before every rule of its kind has passed. */
+interface NodeReading {
+  kind: NodeKind;
+  text?: string;
+  attrs?: JsonObject;
+  kids?: ViewNode[];
+}
+
+function readNode(value: JsonValue | undefined, path: string, sink: Refusal[], ctx: ViewContext, depth: number, parent: Parent): ViewNode | undefined {
   ctx.nodes += 1;
   if (ctx.nodes > VIEW_LIMITS.nodes.max) {
     ctx.overflow = true;
@@ -1695,7 +2031,7 @@ function readNode(value: JsonValue | undefined, path: string, sink: Refusal[], c
   }
   const obj = asJsonObject(value);
   if (obj === undefined) {
-    sink.push({ code: "type", path, reason: "A view node must be an object with a \"kind\"." });
+    sink.push({ code: "type", path, reason: 'A view node must be an object with a "kind".' });
     return undefined;
   }
   const rawKind = asJsonString(obj.kind);
@@ -1703,487 +2039,401 @@ function readNode(value: JsonValue | undefined, path: string, sink: Refusal[], c
     sink.push({ code: "missing", path: pointer(path, "kind"), reason: 'A view node needs "kind".' });
     return undefined;
   }
+  const kindPath = pointer(path, "kind");
   if (!isOneOf(NODE_KINDS, rawKind)) {
-    sink.push({
-      code: "unknown-kind",
-      path: pointer(path, "kind"),
-      reason: `"${rawKind}" is not a node kind. Use one of: ${quoteList(NODE_KINDS)}.`,
-    });
-    return undefined;
-  }
-  if (!ctx.kinds.includes(rawKind)) {
-    sink.push({ code: "later", path: pointer(path, "kind"), reason: `"${rawKind}" is not in this Collie yet.` });
+    const removed = reasonOf(REMOVED_KINDS, rawKind);
+    sink.push(
+      removed === undefined
+        ? { code: "unknown-kind", path: kindPath, reason: `"${rawKind}" is not a node kind. Use one of: ${quoteList(NODE_KINDS)}.` }
+        : { code: "removed", path: kindPath, reason: `"${rawKind}" is not in a trick's vocabulary: ${removed}.` },
+    );
     return undefined;
   }
   const kind: NodeKind = rawKind;
+  const allowed = kindsUnder(parent);
+  if (!allowed.includes(kind)) {
+    sink.push({ code: "parent", path: kindPath, reason: `A "${kind}" cannot sit in ${parentWords(parent)}. ${capital(parentWords(parent))} holds: ${quoteList(allowed)}.` });
+    return undefined;
+  }
+  if (!ctx.kinds.includes(kind)) {
+    sink.push({ code: "later", path: kindPath, reason: `"${kind}" is not in this Collie yet.` });
+    return undefined;
+  }
   const before = sink.length;
   const f = new Fields(obj, path, sink, `a "${kind}" node`);
-  // A mark checks its own keys, so a status key gets its own reason (`readMarkInto`).
-  if (kind !== "mark") f.keys(NODE_KEYS[kind]);
-  const node = readNodeBody(kind, f, ctx, depth);
-  return sink.length === before ? node : undefined;
+  f.keys(NODE_KEYS, (key) => nodeKeyHint(kind, key));
+  const node: NodeReading = { kind };
+  readNodeText(kind, f, node);
+  const beforeAttrs = sink.length;
+  const attrs = readAttrs(kind, f);
+  if (attrs !== undefined) node.attrs = attrs;
+  const attrsClean = sink.length === beforeAttrs;
+  const kids = readKids(kind, f, ctx, depth);
+  if (kids !== undefined) node.kids = kids;
+  checkNode(kind, f, attrsClean ? (attrs ?? {}) : undefined, kids);
+  // SAFETY: every key of `node` passed its kind's rule above (the text, each attribute, each kid), and a
+  // refusal of any of them returns `undefined` here, so what is left is exactly the kind's node type.
+  return sink.length === before ? (node as ViewNode) : undefined;
 }
 
-function readChildren(f: Fields, ctx: ViewContext, depth: number): ViewNode[] {
-  const list = f.array("children", { ...VIEW_LIMITS.children, required: true, what: "nodes" });
-  if (list === undefined) return [];
+function capital(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+/** A hint for a key a node does not take: an attribute written at the top, or a first-schema key. */
+function nodeKeyHint(kind: NodeKind, key: string): { code: RefusalCode; reason: string } | undefined {
+  const names: readonly string[] = NODE_ATTRS[kind];
+  if (names.includes(key)) return { code: "unknown-key", reason: `"${key}" is an attribute: put it in "attrs", as text.` };
+  if (key === "children") return { code: "unknown-key", reason: '"children" is "kids" in the tree vocabulary.' };
+  if (key === "id") return { code: "unknown-key", reason: '"id" is the bridge\'s to set; it gives every node its id.' };
+  return undefined;
+}
+
+function readNodeText(kind: NodeKind, f: Fields, node: NodeReading): void {
+  const rule = hasKey(NODE_TEXT, kind) ? NODE_TEXT[kind] : undefined;
+  if (rule === undefined) {
+    if (f.has("text")) f.push("unknown-key", "text", textHome(kind));
+    return;
+  }
+  // `para` and `line` take text or kids; `chip` takes text or a clock. `checkNode` holds those pairs.
+  const text = f.text("text", rule);
+  if (text !== undefined) node.text = text;
+}
+
+function textHome(kind: NodeKind): string {
+  switch (kind) {
+    case "button":
+      return 'A button takes no "text"; its words are the "label" attribute.';
+    case "image":
+      return 'An image takes no "text"; its words are the "alt" attribute.';
+    case "meter":
+    case "spacer":
+      return `A ${kind} takes no "text"; its words are the "label" attribute.`;
+    default:
+      return `A ${kind} takes no "text". Put a para or a line in its kids.`;
+  }
+}
+
+function readAttrs(kind: NodeKind, f: Fields): JsonObject | undefined {
+  const required: readonly string[] = hasKey(NODE_REQUIRED_ATTRS, kind) ? NODE_REQUIRED_ATTRS[kind] : [];
+  if (!f.has("attrs")) {
+    for (const name of required) f.push("missing", "attrs", `${f.what} needs the attribute "${name}".`);
+    return undefined;
+  }
+  const a = f.object("attrs", "an object of attributes, each one text");
+  if (a === undefined) return undefined;
+  const rules: { readonly [name: string]: AttrRule } = NODE_ATTR_RULES[kind];
+  const out: JsonObject = {};
+  for (const name of Object.keys(a.obj)) {
+    const rule = rules[name];
+    if (rule === undefined) {
+      a.push(attrCode(name), name, attrReason(kind, name));
+      continue;
+    }
+    const raw = a.obj[name];
+    const value = asJsonString(raw);
+    if (value === undefined) {
+      const example = asJsonNumber(raw) !== undefined ? ` Write it as "${String(raw)}".` : asJsonBoolean(raw) === true ? ' A flag is "" when it is on.' : "";
+      a.push("type", name, `"${name}" must be text: every attribute is text, as in the tree.${example}`);
+      continue;
+    }
+    const problem = attrProblem(rule, value);
+    if (problem !== undefined) {
+      a.push(problem.code, name, `"${name}" ${problem.reason}`);
+      continue;
+    }
+    out[name] = value;
+  }
+  for (const name of required) if (a.obj[name] === undefined) a.missing(name, "an attribute");
+  return out;
+}
+
+function attrCode(name: string): RefusalCode {
+  if (name === "state" || isOneOf(STATUS_MARK_KEYS, name)) return "status";
+  return "unknown-key";
+}
+
+function attrReason(kind: NodeKind, name: string): string {
+  const own = reasonOf(TREE_ONLY_ATTRS, name);
+  if (own !== undefined) return `"${name}" ${own}.`;
+  const list: readonly string[] = NODE_ATTRS[kind];
+  return list.length === 0 ? `A ${kind} takes no attributes.` : `"${name}" is not an attribute of a ${kind}. It takes: ${quoteList(list)}.`;
+}
+
+function attrProblem(rule: AttrRule, value: string): { code: RefusalCode; reason: string } | undefined {
+  switch (rule.kind) {
+    case "word":
+      if (rule.list === BUTTON_DOES && !isOneOf(rule.list, value)) {
+        return { code: "word", reason: 'must be "copy". A trick\'s button copies or sends an intent; install, notify, reload and wipe are Collie\'s.' };
+      }
+      return isOneOf(rule.list, value) ? undefined : { code: "word", reason: `must be one of: ${quoteList(rule.list)}.` };
+    case "tone":
+      return toneProblem(value);
+    case "icon":
+      return isOneOf(TRICK_ICONS, value) ? undefined : { code: "icon", reason: `must be one of Collie's trick icons: ${quoteList(TRICK_ICONS)}.` };
+    case "text": {
+      const problem = textProblem(value, rule.rule);
+      return problem === undefined ? undefined : { code: "text", reason: problem };
+    }
+    case "flag":
+      return value === "" ? undefined : { code: "type", reason: 'is a flag: "" when it is on, left out when it is off.' };
+    case "badge": {
+      if (value === "") return undefined;
+      return WHOLE.test(value) && Number(value) <= COUNT_MAX ? undefined : { code: "range", reason: `is a count from 0 to ${COUNT_MAX}, or "" for a dot.` };
+    }
+    case "whole":
+      return WHOLE.test(value) && Number(value) >= rule.min && Number(value) <= rule.max
+        ? undefined
+        : { code: "range", reason: `must be a whole number from ${rule.min} to ${rule.max}, as text.` };
+    case "decimal":
+      return DECIMAL.test(value) ? undefined : { code: "range", reason: 'must be a number of 0 or more, as text, such as "68" or "0.5".' };
+    case "epoch":
+      return isEpochMs(value) ? undefined : { code: "range", reason: 'must be an instant in epoch milliseconds, as digits, such as "1794130692000".' };
+    case "style": {
+      const words = value.split(" ");
+      const bad = words.find((word) => !isOneOf(STYLE_WORDS, word));
+      if (value === "" || bad !== undefined) {
+        return { code: "word", reason: `is a list of style words with single spaces between: fg-<name>, bg-<name> (${quoteList(ANSI_NAMES)}), bold, dim, italic, underline, inverse, strike, box and the syn-* inks.` };
+      }
+      return new Set(words).size === words.length ? undefined : { code: "word", reason: "names a style word twice." };
+    }
+    case "intent":
+      return isIntentName(value) ? undefined : { code: "id", reason: 'must be 1 to 48 of: lower-case letters, digits, ".", "_" and "-".' };
+    case "value":
+      return valueProblem(value);
+    case "url":
+      return isTrickUrl(value) ? undefined : { code: "target", reason: `must be an https:// or http:// address of at most ${URL_MAX} characters.` };
+    case "href":
+      // A row's or a link's target: its shape depends on the link's `rel`, which `checkNode` reads.
+      return value === "" ? { code: "text", reason: "is empty." } : undefined;
+    case "src":
+      return isImageSrc(value) ? undefined : { code: "target", reason: 'must be a .png, .jpg or .jpeg file inside the trick folder, as a relative path with no "..".' };
+    case "lang":
+      return LANG.test(value) ? undefined : { code: "word", reason: 'must be a language word of 1 to 24 of a-z, 0-9, "+", "#", ".", "_", "-".' };
+  }
+}
+
+function readKids(kind: NodeKind, f: Fields, ctx: ViewContext, depth: number): ViewNode[] | undefined {
+  if (!isContainer(kind)) {
+    if (f.has("kids")) f.push("unknown-key", "kids", `A ${kind} holds no kids.`);
+    return undefined;
+  }
+  const count = KIDS_COUNT[kind];
+  const required = count.min > 0 && kind !== "para" && kind !== "line";
+  const list = f.array("kids", { ...count, required, what: `nodes (${quoteList(NODE_KIDS[kind])})` });
+  if (list === undefined) return undefined;
   const out: ViewNode[] = [];
   list.forEach((child, i) => {
-    const node = readNode(child, pointer(f.at("children"), i), f.sink, ctx, depth + 1);
+    const node = readNode(child, pointer(f.at("kids"), i), f.sink, ctx, depth + 1, kind);
     if (node !== undefined) out.push(node);
   });
   return out;
 }
 
-function layout<K extends "stack" | "row" | "card">(kind: K, f: Fields, ctx: ViewContext, depth: number): LayoutBase & { kind: K } {
-  const children = readChildren(f, ctx, depth);
-  const node: LayoutBase & { kind: K } = { kind, children };
-  const gap = f.word("gap", GAPS);
-  const align = f.word("align", ALIGNS);
-  if (gap !== undefined) node.gap = gap;
-  if (align !== undefined) node.align = align;
-  return node;
-}
-
-function setTone<T extends { tone?: Tone }>(node: T, f: Fields): T {
-  const tone = f.tone();
-  if (tone !== undefined) node.tone = tone;
-  return node;
-}
-
-function setIntent<T extends { intent?: string; args?: JsonObject }>(node: T, intent: Intent | undefined): T {
-  if (intent === undefined) return node;
-  node.intent = intent.intent;
-  if (intent.args !== undefined) node.args = intent.args;
-  return node;
-}
-
-function readNodeBody(kind: NodeKind, f: Fields, ctx: ViewContext, depth: number): ViewNode | undefined {
-  switch (kind) {
-    case "stack":
-      return layout("stack", f, ctx, depth);
-    case "row":
-      return layout("row", f, ctx, depth);
-    case "card":
-      return layout("card", f, ctx, depth);
-    case "grid": {
-      const cols = f.int("cols", { ...VIEW_LIMITS.gridCols, required: true });
-      const base = layout("stack", f, ctx, depth);
-      return { ...base, kind: "grid", cols: cols ?? VIEW_LIMITS.gridCols.min };
-    }
-    case "section": {
-      const title = f.text("title", { max: TITLE_MAX, required: true }) ?? "";
-      const base = layout("stack", f, ctx, depth);
-      return { ...base, kind: "section", title };
-    }
-    case "spacer": {
-      const node: SpacerNode = { kind: "spacer" };
-      const size = f.word("size", GAPS);
-      if (size !== undefined) node.size = size;
-      return node;
-    }
-    case "divider":
-      return { kind: "divider" };
-    case "text": {
-      const node: TextNode = {
-        kind: "text",
-        text: f.text("text", { max: TEXT_MAX, required: true, multiline: true }) ?? "",
-        lines: f.int("lines", { ...VIEW_LIMITS.textLines, required: true }) ?? 1,
-      };
-      const role = f.word("role", TEXT_ROLES);
-      if (role !== undefined) node.role = role;
-      return setTone(node, f);
-    }
-    case "number":
-      return readNumberNode(f);
-    case "mark":
-      return readMarkInto<MarkNode>({ kind: "mark" }, f, true);
-    case "badge":
-      return readBadgeNode(f);
-    case "icon": {
-      const node: IconNode = { kind: "icon", name: f.icon("name", true) ?? DEFAULT_TRICK_ICON };
-      const label = f.text("label", { max: LABEL_MAX });
-      if (label !== undefined) node.label = label;
-      return setTone(node, f);
-    }
-    case "kv":
-      return readKv(f);
-    case "list":
-      return readList(f);
-    case "link":
-      return readLink(f);
-    case "button": {
-      const node: ButtonNode = {
-        kind: "button",
-        label: f.text("label", { max: BUTTON_LABEL_MAX, required: true }) ?? "",
-        intent: "",
-      };
-      setIntent(node, f.intent(true));
-      const primary = f.bool("primary");
-      const disabled = f.bool("disabled");
-      const icon = f.icon("icon");
-      if (primary !== undefined) node.primary = primary;
-      if (disabled !== undefined) node.disabled = disabled;
-      if (icon !== undefined) node.icon = icon;
-      return node;
-    }
-    case "progress":
-      return readProgressNode(f);
-    case "log": {
-      const lines = f.int("lines", { ...VIEW_LIMITS.logLines, required: true }) ?? 1;
-      const tail = readStrings(f, "tail", { min: 0, max: LOG_TAIL_MAX, required: true, what: "lines", text: { max: LOG_LINE_MAX, tabs: true } });
-      return { kind: "log", lines, tail: tail ?? [] };
-    }
-    case "time": {
-      const at = f.text("at", { max: INSTANT_MAX, required: true });
-      if (at !== undefined && !isInstant(at)) f.push("text", "at", '"at" must be an ISO 8601 instant with a zone, such as 2026-11-08T09:41:00Z.');
-      const node: TimeNode = { kind: "time", at: at ?? "" };
-      const style = f.word("style", TIME_STYLES);
-      const label = f.text("label", { max: LABEL_MAX });
-      if (style !== undefined) node.style = style;
-      if (label !== undefined) node.label = label;
-      return node;
-    }
-    case "table":
-      return readTable(f);
-    case "image": {
-      const src = f.text("src", { max: IMAGE_SRC_MAX, required: true });
-      if (src !== undefined && !isImageSrc(src)) {
-        f.push("target", "src", '"src" must be a .png, .jpg or .jpeg file inside the trick folder, as a relative path with no "..".');
-      }
-      return {
-        kind: "image",
-        src: src ?? "",
-        ratio: f.word("ratio", IMAGE_RATIOS, true) ?? "1:1",
-        alt: f.text("alt", { max: LINE_MAX, required: true }) ?? "",
-      };
-    }
-    case "bar":
-      return readBar(f);
-    case "spark": {
-      const node: SparkNode = { kind: "spark", values: readNumbers(f, "values", VIEW_LIMITS.sparkValues) ?? [] };
-      const label = f.text("label", { max: LABEL_MAX });
-      if (label !== undefined) node.label = label;
-      return setTone(node, f);
-    }
-    case "steps":
-      return { kind: "steps", steps: readSteps(f, "steps", FIGURE_STEP_STATES) ?? [] };
-    case "ring": {
-      const node: RingNode = { kind: "ring", value: f.num("value", { min: 0, max: 100, required: true }) ?? 0 };
-      const label = f.text("label", { max: LABEL_MAX });
-      if (label !== undefined) node.label = label;
-      return setTone(node, f);
-    }
-  }
-}
-
-function readNumberNode(f: Fields): NumberNode {
-  const raw = f.obj.value;
-  let value: string | number = "";
-  const asNumber = asJsonNumber(raw);
-  const asText = asJsonString(raw);
-  if (raw === undefined) f.missing("value", `a number, or text of 1 to ${NUMBER_TEXT_MAX} characters`);
-  if (asNumber !== undefined) value = asNumber;
-  if (asText !== undefined) value = f.text("value", { max: NUMBER_TEXT_MAX }) ?? "";
-  if (raw !== undefined && asNumber === undefined && asText === undefined) f.push("type", "value", '"value" must be a number or text.');
-  const node: NumberNode = { kind: "number", value };
-  const label = f.text("label", { max: LABEL_MAX });
-  if (label !== undefined) node.label = label;
-  return setTone(node, f);
-}
-
-function readBadgeNode(f: Fields): BadgeNode {
-  const tone = f.tone();
-  const badge = readBadgeFields(f);
-  const node: BadgeNode = badge !== undefined && "count" in badge ? { kind: "badge", count: badge.count } : { kind: "badge", text: badge?.text ?? "" };
-  if (tone !== undefined) node.tone = tone;
-  return node;
-}
-
-/** `count` or `text`, exactly one (WIRE.md §7.11). Shared by a badge node and a session's badge. */
-function readBadgeFields(f: Fields): Badge | undefined {
-  const hasCount = f.has("count");
+/**
+ * The rules that hold between a node's text, attributes and kids. `attrs` is undefined when one of
+ * them was refused already: the rules between attributes then wait for the author's next try.
+ */
+function checkNode(kind: NodeKind, f: Fields, attrs: JsonObject | undefined, kids: ViewNode[] | undefined): void {
+  const attrsPath = f.at("attrs");
+  const pushAttr = (code: RefusalCode, name: string, reason: string) => f.sink.push({ code, path: pointer(attrsPath, name), reason });
+  const attr = (name: string) => asJsonString(attrs?.[name]);
   const hasText = f.has("text");
-  if (hasCount === hasText) {
-    f.push("target", undefined, 'A badge holds "count" or "text", exactly one.');
-    return undefined;
-  }
-  if (hasCount) {
-    const count = f.int("count", { min: 0, max: COUNT_MAX });
-    return count === undefined ? undefined : { count };
-  }
-  const text = f.text("text", { max: BADGE_TEXT_MAX });
-  return text === undefined ? undefined : { text };
-}
-
-function readKv(f: Fields): KvNode {
-  const list = f.array("rows", { ...VIEW_LIMITS.kvRows, required: true, what: "rows" });
-  const rows: KvRow[] = [];
-  list?.forEach((item, i) => {
-    const row = itemFields(item, pointer(f.at("rows"), i), f.sink, "a kv row");
-    if (row === undefined) return;
-    row.keys(["label", "value", "tone"]);
-    const out: KvRow = {
-      label: row.text("label", { max: LABEL_MAX, required: true }) ?? "",
-      value: row.text("value", { max: LINE_MAX, required: true }) ?? "",
-    };
-    rows.push(setTone(out, row));
-  });
-  const node: KvNode = { kind: "kv", rows };
-  const cols = f.int("cols", VIEW_LIMITS.kvCols);
-  if (cols !== undefined) node.cols = cols;
-  return node;
-}
-
-function readList(f: Fields): ListNode {
-  const rows = f.int("rows", { ...VIEW_LIMITS.listRows, required: true }) ?? 1;
-  const list = f.array("items", { min: 0, max: ITEMS_MAX, required: true, what: "items" });
-  const items: ListItem[] = [];
-  list?.forEach((value, i) => {
-    const item = itemFields(value, pointer(f.at("items"), i), f.sink, "a list item");
-    if (item === undefined) return;
-    item.keys(["text", "detail", "icon", "tone", "trailing", "intent", "args"]);
-    const out: ListItem = { text: item.text("text", { max: LINE_MAX, required: true }) ?? "" };
-    const detail = item.text("detail", { max: LINE_MAX });
-    const icon = item.icon("icon");
-    const trailing = item.text("trailing", { max: WORD_MAX });
-    if (detail !== undefined) out.detail = detail;
-    if (icon !== undefined) out.icon = icon;
-    if (trailing !== undefined) out.trailing = trailing;
-    setTone(out, item);
-    items.push(setIntent(out, item.intent(false)));
-  });
-  return { kind: "list", rows, items };
-}
-
-function readLink(f: Fields): LinkNode {
-  const node: LinkNode = { kind: "link", label: f.text("label", { max: LINE_MAX, required: true }) ?? "" };
-  const detail = f.text("detail", { max: LINE_MAX });
-  const icon = f.icon("icon");
-  if (detail !== undefined) node.detail = detail;
-  if (icon !== undefined) node.icon = icon;
-  const targets = ["session", "url", "intent"].filter((key) => f.has(key));
-  if (targets.length !== 1) {
-    f.push("target", undefined, 'A link opens exactly one of: "session", "url" or "intent".');
-    return node;
-  }
-  if (f.has("session")) {
-    const session = readSessionTarget(f, "session", false);
-    if (session !== undefined) node.session = session;
-    return node;
-  }
-  if (f.has("url")) {
-    const url = readUrl(f, "url");
-    if (url !== undefined) node.url = url;
-    return node;
-  }
-  return setIntent(node, f.intent(true));
-}
-
-function readSessionTarget(f: Fields, key: string, draft: boolean): string | undefined {
-  const value = f.text(key, { max: 256, required: true });
-  if (value === undefined) return undefined;
-  if (isScopeKey(value)) return value;
-  if (!draft && isTrickSessionId(value)) return value;
-  if (draft && isTrickSessionId(value)) {
-    f.push("target", key, `"${value}" is a trick session. It has no reply box; a draft goes to a real session.`);
-    return undefined;
-  }
-  f.push(
-    "target",
-    key,
-    `"${value}" is not a session's scope key. Use the "id" from the facts (host:paneId, such as bluefin:w6X:3), never a name.`,
-  );
-  return undefined;
-}
-
-function readUrl(f: Fields, key: string): string | undefined {
-  const value = f.text(key, { max: URL_MAX, required: true });
-  if (value === undefined) return undefined;
-  if (isTrickUrl(value)) return value;
-  f.push("target", key, `"${key}" must be an https:// or http:// address of at most ${URL_MAX} characters.`);
-  return undefined;
-}
-
-function readProgressNode(f: Fields): ProgressNode {
-  if (f.has("steps") === f.has("value")) {
-    f.push("target", undefined, 'A progress holds "value" (a percent) or "steps", exactly one.');
-    return { kind: "progress", value: 0 };
-  }
-  if (f.has("steps")) {
-    if (f.has("label")) f.push("target", "label", 'A progress with "steps" takes no "label"; each step has its own.');
-    return { kind: "progress", steps: readSteps(f, "steps", STEP_STATES) ?? [] };
-  }
-  const node: PercentProgressNode = {
-    kind: "progress",
-    value: f.num("value", { min: 0, max: 100, required: true }) ?? 0,
-  };
-  const label = f.text("label", { max: STEP_LABEL_MAX });
-  if (label !== undefined) node.label = label;
-  return node;
-}
-
-function readSteps<S extends string>(f: Fields, key: string, states: readonly S[]): { label: string; state: S }[] | undefined {
-  const list = f.array(key, { ...VIEW_LIMITS.steps, required: true, what: "steps" });
-  if (list === undefined) return undefined;
-  const out: { label: string; state: S }[] = [];
-  list.forEach((value, i) => {
-    const step = itemFields(value, pointer(f.at(key), i), f.sink, "a step");
-    if (step === undefined) return;
-    step.keys(["label", "state"]);
-    const label = step.text("label", { max: STEP_LABEL_MAX, required: true });
-    const state = step.word("state", states, true);
-    if (label !== undefined && state !== undefined) out.push({ label, state });
-  });
-  return out;
-}
-
-function readNumbers(f: Fields, key: string, rule: { min: number; max: number }): number[] | undefined {
-  const list = f.array(key, { ...rule, required: true, what: "numbers" });
-  if (list === undefined) return undefined;
-  const out: number[] = [];
-  list.forEach((value, i) => {
-    const n = asJsonNumber(value);
-    if (n === undefined || !Number.isFinite(n) || Math.abs(n) > 1e15) {
-      f.sink.push({ code: "type", path: pointer(f.at(key), i), reason: "This must be a finite number." });
+  const hasKids = f.has("kids");
+  switch (kind) {
+    case "para":
+      if (hasText === hasKids) f.push("target", undefined, 'A para holds "text", or "kids" of run and link, exactly one.');
       return;
-    }
-    out.push(n);
-  });
-  return out;
-}
-
-function readTable(f: Fields): TableNode {
-  const cols = f.array("columns", { ...VIEW_LIMITS.tableColumns, required: true, what: "columns" });
-  const columns: TableColumn[] = [];
-  cols?.forEach((value, i) => {
-    const col = itemFields(value, pointer(f.at("columns"), i), f.sink, "a table column");
-    if (col === undefined) return;
-    col.keys(["label", "align"]);
-    const out: TableColumn = { label: col.text("label", { max: WORD_MAX, required: true }) ?? "" };
-    const align = col.word("align", COLUMN_ALIGNS);
-    if (align !== undefined) out.align = align;
-    columns.push(out);
-  });
-  const rows = f.int("rows", { ...VIEW_LIMITS.tableRows, required: true }) ?? 1;
-  const list = f.array("items", { min: 0, max: ITEMS_MAX, required: true, what: "rows of cells" });
-  const items: string[][] = [];
-  list?.forEach((value, i) => {
-    const path = pointer(f.at("items"), i);
-    if (!Array.isArray(value)) {
-      f.sink.push({ code: "type", path, reason: "Each table row must be a list of cells." });
+    case "line":
+      if (hasText && hasKids) f.push("target", undefined, 'A line holds "text", or "kids" of run and link, never both.');
       return;
-    }
-    if (cols !== undefined && value.length !== cols.length) {
-      f.sink.push({ code: "count", path, reason: `This row holds ${value.length} cells. The table has ${cols.length} columns.` });
-      return;
-    }
-    const cells: string[] = [];
-    value.forEach((cell, j) => {
-      const text = asJsonString(cell);
-      const problem = text === undefined ? "must be text." : textProblem(text, { max: CELL_MAX });
-      if (text === undefined || problem !== undefined) {
-        f.sink.push({ code: text === undefined ? "type" : "text", path: pointer(path, j), reason: `This cell ${problem ?? ""}`.trim() });
-        return;
+    case "chip":
+    case "run": {
+      const at = f.has("attrs") ? asJsonObject(f.obj.attrs) : undefined;
+      if ((at?.at === undefined) !== (at?.clock === undefined)) {
+        f.sink.push({ code: "target", path: attrsPath, reason: `A ${kind}'s "at" and "clock" go together: the instant and how to tell it.` });
       }
-      cells.push(text);
-    });
-    items.push(cells);
-  });
-  return { kind: "table", columns, rows, items };
+      if (kind === "chip" && !hasText && at?.at === undefined) f.missing("text", "its words, unless it is a clock");
+      return;
+    }
+    case "row":
+      checkRowKids(f, kids ?? []);
+      checkHref(pushAttr, "href", attr("href"), "row");
+      return;
+    case "link":
+      checkHref(pushAttr, "href", attr("href"), attr("rel") ?? "url");
+      return;
+    case "button": {
+      if (attrs === undefined) return;
+      const does = attr("does");
+      const intent = attr("intent");
+      if (does === "copy" && attr("value") === undefined) pushAttr("missing", "value", 'A button with "does": "copy" needs "value", the text it copies.');
+      if (does === "copy" && intent !== undefined) pushAttr("target", "intent", 'A button that copies sends no intent. Remove "intent".');
+      if (does === undefined && intent === undefined) pushAttr("missing", "intent", 'A button needs "intent", the intent a tap sends, or "does": "copy".');
+      return;
+    }
+    case "meter":
+      if (attrs !== undefined) checkMeter(pushAttr, attrs);
+      return;
+    case "card":
+    case "group":
+    case "list":
+    case "bar":
+    case "code":
+    case "image":
+    case "spacer":
+    case "number":
+      return;
+  }
 }
 
-function readBar(f: Fields): BarNode {
-  const list = f.array("items", { ...VIEW_LIMITS.barItems, required: true, what: "bars" });
-  const items: BarItem[] = [];
-  list?.forEach((value, i) => {
-    const item = itemFields(value, pointer(f.at("items"), i), f.sink, "a bar");
-    if (item === undefined) return;
-    item.keys(["label", "value"]);
-    items.push({
-      label: item.text("label", { max: WORD_MAX, required: true }) ?? "",
-      value: item.num("value", { min: 0, max: 1e15, required: true }) ?? 0,
-    });
-  });
-  const node: BarNode = { kind: "bar", items };
-  const max = f.num("max", { min: 0, max: 1e15 });
-  if (max !== undefined) node.max = max;
-  return setTone(node, f);
+/** A row: at most one `para`, any `chip`, at most one `button`, and the button last (VOCABULARY.md 2.12). */
+function checkRowKids(f: Fields, kids: ViewNode[]): void {
+  const paras = kids.filter((k) => k.kind === "para").length;
+  const buttons = kids.filter((k) => k.kind === "button").length;
+  if (paras > 1) f.push("count", "kids", "A row holds at most one para, its second line.");
+  if (buttons > 1) f.push("count", "kids", "A row holds at most one button, at its end.");
+  if (buttons === 1 && kids.at(-1)?.kind !== "button") f.push("target", "kids", "A row's button is its last kid: it sits at the row's end.");
 }
+
+/** A target by its `rel`: a URL, a session (scope key or trick session id), a file path; a row's by its shape. */
+function checkHref(push: (code: RefusalCode, name: string, reason: string) => void, name: string, href: string | undefined, rel: string): void {
+  if (href === undefined) return;
+  switch (rel) {
+    case "url":
+      if (!isTrickUrl(href)) push("target", name, `"href" must be an https:// or http:// address of at most ${URL_MAX} characters (with "rel" "url").`);
+      return;
+    case "pane":
+      if (!isPaneTarget(href)) push("target", name, '"href" must be a session\'s "id" from the facts (host:paneId) or a trick session\'s id, never a name (with "rel" "pane").');
+      return;
+    case "file":
+      if (!isFilePath(href)) push("target", name, `"href" must be a path that starts with / or ~/, of at most ${FILE_PATH_MAX} characters (with "rel" "file").`);
+      return;
+    case "row":
+      if (!isTrickUrl(href) && !isPaneTarget(href)) push("target", name, '"href" must be an https:// or http:// address, or a session\'s "id" from the facts (host:paneId).');
+      return;
+    default:
+      // A bad `rel` is refused on its own; the href is not read against it.
+      return;
+  }
+}
+
+/** A meter: `value` within `max` (default 1); a progress counts to at most 12; a measure needs its value. */
+function checkMeter(push: (code: RefusalCode, name: string, reason: string) => void, attrs: JsonObject): void {
+  const role = asJsonString(attrs.role) ?? "meter";
+  const valueText = asJsonString(attrs.value);
+  const maxText = asJsonString(attrs.max);
+  const max = maxText === undefined ? 1 : Number(maxText);
+  if (role === "progress" && maxText !== undefined && !(WHOLE.test(maxText) && max >= VIEW_LIMITS.progressMax.min && max <= VIEW_LIMITS.progressMax.max)) {
+    push("range", "max", `A progress counts to a whole number from ${VIEW_LIMITS.progressMax.min} to ${VIEW_LIMITS.progressMax.max}. For a percent, give "value" as a part of 1 ("0.68").`);
+    return;
+  }
+  if (role === "meter" && maxText !== undefined && max <= 0) push("range", "max", '"max" must be above 0.');
+  if (role === "meter" && valueText === undefined) push("missing", "value", 'A meter with role "meter" needs "value". Only a progress may leave it out (indeterminate).');
+  if (valueText !== undefined && Number(valueText) > max) push("range", "value", `"value" is above "max" (${maxText ?? "1"}).`);
+}
+
+// ── Marks ────────────────────────────────────────────────────────────────────────────────────
+
+/** Every key a mark takes, the attributes of the tree's belt button. A tab mark takes no `intent`. */
+export const MARK_KEYS = ["icon", "label", "badge", "tone", "intent"] as const;
 
 /**
- * A mark's fields into `node`. `tappable` is false on a tab mark: a tap on the tab opens the tab, so
- * DECISION: a tab mark takes no intent. Keys that would draw a status mark get their own reason.
+ * A mark's attributes. `tappable` is false on a tab mark: a tap on the tab opens the tab, so DECISION:
+ * a tab mark takes no intent. Keys that would draw a status mark get their own reason.
  */
-function readMarkInto<T extends Mark>(node: T, f: Fields, tappable: boolean): T {
-  const own = (key: string) =>
-    isOneOf(STATUS_MARK_KEYS, key)
-      ? { code: "status" as const, reason: `"${key}" would draw Collie's status mark. A trick mark draws its own icon and face; use "tone".` }
-      : !tappable && (key === "intent" || key === "args")
-        ? { code: "target" as const, reason: "A tab mark takes no intent: a tap on the tab opens the tab." }
-        : undefined;
-  const allowed = tappable ? NODE_KEYS.mark : NODE_KEYS.mark.filter((key) => key !== "intent" && key !== "args");
+function readMark(f: Fields, tappable: boolean): Mark {
+  const own = (key: string): { code: RefusalCode; reason: string } | undefined => {
+    if (isOneOf(STATUS_MARK_KEYS, key)) return { code: "status", reason: `"${key}" would draw Collie's status mark. A trick mark draws its own icon and words; use "tone".` };
+    if (!tappable && key === "intent") return { code: "target", reason: "A tab mark takes no intent: a tap on the tab opens the tab." };
+    if (key === "face") return { code: "unknown-key", reason: '"face" is "label" now, the mark\'s live word.' };
+    if (key === "count") return { code: "unknown-key", reason: '"count" is "badge" now, as text ("3"), or "" for a dot.' };
+    if (key === "args") return { code: "unknown-key", reason: '"args" is gone: an intent names what it does, and a button\'s "value" carries one fixed string.' };
+    return undefined;
+  };
+  const allowed: readonly string[] = tappable ? MARK_KEYS : MARK_KEYS.filter((key) => key !== "intent");
   f.keys(allowed, own);
+  const mark: Mark = {};
   const icon = f.icon("icon");
-  const face = f.text("face", { max: FACE_MAX });
-  const count = f.int("count", { min: 0, max: COUNT_MAX });
-  const label = f.text("label", { max: MARK_LABEL_MAX });
-  if (icon !== undefined) node.icon = icon;
-  if (face !== undefined) node.face = face;
-  if (count !== undefined) node.count = count;
-  if (label !== undefined) node.label = label;
-  setTone(node, f);
-  if (!f.has("icon") && !f.has("face") && !f.has("count")) {
-    f.push("missing", undefined, 'A mark needs "icon", "face" or "count". To show nothing, leave the part out.');
+  const label = f.text("label", { max: FACE_MAX });
+  const badge = readBadgeAttr(f, "badge");
+  const tone = f.tone();
+  if (icon !== undefined) mark.icon = icon;
+  if (label !== undefined) mark.label = label;
+  if (badge !== undefined) mark.badge = badge;
+  if (tone !== undefined) mark.tone = tone;
+  if (!f.has("icon") && !f.has("label") && !f.has("badge")) {
+    f.push("missing", undefined, 'A mark needs "icon", "label" or "badge". To show nothing, leave the part out.');
   }
-  if (tappable) setIntent(node, f.intent(false));
-  return node;
+  if (tappable) {
+    const intent = f.intent("intent", false);
+    if (intent !== undefined) mark.intent = intent;
+  }
+  return mark;
+}
+
+function readBadgeAttr(f: Fields, key: string): string | undefined {
+  const raw = f.obj[key];
+  if (raw === undefined) return undefined;
+  const value = asJsonString(raw);
+  const problem = value === undefined ? { code: "type" as const, reason: `must be text: a count from 0 to ${COUNT_MAX} ("3"), or "" for a dot.` } : attrProblem(BADGE_RULE, value);
+  if (problem !== undefined) {
+    f.push(problem.code, key, `"${key}" ${problem.reason}`);
+    return undefined;
+  }
+  return value;
 }
 
 // ── Parts ────────────────────────────────────────────────────────────────────────────────────
 
-const PART_KEYS = {
+/**
+ * Every key the objects inside a part take, by what the refusal calls them. Exported, with
+ * `PART_KEYS`, `DOCUMENT_KEYS`, `MANIFEST_KEYS`, the decision lists and the facts lists, so the
+ * contract reference reads the same lists the parser holds.
+ */
+export const SUB_KEYS = {
+  mark: MARK_KEYS,
+  badge: ["count", "text"],
+  progress: ["value", "max"],
+  action: ["id", "label", "intent", "value", "icon", "disabled"],
+} as const;
+
+export const PART_KEYS = {
   belt: ["at", "id", "mark"],
   session: ["at", "id", "name", "icon", "tone", "subtitle", "badge", "progress", "actions", "view"],
-  "tab-mark": ["at", "id", "mark"],
-  tab: ["at", "id", "title", "icon", "space", "view"],
+  tab: ["at", "id", "mark"],
   view: ["at", "id", "title", "icon", "view"],
   dashboard: ["at", "id", "view"],
-  "header.line": ["at", "id", "line"],
-  menu: ["at", "id", "rows"],
-  settings: ["at", "id", "title", "view"],
 } as const satisfies { readonly [K in PlaceKind]: readonly string[] };
 
 const PLACE_WORDS = {
   belt: "a belt part",
   session: "a session part",
-  "tab-mark": "a tab mark part",
-  tab: "a tab part",
+  tab: "a tab mark part",
   view: "a view part",
   dashboard: "a dashboard part",
-  "header.line": "a header line part",
-  menu: "a menu part",
-  settings: "a settings part",
 } as const satisfies { readonly [K in PlaceKind]: string };
 
 export interface ParseTrickDocumentOptions {
   /** The place kinds this Collie draws. Default `NEAR_PLACES`; a later place is refused as "later". */
   places?: readonly PlaceKind[];
-  /** The node kinds this Collie draws. Default every kind; slice 01 may pass `CORE_NODE_KINDS` until slice 08. */
+  /** The node kinds this Collie draws. Default every kind. */
   kinds?: readonly NodeKind[];
   /** The manifest's `places`. Absent: not checked. A part in a kind it does not declare is refused. */
   declared?: readonly PlaceKind[];
-  /** This run answered a tap. Only then may the document carry `draft` or `open`. */
-  afterTap?: boolean;
 }
 
 export interface ParsedTrickDocument {
   /** The accepted parts, in document order. */
   parts: ParsedPart[];
+  /** The accepted decisions, in document order. */
+  decisions: TrickDecision[];
   /** Every refusal, each with its path, capped at `REFUSALS_MAX` plus one counting row. */
   refusals: Refusal[];
   /** The ids of refused parts that had a readable id: the runner keeps their last good version, stale. */
   refusedParts: string[];
+  /** The keys of refused decisions that had a readable key: the runner leaves their open post as it is. */
+  refusedDecisions: string[];
   /**
    * True when the document as a whole was refused (too big, not JSON, not an object, a wrong `v`,
    * `parts` not a list): no part was read, so the runner keeps every last good part, stale.
@@ -2192,13 +2442,17 @@ export interface ParsedTrickDocument {
   asOf?: string;
   fresh?: string;
   freshMs?: number;
-  draft?: Draft;
-  open?: OpenTarget;
 }
 
-const DOCUMENT_KEYS = ["v", "parts", "asOf", "fresh", "draft", "open"];
+/** Every top-level key of a trick document. */
+export const DOCUMENT_KEYS = ["v", "parts", "asOf", "fresh", "decisions"] as const;
+/** Top-level keys of the first schema, refused with what replaced them. */
+const REMOVED_DOCUMENT_KEYS = {
+  draft: '"draft" is gone: a trick never writes into a reply box. Post a decision with "replyTo", and the person\'s answer reaches the session as their own message.',
+  open: '"open" is gone: a tap moves nothing on the phone. Draw a "link", or a "row" with "href".',
+} as const satisfies Readonly<Record<string, string>>;
 
-/** `parseTrickDocument` over the provider's stdout text: the byte cap first, then JSON. */
+/** `parseTrickDocument` over the program's stdout text: the byte cap first, then JSON. */
 export function parseTrickDocumentText(text: string, opts: ParseTrickDocumentOptions = {}): ParsedTrickDocument {
   const bytes = utf8Bytes(text);
   if (bytes > DOCUMENT_MAX_BYTES) return wholeRefused("size", `The document is ${bytes} bytes. At most ${DOCUMENT_MAX_BYTES}.`);
@@ -2208,31 +2462,35 @@ export function parseTrickDocumentText(text: string, opts: ParseTrickDocumentOpt
 }
 
 function wholeRefused(code: RefusalCode, reason: string): ParsedTrickDocument {
-  return { parts: [], refusals: [{ code, path: "", reason }], refusedParts: [], documentRefused: true };
+  return { parts: [], decisions: [], refusals: [{ code, path: "", reason }], refusedParts: [], refusedDecisions: [], documentRefused: true };
 }
 
 /**
- * Parse a provider's output. Total: any JSON value gives a result, and every refusal is collected. A
- * bad part is refused alone and the others are kept (design §4 rule 1). A bad `asOf`, `fresh`,
- * `draft` or `open` is refused alone too, and the parts still draw.
+ * Parse a program's output. Total: any JSON value gives a result, and every refusal is collected. A
+ * bad part is refused alone and the others are kept. A bad decision is refused alone too. A bad
+ * `asOf` or `fresh` is refused alone, and the parts still draw.
  */
 export function parseTrickDocument(raw: JsonValue | undefined, opts: ParseTrickDocumentOptions = {}): ParsedTrickDocument {
   const obj = asJsonObject(raw);
-  if (obj === undefined) return wholeRefused("type", "The document must be a JSON object with \"v\" and \"parts\".");
+  if (obj === undefined) return wholeRefused("type", 'The document must be a JSON object with "v" and "parts".');
   const bytes = utf8Bytes(JSON.stringify(obj));
   if (bytes > DOCUMENT_MAX_BYTES) return wholeRefused("size", `The document is ${bytes} bytes. At most ${DOCUMENT_MAX_BYTES}.`);
   const refusals: Refusal[] = [];
   const top = new Fields(obj, "", refusals, "a trick document");
-  top.keys(DOCUMENT_KEYS);
+  top.keys(DOCUMENT_KEYS, (key) => {
+    const removed = reasonOf(REMOVED_DOCUMENT_KEYS, key);
+    return removed === undefined ? undefined : { code: "removed", reason: removed };
+  });
+  const refused = (): ParsedTrickDocument => ({ parts: [], decisions: [], refusals: capRefusals(refusals), refusedParts: [], refusedDecisions: [], documentRefused: true });
   if (asJsonNumber(obj.v) !== DOCUMENT_VERSION) {
     const said = obj.v === undefined ? 'has no "v"' : `says "v": ${JSON.stringify(obj.v)}`;
     refusals.push({ code: "version", path: "/v", reason: `The document ${said}. This Collie reads "v": ${DOCUMENT_VERSION}.` });
-    return { parts: [], refusals: capRefusals(refusals), refusedParts: [], documentRefused: true };
+    return refused();
   }
   const list = top.array("parts", { min: 0, max: PARTS_MAX, required: true, what: "parts" });
-  if (list === undefined) return { parts: [], refusals: capRefusals(refusals), refusedParts: [], documentRefused: true };
+  if (list === undefined) return refused();
 
-  const result: ParsedTrickDocument = { parts: [], refusals, refusedParts: [], documentRefused: false };
+  const result: ParsedTrickDocument = { parts: [], decisions: [], refusals, refusedParts: [], refusedDecisions: [], documentRefused: false };
 
   const seen = new Set<string>();
   let belt = false;
@@ -2254,12 +2512,13 @@ export function parseTrickDocument(raw: JsonValue | undefined, opts: ParseTrickD
     if (parsed.part.place === "belt") belt = true;
     result.parts.push(parsed.part);
   });
-  readDocumentExtras(top, opts, result);
+  readDecisions(top, result);
+  readDocumentExtras(top, result);
   result.refusals = capRefusals(refusals);
   return result;
 }
 
-function readDocumentExtras(top: Fields, opts: ParseTrickDocumentOptions, out: ParsedTrickDocument): void {
+function readDocumentExtras(top: Fields, out: ParsedTrickDocument): void {
   const asOf = top.text("asOf", { max: INSTANT_MAX });
   if (asOf !== undefined && !isInstant(asOf)) top.push("text", "asOf", '"asOf" must be an ISO 8601 instant with a zone, such as 2026-11-08T09:41:00Z.');
   if (asOf !== undefined && isInstant(asOf)) out.asOf = asOf;
@@ -2272,33 +2531,6 @@ function readDocumentExtras(top: Fields, opts: ParseTrickDocumentOptions, out: P
   if (fresh !== undefined && freshMs !== undefined && freshMs >= FRESH_MIN_MS && freshMs <= FRESH_MAX_MS) {
     out.fresh = fresh;
     out.freshMs = freshMs;
-  }
-
-  const draft = top.object("draft", "an object with \"session\" and \"text\"");
-  if (draft !== undefined && opts.afterTap !== true) {
-    top.push("tap-only", "draft", 'A "draft" comes only in the reply to a tap. Leave it out of a timer run.');
-  }
-  if (draft !== undefined && opts.afterTap === true) {
-    const before = draft.sink.length;
-    draft.keys(["session", "text"]);
-    const session = readSessionTarget(draft, "session", true);
-    const text = draft.text("text", { max: DRAFT_TEXT_MAX, required: true, multiline: true });
-    if (draft.sink.length === before && session !== undefined && text !== undefined) out.draft = { session, text };
-  }
-
-  const open = top.object("open", "an object with \"session\" or \"url\"");
-  if (open !== undefined && opts.afterTap !== true) {
-    top.push("tap-only", "open", 'An "open" comes only in the reply to a tap. Leave it out of a timer run.');
-  }
-  if (open !== undefined && opts.afterTap === true) {
-    const before = open.sink.length;
-    open.keys(["session", "url"]);
-    if (open.has("session") === open.has("url")) open.push("target", undefined, '"open" holds "session" or "url", exactly one.');
-    const session = open.has("session") ? readSessionTarget(open, "session", false) : undefined;
-    const url = open.has("url") ? readUrl(open, "url") : undefined;
-    if (open.sink.length !== before) return;
-    if (session !== undefined) out.open = { session };
-    if (url !== undefined) out.open = { url };
   }
 }
 
@@ -2352,79 +2584,56 @@ function readPart(value: JsonValue, path: string, sink: Refusal[], opts: ParseTr
 }
 
 function readPartBody(reading: AtReading, at: string, id: string, f: Fields, kinds: readonly NodeKind[]): ParsedPart | undefined {
-  const view = (required: boolean) => {
+  const view = (): View => {
     if (!f.has("view")) {
-      if (required) f.missing("view", "the view tree it draws");
-      return undefined;
+      f.missing("view", "the nodes it draws");
+      return [];
     }
-    return readView(f.obj.view, f.at("view"), f.sink, kinds);
+    return readView(f.obj.view, f.at("view"), f.sink, kinds) ?? [];
   };
   switch (reading.place) {
     case "belt": {
       const markFields = f.object("mark", "a mark", true);
-      const mark = markFields === undefined ? {} : readMarkInto({}, markFields, true);
+      const mark = markFields === undefined ? {} : readMark(markFields, true);
       return { place: "belt", part: { at: "belt", id, mark } };
     }
-    case "tab-mark": {
+    case "tab": {
       const markFields = f.object("mark", "a mark", true);
-      const mark = markFields === undefined ? {} : readMarkInto({}, markFields, false);
+      const mark = markFields === undefined ? {} : readMark(markFields, false);
       // SAFETY: `parseAt` read this `at` as `tab:<tabmatch>`, so it starts with "tab:".
-      return { place: "tab-mark", part: { at: at as `tab:${string}`, id, mark }, tabMatch: reading.tabMatch };
+      return { place: "tab", part: { at: at as `tab:${string}`, id, mark }, tabMatch: reading.tabMatch };
     }
     case "session":
-      return readSessionPart(f, id, view(true));
-    case "tab": {
-      const title = f.text("title", { max: TAB_TITLE_MAX, required: true }) ?? "";
-      const space = f.text("space", { max: 128, required: true }) ?? "";
-      const problem = space === "" ? undefined : globProblem(space);
-      if (problem !== undefined) f.push("text", "space", `"space" is a Space name glob; it ${problem}.`);
-      const part: TabPart = { at: "tab", id, title, space, view: view(true) ?? DIVIDER };
-      const icon = f.icon("icon");
-      if (icon !== undefined) part.icon = icon;
-      return { place: "tab", part };
-    }
+      return readSessionPart(f, id, view());
     case "view": {
       // SAFETY: `parseAt` read this `at` as `view:<match>`, so it starts with "view:".
-      const part: ViewPart = { at: at as `view:${string}`, id, title: f.text("title", { max: VIEW_TITLE_MAX, required: true }) ?? "", view: view(true) ?? DIVIDER };
+      const part: ViewPart = { at: at as `view:${string}`, id, title: f.text("title", { max: VIEW_TITLE_MAX, required: true }) ?? "", view: view() };
       const icon = f.icon("icon");
       if (icon !== undefined) part.icon = icon;
       return { place: "view", part, match: reading.match };
     }
-    case "menu": {
-      // SAFETY: `parseAt` read this `at` as `menu:<match>`, so it starts with "menu:".
-      return { place: "menu", part: { at: at as `menu:${string}`, id, rows: readMenuRows(f) }, match: reading.match };
-    }
     case "dashboard":
-      return { place: "dashboard", part: { at: "dashboard", id, view: view(true) ?? DIVIDER } };
-    case "header.line":
-      return { place: "header.line", part: { at: "header.line", id, line: readHeaderLine(f) } };
-    case "settings":
-      return {
-        place: "settings",
-        part: { at: "settings", id, title: f.text("title", { max: TITLE_MAX, required: true }) ?? "", view: view(true) ?? DIVIDER },
-      };
+      return { place: "dashboard", part: { at: "dashboard", id, view: view() } };
   }
 }
 
-/** A stand-in for a view that failed to read. The part is refused anyway; it never reaches a caller. */
-const DIVIDER: DividerNode = { kind: "divider" };
-
-function readSessionPart(f: Fields, id: string, view: ViewNode | undefined): ParsedPart {
-  const part: SessionPart = { at: "session", id, view: view ?? DIVIDER };
+function readSessionPart(f: Fields, id: string, view: View): ParsedPart {
+  const part: SessionPart = { at: "session", id, view };
   const name = f.text("name", { max: NAME_MAX });
   const icon = f.icon("icon");
+  const tone = f.tone();
   const subtitle = f.text("subtitle", { max: SUBTITLE_MAX });
   if (name !== undefined) part.name = name;
   if (icon !== undefined) part.icon = icon;
-  setTone(part, f);
+  if (tone !== undefined) part.tone = tone;
   if (subtitle !== undefined) part.subtitle = subtitle;
   const badgeFields = f.object("badge", 'an object with "count" or "text"');
   if (badgeFields !== undefined) {
-    badgeFields.keys(["count", "text"]);
+    badgeFields.keys(SUB_KEYS.badge);
     const badge = readBadgeFields(badgeFields);
     if (badge !== undefined) part.badge = badge;
   }
-  const progressFields = f.object("progress", 'an object with "kind": "percent" or "steps"');
+  const progressFields = f.object("progress", 'an object with "value" and "max", a meter\'s progress');
   if (progressFields !== undefined) {
     const progress = readPartProgress(progressFields);
     if (progress !== undefined) part.progress = progress;
@@ -2434,22 +2643,38 @@ function readSessionPart(f: Fields, id: string, view: ViewNode | undefined): Par
   return { place: "session", part };
 }
 
-/** A trick session's `progress`, WIRE.md §7.12's two shapes. */
+/** `count` or `text`, exactly one (WIRE.md §7.11). */
+function readBadgeFields(f: Fields): Badge | undefined {
+  const hasCount = f.has("count");
+  const hasText = f.has("text");
+  if (hasCount === hasText) {
+    f.push("target", undefined, 'A badge holds "count" or "text", exactly one.');
+    return undefined;
+  }
+  if (hasCount) {
+    const count = f.int("count", { min: 0, max: COUNT_MAX });
+    return count === undefined ? undefined : { count };
+  }
+  const text = f.text("text", { max: BADGE_TEXT_MAX });
+  return text === undefined ? undefined : { text };
+}
+
+/** A trick session's `progress`: the meter shape, `value` of `max` (a whole 1 to 12, default 1). */
 function readPartProgress(f: Fields): PartProgress | undefined {
-  const kind = f.word("kind", ["percent", "steps"] as const, true);
-  if (kind === "percent") {
-    f.keys(["kind", "value", "label"]);
-    const value = f.num("value", { min: 0, max: 100, required: true });
-    const label = f.text("label", { max: STEP_LABEL_MAX });
-    if (value === undefined) return undefined;
-    return label === undefined ? { kind: "percent", value } : { kind: "percent", value, label };
-  }
-  if (kind === "steps") {
-    f.keys(["kind", "steps"]);
-    const steps = readSteps(f, "steps", STEP_STATES);
-    return steps === undefined ? undefined : { kind: "steps", steps };
-  }
-  return undefined;
+  f.keys(SUB_KEYS.progress, (key) =>
+    key === "kind" || key === "steps" || key === "label"
+      ? { code: "unknown-key", reason: `"${key}" is gone: a session's progress is a meter's, "value" of "max" (1 to ${PROGRESS_MAX}).` }
+      : undefined,
+  );
+  const before = f.sink.length;
+  const max = f.int("max", VIEW_LIMITS.progressMax);
+  const value = f.num("value", { min: 0, max: max ?? PROGRESS_MAX });
+  if (value !== undefined && max === undefined && value > 1) f.push("range", "value", `"value" is above "max" (1). Give "max", or "value" as a part of 1.`);
+  if (f.sink.length !== before) return undefined;
+  const out: PartProgress = {};
+  if (value !== undefined) out.value = value;
+  if (max !== undefined) out.max = max;
+  return out;
 }
 
 function readActions(f: Fields): TrickAction[] | undefined {
@@ -2460,16 +2685,17 @@ function readActions(f: Fields): TrickAction[] | undefined {
   list.forEach((value, i) => {
     const a = itemFields(value, pointer(f.at("actions"), i), f.sink, "an action");
     if (a === undefined) return;
-    a.keys(["id", "label", "intent", "args", "icon", "disabled"]);
+    a.keys(SUB_KEYS.action, (key) => (key === "args" ? { code: "unknown-key", reason: '"args" is "value" now: one fixed string the tap sends.' } : undefined));
     const idRaw = asJsonString(a.obj.id);
     if (idRaw === undefined || !isPartId(idRaw)) a.push("id", "id", 'An action needs an "id" of 1 to 32 lower-case letters, digits and hyphens.');
     if (idRaw !== undefined && ids.has(idRaw)) a.push("duplicate", "id", `The action id "${idRaw}" is used twice.`);
     if (idRaw !== undefined) ids.add(idRaw);
     const label = a.text("label", { max: ACTION_LABEL_MAX, required: true });
-    const action: TrickAction = { id: idRaw ?? "", label: label ?? "", intent: "" };
-    setIntent(action, a.intent(true));
+    const action: TrickAction = { id: idRaw ?? "", label: label ?? "", intent: a.intent("intent", true) ?? "" };
+    const actionValue = a.value("value");
     const icon = a.word("icon", ACTION_ICONS);
     const disabled = a.bool("disabled");
+    if (actionValue !== undefined) action.value = actionValue;
     if (icon !== undefined) action.icon = icon;
     if (disabled !== undefined) action.disabled = disabled;
     out.push(action);
@@ -2477,35 +2703,170 @@ function readActions(f: Fields): TrickAction[] | undefined {
   return out;
 }
 
-function readMenuRows(f: Fields): MenuRow[] {
-  const list = f.array("rows", { min: 1, max: MENU_ROWS_MAX, required: true, what: "rows" });
-  const out: MenuRow[] = [];
-  list?.forEach((value, i) => {
-    const row = itemFields(value, pointer(f.at("rows"), i), f.sink, "a menu row");
-    if (row === undefined) return;
-    row.keys(["label", "icon", "intent", "args"]);
-    const out1: MenuRow = { label: row.text("label", { max: MENU_LABEL_MAX, required: true }) ?? "", intent: "" };
-    const icon = row.icon("icon");
-    if (icon !== undefined) out1.icon = icon;
-    out.push(setIntent(out1, row.intent(true)));
+// ── Decisions ────────────────────────────────────────────────────────────────────────────────
+
+/** Every key a decision takes (the Hill's decision shape, the fields a trick writes). */
+export const DECISION_KEYS = ["key", "title", "summary", "body", "options", "recommends", "priority", "about", "replyTo", "media", "links", "expiresAt"] as const;
+export const DECISION_OPTION_KEYS = ["intent", "label", "detail"] as const;
+export const DECISION_RECOMMENDS_KEYS = ["intent", "why"] as const;
+export const DECISION_MEDIA_KEYS = ["file", "caption"] as const;
+export const DECISION_LINK_KEYS = ["label", "href"] as const;
+
+/** The Hill's fields a trick does not write: the runner and the bridge set them. */
+const HILL_OWNED_KEYS = {
+  id: "the bridge mints a decision's id; a trick names its own with \"key\"",
+  requestId: "the runner derives the request id from the trick, the key and the content",
+  from: "the runner stamps who posted it",
+  supersedes: "the runner supersedes a key whose content changed",
+  text: "whether the person may write is the Hill's",
+  channel: "the channel is the Hill's",
+  state: "the Hill holds a decision's state",
+  at: "the bridge stamps when it took the post",
+} as const satisfies Readonly<Record<string, string>>;
+
+function readDecisions(top: Fields, out: ParsedTrickDocument): void {
+  const list = top.array("decisions", { min: 0, max: DECISIONS_MAX, what: "decisions" });
+  if (list === undefined) return;
+  const seen = new Set<string>();
+  list.forEach((value, i) => {
+    const path = pointer("/decisions", i);
+    const sink: Refusal[] = [];
+    const reading = readDecision(value, path, sink);
+    const key = reading.key;
+    if (key !== undefined && seen.has(key)) sink.push({ code: "duplicate", path: pointer(path, "key"), reason: `The decision key "${key}" is used twice. Each decision needs its own.` });
+    if (key !== undefined) seen.add(key);
+    if (sink.length > 0 || reading.decision === undefined) {
+      for (const r of sink) out.refusals.push(key === undefined ? r : { ...r, decision: key });
+      if (key !== undefined) out.refusedDecisions.push(key);
+      return;
+    }
+    out.decisions.push(reading.decision);
+  });
+}
+
+/** One decision read: its key when it had a good one (for the refused list), and the decision when it passed. */
+interface DecisionReading {
+  key?: string;
+  decision?: TrickDecision;
+}
+
+function readDecision(value: JsonValue, path: string, sink: Refusal[]): DecisionReading {
+  const f = itemFields(value, path, sink, "a decision");
+  if (f === undefined) return {};
+  f.keys(DECISION_KEYS, (key) => {
+    const own = reasonOf(HILL_OWNED_KEYS, key);
+    return own === undefined ? undefined : { code: "unknown-key", reason: `"${key}" is not a trick's to write: ${own}.` };
+  });
+  const keyRaw = asJsonString(f.obj.key);
+  const key = keyRaw !== undefined && isDecisionKey(keyRaw) ? keyRaw : undefined;
+  if (key === undefined) f.push("id", "key", `A decision needs a "key" of 1 to ${DECISION_KEY_MAX} lower-case letters, digits and hyphens.`);
+  const title = f.text("title", { max: DECISION_TITLE_MAX, required: true });
+  const summary = f.text("summary", { max: DECISION_SUMMARY_MAX, required: true });
+  const body = f.text("body", { max: DECISION_BODY_MAX, multiline: true });
+  const options = readOptions(f);
+  const recommends = readRecommends(f, options);
+  const priority = f.word("priority", DECISION_PRIORITIES);
+  const about = readSessionKey(f, "about");
+  const replyTo = readSessionKey(f, "replyTo");
+  const media = readMedia(f);
+  const links = readLinks(f);
+  const expiresAt = f.int("expiresAt", { min: 1, max: EPOCH_MAX_MS });
+  if (key === undefined || title === undefined || summary === undefined) return { key };
+  const decision: TrickDecision = { key, title, summary };
+  if (body !== undefined) decision.body = body;
+  if (options !== undefined) decision.options = options;
+  if (recommends !== undefined) decision.recommends = recommends;
+  if (priority !== undefined) decision.priority = priority;
+  if (about !== undefined) decision.about = about;
+  if (replyTo !== undefined) decision.replyTo = replyTo;
+  if (media !== undefined) decision.media = media;
+  if (links !== undefined) decision.links = links;
+  if (expiresAt !== undefined) decision.expiresAt = expiresAt;
+  return { key, decision };
+}
+
+function readOptions(f: Fields): DecisionOption[] | undefined {
+  const list = f.array("options", { min: 0, max: DECISION_OPTIONS_MAX, what: "options" });
+  if (list === undefined) return undefined;
+  const out: DecisionOption[] = [];
+  const intents = new Set<string>();
+  list.forEach((value, i) => {
+    const o = itemFields(value, pointer(f.at("options"), i), f.sink, "an option");
+    if (o === undefined) return;
+    o.keys(DECISION_OPTION_KEYS);
+    const intent = o.intent("intent", true);
+    if (intent !== undefined && isOneOf(HILL_INTENTS, intent)) o.push("id", "intent", `"${intent}" is the Hill's own answer. Name the option's intent another way.`);
+    if (intent !== undefined && intents.has(intent)) o.push("duplicate", "intent", `The option intent "${intent}" is used twice.`);
+    if (intent !== undefined) intents.add(intent);
+    const label = o.text("label", { max: OPTION_LABEL_MAX, required: true });
+    const detail = o.text("detail", { max: OPTION_DETAIL_MAX });
+    if (intent === undefined || label === undefined) return;
+    out.push(detail === undefined ? { intent, label } : { intent, label, detail });
   });
   return out;
 }
 
-function readHeaderLine(f: Fields): HeaderLine {
-  const line = f.object("line", 'an object with "text"', true);
-  if (line === undefined) return { text: "" };
-  line.keys(["text", "icon", "tone", "intent", "args"]);
-  const out: HeaderLine = { text: line.text("text", { max: LINE_MAX, required: true }) ?? "" };
-  const icon = line.icon("icon");
-  if (icon !== undefined) out.icon = icon;
-  setTone(out, line);
-  return setIntent(out, line.intent(false));
+function readRecommends(f: Fields, options: DecisionOption[] | undefined): DecisionRecommends | null | undefined {
+  if (f.obj.recommends === null) return null;
+  const r = f.object("recommends", 'an object with "intent" and "why", or null');
+  if (r === undefined) return undefined;
+  r.keys(DECISION_RECOMMENDS_KEYS);
+  const intent = r.intent("intent", true);
+  const why = r.text("why", { max: RECOMMENDS_WHY_MAX, required: true });
+  if (intent !== undefined && !(options ?? []).some((o) => o.intent === intent)) {
+    r.push("target", "intent", `"recommends" names "${intent}", which is not one of the decision's options.`);
+    return undefined;
+  }
+  return intent === undefined || why === undefined ? undefined : { intent, why };
+}
+
+function readSessionKey(f: Fields, key: string): string | undefined {
+  const value = f.text(key, { max: 256 });
+  if (value === undefined) return undefined;
+  if (isScopeKey(value)) return value;
+  const what = isTrickSessionId(value) ? `"${value}" is a trick session. It has no reply box and no Chat` : `"${value}" is not a session's scope key`;
+  f.push("target", key, `${what}. Use the "id" from the facts (host:paneId, such as bluefin:w6X:3), never a name.`);
+  return undefined;
+}
+
+function readMedia(f: Fields): DecisionMedia[] | undefined {
+  const list = f.array("media", { min: 0, max: DECISION_MEDIA_MAX, what: "images" });
+  if (list === undefined) return undefined;
+  const out: DecisionMedia[] = [];
+  list.forEach((value, i) => {
+    const m = itemFields(value, pointer(f.at("media"), i), f.sink, "a media file");
+    if (m === undefined) return;
+    m.keys(DECISION_MEDIA_KEYS);
+    const file = m.text("file", { max: IMAGE_SRC_MAX, required: true });
+    if (file !== undefined && !isImageSrc(file)) m.push("target", "file", '"file" must be a .png, .jpg or .jpeg file inside the trick folder, as a relative path with no "..".');
+    const caption = m.text("caption", { max: MEDIA_CAPTION_MAX });
+    if (file === undefined || !isImageSrc(file)) return;
+    out.push(caption === undefined ? { file } : { file, caption });
+  });
+  return out;
+}
+
+function readLinks(f: Fields): DecisionLink[] | undefined {
+  const list = f.array("links", { min: 0, max: DECISION_LINKS_MAX, what: "links" });
+  if (list === undefined) return undefined;
+  const out: DecisionLink[] = [];
+  list.forEach((value, i) => {
+    const l = itemFields(value, pointer(f.at("links"), i), f.sink, "a link");
+    if (l === undefined) return;
+    l.keys(DECISION_LINK_KEYS);
+    const label = l.text("label", { max: DECISION_LINK_LABEL_MAX, required: true });
+    const href = l.text("href", { max: URL_MAX, required: true });
+    if (href !== undefined && !isTrickUrl(href)) l.push("target", "href", `"href" must be an https:// or http:// address of at most ${URL_MAX} characters.`);
+    if (label === undefined || href === undefined || !isTrickUrl(href)) return;
+    out.push({ label, href });
+  });
+  return out;
 }
 
 // ── The manifest ─────────────────────────────────────────────────────────────────────────────
 
-const MANIFEST_KEYS = ["id", "name", "run", "every", "watch", "on", "mode", "facts", "icon", "places"];
+/** Every key `trick.toml` takes. */
+export const MANIFEST_KEYS = ["id", "name", "run", "every", "watch", "on", "mode", "facts", "icon", "places"] as const;
 
 export interface ParseManifestOptions {
   /** The folder's name. A manifest whose `id` differs is refused. */
@@ -2519,7 +2880,7 @@ export interface ParseManifestOptions {
 export interface ParsedManifest {
   /**
    * Present when every refusal is a "later" one. A later field or place is left out of the manifest
-   * with its reason, and the trick still runs with the rest (design §7: skipped with a reason).
+   * with its reason, and the trick still runs with the rest.
    */
   manifest?: TrickManifest;
   refusals: Refusal[];
@@ -2584,7 +2945,8 @@ export function parseManifest(doc: JsonValue | undefined, opts: ParseManifestOpt
     const word = asJsonString(value);
     const path = pointer("/places", i);
     if (word === undefined || !isOneOf(PLACE_KINDS, word)) {
-      refusals.push({ code: "place", path, reason: `A place is one of: ${quoteList(PLACE_KINDS)}.` });
+      const removed = word === undefined ? undefined : reasonOf(REMOVED_PLACES, word);
+      refusals.push({ code: "place", path, reason: removed === undefined ? `A place is one of: ${quoteList(PLACE_KINDS)}.` : `${removed} A place is one of: ${quoteList(PLACE_KINDS)}.` });
       return;
     }
     if (places.includes(word)) {
@@ -2617,8 +2979,19 @@ export function parseManifest(doc: JsonValue | undefined, opts: ParseManifestOpt
 
 // ── The facts ────────────────────────────────────────────────────────────────────────────────
 
-const FACTS_KEYS = ["v", "trigger", "trick", "host", "sessions", "spaces", "session"];
-const SESSION_FACT_KEYS = ["id", "paneId", "name", "agent", "status", "cwd", "space", "tab", "lastActiveAt"];
+/** Every key of the facts document, of a session in it, of a space, of the trick, and of each trigger. */
+export const FACTS_KEYS = ["v", "trigger", "trick", "host", "sessions", "spaces", "session"] as const;
+export const SESSION_FACT_KEYS = ["id", "memberId", "sessionId", "paneId", "host", "name", "agent", "status", "cwd", "space", "tab", "lastActiveAt"] as const;
+export const SPACE_FACT_KEYS = ["name", "folder"] as const;
+export const TRICK_FACT_KEYS = ["id", "dir", "state"] as const;
+export const TRIGGER_KINDS = ["start", "timer", "tap", "watch", "event"] as const;
+export const TRIGGER_KEYS = {
+  start: ["kind"],
+  timer: ["kind"],
+  tap: ["kind", "rid", "node", "intent", "value", "from"],
+  watch: ["kind", "path"],
+  event: ["kind", "event", "session"],
+} as const satisfies { readonly [K in (typeof TRIGGER_KINDS)[number]]: readonly string[] };
 
 export interface ParsedFacts {
   facts?: TrickFacts;
@@ -2638,7 +3011,7 @@ export function parseFacts(raw: JsonValue | undefined): ParsedFacts {
   if (asJsonNumber(obj.v) !== FACTS_VERSION) f.push("version", "v", `The facts must say "v": ${FACTS_VERSION}.`);
   const trigger = readTrigger(f);
   const trickFields = f.object("trick", 'an object with "id", "dir" and "state"', true);
-  trickFields?.keys(["id", "dir", "state"]);
+  trickFields?.keys(TRICK_FACT_KEYS);
   const trickId = trickFields?.text("id", { max: 32, required: true });
   if (trickId !== undefined && !isTrickId(trickId)) trickFields?.push("id", "id", '"id" is not a trick id.');
   const dir = trickFields?.text("dir", { max: FACT_TEXT_MAX_BYTES, required: true });
@@ -2657,7 +3030,7 @@ export function parseFacts(raw: JsonValue | undefined): ParsedFacts {
   spaceList?.forEach((value, i) => {
     const sp = itemFields(value, pointer("/spaces", i), refusals, "a space");
     if (sp === undefined) return;
-    sp.keys(["name", "folder"]);
+    sp.keys(SPACE_FACT_KEYS);
     const name = sp.text("name", { max: 256, required: true });
     const folder = sp.text("folder", { max: FACT_TEXT_MAX_BYTES });
     if (name === undefined) return;
@@ -2676,28 +3049,28 @@ export function parseFacts(raw: JsonValue | undefined): ParsedFacts {
 function readTrigger(f: Fields): FactsTrigger | undefined {
   const t = f.object("trigger", 'an object with "kind"', true);
   if (t === undefined) return undefined;
-  const kind = t.word("kind", ["start", "timer", "tap", "watch", "event"] as const, true);
+  const kind = t.word("kind", TRIGGER_KINDS, true);
   switch (kind) {
     case undefined:
       return undefined;
     case "start":
     case "timer":
-      t.keys(["kind"]);
+      t.keys(TRIGGER_KEYS[kind]);
       return { kind };
     case "watch": {
-      t.keys(["kind", "path"]);
+      t.keys(TRIGGER_KEYS.watch);
       const path = t.text("path", { max: WATCH_PATH_MAX, required: true });
       return path === undefined ? undefined : { kind, path };
     }
     case "event": {
-      t.keys(["kind", "event", "session"]);
+      t.keys(TRIGGER_KEYS.event);
       const event = t.word("event", TRICK_EVENTS, true);
       const session = t.text("session", { max: 256 });
       if (event === undefined) return undefined;
       return session === undefined ? { kind, event } : { kind, event, session };
     }
     case "tap": {
-      t.keys(["kind", "requestId", "intent", "args", "part", "from"]);
+      t.keys(TRIGGER_KEYS.tap);
       const tap = readTapFields(t);
       return tap === undefined ? undefined : { kind: "tap", ...tap };
     }
@@ -2711,9 +3084,13 @@ function readFactsSession(value: JsonValue | undefined, path: string, sink: Refu
   s.keys(SESSION_FACT_KEYS);
   const id = s.text("id", { max: 256, required: true });
   if (id !== undefined && !isScopeKey(id)) s.push("target", "id", '"id" must be the scope key host:paneId.');
+  const memberId = s.text("memberId", { max: 64, required: true });
+  if (memberId !== undefined && !isHostName(memberId)) s.push("id", "memberId", '"memberId" is not a crew member id.');
+  const sessionId = s.text("sessionId", { max: SESSION_ID_MAX, required: true });
   const paneId = s.text("paneId", { max: MUX_ID_MAX_BYTES, required: true });
+  const host = s.text("host", { max: 256, required: true });
   const status = s.word("status", SESSION_STATUSES, true);
-  const out: FactsSession = { id: id ?? "", paneId: paneId ?? "", status: status ?? "unknown" };
+  const out: FactsSession = { id: id ?? "", memberId: memberId ?? "", sessionId: sessionId ?? "", paneId: paneId ?? "", host: host ?? "", status: status ?? "unknown" };
   for (const key of ["name", "agent", "cwd", "space", "tab"] as const) {
     const text = s.text(key, { max: FACT_TEXT_MAX_BYTES });
     if (text !== undefined) out[key] = text;
@@ -2726,6 +3103,9 @@ function readFactsSession(value: JsonValue | undefined, path: string, sink: Refu
 
 // ── A tap ────────────────────────────────────────────────────────────────────────────────────
 
+/** Every key a tap's body takes. */
+export const TAP_KEYS = ["rid", "node", "intent", "value", "from"] as const;
+
 export interface ParsedTapRequest {
   request?: TapRequest;
   refusals: Refusal[];
@@ -2737,7 +3117,12 @@ export function parseTapRequest(raw: JsonValue | undefined): ParsedTapRequest {
   if (obj === undefined) return { refusals: [{ code: "type", path: "", reason: "A tap must be a JSON object." }] };
   const refusals: Refusal[] = [];
   const f = new Fields(obj, "", refusals, "a tap");
-  f.keys(["requestId", "intent", "args", "part", "from"]);
+  f.keys(TAP_KEYS, (key) => {
+    if (key === "requestId") return { code: "unknown-key", reason: '"requestId" is "rid" now, as in the tree\'s intent.' };
+    if (key === "part") return { code: "unknown-key", reason: '"part" is "node" now: the part id, or hill/<key> for a decision.' };
+    if (key === "args") return { code: "unknown-key", reason: '"args" is "value" now: a button\'s fixed string, or a decision\'s answer.' };
+    return undefined;
+  });
   const request = readTapFields(f);
   if (refusals.length > 0 || request === undefined) return { refusals: capRefusals(refusals) };
   return { request, refusals };
@@ -2746,21 +3131,43 @@ export function parseTapRequest(raw: JsonValue | undefined): ParsedTapRequest {
 /** The fields a tap request and a tap trigger share. The caller has checked the keys. */
 function readTapFields(f: Fields): TapRequest | undefined {
   const before = f.sink.length;
-  const requestId = f.text("requestId", { max: 36, required: true });
-  if (requestId !== undefined && !isRequestId(requestId)) f.push("id", "requestId", '"requestId" must be a UUID.');
-  const intent = f.intent(true);
-  const partRaw = f.text("part", { max: 32, required: true });
-  if (partRaw !== undefined && !isPartId(partRaw)) f.push("id", "part", '"part" must be a part id.');
+  const rid = f.text("rid", { max: 36, required: true });
+  if (rid !== undefined && !isRequestId(rid)) f.push("id", "rid", '"rid" must be a UUID.');
+  const intent = f.intent("intent", true);
+  const node = f.text("node", { max: HILL_NODE_PREFIX.length + DECISION_KEY_MAX, required: true });
+  if (node !== undefined && !isTapNode(node)) f.push("id", "node", '"node" must be a part id, or hill/<key> for a decision.');
+  const value = node === undefined ? undefined : readTapValue(f, node.startsWith(HILL_NODE_PREFIX));
   const from = f.object("from", 'an object with "session"');
   let tapFrom: TapFrom | undefined;
   if (from !== undefined) {
     from.keys(["session"]);
-    const session = from.has("session") ? readSessionTarget(from, "session", false) : undefined;
+    const session = from.has("session") ? readFromSession(from) : undefined;
     tapFrom = session === undefined ? {} : { session };
   }
-  if (f.sink.length !== before || requestId === undefined || intent === undefined || partRaw === undefined) return undefined;
-  const out: TapRequest = { requestId, intent: intent.intent, part: partRaw };
-  if (intent.args !== undefined) out.args = intent.args;
+  if (f.sink.length !== before || rid === undefined || intent === undefined || node === undefined) return undefined;
+  const out: TapRequest = { rid, node, intent };
+  if (value !== undefined) out.value = value;
   if (tapFrom !== undefined) out.from = tapFrom;
   return out;
+}
+
+/** A tap's value: a part's control sends text; a decision's answer sends `{ text }`, the person's words or null. */
+function readTapValue(f: Fields, hill: boolean): TapValue | undefined {
+  const raw = f.obj.value;
+  if (raw === undefined) return undefined;
+  if (!hill) return f.value("value");
+  const v = f.object("value", 'an object with "text", the person\'s words or null');
+  if (v === undefined) return undefined;
+  v.keys(["text"]);
+  if (v.obj.text === null) return { text: null };
+  const text = v.text("text", { max: ANSWER_TEXT_MAX, required: true, multiline: true });
+  return text === undefined ? undefined : { text };
+}
+
+function readFromSession(f: Fields): string | undefined {
+  const value = f.text("session", { max: 256, required: true });
+  if (value === undefined) return undefined;
+  if (isPaneTarget(value)) return value;
+  f.push("target", "session", `"${value}" is not a session's scope key. Use the "id" from the facts (host:paneId, such as bluefin:w6X:3), never a name.`);
+  return undefined;
 }

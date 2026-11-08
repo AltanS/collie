@@ -12,13 +12,11 @@
 
 import { asJsonBoolean, asJsonNumber, asJsonObject, asJsonString, type JsonObject, type JsonValue } from "../json";
 import {
-  TAP_OUTCOMES,
-  type Draft,
+  TAP_CODES,
   type TrickPart,
   type TrickTapReply,
   type TricksReply,
-  type OpenTarget,
-  type TapOutcome,
+  type TapCode,
   type WireTrickInfo,
   type WireTrickPart,
 } from "./schema";
@@ -109,8 +107,8 @@ export function readTricksReply(raw: JsonValue | undefined): TricksReply | undef
   return { rev, tricks, parts, present };
 }
 
-function isOutcome(text: string | undefined): text is TapOutcome {
-  return TAP_OUTCOMES.some((outcome) => outcome === text);
+function isTapCode(text: string | undefined): text is TapCode {
+  return TAP_CODES.some((code) => code === text);
 }
 
 /**
@@ -120,10 +118,10 @@ function isOutcome(text: string | undefined): text is TapOutcome {
 export function readTapReply(raw: JsonValue | undefined): TrickTapReply | undefined {
   const body = asJsonObject(raw);
   if (body === undefined) return undefined;
-  const requestId = asJsonString(body.requestId);
-  const outcome = asJsonString(body.outcome);
-  if (requestId === undefined || !isOutcome(outcome)) return undefined;
-  const reply: TrickTapReply = { requestId, outcome };
+  const rid = asJsonString(body.rid);
+  const code = asJsonString(body.code);
+  if (rid === undefined || !isTapCode(code)) return undefined;
+  const reply: TrickTapReply = { rid, code };
   const message = asJsonString(body.message);
   if (message !== undefined) reply.message = message;
   const rev = asJsonNumber(body.rev);
@@ -138,14 +136,5 @@ export function readTapReply(raw: JsonValue | undefined): TrickTapReply | undefi
     if (present === undefined) return undefined;
     reply.present = present;
   }
-  const draft = asJsonObject(body.draft);
-  const draftText = asJsonString(draft?.text);
-  const draftSession = asJsonString(draft?.session);
-  if (draftText !== undefined && draftSession !== undefined) reply.draft = { session: draftSession, text: draftText } satisfies Draft;
-  const open = asJsonObject(body.open);
-  const openSession = asJsonString(open?.session);
-  const openUrl = asJsonString(open?.url);
-  if (openSession !== undefined) reply.open = { session: openSession } satisfies OpenTarget;
-  if (openSession === undefined && openUrl !== undefined) reply.open = { url: openUrl } satisfies OpenTarget;
   return reply;
 }

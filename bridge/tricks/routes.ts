@@ -1,4 +1,5 @@
 import { asJsonBoolean, asJsonObject } from "../../web/src/lib/json.ts";
+import type { GateLevel } from "../crew/peer-gate.ts";
 import type { JsonValue } from "../json.ts";
 import type { TricksSurface, SwitchAnswer, TapAnswer } from "./service.ts";
 
@@ -6,13 +7,24 @@ import type { TricksSurface, SwitchAnswer, TapAnswer } from "./service.ts";
 // dispatches. The gate, the watch stamp and the response are server.ts's.
 //
 //   GET  /api/tricks?since=<rev>          → TricksReply (web/src/lib/tricks/schema.ts)
-//   POST /api/tricks/<host>/<id>/tap      → TrickTapReply, or 400 `tap-invalid` with the refusals,
+//   POST /api/tricks/<host>/<id>/tap      → TrickTapReply (`rid`, a tree receipt code), or 400 `tap-invalid`,
 //                                         404 `unknown-host` / `unknown-trick`, 409 `request-id-reused`
 //   POST /api/tricks/<host>/<id>/switch   → body `{ "on": boolean }`; the trick's WireTrickInfo as it now
 //                                         reads, or 400 `switch-invalid`, 404 `unknown-host` / `unknown-trick`
 //
 // Both are this bridge's own for now: a host that is not this one is 404, and the crew merge is a
 // later slice.
+
+/**
+ * The right each tricks route needs. Every intent (a tap, a decision's answer) and the switch need a
+ * device key with the write right: a tap runs the provider, and the switch changes what runs. The
+ * list is read only. server.ts gates each route at its level here, so the requirement has one home.
+ */
+export const TRICKS_ROUTE_RIGHTS = {
+  reply: "read",
+  tap: "write",
+  switch: "write",
+} as const satisfies Readonly<Record<"reply" | "tap" | "switch", GateLevel>>;
 
 /** `since` as a rev, or undefined (every part) when absent or not a whole number at or above 0. */
 export function parseSince(raw: string | null): number | undefined {

@@ -56,7 +56,7 @@ function BeltTrickMark({
   const unknown = tap?.phase === "unknown";
   if (mark.intent !== undefined) {
     const intent = mark.intent;
-    return <TrickMark mark={mark} trickName={trickName} stale={stale} busy={busy} unknown={unknown} onTap={() => onTap(key, intent, mark.args, "mark")} />;
+    return <TrickMark mark={mark} trickName={trickName} stale={stale} busy={busy} unknown={unknown} onTap={() => onTap(key, intent, undefined, "mark")} />;
   }
   if (session === undefined) return <TrickMark mark={mark} trickName={trickName} stale={stale} />;
   return (

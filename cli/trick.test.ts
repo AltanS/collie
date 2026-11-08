@@ -144,7 +144,7 @@ describe("collie trick check", () => {
         'const leaked = Object.keys(process.env).filter((k) => k.startsWith("COLLIE_") || k.includes("KEY"));',
         "const facts = JSON.parse(await Bun.stdin.text());",
         'if (leaked.length > 0 || facts.trick.id !== "env") process.exit(7);',
-        'console.log(JSON.stringify({ v: 1, parts: [{ at: "belt", id: "belt", mark: { face: "ok" } }] }));',
+        'console.log(JSON.stringify({ v: 1, parts: [{ at: "belt", id: "belt", mark: { label: "ok" } }] }));',
       ].join("\n"),
     });
     const d = await deps();
@@ -159,10 +159,10 @@ describe("collie trick check", () => {
   test("--run prints the refusals of the output, masked stderr of a failure, and exits 1", async () => {
     const d = await deps();
     const refused = await folder('id = "r"\nname = "R"\nrun = "./p.sh"\nplaces = ["belt"]\n', {
-      "p.sh": `#!/bin/sh\necho '{"v":1,"parts":[{"at":"belt","id":"belt","mark":{"face":"far too long a face"}}]}'\n`,
+      "p.sh": `#!/bin/sh\necho '{"v":1,"parts":[{"at":"belt","id":"belt","mark":{"label":"far too long a label"}}]}'\n`,
     });
     expect(await cmdTrickCheck(d, ["--run", refused])).toBe(EXIT.FAIL);
-    expect(d.err.join("\n")).toContain("error: output /parts/0/mark/face");
+    expect(d.err.join("\n")).toContain("error: output /parts/0/mark/label");
     const e = await deps();
     const failing = await folder('id = "f"\nname = "F"\nrun = "./p.sh"\nplaces = ["belt"]\n', {
       "p.sh": `#!/bin/sh\necho "darius: not found ${KEY}" >&2\nexit 127\n`,

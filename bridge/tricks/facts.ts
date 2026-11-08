@@ -73,7 +73,9 @@ function factText(text: string | undefined): string | undefined {
 export function factsSessionOf(host: string, pane: AgentView, lastActiveMs: number | undefined): FactsSession | null {
   const id = `${host}:${pane.paneId}`;
   if (!isScopeKey(id)) return null;
-  const out: FactsSession = { id, paneId: pane.paneId, status: pane.status };
+  // DECISION (M94 re-cut): until v2 session ids exist, the session id is the scope key and the member id
+  // is the tricks host name; both are documented as opaque, so a later id change breaks no trick.
+  const out: FactsSession = { id, memberId: host, sessionId: id, paneId: pane.paneId, host, status: pane.status };
   const name = factText(paneName(pane));
   if (name !== undefined) out.name = name;
   if (pane.kind !== "shell") {

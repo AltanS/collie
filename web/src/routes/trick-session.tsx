@@ -14,8 +14,8 @@ import { t } from "@/lib/i18n";
 import { trickIconOf } from "@/lib/tricks/icons";
 import { TrickView } from "@/lib/tricks/part-frame";
 import { findTrickSession } from "@/lib/tricks/places";
-import { ACTIONS_MAX, parseTrickSessionId, type TrickAction, type OpenTarget } from "@/lib/tricks/schema";
-import { tricksStore, trickTapper, useTrickPart, type DraftRequest, type TricksStore } from "@/lib/tricks/store";
+import { ACTIONS_MAX, parseTrickSessionId, type TrickAction } from "@/lib/tricks/schema";
+import { tricksStore, trickTapper, useTrickPart, type DraftRequest, type OpenTarget, type TricksStore } from "@/lib/tricks/store";
 import { homePath } from "@/lib/nav";
 import { paneName } from "@/lib/pane-name";
 import { useRootData } from "@/lib/route-data";
@@ -67,7 +67,7 @@ export function TrickSessionHeaderRow({ pane, onBack }: { pane: AgentView | unde
 }
 
 /** The part's actions at the foot, at most four, each a 44px button. A tap goes to the provider. */
-function Actions({ partKey, onTap, store }: { partKey: string; onTap: (key: string, intent: string, args: TrickAction["args"], control: string) => void; store: TricksStore }) {
+function Actions({ partKey, onTap, store }: { partKey: string; onTap: (key: string, intent: string, value: TrickAction["value"], control: string) => void; store: TricksStore }) {
   const { part, tap } = useTrickPart(partKey, store);
   const value = part?.value;
   const actions = value?.at === "session" ? (value.actions ?? []).slice(0, ACTIONS_MAX) : [];
@@ -86,7 +86,7 @@ function Actions({ partKey, onTap, store }: { partKey: string; onTap: (key: stri
             data-slot="trick-session-action"
             disabled={action.disabled === true || busyControl !== undefined}
             aria-busy={busy}
-            onClick={() => onTap(partKey, action.intent, action.args, actionControl(action.id))}
+            onClick={() => onTap(partKey, action.intent, action.value, actionControl(action.id))}
             className={cn("h-11 min-w-0 rounded-sm", actions.length === 1 && "col-span-2")}
           >
             {/* The glyph's box turns into the spinner; the label stays, so the button never changes width. */}

@@ -1,10 +1,12 @@
-// The tricks fixtures, by name, for the schema's tests and for slices 01 (the runner) and 02 (the
-// renderer). Each valid document parses with zero refusals; each refused one names the exact paths
-// its refusals carry. Load with relative imports only, like the schema, so the bridge can use them.
+// The tricks fixtures, by name, for the schema's tests, the runner and the renderer. Each valid
+// document parses with zero refusals; each refused one names the exact paths its refusals carry. Every
+// view is in the Tree UI vocabulary (the re-cut of 2026-11-08). Load with relative imports only, like
+// the schema, so the bridge can use them.
 
 import { asJsonString, type JsonObject, type JsonValue } from "../../json";
 import type { NodeKind, PlaceKind } from "../schema";
 
+import decisions from "./decisions.json";
 import facts from "./facts.json";
 import legs from "./legs.json";
 import manifests from "./manifests.json";
@@ -15,33 +17,38 @@ import replies from "./replies.json";
 import tracker from "./tracker.json";
 
 /**
- * One valid document per place. `dashboard`, `header.line`, `menu` and `settings` are later places:
- * they parse clean only with `places: PLACE_KINDS`, and give one "later" refusal at `/parts/0/at`
- * with the default.
+ * One valid document per place. `dashboard` is a later place: it parses clean only with
+ * `places: PLACE_KINDS`, and gives one "later" refusal at `/parts/0/at` with the default.
  */
 export const PLACE_DOCUMENTS = places satisfies { readonly [K in PlaceKind]: JsonValue };
 
-/** One small view node per kind, as it would sit in a part's `view`. */
+/**
+ * One node per kind, as it sits in a part's `view`. A kind that cannot sit in a view by itself (a
+ * `row`, a `chip`, a `run`, a `link`, a `button`) sits in the smallest container that holds it.
+ */
 export const NODE_FIXTURES = nodes satisfies { readonly [K in NodeKind]: JsonValue };
 
 /** A node fixture as a whole document: one session part whose view is the node. */
 export function nodeDocument(kind: NodeKind): JsonObject {
-  return { v: 1, parts: [{ at: "session", id: "node", view: NODE_FIXTURES[kind] }] };
+  return { v: 1, parts: [{ at: "session", id: "node", view: [NODE_FIXTURES[kind]] }] };
 }
 
-/** The legs trick: belt mark `23/34`, a session with the steps, the first red case and "Rerun red". */
+/** The legs trick: belt mark `23/34`, a session with the legs as chips, the first red case, "Rerun red", and the case 24 decision. */
 export const LEGS_DOCUMENT = legs satisfies JsonValue;
 
-/** The tracker trick: a session listing the `darius due` rows and the next task. */
+/** The tracker trick: a session listing the `darius due` rows and the next task, with a copy button. */
 export const TRACKER_DOCUMENT = tracker satisfies JsonValue;
 
-/** Documents that answer a tap (parse with `afterTap: true`): a draft, an open of a session, an open of a URL. */
+/** Documents a program prints in answer to a tap: new parts, and the decision list without the answered key. */
 export const REPLY_DOCUMENTS = replies satisfies { readonly [name: string]: JsonValue };
+
+/** A document with three good decisions: the full case 24 one, one with `recommends: null` and `now`, one answered by text alone. */
+export const DECISION_DOCUMENT = decisions.good satisfies JsonValue;
 
 /** `trick.toml` after the TOML parse. `later` uses `watch`, `on`, `serve` and a later place. */
 export const MANIFESTS = manifests satisfies { readonly [name: string]: JsonValue };
 
-/** Facts documents as the bridge writes them, one per trigger and one for a `view:<match>` run. */
+/** Facts documents as the bridge writes them, one per trigger, one for a decision's answer and one for a `view:<match>` run. */
 export const FACTS = facts satisfies { readonly [name: string]: JsonValue };
 
 /** A document the parser refuses, and what it must say. */
@@ -51,8 +58,10 @@ export interface RefusedFixture {
   paths: string[];
   /** The ids of the parts that still draw. */
   keeps: string[];
-  /** Parse it as the reply to a tap. */
-  afterTap?: boolean;
+  /** The keys of the decisions refused alone. Absent: none. */
+  refusedDecisions?: string[];
+  /** The keys of the decisions that still post. Absent: none. */
+  keepsDecisions?: string[];
   /** The document as a whole is refused (`documentRefused`). */
   whole?: boolean;
 }
@@ -63,32 +72,32 @@ function bytesOf(value: JsonValue): number {
   return encoder.encode(JSON.stringify(value)).length;
 }
 
-const ROW_TEXT_MAX = 120;
-/** `{"text":""}`: the bytes of a list item around its text. */
-const ITEM_FRAME = 11;
+const PARA_TEXT_MAX = 2000;
+/** `{"kind":"para","text":""}`: the bytes of a para around its text. */
+const PARA_FRAME = 25;
 const GROW_STEPS = 2000;
 
 /**
- * A valid session part whose compact JSON is exactly `target` bytes: a list whose items are filled
- * with `x`. Every field stays inside its cap, so the only thing a parser can refuse is the size.
+ * A valid session part whose compact JSON is exactly `target` bytes: a view of paras filled with `x`.
+ * Every field stays inside its cap, so the only thing a parser can refuse is the size.
  */
 export function sessionPartOfBytes(target: number, id = "big"): JsonObject {
-  const items: JsonObject[] = [];
-  const part: JsonObject = { at: "session", id, view: { kind: "list", rows: 50, items } };
+  const view: JsonObject[] = [];
+  const part: JsonObject = { at: "session", id, view };
   for (let step = 0; step < GROW_STEPS; step += 1) {
     const rest = target - bytesOf(part);
-    if (rest === 0) return part;
+    if (rest === 0 && view.length > 0) return part;
     if (rest < 0) throw new Error(`a session part cannot be as small as ${target} bytes`);
-    const sep = items.length > 0 ? 1 : 0;
-    if (rest >= ITEM_FRAME + sep + 1) {
-      items.push({ text: "x".repeat(Math.min(ROW_TEXT_MAX, rest - ITEM_FRAME - sep)) });
+    const sep = view.length > 0 ? 1 : 0;
+    if (rest >= PARA_FRAME + sep + 1) {
+      view.push({ kind: "para", text: "x".repeat(Math.min(PARA_TEXT_MAX, rest - PARA_FRAME - sep)) });
       continue;
     }
-    // A gap too small for a new item: give the last one back 12 characters, then fill again.
-    const last = items.at(-1);
+    // A gap too small for a new para: give the last one back 40 characters, then fill again.
+    const last = view.at(-1);
     const text = last === undefined ? undefined : asJsonString(last.text);
-    if (last === undefined || text === undefined || text.length <= 12) throw new Error(`cannot reach ${target} bytes`);
-    last.text = text.slice(12);
+    if (last === undefined || text === undefined || text.length <= 40) throw new Error(`cannot reach ${target} bytes`);
+    last.text = text.slice(40);
   }
   throw new Error(`did not reach ${target} bytes`);
 }
@@ -118,7 +127,7 @@ export interface RefusedFixtures {
 export const REFUSED: RefusedFixtures = {
   ...refused,
   "oversized-part": {
-    doc: { v: 1, parts: [sessionPartOfBytes(16 * 1024 + 1, "big"), { at: "belt", id: "belt", mark: { face: "ok" } }] },
+    doc: { v: 1, parts: [sessionPartOfBytes(16 * 1024 + 1, "big"), { at: "belt", id: "belt", mark: { label: "ok" } }] },
     paths: ["/parts/0"],
     keeps: ["belt"],
   },

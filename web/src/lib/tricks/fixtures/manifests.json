@@ -6,23 +6,36 @@
     "every": "30s",
     "facts": 1,
     "icon": "flask",
-    "places": ["belt", "session"]
+    "places": [
+      "belt",
+      "session"
+    ]
   },
   "tracker": {
     "id": "tracker",
     "name": "Tracker",
-    "run": "bun provider.ts",
+    "run": "bun program.ts",
     "every": "5m",
-    "icon": "list",
-    "places": ["session"]
+    "icon": "flag",
+    "places": [
+      "session",
+      "tab"
+    ]
   },
   "later": {
     "id": "watcher",
     "name": "Watcher",
     "run": "./watch.sh",
-    "watch": ["~/.cache/collie-lab/leg.log"],
-    "on": ["turn.end"],
+    "watch": [
+      "~/.cache/collie-lab/leg.log"
+    ],
+    "on": [
+      "turn.end"
+    ],
     "mode": "serve",
-    "places": ["belt", "dashboard"]
+    "places": [
+      "belt",
+      "dashboard"
+    ]
   }
 }

@@ -9,7 +9,7 @@ import { parseFacts } from "../../web/src/lib/tricks/schema.ts";
 import { createTrickScanner, diskScanIo, readManifestText, type ScanIo } from "./discover.ts";
 import { buildFacts, factsWorldOf, tricksHostName } from "./facts.ts";
 import { switchesPath } from "./paths.ts";
-import { tricksSwitchRoute, tricksTapRoute, parseSince } from "./routes.ts";
+import { TRICKS_ROUTE_RIGHTS, tricksSwitchRoute, tricksTapRoute, parseSince } from "./routes.ts";
 import type { TricksSurface } from "./service.ts";
 import { createSwitchReader, parseSwitches, renderSwitches, withSwitch, writeSwitches } from "./switches.ts";
 
@@ -136,7 +136,10 @@ describe("the facts", () => {
     expect(world.sessions).toEqual([
       {
         id: "bluefin:w6X:3",
+        memberId: "bluefin",
+        sessionId: "bluefin:w6X:3",
         paneId: "w6X:3",
+        host: "bluefin",
         status: "working",
         name: "composer",
         agent: "claude",
@@ -145,7 +148,7 @@ describe("the facts", () => {
         tab: "fix",
         lastActiveAt: "2026-11-08T09:41:00.000Z",
       },
-      { id: "bluefin:w6X:4", paneId: "w6X:4", status: "idle", name: "shell", cwd: "/work/collie", space: "home", lastActiveAt: "2026-11-08T09:41:00.000Z" },
+      { id: "bluefin:w6X:4", memberId: "bluefin", sessionId: "bluefin:w6X:4", paneId: "w6X:4", host: "bluefin", status: "idle", name: "shell", cwd: "/work/collie", space: "home", lastActiveAt: "2026-11-08T09:41:00.000Z" },
     ]);
     expect(world.spaces).toEqual([{ name: "collie", folder: "/work/collie-workspace" }, { name: "home" }, { name: "YouTube", folder: "/work/yt" }]);
     const facts = buildFacts(world, { id: "legs", dir: "/c/tricks/legs", state: "/s/tricks/legs" }, { kind: "timer" });
@@ -226,12 +229,14 @@ describe("the routes", () => {
   test("server.ts gates the list as a read and the tap as a write, stamps the watch for a paired phone only, the switch as a write, and declares both routes", () => {
     const src = readFileSync(join(import.meta.dir, "..", "server.ts"), "utf8");
     const list = src.slice(src.indexOf('if (pathname === "/api/tricks" && req.method === "GET")'));
-    expect(list.slice(0, 400)).toContain('guard(req, cfg, "read", pairingGate)');
+    // The rights live in one table in routes.ts; server.ts reads each route's level from it.
+    expect(TRICKS_ROUTE_RIGHTS).toEqual({ reply: "read", tap: "write", switch: "write" });
+    expect(list.slice(0, 400)).toContain("guard(req, cfg, TRICKS_ROUTE_RIGHTS.reply, pairingGate)");
     expect(list.slice(0, 600)).toContain("if (pairedLabel(req, pairingGate) !== null) tricks.noteWatched();");
     const tap = src.slice(src.indexOf("const tricksTap = TRICKS_TAP_ROUTE.exec(pathname);"));
-    expect(tap.slice(0, 300)).toContain('guard(req, cfg, "write", pairingGate)');
+    expect(tap.slice(0, 300)).toContain("guard(req, cfg, TRICKS_ROUTE_RIGHTS.tap, pairingGate)");
     const sw = src.slice(src.indexOf("const tricksSwitch = TRICKS_SWITCH_ROUTE.exec(pathname);"));
-    expect(sw.slice(0, 300)).toContain('guard(req, cfg, "write", pairingGate)');
+    expect(sw.slice(0, 300)).toContain("guard(req, cfg, TRICKS_ROUTE_RIGHTS.switch, pairingGate)");
     expect(src).toContain("const TRICKS_SWITCH_ROUTE = /^\\/api\\/tricks\\/([^/]+)\\/([^/]+)\\/switch$/;");
     expect(src).toContain("const TRICKS_TAP_ROUTE = /^\\/api\\/tricks\\/([^/]+)\\/([^/]+)\\/tap$/;");
     expect(src).toContain("if (poller !== null) opts.tricks?.noteWatched();");

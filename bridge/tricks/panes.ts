@@ -3,7 +3,6 @@ import {
   ACTIONS_MAX,
   BADGE_TEXT_MAX,
   COUNT_MAX,
-  STEPS_MAX,
   SUBTITLE_MAX,
   freshWindowMs,
   trickSessionId,
@@ -73,12 +72,12 @@ export function pastWindow(part: Pick<WireTrickPart, "asOf" | "fresh">, now: num
 }
 
 /**
- * A trick session's status. Only a fresh part of a trick that runs, with the tone `working`, reads as
- * working. `error` and `warn` read idle and keep their tone in the view: a trick's red is never Collie's
- * "needs you".
+ * A trick session's status. Only a fresh part of a trick that runs, with the tone `accent` (the tree's
+ * word for the first schema's `working`), reads as working. `danger` and `warn` read idle and keep their
+ * tone in the view: a trick's red is never Collie's "needs you".
  */
 export function trickSessionStatus(tone: Tone | undefined, live: boolean): AgentStatus {
-  return live && tone === "working" ? "working" : "idle";
+  return live && tone === "accent" ? "working" : "idle";
 }
 
 /** A string cut to `max` code points. */
@@ -93,14 +92,16 @@ function badgeOf(badge: Badge): PaneBadge | undefined {
   return text === "" ? undefined : { text };
 }
 
+/**
+ * A part's progress (the meter shape, `max` 1 by default) as the pane's percent. No value is an
+ * indeterminate meter, which a pane cannot show yet, so it carries none. STEP 3: the pane may draw a
+ * small whole `max` as steps.
+ */
 function progressOf(progress: PartProgress): PaneProgress | undefined {
-  if (progress.kind === "percent") {
-    if (!Number.isFinite(progress.value)) return undefined;
-    const value = Math.min(100, Math.max(0, progress.value));
-    return progress.label === undefined ? { kind: "percent", value } : { kind: "percent", value, label: progress.label };
-  }
-  const steps = progress.steps.slice(0, STEPS_MAX).map((step) => ({ label: step.label, state: step.state }));
-  return steps.length === 0 ? undefined : { kind: "steps", steps };
+  const max = progress.max ?? 1;
+  if (progress.value === undefined || !Number.isFinite(progress.value) || !(max > 0)) return undefined;
+  const value = Math.min(100, Math.max(0, (progress.value * 100) / max));
+  return { kind: "percent", value };
 }
 
 function actionOf(action: TrickAction): PaneAction {

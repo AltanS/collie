@@ -31,7 +31,7 @@ function wire(trick: string, value: TrickPart | undefined, rev: number, extra: P
 
 const TRICKS: WireTrickInfo[] = [
   { host: "bluefin", id: "legs", name: "Browser leg", icon: "flask", on: true, state: "ok", places: ["belt", "session"] },
-  { host: "bluefin", id: "tracker", name: "Tracker", icon: "list", on: true, state: "ok", places: ["session"] },
+  { host: "bluefin", id: "tracker", name: "Tracker", icon: "file", on: true, state: "ok", places: ["session"] },
 ];
 
 const BELT = wire("legs", LEGS_BELT, 3);
@@ -177,10 +177,10 @@ function serveTaps(...answers: (JsonValue | Promise<JsonValue>)[]): JsonObject[]
   return bodies;
 }
 
-const RERUN: TapInput = { host: "bluefin", trick: "legs", part: "legs", intent: "rerun", args: { only: "red" }, control: "v/6" };
+const RERUN: TapInput = { host: "bluefin", trick: "legs", part: "legs", intent: "rerun", value: "red", control: "v/6" };
 
-function receipt(requestId: string, outcome: string, extra: JsonObject = {}): JsonValue {
-  return { requestId, outcome, ...extra };
+function receipt(rid: string, code: string, extra: JsonObject = {}): JsonValue {
+  return { rid, code, ...extra };
 }
 
 const ID1 = "00000000-0000-4000-8000-000000000001";
@@ -194,13 +194,13 @@ async function heldStore(): Promise<TricksStore> {
 }
 
 describe("a tap", () => {
-  it("posts its request id, intent, args and part, and applies the reply's parts at once", async () => {
+  it("posts its rid, node, intent and value, and applies the reply's parts at once", async () => {
     const store = await heldStore();
     const after = wire("legs", legsSaying("rerunning"), 6);
-    const bodies = serveTaps(receipt(ID1, "applied", { rev: 6, parts: JSON.parse(JSON.stringify([after])), present: [partKey(BELT), partKey(LEGS)] }));
+    const bodies = serveTaps(receipt(ID1, "ok", { rev: 6, parts: JSON.parse(JSON.stringify([after])), present: [partKey(BELT), partKey(LEGS)] }));
     const outcome = await store.tap(RERUN);
-    expect(outcome).toBe("applied");
-    expect(bodies).toEqual([{ requestId: ID1, intent: "rerun", args: { only: "red" }, part: "legs" }]);
+    expect(outcome).toBe("ok");
+    expect(bodies).toEqual([{ rid: ID1, node: "legs", intent: "rerun", value: "red" }]);
     expect(isRequestId(ID1)).toBe(true);
     expect(store.getState().parts.get(partKey(LEGS))?.value).toEqual(after.value);
     // Only this trick's parts answer to its `present`; the tracker's part stays.
@@ -218,37 +218,37 @@ describe("a tap", () => {
     });
     const bodies = serveTaps(gate);
     const first = store.tap(RERUN);
-    expect(store.getState().taps.get(partKey(LEGS))).toMatchObject({ phase: "busy", control: "v/6", requestId: ID1 });
+    expect(store.getState().taps.get(partKey(LEGS))).toMatchObject({ phase: "busy", control: "v/6", rid: ID1 });
     await expect(store.tap(RERUN)).resolves.toBe("ignored");
     await expect(store.tap({ ...RERUN, control: "v/4/0", intent: "open-case" })).resolves.toBe("ignored");
     await waitFor(() => expect(bodies).toHaveLength(1));
-    release(receipt(ID1, "applied"));
-    await expect(first).resolves.toBe("applied");
+    release(receipt(ID1, "ok"));
+    await expect(first).resolves.toBe("ok");
     expect(bodies).toHaveLength(1);
     expect(store.getState().taps.size).toBe(0);
   });
 
-  it("applies a replayed receipt the same way, and hands its draft and open on", async () => {
+  it("applies a changed receipt the same way, and fires no draft and no open: a reply carries neither", async () => {
     const store = await heldStore();
-    serveTaps(receipt(ID1, "replayed", { draft: { session: "bluefin:w6X:3", text: "fix case 24" }, open: { url: "http://bluefin:8080/" } }));
+    serveTaps(receipt(ID1, "changed", { draft: { session: "bluefin:w6X:3", text: "fix case 24" }, open: { url: "http://bluefin:8080/" } }));
     const onDraft = vi.fn();
     const onOpen = vi.fn();
-    await expect(store.tap(RERUN, { onDraft, onOpen, from: { session: "bluefin:w6X:3" } })).resolves.toBe("replayed");
-    expect(onDraft).toHaveBeenCalledWith({ session: "bluefin:w6X:3", text: "fix case 24" });
-    expect(onOpen).toHaveBeenCalledWith({ url: "http://bluefin:8080/" });
+    await expect(store.tap(RERUN, { onDraft, onOpen, from: { session: "bluefin:w6X:3" } })).resolves.toBe("changed");
+    expect(onDraft).not.toHaveBeenCalled();
+    expect(onOpen).not.toHaveBeenCalled();
   });
 
   it("sends the session open on the phone", async () => {
     const store = await heldStore();
-    const bodies = serveTaps(receipt(ID1, "applied"));
+    const bodies = serveTaps(receipt(ID1, "ok"));
     await store.tap(RERUN, { from: { session: "bluefin:w6X:3" } });
     expect(bodies[0]).toMatchObject({ from: { session: "bluefin:w6X:3" } });
   });
 
   it("keeps a failed receipt's masked reason for the frame", async () => {
     const store = await heldStore();
-    serveTaps(receipt(ID1, "failed", { message: "rerun.sh: exit 2" }));
-    await expect(store.tap(RERUN)).resolves.toBe("failed");
+    serveTaps(receipt(ID1, "rejected", { message: "rerun.sh: exit 2" }));
+    await expect(store.tap(RERUN)).resolves.toBe("rejected");
     expect(store.getState().taps.get(partKey(LEGS))).toMatchObject({ phase: "failed", message: "rerun.sh: exit 2", control: "v/6" });
   });
 
@@ -264,11 +264,11 @@ describe("a tap", () => {
 
   it("sends the SAME request id when the person taps that control again after an unknown", async () => {
     const store = await heldStore();
-    const bodies = serveTaps(receipt(ID1, "unknown"), receipt(ID1, "replayed"), receipt(ID2, "applied"));
+    const bodies = serveTaps(receipt(ID1, "unknown"), receipt(ID1, "ok"), receipt(ID2, "ok"));
     await store.tap(RERUN);
-    await expect(store.tap(RERUN)).resolves.toBe("replayed");
+    await expect(store.tap(RERUN)).resolves.toBe("ok");
     await store.tap(RERUN);
-    expect(bodies.map((body) => body.requestId)).toEqual([ID1, ID1, ID2]);
+    expect(bodies.map((body) => body.rid)).toEqual([ID1, ID1, ID2]);
   });
 
   it("reads no answer, a deadline or a 5xx as unknown, and a 4xx as failed", async () => {
@@ -278,20 +278,20 @@ describe("a tap", () => {
     server.use(http.post(/\/tap$/, () => HttpResponse.text("boom", { status: 502 })));
     await expect(store.tap({ ...RERUN, control: "v/4/0" })).resolves.toBe("unknown");
     server.use(http.post(/\/tap$/, () => HttpResponse.text("no such trick", { status: 404 })));
-    await expect(store.tap({ ...RERUN, control: "v/3" })).resolves.toBe("failed");
+    await expect(store.tap({ ...RERUN, control: "v/3" })).resolves.toBe("rejected");
     expect(store.getState().taps.get(partKey(LEGS))).toMatchObject({ phase: "failed", message: "The bridge refused the tap (404)." });
   });
 
   it("reads a receipt that came back on a refusal status as the receipt", async () => {
     const store = await heldStore();
-    server.use(http.post(/\/tap$/, () => HttpResponse.json(receipt(ID1, "failed", { message: "trick is off" }), { status: 409 })));
-    await expect(store.tap(RERUN)).resolves.toBe("failed");
+    server.use(http.post(/\/tap$/, () => HttpResponse.json(receipt(ID1, "rejected", { message: "trick is off" }), { status: 409 })));
+    await expect(store.tap(RERUN)).resolves.toBe("rejected");
     expect(store.getState().taps.get(partKey(LEGS))).toMatchObject({ message: "trick is off" });
   });
 
   it("reads a receipt for another request as unknown", async () => {
     const store = await heldStore();
-    serveTaps(receipt(ID2, "applied"));
+    serveTaps(receipt(ID2, "ok"));
     await expect(store.tap(RERUN)).resolves.toBe("unknown");
   });
 
@@ -327,12 +327,13 @@ describe("the wire readers", () => {
     expect(readTricksReply(JSON.parse(JSON.stringify(reply(3, [BELT]))))).toEqual(reply(3, [BELT]));
     expect(readTricksReply({ rev: 1, parts: [], present: "x", tricks: [] })).toBeUndefined();
     expect(readTricksReply({ rev: 1, parts: [], present: [], tricks: [{ host: "bluefin" }] })).toBeUndefined();
-    expect(readTapReply({ requestId: ID1, outcome: "maybe" })).toBeUndefined();
-    expect(readTapReply({ requestId: ID1, outcome: "applied", open: { session: "trick:bluefin:legs" } })).toEqual({ requestId: ID1, outcome: "applied", open: { session: "trick:bluefin:legs" } });
+    expect(readTapReply({ rid: ID1, code: "maybe" })).toBeUndefined();
+    expect(readTapReply({ requestId: ID1, outcome: "applied" })).toBeUndefined();
+    expect(readTapReply({ rid: ID1, code: "ok", open: { session: "trick:bluefin:legs" } })).toEqual({ rid: ID1, code: "ok" });
   });
 
   it("keep a part of a kind this Collie does not know, for the placeholder to draw", () => {
-    const newer = { host: "bluefin", trick: "legs", part: "legs", rev: 1, value: { at: "session", id: "legs", view: { kind: "hologram" } } };
+    const newer = { host: "bluefin", trick: "legs", part: "legs", rev: 1, value: { at: "session", id: "legs", view: [{ kind: "hologram" }] } };
     expect(readTricksReply({ rev: 1, parts: [newer], present: ["bluefin/legs/legs"], tricks: [] })?.parts).toHaveLength(1);
   });
 });

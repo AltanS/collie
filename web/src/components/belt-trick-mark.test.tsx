@@ -16,9 +16,9 @@ const AS_OF = new Date().toISOString();
 function belt(trick: string, mark: Mark, rev = 1): WireTrickPart {
   return { host: "bluefin", trick, part: "belt", rev, asOf: AS_OF, value: { at: "belt", id: "belt", mark } };
 }
-const LEGS = belt("legs", { icon: "flask", face: "23/34", tone: "working", intent: "rerun" });
-const TRACKER = belt("tracker", { icon: "list", face: "M94", tone: "plain" });
-const QUIET = belt("quiet", { icon: "bell", count: 2 });
+const LEGS = belt("legs", { icon: "flask", label: "23/34", tone: "accent", intent: "rerun" });
+const TRACKER = belt("tracker", { icon: "file", label: "M94", tone: "plain" });
+const QUIET = belt("quiet", { icon: "bell", badge: "2" });
 
 const TRICK_SESSION: AgentView = {
   paneId: "trick:bluefin:tracker:due",
@@ -59,7 +59,7 @@ function mount(store: TricksStore, onOpenSession = vi.fn(), handlers: TapHandler
 
 describe("the tricks' marks on the belt", () => {
   it("stand between the pins mark and Files, in manifest order, each in its own frame", async () => {
-    const store = storeWith([LEGS, TRACKER, QUIET], async () => ({ requestId: "r", outcome: "applied" }));
+    const store = storeWith([LEGS, TRACKER, QUIET], async () => ({ rid: "r", code: "ok" as const }));
     await store.syncTricks(1);
     mount(store);
     const slots = [...document.querySelectorAll<HTMLElement>('[data-slot="belt-pins"], [data-slot="belt-trick-mark"], button[aria-label="Files"]')];
@@ -82,12 +82,12 @@ describe("the tricks' marks on the belt", () => {
     expect(tap).toHaveBeenCalledWith("bluefin", "legs", expect.objectContaining({ intent: "rerun" }));
     expect(legs.getAttribute("aria-busy")).toBe("true");
     expect(legs.querySelector('[data-slot="trick-mark-busy"]')).not.toBeNull();
-    await act(async () => finish({ requestId: "00000000-0000-4000-8000-000000000001", outcome: "applied" }));
+    await act(async () => finish({ rid: "00000000-0000-4000-8000-000000000001", code: "ok" }));
     expect(legs.getAttribute("aria-busy")).toBe("false");
   });
 
   it("opens the trick's session from a mark with no intent, and leaves a mark with neither as no control", async () => {
-    const store = storeWith([LEGS, TRACKER, QUIET], async () => ({ requestId: "r", outcome: "applied" }));
+    const store = storeWith([LEGS, TRACKER, QUIET], async () => ({ rid: "r", code: "ok" as const }));
     await store.syncTricks(1);
     const { onOpenSession } = mount(store);
     fireEvent.click(screen.getByRole("button", { name: "Open tracker" }));

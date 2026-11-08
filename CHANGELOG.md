@@ -25,7 +25,8 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Added
 
-- **A trick can show a mark on the belt and a session of its own.** A trick's belt mark stands between the pins mark and Changes, in its own frame. A tap runs the trick's action and shows a spinner until the answer comes, or opens the trick's session. Each trick session is a row in a Tricks group on the Dashboard and in Switch session. Its screen shows the trick's view and up to four buttons, with no reply box. A draft from a trick fills a session's reply box only when the box is empty.
+- **A trick can show a mark on the belt and a session of its own.** A trick's belt mark stands between the pins mark and Changes, in its own frame. A tap runs the trick's action and shows a spinner until the answer comes, or opens the trick's session. Each trick session is a row in a Tricks group on the Dashboard and in Switch session. Its screen shows the trick's view and up to four buttons, with no reply box.
+- **A trick writes its view in the Tree UI's node names.** A trick's output uses the same parts, attributes and taps as the Tree UI, and it can add up to 20 decisions for you to answer, each with up to five options and the one it recommends. (M94)
 
 ### Fixed
 

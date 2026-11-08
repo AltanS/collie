@@ -24,8 +24,8 @@ import { useBridgeNow } from "./clock";
 import { problemOf, readFrame, type FrameLine } from "./frame";
 import { viewForm } from "./layout";
 import { Placeholder, renderView, type RenderCtx } from "./render";
-import type { TrickPart, OpenTarget, ViewNode, WireTrickInfo, WireTrickPart } from "./schema";
-import { trickTapper, tricksStore, useTrickPart, type DraftRequest, type TricksStore, type TapHandlers, type TapState } from "./store";
+import type { TrickPart, View, WireTrickInfo, WireTrickPart } from "./schema";
+import { trickTapper, tricksStore, useTrickPart, type DraftRequest, type OpenTarget, type TricksStore, type TapHandlers, type TapState } from "./store";
 import { trickTimeText, spanText } from "./time";
 
 export interface PartFrameProps {
@@ -112,8 +112,8 @@ export function PartFrame({ part, trick, tap, retryAt, onDraft, now, children }:
   );
 }
 
-/** The view a part carries, for the places whose body is a view. `undefined` for a mark or a line. */
-export function viewOf(value: TrickPart): ViewNode | undefined {
+/** The view a part carries (the kids of its frame), for the places whose body is a view. `undefined` for a mark. */
+export function viewOf(value: TrickPart): View | undefined {
   return "view" in value ? value.view : undefined;
 }
 
@@ -122,11 +122,11 @@ export function viewOf(value: TrickPart): ViewNode | undefined {
  * data change repaints); a new form waits for the finger to lift, then shows.
  */
 interface HeldView {
-  view: ViewNode | undefined;
+  view: View | undefined;
   onPointerDown: () => void;
 }
 
-function useHeldView(view: ViewNode | undefined): HeldView {
+function useHeldView(view: View | undefined): HeldView {
   const [held, setHeld] = useState(view);
   const [down, setDown] = useState(false);
   useEffect(() => {

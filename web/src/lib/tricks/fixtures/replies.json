@@ -1,30 +1,50 @@
 {
-  "tracker-draft": {
+  "legs-after-rerun": {
+    "v": 1,
+    "asOf": "2026-11-08T09:42:00Z",
+    "parts": [
+      {
+        "at": "belt",
+        "id": "belt",
+        "mark": {
+          "icon": "flask",
+          "label": "rerun",
+          "tone": "accent",
+          "intent": "open"
+        }
+      },
+      {
+        "at": "session",
+        "id": "legs",
+        "name": "Browser leg",
+        "subtitle": "rerunning case 24",
+        "progress": {},
+        "view": [
+          {
+            "kind": "meter",
+            "attrs": {
+              "role": "progress",
+              "label": "case 24"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "legs-decision-answered": {
     "v": 1,
     "parts": [
       {
-        "at": "session",
-        "id": "tracker",
-        "name": "Tracker",
-        "subtitle": "draft placed in composer",
-        "view": { "kind": "text", "text": "The next task is in the reply box of composer.", "lines": 1 }
+        "at": "belt",
+        "id": "belt",
+        "mark": {
+          "icon": "flask",
+          "label": "34/34",
+          "tone": "ok",
+          "intent": "open"
+        }
       }
     ],
-    "draft": { "session": "bluefin:w6X:3", "text": "Work on M93 spec 03: draw a formula with KaTeX when MathJax is not cached." }
-  },
-  "legs-open-case": {
-    "v": 1,
-    "parts": [{ "at": "belt", "id": "belt", "mark": { "icon": "flask", "face": "23/34", "tone": "working", "intent": "open" } }],
-    "open": { "session": "trick:bluefin:legs" }
-  },
-  "legs-open-url": {
-    "v": 1,
-    "parts": [],
-    "open": { "url": "https://github.com/sprqvntrs/collie/actions/runs/1234" }
-  },
-  "legs-open-tailnet": {
-    "v": 1,
-    "parts": [],
-    "open": { "url": "http://bluefin:8080/report.html" }
+    "decisions": []
   }
 }

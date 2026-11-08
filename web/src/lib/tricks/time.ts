@@ -8,7 +8,13 @@
 
 import { clockTime } from "../format";
 import { getLocaleSnapshot, t } from "../i18n";
-import type { TimeStyle } from "./schema";
+
+/**
+ * How a moment reads. The first schema's `time` node styles, kept for the part frame's age line and
+ * the settings card. STEP 3: a tree `chip` or `run` with `at` (epoch ms) and `clock` (`ago`, `elapsed`,
+ * `left`, `time`) draws through its own words.
+ */
+export type TimeStyle = "ago" | "until" | "clock" | "date";
 
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;

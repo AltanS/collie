@@ -80,7 +80,7 @@ async function rig(outcomes: Scripted[] | null, extra: Partial<TricksServiceDeps
     stateDir,
     host: () => HOST,
     world: (host) => ({
-      sessions: [{ id: `${host}:w6X:3`, paneId: "w6X:3", name: "composer", agent: "claude", status: "working" }],
+      sessions: [{ id: `${host}:w6X:3`, memberId: host, sessionId: `${host}:w6X:3`, paneId: "w6X:3", host, name: "composer", agent: "claude", status: "working" }],
       spaces: [{ name: "collie", folder: "/work/collie" }],
     }),
     env: { PATH: process.env.PATH ?? "/usr/bin:/bin", COLLIE_TOKEN: "tok", OPENROUTER_API_KEY: "sk-or-v1-0123456789abcdef0123456789" },
@@ -95,8 +95,8 @@ async function rig(outcomes: Scripted[] | null, extra: Partial<TricksServiceDeps
 }
 
 const exited = (stdout: string, code = 0): RunOutcome => ({ kind: "exited", code, stdout, stderr: "", ms: 5 });
-const belt = (face: string, extra: JsonObject = {}): string =>
-  JSON.stringify({ v: 1, asOf: "2026-11-08T09:00:00Z", parts: [{ at: "belt", id: "belt", mark: { face } }], ...extra });
+const belt = (label: string, extra: JsonObject = {}): string =>
+  JSON.stringify({ v: 1, asOf: "2026-11-08T09:00:00Z", parts: [{ at: "belt", id: "belt", mark: { label } }], ...extra });
 const MANIFEST = 'id = "legs"\nname = "Browser leg"\nrun = "./legs.sh"\nevery = "30s"\nplaces = ["belt", "session"]\n';
 
 /** Watch, advance the clock, tick, wait for the scan the tick started. */
@@ -186,7 +186,7 @@ describe("discovery and the switch", () => {
     const reply = await r.service.reply(undefined);
     expect(reply.tricks[0]?.state).toBe("ok");
     expect(reply.parts.map((p) => partKey(p))).toEqual(["bluefin/legs/belt"]);
-    expect(reply.parts[0]?.value).toEqual({ at: "belt", id: "belt", mark: { face: "23/34" } });
+    expect(reply.parts[0]?.value).toEqual({ at: "belt", id: "belt", mark: { label: "23/34" } });
     expect(reply.parts[0]?.fresh).toBe("90s");
     expect(reply.path).toBe(process.env.PATH ?? "/usr/bin:/bin");
   });
@@ -384,8 +384,8 @@ describe("last good, per part, and the rev", () => {
       v: 1,
       asOf: "2026-11-08T09:00:00Z",
       parts: [
-        { at: "belt", id: "belt", mark: { face: a } },
-        b === null ? { at: "session", id: "legs", name: "Browser leg", subtitle: "x".repeat(200), view: { kind: "text", text: "t", lines: 1 } } : { at: "session", id: "legs", name: "Browser leg", subtitle: b, view: { kind: "text", text: "t", lines: 1 } },
+        { at: "belt", id: "belt", mark: { label: a } },
+        b === null ? { at: "session", id: "legs", name: "Browser leg", subtitle: "x".repeat(200), view: [{ kind: "para", text: "t" }] } : { at: "session", id: "legs", name: "Browser leg", subtitle: b, view: [{ kind: "para", text: "t" }] },
       ],
     });
 
@@ -403,7 +403,7 @@ describe("last good, per part, and the rev", () => {
     await tickAt(r, T0 + 30_000);
     const second = await r.service.reply(first.rev);
     const byPart = new Map(second.parts.map((p) => [p.part, p]));
-    expect(byPart.get("belt")?.value).toEqual({ at: "belt", id: "belt", mark: { face: "2" } });
+    expect(byPart.get("belt")?.value).toEqual({ at: "belt", id: "belt", mark: { label: "2" } });
     expect(byPart.get("belt")?.stale).toBeUndefined();
     expect(byPart.get("legs")?.stale).toBe(true);
     expect(byPart.get("legs")?.value).toMatchObject({ subtitle: "green" });
@@ -414,7 +414,7 @@ describe("last good, per part, and the rev", () => {
     await tickAt(r, T0 + 60_000);
     const third = await r.service.reply(second.rev);
     expect(third.parts.every((p) => p.stale === true)).toBe(true);
-    expect(third.parts.find((p) => p.part === "belt")?.value).toEqual({ at: "belt", id: "belt", mark: { face: "2" } });
+    expect(third.parts.find((p) => p.part === "belt")?.value).toEqual({ at: "belt", id: "belt", mark: { label: "2" } });
     expect(third.tricks[0]?.state).toBe("failing");
 
     await tickAt(r, T0 + 120_000);
@@ -442,7 +442,7 @@ describe("last good, per part, and the rev", () => {
     // A new face: the part comes back with a higher rev.
     await tickAt(r, T0 + 60_000);
     const changed = await r.service.reply(same.rev);
-    expect(changed.parts.map((p) => p.value)).toEqual([{ at: "belt", id: "belt", mark: { face: "2" } }]);
+    expect(changed.parts.map((p) => p.value)).toEqual([{ at: "belt", id: "belt", mark: { label: "2" } }]);
     expect(changed.parts[0]?.rev ?? 0).toBeGreaterThan(same.rev);
     // A `since` from a future (a bridge before a restart with a clock behind) is everything.
     expect((await r.service.reply(changed.rev + 1_000_000)).parts.length).toBe(1);
@@ -457,20 +457,20 @@ describe("last good, per part, and the rev", () => {
     expect((await r.service.reply(undefined)).present).toEqual(["bluefin/legs/belt"]);
   });
 
-  test("a part kind outside the core is refused for now (slice 08 adds it)", async () => {
-    const doc = JSON.stringify({ v: 1, parts: [{ at: "session", id: "s", view: { kind: "divider" } }] });
+  test("a removed kind is refused by name, and the runner keeps nothing of that part", async () => {
+    const doc = JSON.stringify({ v: 1, parts: [{ at: "session", id: "s", view: [{ kind: "divider" }] }] });
     const r = await rig([exited(doc)]);
     await makeTrick(r.configDir, "legs", MANIFEST);
     await switchOn(r.stateDir, "legs");
     await tickAt(r, T0);
     const reply = await r.service.reply(undefined);
     expect(reply.parts).toEqual([]);
-    expect(reply.tricks[0]?.refusals?.[0]?.code).toBe("later");
+    expect(reply.tricks[0]?.refusals?.[0]?.code).toBe("removed");
   });
 });
 
 describe("taps", () => {
-  const tapBody = (requestId = REQ, intent = "rerun") => ({ requestId, intent, args: { n: 24 }, part: "belt", from: { session: "bluefin:w6X:3" } });
+  const tapBody = (rid = REQ, intent = "rerun") => ({ rid, node: "belt", intent, value: "24", from: { session: "bluefin:w6X:3" } });
 
   async function onRig(outcomes: Parameters<typeof rig>[0]): Promise<Rig> {
     const r = await rig(outcomes);
@@ -480,29 +480,28 @@ describe("taps", () => {
     return r;
   }
 
-  test("a tap runs the provider with the tap trigger and replies applied with the new parts and the draft", async () => {
-    const r = await onRig([exited(belt("24 red", { draft: { session: "bluefin:w6X:3", text: "fix case 24" } }))]);
+  test("a tap runs the provider with the tap trigger and replies ok with the new parts", async () => {
+    const r = await onRig([exited(belt("24 red"))]);
     const answer = await r.service.tap(HOST, "legs", tapBody());
     expect(answer.status).toBe(200);
     const reply = ok200(answer);
-    expect(reply.outcome).toBe("applied");
-    expect(reply.parts?.map((p) => p.value)).toEqual([{ at: "belt", id: "belt", mark: { face: "24 red" } }]);
+    expect(reply.code).toBe("ok");
+    expect(reply.parts?.map((p) => p.value)).toEqual([{ at: "belt", id: "belt", mark: { label: "24 red" } }]);
     expect(reply.present).toEqual(["bluefin/legs/belt"]);
-    expect(reply.draft).toEqual({ session: "bluefin:w6X:3", text: "fix case 24" });
     expect(reply.rev).toBe(r.service.rev());
     expect(factsOf(r.specs[0]).trigger).toEqual({ kind: "tap", ...tapBody() });
   });
 
-  test("the same request id runs nothing twice and answers replayed; another payload is refused", async () => {
+  test("the same rid runs nothing twice and answers the same receipt again; another payload is refused", async () => {
     const r = await onRig([exited(belt("1"))]);
     const first = await r.service.tap(HOST, "legs", tapBody());
     const again = await r.service.tap(HOST, "legs", tapBody());
     expect(r.specs.length).toBe(1);
     expect(again.status).toBe(200);
-    expect(ok200(again).outcome).toBe("replayed");
-    expect({ ...ok200(again), outcome: "applied" }).toEqual(ok200(first));
+    expect(ok200(again)).toEqual(ok200(first));
+    expect(ok200(again).code).toBe("ok");
     const reused = await r.service.tap(HOST, "legs", tapBody(REQ, "other"));
-    expect(reused).toEqual({ status: 409, body: { error: "request-id-reused", requestId: REQ } });
+    expect(reused).toEqual({ status: 409, body: { error: "request-id-reused", rid: REQ } });
   });
 
   test("a repeat while the first is in flight waits for it and runs nothing", async () => {
@@ -519,8 +518,9 @@ describe("taps", () => {
     const b = r.service.tap(HOST, "legs", tapBody());
     await Bun.sleep(20);
     release();
-    expect(ok200(await a).outcome).toBe("applied");
-    expect(ok200(await b).outcome).toBe("replayed");
+    const first = ok200(await a);
+    expect(first.code).toBe("ok");
+    expect(ok200(await b)).toEqual(first);
     expect(r.specs.length).toBe(1);
   });
 
@@ -539,27 +539,27 @@ describe("taps", () => {
     const queued = r.service.tap(HOST, "legs", tapBody(REQ));
     await Bun.sleep(20);
     const busy = await r.service.tap(HOST, "legs", tapBody(REQ2));
-    expect(ok200(busy).outcome).toBe("failed");
+    expect(ok200(busy).code).toBe("rejected");
     expect(ok200(busy).message).toContain("busy");
     release();
     await timer;
     const reply = ok200(await queued);
-    expect(reply.outcome).toBe("applied");
+    expect(reply.code).toBe("ok");
     expect(r.specs.map((s) => factsOf(s).trigger.kind)).toEqual(["start", "tap"]);
     // The busy id kept no receipt, so it may simply be tried again.
-    expect(ok200(await r.service.tap(HOST, "legs", tapBody(REQ2))).outcome).toBe("applied");
+    expect(ok200(await r.service.tap(HOST, "legs", tapBody(REQ2))).code).toBe("ok");
   });
 
-  test("a timeout is unknown, a failure is failed with the masked line, and the tap restarts a stopped trick", async () => {
+  test("a timeout is unknown, a failure is rejected with the masked line, and the tap restarts a stopped trick", async () => {
     const r = await onRig([
       { kind: "timeout", stderr: "", ms: 10_000, limitMs: 10_000 },
       { kind: "exited", code: 1, stdout: "", stderr: "curl: 401 for https://api/?token=sk-or-v1-0123456789abcdef0123456789", ms: 3 },
     ]);
     const unknown = ok200(await r.service.tap(HOST, "legs", tapBody(REQ)));
-    expect(unknown.outcome).toBe("unknown");
+    expect(unknown.code).toBe("unknown");
     expect(unknown.message).toBe("The provider ran past 10 s and was stopped");
     const failed = ok200(await r.service.tap(HOST, "legs", tapBody(REQ2)));
-    expect(failed.outcome).toBe("failed");
+    expect(failed.code).toBe("rejected");
     expect(failed.message).toStartWith("The provider exited with 1: curl: 401");
     expect(failed.message).not.toContain("0123456789abcdef");
   });
@@ -570,23 +570,23 @@ describe("taps", () => {
     await r.service.refresh(true);
     expect(await r.service.tap("minibuch", "legs", tapBody())).toEqual({ status: 404, body: { error: "unknown-host" } });
     expect(await r.service.tap(HOST, "nope", tapBody())).toEqual({ status: 404, body: { error: "unknown-trick" } });
-    const bad = await r.service.tap(HOST, "legs", { requestId: "nope", intent: "x", part: "belt" });
+    const bad = await r.service.tap(HOST, "legs", { rid: "nope", node: "belt", intent: "x" });
     expect(bad.status).toBe(400);
     const off = ok200(await r.service.tap(HOST, "legs", tapBody()));
-    expect(off).toEqual({ requestId: REQ, outcome: "failed", message: "The trick is off." });
+    expect(off).toEqual({ rid: REQ, code: "rejected", message: "The trick is off." });
     expect(r.specs.length).toBe(0);
     // Off kept no receipt: switched on, the same id runs.
     await switchOn(r.stateDir, "legs");
     await r.service.refresh(true);
-    expect(ok200(await r.service.tap(HOST, "legs", tapBody())).outcome).toBe("applied");
+    expect(ok200(await r.service.tap(HOST, "legs", tapBody())).code).toBe("ok");
   });
 
-  test("a draft from a timer run is refused (tap only), the parts still draw", async () => {
+  test("a draft is refused as removed, from any run; the parts still draw", async () => {
     const r = await onRig([exited(belt("1", { draft: { session: "bluefin:w6X:3", text: "x" } }))]);
     await tickAt(r, T0);
     const reply = await r.service.reply(undefined);
     expect(reply.present).toEqual(["bluefin/legs/belt"]);
-    expect(reply.tricks[0]?.refusals?.map((x) => x.code)).toEqual(["tap-only"]);
+    expect(reply.tricks[0]?.refusals?.map((x) => x.code)).toEqual(["removed"]);
   });
 });
 
@@ -594,7 +594,7 @@ describe("real providers", () => {
   test("an sh provider and a bun provider run through the real runner", async () => {
     const r = await rig(null);
     await makeTrick(r.configDir, "hello", 'id = "hello"\nname = "Hello"\nrun = "./provider.sh"\nplaces = ["belt"]\n', {
-      "provider.sh": `#!/bin/sh\nfacts=$(cat)\nn=$(printf '%s' "$facts" | grep -o '"paneId"' | wc -l | tr -d ' ')\nprintf '{"v":1,"parts":[{"at":"belt","id":"belt","mark":{"face":"%s"}}]}' "$n"\n`,
+      "provider.sh": `#!/bin/sh\nfacts=$(cat)\nn=$(printf '%s' "$facts" | grep -o '"paneId"' | wc -l | tr -d ' ')\nprintf '{"v":1,"parts":[{"at":"belt","id":"belt","mark":{"label":"%s"}}]}' "$n"\n`,
     });
     await makeTrick(r.configDir, "bunny", 'id = "bunny"\nname = "Bunny"\nrun = "bun provider.ts"\nplaces = ["belt"]\n', {
       "provider.ts": [
@@ -602,13 +602,13 @@ describe("real providers", () => {
         "const facts = JSON.parse(await Bun.stdin.text());",
         'appendFileSync(`${facts.trick.state}/runs.log`, facts.trigger.kind + "\\n");',
         'const leaked = Object.keys(process.env).filter((k) => k.startsWith("COLLIE_") || k.includes("KEY"));',
-        'console.log(JSON.stringify({ v: 1, parts: [{ at: "belt", id: "belt", mark: { face: leaked.length === 0 ? "clean" : "leak" } }] }));',
+        'console.log(JSON.stringify({ v: 1, parts: [{ at: "belt", id: "belt", mark: { label: leaked.length === 0 ? "clean" : "leak" } }] }));',
       ].join("\n"),
     });
     await switchOn(r.stateDir, "hello", "bunny");
     await tickAt(r, T0);
     const reply = await r.service.reply(undefined);
-    const faces = Object.fromEntries(reply.parts.map((p) => [p.trick, p.value.at === "belt" ? p.value.mark.face : undefined]));
+    const faces = Object.fromEntries(reply.parts.map((p) => [p.trick, p.value.at === "belt" ? p.value.mark.label : undefined]));
     expect(faces).toEqual({ hello: "1", bunny: "clean" });
     expect(await readFile(join(r.stateDir, TRICKS_DIR, "bunny", "runs.log"), "utf8")).toBe("start\n");
   });

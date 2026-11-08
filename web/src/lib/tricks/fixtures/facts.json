@@ -1,7 +1,9 @@
 {
   "timer": {
     "v": 1,
-    "trigger": { "kind": "timer" },
+    "trigger": {
+      "kind": "timer"
+    },
     "trick": {
       "id": "legs",
       "dir": "/var/home/altan/.config/collie/tricks/legs",
@@ -11,7 +13,10 @@
     "sessions": [
       {
         "id": "bluefin:w6X:3",
+        "memberId": "bluefin",
+        "sessionId": "bluefin:w6X:3",
         "paneId": "w6X:3",
+        "host": "bluefin",
         "name": "composer",
         "agent": "claude",
         "status": "working",
@@ -20,19 +25,54 @@
         "tab": "fix",
         "lastActiveAt": "2026-11-08T09:41:00Z"
       },
-      { "id": "bluefin:w6X:4", "paneId": "w6X:4", "status": "idle", "cwd": "/var/home/altan" }
+      {
+        "id": "bluefin:w6X:4",
+        "memberId": "bluefin",
+        "sessionId": "bluefin:w6X:4",
+        "paneId": "w6X:4",
+        "host": "bluefin",
+        "status": "idle",
+        "cwd": "/var/home/altan"
+      }
     ],
-    "spaces": [{ "name": "collie", "folder": "/var/home/altan/projects/collie-workspace" }]
+    "spaces": [
+      {
+        "name": "collie",
+        "folder": "/var/home/altan/projects/collie-workspace"
+      }
+    ]
   },
   "tap": {
     "v": 1,
     "trigger": {
       "kind": "tap",
-      "requestId": "7f0c1d2e-3b4a-4c5d-8e6f-708192a3b4c5",
+      "rid": "7f0c1d2e-3b4a-4c5d-8e6f-708192a3b4c5",
+      "node": "legs",
       "intent": "open-case",
-      "args": { "n": 24 },
-      "part": "legs",
-      "from": { "session": "bluefin:w6X:3" }
+      "value": "24",
+      "from": {
+        "session": "bluefin:w6X:3"
+      }
+    },
+    "trick": {
+      "id": "legs",
+      "dir": "/var/home/altan/.config/collie/tricks/legs",
+      "state": "/var/home/altan/.local/state/collie/tricks/legs"
+    },
+    "host": "bluefin",
+    "sessions": [],
+    "spaces": []
+  },
+  "answer": {
+    "v": 1,
+    "trigger": {
+      "kind": "tap",
+      "rid": "0b9e8d7c-6f5a-4b3c-9d2e-1f0a9b8c7d6e",
+      "node": "hill/case-24",
+      "intent": "rerun",
+      "value": {
+        "text": "Rerun it, then tell me."
+      }
     },
     "trick": {
       "id": "legs",
@@ -45,7 +85,9 @@
   },
   "start": {
     "v": 1,
-    "trigger": { "kind": "start" },
+    "trigger": {
+      "kind": "start"
+    },
     "trick": {
       "id": "tracker",
       "dir": "/var/home/altan/.config/collie/tricks/tracker",
@@ -53,19 +95,45 @@
     },
     "host": "bluefin",
     "sessions": [],
-    "spaces": [{ "name": "collie" }]
+    "spaces": [
+      {
+        "name": "collie"
+      }
+    ]
   },
   "view": {
     "v": 1,
-    "trigger": { "kind": "timer" },
+    "trigger": {
+      "kind": "timer"
+    },
     "trick": {
       "id": "touched",
       "dir": "/var/home/altan/.config/collie/tricks/touched",
       "state": "/var/home/altan/.local/state/collie/tricks/touched"
     },
     "host": "bluefin",
-    "sessions": [{ "id": "bluefin:w6X:3", "paneId": "w6X:3", "name": "composer", "agent": "claude", "status": "idle" }],
+    "sessions": [
+      {
+        "id": "bluefin:w6X:3",
+        "memberId": "bluefin",
+        "sessionId": "bluefin:w6X:3",
+        "paneId": "w6X:3",
+        "host": "bluefin",
+        "name": "composer",
+        "agent": "claude",
+        "status": "idle"
+      }
+    ],
     "spaces": [],
-    "session": { "id": "bluefin:w6X:3", "paneId": "w6X:3", "name": "composer", "agent": "claude", "status": "idle" }
+    "session": {
+      "id": "bluefin:w6X:3",
+      "memberId": "bluefin",
+      "sessionId": "bluefin:w6X:3",
+      "paneId": "w6X:3",
+      "host": "bluefin",
+      "name": "composer",
+      "agent": "claude",
+      "status": "idle"
+    }
   }
 }

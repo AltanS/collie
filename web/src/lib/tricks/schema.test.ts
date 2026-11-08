@@ -8,6 +8,7 @@ import { asJsonObject, type JsonObject, type JsonValue } from "../json";
 import { THEME_TOKENS } from "../theme/schema";
 
 import {
+  DECISION_DOCUMENT,
   FACTS,
   LEGS_DOCUMENT,
   MANIFESTS,
@@ -22,22 +23,35 @@ import {
 } from "./fixtures";
 import {
   ACTION_ICONS,
-  CORE_NODE_KINDS,
+  DECISIONS_MAX,
+  DECISION_KEYS,
+  DOCUMENT_KEYS,
   DOCUMENT_MAX_BYTES,
+  DRAW_TONES,
+  FRESH_MAX_MS,
   LATER_PLACES,
-  TRICK_ICONS,
-  TRICK_ICON_LUCIDE,
   NEAR_PLACES,
-  NODE_KEYS,
+  NODE_ATTRS,
+  NODE_KIDS,
   NODE_KINDS,
+  NODE_TEXT,
+  PART_KEYS,
   PART_MAX_BYTES,
   PLACE_KINDS,
   REFUSALS_MAX,
+  REFUSAL_CODES,
+  REMOVED_KINDS,
+  SESSION_FACT_KEYS,
+  TAP_CODES,
   TONES,
   TONE_TEXT_CLASS,
   TONE_TOKENS,
+  TRICK_ICONS,
+  TRICK_ICON_LUCIDE,
+  VIEW_ROOT_KINDS,
   freshWindowMs,
   globMatches,
+  isTapNode,
   isTrickSessionId,
   isTrickUrl,
   isScopeKey,
@@ -69,14 +83,41 @@ import {
 const ROOT = resolve(import.meta.dirname, "../../../..");
 const readRepo = (p: string) => readFileSync(resolve(ROOT, p), "utf8");
 
-const text = { kind: "text", text: "ok", lines: 1 };
+const para = { kind: "para", text: "ok" };
 
-function session(extra: JsonObject, view: JsonValue = text): JsonObject {
+/**
+ * The Tree UI vocabulary, draft 4: each kind's attribute names (section 2) and the 39 icon words
+ * (2.15), copied here because the vocabulary lives outside this repo. A trick takes a subset of each.
+ */
+const TREE_ATTRS = {
+  card: ["tone", "state", "live", "busy"],
+  group: ["label", "fold", "badge", "hue"],
+  list: ["role", "busy"],
+  row: ["href", "state", "since", "badge", "tone", "anchor", "end", "cut", "disabled", "current", "holds", "icon", "hue"],
+  bar: ["role", "keys", "scroll", "opens", "label"],
+  chip: ["tone", "icon", "anchor", "at", "clock", "state", "current", "hue", "short", "holds"],
+  button: ["intent", "label", "tone", "key", "disabled", "opens", "pressed", "pref", "confirm", "holds", "repeat", "does", "value", "badge", "icon", "hint", "span"],
+  para: ["bullet", "anchor", "term", "role", "live"],
+  line: ["style", "role", "anchor"],
+  run: ["style", "code", "href", "anchor", "at", "clock"],
+  code: ["lang", "max"],
+  link: ["href", "rel", "current", "badge", "icon", "holds"],
+  image: ["src", "alt", "w", "h", "href", "anchor"],
+  meter: ["value", "max", "tone", "label", "role"],
+  spacer: ["label"],
+} as const satisfies Record<Exclude<NodeKind, "number">, readonly string[]>;
+const TREE_ICONS = [
+  "back", "up", "down", "next", "close", "plus", "minus", "check", "copy", "search", "settings", "star", "pin",
+  "folder", "file", "image", "terminal", "chat", "machine", "crew", "branch", "edit", "delete", "move", "share",
+  "link", "download", "upload", "refresh", "bell", "lock", "key", "mic", "warn", "info", "clock", "eye", "menu", "more",
+] as const;
+
+function session(extra: JsonObject, view: JsonValue = [para]): JsonObject {
   return { v: 1, parts: [{ at: "session", id: "s", view, ...extra }] };
 }
 
-function inView(view: JsonValue): JsonObject {
-  return session({}, view);
+function inView(...nodes: JsonValue[]): JsonObject {
+  return session({}, nodes);
 }
 
 function paths(result: ParsedTrickDocument): string[] {
@@ -87,11 +128,19 @@ function parse(doc: JsonValue, opts: ParseTrickDocumentOptions = {}): string[] {
   return paths(parseTrickDocument(doc, opts));
 }
 
-function kindsIn(node: ViewNode, out: Set<NodeKind>): Set<NodeKind> {
-  out.add(node.kind);
-  if ("children" in node) for (const child of node.children) kindsIn(child, out);
+function kindsIn(nodes: readonly ViewNode[], out: Set<NodeKind>): Set<NodeKind> {
+  for (const node of nodes) {
+    out.add(node.kind);
+    if ("kids" in node && node.kids !== undefined) kindsIn(node.kids, out);
+  }
   return out;
 }
+
+const button = (attrs: JsonObject) => inView({ kind: "bar", kids: [{ kind: "button", attrs }] });
+const chip = (attrs: JsonObject, text?: string) => inView({ kind: "bar", kids: [text === undefined ? { kind: "chip", attrs } : { kind: "chip", text, attrs }] });
+const meter = (attrs: JsonObject) => inView({ kind: "meter", attrs });
+const link = (attrs: JsonObject) => inView({ kind: "para", kids: [{ kind: "link", text: "x", attrs }] });
+const row = (node: JsonObject) => inView({ kind: "list", kids: [{ kind: "row", text: "x", ...node }] });
 
 describe("the module", () => {
   it("imports only the JSON helpers, so the bridge and the CLI load it without a DOM", () => {
@@ -101,11 +150,42 @@ describe("the module", () => {
     expect(source).not.toContain(`from "@/`);
   });
 
-  it("lists every node kind once, with its keys", () => {
+  it("lists sixteen kinds, the tree's names plus number, each with its attributes", () => {
     expect(new Set(NODE_KINDS).size).toBe(NODE_KINDS.length);
-    expect(NODE_KINDS).toHaveLength(25);
-    expect(Object.keys(NODE_KEYS).toSorted()).toEqual([...NODE_KINDS].toSorted());
-    for (const kind of NODE_KINDS) expect(NODE_KEYS[kind]).toContain("kind");
+    expect(NODE_KINDS).toHaveLength(16);
+    expect(Object.keys(NODE_ATTRS).toSorted()).toEqual([...NODE_KINDS].toSorted());
+    for (const kind of Object.keys(NODE_KIDS)) expect(NODE_KINDS).toContain(kind);
+    for (const kind of Object.keys(NODE_TEXT)) expect(NODE_KINDS).toContain(kind);
+    for (const kind of VIEW_ROOT_KINDS) expect(NODE_KINDS).toContain(kind);
+  });
+
+  it("keeps the tree's names: every kind but number is a tree kind, and every attribute is its kind's there", () => {
+    for (const kind of NODE_KINDS) {
+      if (kind === "number") continue;
+      const tree: readonly string[] = TREE_ATTRS[kind];
+      for (const name of NODE_ATTRS[kind]) expect(tree, `${kind}.${name}`).toContain(name);
+    }
+    for (const kind of Object.keys(REMOVED_KINDS)) expect(NODE_KINDS).not.toContain(kind);
+  });
+
+  it("never lets a row take state, nor a button take pref, key, holds, opens or repeat", () => {
+    expect(NODE_ATTRS.row).not.toContain("state");
+    for (const name of ["pref", "key", "holds", "opens", "repeat"]) expect(NODE_ATTRS.button).not.toContain(name);
+  });
+
+  it("has no draft and no open anywhere", () => {
+    expect(DOCUMENT_KEYS).not.toContain("draft");
+    expect(DOCUMENT_KEYS).not.toContain("open");
+    const source = readRepo("web/src/lib/tricks/schema.ts");
+    expect(source).not.toContain("DRAFT_TEXT_MAX");
+    expect(source).not.toMatch(/afterTap/);
+  });
+
+  it("exports every key list the contract reference reads", () => {
+    expect(Object.keys(PART_KEYS).toSorted()).toEqual([...PLACE_KINDS].toSorted());
+    expect(DECISION_KEYS).toEqual(["key", "title", "summary", "body", "options", "recommends", "priority", "about", "replyTo", "media", "links", "expiresAt"]);
+    expect(SESSION_FACT_KEYS).toEqual(expect.arrayContaining(["memberId", "sessionId", "paneId", "host"]));
+    expect(new Set(REFUSAL_CODES).size).toBe(REFUSAL_CODES.length);
   });
 });
 
@@ -139,49 +219,66 @@ describe("valid fixtures", () => {
     expect(kindsIn(part.part.view, new Set())).toContain(kind);
   });
 
-  it("the legs and tracker tricks parse clean, on the core kinds alone", () => {
+  it.each(NODE_KINDS)("the %s node reads back as written, as its snapshot", (kind) => {
+    const part = parseTrickDocument(nodeDocument(kind)).parts[0];
+    expect(part?.place === "session" ? part.part.view : undefined).toEqual([NODE_FIXTURES[kind]]);
+    expect(part?.place === "session" ? part.part.view : undefined).toMatchSnapshot();
+  });
+
+  it("the legs and tracker tricks parse clean, with their places declared", () => {
     for (const doc of [LEGS_DOCUMENT, TRACKER_DOCUMENT]) {
       expect(parseTrickDocument(doc).refusals).toEqual([]);
-      expect(parseTrickDocument(doc, { kinds: CORE_NODE_KINDS, declared: ["belt", "session"] }).refusals).toEqual([]);
+      expect(parseTrickDocument(doc, { declared: ["belt", "session"] }).refusals).toEqual([]);
     }
   });
 
-  it("the legs trick carries the belt mark, the steps, the red case and Rerun red", () => {
+  it("the legs trick carries the belt mark, the legs, the red case, Rerun red and the case 24 decision", () => {
     const result = parseTrickDocument(LEGS_DOCUMENT);
     const [belt, legs] = result.parts;
-    expect(belt?.place === "belt" && belt.part.mark.face).toBe("23/34");
+    expect(belt?.place === "belt" && belt.part.mark.label).toBe("23/34");
     expect(legs?.place).toBe("session");
     if (legs?.place !== "session") return;
     expect(legs.part.actions?.map((a) => a.label)).toContain("Rerun red");
-    expect([...kindsIn(legs.part.view, new Set())]).toEqual(expect.arrayContaining(["steps", "list", "button", "number"]));
+    expect(legs.part.progress).toEqual({ value: 1, max: 3 });
+    expect([...kindsIn(legs.part.view, new Set())]).toEqual(expect.arrayContaining(["number", "bar", "chip", "list", "row", "button", "line"]));
     expect(result.freshMs).toBe(90_000);
     expect(result.asOf).toBe("2026-11-08T09:41:00Z");
+    expect(result.decisions.map((d) => d.key)).toEqual(["case-24"]);
   });
 
-  it("the replies parse clean after a tap, and carry their draft or open", () => {
-    for (const [name, doc] of Object.entries(REPLY_DOCUMENTS)) {
-      const result = parseTrickDocument(doc, { afterTap: true });
-      expect(result.refusals, name).toEqual([]);
-      expect(result.draft !== undefined || result.open !== undefined, name).toBe(true);
-    }
-    expect(parseTrickDocument(REPLY_DOCUMENTS["tracker-draft"], { afterTap: true }).draft?.session).toBe("bluefin:w6X:3");
-    expect(parseTrickDocument(REPLY_DOCUMENTS["legs-open-case"], { afterTap: true }).open).toEqual({ session: "trick:bluefin:legs" });
+  it("the replies to a tap parse clean, the same as any run", () => {
+    for (const [name, doc] of Object.entries(REPLY_DOCUMENTS)) expect(parseTrickDocument(doc).refusals, name).toEqual([]);
+    expect(parseTrickDocument(REPLY_DOCUMENTS["legs-decision-answered"]).decisions).toEqual([]);
   });
 
-  it("keeps the part as written, so the wire round-trips", () => {
+  it("keeps the parts and the decisions as written, so the wire round-trips and the runner's content hash is stable", () => {
     const result = parseTrickDocument(LEGS_DOCUMENT);
-    const doc = LEGS_DOCUMENT;
-    expect(result.parts.map((p) => p.part)).toEqual(doc.parts);
+    expect(result.parts.map((p) => p.part)).toEqual(LEGS_DOCUMENT.parts);
+    expect(result.decisions).toEqual(LEGS_DOCUMENT.decisions);
+    const decisions = parseTrickDocument(DECISION_DOCUMENT);
+    expect(decisions.refusals).toEqual([]);
+    expect(decisions.decisions).toEqual(DECISION_DOCUMENT.decisions);
   });
 });
 
 describe("refused fixtures", () => {
   it.each(Object.entries(REFUSED))("%s gives exactly its paths and keeps the rest", (_name, fx) => {
-    const result = parseTrickDocument(fx.doc, { afterTap: fx.afterTap === true });
+    const result = parseTrickDocument(fx.doc);
     expect(paths(result)).toEqual(fx.paths);
     expect(result.parts.map((p) => p.part.id)).toEqual(fx.keeps);
+    expect(result.refusedDecisions).toEqual(fx.refusedDecisions ?? []);
+    expect(result.decisions.map((d) => d.key)).toEqual(fx.keepsDecisions ?? []);
     expect(result.documentRefused).toBe(fx.whole === true);
     for (const r of result.refusals) expect(r.reason.length).toBeGreaterThan(10);
+  });
+
+  it.each(Object.entries(REMOVED_KINDS))("a %s node is refused by name, with what replaces it", (kind, replacement) => {
+    const fx = REFUSED[`removed-${kind}`];
+    expect(fx).toBeDefined();
+    const refusal = parseTrickDocument(fx?.doc ?? null).refusals[0];
+    expect(refusal?.code).toBe("removed");
+    expect(refusal?.reason).toContain(`"${kind}"`);
+    expect(refusal?.reason).toContain(replacement);
   });
 
   it("names the refused part, so the runner keeps its last good version", () => {
@@ -191,21 +288,41 @@ describe("refused fixtures", () => {
     expect(result.refusals[0]?.code).toBe("text");
   });
 
-  it("gives a status key and a status tone their own reason", () => {
+  it("names the refused decision, and keeps the parts and the other decisions", () => {
+    const result = parseTrickDocument(REFUSED["decision-no-summary"]?.doc ?? null);
+    expect(result.refusals[0]?.decision).toBe("a");
+    expect(result.refusals[0]?.part).toBeUndefined();
+    expect(result.parts.map((p) => p.part.id)).toEqual(["belt"]);
+  });
+
+  it("gives a status key, a status tone and a row's state their own reason", () => {
     const mark = parseTrickDocument(REFUSED["tab-mark-status"]?.doc ?? null).refusals[0];
     expect(mark?.code).toBe("status");
     expect(mark?.reason).toContain("status mark");
     const tone = parseTrickDocument(REFUSED["status-tone"]?.doc ?? null).refusals[0];
     expect(tone?.code).toBe("status");
-    const node = parseTrickDocument(inView({ kind: "mark", icon: "flask", dot: true })).refusals[0];
-    expect([node?.code, node?.path]).toEqual(["status", "/parts/0/view/dot"]);
+    const state = parseTrickDocument(REFUSED["row-state"]?.doc ?? null).refusals[0];
+    expect(state?.code).toBe("status");
+    expect(parseTrickDocument(session({ tone: "working" })).refusals[0]?.code).toBe("status");
+  });
+
+  it("points a first-schema word at the tree's", () => {
+    const reason = (name: string) => parseTrickDocument(REFUSED[name]?.doc ?? null).refusals[0]?.reason ?? "";
+    expect(reason("old-tone")).toContain('"danger"');
+    expect(reason("mark-face")).toContain('"label"');
+    expect(reason("attr-at-the-top")).toContain('"attrs"');
+    expect(reason("view-not-a-list")).toContain("list of nodes");
+    expect(reason("draft-is-gone")).toContain("replyTo");
+    expect(reason("own-tab-is-gone")).toContain("tab:<tabmatch>");
+    expect(reason("button-does-wipe")).toContain("copy");
+    expect(reason("row-outside-a-list")).toContain("A view holds");
   });
 
   it("caps the list of refusals and counts the rest", () => {
-    const items = Array.from({ length: 120 }, () => ({ text: "" }));
-    const result = parseTrickDocument(inView({ kind: "list", rows: 5, items }));
+    const kids = Array.from({ length: 50 }, () => ({ kind: "row", text: "" }));
+    const result = parseTrickDocument(inView({ kind: "list", kids }));
     expect(result.refusals).toHaveLength(REFUSALS_MAX + 1);
-    expect(result.refusals.at(-1)).toEqual({ code: "more", path: "", reason: "And 80 more." });
+    expect(result.refusals.at(-1)).toEqual({ code: "more", path: "", reason: "And 10 more." });
   });
 });
 
@@ -217,7 +334,7 @@ describe("caps at the boundary", () => {
     expect(parse(session({ subtitle: "  " }))).toEqual(["/parts/0/subtitle"]);
   });
 
-  it("badge: text of 12, a count of 0 to 9999, never both", () => {
+  it("a session's badge: text of 12, a count of 0 to 9999, never both", () => {
     expect(parse(session({ badge: { text: "x".repeat(12) } }))).toEqual([]);
     expect(parse(session({ badge: { text: "x".repeat(13) } }))).toEqual(["/parts/0/badge/text"]);
     expect(parse(session({ badge: { count: 0 } }))).toEqual([]);
@@ -229,21 +346,33 @@ describe("caps at the boundary", () => {
     expect(parse(session({ badge: {} }))).toEqual(["/parts/0/badge"]);
   });
 
-  it("progress: a percent from 0 to 100, or 1 to 12 steps", () => {
-    expect(parse(session({ progress: { kind: "percent", value: 0 } }))).toEqual([]);
-    expect(parse(session({ progress: { kind: "percent", value: 100, label: "x".repeat(60) } }))).toEqual([]);
-    expect(parse(session({ progress: { kind: "percent", value: 100.5 } }))).toEqual(["/parts/0/progress/value"]);
-    expect(parse(session({ progress: { kind: "percent", value: 50, label: "x".repeat(61) } }))).toEqual(["/parts/0/progress/label"]);
-    const steps = (n: number) => Array.from({ length: n }, (_, i) => ({ label: `step ${i}`, state: "todo" }));
-    expect(parse(session({ progress: { kind: "steps", steps: steps(12) } }))).toEqual([]);
-    expect(parse(session({ progress: { kind: "steps", steps: steps(13) } }))).toEqual(["/parts/0/progress/steps"]);
-    expect(parse(session({ progress: { kind: "steps", steps: [] } }))).toEqual(["/parts/0/progress/steps"]);
-    expect(parse(inView({ kind: "steps", steps: steps(12) }))).toEqual([]);
-    expect(parse(inView({ kind: "steps", steps: steps(13) }))).toEqual(["/parts/0/view/steps"]);
-    expect(parse(inView({ kind: "progress", value: 40, steps: steps(2) }))).toEqual(["/parts/0/view"]);
+  it("a badge attribute: a count from 0 to 9999 as text, or empty for a dot", () => {
+    for (const badge of ["", "0", "9999"]) expect(parse(row({ attrs: { badge } })), badge).toEqual([]);
+    for (const badge of ["10000", "-1", "01", "1.5", "x"]) expect(parse(row({ attrs: { badge } })), badge).toEqual(["/parts/0/view/0/kids/0/attrs/badge"]);
   });
 
-  it("actions: four of at most 16 characters, unique ids, an intent each", () => {
+  it("a session's progress: the meter shape, value of max, max a whole 1 to 12, default 1", () => {
+    for (const progress of [{}, { value: 0 }, { value: 1 }, { value: 0.68 }, { value: 12, max: 12 }, { value: 3.5, max: 7 }, { max: 3 }]) {
+      expect(parse(session({ progress })), JSON.stringify(progress)).toEqual([]);
+    }
+    expect(parse(session({ progress: { value: 2 } }))).toEqual(["/parts/0/progress/value"]);
+    expect(parse(session({ progress: { value: 4, max: 3 } }))).toEqual(["/parts/0/progress/value"]);
+    expect(parse(session({ progress: { value: 1, max: 13 } }))).toEqual(["/parts/0/progress/max"]);
+    expect(parse(session({ progress: { value: 1, max: 2.5 } }))).toEqual(["/parts/0/progress/max"]);
+  });
+
+  it("a meter: value within max (default 1); a progress counts to 12 and may leave value out", () => {
+    for (const attrs of [{ value: "0.68" }, { value: "23", max: "34" }, { role: "progress" }, { role: "progress", value: "3.5", max: "7" }, { role: "progress", value: "12", max: "12" }]) {
+      expect(parse(meter(attrs)), JSON.stringify(attrs)).toEqual([]);
+    }
+    expect(parse(meter({ value: "68" }))).toEqual(["/parts/0/view/0/attrs/value"]);
+    expect(parse(meter({}))).toEqual(["/parts/0/view/0/attrs/value"]);
+    expect(parse(meter({ role: "progress", value: "68", max: "100" }))).toEqual(["/parts/0/view/0/attrs/max"]);
+    expect(parse(meter({ value: "-1" }))).toEqual(["/parts/0/view/0/attrs/value"]);
+    expect(parse(meter({ value: 0.5 }))).toEqual(["/parts/0/view/0/attrs/value"]);
+  });
+
+  it("actions: four of at most 16 characters, unique ids, an intent each, a value of at most 1024 bytes", () => {
     const action = (id: string, label = "Go") => ({ id, label, intent: "go" });
     expect(parse(session({ actions: ["a", "b", "c", "d"].map((id) => action(id)) }))).toEqual([]);
     expect(parse(session({ actions: [action("a", "x".repeat(16))] }))).toEqual([]);
@@ -251,52 +380,121 @@ describe("caps at the boundary", () => {
     expect(parse(session({ actions: [action("a"), action("a")] }))).toEqual(["/parts/0/actions/1/id"]);
     expect(parse(session({ actions: [{ id: "a", label: "Go" }] }))).toEqual(["/parts/0/actions/0/intent"]);
     expect(parse(session({ actions: [{ ...action("a"), icon: "flask" }] }))).toEqual(["/parts/0/actions/0/icon"]);
+    expect(parse(session({ actions: [{ ...action("a"), value: "x".repeat(1024) }] }))).toEqual([]);
+    expect(parse(session({ actions: [{ ...action("a"), value: "x".repeat(1025) }] }))).toEqual(["/parts/0/actions/0/value"]);
   });
 
-  it("a mark's face: 12 characters", () => {
-    const belt = (face: string) => ({ v: 1, parts: [{ at: "belt", id: "belt", mark: { face } }] });
+  it("a mark's label: 12 characters", () => {
+    const belt = (label: string) => ({ v: 1, parts: [{ at: "belt", id: "belt", mark: { label } }] });
     expect(parse(belt("x".repeat(12)))).toEqual([]);
-    expect(parse(belt("x".repeat(13)))).toEqual(["/parts/0/mark/face"]);
+    expect(parse(belt("x".repeat(13)))).toEqual(["/parts/0/mark/label"]);
   });
 
-  it("text.lines is required, 1 to 12", () => {
-    for (const lines of [1, 12]) expect(parse(inView({ kind: "text", text: "a", lines }))).toEqual([]);
-    for (const lines of [0, 13, 2.5]) expect(parse(inView({ kind: "text", text: "a", lines }))).toEqual(["/parts/0/view/lines"]);
-    expect(parse(inView({ kind: "text", text: "x".repeat(2001), lines: 1 }))).toEqual(["/parts/0/view/text"]);
+  it("a para: 2000 characters, one paragraph, no line break", () => {
+    expect(parse(inView({ kind: "para", text: "x".repeat(2000) }))).toEqual([]);
+    expect(parse(inView({ kind: "para", text: "x".repeat(2001) }))).toEqual(["/parts/0/view/0/text"]);
+    expect(parse(inView({ kind: "para", text: "a\nb" }))).toEqual(["/parts/0/view/0/text"]);
+    expect(parse(inView({ kind: "para" }))).toEqual(["/parts/0/view/0"]);
   });
 
-  it("list.rows and table.rows are required, 1 to 50", () => {
-    for (const rows of [1, 50]) {
-      expect(parse(inView({ kind: "list", rows, items: [] }))).toEqual([]);
-      expect(parse(inView({ kind: "table", rows, columns: [{ label: "a" }], items: [] }))).toEqual([]);
-    }
-    for (const rows of [0, 51]) {
-      expect(parse(inView({ kind: "list", rows, items: [] }))).toEqual(["/parts/0/view/rows"]);
-      expect(parse(inView({ kind: "table", rows, columns: [{ label: "a" }], items: [] }))).toEqual(["/parts/0/view/rows"]);
-    }
-    expect(parse(inView({ kind: "list", items: [] }))).toEqual(["/parts/0/view/rows"]);
-    expect(parse(inView({ kind: "table", rows: 2, columns: [{ label: "a" }], items: [["1", "2"]] }))).toEqual(["/parts/0/view/items/0"]);
+  it("a line: 240 characters, a tab allowed, blank when it holds nothing", () => {
+    expect(parse(inView({ kind: "line", text: "make\tok" }))).toEqual([]);
+    expect(parse(inView({ kind: "line" }))).toEqual([]);
+    expect(parse(inView({ kind: "line", text: "x".repeat(241) }))).toEqual(["/parts/0/view/0/text"]);
+    expect(parse(inView({ kind: "line", text: "one\ntwo" }))).toEqual(["/parts/0/view/0/text"]);
   });
 
-  it("log.lines 1 to 40, grid.cols 2 to 4, kv.cols 1 or 2, spark 2 to 24 values", () => {
-    for (const lines of [1, 40]) expect(parse(inView({ kind: "log", lines, tail: [] }))).toEqual([]);
-    expect(parse(inView({ kind: "log", lines: 41, tail: [] }))).toEqual(["/parts/0/view/lines"]);
-    for (const cols of [2, 4]) expect(parse(inView({ kind: "grid", cols, children: [text] }))).toEqual([]);
-    for (const cols of [1, 5]) expect(parse(inView({ kind: "grid", cols, children: [text] }))).toEqual(["/parts/0/view/cols"]);
-    expect(parse(inView({ kind: "kv", cols: 3, rows: [{ label: "a", value: "b" }] }))).toEqual(["/parts/0/view/cols"]);
-    const values = (n: number) => Array.from({ length: n }, (_, i) => i);
-    expect(parse(inView({ kind: "spark", values: values(24) }))).toEqual([]);
-    expect(parse(inView({ kind: "spark", values: values(25) }))).toEqual(["/parts/0/view/values"]);
-    expect(parse(inView({ kind: "spark", values: values(1) }))).toEqual(["/parts/0/view/values"]);
+  it("a run keeps the spaces between words, but is never empty", () => {
+    expect(parse(inView({ kind: "para", kids: [{ kind: "run", text: "a" }, { kind: "run", text: " " }, { kind: "run", text: "b" }] }))).toEqual([]);
+    expect(parse(inView({ kind: "para", kids: [{ kind: "run", text: "" }] }))).toEqual(["/parts/0/view/0/kids/0/text"]);
   });
 
-  it("image: a ratio from the closed list, a file under the trick folder", () => {
-    const image = (src: string, ratio = "4:3") => inView({ kind: "image", src, ratio, alt: "a figure" });
+  it("a list holds 0 to 50 rows and groups, and reserves their height: no rows attribute", () => {
+    const rows = (n: number) => Array.from({ length: n }, () => ({ kind: "row", text: "x" }));
+    expect(parse(inView({ kind: "list" }))).toEqual([]);
+    expect(parse(inView({ kind: "list", kids: rows(50) }))).toEqual([]);
+    expect(parse(inView({ kind: "list", kids: rows(51) }))).toEqual(["/parts/0/view/0/kids"]);
+    expect(parse(inView({ kind: "list", attrs: { rows: "5" } }))).toEqual(["/parts/0/view/0/attrs/rows"]);
+    expect(parse(inView({ kind: "list", kids: [para] }))).toEqual(["/parts/0/view/0/kids/0/kind"]);
+  });
+
+  it("a bar holds 1 to 12 buttons, chips and links; a code 1 to 200 lines and shows 1 to 40", () => {
+    const chips = (n: number) => Array.from({ length: n }, () => ({ kind: "chip", text: "x" }));
+    expect(parse(inView({ kind: "bar", kids: chips(12) }))).toEqual([]);
+    expect(parse(inView({ kind: "bar", kids: chips(13) }))).toEqual(["/parts/0/view/0/kids"]);
+    expect(parse(inView({ kind: "bar", kids: [] }))).toEqual(["/parts/0/view/0/kids"]);
+    const lines = (n: number) => Array.from({ length: n }, () => ({ kind: "line", text: "x" }));
+    expect(parse(inView({ kind: "code", kids: lines(200), attrs: { max: "40" } }))).toEqual([]);
+    expect(parse(inView({ kind: "code", kids: lines(201) }))).toEqual(["/parts/0/view/0/kids"]);
+    expect(parse(inView({ kind: "code", kids: lines(1), attrs: { max: "41" } }))).toEqual(["/parts/0/view/0/attrs/max"]);
+  });
+
+  it("a row: one para, any chips, one button at its end, an href to a URL or a session", () => {
+    const b = { kind: "button", attrs: { label: "Go", intent: "go" } };
+    const p = { kind: "para", text: "second line" };
+    const c = { kind: "chip", text: "core" };
+    expect(parse(row({ kids: [p, c, c, b] }))).toEqual([]);
+    expect(parse(row({ kids: [p, p] }))).toEqual(["/parts/0/view/0/kids/0/kids"]);
+    expect(parse(row({ kids: [b, c] }))).toEqual(["/parts/0/view/0/kids/0/kids"]);
+    for (const href of ["https://a.example/", "http://bluefin:8080/", "bluefin:w6X:3", "trick:bluefin:legs"]) expect(parse(row({ attrs: { href } })), href).toEqual([]);
+    for (const href of ["composer", "javascript:", "/etc/passwd", "https:/x"]) expect(parse(row({ attrs: { href } })), href).toEqual(["/parts/0/view/0/kids/0/attrs/href"]);
+  });
+
+  it("a link: its href fits its rel, url by default", () => {
+    expect(parse(link({ href: "https://a.example/" }))).toEqual([]);
+    expect(parse(link({ href: "http://bluefin:8080/" }))).toEqual([]);
+    expect(parse(link({ href: "bluefin:w6X:3", rel: "pane" }))).toEqual([]);
+    expect(parse(link({ href: "~/projects/a.md", rel: "file" }))).toEqual([]);
+    expect(parse(link({ href: "/etc/hosts", rel: "file" }))).toEqual([]);
+    expect(parse(link({ href: "bluefin:w6X:3" }))).toEqual(["/parts/0/view/0/kids/0/attrs/href"]);
+    expect(parse(link({ href: "https://a.example/", rel: "pane" }))).toEqual(["/parts/0/view/0/kids/0/attrs/href"]);
+    expect(parse(link({ href: "a.md", rel: "file" }))).toEqual(["/parts/0/view/0/kids/0/attrs/href"]);
+    expect(parse(link({ href: "https://a.example/", rel: "web" }))).toEqual(["/parts/0/view/0/kids/0/attrs/rel"]);
+    expect(parse(inView({ kind: "para", kids: [{ kind: "link", attrs: { href: "https://a.example/" } }] }))).toEqual(["/parts/0/view/0/kids/0/text"]);
+  });
+
+  it("a button: a label of 24, an intent or does copy with a value, a confirm label, a reason when disabled", () => {
+    expect(parse(button({ label: "x".repeat(24), intent: "go" }))).toEqual([]);
+    expect(parse(button({ label: "x".repeat(25), intent: "go" }))).toEqual(["/parts/0/view/0/kids/0/attrs/label"]);
+    expect(parse(button({ intent: "go" }))).toEqual(["/parts/0/view/0/kids/0/attrs/label"]);
+    expect(parse(button({ label: "Copy", does: "copy", value: "abc" }))).toEqual([]);
+    expect(parse(button({ label: "Copy", does: "copy" }))).toEqual(["/parts/0/view/0/kids/0/attrs/value"]);
+    expect(parse(button({ label: "Copy", does: "copy", value: "abc", intent: "go" }))).toEqual(["/parts/0/view/0/kids/0/attrs/intent"]);
+    expect(parse(button({ label: "Tag", intent: "tag", confirm: "Tag 1.28.0?" }))).toEqual([]);
+    expect(parse(button({ label: "Tag", intent: "tag", confirm: true }))).toEqual(["/parts/0/view/0/kids/0/attrs/confirm"]);
+    expect(parse(button({ label: "Go", intent: "go", disabled: "" }))).toEqual([]);
+    expect(parse(button({ label: "Go", intent: "go", disabled: "The leg is running" }))).toEqual([]);
+    expect(parse(button({ label: "Go", intent: "go", pressed: "mixed" }))).toEqual([]);
+    expect(parse(button({ label: "Go", intent: "go", pressed: "yes" }))).toEqual(["/parts/0/view/0/kids/0/attrs/pressed"]);
+    expect(parse(button({ label: "Go", intent: "Go Now" }))).toEqual(["/parts/0/view/0/kids/0/attrs/intent"]);
+    expect(parse(button({ label: "Go", intent: "go", value: "x".repeat(1024) }))).toEqual([]);
+    expect(parse(button({ label: "Go", intent: "go", value: "x".repeat(1025) }))).toEqual(["/parts/0/view/0/kids/0/attrs/value"]);
+    for (const does of ["install", "notify", "reload", "wipe"]) expect(parse(button({ label: "Go", does })), does).toEqual(["/parts/0/view/0/kids/0/attrs/does"]);
+  });
+
+  it("a chip: a clock is an epoch instant with how to tell it; text is needed unless it is a clock", () => {
+    expect(parse(chip({ at: "1794130692000", clock: "ago" }))).toEqual([]);
+    for (const clock of ["elapsed", "left", "time"]) expect(parse(chip({ at: "1794130692000", clock }, "x")), clock).toEqual([]);
+    expect(parse(chip({ at: "1794130692000", clock: "date" }))).toEqual(["/parts/0/view/0/kids/0/attrs/clock"]);
+    expect(parse(chip({ state: "done" }))).toEqual(["/parts/0/view/0/kids/0/text"]);
+    expect(parse(chip({ state: "failed" }, "x"))).toEqual(["/parts/0/view/0/kids/0/attrs/state"]);
+    expect(parse(chip({ current: "yes" }, "x"))).toEqual(["/parts/0/view/0/kids/0/attrs/current"]);
+    expect(parse(chip({ short: "x".repeat(13) }, "x"))).toEqual(["/parts/0/view/0/kids/0/attrs/short"]);
+  });
+
+  it("style: a closed list of words with single spaces", () => {
+    for (const style of ["bold", "fg-red bold", "bg-bright-black fg-white", "syn-keyword", "box"]) expect(parse(inView({ kind: "line", text: "x", attrs: { style } })), style).toEqual([]);
+    for (const style of ["", "fg-orange", "bold  dim", "bold bold", "#ff0000"]) expect(parse(inView({ kind: "line", text: "x", attrs: { style } })), style).toEqual(["/parts/0/view/0/attrs/style"]);
+  });
+
+  it("image: a file under the trick folder, with its size in pixels", () => {
+    const image = (src: string, w = "320") => inView({ kind: "image", attrs: { src, alt: "a figure", w, h: "200" } });
     for (const src of ["a.png", "shots/b.jpeg", "c.JPG"]) expect(parse(image(src))).toEqual([]);
     for (const src of ["/etc/x.png", "../x.png", "a/../x.png", "./x.png", "x.svg", "x.png?y", "a//b.png"]) {
-      expect(parse(image(src)), src).toEqual(["/parts/0/view/src"]);
+      expect(parse(image(src)), src).toEqual(["/parts/0/view/0/attrs/src"]);
     }
-    expect(parse(image("a.png", "21:9"))).toEqual(["/parts/0/view/ratio"]);
+    expect(parse(image("a.png", "4097"))).toEqual(["/parts/0/view/0/attrs/w"]);
+    expect(parse(image("a.png", "0"))).toEqual(["/parts/0/view/0/attrs/w"]);
   });
 
   it("a part is at most 16 KiB on the wire", () => {
@@ -316,35 +514,22 @@ describe("caps at the boundary", () => {
     }
   });
 
-  it("args: an object of at most 1024 bytes", () => {
-    const button = (args: JsonValue) => inView({ kind: "button", label: "Go", intent: "go", args });
-    const pad = (n: number) => ({ p: "x".repeat(n - 8) });
-    expect(JSON.stringify(pad(1024)).length).toBe(1024);
-    expect(parse(button(pad(1024)))).toEqual([]);
-    expect(parse(button(pad(1025)))).toEqual(["/parts/0/view/args"]);
-    expect(parse(button([1, 2]))).toEqual(["/parts/0/view/args"]);
-  });
-
-  it("24 parts, 6 levels, 300 nodes", () => {
-    const belt = { at: "belt", id: "belt", mark: { face: "ok" } };
+  it("24 parts, 24 nodes in a view, 6 levels, 300 nodes", () => {
+    const belt = { at: "belt", id: "belt", mark: { label: "ok" } };
     const many = (n: number) => Array.from({ length: n }, (_, i) => ({ ...belt, at: `tab:t${i}`, id: `p${i}` }));
     expect(parse({ v: 1, parts: many(24) })).toEqual([]);
     expect(parseTrickDocument({ v: 1, parts: many(25) }).documentRefused).toBe(true);
-    const nest = (depth: number): JsonObject => (depth === 1 ? text : { kind: "stack", children: [nest(depth - 1)] });
+    expect(parse(session({}, Array.from({ length: 24 }, () => para)))).toEqual([]);
+    expect(parse(session({}, Array.from({ length: 25 }, () => para)))).toEqual(["/parts/0/view"]);
+    expect(parse(session({}, []))).toEqual(["/parts/0/view"]);
+    const nest = (depth: number): JsonObject => (depth === 1 ? { kind: "row", text: "x" } : { kind: "group", kids: [nest(depth - 1)] });
     expect(parse(inView(nest(6)))).toEqual([]);
-    expect(parse(inView(nest(7)))).toEqual(["/parts/0/view/children/0/children/0/children/0/children/0/children/0/children/0"]);
-    const wide = (n: number) => ({ kind: "stack", children: Array.from({ length: n }, () => ({ kind: "stack", children: Array.from({ length: 23 }, () => text) })) });
-    // 1 + 12 × 24 = 289 nodes pass; 1 + 13 × 24 = 313 do not.
-    expect(parse(inView(wide(12)))).toEqual([]);
-    expect(parse(inView(wide(13)))).toEqual(["/parts/0/view"]);
-  });
-
-  it("a draft: a real scope key, at most 4000 characters, line breaks allowed", () => {
-    const draft = (d: JsonValue) => parse({ v: 1, parts: [], draft: d }, { afterTap: true });
-    expect(draft({ session: "bluefin:w6X:3", text: "line one\nline two" })).toEqual([]);
-    expect(draft({ session: "bluefin:w6X:3", text: "x".repeat(4000) })).toEqual([]);
-    expect(draft({ session: "bluefin:w6X:3", text: "x".repeat(4001) })).toEqual(["/draft/text"]);
-    expect(draft({ session: "bluefin:w6X:3", text: "x", send: true })).toEqual(["/draft/send"]);
+    expect(parse(inView(nest(7)))).toEqual(["/parts/0/view/0/kids/0/kids/0/kids/0/kids/0/kids/0/kids/0"]);
+    const lines = Array.from({ length: 23 }, () => ({ kind: "line", text: "x" }));
+    const codes = (n: number) => Array.from({ length: n }, () => ({ kind: "code", kids: lines }));
+    // 12 × 24 = 288 nodes pass; 13 × 24 = 312 do not.
+    expect(parse(session({}, codes(12)))).toEqual([]);
+    expect(parse(session({}, codes(13)))).toEqual(["/parts/0/view"]);
   });
 
   it("refuses control and invisible characters, and keeps the emoji joiner", () => {
@@ -352,9 +537,63 @@ describe("caps at the boundary", () => {
     expect(parse(session({ subtitle: "a⁦b" }))).toEqual(["/parts/0/subtitle"]);
     expect(parse(session({ subtitle: "tag\u{E0041}" }))).toEqual(["/parts/0/subtitle"]);
     expect(parse(session({ subtitle: "👩‍💻 on it" }))).toEqual([]);
-    expect(parse(inView({ kind: "log", lines: 2, tail: ["make\tok"] }))).toEqual([]);
-    expect(parse(inView({ kind: "log", lines: 2, tail: ["one\ntwo"] }))).toEqual(["/parts/0/view/tail/0"]);
-    expect(parse(inView({ kind: "text", text: "a\tb\nc", lines: 2 }))).toEqual([]);
+    expect(parse(inView({ kind: "para", text: "a\tb" }))).toEqual(["/parts/0/view/0/text"]);
+  });
+});
+
+describe("decisions", () => {
+  const d = (extra: JsonObject) => ({ v: 1, parts: [], decisions: [{ key: "k", title: "T", summary: "S", ...extra }] });
+
+  it("a key of 1 to 64 of a-z, 0-9 and -, a title of 120, a summary of 280 (required), a body of 4000", () => {
+    expect(parse(d({}))).toEqual([]);
+    expect(parse(d({ key: "x".repeat(64) }))).toEqual([]);
+    for (const key of ["", "x".repeat(65), "Case", "a_b", "a b"]) expect(parse(d({ key })), key).toEqual(["/decisions/0/key"]);
+    expect(parse(d({ title: "x".repeat(120), summary: "x".repeat(280), body: `${"x".repeat(3990)}\n\nend.` }))).toEqual([]);
+    expect(parse(d({ title: "x".repeat(121) }))).toEqual(["/decisions/0/title"]);
+    expect(parse(d({ summary: "x".repeat(281) }))).toEqual(["/decisions/0/summary"]);
+    expect(parse(d({ body: "x".repeat(4001) }))).toEqual(["/decisions/0/body"]);
+    expect(parse({ v: 1, parts: [], decisions: [{ key: "k", title: "T" }] })).toEqual(["/decisions/0/summary"]);
+  });
+
+  it("0 to 5 options with unique intents, never the Hill's answer or dismiss; recommends names one, or is null", () => {
+    const option = (intent: string) => ({ intent, label: "O" });
+    expect(parse(d({ options: [] }))).toEqual([]);
+    expect(parse(d({ options: ["a", "b", "c", "d", "e"].map(option) }))).toEqual([]);
+    expect(parse(d({ options: ["a", "b", "c", "d", "e", "f"].map(option) }))).toEqual(["/decisions/0/options"]);
+    expect(parse(d({ options: [option("a"), option("a")] }))).toEqual(["/decisions/0/options/1/intent"]);
+    expect(parse(d({ options: [option("answer")] }))).toEqual(["/decisions/0/options/0/intent"]);
+    expect(parse(d({ options: [option("a")], recommends: { intent: "a", why: "x".repeat(200) } }))).toEqual([]);
+    expect(parse(d({ options: [option("a")], recommends: { intent: "a", why: "x".repeat(201) } }))).toEqual(["/decisions/0/recommends/why"]);
+    expect(parse(d({ options: [option("a")], recommends: { intent: "b", why: "x" } }))).toEqual(["/decisions/0/recommends/intent"]);
+    expect(parse(d({ recommends: { intent: "a", why: "x" } }))).toEqual(["/decisions/0/recommends/intent"]);
+    expect(parse(d({ recommends: null }))).toEqual([]);
+  });
+
+  it("priority now, today or later; about and replyTo a session's scope key; expiresAt epoch ms", () => {
+    for (const priority of ["now", "today", "later"]) expect(parse(d({ priority }))).toEqual([]);
+    expect(parse(d({ priority: "urgent" }))).toEqual(["/decisions/0/priority"]);
+    expect(parse(d({ about: "bluefin:w6X:3", replyTo: "minibuch:%0" }))).toEqual([]);
+    expect(parse(d({ about: "trick:bluefin:legs" }))).toEqual(["/decisions/0/about"]);
+    expect(parse(d({ replyTo: "composer" }))).toEqual(["/decisions/0/replyTo"]);
+    expect(parse(d({ expiresAt: 1_794_200_000_000 }))).toEqual([]);
+    expect(parse(d({ expiresAt: "2026-11-09T00:00:00Z" }))).toEqual(["/decisions/0/expiresAt"]);
+  });
+
+  it("up to 4 images of the trick folder and 5 links", () => {
+    expect(parse(d({ media: [{ file: "a.png", caption: "the step" }, { file: "b.jpg" }] }))).toEqual([]);
+    expect(parse(d({ media: [{ file: "a.svg" }] }))).toEqual(["/decisions/0/media/0/file"]);
+    expect(parse(d({ media: [{ file: "../a.png" }] }))).toEqual(["/decisions/0/media/0/file"]);
+    expect(parse(d({ links: [{ label: "the report", href: "http://bluefin:8832/legs/24" }] }))).toEqual([]);
+    expect(parse(d({ links: [{ label: "x", href: "file:///etc/passwd" }] }))).toEqual(["/decisions/0/links/0/href"]);
+  });
+
+  it("at most 20 per document; over that the list is refused, the parts still draw", () => {
+    const list = (n: number) => Array.from({ length: n }, (_, i) => ({ key: `d${i}`, title: "T", summary: "S" }));
+    expect(parse({ v: 1, parts: [], decisions: list(DECISIONS_MAX) })).toEqual([]);
+    const over = parseTrickDocument({ v: 1, parts: [{ at: "belt", id: "belt", mark: { label: "ok" } }], decisions: list(DECISIONS_MAX + 1) });
+    expect(paths(over)).toEqual(["/decisions"]);
+    expect(over.parts).toHaveLength(1);
+    expect(over.documentRefused).toBe(false);
   });
 });
 
@@ -376,6 +615,12 @@ describe("durations", () => {
     expect(freshWindowMs(undefined, 30_000)).toBe(90_000);
     expect(freshWindowMs(undefined, 5_000)).toBe(60_000);
     expect(freshWindowMs(undefined, undefined)).toBe(600_000);
+  });
+
+  it("a window never passes the 24 h a fresh may name", () => {
+    expect(freshWindowMs(undefined, 9 * 3_600_000)).toBe(FRESH_MAX_MS);
+    expect(freshWindowMs(undefined, 24 * 3_600_000)).toBe(FRESH_MAX_MS);
+    expect(freshWindowMs(undefined, 7 * 3_600_000)).toBe(21 * 3_600_000);
   });
 });
 
@@ -406,7 +651,7 @@ describe("matches", () => {
     for (const bad of ["", "agent:claude", "space:", "a  b"]) expect("reason" in parseTabMatch(bad), bad).toBe(true);
   });
 
-  it("reads every place from at", () => {
+  it("reads every place from at, the place word before the match", () => {
     const place = (at: string) => {
       const read = parseAt(at);
       return "place" in read ? read.place : undefined;
@@ -414,16 +659,12 @@ describe("matches", () => {
     const expected: [string, PlaceKind][] = [
       ["belt", "belt"],
       ["session", "session"],
-      ["tab", "tab"],
-      ["tab:fix", "tab-mark"],
+      ["tab:fix", "tab"],
       ["view:*", "view"],
       ["dashboard", "dashboard"],
-      ["header.line", "header.line"],
-      ["menu:agent:claude", "menu"],
-      ["settings", "settings"],
     ];
     for (const [at, kind] of expected) expect(place(at), at).toBe(kind);
-    for (const bad of ["Belt", "view:", "tab:", "header", "view", "menu", `view:${"x".repeat(160)}`]) expect(place(bad), bad).toBeUndefined();
+    for (const bad of ["Belt", "view:", "tab:", "tab", "header", "header.line", "menu:*", "settings", "view", `view:${"x".repeat(160)}`]) expect(place(bad), bad).toBeUndefined();
   });
 
   it("globs with * and ?", () => {
@@ -476,7 +717,7 @@ describe("ids and keys", () => {
     expect(isTrickSessionId("bluefin:w6X:3")).toBe(false);
   });
 
-  it("names one session part of a trick, splits it back, and never reads it as a scope key (slice 03)", () => {
+  it("names one session part of a trick, splits it back, and never reads it as a scope key", () => {
     expect(trickSessionId("bluefin", "legs", "runs")).toBe("trick:bluefin:legs:runs");
     expect(trickSpaceId("bluefin")).toBe("trick:bluefin");
     expect(parseTrickSessionId("trick:bluefin:legs:runs")).toEqual({ host: "bluefin", trick: "legs", part: "runs" });
@@ -486,18 +727,17 @@ describe("ids and keys", () => {
     }
     // The pane id carries no `/`: it is one URL path segment, like every pane id (mux id rule 5).
     expect(trickSessionId("bluefin", "legs", "runs")).not.toContain("/");
-    // A host's key around a trick session's pane id is not a real session's key, so no draft reaches it.
+    // A host's key around a trick session's pane id is not a real session's key, so no reply reaches it.
     expect(isScopeKey(`bluefin:${trickSessionId("bluefin", "legs", "runs")}`)).toBe(false);
     expect(isScopeKey("bluefin:trick:x")).toBe(false);
     expect(isScopeKey("bluefin:modx:3")).toBe(true);
   });
 
-  it("reads a session part's tone, and refuses a status word there", () => {
-    const view = { kind: "text", text: "ok", lines: 1 };
-    const ok = parseTrickDocument({ v: 1, parts: [{ at: "session", id: "s", tone: "working", view }] });
+  it("reads a session part's tone, the tree's words, and refuses a status word there", () => {
+    const ok = parseTrickDocument(session({ tone: "accent" }));
     const part = ok.parts[0];
-    expect(part?.place === "session" ? part.part.tone : undefined).toBe("working");
-    const refused = parseTrickDocument({ v: 1, parts: [{ at: "session", id: "s", tone: "blocked", view }] });
+    expect(part?.place === "session" ? part.part.tone : undefined).toBe("accent");
+    const refused = parseTrickDocument(session({ tone: "blocked" }));
     expect(refused.refusedParts).toEqual(["s"]);
     expect(refused.refusals[0]?.path).toBe("/parts/0/tone");
   });
@@ -507,7 +747,6 @@ describe("ids and keys", () => {
     for (const url of ["javascript:alert(1)", "file:///etc/passwd", "data:text/html,x", "ftp://bluefin/", "//bluefin:8080/", "http://a b/", "HTTP://bluefin/"]) {
       expect(isTrickUrl(url), url).toBe(false);
     }
-    expect(parseTrickDocument(REPLY_DOCUMENTS["legs-open-tailnet"], { afterTap: true }).open).toEqual({ url: "http://bluefin:8080/report.html" });
   });
 
   it("round-trips a part key", () => {
@@ -515,6 +754,11 @@ describe("ids and keys", () => {
     expect(partKey(key)).toBe("bluefin/legs/belt");
     expect(parsePartKey(partKey(key))).toEqual(key);
     for (const bad of ["bluefin/legs", "bluefin/legs/belt/x", "trick/legs/belt", "bluefin/Legs/belt"]) expect(parsePartKey(bad), bad).toBeUndefined();
+  });
+
+  it("names a tap's node: a part id or hill/<key>", () => {
+    for (const node of ["legs", "belt", "hill/case-24", "hill/x"]) expect(isTapNode(node), node).toBe(true);
+    for (const node of ["", "Legs", "hill/", "hill/Case", "legs/belt", "other/x"]) expect(isTapNode(node), node).toBe(false);
   });
 
   it("escapes a JSON pointer step", () => {
@@ -525,8 +769,8 @@ describe("ids and keys", () => {
 
 describe("options", () => {
   it("refuses a node kind this Collie does not draw yet", () => {
-    const result = parseTrickDocument(nodeDocument("table"), { kinds: CORE_NODE_KINDS });
-    expect(result.refusals.map((r) => [r.code, r.path])).toEqual([["later", "/parts/0/view/kind"]]);
+    const result = parseTrickDocument(nodeDocument("image"), { kinds: ["para", "card"] });
+    expect(result.refusals.map((r) => [r.code, r.path])).toEqual([["later", "/parts/0/view/0/kind"]]);
   });
 
   it("refuses a place the manifest does not declare", () => {
@@ -549,7 +793,19 @@ describe("parseTrickDocumentText", () => {
   });
 
   it("never throws, whatever the input", () => {
-    const junk: JsonValue[] = [null, 0, "x", true, [], {}, { v: 1 }, { v: 1, parts: [null, 1, "a", [], {}] }, { v: 1, parts: [{ at: 1, id: 2 }] }];
+    const junk: JsonValue[] = [
+      null,
+      0,
+      "x",
+      true,
+      [],
+      {},
+      { v: 1 },
+      { v: 1, parts: [null, 1, "a", [], {}] },
+      { v: 1, parts: [{ at: 1, id: 2 }] },
+      { v: 1, parts: [], decisions: [null, 1, {}, { options: [null] }] },
+      { v: 1, parts: [{ at: "session", id: "s", view: [null, { kind: "row" }, { kind: "card", kids: {} }, { kind: "para", attrs: [] }] }] },
+    ];
     for (const value of junk) {
       expect(() => parseTrickDocument(value)).not.toThrow();
       expect(() => parseManifest(value)).not.toThrow();
@@ -564,7 +820,7 @@ describe("parseTrickDocumentText", () => {
       seed = (seed * 1_103_515_245 + 12_345) % 2_147_483_648;
       return seed;
     };
-    const swaps: JsonValue[] = [null, -1, 1e300, "", "x".repeat(300), [], {}, [null], { kind: "stack" }];
+    const swaps: JsonValue[] = [null, -1, 1e300, "", "x".repeat(300), [], {}, [null], { kind: "card" }, { text: null }];
     const mutate = (value: JsonValue): JsonValue => {
       if (Array.isArray(value)) return value.map(mutate);
       const obj = asJsonObject(value);
@@ -576,8 +832,10 @@ describe("parseTrickDocumentText", () => {
       return out;
     };
     for (let round = 0; round < 200; round += 1) {
-      expect(() => parseTrickDocument(mutate(LEGS_DOCUMENT), { afterTap: true })).not.toThrow();
+      expect(() => parseTrickDocument(mutate(LEGS_DOCUMENT))).not.toThrow();
       expect(() => parseTrickDocument(mutate(TRACKER_DOCUMENT))).not.toThrow();
+      expect(() => parseTrickDocument(mutate(DECISION_DOCUMENT))).not.toThrow();
+      for (const kind of NODE_KINDS) expect(() => parseTrickDocument(mutate(nodeDocument(kind)))).not.toThrow();
     }
   });
 });
@@ -597,7 +855,7 @@ describe("parseManifest", () => {
       icon: "flask",
       places: ["belt", "session"],
     });
-    expect(parseManifest(MANIFESTS.tracker).manifest?.places).toEqual(["session"]);
+    expect(parseManifest(MANIFESTS.tracker).manifest?.places).toEqual(["session", "tab"]);
   });
 
   it("skips the later fields with a reason and keeps the trick", () => {
@@ -632,6 +890,8 @@ describe("parseManifest", () => {
     expect(bad({ places: ["belt", "belt"] }).refusals.map((r) => r.code)).toEqual(["duplicate"]);
     expect(bad({ places: ["dashboard"] }).refusals.map((r) => r.code)).toEqual(["later", "place"]);
     expect(bad({ places: ["dashboard"] }).manifest).toBeUndefined();
+    expect(bad({ places: ["tab-mark"] }).refusals[0]?.reason).toContain("tab:<tabmatch>");
+    expect(bad({ places: ["header.line"] }).refusals.map((r) => r.code)).toEqual(["place"]);
     expect(bad({ id: "Legs" }).refusals.map((r) => r.path)).toEqual(["/id"]);
     expect(parseManifest({ id: "legs" }).refusals.map((r) => r.path)).toEqual(["/name", "/run", "/places"]);
   });
@@ -645,55 +905,86 @@ describe("parseFacts", () => {
   });
 
   it("refuses a session id that is a name", () => {
-    const facts = { ...FACTS.timer, sessions: [{ id: "composer", paneId: "w6X:3", status: "idle" }] };
+    const [first] = FACTS.timer.sessions;
+    const facts = { ...FACTS.timer, sessions: [{ ...first, id: "composer" }] };
     expect(parseFacts(facts).refusals.map((r) => r.path)).toEqual(["/sessions/0/id"]);
+  });
+
+  it("gives every session its member, its opaque session id, its pane and a host to show", () => {
+    const [first] = FACTS.timer.sessions;
+    expect(parseFacts(FACTS.timer).facts?.sessions[0]).toMatchObject({ memberId: "bluefin", sessionId: "bluefin:w6X:3", paneId: "w6X:3", host: "bluefin" });
+    for (const key of ["memberId", "sessionId", "paneId", "host"]) {
+      const without: JsonObject = { ...first };
+      delete without[key];
+      expect(parseFacts({ ...FACTS.timer, sessions: [without] }).refusals.map((r) => r.path), key).toEqual([`/sessions/0/${key}`]);
+    }
+  });
+
+  it("carries a decision's answer as a tap on hill/<key>, with the person's words", () => {
+    const trigger = parseFacts(FACTS.answer).facts?.trigger;
+    expect(trigger).toEqual({ kind: "tap", rid: "0b9e8d7c-6f5a-4b3c-9d2e-1f0a9b8c7d6e", node: "hill/case-24", intent: "rerun", value: { text: "Rerun it, then tell me." } });
   });
 });
 
 describe("parseTapRequest", () => {
-  const tap = { requestId: "7f0c1d2e-3b4a-4c5d-8e6f-708192a3b4c5", intent: "open-case", args: { n: 24 }, part: "legs", from: { session: "bluefin:w6X:3" } };
+  const tap = { rid: "7f0c1d2e-3b4a-4c5d-8e6f-708192a3b4c5", node: "legs", intent: "open-case", value: "24", from: { session: "bluefin:w6X:3" } };
 
-  it("reads a tap", () => {
+  it("reads a tap in the tree's intent shape", () => {
     expect(parseTapRequest(tap)).toEqual({ request: tap, refusals: [] });
-    expect(parseTapRequest({ requestId: tap.requestId, intent: "open", part: "belt" }).request).toEqual({
-      requestId: tap.requestId,
-      intent: "open",
-      part: "belt",
-    });
+    expect(parseTapRequest({ rid: tap.rid, intent: "open", node: "belt" }).request).toEqual({ rid: tap.rid, intent: "open", node: "belt" });
   });
 
-  it("refuses a bad request id, a name as from, an unknown key and big args", () => {
+  it("reads a decision's answer: a text, or null when only an option was tapped", () => {
+    const answer = { rid: tap.rid, node: "hill/case-24", intent: "rerun", value: { text: "and tell me" } };
+    expect(parseTapRequest(answer).request).toEqual(answer);
+    expect(parseTapRequest({ ...answer, value: { text: null } }).request?.value).toEqual({ text: null });
+    expect(parseTapRequest({ ...answer, value: { text: "x".repeat(4001) } }).refusals.map((r) => r.path)).toEqual(["/value/text"]);
+    expect(parseTapRequest({ ...answer, value: "rerun" }).refusals.map((r) => r.path)).toEqual(["/value"]);
+    expect(parseTapRequest({ ...tap, value: { text: "x" } }).refusals.map((r) => r.path)).toEqual(["/value"]);
+  });
+
+  it("refuses a bad rid, a name as from, an unknown key, the first schema's keys and a big value", () => {
     const refused = (extra: JsonObject) => parseTapRequest({ ...tap, ...extra }).refusals.map((r) => r.path);
-    expect(refused({ requestId: "1" })).toEqual(["/requestId"]);
+    expect(refused({ rid: "1" })).toEqual(["/rid"]);
     expect(refused({ from: { session: "composer" } })).toEqual(["/from/session"]);
     expect(refused({ turnId: "t1" })).toEqual(["/turnId"]);
-    expect(refused({ args: { p: "x".repeat(1100) } })).toEqual(["/args"]);
+    expect(refused({ requestId: tap.rid })).toEqual(["/requestId"]);
+    expect(refused({ args: { n: 1 } })).toEqual(["/args"]);
+    expect(refused({ value: "x".repeat(1025) })).toEqual(["/value"]);
     expect(refused({ intent: "Open Case" })).toEqual(["/intent"]);
-    expect(refused({ part: "legs/belt" })).toEqual(["/part"]);
+    expect(refused({ node: "legs/belt" })).toEqual(["/node"]);
+  });
+
+  it("answers with the tree's receipt codes", () => {
+    expect(TAP_CODES).toEqual(["ok", "changed", "rejected", "gone", "denied", "unknown"]);
   });
 });
 
 describe("the tone map", () => {
-  it("maps every tone onto a token that already exists, and spells its class", () => {
-    expect(Object.keys(TONE_TOKENS).toSorted()).toEqual([...TONES].toSorted());
-    for (const tone of TONES) {
+  it("takes the tree's tones, and maps every ink onto a token that already exists, and spells its class", () => {
+    expect(TONES).toEqual(["plain", "accent", "warn", "danger", "ok", "muted"]);
+    expect(Object.keys(TONE_TOKENS).toSorted()).toEqual([...DRAW_TONES].toSorted());
+    for (const tone of DRAW_TONES) {
       expect(THEME_TOKENS).toContain(toneToken(tone));
       expect(TONE_TEXT_CLASS[tone]).toBe(`text-${toneToken(tone)}`);
     }
   });
 
-  it("draws warn in the caution colour of the app's Notice", () => {
+  it("draws warn and accent in the caution colour of the app's Notice", () => {
     const notice = readRepo("web/src/components/ui/notice.tsx");
     expect(notice).toMatch(/caution: \{[^}]*accent: "text-status-working"/);
     expect(TONE_TEXT_CLASS.warn).toBe("text-status-working");
-    expect(toneToken("error")).toBe("status-blocked");
+    expect(TONE_TEXT_CLASS.accent).toBe("text-status-working");
+    expect(toneToken("danger")).toBe("status-blocked");
     expect(toneToken("ok")).toBe("status-done");
   });
 });
 
 describe("the icon set", () => {
-  it("is about forty words, each a lucide icon the phone already imports", () => {
-    expect(TRICK_ICONS.length).toBe(44);
+  it("is the tree's 39 words and the tricks' 9, each a lucide icon the phone imports", () => {
+    expect(TRICK_ICONS.length).toBe(48);
+    expect(TREE_ICONS).toHaveLength(39);
+    for (const word of TREE_ICONS) expect(TRICK_ICONS, word).toContain(word);
     const imported = new Set<string>();
     // The phone's own code: every file under web/src but the playground, which is not in the app.
     const dir = resolve(ROOT, "web/src");
@@ -717,9 +1008,8 @@ describe("the icon set", () => {
     for (const name of ["Loader2", "CircleDot", "CheckCircle2", "XCircle", "CircleAlert"]) expect(names).not.toContain(name);
   });
 
-  it("gives actions the twelve words of the bridge's PANE_ACTION_ICONS, all in the set", () => {
+  it("gives actions the twelve words of the bridge's PANE_ACTION_ICONS", () => {
     const bridge = readRepo("bridge/types.ts").match(/export const PANE_ACTION_ICONS = \[([^\]]*)\]/)?.[1] ?? "";
     expect([...bridge.matchAll(/"([^"]+)"/g)].map((m) => m[1])).toEqual([...ACTION_ICONS]);
-    for (const icon of ACTION_ICONS) expect(TRICK_ICONS).toContain(icon);
   });
 });

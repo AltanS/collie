@@ -11,7 +11,6 @@ import type { CrewFetch } from "../bridge/crew/peer-client.ts";
 import { asJsonBoolean, asJsonObject, asJsonString, parseJson, type JsonValue } from "../web/src/lib/json.ts";
 import { FACTS } from "../web/src/lib/tricks/fixtures/index.ts";
 import {
-  CORE_NODE_KINDS,
   isTrickId,
   parseFacts,
   parseTrickDocumentText,
@@ -342,7 +341,7 @@ export async function checkRun(report: TrickCheckReport, env: CliContext["env"],
     const stderr = outcome.kind === "spawn-failed" ? "" : outcome.stderr;
     const run: NonNullable<TrickCheckReport["run"]> = { outcome: outcome.kind, ms: outcome.ms, problem, parts: [], refusals: [], stderr };
     if (problem === null && outcome.kind === "exited") {
-      const parsed = parseTrickDocumentText(outcome.stdout, { declared: manifest.places, kinds: CORE_NODE_KINDS });
+      const parsed = parseTrickDocumentText(outcome.stdout, { declared: manifest.places });
       run.parts = parsed.parts.map((p) => `${p.part.at} ${p.part.id}`);
       run.refusals = parsed.refusals;
     }
@@ -434,7 +433,7 @@ export const SAMPLE_PROVIDER = `#!/bin/sh
 # document from stdout. This one counts the sessions and prints one mark in the belt's end block.
 facts=$(cat)
 n=$(printf '%s' "$facts" | grep -o '"paneId"' | wc -l | tr -d ' ')
-printf '{"v":1,"parts":[{"at":"belt","id":"belt","mark":{"icon":"plug","face":"%s","tone":"plain"}}]}\\n' "$n"
+printf '{"v":1,"parts":[{"at":"belt","id":"belt","mark":{"icon":"plug","label":"%s","tone":"plain"}}]}\\n' "$n"
 `;
 
 /** The `AGENTS.md` `init` writes: the contract, in prose, for the agent that grows the trick. */
@@ -454,10 +453,11 @@ draws what it prints on the phone, with Collie's own parts in the current theme.
 
 - Its working folder is this folder.
 - On stdin, one JSON document, the facts: \`v\` (1), \`trigger\` (\`start\`, \`timer\`, or \`tap\` with
-  \`intent\`, \`args\`, \`part\` and \`requestId\`), \`trick\` (\`id\`, \`dir\`, and \`state\`, a folder of
-  its own to keep files in), \`host\`, \`sessions\` (each with \`id\` as \`host:paneId\`, \`paneId\`,
-  \`name\`, \`agent\`, \`status\`, \`cwd\`, \`space\`, \`tab\`, \`lastActiveAt\`) and \`spaces\` (\`name\`,
-  \`folder\`).
+  \`rid\`, \`node\` (the part id, or \`hill/<key>\` for a decision), \`intent\`, \`value\` and \`from\`),
+  \`trick\` (\`id\`, \`dir\`, and \`state\`, a folder of its own to keep files in), \`host\`, \`sessions\`
+  (each with \`id\` as \`host:paneId\`, \`memberId\`, \`sessionId\` (opaque, never parse it), \`paneId\`,
+  \`host\` (a name to show), \`name\`, \`agent\`, \`status\`, \`cwd\`, \`space\`, \`tab\`, \`lastActiveAt\`)
+  and \`spaces\` (\`name\`, \`folder\`).
 - The environment of the Collie service, minus every \`COLLIE_\` variable and every variable whose name
   holds TOKEN, SECRET, KEY, PASSWORD or a like word. A provider that needs a key reads it from its own
   file.
@@ -467,15 +467,18 @@ draws what it prints on the phone, with Collie's own parts in the current theme.
 One JSON document on stdout, at most 64 KiB, within 10 seconds:
 
 \`\`\`json
-{ "v": 1, "parts": [ { "at": "belt", "id": "belt", "mark": { "icon": "plug", "face": "3", "tone": "ok" } } ] }
+{ "v": 1, "parts": [ { "at": "belt", "id": "belt", "mark": { "icon": "plug", "label": "3", "tone": "ok" } } ] }
 \`\`\`
 
 - Each part has an \`at\` (a place listed in \`places\` in \`trick.toml\`) and an \`id\` unique in the
   document. A part that does not parse is refused alone; the others still draw.
 - Optional: \`asOf\` (an ISO 8601 instant) and \`fresh\` (such as \`"90s"\`): past that window the phone
   shows the part's age and drops its tone.
-- Only after a tap: \`draft\` (\`session\` and \`text\`, placed in an EMPTY reply box, never sent) and
-  \`open\` (a \`session\` or an https \`url\`).
+- A part's \`view\` is a list of nodes \`{ kind, text, attrs, kids }\`, the Tree UI's kinds (\`card\`,
+  \`group\`, \`list\`, \`row\`, \`bar\`, \`chip\`, \`button\`, \`para\`, \`line\`, \`run\`, \`code\`, \`link\`,
+  \`image\`, \`meter\`, \`spacer\`) and \`number\`. Every attribute value is a string.
+- Optional: \`decisions\`, up to 20 questions for the person (\`key\`, \`title\`, \`summary\`, \`options\`,
+  \`recommends\`). The answer comes back as a tap on \`hill/<key>\`.
 - Unknown keys are refused, and a string over its cap is refused, never cut.
 
 ## Limits

@@ -4,7 +4,6 @@ import type { JsonValue } from "../json.ts";
 import { redactText } from "../redact.ts";
 import { payloadDigest } from "../worktree-receipts.ts";
 import {
-  CORE_NODE_KINDS,
   freshWindowMs,
   parseTrickDocumentText,
   parseTapRequest,
@@ -46,18 +45,19 @@ import { createSwitchReader, parseSwitches, withSwitch, writeSwitches, type Swit
 //
 // ── WHAT A RUN LEAVES ───────────────────────────────────────────────────────────
 // stdout and stderr are masked in run.ts before anything here sees them. The document is parsed with
-// the schema's one parser, against the manifest's declared places and the core node kinds (slice 08
-// adds the rest), and stored per part with a rev (store.ts). A failed run keeps the last good parts,
+// the schema's one parser, against the manifest's declared places and every node kind, and stored per
+// part with a rev (store.ts). A failed run keeps the last good parts,
 // stale. The error line is masked and capped, and goes to the list entry, the doctor row and one log
 // line when it changes, never once per run.
 //
 // ── TAPS ────────────────────────────────────────────────────────────────────────
-// `POST /api/tricks/<host>/<id>/tap` carries a request id (WIRE.md 7.10's receipt shape). The bridge
-// keeps the last {@link TAP_RECEIPTS_MAX} replies of runs that STARTED, by request id: a repeat gets
-// the first reply with `replayed` and runs nothing; a repeat still in flight waits for the first; the
-// same id with another payload is refused. A tap that ran nothing (the trick is off, busy or skipped)
-// keeps no receipt, so the same id may simply be tried again. `draft` and `open` pass through to the
-// phone; the bridge does not act on them.
+// `POST /api/tricks/<host>/<id>/tap` carries the tree's intent shape `{ rid, node, intent, value }`.
+// The receipt codes are the tree's: `ok` (applied), `rejected` (refused or the run failed), `unknown`
+// (the run timed out and may have done its work). The bridge keeps the last {@link TAP_RECEIPTS_MAX}
+// receipts of runs that STARTED, by rid: a repeat gets the same receipt again, unchanged, and runs
+// nothing; a repeat still in flight waits for the first; the same rid with another payload is refused.
+// A tap that ran nothing (the trick is off, busy or skipped) keeps no receipt, so the same rid may
+// simply be tried again.
 
 /** How long a phone's look keeps timers running. */
 export const WATCH_WINDOW_MS = 5 * 60_000;
@@ -95,7 +95,7 @@ export type TapAnswer =
   | { status: 200; body: TrickTapReply }
   | { status: 400; body: { error: "tap-invalid"; refusals: Refusal[] } }
   | { status: 404; body: { error: "unknown-host" | "unknown-trick" } }
-  | { status: 409; body: { error: "request-id-reused"; requestId: string } };
+  | { status: 409; body: { error: "request-id-reused"; rid: string } };
 
 /** The switch route's answer: the trick as the list now shows it, or why not. */
 export type SwitchAnswer =
@@ -388,9 +388,9 @@ export class TricksService implements TricksSurface {
     const manifest = rt.found.manifest;
     const host = this.deps.host();
     const id = rt.found.id;
-    const requestId = trigger.kind === "tap" ? trigger.requestId : "";
+    const rid = trigger.kind === "tap" ? trigger.rid : "";
     const revBefore = this.store.rev;
-    if (manifest === undefined) return { requestId, outcome: "failed", message: "The trick's trick.toml is refused." };
+    if (manifest === undefined) return { rid, code: "rejected", message: "The trick's trick.toml is refused." };
     const startedAt = this.now();
     const state = trickStateDir(this.deps.stateDir, id);
     // The provider's own folder under <stateDir>/tricks, owner only like the rest of the state folder.
@@ -406,16 +406,15 @@ export class TricksService implements TricksSurface {
       ...this.deps.limits,
     });
     rt.lastRunAt = startedAt;
-    const afterTap = trigger.kind === "tap";
     // A run that was switched off or removed while it ran leaves nothing behind.
     if (this.runtimes.get(id) !== rt || !rt.on) {
-      return { requestId, outcome: "failed", message: "The trick was switched off while it ran." };
+      return { rid, code: "rejected", message: "The trick was switched off while it ran." };
     }
     let problem = outcomeProblem(outcome, 200);
     let parsed: ParsedTrickDocument | null = null;
     if (problem === null && outcome.kind === "exited") {
       // Masked in run.ts already; again here, so no runner behind the seam can hand the parser a key.
-      parsed = parseTrickDocumentText(redactText(outcome.stdout), { declared: manifest.places, afterTap, kinds: CORE_NODE_KINDS });
+      parsed = parseTrickDocumentText(redactText(outcome.stdout), { declared: manifest.places });
       if (parsed.documentRefused) problem = `The output was refused: ${parsed.refusals[0]?.reason ?? "not a document"}`;
     }
     if (problem !== null || parsed === null || parsed.documentRefused) {
@@ -423,7 +422,8 @@ export class TricksService implements TricksSurface {
       this.failed(rt, line, parsed?.refusals ?? []);
       this.store.markStale(host, id, line);
       this.publish(id);
-      const reply: TrickTapReply = { requestId, outcome: outcome.kind === "timeout" ? "unknown" : "failed", message: line, rev: this.store.rev };
+      // A timeout answers `unknown`: the run may have done its work. A failed or refused run answers `rejected`.
+      const reply: TrickTapReply = { rid, code: outcome.kind === "timeout" ? "unknown" : "rejected", message: line, rev: this.store.rev };
       const mine = this.store.trickParts(host, id, revBefore);
       if (mine.parts.length > 0) reply.parts = mine.parts;
       reply.present = mine.present;
@@ -435,10 +435,7 @@ export class TricksService implements TricksSurface {
     this.succeeded(rt, startedAt, parsed.refusals);
     this.publish(id);
     const mine = this.store.trickParts(host, id, revBefore);
-    const reply: TrickTapReply = { requestId, outcome: "applied", rev: this.store.rev, parts: mine.parts, present: mine.present };
-    if (afterTap && parsed.draft !== undefined) reply.draft = parsed.draft;
-    if (afterTap && parsed.open !== undefined) reply.open = parsed.open;
-    return reply;
+    return { rid, code: "ok", rev: this.store.rev, parts: mine.parts, present: mine.present };
   }
 
   private failed(rt: TrickRuntime, line: string, refusals: Refusal[]): void {
@@ -472,21 +469,22 @@ export class TricksService implements TricksSurface {
     const parsed = parseTapRequest(body);
     if (parsed.request === undefined) return { status: 400, body: { error: "tap-invalid", refusals: parsed.refusals } };
     const request = parsed.request;
-    const digest = payloadDigest([id, request.intent, JSON.stringify(request.args ?? null), request.part, request.from?.session ?? ""]);
-    const kept = this.receipts.get(request.requestId);
+    const digest = payloadDigest([id, request.node, request.intent, JSON.stringify(request.value ?? null), request.from?.session ?? ""]);
+    // A replay answers the same receipt again, from the receipt log, unchanged (the tree's intent rule).
+    const kept = this.receipts.get(request.rid);
     if (kept !== undefined) {
-      if (kept.digest !== digest) return { status: 409, body: { error: "request-id-reused", requestId: request.requestId } };
-      return { status: 200, body: replayOf(kept.reply) };
+      if (kept.digest !== digest) return { status: 409, body: { error: "request-id-reused", rid: request.rid } };
+      return { status: 200, body: kept.reply };
     }
-    const flying = this.inflight.get(request.requestId);
+    const flying = this.inflight.get(request.rid);
     if (flying !== undefined) {
-      if (flying.digest !== digest) return { status: 409, body: { error: "request-id-reused", requestId: request.requestId } };
-      return { status: 200, body: replayOf(await flying.reply) };
+      if (flying.digest !== digest) return { status: 409, body: { error: "request-id-reused", rid: request.rid } };
+      return { status: 200, body: await flying.reply };
     }
     await this.refresh();
     const rt = this.runtimes.get(id);
     if (rt === undefined) return { status: 404, body: { error: "unknown-trick" } };
-    const refuse = (message: string): TapAnswer => ({ status: 200, body: { requestId: request.requestId, outcome: "failed", message } });
+    const refuse = (message: string): TapAnswer => ({ status: 200, body: { rid: request.rid, code: "rejected", message } });
     if (rt.found.manifest === undefined) return refuse("The trick's trick.toml is refused. Run `collie trick check` on its folder.");
     if (!rt.on) return refuse("The trick is off.");
     if (rt.queued !== null) return refuse("The trick is busy. Try again in a moment.");
@@ -501,10 +499,10 @@ export class TricksService implements TricksSurface {
       }
       void this.begin(rt, { kind: "tap", ...request }, queued);
     });
-    this.inflight.set(request.requestId, { digest, reply });
+    this.inflight.set(request.rid, { digest, reply });
     try {
       const answer = await reply;
-      this.receipts.set(request.requestId, { digest, reply: answer });
+      this.receipts.set(request.rid, { digest, reply: answer });
       while (this.receipts.size > TAP_RECEIPTS_MAX) {
         const oldest = this.receipts.keys().next().value;
         if (oldest === undefined) break;
@@ -512,7 +510,7 @@ export class TricksService implements TricksSurface {
       }
       return { status: 200, body: answer };
     } finally {
-      this.inflight.delete(request.requestId);
+      this.inflight.delete(request.rid);
     }
   }
 
@@ -545,9 +543,4 @@ export class TricksService implements TricksSurface {
     if (info === undefined) return { status: 404, body: { error: "unknown-trick" } };
     return { status: 200, body: info };
   }
-}
-
-/** A stored reply, answered again: `applied` reads `replayed`, every other outcome as it was. */
-function replayOf(reply: TrickTapReply): TrickTapReply {
-  return reply.outcome === "applied" ? { ...reply, outcome: "replayed" } : reply;
 }

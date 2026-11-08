@@ -10,7 +10,7 @@ import { TRICK_ICON_COMPONENT, trickIconOf } from "./icons";
 import { TrickMark } from "./mark";
 import { DEFAULT_TRICK_ICON, TRICK_ICONS, TRICK_ICON_LUCIDE, TONE_TEXT_CLASS, TONES, type Mark } from "./schema";
 
-const LEGS: Mark = { icon: "flask", face: "23/34", tone: "working", label: "Browser leg, 23 of 34 cases green", intent: "open" };
+const LEGS: Mark = { icon: "flask", label: "23/34", tone: "accent", intent: "open" };
 
 /** The drawing of every status shape, as Collie's own status mark draws it. */
 function statusDrawings(): string[] {
@@ -51,11 +51,11 @@ describe("a trick's mark", () => {
   });
 
   it("inks the icon, the face and the count through the tone map", () => {
-    const { container } = render(<TrickMark mark={{ ...LEGS, count: 3, tone: "error" }} trickName="Browser leg" />);
-    expect(container.querySelector('[data-slot="trick-mark-face"]')?.className).toContain(TONE_TEXT_CLASS.error);
+    const { container } = render(<TrickMark mark={{ ...LEGS, badge: "3", tone: "danger" }} trickName="Browser leg" />);
+    expect(container.querySelector('[data-slot="trick-mark-face"]')?.className).toContain(TONE_TEXT_CLASS.danger);
     expect(container.querySelector('[data-slot="trick-mark-face"]')?.className).toContain("font-mono");
-    expect(container.querySelector('[data-slot="trick-mark-count"]')?.className).toContain(TONE_TEXT_CLASS.error);
-    expect(container.querySelector("svg")?.getAttribute("class")).toContain(TONE_TEXT_CLASS.error);
+    expect(container.querySelector('[data-slot="trick-mark-count"]')?.className).toContain(TONE_TEXT_CLASS.danger);
+    expect(container.querySelector("svg")?.getAttribute("class")).toContain(TONE_TEXT_CLASS.danger);
   });
 
   it("goes grey when its part is stale", () => {
@@ -66,7 +66,7 @@ describe("a trick's mark", () => {
   it("is a control with a 44px reach only when it has an intent and a tap", () => {
     const onTap = vi.fn();
     const { getByRole, rerender, container } = render(<TrickMark mark={LEGS} trickName="Browser leg" onTap={onTap} />);
-    const button = getByRole("button", { name: "Browser leg, 23 of 34 cases green" });
+    const button = getByRole("button", { name: "Browser leg: 23/34" });
     // 28px drawn, 8px of reach above and below.
     expect(button.className).toContain("h-7");
     expect(button.className).toContain("before:-inset-y-2");
@@ -76,8 +76,8 @@ describe("a trick's mark", () => {
     expect(container.querySelector("button")).toBeNull();
   });
 
-  it("names itself from the trick and the face when it has no label", () => {
-    const { getByRole } = render(<TrickMark mark={{ face: "3 due" }} trickName="Tracker" />);
+  it("names itself from the trick and its label, the face word", () => {
+    const { getByRole } = render(<TrickMark mark={{ label: "3 due" }} trickName="Tracker" />);
     expect(getByRole("img", { name: "Tracker: 3 due" })).toBeInTheDocument();
   });
 
@@ -88,7 +88,7 @@ describe("a trick's mark", () => {
     busy.unmount();
     const unknown = render(<TrickMark mark={LEGS} trickName="Browser leg" onTap={() => {}} unknown />);
     expect(unknown.container.querySelector('[data-slot="trick-mark-unknown"]')).not.toBeNull();
-    expect(unknown.getByRole("button").getAttribute("aria-label")).toBe("Browser leg, 23 of 34 cases green, unknown");
+    expect(unknown.getByRole("button").getAttribute("aria-label")).toBe("Browser leg: 23/34, unknown");
   });
 
   it("keeps its slot when the trick drops its mark, so the belt does not move", () => {

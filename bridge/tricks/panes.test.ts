@@ -3,12 +3,12 @@ import { mkdir } from "node:fs/promises";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { isTrickSessionId, isScopeKey, partKey, type TrickPart, type WireTrickInfo, type WireTrickPart } from "../../web/src/lib/tricks/schema.ts";
+import { isTrickSessionId, isScopeKey, partKey, type TrickPart, type View, type WireTrickInfo, type WireTrickPart } from "../../web/src/lib/tricks/schema.ts";
 import { TRICKS_SPACE_LABEL, trickSessionPanes, trickSessionStatus, pastWindow, placeTrickSessions, type TrickSessionSource } from "./panes.ts";
 
 const NOW = Date.parse("2026-11-08T09:41:00Z");
 const HOST = "bluefin";
-const VIEW = { kind: "text", text: "23/34", lines: 1 } as const;
+const VIEW: View = [{ kind: "para", text: "23/34" }];
 
 function info(id: string, extra: Partial<WireTrickInfo> = {}): WireTrickInfo {
   return { host: HOST, id, name: id === "legs" ? "Browser leg" : "Tracker", icon: "flask", on: true, state: "ok", places: ["session"], ...extra };
@@ -28,10 +28,10 @@ const LEGS = part("legs", {
   at: "session",
   id: "legs",
   name: "Browser leg",
-  tone: "working",
+  tone: "accent",
   subtitle: "case 24 red",
   badge: { count: 1 },
-  progress: { kind: "percent", value: 68 },
+  progress: { value: 3, max: 4 },
   actions: [{ id: "rerun", label: "Rerun red", intent: "rerun", icon: "refresh" }],
   view: VIEW,
 });
@@ -40,7 +40,7 @@ describe("the trick sessions as panes", () => {
   test("one pane per session part, in one Tricks Space, one tab per trick in manifest order", () => {
     const tracker = part("tracker", { at: "session", id: "due", tone: "ok", view: VIEW });
     const tracker2 = part("tracker", { at: "session", id: "next", name: "Next task", view: VIEW });
-    const belt = part("legs", { at: "belt", id: "belt", mark: { face: "23/34" } });
+    const belt = part("legs", { at: "belt", id: "belt", mark: { label: "23/34" } });
     const found = trickSessionPanes(source([tracker, belt, LEGS, tracker2]));
     expect(found?.workspace).toEqual({ workspaceId: "trick:bluefin", label: TRICKS_SPACE_LABEL, focused: false, activeTabId: "trick:bluefin:legs", tabCount: 2, paneCount: 3 });
     expect(found?.tabs.map((t) => [t.tabId, t.label, t.paneCount])).toEqual([
@@ -79,7 +79,7 @@ describe("the trick sessions as panes", () => {
       view: partKey(LEGS),
       subtitle: "case 24 red",
       badge: { count: 1 },
-      progress: { kind: "percent", value: 68 },
+      progress: { kind: "percent", value: 75 },
       actions: [{ id: "rerun", label: "Rerun red", icon: "refresh" }],
     });
     // A part with no name takes the trick's.
@@ -87,10 +87,10 @@ describe("the trick sessions as panes", () => {
     expect(bare?.paneLabel).toBe("Tracker");
   });
 
-  test("the status: working only for a fresh working part of a trick that runs, idle for every other case", () => {
-    expect(trickSessionStatus("working", true)).toBe("working");
-    for (const tone of ["ok", "plain", "muted", "error", "warn", "unknown", undefined] as const) expect(trickSessionStatus(tone, true), String(tone)).toBe("idle");
-    expect(trickSessionStatus("working", false)).toBe("idle");
+  test("the status: working only for a fresh accent part of a trick that runs, idle for every other case", () => {
+    expect(trickSessionStatus("accent", true)).toBe("working");
+    for (const tone of ["ok", "plain", "muted", "danger", "warn", undefined] as const) expect(trickSessionStatus(tone, true), String(tone)).toBe("idle");
+    expect(trickSessionStatus("accent", false)).toBe("idle");
     const status = (parts: WireTrickPart[], tricks?: WireTrickInfo[], now?: number) => trickSessionPanes(source(parts, tricks, now))?.panes[0]?.status;
     expect(status([LEGS])).toBe("working");
     expect(status([{ ...LEGS, stale: true, problem: "exit 1" }])).toBe("idle");
@@ -98,7 +98,7 @@ describe("the trick sessions as panes", () => {
     expect(status([LEGS], [info("legs", { state: "stopped" })])).toBe("idle");
     expect(status([LEGS], undefined, NOW + 91_000)).toBe("idle");
     // Never a status that reads as "needs you" or "done" anywhere in the app.
-    const tones = ["plain", "muted", "ok", "warn", "error", "working", "unknown"] as const;
+    const tones = ["plain", "muted", "ok", "warn", "danger", "accent"] as const;
     for (const tone of tones) {
       const got = status([part("legs", { at: "session", id: "legs", tone, view: VIEW })]);
       expect(got === "blocked" || got === "done", tone).toBe(false);
@@ -114,7 +114,7 @@ describe("the trick sessions as panes", () => {
   test("a trick that is off, another host's part and a trick with no session part make no pane", () => {
     expect(trickSessionPanes(source([LEGS], [info("legs", { on: false })]))).toBeUndefined();
     expect(trickSessionPanes(source([{ ...LEGS, host: "minibuch" }]))).toBeUndefined();
-    expect(trickSessionPanes(source([part("legs", { at: "belt", id: "belt", mark: { face: "x" } })]))).toBeUndefined();
+    expect(trickSessionPanes(source([part("legs", { at: "belt", id: "belt", mark: { label: "x" } })]))).toBeUndefined();
     expect(trickSessionPanes(source([]))).toBeUndefined();
   });
 
@@ -124,16 +124,16 @@ describe("the trick sessions as panes", () => {
       id: "legs",
       subtitle: "x".repeat(200),
       badge: { text: "a very long badge" },
-      progress: { kind: "steps", steps: Array.from({ length: 20 }, (_, i) => ({ label: `s${i}`, state: "todo" as const })) },
+      progress: { value: 7, max: 20 },
       actions: Array.from({ length: 6 }, (_, i) => ({ id: `a${i}`, label: `A${i}`, intent: "go" })),
       view: VIEW,
     });
     const pane = trickSessionPanes(source([loud]))?.panes[0];
     expect([...(pane?.subtitle ?? "")]).toHaveLength(120);
     expect(pane?.badge).toEqual({ text: "a very long " });
-    expect(pane?.progress?.kind === "steps" ? pane.progress.steps.length : 0).toBe(12);
+    expect(pane?.progress).toEqual({ kind: "percent", value: 35 });
     expect(pane?.actions).toHaveLength(4);
-    const over = part("legs", { at: "session", id: "legs", progress: { kind: "percent", value: 140 }, badge: { count: 12_000 }, view: VIEW });
+    const over = part("legs", { at: "session", id: "legs", progress: { value: 1.4 }, badge: { count: 12_000 }, view: VIEW });
     const capped = trickSessionPanes(source([over]))?.panes[0];
     expect(capped?.progress).toEqual({ kind: "percent", value: 100 });
     expect(capped?.badge).toBeUndefined();
@@ -181,7 +181,7 @@ describe("the service", () => {
       await mkdir(stateDir, { recursive: true });
       await writeFile(join(dir, "trick.toml"), 'id = "legs"\nname = "Browser leg"\nrun = "./legs.sh"\nplaces = ["session"]\n');
       await writeSwitches(stateDir, withSwitch({ on: new Map() }, "legs", true, "2026-11-08T09:00:00Z"));
-      const doc = JSON.stringify({ v: 1, asOf: "2026-11-08T09:41:00Z", parts: [{ at: "session", id: "legs", tone: "working", subtitle: "case 24 red", view: VIEW }] });
+      const doc = JSON.stringify({ v: 1, asOf: "2026-11-08T09:41:00Z", parts: [{ at: "session", id: "legs", tone: "accent", subtitle: "case 24 red", view: VIEW }] });
       const clock = { t: NOW };
       const service = new TricksService({
         configDir,

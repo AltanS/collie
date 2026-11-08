@@ -43,8 +43,8 @@ export interface TrickMarkProps {
 }
 
 function accessibleName(mark: Mark, trickName: string): string {
-  if (mark.label !== undefined) return mark.label;
-  const face = mark.face ?? (mark.count === undefined ? undefined : String(mark.count));
+  // Since the re-cut the mark's `label` is its face word (the tree's button label), and `badge` its count.
+  const face = mark.label ?? (mark.badge === undefined || mark.badge === "" ? undefined : mark.badge);
   return face === undefined ? trickName : t("tricks.mark.named", { trick: trickName, face });
 }
 
@@ -61,14 +61,15 @@ function MarkFace({ mark, stale, busy, unknown }: { mark: Mark; stale: boolean; 
       ) : (
         <Icon aria-hidden className={cn(glyph, ink)} />
       )}
-      {mark.face !== undefined && (
+      {mark.label !== undefined && (
         <span data-slot="trick-mark-face" className={cn("font-mono text-[11px] leading-none tabular-nums whitespace-nowrap", ink)}>
-          {mark.face}
+          {mark.label}
         </span>
       )}
-      {mark.count !== undefined && (
+      {/* STEP 3: an empty badge is the tree's dot, not drawn yet. */}
+      {mark.badge !== undefined && mark.badge !== "" && (
         <span data-slot="trick-mark-count" className={cn("text-[11px] leading-none font-semibold tabular-nums", ink)}>
-          {mark.count}
+          {mark.badge}
         </span>
       )}
     </>

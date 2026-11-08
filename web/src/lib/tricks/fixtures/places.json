@@ -1,7 +1,18 @@
 {
   "belt": {
     "v": 1,
-    "parts": [{ "at": "belt", "id": "belt", "mark": { "icon": "flask", "face": "23/34", "tone": "working", "intent": "open" } }]
+    "parts": [
+      {
+        "at": "belt",
+        "id": "belt",
+        "mark": {
+          "icon": "flask",
+          "label": "23/34",
+          "tone": "accent",
+          "intent": "open"
+        }
+      }
+    ]
   },
   "session": {
     "v": 1,
@@ -10,29 +21,42 @@
         "at": "session",
         "id": "deploy",
         "name": "Deploy",
-        "icon": "server",
+        "icon": "machine",
         "subtitle": "colliepwa.dev at 72f69369",
-        "badge": { "text": "live" },
-        "progress": { "kind": "percent", "value": 100, "label": "rolled out" },
-        "actions": [{ "id": "redeploy", "label": "Redeploy", "intent": "redeploy", "icon": "refresh" }],
-        "view": { "kind": "text", "text": "Three containers up.", "lines": 1 }
+        "badge": {
+          "text": "live"
+        },
+        "progress": {
+          "value": 1
+        },
+        "actions": [
+          {
+            "id": "redeploy",
+            "label": "Redeploy",
+            "intent": "redeploy",
+            "icon": "refresh"
+          }
+        ],
+        "view": [
+          {
+            "kind": "para",
+            "text": "Three containers up."
+          }
+        ]
       }
     ]
-  },
-  "tab-mark": {
-    "v": 1,
-    "parts": [{ "at": "tab:fix space:collie", "id": "fix-tab", "mark": { "icon": "flask", "count": 1, "tone": "error" } }]
   },
   "tab": {
     "v": 1,
     "parts": [
       {
-        "at": "tab",
-        "id": "board",
-        "title": "Board",
-        "icon": "list",
-        "space": "collie",
-        "view": { "kind": "list", "rows": 3, "items": [{ "text": "M93 math engines", "trailing": "open" }] }
+        "at": "tab:fix space:collie",
+        "id": "fix-tab",
+        "mark": {
+          "icon": "flask",
+          "badge": "1",
+          "tone": "danger"
+        }
       }
     ]
   },
@@ -44,24 +68,41 @@
         "id": "touched",
         "title": "Touched",
         "icon": "file",
-        "view": { "kind": "list", "rows": 5, "items": [{ "text": "web/src/lib/tricks/schema.ts", "trailing": "+812" }] }
+        "view": [
+          {
+            "kind": "list",
+            "kids": [
+              {
+                "kind": "row",
+                "text": "web/src/lib/tricks/schema.ts",
+                "attrs": {
+                  "end": "+812",
+                  "cut": "mid",
+                  "href": "bluefin:w6X:3"
+                }
+              }
+            ]
+          }
+        ]
       }
     ]
   },
   "dashboard": {
     "v": 1,
-    "parts": [{ "at": "dashboard", "id": "glance", "view": { "kind": "number", "value": 3, "label": "rituals due" } }]
-  },
-  "header.line": {
-    "v": 1,
-    "parts": [{ "at": "header.line", "id": "line", "line": { "text": "Deploy green", "icon": "check", "tone": "ok", "intent": "open" } }]
-  },
-  "menu": {
-    "v": 1,
-    "parts": [{ "at": "menu:*", "id": "menu", "rows": [{ "label": "Copy branch name", "icon": "branch", "intent": "copy-branch" }] }]
-  },
-  "settings": {
-    "v": 1,
-    "parts": [{ "at": "settings", "id": "settings", "title": "Legs", "view": { "kind": "kv", "rows": [{ "label": "Log", "value": "~/.cache/collie-lab/leg.log" }] } }]
+    "parts": [
+      {
+        "at": "dashboard",
+        "id": "glance",
+        "view": [
+          {
+            "kind": "number",
+            "text": "3",
+            "attrs": {
+              "label": "rituals due"
+            }
+          }
+        ]
+      }
+    ]
   }
 }

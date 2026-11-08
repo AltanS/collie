@@ -99,7 +99,7 @@ export function TrickSettingsSection(): ReactNode {
           state="trick-settings-long"
           label="long names, no parts"
           tricks={[
-            trick("long", "A trick with a name as long as the field allows it", { places: ["belt", "session", "tab-mark", "tab", "view", "dashboard"] }),
+            trick("long", "A trick with a name as long as the field allows it", { places: ["belt", "session", "tab", "view", "dashboard"] }),
             trick("none", "No parts", { places: [], provenance: { via: "repo", repo: "someone-with-a-long-name/a-repository-with-a-long-name", sha: "0123456789abcdef" } }),
           ]}
         />

@@ -211,7 +211,7 @@ import { modeForWire } from "./crew/mode.ts";
 import type { CrewRuntime } from "./crew/config.ts";
 import type { CrewLead } from "./crew/lead.ts";
 import { crewDeviceOf, crewGate, type GateLevel } from "./crew/peer-gate.ts";
-import { tricksSwitchRoute, tricksTapRoute, parseSince } from "./tricks/routes.ts";
+import { TRICKS_ROUTE_RIGHTS, tricksSwitchRoute, tricksTapRoute, parseSince } from "./tricks/routes.ts";
 import { placeTrickSessions } from "./tricks/panes.ts";
 import type { TricksSurface } from "./tricks/service.ts";
 import { snapshotPlan } from "./crew/merge.ts";
@@ -3038,7 +3038,7 @@ export function startServer(opts: {
       // `?host=` plays no part: the trick's host is in the tap's path, and a foreign one is 404 until
       // the crew merge (a later slice).
       if (pathname === "/api/tricks" && req.method === "GET") {
-        const denied = guard(req, cfg, "read", pairingGate);
+        const denied = guard(req, cfg, TRICKS_ROUTE_RIGHTS.reply, pairingGate);
         if (denied) return denied;
         const tricks = opts.tricks;
         if (tricks === undefined) return jsonError({ error: "not found" }, 404, null);
@@ -3047,7 +3047,7 @@ export function startServer(opts: {
       }
       const tricksTap = TRICKS_TAP_ROUTE.exec(pathname);
       if (tricksTap !== null && req.method === "POST") {
-        const denied = guard(req, cfg, "write", pairingGate);
+        const denied = guard(req, cfg, TRICKS_ROUTE_RIGHTS.tap, pairingGate);
         if (denied) return denied;
         const tricks = opts.tricks;
         if (tricks === undefined) return jsonError({ error: "not found" }, 404, null);
@@ -3063,7 +3063,7 @@ export function startServer(opts: {
       }
       const tricksSwitch = TRICKS_SWITCH_ROUTE.exec(pathname);
       if (tricksSwitch !== null && req.method === "POST") {
-        const denied = guard(req, cfg, "write", pairingGate);
+        const denied = guard(req, cfg, TRICKS_ROUTE_RIGHTS.switch, pairingGate);
         if (denied) return denied;
         const tricks = opts.tricks;
         if (tricks === undefined) return jsonError({ error: "not found" }, 404, null);
