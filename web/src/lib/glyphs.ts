@@ -1,5 +1,5 @@
 import { DEFAULT_GLYPH_SET, type GlyphSetId } from "@/lib/glyph-sets";
-import type { Theme } from "@/lib/theme/schema";
+import { knownGlyphs, type Theme } from "@/lib/theme/schema";
 import { activeTheme, useActiveTheme } from "@/lib/theme/store";
 import { currentTrial, useTrial } from "@/lib/theme/trial";
 
@@ -7,7 +7,8 @@ import { currentTrial, useTrial } from "@/lib/theme/trial";
 // and by the startup preload (`main.tsx`), so the two never disagree about which chunk to fetch. The
 // same rule as the header mark (`mark.ts`):
 //
-//   1. The `glyphs` of the theme the app is wearing. A theme being TRIED (`theme/trial.ts`) is the one
+//   1. The `glyphs` of the theme the app is wearing, when this Collie has that set (`knownGlyphs`: a
+//      newer Collie's set is kept in the theme and drawn here as lucide). A theme being TRIED (`theme/trial.ts`) is the one
 //      worn, so it wins over the stored theme while the ribbon is up, even when it names no set.
 //   2. Lucide.
 //
@@ -25,7 +26,7 @@ export interface GlyphSources {
 /** The set to draw: the worn theme's `glyphs`, else lucide. Pure. */
 export function resolveGlyphSetId({ trial, active }: GlyphSources): GlyphSetId {
   const worn = trial ?? active;
-  return worn.glyphs ?? DEFAULT_GLYPH_SET;
+  return knownGlyphs(worn) ?? DEFAULT_GLYPH_SET;
 }
 
 /** The set to draw now, read once. For code that is not a component. */

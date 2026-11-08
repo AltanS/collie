@@ -2,7 +2,7 @@ import { readFileSync, statSync } from "node:fs";
 
 import { en } from "../web/src/lib/i18n/messages/en.ts";
 import { interpolate } from "../web/src/lib/i18n/template.ts";
-import { CONTRAST_FAIL_KEY, HALF_KEYS, REFUSAL_KEYS, isMoreLine } from "../web/src/lib/theme/report-words.ts";
+import { CONTRAST_FAIL_KEY, FALLBACK_KEYS, HALF_KEYS, REFUSAL_KEYS, isMoreLine } from "../web/src/lib/theme/report-words.ts";
 import {
   DEFAULT_THEME_ID,
   THEME_MAX_BYTES,
@@ -10,6 +10,7 @@ import {
   escapedText,
   parseTheme,
   sizeRefusal,
+  themeFallbacks,
   type Finding,
   type Refusal,
   type Theme,
@@ -89,9 +90,20 @@ export interface CheckWarning {
   text: string;
 }
 
+/**
+ * A decoration word this Collie does not know (`themeFallbacks`): the file still passes, and the line
+ * says what the phone draws instead, in the sentence the preview shows. `word` is escaped (F4).
+ */
+export interface CheckFallback {
+  part: string;
+  path: string;
+  word: string;
+  text: string;
+}
+
 /** The result for one file, the shape `--json` prints. */
 export type FileReport =
-  | { file: string; ok: true; id: string; name: string; version: number; warnings: CheckWarning[] }
+  | { file: string; ok: true; id: string; name: string; version: number; warnings: CheckWarning[]; fallbacks: CheckFallback[] }
   | { file: string; ok: false; error?: string; refusals: CheckRefusal[] };
 
 const USAGE = "usage: collie theme check [--json] [--shipped] <file>... | collie theme skill";
@@ -142,7 +154,13 @@ export function checkFile(files: ThemeFiles, file: string, opts: { allowReserved
   const warnings = contrastReport(theme, opts.base)
     .filter((finding) => !finding.pass)
     .map(warningOf);
-  return { file, ok: true, id: theme.id, name: theme.name, version: theme.version, warnings };
+  const fallbacks = themeFallbacks(theme).map(({ part, path, word }) => ({
+    part,
+    path,
+    word,
+    text: interpolate(en[FALLBACK_KEYS[part]], { word, path }),
+  }));
+  return { file, ok: true, id: theme.id, name: theme.name, version: theme.version, warnings, fallbacks };
 }
 
 /** The longest file name printed bare. */
@@ -162,8 +180,12 @@ function printText(io: Io, report: FileReport): void {
   if (report.ok) {
     const count = report.warnings.length;
     const tail = count === 0 ? "every contrast check passes" : `${count} contrast ${count === 1 ? "warning" : "warnings"}`;
-    io.out(`${file}: ok, "${report.name}" (${report.id}), version ${report.version}, ${tail}`);
+    const unknown = report.fallbacks.length;
+    const words = unknown === 0 ? "" : `, ${unknown} ${unknown === 1 ? "word" : "words"} this Collie does not know`;
+    io.out(`${file}: ok, "${report.name}" (${report.id}), version ${report.version}, ${tail}${words}`);
     for (const warning of report.warnings) io.out(`${file}: warning: ${warning.text}`);
+    // The ground's sentence names its path already; the others get it after.
+    for (const fallback of report.fallbacks) io.out(`${file}: warning: ${fallback.text}${fallback.part === "ground" ? "" : ` (${fallback.path})`}`);
     return;
   }
   if (report.error !== undefined) {

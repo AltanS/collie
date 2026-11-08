@@ -108,6 +108,16 @@ describe("a glyph set", () => {
     await waitFor(() => expect(svg(container).getAttribute("data-glyphs")).toBe("iconoir"));
   });
 
+  it("draws lucide for a tried or worn theme whose set this Collie does not have", async () => {
+    const worn: Theme = { version: 4, id: "worn-three", name: "Worn three", light: { background: "#ffffff" }, glyphs: "iconoir" };
+    expect(installTheme(worn).ok).toBe(true);
+    const { container } = render(<Icon name="send" />);
+    await waitFor(() => expect(svg(container).getAttribute("data-glyphs")).toBe("iconoir"));
+    startTrial({ ...worn, id: "future", name: "Future", glyphs: "tabler" });
+    await waitFor(() => expect(svg(container).getAttribute("data-glyphs")).toBeNull());
+    expect(svg(container).getAttribute("data-icon")).toBe("send");
+  });
+
   it("a `set` prop wins over the worn theme", async () => {
     const worn: Theme = { version: 4, id: "worn-two", name: "Worn two", light: { background: "#ffffff" }, glyphs: "iconoir" };
     expect(installTheme(worn).ok).toBe(true);

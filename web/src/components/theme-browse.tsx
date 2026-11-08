@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 
-import { PageSample, ThemeGlyphsLine, ThemeMarkLine } from "@/components/theme-page-sample";
+import { PageSample, ThemeFallbackLines, ThemeGlyphsLine, ThemeMarkLine } from "@/components/theme-page-sample";
 import { Button } from "@/components/ui/button";
 import { Notice } from "@/components/ui/notice";
 import { BottomSheet } from "@/components/ui/sheet";
@@ -95,6 +95,7 @@ function ThemeRow({ item, onInstall, onTry }: RowProps) {
           <MakerLine repo={entry.repo} stars={entry.stars} />
           <ThemeMarkLine theme={theme} />
           <ThemeGlyphsLine theme={theme} />
+          <ThemeFallbackLines theme={theme} />
           <a
             href={repoUrl(entry.repo)}
             target="_blank"

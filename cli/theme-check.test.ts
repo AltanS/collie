@@ -93,13 +93,44 @@ describe("collie theme check", () => {
     ]);
   });
 
-  test("an unknown character word is refused with the character headline and the list of words", () => {
-    const file = JSON.stringify({ version: 4, id: "my-day", name: "My day", character: "dog", light: { background: "#ffffff" } });
+  test("a character word of the wrong shape is refused with the character headline and the list of words", () => {
+    const file = JSON.stringify({ version: 4, id: "my-day", name: "My day", character: "Dog", light: { background: "#ffffff" } });
     const { deps, io } = world({ "character.json": file });
     expect(cmdThemeCheck(deps, ["character.json"])).toBe(EXIT.FAIL);
     expect(io.stdout).toEqual([
       `character.json: refused: ${en["theme.refusal.mark"]} (character: "character" must be one of: collie, kawaii, kawaii-tilt, pixel, glass, glass-front, sheep, owl.)`,
     ]);
+  });
+
+  test("a word this Collie does not know passes with a warning per word, and exits 0", () => {
+    const file = JSON.stringify({
+      version: 4,
+      id: "future",
+      name: "Future",
+      light: { background: "#ffffff" },
+      glyphs: "tabler",
+      surface: { ground: { pattern: "stars" } },
+    });
+    const { deps, io } = world({ "future.json": file });
+    expect(cmdThemeCheck(deps, ["future.json"])).toBe(EXIT.OK);
+    expect(io.stdout).toEqual([
+      'future.json: ok, "Future" (future), version 4, every contrast check passes, 2 words this Collie does not know',
+      'future.json: warning: This Collie does not know "stars" for surface.ground.pattern; it uses the standard one.',
+      'future.json: warning: This Collie does not have the icon set "tabler"; it shows the standard icons. (glyphs)',
+    ]);
+    const json = world({ "future.json": file });
+    expect(cmdThemeCheck(json.deps, ["future.json", "--json"])).toBe(EXIT.OK);
+    expect(JSON.parse(json.io.stdout[0] ?? "").files[0].fallbacks).toEqual([
+      { part: "ground", path: "surface.ground.pattern", word: '"stars"', text: 'This Collie does not know "stars" for surface.ground.pattern; it uses the standard one.' },
+      { part: "glyphs", path: "glyphs", word: '"tabler"', text: 'This Collie does not have the icon set "tabler"; it shows the standard icons.' },
+    ]);
+  });
+
+  test("an escape in an unknown word is printed escaped, never raw", () => {
+    const file = JSON.stringify({ version: 4, id: "odd", name: "Odd", light: { background: "#ffffff" }, glyphs: "a\u001b]0;x" });
+    const { deps, io } = world({ "odd.json": file });
+    expect(cmdThemeCheck(deps, ["odd.json"])).toBe(EXIT.FAIL);
+    expect(io.stdout.join("\n")).not.toContain("\u001b");
   });
 
   test("text that is not JSON is refused with the json headline", () => {
@@ -167,7 +198,7 @@ describe("collie theme check", () => {
     expect(cmdThemeCheck(deps, ["good.json", "--json"])).toBe(EXIT.OK);
     expect(JSON.parse(io.stdout[0] ?? "")).toEqual({
       ok: true,
-      files: [{ file: "good.json", ok: true, id: "my-day", name: "My day", version: 1, warnings: [] }],
+      files: [{ file: "good.json", ok: true, id: "my-day", name: "My day", version: 1, warnings: [], fallbacks: [] }],
     });
   });
 

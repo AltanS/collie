@@ -888,6 +888,40 @@ describe("ThemePickerControl and the header character", () => {
     await waitFor(() => expect(line.querySelector('svg[data-glyphs="phosphor-duotone"]')).not.toBeNull());
   });
 
+  it("imports a file with words this Collie does not have, says so line by line, and keeps the words", async () => {
+    const { ThemePickerControl, store, themeFileText } = await load();
+    const { container } = render(<ThemePickerControl />);
+    const future = { ...copy("future", "Future"), version: 4, glyphs: "tabler", character: "dragon", fonts: { display: "comic" } };
+    pick(container, fileOf(JSON.stringify(future)));
+    const preview = await screen.findByRole("dialog", { name: "Import this theme?" });
+    const lines = within(preview).getAllByTestId("theme-fallback-line").map((line) => line.textContent);
+    expect(lines).toEqual([
+      'This Collie does not have the typeface "comic"; it uses the standard one.',
+      'This Collie does not have the character "dragon"; it shows the standard character.',
+      'This Collie does not have the icon set "tabler"; it shows the standard icons.',
+    ]);
+    // No sample row for a set or a character this Collie cannot draw.
+    expect(within(preview).queryByTestId("theme-glyphs-line")).toBeNull();
+    expect(within(preview).queryByTestId("theme-mark-line")).toBeNull();
+    await userEvent.click(within(preview).getByRole("button", { name: "Apply" }));
+    await waitFor(() => expect(store.activeThemeId()).toBe("future"));
+    const stored = store.library()[0];
+    expect(stored).toMatchObject({ glyphs: "tabler", character: "dragon", fonts: { display: "comic" } });
+    if (stored === undefined) return;
+    expect(JSON.parse(themeFileText(stored))).toMatchObject({ glyphs: "tabler", character: "dragon", fonts: { display: "comic" } });
+  });
+
+  it("keeps a stored theme's unknown words through a reload of the library, and wears the defaults", async () => {
+    const future: Theme = { ...copy("kept", "Kept"), version: 4, glyphs: "tabler", surface: { ground: { pattern: "stars", size: "wide" } } };
+    const { store } = await load([future]);
+    expect(store.library()[0]).toMatchObject({ glyphs: "tabler", surface: { ground: { pattern: "stars", size: "wide" } } });
+    store.setActiveTheme("kept");
+    const glyphs = await import("@/lib/glyphs");
+    expect(glyphs.currentGlyphSetId()).toBe("lucide");
+    expect(document.documentElement.style.getPropertyValue("--ground-image")).toBe("none");
+    expect(document.documentElement.style.getPropertyValue("--ground-scale")).toBe("2");
+  });
+
   it("refuses a character in a file that says version 3, and names the version it needs", async () => {
     const { ThemePickerControl, store } = await load();
     const { container } = render(<ThemePickerControl />);
@@ -897,10 +931,10 @@ describe("ThemePickerControl and the header character", () => {
     expect(store.library()).toHaveLength(0);
   });
 
-  it("refuses an unknown character word and lists every one", async () => {
+  it("refuses a character word of the wrong shape and lists every one", async () => {
     const { ThemePickerControl } = await load();
     const { container } = render(<ThemePickerControl />);
-    pick(container, fileOf(JSON.stringify({ ...copy("odd", "Odd"), version: 4, character: "dog" })));
+    pick(container, fileOf(JSON.stringify({ ...copy("odd", "Odd"), version: 4, character: "Dog" })));
     const dialog = await screen.findByRole("dialog", { name: "This file was not imported" });
     expect(dialog).toHaveTextContent("The character choice is not valid.");
     expect(dialog).toHaveTextContent('"character" must be one of: collie, kawaii, kawaii-tilt, pixel, glass, glass-front, sheep, owl.');

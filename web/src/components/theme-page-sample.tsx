@@ -9,8 +9,8 @@ import { t } from "@/lib/i18n";
 import { glyphSetName } from "@/lib/glyph-sets";
 import { markName } from "@/lib/mark-ids";
 import { isShippedFont } from "@/lib/shipped-fonts";
-import { HALF_KEYS } from "@/lib/theme/report-words";
-import { DEFAULT_THEME_ID, THEME_TOKENS, fillHalves, type Theme } from "@/lib/theme/schema";
+import { FALLBACK_KEYS, HALF_KEYS } from "@/lib/theme/report-words";
+import { DEFAULT_THEME_ID, THEME_TOKENS, fillHalves, knownCharacter, knownGlyphs, themeFallbacks, type Theme } from "@/lib/theme/schema";
 import { shippedThemes } from "@/lib/theme/store";
 import { displayDeclarations, fullSurfaceDeclarations, type Declaration } from "@/lib/theme/surface";
 
@@ -62,7 +62,7 @@ export function PageSample({ theme, half }: { theme: Theme; half: "light" | "dar
       className="overflow-hidden rounded-md border border-border text-foreground"
     >
       <div className="flex h-7 items-center gap-1.5 border-b border-band-rule bg-band-ground px-2">
-        <Icon name="theme" set={theme.glyphs ?? "lucide"} className="size-3.5 shrink-0" />
+        <Icon name="theme" set={knownGlyphs(theme) ?? "lucide"} className="size-3.5 shrink-0" />
         <span className="truncate text-xs font-semibold [font-family:var(--font-display)]">{theme.name}</span>
       </div>
       <div className="bg-background px-2 pt-1.5 pb-2 [background-image:var(--ground-image)] [background-size:var(--ground-size)]">
@@ -84,13 +84,14 @@ export function PageSample({ theme, half }: { theme: Theme; half: "light" | "dar
  */
 export function ThemeMarkLine({ theme }: { theme: Theme }) {
   useLocale();
-  if (theme.character === undefined) return null;
+  const character = knownCharacter(theme);
+  if (character === undefined) return null;
   return (
     <div data-testid="theme-mark-line" className="mt-1 flex items-center gap-2 text-sm text-muted-foreground">
       <span className="grid size-7 shrink-0 place-items-center">
-        <BrandMark mark={theme.character} size={28} weight="header" paper="var(--card)" />
+        <BrandMark mark={character} size={28} weight="header" paper="var(--card)" />
       </span>
-      <span className="min-w-0 truncate">{t("theme.preview.mark", { name: markName(theme.character) })}</span>
+      <span className="min-w-0 truncate">{t("theme.preview.mark", { name: markName(character) })}</span>
     </div>
   );
 }
@@ -105,8 +106,8 @@ const SAMPLE_GLYPHS = ["close", "send", "settings", "back", "attach"] as const s
  */
 export function ThemeGlyphsLine({ theme }: { theme: Theme }) {
   useLocale();
-  if (theme.glyphs === undefined) return null;
-  const set = theme.glyphs;
+  const set = knownGlyphs(theme);
+  if (set === undefined) return null;
   return (
     <div data-testid="theme-glyphs-line" className="mt-1 flex items-center gap-2 text-sm text-muted-foreground">
       <span className="flex shrink-0 items-center gap-1.5 text-foreground">
@@ -116,5 +117,25 @@ export function ThemeGlyphsLine({ theme }: { theme: Theme }) {
       </span>
       <span className="min-w-0 truncate">{t("theme.preview.glyphs", { name: glyphSetName(set) })}</span>
     </div>
+  );
+}
+
+/**
+ * One line for each decoration word of a theme this Collie does not have ("This Collie does not have
+ * the icon set "x"; it shows the standard icons."), or nothing. The theme still loads; the line says
+ * what this Collie draws instead. The word arrives escaped and quoted (`themeFallbacks`, F4).
+ */
+export function ThemeFallbackLines({ theme }: { theme: Theme }) {
+  useLocale();
+  const fallbacks = themeFallbacks(theme);
+  if (fallbacks.length === 0) return null;
+  return (
+    <ul className="mt-1 flex flex-col gap-0.5 text-sm text-muted-foreground">
+      {fallbacks.map((fallback) => (
+        <li key={fallback.path} data-testid="theme-fallback-line">
+          {t(FALLBACK_KEYS[fallback.part], { word: fallback.word, path: fallback.path })}
+        </li>
+      ))}
+    </ul>
   );
 }

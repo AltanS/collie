@@ -9,7 +9,7 @@
 // This file imports types only, like `schema.ts`, so the CLI can load it without a DOM or React.
 
 import type { MessageKey } from "../i18n/messages/en";
-import type { Refusal, RefusalCode } from "./schema";
+import type { FallbackPart, Refusal, RefusalCode } from "./schema";
 
 /** The refusal headlines, one per parser code. A record, so a new code cannot skip a sentence. */
 export const REFUSAL_KEYS = {
@@ -30,6 +30,14 @@ export const REFUSAL_KEYS = {
   unreadable: "theme.refusal.unreadable",
   glyphs: "theme.refusal.glyphs",
 } as const satisfies Record<RefusalCode, MessageKey>;
+
+/** The line for a decoration word this Collie does not know, one per part. `{word}` is escaped and quoted. */
+export const FALLBACK_KEYS = {
+  glyphs: "theme.fallback.glyphs",
+  character: "theme.fallback.character",
+  ground: "theme.fallback.ground",
+  font: "theme.fallback.font",
+} as const satisfies Record<FallbackPart, MessageKey>;
 
 /** The name of each half, as the picker and the contrast line say it. */
 export const HALF_KEYS = {

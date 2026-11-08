@@ -1,5 +1,5 @@
 import { DEFAULT_MARK_ID, type MarkId } from "@/lib/mark-ids";
-import type { Theme } from "@/lib/theme/schema";
+import { knownCharacter, type Theme } from "@/lib/theme/schema";
 import { activeTheme, useActiveTheme } from "@/lib/theme/store";
 import { currentTrial, useTrial } from "@/lib/theme/trial";
 
@@ -27,7 +27,7 @@ export interface MarkSources {
 /** The mark to draw: the worn theme's character, else Collie. Pure. */
 export function resolveMarkId({ trial, active }: MarkSources): MarkId {
   const worn = trial ?? active;
-  return worn.character ?? DEFAULT_MARK_ID;
+  return knownCharacter(worn) ?? DEFAULT_MARK_ID;
 }
 
 /** The mark to draw now, read once. For code that is not a component. */

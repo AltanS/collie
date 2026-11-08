@@ -263,12 +263,46 @@ export const GROUND_STRENGTHS = {
   bold: { line: 7, dot: 10, area: 5, tint: 18 },
 } as const satisfies Record<GroundStrength, Record<GroundCoverage, number>>;
 
-/** A ground in the object form. Every key is optional; a key it leaves out is the default word. */
+/**
+ * A ground in the object form, AS WRITTEN. Every key is optional; a key it leaves out is the default
+ * word. A word may be one this Collie does not know (a newer Collie's pattern): the theme keeps it, so
+ * an export writes it back and a later Collie that knows it draws it, and every reader below resolves
+ * it to the default through `knownGround` first. A word only ever reaches the page as a key of
+ * GROUND_WORDS, never as itself.
+ */
 export interface GroundSpec {
+  pattern?: string;
+  size?: string;
+  strength?: string;
+  ink?: string;
+}
+
+/** A ground in the object form with only the words this Collie knows. */
+export interface KnownGround {
   pattern?: GroundPatternWord;
   size?: GroundSize;
   strength?: GroundStrength;
   ink?: GroundInk;
+}
+
+/** The words of `spec` this Collie knows; an unknown word is left out, which is its default. Compares, never indexes. */
+export function knownGround(spec: GroundSpec): KnownGround {
+  const known: KnownGround = {};
+  const pattern = GROUND_PATTERN_WORDS.find((word) => word === spec.pattern);
+  const size = GROUND_SIZE_WORDS.find((word) => word === spec.size);
+  const strength = GROUND_STRENGTH_WORDS.find((word) => word === spec.strength);
+  const ink = GROUND_INKS.find((word) => word === spec.ink);
+  if (pattern !== undefined) known.pattern = pattern;
+  if (size !== undefined) known.size = size;
+  if (strength !== undefined) known.strength = strength;
+  if (ink !== undefined) known.ink = ink;
+  return known;
+}
+
+/** The known words of a ground, word or object. */
+function knownOf(ground: GroundWord | GroundSpec | undefined): KnownGround {
+  if (ground === undefined) return {};
+  return isGroundWord(ground) ? { pattern: ground } : knownGround(ground);
 }
 
 /** The four keys of the object form, in the order they are applied. */
@@ -313,8 +347,8 @@ export function groundWords(key: GroundKey): string[] {
 }
 
 /** A ground as its four words. A word form is its pattern; a key left out is the default word, and the ink is the pattern's own. */
-export function resolveGround(ground: GroundWord | GroundSpec | undefined): Required<GroundSpec> {
-  const spec: GroundSpec = ground === undefined ? {} : isGroundWord(ground) ? { pattern: ground } : ground;
+export function resolveGround(ground: GroundWord | GroundSpec | undefined): Required<KnownGround> {
+  const spec = knownOf(ground);
   const pattern = spec.pattern ?? "flat";
   return { pattern, size: spec.size ?? "default", strength: spec.strength ?? "default", ink: spec.ink ?? GROUND_PATTERNS[pattern].ink };
 }
@@ -324,7 +358,7 @@ export function resolveGround(ground: GroundWord | GroundSpec | undefined): Requ
  * ink the object names. Always the same eight properties, so one ground overwrites the last.
  */
 export function groundDeclarations(ground: GroundWord | GroundSpec | undefined): Declaration[] {
-  const spec: GroundSpec = ground === undefined ? {} : isGroundWord(ground) ? { pattern: ground } : ground;
+  const spec = knownOf(ground);
   const out: Declaration[] = [];
   out.push(...(GROUND_WORDS.pattern[spec.pattern ?? "flat"] ?? []));
   out.push(...(GROUND_WORDS.size[spec.size ?? "default"] ?? []));

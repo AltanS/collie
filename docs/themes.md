@@ -442,6 +442,25 @@ A file says which version it is, and Collie writes the lowest version that holds
 - A theme that names none of those keeps working on every Collie its version allows.
 - A version 1 file means the default word of each list for every token of `surface`.
 
+### A word this Collie does not know
+
+A theme made for a newer Collie still loads here, with the default for each word this Collie lacks.
+
+| Part | Default |
+| --- | --- |
+| `glyphs` | the standard icons (Lucide) |
+| `character` | the standard character |
+| `surface.ground` object: `pattern`, `size`, `strength`, `ink` | that key left out |
+| `fonts.ui`, `fonts.display` | the face you already use |
+
+- The preview and `collie theme check` print one line per such word, for example: This Collie does not
+  have the icon set "tabler"; it shows the standard icons. The check still exits 0.
+- Collie keeps the word as written. An export writes it back, and a Collie that knows it draws it.
+- The word must still look like a word: lower-case letters, digits and hyphens, 32 at most. Another
+  shape, such as `"Tabler Icons"` or a number, is refused as before.
+- Everything else stays strict: the version, every colour, every key, the ground's word form, and the
+  words of the other `surface` keys.
+
 ### The 43 tokens
 
 Each half takes any of these, in four groups.

@@ -9,6 +9,17 @@
 // token list and the word lists are CLOSED, and the parser refuses any key or word it does not name,
 // so a file can never smuggle a property into the page.
 //
+// ONE SOFT EDGE: A DECORATION WORD THIS COLLIE DOES NOT KNOW. A theme written for a newer Collie may
+// name an icon set, a character, a ground word or a face that this one lacks. Refusing the whole file
+// for it would punish the person for updating the theme before the app. So in the decoration parts
+// alone (`glyphs`, `character`, the four words of a ground object, `fonts.ui`, `fonts.display`) a word
+// of the right SHAPE (`DECORATION_WORD`) that is not on the list is kept as written, and the theme
+// loads. `themeFallbacks` lists each one for the preview and `collie theme check`, and every reader
+// resolves it to that part's default (`knownCharacter`, `knownGlyphs`, `knownGround`, `isShippedFont`),
+// so such a word never reaches the page as itself. Everything else stays strict: the version, every
+// colour, every key, the type of a value, a word of any other part, and a decoration word of the
+// wrong shape.
+//
 // VERSIONS. The parser reads 1, 2, 3 and 4 and hands back the LOWEST version that holds the content: 4
 // when the theme sets a `character` or `glyphs`, else 3 when it sets an optional token (`pane-active`, `tab-active`), else 2 when it carries
 // a surface block, a display face or a palette, else 1. So a colour-only theme is stored and
@@ -34,15 +45,12 @@ import { MARK_IDS, isMarkId, type MarkId } from "../mark-ids";
 import { SHIPPED_FONTS } from "../shipped-fonts";
 import {
   ANSI_KEYS,
-  GROUND_INKS,
   GROUND_KEYS,
-  GROUND_PATTERN_WORDS,
-  GROUND_SIZE_WORDS,
-  GROUND_STRENGTH_WORDS,
   SURFACE_TOKENS,
   groundPaint,
   groundWords,
   isGroundWord,
+  knownGround,
   resolveGround,
   isSurfaceToken,
   resolveSurface,
@@ -163,13 +171,16 @@ export interface Theme {
   surface?: Surface;
   /** Version 2: the terminal palette, all eighteen colours, dark-space and gate-checked. */
   ansi?: Ansi;
-  /** Version 4: the header character this theme wears (a `MarkId`). A device's own choice in Settings wins over it. */
-  character?: MarkId;
-  /** Version 4: the glyph set every icon is drawn in (a `GlyphSetId`). Absent is lucide. */
-  glyphs?: GlyphSetId;
+  /**
+   * Version 4: the header character this theme wears, as written: a `MarkId`, or a word this Collie
+   * does not know, drawn as the default (`knownCharacter`). A device's own choice in Settings wins over it.
+   */
+  character?: string;
+  /** Version 4: the glyph set every icon is drawn in, as written: a `GlyphSetId`, or an unknown word drawn as lucide (`knownGlyphs`). Absent is lucide. */
+  glyphs?: string;
 }
 
-/** A theme's faces. Either may be absent; an empty `fonts` object carries no key. */
+/** A theme's faces, as written: a shipped face or an unknown word (checked by `isShippedFont` where used). Either may be absent; an empty `fonts` object carries no key. */
 export interface ThemeFonts {
   ui?: string;
   display?: string;
@@ -507,7 +518,7 @@ function readGround(block: JsonObject, version: ThemeVersion | undefined, refusa
       refusals.push(unknownKey("surface.ground.", key));
       continue;
     }
-    if (!setGroundWord(ground, groundKey, asJsonString(block[key]))) {
+    if (!setGroundWord(ground, groundKey, block[key])) {
       const path = `surface.ground.${groundKey}`;
       refusals.push({ code: "surface", path, detail: `"${path}" must be one of: ${groundWords(groundKey).join(", ")}.` });
     }
@@ -515,22 +526,12 @@ function readGround(block: JsonObject, version: ThemeVersion | undefined, refusa
   return refusals.length === before ? ground : undefined;
 }
 
-/** Put `value` into `ground` as the word of `key` when it is one. False when it is not. Compares, never indexes. */
-function setGroundWord(ground: GroundSpec, key: GroundKey, value: string | undefined): boolean {
-  switch (key) {
-    case "pattern":
-      ground.pattern = GROUND_PATTERN_WORDS.find((word) => word === value);
-      return ground.pattern !== undefined;
-    case "size":
-      ground.size = GROUND_SIZE_WORDS.find((word) => word === value);
-      return ground.size !== undefined;
-    case "strength":
-      ground.strength = GROUND_STRENGTH_WORDS.find((word) => word === value);
-      return ground.strength !== undefined;
-    case "ink":
-      ground.ink = GROUND_INKS.find((word) => word === value);
-      return ground.ink !== undefined;
-  }
+/** Put `value` into `ground` as written when it is a decoration word: a known word, or an unknown one kept. False when it is not a word. */
+function setGroundWord(ground: GroundSpec, key: GroundKey, value: JsonValue | undefined): boolean {
+  const word = decorationWord(value);
+  if (word === undefined) return false;
+  ground[key] = word;
+  return true;
 }
 
 /** Put `value` into `surface` as the word of `token` when it is one. False when it is not. */
@@ -578,12 +579,75 @@ function setSurfaceWord(surface: Surface, token: SurfaceToken, value: string | u
   }
 }
 
+// ── A decoration word this Collie does not know ─────────────────────────────────────────────────
+
 /**
- * The `character` key: one of the fixed mark ids, as a word. A number, a list or an unknown word is
- * refused and names the list. A character in a file that says version 1, 2 or 3 is refused as an
+ * The shape of a decoration word: lower-case letters, digits and hyphens, a letter or digit first, 32
+ * at most. Every word on every decoration list has it, so a newer Collie's word will too. A string of
+ * another shape is not a word anyone will ship (a sentence, a URL, a control character), and is refused.
+ */
+const DECORATION_WORD = /^[a-z0-9][a-z0-9-]{0,31}$/;
+
+/** A decoration word as written, or undefined for a value that is not one (another type, another shape). */
+function decorationWord(value: JsonValue | undefined): string | undefined {
+  const word = asJsonString(value);
+  return word !== undefined && DECORATION_WORD.test(word) ? word : undefined;
+}
+
+/** The decoration parts that fall back. */
+export type FallbackPart = "glyphs" | "character" | "ground" | "font";
+
+/** One unknown decoration word: its part, where in the file, and the word, escaped for display (F4). */
+export interface Fallback {
+  part: FallbackPart;
+  path: string;
+  word: string;
+}
+
+/** The character a theme names when this Collie has it; undefined for none or an unknown word. */
+export function knownCharacter(theme: Theme): MarkId | undefined {
+  const word = theme.character;
+  return word !== undefined && isMarkId(word) ? word : undefined;
+}
+
+/** The glyph set a theme names when this Collie has it; undefined for none or an unknown word. */
+export function knownGlyphs(theme: Theme): GlyphSetId | undefined {
+  const word = theme.glyphs;
+  return word !== undefined && isGlyphSetId(word) ? word : undefined;
+}
+
+/**
+ * Every decoration word of a theme this Collie does not know, in file order: the faces, the ground's
+ * words, the character, the glyph set. Empty for a theme every word of which is known. Read off the
+ * theme, not the parse, so a stored or tried theme reports the same lines as the file did.
+ */
+export function themeFallbacks(theme: Theme): Fallback[] {
+  const out: Fallback[] = [];
+  const push = (part: FallbackPart, path: string, word: string) => out.push({ part, path, word: escapedText(word) });
+  for (const key of ["ui", "display"] as const) {
+    const face = theme.fonts?.[key];
+    if (face !== undefined && !SHIPPED_FONTS.some((font) => font === face)) push("font", `fonts.${key}`, face);
+  }
+  const ground = theme.surface?.ground;
+  if (ground !== undefined && !isGroundWord(ground)) {
+    const known = knownGround(ground);
+    for (const key of GROUND_KEYS) {
+      const word = ground[key];
+      if (word !== undefined && known[key] === undefined) push("ground", `surface.ground.${key}`, word);
+    }
+  }
+  if (theme.character !== undefined && knownCharacter(theme) === undefined) push("character", "character", theme.character);
+  if (theme.glyphs !== undefined && knownGlyphs(theme) === undefined) push("glyphs", "glyphs", theme.glyphs);
+  return out;
+}
+
+/**
+ * The `character` key: one of the fixed mark ids, as a word. A number, a list or a word of the wrong
+ * shape is refused and names the list; a word of the right shape that is not on it is kept (the soft
+ * edge in the header). A character in a file that says version 1, 2 or 3 is refused as an
  * optional token is, and the word is still read so its own fault shows too.
  */
-function readCharacter(doc: JsonObject, version: ThemeVersion | undefined, refusals: Refusal[]): MarkId | undefined {
+function readCharacter(doc: JsonObject, version: ThemeVersion | undefined, refusals: Refusal[]): string | undefined {
   if (doc.character === undefined) return undefined;
   if (version !== undefined && version < 4) {
     refusals.push({
@@ -592,8 +656,8 @@ function readCharacter(doc: JsonObject, version: ThemeVersion | undefined, refus
       detail: `A file with "character" must say version 4. This one says version ${version}.`,
     });
   }
-  const word = asJsonString(doc.character);
-  if (word === undefined || !isMarkId(word)) {
+  const word = decorationWord(doc.character);
+  if (word === undefined) {
     refusals.push({ code: "character", path: "character", detail: `"character" must be one of: ${MARK_IDS.join(", ")}.` });
     return undefined;
   }
@@ -601,11 +665,11 @@ function readCharacter(doc: JsonObject, version: ThemeVersion | undefined, refus
 }
 
 /**
- * The `glyphs` key: one of the fixed glyph set ids, as a word, refused exactly as `character` is: a
- * number, a list or an unknown word names the list, and a file that says version 1, 2 or 3 is older
- * than the key.
+ * The `glyphs` key: one of the fixed glyph set ids, as a word, read exactly as `character` is: a
+ * number, a list or a word of the wrong shape names the list, an unknown word of the right shape is
+ * kept, and a file that says version 1, 2 or 3 is older than the key.
  */
-function readGlyphs(doc: JsonObject, version: ThemeVersion | undefined, refusals: Refusal[]): GlyphSetId | undefined {
+function readGlyphs(doc: JsonObject, version: ThemeVersion | undefined, refusals: Refusal[]): string | undefined {
   if (doc.glyphs === undefined) return undefined;
   if (version !== undefined && version < 4) {
     refusals.push({
@@ -614,8 +678,8 @@ function readGlyphs(doc: JsonObject, version: ThemeVersion | undefined, refusals
       detail: `A file with "glyphs" must say version 4. This one says version ${version}.`,
     });
   }
-  const word = asJsonString(doc.glyphs);
-  if (word === undefined || !isGlyphSetId(word)) {
+  const word = decorationWord(doc.glyphs);
+  if (word === undefined) {
     refusals.push({ code: "glyphs", path: "glyphs", detail: `"glyphs" must be one of: ${GLYPH_SET_IDS.join(", ")}.` });
     return undefined;
   }
@@ -747,11 +811,10 @@ function readFonts(doc: JsonObject, version: ThemeVersion | undefined, refusals:
   return Object.keys(out).length === 0 ? undefined : out;
 }
 
-/** One face of the `fonts` object: absent, or one of the shipped faces. Anything else is refused with its path. */
+/** One face of the `fonts` object: absent, a shipped face, or an unknown word of the right shape (kept). Anything else is refused with its path. */
 function readFace(fonts: JsonObject, key: "ui" | "display", refusals: Refusal[]): string | undefined {
   if (fonts[key] === undefined) return undefined;
-  const value = asJsonString(fonts[key]);
-  const shipped = SHIPPED_FONTS.find((font) => font === value);
+  const shipped = decorationWord(fonts[key]);
   if (shipped === undefined) {
     refusals.push({
       code: "font",

@@ -47,7 +47,7 @@ import { ThemeAboutSheet } from "@/components/theme-about";
 import { dropTrial, startTrial } from "@/lib/theme/trial";
 import { registryRef, stamp, type ThemeSourceRef } from "@/lib/theme/origin";
 import type { RegistryTheme } from "@/lib/theme/registry";
-import { PageSample, ThemeGlyphsLine, ThemeMarkLine, collieTheme, displayOf, styleOf } from "@/components/theme-page-sample";
+import { PageSample, ThemeFallbackLines, ThemeGlyphsLine, ThemeMarkLine, collieTheme, displayOf, styleOf } from "@/components/theme-page-sample";
 
 // The Theme card (M57): which colour theme this device wears, and the way in and out for a theme
 // file. It sits directly ABOVE the Appearance three-way (System, Light, Dark) on purpose: the first
@@ -287,6 +287,7 @@ export function ThemePreviewSheet({ theme, onApply, onCancel, onTry, source, app
             <div className="text-sm text-muted-foreground">{t(`theme.preview.halves.${halves}`)}</div>
             <ThemeMarkLine theme={theme} />
             <ThemeGlyphsLine theme={theme} />
+            <ThemeFallbackLines theme={theme} />
           </div>
 
           <div className="flex flex-col gap-2">
