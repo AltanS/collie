@@ -14,7 +14,7 @@ import {
 import { noteSnapshotTaken } from "./snapshot-clock";
 import { markDead as markPaneDead, markLive as markPaneLive } from "./liveness";
 import { abortSignalAfter, abortSignalAny } from "./env";
-import { asJsonObject, asJsonString, parseJsonObject, type JsonObject } from "./json";
+import { asJsonObject, asJsonString, parseJson, parseJsonObject, type JsonObject, type JsonValue } from "./json";
 import { readHeldCancelAnswer, readSendReceipts, readSendReply, type SendReply } from "./send-protocol";
 import { readReportContext, type ReportContext } from "./report/context";
 import type { TroubleSignal } from "./report/signal";
@@ -26,6 +26,8 @@ import { readAskTapReply, type AskTapReply } from "./ask-reply";
 import { authHeader, clearNotPaired, EXPIRED_BODY, markExpired, markNotPaired, NOT_PAIRED_BODY } from "./pairing";
 import { pairingRefused } from "./wipe";
 import { mintRequestId } from "./worktree-name";
+import type { ModTapReply, ModsReply, TapRequest } from "./mods/schema";
+import { readModsReply, readTapReply } from "./mods/wire";
 import { fileVersionOf } from "./file-image-cache";
 import { isLead, normalizeScope, paneScopeKey, type Scope } from "./scope";
 import { closePaneNotifications } from "./pane-notifications";
@@ -2943,4 +2945,39 @@ export async function fetchSttModel(sha256: string, signal?: AbortSignal): Promi
     throw new ApiError(`${path} → ${res.status} ${detail}`, res.status, parseApiErrorFields(detail));
   }
   return res;
+}
+
+// ── MODS (M94) ───────────────────────────────────────────────────────────────────────────────
+
+/**
+ * The mod parts changed since `since`, the mod list and every part key present (`GET /api/mods`).
+ * Asked only when the snapshot's `modsRev` moved (lib/mods/store.ts `syncMods`), so it rides the
+ * snapshot's cadence and has no timer of its own. `since=0` gives every part. A body of another shape
+ * throws, so the store keeps what it holds rather than merging half a reply.
+ */
+export async function fetchMods(since: number, signal?: AbortSignal): Promise<ModsReply> {
+  const body = await req<JsonValue>(`/api/mods?since=${Math.max(0, Math.floor(since))}`, { signal, timeoutMs: POLL_TIMEOUT_MS });
+  const reply = readModsReply(body);
+  if (reply === undefined) throw new Error("/api/mods answered with a body that is not a mods reply");
+  return reply;
+}
+
+/** A refused tap that still carries a receipt is the receipt. Anything else falls through to the error. */
+function recoverTapReceipt(_status: number, detail: string): JsonValue | null {
+  const parsed = parseJson(detail);
+  return parsed !== undefined && readTapReply(parsed) !== undefined ? parsed : null;
+}
+
+/**
+ * Tap a mod's control: `POST /api/mods/<host>/<id>/tap` with the request id the caller minted. The
+ * reply is the receipt (`applied`, `replayed`, `failed`, `unknown`) and the mod's changed parts. A
+ * refusal that carries a receipt on a non-2xx status is the same value; any other refusal throws an
+ * error with its status, and the store reads that as `failed` (4xx, nothing ran) or `unknown` (5xx).
+ */
+export async function tapMod(host: string, mod: string, body: TapRequest): Promise<ModTapReply> {
+  const path = `/api/mods/${encodeURIComponent(host)}/${encodeURIComponent(mod)}/tap`;
+  const raw = await req<JsonValue>(path, { method: "POST", body: JSON.stringify(body) }, recoverTapReceipt);
+  const reply = readTapReply(raw);
+  if (reply === undefined) throw new Error(`${path} answered with a body that is not a tap receipt`);
+  return reply;
 }

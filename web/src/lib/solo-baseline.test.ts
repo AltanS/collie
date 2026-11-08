@@ -64,6 +64,9 @@ const SNAPSHOT_KEYS = {
   // Not a crew dimension: present only while the mux is down for a refused durable token (M50 spec
   // 14), so a healthy solo body carries no such key and no golden byte moved.
   muxFault: true,
+  // Not a crew dimension either: the mods revision (M94), which the phone compares to the one it holds
+  // before it asks `/api/mods` for the changes. Optional, so a bridge with no mods runner sends none.
+  modsRev: true,
 } satisfies Record<keyof SnapshotResponse, true>;
 
 const SESSION_SUMMARY_KEYS = {
@@ -243,6 +246,7 @@ describe("solo zero-tax — the client's mirror types carry no crew dimension", 
       "agents",
       "bridge",
       "device",
+      "modsRev",
       "muxFault",
       "notifications",
       "servers",

@@ -1402,6 +1402,12 @@ export interface SnapshotResponse {
   servers?: ServerSummary[];
   /** Version / upgrade status. Absent on an older bridge that doesn't report it. */
   update?: UpdateInfo;
+  /**
+   * The bridge's mods revision (M94). It rises when any mod part or the mod list changes; the phone
+   * then asks `GET /api/mods?since=<the rev it holds>` for the changes (lib/mods/store.ts `syncMods`).
+   * Absent on a bridge with no mods runner.
+   */
+  modsRev?: number;
   ts: number;
 }
 
