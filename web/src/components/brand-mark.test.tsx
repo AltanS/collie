@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { act, render, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { __resetDesign, setDesignMark } from "@/lib/design";
+import { LIBRARY_STORAGE_KEY, __resetThemeStore, setActiveTheme } from "@/lib/theme/store";
 import { collieMark, markPaper } from "@/test/collie-mark";
 
 import { MARK_IDS } from "@/lib/mark-ids";
@@ -30,8 +30,15 @@ const pending = (root: ParentNode) => root.querySelector<HTMLElement>('[data-slo
 
 beforeEach(() => {
   localStorage.clear();
-  __resetDesign();
+  __resetThemeStore();
 });
+
+/** Imports one theme per character named, `wears-<id>`, so a test can wear it with `setActiveTheme`. */
+function importCharacters(...ids: string[]): void {
+  const themes = ids.map((character) => ({ version: 4, id: `wears-${character}`, name: character, character, light: { background: "#fdfaf3" } }));
+  localStorage.setItem(LIBRARY_STORAGE_KEY, JSON.stringify({ version: 1, themes }));
+  __resetThemeStore();
+}
 
 describe("BrandMark", () => {
   it("draws the Collie mark at once, with no box and no wait, when nothing names another", () => {
@@ -83,25 +90,27 @@ describe("BrandMark", () => {
     expect(pending(container)).toBeNull();
   });
 
-  it("draws the mark the `mark` prop names, whatever the device chose", () => {
-    setDesignMark("kawaii");
+  it("draws the mark the `mark` prop names, whatever the theme names", () => {
+    importCharacters("kawaii");
+    setActiveTheme("wears-kawaii");
     const { container } = render(<BrandMark mark="collie" size={28} />);
     expect(collieMark(container)).not.toBeNull();
     expect(drawn(container)).toBeNull();
     expect(pending(container)).toBeNull();
   });
 
-  it("follows the device choice when `mark` is not given, live", async () => {
+  it("follows the worn theme's character when `mark` is not given, live", async () => {
+    importCharacters("pixel", "kawaii", "kawaii-tilt", "collie");
     const { container } = render(<BrandMark size={28} />);
     expect(pending(container)).toBeNull();
-    act(() => setDesignMark("pixel"));
+    act(() => setActiveTheme("wears-pixel"));
     await waitFor(() => expect(drawn(container)).toBe("pixel"));
     expect(collieMark(container)).toBeNull();
-    act(() => setDesignMark("kawaii"));
+    act(() => setActiveTheme("wears-kawaii"));
     await waitFor(() => expect(drawn(container)).toBe("kawaii"));
-    act(() => setDesignMark("kawaii-tilt"));
+    act(() => setActiveTheme("wears-kawaii-tilt"));
     await waitFor(() => expect(drawn(container)).toBe("kawaii-tilt"));
-    act(() => setDesignMark("collie"));
+    act(() => setActiveTheme("wears-collie"));
     expect(drawn(container)).toBeNull();
     expect(collieMark(container)).not.toBeNull();
   });

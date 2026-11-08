@@ -6,20 +6,20 @@ import type { MarkProps } from "@/components/mark-contract";
 import { useMarkId } from "@/lib/mark";
 import type { MarkId } from "@/lib/mark-ids";
 
-// THE HEADER LOGO, wherever the app lets the device or a theme choose it. Every mark is generated
+// THE HEADER LOGO, which a theme may choose (its `character`). Every mark is generated
 // upstream, sealed by a hash and implements one contract (`mark-contract.ts`), so this host is
 // hand-written around them and takes the contract's props (`state`, `beads`, `turn`, `ref` and the
 // rest) and hands every one to the mark it picks, `ref` included (React 19 passes it as a prop).
 //
-// WHICH MARK. The `mark` prop when given (the theme preview draws a theme's own mark whatever this
-// device chose); otherwise `useMarkId()`, the one resolver (`lib/mark.ts`): device choice, then the
-// worn theme's `mark`, then Collie.
+// WHICH MARK. The `mark` prop when given (the theme preview draws the previewed theme's own
+// character, not the worn one's); otherwise `useMarkId()`, the one resolver (`lib/mark.ts`): the worn
+// theme's `character`, then Collie. There is no device setting (ADR 0136).
 //
-// ONLY COLLIE IS IN THE ENTRY BUNDLE. The others are dynamic imports, so a device that never picks
-// them never downloads them. They are named exports of their generated files and mapped to the
+// ONLY COLLIE IS IN THE ENTRY BUNDLE. The others are dynamic imports, so a device that never wears
+// a theme with one never downloads it. They are named exports of their generated files and mapped to the
 // `default` React.lazy wants. Until a chunk arrives the host draws an empty box of exactly the mark's
 // size, so the header does not shift when the drawing lands. `preloadMark` starts the fetch early
-// (at startup, and when a choice is made) so that box is rarely seen.
+// (at startup, after the theme is settled) so that box is rarely seen.
 //
 // WHAT STAYS THE COLLIE MARK. The boot splash, the idle lock, the agent-start handoff and the tour
 // sheet import `CollieMark` directly and never call this. The favicon, the app icon and the splash
@@ -112,7 +112,7 @@ export class FallBackToCollie extends Component<{ props: MarkProps; children: Re
 }
 
 export interface BrandMarkProps extends MarkProps {
-  /** Draw this mark whatever the device and the theme say. Absent resolves it with `useMarkId()`. */
+  /** Draw this mark whatever the worn theme says. Absent resolves it with `useMarkId()`. */
   mark?: MarkId;
 }
 

@@ -36,7 +36,7 @@ void loadMathEngine(mathEngineOf(designPrefs()));
 initTheme();
 // A theme being tried in this tab (M59 spec 08) goes back on after a reload, over the device's own.
 resumeTrial();
-// The header logo, the same way: a device or a theme that names the Kawaii or the Pixel mark starts
+// The header logo, the same way: a theme that names a character other than Collie starts
 // fetching its chunk now, after the theme and the trial are settled (the resolver reads both), so the
 // header rarely draws its empty box. The Collie mark is in this bundle and loads nothing.
 void preloadMark(currentMarkId());

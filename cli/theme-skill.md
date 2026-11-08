@@ -44,8 +44,9 @@ CSS in it.
 
 ## Characters
 
-A character is the animated creature in the app header: a dog head with beads that circle it on an orbit.
-The favicon, the app icon and the splash always stay Collie. A theme may name one character.
+A character is a goodie for theme authors: the animated creature in the app header, a head with beads that
+circle it on an orbit. Only a theme file can name one; Settings has no switch for it, so a theme that sets
+one is the only way anyone sees it. The favicon, the app icon and the splash always stay Collie.
 
 | `character` | What it is |
 | --- | --- |
@@ -58,11 +59,9 @@ The favicon, the app icon and the splash always stay Collie. A theme may name on
 | `sheep` | A sheep in profile, the one the collie herds: a charcoal face in cream wool. |
 | `owl` | An owl from the front, the one that watches through the night, with huge amber eyes. |
 
-- Set `"character": "<id>"` only when the operator asks for a character. Without it the header keeps the
-  character the device chose, else Collie.
+- Set `"character": "<id>"` only when the operator asks for a character. Without it the header draws Collie.
 - A file with `character` is version 4. It needs a Collie newer than 1.28.0. An older Collie refuses it.
   A file that says a version below 4 and holds `character` is refused, with the version named.
-- A device choice in Settings other than "From the theme" wins over the theme's character.
 - Pair the character with the look of the theme. `pixel` suits sharp corners and a mono display face.
   `kawaii` suits round corners and soft pastel accents. `glass` suits deep slate and jewel accents.
   `sheep` and `owl` suit warm, earthy colours and a soft, friendly face.
