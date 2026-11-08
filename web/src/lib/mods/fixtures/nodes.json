@@ -1,0 +1,52 @@
+{
+  "stack": { "kind": "stack", "gap": "tight", "align": "start", "children": [{ "kind": "text", "text": "one", "lines": 1 }, { "kind": "text", "text": "two", "lines": 1 }] },
+  "row": { "kind": "row", "align": "between", "children": [{ "kind": "text", "text": "left", "lines": 1 }, { "kind": "badge", "count": 2 }] },
+  "text": { "kind": "text", "role": "body", "tone": "muted", "text": "The core leg replays recorded turns.\nIt spends no OpenRouter credit.", "lines": 2 },
+  "number": { "kind": "number", "value": "23/34", "label": "cases green", "tone": "working" },
+  "kv": { "kind": "kv", "cols": 2, "rows": [{ "label": "Harness", "value": "claude 2.1.318" }, { "label": "Mode", "value": "replay", "tone": "ok" }] },
+  "list": {
+    "kind": "list",
+    "rows": 3,
+    "items": [
+      { "text": "case 24", "detail": "send after restart", "icon": "bug", "tone": "error", "trailing": "red", "intent": "open-case", "args": { "n": 24 } },
+      { "text": "case 25", "trailing": "green" }
+    ]
+  },
+  "button": { "kind": "button", "label": "Rerun red", "intent": "rerun", "args": { "only": "red" }, "primary": true, "icon": "refresh" },
+  "progress": { "kind": "progress", "value": 68, "label": "23 of 34" },
+  "steps": {
+    "kind": "steps",
+    "steps": [
+      { "label": "Solo leg, herdr", "state": "done" },
+      { "label": "Solo leg, core", "state": "failed" },
+      { "label": "Crew leg", "state": "running" },
+      { "label": "Windows rehearsal", "state": "todo" }
+    ]
+  },
+  "mark": { "kind": "mark", "icon": "flask", "face": "23/34", "tone": "working", "label": "23 of 34 cases green", "intent": "open" },
+  "time": { "kind": "time", "at": "2026-11-08T09:38:12Z", "style": "ago", "label": "started" },
+  "grid": {
+    "kind": "grid",
+    "cols": 2,
+    "gap": "normal",
+    "children": [{ "kind": "number", "value": 3, "label": "due" }, { "kind": "number", "value": 12, "label": "open" }]
+  },
+  "spacer": { "kind": "stack", "children": [{ "kind": "text", "text": "above", "lines": 1 }, { "kind": "spacer", "size": "loose" }, { "kind": "text", "text": "below", "lines": 1 }] },
+  "divider": { "kind": "stack", "children": [{ "kind": "text", "text": "above", "lines": 1 }, { "kind": "divider" }, { "kind": "text", "text": "below", "lines": 1 }] },
+  "section": { "kind": "section", "title": "Red cases", "children": [{ "kind": "text", "text": "case 24", "lines": 1 }] },
+  "card": { "kind": "card", "gap": "tight", "children": [{ "kind": "text", "role": "title", "text": "Deploy", "lines": 1 }, { "kind": "text", "text": "green at 72f69369", "lines": 1 }] },
+  "badge": { "kind": "badge", "text": "replay", "tone": "muted" },
+  "icon": { "kind": "icon", "name": "server", "tone": "ok", "label": "server up" },
+  "link": { "kind": "link", "label": "Open the composer session", "detail": "bluefin", "icon": "terminal", "session": "bluefin:w6X:3" },
+  "log": { "kind": "log", "lines": 4, "tail": ["case 22 green", "case 23 green", "case 24 red: draft left in the box", "case 25 running"] },
+  "table": {
+    "kind": "table",
+    "columns": [{ "label": "Case" }, { "label": "Leg" }, { "label": "Time", "align": "end" }],
+    "rows": 3,
+    "items": [["24", "core", "12 s"], ["25", "core", "9 s"]]
+  },
+  "image": { "kind": "image", "src": "shots/case-24.png", "ratio": "16:9", "alt": "The reply box with the draft still in it" },
+  "bar": { "kind": "bar", "max": 34, "tone": "ok", "items": [{ "label": "herdr", "value": 34 }, { "label": "core", "value": 23 }] },
+  "spark": { "kind": "spark", "label": "turn seconds", "tone": "muted", "values": [4, 6, 5, 9, 7, 3] },
+  "ring": { "kind": "ring", "value": 68, "label": "green", "tone": "working" }
+}

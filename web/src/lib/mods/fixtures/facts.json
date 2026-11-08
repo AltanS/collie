@@ -1,0 +1,71 @@
+{
+  "timer": {
+    "v": 1,
+    "trigger": { "kind": "timer" },
+    "mod": {
+      "id": "legs",
+      "dir": "/var/home/altan/.config/collie/mods/legs",
+      "state": "/var/home/altan/.local/state/collie/mods/legs"
+    },
+    "host": "bluefin",
+    "sessions": [
+      {
+        "id": "bluefin:w6X:3",
+        "paneId": "w6X:3",
+        "name": "composer",
+        "agent": "claude",
+        "status": "working",
+        "cwd": "/var/home/altan/projects/collie-workspace/collie",
+        "space": "collie",
+        "tab": "fix",
+        "lastActiveAt": "2026-11-08T09:41:00Z"
+      },
+      { "id": "bluefin:w6X:4", "paneId": "w6X:4", "status": "idle", "cwd": "/var/home/altan" }
+    ],
+    "spaces": [{ "name": "collie", "folder": "/var/home/altan/projects/collie-workspace" }]
+  },
+  "tap": {
+    "v": 1,
+    "trigger": {
+      "kind": "tap",
+      "requestId": "7f0c1d2e-3b4a-4c5d-8e6f-708192a3b4c5",
+      "intent": "open-case",
+      "args": { "n": 24 },
+      "part": "legs",
+      "from": { "session": "bluefin:w6X:3" }
+    },
+    "mod": {
+      "id": "legs",
+      "dir": "/var/home/altan/.config/collie/mods/legs",
+      "state": "/var/home/altan/.local/state/collie/mods/legs"
+    },
+    "host": "bluefin",
+    "sessions": [],
+    "spaces": []
+  },
+  "start": {
+    "v": 1,
+    "trigger": { "kind": "start" },
+    "mod": {
+      "id": "tracker",
+      "dir": "/var/home/altan/.config/collie/mods/tracker",
+      "state": "/var/home/altan/.local/state/collie/mods/tracker"
+    },
+    "host": "bluefin",
+    "sessions": [],
+    "spaces": [{ "name": "collie" }]
+  },
+  "view": {
+    "v": 1,
+    "trigger": { "kind": "timer" },
+    "mod": {
+      "id": "touched",
+      "dir": "/var/home/altan/.config/collie/mods/touched",
+      "state": "/var/home/altan/.local/state/collie/mods/touched"
+    },
+    "host": "bluefin",
+    "sessions": [{ "id": "bluefin:w6X:3", "paneId": "w6X:3", "name": "composer", "agent": "claude", "status": "idle" }],
+    "spaces": [],
+    "session": { "id": "bluefin:w6X:3", "paneId": "w6X:3", "name": "composer", "agent": "claude", "status": "idle" }
+  }
+}

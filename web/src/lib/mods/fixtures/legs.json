@@ -1,0 +1,77 @@
+{
+  "v": 1,
+  "asOf": "2026-11-08T09:41:00Z",
+  "fresh": "90s",
+  "parts": [
+    {
+      "at": "belt",
+      "id": "belt",
+      "mark": { "icon": "flask", "face": "23/34", "tone": "working", "label": "Browser leg, 23 of 34 cases green", "intent": "open" }
+    },
+    {
+      "at": "session",
+      "id": "legs",
+      "name": "Browser leg",
+      "icon": "flask",
+      "subtitle": "case 24 red: the draft stayed in the reply box",
+      "badge": { "count": 1 },
+      "progress": { "kind": "percent", "value": 68, "label": "23 of 34" },
+      "actions": [
+        { "id": "rerun", "label": "Rerun red", "intent": "rerun", "args": { "only": "red" }, "icon": "refresh" },
+        { "id": "log", "label": "Open log", "intent": "open-log", "icon": "note" }
+      ],
+      "view": {
+        "kind": "stack",
+        "gap": "normal",
+        "children": [
+          {
+            "kind": "row",
+            "align": "between",
+            "children": [
+              { "kind": "number", "value": "23/34", "label": "cases green", "tone": "working" },
+              { "kind": "time", "at": "2026-11-08T09:38:12Z", "style": "ago", "label": "started" }
+            ]
+          },
+          {
+            "kind": "steps",
+            "steps": [
+              { "label": "Solo leg, herdr", "state": "running" },
+              { "label": "Solo leg, core", "state": "todo" },
+              { "label": "Crew leg", "state": "todo" }
+            ]
+          },
+          { "kind": "text", "role": "title", "text": "First red case", "lines": 1 },
+          {
+            "kind": "text",
+            "role": "mono",
+            "tone": "error",
+            "text": "case 24, send after restart: expected an empty reply box, found the draft",
+            "lines": 2
+          },
+          {
+            "kind": "list",
+            "rows": 3,
+            "items": [
+              {
+                "text": "case 24, send after restart",
+                "detail": "solo leg, herdr",
+                "tone": "error",
+                "trailing": "red",
+                "intent": "open-case",
+                "args": { "n": 24 }
+              }
+            ]
+          },
+          {
+            "kind": "kv",
+            "rows": [
+              { "label": "Harness", "value": "claude 2.1.318" },
+              { "label": "Mode", "value": "replay, no live turns" }
+            ]
+          },
+          { "kind": "button", "label": "Rerun red", "intent": "rerun", "args": { "only": "red" }, "primary": true }
+        ]
+      }
+    }
+  ]
+}

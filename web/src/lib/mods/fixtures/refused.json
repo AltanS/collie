@@ -1,0 +1,956 @@
+{
+ "unknown-kind": {
+  "doc": {
+   "v": 1,
+   "parts": [
+    {
+     "at": "belt",
+     "id": "belt",
+     "mark": {
+      "icon": "flask",
+      "face": "23/34"
+     }
+    },
+    {
+     "at": "session",
+     "id": "s",
+     "view": {
+      "kind": "stack",
+      "children": [
+       {
+        "kind": "text",
+        "text": "ok",
+        "lines": 1
+       },
+       {
+        "kind": "chart",
+        "values": [
+         1,
+         2
+        ]
+       }
+      ]
+     }
+    }
+   ]
+  },
+  "paths": [
+   "/parts/1/view/children/1/kind"
+  ],
+  "keeps": [
+   "belt"
+  ]
+ },
+ "missing-lines": {
+  "doc": {
+   "v": 1,
+   "parts": [
+    {
+     "at": "session",
+     "id": "s",
+     "view": {
+      "kind": "text",
+      "text": "no lines"
+     }
+    },
+    {
+     "at": "belt",
+     "id": "belt",
+     "mark": {
+      "icon": "flask",
+      "face": "23/34"
+     }
+    }
+   ]
+  },
+  "paths": [
+   "/parts/0/view/lines"
+  ],
+  "keeps": [
+   "belt"
+  ]
+ },
+ "long-subtitle": {
+  "doc": {
+   "v": 1,
+   "parts": [
+    {
+     "at": "session",
+     "id": "s",
+     "view": {
+      "kind": "text",
+      "text": "ok",
+      "lines": 1
+     },
+     "subtitle": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    }
+   ]
+  },
+  "paths": [
+   "/parts/0/subtitle"
+  ],
+  "keeps": []
+ },
+ "tab-mark-status": {
+  "doc": {
+   "v": 1,
+   "parts": [
+    {
+     "at": "tab:fix",
+     "id": "fix",
+     "mark": {
+      "icon": "flask",
+      "tone": "warn",
+      "status": "blocked"
+     }
+    }
+   ]
+  },
+  "paths": [
+   "/parts/0/mark/status"
+  ],
+  "keeps": []
+ },
+ "draft-to-name": {
+  "doc": {
+   "v": 1,
+   "parts": [
+    {
+     "at": "belt",
+     "id": "belt",
+     "mark": {
+      "icon": "flask",
+      "face": "23/34"
+     }
+    }
+   ],
+   "draft": {
+    "session": "composer",
+    "text": "fix case 24"
+   }
+  },
+  "afterTap": true,
+  "paths": [
+   "/draft/session"
+  ],
+  "keeps": [
+   "belt"
+  ]
+ },
+ "draft-to-mod-session": {
+  "doc": {
+   "v": 1,
+   "parts": [
+    {
+     "at": "belt",
+     "id": "belt",
+     "mark": {
+      "icon": "flask",
+      "face": "23/34"
+     }
+    }
+   ],
+   "draft": {
+    "session": "mod:bluefin:legs",
+    "text": "fix case 24"
+   }
+  },
+  "afterTap": true,
+  "paths": [
+   "/draft/session"
+  ],
+  "keeps": [
+   "belt"
+  ]
+ },
+ "draft-without-tap": {
+  "doc": {
+   "v": 1,
+   "parts": [
+    {
+     "at": "belt",
+     "id": "belt",
+     "mark": {
+      "icon": "flask",
+      "face": "23/34"
+     }
+    }
+   ],
+   "draft": {
+    "session": "bluefin:w6X:3",
+    "text": "fix case 24"
+   }
+  },
+  "paths": [
+   "/draft"
+  ],
+  "keeps": [
+   "belt"
+  ]
+ },
+ "open-without-tap": {
+  "doc": {
+   "v": 1,
+   "parts": [
+    {
+     "at": "belt",
+     "id": "belt",
+     "mark": {
+      "icon": "flask",
+      "face": "23/34"
+     }
+    }
+   ],
+   "open": {
+    "url": "https://example.com/"
+   }
+  },
+  "paths": [
+   "/open"
+  ],
+  "keeps": [
+   "belt"
+  ]
+ },
+ "open-http": {
+  "doc": {
+   "v": 1,
+   "parts": [],
+   "open": {
+    "url": "http://bluefin:8080/"
+   }
+  },
+  "afterTap": true,
+  "paths": [
+   "/open/url"
+  ],
+  "keeps": []
+ },
+ "unknown-part-key": {
+  "doc": {
+   "v": 1,
+   "parts": [
+    {
+     "at": "belt",
+     "id": "belt",
+     "mark": {
+      "icon": "flask",
+      "face": "23/34"
+     },
+     "color": "#ff0000"
+    }
+   ]
+  },
+  "paths": [
+   "/parts/0/color"
+  ],
+  "keeps": []
+ },
+ "unknown-top-key": {
+  "doc": {
+   "v": 1,
+   "parts": [
+    {
+     "at": "belt",
+     "id": "belt",
+     "mark": {
+      "icon": "flask",
+      "face": "23/34"
+     }
+    }
+   ],
+   "theme": "dark"
+  },
+  "paths": [
+   "/theme"
+  ],
+  "keeps": [
+   "belt"
+  ]
+ },
+ "later-place": {
+  "doc": {
+   "v": 1,
+   "parts": [
+    {
+     "at": "dashboard",
+     "id": "d",
+     "view": {
+      "kind": "text",
+      "text": "ok",
+      "lines": 1
+     }
+    },
+    {
+     "at": "belt",
+     "id": "belt",
+     "mark": {
+      "icon": "flask",
+      "face": "23/34"
+     }
+    }
+   ]
+  },
+  "paths": [
+   "/parts/0/at"
+  ],
+  "keeps": [
+   "belt"
+  ]
+ },
+ "not-a-place": {
+  "doc": {
+   "v": 1,
+   "parts": [
+    {
+     "at": "header",
+     "id": "h",
+     "line": {
+      "text": "x"
+     }
+    }
+   ]
+  },
+  "paths": [
+   "/parts/0/at"
+  ],
+  "keeps": []
+ },
+ "bad-match": {
+  "doc": {
+   "v": 1,
+   "parts": [
+    {
+     "at": "view:agent:Claude",
+     "id": "v",
+     "title": "V",
+     "view": {
+      "kind": "text",
+      "text": "ok",
+      "lines": 1
+     }
+    }
+   ]
+  },
+  "paths": [
+   "/parts/0/at"
+  ],
+  "keeps": []
+ },
+ "wrong-version": {
+  "doc": {
+   "v": 2,
+   "parts": [
+    {
+     "at": "belt",
+     "id": "belt",
+     "mark": {
+      "icon": "flask",
+      "face": "23/34"
+     }
+    }
+   ]
+  },
+  "paths": [
+   "/v"
+  ],
+  "keeps": [],
+  "whole": true
+ },
+ "parts-not-a-list": {
+  "doc": {
+   "v": 1,
+   "parts": {
+    "belt": {
+     "at": "belt",
+     "id": "belt",
+     "mark": {
+      "icon": "flask",
+      "face": "23/34"
+     }
+    }
+   }
+  },
+  "paths": [
+   "/parts"
+  ],
+  "keeps": [],
+  "whole": true
+ },
+ "duplicate-id": {
+  "doc": {
+   "v": 1,
+   "parts": [
+    {
+     "at": "session",
+     "id": "belt",
+     "view": {
+      "kind": "text",
+      "text": "ok",
+      "lines": 1
+     }
+    },
+    {
+     "at": "belt",
+     "id": "belt",
+     "mark": {
+      "icon": "flask",
+      "face": "23/34"
+     }
+    }
+   ]
+  },
+  "paths": [
+   "/parts/1/id"
+  ],
+  "keeps": [
+   "belt"
+  ]
+ },
+ "second-belt": {
+  "doc": {
+   "v": 1,
+   "parts": [
+    {
+     "at": "belt",
+     "id": "belt",
+     "mark": {
+      "icon": "flask",
+      "face": "23/34"
+     }
+    },
+    {
+     "at": "belt",
+     "id": "belt2",
+     "mark": {
+      "icon": "flask",
+      "face": "23/34"
+     }
+    }
+   ]
+  },
+  "paths": [
+   "/parts/1/at"
+  ],
+  "keeps": [
+   "belt"
+  ]
+ },
+ "status-tone": {
+  "doc": {
+   "v": 1,
+   "parts": [
+    {
+     "at": "belt",
+     "id": "belt",
+     "mark": {
+      "icon": "flask",
+      "tone": "blocked"
+     }
+    }
+   ]
+  },
+  "paths": [
+   "/parts/0/mark/tone"
+  ],
+  "keeps": []
+ },
+ "unknown-icon": {
+  "doc": {
+   "v": 1,
+   "parts": [
+    {
+     "at": "belt",
+     "id": "belt",
+     "mark": {
+      "icon": "rocket"
+     }
+    }
+   ]
+  },
+  "paths": [
+   "/parts/0/mark/icon"
+  ],
+  "keeps": []
+ },
+ "empty-mark": {
+  "doc": {
+   "v": 1,
+   "parts": [
+    {
+     "at": "belt",
+     "id": "belt",
+     "mark": {
+      "tone": "ok"
+     }
+    }
+   ]
+  },
+  "paths": [
+   "/parts/0/mark"
+  ],
+  "keeps": []
+ },
+ "tab-mark-intent": {
+  "doc": {
+   "v": 1,
+   "parts": [
+    {
+     "at": "tab:*",
+     "id": "t",
+     "mark": {
+      "count": 2,
+      "intent": "open"
+     }
+    }
+   ]
+  },
+  "paths": [
+   "/parts/0/mark/intent"
+  ],
+  "keeps": []
+ },
+ "list-rows-51": {
+  "doc": {
+   "v": 1,
+   "parts": [
+    {
+     "at": "session",
+     "id": "s",
+     "view": {
+      "kind": "list",
+      "rows": 51,
+      "items": []
+     }
+    }
+   ]
+  },
+  "paths": [
+   "/parts/0/view/rows"
+  ],
+  "keeps": []
+ },
+ "grid-cols-5": {
+  "doc": {
+   "v": 1,
+   "parts": [
+    {
+     "at": "session",
+     "id": "s",
+     "view": {
+      "kind": "grid",
+      "cols": 5,
+      "children": [
+       {
+        "kind": "text",
+        "text": "ok",
+        "lines": 1
+       }
+      ]
+     }
+    }
+   ]
+  },
+  "paths": [
+   "/parts/0/view/cols"
+  ],
+  "keeps": []
+ },
+ "spark-25": {
+  "doc": {
+   "v": 1,
+   "parts": [
+    {
+     "at": "session",
+     "id": "s",
+     "view": {
+      "kind": "spark",
+      "values": [
+       0,
+       1,
+       2,
+       3,
+       4,
+       5,
+       6,
+       7,
+       8,
+       9,
+       10,
+       11,
+       12,
+       13,
+       14,
+       15,
+       16,
+       17,
+       18,
+       19,
+       20,
+       21,
+       22,
+       23,
+       24
+      ]
+     }
+    }
+   ]
+  },
+  "paths": [
+   "/parts/0/view/values"
+  ],
+  "keeps": []
+ },
+ "five-actions": {
+  "doc": {
+   "v": 1,
+   "parts": [
+    {
+     "at": "session",
+     "id": "s",
+     "view": {
+      "kind": "text",
+      "text": "ok",
+      "lines": 1
+     },
+     "actions": [
+      {
+       "id": "a0",
+       "label": "A",
+       "intent": "a"
+      },
+      {
+       "id": "a1",
+       "label": "A",
+       "intent": "a"
+      },
+      {
+       "id": "a2",
+       "label": "A",
+       "intent": "a"
+      },
+      {
+       "id": "a3",
+       "label": "A",
+       "intent": "a"
+      },
+      {
+       "id": "a4",
+       "label": "A",
+       "intent": "a"
+      }
+     ]
+    }
+   ]
+  },
+  "paths": [
+   "/parts/0/actions"
+  ],
+  "keeps": []
+ },
+ "image-escape": {
+  "doc": {
+   "v": 1,
+   "parts": [
+    {
+     "at": "session",
+     "id": "s",
+     "view": {
+      "kind": "image",
+      "src": "../secret.png",
+      "ratio": "1:1",
+      "alt": "x"
+     }
+    }
+   ]
+  },
+  "paths": [
+   "/parts/0/view/src"
+  ],
+  "keeps": []
+ },
+ "image-ratio": {
+  "doc": {
+   "v": 1,
+   "parts": [
+    {
+     "at": "session",
+     "id": "s",
+     "view": {
+      "kind": "image",
+      "src": "a.png",
+      "ratio": "5:4",
+      "alt": "x"
+     }
+    }
+   ]
+  },
+  "paths": [
+   "/parts/0/view/ratio"
+  ],
+  "keeps": []
+ },
+ "link-two-targets": {
+  "doc": {
+   "v": 1,
+   "parts": [
+    {
+     "at": "session",
+     "id": "s",
+     "view": {
+      "kind": "link",
+      "label": "x",
+      "url": "https://a.example/",
+      "intent": "x"
+     }
+    }
+   ]
+  },
+  "paths": [
+   "/parts/0/view"
+  ],
+  "keeps": []
+ },
+ "badge-count-10000": {
+  "doc": {
+   "v": 1,
+   "parts": [
+    {
+     "at": "session",
+     "id": "s",
+     "view": {
+      "kind": "text",
+      "text": "ok",
+      "lines": 1
+     },
+     "badge": {
+      "count": 10000
+     }
+    }
+   ]
+  },
+  "paths": [
+   "/parts/0/badge/count"
+  ],
+  "keeps": []
+ },
+ "badge-text-13": {
+  "doc": {
+   "v": 1,
+   "parts": [
+    {
+     "at": "session",
+     "id": "s",
+     "view": {
+      "kind": "text",
+      "text": "ok",
+      "lines": 1
+     },
+     "badge": {
+      "text": "xxxxxxxxxxxxx"
+     }
+    }
+   ]
+  },
+  "paths": [
+   "/parts/0/badge/text"
+  ],
+  "keeps": []
+ },
+ "progress-101": {
+  "doc": {
+   "v": 1,
+   "parts": [
+    {
+     "at": "session",
+     "id": "s",
+     "view": {
+      "kind": "text",
+      "text": "ok",
+      "lines": 1
+     },
+     "progress": {
+      "kind": "percent",
+      "value": 101
+     }
+    }
+   ]
+  },
+  "paths": [
+   "/parts/0/progress/value"
+  ],
+  "keeps": []
+ },
+ "progress-failed-step": {
+  "doc": {
+   "v": 1,
+   "parts": [
+    {
+     "at": "session",
+     "id": "s",
+     "view": {
+      "kind": "text",
+      "text": "ok",
+      "lines": 1
+     },
+     "progress": {
+      "kind": "steps",
+      "steps": [
+       {
+        "label": "a",
+        "state": "failed"
+       }
+      ]
+     }
+    }
+   ]
+  },
+  "paths": [
+   "/parts/0/progress/steps/0/state"
+  ],
+  "keeps": []
+ },
+ "fresh-2s": {
+  "doc": {
+   "v": 1,
+   "parts": [
+    {
+     "at": "belt",
+     "id": "belt",
+     "mark": {
+      "icon": "flask",
+      "face": "23/34"
+     }
+    }
+   ],
+   "fresh": "2s"
+  },
+  "paths": [
+   "/fresh"
+  ],
+  "keeps": [
+   "belt"
+  ]
+ },
+ "asof-no-zone": {
+  "doc": {
+   "v": 1,
+   "parts": [
+    {
+     "at": "belt",
+     "id": "belt",
+     "mark": {
+      "icon": "flask",
+      "face": "23/34"
+     }
+    }
+   ],
+   "asOf": "2026-11-08T09:41:00"
+  },
+  "paths": [
+   "/asOf"
+  ],
+  "keeps": [
+   "belt"
+  ]
+ },
+ "control-in-label": {
+  "doc": {
+   "v": 1,
+   "parts": [
+    {
+     "at": "session",
+     "id": "s",
+     "view": {
+      "kind": "button",
+      "label": "Re\nrun",
+      "intent": "rerun"
+     }
+    }
+   ]
+  },
+  "paths": [
+   "/parts/0/view/label"
+  ],
+  "keeps": []
+ },
+ "bidi-in-text": {
+  "doc": {
+   "v": 1,
+   "parts": [
+    {
+     "at": "session",
+     "id": "s",
+     "view": {
+      "kind": "text",
+      "text": "abc‮def",
+      "lines": 1
+     }
+    }
+   ]
+  },
+  "paths": [
+   "/parts/0/view/text"
+  ],
+  "keeps": []
+ },
+ "args-without-intent": {
+  "doc": {
+   "v": 1,
+   "parts": [
+    {
+     "at": "session",
+     "id": "s",
+     "view": {
+      "kind": "list",
+      "rows": 1,
+      "items": [
+       {
+        "text": "x",
+        "args": {
+         "n": 1
+        }
+       }
+      ]
+     }
+    }
+   ]
+  },
+  "paths": [
+   "/parts/0/view/items/0/args"
+  ],
+  "keeps": []
+ },
+ "many-faults": {
+  "doc": {
+   "v": 1,
+   "parts": [
+    {
+     "at": "session",
+     "id": "s",
+     "view": {
+      "kind": "stack",
+      "children": [
+       {
+        "kind": "text",
+        "text": ""
+       },
+       {
+        "kind": "kv",
+        "rows": []
+       }
+      ]
+     },
+     "subtitle": ""
+    }
+   ]
+  },
+  "paths": [
+   "/parts/0/view/children/0/text",
+   "/parts/0/view/children/0/lines",
+   "/parts/0/view/children/1/rows",
+   "/parts/0/subtitle"
+  ],
+  "keeps": []
+ }
+}
