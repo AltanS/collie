@@ -34,6 +34,11 @@ export function currentGlyphSetId(): GlyphSetId {
   return resolveGlyphSetId({ trial: currentTrial()?.theme ?? null, active: activeTheme().theme });
 }
 
+/** The set of the stored theme, read once, whatever a trial wears: the set Back from a trial returns to. */
+export function storedGlyphSetId(): GlyphSetId {
+  return resolveGlyphSetId({ trial: null, active: activeTheme().theme });
+}
+
 /** The set to draw, reactive to the stored theme and a trial. */
 export function useGlyphSetId(): GlyphSetId {
   const trial = useTrial()?.theme ?? null;
