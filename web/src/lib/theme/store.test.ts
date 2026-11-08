@@ -305,6 +305,25 @@ describe("the library", () => {
   });
 });
 
+describe("a library another version wrote (rollback)", () => {
+  it("loads a 1.27-shaped blob, with no origins, clean: every theme kept, none with an origin, nothing written", async () => {
+    const written = blob({ version: 1, themes: [midnight("a"), midnight("b")] });
+    const { store } = await boot({ design: blob({ theme: "b" }), library: written });
+    expect(store.library().map((t) => t.id)).toEqual(["a", "b"]);
+    expect(store.originOf("a")).toBeUndefined();
+    expect(store.activeThemeId()).toBe("b");
+    expect(localStorage.getItem(LIBRARY_KEY)).toBe(written);
+  });
+
+  it("loads a blob with a sibling key it does not know, and a later save keeps the themes", async () => {
+    const { store } = await boot({ library: blob({ version: 1, themes: [midnight("a")], later: { any: "thing" } }) });
+    expect(store.library().map((t) => t.id)).toEqual(["a"]);
+    store.addImported(midnight("b"));
+    const stored = JSON.parse(localStorage.getItem(LIBRARY_KEY) ?? "{}");
+    expect(stored.themes).toEqual([midnight("a"), midnight("b")]);
+  });
+});
+
 describe("origins (theme sources)", () => {
   const SHA = "0123456789abcdef0123456789abcdef01234567";
   const NEXT_SHA = "fedcba9876543210fedcba9876543210fedcba98";

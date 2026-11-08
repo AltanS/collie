@@ -284,6 +284,9 @@ beside it, nothing to hand off, and nothing to flip back to. `--rollback` is ref
 recovery path is a reinstall of a named tag
 (`herdr plugin install AltanS/collie --ref vX.Y.Z --yes`).
 
+**A rollback from 1.28 to 1.27 keeps the version 4 themes on each phone.** Adding or removing a theme
+on 1.27 drops them; [Versions](themes.md#versions) has the detail.
+
 **Rolling back from 1.8.0 to 1.7.0 needs two hand edits in the state directory.** 1.8.0 renames the
 three state files on its first start, so `~/.local/state/collie/` now holds `crew-trust.json`,
 `crew-ops.json` and `crew-runtime.json`, and a 1.7.0 build reads only the old names. Rename all

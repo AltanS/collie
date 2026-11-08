@@ -447,6 +447,10 @@ A file says which version it is, and Collie writes the lowest version that holds
 - A theme that names none of those keeps working on every Collie its version allows.
 - A version 1 file means the default word of each list for every token of `surface`.
 
+After a rollback to 1.27, your version 4 themes and where they came from stay in the phone's storage.
+1.27 does not show them, and a device that wore one shows Collie. They come back when you update
+again. Adding or removing a theme on 1.27 saves the library without them, so do neither until then.
+
 ### A word this Collie does not know
 
 A theme made for a newer Collie still loads here, with the default for each word this Collie lacks.
