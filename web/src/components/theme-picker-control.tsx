@@ -28,6 +28,7 @@ import {
   replaceImported,
   removeImported,
   setActiveTheme,
+  type ReplaceResult,
   shippedThemes,
   useActiveTheme,
   useLibrary,
@@ -41,7 +42,7 @@ import {
   resolveSurface,
   type Ansi,
 } from "@/lib/theme/surface";
-import { CONTRAST_FAIL_KEY, HALF_KEYS, REFUSAL_KEYS, isMoreLine } from "@/lib/theme/report-words";
+import { CONTRAST_FAIL_KEY, HALF_KEYS, headlineVars, isMoreLine, refusalHeadline } from "@/lib/theme/report-words";
 import { ThemeBrowseSheet } from "@/components/theme-browse";
 import { ThemeAboutSheet } from "@/components/theme-about";
 import { dropTrial, startTrial } from "@/lib/theme/trial";
@@ -362,8 +363,9 @@ export function entryOfRefusal(refusal: Refusal): RefusalEntry {
   if (isMoreLine(refusal)) {
     return { headline: refusal.detail, tone: "neutral" };
   }
+  const headline = refusalHeadline(refusal);
   return {
-    headline: t(REFUSAL_KEYS[refusal.code]),
+    headline: t(headline.key, headlineVars(headline)),
     where: refusal.path,
     detail: refusal.code === "reserved-id" ? undefined : refusal.detail,
     tone: "danger",
@@ -479,16 +481,21 @@ const LIBRARY_REFUSALS = {
   full: "theme.library.full",
   duplicate: "theme.library.duplicate",
   invalid: "theme.library.invalid",
-  storage: "theme.library.storage",
-  changed: "theme.library.changed",
-} as const satisfies Record<LibraryReason, MessageKey>;
+} as const satisfies Record<"full" | "duplicate" | "invalid", MessageKey>;
 
-type LibraryReason = "full" | "duplicate" | "invalid" | "storage" | "changed";
-
-/** A line for a reason only the library knows: it is full, the id is taken, storage refused, the slot moved, or the store said no. */
-function libraryEntry(reason: LibraryReason): RefusalEntry {
+/** A line for a reason only the library knows: it is full, the id is taken, or the store said no. */
+function libraryEntry(reason: "full" | "duplicate" | "invalid"): RefusalEntry {
   return { headline: t(LIBRARY_REFUSALS[reason], { count: LIBRARY_MAX }), tone: "danger" };
 }
+
+/** Why an update was refused, one sentence each, and each says the theme on the device is unchanged. */
+const UPDATE_REFUSALS = {
+  invalid: "theme.update.invalid",
+  duplicate: "theme.update.duplicate",
+  "reserved-id": "theme.update.reserved-id",
+  storage: "theme.update.storage",
+  changed: "theme.update.changed",
+} as const satisfies Record<Extract<ReplaceResult, { ok: false }>["reason"], MessageKey>;
 
 /** A pick in the card puts a theme on itself, so a running trial ends without re-applying anything. */
 function pickTheme(id: string): void {
@@ -594,10 +601,14 @@ export function ThemePickerControl() {
   function apply() {
     if (preview === null) return;
     const origin = stamp(preview.source, Date.now());
-    const added =
-      preview.replaces === undefined
-        ? installTheme(preview.theme, origin)
-        : replaceImported(preview.replaces.id, preview.theme, origin, preview.replaces.sha);
+    if (preview.replaces !== undefined) {
+      const replaced = replaceImported(preview.replaces.id, preview.theme, origin, preview.replaces.sha);
+      setPreview(null);
+      if (replaced.ok) dropTrial();
+      else setRefused([{ headline: t(UPDATE_REFUSALS[replaced.reason]), tone: "danger" }]);
+      return;
+    }
+    const added = installTheme(preview.theme, origin);
     if (!added.ok) {
       setPreview(null);
       setRefused([

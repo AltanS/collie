@@ -183,7 +183,7 @@ For a theme from the list, the sheet compares it with your host's copy of the li
 | --- | --- |
 | A newer version is listed. | The list holds another commit of the same file. Tap **Update**. |
 | No newer version is listed. | You have the commit the list holds. |
-| No longer listed. | The list no longer holds the file. Your copy stays. |
+| No longer listed. Your installed copy keeps working. | The list no longer holds the file. Your copy stays. |
 | The listed version needs a newer Collie. | The list holds the file at a version this Collie cannot read. Update Collie to get it. Your copy keeps working. |
 | **Check for updates** | Your host has no copy of the list yet. The tap fetches the list once. |
 
@@ -232,12 +232,17 @@ list shows at most 25 causes, then one line "and N more". A file is refused for 
 - It has a bad `id`, `name` or `author`, or the `id` belongs to a shipped theme.
 - Its body text cannot be read: `foreground` on `background` measures under 3 in a half, or a text colour
   (`foreground` or a `*-foreground` token) is fully transparent. A token the file leaves out is measured
-  with Collie's value, the one the app fills it with.
+  with Collie's value, the one the app fills it with. The line names both colours and the ratio:
+  "light.foreground on light.background measures 2.1. It needs at least 3."
 - It would be a ninth imported theme. Collie refuses at the **Import** or **Paste** tap, before you pick a
   file, and again at **Apply**.
 
 Collie checks one more thing at **Apply**. A file whose `id` is already on the device is refused with "already
 imported". Remove the old theme first, or change the `id`.
+
+An **Update** that Collie refuses changes nothing. The sheet says why in one sentence and says that your
+current theme is unchanged: the new version fails the check, its `id` is taken, the device could not
+save it, or the theme was removed or installed again after **About** checked it.
 
 A theme changes how the app looks and nothing else. It cannot run code, load files or reach a server.
 
@@ -443,6 +448,8 @@ A file says which version it is, and Collie writes the lowest version that holds
   file is version 3. This Collie reads version 1 and 2."
 - A version 4 file needs a Collie newer than 1.28.0. An older Collie refuses it and names the version: "The
   file is version 4. This Collie reads version 1, 2 and 3."
+- From 1.28, a file of a version newer than this Collie reads says so: "This file was made for a newer
+  Collie (version 5). Update Collie to use it."
 - A newer word or token also needs a newer Collie, whatever the version says. `zoom` needs 1.26.2.
   `tabs`, `composer` and `tab-active` need a Collie newer than 1.27.0. An older Collie refuses a
   file that names one of them, because it does not know the key.

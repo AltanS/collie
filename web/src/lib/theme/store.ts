@@ -343,7 +343,7 @@ export function addImported(theme: Theme, origin?: ThemeOrigin): AddResult {
 
 export type ReplaceResult =
   | { ok: true }
-  | { ok: false; reason: Extract<AddResult, { ok: false }>["reason"] | "storage" | "changed" };
+  | { ok: false; reason: "invalid" | "duplicate" | "reserved-id" | "storage" | "changed" };
 
 /**
  * Update: put `theme` in the slot of the imported theme `oldId`, with its new origin. The cap never

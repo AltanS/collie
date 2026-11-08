@@ -2,7 +2,7 @@ import { readFileSync, statSync } from "node:fs";
 
 import { en } from "../web/src/lib/i18n/messages/en.ts";
 import { interpolate } from "../web/src/lib/i18n/template.ts";
-import { CONTRAST_FAIL_KEY, FALLBACK_KEYS, HALF_KEYS, REFUSAL_KEYS, isMoreLine } from "../web/src/lib/theme/report-words.ts";
+import { CONTRAST_FAIL_KEY, FALLBACK_KEYS, HALF_KEYS, headlineVars, isMoreLine, refusalHeadline } from "../web/src/lib/theme/report-words.ts";
 import {
   DEFAULT_THEME_ID,
   THEME_MAX_BYTES,
@@ -125,7 +125,8 @@ function collieBase(): Theme {
 
 function refusalOf(refusal: Refusal): CheckRefusal {
   if (isMoreLine(refusal)) return { code: refusal.code, headline: refusal.detail };
-  const headline = en[REFUSAL_KEYS[refusal.code]];
+  const words = refusalHeadline(refusal);
+  const headline = interpolate(en[words.key], headlineVars(words));
   if (refusal.code === "reserved-id") return { code: refusal.code, headline, path: refusal.path };
   return { code: refusal.code, headline, path: refusal.path, detail: refusal.detail };
 }

@@ -402,9 +402,26 @@ describe("ThemePickerControl", () => {
       const { container } = render(<ThemePickerControl />);
       pick(container, fileOf(JSON.stringify({ ...copy("dim", "Dim"), version: 2, ansi: { ...PALETTE, "4": "#20203a" } })));
       const dialog = await screen.findByRole("dialog", { name: "This file was not imported" });
-      expect(dialog).toHaveTextContent("A terminal colour is not valid, or it fails its contrast floor.");
-      expect(dialog).toHaveTextContent("ansi.4");
+      // The headline names both colours, the measured ratio and the floor.
+      expect(dialog).toHaveTextContent(/ansi\.4 on ansi\.ground measures \d+(\.\d+)?\. It needs at least 3\./);
       expect(store.library()).toHaveLength(0);
+    });
+
+    it("says a file of a newer version was made for a newer Collie", async () => {
+      const { ThemePickerControl } = await load();
+      const { container } = render(<ThemePickerControl />);
+      pick(container, fileOf(JSON.stringify({ ...copy("later", "Later"), version: 7 })));
+      const dialog = await screen.findByRole("dialog", { name: "This file was not imported" });
+      expect(dialog).toHaveTextContent("This file was made for a newer Collie (version 7). Update Collie to use it.");
+    });
+
+    it("names the two tokens and the ratio when page text cannot be read", async () => {
+      const { ThemePickerControl } = await load();
+      const { container } = render(<ThemePickerControl />);
+      const base = copy("grey", "Grey");
+      pick(container, fileOf(JSON.stringify({ ...base, light: { ...base.light, foreground: "#777777", background: "#808080" } })));
+      const dialog = await screen.findByRole("dialog", { name: "This file was not imported" });
+      expect(dialog).toHaveTextContent(/light\.foreground on light\.background measures \d+(\.\d+)?\. It needs at least 3\./);
     });
 
     it("exports the seven tokens as the file named them", async () => {
@@ -804,6 +821,26 @@ describe("ThemePickerControl", () => {
       expect(calls.posts).toBe(0);
     });
 
+    it("refuses an update whose theme was reinstalled after About checked it, saying the theme is unchanged", async () => {
+      hostList([copy("shared", "Shared 2")]);
+      const { ThemePickerControl, store } = await load([copy("shared", "Shared")], { shared: ORIGIN });
+      act(() => store.setActiveTheme("shared"));
+      render(<ThemePickerControl />);
+      await userEvent.click(aboutButton("Shared"));
+      const about = await screen.findByRole("dialog", { name: "About this theme" });
+      await userEvent.click(await within(about).findByRole("button", { name: "Update" }));
+      const preview = await screen.findByRole("dialog", { name: "Import this theme?" });
+      // Removed and installed again, at another commit, while the preview is open.
+      act(() => {
+        store.removeImported("shared");
+        store.addImported(copy("shared", "Shared again"), { ...ORIGIN, sha: NEW });
+      });
+      await userEvent.click(within(preview).getByRole("button", { name: "Update" }));
+      const refused = await screen.findByRole("dialog", { name: "This file was not imported" });
+      expect(refused).toHaveTextContent("This theme changed after About checked it, so your current theme is unchanged; open About again.");
+      expect(store.library().map((theme) => theme.name)).toEqual(["Shared again"]);
+    });
+
     it("Check for updates is the one tap that fetches, shown while the host has no copy", async () => {
       const calls = hostList([copy("shared", "Shared 2")], { none: true, afterPost: { sha: NEW } });
       const { ThemePickerControl, store } = await load([copy("shared", "Shared")], { shared: ORIGIN });
@@ -838,7 +875,7 @@ describe("ThemePickerControl", () => {
       render(<ThemePickerControl />);
       await userEvent.click(aboutButton("Shared"));
       const about = await screen.findByRole("dialog", { name: "About this theme" });
-      expect(await within(about).findByText("No longer listed.")).toBeInTheDocument();
+      expect(await within(about).findByText("No longer listed. Your installed copy keeps working.")).toBeInTheDocument();
       expect(within(about).queryByRole("button", { name: /Update|Check for updates/ })).toBeNull();
     });
   });
