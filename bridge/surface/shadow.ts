@@ -73,8 +73,20 @@ export interface ShadowReport {
   readonly counters: Readonly<Record<string, ShadowCounters>>;
 }
 
-/** Reads a binary's version for a profile, or null. Injected so tests run no process. */
-export type VersionReader = (profile: Profile) => Promise<string | null>;
+/**
+ * Reads a binary's version for a profile, or null. Injected so tests run no process. `paneId` is the
+ * pane the read is for, so the reader can read the program that pane runs (bridge/pane-binary.ts
+ * `createPaneVersion`, as the send path does): the PATH binary alone misses a harness the login shell
+ * does not put on the PATH.
+ */
+export type VersionReader = (profile: Profile, paneId?: string) => Promise<string | null>;
+
+/**
+ * The reader a shadow built with no `version` uses: the PATH binary on the login shell's PATH
+ * ({@link spawnBinaryVersion}). It takes no pane: a pane id is not a program, and index.ts gives the
+ * shadow the pane-aware reader.
+ */
+export const pathVersionReader: VersionReader = (profile) => spawnBinaryVersion(profile);
 
 export interface ShadowOptions {
   readonly mux: Pick<MuxAdapter, "readGrid">;
@@ -180,7 +192,7 @@ export class SurfaceShadow {
   constructor(private readonly options: ShadowOptions) {
     this.log = options.log ?? ((line) => console.log(line));
     this.now = options.now ?? (() => Date.now());
-    this.readVersion = options.version ?? spawnBinaryVersion;
+    this.readVersion = options.version ?? pathVersionReader;
   }
 
   /** The newest Surface of a pane, or undefined before its first read. */
@@ -306,22 +318,23 @@ export class SurfaceShadow {
   }
 
   /**
-   * A harness's profile and its binary's version. The first read of a profile waits for the version
-   * (the shadow runs beside the poll, never in it); later reads use the cached one and refresh it in
-   * the background once it is older than VERSION_TTL_MS.
+   * A harness's profile and its binary's version, read for the pane that asked. The first read of a
+   * profile waits for the version (the shadow runs beside the poll, never in it); later reads use the
+   * cached one and refresh it in the background once it is older than VERSION_TTL_MS. The cache stays
+   * one entry per profile.
    */
-  private async profileOf(harness: string): Promise<{ profile: Profile | null; version: string }> {
+  private async profileOf(harness: string, paneId: string): Promise<{ profile: Profile | null; version: string }> {
     const profile = findProfile(loadProfiles(), harness) ?? null;
     if (profile === null) return { profile: null, version: "-" };
     const known = this.versions.get(profile.id);
     if (known === undefined) {
-      const version = await this.readVersion(profile);
+      const version = await this.readVersion(profile, paneId);
       this.versions.set(profile.id, { version, at: this.now(), pending: false });
       return { profile, version: version ?? "unread" };
     }
     if (this.now() - known.at > VERSION_TTL_MS && !known.pending) {
       known.pending = true;
-      this.readVersion(profile).then(
+      this.readVersion(profile, paneId).then(
         (version) => this.versions.set(profile.id, { version, at: this.now(), pending: false }),
         () => this.versions.set(profile.id, { ...known, at: this.now(), pending: false }),
       );
@@ -348,7 +361,7 @@ export class SurfaceShadow {
 
   private async observePane(agent: AgentView): Promise<void> {
     const harness = agent.agent;
-    const { profile, version } = await this.profileOf(harness);
+    const { profile, version } = await this.profileOf(harness, agent.paneId);
     // The status is looked up once the binary was read, so its once-per-version note in the journal
     // names a real version. The anchors are the profile's whatever the status: the status gates the
     // send path (spec 05), not the reading.

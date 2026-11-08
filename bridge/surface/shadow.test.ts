@@ -235,6 +235,23 @@ describe("surface shadow", () => {
     expect(unread.cachedVersion(HARNESS)).toBeNull();
   });
 
+  test("the version read is told which pane it is for, so a binary off the login PATH is still found (N9)", async () => {
+    // The send path reads the pane's own program (bridge/pane-binary.ts). A binary the login PATH does
+    // not hold answers only that read: a reader that is never told the pane finds no version, and every
+    // trouble row and report from a pane with no send named the agent `@-`.
+    const asked: (string | undefined)[] = [];
+    const mux = new FakeMux();
+    const shadow = new SurfaceShadow({ mux, pollMs: 1000, log: () => {}, now: () => 1_000_000, compare: false, version: async (_profile, paneId) => {
+      asked.push(paneId);
+      return paneId === "w1:p1" ? "2.1.296" : null;
+    } });
+    mux.set("w1:p1", AGENTS, 11);
+    await shadow.observe([agent("w1:p1")]);
+    expect(asked).toEqual(["w1:p1"]);
+    expect(shadow.cachedVersion(HARNESS)).toBe("2.1.296");
+    expect(shadow.counterKeyOf("w1:p1")).toMatchObject({ version: "2.1.296" });
+  });
+
   test("the same revision is counted and logged once, however many polls see it", async () => {
     const r = rig();
     r.mux.set("w1:p1", AGENTS, 11);
