@@ -91,6 +91,29 @@ describe("ThemeBrowseSheet", () => {
     expect(within(sheet).getByText(en["theme.browse.dropped"].replace("{count}", "6"))).toBeInTheDocument();
   });
 
+  it("shows the maker as @owner from the slug and the star count, and no star part without a good count", async () => {
+    host(
+      status([
+        entry("my-day", "My day", { stars: 12 }),
+        entry("night", "Night", { stars: -1 }),
+        entry("noon", "Noon", { stars: 1.5, owner: "someone-else" }),
+        entry("dusk", "Dusk", { stars: 10_000_001 }),
+      ]),
+    );
+    const { sheet } = open();
+    await within(sheet).findByText("My day", SEEN);
+    const row = (name: string) => within(sheet).getByText(name, SEEN).closest("li");
+    expect(row("My day")).toHaveTextContent("@sam");
+    expect(row("My day")).toHaveTextContent("★ 12");
+    expect(within(row("My day") ?? sheet).getByText("12 stars on GitHub")).toBeInTheDocument();
+    for (const name of ["Night", "Noon", "Dusk"]) {
+      expect(row(name)).toHaveTextContent("@sam");
+      expect(row(name)).not.toHaveTextContent("★");
+    }
+    // An `owner` field is never read: the maker is always the slug's own first half.
+    expect(within(sheet).queryByText("@someone-else")).toBeNull();
+  });
+
   it("draws a name that holds markup as text", async () => {
     host(status([entry("x", "<img src=x onerror=alert(1)>")]));
     const { sheet } = open();
@@ -177,6 +200,12 @@ describe("the registry entry rules on the phone", () => {
     for (const bad of ["https://github.com/sam/x", "sam", "sam/x/y", "../x", "sam/..", "./x", "sam/x?y", "sam /x", "Sam_1/x", "-sam/x", ".sam/x"]) {
       expect(isRepoSlug(bad), bad).toBe(false);
     }
+  });
+
+  it("keeps stars, ignores any other extra field, and leaves the entry intact (today's reader picks named fields)", () => {
+    const [kept] = acceptedThemes(status([entry("a", "A", { stars: 3, owner: "x", avatar: "https://x/y.png", future: { v: 2 } })]));
+    expect(Object.keys(kept?.entry ?? {}).toSorted()).toEqual(["path", "repo", "sha", "stars", "text"]);
+    expect(kept?.entry.stars).toBe(3);
   });
 
   it("keeps the registry's order", () => {

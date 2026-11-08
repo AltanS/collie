@@ -8,7 +8,7 @@ import { useLocale } from "@/hooks/use-locale";
 import { apiErrorStatus, fetchThemeRegistry, refreshThemeRegistry } from "@/lib/api";
 import { timeAgo } from "@/lib/format";
 import { t, type MessageKey } from "@/lib/i18n";
-import { readRegistryEntry, repoUrl, reportUrl, type RegistryTheme } from "@/lib/theme/registry";
+import { ownerOf, readRegistryEntry, repoUrl, reportUrl, type RegistryTheme } from "@/lib/theme/registry";
 import type { Theme } from "@/lib/theme/schema";
 import type { ThemeRegistryStatus } from "@/lib/types";
 
@@ -60,6 +60,25 @@ interface RowProps {
   onTry?: (theme: Theme) => void;
 }
 
+/**
+ * Who made a listed theme and how many people starred its repo: `@owner · ★ 12`. The owner is the
+ * first half of the checked slug, as a text node, and the registry has no field that could name
+ * anyone else. No count, or one that failed the check, draws no star part.
+ */
+export function MakerLine({ repo, stars }: { repo: string; stars?: number }) {
+  return (
+    <div className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
+      <span className="truncate">{t("theme.browse.owner", { owner: ownerOf(repo) })}</span>
+      {stars !== undefined && (
+        <span className="shrink-0">
+          <span aria-hidden="true">{t("theme.browse.stars", { count: stars })}</span>
+          <span className="sr-only">{t("theme.browse.starsAria", { count: stars })}</span>
+        </span>
+      )}
+    </div>
+  );
+}
+
 function ThemeRow({ item, onInstall, onTry }: RowProps) {
   const { entry, theme } = item;
   return (
@@ -74,6 +93,7 @@ function ThemeRow({ item, onInstall, onTry }: RowProps) {
           {theme.author !== undefined && (
             <div className="truncate text-sm text-muted-foreground">{t("theme.preview.by", { author: theme.author })}</div>
           )}
+          <MakerLine repo={entry.repo} stars={entry.stars} />
           <ThemeMarkLine theme={theme} />
           <a
             href={repoUrl(entry.repo)}

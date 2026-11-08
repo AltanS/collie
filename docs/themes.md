@@ -112,7 +112,9 @@ Tap **Browse community themes** in the **Theme** card, then **Install** on a the
 
 The sheet lists the themes people share on GitHub with the topic `colliepwa-theme` (see
 [Share a theme on colliepwa.dev](#share-a-theme-on-colliepwadev)). Each row draws the theme small, in
-light and in dark, with its name, its author and a link to its repository. **Install** opens the same
+light and in dark, with its name, its author and a link to its repository. Under the name, `@owner`
+names the GitHub account that holds the repository, and `★ 12` is its star count. The owner always comes
+from the repository's own address, so a listing cannot claim another name. **Install** opens the same
 preview as **Import**, and **Apply** keeps the theme.
 
 The list comes from your host, not from the internet. **Refresh** asks the host to fetch it once from

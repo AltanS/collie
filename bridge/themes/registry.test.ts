@@ -106,6 +106,12 @@ describe("readRegistry", () => {
     expect(read.ok && Object.keys(read.themes[0] ?? {})).toEqual(["repo", "sha", "path", "text"]);
   });
 
+  test("keeps a checked star count beside the four fields, and drops a bad one without dropping the entry", () => {
+    const read = readRegistry(doc([entry({ stars: 7 }), entry({ path: "themes/b.collie-theme.json", stars: "7" })]));
+    expect(read.ok && read.themes.map((e) => e.stars)).toEqual([7, undefined]);
+    expect(read.ok && read.dropped).toBe(0);
+  });
+
   test("refuses a document of another version, a non-object, and one over the entry cap", () => {
     expect(readRegistry(doc([entry()], { v: 2 }))).toEqual({ ok: false, error: "bad-registry" });
     expect(readRegistry("[]")).toEqual({ ok: false, error: "bad-registry" });
@@ -164,6 +170,15 @@ describe("the store", () => {
     const { store: second } = store({ fetch: none, dir });
     expect((await second.status()).themes).toEqual([KEPT]);
     expect(calls).toEqual([]);
+  });
+
+  test("a star count survives the copy on disk and the read back", async () => {
+    const { fetch } = fakeFetch(() => json(doc([entry({ stars: 42 })])));
+    const { store: first, dir } = store({ fetch });
+    await first.refresh();
+    const { fetch: none } = fakeFetch(() => new Response("never"));
+    const { store: second } = store({ fetch: none, dir });
+    expect((await second.status()).themes[0]?.stars).toBe(42);
   });
 
   test("a tampered file on disk is checked again: a bad entry is dropped, a bad file reads as none", async () => {

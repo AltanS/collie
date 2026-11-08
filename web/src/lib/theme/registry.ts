@@ -12,13 +12,16 @@
 //   • `sha` is a 40-hex commit, `path` is `collie-theme.json` or `themes/<name>.collie-theme.json`.
 //   • `text` is the theme file itself, and it must pass `parseTheme` with the import cap and no
 //     shipped id, exactly as a file import must.
+//   • `stars` is optional: the repo's star count, a whole number from 0 to {@link STARS_MAX}. A value
+//     that is anything else is left out, and the entry is kept without it.
 //
-// An entry that fails any of these is dropped, never repaired. Extra keys on an entry are ignored and
-// never kept: only the four fields above leave this function.
+// An entry that fails any of the first four is dropped, never repaired. Extra keys on an entry are
+// ignored and never kept: only the fields above leave this function. The maker is never a field: it is
+// the owner half of `repo` ({@link ownerOf}), so a registry cannot claim another name.
 //
 // Like `schema.ts`, this file loads without a DOM or React, because the bridge imports it.
 
-import { asJsonObject, asJsonString, type JsonValue } from "../json";
+import { asJsonNumber, asJsonObject, asJsonString, type JsonValue } from "../json";
 import { THEME_MAX_BYTES, parseTheme, type Theme } from "./schema";
 
 // ONE RULE WITH THE SITE (F13). The site's sweep and its registry schema use these four patterns,
@@ -34,12 +37,17 @@ export const SHA_PATTERN = /^[0-9a-f]{40}$/;
 /** `collie-theme.json` at the root, or `themes/<stem>.collie-theme.json` with a stem of at most 80. */
 export const PATH_PATTERN = /^(?:collie-theme\.json|themes\/[A-Za-z0-9_-][A-Za-z0-9._-]{0,79}\.collie-theme\.json)$/;
 
+/** The most stars an entry may claim. More is not a count the phone shows. */
+export const STARS_MAX = 10_000_000;
+
 /** One kept entry, as the host stores it and the phone reads it. */
 export interface RegistryEntry {
   repo: string;
   sha: string;
   path: string;
   text: string;
+  /** The repo's star count when the site gave one that passes the check. */
+  stars?: number;
 }
 
 /** A kept entry and the theme its text parsed to. */
@@ -65,7 +73,15 @@ export function readRegistryEntry(value: JsonValue | undefined): RegistryTheme |
   if (!isRepoSlug(repo) || !SHA_PATTERN.test(sha) || !PATH_PATTERN.test(path)) return undefined;
   const parsed = parseTheme(text, { maxBytes: THEME_MAX_BYTES });
   if (!parsed.ok) return undefined;
-  return { entry: { repo, sha, path, text }, theme: parsed.theme };
+  const entry: RegistryEntry = { repo, sha, path, text };
+  const stars = asJsonNumber(record.stars);
+  if (stars !== undefined && Number.isSafeInteger(stars) && stars >= 0 && stars <= STARS_MAX) entry.stars = stars;
+  return { entry, theme: parsed.theme };
+}
+
+/** The maker of a listed theme: the owner half of its checked slug, never a field of the registry. */
+export function ownerOf(repo: string): string {
+  return repo.slice(0, repo.indexOf("/"));
 }
 
 /** The GitHub page of a repo, built on the phone from a checked slug. */
