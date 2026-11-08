@@ -212,12 +212,12 @@
    "belt"
   ]
  },
- "open-http": {
+ "open-file-url": {
   "doc": {
    "v": 1,
    "parts": [],
    "open": {
-    "url": "http://bluefin:8080/"
+    "url": "file:///etc/passwd"
    }
   },
   "afterTap": true,
