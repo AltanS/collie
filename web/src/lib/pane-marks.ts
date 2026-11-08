@@ -38,16 +38,16 @@ export type ProgressReading =
 
 /**
  * The pane's progress as something to draw, or null when there is nothing to draw. Only a pane that works
- * or waits (`working`, `blocked`) shows one, and a mod session in any state: a program owns clearing
+ * or waits (`working`, `blocked`) shows one, and a trick session in any state: a program owns clearing
  * its own, and an idle program pane that still carries one is a pane that finished. A step list reads as the running step, else the first step still to
  * do, else the last step, with its place in the list. Anything the bridge would not have kept (an unknown
  * kind, a bad step, a value outside 0 to 100) reads as absent, because a crew peer's body is not checked
  * on the way here.
  */
 export function paneProgress(pane: Pick<AgentView, "progress" | "status"> & Partial<Pick<AgentView, "kind">>): ProgressReading | null {
-  // A mod session's progress is drawn in any state (M94): a leg run that finished red still says 23 of
+  // A trick session's progress is drawn in any state (M94): a leg run that finished red still says 23 of
   // 34. A program owns clearing its own, so on its panes an idle bar is a finished one and is not drawn.
-  if (pane.kind !== "mod" && pane.status !== "working" && pane.status !== "blocked") return null;
+  if (pane.kind !== "trick" && pane.status !== "working" && pane.status !== "blocked") return null;
   const progress = asJsonObject(pane.progress);
   if (progress === undefined) return null;
   const kind = asJsonString(progress.kind);

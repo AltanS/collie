@@ -26,8 +26,8 @@ import { readAskTapReply, type AskTapReply } from "./ask-reply";
 import { authHeader, clearNotPaired, EXPIRED_BODY, markExpired, markNotPaired, NOT_PAIRED_BODY } from "./pairing";
 import { pairingRefused } from "./wipe";
 import { mintRequestId } from "./worktree-name";
-import type { ModTapReply, ModsReply, TapRequest, WireModInfo } from "./mods/schema";
-import { readMod, readModsReply, readTapReply } from "./mods/wire";
+import type { TrickTapReply, TricksReply, TapRequest, WireTrickInfo } from "./tricks/schema";
+import { readTrick, readTricksReply, readTapReply } from "./tricks/wire";
 import { fileVersionOf } from "./file-image-cache";
 import { isLead, normalizeScope, paneScopeKey, type Scope } from "./scope";
 import { closePaneNotifications } from "./pane-notifications";
@@ -2947,18 +2947,18 @@ export async function fetchSttModel(sha256: string, signal?: AbortSignal): Promi
   return res;
 }
 
-// ── MODS (M94) ───────────────────────────────────────────────────────────────────────────────
+// ── TRICKS (M94) ───────────────────────────────────────────────────────────────────────────────
 
 /**
- * The mod parts changed since `since`, the mod list and every part key present (`GET /api/mods`).
- * Asked only when the snapshot's `modsRev` moved (lib/mods/store.ts `syncMods`), so it rides the
+ * The trick parts changed since `since`, the trick list and every part key present (`GET /api/tricks`).
+ * Asked only when the snapshot's `tricksRev` moved (lib/tricks/store.ts `syncTricks`), so it rides the
  * snapshot's cadence and has no timer of its own. `since=0` gives every part. A body of another shape
  * throws, so the store keeps what it holds rather than merging half a reply.
  */
-export async function fetchMods(since: number, signal?: AbortSignal): Promise<ModsReply> {
-  const body = await req<JsonValue>(`/api/mods?since=${Math.max(0, Math.floor(since))}`, { signal, timeoutMs: POLL_TIMEOUT_MS });
-  const reply = readModsReply(body);
-  if (reply === undefined) throw new Error("/api/mods answered with a body that is not a mods reply");
+export async function fetchTricks(since: number, signal?: AbortSignal): Promise<TricksReply> {
+  const body = await req<JsonValue>(`/api/tricks?since=${Math.max(0, Math.floor(since))}`, { signal, timeoutMs: POLL_TIMEOUT_MS });
+  const reply = readTricksReply(body);
+  if (reply === undefined) throw new Error("/api/tricks answered with a body that is not a tricks reply");
   return reply;
 }
 
@@ -2969,13 +2969,13 @@ function recoverTapReceipt(_status: number, detail: string): JsonValue | null {
 }
 
 /**
- * Tap a mod's control: `POST /api/mods/<host>/<id>/tap` with the request id the caller minted. The
- * reply is the receipt (`applied`, `replayed`, `failed`, `unknown`) and the mod's changed parts. A
+ * Tap a trick's control: `POST /api/tricks/<host>/<id>/tap` with the request id the caller minted. The
+ * reply is the receipt (`applied`, `replayed`, `failed`, `unknown`) and the trick's changed parts. A
  * refusal that carries a receipt on a non-2xx status is the same value; any other refusal throws an
  * error with its status, and the store reads that as `failed` (4xx, nothing ran) or `unknown` (5xx).
  */
-export async function tapMod(host: string, mod: string, body: TapRequest): Promise<ModTapReply> {
-  const path = `/api/mods/${encodeURIComponent(host)}/${encodeURIComponent(mod)}/tap`;
+export async function tapTrick(host: string, trick: string, body: TapRequest): Promise<TrickTapReply> {
+  const path = `/api/tricks/${encodeURIComponent(host)}/${encodeURIComponent(trick)}/tap`;
   const raw = await req<JsonValue>(path, { method: "POST", body: JSON.stringify(body) }, recoverTapReceipt);
   const reply = readTapReply(raw);
   if (reply === undefined) throw new Error(`${path} answered with a body that is not a tap receipt`);
@@ -2983,15 +2983,15 @@ export async function tapMod(host: string, mod: string, body: TapRequest): Promi
 }
 
 /**
- * Switch a mod on or off: `POST /api/mods/<host>/<id>/switch` with `{ on }`. The bridge writes the
- * file `collie mod on|off` writes and answers the mod as the list now shows it. A refusal (404 for a
- * mod or host that is gone, 403 for a device that may not write) throws with its status; a body of
+ * Switch a trick on or off: `POST /api/tricks/<host>/<id>/switch` with `{ on }`. The bridge writes the
+ * file `collie trick on|off` writes and answers the trick as the list now shows it. A refusal (404 for a
+ * trick or host that is gone, 403 for a device that may not write) throws with its status; a body of
  * another shape throws too, so the caller reverts rather than showing a switch the bridge did not take.
  */
-export async function switchMod(host: string, mod: string, on: boolean): Promise<WireModInfo> {
-  const path = `/api/mods/${encodeURIComponent(host)}/${encodeURIComponent(mod)}/switch`;
+export async function switchTrick(host: string, trick: string, on: boolean): Promise<WireTrickInfo> {
+  const path = `/api/tricks/${encodeURIComponent(host)}/${encodeURIComponent(trick)}/switch`;
   const raw = await req<JsonValue>(path, { method: "POST", body: JSON.stringify({ on }) });
-  const info = readMod(raw);
-  if (info === undefined) throw new Error(`${path} answered with a body that is not a mod`);
+  const info = readTrick(raw);
+  if (info === undefined) throw new Error(`${path} answered with a body that is not a trick`);
   return info;
 }

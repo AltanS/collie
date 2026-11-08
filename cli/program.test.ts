@@ -9,7 +9,7 @@ import { CONFIG_SUBCOMMANDS } from "./config.ts";
 import { WALKY_SUBCOMMANDS } from "./walky.ts";
 import { DURABLE_SUBCOMMANDS } from "./durable-attach.ts";
 import { MUX_SUBCOMMANDS } from "./mux-list.ts";
-import { MOD_SUBCOMMANDS } from "./mod.ts";
+import { TRICK_SUBCOMMANDS } from "./trick.ts";
 import { SESSIONS_VERB } from "./sessions.ts";
 import {
   type Command,
@@ -97,8 +97,8 @@ const PUSH_VERBS = ["push"];
 const STT_VERBS = ["stt"];
 /** The config-file tree (ADR 0040). Declared right after `stt`, for the same reasons. */
 const CONFIG_VERBS = ["config"];
-// Collie mods (M94 slice 01). Declared after `config`: a mod is a folder in the same config dir.
-const MOD_VERBS = ["mod"];
+// Collie tricks (M94 slice 01). Declared after `config`: a trick is a folder in the same config dir.
+const TRICK_VERBS = ["trick"];
 const DURABLE_VERBS = ["durable"];
 // `mux list` (M76 spec 02). Declared after `durable`: it reads the multiplexers the durable adapter is one of.
 const MUX_VERBS = ["mux"];
@@ -128,7 +128,7 @@ describe("the verb table", () => {
       ...PUSH_VERBS,
       ...STT_VERBS,
       ...CONFIG_VERBS,
-      ...MOD_VERBS,
+      ...TRICK_VERBS,
       ...DURABLE_VERBS,
       ...MUX_VERBS,
       ...SESSIONS_VERBS,
@@ -436,8 +436,8 @@ describe("the subcommand trees", () => {
     expect(findCommand("durable")?.subcommands?.map((s) => s.name)).toEqual([...DURABLE_SUBCOMMANDS]);
   });
 
-  test("`mod` declares exactly `cli/mod.ts`'s sub-verbs, in its order", () => {
-    expect(findCommand("mod")?.subcommands?.map((s) => s.name)).toEqual([...MOD_SUBCOMMANDS]);
+  test("`trick` declares exactly `cli/trick.ts`'s sub-verbs, in its order", () => {
+    expect(findCommand("trick")?.subcommands?.map((s) => s.name)).toEqual([...TRICK_SUBCOMMANDS]);
   });
 
   test("`mux` declares exactly `cli/mux-list.ts`'s sub-verbs, in its order", () => {
@@ -454,7 +454,7 @@ describe("the subcommand trees", () => {
       "push",
       "stt",
       "config",
-      "mod",
+      "trick",
       "durable",
       "mux",
       "walky",
@@ -583,9 +583,9 @@ describe("exit codes", () => {
       // that same real path before they decide anything. cli/config.test.ts drives all three against
       // fakes in a temp dir.
       ...CONFIG_VERBS,
-      // `mod on`/`off`/`init` write into the developer's own config and state dirs, `list` dials this
-      // host's bridge, and `check --run` runs a provider. cli/mod.test.ts drives all five against temp dirs.
-      ...MOD_VERBS,
+      // `trick on`/`off`/`init` write into the developer's own config and state dirs, `list` dials this
+      // host's bridge, and `check --run` runs a provider. cli/trick.test.ts drives all five against temp dirs.
+      ...TRICK_VERBS,
       ...DURABLE_VERBS,
       // `mux list` resolves the real context and reads the real hook target registry, and removes the
       // record of a dead bridge there. cli/mux-list.test.ts drives it against fakes.

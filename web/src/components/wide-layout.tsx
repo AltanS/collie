@@ -30,7 +30,7 @@ import { writeRefusal } from "@/lib/host-health";
 import { hostKey, hostName, isMultiHost, paneRowKey } from "@/lib/hosts";
 import { t } from "@/lib/i18n";
 import { useLaunchers } from "@/lib/launchers";
-import { homePath, modSessionPath, newPath, panePath } from "@/lib/nav";
+import { homePath, trickSessionPath, newPath, panePath } from "@/lib/nav";
 import { useTabLook } from "@/lib/tab-look";
 import type { WorkspaceGroup } from "@/lib/pane-groups";
 import { paneName } from "@/lib/pane-name";
@@ -829,9 +829,9 @@ function SidebarList({ agent, paneId, scope, onSelect }: { agent: AgentView | un
         shellPanes={root.shellPanes}
         currentPaneKey={agent ? paneRowKey(agent) : ""}
         onSelect={onSelect}
-        // The Mods Space's sessions (M94 slice 03), one level down from the pane.
-        modSessions={root.modSessions}
-        onSelectMod={(pane) => nav.down(modSessionPath(pane.paneId))}
+        // The Tricks Space's sessions (M94 slice 03), one level down from the pane.
+        trickSessions={root.trickSessions}
+        onSelectTrick={(pane) => nav.down(trickSessionPath(pane.paneId))}
         tabs={root.tabs}
         servers={root.servers}
         workspaces={root.workspaces}

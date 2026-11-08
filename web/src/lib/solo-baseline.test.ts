@@ -64,9 +64,9 @@ const SNAPSHOT_KEYS = {
   // Not a crew dimension: present only while the mux is down for a refused durable token (M50 spec
   // 14), so a healthy solo body carries no such key and no golden byte moved.
   muxFault: true,
-  // Not a crew dimension either: the mods revision (M94), which the phone compares to the one it holds
-  // before it asks `/api/mods` for the changes. Optional, so a bridge with no mods runner sends none.
-  modsRev: true,
+  // Not a crew dimension either: the tricks revision (M94), which the phone compares to the one it holds
+  // before it asks `/api/tricks` for the changes. Optional, so a bridge with no tricks runner sends none.
+  tricksRev: true,
 } satisfies Record<keyof SnapshotResponse, true>;
 
 const SESSION_SUMMARY_KEYS = {
@@ -183,7 +183,7 @@ const AGENT_VIEW_KEYS = {
   walkyOff: true,
   // How many pins the pane's session holds (M90). Present only above zero, so a solo golden body carries no such key.
   pins: true,
-  // A mod session's part key (M94 slice 03). Present only on a pane of `kind: "mod"`, so a solo golden body carries no such key.
+  // A trick session's part key (M94 slice 03). Present only on a pane of `kind: "trick"`, so a solo golden body carries no such key.
   view: true,
 } satisfies Record<keyof AgentView, true>;
 
@@ -248,13 +248,13 @@ describe("solo zero-tax — the client's mirror types carry no crew dimension", 
       "agents",
       "bridge",
       "device",
-      "modsRev",
       "muxFault",
       "notifications",
       "servers",
       "sessions",
       "shellPanes",
       "tabs",
+      "tricksRev",
       "ts",
       "update",
       "workspaces",

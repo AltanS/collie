@@ -142,7 +142,7 @@ export interface ComposerHandle {
    */
   startMessage: (aim: WalkyAim) => void;
   /**
-   * Put a mod's draft in the reply box (M94 slice 03) and focus it, only when the box is empty (no text
+   * Put a trick's draft in the reply box (M94 slice 03) and focus it, only when the box is empty (no text
    * and no chip). Returns false, and changes nothing, when the box holds something.
    */
   placeDraft: (text: string) => boolean;
@@ -328,7 +328,7 @@ interface ComposerProps {
    * Settings → Pane navigation is Joystick (ADR 0121). The pane decides; absent, nothing is drawn.
    */
   aboveBelt?: ReactNode;
-  /** The mods' marks on the belt's pinned block (M94 slice 03), in manifest order. Absent: the belt is what it was. */
+  /** The tricks' marks on the belt's pinned block (M94 slice 03), in manifest order. Absent: the belt is what it was. */
   beltMarks?: readonly BeltMark[];
 
   /**
@@ -1214,7 +1214,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         focusInputImmediately();
       },
       placeDraft: (incoming) => {
-        // A mod's draft (M94 slice 03) fills an EMPTY box and never overwrites: text or a chip in the
+        // A trick's draft (M94 slice 03) fills an EMPTY box and never overwrites: text or a chip in the
         // box refuses it, and the caller says so in a toast. Through the ref, so the handle is made once.
         if (inputValueRef.current.trim() !== "" || attachmentsRef.current.length > 0) return false;
         updateInputRef.current(incoming);

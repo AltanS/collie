@@ -104,7 +104,7 @@ import {
 import { fingerprintRoot, handMadeDoors, mountName, parseRecord, parseServeStatus, rootAvailability } from "./serve.ts";
 import type { Exec, Files } from "./sys.ts";
 import { whistleModelFindings, type WhistleSeams } from "./stt-whistle.ts";
-import { modsFindings } from "./mod-findings.ts";
+import { tricksFindings } from "./trick-findings.ts";
 import { BUILD_MARKER, currentVersionDir, listVersions, platformId, readBuildMarker } from "./update.ts";
 import { settingsHold } from "./hold-entry.ts";
 import { loadProfiles } from "../web/src/lib/surface/profile.ts";
@@ -313,9 +313,9 @@ export async function cmdDoctor(deps: DoctorDeps, args: readonly string[]): Prom
     // The Whistle model (ADR 0096): one finding when the model, or the host engine that needs it, is
     // on this host, and none otherwise. A host that never heard of Whistle reads exactly as before.
     ...(await whistleModelFindings(deps)),
-    // Collie mods (M94): one `mods` row with each mod's state, last error and the runner's PATH, and
-    // none when there is no mods folder, so a host that never made a mod reads exactly as before.
-    ...(await modsFindings(deps)),
+    // Collie tricks (M94): one `tricks` row with each trick's state, last error and the runner's PATH, and
+    // none when there is no tricks folder, so a host that never made a trick reads exactly as before.
+    ...(await tricksFindings(deps)),
     // Why a pane's History link is not there (issue #137) — its own module, because the chain it
     // walks (Herdr's build, its per-agent hook, the interpreter that hook needs, what the bridge
     // reports per pane, where a journal would be read from) is a section rather than a check.

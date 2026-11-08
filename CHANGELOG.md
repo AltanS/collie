@@ -25,7 +25,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Added
 
-- **A mod can show a mark on the belt and a session of its own.** A mod's belt mark stands between the pins mark and Changes, in its own frame. A tap runs the mod's action and shows a spinner until the answer comes, or opens the mod's session. Each mod session is a row in a Mods group on the Dashboard and in Switch session. Its screen shows the mod's view and up to four buttons, with no reply box. A draft from a mod fills a session's reply box only when the box is empty.
+- **A trick can show a mark on the belt and a session of its own.** A trick's belt mark stands between the pins mark and Changes, in its own frame. A tap runs the trick's action and shows a spinner until the answer comes, or opens the trick's session. Each trick session is a row in a Tricks group on the Dashboard and in Switch session. Its screen shows the trick's view and up to four buttons, with no reply box. A draft from a trick fills a session's reply box only when the box is empty.
 
 ### Fixed
 

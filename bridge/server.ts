@@ -211,9 +211,9 @@ import { modeForWire } from "./crew/mode.ts";
 import type { CrewRuntime } from "./crew/config.ts";
 import type { CrewLead } from "./crew/lead.ts";
 import { crewDeviceOf, crewGate, type GateLevel } from "./crew/peer-gate.ts";
-import { modsSwitchRoute, modsTapRoute, parseSince } from "./mods/routes.ts";
-import { placeModSessions } from "./mods/panes.ts";
-import type { ModsSurface } from "./mods/service.ts";
+import { tricksSwitchRoute, tricksTapRoute, parseSince } from "./tricks/routes.ts";
+import { placeTrickSessions } from "./tricks/panes.ts";
+import type { TricksSurface } from "./tricks/service.ts";
 import { snapshotPlan } from "./crew/merge.ts";
 import { selectHostFrom, type HostSelector } from "./crew/registry.ts";
 import { crewHerdTagFor } from "./crew/tags.ts";
@@ -565,11 +565,11 @@ const WALKY_PANE_ROUTE = /^\/api\/pane\/([^/]+)\/walky$/;
 // The id's shape is the handler's check (`isWalkyId`), so the route table keeps one shape of segment.
 const WALKY_CANCEL_ROUTE = /^\/api\/walky\/([^/]+)\/cancel$/;
 const WALKY_DROP_ROUTE = /^\/api\/pane\/([^/]+)\/walky\/([^/]+)\/drop$/;
-// Collie mods (M94 slice 01): a tap on a mod's control, on this bridge's own host. The list and the
-// parts are `GET /api/mods`, an exact path below.
-const MODS_TAP_ROUTE = /^\/api\/mods\/([^/]+)\/([^/]+)\/tap$/;
-// And the off switch (M94 slice 04): write-gated like the tap, the same file `collie mod on|off` writes.
-const MODS_SWITCH_ROUTE = /^\/api\/mods\/([^/]+)\/([^/]+)\/switch$/;
+// Collie tricks (M94 slice 01): a tap on a trick's control, on this bridge's own host. The list and the
+// parts are `GET /api/tricks`, an exact path below.
+const TRICKS_TAP_ROUTE = /^\/api\/tricks\/([^/]+)\/([^/]+)\/tap$/;
+// And the off switch (M94 slice 04): write-gated like the tap, the same file `collie trick on|off` writes.
+const TRICKS_SWITCH_ROUTE = /^\/api\/tricks\/([^/]+)\/([^/]+)\/switch$/;
 
 /**
  * How long a worktree create may hold its connection open, in seconds (ADR 0089). Above Herdr's own
@@ -1469,12 +1469,12 @@ export function startServer(opts: {
    */
   machines?: MachineSurface;
   /**
-   * Collie mods (M94 slice 01, `bridge/mods/service.ts`): the runner's rev for the snapshot, the watch
-   * stamp, and the two mods routes. Absent means no `modsRev` on any snapshot and both routes answer
+   * Collie tricks (M94 slice 01, `bridge/tricks/service.ts`): the runner's rev for the snapshot, the watch
+   * stamp, and the two tricks routes. Absent means no `tricksRev` on any snapshot and both routes answer
    * 404, which is every test that builds this server by hand. `bridge/index.ts` always passes one; it
-   * reads nothing but a missing folder until the operator makes `<configDir>/mods/`.
+   * reads nothing but a missing folder until the operator makes `<configDir>/tricks/`.
    */
-  mods?: ModsSurface;
+  tricks?: TricksSurface;
 }) {
   const { cfg, registry, push, snooze, notifyPrefs, updateMonitor, audit, activity, crew } = opts;
   // The prompt-cache ledger, built in bridge/index.ts beside the journal registry it probes through,
@@ -1885,17 +1885,17 @@ export function startServer(opts: {
     if (device !== null) body.device = device;
     // Only while the mux is down for a cause the phone words (a refused token), like `device`.
     if (muxFault !== undefined) body.muxFault = muxFault;
-    // Only when a mods folder exists (M94): an install with no mods sends the bytes it always sent.
-    const modsRev = opts.mods?.rev();
-    if (modsRev !== undefined) body.modsRev = modsRev;
-    // The mod sessions (M94 slice 03, bridge/mods/panes.ts): the Mods Space after the real Spaces, a
-    // tab per mod, a pane per session part. Added AFTER `sessions` took its counts and outside every
-    // state engine, so no count, triage or push ever sees one. None without a mod session.
-    const modSessions = opts.mods?.sessionPanes();
-    if (modSessions !== undefined) {
-      const placed = placeModSessions(modSessions, {
+    // Only when a tricks folder exists (M94): an install with no tricks sends the bytes it always sent.
+    const tricksRev = opts.tricks?.rev();
+    if (tricksRev !== undefined) body.tricksRev = tricksRev;
+    // The trick sessions (M94 slice 03, bridge/tricks/panes.ts): the Tricks Space after the real Spaces, a
+    // tab per trick, a pane per session part. Added AFTER `sessions` took its counts and outside every
+    // state engine, so no count, triage or push ever sees one. None without a trick session.
+    const trickSessions = opts.tricks?.sessionPanes();
+    if (trickSessions !== undefined) {
+      const placed = placeTrickSessions(trickSessions, {
         numbers: body.workspaces.map((w) => w.number),
-        // A widened body tags every pane with its session (types.ts says why); a mod pane takes the primary's.
+        // A widened body tags every pane with its session (types.ts says why); a trick pane takes the primary's.
         session: widen ? registry.primary : undefined,
       });
       body.workspaces = [...body.workspaces, placed.workspace];
@@ -2986,8 +2986,8 @@ export function startServer(opts: {
         // rule 1). By pairing label only, so the host's CLI and an unpaired caller stamp nothing.
         const poller = pairedLabel(req, pairingGate);
         if (poller !== null) push.notePoll(poller);
-        // And for the mods runner (M94): timers run only while a paired phone has looked lately.
-        if (poller !== null) opts.mods?.noteWatched();
+        // And for the tricks runner (M94): timers run only while a paired phone has looked lately.
+        if (poller !== null) opts.tricks?.noteWatched();
         // `?sessions=all` WIDENS the pane lists to every session on ONE machine (see localSnapshot).
         // One exact spelling and nothing else is accepted: the parameter is a switch, not a list, and
         // a typo must read as "no" rather than as some third behaviour. It does NOT replace
@@ -3032,25 +3032,25 @@ export function startServer(opts: {
         return surfaceRoute(rt.surface, url.searchParams.get("pane"), cfg.redact, req.headers.get("accept-encoding"));
       }
 
-      // ── Collie mods (M94 slice 01) ───────────────────────────────────────
+      // ── Collie tricks (M94 slice 01) ───────────────────────────────────────
       // The parts and the list since a rev, and a tap. Both are this bridge's own, gated like the
       // snapshot (a tap as a write, since it runs the provider), and both answer 404 without a runner.
-      // `?host=` plays no part: the mod's host is in the tap's path, and a foreign one is 404 until
+      // `?host=` plays no part: the trick's host is in the tap's path, and a foreign one is 404 until
       // the crew merge (a later slice).
-      if (pathname === "/api/mods" && req.method === "GET") {
+      if (pathname === "/api/tricks" && req.method === "GET") {
         const denied = guard(req, cfg, "read", pairingGate);
         if (denied) return denied;
-        const mods = opts.mods;
-        if (mods === undefined) return jsonError({ error: "not found" }, 404, null);
-        if (pairedLabel(req, pairingGate) !== null) mods.noteWatched();
-        return json(await mods.reply(parseSince(url.searchParams.get("since"))), req.headers.get("accept-encoding"));
+        const tricks = opts.tricks;
+        if (tricks === undefined) return jsonError({ error: "not found" }, 404, null);
+        if (pairedLabel(req, pairingGate) !== null) tricks.noteWatched();
+        return json(await tricks.reply(parseSince(url.searchParams.get("since"))), req.headers.get("accept-encoding"));
       }
-      const modsTap = MODS_TAP_ROUTE.exec(pathname);
-      if (modsTap !== null && req.method === "POST") {
+      const tricksTap = TRICKS_TAP_ROUTE.exec(pathname);
+      if (tricksTap !== null && req.method === "POST") {
         const denied = guard(req, cfg, "write", pairingGate);
         if (denied) return denied;
-        const mods = opts.mods;
-        if (mods === undefined) return jsonError({ error: "not found" }, 404, null);
+        const tricks = opts.tricks;
+        if (tricks === undefined) return jsonError({ error: "not found" }, 404, null);
         let body: JsonValue | undefined;
         try {
           // SAFETY: `Request.json()` output IS a JsonValue by construction; `parseTapRequest` checks every field.
@@ -3058,23 +3058,23 @@ export function startServer(opts: {
         } catch {
           body = undefined;
         }
-        const answer = await modsTapRoute(mods, modsTap, body);
+        const answer = await tricksTapRoute(tricks, tricksTap, body);
         return json(answer.body, req.headers.get("accept-encoding"), answer.status);
       }
-      const modsSwitch = MODS_SWITCH_ROUTE.exec(pathname);
-      if (modsSwitch !== null && req.method === "POST") {
+      const tricksSwitch = TRICKS_SWITCH_ROUTE.exec(pathname);
+      if (tricksSwitch !== null && req.method === "POST") {
         const denied = guard(req, cfg, "write", pairingGate);
         if (denied) return denied;
-        const mods = opts.mods;
-        if (mods === undefined) return jsonError({ error: "not found" }, 404, null);
+        const tricks = opts.tricks;
+        if (tricks === undefined) return jsonError({ error: "not found" }, 404, null);
         let body: JsonValue | undefined;
         try {
-          // SAFETY: `Request.json()` output IS a JsonValue by construction; `modsSwitchRoute` checks the shape.
+          // SAFETY: `Request.json()` output IS a JsonValue by construction; `tricksSwitchRoute` checks the shape.
           body = (await req.json()) as JsonValue;
         } catch {
           body = undefined;
         }
-        const answer = await modsSwitchRoute(mods, modsSwitch, body);
+        const answer = await tricksSwitchRoute(tricks, tricksSwitch, body);
         return json(answer.body, req.headers.get("accept-encoding"), answer.status);
       }
 

@@ -52,7 +52,7 @@ import {
   type LifecycleDeps,
 } from "./lifecycle.ts";
 import { cmdLink, cmdUnlink, type LinkDeps, realLinkFs } from "./link.ts";
-import { cmdMod, cmdModCheck, cmdModInit, cmdModList, cmdModSwitch, MOD_SUBCOMMANDS, type ModDeps } from "./mod.ts";
+import { cmdTrick, cmdTrickCheck, cmdTrickInit, cmdTrickList, cmdTrickSwitch, TRICK_SUBCOMMANDS, type TrickDeps } from "./trick.ts";
 import { cmdMuxProbe } from "./mux-probe.ts";
 import {
   cmdJoin,
@@ -369,8 +369,8 @@ function configVerbDeps(io: Io): ConfigDeps {
   return configDeps(loadContext(io.err), io, realFiles);
 }
 
-/** `mod`: the context, the filesystem, and the one read `list` makes of this instance's own bridge. */
-function modVerbDeps(io: Io): ModDeps {
+/** `trick`: the context, the filesystem, and the one read `list` makes of this instance's own bridge. */
+function trickVerbDeps(io: Io): TrickDeps {
   return { ctx: loadContext(io.err), io, files: realFiles, fetch: (url, init) => fetch(url, init), now: Date.now };
 }
 
@@ -940,41 +940,41 @@ export const COMMANDS: readonly Command[] = [
     // Bare or misspelt lands here, and `cmdConfig` owns that message — as `cmdStt` does.
     run: (args, s) => cmdConfig(configVerbDeps(s.io), args),
   },
-  // ── Collie mods (M94 slice 01) ─────────────────────────────────────────────
+  // ── Collie tricks (M94 slice 01) ─────────────────────────────────────────────
   // Declared beside `config` because it is the same shape of verb: a tree the operator's own terminal
   // drives, over folders in their own config dir. `on` and `off` write the switch file the running
   // bridge rereads; nothing is restarted. `check --run` runs the provider once, as the bridge would.
   {
-    name: "mod",
-    summary: `Collie mods, programs whose output the phone draws: ${MOD_SUBCOMMANDS.join(", ")}`,
+    name: "trick",
+    summary: `Collie tricks, programs whose output the phone draws: ${TRICK_SUBCOMMANDS.join(", ")}`,
     subcommands: [
       {
         name: "list",
-        summary: "every mod folder: its switch, state, last run and last error (--json)",
-        run: async (args, s) => await cmdModList(modVerbDeps(s.io), args),
+        summary: "every trick folder: its switch, state, last run and last error (--json)",
+        run: async (args, s) => await cmdTrickList(trickVerbDeps(s.io), args),
       },
       {
         name: "on",
-        summary: "switch a mod on: <id>",
-        run: async (args, s) => await cmdModSwitch(modVerbDeps(s.io), args, true),
+        summary: "switch a trick on: <id>",
+        run: async (args, s) => await cmdTrickSwitch(trickVerbDeps(s.io), args, true),
       },
       {
         name: "off",
-        summary: "switch a mod off: <id>",
-        run: async (args, s) => await cmdModSwitch(modVerbDeps(s.io), args, false),
+        summary: "switch a trick off: <id>",
+        run: async (args, s) => await cmdTrickSwitch(trickVerbDeps(s.io), args, false),
       },
       {
         name: "check",
-        summary: "check a mod folder: its manifest, places and command lines (--run runs it once, --json)",
-        run: async (args, s) => await cmdModCheck(modVerbDeps(s.io), args),
+        summary: "check a trick folder: its manifest, places and command lines (--run runs it once, --json)",
+        run: async (args, s) => await cmdTrickCheck(trickVerbDeps(s.io), args),
       },
       {
         name: "init",
-        summary: "make a new mod folder with a sample provider: <id>",
-        run: async (args, s) => await cmdModInit(modVerbDeps(s.io), args),
+        summary: "make a new trick folder with a sample provider: <id>",
+        run: async (args, s) => await cmdTrickInit(trickVerbDeps(s.io), args),
       },
     ],
-    run: (args, s) => cmdMod({ io: s.io }, args),
+    run: (args, s) => cmdTrick({ io: s.io }, args),
   },
   // ── Durable programs (M55, ADR 0104) ───────────────────────────────────────
   // Declared beside `config` because it is the same shape of verb: a tree the operator's own

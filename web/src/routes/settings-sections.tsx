@@ -35,7 +35,7 @@ import { TourControl } from "@/components/tour-control";
 import { TypefaceControl } from "@/components/typeface-control";
 import { TelemetrySettingsCard, TelemetrySettingsRow } from "@/components/telemetry-settings-card";
 import { MathControl } from "@/components/math-control";
-import { ModsSettingsCard } from "@/components/mods-settings-card";
+import { TricksSettingsCard } from "@/components/tricks-settings-card";
 import { ZenControl } from "@/components/zen-control";
 import { useServerDiagnostics } from "@/hooks/use-server-diagnostics";
 import { EMPTY_DEVICES, type DevicesData } from "@/lib/loaders";
@@ -261,15 +261,15 @@ export function SettingsExperimentsRoute() {
 }
 
 /**
- * Settings → Mods (M94 slice 04): one card, one switch per mod. Its own section rather than a card
- * on System, because the rows are per MOD, a list that grows with every folder the operator makes
+ * Settings → Tricks (M94 slice 04): one card, one switch per trick. Its own section rather than a card
+ * on System, because the rows are per TRICK, a list that grows with every folder the operator makes
  * (the same reason Harnesses is a page of its own). The index offers the row only while the phone
- * holds a mods reply; the route is reachable by URL either way, and the card then draws nothing.
+ * holds a tricks reply; the route is reachable by URL either way, and the card then draws nothing.
  */
-export function SettingsModsRoute() {
+export function SettingsTricksRoute() {
   return (
-    <SettingsPage title="settings.section.mods.title">
-      <ModsSettingsCard />
+    <SettingsPage title="settings.section.tricks.title">
+      <TricksSettingsCard />
     </SettingsPage>
   );
 }

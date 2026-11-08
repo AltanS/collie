@@ -318,12 +318,12 @@ function idOf(object: JsonObject, key: string): string | null {
 }
 
 /**
- * The prefix of Collie mods' own Space, tab and session ids (M94, web/src/lib/mods/schema.ts
- * `MOD_SESSION_PREFIX`). Reserved the way ADR 0104 reserves a source name: a workspace, tab or pane a
- * program names with it is dropped like a bad id, so a program's conversation never answers to a mod
+ * The prefix of Collie tricks' own Space, tab and session ids (M94, web/src/lib/tricks/schema.ts
+ * `TRICK_SESSION_PREFIX`). Reserved the way ADR 0104 reserves a source name: a workspace, tab or pane a
+ * program names with it is dropped like a bad id, so a program's conversation never answers to a trick
  * session's address. Spelled out, not imported, so this file keeps no edge into the web tree.
  */
-export const RESERVED_ID_PREFIX = "mod:";
+export const RESERVED_ID_PREFIX = "trick:";
 
 /** A layout id field (workspace, tab, pane), or null when it breaks the id rule or takes the reserved prefix. */
 function layoutIdOf(object: JsonObject, key: string): string | null {

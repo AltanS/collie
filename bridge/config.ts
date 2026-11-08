@@ -345,12 +345,12 @@ export interface Config {
    */
   spacesFile?: string;
   /**
-   * Where the operator's mods live, `mods/`, a folder beside the operator files: one `<id>/` per mod
-   * with its `mod.toml` and provider (M94, bridge/mods/). Read by the mods runner only, and never
+   * Where the operator's tricks live, `tricks/`, a folder beside the operator files: one `<id>/` per trick
+   * with its `trick.toml` and provider (M94, bridge/tricks/). Read by the tricks runner only, and never
    * here. `loadConfig` always sets it; optional so a hand-built Config may leave it out, which reads
-   * as "no mods".
+   * as "no tricks".
    */
-  modsDir?: string;
+  tricksDir?: string;
   /**
    * Where the operator's prompt-cache overrides live — `cache-rules.toml`, the sixth file on the same
    * contract, read the same way (bridge/operator-cache-rules.ts) and likewise never read here.
@@ -864,7 +864,7 @@ export function loadConfig(
     launchersFile: join(configDir, "launchers.toml"),
     cacheRulesFile: join(configDir, "cache-rules.toml"),
     spacesFile: join(configDir, "spaces.toml"),
-    modsDir: join(configDir, "mods"),
+    tricksDir: join(configDir, "tricks"),
     trustedUser: env.COLLIE_TRUSTED_USER ?? "",
     trustedUserOptional: envBool("COLLIE_TRUSTED_USER_OPTIONAL", false, env),
     accessTeam: (env.COLLIE_ACCESS_TEAM ?? "").trim(),

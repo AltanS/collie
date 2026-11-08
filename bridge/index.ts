@@ -277,8 +277,8 @@ import { counterWordOf, HoldBook, HoldServer, takeHold, type HoldTarget } from "
 import { holdSocketPath } from "./beacon/paths.ts";
 import { VersionCache } from "./surface/binary-version.ts";
 import { findProfile, loadProfiles } from "../web/src/lib/surface/profile.ts";
-import { factsWorldOf, modsHostName } from "./mods/facts.ts";
-import { ModsService } from "./mods/service.ts";
+import { factsWorldOf, tricksHostName } from "./tricks/facts.ts";
+import { TricksService } from "./tricks/service.ts";
 import { createSessionFolders, createSessionLabels } from "./operator-space-labels.ts";
 import { labelOf } from "./walky/address.ts";
 import {
@@ -3137,39 +3137,39 @@ if (standbyServer !== null && standbyDoor !== null) {
   );
 }
 
-// Collie mods (M94 slice 01): the runner over `<configDir>/mods/`. It reads nothing but a missing
-// folder until the operator makes one, writes nothing until a mod is switched on and runs, and its
-// timers wait for a paired phone to look (bridge/mods/service.ts).
-const modsFolders = createSessionFolders(cfg.spacesFile ?? null);
-const modsLabels = createSessionLabels(cfg.spacesFile ?? null);
-const mods =
-  cfg.modsDir === undefined
+// Collie tricks (M94 slice 01): the runner over `<configDir>/tricks/`. It reads nothing but a missing
+// folder until the operator makes one, writes nothing until a trick is switched on and runs, and its
+// timers wait for a paired phone to look (bridge/tricks/service.ts).
+const tricksFolders = createSessionFolders(cfg.spacesFile ?? null);
+const tricksLabels = createSessionLabels(cfg.spacesFile ?? null);
+const tricks =
+  cfg.tricksDir === undefined
     ? undefined
-    : new ModsService({
-        configDir: dirname(cfg.modsDir),
+    : new TricksService({
+        configDir: dirname(cfg.tricksDir),
         stateDir: cfg.stateDir,
         host: () => {
           const data = trustStore.current();
-          return modsHostName(data === null ? null : data.self.memberId);
+          return tricksHostName(data === null ? null : data.self.memberId);
         },
         world: (host) => {
-          void modsFolders.refresh();
-          void modsLabels.refresh();
+          void tricksFolders.refresh();
+          void tricksLabels.refresh();
           const world = factsWorldOf({
             host,
             runtimes: registry.all().map((rt) => {
               const now = rt.engine.current();
               return { name: rt.name, agents: now.agents, shellPanes: now.shellPanes, workspaces: now.workspaces };
             }),
-            folderOf: (name) => modsFolders.folderOf(name),
-            labelOf: (name) => modsLabels.labelOf(name),
+            folderOf: (name) => tricksFolders.folderOf(name),
+            labelOf: (name) => tricksLabels.labelOf(name),
             activeAt: (session, paneId) => activity.get(session, paneId)?.activeAt,
           });
           return { sessions: world.sessions, spaces: world.spaces };
         },
         env: process.env,
       });
-mods?.start();
+tricks?.start();
 
 const server = listenOrExit("front door", cfg.host, cfg.port, () => startServer({
   cfg,
@@ -3235,7 +3235,7 @@ const server = listenOrExit("front door", cfg.host, cfg.port, () => startServer(
   },
   // Every machine's load and its alert rules (ADR 0084). Undefined on a peer, whose routes then 404.
   machines: machineWatch,
-  mods,
+  tricks,
   crew,
   pairing,
   launcherCopy: launcherCopySeam,

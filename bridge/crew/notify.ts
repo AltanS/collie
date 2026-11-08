@@ -128,9 +128,9 @@ export class PeerNotifier<H = unknown> {
    * "one summary, not three races" behaviour, unchanged, because it is the same coordinator doing it.
    */
   observe(host: string, peerBody: PeerSnapshotBody): void {
-    // A member's mod sessions (M94 slice 03) are outside push: never blocked or done, and never a
+    // A member's trick sessions (M94 slice 03) are outside push: never blocked or done, and never a
     // transition here. Dropped once, so no path below can count one.
-    const body: PeerSnapshotBody = { ...peerBody, agents: peerBody.agents.filter((pane) => pane.kind !== "mod") };
+    const body: PeerSnapshotBody = { ...peerBody, agents: peerBody.agents.filter((pane) => pane.kind !== "trick") };
     const entry = this.hosts.get(host) ?? this.create(host);
     const diff = diffPeerAgents(entry.statuses, body.agents);
     entry.statuses = diff.statuses;

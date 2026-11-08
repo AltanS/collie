@@ -27,8 +27,8 @@ import {
   readFailureKind,
 } from "@/lib/api";
 import { parseAnsi } from "@/lib/ansi";
-import { splitModSessions } from "@/lib/mods/places";
-import { syncMods } from "@/lib/mods/store";
+import { splitTrickSessions } from "@/lib/tricks/places";
+import { syncTricks } from "@/lib/tricks/store";
 import { noteUpdateRun } from "./self-update";
 import { splitLines } from "@/lib/blocks";
 import { type CacheHold, holdCacheReadings } from "@/lib/cache-hold";
@@ -126,11 +126,11 @@ export interface HomeData {
   herdWorkspaces?: WorkspaceView[];
   tabs: TabView[];
   /**
-   * The mod sessions (M94 slice 03): the panes of `kind: "mod"`, out of `agents` and the Mods Space out of
+   * The trick sessions (M94 slice 03): the panes of `kind: "trick"`, out of `agents` and the Tricks Space out of
    * `workspaces` and `tabs`, in the bridge's order. Optional in the TYPE only, so hand-built fixtures stay
-   * valid; every loader return sets it, empty on a body with no mod session.
+   * valid; every loader return sets it, empty on a body with no trick session.
    */
-  modSessions?: AgentView[];
+  trickSessions?: AgentView[];
   /** The bridge's session registry (primary-first); empty on a single-session / older bridge. */
   sessions: SessionSummary[];
   /**
@@ -381,11 +381,11 @@ function toHomeData(
   // merged into the next one, so a pane that moves between the two lists keeps its reading and a pane
   // in neither list drops it. This runs on the stale path as well, because the same snapshot read
   // twice may not answer twice.
-  // THE MOD SESSIONS (M94 slice 03) leave the herd here, with their Space and tabs, into a list of
-  // their own (lib/mods/places.ts says why). A body with none hands every list back unchanged. A live
-  // answer also brings the mods store to the body's `modsRev`: no timer of its own, the snapshot's cadence.
-  const split = splitModSessions({ agents: snap.agents, shellPanes: snap.shellPanes ?? [], workspaces: snap.workspaces ?? [], tabs: snap.tabs ?? [] });
-  if (!error) void syncMods(snap.modsRev);
+  // THE TRICK SESSIONS (M94 slice 03) leave the herd here, with their Space and tabs, into a list of
+  // their own (lib/tricks/places.ts says why). A body with none hands every list back unchanged. A live
+  // answer also brings the tricks store to the body's `tricksRev`: no timer of its own, the snapshot's cadence.
+  const split = splitTrickSessions({ agents: snap.agents, shellPanes: snap.shellPanes ?? [], workspaces: snap.workspaces ?? [], tabs: snap.tabs ?? [] });
+  if (!error) void syncTricks(snap.tricksRev);
   const holdIn = paneCacheHold;
   const agents = holdCacheReadings(holdIn, split.agents);
   const shells = holdCacheReadings(holdIn, split.shellPanes);
@@ -404,7 +404,7 @@ function toHomeData(
     workspaces: ambientSpaces(split.workspaces, scope, snap.servers),
     herdWorkspaces: split.workspaces,
     tabs: ambientSpaces(split.tabs, scope, snap.servers),
-    modSessions: split.modSessions,
+    trickSessions: split.trickSessions,
     sessions: snap.sessions ?? [],
     servers: snap.servers ?? [],
     ts: snap.ts ?? 0,
@@ -458,7 +458,7 @@ async function staleHome(scope: Scope, viewAll: boolean): Promise<HomeData> {
     shellPanes: [],
     workspaces: [],
     tabs: [],
-    modSessions: [],
+    trickSessions: [],
     sessions: [],
     servers: [],
     ts: 0,

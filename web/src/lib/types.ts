@@ -33,12 +33,12 @@ export interface AgentView {
   cwd: string;
   focused: boolean;
   /**
-   * "agent" for an agent-bearing pane, "shell" for a bare shell. Absent = "agent". "mod" for a mod's
-   * own session (M94): no terminal, a view for a body, in the host's Mods Space. The root loader takes
-   * those out of `agents` into `HomeData.modSessions` (lib/mods/places.ts), so no list, count, triage
+   * "agent" for an agent-bearing pane, "shell" for a bare shell. Absent = "agent". "trick" for a trick's
+   * own session (M94): no terminal, a view for a body, in the host's Tricks Space. The root loader takes
+   * those out of `agents` into `HomeData.trickSessions` (lib/tricks/places.ts), so no list, count, triage
    * or push path that reads `agents` ever meets one.
    */
-  kind?: "agent" | "shell" | "mod";
+  kind?: "agent" | "shell" | "trick";
   /** User-set pane label (herdr `pane.rename`), when one is set; absent when the pane is unlabelled. */
   paneLabel?: string;
   /**
@@ -290,8 +290,8 @@ export interface AgentView {
    */
   held?: HeldRow[];
   /**
-   * A mod session's part, as its `partKey` (`host/mod/part`): the part whose view is the body. Mirrors
-   * `PaneWire.view` in bridge/types.ts. Present only on a pane of `kind: "mod"`.
+   * A trick session's part, as its `partKey` (`host/trick/part`): the part whose view is the body. Mirrors
+   * `PaneWire.view` in bridge/types.ts. Present only on a pane of `kind: "trick"`.
    */
   view?: string;
 }
@@ -661,8 +661,8 @@ export interface SessionSummary {
   notice?: string;
 }
 
-/** {@link SessionSummary.kind}. `mod` is reserved for Collie mods (M94); no bridge sends a card of it yet. */
-export type SessionKind = "terminal" | "program" | "mod";
+/** {@link SessionSummary.kind}. `trick` is reserved for Collie tricks (M94); no bridge sends a card of it yet. */
+export type SessionKind = "terminal" | "program" | "trick";
 /** {@link SessionSummary.where}. */
 export type SessionWhere = "local" | "remote";
 /** {@link SessionSummary.state}. */
@@ -1413,11 +1413,11 @@ export interface SnapshotResponse {
   /** Version / upgrade status. Absent on an older bridge that doesn't report it. */
   update?: UpdateInfo;
   /**
-   * The bridge's mods revision (M94). It rises when any mod part or the mod list changes; the phone
-   * then asks `GET /api/mods?since=<the rev it holds>` for the changes (lib/mods/store.ts `syncMods`).
-   * Absent on a bridge with no mods runner.
+   * The bridge's tricks revision (M94). It rises when any trick part or the trick list changes; the phone
+   * then asks `GET /api/tricks?since=<the rev it holds>` for the changes (lib/tricks/store.ts `syncTricks`).
+   * Absent on a bridge with no tricks runner.
    */
-  modsRev?: number;
+  tricksRev?: number;
   ts: number;
 }
 

@@ -153,10 +153,10 @@ import { answerRouteFor, textRouteFor } from "@/lib/send-path";
 import { useSessionCard, wearsExperimental } from "@/lib/session-cards";
 import { usePins } from "@/lib/pins";
 import { paneFilesDir } from "@/lib/file-paths";
-import { changesPath, filesPath, historyPath, modSessionPath, newPath, panePath, spacePath } from "@/lib/nav";
-import { beltMarksOf } from "@/components/belt-mod-mark";
-import { useModHandlers } from "@/hooks/use-mod-handlers";
-import { useModParts, type TapHandlers } from "@/lib/mods/store";
+import { changesPath, filesPath, historyPath, trickSessionPath, newPath, panePath, spacePath } from "@/lib/nav";
+import { beltMarksOf } from "@/components/belt-trick-mark";
+import { useTrickHandlers } from "@/hooks/use-trick-handlers";
+import { useTrickParts, type TapHandlers } from "@/lib/tricks/store";
 import { isReadOnly, statusLabel } from "@/lib/types";
 import { usePairing } from "@/lib/pairing";
 import type { AgentView, BridgeStatus, DeviceAuth, PinRow, ServerSummary, TabView } from "@/lib/types";
@@ -624,27 +624,27 @@ export function AgentChat({
   }, [landscape, zen, autoZenActive]);
   const listRef = useRef<ChatMessageListHandle>(null);
   const composerRef = useRef<ComposerHandle>(null);
-  // THE MODS' BELT MARKS (M94 slice 03): one per `belt` part, in manifest order, on the belt's pinned
+  // THE TRICKS' BELT MARKS (M94 slice 03): one per `belt` part, in manifest order, on the belt's pinned
   // block. A draft from one goes into THIS pane's box when its session is this pane (and the box is
   // empty), and the fix button's draft with no session lands here too; an open goes one level down.
-  const beltParts = useModParts("belt");
-  const modHandlers = useModHandlers(agent === undefined ? undefined : { pane: agent, place: (incoming) => composerRef.current?.placeDraft(incoming) });
-  const { handlersFor: modHandlersFor } = modHandlers;
-  const modSessions = rootData?.modSessions;
+  const beltParts = useTrickParts("belt");
+  const trickHandlers = useTrickHandlers(agent === undefined ? undefined : { pane: agent, place: (incoming) => composerRef.current?.placeDraft(incoming) });
+  const { handlersFor: trickHandlersFor } = trickHandlers;
+  const trickSessions = rootData?.trickSessions;
   const beltMarks = useMemo(() => {
     if (beltParts.length === 0) return undefined;
     return beltMarksOf({
       parts: beltParts,
       handlersFor: (host) => {
-        const handlers: TapHandlers = modHandlersFor(host);
+        const handlers: TapHandlers = trickHandlersFor(host);
         // The tap says which session is open on the phone: this pane, by its scope key.
         if (agent !== undefined) handlers.from = { session: `${agent.host ?? host}:${agent.paneId}` };
         return handlers;
       },
-      sessions: modSessions ?? [],
-      onOpenSession: (pane) => nav.down(modSessionPath(pane.paneId)),
+      sessions: trickSessions ?? [],
+      onOpenSession: (pane) => nav.down(trickSessionPath(pane.paneId)),
     });
-  }, [beltParts, modHandlersFor, modSessions, agent, nav]);
+  }, [beltParts, trickHandlersFor, trickSessions, agent, nav]);
   // The box the composer's terminal-draft notice floats in (ADR 0061), at the mirror's bottom edge.
   // State rather than a ref: the composer portals into it, so it must re-render once it exists.
   const [draftNoticeSlot, setDraftNoticeSlot] = useState<HTMLDivElement | null>(null);
@@ -2041,9 +2041,9 @@ export function AgentChat({
   // WITHIN THE CURRENT scope's host; handed a peer's row that would silently reopen this host's own
   // identically-numbered pane instead. This resolves the pane's OWN scope via `paneScope` first, the
   // same call home.tsx's dashboard `open` makes to open a crew-wide row correctly.
-  function openModSession(pane: AgentView) {
+  function openTrickSession(pane: AgentView) {
     closeDrawer();
-    nav.down(modSessionPath(pane.paneId));
+    nav.down(trickSessionPath(pane.paneId));
   }
 
   function switchToPane(pane: AgentView) {
@@ -3489,9 +3489,9 @@ export function AgentChat({
             // and a peer's row can share this pane's own id.
             currentPaneKey={hereKey ?? ""}
             onSelect={switchToPane}
-            // The Mods Space's sessions (M94 slice 03), one level down from here, so back comes back.
-            modSessions={rootData?.modSessions}
-            onSelectMod={openModSession}
+            // The Tricks Space's sessions (M94 slice 03), one level down from here, so back comes back.
+            trickSessions={rootData?.trickSessions}
+            onSelectTrick={openTrickSession}
             tabs={tabs}
             servers={servers}
             // The snapshot's spaces fold a worktree under its open root and head an unfolded one

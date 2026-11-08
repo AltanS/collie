@@ -57,10 +57,10 @@ export interface AgentView {
   focused: boolean;
   /**
    * "agent" for an agent-bearing pane, "shell" for a bare shell. Defaults to "agent" when absent.
-   * "mod" for a mod's own session (M94, bridge/mods/panes.ts): no terminal behind it, its body is a
-   * view, and it sits in the host's Mods Space, outside triage, push and the session counts.
+   * "trick" for a trick's own session (M94, bridge/tricks/panes.ts): no terminal behind it, its body is a
+   * view, and it sits in the host's Tricks Space, outside triage, push and the session counts.
    */
-  kind?: "agent" | "shell" | "mod";
+  kind?: "agent" | "shell" | "trick";
   /** User-set pane label (herdr `pane.rename`), when one is set; absent when the pane is unlabelled. */
   paneLabel?: string;
   /**
@@ -389,9 +389,9 @@ export type PaneWire = Omit<AgentView, "agentSession" | "sessionAgent"> & {
    */
   held?: HeldRow[];
   /**
-   * A mod session's part (M94), as its `partKey` (`host/mod/part`): the part whose view is the pane's
-   * body. The view itself travels on `GET /api/mods`, never on the snapshot. Present only on a pane of
-   * `kind: "mod"`, so every other pane and every body with no mods stays what it was.
+   * A trick session's part (M94), as its `partKey` (`host/trick/part`): the part whose view is the pane's
+   * body. The view itself travels on `GET /api/tricks`, never on the snapshot. Present only on a pane of
+   * `kind: "trick"`, so every other pane and every body with no tricks stays what it was.
    */
   view?: string;
 };
@@ -818,11 +818,11 @@ export type SessionState = "ready" | "starting" | "unreachable";
 export interface SessionCard {
   name: string;
   /**
-   * `mod` is reserved for Collie mods (M94) so the phone can tell one from a program. DECISION (slice
-   * 03): no card of that kind is sent yet. A mod session rides as a pane of `kind: "mod"` in the
+   * `trick` is reserved for Collie tricks (M94) so the phone can tell one from a program. DECISION (slice
+   * 03): no card of that kind is sent yet. A trick session rides as a pane of `kind: "trick"` in the
    * ambient session; a card would grow `sessions` and wake the session switcher for nothing.
    */
-  kind: "terminal" | "program" | "mod";
+  kind: "terminal" | "program" | "trick";
   /** herdr, tmux, zellij, tuios, tern, or the program's hello `host.name` cleaned, else "durable". */
   mux: string;
   /** The capability set of this session, the same shape `/api/config` answers today. */
@@ -890,11 +890,11 @@ export interface SnapshotResponse {
    */
   servers?: ServerSummary[];
   /**
-   * Collie mods (M94): the runner's rev. When it moves, the phone asks `GET /api/mods?since=<rev>` for
-   * the parts that changed. **Absent when there is no mods folder**, like `servers`, so an install
-   * without mods sends the bytes and the ETag it always sent (solo-baseline.test.ts).
+   * Collie tricks (M94): the runner's rev. When it moves, the phone asks `GET /api/tricks?since=<rev>` for
+   * the parts that changed. **Absent when there is no tricks folder**, like `servers`, so an install
+   * without tricks sends the bytes and the ETag it always sent (solo-baseline.test.ts).
    */
-  modsRev?: number;
+  tricksRev?: number;
   /** Notification quiet-hours: the active snooze deadline (epoch ms) or null. */
   notifications?: { snoozedUntil: number | null };
   /** Update-availability signal. Optional — a stale bridge that predates the field simply omits it,

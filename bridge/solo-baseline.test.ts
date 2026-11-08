@@ -268,9 +268,9 @@ const SNAPSHOT_KEYS = {
   // Not a crew dimension: present only while the mux is down for a refused durable token (M50 spec
   // 14), so a healthy solo body carries no such key and no golden byte moved.
   muxFault: true,
-  // Not a crew dimension: Collie mods' rev (M94), present only when a `<configDir>/mods/` folder
-  // exists, so a solo body with no mods carries no such key and no golden byte moved.
-  modsRev: true,
+  // Not a crew dimension: Collie tricks' rev (M94), present only when a `<configDir>/tricks/` folder
+  // exists, so a solo body with no tricks carries no such key and no golden byte moved.
+  tricksRev: true,
 } satisfies Record<keyof SnapshotResponse, true>;
 
 const SESSION_SUMMARY_KEYS = {
@@ -399,8 +399,8 @@ const PANE_WIRE_KEYS = {
   // time from the statusLine wrapper's file, and this harness builds its body with no reader, so no
   // golden byte moved.
   usage: true,
-  // Not a crew dimension: a mod session's part key (M94 slice 03). Present only on a pane of
-  // `kind: "mod"`, and this harness has no mods folder, so no golden byte moved.
+  // Not a crew dimension: a trick session's part key (M94 slice 03). Present only on a pane of
+  // `kind: "trick"`, and this harness has no tricks folder, so no golden byte moved.
   view: true,
 } satisfies Record<keyof PaneWire, true>;
 
@@ -495,13 +495,13 @@ describe("solo zero-tax — wire shapes carry no crew dimension", () => {
       "agents",
       "bridge",
       "device",
-      "modsRev",
       "muxFault",
       "notifications",
       "servers",
       "sessions",
       "shellPanes",
       "tabs",
+      "tricksRev",
       "ts",
       "update",
       "workspaces",
@@ -768,13 +768,6 @@ describe("solo zero-tax — routes", () => {
       // collie answer for every machine they keep watch over; a peer 404s (`crew.not_lead`), and none
       // is forwardable — `bridge/crew/router.test.ts` pins all three as 404 across a link.
       "/^\\/api\\/machines\\/([^/]+)\\/(history|alerts)$/",
-      // Collie mods (M94 slice 01): a tap on a mod's control. A SOLO route that legitimately extends
-      // this list, named here rather than exempted: this bridge's own host only (another host is 404
-      // until the crew merge), write-gated because it runs the provider, and 404 with no runner.
-      // And its off switch (slice 04): the same file `collie mod on|off` writes, write-gated, this
-      // bridge's own host only, 404 with no runner.
-      "/^\\/api\\/mods\\/([^/]+)\\/([^/]+)\\/switch$/",
-      "/^\\/api\\/mods\\/([^/]+)\\/([^/]+)\\/tap$/",
       // `changes` is the Changes view (ADR 0065): read-only git over the pane's folder, read-gated
       // like `history` beside it and forwarded to the member that owns the pane. `chat` is the live
       // half of `history` (journal/live.ts): the same log, asked "anything after this?" — a read, on
@@ -810,6 +803,13 @@ describe("solo zero-tax — routes", () => {
       // with the held file's and never made into a path. Lead-local, not forwardable.
       "/^\\/api\\/stt\\/model\\/([^/]+)$/",
       "/^\\/api\\/tab\\/([^/]+)\\/(rename|close)$/",
+      // Collie tricks (M94 slice 01): a tap on a trick's control. A SOLO route that legitimately extends
+      // this list, named here rather than exempted: this bridge's own host only (another host is 404
+      // until the crew merge), write-gated because it runs the provider, and 404 with no runner.
+      // And its off switch (slice 04): the same file `collie trick on|off` writes, write-gated, this
+      // bridge's own host only, 404 with no runner.
+      "/^\\/api\\/tricks\\/([^/]+)\\/([^/]+)\\/switch$/",
+      "/^\\/api\\/tricks\\/([^/]+)\\/([^/]+)\\/tap$/",
       // The operator's Cancel on a held walky talky message it sent (M62 spec 03): a write, solo; a
       // record held on a member answers `elsewhere`, never a route of its own.
       "/^\\/api\\/walky\\/([^/]+)\\/cancel$/",
@@ -897,9 +897,6 @@ describe("solo zero-tax — routes", () => {
       // than exempted. Lead-local like the Whistle route, gated like it, and not forwardable. A bridge
       // whose operator never taps "Download the math engines" fetches nothing and writes nothing.
       "/api/math",
-      // Collie mods (M94 slice 01): the mods list and the parts changed since a rev. A read, gated like
-      // the snapshot, and its body is empty of mods on an install with no `<configDir>/mods/`.
-      "/api/mods",
       // The prompt-cache watch list (M28/03, ADR 0042). Three SOLO routes in the notifications family,
       // named here rather than exempted: the preference lives on the collie holding the subscription, so
       // none of the three is forwardable and `bridge/crew/router.test.ts` pins all three as 404 across a
@@ -962,6 +959,9 @@ describe("solo zero-tax — routes", () => {
       // The trouble tally (M86 spec 05): the phone's one count when a trouble card showed. Solo for the
       // same reason: the bridge the phone talks to counts it under its own install.
       "/api/telemetry/trouble",
+      // Collie tricks (M94 slice 01): the tricks list and the parts changed since a rev. A read, gated like
+      // the snapshot, and its body is empty of tricks on an install with no `<configDir>/tricks/`.
+      "/api/tricks",
       // Starting an update from the phone (M15/05) — a SOLO route that legitimately extends this
       // list, named here rather than exempted. Write-gated through the same closure a send rides,
       // and it registers no crew sibling: a peer is levelled from the lead's terminal
@@ -1046,8 +1046,8 @@ const CONFIG_KEYS = {
   launchersFile: true,
   cacheRulesFile: true,
   spacesFile: true,
-  // Collie mods (M94): the `mods/` folder beside the operator files. A path, read only by the runner.
-  modsDir: true,
+  // Collie tricks (M94): the `tricks/` folder beside the operator files. A path, read only by the runner.
+  tricksDir: true,
   maxUploadBytes: true,
   port: true,
   host: true,
@@ -1111,7 +1111,6 @@ describe("solo zero-tax — config", () => {
       "launchersFile",
       "maxUploadBytes",
       "modelCatalogs",
-      "modsDir",
       "multiSession",
       "mux",
       "muxEndpoint",
@@ -1138,6 +1137,7 @@ describe("solo zero-tax — config", () => {
       "themeFile",
       "tmuxBin",
       "transcript",
+      "tricksDir",
       "trustedUser",
       "trustedUserOptional",
       "uploadExtraTypes",
@@ -1314,9 +1314,6 @@ const STATE_DIR_ENTRIES = [
   // The math pack (ADR 0132): `<stateDir>/math/<version>/`, the engines a tap in Settings fetched.
   // Written by that tap and by nothing else: absent on every bridge whose operator never taps it.
   "math",
-  // Collie mods (M94, bridge/mods/paths.ts): `switches.json` and one state folder per mod that ran.
-  // Written only by `collie mod on`/`off` and by a mod's run, so an install with no mods has none.
-  "mods",
   "notify-prefs.json",
   // Device pairing. Both are absent until the operator runs `collie pair`, and an install that
   // never does keeps writing exactly the six entries above it.
@@ -1351,6 +1348,9 @@ const STATE_DIR_ENTRIES = [
   // last day sent, the phone's switch and the trouble tally (M86 spec 05). A NEW file; the ID and the
   // tally are deleted the moment the ping is off, and an older build ignores the file.
   "telemetry.json",
+  // Collie tricks (M94, bridge/tricks/paths.ts): `switches.json` and one state folder per trick that ran.
+  // Written only by `collie trick on`/`off` and by a trick's run, so an install with no tricks has none.
+  "tricks",
   // The detached updater's own stdout and stderr (#283), with the run before it kept beside it as
   // `update-runner.log.1`. Absent until the first update started from the phone: the bridge opens it
   // only to hand the descriptor to the runner it spawns.

@@ -94,9 +94,9 @@ export const SECTIONS: readonly SectionEntry[] = [
   { def: { id: "pins", title: "Pinned messages" }, load: () => import("./sections/pins").then((m) => ({ default: m.PinsSection })) },
   { def: { id: "new-tab", title: "New tab sheet" }, load: () => import("./sections/new-tab").then((m) => ({ default: m.NewTabSection })) },
   { def: { id: "report", title: "Report a problem" }, load: () => import("./sections/report").then((m) => ({ default: m.ReportSection })) },
-  { def: { id: "mod-render", title: "Mod render" }, load: () => import("./sections/mod-render").then((m) => ({ default: m.ModRenderSection })) },
-  { def: { id: "mod-places", title: "Mod places" }, load: () => import("./sections/mod-places").then((m) => ({ default: m.ModPlacesSection })) },
-  { def: { id: "mod-settings", title: "Mod settings" }, load: () => import("./sections/mod-settings").then((m) => ({ default: m.ModSettingsSection })) },
+  { def: { id: "trick-render", title: "Trick render" }, load: () => import("./sections/trick-render").then((m) => ({ default: m.TrickRenderSection })) },
+  { def: { id: "trick-places", title: "Trick places" }, load: () => import("./sections/trick-places").then((m) => ({ default: m.TrickPlacesSection })) },
+  { def: { id: "trick-settings", title: "Trick settings" }, load: () => import("./sections/trick-settings").then((m) => ({ default: m.TrickSettingsSection })) },
 ];
 
 /** One `lazy` per section, made once: a fresh `lazy()` per render would suspend on every render. */
