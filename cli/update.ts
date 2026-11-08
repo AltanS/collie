@@ -43,7 +43,7 @@ import { readReleaseTag, stampPackageJson, stampToml } from "../scripts/release-
 import { STAGING_LOG_LINES, STAGING_LOG_PREFIX, stagingLogPath } from "../bridge/staging-log.ts";
 import { manifestVersionFrom, readBuildInfo } from "../bridge/version.ts";
 import { type BuildDeps, cmdBuild } from "./build.ts";
-import { logFilePath, systemdUserReachable } from "./lifecycle.ts";
+import { logFilePath, systemdUserSession } from "./lifecycle.ts";
 import {
   binaryLayout,
   type BinaryLayout,
@@ -3226,15 +3226,21 @@ function handOff(
   const staging = reduce(reduce(idleRun(now), begin, now), { kind: "stage" }, now);
   writeRun(deps.files, deps.ctx.stateDir, staging);
 
+  // One probe, two answers from it: whether the systemd tier may be taken, and — when the manager
+  // was reachable only through the derived session dir — the variables the `systemd-run` CLIENT needs
+  // to find that same bus. The client is not a unit: `--setenv` cannot help it, and `runnerEnv` only
+  // forwards what this process already carries (#194).
+  const session = systemdUserSession(deps.exec, deps.ctx.env);
   const plan = launchPlan({
     host: deps.host,
     binary: runnerBinary(deps),
     args: applyArgv({ ...a, handoff: deps.pid }),
     unit: unitName(deps.ctx.instance),
     stamp: now.toString(36),
-    hasSystemdRun: deps.exec.which("systemd-run") !== null && systemdUserReachable(deps.exec, deps.ctx.env),
+    hasSystemdRun: deps.exec.which("systemd-run") !== null && session.reachable,
     hasSetsid: deps.exec.which("setsid") !== null,
   });
+  const runnerEnvironment = { ...runnerEnv(deps.ctx.env), ...session.envAdd };
   const logPath = logFilePath(deps.ctx.configDir, deps.ctx.instance);
   // A handoff that did not happen is a FAILURE, printed and recorded. Without this branch the record
   // sits at `staging` until the staleness rule reads it as `interrupted` ten minutes later, the phone
@@ -3257,7 +3263,7 @@ function handOff(
     // (`Exec.spawnDetached`, and ADR 0037).
     const client = deps.exec.runLogged(plan.command, {
       cwd: layout.installRoot,
-      env: runnerEnv(deps.ctx.env),
+      env: runnerEnvironment,
       logPath,
       timeoutMs: HANDOFF_CONFIRM_MS,
     });
@@ -3283,7 +3289,7 @@ function handOff(
     }
     const pid = deps.exec.spawnDetached(plan.command, {
       cwd: layout.installRoot,
-      env: runnerEnv(deps.ctx.env),
+      env: runnerEnvironment,
       logPath,
     });
     if (pid === null) {

@@ -1177,6 +1177,15 @@ function peersNeedLevelling(state: UpdateStartState): boolean {
 export interface UpdateStartPlan {
   readonly command: string[];
   readonly detach: boolean;
+  /**
+   * Session variables the LAUNCHER must layer over this process's environment for the CLIENT it
+   * spawns. The `systemd-run` tier is the only one with a client that talks to the bus, and this is
+   * set only when the manager was reachable through the derived session dir rather than the
+   * environment this process inherited (`bridge/systemd-user.ts`): without them the client cannot
+   * find the bus the probe just reached, and the update dies before a unit exists. `--setenv` is
+   * for the UNIT; the client is not a unit.
+   */
+  readonly env?: Readonly<Record<string, string>>;
 }
 
 export function updateStartCommand(a: {
@@ -1212,6 +1221,12 @@ export function updateStartCommand(a: {
    */
   readonly env?: Readonly<Record<string, string | undefined>>;
   /**
+   * The session variables the probe derived when only the derived default reached the manager
+   * (`bridge/systemd-user.ts`). Carried onto the plan for the launcher to give the `systemd-run`
+   * CLIENT — {@link env} above is what the transient UNIT gets, and the client is not a unit.
+   */
+  readonly envAdd?: Readonly<Record<string, string>> | null;
+  /**
    * The phone's rollback (M60 spec 01): `update --rollback --run-id <id>`, which the CLI hands to the
    * same detached runner as a run with `action: "rollback"`. `major` and `toTag` mean nothing to it
    * and are dropped.
@@ -1238,10 +1253,11 @@ export function updateStartCommand(a: {
       if (value !== undefined && value !== "") setenv.push(`--setenv=${key}=${value}`);
     }
     if (a.mirror !== undefined && a.mirror !== null) setenv.push(`--setenv=${UPDATE_MIRROR_ENV}=${a.mirror}`);
-    return {
+    const plan: UpdateStartPlan = {
       command: ["systemd-run", "--user", "--collect", "--unit", `collie-api-update-${a.stamp}`, ...setenv, a.binary, ...verb],
       detach: false,
     };
+    return a.envAdd === undefined || a.envAdd === null ? plan : { ...plan, env: a.envAdd };
   }
   if (a.hasSetsid) return { command: ["setsid", a.binary, ...verb], detach: true };
   return { command: [a.binary, ...verb], detach: true };
@@ -1259,6 +1275,12 @@ export interface UpdateRunnerSpawnOptions {
   readonly stdout: "ignore" | number;
   readonly stderr: "ignore" | number;
   readonly detached: boolean;
+  /**
+   * Variables to layer over this process's environment for the child. Present only on the
+   * `systemd-run` tier when the launcher must carry the derived session dir to the client
+   * ({@link UpdateStartPlan.env}); every other tier inherits the process environment unchanged.
+   */
+  readonly env?: Readonly<Record<string, string>>;
 }
 
 /** `<state dir>/update-runner.log`: the detached runner's own two streams, for one launch (#283). */
@@ -1326,13 +1348,14 @@ export function launchUpdateRunner(
 ): { ok: true } | { ok: false; reason: string } {
   const out = a.log?.fd ?? "ignore";
   try {
-    const child = a.spawn(plan.command, {
+    const options = {
       cwd: a.cwd,
       stdin: "ignore",
       stdout: out,
       stderr: out,
       detached: plan.detach,
-    });
+    } satisfies UpdateRunnerSpawnOptions;
+    const child = a.spawn(plan.command, plan.env === undefined ? options : { ...options, env: plan.env });
     child.unref();
     return { ok: true };
   } catch (err) {

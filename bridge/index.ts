@@ -261,6 +261,7 @@ import {
   updateCadenceTick,
   updateStartCommand,
 } from "./update-action.ts";
+import { systemdUserSession, type SystemdUserSession } from "./systemd-user.ts";
 import { collieVersion, collieVersionBare } from "./version.ts";
 import { SurfaceShadow, type ShadowOptions } from "./surface/shadow.ts";
 import { AskAnswerer, AskBook } from "./surface/ask.ts";
@@ -1163,6 +1164,47 @@ const preflightCache = new PreflightCache({
   now: Date.now,
   run: () => runPreflight(preflightCommand(collieBinary)),
 });
+
+/**
+ * How long the bus probe may take. Synchronous, because the launch is: a wedged D-Bus is the one
+ * failure that must not park the event loop, and a manager that cannot answer inside this bound is
+ * one a `systemd-run` handoff would not have survived either.
+ */
+const SYSTEMD_PROBE_TIMEOUT_MS = 2_000;
+
+/**
+ * Can this process ask the systemd user manager for a transient unit — and, when only the derived
+ * session dir reaches it, what must the spawned `systemd-run` client carry?
+ *
+ * The bridge's half of `cli/lifecycle.ts`'s question, asked through the same predicate
+ * (`bridge/systemd-user.ts`). It used to be `Bun.which("systemd-run") !== null` alone, and that is
+ * how the phone's update tap came to spawn a client that printed "Failed to connect to bus" and
+ * died without ever creating a unit: a Herdr plugin's environment carries no login shell, and
+ * `XDG_RUNTIME_DIR` can be a live-but-wrong value (WSLg's) that no user manager answers on.
+ */
+function systemdSessionForLaunch(): SystemdUserSession {
+  return systemdUserSession(
+    (envAdd) => {
+      if (Bun.which("systemctl") === null) return { found: false, code: 127 };
+      try {
+        const r = Bun.spawnSync(["systemctl", "--user", "show-environment"], {
+          env: { ...process.env, ...envAdd },
+          stdout: "ignore",
+          stderr: "ignore",
+          timeout: SYSTEMD_PROBE_TIMEOUT_MS,
+          killSignal: "SIGKILL",
+        });
+        const timedOut = r.exitedDueToTimeout === true;
+        return { found: true, code: timedOut ? 124 : (r.exitCode ?? 124) };
+      } catch {
+        return { found: false, code: 127 };
+      }
+    },
+    process.env,
+    process.getuid?.() ?? 0,
+  );
+}
+
 /**
  * Start the detached updater. **The one spawner in this process** — the phone's button takes it, and
  * so does a peer following its lead (M16/04), because two spawners would be two answers to "what
@@ -1182,6 +1224,9 @@ const startDetachedUpdate = (a: {
   downgrade?: boolean;
   line?: ReleaseLine | null;
 }) => {
+  // One probe, two answers: whether the systemd tier may be taken, and the session variables the
+  // `systemd-run` client needs when only the derived default reached the manager.
+  const session = systemdSessionForLaunch();
   const plan = updateStartCommand({
     platform: process.platform,
     binary: collieBinary,
@@ -1190,17 +1235,28 @@ const startDetachedUpdate = (a: {
     downgrade: a.downgrade === true,
     line: a.line ?? null,
     stamp: String(Date.now()),
-    hasSystemdRun: Bun.which("systemd-run") !== null,
+    hasSystemdRun: Bun.which("systemd-run") !== null && session.reachable,
     hasSetsid: Bun.which("setsid") !== null,
     runId: a.runId,
     toTag: a.toTag ?? null,
     mirror: mirrorValue(process.env),
     env: process.env,
+    envAdd: session.envAdd,
   });
   // THE RUNNER'S OWN OUTPUT IS KEPT (#283): a runner that dies before it writes a run record used to
   // leave nothing behind at all.
   const log = openRunnerLog(cfg.stateDir, `${new Date().toISOString()} ${plan.command.join(" ")}`);
-  return launchUpdateRunner(plan, { cwd: rootDir, spawn: (command, options) => Bun.spawn(command, options), log });
+  return launchUpdateRunner(plan, {
+    cwd: rootDir,
+    // The plan's env is a LAYER, never a replacement: every other tier and every other variable
+    // keep the environment this process has. Only the systemd client ever gets one.
+    spawn: (command, options) =>
+      Bun.spawn(
+        command,
+        options.env === undefined ? options : { ...options, env: { ...process.env, ...options.env } },
+      ),
+    log,
+  });
 };
 
 /**
