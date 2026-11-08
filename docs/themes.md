@@ -448,12 +448,12 @@ A file says which version it is, and Collie writes the lowest version that holds
 - A version 2 file needs Collie 1.22.0 or newer.
 - A version 3 file needs Collie 1.24.0 or newer. An older Collie refuses it and names the version: "The
   file is version 3. This Collie reads version 1 and 2."
-- A version 4 file needs a Collie newer than 1.28.0. An older Collie refuses it and names the version: "The
+- A version 4 file needs Collie 1.28.0 or newer. An older Collie refuses it and names the version: "The
   file is version 4. This Collie reads version 1, 2 and 3."
 - From 1.28, a file of a version newer than this Collie reads says so: "This file was made for a newer
   Collie (version 5). Update Collie to use it."
 - A newer word or token also needs a newer Collie, whatever the version says. `zoom` needs 1.26.2.
-  `tabs`, `composer` and `tab-active` need a Collie newer than 1.27.0. An older Collie refuses a
+  `tabs`, `composer` and `tab-active` need Collie 1.27.0 or newer. An older Collie refuses a
   file that names one of them, because it does not know the key.
 - A theme that names none of those keeps working on every Collie its version allows.
 - A version 1 file means the default word of each list for every token of `surface`.
@@ -570,7 +570,7 @@ These are the characters today. More may follow.
 - **A character downloads when it is needed.** A device that never wears a theme with one never fetches it.
 - **Only the header changes.** The favicon, the home-screen icon and the splash stay Collie under every
   theme. So do the boot screen, the idle lock and the tour.
-- **An older Collie refuses the file.** A version 4 file needs a Collie newer than 1.28.0. Collie 1.28.0
+- **An older Collie refuses the file.** A version 4 file needs Collie 1.28.0 or newer. Collie 1.27
   refuses the whole file with two causes: "The file is version 4. This Collie reads version 1, 2 and 3."
   and "character" is not part of a theme file. To share a theme that an older Collie can read, leave
   `character` out and say version 3 or lower.
@@ -619,7 +619,7 @@ shows Lucide, the icons Collie has always drawn.
 - **The preview shows it.** The preview of an import and each card in **Browse community themes** show
   five icons in the theme's set: close, send, settings, back and attach. While the ribbon of
   [Try a theme](#try-a-theme-before-you-keep-it) is on, the app draws the set of the tried theme.
-- **An older Collie refuses the file.** A version 4 file needs a Collie newer than 1.28.0. To share a
+- **An older Collie refuses the file.** A version 4 file needs Collie 1.28.0 or newer. To share a
   theme that an older Collie can read, leave `glyphs` out and say version 3 or lower.
 - **Another icon set comes in as a pull request.** See
   [Add an icon set to Collie](#add-an-icon-set-to-collie).
