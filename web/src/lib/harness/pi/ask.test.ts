@@ -14,6 +14,7 @@ import { idleFor, readScreen } from "../../../test/surface-corpus";
 import { liftDialog } from "../../surface/lift";
 import { stripSgr } from "../../surface/plain";
 import { askOf, modalWord } from "../../surface/surface";
+import { WRAPPED_CHOICES, wrappedChoiceScreen } from "../../../test/pi-wrapped-choice";
 
 const PANES = join(import.meta.dirname, "../../../fixtures/panes");
 const raw = (name: string) => readFileSync(join(PANES, name), "utf8");
@@ -350,6 +351,57 @@ describe("unnumbered rows, and a frame with no status row (issue 455)", () => {
   });
 });
 
+// Issue 746: gentle-pi's ask_user_choice with descriptions longer than the pane. pi-tui wraps the
+// `   description` line with no indent, so every row after the first stands at column 1. Until this the
+// list ended at that row, the dialog read as unreadable, and the dock offered no option. Built from the
+// capture as the source draws it (test/pi-wrapped-choice.ts); no capture of the reporter's screen.
+describe("an unnumbered option whose description wraps (issue 746)", () => {
+  it("lifts every option with its whole description, and walks from the pointer", () => {
+    const lines = linesOf(wrappedChoiceScreen(0));
+    // The wrap is real: each description takes at least two rows, Green's three, Blue's last row is
+    // straight over the footer.
+    const texts = lines.map((l) => lineText(l).trimEnd());
+    expect(texts.filter((t) => /^ \S/.test(t) && !/^ [→↑]/.test(t)).length).toBeGreaterThanOrEqual(5);
+    const model = prompt(lines);
+    expect(model.question).toBe("Pick a color for the Collie probe");
+    expect(model.options).toEqual([
+      ...WRAPPED_CHOICES.map((c, i) => ({ label: c.label, description: c.description, keys: [...Array<string>(i).fill("Down"), "Enter"], keyLabel: i === 0 ? "→" : "" })),
+      { label: "Cancel", keys: ["Escape"], keyLabel: "Esc" },
+    ]);
+    expect(piAdapter.buildBlocks(lines).map((b) => b.kind)).toContain("prompt-select");
+  });
+
+  it("lifts again once the pointer walked past a wrapped description, and the walk keeps the core signature", () => {
+    const before = prompt(linesOf(wrappedChoiceScreen(0)));
+    for (const pointer of [1, 2]) {
+      const moved = prompt(linesOf(wrappedChoiceScreen(pointer)));
+      expect(moved.options.map((o) => o.label)).toEqual(["Red", "Green", "Blue", "Cancel"]);
+      expect(moved.options[pointer]!.keys).toEqual(["Enter"]);
+      expect(moved.signature).not.toBe(before.signature);
+      expect(moved.coreSignature).toBe(before.coreSignature);
+    }
+  });
+
+  it("lifts the same on a read with no styling", () => {
+    const styled = prompt(linesOf(wrappedChoiceScreen(1)));
+    expect(prompt(linesOf(stripSgr(wrappedChoiceScreen(1))))).toEqual(styled);
+  });
+
+  it("still declines a row at column 1 straight under a label: a label wrapped back is not a description", () => {
+    const screen = wrappedChoiceScreen(0);
+    const wrappedLabel = replaceLast(screen, "   Green", "   Green\r\n and the rest of a label too long for the pane");
+    expect(detectPiQuestion(linesOf(wrappedLabel))).toBeNull();
+    expect(piModalOnScreen(linesOf(wrappedLabel))).toBe(true);
+  });
+
+  it("does not take a title row over the first option for a wrapped description", () => {
+    // The title is a row at column 1 too; with no description row over it, it stays the question.
+    const model = prompt(linesOf(wrappedChoiceScreen(2)));
+    expect(model.question).toBe("Pick a color for the Collie probe");
+    expect(model.options[0]!.description).toBe(WRAPPED_CHOICES[0].description);
+  });
+});
+
 // pi's example `permission-gate.ts` asks before a risky bash command with pi's own selector,
 // `ctx.ui.select("⚠️ Dangerous command:\n\n  <command>\n\nAllow?", ["Yes", "No"])`. The title is several
 // rows, and the command row is three columns in, the shape of an unpointed option row. Collie 1.22.0 to
@@ -436,11 +488,18 @@ describe("pi's permission gate: a selector whose title quotes the command", () =
 
   it("declines gentle-pi's list when a label wrapped back to column 1 stands right over the pointer", () => {
     // The wrap reads as a title row, and the rows above it are options, not a quoted block: there is no
-    // blank row between the header and the list, so nothing indented may stand in the header.
+    // blank row between the header and the list, so nothing indented may stand in the header. Green
+    // loses its description here: a row at column 1 under a description row is that description
+    // wrapped, and lifts (issue 746, "an unnumbered option whose description wraps").
     const gentle = raw("pi--v130-gentle-choice.txt");
     const pointed = (label: string) => ` \x1b[0m\x1b[38;2;157;157;157m→ ${label}\x1b[0m`;
     const onBlue = replaceLast(replaceLast(gentle, pointed("Red"), "   Red"), "   Blue", `${pointed("Blue")}`);
-    const wrapped = replaceLast(onBlue, pointed("Blue"), ` continued\n${pointed("Blue")}`);
+    const bare = onBlue
+      .split("\r\n")
+      .filter((row) => !row.includes("Calm and natural"))
+      .join("\r\n");
+    const wrapped = replaceLast(bare, pointed("Blue"), ` continued\n${pointed("Blue")}`);
+    expect(bare).not.toBe(onBlue);
     expect(prompt(linesOf(onBlue)).options.map((o) => o.label)).toEqual(["Red", "Green", "Blue", "Cancel"]);
     expect(detectPiQuestion(linesOf(wrapped))).toBeNull();
   });
