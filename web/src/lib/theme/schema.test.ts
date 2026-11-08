@@ -15,6 +15,8 @@ import {
   THEME_VERSIONS_READ,
   ANSI_BRIGHT_LUMINANCE,
   contrast,
+  COLLIE_TEXT_GROUND,
+  HARD_TEXT_FLOOR,
   mixOklab,
   versionOf,
   contrastReport,
@@ -329,6 +331,57 @@ describe("parseTheme", () => {
         expect(r.detail).not.toBe("");
         expect(r.detail).not.toMatch(/\u2014/);
       }
+    }
+  });
+});
+
+// F3: a theme whose body text cannot be read is refused, because once applied it draws the Theme
+// card too. The softer floors of the contrast report stay warnings.
+describe("the hard floor of body text", () => {
+  const causes = (r: ParsedTheme) => (r.ok ? [] : r.refusals.map((x) => `${x.code} ${x.path}`));
+
+  it("refuses foreground equal to background, naming the half and the ratio", () => {
+    const r = parseTheme(file({ light: { background: "#ffffff", foreground: "#ffffff" } }), CAP);
+    expect(causes(r)).toEqual(["unreadable light.foreground"]);
+    expect(r.ok ? "" : r.refusals[0]?.detail).toBe("In the light half, foreground on background measures 1. Text needs at least 3.");
+  });
+
+  it("measures a token the theme leaves out against Collie's, the value the app fills it with", () => {
+    // A pale dark ground under Collie's near-white dark text.
+    expect(causes(parseTheme(file({ dark: { background: "#abcdef" } }), CAP))).toEqual(["unreadable dark.foreground"]);
+    // Near-white text over Collie's near-white light ground.
+    expect(causes(parseTheme(file({ light: { foreground: "#f4f4f4" } }), CAP))).toEqual(["unreadable light.foreground"]);
+  });
+
+  it("accepts text between the hard floor and the warning floor, and leaves the warning to the report", () => {
+    const r = parseTheme(file({ light: { background: "#ffffff", foreground: "#888888" } }), CAP);
+    expect(r.ok).toBe(true);
+    expect(contrast("#888888", "#ffffff")).toBeGreaterThanOrEqual(HARD_TEXT_FLOOR);
+    expect(contrast("#888888", "#ffffff")).toBeLessThan(4.5);
+  });
+
+  it("refuses a fully transparent text colour, any *-foreground token included", () => {
+    expect(causes(parseTheme(file({ light: { background: "#ffffff", "muted-foreground": "#00000000" } }), CAP))).toEqual([
+      "unreadable light.muted-foreground",
+    ]);
+    expect(causes(parseTheme(file({ light: { background: "#ffffff", foreground: "oklch(0.2 0 0 / 0)" } }), CAP))).toContain(
+      "unreadable light.foreground",
+    );
+  });
+
+  it("keeps Collie's two values equal to the shipped file", () => {
+    const parsed = parseTheme(read("src/themes/collie.json"), { ...CAP, allowReservedId: true });
+    if (!parsed.ok) throw new Error("collie.json does not parse");
+    const collie = parsed.theme;
+    for (const half of ["light", "dark"] as const) {
+      expect(collie[half]?.foreground).toBe(COLLIE_TEXT_GROUND[half].foreground);
+      expect(collie[half]?.background).toBe(COLLIE_TEXT_GROUND[half].background);
+    }
+  });
+
+  it("passes every shipped theme", () => {
+    for (const id of SHIPPED_THEME_IDS) {
+      expect(parseTheme(read(`src/themes/${id}.json`), { ...CAP, allowReservedId: true }).ok).toBe(true);
     }
   });
 });

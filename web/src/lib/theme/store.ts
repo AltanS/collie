@@ -28,7 +28,7 @@ import { useSyncExternalStore } from "react";
 
 import { setMetaColours, type MetaColours } from "@/hooks/use-theme";
 import { designPrefs, setDesignFont, setDesignTheme, subscribeDesign } from "@/lib/design";
-import { hasDocument } from "@/lib/env";
+import { hasDocument, hasWindow } from "@/lib/env";
 import { isShippedFont } from "@/lib/shipped-fonts";
 import { parseJsonObject } from "@/lib/json";
 
@@ -47,6 +47,7 @@ import {
   toSrgbHex,
   type Theme,
 } from "./schema";
+import { isThemeEscape, withoutThemeEscape } from "./escape";
 import { VERSION_TWO_PROPERTIES, omittedGroundDeclarations, resolveSurface, versionTwoDeclarations } from "./surface";
 
 /** The library's storage key. `public/theme-init.js` reads the same string; `theme-init.test.ts` holds them equal. */
@@ -257,8 +258,32 @@ export function setActiveTheme(id: string): void {
  * half of an imported theme, the theme-color metas) and Safari private mode, where it threw.
  */
 export function initTheme(): void {
+  if (takeThemeEscape()) setDesignTheme(DEFAULT_THEME_ID);
   const active = resolveActive();
   applyTheme(active.theme, active.source);
+}
+
+let escaped = false;
+
+/**
+ * `#theme=collie` on the address (escape.ts): true once per page when the hash asked for Collie, and
+ * the hash is taken off the address so a reload does not ask again. `resumeTrial` reads
+ * {@link themeEscaped} to drop a trial on the same page load.
+ */
+function takeThemeEscape(): boolean {
+  if (!hasWindow() || !isThemeEscape(location.hash)) return false;
+  escaped = true;
+  try {
+    history.replaceState(history.state, "", `${location.pathname}${location.search}${withoutThemeEscape(location.hash)}`);
+  } catch {
+    // A page that refuses replaceState keeps the hash; the next load puts Collie on again, no harm.
+  }
+  return true;
+}
+
+/** True when this page load opened with `#theme=collie`. */
+export function themeEscaped(): boolean {
+  return escaped;
 }
 
 // ── The one place the DOM is touched ────────────────────────────────────────────────────────────

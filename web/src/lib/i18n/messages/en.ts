@@ -143,6 +143,7 @@ export const en = {
   "theme.refusal.surface": "A shape word is not valid.",
   "theme.refusal.ansi": "A terminal colour is not valid, or it fails its contrast floor.",
   "theme.refusal.mark": "The character choice is not valid.",
+  "theme.refusal.unreadable": "The text of this theme cannot be read.",
   "theme.refusal.reserved-id": "This id belongs to a shipped theme. Change \"id\" in the file to import your copy.",
 
   // --- settings.haptics ---
@@ -3234,6 +3235,7 @@ export const PENDING_TRANSLATION = [
   "settings.typeface.note.nunito",
   "theme.preview.mark",
   "theme.refusal.mark",
+  "theme.refusal.unreadable",
   "theme.paste",
   "theme.paste.title",
   "theme.paste.label",

@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import { DESIGN_STORAGE_KEY } from "@/lib/design";
 import type { JsonObject } from "@/lib/json";
+import { THEME_ESCAPE_SOURCE } from "@/lib/theme/escape";
 import { ALL_THEME_TOKENS, COLOUR_MAX, COLOUR_SOURCE, SHIPPED_THEME_IDS, THEME_TOKENS, isColour, type Theme } from "@/lib/theme/schema";
 import { LIBRARY_STORAGE_KEY, applyTheme } from "@/lib/theme/store";
 import {
@@ -45,6 +46,7 @@ describe("theme-init.js and lib/theme agree", () => {
   });
 
   it("holds the same colour pattern and the same length cap", () => {
+    expect(init).toContain(`/${THEME_ESCAPE_SOURCE}/.test(location.hash)`);
     const literal = /var COLOUR = \/(.*)\/;/.exec(init)?.[1];
     expect(literal).toBe(new RegExp(COLOUR_SOURCE).source);
     expect(init).toContain(`v.length <= ${COLOUR_MAX}`);
@@ -122,7 +124,7 @@ describe("the colour pattern theme-init.js uses", () => {
 // RUNNING THE SCRIPT, not reading it. The cases above hold the lists equal; these run the file
 // against a stand-in document and a stand-in localStorage and look at what it wrote. It is the only
 // way to cover a branch like `lib.version === 1`, which no text comparison exercises.
-function runInit(store: Record<string, string>) {
+function runInit(store: Record<string, string>, hash = "") {
   const classes = new Set<string>();
   const attributes = new Map<string, string>();
   const properties = new Map<string, string>();
@@ -132,17 +134,20 @@ function runInit(store: Record<string, string>) {
     style: { setProperty: (k: string, v: string) => void properties.set(k, v) },
   };
   const storage = { getItem: (k: string) => store[k] ?? null };
-  new Function("document", "localStorage", init)({ documentElement: root }, storage);
+  new Function("document", "localStorage", "location", init)({ documentElement: root }, storage, { hash });
   return { classes: [...classes], attributes: [...attributes], properties: [...properties] };
 }
+
+/** A text token: kept readable on the stand-in ground, or the parser refuses the theme (F3). */
+const textToken = (token: string): boolean => token === "foreground" || token.endsWith("-foreground");
 
 /** The theme the stand-in library holds, as the store's type. */
 const midnightTheme = (): Theme => ({
   version: 1,
   id: "midnight",
   name: "Midnight",
-  light: Object.fromEntries(THEME_TOKENS.map((t) => [t, "#ffffff"])),
-  dark: Object.fromEntries(THEME_TOKENS.map((t) => [t, "#123456"])),
+  light: Object.fromEntries(THEME_TOKENS.map((t) => [t, textToken(t) ? "#1a1a1a" : "#ffffff"])),
+  dark: Object.fromEntries(THEME_TOKENS.map((t) => [t, textToken(t) ? "#f0f0f0" : "#123456"])),
 });
 
 const midnight = (version: number) => ({
@@ -152,8 +157,8 @@ const midnight = (version: number) => ({
       version: 1,
       id: "midnight",
       name: "Midnight",
-      light: Object.fromEntries(THEME_TOKENS.map((t) => [t, "#ffffff"])),
-      dark: Object.fromEntries(THEME_TOKENS.map((t) => [t, "#123456"])),
+      light: Object.fromEntries(THEME_TOKENS.map((t) => [t, textToken(t) ? "#1a1a1a" : "#ffffff"])),
+      dark: Object.fromEntries(THEME_TOKENS.map((t) => [t, textToken(t) ? "#f0f0f0" : "#123456"])),
     },
   ],
 });
@@ -217,6 +222,19 @@ describe("theme-init.js, run", () => {
     // The colour tokens, and `--ground-image: none`: a theme that names no ground must not inherit :root's grain.
     expect(seen.properties).toHaveLength(THEME_TOKENS.length + 1);
     expect(seen.properties).toContainEqual([GROUND, "none"]);
+  });
+
+  it("paints Collie under #theme=collie, the way back from any theme, and keeps the face", () => {
+    const store = {
+      "collie:design:v1": JSON.stringify({ font: "aldrich", theme: "midnight" }),
+      "collie:themes:v1": JSON.stringify(midnight(1)),
+    };
+    expect(runInit(store, "#theme=collie")).toEqual({ classes: ["font-aldrich"], attributes: [], properties: [] });
+    expect(runInit(store, "#a=1&theme=collie").properties).toEqual([]);
+    expect(runInit({ "collie:design:v1": JSON.stringify({ theme: "nightwatch" }) }, "#theme=collie").attributes).toEqual([]);
+    // Only that word: another theme name, or a longer value, is not the escape.
+    expect(runInit(store, "#theme=collies").properties).not.toEqual([]);
+    expect(runInit(store, "#theme=nightwatch").properties).not.toEqual([]);
   });
 
   it("applies nothing from a library that says version 2", () => {

@@ -155,6 +155,9 @@ list shows at most 25 causes, then one line "and N more". A file is refused for 
 - Its `ansi` block lacks a key, has a colour with an alpha, or fails a gate under
   [Terminal palette](#terminal-palette).
 - It has a bad `id`, `name` or `author`, or the `id` belongs to a shipped theme.
+- Its body text cannot be read: `foreground` on `background` measures under 3 in a half, or a text colour
+  (`foreground` or a `*-foreground` token) is fully transparent. A token the file leaves out is measured
+  with Collie's value, the one the app fills it with.
 - It would be a ninth imported theme. Collie refuses at the **Import** or **Paste** tap, before you pick a
   file, and again at **Apply**.
 
@@ -170,7 +173,8 @@ that theme, and the app goes back to Collie. The typeface stays as it was.
 
 The report measures the colours of a theme in both halves, and a failed line is a warning that you can accept.
 
-The terminal palette is the one exception, because its gates refuse the file. The table lists the floors of
+Two checks refuse the file instead: the terminal palette's gates, and `foreground` on `background` under 3 in
+a half (the list above). The table lists the floors of
 the other parts. A floor is a contrast ratio, so a higher number is easier to read.
 
 | Check | Floor |
@@ -574,6 +578,11 @@ follows the theme's two page colours, or its two band colours when the theme say
 ## Troubleshooting
 
 These are the problems people meet most, with the cause and the fix for each.
+
+- **A theme makes the app hard to read, and you cannot reach the Theme card.** Open the app's address with
+  `#theme=collie` at the end, for example `https://my-host.example.ts.net/#theme=collie`. The device wears
+  Collie again and a theme you were trying is dropped. Your imported themes, your typeface and the pairing
+  stay as they are, and Collie takes the `#theme=collie` off the address.
 
 - **A theme shows the default colour on one token.** The file left that token out, or the half. Missing
   tokens come from the theme Collie. Add the token to the half you want.

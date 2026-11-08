@@ -176,7 +176,8 @@ export type RefusalCode =
   | "reserved-id"
   | "surface"
   | "ansi"
-  | "character";
+  | "character"
+  | "unreadable";
 
 /**
  * Why a file was refused. `path` is where (`$` for the whole file, `dark.status-blocked`,
@@ -289,6 +290,10 @@ export function parseTheme(raw: string, opts: ParseThemeOptions): ParsedTheme {
       detail: "The file sets no colour. Give it a light half, a dark half, or both.",
     });
   }
+
+  // Last, and only for a file that passed every other rule: a theme whose body text cannot be read
+  // is refused, not warned, because once it is applied every control is drawn in it (F3).
+  if (refusals.length === 0) refusals.push(...readabilityRefusals(light, dark));
 
   if (refusals.length > 0 || id === undefined || name === undefined) return refuse(refusals);
 
@@ -940,6 +945,55 @@ export function contrast(a: string, b: string): number {
   const ground = toRgba(b);
   if (ink === undefined || ground === undefined) return 1;
   return ratio(ink.alpha < 1 ? over(ink, ground, ink.alpha) : ink, ground);
+}
+
+// ── The hard floor of body text (F3) ────────────────────────────────────────────────────────────
+//
+// The contrast report below WARNS, and a person may still Apply a theme that warns. These two rules
+// REFUSE, because a theme that breaks them leaves no way to read the screen, the Theme card included:
+//
+//   • `foreground` on `background` below {@link HARD_TEXT_FLOOR} in either half, each value the theme's
+//     own or, when it leaves one out, Collie's (the value the app fills it with);
+//   • any text colour of the file (`foreground` or a `*-foreground` token) that is fully transparent.
+//
+// The parser cannot import the shipped Collie file (it loads in the bridge and the site's sweep with no
+// bundler), so Collie's two values are spelled here and `schema.test.ts` holds them equal to the file.
+
+/** Below this ratio of `foreground` on `background`, a theme is refused. The report's text floor (4.5) still warns above it. */
+export const HARD_TEXT_FLOOR = 3;
+
+/** Collie's page text and ground, per half: what a theme that leaves one out is filled with. */
+export const COLLIE_TEXT_GROUND = {
+  light: { foreground: "oklch(0.14 0 0)", background: "oklch(0.955 0.003 80)" },
+  dark: { foreground: "oklch(0.985 0 0)", background: "oklch(0.17 0.003 80)" },
+} as const;
+
+function isTextToken(token: string): boolean {
+  return token === "foreground" || token.endsWith("-foreground");
+}
+
+function readabilityRefusals(light: Half, dark: Half): Refusal[] {
+  const refusals: Refusal[] = [];
+  for (const [which, half] of [["light", light], ["dark", dark]] as const) {
+    for (const token of ALL_THEME_TOKENS) {
+      const value = half[token];
+      if (!isTextToken(token) || value === undefined) continue;
+      if (toRgba(value)?.alpha === 0) {
+        refusals.push({ code: "unreadable", path: `${which}.${token}`, detail: `"${which}.${token}" is fully transparent, so no text would show.` });
+      }
+    }
+    const ink = half.foreground ?? COLLIE_TEXT_GROUND[which].foreground;
+    const ground = half.background ?? COLLIE_TEXT_GROUND[which].background;
+    const measured = Math.floor(contrast(ink, ground) * 100) / 100;
+    if (measured < HARD_TEXT_FLOOR) {
+      refusals.push({
+        code: "unreadable",
+        path: `${which}.foreground`,
+        detail: `In the ${which} half, foreground on background measures ${measured}. Text needs at least ${HARD_TEXT_FLOOR}.`,
+      });
+    }
+  }
+  return refusals;
 }
 
 // ── Filling and writing ───────────────────────────────────────────────────────────────────────

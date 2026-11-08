@@ -184,8 +184,9 @@ describe("ThemePickerControl", () => {
     it("previews a theme with a failing floor as a warning and still allows Apply", async () => {
       const { ThemePickerControl } = await load();
       const { container } = render(<ThemePickerControl />);
+      // About 3.2 to 1: under the warning floor (4.5), over the hard floor that refuses (3).
       const pale = copy("pale", "Pale", (theme) => {
-        theme.light = { ...theme.light, foreground: "#eeeeee" };
+        theme.light = { ...theme.light, foreground: "#888888" };
       });
       pick(container, fileOf(JSON.stringify(pale)));
       const dialog = await screen.findByRole("dialog", { name: "Import this theme?" });

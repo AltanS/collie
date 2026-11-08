@@ -116,7 +116,7 @@ describe("collie theme check", () => {
   });
 
   test("a contrast warning prints the preview's line and does not fail the check", () => {
-    const dim = JSON.stringify({ version: 1, id: "dim", name: "Dim", dark: { foreground: "#333333" } });
+    const dim = JSON.stringify({ version: 1, id: "dim", name: "Dim", dark: { foreground: "#777777" } });
     const { deps, io } = world({ "dim.json": dim });
     expect(cmdThemeCheck(deps, ["dim.json"])).toBe(EXIT.OK);
     const [head, ...warnings] = io.stdout;
@@ -126,7 +126,7 @@ describe("collie theme check", () => {
   });
 
   test("--json prints one object: ok, and one report per file", () => {
-    const dim = JSON.stringify({ version: 1, id: "dim", name: "Dim", dark: { foreground: "#333333" } });
+    const dim = JSON.stringify({ version: 1, id: "dim", name: "Dim", dark: { foreground: "#777777" } });
     const { deps, io } = world({ "dim.json": dim, "bad.json": "[]" });
     expect(cmdThemeCheck(deps, ["--json", "dim.json", "bad.json", "gone.json"])).toBe(EXIT.FAIL);
     expect(io.stdout).toHaveLength(1);

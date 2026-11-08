@@ -2,7 +2,7 @@ import { useSyncExternalStore } from "react";
 
 import { asJsonString, parseJsonObject } from "@/lib/json";
 import { THEME_MAX_BYTES, parseTheme, type Theme } from "./schema";
-import { activeThemeId, applyTheme, initTheme, installTheme, type AddResult } from "./store";
+import { activeThemeId, applyTheme, initTheme, installTheme, themeEscaped, type AddResult } from "./store";
 
 // Try a theme (M59 spec 08): wear a theme across the whole app, with the session as it is, without
 // keeping it. The ribbon (components/theme-trial-ribbon.tsx) is the way out: Keep or Back.
@@ -125,8 +125,12 @@ export function keepTrial(): AddResult {
   return added;
 }
 
-/** At startup, after `initTheme`: a reload of this tab puts the running trial back on. */
+/**
+ * At startup, after `initTheme`: a reload of this tab puts the running trial back on, unless the page
+ * opened with `#theme=collie` (escape.ts), which drops the trial too.
+ */
 export function resumeTrial(): void {
+  if (themeEscaped()) return dropTrial();
   if (current !== null) applyTheme(current.theme, "imported");
 }
 

@@ -117,7 +117,9 @@
     else if (d.font === "geist") root.classList.add("font-geist");
     else if (d.font === "nunito") root.classList.add("font-nunito");
     else if (d.font === "aldrich") root.classList.add("font-aldrich");
-    applyColourTheme(d.theme);
+    // `#theme=collie` (lib/theme/escape.ts) is the way back from any theme: paint Collie, store
+    // nothing; the app writes the choice and takes the hash off.
+    if (!/(?:^#|&)theme=collie(?:&|$)/.test(location.hash)) applyColourTheme(d.theme);
   } catch {
     // A truncated write, a hand-edited blob, or private mode. The default face is the right answer
     // to all three, and it is the one already in the stylesheet.
