@@ -1,4 +1,4 @@
-import { Activity, ArrowLeft, ArrowUpCircle, Bell, Bot, FlaskConical, Mic, Palette, Server, SlidersHorizontal } from "lucide-react";
+import { Activity, ArrowLeft, ArrowUpCircle, Bell, Bot, FlaskConical, Mic, Palette, Plug, Server, SlidersHorizontal } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 import { RouteHeader } from "@/components/app-header";
@@ -7,6 +7,7 @@ import { BuildStamp } from "@/components/build-stamp";
 import { Card } from "@/components/ui/card";
 import { SettingsNavRow } from "@/components/settings-nav-row";
 import { InstallControl } from "@/components/install-control";
+import { useModsPresent } from "@/components/mods-settings-card";
 import { useUpdatesStatus } from "@/components/updates-settings-card";
 import { hasExperiments } from "@/lib/experiments";
 import { useLocale } from "@/hooks/use-locale";
@@ -126,10 +127,28 @@ const ROWS: Row[] = [
     : []),
 ];
 
+// Mods sits after Machines and before Experiments: it is a standing list like the others, and, like
+// Experiments, it is offered only when it has something to say.
+const MODS_ROW: Row = {
+  id: "mods",
+  to: (scope) => settingsSectionPath("mods", scope),
+  icon: Plug,
+  title: "settings.section.mods.title",
+  blurb: "settings.section.mods.blurb",
+};
+
+function rows(withMods: boolean): Row[] {
+  if (!withMods) return ROWS;
+  const at = ROWS.findIndex((row) => row.id === "experiments");
+  return at === -1 ? [...ROWS, MODS_ROW] : [...ROWS.slice(0, at), MODS_ROW, ...ROWS.slice(at)];
+}
+
 export function SettingsRoute() {
   const nav = useNav();
   const scope = useScope();
   const updates = useUpdatesStatus();
+  // Mods (M94): a row only while the phone holds a mods reply, so an install without mods is unchanged.
+  const mods = useModsPresent();
   useLocale();
 
   return (
@@ -187,7 +206,7 @@ export function SettingsRoute() {
               }
               onOpen={() => nav.down(updatesPath(scope))}
             />
-            {ROWS.map((row) => (
+            {rows(mods).map((row) => (
               <SettingsNavRow
                 key={row.id}
                 icon={row.icon}

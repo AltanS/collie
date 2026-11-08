@@ -21,11 +21,11 @@ import {
 import { createModScanner, type FoundMod, type ModsScan } from "./discover.ts";
 import { scrubEnv, type ProviderEnv } from "./env.ts";
 import { buildFacts, type FactsWorld } from "./facts.ts";
-import { modsConfigDir, modStateDir } from "./paths.ts";
+import { modsConfigDir, modStateDir, switchesPath } from "./paths.ts";
 import { modSessionPanes, type ModSessionPanes } from "./panes.ts";
 import { outcomeProblem, runProvider, type RunOutcome, type RunSpec } from "./run.ts";
 import { ModsStore, problemLine } from "./store.ts";
-import { createSwitchReader, type Switches } from "./switches.ts";
+import { createSwitchReader, parseSwitches, withSwitch, writeSwitches, type Switches } from "./switches.ts";
 
 // THE MODS RUNNER (M94 slice 01): which mod runs when, and what its run leaves behind.
 //
@@ -86,6 +86,8 @@ export interface ModsSurface {
    * body it always was.
    */
   sessionPanes(): ModSessionPanes | undefined;
+  /** `POST /api/mods/<host>/<id>/switch`: write the switch file, as `collie mod on|off` does. */
+  setSwitch(host: string, id: string, on: boolean): Promise<SwitchAnswer>;
 }
 
 /** A tap route's answer: the HTTP status and the JSON body. */
@@ -94,6 +96,12 @@ export type TapAnswer =
   | { status: 400; body: { error: "tap-invalid"; refusals: Refusal[] } }
   | { status: 404; body: { error: "unknown-host" | "unknown-mod" } }
   | { status: 409; body: { error: "request-id-reused"; requestId: string } };
+
+/** The switch route's answer: the mod as the list now shows it, or why not. */
+export type SwitchAnswer =
+  | { status: 200; body: WireModInfo }
+  | { status: 400; body: { error: "switch-invalid" } }
+  | { status: 404; body: { error: "unknown-host" | "unknown-mod" } };
 
 export interface ModsServiceDeps {
   configDir: string;
@@ -177,6 +185,8 @@ export class ModsService implements ModsSurface {
   private scannedAt = -Infinity;
   private scanning: Promise<void> | null = null;
   private timer: ReturnType<typeof setInterval> | null = null;
+  /** Switch writes run one at a time, so two phones cannot lose each other's change. */
+  private switching: Promise<unknown> = Promise.resolve();
 
   constructor(deps: ModsServiceDeps) {
     this.deps = deps;
@@ -504,6 +514,36 @@ export class ModsService implements ModsSurface {
     } finally {
       this.inflight.delete(request.requestId);
     }
+  }
+
+  /**
+   * Switch a mod on or off. The same file `collie mod on|off` writes, read fresh (not through the
+   * mtime reader) and written whole, then a forced scan so the list, the runtime and `modsRev` move
+   * before the answer. Works for a mod whose manifest is refused or that keeps failing: the switch is
+   * Collie's, not the mod's (design §7).
+   */
+  async setSwitch(host: string, id: string, on: boolean): Promise<SwitchAnswer> {
+    if (host !== this.deps.host()) return { status: 404, body: { error: "unknown-host" } };
+    const turn = this.switching.then(() => this.writeSwitch(id, on));
+    this.switching = turn.catch(() => {});
+    return await turn;
+  }
+
+  private async writeSwitch(id: string, on: boolean): Promise<SwitchAnswer> {
+    await this.refresh(true);
+    if (!this.runtimes.has(id)) return { status: 404, body: { error: "unknown-mod" } };
+    let text: string | null;
+    try {
+      text = await Bun.file(switchesPath(this.deps.stateDir)).text();
+    } catch {
+      text = null;
+    }
+    const { switches } = parseSwitches(text);
+    await writeSwitches(this.deps.stateDir, withSwitch(switches, id, on, new Date(this.now()).toISOString()));
+    await this.refresh(true);
+    const info = this.store.reply(this.store.rev).mods.find((mod) => mod.id === id);
+    if (info === undefined) return { status: 404, body: { error: "unknown-mod" } };
+    return { status: 200, body: info };
   }
 }
 

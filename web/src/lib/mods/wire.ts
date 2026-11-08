@@ -83,7 +83,8 @@ function readKeys(raw: JsonValue | undefined): string[] | undefined {
   return keys;
 }
 
-function readMod(raw: JsonValue | undefined): WireModInfo | undefined {
+/** One mod entry as the list and the switch route give it, or `undefined` for a body of another shape. */
+export function readMod(raw: JsonValue | undefined): WireModInfo | undefined {
   // The closed words (`icon`, `state`, `places`) were written by the bridge from the schema's lists; the
   // renderer falls back on an icon it does not know, and a state it does not know reads as ok.
   const mod = asJsonObject(raw);

@@ -26,8 +26,8 @@ import { readAskTapReply, type AskTapReply } from "./ask-reply";
 import { authHeader, clearNotPaired, EXPIRED_BODY, markExpired, markNotPaired, NOT_PAIRED_BODY } from "./pairing";
 import { pairingRefused } from "./wipe";
 import { mintRequestId } from "./worktree-name";
-import type { ModTapReply, ModsReply, TapRequest } from "./mods/schema";
-import { readModsReply, readTapReply } from "./mods/wire";
+import type { ModTapReply, ModsReply, TapRequest, WireModInfo } from "./mods/schema";
+import { readMod, readModsReply, readTapReply } from "./mods/wire";
 import { fileVersionOf } from "./file-image-cache";
 import { isLead, normalizeScope, paneScopeKey, type Scope } from "./scope";
 import { closePaneNotifications } from "./pane-notifications";
@@ -2980,4 +2980,18 @@ export async function tapMod(host: string, mod: string, body: TapRequest): Promi
   const reply = readTapReply(raw);
   if (reply === undefined) throw new Error(`${path} answered with a body that is not a tap receipt`);
   return reply;
+}
+
+/**
+ * Switch a mod on or off: `POST /api/mods/<host>/<id>/switch` with `{ on }`. The bridge writes the
+ * file `collie mod on|off` writes and answers the mod as the list now shows it. A refusal (404 for a
+ * mod or host that is gone, 403 for a device that may not write) throws with its status; a body of
+ * another shape throws too, so the caller reverts rather than showing a switch the bridge did not take.
+ */
+export async function switchMod(host: string, mod: string, on: boolean): Promise<WireModInfo> {
+  const path = `/api/mods/${encodeURIComponent(host)}/${encodeURIComponent(mod)}/switch`;
+  const raw = await req<JsonValue>(path, { method: "POST", body: JSON.stringify({ on }) });
+  const info = readMod(raw);
+  if (info === undefined) throw new Error(`${path} answered with a body that is not a mod`);
+  return info;
 }

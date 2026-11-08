@@ -23,6 +23,7 @@ import {
   SettingsAppearanceRoute,
   SettingsHarnessesRoute,
   SettingsExperimentsRoute,
+  SettingsModsRoute,
   SettingsDeviceRoute,
   SettingsVoiceRoute,
   SettingsVoiceHostRoute,
@@ -128,6 +129,8 @@ export const router = createBrowserRouter([
       // what an operator who bookmarked it gets after the last experiment graduates: an empty page
       // rather than a 404.
       { path: "settings/experiments", element: <SettingsExperimentsRoute /> },
+      // Mods (M94): routable always; the index offers its row only while the phone holds a mods reply.
+      { path: "settings/mods", element: <SettingsModsRoute /> },
       // The System section carries the paired-device registry, so it gets the loader Settings used
       // to hold — a revoke or a pair is then the app's standard mutation shape (api call →
       // revalidate), with no second data path.
