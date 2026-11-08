@@ -2886,6 +2886,8 @@ export const zh: Dictionary = {
   "telemetry.card.next.aria": "下一条消息（JSON）",
   "telemetry.card.more": "发送的内容",
   "telemetry.notice.body": "Collie 1.27.0 每天发送一次匿名遥测。可在设置中关闭。",
+  "telemetry.notice.updateBody": "Collie 的每日统计现在也会记录无法读取的对话框，使用由该对话框的按键提示生成的短代码，绝不使用你的文本。",
+  "telemetry.notice.docs": "发送的内容",
   "telemetry.notice.open": "打开设置",
   "telemetry.notice.dismiss": "关闭通知",
   "apiError.telemetry.setting_invalid": "遥测设置必须为“开启”或“关闭”。未做任何更改。",

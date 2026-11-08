@@ -5,7 +5,7 @@
 - **Shipped in:** 1.27.4
 - **Amends:** [ADR 0129](./0129-an-anonymous-install-count-on-by-default.md), its amendment of
   2026-11-06 (the trouble tally). 0129's Consequences ask a field added after 1.27.0 for its own
-  ADR and its own notice: this is that ADR, and the notice is open (below).
+  ADR and its own notice: this is that ADR, and the notice is below.
 - **Related:** [ADR 0133](./0133-the-omp-plan-review-is-lifted-and-its-tier-is-named-not-moved.md)
   is one of the three screens the evidence found. [ADR 0053](./0053-an-unread-dialog-still-has-a-way-out.md)
   is the "Cannot read a dialog" card the hash is taken on.
@@ -60,8 +60,22 @@ it, so it ships first.
 
 ## Notice
 
-**OPEN.** Altan decides whether the release notice of 1.27.4 is enough for this field, or the
-in-app notice is shown again. Until he decides, nothing in the app changes.
+Decided by Altan on 2026-11-08: the release notes of 1.27.4 carry the field, and the app shows a
+soft, one-time update notice that leads to the docs. 0129 asked a later field for its own notice;
+this is it, kept small.
+
+The stored value of `collie.telemetryNotice.v1` is a revision. Nothing stored shows the 1.27.0
+notice, and spending it writes `2`, because the docs it leads to already describe this field. `1`
+(the 1.27.0 notice was read) shows the update notice once, under the same rule as the first: the
+count is on by default. `2` shows nothing. The key keeps its name, so the unpair decision in
+`storage-keys.test.ts` stands.
+
+The update notice is the same box, tone and icon. Its body is: "Collie's daily count now also names
+a dialog it could not read, by a short code made from the dialog's key hints, never from your
+text." Its one button, "What is sent", opens
+`https://colliepwa.dev/docs/security#what-leaves-your-machine` in a new tab and spends the notice;
+the X spends it too. It has no Settings button, because the Settings card stays the permanent
+surface.
 
 ## Consequences
 

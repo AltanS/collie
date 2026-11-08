@@ -3120,6 +3120,8 @@ export const en = {
   "telemetry.card.next.aria": "The next message, as JSON",
   "telemetry.card.more": "What is sent",
   "telemetry.notice.body": "Collie 1.27.0 sends anonymous telemetry once a day. Turn it off in Settings.",
+  "telemetry.notice.updateBody": "Collie's daily count now also names a dialog it could not read, by a short code made from the dialog's key hints, never from your text.",
+  "telemetry.notice.docs": "What is sent",
   "telemetry.notice.open": "Open Settings",
   "telemetry.notice.dismiss": "Dismiss notice",
   "apiError.telemetry.setting_invalid": "The telemetry setting must be On or Off. Nothing was changed.",
