@@ -8934,7 +8934,7 @@ export function sendReceiptsRoute(rt: Pick<SendRouteRuntime, "send" | "driver"> 
 /** What `reportContextRoute` reads of a session runtime: a {@link SessionRuntime} is one. */
 export interface ReportRouteRuntime extends Pick<SendRouteRuntime, "send" | "engine"> {
   readonly herdr: Pick<MuxAdapter, "controlTurn" | "readGrid" | "mux">;
-  /** The session's Surface shadow, for its cached binary version. Absent with the shadow off and on a program session. */
+  /** The session's Surface shadow, for the pane's cached binary version. Absent with the shadow off and on a program session. */
   readonly surface?: Pick<SurfaceShadow, "cachedVersion">;
 }
 
@@ -8983,7 +8983,7 @@ export async function reportContextRoute(
   const screenable = pane !== null && rawInputRefusal(rt.herdr) === null;
   const doctor = reportDoctor(machine, harness);
   // The version cache only: a report never starts a binary read.
-  const harnessVersion = harness === null || harness === "" ? null : (rt.surface?.cachedVersion(harness) ?? null);
+  const harnessVersion = harness === null || harness === "" ? null : (pane === null ? null : (rt.surface?.cachedVersion(pane, harness) ?? null));
   const facts: ReportContext = { collie: machine.collie, line: machine.line, os: machine.os, arch: machine.arch, mux: rt.herdr.mux, harness, harnessVersion, screenable };
   const context: ReportContext = doctor === undefined ? facts : { ...facts, doctor };
   if (!wantScreen) return json(context, acceptEncoding);

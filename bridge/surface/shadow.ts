@@ -181,7 +181,8 @@ export function freeOnOldAxis(surface: Surface): boolean {
 export class SurfaceShadow {
   private readonly panes = new Map<string, PaneState>();
   private readonly counters = new Map<string, ShadowCounters>();
-  private readonly versions = new Map<string, { version: string | null; at: number; pending: boolean }>();
+  /** Each pane's agent version, keyed by pane: two panes of one agent may run two installs. */
+  private readonly versions = new Map<string, { profileId: string; version: string | null; at: number; pending: boolean }>();
   private observing = false;
   /** The read in flight per pane: a poll and a fresh read an edge asked for never read one pane at once. */
   private readonly reading = new Map<string, Promise<void>>();
@@ -265,14 +266,16 @@ export class SurfaceShadow {
   }
 
   /**
-   * The binary version this shadow last read for an agent's profile, from its cache: no read is
-   * started. Null when the agent has no profile, the binary was not read yet, or the read found no
-   * version. Report a problem and the trouble signal name it (1.27.4).
+   * The binary version this shadow last read for the agent on a pane, from its cache: no read is
+   * started. Null when the agent has no profile, the pane's binary was not read yet under that
+   * agent's profile, or the read found no version. Report a problem and the trouble signal name it
+   * (1.27.4).
    */
-  cachedVersion(harness: string): string | null {
+  cachedVersion(paneId: string, harness: string): string | null {
     const profile = findProfile(loadProfiles(), harness);
     if (profile === undefined) return null;
-    return this.versions.get(profile.id)?.version ?? null;
+    const known = this.versions.get(paneId);
+    return known?.profileId === profile.id ? known.version : null;
   }
 
   /** The counter key of a pane: `harness@version`. */
@@ -304,6 +307,7 @@ export class SurfaceShadow {
         if (live.has(id)) continue;
         state.reread?.();
         this.panes.delete(id);
+        this.versions.delete(id);
       }
       for (const agent of agents) {
         try {
@@ -318,26 +322,29 @@ export class SurfaceShadow {
   }
 
   /**
-   * A harness's profile and its binary's version, read for the pane that asked. The first read of a
-   * profile waits for the version (the shadow runs beside the poll, never in it); later reads use the
-   * cached one and refresh it in the background once it is older than VERSION_TTL_MS. The cache stays
-   * one entry per profile.
+   * A harness's profile and the version of the binary the pane runs for it. The first read on a pane
+   * (or after the pane's agent changed) waits for the version (the shadow runs beside the poll, never
+   * in it); later reads use the pane's cached one and refresh it in the background once it is older
+   * than VERSION_TTL_MS. One entry per live pane: two panes of one agent from two installs each keep
+   * their own version, and the reader's cache (bridge/surface/binary-version.ts `VersionCache`) keys
+   * each read by the program file, so the version is a function of the file.
    */
   private async profileOf(harness: string, paneId: string): Promise<{ profile: Profile | null; version: string }> {
     const profile = findProfile(loadProfiles(), harness) ?? null;
     if (profile === null) return { profile: null, version: "-" };
-    const known = this.versions.get(profile.id);
-    if (known === undefined) {
+    const known = this.versions.get(paneId);
+    if (known?.profileId !== profile.id) {
       const version = await this.readVersion(profile, paneId);
-      this.versions.set(profile.id, { version, at: this.now(), pending: false });
+      this.versions.set(paneId, { profileId: profile.id, version, at: this.now(), pending: false });
       return { profile, version: version ?? "unread" };
     }
     if (this.now() - known.at > VERSION_TTL_MS && !known.pending) {
       known.pending = true;
-      this.readVersion(profile, paneId).then(
-        (version) => this.versions.set(profile.id, { version, at: this.now(), pending: false }),
-        () => this.versions.set(profile.id, { ...known, at: this.now(), pending: false }),
-      );
+      // A pane that closed, or changed agent, while the read ran keeps no answer from it.
+      const settle = (version: string | null): void => {
+        if (this.versions.get(paneId) === known) this.versions.set(paneId, { profileId: profile.id, version, at: this.now(), pending: false });
+      };
+      this.readVersion(profile, paneId).then(settle, () => settle(known.version));
     }
     return { profile, version: known.version ?? "unread" };
   }

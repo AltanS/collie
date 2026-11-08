@@ -1572,17 +1572,14 @@ const SURFACE_PLATFORM = surfacePlatform({
   },
 });
 /**
- * A harness's profile at its version, for the send path: of the pane's own program when the pane's
- * foreground read shows it, else of the PATH binary (bridge/pane-binary.ts, ADR 0124).
+ * The pane's agent version, one reader for the send path and the Surface shadow over one cache: of the
+ * pane's own program when the pane's foreground read shows it, else of the PATH binary
+ * (bridge/pane-binary.ts, ADR 0124). A binary the login PATH misses still names its version in the
+ * send, the shadow, the report and the trouble count, and both keep one last answer per pane.
+ * `sendProfile` is the send path's profile at that version.
  */
-const paneProbe = procProbe();
-const sendProfile = createPaneProfile({ versions: sendVersions, binaries: harnessBinaries, probe: paneProbe, platform: SURFACE_PLATFORM });
-/**
- * The same read for the Surface shadow, over the same cache: a pane's agent version is the version of
- * the program that pane runs, so a binary the login PATH misses still names its version in the shadow,
- * the report and the trouble count.
- */
-const paneVersion = createPaneVersion({ versions: sendVersions, binaries: harnessBinaries, probe: paneProbe });
+const paneVersion = createPaneVersion({ versions: sendVersions, binaries: harnessBinaries, probe: procProbe() });
+const sendProfile = createPaneProfile({ versions: sendVersions, binaries: harnessBinaries, platform: SURFACE_PLATFORM, paneVersion });
 
 const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
   const built = endpoint.kind === "program" ? programAdapter(endpoint.source) : terminalAdapter(endpoint.socketPath);
