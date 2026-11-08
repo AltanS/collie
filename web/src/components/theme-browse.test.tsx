@@ -105,7 +105,7 @@ describe("ThemeBrowseSheet", () => {
     const row = (name: string) => within(sheet).getByText(name, SEEN).closest("li");
     expect(row("My day")).toHaveTextContent("@sam");
     expect(row("My day")).toHaveTextContent("★ 12");
-    expect(within(row("My day") ?? sheet).getByText("12 stars on GitHub")).toBeInTheDocument();
+    expect(within(row("My day") ?? sheet).getByText("Stars on GitHub: 12")).toBeInTheDocument();
     for (const name of ["Night", "Noon", "Dusk"]) {
       expect(row(name)).toHaveTextContent("@sam");
       expect(row(name)).not.toHaveTextContent("★");
@@ -121,13 +121,16 @@ describe("ThemeBrowseSheet", () => {
     expect(sheet.querySelector("img")).toBeNull();
   });
 
-  it("Install hands the parsed theme to the card", async () => {
+  it("Install hands the parsed theme and its checked entry to the card", async () => {
     host(status([entry("my-day", "My day")]));
     const { sheet, onInstall } = open();
     await within(sheet).findByText("My day", SEEN);
     await userEvent.click(within(sheet).getByRole("button", { name: en["theme.browse.install"] }));
     expect(onInstall).toHaveBeenCalledOnce();
-    expect(onInstall.mock.calls[0]?.[0]).toMatchObject({ id: "my-day", name: "My day", author: "Sam" });
+    expect(onInstall.mock.calls[0]?.[0]).toMatchObject({
+      theme: { id: "my-day", name: "My day", author: "Sam" },
+      entry: { repo: "sam/my-day", path: "collie-theme.json", sha: SHA },
+    });
   });
 
   it("offers a Report link to a prefilled issue on collie, built from the slug", async () => {

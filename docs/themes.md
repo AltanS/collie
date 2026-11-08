@@ -126,6 +126,34 @@ Every theme is checked three times: by the site, by your host and by your phone.
 any check is left out, and the sheet counts how many were. **Report** opens a new issue on the collie
 repository with the theme's repository filled in. You read it and send it yourself.
 
+### See where a theme came from, and update it
+
+Pick the theme in the **Theme** card, then tap the **i** button beside it.
+
+The **About this theme** sheet shows the name, the author and where the theme came from. A theme from
+**Browse community themes** shows its repository as `@owner/name`, the file, the short commit and the
+date you installed it. The file link opens that file on GitHub at that commit. **Report** is there too.
+
+A theme from a file says "Added from a file", and a pasted one says "Pasted", each with the date. A
+theme you kept before this version says "Added on this device". Shipped themes have no About sheet.
+
+For a theme from the list, the sheet compares it with your host's copy of the list:
+
+| The sheet says | It means |
+| --- | --- |
+| A newer version is listed. | The list holds another commit of the same file. Tap **Update**. |
+| No newer version is listed. | You have the commit the list holds. |
+| No longer listed. | The list no longer holds the file. Your copy stays. |
+| **Check for updates** | The host's copy is older than your install. The tap fetches the list once. |
+
+**Update** opens the same preview as **Install**, with the same contrast report. Tap **Update** there
+to put the new file in place of the old one. The theme stays on if you wore it, and the eight-theme
+limit does not stop an update.
+
+Collie matches the repository and the file, never the theme's id. A theme copied from another
+repository with the same id is never offered as an update. A copy of the list made before your install
+never offers an update, so an update never takes you back to an older commit.
+
 ### Try a theme before you keep it
 
 Tap **Try** in the preview or on a row of **Browse community themes**, and the whole app wears the

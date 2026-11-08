@@ -103,6 +103,26 @@ describe("a theme trial", () => {
     expect(sessionStorage.getItem(TRIAL_KEY)).toBeNull();
   });
 
+  it("Keep records where a tried theme came from, also after a reload of the tab", async () => {
+    const source = { kind: "registry", repo: "kim/sunroom", path: "collie-theme.json", sha: "0123456789abcdef0123456789abcdef01234567" } as const;
+    const first = await page();
+    first.trial.startTrial(sample(), source);
+    const { store, trial } = await page();
+    expect(trial.keepTrial()).toEqual({ ok: true });
+    expect(store.originOf("sunroom")).toMatchObject(source);
+  });
+
+  it("drops a stored trial source that fails its check, and the trial goes on", async () => {
+    sessionStorage.setItem(
+      TRIAL_KEY,
+      JSON.stringify({ previous: "collie", theme: JSON.stringify(sample()), source: { kind: "registry", repo: "https://x", path: "a", sha: "b" } }),
+    );
+    const { store, trial } = await page();
+    expect(trial.currentTrial()?.source).toBeUndefined();
+    expect(trial.keepTrial()).toEqual({ ok: true });
+    expect(store.originOf("sunroom")).toBeUndefined();
+  });
+
   it("a refused Keep leaves the trial running and says why", async () => {
     const full = Array.from({ length: 8 }, (_, i) => sample(`t${i}`, `Theme ${i}`));
     localStorage.setItem(LIBRARY_KEY, JSON.stringify({ version: 1, themes: full }));

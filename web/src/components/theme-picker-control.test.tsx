@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { en } from "@/lib/i18n/messages/en";
 import { server } from "@/test/setup";
+import type { ThemeOrigin } from "@/lib/theme/origin";
 import { THEME_TOKENS, isOptionalThemeToken, parseTheme, type Theme } from "@/lib/theme/schema";
 
 // The Theme card. The store keeps module-scope state (design prefs, the library), so each case
@@ -37,9 +38,9 @@ function copy(id: string, name: string, edit: (theme: Theme) => void = () => {})
   return theme;
 }
 
-async function load(library: Theme[] = []) {
+async function load(library: Theme[] = [], origins?: Record<string, ThemeOrigin>) {
   localStorage.clear();
-  if (library.length > 0) localStorage.setItem(LIBRARY_KEY, JSON.stringify({ version: 1, themes: library }));
+  if (library.length > 0) localStorage.setItem(LIBRARY_KEY, JSON.stringify({ version: 1, themes: library, origins }));
   document.documentElement.removeAttribute("style");
   document.documentElement.removeAttribute("data-theme");
   vi.resetModules();
@@ -678,6 +679,152 @@ describe("ThemePickerControl", () => {
       await userEvent.click(await within(sheet).findByRole("button", { name: "Install" }));
       const dialog = await screen.findByRole("dialog", { name: "This file was not imported" });
       expect(dialog).toHaveTextContent("You already hold 8 imported themes.");
+    });
+  });
+
+  describe("About and Update (theme sources)", () => {
+    const OLD = "1111111111111111111111111111111111111111";
+    const NEW = "2222222222222222222222222222222222222222";
+    const AT = Date.parse("2026-11-08T10:00:00Z");
+    const ORIGIN: ThemeOrigin = { kind: "registry", repo: "sam/shared", path: "collie-theme.json", sha: OLD, at: AT };
+
+    /** The host's copy: `listed` at `sha`, made at `generated`. Counts the reads and the refreshes. */
+    function hostList(listed: Theme[], opts: { sha?: string; generated?: string | null; afterPost?: { sha: string; generated: string } } = {}) {
+      const calls = { gets: 0, posts: 0 };
+      const body = (sha: string, generated: string | null) => ({
+        fetchedAt: "2026-11-08T12:00:00.000Z",
+        ageMs: 60_000,
+        generated,
+        dropped: 0,
+        fetching: false,
+        themes: listed.map((theme) => ({ repo: `sam/${theme.id}`, sha, path: "collie-theme.json", text: JSON.stringify(theme) })),
+      });
+      let current = body(opts.sha ?? NEW, opts.generated === undefined ? "2026-11-09T06:00:00Z" : opts.generated);
+      server.use(
+        http.get("/api/themes/registry", () => {
+          calls.gets += 1;
+          return HttpResponse.json(current);
+        }),
+        http.post("/api/themes/registry", () => {
+          calls.posts += 1;
+          if (opts.afterPost !== undefined) current = body(opts.afterPost.sha, opts.afterPost.generated);
+          return HttpResponse.json(current);
+        }),
+      );
+      return calls;
+    }
+
+    const aboutButton = (name: string) => screen.getByRole("button", { name: `About ${name}` });
+
+    it("keeps About a disabled slot on a shipped theme", async () => {
+      const { ThemePickerControl } = await load();
+      render(<ThemePickerControl />);
+      expect(aboutButton("Collie")).toBeDisabled();
+    });
+
+    it("Install from Browse records where the theme came from, and About shows it with links built on the phone", async () => {
+      hostList([copy("shared", "Shared")], { sha: OLD });
+      const { ThemePickerControl, store } = await load();
+      render(<ThemePickerControl />);
+      await userEvent.click(screen.getByRole("button", { name: "Browse community themes" }));
+      const sheet = await screen.findByRole("dialog", { name: "Community themes" });
+      await userEvent.click(await within(sheet).findByRole("button", { name: "Install" }));
+      const preview = await screen.findByRole("dialog", { name: "Import this theme?" });
+      expect(preview).toHaveTextContent("From sam/shared");
+      await userEvent.click(within(preview).getByRole("button", { name: "Apply" }));
+      await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+      expect(store.originOf("shared")).toMatchObject({ kind: "registry", repo: "sam/shared", path: "collie-theme.json", sha: OLD });
+
+      await userEvent.click(aboutButton("Shared"));
+      const about = await screen.findByRole("dialog", { name: "About this theme" });
+      expect(within(about).getByRole("link", { name: "@sam/shared" })).toHaveAttribute("href", "https://github.com/sam/shared");
+      expect(within(about).getByRole("link", { name: "collie-theme.json" })).toHaveAttribute(
+        "href",
+        `https://github.com/sam/shared/blob/${OLD}/collie-theme.json`,
+      );
+      expect(about).toHaveTextContent("1111111");
+      expect(within(about).getByRole("link", { name: "Report Shared on GitHub" })).toHaveAttribute(
+        "href",
+        expect.stringContaining("https://github.com/AltanS/collie/issues/new"),
+      );
+    });
+
+    it("says a file, a paste, or this device, with no link", async () => {
+      const { ThemePickerControl, store } = await load(
+        [copy("filed", "Filed"), copy("pasted", "Pasted"), copy("old", "Old")],
+        { filed: { kind: "file", at: AT }, pasted: { kind: "paste", at: AT } },
+      );
+      render(<ThemePickerControl />);
+      for (const [id, name, words] of [
+        ["filed", "Filed", "Added from a file on"],
+        ["pasted", "Pasted", "Pasted on"],
+        ["old", "Old", "Added on this device."],
+      ] as const) {
+        act(() => store.setActiveTheme(id));
+        await userEvent.click(aboutButton(name));
+        const about = await screen.findByRole("dialog", { name: "About this theme" });
+        expect(about).toHaveTextContent(words);
+        expect(within(about).queryByRole("link")).toBeNull();
+        await userEvent.keyboard("{Escape}");
+        await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+      }
+    });
+
+    it("a file import records the file kind", async () => {
+      const { ThemePickerControl, store } = await load();
+      const { container } = render(<ThemePickerControl />);
+      pick(container, fileOf(JSON.stringify(copy("mine", "Mine"))));
+      const preview = await screen.findByRole("dialog", { name: "Import this theme?" });
+      await userEvent.click(within(preview).getByRole("button", { name: "Apply" }));
+      await waitFor(() => expect(store.originOf("mine")?.kind).toBe("file"));
+    });
+
+    it("offers Update for a newer commit of the same file, and Update replaces the theme in its slot and keeps it on", async () => {
+      const calls = hostList([copy("shared", "Shared 2")]);
+      const { ThemePickerControl, store } = await load([copy("a", "A"), copy("shared", "Shared"), copy("c", "C")], { shared: ORIGIN });
+      act(() => store.setActiveTheme("shared"));
+      render(<ThemePickerControl />);
+      await userEvent.click(aboutButton("Shared"));
+      const about = await screen.findByRole("dialog", { name: "About this theme" });
+      expect(await within(about).findByText("A newer version is listed.")).toBeInTheDocument();
+      await userEvent.click(within(about).getByRole("button", { name: "Update" }));
+      const preview = await screen.findByRole("dialog", { name: "Import this theme?" });
+      expect(within(preview).queryByRole("button", { name: "Try" })).toBeNull();
+      await userEvent.click(within(preview).getByRole("button", { name: "Update" }));
+      await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+      expect(store.library().map((theme) => theme.name)).toEqual(["A", "Shared 2", "C"]);
+      expect(store.activeThemeId()).toBe("shared");
+      expect(store.originOf("shared")).toMatchObject({ sha: NEW });
+      expect(calls.posts).toBe(0);
+    });
+
+    it("never offers a commit from a copy older than the install; Check for updates is the one tap that fetches", async () => {
+      const calls = hostList([copy("shared", "Shared 2")], {
+        generated: "2026-11-08T06:00:00Z",
+        afterPost: { sha: NEW, generated: "2026-11-09T06:00:00Z" },
+      });
+      const { ThemePickerControl, store } = await load([copy("shared", "Shared")], { shared: ORIGIN });
+      act(() => store.setActiveTheme("shared"));
+      render(<ThemePickerControl />);
+      await userEvent.click(aboutButton("Shared"));
+      const about = await screen.findByRole("dialog", { name: "About this theme" });
+      const check = await within(about).findByRole("button", { name: "Check for updates" });
+      expect(within(about).queryByRole("button", { name: "Update" })).toBeNull();
+      expect(calls).toEqual({ gets: 1, posts: 0 });
+      await userEvent.click(check);
+      expect(await within(about).findByText("A newer version is listed.")).toBeInTheDocument();
+      expect(calls.posts).toBe(1);
+    });
+
+    it("says No longer listed when a newer list no longer holds the file", async () => {
+      hostList([copy("other", "Other")]);
+      const { ThemePickerControl, store } = await load([copy("shared", "Shared")], { shared: ORIGIN });
+      act(() => store.setActiveTheme("shared"));
+      render(<ThemePickerControl />);
+      await userEvent.click(aboutButton("Shared"));
+      const about = await screen.findByRole("dialog", { name: "About this theme" });
+      expect(await within(about).findByText("No longer listed.")).toBeInTheDocument();
+      expect(within(about).queryByRole("button", { name: /Update|Check for updates/ })).toBeNull();
     });
   });
 

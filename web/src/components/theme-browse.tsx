@@ -9,7 +9,6 @@ import { apiErrorStatus, fetchThemeRegistry, refreshThemeRegistry } from "@/lib/
 import { timeAgo } from "@/lib/format";
 import { t, type MessageKey } from "@/lib/i18n";
 import { ownerOf, readRegistryEntry, repoUrl, reportUrl, type RegistryTheme } from "@/lib/theme/registry";
-import type { Theme } from "@/lib/theme/schema";
 import type { ThemeRegistryStatus } from "@/lib/types";
 
 // The community Browse sheet (M59 spec 06): the themes people share with the topic
@@ -40,10 +39,10 @@ const ERROR_KEYS = {
 interface BrowseSheetProps {
   open: boolean;
   onClose: () => void;
-  /** Install: the card opens its preview sheet over this theme. */
-  onInstall: (theme: Theme) => void;
+  /** Install: the card opens its preview sheet over this theme, and keeps the entry as its origin. */
+  onInstall: (item: RegistryTheme) => void;
   /** Try: the card starts a trial of this theme (M59 spec 08). Absent draws no Try button. */
-  onTry?: (theme: Theme) => void;
+  onTry?: (item: RegistryTheme) => void;
 }
 
 /** The entries of a status the phone accepts, in the registry's own order. */
@@ -56,8 +55,8 @@ export function acceptedThemes(status: ThemeRegistryStatus): RegistryTheme[] {
 
 interface RowProps {
   item: RegistryTheme;
-  onInstall: (theme: Theme) => void;
-  onTry?: (theme: Theme) => void;
+  onInstall: (item: RegistryTheme) => void;
+  onTry?: (item: RegistryTheme) => void;
 }
 
 /**
@@ -116,11 +115,11 @@ function ThemeRow({ item, onInstall, onTry }: RowProps) {
       </div>
       <div className={onTry === undefined ? "grid grid-cols-1 gap-2" : "grid grid-cols-2 gap-2"}>
         {onTry !== undefined && (
-          <Button type="button" variant="outline" className="h-11" onClick={() => onTry(theme)}>
+          <Button type="button" variant="outline" className="h-11" onClick={() => onTry(item)}>
             {t("theme.trial.try")}
           </Button>
         )}
-        <Button type="button" className="h-11" onClick={() => onInstall(theme)}>
+        <Button type="button" className="h-11" onClick={() => onInstall(item)}>
           {t("theme.browse.install")}
         </Button>
       </div>

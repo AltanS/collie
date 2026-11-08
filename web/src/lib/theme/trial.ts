@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from "react";
 
 import { asJsonString, parseJsonObject } from "@/lib/json";
+import { readSourceRef, stamp, type ThemeSourceRef } from "./origin";
 import { THEME_MAX_BYTES, parseTheme, type Theme } from "./schema";
 import { activeThemeId, applyTheme, initTheme, installTheme, themeEscaped, type AddResult } from "./store";
 
@@ -28,6 +29,8 @@ export interface Trial {
   theme: Theme;
   /** The id the device wore before the trial, for the record. Back re-applies the stored choice. */
   previous: string;
+  /** Where the theme came from, so Keep records it as Apply would (origin.ts). Absent for none. */
+  source?: ThemeSourceRef;
 }
 
 type Listener = () => void;
@@ -52,7 +55,9 @@ function load(): Trial | null {
   if (previous === undefined || text === undefined) return drop();
   const parsed = parseTheme(text, { maxBytes: THEME_MAX_BYTES });
   if (!parsed.ok) return drop();
-  return { theme: parsed.theme, previous };
+  // A source that fails its check is left out; the trial itself goes on.
+  const source = readSourceRef(doc?.source);
+  return source === undefined ? { theme: parsed.theme, previous } : { theme: parsed.theme, previous, source };
 }
 
 function drop(): null {
@@ -66,7 +71,7 @@ function drop(): null {
 
 function save(trial: Trial): void {
   try {
-    sessionStorage.setItem(TRIAL_KEY, JSON.stringify({ previous: trial.previous, theme: JSON.stringify(trial.theme) }));
+    sessionStorage.setItem(TRIAL_KEY, JSON.stringify({ previous: trial.previous, theme: JSON.stringify(trial.theme), source: trial.source }));
   } catch {
     // A private window that refuses storage still runs the trial for this page.
   }
@@ -84,10 +89,11 @@ export function currentTrial(): Trial | null {
 }
 
 /** Wear `theme` without keeping it. False when it does not pass the import check. */
-export function startTrial(theme: Theme): boolean {
+export function startTrial(theme: Theme, source?: ThemeSourceRef): boolean {
   const checked = check(theme);
   if (checked === undefined) return false;
   current = { theme: checked, previous: current?.previous ?? activeThemeId() };
+  if (source !== undefined) current.source = source;
   save(current);
   applyTheme(checked, "imported");
   emit();
@@ -117,7 +123,7 @@ export function dropTrial(): void {
 /** Keep: the import's Apply. On a refusal the trial goes on and the reason comes back. */
 export function keepTrial(): AddResult {
   if (current === null) return { ok: false, reason: "invalid" };
-  const added = installTheme(current.theme);
+  const added = installTheme(current.theme, current.source === undefined ? undefined : stamp(current.source, Date.now()));
   if (!added.ok) return added;
   current = null;
   drop();

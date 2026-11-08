@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { ChevronDown, Palette } from "lucide-react";
+import { ChevronDown, Info, Palette } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -25,11 +25,13 @@ import {
   LIBRARY_MAX,
   THEME_MAX_BYTES,
   installTheme,
+  replaceImported,
   removeImported,
   setActiveTheme,
   shippedThemes,
   useActiveTheme,
   useLibrary,
+  useThemeOrigins,
 } from "@/lib/theme/store";
 import {
   ANSI_KEYS,
@@ -40,7 +42,10 @@ import {
 } from "@/lib/theme/surface";
 import { CONTRAST_FAIL_KEY, HALF_KEYS, REFUSAL_KEYS, isMoreLine } from "@/lib/theme/report-words";
 import { ThemeBrowseSheet } from "@/components/theme-browse";
+import { ThemeAboutSheet } from "@/components/theme-about";
 import { dropTrial, startTrial } from "@/lib/theme/trial";
+import { registryRef, stamp, type ThemeSourceRef } from "@/lib/theme/origin";
+import type { RegistryTheme } from "@/lib/theme/registry";
 import { PageSample, ThemeMarkLine, collieTheme, displayOf, styleOf } from "@/components/theme-page-sample";
 
 // The Theme card (M57): which colour theme this device wears, and the way in and out for a theme
@@ -55,7 +60,8 @@ import { PageSample, ThemeMarkLine, collieTheme, displayOf, styleOf } from "@/co
 //
 // NOTHING MOVES (DESIGN.md §2). The theme is one select row, the five buttons are always
 // there (Remove is a disabled slot while the active theme is not an imported one), and the promise
-// line is static. The only thing that floats is the sheet.
+// line is static. The About button beside the select is a disabled slot the same way. The only thing
+// that floats is the sheet.
 
 /** The eight tokens a preview shows per half: the ground, the card, the primary, three statuses, two lines. */
 const PREVIEW_TOKENS: readonly ThemeToken[] = [
@@ -127,6 +133,10 @@ interface PreviewSheetProps {
   onCancel: () => void;
   /** Try: wear the theme without keeping it (M59 spec 08). Absent draws no Try button. */
   onTry?: () => void;
+  /** Where the theme comes from. A listed theme names its repo, so an update shows whose file it is. */
+  source?: ThemeSourceRef;
+  /** The apply button's word: Apply, or Update when the theme replaces a kept one. */
+  applyLabel?: MessageKey;
 }
 
 /**
@@ -255,7 +265,7 @@ function failureText(finding: Finding): string {
  * file carries, a swatch row per half, the shape drawn and in words, and the contrast report. A failed floor WARNS and Apply stays
  * on; only a refusal, which never reaches this sheet, stops an import.
  */
-export function ThemePreviewSheet({ theme, onApply, onCancel, onTry }: PreviewSheetProps) {
+export function ThemePreviewSheet({ theme, onApply, onCancel, onTry, source, applyLabel = "theme.preview.apply" }: PreviewSheetProps) {
   useLocale();
   const findings = theme === null ? [] : contrastReport(theme, collieTheme());
   const failing = findings.filter((finding) => !finding.pass);
@@ -269,6 +279,9 @@ export function ThemePreviewSheet({ theme, onApply, onCancel, onTry }: PreviewSh
             <div className="font-medium">{theme.name}</div>
             {theme.author !== undefined && (
               <div className="text-sm text-muted-foreground">{t("theme.preview.by", { author: theme.author })}</div>
+            )}
+            {source?.kind === "registry" && (
+              <div className="truncate text-sm text-muted-foreground">{t("theme.preview.from", { repo: source.repo })}</div>
             )}
             <div className="text-sm text-muted-foreground">{t(`theme.preview.halves.${halves}`)}</div>
             <ThemeMarkLine theme={theme} />
@@ -316,7 +329,7 @@ export function ThemePreviewSheet({ theme, onApply, onCancel, onTry }: PreviewSh
               </Button>
             )}
             <Button type="button" className="h-11" onClick={onApply}>
-              {t("theme.preview.apply")}
+              {t(applyLabel)}
             </Button>
             <Button type="button" variant="outline" className="h-11" onClick={onCancel}>
               {t("theme.preview.cancel")}
@@ -476,20 +489,37 @@ function pickTheme(id: string): void {
   setActiveTheme(id);
 }
 
+/** A theme on its way into the library: where it came from, and the kept theme it replaces on an update. */
+interface Pending {
+  theme: Theme;
+  source: ThemeSourceRef;
+  /** Update: the id of the kept theme whose slot this takes. */
+  replaces?: string;
+}
+
 /** Settings card: pick a theme, browse the community list, import one from a file or pasted text, export or remove the one on screen. */
 export function ThemePickerControl() {
   useLocale();
   const active = useActiveTheme();
   const imported = useLibrary();
   const input = useRef<HTMLInputElement>(null);
-  const [preview, setPreview] = useState<Theme | null>(null);
+  const [preview, setPreview] = useState<Pending | null>(null);
   const [refused, setRefused] = useState<readonly RefusalEntry[] | null>(null);
   const [exported, setExported] = useState<string | null>(null);
   const [pasting, setPasting] = useState(false);
   const [pasted, setPasted] = useState("");
   const [browsing, setBrowsing] = useState(false);
+  const [about, setAbout] = useState<string | null>(null);
+  const origins = useThemeOrigins();
 
   const all: Theme[] = [...shippedThemes(), ...imported];
+  const aboutTheme = about === null ? null : (imported.find((theme) => theme.id === about) ?? null);
+
+  /** Update from About: the listed file, previewed over the same sheet, to take the old theme's slot. */
+  function updateFromAbout(oldId: string, item: RegistryTheme) {
+    setAbout(null);
+    setPreview({ theme: item.theme, source: registryRef(item.entry), replaces: oldId });
+  }
 
   function startImport() {
     if (imported.length >= LIBRARY_MAX) {
@@ -508,13 +538,13 @@ export function ThemePickerControl() {
   }
 
   /** Install from the Browse sheet: the same preview a file opens, after the same cap check. */
-  function installFromBrowse(theme: Theme) {
+  function installFromBrowse(item: RegistryTheme) {
     setBrowsing(false);
     if (imported.length >= LIBRARY_MAX) {
       setRefused([libraryEntry("full")]);
       return;
     }
-    setPreview(theme);
+    setPreview({ theme: item.theme, source: registryRef(item.entry) });
   }
 
   function readPaste() {
@@ -525,7 +555,7 @@ export function ThemePickerControl() {
       return;
     }
     setPasted("");
-    setPreview(read.theme);
+    setPreview({ theme: read.theme, source: { kind: "paste" } });
   }
 
   async function onFile(file: File | undefined) {
@@ -542,19 +572,21 @@ export function ThemePickerControl() {
       setRefused(parsed.refusals.map(entryOfRefusal));
       return;
     }
-    setPreview(parsed.theme);
+    setPreview({ theme: parsed.theme, source: { kind: "file" } });
   }
 
   /** Try: wear the theme across the app with the ribbon, and close whichever sheet offered it. */
-  function tryTheme(theme: Theme) {
+  function tryTheme(theme: Theme, source: ThemeSourceRef) {
     setPreview(null);
     setBrowsing(false);
-    startTrial(theme);
+    startTrial(theme, source);
   }
 
   function apply() {
     if (preview === null) return;
-    const added = installTheme(preview);
+    const origin = stamp(preview.source, Date.now());
+    const added =
+      preview.replaces === undefined ? installTheme(preview.theme, origin) : replaceImported(preview.replaces, preview.theme, origin);
     if (!added.ok) {
       setPreview(null);
       setRefused([
@@ -596,23 +628,35 @@ export function ThemePickerControl() {
           <label htmlFor="pref-theme" className="text-sm font-medium">
             {t("theme.title")}
           </label>
-          <div className="relative min-w-0 shrink-0">
-            <select
-              id="pref-theme"
-              value={active.id}
-              onChange={(event) => pickTheme(event.target.value)}
-              className="min-h-11 max-w-[60vw] appearance-none truncate rounded-md border border-border/60 bg-background py-2 pl-3 pr-9 text-sm font-medium text-foreground"
+          <div className="flex min-w-0 shrink-0 items-center gap-2">
+            <div className="relative min-w-0 shrink-0">
+              <select
+                id="pref-theme"
+                value={active.id}
+                onChange={(event) => pickTheme(event.target.value)}
+                className="min-h-11 max-w-[48vw] appearance-none truncate rounded-md border border-border/60 bg-background py-2 pl-3 pr-9 text-sm font-medium text-foreground"
+              >
+                {all.map((theme) => (
+                  <option key={theme.id} value={theme.id}>
+                    {theme.name}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown
+                aria-hidden="true"
+                className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+              />
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              className="size-11 shrink-0 p-0"
+              disabled={active.source !== "imported"}
+              aria-label={t("theme.about.aria", { name: active.theme.name })}
+              onClick={() => setAbout(active.id)}
             >
-              {all.map((theme) => (
-                <option key={theme.id} value={theme.id}>
-                  {theme.name}
-                </option>
-              ))}
-            </select>
-            <ChevronDown
-              aria-hidden="true"
-              className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
-            />
+              <Info aria-hidden="true" className="size-4" />
+            </Button>
           </div>
         </div>
       </div>
@@ -655,7 +699,12 @@ export function ThemePickerControl() {
         onChange={(event) => void onFile(event.target.files?.[0])}
       />
 
-      <ThemeBrowseSheet open={browsing} onClose={() => setBrowsing(false)} onInstall={installFromBrowse} onTry={tryTheme} />
+      <ThemeBrowseSheet
+        open={browsing}
+        onClose={() => setBrowsing(false)}
+        onInstall={installFromBrowse}
+        onTry={(item) => tryTheme(item.theme, registryRef(item.entry))}
+      />
       <ThemePasteSheet
         open={pasting}
         value={pasted}
@@ -663,7 +712,23 @@ export function ThemePickerControl() {
         onRead={readPaste}
         onCancel={() => setPasting(false)}
       />
-      <ThemePreviewSheet theme={preview} onApply={apply} onCancel={() => setPreview(null)} onTry={preview === null ? undefined : () => tryTheme(preview)} />
+      {/* An update offers no Try: Keep from the ribbon adds a theme, and an update replaces one. */}
+      <ThemePreviewSheet
+        theme={preview?.theme ?? null}
+        source={preview?.source}
+        applyLabel={preview?.replaces === undefined ? "theme.preview.apply" : "theme.about.update"}
+        onApply={apply}
+        onCancel={() => setPreview(null)}
+        onTry={preview === null || preview.replaces !== undefined ? undefined : () => tryTheme(preview.theme, preview.source)}
+      />
+      <ThemeAboutSheet
+        theme={aboutTheme}
+        origin={about === null ? undefined : origins.get(about)}
+        onClose={() => setAbout(null)}
+        onUpdate={(item) => {
+          if (about !== null) updateFromAbout(about, item);
+        }}
+      />
       <ThemeRefusalSheet entries={refused} onClose={() => setRefused(null)} />
       <BottomSheet open={exported !== null} onClose={() => setExported(null)} title={t("theme.export.title")}>
         {exported !== null && (
