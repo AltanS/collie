@@ -47,7 +47,7 @@ import {
   FilePlusCorner,
   FileText,
   Globe,
-  ListChecks,
+  ListTodo,
   Pencil,
   Search,
   SquareTerminal,
@@ -680,7 +680,7 @@ const KIND_ICON = {
   fetch: Globe,
   task: Bot,
   other: Wrench,
-  plan: ListChecks,
+  plan: ListTodo,
   question: CircleQuestionMark,
   delete: Trash2,
   move: ArrowRightLeft,
@@ -1131,7 +1131,7 @@ function PlanTool({
   return (
     <Card data-waiting={anchor} className={cn("gap-0 overflow-hidden py-0", held)}>
       <ToolHead
-        icon={ListChecks}
+        icon={ListTodo}
         label={t("chat.card.plan")}
         status={status}
         trailing={<span className="shrink-0 font-mono text-xs tabular-nums text-muted-foreground">{planCount(call)}</span>}

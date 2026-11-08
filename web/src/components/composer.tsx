@@ -2,7 +2,7 @@ import { forwardRef, useContext, useEffect, useImperativeHandle, useRef, useStat
 import { createPortal } from "react-dom";
 import type { ChangeEvent, ClipboardEvent, CSSProperties, MouseEvent, ReactNode } from "react";
 import { useRevalidator } from "react-router";
-import { ArrowUp, Check, FileText, Image, Keyboard, ListEnd, ListTodo, LoaderCircle, Mic, Monitor, Navigation, Paperclip, Pencil, Plus, Send, Settings2, Slash, Square, Terminal, TriangleAlert, X, Zap } from "lucide-react";
+import { ArrowUp, Check, FileText, Image, Keyboard, ListEnd, ListTodo, LoaderCircle, Mic, Monitor, Navigation, Paperclip, Pencil, Plus, Send, Settings2, Slash, Square, Terminal, CircleAlert, X, Zap } from "lucide-react";
 
 import { StatusDot } from "@/components/status-badge";
 import { applyDraftFontSize, fontStack, inputFocusZoomsPage, reportOfferOf, sentSuggestionsOf } from "@/hooks/use-display-prefs";
@@ -2957,7 +2957,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             act on (M56 spec 07). */}
         <Collapse open={confirmingSend && destructiveNote !== null && !direct.active}>
           {destructiveNote !== null && (
-            <Notice tone="danger" variant="box" className="mb-2" icon={<TriangleAlert />}>
+            <Notice tone="danger" variant="box" className="mb-2" icon={<CircleAlert />}>
               <span data-slot="composer-destructive">{destructiveNote}</span>
             </Notice>
           )}

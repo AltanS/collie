@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { CircleArrowUp, CircleCheck, LoaderCircle, RotateCcw } from "lucide-react";
+import { CircleArrowUp, CircleCheck, LoaderCircle, RefreshCw, RotateCcw } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -757,7 +757,7 @@ function PeerSection({
             })}
           </p>
           <Button variant="outline" size="sm" onClick={onRetry}>
-            <RotateCcw className="size-4" />
+            <RefreshCw className="size-4" />
             {t("settings.updateCard.retryNow")}
           </Button>
         </div>
@@ -974,7 +974,7 @@ function RunSection({ run, onRetry }: { run: UpdateRun; onRetry: () => void }) {
 
       {!rollback && !failedEdge && (run.state === "rolled-back" || run.state === "interrupted") && (
         <Button variant="outline" size="sm" className="mt-3" onClick={onRetry}>
-          <RotateCcw className="size-4" />
+          <RefreshCw className="size-4" />
           {t("settings.updateCard.retry")}
         </Button>
       )}

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ChevronRight, Info, TriangleAlert, User, Wrench } from "lucide-react";
+import { ChevronRight, Info, CircleAlert, User, Wrench } from "lucide-react";
 
 import { AgentIcon } from "@/components/agent-icon";
 import { JournalImage } from "@/components/journal-image";
@@ -97,7 +97,7 @@ function ToolPart({
         className="flex w-full items-center gap-1.5 px-2 py-1.5 text-left disabled:opacity-100"
       >
         {isError ? (
-          <TriangleAlert className="size-3.5 shrink-0 text-destructive" />
+          <CircleAlert className="size-3.5 shrink-0 text-destructive" />
         ) : (
           <Wrench className="size-3.5 shrink-0 text-muted-foreground" />
         )}

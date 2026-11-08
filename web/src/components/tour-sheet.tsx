@@ -1,5 +1,5 @@
 import * as React from "react";
-import { KeyRound, MonitorDown, SquarePlus, BellRing } from "lucide-react";
+import { KeyRound, MonitorDown, FolderPlus, Bell } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { useNav } from "@/hooks/use-nav";
@@ -186,7 +186,7 @@ export function TourSheet({
   if (panes === 0) {
     next.push({
       id: "space",
-      icon: SquarePlus,
+      icon: FolderPlus,
       title: t("tour.space.title"),
       body: t("tour.space.body"),
       action: (
@@ -203,7 +203,7 @@ export function TourSheet({
   if (pushOffer) {
     next.push({
       id: "push",
-      icon: BellRing,
+      icon: Bell,
       title: t("tour.pushCard.title"),
       body: t("tour.pushCard.body"),
       action: <TourPushBlock busy={pushBusy} onEnable={onEnablePush} />,

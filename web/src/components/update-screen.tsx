@@ -1,5 +1,5 @@
 import { useId, useRef, useState, type ReactNode } from "react";
-import { Check, LoaderCircle, Lock, Minus, TriangleAlert, X } from "lucide-react";
+import { Check, LoaderCircle, Lock, Minus, CircleAlert, TriangleAlert, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Notice } from "@/components/ui/notice";
@@ -183,7 +183,7 @@ function Band({ screen }: { screen: UpdateScreenState }) {
       <Notice
         tone={tone === "blocked" ? "danger" : tone === "done" ? "success" : "caution"}
         variant="strip"
-        icon={tone === "blocked" ? <TriangleAlert /> : tone === "done" ? <Check /> : <Lock />}
+        icon={tone === "blocked" ? <CircleAlert /> : tone === "done" ? <Check /> : <Lock />}
         action={clock !== null ? <span className="text-xs tabular-nums">{clock}</span> : undefined}
       >
         {text}

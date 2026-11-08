@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useRevalidator } from "react-router";
-import { ChevronDown, ChevronUp, Columns2, PanelLeftClose, PanelLeftOpen, Plus, Replace } from "lucide-react";
+import { ChevronDown, ChevronUp, Columns2, PanelLeftClose, PanelLeftOpen, FolderPlus, Plus, Replace } from "lucide-react";
 
 import { ActionRow } from "@/components/action-sheet-rows";
 import { ThreadSidebar } from "@/components/agent-sidebar";
@@ -466,12 +466,12 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
         >
           {sidebarShown ? (
             <Button variant="ghost" data-slot="new-space" className="h-11 min-w-0 flex-1 justify-start gap-2.5 px-2 text-sm font-medium" onClick={toNew}>
-              <Plus className="size-5" aria-hidden />
+              <FolderPlus className="size-5" aria-hidden />
               <span className="truncate">{t("wide.newSpace")}</span>
             </Button>
           ) : (
             <Button variant="ghost" size="lg" data-slot="new-space" className="size-11 px-0" aria-label={t("wide.newSpace")} onClick={toNew}>
-              <Plus className="size-5" aria-hidden />
+              <FolderPlus className="size-5" aria-hidden />
             </Button>
           )}
           <SettingsGear scope={scope} />

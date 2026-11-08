@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Archive, Check, Cpu, Ellipsis, Flag, Gauge, History, ListTree, LoaderCircle, Pause, Play, RefreshCw, Search, Send, Shrink, Slash, Square, Star, StickyNote, Wind, X } from "lucide-react";
+import { Archive, Check, Cpu, Ellipsis, Flag, Gauge, History, ListTree, LoaderCircle, Pause, Play, RefreshCw, Search, Send, Shrink, Slash, Square, Star, StickyNote, Navigation, X } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 import { AgentIcon } from "@/components/agent-icon";
@@ -377,7 +377,7 @@ export function DurableBar({ items, state, disabled, hand = "right" }: DurableBa
               onClick={() => state.steer.onPressedChange(!pressed)}
               className={cn(base, pressed ? BELT_PRESSED : "text-foreground", left && "[direction:ltr]")}
             >
-              <Wind className={BELT_ICON} />
+              <Navigation className={BELT_ICON} />
               {translate("durable.composer.steer")}
             </Button>
           );

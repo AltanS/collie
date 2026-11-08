@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { BellRing, Check, CircleAlert, LoaderCircle } from "lucide-react";
+import { Bell, Check, CircleAlert, LoaderCircle } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -145,7 +145,7 @@ export function MachineAlertsControl({
     return (
       <Card className="gap-0 py-0" data-slot="machine-alerts-update">
         <div className="flex items-start gap-3 p-4">
-          <BellRing className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
+          <Bell className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
           <div className="min-w-0">
             <div className="font-medium">{t("machines.alerts.title")}</div>
             <p className="text-sm text-muted-foreground">{t("machines.alerts.needsUpdate")}</p>
@@ -159,7 +159,7 @@ export function MachineAlertsControl({
     <Card className="gap-0 py-0">
       <div className="flex items-center justify-between gap-4 p-4">
         <div className="flex min-w-0 items-start gap-3">
-          <BellRing className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
+          <Bell className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
           <div className="min-w-0">
             <div className="font-medium">{t("machines.alerts.title")}</div>
             <p className="text-sm text-muted-foreground">{t("machines.alerts.description")}</p>

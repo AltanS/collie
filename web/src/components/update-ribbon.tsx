@@ -1,5 +1,5 @@
 import { useState, useSyncExternalStore } from "react";
-import { CircleArrowUp, TriangleAlert } from "lucide-react";
+import { CircleArrowUp, CircleAlert } from "lucide-react";
 
 import { Notice } from "@/components/ui/notice";
 import { useNav } from "@/hooks/use-nav";
@@ -200,7 +200,7 @@ function dismissedIn(
  *  here; what changes is that the recipe is written once, in the one table allowed to hold it. */
 function skinOf(view: RibbonView) {
   if (view.kind === "peer-failed") {
-    return { Icon: TriangleAlert, tone: "danger" } as const;
+    return { Icon: CircleAlert, tone: "danger" } as const;
   }
   return { Icon: CircleArrowUp, tone: "caution" } as const;
 }

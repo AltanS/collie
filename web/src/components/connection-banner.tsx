@@ -7,8 +7,7 @@ import {
   LogIn,
   Plug,
   RefreshCw,
-  RotateCw,
-  TriangleAlert,
+  CircleAlert,
   WifiOff,
 } from "lucide-react";
 
@@ -154,7 +153,7 @@ function AuthErrorBanner() {
         tone="danger"
         variant="strip"
         announce="alert"
-        icon={<TriangleAlert />}
+        icon={<CircleAlert />}
         action={
           <>
             {/* An <a>, not a button, so it is an ordinary navigation the service worker sees as
@@ -358,7 +357,7 @@ function ConnectionStateBanner({
               {retrying ? (
                 <LoaderCircle className="size-3.5 animate-spin" />
               ) : (
-                <RotateCw className="size-3.5" />
+                <RefreshCw className="size-3.5" />
               )}
               {t("connection.retry")}
             </Button>
@@ -427,7 +426,7 @@ function resolveView(
   // own `bridge` says nothing, and what the lead knows about that member is its health. The member's
   // sentence carries its own "last seen", so it is not dated a second time below.
   if (probe === "reachable" && !muxDisconnected && memberFault !== undefined) {
-    return { copy: memberFault, Icon: TriangleAlert, tone: "danger", saved: false, hint: undefined } as const;
+    return { copy: memberFault, Icon: CircleAlert, tone: "danger", saved: false, hint: undefined } as const;
   }
   // THE SAVED COPY, in the quiet tone: it is not an error state, it is the screen the operator left,
   // dated (M46 spec 10). `online` false is the phone's own fact and needs no probe. Anything else is
@@ -450,10 +449,10 @@ function resolveView(
   }
   const cause =
     probe === "reachable" && muxDisconnected
-      ? { copy: t("connection.herdrDown"), Icon: TriangleAlert }
+      ? { copy: t("connection.herdrDown"), Icon: CircleAlert }
       : probe === "unreachable" && !online
         ? { copy: t("connection.offlineCantReach"), Icon: WifiOff }
-        : { copy: t("connection.cantReach"), Icon: TriangleAlert };
+        : { copy: t("connection.cantReach"), Icon: CircleAlert };
   const copy =
     lastSeenAt === undefined
       ? cause.copy

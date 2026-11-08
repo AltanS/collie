@@ -1,4 +1,4 @@
-import { BellRing, LoaderCircle } from "lucide-react";
+import { Bell, LoaderCircle } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -91,7 +91,7 @@ export function NotifyPrefsCard({
     <Card className="gap-0 py-0">
       <div className="flex items-center justify-between gap-4 p-4">
         <div className="flex min-w-0 items-start gap-3">
-          <BellRing className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
+          <Bell className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
           <div className="min-w-0">
             <div className="font-medium">{t("settings.notify.title")}</div>
             <p className="text-sm text-muted-foreground">{t("settings.notify.description")}</p>

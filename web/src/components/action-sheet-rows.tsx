@@ -1,5 +1,5 @@
 import type { KeyboardEvent as ReactKeyboardEvent, ReactNode, RefObject } from "react";
-import { ChevronLeft, LoaderCircle } from "lucide-react";
+import { ArrowLeft, LoaderCircle } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -142,7 +142,7 @@ export function RenameView({
         onClick={onBack}
         className="flex items-center gap-1 self-start rounded-md py-1 pr-2 text-xs font-medium text-muted-foreground transition-colors active:bg-muted"
       >
-        <ChevronLeft className="size-3.5" />
+        <ArrowLeft className="size-3.5" />
         {t("actionSheet.back")}
       </button>
       <label className="flex flex-col gap-1">
