@@ -1,9 +1,9 @@
 # ColliePWA
 
 <p align="center">
-  <!-- Baked by collie-brand's logo-ship.ts (collie-social-card-dark.png) and copied in whole, the
+  <!-- Baked by collie-brand's link-card.ts (assets/collie-link-card.png) and copied in whole, the
        same file colliepwa.dev serves as its social card. Do not retouch it here: regenerate it there. -->
-  <img src="assets/social-card.png" alt="The Collie mark beside the ColliePWA wordmark and the line: your agent herd, from your phone." width="640">
+  <img src="assets/social-card.png" alt="ColliePWA: your terminal agents, on your phone. Two phones show the dashboard and a chat with a coding agent, beside the logos of the agents and multiplexers it works with." width="640">
 </p>
 
 <p align="center">
