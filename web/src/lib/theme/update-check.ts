@@ -36,7 +36,8 @@ interface CopyOfList {
   themes: readonly JsonValue[];
 }
 
-type RegistryOrigin = Extract<ThemeOrigin, { kind: "registry" }>;
+/** The parts of a list origin the check reads: a stored origin, or a source derived from the copy. */
+type RegistryOrigin = Pick<Extract<ThemeOrigin, { kind: "registry" }>, "repo" | "path" | "sha">;
 
 /** True when a raw list entry names the same file as `origin`: the path exact, the repo in any case. */
 function sameFile(origin: RegistryOrigin, value: JsonValue): boolean {

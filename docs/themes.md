@@ -177,6 +177,10 @@ date you installed it. The file link opens that file on GitHub at that commit. *
 A theme from a file says "Added from a file", and a pasted one says "Pasted", each with the date. A
 theme you kept before this version says "Added on this device". Shipped themes have no About sheet.
 
+A file or a paste that is exactly a listed theme gets the same links and **Update**. Collie compares
+the colours and words with your host's copy of the list, not the text, and only one listed theme may
+match. A theme you kept earlier shows the links when it matches too, with its old date line.
+
 For a theme from the list, the sheet compares it with your host's copy of the list:
 
 | The sheet says | It means |

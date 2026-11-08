@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -791,6 +791,68 @@ describe("ThemePickerControl", () => {
         await userEvent.keyboard("{Escape}");
         await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
       }
+    });
+
+    it("a file that is a listed theme gets that entry's source, stored at the import", async () => {
+      hostList([copy("shared", "Shared")], { sha: OLD });
+      const { ThemePickerControl, store } = await load();
+      const { container } = render(<ThemePickerControl />);
+      const before = Date.now();
+      // The same theme, keys in another order and other white space.
+      const theme = copy("shared", "Shared");
+      const reordered = { dark: theme.dark, light: theme.light, name: theme.name, author: theme.author, id: theme.id, version: theme.version };
+      pick(container, fileOf(JSON.stringify(reordered, null, 4)));
+      const preview = await screen.findByRole("dialog", { name: "Import this theme?" });
+      await userEvent.click(within(preview).getByRole("button", { name: "Apply" }));
+      await waitFor(() => expect(store.originOf("shared")).toMatchObject({ kind: "registry", repo: "sam/shared", sha: OLD }));
+      expect(store.originOf("shared")?.at).toBeGreaterThanOrEqual(before);
+      await userEvent.click(aboutButton("Shared"));
+      const about = await screen.findByRole("dialog", { name: "About this theme" });
+      expect(within(about).getByRole("link", { name: "@sam/shared" })).toHaveAttribute("href", "https://github.com/sam/shared");
+    });
+
+    async function openPasteSheet() {
+      await userEvent.click(screen.getByRole("button", { name: "Paste" }));
+      return screen.findByRole("dialog", { name: "Paste a theme" });
+    }
+
+    it("a paste that is a listed theme gets its source too; two listed copies give none", async () => {
+      hostList([copy("shared", "Shared")], { sha: OLD });
+      const first = await load();
+      render(<first.ThemePickerControl />);
+      let sheet = await openPasteSheet();
+      fireEvent.change(within(sheet).getByLabelText("The text of a theme file"), { target: { value: JSON.stringify(copy("shared", "Shared")) } });
+      await userEvent.click(within(sheet).getByRole("button", { name: "Read" }));
+      let preview = await screen.findByRole("dialog", { name: "Import this theme?" });
+      await userEvent.click(within(preview).getByRole("button", { name: "Apply" }));
+      await waitFor(() => expect(first.store.originOf("shared")?.kind).toBe("registry"));
+      cleanup();
+
+      // A fork with the same content: Collie never guesses which one.
+      hostList([copy("shared", "Shared")], { sha: OLD, texts: [JSON.stringify(copy("shared", "Shared"))] });
+      const second = await load();
+      render(<second.ThemePickerControl />);
+      sheet = await openPasteSheet();
+      fireEvent.change(within(sheet).getByLabelText("The text of a theme file"), { target: { value: JSON.stringify(copy("shared", "Shared")) } });
+      await userEvent.click(within(sheet).getByRole("button", { name: "Read" }));
+      preview = await screen.findByRole("dialog", { name: "Import this theme?" });
+      await userEvent.click(within(preview).getByRole("button", { name: "Apply" }));
+      await waitFor(() => expect(second.store.originOf("shared")?.kind).toBe("paste"));
+    });
+
+    it("a kept theme with no source shows the listed source it matches, and stores nothing", async () => {
+      const calls = hostList([copy("shared", "Shared")], { sha: OLD });
+      const { ThemePickerControl, store } = await load([copy("shared", "Shared")]);
+      act(() => store.setActiveTheme("shared"));
+      render(<ThemePickerControl />);
+      await userEvent.click(aboutButton("Shared"));
+      const about = await screen.findByRole("dialog", { name: "About this theme" });
+      expect(await within(about).findByRole("link", { name: "@sam/shared" })).toBeInTheDocument();
+      expect(within(about).getByText("Added on this device.")).toBeInTheDocument();
+      expect(within(about).queryByText("Installed")).toBeNull();
+      expect(within(about).getByText("No newer version is listed.")).toBeInTheDocument();
+      expect(store.originOf("shared")).toBeUndefined();
+      expect(calls.posts).toBe(0);
     });
 
     it("a file import records the file kind", async () => {

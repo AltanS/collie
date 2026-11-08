@@ -7,7 +7,7 @@ import { CopyableBlock } from "@/components/ui/copyable-block";
 import { Notice } from "@/components/ui/notice";
 import { BottomSheet } from "@/components/ui/sheet";
 import { useLocale } from "@/hooks/use-locale";
-import { hasDocument } from "@/lib/env";
+import { abortSignalAfter, hasDocument } from "@/lib/env";
 import { t, type MessageKey } from "@/lib/i18n";
 import {
   contrastReport,
@@ -29,6 +29,7 @@ import {
   removeImported,
   setActiveTheme,
   type ReplaceResult,
+  type UpdateExpected,
   shippedThemes,
   useActiveTheme,
   useLibrary,
@@ -48,6 +49,8 @@ import { ThemeAboutSheet } from "@/components/theme-about";
 import { dropTrial, startTrial } from "@/lib/theme/trial";
 import { registryRef, stamp, type ThemeSourceRef } from "@/lib/theme/origin";
 import type { RegistryTheme } from "@/lib/theme/registry";
+import { matchRegistryOrigin } from "@/lib/theme/registry-match";
+import { fetchThemeRegistry } from "@/lib/api";
 import { PageSample, ThemeFallbackLines, ThemeGlyphsLine, ThemeMarkLine, collieTheme, displayOf, styleOf } from "@/components/theme-page-sample";
 
 // The Theme card (M57): which colour theme this device wears, and the way in and out for a theme
@@ -497,6 +500,23 @@ const UPDATE_REFUSALS = {
   changed: "theme.update.changed",
 } as const satisfies Record<Extract<ReplaceResult, { ok: false }>["reason"], MessageKey>;
 
+/** The longest an import waits for the host's copy of the list before it opens the preview without it. */
+const MATCH_WAIT_MS = 1500;
+
+/**
+ * The source of a file or a paste: the list entry it is the same theme as, on the host's EXISTING copy
+ * (`GET`, which fetches nothing), or `local` when there is no copy, no single match, or no answer
+ * within {@link MATCH_WAIT_MS} (registry-match.ts).
+ */
+async function sourceOf(theme: Theme, local: ThemeSourceRef): Promise<ThemeSourceRef> {
+  try {
+    const status = await fetchThemeRegistry(abortSignalAfter(MATCH_WAIT_MS) ?? undefined);
+    return matchRegistryOrigin(theme, status.themes) ?? local;
+  } catch {
+    return local;
+  }
+}
+
 /** A pick in the card puts a theme on itself, so a running trial ends without re-applying anything. */
 function pickTheme(id: string): void {
   dropTrial();
@@ -507,8 +527,8 @@ function pickTheme(id: string): void {
 interface Pending {
   theme: Theme;
   source: ThemeSourceRef;
-  /** Update: the kept theme whose slot this takes, and the commit its origin held when About compared. */
-  replaces?: { id: string; sha: string };
+  /** Update: the kept theme whose slot this takes, and what the slot held when About compared. */
+  replaces?: { id: string; expected: UpdateExpected };
 }
 
 /** Settings card: pick a theme, browse the community list, import one from a file or pasted text, export or remove the one on screen. */
@@ -530,11 +550,9 @@ export function ThemePickerControl() {
   const aboutTheme = about === null ? null : (imported.find((theme) => theme.id === about) ?? null);
 
   /** Update from About: the listed file, previewed over the same sheet, to take the old theme's slot. */
-  function updateFromAbout(oldId: string, item: RegistryTheme) {
+  function updateFromAbout(oldId: string, item: RegistryTheme, expected: UpdateExpected) {
     setAbout(null);
-    const held = origins.get(oldId);
-    if (held?.kind !== "registry") return;
-    setPreview({ theme: item.theme, source: registryRef(item.entry), replaces: { id: oldId, sha: held.sha } });
+    setPreview({ theme: item.theme, source: registryRef(item.entry), replaces: { id: oldId, expected } });
   }
 
   function startImport() {
@@ -563,7 +581,7 @@ export function ThemePickerControl() {
     setPreview({ theme: item.theme, source: registryRef(item.entry) });
   }
 
-  function readPaste() {
+  async function readPaste() {
     const read = readPasted(pasted);
     setPasting(false);
     if ("entries" in read) {
@@ -571,7 +589,7 @@ export function ThemePickerControl() {
       return;
     }
     setPasted("");
-    setPreview({ theme: read.theme, source: { kind: "paste" } });
+    setPreview({ theme: read.theme, source: await sourceOf(read.theme, { kind: "paste" }) });
   }
 
   async function onFile(file: File | undefined) {
@@ -588,7 +606,7 @@ export function ThemePickerControl() {
       setRefused(parsed.refusals.map(entryOfRefusal));
       return;
     }
-    setPreview({ theme: parsed.theme, source: { kind: "file" } });
+    setPreview({ theme: parsed.theme, source: await sourceOf(parsed.theme, { kind: "file" }) });
   }
 
   /** Try: wear the theme across the app with the ribbon, and close whichever sheet offered it. */
@@ -602,7 +620,7 @@ export function ThemePickerControl() {
     if (preview === null) return;
     const origin = stamp(preview.source, Date.now());
     if (preview.replaces !== undefined) {
-      const replaced = replaceImported(preview.replaces.id, preview.theme, origin, preview.replaces.sha);
+      const replaced = replaceImported(preview.replaces.id, preview.theme, origin, preview.replaces.expected);
       setPreview(null);
       if (replaced.ok) dropTrial();
       else setRefused([{ headline: t(UPDATE_REFUSALS[replaced.reason]), tone: "danger" }]);
@@ -732,7 +750,7 @@ export function ThemePickerControl() {
         open={pasting}
         value={pasted}
         onChange={setPasted}
-        onRead={readPaste}
+        onRead={() => void readPaste()}
         onCancel={() => setPasting(false)}
       />
       {/* An update offers no Try: Keep from the ribbon adds a theme, and an update replaces one. */}
@@ -748,8 +766,8 @@ export function ThemePickerControl() {
         theme={aboutTheme}
         origin={about === null ? undefined : origins.get(about)}
         onClose={() => setAbout(null)}
-        onUpdate={(item) => {
-          if (about !== null) updateFromAbout(about, item);
+        onUpdate={(item, expected) => {
+          if (about !== null) updateFromAbout(about, item, expected);
         }}
       />
       <ThemeRefusalSheet entries={refused} onClose={() => setRefused(null)} />
