@@ -10,14 +10,12 @@
  * only its own empty inset padding. The two rules below follow index.css's two `--app-h` rules; the
  * one custom property read here is index.css's height token, which no theme sets. */
 
-:root.collie-trial,
-:root.collie-confirm {
+:root.collie-trial {
   --app-h: calc(100dvh - 40px);
 }
 @media (display-mode: standalone) {
   @supports (-webkit-touch-callout: none) {
-    :root.collie-trial,
-    :root.collie-confirm {
+    :root.collie-trial {
       --app-h: calc(var(--app-h-ios-standalone) - 40px);
     }
   }
@@ -94,48 +92,4 @@
 .collie-trial-ribbon__back {
   background: #ffffff;
   color: #111111;
-}
-
-/* KEEP THIS LOOK? (theme-confirm-ribbon.tsx) wears the same bar. `collie-confirm` on the root shortens
- * the app the same 40px. Three parts are its own: the seconds left, a bar that drains across the top
- * edge over them, and the sentence only a screen reader reads. Under reduced motion the bar is not
- * drawn, and the number alone counts down. */
-
-.collie-confirm-ribbon__count {
-  all: initial;
-  flex: 0 0 auto;
-  min-width: 2ch;
-  color: #ffd400;
-  font: 700 15px/1 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  font-variant-numeric: tabular-nums;
-  text-align: right;
-}
-
-.collie-confirm-ribbon__drain {
-  all: initial;
-  position: absolute;
-  left: 0;
-  top: -2px;
-  height: 2px;
-  width: 100%;
-  background: #ffffff;
-  transform-origin: left center;
-  transition: transform 250ms linear;
-  pointer-events: none;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .collie-confirm-ribbon__drain {
-    display: none;
-  }
-}
-
-.collie-confirm-ribbon__hidden {
-  all: initial;
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
 }

@@ -3,7 +3,6 @@ import { RouterProvider } from "react-router";
 import { router } from "./router";
 import { BusyBar } from "@/components/busy-bar";
 import { IdleLock } from "@/components/idle-lock";
-import { ThemeConfirmRibbon } from "@/components/theme-confirm-ribbon";
 import { ThemeTrialRibbon } from "@/components/theme-trial-ribbon";
 import { UpdateScreen } from "@/components/update-screen";
 import { UpdateScreenProvider, useUpdateScreenValue } from "@/components/update-screen-provider";
@@ -62,8 +61,6 @@ function AppShell() {
       {/* A theme being tried (M59 spec 08): outside the inert wrapper and over everything, so the way
           back stands whatever covers the app and whatever the theme does to it. */}
       <ThemeTrialRibbon />
-      {/* Keep this look? after an imported theme goes on: the same place, for the same reason. */}
-      <ThemeConfirmRibbon />
     </>
   );
 }

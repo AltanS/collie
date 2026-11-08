@@ -382,26 +382,6 @@ export function replaceImported(oldId: string, theme: Theme, origin: ThemeOrigin
 }
 
 /**
- * Back after an Update (confirm.ts): put `theme` and `origin` back in the slot that now holds `slotId`.
- * The theme is parsed again, as at every door to storage. Nothing happens when the slot is gone (the
- * person removed it meanwhile), when the theme fails the check, or when its id is another kept
- * theme's. False when it did not happen; storage that refuses keeps the change for this session.
- */
-export function putBackImported(slotId: string, theme: Theme, origin: ThemeOrigin | undefined): boolean {
-  const slot = imported.findIndex((t) => t.id === slotId);
-  if (slot < 0 || isShippedThemeId(theme.id)) return false;
-  const parsed = parseTheme(JSON.stringify(theme), { maxBytes: THEME_MAX_BYTES });
-  if (!parsed.ok) return false;
-  const back = parsed.theme;
-  if (back.id !== slotId && imported.some((t) => t.id === back.id)) return false;
-  imported = imported.map((t, i) => (i === slot ? back : t));
-  origins = withOrigin(withOrigin(origins, slotId, undefined), back.id, origin);
-  persistLibrary();
-  emit();
-  return true;
-}
-
-/**
  * Keep a theme and switch to it: the one path an import's Apply and a trial's Keep both take
  * (M59 spec 08), so the cap, the shipped-id rule and the duplicate check cannot differ between them.
  */

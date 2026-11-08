@@ -162,9 +162,6 @@ export const en = {
   "theme.trial.keep": "Keep",
   "theme.trial.back": "Back",
   "theme.trial.region": "Theme trial",
-  "theme.confirm.region": "Confirm the new theme",
-  "theme.confirm.question": "Keep this look?",
-  "theme.confirm.note": "Without Keep, Collie goes back to your previous look in {seconds} seconds.",
   "theme.refusal.size": "This file is too big for a theme.",
   "theme.refusal.json": "This file is not a JSON object.",
   "theme.refusal.version": "This file uses a theme version this Collie does not read.",
@@ -3340,9 +3337,6 @@ export const PENDING_TRANSLATION = [
   "theme.trial.keep",
   "theme.trial.back",
   "theme.trial.region",
-  "theme.confirm.region",
-  "theme.confirm.question",
-  "theme.confirm.note",
 ] as const satisfies readonly MessageKey[];
 
 /** A key a bundle may leave out until the translation pass. */
