@@ -60,7 +60,7 @@ export function MarkControl() {
               onClick={() => {
                 if (!selected) setDesignMark(choice === "theme" ? null : choice);
               }}
-              className="flex min-h-11 w-full items-center gap-3 border-b border-border px-4 py-2 text-left text-sm font-medium transition-colors active:bg-muted/60"
+              className="flex min-h-11 w-full items-center gap-3 border-b border-border last:border-b-0 px-4 py-2 text-left text-sm font-medium transition-colors active:bg-muted/60"
             >
               <span className="grid size-7 shrink-0 place-items-center">
                 <BrandMark mark={choice === "theme" ? fromTheme : choice} size={MARK_SIZE} weight="header" paper="var(--card)" />
@@ -71,8 +71,6 @@ export function MarkControl() {
           );
         })}
       </div>
-
-      <p className="px-4 py-2.5 text-xs text-muted-foreground">{t("settings.mark.note")}</p>
     </Card>
   );
 }

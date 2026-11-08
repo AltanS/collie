@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MarkControl } from "@/components/mark-control";
 import { __resetDesign, designPrefs, setDesignMark } from "@/lib/design";
 import { t } from "@/lib/i18n";
+import { MARKS } from "@/lib/mark-ids";
 import { collieMark } from "@/test/collie-mark";
 import { LIBRARY_STORAGE_KEY, __resetThemeStore, setActiveTheme } from "@/lib/theme/store";
 
@@ -15,6 +16,11 @@ import { LIBRARY_STORAGE_KEY, __resetThemeStore, setActiveTheme } from "@/lib/th
 vi.mock("@/components/kawaii-mark", () => ({ KawaiiMark: () => <span data-mock="kawaii" /> }));
 vi.mock("@/components/kawaii-tilt-mark", () => ({ KawaiiTiltMark: () => <span data-mock="kawaii-tilt" /> }));
 vi.mock("@/components/pixel-mark", () => ({ PixelMark: () => <span data-mock="pixel" /> }));
+vi.mock("@/components/glass-mark", () => ({ GlassMark: () => <span data-mock="glass" /> }));
+vi.mock("@/components/glass-front-mark", () => ({ GlassFrontMark: () => <span data-mock="glass-front" /> }));
+vi.mock("@/components/delft-mark", () => ({ DelftMark: () => <span data-mock="delft" /> }));
+vi.mock("@/components/delft-front-mark", () => ({ DelftFrontMark: () => <span data-mock="delft-front" /> }));
+vi.mock("@/components/sheep-mark", () => ({ SheepMark: () => <span data-mock="sheep" /> }));
 
 /** The mark a row draws, once its chunk has arrived: "collie" for the eager one, else the chunk's marker. */
 async function drawn(name: string): Promise<string> {
@@ -36,18 +42,16 @@ beforeEach(() => {
 });
 
 describe("MarkControl", () => {
-  it("offers From the theme, Collie, Kawaii, Kawaii Tilt and Pixel in that order, with From the theme on by default", () => {
+  it("offers From the theme and then every character in the registry's order, with From the theme on by default", () => {
     render(<MarkControl />);
-    expect(radios()).toEqual(["From the theme", "Collie", "Kawaii", "Kawaii Tilt", "Pixel"].map((name) => screen.getByRole("radio", { name })));
-    expect(radios().map((r) => r.getAttribute("aria-checked"))).toEqual(["true", "false", "false", "false", "false"]);
+    const names = ["From the theme", "Collie", "Kawaii", "Kawaii Tilt", "Pixel", "Glass", "Glass Front", "Delft", "Delft Front", "Sheep"];
+    expect(radios()).toEqual(names.map((name) => screen.getByRole("radio", { name })));
+    expect(radios().map((r) => r.getAttribute("aria-checked"))).toEqual(names.map((_, i) => String(i === 0)));
   });
 
-  it("draws its own mark beside Collie, Kawaii, Kawaii Tilt and Pixel, and Collie's beside From the theme", async () => {
+  it("draws each character's own mark beside its name, and Collie's beside From the theme", async () => {
     render(<MarkControl />);
-    expect(await drawn("Collie")).toBe("collie");
-    expect(await drawn("Kawaii")).toBe("kawaii");
-    expect(await drawn("Kawaii Tilt")).toBe("kawaii-tilt");
-    expect(await drawn("Pixel")).toBe("pixel");
+    for (const { id, name } of MARKS) expect(await drawn(name)).toBe(id);
     expect(await drawn("From the theme")).toBe("collie");
   });
 
@@ -74,9 +78,11 @@ describe("MarkControl", () => {
     expect(screen.getByRole("radio", { name: "Kawaii" })).toHaveAttribute("aria-checked", "false");
   });
 
-  it("says in a note that only the header changes", () => {
+  it("carries one line of help, its description, and no second note", () => {
+    // One help line per card (the lead, 2026-11-08): that the icon and the splash stay Collie is in
+    // the docs, not on the card.
     render(<MarkControl />);
-    expect(screen.getByText(t("settings.mark.note"))).toBeInTheDocument();
+    expect(screen.queryByText(t("settings.mark.note"))).not.toBeInTheDocument();
   });
 
   it("draws the worn theme's mark on the From the theme row", async () => {
