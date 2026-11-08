@@ -91,6 +91,29 @@ describe("ThemeBrowseSheet", () => {
     expect(within(sheet).getByText(en["theme.browse.dropped"].replace("{count}", "6"))).toBeInTheDocument();
   });
 
+  it("shows the maker as @owner from the slug and the star count, and no star part without a good count", async () => {
+    host(
+      status([
+        entry("my-day", "My day", { stars: 12 }),
+        entry("night", "Night", { stars: -1 }),
+        entry("noon", "Noon", { stars: 1.5, owner: "someone-else" }),
+        entry("dusk", "Dusk", { stars: 10_000_001 }),
+      ]),
+    );
+    const { sheet } = open();
+    await within(sheet).findByText("My day", SEEN);
+    const row = (name: string) => within(sheet).getByText(name, SEEN).closest("li");
+    expect(row("My day")).toHaveTextContent("@sam");
+    expect(row("My day")).toHaveTextContent("★ 12");
+    expect(within(row("My day") ?? sheet).getByText("Stars on GitHub: 12")).toBeInTheDocument();
+    for (const name of ["Night", "Noon", "Dusk"]) {
+      expect(row(name)).toHaveTextContent("@sam");
+      expect(row(name)).not.toHaveTextContent("★");
+    }
+    // An `owner` field is never read: the maker is always the slug's own first half.
+    expect(within(sheet).queryByText("@someone-else")).toBeNull();
+  });
+
   it("draws a name that holds markup as text", async () => {
     host(status([entry("x", "<img src=x onerror=alert(1)>")]));
     const { sheet } = open();
@@ -98,13 +121,16 @@ describe("ThemeBrowseSheet", () => {
     expect(sheet.querySelector("img")).toBeNull();
   });
 
-  it("Install hands the parsed theme to the card", async () => {
+  it("Install hands the parsed theme and its checked entry to the card", async () => {
     host(status([entry("my-day", "My day")]));
     const { sheet, onInstall } = open();
     await within(sheet).findByText("My day", SEEN);
     await userEvent.click(within(sheet).getByRole("button", { name: en["theme.browse.install"] }));
     expect(onInstall).toHaveBeenCalledOnce();
-    expect(onInstall.mock.calls[0]?.[0]).toMatchObject({ id: "my-day", name: "My day", author: "Sam" });
+    expect(onInstall.mock.calls[0]?.[0]).toMatchObject({
+      theme: { id: "my-day", name: "My day", author: "Sam" },
+      entry: { repo: "sam/my-day", path: "collie-theme.json", sha: SHA },
+    });
   });
 
   it("offers a Report link to a prefilled issue on collie, built from the slug", async () => {
@@ -173,10 +199,16 @@ describe("ThemeBrowseSheet", () => {
 describe("the registry entry rules on the phone", () => {
   it("accepts a plain slug and refuses a URL, a path and a dot half", () => {
     expect(isRepoSlug("sam/my-day")).toBe(true);
-    expect(isRepoSlug("Sam_1/my.day-2")).toBe(true);
-    for (const bad of ["https://github.com/sam/x", "sam", "sam/x/y", "../x", "sam/..", "./x", "sam/x?y", "sam /x"]) {
+    expect(isRepoSlug("Sam-1/my.day_2")).toBe(true);
+    for (const bad of ["https://github.com/sam/x", "sam", "sam/x/y", "../x", "sam/..", "./x", "sam/x?y", "sam /x", "Sam_1/x", "-sam/x", ".sam/x"]) {
       expect(isRepoSlug(bad), bad).toBe(false);
     }
+  });
+
+  it("keeps stars, ignores any other extra field, and leaves the entry intact (today's reader picks named fields)", () => {
+    const [kept] = acceptedThemes(status([entry("a", "A", { stars: 3, owner: "x", avatar: "https://x/y.png", future: { v: 2 } })]));
+    expect(Object.keys(kept?.entry ?? {}).toSorted()).toEqual(["path", "repo", "sha", "stars", "text"]);
+    expect(kept?.entry.stars).toBe(3);
   });
 
   it("keeps the registry's order", () => {

@@ -27,6 +27,7 @@ export const REFUSAL_KEYS = {
   surface: "theme.refusal.surface",
   ansi: "theme.refusal.ansi",
   character: "theme.refusal.mark",
+  unreadable: "theme.refusal.unreadable",
   glyphs: "theme.refusal.glyphs",
 } as const satisfies Record<RefusalCode, MessageKey>;
 

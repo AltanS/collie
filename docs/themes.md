@@ -1,5 +1,43 @@
 # Themes
 
+## How sharing works
+
+A theme is a small file of colours and words. Anyone can share one, and none can run code.
+
+**What a theme can name.** Colours for the light half and for the dark half, typefaces from Collie's
+list, words for the [shape](#shape) and the [look](#look), a [ground pattern](#ground-patterns)
+behind the page, a [terminal palette](#terminal-palette) and a [character](#characters) for the
+header. [Write a theme](#write-a-theme) shows the file.
+
+**What a theme can never do.** It cannot run code. It cannot load a file, a font or an image. Every
+key takes a checked colour or a word from a closed list, and Collie refuses any other file.
+[What a theme cannot change](#what-a-theme-cannot-change) lists the limits.
+
+**How a theme gets into the store.** The maker puts the file in a public GitHub repository with the
+topic `colliepwa-theme`. The file is `collie-theme.json` at the root, or
+`themes/<id>.collie-theme.json`. Once a day, colliepwa.dev checks each file with the app's own
+check, and a review reads the repository's words.
+
+A theme that passes both is listed, with the repository's star count from GitHub. The steps are in
+[Share a theme on colliepwa.dev](#share-a-theme-on-colliepwadev).
+
+**How you get one.** Every way in starts in the **Theme** card in **Settings → Appearance**.
+
+- **Browse community themes** lists the store. Your host fetches the list, and your phone checks
+  each theme again. See [Browse community themes](#browse-community-themes).
+- **Try** wears a theme without keeping it. See [Try a theme](#try-a-theme-before-you-keep-it).
+- **Install** opens a preview, and **Apply** keeps the theme.
+- **Import** takes a file and **Paste** takes its text. See [Import a theme](#import-a-theme).
+- **About** shows where a kept theme came from. **Check for updates** and **Update** bring its
+  newest listed version. See [About and Update](#see-where-a-theme-came-from-and-update-it).
+
+**Let your coding agent write one.** Tell it to run `collie theme skill`, which prints the loop and
+the file format, and then `collie theme check` on its file until the check is clean. See
+[Let your coding agent write it](#let-your-coding-agent-write-it).
+
+**The way back.** Add `#theme=collie` to the app's address, and Collie's own theme comes back,
+whatever a theme did. See [Troubleshooting](#troubleshooting).
+
 ## Make Collie your own
 
 Two choices in **Settings → Appearance** make the app look like yours, and both stay on this device.
@@ -112,7 +150,9 @@ Tap **Browse community themes** in the **Theme** card, then **Install** on a the
 
 The sheet lists the themes people share on GitHub with the topic `colliepwa-theme` (see
 [Share a theme on colliepwa.dev](#share-a-theme-on-colliepwadev)). Each row draws the theme small, in
-light and in dark, with its name, its author and a link to its repository. **Install** opens the same
+light and in dark, with its name, its author and a link to its repository. Under the name, `@owner`
+names the GitHub account that holds the repository, and `★ 12` is its star count. The owner always comes
+from the repository's own address, so a listing cannot claim another name. **Install** opens the same
 preview as **Import**, and **Apply** keeps the theme.
 
 The list comes from your host, not from the internet. **Refresh** asks the host to fetch it once from
@@ -123,6 +163,34 @@ of the last good one shows the same copy, and a copy older than a week is not sh
 Every theme is checked three times: by the site, by your host and by your phone. A theme that fails
 any check is left out, and the sheet counts how many were. **Report** opens a new issue on the collie
 repository with the theme's repository filled in. You read it and send it yourself.
+
+### See where a theme came from, and update it
+
+Pick the theme in the **Theme** card, then tap the **i** button beside it.
+
+The **About this theme** sheet shows the name, the author and where the theme came from. A theme from
+**Browse community themes** shows its repository as `@owner/name`, the file, the short commit and the
+date you installed it. The file link opens that file on GitHub at that commit. **Report** is there too.
+
+A theme from a file says "Added from a file", and a pasted one says "Pasted", each with the date. A
+theme you kept before this version says "Added on this device". Shipped themes have no About sheet.
+
+For a theme from the list, the sheet compares it with your host's copy of the list:
+
+| The sheet says | It means |
+| --- | --- |
+| A newer version is listed. | The list holds another commit of the same file. Tap **Update**. |
+| No newer version is listed. | You have the commit the list holds. |
+| No longer listed. | The list no longer holds the file. Your copy stays. |
+| **Check for updates** | The host's copy is older than your install. The tap fetches the list once. |
+
+**Update** opens the same preview as **Install**, with the same contrast report. Tap **Update** there
+to put the new file in place of the old one. The theme stays on if you wore it, and the eight-theme
+limit does not stop an update.
+
+Collie matches the repository and the file, never the theme's id. A theme copied from another
+repository with the same id is never offered as an update. A copy of the list made before your install
+never offers an update, so an update never takes you back to an older commit.
 
 ### Try a theme before you keep it
 
@@ -155,6 +223,9 @@ list shows at most 25 causes, then one line "and N more". A file is refused for 
 - Its `ansi` block lacks a key, has a colour with an alpha, or fails a gate under
   [Terminal palette](#terminal-palette).
 - It has a bad `id`, `name` or `author`, or the `id` belongs to a shipped theme.
+- Its body text cannot be read: `foreground` on `background` measures under 3 in a half, or a text colour
+  (`foreground` or a `*-foreground` token) is fully transparent. A token the file leaves out is measured
+  with Collie's value, the one the app fills it with.
 - It would be a ninth imported theme. Collie refuses at the **Import** or **Paste** tap, before you pick a
   file, and again at **Apply**.
 
@@ -170,7 +241,8 @@ that theme, and the app goes back to Collie. The typeface stays as it was.
 
 The report measures the colours of a theme in both halves, and a failed line is a warning that you can accept.
 
-The terminal palette is the one exception, because its gates refuse the file. The table lists the floors of
+Two checks refuse the file instead: the terminal palette's gates, and `foreground` on `background` under 3 in
+a half (the list above). The table lists the floors of
 the other parts. A floor is a contrast ratio, so a higher number is easier to read.
 
 | Check | Floor |
@@ -189,9 +261,9 @@ the other parts. A floor is a contrast ratio, so a higher number is easier to re
 - **Destructive text is held to what Collie measures when you keep its colours.** A theme that keeps both
   colours of the pair as the Collie theme has them is held to what that pair measures, and never below 3.
   A theme that moves either colour is held to 4.5.
-- **A gradient or a grain is measured at its far end.** The report measures the page text, the chips,
-  `destructive` text, `status-blocked` text and `rule` again on the foot of the gradient or on the grain's
-  line colour, with the same floors.
+- **A ground is measured on the colour it draws.** The report measures the page text, the chips,
+  `destructive` text, `status-blocked` text and `rule` again on the foot of a gradient, or on the colour of
+  a pattern's lines, dots or shapes, with the same floors.
 - **A band is measured too.** Under `chrome: band`, `foreground`, `muted-foreground` and `status-blocked` are
   measured on `secondary`, the colour of the band, at 4.5.
 
@@ -207,8 +279,8 @@ file shows the text in a sheet, with a copy button. To make your own theme from 
 
 An export writes the lowest [version](#versions) that holds the content of the theme.
 
-To have an AI agent write a theme for you, tell it to run `collie theme skill`. It prints the steps and
-every key a theme file may use, and it tells the agent to check the file with `collie theme check`.
+To have an AI agent write a theme for you, see
+[Let your coding agent write it](#let-your-coding-agent-write-it).
 
 ## Share a theme on colliepwa.dev
 
@@ -325,6 +397,18 @@ A value is `#rrggbb`, `#rrggbbaa`, or `oklch(L C H)` and `oklch(L C H / A)` in p
 0 to 0.5, H is 0 to 360, and A is 0 to 1 or a percentage. Nothing else works: no named colour, no `rgb()`, no
 `var()`, no `url()`. A colour in `ansi` has no alpha.
 
+### Let your coding agent write it
+
+```sh
+collie theme skill
+collie theme check my-day.collie-theme.json
+```
+
+Tell your coding agent, such as Claude Code or Codex, to run `collie theme skill` (the same as
+`collie theme --skill`) and follow it. It prints the loop and the file format. The agent then runs
+`collie theme check` on its file, and changes the file until the check is clean. This works the same
+for a new theme and for a change to one you have.
+
 ### Versions
 
 A file says which version it is, and Collie writes the lowest version that holds what the file has.
@@ -334,7 +418,7 @@ A file says which version it is, and Collie writes the lowest version that holds
 | 1 | Colours in `light` and `dark`, and `fonts.ui`. |
 | 2 | Everything in version 1, and any of `surface`, `fonts.display` and `ansi`. |
 | 3 | Everything in version 2, and the optional tokens `pane-active` and `tab-active`. |
-| 4 | Everything in version 3, and the keys `character` and `glyphs`. |
+| 4 | Everything in version 3, the keys `character` and `glyphs`, and `surface.ground` as an object. |
 
 - A file with a `surface` block, a `fonts.display` face or an `ansi` block must say 2. A file that says 1 and
   has one of them is refused.
@@ -342,6 +426,8 @@ A file says which version it is, and Collie writes the lowest version that holds
   sets one of them is refused. The cause names the token and the version.
 - A file with `character` or `glyphs` must say 4. A file that says 1, 2 or 3 and has one of them is refused:
   "A file with "character" must say version 4. This one says version 3."
+- A file with `surface.ground` as an object must say 4. The word form, such as `"ground": "grain"`, is
+  the same in every version from 2.
 - A file without those blocks, without an optional token, without `character` and without `glyphs` may say
   1 or 2. Collie reads all four
   versions, and an export of a theme with colours and `fonts.ui` only says 1.
@@ -552,10 +638,10 @@ of closed words.
 names none draws its titles in Aldrich, the display face of the Collie theme. Collie fetches a display face only when the theme
 names it.
 
-- **A ground draws no image file.** The gradient and the grain are built from the colours of the theme itself.
+- **A ground draws no image file.** Every ground is built from the colours of the theme itself.
   The panels of the app are opaque, so the ground shows in the gaps between them.
 - **The page text is measured on the ground.** The [contrast report](#the-contrast-report) checks the far end
-  of a gradient and the grain's line colour, so a ground cannot hide text.
+  of a gradient and the colour a pattern draws, so a ground cannot hide text.
 - **Under a gradient the bars keep the flat page colour.** On a tablet the header and the bars can read as
   a box at the top of a page that darkens below. A word cannot change that.
 - **The status bar follows a band.** Under `chrome: band` the browser's status bar takes the band colour, and
@@ -566,6 +652,53 @@ names it.
 - **`tabs` and `composer` set no style either.** The app reads the word and draws the tab row, the pane row
   and the composer itself. Under `folder` the tab row grows by no pixel, and the tap targets stay where they
   are. The colour of the edge is the optional token [`tab-active`](#the-optional-tokens).
+
+### Ground patterns
+
+`surface.ground` also takes an object of four words. The object needs version 4.
+
+```json
+"surface": {
+  "ground": { "pattern": "dots", "size": "wide", "strength": "faint", "ink": "primary" }
+}
+```
+
+Every key is optional, and a key the object leaves out takes its first word. The word form stays
+as it was: `"ground": "grain"` draws the same ground as `{ "pattern": "grain" }`. An empty object
+is `flat`.
+
+| Key | Words | What it does |
+| --- | --- | --- |
+| `pattern` | `flat` `gradient` `grain` `dots` `grid` `lines` `checks` `waves` `weave` | What is drawn behind the page. |
+| `size` | `default` `fine` `wide` | The spacing: as listed below, three quarters of it, or twice it. |
+| `strength` | `default` `faint` `bold` | How much ink is mixed into the page colour. |
+| `ink` | `foreground` `primary` | The colour mixed in. `gradient` takes `primary`, every other pattern `foreground`. |
+
+| Pattern | What it draws at the default size |
+| --- | --- |
+| `flat` | Nothing. The page is one colour. |
+| `gradient` | The page darkens or lightens toward the foot. |
+| `grain` | Two sets of fine diagonal lines, 4px apart. Collie's own ground. |
+| `dots` | A small dot every 12px. |
+| `grid` | Lines across and down, 16px apart. |
+| `lines` | One set of diagonal lines, 6px apart. |
+| `checks` | A checker of 8px squares. |
+| `waves` | Rows of wavy lines. |
+| `weave` | A woven pattern, like cloth. |
+
+The strength is a share of the ink in the page colour. A line, a dot or a shape never goes past 10%.
+
+| Strength | Lines: `grain` `grid` `lines` `waves` | `dots` | Shapes: `checks` `weave` | Foot of `gradient` |
+| --- | --- | --- | --- | --- |
+| `faint` | 2.5% | 5% | 2% | 7% |
+| `default` | 4% | 7% | 3% | 12% |
+| `bold` | 7% | 10% | 5% | 18% |
+
+- **A pattern is Collie's own CSS.** A file names words only, never a URL, an image or an SVG. Each
+  pattern is a CSS gradient in the theme's own colours, and nothing in it moves.
+- **The contrast report measures each pattern.** It measures the page text on the colour the
+  pattern draws, at the strength and in the ink the file names. See
+  [the contrast report](#the-contrast-report).
 
 ## Terminal palette
 
@@ -624,6 +757,11 @@ follows the theme's two page colours, or its two band colours when the theme say
 ## Troubleshooting
 
 These are the problems people meet most, with the cause and the fix for each.
+
+- **A theme makes the app hard to read, and you cannot reach the Theme card.** Open the app's address with
+  `#theme=collie` at the end, for example `https://my-host.example.ts.net/#theme=collie`. The device wears
+  Collie again and a theme you were trying is dropped. Your imported themes, your typeface and the pairing
+  stay as they are, and Collie takes the `#theme=collie` off the address.
 
 - **A theme shows the default colour on one token.** The file left that token out, or the half. Missing
   tokens come from the theme Collie. Add the token to the half you want.

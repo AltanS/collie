@@ -28,9 +28,9 @@ import { useSyncExternalStore } from "react";
 
 import { setMetaColours, type MetaColours } from "@/hooks/use-theme";
 import { designPrefs, setDesignFont, setDesignTheme, subscribeDesign } from "@/lib/design";
-import { hasDocument } from "@/lib/env";
+import { hasDocument, hasWindow } from "@/lib/env";
 import { isShippedFont } from "@/lib/shipped-fonts";
-import { parseJsonObject } from "@/lib/json";
+import { asJsonObject, parseJsonObject } from "@/lib/json";
 
 import {
   DEFAULT_THEME_ID,
@@ -47,6 +47,8 @@ import {
   toSrgbHex,
   type Theme,
 } from "./schema";
+import { isThemeEscape, withoutThemeEscape } from "./escape";
+import { readOrigin, type ThemeOrigin } from "./origin";
 import { VERSION_TWO_PROPERTIES, omittedGroundDeclarations, resolveSurface, versionTwoDeclarations } from "./surface";
 
 /** The library's storage key. `public/theme-init.js` reads the same string; `theme-init.test.ts` holds them equal. */
@@ -120,15 +122,23 @@ export function shippedThemes(): Theme[] {
 
 const listeners = new Set<() => void>();
 
-let imported: readonly ImportedTheme[] = loadLibrary();
+interface StoredLibrary {
+  themes: readonly ImportedTheme[];
+  /** Where each kept theme came from (origin.ts), by id. A theme with no entry reads "Added on this device". */
+  origins: ReadonlyMap<string, ThemeOrigin>;
+}
 
-function loadLibrary(): readonly ImportedTheme[] {
+const EMPTY_LIBRARY: StoredLibrary = { themes: [], origins: new Map() };
+
+let { themes: imported, origins } = loadLibrary();
+
+function loadLibrary(): StoredLibrary {
   try {
     const raw = localStorage.getItem(LIBRARY_STORAGE_KEY);
-    if (raw === null) return [];
+    if (raw === null) return EMPTY_LIBRARY;
     return readLibrary(raw);
   } catch {
-    return []; // private mode / SSR
+    return EMPTY_LIBRARY; // private mode / SSR
   }
 }
 
@@ -136,11 +146,14 @@ function loadLibrary(): readonly ImportedTheme[] {
  * The themes of a stored library blob, each one re-validated. One that no longer validates (a
  * future version wrote it, the schema tightened, a person edited the blob) is dropped with a warning
  * and never applied. A repeated id and anything past the cap are dropped the same way.
+ *
+ * Then the origins beside them, each one checked (origin.ts). An origin that fails, or whose theme is
+ * not kept, is dropped; its theme stays. Nothing here throws on a bad blob: boot must not.
  */
-function readLibrary(raw: string): ImportedTheme[] {
+function readLibrary(raw: string): StoredLibrary {
   const doc = parseJsonObject(raw);
   const list = doc === undefined ? undefined : doc.themes;
-  if (doc === undefined || doc.version !== 1 || !Array.isArray(list)) return [];
+  if (doc === undefined || doc.version !== 1 || !Array.isArray(list)) return EMPTY_LIBRARY;
   const themes: ImportedTheme[] = [];
   for (const entry of list) {
     const parsed = parseTheme(JSON.stringify(entry), { maxBytes: THEME_MAX_BYTES });
@@ -154,21 +167,54 @@ function readLibrary(raw: string): ImportedTheme[] {
     }
     themes.push(parsed.theme);
   }
-  return themes;
+  const stored = asJsonObject(doc.origins);
+  const kept = new Map<string, ThemeOrigin>();
+  for (const theme of themes) {
+    // `Object.hasOwn`: an id such as `constructor` must never read a prototype's member.
+    const origin = stored !== undefined && Object.hasOwn(stored, theme.id) ? readOrigin(stored[theme.id]) : undefined;
+    if (origin !== undefined) kept.set(theme.id, origin);
+  }
+  return { themes, origins: kept };
 }
 
 function persistLibrary(): void {
   try {
     if (imported.length === 0) localStorage.removeItem(LIBRARY_STORAGE_KEY);
-    else localStorage.setItem(LIBRARY_STORAGE_KEY, JSON.stringify({ version: 1, themes: imported }));
+    else localStorage.setItem(LIBRARY_STORAGE_KEY, JSON.stringify(libraryBlob()));
   } catch {
     // Ignore quota / SSR write errors: the in-memory library still works for this session.
   }
 }
 
+/** The library as it is written to storage. `origins` is absent while no theme has one. */
+interface LibraryBlob {
+  version: 1;
+  themes: readonly ImportedTheme[];
+  origins?: Record<string, ThemeOrigin>;
+}
+
+/** The stored blob: the themes, and their origins only when there are any, so a library without one writes what it always wrote. */
+function libraryBlob(): LibraryBlob {
+  const blob: LibraryBlob = { version: 1, themes: imported };
+  if (origins.size > 0) blob.origins = Object.fromEntries(origins);
+  return blob;
+}
+
 /** The imported themes, in the order they were added. */
 export function library(): readonly ImportedTheme[] {
   return imported;
+}
+
+/** Where an imported theme came from, or undefined for a shipped theme and one kept before origins. */
+export function originOf(id: string): ThemeOrigin | undefined {
+  return origins.get(id);
+}
+
+function withOrigin(map: ReadonlyMap<string, ThemeOrigin>, id: string, origin: ThemeOrigin | undefined): ReadonlyMap<string, ThemeOrigin> {
+  const next = new Map(map);
+  if (origin === undefined) next.delete(id);
+  else next.set(id, origin);
+  return next;
 }
 
 export type AddResult = { ok: true } | { ok: false; reason: "full" | "reserved-id" | "duplicate" | "invalid" };
@@ -177,14 +223,43 @@ export type AddResult = { ok: true } | { ok: false; reason: "full" | "reserved-i
  * Keep an imported theme. The caller has parsed the file already; the theme is parsed once more here
  * because this is the door to storage. `invalid` can only mean a caller skipped `parseTheme`.
  */
-export function addImported(theme: Theme): AddResult {
+export function addImported(theme: Theme, origin?: ThemeOrigin): AddResult {
   if (isShippedThemeId(theme.id)) return { ok: false, reason: "reserved-id" };
   const parsed = parseTheme(JSON.stringify(theme), { maxBytes: THEME_MAX_BYTES });
   if (!parsed.ok) return { ok: false, reason: "invalid" };
   if (imported.some((t) => t.id === parsed.theme.id)) return { ok: false, reason: "duplicate" };
   if (imported.length >= LIBRARY_MAX) return { ok: false, reason: "full" };
   imported = [...imported, parsed.theme];
+  origins = withOrigin(origins, parsed.theme.id, origin);
   persistLibrary();
+  emit();
+  return { ok: true };
+}
+
+/**
+ * Update: put `theme` in the slot of the imported theme `oldId`, with its new origin. The cap never
+ * refuses an update, because the library does not grow. A new id takes the old slot and the active
+ * choice follows it; a new id that another kept theme holds is a duplicate, and a shipped id is
+ * refused as an import's is. The theme is parsed again here, as `addImported` parses it.
+ */
+export function replaceImported(oldId: string, theme: Theme, origin: ThemeOrigin): AddResult {
+  const slot = imported.findIndex((t) => t.id === oldId);
+  if (slot < 0) return { ok: false, reason: "invalid" };
+  if (isShippedThemeId(theme.id)) return { ok: false, reason: "reserved-id" };
+  const parsed = parseTheme(JSON.stringify(theme), { maxBytes: THEME_MAX_BYTES });
+  if (!parsed.ok) return { ok: false, reason: "invalid" };
+  const next = parsed.theme;
+  if (next.id !== oldId && imported.some((t) => t.id === next.id)) return { ok: false, reason: "duplicate" };
+  const wasActive = designPrefs().theme === oldId;
+  imported = imported.map((t, i) => (i === slot ? next : t));
+  origins = withOrigin(withOrigin(origins, oldId, undefined), next.id, origin);
+  persistLibrary();
+  // The active choice follows the slot. Applied directly, not through `setActiveTheme`: an update is
+  // not a pick, so it leaves the Typeface card alone.
+  if (wasActive) {
+    setDesignTheme(next.id);
+    applyTheme(next, "imported");
+  }
   emit();
   return { ok: true };
 }
@@ -193,8 +268,8 @@ export function addImported(theme: Theme): AddResult {
  * Keep a theme and switch to it: the one path an import's Apply and a trial's Keep both take
  * (M59 spec 08), so the cap, the shipped-id rule and the duplicate check cannot differ between them.
  */
-export function installTheme(theme: Theme): AddResult {
-  const added = addImported(theme);
+export function installTheme(theme: Theme, origin?: ThemeOrigin): AddResult {
+  const added = addImported(theme, origin);
   if (added.ok) setActiveTheme(theme.id);
   return added;
 }
@@ -207,6 +282,7 @@ export function removeImported(id: string): void {
   if (!imported.some((t) => t.id === id)) return;
   const wasActive = designPrefs().theme === id;
   imported = imported.filter((t) => t.id !== id);
+  origins = withOrigin(origins, id, undefined);
   persistLibrary();
   if (wasActive) {
     setDesignTheme(DEFAULT_THEME_ID);
@@ -257,8 +333,32 @@ export function setActiveTheme(id: string): void {
  * half of an imported theme, the theme-color metas) and Safari private mode, where it threw.
  */
 export function initTheme(): void {
+  if (takeThemeEscape()) setDesignTheme(DEFAULT_THEME_ID);
   const active = resolveActive();
   applyTheme(active.theme, active.source);
+}
+
+let escaped = false;
+
+/**
+ * `#theme=collie` on the address (escape.ts): true once per page when the hash asked for Collie, and
+ * the hash is taken off the address so a reload does not ask again. `resumeTrial` reads
+ * {@link themeEscaped} to drop a trial on the same page load.
+ */
+function takeThemeEscape(): boolean {
+  if (!hasWindow() || !isThemeEscape(location.hash)) return false;
+  escaped = true;
+  try {
+    history.replaceState(history.state, "", `${location.pathname}${location.search}${withoutThemeEscape(location.hash)}`);
+  } catch {
+    // A page that refuses replaceState keeps the hash; the next load puts Collie on again, no harm.
+  }
+  return true;
+}
+
+/** True when this page load opened with `#theme=collie`. */
+export function themeEscaped(): boolean {
+  return escaped;
 }
 
 // ── The one place the DOM is touched ────────────────────────────────────────────────────────────
@@ -387,12 +487,21 @@ export function useLibrary(): readonly ImportedTheme[] {
   return useSyncExternalStore(subscribe, getLibrary, getLibrary);
 }
 
+function getOrigins(): ReadonlyMap<string, ThemeOrigin> {
+  return origins;
+}
+
+/** Where each imported theme came from, reactive. A new map on every add, update and remove. */
+export function useThemeOrigins(): ReadonlyMap<string, ThemeOrigin> {
+  return useSyncExternalStore(subscribe, getOrigins, getOrigins);
+}
+
 /**
  * Test seam: re-read the library from storage, as if the page had just opened, and re-apply the
  * active theme. After `localStorage.clear()` this lands on an empty library.
  */
 export function __resetThemeStore(): void {
-  imported = loadLibrary();
+  ({ themes: imported, origins } = loadLibrary());
   if (hasDocument()) {
     const active = resolveActive();
     applyTheme(active.theme, active.source);

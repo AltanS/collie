@@ -8,8 +8,7 @@ import { useLocale } from "@/hooks/use-locale";
 import { apiErrorStatus, fetchThemeRegistry, refreshThemeRegistry } from "@/lib/api";
 import { timeAgo } from "@/lib/format";
 import { t, type MessageKey } from "@/lib/i18n";
-import { readRegistryEntry, repoUrl, reportUrl, type RegistryTheme } from "@/lib/theme/registry";
-import type { Theme } from "@/lib/theme/schema";
+import { ownerOf, readRegistryEntry, repoUrl, reportUrl, type RegistryTheme } from "@/lib/theme/registry";
 import type { ThemeRegistryStatus } from "@/lib/types";
 
 // The community Browse sheet (M59 spec 06): the themes people share with the topic
@@ -40,10 +39,10 @@ const ERROR_KEYS = {
 interface BrowseSheetProps {
   open: boolean;
   onClose: () => void;
-  /** Install: the card opens its preview sheet over this theme. */
-  onInstall: (theme: Theme) => void;
+  /** Install: the card opens its preview sheet over this theme, and keeps the entry as its origin. */
+  onInstall: (item: RegistryTheme) => void;
   /** Try: the card starts a trial of this theme (M59 spec 08). Absent draws no Try button. */
-  onTry?: (theme: Theme) => void;
+  onTry?: (item: RegistryTheme) => void;
 }
 
 /** The entries of a status the phone accepts, in the registry's own order. */
@@ -56,8 +55,27 @@ export function acceptedThemes(status: ThemeRegistryStatus): RegistryTheme[] {
 
 interface RowProps {
   item: RegistryTheme;
-  onInstall: (theme: Theme) => void;
-  onTry?: (theme: Theme) => void;
+  onInstall: (item: RegistryTheme) => void;
+  onTry?: (item: RegistryTheme) => void;
+}
+
+/**
+ * Who made a listed theme and how many people starred its repo: `@owner · ★ 12`. The owner is the
+ * first half of the checked slug, as a text node, and the registry has no field that could name
+ * anyone else. No count, or one that failed the check, draws no star part.
+ */
+export function MakerLine({ repo, stars }: { repo: string; stars?: number }) {
+  return (
+    <div className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
+      <span className="truncate">{t("theme.browse.owner", { owner: ownerOf(repo) })}</span>
+      {stars !== undefined && (
+        <span className="shrink-0">
+          <span aria-hidden="true">{t("theme.browse.stars", { count: stars })}</span>
+          <span className="sr-only">{t("theme.browse.starsAria", { count: stars })}</span>
+        </span>
+      )}
+    </div>
+  );
 }
 
 function ThemeRow({ item, onInstall, onTry }: RowProps) {
@@ -74,6 +92,7 @@ function ThemeRow({ item, onInstall, onTry }: RowProps) {
           {theme.author !== undefined && (
             <div className="truncate text-sm text-muted-foreground">{t("theme.preview.by", { author: theme.author })}</div>
           )}
+          <MakerLine repo={entry.repo} stars={entry.stars} />
           <ThemeMarkLine theme={theme} />
           <ThemeGlyphsLine theme={theme} />
           <a
@@ -97,11 +116,11 @@ function ThemeRow({ item, onInstall, onTry }: RowProps) {
       </div>
       <div className={onTry === undefined ? "grid grid-cols-1 gap-2" : "grid grid-cols-2 gap-2"}>
         {onTry !== undefined && (
-          <Button type="button" variant="outline" className="h-11" onClick={() => onTry(theme)}>
+          <Button type="button" variant="outline" className="h-11" onClick={() => onTry(item)}>
             {t("theme.trial.try")}
           </Button>
         )}
-        <Button type="button" className="h-11" onClick={() => onInstall(theme)}>
+        <Button type="button" className="h-11" onClick={() => onInstall(item)}>
           {t("theme.browse.install")}
         </Button>
       </div>

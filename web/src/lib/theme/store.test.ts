@@ -305,6 +305,101 @@ describe("the library", () => {
   });
 });
 
+describe("origins (theme sources)", () => {
+  const SHA = "0123456789abcdef0123456789abcdef01234567";
+  const NEXT_SHA = "fedcba9876543210fedcba9876543210fedcba98";
+  const FROM_LIST = { kind: "registry", repo: "sam/night", path: "collie-theme.json", sha: SHA, at: 1_700_000_000_000 } as const;
+
+  it("stores an origin beside the themes, never inside a theme, and reads it back", async () => {
+    const { store } = await boot();
+    store.addImported(midnight("one"), FROM_LIST);
+    store.addImported(midnight("two"), { kind: "paste", at: 5 });
+    store.addImported(midnight("three"));
+    const stored = JSON.parse(localStorage.getItem(LIBRARY_KEY) ?? "{}");
+    expect(stored.themes).toEqual([midnight("one"), midnight("two"), midnight("three")]);
+    expect(stored.origins).toEqual({ one: FROM_LIST, two: { kind: "paste", at: 5 } });
+    const again = await boot({ library: localStorage.getItem(LIBRARY_KEY) ?? "" });
+    expect(again.store.originOf("one")).toEqual(FROM_LIST);
+    expect(again.store.originOf("two")).toEqual({ kind: "paste", at: 5 });
+    expect(again.store.originOf("three")).toBeUndefined();
+  });
+
+  it("writes no origins key while there is none, so the blob stays what an older Collie wrote", async () => {
+    const { store } = await boot();
+    store.addImported(midnight("one"));
+    expect(Object.keys(JSON.parse(localStorage.getItem(LIBRARY_KEY) ?? "{}"))).toEqual(["version", "themes"]);
+  });
+
+  it("drops a bad origin and keeps its theme, and never throws on boot", async () => {
+    const bad = {
+      a: { ...FROM_LIST, repo: "https://evil.example/x" },
+      b: { ...FROM_LIST, sha: "abc" },
+      c: { ...FROM_LIST, path: "../x.json" },
+      d: { kind: "url", at: 1 },
+      e: { kind: "file", at: -1 },
+      f: FROM_LIST,
+      ghost: FROM_LIST,
+    };
+    const themes = ["a", "b", "c", "d", "e", "f"].map((id) => midnight(id));
+    const { store } = await boot({ library: blob({ version: 1, themes, origins: bad }) });
+    expect(store.library().map((t) => t.id)).toEqual(["a", "b", "c", "d", "e", "f"]);
+    for (const id of ["a", "b", "c", "d", "e", "ghost", "constructor"]) expect(store.originOf(id), id).toBeUndefined();
+    expect(store.originOf("f")).toEqual(FROM_LIST);
+    const broken = await boot({ library: blob({ version: 1, themes, origins: "nope" }) });
+    expect(broken.store.library()).toHaveLength(6);
+  });
+
+  it("drops the origin with its theme", async () => {
+    const { store } = await boot();
+    store.addImported(midnight("one"), FROM_LIST);
+    store.removeImported("one");
+    expect(store.originOf("one")).toBeUndefined();
+    expect(JSON.parse(localStorage.getItem(LIBRARY_KEY) ?? "{}").origins).toBeUndefined();
+  });
+
+  it("an update takes the same slot, moves the origin, and keeps the theme on, also past the cap", async () => {
+    const { store, design } = await boot();
+    for (let i = 0; i < 8; i += 1) store.addImported(midnight(`t${i}`), i === 3 ? FROM_LIST : undefined);
+    store.setActiveTheme("t3");
+    const fontBefore = design.designPrefs().font;
+    const next = { ...midnight("t3"), name: "Night 2" };
+    const moved = { ...FROM_LIST, sha: NEXT_SHA, at: FROM_LIST.at + 1 };
+    expect(store.replaceImported("t3", next, moved)).toEqual({ ok: true });
+    expect(store.library()).toHaveLength(8);
+    expect(store.library()[3]?.name).toBe("Night 2");
+    expect(store.originOf("t3")).toEqual(moved);
+    expect(store.activeThemeId()).toBe("t3");
+    expect(design.designPrefs().font).toBe(fontBefore);
+  });
+
+  it("an update with a new id replaces the old one, and the active choice follows it", async () => {
+    const { store } = await boot();
+    store.addImported(midnight("a"));
+    store.addImported(midnight("old"), FROM_LIST);
+    store.addImported(midnight("c"));
+    store.setActiveTheme("old");
+    expect(store.replaceImported("old", midnight("new"), FROM_LIST)).toEqual({ ok: true });
+    expect(store.library().map((t) => t.id)).toEqual(["a", "new", "c"]);
+    expect(store.originOf("old")).toBeUndefined();
+    expect(store.originOf("new")).toEqual(FROM_LIST);
+    expect(store.activeThemeId()).toBe("new");
+  });
+
+  it("an update refuses a shipped id, a taken id and a theme that fails the check, and changes nothing", async () => {
+    const { store } = await boot();
+    store.addImported(midnight("a"));
+    store.addImported(midnight("b"), FROM_LIST);
+    expect(store.replaceImported("b", midnight("nightwatch"), FROM_LIST)).toEqual({ ok: false, reason: "reserved-id" });
+    expect(store.replaceImported("b", midnight("a"), FROM_LIST)).toEqual({ ok: false, reason: "duplicate" });
+    expect(store.replaceImported("b", { ...midnight("b"), light: { background: "red" } }, FROM_LIST)).toEqual({
+      ok: false,
+      reason: "invalid",
+    });
+    expect(store.replaceImported("gone", midnight("b"), FROM_LIST)).toEqual({ ok: false, reason: "invalid" });
+    expect(store.library().map((t) => t.id)).toEqual(["a", "b"]);
+  });
+});
+
 describe("applyTheme checks the theme again", () => {
   it("applies nothing for a theme with a value outside the grammar", async () => {
     const { store } = await boot();

@@ -48,6 +48,17 @@ describe("collie theme check", () => {
     expect(io.stdout).toEqual([`harbour.json: refused: ${en["theme.refusal.reserved-id"]} (id)`]);
   });
 
+  test("a file name or a key with a terminal escape prints as escaped printable ASCII (F4)", () => {
+    const esc = String.fromCharCode(0x1b);
+    const name = `themes/a${esc}]0;owned${String.fromCharCode(7)}\nb.collie-theme.json`;
+    const keyed = `{"version":1,"id":"x","name":"X","light":{"background":"#ffffff"},"k${"\\u001b"}[2J":1}`;
+    const { deps, io } = world({ [name]: GOOD, "keyed.json": keyed });
+    cmdThemeCheck(deps, [name, "keyed.json"]);
+    expect(io.stdout.length).toBeGreaterThan(1);
+    for (const line of io.stdout) expect(line).toMatch(/^[\x20-\x7e]+$/);
+    expect(io.stdout[0]).toStartWith('"themes/a\\u001b]0;owned\\u0007\\u000ab.collie-theme.json": ok');
+  });
+
   test("a theme of one's own passes", () => {
     const { deps, io } = world({ "collie-theme.json": GOOD });
     expect(cmdThemeCheck(deps, ["collie-theme.json"])).toBe(EXIT.OK);
@@ -116,7 +127,7 @@ describe("collie theme check", () => {
   });
 
   test("a contrast warning prints the preview's line and does not fail the check", () => {
-    const dim = JSON.stringify({ version: 1, id: "dim", name: "Dim", dark: { foreground: "#333333" } });
+    const dim = JSON.stringify({ version: 1, id: "dim", name: "Dim", dark: { foreground: "#777777" } });
     const { deps, io } = world({ "dim.json": dim });
     expect(cmdThemeCheck(deps, ["dim.json"])).toBe(EXIT.OK);
     const [head, ...warnings] = io.stdout;
@@ -126,7 +137,7 @@ describe("collie theme check", () => {
   });
 
   test("--json prints one object: ok, and one report per file", () => {
-    const dim = JSON.stringify({ version: 1, id: "dim", name: "Dim", dark: { foreground: "#333333" } });
+    const dim = JSON.stringify({ version: 1, id: "dim", name: "Dim", dark: { foreground: "#777777" } });
     const { deps, io } = world({ "dim.json": dim, "bad.json": "[]" });
     expect(cmdThemeCheck(deps, ["--json", "dim.json", "bad.json", "gone.json"])).toBe(EXIT.FAIL);
     expect(io.stdout).toHaveLength(1);
