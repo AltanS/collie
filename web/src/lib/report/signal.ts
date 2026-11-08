@@ -1,8 +1,9 @@
 // The trouble signal (M86 spec 05): when the phone shows one of its two trouble cards, "Cannot read a
 // dialog" or "Send not landing", it tells the bridge it talks to, once, and the bridge's next daily
-// ping carries the count. The signal holds exactly four names: which card, the agent program, its
-// version and the multiplexer. Never a pane id, a host name, a path, a request id, the screen or what
-// was typed.
+// ping carries the count. The signal holds four names: which card, the agent program, its version and
+// the multiplexer; a dialog signal may add a fifth, `screen`, the short hash of the dialog's key-hint
+// row (lib/report/screen.ts). Never a pane id, a host name, a path, a request id, the screen itself, a
+// row with the person's text, or what was typed.
 //
 // THE NAMES ARE THE REPORT'S OWN. The agent program and its version come from {@link harnessOf}, the
 // same rule the report sheet titles its issue with (lib/report/body.ts), over the same two reads the
@@ -18,6 +19,7 @@
 
 import type { SendReceiptRow } from "../surface/send";
 import type { ReportContext } from "./context";
+import { SCREEN_HASH } from "./screen";
 
 /** Which trouble card showed. */
 export type TroubleKind = "dialog" | "send";
@@ -28,6 +30,8 @@ export interface TroubleSignal {
   readonly harness: string;
   readonly version: string | null;
   readonly mux: string;
+  /** A dialog signal's screen hash, 8 lower-case hex characters. Absent on a send signal and when the row did not look like key hints. */
+  readonly screen?: string;
 }
 
 const HARNESS_WORD = /^[a-z0-9-]{1,24}$/;
@@ -42,7 +46,8 @@ const NOT_AN_AGENT: ReadonlySet<string> = new Set(["no pane", "shell"]);
 /**
  * The signal, cleaned to the shape the bridge accepts. The harness word is lower case, digits and
  * dashes, at most 24 characters, else `other`; the version looks like one and is at most 40
- * characters, else null; the multiplexer word (the bridge's own, passed through) has the same shape, else `other`. Null for a
+ * characters, else null; the multiplexer word (the bridge's own, passed through) has the same shape, else `other`. The
+ * screen hash rides a `dialog` signal only, and only in its shape; otherwise the key is absent. Null for a
  * kind that is neither card. Pure.
  */
 export function troubleSignal(a: {
@@ -50,6 +55,7 @@ export function troubleSignal(a: {
   readonly harness: string | null | undefined;
   readonly version: string | null | undefined;
   readonly mux: string | null | undefined;
+  readonly screen?: string | null | undefined;
 }): TroubleSignal | null {
   if (a.kind !== "dialog" && a.kind !== "send") return null;
   const word = a.harness?.trim().toLowerCase() ?? "";
@@ -58,7 +64,9 @@ export function troubleSignal(a: {
   const version = raw.length <= VERSION_MAX && VERSION_WORD.test(raw) ? raw : null;
   const muxWord = a.mux?.trim().toLowerCase() ?? "";
   const mux = MUX_WORD.test(muxWord) ? muxWord : "other";
-  return { kind: a.kind, harness, version, mux };
+  const signal: TroubleSignal = { kind: a.kind, harness, version, mux };
+  if (a.kind !== "dialog" || a.screen === null || a.screen === undefined || !SCREEN_HASH.test(a.screen)) return signal;
+  return { ...signal, screen: a.screen };
 }
 
 // ── The report's own facts ───────────────────────────────────────────────────

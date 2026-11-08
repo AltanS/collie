@@ -3,11 +3,14 @@
 // pane could count a dozen times in a day. The wire is unchanged: this gate runs on the phone, before
 // the signal's two reads, so a suppressed signal costs no request.
 //
-// The record is a small set of `<kind>|<pane key>|<YYYY-MM-DD>` entries (the pane key is the crew host and the pane id) in one localStorage key. It
+// The record is a small set of `<kind>|<pane key>|<YYYY-MM-DD>` entries (the pane key is the crew host and the pane id) in one localStorage key. A
+// dialog signal with a screen hash (lib/report/screen.ts) is `<kind>|<pane key>|<screen>|<YYYY-MM-DD>`,
+// so two different dialogs on one pane in a day count apart, and one dialog re-mounted counts once. It
 // never leaves the device, and each write keeps only today's entries, so it cannot grow past the
 // panes that signalled today. A device whose storage is blocked has no record and signals as before.
 
 import { asJsonString, parseJson } from "../json";
+import { SCREEN_HASH } from "./screen";
 import type { TroubleKind } from "./signal";
 
 const KEY = "collie:trouble-signalled:v1";
@@ -17,9 +20,21 @@ export function utcDay(now: number): string {
   return new Date(now).toISOString().slice(0, 10);
 }
 
-/** The entry that stands for one kind on one pane on one UTC day. */
-export function onceEntry(kind: TroubleKind, paneKey: string, now: number): string {
-  return `${kind}|${paneKey}|${utcDay(now)}`;
+/**
+ * The entry that stands for one kind on one pane on one UTC day, and for a dialog with a screen hash,
+ * for that dialog. A hash out of shape, or on a send, is no part of the entry, as it is no part of the
+ * signal (signal.ts `troubleSignal`).
+ */
+export function onceEntry(kind: TroubleKind, paneKey: string, now: number, screen?: string | null): string {
+  const dialog = kind === "dialog" && screen !== null && screen !== undefined && SCREEN_HASH.test(screen);
+  return dialog ? `${kind}|${paneKey}|${screen}|${utcDay(now)}` : `${kind}|${paneKey}|${utcDay(now)}`;
+}
+
+/** What one signal is counted once per day as: its card kind, its pane key and, on a dialog, its screen hash. */
+export interface OnceKey {
+  readonly kind: TroubleKind;
+  readonly paneKey: string;
+  readonly screen?: string | null | undefined;
 }
 
 /** Whether the signal for this entry has not gone out yet. Pure. */
@@ -57,15 +72,15 @@ function readSeen(store: Storage): string[] | null {
 const inFlight = new Set<string>();
 
 /**
- * Run `send` unless this kind already signalled for this pane today. The entry is written after `send`
- * settled, so a signal that threw before it was attempted does not use up the day. With no usable
- * storage, `send` runs every time.
+ * Run `send` unless this kind (and, on a dialog, this screen) already signalled for this pane today.
+ * The entry is written after `send` settled, so a signal that threw before it was attempted does not
+ * use up the day. With no usable storage, `send` runs every time.
  */
-export async function signalOncePerDay(kind: TroubleKind, paneKey: string, send: () => Promise<void>, now: number = Date.now()): Promise<void> {
+export async function signalOncePerDay(key: OnceKey, send: () => Promise<void>, now: number = Date.now()): Promise<void> {
   const store = storage();
   const seen = store === null ? null : readSeen(store);
   if (store === null || seen === null) return send();
-  const entry = onceEntry(kind, paneKey, now);
+  const entry = onceEntry(key.kind, key.paneKey, now, key.screen);
   if (!isFresh(seen, entry) || inFlight.has(entry)) return;
   inFlight.add(entry);
   try {

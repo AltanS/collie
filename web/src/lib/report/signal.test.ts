@@ -78,3 +78,20 @@ describe("harnessOf: the report's own rule", () => {
     expect(harnessOf({ sends: [], context: { harness: "", harnessVersion: null } })).toEqual({ harness: "shell", version: null });
   });
 });
+
+describe("troubleSignal: the screen hash (1.27.4)", () => {
+  const dialog = { kind: "dialog", harness: "codex", version: "0.167.0", mux: "herdr" };
+
+  it("carries a dialog's screen hash in its shape, as a fifth key", () => {
+    const signal = troubleSignal({ ...dialog, screen: "634c6530" });
+    expect(signal).toEqual({ ...dialog, screen: "634c6530" });
+    expect(Object.keys(signal ?? {})).toEqual(["kind", "harness", "version", "mux", "screen"]);
+  });
+
+  it("leaves the key out with no hash, a hash out of shape, and on a send signal", () => {
+    for (const screen of [null, undefined, "", "634C6530", "634c653", "634c65300", "634c653g", "omp@18.16.0"]) {
+      expect(Object.keys(troubleSignal({ ...dialog, screen }) ?? {}), String(screen)).toEqual(["kind", "harness", "version", "mux"]);
+    }
+    expect(troubleSignal({ ...dialog, kind: "send", screen: "634c6530" })).toEqual({ ...dialog, kind: "send" });
+  });
+});

@@ -23,8 +23,11 @@ import { isRequestId } from "./worktree-receipts.ts";
 // THE TROUBLE TALLY (M86 spec 05, shape B, Altan 2026-11-06). When the phone shows one of its two
 // trouble cards ("Cannot read a dialog", "Send not landing") it tells this bridge once, and the next
 // ping carries how often since the last one: per kind, with the agent program's name and version and
-// the multiplexer, and a count. Exactly those five fields, never what was said or shown. The tally
-// lives in the same file, is cleared with the ID when the ping is off, and is cleared when it went out.
+// the multiplexer, and a count. A dialog row may carry a sixth field, `screen` (1.27.4): 8 hex
+// characters the phone hashed from the dialog's key-hint row only, never a row with the person's text,
+// and absent when that row did not look like key hints. Exactly those six fields, never what was said
+// or shown. A row without `screen` leaves byte for byte as before. The tally lives in the same file, is
+// cleared with the ID when the ping is off, and is cleared when it went out.
 //
 // FUNCTIONAL CORE, IMPERATIVE SHELL. {@link telemetryState}, {@link buildPing}, {@link shouldSend}
 // and {@link resolveTelemetryUrl} are pure and carry the whole contract. {@link createTelemetry} is
@@ -297,8 +300,12 @@ export function buildPing(a: {
     install: a.installKind,
     line: a.line,
     role: a.role,
-    // Each row rebuilt with its five fields, so nothing a record file grew can ride along.
-    trouble: a.trouble.map(({ kind, harness, version, mux, count }) => ({ kind, harness, version, mux, count })),
+    // Each row rebuilt with its fields, so nothing a record file grew can ride along. `screen` only
+    // when the row has one: a row without it is byte for byte what a 1.27.3 bridge sent, which the
+    // ping server took before it knew the key.
+    trouble: a.trouble.map(({ kind, harness, version, mux, screen, count }) =>
+      screen === undefined ? { kind, harness, version, mux, count } : { kind, harness, version, mux, screen, count },
+    ),
   };
 }
 
@@ -419,24 +426,33 @@ export const TROUBLE_MUX = /^[a-z0-9-]{1,24}$/;
 export const TROUBLE_VERSION = /^v?\d+(\.\d+){1,3}([-+][0-9A-Za-z.+-]+)?$/;
 export const TROUBLE_VERSION_MAX = 40;
 
+/** A dialog's screen hash: 8 lower-case hex characters (web/src/lib/report/screen.ts). */
+export const TROUBLE_SCREEN = /^[0-9a-f]{8}$/;
+
 /** One signal from the phone: which card, and the names it showed for. Nothing else. */
 export type TroubleSignal = {
   readonly kind: TroubleKind;
   readonly harness: string;
   readonly version: string | null;
   readonly mux: string;
+  /** A `dialog` signal's screen hash, in {@link TROUBLE_SCREEN}'s shape. Absent on every other signal. */
+  readonly screen?: string;
 };
 
-/** One row of the tally: a signal's four names and how often it came. */
+/** One row of the tally: a signal's names and how often it came. */
 export type TroubleRow = TroubleSignal & {
   readonly count: number;
 };
 
 const SIGNAL_KEYS = ["harness", "kind", "mux", "version"] as const;
+const SCREEN_KEYS = ["harness", "kind", "mux", "screen", "version"] as const;
 
 const isTroubleVersion = (value: string): boolean => value.length <= TROUBLE_VERSION_MAX && TROUBLE_VERSION.test(value);
 
-/** The four names off an object, or null when one is missing or not in its shape. */
+/**
+ * The names off an object, or null when one is missing or not in its shape. A `screen` key is read
+ * only on a `dialog` row and only in {@link TROUBLE_SCREEN}'s shape; any other `screen` is null.
+ */
 function readSignalFields(rec: JsonObject): TroubleSignal | null {
   const kind = TROUBLE_KINDS.find((word) => word === rec.kind);
   const mux = asJsonString(rec.mux);
@@ -445,18 +461,25 @@ function readSignalFields(rec: JsonObject): TroubleSignal | null {
   if (kind === undefined || mux === undefined || harness === undefined || version === undefined) return null;
   if (!TROUBLE_HARNESS.test(harness) || !TROUBLE_MUX.test(mux)) return null;
   if (version !== null && !isTroubleVersion(version)) return null;
-  return { kind, harness, version, mux };
+  if (!("screen" in rec)) return { kind, harness, version, mux };
+  const screen = asJsonString(rec.screen);
+  if (kind !== "dialog" || screen === undefined || !TROUBLE_SCREEN.test(screen)) return null;
+  return { kind, harness, version, mux, screen };
 }
+
+const sameKeys = (keys: readonly string[], want: readonly string[]): boolean =>
+  keys.length === want.length && keys.every((key, at) => key === want[at]);
 
 /**
  * The body `POST /api/telemetry/trouble` accepts: exactly `kind`, `harness`, `version` and `mux`, each
- * in its shape. Null for anything else, a stray key included, and the route answers 400.
+ * in its shape, and on a `dialog` signal optionally `screen`. Null for anything else, a stray key or a
+ * `screen` on a send signal included, and the route answers 400.
  */
 export function parseTroubleSignal(body: JsonValue | undefined): TroubleSignal | null {
   const rec = body === undefined ? undefined : asJsonObject(body);
   if (rec === undefined) return null;
   const keys = Object.keys(rec).toSorted();
-  if (keys.length !== SIGNAL_KEYS.length || keys.some((key, at) => key !== SIGNAL_KEYS[at])) return null;
+  if (!sameKeys(keys, SIGNAL_KEYS) && !sameKeys(keys, SCREEN_KEYS)) return null;
   return readSignalFields(rec);
 }
 
@@ -474,24 +497,26 @@ function parseTroubleRows(value: JsonValue | undefined): TroubleRow[] {
     .slice(0, TROUBLE_ROWS_MAX);
 }
 
+/** One row per kind, harness, version, multiplexer and screen; no screen is its own key. */
 const sameRow = (row: TroubleSignal, signal: TroubleSignal): boolean =>
-  row.kind === signal.kind && row.harness === signal.harness && row.version === signal.version && row.mux === signal.mux;
+  row.kind === signal.kind && row.harness === signal.harness && row.version === signal.version && row.mux === signal.mux && row.screen === signal.screen;
 
 /**
  * The record after one trouble signal. Pure. Off for any reason: the signal is dropped, and the tally
- * goes with the ID. On: the same four names count one more (up to {@link TROUBLE_COUNT_MAX}), new
+ * goes with the ID. On: the same names count one more (up to {@link TROUBLE_COUNT_MAX}), new
  * names make a new row, and a new row past {@link TROUBLE_ROWS_MAX} is dropped.
  */
 export function noteTrouble(record: TelemetryRecord, signal: TroubleSignal, state: TelemetryState): TelemetryRecord {
   if (!state.on) return { ...record, id: null, lastSentDay: null, trouble: [] };
-  const { kind, harness, version, mux } = signal;
+  const { kind, harness, version, mux, screen } = signal;
   const known = record.trouble.some((row) => sameRow(row, signal));
   if (known) {
     const trouble = record.trouble.map((row) => (sameRow(row, signal) ? { ...row, count: Math.min(row.count + 1, TROUBLE_COUNT_MAX) } : row));
     return { ...record, trouble };
   }
   if (record.trouble.length >= TROUBLE_ROWS_MAX) return record;
-  return { ...record, trouble: [...record.trouble, { kind, harness, version, mux, count: 1 }] };
+  const row: TroubleRow = screen === undefined ? { kind, harness, version, mux, count: 1 } : { kind, harness, version, mux, screen, count: 1 };
+  return { ...record, trouble: [...record.trouble, row] };
 }
 
 // ── THE ROUTE'S BODY ────────────────────────────────────────────────────────────────────────────

@@ -8723,8 +8723,8 @@ export async function reportContextRoute(
 
 /**
  * `POST /api/telemetry/trouble` once the write gate passed (M86 spec 05): one trouble signal from the
- * phone. A body that is not exactly `{ kind, harness, version, mux }` in their shapes is a 400, plain
- * text, because the phone never shows it. A good body is a 204 whether or not it was counted: with the
+ * phone. A body that is not exactly `{ kind, harness, version, mux }` in their shapes, plus an optional
+ * `screen` hash on a dialog signal, is a 400, plain text, because the phone never shows it. A good body is a 204 whether or not it was counted: with the
  * ping off for any reason, nothing is stored. Undefined telemetry answers 503, like the setting route.
  */
 export function telemetryTroubleRoute(ping: Pick<Telemetry, "trouble"> | undefined, body: JsonValue | undefined): Response {
