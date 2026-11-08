@@ -532,11 +532,15 @@ error, with the fix. A folder that Collie cannot check is a warning: `cannot con
 From 1.27.0 each Collie bridge sends one small anonymous ping a day to our own analytics. It carries
 the Collie version, the operating system, how Collie was installed, and whether the bridge runs
 alone or in a crew, under a random ID made on your machine. No IP address is stored with the ping.
-When Collie shows one of its two trouble cards, the next ping also carries how often, with the name
-and version of the agent program and the multiplexer it ran on, never what was said or shown.
 Nothing else is sent: no host name, no folder, nothing you type or read. We need these numbers to
 spot regressions and slow degradations after a release, and to steer what gets built next. Up to
 1.26.x Collie sent nothing ([ADR 0129](../.adr/0129-an-anonymous-install-count-on-by-default.md)).
+
+When Collie shows one of its two trouble cards, the next ping also carries how often, in six fields:
+which card, the name and version of the agent program, the multiplexer it ran on, a count and, from
+1.27.4, a screen field on a dialog card. The screen field is a short hash of the dialog's key-hint
+row only, never a row with your text, never the screen or what you typed. It is absent unless that
+row is a short list of key hints, such as `enter select · esc back`.
 
 Turning it off is one switch: Settings, System, **Telemetry**. `COLLIE_TELEMETRY=0`,
 `telemetry = false` in `config.toml` or `DO_NOT_TRACK=1` do the same, and so does blocking the one

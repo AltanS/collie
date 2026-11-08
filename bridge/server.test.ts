@@ -3933,6 +3933,27 @@ describe("the update write gate — POST api/update rides the pane path's own ga
       }
     });
 
+    test("a dialog signal with a screen hash is a 204 and counts on its own row; a send with one is a 400 (1.27.4)", async () => {
+      const dir = await mkdtemp(join(tmpdir(), "collie-trouble-route-"));
+      try {
+        const ping = telemetryIn(dir);
+        const dialog = { kind: "dialog", harness: "codex", version: "0.167.0", mux: "herdr" } as const;
+        expect(telemetryTroubleRoute(ping, { ...dialog, screen: "634c6530" }).status).toBe(204);
+        expect(telemetryTroubleRoute(ping, { ...dialog }).status).toBe(204);
+        for (const body of [{ ...SIGNAL, screen: "634c6530" }, { ...dialog, screen: "ENTER" }, { ...dialog, screen: "634c6530", row: "enter select" }]) {
+          const res = telemetryTroubleRoute(ping, body);
+          expect(res.status).toBe(400);
+          expect(await res.text()).toBe("telemetry.trouble_invalid");
+        }
+        expect(readTelemetryRecord(dir).trouble).toEqual([
+          { ...dialog, screen: "634c6530", count: 1 },
+          { ...dialog, count: 1 },
+        ]);
+      } finally {
+        await rm(dir, { recursive: true, force: true });
+      }
+    });
+
     test("telemetry off: a 204, and the signal writes nothing", async () => {
       const dir = await mkdtemp(join(tmpdir(), "collie-trouble-route-"));
       try {

@@ -34,6 +34,7 @@ import {
   TELEMETRY_URL,
   TROUBLE_COUNT_MAX,
   TROUBLE_ROWS_MAX,
+  TROUBLE_SCREEN,
   utcDay,
   type PingFetch,
   type TelemetryDecider,
@@ -226,6 +227,15 @@ describe("buildPing", () => {
     const built = buildPing({ id: "a".repeat(32), day: "2026-11-04", version: "1.26.0", os: "linux", arch: "x64", installKind: "binary", line: "stable", role: "solo", trouble: [grown] });
     expect(built.trouble).toEqual([{ kind: "send", harness: "claude", version: "2.1.316", mux: "herdr", count: 2 }]);
     expect(Object.keys(built.trouble[0] ?? {})).toEqual(["kind", "harness", "version", "mux", "count"]);
+  });
+
+  test("a row without a screen is byte for byte a 1.27.3 row; a dialog row with one carries it before count (1.27.4)", () => {
+    const plain = { kind: "dialog", harness: "codex", version: "0.167.0", mux: "herdr", count: 13 } as const;
+    const hashed = { ...plain, screen: "634c6530" } as const;
+    const built = buildPing({ id: "a".repeat(32), day: "2026-11-08", version: "1.27.4", os: "linux", arch: "x64", installKind: "binary", line: "stable", role: "solo", trouble: [plain, hashed] });
+    expect(JSON.stringify(built.trouble[0])).toBe('{"kind":"dialog","harness":"codex","version":"0.167.0","mux":"herdr","count":13}');
+    expect(JSON.stringify(built.trouble[1])).toBe('{"kind":"dialog","harness":"codex","version":"0.167.0","mux":"herdr","screen":"634c6530","count":13}');
+    expect(built.trouble[0]).not.toHaveProperty("screen");
   });
 
   test("each role value is carried as given", () => {
@@ -797,6 +807,20 @@ describe("noteTrouble: the tally, pure", () => {
     expect(noteTrouble(once, DIALOG, ON).trouble[0]?.count).toBe(TROUBLE_COUNT_MAX);
   });
 
+  test("the screen is part of the key: one row per dialog, and a row without one has no screen key (1.27.4)", () => {
+    let record = noteTrouble(base, { ...DIALOG, screen: "634c6530" }, ON);
+    record = noteTrouble(record, { ...DIALOG, screen: "634c6530" }, ON);
+    record = noteTrouble(record, { ...DIALOG, screen: "41ea66c7" }, ON);
+    record = noteTrouble(record, DIALOG, ON);
+    expect(record.trouble).toEqual([
+      { ...DIALOG, screen: "634c6530", count: 2 },
+      { ...DIALOG, screen: "41ea66c7", count: 1 },
+      { ...DIALOG, count: 1 },
+    ]);
+    expect(Object.keys(record.trouble[2] ?? {}).toSorted()).toEqual(["count", "harness", "kind", "mux", "version"]);
+    expect(Object.keys(record.trouble[0] ?? {}).toSorted()).toEqual(["count", "harness", "kind", "mux", "screen", "version"]);
+  });
+
   test("off for any reason: the signal is dropped and the tally goes with the ID", () => {
     const record = { ...base, lastSentDay: "2026-11-05", trouble: [{ ...DIALOG, count: 4 }] };
     const next = noteTrouble(record, SEND, OFF);
@@ -833,6 +857,25 @@ describe("parseTroubleSignal: the route's body", () => {
       { ...good, version: "latest" },
       { ...good, version: `1.${"2".repeat(40)}` },
       { ...good, version: 2 },
+    ];
+    for (const body of bad) expect(parseTroubleSignal(body), JSON.stringify(body)).toBeNull();
+  });
+
+  test("a dialog signal may add a screen hash of 8 lower-case hex characters (1.27.4)", () => {
+    const dialog = { kind: "dialog", harness: "codex", version: "0.167.0", mux: "herdr" } as const;
+    expect(parseTroubleSignal({ ...dialog, screen: "634c6530" })).toEqual({ ...dialog, screen: "634c6530" });
+    expect(TROUBLE_SCREEN.test("634c6530")).toBe(true);
+    const bad = [
+      { ...dialog, kind: "send", screen: "634c6530" },
+      { ...dialog, screen: "634C6530" },
+      { ...dialog, screen: "634c653" },
+      { ...dialog, screen: "634c65300" },
+      { ...dialog, screen: "634c653z" },
+      { ...dialog, screen: "" },
+      { ...dialog, screen: null },
+      { ...dialog, screen: 1666999600 },
+      { ...dialog, screen: "enter select · esc back" },
+      { ...dialog, screen: "634c6530", rows: "enter select · esc back" },
     ];
     for (const body of bad) expect(parseTroubleSignal(body), JSON.stringify(body)).toBeNull();
   });
@@ -887,6 +930,33 @@ describe("the tally in the shell (M86 spec 05)", () => {
     r.telemetry.trouble(SIGNAL);
     expect(readFileSync(telemetryPath(r.stateDir), "utf8")).toBe(before);
     expect(readTelemetryRecord(r.stateDir).trouble).toEqual([]);
+  });
+
+  test("a dialog's screen rides the ping, and a row without one leaves as before (1.27.4)", async () => {
+    const r = rig();
+    r.telemetry.observe();
+    r.telemetry.trouble({ ...SIGNAL, screen: "634c6530" });
+    r.telemetry.trouble(SIGNAL);
+    r.clock.now += FIRST_PING_DELAY_MS;
+    await r.telemetry.tick();
+    const body = String(r.sent[0]?.init.body);
+    expect(body).toContain('{"kind":"dialog","harness":"codex","version":"0.46.0","mux":"herdr","screen":"634c6530","count":1}');
+    expect(body).toContain('{"kind":"dialog","harness":"codex","version":"0.46.0","mux":"herdr","count":1}');
+  });
+
+  test("the record file round-trips a screen, and drops a row whose screen is out of shape or on a send", () => {
+    const record = parseTelemetryRecord(
+      JSON.stringify({
+        ...EMPTY_TELEMETRY_RECORD,
+        trouble: [
+          { ...SIGNAL, screen: "634c6530", count: 2 },
+          { ...SIGNAL, screen: "634C6530", count: 1 },
+          { ...SIGNAL, kind: "send", screen: "634c6530", count: 1 },
+          { ...SIGNAL, screen: null, count: 1 },
+        ],
+      }),
+    );
+    expect(record.trouble).toEqual([{ ...SIGNAL, screen: "634c6530", count: 2 }]);
   });
 
   test("the record file round-trips the tally, and a bad row in it is dropped", () => {

@@ -209,7 +209,8 @@ export function streakIds(key: string): string[] {
 /**
  * Tell the bridge a trouble card showed. Reads the same facts the report sheet reads, cleans them to
  * {@link troubleSignal} and posts them once. A kind signals at most once per pane and UTC day on this
- * device ({@link signalOncePerDay}), so a card that re-mounts is not counted again. Never throws and
+ * device ({@link signalOncePerDay}), a dialog once per screen hash too, so a card that re-mounts is not
+ * counted again and two different dialogs are. Never throws and
  * never retries. A crew member's pane has no report context on the lead (the lead refuses it), so its
  * signal carries the card's agent, and the member's own multiplexer from `GET /api/config` for that
  * host: the lead answers it from the member's last hello, without dialing the member. A failed config
@@ -223,8 +224,10 @@ export async function signalTrouble(a: {
   readonly requestIds?: readonly string[] | undefined;
   /** The unread-dialog card's agent. */
   readonly agent?: string | undefined;
+  /** The unread-dialog card's screen hash (lib/report/screen.ts), never its rows. A dialog signal only. */
+  readonly screen?: string | null | undefined;
 }): Promise<void> {
-  await signalOncePerDay(a.kind, `${a.scope?.host ?? "lead"}|${a.paneId}`, () => postSignal(a));
+  await signalOncePerDay({ kind: a.kind, paneKey: `${a.scope?.host ?? "lead"}|${a.paneId}`, screen: a.screen }, () => postSignal(a));
 }
 
 async function postSignal(a: Parameters<typeof signalTrouble>[0]): Promise<void> {
@@ -238,7 +241,7 @@ async function postSignal(a: Parameters<typeof signalTrouble>[0]): Promise<void>
     const dialog = a.agent === undefined ? undefined : { agent: a.agent };
     const facts = harnessOf({ sends: reportedSends(rows, a.requestIds), context, dialog });
     const mux = lead ? context?.mux : memberMux;
-    const signal = troubleSignal({ kind: a.kind, harness: facts.harness, version: facts.version, mux });
+    const signal = troubleSignal({ kind: a.kind, harness: facts.harness, version: facts.version, mux, screen: a.screen });
     if (signal === null) return;
     await postTroubleSignal(signal);
   } catch {

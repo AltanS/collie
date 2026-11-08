@@ -115,12 +115,18 @@ describe("the trouble signal's facts (1.27.4)", () => {
 
   const LEAD_CONTEXT = { collie: "1.27.4", line: "stable", os: "linux", arch: "x64", mux: "herdr", harness: "omp", harnessVersion: "18.16.0", screenable: true };
 
-  it("a lead pane with no send names the bridge's cached version", async () => {
+  it("a lead pane with no send names the bridge's cached version, and the dialog's screen hash", async () => {
     const { posted, configReads } = listen(LEAD_CONTEXT, null);
-    await signalTrouble({ kind: "dialog", paneId: "w1:p1", agent: "omp" });
-    expect(posted).toEqual([{ kind: "dialog", harness: "omp", version: "18.16.0", mux: "herdr" }]);
+    await signalTrouble({ kind: "dialog", paneId: "w1:p1", agent: "omp", screen: "cd5c9922" });
+    expect(posted).toEqual([{ kind: "dialog", harness: "omp", version: "18.16.0", mux: "herdr", screen: "cd5c9922" }]);
     // The lead's own pane reads its context, never the config.
     expect(configReads).toEqual([]);
+  });
+
+  it("a send signal never carries a screen, whatever the caller passed", async () => {
+    const { posted } = listen(LEAD_CONTEXT, null);
+    await signalTrouble({ kind: "send", paneId: "w1:p2", screen: "cd5c9922" });
+    expect(posted).toEqual([{ kind: "send", harness: "omp", version: "18.16.0", mux: "herdr" }]);
   });
 
   it("a crew member's pane names the member's own multiplexer from the lead's config for that host", async () => {

@@ -30,6 +30,18 @@ describe("the once-a-day gate (pure)", () => {
     expect(onceEntry("dialog", "lead|w1:p1", DAY2)).toBe("dialog|lead|w1:p1|2026-11-08");
   });
 
+  it("puts a dialog's screen hash in the entry, and leaves the entry as it was without one (1.27.4)", () => {
+    expect(onceEntry("dialog", "lead|w1:p1", DAY1, "cd5c9922")).toBe("dialog|lead|w1:p1|cd5c9922|2026-11-07");
+    expect(onceEntry("dialog", "lead|w1:p1", DAY1, null)).toBe("dialog|lead|w1:p1|2026-11-07");
+    expect(onceEntry("dialog", "lead|w1:p1", DAY1, undefined)).toBe("dialog|lead|w1:p1|2026-11-07");
+    // A hash out of shape, or on a send, is no part of the entry, as it is no part of the signal.
+    expect(onceEntry("dialog", "lead|w1:p1", DAY1, "CD5C9922")).toBe("dialog|lead|w1:p1|2026-11-07");
+    expect(onceEntry("send", "lead|w1:p1", DAY1, "cd5c9922")).toBe("send|lead|w1:p1|2026-11-07");
+    // A screened entry is still today's, so the next day's write drops it.
+    const screened = onceEntry("dialog", "lead|w1:p1", DAY1, "cd5c9922");
+    expect(recordEntry([screened], onceEntry("dialog", "lead|w1:p2", DAY2), DAY2)).toEqual(["dialog|lead|w1:p2|2026-11-08"]);
+  });
+
   it("is fresh until the entry is recorded, and recording drops other days", () => {
     const old = onceEntry("send", "lead|w1:p1", DAY1);
     const today = onceEntry("dialog", "lead|w1:p2", DAY2);
@@ -95,5 +107,32 @@ describe("signalTrouble once per kind, pane and UTC day", () => {
     const posted = capture();
     await Promise.all([signalTrouble({ kind: "dialog", paneId: "w1:p1", agent: "claude" }), signalTrouble({ kind: "dialog", paneId: "w1:p1", agent: "claude" })]);
     expect(posted).toHaveLength(1);
+  });
+
+  it("counts two different dialogs on one pane in a day apart, and one dialog re-mounted once (1.27.4)", async () => {
+    const posted = capture();
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(DAY1);
+    await signalTrouble({ kind: "dialog", paneId: "w1:p1", agent: "claude", screen: "cd5c9922" });
+    // The same dialog re-mounted (a pane switch, a reload): no second post.
+    await signalTrouble({ kind: "dialog", paneId: "w1:p1", agent: "claude", screen: "cd5c9922" });
+    expect(posted).toHaveLength(1);
+    // Another dialog on the same pane the same day: its own post.
+    await signalTrouble({ kind: "dialog", paneId: "w1:p1", agent: "claude", screen: "634c6530" });
+    expect(posted).toHaveLength(2);
+    await signalTrouble({ kind: "dialog", paneId: "w1:p1", agent: "claude", screen: "634c6530" });
+    expect(posted).toHaveLength(2);
+    expect(posted).toMatchObject([{ kind: "dialog", screen: "cd5c9922" }, { kind: "dialog", screen: "634c6530" }]);
+    expect(JSON.parse(localStorage.getItem(KEY) ?? "[]")).toEqual(["dialog|lead|w1:p1|cd5c9922|2026-11-07", "dialog|lead|w1:p1|634c6530|2026-11-07"]);
+  });
+
+  it("keeps one entry per pane and day for a dialog with no hash, whatever the dialog (1.27.4)", async () => {
+    const posted = capture();
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(DAY1);
+    await signalTrouble({ kind: "dialog", paneId: "w1:p1", agent: "claude", screen: null });
+    await signalTrouble({ kind: "dialog", paneId: "w1:p1", agent: "claude" });
+    expect(posted).toHaveLength(1);
+    expect(JSON.parse(localStorage.getItem(KEY) ?? "[]")).toEqual(["dialog|lead|w1:p1|2026-11-07"]);
   });
 });

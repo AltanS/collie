@@ -79,7 +79,7 @@ Prefer to have your agent do it? Ask it to run `collie skill` and follow the bri
 - **Twelve UI languages** and a per-device typeface setting
 - **Herdr session switching** managed from the web interface
 - **PWA support** running locally on loopback with no external accounts or cloud dependencies
-- **Telemetry**: new in 1.27.0 and on by default; before that Collie sent nothing. Once a day each bridge (one instance with its own state folder) sends a random ID, the version, the OS, the CPU, the install kind and the release line and, when a trouble card showed, the agent program's name and version and the multiplexer, as a count. No usage, no content. Turn it off on each machine in Settings, with `COLLIE_TELEMETRY=0` (in the instance's `.env` for a service), `telemetry = false` or `DO_NOT_TRACK=1` ([details](./docs/security.md#what-leaves-your-machine))
+- **Telemetry**: new in 1.27.0 and on by default; before that Collie sent nothing. Once a day each bridge (one instance with its own state folder) sends a random ID, the version, the OS, the CPU, the install kind and the release line and, when a trouble card showed, the agent program's name and version, the multiplexer and, for a dialog, a short hash of its key-hint row, as a count. No usage, no content. Turn it off on each machine in Settings, with `COLLIE_TELEMETRY=0` (in the instance's `.env` for a service), `telemetry = false` or `DO_NOT_TRACK=1` ([details](./docs/security.md#what-leaves-your-machine))
 
 ## Demo
 

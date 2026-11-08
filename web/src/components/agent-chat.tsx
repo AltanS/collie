@@ -150,6 +150,7 @@ import { zoomPillShown } from "@/lib/zoom-pill";
 import { paneRowKey, paneScope } from "@/lib/hosts";
 import { isLead, paneScopeKey } from "@/lib/scope";
 import { openReport, signalTrouble, unreadDialogReport } from "@/lib/report/store";
+import { unreadDialogScreen } from "@/lib/report/screen";
 import { answerRouteFor, textRouteFor } from "@/lib/send-path";
 import { useSessionCard, wearsExperimental } from "@/lib/session-cards";
 import { usePins } from "@/lib/pins";
@@ -3126,8 +3127,11 @@ export function AgentChat({
               // as in the pane menu, since the report route reads no member's pane yet.
               onUnreadDialogReport={isLead(scope) ? (cancel) => openReport(unreadDialogReport(paneId, scope, cancel)) : undefined}
               // The trouble signal (M86 spec 05): the bridge counts the card once per instance. Not from
-              // a screen drawn from the on-device cache; the live read that follows signals instead.
-              onUnreadDialogShown={actsDisabledByCache ? undefined : (cancel) => void signalTrouble({ kind: "dialog", paneId, scope, agent: cancel.agent })}
+              // a screen drawn from the on-device cache; the live read that follows signals instead. The
+              // signal carries the hash of the card's key-hint row (1.27.4), never the rows.
+              onUnreadDialogShown={
+                actsDisabledByCache ? undefined : (cancel) => void signalTrouble({ kind: "dialog", paneId, scope, agent: cancel.agent, screen: unreadDialogScreen(cancel) })
+              }
               promptDisabled={readOnly || gone}
               paneId={paneId}
               scope={scope}
