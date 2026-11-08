@@ -59,8 +59,8 @@ export const en = {
   // --- settings.theme ---
   // The opening of Settings → Appearance (components/appearance-intro.tsx).
   "settings.appearance.intro.title": "Make Collie your own",
-  "settings.appearance.intro.body": "Pick a character for the header, a theme for the colours and shape, and light or dark.",
-  "settings.appearance.intro.docs": "How themes and characters work",
+  "settings.appearance.intro.body": "Pick a theme for the colours, the shape and the character in the header, then light or dark.",
+  "settings.appearance.intro.docs": "How themes work",
   "settings.theme.title": "Appearance",
   "settings.theme.description": "Follow your phone, or pin one.",
   "settings.theme.option.system": "System",

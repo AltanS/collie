@@ -35,7 +35,6 @@ import { ToolCallsControl } from "@/components/tool-calls-control";
 import { TourControl } from "@/components/tour-control";
 import { TypefaceControl } from "@/components/typeface-control";
 import { TelemetrySettingsCard, TelemetrySettingsRow } from "@/components/telemetry-settings-card";
-import { MarkControl } from "@/components/mark-control";
 import { MathControl } from "@/components/math-control";
 import { ZenControl } from "@/components/zen-control";
 import { useServerDiagnostics } from "@/hooks/use-server-diagnostics";
@@ -85,18 +84,14 @@ import { useScope } from "@/lib/session";
 export function SettingsAppearanceRoute() {
   return (
     <SettingsPage title="settings.section.appearance.title">
-      {/* "Make Collie your own": one line and a docs link over the three cards that make the app
-          yours, in the order a person decides them. Character first, because the header dog is the
-          first thing that looks like you; then the theme (Paste, Browse and Try live in its card);
-          then which half of the theme you see. */}
+      {/* "Make Collie your own": one line and a docs link over the two cards that make the app
+          yours, in the order a person decides them: the theme (Paste, Browse and Try live in its
+          card), then which half of the theme you see. The header's character comes with the theme
+          and has no card of its own: it is something a theme maker sets, not a device setting. */}
       <AppearanceIntro />
-      {/* The Character card: which mark the header draws, per device. Above the theme although its
-          default is "From the theme", because it is the choice people come here for first; the
-          card's own first row says that the theme may name one. */}
-      <MarkControl />
       {/* Which theme, then which half of it: the picker sits directly above the three-way (System,
           Light, Dark) because the two are one question asked twice, and a person who finds one
-          should find the other. */}
+          should find the other. First on the page, because it is the one people come here for. */}
       <ThemePickerControl />
       <ThemeControl />
       {/* Beside appearance because both are "how this phone presents itself". */}

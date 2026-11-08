@@ -1,15 +1,15 @@
 import { useLocale } from "@/hooks/use-locale";
 import { t } from "@/lib/i18n";
 
-/** The themes page on the site, at its opening section: what a character and a theme are, and how to
- *  write one. The page keeps its name (`docs/themes.md`); a rename would break the site's sync. */
+/** The themes page on the site, at its opening section: what a theme is, and how to write one. The
+ *  page keeps its name (`docs/themes.md`); a rename would break the site's sync. */
 export const APPEARANCE_DOCS_URL = "https://colliepwa.dev/docs/themes#make-collie-your-own";
 
 /**
  * The opening of Settings → Appearance: one heading, one sentence and a link to the docs. Not a
- * card, because it sets nothing: it names what the three cards under it are for (Character, Theme,
- * and System/Light/Dark) and points at the page that explains them. Plain text on the page
- * background, so it reads as the page's own lead and never as a fourth control.
+ * card, because it sets nothing: it names what the two cards under it are for (Theme, and
+ * System/Light/Dark) and points at the page that explains them. Plain text on the page
+ * background, so it reads as the page's own lead and never as a third control.
  */
 export function AppearanceIntro() {
   useLocale();

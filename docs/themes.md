@@ -2,12 +2,13 @@
 
 ## Make Collie your own
 
-Three choices in **Settings → Appearance** make the app look like yours, and each one stays on this device.
+Two choices in **Settings → Appearance** make the app look like yours, and both stay on this device.
 
-- **Character** picks who sits in the header. See [Characters](#characters).
 - **Theme** picks the colours, the typefaces and the shape. Pick one of four, or add one and try it before
   you keep it. See [Pick a theme](#pick-a-theme).
 - **Appearance** picks System, Light or Dark, which is the half of the theme you see.
+
+A theme you write can go further and put its own [character](#characters) in the header.
 
 A theme is the look of the app. It sets the colours, the typefaces, the shape of controls, the feel of the
 page and the colours of the terminal. It is one small JSON file. Collie ships four. You can import more
@@ -17,68 +18,9 @@ that browser, and it changes nothing on the bridge.
 Every theme has two halves. The light half is the set of colours for light mode. The dark half is the set
 for dark mode. A colour in a theme has a name, such as `background` or `primary`, and that name is a token.
 
-## Characters
-
-A character is the figure in the header of the app. Each device picks one, or lets the theme pick it.
-
-Every character keeps the same states. Beads circle it on an orbit and drift slowly at rest. While an agent
-works they turn fast, in the character's own colours. An update and a reconnect turn them in the same colours
-for every character.
-
-These are the characters today. More may follow.
-
-| Word | Character |
-| --- | --- |
-| `collie` | **Collie**, the collie head in profile, in the ink of the page. The default. |
-| `kawaii` | **Kawaii**, a round puppy face from the front, with big glossy eyes and candy pearls. |
-| `kawaii-tilt` | **Kawaii Tilt**, the same puppy with its head tilted. |
-| `pixel` | **Pixel**, an 8-bit collie head with square beads that hop. |
-| `glass` | **Glass**, a collie head in profile as a leaded stained-glass panel, with jewels in the ring. |
-| `glass-front` | **Glass Front**, the same stained glass, the head from the front. |
-| `sheep` | **Sheep**, the sheep the collie herds: a charcoal face in cream wool, in profile. |
-| `owl` | **Owl**, the owl that watches through the night, from the front, with huge amber eyes. |
-
-### Pick a character
-
-The **Character** card is the first card in **Settings → Appearance**. Tap a row.
-
-- **From the theme is the default.** It draws the character the theme names, or Collie if the theme names
-  none.
-- **Any other row wins over every theme.** The choice is for this device only.
-- **A theme you try counts.** While the ribbon of [Try a theme](#try-a-theme-before-you-keep-it) is on,
-  From the theme draws the character of the tried theme.
-- **A character downloads when it is needed.** A device that never draws one never fetches it.
-- **Only the header changes.** The favicon, the home-screen icon and the splash stay Collie under every
-  theme and every choice. So do the boot screen, the idle lock and the tour.
-
-### The character key
-
-A theme file may name a character with the key `character`, at the top level. It takes one word from the
-table above.
-
-```json
-{
-  "version": 4,
-  "id": "my-day",
-  "name": "My day",
-  "character": "kawaii",
-  "light": { "background": "#fdfaf3" }
-}
-```
-
-- **The file says version 4.** A file that sets `character` and says 1, 2 or 3 is refused. Collie writes
-  version 4 for a theme that sets it, and the lowest version for every other theme, so an export of a theme
-  without `character` is the same text as before.
-- **The preview shows it.** The preview of an import and each card in **Browse community themes** show the
-  character a theme names, beside its name.
-- **An older Collie refuses the file.** A version 4 file needs a Collie newer than 1.28.0. Collie 1.28.0
-  refuses the whole file with two causes: "The file is version 4. This Collie reads version 1, 2 and 3."
-  and "character" is not part of a theme file. To share a theme that an older Collie can read, leave
-  `character` out and say version 3 or lower.
-
 ## The four themes
 
-Collie ships four themes, and every one of them uses every part of a theme file except [`character`](#the-character-key). Each picture shows the Dashboard,
+Collie ships four themes, and every one of them uses every part of a theme file except [`character`](#characters). Each picture shows the Dashboard,
 light on the left and dark on the right.
 
 - **Collie** is the default. It is black and white like the Collie dog, with warm neutral greys, the black ink
@@ -137,12 +79,10 @@ which the Collie theme sets to `grain`, `folder` and `box`. The words are explai
 
 Pick a theme in **Settings → Appearance**, and the whole app changes at once.
 
-The **Theme** card sits under the **Character** card. Tap a name and the app changes at once. Each name wears its own
+The **Theme** card is the first card. Tap a name and the app changes at once. Each name wears its own
 theme's corners and weight, so you see the shape before you tap. The card sits above the **Appearance**
 card, which holds System, Light and Dark. These are two settings. The theme picks the colours, the shape and
 the look, and System, Light or Dark picks which half of the colours you see.
-
-The **Character** card above them picks who sits in the header. See [Pick a character](#pick-a-character).
 
 A theme that names a typeface writes it into the **Typeface** card once, when you pick the theme. After
 that the Typeface card wins: choose another face there and it stays, until you pick a theme again. The
@@ -339,7 +279,7 @@ repository.
 
 A file has these keys, and no others. An unknown key anywhere is refused with its name. This is a complete
 version 2 file: it is Daylight with a shorter list of colours and the full palette. A theme that sets
-[`character`](#the-character-key) says version 4.
+[`character`](#characters) says version 4.
 
 ```json
 {
@@ -377,7 +317,7 @@ version 2 file: it is Daylight with a shorter list of colours and the full palet
   See [Shape](#shape) and [Look](#look).
 - `ansi` is optional, and it holds all 18 keys or none. See [Terminal palette](#terminal-palette).
 - `character` is optional, one word from [Characters](#characters). It needs version 4.
-  See [The character key](#the-character-key).
+  See [Characters](#characters).
 - `$schema` is allowed and ignored. The file is at most 64 KiB.
 
 A value is `#rrggbb`, `#rrggbbaa`, or `oklch(L C H)` and `oklch(L C H / A)` in plain numbers. L is 0 to 1, C is
@@ -457,6 +397,52 @@ When a theme leaves out `pane-active` in a half, that half takes the ink of the 
 leaves out `tab-active`, that half takes its own text colour, so a folder tab draws its top edge in ink.
 Collie measures each one only in a half that sets it. See [The contrast report](#the-contrast-report). A file
 that sets one of them must say [version 3](#versions).
+
+### Characters
+
+A theme may name the character in the header with the key `character`, at the top level. A theme without it
+shows Collie.
+
+A character is the figure in the header of the app. Every character keeps the same states. Beads circle it on
+an orbit and drift slowly at rest. While an agent works they turn fast, in the character's own colours. An
+update and a reconnect turn them in the same colours for every character.
+
+These are the characters today. More may follow.
+
+| Word | Character |
+| --- | --- |
+| `collie` | **Collie**, the collie head in profile, in the ink of the page. The default. |
+| `kawaii` | **Kawaii**, a round puppy face from the front, with big glossy eyes and candy pearls. |
+| `kawaii-tilt` | **Kawaii Tilt**, the same puppy with its head tilted. |
+| `pixel` | **Pixel**, an 8-bit collie head with square beads that hop. |
+| `glass` | **Glass**, a collie head in profile as a leaded stained-glass panel, with jewels in the ring. |
+| `glass-front` | **Glass Front**, the same stained glass, the head from the front. |
+| `sheep` | **Sheep**, the sheep the collie herds: a charcoal face in cream wool, in profile. |
+| `owl` | **Owl**, the owl that watches through the night, from the front, with huge amber eyes. |
+
+```json
+{
+  "version": 4,
+  "id": "my-day",
+  "name": "My day",
+  "character": "kawaii",
+  "light": { "background": "#fdfaf3" }
+}
+```
+
+- **The file says version 4.** A file that sets `character` and says 1, 2 or 3 is refused. Collie writes
+  version 4 for a theme that sets it, and the lowest version for every other theme, so an export of a theme
+  without `character` is the same text as before.
+- **The preview shows it.** The preview of an import and each card in **Browse community themes** show the
+  character a theme names, beside its name. While the ribbon of
+  [Try a theme](#try-a-theme-before-you-keep-it) is on, the header shows the character of the tried theme.
+- **A character downloads when it is needed.** A device that never wears a theme with one never fetches it.
+- **Only the header changes.** The favicon, the home-screen icon and the splash stay Collie under every
+  theme. So do the boot screen, the idle lock and the tour.
+- **An older Collie refuses the file.** A version 4 file needs a Collie newer than 1.28.0. Collie 1.28.0
+  refuses the whole file with two causes: "The file is version 4. This Collie reads version 1, 2 and 3."
+  and "character" is not part of a theme file. To share a theme that an older Collie can read, leave
+  `character` out and say version 3 or lower.
 
 ## Shape
 
@@ -598,8 +584,6 @@ These are the problems people meet most, with the cause and the fix for each.
   and [Look](#look).
 - **The file is refused and names `ansi`.** A palette holds all 18 keys, in dark space, and each colour
   must pass its gate. The refusal names the key and the number it measured.
-- **The header shows Collie under a theme that names another character.** The Character card may be set to
-  Collie, which wins over the theme. Set it to **From the theme**.
 - **The file is refused and names `character`.** The word must come from [Characters](#characters), and the
   file must say version 4.
 - **The theme is gone after clearing browser data.** Imported themes live in this browser only. Import the
