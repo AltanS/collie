@@ -25,7 +25,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [1.27.4] - 2026-11-08
 
-**Urgent.** For omp and Codex users: the phone showed "Cannot read a dialog" where the agent waited for you, at omp's plan review and at Codex's folder-trust and hook-trust prompts, and both now get their buttons.
+**Urgent.** omp's plan review and Codex's trust prompts showed "Cannot read a dialog" on the phone. Both now get their buttons.
 
 ### Fixed
 
