@@ -1,5 +1,38 @@
 # Themes
 
+## How sharing works
+
+A theme is a small file of colours and words. Anyone can share one, and none can run code.
+
+**What a theme can name.** Colours for the light half and for the dark half, typefaces from Collie's
+list, words for the [shape](#shape) and the [look](#look), a [terminal palette](#terminal-palette)
+and a [character](#characters) for the header. [Write a theme](#write-a-theme) shows the file.
+
+**What a theme can never do.** It cannot run code. It cannot load a file, a font or an image. Every
+key takes a checked colour or a word from a closed list, and Collie refuses any other file.
+[What a theme cannot change](#what-a-theme-cannot-change) lists the limits.
+
+**How a theme gets into the store.** The maker puts the file in a public GitHub repository with the
+topic `colliepwa-theme`. The file is `collie-theme.json` at the root, or
+`themes/<id>.collie-theme.json`. Once a day, colliepwa.dev checks each file with the app's own
+check, and a review reads the repository's words.
+
+A theme that passes both is listed, with the repository's star count from GitHub. The steps are in
+[Share a theme on colliepwa.dev](#share-a-theme-on-colliepwadev).
+
+**How you get one.** Every way in starts in the **Theme** card in **Settings → Appearance**.
+
+- **Browse community themes** lists the store. Your host fetches the list, and your phone checks
+  each theme again. See [Browse community themes](#browse-community-themes).
+- **Try** wears a theme without keeping it. See [Try a theme](#try-a-theme-before-you-keep-it).
+- **Install** opens a preview, and **Apply** keeps the theme.
+- **Import** takes a file and **Paste** takes its text. See [Import a theme](#import-a-theme).
+- **About** shows where a kept theme came from. **Check for updates** and **Update** bring its
+  newest listed version. See [About and Update](#see-where-a-theme-came-from-and-update-it).
+
+**The way back.** Add `#theme=collie` to the app's address, and Collie's own theme comes back,
+whatever a theme did. See [Troubleshooting](#troubleshooting).
+
 ## Make Collie your own
 
 Two choices in **Settings → Appearance** make the app look like yours, and both stay on this device.
