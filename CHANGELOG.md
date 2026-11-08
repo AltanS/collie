@@ -5,23 +5,7 @@ This file tracks all notable changes to Collie, ordered newest version first. Th
 `### Added`, `### Changed`, `### Fixed`, `### Packaging` and `### Docs`, in that order and only
 where there is content, and every bullet opens with a short bold lead sentence, which is the line
 the GitHub Release page prints. Older versions carry a single flat list. Every entry links to its commit and credits the contributor where there is one. The
-`## [Unreleased]` section contains merged work waiting for release. The release
-commit renames this heading to `## [x.y.z] - YYYY-MM-DD`, adds the commit hashes, and adds a new
-empty `## [Unreleased]` section above it. The newest numbered `## [x.y.z]` heading (excluding the
-Unreleased heading) **must** match the `version` field in `herdr-plugin.toml`, `package.json`,
-and `web/package.json`, which `scripts/check-version.sh` checks. See [`CLAUDE.md`](./CLAUDE.md) →
-*Versioning* for the bump policy.
-
-## Upgrading
-
-**Already on 1.x?** Run `collie update`, or run
-`herdr plugin action invoke update --plugin herdr.collie`. Check the result with
-`bin/collie version` (or `herdr plugin action invoke version --plugin herdr.collie`). It shows the
-newest tag. The phone PWA updates itself within about a minute; no reload needed.
-Running a crew? Update the lead first; members follow on their own. Details:
-`docs/crew.md` → *Updating from 1.7.0*.
-
-## [Unreleased]
+`## [Unreleased]
 
 ## [1.28.0] - 2026-11-06
 
@@ -104,6 +88,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **The first paint never takes a stored theme that claims the id `collie`.** The script that paints the theme before the app loads now skips such an entry, as the app already did once it loaded.
 - **The app and colliepwa.dev share one rule for a theme's repository and file.** An owner is a name GitHub issues (a letter or digit first, then letters, digits and hyphens), and a file under `themes/` has a stem of at most 80 characters. A test on each side pins the same four patterns, so an entry the site lists is never dropped by the app.
 - **Collie no longer keeps the phone's graphics busy while nothing happens.** The header logo turned slowly all the time, so the browser drew a new frame 60 times a second for as long as Collie was open, and on one Android phone that made the system force-stop Chrome. Now the logo holds still at rest and finishes its turn before it stops, the working dot turns in steps, a hidden page or a page under the idle lock or the update screen pauses every animation, and no blur covers a moving part. Thanks @mfrep (#748).
+- **A repo opened in two workspaces no longer pulls its worktrees into one of them.** The pane list, the Spaces rows and the workspace filter picked a different "root" for the worktree, so it showed up under one workspace in one view and under the other in the next. Now a worktree folds under a root only when exactly one open workspace on that machine holds the repo. With two, each worktree stays its own group, as before 1.24.2. Thanks @rafaferry (#743).
 
 ### Packaging
 
