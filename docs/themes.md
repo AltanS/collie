@@ -31,6 +31,10 @@ A theme that passes both is listed, with the repository's star count from GitHub
 - **About** shows where a kept theme came from. **Check for updates** and **Update** bring its
   newest listed version. See [About and Update](#see-where-a-theme-came-from-and-update-it).
 
+**Let your coding agent write one.** Tell it to run `collie theme skill`, which prints the loop and
+the file format, and then `collie theme check` on its file until the check is clean. See
+[Let your coding agent write it](#let-your-coding-agent-write-it).
+
 **The way back.** Add `#theme=collie` to the app's address, and Collie's own theme comes back,
 whatever a theme did. See [Troubleshooting](#troubleshooting).
 
@@ -275,8 +279,8 @@ file shows the text in a sheet, with a copy button. To make your own theme from 
 
 An export writes the lowest [version](#versions) that holds the content of the theme.
 
-To have an AI agent write a theme for you, tell it to run `collie theme skill`. It prints the steps and
-every key a theme file may use, and it tells the agent to check the file with `collie theme check`.
+To have an AI agent write a theme for you, see
+[Let your coding agent write it](#let-your-coding-agent-write-it).
 
 ## Share a theme on colliepwa.dev
 
@@ -391,6 +395,18 @@ version 2 file: it is Daylight with a shorter list of colours and the full palet
 A value is `#rrggbb`, `#rrggbbaa`, or `oklch(L C H)` and `oklch(L C H / A)` in plain numbers. L is 0 to 1, C is
 0 to 0.5, H is 0 to 360, and A is 0 to 1 or a percentage. Nothing else works: no named colour, no `rgb()`, no
 `var()`, no `url()`. A colour in `ansi` has no alpha.
+
+### Let your coding agent write it
+
+```sh
+collie theme skill
+collie theme check my-day.collie-theme.json
+```
+
+Tell your coding agent, such as Claude Code or Codex, to run `collie theme skill` (the same as
+`collie theme --skill`) and follow it. It prints the loop and the file format. The agent then runs
+`collie theme check` on its file, and changes the file until the check is clean. This works the same
+for a new theme and for a change to one you have.
 
 ### Versions
 
