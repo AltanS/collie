@@ -7,6 +7,10 @@ where there is content, and every bullet opens with a short bold lead sentence, 
 the GitHub Release page prints. Older versions carry a single flat list. Every entry links to its commit and credits the contributor where there is one. The
 `## [Unreleased]
 
+### Fixed
+
+- **The trouble count and the report name an agent installed off the login PATH.** The bridge read the agent's version only from the login shell's PATH, so an agent installed under nvm, volta, mise or its own folder showed its version as unknown on a pane with no send. It now reads the program the pane runs, as a send already does, and the steer check sees that version too.
+
 ## [1.28.0] - 2026-11-06
 
 ### Added

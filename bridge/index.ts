@@ -81,7 +81,7 @@ import { spaceFolders } from "./space-view.ts";
 import { WorktreeReceiptStore } from "./worktree-receipts.ts";
 import { LaunchReceiptStore } from "./launch-receipts.ts";
 import { LaunchWindow, foregroundHarnessOf } from "./launch-window.ts";
-import { createPaneProfile, procProbe, sharedForegroundRead } from "./pane-binary.ts";
+import { createPaneProfile, createPaneVersion, procProbe, sharedForegroundRead } from "./pane-binary.ts";
 import { StarterReceiptStore } from "./starter-launch.ts";
 import { AnswerReceiptStore } from "./durable/answer.ts";
 import { ControlReceiptStore } from "./durable/control.ts";
@@ -276,7 +276,7 @@ import { deliverEdge, EdgeRouter, type EdgeTarget } from "./surface/edges.ts";
 import { counterWordOf, HoldBook, HoldServer, takeHold, type HoldTarget } from "./surface/hold.ts";
 import { holdSocketPath } from "./beacon/paths.ts";
 import { VersionCache } from "./surface/binary-version.ts";
-import { findProfile, loadProfiles } from "../web/src/lib/surface/profile.ts";
+import { findProfile, loadProfiles, type Profile } from "../web/src/lib/surface/profile.ts";
 import { labelOf } from "./walky/address.ts";
 import {
   crewSkipped,
@@ -1575,7 +1575,14 @@ const SURFACE_PLATFORM = surfacePlatform({
  * A harness's profile at its version, for the send path: of the pane's own program when the pane's
  * foreground read shows it, else of the PATH binary (bridge/pane-binary.ts, ADR 0124).
  */
-const sendProfile = createPaneProfile({ versions: sendVersions, binaries: harnessBinaries, probe: procProbe(), platform: SURFACE_PLATFORM });
+const paneProbe = procProbe();
+const sendProfile = createPaneProfile({ versions: sendVersions, binaries: harnessBinaries, probe: paneProbe, platform: SURFACE_PLATFORM });
+/**
+ * The same read for the Surface shadow, over the same cache: a pane's agent version is the version of
+ * the program that pane runs, so a binary the login PATH misses still names its version in the shadow,
+ * the report and the trouble count.
+ */
+const paneVersion = createPaneVersion({ versions: sendVersions, binaries: harnessBinaries, probe: paneProbe });
 
 const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
   const built = endpoint.kind === "program" ? programAdapter(endpoint.source) : terminalAdapter(endpoint.socketPath);
@@ -1729,7 +1736,18 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
   // The session's single-use ask ids (M56 spec 08): the poll's Surface, the Send Protocol's reads and
   // the answer route all lift through this one book, so the id on the phone is the id the route knows.
   const askBook = sends ? new AskBook() : undefined;
-  const shadowOptions: ShadowOptions = { mux: herdr, pollMs: cfg.pollMs, compare: cfg.surfaceShadow && !cfg.sendProtocol, ledger: surfaceLedger ?? undefined };
+  // The pane's foreground read, bounded and shared by the reads of one send (the launch window's and the
+  // profile's version read) and by the shadow's version read; absent where the multiplexer has none
+  // (tmux, zellij, tuios).
+  const foregroundRead = sharedForegroundRead(herdr.foregroundProcesses?.bind(herdr));
+  const shadowVersion = async (profile: Profile, paneId?: string): Promise<string | null> => (await paneVersion(profile, paneId, foregroundRead)).version;
+  const shadowOptions: ShadowOptions = {
+    mux: herdr,
+    pollMs: cfg.pollMs,
+    compare: cfg.surfaceShadow && !cfg.sendProtocol,
+    ledger: surfaceLedger ?? undefined,
+    version: shadowVersion,
+  };
   const surface = computeSurface
     ? new SurfaceShadow(askBook === undefined ? shadowOptions : { ...shadowOptions, asks: { book: askBook, generation: generationOf } })
     : undefined;
@@ -1768,9 +1786,6 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
   // never run on one pane at once and every key leaves through the one gate.
   const locks = new SessionLocks();
   const ring = new RowRing();
-  // The pane's foreground read, bounded and shared by the reads of one send (the launch window's and the
-  // profile's version read); absent where the multiplexer has none (tmux, zellij, tuios).
-  const foregroundRead = sharedForegroundRead(herdr.foregroundProcesses?.bind(herdr));
   const foregroundHarness = foregroundHarnessOf(foregroundRead, harnessBinaries);
   const paneProfile = (harness: string, paneId?: string): Promise<PaneProfileMatch | null> => sendProfile(harness, paneId, foregroundRead);
   const send =
