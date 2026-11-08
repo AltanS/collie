@@ -11,10 +11,10 @@ import type { Theme } from "@/lib/theme/schema";
 // Which header mark the app draws: the device's choice, else the worn theme's, else Collie. A theme
 // being TRIED is the worn theme, so it wins over the stored one even when it names no mark.
 
-function theme(id: string, mark?: MarkId): Theme {
+function theme(id: string, character?: MarkId): Theme {
   const base: Theme = { version: 1, id, name: id, light: { background: "#fdfaf3" } };
-  if (mark === undefined) return base;
-  return { ...base, version: 4, mark };
+  if (character === undefined) return base;
+  return { ...base, version: 4, character };
 }
 
 const COLLIE = theme("base");

@@ -58,15 +58,22 @@ describe("collie theme skill", () => {
     for (const key of ANSI_KEYS) expect(BRIEF).toContain(`"${key}"`);
   });
 
-  test("the brief teaches the mark key: its four words, and the version that holds it", () => {
-    expect(BRIEF).toContain("`mark`");
-    for (const mark of MARK_IDS) expect(BRIEF).toContain(`\`${mark}\``);
-    expect(BRIEF).toContain("4 with `mark`");
+  test("the brief teaches the character key: its four ids, and the version that holds it", () => {
+    expect(BRIEF).toContain("`character`");
+    for (const id of MARK_IDS) expect(BRIEF).toContain(`\`${id}\``);
+    expect(BRIEF).toContain("4 with `character`");
+    expect(BRIEF).toContain("## Characters");
     expect(THEME_VERSIONS_READ.at(-1)).toBe(4);
   });
 
-  test("a mark example in the brief's own words passes `collie theme check`", () => {
-    const file = JSON.stringify({ version: 4, id: "my-day", name: "My day", mark: "kawaii", light: { background: "#ffffff" } });
+  // The brief's own text only: the page sections it appends are docs/themes.md, which another session owns.
+  test("the brief's own text never teaches the old file key, which the parser refuses", () => {
+    expect(THEME_SKILL_TEMPLATE).not.toContain("`mark`");
+    expect(THEME_SKILL_TEMPLATE).not.toContain('"mark"');
+  });
+
+  test("a character example in the brief's own words passes `collie theme check`", () => {
+    const file = JSON.stringify({ version: 4, id: "my-day", name: "My day", character: "kawaii", light: { background: "#ffffff" } });
     const io = capture();
     const code = cmdThemeCheck({ io, files: filesOf({ "m.collie-theme.json": file }) }, ["m.collie-theme.json"]);
     expect(io.stderr).toEqual([]);

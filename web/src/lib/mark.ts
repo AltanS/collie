@@ -9,7 +9,7 @@ import { currentTrial, useTrial } from "@/lib/theme/trial";
 //
 //   1. The device's own choice in Settings > Appearance > Mark, when it is one of the three marks.
 //      "From the theme" is the ABSENCE of the field (`design.ts`), so it falls through.
-//   2. The `mark` of the theme the app is wearing. A theme being TRIED (`theme/trial.ts`) is the one
+//   2. The `character` of the theme the app is wearing. A theme being TRIED (`theme/trial.ts`) is the one
 //      worn, so it wins over the stored theme for as long as the ribbon is up, even when it names no
 //      mark: trying a theme means seeing that theme, not the stored theme's logo on its colours.
 //   3. The Collie mark.
@@ -30,7 +30,7 @@ export interface MarkSources {
 export function resolveMarkId({ device, trial, active }: MarkSources): MarkId {
   if (device !== undefined) return device;
   const worn = trial ?? active;
-  return worn.mark ?? DEFAULT_MARK_ID;
+  return worn.character ?? DEFAULT_MARK_ID;
 }
 
 /** The mark to draw now, read once. For code that is not a component. */

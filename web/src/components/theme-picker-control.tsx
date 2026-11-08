@@ -111,7 +111,7 @@ function downloadText(name: string, text: string): boolean {
 
 /**
  * The text of an exported file: the theme as the parser kept it, two-space indent, and the lowest
- * version that holds it: 2 only when it carries a shape, and 4 only when it names a mark, so a
+ * version that holds it: 2 only when it carries a shape, and 4 only when it names a character, so a
  * colour-only export still imports into a Collie that reads version 1 alone.
  */
 export function themeFileText(theme: Theme): string {

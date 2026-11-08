@@ -709,18 +709,18 @@ describe("ThemePickerControl", () => {
   });
 });
 
-describe("ThemePickerControl and the header mark", () => {
-  it("shows the mark a file names in the preview, drawn from the file and not from the device", async () => {
+describe("ThemePickerControl and the header character", () => {
+  it("shows the character a file names in the preview, drawn from the file and not from the device", async () => {
     const { ThemePickerControl } = await load();
     const { container } = render(<ThemePickerControl />);
-    pick(container, fileOf(JSON.stringify({ ...copy("kawaii-day", "Kawaii day"), version: 4, mark: "kawaii" })));
+    pick(container, fileOf(JSON.stringify({ ...copy("kawaii-day", "Kawaii day"), version: 4, character: "kawaii" })));
     const dialog = await screen.findByRole("dialog", { name: "Import this theme?" });
     const line = within(dialog).getByTestId("theme-mark-line");
-    expect(line).toHaveTextContent("Mark: Kawaii");
+    expect(line).toHaveTextContent("Character: Kawaii");
     expect(line.querySelector('[data-slot="brand-mark-pending"], svg')).not.toBeNull();
   });
 
-  it("shows no mark line for a file that names none", async () => {
+  it("shows no character line for a file that names none", async () => {
     const { ThemePickerControl } = await load();
     const { container } = render(<ThemePickerControl />);
     pick(container, fileOf(JSON.stringify(copy("plain", "Plain"))));
@@ -728,40 +728,40 @@ describe("ThemePickerControl and the header mark", () => {
     expect(within(dialog).queryByTestId("theme-mark-line")).toBeNull();
   });
 
-  it("refuses a mark in a file that says version 3, and names the version it needs", async () => {
+  it("refuses a character in a file that says version 3, and names the version it needs", async () => {
     const { ThemePickerControl, store } = await load();
     const { container } = render(<ThemePickerControl />);
-    pick(container, fileOf(JSON.stringify({ ...copy("old", "Old"), version: 3, mark: "pixel" })));
+    pick(container, fileOf(JSON.stringify({ ...copy("old", "Old"), version: 3, character: "pixel" })));
     const dialog = await screen.findByRole("dialog", { name: "This file was not imported" });
-    expect(dialog).toHaveTextContent('A file with "mark" must say version 4. This one says version 3.');
+    expect(dialog).toHaveTextContent('A file with "character" must say version 4. This one says version 3.');
     expect(store.library()).toHaveLength(0);
   });
 
-  it("refuses an unknown mark word and lists the four", async () => {
+  it("refuses an unknown character word and lists the four", async () => {
     const { ThemePickerControl } = await load();
     const { container } = render(<ThemePickerControl />);
-    pick(container, fileOf(JSON.stringify({ ...copy("odd", "Odd"), version: 4, mark: "dog" })));
+    pick(container, fileOf(JSON.stringify({ ...copy("odd", "Odd"), version: 4, character: "dog" })));
     const dialog = await screen.findByRole("dialog", { name: "This file was not imported" });
-    expect(dialog).toHaveTextContent("The mark choice is not valid.");
-    expect(dialog).toHaveTextContent('"mark" must be one of: collie, kawaii, kawaii-tilt, pixel.');
+    expect(dialog).toHaveTextContent("The character choice is not valid.");
+    expect(dialog).toHaveTextContent('"character" must be one of: collie, kawaii, kawaii-tilt, pixel.');
   });
 
-  it("exports a theme with a mark as version 4, and the file imports back to the same theme", async () => {
+  it("exports a theme with a character as version 4, and the file imports back to the same theme", async () => {
     const { themeFileText } = await load();
-    const parsed = parseTheme(JSON.stringify({ ...copy("m", "M"), version: 4, mark: "pixel" }), { maxBytes: 64 * 1024 });
+    const parsed = parseTheme(JSON.stringify({ ...copy("m", "M"), version: 4, character: "pixel" }), { maxBytes: 64 * 1024 });
     if (!parsed.ok) throw new Error(parsed.refusals.map((r) => r.detail).join("\n"));
     const text = themeFileText(parsed.theme);
-    expect(JSON.parse(text)).toMatchObject({ version: 4, mark: "pixel" });
+    expect(JSON.parse(text)).toMatchObject({ version: 4, character: "pixel" });
     const again = parseTheme(text, { maxBytes: 64 * 1024 });
     expect(again.ok && again.theme).toEqual(parsed.theme);
   });
 
-  it("exports a theme without a mark exactly as before: no mark key, the version its content needs", async () => {
+  it("exports a theme without a character exactly as before: no character key, the version its content needs", async () => {
     const { themeFileText } = await load();
     const parsed = parseTheme(JSON.stringify(copy("old", "Old")), { maxBytes: 64 * 1024 });
     if (!parsed.ok) throw new Error("fixture");
     const doc = JSON.parse(themeFileText(parsed.theme));
-    expect(doc).not.toHaveProperty("mark");
+    expect(doc).not.toHaveProperty("character");
     expect(doc.version).toBe(1);
   });
 });

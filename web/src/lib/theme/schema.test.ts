@@ -870,69 +870,75 @@ describe("the optional tokens", () => {
   });
 });
 
-// ── Schema version 4: the header mark ─────────────────────────────────────────────────────────
+// ── Schema version 4: the header character ─────────────────────────────────────────────────────────
 
-describe("the mark key", () => {
+describe("the character key", () => {
   it("is a closed list of four words, collie first", () => {
     expect(MARK_IDS).toEqual(["collie", "kawaii", "kawaii-tilt", "pixel"]);
   });
 
-  it.each(MARK_IDS)("reads %s from a version 4 file, and hands the theme back as version 4", (mark) => {
-    const result = parseTheme(file({ version: 4, mark }), CAP);
-    expect(result.ok && result.theme.mark).toBe(mark);
+  it.each(MARK_IDS)("reads %s from a version 4 file, and hands the theme back as version 4", (character) => {
+    const result = parseTheme(file({ version: 4, character }), CAP);
+    expect(result.ok && result.theme.character).toBe(character);
     expect(result.ok && result.theme.version).toBe(4);
     expect(result.ok && versionOf(result.theme)).toBe(4);
   });
 
-  it("lifts a theme that sets a mark above one that sets an optional token", () => {
-    const result = parseTheme(file({ version: 4, mark: "pixel", light: { "pane-active": "#336699" } }), CAP);
+  it("lifts a theme that sets a character above one that sets an optional token", () => {
+    const result = parseTheme(file({ version: 4, character: "pixel", light: { "pane-active": "#336699" } }), CAP);
     expect(result.ok && versionOf(result.theme)).toBe(4);
   });
 
   it("is refused in a file that says version 1, 2 or 3, with the same words the optional token uses", () => {
     for (const version of [1, 2, 3]) {
-      const result = parseTheme(file({ version, mark: "kawaii" }), CAP);
-      expect(codes(result)).toEqual(["version mark"]);
-      expect(refusals(result)[0]?.detail).toBe(`A file with "mark" must say version 4. This one says version ${version}.`);
+      const result = parseTheme(file({ version, character: "kawaii" }), CAP);
+      expect(codes(result)).toEqual(["version character"]);
+      expect(refusals(result)[0]?.detail).toBe(`A file with "character" must say version 4. This one says version ${version}.`);
     }
   });
 
-  it.each([["Kawaii"], ["kawaii_tilt"], ["Kawaii-Tilt"], ["dog"], [""], [3], [null], [["pixel"]], [{ id: "pixel" }]])("refuses %j as a mark, and names the list", (mark) => {
-    const result = parseTheme(file({ version: 4, mark }), CAP);
-    expect(codes(result)).toEqual(["mark mark"]);
-    expect(refusals(result)[0]?.detail).toBe('"mark" must be one of: collie, kawaii, kawaii-tilt, pixel.');
+  it.each([["Kawaii"], ["kawaii_tilt"], ["Kawaii-Tilt"], ["dog"], [""], [3], [null], [["pixel"]], [{ id: "pixel" }]])("refuses %j as a character, and names the list", (character) => {
+    const result = parseTheme(file({ version: 4, character }), CAP);
+    expect(codes(result)).toEqual(["character character"]);
+    expect(refusals(result)[0]?.detail).toBe('"character" must be one of: collie, kawaii, kawaii-tilt, pixel.');
   });
 
   it("reports the version and the word together, so one round trip fixes both", () => {
-    expect(codes(parseTheme(file({ version: 2, mark: "dog" }), CAP))).toEqual(["version mark", "mark mark"]);
+    expect(codes(parseTheme(file({ version: 2, character: "dog" }), CAP))).toEqual(["version character", "character character"]);
   });
 
   it("is a known key, so a file without it is unchanged and an unknown sibling is still refused", () => {
     expect(codes(parseTheme(file({ version: 4, marks: "pixel" }), CAP))).toEqual(["unknown-key marks"]);
     const plain = parseTheme(file({ version: 4 }), CAP);
-    expect(plain.ok && "mark" in plain.theme).toBe(false);
+    expect(plain.ok && "character" in plain.theme).toBe(false);
     expect(plain.ok && plain.theme.version).toBe(1);
   });
 
-  it("round-trips: an export of a theme with a mark says version 4 and parses to the same theme", () => {
-    const first = parseTheme(file({ version: 4, mark: "kawaii", surface: { radius: "soft" } }), CAP);
+  it("refuses `mark` as an unknown key, like any other: the key was renamed before it shipped", () => {
+    const result = parseTheme(file({ version: 4, mark: "pixel" }), CAP);
+    expect(codes(result)).toEqual(["unknown-key mark"]);
+    expect(codes(parseTheme(file({ version: 4, mark: "pixel", character: "pixel" }), CAP))).toEqual(["unknown-key mark"]);
+  });
+
+  it("round-trips: an export of a theme with a character says version 4 and parses to the same theme", () => {
+    const first = parseTheme(file({ version: 4, character: "kawaii", surface: { radius: "soft" } }), CAP);
     expect(first.ok).toBe(true);
     if (!first.ok) return;
     const exported = JSON.stringify({ ...first.theme, version: versionOf(first.theme) }, null, 2);
-    expect(JSON.parse(exported)).toMatchObject({ version: 4, mark: "kawaii" });
+    expect(JSON.parse(exported)).toMatchObject({ version: 4, character: "kawaii" });
     const second = parseTheme(exported, CAP);
     expect(second.ok && second.theme).toEqual(first.theme);
     if (!second.ok) return;
     expect(JSON.stringify({ ...second.theme, version: versionOf(second.theme) }, null, 2)).toBe(exported);
   });
 
-  it("leaves every shipped theme without a mark, at the version its file says", () => {
+  it("leaves every shipped theme without a character, at the version its file says", () => {
     for (const id of SHIPPED_THEME_IDS) {
       const raw = read(`src/themes/${id}.json`);
       const doc = JSON.parse(raw);
-      expect(doc).not.toHaveProperty("mark");
+      expect(doc).not.toHaveProperty("character");
       const parsed = parseTheme(raw, { ...CAP, allowReservedId: true });
-      expect(parsed.ok && parsed.theme.mark).toBeUndefined();
+      expect(parsed.ok && parsed.theme.character).toBeUndefined();
       expect(parsed.ok && parsed.theme.version).toBe(doc.version);
     }
   });
