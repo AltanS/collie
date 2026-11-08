@@ -723,7 +723,7 @@ typed.
 ## Your own typefaces
 
 The interface font is a per-device setting. Under **Settings → Appearance → Typeface**, you can choose between
-System, Space Grotesk, Aldrich, IBM Plex Sans, Geist and Atkinson Hyperlegible Next (the default). A
+System, Space Grotesk, Aldrich, IBM Plex Sans, Geist, Atkinson Hyperlegible Next (the default) and Nunito. A
 [theme](themes.md) that names a face writes it here once, when you pick the theme. You can add custom fonts in
 `theme.toml`, the fourth configuration file:
 

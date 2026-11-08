@@ -311,8 +311,8 @@ version 2 file: it is Daylight with a shorter list of colours and the full palet
 - `light` and `dark` are objects of tokens. Give one half or both. A half you leave out, and any token you
   leave out, takes the value of the theme Collie. If only one half sets a token, the other half gets the value
   of the theme Collie for that token.
-- `fonts.ui` is optional: `system`, `grotesk`, `aldrich`, `plex`, `geist` or `atkinson`.
-- `fonts.display` is optional and takes the same six names. See [Look](#look).
+- `fonts.ui` is optional: `system`, `grotesk`, `aldrich`, `plex`, `geist`, `atkinson` or `nunito`.
+- `fonts.display` is optional and takes the same seven names. See [Look](#look).
 - `surface` is optional. Every key in it is optional too, and a key you leave out takes the default word of its list.
   See [Shape](#shape) and [Look](#look).
 - `ansi` is optional, and it holds all 18 keys or none. See [Terminal palette](#terminal-palette).
@@ -500,7 +500,7 @@ of closed words.
 | `composer` | `field` | The composer is one text field with its row of controls. The default for a theme that names none. |
 | | `box` | The composer is a box. The Collie theme uses it. |
 
-`fonts.display` names one of the six typefaces for page titles and the name in the header. A theme that
+`fonts.display` names one of the seven typefaces for page titles and the name in the header. A theme that
 names none draws its titles in Aldrich, the display face of the Collie theme. Collie fetches a display face only when the theme
 names it.
 

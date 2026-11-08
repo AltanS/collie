@@ -174,6 +174,10 @@ describe("theme-init.js, the default face", () => {
     expect(runInit({ "collie:design:v1": JSON.stringify({ font: "atkinson" }) }).classes).toEqual([]);
   });
 
+  it("adds font-nunito for a stored nunito", () => {
+    expect(runInit({ "collie:design:v1": JSON.stringify({ font: "nunito" }) }).classes).toEqual(["font-nunito"]);
+  });
+
   it("keeps Aldrich for a device that stored it", () => {
     expect(runInit({ "collie:design:v1": JSON.stringify({ font: "aldrich" }) }).classes).toEqual(["font-aldrich"]);
   });
@@ -372,7 +376,7 @@ function storeVersionTwo(theme: Theme): Array<[string, string]> {
 }
 
 describe("theme-init.js sets the display face and the palette as the store does", () => {
-  it.each(["system", "grotesk", "aldrich", "plex", "geist", "atkinson"])("display face %s", (face) => {
+  it.each(["system", "grotesk", "aldrich", "plex", "geist", "atkinson", "nunito"])("display face %s", (face) => {
     const fromInit = initVersionTwo({ fonts: { display: face } });
     expect(fromInit).toEqual([["--font-display", `var(--face-${face})`]]);
     expect(fromInit).toEqual(storeVersionTwo({ ...midnightTheme(), version: 2, fonts: { display: face } }));

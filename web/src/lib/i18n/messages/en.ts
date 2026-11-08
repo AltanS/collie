@@ -348,6 +348,8 @@ export const en = {
   "settings.typeface.note.geist": "Plain and geometric, with a real bold.",
   // Atkinson Hyperlegible Next has a real 400-700 axis, so unlike Aldrich its bold is drawn.
   "settings.typeface.note.atkinson": "Made for low vision, with clear letters and a real bold.",
+  // Nunito has a real 400 to 700 axis, so unlike Aldrich its bold is drawn.
+  "settings.typeface.note.nunito": "Soft and rounded, with a real bold.",
   "settings.typeface.note.operator": "Added by this collie's operator.",
   // --- settings.math (which engine typesets LaTeX in Markdown — a per-device preference) ---
   "settings.math.title": "Math",
@@ -3229,6 +3231,7 @@ export const PENDING_TRANSLATION = [
   "settings.appearance.intro.title",
   "settings.appearance.intro.body",
   "settings.appearance.intro.docs",
+  "settings.typeface.note.nunito",
   "theme.preview.mark",
   "theme.refusal.mark",
   "theme.paste",
