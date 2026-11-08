@@ -575,10 +575,11 @@ shows Lucide, the icons Collie has always drawn.
 ```
 
 - **The file says version 4.** A file that sets `glyphs` and says 1, 2 or 3 is refused, as `character` is.
-  An unknown word is refused and the cause lists the five words.
+  A word this Collie does not have draws Lucide, and the preview says so
+  ([A word this Collie does not know](#a-word-this-collie-does-not-know)).
 - **Every control icon changes.** Back, Close, Send, the belt, the Keys tray, the rows of a sheet, the
   banners and the tool cards in Chat all draw in the set. Each icon is named by what it means, so a set may
-  draw Close and Remove apart even where Lucide draws both as an X. The list of all 271 is
+  draw Close and Remove apart even where Lucide draws both as an X. The list of all 326 is
   [KEYS.md](https://github.com/AltanS/collie/blob/main/web/src/components/icons/KEYS.md).
 - **Some things never change.** The agent logos, the Collie mark and the characters, the five status
   shapes, the walky talky radio, the unread mark, the multiplexer logo, the favicon and the app icons stay
@@ -586,7 +587,7 @@ shows Lucide, the icons Collie has always drawn.
 - **`icons` still sets the line width.** The `icons` word of [Look](#look) thins or thickens Lucide and
   Iconoir, and Iconoir draws each width at three quarters, its own lighter line. Phosphor draws solid
   shapes, so the word changes nothing there.
-- **A missing icon falls back to Lucide.** Phosphor has no drawing for 3 of the 271 icons: the Space key
+- **A missing icon falls back to Lucide.** Phosphor has no drawing for 3 of the 326 icons: the Space key
   and the two text size buttons. Iconoir also lacks the spinner, so it falls back on 4.
 - **A set downloads when it is needed.** Lucide is part of the app. Each other set is one download of
   about 15 to 22 KB, fetched the first time a theme names it, then kept for offline use. Until it arrives,
@@ -596,6 +597,84 @@ shows Lucide, the icons Collie has always drawn.
   [Try a theme](#try-a-theme-before-you-keep-it) is on, the app draws the set of the tried theme.
 - **An older Collie refuses the file.** A version 4 file needs a Collie newer than 1.28.0. To share a
   theme that an older Collie can read, leave `glyphs` out and say version 3 or lower.
+- **Another icon set comes in as a pull request.** See
+  [Add an icon set to Collie](#add-an-icon-set-to-collie).
+
+### Add an icon set to Collie
+
+A new icon set comes in as a pull request that maps an open-licensed icon library to every key.
+
+```sh
+bun scripts/glyph-keys.ts
+cd web && bunx vitest run --project dom src/components/icons src/lib/theme
+cd web && bun run build && ls dist/glyphs
+cd web && bun run playground
+```
+
+These are the files a new set touches.
+
+| File | What you add |
+| --- | --- |
+| `web/package.json` | The library as a dev dependency. A release must be 7 days old to install. |
+| `web/src/components/icons/sets/<family>.ts` | One line per key: the library's file name, or `null`. |
+| `web/vite-glyphs.ts` | The set in `SOURCES`: where its SVG files are, its `viewBox`, its root attributes. |
+| `web/src/lib/glyph-sets.ts` | The set's word, name, family and kind (`stroke` or `fill`). |
+| `web/src/components/icons/glyphs.ts` | A `case` for the new word in `loadChunk`. |
+| `web/src/components/icons/keys.test.ts` | The family in `FALLBACKS`: the keys you mapped to `null`. |
+| `web/src/lib/theme/schema.test.ts` | The new word in the list the "glyphs key" test pins. |
+| `web/public/glyphs/LICENSE-<family>.txt` | The library's licence text. |
+| `web/src/components/icons/KEYS.md` | Nothing by hand: the generator writes it. |
+| `docs/themes.md` | A row for the word in the Glyphs table. |
+
+1. Read every key, its meaning and each set's glyph in `web/src/components/icons/KEYS.md`.
+2. Map each key by its meaning in a new `web/src/components/icons/sets/<family>.ts`.
+3. Add the set to `SOURCES`, `GLYPH_SETS` and `loadChunk`.
+4. Write KEYS.md again from the key table and the maps.
+
+   ```sh
+   bun scripts/glyph-keys.ts
+   ```
+
+5. Run the icon and theme tests.
+
+   ```sh
+   cd web && bunx vitest run --project dom src/components/icons src/lib/theme
+   ```
+
+6. Build, and measure the set's chunk.
+
+   ```sh
+   cd web && bun run build && gzip -9c dist/glyphs/<word>-*.js | wc -c
+   ```
+
+7. Open the playground and look at the grid.
+
+   ```sh
+   cd web && bun run playground
+   ```
+
+The key table is `web/src/components/icons/keys.ts`. A key names what an icon means, not its
+shape, so map Close to the library's close icon and Remove to its remove icon, even when both are an X.
+
+- **Every key, by meaning.** A key with no icon that says the same thing maps to `null`, and draws
+  Lucide. List those keys in `FALLBACKS`. The test fails when the list and the map differ, and when
+  the fallbacks reach 5 percent of the keys, 17 of 326 today.
+- **One chunk, at most 60 KB gzip.** The build reads only the files your map names, at one weight,
+  into one chunk under `glyphs/`. The sets Collie ships are 14 to 22 KB.
+- **An open licence.** MIT, ISC, Apache 2.0, or a similar licence that allows redistribution. Copy
+  its text into `web/public/glyphs/LICENSE-<family>.txt`.
+- **Stroke or fill.** A `stroke` set takes the theme's `icons` width; a `fill` set ignores it. A
+  stroke set drawn on a lighter line needs its own width rule in `web/src/index.css`, as Iconoir has.
+- **Check it by eye.** The playground's Brand page has the card "Glyph sets": every key in a row,
+  one column per set. A faded cell is a key that set draws in Lucide.
+- **Credit in the CHANGELOG.** Name the library and its authors in the pull request description.
+  The maintainer writes the CHANGELOG line with that credit, because a fork's pull request leaves
+  `CHANGELOG.md` alone (see `CONTRIBUTING.md`).
+- **An older Collie still loads the theme.** A theme that names your set draws Lucide on a Collie
+  without it, and says so in the preview.
+
+> **Note.** Icon packs as data, your own drawn icons without a pull request, are planned for a later
+> release.
 
 ## Shape
 
