@@ -476,12 +476,17 @@ describe("every default word of spec 17 is the stylesheet's CSS", () => {
 
   it("ground: :root is the crossed grain of 4 percent foreground, and the page colour sits on html under it", () => {
     const image = new Map(defaultOf("ground")).get("--ground-image") ?? "";
-    expect(image).toContain("repeating-linear-gradient(45deg, color-mix(in oklab, var(--background) 96%, var(--foreground)) 0 1px, transparent 1px 4px)");
+    expect(image).toContain("repeating-linear-gradient(45deg, var(--ground-line) 0 1px, transparent 1px calc(4px * var(--ground-scale)))");
     expect(image).toContain("repeating-linear-gradient(-45deg,");
+    const parts = new Map(defaultOf("ground"));
+    expect(parts.get("--ground-line")).toBe("color-mix(in oklab, var(--background) 96%, var(--ground-ink))");
+    expect(parts.get("--ground-ink")).toBe("var(--foreground)");
+    expect(parts.get("--ground-scale")).toBe("1");
     expect(new Map(wordDeclarations("ground", "flat")).get("--ground-image")).toBe("none");
     const html = /\n {2}html \{([\s\S]*?)\n {2}\}/.exec(bare)?.[1] ?? "";
     expect(html).toContain("background-color: var(--background);");
     expect(html).toContain("background-image: var(--ground-image);");
+    expect(html).toContain("background-size: var(--ground-size);");
     expect(html).toContain("min-height: 100%;");
     expect(bare).not.toContain("background-attachment");
     const body = /\n {2}body \{([\s\S]*?)\n {2}\}/.exec(bare)?.[1] ?? "";

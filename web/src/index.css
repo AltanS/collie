@@ -259,7 +259,9 @@
   --edge-shadow: 0 0 #0000;
   /* THE SEVEN MORE A THEME MAY PICK (M57 spec 17, lib/theme/surface.ts). Each is the value the app
      draws by default, so the Collie theme sets none of them and looks the same:
-       ground  `--ground-image`, painted on `html` over the page colour (the html rule below);
+       ground  `--ground-image` and `--ground-size`, painted on `html` over the page colour (the
+               html rule below), and the six a pattern reads: `--ground-ink`, `--ground-scale` and
+               the four paints `--ground-line`, `--ground-dot`, `--ground-area`, `--ground-tint`;
        chrome  `--band-ground` and `--band-rule`, the fill and edge of the header, the tab bar and the
                bottom bar (`bg-band-ground`, `border-band-rule`), today the page colour and --rule;
        rows    the rows of a list group (the `[data-slot="list-group"]` rule below): `--row-gap`
@@ -274,7 +276,14 @@
      The mirror's own ink and ground are NOT declared here: lib/ansi.ts and components/mirror-space.ts
      read `var(--mirror-ink, #fafafa)` and `var(--mirror-ground, #0a0a0a)`, so only a theme's `ansi`
      block sets them. src/themes/themes.test.ts holds every default word equal to these. */
-  --ground-image: repeating-linear-gradient(45deg, color-mix(in oklab, var(--background) 96%, var(--foreground)) 0 1px, transparent 1px 4px), repeating-linear-gradient(-45deg, color-mix(in oklab, var(--background) 96%, var(--foreground)) 0 1px, transparent 1px 4px);
+  --ground-image: repeating-linear-gradient(45deg, var(--ground-line) 0 1px, transparent 1px calc(4px * var(--ground-scale))), repeating-linear-gradient(-45deg, var(--ground-line) 0 1px, transparent 1px calc(4px * var(--ground-scale)));
+  --ground-size: auto;
+  --ground-ink: var(--foreground);
+  --ground-scale: 1;
+  --ground-line: color-mix(in oklab, var(--background) 96%, var(--ground-ink));
+  --ground-dot: color-mix(in oklab, var(--background) 93%, var(--ground-ink));
+  --ground-area: color-mix(in oklab, var(--background) 97%, var(--ground-ink));
+  --ground-tint: color-mix(in oklab, var(--background) 88%, var(--ground-ink));
   --band-ground: var(--secondary);
   --band-rule: var(--border);
   --row-gap: 0px;
@@ -1342,6 +1351,7 @@
     min-height: 100%;
     background-color: var(--background);
     background-image: var(--ground-image);
+    background-size: var(--ground-size);
   }
   body {
     /* No fill of its own: a body fill would cover the ground on html. The canvas under it is

@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import { DESIGN_STORAGE_KEY } from "@/lib/design";
 import type { JsonObject } from "@/lib/json";
 import { THEME_ESCAPE_SOURCE } from "@/lib/theme/escape";
-import { ALL_THEME_TOKENS, COLOUR_MAX, COLOUR_SOURCE, SHIPPED_THEME_IDS, THEME_TOKENS, isColour, type Theme } from "@/lib/theme/schema";
+import { ALL_THEME_TOKENS, COLOUR_MAX, COLOUR_SOURCE, SHIPPED_THEME_IDS, THEME_TOKENS, isColour, parseTheme, type Theme } from "@/lib/theme/schema";
 import { LIBRARY_STORAGE_KEY, applyTheme } from "@/lib/theme/store";
 import {
   ANSI_KEYS,
@@ -15,6 +15,8 @@ import {
   SURFACE_INIT_MARKER,
   SURFACE_PROPERTIES,
   SURFACE_TOKENS,
+  groundDeclarations,
+  groundWords,
   surfaceWords,
   wordDeclarations,
   withSurfaceInitLine,
@@ -85,8 +87,9 @@ describe("theme-init.js and lib/theme agree", () => {
     expect(end).toBeGreaterThan(fn);
     // The block, the one call site, and the hand-off line that was not there before. Four more lines
     // since the default theme paints Collie's grain from :root: an imported theme names its own ground
-    // or says `flat`, so the budget moved from 60 to 64.
-    expect(end - start + 1 + 1).toBeLessThan(64);
+    // or says `flat`, so the budget moved from 60 to 64. Two more since the ground may be an object
+    // of four words (schema version 4): one line reads it, one applies its four small tables.
+    expect(end - start + 1 + 1).toBeLessThan(66);
   });
 });
 
@@ -339,8 +342,42 @@ describe("theme-init.js and lib/theme/surface.ts agree", () => {
       icons: "heavy",
       labels: "sentence",
     } as const;
-    expect(initSurface(surface)).toEqual(storeSurface({ ...midnightTheme(), version: 2, surface }));
+    // The script sets the ground after the other tokens; no property is set twice, so the order of
+    // the list does not change what the page draws.
+    const byProperty = (a: [string, string], b: [string, string]) => a[0].localeCompare(b[0]);
+    expect(initSurface(surface).toSorted(byProperty)).toEqual(storeSurface({ ...midnightTheme(), version: 2, surface }).toSorted(byProperty));
     expect(initSurface(surface)).toHaveLength(SURFACE_PROPERTIES.length);
+  });
+
+  // The object form of the ground (version 4): every pattern at every size and strength, in both inks,
+  // and the object with keys left out. The first frame sets what the store sets a moment later.
+  const GROUND_CASES: JsonObject[] = [
+    {},
+    { size: "wide" },
+    { ink: "primary" },
+    ...groundWords("pattern").flatMap((pattern) =>
+      groundWords("size").flatMap((size) =>
+        groundWords("strength").flatMap((strength) => groundWords("ink").map((ink) => ({ pattern, size, strength, ink }))),
+      ),
+    ),
+  ];
+  it.each(GROUND_CASES.map((ground) => [JSON.stringify(ground), ground] as const))("sets the store's declarations for the ground %s", (_, ground) => {
+    const surface = { ground };
+    const fromInit = initSurface(surface);
+    const parsed = parseTheme(JSON.stringify({ ...midnightTheme(), version: 4, surface }), { maxBytes: 64 * 1024 });
+    if (!parsed.ok) throw new Error(JSON.stringify(parsed.refusals));
+    const fromStore = storeSurface(parsed.theme);
+    const byProperty = (a: [string, string], b: [string, string]) => a[0].localeCompare(b[0]);
+    expect(fromInit.toSorted(byProperty)).toEqual(fromStore.toSorted(byProperty));
+    expect(new Map(fromInit)).toEqual(new Map(groundDeclarations(parsed.theme.surface?.ground)));
+  });
+
+  it("sets nothing from a ground key or word outside the table, and a word ground is its pattern", () => {
+    const flat = new Map(groundDeclarations("flat"));
+    for (const ground of [{ pattern: "constructor" }, { pattern: "__proto__" }, { size: "toString" }, { pattern: ["dots"] }]) {
+      expect(new Map(initSurface({ ground })), JSON.stringify(ground)).toEqual(flat);
+    }
+    expect(new Map(initSurface({ ground: { pattern: "grain" } }))).toEqual(new Map(initSurface({ ground: "grain" })));
   });
 
   it("sets nothing for a word or a block outside the table", () => {

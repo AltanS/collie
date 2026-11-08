@@ -37,6 +37,7 @@ import {
   ANSI_KEYS,
   SURFACE_TOKENS,
   fullSurfaceDeclarations,
+  groundText,
   resolveSurface,
   type Ansi,
 } from "@/lib/theme/surface";
@@ -208,7 +209,7 @@ function SurfaceSample({ theme }: { theme: Theme }) {
       <ul className="mt-2 flex flex-wrap gap-x-3 gap-y-1 font-mono text-xs text-muted-foreground" data-testid="theme-shape-words">
         {SURFACE_TOKENS.map((token) => (
           <li key={token}>
-            {token}: {surface[token]}
+            {token}: {token === "ground" ? groundText(surface.ground) : surface[token]}
           </li>
         ))}
         {display !== undefined && <li>display: {display}</li>}

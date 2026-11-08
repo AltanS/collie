@@ -5,8 +5,9 @@
 A theme is a small file of colours and words. Anyone can share one, and none can run code.
 
 **What a theme can name.** Colours for the light half and for the dark half, typefaces from Collie's
-list, words for the [shape](#shape) and the [look](#look), a [terminal palette](#terminal-palette)
-and a [character](#characters) for the header. [Write a theme](#write-a-theme) shows the file.
+list, words for the [shape](#shape) and the [look](#look), a [ground pattern](#ground-patterns)
+behind the page, a [terminal palette](#terminal-palette) and a [character](#characters) for the
+header. [Write a theme](#write-a-theme) shows the file.
 
 **What a theme can never do.** It cannot run code. It cannot load a file, a font or an image. Every
 key takes a checked colour or a word from a closed list, and Collie refuses any other file.
@@ -256,9 +257,9 @@ the other parts. A floor is a contrast ratio, so a higher number is easier to re
 - **Destructive text is held to what Collie measures when you keep its colours.** A theme that keeps both
   colours of the pair as the Collie theme has them is held to what that pair measures, and never below 3.
   A theme that moves either colour is held to 4.5.
-- **A gradient or a grain is measured at its far end.** The report measures the page text, the chips,
-  `destructive` text, `status-blocked` text and `rule` again on the foot of the gradient or on the grain's
-  line colour, with the same floors.
+- **A ground is measured on the colour it draws.** The report measures the page text, the chips,
+  `destructive` text, `status-blocked` text and `rule` again on the foot of a gradient, or on the colour of
+  a pattern's lines, dots or shapes, with the same floors.
 - **A band is measured too.** Under `chrome: band`, `foreground`, `muted-foreground` and `status-blocked` are
   measured on `secondary`, the colour of the band, at 4.5.
 
@@ -400,7 +401,7 @@ A file says which version it is, and Collie writes the lowest version that holds
 | 1 | Colours in `light` and `dark`, and `fonts.ui`. |
 | 2 | Everything in version 1, and any of `surface`, `fonts.display` and `ansi`. |
 | 3 | Everything in version 2, and the optional tokens `pane-active` and `tab-active`. |
-| 4 | Everything in version 3, and the key `character`. |
+| 4 | Everything in version 3, the key `character`, and `surface.ground` as an object. |
 
 - A file with a `surface` block, a `fonts.display` face or an `ansi` block must say 2. A file that says 1 and
   has one of them is refused.
@@ -408,6 +409,8 @@ A file says which version it is, and Collie writes the lowest version that holds
   sets one of them is refused. The cause names the token and the version.
 - A file with `character` must say 4. A file that says 1, 2 or 3 and has a `character` is refused: "A file
   with "character" must say version 4. This one says version 3."
+- A file with `surface.ground` as an object must say 4. The word form, such as `"ground": "grain"`, is
+  the same in every version from 2.
 - A file without those blocks, without an optional token and without `character` may say 1 or 2. Collie reads all four
   versions, and an export of a theme with colours and `fonts.ui` only says 1.
 - A version 2 file needs Collie 1.22.0 or newer.
@@ -571,10 +574,10 @@ of closed words.
 names none draws its titles in Aldrich, the display face of the Collie theme. Collie fetches a display face only when the theme
 names it.
 
-- **A ground draws no image file.** The gradient and the grain are built from the colours of the theme itself.
+- **A ground draws no image file.** Every ground is built from the colours of the theme itself.
   The panels of the app are opaque, so the ground shows in the gaps between them.
 - **The page text is measured on the ground.** The [contrast report](#the-contrast-report) checks the far end
-  of a gradient and the grain's line colour, so a ground cannot hide text.
+  of a gradient and the colour a pattern draws, so a ground cannot hide text.
 - **Under a gradient the bars keep the flat page colour.** On a tablet the header and the bars can read as
   a box at the top of a page that darkens below. A word cannot change that.
 - **The status bar follows a band.** Under `chrome: band` the browser's status bar takes the band colour, and
@@ -585,6 +588,53 @@ names it.
 - **`tabs` and `composer` set no style either.** The app reads the word and draws the tab row, the pane row
   and the composer itself. Under `folder` the tab row grows by no pixel, and the tap targets stay where they
   are. The colour of the edge is the optional token [`tab-active`](#the-optional-tokens).
+
+### Ground patterns
+
+`surface.ground` also takes an object of four words. The object needs version 4.
+
+```json
+"surface": {
+  "ground": { "pattern": "dots", "size": "wide", "strength": "faint", "ink": "primary" }
+}
+```
+
+Every key is optional, and a key the object leaves out takes its first word. The word form stays
+as it was: `"ground": "grain"` draws the same ground as `{ "pattern": "grain" }`. An empty object
+is `flat`.
+
+| Key | Words | What it does |
+| --- | --- | --- |
+| `pattern` | `flat` `gradient` `grain` `dots` `grid` `lines` `checks` `waves` `weave` | What is drawn behind the page. |
+| `size` | `default` `fine` `wide` | The spacing: as listed below, three quarters of it, or twice it. |
+| `strength` | `default` `faint` `bold` | How much ink is mixed into the page colour. |
+| `ink` | `foreground` `primary` | The colour mixed in. `gradient` takes `primary`, every other pattern `foreground`. |
+
+| Pattern | What it draws at the default size |
+| --- | --- |
+| `flat` | Nothing. The page is one colour. |
+| `gradient` | The page darkens or lightens toward the foot. |
+| `grain` | Two sets of fine diagonal lines, 4px apart. Collie's own ground. |
+| `dots` | A small dot every 12px. |
+| `grid` | Lines across and down, 16px apart. |
+| `lines` | One set of diagonal lines, 6px apart. |
+| `checks` | A checker of 8px squares. |
+| `waves` | Rows of wavy lines. |
+| `weave` | A woven pattern, like cloth. |
+
+The strength is a share of the ink in the page colour. A line, a dot or a shape never goes past 10%.
+
+| Strength | Lines: `grain` `grid` `lines` `waves` | `dots` | Shapes: `checks` `weave` | Foot of `gradient` |
+| --- | --- | --- | --- | --- |
+| `faint` | 2.5% | 5% | 2% | 7% |
+| `default` | 4% | 7% | 3% | 12% |
+| `bold` | 7% | 10% | 5% | 18% |
+
+- **A pattern is Collie's own CSS.** A file names words only, never a URL, an image or an SVG. Each
+  pattern is a CSS gradient in the theme's own colours, and nothing in it moves.
+- **The contrast report measures each pattern.** It measures the page text on the colour the
+  pattern draws, at the strength and in the ink the file names. See
+  [the contrast report](#the-contrast-report).
 
 ## Terminal palette
 

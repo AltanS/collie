@@ -32,15 +32,24 @@ import { MARK_IDS, isMarkId, type MarkId } from "../mark-ids";
 import { SHIPPED_FONTS } from "../shipped-fonts";
 import {
   ANSI_KEYS,
-  GROUND_GRADIENT_END,
-  GROUND_GRAIN_LINE,
+  GROUND_INKS,
+  GROUND_KEYS,
+  GROUND_PATTERN_WORDS,
+  GROUND_SIZE_WORDS,
+  GROUND_STRENGTH_WORDS,
   SURFACE_TOKENS,
+  groundPaint,
+  groundWords,
+  isGroundWord,
+  resolveGround,
   isSurfaceToken,
   resolveSurface,
   surfaceWordOf,
   surfaceWords,
   type Ansi,
   type AnsiKey,
+  type GroundKey,
+  type GroundSpec,
   type Surface,
   type SurfaceToken,
 } from "./surface";
@@ -390,7 +399,8 @@ const READ_TEXT = `${THEME_VERSIONS_READ.slice(0, -1).join(", ")} and ${THEME_VE
 
 /** The version a theme is written as: 4 with a character, 3 with an optional token, 2 with a shape, a display face or a palette, else 1. */
 export function versionOf(theme: Theme): ThemeVersion {
-  if (theme.character !== undefined) return 4;
+  const ground = theme.surface?.ground;
+  if (theme.character !== undefined || (ground !== undefined && !isGroundWord(ground))) return 4;
   if (OPTIONAL_THEME_TOKENS.some((token) => setsOptionalToken(theme, token))) return 3;
   return theme.surface === undefined && theme.ansi === undefined && theme.fonts?.display === undefined ? 1 : 2;
 }
@@ -449,8 +459,15 @@ function readSurface(doc: JsonObject, version: ThemeVersion | undefined, refusal
       continue;
     }
     const path = `surface.${key}`;
+    // The ground alone may also be an object of four words (version 4).
+    const value = block[key];
+    if (key === "ground" && asJsonObject(value) !== undefined) {
+      const ground = readGround(asJsonObject(value) ?? {}, version, refusals);
+      if (ground !== undefined) surface.ground = ground;
+      continue;
+    }
     // A number, a list or an object is no word: `asJsonString` gives `undefined` and the token is refused.
-    if (!setSurfaceWord(surface, key, asJsonString(block[key]))) {
+    if (!setSurfaceWord(surface, key, asJsonString(value))) {
       refusals.push({
         code: "surface",
         path,
@@ -459,6 +476,54 @@ function readSurface(doc: JsonObject, version: ThemeVersion | undefined, refusal
     }
   }
   return Object.keys(surface).length === 0 ? undefined : surface;
+}
+
+/**
+ * The object form of `surface.ground` (version 4): any of `pattern`, `size`, `strength` and `ink`,
+ * each a word from its list. An unknown key is an unknown key, a word outside its list names the
+ * list, and the object in a file that says version 2 or 3 is refused as `character` is. An empty
+ * object is the flat ground.
+ */
+function readGround(block: JsonObject, version: ThemeVersion | undefined, refusals: Refusal[]): GroundSpec | undefined {
+  const before = refusals.length;
+  if (version !== undefined && version < 4) {
+    refusals.push({
+      code: "version",
+      path: "surface.ground",
+      detail: `A file with "surface.ground" as an object must say version 4. This one says version ${version}.`,
+    });
+  }
+  const ground: GroundSpec = {};
+  for (const key of Object.keys(block)) {
+    const groundKey = GROUND_KEYS.find((k) => k === key);
+    if (groundKey === undefined) {
+      refusals.push(unknownKey("surface.ground.", key));
+      continue;
+    }
+    if (!setGroundWord(ground, groundKey, asJsonString(block[key]))) {
+      const path = `surface.ground.${groundKey}`;
+      refusals.push({ code: "surface", path, detail: `"${path}" must be one of: ${groundWords(groundKey).join(", ")}.` });
+    }
+  }
+  return refusals.length === before ? ground : undefined;
+}
+
+/** Put `value` into `ground` as the word of `key` when it is one. False when it is not. Compares, never indexes. */
+function setGroundWord(ground: GroundSpec, key: GroundKey, value: string | undefined): boolean {
+  switch (key) {
+    case "pattern":
+      ground.pattern = GROUND_PATTERN_WORDS.find((word) => word === value);
+      return ground.pattern !== undefined;
+    case "size":
+      ground.size = GROUND_SIZE_WORDS.find((word) => word === value);
+      return ground.size !== undefined;
+    case "strength":
+      ground.strength = GROUND_STRENGTH_WORDS.find((word) => word === value);
+      return ground.strength !== undefined;
+    case "ink":
+      ground.ink = GROUND_INKS.find((word) => word === value);
+      return ground.ink !== undefined;
+  }
 }
 
 /** Put `value` into `surface` as the word of `token` when it is one. False when it is not. */
@@ -1187,11 +1252,13 @@ export function contrastReport(theme: Theme, base: Theme): Finding[] {
     // on the other end: the gradient's bottom colour, or the grain's line colour, each the oklab mix
     // index.css draws. Under `chrome: band` the header and the two bars stand on `secondary`, so the
     // text they hold is measured there.
+    // Every pattern of the object form is measured the same way, on the one paint it draws at the
+    // strength and in the ink the file names.
     const surface = resolveSurface(theme.surface);
-    const groundMix = surface.ground === "gradient" ? GROUND_GRADIENT_END : surface.ground === "grain" ? GROUND_GRAIN_LINE : undefined;
+    const groundMix = groundPaint(surface.ground);
     if (groundMix !== undefined) {
       const end = mixOklab(values[groundMix.base] ?? "", values[groundMix.mix] ?? "", groundMix.percent);
-      const where = `the ${surface.ground} ground`;
+      const where = `the ${resolveGround(surface.ground).pattern} ground`;
       push(`foreground on ${where}`, contrast(values.foreground ?? "", end), TEXT_FLOOR);
       push(`muted-foreground on ${where}`, contrast(values["muted-foreground"] ?? "", end), TEXT_FLOOR);
       const endRgba = toRgba(end);

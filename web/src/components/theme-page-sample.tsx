@@ -63,7 +63,7 @@ export function PageSample({ theme, half }: { theme: Theme; half: "light" | "dar
         <Palette className="size-3.5 shrink-0" />
         <span className="truncate text-xs font-semibold [font-family:var(--font-display)]">{theme.name}</span>
       </div>
-      <div className="bg-background px-2 pt-1.5 pb-2 [background-image:var(--ground-image)]">
+      <div className="bg-background px-2 pt-1.5 pb-2 [background-image:var(--ground-image)] [background-size:var(--ground-size)]">
         <SectionLabel placement="above">{t(HALF_KEYS[half])}</SectionLabel>
         <div data-slot="list-group" className="flex flex-col rounded-sm border-[length:var(--row-rule)] border-rule">
           <div className="h-4" />
