@@ -18,9 +18,8 @@ vi.mock("@/components/kawaii-tilt-mark", () => ({ KawaiiTiltMark: () => <span da
 vi.mock("@/components/pixel-mark", () => ({ PixelMark: () => <span data-mock="pixel" /> }));
 vi.mock("@/components/glass-mark", () => ({ GlassMark: () => <span data-mock="glass" /> }));
 vi.mock("@/components/glass-front-mark", () => ({ GlassFrontMark: () => <span data-mock="glass-front" /> }));
-vi.mock("@/components/delft-mark", () => ({ DelftMark: () => <span data-mock="delft" /> }));
-vi.mock("@/components/delft-front-mark", () => ({ DelftFrontMark: () => <span data-mock="delft-front" /> }));
 vi.mock("@/components/sheep-mark", () => ({ SheepMark: () => <span data-mock="sheep" /> }));
+vi.mock("@/components/owl-mark", () => ({ OwlMark: () => <span data-mock="owl" /> }));
 
 /** The mark a row draws, once its chunk has arrived: "collie" for the eager one, else the chunk's marker. */
 async function drawn(name: string): Promise<string> {
@@ -44,7 +43,7 @@ beforeEach(() => {
 describe("MarkControl", () => {
   it("offers From the theme and then every character in the registry's order, with From the theme on by default", () => {
     render(<MarkControl />);
-    const names = ["From the theme", "Collie", "Kawaii", "Kawaii Tilt", "Pixel", "Glass", "Glass Front", "Delft", "Delft Front", "Sheep"];
+    const names = ["From the theme", "Collie", "Kawaii", "Kawaii Tilt", "Pixel", "Glass", "Glass Front", "Sheep", "Owl"];
     expect(radios()).toEqual(names.map((name) => screen.getByRole("radio", { name })));
     expect(radios().map((r) => r.getAttribute("aria-checked"))).toEqual(names.map((_, i) => String(i === 0)));
   });

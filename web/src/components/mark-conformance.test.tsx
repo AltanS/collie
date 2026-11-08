@@ -21,7 +21,7 @@ import { loadMark } from "./brand-mark";
 // Collie mark ships in the entry):
 //
 //     collie-mark.tsx          76 KB      the full drawing, with the shaded beads
-//     every theme mark         34 KB      kawaii, kawaii-tilt, pixel, glass, delft, sheep, and the rest
+//     every theme mark         34 KB      kawaii, kawaii-tilt, pixel, glass, sheep, owl, and the rest
 //
 // "KB" is 1000 bytes. A mark over its line does not get a bigger line here: shrink the drawing, or
 // the lead moves the number on purpose, in this table and in the test below.
@@ -35,9 +35,8 @@ const FILES = {
   pixel: "pixel-mark.tsx",
   glass: "glass-mark.tsx",
   "glass-front": "glass-front-mark.tsx",
-  delft: "delft-mark.tsx",
-  "delft-front": "delft-front-mark.tsx",
   sheep: "sheep-mark.tsx",
+  owl: "owl-mark.tsx",
 } as const;
 
 const entries = await Promise.all(
