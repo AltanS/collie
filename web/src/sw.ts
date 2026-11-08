@@ -210,6 +210,11 @@ const mathStorable = (r: Response) =>
 // Collie mark until the phone is online once (brand-mark.tsx's boundary), never an empty box.
 const MARK_CACHE = MOUNT === "/" ? "collie-marks" : `collie-marks:${MOUNT}`;
 
+// The glyph sets (components/icons/glyphs.ts, ADR 0137) under `glyphs/`, on the marks' terms: out of
+// the precache because lucide is the default and in the entry bundle, kept on first use, emptied on
+// an update. Offline right after an update the app draws the lucide glyphs until the set arrives.
+const GLYPH_CACHE = MOUNT === "/" ? "collie-glyphs" : `collie-glyphs:${MOUNT}`;
+
 /** Cache-first under `prefix`, keeping only what `keeps` accepts. */
 function keepOnFirstUse(prefix: string, cacheName: string, keeps: (r: Response) => boolean): void {
   registerRoute(
@@ -227,11 +232,13 @@ function keepOnFirstUse(prefix: string, cacheName: string, keeps: (r: Response) 
 }
 
 keepOnFirstUse("/math/", MATH_CACHE, mathStorable);
-keepOnFirstUse("/marks/", MARK_CACHE, (r) =>
-  r.status === 200 && !r.redirected && /javascript/.test(r.headers.get("content-type") ?? ""));
+const scriptStorable = (r: Response) =>
+  r.status === 200 && !r.redirected && /javascript/.test(r.headers.get("content-type") ?? "");
+keepOnFirstUse("/marks/", MARK_CACHE, scriptStorable);
+keepOnFirstUse("/glyphs/", GLYPH_CACHE, scriptStorable);
 
 self.addEventListener("activate", (event: ExtendableEvent) => {
-  event.waitUntil(Promise.all([caches.delete(MATH_CACHE), caches.delete(MARK_CACHE)]));
+  event.waitUntil(Promise.all([caches.delete(MATH_CACHE), caches.delete(MARK_CACHE), caches.delete(GLYPH_CACHE)]));
 });
 
 // `registerType: "autoUpdate"` means a fresh build should take over without a user gesture. With

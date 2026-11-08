@@ -27,6 +27,7 @@ export const REFUSAL_KEYS = {
   surface: "theme.refusal.surface",
   ansi: "theme.refusal.ansi",
   character: "theme.refusal.mark",
+  glyphs: "theme.refusal.glyphs",
 } as const satisfies Record<RefusalCode, MessageKey>;
 
 /** The name of each half, as the picker and the contrast line say it. */

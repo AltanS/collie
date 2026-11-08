@@ -15,6 +15,7 @@ import {
   type Channel,
   type ChannelEvidence,
 } from "./vite-icons";
+import { glyphSetsPlugin, isGlyphChunkModule } from "./vite-glyphs";
 
 // The bridge (Bun server) serves the built app from `web/dist` and proxies nothing — the
 // browser talks to the same origin for both static files and /api. In `vite dev`, proxy the
@@ -232,9 +233,11 @@ function mathFolder(ids: readonly string[], names: readonly string[] = []): stri
 // needs no change here. src/sw.ts caches the chosen one on first use.
 const MARK_MODULE = /[\\/]src[\\/]components[\\/](?!(?:collie|brand)-mark\.tsx)[a-z][a-z-]*-mark\.tsx$/;
 
-/** The folder an output chunk goes in: `math/...`, `marks`, or `null` for the app's own `assets/`. */
+/** The folder an output chunk goes in: `math/...`, `marks`, `glyphs`, or `null` for the app's own `assets/`. */
 function chunkFolder(ids: readonly string[]): string | null {
   if (ids.length > 0 && ids.every((id) => MARK_MODULE.test(id))) return "marks";
+  // The glyph sets (ADR 0137, vite-glyphs.ts): one chunk each, out of the precache like the marks.
+  if (ids.length > 0 && ids.every(isGlyphChunkModule)) return "glyphs";
   return mathFolder(ids);
 }
 
@@ -298,6 +301,7 @@ export default defineConfig({
   define: { __BUILD_INFO__: JSON.stringify(BUILD_INFO) },
   plugins: [
     react(),
+    glyphSetsPlugin(import.meta.dirname),
     tailwindcss(),
     katexWoff2OnlyPlugin,
     buildInfoPlugin,
@@ -395,8 +399,9 @@ export default defineConfig({
         // nobody who never taps Whistle should pay for it on install. It loads on first use.
         // The math engines (`math/`, set by build.rolldownOptions below) stay out for the same
         // reason: they are a device's opt-in, and Off is the default.
-        // The theme marks (`marks/`) stay out too: Collie is the default mark.
-        globIgnores: [...precacheIgnoresFor(channel), "stt/**", "math/**", "marks/**"],
+        // The theme marks (`marks/`) stay out too: Collie is the default mark. So do the glyph
+        // sets (`glyphs/`): lucide is in the entry bundle and draws until a set arrives.
+        globIgnores: [...precacheIgnoresFor(channel), "stt/**", "math/**", "marks/**", "glyphs/**"],
       },
       // Over plain HTTP (insecure context) the SW can't register; in dev we don't want it anyway.
       devOptions: { enabled: false },

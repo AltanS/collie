@@ -5,8 +5,10 @@ import { createRoot } from "react-dom/client";
 
 import { App } from "./App";
 import { preloadMark } from "./components/brand-mark";
+import { preloadGlyphSet } from "./components/icons/glyphs";
 import { onPreloadError } from "./lib/chunk-reload";
 import { designPrefs, initDesign, mathEngineOf } from "./lib/design";
+import { currentGlyphSetId } from "./lib/glyphs";
 import { currentMarkId } from "./lib/mark";
 import { isMathLoadError, loadMathEngine } from "./lib/math/engine";
 import { initTheme } from "./lib/theme/store";
@@ -40,6 +42,8 @@ resumeTrial();
 // fetching its chunk now, after the theme and the trial are settled (the resolver reads both), so the
 // header rarely draws its empty box. The Collie mark is in this bundle and loads nothing.
 void preloadMark(currentMarkId());
+// The glyph set too (ADR 0137): a theme that names one starts its chunk now, and lucide draws until it lands.
+void preloadGlyphSet(currentGlyphSetId());
 // After it, and separately: this one injects the operator face design.ts mirrored into storage, so a
 // device set to one paints in it from the first frame instead of swapping when /api/config lands.
 initOperatorFonts();

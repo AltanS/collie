@@ -41,7 +41,7 @@ import {
 import { CONTRAST_FAIL_KEY, HALF_KEYS, REFUSAL_KEYS, isMoreLine } from "@/lib/theme/report-words";
 import { ThemeBrowseSheet } from "@/components/theme-browse";
 import { dropTrial, startTrial } from "@/lib/theme/trial";
-import { PageSample, ThemeMarkLine, collieTheme, displayOf, styleOf } from "@/components/theme-page-sample";
+import { PageSample, ThemeGlyphsLine, ThemeMarkLine, collieTheme, displayOf, styleOf } from "@/components/theme-page-sample";
 
 // The Theme card (M57): which colour theme this device wears, and the way in and out for a theme
 // file. It sits directly ABOVE the Appearance three-way (System, Light, Dark) on purpose: the first
@@ -272,6 +272,7 @@ export function ThemePreviewSheet({ theme, onApply, onCancel, onTry }: PreviewSh
             )}
             <div className="text-sm text-muted-foreground">{t(`theme.preview.halves.${halves}`)}</div>
             <ThemeMarkLine theme={theme} />
+            <ThemeGlyphsLine theme={theme} />
           </div>
 
           <div className="flex flex-col gap-2">

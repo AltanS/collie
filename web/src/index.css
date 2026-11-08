@@ -1314,10 +1314,15 @@
   }
   /* THE ICON STROKE (M57 spec 17). Every glyph the app draws carries the class `icon`
      (components/icons/icon.tsx) and lucide's attribute `stroke-width="2"`; a CSS value beats a
-     presentation attribute, and the paths inherit it. The default is lucide's own 2. Hand-drawn svgs carry no `icon` class and keep their
-     own widths. In the base layer, so a `stroke-*` utility on one icon still wins. */
+     presentation attribute, and the paths inherit it. The default is lucide's own 2. A fill set
+     (Phosphor) draws no stroke, so the rule changes nothing there; Iconoir is drawn at 1.5 on the
+     same grid, so it takes three quarters of the width. Hand-drawn svgs carry no `icon` class and
+     keep their own widths. In the base layer, so a `stroke-*` utility on one icon still wins. */
   svg.icon {
     stroke-width: var(--icon-stroke);
+  }
+  svg.icon[data-glyphs="iconoir"] {
+    stroke-width: calc(var(--icon-stroke) * 0.75);
   }
   /* THE DISPLAY FACE (M57 spec 17). The page titles and the header's brand line wear
      `--font-display`, which is the UI face unless a theme names another. Every `h1` and `h2` the app

@@ -279,7 +279,7 @@ repository.
 
 A file has these keys, and no others. An unknown key anywhere is refused with its name. This is a complete
 version 2 file: it is Daylight with a shorter list of colours and the full palette. A theme that sets
-[`character`](#characters) says version 4.
+[`character`](#characters) or [`glyphs`](#glyphs) says version 4.
 
 ```json
 {
@@ -318,6 +318,7 @@ version 2 file: it is Daylight with a shorter list of colours and the full palet
 - `ansi` is optional, and it holds all 18 keys or none. See [Terminal palette](#terminal-palette).
 - `character` is optional, one word from [Characters](#characters). It needs version 4.
   See [Characters](#characters).
+- `glyphs` is optional, one word from [Glyphs](#glyphs). It needs version 4. See [Glyphs](#glyphs).
 - `$schema` is allowed and ignored. The file is at most 64 KiB.
 
 A value is `#rrggbb`, `#rrggbbaa`, or `oklch(L C H)` and `oklch(L C H / A)` in plain numbers. L is 0 to 1, C is
@@ -333,15 +334,16 @@ A file says which version it is, and Collie writes the lowest version that holds
 | 1 | Colours in `light` and `dark`, and `fonts.ui`. |
 | 2 | Everything in version 1, and any of `surface`, `fonts.display` and `ansi`. |
 | 3 | Everything in version 2, and the optional tokens `pane-active` and `tab-active`. |
-| 4 | Everything in version 3, and the key `character`. |
+| 4 | Everything in version 3, and the keys `character` and `glyphs`. |
 
 - A file with a `surface` block, a `fonts.display` face or an `ansi` block must say 2. A file that says 1 and
   has one of them is refused.
 - A file with `pane-active` or `tab-active` in `light` or `dark` must say 3. A file that says 1 or 2 and
   sets one of them is refused. The cause names the token and the version.
-- A file with `character` must say 4. A file that says 1, 2 or 3 and has a `character` is refused: "A file
-  with "character" must say version 4. This one says version 3."
-- A file without those blocks, without an optional token and without `character` may say 1 or 2. Collie reads all four
+- A file with `character` or `glyphs` must say 4. A file that says 1, 2 or 3 and has one of them is refused:
+  "A file with "character" must say version 4. This one says version 3."
+- A file without those blocks, without an optional token, without `character` and without `glyphs` may say
+  1 or 2. Collie reads all four
   versions, and an export of a theme with colours and `fonts.ui` only says 1.
 - A version 2 file needs Collie 1.22.0 or newer.
 - A version 3 file needs Collie 1.24.0 or newer. An older Collie refuses it and names the version: "The
@@ -443,6 +445,52 @@ These are the characters today. More may follow.
   refuses the whole file with two causes: "The file is version 4. This Collie reads version 1, 2 and 3."
   and "character" is not part of a theme file. To share a theme that an older Collie can read, leave
   `character` out and say version 3 or lower.
+
+### Glyphs
+
+A theme may name the icon set the app draws with the key `glyphs`, at the top level. A theme without it
+shows Lucide, the icons Collie has always drawn.
+
+| Word | Icon set |
+| --- | --- |
+| `lucide` | **Lucide**, round lines of even width. The default. |
+| `phosphor` | **Phosphor**, soft and slightly rounder lines. |
+| `phosphor-fill` | **Phosphor Fill**, the same icons as solid shapes. |
+| `phosphor-duotone` | **Phosphor Duotone**, the Phosphor lines with a pale fill behind them. |
+| `iconoir` | **Iconoir**, light, open lines. |
+
+```json
+{
+  "version": 4,
+  "id": "my-day",
+  "name": "My day",
+  "glyphs": "phosphor-duotone",
+  "light": { "background": "#fdfaf3" }
+}
+```
+
+- **The file says version 4.** A file that sets `glyphs` and says 1, 2 or 3 is refused, as `character` is.
+  An unknown word is refused and the cause lists the five words.
+- **Every control icon changes.** Back, Close, Send, the belt, the Keys tray, the rows of a sheet, the
+  banners and the tool cards in Chat all draw in the set. Each icon is named by what it means, so a set may
+  draw Close and Remove apart even where Lucide draws both as an X. The list of all 271 is
+  [KEYS.md](https://github.com/AltanS/collie/blob/main/web/src/components/icons/KEYS.md).
+- **Some things never change.** The agent logos, the Collie mark and the characters, the five status
+  shapes, the walky talky radio, the unread mark, the multiplexer logo, the favicon and the app icons stay
+  the same under every set.
+- **`icons` still sets the line width.** The `icons` word of [Look](#look) thins or thickens Lucide and
+  Iconoir, and Iconoir draws each width at three quarters, its own lighter line. Phosphor draws solid
+  shapes, so the word changes nothing there.
+- **A missing icon falls back to Lucide.** Phosphor has no drawing for 3 of the 271 icons: the Space key
+  and the two text size buttons. Iconoir also lacks the spinner, so it falls back on 4.
+- **A set downloads when it is needed.** Lucide is part of the app. Each other set is one download of
+  about 15 to 22 KB, fetched the first time a theme names it, then kept for offline use. Until it arrives,
+  and offline right after an update, the app draws Lucide in the same place and at the same size.
+- **The preview shows it.** The preview of an import and each card in **Browse community themes** show
+  five icons in the theme's set: close, send, settings, back and attach. While the ribbon of
+  [Try a theme](#try-a-theme-before-you-keep-it) is on, the app draws the set of the tried theme.
+- **An older Collie refuses the file.** A version 4 file needs a Collie newer than 1.28.0. To share a
+  theme that an older Collie can read, leave `glyphs` out and say version 3 or lower.
 
 ## Shape
 
@@ -558,6 +606,8 @@ palette of the terminal. It cannot change anything else.
   anything moves.
 - **The favicon, the app icon and the splash.** They stay Collie under every theme. A theme may name the
   [character](#characters) in the header, and no more.
+- **Which icon means what.** A theme picks one of five [icon sets](#glyphs), never a single icon or a
+  drawing of its own.
 - **What a status means.** Its icon and its word stay as they are, so a red or orange you picked never
   makes blocked look like done.
 - **A free value, raw CSS, remote fonts.** Every key takes a colour or a word from a list, and fonts come from

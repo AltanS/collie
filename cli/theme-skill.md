@@ -35,8 +35,9 @@ CSS in it.
 - A colour is `#rrggbb`, `#rrggbbaa` or `oklch(L C H)` with an optional `/ A`. No named colour, no
   `rgb()`, no `var()`.
 - Write the lowest `version` that holds the file: 1 for colours and `fonts.ui` only, 2 with `surface`,
-  `fonts.display` or `ansi`, 3 with `pane-active` or `tab-active`, 4 with `character`.
+  `fonts.display` or `ansi`, 3 with `pane-active` or `tab-active`, 4 with `character` or `glyphs`.
 - `character` is optional. See "Characters" below.
+- `glyphs` is optional. See "Glyphs" below.
 - A font is one of the six names under "Write a theme". A theme cannot add a font.
 - Give both halves when you change the page colours. A dark half left out takes Collie's dark colours,
   which rarely match a new light half.
@@ -65,6 +66,25 @@ one is the only way anyone sees it. The favicon, the app icon and the splash alw
 - Pair the character with the look of the theme. `pixel` suits sharp corners and a mono display face.
   `kawaii` suits round corners and soft pastel accents. `glass` suits deep slate and jewel accents.
   `sheep` and `owl` suit warm, earthy colours and a soft, friendly face.
+
+## Glyphs
+
+A glyph set is the second goodie: the icon family every control in the app draws in. Only a theme file
+can name one, like a character.
+
+| `glyphs` | What it is |
+| --- | --- |
+| `lucide` | Round lines of even width, the icons Collie has always drawn. The default. |
+| `phosphor` | Phosphor, regular weight: soft, slightly rounder lines. |
+| `phosphor-fill` | Phosphor as solid shapes. |
+| `phosphor-duotone` | Phosphor lines with a pale fill behind them. |
+| `iconoir` | Iconoir: light, open lines. |
+
+- Set `"glyphs": "<word>"` only when the operator asks for other icons. Without it the app draws Lucide.
+- A file with `glyphs` is version 4, as with `character`, and an older Collie refuses it.
+- Pair the set with the look. `phosphor-duotone` and `phosphor-fill` suit round corners and soft colours.
+  `iconoir` suits a light, airy theme and the `thin` icon weight. Lucide suits everything.
+- The agent logos, the character, the status shapes and the app icon never change with the set.
 
 ## Share it
 

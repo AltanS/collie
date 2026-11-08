@@ -3,6 +3,7 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { readFileSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { glyphSetsPlugin } from "./vite-glyphs";
 
 // `bun run playground:build`: the states playground alone, as static files in `dist-playground/`.
 // DEV-ONLY, like the page itself. It is a second config on purpose: vite.config.ts stays the app's
@@ -50,7 +51,7 @@ export default defineConfig({
     },
   },
   define: { __BUILD_INFO__: JSON.stringify(BUILD_INFO) },
-  plugins: [react(), tailwindcss(), trimPublicPlugin],
+  plugins: [react(), tailwindcss(), trimPublicPlugin, glyphSetsPlugin(import.meta.dirname)],
   resolve: { alias: { "@": resolve(WEB, "src") } },
   build: {
     outDir: OUT,

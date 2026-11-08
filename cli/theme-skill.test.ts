@@ -5,6 +5,7 @@ import { describe, expect, test } from "bun:test";
 
 import { SHIPPED_FONTS } from "../web/src/lib/shipped-fonts.ts";
 import { MARK_IDS } from "../web/src/lib/mark-ids.ts";
+import { GLYPH_SET_IDS } from "../web/src/lib/glyph-sets.ts";
 import { ALL_THEME_TOKENS, THEME_VERSIONS_READ } from "../web/src/lib/theme/schema.ts";
 import { ANSI_KEYS, SURFACE_TOKENS, surfaceWords } from "../web/src/lib/theme/surface.ts";
 import { SKILL_TEMPLATE, THEME_SKILL_TEMPLATE } from "./docs-embed.ts";
@@ -64,6 +65,22 @@ describe("collie theme skill", () => {
     expect(BRIEF).toContain("4 with `character`");
     expect(BRIEF).toContain("## Characters");
     expect(THEME_VERSIONS_READ.at(-1)).toBe(4);
+  });
+
+  test("the brief teaches the glyphs key: every set, and the version that holds it", () => {
+    expect(BRIEF).toContain("`glyphs`");
+    for (const id of GLYPH_SET_IDS) expect(BRIEF).toContain(`\`${id}\``);
+    expect(BRIEF).toContain("4 with `character` or `glyphs`");
+    expect(BRIEF).toContain("## Glyphs");
+    expect(BRIEF).toContain("### Glyphs");
+  });
+
+  test("a glyphs example in the brief's own words passes `collie theme check`", () => {
+    const file = JSON.stringify({ version: 4, id: "my-day", name: "My day", glyphs: "phosphor-duotone", light: { background: "#ffffff" } });
+    const io = capture();
+    const code = cmdThemeCheck({ io, files: filesOf({ "g.collie-theme.json": file }) }, ["g.collie-theme.json"]);
+    expect(io.stderr).toEqual([]);
+    expect(code).toBe(EXIT.OK);
   });
 
   // The brief's own text only: the page sections it appends are docs/themes.md, which another session owns.

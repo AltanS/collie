@@ -27,6 +27,7 @@ import {
   type Refusal,
   type Theme,
 } from "./schema";
+import { GLYPH_SET_IDS } from "../glyph-sets";
 import { MARK_IDS } from "../mark-ids";
 import { ANSI_KEYS, SURFACE_DEFAULTS, SURFACE_TOKENS, resolveSurface, surfaceWords } from "./surface";
 import { BRIGHT_FG_LUMINANCE, luminance as museLuminance } from "../harness/muse/display";
@@ -941,5 +942,51 @@ describe("the character key", () => {
       expect(parsed.ok && parsed.theme.character).toBeUndefined();
       expect(parsed.ok && parsed.theme.version).toBe(doc.version);
     }
+  });
+});
+
+// ── Schema version 4: the glyph set ────────────────────────────────────────────────────────────────
+
+describe("the glyphs key", () => {
+  it("is a closed list of five words, lucide first", () => {
+    expect(GLYPH_SET_IDS).toEqual(["lucide", "phosphor", "phosphor-fill", "phosphor-duotone", "iconoir"]);
+  });
+
+  it.each(GLYPH_SET_IDS)("reads %s from a version 4 file, and hands the theme back as version 4", (glyphs) => {
+    const result = parseTheme(file({ version: 4, glyphs }), CAP);
+    expect(result.ok && result.theme.glyphs).toBe(glyphs);
+    expect(result.ok && result.theme.version).toBe(4);
+  });
+
+  it("is refused in a file that says version 1, 2 or 3, in the words `character` uses", () => {
+    for (const version of [1, 2, 3]) {
+      const result = parseTheme(file({ version, glyphs: "iconoir" }), CAP);
+      expect(codes(result)).toEqual(["version glyphs"]);
+      expect(refusals(result)[0]?.detail).toBe(`A file with "glyphs" must say version 4. This one says version ${version}.`);
+    }
+  });
+
+  it.each([["Phosphor"], ["phosphor_fill"], ["tabler"], [""], [2], [null], [["iconoir"]], [{ id: "iconoir" }]])("refuses %j as a glyph set, and names the list", (glyphs) => {
+    const result = parseTheme(file({ version: 4, glyphs }), CAP);
+    expect(codes(result)).toEqual(["glyphs glyphs"]);
+    expect(refusals(result)[0]?.detail).toBe('"glyphs" must be one of: lucide, phosphor, phosphor-fill, phosphor-duotone, iconoir.');
+  });
+
+  it("refuses `icons` at the top level: the stroke width is `surface.icons`, not a set", () => {
+    expect(codes(parseTheme(file({ version: 4, icons: "phosphor" }), CAP))).toEqual(["unknown-key icons"]);
+  });
+
+  it("round-trips beside a character: an export says version 4 and parses to the same theme", () => {
+    const first = parseTheme(file({ version: 4, character: "kawaii", glyphs: "phosphor-duotone" }), CAP);
+    expect(first.ok).toBe(true);
+    if (!first.ok) return;
+    const exported = JSON.stringify({ ...first.theme, version: versionOf(first.theme) }, null, 2);
+    expect(JSON.parse(exported)).toMatchObject({ version: 4, character: "kawaii", glyphs: "phosphor-duotone" });
+    const second = parseTheme(exported, CAP);
+    expect(second.ok && second.theme).toEqual(first.theme);
+  });
+
+  it("leaves every shipped theme without a glyph set", () => {
+    for (const id of SHIPPED_THEME_IDS) expect(JSON.parse(read(`src/themes/${id}.json`))).not.toHaveProperty("glyphs");
   });
 });

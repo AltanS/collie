@@ -728,6 +728,18 @@ describe("ThemePickerControl and the header character", () => {
     expect(within(dialog).queryByTestId("theme-mark-line")).toBeNull();
   });
 
+  it("shows the five sample icons of a file's glyph set, in that set, and no line for a file without one", async () => {
+    const { ThemePickerControl } = await load();
+    const { container } = render(<ThemePickerControl />);
+    pick(container, fileOf(JSON.stringify({ ...copy("duo-day", "Duo day"), version: 4, glyphs: "phosphor-duotone" })));
+    const dialog = await screen.findByRole("dialog", { name: "Import this theme?" });
+    const line = within(dialog).getByTestId("theme-glyphs-line");
+    expect(line).toHaveTextContent("Icons: Phosphor Duotone");
+    const shown = [...line.querySelectorAll("svg")].map((svg) => svg.getAttribute("data-icon"));
+    expect(shown).toEqual(["close", "send", "settings", "back", "attach"]);
+    await waitFor(() => expect(line.querySelector('svg[data-glyphs="phosphor-duotone"]')).not.toBeNull());
+  });
+
   it("refuses a character in a file that says version 3, and names the version it needs", async () => {
     const { ThemePickerControl, store } = await load();
     const { container } = render(<ThemePickerControl />);

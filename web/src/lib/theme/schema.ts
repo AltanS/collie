@@ -4,18 +4,19 @@
 // WHAT A THEME IS. One JSON file with an id, a name, two halves of named colour tokens (light and
 // dark), an optional bundled UI face, and from version 2 an optional `surface` block of shape words
 // (`surface.ts`), an optional display face (`fonts.display`) and an optional terminal palette (`ansi`),
-// and from version 4 an optional header character (`character`, one of the fixed ids in `../mark-ids.ts`). Nothing else: no free radius or spacing value, no raw CSS, no remote font. The
+// and from version 4 an optional header character (`character`, one of the fixed ids in `../mark-ids.ts`)
+// and an optional glyph set (`glyphs`, one of the fixed ids in `../glyph-sets.ts`). Nothing else: no free radius or spacing value, no raw CSS, no remote font. The
 // token list and the word lists are CLOSED, and the parser refuses any key or word it does not name,
 // so a file can never smuggle a property into the page.
 //
 // VERSIONS. The parser reads 1, 2, 3 and 4 and hands back the LOWEST version that holds the content: 4
-// when the theme sets a `character`, else 3 when it sets an optional token (`pane-active`, `tab-active`), else 2 when it carries
+// when the theme sets a `character` or `glyphs`, else 3 when it sets an optional token (`pane-active`, `tab-active`), else 2 when it carries
 // a surface block, a display face or a palette, else 1. So a colour-only theme is stored and
 // exported as version 1, and a Collie from before version 2 (1.21.x after a rollback) still reads it.
 // A version 1 file has no surface block, which means the default word for every shape token. A
 // `surface` block, a `fonts.display` or an `ansi` block in a file that says version 1 is refused: the
 // file is older than the block. An optional token in a file that says version 1 or 2 is refused the
-// same way, and so is a `character` in a file that says version 1, 2 or 3. Every file written before
+// same way, and so is a `character` or `glyphs` in a file that says version 1, 2 or 3. Every file written before
 // version 4 reads and exports exactly as it did.
 //
 // WHY THE PARSER IS TOTAL AND COLLECTS. A person imports a file someone else wrote. Telling them
@@ -25,9 +26,10 @@
 //
 // WHY THIS FILE IMPORTS SO LITTLE. It loads without a DOM, without React and without the `@/` alias,
 // because `scripts/build-themes.ts` at the collie root imports it, and the bridge may validate an
-// operator theme with it later. Its two imports are leaf files with no imports of their own.
+// operator theme with it later. Its imports are leaf files with no imports of their own.
 
 import { asJsonNumber, asJsonObject, asJsonString, parseJsonObject, type JsonObject } from "../json";
+import { GLYPH_SET_IDS, isGlyphSetId, type GlyphSetId } from "../glyph-sets";
 import { MARK_IDS, isMarkId, type MarkId } from "../mark-ids";
 import { SHIPPED_FONTS } from "../shipped-fonts";
 import {
@@ -45,7 +47,7 @@ import {
   type SurfaceToken,
 } from "./surface";
 
-/** The highest schema version this build reads and writes. Only a theme that sets a `character` needs it. */
+/** The highest schema version this build reads and writes. Only a theme that sets a `character` or `glyphs` needs it. */
 export const THEME_VERSION = 4;
 
 /** The schema versions this build reads. A file with any other `version` is refused. */
@@ -139,7 +141,7 @@ export const DEFAULT_THEME_ID: ShippedThemeId = "collie";
 export interface Half extends Partial<Record<AnyThemeToken, string>> {}
 
 export interface Theme {
-  /** The lowest version that holds the content: 4 with a `character`, 3 with an optional token, 2 with a `surface` block, 1 without (`versionOf`). */
+  /** The lowest version that holds the content: 4 with a `character` or `glyphs`, 3 with an optional token, 2 with a `surface` block, 1 without (`versionOf`). */
   version: ThemeVersion;
   id: string;
   name: string;
@@ -154,6 +156,8 @@ export interface Theme {
   ansi?: Ansi;
   /** Version 4: the header character this theme wears (a `MarkId`). A device's own choice in Settings wins over it. */
   character?: MarkId;
+  /** Version 4: the glyph set every icon is drawn in (a `GlyphSetId`). Absent is lucide. */
+  glyphs?: GlyphSetId;
 }
 
 /** A theme's faces. Either may be absent; an empty `fonts` object carries no key. */
@@ -176,7 +180,8 @@ export type RefusalCode =
   | "reserved-id"
   | "surface"
   | "ansi"
-  | "character";
+  | "character"
+  | "glyphs";
 
 /**
  * Why a file was refused. `path` is where (`$` for the whole file, `dark.status-blocked`,
@@ -203,7 +208,7 @@ export interface ParseThemeOptions {
 const ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,31}$/;
 const NAME_MAX = 40;
 const AUTHOR_MAX = 60;
-const TOP_KEYS = ["$schema", "version", "id", "name", "author", "light", "dark", "fonts", "surface", "ansi", "character"] as const;
+const TOP_KEYS = ["$schema", "version", "id", "name", "author", "light", "dark", "fonts", "surface", "ansi", "character", "glyphs"] as const;
 const HALVES = ["light", "dark"] as const;
 
 export function isThemeToken(value: string): value is ThemeToken {
@@ -281,6 +286,7 @@ export function parseTheme(raw: string, opts: ParseThemeOptions): ParsedTheme {
   const surface = readSurface(doc, version, refusals);
   const ansi = readAnsi(doc, version, refusals);
   const character = readCharacter(doc, version, refusals);
+  const glyphs = readGlyphs(doc, version, refusals);
 
   if (countTokens(light) + countTokens(dark) === 0 && !hasHalfRefusal(refusals)) {
     refusals.push({
@@ -302,6 +308,7 @@ export function parseTheme(raw: string, opts: ParseThemeOptions): ParsedTheme {
   if (surface !== undefined) theme.surface = surface;
   if (ansi !== undefined) theme.ansi = ansi;
   if (character !== undefined) theme.character = character;
+  if (glyphs !== undefined) theme.glyphs = glyphs;
   theme.version = versionOf(theme);
   return { ok: true, theme };
 }
@@ -347,9 +354,9 @@ function unknownKey(path: string): Refusal {
 
 const READ_TEXT = `${THEME_VERSIONS_READ.slice(0, -1).join(", ")} and ${THEME_VERSIONS_READ.at(-1)}`;
 
-/** The version a theme is written as: 4 with a character, 3 with an optional token, 2 with a shape, a display face or a palette, else 1. */
+/** The version a theme is written as: 4 with a character or a glyph set, 3 with an optional token, 2 with a shape, a display face or a palette, else 1. */
 export function versionOf(theme: Theme): ThemeVersion {
-  if (theme.character !== undefined) return 4;
+  if (theme.character !== undefined || theme.glyphs !== undefined) return 4;
   if (OPTIONAL_THEME_TOKENS.some((token) => setsOptionalToken(theme, token))) return 3;
   return theme.surface === undefined && theme.ansi === undefined && theme.fonts?.display === undefined ? 1 : 2;
 }
@@ -476,6 +483,28 @@ function readCharacter(doc: JsonObject, version: ThemeVersion | undefined, refus
   const word = asJsonString(doc.character);
   if (word === undefined || !isMarkId(word)) {
     refusals.push({ code: "character", path: "character", detail: `"character" must be one of: ${MARK_IDS.join(", ")}.` });
+    return undefined;
+  }
+  return word;
+}
+
+/**
+ * The `glyphs` key: one of the fixed glyph set ids, as a word, refused exactly as `character` is: a
+ * number, a list or an unknown word names the list, and a file that says version 1, 2 or 3 is older
+ * than the key.
+ */
+function readGlyphs(doc: JsonObject, version: ThemeVersion | undefined, refusals: Refusal[]): GlyphSetId | undefined {
+  if (doc.glyphs === undefined) return undefined;
+  if (version !== undefined && version < 4) {
+    refusals.push({
+      code: "version",
+      path: "glyphs",
+      detail: `A file with "glyphs" must say version 4. This one says version ${version}.`,
+    });
+  }
+  const word = asJsonString(doc.glyphs);
+  if (word === undefined || !isGlyphSetId(word)) {
+    refusals.push({ code: "glyphs", path: "glyphs", detail: `"glyphs" must be one of: ${GLYPH_SET_IDS.join(", ")}.` });
     return undefined;
   }
   return word;
