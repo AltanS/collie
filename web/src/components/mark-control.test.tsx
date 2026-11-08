@@ -82,7 +82,7 @@ describe("MarkControl", () => {
     // One help line per card (the lead, 2026-11-08): that the icon and the splash stay Collie is in
     // the docs, not on the card.
     render(<MarkControl />);
-    expect(screen.queryByText(t("settings.mark.note"))).not.toBeInTheDocument();
+    expect(screen.queryByText(/splash stay/)).not.toBeInTheDocument();
   });
 
   it("draws the worn theme's mark on the From the theme row", async () => {

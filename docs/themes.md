@@ -33,6 +33,11 @@ These are the characters today. More may follow.
 | `kawaii` | **Kawaii**, a round puppy face from the front, with big glossy eyes and candy pearls. |
 | `kawaii-tilt` | **Kawaii Tilt**, the same puppy with its head tilted. |
 | `pixel` | **Pixel**, an 8-bit collie head with square beads that hop. |
+| `glass` | **Glass**, a collie head in profile as a leaded stained-glass panel, with jewels in the ring. |
+| `glass-front` | **Glass Front**, the same stained glass, the head from the front. |
+| `delft` | **Delft**, a collie head in profile painted in cobalt on white glaze, like a Delft tile. |
+| `delft-front` | **Delft Front**, the same Delft painting, the head from the front. |
+| `sheep` | **Sheep**, the sheep the collie herds: a charcoal face in cream wool, in profile. |
 
 ### Pick a character
 
