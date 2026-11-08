@@ -41,9 +41,10 @@ light on the left and dark on the right.
   ![The Harbour theme on the Dashboard, light and dark.](images/themes/harbour-home.png)
 
 - **Petal** is soft and friendly. Pastel pink and lavender stand on a cream page in light, and on a deep
-  plum night in dark. It has round corners, soft shadows, roomy steps and rows as cards. The page runs
-  from cream to blush toward the foot, a blush band stands behind the header and the bars, the open
-  tab is a rose folder tab, and the composer opens like a chat box. The terminal draws a pastel palette.
+  berry night in dark. It has round corners, soft shadows, roomy steps and rows as blush cards with a
+  rose edge. A pink band stands behind the header and the bottom bar, the page runs from cream to pink
+  toward the foot, the open tab and Send are rose, and lavender marks hover and switches. Titles are in
+  the rounded Nunito, and the composer opens like a chat box. The terminal draws a pastel palette.
 
   ![The Petal theme on the Dashboard, light and dark.](images/themes/petal-home.png)
 
@@ -56,7 +57,7 @@ which the Collie theme sets to `grain`, `folder` and `box`. The words are explai
 | | Collie | Nightwatch | Daylight | Harbour | Petal |
 | --- | --- | --- | --- | --- | --- |
 | Typeface | Atkinson Hyperlegible Next | IBM Plex Sans | Geist | Atkinson Hyperlegible Next | Atkinson Hyperlegible Next |
-| Display face | Aldrich | IBM Plex Sans | Atkinson Hyperlegible Next | Space Grotesk | Geist |
+| Display face | Aldrich | IBM Plex Sans | Atkinson Hyperlegible Next | Space Grotesk | Nunito |
 | Radius | `sharp` | `sharp` | `round` | `soft` | `round` |
 | Shadow | `flat` | `flat` | `lifted` | `lifted` | `default` |
 | Density | `default` | `default` | `roomy` | `default` | `roomy` |
@@ -305,8 +306,8 @@ version 2 file: it is Daylight with a shorter list of colours and the full palet
 - `light` and `dark` are objects of tokens. Give one half or both. A half you leave out, and any token you
   leave out, takes the value of the theme Collie. If only one half sets a token, the other half gets the value
   of the theme Collie for that token.
-- `fonts.ui` is optional: `system`, `grotesk`, `aldrich`, `plex`, `geist` or `atkinson`.
-- `fonts.display` is optional and takes the same six names. See [Look](#look).
+- `fonts.ui` is optional: `system`, `grotesk`, `aldrich`, `plex`, `geist`, `atkinson` or `nunito`.
+- `fonts.display` is optional and takes the same seven names. See [Look](#look).
 - `surface` is optional. Every key in it is optional too, and a key you leave out takes the default word of its list.
   See [Shape](#shape) and [Look](#look).
 - `ansi` is optional, and it holds all 18 keys or none. See [Terminal palette](#terminal-palette).
@@ -441,7 +442,7 @@ of closed words.
 | `composer` | `field` | The composer is one text field with its row of controls. The default for a theme that names none. |
 | | `box` | The composer is a box. The Collie and Petal themes use it. |
 
-`fonts.display` names one of the six typefaces for page titles and the name in the header. A theme that
+`fonts.display` names one of the seven typefaces for page titles and the name in the header. A theme that
 names none draws its titles in Aldrich, the display face of the Collie theme. Collie fetches a display face only when the theme
 names it.
 

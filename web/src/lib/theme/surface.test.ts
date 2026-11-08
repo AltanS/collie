@@ -260,7 +260,7 @@ describe("the shape tokens", () => {
 describe("the display face and the terminal palette", () => {
   it("points the display face at its stack in index.css, one per shipped face", () => {
     expect(displayDeclarations("geist")).toEqual([["--font-display", "var(--face-geist)"]]);
-    expect(displayInitTable().map(([face]) => face)).toEqual(["system", "grotesk", "aldrich", "plex", "geist", "atkinson"]);
+    expect(displayInitTable().map(([face]) => face)).toEqual(["system", "grotesk", "aldrich", "plex", "geist", "atkinson", "nunito"]);
     expect(DISPLAY_PROPERTIES).toEqual(["--font-display"]);
   });
 

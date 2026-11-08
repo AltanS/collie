@@ -1,7 +1,7 @@
 # Petal: the palette and why
 
 Petal shows how soft Collie can look. It is pastel pink and lavender on a cream page in light, and a
-deep plum night in dark. Altan asked for a theme that changes what a screen looks like at a glance,
+deep berry night in dark. Altan asked for a theme that changes what a screen looks like at a glance,
 not a new coat of paint, so Petal uses every word of the sheet (see "The whole sheet" at the end).
 Every value is oklch and in sRGB gamut without the clamp. The numbers are measured with
 `contrastReport` from `lib/theme/schema.ts`; rerun it after any change, never estimate.
@@ -26,22 +26,32 @@ brand or character.
 
 | token | light | dark | note |
 | --- | --- | --- | --- |
-| `background` | 0.975 0.014 70 | 0.2 0.04 330 | cream, plum night |
-| `card` | 0.988 0.005 350 | 0.26 0.05 330 | a pink-white card, a raised plum |
-| `chrome`, `secondary` | 0.95 0.028 340, 0.945 0.03 330 | 0.26 0.05 330, 0.3 0.055 315 | the blush band behind the header and bars |
-| `primary` | 0.56 0.17 352 | 0.82 0.1 352 | rose, and pastel pink in dark |
-| `control-on` | 0.88 0.06 305 | 0.38 0.09 305 | lavender |
-| `foreground` | 0.3 0.07 340 | 0.95 0.018 340 | plum ink, pink-white ink |
+| `background` | 0.975 0.016 75 | 0.2 0.055 355 | cream, and a berry night |
+| `card` | 0.96 0.022 352 | 0.27 0.07 355 | a blush card, a raised berry |
+| `chrome`, `secondary` | 0.89 0.065 350 | 0.33 0.09 355 | the clearly pink band behind the header and bottom bar |
+| `border` | 0.8 0.08 355 | 0.5 0.12 355 | the rose ring around every card |
+| `primary` | 0.56 0.19 355 | 0.82 0.11 355 | rose: Send, the open tab, the chosen segment |
+| `accent`, `control-on` | 0.91 0.05 305, 0.85 0.08 305 | 0.36 0.08 305, 0.42 0.11 305 | lavender, the second accent |
+| `foreground` | 0.3 0.07 340 | 0.95 0.02 350 | plum ink, pink-white ink |
 
-- The page is cream (hue 70) and not pink. With the gradient ground the foot of the page mixes
-  in 12% of the rose primary, so the page warms from cream to blush toward the bottom bar.
-- Body text: light 13.1 on the page, 11.2 at the gradient foot; dark 15.7 and 13.0.
-  Muted text: light 6.6 on the page, 5.7 at the foot; dark 9.6 and 8.0.
-- Text on the primary: light 4.94, dark 9.67. The light rose is the darkest pink that still reads
+- The lead's first review (2026-11-08) read the first draft as "the standard layout in cream", so
+  this pass pushes every surface the schema reaches: a pink band in place of a blush tint, blush
+  cards with a rose ring, a rose primary at chroma 0.19, lavender for hover and switches, and a
+  berry dark half (hue 355, chroma 0.055 to 0.09) in place of a brown-leaning plum.
+- The page is cream (hue 75) and not pink. The gradient ground mixes 12% of the rose primary into
+  the foot, so the page warms from cream to pink toward the bottom bar. A word cannot make that mix
+  stronger; a more saturated primary is the only lever, and it is near the gamut edge already.
+- Body text: light 13.1 on the page, 11.2 at the gradient foot, 9.9 on the band; dark 15.8, 13.1
+  and 10.9. Muted text: light 6.6 on the page, 5.7 at the foot, 5.0 on the band (the tightest
+  text cell); dark 10.3, 8.6 and 7.2.
+- Text on the primary: light 4.98, dark 9.66. The light rose is the darkest pink that still reads
   as pink; a lighter one fails white text.
 - `tab-active` equals `primary` in both halves, so the open folder tab wears a rose top edge.
-  It measures 4.74 light and 10.0 dark on the page (floor 3).
-- `rule` 1.59 light and 2.11 dark on the page, 1.36 and 1.75 at the gradient foot (floor 1.3).
+  It measures 4.80 light and 10.0 dark on the page (floor 3).
+- `rule` 1.67 light and 2.44 dark on the page, 1.43 and 2.03 at the gradient foot (floor 1.3).
+- Syntax and host inks are at least 5.76 light and 7.11 dark on the page and the card.
+- The gap between cards is the `rows: cards` word's fixed 8px, and `density: roomy` is the largest
+  step. More air between cards is not reachable inside the schema.
 
 ## Status
 
@@ -57,8 +67,8 @@ brand or character.
 - Blocked and done sit on the warm to cool axis, 0.21 apart in oklab light and 0.19 dark
   (floor 0.15). Coral and teal stay apart for red-green colour blindness too.
 - The light inks sit lower than they look. The gradient foot is darker than the page, and every
-  chip must clear 4.5 there. The tightest cells are light blocked at the foot (4.63) and dark
-  unknown at the foot (4.65).
+  chip must clear 4.5 there. The tightest cells are light blocked at the foot (4.65) and dark
+  unknown at the foot (4.72).
 
 ## Syntax and host
 
@@ -69,19 +79,24 @@ brand or character.
 
 ## The mirror
 
-The palette is pastel on a near-black plum. The ground is `#140a10`. In light the mirror is turned
+The palette is pastel on a near-black berry. The ground is `#140a10`. In light the mirror is turned
 over (`invert(1) hue-rotate(180deg)`, ADR 0002), and `#140a10` turned over is `#faf0f6`, a faint
 pink white beside the cream page, so the mirror reads as a card and not as a hole. In dark it is a
-deeper well under the plum page. Every slot clears its gate by a wide margin: the lowest is slot 8
+deeper well under the berry page. Every slot clears its gate by a wide margin: the lowest is slot 8
 at 5.9, the ink is 16.5.
 
 ## Face
 
-Atkinson Hyperlegible Next for the text (key `atkinson`) and Geist for titles (key `geist`). Each
-shipped theme needs its own display face, and only `geist` and `system` were free. Neither is
-rounded. The face that would finish this look is a rounded sans, such as Nunito (SIL OFL 1.1): a
-Latin plus Latin Extended A subset at weights 400 to 700 is about 35 to 45 KB as one variable woff2.
-It is not added: a new face needs the lead's yes.
+Atkinson Hyperlegible Next for the text (key `atkinson`) and Nunito for titles (key `nunito`).
+Nunito 3.602 is a rounded sans (SIL OFL 1.1), bundled for this theme with the lead's yes on
+2026-11-08: one variable woff2, wght 400 to 700, Latin plus Latin Extended A, 30,716 bytes. It is
+fetched only while a theme or the Typeface card names it; under the other four themes no request
+for it is made.
+
+Nunito is the display face and not the text face on purpose. It has no `tnum` feature, so its
+figures stay proportional under `tabular-nums`, and every count in the app would change width as
+it ticks (DESIGN.md §2, no state may move content). The titles carry the rounded hand; the text
+and the counts stay on Atkinson.
 
 ## The whole sheet (schema version 3)
 

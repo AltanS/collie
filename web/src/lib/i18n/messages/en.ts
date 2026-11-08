@@ -342,6 +342,8 @@ export const en = {
   "settings.typeface.note.geist": "Plain and geometric, with a real bold.",
   // Atkinson Hyperlegible Next has a real 400-700 axis, so unlike Aldrich its bold is drawn.
   "settings.typeface.note.atkinson": "Made for low vision, with clear letters and a real bold.",
+  // Nunito has a real 400 to 700 axis, so unlike Aldrich its bold is drawn.
+  "settings.typeface.note.nunito": "Soft and rounded, with a real bold.",
   "settings.typeface.note.operator": "Added by this collie's operator.",
   // --- settings.math (which engine typesets LaTeX in Markdown — a per-device preference) ---
   "settings.math.title": "Math",
@@ -3220,6 +3222,7 @@ export type Messages = typeof en;
  * key for good: a key stays here only between a feature and its translation pass.
  */
 export const PENDING_TRANSLATION = [
+  "settings.typeface.note.nunito",
   "theme.paste",
   "theme.paste.title",
   "theme.paste.label",

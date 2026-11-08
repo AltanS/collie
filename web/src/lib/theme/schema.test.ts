@@ -620,7 +620,7 @@ describe("the surface block", () => {
 // ── Spec 17: the display face, the terminal palette, and the ground and band checks ──────────────
 
 describe("the display face", () => {
-  it.each(["system", "grotesk", "aldrich", "plex", "geist", "atkinson"])("accepts %s, and the file is version 2", (face) => {
+  it.each(["system", "grotesk", "aldrich", "plex", "geist", "atkinson", "nunito"])("accepts %s, and the file is version 2", (face) => {
     const result = parseTheme(v2({ fonts: { display: face } }), CAP);
     expect(result.ok && result.theme.fonts).toEqual({ display: face });
     expect(result.ok && result.theme.version).toBe(2);

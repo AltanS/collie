@@ -288,7 +288,7 @@
   --label-transform: none;
   --label-tracking: normal;
   --font-display: var(--face-aldrich);
-  /* The six shipped faces as stacks a theme's display face can name (`--font-display:
+  /* The seven shipped faces as stacks a theme's display face can name (`--font-display:
      var(--face-<id>)`). The same stacks as the `:root.font-*` blocks and the @theme default below,
      held equal by src/fonts.test.ts. A stack names a family; the browser fetches its file only when a
      drawn element asks for it, so a stack nobody uses costs no byte. */
@@ -310,6 +310,9 @@
   --face-atkinson:
     "Atkinson Hyperlegible Next", "Atkinson Hyperlegible Next Fallback", ui-sans-serif,
     system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --face-nunito:
+    "Nunito", "Nunito Fallback", ui-sans-serif, system-ui,
+    -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   /* Light deviates from stock shadcn in two places, both measured rather than taste:
      --background is a step off white (stock has background == card == popover == pure white, so the
      entire dashboard hierarchy rests on one 1.26:1 hairline), and --muted-foreground is darkened
@@ -1001,6 +1004,47 @@
     U+20A0-20BF, U+2122, U+2190-21FF, U+2212, U+2264-2265, U+2699, U+2713-2714, U+25CF;
 }
 
+/* Nunito, the display face of the theme `petal` (its titles; the text stays Atkinson). Rounded terminals on every stroke end, which is the whole
+ * reason it is here: a soft hand for a soft palette. Built by the same scripts/build-ui-font.sh run
+ * (UI_FONT_ONLY=nunito), subset to the same ranges, 30 KB, instanced to wght 400 to 700 like Space
+ * Grotesk, so the 500 and 600 the app asks for are drawn, not synthesised. Opt-in like every face
+ * but the default: fetched when a reader or a theme picks it, never preloaded, never precached.
+ *
+ * ONE COST, SAID OUT LOUD: Nunito carries no `tnum` feature, so `tabular-nums` has nothing to
+ * switch on and its figures stay proportional. The counts column does not align digit for digit.
+ *
+ * `unicode-range` is the subset's own Latin range, so Cyrillic and every other script skip this
+ * face and its stand-in and fall to the system stack.
+ *
+ * Nunito 3.602 is SIL OFL 1.1, from github.com/google/fonts at commit 8b0a1d0f (pinned, with its
+ * sha256, in scripts/build-ui-font.sh): public/fonts/LICENSE-nunito.txt. */
+@font-face {
+  font-family: "Nunito";
+  src: url("/fonts/ui-nunito-3.602-latin.woff2") format("woff2");
+  font-weight: 400 700;
+  font-style: normal;
+  font-display: swap;
+  unicode-range:
+    U+0000-00FF, U+0100-017F, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F,
+    U+20A0-20BF, U+2122, U+2190-21FF, U+2212, U+2264-2265, U+2699, U+2713-2714, U+25CF;
+}
+/* Its metric-matched stand-in, on the same terms as the faces above: `local()` only, the same one
+   metric family, Latin only, and every number printed by scripts/build-ui-font.sh. Do not
+   hand-edit. Keep in step with the same block in index.html. */
+@font-face {
+  font-family: "Nunito Fallback";
+  src:
+    local("Arial"), local("Helvetica Neue"), local("Helvetica"),
+    local("Liberation Sans"), local("Arimo"), local("Roboto");
+  size-adjust: 102.23%;
+  ascent-override: 98.9%;
+  descent-override: 34.53%;
+  line-gap-override: 0%;
+  unicode-range:
+    U+0000-00FF, U+0100-017F, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F,
+    U+20A0-20BF, U+2122, U+2190-21FF, U+2212, U+2264-2265, U+2699, U+2713-2714, U+25CF;
+}
+
 /* Aldrich — a SHIPPED face a reader picks deliberately (the default until 2026-11-06). Built by the same
  * scripts/build-ui-font.sh run, subset to the same ranges, 8 KB.
  *
@@ -1123,6 +1167,12 @@
 :root.font-geist {
   --font-sans:
     "Geist", "Geist Fallback", ui-sans-serif, system-ui,
+    -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --default-font-family: var(--font-sans);
+}
+:root.font-nunito {
+  --font-sans:
+    "Nunito", "Nunito Fallback", ui-sans-serif, system-ui,
     -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --default-font-family: var(--font-sans);
 }

@@ -35,6 +35,7 @@ const FAMILY_LABELS = {
   plex: "IBM Plex Sans",
   geist: "Geist",
   atkinson: "Atkinson Hyperlegible Next",
+  nunito: "Nunito",
 } satisfies Record<Exclude<(typeof SHIPPED_FONTS)[number], "system">, string>;
 
 const NOTE_KEYS = {
@@ -44,6 +45,7 @@ const NOTE_KEYS = {
   plex: "settings.typeface.note.plex",
   geist: "settings.typeface.note.geist",
   atkinson: "settings.typeface.note.atkinson",
+  nunito: "settings.typeface.note.nunito",
 } as const satisfies Record<(typeof SHIPPED_FONTS)[number], `settings.typeface.note.${string}`>;
 
 /** Settings card: the app's own typeface. Device-local, like theme and language. */
