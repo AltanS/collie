@@ -6,8 +6,9 @@ import { collieHalves } from "./fixtures/collie-theme";
 
 // TRY A THEME (M59 spec 08). jsdom holds the trial's rules (lib/theme/trial.test.ts) and the ribbon's
 // buttons (components/theme-trial-ribbon.test.tsx); only an engine can say the rest. A theme that
-// paints every token one colour is tried from the paste preview, and the case reads what the browser
-// computed: the ribbon keeps its own colours over it, sits on the bottom edge across the full width,
+// paints every token but the text one colour is tried from the paste preview (the text stays black,
+// because a file whose text fails 3:1 on its ground is refused before any preview), and the case
+// reads what the browser computed: the ribbon keeps its own colours over it, sits on the bottom edge across the full width,
 // and the composer ends above it instead of under it. A reload of the tab keeps the trial, a new tab
 // does not see it, and Back puts the device's own ground back.
 
@@ -17,14 +18,15 @@ const PAINT = "#ff00ff";
 const PAINT_RGB = "rgb(255, 0, 255)";
 const paintAll = (half: Readonly<Record<string, string>>) => Object.fromEntries(Object.keys(half).map((token) => [token, PAINT]));
 
-/** Every token in both halves is one colour: text, grounds, rules and buttons all vanish into it. */
+/** The text stays readable, so the import accepts it; every other token is one colour: grounds, rules and buttons vanish into it. */
+const TEXT = "#000000";
 const ONE_COLOUR = {
   version: 1,
   id: "one-colour",
   name: "One colour",
   author: "Test",
-  light: paintAll(collieHalves.light),
-  dark: paintAll(collieHalves.dark),
+  light: { ...paintAll(collieHalves.light), foreground: TEXT },
+  dark: { ...paintAll(collieHalves.dark), foreground: TEXT },
 };
 
 const ribbon = (page: Page) => page.getByRole("region", { name: en["theme.trial.region"] });

@@ -176,9 +176,10 @@ describe("the store", () => {
     expect(done.status.error).toBeUndefined();
 
     const folder = themesDir(dir);
-    expect(statSync(folder).mode & 0o777).toBe(0o700);
+    // Windows has no POSIX mode bits: the folder and the file are owner-only through their ACL there.
+    if (process.platform !== "win32") expect(statSync(folder).mode & 0o777).toBe(0o700);
     expect(readdirSync(folder)).toEqual(["registry.json"]);
-    expect(statSync(join(folder, "registry.json")).mode & 0o777).toBe(0o600);
+    if (process.platform !== "win32") expect(statSync(join(folder, "registry.json")).mode & 0o777).toBe(0o600);
     const stored = JSON.parse(readFileSync(join(folder, "registry.json"), "utf8"));
     expect(stored.themes).toEqual([KEPT]);
 
