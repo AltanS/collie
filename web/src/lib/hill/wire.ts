@@ -202,6 +202,7 @@ export interface HillPostInput {
 export type HillRefusalCode =
   | "bad_title"
   | "bad_summary"
+  | "bad_body"
   | "bad_option"
   | "bad_recommends"
   | "bad_link"

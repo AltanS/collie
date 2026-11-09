@@ -1279,6 +1279,10 @@ const STATE_DIR_ENTRIES = [
   // The hold queue (M56 spec 15): one file per send the harness could not take during its turn, kept
   // until the pane reads free, so a restart replays it. Created with the Send Protocol, like `sends`.
   "held",
+  // The hill (M96): the decisions agents posted and the receipts of the phone's answers, a folder with
+  // `decisions.json` and `receipts.json`. Written by use and by nothing else: absent until the first
+  // decision an agent posts, or the first answer from a phone.
+  "hill",
   // One receipt per launch the phone tagged with a request id (ADR 0091), so a retried Start never
   // opens a second pane. Written by use and by nothing else: absent until the first launch that
   // carries an id succeeds.
