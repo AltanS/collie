@@ -25,7 +25,7 @@ describe("a post's fields off the socket", () => {
     const read = readPostFields({ ...base, from: { kind: "trick", trickId: "x" } });
     expect(read).toEqual({
       ok: true,
-      input: { ...base, body: "", options: [], text: "optional", recommends: null, links: [], priority: "today", about: null, replyTo: null, supersedes: null, expiresAt: null },
+      input: { ...base, body: "", options: [], text: "optional", recommends: null, links: [], priority: "today", about: null, replyTo: null, supersedes: null, expiresAt: null, images: [] },
     });
   });
 

@@ -48,6 +48,33 @@ describe("readHillDecision", () => {
     expect(readHillDecision(wire({ options: [], text: "none" }))).toBeNull();
   });
 
+  it("reads the images in order, keeps a caption, and leaves out one that does not fit", () => {
+    const good = { id: "im_aaaaaaaaaaaaaaaa", kind: "image", mime: "image/png", bytes: 120, width: 390, height: 240, caption: "The card after" };
+    const read = readHillDecision(
+      wire({
+        media: [
+          good,
+          { ...good, id: "im_bbbbbbbbbbbbbbbb", mime: "image/jpeg", width: null, height: null, caption: undefined },
+          { ...good, id: "../../api/pair" },
+          { ...good, id: "im_cccccccccccccccc", mime: "image/svg+xml" },
+          { ...good, id: "im_dddddddddddddddd", kind: "video" },
+          { ...good, id: "im_eeeeeeeeeeeeeeee", width: -3 },
+        ],
+      }),
+    );
+    expect(read?.media).toEqual([
+      { id: "im_aaaaaaaaaaaaaaaa", kind: "image", mime: "image/png", bytes: 120, width: 390, height: 240, caption: "The card after" },
+      { id: "im_bbbbbbbbbbbbbbbb", kind: "image", mime: "image/jpeg", bytes: 120, width: null, height: null },
+    ]);
+  });
+
+  it("reads no images from a bridge before them, and at most four from any", () => {
+    expect(readHillDecision(wire({ media: undefined }))?.media).toEqual([]);
+    expect(readHillDecision(wire({ media: "x" }))?.media).toEqual([]);
+    const many = Array.from({ length: 6 }, (_, i) => ({ id: `im_${String(i).repeat(16)}`, kind: "image", mime: "image/webp", bytes: 1, width: 1, height: 1 }));
+    expect(readHillDecision(wire({ media: many }))?.media.map((m) => m.id)).toEqual(many.slice(0, 4).map((m) => m.id));
+  });
+
   it("keeps only http and https links", () => {
     const read = readHillDecision(
       wire({

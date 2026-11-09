@@ -3,6 +3,8 @@
 // Nothing here opens a path into a pane of its own: the send is `WalkyService.send` with
 // `{ kind: "operator", label }`, as `POST /api/walky` calls it.
 
+import { maskTerminalTitle } from "../answer-mask.ts";
+import { paneName, type NameableP } from "../pane-name.ts";
 import { isSelf, LOCAL_MEMBER, parseAddress } from "../walky/address.ts";
 import type { WalkyService } from "../walky/service.ts";
 import { mintWalkyId, type WalkyReceipt } from "../walky/types.ts";
@@ -33,6 +35,36 @@ export function walkyPlace(walky: Pick<WalkyService, "who">, memberId: string | 
     if (hits.length !== 1) return null;
     const hit = hits[0]!;
     return { address: hit.address, label: hit.label, host: hit.machine, unattended: unattended(hit.address) };
+  };
+}
+
+/** A pane as the snapshot holds it, as far as the Dashboard's name rule reads it. */
+export type HillNameablePane = NameableP & { readonly paneId: string };
+
+/**
+ * The session's name as the Dashboard's row shows it, for the live pane a walky address names now, or
+ * null. The same source and the same order as the row (`paneName`, mirrored in web/src/lib/pane-name.ts):
+ * the pane's own label, then the harness's session name, then a named one-pane tab's label, then a
+ * terminal title that is not stale, then the agent word. With COLLIE_REDACT on, the title is masked
+ * first, as the snapshot masks it. Null for an address that is not live now (the instance token must
+ * still match, through `place`), for a pane on another crew member (this machine has no view of it),
+ * and for a pane id that no view, or more than one, holds. The caller then keeps the walky label.
+ */
+export function hillSessionName(opts: {
+  readonly place: (address: string) => HillPlace | null;
+  readonly views: () => readonly HillNameablePane[];
+  readonly memberId: string | null;
+  readonly redact: boolean;
+}): (address: string) => string | null {
+  return (raw) => {
+    const placed = opts.place(raw);
+    const at = placed === null ? null : parseAddress(placed.address);
+    if (at === null || at.kind !== "pane" || !isSelf(at.memberId, opts.memberId)) return null;
+    const views = opts.views().filter((view) => view.paneId === at.paneId);
+    if (views.length !== 1) return null;
+    const view = views[0]!;
+    const name = paneName(opts.redact ? maskTerminalTitle(view) : view).trim();
+    return name === "" ? null : name;
   };
 }
 

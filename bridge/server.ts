@@ -249,6 +249,7 @@ import { PinKeys } from "./pins/keys.ts";
 import { pinsRoute, type PinsAnswer, type PinsSession } from "./pins/routes.ts";
 import { PinStore } from "./pins/store.ts";
 import { readAnswerRequest } from "./hill/parse.ts";
+import { HILL_ID_RE, HILL_MEDIA_ID_RE } from "../web/src/lib/hill/wire.ts";
 import type { HillService } from "./hill/service.ts";
 import { isPaneId, parseAddress } from "./walky/address.ts";
 import { isWalkyId, parsePhoneSend } from "./walky/parse.ts";
@@ -548,6 +549,14 @@ const STT_MODEL_ROUTE = /^\/api\/stt\/model\/([^/]+)$/;
  * on the machine whose journal named it and is therefore a forwarded READ.
  */
 const BLOB_ROUTE = /^\/api\/blobs\/([^/]+)$/;
+
+/**
+ * `GET /api/hill/media/<decision id>/<media id>` (M96): one image of a decision, as its bytes. Both
+ * segments are matched as opaque values here and checked against their patterns in the handler
+ * (`hillMediaRoute`) before anything else, and only a pair the store holds names a file. Lead-local,
+ * like the rest of the hill: not forwarded across a crew link.
+ */
+const HILL_IMAGE_ROUTE = /^\/api\/hill\/media\/([^/]+)\/([^/]+)$/;
 
 /**
  * Walky talky's list for one pane (M62): the messages that reached it, newest first, each with its
@@ -3264,6 +3273,13 @@ export function startServer(opts: {
           body = undefined;
         }
         return hillAnswerRoute(hill, body, { device: whois(req).device, acceptEncoding: req.headers.get("accept-encoding") });
+      }
+      const hillImage = pathname.match(HILL_IMAGE_ROUTE);
+      if (hillImage && req.method === "GET") {
+        const denied = browserGate("read");
+        if (denied) return denied;
+        if (host.kind === "member") return text(HILL_LOCAL_TEXT, 400);
+        return hillMediaRoute(hill, hillImage[1]!, hillImage[2]!);
       }
       if (pathname === "/api/walky/who" && req.method === "GET") {
         const denied = browserGate("read");
@@ -8964,6 +8980,35 @@ export async function hillAnswerRoute(
     case "unsaved":
       return text(HILL_UNSAVED_TEXT, 503);
   }
+}
+
+/**
+ * The headers an image of the hill carries beside {@link secure}'s `nosniff` (M96). The Files view's
+ * picture headers, for the same reasons: `no-store` because the browser's cache outlives a pairing
+ * (`blobRoute`), a CSP that drops the answer into an opaque origin with nothing allowed in case the
+ * bytes are ever opened as a page, and `inline`.
+ */
+export const HILL_MEDIA_HEADERS = {
+  "cache-control": "no-store",
+  "content-security-policy": "default-src 'none'; sandbox",
+  "content-disposition": "inline",
+} as const;
+
+/** What the image route answers for any id it does not hold, well formed or not. */
+export const HILL_MEDIA_MISSING = "no such image";
+
+/**
+ * `GET /api/hill/media/<decision id>/<media id>` (M96): the bytes of one image of a decision, with
+ * the type the bridge read off them when it kept the file. Each id is checked against its pattern
+ * before the service is asked, and the service builds a path only for a pair its store holds. Every
+ * miss is the same 404.
+ */
+export function hillMediaRoute(hill: HillService | undefined, decisionId: string, mediaId: string): Response {
+  if (hill === undefined) return text(HILL_OFF_TEXT, 404);
+  if (!HILL_ID_RE.test(decisionId) || !HILL_MEDIA_ID_RE.test(mediaId)) return text(HILL_MEDIA_MISSING, 404);
+  const file = hill.mediaFile(decisionId, mediaId);
+  if (file === null) return text(HILL_MEDIA_MISSING, 404);
+  return secure(new Response(file.bytes, { headers: { "content-type": file.mime, ...HILL_MEDIA_HEADERS } }));
 }
 
 /** `POST /api/walky`: one message from the phone, as an operator, under the device's label. */

@@ -7,6 +7,10 @@ import type { JsonObject, JsonValue } from "../json.ts";
 import { asJsonBoolean, asJsonNumber, asJsonObject, asJsonString } from "../../web/src/lib/json.ts";
 import {
   HILL_ID_RE,
+  HILL_IMAGE_PATH_MAX,
+  HILL_MEDIA_ID_RE,
+  HILL_MEDIA_MAX,
+  HILL_MEDIA_MIMES,
   HILL_PRIORITIES,
   HILL_STATES,
   HILL_TEXT_MODES,
@@ -14,6 +18,8 @@ import {
   hillIdOfNode,
   type HillAnswerRequest,
   type HillDecision,
+  type HillImageInput,
+  type HillMedia,
   type HillOption,
   type HillPostInput,
   type HillPriority,
@@ -80,6 +86,16 @@ function readOption(value: JsonValue | undefined): HillOption | null {
   return confirm === null ? withDetail : { ...withDetail, confirm };
 }
 
+/** One image as posted: `{ path, caption? }`. What the path names is the service's to check. */
+function readImage(value: JsonValue | undefined): HillImageInput | null {
+  const row = asJsonObject(value);
+  if (row === undefined) return null;
+  const path = asJsonString(row.path);
+  const caption = optionalText(row, "caption");
+  if (path === undefined || path.length > HILL_IMAGE_PATH_MAX || caption === undefined) return null;
+  return caption === null ? { path } : { path, caption };
+}
+
 function readLink(value: JsonValue | undefined): { label: string; href: string } | null {
   const row = asJsonObject(value);
   const label = asJsonString(row?.label);
@@ -144,9 +160,18 @@ export function readPostFields(row: JsonObject): HillPostRead {
     if (at === undefined || !Number.isSafeInteger(at)) return refused(null, "bad request: an expiry is epoch milliseconds");
     expiresAt = at;
   }
+  const rawImages = row.images ?? [];
+  if (!Array.isArray(rawImages)) return refused("bad_image", "images are a list");
+  if (rawImages.length > HILL_MEDIA_MAX) return refused("too_many_images", `a decision has at most ${String(HILL_MEDIA_MAX)} images`);
+  const images: HillImageInput[] = [];
+  for (const entry of rawImages) {
+    const image = readImage(entry);
+    if (image === null) return refused("bad_image", "an image is a path and an optional caption");
+    images.push(image);
+  }
   return {
     ok: true,
-    input: { requestId, title, summary, body: body ?? "", options, text, recommends, links, priority, about, replyTo, supersedes, expiresAt },
+    input: { requestId, title, summary, body: body ?? "", options, text, recommends, links, priority, about, replyTo, supersedes, expiresAt, images },
   };
 }
 
@@ -259,6 +284,38 @@ function readStoredLinks(value: JsonValue | undefined): Array<{ label: string; h
   return out;
 }
 
+const MEDIA_FIELD_MAX = 4096;
+
+function readOneMedia(value: JsonValue | undefined): HillMedia | null {
+  const row = asJsonObject(value);
+  if (row === undefined) return null;
+  const id = asJsonString(row.id);
+  const mimeText = asJsonString(row.mime);
+  const mime = HILL_MEDIA_MIMES.find((candidate) => candidate === mimeText);
+  const bytes = asJsonNumber(row.bytes);
+  const width = numberOrNull(row, "width");
+  const height = numberOrNull(row, "height");
+  const caption = row.caption === undefined ? undefined : asJsonString(row.caption);
+  if (id === undefined || !HILL_MEDIA_ID_RE.test(id) || row.kind !== "image" || mime === undefined) return null;
+  if (bytes === undefined || !Number.isSafeInteger(bytes) || bytes < 0 || width === undefined || height === undefined) return null;
+  if (row.caption !== undefined && (caption === undefined || caption.length > MEDIA_FIELD_MAX)) return null;
+  const media: HillMedia = { id, kind: "image", mime, bytes, width, height };
+  return caption === undefined ? media : { ...media, caption };
+}
+
+/** A stored decision's images. Absent reads as none (a file written before images); any bad entry fails the decision. */
+function readStoredMedia(value: JsonValue | undefined): HillMedia[] | null {
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || value.length > HILL_MEDIA_MAX) return null;
+  const out: HillMedia[] = [];
+  for (const entry of value) {
+    const media = readOneMedia(entry);
+    if (media === null || out.some((held) => held.id === media.id)) return null;
+    out.push(media);
+  }
+  return out;
+}
+
 /** One decision as the file stored it, or null when any field fails. */
 export function readDecision(value: JsonValue | undefined): HillDecision | null {
   const row = asJsonObject(value);
@@ -296,6 +353,8 @@ export function readDecision(value: JsonValue | undefined): HillDecision | null 
   const closedAt = numberOrNull(row, "closedAt");
   const closedReason = stringOrNull(row, "closedReason");
   const answer = readAnswer(row.answer);
+  const media = readStoredMedia(row.media);
+  if (media === null) return null;
   if (links === null || replyTo === undefined || target === undefined || supersedes === undefined || supersededBy === undefined) return null;
   if (expiresAt === undefined || at === undefined || !Number.isSafeInteger(at) || !isState(stateText)) return null;
   if (closedAt === undefined || closedReason === undefined || answer === undefined) return null;
@@ -313,7 +372,7 @@ export function readDecision(value: JsonValue | undefined): HillDecision | null 
     options,
     text,
     recommends,
-    media: [],
+    media,
     links,
     replyTo,
     target,

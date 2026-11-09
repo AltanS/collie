@@ -775,6 +775,9 @@ describe("solo zero-tax — routes", () => {
       // call forwards to the member the program runs on.
       "/^\\/api\\/durable\\/conversation\\/([^/]+)\\/(items|reopen)$/",
       "/^\\/api\\/durable\\/conversations$/",
+      // One image of a decision on the hill (M96): a read, both ids checked against their patterns before
+      // any path is built, lead-local like the rest of the hill.
+      "/^\\/api\\/hill\\/media\\/([^/]+)\\/([^/]+)$/",
       // Machines (ADR 0084): one machine's day of minutes, and its alert rules. A lead and a solo
       // collie answer for every machine they keep watch over; a peer 404s (`crew.not_lead`), and none
       // is forwardable — `bridge/crew/router.test.ts` pins all three as 404 across a link.

@@ -206,7 +206,7 @@ import { currentWarrant, discardForeignWarrant, refreshWarrant, type WarrantPush
 import { CLEAR_BURST_MS, Push } from "./push.ts";
 import { currentNotesReader } from "./release-notes.ts";
 import { pluginRoot } from "./root.ts";
-import { buildId, startServer } from "./server.ts";
+import { buildId, filesPrivateFolders, startServer } from "./server.ts";
 import {
   DEFAULT_SESSION_NAME,
   herdTagFor,
@@ -305,10 +305,11 @@ import { WalkySeen } from "./walky/seen.ts";
 import { WalkyService } from "./walky/service.ts";
 import { siblingDirsOf, SiblingLogs } from "./walky/siblings.ts";
 import { walkySocketPath, WalkyServer } from "./walky/socket.ts";
+import { deniedFoldersSync, HillMediaStore } from "./hill/media.ts";
 import { HillReceiptStore } from "./hill/receipts.ts";
 import { HillService } from "./hill/service.ts";
 import { hillDir, HillStore } from "./hill/store.ts";
-import { walkyPlace, walkySend } from "./hill/walky.ts";
+import { hillSessionName, walkyPlace, walkySend } from "./hill/walky.ts";
 
 // How often the registry rescans the filesystem for sessions that appeared/disappeared after boot.
 const SESSION_REFRESH_MS = 15_000;
@@ -2128,12 +2129,25 @@ if (walkyRecovered > 0) console.log(`[walky] settled ${String(walkyRecovered)} m
 // the person's own operator walky message. `<stateDir>/hill/` is made by the first post, never at boot.
 const hillReceipts = new HillReceiptStore(cfg.stateDir);
 await hillReceipts.load();
+// A decision's images (M96): read by the bridge from the path an agent names, never from Collie's own
+// folders, kept in `<stateDir>/hill/media/`, and removed with the decision.
+const hillMedia = new HillMediaStore(hillDir(cfg.stateDir), deniedFoldersSync(filesPrivateFolders(cfg)));
 const hillPlace = walkyPlace(walky, walkyMemberId);
 const hill = new HillService({
-  store: new HillStore(hillDir(cfg.stateDir)),
+  store: new HillStore(hillDir(cfg.stateDir), Date.now, undefined, (ids) => {
+    for (const id of ids) hillMedia.remove(id);
+  }),
   receipts: hillReceipts,
+  media: hillMedia,
   place: hillPlace,
   send: walkySend(walky),
+  // A card names a session as the Dashboard's row does, from the same snapshot views (M96).
+  sessionName: hillSessionName({
+    place: hillPlace,
+    views: () => registry.ordered().flatMap((rt) => rt.engine.current().agents),
+    memberId: walkyMemberId,
+    redact: cfg.redact,
+  }),
   crewMode: () => crew.mode,
   walkyOn: () => cfg.walky,
   memberId: walkyMemberId,
@@ -2143,6 +2157,7 @@ const hill = new HillService({
   // down; an answer only ever comes after boot.
   tap: (host, trickId, tap, decisionId) => tricks?.tapFromHill(host, trickId, tap, decisionId) ?? Promise.resolve(false),
 });
+hill.pruneMedia();
 const walkyServer = new WalkyServer({
   socketPath: walkySocketPath(cfg.stateDir),
   host: HOST,

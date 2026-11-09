@@ -15,6 +15,13 @@
 // walky send (`WalkyService.send` with `{ kind: "operator", label }`), as `POST /api/walky` does it.
 // The hill has no path of its own into a pane.
 //
+// THE NAMES ON THE CARD. `from.label` and `target.label` are the session's name as the Dashboard's row
+// shows it (`sessionName`, injected; hill/walky.ts `hillSessionName`), with the walky label (folder
+// and branch) only when the bridge has no name for the pane. Several sessions often share one folder
+// and branch, so the walky label alone does not say which session asked. An open decision is served
+// with the name the pane has NOW, while that pane is live; a closed one keeps the name it had. The
+// walky address stays the routing key and is never renamed.
+//
 // ORDER ON AN ANSWER. Write the receipt, close the decision, then send. A send that fails or throws
 // after the close leaves the decision answered with `delivery: "unknown"`, and nothing is sent again.
 //
@@ -35,6 +42,8 @@ import {
   HILL_LINK_HREF_MAX,
   HILL_LINK_LABEL_MAX,
   HILL_LINKS_MAX,
+  HILL_MEDIA_CAPTION_MAX,
+  HILL_MEDIA_MAX,
   HILL_NOW_MAX,
   HILL_OPEN_MAX,
   HILL_OPTION_CONFIRM_MAX,
@@ -49,6 +58,8 @@ import {
   sortOpenDecisions,
   type HillAnswerRequest,
   type HillDecision,
+  type HillImageInput,
+  type HillMedia,
   type HillOption,
   type HillPostInput,
   type HillReceipt,
@@ -60,6 +71,7 @@ import type { WalkyPane } from "../walky/deliver.ts";
 import { headerField, WALKY_BODY_MAX, WALKY_LABEL_MAX } from "../walky/types.ts";
 import { digestDiffers, withDigest } from "../worktree-receipts.ts";
 import { readPostFields } from "./parse.ts";
+import { mintMediaId, type HillImageBytes, type HillMediaStore } from "./media.ts";
 import { hillAnswerDigest, type HillAnswerOutcome, type HillReceiptRecord, type HillReceiptSurface } from "./receipts.ts";
 import type { HillStore } from "./store.ts";
 
@@ -134,6 +146,11 @@ export interface HillServiceDeps {
    * True when the run succeeded. Absent: no tricks runner, so every trick's answer is `failed`.
    */
   readonly tap?: (host: string, trickId: string, tap: HillTrickTap, decisionId: string) => Promise<boolean>;
+  /** Where a decision's images are read and kept (media.ts). Absent: a post with images is refused. */
+  readonly media?: HillMediaStore;
+  readonly mintMediaId?: () => string;
+  /** The session's Dashboard name for the live pane a walky address names now, or null to keep the walky label. */
+  readonly sessionName?: (address: string) => string | null;
 }
 
 /** A post's answer: the stored decision, or a refusal with its code and plain words the CLI prints. */
@@ -160,6 +177,8 @@ export const EXPIRED = "expired";
 export const DISMISSED = "Dismissed.";
 /** How many characters of the title the answer message's first line keeps, the `…` included. */
 export const MESSAGE_TITLE_MAX = 80;
+/** How many characters of a session's name a card shows, the `…` included. */
+export const SESSION_LABEL_MAX = 80;
 
 /** Mint a decision id: `dc_` and 12 characters of [a-z0-9], from a uniform random source. */
 export function mintDecisionId(random: (n: number) => Uint8Array = (n) => randomBytes(n)): string {
@@ -235,6 +254,13 @@ export function answerMessage(decision: Pick<HillDecision, "id" | "title">, inte
   if (intent !== "answer") lines.push(`Option: ${intent} (${label ?? intent})`);
   if (text !== null && text !== "") lines.push(text);
   return lines.join("\n");
+}
+
+/** A session's name as the hill keeps it: one cleaned line, cut with `…` past {@link SESSION_LABEL_MAX}. */
+export function sessionLabel(raw: string): string {
+  const { text } = cleanLine(raw, SESSION_LABEL_MAX);
+  const points = [...text];
+  return points.length <= SESSION_LABEL_MAX ? text : `${points.slice(0, SESSION_LABEL_MAX - 1).join("")}…`;
 }
 
 /** The key a sender's decisions are filed under: its address, or the trick's id. */
@@ -328,6 +354,9 @@ type Claim =
 export class HillService {
   private readonly now: () => number;
   private readonly mint: () => string;
+  /** The names of the open decisions at the last `rev()`, and how often they changed since the start. */
+  private namesSeen: string | null = null;
+  private namesMoved = 0;
   /** The answers' claim steps run one after another, so two taps cannot both find a decision open. */
   private lane: Promise<void> = Promise.resolve();
 
@@ -336,9 +365,19 @@ export class HillService {
     this.mint = deps.mintId ?? (() => mintDecisionId());
   }
 
-  /** The revision on the snapshot, or undefined while no decisions file exists. */
+  /**
+   * The revision on the snapshot, or undefined while no decisions file exists. It also moves when a
+   * session behind an open decision is renamed, so the phone refetches the list and shows the new name.
+   */
   rev(): number | undefined {
-    return this.deps.store.rev();
+    const stored = this.deps.store.rev();
+    if (stored === undefined) return undefined;
+    if (this.deps.sessionName !== undefined) {
+      const names = JSON.stringify(this.deps.store.list().open.map((decision) => this.named(decision)).map((decision) => [decision.id, decision.from.label, decision.target?.label ?? null]));
+      if (this.namesSeen !== null && names !== this.namesSeen) this.namesMoved += 1;
+      this.namesSeen = names;
+    }
+    return stored + this.namesMoved;
   }
 
   /** One decision by id, any sender (the tricks runner reads its own decisions' states). */
@@ -346,9 +385,28 @@ export class HillService {
     return this.deps.store.get(id);
   }
 
-  /** What `GET /api/hill` serves. */
+  /** What `GET /api/hill` serves: every open decision with the names its sessions have now. */
   list(): ReturnType<HillStore["list"]> {
-    return this.deps.store.list();
+    const list = this.deps.store.list();
+    // The same revision the snapshot carries, so a phone that holds it reads `unchanged`.
+    return { ...list, rev: this.rev() ?? list.rev, open: list.open.map((decision) => this.named(decision)) };
+  }
+
+  /** The session's name for a walky address, or `fallback` when the bridge has none. */
+  private nameOf(address: string | null, fallback: string): string {
+    const name = address === null ? null : (this.deps.sessionName?.(address) ?? null);
+    const label = name === null ? "" : sessionLabel(name);
+    return label === "" ? fallback : label;
+  }
+
+  /** An open decision with the names its sessions have now, while they are live. A closed one, as stored. */
+  private named(decision: HillDecision): HillDecision {
+    if (decision.state !== "open" || this.deps.sessionName === undefined) return decision;
+    const fromLabel = decision.from.kind === "agent" ? this.nameOf(decision.from.address, decision.from.label) : decision.from.label;
+    const to = decision.replyTo ?? decision.from.address;
+    const target = decision.target === null ? null : { ...decision.target, label: this.nameOf(to, decision.target.label) };
+    if (fromLabel === decision.from.label && target?.label === decision.target?.label) return decision;
+    return { ...decision, from: { ...decision.from, label: fromLabel }, target };
   }
 
   /** The sender a pane of this bridge stands for, at its walky address (`WalkyService.addressOf`). */
@@ -403,25 +461,29 @@ export class HillService {
     if (open.length >= HILL_OPEN_MAX) return refuse("too_many_open", `this session has ${String(HILL_OPEN_MAX)} open decisions; withdraw one, or wait for answers`);
     const asked = input.priority ?? "today";
     const priority = asked === "now" && open.filter((decision) => decision.priority === "now").length >= HILL_NOW_MAX ? "today" : asked;
+    const images = this.readImages(input.images ?? []);
+    if (!images.ok) return images;
 
     let id = this.mint();
     for (let tries = 0; this.deps.store.get(id) !== undefined && tries < 8; tries += 1) id = this.mint();
     if (this.deps.store.get(id) !== undefined) return refuse(null, "could not mint a decision id; try again");
+    const media = this.keepImages(id, images.images);
+    if (media === null) return refuse(null, "the images could not be saved on this machine; nothing was posted");
     const decision: HillDecision = {
       v: 1,
       id,
       requestId: input.requestId,
       from:
         from.kind === "agent"
-          ? { kind: "agent", address: from.address, trickId: null, trickKey: null, memberId: from.memberId, harness: from.harness, label: from.label, host: from.host }
+          ? { kind: "agent", address: from.address, trickId: null, trickKey: null, memberId: from.memberId, harness: from.harness, label: this.nameOf(from.address, from.label), host: from.host }
           : { kind: "trick", address: null, trickId: from.trickId, trickKey: from.trickKey, memberId: this.deps.memberId, harness: null, label: headerField(from.label, WALKY_LABEL_MAX), host: from.host },
       about: about?.address ?? null,
       priority,
       priorityAsked: asked,
       ...cleaned.fields,
-      media: [],
+      media,
       replyTo: replyTo?.address ?? null,
-      target: target === null ? null : { label: target.label, host: target.host, unattended: target.unattended },
+      target: target === null ? null : { label: this.nameOf(target.address, target.label), host: target.host, unattended: target.unattended },
       supersedes: superseded?.id ?? null,
       supersededBy: null,
       expiresAt: input.expiresAt ?? null,
@@ -432,10 +494,67 @@ export class HillService {
       answer: null,
     };
     const replaced: HillDecision[] = superseded === null ? [] : [{ ...superseded, state: "superseded", supersededBy: id, closedAt: now, closedReason: `superseded by ${id}` }];
-    if (!this.deps.store.put(decision, ...replaced)) return refuse(null, "the decision could not be saved on this machine; nothing was posted");
-    const detail = superseded === null ? { decisionId: id, options: decision.options.length } : { decisionId: id, options: decision.options.length, supersedes: superseded.id };
+    if (!this.deps.store.put(decision, ...replaced)) {
+      if (media.length > 0) this.deps.media?.remove(id);
+      return refuse(null, "the decision could not be saved on this machine; nothing was posted");
+    }
+    const base = superseded === null ? { decisionId: id, options: decision.options.length } : { decisionId: id, options: decision.options.length, supersedes: superseded.id };
+    // The images as a count and a byte sum, never a path or a caption.
+    const detail = media.length === 0 ? base : { ...base, images: media.length, imageBytes: media.reduce((sum, item) => sum + item.bytes, 0) };
     this.deps.audit?.({ action: "hill.post", detail });
     return { ok: true, decision };
+  }
+
+  /** Read and check every image a post names, in order, before anything is kept. The first that fails refuses the post. */
+  private readImages(raw: readonly HillImageInput[]): { readonly ok: true; readonly images: Array<HillImageBytes & { readonly caption: string | null }> } | Extract<HillPostAnswer, { ok: false }> {
+    if (raw.length === 0) return { ok: true, images: [] };
+    if (raw.length > HILL_MEDIA_MAX) return { ok: false, code: "too_many_images", error: `a decision has at most ${String(HILL_MEDIA_MAX)} images` };
+    const store = this.deps.media;
+    if (store === undefined) return { ok: false, code: "bad_image", error: "this bridge keeps no images" };
+    const images: Array<HillImageBytes & { readonly caption: string | null }> = [];
+    for (const image of raw) {
+      const caption = cleanLine(image.caption ?? "", HILL_MEDIA_CAPTION_MAX);
+      if (caption.over) return { ok: false, code: "bad_image", error: `an image caption is at most ${String(HILL_MEDIA_CAPTION_MAX)} characters` };
+      const read = store.read(image.path);
+      if (!read.ok) return { ok: false, code: read.code, error: read.error };
+      images.push({ mime: read.mime, bytes: read.bytes, width: read.width, height: read.height, caption: caption.text === "" ? null : caption.text });
+    }
+    return { ok: true, images };
+  }
+
+  /** Keep a new decision's images under ids the bridge mints. The media entries, or null when the write failed. */
+  private keepImages(decisionId: string, images: ReadonlyArray<HillImageBytes & { readonly caption: string | null }>): HillMedia[] | null {
+    if (images.length === 0) return [];
+    const store = this.deps.media;
+    if (store === undefined) return null;
+    const mint = this.deps.mintMediaId ?? (() => mintMediaId());
+    const ids: string[] = [];
+    for (let tries = 0; ids.length < images.length && tries < images.length + 8; tries += 1) {
+      const next = mint();
+      if (!ids.includes(next)) ids.push(next);
+    }
+    if (ids.length < images.length) return null;
+    const files = images.map((image, i) => ({ id: ids[i]!, bytes: image.bytes }));
+    if (!store.save(decisionId, files)) return null;
+    return images.map((image, i): HillMedia => {
+      const entry: HillMedia = { id: ids[i]!, kind: "image", mime: image.mime, bytes: image.bytes.length, width: image.width, height: image.height };
+      return image.caption === null ? entry : { ...entry, caption: image.caption };
+    });
+  }
+
+  /** The bytes and type of one image of a held decision, for the phone's read route. Null for any id this bridge does not hold. */
+  mediaFile(decisionId: string, mediaId: string): { readonly mime: HillMedia["mime"]; readonly bytes: Uint8Array<ArrayBuffer> } | null {
+    const store = this.deps.media;
+    if (store === undefined) return null;
+    const media = this.deps.store.get(decisionId)?.media.find((item) => item.id === mediaId);
+    if (media === undefined) return null;
+    const bytes = store.bytesOf(decisionId, media);
+    return bytes === null ? null : { mime: media.mime, bytes };
+  }
+
+  /** Remove the image folders of decisions the store no longer holds. Run at start and from the sweep. */
+  pruneMedia(): number {
+    return this.deps.media?.prune(new Set(this.deps.store.all().map((decision) => decision.id))) ?? 0;
   }
 
   /** `about` as the post named it: none, `here` (the poster's own session) or an address. Undefined: not a live one. */
@@ -453,7 +572,7 @@ export class HillService {
   /** One of the sender's own decisions. Another sender's id answers as not found. */
   status(sender: HillSender, id: string): HillOneAnswer {
     const decision = this.mine(sender, id);
-    return decision === null ? { ok: false, missing: true, error: `no decision ${id} from this session` } : { ok: true, decision };
+    return decision === null ? { ok: false, missing: true, error: `no decision ${id} from this session` } : { ok: true, decision: this.named(decision) };
   }
 
   /** The poster takes an open decision back. It closes `withdrawn`, "by the poster" (a trick's runner names its own reason). */
@@ -471,13 +590,14 @@ export class HillService {
   mineList(sender: HillSender): HillDecision[] {
     const key = senderKey(sender);
     const own = this.deps.store.all().filter((decision) => keyOf(decision) === key);
-    const open = sortOpenDecisions(own.filter((decision) => decision.state === "open"));
+    const open = sortOpenDecisions(own.filter((decision) => decision.state === "open")).map((decision) => this.named(decision));
     const closed = own.filter((decision) => decision.state !== "open").toSorted((a, b) => (b.closedAt ?? b.at) - (a.closedAt ?? a.at));
     return [...open, ...closed];
   }
 
   /** Close every open decision past its `expiresAt` as `expired`. Run from the bridge's slow timer. Answers how many closed. */
   sweep(now: number = this.now()): number {
+    this.pruneMedia();
     const due = this.deps.store.all().filter((decision) => decision.state === "open" && decision.expiresAt !== null && decision.expiresAt <= now);
     if (due.length === 0) return 0;
     const closed = due.map((decision): HillDecision => Object.assign({}, decision, { state: "expired" as const, closedAt: now, closedReason: EXPIRED }));

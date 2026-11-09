@@ -6,7 +6,8 @@
 // Every open decision, plus the {@link HILL_CLOSED_KEPT} newest closed ones; an older closed one goes at
 // the next write. The folder is 0700 and the file 0600, written whole to a temp file and renamed over
 // the old one, so a crash leaves the old file or the new one. Nothing else in the state dir changes
-// shape, and a build without the hill never looks in the folder.
+// shape, and a build without the hill never looks in the folder. A decision's images live beside it in
+// `media/<decision id>/` (media.ts) and go when it goes: `dropped` hears every id a write lets go.
 //
 // ONE WRITER, SYNCHRONOUS. The bridge is the only process that writes the file, and every write is
 // `writeFileSync` then `renameSync` with no await between a read of memory and the write of the new
@@ -56,11 +57,16 @@ export class HillStore {
   private revision: number | undefined;
   private readonly path: string | null;
 
-  /** `dir` null keeps the decisions in memory only (a test); the revision still moves. */
+  /**
+   * `dir` null keeps the decisions in memory only (a test); the revision still moves. `dropped` hears
+   * the ids of the decisions a write let go (an old closed one past the cap), after the write, so their
+   * images go with them.
+   */
   constructor(
     private readonly dir: string | null,
     private readonly now: () => number = Date.now,
     private readonly warn: (line: string) => void = (line) => console.warn(line),
+    private readonly dropped?: (ids: readonly string[]) => void,
   ) {
     this.path = dir === null ? null : join(dir, DECISIONS_FILE);
     this.load();
@@ -141,8 +147,11 @@ export class HillStore {
     }
     next = pruned(next);
     if (!this.write(next)) return false;
+    const kept = new Set(next.map((decision) => decision.id));
+    const gone = this.decisions.filter((decision) => !kept.has(decision.id)).map((decision) => decision.id);
     this.decisions = next;
     this.revision = Math.max((this.revision ?? 0) + 1, this.now());
+    if (gone.length > 0) this.dropped?.(gone);
     return true;
   }
 

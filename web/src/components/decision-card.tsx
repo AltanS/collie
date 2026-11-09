@@ -1,5 +1,6 @@
 import { useEffect, useId, useState, useSyncExternalStore } from "react";
 
+import { HillBodyImages, HillCardImage, hillMediaSource, type HillMediaSource } from "@/components/hill-media";
 import { Icon } from "@/components/icons/icon";
 import { MarkdownText } from "@/components/markdown-text";
 import { NoPromptsBadge } from "@/components/no-prompts-badge";
@@ -29,7 +30,9 @@ import { cn } from "@/lib/utils";
 // An agent posted a question with its options, and the person answers it here. Top to bottom: the
 // meta line (priority, who posted it, its machine, how old it is), the title, the summary, the
 // recommendation when the poster made one, "More" for the body and the links, the options, the text
-// field, the line that says where the answer goes, and a quiet Dismiss at the card's end.
+// field, the line that says where the answer goes, and a quiet Dismiss at the card's end. A decision
+// with images shows the first under the summary; a tap on it opens "More", where every image is drawn
+// in order (components/hill-media.tsx).
 //
 // ── IT WEARS THE APP'S OWN PIECES ──────────────────────────────────────────────────────────────────
 // The card is `ui/card.tsx`, the panel the Machines list and the Settings cards are; its options are
@@ -171,15 +174,18 @@ function AnswerStatus({ decision, answer, onRetry }: { decision: HillDecision; a
 /**
  * One Decision. `answer` is where this card's answer is (`useHillAnswer`, or a fixed state in the
  * playground), `onSend` sends one: an option's intent, `answer` for words alone, or `dismiss`.
+ * `mediaSource` says where an image's bytes are: the bridge's route unless the playground says otherwise.
  */
 export function DecisionCard({
   decision,
   answer,
   onSend,
+  mediaSource = hillMediaSource,
 }: {
   decision: HillDecision;
   answer: HillAnswerState;
   onSend: (intent: string, text: string | null) => void;
+  mediaSource?: HillMediaSource;
 }) {
   useLocale();
   const [draft, setDraft] = useState("");
@@ -199,7 +205,8 @@ export function DecisionCard({
   const required = decision.text === "required";
   const fieldShown = decision.text !== "none";
   const optionsBlocked = locked || (required && text === null);
-  const hasMore = decision.body.trim() !== "" || decision.links.length > 0;
+  const hasMore = decision.body.trim() !== "" || decision.links.length > 0 || decision.media.length > 0;
+  const firstImage = decision.media[0];
   const recommended = decision.options.find((o) => o.intent === decision.recommends?.intent);
   const sendingIntent = answer.phase === "sending" ? answer.intent : null;
   const target = decision.target;
@@ -269,6 +276,10 @@ export function DecisionCard({
           </p>
         </div>
 
+        {firstImage !== undefined && (
+          <HillCardImage src={mediaSource(decision.id, firstImage)} media={firstImage} count={decision.media.length} onOpen={() => setMoreOpen(true)} />
+        )}
+
         {decision.recommends !== null && recommended !== undefined && (
           <div data-slot="decision-recommends" className="flex flex-col gap-0.5">
             <p className="text-sm font-medium">{t("hill.recommended", { label: recommended.label })}</p>
@@ -294,6 +305,7 @@ export function DecisionCard({
             <Collapse open={moreOpen}>
               <div id={bodyId} data-slot="decision-body" className="flex flex-col gap-3 pt-1">
                 {decision.body.trim() !== "" && <MarkdownText text={decision.body} />}
+                {decision.media.length > 0 && <HillBodyImages decisionId={decision.id} media={decision.media} source={mediaSource} />}
                 {decision.links.length > 0 && (
                   <ListGroup as="ul">
                     {decision.links.map((link) => (

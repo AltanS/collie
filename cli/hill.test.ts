@@ -1,10 +1,12 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
 import type { BeaconMatcher } from "../bridge/beacon/decorate.ts";
+import { decision as storedDecision } from "../bridge/hill/fixtures.ts";
+import { deniedFoldersSync, HillMediaStore } from "../bridge/hill/media.ts";
 import { HOST } from "../bridge/host.ts";
 import { memoryHillReceipts } from "../bridge/hill/receipts.ts";
 import { HillService } from "../bridge/hill/service.ts";
@@ -24,11 +26,15 @@ import {
   cmdHillStatus,
   cmdHillWithdraw,
   durationMs,
+  HILL_IMAGES_DROPPED,
   HILL_NOT_HERE,
   HILL_RULES,
   HILL_UNKNOWN,
   hillPostHelp,
+  imagePathOf,
+  parseImageArg,
   parsePostArgs,
+  statusLines,
   type HillDeps,
 } from "./hill.ts";
 import { EXIT } from "./io.ts";
@@ -85,6 +91,7 @@ async function bridge(withHill = true): Promise<Bridge> {
       n += 1;
       return `dc_cli${String(n).padStart(9, "0")}`;
     },
+    media: new HillMediaStore(join(stateDir, "hill"), deniedFoldersSync([stateDir])),
   });
   const base = { socketPath: walkySocketPath(stateDir), service: walky, targets: () => [target], log: () => undefined };
   const server = withHill ? new WalkyServer({ ...base, hill }) : new WalkyServer(base);
@@ -184,6 +191,7 @@ describe("post's flags", () => {
         replyTo: "local/%2",
         supersedes: "dc_k3m9x2p7q1ab",
       },
+      images: [],
       requestId: "0f8b5c1e-5a7d-4b8e-9f00-1a2b3c4d5e6f",
       expiresInMs: 7_200_000,
       body: "Body in Markdown",
@@ -276,10 +284,10 @@ describe("post, status, withdraw and list against a bridge", () => {
     expect(answered.kind).toBe("receipt");
     const status = deps(sock);
     expect(await cmdHillStatus(status, ["dc_cli000000001"])).toBe(EXIT.OK);
-    expect(status.io.stdout).toEqual(["dc_cli000000001 answered", "answer: yes (Yes, Edge first)", "  Go.", "  Today.", "by: Pixel 9", "delivery: typed"]);
+    expect(status.io.stdout).toEqual(["dc_cli000000001 answered", "goes to: repo#one on desk", "answer: yes (Yes, Edge first)", "  Go.", "  Today.", "by: Pixel 9", "delivery: typed"]);
     const withdraw = deps(sock);
     expect(await cmdHillWithdraw(withdraw, ["dc_cli000000002"])).toBe(EXIT.OK);
-    expect(withdraw.io.stdout).toEqual(["dc_cli000000002 withdrawn", "reason: by the poster"]);
+    expect(withdraw.io.stdout).toEqual(["dc_cli000000002 withdrawn", "goes to: repo#one on desk", "reason: by the poster"]);
     const list = deps(sock);
     expect(await cmdHillList(list, [])).toBe(EXIT.OK);
     expect(list.io.stdout.map((line) => line.split("  ")[0])).toEqual(["dc_cli000000001", "dc_cli000000002"]);
@@ -382,5 +390,87 @@ describe("help", () => {
     expect(io.stdout).toEqual(hillPostHelp());
     expect(io.stdout[0]).toStartWith("usage: collie hill post");
     expect(io.stdout.slice(-5)).toEqual(RULES);
+  });
+});
+
+describe("post --image", () => {
+  const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52, 0, 0, 1, 0x86, 0, 0, 0, 0xf0, 8, 2, 0, 0, 0]);
+
+  function work(): string {
+    const dir = realpathSync(mkdtempSync(join(tmpdir(), "hill-cli-img-")));
+    cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
+    return dir;
+  }
+
+  test("an --image value is a path, or a path and a caption after the first =", () => {
+    expect(parseImageArg("shots/a.png")).toEqual({ path: "shots/a.png" });
+    expect(parseImageArg("shots/a.png=The card, after")).toEqual({ path: "shots/a.png", caption: "The card, after" });
+    expect(parseImageArg("a.png=x=y")).toEqual({ path: "a.png", caption: "x=y" });
+    expect(parseImageArg("a.png=  ")).toEqual({ error: "`--image a.png=  ` has an empty caption; leave out the = for none" });
+    expect(parseImageArg("=caption")).toMatchObject({ error: expect.stringContaining("takes <path>") });
+    expect(parseImageArg(`a.png=${"x".repeat(81)}`)).toEqual({ error: "an image caption is at most 80 characters" });
+    expect(parseImageArg(`a.png=${"x".repeat(80)}`)).toEqual({ path: "a.png", caption: "x".repeat(80) });
+  });
+
+  test("up to four --image, in order; a fifth is a usage error", () => {
+    const parsed = parsePostArgs([...POST, "--image", "a.png", "--image", "b.png=Before"]);
+    expect("error" in parsed ? parsed.error : parsed.images).toEqual([{ path: "a.png" }, { path: "b.png", caption: "Before" }]);
+    const five = parsePostArgs([...POST, ...["a", "b", "c", "d", "e"].flatMap((name) => ["--image", `${name}.png`])]);
+    expect(five).toEqual({ error: "a decision has at most 4 `--image`" });
+  });
+
+  test("the path sent is absolute with its folders resolved; the file's own name is never followed", () => {
+    const dir = work();
+    mkdirSync(join(dir, "shots"));
+    symlinkSync(join(dir, "shots"), join(dir, "via"));
+    expect(imagePathOf("shots/a.png", dir)).toEqual({ path: join(dir, "shots", "a.png") });
+    expect(imagePathOf("via/a.png", dir)).toEqual({ path: join(dir, "shots", "a.png") });
+    expect(imagePathOf(join(dir, "shots", "a.png"), "/")).toEqual({ path: join(dir, "shots", "a.png") });
+    symlinkSync(join(dir, "shots", "a.png"), join(dir, "link.png"));
+    expect(imagePathOf("link.png", dir)).toEqual({ path: join(dir, "link.png") });
+    expect(imagePathOf("nowhere/a.png", dir)).toEqual({ error: "`--image nowhere/a.png`: no such folder" });
+  });
+
+  socketTest("the bridge reads the file the path names and keeps it on the decision; a symlink is refused with the reason", async () => {
+    const b = await bridge();
+    const dir = work();
+    writeFileSync(join(dir, "a.png"), PNG);
+    symlinkSync(join(dir, "a.png"), join(dir, "link.png"));
+    const d = deps([walkySocketPath(b.stateDir)], inPane("%1"), { cwd: () => dir });
+    expect(await cmdHillPost(d, [...POST, "--image", "a.png=After", "--json"])).toBe(EXIT.OK);
+    expect(JSON.parse(d.io.stdout[0]!)).toMatchObject({ decision: { media: [{ kind: "image", mime: "image/png", width: 390, height: 240, caption: "After" }] } });
+    const refused = deps([walkySocketPath(b.stateDir)], inPane("%1"), { cwd: () => dir, mintRequestId: () => "0f8b5c1e-5a7d-4b8e-9f00-1a2b3c4d5e70" });
+    expect(await cmdHillPost(refused, [...POST, "--image", "link.png"])).toBe(EXIT.REFUSED);
+    expect(refused.io.stderr[0]).toContain("is a symlink; name the file itself");
+    expect(refused.io.stderr[0]).toEndWith("(bad_image)");
+  });
+
+  socketTest("a bridge that took the post without its images says so on stderr", async () => {
+    const stateDir = mkdtempSync(join(tmpdir(), "hill-noimg-"));
+    const path = walkySocketPath(stateDir);
+    mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+    const server = createServer((socket) => {
+      socket.setEncoding("utf8");
+      socket.once("data", () => socket.end(`${JSON.stringify({ ok: true, decision: storedDecision("dc_older0000001") })}\n`));
+    });
+    await new Promise<void>((resolve) => server.listen(path, resolve));
+    cleanups.push(() => {
+      server.close();
+      rmSync(stateDir, { recursive: true, force: true });
+    });
+    const dir = work();
+    const d = deps([path], inPane("%1"), { cwd: () => dir });
+    expect(await cmdHillPost(d, [...POST, "--image", "a.png"])).toBe(EXIT.OK);
+    expect(d.io.stdout).toEqual(["dc_older0000001"]);
+    expect(d.io.stderr).toEqual([`hill: ${HILL_IMAGES_DROPPED}`]);
+  });
+});
+
+describe("the session's name in status", () => {
+  test("status names where the answer goes as the bridge served it, the session's name and its machine", () => {
+    const decision = storedDecision("dc_named0000001", { target: { label: "concept hill v2", host: "bluefin", unattended: false } });
+    expect(statusLines(decision)).toEqual(["dc_named0000001 open", "goes to: concept hill v2 on bluefin"]);
+    expect(statusLines({ ...decision, target: { label: "lead", host: null, unattended: false } })).toEqual(["dc_named0000001 open", "goes to: lead"]);
+    expect(statusLines({ ...decision, target: null })).toEqual(["dc_named0000001 open"]);
   });
 });

@@ -3376,6 +3376,10 @@ export const en = {
   "hill.receipt.trickFailed": "Sent, but {trick} did not take it",
   "hill.delivery.recorded": "recorded by {trick}",
   "hill.delivery.trickFailed": "{trick} did not take it",
+  "hill.media.unavailable": "Image not available",
+  "hill.media.count": "{index} / {count}",
+  "hill.media.alt": "Image {index} of {count}",
+  "hill.media.open": "Show the images",
 } as const;
 
 /** Every key that exists, as a union of string literals. The completeness contract. */
@@ -3584,6 +3588,10 @@ export const PENDING_TRANSLATION = [
   "hill.receipt.trickFailed",
   "hill.delivery.recorded",
   "hill.delivery.trickFailed",
+  "hill.media.unavailable",
+  "hill.media.count",
+  "hill.media.alt",
+  "hill.media.open",
 ] as const satisfies readonly MessageKey[];
 
 /** A key a bundle may leave out until the translation pass. */
