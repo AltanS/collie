@@ -2,7 +2,7 @@ import { join } from "node:path";
 
 import type { JsonValue } from "../json.ts";
 import { asJsonNumber, asJsonObject, asJsonString } from "../../web/src/lib/json.ts";
-import { HILL_STATES, HILL_TRICK_DELIVERIES, type HillReceipt, type HillState } from "../../web/src/lib/hill/wire.ts";
+import { HILL_DEVICE_ID_RE, HILL_STATES, HILL_TRICK_DELIVERIES, type HillReceipt, type HillState } from "../../web/src/lib/hill/wire.ts";
 import { isRequestId, memoryReceipts, payloadDigest, ReceiptFileStore, type ReceiptSurface } from "../worktree-receipts.ts";
 import { hillDir } from "./store.ts";
 
@@ -62,7 +62,11 @@ export function coerceHillReceipt(raw: JsonValue): HillReceiptRecord | null {
   if (trick === undefined) return null;
   if (!isRequestId(requestId) || digest === undefined || rid !== requestId || code === undefined || reason === undefined) return null;
   if (stateText === undefined || (stateText !== null && !isState(stateText)) || delivery === undefined || at === undefined) return null;
-  return { requestId, payloadDigest: digest, receipt: { rid, code, reason, state: stateText, delivery, trick, at } };
+  // Absent on a receipt written before receipts carried the device's record id.
+  const deviceId = receipt.deviceId === undefined ? undefined : asJsonString(receipt.deviceId);
+  if (receipt.deviceId !== undefined && (deviceId === undefined || !HILL_DEVICE_ID_RE.test(deviceId))) return null;
+  const read: HillReceipt = { rid, code, reason, state: stateText, delivery, trick, at };
+  return { requestId, payloadDigest: digest, receipt: deviceId === undefined ? read : { ...read, deviceId } };
 }
 
 /**

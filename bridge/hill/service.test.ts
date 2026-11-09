@@ -870,6 +870,22 @@ describe("a stored receipt the decision does not show", () => {
   });
 });
 
+describe("the device an answer came from", () => {
+  test("the record id rides on the ok receipt, the stored answer and the audit line; an id off its pattern is dropped", async () => {
+    const r = rig();
+    const decision = posted(r.hill.post(POSTER, input(1)));
+    const outcome = await r.hill.answer(answerOf(decision, 100, "yes"), decision.id, "Pixel 9", "dv_0123456789abcdef");
+    expect(outcome).toMatchObject({ kind: "receipt", receipt: { code: "ok", deviceId: "dv_0123456789abcdef" } });
+    expect(r.store.get(decision.id)?.answer).toMatchObject({ by: "Pixel 9", deviceId: "dv_0123456789abcdef" });
+    expect(r.audit.find((entry) => entry.action === "hill.answer")?.detail).toMatchObject({ deviceId: "dv_0123456789abcdef" });
+    const other = posted(r.hill.post(POSTER, input(2)));
+    const odd = await r.hill.answer(answerOf(other, 101, "yes"), other.id, "Pixel 9", "Pixel 9");
+    expect(odd).toMatchObject({ kind: "receipt", receipt: { code: "ok" } });
+    expect(odd.kind === "receipt" ? odd.receipt.deviceId : "-").toBeUndefined();
+    expect(r.store.get(other.id)?.answer).not.toHaveProperty("deviceId");
+  });
+});
+
 describe("answering at the edges", () => {
   test("a decision past its expiry, not swept yet, answers gone and closes expired; nothing is typed", async () => {
     const r = rig();

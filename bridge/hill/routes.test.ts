@@ -6,7 +6,7 @@ import { join } from "node:path";
 
 import type { BeaconMatcher } from "../beacon/decorate.ts";
 import { HOST } from "../host.ts";
-import { HILL_LOCAL_TEXT, HILL_OFF_TEXT, HILL_RID_REUSED, HILL_UNSAVED_TEXT, hillAnswerRoute, hillListRoute, withHillRev } from "../server.ts";
+import { HILL_LOCAL_TEXT, HILL_OFF_TEXT, HILL_RID_REUSED, HILL_UNSAVED_TEXT, hillAnswerRoute, hillListRoute, pairedDeviceId, withHillRev } from "../server.ts";
 import type { SnapshotResponse } from "../types.ts";
 import type { WalkyHost, WalkyPane } from "../walky/deliver.ts";
 import { WalkyLog } from "../walky/log.ts";
@@ -14,7 +14,7 @@ import { WalkyService } from "../walky/service.ts";
 import { walkySocketPath, WalkyServer, type PlaceTarget } from "../walky/socket.ts";
 import { parseJsonObject, type JsonObject } from "../../web/src/lib/json.ts";
 import { memoryHillReceipts, type HillReceiptSurface } from "./receipts.ts";
-import { HillService, type HillServiceDeps } from "./service.ts";
+import { hillDeviceId, HillService, type HillServiceDeps } from "./service.ts";
 import { HillStore } from "./store.ts";
 import { walkyPlace, walkySend } from "./walky.ts";
 
@@ -139,6 +139,38 @@ describe("POST /api/hill/answer", () => {
     }
     // The same rid still answers fresh: nothing was recorded under it.
     expect(await (await hillAnswerRoute(r.hill, answerBody(id, "yes", null), { device: "Pixel 9", acceptEncoding: null })).json()).toMatchObject({ rid: RID, code: "ok" });
+  });
+
+  test("the device's record id rides beside its label on the ok receipt and the stored answer", async () => {
+    const r = rig();
+    const id = await posted(r);
+    const deviceId = hillDeviceId("b".repeat(64));
+    const res = await hillAnswerRoute(r.hill, answerBody(id, "yes", null), { device: "Pixel 9", deviceId, acceptEncoding: null });
+    expect(await res.json()).toMatchObject({ rid: RID, code: "ok", deviceId });
+    expect(r.hill.decision(id)?.answer).toMatchObject({ by: "Pixel 9", deviceId });
+  });
+
+  test("pairedDeviceId: the paired record's id, never for the local credential, an unknown token or a broken registry", () => {
+    const req = (authorization?: string): Request => new Request("http://h/api/hill/answer", { headers: authorization === undefined ? {} : { authorization } });
+    const gate = {
+      resolve: (token: string | null) => (token === "tok-phone" ? { label: "Pixel 9", tokenHash: "c".repeat(64) } : token === "tok-old" ? { label: "Old" } : null),
+      local: (token: string | null) => token === "tok-local",
+    };
+    expect(pairedDeviceId(req("Bearer tok-phone"), gate)).toBe(hillDeviceId("c".repeat(64)));
+    expect(pairedDeviceId(req("Bearer tok-phone"), gate)).toMatch(/^dv_[0-9a-f]{16}$/u);
+    expect(pairedDeviceId(req("Bearer tok-old"), gate)).toBeNull();
+    expect(pairedDeviceId(req("Bearer tok-local"), gate)).toBeNull();
+    expect(pairedDeviceId(req("Bearer tok-unknown"), gate)).toBeNull();
+    expect(pairedDeviceId(req("Bearer tok-phone"))).toBeNull();
+    const broken = {
+      resolve: (): { label: string } | null => {
+        throw new Error("unreadable");
+      },
+    };
+    expect(pairedDeviceId(req("Bearer tok-phone"), broken)).toBeNull();
+    // One record, one id; another record, another id. The id holds no part of the hash it came from.
+    expect(hillDeviceId("c".repeat(64))).not.toBe(hillDeviceId("d".repeat(64)));
+    expect(hillDeviceId("c".repeat(64))).not.toContain("cccc");
   });
 
   test("every receipt is a 200: ok, rejected and gone; the same rid and choice replays the stored receipt", async () => {

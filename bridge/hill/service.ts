@@ -51,6 +51,7 @@ import type { JsonObject } from "../json.ts";
 import {
   HILL_ANSWER_TEXT_MAX,
   HILL_BODY_MAX,
+  HILL_DEVICE_ID_RE,
   HILL_LINK_HREF_MAX,
   HILL_LINK_LABEL_MAX,
   HILL_LINKS_MAX,
@@ -338,6 +339,15 @@ function served(decision: HillDecision): HillDecision {
   const copy = { ...decision };
   delete copy.postDigest;
   return copy;
+}
+
+/**
+ * The id an answer records for the paired device it came from: `dv_` and 16 hex characters of a SHA-256
+ * over the device's pairing record (its token hash, which the token's owner cannot change and a re-pair
+ * replaces). One-way: it names the record and opens nothing. Attribution, never a signature.
+ */
+export function hillDeviceId(tokenHash: string): string {
+  return `dv_${payloadDigest(["collie hill device", tokenHash]).slice(0, 16)}`;
 }
 
 /** The key a sender's decisions are filed under: its address, or the trick's id. */
@@ -782,14 +792,15 @@ export class HillService {
   /**
    * One answer from a phone, by the receipt rules of the contract, in this order: a known `rid`, the
    * decision open, the intent, the text rule, the target still live; then the receipt, the close and
-   * the send. `id` is the decision id the node named. `by` is the device's label, as operator walky uses it.
+   * the send. `id` is the decision id the node named. `by` is the device's label, as operator walky uses it;
+   * `deviceId` its pairing record's id ({@link hillDeviceId}), kept beside it on the receipt and the answer.
    *
    * A known `rid` with the same payload answers its stored receipt and runs nothing, with one exception:
    * an `ok` receipt the decision does not show (the bridge stopped between the receipt and the close, or
    * a close the receipt never heard of). That answer is settled once, in the claim lane: closed and
    * delivered when the decision is still open, else answered `gone` with the state it has.
    */
-  answer(request: HillAnswerRequest, id: string, by: string): Promise<HillAnswerOutcome> {
+  answer(request: HillAnswerRequest, id: string, by: string, deviceId: string | null = null): Promise<HillAnswerOutcome> {
     const digest = hillAnswerDigest(request.node, request.intent, request.value.text);
     // SYNCHRONOUS from here to `track`: two requests with one rid must not both get past the look.
     const stored = this.deps.receipts.get(request.rid);
@@ -799,7 +810,7 @@ export class HillService {
     }
     const running = this.deps.receipts.inflight(request.rid);
     if (running !== undefined) return digestDiffers(running, digest) ? Promise.resolve({ kind: "reused" }) : running;
-    const work = withDigest(this.run(request, id, by, digest), digest);
+    const work = withDigest(this.run(request, id, by, digest, deviceId), digest);
     this.deps.receipts.track(request.rid, work);
     return work;
   }
@@ -815,8 +826,8 @@ export class HillService {
     return decision !== undefined && decision.answer?.rid !== stored.requestId;
   }
 
-  private async run(request: HillAnswerRequest, id: string, by: string, digest: string): Promise<HillAnswerOutcome> {
-    const claimed = this.lane.then(() => this.claim(request, id, by, digest));
+  private async run(request: HillAnswerRequest, id: string, by: string, digest: string, deviceId: string | null): Promise<HillAnswerOutcome> {
+    const claimed = this.lane.then(() => this.claim(request, id, by, digest, deviceId));
     this.lane = claimed.then(
       () => undefined,
       () => undefined,
@@ -857,11 +868,8 @@ export class HillService {
   }
 
   private auditAnswer(decision: Pick<HillDecision, "id">, request: HillAnswerRequest, by: string, receipt: HillReceipt): void {
-    this.deps.audit?.({
-      action: "hill.answer",
-      device: by,
-      detail: { decisionId: decision.id, intent: request.intent, textLength: request.value.text?.length ?? 0, receiptCode: receipt.code, delivery: receipt.delivery ?? "none", trick: receipt.trick ?? "none" },
-    });
+    const detail = { decisionId: decision.id, intent: request.intent, textLength: request.value.text?.length ?? 0, receiptCode: receipt.code, delivery: receipt.delivery ?? "none", trick: receipt.trick ?? "none" };
+    this.deps.audit?.({ action: "hill.answer", device: by, detail: receipt.deviceId === undefined ? detail : { ...detail, deviceId: receipt.deviceId } });
   }
 
   /**
@@ -874,7 +882,7 @@ export class HillService {
     return { kind: "done", outcome: { kind: "receipt", receipt } };
   }
 
-  private async claim(request: HillAnswerRequest, id: string, by: string, digest: string): Promise<Claim> {
+  private async claim(request: HillAnswerRequest, id: string, by: string, digest: string, deviceId: string | null): Promise<Claim> {
     const { rid, intent } = request;
     // A retry of an unsettled `ok` (see `answer`) waited in the lane: another may have settled it meanwhile.
     const known = this.deps.receipts.get(rid);
@@ -915,7 +923,9 @@ export class HillService {
     // Written first, as not confirmed: a bridge that stops after this line never types the answer twice,
     // and never runs the trick's tap twice (it reads `failed`, the tap that did not run).
     const firstTrick = trick === null ? "none" : "failed";
-    const record: HillReceiptRecord = { requestId: rid, payloadDigest: digest, receipt: receiptOf(rid, now, "ok", null, state, typed ? "unknown" : "none", firstTrick) };
+    const first = receiptOf(rid, now, "ok", null, state, typed ? "unknown" : "none", firstTrick);
+    const device = deviceId !== null && HILL_DEVICE_ID_RE.test(deviceId) ? deviceId : null;
+    const record: HillReceiptRecord = { requestId: rid, payloadDigest: digest, receipt: device === null ? first : { ...first, deviceId: device } };
     if (!(await this.deps.receipts.recordFirst(record))) return { kind: "done", outcome: { kind: "unsaved" } };
     // A withdraw or an expiry may have closed it while the receipt was written.
     const fresh = this.deps.store.get(id);
@@ -923,13 +933,8 @@ export class HillService {
       const late = receiptOf(rid, now, "gone", `the decision is ${fresh?.state ?? "gone"}`, fresh?.state ?? null, null);
       return this.final(request, id, by, digest, late);
     }
-    const closed: HillDecision = {
-      ...fresh,
-      state,
-      closedAt: now,
-      closedReason: null,
-      answer: { rid, intent, label: option?.label ?? null, text, by: headerField(by, WALKY_LABEL_MAX), at: now, delivery: typed ? "unknown" : "none", trick: firstTrick },
-    };
+    const answer: NonNullable<HillDecision["answer"]> = { rid, intent, label: option?.label ?? null, text, by: headerField(by, WALKY_LABEL_MAX), at: now, delivery: typed ? "unknown" : "none", trick: firstTrick };
+    const closed: HillDecision = { ...fresh, state, closedAt: now, closedReason: null, answer: device === null ? answer : { ...answer, deviceId: device } };
     if (!this.deps.store.put(closed)) {
       const unsaved = receiptOf(rid, now, "unknown", "the answer could not be saved on this machine; nothing was typed", "open", null);
       return this.final(request, id, by, digest, unsaved);

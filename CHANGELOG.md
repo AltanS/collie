@@ -43,6 +43,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **The Hill holds at most 200 open Decisions, and none stays forever.** A post past 200 open Decisions across every session is refused as too many open. A Decision posted without `--expires` closes as expired after 14 days, and `collie hill post --help` says so. (M96)
 - **An answer the bridge took but never closed is settled on the retry.** If the bridge stops after it recorded your answer and before it closed the Decision, Try again now closes it and types the answer once, instead of saying it went. A Decision past its expiry answers that it expired, even before the bridge's next sweep, and an answer the session may have missed leaves one line in the audit log. (M96)
 - **A retried post with the same request id posts once.** `collie hill post --request-id <uuid>` lets an agent send the same post again after a lost reply and get the Decision it already posted, and `collie hill post --help` says so. The same id with other content is refused as `request_id_reused`, the way a reused answer is, instead of quietly answering with the first Decision. (M96)
+- **An answer records which paired device gave it.** The stored answer and its receipt keep an id of the phone's pairing record beside the phone's name, so an answer still says which device gave it after a rename. The id is derived from the pairing record and opens nothing; it says who answered and proves nothing more. (M96)
 
 ### Changed
 
