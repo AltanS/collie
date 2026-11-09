@@ -1,0 +1,236 @@
+// The wire of the hill (M96): the shapes the bridge stores and serves, and the shapes the phone
+// sends back. The bridge and the web app both import this file, so it holds types, constants and
+// small pure helpers only. No I/O, no React, no runtime dependency.
+
+/** How soon the poster wants a person to look. */
+export type HillPriority = "now" | "today" | "later";
+
+/** Where a decision is in its life. Only "open" waits for a person. */
+export type HillState =
+  | "open"
+  | "answered"
+  | "dismissed"
+  | "expired"
+  | "withdrawn"
+  | "superseded"
+  | "undeliverable";
+
+/** Whether the person may, or must, add free text to the answer. */
+export type HillTextMode = "none" | "optional" | "required";
+
+export const HILL_PRIORITIES: readonly HillPriority[] = ["now", "today", "later"];
+export const HILL_STATES: readonly HillState[] = [
+  "open",
+  "answered",
+  "dismissed",
+  "expired",
+  "withdrawn",
+  "superseded",
+  "undeliverable",
+];
+export const HILL_TEXT_MODES: readonly HillTextMode[] = ["none", "optional", "required"];
+
+/** An option's intent: a short lowercase word the poster reads back. */
+export const HILL_INTENT_RE = /^[a-z][a-z0-9-]{0,31}$/;
+/** Intents the hill itself uses. A poster may not name an option with one of them. */
+export const HILL_RESERVED_INTENTS: readonly string[] = ["answer", "dismiss"];
+/** A decision id: "dc_" and 12 characters, minted by the bridge. */
+export const HILL_ID_RE = /^dc_[a-z0-9]{12}$/;
+/** The node name a decision has in an answer request: "hill/<decision id>". */
+export const HILL_NODE_PREFIX = "hill/";
+
+export const HILL_TITLE_MAX = 120;
+export const HILL_SUMMARY_MAX = 280;
+export const HILL_BODY_MAX = 4000;
+export const HILL_OPTIONS_MAX = 5;
+export const HILL_OPTION_LABEL_MAX = 40;
+export const HILL_OPTION_DETAIL_MAX = 120;
+export const HILL_OPTION_CONFIRM_MAX = 24;
+export const HILL_WHY_MAX = 200;
+export const HILL_LINKS_MAX = 5;
+export const HILL_LINK_LABEL_MAX = 40;
+export const HILL_LINK_HREF_MAX = 500;
+export const HILL_ANSWER_TEXT_MAX = 4000;
+/** Open decisions one sender may hold at once. */
+export const HILL_OPEN_MAX = 20;
+/** Open "now" decisions one sender may hold at once. A further one is shown as "today". */
+export const HILL_NOW_MAX = 3;
+/** How many closed decisions the list serves, newest first. */
+export const HILL_CLOSED_SERVED = 20;
+
+/** One button on a decision card. */
+export interface HillOption {
+  /** What the poster reads back. Lowercase, see HILL_INTENT_RE. */
+  intent: string;
+  /** The words on the button. */
+  label: string;
+  /** One line of explanation under the label. */
+  detail?: string;
+  /** A short word for a second tap that confirms the choice. */
+  confirm?: string;
+}
+
+/** A decision as the bridge stores it and serves it (wire version 1). */
+export interface HillDecision {
+  v: 1;
+  /** "dc_" and 12 characters, minted by the bridge. */
+  id: string;
+  /** A UUID the poster minted. A repeat of the same one returns this decision. */
+  requestId: string;
+  /** Who posted it. The bridge fills this from the socket, never from the post. */
+  from: {
+    /** "agent" posts on the socket. "trick" posts only through code inside the bridge. */
+    kind: "agent" | "trick";
+    /** The poster's walky address. Null for a trick. */
+    address: string | null;
+    trickId: string | null;
+    /** The crew member the poster runs on. Null on a solo install. */
+    memberId: string | null;
+    harness: string | null;
+    /** The session's name as walky shows it. Display only. */
+    label: string;
+    /** The machine name. Display only. */
+    host: string | null;
+  };
+  /** A walky address. The card opens that session's Chat. */
+  about: string | null;
+  /** The priority as shown. */
+  priority: HillPriority;
+  /** The priority as the poster asked for it. */
+  priorityAsked: HillPriority;
+  title: string;
+  summary: string;
+  /** Markdown. */
+  body: string;
+  options: HillOption[];
+  text: HillTextMode;
+  /** The option the poster suggests, and why. The intent names one of the options. */
+  recommends: { intent: string; why: string } | null;
+  /** Always empty for now. Images come later. */
+  media: [];
+  /** Links on the card. Only http and https. */
+  links: Array<{ label: string; href: string }>;
+  /** A walky address. Null means the answer goes to the poster's own address. */
+  replyTo: string | null;
+  /** Where the answer goes, resolved at post time for the card's "goes to" line. */
+  target: {
+    label: string;
+    host: string | null;
+    /** The session runs in bypass or auto-approve mode, when the bridge knows it. */
+    unattended: boolean;
+  } | null;
+  /** The id of an older decision this one replaces. */
+  supersedes: string | null;
+  supersededBy: string | null;
+  /** Epoch milliseconds. */
+  expiresAt: number | null;
+  /** Epoch milliseconds when the bridge accepted it. */
+  at: number;
+  state: HillState;
+  closedAt: number | null;
+  /** Plain words, for example "by the poster" or "target session ended". */
+  closedReason: string | null;
+  /** Set when the state is answered or dismissed. */
+  answer: {
+    rid: string;
+    /** An option's intent, or "answer" or "dismiss". */
+    intent: string;
+    /** The option's label at the time of the answer. */
+    label: string | null;
+    text: string | null;
+    /** The phone's name as operator walky uses it. */
+    by: string;
+    at: number;
+    /** What walky reported. "none" for a dismiss with nothing to type. */
+    delivery: "typed" | "held" | "unknown" | "none";
+  } | null;
+}
+
+/** What the bridge serves at the hill read route. */
+export interface HillList {
+  /** The hill revision. It also rides on the snapshot as `hillRev`. */
+  rev: number;
+  /** True when the caller's `since` equals `rev`. Then `open` and `closed` are absent. */
+  unchanged?: true;
+  /** Every open decision, in any order. The phone sorts. */
+  open: HillDecision[];
+  /** The newest closed decisions, newest first. */
+  closed: HillDecision[];
+}
+
+/** What the phone sends to answer a decision. */
+export interface HillAnswerRequest {
+  /** A UUID the phone minted. A known one returns its stored receipt and runs nothing. */
+  rid: string;
+  /** "hill/<decision id>", see hillNode. */
+  node: string;
+  /** An option's intent, "answer" (text only) or "dismiss". */
+  intent: string;
+  value: { text: string | null };
+}
+
+/** What the bridge answers to an answer request. */
+export interface HillReceipt {
+  rid: string;
+  code: "ok" | "rejected" | "gone" | "denied" | "unknown";
+  /** Plain words, for example "not an option of this decision" or "text is required". */
+  reason: string | null;
+  /** The decision's state after this call. */
+  state: HillState | null;
+  delivery: "typed" | "held" | "unknown" | "none" | null;
+  at: number;
+}
+
+/** The fields an agent sends to post a decision. */
+export interface HillPostInput {
+  requestId: string;
+  title: string;
+  summary: string;
+  body?: string;
+  options?: HillOption[];
+  text?: HillTextMode;
+  recommends?: { intent: string; why: string } | null;
+  links?: Array<{ label: string; href: string }>;
+  priority?: HillPriority;
+  about?: string | null;
+  replyTo?: string | null;
+  supersedes?: string | null;
+  expiresAt?: number | null;
+}
+
+/** Why the bridge refuses a post. */
+export type HillRefusalCode =
+  | "bad_title"
+  | "bad_summary"
+  | "bad_option"
+  | "bad_recommends"
+  | "bad_link"
+  | "bad_text_mode"
+  | "bad_target"
+  | "bad_supersedes"
+  | "too_many_open"
+  | "not_on_lead"
+  | "walky_off";
+
+/** The node name of a decision: "hill/<id>". */
+export function hillNode(id: string): string {
+  return `${HILL_NODE_PREFIX}${id}`;
+}
+
+/** The decision id inside a node name, or null when the node is not a well-formed hill node. */
+export function hillIdOfNode(node: string): string | null {
+  if (!node.startsWith(HILL_NODE_PREFIX)) return null;
+  const id = node.slice(HILL_NODE_PREFIX.length);
+  return HILL_ID_RE.test(id) ? id : null;
+}
+
+/** True when `s` may be an option's intent: it matches the pattern and is not a reserved intent. */
+export function isHillOptionIntent(s: string): boolean {
+  return HILL_INTENT_RE.test(s) && !HILL_RESERVED_INTENTS.includes(s);
+}
+
+/** Open decisions in the order the phone shows them: now, today, later; oldest first inside one priority. Does not mutate. */
+export function sortOpenDecisions(list: HillDecision[]): HillDecision[] {
+  const rank = (p: HillPriority): number => HILL_PRIORITIES.indexOf(p);
+  return list.toSorted((a, b) => rank(a.priority) - rank(b.priority) || a.at - b.at);
+}
