@@ -11,8 +11,8 @@ import { useLocale } from "@/hooks/use-locale";
 import { Icon } from "@/components/icons/icon";
 
 interface CollieHomeProps {
-  /** Return to the dashboard. */
-  onHome?: () => void;
+  /** The tap, with where it goes: the place the mark's signal is about, or home. */
+  onHome?: (target: MarkTarget) => void;
   /** The connection has been not-live for a sustained beat (useConnectionTrouble, ≥4s) — bloom the
    *  mark. Below that (healthy, or a single slow poll) it stays still: the 4s delay is the flicker
    *  fix, so a normal polling hiccup never sets the orbit turning. */
@@ -22,7 +22,8 @@ interface CollieHomeProps {
    *  we've in fact given up; muted says "not connected" at a glance, matching the boot splash. */
   lost?: boolean;
   /** A new app build is being applied on this phone: downloading, or waiting to reload onto
-   *  (`lib/bundle-apply.ts`). The orbit turns at the loading rate and every bead draws in the update
+   *  (`lib/bundle-apply.ts`). The orbit turns at the calm pace (20 s a turn, drawn in poses, so a
+   *  long wait costs a few frames a second) and every bead draws in the update
    *  colour, which is the band's old download row moved onto the mark (2026-11-06). Outranks the
    *  bloom, a round and busy work; `lost` outranks it. */
   applying?: boolean;
@@ -49,7 +50,7 @@ interface CollieHomeProps {
 }
 
 // The single, shared Collie mark: brand + home button + connection loader in one, so the top-left of
-// every screen means the same thing. ONE element for every connection state: it holds still at rest, turns
+// every screen means the same thing. ONE element for every connection state: it drifts at rest, turns
 // (the "bloom") once the connection has been not-live for a sustained beat (`trouble`), and goes still
 // again, dimmed, once the outage escalates (`lost`). Nothing is ever swapped, so nothing can resize as
 // the connection settles.
@@ -138,14 +139,31 @@ export function spinRate(elapsedMs: number, totalMs = ORBIT_TURN_MS): number {
 }
 
 /**
- * ONE state for the mark, by precedence: a dead link outranks everything (dimmed, no turning), then
- * the app updating, then the link coming back, then any loading input, else rest.
+ * Where a tap on the mark goes. `home` is the route's own tap (the dashboard, or up one level).
+ * `update-line` is the dashboard's update line, brought into view: the one place that says what a
+ * bundle being applied is doing (the download, or "tap to update"), so it is where the orange mark
+ * points (`components/update-banner.tsx`, decided 2026-11-06).
  */
-function markStateOf(input: { lost: boolean; applies: boolean; greets: boolean; loading: boolean }): MarkState {
-  if (input.lost) return "idle";
-  if (input.applies) return "applying";
-  if (input.greets) return "reconnected";
-  return input.loading ? "loading" : "rest";
+export type MarkTarget = "home" | "update-line";
+
+/** What the mark shows and where its tap goes, decided together. */
+export interface MarkReading {
+  state: MarkState;
+  target: MarkTarget;
+}
+
+/**
+ * THE MARK'S ONE READING: its state and its tap, from the same inputs in one pass, so the look and
+ * the tap cannot disagree. By precedence: a dead link outranks everything (dimmed, held), then the app
+ * updating, then the link coming back, then any loading input, else rest. Only a state that is ABOUT
+ * a place points there; the link coming back, loading and a dead link keep the ordinary tap, and the
+ * mark carries no machine or crew health of its own.
+ */
+export function markReading(input: { lost: boolean; applying: boolean; reconnected: boolean; loading: boolean }): MarkReading {
+  if (input.lost) return { state: "idle", target: "home" };
+  if (input.applying) return { state: "applying", target: "update-line" };
+  if (input.reconnected) return { state: "reconnected", target: "home" };
+  return { state: input.loading ? "loading" : "rest", target: "home" };
 }
 
 export function CollieHome({
@@ -191,8 +209,8 @@ export function CollieHome({
   //
   // It is the ORBIT that turns, not the whole SVG (the head would span round with it). The round
   // sets `state="loading"`: the same beads on the same path, at the live pace. A round is exactly one
-  // turn, so it starts from the rest pose and lands back on it, and the mark holds still again (the
-  // contract's `useMark`, issue 748: a resting mark runs no animation). Every state differs from `rest` by colour too, so under
+  // turn, so it starts from the pose the drift is in and lands back on it, and the drift goes on from
+  // there (the contract's `useMark`: rest is drawn in poses, a few frames a second, issue 748). Every state differs from `rest` by colour too, so under
   // `prefers-reduced-motion`, when the turning stops, the colour still says something happened.
   //
   // It never fights the connection state. `bloom` is already `loading` and outranks this, since a
@@ -220,14 +238,14 @@ export function CollieHome({
   // and a send the operator fires into a dead link must not make it look like the app is trying
   // again. Same guard the round already carries, for the same reason.
   //
-  // No debounce, and none is wanted: a mark that leaves a live state finishes the lap it is on before
-  // it rests (the contract's `useMark`), so a 200ms spin reads as one lap that comes home, never as a
-  // flicker. The live state lasts exactly as long as the work; only the lap's last stretch outlives it.
+  // No debounce, and none is wanted: the mark carries its phase across every state change (the
+  // contract's `useMark`), so a 200ms spin reads as a short speed-up of the drift, never as a jump or a
+  // flicker. The live state lasts exactly as long as the work.
   //
   // ── THE FOURTH: THE APP ITSELF BEING UPDATED (2026-11-06) ────────────────────────────────────
   //
   // `applying` is a state, like the bloom, and it outranks the other three: while a new app build
-  // downloads or waits to load, the mark turns at the loading rate and every bead takes the update
+  // downloads or waits to load, the mark turns at the calm pace and every bead takes the update
   // colour (`state="applying"`). Not the round's curve, a steady turn, for the bloom's reason. It
   // does not outrank `lost`.
   //
@@ -302,10 +320,9 @@ export function CollieHome({
     timer.current = setTimeout(() => {
       timer.current = null;
       // Rate restored BEFORE the state flips, and in this order deliberately. Dropping `round`
-      // re-renders the mark at `rest`, which measures what is left of the lap, and that measure is
-      // written for animations playing at rate 1. Handing it animations still at the curve's final
-      // rate (0) would find nothing turning and rest them wherever they stopped. The loop is cancelled first so it cannot
-      // write a rate back after this.
+      // re-renders the mark at `rest`, which the ticker draws in poses at rate 1, and a rate other
+      // than 1 left behind would keep the mark running instead (the contract's `setRate`). The loop
+      // is cancelled first so it cannot write a rate back after this.
       if (frame.current !== null) cancelAnimationFrame(frame.current);
       frame.current = null;
       ramp.current?.(1);
@@ -325,11 +342,11 @@ export function CollieHome({
     },
     [],
   );
-  const state = markStateOf({ lost, applies, greets, loading: bloom || round || busy });
+  const { state, target } = markReading({ lost, applying: applies, reconnected: greets, loading: bloom || round || busy });
   return (
     <button
       type="button"
-      onClick={onHome}
+      onClick={() => onHome?.(target)}
       // The bloom conveys connection state visually; fold it into the button's accessible name too,
       // so screen-reader users get it (inside a pane there's no other cue).
       aria-label={homeLabel({ trouble, lost, applying: applies, reconnected: greets, lastSeenAt })}

@@ -2,7 +2,7 @@
 // mark it is given, and `components/mark-conformance.test.tsx` gives it the whole registry.
 //
 // What it asks is only what `components/mark-contract.ts` makes public: the props, the `--mark-*`
-// variables, `data-mark`, `data-state`, `data-bead`, `data-still`, `data-rest` and `setRate`. A mark's own class
+// variables, `data-mark`, `data-state`, `data-bead`, `data-still`, `data-ticked`, `setRate` and the ticker. A mark's own class
 // names and parts are never asked for, so a regeneration that renames them cannot break this suite.
 // What it DOES ask about private names is the opposite question: that they stay private, which means
 // every keyframe and every inline custom property a mark invents starts with its own prefix.
@@ -17,7 +17,7 @@ import { createRef, type ComponentType } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
-  MARK_HOME,
+  MARK_POSES,
   MARK_STATES,
   MARK_STATE_LOOK,
   MARK_STYLE,
@@ -143,7 +143,8 @@ export function describeMarkConformance(entries: readonly MarkEntry[]): void {
           expect(root.getAttribute("data-state")).toBe(state);
           expect(root.getAttribute("width")).toBe("64");
           expect(root.hasAttribute("data-bead")).toBe(MARK_STATE_LOOK[state].bead !== null);
-          expect(root.hasAttribute("data-still")).toBe(false);
+          expect(root.hasAttribute("data-still")).toBe(MARK_STATE_LOOK[state].motion === "hold");
+          expect(root.hasAttribute("data-ticked")).toBe(MARK_STATE_LOOK[state].motion === "tick");
           expect(root.getAttribute("viewBox")).not.toBeNull();
         });
       }
@@ -222,6 +223,9 @@ export function describeMarkConformance(entries: readonly MarkEntry[]): void {
       const loading = rootOf(render(<Mark state="loading" />).container);
       expect(inlineVars(rest)[turnVarOf(rest)]).toBe(`var(--mark-turn, ${MARK_TURN.rest}s)`);
       expect(inlineVars(loading)[turnVarOf(loading)]).toBe(`var(--mark-turn, ${MARK_TURN.live}s)`);
+      // The update turns at the calm pace, between the drift and the live turn.
+      const applying = rootOf(render(<Mark state="applying" />).container);
+      expect(inlineVars(applying)[turnVarOf(applying)]).toBe(`var(--mark-turn, ${MARK_TURN.calm}s)`);
       const own = rootOf(render(<Mark state="loading" turn={3} />).container);
       expect(Object.values(inlineVars(own))).toContain("3s");
       expect(Object.values(inlineVars(own)).some((value) => value.includes("--mark-turn"))).toBe(false);
@@ -234,53 +238,73 @@ export function describeMarkConformance(entries: readonly MarkEntry[]): void {
       expect(rootOf(render(<Mark state="loading" turn={2} />).container).hasAttribute("data-still")).toBe(false);
     });
 
-    // Issue 748: a resting mark runs no animation. The engine half of this (no running animation
-    // in a real browser, for every character) is web/e2e/mark-rest.spec.ts.
-    it("holds still in rest and idle, and only there", () => {
+    // Issue 748: a slow mark runs no animation. In rest and applying every animation under the root
+    // is paused and the ticker seeks it; the engine half (no running animation in a real browser,
+    // for every character) is web/e2e/idle-repaint.spec.ts.
+    it("pauses every animation in rest and applying, and holds idle where it is", () => {
       for (const state of MARK_STATES) {
         const root = rootOf(render(<Mark state={state} />).container);
-        expect(root.hasAttribute("data-rest"), state).toBe(MARK_STATE_LOOK[state].pace === "rest");
+        const motion = MARK_STATE_LOOK[state].motion;
+        expect(root.hasAttribute("data-ticked"), state).toBe(state === "rest" || state === "applying");
+        expect(motion === "run", state).toBe(state === "loading" || state === "reconnected");
       }
       const root = rootOf(render(<Mark />).container);
       expect(sheetOf(root)).toContain(MARK_STYLE);
-      expect(MARK_STYLE).toContain("[data-mark][data-rest] *{animation:none!important}");
-      // A host that asks for a turn at rest gets the turn, so nothing holds it still.
-      expect(rootOf(render(<Mark turn={48} />).container).hasAttribute("data-rest")).toBe(false);
+      expect(MARK_STYLE).toContain("[data-mark][data-ticked] *");
+      expect(MARK_STYLE).toContain("[data-mark][data-still] *");
+      expect(MARK_STYLE).toContain("animation-play-state:paused!important");
+      // jsdom resolves no `animation-play-state` from a stylesheet, so that the rule reaches every
+      // part (and that a browser reports each animation as paused) is the e2e spec's to check.
     });
 
-    it("finishes the lap it is on, at the live pace, before it rests", () => {
-      vi.useFakeTimers();
-      const names = keyframeNames(sheetOf(rootOf(render(<Mark />).container)));
-      // 30% of the way round a live turn of 1800 ms: 1260 ms to go.
-      const fakes = names.map((name) => new FakeAnimation(name, 540));
+    it("draws rest in poses from the ticker, MARK_POSES a second, and stops when it leaves", () => {
+      vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "setTimeout", "clearTimeout", "performance", "Date"] });
+      // Read off a mark that is gone again: the fakes stand in for every mark's animations, and a
+      // second resting mark would tick them too.
+      const probe = render(<Mark />);
+      const names = keyframeNames(sheetOf(rootOf(probe.container)));
+      probe.unmount();
+      const fakes = names.map((name) => new FakeAnimation(name, 0));
       installAnimations(fakes);
-      const { container, rerender } = render(<Mark state="loading" />);
-      const liveClass = rootOf(container).getAttribute("class");
-      rerender(<Mark state="rest" />);
-      const root = rootOf(container);
-      expect(root.getAttribute("data-state")).toBe("rest");
-      expect(root.hasAttribute("data-rest")).toBe(false);
-      expect(root.getAttribute("class")).toBe(liveClass);
-      expect(inlineVars(root)[turnVarOf(root)]).toBe(`var(--mark-turn, ${MARK_TURN.live}s)`);
-      act(() => vi.advanceTimersByTime(1250));
-      expect(root.hasAttribute("data-rest")).toBe(false);
-      act(() => vi.advanceTimersByTime(20));
-      expect(root.hasAttribute("data-rest")).toBe(true);
-      expect(inlineVars(root)[turnVarOf(root)]).toBe(`var(--mark-turn, ${MARK_TURN.rest}s)`);
+      const { rerender, unmount } = render(<Mark />);
+      const pose = 1000 / MARK_POSES.perSecond;
+      act(() => vi.advanceTimersByTime(pose - 1));
+      expect(fakes.every((a) => a.currentTime === 0)).toBe(true);
+      act(() => vi.advanceTimersByTime(1));
+      for (const a of fakes) expect(a.currentTime).toBeCloseTo(pose, 3);
+      act(() => vi.advanceTimersByTime(1000));
+      for (const a of fakes) expect(a.currentTime).toBeCloseTo(pose + 1000, 3);
+      // A fast state runs the real animation; the ticker draws no pose of it.
+      rerender(<Mark state="loading" />);
+      const left = fakes.map((a) => a.currentTime);
+      act(() => vi.advanceTimersByTime(1000));
+      expect(fakes.map((a) => a.currentTime)).toEqual(left);
+      // Idle holds the pose it is in.
+      rerender(<Mark state="idle" />);
+      act(() => vi.advanceTimersByTime(1000));
+      expect(fakes.map((a) => a.currentTime)).toEqual(left);
+      unmount();
     });
 
-    it("rests at once when the orbit is already home, or nothing turns", () => {
-      const names = keyframeNames(sheetOf(rootOf(render(<Mark />).container)));
-      // A spin round lands within a frame or two of home, a hair past it here.
-      installAnimations(names.map((name) => new FakeAnimation(name, 1800 * (1 + MARK_HOME / 2))));
+    it("comes off a fast state with no last lap: rest is ticked on at once, idle holds", () => {
       const { container, rerender } = render(<Mark state="loading" />);
       rerender(<Mark state="rest" />);
-      expect(rootOf(container).hasAttribute("data-rest")).toBe(true);
-      // No animations at all (reduced motion, or an engine without getAnimations): rest now too.
-      installAnimations([]);
-      const other = render(<Mark state="applying" />);
-      other.rerender(<Mark state="idle" />);
-      expect(rootOf(other.container).hasAttribute("data-rest")).toBe(true);
+      expect(rootOf(container).hasAttribute("data-ticked")).toBe(true);
+      expect(inlineVars(rootOf(container))[turnVarOf(rootOf(container))]).toBe(`var(--mark-turn, ${MARK_TURN.rest}s)`);
+      rerender(<Mark state="reconnected" />);
+      rerender(<Mark state="idle" />);
+      expect(rootOf(container).hasAttribute("data-still")).toBe(true);
+      expect(rootOf(container).hasAttribute("data-ticked")).toBe(false);
+    });
+
+    it("runs a ticked mark while the host rates it, and ticks it again at rate 1", () => {
+      const ref = createRef<MarkHandle>();
+      const { container } = render(<Mark ref={ref} />);
+      expect(rootOf(container).hasAttribute("data-ticked")).toBe(true);
+      act(() => ref.current?.setRate(2.7));
+      expect(rootOf(container).hasAttribute("data-ticked")).toBe(false);
+      act(() => ref.current?.setRate(1));
+      expect(rootOf(container).hasAttribute("data-ticked")).toBe(true);
     });
 
     it("hands the caller's paper to the knockout, and falls back to --mark-paper", () => {
@@ -338,8 +362,8 @@ export function describeMarkConformance(entries: readonly MarkEntry[]): void {
       const ref = createRef<MarkHandle>();
       render(<Mark ref={ref} />);
       expect(ref.current).not.toBeNull();
-      ref.current?.setRate(2.5);
-      ref.current?.setRate(1);
+      act(() => ref.current?.setRate(2.5));
+      act(() => ref.current?.setRate(1));
       const rated = fakes.filter((a) => a.rates.length > 0);
       expect(rated.length).toBeGreaterThan(0);
       for (const a of rated) {
@@ -355,11 +379,11 @@ export function describeMarkConformance(entries: readonly MarkEntry[]): void {
       installAnimations([]);
       const ref = createRef<MarkHandle>();
       render(<Mark ref={ref} />);
-      ref.current?.setRate(2);
+      act(() => ref.current?.setRate(2));
       const names = keyframeNames(sheetOf(rootOf(render(<Mark />).container)));
       const fakes = names.map((name) => new FakeAnimation(name, 0));
       installAnimations(fakes);
-      ref.current?.setRate(3);
+      act(() => ref.current?.setRate(3));
       expect(fakes.some((a) => a.rates.includes(3))).toBe(true);
     });
 

@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Changed
+
+- **The update turn of the Collie mark is calm.** While a new app build downloads or waits for the reload, the orange beads now go round once in 20 seconds, not once in 1.8 seconds, so a long wait no longer looks like a race. The mark draws this turn in a few steps a second instead of 60 frames, so a wait of many minutes costs the phone almost nothing. A tap on the mark still opens the dashboard's update line.
+
 ## [1.28.0] - 2026-11-09
 
 ### Added

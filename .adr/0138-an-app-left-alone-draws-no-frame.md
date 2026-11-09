@@ -43,3 +43,21 @@ everyone who does not know to look for it.
   long-lived, or if a device shows the churn while one runs.
 - `web/e2e/idle-repaint.spec.ts` fails if a resting mark or a resting dashboard runs any animation, or if
   a hidden page keeps one running. A new endless animation meets the rule there, not in review.
+
+## Amendment 2026-11-09
+
+Altan asked for the resting drift back ("without the performance hit"), and for the update's turn to
+be calmer ("maybe 2-3 times the idle"). Rule 1 now reads: **at rest no animation runs.** The mark's
+animations are still there in `rest` and `applying`, but paused (`data-ticked`), and one ticker per
+page seeks them forward `MARK_POSES.perSecond` times a second (the mark contract, sealed from
+collie-brand). The browser draws that many frames, not 60: 4 a second until Altan picks the rate on
+the comparison page. `applying` turns at a new calm pace, one turn in 20 s, in poses too. `idle` holds
+the pose it is in.
+
+- The ticker is one timer, never a `requestAnimationFrame` loop, and it stops on rule 2's own terms:
+  it reads `data-page-hidden` and `data-app-covered` (the contract's `MARK_HOLD`, pinned against
+  `index.css` by `mark-ticker.test.ts`), the document's visibility and `prefers-reduced-motion`.
+- The last lap is gone: every state change carries the phase, so nothing jumps. A short busy moment
+  now reads as a brief speed-up of the drift, not as one full lap.
+- Rule 4 holds with a smaller cost: a blur over the header mark would redraw a few times a second.
+- `loading` and `reconnected` stay running animations at the live pace, as the consequences above say.

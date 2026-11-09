@@ -10,11 +10,14 @@ import { collieHalves } from "./fixtures/collie-theme";
 // ISSUE 748, ADR 0138: AN APP THAT IS LEFT ALONE ASKS FOR NO FRAME. Three claims only an engine can check,
 // because jsdom runs no CSS animation: the header mark holds still at rest for every character, a
 // dashboard at rest runs no animation anywhere, and a hidden page pauses the ones a working pane runs.
+// Since 2026-11-09 the resting mark drifts again, drawn in poses: its animations exist but are PAUSED
+// (`data-ticked`), and the contract's ticker seeks them a few times a second. A paused animation is
+// not a running one, so the claims below hold as they did.
 
 test.use({ serviceWorkers: "block" });
 
 // A RESTING MARK RUNS NO ANIMATION, FOR EVERY CHARACTER. The header mark used to drift at rest, one
-// turn in 48 seconds. Slow is not cheap: a running animation asks for a new frame 60 times a second
+// turn in 48 seconds, as a running animation. Slow is not cheap: a running animation asks for a new frame 60 times a second
 // whatever its pace, so the browser drew frames for as long as the app was open. On one Android phone
 // that drove Chrome's GPU process past the system's file limit, and the system killed Chrome.
 //
@@ -22,6 +25,11 @@ test.use({ serviceWorkers: "block" });
 // (src/test/mark-conformance.tsx) holds the contract's attributes, this holds what the browser does
 // with them. Each case wears a theme that names one character and reads the header mark's own
 // animations, every one of its parts included.
+
+/** The play states of every animation in the mark. */
+function playStatesIn(mark: Locator): Promise<string[]> {
+  return mark.evaluate((svg) => svg.getAnimations({ subtree: true }).map((a) => a.playState));
+}
 
 /** The names of the animations running anywhere in the mark. */
 function runningIn(mark: Locator): Promise<string[]> {
@@ -34,7 +42,7 @@ function runningIn(mark: Locator): Promise<string[]> {
 }
 
 for (const { id } of MARKS) {
-  test(`the ${id} mark holds still at rest`, async ({ page }) => {
+  test(`the ${id} mark runs no animation at rest`, async ({ page }) => {
     const theme = { version: 4, id: `mark-${id}`, name: `Mark ${id}`, light: collieHalves.light, dark: collieHalves.dark, character: id };
     await page.addInitScript(
       ([design, library]) => {
@@ -47,10 +55,13 @@ for (const { id } of MARKS) {
     await page.goto("/");
     const mark = page.getByRole("button", { name: en["nav.home.aria.default"] }).locator(`svg[data-mark="${id}"]`);
     await expect(mark).toHaveAttribute("data-state", "rest");
-    // The load itself may turn the mark (a route loader is work the operator waits on), and a mark
-    // that leaves a live state finishes its lap first, up to one live turn. Then nothing runs.
-    await expect(mark).toHaveAttribute("data-rest", "", { timeout: 5000 });
+    // The load itself may turn the mark (a route loader is work the operator waits on). Then the drift
+    // takes over in poses: every animation is there, and every one is paused.
+    await expect(mark).toHaveAttribute("data-ticked", "", { timeout: 5000 });
     await expect.poll(() => runningIn(mark)).toEqual([]);
+    const states = await playStatesIn(mark);
+    expect(states.length).toBeGreaterThan(0);
+    expect(new Set(states)).toEqual(new Set(["paused"]));
   });
 }
 
@@ -69,7 +80,7 @@ test("a dashboard at rest runs no animation at all", async ({ page }) => {
   await installApiStub(page);
   await page.goto("/");
   const mark = page.getByRole("button", { name: en["nav.home.aria.default"] }).locator("svg[data-mark]");
-  await expect(mark).toHaveAttribute("data-rest", "", { timeout: 5000 });
+  await expect(mark).toHaveAttribute("data-ticked", "", { timeout: 5000 });
   await expect.poll(() => runningOnPage(page)).toEqual([]);
 });
 
