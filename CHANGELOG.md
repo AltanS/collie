@@ -45,6 +45,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 - **A trick's program gets a short list of environment variables.** It sees `PATH`, `HOME`, the locale, the XDG folders and a few more, and any other variable only when its `trick.toml` lists the name in `env`. `collie trick check` and the phone's list show each name a trick asks for, and a `COLLIE_`, `HERDR_` or socket variable is never passed, even when listed. (M94)
 
+- **Switching a trick on approves its code as it is now.** The bridge keeps a hash of the trick's files and runs it only while they still hash the same. After an edit the trick stops and says "This trick changed. Switch it on again to run the new code.", and its open decisions stay. A `config.toml` edit, a log or a picture in `media/` never stops it, and `collie trick on` prints the hash it approved. (M94)
+
+- **Trick runs keep their pace, and your answers get through.** A trick that writes a log or a picture into its own folder keeps its timer and its backoff instead of running again at once. Every answer you give a trick's decision reaches it, one at a time, and is never refused as busy. At most four trick programs run at once, taps first, and a tap retried after a bridge restart never runs twice. A stuck or oversized `trick.toml` no longer holds up the tricks list, and a trick folder past the 64th is listed with its reason. (M94)
+
 ## [1.28.0] - 2026-11-09
 
 ### Added

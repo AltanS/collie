@@ -1159,6 +1159,11 @@ export interface WireTrickInfo {
   refusals?: Refusal[];
   /** Who added the trick, when and from where. */
   provenance?: TrickProvenance;
+  /**
+   * True when the trick is on but its code no longer hashes as it did when it was switched on: it does
+   * not run until it is switched on again.
+   */
+  changed?: boolean;
   /** The environment names the manifest asks for past the base allow-list, so the person sees them. */
   env?: string[];
 }

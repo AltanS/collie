@@ -2,11 +2,12 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, isAbsolute, join, resolve } from "node:path";
 
-import { createTrickScanner, readManifestText, type FoundTrick } from "../bridge/tricks/discover.ts";
+import { diskTrickFs, trickCodeHash } from "../bridge/tricks/code-hash.ts";
+import { createTrickScanner, readManifestFile, readManifestText, type FoundTrick } from "../bridge/tricks/discover.ts";
 import { scrubEnv } from "../bridge/tricks/env.ts";
 import { MANIFEST_FILE, tricksConfigDir, switchesPath } from "../bridge/tricks/paths.ts";
 import { outcomeProblem, runProvider, type RunOutcome } from "../bridge/tricks/run.ts";
-import { parseSwitches, withSwitch, writeSwitches } from "../bridge/tricks/switches.ts";
+import { parseSwitches, updateSwitches, withSwitch } from "../bridge/tricks/switches.ts";
 import type { CrewFetch } from "../bridge/crew/peer-client.ts";
 import { asJsonBoolean, asJsonObject, asJsonString, parseJson, type JsonValue } from "../web/src/lib/json.ts";
 import { FACTS } from "../web/src/lib/tricks/fixtures/index.ts";
@@ -27,7 +28,9 @@ import type { Files } from "./sys.ts";
 // switched on from here (or, later, the phone); the bridge runs it.
 //
 //   list              every trick folder, its switch, and what the running bridge says of it
-//   on <id> / off <id>  write the switch (`<stateDir>/tricks/switches.json`); the bridge rereads it
+//   on <id> / off <id>  write the switch (`<stateDir>/tricks/switches.json`); the bridge rereads it. On
+//                     approves the code as it is now: the switch stores its code hash, and an edit to
+//                     the code stops the trick until it is switched on again
 //   check <folder>    the static check: the manifest, its places, and the command lines the provider
 //                     contains (honest, not a proof). `--run` also runs the provider once against
 //                     fixture facts, with the bridge's environment rule, and parses what it prints
@@ -174,28 +177,42 @@ export async function cmdTrickSwitch(deps: TrickDeps, args: readonly string[], o
   const dir = join(tricksConfigDir(deps.ctx.configDir), id);
   const { switches, problem } = switchesOf(deps);
   if (problem !== null) deps.io.err(`warn: ${problem}; it is written again now`);
+  let hash: string | null = null;
   if (on) {
     if (deps.files.entryType(dir) !== "directory") {
       deps.io.err(`error: there is no trick folder ${dir}. Make one: collie trick init ${id}`);
       return EXIT.FAIL;
     }
-    const read = readManifestText(deps.files.read(join(dir, MANIFEST_FILE)), id);
+    const read = await readManifestFile(diskTrickFs, dir, id);
     if (read.manifest === undefined) {
       for (const r of read.refusals) deps.io.err(`error: ${MANIFEST_FILE}${r.path} ${r.reason}`);
       deps.io.err(`error: ${id} stays off until its manifest is fixed. Check it: collie trick check ${dir}`);
       return EXIT.FAIL;
     }
+    const code = await trickCodeHash(dir);
+    if (!code.ok) {
+      deps.io.err(`error: ${code.reason}`);
+      deps.io.err(`error: ${id} stays off.`);
+      return EXIT.FAIL;
+    }
+    hash = code.hash;
   }
-  if (switches.on.has(id) === on) {
-    deps.io.out(`${id} is already ${verb}.`);
+  const held = switches.on.get(id);
+  if (!on && held === undefined) {
+    deps.io.out(`${id} is already off.`);
     return EXIT.OK;
   }
-  await writeSwitches(deps.ctx.stateDir, withSwitch(switches, id, on, new Date(deps.now()).toISOString()));
-  deps.io.out(
-    on
-      ? `${id} is on. The bridge picks it up within seconds; its timer runs while a phone watches.`
-      : `${id} is off. The bridge stops running it and its parts go from the phone.`,
-  );
+  if (on && held !== undefined && held.hash === hash) {
+    deps.io.out(`${id} is already on, with this code approved (sha256 ${hash ?? ""}).`);
+    return EXIT.OK;
+  }
+  await updateSwitches(deps.ctx.stateDir, (now) => withSwitch(now, id, on, new Date(deps.now()).toISOString(), hash));
+  if (!on) {
+    deps.io.out(`${id} is off. The bridge stops running it and its parts go from the phone.`);
+    return EXIT.OK;
+  }
+  deps.io.out(`${id} is on. The bridge picks it up within seconds; its timer runs while a phone watches.`);
+  deps.io.out(`Approved the code of ${id} as it is now: sha256 ${hash ?? ""}. An edit to its code stops it until you switch it on again.`);
   return EXIT.OK;
 }
 

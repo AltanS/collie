@@ -1,13 +1,16 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 import type { JsonObject } from "../json.ts";
 import { parseFacts, partKey, type TrickFacts, type TrickTapReply } from "../../web/src/lib/tricks/schema.ts";
+import { trickCodeHash } from "./code-hash.ts";
 import { TRICKS_DIR } from "./paths.ts";
 import type { RunOutcome, RunSpec } from "./run.ts";
-import { backoffAfter, BACKOFF_MS, TricksService, WATCH_WINDOW_MS, type TricksServiceDeps, type TapAnswer } from "./service.ts";
+import { payloadDigest } from "../worktree-receipts.ts";
+import { memoryTrickReceipts, TrickReceiptStore } from "./receipts.ts";
+import { backoffAfter, BACKOFF_MS, CHANGED_LINE, RUNS_MAX, TAP_LOST_LINE, TricksService, WATCH_WINDOW_MS, type TricksServiceDeps, type TapAnswer } from "./service.ts";
 import { withSwitch, writeSwitches, type Switches } from "./switches.ts";
 
 const dirs: string[] = [];
@@ -24,6 +27,7 @@ const T0 = Date.parse("2026-11-08T09:00:00Z");
 const HOST = "bluefin";
 const REQ = "7f0c1d2e-3b4a-4c5d-8e6f-708192a3b4c5";
 const REQ2 = "8f0c1d2e-3b4a-4c5d-8e6f-708192a3b4c5";
+const REQ3 = "9f0c1d2e-3b4a-4c5d-8e6f-708192a3b4c5";
 
 interface Rig {
   root: string;
@@ -45,9 +49,13 @@ async function makeTrick(configDir: string, id: string, manifest: string, files:
   return dir;
 }
 
+/** Switch tricks on as a person does: each with the code hash of its folder as it is now. */
 async function switchOn(stateDir: string, ...ids: string[]): Promise<void> {
-  let switches: Switches = { on: new Map<string, string>() };
-  for (const id of ids) switches = withSwitch(switches, id, true, "2026-11-08T09:00:00Z");
+  let switches: Switches = { on: new Map() };
+  for (const id of ids) {
+    const code = await trickCodeHash(join(dirname(stateDir), "config", TRICKS_DIR, id));
+    switches = withSwitch(switches, id, true, "2026-11-08T09:00:00Z", code.ok ? code.hash : null);
+  }
   await writeSwitches(stateDir, switches);
 }
 
@@ -235,8 +243,11 @@ describe("the switch route", () => {
     expect(on.body.state).not.toBe("off");
     expect((await r.service.reply(undefined)).rev).toBeGreaterThan(before);
     const file = JSON.parse(await readFile(join(r.stateDir, "tricks", "switches.json"), "utf8"));
-    expect(file.v).toBe(1);
+    expect(file.v).toBe(2);
     expect(Object.keys(file.on)).toEqual(["legs"]);
+    // On approves the code as it is now: the file holds its hash.
+    const code = await trickCodeHash(join(r.configDir, TRICKS_DIR, "legs"));
+    expect(file.on.legs.hash).toBe(code.ok ? code.hash : "");
     const off = await r.service.setSwitch(HOST, "legs", false);
     expect(off).toMatchObject({ status: 200, body: { id: "legs", on: false, state: "off" } });
     expect(JSON.parse(await readFile(join(r.stateDir, "tricks", "switches.json"), "utf8")).on).toEqual({});
@@ -340,7 +351,7 @@ describe("backoff", () => {
     expect([1, 2, 3, 4].map(backoffAfter)).toEqual([60_000, 300_000, 1_800_000, null]);
   });
 
-  test("failed runs wait 1, 5 and 30 minutes, then the trick stops; a folder change restarts it", async () => {
+  test("failed runs wait 1, 5 and 30 minutes, then the trick stops; a config.toml change restarts it", async () => {
     const r = await rig([exited("", 1)]);
     const dir = await makeTrick(r.configDir, "legs", MANIFEST);
     await switchOn(r.stateDir, "legs");
@@ -362,8 +373,8 @@ describe("backoff", () => {
     expect(stopped.tricks[0]?.error).toBe("The provider exited with 1");
     await tickAt(r, T0 + 100 * 60 * 60_000);
     expect(r.specs.length).toBe(4);
-    // A change in the folder restarts it with a start run.
-    await writeFile(join(dir, "legs.sh"), "#!/bin/sh\necho fixed\n");
+    // A change of config.toml restarts it with a start run (an edit of the code would stop it instead).
+    await writeFile(join(dir, "config.toml"), "fixed = true\n");
     await tickAt(r, T0 + 101 * 60 * 60_000);
     expect(r.specs.length).toBe(5);
     expect(factsOf(r.specs[4]).trigger).toEqual({ kind: "start" });
@@ -591,6 +602,239 @@ describe("taps", () => {
     const reply = await r.service.reply(undefined);
     expect(reply.present).toEqual(["bluefin/legs/belt"]);
     expect(reply.tricks[0]?.refusals?.map((x) => x.code)).toEqual(["removed"]);
+  });
+});
+
+describe("consent tied to the code", () => {
+  /** A hill port that records what reached it. */
+  function hillSpy() {
+    const synced: string[][] = [];
+    const offs: string[] = [];
+    const port: NonNullable<TricksServiceDeps["decisions"]> = {
+      sync: (_trick, run) => {
+        synced.push(run.decisions.map((d) => d.key));
+        return [];
+      },
+      off: (trick) => {
+        offs.push(trick.id);
+      },
+      prune: () => {},
+      seenOf: () => undefined,
+    };
+    return { synced, offs, port };
+  }
+  const ASK = { key: "a", title: "Rerun?", summary: "Case 8 failed." };
+
+  test("an edited program stops the trick until it is switched on again; its parts go stale and its decisions stay", async () => {
+    const spy = hillSpy();
+    const r = await rig([exited(belt("1", { decisions: [ASK] }))], { decisions: spy.port });
+    const dir = await makeTrick(r.configDir, "legs", MANIFEST, { "program.ts": "console.log(1)\n" });
+    await switchOn(r.stateDir, "legs");
+    await tickAt(r, T0);
+    expect(r.specs.length).toBe(1);
+    await writeFile(join(dir, "program.ts"), "console.log(2)\n");
+    await tickAt(r, T0 + 60_000);
+    expect(r.specs.length).toBe(1);
+    const reply = await r.service.reply(undefined);
+    expect(reply.tricks[0]).toMatchObject({ on: true, changed: true, state: "stopped", error: CHANGED_LINE });
+    expect(reply.parts[0]).toMatchObject({ stale: true, problem: CHANGED_LINE });
+    expect(spy.offs).toEqual([]);
+    // A tap is refused the same way, and runs nothing.
+    expect(ok200(await r.service.tap(HOST, "legs", { rid: REQ, node: "belt", intent: "x" }))).toEqual({ rid: REQ, code: "rejected", message: CHANGED_LINE });
+    // Switched on again: the new code is approved and runs at once.
+    const on = await r.service.setSwitch(HOST, "legs", true);
+    expect(on).toMatchObject({ status: 200, body: { on: true, state: "ok" } });
+    if (on.status === 200) expect(on.body.changed).toBeUndefined();
+    await tickAt(r, T0 + 61_000);
+    expect(r.specs.length).toBe(2);
+    expect(factsOf(r.specs[1]).trigger).toEqual({ kind: "start" });
+  });
+
+  test("a config.toml edit never turns a trick off: it reruns at once with the new settings", async () => {
+    const r = await rig([exited(belt("1"))]);
+    const dir = await makeTrick(r.configDir, "legs", MANIFEST, { "config.toml": "a = 1\n" });
+    await switchOn(r.stateDir, "legs");
+    await tickAt(r, T0);
+    await writeFile(join(dir, "config.toml"), "a = 2\n");
+    await tickAt(r, T0 + 1000);
+    expect(r.specs.length).toBe(2);
+    expect((await r.service.reply(undefined)).tricks[0]?.changed).toBeUndefined();
+  });
+
+  test("an entry with no hash (a version 1 file) reads as changed", async () => {
+    const r = await rig([exited(belt("1"))]);
+    await makeTrick(r.configDir, "legs", MANIFEST);
+    await writeSwitches(r.stateDir, withSwitch({ on: new Map() }, "legs", true, "t"));
+    await tickAt(r, T0);
+    expect(r.specs.length).toBe(0);
+    expect((await r.service.reply(undefined)).tricks[0]?.changed).toBe(true);
+  });
+
+  test("a program that appends to ./run.log keeps its interval and its backoff", async () => {
+    let dir = "";
+    let fail = false;
+    const r = await rig(null, {
+      run: async (spec) => {
+        await appendFile(join(dir, "run.log"), "ran\n");
+        await mkdir(join(dir, "media"), { recursive: true });
+        await writeFile(join(dir, "media", "shot.png"), String(Math.random()));
+        r.specs.push(spec);
+        return fail ? exited("", 1) : exited(belt("1"));
+      },
+    });
+    dir = await makeTrick(r.configDir, "legs", MANIFEST);
+    await switchOn(r.stateDir, "legs");
+    await tickAt(r, T0);
+    for (let s = 1; s < 30; s += 1) await tickAt(r, T0 + s * 1000);
+    expect(r.specs.length).toBe(1);
+    await tickAt(r, T0 + 30_000);
+    expect(r.specs.length).toBe(2);
+    fail = true;
+    await tickAt(r, T0 + 60_000);
+    expect(r.specs.length).toBe(3);
+    for (let s = 61; s < 120; s += 5) await tickAt(r, T0 + s * 1000);
+    expect(r.specs.length).toBe(3);
+    await tickAt(r, T0 + 120_000);
+    expect(r.specs.length).toBe(4);
+    expect((await r.service.reply(undefined)).tricks[0]?.changed).toBeUndefined();
+  });
+
+  test("an absent decisions key leaves them as they are; an empty list withdraws them", async () => {
+    const spy = hillSpy();
+    const r = await rig([exited(belt("1", { decisions: [ASK] })), exited(belt("2")), exited(belt("3", { decisions: [] }))], { decisions: spy.port });
+    await makeTrick(r.configDir, "legs", MANIFEST);
+    await switchOn(r.stateDir, "legs");
+    await r.service.refresh(true);
+    for (const rid of [REQ, REQ2, REQ3]) await r.service.tap(HOST, "legs", { rid, node: "belt", intent: "x" });
+    expect(spy.synced).toEqual([["a"], []]);
+  });
+});
+
+describe("taps, answers and slots", () => {
+  /** A runner whose runs wait until the test lets them go, each one counted while it runs. */
+  function gated() {
+    const specs: RunSpec[] = [];
+    const waiting: (() => void)[] = [];
+    let running = 0;
+    let peak = 0;
+    let open = false;
+    return {
+      specs,
+      running: () => running,
+      peak: () => peak,
+      releaseAll: () => {
+        open = true;
+        for (const go of waiting.splice(0)) go();
+      },
+      run: async (spec: RunSpec): Promise<RunOutcome> => {
+        specs.push(spec);
+        running += 1;
+        peak = Math.max(peak, running);
+        if (!open) await new Promise<void>((go) => waiting.push(go));
+        running -= 1;
+        return exited(belt("1"));
+      },
+    };
+  }
+
+  test("three answers from the hill at once all reach the program, one at a time, ahead of the timer", async () => {
+    const g = gated();
+    const r = await rig(null, { run: g.run });
+    await makeTrick(r.configDir, "legs", MANIFEST);
+    await switchOn(r.stateDir, "legs");
+    await r.service.refresh(true);
+    r.service.noteWatched();
+    const timer = r.service.tick();
+    await Bun.sleep(20);
+    const answers = [REQ, REQ2, REQ3].map((rid, i) => r.service.tapFromHill(HOST, "legs", { rid, node: "hill/a", intent: "rerun", value: { text: String(i) } }, "dc_x"));
+    await Bun.sleep(20);
+    expect(g.running()).toBe(1);
+    g.releaseAll();
+    await timer;
+    expect(await Promise.all(answers)).toEqual([true, true, true]);
+    expect(g.specs.map((s) => factsOf(s).trigger.kind)).toEqual(["start", "tap", "tap", "tap"]);
+    expect(g.specs.slice(1).map((s) => factsOf(s).trigger)).toMatchObject([{ rid: REQ }, { rid: REQ2 }, { rid: REQ3 }]);
+    expect(g.peak()).toBe(1);
+  });
+
+  test("at most four programs run at once across all tricks", async () => {
+    const g = gated();
+    const r = await rig(null, { run: g.run });
+    const ids = ["t1", "t2", "t3", "t4", "t5", "t6"];
+    for (const id of ids) await makeTrick(r.configDir, id, MANIFEST.replace('"legs"', `"${id}"`));
+    await switchOn(r.stateDir, ...ids);
+    r.service.noteWatched();
+    await r.service.refresh(true);
+    const tick = r.service.tick();
+    await Bun.sleep(30);
+    expect(g.running()).toBe(RUNS_MAX);
+    expect(r.service.runsHeld()).toBe(RUNS_MAX);
+    g.releaseAll();
+    await tick;
+    expect(g.specs.length).toBe(6);
+    expect(g.peak()).toBe(RUNS_MAX);
+  });
+
+  test("a tap that waited for a trick switched off answers rejected and runs nothing", async () => {
+    const g = gated();
+    const r = await rig(null, { run: g.run });
+    await makeTrick(r.configDir, "legs", MANIFEST);
+    await switchOn(r.stateDir, "legs");
+    await r.service.refresh(true);
+    r.service.noteWatched();
+    const timer = r.service.tick();
+    await Bun.sleep(20);
+    const queued = r.service.tap(HOST, "legs", { rid: REQ, node: "belt", intent: "x" });
+    await Bun.sleep(10);
+    await writeSwitches(r.stateDir, { on: new Map() });
+    await r.service.refresh(true);
+    g.releaseAll();
+    await timer;
+    expect(ok200(await queued)).toEqual({ rid: REQ, code: "rejected", message: "The trick is off." });
+    expect(g.specs.length).toBe(1);
+  });
+
+  test("a tap writes its marker before the run; after a restart a marker alone answers unknown and never runs twice", async () => {
+    const r = await rig([exited(belt("1"))]);
+    await makeTrick(r.configDir, "legs", MANIFEST);
+    await switchOn(r.stateDir, "legs");
+    await r.service.refresh(true);
+    expect(ok200(await r.service.tap(HOST, "legs", { rid: REQ, node: "belt", intent: "x" })).code).toBe("ok");
+    const file = JSON.parse(await readFile(join(r.stateDir, "tricks", "receipts.json"), "utf8"));
+    expect(file.receipts).toMatchObject([{ requestId: REQ, pending: false, reply: { code: "ok" } }]);
+    // A bridge that died mid-run left only the marker of REQ2.
+    const store = new TrickReceiptStore(r.stateDir);
+    await store.load();
+    await store.recordFirst({ requestId: REQ2, payloadDigest: payloadDigest(["legs", "belt", "x", "null", ""]), at: T0, pending: true, reply: null });
+    // The same folders, a new bridge.
+    const after = await rig([exited(belt("2"))], { configDir: r.configDir, stateDir: r.stateDir });
+    const restarted = after.service;
+    const lost = await restarted.tap(HOST, "legs", { rid: REQ2, node: "belt", intent: "x" });
+    expect(ok200(lost)).toEqual({ rid: REQ2, code: "unknown", message: TAP_LOST_LINE });
+    const replay = await restarted.tap(HOST, "legs", { rid: REQ, node: "belt", intent: "x" });
+    expect(ok200(replay)).toMatchObject({ rid: REQ, code: "ok" });
+    expect(after.specs.length).toBe(0);
+  });
+
+  test("a marker that cannot be written runs nothing", async () => {
+    const r = await rig([exited(belt("1"))], { receipts: { ...memoryTrickReceipts(), recordFirst: async () => false } });
+    await makeTrick(r.configDir, "legs", MANIFEST);
+    await switchOn(r.stateDir, "legs");
+    await r.service.refresh(true);
+    expect(ok200(await r.service.tap(HOST, "legs", { rid: REQ, node: "belt", intent: "x" })).code).toBe("rejected");
+    expect(r.specs.length).toBe(0);
+  });
+
+  test("the switch answer reflects the write even while a scan is in flight", async () => {
+    const r = await rig([exited(belt("1"))]);
+    await makeTrick(r.configDir, "legs", MANIFEST);
+    await r.service.refresh(true);
+    void r.service.refresh(true);
+    const on = await r.service.setSwitch(HOST, "legs", true);
+    expect(on).toMatchObject({ status: 200, body: { on: true } });
+    void r.service.refresh(true);
+    const off = await r.service.setSwitch(HOST, "legs", false);
+    expect(off).toMatchObject({ status: 200, body: { on: false, state: "off" } });
   });
 });
 

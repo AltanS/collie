@@ -13,6 +13,7 @@ import type { HillDecision, HillReceipt } from "../../web/src/lib/hill/wire.ts";
 import { parseJsonObject } from "../../web/src/lib/json.ts";
 import { parseFacts, type Refusal, type TrickDecision, type TrickFacts, type TrickTapReply } from "../../web/src/lib/tricks/schema.ts";
 import { decisionContentHash, imageFileDigest, REASK_AFTER_MS, scopeKeyAddress, TrickHill, TRICKS_MAP_FILE, trickRequestId, type TrickHillTrick } from "./hill.ts";
+import { trickCodeHash } from "./code-hash.ts";
 import { TRICKS_DIR } from "./paths.ts";
 import { runProvider, type RunOutcome, type RunSpec } from "./run.ts";
 import { HILL_NODE_TAP_REFUSED, TricksService, type TapAnswer } from "./service.ts";
@@ -494,9 +495,11 @@ describe("seen", () => {
 
 const T0 = Date.parse("2026-11-09T09:00:00Z");
 
+/** Switch the legs trick on as a person does, with the code hash of its folder as it is now, or off. */
 async function switches(stateDir: string, on: boolean): Promise<void> {
-  let next: Switches = { on: new Map<string, string>() };
-  if (on) next = withSwitch(next, "legs", true, "2026-11-09T09:00:00Z");
+  let next: Switches = { on: new Map() };
+  const code = await trickCodeHash(join(dirname(stateDir), "config", TRICKS_DIR, "legs"));
+  if (on) next = withSwitch(next, "legs", true, "2026-11-09T09:00:00Z", code.ok ? code.hash : null);
   await writeSwitches(stateDir, next);
 }
 

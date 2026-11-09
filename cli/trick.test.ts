@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { trickCodeHash } from "../bridge/tricks/code-hash.ts";
 import { switchesPath } from "../bridge/tricks/paths.ts";
 import { EXIT, type Io } from "./io.ts";
 import { tricksFindings } from "./trick-findings.ts";
@@ -181,11 +182,20 @@ describe("collie trick on, off and list", () => {
     expect(await cmdTrickSwitch(d, ["legs"], true)).toBe(EXIT.OK);
     const path = switchesPath(d.stateDir);
     expect((await stat(path)).mode & 0o777).toBe(0o600);
-    expect(JSON.parse(await readFile(path, "utf8"))).toEqual({ v: 1, on: { legs: "2026-11-08T09:00:00.000Z" } });
+    const code = await trickCodeHash(join(d.configDir, "tricks", "legs"));
+    const hash = code.ok ? code.hash : "";
+    expect(JSON.parse(await readFile(path, "utf8"))).toEqual({ v: 2, on: { legs: { at: "2026-11-08T09:00:00.000Z", hash } } });
+    expect(d.out.at(-1)).toBe(`Approved the code of legs as it is now: sha256 ${hash}. An edit to its code stops it until you switch it on again.`);
     expect(await cmdTrickSwitch(d, ["legs"], true)).toBe(EXIT.OK);
-    expect(d.out.at(-1)).toBe("legs is already on.");
+    expect(d.out.at(-1)).toBe(`legs is already on, with this code approved (sha256 ${hash}).`);
+    // An edit, then on again: the new code is approved.
+    await writeFile(join(d.configDir, "tricks", "legs", "provider.sh"), "#!/bin/sh\necho changed\n");
+    expect(await cmdTrickSwitch(d, ["legs"], true)).toBe(EXIT.OK);
+    expect(JSON.parse(await readFile(path, "utf8")).on.legs.hash).not.toBe(hash);
     expect(await cmdTrickSwitch(d, ["legs"], false)).toBe(EXIT.OK);
-    expect(JSON.parse(await readFile(path, "utf8"))).toEqual({ v: 1, on: {} });
+    expect(JSON.parse(await readFile(path, "utf8"))).toEqual({ v: 2, on: {} });
+    expect(await cmdTrickSwitch(d, ["legs"], false)).toBe(EXIT.OK);
+    expect(d.out.at(-1)).toBe("legs is already off.");
     expect(await cmdTrickSwitch(d, ["ghost"], true)).toBe(EXIT.FAIL);
     await mkdir(join(d.configDir, "tricks", "broken"));
     await writeFile(join(d.configDir, "tricks", "broken", "trick.toml"), 'id = "broken"\n');
