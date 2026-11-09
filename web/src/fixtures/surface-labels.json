@@ -6430,6 +6430,81 @@
    "version": "1.5.0",
    "state": "draft"
   },
+  "pi--v150-zentui-idle--w120.txt": {
+   "harness": "pi",
+   "version": "1.5.0",
+   "state": "idle"
+  },
+  "pi--v150-zentui-idle--w80.txt": {
+   "harness": "pi",
+   "version": "1.5.0",
+   "state": "idle"
+  },
+  "pi--v150-zentui-draft--w120.txt": {
+   "harness": "pi",
+   "version": "1.5.0",
+   "state": "draft"
+  },
+  "pi--v150-zentui-draft--w80.txt": {
+   "harness": "pi",
+   "version": "1.5.0",
+   "state": "draft"
+  },
+  "pi--v150-zentui-multiline-draft--w120.txt": {
+   "harness": "pi",
+   "version": "1.5.0",
+   "state": "draft"
+  },
+  "pi--v150-zentui-multiline-draft--w80.txt": {
+   "harness": "pi",
+   "version": "1.5.0",
+   "state": "draft"
+  },
+  "pi--v150-zentui-wrapped-draft--w120.txt": {
+   "harness": "pi",
+   "version": "1.5.0",
+   "state": "draft"
+  },
+  "pi--v150-zentui-pipe-draft--w80.txt": {
+   "harness": "pi",
+   "version": "1.5.0",
+   "state": "draft"
+  },
+  "pi--v150-zentui-model-selector--w120.txt": {
+   "harness": "pi",
+   "version": "1.5.0",
+   "state": "dialog"
+  },
+  "pi--v150-zentui-model-selector--w80.txt": {
+   "harness": "pi",
+   "version": "1.5.0",
+   "state": "dialog"
+  },
+  "pi--v150-zentui-nerd-idle--w120.txt": {
+   "harness": "pi",
+   "version": "1.5.0",
+   "state": "idle"
+  },
+  "pi--v150-zentui-nerd-draft--w120.txt": {
+   "harness": "pi",
+   "version": "1.5.0",
+   "state": "draft"
+  },
+  "pi--v150-zentui-echo-idle--w120.txt": {
+   "harness": "pi",
+   "version": "1.5.0",
+   "state": "idle"
+  },
+  "pi--v150-zentui-native-footer-idle--w120.txt": {
+   "harness": "pi",
+   "version": "1.5.0",
+   "state": "idle"
+  },
+  "pi--v150-zentui-native-footer-draft--w120.txt": {
+   "harness": "pi",
+   "version": "1.5.0",
+   "state": "draft"
+  },
   "pi--v130-quiet-prompt-two-line-draft--w140.txt": {
    "harness": "pi",
    "version": "1.3.0",

@@ -8,6 +8,7 @@ import { agentOf, fixtureRows, idleFor, PANES_DIR, readScreen, rowsOf, SURFACE_F
 import { pointsAt } from "./command-list";
 import { commandListAt, ownCommandList, runningSign } from "./cues";
 import { findInputFrame, rowText } from "./frame";
+import { stripSgr } from "./plain";
 import { askOf, isFree } from "./surface";
 import { CORPUS_WALK, FIXTURES, labelOf, own } from "../../test/surface-fold";
 
@@ -1123,5 +1124,92 @@ describe("omp's queue-prefix draft (Queueing ➤) reads as a draft (18.6.1 and 1
 
   it("the empty box with its ghost hint beside it is still empty", () => {
     expect(readScreen(fixtureRows("omp--box-empty--v18.12.6.txt", SURFACE_FIXTURES_DIR), "omp", idleFor("omp")).surface.composer).toBe("empty");
+  });
+});
+
+// Issue 747: pi-zentui 0.34.0 on pi 1.5.0 draws its Opencode editor as rail rows between pi's two rules
+// (a pad row, the editor rows, a pad row, then the model row), and the profile's wide column-zero prompt
+// took the rails and the model row for a draft, so every send was refused draft_present. Live captures
+// (fixtures/panes/README.md); the rail layout is the profile's last `frameAlternates` entry.
+describe("pi-zentui's rail editor (issue 747)", () => {
+  const pi = idleFor("pi")!;
+  const STARSHIP = [
+    "pi--v150-zentui-idle--w120.txt",
+    "pi--v150-zentui-idle--w80.txt",
+    "pi--v150-zentui-nerd-idle--w120.txt",
+    "pi--v150-zentui-echo-idle--w120.txt",
+  ];
+  const IDLE = [...STARSHIP, "pi--v150-zentui-native-footer-idle--w120.txt"];
+  const DRAFTS: readonly [string, string][] = [
+    ["pi--v150-zentui-draft--w120.txt", "hello from the probe"],
+    ["pi--v150-zentui-draft--w80.txt", "hello from the probe"],
+    ["pi--v150-zentui-nerd-draft--w120.txt", "hello from the probe"],
+    ["pi--v150-zentui-native-footer-draft--w120.txt", "hello from the probe"],
+    ["pi--v150-zentui-multiline-draft--w120.txt", "hello from the probe second line of the draft"],
+    ["pi--v150-zentui-multiline-draft--w80.txt", "hello from the probe second line of the draft"],
+    ["pi--v150-zentui-wrapped-draft--w120.txt", "this draft is long enough to wrap inside the rail editor so the reader has to join two rows of typed text into one line of draft"],
+    // A typed `|` behind the rail is the person's text, never a rail.
+    ["pi--v150-zentui-pipe-draft--w80.txt", "|"],
+  ];
+  const plain = (name: string) => readScreen(rowsOf(stripSgr(readFileSync(join(PANES_DIR, name), "utf8"))), "pi", pi);
+
+  it.each(IDLE)("%s: the empty rail box is free", (name) => {
+    const found = own(name);
+    expect(found.surface).toMatchObject({ turn: "idle", modal: "none", composer: "empty" });
+    expect(found.frame!.interior.text).toBe("");
+    expect(isFree(found.surface)).toBe(true);
+  });
+
+  it.each(DRAFTS)("%s: the typed text is the draft, the rails and the model row are not", (name, text) => {
+    const found = own(name);
+    expect(found.surface).toMatchObject({ turn: "idle", modal: "none", composer: "draft" });
+    expect(found.frame!.interior.text).toBe(text);
+  });
+
+  it("pi's /model selector over the rail setup stays a dialog", () => {
+    for (const name of ["pi--v150-zentui-model-selector--w120.txt", "pi--v150-zentui-model-selector--w80.txt"]) {
+      expect(own(name).surface).toMatchObject({ modal: "unreadable", composer: "unknown" });
+    }
+  });
+
+  it("the framed echo of a sent prompt is no box: the screen cut above the live box never reads free", () => {
+    const rows = fixtureRows("pi--v150-zentui-echo-idle--w120.txt");
+    const live = own("pi--v150-zentui-echo-idle--w120.txt").frame!;
+    expect(rows.slice(0, live.top).map(rowText).some((text) => text === "| say hi")).toBe(true);
+    const cut = readScreen(rows.slice(0, live.top), "pi", pi);
+    expect(cut.frame).toBeNull();
+    expect(isFree(cut.surface)).toBe(false);
+  });
+
+  it("a plain read takes the box under pi's native footer, and never frees it under the Starship footer", () => {
+    expect(plain("pi--v150-zentui-native-footer-idle--w120.txt").surface).toMatchObject({ turn: "idle", modal: "none", composer: "empty" });
+    expect(plain("pi--v150-zentui-native-footer-draft--w120.txt").frame!.interior.text).toBe("hello from the probe");
+    for (const name of [...STARSHIP, ...DRAFTS.map(([n]) => n)].filter((n) => !n.includes("native-footer"))) {
+      expect(plain(name).surface).toMatchObject({ composer: "unknown", reason: "no-match" });
+    }
+  });
+
+  // The column-zero box must not lose a draft to the rail rule: stock pi with rail-led rows typed in it.
+  describe("stock pi with rail-led rows in its draft", () => {
+    const stock = (draft: readonly string[]) => {
+      const rows = readFileSync(join(PANES_DIR, "pi--v110-stock-draft.txt"), "utf8").split("\n");
+      const at = rows.findIndex((row) => row.startsWith("collie stock pi draft probe"));
+      rows.splice(at, 1, ...draft);
+      return readScreen(rowsOf(rows.join("\n")), "pi", pi);
+    };
+
+    it("a rail-led first row under a plain row keeps every row in the draft", () => {
+      const read = stock(["| a | b |", "plain text"]);
+      expect(read.surface).toMatchObject({ composer: "draft" });
+      expect(read.frame!.interior.text).toBe("| a | b | plain text");
+    });
+
+    it("rows that are all rail-led never read free", () => {
+      for (const draft of [["| a | b |"], ["| a | b |", "| c | d |"], ["│ x", "│ y", "│ z"]]) {
+        const read = stock(draft);
+        expect(isFree(read.surface)).toBe(false);
+        expect(read.surface.composer).not.toBe("empty");
+      }
+    });
   });
 });

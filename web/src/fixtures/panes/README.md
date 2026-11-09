@@ -352,6 +352,36 @@ clears it.
 | `pi--v130-powerline-welcome-idle--w254.txt` | Another fresh session before its first key, the splash at the top | free |
 | `pi--v130-powerline-welcome-gone--w254.txt` | The same pane after the probe character and its Backspace: the splash rows are blank | free; against the one before it the rows above only lost text (`idle.volatile.above.losesText`) |
 
+## pi 1.5.0 under pi-zentui's rail editor (issue 747, captured 2026-11-09, tmux)
+
+**Live**, from a lab run: pi 1.5.0 (`@earendil-works/pi-coding-agent`) with pi-zentui 0.34.0 alone and
+its defaults (Opencode Editor, Starship Footer), installed in a throwaway npm prefix under
+`~/.cache/collie-lab/` and started as the reporter did, `pi -ne -e <prefix>/node_modules/pi-zentui/extensions/zentui/index.ts
+--no-session`, with a scratch `PI_CODING_AGENT_DIR`, a scratch git folder `proj` and a placeholder
+OpenRouter key, so pi picks a model and draws the model row. pi ran in a private tmux server
+(`tmux -L`), read with `capture-pane -e -p`: LF line ends, tmux cuts trailing spaces, cut here to the rows
+over the box, no trailing newline. tmux sets no `TERM_PROGRAM`, so zentui's icon mode is ASCII and its
+rail is `|`, as in the issue; the `nerd` files ran with `ZENTUI_NERD_FONTS=1`, rail `│`. The
+`native-footer` files ran with `{"components":{"footer":{"style":"native"}}}` in zentui's
+`zentui.json`, so pi's own cwd and stats rows stand under the box. The Opencode Editor draws pi's two
+rules and between them a rail on every row: a pad row, the editor rows (the cursor cell on the last), a
+pad row, and the model row `| <model>  <provider>  <thinking>`. The Starship footer opens with a space
+and the folder name. The echo file followed one send with the placeholder key: OpenRouter answered 401,
+no model turn ran and nothing was spent; zentui frames the sent prompt in the transcript with the same
+rails, and pi's error rows stand between it and the live box. Nothing personal was on screen.
+
+| Fixture | State | Reads as |
+| --- | --- | --- |
+| `pi--v150-zentui-idle--w120.txt`, `-idle--w80.txt` | Empty rail box over the Starship footer | free (the profile's rail layout, the last `frameAlternates` entry); plain read: no frame, never free (`fold.plain.allow.json`) |
+| `pi--v150-zentui-nerd-idle--w120.txt` | The same with the `│` rail | free |
+| `pi--v150-zentui-echo-idle--w120.txt` | Empty rail box under the framed echo of `say hi` and the 401 rows | free; the screen cut over the live box finds no box |
+| `pi--v150-zentui-draft--w120.txt`, `-draft--w80.txt`, `-nerd-draft--w120.txt` | `hello from the probe` typed, not sent | draft `hello from the probe` |
+| `pi--v150-zentui-multiline-draft--w120.txt`, `-multiline-draft--w80.txt` | A second line typed after Ctrl+J | draft, the two lines joined by one space |
+| `pi--v150-zentui-wrapped-draft--w120.txt` | One long line that wraps inside the rail | draft, the two rows joined |
+| `pi--v150-zentui-pipe-draft--w80.txt` | `|` typed: the row reads `| |` | draft `|` |
+| `pi--v150-zentui-model-selector--w120.txt`, `-model-selector--w80.txt` | pi's `/model` selector, drawn in the editor's place with no rail | modal unreadable, never free |
+| `pi--v150-zentui-native-footer-idle--w120.txt`, `-native-footer-draft--w120.txt` | The rail box over pi's native footer | free, and draft `hello from the probe`; a plain read gives the same |
+
 ## pi's permission gate on pi 0.87.1 (captured 2026-10-17, Herdr 0.9.4)
 
 Stock pi 0.87.1 with the example pi ships, `examples/extensions/permission-gate.ts` (`pi -e <path>`), in

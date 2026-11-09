@@ -768,5 +768,82 @@
     "rule": "web/src/lib/surface/cues.ts draftWrap / oneCaretCell (profile pi.json idle.frame.draftCaret)",
     "propose": "Upstream: the cursor position in the read. Text only: none, a newline draft and a two-row menu under the glyph are the same rows.",
     "effect": "SAFE SIDE: a newline draft under the glyph reads unreadable, so a send is refused, never typed into a dialog"
+  },
+  "pi--v150-zentui-idle--w120.txt": {
+    "why": "pi-zentui's rail editor (issue 747) is found under its Starship footer only as a painted footer: that footer opens with a space and the folder name, which the profile's under rule does not take. A plain read carries no paint, so it finds no frame and the composer reads unknown. With zentui's native footer the plain read finds the box (the native-footer fixtures).",
+    "class": "colour-needed",
+    "rule": "web/src/lib/surface/frame.ts:838 interiorFrameAt under check, frame.ts:303 paintedFooter (profile pi.json idle.frameAlternates rail layout, underPainted)",
+    "propose": "Upstream: per-row dim or fg flag. Text only: an under rule that takes a row opening with a space would also take pi's prose, which pi indents by one space, under the framed echo of a sent prompt, so no wider rule is proposed.",
+    "effect": "the pane is never free on a plain read: a send is held or refused, which is safe"
+  },
+  "pi--v150-zentui-idle--w80.txt": {
+    "why": "pi-zentui's rail editor (issue 747) is found under its Starship footer only as a painted footer: that footer opens with a space and the folder name, which the profile's under rule does not take. A plain read carries no paint, so it finds no frame and the composer reads unknown. With zentui's native footer the plain read finds the box (the native-footer fixtures).",
+    "class": "colour-needed",
+    "rule": "web/src/lib/surface/frame.ts:838 interiorFrameAt under check, frame.ts:303 paintedFooter (profile pi.json idle.frameAlternates rail layout, underPainted)",
+    "propose": "Upstream: per-row dim or fg flag. Text only: an under rule that takes a row opening with a space would also take pi's prose, which pi indents by one space, under the framed echo of a sent prompt, so no wider rule is proposed.",
+    "effect": "the pane is never free on a plain read: a send is held or refused, which is safe"
+  },
+  "pi--v150-zentui-draft--w120.txt": {
+    "why": "pi-zentui's rail editor (issue 747) is found under its Starship footer only as a painted footer: that footer opens with a space and the folder name, which the profile's under rule does not take. A plain read carries no paint, so it finds no frame and the composer reads unknown. With zentui's native footer the plain read finds the box (the native-footer fixtures).",
+    "class": "colour-needed",
+    "rule": "web/src/lib/surface/frame.ts:838 interiorFrameAt under check, frame.ts:303 paintedFooter (profile pi.json idle.frameAlternates rail layout, underPainted)",
+    "propose": "Upstream: per-row dim or fg flag. Text only: an under rule that takes a row opening with a space would also take pi's prose, which pi indents by one space, under the framed echo of a sent prompt, so no wider rule is proposed.",
+    "effect": "the pane is never free on a plain read: a send is held or refused, which is safe"
+  },
+  "pi--v150-zentui-draft--w80.txt": {
+    "why": "pi-zentui's rail editor (issue 747) is found under its Starship footer only as a painted footer: that footer opens with a space and the folder name, which the profile's under rule does not take. A plain read carries no paint, so it finds no frame and the composer reads unknown. With zentui's native footer the plain read finds the box (the native-footer fixtures).",
+    "class": "colour-needed",
+    "rule": "web/src/lib/surface/frame.ts:838 interiorFrameAt under check, frame.ts:303 paintedFooter (profile pi.json idle.frameAlternates rail layout, underPainted)",
+    "propose": "Upstream: per-row dim or fg flag. Text only: an under rule that takes a row opening with a space would also take pi's prose, which pi indents by one space, under the framed echo of a sent prompt, so no wider rule is proposed.",
+    "effect": "the pane is never free on a plain read: a send is held or refused, which is safe"
+  },
+  "pi--v150-zentui-multiline-draft--w120.txt": {
+    "why": "pi-zentui's rail editor (issue 747) is found under its Starship footer only as a painted footer: that footer opens with a space and the folder name, which the profile's under rule does not take. A plain read carries no paint, so it finds no frame and the composer reads unknown. With zentui's native footer the plain read finds the box (the native-footer fixtures).",
+    "class": "colour-needed",
+    "rule": "web/src/lib/surface/frame.ts:838 interiorFrameAt under check, frame.ts:303 paintedFooter (profile pi.json idle.frameAlternates rail layout, underPainted)",
+    "propose": "Upstream: per-row dim or fg flag. Text only: an under rule that takes a row opening with a space would also take pi's prose, which pi indents by one space, under the framed echo of a sent prompt, so no wider rule is proposed.",
+    "effect": "the pane is never free on a plain read: a send is held or refused, which is safe"
+  },
+  "pi--v150-zentui-multiline-draft--w80.txt": {
+    "why": "pi-zentui's rail editor (issue 747) is found under its Starship footer only as a painted footer: that footer opens with a space and the folder name, which the profile's under rule does not take. A plain read carries no paint, so it finds no frame and the composer reads unknown. With zentui's native footer the plain read finds the box (the native-footer fixtures).",
+    "class": "colour-needed",
+    "rule": "web/src/lib/surface/frame.ts:838 interiorFrameAt under check, frame.ts:303 paintedFooter (profile pi.json idle.frameAlternates rail layout, underPainted)",
+    "propose": "Upstream: per-row dim or fg flag. Text only: an under rule that takes a row opening with a space would also take pi's prose, which pi indents by one space, under the framed echo of a sent prompt, so no wider rule is proposed.",
+    "effect": "the pane is never free on a plain read: a send is held or refused, which is safe"
+  },
+  "pi--v150-zentui-wrapped-draft--w120.txt": {
+    "why": "pi-zentui's rail editor (issue 747) is found under its Starship footer only as a painted footer: that footer opens with a space and the folder name, which the profile's under rule does not take. A plain read carries no paint, so it finds no frame and the composer reads unknown. With zentui's native footer the plain read finds the box (the native-footer fixtures).",
+    "class": "colour-needed",
+    "rule": "web/src/lib/surface/frame.ts:838 interiorFrameAt under check, frame.ts:303 paintedFooter (profile pi.json idle.frameAlternates rail layout, underPainted)",
+    "propose": "Upstream: per-row dim or fg flag. Text only: an under rule that takes a row opening with a space would also take pi's prose, which pi indents by one space, under the framed echo of a sent prompt, so no wider rule is proposed.",
+    "effect": "the pane is never free on a plain read: a send is held or refused, which is safe"
+  },
+  "pi--v150-zentui-pipe-draft--w80.txt": {
+    "why": "pi-zentui's rail editor (issue 747) is found under its Starship footer only as a painted footer: that footer opens with a space and the folder name, which the profile's under rule does not take. A plain read carries no paint, so it finds no frame and the composer reads unknown. With zentui's native footer the plain read finds the box (the native-footer fixtures).",
+    "class": "colour-needed",
+    "rule": "web/src/lib/surface/frame.ts:838 interiorFrameAt under check, frame.ts:303 paintedFooter (profile pi.json idle.frameAlternates rail layout, underPainted)",
+    "propose": "Upstream: per-row dim or fg flag. Text only: an under rule that takes a row opening with a space would also take pi's prose, which pi indents by one space, under the framed echo of a sent prompt, so no wider rule is proposed.",
+    "effect": "the pane is never free on a plain read: a send is held or refused, which is safe"
+  },
+  "pi--v150-zentui-nerd-idle--w120.txt": {
+    "why": "pi-zentui's rail editor (issue 747) is found under its Starship footer only as a painted footer: that footer opens with a space and the folder name, which the profile's under rule does not take. A plain read carries no paint, so it finds no frame and the composer reads unknown. With zentui's native footer the plain read finds the box (the native-footer fixtures).",
+    "class": "colour-needed",
+    "rule": "web/src/lib/surface/frame.ts:838 interiorFrameAt under check, frame.ts:303 paintedFooter (profile pi.json idle.frameAlternates rail layout, underPainted)",
+    "propose": "Upstream: per-row dim or fg flag. Text only: an under rule that takes a row opening with a space would also take pi's prose, which pi indents by one space, under the framed echo of a sent prompt, so no wider rule is proposed.",
+    "effect": "the pane is never free on a plain read: a send is held or refused, which is safe"
+  },
+  "pi--v150-zentui-nerd-draft--w120.txt": {
+    "why": "pi-zentui's rail editor (issue 747) is found under its Starship footer only as a painted footer: that footer opens with a space and the folder name, which the profile's under rule does not take. A plain read carries no paint, so it finds no frame and the composer reads unknown. With zentui's native footer the plain read finds the box (the native-footer fixtures).",
+    "class": "colour-needed",
+    "rule": "web/src/lib/surface/frame.ts:838 interiorFrameAt under check, frame.ts:303 paintedFooter (profile pi.json idle.frameAlternates rail layout, underPainted)",
+    "propose": "Upstream: per-row dim or fg flag. Text only: an under rule that takes a row opening with a space would also take pi's prose, which pi indents by one space, under the framed echo of a sent prompt, so no wider rule is proposed.",
+    "effect": "the pane is never free on a plain read: a send is held or refused, which is safe"
+  },
+  "pi--v150-zentui-echo-idle--w120.txt": {
+    "why": "pi-zentui's rail editor (issue 747) is found under its Starship footer only as a painted footer: that footer opens with a space and the folder name, which the profile's under rule does not take. A plain read carries no paint, so it finds no frame and the composer reads unknown. With zentui's native footer the plain read finds the box (the native-footer fixtures).",
+    "class": "colour-needed",
+    "rule": "web/src/lib/surface/frame.ts:838 interiorFrameAt under check, frame.ts:303 paintedFooter (profile pi.json idle.frameAlternates rail layout, underPainted)",
+    "propose": "Upstream: per-row dim or fg flag. Text only: an under rule that takes a row opening with a space would also take pi's prose, which pi indents by one space, under the framed echo of a sent prompt, so no wider rule is proposed.",
+    "effect": "the pane is never free on a plain read: a send is held or refused, which is safe"
   }
 }
