@@ -140,14 +140,71 @@ describe("syncTricks", () => {
     expect(store.getState().rev).toBe(4);
   });
 
+  it("waits after a failed fetch whatever rev the next snapshot names, and asks again once the time is up", async () => {
+    let now = 1_000_000;
+    const store = storeOf(() => now);
+    const asked = serveTricks(reply(3, [BELT, LEGS, TRACKER]), { status: 500 }, reply(5, [LEGS]));
+    await store.syncTricks(3);
+    await store.syncTricks(4);
+    expect(asked).toEqual(["0", "3"]);
+    // A newer rev inside the window is not asked either: the route is broken, not the rev.
+    now += 1_000;
+    await store.syncTricks(5);
+    expect(asked).toEqual(["0", "3"]);
+    now += SYNC_RETRY_MS;
+    await store.syncTricks(5);
+    expect(asked).toEqual(["0", "3", "3"]);
+    expect(store.getState().rev).toBe(5);
+  });
+
   it("refuses a reply of another shape whole, and keeps what it holds", async () => {
     const store = storeOf();
     serveTricks(reply(3, [BELT, LEGS, TRACKER]));
     await store.syncTricks(3);
-    server.use(http.get(/\/api\/tricks$/, () => HttpResponse.json({ rev: 4, parts: [{ host: "bluefin" }], present: [], tricks: [] })));
+    // No `present` list and no `tricks` list: bad outside its parts, so nothing of it is applied.
+    server.use(http.get(/\/api\/tricks$/, () => HttpResponse.json({ rev: 4, parts: [{ host: "bluefin" }] })));
     await store.syncTricks(4);
     expect(store.getState().rev).toBe(3);
     expect(store.getState().parts.size).toBe(3);
+  });
+
+  it("drops one malformed part and keeps the rest of the reply, warning once for the rev", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const store = storeOf();
+    const changed = wire("legs", legsSaying("case 25 red"), 5);
+    const bad = { host: "bluefin", trick: "legs", part: "broken", rev: 4, value: "not an object" };
+    server.use(http.get(/\/api\/tricks$/, () => HttpResponse.json({ rev: 5, tricks: TRICKS, parts: [bad, changed, { nope: 1 }, BELT], present: [...ALL, "bluefin/legs/broken"] })));
+    await store.syncTricks(5);
+    expect(store.getState().rev).toBe(5);
+    expect([...store.getState().parts.keys()].toSorted()).toEqual([partKey(BELT), partKey(LEGS)].toSorted());
+    expect(store.getState().parts.get(partKey(LEGS))?.rev).toBe(5);
+    expect(warn).toHaveBeenCalledTimes(1);
+    // The same bad reply read again does not warn again.
+    await store.syncTricks(5);
+    const again = storeOf();
+    await again.syncTricks(5);
+    expect(warn).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps a held part's last good version when its new version is the malformed one", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const store = storeOf();
+    serveTricks(reply(3, [BELT, LEGS, TRACKER]));
+    await store.syncTricks(3);
+    const bad = { host: "bluefin", trick: "legs", part: LEGS.part, rev: 9, value: 7 };
+    server.use(http.get(/\/api\/tricks$/, () => HttpResponse.json({ rev: 9, tricks: TRICKS, parts: [bad], present: ALL })));
+    await store.syncTricks(9);
+    expect(store.getState().rev).toBe(9);
+    expect(store.getState().parts.get(partKey(LEGS))).toEqual(LEGS);
+  });
+
+  it("reads a tap's receipt whole when one part in it is malformed", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const body = { rid: "r1", code: "ok", rev: 6, parts: [{ nope: 1 }, wire("legs", legsSaying("after the tap"), 6)] };
+    server.use(http.post(/\/api\/tricks\/bluefin\/legs\/tap$/, () => HttpResponse.json(JSON.parse(JSON.stringify(body)))));
+    const got = await tapTrick("bluefin", "legs", { rid: "r1", node: "legs", intent: "rerun" });
+    expect(got.code).toBe("ok");
+    expect(got.parts?.map((part) => part.rev)).toEqual([6]);
   });
 
   it("runs no timer of its own", async () => {
