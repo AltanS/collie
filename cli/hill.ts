@@ -3,6 +3,7 @@ import { realpathSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 
 import { edgeStateDirs, readEnvMarkers } from "./beacon.ts";
+import { HILL_RULES } from "./hill-rules.ts";
 import { holdSocketSafe } from "./hold.ts";
 import { EXIT } from "./io.ts";
 import { NO_SOCKET_TEXT, shown, type WalkyDeps } from "./walky.ts";
@@ -41,20 +42,7 @@ import { isRequestId } from "../bridge/worktree-receipts.ts";
 
 export const HILL_SUBCOMMANDS = ["post", "status", "withdraw", "list"] as const;
 
-/**
- * The rules every agent reads before it posts, in `collie hill --help` and `collie hill post --help`, and
- * in the "Decisions (the hill)" part of the installed WalkyTalky skill (`renderWalkySkill` in
- * cli/skill-install.ts fills `{{HILL_RULES}}` from this list). One source: edit the words here only.
- */
-export const HILL_RULES = [
-  "Post a decision only for what needs the person.",
-  "Always write the summary in plain words, and recommend one option with a why.",
-  "One question per decision. To change one, post again with --supersedes; never repost.",
-  "Do not wait in a loop. The answer arrives as a WalkyTalky message and starts your next turn.",
-  "If no answer arrived, read it with collie hill status <id>.",
-  "An answer typed into your session for a decision you did not post carries only the id and the option word. Read the rest with collie hill status <id>.",
-  "A worker with a lead asks its lead first.",
-] as const;
+export { HILL_RULES };
 
 /** What the CLI prints when no bridge on this machine answered a hill operation as one it knows. */
 export const HILL_UNKNOWN = "no running Collie on this machine knows the hill";

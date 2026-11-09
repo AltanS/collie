@@ -35,7 +35,7 @@ import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, w
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
-import { HILL_RULES } from "../../../cli/hill";
+import { HILL_RULES } from "../../../cli/hill-rules";
 import { EMPTY_MCP_FILE } from "../../../scripts/harness-canary/lab/harnesses";
 import { seedClaude, seedClaudeReplay } from "../../../scripts/harness-canary/lab/seed";
 import type { JsonObject } from "../../src/lib/json";

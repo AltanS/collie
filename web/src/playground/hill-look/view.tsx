@@ -289,7 +289,7 @@ export function HillLookView({ option, c }: { option: ViewId; c: HillCase }) {
   return (
     <RootRouter data={homeSolo}>
       <AppHeaderHost bridge="connected" error={false}>
-        {option === "C0" && <HillHeader count={c.open.length} onBack={noop} />}
+        {option === "C0" && <HillHeader count={c.open.length} nowCount={c.open.filter((d) => d.priority === "now").length} onBack={noop} />}
         {option === "C1" && <C1Header c={c} />}
         {option === "C2" && <C2Header c={c} />}
         <div data-pg-scroll className="min-h-0 flex-1 overflow-y-auto p-4">
