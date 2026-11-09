@@ -40,6 +40,28 @@ export const WIDE_MIN_HEIGHT_PX = 480;
 export const MEDIUM_QUERY = `(min-width: ${MEDIUM_MIN_PX}px) and (min-height: ${WIDE_MIN_HEIGHT_PX}px)`;
 export const EXPANDED_QUERY = `(min-width: ${EXPANDED_MIN_PX}px) and (min-height: ${WIDE_MIN_HEIGHT_PX}px)`;
 
+/** The same two cuts by width alone, with no height test. Read while a field that types has focus
+ *  (see {@link heldWidthClass}). */
+export const MEDIUM_WIDTH_QUERY = `(min-width: ${MEDIUM_MIN_PX}px)`;
+export const EXPANDED_WIDTH_QUERY = `(min-width: ${EXPANDED_MIN_PX}px)`;
+
+/** Android closes the keyboard in about 300 ms. One second is far past it, and the only cost is a late drop to compact in a short window with no keyboard, which is rare. */
+export const KEYBOARD_CLOSE_LINGER_MS = 1000;
+
+/**
+ * The width class to draw, given what the window says now and what was drawn last. The soft keyboard
+ * shrinks the page height (`interactive-widget=resizes-content`), and under 480px tall the window
+ * reads compact. A drop to compact would unmount the focused field and close the keyboard, then the
+ * height returns and the layout flips back, so the person cannot type (issue 751). So while a typing
+ * field has focus, a class that was wide stays as wide as the WIDTH alone allows. It never raises a
+ * compact class: a phone held sideways starts compact and stays compact when its composer takes focus.
+ */
+export function heldWidthClass(fromWindow: WidthClass, last: WidthClass, typing: boolean, byWidth: WidthClass): WidthClass {
+  if (fromWindow !== "compact") return fromWindow;
+  if (!typing || last === "compact" || byWidth === "compact") return "compact";
+  return byWidth;
+}
+
 export function widthClassOf(px: number): WidthClass {
   if (px >= EXPANDED_MIN_PX) return "expanded";
   if (px >= MEDIUM_MIN_PX) return "medium";

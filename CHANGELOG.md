@@ -26,6 +26,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 ### Fixed
 
 - **A held permission on a crew member can be answered from the phone.** The hook hold card on a member's pane drew its Yes and No switched off, so a held request waited out the hook's five minutes. The lead now carries the tap to the member over the crew link, where the member's own ask route answers it; a member that predates the route refuses it in the status line.
+- **The keyboard stays open on an unfolded foldable and on a tablet held sideways.** On an open Galaxy Z Fold a tap on the reply box raised the keyboard and it closed again at once, so you could not type. The keyboard took the page under 480px tall, the large-screen layout fell back to the phone layout, and that removed the box you were typing in. The layout now holds while a field that types has focus and for a second after, so a tap outside the field still lands. Thanks @jazzgil (#751).
 
 ## [1.28.0] - 2026-11-06
 

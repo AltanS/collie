@@ -1,7 +1,7 @@
 import { act, renderHook } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { keyboardLikelyOpen, nextKeyboardOpen, raisesKeyboard, useKeyboardOpen } from "./use-keyboard";
+import { keyboardLikelyOpen, nextKeyboardOpen, raisesKeyboard, useKeyboardOpen, useTypingFocus } from "./use-keyboard";
 
 describe("keyboardLikelyOpen", () => {
   it("is closed when the height is unchanged", () => {
@@ -163,5 +163,78 @@ describe("raisesKeyboard", () => {
     expect(raisesKeyboard(search)).toBe(true);
     expect(raisesKeyboard(document.createElement("select"))).toBe(false);
     expect(raisesKeyboard(null)).toBe(false);
+  });
+});
+
+describe("useTypingFocus", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => {
+    vi.useRealTimers();
+    document.body.replaceChildren();
+  });
+
+  const mount = (lingerMs?: number) => {
+    const field = document.createElement("textarea");
+    const button = document.createElement("button");
+    document.body.append(field, button);
+    const hook = renderHook(() => useTypingFocus(lingerMs));
+    return { field, button, hook };
+  };
+
+  it("is true while a textarea has focus and false after it blurs", () => {
+    const { field, hook } = mount();
+    expect(hook.result.current).toBe(false);
+    act(() => field.focus());
+    expect(hook.result.current).toBe(true);
+    act(() => field.blur());
+    expect(hook.result.current).toBe(false);
+  });
+
+  it("is false for a checkbox", () => {
+    const box = document.createElement("input");
+    box.type = "checkbox";
+    document.body.append(box);
+    const { result } = renderHook(() => useTypingFocus());
+    act(() => box.focus());
+    expect(result.current).toBe(false);
+  });
+
+  it("with no linger, focus on a button ends it at once", () => {
+    const { field, button, hook } = mount();
+    act(() => field.focus());
+    act(() => button.focus());
+    expect(hook.result.current).toBe(false);
+  });
+
+  it("stays true after blur and goes false once the linger passes", () => {
+    const { field, hook } = mount(1000);
+    act(() => field.focus());
+    act(() => field.blur());
+    expect(hook.result.current).toBe(true);
+    act(() => vi.advanceTimersByTime(999));
+    expect(hook.result.current).toBe(true);
+    act(() => vi.advanceTimersByTime(1));
+    expect(hook.result.current).toBe(false);
+  });
+
+  it("focus returning to a typing field inside the linger keeps it true past the old deadline", () => {
+    const { field, hook } = mount(1000);
+    act(() => field.focus());
+    act(() => field.blur());
+    act(() => vi.advanceTimersByTime(600));
+    act(() => field.focus());
+    act(() => vi.advanceTimersByTime(1500));
+    expect(hook.result.current).toBe(true);
+  });
+
+  it("focus moving to a button during the linger does not end it early", () => {
+    const { field, button, hook } = mount(1000);
+    act(() => field.focus());
+    act(() => button.focus());
+    expect(hook.result.current).toBe(true);
+    act(() => vi.advanceTimersByTime(999));
+    expect(hook.result.current).toBe(true);
+    act(() => vi.advanceTimersByTime(1));
+    expect(hook.result.current).toBe(false);
   });
 });

@@ -304,3 +304,53 @@ test("a tab is 30px on a phone, 36px at the medium tier and 40px at the expanded
     expect((await tab.boundingBox())!.height, `${widthClass} at ${width}x${height}`).toBe(tall);
   }
 });
+
+// THE SOFT KEYBOARD MUST NOT CLOSE ITSELF (issue 751). An unfolded Galaxy Z Fold is 707x739 and draws
+// the medium layout. The keyboard takes the page down to 707x432 (`interactive-widget=resizes-content`).
+// Under 480px tall the layout used to fall back to compact, which unmounted the focused composer, and
+// the keyboard closed. While a field that types has focus, and for 1000 ms after, the wide class holds.
+test("the layout holds while the keyboard takes the height under 480 (issue 751)", async ({ page }) => {
+  await page.setViewportSize({ width: 707, height: 739 });
+  await page.goto("/pane/w1:p1");
+  const layout = page.locator('[data-slot="wide-layout"]');
+  await expect(layout).toBeVisible();
+  await expect(layout).toHaveAttribute("data-width-class", "medium");
+
+  const composer = page.locator('[data-slot="wide-layout"] textarea[data-slot="chat-input"]').first();
+  await expect(composer).toBeEnabled();
+  // The tag tells a kept node from a new one that only looks the same.
+  await composer.evaluate((el) => {
+    el.dataset.probe = "751";
+  });
+  await composer.focus();
+
+  const probe = () =>
+    page.evaluate(() => {
+      const tagged = document.querySelector<HTMLElement>('[data-probe="751"]');
+      return {
+        taggedConnected: tagged?.isConnected ?? false,
+        activeProbe: document.activeElement instanceof HTMLElement ? (document.activeElement.dataset.probe ?? null) : null,
+        widthClass: document.querySelector('[data-slot="wide-layout"]')?.getAttribute("data-width-class") ?? null,
+      };
+    });
+
+  for (const height of [432, 739]) {
+    await page.setViewportSize({ width: 707, height });
+    // Wait past two frames, so a late drop to compact shows up.
+    await page.waitForTimeout(300);
+    await expect(layout).toHaveCount(1);
+    expect(await probe(), `at 707x${height}`).toEqual({ taggedConnected: true, activeProbe: "751", widthClass: "medium" });
+  }
+});
+
+test("with nothing focused the same 707x432 page draws the compact layout (issue 751 control)", async ({ page }) => {
+  await page.setViewportSize({ width: 707, height: 739 });
+  await page.goto("/pane/w1:p1");
+  const layout = page.locator('[data-slot="wide-layout"]');
+  await expect(layout).toHaveAttribute("data-width-class", "medium");
+  await page.evaluate(() => document.activeElement instanceof HTMLElement && document.activeElement.blur());
+  // The 1000 ms linger after a field leaves focus has to end first.
+  await page.waitForTimeout(1200);
+  await page.setViewportSize({ width: 707, height: 432 });
+  await expect(layout).toHaveCount(0);
+});
