@@ -618,8 +618,11 @@ export function AgentChat({
   }, [landscape, zen, autoZenActive]);
   const listRef = useRef<ChatMessageListHandle>(null);
   const composerRef = useRef<ComposerHandle>(null);
-  // THE TRICKS' BELT MARKS (M94 slice 03): one per `belt` part, in manifest order, on the belt's pinned
-  // block. A tap goes to the trick with this pane as `from`; it never touches this pane's reply box.
+  // A trick's own session, one level down: the one way a belt mark, a status item and the switcher open it.
+  const openTrickSession = useCallback((pane: AgentView) => nav.down(trickSessionPath(pane.paneId)), [nav]);
+  // THE TRICKS' BELT MARKS (M94 slice 03): one per `belt` part, in manifest order, at the end of the belt's
+  // scrolling strip after Collie's own pills, never in its pinned block. A tap goes to the trick with this
+  // pane as `from`; it never touches this pane's reply box.
   const beltParts = useTrickParts("belt");
   const trickSessions = rootData?.trickSessions;
   const beltMarks = useMemo(() => {
@@ -633,16 +636,16 @@ export function AgentChat({
         return handlers;
       },
       sessions: trickSessions ?? [],
-      onOpenSession: (pane) => nav.down(trickSessionPath(pane.paneId)),
+      onOpenSession: openTrickSession,
     });
-  }, [beltParts, trickSessions, agent, nav]);
+  }, [beltParts, trickSessions, agent, openTrickSession]);
   // THE TRICKS' STATUS ITEMS (M94 re-cut, the `status` place): one per `status` part, in manifest order,
   // in the usage row above the belt, after Collie's own items. A tap opens the trick's session, if it has one.
   const statusParts = useTrickParts("status");
   const statusItems = useMemo(() => {
     if (statusParts.length === 0) return undefined;
-    return statusItemsOf({ parts: statusParts, sessions: trickSessions ?? [], onOpenSession: (pane) => nav.down(trickSessionPath(pane.paneId)) });
-  }, [statusParts, trickSessions, nav]);
+    return statusItemsOf({ parts: statusParts, sessions: trickSessions ?? [], onOpenSession: openTrickSession });
+  }, [statusParts, trickSessions, openTrickSession]);
   // The box the composer's terminal-draft notice floats in (ADR 0061), at the mirror's bottom edge.
   // State rather than a ref: the composer portals into it, so it must re-render once it exists.
   const [draftNoticeSlot, setDraftNoticeSlot] = useState<HTMLDivElement | null>(null);
@@ -2055,9 +2058,9 @@ export function AgentChat({
   // WITHIN THE CURRENT scope's host; handed a peer's row that would silently reopen this host's own
   // identically-numbered pane instead. This resolves the pane's OWN scope via `paneScope` first, the
   // same call home.tsx's dashboard `open` makes to open a crew-wide row correctly.
-  function openTrickSession(pane: AgentView) {
+  function openTrickSessionFromDrawer(pane: AgentView) {
     closeDrawer();
-    nav.down(trickSessionPath(pane.paneId));
+    openTrickSession(pane);
   }
 
   function switchToPane(pane: AgentView) {
@@ -3511,7 +3514,7 @@ export function AgentChat({
             onSelect={switchToPane}
             // The Tricks Space's sessions (M94 slice 03), one level down from here, so back comes back.
             trickSessions={rootData?.trickSessions}
-            onSelectTrick={openTrickSession}
+            onSelectTrick={openTrickSessionFromDrawer}
             tabs={tabs}
             servers={servers}
             // The snapshot's spaces fold a worktree under its open root and head an unfolded one
