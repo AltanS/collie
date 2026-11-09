@@ -184,6 +184,12 @@ export interface HillDecision {
     /** What the trick's program did with the answer, as a tap. "none" for an agent's decision. */
     trick: HillTrickDelivery;
   } | null;
+  /**
+   * The SHA-256 of what the post asked for, hex, so a repeat of `requestId` with another payload is
+   * refused (`request_id_reused`) instead of answered with this decision. Absent on a decision stored
+   * before it existed: a repeat of that one is answered as stored.
+   */
+  postDigest?: string;
 }
 
 /**
@@ -272,7 +278,8 @@ export type HillRefusalCode =
   | "walky_off"
   | "bad_image"
   | "too_many_images"
-  | "image_too_large";
+  | "image_too_large"
+  | "request_id_reused";
 
 /** The node name of a decision: "hill/<id>". */
 export function hillNode(id: string): string {

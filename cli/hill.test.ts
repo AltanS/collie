@@ -468,6 +468,22 @@ describe("post --image", () => {
   });
 });
 
+describe("a retried post", () => {
+  socketTest("the same --request-id posts once; other content under it is refused request_id_reused", async () => {
+    const b = await bridge();
+    const sock = [walkySocketPath(b.stateDir)];
+    const id = "0f8b5c1e-5a7d-4b8e-9f00-1a2b3c4d5e71";
+    const first = deps(sock);
+    expect(await cmdHillPost(first, [...POST, "--request-id", id, "--expires", "2h"])).toBe(EXIT.OK);
+    const again = deps(sock, inPane("%1"), { now: () => 99_000 });
+    expect(await cmdHillPost(again, [...POST, "--request-id", id, "--expires", "2h"])).toBe(EXIT.OK);
+    expect(again.io.stdout).toEqual(first.io.stdout);
+    const changed = deps(sock);
+    expect(await cmdHillPost(changed, [...POST.map((arg) => (arg === "Ship the zoom fix in 1.28.1?" ? "Ship it later?" : arg)), "--request-id", id])).toBe(EXIT.REFUSED);
+    expect(changed.io.stderr).toEqual([`hill: this request id already posted ${first.io.stdout[0]!} with other content; post with a new --request-id (request_id_reused)`]);
+  });
+});
+
 describe("status from the session an answer goes to", () => {
   socketTest("the replyTo session reads the decision and its answer; a third pane does not", async () => {
     const b = await bridge();

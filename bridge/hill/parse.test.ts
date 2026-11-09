@@ -108,6 +108,15 @@ describe("a stored decision", () => {
     expect(readDecision({ ...row, from: { ...oldFrom, trickHost: 5 } })).toBeNull();
   });
 
+  test("the post digest reads back when present and stays absent when not; a bad one fails the record", () => {
+    const digest = "a".repeat(64);
+    const withDigest = decision("dc_aaaaaaaaaaa1", { postDigest: digest });
+    expect(readDecision(onDisk(withDigest))).toEqual(withDigest);
+    expect(readDecision(onDisk(decision("dc_aaaaaaaaaaa1")))).not.toHaveProperty("postDigest");
+    expect(readDecision(onDisk(withDigest, { postDigest: "short" }))).toBeNull();
+    expect(readDecision(onDisk(withDigest, { postDigest: 7 }))).toBeNull();
+  });
+
   test("a field that fails its rule fails the record", () => {
     const whole = decision("dc_aaaaaaaaaaa1");
     expect(readDecision(onDisk(whole, { v: 2 }))).toBeNull();

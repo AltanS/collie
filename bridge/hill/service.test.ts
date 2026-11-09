@@ -299,10 +299,34 @@ describe("posting a decision", () => {
     const r = rig();
     const first = posted(r.hill.post(POSTER, input(1)));
     r.clock = 2000;
-    expect(posted(r.hill.post(POSTER, input(1, { title: "Changed?" })))).toEqual(first);
+    expect(posted(r.hill.post(POSTER, input(1)))).toEqual(first);
+    // A retried `--expires 2h` counts from its own clock: the expiry is not part of the payload.
+    expect(posted(r.hill.post(POSTER, input(1, { expiresAt: 9_000_000 })))).toEqual(first);
     const theirs = posted(r.hill.post(OTHER, input(1)));
     expect(theirs.id).not.toBe(first.id);
     expect(r.store.all()).toHaveLength(2);
+  });
+
+  test("a repeated request id with another payload is refused request_id_reused, and nothing is stored", () => {
+    const r = rig();
+    const first = posted(r.hill.post(POSTER, input(1)));
+    for (const over of [{ title: "Changed?" }, { summary: "Other words." }, { options: [{ intent: "yes", label: "Yes" }] }, { replyTo: "local/%2" }, { priority: "now" as const }]) {
+      expect(r.hill.post(POSTER, input(1, over))).toEqual({ ok: false, code: "request_id_reused", error: `this request id already posted ${first.id} with other content; post with a new --request-id` });
+    }
+    expect(r.store.all()).toHaveLength(1);
+    // The store keeps the digest; the phone and the socket never get it.
+    expect(r.store.get(first.id)?.postDigest).toMatch(/^[0-9a-f]{64}$/u);
+    expect(first.postDigest).toBeUndefined();
+    expect(r.hill.list().open[0]?.postDigest).toBeUndefined();
+  });
+
+  test("a decision stored before posts carried a digest answers any repeat of its request id as stored", () => {
+    const r = rig();
+    const first = posted(r.hill.post(POSTER, input(1)));
+    const old = { ...r.store.get(first.id)! };
+    delete old.postDigest;
+    r.store.put(old);
+    expect(posted(r.hill.post(POSTER, input(1, { title: "Changed?" }))).id).toBe(first.id);
   });
 
   test("a sender's 4th open `now` is shown as `today`, asked `now`", () => {

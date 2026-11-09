@@ -66,6 +66,7 @@ const USAGE = {
     '         [--image shots/a.png[="<caption>"] ...]   (PNG, JPEG or WebP, up to 4, 2 MB each) \\',
     '         [-- "<body in Markdown>"]   (no body after --: read from stdin when it is not a terminal)',
     `  With no --expires, a decision closes as expired after ${String(HILL_DEFAULT_EXPIRY_DAYS)} days.`,
+    "  To retry a post, send it again with the same --request-id: it posts once. Other content under that id is refused.",
   ],
   status: ["usage: collie hill status <dc_id> [--json]   (yours, or one whose answer goes to this session)"],
   withdraw: ["usage: collie hill withdraw <dc_id> [--json]"],

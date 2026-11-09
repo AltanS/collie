@@ -81,7 +81,7 @@ import {
 import { cleanBody } from "../walky/clean.ts";
 import type { WalkyPane } from "../walky/deliver.ts";
 import { headerField, WALKY_BODY_MAX, WALKY_LABEL_MAX } from "../walky/types.ts";
-import { digestDiffers, withDigest } from "../worktree-receipts.ts";
+import { digestDiffers, payloadDigest, withDigest } from "../worktree-receipts.ts";
 import { readPostFields } from "./parse.ts";
 import { mintMediaId, type HillImageBytes, type HillMediaStore } from "./media.ts";
 import { hillAnswerDigest, type HillAnswerOutcome, type HillReceiptRecord, type HillReceiptSurface } from "./receipts.ts";
@@ -317,6 +317,29 @@ export function sessionLabel(raw: string): string {
   return points.length <= SESSION_LABEL_MAX ? text : `${points.slice(0, SESSION_LABEL_MAX - 1).join("")}…`;
 }
 
+/**
+ * What a post asks for, as a digest (`payloadDigest`), defaults filled: the words, the options, the
+ * links, the priority, the addresses and the images as named. Not `expiresAt` (a retried
+ * `collie hill post --expires 2h` counts it again from its own clock) and not `supersedes` (a trick
+ * names it from the state it reads, which a first post that went through has moved).
+ */
+export function hillPostDigest(input: HillPostInput): string {
+  const options = (input.options ?? []).map((option) => [option.intent, option.label, option.detail ?? null, option.confirm ?? null]);
+  const recommends = input.recommends === undefined || input.recommends === null ? null : [input.recommends.intent, input.recommends.why];
+  const links = (input.links ?? []).map((link) => [link.label, link.href]);
+  const images = (input.images ?? []).map((image) => [image.path, image.caption ?? null]);
+  const parts = [input.title, input.summary, input.body ?? "", options, input.text ?? "optional", recommends, links, input.priority ?? "today", input.about ?? null, input.replyTo ?? null, images];
+  return payloadDigest([JSON.stringify(parts)]);
+}
+
+/** A decision as the phone and the socket get it: without `postDigest`, which only the store needs. */
+function served(decision: HillDecision): HillDecision {
+  if (decision.postDigest === undefined) return decision;
+  const copy = { ...decision };
+  delete copy.postDigest;
+  return copy;
+}
+
 /** The key a sender's decisions are filed under: its address, or the trick's id. */
 function senderKey(sender: HillSender): string {
   return sender.kind === "agent" ? sender.address : `trick:${sender.trickId}`;
@@ -453,7 +476,7 @@ export class HillService {
     return this.look(() => {
       const list = this.deps.store.list();
       // The same revision the snapshot carries, so a phone that holds it reads `unchanged`.
-      return { ...list, rev: this.rev() ?? list.rev, open: list.open.map((decision) => this.named(decision)) };
+      return { ...list, rev: this.rev() ?? list.rev, open: list.open.map((decision) => served(this.named(decision))), closed: list.closed.map(served) };
     });
   }
 
@@ -510,9 +533,12 @@ export class HillService {
     if (!this.deps.walkyOn()) return refuse("walky_off", HILL_WALKY_OFF);
     if (this.deps.crewMode() === "peer") return refuse("not_on_lead", NOT_ON_LEAD);
     const key = senderKey(from);
-    // A repeated request id from the same sender is the same decision: answered as stored, nothing checked again.
+    const digest = hillPostDigest(input);
+    // A repeated request id from the same sender with the same payload is the same decision: answered as
+    // stored, nothing checked again. With another payload it is refused, as a reused answer `rid` is (409).
     const repeat = this.deps.store.all().find((decision) => decision.requestId === input.requestId && keyOf(decision) === key);
-    if (repeat !== undefined) return { ok: true, decision: repeat };
+    if (repeat !== undefined && repeat.postDigest !== undefined && repeat.postDigest !== digest) return refuse("request_id_reused", `this request id already posted ${repeat.id} with other content; post with a new --request-id`);
+    if (repeat !== undefined) return { ok: true, decision: served(repeat) };
     const cleaned = cleanPost(input);
     if (!cleaned.ok) return cleaned;
     const now = this.now();
@@ -575,6 +601,7 @@ export class HillService {
       closedAt: null,
       closedReason: null,
       answer: null,
+      postDigest: digest,
     };
     const replaced: HillDecision[] = superseded === null ? [] : [{ ...superseded, state: "superseded", supersededBy: id, closedAt: now, closedReason: `superseded by ${id}` }];
     if (!this.deps.store.put(decision, ...replaced)) {
@@ -585,7 +612,7 @@ export class HillService {
     // The images as a count and a byte sum, never a path or a caption.
     const detail = media.length === 0 ? base : { ...base, images: media.length, imageBytes: media.reduce((sum, item) => sum + item.bytes, 0) };
     this.deps.audit?.({ action: "hill.post", detail });
-    return { ok: true, decision };
+    return { ok: true, decision: served(decision) };
   }
 
   /** Read and check every image a post names, in order, before anything is kept. The first that fails refuses the post. */
@@ -679,7 +706,7 @@ export class HillService {
    */
   status(sender: HillSender, id: string): HillOneAnswer {
     const decision = this.mine(sender, id) ?? this.addressedTo(sender, id);
-    return decision === null ? { ok: false, missing: true, error: `no decision ${id} from this session` } : { ok: true, decision: this.named(decision) };
+    return decision === null ? { ok: false, missing: true, error: `no decision ${id} from this session` } : { ok: true, decision: served(this.named(decision)) };
   }
 
   /** A decision whose `replyTo` is the asking agent's live session, or null. */
@@ -697,7 +724,7 @@ export class HillService {
     const closed: HillDecision = { ...decision, state: "withdrawn", closedAt: this.now(), closedReason: reason };
     if (!this.deps.store.put(closed)) return { ok: false, missing: false, error: "the change could not be saved on this machine; the decision stays open" };
     this.deps.audit?.({ action: "hill.withdraw", detail: { decisionId: id } });
-    return { ok: true, decision: closed };
+    return { ok: true, decision: served(closed) };
   }
 
   /** The sender's own decisions: open first (as the phone sorts them), then closed, newest first. */
@@ -706,7 +733,7 @@ export class HillService {
     const own = this.deps.store.all().filter((decision) => keyOf(decision) === key);
     const open = this.look(() => sortOpenDecisions(own.filter((decision) => decision.state === "open")).map((decision) => this.named(decision)));
     const closed = own.filter((decision) => decision.state !== "open").toSorted((a, b) => (b.closedAt ?? b.at) - (a.closedAt ?? a.at));
-    return [...open, ...closed];
+    return [...open, ...closed].map(served);
   }
 
   /**
