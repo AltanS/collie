@@ -2918,6 +2918,8 @@ export const ja: Dictionary = {
   "settings.zoomPill.description": "アクション行にある虫眼鏡のボタンで、画面を全画面で開きます。チャットでは表示されません。",
   "settings.zoomPill.option.screen": "画面ビュー",
   "settings.zoomPill.option.off": "オフ",
+  "settings.pageZoom.title": "ピンチで拡大",
+  "settings.pageZoom.description": "ページをピンチして拡大します。オフにすると、誤ったピンチでアプリが拡大されなくなります。画面ビューのズームはどちらでも使えます。",
 
   // --- pins (M90: pinned messages): the block actions, the mark, the refusals ---
   "pins.action.pin": "ピン留め",

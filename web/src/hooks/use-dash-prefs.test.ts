@@ -47,6 +47,7 @@ describe("coerceDashPrefs", () => {
       paneOrder: "place",
       paneView: "chat",
       zoomPill: null,
+      pageZoom: true,
     });
   });
 
@@ -92,7 +93,14 @@ describe("coerceDashPrefs", () => {
       paneOrder: "activity",
       paneView: "terminal",
       zoomPill: "off",
+      pageZoom: true,
     });
+  });
+
+  it("reads pageZoom as on unless a boolean false is stored", () => {
+    expect(coerceDashPrefs({}).pageZoom).toBe(true);
+    expect(coerceDashPrefs({ pageZoom: "no" }).pageZoom).toBe(true);
+    expect(coerceDashPrefs({ pageZoom: false }).pageZoom).toBe(false);
   });
 
   it("reads an unknown stored zoomPill as never chosen", () => {
@@ -215,6 +223,7 @@ describe("coerceDashPrefs", () => {
       paneOrder: "place",
       paneView: "chat",
       zoomPill: null,
+      pageZoom: true,
     });
   });
 });
@@ -244,6 +253,7 @@ describe("useDashPrefs", () => {
       paneOrder: "place",
       paneView: "chat",
       zoomPill: null,
+      pageZoom: true,
     });
   });
 
@@ -291,6 +301,7 @@ describe("useDashPrefs", () => {
       paneOrder: "activity",
       paneView: "terminal",
       zoomPill: "off",
+      pageZoom: true,
     });
   });
 

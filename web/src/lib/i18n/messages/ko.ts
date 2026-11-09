@@ -2911,6 +2911,8 @@ export const ko: Dictionary = {
   "settings.zoomPill.description": "작업 벨트에 있는 돋보기 버튼으로, 화면을 전체 크기로 엽니다. 채팅에서는 표시되지 않습니다.",
   "settings.zoomPill.option.screen": "화면 보기",
   "settings.zoomPill.option.off": "끄기",
+  "settings.pageZoom.title": "핀치로 확대",
+  "settings.pageZoom.description": "페이지를 핀치하여 확대합니다. 끄면 실수로 핀치해도 앱이 확대되지 않습니다. 화면 보기의 자체 확대는 어느 쪽이든 작동합니다.",
 
   // --- pins (M90: pinned messages): the block actions, the mark, the refusals ---
   "pins.action.pin": "고정",

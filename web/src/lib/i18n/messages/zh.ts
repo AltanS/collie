@@ -2899,6 +2899,8 @@ export const zh: Dictionary = {
   "settings.zoomPill.description": "操作栏上的放大镜按钮，可全尺寸打开屏幕。在聊天中不会显示。",
   "settings.zoomPill.option.screen": "屏幕视图",
   "settings.zoomPill.option.off": "关闭",
+  "settings.pageZoom.title": "双指缩放",
+  "settings.pageZoom.description": "用双指缩放放大页面。关闭后，误触的双指动作不会缩放应用。屏幕视图自身的缩放两种情况下都能使用。",
 
   // --- pins (M90: pinned messages): the block actions, the mark, the refusals ---
   "pins.action.pin": "固定",

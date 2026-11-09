@@ -3212,6 +3212,8 @@ export const en = {
   "settings.zoomPill.description": "The magnifier button on the belt that opens the screen full size. It never shows in Chat.",
   "settings.zoomPill.option.screen": "Screen view",
   "settings.zoomPill.option.off": "Off",
+  "settings.pageZoom.title": "Pinch to zoom",
+  "settings.pageZoom.description": "Pinch the page to make it bigger. Off stops a stray pinch from zooming the app. The Screen view's own zoom works either way.",
 
   // --- pins (M90: pinned messages): the block actions, the mark, the refusals ---
   "pins.action.pin": "Pin",

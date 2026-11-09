@@ -2750,6 +2750,8 @@ export const fr: Dictionary = {
   "settings.zoomPill.description": "Le bouton en forme de loupe dans la barre d'actions, qui ouvre l'écran en plein format. Il n'apparaît jamais dans le chat.",
   "settings.zoomPill.option.screen": "Vue écran",
   "settings.zoomPill.option.off": "Désactivé",
+  "settings.pageZoom.title": "Pincer pour zoomer",
+  "settings.pageZoom.description": "Pincez la page pour l’agrandir. Désactivé évite qu’un pincement involontaire zoome l’app. Le zoom de la vue Écran fonctionne dans les deux cas.",
 
   // --- pins (M90: pinned messages): the block actions, the mark, the refusals ---
   "pins.action.pin": "Épingler",
