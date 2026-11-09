@@ -4725,6 +4725,36 @@
    "version": "18.17.0",
    "state": "dialog"
   },
+  "omp--v18-18-2-ask-batch--w120.txt": {
+   "harness": "omp",
+   "version": "18.18.2",
+   "state": "dialog"
+  },
+  "omp--v18-18-2-ask-batch-moved--w120.txt": {
+   "harness": "omp",
+   "version": "18.18.2",
+   "state": "dialog"
+  },
+  "omp--v18-18-2-ask-batch-review--w120.txt": {
+   "harness": "omp",
+   "version": "18.18.2",
+   "state": "dialog"
+  },
+  "omp--v18-18-2-ask-batch-review-unanswered--w120.txt": {
+   "harness": "omp",
+   "version": "18.18.2",
+   "state": "dialog"
+  },
+  "omp--v18-18-2-ask-batch-second--w120.txt": {
+   "harness": "omp",
+   "version": "18.18.2",
+   "state": "dialog"
+  },
+  "omp--v18-18-2-ask-batch-third--w120.txt": {
+   "harness": "omp",
+   "version": "18.18.2",
+   "state": "dialog"
+  },
   "omp--v18-4-approval-bash-moved.txt": {
    "harness": "omp",
    "version": "18.4",

@@ -443,35 +443,35 @@
   "omp--v18-10-ask-batch-moved.txt": {
     "why": "omp marks the current tab of its ask stepper by a background on a bold label. A plain read has no current tab, so the ask reader returns null and the ask is lost. The modal reads unreadable.",
     "class": "colour-needed",
-    "rule": "web/src/lib/harness/omp/ask.ts:370 readTabs (segment.bg and segment.bold)",
+    "rule": "web/src/lib/harness/omp/ask.ts:369 readTabs (one label wholly on a background)",
     "propose": "Upstream: a bg or reverse flag per cell run. Text only: none found for the stepper chip.",
     "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
   },
   "omp--v18-10-ask-batch-review.txt": {
     "why": "omp marks the current tab of its ask stepper by a background on a bold label. A plain read has no current tab, so the ask reader returns null and the ask is lost. The modal reads unreadable.",
     "class": "colour-needed",
-    "rule": "web/src/lib/harness/omp/ask.ts:370 readTabs (segment.bg and segment.bold)",
+    "rule": "web/src/lib/harness/omp/ask.ts:369 readTabs (one label wholly on a background)",
     "propose": "Upstream: a bg or reverse flag per cell run. Text only: none found for the stepper chip.",
     "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
   },
   "omp--v18-10-ask-batch-second.txt": {
     "why": "omp marks the current tab of its ask stepper by a background on a bold label. A plain read has no current tab, so the ask reader returns null and the ask is lost. The modal reads unreadable.",
     "class": "colour-needed",
-    "rule": "web/src/lib/harness/omp/ask.ts:370 readTabs (segment.bg and segment.bold)",
+    "rule": "web/src/lib/harness/omp/ask.ts:369 readTabs (one label wholly on a background)",
     "propose": "Upstream: a bg or reverse flag per cell run. Text only: none found for the stepper chip.",
     "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
   },
   "omp--v18-10-ask-batch-third.txt": {
     "why": "omp marks the current tab of its ask stepper by a background on a bold label. A plain read has no current tab, so the ask reader returns null and the ask is lost. The modal reads unreadable.",
     "class": "colour-needed",
-    "rule": "web/src/lib/harness/omp/ask.ts:370 readTabs (segment.bg and segment.bold)",
+    "rule": "web/src/lib/harness/omp/ask.ts:369 readTabs (one label wholly on a background)",
     "propose": "Upstream: a bg or reverse flag per cell run. Text only: none found for the stepper chip.",
     "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
   },
   "omp--v18-10-ask-batch.txt": {
     "why": "omp marks the current tab of its ask stepper by a background on a bold label. A plain read has no current tab, so the ask reader returns null and the ask is lost. The modal reads unreadable.",
     "class": "colour-needed",
-    "rule": "web/src/lib/harness/omp/ask.ts:370 readTabs (segment.bg and segment.bold)",
+    "rule": "web/src/lib/harness/omp/ask.ts:369 readTabs (one label wholly on a background)",
     "propose": "Upstream: a bg or reverse flag per cell run. Text only: none found for the stepper chip.",
     "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
   },
@@ -506,21 +506,21 @@
   "omp--v18-10-ask-long-expanded.txt": {
     "why": "omp marks the current tab of its ask stepper by a background on a bold label. A plain read has no current tab, so the ask reader returns null and the ask is lost. The modal reads unreadable.",
     "class": "colour-needed",
-    "rule": "web/src/lib/harness/omp/ask.ts:370 readTabs (segment.bg and segment.bold)",
+    "rule": "web/src/lib/harness/omp/ask.ts:369 readTabs (one label wholly on a background)",
     "propose": "Upstream: a bg or reverse flag per cell run. Text only: none found for the stepper chip.",
     "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
   },
   "omp--v18-10-ask-long.txt": {
     "why": "omp marks the current tab of its ask stepper by a background on a bold label. A plain read has no current tab, so the ask reader returns null and the ask is lost. The modal reads unreadable.",
     "class": "colour-needed",
-    "rule": "web/src/lib/harness/omp/ask.ts:370 readTabs (segment.bg and segment.bold)",
+    "rule": "web/src/lib/harness/omp/ask.ts:369 readTabs (one label wholly on a background)",
     "propose": "Upstream: a bg or reverse flag per cell run. Text only: none found for the stepper chip.",
     "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
   },
   "omp--v18-10-ask-revisited.txt": {
     "why": "omp marks the current tab of its ask stepper by a background on a bold label. A plain read has no current tab, so the ask reader returns null and the ask is lost. The modal reads unreadable.",
     "class": "colour-needed",
-    "rule": "web/src/lib/harness/omp/ask.ts:370 readTabs (segment.bg and segment.bold)",
+    "rule": "web/src/lib/harness/omp/ask.ts:369 readTabs (one label wholly on a background)",
     "propose": "Upstream: a bg or reverse flag per cell run. Text only: none found for the stepper chip.",
     "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
   },
@@ -558,6 +558,41 @@
     "rule": "web/src/lib/surface/frame.ts:413 hintStart; web/src/lib/surface/profiles/omp.json idle.inlineHint.fg",
     "propose": "Upstream: the cursor column in terminal.read (ghost text sits after it). Text only: none.",
     "effect": "HOTFIX: the draft shows more text than was typed, so a send that verifies the box can end typed_not_submitted"
+  },
+  "omp--v18-18-2-ask-batch--w120.txt": {
+    "why": "omp marks the current tab of its ask stepper by a background on its label (omp 18.18 draws no bold). A plain read has no current tab, so the ask reader returns null and the ask is lost. The modal reads unreadable.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/omp/ask.ts:369 readTabs (one label wholly on a background)",
+    "propose": "Upstream: a bg or reverse flag per cell run. Text only: none found for the stepper chip.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "omp--v18-18-2-ask-batch-moved--w120.txt": {
+    "why": "omp marks the current tab of its ask stepper by a background on its label (omp 18.18 draws no bold). A plain read has no current tab, so the ask reader returns null and the ask is lost. The modal reads unreadable.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/omp/ask.ts:369 readTabs (one label wholly on a background)",
+    "propose": "Upstream: a bg or reverse flag per cell run. Text only: none found for the stepper chip.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "omp--v18-18-2-ask-batch-review--w120.txt": {
+    "why": "omp marks the current tab of its ask stepper by a background on its label (omp 18.18 draws no bold). A plain read has no current tab, so the ask reader returns null and the ask is lost. The modal reads unreadable.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/omp/ask.ts:369 readTabs (one label wholly on a background)",
+    "propose": "Upstream: a bg or reverse flag per cell run. Text only: none found for the stepper chip.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "omp--v18-18-2-ask-batch-second--w120.txt": {
+    "why": "omp marks the current tab of its ask stepper by a background on its label (omp 18.18 draws no bold). A plain read has no current tab, so the ask reader returns null and the ask is lost. The modal reads unreadable.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/omp/ask.ts:369 readTabs (one label wholly on a background)",
+    "propose": "Upstream: a bg or reverse flag per cell run. Text only: none found for the stepper chip.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "omp--v18-18-2-ask-batch-third--w120.txt": {
+    "why": "omp marks the current tab of its ask stepper by a background on its label (omp 18.18 draws no bold). A plain read has no current tab, so the ask reader returns null and the ask is lost. The modal reads unreadable.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/omp/ask.ts:369 readTabs (one label wholly on a background)",
+    "propose": "Upstream: a bg or reverse flag per cell run. Text only: none found for the stepper chip.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
   },
   "omp--v18.11.1-powerline-draft--w120.txt": {
     "why": "omp draws its word completion after the cursor in a grey ink. A plain read cannot tell the ghost letters from typed ones, so the draft shows the completion as typed text. The error is toward 'more text than was sent', which holds a send.",
