@@ -23,6 +23,12 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Fixed
+
+- **An update started on a second instance restarts that instance.** On one install with two instances, an Update tap or `COLLIE_INSTANCE=core collie update` on `core` restarted the default `collie.service` instead, and left `core` on the old version with its update shown as interrupted. The runner that swaps and restarts starts in a fresh systemd unit that knows nothing of the instance, so it took the default one. It now gets the instance's name and paths the same way the first step of the update already did. The update that brings this fix still runs the old runner, so on a second instance run `COLLIE_INSTANCE=<name> collie restart` once after it. Thanks @triss-smith (#754).
+
+- **The Update tap works where the user manager is reached only through `/run/user/<uid>`.** When the bridge runs without `XDG_RUNTIME_DIR`, as under a Herdr plugin, the tap started `systemd-run`, which printed "Failed to connect to bus" and quit before any update began. The bridge now asks the user manager first, the same way `collie update` already did, and gives `systemd-run` the session values that reached it. Where no user manager answers at all, the update takes the `setsid` path. `collie update` on a terminal passes the same values on in the same case. Thanks @thelinuxlich (#745).
+
 ## [1.28.0] - 2026-11-09
 
 ### Added

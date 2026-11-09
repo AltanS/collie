@@ -410,6 +410,36 @@ describe("update hands off — the command that leaves this process's cgroup", (
     expect(mirrored.filter((part) => part.startsWith("--setenv="))).toEqual(["--setenv=COLLIE_UPDATE_MIRROR=http://127.0.0.1:1"]);
   });
 
+  test("the derived session dir rides the plan for the systemd client, and only there", () => {
+    // The probe reached the manager through /run/user/<uid> (#194), so the `systemd-run` CLIENT needs
+    // the same variables to find that bus. `--setenv` is for the unit, and the client is not a unit.
+    const envAdd = { XDG_RUNTIME_DIR: "/run/user/501", DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/501/bus" };
+    expect(updateStartCommand({ ...base, major: false, hasSystemdRun: true, hasSetsid: true, envAdd }).env).toEqual(envAdd);
+    // Every other tier inherits the process environment; it must not grow a field nothing reads.
+    expect(updateStartCommand({ ...base, major: false, hasSystemdRun: false, hasSetsid: true, envAdd }).env).toBeUndefined();
+    // A probe that answered in the inherited environment derives nothing, so there is nothing to add.
+    expect(updateStartCommand({ ...base, major: false, hasSystemdRun: true, hasSetsid: true, envAdd: null }).env).toBeUndefined();
+  });
+
+  test("the unit gets the instance's --setenv and the client gets the derived session dir, each only its own", () => {
+    // #754 and #745 together: `--setenv` names the instance to the transient UNIT, `env` lets the
+    // CLIENT find the bus. Neither may stand in for the other.
+    const envAdd = { XDG_RUNTIME_DIR: "/run/user/501", DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/501/bus" };
+    const plan = updateStartCommand({
+      ...base,
+      major: false,
+      hasSystemdRun: true,
+      hasSetsid: true,
+      env: { COLLIE_INSTANCE: "core", HOME: "/home/pat" },
+      envAdd,
+    });
+    expect(plan.command.filter((part) => part.startsWith("--setenv="))).toEqual([
+      "--setenv=HOME=/home/pat",
+      "--setenv=COLLIE_INSTANCE=core",
+    ]);
+    expect(plan.env).toEqual(envAdd);
+  });
+
   test("a major crossing hands the CLI its own consent flag (ADR 0020)", () => {
     const plan = updateStartCommand({ ...base, major: true, hasSystemdRun: true, hasSetsid: true });
     expect(plan.command.slice(-2)).toEqual(["update", "--major"]);
@@ -479,6 +509,24 @@ describe("the runner leaves the service's process group (#213)", () => {
     launchUpdateRunner(plan, { cwd: "/opt/collie", spawn: r.spawn });
     expect(r.calls[0]?.command[0]).toBe("systemd-run");
     expect(r.calls[0]?.options.detached).toBe(false);
+    // No derived session dir: the spawn inherits the process environment, field absent.
+    expect(r.calls[0]?.options.env).toBeUndefined();
+  });
+
+  test("a plan carrying the derived session dir hands it to the spawn as a layer", () => {
+    const env = { XDG_RUNTIME_DIR: "/run/user/501" };
+    const plan = updateStartCommand({
+      platform: "linux",
+      binary: "/opt/collie/bin/collie",
+      major: false,
+      stamp: "42",
+      hasSystemdRun: true,
+      hasSetsid: true,
+      envAdd: env,
+    });
+    const r = recorder();
+    launchUpdateRunner(plan, { cwd: "/opt/collie", spawn: r.spawn });
+    expect(r.calls[0]?.options.env).toEqual(env);
   });
 
   test("a spawn that throws is a refusal with its reason, not a crash", () => {

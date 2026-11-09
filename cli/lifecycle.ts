@@ -1,6 +1,10 @@
 import { join } from "node:path";
 
 import type { Host } from "../bridge/host.ts";
+import {
+  systemdUserSession as probeSystemdUser,
+  type SystemdUserSession,
+} from "../bridge/systemd-user.ts";
 import type { CrewMode } from "../bridge/types.ts";
 import { ensureBuild } from "./build.ts";
 import { collieVersion, type CliContext, type Environment, type EnvVars } from "./context.ts";
@@ -124,43 +128,28 @@ export type Tier = "systemd" | "launchd" | "taskscheduler" | "unsupervised";
 
 const TIERS: readonly Tier[] = ["systemd", "launchd", "taskscheduler", "unsupervised"];
 
-/** `/run/user/<uid>`, and its bus socket when `withBus`. See {@link systemdUserReachable}. */
-function derivedSessionEnv(uid: number, withBus: boolean): EnvVars {
-  const runtimeDir: EnvVars = { XDG_RUNTIME_DIR: `/run/user/${uid}` };
-  if (!withBus) return runtimeDir;
-  return { ...runtimeDir, DBUS_SESSION_BUS_ADDRESS: `unix:path=/run/user/${uid}/bus` };
+/**
+ * The CLI's {@link Exec}-shaped adapter over the shared probe (`bridge/systemd-user.ts`). The rule
+ * itself lives there because the bridge's update spawn needs the same answer; this wrapper only
+ * turns the `Exec` seam into a probe. See the module for why "the binary exists" is not the
+ * question and why a Herdr action's bare environment gets one retry with the derived session dir
+ * (#194).
+ */
+export function systemdUserSession(exec: Exec, env: Environment = {}): SystemdUserSession {
+  return probeSystemdUser(
+    (envAdd) => exec.capture("systemctl", ["--user", "show-environment"], undefined, envAdd ?? undefined),
+    env,
+    process.getuid?.() ?? 0,
+  );
 }
 
 /**
  * Whether the systemd user manager is actually reachable — `systemctl --user show-environment`
- * succeeding, not merely `systemctl`/`systemd-run` existing on disk. A container commonly ships
- * the systemd package (so the binaries are on `PATH`) without ever running a user instance or
- * session bus, and `capture` fails distinctly from "not found": found, nonzero, `$DBUS_SESSION_BUS_
- * ADDRESS` unset. Exported so every caller that needs "can I actually ask systemd to do something"
- * — not just "is a binary present" — asks the same question the same way; `cli/update.ts`'s
- * `handOff` learned the difference the hard way, retrying a doomed `systemd-run` forever.
- *
- * `systemctl --user` locates the manager through `XDG_RUNTIME_DIR` (or `DBUS_SESSION_BUS_ADDRESS`)
- * in `env`. A Herdr plugin action injects neither (`HERDR_SOCKET_PATH` / `HERDR_PLUGIN_CONFIG_DIR`
- * and nothing else — no login shell), so a healthy host would fail this probe and read as
- * "unsupervised" on that spawn path alone (#194). When `env` lacks `XDG_RUNTIME_DIR`, a failed
- * first probe is retried once with a derived default (`/run/user/<uid>`, plus a derived
- * `DBUS_SESSION_BUS_ADDRESS` when that is ALSO unset) layered under the probe's own env via
- * {@link Exec.capture}'s `envAdd` — never into `process.env`, and never overriding a name `env`
- * already carries, so an operator's own value (or the `.env` workaround) still wins. The container
- * case is preserved: with no user manager at all, the retry fails too, and this still reports false.
+ * succeeding, not merely `systemctl`/`systemd-run` existing on disk. `cli/update.ts`'s `handOff`
+ * learned the difference the hard way, retrying a doomed `systemd-run` forever.
  */
 export function systemdUserReachable(exec: Exec, env: Environment = {}): boolean {
-  const probe = exec.capture("systemctl", ["--user", "show-environment"]);
-  if (probe.found && probe.code === 0) return true;
-  if (env.XDG_RUNTIME_DIR !== undefined) return false;
-  const uid = process.getuid?.() ?? 0;
-  const envAdd =
-    env.DBUS_SESSION_BUS_ADDRESS === undefined
-      ? derivedSessionEnv(uid, true)
-      : derivedSessionEnv(uid, false);
-  const retried = exec.capture("systemctl", ["--user", "show-environment"], undefined, envAdd);
-  return retried.found && retried.code === 0;
+  return systemdUserSession(exec, env).reachable;
 }
 
 /**

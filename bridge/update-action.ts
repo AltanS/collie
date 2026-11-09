@@ -5,7 +5,7 @@ import type { JsonObject, JsonValue } from "./json.ts";
 import type { UpdateStatus } from "./types.ts";
 import type { PeerHealth } from "./crew/registry.ts";
 import { apiError, type ApiErrorBody, type ApiErrorDetail, type ErrorCode } from "./error-codes.ts";
-import { compareSemver, RUNNER_ENV_KEYS, UPDATE_MIRROR_ENV } from "./update.ts";
+import { compareSemver, runnerSetenvArgs } from "./update.ts";
 import { inFlight, type UpdateRun, type UpdateRunState } from "./update-run.ts";
 import { isRequestId } from "./worktree-receipts.ts";
 
@@ -1165,7 +1165,8 @@ function peersNeedLevelling(state: UpdateStartState): boolean {
  * least leaves the process group where there is no user manager; a bare spawn is the last resort on
  * a host with neither. That ladder is deliberately the same three tiers as `cli/update-run.ts`'s
  * `launchPlan`, for the same reasons written there — it is restated rather than imported because
- * nothing in `bridge/` may import from `cli/`.
+ * nothing in `bridge/` may import from `cli/`. The `--setenv=` arguments are NOT restated: both tiers
+ * call {@link runnerSetenvArgs} in `bridge/update.ts`, because the copy the handoff lacked was #754.
  *
  * **`detach` is the spawn's own `setsid()`, and it is on for every tier but `systemd-run`** (#213).
  * macOS has neither `systemd-run` nor a `setsid` binary, so the bare tier used to leave the runner in
@@ -1177,6 +1178,15 @@ function peersNeedLevelling(state: UpdateStartState): boolean {
 export interface UpdateStartPlan {
   readonly command: string[];
   readonly detach: boolean;
+  /**
+   * Session variables the LAUNCHER must layer over this process's environment for the CLIENT it
+   * spawns. The `systemd-run` tier is the only one with a client that talks to the bus, and this is
+   * set only when the manager was reachable through the derived session dir rather than the
+   * environment this process inherited (`bridge/systemd-user.ts`): without them the client cannot
+   * find the bus the probe just reached, and the update dies before a unit exists. `--setenv` is
+   * for the UNIT; the client is not a unit.
+   */
+  readonly env?: Readonly<Record<string, string>>;
 }
 
 export function updateStartCommand(a: {
@@ -1204,13 +1214,19 @@ export function updateStartCommand(a: {
    */
   readonly mirror?: string | null;
   /**
-   * The bridge's own environment. The systemd-run tier forwards the {@link RUNNER_ENV_KEYS} that are
-   * set in it, one `--setenv=` each, for the same reason the mirror is forwarded: the transient unit
+   * The bridge's own environment. The systemd-run tier forwards the runner keys that are set in it,
+   * one `--setenv=` each ({@link runnerSetenvArgs}), for the same reason the mirror is forwarded: the transient unit
    * has a bare environment, and without `COLLIE_INSTANCE`, `COLLIE_MUX` and `COLLIE_CONFIG_DIR` the
    * CLI there resolves the DEFAULT instance and updates and restarts the wrong service (seen
    * 2026-10-28: the Update tap on `next` took `collie.service`). The other tiers inherit it.
    */
   readonly env?: Readonly<Record<string, string | undefined>>;
+  /**
+   * The session variables the probe derived when only the derived default reached the manager
+   * (`bridge/systemd-user.ts`). Carried onto the plan for the launcher to give the `systemd-run`
+   * CLIENT — {@link env} above is what the transient UNIT gets, and the client is not a unit.
+   */
+  readonly envAdd?: Readonly<Record<string, string>> | null;
   /**
    * The phone's rollback (M60 spec 01): `update --rollback --run-id <id>`, which the CLI hands to the
    * same detached runner as a run with `action: "rollback"`. `major` and `toTag` mean nothing to it
@@ -1232,16 +1248,12 @@ export function updateStartCommand(a: {
   if (a.rollback !== true && a.line !== undefined && a.line !== null) verb.push("--line", a.line);
   if (a.runId !== undefined && a.runId !== null) verb.push("--run-id", a.runId);
   if (a.platform === "linux" && a.hasSystemdRun) {
-    const setenv: string[] = [];
-    for (const key of RUNNER_ENV_KEYS) {
-      const value = a.env?.[key];
-      if (value !== undefined && value !== "") setenv.push(`--setenv=${key}=${value}`);
-    }
-    if (a.mirror !== undefined && a.mirror !== null) setenv.push(`--setenv=${UPDATE_MIRROR_ENV}=${a.mirror}`);
-    return {
+    const setenv = runnerSetenvArgs({ env: a.env ?? {}, mirror: a.mirror ?? null });
+    const plan: UpdateStartPlan = {
       command: ["systemd-run", "--user", "--collect", "--unit", `collie-api-update-${a.stamp}`, ...setenv, a.binary, ...verb],
       detach: false,
     };
+    return a.envAdd === undefined || a.envAdd === null ? plan : { ...plan, env: a.envAdd };
   }
   if (a.hasSetsid) return { command: ["setsid", a.binary, ...verb], detach: true };
   return { command: [a.binary, ...verb], detach: true };
@@ -1259,6 +1271,12 @@ export interface UpdateRunnerSpawnOptions {
   readonly stdout: "ignore" | number;
   readonly stderr: "ignore" | number;
   readonly detached: boolean;
+  /**
+   * Variables to layer over this process's environment for the child. Present only on the
+   * `systemd-run` tier when the launcher must carry the derived session dir to the client
+   * ({@link UpdateStartPlan.env}); every other tier inherits the process environment unchanged.
+   */
+  readonly env?: Readonly<Record<string, string>>;
 }
 
 /** `<state dir>/update-runner.log`: the detached runner's own two streams, for one launch (#283). */
@@ -1326,13 +1344,14 @@ export function launchUpdateRunner(
 ): { ok: true } | { ok: false; reason: string } {
   const out = a.log?.fd ?? "ignore";
   try {
-    const child = a.spawn(plan.command, {
+    const options = {
       cwd: a.cwd,
       stdin: "ignore",
       stdout: out,
       stderr: out,
       detached: plan.detach,
-    });
+    } satisfies UpdateRunnerSpawnOptions;
+    const child = a.spawn(plan.command, plan.env === undefined ? options : { ...options, env: plan.env });
     child.unref();
     return { ok: true };
   } catch (err) {
