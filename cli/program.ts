@@ -127,6 +127,7 @@ import {
   WALKY_SUBCOMMANDS,
   type WalkyDeps,
 } from "./walky.ts";
+import { cmdHill, cmdHillList, cmdHillPost, cmdHillStatus, cmdHillWithdraw, HILL_SUBCOMMANDS, hillPostHelp, type HillDeps } from "./hill.ts";
 import { cmdUpdateCheck, updateCheckDeps, wantsCheck } from "./update-check.ts";
 import { cmdTheme, cmdThemeCheck, realThemeFiles, THEME_SUBCOMMANDS } from "./theme-check.ts";
 import { cmdThemeSkill } from "./theme-skill.ts";
@@ -189,6 +190,11 @@ export interface Command {
 export interface Subcommand {
   readonly name: string;
   readonly summary: string;
+  /**
+   * The lines `collie <verb> <sub> --help` prints in place of the one-line summary, for a sub-verb whose
+   * usage carries rules a caller must read first (`hill post`, M96). Absent: the summary, as before.
+   */
+  readonly usage?: () => readonly string[];
   run(args: readonly string[], session: Session): number | Promise<number>;
 }
 
@@ -296,6 +302,36 @@ function walkyDeps(io: Io): WalkyDeps {
     ask: (path, line) => askSocket(path, line),
   };
 }
+
+/** `hill` (M96): walky's own deps, since the hill speaks over the walky socket. */
+function hillDeps(io: Io): HillDeps {
+  return walkyDeps(io);
+}
+
+/** The sub-verbs of `hill` (M96). `post --help` prints the usage and the rules an agent reads first. */
+const HILL_TREE: readonly Subcommand[] = [
+  {
+    name: "post",
+    summary: "post a decision for your person: `hill post --title ... --summary ... --option <intent>=<label> --recommend <intent> --why ...`; prints its id",
+    usage: hillPostHelp,
+    run: (args, s) => cmdHillPost(hillDeps(s.io), args),
+  },
+  {
+    name: "status",
+    summary: "a decision's state, and the answer when there is one: `hill status <dc_id>`",
+    run: (args, s) => cmdHillStatus(hillDeps(s.io), args),
+  },
+  {
+    name: "withdraw",
+    summary: "take back an open decision you posted: `hill withdraw <dc_id>`",
+    run: (args, s) => cmdHillWithdraw(hillDeps(s.io), args),
+  },
+  {
+    name: "list",
+    summary: "your own decisions, open first",
+    run: (args, s) => cmdHillList(hillDeps(s.io), args),
+  },
+];
 
 /** The sub-verbs of `walky`. */
 const WALKY_TREE: readonly Subcommand[] = [
@@ -994,6 +1030,15 @@ export const COMMANDS: readonly Command[] = [
     subcommands: WALKY_TREE,
     run: (args, s) => cmdWalky({ io: s.io }, args),
   },
+  // ── The hill (M96) ─────────────────────────────────────────────────────────
+  // An agent posts a Decision for its person over the walky socket; the answer comes back as a
+  // WalkyTalky message. Declared after `walky`, whose socket and markers it uses.
+  {
+    name: "hill",
+    summary: `the hill, decisions an agent asks its person: ${HILL_SUBCOMMANDS.join(", ")}`,
+    subcommands: HILL_TREE,
+    run: (args, s) => cmdHill({ io: s.io }, args),
+  },
   // ── Themes (M59 spec 05) ───────────────────────────────────────────────────
   // `theme check` runs the app's own theme parser and contrast report over files on disk, for a
   // theme repository's CI. No context and no state dir: it reads the files it is named and prints.
@@ -1201,6 +1246,7 @@ async function helpGuard(
   internal: boolean,
   args: readonly string[],
   body: Command["run"],
+  usage?: () => readonly string[],
 ): Promise<number> {
   if (!helpAsked) return body(args, session);
   // A `_` verb is only ever spelled by another Collie (`_apply-update` by `update`), never by
@@ -1209,6 +1255,10 @@ async function helpGuard(
   if (internal) {
     session.io.err(`error: \`collie ${name}\` is internal and has no usage; nothing was run`);
     return EXIT.USAGE;
+  }
+  if (usage !== undefined) {
+    for (const line of usage()) session.io.out(line);
+    return EXIT.OK;
   }
   session.io.out(`usage: collie ${name} [options]`);
   session.io.out("");
@@ -1284,7 +1334,7 @@ function buildProgram(
         .helpOption(false)
         .argument("[args...]")
         .action(async (args: string[]) =>
-          setCode(await helpGuard(session, helpAsked, `${c.name} ${sub.name}`, sub.summary, c.name.startsWith("_"), args, sub.run)),
+          setCode(await helpGuard(session, helpAsked, `${c.name} ${sub.name}`, sub.summary, c.name.startsWith("_"), args, sub.run, sub.usage)),
         );
     }
   }

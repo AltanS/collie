@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Added
+
+- **An agent can put a decision on the hill.** `collie hill post` in the agent's pane posts one question for you: a title, a plain summary, up to five options and the option it recommends, with a why. The bridge keeps the decision in its state folder and answers with an id at once; `collie hill status`, `withdraw` and `list` follow it up, and `collie hill post --help` prints the rules an agent follows. The phone reads the hill at `GET /api/hill` and answers at `POST /api/hill/answer`, under the same write gate as a WalkyTalky message, and the answer reaches the agent as one WalkyTalky message from you. A bridge built before the hill answers that it does not know it. (M96)
+
 ## [1.28.0] - 2026-11-09
 
 ### Added
