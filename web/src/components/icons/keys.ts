@@ -263,6 +263,7 @@ export const ICON_KEYS = {
   "prompt-user": { meaning: "the pinned prompt", area: "chat", lucide: "User" },
   "queued": { meaning: "queued, not yet sent", area: "chat", lucide: "Clock" },
   "quick-actions": { meaning: "quick actions", area: "composer", lucide: "Zap" },
+  "recommended": { meaning: "the option the poster recommends", area: "navigation", lucide: "Star" },
   "refresh": { meaning: "refresh or reload", area: "status", lucide: "RefreshCw" },
   "release-line": { meaning: "release line (Stable or Edge)", area: "updates", lucide: "GitBranch" },
   "remove": { meaning: "remove one item from a list", area: "composer", lucide: "X" },

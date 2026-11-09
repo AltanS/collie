@@ -224,6 +224,7 @@ export const PHOSPHOR = {
   "prompt-user": "user", // the pinned prompt · lucide User
   "queued": "clock", // queued, not yet sent · lucide Clock
   "quick-actions": "lightning", // quick actions · lucide Zap
+  "recommended": "star", // the option the poster recommends · lucide Star
   "refresh": "arrows-clockwise", // refresh or reload · lucide RefreshCw
   "release-line": "git-branch", // release line (Stable or Edge) · lucide GitBranch
   "remove": "x", // remove one item from a list · lucide X

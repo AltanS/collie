@@ -181,10 +181,15 @@ export function tn(keyBase: PluralKey, count: number, vars?: TemplateVars): stri
   const dictionary: Readonly<Record<string, string | undefined>> = activeDictionary();
   const template =
     dictionary[`${keyBase}.${pluralCategory(activeLocale(), count)}`] ?? dictionary[`${keyBase}.other`];
-  // `.other` exists for every PluralKey in every dictionary (the type and the parity test see to
-  // it), so this only fires if that contract is broken.
-  if (template === undefined) throw new Error(`tn: no plural form for ${keyBase}`);
-  return interpolate(template, { ...vars, count });
+  if (template !== undefined) return interpolate(template, { ...vars, count });
+  // A set on the pending-translation list may be missing from a bundle, as `t()` allows for one key.
+  // It reads English then, with English's plural rule, so the words and the grammar agree.
+  const english: Readonly<Record<string, string | undefined>> = en;
+  const fallback = english[`${keyBase}.${pluralCategory(DEFAULT_LOCALE, count)}`] ?? english[`${keyBase}.other`];
+  // `.other` exists for every PluralKey in English (the type sees to it), so this only fires if
+  // that contract is broken.
+  if (fallback === undefined) throw new Error(`tn: no plural form for ${keyBase}`);
+  return interpolate(fallback, { ...vars, count });
 }
 
 /** Switch languages: persist, stamp `<html lang>`, repaint now in whatever is available, and start

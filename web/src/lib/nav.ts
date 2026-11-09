@@ -307,6 +307,14 @@ export function crewPath(scope?: Scope): string {
 }
 
 /**
+ * The hill (M96): the Decisions agents posted. A CHILD of the Dashboard, its only way in. Carries the
+ * scope like the others, so Back returns to the machine and session the Dashboard was showing.
+ */
+export function hillPath(scope?: Scope): string {
+  return `/hill${scopeSearch(scope)}`;
+}
+
+/**
  * The Updates page — a CHILD of Settings, not an anchor inside it. Updating is a flow with a lead,
  * N peers, progress and a rollback state, so it gets a page and Settings keeps one row that links
  * here. Carries the scope like the others, so "back" returns to the machine you came from.
@@ -446,7 +454,7 @@ const ANY_PANE = "/pane/*";
  * Every pathname that may legitimately sit above `pathname` in the level tree, nearest first.
  *
  *   L0 `/`
- *   L1 `/space/:id`, `/settings`, `/crew`, `/new` (from the dashboard, a space or a pane)
+ *   L1 `/space/:id`, `/settings`, `/crew`, `/hill`, `/new` (from the dashboard, a space or a pane)
  *   L2 `/pane/:id`, `/new/add` (below the New page), `/space/:id/changes`, `/settings/:section`, `/settings/updates`, `/machines`
  *   L3 `/settings/voice/host`, `/settings/voice/model`, `/settings/system/install-count`, `/pane/:id/history`, `/pane/:id/zoom`, `/pane/:id/changes` (a file view is the same path with `?repo=&path=`),
  *      `/space/:id/changes/commit`, `/space/:id/changes/files` (a folder or a file of the tree, with
@@ -482,6 +490,8 @@ export function ancestorsOf(pathname: string): string[] {
     return [`/pane/${id}`, ANY_SPACE, "/"];
   }
   if (head === "settings" && seg.length === 1) return ["/"];
+  // The hill is opened from the Dashboard's row alone (M96).
+  if (head === "hill" && seg.length === 1) return ["/"];
   // A durable program's conversations are opened from a space's sheet (dashboard or space page) and
   // from a pane's menu; one conversation sits below the list.
   if (head === "conversations" && seg.length === 1) return ["/", ANY_SPACE, ANY_PANE];
@@ -715,6 +725,7 @@ export function parentChain(pathname: string, search: string): string[] {
     return file ? [home, pane, `/pane/${id}/changes${q}`] : [home, pane];
   }
   if (head === "settings" && seg.length === 1) return [home];
+  if (head === "hill" && seg.length === 1) return [home];
   // The conversations list: behind it the pane it was opened for, else the dashboard. One conversation
   // sits under the dashboard, which is a durable machine's conversation list (M53 spec 12).
   if (head === "conversations" && seg.length === 1) {
