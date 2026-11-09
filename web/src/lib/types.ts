@@ -1403,6 +1403,12 @@ export interface SnapshotResponse {
   servers?: ServerSummary[];
   /** Version / upgrade status. Absent on an older bridge that doesn't report it. */
   update?: UpdateInfo;
+  /**
+   * The hill's revision (M96): it moves on every change to the hill's decisions, and the phone reads
+   * `GET /api/hill` when it does (lib/hill/store.ts). Absent on a bridge older than the hill, which
+   * reads as no hill at all.
+   */
+  hillRev?: number;
   ts: number;
 }
 

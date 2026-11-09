@@ -388,6 +388,7 @@ export const LUCIDE = {
   "prompt-user": User,
   "queued": Clock,
   "quick-actions": Zap,
+  "recommended": Star,
   "refresh": RefreshCw,
   "release-line": GitBranch,
   "remove": X,

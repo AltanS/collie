@@ -21,6 +21,8 @@ import { CrewTab } from "@/components/crew-tab";
 import { TelemetryNotice } from "@/components/telemetry-notice";
 import { UpdateBanner } from "@/components/update-banner";
 import { Fab } from "@/components/ui/fab";
+import { Collapse } from "@/components/ui/collapse";
+import { HillEntryRow } from "@/components/hill-view";
 import { useAnySheetOpen } from "@/components/ui/sheet";
 import { TabBar } from "@/components/ui/tab-bar";
 import { WorkspaceChangesList, type WorkspaceChangesRow } from "@/components/workspace-changes-list";
@@ -47,7 +49,7 @@ import type { DashView } from "@/lib/dash-view";
 import { t, tn } from "@/lib/i18n";
 import { prefetchFolders } from "@/lib/folders";
 import { glideForward } from "@/lib/glide";
-import { homePath, newPath, spaceChangesPath, spacePath } from "@/lib/nav";
+import { hillPath, homePath, newPath, spaceChangesPath, spacePath } from "@/lib/nav";
 import { resolveIsolatedPrefKeys, workspaceGroupKey, type WorkspaceGroup } from "@/lib/pane-groups";
 import { panePlaceParts } from "@/lib/pane-name";
 import { scopeKey, type Scope } from "@/lib/scope";
@@ -58,6 +60,7 @@ import { programScope, programSessions, programsAbove, waitingPrograms } from "@
 import { cn } from "@/lib/utils";
 import { isReadOnly, type AgentView, type ServerSummary, type SessionSummary } from "@/lib/types";
 import { useRootData } from "@/lib/route-data";
+import { useHillOpen } from "@/lib/hill/store";
 
 /**
  * The Changes tab's body (ADR 0066). Mounted only while that tab is selected, so its 5-second
@@ -307,6 +310,8 @@ export function HomeRoute() {
   // A bar with one tab switches to nothing, so a solo machine with no screen draws none, and the New
   // button, the toasts and the list's last row sit on the safe area instead (durable-simple, 2026-10-13).
   const tabsShown = multi || !screenless;
+  // The open Decisions on the hill (M96), most urgent first. Empty without a hill, which draws no row.
+  const hillOpen = useHillOpen();
 
   return (
     <div className="mx-auto flex min-h-0 w-full max-w-screen-sm flex-1 flex-col">
@@ -340,6 +345,16 @@ export function HomeRoute() {
         <TelemetryNotice />
 
         <main className="flex-1">
+          {/* THE HILL'S WAY IN (M96): one row above the list, on the Dashboard tab only, while at least
+              one Decision is open. It arrives and leaves through Collapse (DESIGN.md §11), and with none
+              open it renders nothing at all, so the Dashboard is what it was before the hill. */}
+          <Collapse open={view === "dashboard" && hillOpen.length > 0}>
+            {view === "dashboard" && hillOpen[0] !== undefined ? (
+              <div className="px-4 pt-3">
+                <HillEntryRow count={hillOpen.length} title={hillOpen[0].title} onOpen={() => nav.down(hillPath(data.scope))} />
+              </div>
+            ) : null}
+          </Collapse>
           {/* One list: every pane under the workspace it lives in, or one ranked list in Activity and
               Cache order (components/agent-list.tsx). Bare shells go in with the agents — grouped by
               place they sit beside the work they belong to, which is what stopped them being a pen
