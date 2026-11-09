@@ -210,7 +210,7 @@ export const oneImage = decision({
   media: [shot("im_pgafter000000001", "The card after the change")],
 });
 
-/** 23: three images; the card shows the first with "1 / 3", the body shows all three. */
+/** 23: three images, side by side in one row that scrolls. */
 export const threeImages = decision({
   title: "Which header for the Hill?",
   summary: "Three shots: the header before, after, and the two side by side.",
@@ -238,6 +238,31 @@ export const brokenImage = decision({
 
 /** The Hill with seven cards, in any order: the view sorts them. */
 export const sevenOpen: readonly HillDecision[] = [later, withBody, twoOptions, textOnly, threeWithConfirm, unattended, textRequired];
+
+/** 28: everything a Decision can carry at once: images, a recommendation, a body, links, a confirm and a note. */
+export const rich = decision({
+  title: "Which header for the Hill?",
+  summary: "Two shots of the header on a 390 px phone. Pick one and say why, so the pull request can quote you.",
+  sender: HILL,
+  ago: 3,
+  priority: "now",
+  priorityAsked: "now",
+  options: [
+    { intent: "after", label: "The new one" },
+    { intent: "before", label: "Keep the old one" },
+    { intent: "drop", label: "Drop the header change", detail: "Reverts both commits on the branch.", confirm: "Drop it" },
+  ],
+  recommends: { intent: "after", why: "The mark reads at a glance, and the count no longer wraps at 390 px." },
+  media: [shot("im_pgbefore00000001", "Before"), shot("im_pgafter000000001", "After"), shot("im_pgdiff0000000001", "Side by side")],
+  body: ["What moves:", "", "- The mountain mark sits left of the title.", "- The count line is always there."].join("\n"),
+  links: [{ label: "CI run 4822", href: "https://ci.example.com/runs/4822" }],
+});
+
+/** The quiet Hill: two cards, one of each of the two upper priorities. */
+export const quietOpen: readonly HillDecision[] = [twoOptions, threeWithConfirm];
+
+/** The busy Hill: the seven cards and the rich one. */
+export const busyOpen: readonly HillDecision[] = [...sevenOpen, rich];
 
 function closed(over: Fixture & Pick<HillDecision, "state">, agoClosed: number): HillDecision {
   return decision({ ...over, ago: agoClosed + 10, closedAt: NOW - agoClosed * MIN });
