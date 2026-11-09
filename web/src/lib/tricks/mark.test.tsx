@@ -6,7 +6,8 @@ import * as lucide from "lucide-react";
 import { describe, expect, it, vi } from "vitest";
 
 import { StatusDot } from "../../components/status-badge";
-import { TRICK_ICON_COMPONENT, trickIconOf } from "./icons";
+import { LUCIDE } from "../../components/icons/lucide";
+import { TRICK_ICONS_WITHOUT_KEY, trickGlyph, trickIconKey, trickIconOf } from "./icons";
 import { TrickMark } from "./mark";
 import { DEFAULT_TRICK_ICON, TRICK_ICONS, TRICK_ICON_LUCIDE, TONE_TEXT_CLASS, TONES, type Mark } from "./schema";
 
@@ -134,15 +135,34 @@ describe("a trick's mark", () => {
 });
 
 describe("the icon set", () => {
-  it("draws every word with the lucide export the schema names", () => {
+  it("draws every word with the lucide export the schema names, through its icon key where it has one", () => {
     const exports = new Map(Object.entries(lucide));
     for (const word of TRICK_ICONS) {
-      expect(TRICK_ICON_COMPONENT[word], word).toBe(exports.get(TRICK_ICON_LUCIDE[word]));
+      const key = trickIconKey(word);
+      if (key === null) {
+        expect(trickGlyph(word), word).toBe(exports.get(TRICK_ICON_LUCIDE[word]));
+        continue;
+      }
+      // The default set draws the key with the very glyph the schema names, so the look is unchanged.
+      expect(LUCIDE[key], word).toBe(exports.get(TRICK_ICON_LUCIDE[word]));
+      const Glyph = trickGlyph(word);
+      const { container, unmount } = render(<Glyph aria-hidden className="size-4" />);
+      expect(container.querySelector("svg")?.getAttribute("data-icon"), word).toBe(key);
+      unmount();
     }
   });
 
+  it("lists the words with no icon key, and only those", () => {
+    const keyless = TRICK_ICONS.filter((word) => trickIconKey(word) === null);
+    expect([...TRICK_ICONS_WITHOUT_KEY].toSorted()).toEqual([...keyless].toSorted());
+  });
+
+  it("keeps a glyph's identity across renders, so a trick's icon never remounts", () => {
+    expect(trickIconOf("flask")).toBe(trickIconOf("flask"));
+  });
+
   it("draws the default icon for a word this Collie does not know", () => {
-    expect(trickIconOf("hologram")).toBe(TRICK_ICON_COMPONENT[DEFAULT_TRICK_ICON]);
-    expect(trickIconOf(undefined)).toBe(TRICK_ICON_COMPONENT[DEFAULT_TRICK_ICON]);
+    expect(trickIconOf("hologram")).toBe(trickGlyph(DEFAULT_TRICK_ICON));
+    expect(trickIconOf(undefined)).toBe(trickGlyph(DEFAULT_TRICK_ICON));
   });
 });

@@ -3,7 +3,7 @@ import { vi } from "vitest";
 
 import { HILL_IDLE } from "@/hooks/use-hill-answer";
 import { sortOpenDecisions, type HillDecision } from "@/lib/hill/wire";
-import { HILL_T0, hillDecision } from "@/test/hill-fixtures";
+import { HILL_T0, hillDecision, trickDecision } from "@/test/hill-fixtures";
 
 import { DecisionCard } from "./decision-card";
 import { HillEntryRow, HillView } from "./hill-view";
@@ -49,7 +49,7 @@ describe("the Hill", () => {
     const answered = hillDecision({
       title: "Ship it?",
       state: "answered",
-      answer: { rid: "r1", intent: "yes", label: "Yes, Edge first", text: null, by: "phone", at: HILL_T0, delivery: "typed" },
+      answer: { rid: "r1", intent: "yes", label: "Yes, Edge first", text: null, by: "phone", at: HILL_T0, delivery: "typed", trick: "none" },
     });
     const expired = hillDecision({ title: "Post before noon?", state: "expired" });
     const { container } = renderView([], [answered, expired]);
@@ -61,6 +61,25 @@ describe("the Hill", () => {
     expect(toggle).toHaveAttribute("aria-expanded", "true");
     const lines = [...fold.querySelectorAll('[data-slot="hill-closed-line"]')].map((el) => el.textContent);
     expect(lines).toEqual(["Answered · Yes, Edge first · typed to collie lead", "Expired"]);
+  });
+
+  it("says what the trick did on the row of an answer to a trick's decision", () => {
+    const answer = { rid: "r1", intent: "yes", label: "Yes", text: null, by: "phone", at: HILL_T0 };
+    const ran = trickDecision({ state: "answered", answer: { ...answer, delivery: "none", trick: "ran" } });
+    const sentAndRan = trickDecision({
+      state: "answered",
+      target: { label: "m96-hill", host: "bluefin", unattended: false },
+      answer: { ...answer, delivery: "typed", trick: "ran" },
+    });
+    const failed = trickDecision({ state: "answered", answer: { ...answer, delivery: "none", trick: "failed" } });
+    const { container } = renderView([], [ran, sentAndRan, failed]);
+    fireEvent.click(container.querySelector<HTMLButtonElement>('[data-slot="hill-answered"] button[aria-expanded]')!);
+    const lines = [...container.querySelectorAll('[data-slot="hill-closed-line"]')].map((el) => el.textContent);
+    expect(lines).toEqual([
+      "Answered · Yes · recorded by Look",
+      "Answered · Yes · typed to m96-hill · recorded by Look",
+      "Answered · Yes · Look did not take it",
+    ]);
   });
 
   it("keeps the words of an undeliverable answer on its row", () => {

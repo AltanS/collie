@@ -1,8 +1,8 @@
 import { useMemo } from "react";
 import { useParams } from "react-router";
-import { ArrowLeft, Loader2 } from "lucide-react";
 
 import { RouteHeader } from "@/components/app-header";
+import { Icon as KeyIcon } from "@/components/icons/icon";
 import { TrickSessionIcon, trickSessionLine } from "@/components/trick-session";
 import { PaneBadge } from "@/components/pane-badge";
 import { Button } from "@/components/ui/button";
@@ -50,7 +50,7 @@ export function TrickSessionHeaderRow({ pane, onBack }: { pane: AgentView | unde
   return (
     <>
       <Button variant="ghost" size="icon" className="size-11" onClick={onBack} aria-label={t("tricks.session.back")}>
-        <ArrowLeft className="size-5" />
+        <KeyIcon name="back" className="size-5" />
       </Button>
       {pane !== undefined && <TrickSessionIcon pane={pane} />}
       <div className="min-w-0 flex-1">
@@ -92,7 +92,7 @@ function Actions({ partKey, onTap, store }: { partKey: string; onTap: (key: stri
             className={cn("h-11 min-w-0 rounded-sm", actions.length === 1 && "col-span-2")}
           >
             {/* The glyph's box turns into the spinner; the label stays, so the button never changes width. */}
-            {busy ? <Loader2 aria-hidden className="animate-spin" /> : Icon !== null && <Icon aria-hidden />}
+            {busy ? <KeyIcon name="busy" aria-hidden className="animate-spin" /> : Icon !== null && <Icon aria-hidden />}
             <span className="truncate">{action.label}</span>
           </Button>
         );

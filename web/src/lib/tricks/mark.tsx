@@ -19,9 +19,9 @@
 // to a plain span when it had no tap, and that span shrank away under the belt's pinned block when the
 // belt overflowed. A mark with nothing to do says so with `aria-disabled` and keeps its box.
 
-import { CircleHelp, Loader2 } from "lucide-react";
 import { useRef } from "react";
 
+import { Icon as KeyIcon } from "../../components/icons/icon";
 import { t } from "../i18n";
 import { cn } from "../utils";
 import { trickIconOf } from "./icons";
@@ -62,9 +62,9 @@ function MarkFace({ mark, stale, busy, unknown }: { mark: Mark; stale: boolean; 
   return (
     <>
       {busy ? (
-        <Loader2 aria-hidden data-slot="trick-mark-busy" className={cn(glyph, "animate-spin text-muted-foreground")} />
+        <KeyIcon name="busy" aria-hidden data-slot="trick-mark-busy" className={cn(glyph, "animate-spin text-muted-foreground")} />
       ) : unknown ? (
-        <CircleHelp aria-hidden data-slot="trick-mark-unknown" className={cn(glyph, "text-muted-foreground")} />
+        <KeyIcon name="mod-unknown" aria-hidden data-slot="trick-mark-unknown" className={cn(glyph, "text-muted-foreground")} />
       ) : (
         <Icon aria-hidden className={cn(glyph, ink)} />
       )}

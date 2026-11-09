@@ -3,7 +3,7 @@
 // `HillHeader`, `HillEntryRow`) with fixtures shaped by the wire (`fixtures/hill/decisions.ts`). There
 // is no bridge behind this page: a card's state is fixed, and a tap on a live card answers nothing.
 //
-// Cards are numbered 1 to 21.
+// Cards are numbered 1 to 23.
 
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 
@@ -26,6 +26,7 @@ import {
   textOnly,
   textRequired,
   threeWithConfirm,
+  trickOpen,
   twoOptions,
   unattended,
   withBody,
@@ -264,6 +265,17 @@ export function HillSection() {
         <Card state="hill-entry-dashboard" label="21: dashboard with row">
           <CardHead n={21} title="Dashboard with row" />
           <DashboardPhone />
+        </Card>
+      </Group>
+
+      <Group title="A trick's decision">
+        <Card state="hill-card-trick" label="22: a trick, no target">
+          <CardHead n={22} title="A trick, no target" />
+          <OneCard decision={trickOpen} />
+        </Card>
+        <Card state="hill-card-trick-ran" label="23: a trick recorded it">
+          <CardHead n={23} title="A trick recorded it" />
+          <OneCard decision={trickOpen} answer={answered({ ...receipts.typed, delivery: "none", trick: "ran" })} />
         </Card>
       </Group>
     </Section>

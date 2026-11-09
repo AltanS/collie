@@ -4,7 +4,7 @@ import { afterEach, beforeEach, onTestFinished, vi } from "vitest";
 import { HILL_IDLE, type HillAnswerState } from "@/hooks/use-hill-answer";
 import { ARM_DWELL_MS, ARM_MS } from "@/lib/arm";
 import type { HillDecision, HillReceipt } from "@/lib/hill/wire";
-import { hillDecision, hillReceipt } from "@/test/hill-fixtures";
+import { hillDecision, hillReceipt, trickDecision } from "@/test/hill-fixtures";
 
 import { DecisionCard } from "./decision-card";
 
@@ -248,5 +248,61 @@ describe("after the tap", () => {
     expect(slot("decision-status")).toHaveTextContent("Not sent.");
     fireEvent.click(slot("decision-retry")!);
     expect(onSend).toHaveBeenCalledWith("no", "later");
+  });
+});
+
+describe("a trick's decision", () => {
+  const m96 = { label: "m96-hill", host: "bluefin", unattended: false } as const;
+
+  it("names the trick and the word trick on the meta line, in the poster's slot", () => {
+    const { slot } = renderCard(trickDecision());
+    expect(slot("decision-meta")?.textContent).toMatch(/Look\s*·\s*trick/);
+    expect(slot("decision-meta")).not.toHaveTextContent("collie lead");
+  });
+
+  it("leaves an agent's meta line without the word trick", () => {
+    const { slot } = renderCard(hillDecision());
+    expect(slot("decision-meta")?.textContent).not.toContain("trick");
+  });
+
+  it("says the answer goes to the trick when nothing else gets it", () => {
+    const { slot } = renderCard(trickDecision());
+    expect(slot("decision-target")?.textContent).toBe("Your answer goes to the Look trick");
+  });
+
+  it("names the target and the trick when the trick set a reply target", () => {
+    const { slot } = renderCard(trickDecision({ target: m96 }));
+    expect(slot("decision-target")?.textContent).toBe("Your answer goes to m96-hill on bluefin and to the Look trick");
+  });
+
+  it("drops the machine when the bridge names none", () => {
+    const { slot } = renderCard(trickDecision({ target: { ...m96, host: null } }));
+    expect(slot("decision-target")?.textContent).toBe("Your answer goes to m96-hill and to the Look trick");
+  });
+
+  it("keeps an agent's target line as it was", () => {
+    const { slot } = renderCard(hillDecision());
+    expect(slot("decision-target")?.textContent).toBe("Your answer goes to collie lead on bluefin");
+  });
+
+  it.each<[string, HillDecision, HillReceipt, string, string]>([
+    ["typed and ran", trickDecision({ target: m96 }), hillReceipt({ trick: "ran" }), "yes", "Sent to m96-hill · recorded by Look"],
+    ["held and ran", trickDecision({ target: m96 }), hillReceipt({ delivery: "held", trick: "ran" }), "yes", "Sent. m96-hill gets it when its turn ends · recorded by Look"],
+    ["unconfirmed and ran", trickDecision({ target: m96 }), hillReceipt({ delivery: "unknown", trick: "ran" }), "yes", "Sent, not confirmed · recorded by Look"],
+    ["no target and ran", trickDecision(), hillReceipt({ delivery: "none", trick: "ran" }), "yes", "Recorded by Look"],
+    ["dismissed and ran", trickDecision({ target: m96 }), hillReceipt({ delivery: "none", state: "dismissed", trick: "ran" }), "dismiss", "Recorded by Look"],
+    ["failed, with a target", trickDecision({ target: m96 }), hillReceipt({ trick: "failed" }), "yes", "Sent, but Look did not take it"],
+    ["failed, no target", trickDecision(), hillReceipt({ delivery: "none", trick: "failed" }), "yes", "Sent, but Look did not take it"],
+    ["an agent's, typed", hillDecision(), hillReceipt(), "yes", "Sent to collie lead"],
+    ["an agent's, dismissed", hillDecision(), hillReceipt({ delivery: "none", state: "dismissed" }), "dismiss", "Dismissed"],
+  ])("says the receipt of %s", (_name, decision, receipt, intent, words) => {
+    const { slot } = renderCard(decision, answered(receipt, intent));
+    expect(slot("decision-receipt")?.textContent).toBe(words);
+  });
+
+  it("still names a refusal the way it did", () => {
+    const refused = hillReceipt({ code: "rejected", state: null, delivery: null, trick: null, reason: "text is required" });
+    const { slot } = renderCard(trickDecision(), answered(refused));
+    expect(slot("decision-receipt")?.textContent).toBe("Not accepted: an answer in words is required");
   });
 });

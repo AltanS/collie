@@ -3368,6 +3368,14 @@ export const en = {
   "hill.delivery.typed": "typed to {label}",
   "hill.delivery.held": "held for {label}",
   "hill.delivery.unknown": "not confirmed",
+  "hill.trick": "trick",
+  "hill.targetTrick": "Your answer goes to the {trick} trick",
+  "hill.targetBoth": "Your answer goes to {label} on {host} and to the {trick} trick",
+  "hill.targetBothLocal": "Your answer goes to {label} and to the {trick} trick",
+  "hill.receipt.recorded": "Recorded by {trick}",
+  "hill.receipt.trickFailed": "Sent, but {trick} did not take it",
+  "hill.delivery.recorded": "recorded by {trick}",
+  "hill.delivery.trickFailed": "{trick} did not take it",
 } as const;
 
 /** Every key that exists, as a union of string literals. The completeness contract. */
@@ -3568,6 +3576,14 @@ export const PENDING_TRANSLATION = [
   "hill.delivery.typed",
   "hill.delivery.held",
   "hill.delivery.unknown",
+  "hill.trick",
+  "hill.targetTrick",
+  "hill.targetBoth",
+  "hill.targetBothLocal",
+  "hill.receipt.recorded",
+  "hill.receipt.trickFailed",
+  "hill.delivery.recorded",
+  "hill.delivery.trickFailed",
 ] as const satisfies readonly MessageKey[];
 
 /** A key a bundle may leave out until the translation pass. */

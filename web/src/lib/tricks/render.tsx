@@ -25,9 +25,10 @@
 // A `row` with `href` and a `link` go to `ctx.onLink`: an http(s) address opens in the browser, a
 // session's scope key opens that Session. Nothing a trick draws can write into a reply box.
 
-import { Check, ChevronDown, Loader2, Minus, Pause, Play, X } from "lucide-react";
 import { useState, type CSSProperties, type MouseEvent, type ReactNode } from "react";
 
+import { Icon as KeyIcon } from "../../components/icons/icon";
+import type { IconKey } from "../../components/icons/keys";
 import { Button } from "../../components/ui/button";
 import { Card } from "../../components/ui/card";
 import { Collapse } from "../../components/ui/collapse";
@@ -42,7 +43,7 @@ import { t } from "../i18n";
 import { setStatus } from "../status";
 import { cn } from "../utils";
 import { useBridgeNow } from "./clock";
-import { trickIconOf } from "./icons";
+import { keyGlyph, trickIconOf, type TrickGlyph } from "./icons";
 import { codeLines, groupHasHead, heightCss, isStepStrip, LEAF_REM, paraLines, reservedHeight, textOf } from "./layout";
 import {
   CUTS,
@@ -206,7 +207,7 @@ function partBusy(ctx: RenderCtx): boolean {
 
 /** Collie's busy glyph: the spinner, in the glyph's own box (the belt's busy state, components/harness-bar.tsx). */
 function Spinner() {
-  return <Loader2 aria-hidden data-slot="trick-button-busy" className="size-4 shrink-0 animate-spin" />;
+  return <KeyIcon name="busy" aria-hidden data-slot="trick-button-busy" className="size-4 shrink-0 animate-spin" />;
 }
 
 // ── badge ─────────────────────────────────────────────────────────────────────────────────────
@@ -324,7 +325,20 @@ function ButtonView({ node, ctx, path, compact = false }: { node: ButtonNode; ct
 // ── chip and the step strip ───────────────────────────────────────────────────────────────────
 
 /** A chip state as a glyph, never a status shape: a trick's chip is not "an agent needs you" (ADR 0063). */
-const STATE_GLYPH = { done: Check, working: Play, waiting: Pause, idle: Minus, gone: X } as const satisfies { readonly [S in ChipState]: typeof Check };
+const STATE_KEY = {
+  done: "mod-step-done",
+  working: "mod-step-running",
+  waiting: "mod-paused",
+  idle: "mod-step-todo",
+  gone: "mod-step-failed",
+} as const satisfies { readonly [S in ChipState]: IconKey };
+const STATE_GLYPH = {
+  done: keyGlyph(STATE_KEY.done),
+  working: keyGlyph(STATE_KEY.working),
+  waiting: keyGlyph(STATE_KEY.waiting),
+  idle: keyGlyph(STATE_KEY.idle),
+  gone: keyGlyph(STATE_KEY.gone),
+} as const satisfies { readonly [S in ChipState]: TrickGlyph };
 /** A chip state's ink when the chip names no tone. */
 const STATE_TONE = { done: "ok", working: "accent", waiting: "warn", idle: "muted", gone: "muted" } as const satisfies { readonly [S in ChipState]: string };
 
@@ -812,7 +826,7 @@ function GroupView({ node, ctx, path, inList = false }: { node: GroupNode; ctx: 
   const head = !headed ? null : foldable ? (
     <button type="button" aria-expanded={open} onClick={() => setOpen((was) => !was)} className={cn(headClass, "w-full text-left")}>
       {headWords}
-      <ChevronDown aria-hidden className={cn("ml-auto size-3.5 shrink-0 text-muted-foreground transition-transform", !open && "-rotate-90")} />
+      <KeyIcon name="expand" aria-hidden className={cn("ml-auto size-3.5 shrink-0 text-muted-foreground transition-transform", !open && "-rotate-90")} />
     </button>
   ) : (
     <div className={headClass}>{headWords}</div>

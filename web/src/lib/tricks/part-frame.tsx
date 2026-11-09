@@ -13,9 +13,9 @@
 // new FORM back while a finger is down on the part, so a list that grows a row does not move the row
 // under the thumb (design section 5). A new version of the same form draws at once.
 
-import { Clock, Pause, TriangleAlert } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 
+import { Icon } from "../../components/icons/icon";
 import { Button } from "../../components/ui/button";
 import { copyText } from "../clipboard";
 import { setStatus } from "../status";
@@ -73,10 +73,10 @@ function lineWords(line: FrameLine, now: number): string {
 
 function LineGlyph({ line }: { line: FrameLine }) {
   const glyph = "size-3.5 shrink-0";
-  if (line.kind === "age") return <Clock aria-hidden className={glyph} />;
-  if (line.kind === "paused") return <Pause aria-hidden className={glyph} />;
+  if (line.kind === "age") return <Icon name="mod-age" aria-hidden className={glyph} />;
+  if (line.kind === "paused") return <Icon name="mod-paused" aria-hidden className={glyph} />;
   if (line.kind === "none" || line.kind === "tap-unknown") return null;
-  return <TriangleAlert aria-hidden className={glyph} />;
+  return <Icon name="mod-trouble" aria-hidden className={glyph} />;
 }
 
 /** Copy the fix line on the phone: a phone action, no bridge write, no draft. */

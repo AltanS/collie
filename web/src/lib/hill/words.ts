@@ -33,9 +33,34 @@ export function targetLabel(decision: Pick<HillDecision, "target" | "from">): st
   return decision.target?.label ?? decision.from.label;
 }
 
-/** "Your answer goes to collie lead on bluefin", or without the machine when the bridge names none. */
-export function targetLine(target: NonNullable<HillDecision["target"]>): string {
-  return target.host === null ? t("hill.targetLocal", { label: target.label }) : t("hill.target", { label: target.label, host: target.host });
+/**
+ * "Your answer goes to collie lead on bluefin", or without the machine when the bridge names none.
+ * A trick's decision names the trick too: "... goes to m96-hill on bluefin and to the Look trick", or
+ * alone "... goes to the Look trick" when the answer is typed nowhere. Null when there is nothing to say.
+ */
+export function targetLine(decision: Pick<HillDecision, "target" | "from">): string | null {
+  const { target, from } = decision;
+  if (from.kind !== "trick") {
+    if (target === null) return null;
+    return target.host === null ? t("hill.targetLocal", { label: target.label }) : t("hill.target", { label: target.label, host: target.host });
+  }
+  if (target === null) return t("hill.targetTrick", { trick: from.label });
+  if (target.host === null) return t("hill.targetBothLocal", { label: target.label, trick: from.label });
+  return t("hill.targetBoth", { label: target.label, host: target.host, trick: from.label });
+}
+
+/** The delivery part of an `ok` receipt: where the answer went, or "Dismissed" when it went nowhere. */
+function okWords(receipt: HillReceipt, intent: string, label: string): string {
+  if (intent === "dismiss" || receipt.delivery === "none") return t("hill.receipt.dismissed");
+  if (receipt.delivery === "typed") return t("hill.receipt.typed", { label });
+  if (receipt.delivery === "held") return t("hill.receipt.held", { label });
+  return t("hill.receipt.unknown");
+}
+
+/** A trick took the answer: "Recorded by Look" alone, or after where it was sent, "Sent to m96-hill · recorded by Look". */
+function okWithTrick(receipt: HillReceipt, intent: string, label: string, trickName: string): string {
+  if (intent === "dismiss" || receipt.delivery === "none") return t("hill.receipt.recorded", { trick: trickName });
+  return `${okWords(receipt, intent, label)} · ${t("hill.delivery.recorded", { trick: trickName })}`;
 }
 
 /** The bridge's plain-words reason, in the phone's language where it is one the phone knows. */
@@ -49,15 +74,15 @@ function reasonWords(reason: string | null): string | null {
 /**
  * What the card says after the bridge answered, in words. `label` names the session the answer went
  * to. `ok` speaks of the delivery, a dismiss has nothing to deliver; `gone` names why the decision is
- * closed; the bridge's `unknown` reads as the delivery that was not confirmed.
+ * closed; the bridge's `unknown` reads as the delivery that was not confirmed. `trickName` is set for
+ * a trick's decision: the receipt then also says whether the trick took the answer.
  */
-export function receiptWords(receipt: HillReceipt, intent: string, label: string): string {
+export function receiptWords(receipt: HillReceipt, intent: string, label: string, trickName: string | null = null): string {
   switch (receipt.code) {
     case "ok":
-      if (intent === "dismiss" || receipt.delivery === "none") return t("hill.receipt.dismissed");
-      if (receipt.delivery === "typed") return t("hill.receipt.typed", { label });
-      if (receipt.delivery === "held") return t("hill.receipt.held", { label });
-      return t("hill.receipt.unknown");
+      if (trickName !== null && receipt.trick === "failed") return t("hill.receipt.trickFailed", { trick: trickName });
+      if (trickName !== null && receipt.trick === "ran") return okWithTrick(receipt, intent, label, trickName);
+      return okWords(receipt, intent, label);
     case "unknown":
       return t("hill.receipt.unknown");
     case "rejected": {
@@ -78,14 +103,30 @@ export function receiptWords(receipt: HillReceipt, intent: string, label: string
 /**
  * The receipt line of an answered row under Answered: what was chosen, then where it went, joined by
  * a middle dot. "Yes, Edge first · typed to collie lead". A words-only answer shows its words; a
- * dismiss and a delivery with nothing to type show the choice alone.
+ * dismiss and a delivery with nothing to type show the choice alone. A trick's decision adds what the
+ * trick did: "Yes · recorded by Look", "Yes · typed to m96-hill · Look did not take it".
  */
 export function answerLine(decision: Pick<HillDecision, "answer" | "target" | "from">): string {
   const answer = decision.answer;
   if (answer === null) return "";
   const chosen = answer.label ?? answer.text ?? "";
   const where = deliveryWords(answer.delivery, targetLabel(decision));
-  return [chosen, where].filter((part) => part !== "").join(" · ");
+  const trick = trickWords(answer.trick, decision.from);
+  return [chosen, where, trick].filter((part) => part !== "").join(" · ");
+}
+
+function trickWords(trick: NonNullable<HillDecision["answer"]>["trick"], from: HillDecision["from"]): string {
+  if (from.kind !== "trick") return "";
+  switch (trick) {
+    case "ran":
+      return t("hill.delivery.recorded", { trick: from.label });
+    case "failed":
+      return t("hill.delivery.trickFailed", { trick: from.label });
+    case "none":
+      return "";
+    default:
+      return trick satisfies never;
+  }
 }
 
 function deliveryWords(delivery: NonNullable<HillDecision["answer"]>["delivery"], label: string): string {

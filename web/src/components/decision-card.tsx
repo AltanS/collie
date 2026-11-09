@@ -91,7 +91,10 @@ function Age({ at }: { at: number }) {
 
 /** Which notice tone a receipt wears: it landed, it may have, or it did not. */
 function receiptTone(receipt: HillReceipt): NoticeTone {
-  if (receipt.code === "ok") return receipt.delivery === "typed" || receipt.delivery === "none" ? "success" : "info";
+  if (receipt.code === "ok") {
+    if (receipt.trick === "failed") return "info";
+    return receipt.delivery === "typed" || receipt.delivery === "none" ? "success" : "info";
+  }
   if (receipt.code === "unknown") return "info";
   return "danger";
 }
@@ -157,7 +160,7 @@ function AnswerStatus({ decision, answer, onRetry }: { decision: HillDecision; a
         icon={<Icon name={tone === "danger" ? "error" : "answered"} />}
       >
         <span data-slot="decision-receipt" data-code={receipt.code}>
-          {receiptWords(receipt, answer.intent, targetLabel(decision))}
+          {receiptWords(receipt, answer.intent, targetLabel(decision), decision.from.kind === "trick" ? decision.from.label : null)}
         </span>
       </Notice>
       {kept !== null && <KeptWords text={kept} />}
@@ -200,6 +203,7 @@ export function DecisionCard({
   const recommended = decision.options.find((o) => o.intent === decision.recommends?.intent);
   const sendingIntent = answer.phase === "sending" ? answer.intent : null;
   const target = decision.target;
+  const goesTo = targetLine(decision);
 
   function choose(option: HillOption) {
     if (optionsBlocked) return;
@@ -241,6 +245,12 @@ export function DecisionCard({
         <div data-slot="decision-meta" className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
           <PriorityChip priority={decision.priority} />
           <span className="min-w-0 truncate">{decision.from.label}</span>
+          {decision.from.kind === "trick" && (
+            <span className="shrink-0">
+              <span aria-hidden>· </span>
+              {t("hill.trick")}
+            </span>
+          )}
           {decision.from.host !== null && (
             <span className="min-w-0 shrink truncate">
               <span aria-hidden>· </span>
@@ -391,10 +401,10 @@ export function DecisionCard({
         </Collapse>
 
         <div className="flex min-w-0 items-center gap-2">
-          {target !== null ? (
+          {goesTo !== null ? (
             <p data-slot="decision-target" className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-              <span className="min-w-0 break-words">{targetLine(target)}</span>
-              {target.unattended && <NoPromptsBadge label={t("hill.unattended")} className="h-5 px-1.5 py-0 text-[11px] leading-none" />}
+              <span className="min-w-0 break-words">{goesTo}</span>
+              {target?.unattended === true && <NoPromptsBadge label={t("hill.unattended")} className="h-5 px-1.5 py-0 text-[11px] leading-none" />}
             </p>
           ) : (
             <span className="flex-1" />
