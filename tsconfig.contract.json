@@ -1,6 +1,7 @@
 {
   // Type-checks the contract tests that run the bridge's real answers through the phone's own
-  // fetchers (`bridge/files-web-contract.test.ts`, `bridge/machines-web-contract.test.ts`).
+  // fetchers (`bridge/files-web-contract.test.ts`, `bridge/machines-web-contract.test.ts`,
+  // `bridge/hill-web-contract.test.ts`).
   //
   // Those fetchers live in the web tree and spell their imports with its `@/` alias, which the root
   // `tsconfig.json` does not know, and the web tree is written without `noUncheckedIndexedAccess`.
@@ -11,6 +12,6 @@
     "noUncheckedIndexedAccess": false,
     "paths": { "@/*": ["./web/src/*"] }
   },
-  "include": ["bridge/files-web-contract.test.ts", "bridge/machines-web-contract.test.ts", "web/src/vite-env.d.ts"],
+  "include": ["bridge/files-web-contract.test.ts", "bridge/machines-web-contract.test.ts", "bridge/hill-web-contract.test.ts", "web/src/vite-env.d.ts"],
   "exclude": []
 }
