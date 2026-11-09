@@ -243,7 +243,7 @@ import type { MuxAck, MuxGrid, MuxGridRequest, MuxOutcome } from "../mux/types.t
 import { parseAnsi } from "../../web/src/lib/ansi.ts";
 import { splitLines } from "../../web/src/lib/blocks.ts";
 import { noEchoPromptIn } from "../../web/src/lib/no-echo.ts";
-import { isUploadImagePath, pastePieces } from "../../web/src/lib/upload-path.ts";
+import { isImagePath, isUploadImagePath, pastePieces } from "../../web/src/lib/upload-path.ts";
 import { pointsAt, staleListUnder } from "../../web/src/lib/surface/command-list.ts";
 import type { PopupRead } from "../../web/src/lib/surface/popup.ts";
 import { commandListAnyText, commandListAt, isRunningRow, noticeOver, ownCommandList, popupAt, readCues, readCuesFor, runningSign, withoutCommandList, withoutPopup, withoutPromptEchoes, type CommandListRead, type Cue } from "../../web/src/lib/surface/cues.ts";
@@ -571,7 +571,7 @@ export interface SendDeps {
    * reads that show the same rows `staleFrame` until one differs. Called inside a try.
    */
   readonly staleFrame?: (paneId: string, frame: string) => void;
-  /** Whether an upload path still names a file the harness can attach (`wholePaste`). Absent: a regular file on this disk. */
+  /** Whether an image path still names a file the harness can attach (`wholePaste`). Absent: a regular file on this disk. */
   readonly imageFile?: (path: string) => boolean;
   readonly now?: () => number;
   readonly sleep?: (ms: number) => Promise<void>;
@@ -2025,11 +2025,13 @@ function isImageFile(path: string): boolean {
  * lone upload path of any length ({@link uploadAlone}), and never
  * for a text that starts with a reserved lead: a slash command, a shell line or a file mention keeps
  * the write it has always had, so the harness reads the lead as typed. With the profile's image
- * token, the pieces that are Collie's own uploads (the shape the web adapter's `liftedPaste` reads,
- * `web/src/lib/upload-path.ts`) and still a file on this disk come off the paste the way the harness
- * takes them (lab, Claude Code 2.1.305: `<text> /shot.jpg` shows `[Image #1][Pasted text #2]`); the
- * kept pieces stay, joined by newlines. Any other image path stays text here: the harness may still
- * take it, and then the box does not match and the send stalls instead of guessing.
+ * token, the pieces that are an absolute image path ({@link isImagePath}) and a file on this disk come
+ * off the paste the way the harness takes them, in any folder (lab, Claude Code 2.1.305:
+ * `<text> /shot.jpg` shows `[Image #1][Pasted text #2]`; 2.1.306, 2026-11-05, the same outside
+ * `uploads`). The kept pieces are joined by newlines, without the blank ones and without an image path
+ * that is not a file (2.1.306, 2026-11-05: `<2 lines>\n\n<2 lines>\n\n/shot.png` shows `+3 lines`, and
+ * `<4 lines> /missing.png /shot.png` shows `+3 lines`). With no image the paste stays as sent. A box that
+ * kept such a path as text still proves the send ({@link boxMatches}, `literal`).
  */
 export function wholePaste(match: ProfileMatch | null, lines: readonly string[], imageFile: (path: string) => boolean = isImageFile): WholePaste | null {
   const paste = match?.profile.paste;
@@ -2042,9 +2044,10 @@ export function wholePaste(match: ProfileMatch | null, lines: readonly string[],
   if (paste.image === undefined) return { images: 0, image: null, lines, literal: lines };
   const image = new RegExp(paste.image, "uy");
   const pieces = pastePieces(text);
-  const kept = pieces.filter((piece) => !(isUploadImagePath(piece) && imageFile(piece.trim())));
-  const images = pieces.length - kept.length;
-  return { images, image, lines: images === 0 ? lines : kept.join("\n").split("\n"), literal: lines };
+  const images = pieces.filter((piece) => isImagePath(piece) && imageFile(piece.trim())).length;
+  if (images === 0) return { images, image, lines, literal: lines };
+  const kept = pieces.filter((piece) => !isImagePath(piece) && piece.trim().length > 0);
+  return { images, image, lines: kept.join("\n").split("\n"), literal: lines };
 }
 
 /**
