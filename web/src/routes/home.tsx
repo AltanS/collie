@@ -19,7 +19,7 @@ import { CrewFooterLink } from "@/components/crew-footer-link";
 import { useCrew } from "@/components/crew-provider";
 import { CrewTab } from "@/components/crew-tab";
 import { TelemetryNotice } from "@/components/telemetry-notice";
-import { UpdateBanner } from "@/components/update-banner";
+import { UpdateBanner, arriveAtUpdateLine } from "@/components/update-banner";
 import { Fab } from "@/components/ui/fab";
 import { useAnySheetOpen } from "@/components/ui/sheet";
 import { TabBar } from "@/components/ui/tab-bar";
@@ -299,7 +299,7 @@ export function HomeRoute() {
   const focusPending = useBundleFocusPending();
   useEffect(() => {
     if (!focusPending || !takeBundleFocus()) return;
-    updateLine.current?.scrollIntoView({ block: "center" });
+    arriveAtUpdateLine(updateLine.current);
   }, [focusPending]);
   // "+ New" shrinks to the round "+" once the list has scrolled, and grows back at the top (card 3.2).
   const scrolled = useScrolledPast(scrollRef, 24);

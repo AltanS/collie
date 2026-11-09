@@ -27,6 +27,12 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 - **The strings 1.28.0 added now speak all twelve languages.** Community themes, pasting a theme, the theme About sheet and the Make Collie your own card, plus the composer's expand and collapse buttons and the Nunito note, are now translated in German, Spanish, French, Italian, Japanese, Korean, Portuguese, Russian, Turkish and both Chinese variants. Before, they showed in English.
 
+- **The update turn of the Collie mark is calm.** While a new app build downloads or waits for the reload, the orange beads now go round once in 20 seconds, not once in 1.8 seconds, so a long wait no longer looks like a race. The turn runs on the phone's graphics side alone, so a wait of many minutes costs the app's own work nothing. A tap on the mark still opens the dashboard's update line.
+
+- **The Collie mark drifts again while you use the app.** At rest its beads go round slowly, smooth, while you touch, scroll or type, and 20 seconds after the last touch they slow to a stop and hold. The next touch sets them going from where they stopped. A phone left alone draws no frame for the mark, as before. (#748)
+
+- **The dashboard's update line stands out while the app updates.** While a new app build downloads or waits for the reload, the line under the dashboard is a box in the update colour, edged on all four sides, at the same place in the list, and the reload is a real **Update now** button. A tap on the orange mark still brings this line into view. Every other update line looks as before.
+
 ### Fixed
 
 - **An update started on a second instance restarts that instance.** On one install with two instances, an Update tap or `COLLIE_INSTANCE=core collie update` on `core` restarted the default `collie.service` instead, and left `core` on the old version with its update shown as interrupted. The runner that swaps and restarts starts in a fresh systemd unit that knows nothing of the instance, so it took the default one. It now gets the instance's name and paths the same way the first step of the update already did. The update that brings this fix still runs the old runner, so on a second instance run `COLLIE_INSTANCE=<name> collie restart` once after it. Thanks @triss-smith (#754).

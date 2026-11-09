@@ -80,7 +80,7 @@ export function BrandSection() {
           state="mark-applying"
           label="the mark, app updating"
           reach="leave the app open while a new build of it downloads, or while it waits to reload onto one. Tap the mark to open the dashboard's update line."
-          note="The band's old download row, moved onto the mark (2026-11-06). The loading rate, and every bead a full disc in --status-working. The mark paints it itself, from the applying state. Under reduced motion the orbit stops and the colour stays. The first sample is the real header button, with its updating name."
+          note="The band's old download row, moved onto the mark (2026-11-06). The calm pace, one turn in 20 s, smooth and on the compositor (the ball roll pauses at the slow paces, data-slow), and every bead a full disc in --status-working. The mark paints it itself, from the applying state. Under reduced motion the orbit stops and the colour stays. The first sample is the real header button, with its updating name."
         >
           <Stage>
             <div className="flex flex-wrap items-end gap-6 p-4">

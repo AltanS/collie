@@ -18,6 +18,19 @@ describe("CollieMark", () => {
     expect(container.querySelectorAll("svg")).toHaveLength(1);
   });
 
+  // Issue 748, ADR 0138 amendment: the ball's texture rolls inside a mask, the one part of any mark that
+  // costs the main thread a paint per frame. At the slow paces it holds; the beads drift on the compositor.
+  it("pauses the masked texture roll at the slow paces and keeps it in the live states", () => {
+    const { container, rerender } = render(<CollieMark />);
+    const svg = container.querySelector("svg");
+    const sheet = container.querySelector("style")?.textContent ?? "";
+    expect(sheet).toContain("[data-mark][data-slow] .cm-roll,");
+    expect(container.querySelector(".cm-roll")).not.toBeNull();
+    expect(svg?.hasAttribute("data-slow")).toBe(true);
+    rerender(<CollieMark state="loading" />);
+    expect(svg?.hasAttribute("data-slow")).toBe(false);
+  });
+
   it("hides one side of a bead pair at rest via opacity=\"0\"", () => {
     // Near and far are two copies of every bead (front-of-head vs behind-it); exactly one of each
     // pair is drawn with opacity="0" so only one is visible at a time, at rest as much as loading.

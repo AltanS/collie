@@ -28,7 +28,7 @@ import { useReconnected } from "@/lib/reconnected";
 import { useScope } from "@/lib/session";
 import { useOptionalRootData } from "@/lib/route-data";
 import { releaseOffered } from "@/lib/update-ribbon";
-import { CollieHome } from "@/components/collie-home";
+import { CollieHome, type MarkTarget } from "@/components/collie-home";
 import { AlphaBar } from "@/components/alpha-bar";
 import { Collapse } from "@/components/ui/collapse";
 import { SectionLabel } from "@/components/ui/section-label";
@@ -292,8 +292,10 @@ export function AppHeaderHost({ bridge, error, lastSeenAt, children }: AppHeader
   // in place. Up, not down: the dashboard is every route's ancestor (ADR 0067). `upTo`, the move to
   // one NAMED parent, and not `up`: from a pane opened out of a space, `up` steps back to the space.
   // Not while `lost`, when the mark does not show the update and the tap keeps its ordinary meaning.
-  const onHome = () => {
-    if (applying && !lost) {
+  // WHICH of the two is the mark's own reading (`markReading` in collie-home.tsx), the same one that
+  // picks its state, so the tap goes where the mark points and nowhere else.
+  const onHome = (target: MarkTarget) => {
+    if (target === "update-line") {
       requestBundleFocus();
       if (pathname !== "/") nav.upTo(homePath(scope));
       return;

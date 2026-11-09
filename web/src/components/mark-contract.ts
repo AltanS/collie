@@ -1,4 +1,4 @@
-// generated: sha256=ec40341a2cff16e00dd17332b1badf1e577b3879a4bf9d4465cc8d5e7f739593 from=collie-brand/src/mark-contract.ts@5f4070f42f5e
+// generated: sha256=775832920e999e82d1bf42c75fb8428fdcb8b409d360eecbcdb8db2b68d8e006 from=collie-brand/src/mark-contract.ts@e51f6910085a
 // COPIED WHOLE from collie-brand/src/mark-contract.ts. Edit it there, in collie-brand, and nowhere else.
 /**
  * THE MARK CONTRACT. One file that every Collie brand mark implements, the Collie mark included.
@@ -18,14 +18,15 @@
  * bead colours, a turn) and each mark decides HOW, in its own idiom.
  *
  * WHAT IS PUBLIC, all of it named here:
- *   props        size, weight, paper, title, className, state, beads, turn, ref (and `loading`,
- *                deprecated, an alias for state="loading")
+ *   props        size, weight, paper, title, className, state, beads, turn, drift, ref (and
+ *                `loading`, deprecated, an alias for state="loading")
  *   variables    --mark-turn, --mark-bead, --mark-bead-<i>, --mark-accent-1, --mark-accent-2,
  *                --mark-ink, --mark-paper, read on the mark's root or inherited from an ancestor
  *   attributes   data-mark="<id>" and data-state="<state>" on the root; data-bead while a bead
- *                colour is forced, data-still while the turn is held, data-rest while the mark
- *                holds its rest pose
+ *                colour is forced, data-still while the turn is held, data-slow while the pace
+ *                is one of the two slow ones (a mark pauses there what its compositor cannot run)
  *   handle       setRate(rate), through `ref`
+ *   drift        MARK_DRIFT, when a resting mark drifts
  * EVERYTHING ELSE IS PRIVATE: a mark's class names, part names, keyframe names and its own custom
  * properties (`--cm-*`, `--ck-*` and so on) may change in any regeneration.
  *
@@ -34,7 +35,7 @@
  * `--mark-bead` from a stylesheet, because those states ARE the colour. Only the `beads` prop beats it.
  */
 import type { CSSProperties, Ref, SVGProps } from "react";
-import { useEffect, useId, useImperativeHandle, useRef, useState } from "react";
+import { useEffect, useId, useImperativeHandle, useRef, useState, useSyncExternalStore } from "react";
 
 // ─── the states ─────────────────────────────────────────────────────────────────────────────────
 
@@ -42,20 +43,32 @@ import { useEffect, useId, useImperativeHandle, useRef, useState } from "react";
  * What the mark says, never how it says it. Each mark draws each state in its own idiom (glass
  * lights up, pixel beads hop), and the meaning is shared:
  *
- *   rest         nothing is happening. The mark holds still in its rest pose.
+ *   rest         nothing is happening. The mark drifts, one turn in 48 s, while the page is in use.
  *   loading      something is being fetched or worked on. Fast, and the mark's live colours.
- *   applying     the app itself is updating. Fast, every bead in the status "working" colour.
+ *   applying     the app itself is updating. Calm, one turn in 20 s, every bead in the status
+ *                "working" colour.
  *   reconnected  the link came back. Fast, every bead in the status "done" colour, for one turn.
- *   idle         not connected, or put aside. The rest pose, dimmed and grey.
+ *   idle         not connected, or put aside. Held in the pose it is in, dimmed and grey.
  *
- * REST IS STILL. Until issue 748 (collie) rest was a slow drift, one turn in 48 s. Slow is not
- * cheap: a running animation asks the browser for a new frame 60 times a second whatever its pace,
- * so the header alone kept the GPU busy for as long as the app was open, and on one Android build
- * it drove Chrome's GPU process past the system's file limit until the system killed it. So a resting mark runs no animation at all (`data-rest`, and `MARK_STYLE` stops every
- * animation under it), and it shows the pose its drawing has with no animation, the same pose
- * `prefers-reduced-motion` shows. A mark that leaves a live state first finishes the lap it is on, at
- * the live pace, so it comes to rest in that pose instead of jumping to it. A host that wants the old
- * drift asks for it with `turn`.
+ * WHAT A FRAME COSTS (issue 748, collie). A running CSS animation asks for a new frame every vsync,
+ * whatever its pace. Until 1.28.0 the resting drift ran all day, and on one Android build that frame
+ * rate drove Chrome's GPU process past the system's file limit. Measured on 2026-11-09 in headless
+ * Chromium, the bead paths themselves are cheap: a transform or opacity animation on an SVG part runs
+ * on the compositor, with no style, layout or paint on the main thread. What cost 80 ms of main
+ * thread a second was the Collie mark's balls turning on their own axes, a texture moving inside a
+ * `<mask>`, which only the main thread can draw. So:
+ *
+ *   - At the two slow paces (`data-slow`) a mark pauses what its compositor cannot run (the Collie
+ *     mark's ball turn). The orbit itself runs, smooth.
+ *   - A resting mark drifts only while the page is IN USE (`MARK_DRIFT`): a touch, a key, a wheel or
+ *     a scroll in the last 20 s. Then it eases to a stop over 2 s and holds, so a page left alone
+ *     draws no frame at all. Any input sets it going again from the pose it held.
+ *   - `applying` always turns while it lasts; `loading` and `reconnected` are short.
+ *
+ * ONE PHASE. A state change never restarts an animation, so nothing jumps: a mark that starts or
+ * stops turning does so from the pose it is in, and the phase carry in `useMark` keeps the progress
+ * when the turn's length changes. A hidden page and a covered app pause every animation by the host's
+ * own rule, and under `prefers-reduced-motion` every mark stops turning.
  *
  * EVERY STATE DIFFERS FROM `rest` BY COLOUR, not only by movement. Under `prefers-reduced-motion`
  * every mark stops turning, and the colour is then the whole message.
@@ -68,14 +81,26 @@ export function isMarkState(value: string): value is MarkState {
 }
 
 /**
- * Seconds for one turn, at the two paces. ONE table for every mark: a spin round, the busy turn and
+ * Seconds for one turn, at the three paces. ONE table for every mark: a spin round, the busy turn and
  * the reconnection's single turn are timed in turns, so they only mean the same thing on every mark
  * if every mark turns at the same pace. `live` is collie-brand's `SPRINT`, `rest` its `DRIFT`.
+ * `calm` is the update's turn: 2.4 times the drift's speed, so an update reads as busier than rest
+ * and far calmer than loading (Altan, 2026-11-09: "maybe 2-3 times the idle").
  */
-export const MARK_TURN = { rest: 48, live: 1.8 } as const;
+export const MARK_TURN = { rest: 48, calm: 20, live: 1.8 } as const;
 
 /** One full turn at the live pace, in milliseconds. The header's spin round is exactly this long. */
 export const ORBIT_TURN_MS = MARK_TURN.live * 1000;
+
+/**
+ * When a resting mark drifts. `in-use`: while the page has had a touch, a key, a wheel or a scroll in
+ * the last `windowMs`; then the drift eases to a stop over `easeMs` and holds until the next input.
+ * `always`: whenever the mark rests (a page that is only ever looked at, like a landing page).
+ */
+export const MARK_DRIFT = { mode: "in-use", windowMs: 20_000, easeMs: 2_000 } as const;
+
+/** The two ways a resting mark drifts. */
+export type MarkDriftMode = "always" | "in-use";
 
 /** The dimmed look of `idle`: what the host used to add as `opacity-40 grayscale`. */
 export const MARK_DIM = { opacity: 0.4, filter: "grayscale(1)" } as const;
@@ -88,6 +113,8 @@ interface StateLook {
   /** A colour every bead takes, or null for the mark's own bead colours. */
   bead: string | null;
   dim: boolean;
+  /** How the orbit moves: always running, drifting while the page is in use, or held where it is. */
+  motion: "run" | "drift" | "hold";
 }
 
 /**
@@ -95,11 +122,11 @@ interface StateLook {
  * their dark-ground values, for a page that does not define them (the website).
  */
 export const MARK_STATE_LOOK = {
-  rest: { pace: "rest", look: "rest", bead: null, dim: false },
-  loading: { pace: "live", look: "live", bead: null, dim: false },
-  applying: { pace: "live", look: "live", bead: "var(--status-working, oklch(0.84 0.15 82))", dim: false },
-  reconnected: { pace: "live", look: "live", bead: "var(--status-done, oklch(0.77 0.16 152))", dim: false },
-  idle: { pace: "rest", look: "rest", bead: null, dim: true },
+  rest: { pace: "rest", look: "rest", bead: null, dim: false, motion: "drift" },
+  loading: { pace: "live", look: "live", bead: null, dim: false, motion: "run" },
+  applying: { pace: "calm", look: "live", bead: "var(--status-working, oklch(0.84 0.15 82))", dim: false, motion: "run" },
+  reconnected: { pace: "live", look: "live", bead: "var(--status-done, oklch(0.77 0.16 152))", dim: false, motion: "run" },
+  idle: { pace: "rest", look: "rest", bead: null, dim: true, motion: "hold" },
 } as const satisfies Record<MarkState, StateLook>;
 
 // ─── what a mark takes, and what it offers ──────────────────────────────────────────────────────
@@ -124,8 +151,13 @@ export interface MarkProps {
   loading?: boolean;
   /** Bead colours: one for every bead, or a list applied in bead order and repeated. */
   beads?: string | readonly string[];
-  /** Seconds per turn, overriding the state's pace. `0` holds the orbit where it is. */
+  /**
+   * Seconds per turn, overriding the state's pace. `0` holds the orbit where it is. The state still
+   * decides how the orbit moves: a drift in `rest`, a steady turn in `applying` and the fast states.
+   */
   turn?: number;
+  /** When `rest` drifts, overriding `MARK_DRIFT.mode`. */
+  drift?: MarkDriftMode;
   /** The imperative half of the contract. */
   ref?: Ref<MarkHandle>;
 }
@@ -136,6 +168,9 @@ export interface MarkHandle {
    * the host animates frame by frame (the header's spin round), where changing `turn` every frame
    * would recompute style every frame. The mark carries no phase across it: a rate keeps the phase
    * by definition. Set it back to 1 before the next state change.
+   *
+   * A rate other than 1 also keeps a resting mark drifting while the page is not in use, until the
+   * rate is 1 again: a host that rates it frame by frame wants it to move (the website's hover).
    */
   setRate(rate: number): void;
 }
@@ -163,20 +198,10 @@ export interface MarkSpec {
 
 /**
  * The rules every mark's stylesheet starts with. A held turn pauses every animation in the mark, so
- * the phase is exactly where it was when the turn comes back. A mark at rest runs no animation at
- * all: `animation: none` leaves every part on the attributes its drawing gives it, which is the rest
- * pose, and a paused animation would still be one the engine keeps and a test would have to tell
- * apart from a running one. Scoped by `data-mark`, which only a mark's root carries.
+ * the phase is exactly where it was when the turn comes back. Scoped by `data-mark`, which only a
+ * mark's root carries.
  */
-export const MARK_STYLE =
-  "[data-mark][data-still] *{animation-play-state:paused!important}[data-mark][data-rest] *{animation:none!important}";
-
-/**
- * How near the end of a lap, as a share of one turn, counts as already home. A spin round travels
- * exactly one turn, and the frames it is timed by land it a little short or a little past; without
- * this a round that ends a hair past home would run a whole second lap before it rests.
- */
-export const MARK_HOME = 0.04;
+export const MARK_STYLE = "[data-mark][data-still] *{animation-play-state:paused!important}";
 
 // ─── the runtime ────────────────────────────────────────────────────────────────────────────────
 
@@ -199,33 +224,79 @@ function paced(el: SVGSVGElement, pattern: RegExp): Animation[] {
   });
 }
 
+/** The milliseconds between two steps of the drift's ease to a stop. */
+const EASE_STEP_MS = 100;
+
 /**
- * Milliseconds until the orbit next comes home, at its current rate, or 0 when it is home already
- * (within `MARK_HOME`) or when nothing is turning (no `getAnimations`, reduced motion, a held turn).
- *
- * Home is an elapsed time that is a whole number of turns. Every paced animation starts there with
- * the mark's live state, and a bead's place on the orbit is its delay, a fixed share of the turn, so
- * at that time every bead stands where its drawing puts it. The longest wait wins: on one timeline
- * they are all the same, and the longest is the safe answer if they ever are not.
+ * WHETHER THE PAGE IS IN USE: a touch, a key, a wheel or a scroll in the last `MARK_DRIFT.windowMs`.
+ * One reading for the page, shared by every mark. Listening costs nothing per event (it stores a
+ * time); one timer runs while a mark listens and re-arms itself only when it fires. A page that has
+ * just been opened counts as in use.
  */
-function lapLeft(el: SVGSVGElement, pattern: RegExp): number {
-  let left = 0;
-  for (const a of paced(el, pattern)) {
-    const at = Number(a.currentTime ?? Number.NaN);
-    const span = Number(a.effect?.getTiming().duration ?? Number.NaN);
-    const rate = a.playbackRate;
-    if (!Number.isFinite(at) || !Number.isFinite(span) || span <= 0 || !(rate > 0)) continue;
-    const share = (((at / span) % 1) + 1) % 1;
-    if (share < MARK_HOME || share > 1 - MARK_HOME) continue;
-    left = Math.max(left, ((1 - share) * span) / rate);
+const INPUTS = ["pointerdown", "keydown", "wheel", "touchstart", "scroll"] as const;
+const inUseListeners = new Set<() => void>();
+let inUse = true;
+let lastInput = 0;
+let quietTimer: ReturnType<typeof setTimeout> | null = null;
+
+function noteInput(): void {
+  lastInput = performance.now();
+  if (inUse) return;
+  inUse = true;
+  armQuiet(MARK_DRIFT.windowMs);
+  for (const listener of inUseListeners) listener();
+}
+
+function armQuiet(delay: number): void {
+  if (quietTimer !== null) clearTimeout(quietTimer);
+  quietTimer = setTimeout(() => {
+    quietTimer = null;
+    const left = MARK_DRIFT.windowMs - (performance.now() - lastInput);
+    if (left > 0) {
+      armQuiet(left);
+      return;
+    }
+    inUse = false;
+    for (const listener of inUseListeners) listener();
+  }, delay);
+}
+
+function subscribeInUse(listener: () => void): () => void {
+  inUseListeners.add(listener);
+  if (inUseListeners.size === 1) {
+    for (const type of INPUTS) window.addEventListener(type, noteInput, { capture: true, passive: true });
+    lastInput = performance.now();
+    inUse = true;
+    armQuiet(MARK_DRIFT.windowMs);
   }
-  return left;
+  return () => {
+    inUseListeners.delete(listener);
+    if (inUseListeners.size > 0) return;
+    for (const type of INPUTS) window.removeEventListener(type, noteInput, { capture: true });
+    if (quietTimer !== null) clearTimeout(quietTimer);
+    quietTimer = null;
+    inUse = true;
+  };
+}
+
+const getInUse = (): boolean => inUse;
+const alwaysInUse = (): boolean => true;
+const subscribeNever = (): (() => void) => () => {};
+
+/** How the orbit moves, from the state's motion and what the host and the page say over it. */
+function motionOf(
+  motion: StateLook["motion"],
+  over: { turn: number | undefined; rated: boolean; awake: boolean; easing: boolean },
+): "run" | "hold" {
+  if (over.turn === 0 || motion === "hold") return "hold";
+  if (motion === "run" || over.rated || over.awake || over.easing) return "run";
+  return "hold";
 }
 
 export interface MarkRoot {
   /** Spread onto the mark's `<svg>`. */
   root: SVGProps<SVGSVGElement> & { ref: Ref<SVGSVGElement> } & Record<`data-${string}`, string | undefined>;
-  /** Whether the pace is live: a mark with a resting drift class puts it on its body while not. */
+  /** Whether the look is live: a mark with a resting drift class puts it on its body while not. */
   live: boolean;
   weight: "full" | "header";
   /** A per-instance id fragment for the mark's own `id`s (`useId`, stripped to a safe set). */
@@ -235,36 +306,47 @@ export interface MarkRoot {
 /**
  * Everything a mark does that is not drawing. A generated mark calls this once and spreads `root`.
  *
- * KEEP THE PHASE ACROSS A TURN CHANGE. A running CSS animation keeps its ELAPSED time when its
- * duration changes, not its progress, so a new pace alone slides every bead to a different point of
- * the orbit. After each change the runtime reads the turn the root now resolves to, compares it with
- * the one before, and moves every paced animation back to the progress it had. It runs once per
- * change and never per frame. Where there is no `getAnimations` the pace still changes; it steps
- * once on the way.
+ * KEEP THE PHASE ACROSS A TURN CHANGE. A CSS animation keeps its ELAPSED time when its duration
+ * changes, not its progress, so a new pace alone slides every bead to a different point of the
+ * orbit. After each change the runtime reads the turn the root now resolves to, compares it with the
+ * one before, and moves every paced animation back to the progress it had. It runs once per change
+ * and never per frame. Where there is no `getAnimations` the pace still changes; it steps once on
+ * the way.
+ *
+ * NO LAST LAP. A mark that leaves a live state goes on from the pose it is in: at the drift's pace in
+ * `rest`, at the calm pace in `applying`, held in `idle`. A resting mark on a page nobody uses eases
+ * its rate down to nothing over `MARK_DRIFT.easeMs`, then holds.
  */
 export function useMark(spec: MarkSpec, props: MarkProps): MarkRoot {
   const { size = 32, weight = "full", paper, title, className, beads, turn, ref } = props;
+  const driftMode: MarkDriftMode = props.drift ?? MARK_DRIFT.mode;
   const state: MarkState = props.state ?? (props.loading === true ? "loading" : "rest");
   const look: StateLook = MARK_STATE_LOOK[state];
-  // THE LAST LAP. A state with the live pace that gives way to one with the resting pace keeps the
-  // live pace (and the live class) until the orbit is home, then rests. The colours change at once:
-  // only the movement finishes. Adjusted while rendering, React's own pattern for state that follows
-  // a prop, so the commit that drops the live state is already the one that keeps the lap going.
-  const asked = look.pace === "live";
-  const [lap, setLap] = useState(false);
-  const [wasLive, setWasLive] = useState(asked);
-  if (wasLive !== asked) {
-    setWasLive(asked);
-    setLap(!asked && turn === undefined);
+  // Whether the host has a rate other than 1 on the orbit (`setRate`): a resting mark then drifts.
+  const [rated, setRated] = useState(false);
+  const watching = look.motion === "drift" && driftMode === "in-use";
+  const pageInUse = useSyncExternalStore(
+    watching ? subscribeInUse : subscribeNever,
+    watching ? getInUse : alwaysInUse,
+    alwaysInUse,
+  );
+  const awake = look.motion !== "drift" || pageInUse;
+  // THE EASE TO A STOP. When the page stops being in use, a drifting mark keeps running while its rate
+  // falls to nothing, then holds. Adjusted while rendering, React's pattern for state that follows a
+  // value, so the commit that ends the drift is already the one that keeps it running for the ease.
+  const [easing, setEasing] = useState(false);
+  const [wasAwake, setWasAwake] = useState(awake);
+  if (wasAwake !== awake) {
+    setWasAwake(awake);
+    setEasing(!awake);
   }
-  const live = asked || lap;
-  const pace: keyof typeof MARK_TURN = live ? "live" : "rest";
-  const resting = !live && turn === undefined;
+  const motion = motionOf(look.motion, { turn, rated, awake, easing });
+  const live = look.look === "live";
+  const pace = look.pace;
   const uid = useId().replace(/[^A-Za-z0-9_-]/g, "");
   const el = useRef<SVGSVGElement>(null);
 
   const vars: Record<string, string> = {};
-  const held = turn === 0;
   vars[spec.turnVar] = turn !== undefined && turn > 0 ? `${turn}s` : `var(--mark-turn, ${MARK_TURN[pace]}s)`;
   for (const [k, v] of Object.entries(spec.look[look.look])) vars[k] = v;
   if (spec.accents !== undefined) {
@@ -285,11 +367,11 @@ export function useMark(spec: MarkSpec, props: MarkProps): MarkRoot {
 
   // The phase carry. `prev` is the turn, in seconds, the last commit resolved to.
   const prev = useRef<number | null>(null);
-  const rated = useRef<Animation[] | null>(null);
+  const rates = useRef<Animation[] | null>(null);
   useEffect(() => {
     const node = el.current;
     if (node === null) return;
-    rated.current = null;
+    rates.current = null;
     const now = seconds(getComputedStyle(node).getPropertyValue(spec.turnVar));
     const before = prev.current;
     prev.current = now;
@@ -310,19 +392,24 @@ export function useMark(spec: MarkSpec, props: MarkProps): MarkRoot {
     // read at the next change of either; between them the orbit keeps its elapsed time, as CSS does.
   }, [pace, turn, spec]);
 
-  // The lap's end. Read once, when the lap starts: the rate is the host's to set and is 1 here (the
-  // header puts it back before it lets a state go). Nothing to wait for means rest now.
+  // The ease: the paced animations' rate falls from 1 to 0 over `MARK_DRIFT.easeMs`, a few steps a
+  // second, then the mark holds. Whatever ends it (the ease running out, an input, a state change)
+  // puts the rate back to 1; by then the mark is held or running on, so the reset moves nothing.
   useEffect(() => {
-    if (!lap) return;
+    if (!easing) return;
     const node = el.current;
-    const left = node === null ? 0 : lapLeft(node, spec.paced);
-    if (left <= 0) {
-      setLap(false);
-      return;
-    }
-    const timer = setTimeout(() => setLap(false), left);
-    return () => clearTimeout(timer);
-  }, [lap, spec]);
+    const found = node === null ? [] : paced(node, spec.paced);
+    const started = performance.now();
+    const timer = setInterval(() => {
+      const p = Math.min(1, (performance.now() - started) / MARK_DRIFT.easeMs);
+      for (const a of found) a.updatePlaybackRate((1 - p) ** 2);
+      if (p >= 1) setEasing(false);
+    }, EASE_STEP_MS);
+    return () => {
+      clearInterval(timer);
+      for (const a of found) a.updatePlaybackRate(1);
+    };
+  }, [easing, spec]);
 
   useImperativeHandle(ref, () => ({
     setRate(rate: number) {
@@ -331,9 +418,10 @@ export function useMark(spec: MarkSpec, props: MarkProps): MarkRoot {
       // Cached only when non-empty: a call before the first frame finds no animations yet, and an
       // empty cache would rate nothing for the rest of the mount. The cache is dropped on every pace
       // or turn change (the effect above), the only times the mark's animations are re-timed.
-      const found = rated.current ?? paced(node, spec.paced);
-      if (found.length > 0) rated.current = found;
+      const found = rates.current ?? paced(node, spec.paced);
+      if (found.length > 0) rates.current = found;
       for (const a of found) a.updatePlaybackRate(rate);
+      setRated(rate !== 1);
     },
   }), [spec]);
 
@@ -356,8 +444,8 @@ export function useMark(spec: MarkSpec, props: MarkProps): MarkRoot {
       "data-mark": spec.id,
       "data-state": state,
       "data-bead": forced ? "" : undefined,
-      "data-still": held ? "" : undefined,
-      "data-rest": resting ? "" : undefined,
+      "data-still": motion === "hold" ? "" : undefined,
+      "data-slow": pace === "live" ? undefined : "",
     },
     live,
     weight,
