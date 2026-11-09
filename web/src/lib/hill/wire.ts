@@ -58,6 +58,22 @@ export const HILL_NOW_MAX = 3;
 /** How many closed decisions the list serves, newest first. */
 export const HILL_CLOSED_SERVED = 20;
 
+/** Images one decision may carry. */
+export const HILL_MEDIA_MAX = 4;
+/** The largest image the bridge keeps, in bytes. */
+export const HILL_MEDIA_BYTES_MAX = 2 * 1024 * 1024;
+/** An image's caption, in characters. */
+export const HILL_MEDIA_CAPTION_MAX = 80;
+/** An image id: "im_" and 16 characters, minted by the bridge. Never a name the poster chose. */
+export const HILL_MEDIA_ID_RE = /^im_[a-z0-9]{16}$/;
+/** The image types the hill keeps, decided by the file's leading bytes, never by its name. */
+export type HillMediaMime = "image/png" | "image/jpeg" | "image/webp";
+export const HILL_MEDIA_MIMES: readonly HillMediaMime[] = ["image/png", "image/jpeg", "image/webp"];
+/** The longest path a post may name for an image. */
+export const HILL_IMAGE_PATH_MAX = 4096;
+/** Where the phone reads an image's bytes: `${HILL_MEDIA_ROUTE}<decision id>/<media id>`. */
+export const HILL_MEDIA_ROUTE = "/api/hill/media/";
+
 /** One button on a decision card. */
 export interface HillOption {
   /** What the poster reads back. Lowercase, see HILL_INTENT_RE. */
@@ -68,6 +84,20 @@ export interface HillOption {
   detail?: string;
   /** A short word for a second tap that confirms the choice. */
   confirm?: string;
+}
+
+/** One image on a decision, as the bridge stored it. The bytes are served at {@link hillMediaPath}. */
+export interface HillMedia {
+  /** "im_" and 16 characters, the bridge's own name for the file. */
+  id: string;
+  kind: "image";
+  mime: HillMediaMime;
+  bytes: number;
+  /** Read from the image's header when the bridge could; null when it could not. */
+  width: number | null;
+  height: number | null;
+  /** At most {@link HILL_MEDIA_CAPTION_MAX} characters, cleaned like every text field. */
+  caption?: string;
 }
 
 /** A decision as the bridge stores it and serves it (wire version 1). */
@@ -106,8 +136,8 @@ export interface HillDecision {
   text: HillTextMode;
   /** The option the poster suggests, and why. The intent names one of the options. */
   recommends: { intent: string; why: string } | null;
-  /** Always empty for now. Images come later. */
-  media: [];
+  /** Up to {@link HILL_MEDIA_MAX} images, in the order the poster gave them. */
+  media: HillMedia[];
   /** Links on the card. Only http and https. */
   links: Array<{ label: string; href: string }>;
   /** A walky address. Null means the answer goes to the poster's own address. */
@@ -181,6 +211,13 @@ export interface HillReceipt {
   at: number;
 }
 
+/** One image a post names: a file on the bridge's own machine, read by the bridge. */
+export interface HillImageInput {
+  /** An absolute path with no symlink in it. The bridge reads the file itself and checks it. */
+  path: string;
+  caption?: string;
+}
+
 /** The fields an agent sends to post a decision. */
 export interface HillPostInput {
   requestId: string;
@@ -196,6 +233,8 @@ export interface HillPostInput {
   replyTo?: string | null;
   supersedes?: string | null;
   expiresAt?: number | null;
+  /** Up to {@link HILL_MEDIA_MAX} images. */
+  images?: HillImageInput[];
 }
 
 /** Why the bridge refuses a post. */
@@ -211,7 +250,10 @@ export type HillRefusalCode =
   | "bad_supersedes"
   | "too_many_open"
   | "not_on_lead"
-  | "walky_off";
+  | "walky_off"
+  | "bad_image"
+  | "too_many_images"
+  | "image_too_large";
 
 /** The node name of a decision: "hill/<id>". */
 export function hillNode(id: string): string {
@@ -223,6 +265,11 @@ export function hillIdOfNode(node: string): string | null {
   if (!node.startsWith(HILL_NODE_PREFIX)) return null;
   const id = node.slice(HILL_NODE_PREFIX.length);
   return HILL_ID_RE.test(id) ? id : null;
+}
+
+/** The route an image's bytes are read at. Both ids are checked by the bridge before any path is built. */
+export function hillMediaPath(decisionId: string, mediaId: string): string {
+  return `${HILL_MEDIA_ROUTE}${encodeURIComponent(decisionId)}/${encodeURIComponent(mediaId)}`;
 }
 
 /** True when `s` may be an option's intent: it matches the pattern and is not a reserved intent. */

@@ -3,7 +3,7 @@
 // `HillHeader`, `HillEntryRow`) with fixtures shaped by the wire (`fixtures/hill/decisions.ts`). There
 // is no bridge behind this page: a card's state is fixed, and a tap on a live card answers nothing.
 //
-// Cards are numbered 1 to 21.
+// Cards are numbered 1 to 25.
 
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 
@@ -18,13 +18,17 @@ import type { PaneOrder } from "@/lib/pane-order";
 
 import { herd, homeSolo, tabs } from "../fixtures";
 import {
+  brokenImage,
   closedRows,
   goneText,
   keptWords,
+  oneImage,
+  playgroundMedia,
   receipts,
   sevenOpen,
   textOnly,
   textRequired,
+  threeImages,
   threeWithConfirm,
   twoOptions,
   unattended,
@@ -66,14 +70,27 @@ function CardHead({ n, title }: { n: number; title: string }) {
   );
 }
 
-/** One Decision card at phone width, in a fixed state. */
+/** One Decision card at phone width, in a fixed state. Its images are the page's own panels. */
 function OneCard({ decision, answer = HILL_IDLE }: { decision: HillDecision; answer?: HillAnswerState }) {
   return (
     <Phone>
       <div className="p-4">
-        <DecisionCard decision={decision} answer={answer} onSend={noSend} />
+        <DecisionCard decision={decision} answer={answer} onSend={noSend} mediaSource={playgroundMedia} />
       </div>
     </Phone>
+  );
+}
+
+/** The card with its body open by the real tap on its image, once mounted. */
+function OpenedCard({ decision }: { decision: HillDecision }) {
+  const root = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    root.current?.querySelector<HTMLButtonElement>('[data-slot="hill-card-image"]')?.click();
+  }, []);
+  return (
+    <div ref={root}>
+      <OneCard decision={decision} />
+    </div>
   );
 }
 
@@ -194,6 +211,25 @@ export function HillSection() {
         <Card state="hill-card-unattended" label="7: target runs unattended">
           <CardHead n={7} title="Target runs unattended" />
           <OneCard decision={unattended} />
+        </Card>
+      </Group>
+
+      <Group title="Images">
+        <Card state="hill-card-image-one" label="22: one image">
+          <CardHead n={22} title="One image" />
+          <OneCard decision={oneImage} />
+        </Card>
+        <Card state="hill-card-image-three" label="23: three images">
+          <CardHead n={23} title="Three images" />
+          <OneCard decision={threeImages} />
+        </Card>
+        <Card state="hill-card-image-body" label="24: three images, body open">
+          <CardHead n={24} title="Three images, body open" />
+          <OpenedCard decision={threeImages} />
+        </Card>
+        <Card state="hill-card-image-failed" label="25: image not available">
+          <CardHead n={25} title="Image not available" />
+          <OneCard decision={brokenImage} />
         </Card>
       </Group>
 

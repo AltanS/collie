@@ -206,7 +206,7 @@ import { currentWarrant, discardForeignWarrant, refreshWarrant, type WarrantPush
 import { CLEAR_BURST_MS, Push } from "./push.ts";
 import { currentNotesReader } from "./release-notes.ts";
 import { pluginRoot } from "./root.ts";
-import { buildId, startServer } from "./server.ts";
+import { buildId, filesPrivateFolders, startServer } from "./server.ts";
 import {
   DEFAULT_SESSION_NAME,
   herdTagFor,
@@ -301,6 +301,7 @@ import { WalkySeen } from "./walky/seen.ts";
 import { WalkyService } from "./walky/service.ts";
 import { siblingDirsOf, SiblingLogs } from "./walky/siblings.ts";
 import { walkySocketPath, WalkyServer } from "./walky/socket.ts";
+import { deniedFoldersSync, HillMediaStore } from "./hill/media.ts";
 import { HillReceiptStore } from "./hill/receipts.ts";
 import { HillService } from "./hill/service.ts";
 import { hillDir, HillStore } from "./hill/store.ts";
@@ -2124,9 +2125,15 @@ if (walkyRecovered > 0) console.log(`[walky] settled ${String(walkyRecovered)} m
 // the person's own operator walky message. `<stateDir>/hill/` is made by the first post, never at boot.
 const hillReceipts = new HillReceiptStore(cfg.stateDir);
 await hillReceipts.load();
+// A decision's images (M96): read by the bridge from the path an agent names, never from Collie's own
+// folders, kept in `<stateDir>/hill/media/`, and removed with the decision.
+const hillMedia = new HillMediaStore(hillDir(cfg.stateDir), deniedFoldersSync(filesPrivateFolders(cfg)));
 const hill = new HillService({
-  store: new HillStore(hillDir(cfg.stateDir)),
+  store: new HillStore(hillDir(cfg.stateDir), Date.now, undefined, (ids) => {
+    for (const id of ids) hillMedia.remove(id);
+  }),
   receipts: hillReceipts,
+  media: hillMedia,
   place: walkyPlace(walky, walkyMemberId),
   send: walkySend(walky),
   crewMode: () => crew.mode,
@@ -2135,6 +2142,7 @@ const hill = new HillService({
   machine: hostname(),
   audit: (entry) => audit.record(entry),
 });
+hill.pruneMedia();
 const walkyServer = new WalkyServer({
   socketPath: walkySocketPath(cfg.stateDir),
   host: HOST,

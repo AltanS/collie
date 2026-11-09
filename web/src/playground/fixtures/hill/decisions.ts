@@ -5,7 +5,14 @@
 // person's name, no private path. The ages are anchored to this module's load, so a card reads
 // "2 min" when the page opens.
 
-import type { HillDecision, HillReceipt } from "@/lib/hill/wire";
+import type { HillMediaSource } from "@/components/hill-media";
+import type { HillDecision, HillMedia, HillReceipt } from "@/lib/hill/wire";
+
+// Three flat colour panels with a word on them, made for this page (never a capture of anyone's
+// screen), inlined as data URLs: the page has no bridge, and a data URL needs no token.
+import shotAfter from "./shot-2.png?inline";
+import shotBefore from "./shot-1.png?inline";
+import shotDiff from "./shot-3.png?inline";
 
 const NOW = Date.now();
 const MIN = 60_000;
@@ -156,6 +163,61 @@ export const later = decision({
     { intent: "keep", label: "Keep it open" },
   ],
   text: "none",
+});
+
+const SHOTS = new Map<string, string>([
+  ["im_pgbefore00000001", shotBefore],
+  ["im_pgafter000000001", shotAfter],
+  ["im_pgdiff0000000001", shotDiff],
+  // Bytes no browser decodes: the card's failed state.
+  ["im_pgbroken00000001", "data:image/png;base64,AAAA"],
+]);
+
+/** Where the playground's images are: the inlined panels by media id. */
+export const playgroundMedia: HillMediaSource = (_decision, media) => SHOTS.get(media.id) ?? "data:image/png;base64,AAAA";
+
+function shot(mediaId: string, caption?: string): HillMedia {
+  const media: HillMedia = { id: mediaId, kind: "image", mime: "image/png", bytes: 1800, width: 600, height: 360 };
+  return caption === undefined ? media : { ...media, caption };
+}
+
+/** 22: one image under the summary. */
+export const oneImage = decision({
+  title: "Does the zoom pill read right now?",
+  summary: "The pill moved out of the Chat belt. This is the card on a 390 px phone after the change.",
+  ago: 4,
+  options: [
+    { intent: "yes", label: "Looks right" },
+    { intent: "no", label: "Not yet" },
+  ],
+  recommends: { intent: "yes", why: "It matches the Dashboard's pill." },
+  media: [shot("im_pgafter000000001", "The card after the change")],
+});
+
+/** 23: three images; the card shows the first with "1 / 3", the body shows all three. */
+export const threeImages = decision({
+  title: "Which header for the Hill?",
+  summary: "Three shots: the header before, after, and the two side by side.",
+  sender: HILL,
+  ago: 9,
+  options: [
+    { intent: "after", label: "The new one" },
+    { intent: "before", label: "Keep the old one" },
+  ],
+  media: [shot("im_pgbefore00000001", "Before"), shot("im_pgafter000000001", "After"), shot("im_pgdiff0000000001", "Side by side")],
+});
+
+/** 24: an image that does not load. */
+export const brokenImage = decision({
+  title: "Is the release page right?",
+  summary: "The screenshot could not be read back, so the card says so and the question still stands.",
+  sender: SITE,
+  ago: 15,
+  options: [
+    { intent: "yes", label: "Yes" },
+    { intent: "no", label: "No" },
+  ],
+  media: [shot("im_pgbroken00000001")],
 });
 
 /** The Hill with seven cards, in any order: the view sorts them. */

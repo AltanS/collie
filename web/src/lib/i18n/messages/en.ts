@@ -3309,6 +3309,10 @@ export const en = {
   "hill.delivery.typed": "typed to {label}",
   "hill.delivery.held": "held for {label}",
   "hill.delivery.unknown": "not confirmed",
+  "hill.media.unavailable": "Image not available",
+  "hill.media.count": "{index} / {count}",
+  "hill.media.alt": "Image {index} of {count}",
+  "hill.media.open": "Show the images",
 } as const;
 
 /** Every key that exists, as a union of string literals. The completeness contract. */
@@ -3453,6 +3457,10 @@ export const PENDING_TRANSLATION = [
   "hill.delivery.typed",
   "hill.delivery.held",
   "hill.delivery.unknown",
+  "hill.media.unavailable",
+  "hill.media.count",
+  "hill.media.alt",
+  "hill.media.open",
 ] as const satisfies readonly MessageKey[];
 
 /** A key a bundle may leave out until the translation pass. */

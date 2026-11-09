@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { realpathSync } from "node:fs";
+import { basename, dirname, join, resolve } from "node:path";
 
 import { edgeStateDirs, readEnvMarkers } from "./beacon.ts";
 import { holdSocketSafe } from "./hold.ts";
@@ -10,7 +12,20 @@ import { readDecision } from "../bridge/hill/parse.ts";
 import { parseAddress } from "../bridge/walky/address.ts";
 import { BARE_BAD_REQUEST, unknownOp } from "../bridge/walky/refusals.ts";
 import { walkySocketPath } from "../bridge/walky/socket.ts";
-import { HILL_ID_RE, HILL_PRIORITIES, HILL_TEXT_MODES, isHillOptionIntent, type HillDecision, type HillOption, type HillPostInput, type HillPriority, type HillTextMode } from "../web/src/lib/hill/wire.ts";
+import {
+  HILL_ID_RE,
+  HILL_MEDIA_CAPTION_MAX,
+  HILL_MEDIA_MAX,
+  HILL_PRIORITIES,
+  HILL_TEXT_MODES,
+  isHillOptionIntent,
+  type HillDecision,
+  type HillImageInput,
+  type HillOption,
+  type HillPostInput,
+  type HillPriority,
+  type HillTextMode,
+} from "../web/src/lib/hill/wire.ts";
 import { isRequestId } from "../bridge/worktree-receipts.ts";
 
 // `collie hill`: the hill from an agent's terminal (M96). An agent posts a Decision for its person, and
@@ -46,6 +61,7 @@ const USAGE = {
     '         [--confirm <intent>="<word>"] [--detail <intent>="<line>"] [--priority now|today|later] \\',
     '         [--text none|optional|required] [--link "<label>=https://..."] [--about here|<address>] \\',
     "         [--reply-to <address>] [--supersedes dc_...] [--expires 2h|3d] [--request-id <uuid>] [--json] \\",
+    '         [--image shots/a.png[="<caption>"] ...]   (PNG, JPEG or WebP, up to 4, 2 MB each) \\',
     '         [-- "<body in Markdown>"]   (no body after --: read from stdin when it is not a terminal)',
   ],
   status: ["usage: collie hill status <dc_id> [--json]"],
@@ -68,6 +84,8 @@ export function hillHelp(): string[] {
 /** What `collie hill` needs: walky's own deps (the socket, the markers, stdin), and a request id mint. */
 export type HillDeps = Omit<WalkyDeps, "mintId" | "sleep"> & {
   readonly mintRequestId?: () => string;
+  /** The folder a relative `--image` path is read from. Defaults to the process's own. */
+  readonly cwd?: () => string;
 };
 
 /** Every bridge socket on this machine worth asking, this install's own first, as `collie walky` asks them. */
@@ -161,7 +179,9 @@ function pair(raw: string): { readonly key: string; readonly value: string } | n
 
 /** What `post`'s flags come to: the fields to send (no request id yet), the body source, and `--json`. */
 export interface PostArgs {
-  readonly fields: Omit<HillPostInput, "requestId" | "expiresAt">;
+  readonly fields: Omit<HillPostInput, "requestId" | "expiresAt" | "images">;
+  /** Each `--image` as given, the path not yet resolved. */
+  readonly images: readonly HillImageInput[];
   readonly requestId: string | null;
   readonly expiresInMs: number | null;
   /** The body after `--`, or null to read stdin. */
@@ -177,7 +197,34 @@ function isTextMode(value: string): value is HillTextMode {
   return HILL_TEXT_MODES.some((mode) => mode === value);
 }
 
-const VALUE_FLAGS = new Set(["--title", "--summary", "--option", "--recommend", "--why", "--confirm", "--detail", "--priority", "--text", "--link", "--about", "--reply-to", "--supersedes", "--expires", "--request-id"]);
+const VALUE_FLAGS = new Set(["--title", "--summary", "--option", "--recommend", "--why", "--confirm", "--detail", "--priority", "--text", "--link", "--about", "--reply-to", "--supersedes", "--expires", "--request-id", "--image"]);
+
+/** One `--image` value: `<path>` or `<path>=<caption>`, split at the first `=`. An error is the one-line reason. */
+export function parseImageArg(raw: string): HillImageInput | { readonly error: string } {
+  const at = raw.indexOf("=");
+  const path = at < 0 ? raw : raw.slice(0, at);
+  if (path.trim() === "") return { error: `\`--image\` takes <path> or <path>="<caption>", got \`${raw}\`` };
+  if (at < 0) return { path };
+  const caption = raw.slice(at + 1).trim();
+  if (caption === "") return { error: `\`--image ${raw}\` has an empty caption; leave out the = for none` };
+  if ([...caption].length > HILL_MEDIA_CAPTION_MAX) return { error: `an image caption is at most ${String(HILL_MEDIA_CAPTION_MAX)} characters` };
+  return { path, caption };
+}
+
+/**
+ * The path the bridge is sent for an `--image`: absolute, with every folder on the way resolved to
+ * its real path, so the bridge's own "no symlink in the path" rule holds for a home reached through a
+ * link (`/home` on some systems). The file's own name is kept as given, never followed: a symlink
+ * named as the image is still a symlink, and the bridge refuses it with the reason.
+ */
+export function imagePathOf(raw: string, cwd: string, realpath: (path: string) => string = (path) => realpathSync(path)): { readonly path: string } | { readonly error: string } {
+  const absolute = resolve(cwd, raw);
+  try {
+    return { path: join(realpath(dirname(absolute)), basename(absolute)) };
+  } catch {
+    return { error: `\`--image ${raw}\`: no such folder` };
+  }
+}
 
 /** `post`'s flags, checked as far as the CLI can check them. An error is the one-line reason. */
 export function parsePostArgs(args: readonly string[]): PostArgs | { readonly error: string } {
@@ -186,6 +233,7 @@ export function parsePostArgs(args: readonly string[]): PostArgs | { readonly er
   const confirms: Array<{ key: string; value: string }> = [];
   const details: Array<{ key: string; value: string }> = [];
   const links: Array<{ label: string; href: string }> = [];
+  const images: HillImageInput[] = [];
   let json = false;
   let body: string | null = null;
   for (let i = 0; i < args.length; i++) {
@@ -210,6 +258,13 @@ export function parsePostArgs(args: readonly string[]): PostArgs | { readonly er
         if (options.some((option) => option.intent === split.key)) return { error: `two options share the intent \`${split.key}\`` };
         options.push({ intent: split.key, label: split.value });
       } else (arg === "--confirm" ? confirms : details).push(split);
+      continue;
+    }
+    if (arg === "--image") {
+      const image = parseImageArg(value);
+      if ("error" in image) return image;
+      if (images.length >= HILL_MEDIA_MAX) return { error: `a decision has at most ${String(HILL_MEDIA_MAX)} \`--image\`` };
+      images.push(image);
       continue;
     }
     if (arg === "--link") {
@@ -268,6 +323,7 @@ export function parsePostArgs(args: readonly string[]): PostArgs | { readonly er
       replyTo,
       supersedes,
     },
+    images,
     requestId,
     expiresInMs,
     body,
@@ -283,7 +339,7 @@ async function bodyOf(deps: HillDeps, body: string | null): Promise<string> {
 }
 
 /** The `hill.post` request, field by field. The bridge fills `from` from this process's pane, never from here. */
-function postLine(fields: PostArgs["fields"], requestId: string, body: string, expiresAt: number | null): JsonObject {
+function postLine(fields: PostArgs["fields"], requestId: string, body: string, expiresAt: number | null, images: readonly HillImageInput[]): JsonObject {
   const options = (fields.options ?? []).map((option): JsonObject => {
     const row: JsonObject = { intent: option.intent, label: option.label };
     if (option.detail !== undefined) row.detail = option.detail;
@@ -292,7 +348,7 @@ function postLine(fields: PostArgs["fields"], requestId: string, body: string, e
   });
   const links = (fields.links ?? []).map((link): JsonObject => ({ label: link.label, href: link.href }));
   const recommends = fields.recommends === undefined || fields.recommends === null ? null : { intent: fields.recommends.intent, why: fields.recommends.why };
-  return {
+  const line: JsonObject = {
     op: "hill.post",
     requestId,
     title: fields.title,
@@ -308,20 +364,35 @@ function postLine(fields: PostArgs["fields"], requestId: string, body: string, e
     supersedes: fields.supersedes ?? null,
     expiresAt,
   };
+  // Paths, never bytes: the bridge reads each file itself (bridge/hill/media.ts). Sent only when there
+  // are images, so a post without them is the line it was.
+  if (images.length > 0) line.images = images.map((image): JsonObject => (image.caption === undefined ? { path: image.path } : { path: image.path, caption: image.caption }));
+  return line;
 }
+
+/** What the CLI says when a bridge took the post and kept none of its images: a build from before images. */
+export const HILL_IMAGES_DROPPED = "the bridge posted the decision without its images: it is older than images on the hill";
 
 /** `hill post ...`: post one decision and print its id. It never waits for the answer. */
 export async function cmdHillPost(deps: HillDeps, args: readonly string[]): Promise<number> {
   if (windows(deps)) return EXIT.STATE;
   const parsed = parsePostArgs(args);
   if ("error" in parsed) return usage(deps, "post", parsed.error);
+  const cwd = (deps.cwd ?? (() => process.cwd()))();
+  const images: HillImageInput[] = [];
+  for (const image of parsed.images) {
+    const resolved = imagePathOf(image.path, cwd);
+    if ("error" in resolved) return usage(deps, "post", resolved.error);
+    images.push(image.caption === undefined ? { path: resolved.path } : { path: resolved.path, caption: image.caption });
+  }
   const body = await bodyOf(deps, parsed.body);
   const requestId = parsed.requestId ?? (deps.mintRequestId ?? randomUUID)();
   const expiresAt = parsed.expiresInMs === null ? null : (deps.now ?? Date.now)() + parsed.expiresInMs;
-  const answer = await request(deps, postLine(parsed.fields, requestId, body, expiresAt));
+  const answer = await request(deps, postLine(parsed.fields, requestId, body, expiresAt, images));
   if (!answer.ok) return failed(deps, answer);
   const decision = readDecision(answer.body.decision);
   if (decision === null) return failed(deps, { ok: false, error: "the bridge answered without a decision", code: null, exit: EXIT.FAIL });
+  if (images.length > 0 && decision.media.length === 0) deps.io.err(`hill: ${HILL_IMAGES_DROPPED}`);
   if (parsed.json) deps.io.out(JSON.stringify({ decision }));
   else deps.io.out(decision.id);
   return EXIT.OK;

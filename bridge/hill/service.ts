@@ -28,6 +28,8 @@ import {
   HILL_LINK_HREF_MAX,
   HILL_LINK_LABEL_MAX,
   HILL_LINKS_MAX,
+  HILL_MEDIA_CAPTION_MAX,
+  HILL_MEDIA_MAX,
   HILL_NOW_MAX,
   HILL_OPEN_MAX,
   HILL_OPTION_CONFIRM_MAX,
@@ -41,6 +43,8 @@ import {
   sortOpenDecisions,
   type HillAnswerRequest,
   type HillDecision,
+  type HillImageInput,
+  type HillMedia,
   type HillOption,
   type HillPostInput,
   type HillReceipt,
@@ -52,6 +56,7 @@ import type { WalkyPane } from "../walky/deliver.ts";
 import { headerField, WALKY_BODY_MAX, WALKY_LABEL_MAX } from "../walky/types.ts";
 import { digestDiffers, withDigest } from "../worktree-receipts.ts";
 import { readPostFields } from "./parse.ts";
+import { mintMediaId, type HillImageBytes, type HillMediaStore } from "./media.ts";
 import { hillAnswerDigest, type HillAnswerOutcome, type HillReceiptRecord, type HillReceiptSurface } from "./receipts.ts";
 import type { HillStore } from "./store.ts";
 
@@ -108,6 +113,9 @@ export interface HillServiceDeps {
   readonly now?: () => number;
   readonly mintId?: () => string;
   readonly audit?: (entry: AuditEntry) => void;
+  /** Where a decision's images are read and kept (media.ts). Absent: a post with images is refused. */
+  readonly media?: HillMediaStore;
+  readonly mintMediaId?: () => string;
 }
 
 /** A post's answer: the stored decision, or a refusal with its code and plain words the CLI prints. */
@@ -354,10 +362,14 @@ export class HillService {
     if (open.length >= HILL_OPEN_MAX) return refuse("too_many_open", `this session has ${String(HILL_OPEN_MAX)} open decisions; withdraw one, or wait for answers`);
     const asked = input.priority ?? "today";
     const priority = asked === "now" && open.filter((decision) => decision.priority === "now").length >= HILL_NOW_MAX ? "today" : asked;
+    const images = this.readImages(input.images ?? []);
+    if (!images.ok) return images;
 
     let id = this.mint();
     for (let tries = 0; this.deps.store.get(id) !== undefined && tries < 8; tries += 1) id = this.mint();
     if (this.deps.store.get(id) !== undefined) return refuse(null, "could not mint a decision id; try again");
+    const media = this.keepImages(id, images.images);
+    if (media === null) return refuse(null, "the images could not be saved on this machine; nothing was posted");
     const decision: HillDecision = {
       v: 1,
       id,
@@ -370,7 +382,7 @@ export class HillService {
       priority,
       priorityAsked: asked,
       ...cleaned.fields,
-      media: [],
+      media,
       replyTo: replyTo?.address ?? null,
       target: target === null ? null : { label: target.label, host: target.host, unattended: target.unattended },
       supersedes: superseded?.id ?? null,
@@ -383,10 +395,67 @@ export class HillService {
       answer: null,
     };
     const replaced: HillDecision[] = superseded === null ? [] : [{ ...superseded, state: "superseded", supersededBy: id, closedAt: now, closedReason: `superseded by ${id}` }];
-    if (!this.deps.store.put(decision, ...replaced)) return refuse(null, "the decision could not be saved on this machine; nothing was posted");
-    const detail = superseded === null ? { decisionId: id, options: decision.options.length } : { decisionId: id, options: decision.options.length, supersedes: superseded.id };
+    if (!this.deps.store.put(decision, ...replaced)) {
+      if (media.length > 0) this.deps.media?.remove(id);
+      return refuse(null, "the decision could not be saved on this machine; nothing was posted");
+    }
+    const base = superseded === null ? { decisionId: id, options: decision.options.length } : { decisionId: id, options: decision.options.length, supersedes: superseded.id };
+    // The images as a count and a byte sum, never a path or a caption.
+    const detail = media.length === 0 ? base : { ...base, images: media.length, imageBytes: media.reduce((sum, item) => sum + item.bytes, 0) };
     this.deps.audit?.({ action: "hill.post", detail });
     return { ok: true, decision };
+  }
+
+  /** Read and check every image a post names, in order, before anything is kept. The first that fails refuses the post. */
+  private readImages(raw: readonly HillImageInput[]): { readonly ok: true; readonly images: Array<HillImageBytes & { readonly caption: string | null }> } | Extract<HillPostAnswer, { ok: false }> {
+    if (raw.length === 0) return { ok: true, images: [] };
+    if (raw.length > HILL_MEDIA_MAX) return { ok: false, code: "too_many_images", error: `a decision has at most ${String(HILL_MEDIA_MAX)} images` };
+    const store = this.deps.media;
+    if (store === undefined) return { ok: false, code: "bad_image", error: "this bridge keeps no images" };
+    const images: Array<HillImageBytes & { readonly caption: string | null }> = [];
+    for (const image of raw) {
+      const caption = cleanLine(image.caption ?? "", HILL_MEDIA_CAPTION_MAX);
+      if (caption.over) return { ok: false, code: "bad_image", error: `an image caption is at most ${String(HILL_MEDIA_CAPTION_MAX)} characters` };
+      const read = store.read(image.path);
+      if (!read.ok) return { ok: false, code: read.code, error: read.error };
+      images.push({ mime: read.mime, bytes: read.bytes, width: read.width, height: read.height, caption: caption.text === "" ? null : caption.text });
+    }
+    return { ok: true, images };
+  }
+
+  /** Keep a new decision's images under ids the bridge mints. The media entries, or null when the write failed. */
+  private keepImages(decisionId: string, images: ReadonlyArray<HillImageBytes & { readonly caption: string | null }>): HillMedia[] | null {
+    if (images.length === 0) return [];
+    const store = this.deps.media;
+    if (store === undefined) return null;
+    const mint = this.deps.mintMediaId ?? (() => mintMediaId());
+    const ids: string[] = [];
+    for (let tries = 0; ids.length < images.length && tries < images.length + 8; tries += 1) {
+      const next = mint();
+      if (!ids.includes(next)) ids.push(next);
+    }
+    if (ids.length < images.length) return null;
+    const files = images.map((image, i) => ({ id: ids[i]!, bytes: image.bytes }));
+    if (!store.save(decisionId, files)) return null;
+    return images.map((image, i): HillMedia => {
+      const entry: HillMedia = { id: ids[i]!, kind: "image", mime: image.mime, bytes: image.bytes.length, width: image.width, height: image.height };
+      return image.caption === null ? entry : { ...entry, caption: image.caption };
+    });
+  }
+
+  /** The bytes and type of one image of a held decision, for the phone's read route. Null for any id this bridge does not hold. */
+  mediaFile(decisionId: string, mediaId: string): { readonly mime: HillMedia["mime"]; readonly bytes: Uint8Array<ArrayBuffer> } | null {
+    const store = this.deps.media;
+    if (store === undefined) return null;
+    const media = this.deps.store.get(decisionId)?.media.find((item) => item.id === mediaId);
+    if (media === undefined) return null;
+    const bytes = store.bytesOf(decisionId, media);
+    return bytes === null ? null : { mime: media.mime, bytes };
+  }
+
+  /** Remove the image folders of decisions the store no longer holds. Run at start and from the sweep. */
+  pruneMedia(): number {
+    return this.deps.media?.prune(new Set(this.deps.store.all().map((decision) => decision.id))) ?? 0;
   }
 
   /** `about` as the post named it: none, `here` (the poster's own session) or an address. Undefined: not a live one. */
@@ -429,6 +498,7 @@ export class HillService {
 
   /** Close every open decision past its `expiresAt` as `expired`. Run from the bridge's slow timer. Answers how many closed. */
   sweep(now: number = this.now()): number {
+    this.pruneMedia();
     const due = this.deps.store.all().filter((decision) => decision.state === "open" && decision.expiresAt !== null && decision.expiresAt <= now);
     if (due.length === 0) return 0;
     const closed = due.map((decision): HillDecision => Object.assign({}, decision, { state: "expired" as const, closedAt: now, closedReason: EXPIRED }));

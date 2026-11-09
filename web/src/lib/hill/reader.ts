@@ -15,11 +15,15 @@
 import { asJsonBoolean, asJsonNumber, asJsonObject, asJsonString, type JsonObject, type JsonValue } from "@/lib/json";
 
 import {
+  HILL_MEDIA_ID_RE,
+  HILL_MEDIA_MAX,
+  HILL_MEDIA_MIMES,
   HILL_PRIORITIES,
   HILL_STATES,
   HILL_TEXT_MODES,
   type HillDecision,
   type HillList,
+  type HillMedia,
   type HillOption,
   type HillPriority,
   type HillReceipt,
@@ -97,6 +101,32 @@ function readLink(value: JsonValue): { label: string; href: string } | null {
   const href = asJsonString(o.href);
   if (label === undefined || label === "" || href === undefined || !isWebLink(href)) return null;
   return { label, href };
+}
+
+/** A whole number of at least 1, or null for null or absent; undefined for anything else. */
+function nullableDimension(value: JsonValue | undefined): number | null | undefined {
+  const n = nullableNumber(value);
+  if (n === null || n === undefined) return n;
+  return Number.isSafeInteger(n) && n > 0 ? n : undefined;
+}
+
+/**
+ * One image of a decision, or null when it does not fit. The id must match its pattern, because the
+ * phone builds the bytes' route from it; the type must be one of the three the bridge keeps.
+ */
+function readMedia(value: JsonValue): HillMedia | null {
+  const o = asJsonObject(value);
+  if (o === undefined || o.kind !== "image") return null;
+  const id = asJsonString(o.id);
+  const mime = oneOf(HILL_MEDIA_MIMES, o.mime);
+  const bytes = asJsonNumber(o.bytes);
+  const width = nullableDimension(o.width);
+  const height = nullableDimension(o.height);
+  if (id === undefined || !HILL_MEDIA_ID_RE.test(id) || mime === undefined || bytes === undefined || width === undefined || height === undefined) return null;
+  const media: HillMedia = { id, kind: "image", mime, bytes, width, height };
+  const caption = asJsonString(o.caption);
+  if (caption !== undefined && caption.trim() !== "") media.caption = caption;
+  return media;
 }
 
 function readFrom(value: JsonValue | undefined): HillDecision["from"] | null {
@@ -184,6 +214,14 @@ export function readHillDecision(value: JsonValue): HillDecision | null {
   if (rawLinks === undefined) return null;
   const links = rawLinks.map(readLink).filter((link) => link !== null);
 
+  // An image that does not fit is left out and the decision stays, as a link is: the card loses a
+  // picture, never a button. An older bridge sends `[]`; one before images, nothing.
+  const rawMedia = arrayOf(o.media) ?? [];
+  const media = rawMedia
+    .map(readMedia)
+    .filter((item) => item !== null)
+    .slice(0, HILL_MEDIA_MAX);
+
   const recommends = readRecommends(o.recommends, okOptions);
   const target = readTarget(o.target);
   const answer = readAnswer(o.answer);
@@ -212,7 +250,7 @@ export function readHillDecision(value: JsonValue): HillDecision | null {
     options: okOptions,
     text,
     recommends,
-    media: [],
+    media,
     links,
     replyTo,
     target,
