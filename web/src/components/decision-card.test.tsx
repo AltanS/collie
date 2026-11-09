@@ -128,6 +128,28 @@ describe("answering", () => {
   });
 });
 
+describe("lists the card keys by place and value", () => {
+  it("draws two options and two links that repeat a value without a key collision", () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const same = { label: "CI", href: "https://ci.example.com/a" };
+    const { container, slot } = renderCard(
+      hillDecision({
+        options: [
+          { intent: "yes", label: "Yes" },
+          { intent: "yes", label: "Yes, again" },
+        ],
+        links: [same, same],
+        body: "More.",
+      }),
+    );
+    fireEvent.click(slot("decision-more")!);
+    expect(container.querySelectorAll('[data-slot="decision-option"]')).toHaveLength(2);
+    expect(container.querySelectorAll('[data-slot="decision-link"]')).toHaveLength(2);
+    expect(error.mock.calls.filter(([message]) => String(message).includes("same key"))).toEqual([]);
+    error.mockRestore();
+  });
+});
+
 describe("arm, then send", () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
@@ -168,6 +190,19 @@ describe("arm, then send", () => {
     fireEvent.click(option("keep"));
     expect(onSend).toHaveBeenCalledWith("keep", null);
     expect(option("reset")).toHaveTextContent("Reset to main");
+  });
+
+  it("drops the arm when the answer's words change, so the second tap needs a new first one", () => {
+    const { slot, option, onSend } = renderCard(withConfirm());
+    fireEvent.change(slot("decision-text")!, { target: { value: "Because." } });
+    fireEvent.click(option("reset"));
+    expect(option("reset")).toHaveTextContent("Reset now");
+    fireEvent.change(slot("decision-text")!, { target: { value: "Because main builds." } });
+    expect(option("reset")).toHaveTextContent("Reset to main");
+    act(() => vi.advanceTimersByTime(ARM_DWELL_MS));
+    fireEvent.click(option("reset"));
+    expect(onSend).not.toHaveBeenCalled();
+    expect(option("reset")).toHaveTextContent("Reset now");
   });
 
   it("asks for a second tap on Dismiss too", () => {
@@ -221,6 +256,13 @@ describe("after the tap", () => {
     landed.unmount();
     const refused = renderCard(hillDecision(), answered(hillReceipt({ code: "rejected", state: null, delivery: null })));
     expect(refused.option("yes")).toBeEnabled();
+  });
+
+  it("keeps the card answerable after a denied answer, with the notice that says it was not accepted", () => {
+    const denied = renderCard(hillDecision(), answered(hillReceipt({ code: "denied", state: null, delivery: null })));
+    expect(denied.slot("decision-receipt")).toHaveTextContent("This device may not answer");
+    expect(denied.option("yes")).toBeEnabled();
+    expect(denied.slot("decision-dismiss")).toBeEnabled();
   });
 
   it("keeps the words of a gone answer on screen with Copy", () => {

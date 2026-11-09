@@ -7,6 +7,7 @@ import { setStatus } from "@/lib/status";
 import { useBridgeNow } from "@/lib/tricks/clock";
 import { isPastWindow } from "@/lib/tricks/frame";
 import { trickIconOf } from "@/lib/tricks/icons";
+import { TrickBoundary } from "@/lib/tricks/boundary";
 import { TrickClock } from "@/lib/tricks/render";
 import { partKey, type WireTrickPart } from "@/lib/tricks/schema";
 import { useTrickPart, tricksStore, type TricksStore } from "@/lib/tricks/store";
@@ -32,8 +33,13 @@ export interface StatusItem {
   face: ReactNode;
 }
 
-/** The tap's reach: the 12px line is far below the 44px floor (DESIGN.md section 6), so the button reaches 16px above and below. */
-const REACH = "relative pointer-events-auto before:absolute before:-inset-x-1 before:-inset-y-4 before:content-['']";
+/**
+ * The tap's reach: the documented exception of DESIGN.md section 6, about 28px high like the cache reading's
+ * in `pane-meta.tsx`. The 12px line reaches 4px down, which is all the air the tag owns under it (its own
+ * `bottom-1`: further down is the Belt's block, whose touches it must not take), and 12px up into the
+ * mirror's last rows. The box is 28px high and 4px wider each side.
+ */
+const REACH = "relative pointer-events-auto before:absolute before:-inset-x-1 before:-top-3 before:-bottom-1 before:content-['']";
 
 function TrickStatusItem({
   partKey: key,
@@ -52,6 +58,8 @@ function TrickStatusItem({
   const value = part?.value;
   if (part === undefined || value?.at !== "status") return null;
   const chip = value.chip;
+  // A status part with no `chip` draws nothing.
+  if (chip === undefined || chip === null) return null;
   const trickName = trick?.name ?? part.trick;
   const stale = part.stale === true || isPastWindow(part, now);
   const ink = inkOf(chip.tone, stale);
@@ -109,7 +117,12 @@ export function statusItemsOf(opts: {
     return {
       id: key,
       trick: part.trick,
-      face: <TrickStatusItem partKey={key} session={sessionOfMark(part, opts.sessions)} onOpenSession={opts.onOpenSession} store={store} />,
+      // One boundary per item: an item that throws leaves the row's other items drawn, and draws nothing itself.
+      face: (
+        <TrickBoundary fallback="none" resetKey={`${key}@${part.rev}`}>
+          <TrickStatusItem partKey={key} session={sessionOfMark(part, opts.sessions)} onOpenSession={opts.onOpenSession} store={store} />
+        </TrickBoundary>
+      ),
     };
   });
 }

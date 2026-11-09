@@ -146,7 +146,6 @@ export function filesFolders(at: FilesAt): string[] {
   return folders;
 }
 
-/** A space's detail route (its tabs + panes). Deep-linkable; carries the scope like panePath. */
 /**
  * A trick's own session (M94 slice 03): the screen with its view and its actions, one level below the
  * Dashboard. The id names its host (`trick:<host>:<trick>:<part>`), so no `?h=` rides along.
@@ -155,6 +154,7 @@ export function trickSessionPath(paneId: string): string {
   return `/trick/${encodeURIComponent(paneId)}`;
 }
 
+/** A space's detail route (its tabs + panes). Deep-linkable; carries the scope like panePath. */
 export function spacePath(spaceId: string, scope?: Scope): string {
   return `/space/${encodeURIComponent(spaceId)}${scopeSearch(scope)}`;
 }

@@ -5,6 +5,7 @@ import { useLocale } from "@/hooks/use-locale";
 import { t } from "@/lib/i18n";
 import { useBridgeNow } from "@/lib/tricks/clock";
 import { isPastWindow } from "@/lib/tricks/frame";
+import { TrickBoundary } from "@/lib/tricks/boundary";
 import { TrickMark } from "@/lib/tricks/mark";
 import { parseTrickSessionId, partKey, type WireTrickPart } from "@/lib/tricks/schema";
 import { useTrickPart, type TricksStore, tricksStore, type TapHandlers, trickTapper } from "@/lib/tricks/store";
@@ -48,6 +49,8 @@ function BeltTrickMark({
   const value = part?.value;
   if (part === undefined || value?.at !== "belt") return null;
   const mark = value.mark;
+  // A belt part that arrived with no `mark` (or one that is no object) draws nothing, as a part that is not held does.
+  if (mark === undefined || mark === null) return null;
   const trickName = trick?.name ?? part.trick;
   const stale = part.stale === true || isPastWindow(part, now);
   const busy = tap?.phase === "busy";
@@ -75,7 +78,12 @@ export function beltMarksOf(opts: {
     return {
       id: key,
       trick: part.trick,
-      face: <BeltTrickMark partKey={key} handlers={opts.handlersFor(part.host)} session={sessionOfMark(part, opts.sessions)} onOpenSession={opts.onOpenSession} store={store} />,
+      // One boundary per mark: a mark that throws leaves the belt's other marks drawn, and draws nothing itself.
+      face: (
+        <TrickBoundary fallback="none" resetKey={`${key}@${part.rev}`}>
+          <BeltTrickMark partKey={key} handlers={opts.handlersFor(part.host)} session={sessionOfMark(part, opts.sessions)} onOpenSession={opts.onOpenSession} store={store} />
+        </TrickBoundary>
+      ),
     };
   });
 }

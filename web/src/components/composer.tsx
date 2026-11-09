@@ -720,7 +720,6 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     saveDraft(scope, paneId, inputValueRef.current, attachmentsRef.current, nextAttachmentRef.current);
   }
 
-
   /** {@link updateInput} for the appenders, which need the current value to build the next one.
    *  Split from it rather than overloaded on the argument: the two callers are different shapes,
    *  and the ref — not React state — is what carries "the current value" here. */

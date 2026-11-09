@@ -86,7 +86,7 @@ export interface TricksStore {
 
 /** Fetch rounds one `syncTricks` may run, when the bridge moves again while it fetches. The next snapshot asks again. */
 const SYNC_ROUNDS = 3;
-/** After a failed fetch, the same rev is asked again only after this long, so a broken route is not asked every poll. */
+/** After a failed fetch, no rev is asked again until this long has passed, so a broken route is not asked every poll. */
 export const SYNC_RETRY_MS = 30_000;
 
 const EMPTY: TricksState = { rev: null, tricks: [], parts: new Map(), taps: new Map() };
@@ -131,7 +131,8 @@ export function createTricksStore(transport: TricksTransport, clock: () => numbe
   /** A snapshot named a rev below the held one: the bridge restarted, so the next fetch is a full one. */
   let resetWanted = false;
   let syncing: Promise<void> | null = null;
-  let failed: { rev: number; at: number } | null = null;
+  /** When the last fetch failed. Any rev waits {@link SYNC_RETRY_MS} after it, so a broken route is not asked on every poll. */
+  let failedAt: number | null = null;
 
   function commit(next: TricksState): void {
     state = next;
@@ -160,17 +161,17 @@ export function createTricksStore(transport: TricksTransport, clock: () => numbe
       if (target === null) return;
       const replace = held === null || resetWanted;
       if (!replace && held >= target) return;
-      if (failed !== null && failed.rev === target && clock() - failed.at < SYNC_RETRY_MS) return;
+      if (failedAt !== null && clock() - failedAt < SYNC_RETRY_MS) return;
       resetWanted = false;
       let reply: TricksReply;
       try {
         reply = await transport.fetchTricks(replace ? 0 : held);
       } catch {
         // The held parts stay; their frames go stale on their own clock. The next snapshot asks again.
-        failed = { rev: target, at: clock() };
+        failedAt = clock();
         return;
       }
-      failed = null;
+      failedAt = null;
       applyReply(reply, replace);
     }
   }

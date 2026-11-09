@@ -266,3 +266,48 @@ describe("TricksSettingsCard: the switch", () => {
 beforeEach(() => {
   clearStatus();
 });
+
+// A ROW THAT FAILS DRAWS ALONE (M94 review).
+describe("a trick entry that is broken", () => {
+  it("draws a trick with no places as a manifest that declares none", async () => {
+    const bare: WireTrickInfo = JSON.parse('{"host":"bluefin","id":"bare","name":"Bare","icon":"flask","on":true,"state":"ok"}');
+    renderCard(await storeWith([bare, TRACKER]));
+    expect(within(rowOf("bare")).getByText("No parts")).toBeTruthy();
+    expect(placesLine(undefined)).toBe("No parts");
+    expect(rowOf("tracker")).toBeTruthy();
+  });
+
+  it("keeps a row's switch, labelled by its id, when the row cannot be drawn, and the switch flips", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const bomb: WireTrickInfo = {
+      ...LEGS,
+      get name(): string {
+        throw new Error("a name that cannot be read");
+      },
+      get places(): WireTrickInfo["places"] {
+        throw new Error("places that cannot be read");
+      },
+    };
+    const onSwitch = vi.fn(async (_host: string, _id: string, on: boolean) => ({ ...LEGS, on }));
+    renderCard(await storeWith([bomb, TRACKER]), onSwitch);
+    const row = rowOf("legs");
+    expect(row.textContent).toBe("legs");
+    const toggle = within(row).getByRole("switch", { name: "legs" });
+    expect(toggle).toBeChecked();
+    await userEvent.click(toggle);
+    expect(onSwitch).toHaveBeenCalledWith("bluefin", "legs", false);
+    expect(screen.getByRole("switch", { name: "Tracker" })).toBeTruthy();
+    vi.restoreAllMocks();
+  });
+
+  it("leaves the other rows and their switches drawn when one row throws", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const bomb: WireTrickInfo = { ...LEGS, id: "bomb", name: "Bomb", get state(): WireTrickInfo["state"] { throw new Error("a row that cannot be read"); } };
+    renderCard(await storeWith([bomb, TRACKER]));
+    expect(rowOf("bomb").hasAttribute("data-fallback")).toBe(true);
+    expect(screen.getByRole("switch", { name: "Tracker" })).toBeTruthy();
+    vi.restoreAllMocks();
+  });
+});

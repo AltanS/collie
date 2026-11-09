@@ -1,6 +1,6 @@
-import { fireEvent, render, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, waitFor } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
-import { vi } from "vitest";
+import { afterEach, beforeEach, vi } from "vitest";
 
 import { HILL_IDLE } from "@/hooks/use-hill-answer";
 import type { HillDecision, HillMedia } from "@/lib/hill/wire";
@@ -86,5 +86,69 @@ describe("a Decision with images", () => {
     await waitFor(() => expect(all("hill-body-image")[1]!.querySelector('[data-slot="hill-media-unavailable"]')).not.toBeNull());
     expect(all("hill-body-image")[1]).toHaveTextContent("Image not available");
     expect(seen).toContainEqual({ path: `/api/hill/media/${decision.id}/${media(2).id}`, auth: "Bearer tok-test-placeholder" });
+  });
+});
+
+describe("an image is fetched only near the screen", () => {
+  /** An observer the test drives: it records what it watches and reports when told. */
+  class FakeObserver {
+    static all: FakeObserver[] = [];
+    readonly margin: string | undefined;
+    readonly report: (entries: { isIntersecting: boolean }[]) => void;
+    disconnected = false;
+    constructor(report: (entries: { isIntersecting: boolean }[]) => void, options?: IntersectionObserverInit) {
+      this.report = report;
+      this.margin = options?.rootMargin;
+      FakeObserver.all.push(this);
+    }
+    observe() {}
+    disconnect() {
+      this.disconnected = true;
+    }
+    see(isIntersecting: boolean) {
+      this.report([{ isIntersecting }]);
+    }
+  }
+
+  beforeEach(() => {
+    FakeObserver.all = [];
+    vi.stubGlobal("IntersectionObserver", FakeObserver);
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("asks the bridge for nothing while the card is far from the screen, and draws the reserved box", () => {
+    const asked: string[] = [];
+    server.use(
+      http.get("/api/hill/media/:decision/:media", ({ request }) => {
+        asked.push(new URL(request.url).pathname);
+        return new HttpResponse(new Uint8Array([0x89, 0x50]), { headers: { "content-type": "image/png" } });
+      }),
+    );
+    setDeviceToken("tok-test-placeholder");
+    const { slot } = renderCard(hillDecision({ media: [media(1)] }));
+    const box = slot("hill-card-image")!;
+    expect(box.className).toContain("h-[200px]");
+    expect(box.querySelector("img")).toBeNull();
+    expect(asked).toEqual([]);
+    expect(FakeObserver.all).toHaveLength(1);
+    // The margin is one screen height, above and below.
+    expect(FakeObserver.all[0]!.margin).toMatch(/^\d+px 0px$/);
+  });
+
+  it("draws the image once the card comes within a screen of the visible part, and stays drawn when it leaves", async () => {
+    const { slot } = renderCard(hillDecision({ media: [media(1)] }), DATA);
+    expect(slot("hill-card-image")!.querySelector("img")).toBeNull();
+    act(() => FakeObserver.all[0]!.see(false));
+    expect(slot("hill-card-image")!.querySelector("img")).toBeNull();
+    act(() => FakeObserver.all[0]!.see(true));
+    await waitFor(() => expect(slot("hill-card-image")!.querySelector("img")).not.toBeNull());
+    expect(FakeObserver.all[0]!.disconnected).toBe(true);
+  });
+
+  it("loads at once where the page has no IntersectionObserver", () => {
+    vi.unstubAllGlobals();
+    Reflect.deleteProperty(globalThis, "IntersectionObserver");
+    const { slot } = renderCard(hillDecision({ media: [media(1)] }), DATA);
+    expect(slot("hill-card-image")!.querySelector("img")).not.toBeNull();
   });
 });

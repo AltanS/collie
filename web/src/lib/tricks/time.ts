@@ -8,7 +8,7 @@
 
 import { clockTime } from "../format";
 import { getLocaleSnapshot, t } from "../i18n";
-import type { Clock } from "./schema";
+import { isEpochMs, type Clock } from "./schema";
 
 /**
  * How a moment reads, for the part frame's age line and the settings card (an ISO `asOf`). A tree
@@ -30,12 +30,17 @@ export function spanText(ms: number): string {
 
 /** A day and a month in the app's language: "8 Nov". */
 export function dayText(ts: number): string {
-  return new Intl.DateTimeFormat(getLocaleSnapshot().locale, { day: "numeric", month: "short" }).format(new Date(ts));
+  const date = new Date(ts);
+  // An instant past the schema's bound is an invalid date, and `format` throws a RangeError on one.
+  if (Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat(getLocaleSnapshot().locale, { day: "numeric", month: "short" }).format(date);
 }
 
 /** A day, a month and a clock time: "8 Nov, 09:38". For a moment more than a day away. */
 export function momentText(ts: number): string {
-  return new Intl.DateTimeFormat(getLocaleSnapshot().locale, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }).format(new Date(ts));
+  const date = new Date(ts);
+  if (Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat(getLocaleSnapshot().locale, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }).format(date);
 }
 
 /** How long ago `at` was, or how long until it, in words. A moment more than a day away is a date. */
@@ -79,7 +84,8 @@ export function stopwatchText(ms: number): string {
  * it; a crew member on another version may not have).
  */
 export function clockText(at: string, clock: Clock, now: number): string | null {
-  if (!/^\d{1,16}$/.test(at)) return null;
+  // `isEpochMs` holds the schema's bound (8.64e15 ms), past which `Date` throws a RangeError.
+  if (!isEpochMs(at)) return null;
   const ms = Number(at);
   switch (clock) {
     case "ago":

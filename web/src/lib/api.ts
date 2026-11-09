@@ -28,7 +28,8 @@ import { authHeader, clearNotPaired, EXPIRED_BODY, markExpired, markNotPaired, N
 import { pairingRefused } from "./wipe";
 import { mintRequestId } from "./worktree-name";
 import type { TrickTapReply, TricksReply, TapRequest, WireTrickInfo } from "./tricks/schema";
-import { readTrick, readTricksReply, readTapReply } from "./tricks/wire";
+import { readTapReplyTolerant, readTricksReplyTolerant } from "./tricks/read";
+import { readTrick } from "./tricks/wire";
 import { fileVersionOf } from "./file-image-cache";
 import { isLead, normalizeScope, paneScopeKey, type Scope } from "./scope";
 import { closePaneNotifications } from "./pane-notifications";
@@ -3035,7 +3036,7 @@ export async function fetchSttModel(sha256: string, signal?: AbortSignal): Promi
  */
 export async function fetchTricks(since: number, signal?: AbortSignal): Promise<TricksReply> {
   const body = await req<JsonValue>(`/api/tricks?since=${Math.max(0, Math.floor(since))}`, { signal, timeoutMs: POLL_TIMEOUT_MS });
-  const reply = readTricksReply(body);
+  const reply = readTricksReplyTolerant(body);
   if (reply === undefined) throw new Error("/api/tricks answered with a body that is not a tricks reply");
   return reply;
 }
@@ -3043,7 +3044,7 @@ export async function fetchTricks(since: number, signal?: AbortSignal): Promise<
 /** A refused tap that still carries a receipt is the receipt. Anything else falls through to the error. */
 function recoverTapReceipt(_status: number, detail: string): JsonValue | null {
   const parsed = parseJson(detail);
-  return parsed !== undefined && readTapReply(parsed) !== undefined ? parsed : null;
+  return parsed !== undefined && readTapReplyTolerant(parsed) !== undefined ? parsed : null;
 }
 
 /**
@@ -3055,7 +3056,7 @@ function recoverTapReceipt(_status: number, detail: string): JsonValue | null {
 export async function tapTrick(host: string, trick: string, body: TapRequest): Promise<TrickTapReply> {
   const path = `/api/tricks/${encodeURIComponent(host)}/${encodeURIComponent(trick)}/tap`;
   const raw = await req<JsonValue>(path, { method: "POST", body: JSON.stringify(body) }, recoverTapReceipt);
-  const reply = readTapReply(raw);
+  const reply = readTapReplyTolerant(raw);
   if (reply === undefined) throw new Error(`${path} answered with a body that is not a tap receipt`);
   return reply;
 }

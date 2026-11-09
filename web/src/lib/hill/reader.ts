@@ -15,10 +15,12 @@
 import { asJsonBoolean, asJsonNumber, asJsonObject, asJsonString, type JsonObject, type JsonValue } from "@/lib/json";
 
 import {
+  HILL_MEDIA_BYTES_MAX,
   HILL_MEDIA_ID_RE,
   HILL_MEDIA_MAX,
   HILL_MEDIA_MIMES,
   HILL_PRIORITIES,
+  HILL_RESERVED_INTENTS,
   HILL_STATES,
   HILL_TEXT_MODES,
   HILL_TRICK_DELIVERIES,
@@ -35,6 +37,8 @@ import {
 const RECEIPT_CODES: readonly HillReceipt["code"][] = ["ok", "rejected", "gone", "denied", "unknown"];
 const DELIVERIES: readonly NonNullable<HillReceipt["delivery"]>[] = ["typed", "held", "unknown", "none"];
 const ANSWER_DELIVERIES: readonly NonNullable<HillDecision["answer"]>["delivery"][] = ["typed", "held", "unknown", "none"];
+/** The most pixels one side of an image may have: a picture past it is left out, as one past the bytes cap is. */
+const HILL_MEDIA_PX_MAX = 8192;
 const FROM_KINDS: readonly HillDecision["from"]["kind"][] = ["agent", "trick"];
 
 /** A string field, or null when the field is null or absent. `undefined` when it is there and is not a string. */
@@ -59,6 +63,22 @@ function oneOf<T extends string>(list: readonly T[], value: JsonValue | undefine
 function arrayOf(value: JsonValue | undefined): JsonValue[] | undefined {
   if (value === undefined) return [];
   return Array.isArray(value) ? value : undefined;
+}
+
+/**
+ * An option is dropped, and the decision stays, when its intent is one the answer route owns (`answer` and
+ * `dismiss`) or repeats an earlier option's: a second button for one intent would send the same answer
+ * under two labels, and `answer` or `dismiss` would be sent as a choice.
+ */
+function distinctOptions(options: readonly HillOption[]): HillOption[] {
+  const seen = new Set(HILL_RESERVED_INTENTS);
+  const kept: HillOption[] = [];
+  for (const option of options) {
+    if (seen.has(option.intent)) continue;
+    seen.add(option.intent);
+    kept.push(option);
+  }
+  return kept;
 }
 
 function readOption(value: JsonValue): HillOption | null {
@@ -124,6 +144,9 @@ function readMedia(value: JsonValue): HillMedia | null {
   const width = nullableDimension(o.width);
   const height = nullableDimension(o.height);
   if (id === undefined || !HILL_MEDIA_ID_RE.test(id) || mime === undefined || bytes === undefined || width === undefined || height === undefined) return null;
+  // The bridge caps an image's bytes and the phone sizes a box by its sides: one past either is left out.
+  if (!Number.isFinite(bytes) || bytes < 0 || bytes > HILL_MEDIA_BYTES_MAX) return null;
+  if ((width !== null && width > HILL_MEDIA_PX_MAX) || (height !== null && height > HILL_MEDIA_PX_MAX)) return null;
   const media: HillMedia = { id, kind: "image", mime, bytes, width, height };
   const caption = asJsonString(o.caption);
   if (caption !== undefined && caption.trim() !== "") media.caption = caption;
@@ -214,7 +237,7 @@ export function readHillDecision(value: JsonValue): HillDecision | null {
   if (rawOptions === undefined) return null;
   const options = rawOptions.map(readOption);
   if (options.some((option) => option === null)) return null;
-  const okOptions = options.filter((option) => option !== null);
+  const okOptions = distinctOptions(options.filter((option) => option !== null));
   // A decision with no button and no field has no way to be answered: the bridge refuses one.
   if (okOptions.length === 0 && text === "none") return null;
 

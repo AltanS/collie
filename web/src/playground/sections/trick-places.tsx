@@ -190,7 +190,7 @@ function Screen() {
 const RERUN_VIEW: View = [{ kind: "bar", kids: [{ kind: "button", attrs: { label: "Rerun red", intent: "rerun" } }] }];
 
 function ctx(tap?: RenderCtx["tap"]): RenderCtx {
-  return { partKey: partKey(LEGS_SESSION), trickName: "Browser leg", stale: false, tap, onTap: IGNORE, onLink: IGNORE, now: NOW };
+  return { partKey: partKey(LEGS_SESSION), stale: false, tap, onTap: IGNORE, onLink: IGNORE, now: NOW };
 }
 
 export function TrickPlacesSection(): ReactNode {

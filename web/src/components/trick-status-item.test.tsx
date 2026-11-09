@@ -108,3 +108,37 @@ describe("the tricks' items in the status line", () => {
     await act(async () => {});
   });
 });
+
+// A PART THAT FAILS DRAWS ALONE (M94 review).
+describe("a status part that is broken", () => {
+  it("draws nothing for a part with no chip, and keeps the other items", async () => {
+    const bare: WireTrickPart = { host: "bluefin", trick: "bare", part: "status", rev: 1, asOf: FRESH, fresh: "30s", value: JSON.parse('{"at":"status","id":"status"}') };
+    await mount([bare, part("spend", { text: "$7.42" })]);
+    expect([...document.querySelectorAll("[data-slot='trick-status']")].map((el) => el.getAttribute("data-trick"))).toEqual(["spend"]);
+  });
+
+  it("leaves the other items drawn when one throws", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const bomb: WireTrickPart = {
+      host: "bluefin",
+      trick: "bomb",
+      part: "status",
+      rev: 1,
+      asOf: FRESH,
+      fresh: "30s",
+      value: { at: "status", id: "status", get chip(): StatusChip { throw new Error("a chip that cannot be read"); } },
+    };
+    await mount([part("tag", { text: "tag 5/7" }), bomb, part("spend", { text: "$7.42" })]);
+    expect([...document.querySelectorAll("[data-slot='trick-status']")].map((el) => el.getAttribute("data-trick"))).toEqual(["tag", "spend"]);
+    vi.restoreAllMocks();
+  });
+
+  it("reaches 12px up and 4px down, never into the Belt below, as a box of about 28px", async () => {
+    await mount([part("tag", { text: "tag 5/7" })], [SESSION]);
+    const reach = screen.getByRole("button", { name: /tag 5\/7/ }).className;
+    expect(reach).toContain("before:-top-3");
+    expect(reach).toContain("before:-bottom-1");
+    expect(reach).not.toContain("-inset-y-4");
+  });
+});

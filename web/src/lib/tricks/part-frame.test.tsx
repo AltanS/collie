@@ -7,6 +7,7 @@ import { isPastWindow, partWindowMs, readFrame } from "./frame";
 import { TrickView, PartFrame } from "./part-frame";
 import { renderView, type RenderCtx } from "./render";
 import { TONE_TEXT_CLASS, parseTrickDocument, partKey, type TrickPart, type TricksReply, type View, type WireTrickInfo, type WireTrickPart } from "./schema";
+import { readTricksReplyTolerant } from "./read";
 import { createTricksStore, type TricksStore } from "./store";
 
 const AS_OF = "2026-11-08T09:41:00Z";
@@ -33,7 +34,7 @@ function viewOfPart(value: TrickPart): View {
 }
 
 function frame(part: WireTrickPart, now: number, extra: { trick?: WireTrickInfo; tap?: Parameters<typeof PartFrame>[0]["tap"]; retryAt?: string } = {}) {
-  const ctx = (stale: boolean): RenderCtx => ({ partKey: partKey(part), trickName: "Deploy", stale, onTap: vi.fn(), onLink: vi.fn(), now });
+  const ctx = (stale: boolean): RenderCtx => ({ partKey: partKey(part), stale, onTap: vi.fn(), onLink: vi.fn(), now });
   return render(
     <PartFrame part={part} trick={extra.trick ?? TRICK} tap={extra.tap} retryAt={extra.retryAt} now={now}>
       {({ stale }) => renderView(viewOfPart(part.value), ctx(stale))}
@@ -212,5 +213,100 @@ describe("TrickView", () => {
     const { store } = storeWith([]);
     const { container } = render(<TrickView partKey="bluefin/deploy/deploy" store={store} onLink={vi.fn()} />);
     expect(container.innerHTML).toBe("");
+  });
+});
+
+// A PART THAT FAILS DRAWS ALONE (M94 review).
+describe("a part that is broken", () => {
+  /** A held part whose value is not what the types say: parts the bridge's parser never saw. */
+  function broken(json: string, id = "deploy"): WireTrickPart {
+    return { host: "bluefin", trick: "deploy", part: id, rev: 1, asOf: AS_OF, fresh: "90s", value: JSON.parse(json) };
+  }
+
+  it("draws the placeholder for a view that is no list, and the part beside it stays drawn", async () => {
+    const bad = broken('{"at":"session","id":"deploy","view":"oops"}');
+    const good = stored({ at: "session", id: "other", view: [{ kind: "line", text: "still here" }] }, { part: "other" });
+    const { store } = storeWith([bad, good]);
+    await store.syncTricks(1);
+    const { container } = render(
+      <div>
+        <TrickView partKey={partKey(bad)} store={store} onLink={vi.fn()} now={T0} />
+        <TrickView partKey={partKey(good)} store={store} onLink={vi.fn()} now={T0} />
+      </div>,
+    );
+    expect(container.querySelector('[data-trick-node="placeholder"]')).not.toBeNull();
+    expect(container.textContent).toContain("still here");
+  });
+
+  it("draws a card with no kids, a button with no attrs and a node with no kind, read through the store's door", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const body = {
+      rev: 1,
+      tricks: [{ host: "bluefin", id: "deploy", name: "Deploy", icon: "machine", on: true, state: "ok", places: ["session"] }],
+      present: ["bluefin/deploy/deploy"],
+      parts: [
+        {
+          host: "bluefin",
+          trick: "deploy",
+          part: "deploy",
+          rev: 1,
+          asOf: AS_OF,
+          fresh: "90s",
+          value: { at: "session", id: "deploy", view: [{ kind: "card" }, { kind: "list", kids: "no" }, { kind: "button" }, { nope: 1 }, null] },
+        },
+      ],
+    };
+    const read = readTricksReplyTolerant(body);
+    if (read === undefined) throw new Error("the store's door refused the reply");
+    const store = createTricksStore({ fetchTricks: () => Promise.resolve(read), tapTrick: () => Promise.reject(new Error("no")), mintRequestId: () => "r" });
+    await store.syncTricks(1);
+    const { container } = render(<TrickView partKey="bluefin/deploy/deploy" store={store} onLink={vi.fn()} now={T0} />);
+    expect(container.querySelector('[data-trick-node="card"]')).not.toBeNull();
+    expect(container.querySelector('[data-trick-node="list"]')).not.toBeNull();
+    // The button draws with no label; the two nodes that are no nodes draw the placeholder, each in its own slot.
+    expect(container.querySelector('[data-trick-node="button"]')).not.toBeNull();
+    expect(container.querySelectorAll('[data-trick-node="placeholder"]')).toHaveLength(2);
+    vi.restoreAllMocks();
+  });
+
+  it("draws the placeholder for a view that throws as it is read, and keeps the rest of the page", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const value = {
+      at: "session" as const,
+      id: "deploy",
+      get view(): View {
+        throw new Error("a view that cannot be read");
+      },
+    };
+    const bomb: WireTrickPart = { host: "bluefin", trick: "deploy", part: "deploy", rev: 1, asOf: AS_OF, fresh: "90s", value };
+    const good = stored({ at: "session", id: "other", view: [{ kind: "line", text: "still here" }] }, { part: "other" });
+    const { store } = storeWith([bomb, good]);
+    await store.syncTricks(1);
+    const { container } = render(
+      <div>
+        <TrickView partKey={partKey(bomb)} store={store} onLink={vi.fn()} now={T0} />
+        <TrickView partKey={partKey(good)} store={store} onLink={vi.fn()} now={T0} />
+      </div>,
+    );
+    expect(container.querySelector('[data-trick-node="placeholder"]')).not.toBeNull();
+    expect(container.textContent).toContain("still here");
+    vi.restoreAllMocks();
+  });
+
+  it("keeps the frame line when a node fails inside the part's own frame", () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    function Bomb(): never {
+      throw new Error("a node that cannot be drawn");
+    }
+    const { container } = render(
+      <PartFrame part={stored(GREEN)} trick={TRICK} now={T0}>
+        {() => <Bomb />}
+      </PartFrame>,
+    );
+    expect(container.querySelector('[data-trick-node="placeholder"]')).not.toBeNull();
+    expect(container.querySelector('[data-slot="trick-frame-line"]')).not.toBeNull();
+    vi.restoreAllMocks();
   });
 });

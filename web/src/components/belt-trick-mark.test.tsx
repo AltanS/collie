@@ -192,3 +192,44 @@ describe("the trick marks' slot", () => {
     expect(slot.parentElement?.parentElement?.className).toContain("-ml-1.5");
   });
 });
+
+// A PART THAT FAILS DRAWS ALONE (M94 review): one broken mark never takes the belt's other marks, or the Chat, with it.
+describe("a belt part that is broken", () => {
+  /** A belt part whose `mark` throws when it is read: the worst a bad reply can do to the renderer. */
+  function throwing(trick: string): WireTrickPart {
+    const value = {
+      at: "belt" as const,
+      id: "belt",
+      get mark(): Mark {
+        throw new Error("a mark that cannot be read");
+      },
+    };
+    return { host: "bluefin", trick, part: "belt", rev: 1, asOf: AS_OF, value };
+  }
+
+  it("leaves the other marks drawn when one throws", async () => {
+    const parts = [LEGS, throwing("tracker"), QUIET];
+    const store = storeWith(parts, async () => ({ rid: "r", code: "ok" as const }));
+    await store.syncTricks(1);
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const marks = beltMarksOf({ parts, handlersFor: () => ({}), sessions: [], onOpenSession: vi.fn(), store });
+    render(<ActionsRow general={[]} agent="claude" onRun={vi.fn()} marks={marks} changes={{ onClick: vi.fn(), label: "Files" }} />);
+    expect(screen.getByRole("button", { name: "legs: 23/34" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "quiet: 2" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Files" })).toBeTruthy();
+    expect(document.querySelectorAll('[data-slot="trick-mark"]')).toHaveLength(2);
+    vi.restoreAllMocks();
+  });
+
+  it("draws nothing for a belt part that has no mark, and leaves the others", async () => {
+    const bare: WireTrickPart = { host: "bluefin", trick: "tracker", part: "belt", rev: 1, asOf: AS_OF, value: JSON.parse('{"at":"belt","id":"belt"}') };
+    const parts = [LEGS, bare];
+    const store = storeWith(parts, async () => ({ rid: "r", code: "ok" as const }));
+    await store.syncTricks(1);
+    const marks = beltMarksOf({ parts, handlersFor: () => ({}), sessions: [], onOpenSession: vi.fn(), store });
+    render(<ActionsRow general={[]} agent="claude" onRun={vi.fn()} marks={marks} changes={{ onClick: vi.fn(), label: "Files" }} />);
+    expect(document.querySelectorAll('[data-slot="trick-mark"]')).toHaveLength(1);
+    expect(screen.getByRole("button", { name: "legs: 23/34" })).toBeTruthy();
+  });
+});

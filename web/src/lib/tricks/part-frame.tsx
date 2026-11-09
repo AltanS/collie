@@ -24,10 +24,11 @@ import { NOTICE_ACTION } from "../../components/ui/notice";
 import { t } from "../i18n";
 import { cn } from "../utils";
 import { useBridgeNow } from "./clock";
+import { TrickBoundary } from "./boundary";
 import { problemOf, readFrame, type FrameLine } from "./frame";
 import { viewForm } from "./layout";
 import { Placeholder, renderView, type LinkTarget, type RenderCtx } from "./render";
-import type { TrickPart, View, WireTrickInfo, WireTrickPart } from "./schema";
+import { partKey as keyOfPart, type TrickPart, type View, type WireTrickInfo, type WireTrickPart } from "./schema";
 import { trickTapper, tricksStore, useTrickPart, type TricksStore, type TapHandlers, type TapState } from "./store";
 import { trickTimeText, spanText } from "./time";
 
@@ -97,7 +98,10 @@ export function PartFrame({ part, trick, tap, retryAt, now, children }: PartFram
   const body = useMemo(() => children({ stale }), [children, stale]);
   return (
     <div data-slot="trick-part" data-stale={stale ? "" : undefined} data-line={line.kind} className="flex min-w-0 flex-col">
-      {body}
+      {/* A view that throws draws the placeholder here and keeps its frame line; a new rev tries it again. */}
+      <TrickBoundary fallback="placeholder" resetKey={`${keyOfPart(part)}@${part.rev}`}>
+        {body}
+      </TrickBoundary>
       <div data-slot="trick-frame-line" className="flex h-6 min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
         <LineGlyph line={line} />
         <span className="min-w-0 flex-1 truncate tabular-nums">{lineWords(line, clock)}</span>
@@ -123,7 +127,8 @@ export function PartFrame({ part, trick, tap, retryAt, now, children }: PartFram
 
 /** The view a part carries (the kids of its frame), for the places whose body is a view. `undefined` for a mark. */
 export function viewOf(value: TrickPart): View | undefined {
-  return "view" in value ? value.view : undefined;
+  // A view that is no list is a part with no view: the placeholder.
+  return "view" in value && Array.isArray(value.view) ? value.view : undefined;
 }
 
 /**
@@ -172,7 +177,28 @@ export interface TrickViewProps {
 /** A stored part's view in its frame, with its taps wired to the store. Nothing while the part is not held. */
 export function TrickView({ partKey, onLink, imageUrl, from, store = tricksStore, now }: TrickViewProps) {
   const { part, trick, tap } = useTrickPart(partKey, store);
-  const { view, onPointerDown } = useHeldView(part === undefined ? undefined : viewOf(part.value));
+  if (part === undefined) return null;
+  // The boundary stands outside the body that reads the part's value, so a value that throws as it is
+  // read draws the placeholder too, and a new rev tries it again.
+  return (
+    <TrickBoundary fallback="placeholder" resetKey={`${partKey}@${part.rev}`}>
+      <TrickViewBody partKey={partKey} part={part} trick={trick} tap={tap} onLink={onLink} imageUrl={imageUrl} from={from} store={store} now={now} />
+    </TrickBoundary>
+  );
+}
+
+interface TrickViewBodyProps extends Omit<TrickViewProps, "store"> {
+  part: WireTrickPart;
+  trick: WireTrickInfo | undefined;
+  tap: TapState | undefined;
+  store: TricksStore;
+}
+
+function TrickViewBody({ partKey, part, trick, tap, onLink, imageUrl, from, store, now }: TrickViewBodyProps) {
+  const partValue = part.value;
+  // Read once per version of the part, so the held view keeps one identity between redraws.
+  const live = useMemo(() => viewOf(partValue), [partValue]);
+  const { view, onPointerDown } = useHeldView(live);
   const onTap = useMemo(() => {
     const handlers: TapHandlers = {};
     if (from !== undefined) handlers.from = { session: from };
@@ -182,13 +208,12 @@ export function TrickView({ partKey, onLink, imageUrl, from, store = tricksStore
     () =>
       ({ stale }: { stale: boolean }) => {
         if (view === undefined) return <Placeholder />;
-        const ctx: RenderCtx = { partKey, trickName: trick?.name ?? part?.trick ?? "", stale, tap, onTap, onLink, now };
+        const ctx: RenderCtx = { partKey, stale, tap, onTap, onLink, now };
         if (imageUrl !== undefined) ctx.imageUrl = imageUrl;
         return renderView(view, ctx);
       },
-    [view, partKey, trick?.name, part?.trick, tap, onTap, onLink, imageUrl, now],
+    [view, partKey, tap, onTap, onLink, imageUrl, now],
   );
-  if (part === undefined) return null;
   return (
     <div onPointerDown={onPointerDown} className="min-w-0">
       <PartFrame part={part} trick={trick} tap={tap} now={now}>
