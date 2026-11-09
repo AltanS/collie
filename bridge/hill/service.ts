@@ -15,6 +15,13 @@
 // walky send (`WalkyService.send` with `{ kind: "operator", label }`), as `POST /api/walky` does it.
 // The hill has no path of its own into a pane.
 //
+// NO POSTER WORDS WITH THE PERSON'S AUTHORITY IN ANOTHER SESSION. The answer is typed as the operator.
+// Into the poster's own session it may quote the title and the option's label: the poster wrote them for
+// itself. Into another session (`replyTo` names someone else, and always for a trick) it carries only the
+// id, the option's intent word, the person's own text and one fixed line (`answerMessage`); that session
+// reads the decision itself with `collie hill status <id>`, which answers the poster and the `replyTo`
+// session, nobody else.
+//
 // THE NAMES ON THE CARD. `from.label` and `target.label` are the session's name as the Dashboard's row
 // shows it (`sessionName`, injected; hill/walky.ts `hillSessionName`), with the walky label (folder
 // and branch) only when the bridge has no name for the pane. Several sessions often share one folder
@@ -257,16 +264,28 @@ export function messageTitle(title: string): string {
   return points.length <= MESSAGE_TITLE_MAX ? title : `${points.slice(0, MESSAGE_TITLE_MAX - 1).join("")}…`;
 }
 
+/** The fixed last line of an answer typed into a session other than the poster's: where the decision can be read. */
+export function readItLine(id: string): string {
+  return `Read the decision with: collie hill status ${id}`;
+}
+
 /**
- * The walky message an answer types, as the contract spells it: `Answer to <id> "<title>"`, then
- * `Option: <intent> (<label>)` for an option, then the person's text when there is one. A dismiss is
- * the first line and `Dismissed.`.
+ * The walky message an answer types. It is typed with the person's authority, so it carries words the
+ * poster wrote only when it goes back into the poster's own session.
+ *
+ * To the poster (`toPoster`, the default): `Answer to <id> "<title>"`, then `Option: <intent> (<label>)`
+ * for an option, then the person's text when there is one. A dismiss is the first line and `Dismissed.`.
+ *
+ * To another session (`replyTo` names someone else, always so for a trick): no title and no label, only
+ * `Answer to <id>`, `Option: <intent>` (a pattern-checked word, `isHillOptionIntent`), the person's text,
+ * and {@link readItLine}. A dismiss is `Answer to <id>` and `Dismissed.` only.
  */
-export function answerMessage(decision: Pick<HillDecision, "id" | "title">, intent: string, label: string | null, text: string | null): string {
-  const lines = [`Answer to ${decision.id} "${messageTitle(decision.title)}"`];
+export function answerMessage(decision: Pick<HillDecision, "id" | "title">, intent: string, label: string | null, text: string | null, toPoster = true): string {
+  const lines = [toPoster ? `Answer to ${decision.id} "${messageTitle(decision.title)}"` : `Answer to ${decision.id}`];
   if (intent === "dismiss") return [...lines, DISMISSED].join("\n");
-  if (intent !== "answer") lines.push(`Option: ${intent} (${label ?? intent})`);
+  if (intent !== "answer") lines.push(toPoster ? `Option: ${intent} (${label ?? intent})` : `Option: ${intent}`);
   if (text !== null && text !== "") lines.push(text);
+  if (!toPoster) lines.push(readItLine(decision.id));
   return lines.join("\n");
 }
 
@@ -606,10 +625,35 @@ export class HillService {
     return decision === undefined || keyOf(decision) !== senderKey(sender) ? null : decision;
   }
 
-  /** One of the sender's own decisions. Another sender's id answers as not found. */
+  /** Whether the walky address `address` is the live session `replyTo` names (the instance token included). */
+  private isReplyTo(replyTo: string | null, address: string | null): boolean {
+    if (replyTo === null || address === null) return false;
+    return replyTo === address || this.deps.place(address)?.address === replyTo;
+  }
+
+  /**
+   * Whether an answer to `decision` goes back into the poster's own session. Not so when `replyTo` names
+   * another session, and never for a trick: then the typed message carries no word the poster wrote.
+   */
+  private answersThePoster(decision: HillDecision): boolean {
+    if (decision.replyTo === null) return true;
+    return decision.from.kind === "agent" && this.isReplyTo(decision.replyTo, decision.from.address);
+  }
+
+  /**
+   * One decision, for its poster or for the session its `replyTo` names: the one an answer is typed into
+   * reads it with `collie hill status`. Anybody else's id answers as not found.
+   */
   status(sender: HillSender, id: string): HillOneAnswer {
-    const decision = this.mine(sender, id);
+    const decision = this.mine(sender, id) ?? this.addressedTo(sender, id);
     return decision === null ? { ok: false, missing: true, error: `no decision ${id} from this session` } : { ok: true, decision: this.named(decision) };
+  }
+
+  /** A decision whose `replyTo` is the asking agent's live session, or null. */
+  private addressedTo(sender: HillSender, id: string): HillDecision | null {
+    if (sender.kind !== "agent") return null;
+    const decision = this.deps.store.get(id);
+    return decision !== undefined && this.isReplyTo(decision.replyTo, sender.address) ? decision : null;
   }
 
   /** The poster takes an open decision back. It closes `withdrawn`, "by the poster" (a trick's runner names its own reason). */
@@ -717,13 +761,15 @@ export class HillService {
     if (decision === undefined) return this.final(request, id, by, digest, receiptOf(rid, now, "gone", "no such decision", null, null));
     if (decision.state !== "open") return this.final(request, id, by, digest, receiptOf(rid, now, "gone", `the decision is ${decision.state}`, decision.state, null));
     const option = decision.options.find((candidate) => candidate.intent === intent);
+    // The intent is typed into the session; only a word the post rules let through ever is (a stored file is not re-checked on load).
+    if (option !== undefined && !isHillOptionIntent(option.intent)) return this.final(request, id, by, digest, receiptOf(rid, now, "rejected", "not an option of this decision", "open", null));
     if (option === undefined && intent !== "answer" && intent !== "dismiss") return this.final(request, id, by, digest, receiptOf(rid, now, "rejected", "not an option of this decision", "open", null));
     const cleaned = cleanText(request.value.text ?? "", HILL_ANSWER_TEXT_MAX);
     if (cleaned.over) return this.final(request, id, by, digest, receiptOf(rid, now, "rejected", `text is longer than ${String(HILL_ANSWER_TEXT_MAX)} characters`, "open", null));
     const text = cleaned.text === "" ? null : cleaned.text;
     const textRule = this.textRule(decision, intent, text);
     if (textRule !== null) return this.final(request, id, by, digest, receiptOf(rid, now, "rejected", textRule, "open", null));
-    const body = answerMessage(decision, intent, option?.label ?? null, text);
+    const body = answerMessage(decision, intent, option?.label ?? null, text, this.answersThePoster(decision));
     if (codePoints(body) > WALKY_BODY_MAX) return this.final(request, id, by, digest, receiptOf(rid, now, "rejected", "text is too long for one message", "open", null));
 
     // Where the answer goes: `replyTo`, else the poster. A trick with no `replyTo` has nothing to type into.

@@ -282,7 +282,8 @@ describe("end to end", () => {
     expect(r.typed).toEqual([
       {
         paneId: "%2",
-        text: '[walky-talky wt_e2e0000001] from operator (Pixel 9)\nAnswer to dc_e2e000000001 "Ship the zoom fix in 1.28.1?"\nOption: yes (Yes, Edge first)\nNot before the browser leg is green.',
+        // The answer goes to another session than the poster's: no title, no label (the poster's words).
+        text: "[walky-talky wt_e2e0000001] from operator (Pixel 9)\nAnswer to dc_e2e000000001\nOption: yes\nNot before the browser leg is green.\nRead the decision with: collie hill status dc_e2e000000001",
       },
     ]);
     expect(r.walky.status("wt_e2e0000001").message).toMatchObject({ kind: "operator", from: { label: "Pixel 9", address: null } });

@@ -284,10 +284,10 @@ describe("post, status, withdraw and list against a bridge", () => {
     expect(answered.kind).toBe("receipt");
     const status = deps(sock);
     expect(await cmdHillStatus(status, ["dc_cli000000001"])).toBe(EXIT.OK);
-    expect(status.io.stdout).toEqual(["dc_cli000000001 answered", "goes to: repo#one on desk", "answer: yes (Yes, Edge first)", "  Go.", "  Today.", "by: Pixel 9", "delivery: typed"]);
+    expect(status.io.stdout).toEqual(["dc_cli000000001 answered", "title: Ship the zoom fix in 1.28.1?", "goes to: repo#one on desk", "answer: yes (Yes, Edge first)", "  Go.", "  Today.", "by: Pixel 9", "delivery: typed"]);
     const withdraw = deps(sock);
     expect(await cmdHillWithdraw(withdraw, ["dc_cli000000002"])).toBe(EXIT.OK);
-    expect(withdraw.io.stdout).toEqual(["dc_cli000000002 withdrawn", "goes to: repo#one on desk", "reason: by the poster"]);
+    expect(withdraw.io.stdout).toEqual(["dc_cli000000002 withdrawn", "title: Ship the zoom fix in 1.28.1?", "goes to: repo#one on desk", "reason: by the poster"]);
     const list = deps(sock);
     expect(await cmdHillList(list, [])).toBe(EXIT.OK);
     expect(list.io.stdout.map((line) => line.split("  ")[0])).toEqual(["dc_cli000000001", "dc_cli000000002"]);
@@ -364,6 +364,7 @@ describe("help", () => {
     "Always write the summary in plain words, and recommend one option with a why.",
     "One question per decision. To change one, post again with --supersedes; never repost.",
     "Do not wait in a loop. The answer arrives as a WalkyTalky message and starts your next turn.",
+    "If no answer arrived, read it with collie hill status <id>.",
     "A worker with a lead asks its lead first.",
   ];
 
@@ -375,10 +376,10 @@ describe("help", () => {
     const help = capture();
     expect(await run(["hill", "--help"], help)).toBe(EXIT.OK);
     expect(help.stdout[0]).toBe("usage: collie hill {post|status|withdraw|list}");
-    expect(help.stdout.slice(-5)).toEqual(RULES);
+    expect(help.stdout.slice(-RULES.length)).toEqual(RULES);
     const bare = capture();
     expect(cmdHill({ io: bare }, [])).toBe(EXIT.USAGE);
-    expect(bare.stderr.slice(-5)).toEqual(RULES);
+    expect(bare.stderr.slice(-RULES.length)).toEqual(RULES);
     const wrong = capture();
     expect(cmdHill({ io: wrong }, ["ask"])).toBe(EXIT.USAGE);
     expect(wrong.stderr[0]).toBe("error: unknown hill command `ask`");
@@ -389,7 +390,7 @@ describe("help", () => {
     expect(await run(["hill", "post", "--help"], io)).toBe(EXIT.OK);
     expect(io.stdout).toEqual(hillPostHelp());
     expect(io.stdout[0]).toStartWith("usage: collie hill post");
-    expect(io.stdout.slice(-5)).toEqual(RULES);
+    expect(io.stdout.slice(-RULES.length)).toEqual(RULES);
   });
 });
 
@@ -466,11 +467,26 @@ describe("post --image", () => {
   });
 });
 
+describe("status from the session an answer goes to", () => {
+  socketTest("the replyTo session reads the decision and its answer; a third pane does not", async () => {
+    const b = await bridge();
+    const sock = [walkySocketPath(b.stateDir)];
+    expect(await cmdHillPost(deps(sock), [...POST, "--reply-to", "local/%2"])).toBe(EXIT.OK);
+    await b.hill.answer({ rid: "11111111-1111-4111-8111-111111111111", node: "hill/dc_cli000000001", intent: "yes", value: { text: "Go." } }, "dc_cli000000001", "Pixel 9");
+    const reader = deps(sock, inPane("%2"));
+    expect(await cmdHillStatus(reader, ["dc_cli000000001"])).toBe(EXIT.OK);
+    expect(reader.io.stdout).toEqual(["dc_cli000000001 answered", "title: Ship the zoom fix in 1.28.1?", "goes to: repo#two on desk", "answer: yes (Yes, Edge first)", "  Go.", "by: Pixel 9", "delivery: typed"]);
+    // The replyTo session may read it, never take it back.
+    const taker = deps(sock, inPane("%2"));
+    expect(await cmdHillWithdraw(taker, ["dc_cli000000001"])).toBe(EXIT.STATE);
+  });
+});
+
 describe("the session's name in status", () => {
   test("status names where the answer goes as the bridge served it, the session's name and its machine", () => {
     const decision = storedDecision("dc_named0000001", { target: { label: "concept hill v2", host: "bluefin", unattended: false } });
-    expect(statusLines(decision)).toEqual(["dc_named0000001 open", "goes to: concept hill v2 on bluefin"]);
-    expect(statusLines({ ...decision, target: { label: "lead", host: null, unattended: false } })).toEqual(["dc_named0000001 open", "goes to: lead"]);
-    expect(statusLines({ ...decision, target: null })).toEqual(["dc_named0000001 open"]);
+    expect(statusLines(decision)).toEqual(["dc_named0000001 open", "title: Ship it?", "goes to: concept hill v2 on bluefin"]);
+    expect(statusLines({ ...decision, target: { label: "lead", host: null, unattended: false } })).toEqual(["dc_named0000001 open", "title: Ship it?", "goes to: lead"]);
+    expect(statusLines({ ...decision, target: null })).toEqual(["dc_named0000001 open", "title: Ship it?"]);
   });
 });
