@@ -421,6 +421,25 @@ describe("update hands off — the command that leaves this process's cgroup", (
     expect(updateStartCommand({ ...base, major: false, hasSystemdRun: true, hasSetsid: true, envAdd: null }).env).toBeUndefined();
   });
 
+  test("the unit gets the instance's --setenv and the client gets the derived session dir, each only its own", () => {
+    // #754 and #745 together: `--setenv` names the instance to the transient UNIT, `env` lets the
+    // CLIENT find the bus. Neither may stand in for the other.
+    const envAdd = { XDG_RUNTIME_DIR: "/run/user/501", DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/501/bus" };
+    const plan = updateStartCommand({
+      ...base,
+      major: false,
+      hasSystemdRun: true,
+      hasSetsid: true,
+      env: { COLLIE_INSTANCE: "core", HOME: "/home/pat" },
+      envAdd,
+    });
+    expect(plan.command.filter((part) => part.startsWith("--setenv="))).toEqual([
+      "--setenv=HOME=/home/pat",
+      "--setenv=COLLIE_INSTANCE=core",
+    ]);
+    expect(plan.env).toEqual(envAdd);
+  });
+
   test("a major crossing hands the CLI its own consent flag (ADR 0020)", () => {
     const plan = updateStartCommand({ ...base, major: true, hasSystemdRun: true, hasSetsid: true });
     expect(plan.command.slice(-2)).toEqual(["update", "--major"]);

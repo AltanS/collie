@@ -1747,6 +1747,29 @@ describe("collie update on a binary install", () => {
     expect(client?.env.DBUS_SESSION_BUS_ADDRESS).toBe(`unix:path=/run/user/${uid}/bus`);
   });
 
+  test("a suffixed instance behind the derived session dir: the unit gets --setenv, the client the bus", async () => {
+    // #754 and #745 together on the CLI handoff: the instance rides `--setenv` to the transient unit,
+    // and the session dir the probe derived rides the client's env, never the command line.
+    const uid = process.getuid?.() ?? 0;
+    const h = binaryHarness({
+      others: ["0.9.0"],
+      env: { COLLIE_INSTANCE: "core" },
+      answers: [
+        [
+          "systemctl --user show-environment",
+          { perCall: (_n, env) => ({ code: env?.XDG_RUNTIME_DIR === `/run/user/${uid}` ? 0 : 1 }) },
+        ],
+      ],
+    });
+    expect(await cmdUpdate({ ...h.deps, ctx: { ...h.deps.ctx, instance: "core" } })).toBe(EXIT.OK);
+    const client = h.exec.ran[0];
+    expect(client?.command[0]).toBe("systemd-run");
+    expect(client?.command).toContain("--setenv=COLLIE_INSTANCE=core");
+    expect(client?.command.join(" ")).not.toContain("XDG_RUNTIME_DIR");
+    expect(client?.env.XDG_RUNTIME_DIR).toBe(`/run/user/${uid}`);
+    expect(client?.env.COLLIE_INSTANCE).toBe("core");
+  });
+
   test("the runner flips `current` with one rename, restarts through it, and only then prunes", async () => {
     const h = binaryHarness({ others: ["0.9.0"] });
     expect(await runner(h, BINARY_APPLY)).toBe(EXIT.OK);
