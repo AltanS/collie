@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Fixed
+
+- **Chrome stops showing "This site has been updated in the background" on a busy day too.** The 1.28.0 fix did not reach a phone in a pocket while agents came and went: each pane that stopped needing you still sent that phone a clear, about 24 in a day. Collie now sends each phone at most four clears in any 24 hours, and clears that come together count as one. Past that, a notification for something you already handled can stay until the same pane notifies again or until you next open Collie, which closes it then. The hourly log line counts the clears left out.
+
 ## [1.28.0] - 2026-11-09
 
 ### Added

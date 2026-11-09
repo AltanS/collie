@@ -38,9 +38,19 @@ export function isPaneNotification(data: NotifData | null | undefined, paneId: s
  * from its primary session only, so a member's named session names no slot.
  */
 export function paneSlotTag(paneId: string, scope?: Scope): string | null {
+  const herd = herdSlotTag(scope);
+  return herd === null ? null : `${herd}:${paneId}`;
+}
+
+/**
+ * The session's herd slot itself, the summary's tag when one notification stands for every alert
+ * (`herdTagFor` in bridge/sessions.ts, host-qualified as bridge/crew/tags.ts does). A member's named
+ * session names no slot, as in {@link paneSlotTag}.
+ */
+export function herdSlotTag(scope?: Scope): string | null {
   const { host, session } = normalizeScope(scope);
-  if (host !== undefined) return session === undefined ? `${hostSlot(HERD_SLOT, host)}:${paneId}` : null;
-  return session === undefined ? `${HERD_SLOT}:${paneId}` : `${HERD_SLOT}:${session}:${paneId}`;
+  if (host !== undefined) return session === undefined ? hostSlot(HERD_SLOT, host) : null;
+  return session === undefined ? HERD_SLOT : `${HERD_SLOT}:${session}`;
 }
 
 /** The base of every herd slot, `herdTagFor`'s in bridge/sessions.ts. */

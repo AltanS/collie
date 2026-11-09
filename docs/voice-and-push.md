@@ -525,6 +525,11 @@ as the pushes, so it counts exactly what notifies you.
 Opening a finished pane in Collie retracts its alert, from the lock screen and from the count. A
 blocked pane's alert stays until you answer it.
 
+Taking an alert off the lock screen costs a push that shows nothing, and Chrome allows a site only a
+few of those a day before it shows "This site has been updated in the background". So Collie sends
+each phone at most four of them in a day. Past that, the alert for something you already handled
+stays until the same pane alerts again, or until you next open Collie, which closes it then.
+
 Each herd push carries the count for its session, and the phone adds up every session and machine in
 the crew. Opening the dashboard sets it again from what is on screen when it shows every session, and
 unpairing the device clears it. A dashboard that shows one session of several leaves the count to the

@@ -18,7 +18,7 @@ import { WorktreeReceiptStore } from "./worktree-receipts.ts";
 import { MachineAlertStore } from "./machine-alerts.ts";
 import { loadMachineHistory, saveMachineHistory } from "./machine-history.ts";
 import { machineRosterOf, MachineWatch, SOLO_MACHINE_ID } from "./machines.ts";
-import type { PushMessage } from "./push.ts";
+import { Push, type PushMessage } from "./push.ts";
 import { TrustStore } from "./crew/trust-store.ts";
 import { Snooze } from "./snooze.ts";
 import { bootSources, planPrograms, sourcesPath, type DurableSource } from "./sources.ts";
@@ -1308,6 +1308,11 @@ const STATE_DIR_ENTRIES = [
   // The pins of a session (M90): a folder, one file per session, written by use and by nothing else. Absent
   // until the first pin from a phone; a read of the list or a bridge that is merely started never makes it.
   "pins",
+  // The silent clears each push subscription was sent in the last day (bridge/push.ts, rule 4), so the
+  // daily budget survives a restart. Written after the first clear that reaches a subscription and
+  // when a row leaves: an instance nobody subscribed to push from never has it. Driven in "the clear
+  // budget appears only on use".
+  "push-clear-budget.json",
   "push-subscriptions.json",
   // The Send Protocol's request files and receipts (M56 spec 05), one per request id in this folder.
   // Created by a bridge that sends text, which is the default since spec 06: with COLLIE_SEND_PROTOCOL=0
@@ -1546,6 +1551,28 @@ describe("solo zero-tax — the filesystem", () => {
       await bases.record("/home/op/repo/.worktrees/x", { base: "main", createdAt: 1 });
       expect(await readdir(stateDir)).toEqual(["worktree-bases.json"]);
       expect(STATE_DIR_ENTRIES).toContain("worktree-bases.json");
+    } finally {
+      await rm(stateDir, { recursive: true, force: true });
+    }
+  });
+
+  // The same shape for push's clear budget (bridge/push.ts, rule 4): a bridge with no subscription
+  // sends nothing and writes nothing, however many alerts come and go; the first clear that reaches
+  // a subscription writes the one file.
+  test("the clear budget appears only on use: a clear that reaches a subscription", async () => {
+    const stateDir = await mkdtemp(join(tmpdir(), "collie-solo-baseline-"));
+    try {
+      const push = new Push({ ...loadConfig(), stateDir }, () => Promise.resolve());
+      push["_enabled"] = true;
+      await push.loadStore();
+      await push.send({ title: "claude needs you", tag: "collie:herd:w1:p1" });
+      await push.send({ type: "clear", tag: "collie:herd:w1:p1" });
+      await push.send({ type: "clear", tag: "collie:herd" });
+      expect(await readdir(stateDir)).toEqual([]);
+      push["subs"].set("phone", { endpoint: "phone", keys: { p256dh: "p", auth: "a" } });
+      await push.send({ type: "clear", tag: "collie:herd:w1:p1" });
+      expect(await readdir(stateDir)).toEqual(["push-clear-budget.json"]);
+      expect(STATE_DIR_ENTRIES).toContain("push-clear-budget.json");
     } finally {
       await rm(stateDir, { recursive: true, force: true });
     }
