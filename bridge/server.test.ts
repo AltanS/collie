@@ -3614,7 +3614,8 @@ describe("the widened snapshot composes with the host scope (M22/06)", () => {
   test("the peer surface answers the view the LEAD asked for, never a hard-coded one", () => {
     // The blocker M22/06 removed: `snapshot: (session) => localSnapshot(session, null, false)` made a
     // widened peer answer impossible, whatever the lead sent.
-    expect(src).toContain("snapshot: (view) => localSnapshot(view.session, null, view.widen),");
+    // The fourth argument is the crew body (no tricks, review row 12): the view is still the lead's.
+    expect(src).toContain("snapshot: (view) => localSnapshot(view.session, null, view.widen, true),");
     expect(src).not.toContain("localSnapshot(session, null, false)");
   });
 });
