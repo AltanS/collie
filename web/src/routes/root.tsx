@@ -16,6 +16,7 @@ import { usePolling } from "@/hooks/use-polling";
 import { usePollBusy } from "@/hooks/use-poll-busy";
 import { useBusyWhile } from "@/lib/busy";
 import { useAgentTransitions } from "@/hooks/use-transitions";
+import { useNotificationSweep } from "@/hooks/use-notification-sweep";
 import { usePushSetup } from "@/hooks/use-push";
 import { useConnectionLost } from "@/hooks/use-connection-lost";
 import { UpdateRibbon } from "@/components/update-ribbon";
@@ -115,6 +116,9 @@ export function RootLayout() {
       ? undefined
       : findPane(data.agents, paneId, pane?.scope ?? data.scope, data.servers, data.sessions);
   useAgentTransitions(data.agents, openPane ? paneRowKey(openPane) : null);
+  // A notification whose clear the bridge skipped (its daily budget, bridge/push.ts rule 4) closes here
+  // instead, once a live snapshot says nothing waits on it any more.
+  useNotificationSweep(data);
   // THE PUSH RACE. `usePushSetup` can raise the browser's permission prompt on its own, behind the
   // tour's backdrop, so it waits until the tour has decided it is not showing. "pending" is what
   // makes this correct rather than racy: a child's effect runs before the parent's, but the state it

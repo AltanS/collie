@@ -41,6 +41,8 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 - **A crew of development builds no longer asks for an update it cannot run.** On a lead built from a checkout (`1.28.0-dev+…`) with members built the same way, the phone counted every member as behind 1.28.0 and offered to update the crew. The run then waited 20 minutes and failed, because a development build states no release, so no member takes its turn, and the failed row stayed for good. A development build now counts as level with the release it is built on, a lead on a development build offers no crew run, and a crew update started on one anyway is refused at once with the reason.
 
+- **Chrome stops showing "This site has been updated in the background" on a busy day too.** The 1.28.0 fix did not reach a phone in a pocket while agents came and went: each pane that stopped needing you still sent that phone a clear, about 24 in a day. Collie now sends each phone at most four clears in any 24 hours, and clears that come together count as one. Past that, a notification for something you already handled can stay until the same pane notifies again or until you next open Collie, which closes it then. The hourly log line counts the clears left out.
+
 ## [1.28.0] - 2026-11-09
 
 ### Added

@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
 import { describe, expect, test } from "vitest";
 
 import { decidePush, hostSlot, localisedTitle, notificationPath, tagFor } from "@/lib/push-decision";
@@ -313,5 +316,26 @@ describe("decidePush — a clear that names several slots", () => {
       kind: "show",
       tag: "collie:herd:a",
     });
+  });
+});
+
+// The bridge skips a clear once a phone's daily budget of silent pushes is spent (bridge/push.ts, rule
+// 4), and counts on the slot's next render to replace the notification the clear would have closed.
+// That holds because a render and a clear of one slot resolve the same tag here, and the worker shows
+// a render on that tag, which replaces the notification already on it (Notifications API, `tag`).
+describe("decidePush — a render replaces what a skipped clear left", () => {
+  test("a render lands on the very slot its clear names, for a pane on this machine, a session and a member", () => {
+    for (const tag of ["collie:herd:w1:p1", "collie:herd:work:w1:p1", "collie:herd@laptop:w1:p1", "collie:herd"]) {
+      const clear = decidePush({ type: "clear", tag }, false);
+      const render = decidePush({ title: "claude needs you", tag, renotify: true, data: { paneId: "w1:p1" } }, false);
+      expect(clear).toMatchObject({ kind: "clear", tag });
+      expect(render).toMatchObject({ kind: "show", tag });
+    }
+  });
+
+  test("the worker shows a render on the decided tag, so it replaces the notification on that slot", () => {
+    const sw = readFileSync(resolve(import.meta.dirname, "../sw.ts"), "utf8");
+    expect(sw).toContain("    tag: decision.tag,\n");
+    expect(sw).toContain("await self.registration.showNotification(decision.title, options);");
   });
 });
