@@ -129,6 +129,20 @@ function TrickRow({ trick, clock, checked, canWrite, onFlip }: { trick: WireTric
   );
 }
 
+/**
+ * What a row that throws draws instead: the trick's id as text and the same switch, in the same frame. The
+ * off switch works whatever state a trick is in, so a row that cannot be drawn still keeps it. Only the id,
+ * the host and the switch's own state are read here.
+ */
+function SwitchOnlyRow({ id, checked, canWrite, onFlip }: { id: string; checked: boolean; canWrite: boolean; onFlip: (on: boolean) => void }) {
+  return (
+    <div data-trick={id} data-fallback="" className="flex min-h-11 items-center justify-between gap-4 px-4 py-3">
+      <div className="min-w-0 flex-1 truncate font-medium">{id}</div>
+      <Switch checked={checked} onCheckedChange={onFlip} disabled={!canWrite} aria-label={id} />
+    </div>
+  );
+}
+
 function TricksList({ tricks, onSwitch = switchTrick, now, readOnly }: TricksSettingsCardProps & { tricks: readonly WireTrickInfo[] }) {
   useLocale();
   const clock = useBridgeNow(now);
@@ -200,12 +214,21 @@ function TricksList({ tricks, onSwitch = switchTrick, now, readOnly }: TricksSet
             <p className="truncate font-mono text-xs text-muted-foreground">collie trick init &lt;id&gt;</p>
           </div>
         )}
-        {tricks.map((trick) => (
-          // One boundary per row: a row that throws leaves the others, and the switches of the others, drawn.
-          <TrickBoundary key={trickKey(trick)} fallback="none" resetKey={trick}>
-            <TrickRow trick={trick} clock={clock} checked={held.get(trickKey(trick)) ?? trick.on} canWrite={canWrite} onFlip={(on) => void flip(trick, on)} />
-          </TrickBoundary>
-        ))}
+        {tricks.map((trick) => {
+          const checked = held.get(trickKey(trick)) ?? trick.on;
+          const onFlip = (on: boolean) => void flip(trick, on);
+          // One boundary per row: a row that throws leaves the others drawn, and keeps its own switch.
+          return (
+            <TrickBoundary
+              key={trickKey(trick)}
+              fallback="none"
+              fallbackNode={<SwitchOnlyRow id={String(trick.id)} checked={checked} canWrite={canWrite} onFlip={onFlip} />}
+              resetKey={trick}
+            >
+              <TrickRow trick={trick} clock={clock} checked={checked} canWrite={canWrite} onFlip={onFlip} />
+            </TrickBoundary>
+          );
+        })}
       </div>
       <p className="border-t border-border px-4 py-3 text-xs text-muted-foreground">{t("settings.tricks.foot")}</p>
     </Card>

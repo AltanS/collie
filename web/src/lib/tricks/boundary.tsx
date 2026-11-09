@@ -16,6 +16,8 @@ import { Placeholder } from "./render";
 interface TrickBoundaryProps {
   /** What to draw after a failure: the placeholder for a view, nothing for a mark or a status item. */
   fallback: "placeholder" | "none";
+  /** Drawn after a failure instead of `fallback`: a stand-in built only from values that cannot throw. */
+  fallbackNode?: ReactNode;
   /**
    * What the part is, as a string (`${partKey}@${rev}`) or as the object the store replaces when it changes
    * (a trick's entry). A new value gives the part a new try; it is compared, never read, so it cannot throw.
@@ -48,6 +50,7 @@ export class TrickBoundary extends Component<TrickBoundaryProps, TrickBoundarySt
 
   render(): ReactNode {
     if (!this.state.failed) return this.props.children;
+    if (this.props.fallbackNode !== undefined) return this.props.fallbackNode;
     return this.props.fallback === "placeholder" ? <Placeholder /> : null;
   }
 }
