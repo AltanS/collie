@@ -407,9 +407,15 @@ function idArgs(args: readonly string[]): { readonly id: string; readonly json: 
   return { id, json };
 }
 
-/** A decision's state as `status` prints it: the state, why it closed, and the answer when there is one. */
+/** Where the answer goes, as the card's "goes to" line names it: the session's name, and its machine. */
+function targetWords(target: NonNullable<HillDecision["target"]>): string {
+  return target.host === null ? shown(target.label) : `${shown(target.label)} on ${shown(target.host)}`;
+}
+
+/** A decision's state as `status` prints it: the state, where the answer goes, why it closed, and the answer when there is one. */
 export function statusLines(decision: HillDecision): string[] {
   const lines = [`${decision.id} ${decision.state}`];
+  if (decision.target !== null) lines.push(`goes to: ${targetWords(decision.target)}`);
   if (decision.closedReason !== null) lines.push(`reason: ${shown(decision.closedReason)}`);
   if (decision.supersededBy !== null) lines.push(`replaced by: ${decision.supersededBy}`);
   const answer = decision.answer;
@@ -471,7 +477,10 @@ export async function cmdHillList(deps: HillDeps, args: readonly string[]): Prom
     deps.io.out("no decisions");
     return EXIT.OK;
   }
-  for (const decision of decisions) deps.io.out(`${decision.id}  ${decision.state.padEnd(13)}  ${decision.priority.padEnd(5)}  ${shown(decision.title)}`);
+  for (const decision of decisions) {
+    const to = decision.target === null ? "" : `  (to ${targetWords(decision.target)})`;
+    deps.io.out(`${decision.id}  ${decision.state.padEnd(13)}  ${decision.priority.padEnd(5)}  ${shown(decision.title)}${to}`);
+  }
   return EXIT.OK;
 }
 

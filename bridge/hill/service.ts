@@ -15,6 +15,13 @@
 // walky send (`WalkyService.send` with `{ kind: "operator", label }`), as `POST /api/walky` does it.
 // The hill has no path of its own into a pane.
 //
+// THE NAMES ON THE CARD. `from.label` and `target.label` are the session's name as the Dashboard's row
+// shows it (`sessionName`, injected; hill/walky.ts `hillSessionName`), with the walky label (folder
+// and branch) only when the bridge has no name for the pane. Several sessions often share one folder
+// and branch, so the walky label alone does not say which session asked. An open decision is served
+// with the name the pane has NOW, while that pane is live; a closed one keeps the name it had. The
+// walky address stays the routing key and is never renamed.
+//
 // ORDER ON AN ANSWER. Write the receipt, close the decision, then send. A send that fails or throws
 // after the close leaves the decision answered with `delivery: "unknown"`, and nothing is sent again.
 
@@ -116,6 +123,8 @@ export interface HillServiceDeps {
   /** Where a decision's images are read and kept (media.ts). Absent: a post with images is refused. */
   readonly media?: HillMediaStore;
   readonly mintMediaId?: () => string;
+  /** The session's Dashboard name for the live pane a walky address names now, or null to keep the walky label. */
+  readonly sessionName?: (address: string) => string | null;
 }
 
 /** A post's answer: the stored decision, or a refusal with its code and plain words the CLI prints. */
@@ -138,6 +147,8 @@ export const EXPIRED = "expired";
 export const DISMISSED = "Dismissed.";
 /** How many characters of the title the answer message's first line keeps, the `…` included. */
 export const MESSAGE_TITLE_MAX = 80;
+/** How many characters of a session's name a card shows, the `…` included. */
+export const SESSION_LABEL_MAX = 80;
 
 /** Mint a decision id: `dc_` and 12 characters of [a-z0-9], from a uniform random source. */
 export function mintDecisionId(random: (n: number) => Uint8Array = (n) => randomBytes(n)): string {
@@ -213,6 +224,13 @@ export function answerMessage(decision: Pick<HillDecision, "id" | "title">, inte
   if (intent !== "answer") lines.push(`Option: ${intent} (${label ?? intent})`);
   if (text !== null && text !== "") lines.push(text);
   return lines.join("\n");
+}
+
+/** A session's name as the hill keeps it: one cleaned line, cut with `…` past {@link SESSION_LABEL_MAX}. */
+export function sessionLabel(raw: string): string {
+  const { text } = cleanLine(raw, SESSION_LABEL_MAX);
+  const points = [...text];
+  return points.length <= SESSION_LABEL_MAX ? text : `${points.slice(0, SESSION_LABEL_MAX - 1).join("")}…`;
 }
 
 /** The key a sender's decisions are filed under: its address, or the trick's id. */
@@ -292,6 +310,9 @@ type Claim =
 export class HillService {
   private readonly now: () => number;
   private readonly mint: () => string;
+  /** The names of the open decisions at the last `rev()`, and how often they changed since the start. */
+  private namesSeen: string | null = null;
+  private namesMoved = 0;
   /** The answers' claim steps run one after another, so two taps cannot both find a decision open. */
   private lane: Promise<void> = Promise.resolve();
 
@@ -300,14 +321,43 @@ export class HillService {
     this.mint = deps.mintId ?? (() => mintDecisionId());
   }
 
-  /** The revision on the snapshot, or undefined while no decisions file exists. */
+  /**
+   * The revision on the snapshot, or undefined while no decisions file exists. It also moves when a
+   * session behind an open decision is renamed, so the phone refetches the list and shows the new name.
+   */
   rev(): number | undefined {
-    return this.deps.store.rev();
+    const stored = this.deps.store.rev();
+    if (stored === undefined) return undefined;
+    if (this.deps.sessionName !== undefined) {
+      const names = JSON.stringify(this.deps.store.list().open.map((decision) => this.named(decision)).map((decision) => [decision.id, decision.from.label, decision.target?.label ?? null]));
+      if (this.namesSeen !== null && names !== this.namesSeen) this.namesMoved += 1;
+      this.namesSeen = names;
+    }
+    return stored + this.namesMoved;
   }
 
-  /** What `GET /api/hill` serves. */
+  /** What `GET /api/hill` serves: every open decision with the names its sessions have now. */
   list(): ReturnType<HillStore["list"]> {
-    return this.deps.store.list();
+    const list = this.deps.store.list();
+    // The same revision the snapshot carries, so a phone that holds it reads `unchanged`.
+    return { ...list, rev: this.rev() ?? list.rev, open: list.open.map((decision) => this.named(decision)) };
+  }
+
+  /** The session's name for a walky address, or `fallback` when the bridge has none. */
+  private nameOf(address: string | null, fallback: string): string {
+    const name = address === null ? null : (this.deps.sessionName?.(address) ?? null);
+    const label = name === null ? "" : sessionLabel(name);
+    return label === "" ? fallback : label;
+  }
+
+  /** An open decision with the names its sessions have now, while they are live. A closed one, as stored. */
+  private named(decision: HillDecision): HillDecision {
+    if (decision.state !== "open" || this.deps.sessionName === undefined) return decision;
+    const fromLabel = decision.from.kind === "agent" ? this.nameOf(decision.from.address, decision.from.label) : decision.from.label;
+    const to = decision.replyTo ?? decision.from.address;
+    const target = decision.target === null ? null : { ...decision.target, label: this.nameOf(to, decision.target.label) };
+    if (fromLabel === decision.from.label && target?.label === decision.target?.label) return decision;
+    return { ...decision, from: { ...decision.from, label: fromLabel }, target };
   }
 
   /** The sender a pane of this bridge stands for, at its walky address (`WalkyService.addressOf`). */
@@ -376,7 +426,7 @@ export class HillService {
       requestId: input.requestId,
       from:
         from.kind === "agent"
-          ? { kind: "agent", address: from.address, trickId: null, memberId: from.memberId, harness: from.harness, label: from.label, host: from.host }
+          ? { kind: "agent", address: from.address, trickId: null, memberId: from.memberId, harness: from.harness, label: this.nameOf(from.address, from.label), host: from.host }
           : { kind: "trick", address: null, trickId: from.trickId, memberId: this.deps.memberId, harness: null, label: headerField(from.label, WALKY_LABEL_MAX), host: this.deps.machine },
       about: about?.address ?? null,
       priority,
@@ -384,7 +434,7 @@ export class HillService {
       ...cleaned.fields,
       media,
       replyTo: replyTo?.address ?? null,
-      target: target === null ? null : { label: target.label, host: target.host, unattended: target.unattended },
+      target: target === null ? null : { label: this.nameOf(target.address, target.label), host: target.host, unattended: target.unattended },
       supersedes: superseded?.id ?? null,
       supersededBy: null,
       expiresAt: input.expiresAt ?? null,
@@ -473,7 +523,7 @@ export class HillService {
   /** One of the sender's own decisions. Another sender's id answers as not found. */
   status(sender: HillSender, id: string): HillOneAnswer {
     const decision = this.mine(sender, id);
-    return decision === null ? { ok: false, missing: true, error: `no decision ${id} from this session` } : { ok: true, decision };
+    return decision === null ? { ok: false, missing: true, error: `no decision ${id} from this session` } : { ok: true, decision: this.named(decision) };
   }
 
   /** The poster takes an open decision back. It closes `withdrawn`, "by the poster". */
@@ -491,7 +541,7 @@ export class HillService {
   mineList(sender: HillSender): HillDecision[] {
     const key = senderKey(sender);
     const own = this.deps.store.all().filter((decision) => keyOf(decision) === key);
-    const open = sortOpenDecisions(own.filter((decision) => decision.state === "open"));
+    const open = sortOpenDecisions(own.filter((decision) => decision.state === "open")).map((decision) => this.named(decision));
     const closed = own.filter((decision) => decision.state !== "open").toSorted((a, b) => (b.closedAt ?? b.at) - (a.closedAt ?? a.at));
     return [...open, ...closed];
   }

@@ -305,7 +305,7 @@ import { deniedFoldersSync, HillMediaStore } from "./hill/media.ts";
 import { HillReceiptStore } from "./hill/receipts.ts";
 import { HillService } from "./hill/service.ts";
 import { hillDir, HillStore } from "./hill/store.ts";
-import { walkyPlace, walkySend } from "./hill/walky.ts";
+import { hillSessionName, walkyPlace, walkySend } from "./hill/walky.ts";
 
 // How often the registry rescans the filesystem for sessions that appeared/disappeared after boot.
 const SESSION_REFRESH_MS = 15_000;
@@ -2128,14 +2128,22 @@ await hillReceipts.load();
 // A decision's images (M96): read by the bridge from the path an agent names, never from Collie's own
 // folders, kept in `<stateDir>/hill/media/`, and removed with the decision.
 const hillMedia = new HillMediaStore(hillDir(cfg.stateDir), deniedFoldersSync(filesPrivateFolders(cfg)));
+const hillPlace = walkyPlace(walky, walkyMemberId);
 const hill = new HillService({
   store: new HillStore(hillDir(cfg.stateDir), Date.now, undefined, (ids) => {
     for (const id of ids) hillMedia.remove(id);
   }),
   receipts: hillReceipts,
   media: hillMedia,
-  place: walkyPlace(walky, walkyMemberId),
+  place: hillPlace,
   send: walkySend(walky),
+  // A card names a session as the Dashboard's row does, from the same snapshot views (M96).
+  sessionName: hillSessionName({
+    place: hillPlace,
+    views: () => registry.ordered().flatMap((rt) => rt.engine.current().agents),
+    memberId: walkyMemberId,
+    redact: cfg.redact,
+  }),
   crewMode: () => crew.mode,
   walkyOn: () => cfg.walky,
   memberId: walkyMemberId,

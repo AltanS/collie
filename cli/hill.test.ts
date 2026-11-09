@@ -34,6 +34,7 @@ import {
   imagePathOf,
   parseImageArg,
   parsePostArgs,
+  statusLines,
   type HillDeps,
 } from "./hill.ts";
 import { EXIT } from "./io.ts";
@@ -283,10 +284,10 @@ describe("post, status, withdraw and list against a bridge", () => {
     expect(answered.kind).toBe("receipt");
     const status = deps(sock);
     expect(await cmdHillStatus(status, ["dc_cli000000001"])).toBe(EXIT.OK);
-    expect(status.io.stdout).toEqual(["dc_cli000000001 answered", "answer: yes (Yes, Edge first)", "  Go.", "  Today.", "by: Pixel 9", "delivery: typed"]);
+    expect(status.io.stdout).toEqual(["dc_cli000000001 answered", "goes to: repo#one on desk", "answer: yes (Yes, Edge first)", "  Go.", "  Today.", "by: Pixel 9", "delivery: typed"]);
     const withdraw = deps(sock);
     expect(await cmdHillWithdraw(withdraw, ["dc_cli000000002"])).toBe(EXIT.OK);
-    expect(withdraw.io.stdout).toEqual(["dc_cli000000002 withdrawn", "reason: by the poster"]);
+    expect(withdraw.io.stdout).toEqual(["dc_cli000000002 withdrawn", "goes to: repo#one on desk", "reason: by the poster"]);
     const list = deps(sock);
     expect(await cmdHillList(list, [])).toBe(EXIT.OK);
     expect(list.io.stdout.map((line) => line.split("  ")[0])).toEqual(["dc_cli000000001", "dc_cli000000002"]);
@@ -462,5 +463,14 @@ describe("post --image", () => {
     expect(await cmdHillPost(d, [...POST, "--image", "a.png"])).toBe(EXIT.OK);
     expect(d.io.stdout).toEqual(["dc_older0000001"]);
     expect(d.io.stderr).toEqual([`hill: ${HILL_IMAGES_DROPPED}`]);
+  });
+});
+
+describe("the session's name in status", () => {
+  test("status names where the answer goes as the bridge served it, the session's name and its machine", () => {
+    const decision = storedDecision("dc_named0000001", { target: { label: "concept hill v2", host: "bluefin", unattended: false } });
+    expect(statusLines(decision)).toEqual(["dc_named0000001 open", "goes to: concept hill v2 on bluefin"]);
+    expect(statusLines({ ...decision, target: { label: "lead", host: null, unattended: false } })).toEqual(["dc_named0000001 open", "goes to: lead"]);
+    expect(statusLines({ ...decision, target: null })).toEqual(["dc_named0000001 open"]);
   });
 });
