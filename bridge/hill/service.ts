@@ -496,8 +496,8 @@ export class HillService {
     if (!images.ok) return images;
 
     let id = this.mint();
-    for (let tries = 0; this.deps.store.get(id) !== undefined && tries < 8; tries += 1) id = this.mint();
-    if (this.deps.store.get(id) !== undefined) return refuse(null, "could not mint a decision id; try again");
+    for (let tries = 0; this.deps.store.taken(id) && tries < 8; tries += 1) id = this.mint();
+    if (this.deps.store.taken(id)) return refuse(null, "could not mint a decision id; try again");
     const media = this.keepImages(id, images.images);
     if (media === null) return refuse(null, "the images could not be saved on this machine; nothing was posted");
     const decision: HillDecision = {
@@ -583,9 +583,15 @@ export class HillService {
     return bytes === null ? null : { mime: media.mime, bytes };
   }
 
-  /** Remove the image folders of decisions the store no longer holds. Run at start and from the sweep. */
+  /**
+   * Remove the image folders of decisions the store no longer holds. Run at start and from the sweep.
+   * Never after the decisions file was set aside, and never while an entry this build cannot read has
+   * no id it can tell (store.ts `mediaKeep`): a folder it cannot tie to a decision may still be one's.
+   */
   pruneMedia(): number {
-    return this.deps.media?.prune(new Set(this.deps.store.all().map((decision) => decision.id))) ?? 0;
+    const keep = this.deps.store.mediaKeep();
+    if (keep === null) return 0;
+    return this.deps.media?.prune(keep) ?? 0;
   }
 
   /** `about` as the post named it: none, `here` (the poster's own session) or an address. Undefined: not a live one. */

@@ -18,14 +18,20 @@
 // on every write. It is undefined until the file exists: a bridge that never took a post serves the
 // same snapshot bytes as a build without the hill.
 //
-// A FILE THAT DOES NOT READ (not JSON, another version, not a list) is set aside as
-// `decisions.json.bad-<ms>` and the store starts empty, with one warning. A single entry that fails its
-// reader is dropped at the next write.
+// A FILE THAT DOES NOT READ (not JSON, another version, not a list, a read the OS refused) is set aside
+// as `decisions.json.bad-<ms>` and the store starts empty, with one warning. Such a store is not
+// `cleanlyLoaded`, and the service then never prunes the image folders: the set-aside file may still
+// name them, and the operator may put it back.
+//
+// AN ENTRY THIS BUILD CANNOT READ (a newer build wrote it, before a rollback) is kept as the raw value
+// it was, never listed and never served, and written back unchanged on every write, so a build that
+// can read it finds it again after the next update. Its `id`, when it has a string one, stays taken.
 
 import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { parseJsonObject } from "../../web/src/lib/json.ts";
+import type { JsonValue } from "../json.ts";
+import { asJsonObject, asJsonString, parseJsonObject } from "../../web/src/lib/json.ts";
 import { HILL_CLOSED_SERVED, type HillDecision, type HillList } from "../../web/src/lib/hill/wire.ts";
 import { readDecision } from "./parse.ts";
 
@@ -52,10 +58,18 @@ export function pruned(decisions: readonly HillDecision[], keep = HILL_CLOSED_KE
   return decisions.filter((decision) => decision.state === "open" || kept.has(decision.id));
 }
 
+/** The `id` of a raw entry, when it has a string one; null when it has none this build can tell. */
+function rawId(entry: JsonValue): string | null {
+  return asJsonString(asJsonObject(entry)?.id) ?? null;
+}
+
 export class HillStore {
   private decisions: HillDecision[] = [];
+  /** The entries this build could not read, as they were, in file order. Written back on every write. */
+  private opaque: JsonValue[] = [];
   private revision: number | undefined;
   private readonly path: string | null;
+  private clean = true;
 
   /**
    * `dir` null keeps the decisions in memory only (a test); the revision still moves. `dropped` hears
@@ -82,16 +96,50 @@ export class HillStore {
     }
     const file = raw === null ? undefined : parseJsonObject(raw);
     if (file?.v !== 1 || !Array.isArray(file.decisions)) {
+      this.clean = false;
       this.setAside();
       return;
     }
     const read: HillDecision[] = [];
+    const opaque: JsonValue[] = [];
     for (const entry of file.decisions) {
       const decision = readDecision(entry);
-      if (decision !== null && !read.some((held) => held.id === decision.id)) read.push(decision);
+      if (decision === null) opaque.push(entry);
+      // A second entry under a held id is a duplicate this build wrote; the first one stands.
+      else if (!read.some((held) => held.id === decision.id)) read.push(decision);
     }
     this.decisions = read;
+    this.opaque = opaque;
     this.revision = this.now();
+  }
+
+  /**
+   * Whether the file read as a whole (or there was none): false after a file was set aside. The image
+   * folders are then never pruned in this process, because a set-aside file may still name them.
+   */
+  cleanlyLoaded(): boolean {
+    return this.clean;
+  }
+
+  /**
+   * The decision ids whose image folders must stay: every held decision and every unread entry's id.
+   * Null when an unread entry has no id this build can tell, or the file did not load cleanly: then
+   * nothing may be pruned.
+   */
+  mediaKeep(): ReadonlySet<string> | null {
+    if (!this.clean) return null;
+    const keep = new Set(this.decisions.map((decision) => decision.id));
+    for (const entry of this.opaque) {
+      const id = rawId(entry);
+      if (id === null) return null;
+      keep.add(id);
+    }
+    return keep;
+  }
+
+  /** Whether `id` names a held decision or an unread entry, so a new decision must not take it. */
+  taken(id: string): boolean {
+    return this.get(id) !== undefined || this.opaque.some((entry) => rawId(entry) === id);
   }
 
   /** Move a file that does not read out of the way, so the next write starts a good one. */
@@ -161,7 +209,8 @@ export class HillStore {
       mkdirSync(this.dir, { recursive: true, mode: 0o700 });
       chmodSync(this.dir, 0o700);
       const temp = `${this.path}.tmp`;
-      writeFileSync(temp, `${JSON.stringify({ v: 1, decisions })}\n`, { mode: 0o600 });
+      // The entries this build could not read go back as they came, after the ones it can.
+      writeFileSync(temp, `${JSON.stringify({ v: 1, decisions: [...decisions, ...this.opaque] })}\n`, { mode: 0o600 });
       chmodSync(temp, 0o600);
       renameSync(temp, this.path);
       return true;

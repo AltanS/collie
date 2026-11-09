@@ -19,7 +19,7 @@ import { deniedFoldersSync, hillImageMime, hillImageSize, HillMediaStore, MEDIA_
 import { readDecision, readPostFields } from "./parse.ts";
 import { memoryHillReceipts } from "./receipts.ts";
 import { HillService, type HillAgentSender, type HillServiceDeps } from "./service.ts";
-import { HILL_CLOSED_KEPT, hillDir, HillStore } from "./store.ts";
+import { DECISIONS_FILE, HILL_CLOSED_KEPT, hillDir, HillStore } from "./store.ts";
 import { walkyPlace, walkySend } from "./walky.ts";
 
 // Images on a Decision (M96): what the bridge agrees to read from a path an agent names, how it keeps
@@ -503,6 +503,36 @@ describe("images leave with their decision", () => {
     r.media.save("dc_orphan000001", [{ id: "im_aaaaaaaaaaaaaaaa", bytes: png() }]);
     expect(r.hill.pruneMedia()).toBe(1);
     expect(readdirSync(join(hillDir(r.state), MEDIA_DIR))).toEqual([kept.decision.id]);
+  });
+
+  test("a decisions file set aside at the start prunes nothing, at the start or from the sweep", () => {
+    const state = folder("hill-state-");
+    mkdirSync(hillDir(state), { recursive: true });
+    writeFileSync(join(hillDir(state), DECISIONS_FILE), JSON.stringify({ v: 2, decisions: [] }));
+    const media = new HillMediaStore(hillDir(state), deniedFoldersSync([state]), () => undefined);
+    media.save("dc_fromnewer001", [{ id: "im_aaaaaaaaaaaaaaaa", bytes: png() }]);
+    const store = new HillStore(hillDir(state), () => 1000, () => undefined);
+    const hill = new HillService({ store, receipts: memoryHillReceipts(), media, place: () => null, send: async () => "typed", crewMode: () => "solo", walkyOn: () => true, memberId: null, machine: "desk", now: () => 1000 });
+    expect(hill.pruneMedia()).toBe(0);
+    hill.sweep();
+    expect(readdirSync(join(hillDir(state), MEDIA_DIR))).toEqual(["dc_fromnewer001"]);
+  });
+
+  test("an entry this build cannot read keeps its folder; one with no id it can tell stops pruning", () => {
+    const state = folder("hill-state-");
+    mkdirSync(hillDir(state), { recursive: true });
+    const media = new HillMediaStore(hillDir(state), deniedFoldersSync([state]), () => undefined);
+    media.save("dc_fromnewer001", [{ id: "im_aaaaaaaaaaaaaaaa", bytes: png() }]);
+    media.save("dc_orphan000000", [{ id: "im_aaaaaaaaaaaaaaaa", bytes: png() }]);
+    const deps = { receipts: memoryHillReceipts(), media, place: () => null, send: async (): Promise<"typed"> => "typed", crewMode: (): "solo" => "solo", walkyOn: () => true, memberId: null, machine: "desk", now: () => 1000 };
+    writeFileSync(join(hillDir(state), DECISIONS_FILE), JSON.stringify({ v: 1, decisions: [{ v: 2, id: "dc_fromnewer001" }, "no id here"] }));
+    const blind = new HillService({ ...deps, store: new HillStore(hillDir(state), () => 1000) });
+    expect(blind.pruneMedia()).toBe(0);
+    expect(readdirSync(join(hillDir(state), MEDIA_DIR)).toSorted()).toEqual(["dc_fromnewer001", "dc_orphan000000"]);
+    writeFileSync(join(hillDir(state), DECISIONS_FILE), JSON.stringify({ v: 1, decisions: [{ v: 2, id: "dc_fromnewer001" }] }));
+    const sighted = new HillService({ ...deps, store: new HillStore(hillDir(state), () => 1000) });
+    expect(sighted.pruneMedia()).toBe(1);
+    expect(readdirSync(join(hillDir(state), MEDIA_DIR))).toEqual(["dc_fromnewer001"]);
   });
 });
 
