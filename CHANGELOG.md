@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Fixed
+
+- **A pi pane with the pi-zentui editor takes sends again.** pi-zentui draws its input box with a rail on every row and the model name on the last row. Collie read the rails and the model row as a draft, so it refused every send to an empty box and held every WalkyTalky message. Collie now reads that box in its own shape: the text after the rail is the draft, and an empty box takes the send. Thanks @HickeyHsu (#747).
+
 ## [1.28.0] - 2026-11-09
 
 ### Added

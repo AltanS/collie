@@ -31,7 +31,7 @@
         "column": 0
       },
       "prompt": {
-        "pattern": "^(?:❯ ?)? {0,2}(?<draft>(?:(?!\\s{8,}\\S).)*)(?:\\s{8,}\\S.*)?$",
+        "pattern": "^(?![│┃▎▌|](?: |$))(?:❯ ?)? {0,2}(?<draft>(?:(?!\\s{8,}\\S).)*)(?:\\s{8,}\\S.*)?$",
         "column": 0,
         "maxColumn": 2
       },
@@ -93,6 +93,34 @@
         "continuation": "^ ▎(?: (?<text>.*))?$",
         "under": "^$",
         "ownPrompt": true
+      },
+      {
+        "walk": "interior",
+        "top": {
+          "pattern": "^─+(?:\\s+(?<label>.*[^\\s─-╿▁-▔‒-―].*?)\\s+─+)?$",
+          "minCells": 8,
+          "column": 0
+        },
+        "prompt": {
+          "pattern": "^[│┃▎▌|](?: (?<draft>.*))?$",
+          "column": 0
+        },
+        "bottom": {
+          "pattern": "^─+$",
+          "minCells": 8,
+          "column": 0
+        },
+        "continuationIndent": 2,
+        "maxDraftRows": 30,
+        "maxTailRows": 60,
+        "rows": "^(?:─.*|[│┃▎▌|](?: .*)?)$",
+        "continuation": "^[│┃▎▌|](?: (?<text>.*))?$",
+        "trailer": {
+          "row": "^[│┃▎▌|](?: .*)?$",
+          "maxPad": 0
+        },
+        "under": "^(?:[~/…⎇]|[A-Za-z]:\\\\|\\d[\\d.]*%)",
+        "underPainted": true
       }
     ],
     "placeholders": {
