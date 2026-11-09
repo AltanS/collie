@@ -134,10 +134,11 @@ describe("a status part that is broken", () => {
     vi.restoreAllMocks();
   });
 
-  it("reaches no higher than its own line, so a touch above it reaches the Chat", async () => {
+  it("reaches 12px up and 4px down, never into the Belt below, as a box of about 28px", async () => {
     await mount([part("tag", { text: "tag 5/7" })], [SESSION]);
     const reach = screen.getByRole("button", { name: /tag 5\/7/ }).className;
-    expect(reach).toContain("before:top-0");
+    expect(reach).toContain("before:-top-3");
+    expect(reach).toContain("before:-bottom-1");
     expect(reach).not.toContain("-inset-y-4");
   });
 });

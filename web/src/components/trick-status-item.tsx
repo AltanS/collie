@@ -34,12 +34,12 @@ export interface StatusItem {
 }
 
 /**
- * The tap's reach. The 12px line is far below the 44px floor (DESIGN.md section 6), and the button floats
- * over the mirror's last rows, so the reach may not go up: it took touches from the Chat above. It goes
- * only into the 4px below the line (the tag's own `bottom-1`), a box 16px high and 4px wider each side.
- * The same trade as the cache reading's reach in `pane-meta.tsx`, which is a 28px box.
+ * The tap's reach: the documented exception of DESIGN.md section 6, about 28px high like the cache reading's
+ * in `pane-meta.tsx`. The 12px line reaches 4px down, which is all the air the tag owns under it (its own
+ * `bottom-1`: further down is the Belt's block, whose touches it must not take), and 12px up into the
+ * mirror's last rows. The box is 28px high and 4px wider each side.
  */
-const REACH = "relative pointer-events-auto before:absolute before:-inset-x-1 before:top-0 before:-bottom-1 before:content-['']";
+const REACH = "relative pointer-events-auto before:absolute before:-inset-x-1 before:-top-3 before:-bottom-1 before:content-['']";
 
 function TrickStatusItem({
   partKey: key,
