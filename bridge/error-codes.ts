@@ -323,6 +323,11 @@ export const ERROR_CODES = {
    * only in the client, whose disabled button this file's own contract calls a courtesy.
    */
   "update.packaged": "updates come from this machine's package manager — Collie does not replace its files",
+  /**
+   * The lead runs a development build (`<version>-dev+<sha>`). Such a build states no release, so no
+   * member would ever take a turn from it (`crew/follow.ts`); refused before a leg is queued.
+   */
+  "update.dev_lead": "this machine runs a development build, so it cannot lead an update; deploy it from its checkout",
   /** The handoff itself failed — nothing was staged and nothing restarted. */
   "update.start_failed": "the update could not be started: {reason}",
   /**

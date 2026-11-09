@@ -1039,6 +1039,9 @@ function inodeOrNull(p: string): number | null {
 const updateMonitor = new UpdateMonitor({
   repo: updateRepo,
   current: currentVersion,
+  // The crew's reading of this machine, so the phone judges a crew run on the build the crew sees.
+  // Only while a trust store exists: a solo instance's snapshot gains no field (§11).
+  build: () => (trustStore.current() === null ? null : crewVersion),
   installKind,
   instance: collieInstance,
   // Named only where it is true: a packaged install under a prefix we recognise. Every other kind

@@ -3694,6 +3694,9 @@ export function startServer(opts: {
           // The one gate a green preflight cannot express: a package manager owns this folder, so there is
           // nothing here Collie may replace (ADR 0035).
           installKind: status.installKind,
+          // The build this process answers the crew with, not `package.json`'s plain `current`: a
+          // development build can never hand a member the turn, so the crew's start is refused.
+          build: opts.version,
           // One confirm covers the crew (M16/03): the members' banked verdicts gate this start the
           // same way the lead's own does. Read, never fetched — the sweep is the only thing that
           // talks to a member.

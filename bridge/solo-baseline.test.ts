@@ -446,6 +446,9 @@ const UPDATE_STATUS_KEYS = {
   // so the golden bodies below carry neither key.
   line: true,
   back: true,
+  // The build the crew reads (2026-11-09). Optional, and ABSENT on a solo instance by construction:
+  // it is sent only while a trust store exists, so the golden bodies below carry no such key.
+  build: true,
 } satisfies Record<keyof UpdateStatus, true>;
 
 const WORKSPACE_KEYS = {
@@ -581,6 +584,9 @@ describe("solo zero-tax — wire shapes carry no crew dimension", () => {
       // Stable on the Stable line.
       "back",
       "bridgeStale",
+      // The build the crew reads (2026-11-09) — optional, and absent on a solo instance: it is sent
+      // only while a trust store exists.
+      "build",
       "checkedAt",
       "current",
       // The two bands the operator can close (M17/08): this host's offer, and the quiet notice about

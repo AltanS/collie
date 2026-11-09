@@ -4,6 +4,7 @@ import { updateNotice } from "@/components/update-banner";
 import { fetchUpdateState } from "@/lib/api";
 import { t, tn } from "@/lib/i18n";
 import { useOptionalRootData } from "@/lib/route-data";
+import { leadLevelsCrew } from "@/lib/crew-level";
 import { peersBehind } from "@/lib/update-crew";
 import type { UpdateInfo, UpdateCrewMember } from "@/lib/types";
 
@@ -52,7 +53,8 @@ export function useUpdatesStatus(): UpdatesStatus {
     runState === "staging" ||
     runState === "restarting" ||
     runState === "verifying";
-  const behind = peersBehind(crew, update?.current ?? "");
+  // A development-build lead offers no crew run, so it counts nobody behind (`leadLevelsCrew`).
+  const behind = leadLevelsCrew(update?.build) ? peersBehind(crew, update?.current ?? "") : 0;
 
   return updatesStatus({ update, running, behind, unknown });
 }

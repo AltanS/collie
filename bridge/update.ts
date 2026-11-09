@@ -1196,6 +1196,15 @@ export interface UpdateMonitorDeps {
    *  command prints. Injected, not read here: the monitor resolves nothing from the environment. */
   instance: string | null;
   /**
+   * The BUILD this process answers the crew with (`collieVersionBare`: `<semver>` or
+   * `<semver>+<sha>`), as against {@link current}, which is `package.json`'s plain version and never
+   * says `-dev`. Reported on the status so the phone reads the same lead the crew reads: a
+   * development build leads no crew run (`crewNeedsLevelling`). Read per status, because it is sent
+   * only while this machine is in a crew: a solo instance pays no field for it (CREW_PROTOCOL.md §11).
+   * Null or absent ⇒ not reported.
+   */
+  build?: () => string | null;
+  /**
    * The version this process was running when it started, read the way `collie version` reads it.
    *
    * Captured ONCE, at boot, beside the install kind — for the same reason the kind is: it cannot
@@ -1699,6 +1708,8 @@ export class UpdateMonitor {
     // the daily cadence, which is every ordinary release and every check that has not run yet.
     if (this.urgent !== null) status.urgent = this.urgent;
     if (this.deps.packageCommand !== null) status.packageCommand = this.deps.packageCommand;
+    const build = this.deps.build?.() ?? null;
+    if (build !== null) status.build = build;
     // The line and the way back (M60 spec 01), on the same rule: absent on a monitor with no line
     // seam, and `back` absent in every case but an Edge build ahead of Stable on the Stable line.
     const line = this.lineNow();

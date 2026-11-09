@@ -5378,6 +5378,20 @@ describe("update status peers — the legs of a crew-wide run", () => {
     expect(peersBranch.slice(0, peersBranch.indexOf("return json"))).not.toContain("action.start");
   });
 
+  test("the verdict reads the build this process answers the crew with, and a refusal queues no leg", () => {
+    // `status.current` is `package.json`'s plain version and never says `-dev`; `opts.version` is the
+    // build the crew reads. A development build refuses as `update.dev_lead` (2026-11-09), and the
+    // refusal returns before the run id is minted or any crew run begins.
+    const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
+    const updateAt = src.indexOf('if (pathname === "/api/update" && req.method === "POST")');
+    const handler = src.slice(updateAt, src.indexOf("\n      }\n", updateAt));
+    expect(handler).toContain("build: opts.version,");
+    const refusedAt = handler.indexOf('if (verdict.kind === "refuse")');
+    expect(refusedAt).toBeGreaterThan(0);
+    expect(refusedAt).toBeLessThan(handler.indexOf("action.newRunId()"));
+    expect(refusedAt).toBeLessThan(handler.indexOf("action.beginCrewRun?."));
+  });
+
   test("both 202s carry the id this confirm minted, beside the record read before the start", () => {
     // `run` in the 202 is `status.run`, read BEFORE the start: on a lead that has updated before it is
     // the LAST run's record, and the new run writes its own a beat later. So the new run's id travels

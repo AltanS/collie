@@ -471,6 +471,15 @@ describe("the update run record on the snapshot", () => {
     expect(packaged.monitor.status().packageCommand).toBe("sudo pacman -Syu collie-bin");
   });
 
+  it("reports the build the crew reads beside the plain version, and no key when none was given", () => {
+    // `current` is `package.json`'s plain version and never says `-dev`; the phone judges a crew run
+    // on the build (2026-11-09), so the status carries it as the crew reads it.
+    expect("build" in makeMonitor().monitor.status()).toBe(false);
+    expect("build" in makeMonitor({ build: () => null }).monitor.status()).toBe(false);
+    const dev = makeMonitor({ current: "1.28.0", build: () => "1.28.0-dev+047ee5bbd0" });
+    expect(dev.monitor.status()).toMatchObject({ current: "1.28.0", build: "1.28.0-dev+047ee5bbd0" });
+  });
+
   it("an install that has never updated carries no run key at all", () => {
     const { monitor } = makeMonitor();
     expect("run" in monitor.status()).toBe(false);

@@ -33,6 +33,8 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 - **The Update tap works where the user manager is reached only through `/run/user/<uid>`.** When the bridge runs without `XDG_RUNTIME_DIR`, as under a Herdr plugin, the tap started `systemd-run`, which printed "Failed to connect to bus" and quit before any update began. The bridge now asks the user manager first, the same way `collie update` already did, and gives `systemd-run` the session values that reached it. Where no user manager answers at all, the update takes the `setsid` path. `collie update` on a terminal passes the same values on in the same case. Thanks @thelinuxlich (#745).
 
+- **A crew of development builds no longer asks for an update it cannot run.** On a lead built from a checkout (`1.28.0-dev+…`) with members built the same way, the phone counted every member as behind 1.28.0 and offered to update the crew. The run then waited 20 minutes and failed, because a development build states no release, so no member takes its turn, and the failed row stayed for good. A development build now counts as level with the release it is built on, a lead on a development build offers no crew run, and a crew update started on one anyway is refused at once with the reason.
+
 ## [1.28.0] - 2026-11-09
 
 ### Added
