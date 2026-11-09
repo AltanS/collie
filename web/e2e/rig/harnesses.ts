@@ -299,7 +299,7 @@ export function prepareHarness(id: HarnessId, machine: Machine = "lead"): Prepar
       else for (const name of ["agent.db", "agent.db-wal", "agent.db-shm", "models.db"]) rmSync(join(d.agent, name), { force: true });
       // Skills off: omp would find the operator's skills up the folder tree (the project sits under the
       // home folder) and ask a second model to compress their descriptions at every start.
-      writeFileSync(join(d.agent, "config.yml"), `setupVersion: 2\nmodelRoles:\n  default: ${SETUPS.omp.model}\nskills:\n  enabled: false\n`);
+      writeFileSync(join(d.agent, "config.yml"), `setupVersion: 3\nmodelRoles:\n  default: ${SETUPS.omp.model}\nskills:\n  enabled: false\n`);
       // The stub: models.yml moves openrouter's base URL; omp then calls `<base>/v1/responses`.
       if (base !== null) writeFileSync(join(d.agent, "models.yml"), `# Written by the Collie browser leg (M67): omp's model calls go to the rig's stub.\nproviders:\n  openrouter:\n    baseUrl: ${base}/v1\n`);
       else rmSync(join(d.agent, "models.yml"), { force: true });
