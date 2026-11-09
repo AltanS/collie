@@ -71,7 +71,8 @@ function place(live: () => HillPlace[]): (address: string) => HillPlace | null {
   };
 }
 
-function rig(stateDir = join(tempDir(), "state")): Rig {
+/** `hillAt` is the clock of the rig's own HillService; a post gets its default 14 day expiry from it. */
+function rig(stateDir = join(tempDir(), "state"), hillAt = 1000): Rig {
   let n = 0;
   let m = 0;
   const configDir = join(dirname(stateDir), "config");
@@ -99,7 +100,7 @@ function rig(stateDir = join(tempDir(), "state")): Rig {
     walkyOn: () => true,
     memberId: null,
     machine: "bluefin.lan",
-    now: () => 1000,
+    now: () => hillAt,
     mintId: () => `dc_trk${String((n += 1)).padStart(9, "0")}`,
     mintMediaId: () => `im_trk${String((m += 1)).padStart(13, "0")}`,
     media,
@@ -110,7 +111,7 @@ function rig(stateDir = join(tempDir(), "state")): Rig {
   });
   const clock = { t: 50_000_000 };
   const tricks = new TrickHill({ stateDir, hill, addressOf: (scopeKey) => scopeKeyAddress(scopeKey, HOST, "local", probe), now: () => clock.t });
-  return Object.assign(state, { stateDir, configDir, trick, store, media, hill, tricks, clock, restart: () => rig(stateDir) });
+  return Object.assign(state, { stateDir, configDir, trick, store, media, hill, tricks, clock, restart: () => rig(stateDir, hillAt) });
 }
 
 const decision = (key: string, over: Partial<TrickDecision> = {}): TrickDecision => ({
@@ -654,7 +655,8 @@ describe.skipIf(process.platform === "win32")("end to end with the legs trick", 
     writeFileSync(join(dir, "red-case.png"), shotBytes);
     await switches(stateDir, true);
 
-    const base = rig(stateDir);
+    // The rig's HillService posts at the same clock as the one that answers, or the default expiry has passed.
+    const base = rig(stateDir, T0);
     const clock = { t: T0 };
     const service = new TricksService({
       configDir,
