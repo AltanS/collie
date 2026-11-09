@@ -170,6 +170,19 @@ describe("arm, then send", () => {
     expect(option("reset")).toHaveTextContent("Reset to main");
   });
 
+  it("drops the arm when the answer's words change, so the second tap needs a new first one", () => {
+    const { slot, option, onSend } = renderCard(withConfirm());
+    fireEvent.change(slot("decision-text")!, { target: { value: "Because." } });
+    fireEvent.click(option("reset"));
+    expect(option("reset")).toHaveTextContent("Reset now");
+    fireEvent.change(slot("decision-text")!, { target: { value: "Because main builds." } });
+    expect(option("reset")).toHaveTextContent("Reset to main");
+    act(() => vi.advanceTimersByTime(ARM_DWELL_MS));
+    fireEvent.click(option("reset"));
+    expect(onSend).not.toHaveBeenCalled();
+    expect(option("reset")).toHaveTextContent("Reset now");
+  });
+
   it("asks for a second tap on Dismiss too", () => {
     const { slot, onSend } = renderCard(hillDecision());
     const dismiss = slot("decision-dismiss")!;
@@ -221,6 +234,13 @@ describe("after the tap", () => {
     landed.unmount();
     const refused = renderCard(hillDecision(), answered(hillReceipt({ code: "rejected", state: null, delivery: null })));
     expect(refused.option("yes")).toBeEnabled();
+  });
+
+  it("keeps the card answerable after a denied answer, with the notice that says it was not accepted", () => {
+    const denied = renderCard(hillDecision(), answered(hillReceipt({ code: "denied", state: null, delivery: null })));
+    expect(denied.slot("decision-receipt")).toHaveTextContent("This device may not answer");
+    expect(denied.option("yes")).toBeEnabled();
+    expect(denied.slot("decision-dismiss")).toBeEnabled();
   });
 
   it("keeps the words of a gone answer on screen with Copy", () => {

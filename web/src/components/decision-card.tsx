@@ -106,8 +106,9 @@ function receiptTone(receipt: HillReceipt): NoticeTone {
 function lockedBy(answer: HillAnswerState): boolean {
   if (answer.phase === "sending") return true;
   if (answer.phase !== "answered") return false;
-  // A refusal is an answer that changed nothing: the card stays open for another one.
-  return answer.receipt.code !== "rejected";
+  // A refusal is an answer that changed nothing: the card stays open for another one. The bridge's
+  // `denied` (this device may not answer) changes nothing either, and says so in the notice.
+  return answer.receipt.code !== "rejected" && answer.receipt.code !== "denied";
 }
 
 /** The words the person sent with an answer that did not reach its target, kept with Copy. */
@@ -376,7 +377,11 @@ export function DecisionCard({
             <textarea
               data-slot="decision-text"
               value={draft}
-              onChange={(e) => setDraft(e.target.value)}
+              onChange={(e) => {
+                setDraft(e.target.value);
+                // An armed confirm was for the answer as it read when it was armed: new words need a new first tap.
+                if (armed?.startsWith("option:")) disarm();
+              }}
               placeholder={t(required ? "hill.text.required" : "hill.text.optional")}
               aria-label={t("hill.text.aria")}
               maxLength={HILL_ANSWER_TEXT_MAX}
