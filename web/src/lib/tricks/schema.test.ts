@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import * as lucide from "lucide-react";
 import { describe, expect, it } from "vitest";
 
+import { HILL_OPTION_CONFIRM_MAX, HILL_OPTION_LABEL_MAX } from "../hill/wire";
 import { asJsonObject, type JsonObject, type JsonValue } from "../json";
 import { THEME_TOKENS } from "../theme/schema";
 
@@ -37,7 +38,6 @@ import {
   NODE_KIDS,
   NODE_KINDS,
   NODE_TEXT,
-  OPTION_CONFIRM_MAX,
   PART_KEYS,
   PART_MAX_BYTES,
   PLACE_KINDS,
@@ -188,7 +188,7 @@ describe("the module", () => {
 
   it("exports every key list the contract reference reads", () => {
     expect(Object.keys(PART_KEYS).toSorted()).toEqual([...PLACE_KINDS].toSorted());
-    expect(DECISION_KEYS).toEqual(["key", "title", "summary", "body", "options", "recommends", "priority", "about", "replyTo", "media", "links", "expiresAt"]);
+    expect(DECISION_KEYS).toEqual(["key", "title", "summary", "body", "options", "recommends", "priority", "text", "about", "replyTo", "media", "links", "expiresAt"]);
     expect(SESSION_FACT_KEYS).toEqual(expect.arrayContaining(["memberId", "sessionId", "paneId", "host"]));
     expect(new Set(REFUSAL_CODES).size).toBe(REFUSAL_CODES.length);
   });
@@ -582,7 +582,35 @@ describe("decisions", () => {
     expect(parse(d({ options: [option("")] }))).toEqual(["/decisions/0/options/0/confirm"]);
     expect(parse(d({ options: [option("   ")] }))).toEqual(["/decisions/0/options/0/confirm"]);
     expect(DECISION_OPTION_KEYS).toEqual(["intent", "label", "detail", "confirm"]);
-    expect(OPTION_CONFIRM_MAX).toBe(BUTTON_LABEL_MAX);
+    expect(HILL_OPTION_CONFIRM_MAX).toBe(BUTTON_LABEL_MAX);
+  });
+
+  it("the hill's caps hold (M96 wire): an option label of 40, a detail of 120, a link label of 40 and an address of 500", () => {
+    const option = (label: string, detail?: string) => (detail === undefined ? { intent: "go", label } : { intent: "go", label, detail });
+    expect(HILL_OPTION_LABEL_MAX).toBe(40);
+    expect(parse(d({ options: [option("x".repeat(40))] }))).toEqual([]);
+    expect(parse(d({ options: [option("x".repeat(41))] }))).toEqual(["/decisions/0/options/0/label"]);
+    expect(parse(d({ options: [option("Go", "x".repeat(120))] }))).toEqual([]);
+    expect(parse(d({ options: [option("Go", "x".repeat(121))] }))).toEqual(["/decisions/0/options/0/detail"]);
+    const linkOf = (label: string, href = "https://example.com/") => ({ links: [{ label, href }] });
+    expect(parse(d(linkOf("x".repeat(40))))).toEqual([]);
+    expect(parse(d(linkOf("x".repeat(41))))).toEqual(["/decisions/0/links/0/label"]);
+    expect(parse(d(linkOf("L", `https://example.com/${"x".repeat(500 - 20)}`)))).toEqual([]);
+    expect(parse(d(linkOf("L", `https://example.com/${"x".repeat(500 - 19)}`)))).toEqual(["/decisions/0/links/0/href"]);
+  });
+
+  it("an option's intent keeps the hill's rule: a lower-case word of up to 32, starting with a letter", () => {
+    const option = (intent: string) => ({ intent, label: "O" });
+    for (const intent of ["go", "re-run", "a".repeat(32), "v2"]) expect(parse(d({ options: [option(intent)] })), intent).toEqual([]);
+    for (const intent of ["a".repeat(33), "2go", "re.run", "re_run"]) expect(parse(d({ options: [option(intent)] })), intent).toEqual(["/decisions/0/options/0/intent"]);
+  });
+
+  it("text none, optional or required, the hill's default optional; none with no option is refused", () => {
+    for (const text of ["none", "optional", "required"]) expect(parse(d({ text, options: [{ intent: "go", label: "Go" }] })), text).toEqual([]);
+    expect(parseTrickDocument(d({ text: "required" })).decisions[0]?.text).toBe("required");
+    expect(parseTrickDocument(d({})).decisions[0]?.text).toBeUndefined();
+    expect(parse(d({ text: "maybe" }))).toEqual(["/decisions/0/text"]);
+    expect(parse(d({ text: "none" }))).toEqual(["/decisions/0/text"]);
   });
 
   it("0 to 5 options with unique intents, never the Hill's answer or dismiss; recommends names one, or is null", () => {

@@ -34,6 +34,29 @@
 // bridge and the CLI import it by relative path, as they import `../json`. It must also pass the root
 // tsconfig, which is stricter than the web one (`noUncheckedIndexedAccess`).
 
+import {
+  HILL_ANSWER_TEXT_MAX,
+  HILL_BODY_MAX,
+  HILL_INTENT_RE,
+  HILL_LINK_HREF_MAX,
+  HILL_LINK_LABEL_MAX,
+  HILL_LINKS_MAX,
+  HILL_NODE_PREFIX,
+  HILL_OPEN_MAX,
+  HILL_OPTION_CONFIRM_MAX,
+  HILL_OPTION_DETAIL_MAX,
+  HILL_OPTION_LABEL_MAX,
+  HILL_OPTIONS_MAX,
+  HILL_PRIORITIES,
+  HILL_RESERVED_INTENTS,
+  HILL_SUMMARY_MAX,
+  HILL_TEXT_MODES,
+  HILL_TITLE_MAX,
+  HILL_WHY_MAX,
+  isHillOptionIntent,
+  type HillPriority,
+  type HillTextMode,
+} from "../hill/wire";
 import { asJsonNumber, asJsonObject, asJsonString, asJsonBoolean, parseJson, type JsonObject, type JsonValue } from "../json";
 
 // ── Versions and byte caps ───────────────────────────────────────────────────────────────────
@@ -127,34 +150,21 @@ export const SESSION_ID_MAX = 256;
 /** A refused tap's or a failed run's one line of words on the wire. */
 export const PROBLEM_MAX = 200;
 
-// ── Decision caps (the Hill's decision shape) ────────────────────────────────────────────────
+// ── Decision caps (the hill's decision shape) ────────────────────────────────────────────────
+//
+// The hill's wire (`../hill/wire.ts`, M96) is the one source of a decision's caps and rules: the title,
+// summary, body, options, labels, links, why, text modes, priorities, reserved intents and the answer's
+// words. This file imports them; only what the hill has no word for is a trick's own.
 
-/** Open decisions one document may list. The Hill's cap per sender, and a trick is one sender. */
-export const DECISIONS_MAX = 20;
-/** A decision `key`: 1 to 64 of `a-z 0-9 -`, unique in the document. */
+/** Open decisions one document may list: the hill's cap per sender, and a trick is one sender. */
+export const DECISIONS_MAX = HILL_OPEN_MAX;
+/** A decision `key`: 1 to 64 of `a-z 0-9 -`, unique in the document. A trick's own: the hill mints ids. */
 export const DECISION_KEY_MAX = 64;
-/** A decision's `title`, one line. */
-export const DECISION_TITLE_MAX = 120;
-/** A decision's `summary`, the plain words the card shows. Required. */
-export const DECISION_SUMMARY_MAX = 280;
-/** A decision's `body`, Markdown, the detail behind a tap (the walky cap). */
-export const DECISION_BODY_MAX = 4000;
-/** Options of one decision. Zero is a decision answered by text alone. */
-export const DECISION_OPTIONS_MAX = 5;
-/** A decision option's `label` (a button's), its `confirm` (a button's confirm label) and its `detail` (a line). */
-export const OPTION_LABEL_MAX = BUTTON_LABEL_MAX;
-export const OPTION_CONFIRM_MAX = BUTTON_LABEL_MAX;
-export const OPTION_DETAIL_MAX = LINE_MAX;
-/** `recommends.why`, one line of why. */
-export const RECOMMENDS_WHY_MAX = 200;
-/** Media files of one decision, and a caption. */
+/** A tap's `seen`, the content hash of the decision the person saw (the runner's hex digest). */
+export const DECISION_HASH_MAX = 64;
+/** Media files of one decision, and a caption. Images come to the hill later; until then they are noted, not posted. */
 export const DECISION_MEDIA_MAX = 4;
 export const MEDIA_CAPTION_MAX = LINE_MAX;
-/** Links of one decision, and a link's label. */
-export const DECISION_LINKS_MAX = 5;
-export const DECISION_LINK_LABEL_MAX = LINE_MAX;
-/** The person's typed or spoken answer to a decision, as the tap carries it. */
-export const ANSWER_TEXT_MAX = 4000;
 
 /** Limits the view tree holds, as data, so the renderer and the docs read the same numbers. */
 export const VIEW_LIMITS = {
@@ -904,12 +914,15 @@ export type ParsedPart =
 
 // ── Types: decisions (the Hill's decision shape, as a trick lists it) ───────────────────────
 
-/** `priority`: a request, not a fact. Only `now` pushes. Absent is `today`. */
-export const DECISION_PRIORITIES = ["now", "today", "later"] as const;
-export type DecisionPriority = (typeof DECISION_PRIORITIES)[number];
+/** `priority`: a request, not a fact. Only `now` pushes. Absent is `today`. The hill's words. */
+export const DECISION_PRIORITIES = HILL_PRIORITIES;
+export type DecisionPriority = HillPriority;
 export const DEFAULT_DECISION_PRIORITY: DecisionPriority = "today";
-/** The Hill's own answer intents. A trick's option may not take them. */
-export const HILL_INTENTS = ["answer", "dismiss"] as const;
+/** `text`: whether the person may, or must, add words to the answer. The hill's words. Absent is `optional`. */
+export const DECISION_TEXT_MODES = HILL_TEXT_MODES;
+export type DecisionTextMode = HillTextMode;
+export const DEFAULT_DECISION_TEXT: DecisionTextMode = "optional";
+export { HILL_NODE_PREFIX };
 
 /** An option: a named intent in the tree's shape. Collie runs none; it routes the chosen intent to the trick. */
 export interface DecisionOption {
@@ -949,6 +962,8 @@ export interface TrickDecision {
   options?: DecisionOption[];
   recommends?: DecisionRecommends | null;
   priority?: DecisionPriority;
+  /** Whether the person may (`optional`, the default), must (`required`) or may not (`none`) add words. */
+  text?: DecisionTextMode;
   /** A session's scope key from the facts: the card opens its Chat. */
   about?: string;
   /** A session's scope key: the person's words reach it as the person's own walky message. */
@@ -1000,7 +1015,20 @@ export type TapValue = string | { text: string | null };
 export type FactsTrigger =
   | { kind: "start" }
   | { kind: "timer" }
-  | { kind: "tap"; rid: string; node: string; intent: string; value?: TapValue; from?: TapFrom }
+  | {
+      kind: "tap";
+      rid: string;
+      node: string;
+      intent: string;
+      value?: TapValue;
+      from?: TapFrom;
+      /**
+       * Only on the answer to a decision (`hill/<key>`): the content hash of the version of the decision
+       * the person saw, the one the runner posted. A trick that changed the decision since can tell an
+       * answer to the old words from one to the new. Absent when the bridge lost track of it.
+       */
+      seen?: string;
+    }
   /** A later slice: a watched file changed. */
   | { kind: "watch"; path: string }
   /** A later slice: an event of the bus, with the session it is about. */
@@ -1247,8 +1275,6 @@ const INSTANT_MAX = 40;
 const IMAGE_SRC = /^(?!\/)(?!.*(^|\/)\.\.?(\/|$))[A-Za-z0-9._\-/]+\.(png|jpe?g)$/i;
 /** The latest instant `Date` holds, in ms. */
 const EPOCH_MAX_MS = 8_640_000_000_000_000;
-/** The prefix of a decision's node in a tap: `hill/<key>`. */
-export const HILL_NODE_PREFIX = "hill/";
 
 /** A trick id: what `trick.toml` names and the folder is called. 1 to 32 of `a-z 0-9 -`. */
 export function isTrickId(text: string): boolean {
@@ -2857,7 +2883,7 @@ function readActions(f: Fields): TrickAction[] | undefined {
 // ── Decisions ────────────────────────────────────────────────────────────────────────────────
 
 /** Every key a decision takes (the Hill's decision shape, the fields a trick writes). */
-export const DECISION_KEYS = ["key", "title", "summary", "body", "options", "recommends", "priority", "about", "replyTo", "media", "links", "expiresAt"] as const;
+export const DECISION_KEYS = ["key", "title", "summary", "body", "options", "recommends", "priority", "text", "about", "replyTo", "media", "links", "expiresAt"] as const;
 export const DECISION_OPTION_KEYS = ["intent", "label", "detail", "confirm"] as const;
 export const DECISION_RECOMMENDS_KEYS = ["intent", "why"] as const;
 export const DECISION_MEDIA_KEYS = ["file", "caption"] as const;
@@ -2869,7 +2895,6 @@ const HILL_OWNED_KEYS = {
   requestId: "the runner derives the request id from the trick, the key and the content",
   from: "the runner stamps who posted it",
   supersedes: "the runner supersedes a key whose content changed",
-  text: "whether the person may write is the Hill's",
   channel: "the channel is the Hill's",
   state: "the Hill holds a decision's state",
   at: "the bridge stamps when it took the post",
@@ -2911,12 +2936,15 @@ function readDecision(value: JsonValue, path: string, sink: Refusal[]): Decision
   const keyRaw = asJsonString(f.obj.key);
   const key = keyRaw !== undefined && isDecisionKey(keyRaw) ? keyRaw : undefined;
   if (key === undefined) f.push("id", "key", `A decision needs a "key" of 1 to ${DECISION_KEY_MAX} lower-case letters, digits and hyphens.`);
-  const title = f.text("title", { max: DECISION_TITLE_MAX, required: true });
-  const summary = f.text("summary", { max: DECISION_SUMMARY_MAX, required: true });
-  const body = f.text("body", { max: DECISION_BODY_MAX, multiline: true });
+  const title = f.text("title", { max: HILL_TITLE_MAX, required: true });
+  const summary = f.text("summary", { max: HILL_SUMMARY_MAX, required: true });
+  const body = f.text("body", { max: HILL_BODY_MAX, multiline: true });
   const options = readOptions(f);
   const recommends = readRecommends(f, options);
   const priority = f.word("priority", DECISION_PRIORITIES);
+  const text = f.word("text", DECISION_TEXT_MODES);
+  // The hill refuses a decision that takes no words and has no option: nothing could answer it.
+  if (text === "none" && (options ?? []).length === 0) f.push("target", "text", '"text": "none" needs at least one option, or nothing could answer the decision.');
   const about = readSessionKey(f, "about");
   const replyTo = readSessionKey(f, "replyTo");
   const media = readMedia(f);
@@ -2928,6 +2956,7 @@ function readDecision(value: JsonValue, path: string, sink: Refusal[]): Decision
   if (options !== undefined) decision.options = options;
   if (recommends !== undefined) decision.recommends = recommends;
   if (priority !== undefined) decision.priority = priority;
+  if (text !== undefined && !(text === "none" && (options ?? []).length === 0)) decision.text = text;
   if (about !== undefined) decision.about = about;
   if (replyTo !== undefined) decision.replyTo = replyTo;
   if (media !== undefined) decision.media = media;
@@ -2937,7 +2966,7 @@ function readDecision(value: JsonValue, path: string, sink: Refusal[]): Decision
 }
 
 function readOptions(f: Fields): DecisionOption[] | undefined {
-  const list = f.array("options", { min: 0, max: DECISION_OPTIONS_MAX, what: "options" });
+  const list = f.array("options", { min: 0, max: HILL_OPTIONS_MAX, what: "options" });
   if (list === undefined) return undefined;
   const out: DecisionOption[] = [];
   const intents = new Set<string>();
@@ -2945,13 +2974,20 @@ function readOptions(f: Fields): DecisionOption[] | undefined {
     const o = itemFields(value, pointer(f.at("options"), i), f.sink, "an option");
     if (o === undefined) return;
     o.keys(DECISION_OPTION_KEYS);
-    const intent = o.intent("intent", true);
-    if (intent !== undefined && isOneOf(HILL_INTENTS, intent)) o.push("id", "intent", `"${intent}" is the Hill's own answer. Name the option's intent another way.`);
+    const intentRaw = o.intent("intent", true);
+    // The hill's rule for an option's intent, narrower than a button's: a lower-case word of up to 32.
+    let intent = intentRaw;
+    if (intentRaw !== undefined && HILL_RESERVED_INTENTS.includes(intentRaw)) {
+      o.push("id", "intent", `"${intentRaw}" is the Hill's own answer. Name the option's intent another way.`);
+    } else if (intentRaw !== undefined && !isHillOptionIntent(intentRaw)) {
+      o.push("id", "intent", `An option's "intent" is 1 to 32 of: lower-case letters, digits and "-", starting with a letter (${String(HILL_INTENT_RE)}).`);
+      intent = undefined;
+    }
     if (intent !== undefined && intents.has(intent)) o.push("duplicate", "intent", `The option intent "${intent}" is used twice.`);
     if (intent !== undefined) intents.add(intent);
-    const label = o.text("label", { max: OPTION_LABEL_MAX, required: true });
-    const detail = o.text("detail", { max: OPTION_DETAIL_MAX });
-    const confirm = o.text("confirm", { max: OPTION_CONFIRM_MAX });
+    const label = o.text("label", { max: HILL_OPTION_LABEL_MAX, required: true });
+    const detail = o.text("detail", { max: HILL_OPTION_DETAIL_MAX });
+    const confirm = o.text("confirm", { max: HILL_OPTION_CONFIRM_MAX });
     if (intent === undefined || label === undefined) return;
     const option: DecisionOption = { intent, label };
     if (detail !== undefined) option.detail = detail;
@@ -2967,7 +3003,7 @@ function readRecommends(f: Fields, options: DecisionOption[] | undefined): Decis
   if (r === undefined) return undefined;
   r.keys(DECISION_RECOMMENDS_KEYS);
   const intent = r.intent("intent", true);
-  const why = r.text("why", { max: RECOMMENDS_WHY_MAX, required: true });
+  const why = r.text("why", { max: HILL_WHY_MAX, required: true });
   if (intent !== undefined && !(options ?? []).some((o) => o.intent === intent)) {
     r.push("target", "intent", `"recommends" names "${intent}", which is not one of the decision's options.`);
     return undefined;
@@ -3002,16 +3038,16 @@ function readMedia(f: Fields): DecisionMedia[] | undefined {
 }
 
 function readLinks(f: Fields): DecisionLink[] | undefined {
-  const list = f.array("links", { min: 0, max: DECISION_LINKS_MAX, what: "links" });
+  const list = f.array("links", { min: 0, max: HILL_LINKS_MAX, what: "links" });
   if (list === undefined) return undefined;
   const out: DecisionLink[] = [];
   list.forEach((value, i) => {
     const l = itemFields(value, pointer(f.at("links"), i), f.sink, "a link");
     if (l === undefined) return;
     l.keys(DECISION_LINK_KEYS);
-    const label = l.text("label", { max: DECISION_LINK_LABEL_MAX, required: true });
-    const href = l.text("href", { max: URL_MAX, required: true });
-    if (href !== undefined && !isTrickUrl(href)) l.push("target", "href", `"href" must be an https:// or http:// address of at most ${URL_MAX} characters.`);
+    const label = l.text("label", { max: HILL_LINK_LABEL_MAX, required: true });
+    const href = l.text("href", { max: HILL_LINK_HREF_MAX, required: true });
+    if (href !== undefined && !isTrickUrl(href)) l.push("target", "href", `"href" must be an https:// or http:// address of at most ${HILL_LINK_HREF_MAX} characters.`);
     if (label === undefined || href === undefined || !isTrickUrl(href)) return;
     out.push({ label, href });
   });
@@ -3148,7 +3184,7 @@ export const TRIGGER_KINDS = ["start", "timer", "tap", "watch", "event"] as cons
 export const TRIGGER_KEYS = {
   start: ["kind"],
   timer: ["kind"],
-  tap: ["kind", "rid", "node", "intent", "value", "from"],
+  tap: ["kind", "rid", "node", "intent", "value", "from", "seen"],
   watch: ["kind", "path"],
   event: ["kind", "event", "session"],
 } as const satisfies { readonly [K in (typeof TRIGGER_KINDS)[number]]: readonly string[] };
@@ -3232,7 +3268,9 @@ function readTrigger(f: Fields): FactsTrigger | undefined {
     case "tap": {
       t.keys(TRIGGER_KEYS.tap);
       const tap = readTapFields(t);
-      return tap === undefined ? undefined : { kind: "tap", ...tap };
+      const seen = t.text("seen", { max: DECISION_HASH_MAX });
+      if (tap === undefined) return undefined;
+      return seen === undefined ? { kind: "tap", ...tap } : { kind: "tap", ...tap, seen };
     }
   }
 }
@@ -3320,7 +3358,7 @@ function readTapValue(f: Fields, hill: boolean): TapValue | undefined {
   if (v === undefined) return undefined;
   v.keys(["text"]);
   if (v.obj.text === null) return { text: null };
-  const text = v.text("text", { max: ANSWER_TEXT_MAX, required: true, multiline: true });
+  const text = v.text("text", { max: HILL_ANSWER_TEXT_MAX, required: true, multiline: true });
   return text === undefined ? undefined : { text };
 }
 
