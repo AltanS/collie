@@ -8,11 +8,11 @@
 
 import { clockTime } from "../format";
 import { getLocaleSnapshot, t } from "../i18n";
+import type { Clock } from "./schema";
 
 /**
- * How a moment reads. The first schema's `time` node styles, kept for the part frame's age line and
- * the settings card. STEP 3: a tree `chip` or `run` with `at` (epoch ms) and `clock` (`ago`, `elapsed`,
- * `left`, `time`) draws through its own words.
+ * How a moment reads, for the part frame's age line and the settings card (an ISO `asOf`). A tree
+ * `chip` or `run` with `at` (epoch ms as digits) and `clock` reads through {@link clockText}.
  */
 export type TimeStyle = "ago" | "until" | "clock" | "date";
 
@@ -60,4 +60,35 @@ export function trickTimeText(at: string, style: TimeStyle | undefined, now: num
   if (style === "date") return dayText(ms);
   if (style === "until" && ms > now && ms - now < MINUTE) return t("tricks.time.in", { time: spanText(ms - now) });
   return relativeText(ms, now);
+}
+
+/** A count of seconds as `m:ss`, or `h:mm:ss` from an hour on. Never negative. */
+export function stopwatchText(ms: number): string {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const seconds = String(total % 60).padStart(2, "0");
+  return hours > 0 ? `${hours}:${String(minutes).padStart(2, "0")}:${seconds}` : `${minutes}:${seconds}`;
+}
+
+/**
+ * The words of a tree clock (VOCABULARY.md 2.14): `at` is epoch milliseconds as digits, `now` the
+ * bridge's clock. `ago` is a relative time ("3 min ago", a date past a day), `elapsed` counts `m:ss`
+ * up from `at`, `left` counts down to it and holds `0:00` at zero (it waits for the bridge), `time`
+ * is the time of day in the app's language. `null` for an `at` that is not digits (the bridge checked
+ * it; a crew member on another version may not have).
+ */
+export function clockText(at: string, clock: Clock, now: number): string | null {
+  if (!/^\d{1,16}$/.test(at)) return null;
+  const ms = Number(at);
+  switch (clock) {
+    case "ago":
+      return relativeText(ms, now);
+    case "elapsed":
+      return stopwatchText(now - ms);
+    case "left":
+      return stopwatchText(ms - now);
+    case "time":
+      return clockTime(ms);
+  }
 }

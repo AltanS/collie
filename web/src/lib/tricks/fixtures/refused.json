@@ -1756,7 +1756,7 @@
       "v": 1,
       "parts": [
         {
-          "at": "dashboard",
+          "at": "header.line",
           "id": "d",
           "view": [
             {
@@ -1800,21 +1800,16 @@
     ],
     "keeps": []
   },
-  "own-tab-is-gone": {
+  "tab-mark-at-is-gone": {
     "doc": {
       "v": 1,
       "parts": [
         {
-          "at": "tab",
+          "at": "tab-mark",
           "id": "t",
-          "title": "Board",
-          "space": "collie",
-          "view": [
-            {
-              "kind": "para",
-              "text": "ok"
-            }
-          ]
+          "mark": {
+            "label": "3"
+          }
         }
       ]
     },

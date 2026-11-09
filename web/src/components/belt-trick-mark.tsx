@@ -9,7 +9,6 @@ import { TrickMark } from "@/lib/tricks/mark";
 import { parseTrickSessionId, partKey, type WireTrickPart } from "@/lib/tricks/schema";
 import { useTrickPart, type TricksStore, tricksStore, type TapHandlers, trickTapper } from "@/lib/tricks/store";
 import type { AgentView } from "@/lib/types";
-import { cn } from "@/lib/utils";
 
 // THE BELT'S END-BLOCK MARKS (M94 slice 03): one per `belt` part of a trick that is on, between the pins
 // mark and Changes, in manifest order (lib/tricks/store.ts `useTrickParts`). Each is a `TrickMark` in its own
@@ -17,10 +16,8 @@ import { cn } from "@/lib/utils";
 //
 // A TAP: a mark with an intent goes to the trick's provider (`trickTapper`), and shows Collie's spinner
 // in its icon's box while the tap is in flight. A mark without an intent opens the trick's own session
-// when it has one, one level down; without a session it is not a control at all.
-
-/** The 44px reach a mark's 28px frame takes, the same as lib/tricks/mark.tsx gives a tappable mark. */
-const REACH = "relative before:absolute before:-inset-x-1 before:-inset-y-2 before:content-['']";
+// when it has one, one level down. A mark with neither is the same control, which does nothing and
+// says so (lib/tricks/mark.tsx, ONE CONTROL): it never drops to a span that shrinks under the block.
 
 /** The session a mark without an intent opens: the trick's first session part. */
 export function sessionOfMark(part: Pick<WireTrickPart, "host" | "trick">, sessions: readonly AgentView[]): AgentView | undefined {
@@ -59,26 +56,13 @@ function BeltTrickMark({
     return <TrickMark mark={mark} trickName={trickName} stale={stale} busy={busy} unknown={unknown} onTap={() => onTap(key, intent, undefined, "mark")} />;
   }
   if (session === undefined) return <TrickMark mark={mark} trickName={trickName} stale={stale} />;
-  return (
-    <button
-      type="button"
-      data-slot="belt-trick-open"
-      aria-label={t("tricks.mark.open", { trick: trickName })}
-      onClick={() => onOpenSession(session)}
-      className={cn(
-        "inline-flex rounded-sm transition-colors hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring active:scale-[0.98]",
-        REACH,
-      )}
-    >
-      <TrickMark mark={mark} trickName={trickName} stale={stale} />
-    </button>
-  );
+  return <TrickMark mark={mark} trickName={trickName} stale={stale} actionLabel={t("tricks.mark.open", { trick: trickName })} onTap={() => onOpenSession(session)} />;
 }
 
 /** The belt's marks, ready for `ActionsRow` `marks`. */
 export function beltMarksOf(opts: {
   parts: readonly WireTrickPart[];
-  /** The tap handlers for a part, by the host its trick runs on. */
+  /** What travels beside a tap on a part (the session open on the phone), by the host its trick runs on. */
   handlersFor: (host: string) => TapHandlers;
   sessions: readonly AgentView[];
   onOpenSession: (pane: AgentView) => void;

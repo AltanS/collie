@@ -345,8 +345,8 @@
         "kind": "link",
         "text": "the log",
         "attrs": {
-          "href": "~/.cache/collie-lab/leg-logs/24.log",
-          "rel": "file",
+          "href": "http://bluefin:8832/legs/24.log",
+          "rel": "url",
           "badge": ""
         }
       }

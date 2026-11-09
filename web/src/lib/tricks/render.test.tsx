@@ -1,58 +1,77 @@
-import { fireEvent, render } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { act, fireEvent, render } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { JsonObject } from "../json";
+import type { JsonObject, JsonValue } from "../json";
 import { LEGS_DOCUMENT, TRACKER_DOCUMENT, nodeDocument } from "./fixtures";
-import { heightCss, reservedHeight, viewForm } from "./layout";
-import { renderView, type RenderCtx } from "./render";
-import { CORE_NODE_KINDS, MORE_NODE_KINDS, TONE_TEXT_CLASS, parseTrickDocument, type NodeKind, type ViewNode } from "./schema";
+import { heightCss, reservedHeight, viewForm, viewHeight } from "./layout";
+import { CONFIRM_MS, linkTargetOf, renderView, type RenderCtx } from "./render";
+import { NODE_KINDS, TONE_TEXT_CLASS, parseTrickDocument, type View } from "./schema";
 import type { TapState } from "./store";
+
+const copyText = vi.hoisted(() => vi.fn((_text: string) => Promise.resolve()));
+vi.mock("../clipboard", () => ({ copyText, canCopyText: () => true }));
 
 const NOW = Date.parse("2026-11-08T09:41:00Z");
 const KEY = "bluefin/legs/legs";
 
-/** A fixture as the typed node the schema's own parser reads it to: what the renderer gets from the bridge. */
-function viewOf(doc: JsonObject): ViewNode {
+/** A document's session view, as the schema's own parser reads it: what the renderer gets from the bridge. */
+function viewOf(doc: JsonValue): View {
   const parsed = parseTrickDocument(doc);
+  if (parsed.refusals.length > 0) throw new Error(`refused: ${JSON.stringify(parsed.refusals)}`);
   const part = parsed.parts.find((p) => p.place === "session");
-  if (part?.place !== "session") throw new Error(`no session part: ${JSON.stringify(parsed.refusals)}`);
+  if (part?.place !== "session") throw new Error("no session part");
   return part.part.view;
 }
 
-function fixture(kind: NodeKind): ViewNode {
-  return viewOf(nodeDocument(kind));
+/** Hand-made nodes as one session view, through the parser, so every test node is one a trick may send. */
+function viewOfNodes(...nodes: JsonObject[]): View {
+  return viewOf({ v: 1, parts: [{ at: "session", id: "t", view: nodes }] });
 }
 
 /** A node as a crew member on a newer Collie might send it: a kind this Collie has never heard of. */
-function foreign(kind: string): ViewNode {
-  const node: ViewNode = JSON.parse(JSON.stringify({ kind, text: "x", lines: 1 }));
-  return node;
+function foreign(json: string): View {
+  const view: View = JSON.parse(json);
+  return view;
 }
 
 function ctxOf(over: Partial<RenderCtx> = {}): RenderCtx {
-  return { partKey: KEY, trickName: "Browser leg", stale: false, onTap: vi.fn(), onDraft: vi.fn(), onOpen: vi.fn(), now: NOW, ...over };
+  return { partKey: KEY, trickName: "Browser leg", stale: false, onTap: vi.fn(), onLink: vi.fn(), now: NOW, ...over };
 }
 
-function draw(node: ViewNode, over: Partial<RenderCtx> = {}) {
-  return render(<div>{renderView(node, ctxOf(over))}</div>);
+function draw(view: View, over: Partial<RenderCtx> = {}) {
+  return render(<div>{renderView(view, ctxOf(over))}</div>);
 }
 
-/** The root box of a drawn node. */
-function rootOf(container: HTMLElement): HTMLElement {
-  const root = container.querySelector<HTMLElement>("[data-trick-node]");
-  if (root === null) throw new Error("no node drawn");
-  return root;
+function nodeEl(container: HTMLElement, kind: string): HTMLElement {
+  const el = container.querySelector<HTMLElement>(`[data-trick-node="${kind}"]`);
+  if (el === null) throw new Error(`no ${kind} drawn`);
+  return el;
 }
 
-describe("every core kind draws", () => {
-  it.each(CORE_NODE_KINDS)("%s, as its snapshot", (kind) => {
-    const { container } = draw(fixture(kind));
-    expect(rootOf(container).dataset.trickNode).toBe(kind);
-    expect(container.querySelector('[data-trick-node="placeholder"][data-kind="' + kind + '"]')).toBeNull();
+/** Every box that states its own size, in order: what fixes the view's height in the DOM. */
+function heightEvidence(container: HTMLElement): string {
+  return [...container.querySelectorAll<HTMLElement>("[data-trick-node]")]
+    .map((el) => `${el.dataset.trickNode}:${el.style.height}${el.style.aspectRatio === "" ? "" : `@${el.style.aspectRatio}`}`)
+    .join(",");
+}
+
+const row = (text: string, attrs?: JsonObject, kids?: JsonObject[]): JsonObject => ({ kind: "row", text, ...(attrs && { attrs }), ...(kids && { kids }) });
+const list = (...kids: JsonObject[]): JsonObject => ({ kind: "list", kids });
+const bar = (...kids: JsonObject[]): JsonObject => ({ kind: "bar", kids });
+const button = (attrs: JsonObject): JsonObject => ({ kind: "button", attrs });
+const para = (text: string, attrs?: JsonObject): JsonObject => ({ kind: "para", text, ...(attrs && { attrs }) });
+
+beforeEach(() => copyText.mockClear());
+
+describe("every kind draws", () => {
+  it.each(NODE_KINDS)("%s, as its snapshot", (kind) => {
+    const { container } = draw(viewOf(nodeDocument(kind)));
+    expect(container.querySelector(`[data-trick-node="${kind}"]`)).not.toBeNull();
+    expect(container.querySelector('[data-trick-node="placeholder"]')).toBeNull();
     expect(container.innerHTML).toMatchSnapshot();
   });
 
-  it("draws the legs and the tracker views whole, with the core kinds only", () => {
+  it("draws the legs and the tracker views whole, with no placeholder", () => {
     for (const doc of [LEGS_DOCUMENT, TRACKER_DOCUMENT]) {
       const { container, unmount } = draw(viewOf(doc));
       expect(container.querySelectorAll('[data-trick-node="placeholder"]')).toHaveLength(0);
@@ -60,319 +79,472 @@ describe("every core kind draws", () => {
       unmount();
     }
   });
+
+  it("draws a view as a list: one box per node, top to bottom", () => {
+    const { container } = draw(viewOfNodes(para("one"), { kind: "number", text: "2" }, { kind: "spacer" }));
+    const view = container.querySelector("[data-trick-view]");
+    expect(view?.childElementCount).toBe(3);
+    expect([...(view?.children ?? [])].map((el) => el.querySelector("[data-trick-node]")?.getAttribute("data-trick-node"))).toEqual(["para", "number", "spacer"]);
+  });
 });
 
 describe("the placeholder", () => {
-  it.each(MORE_NODE_KINDS)("stands in for %s, which slice 08 draws", (kind) => {
-    const { container } = draw(fixture(kind));
-    const box = container.querySelector<HTMLElement>(`[data-trick-node="placeholder"][data-kind="${kind}"]`);
-    expect(box).not.toBeNull();
-    expect(box?.textContent).toBe("This Collie cannot draw this part");
-    expect(box?.style.height).toBe("2.75rem");
-  });
-
-  it("stands in for a kind this Collie has never heard of", () => {
-    const { container } = draw(foreign("hologram"));
-    expect(rootOf(container).dataset.kind).toBe("hologram");
-    expect(rootOf(container).textContent).toBe("This Collie cannot draw this part");
-    expect(reservedHeight(foreign("hologram"))).toEqual({ rem: 2.75, px: 0 });
+  it("stands in for a kind this Collie has never heard of, at the tap floor's height", () => {
+    const { container } = draw(foreign('[{"kind":"hologram","text":"x"}]'));
+    const box = nodeEl(container, "placeholder");
+    expect(box.dataset.kind).toBe("hologram");
+    expect(box.textContent).toBe("This Collie cannot draw this part");
+    expect(box.style.height).toBe("2.75rem");
+    expect(reservedHeight(foreign('[{"kind":"hologram"}]')[0]!)).toEqual({ rem: 2.75, px: 0 });
   });
 
   it("stands in for one child and lets its siblings draw", () => {
-    const { container } = draw(fixture("row"));
-    expect(container.querySelector('[data-trick-node="text"]')?.textContent).toBe("left");
-    expect(container.querySelector('[data-trick-node="placeholder"][data-kind="badge"]')).not.toBeNull();
+    const { container } = draw(foreign('[{"kind":"list","kids":[{"kind":"row","text":"left"},{"kind":"hologram"}]}]'));
+    expect(nodeEl(container, "row").textContent).toBe("left");
+    expect(container.querySelector('[data-trick-node="placeholder"][data-kind="hologram"]')).not.toBeNull();
   });
 });
 
-// Two inputs of each kind that differ in data and agree in form. Each pair must draw the same box.
+// Two views of each kind that differ in data and agree in form. Each pair must draw the same boxes.
 const PAIRS = {
-  stack: [
-    { kind: "stack", children: [{ kind: "text", text: "one", lines: 1 }, { kind: "number", value: 3 }] },
-    { kind: "stack", children: [{ kind: "text", text: "a much longer line that would wrap if it could", lines: 1 }, { kind: "number", value: "23/34", label: "cases" }] },
+  card: [
+    { kind: "card", kids: [para("one"), { kind: "number", text: "3" }] },
+    { kind: "card", attrs: { tone: "danger" }, kids: [para("two, a longer one"), { kind: "number", text: "23/34", attrs: { label: "cases" } }] },
   ],
-  row: [
-    { kind: "row", children: [{ kind: "text", text: "left", lines: 1 }, { kind: "time", at: "2026-11-08T09:38:12Z" }] },
-    { kind: "row", children: [{ kind: "text", text: "a different left side", lines: 1 }, { kind: "time", at: "2026-11-01T09:38:12Z", label: "since" }] },
+  group: [
+    { kind: "group", attrs: { label: "A" }, kids: [row("x")] },
+    { kind: "group", attrs: { label: "Red cases", badge: "3" }, kids: [row("case 24", { end: "red", tone: "danger" })] },
   ],
-  text: [
-    { kind: "text", text: "short", lines: 3, role: "body" },
-    { kind: "text", text: "line one\nline two\nline three\nline four\nline five, which the box never shows", lines: 3, role: "body", tone: "error" },
+  list: [list(row("one"), row("two")), list(row("case 24", { end: "red", icon: "flag" }), row("Harness", { end: "claude 2.1.318" }))],
+  row: [list(row("left")), list(row("a different left side", { end: "red", tone: "danger", badge: "2", icon: "flag" }))],
+  bar: [bar(button({ label: "Go", intent: "go" })), bar(button({ label: "Rerun every red case", intent: "rerun", icon: "refresh", tone: "accent" }))],
+  chip: [bar({ kind: "chip", text: "a" }), bar({ kind: "chip", text: "a much longer chip text", attrs: { tone: "danger", icon: "flag" } })],
+  button: [bar(button({ label: "Go", intent: "go" })), bar(button({ label: "Copy the path", does: "copy", value: "~/x" }))],
+  para: [para("short"), para("a different one, still one line")],
+  line: [{ kind: "line", text: "ok" }, { kind: "line", text: "case 24 red", attrs: { style: "fg-red bold" } }],
+  run: [
+    { kind: "para", kids: [{ kind: "run", text: "a" }, { kind: "run", text: " b" }] },
+    { kind: "para", kids: [{ kind: "run", text: "b", attrs: { style: "bold" } }, { kind: "run", text: " c", attrs: { code: "" } }] },
   ],
+  link: [
+    { kind: "para", kids: [{ kind: "link", text: "a", attrs: { href: "https://example.invalid/a" } }] },
+    { kind: "para", kids: [{ kind: "link", text: "the session", attrs: { href: "bluefin:w6X:3", rel: "pane" } }] },
+  ],
+  code: [
+    { kind: "code", attrs: { max: "3" }, kids: [{ kind: "line", text: "one" }] },
+    { kind: "code", attrs: { max: "3" }, kids: ["a", "b", "c", "d", "e"].map((text) => ({ kind: "line", text })) },
+  ],
+  image: [
+    { kind: "image", attrs: { src: "a.png", alt: "a", w: "1280", h: "720" } },
+    { kind: "image", attrs: { src: "shots/b.png", alt: "a much longer description", w: "1280", h: "720" } },
+  ],
+  meter: [
+    { kind: "meter", attrs: { value: "1", max: "2" } },
+    { kind: "meter", attrs: { value: "30", max: "34", label: "cases green", tone: "ok" } },
+  ],
+  spacer: [{ kind: "spacer" }, { kind: "spacer", attrs: { label: "Yesterday" } }],
   number: [
-    { kind: "number", value: 7 },
-    { kind: "number", value: "1234/5678", label: "cases green", tone: "ok" },
+    { kind: "number", text: "7" },
+    { kind: "number", text: "1234/5678", attrs: { label: "cases green", unit: "cases", tone: "ok" } },
   ],
-  kv: [
-    { kind: "kv", rows: [{ label: "A", value: "1" }, { label: "B", value: "2" }] },
-    { kind: "kv", rows: [{ label: "Harness", value: "claude 2.1.318, a long version line" }, { label: "Mode", value: "replay", tone: "ok" }] },
-  ],
-  list: [
-    { kind: "list", rows: 3, items: [{ text: "one" }] },
-    {
-      kind: "list",
-      rows: 3,
-      items: [
-        { text: "one", detail: "detail", icon: "bug", tone: "error", trailing: "red", intent: "open" },
-        { text: "two" },
-        { text: "three" },
-        { text: "four" },
-        { text: "five" },
-      ],
-    },
-  ],
-  button: [
-    { kind: "button", label: "Go", intent: "go" },
-    { kind: "button", label: "Rerun every red case now", intent: "rerun", primary: true, icon: "refresh", disabled: true },
-  ],
-  progress: [
-    { kind: "progress", value: 5 },
-    { kind: "progress", steps: [{ label: "build", state: "done" }, { label: "test", state: "running" }, { label: "ship", state: "todo" }] },
-  ],
-  steps: [
-    { kind: "steps", steps: [{ label: "one", state: "todo" }] },
-    { kind: "steps", steps: Array.from({ length: 12 }, (_, i) => ({ label: `step ${i}`, state: i < 5 ? ("done" as const) : i === 5 ? ("failed" as const) : ("todo" as const) })) },
-  ],
-  mark: [
-    { kind: "mark", face: "1/2" },
-    { kind: "mark", icon: "flask", face: "23/34", count: 4, tone: "error", intent: "open" },
-  ],
-  time: [
-    { kind: "time", at: "2026-11-08T09:40:30Z" },
-    { kind: "time", at: "2026-10-01T09:40:30Z", style: "until", label: "next run" },
-  ],
-} satisfies { readonly [K in (typeof CORE_NODE_KINDS)[number]]: readonly [ViewNode, ViewNode] };
-
-/** A list's rows in order: the filled rows inside its group, then the empty hairline rows under it. */
-function listRows(root: HTMLElement): HTMLElement[] {
-  const filled = [...root.querySelectorAll<HTMLElement>('[data-slot="list-group"] > *')];
-  const empty = [...root.querySelectorAll<HTMLElement>(':scope > [data-slot="trick-list-empty"]')];
-  return [...filled, ...empty];
-}
-
-/** What fixes a box's height in the DOM: its own stated height, and for a list its reserved rows. */
-function heightEvidence(container: HTMLElement): string {
-  const root = rootOf(container);
-  const rows = root.dataset.trickNode === "list" ? listRows(root).map((row) => (row.classList.contains("h-11") ? "h-11" : "?")).join(",") : "";
-  return `${root.style.height}|${rows}`;
-}
+} satisfies { readonly [K in (typeof NODE_KINDS)[number]]: readonly [JsonObject, JsonObject] };
 
 describe("a node's height is its form's, not its data's", () => {
-  it.each(CORE_NODE_KINDS)("%s draws one height for two inputs of one form", (kind) => {
-    const [a, b] = PAIRS[kind];
-    expect(heightCss(reservedHeight(a))).toBe(heightCss(reservedHeight(b)));
-    expect(viewForm(a)).toBe(viewForm(b));
-    const first = draw(a);
+  it.each(NODE_KINDS)("%s draws one height for two inputs of one form", (kind) => {
+    const [a, b] = PAIRS[kind].map((node) => viewOfNodes(node));
+    expect(heightCss(viewHeight(a!))).toBe(heightCss(viewHeight(b!)));
+    expect(viewForm(a!)).toBe(viewForm(b!));
+    const first = draw(a!);
     const one = heightEvidence(first.container);
     first.unmount();
-    const second = draw(b);
-    expect(heightEvidence(second.container)).toBe(one);
+    expect(heightEvidence(draw(b!).container)).toBe(one);
   });
 
-  it("states the reserved heights in rem, so they grow with the text size", () => {
-    expect(heightCss(reservedHeight({ kind: "text", text: "x", lines: 3, role: "body" }))).toBe("3.75rem");
-    expect(heightCss(reservedHeight({ kind: "text", text: "x", lines: 2, role: "mono" }))).toBe("2rem");
-    expect(heightCss(reservedHeight({ kind: "number", value: 1 }))).toBe("3rem");
-    expect(heightCss(reservedHeight({ kind: "list", rows: 3, items: [] }))).toBe("calc(8.25rem + 2px)");
-    expect(heightCss(reservedHeight({ kind: "progress", value: 1 }))).toBe("2rem");
-    expect(heightCss(reservedHeight({ kind: "kv", cols: 2, rows: [{ label: "a", value: "1" }, { label: "b", value: "2" }, { label: "c", value: "3" }] }))).toBe("4.5rem");
-    expect(heightCss(reservedHeight(PAIRS.stack[0]))).toBe("4.75rem");
+  it("states the leaf heights in rem, so they grow with the text size", () => {
+    const [num, meter, spacer] = viewOfNodes({ kind: "number", text: "1" }, { kind: "meter", attrs: { value: "1" } }, { kind: "spacer" });
+    expect(heightCss(reservedHeight(num!))).toBe("3rem");
+    expect(heightCss(reservedHeight(meter!))).toBe("2rem");
+    expect(heightCss(reservedHeight(spacer!))).toBe("1rem");
+    const [chips] = viewOfNodes(bar({ kind: "chip", text: "a" }));
+    expect(heightCss(reservedHeight(chips!))).toBe("1.5rem");
+    const [hinted] = viewOfNodes(bar(button({ label: "Go", intent: "go", hint: "Runs it" })));
+    expect(heightCss(reservedHeight(hinted!))).toBe("3.5rem");
+  });
+
+  it("reserves a para's lines from its text's length, capped", () => {
+    const h = (node: JsonObject) => heightCss(reservedHeight(viewOfNodes(node)[0]!));
+    expect(h(para("x".repeat(40)))).toBe("1.25rem");
+    expect(h(para("x".repeat(80)))).toBe("2.5rem");
+    expect(h(para("x".repeat(1000)))).toBe("10rem");
+    expect(h(para("x".repeat(200), { role: "heading" }))).toBe("2.5rem");
+  });
+
+  it("reserves a code's max lines, else its lines, inside the limits", () => {
+    const h = (node: JsonObject) => heightCss(reservedHeight(viewOfNodes(node)[0]!));
+    expect(h({ kind: "code", attrs: { max: "4" }, kids: [{ kind: "line", text: "a" }] })).toBe("calc(5rem + 2px)");
+    expect(h({ kind: "code", kids: [{ kind: "line", text: "a" }, { kind: "line", text: "b" }, { kind: "line", text: "c" }] })).toBe("calc(4rem + 2px)");
+    expect(reservedHeight(foreign('[{"kind":"code","attrs":{"max":"400"},"kids":[]}]')[0]!)).toEqual({ rem: 41, px: 2 });
+  });
+
+  it("reserves a list's kids, a two-line row taller, and an empty list the frame alone", () => {
+    const h = (node: JsonObject) => heightCss(reservedHeight(viewOfNodes(node)[0]!));
+    expect(h(list(row("a"), row("b"), row("c")))).toBe("calc(8.25rem + 2px)");
+    expect(h(list(row("a", undefined, [para("second line")])))).toBe("calc(3.5rem + 2px)");
+    expect(reservedHeight(foreign('[{"kind":"list","kids":[]}]')[0]!)).toEqual({ rem: 0, px: 2 });
+  });
+
+  it("reserves a closed group's head alone, and a step strip one height whatever its steps", () => {
+    const [closed] = viewOfNodes({ kind: "group", attrs: { label: "Older", fold: "closed" }, kids: [row("a"), row("b")] });
+    expect(heightCss(reservedHeight(closed!))).toBe("1.5rem");
+    const strip = (n: number) => viewOfNodes(bar(...Array.from({ length: n }, (_, i) => ({ kind: "chip", text: `leg ${i}`, attrs: { state: "idle" } }))))[0]!;
+    expect(heightCss(reservedHeight(strip(2)))).toBe("2rem");
+    expect(viewForm([strip(2)])).not.toBe(viewForm([strip(3)]));
+    expect(heightCss(reservedHeight(strip(8)))).toBe("2rem");
   });
 
   it("calls a change of lines or rows a new form, and a change of words the same form", () => {
-    expect(viewForm({ kind: "text", text: "a", lines: 2 })).not.toBe(viewForm({ kind: "text", text: "a", lines: 3 }));
-    expect(viewForm({ kind: "list", rows: 2, items: [] })).not.toBe(viewForm({ kind: "list", rows: 3, items: [] }));
-    expect(viewForm({ kind: "text", text: "a", lines: 2 })).toBe(viewForm({ kind: "text", text: "b", lines: 2 }));
-  });
-
-  it("clamps a number from another Collie into its limits", () => {
-    expect(reservedHeight(JSON.parse('{"kind":"text","text":"x","lines":400}'))).toEqual({ rem: 15, px: 0 });
-    expect(reservedHeight(JSON.parse('{"kind":"list","rows":-3,"items":[]}'))).toEqual({ rem: 2.75, px: 2 });
-  });
-});
-
-describe("a list", () => {
-  it("draws its reserved rows, and '+n more' in the last one past them", () => {
-    const { container } = draw(PAIRS.list[1]);
-    const rows = listRows(rootOf(container));
-    expect(rows).toHaveLength(3);
-    expect(rows[2]?.textContent).toBe("+3 more");
-  });
-
-  it("fills the rows nobody uses with empty ones", () => {
-    const { container } = draw(PAIRS.list[0]);
-    expect(container.querySelectorAll('[data-slot="trick-list-empty"]')).toHaveLength(2);
-  });
-
-  it("draws an empty slot as a hairline row in the border token, outside the group's frame (slice 03 look fix)", () => {
-    const { container } = draw(PAIRS.list[0]);
-    const group = container.querySelector('[data-slot="list-group"]');
-    const empties = [...container.querySelectorAll<HTMLElement>('[data-slot="trick-list-empty"]')];
-    expect(empties).toHaveLength(2);
-    for (const empty of empties) {
-      // Not a box: no frame of the group around it, no edge of its own but the one line at its foot.
-      expect(group?.contains(empty)).toBe(false);
-      expect(empty.className).toContain("border-b");
-      expect(empty.className).toContain("border-border");
-      expect(empty.className).not.toMatch(/(^|\s)border(\s|$)/);
-      expect(empty.className).toContain("h-11");
-      expect(empty.childElementCount).toBe(0);
-    }
-    // The group frames the filled rows only.
-    expect(group?.childElementCount).toBe(1);
-  });
-
-  it("keeps a list with no item at its reserved height, with no empty frame", () => {
-    const { container } = draw({ kind: "list", rows: 3, items: [] });
-    expect(container.querySelector('[data-slot="list-group"]')).toBeNull();
-    expect(container.querySelectorAll('[data-slot="trick-list-empty"]')).toHaveLength(3);
-  });
-
-  it("puts the count in the end slot of a one-row list", () => {
-    const { container } = draw({ kind: "list", rows: 1, items: [{ text: "one" }, { text: "two" }, { text: "three" }] });
-    expect(listRows(rootOf(container))).toHaveLength(1);
-    expect(rootOf(container).textContent).toContain("+2 more");
-  });
-
-  it("makes a row with an intent a 44px control that taps with its args", () => {
-    const onTap = vi.fn();
-    const { container } = draw(fixture("list"), { onTap });
-    const row = container.querySelector<HTMLButtonElement>('button[data-slot="trick-list-row"]');
-    expect(row?.className).toContain("h-11");
-    fireEvent.click(row!);
-    expect(onTap).toHaveBeenCalledWith(KEY, "open-case", { n: 24 }, "v/0");
-    // The row with no intent is not a control.
-    expect(container.querySelectorAll('div[data-slot="trick-list-row"]')).toHaveLength(1);
-  });
-});
-
-describe("tones", () => {
-  it("ink through the tone map, and only through it", () => {
-    const { container } = draw({ kind: "text", text: "red", lines: 1, tone: "error" });
-    expect(container.querySelector("p")?.className).toContain(TONE_TEXT_CLASS.error);
-  });
-
-  it("go grey past the fresh window, and the inks stay", () => {
-    const stale = draw({ kind: "stack", children: [{ kind: "text", text: "red", lines: 1, tone: "error" }, { kind: "text", text: "quiet", lines: 1, tone: "muted" }] }, { stale: true });
-    const [red, quiet] = stale.container.querySelectorAll("p");
-    expect(red?.className).toContain(TONE_TEXT_CLASS.unknown);
-    expect(red?.className).not.toContain(TONE_TEXT_CLASS.error);
-    expect(quiet?.className).toContain(TONE_TEXT_CLASS.muted);
-  });
-
-  it("fall back to no tone for a word this Collie does not know", () => {
-    const { container } = draw(JSON.parse('{"kind":"text","text":"x","lines":1,"tone":"amber"}'));
-    expect(container.querySelector("p")?.className).not.toMatch(/text-status/);
-  });
-});
-
-describe("faces", () => {
-  it("draw a label in the UI face, the trick's words in the content face, and mono in mono", () => {
-    const { container } = draw(viewOf(LEGS_DOCUMENT));
-    expect(container.querySelector('[data-trick-node="kv"] dt')?.className).not.toMatch(/font-(content|mono)/);
-    expect(container.querySelector('[data-trick-node="kv"] dd')?.className).toContain("font-content");
-    const texts = [...container.querySelectorAll('[data-trick-node="text"] p')];
-    expect(texts.some((p) => p.className.includes("font-mono"))).toBe(true);
+    expect(viewForm(viewOfNodes(para("x".repeat(40))))).not.toBe(viewForm(viewOfNodes(para("x".repeat(41)))));
+    expect(viewForm(viewOfNodes(list(row("a"), row("b"))))).not.toBe(viewForm(viewOfNodes(list(row("a"), row("b"), row("c")))));
+    expect(viewForm(viewOfNodes(para("23/34 green")))).toBe(viewForm(viewOfNodes(para("24/34 green"))));
+    expect(viewForm(viewOfNodes({ kind: "image", attrs: { src: "a.png", alt: "a", w: "4", h: "3" } }))).not.toBe(
+      viewForm(viewOfNodes({ kind: "image", attrs: { src: "a.png", alt: "a", w: "16", h: "9" } })),
+    );
   });
 });
 
 describe("a button", () => {
-  const busy = (control: string): TapState => ({ phase: "busy", requestId: "r", control, intent: "rerun" });
+  const busy = (control: string): TapState => ({ phase: "busy", rid: "r", control, intent: "rerun" });
+  const GO = viewOfNodes(bar(button({ label: "Go", intent: "go" })));
+  const RERUN = viewOfNodes(bar(button({ label: "Rerun red", intent: "rerun", value: "red", icon: "refresh" })));
 
-  it("taps with its part, intent, args and its own path", () => {
+  afterEach(() => vi.useRealTimers());
+
+  it("taps with its part, intent, value and its own path", () => {
     const onTap = vi.fn();
-    const { getByRole } = draw(fixture("button"), { onTap });
+    const { getByRole } = draw(RERUN, { onTap });
     fireEvent.click(getByRole("button"));
-    expect(onTap).toHaveBeenCalledWith(KEY, "rerun", { only: "red" }, "v");
+    expect(onTap).toHaveBeenCalledWith(KEY, "rerun", "red", "v/0/0");
   });
 
-  it("draws Collie's busy state on the pressed control, and the width does not move", () => {
-    const rest = draw(fixture("button"));
-    const restCells = rest.container.querySelectorAll("button [data-active], button [aria-hidden]").length;
+  it("draws Collie's busy state on the pressed control, and keeps its label", () => {
+    const rest = draw(RERUN);
+    const restCells = rest.container.querySelectorAll("button [data-active], button [inert]").length;
     rest.unmount();
-    const { getByRole, container } = draw(fixture("button"), { tap: busy("v") });
-    const button = getByRole("button");
-    expect(button.getAttribute("aria-busy")).toBe("true");
-    expect(button).toBeDisabled();
-    expect(button.querySelector(".animate-spin")).not.toBeNull();
-    // The label stays in its cell; only the glyph turned into the spinner.
-    expect(button.textContent).toContain("Rerun red");
-    expect(container.querySelectorAll("button [data-active], button [aria-hidden]").length).toBe(restCells);
+    const { getByRole, container } = draw(RERUN, { tap: busy("v/0/0") });
+    const pressed = getByRole("button");
+    expect(pressed.getAttribute("aria-busy")).toBe("true");
+    expect(pressed).toBeDisabled();
+    expect(pressed.querySelector(".animate-spin")).not.toBeNull();
+    expect(pressed.textContent).toContain("Rerun red");
+    expect(container.querySelectorAll("button [data-active], button [inert]").length).toBe(restCells);
   });
 
-  it("keeps its label while busy and puts the spinner beside it when it has no glyph (slice 03 look fix)", () => {
-    const { getByRole } = draw({ kind: "button", label: "Go", intent: "go" }, { tap: busy("v") });
-    const button = getByRole("button");
-    // The shown cell is the spinner beside the label, not a lone spinner.
-    const active = button.querySelector("[data-active]");
+  it("puts the spinner beside the label when it has no glyph, in the cell kept at rest too", () => {
+    const rest = draw(GO);
+    expect(rest.getByRole("button").querySelector('[data-slot="trick-button-busy"]')).not.toBeNull();
+    rest.unmount();
+    const { getByRole } = draw(GO, { tap: busy("v/0/0") });
+    const active = getByRole("button").querySelector("[data-active]");
     expect(active?.textContent).toBe("Go");
     expect(active?.querySelector('[data-slot="trick-button-busy"]')).not.toBeNull();
   });
 
-  it("keeps the busy cell in the button at rest too, so a tap moves nothing", () => {
-    const rest = draw({ kind: "button", label: "Go", intent: "go" });
-    const cells = (el: HTMLElement) => el.querySelectorAll("[data-active], [inert]").length;
-    const before = cells(rest.getByRole("button"));
-    expect(rest.getByRole("button").querySelector('[data-slot="trick-button-busy"]')).not.toBeNull();
-    rest.unmount();
-    const { getByRole } = draw({ kind: "button", label: "Go", intent: "go" }, { tap: busy("v") });
-    expect(cells(getByRole("button"))).toBe(before);
-  });
-
-  it("ignores a second tap while a tap on its part is in flight", () => {
+  it("ignores a tap on another control while a tap on its part is in flight, and leaves that control at rest", () => {
     const onTap = vi.fn();
-    const { container } = draw(viewOf(LEGS_DOCUMENT), { onTap, tap: busy("v/6") });
-    const row = container.querySelector<HTMLButtonElement>('button[data-slot="trick-list-row"]');
-    expect(row).toBeDisabled();
-    fireEvent.click(row!);
+    const { getByRole } = draw(viewOf(LEGS_DOCUMENT), { onTap, tap: busy("v/5/0") });
+    const open = getByRole("button", { name: "Open" });
+    expect(open).toBeDisabled();
+    expect(open.getAttribute("aria-busy")).toBe("false");
+    fireEvent.click(open);
     expect(onTap).not.toHaveBeenCalled();
   });
 
   it("shows 'unknown' after an unknown outcome, in the label's own cell", () => {
-    const { getByRole } = draw(fixture("button"), { tap: { phase: "unknown", requestId: "r", control: "v", intent: "rerun" } });
-    const button = getByRole("button");
-    expect(button.querySelector("[data-active]")?.textContent).toBe("unknown");
-    expect(button.getAttribute("aria-label")).toBe("Rerun red, unknown");
-    expect(button).not.toBeDisabled();
+    const { getByRole } = draw(RERUN, { tap: { phase: "unknown", rid: "r", control: "v/0/0", intent: "rerun" } });
+    const pressed = getByRole("button");
+    expect(pressed.querySelector("[data-active]")?.textContent).toBe("unknown");
+    expect(pressed.getAttribute("aria-label")).toBe("Rerun red, unknown");
+    expect(pressed).not.toBeDisabled();
   });
 
-  it("leaves the other controls of the part at rest", () => {
-    const { container } = draw(viewOf(LEGS_DOCUMENT), { tap: busy("v/6") });
-    const row = container.querySelector('button[data-slot="trick-list-row"]');
-    expect(row?.getAttribute("aria-busy")).toBe("false");
-    expect(row?.querySelector('[data-active] .animate-spin')).toBeNull();
+  it("with confirm, arms on the first tap in the danger ink and sends on the second", () => {
+    const onTap = vi.fn();
+    const { getByRole } = draw(viewOfNodes(bar(button({ label: "Stop", intent: "stop", confirm: "Stop the run?" }))), { onTap });
+    fireEvent.click(getByRole("button"));
+    expect(onTap).not.toHaveBeenCalled();
+    const armed = getByRole("button", { name: "Stop the run?" });
+    expect(armed.dataset.armed).toBe("");
+    expect(armed.className).toContain(TONE_TEXT_CLASS.danger);
+    expect(armed.querySelector("[data-active]")?.textContent).toBe("Stop the run?");
+    fireEvent.click(armed);
+    expect(onTap).toHaveBeenCalledExactlyOnceWith(KEY, "stop", undefined, "v/0/0");
+    expect(getByRole("button").dataset.armed).toBeUndefined();
+  });
+
+  it("with confirm, rests again 4 s after the first tap and sends nothing", () => {
+    vi.useFakeTimers();
+    const onTap = vi.fn();
+    const { getByRole } = draw(viewOfNodes(bar(button({ label: "Stop", intent: "stop", confirm: "Stop the run?" }))), { onTap });
+    fireEvent.click(getByRole("button"));
+    act(() => vi.advanceTimersByTime(CONFIRM_MS - 1));
+    expect(getByRole("button").dataset.armed).toBe("");
+    act(() => vi.advanceTimersByTime(1));
+    expect(getByRole("button").dataset.armed).toBeUndefined();
+    expect(getByRole("button").querySelector("[data-active]")?.textContent).toBe("Stop");
+    expect(onTap).not.toHaveBeenCalled();
+  });
+
+  it("with does copy, copies its value on the phone and sends nothing, even while the part is busy", () => {
+    const onTap = vi.fn();
+    const view = viewOfNodes(bar(button({ label: "Copy the task", does: "copy", value: "Work on M93 spec 03" })));
+    const { getByRole } = draw(view, { onTap, tap: busy("v/9") });
+    const copy = getByRole("button");
+    expect(copy).not.toBeDisabled();
+    fireEvent.click(copy);
+    expect(copyText).toHaveBeenCalledWith("Work on M93 spec 03");
+    expect(onTap).not.toHaveBeenCalled();
+  });
+
+  it("is disabled with its reason as the title, and draws its badge and hint", () => {
+    const { getByRole, container } = draw(viewOfNodes(bar(button({ label: "Run", intent: "run", disabled: "No log yet", badge: "2", hint: "Runs the red cases" }))));
+    const off = getByRole("button");
+    expect(off).toBeDisabled();
+    expect(off.title).toBe("No log yet");
+    expect(container.querySelector('[data-slot="trick-badge"]')?.textContent).toBe("2");
+    expect(off.textContent).toContain("Runs the red cases");
+  });
+
+  it("draws an empty badge as a dot", () => {
+    const { container } = draw(viewOfNodes(bar(button({ label: "Run", intent: "run", badge: "" }))));
+    expect(container.querySelector('[data-slot="trick-badge"]')?.hasAttribute("data-dot")).toBe(true);
   });
 });
 
-describe("a time", () => {
-  const at = (ms: number) => new Date(NOW + ms).toISOString();
-  const words = (node: ViewNode) => {
-    const { container, unmount } = draw(node);
+describe("a row and a link", () => {
+  it("opens an http(s) href through onLink, as a real anchor", () => {
+    const onLink = vi.fn();
+    const { container } = draw(viewOfNodes(list(row("Report", { href: "https://example.invalid/legs/24" }))), { onLink });
+    const anchor = container.querySelector<HTMLAnchorElement>('[data-trick-node="row"] a');
+    expect(anchor?.getAttribute("href")).toBe("https://example.invalid/legs/24");
+    expect(anchor?.target).toBe("_blank");
+    expect(anchor?.rel).toBe("noopener noreferrer");
+    fireEvent.click(anchor!);
+    expect(onLink).toHaveBeenCalledWith({ url: "https://example.invalid/legs/24" });
+  });
+
+  it("opens a session key href through onLink, as a button", () => {
+    const onLink = vi.fn();
+    const { getByRole } = draw(viewOfNodes(list(row("The composer session", { href: "bluefin:w6X:3" }))), { onLink });
+    fireEvent.click(getByRole("button", { name: "The composer session" }));
+    expect(onLink).toHaveBeenCalledWith({ session: "bluefin:w6X:3" });
+  });
+
+  it("is two tap targets side by side with a trailing button, never one inside the other", () => {
+    const onLink = vi.fn();
+    const onTap = vi.fn();
+    const { container, getByRole } = draw(viewOfNodes(list(row("case 24", { href: "https://example.invalid/24" }, [button({ label: "Rerun", intent: "rerun", value: "24" })]))), { onLink, onTap });
+    const anchor = container.querySelector("a");
+    const rerun = getByRole("button", { name: "Rerun" });
+    expect(anchor?.contains(rerun)).toBe(false);
+    expect(rerun.closest("a")).toBeNull();
+    fireEvent.click(rerun);
+    expect(onTap).toHaveBeenCalledWith(KEY, "rerun", "24", "v/0/0/0");
+    expect(onLink).not.toHaveBeenCalled();
+  });
+
+  it("does not open from a disabled row", () => {
+    const { container } = draw(viewOfNodes(list(row("case 24", { href: "https://example.invalid/24", disabled: "Not yet" }))));
+    expect(container.querySelector("a")).toBeNull();
+    expect(container.querySelector('[aria-disabled="true"]')?.getAttribute("title")).toBe("Not yet");
+  });
+
+  it("draws an href this Collie cannot read as plain words", () => {
+    const { container } = draw(foreign('[{"kind":"list","kids":[{"kind":"row","text":"x","attrs":{"href":"javascript:alert(1)"}}]}]'));
+    expect(container.querySelector("a")).toBeNull();
+    expect(container.querySelector('[data-trick-node="row"] button')).toBeNull();
+    expect(linkTargetOf("javascript:alert(1)")).toBeUndefined();
+    expect(linkTargetOf("trick:bluefin:legs")).toBeUndefined();
+  });
+
+  it("cuts a long title in the middle with cut mid, keeping its tail", () => {
+    const { container } = draw(viewOfNodes(list(row("web/src/lib/tricks/render-the-long-file.tsx", { cut: "mid" }))));
+    const tail = container.querySelector('[data-trick-node="row"] .whitespace-pre');
+    expect(tail?.textContent).toBe("g-file.tsx");
+  });
+
+  it("taps an inline link to a session inside a para", () => {
+    const onLink = vi.fn();
+    const { getByRole } = draw(viewOf(nodeDocument("link")), { onLink });
+    fireEvent.click(getByRole("button", { name: "the composer session" }));
+    expect(onLink).toHaveBeenCalledWith({ session: "bluefin:w6X:3" });
+  });
+});
+
+describe("a chip and the step strip", () => {
+  it("draws a bar of chips with state as the strip: a track segment per step, and the steps in words", () => {
+    const { container } = draw(viewOf(LEGS_DOCUMENT));
+    const strip = container.querySelector<HTMLElement>("[data-strip]");
+    expect(strip).not.toBeNull();
+    expect(strip?.getAttribute("aria-label")).toBe("Legs");
+    expect([...(strip?.querySelectorAll<HTMLElement>('[data-slot="trick-strip-track"] > [data-state]') ?? [])].map((s) => s.dataset.state)).toEqual(["working", "idle", "idle"]);
+    const words = strip?.querySelector("ol.sr-only")?.textContent ?? "";
+    expect(words).toContain("Solo leg, herdr: working");
+    expect(words).toContain("1 of 3");
+    expect(strip?.querySelector('li[aria-current="step"]')?.textContent).toContain("Solo leg, herdr");
+  });
+
+  it("draws a bar of chips with no state as plain chips, not a strip", () => {
+    const { container } = draw(viewOfNodes(bar({ kind: "chip", text: "core" }, { kind: "chip", text: "herdr" })));
+    expect(container.querySelector("[data-strip]")).toBeNull();
+    expect(container.querySelectorAll('[data-trick-node="chip"]')).toHaveLength(2);
+  });
+
+  it("shows a chip's short words and its full text on a tap", () => {
+    const { getByRole } = draw(viewOfNodes(bar({ kind: "chip", text: "Solo leg, herdr", attrs: { short: "herdr" } })));
+    const chip = getByRole("button", { name: "Solo leg, herdr" });
+    expect(chip.textContent).toBe("herdr");
+    fireEvent.click(chip);
+    expect(chip.textContent).toBe("Solo leg, herdr");
+    expect(chip.getAttribute("aria-expanded")).toBe("true");
+  });
+});
+
+describe("a meter, a number, an image", () => {
+  it("draws a meter's percent from value and max", () => {
+    const { container, getByRole } = draw(viewOfNodes({ kind: "meter", attrs: { value: "17", max: "34", label: "cases green" } }));
+    expect(nodeEl(container, "meter").textContent).toContain("50%");
+    expect(getByRole("progressbar").getAttribute("aria-valuenow")).toBe("50");
+  });
+
+  it("draws a progress with no value as indeterminate: no figure, no valuenow", () => {
+    const { container, getByRole } = draw(viewOfNodes({ kind: "meter", attrs: { role: "progress", label: "update" } }));
+    expect(nodeEl(container, "meter").dataset.role).toBe("progress");
+    expect(nodeEl(container, "meter").textContent).not.toMatch(/%/);
+    expect(getByRole("progressbar").hasAttribute("aria-valuenow")).toBe(false);
+  });
+
+  it("draws a number's figure with its unit and label", () => {
+    const { container } = draw(viewOfNodes({ kind: "number", text: "23/34", attrs: { unit: "cases", label: "green" } }));
+    const box = nodeEl(container, "number");
+    expect(box.textContent).toBe("23/34casesgreen");
+    expect(box.querySelector(".text-2xl")?.textContent).toBe("23/34");
+  });
+
+  it("reserves an image's box from w and h, and says its alt with no URL", () => {
+    const { container } = draw(viewOf(nodeDocument("image")));
+    const box = nodeEl(container, "image");
+    expect(box.style.aspectRatio).toBe("1280 / 720");
+    expect(box.querySelector("img")).toBeNull();
+    expect(box.textContent).toBe("The reply box with the draft still in it");
+  });
+
+  it("loads an image lazily from the place's URL", () => {
+    const imageUrl = vi.fn((src: string) => `/api/tricks/image?src=${src}`);
+    const { container } = draw(viewOf(nodeDocument("image")), { imageUrl });
+    const img = nodeEl(container, "image").querySelector("img");
+    expect(imageUrl).toHaveBeenCalledWith("shots/case-24.png");
+    expect(img?.getAttribute("loading")).toBe("lazy");
+    expect(img?.getAttribute("src")).toBe("/api/tricks/image?src=shots/case-24.png");
+    expect(img?.getAttribute("width")).toBe("1280");
+  });
+});
+
+describe("a clock", () => {
+  const clock = (kind: string, at: number) => {
+    const { container, unmount } = draw(viewOfNodes(bar({ kind: "chip", attrs: { at: String(at), clock: kind } })));
     const text = container.querySelector("time")?.textContent;
     unmount();
     return text;
   };
 
-  it("says how long ago, in the compact units", () => {
-    expect(words({ kind: "time", at: at(-20_000) })).toBe("just now");
-    expect(words({ kind: "time", at: at(-3 * 60_000 - 5_000) })).toBe("3 min ago");
-    expect(words({ kind: "time", at: at(-2 * 3_600_000) })).toBe("2 h ago");
+  it("says how long ago with ago", () => {
+    expect(clock("ago", NOW - 20_000)).toBe("just now");
+    expect(clock("ago", NOW - 3 * 60_000 - 5_000)).toBe("3 min ago");
   });
 
-  it("says how long until, and counts seconds in its last minute", () => {
-    expect(words({ kind: "time", at: at(2 * 3_600_000 + 60_000), style: "until" })).toBe("in 2 h");
-    expect(words({ kind: "time", at: at(40_000), style: "until" })).toBe("in 40 s");
-    expect(words({ kind: "time", at: at(-5 * 60_000), style: "until" })).toBe("5 min ago");
+  it("counts up with elapsed, in m:ss and h:mm:ss", () => {
+    expect(clock("elapsed", NOW - 65_000)).toBe("1:05");
+    expect(clock("elapsed", NOW - 3_725_000)).toBe("1:02:05");
   });
 
-  it("writes a date and a clock time past a day", () => {
-    const text = words({ kind: "time", at: "2026-11-05T09:38:00Z" });
-    expect(text).toMatch(/Nov/);
-    expect(text).not.toMatch(/ago/);
+  it("counts down with left, and holds 0:00 past zero", () => {
+    expect(clock("left", NOW + 90_000)).toBe("1:30");
+    expect(clock("left", NOW - 5_000)).toBe("0:00");
   });
 
-  it("writes the clock and the date styles", () => {
-    expect(words({ kind: "time", at: at(0), style: "clock" })).toMatch(/\d{2}:\d{2}/);
-    expect(words({ kind: "time", at: "2026-11-08T12:00:00Z", style: "date" })).toMatch(/Nov/);
+  it("writes the time of day with time, in a run too", () => {
+    expect(clock("time", NOW)).toMatch(/\d{1,2}:\d{2}/);
+    const { container } = draw(viewOf(nodeDocument("run")));
+    expect(container.querySelector('time[data-clock="time"]')?.textContent).toMatch(/\d{1,2}:\d{2}/);
+  });
+});
+
+describe("tones and styles", () => {
+  it("ink through the tone map, and only through it", () => {
+    const { container } = draw(viewOfNodes({ kind: "number", text: "3", attrs: { tone: "danger" } }));
+    expect(nodeEl(container, "number").querySelector(".text-2xl")?.className).toContain(TONE_TEXT_CLASS.danger);
+  });
+
+  it("go grey past the fresh window, and the inks stay", () => {
+    const { container } = draw(viewOfNodes({ kind: "number", text: "3", attrs: { tone: "ok" } }, { kind: "number", text: "4", attrs: { tone: "muted" } }), { stale: true });
+    const [green, quiet] = [...container.querySelectorAll('[data-trick-node="number"] .text-2xl')];
+    expect(green?.className).toContain(TONE_TEXT_CLASS.unknown);
+    expect(green?.className).not.toContain(TONE_TEXT_CLASS.ok);
+    expect(quiet?.className).toContain(TONE_TEXT_CLASS.muted);
+  });
+
+  it("fall back to no tone for a word this Collie does not know", () => {
+    const { container } = draw(foreign('[{"kind":"number","text":"3","attrs":{"tone":"amber"}}]'));
+    expect(nodeEl(container, "number").innerHTML).not.toMatch(/text-status/);
+  });
+
+  it("draw a card's tone as Collie's edge, grey when stale", () => {
+    const toned = viewOfNodes({ kind: "card", attrs: { tone: "danger" }, kids: [para("x")] });
+    const fresh = draw(toned);
+    expect(nodeEl(fresh.container, "card").className).toContain("shadow-[var(--edge-accent)_var(--status-blocked)]");
+    fresh.unmount();
+    const stale = draw(toned, { stale: true });
+    expect(nodeEl(stale.container, "card").className).toContain("shadow-[var(--edge-accent)_var(--status-unknown)]");
+  });
+
+  it("ink a style's fg words through the tone map, syntax words through the syntax tokens, marks as type", () => {
+    const { container } = draw(viewOfNodes({ kind: "line", text: "red", attrs: { style: "fg-red bold" } }, { kind: "line", text: "if", attrs: { style: "syn-keyword italic" } }, { kind: "line", text: "blue", attrs: { style: "fg-blue" } }));
+    const [red, keyword, blue] = [...container.querySelectorAll('[data-trick-node="line"] > span')];
+    expect(red?.className).toContain(TONE_TEXT_CLASS.danger);
+    expect(red?.className).toContain("font-semibold");
+    expect(keyword?.className).toContain("text-syntax-keyword");
+    expect(keyword?.className).toContain("italic");
+    expect(blue?.className).not.toMatch(/text-status|text-syntax/);
+  });
+});
+
+describe("faces and groups", () => {
+  it("draw a label in the UI face, the trick's words in the content face, and a line in mono", () => {
+    const { container } = draw(viewOf(TRACKER_DOCUMENT));
+    expect(container.querySelector('[data-trick-node="group"] [data-slot="section-label"], [data-trick-node="group"] h2, [data-trick-node="group"] h3')?.className ?? "").not.toMatch(/font-(content|mono)/);
+    expect(container.querySelector('[data-trick-node="para"] p')?.className).toContain("font-content");
+    const legs = draw(viewOf(LEGS_DOCUMENT));
+    expect(nodeEl(legs.container, "line").className).toContain("font-mono");
+  });
+
+  it("folds a group that names fold, from its head", () => {
+    const { getByRole } = draw(viewOfNodes({ kind: "group", attrs: { label: "Older", fold: "closed" }, kids: [row("case 19")] }));
+    const head = getByRole("button", { name: /Older/ });
+    expect(head.getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(head);
+    expect(head.getAttribute("aria-expanded")).toBe("true");
+  });
+
+  it("draws a group with no fold as a head that is not a control", () => {
+    const { container } = draw(viewOf(TRACKER_DOCUMENT));
+    expect(container.querySelector('[data-trick-node="group"] > button[aria-expanded]')).toBeNull();
+  });
+
+  it("draws a code block's lines in mono with the phone's copy button", () => {
+    const { container } = draw(viewOf(nodeDocument("code")));
+    const code = nodeEl(container, "code");
+    expect(code.dataset.lang).toBe("sh");
+    expect(code.querySelectorAll("pre > div")).toHaveLength(4);
+    expect(code.querySelector("button")).not.toBeNull();
   });
 });

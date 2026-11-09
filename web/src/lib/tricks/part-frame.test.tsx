@@ -1,4 +1,4 @@
-import { act, fireEvent, render } from "@testing-library/react";
+import { act, fireEvent, render, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import type { JsonObject } from "../json";
@@ -6,7 +6,7 @@ import { LEGS_DOCUMENT } from "./fixtures";
 import { isPastWindow, partWindowMs, readFrame } from "./frame";
 import { TrickView, PartFrame } from "./part-frame";
 import { renderView, type RenderCtx } from "./render";
-import { TONE_TEXT_CLASS, parseTrickDocument, partKey, type TrickPart, type TricksReply, type ViewNode, type WireTrickInfo, type WireTrickPart } from "./schema";
+import { TONE_TEXT_CLASS, parseTrickDocument, partKey, type TrickPart, type TricksReply, type View, type WireTrickInfo, type WireTrickPart } from "./schema";
 import { createTricksStore, type TricksStore } from "./store";
 
 const AS_OF = "2026-11-08T09:41:00Z";
@@ -18,26 +18,32 @@ function sessionOf(doc: JsonObject): TrickPart {
   return part.part;
 }
 
-const GREEN: TrickPart = { at: "session", id: "deploy", view: { kind: "text", text: "deploy green", tone: "ok", lines: 1 } };
+/** A one-line part in the ok ink: a `line` styled green, which inks through the tone map. */
+const GREEN: TrickPart = { at: "session", id: "deploy", view: [{ kind: "line", text: "deploy green", attrs: { style: "fg-green" } }] };
 
 function stored(value: TrickPart, extra: Partial<WireTrickPart> = {}): WireTrickPart {
   return { host: "bluefin", trick: "deploy", part: value.id, rev: 1, value, asOf: AS_OF, fresh: "90s", ...extra };
 }
 
-const TRICK: WireTrickInfo = { host: "bluefin", id: "deploy", name: "Deploy", icon: "server", on: true, state: "ok", places: ["session"] };
+const TRICK: WireTrickInfo = { host: "bluefin", id: "deploy", name: "Deploy", icon: "machine", on: true, state: "ok", places: ["session"] };
 
-function viewOfPart(value: TrickPart): ViewNode {
+function viewOfPart(value: TrickPart): View {
   if (!("view" in value)) throw new Error("no view");
   return value.view;
 }
 
-function frame(part: WireTrickPart, now: number, extra: { trick?: WireTrickInfo; onDraft?: () => void; tap?: Parameters<typeof PartFrame>[0]["tap"]; retryAt?: string } = {}) {
-  const ctx = (stale: boolean): RenderCtx => ({ partKey: partKey(part), trickName: "Deploy", stale, onTap: vi.fn(), onDraft: vi.fn(), onOpen: vi.fn(), now });
+function frame(part: WireTrickPart, now: number, extra: { trick?: WireTrickInfo; tap?: Parameters<typeof PartFrame>[0]["tap"]; retryAt?: string } = {}) {
+  const ctx = (stale: boolean): RenderCtx => ({ partKey: partKey(part), trickName: "Deploy", stale, onTap: vi.fn(), onLink: vi.fn(), now });
   return render(
-    <PartFrame part={part} trick={extra.trick ?? TRICK} tap={extra.tap} retryAt={extra.retryAt} onDraft={extra.onDraft ?? vi.fn()} now={now}>
+    <PartFrame part={part} trick={extra.trick ?? TRICK} tap={extra.tap} retryAt={extra.retryAt} now={now}>
       {({ stale }) => renderView(viewOfPart(part.value), ctx(stale))}
     </PartFrame>,
   );
+}
+
+/** The drawn words of the part's one line, whose class carries its ink. */
+function inkOf(container: HTMLElement): HTMLElement | null {
+  return container.querySelector<HTMLElement>('[data-trick-node="line"] span');
 }
 
 function lineOf(container: HTMLElement): HTMLElement {
@@ -49,12 +55,12 @@ function lineOf(container: HTMLElement): HTMLElement {
 describe("freshness", () => {
   it("keeps the tone inside the fresh window, and takes it away past it", () => {
     const fresh = frame(stored(GREEN), T0 + 30_000);
-    expect(fresh.container.querySelector("p")?.className).toContain(TONE_TEXT_CLASS.ok);
+    expect(inkOf(fresh.container)?.className).toContain(TONE_TEXT_CLASS.ok);
     expect(lineOf(fresh.container).textContent).toBe("just now");
     fresh.unmount();
     const stale = frame(stored(GREEN), T0 + 3 * 60_000);
-    expect(stale.container.querySelector("p")?.className).toContain(TONE_TEXT_CLASS.unknown);
-    expect(stale.container.querySelector("p")?.className).not.toContain(TONE_TEXT_CLASS.ok);
+    expect(inkOf(stale.container)?.className).toContain(TONE_TEXT_CLASS.unknown);
+    expect(inkOf(stale.container)?.className).not.toContain(TONE_TEXT_CLASS.ok);
     expect(lineOf(stale.container).textContent).toBe("Updated 3 min ago");
   });
 
@@ -98,19 +104,22 @@ describe("freshness", () => {
 });
 
 describe("failure", () => {
-  it("draws the last good part, says the run failed, and shows the masked line on a tap", () => {
-    const onDraft = vi.fn();
+  it("draws the last good part, says the run failed, and shows the masked line on a tap", async () => {
+    const writeText = vi.fn(() => Promise.resolve());
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
     const failed = stored(GREEN, { stale: true, problem: "deploy.sh: curl: (22) 403 at https://example.invalid/?key=****" });
-    const { container, getByRole } = frame(failed, T0 + 30_000, { onDraft });
-    expect(container.querySelector("p")?.textContent).toBe("deploy green");
+    const { container, getByRole } = frame(failed, T0 + 30_000);
+    expect(inkOf(container)?.textContent).toBe("deploy green");
     expect(lineOf(container).textContent).toContain("Last run failed, updated just now");
     const why = getByRole("button", { name: "Why" });
     expect(why.getAttribute("aria-expanded")).toBe("false");
     fireEvent.click(why);
     expect(getByRole("button", { name: "Hide" }).getAttribute("aria-expanded")).toBe("true");
     expect(container.querySelector('[data-slot="trick-frame-problem"]')?.textContent).toContain("key=****");
-    fireEvent.click(getByRole("button", { name: "Ask the agent to fix it" }));
-    expect(onDraft).toHaveBeenCalledWith({ text: "The trick `deploy` failed: `deploy.sh: curl: (22) 403 at https://example.invalid/?key=****`" });
+    // The fix button COPIES the line on the phone (design section 7): no draft, no bridge write.
+    fireEvent.click(getByRole("button", { name: "Copy for an agent" }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith("The trick `deploy` failed: `deploy.sh: curl: (22) 403 at https://example.invalid/?key=****`"));
+    Reflect.deleteProperty(navigator, "clipboard");
   });
 
   it("says a trick is paused, and when it retries when that is known", () => {
@@ -128,10 +137,10 @@ describe("failure", () => {
   });
 
   it("puts a failed tap and an unknown tap in the line before anything else", () => {
-    const failed = frame(stored(GREEN, { stale: true }), T0, { tap: { phase: "failed", requestId: "r", control: "v", intent: "x", message: "no" } });
+    const failed = frame(stored(GREEN, { stale: true }), T0, { tap: { phase: "failed", rid: "r", control: "v", intent: "x", message: "no" } });
     expect(lineOf(failed.container).textContent).toContain("The tap failed");
     failed.unmount();
-    const unknown = frame(stored(GREEN), T0, { tap: { phase: "unknown", requestId: "r", control: "v", intent: "x" } });
+    const unknown = frame(stored(GREEN), T0, { tap: { phase: "unknown", rid: "r", control: "v", intent: "x" } });
     expect(lineOf(unknown.container).textContent).toBe("No answer. It may have run.");
   });
 
@@ -139,7 +148,7 @@ describe("failure", () => {
     const part = stored(GREEN, { stale: true, problem: "p" });
     expect(readFrame(part, TRICK, undefined, T0).line.kind).toBe("failed");
     expect(readFrame(part, { ...TRICK, state: "stopped" }, undefined, T0).line.kind).toBe("stopped");
-    expect(readFrame(part, TRICK, { phase: "unknown", requestId: "r", control: "v", intent: "x" }, T0).line.kind).toBe("tap-unknown");
+    expect(readFrame(part, TRICK, { phase: "unknown", rid: "r", control: "v", intent: "x" }, T0).line.kind).toBe("tap-unknown");
     expect(readFrame(stored(GREEN), TRICK, undefined, T0).line.kind).toBe("none");
   });
 });
@@ -162,21 +171,28 @@ function storeWith(parts: WireTrickPart[]): StandIn {
 }
 
 describe("TrickView", () => {
-  const list = (rows: number, words: string): TrickPart => ({ at: "session", id: "deploy", view: { kind: "list", rows, items: [{ text: words }] } });
+  /** A list of `rows` rows, the first saying `words`: the rows are its form, the words its data. */
+  const list = (rows: number, words: string): TrickPart => ({
+    at: "session",
+    id: "deploy",
+    view: [{ kind: "list", kids: Array.from({ length: rows }, (_, i) => ({ kind: "row" as const, text: i === 0 ? words : `row ${i}` })) }],
+  });
 
   it("draws a held part's view in its frame", async () => {
     const legs = { ...stored(sessionOf(LEGS_DOCUMENT)), trick: "deploy" };
     const { store } = storeWith([legs]);
     await store.syncTricks(1);
-    const { container } = render(<TrickView partKey={partKey(legs)} store={store} onDraft={vi.fn()} onOpen={vi.fn()} now={T0} />);
+    const { container } = render(<TrickView partKey={partKey(legs)} store={store} onLink={vi.fn()} now={T0} />);
     expect(container.querySelector('[data-slot="trick-part"]')).not.toBeNull();
-    expect(container.querySelector('[data-trick-node="steps"]')).not.toBeNull();
+    // The legs as a step strip, a bar of chips with state, and the figure.
+    expect(container.querySelector("[data-strip]")).not.toBeNull();
+    expect(container.querySelector('[data-trick-node="number"]')?.textContent).toContain("23/34");
   });
 
   it("draws a new version of the same form at once, and holds a new form while a finger is down", async () => {
     const { store, push } = storeWith([stored(list(2, "one"))]);
     await store.syncTricks(1);
-    const { container } = render(<TrickView partKey="bluefin/deploy/deploy" store={store} onDraft={vi.fn()} onOpen={vi.fn()} now={T0} />);
+    const { container } = render(<TrickView partKey="bluefin/deploy/deploy" store={store} onLink={vi.fn()} now={T0} />);
     const rows = () => container.querySelector('[data-trick-node="list"]')?.childElementCount;
     const root = container.querySelector('[data-slot="trick-part"]')!;
     fireEvent.pointerDown(root);
@@ -194,7 +210,7 @@ describe("TrickView", () => {
 
   it("draws nothing for a part it does not hold", () => {
     const { store } = storeWith([]);
-    const { container } = render(<TrickView partKey="bluefin/deploy/deploy" store={store} onDraft={vi.fn()} onOpen={vi.fn()} />);
+    const { container } = render(<TrickView partKey="bluefin/deploy/deploy" store={store} onLink={vi.fn()} />);
     expect(container.innerHTML).toBe("");
   });
 });

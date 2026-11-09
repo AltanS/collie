@@ -104,8 +104,6 @@ export const BULLET_MAX = 4;
 export const LINE_TEXT_MAX = 240;
 /** A URL in a `link`, a `row` or a `run` `href` (WIRE.md §6, `Item.href`). */
 export const URL_MAX = 2048;
-/** A file path in a `link` with `rel` `file`. */
-export const FILE_PATH_MAX = 1024;
 /** The whole `at` string, match included. */
 export const AT_MAX = 160;
 /** An image's `src` and a decision's media `file`, a path relative to the trick folder. */
@@ -345,7 +343,7 @@ export type Pressed = (typeof PRESSED_STATES)[number];
 /** `button.does`: a trick may only copy. `install`, `notify`, `reload` and `wipe` are Collie's own. */
 export const BUTTON_DOES = ["copy"] as const;
 export type ButtonDoes = (typeof BUTTON_DOES)[number];
-/** `link.rel`: what the `href` names. Absent is `url`. */
+/** `link.rel`: what the `href` names. Absent: an https:// or http:// address or a session's scope key. `file` is refused: a trick opens no file. */
 export const LINK_RELS = ["url", "file", "pane"] as const;
 export type LinkRel = (typeof LINK_RELS)[number];
 /** `bar.role`: a trick's bar sits in its view, or is the one `strip` band; the fixed bars are Collie's. */
@@ -363,12 +361,15 @@ export const CUTS = ["end", "mid"] as const;
 
 /**
  * THE ICON SET a trick may name: the tree's list (VOCABULARY.md 2.15) and the words the first tricks
- * add (`flask`, `plug`, `tag`, `git-pull-request`, `x`, `play`, `pause`, `flag`, `camera`). One list,
+ * add (`flask`, `plug`, `tag`, `git-pull-request`, `x`, `play`, `pause`, `flag`, `camera`), and the
+ * three session action words the tree lacks (`archive`, `send`, `note`), so the action icons are a
+ * subset of this list and a trick has ONE icon list to learn (step 3). One list,
  * each word a lucide export (`TRICK_ICON_LUCIDE`); the test holds every one to `lucide-react`. Left out
  * on purpose: the spinner (`Loader2`, Collie's own busy state) and the filled status circles
  * (`CircleDot`, `CheckCircle2`, `XCircle`, `CircleAlert`), which read as Collie's status marks.
  */
 export const TRICK_ICON_LUCIDE = {
+  archive: "Archive",
   back: "ArrowLeft",
   bell: "Bell",
   branch: "GitBranch",
@@ -401,6 +402,7 @@ export const TRICK_ICON_LUCIDE = {
   more: "Ellipsis",
   move: "Move",
   next: "ChevronRight",
+  note: "StickyNote",
   pause: "Pause",
   pin: "Pin",
   play: "Play",
@@ -408,6 +410,7 @@ export const TRICK_ICON_LUCIDE = {
   plus: "Plus",
   refresh: "RefreshCw",
   search: "Search",
+  send: "Send",
   settings: "Settings2",
   share: "Share2",
   star: "Star",
@@ -427,10 +430,11 @@ export const DEFAULT_TRICK_ICON: TrickIcon = "plug";
 /**
  * A trick session action's icon: the twelve words of `PANE_ACTION_ICONS` (bridge/types.ts), because a
  * trick session's actions ride the pane fields as `PaneAction`s. Restated, not imported, so this file
- * loads without the bridge; the test reads both and fails on drift. Not the trick icon set: these are
- * the program pane's words, and three of them (`archive`, `send`, `note`) are not in the tree's list.
+ * loads without the bridge; the test reads both and fails on drift. A SUBSET of the trick icon set:
+ * the three words the tree lacks (`archive`, `send`, `note`) are trick icons too, and the test holds
+ * every action word to `TRICK_ICON_LUCIDE`, so a trick has one icon list.
  */
-export const ACTION_ICONS = ["play", "pause", "check", "x", "refresh", "archive", "flag", "star", "send", "note", "search", "more"] as const;
+export const ACTION_ICONS = ["play", "pause", "check", "x", "refresh", "archive", "flag", "star", "send", "note", "search", "more"] as const satisfies readonly TrickIcon[];
 export type ActionIcon = (typeof ACTION_ICONS)[number];
 
 /** The events a manifest may name in `on` (a later slice, the event bus). */
@@ -452,27 +456,33 @@ export type SessionStatus = (typeof SESSION_STATUSES)[number];
 /**
  * Where a part draws, by kind. The `at` of a part names one (`belt`, `tab:fix`, `view:agent:claude`)
  * and the manifest's `places` lists the kinds it uses. The place word is the `at` word before its
- * match: `tab` is `tab:<tabmatch>`, the mark after a tab's title; `view` is `view:<match>`.
+ * match: `tab` is both `tab:<tabmatch>`, the mark after a tab's title, and a bare `tab`, a trick's own
+ * tab entry in a Space (slice 06, the shape of the first schema), because both live in the Tab row;
+ * `view` is `view:<match>`.
  * DECISION: the manifest declares kinds, not whole `at` strings, so a trick may compute its matches at
  * run time.
  */
 export const PLACE_KINDS = ["belt", "session", "tab", "view", "dashboard"] as const;
 export type PlaceKind = (typeof PLACE_KINDS)[number];
-/** The places this Collie draws. A parser call with no `places` accepts these. */
-export const NEAR_PLACES = ["belt", "session", "tab", "view"] as const satisfies readonly PlaceKind[];
-/** The places a later slice builds. Refused with "not in this Collie" unless a caller enables them. */
-export const LATER_PLACES = ["dashboard"] as const satisfies readonly PlaceKind[];
 /**
- * `at` words of the first schema, refused with what to write instead. The trick's own tab, the
- * header line, the menu rows and the settings page were never drawn; they come back when a slice
- * builds them, in the tree's shape.
+ * The places a parser call with no `places` accepts: every kind (step 3). Parsing is not drawing: this
+ * Collie draws `belt` and `session`; the others are held, and a slice draws them in the shape parsed.
  */
+export const NEAR_PLACES: readonly PlaceKind[] = PLACE_KINDS;
+/** The place kinds a later slice builds and a caller may refuse as "later" by leaving them out of `places`. None since step 3. */
+export const LATER_PLACES: readonly PlaceKind[] = [];
+/**
+ * Place words of the first schema that come back later, each refused with the code "later" and its
+ * place named, in an `at` and in the manifest's `places`. `menu` is the word of `menu:<match>`.
+ */
+export const LATER_PLACE_WORDS = {
+  "header.line": '"header.line" is a later place, not in this Collie yet. The other parts still draw.',
+  menu: '"menu:<match>" is a later place, not in this Collie yet. The other parts still draw.',
+  settings: '"settings" is a later place, not in this Collie yet. The other parts still draw.',
+} as const satisfies Readonly<Record<string, string>>;
+/** `at` words of the first schema that are gone, refused with what to write instead. */
 export const REMOVED_PLACES = {
-  tab: 'A trick\'s own tab is not in this Collie. A mark after a tab\'s title is "tab:<tabmatch>".',
-  "header.line": '"header.line" is not a place in this Collie.',
-  menu: '"menu:<match>" is not a place in this Collie.',
-  settings: '"settings" is not a place in this Collie.',
-  "tab-mark": 'The tab mark\'s "at" is "tab:<tabmatch>".',
+  "tab-mark": 'The tab mark\'s "at" is "tab:<tabmatch>", and its place word is "tab".',
 } as const satisfies Readonly<Record<string, string>>;
 
 // ── Node kinds ───────────────────────────────────────────────────────────────────────────────
@@ -830,6 +840,17 @@ export interface SessionPart {
   actions?: TrickAction[];
   view: View;
 }
+/** A trick's own tab entry in the Tab row of the first Space whose name matches `space` (slice 06). Its body is a view. */
+export interface TabPart {
+  at: "tab";
+  id: string;
+  /** The tab's title in the Tab row. */
+  title: string;
+  icon?: TrickIcon;
+  /** A Space name glob. The tab joins the first Space in Collie's order that matches, and stays. */
+  space: string;
+  view: View;
+}
 export interface TabMarkPart {
   at: `tab:${string}`;
   id: string;
@@ -849,13 +870,14 @@ export interface DashboardPart {
   id: string;
   view: View;
 }
-export type TrickPart = BeltPart | SessionPart | TabMarkPart | ViewPart | DashboardPart;
+export type TrickPart = BeltPart | SessionPart | TabPart | TabMarkPart | ViewPart | DashboardPart;
 
 /** A part the parser accepted, with its place kind and its match read out of `at`. */
 export type ParsedPart =
   | { place: "belt"; part: BeltPart }
   | { place: "session"; part: SessionPart }
   | { place: "tab"; part: TabMarkPart; tabMatch: TabMatch }
+  | { place: "tab"; part: TabPart; tabMatch?: undefined }
   | { place: "view"; part: ViewPart; match: SessionMatch }
   | { place: "dashboard"; part: DashboardPart };
 
@@ -1263,6 +1285,19 @@ export function isScopeKey(text: string): boolean {
   if (paneId.startsWith(TRICK_SESSION_PREFIX)) return false;
   return !UNSAFE_ID_CHAR.test(paneId);
 }
+/**
+ * The schemes a browser runs or loads on its own, and the two a trick may name as a URL. A scope key
+ * whose host is one of them reads as that scheme to every reader that is not Collie (`javascript:x`
+ * is a valid scope key by shape: host `javascript`, pane id `x`), so an `href` never takes it as a
+ * session. A machine of one of these names keeps its facts; only a link to its sessions is refused.
+ */
+const SCHEME_HOSTS: ReadonlySet<string> = new Set(["javascript", "vbscript", "data", "file", "blob", "about", "filesystem", "http", "https"]);
+
+/** A session an `href` may open: a scope key in the facts' exact shape (`isScopeKey`), never one whose host reads as a URL scheme. */
+export function isLinkSessionKey(text: string): boolean {
+  if (!isScopeKey(text)) return false;
+  return !SCHEME_HOSTS.has(text.slice(0, text.indexOf(":")).toLowerCase());
+}
 /** A trick session id read back: the host and the trick, and the part when the id names one. */
 export interface TrickSessionAddress {
   host: string;
@@ -1325,13 +1360,6 @@ export function isTrickUrl(text: string): boolean {
 /** An image `src` or media `file`: relative to the trick folder, no `..` or `.` step, a `.png`, `.jpg` or `.jpeg`. */
 export function isImageSrc(text: string): boolean {
   return text.length <= IMAGE_SRC_MAX && IMAGE_SRC.test(text) && !text.includes("//");
-}
-
-/** A file a `link` with `rel` `file` names: an absolute path or one under `~/`, no control character. */
-export function isFilePath(text: string): boolean {
-  if (codePoints(text) > FILE_PATH_MAX) return false;
-  if (!(text.startsWith("/") || text.startsWith("~/"))) return false;
-  return !/\p{C}/u.test(text);
 }
 
 /** A session a `link` with `rel` `pane` or a `row` opens: a real session's scope key, or a trick session's id. */
@@ -1842,24 +1870,38 @@ export function matchesTab(match: TabMatch, tab: { title: string; space?: string
 }
 
 /** What an `at` string says: the place kind, and its match when it has one. */
-export type AtReading = { place: "belt" | "session" | "dashboard" } | { place: "tab"; tabMatch: TabMatch } | { place: "view"; match: SessionMatch };
+export type AtReading =
+  | { place: "belt" | "session" | "dashboard" }
+  | { place: "tab"; tabMatch: TabMatch }
+  /** A bare `tab`: the trick's own tab entry. */
+  | { place: "tab"; tabMatch?: undefined }
+  | { place: "view"; match: SessionMatch };
+
+/** An `at` that does not read, with its refusal code: `place` for an unknown word, `later` for a later place. */
+export interface AtProblem {
+  reason: string;
+  code: "place" | "later";
+}
 
 /** Read a part's `at`. */
-export function parseAt(at: string): AtReading | { reason: string } {
-  if (codePoints(at) > AT_MAX) return { reason: `"at" is longer than ${AT_MAX} characters.` };
+export function parseAt(at: string): AtReading | AtProblem {
+  if (codePoints(at) > AT_MAX) return { code: "place", reason: `"at" is longer than ${AT_MAX} characters.` };
   if (at === "belt" || at === "session" || at === "dashboard") return { place: at };
+  if (at === "tab") return { place: "tab" };
   if (at.startsWith("tab:")) {
     const read = parseTabMatch(at.slice("tab:".length));
-    return "reason" in read ? read : { place: "tab", tabMatch: read.match };
+    return "reason" in read ? { code: "place", reason: read.reason } : { place: "tab", tabMatch: read.match };
   }
   if (at.startsWith("view:")) {
     const read = parseSessionMatch(at.slice("view:".length));
-    return "reason" in read ? read : { place: "view", match: read.match };
+    return "reason" in read ? { code: "place", reason: read.reason } : { place: "view", match: read.match };
   }
   const word = at.startsWith("menu:") ? "menu" : at;
+  const later = reasonOf(LATER_PLACE_WORDS, word);
+  if (later !== undefined) return { code: "later", reason: later };
   const removed = reasonOf(REMOVED_PLACES, word);
-  if (removed !== undefined) return { reason: removed };
-  return { reason: `"${at}" is not a place. Use belt, session, tab:<tabmatch> or view:<match> (later: dashboard).` };
+  if (removed !== undefined) return { code: "place", reason: removed };
+  return { code: "place", reason: `"${at}" is not a place. Use belt, session, tab, tab:<tabmatch>, view:<match> or dashboard (later: header.line, menu:<match>, settings).` };
 }
 
 // ── The view tree reader ─────────────────────────────────────────────────────────────────────
@@ -2261,7 +2303,7 @@ function checkNode(kind: NodeKind, f: Fields, attrs: JsonObject | undefined, kid
       checkHref(pushAttr, "href", attr("href"), "row");
       return;
     case "link":
-      checkHref(pushAttr, "href", attr("href"), attr("rel") ?? "url");
+      checkHref(pushAttr, "href", attr("href"), attr("rel") ?? "link");
       return;
     case "button": {
       if (attrs === undefined) return;
@@ -2296,21 +2338,30 @@ function checkRowKids(f: Fields, kids: ViewNode[]): void {
   if (buttons === 1 && kids.at(-1)?.kind !== "button") f.push("target", "kids", "A row's button is its last kid: it sits at the row's end.");
 }
 
-/** A target by its `rel`: a URL, a session (scope key or trick session id), a file path; a row's by its shape. */
+/**
+ * A row's or a link's target (step 3): an `http://` or `https://` URL, or a real session's scope key
+ * in the exact shape the facts give (`isScopeKey`, host and pane id, the pane id with its index). Any
+ * other text is refused, `javascript:` and `file:` among it, and so are a file path and a trick
+ * session's id: the phone opens a page in the browser or a Session one level down, nothing else.
+ * A link's `rel` narrows it: `url` takes the URL, `pane` the scope key; `file` is not in this Collie.
+ */
 function checkHref(push: (code: RefusalCode, name: string, reason: string) => void, name: string, href: string | undefined, rel: string): void {
   if (href === undefined) return;
+  const url = isTrickUrl(href);
+  const session = isLinkSessionKey(href);
   switch (rel) {
     case "url":
-      if (!isTrickUrl(href)) push("target", name, `"href" must be an https:// or http:// address of at most ${URL_MAX} characters (with "rel" "url").`);
+      if (!url) push("target", name, `"href" must be an https:// or http:// address of at most ${URL_MAX} characters (with "rel" "url").`);
       return;
     case "pane":
-      if (!isPaneTarget(href)) push("target", name, '"href" must be a session\'s "id" from the facts (host:paneId) or a trick session\'s id, never a name (with "rel" "pane").');
+      if (!session) push("target", name, '"href" must be a session\'s "id" from the facts (host:paneId), never a name (with "rel" "pane").');
       return;
     case "file":
-      if (!isFilePath(href)) push("target", name, `"href" must be a path that starts with / or ~/, of at most ${FILE_PATH_MAX} characters (with "rel" "file").`);
+      push("target", name, '"rel": "file" is not in this Collie: a trick opens a page or a session, never a file. Use an https:// or http:// address.');
       return;
     case "row":
-      if (!isTrickUrl(href) && !isPaneTarget(href)) push("target", name, '"href" must be an https:// or http:// address, or a session\'s "id" from the facts (host:paneId).');
+    case "link":
+      if (!url && !session) push("target", name, '"href" must be an https:// or http:// address, or a session\'s "id" from the facts (host:paneId). Nothing else opens.');
       return;
     default:
       // A bad `rel` is refused on its own; the href is not read against it.
@@ -2405,6 +2456,9 @@ export const PART_KEYS = {
   view: ["at", "id", "title", "icon", "view"],
   dashboard: ["at", "id", "view"],
 } as const satisfies { readonly [K in PlaceKind]: readonly string[] };
+
+/** The keys of a trick's own tab, the bare `tab` (slice 06). `PART_KEYS.tab` is the tab mark's. */
+export const OWN_TAB_KEYS = ["at", "id", "title", "icon", "space", "view"] as const;
 
 const PLACE_WORDS = {
   belt: "a belt part",
@@ -2563,7 +2617,7 @@ function readPart(value: JsonValue, path: string, sink: Refusal[], opts: ParseTr
   }
   const reading = parseAt(atRaw);
   if ("reason" in reading) {
-    sink.push({ code: "place", path: pointer(path, "at"), reason: reading.reason });
+    sink.push({ code: reading.code, path: pointer(path, "at"), reason: reading.reason });
     return { id };
   }
   const place = reading.place;
@@ -2576,8 +2630,9 @@ function readPart(value: JsonValue, path: string, sink: Refusal[], opts: ParseTr
     sink.push({ code: "undeclared", path: pointer(path, "at"), reason: `The manifest's "places" does not list "${place}". Add it there.` });
     return { id };
   }
-  const f = new Fields(obj, path, sink, PLACE_WORDS[place]);
-  f.keys(PART_KEYS[place]);
+  const ownTab = reading.place === "tab" && reading.tabMatch === undefined;
+  const f = new Fields(obj, path, sink, ownTab ? "a tab part" : PLACE_WORDS[place]);
+  f.keys(ownTab ? OWN_TAB_KEYS : PART_KEYS[place]);
   const kinds = opts.kinds ?? NODE_KINDS;
   const part = readPartBody(reading, atRaw, id ?? "", f, kinds);
   return { id, part };
@@ -2598,6 +2653,7 @@ function readPartBody(reading: AtReading, at: string, id: string, f: Fields, kin
       return { place: "belt", part: { at: "belt", id, mark } };
     }
     case "tab": {
+      if (reading.tabMatch === undefined) return readOwnTabPart(f, id, view());
       const markFields = f.object("mark", "a mark", true);
       const mark = markFields === undefined ? {} : readMark(markFields, false);
       // SAFETY: `parseAt` read this `at` as `tab:<tabmatch>`, so it starts with "tab:".
@@ -2615,6 +2671,17 @@ function readPartBody(reading: AtReading, at: string, id: string, f: Fields, kin
     case "dashboard":
       return { place: "dashboard", part: { at: "dashboard", id, view: view() } };
   }
+}
+
+function readOwnTabPart(f: Fields, id: string, view: View): ParsedPart {
+  const title = f.text("title", { max: VIEW_TITLE_MAX, required: true }) ?? "";
+  const space = f.text("space", { max: 128, required: true }) ?? "";
+  const problem = space === "" ? undefined : globProblem(space);
+  if (problem !== undefined) f.push("text", "space", `"space" is a Space name glob; it ${problem}.`);
+  const part: TabPart = { at: "tab", id, title, space, view };
+  const icon = f.icon("icon");
+  if (icon !== undefined) part.icon = icon;
+  return { place: "tab", part };
 }
 
 function readSessionPart(f: Fields, id: string, view: View): ParsedPart {
@@ -2944,6 +3011,11 @@ export function parseManifest(doc: JsonValue | undefined, opts: ParseManifestOpt
   placeList?.forEach((value, i) => {
     const word = asJsonString(value);
     const path = pointer("/places", i);
+    const later = word === undefined ? undefined : reasonOf(LATER_PLACE_WORDS, word);
+    if (later !== undefined) {
+      refusals.push({ code: "later", path, reason: later });
+      return;
+    }
     if (word === undefined || !isOneOf(PLACE_KINDS, word)) {
       const removed = word === undefined ? undefined : reasonOf(REMOVED_PLACES, word);
       refusals.push({ code: "place", path, reason: removed === undefined ? `A place is one of: ${quoteList(PLACE_KINDS)}.` : `${removed} A place is one of: ${quoteList(PLACE_KINDS)}.` });

@@ -1,9 +1,10 @@
 // THE TRICK ICONS AS COMPONENTS (M94). One lucide component per word of the schema's closed set: the
-// Tree UI's 39 icon words and the tricks' additions. Imported by name, so the bundle carries these and no
+// Tree UI's 39 icon words and the tricks' additions (the session action words among them). Imported by name, so the bundle carries these and no
 // other. `schema.test.ts` holds each word to a lucide export imported here, and the `satisfies` below holds
 // this map to the word list, so neither can drift.
 
 import {
+  Archive,
   ArrowDown,
   ArrowLeft,
   ArrowUp,
@@ -40,11 +41,13 @@ import {
   Plus,
   RefreshCw,
   Search,
+  Send,
   Server,
   Settings2,
   Share2,
   SquareTerminal,
   Star,
+  StickyNote,
   Tag,
   Trash2,
   TriangleAlert,
@@ -57,6 +60,7 @@ import {
 import { DEFAULT_TRICK_ICON, TRICK_ICON_LUCIDE, type TrickIcon } from "./schema";
 
 export const TRICK_ICON_COMPONENT = {
+  archive: Archive,
   back: ArrowLeft,
   bell: Bell,
   branch: GitBranch,
@@ -89,6 +93,7 @@ export const TRICK_ICON_COMPONENT = {
   more: Ellipsis,
   move: Move,
   next: ChevronRight,
+  note: StickyNote,
   pause: Pause,
   pin: Pin,
   play: Play,
@@ -96,6 +101,7 @@ export const TRICK_ICON_COMPONENT = {
   plus: Plus,
   refresh: RefreshCw,
   search: Search,
+  send: Send,
   settings: Settings2,
   share: Share2,
   star: Star,

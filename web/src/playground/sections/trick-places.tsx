@@ -1,6 +1,7 @@
-// The Trick places section of the states playground (M94 slice 03): the two first places a trick draws in.
-// The belt's end-block marks beside the pins mark, and the trick session: its row on the Dashboard and in
-// Switch session, and its screen with no Composer. Then the three look fixes of the renderer. Every card
+// The Trick places section of the states playground (M94 slice 03, re-cut 2026-11-08): the two first places
+// a trick draws in. The belt's end-block marks beside the pins mark (one with nothing to do among them),
+// and the trick session: its row on the Dashboard and in Switch session, and its screen with no Composer.
+// Then the three look fixes of the renderer. Every card
 // mounts the REAL components at 390 px over a store of its own, so a tap shows the busy state and the
 // receipt with no bridge.
 //
@@ -14,7 +15,7 @@ import { beltMarksOf } from "@/components/belt-trick-mark";
 import { TrickSessionRow, TrickSpaceSection } from "@/components/trick-session";
 import { PartFrame } from "@/lib/tricks/part-frame";
 import { renderView, type RenderCtx } from "@/lib/tricks/render";
-import { partKey, type TrickTapReply, type WireTrickInfo, type WireTrickPart } from "@/lib/tricks/schema";
+import { partKey, type TrickTapReply, type ListNode, type View, type WireTrickInfo, type WireTrickPart } from "@/lib/tricks/schema";
 import { createTricksStore, type TricksStore } from "@/lib/tricks/store";
 import type { AgentView } from "@/lib/types";
 import { mintRequestId } from "@/lib/worktree-name";
@@ -34,43 +35,53 @@ const IGNORE = () => {};
 const RUN = () => Promise.resolve(true);
 
 const LEGS: WireTrickInfo = { host: "bluefin", id: "legs", name: "Browser leg", icon: "flask", on: true, state: "ok", places: ["belt", "session"] };
-const TRACKER: WireTrickInfo = { host: "bluefin", id: "tracker", name: "Tracker", icon: "list", on: true, state: "ok", places: ["belt", "session"] };
+const TRACKER: WireTrickInfo = { host: "bluefin", id: "tracker", name: "Tracker", icon: "file", on: true, state: "ok", places: ["belt", "session"] };
+const QUIET: WireTrickInfo = { host: "bluefin", id: "quiet", name: "Quiet", icon: "bell", on: true, state: "ok", places: ["belt"] };
+
+const LEGS_ROWS: ListNode = {
+  kind: "list",
+  kids: [
+    { kind: "row", text: "Case 24: send a long draft", attrs: { end: "red", tone: "danger" } },
+    { kind: "row", text: "Case 31: stop mid-turn", attrs: { end: "slow", tone: "warn" } },
+  ],
+};
+const LEGS_VIEW: View = [
+  { kind: "number", text: "23/34", attrs: { label: "cases green", tone: "accent" } },
+  { kind: "meter", attrs: { role: "progress", value: "2", max: "3" } },
+  LEGS_ROWS,
+];
+const TRACKER_VIEW: View = [{ kind: "para", text: "Two specs due this week." }];
 
 function wire(trick: string, value: WireTrickPart["value"]): WireTrickPart {
   return { host: "bluefin", trick, part: value.id, rev: 1, value, asOf: AS_OF, fresh: "90s" };
 }
 
-const LEGS_BELT = wire("legs", { at: "belt", id: "belt", mark: { icon: "flask", face: "23/34", tone: "working", intent: "rerun" } });
-const TRACKER_BELT = wire("tracker", { at: "belt", id: "belt", mark: { icon: "list", face: "M94", tone: "plain" } });
+const LEGS_BELT = wire("legs", { at: "belt", id: "belt", mark: { icon: "flask", label: "23/34", tone: "accent", intent: "rerun" } });
+const TRACKER_BELT = wire("tracker", { at: "belt", id: "belt", mark: { icon: "file", label: "M94", tone: "plain" } });
+/** No intent, and no session in the pane list: the same button control, aria-disabled. */
+const QUIET_BELT = wire("quiet", { at: "belt", id: "belt", mark: { icon: "bell", label: "idle", tone: "muted" } });
 const LEGS_SESSION = wire("legs", {
   at: "session",
   id: "legs",
   name: "Browser leg",
-  tone: "working",
+  tone: "accent",
   subtitle: "case 24 red",
   badge: { count: 1 },
-  progress: { kind: "percent", value: 68 },
+  progress: { value: 2, max: 3 },
   actions: [
     { id: "rerun", label: "Rerun red", intent: "rerun", icon: "refresh" },
     { id: "fix", label: "Ask for a fix", intent: "fix" },
   ],
-  view: {
-    kind: "stack",
-    children: [
-      { kind: "number", value: "23/34", label: "cases green", tone: "working" },
-      { kind: "progress", value: 68 },
-      { kind: "list", rows: 4, items: [{ text: "Case 24: send a long draft", tone: "error" }, { text: "Case 31: stop mid-turn", tone: "warn" }] },
-    ],
-  },
+  view: LEGS_VIEW,
 });
-const TRACKER_SESSION = wire("tracker", { at: "session", id: "due", name: "Tracker", tone: "ok", subtitle: "M94 slice 03 next", view: { kind: "text", text: "Two specs due this week.", lines: 2 } });
+const TRACKER_SESSION = wire("tracker", { at: "session", id: "due", name: "Tracker", tone: "ok", subtitle: "M94 slice 03 next", view: TRACKER_VIEW });
 
 /** A store over a stand-in bridge that answers a tap after a moment, so the busy state is seen. */
 function placesStore(): TricksStore {
-  const parts = [LEGS_BELT, TRACKER_BELT, LEGS_SESSION, TRACKER_SESSION];
+  const parts = [LEGS_BELT, TRACKER_BELT, QUIET_BELT, LEGS_SESSION, TRACKER_SESSION];
   return createTricksStore({
-    fetchTricks: () => Promise.resolve({ rev: 1, tricks: [LEGS, TRACKER], parts, present: parts.map(partKey) }),
-    tapTrick: (_host, _trick, body) => new Promise<TrickTapReply>((resolve) => setTimeout(() => resolve({ requestId: body.requestId, outcome: "applied" }), 1500)),
+    fetchTricks: () => Promise.resolve({ rev: 1, tricks: [LEGS, TRACKER, QUIET], parts, present: parts.map(partKey) }),
+    tapTrick: (_host, _trick, body) => new Promise<TrickTapReply>((resolve) => setTimeout(() => resolve({ rid: body.rid, code: "ok" }), 1500)),
     mintRequestId,
   });
 }
@@ -108,9 +119,9 @@ function Glass({ children, className }: { children: ReactNode; className?: strin
   return <div className={`w-[390px] max-w-full rounded-sm border border-border bg-background ${className ?? "px-4 py-3"}`}>{children}</div>;
 }
 
-function Belt({ marks }: { marks: boolean }) {
+function Belt({ marks }: { marks: readonly WireTrickPart[] }) {
   const store = useStore();
-  const shown = marks ? beltMarksOf({ parts: [LEGS_BELT, TRACKER_BELT], handlersFor: () => ({}), sessions: [TRACKER_PANE], onOpenSession: IGNORE, store }) : undefined;
+  const shown = marks.length > 0 ? beltMarksOf({ parts: marks, handlersFor: () => ({}), sessions: [TRACKER_PANE], onOpenSession: IGNORE, store }) : undefined;
   return (
     <ActionsRow
       general={[
@@ -134,13 +145,15 @@ function Screen() {
       <div className="flex h-14 shrink-0 items-center gap-2 border-b border-border px-2">
         <TrickSessionHeaderRow pane={LEGS_PANE} onBack={IGNORE} />
       </div>
-      <TrickSessionBody pane={LEGS_PANE} onDraft={IGNORE} onOpen={IGNORE} store={store} />
+      <TrickSessionBody pane={LEGS_PANE} onLink={IGNORE} store={store} />
     </div>
   );
 }
 
+const RERUN_VIEW: View = [{ kind: "bar", kids: [{ kind: "button", attrs: { label: "Rerun red", intent: "rerun" } }] }];
+
 function ctx(tap?: RenderCtx["tap"]): RenderCtx {
-  return { partKey: partKey(LEGS_SESSION), trickName: "Browser leg", stale: false, tap, onTap: IGNORE, onDraft: IGNORE, onOpen: IGNORE, now: NOW };
+  return { partKey: partKey(LEGS_SESSION), trickName: "Browser leg", stale: false, tap, onTap: IGNORE, onLink: IGNORE, now: NOW };
 }
 
 export function TrickPlacesSection(): ReactNode {
@@ -149,56 +162,61 @@ export function TrickPlacesSection(): ReactNode {
       <Group title="The belt">
         <Card state="trick-belt-marks" label="1 · two trick marks">
           <Glass className="py-2">
-            <Belt marks />
+            <Belt marks={[LEGS_BELT, TRACKER_BELT]} />
           </Glass>
         </Card>
         <Card state="trick-belt-none" label="2 · no trick, no gap">
           <Glass className="py-2">
-            <Belt marks={false} />
+            <Belt marks={[]} />
+          </Glass>
+        </Card>
+        <Card state="trick-belt-idle" label="3 · mark, nothing to do">
+          <Glass className="py-2">
+            <Belt marks={[QUIET_BELT]} />
           </Glass>
         </Card>
       </Group>
       <Group title="The trick session">
-        <Card state="trick-space-dashboard" label="3 · Dashboard, Tricks">
+        <Card state="trick-space-dashboard" label="4 · Dashboard, Tricks">
           <Glass className="py-0">
             <TrickSpaceSection sessions={[LEGS_PANE, TRACKER_PANE]} onOpen={IGNORE} />
           </Glass>
         </Card>
-        <Card state="trick-space-done" label="4 · run done, bar kept">
+        <Card state="trick-space-done" label="5 · run done, bar kept">
           <Glass className="py-0">
             <TrickSpaceSection sessions={[LEGS_RED]} onOpen={IGNORE} />
           </Glass>
         </Card>
-        <Card state="trick-space-switch" label="5 · Switch session rows">
+        <Card state="trick-space-switch" label="6 · Switch session rows">
           <Glass>
             <TrickSessionRow pane={LEGS_PANE} variant="switch" active onOpen={IGNORE} />
             <TrickSessionRow pane={TRACKER_PANE} variant="switch" onOpen={IGNORE} />
           </Glass>
         </Card>
-        <Card state="trick-session-screen" label="6 · screen, no Composer">
+        <Card state="trick-session-screen" label="7 · screen, no Composer">
           <Glass className="p-0">
             <Screen />
           </Glass>
         </Card>
       </Group>
       <Group title="Look fixes">
-        <Card state="trick-fix-busy" label="7 · busy keeps label">
+        <Card state="trick-fix-busy" label="8 · busy keeps label">
           <Glass>
             <div className="flex gap-2">
-              {renderView({ kind: "button", label: "Rerun red", intent: "rerun" }, ctx())}
-              {renderView({ kind: "button", label: "Rerun red", intent: "rerun" }, ctx({ phase: "busy", requestId: "r", control: "v", intent: "rerun" }))}
+              {renderView(RERUN_VIEW, ctx())}
+              {renderView(RERUN_VIEW, ctx({ phase: "busy", rid: "r", control: "v/0/0", intent: "rerun" }))}
             </div>
           </Glass>
         </Card>
-        <Card state="trick-fix-age" label="8 · fresh line says age">
+        <Card state="trick-fix-age" label="9 · fresh line says age">
           <Glass>
-            <PartFrame part={TRACKER_SESSION} trick={TRACKER} onDraft={IGNORE} now={NOW}>
-              {({ stale }) => renderView({ kind: "text", text: "Two specs due this week.", lines: 2 }, { ...ctx(), stale })}
+            <PartFrame part={TRACKER_SESSION} trick={TRACKER} now={NOW}>
+              {({ stale }) => renderView(TRACKER_VIEW, { ...ctx(), stale })}
             </PartFrame>
           </Glass>
         </Card>
-        <Card state="trick-fix-rows" label="9 · empty rows, hairlines">
-          <Glass>{renderView({ kind: "list", rows: 4, items: [{ text: "Case 24: send a long draft", tone: "error" }] }, ctx())}</Glass>
+        <Card state="trick-fix-rows" label="10 · list rows, hairlines">
+          <Glass>{renderView([LEGS_ROWS], ctx())}</Glass>
         </Card>
       </Group>
     </Section>

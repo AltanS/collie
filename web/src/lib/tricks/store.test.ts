@@ -228,14 +228,14 @@ describe("a tap", () => {
     expect(store.getState().taps.size).toBe(0);
   });
 
-  it("applies a changed receipt the same way, and fires no draft and no open: a reply carries neither", async () => {
+  it("applies a changed receipt the same way, and a stray draft or open in it reaches nothing: the handlers have no such hook", async () => {
     const store = await heldStore();
     serveTaps(receipt(ID1, "changed", { draft: { session: "bluefin:w6X:3", text: "fix case 24" }, open: { url: "http://bluefin:8080/" } }));
-    const onDraft = vi.fn();
-    const onOpen = vi.fn();
-    await expect(store.tap(RERUN, { onDraft, onOpen, from: { session: "bluefin:w6X:3" } })).resolves.toBe("changed");
-    expect(onDraft).not.toHaveBeenCalled();
-    expect(onOpen).not.toHaveBeenCalled();
+    const open = vi.spyOn(window, "open").mockImplementation(() => null);
+    await expect(store.tap(RERUN, { from: { session: "bluefin:w6X:3" } })).resolves.toBe("changed");
+    expect(open).not.toHaveBeenCalled();
+    expect(store.getState().taps.size).toBe(0);
+    open.mockRestore();
   });
 
   it("sends the session open on the phone", async () => {

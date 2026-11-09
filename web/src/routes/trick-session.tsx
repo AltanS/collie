@@ -3,7 +3,7 @@ import { useParams } from "react-router";
 import { ArrowLeft, Loader2 } from "lucide-react";
 
 import { RouteHeader } from "@/components/app-header";
-import { TrickDraftPicker, TrickSessionIcon, trickSessionLine } from "@/components/trick-session";
+import { TrickSessionIcon, trickSessionLine } from "@/components/trick-session";
 import { PaneBadge } from "@/components/pane-badge";
 import { Button } from "@/components/ui/button";
 import { BandMain } from "@/components/ui/strip-host";
@@ -15,7 +15,8 @@ import { trickIconOf } from "@/lib/tricks/icons";
 import { TrickView } from "@/lib/tricks/part-frame";
 import { findTrickSession } from "@/lib/tricks/places";
 import { ACTIONS_MAX, parseTrickSessionId, type TrickAction } from "@/lib/tricks/schema";
-import { tricksStore, trickTapper, useTrickPart, type DraftRequest, type OpenTarget, type TricksStore } from "@/lib/tricks/store";
+import type { LinkTarget } from "@/lib/tricks/render";
+import { tricksStore, trickTapper, useTrickPart, type TricksStore } from "@/lib/tricks/store";
 import { homePath } from "@/lib/nav";
 import { paneName } from "@/lib/pane-name";
 import { useRootData } from "@/lib/route-data";
@@ -30,11 +31,12 @@ import { cn } from "@/lib/utils";
 // buttons at the foot.
 //
 // What it does NOT show: a Composer. A trick session has no terminal and no reply box, so there is no
-// Send, no Stop, no Dock and no belt. A tap in the view or on an action goes to the trick's provider; its
-// draft goes to a real session's box (hooks/use-trick-handlers.ts), never here.
+// Send, no Stop, no Dock and no belt. A tap in the view or on an action goes to the trick's provider and
+// writes into no reply box anywhere; a row's `href` or a link opens a page or a Session
+// (hooks/use-trick-handlers.ts).
 //
-// The id names the host (`trick:<host>:<trick>:<part>`), and `trick:<host>:<trick>` opens that trick's first
-// session part, so a trick's `open` may name the trick alone.
+// The id names the host (`trick:<host>:<trick>:<part>`), and `trick:<host>:<trick>` opens that trick's
+// first session part.
 
 /** The control name of an action at the foot, for its busy state. Outside the view tree's paths. */
 function actionControl(id: string): string {
@@ -102,27 +104,25 @@ function Actions({ partKey, onTap, store }: { partKey: string; onTap: (key: stri
 /** The screen below the Header: the view, scrollable, and the actions at the foot. No Composer. */
 export function TrickSessionBody({
   pane,
-  onDraft,
-  onOpen,
+  onLink,
   store = tricksStore,
   now,
 }: {
   pane: AgentView | undefined;
-  onDraft: (draft: DraftRequest) => void;
-  onOpen: (target: OpenTarget) => void;
+  onLink: (target: LinkTarget) => void;
   store?: TricksStore;
   /** Pin the clock, for a playground card. */
   now?: number;
 }) {
   useLocale();
-  const onTap = useMemo(() => trickTapper({ onDraft, onOpen }, store), [onDraft, onOpen, store]);
+  const onTap = useMemo(() => trickTapper({}, store), [store]);
   return (
     <>
       <BandMain base={16} className="relative flex min-h-0 flex-1 flex-col overflow-y-auto p-4">
         {pane?.view === undefined ? (
           <p className="py-16 text-center text-sm text-muted-foreground">{t("tricks.session.gone")}</p>
         ) : (
-          <TrickView partKey={pane.view} onDraft={onDraft} onOpen={onOpen} store={store} now={now} />
+          <TrickView partKey={pane.view} onLink={onLink} store={store} now={now} />
         )}
       </BandMain>
       {pane?.view !== undefined && <Actions partKey={pane.view} onTap={onTap} store={store} />}
@@ -136,15 +136,13 @@ export function TrickSessionRoute() {
   const nav = useNav();
   const pane = findTrickSession(paneId, data.trickSessions ?? []);
   const host = parseTrickSessionId(paneId)?.host ?? "";
-  const tricks = useTrickHandlers();
-  const { handlersFor } = tricks;
-  const handlers = useMemo(() => handlersFor(host), [handlersFor, host]);
+  const { linkFor } = useTrickHandlers();
+  const onLink = useMemo(() => linkFor(host), [linkFor, host]);
   const back = () => nav.up(homePath(data.scope));
   return (
     <div data-slot="trick-session-screen" className="mx-auto flex min-h-0 w-full max-w-screen-sm flex-1 flex-col">
       <RouteHeader width="column" override={<TrickSessionHeaderRow pane={pane} onBack={back} />} />
-      <TrickSessionBody pane={pane} onDraft={handlers.onDraft} onOpen={handlers.onOpen} />
-      <TrickDraftPicker open={tricks.pending !== undefined} choices={tricks.choices} onChoose={tricks.choose} onClose={tricks.cancel} />
+      <TrickSessionBody pane={pane} onLink={onLink} />
     </div>
   );
 }

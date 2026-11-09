@@ -2,7 +2,6 @@ import { PaneBadge } from "@/components/pane-badge";
 import { SectionHeader } from "@/components/section-header";
 import { ListGroup, LIST_ROW_CORNERS } from "@/components/ui/list-group";
 import { Progress } from "@/components/ui/progress";
-import { BottomSheet } from "@/components/ui/sheet";
 import { useLocale } from "@/hooks/use-locale";
 import { t } from "@/lib/i18n";
 import { trickIconOf } from "@/lib/tricks/icons";
@@ -120,41 +119,5 @@ export function TrickSpaceSection({ sessions, onOpen }: { sessions: readonly Age
         ))}
       </ListGroup>
     </section>
-  );
-}
-
-/** The sheet that asks which session a draft with no session goes to (the frame's fix button). */
-export function TrickDraftPicker({
-  open,
-  choices,
-  onChoose,
-  onClose,
-}: {
-  open: boolean;
-  choices: readonly AgentView[];
-  onChoose: (pane: AgentView) => void;
-  onClose: () => void;
-}) {
-  useLocale();
-  return (
-    <BottomSheet open={open} onClose={onClose} title={t("tricks.draft.pick")}>
-      {choices.length === 0 ? (
-        <p className="px-4 py-6 text-sm text-muted-foreground">{t("tricks.draft.none")}</p>
-      ) : (
-        <ListGroup className="mx-4 mb-4">
-          {choices.map((pane) => (
-            <button
-              key={`${pane.host ?? ""}\n${pane.paneId}`}
-              type="button"
-              data-slot="trick-draft-choice"
-              onClick={() => onChoose(pane)}
-              className={cn("flex h-11 w-full min-w-0 items-center px-3.5 text-left text-sm hover:bg-muted/50", LIST_ROW_CORNERS)}
-            >
-              <span className="min-w-0 truncate">{paneName(pane)}</span>
-            </button>
-          ))}
-        </ListGroup>
-      )}
-    </BottomSheet>
   );
 }

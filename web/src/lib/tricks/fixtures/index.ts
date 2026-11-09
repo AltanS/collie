@@ -16,10 +16,7 @@ import refused from "./refused.json";
 import replies from "./replies.json";
 import tracker from "./tracker.json";
 
-/**
- * One valid document per place. `dashboard` is a later place: it parses clean only with
- * `places: PLACE_KINDS`, and gives one "later" refusal at `/parts/0/at` with the default.
- */
+/** One valid document per place. Every place parses with the default `places` since step 3; this Collie draws `belt` and `session`. */
 export const PLACE_DOCUMENTS = places satisfies { readonly [K in PlaceKind]: JsonValue };
 
 /**

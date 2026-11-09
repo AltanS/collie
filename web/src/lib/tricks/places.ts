@@ -1,5 +1,5 @@
-// THE TWO FIRST PLACES, THE PURE HALF (M94 slice 03): the trick sessions out of the herd, where a tap's
-// draft and open go, and the belt's marks in order. The components are `trick-session-row.tsx`,
+// THE TWO FIRST PLACES, THE PURE HALF (M94 slice 03): the trick sessions out of the herd, where a
+// link's session goes, and the belt's marks in order. The components are `trick-session-row.tsx`,
 // `trick-space-section.tsx`, `routes/trick-session.tsx` and the belt in `actions-row.tsx`.
 //
 // A TRICK SESSION IS NOT A PANE OF THE HERD. The bridge sends it on the snapshot as a pane of
@@ -78,16 +78,4 @@ export function findScopedPane(key: string, panes: readonly AgentView[], tricksH
   const paneId = key.slice(colon + 1);
   const mine = host === tricksHost;
   return panes.find((pane) => pane.paneId === paneId && !isTrickPane(pane) && (pane.host === host || (mine && pane.host === undefined)));
-}
-
-/** What placing a draft came to: placed in an empty box, or refused because the box holds text. */
-export type DraftPlacement = "placed" | "box-has-text" | "no-session";
-
-/**
- * The draft rule of the design (section 8): a draft fills an EMPTY reply box and never overwrites
- * text. `current` is what the box holds now (the draft store, or the mounted composer's own text).
- */
-export function draftPlacement(current: string | null | undefined, target: AgentView | undefined): DraftPlacement {
-  if (target === undefined) return "no-session";
-  return (current ?? "").trim() === "" ? "placed" : "box-has-text";
 }

@@ -265,8 +265,8 @@ exports[`valid fixtures > the link node reads back as written, as its snapshot 1
       {
         "attrs": {
           "badge": "",
-          "href": "~/.cache/collie-lab/leg-logs/24.log",
-          "rel": "file",
+          "href": "http://bluefin:8832/legs/24.log",
+          "rel": "url",
         },
         "kind": "link",
         "text": "the log",

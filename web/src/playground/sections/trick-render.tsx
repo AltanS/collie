@@ -1,6 +1,6 @@
-// The Trick render section of the states playground (M94 slice 02): every core node kind from the schema's
-// fixtures, the legs and the tracker views, the part frame in each of its states, the busy and unknown
-// taps, the placeholder, and the trick mark in every tone. Each card mounts the REAL renderer at 390 px on
+// The Trick render section of the states playground (M94 slice 02, re-cut 2026-11-08): every node kind of
+// the Tree UI vocabulary from the schema's fixtures, the legs and the tracker views, the part frame in
+// each of its states, the busy and unknown taps, the placeholder, and the trick mark in every tone. Each card mounts the REAL renderer at 390 px on
 // the page colour. The two tap cards run a store of their own over a stand-in transport, so a tap shows
 // Collie's busy state for a moment and then the receipt.
 //
@@ -13,15 +13,15 @@ import { TrickMark } from "@/lib/tricks/mark";
 import { TrickView, PartFrame } from "@/lib/tricks/part-frame";
 import { Placeholder, renderView, type RenderCtx } from "@/lib/tricks/render";
 import {
-  CORE_NODE_KINDS,
+  NODE_KINDS,
   TONES,
   parseTrickDocument,
   partKey,
   type TrickPart,
   type TrickTapReply,
   type NodeKind,
-  type TapOutcome,
-  type ViewNode,
+  type TapCode,
+  type View,
   type WireTrickInfo,
   type WireTrickPart,
 } from "@/lib/tricks/schema";
@@ -41,32 +41,32 @@ export const DEF: SectionDef = {
 const FIXTURE_NOW = Date.parse("2026-11-08T09:41:00Z");
 
 function sessionParts(doc: JsonObject): TrickPart[] {
-  return parseTrickDocument(doc, { afterTap: true }).parts.flatMap((p) => (p.place === "session" ? [p.part] : []));
+  return parseTrickDocument(doc).parts.flatMap((p) => (p.place === "session" ? [p.part] : []));
 }
 
-function viewOf(part: TrickPart | undefined): ViewNode {
-  return part !== undefined && "view" in part ? part.view : { kind: "text", text: "", lines: 1 };
+function viewOf(part: TrickPart | undefined): View {
+  return part !== undefined && "view" in part ? part.view : [];
 }
 
 const LEGS = sessionParts(LEGS_DOCUMENT)[0];
 const TRACKER = sessionParts(TRACKER_DOCUMENT)[0];
 const LEGS_BELT = parseTrickDocument(LEGS_DOCUMENT).parts.find((p) => p.place === "belt");
 
-function nodeOf(kind: NodeKind): ViewNode {
+function nodeOf(kind: NodeKind): View {
   return viewOf(sessionParts(nodeDocument(kind))[0]);
 }
 
 const TRICK: WireTrickInfo = { host: "bluefin", id: "legs", name: "Browser leg", icon: "flask", on: true, state: "ok", places: ["belt", "session"] };
 
 function stored(value: TrickPart | undefined, extra: Partial<WireTrickPart> = {}): WireTrickPart {
-  const part = value ?? { at: "session", id: "legs", view: { kind: "text", text: "", lines: 1 } };
+  const part = value ?? { at: "session", id: "legs", view: [] };
   return { host: "bluefin", trick: "legs", part: part.id, rev: 1, value: part, asOf: "2026-11-08T09:41:00Z", fresh: "90s", ...extra };
 }
 
 const IGNORE = () => {};
 
 function ctxOf(stale: boolean, tap?: TapState): RenderCtx {
-  return { partKey: "bluefin/legs/legs", trickName: TRICK.name, stale, tap, onTap: IGNORE, onDraft: IGNORE, onOpen: IGNORE, now: FIXTURE_NOW };
+  return { partKey: "bluefin/legs/legs", trickName: TRICK.name, stale, tap, onTap: IGNORE, onLink: IGNORE, now: FIXTURE_NOW };
 }
 
 /** The glass: 390 px of the page colour with the page gutter, as a phone draws a trick session's body. */
@@ -86,7 +86,7 @@ function FramedCard({ n, state, label, part, trick = TRICK, tap, now, retryAt }:
   return (
     <Card state={state} label={`${n} · ${label}`}>
       <Glass>
-        <PartFrame part={part} trick={trick} tap={tap} onDraft={IGNORE} now={now} retryAt={retryAt}>
+        <PartFrame part={part} trick={trick} tap={tap} now={now} retryAt={retryAt}>
           {({ stale }) => renderView(viewOf(part.value), ctxOf(stale, tap))}
         </PartFrame>
       </Glass>
@@ -97,8 +97,8 @@ function FramedCard({ n, state, label, part, trick = TRICK, tap, now, retryAt }:
 /** How long the stand-in bridge takes to answer a tap, so the busy state is seen. */
 const TAP_MS = 1500;
 
-/** A store over a stand-in bridge that answers every tap with `outcome` after a moment. */
-function tapStore(outcome: TapOutcome): TricksStore {
+/** A store over a stand-in bridge that answers every tap with `code` after a moment. */
+function tapStore(code: TapCode): TricksStore {
   const part = stored(LEGS);
   let rev = 1;
   return createTricksStore({
@@ -106,67 +106,72 @@ function tapStore(outcome: TapOutcome): TricksStore {
     tapTrick: (_host, _trick, body) =>
       new Promise<TrickTapReply>((resolve) => {
         rev += 1;
-        const answer: TrickTapReply = { requestId: body.requestId, outcome };
-        if (outcome === "applied") answer.parts = [{ ...part, rev, asOf: new Date().toISOString() }];
+        const answer: TrickTapReply = { rid: body.rid, code };
+        if (code === "ok") answer.parts = [{ ...part, rev, asOf: new Date().toISOString() }];
         setTimeout(() => resolve(answer), TAP_MS);
       }),
     mintRequestId,
   });
 }
 
-function TapCard({ n, state, label, outcome }: { n: number; state: string; label: string; outcome: TapOutcome }) {
-  const store = useMemo(() => tapStore(outcome), [outcome]);
+function TapCard({ n, state, label, code }: { n: number; state: string; label: string; code: TapCode }) {
+  const store = useMemo(() => tapStore(code), [code]);
   useEffect(() => {
     void store.syncTricks(1);
   }, [store]);
   return (
     <Card state={state} label={`${n} · ${label}`}>
       <Glass>
-        <TrickView partKey="bluefin/legs/legs" store={store} onDraft={IGNORE} onOpen={IGNORE} now={FIXTURE_NOW} />
+        <TrickView partKey="bluefin/legs/legs" store={store} onLink={IGNORE} now={FIXTURE_NOW} />
       </Glass>
     </Card>
   );
 }
 
 const STALE_NOW = FIXTURE_NOW + 4 * 60_000;
-const BELT_MARK = LEGS_BELT?.place === "belt" ? LEGS_BELT.part.mark : { face: "23/34" };
+const BELT_MARK = LEGS_BELT?.place === "belt" ? LEGS_BELT.part.mark : { label: "23/34" };
+/** The legs trick's "Rerun red" button: the first node of the last bar, at path `v/5/0`. */
+const RERUN_CONTROL = "v/5/0";
 
 export function TrickRenderSection(): ReactNode {
+  const kinds = NODE_KINDS.length;
   return (
     <Section def={DEF}>
-      <Group title="Core kinds">
-        {CORE_NODE_KINDS.map((kind, i) => (
+      <Group title="Every node kind">
+        {NODE_KINDS.map((kind, i) => (
           <NodeCard key={kind} n={i + 1} kind={kind} />
         ))}
       </Group>
       <Group title="Two tricks">
-        <Card state="trick-view-legs" label="12 · legs trick">
+        <Card state="trick-view-legs" label={`${kinds + 1} · legs trick`}>
           <Glass>{renderView(viewOf(LEGS), ctxOf(false))}</Glass>
         </Card>
-        <Card state="trick-view-tracker" label="13 · tracker trick">
+        <Card state="trick-view-tracker" label={`${kinds + 2} · tracker trick`}>
           <Glass>{renderView(viewOf(TRACKER), ctxOf(false))}</Glass>
         </Card>
       </Group>
       <Group title="The frame">
-        <FramedCard n={14} state="trick-frame-fresh" label="fresh" part={stored(LEGS)} now={FIXTURE_NOW} />
-        <FramedCard n={15} state="trick-frame-stale" label="stale, tone gone" part={stored(LEGS)} now={STALE_NOW} />
-        <FramedCard n={16} state="trick-frame-failed" label="run failed" part={stored(LEGS, { stale: true, problem: "legs.sh: exit 2: no such file ~/.cache/collie-lab/browser-leg/last.json" })} now={FIXTURE_NOW + 30_000} />
-        <FramedCard n={17} state="trick-frame-paused" label="paused, retry known" part={stored(LEGS)} trick={{ ...TRICK, state: "failing", error: "exit 1" }} now={FIXTURE_NOW} retryAt={new Date(FIXTURE_NOW + 5 * 60_000).toISOString()} />
-        <FramedCard n={18} state="trick-frame-stopped" label="stopped" part={stored(LEGS)} trick={{ ...TRICK, state: "stopped", error: "exit 1, five times" }} now={FIXTURE_NOW} />
+        <FramedCard n={kinds + 3} state="trick-frame-fresh" label="fresh" part={stored(LEGS)} now={FIXTURE_NOW} />
+        <FramedCard n={kinds + 4} state="trick-frame-stale" label="stale, tone gone" part={stored(LEGS)} now={STALE_NOW} />
+        <FramedCard n={kinds + 5} state="trick-frame-failed" label="run failed" part={stored(LEGS, { stale: true, problem: "legs.sh: exit 2: no such file ~/.cache/collie-lab/browser-leg/last.json" })} now={FIXTURE_NOW + 30_000} />
+        <FramedCard n={kinds + 6} state="trick-frame-paused" label="paused, retry known" part={stored(LEGS)} trick={{ ...TRICK, state: "failing", error: "exit 1" }} now={FIXTURE_NOW} retryAt={new Date(FIXTURE_NOW + 5 * 60_000).toISOString()} />
+        <FramedCard n={kinds + 7} state="trick-frame-stopped" label="stopped" part={stored(LEGS)} trick={{ ...TRICK, state: "stopped", error: "exit 1, five times" }} now={FIXTURE_NOW} />
       </Group>
       <Group title="Taps">
-        <TapCard n={19} state="trick-tap-applied" label="tap, then applied" outcome="applied" />
-        <TapCard n={20} state="trick-tap-unknown" label="tap, then unknown" outcome="unknown" />
-        <TapCard n={21} state="trick-tap-failed" label="tap, then failed" outcome="failed" />
-        <FramedCard n={22} state="trick-tap-busy" label="busy, held" part={stored(LEGS)} tap={{ phase: "busy", requestId: "r", control: "v/6", intent: "rerun" }} now={FIXTURE_NOW} />
-        <Card state="trick-placeholder" label="23 · placeholder">
+        <TapCard n={kinds + 8} state="trick-tap-ok" label="tap, then ok" code="ok" />
+        <TapCard n={kinds + 9} state="trick-tap-unknown" label="tap, then unknown" code="unknown" />
+        <TapCard n={kinds + 10} state="trick-tap-rejected" label="tap, then rejected" code="rejected" />
+        <FramedCard n={kinds + 11} state="trick-tap-busy" label="busy, held" part={stored(LEGS)} tap={{ phase: "busy", rid: "r", control: RERUN_CONTROL, intent: "rerun" }} now={FIXTURE_NOW} />
+        <FramedCard n={kinds + 12} state="trick-tap-unknown-held" label="unknown, shown" part={stored(LEGS)} tap={{ phase: "unknown", rid: "r", control: RERUN_CONTROL, intent: "rerun" }} now={FIXTURE_NOW} />
+        <FramedCard n={kinds + 13} state="trick-tap-failed-held" label="tap failed, reason" part={stored(LEGS)} tap={{ phase: "failed", rid: "r", control: RERUN_CONTROL, intent: "rerun", message: "legs.sh: exit 1: the log is locked" }} now={FIXTURE_NOW} />
+        <Card state="trick-placeholder" label={`${kinds + 14} · placeholder`}>
           <Glass>
             <Placeholder kind="hologram" />
           </Glass>
         </Card>
       </Group>
       <Group title="The mark">
-        <Card state="trick-mark-tones" label="24 · every tone">
+        <Card state="trick-mark-tones" label={`${kinds + 15} · every tone`}>
           <Glass>
             <div className="flex flex-wrap items-center gap-2">
               {TONES.map((tone) => (
@@ -175,13 +180,13 @@ export function TrickRenderSection(): ReactNode {
             </div>
           </Glass>
         </Card>
-        <Card state="trick-mark-states" label="25 · stale, busy, unknown">
+        <Card state="trick-mark-states" label={`${kinds + 16} · stale, busy, unknown`}>
           <Glass>
             <div className="flex items-center gap-2">
               <TrickMark mark={BELT_MARK} trickName={TRICK.name} onTap={IGNORE} stale />
               <TrickMark mark={BELT_MARK} trickName={TRICK.name} onTap={IGNORE} busy />
               <TrickMark mark={BELT_MARK} trickName={TRICK.name} onTap={IGNORE} unknown />
-              <TrickMark mark={{ icon: "list", count: 3, tone: "warn" }} trickName="Tracker" />
+              <TrickMark mark={{ icon: "flag", badge: "3", tone: "warn" }} trickName="Tracker" />
             </div>
           </Glass>
         </Card>

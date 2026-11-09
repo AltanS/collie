@@ -141,11 +141,6 @@ export interface ComposerHandle {
    * until the person turns it off or the message leaves.
    */
   startMessage: (aim: WalkyAim) => void;
-  /**
-   * Put a trick's draft in the reply box (M94 slice 03) and focus it, only when the box is empty (no text
-   * and no chip). Returns false, and changes nothing, when the box holds something.
-   */
-  placeDraft: (text: string) => boolean;
 }
 
 interface ComposerProps {
@@ -689,9 +684,6 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     saveDraft(scope, paneId, inputValueRef.current, attachmentsRef.current, nextAttachmentRef.current);
   }
 
-  // The latest `updateInput`, for the imperative handle (`placeDraft`), which is made once.
-  const updateInputRef = useRef(updateInput);
-  updateInputRef.current = updateInput;
 
   /** {@link updateInput} for the appenders, which need the current value to build the next one.
    *  Split from it rather than overloaded on the argument: the two callers are different shapes,
@@ -1212,14 +1204,6 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       startMessage: (aim) => {
         startMessage(aim);
         focusInputImmediately();
-      },
-      placeDraft: (incoming) => {
-        // A trick's draft (M94 slice 03) fills an EMPTY box and never overwrites: text or a chip in the
-        // box refuses it, and the caller says so in a toast. Through the ref, so the handle is made once.
-        if (inputValueRef.current.trim() !== "" || attachmentsRef.current.length > 0) return false;
-        updateInputRef.current(incoming);
-        focusInputImmediately();
-        return true;
       },
     }),
     [startMessage],

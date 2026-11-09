@@ -5,8 +5,9 @@
 // repaints that line and moves nothing (DESIGN.md section 2). The line says the one thing that matters
 // most (lib/tricks/frame.ts): a tap that failed or got no answer, a paused or stopped trick, a failed run,
 // the age of a part past its fresh window, and for a fresh part its age alone, in muted text. A failure's masked line opens on a tap, through
-// `Collapse` (the one sanctioned way in-flow content appears), with one button, "Ask the agent to fix
-// it", which hands a draft to `onDraft`; slice 03 asks which session's empty reply box it goes to.
+// `Collapse` (the one sanctioned way in-flow content appears), with one button that COPIES "the trick
+// `<id>` failed: `<error>`" on the phone (the tree's `does: copy`, design section 7), so the person can
+// paste it to any agent. It sends nothing and places no draft: nothing in tricks writes into a reply box.
 //
 // `TrickView` puts a stored part, its frame and its view together for slice 03's places, and holds a
 // new FORM back while a finger is down on the part, so a list that grows a row does not move the row
@@ -16,6 +17,8 @@ import { Clock, Pause, TriangleAlert } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { Button } from "../../components/ui/button";
+import { copyText } from "../clipboard";
+import { setStatus } from "../status";
 import { Collapse } from "../../components/ui/collapse";
 import { NOTICE_ACTION } from "../../components/ui/notice";
 import { t } from "../i18n";
@@ -23,9 +26,9 @@ import { cn } from "../utils";
 import { useBridgeNow } from "./clock";
 import { problemOf, readFrame, type FrameLine } from "./frame";
 import { viewForm } from "./layout";
-import { Placeholder, renderView, type RenderCtx } from "./render";
+import { Placeholder, renderView, type LinkTarget, type RenderCtx } from "./render";
 import type { TrickPart, View, WireTrickInfo, WireTrickPart } from "./schema";
-import { trickTapper, tricksStore, useTrickPart, type DraftRequest, type OpenTarget, type TricksStore, type TapHandlers, type TapState } from "./store";
+import { trickTapper, tricksStore, useTrickPart, type TricksStore, type TapHandlers, type TapState } from "./store";
 import { trickTimeText, spanText } from "./time";
 
 export interface PartFrameProps {
@@ -36,8 +39,6 @@ export interface PartFrameProps {
   tap?: TapState;
   /** When a paused trick runs again, when the bridge says. Absent: the line says it is paused. */
   retryAt?: string;
-  /** The fix button's draft. */
-  onDraft: (draft: DraftRequest) => void;
   /** Pin the clock (epoch ms on the bridge's clock), for a test or a playground card. */
   now?: number;
   /** The part itself, drawn with the frame's reading: `stale` takes the tone away. */
@@ -78,7 +79,15 @@ function LineGlyph({ line }: { line: FrameLine }) {
   return <TriangleAlert aria-hidden className={glyph} />;
 }
 
-export function PartFrame({ part, trick, tap, retryAt, onDraft, now, children }: PartFrameProps) {
+/** Copy the fix line on the phone: a phone action, no bridge write, no draft. */
+function copyFixLine(text: string): void {
+  copyText(text).then(
+    () => setStatus(t("tricks.copied"), "success"),
+    () => setStatus(t("tricks.copyFailed"), "error"),
+  );
+}
+
+export function PartFrame({ part, trick, tap, retryAt, now, children }: PartFrameProps) {
   const clock = useBridgeNow(now);
   const { stale, line } = readFrame(part, trick, tap, clock, retryAt);
   const problem = problemOf(line);
@@ -102,7 +111,7 @@ export function PartFrame({ part, trick, tap, retryAt, onDraft, now, children }:
         {problem !== undefined && (
           <div data-slot="trick-frame-problem" className="flex flex-col items-start gap-2 pb-1">
             <p className="font-mono text-xs leading-4 break-words text-foreground">{problem}</p>
-            <Button type="button" variant="outline" className="h-11" onClick={() => onDraft({ text: t("tricks.frame.fixDraft", { id: part.trick, error: problem }) })}>
+            <Button type="button" variant="outline" className="h-11" onClick={() => copyFixLine(t("tricks.frame.fixText", { id: part.trick, error: problem }))}>
               {t("tricks.frame.fix")}
             </Button>
           </div>
@@ -147,12 +156,12 @@ function useHeldView(view: View | undefined): HeldView {
 }
 
 export interface TrickViewProps {
-  /** The `partKey` of a part whose place has a view: a trick session, a trick tab, a view on a session. */
+  /** The `partKey` of a part whose place has a view: a trick session, a trick's own tab, a view on a session. */
   partKey: string;
-  /** A reply's or the fix button's draft. */
-  onDraft: (draft: DraftRequest) => void;
-  /** A reply's open. */
-  onOpen: (target: OpenTarget) => void;
+  /** A row's `href` or a link was tapped. */
+  onLink: (target: LinkTarget) => void;
+  /** The bridge's URL of an image of the trick folder. Absent: an image draws its reserved box and its alt. */
+  imageUrl?: (src: string) => string | undefined;
   /** The session open on the phone, sent with a tap. */
   from?: string;
   store?: TricksStore;
@@ -161,27 +170,28 @@ export interface TrickViewProps {
 }
 
 /** A stored part's view in its frame, with its taps wired to the store. Nothing while the part is not held. */
-export function TrickView({ partKey, onDraft, onOpen, from, store = tricksStore, now }: TrickViewProps) {
+export function TrickView({ partKey, onLink, imageUrl, from, store = tricksStore, now }: TrickViewProps) {
   const { part, trick, tap } = useTrickPart(partKey, store);
   const { view, onPointerDown } = useHeldView(part === undefined ? undefined : viewOf(part.value));
   const onTap = useMemo(() => {
-    const handlers: TapHandlers = { onDraft, onOpen };
+    const handlers: TapHandlers = {};
     if (from !== undefined) handlers.from = { session: from };
     return trickTapper(handlers, store);
-  }, [onDraft, onOpen, from, store]);
+  }, [from, store]);
   const draw = useMemo(
     () =>
       ({ stale }: { stale: boolean }) => {
         if (view === undefined) return <Placeholder />;
-        const ctx: RenderCtx = { partKey, trickName: trick?.name ?? part?.trick ?? "", stale, tap, onTap, onDraft, onOpen, now };
+        const ctx: RenderCtx = { partKey, trickName: trick?.name ?? part?.trick ?? "", stale, tap, onTap, onLink, now };
+        if (imageUrl !== undefined) ctx.imageUrl = imageUrl;
         return renderView(view, ctx);
       },
-    [view, partKey, trick?.name, part?.trick, tap, onTap, onDraft, onOpen, now],
+    [view, partKey, trick?.name, part?.trick, tap, onTap, onLink, imageUrl, now],
   );
   if (part === undefined) return null;
   return (
     <div onPointerDown={onPointerDown} className="min-w-0">
-      <PartFrame part={part} trick={trick} tap={tap} onDraft={onDraft} now={now}>
+      <PartFrame part={part} trick={trick} tap={tap} now={now}>
         {draw}
       </PartFrame>
     </div>

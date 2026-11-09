@@ -1018,10 +1018,12 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, durable, sto
                 </span>
               )}
             </Collapse>
-            {/* THE TRICKS' MARKS (the `marks` prop, M94 slice 03): each one in its own frame, a 44px reach. */}
+            {/* THE TRICKS' MARKS (the `marks` prop, M94 slice 03): each one in its own frame, a 44px reach.
+                `shrink-0` on the slot (step 3): the block is a flex row, and a mark that could shrink was
+                squeezed to nothing under the block when the belt overflowed. A mark keeps its own width. */}
             {marks.map((mark) => (
-              <Collapse key={mark.id} axis="x" appear open={mark.open ?? true} className="-mr-1.5">
-                <span data-slot="belt-trick-mark" data-trick={mark.trick} className="flex items-center pr-1.5">
+              <Collapse key={mark.id} axis="x" appear open={mark.open ?? true} className="-mr-1.5 shrink-0">
+                <span data-slot="belt-trick-mark" data-trick={mark.trick} className="flex shrink-0 items-center pr-1.5">
                   {mark.face}
                 </span>
               </Collapse>

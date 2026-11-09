@@ -57,27 +57,11 @@ export interface TricksTransport {
   mintRequestId: () => string;
 }
 
-/** A draft the renderer hands up: the reply's own (with its session) or the fix button's (without). */
-export interface DraftRequest {
-  text: string;
-  /** The real session the draft is for. Absent: the caller asks the person which one (slice 03). */
-  session?: string;
-}
-
 /**
- * Where the renderer sends a person who taps a row's `href` or a `link`: a session (a scope key or a
- * trick session id) one level down, or an http(s) address in a new tab. The renderer's own, not the
- * wire's: since the re-cut a tap's reply carries no `open`.
- */
-export type OpenTarget = { session: string; url?: undefined } | { url: string; session?: undefined };
-
-/**
- * The renderer's handlers beside a tap. `onDraft` is Collie's own frame button ("Ask the agent to fix
- * it") and `onOpen` a row's or a link's target; since the re-cut no tap reply fires either.
+ * What travels beside a tap. Only the session open on the phone: a tap moves nothing on the phone and
+ * writes into no reply box (step 3: there is no draft handler anywhere in tricks).
  */
 export interface TapHandlers {
-  onDraft?: (draft: DraftRequest) => void;
-  onOpen?: (target: OpenTarget) => void;
   /** The session open on the phone, sent with the tap. */
   from?: TapFrom;
 }
@@ -282,9 +266,9 @@ export function useTricksState(store: TricksStore = tricksStore): TricksState {
   return useSyncExternalStore(store.subscribe, store.getState, store.getState);
 }
 
-/** The place an `at` names, read by its prefix. The match inside it is the place's own business. */
+/** The place an `at` names, read by its prefix. The match inside it is the place's own business. A bare `tab` and `tab:<match>` are both `tab`. */
 export function placeOfAt(at: string): PlaceKind | undefined {
-  if (at === "belt" || at === "session" || at === "dashboard") return at;
+  if (at === "belt" || at === "session" || at === "dashboard" || at === "tab") return at;
   if (at.startsWith("tab:")) return "tab";
   if (at.startsWith("view:")) return "view";
   return undefined;

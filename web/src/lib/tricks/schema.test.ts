@@ -313,7 +313,7 @@ describe("refused fixtures", () => {
     expect(reason("attr-at-the-top")).toContain('"attrs"');
     expect(reason("view-not-a-list")).toContain("list of nodes");
     expect(reason("draft-is-gone")).toContain("replyTo");
-    expect(reason("own-tab-is-gone")).toContain("tab:<tabmatch>");
+    expect(reason("tab-mark-at-is-gone")).toContain("tab:<tabmatch>");
     expect(reason("button-does-wipe")).toContain("copy");
     expect(reason("row-outside-a-list")).toContain("A view holds");
   });
@@ -436,19 +436,30 @@ describe("caps at the boundary", () => {
     expect(parse(row({ kids: [p, c, c, b] }))).toEqual([]);
     expect(parse(row({ kids: [p, p] }))).toEqual(["/parts/0/view/0/kids/0/kids"]);
     expect(parse(row({ kids: [b, c] }))).toEqual(["/parts/0/view/0/kids/0/kids"]);
-    for (const href of ["https://a.example/", "http://bluefin:8080/", "bluefin:w6X:3", "trick:bluefin:legs"]) expect(parse(row({ attrs: { href } })), href).toEqual([]);
-    for (const href of ["composer", "javascript:", "/etc/passwd", "https:/x"]) expect(parse(row({ attrs: { href } })), href).toEqual(["/parts/0/view/0/kids/0/attrs/href"]);
+    for (const href of ["https://a.example/", "http://bluefin:8080/", "bluefin:w6X:3", "bluefin:%12"]) expect(parse(row({ attrs: { href } })), href).toEqual([]);
+    // Step 3: only an http(s) URL or a scope key in the facts' exact shape opens. A trick session's id,
+    // a file path and every other scheme are refused, with a reason that names what may open.
+    const refusedHrefs = ["composer", "javascript:", "javascript:alert(1)", "JAVASCRIPT:alert(1)", "data:text/html,x", "file:///etc/passwd", "/etc/passwd", "~/a.md", "https:/x", "trick:bluefin:legs", "bluefin:trick:bluefin:legs", "bluefin:", ":w6X:3"];
+    for (const href of refusedHrefs) expect(parse(row({ attrs: { href } })), href).toEqual(["/parts/0/view/0/kids/0/attrs/href"]);
+    const reason = parseTrickDocument(inView({ kind: "list", kids: [{ kind: "row", text: "x", attrs: { href: "javascript:alert(1)" } }] })).refusals[0]?.reason ?? "";
+    expect(reason).toContain("https://");
+    expect(reason).toContain("host:paneId");
   });
 
   it("a link: its href fits its rel, url by default", () => {
     expect(parse(link({ href: "https://a.example/" }))).toEqual([]);
     expect(parse(link({ href: "http://bluefin:8080/" }))).toEqual([]);
     expect(parse(link({ href: "bluefin:w6X:3", rel: "pane" }))).toEqual([]);
-    expect(parse(link({ href: "~/projects/a.md", rel: "file" }))).toEqual([]);
-    expect(parse(link({ href: "/etc/hosts", rel: "file" }))).toEqual([]);
-    expect(parse(link({ href: "bluefin:w6X:3" }))).toEqual(["/parts/0/view/0/kids/0/attrs/href"]);
+    // With no rel, a link opens what a row opens: an http(s) URL or a session's scope key.
+    expect(parse(link({ href: "bluefin:w6X:3" }))).toEqual([]);
+    expect(parse(link({ href: "https://a.example/", rel: "url" }))).toEqual([]);
+    expect(parse(link({ href: "bluefin:w6X:3", rel: "url" }))).toEqual(["/parts/0/view/0/kids/0/attrs/href"]);
     expect(parse(link({ href: "https://a.example/", rel: "pane" }))).toEqual(["/parts/0/view/0/kids/0/attrs/href"]);
-    expect(parse(link({ href: "a.md", rel: "file" }))).toEqual(["/parts/0/view/0/kids/0/attrs/href"]);
+    expect(parse(link({ href: "trick:bluefin:legs", rel: "pane" }))).toEqual(["/parts/0/view/0/kids/0/attrs/href"]);
+    // A file link is not in this Collie, whatever its path.
+    expect(parse(link({ href: "~/projects/a.md", rel: "file" }))).toEqual(["/parts/0/view/0/kids/0/attrs/href"]);
+    expect(parse(link({ href: "/etc/hosts", rel: "file" }))).toEqual(["/parts/0/view/0/kids/0/attrs/href"]);
+    for (const href of ["javascript:alert(1)", "/etc/hosts", "file:///etc/hosts"]) expect(parse(link({ href })), href).toEqual(["/parts/0/view/0/kids/0/attrs/href"]);
     expect(parse(link({ href: "https://a.example/", rel: "web" }))).toEqual(["/parts/0/view/0/kids/0/attrs/rel"]);
     expect(parse(inView({ kind: "para", kids: [{ kind: "link", attrs: { href: "https://a.example/" } }] }))).toEqual(["/parts/0/view/0/kids/0/text"]);
   });
@@ -660,11 +671,55 @@ describe("matches", () => {
       ["belt", "belt"],
       ["session", "session"],
       ["tab:fix", "tab"],
+      ["tab", "tab"],
       ["view:*", "view"],
       ["dashboard", "dashboard"],
     ];
     for (const [at, kind] of expected) expect(place(at), at).toBe(kind);
-    for (const bad of ["Belt", "view:", "tab:", "tab", "header", "header.line", "menu:*", "settings", "view", `view:${"x".repeat(160)}`]) expect(place(bad), bad).toBeUndefined();
+    for (const bad of ["Belt", "view:", "tab:", "tab-mark", "header", "header.line", "menu:*", "settings", "view", `view:${"x".repeat(160)}`]) expect(place(bad), bad).toBeUndefined();
+  });
+
+  it("refuses header.line, menu:<match> and settings as later, with the place named", () => {
+    for (const [at, word] of [
+      ["header.line", "header.line"],
+      ["menu:*", "menu:<match>"],
+      ["menu:agent:claude", "menu:<match>"],
+      ["settings", "settings"],
+    ]) {
+      const read = parseAt(at ?? "");
+      expect("code" in read && read.code, at).toBe("later");
+      expect("reason" in read && read.reason, at).toContain(`"${word}"`);
+    }
+    expect(parseAt("tab-mark")).toMatchObject({ code: "place" });
+    expect(parseAt("nowhere")).toMatchObject({ code: "place" });
+  });
+
+  it("parses every place by default: belt, session, tab:<match>, tab, view:<match>, dashboard", () => {
+    const doc = {
+      v: 1,
+      parts: [
+        { at: "belt", id: "a", mark: { label: "1" } },
+        { at: "session", id: "b", view: [{ kind: "para", text: "x" }] },
+        { at: "tab:fix", id: "c", mark: { label: "2" } },
+        { at: "tab", id: "d", title: "Board", space: "collie*", icon: "flask", view: [{ kind: "para", text: "x" }] },
+        { at: "view:agent:claude", id: "e", title: "Legs", view: [{ kind: "para", text: "x" }] },
+        { at: "dashboard", id: "f", view: [{ kind: "para", text: "x" }] },
+      ],
+    };
+    const parsed = parseTrickDocument(doc);
+    expect(parsed.refusals).toEqual([]);
+    expect(parsed.parts.map((p) => p.place)).toEqual(["belt", "session", "tab", "tab", "view", "dashboard"]);
+    const own = parsed.parts[3];
+    expect(own?.part).toEqual({ at: "tab", id: "d", title: "Board", space: "collie*", icon: "flask", view: [{ kind: "para", text: "x" }] });
+    expect(own?.place === "tab" && own.tabMatch).toBeUndefined();
+  });
+
+  it("reads a trick's own tab with its title and Space glob, and refuses a mark on it", () => {
+    const tab = (extra: JsonObject) => parseTrickDocument({ v: 1, parts: [{ at: "tab", id: "t", view: [{ kind: "para", text: "x" }], ...extra }] }).refusals.map((r) => r.path);
+    expect(tab({ title: "Board", space: "collie" })).toEqual([]);
+    expect(tab({ space: "collie" })).toEqual(["/parts/0/title"]);
+    expect(tab({ title: "Board" })).toEqual(["/parts/0/space"]);
+    expect(tab({ title: "Board", space: "collie", mark: { label: "3" } })).toEqual(["/parts/0/mark"]);
   });
 
   it("globs with * and ?", () => {
@@ -869,8 +924,10 @@ describe("parseManifest", () => {
     expect(result.manifest?.places).toEqual(["belt"]);
     expect(result.manifest?.mode).toBe("once");
     expect(result.manifest?.watch).toBeUndefined();
+    expect(result.refusals[3]?.reason).toContain('"header.line"');
+    // A later place stays later whatever the caller enables: no slice draws header.line yet.
     const on = parseManifest(MANIFESTS.later, { triggers: ["watch", "on", "serve"], places: PLACE_KINDS });
-    expect(on.refusals).toEqual([]);
+    expect(on.refusals.map((r) => [r.code, r.path])).toEqual([["later", "/places/1"]]);
     expect(on.manifest?.mode).toBe("serve");
     expect(on.manifest?.on).toEqual(["turn.end"]);
   });
@@ -888,10 +945,12 @@ describe("parseManifest", () => {
     expect(bad({ description: "x" }).refusals.map((r) => r.code)).toEqual(["unknown-key"]);
     expect(bad({ icon: "rocket" }).refusals.map((r) => r.path)).toEqual(["/icon"]);
     expect(bad({ places: ["belt", "belt"] }).refusals.map((r) => r.code)).toEqual(["duplicate"]);
-    expect(bad({ places: ["dashboard"] }).refusals.map((r) => r.code)).toEqual(["later", "place"]);
-    expect(bad({ places: ["dashboard"] }).manifest).toBeUndefined();
+    expect(bad({ places: ["dashboard"] }).refusals).toEqual([]);
+    expect(bad({ places: ["settings"] }).refusals.map((r) => r.code)).toEqual(["later", "place"]);
+    expect(bad({ places: ["settings"] }).manifest).toBeUndefined();
     expect(bad({ places: ["tab-mark"] }).refusals[0]?.reason).toContain("tab:<tabmatch>");
-    expect(bad({ places: ["header.line"] }).refusals.map((r) => r.code)).toEqual(["place"]);
+    expect(bad({ places: ["header.line"] }).refusals.map((r) => r.code)).toEqual(["later", "place"]);
+    expect(bad({ places: ["menu"] }).refusals[0]?.reason).toContain('"menu:<match>"');
     expect(bad({ id: "Legs" }).refusals.map((r) => r.path)).toEqual(["/id"]);
     expect(parseManifest({ id: "legs" }).refusals.map((r) => r.path)).toEqual(["/name", "/run", "/places"]);
   });
@@ -981,8 +1040,8 @@ describe("the tone map", () => {
 });
 
 describe("the icon set", () => {
-  it("is the tree's 39 words and the tricks' 9, each a lucide icon the phone imports", () => {
-    expect(TRICK_ICONS.length).toBe(48);
+  it("is the tree's 39 words and the tricks' 12, each a lucide icon the phone imports", () => {
+    expect(TRICK_ICONS.length).toBe(51);
     expect(TREE_ICONS).toHaveLength(39);
     for (const word of TREE_ICONS) expect(TRICK_ICONS, word).toContain(word);
     const imported = new Set<string>();
@@ -1006,6 +1065,11 @@ describe("the icon set", () => {
   it("keeps Collie's spinner and status circles out", () => {
     const names: string[] = Object.values(TRICK_ICON_LUCIDE);
     for (const name of ["Loader2", "CircleDot", "CheckCircle2", "XCircle", "CircleAlert"]) expect(names).not.toContain(name);
+  });
+
+  it("holds the session action words to the trick icon list: one list, the actions a subset", () => {
+    for (const word of ACTION_ICONS) expect(TRICK_ICONS, word).toContain(word);
+    for (const word of ["archive", "send", "note"]) expect(TRICK_ICON_LUCIDE, word).toHaveProperty(word);
   });
 
   it("gives actions the twelve words of the bridge's PANE_ACTION_ICONS", () => {

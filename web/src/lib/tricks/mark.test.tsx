@@ -63,22 +63,48 @@ describe("a trick's mark", () => {
     expect(container.querySelector('[data-slot="trick-mark-face"]')?.className).toContain(TONE_TEXT_CLASS.unknown);
   });
 
-  it("is a control with a 44px reach only when it has an intent and a tap", () => {
+  it("is a control with a 44px reach that taps once", () => {
     const onTap = vi.fn();
-    const { getByRole, rerender, container } = render(<TrickMark mark={LEGS} trickName="Browser leg" onTap={onTap} />);
+    const { getByRole } = render(<TrickMark mark={LEGS} trickName="Browser leg" onTap={onTap} />);
     const button = getByRole("button", { name: "Browser leg: 23/34" });
     // 28px drawn, 8px of reach above and below.
     expect(button.className).toContain("h-7");
     expect(button.className).toContain("before:-inset-y-2");
+    expect(button.hasAttribute("aria-disabled")).toBe(false);
     fireEvent.click(button);
     expect(onTap).toHaveBeenCalledOnce();
-    rerender(<TrickMark mark={{ ...LEGS, intent: undefined }} trickName="Browser leg" onTap={onTap} />);
-    expect(container.querySelector("button")).toBeNull();
   });
 
-  it("names itself from the trick and its label, the face word", () => {
-    const { getByRole } = render(<TrickMark mark={{ label: "3 due" }} trickName="Tracker" />);
-    expect(getByRole("img", { name: "Tracker: 3 due" })).toBeInTheDocument();
+  it("is always the same control: with nothing to do it is the same button, aria-disabled, in the same box", () => {
+    // The step 3 fix: a mark with no tap drew as a bare span that slid under the pinned block.
+    const live = render(<TrickMark mark={LEGS} trickName="Browser leg" onTap={() => {}} />);
+    const liveClass = live.getByRole("button").className;
+    live.unmount();
+    const { getByRole } = render(<TrickMark mark={{ ...LEGS, intent: undefined }} trickName="Browser leg" />);
+    const idle = getByRole("button", { name: "Browser leg: 23/34" });
+    expect(idle.getAttribute("aria-disabled")).toBe("true");
+    expect(idle.className).toBe(liveClass);
+    expect(idle.className).toContain("shrink-0");
+    fireEvent.click(idle);
+  });
+
+  it("names itself from the trick and its label, the face word, or from the action it takes", () => {
+    const named = render(<TrickMark mark={{ label: "3 due" }} trickName="Tracker" />);
+    expect(named.getByRole("button", { name: "Tracker: 3 due" })).toBeInTheDocument();
+    named.unmount();
+    const { getByRole } = render(<TrickMark mark={{ label: "3 due" }} trickName="Tracker" actionLabel="Open Tracker" onTap={() => {}} />);
+    expect(getByRole("button", { name: "Open Tracker" })).toBeInTheDocument();
+  });
+
+  it("draws a badge as its count, and an empty badge as the dot", () => {
+    const counted = render(<TrickMark mark={{ icon: "bell", badge: "2" }} trickName="Quiet" />);
+    expect(counted.container.querySelector('[data-slot="trick-mark-count"]')?.textContent).toBe("2");
+    expect(counted.getByRole("button", { name: "Quiet: 2" })).toBeInTheDocument();
+    counted.unmount();
+    const dotted = render(<TrickMark mark={{ icon: "bell", badge: "" }} trickName="Quiet" />);
+    expect(dotted.container.querySelector('[data-slot="trick-mark-dot"]')).not.toBeNull();
+    expect(dotted.container.querySelector('[data-slot="trick-mark-count"]')).toBeNull();
+    expect(dotted.getByRole("button", { name: "Quiet" })).toBeInTheDocument();
   });
 
   it("swaps its icon for the spinner while busy, and for a question mark after an unknown outcome", () => {

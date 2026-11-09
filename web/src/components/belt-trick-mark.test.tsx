@@ -86,14 +86,30 @@ describe("the tricks' marks on the belt", () => {
     expect(legs.getAttribute("aria-busy")).toBe("false");
   });
 
-  it("opens the trick's session from a mark with no intent, and leaves a mark with neither as no control", async () => {
-    const store = storeWith([LEGS, TRACKER, QUIET], async () => ({ rid: "r", code: "ok" as const }));
+  it("opens the trick's session from a mark with no intent, and draws a mark with neither as the same control, aria-disabled", async () => {
+    const tap = vi.fn(async () => ({ rid: "r", code: "ok" as const }));
+    const store = storeWith([LEGS, TRACKER, QUIET], tap);
     await store.syncTricks(1);
     const { onOpenSession } = mount(store);
     fireEvent.click(screen.getByRole("button", { name: "Open tracker" }));
     expect(onOpenSession).toHaveBeenCalledWith(TRICK_SESSION);
-    const quiet = document.querySelector('[data-slot="belt-trick-mark"][data-trick="quiet"]');
-    expect(quiet?.querySelector("button")).toBeNull();
+    // The step 3 fix: the quiet mark is the same button in the same frame, not a span under the pins.
+    const quiet = screen.getByRole("button", { name: "quiet: 2" });
+    expect(quiet.dataset.slot).toBe("trick-mark");
+    expect(quiet.getAttribute("aria-disabled")).toBe("true");
+    expect(quiet.closest('[data-slot="belt-trick-mark"]')?.getAttribute("data-trick")).toBe("quiet");
+    expect(quiet.parentElement?.closest("button")).toBeNull();
+    fireEvent.click(quiet);
+    expect(tap).not.toHaveBeenCalled();
+    expect(onOpenSession).toHaveBeenCalledOnce();
+  });
+
+  it("never nests one control in another", async () => {
+    const store = storeWith([LEGS, TRACKER, QUIET], async () => ({ rid: "r", code: "ok" as const }));
+    await store.syncTricks(1);
+    mount(store);
+    expect(document.querySelectorAll('[data-slot="belt-trick-mark"] button button')).toHaveLength(0);
+    expect(document.querySelectorAll('[data-slot="belt-trick-mark"] button')).toHaveLength(3);
   });
 
   it("leaves no gap when no trick has a belt part", () => {

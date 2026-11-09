@@ -13,6 +13,11 @@
 // "Shows nothing" is a state (design section 5): when a trick drops its mark, the mark keeps its slot,
 // drawn invisible from the last mark it showed, so the belt beside it does not move. A slot that never
 // had a mark takes no room.
+//
+// ONE CONTROL (step 3). A mark is always the same element, a button in its own frame with the 44px
+// reach, whether it has an intent, opens its trick's session, or does nothing at all. It used to drop
+// to a plain span when it had no tap, and that span shrank away under the belt's pinned block when the
+// belt overflowed. A mark with nothing to do says so with `aria-disabled` and keeps its box.
 
 import { CircleHelp, Loader2 } from "lucide-react";
 import { useRef } from "react";
@@ -37,8 +42,10 @@ export interface TrickMarkProps {
   busy?: boolean;
   /** The last tap on this mark got no answer. */
   unknown?: boolean;
-  /** Called on a tap. Absent, or a mark with no intent: the mark is not a control. */
+  /** Called on a tap: the mark's intent, or the trick's session. Absent: the mark does nothing, and says so. */
   onTap?: () => void;
+  /** The accessible name when the tap does something the mark's words do not say ("Open Browser leg"). */
+  actionLabel?: string;
   className?: string;
 }
 
@@ -66,12 +73,13 @@ function MarkFace({ mark, stale, busy, unknown }: { mark: Mark; stale: boolean; 
           {mark.label}
         </span>
       )}
-      {/* STEP 3: an empty badge is the tree's dot, not drawn yet. */}
+      {/* A badge is a count, or the tree's dot when it is the empty string: in the mark's ink, never a status colour. */}
       {mark.badge !== undefined && mark.badge !== "" && (
         <span data-slot="trick-mark-count" className={cn("text-[11px] leading-none font-semibold tabular-nums", ink)}>
           {mark.badge}
         </span>
       )}
+      {mark.badge === "" && <span aria-hidden data-slot="trick-mark-dot" className={cn("size-1.5 shrink-0 rounded-full bg-current", ink === "" ? "text-foreground" : ink)} />}
     </>
   );
 }
@@ -79,7 +87,7 @@ function MarkFace({ mark, stale, busy, unknown }: { mark: Mark; stale: boolean; 
 /** The frame every mark draws in: a 2px cornered outline in the border token, 28px tall. */
 const MARK_FRAME = "inline-flex h-7 shrink-0 items-center gap-1 rounded-sm border border-border bg-transparent px-1.5 text-foreground";
 
-export function TrickMark({ mark, trickName, stale = false, busy = false, unknown = false, onTap, className }: TrickMarkProps) {
+export function TrickMark({ mark, trickName, stale = false, busy = false, unknown = false, onTap, actionLabel, className }: TrickMarkProps) {
   const last = useRef<Mark | undefined>(mark);
   if (mark !== undefined) last.current = mark;
   const shown = mark ?? last.current;
@@ -91,20 +99,14 @@ export function TrickMark({ mark, trickName, stale = false, busy = false, unknow
       </span>
     );
   }
-  const name = accessibleName(mark, trickName);
+  const name = actionLabel ?? accessibleName(mark, trickName);
   const face = <MarkFace mark={mark} stale={stale} busy={busy} unknown={unknown} />;
-  if (onTap === undefined || mark.intent === undefined) {
-    return (
-      <span role="img" aria-label={name} data-slot="trick-mark" className={cn(MARK_FRAME, className)}>
-        {face}
-      </span>
-    );
-  }
   return (
     <button
       type="button"
       aria-label={unknown ? `${name}, ${t("tricks.tap.unknown")}` : name}
       aria-busy={busy}
+      aria-disabled={onTap === undefined || undefined}
       disabled={busy}
       data-slot="trick-mark"
       onClick={onTap}
@@ -112,6 +114,8 @@ export function TrickMark({ mark, trickName, stale = false, busy = false, unknow
         MARK_FRAME,
         MARK_REACH,
         "transition-colors hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring active:scale-[0.98] disabled:pointer-events-none",
+        // Nothing to do: the same control, with no hover and no press to promise a tap.
+        "aria-disabled:cursor-default aria-disabled:hover:bg-transparent aria-disabled:active:scale-100",
         className,
       )}
     >

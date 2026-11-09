@@ -79,7 +79,10 @@ async function serveTricks(): Promise<void> {
             { id: "rerun", label: "Rerun red", intent: "rerun" },
             { id: "fix", label: "Ask for a fix", intent: "fix" },
           ],
-          view: { kind: "text", text: "23 of 34 green", lines: 1 },
+          view: [
+            { kind: "para", text: "23 of 34 green" },
+            { kind: "list", kids: [{ kind: "row", text: "case 24", attrs: { href: "bluefin:w6X:3" }, kids: [{ kind: "button", attrs: { label: "Rerun case", intent: "rerun", value: "24" } }] }] },
+          ],
         },
       },
     ],
@@ -162,33 +165,43 @@ describe("the trick session screen", () => {
   });
 });
 
-describe("a draft from the trick session", () => {
-  function tapReplies(draft: { session: string; text: string }) {
+describe("a tap from the trick session", () => {
+  /** Serve a receipt that still carries the old draft field, as a provider on an older Collie might. */
+  function tapReplies(): JsonObject[] {
+    const bodies: JsonObject[] = [];
     server.use(
       http.post<never, JsonObject>("/api/tricks/bluefin/legs/tap", async ({ request }) => {
         const body = await request.json();
-        return HttpResponse.json({ requestId: asJsonString(body.requestId) ?? "", outcome: "applied", draft });
+        bodies.push(body);
+        return HttpResponse.json({ rid: asJsonString(body.rid) ?? "", code: "changed", draft: { session: "bluefin:w6X:3", text: "Rerun case 24" } });
       }),
     );
+    return bodies;
   }
 
-  it("fills the target's EMPTY box and opens that session one level down", async () => {
-    await serveTricks();
-    tapReplies({ session: "bluefin:w6X:3", text: "Rerun case 24" });
-    mount();
-    fireEvent.click(await screen.findByRole("button", { name: "Rerun red" }));
-    await waitFor(() => expect(where()).toBe("/pane/w6X%3A3"));
-    expect(loadDraft({}, REAL.paneId)).toBe("Rerun case 24");
-  });
-
-  it("keeps text already in the box, stays put and says the draft was not placed", async () => {
+  it("never touches a reply box: a tap writes no draft, and the text already in the box stays", async () => {
     await serveTricks();
     saveDraft({}, REAL.paneId, "half a thought");
-    tapReplies({ session: "bluefin:w6X:3", text: "Rerun case 24" });
+    const bodies = tapReplies();
     mount();
+    // An action at the foot, and a button in the view: each goes to the provider and nowhere else.
     fireEvent.click(await screen.findByRole("button", { name: "Rerun red" }));
-    await waitFor(() => expect(screen.getByRole("status", { name: "status" }).textContent).toBe("Reply box has text, draft not placed"));
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Rerun case" })).not.toBeDisabled());
+    fireEvent.click(screen.getByRole("button", { name: "Rerun case" }));
+    await waitFor(() => expect(bodies).toHaveLength(2));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Rerun case" })).not.toBeDisabled());
     expect(loadDraft({}, REAL.paneId)).toBe("half a thought");
     expect(where()).toBe("/trick/trick%3Abluefin%3Alegs%3Alegs");
+    expect(screen.getByRole("status", { name: "status" }).textContent).toBe("");
+  });
+
+  it("opens the session a row's href names, one level down", async () => {
+    await serveTricks();
+    mount();
+    fireEvent.click(await screen.findByRole("button", { name: "case 24" }));
+    await waitFor(() => expect(where()).toBe("/pane/w6X%3A3"));
+    // The empty box stays empty: opening a session is a move, never a draft.
+    expect(loadDraft({}, REAL.paneId)).toBeNull();
   });
 });

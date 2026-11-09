@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { countBlocked, bucketOf } from "../triage";
 import { paneProgress } from "../pane-marks";
 import type { AgentView, TabView, WorkspaceView } from "../types";
-import { draftPlacement, findTrickSession, findScopedPane, splitTrickSessions } from "./places";
+import { findTrickSession, findScopedPane, splitTrickSessions } from "./places";
 
 function pane(paneId: string, over: Partial<AgentView> = {}): AgentView {
   return { paneId, workspaceId: "w1", workspaceLabel: "collie", workspaceNumber: 1, tabId: "w1:t1", agent: "claude", status: "idle", cwd: "/w", focused: false, ...over };
@@ -60,7 +60,7 @@ describe("the trick sessions leave the herd", () => {
   });
 });
 
-describe("where an open and a draft go", () => {
+describe("where a link goes", () => {
   it("finds a trick session by its id, and the trick's first session part by the trick alone", () => {
     expect(findTrickSession("trick:bluefin:legs:second", [TRICK, TRICK2])).toBe(TRICK2);
     expect(findTrickSession("trick:bluefin:legs", [TRICK, TRICK2])).toBe(TRICK);
@@ -78,10 +78,7 @@ describe("where an open and a draft go", () => {
     expect(findScopedPane("bluefin:trick:bluefin:legs:legs", [TRICK], "bluefin")).toBeUndefined();
   });
 
-  it("places a draft only in an empty box", () => {
-    expect(draftPlacement(null, REAL)).toBe("placed");
-    expect(draftPlacement("  \n", REAL)).toBe("placed");
-    expect(draftPlacement("half a thought", REAL)).toBe("box-has-text");
-    expect(draftPlacement("", undefined)).toBe("no-session");
+  it("finds no pane for a key that is not a scope key: a name, a URL, a script", () => {
+    for (const key of ["w6X:3", "composer", "https://a.example/", "javascript:alert(1)", "trick:bluefin:legs"]) expect(findScopedPane(key, [REAL, TRICK], "bluefin"), key).toBeUndefined();
   });
 });

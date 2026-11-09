@@ -155,7 +155,6 @@ import { usePins } from "@/lib/pins";
 import { paneFilesDir } from "@/lib/file-paths";
 import { changesPath, filesPath, historyPath, trickSessionPath, newPath, panePath, spacePath } from "@/lib/nav";
 import { beltMarksOf } from "@/components/belt-trick-mark";
-import { useTrickHandlers } from "@/hooks/use-trick-handlers";
 import { useTrickParts, type TapHandlers } from "@/lib/tricks/store";
 import { isReadOnly, statusLabel } from "@/lib/types";
 import { usePairing } from "@/lib/pairing";
@@ -625,18 +624,15 @@ export function AgentChat({
   const listRef = useRef<ChatMessageListHandle>(null);
   const composerRef = useRef<ComposerHandle>(null);
   // THE TRICKS' BELT MARKS (M94 slice 03): one per `belt` part, in manifest order, on the belt's pinned
-  // block. A draft from one goes into THIS pane's box when its session is this pane (and the box is
-  // empty), and the fix button's draft with no session lands here too; an open goes one level down.
+  // block. A tap goes to the trick with this pane as `from`; it never touches this pane's reply box.
   const beltParts = useTrickParts("belt");
-  const trickHandlers = useTrickHandlers(agent === undefined ? undefined : { pane: agent, place: (incoming) => composerRef.current?.placeDraft(incoming) });
-  const { handlersFor: trickHandlersFor } = trickHandlers;
   const trickSessions = rootData?.trickSessions;
   const beltMarks = useMemo(() => {
     if (beltParts.length === 0) return undefined;
     return beltMarksOf({
       parts: beltParts,
       handlersFor: (host) => {
-        const handlers: TapHandlers = trickHandlersFor(host);
+        const handlers: TapHandlers = {};
         // The tap says which session is open on the phone: this pane, by its scope key.
         if (agent !== undefined) handlers.from = { session: `${agent.host ?? host}:${agent.paneId}` };
         return handlers;
@@ -644,7 +640,7 @@ export function AgentChat({
       sessions: trickSessions ?? [],
       onOpenSession: (pane) => nav.down(trickSessionPath(pane.paneId)),
     });
-  }, [beltParts, trickHandlersFor, trickSessions, agent, nav]);
+  }, [beltParts, trickSessions, agent, nav]);
   // The box the composer's terminal-draft notice floats in (ADR 0061), at the mirror's bottom edge.
   // State rather than a ref: the composer portals into it, so it must re-render once it exists.
   const [draftNoticeSlot, setDraftNoticeSlot] = useState<HTMLDivElement | null>(null);
