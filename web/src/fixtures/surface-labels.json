@@ -6390,6 +6390,11 @@
    "version": "1.5.0",
    "state": "dialog"
   },
+  "pi--v150-herdr-system-theme-permission-gate--w119.txt": {
+   "harness": "pi",
+   "version": "1.5.0",
+   "state": "dialog"
+  },
   "pi--v150-gentle-quiet-two-line-draft.txt": {
    "harness": "pi",
    "version": "1.5.0",
