@@ -16,6 +16,35 @@ export const HILL_SEND_WAIT_MS = 15_000;
 export const HILL_SEND_POLL_MS = 250;
 
 /**
+ * One read of a source per pass. Outside `within`, `read` reads the source every time. Inside it, the
+ * first `read` reads the source and every later one in the same pass answers that value, so a list of
+ * decisions resolves every name against one `who` list instead of one per decision. Passes nest; the
+ * value is let go when the outermost ends. Synchronous only: `fn` must not await.
+ */
+export class OneLook<T> {
+  private held: { readonly value: T } | null = null;
+  private depth = 0;
+
+  constructor(private readonly source: () => T) {}
+
+  readonly read = (): T => {
+    if (this.depth === 0) return this.source();
+    this.held ??= { value: this.source() };
+    return this.held.value;
+  };
+
+  readonly within = <R>(fn: () => R): R => {
+    this.depth += 1;
+    try {
+      return fn();
+    } finally {
+      this.depth -= 1;
+      if (this.depth === 0) this.held = null;
+    }
+  };
+}
+
+/**
  * The probe: the one live agent session a walky pane address names now, as `who` lists it, with the
  * instance token it holds. An address with a token matches only that instance; one without, whatever
  * session holds the pane id now. Null for a scope, a shell pane, a pane that is gone, or two matches.

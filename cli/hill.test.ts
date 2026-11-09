@@ -390,6 +390,7 @@ describe("help", () => {
     expect(await run(["hill", "post", "--help"], io)).toBe(EXIT.OK);
     expect(io.stdout).toEqual(hillPostHelp());
     expect(io.stdout[0]).toStartWith("usage: collie hill post");
+    expect(io.stdout).toContain("  With no --expires, a decision closes as expired after 14 days.");
     expect(io.stdout.slice(-RULES.length)).toEqual(RULES);
   });
 });

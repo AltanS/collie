@@ -172,6 +172,16 @@ export interface HillServiceDeps {
   readonly mintMediaId?: () => string;
   /** The session's Dashboard name for the live pane a walky address names now, or null to keep the walky label. */
   readonly sessionName?: (address: string) => string | null;
+  /**
+   * Run `fn` with one look at the live sessions: every `place` and `sessionName` inside it reads the
+   * same `who` list (bridge/index.ts, hill/walky.ts `OneLook`). Absent: each call looks for itself.
+   */
+  readonly look?: <T>(fn: () => T) => T;
+  /**
+   * Whether the bridge lists any live session yet. False right after boot, before the first refresh:
+   * then the sweep closes nothing for a target that seems gone. Absent: always true.
+   */
+  readonly sessionsKnown?: () => boolean;
 }
 
 /** A post's answer: the stored decision, or a refusal with its code and plain words the CLI prints. */
@@ -200,6 +210,12 @@ export const DISMISSED = "Dismissed.";
 export const MESSAGE_TITLE_MAX = 80;
 /** How many characters of a session's name a card shows, the `…` included. */
 export const SESSION_LABEL_MAX = 80;
+/** Open decisions the hill holds at once, across every sender. A further post is refused `too_many_open`. */
+export const HILL_OPEN_TOTAL_MAX = 200;
+/** The days a decision posted with no expiry stays open; `collie hill post --help` says so. */
+export const HILL_DEFAULT_EXPIRY_DAYS = 14;
+/** {@link HILL_DEFAULT_EXPIRY_DAYS} in milliseconds: a post with no `expiresAt` gets `at` plus this. */
+export const HILL_DEFAULT_EXPIRY_MS = HILL_DEFAULT_EXPIRY_DAYS * 24 * 60 * 60 * 1000;
 
 /** Mint a decision id: `dc_` and 12 characters of [a-z0-9], from a uniform random source. */
 export function mintDecisionId(random: (n: number) => Uint8Array = (n) => randomBytes(n)): string {
@@ -394,6 +410,8 @@ export class HillService {
   private namesMoved = 0;
   /** The answers' claim steps run one after another, so two taps cannot both find a decision open. */
   private lane: Promise<void> = Promise.resolve();
+  /** The open decisions whose target the last sweep found gone. Gone at two sweeps in a row closes one. */
+  private absent = new Set<string>();
 
   constructor(private readonly deps: HillServiceDeps) {
     this.now = deps.now ?? Date.now;
@@ -408,11 +426,16 @@ export class HillService {
     const stored = this.deps.store.rev();
     if (stored === undefined) return undefined;
     if (this.deps.sessionName !== undefined) {
-      const names = JSON.stringify(this.deps.store.list().open.map((decision) => this.named(decision)).map((decision) => [decision.id, decision.from.label, decision.target?.label ?? null]));
+      const names = this.look(() => JSON.stringify(this.deps.store.list().open.map((decision) => this.named(decision)).map((decision) => [decision.id, decision.from.label, decision.target?.label ?? null])));
       if (this.namesSeen !== null && names !== this.namesSeen) this.namesMoved += 1;
       this.namesSeen = names;
     }
     return stored + this.namesMoved;
+  }
+
+  /** `fn` under one look at the live sessions, when the bridge gives one. */
+  private look<T>(fn: () => T): T {
+    return this.deps.look === undefined ? fn() : this.deps.look(fn);
   }
 
   /** One decision by id, any sender (the tricks runner reads its own decisions' states). */
@@ -422,9 +445,11 @@ export class HillService {
 
   /** What `GET /api/hill` serves: every open decision with the names its sessions have now. */
   list(): ReturnType<HillStore["list"]> {
-    const list = this.deps.store.list();
-    // The same revision the snapshot carries, so a phone that holds it reads `unchanged`.
-    return { ...list, rev: this.rev() ?? list.rev, open: list.open.map((decision) => this.named(decision)) };
+    return this.look(() => {
+      const list = this.deps.store.list();
+      // The same revision the snapshot carries, so a phone that holds it reads `unchanged`.
+      return { ...list, rev: this.rev() ?? list.rev, open: list.open.map((decision) => this.named(decision)) };
+    });
   }
 
   /** The session's name for a walky address, or `fallback` when the bridge has none. */
@@ -506,8 +531,10 @@ export class HillService {
       if (old.state !== "open") return refuse("bad_supersedes", `${old.id} is ${old.state}, only an open decision can be replaced`);
       superseded = old;
     }
-    const open = this.deps.store.all().filter((decision) => decision.state === "open" && keyOf(decision) === key && decision.id !== superseded?.id);
+    const allOpen = this.deps.store.all().filter((decision) => decision.state === "open" && decision.id !== superseded?.id);
+    const open = allOpen.filter((decision) => keyOf(decision) === key);
     if (open.length >= HILL_OPEN_MAX) return refuse("too_many_open", `this session has ${String(HILL_OPEN_MAX)} open decisions; withdraw one, or wait for answers`);
+    if (allOpen.length >= HILL_OPEN_TOTAL_MAX) return refuse("too_many_open", `the hill holds ${String(HILL_OPEN_TOTAL_MAX)} open decisions; withdraw one, or wait for answers`);
     const asked = input.priority ?? "today";
     const priority = asked === "now" && open.filter((decision) => decision.priority === "now").length >= HILL_NOW_MAX ? "today" : asked;
     // A trick's own folder is a root for a trick's images only; an agent's post never has one.
@@ -536,7 +563,8 @@ export class HillService {
       target: target === null ? null : { label: this.nameOf(target.address, target.label), host: target.host, unattended: target.unattended },
       supersedes: superseded?.id ?? null,
       supersededBy: null,
-      expiresAt: input.expiresAt ?? null,
+      // No expiry asked for: it closes `expired` after the default, so a forgotten decision does not stay forever.
+      expiresAt: input.expiresAt ?? now + HILL_DEFAULT_EXPIRY_MS,
       at: now,
       state: "open",
       closedAt: null,
@@ -671,18 +699,52 @@ export class HillService {
   mineList(sender: HillSender): HillDecision[] {
     const key = senderKey(sender);
     const own = this.deps.store.all().filter((decision) => keyOf(decision) === key);
-    const open = sortOpenDecisions(own.filter((decision) => decision.state === "open")).map((decision) => this.named(decision));
+    const open = this.look(() => sortOpenDecisions(own.filter((decision) => decision.state === "open")).map((decision) => this.named(decision)));
     const closed = own.filter((decision) => decision.state !== "open").toSorted((a, b) => (b.closedAt ?? b.at) - (a.closedAt ?? a.at));
     return [...open, ...closed];
   }
 
-  /** Close every open decision past its `expiresAt` as `expired`. Run from the bridge's slow timer. Answers how many closed. */
+  /**
+   * The bridge's slow timer (every 15 s): close every open decision past its `expiresAt` as `expired`,
+   * and every one whose target session has ended as `undeliverable` ("target session ended"), so a
+   * poster that is gone does not leave its decisions on the hill. Answers how many closed.
+   *
+   * A target counts as ended only when it is absent at two sweeps in a row, and never while the bridge
+   * lists no session at all (right after boot, before the first refresh). A trick's decision with no
+   * `replyTo` has no session to end; its runner owns it.
+   */
   sweep(now: number = this.now()): number {
     this.pruneMedia();
     const due = this.deps.store.all().filter((decision) => decision.state === "open" && decision.expiresAt !== null && decision.expiresAt <= now);
-    if (due.length === 0) return 0;
-    const closed = due.map((decision): HillDecision => Object.assign({}, decision, { state: "expired" as const, closedAt: now, closedReason: EXPIRED }));
-    return this.deps.store.put(...closed) ? closed.length : 0;
+    const expired = due.map((decision): HillDecision => Object.assign({}, decision, { state: "expired" as const, closedAt: now, closedReason: EXPIRED }));
+    const ended = this.look(() => this.endedTargets(new Set(due.map((decision) => decision.id))));
+    const closed = [...expired, ...ended.map((decision): HillDecision => Object.assign({}, decision, { state: "undeliverable" as const, closedAt: now, closedReason: TARGET_ENDED }))];
+    if (closed.length === 0) return 0;
+    if (this.deps.store.put(...closed)) return closed.length;
+    // Not saved: the ended ones are still absent, and the next sweep tries them again.
+    for (const decision of ended) this.absent.add(decision.id);
+    return 0;
+  }
+
+  /** The open decisions whose target was gone at this sweep and the last one. Moves the memory of who was gone. */
+  private endedTargets(skip: ReadonlySet<string>): HillDecision[] {
+    if (!(this.deps.sessionsKnown?.() ?? true)) {
+      this.absent.clear();
+      return [];
+    }
+    const gone: string[] = [];
+    const ended: HillDecision[] = [];
+    for (const decision of this.deps.store.all()) {
+      if (decision.state !== "open" || skip.has(decision.id)) continue;
+      const to = decision.replyTo ?? decision.from.address;
+      // A trick's decision with no `replyTo` types into nothing: the trick runner owns it.
+      if (decision.target === null || to === null) continue;
+      if (this.deps.place(to)?.address === to) continue;
+      if (this.absent.has(decision.id)) ended.push(decision);
+      else gone.push(decision.id);
+    }
+    this.absent = new Set(gone);
+    return ended;
   }
 
   /**

@@ -6,6 +6,7 @@ import { memoryHillReceipts, type HillReceiptSurface } from "./receipts.ts";
 import {
   answerMessage,
   BY_THE_POSTER,
+  HILL_DEFAULT_EXPIRY_MS,
   HILL_WALKY_OFF,
   HillService,
   messageTitle,
@@ -72,6 +73,8 @@ interface Rig {
   tapResult: boolean | "throw";
   /** What happened, in order: "receipt", "closed", "send", "tap". */
   readonly events: string[];
+  /** Whether the bridge lists any session yet (false right after boot). */
+  known: boolean;
 }
 
 function rig(receipts: HillReceiptSurface = memoryHillReceipts()): Rig {
@@ -90,6 +93,7 @@ function rig(receipts: HillReceiptSurface = memoryHillReceipts()): Rig {
     taps: [],
     tapResult: true,
     events: [],
+    known: true,
   };
   const hill = new HillService({
     store,
@@ -108,6 +112,7 @@ function rig(receipts: HillReceiptSurface = memoryHillReceipts()): Rig {
     },
     crewMode: () => state.mode,
     walkyOn: () => state.walky,
+    sessionsKnown: () => state.known,
     memberId: null,
     machine: "desk",
     tricksHost: () => TRICKS_HOST,
@@ -420,6 +425,108 @@ describe("expiry", () => {
     expect(r.store.get(never.id)?.state).toBe("open");
     expect(r.store.rev()).not.toBe(rev);
     expect(r.hill.sweep(9000)).toBe(0);
+  });
+});
+
+describe("the sweep closes decisions whose target ended", () => {
+  test("gone at two sweeps in a row closes it `undeliverable`; gone at one does not", () => {
+    const r = rig();
+    const decision = posted(r.hill.post(POSTER, input(1)));
+    r.live = r.live.filter((place) => place.address !== "local/%1#aaaa");
+    expect(r.hill.sweep(2000)).toBe(0);
+    expect(r.store.get(decision.id)?.state).toBe("open");
+    expect(r.hill.sweep(3000)).toBe(1);
+    expect(r.store.get(decision.id)).toMatchObject({ state: "undeliverable", closedAt: 3000, closedReason: TARGET_ENDED });
+  });
+
+  test("a session back by the next sweep keeps its decision; the count starts again", () => {
+    const r = rig();
+    const decision = posted(r.hill.post(POSTER, input(1)));
+    const all = [...r.live];
+    r.live = all.filter((place) => place.address !== "local/%1#aaaa");
+    r.hill.sweep(2000);
+    r.live = all;
+    r.hill.sweep(3000);
+    r.live = all.filter((place) => place.address !== "local/%1#aaaa");
+    expect(r.hill.sweep(4000)).toBe(0);
+    expect(r.store.get(decision.id)?.state).toBe("open");
+  });
+
+  test("never while the bridge lists no session (right after boot), and such a sweep breaks the row", () => {
+    const r = rig();
+    const decision = posted(r.hill.post(POSTER, input(1)));
+    r.live = [];
+    r.known = false;
+    expect(r.hill.sweep(2000)).toBe(0);
+    expect(r.hill.sweep(3000)).toBe(0);
+    r.known = true;
+    r.live = PLACES.filter((place) => place.address !== "local/%1#aaaa");
+    r.hill.sweep(4000);
+    r.known = false;
+    r.hill.sweep(5000);
+    r.known = true;
+    expect(r.hill.sweep(6000)).toBe(0);
+    expect(r.store.get(decision.id)?.state).toBe("open");
+    expect(r.hill.sweep(7000)).toBe(1);
+  });
+
+  test("the target is replyTo when set: the poster ending does not close it, replyTo ending does", () => {
+    const r = rig();
+    const decision = posted(r.hill.post(POSTER, input(1, { replyTo: "local/%2" })));
+    r.live = PLACES.filter((place) => place.address !== "local/%1#aaaa");
+    r.hill.sweep(2000);
+    expect(r.hill.sweep(3000)).toBe(0);
+    r.live = [];
+    r.hill.sweep(4000);
+    expect(r.hill.sweep(5000)).toBe(1);
+    expect(r.store.get(decision.id)?.state).toBe("undeliverable");
+  });
+
+  test("a trick's decision with no replyTo is left to the trick; one with a replyTo closes when it ends", () => {
+    const r = rig();
+    const own = posted(r.hill.postDecision(trickSender("own"), input(1)));
+    const routed = posted(r.hill.postDecision(trickSender("routed"), input(2, { replyTo: "local/%2#bbbb" })));
+    r.live = PLACES.filter((place) => place.address !== "local/%2#bbbb");
+    r.hill.sweep(2000);
+    expect(r.hill.sweep(3000)).toBe(1);
+    expect(r.store.get(own.id)?.state).toBe("open");
+    expect(r.store.get(routed.id)?.state).toBe("undeliverable");
+  });
+
+  test("a new session in the same pane (another instance token) is not the target", () => {
+    const r = rig();
+    const decision = posted(r.hill.post(POSTER, input(1)));
+    r.live = r.live.map((place) => (place.address === "local/%1#aaaa" ? { ...place, address: "local/%1#zzzz" } : place));
+    r.hill.sweep(2000);
+    expect(r.hill.sweep(3000)).toBe(1);
+    expect(r.store.get(decision.id)?.state).toBe("undeliverable");
+  });
+});
+
+describe("the hill's caps", () => {
+  test("200 open decisions across every sender: the next post is refused too_many_open; a supersede still fits", () => {
+    const r = rig();
+    const senders = Array.from({ length: 10 }, (_, n): HillAgentSender => ({ ...POSTER, address: `local/%${String(n + 10)}#s${String(n).padStart(3, "0")}` }));
+    r.live = [...PLACES, ...senders.map((sender): HillPlace => ({ address: sender.address, label: "repo", host: "desk", unattended: false }))];
+    let n = 0;
+    for (const sender of senders) for (let i = 0; i < 20; i += 1) posted(r.hill.post(sender, input((n += 1))));
+    const refused = r.hill.post(POSTER, input(9999));
+    expect(refused).toEqual({ ok: false, code: "too_many_open", error: "the hill holds 200 open decisions; withdraw one, or wait for answers" });
+    const last = r.hill.mineList(senders[0]!)[0]!;
+    expect(r.hill.post(senders[0]!, input(10_000, { supersedes: last.id })).ok).toBe(true);
+    expect(r.hill.withdraw(senders[1]!, r.hill.mineList(senders[1]!)[0]!.id).ok).toBe(true);
+    expect(r.hill.post(POSTER, input(9999)).ok).toBe(true);
+  });
+
+  test("a post with no expiry closes after 14 days; one with an expiry keeps it", () => {
+    const r = rig();
+    const plain = posted(r.hill.post(POSTER, input(1)));
+    expect(plain.expiresAt).toBe(1000 + HILL_DEFAULT_EXPIRY_MS);
+    expect(HILL_DEFAULT_EXPIRY_MS).toBe(14 * 24 * 60 * 60 * 1000);
+    expect(posted(r.hill.post(POSTER, input(2, { expiresAt: 5000 }))).expiresAt).toBe(5000);
+    expect(r.hill.sweep(plain.expiresAt! - 1)).toBe(1);
+    expect(r.hill.sweep(plain.expiresAt!)).toBe(1);
+    expect(r.store.get(plain.id)).toMatchObject({ state: "expired", closedReason: "expired" });
   });
 });
 

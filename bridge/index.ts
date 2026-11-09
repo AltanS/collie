@@ -309,7 +309,7 @@ import { deniedFoldersSync, HillMediaStore } from "./hill/media.ts";
 import { HillReceiptStore } from "./hill/receipts.ts";
 import { HillService } from "./hill/service.ts";
 import { hillDir, HillStore } from "./hill/store.ts";
-import { hillSessionName, walkyPlace, walkySend } from "./hill/walky.ts";
+import { hillSessionName, OneLook, walkyPlace, walkySend } from "./hill/walky.ts";
 
 // How often the registry rescans the filesystem for sessions that appeared/disappeared after boot.
 const SESSION_REFRESH_MS = 15_000;
@@ -2132,7 +2132,12 @@ await hillReceipts.load();
 // A decision's images (M96): read by the bridge from the path an agent names, never from Collie's own
 // folders, kept in `<stateDir>/hill/media/`, and removed with the decision.
 const hillMedia = new HillMediaStore(hillDir(cfg.stateDir), deniedFoldersSync(filesPrivateFolders(cfg)));
-const hillPlace = walkyPlace(walky, walkyMemberId);
+// One `who` list and one set of views per list or sweep of the hill, not one per decision (M96).
+const hillWho = new OneLook(() => walky.who());
+const hillViews = new OneLook(() => registry.ordered().flatMap((rt) => rt.engine.current().agents));
+// `unattended` (the card's "runs unattended" mark) keeps walkyPlace's default, false: no bridge fact
+// says yet whether a session runs in bypass or auto-approve mode, so nothing is wired here.
+const hillPlace = walkyPlace({ who: hillWho.read }, walkyMemberId);
 const hill = new HillService({
   store: new HillStore(hillDir(cfg.stateDir), Date.now, undefined, (ids) => {
     for (const id of ids) hillMedia.remove(id);
@@ -2144,10 +2149,13 @@ const hill = new HillService({
   // A card names a session as the Dashboard's row does, from the same snapshot views (M96).
   sessionName: hillSessionName({
     place: hillPlace,
-    views: () => registry.ordered().flatMap((rt) => rt.engine.current().agents),
+    views: hillViews.read,
     memberId: walkyMemberId,
     redact: cfg.redact,
   }),
+  look: (fn) => hillWho.within(() => hillViews.within(fn)),
+  // The sweep closes a decision whose target ended only once the bridge lists sessions at all.
+  sessionsKnown: () => walky.who().length > 0,
   crewMode: () => crew.mode,
   walkyOn: () => cfg.walky,
   memberId: walkyMemberId,
@@ -2174,7 +2182,8 @@ if (await walkyServer.start()) console.log(`[walky] socket at ${walkySocketPath(
 const refreshTimer = setInterval(() => {
   void registry.refresh();
   void checkpointRuntime();
-  // The hill's expiry (M96) rides this slow timer: a decision past its `expiresAt` closes `expired`.
+  // The hill's sweep (M96) rides this slow timer: a decision past its `expiresAt` closes `expired`, and
+  // one whose target session was gone at two sweeps in a row closes `undeliverable`.
   hill.sweep(Date.now());
 }, SESSION_REFRESH_MS);
 refreshTimer.unref();
