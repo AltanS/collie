@@ -98,6 +98,8 @@ export const WORD_MAX = 24;
 export const CHIP_TEXT_MAX = 60;
 /** A `chip`'s `short`, the text shown when the box is narrow. */
 export const SHORT_MAX = 12;
+/** A `status` part's chip text: the face word's cap, as the line it sits in is one 390 px row. */
+export const STATUS_TEXT_MAX = 12;
 /** A `para`'s `bullet` marker (`-`, `1.`, `12.`). */
 export const BULLET_MAX = 4;
 /** One `line`, a mono screen line; a tab is allowed. */
@@ -462,11 +464,11 @@ export type SessionStatus = (typeof SESSION_STATUSES)[number];
  * DECISION: the manifest declares kinds, not whole `at` strings, so a trick may compute its matches at
  * run time.
  */
-export const PLACE_KINDS = ["belt", "session", "tab", "view", "dashboard"] as const;
+export const PLACE_KINDS = ["belt", "session", "tab", "view", "dashboard", "status"] as const;
 export type PlaceKind = (typeof PLACE_KINDS)[number];
 /**
  * The places a parser call with no `places` accepts: every kind (step 3). Parsing is not drawing: this
- * Collie draws `belt` and `session`; the others are held, and a slice draws them in the shape parsed.
+ * Collie draws `belt`, `session` and `status`; the others are held, and a slice draws them in the shape parsed.
  */
 export const NEAR_PLACES: readonly PlaceKind[] = PLACE_KINDS;
 /** The place kinds a later slice builds and a caller may refuse as "later" by leaving them out of `places`. None since step 3. */
@@ -823,6 +825,23 @@ export interface BeltPart {
   id: string;
   mark: Mark;
 }
+/**
+ * A trick's item in the status line above the Belt: the attributes of a tree `chip`, and no others. No
+ * `state` (never a status shape), and no `intent`: the chip is not a control. `at` with `clock` makes it
+ * a live time, as on any chip.
+ */
+export interface StatusChip {
+  text: string;
+  icon?: TrickIcon;
+  tone?: Tone;
+  at?: string;
+  clock?: Clock;
+}
+export interface StatusPart {
+  at: "status";
+  id: string;
+  chip: StatusChip;
+}
 export interface SessionPart {
   at: "session";
   id: string;
@@ -870,11 +889,12 @@ export interface DashboardPart {
   id: string;
   view: View;
 }
-export type TrickPart = BeltPart | SessionPart | TabPart | TabMarkPart | ViewPart | DashboardPart;
+export type TrickPart = BeltPart | SessionPart | TabPart | TabMarkPart | ViewPart | DashboardPart | StatusPart;
 
 /** A part the parser accepted, with its place kind and its match read out of `at`. */
 export type ParsedPart =
   | { place: "belt"; part: BeltPart }
+  | { place: "status"; part: StatusPart }
   | { place: "session"; part: SessionPart }
   | { place: "tab"; part: TabMarkPart; tabMatch: TabMatch }
   | { place: "tab"; part: TabPart; tabMatch?: undefined }
@@ -1871,7 +1891,7 @@ export function matchesTab(match: TabMatch, tab: { title: string; space?: string
 
 /** What an `at` string says: the place kind, and its match when it has one. */
 export type AtReading =
-  | { place: "belt" | "session" | "dashboard" }
+  | { place: "belt" | "session" | "dashboard" | "status" }
   | { place: "tab"; tabMatch: TabMatch }
   /** A bare `tab`: the trick's own tab entry. */
   | { place: "tab"; tabMatch?: undefined }
@@ -1886,7 +1906,7 @@ export interface AtProblem {
 /** Read a part's `at`. */
 export function parseAt(at: string): AtReading | AtProblem {
   if (codePoints(at) > AT_MAX) return { code: "place", reason: `"at" is longer than ${AT_MAX} characters.` };
-  if (at === "belt" || at === "session" || at === "dashboard") return { place: at };
+  if (at === "belt" || at === "session" || at === "dashboard" || at === "status") return { place: at };
   if (at === "tab") return { place: "tab" };
   if (at.startsWith("tab:")) {
     const read = parseTabMatch(at.slice("tab:".length));
@@ -1901,7 +1921,7 @@ export function parseAt(at: string): AtReading | AtProblem {
   if (later !== undefined) return { code: "later", reason: later };
   const removed = reasonOf(REMOVED_PLACES, word);
   if (removed !== undefined) return { code: "place", reason: removed };
-  return { code: "place", reason: `"${at}" is not a place. Use belt, session, tab, tab:<tabmatch>, view:<match> or dashboard (later: header.line, menu:<match>, settings).` };
+  return { code: "place", reason: `"${at}" is not a place. Use belt, status, session, tab, tab:<tabmatch>, view:<match> or dashboard (later: header.line, menu:<match>, settings).` };
 }
 
 // ── The view tree reader ─────────────────────────────────────────────────────────────────────
@@ -2423,6 +2443,50 @@ function readMark(f: Fields, tappable: boolean): Mark {
   return mark;
 }
 
+/**
+ * A `status` part's chip: `text` (1 to {@link STATUS_TEXT_MAX} characters), `icon`, `tone`, and `at` with `clock`.
+ * DECISION: no `state` (a status shape would read as "an agent needs you"), no `intent` (the chip is not a
+ * control; a tap opens the trick's session when it has one), no `current` and no `short` (the cap is the
+ * narrow form already).
+ */
+function readStatusChip(f: Fields): StatusChip {
+  const own = (key: string): { code: RefusalCode; reason: string } | undefined => {
+    if (isOneOf(STATUS_MARK_KEYS, key)) return { code: "status", reason: `"${key}" would draw Collie's status mark. A status chip draws its own icon and words; use "tone".` };
+    if (key === "intent") return { code: "target", reason: "A status chip takes no intent: it is not a control. A tap opens the trick's session when it has one." };
+    if (key === "current" || key === "short") return { code: "unknown-key", reason: `"${key}" is not part of a status chip. Its text is at most ${STATUS_TEXT_MAX} characters already.` };
+    return undefined;
+  };
+  f.keys(SUB_KEYS.chip, own);
+  const chip: StatusChip = { text: f.text("text", { max: STATUS_TEXT_MAX, required: true }) ?? "" };
+  const icon = f.icon("icon");
+  const tone = f.tone();
+  if (icon !== undefined) chip.icon = icon;
+  if (tone !== undefined) chip.tone = tone;
+  const instant = readChipAttr(f, "at", EPOCH_RULE);
+  const clock = readChipAttr(f, "clock", CLOCK_RULE);
+  if (f.has("at") !== f.has("clock")) f.push("target", undefined, 'A chip\'s "at" and "clock" go together: the instant and how to tell it.');
+  if (instant !== undefined) chip.at = instant;
+  if (clock !== undefined && isOneOf(CLOCKS, clock)) chip.clock = clock;
+  return chip;
+}
+
+/** A chip attribute of the tree's kind, as text, by the tree's own rule. */
+function readChipAttr(f: Fields, key: string, rule: AttrRule): string | undefined {
+  const raw = f.obj[key];
+  if (raw === undefined) return undefined;
+  const value = asJsonString(raw);
+  if (value === undefined) {
+    f.push("type", key, `"${key}" must be text: every attribute is text, as in the tree.`);
+    return undefined;
+  }
+  const problem = attrProblem(rule, value);
+  if (problem !== undefined) {
+    f.push(problem.code, key, `"${key}" ${problem.reason}`);
+    return undefined;
+  }
+  return value;
+}
+
 function readBadgeAttr(f: Fields, key: string): string | undefined {
   const raw = f.obj[key];
   if (raw === undefined) return undefined;
@@ -2447,6 +2511,8 @@ export const SUB_KEYS = {
   badge: ["count", "text"],
   progress: ["value", "max"],
   action: ["id", "label", "intent", "value", "icon", "disabled"],
+  /** The chip of a `status` part: a tree chip's text and four of its attributes, never `state`, `current` or `short`. */
+  chip: ["text", "icon", "tone", "at", "clock"],
 } as const;
 
 export const PART_KEYS = {
@@ -2455,6 +2521,7 @@ export const PART_KEYS = {
   tab: ["at", "id", "mark"],
   view: ["at", "id", "title", "icon", "view"],
   dashboard: ["at", "id", "view"],
+  status: ["at", "id", "chip"],
 } as const satisfies { readonly [K in PlaceKind]: readonly string[] };
 
 /** The keys of a trick's own tab, the bare `tab` (slice 06). `PART_KEYS.tab` is the tab mark's. */
@@ -2466,6 +2533,7 @@ const PLACE_WORDS = {
   tab: "a tab mark part",
   view: "a view part",
   dashboard: "a dashboard part",
+  status: "a status part",
 } as const satisfies { readonly [K in PlaceKind]: string };
 
 export interface ParseTrickDocumentOptions {
@@ -2548,6 +2616,7 @@ export function parseTrickDocument(raw: JsonValue | undefined, opts: ParseTrickD
 
   const seen = new Set<string>();
   let belt = false;
+  let status = false;
   list.forEach((value, i) => {
     const path = pointer("/parts", i);
     const sink: Refusal[] = [];
@@ -2557,6 +2626,9 @@ export function parseTrickDocument(raw: JsonValue | undefined, opts: ParseTrickD
     if (parsed.part?.place === "belt" && belt) {
       sink.push({ code: "duplicate", path: pointer(path, "at"), reason: "A trick has one belt mark. This is a second one." });
     }
+    if (parsed.part?.place === "status" && status) {
+      sink.push({ code: "duplicate", path: pointer(path, "at"), reason: "A trick has one status item. This is a second one." });
+    }
     if (id !== undefined) seen.add(id);
     if (sink.length > 0 || parsed.part === undefined) {
       for (const r of sink) refusals.push(id === undefined ? r : { ...r, part: id });
@@ -2564,6 +2636,7 @@ export function parseTrickDocument(raw: JsonValue | undefined, opts: ParseTrickD
       return;
     }
     if (parsed.part.place === "belt") belt = true;
+    if (parsed.part.place === "status") status = true;
     result.parts.push(parsed.part);
   });
   readDecisions(top, result);
@@ -2651,6 +2724,11 @@ function readPartBody(reading: AtReading, at: string, id: string, f: Fields, kin
       const markFields = f.object("mark", "a mark", true);
       const mark = markFields === undefined ? {} : readMark(markFields, true);
       return { place: "belt", part: { at: "belt", id, mark } };
+    }
+    case "status": {
+      const chipFields = f.object("chip", "a chip", true);
+      const chip = chipFields === undefined ? { text: "" } : readStatusChip(chipFields);
+      return { place: "status", part: { at: "status", id, chip } };
     }
     case "tab": {
       if (reading.tabMatch === undefined) return readOwnTabPart(f, id, view());

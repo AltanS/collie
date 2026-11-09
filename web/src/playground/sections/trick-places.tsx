@@ -1,7 +1,8 @@
-// The Trick places section of the states playground (M94 slice 03, re-cut 2026-11-08): the two first places
+// The Trick places section of the states playground (M94 slice 03, re-cut 2026-11-08): the places
 // a trick draws in. The belt's end-block marks beside the pins mark (one with nothing to do among them),
 // and the trick session: its row on the Dashboard and in Switch session, and its screen with no Composer.
-// Then the three look fixes of the renderer. Every card
+// Then the `status` place, the tricks' items in the usage row above the belt, and the three look fixes
+// of the renderer. Every card
 // mounts the REAL components at 390 px over a store of its own, so a tap shows the busy state and the
 // receipt with no bridge.
 //
@@ -12,6 +13,8 @@ import { Keyboard, Monitor } from "lucide-react";
 
 import { ActionsRow } from "@/components/actions-row";
 import { beltMarksOf } from "@/components/belt-trick-mark";
+import { ModelTag } from "@/components/model-tag";
+import { statusItemsOf } from "@/components/trick-status-item";
 import { TrickSessionRow, TrickSpaceSection } from "@/components/trick-session";
 import { PartFrame } from "@/lib/tricks/part-frame";
 import { renderView, type RenderCtx } from "@/lib/tricks/render";
@@ -26,7 +29,7 @@ import { Card, Group, Section, type SectionDef } from "../layout";
 export const DEF: SectionDef = {
   id: "trick-places",
   title: "Trick places",
-  intent: "The belt's trick marks, the trick session, three look fixes, at 390 px.",
+  intent: "The belt's trick marks, the status line's trick items, the trick session, three look fixes, at 390 px.",
 };
 
 const NOW = Date.now();
@@ -37,6 +40,7 @@ const RUN = () => Promise.resolve(true);
 const LEGS: WireTrickInfo = { host: "bluefin", id: "legs", name: "Browser leg", icon: "flask", on: true, state: "ok", places: ["belt", "session"] };
 const TRACKER: WireTrickInfo = { host: "bluefin", id: "tracker", name: "Tracker", icon: "file", on: true, state: "ok", places: ["belt", "session"] };
 const QUIET: WireTrickInfo = { host: "bluefin", id: "quiet", name: "Quiet", icon: "bell", on: true, state: "ok", places: ["belt"] };
+const SPEND: WireTrickInfo = { host: "bluefin", id: "spend", name: "Spend", icon: "tag", on: true, state: "ok", places: ["status"] };
 
 const LEGS_ROWS: ListNode = {
   kind: "list",
@@ -60,6 +64,11 @@ const LEGS_BELT = wire("legs", { at: "belt", id: "belt", mark: { icon: "flask", 
 const TRACKER_BELT = wire("tracker", { at: "belt", id: "belt", mark: { icon: "file", label: "M94", tone: "plain" } });
 /** No intent, and no session in the pane list: the same button control, aria-disabled. */
 const QUIET_BELT = wire("quiet", { at: "belt", id: "belt", mark: { icon: "bell", label: "idle", tone: "muted" } });
+/** The legs trick's status item: the legs fixture's count as a chip, tapping opens its session. */
+const LEGS_STATUS = wire("legs", { at: "status", id: "status", chip: { text: "tag 5/7", icon: "flask", tone: "accent" } });
+const SPEND_STATUS = wire("spend", { at: "status", id: "status", chip: { text: "$7.42", tone: "plain" } });
+/** Past its fresh window: the tone goes, a tap says the age. */
+const SPEND_OLD = { ...SPEND_STATUS, asOf: new Date(NOW - 20 * 60_000).toISOString() };
 const LEGS_SESSION = wire("legs", {
   at: "session",
   id: "legs",
@@ -78,9 +87,9 @@ const TRACKER_SESSION = wire("tracker", { at: "session", id: "due", name: "Track
 
 /** A store over a stand-in bridge that answers a tap after a moment, so the busy state is seen. */
 function placesStore(): TricksStore {
-  const parts = [LEGS_BELT, TRACKER_BELT, QUIET_BELT, LEGS_SESSION, TRACKER_SESSION];
+  const parts = [LEGS_BELT, TRACKER_BELT, QUIET_BELT, LEGS_SESSION, TRACKER_SESSION, LEGS_STATUS, SPEND_STATUS];
   return createTricksStore({
-    fetchTricks: () => Promise.resolve({ rev: 1, tricks: [LEGS, TRACKER, QUIET], parts, present: parts.map(partKey) }),
+    fetchTricks: () => Promise.resolve({ rev: 1, tricks: [LEGS, TRACKER, QUIET, SPEND], parts, present: parts.map(partKey) }),
     tapTrick: (_host, _trick, body) => new Promise<TrickTapReply>((resolve) => setTimeout(() => resolve({ rid: body.rid, code: "ok" }), 1500)),
     mintRequestId,
   });
@@ -138,6 +147,21 @@ function Belt({ marks }: { marks: readonly WireTrickPart[] }) {
   );
 }
 
+const USAGE = { context: 42, limits: [{ window: "5h" as const, used: 58 }, { window: "7d" as const, used: 81 }] };
+const LEGS_PANE_FOR_STATUS = trickPane("legs", LEGS_SESSION, { paneLabel: "Browser leg" });
+
+/** The usage row over a stand-in mirror, with the tricks' items after Collie's own. `width` is the mirror box's; `own` false leaves Collie's items out. */
+function StatusLine({ parts, width = 390, own = true }: { parts: readonly WireTrickPart[]; width?: number; own?: boolean }) {
+  const store = useStore();
+  const trailing = useMemo(() => statusItemsOf({ parts, sessions: [LEGS_PANE_FOR_STATUS], onOpenSession: IGNORE, store }), [parts, store]);
+  return (
+    <div style={{ width }} className="relative h-12 max-w-full overflow-hidden rounded-sm border border-border bg-background">
+      <p className="px-3 pt-2 font-mono text-xs text-muted-foreground">Case 24 is red. Rerunning it now.</p>
+      <ModelTag model={own ? "claude-opus-5-5" : undefined} usage={own ? USAGE : undefined} trailing={trailing} />
+    </div>
+  );
+}
+
 function Screen() {
   const store = useStore();
   return (
@@ -176,31 +200,45 @@ export function TrickPlacesSection(): ReactNode {
           </Glass>
         </Card>
       </Group>
+      <Group title="The status line">
+        <Card state="trick-status-two" label="4 · two items after usage">
+          <StatusLine parts={[LEGS_STATUS, SPEND_STATUS]} />
+        </Card>
+        <Card state="trick-status-only" label="5 · items, no usage">
+          <StatusLine parts={[LEGS_STATUS, SPEND_STATUS]} own={false} />
+        </Card>
+        <Card state="trick-status-narrow" label="6 · narrow, tricks give way">
+          <StatusLine parts={[LEGS_STATUS, SPEND_STATUS]} width={300} />
+        </Card>
+        <Card state="trick-status-stale" label="7 · stale, tone gone">
+          <StatusLine parts={[LEGS_STATUS, SPEND_OLD]} />
+        </Card>
+      </Group>
       <Group title="The trick session">
-        <Card state="trick-space-dashboard" label="4 · Dashboard, Tricks">
+        <Card state="trick-space-dashboard" label="8 · Dashboard, Tricks">
           <Glass className="py-0">
             <TrickSpaceSection sessions={[LEGS_PANE, TRACKER_PANE]} onOpen={IGNORE} />
           </Glass>
         </Card>
-        <Card state="trick-space-done" label="5 · run done, bar kept">
+        <Card state="trick-space-done" label="9 · run done, bar kept">
           <Glass className="py-0">
             <TrickSpaceSection sessions={[LEGS_RED]} onOpen={IGNORE} />
           </Glass>
         </Card>
-        <Card state="trick-space-switch" label="6 · Switch session rows">
+        <Card state="trick-space-switch" label="10 · Switch session rows">
           <Glass>
             <TrickSessionRow pane={LEGS_PANE} variant="switch" active onOpen={IGNORE} />
             <TrickSessionRow pane={TRACKER_PANE} variant="switch" onOpen={IGNORE} />
           </Glass>
         </Card>
-        <Card state="trick-session-screen" label="7 · screen, no Composer">
+        <Card state="trick-session-screen" label="11 · screen, no Composer">
           <Glass className="p-0">
             <Screen />
           </Glass>
         </Card>
       </Group>
       <Group title="Look fixes">
-        <Card state="trick-fix-busy" label="8 · busy keeps label">
+        <Card state="trick-fix-busy" label="12 · busy keeps label">
           <Glass>
             <div className="flex gap-2">
               {renderView(RERUN_VIEW, ctx())}
@@ -208,14 +246,14 @@ export function TrickPlacesSection(): ReactNode {
             </div>
           </Glass>
         </Card>
-        <Card state="trick-fix-age" label="9 · fresh line says age">
+        <Card state="trick-fix-age" label="13 · fresh line says age">
           <Glass>
             <PartFrame part={TRACKER_SESSION} trick={TRACKER} now={NOW}>
               {({ stale }) => renderView(TRACKER_VIEW, { ...ctx(), stale })}
             </PartFrame>
           </Glass>
         </Card>
-        <Card state="trick-fix-rows" label="10 · list rows, hairlines">
+        <Card state="trick-fix-rows" label="14 · list rows, hairlines">
           <Glass>{renderView([LEGS_ROWS], ctx())}</Glass>
         </Card>
       </Group>

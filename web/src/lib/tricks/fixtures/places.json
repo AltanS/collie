@@ -104,5 +104,19 @@
         ]
       }
     ]
+  },
+  "status": {
+    "v": 1,
+    "parts": [
+      {
+        "at": "status",
+        "id": "tag",
+        "chip": {
+          "text": "tag 5/7",
+          "icon": "tag",
+          "tone": "accent"
+        }
+      }
+    ]
   }
 }

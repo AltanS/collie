@@ -155,6 +155,7 @@ import { usePins } from "@/lib/pins";
 import { paneFilesDir } from "@/lib/file-paths";
 import { changesPath, filesPath, historyPath, trickSessionPath, newPath, panePath, spacePath } from "@/lib/nav";
 import { beltMarksOf } from "@/components/belt-trick-mark";
+import { statusItemsOf } from "@/components/trick-status-item";
 import { useTrickParts, type TapHandlers } from "@/lib/tricks/store";
 import { isReadOnly, statusLabel } from "@/lib/types";
 import { usePairing } from "@/lib/pairing";
@@ -641,6 +642,13 @@ export function AgentChat({
       onOpenSession: (pane) => nav.down(trickSessionPath(pane.paneId)),
     });
   }, [beltParts, trickSessions, agent, nav]);
+  // THE TRICKS' STATUS ITEMS (M94 re-cut, the `status` place): one per `status` part, in manifest order,
+  // in the usage row above the belt, after Collie's own items. A tap opens the trick's session, if it has one.
+  const statusParts = useTrickParts("status");
+  const statusItems = useMemo(() => {
+    if (statusParts.length === 0) return undefined;
+    return statusItemsOf({ parts: statusParts, sessions: trickSessions ?? [], onOpenSession: (pane) => nav.down(trickSessionPath(pane.paneId)) });
+  }, [statusParts, trickSessions, nav]);
   // The box the composer's terminal-draft notice floats in (ADR 0061), at the mirror's bottom edge.
   // State rather than a ref: the composer portals into it, so it must re-render once it exists.
   const [draftNoticeSlot, setDraftNoticeSlot] = useState<HTMLDivElement | null>(null);
@@ -3095,6 +3103,7 @@ export function AgentChat({
               model={modelOnScreen && !hasFigure(agent?.usage) ? undefined : agent?.model}
               effort={agent?.effort}
               usage={agent?.usage}
+              trailing={statusItems}
             />
           </div>
 

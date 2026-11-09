@@ -42,6 +42,8 @@ import {
   REFUSAL_CODES,
   REMOVED_KINDS,
   SESSION_FACT_KEYS,
+  STATUS_TEXT_MAX,
+  SUB_KEYS,
   TAP_CODES,
   TONES,
   TONE_TEXT_CLASS,
@@ -674,9 +676,10 @@ describe("matches", () => {
       ["tab", "tab"],
       ["view:*", "view"],
       ["dashboard", "dashboard"],
+      ["status", "status"],
     ];
     for (const [at, kind] of expected) expect(place(at), at).toBe(kind);
-    for (const bad of ["Belt", "view:", "tab:", "tab-mark", "header", "header.line", "menu:*", "settings", "view", `view:${"x".repeat(160)}`]) expect(place(bad), bad).toBeUndefined();
+    for (const bad of ["Status", "status:x", "Belt", "view:", "tab:", "tab-mark", "header", "header.line", "menu:*", "settings", "view", `view:${"x".repeat(160)}`]) expect(place(bad), bad).toBeUndefined();
   });
 
   it("refuses header.line, menu:<match> and settings as later, with the place named", () => {
@@ -694,7 +697,7 @@ describe("matches", () => {
     expect(parseAt("nowhere")).toMatchObject({ code: "place" });
   });
 
-  it("parses every place by default: belt, session, tab:<match>, tab, view:<match>, dashboard", () => {
+  it("parses every place by default: belt, session, tab:<match>, tab, view:<match>, dashboard, status", () => {
     const doc = {
       v: 1,
       parts: [
@@ -704,11 +707,12 @@ describe("matches", () => {
         { at: "tab", id: "d", title: "Board", space: "collie*", icon: "flask", view: [{ kind: "para", text: "x" }] },
         { at: "view:agent:claude", id: "e", title: "Legs", view: [{ kind: "para", text: "x" }] },
         { at: "dashboard", id: "f", view: [{ kind: "para", text: "x" }] },
+        { at: "status", id: "g", chip: { text: "$7.42" } },
       ],
     };
     const parsed = parseTrickDocument(doc);
     expect(parsed.refusals).toEqual([]);
-    expect(parsed.parts.map((p) => p.place)).toEqual(["belt", "session", "tab", "tab", "view", "dashboard"]);
+    expect(parsed.parts.map((p) => p.place)).toEqual(["belt", "session", "tab", "tab", "view", "dashboard", "status"]);
     const own = parsed.parts[3];
     expect(own?.part).toEqual({ at: "tab", id: "d", title: "Board", space: "collie*", icon: "flask", view: [{ kind: "para", text: "x" }] });
     expect(own?.place === "tab" && own.tabMatch).toBeUndefined();
@@ -758,6 +762,92 @@ describe("matches", () => {
     expect(matchesTab(read.match, { title: "fix", space: "collie" })).toBe(true);
     expect(matchesTab(read.match, { title: "fix", space: "other" })).toBe(false);
     expect(matchesTab(read.match, { title: "fixes", space: "collie" })).toBe(false);
+  });
+});
+
+describe("the status place", () => {
+  const status = (body: JsonValue, extra: JsonObject = {}) => parseTrickDocument({ v: 1, parts: [{ at: "status", id: "s", chip: body, ...extra }] });
+  const refusalsOf = (doc: ReturnType<typeof parseTrickDocument>) => doc.refusals.map((r) => [r.code, r.path]);
+
+  it("reads a chip with the tree's chip attributes and no others, as written", () => {
+    const parsed = status({ text: "tag 5/7", icon: "tag", tone: "accent" });
+    expect(parsed.refusals).toEqual([]);
+    expect(parsed.parts[0]).toEqual({ place: "status", part: { at: "status", id: "s", chip: { text: "tag 5/7", icon: "tag", tone: "accent" } } });
+    const clock = status({ text: "build", at: "1794130692000", clock: "ago" });
+    expect(clock.refusals).toEqual([]);
+    expect(clock.parts[0]?.place === "status" ? clock.parts[0].part.chip : undefined).toEqual({ text: "build", at: "1794130692000", clock: "ago" });
+  });
+
+  it("takes a chip text of 12 characters and refuses 13, and an empty one", () => {
+    expect(status({ text: "x".repeat(STATUS_TEXT_MAX) }).refusals).toEqual([]);
+    expect(STATUS_TEXT_MAX).toBe(12);
+    const long = status({ text: "x".repeat(STATUS_TEXT_MAX + 1) });
+    expect(refusalsOf(long)).toEqual([["text", "/parts/0/chip/text"]]);
+    expect(long.refusedParts).toEqual(["s"]);
+    expect(refusalsOf(status({ text: "" }))).toEqual([["text", "/parts/0/chip/text"]]);
+    expect(refusalsOf(status({ text: "   " }))).toEqual([["text", "/parts/0/chip/text"]]);
+    expect(refusalsOf(status({}))).toEqual([["missing", "/parts/0/chip/text"]]);
+  });
+
+  it("refuses a state, an intent, current and short, with the reason for each", () => {
+    const state = status({ text: "ok", state: "done" });
+    expect(refusalsOf(state)).toEqual([["status", "/parts/0/chip/state"]]);
+    expect(state.refusals[0]?.reason).toContain("status mark");
+    const intent = status({ text: "ok", intent: "open" });
+    expect(refusalsOf(intent)).toEqual([["target", "/parts/0/chip/intent"]]);
+    expect(intent.refusals[0]?.reason).toContain("not a control");
+    expect(refusalsOf(status({ text: "ok", current: "" }))).toEqual([["unknown-key", "/parts/0/chip/current"]]);
+    expect(refusalsOf(status({ text: "ok", short: "o" }))).toEqual([["unknown-key", "/parts/0/chip/short"]]);
+    expect(refusalsOf(status({ text: "ok", label: "x" }))).toEqual([["unknown-key", "/parts/0/chip/label"]]);
+  });
+
+  it("refuses a status word as a tone, an unknown icon, and an instant without its clock", () => {
+    expect(refusalsOf(status({ text: "ok", tone: "blocked" }))[0]?.[1]).toBe("/parts/0/chip/tone");
+    expect(refusalsOf(status({ text: "ok", icon: "rocket" }))).toEqual([["icon", "/parts/0/chip/icon"]]);
+    expect(refusalsOf(status({ text: "ok", at: "1794130692000" }))).toEqual([["target", "/parts/0/chip"]]);
+    expect(refusalsOf(status({ text: "ok", clock: "ago" }))).toEqual([["target", "/parts/0/chip"]]);
+    expect(refusalsOf(status({ text: "ok", at: "soon", clock: "ago" }))).toEqual([["range", "/parts/0/chip/at"]]);
+  });
+
+  it("refuses a part with no chip, a view, a mark or an intent on the part", () => {
+    expect(refusalsOf(parseTrickDocument({ v: 1, parts: [{ at: "status", id: "s" }] }))).toEqual([["missing", "/parts/0/chip"]]);
+    expect(refusalsOf(status({ text: "ok" }, { mark: { label: "x" } }))).toEqual([["unknown-key", "/parts/0/mark"]]);
+    expect(refusalsOf(status({ text: "ok" }, { view: [] }))).toEqual([["unknown-key", "/parts/0/view"]]);
+    expect(refusalsOf(status({ text: "ok" }, { intent: "open" }))).toEqual([["unknown-key", "/parts/0/intent"]]);
+  });
+
+  it("allows one status part per trick: the second is refused alone, the first still draws", () => {
+    const parsed = parseTrickDocument({
+      v: 1,
+      parts: [
+        { at: "status", id: "a", chip: { text: "one" } },
+        { at: "status", id: "b", chip: { text: "two" } },
+        { at: "belt", id: "c", mark: { label: "x" } },
+      ],
+    });
+    expect(parsed.parts.map((p) => p.part.id)).toEqual(["a", "c"]);
+    expect(parsed.refusedParts).toEqual(["b"]);
+    expect(refusalsOf(parsed)).toEqual([["duplicate", "/parts/1/at"]]);
+    expect(parsed.refusals[0]?.reason).toContain("one status item");
+  });
+
+  it("is refused when the manifest does not declare it, and a manifest may declare it", () => {
+    const undeclared = parseTrickDocument({ v: 1, parts: [{ at: "status", id: "s", chip: { text: "ok" } }] }, { declared: ["belt"] });
+    expect(refusalsOf(undeclared)).toEqual([["undeclared", "/parts/0/at"]]);
+    const manifest = parseManifest({ id: "spend", name: "Spend", run: "./spend.sh", places: ["status"] });
+    expect(manifest.refusals).toEqual([]);
+    expect(manifest.manifest?.places).toEqual(["status"]);
+  });
+
+  it("is in the contract key lists: the place, the part's keys and the chip's keys", () => {
+    expect(PLACE_KINDS).toContain("status");
+    expect(NEAR_PLACES).toContain("status");
+    expect(PART_KEYS.status).toEqual(["at", "id", "chip"]);
+    expect(SUB_KEYS.chip).toEqual(["text", "icon", "tone", "at", "clock"]);
+    // The chip takes the tree's chip attributes, less state, current and short.
+    for (const key of SUB_KEYS.chip.filter((k) => k !== "text")) expect(NODE_ATTRS.chip).toContain(key);
+    expect(SUB_KEYS.chip).not.toContain("state");
+    expect(SUB_KEYS.chip).not.toContain("intent");
   });
 });
 

@@ -114,6 +114,7 @@ message. An answered or dismissed key stays closed until the trick stops listing
 | `at`            | Place                                     | This Collie                                 |
 | --------------- | ----------------------------------------- | ------------------------------------------- |
 | `belt`          | a mark at the end of the belt             | draws                                       |
+| `status`        | one item in the status line above the Belt | draws                                      |
 | `session`       | a trick session: Dashboard row and screen | draws                                       |
 | `tab:<match>`   | a mark on the tabs that match             | parses, a later slice draws                 |
 | `tab`           | the trick's own tab in a Space            | parses, a later slice draws                 |
@@ -122,6 +123,13 @@ message. An answered or dismissed key stays closed until the trick stops listing
 | `header.line`   |                                           | refused, code `later`, the place named      |
 | `menu:<match>`  |                                           | refused, code `later`, the place named      |
 | `settings`      |                                           | refused, code `later`, the place named      |
+
+A `status` part is `{ at: "status", id, chip: { text, icon?, tone?, at?, clock? } }`: one chip, with
+the tree's chip attributes and no others, in the usage row after Collie's own items, in manifest
+order. `text` is 1 to 12 characters. There is no `state` and no `intent`: the chip is not a control,
+and a tap opens the trick's session when it has one. One per trick. When the line is wider than its
+room the trick items hide first, the newest (the last) before the older, and Collie's own items never
+move (`status.ts`, measured by `ModelTag`). Past `fresh` the chip loses its tone and its tap says its age.
 
 A mark is `{ icon, label, badge, tone, intent }`: `label` is the face word, `badge` a count or the dot
 when empty. A mark is always the same control. One with nothing to do is the same button,
