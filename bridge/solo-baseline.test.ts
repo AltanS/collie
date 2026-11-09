@@ -268,6 +268,9 @@ const SNAPSHOT_KEYS = {
   // Not a crew dimension: present only while the mux is down for a refused durable token (M50 spec
   // 14), so a healthy solo body carries no such key and no golden byte moved.
   muxFault: true,
+  // Not a crew dimension: the hill's revision (M96), absent until a session posts a decision on this
+  // bridge, so a solo body with no decisions carries no such key and no golden byte moved.
+  hillRev: true,
 } satisfies Record<keyof SnapshotResponse, true>;
 
 const SESSION_SUMMARY_KEYS = {
@@ -489,6 +492,9 @@ describe("solo zero-tax — wire shapes carry no crew dimension", () => {
       "agents",
       "bridge",
       "device",
+      // The hill's revision (M96): present only on a bridge built with the hill, a number and nothing
+      // of the crew; the phone refetches `GET /api/hill` when it moves.
+      "hillRev",
       "muxFault",
       "notifications",
       "servers",
@@ -848,6 +854,11 @@ describe("solo zero-tax — routes", () => {
       // named here rather than exempted. It is the one ungated `/api/*` route: the prober is a local
       // updater holding no credential, and what it answers is `{ ok, version, deposed, mode }`.
       "/api/health",
+      // The hill (M96): the decisions an agent posted (a read) and the phone's answer to one (a write
+      // under the device gate, like `POST /api/walky`). Two SOLO routes, named here rather than
+      // exempted. A bridge that never took a post answers an empty list and writes nothing.
+      "/api/hill",
+      "/api/hill/answer",
       // The operator's own launcher rows (`launchers.toml`) — a SOLO route that legitimately
       // extends this list, named here rather than exempted. It is session-scoped and write-gated
       // through the same closure `/api/workspace` rides, and the configured rows are its allowlist:

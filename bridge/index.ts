@@ -3217,6 +3217,7 @@ const server = listenOrExit("front door", cfg.host, cfg.port, () => startServer(
     return instance !== null && walkyOff.isOff({ session, paneId, instance });
   },
   walky,
+  hill,
   pins: pinStore,
   cacheWatch,
   folders,
