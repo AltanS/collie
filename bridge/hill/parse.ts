@@ -6,6 +6,7 @@
 import type { JsonObject, JsonValue } from "../json.ts";
 import { asJsonBoolean, asJsonNumber, asJsonObject, asJsonString } from "../../web/src/lib/json.ts";
 import {
+  HILL_DEVICE_ID_RE,
   HILL_ID_RE,
   HILL_IMAGE_PATH_MAX,
   HILL_MEDIA_ID_RE,
@@ -261,7 +262,11 @@ function readAnswer(value: JsonValue | undefined): HillDecision["answer"] | unde
   const trick = HILL_TRICK_DELIVERIES.find((candidate) => candidate === trickText);
   if (rid === undefined || intent === undefined || label === undefined || text === undefined || by === undefined) return undefined;
   if (at === undefined || !Number.isSafeInteger(at) || delivery === undefined || trick === undefined) return undefined;
-  return { rid, intent, label, text, by, at, delivery, trick };
+  // Absent on an answer stored before answers carried the device's record id.
+  const deviceId = row.deviceId === undefined ? undefined : asJsonString(row.deviceId);
+  if (row.deviceId !== undefined && (deviceId === undefined || !HILL_DEVICE_ID_RE.test(deviceId))) return undefined;
+  const answer = { rid, intent, label, text, by, at, delivery, trick };
+  return deviceId === undefined ? answer : { ...answer, deviceId };
 }
 
 function readStoredOptions(value: JsonValue | undefined): HillOption[] | null {
@@ -356,11 +361,13 @@ export function readDecision(value: JsonValue | undefined): HillDecision | null 
   const closedReason = stringOrNull(row, "closedReason");
   const answer = readAnswer(row.answer);
   const media = readStoredMedia(row.media);
-  if (media === null) return null;
+  // Absent on a decision stored before posts carried a digest: kept absent.
+  const postDigest = row.postDigest === undefined ? undefined : asJsonString(row.postDigest);
+  if (media === null || (row.postDigest !== undefined && (postDigest === undefined || !/^[0-9a-f]{64}$/u.test(postDigest)))) return null;
   if (links === null || replyTo === undefined || target === undefined || supersedes === undefined || supersededBy === undefined) return null;
   if (expiresAt === undefined || at === undefined || !Number.isSafeInteger(at) || !isState(stateText)) return null;
   if (closedAt === undefined || closedReason === undefined || answer === undefined) return null;
-  return {
+  const decision: HillDecision = {
     v: 1,
     id,
     requestId,
@@ -387,4 +394,5 @@ export function readDecision(value: JsonValue | undefined): HillDecision | null 
     closedReason,
     answer,
   };
+  return postDigest === undefined ? decision : { ...decision, postDigest };
 }

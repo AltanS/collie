@@ -250,7 +250,7 @@ import { pinsRoute, type PinsAnswer, type PinsSession } from "./pins/routes.ts";
 import { PinStore } from "./pins/store.ts";
 import { readAnswerRequest } from "./hill/parse.ts";
 import { HILL_ID_RE, HILL_MEDIA_ID_RE } from "../web/src/lib/hill/wire.ts";
-import type { HillService } from "./hill/service.ts";
+import { hillDeviceId, type HillService } from "./hill/service.ts";
 import { isPaneId, parseAddress } from "./walky/address.ts";
 import { isWalkyId, parsePhoneSend } from "./walky/parse.ts";
 import { NOT_THE_SENDER, type TakeBackAnswer, type WalkyService } from "./walky/service.ts";
@@ -3272,7 +3272,7 @@ export function startServer(opts: {
         } catch {
           body = undefined;
         }
-        return hillAnswerRoute(hill, body, { device: whois(req).device, acceptEncoding: req.headers.get("accept-encoding") });
+        return hillAnswerRoute(hill, body, { device: whois(req).device, deviceId: pairedDeviceId(req, pairingGate), acceptEncoding: req.headers.get("accept-encoding") });
       }
       const hillImage = pathname.match(HILL_IMAGE_ROUTE);
       if (hillImage && req.method === "GET") {
@@ -8501,7 +8501,7 @@ export interface PairingGate {
    * The device this token belongs to, or null. An expired token resolves to null. THROWS when the
    * registry cannot be read ({@link PairingStore.resolve}); the gate answers 503, never "not paired".
    */
-  resolve(token: string | null): { label: string } | null;
+  resolve(token: string | null): { label: string; tokenHash?: string } | null;
   /**
    * Whether this token belongs to a device whose expiry passed. Optional so a test may still pass a
    * two-line gate; {@link PairingStore} always answers it.
@@ -8561,6 +8561,23 @@ export function pairedLabel(req: Request, pairing?: PairingGate): string | null 
   if (pairing.local?.(token, req) === true) return null;
   try {
     return pairing.resolve(token)?.label ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The id of the paired device's record that sent `req`, for the hill's answer (M96): `hillDeviceId` of
+ * its token hash, or null where {@link pairedLabel} is null or the gate names no record. Beside the label,
+ * so an answer still says which pairing gave it after a rename. Attribution, never a signature.
+ */
+export function pairedDeviceId(req: Request, pairing?: PairingGate): string | null {
+  if (pairing === undefined) return null;
+  const token = bearerToken(req.headers);
+  if (pairing.local?.(token, req) === true) return null;
+  try {
+    const tokenHash = pairing.resolve(token)?.tokenHash;
+    return tokenHash === undefined ? null : hillDeviceId(tokenHash);
   } catch {
     return null;
   }
@@ -8966,12 +8983,12 @@ export function hillListRoute(hill: HillService | undefined, since: string | nul
 export async function hillAnswerRoute(
   hill: HillService | undefined,
   body: JsonValue | undefined,
-  context: { readonly device: string | null; readonly acceptEncoding: string | null },
+  context: { readonly device: string | null; readonly deviceId?: string | null; readonly acceptEncoding: string | null },
 ): Promise<Response> {
   if (hill === undefined) return text(HILL_OFF_TEXT, 404);
   const read = readAnswerRequest(body);
   if (!read.ok) return text(read.error, 400);
-  const outcome = await hill.answer(read.request, read.id, context.device ?? "phone");
+  const outcome = await hill.answer(read.request, read.id, context.device ?? "phone", context.deviceId ?? null);
   switch (outcome.kind) {
     case "receipt":
       return json(outcome.receipt, context.acceptEncoding);

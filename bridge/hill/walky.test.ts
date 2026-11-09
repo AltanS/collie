@@ -7,7 +7,10 @@ import type { SendResult, WalkyHost, WalkyPane } from "../walky/deliver.ts";
 import { WalkyLog } from "../walky/log.ts";
 import { WalkyService } from "../walky/service.ts";
 import type { WalkyReceipt } from "../walky/types.ts";
-import { deliveryOf, walkyPlace, walkySend } from "./walky.ts";
+import { HillStore } from "./store.ts";
+import { memoryHillReceipts } from "./receipts.ts";
+import { HillService } from "./service.ts";
+import { hillSessionName, OneLook, deliveryOf, walkyPlace, walkySend } from "./walky.ts";
 
 const roots: string[] = [];
 afterEach(() => {
@@ -105,5 +108,54 @@ describe("the send: one operator walky message", () => {
     expect(deliveryOf({ ...base, state: "inbox-only", reason: "dialog" })).toBe("unknown");
     expect(deliveryOf({ ...base, state: "refused", reason: "off" })).toBe("unknown");
     expect(deliveryOf(undefined)).toBe("unknown");
+  });
+});
+
+describe("one look per list", () => {
+  test("OneLook reads the source every time outside a pass, once inside one, nested passes included", () => {
+    let reads = 0;
+    const look = new OneLook(() => (reads += 1));
+    expect([look.read(), look.read()]).toEqual([1, 2]);
+    expect(look.within(() => [look.read(), look.within(() => look.read()), look.read()])).toEqual([3, 3, 3]);
+    expect(look.read()).toBe(4);
+  });
+
+  test("the list, the revision and the sweep resolve every decision against one who list", () => {
+    const service = walky(() => ({ outcome: "sent" }));
+    let whoCalls = 0;
+    const who = new OneLook(() => {
+      whoCalls += 1;
+      return service.who();
+    });
+    const place = walkyPlace({ who: who.read }, null);
+    let n = 0;
+    const hill = new HillService({
+      store: new HillStore(null, () => 1000),
+      receipts: memoryHillReceipts(),
+      place,
+      sessionName: hillSessionName({ place, views: () => [], memberId: null, redact: false }),
+      look: who.within,
+      send: async () => "typed",
+      crewMode: () => "solo",
+      walkyOn: () => true,
+      memberId: null,
+      machine: "desk",
+      now: () => 1000,
+      mintId: () => `dc_look${String((n += 1)).padStart(8, "0")}`,
+    });
+    const sender = hill.agentSender(panes[0]!, "local/%1#aaaa");
+    for (let i = 1; i <= 5; i += 1) {
+      const posted = hill.post(sender, { requestId: `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`, title: "Ship it?", summary: "Green." });
+      expect(posted.ok).toBe(true);
+    }
+    whoCalls = 0;
+    expect(hill.list().open).toHaveLength(5);
+    expect(whoCalls).toBe(1);
+    whoCalls = 0;
+    hill.rev();
+    expect(whoCalls).toBe(1);
+    whoCalls = 0;
+    hill.sweep(2000);
+    expect(whoCalls).toBe(1);
   });
 });

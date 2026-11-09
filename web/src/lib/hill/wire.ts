@@ -34,6 +34,8 @@ export const HILL_TEXT_MODES: readonly HillTextMode[] = ["none", "optional", "re
 export const HILL_INTENT_RE = /^[a-z][a-z0-9-]{0,31}$/;
 /** Intents the hill itself uses. A poster may not name an option with one of them. */
 export const HILL_RESERVED_INTENTS: readonly string[] = ["answer", "dismiss"];
+/** A device id on an answer: "dv_" and 16 hex characters, derived by the bridge from a pairing record. */
+export const HILL_DEVICE_ID_RE = /^dv_[0-9a-f]{16}$/;
 /** A decision id: "dc_" and 12 characters, minted by the bridge. */
 export const HILL_ID_RE = /^dc_[a-z0-9]{12}$/;
 /** The node name a decision has in an answer request: "hill/<decision id>". */
@@ -178,12 +180,24 @@ export interface HillDecision {
     text: string | null;
     /** The phone's name as operator walky uses it. */
     by: string;
+    /**
+     * The paired device the answer came from, as an opaque id (`dv_` and 16 hex characters) the bridge
+     * derives from that device's pairing record; `by` is only its label. Attribution, not a signature.
+     * Absent when the bridge knew no pairing record (the header gate alone, or an older answer).
+     */
+    deviceId?: string;
     at: number;
     /** What walky reported. "none" for a dismiss with nothing to type. */
     delivery: "typed" | "held" | "unknown" | "none";
     /** What the trick's program did with the answer, as a tap. "none" for an agent's decision. */
     trick: HillTrickDelivery;
   } | null;
+  /**
+   * The SHA-256 of what the post asked for, hex, so a repeat of `requestId` with another payload is
+   * refused (`request_id_reused`) instead of answered with this decision. Absent on a decision stored
+   * before it existed: a repeat of that one is answered as stored.
+   */
+  postDigest?: string;
 }
 
 /**
@@ -228,6 +242,8 @@ export interface HillReceipt {
   /** What the trick's program made of the answer. Null where `delivery` is null. */
   trick: HillTrickDelivery | null;
   at: number;
+  /** On an `ok` receipt: the paired device it came from, as the stored answer's `deviceId`. Absent when unknown. */
+  deviceId?: string;
 }
 
 /** One image a post names: a file on the bridge's own machine, read by the bridge. */
@@ -272,7 +288,8 @@ export type HillRefusalCode =
   | "walky_off"
   | "bad_image"
   | "too_many_images"
-  | "image_too_large";
+  | "image_too_large"
+  | "request_id_reused";
 
 /** The node name of a decision: "hill/<id>". */
 export function hillNode(id: string): string {

@@ -15,6 +15,13 @@
 // walky send (`WalkyService.send` with `{ kind: "operator", label }`), as `POST /api/walky` does it.
 // The hill has no path of its own into a pane.
 //
+// NO POSTER WORDS WITH THE PERSON'S AUTHORITY IN ANOTHER SESSION. The answer is typed as the operator.
+// Into the poster's own session it may quote the title and the option's label: the poster wrote them for
+// itself. Into another session (`replyTo` names someone else, and always for a trick) it carries only the
+// id, the option's intent word, the person's own text and one fixed line (`answerMessage`); that session
+// reads the decision itself with `collie hill status <id>`, which answers the poster and the `replyTo`
+// session, nobody else.
+//
 // THE NAMES ON THE CARD. `from.label` and `target.label` are the session's name as the Dashboard's row
 // shows it (`sessionName`, injected; hill/walky.ts `hillSessionName`), with the walky label (folder
 // and branch) only when the bridge has no name for the pane. Several sessions often share one folder
@@ -23,7 +30,12 @@
 // walky address stays the routing key and is never renamed.
 //
 // ORDER ON AN ANSWER. Write the receipt, close the decision, then send. A send that fails or throws
-// after the close leaves the decision answered with `delivery: "unknown"`, and nothing is sent again.
+// after the close leaves the decision answered with `delivery: "unknown"`, and nothing is sent again;
+// one `hill.undelivered` audit line says so, and the session reads the answer with `collie hill status`.
+// A bridge that stopped between the receipt and the close left an `ok` receipt the decision does not
+// show: a retry of that `rid` settles it once, in the claim lane, instead of answering the stale `ok`.
+// An answer to an id this bridge never held, or one past its expiry, is `gone`; the first stores no
+// receipt, so junk cannot push real receipts out of the capped file.
 //
 // A TRICK'S DECISION (M94). A trick posts through `postDecision` from the tricks runner
 // (bridge/tricks/hill.ts). The answer reaches the trick's program as a tap, after the walky message
@@ -39,6 +51,7 @@ import type { JsonObject } from "../json.ts";
 import {
   HILL_ANSWER_TEXT_MAX,
   HILL_BODY_MAX,
+  HILL_DEVICE_ID_RE,
   HILL_LINK_HREF_MAX,
   HILL_LINK_LABEL_MAX,
   HILL_LINKS_MAX,
@@ -69,7 +82,7 @@ import {
 import { cleanBody } from "../walky/clean.ts";
 import type { WalkyPane } from "../walky/deliver.ts";
 import { headerField, WALKY_BODY_MAX, WALKY_LABEL_MAX } from "../walky/types.ts";
-import { digestDiffers, withDigest } from "../worktree-receipts.ts";
+import { digestDiffers, payloadDigest, withDigest } from "../worktree-receipts.ts";
 import { readPostFields } from "./parse.ts";
 import { mintMediaId, type HillImageBytes, type HillMediaStore } from "./media.ts";
 import { hillAnswerDigest, type HillAnswerOutcome, type HillReceiptRecord, type HillReceiptSurface } from "./receipts.ts";
@@ -165,6 +178,16 @@ export interface HillServiceDeps {
   readonly mintMediaId?: () => string;
   /** The session's Dashboard name for the live pane a walky address names now, or null to keep the walky label. */
   readonly sessionName?: (address: string) => string | null;
+  /**
+   * Run `fn` with one look at the live sessions: every `place` and `sessionName` inside it reads the
+   * same `who` list (bridge/index.ts, hill/walky.ts `OneLook`). Absent: each call looks for itself.
+   */
+  readonly look?: <T>(fn: () => T) => T;
+  /**
+   * Whether the bridge lists any live session yet. False right after boot, before the first refresh:
+   * then the sweep closes nothing for a target that seems gone. Absent: always true.
+   */
+  readonly sessionsKnown?: () => boolean;
 }
 
 /** A post's answer: the stored decision, or a refusal with its code and plain words the CLI prints. */
@@ -193,6 +216,12 @@ export const DISMISSED = "Dismissed.";
 export const MESSAGE_TITLE_MAX = 80;
 /** How many characters of a session's name a card shows, the `…` included. */
 export const SESSION_LABEL_MAX = 80;
+/** Open decisions the hill holds at once, across every sender. A further post is refused `too_many_open`. */
+export const HILL_OPEN_TOTAL_MAX = 200;
+/** The days a decision posted with no expiry stays open; `collie hill post --help` says so. */
+export const HILL_DEFAULT_EXPIRY_DAYS = 14;
+/** {@link HILL_DEFAULT_EXPIRY_DAYS} in milliseconds: a post with no `expiresAt` gets `at` plus this. */
+export const HILL_DEFAULT_EXPIRY_MS = HILL_DEFAULT_EXPIRY_DAYS * 24 * 60 * 60 * 1000;
 
 /** Mint a decision id: `dc_` and 12 characters of [a-z0-9], from a uniform random source. */
 export function mintDecisionId(random: (n: number) => Uint8Array = (n) => randomBytes(n)): string {
@@ -257,16 +286,28 @@ export function messageTitle(title: string): string {
   return points.length <= MESSAGE_TITLE_MAX ? title : `${points.slice(0, MESSAGE_TITLE_MAX - 1).join("")}…`;
 }
 
+/** The fixed last line of an answer typed into a session other than the poster's: where the decision can be read. */
+export function readItLine(id: string): string {
+  return `Read the decision with: collie hill status ${id}`;
+}
+
 /**
- * The walky message an answer types, as the contract spells it: `Answer to <id> "<title>"`, then
- * `Option: <intent> (<label>)` for an option, then the person's text when there is one. A dismiss is
- * the first line and `Dismissed.`.
+ * The walky message an answer types. It is typed with the person's authority, so it carries words the
+ * poster wrote only when it goes back into the poster's own session.
+ *
+ * To the poster (`toPoster`, the default): `Answer to <id> "<title>"`, then `Option: <intent> (<label>)`
+ * for an option, then the person's text when there is one. A dismiss is the first line and `Dismissed.`.
+ *
+ * To another session (`replyTo` names someone else, always so for a trick): no title and no label, only
+ * `Answer to <id>`, `Option: <intent>` (a pattern-checked word, `isHillOptionIntent`), the person's text,
+ * and {@link readItLine}. A dismiss is `Answer to <id>` and `Dismissed.` only.
  */
-export function answerMessage(decision: Pick<HillDecision, "id" | "title">, intent: string, label: string | null, text: string | null): string {
-  const lines = [`Answer to ${decision.id} "${messageTitle(decision.title)}"`];
+export function answerMessage(decision: Pick<HillDecision, "id" | "title">, intent: string, label: string | null, text: string | null, toPoster = true): string {
+  const lines = [toPoster ? `Answer to ${decision.id} "${messageTitle(decision.title)}"` : `Answer to ${decision.id}`];
   if (intent === "dismiss") return [...lines, DISMISSED].join("\n");
-  if (intent !== "answer") lines.push(`Option: ${intent} (${label ?? intent})`);
+  if (intent !== "answer") lines.push(toPoster ? `Option: ${intent} (${label ?? intent})` : `Option: ${intent}`);
   if (text !== null && text !== "") lines.push(text);
+  if (!toPoster) lines.push(readItLine(decision.id));
   return lines.join("\n");
 }
 
@@ -275,6 +316,38 @@ export function sessionLabel(raw: string): string {
   const { text } = cleanLine(raw, SESSION_LABEL_MAX);
   const points = [...text];
   return points.length <= SESSION_LABEL_MAX ? text : `${points.slice(0, SESSION_LABEL_MAX - 1).join("")}…`;
+}
+
+/**
+ * What a post asks for, as a digest (`payloadDigest`), defaults filled: the words, the options, the
+ * links, the priority, the addresses and the images as named. Not `expiresAt` (a retried
+ * `collie hill post --expires 2h` counts it again from its own clock) and not `supersedes` (a trick
+ * names it from the state it reads, which a first post that went through has moved).
+ */
+export function hillPostDigest(input: HillPostInput): string {
+  const options = (input.options ?? []).map((option) => [option.intent, option.label, option.detail ?? null, option.confirm ?? null]);
+  const recommends = input.recommends === undefined || input.recommends === null ? null : [input.recommends.intent, input.recommends.why];
+  const links = (input.links ?? []).map((link) => [link.label, link.href]);
+  const images = (input.images ?? []).map((image) => [image.path, image.caption ?? null]);
+  const parts = [input.title, input.summary, input.body ?? "", options, input.text ?? "optional", recommends, links, input.priority ?? "today", input.about ?? null, input.replyTo ?? null, images];
+  return payloadDigest([JSON.stringify(parts)]);
+}
+
+/** A decision as the phone and the socket get it: without `postDigest`, which only the store needs. */
+function served(decision: HillDecision): HillDecision {
+  if (decision.postDigest === undefined) return decision;
+  const copy = { ...decision };
+  delete copy.postDigest;
+  return copy;
+}
+
+/**
+ * The id an answer records for the paired device it came from: `dv_` and 16 hex characters of a SHA-256
+ * over the device's pairing record (its token hash, which the token's owner cannot change and a re-pair
+ * replaces). One-way: it names the record and opens nothing. Attribution, never a signature.
+ */
+export function hillDeviceId(tokenHash: string): string {
+  return `dv_${payloadDigest(["collie hill device", tokenHash]).slice(0, 16)}`;
 }
 
 /** The key a sender's decisions are filed under: its address, or the trick's id. */
@@ -375,6 +448,8 @@ export class HillService {
   private namesMoved = 0;
   /** The answers' claim steps run one after another, so two taps cannot both find a decision open. */
   private lane: Promise<void> = Promise.resolve();
+  /** The open decisions whose target the last sweep found gone. Gone at two sweeps in a row closes one. */
+  private absent = new Set<string>();
 
   constructor(private readonly deps: HillServiceDeps) {
     this.now = deps.now ?? Date.now;
@@ -389,11 +464,16 @@ export class HillService {
     const stored = this.deps.store.rev();
     if (stored === undefined) return undefined;
     if (this.deps.sessionName !== undefined) {
-      const names = JSON.stringify(this.deps.store.list().open.map((decision) => this.named(decision)).map((decision) => [decision.id, decision.from.label, decision.target?.label ?? null]));
+      const names = this.look(() => JSON.stringify(this.deps.store.list().open.map((decision) => this.named(decision)).map((decision) => [decision.id, decision.from.label, decision.target?.label ?? null])));
       if (this.namesSeen !== null && names !== this.namesSeen) this.namesMoved += 1;
       this.namesSeen = names;
     }
     return stored + this.namesMoved;
+  }
+
+  /** `fn` under one look at the live sessions, when the bridge gives one. */
+  private look<T>(fn: () => T): T {
+    return this.deps.look === undefined ? fn() : this.deps.look(fn);
   }
 
   /** One decision by id, any sender (the tricks runner reads its own decisions' states). */
@@ -403,9 +483,11 @@ export class HillService {
 
   /** What `GET /api/hill` serves: every open decision with the names its sessions have now. */
   list(): ReturnType<HillStore["list"]> {
-    const list = this.deps.store.list();
-    // The same revision the snapshot carries, so a phone that holds it reads `unchanged`.
-    return { ...list, rev: this.rev() ?? list.rev, open: list.open.map((decision) => this.named(decision)) };
+    return this.look(() => {
+      const list = this.deps.store.list();
+      // The same revision the snapshot carries, so a phone that holds it reads `unchanged`.
+      return { ...list, rev: this.rev() ?? list.rev, open: list.open.map((decision) => served(this.named(decision))), closed: list.closed.map(served) };
+    });
   }
 
   /** The session's name for a walky address, or `fallback` when the bridge has none. */
@@ -461,9 +543,12 @@ export class HillService {
     if (!this.deps.walkyOn()) return refuse("walky_off", HILL_WALKY_OFF);
     if (this.deps.crewMode() === "peer") return refuse("not_on_lead", NOT_ON_LEAD);
     const key = senderKey(from);
-    // A repeated request id from the same sender is the same decision: answered as stored, nothing checked again.
+    const digest = hillPostDigest(input);
+    // A repeated request id from the same sender with the same payload is the same decision: answered as
+    // stored, nothing checked again. With another payload it is refused, as a reused answer `rid` is (409).
     const repeat = this.deps.store.all().find((decision) => decision.requestId === input.requestId && keyOf(decision) === key);
-    if (repeat !== undefined) return { ok: true, decision: repeat };
+    if (repeat !== undefined && repeat.postDigest !== undefined && repeat.postDigest !== digest) return refuse("request_id_reused", `this request id already posted ${repeat.id} with other content; post with a new --request-id`);
+    if (repeat !== undefined) return { ok: true, decision: served(repeat) };
     const cleaned = cleanPost(input);
     if (!cleaned.ok) return cleaned;
     const now = this.now();
@@ -487,8 +572,10 @@ export class HillService {
       if (old.state !== "open") return refuse("bad_supersedes", `${old.id} is ${old.state}, only an open decision can be replaced`);
       superseded = old;
     }
-    const open = this.deps.store.all().filter((decision) => decision.state === "open" && keyOf(decision) === key && decision.id !== superseded?.id);
+    const allOpen = this.deps.store.all().filter((decision) => decision.state === "open" && decision.id !== superseded?.id);
+    const open = allOpen.filter((decision) => keyOf(decision) === key);
     if (open.length >= HILL_OPEN_MAX) return refuse("too_many_open", `this session has ${String(HILL_OPEN_MAX)} open decisions; withdraw one, or wait for answers`);
+    if (allOpen.length >= HILL_OPEN_TOTAL_MAX) return refuse("too_many_open", `the hill holds ${String(HILL_OPEN_TOTAL_MAX)} open decisions; withdraw one, or wait for answers`);
     const asked = input.priority ?? "today";
     const priority = asked === "now" && open.filter((decision) => decision.priority === "now").length >= HILL_NOW_MAX ? "today" : asked;
     // A trick's own folder is a root for a trick's images only; an agent's post never has one.
@@ -496,8 +583,8 @@ export class HillService {
     if (!images.ok) return images;
 
     let id = this.mint();
-    for (let tries = 0; this.deps.store.get(id) !== undefined && tries < 8; tries += 1) id = this.mint();
-    if (this.deps.store.get(id) !== undefined) return refuse(null, "could not mint a decision id; try again");
+    for (let tries = 0; this.deps.store.taken(id) && tries < 8; tries += 1) id = this.mint();
+    if (this.deps.store.taken(id)) return refuse(null, "could not mint a decision id; try again");
     const media = this.keepImages(id, images.images);
     if (media === null) return refuse(null, "the images could not be saved on this machine; nothing was posted");
     const decision: HillDecision = {
@@ -517,12 +604,14 @@ export class HillService {
       target: target === null ? null : { label: this.nameOf(target.address, target.label), host: target.host, unattended: target.unattended },
       supersedes: superseded?.id ?? null,
       supersededBy: null,
-      expiresAt: input.expiresAt ?? null,
+      // No expiry asked for: it closes `expired` after the default, so a forgotten decision does not stay forever.
+      expiresAt: input.expiresAt ?? now + HILL_DEFAULT_EXPIRY_MS,
       at: now,
       state: "open",
       closedAt: null,
       closedReason: null,
       answer: null,
+      postDigest: digest,
     };
     const replaced: HillDecision[] = superseded === null ? [] : [{ ...superseded, state: "superseded", supersededBy: id, closedAt: now, closedReason: `superseded by ${id}` }];
     if (!this.deps.store.put(decision, ...replaced)) {
@@ -533,7 +622,7 @@ export class HillService {
     // The images as a count and a byte sum, never a path or a caption.
     const detail = media.length === 0 ? base : { ...base, images: media.length, imageBytes: media.reduce((sum, item) => sum + item.bytes, 0) };
     this.deps.audit?.({ action: "hill.post", detail });
-    return { ok: true, decision };
+    return { ok: true, decision: served(decision) };
   }
 
   /** Read and check every image a post names, in order, before anything is kept. The first that fails refuses the post. */
@@ -583,9 +672,15 @@ export class HillService {
     return bytes === null ? null : { mime: media.mime, bytes };
   }
 
-  /** Remove the image folders of decisions the store no longer holds. Run at start and from the sweep. */
+  /**
+   * Remove the image folders of decisions the store no longer holds. Run at start and from the sweep.
+   * Never after the decisions file was set aside, and never while an entry this build cannot read has
+   * no id it can tell (store.ts `mediaKeep`): a folder it cannot tie to a decision may still be one's.
+   */
   pruneMedia(): number {
-    return this.deps.media?.prune(new Set(this.deps.store.all().map((decision) => decision.id))) ?? 0;
+    const keep = this.deps.store.mediaKeep();
+    if (keep === null) return 0;
+    return this.deps.media?.prune(keep) ?? 0;
   }
 
   /** `about` as the post named it: none, `here` (the poster's own session) or an address. Undefined: not a live one. */
@@ -600,10 +695,35 @@ export class HillService {
     return decision === undefined || keyOf(decision) !== senderKey(sender) ? null : decision;
   }
 
-  /** One of the sender's own decisions. Another sender's id answers as not found. */
+  /** Whether the walky address `address` is the live session `replyTo` names (the instance token included). */
+  private isReplyTo(replyTo: string | null, address: string | null): boolean {
+    if (replyTo === null || address === null) return false;
+    return replyTo === address || this.deps.place(address)?.address === replyTo;
+  }
+
+  /**
+   * Whether an answer to `decision` goes back into the poster's own session. Not so when `replyTo` names
+   * another session, and never for a trick: then the typed message carries no word the poster wrote.
+   */
+  private answersThePoster(decision: HillDecision): boolean {
+    if (decision.replyTo === null) return true;
+    return decision.from.kind === "agent" && this.isReplyTo(decision.replyTo, decision.from.address);
+  }
+
+  /**
+   * One decision, for its poster or for the session its `replyTo` names: the one an answer is typed into
+   * reads it with `collie hill status`. Anybody else's id answers as not found.
+   */
   status(sender: HillSender, id: string): HillOneAnswer {
-    const decision = this.mine(sender, id);
-    return decision === null ? { ok: false, missing: true, error: `no decision ${id} from this session` } : { ok: true, decision: this.named(decision) };
+    const decision = this.mine(sender, id) ?? this.addressedTo(sender, id);
+    return decision === null ? { ok: false, missing: true, error: `no decision ${id} from this session` } : { ok: true, decision: served(this.named(decision)) };
+  }
+
+  /** A decision whose `replyTo` is the asking agent's live session, or null. */
+  private addressedTo(sender: HillSender, id: string): HillDecision | null {
+    if (sender.kind !== "agent") return null;
+    const decision = this.deps.store.get(id);
+    return decision !== undefined && this.isReplyTo(decision.replyTo, sender.address) ? decision : null;
   }
 
   /** The poster takes an open decision back. It closes `withdrawn`, "by the poster" (a trick's runner names its own reason). */
@@ -614,46 +734,100 @@ export class HillService {
     const closed: HillDecision = { ...decision, state: "withdrawn", closedAt: this.now(), closedReason: reason };
     if (!this.deps.store.put(closed)) return { ok: false, missing: false, error: "the change could not be saved on this machine; the decision stays open" };
     this.deps.audit?.({ action: "hill.withdraw", detail: { decisionId: id } });
-    return { ok: true, decision: closed };
+    return { ok: true, decision: served(closed) };
   }
 
   /** The sender's own decisions: open first (as the phone sorts them), then closed, newest first. */
   mineList(sender: HillSender): HillDecision[] {
     const key = senderKey(sender);
     const own = this.deps.store.all().filter((decision) => keyOf(decision) === key);
-    const open = sortOpenDecisions(own.filter((decision) => decision.state === "open")).map((decision) => this.named(decision));
+    const open = this.look(() => sortOpenDecisions(own.filter((decision) => decision.state === "open")).map((decision) => this.named(decision)));
     const closed = own.filter((decision) => decision.state !== "open").toSorted((a, b) => (b.closedAt ?? b.at) - (a.closedAt ?? a.at));
-    return [...open, ...closed];
+    return [...open, ...closed].map(served);
   }
 
-  /** Close every open decision past its `expiresAt` as `expired`. Run from the bridge's slow timer. Answers how many closed. */
+  /**
+   * The bridge's slow timer (every 15 s): close every open decision past its `expiresAt` as `expired`,
+   * and every one whose target session has ended as `undeliverable` ("target session ended"), so a
+   * poster that is gone does not leave its decisions on the hill. Answers how many closed.
+   *
+   * A target counts as ended only when it is absent at two sweeps in a row, and never while the bridge
+   * lists no session at all (right after boot, before the first refresh). A trick's decision with no
+   * `replyTo` has no session to end; its runner owns it.
+   */
   sweep(now: number = this.now()): number {
     this.pruneMedia();
     const due = this.deps.store.all().filter((decision) => decision.state === "open" && decision.expiresAt !== null && decision.expiresAt <= now);
-    if (due.length === 0) return 0;
-    const closed = due.map((decision): HillDecision => Object.assign({}, decision, { state: "expired" as const, closedAt: now, closedReason: EXPIRED }));
-    return this.deps.store.put(...closed) ? closed.length : 0;
+    const expired = due.map((decision): HillDecision => Object.assign({}, decision, { state: "expired" as const, closedAt: now, closedReason: EXPIRED }));
+    const ended = this.look(() => this.endedTargets(new Set(due.map((decision) => decision.id))));
+    const closed = [...expired, ...ended.map((decision): HillDecision => Object.assign({}, decision, { state: "undeliverable" as const, closedAt: now, closedReason: TARGET_ENDED }))];
+    if (closed.length === 0) return 0;
+    if (this.deps.store.put(...closed)) return closed.length;
+    // Not saved: the ended ones are still absent, and the next sweep tries them again.
+    for (const decision of ended) this.absent.add(decision.id);
+    return 0;
+  }
+
+  /** The open decisions whose target was gone at this sweep and the last one. Moves the memory of who was gone. */
+  private endedTargets(skip: ReadonlySet<string>): HillDecision[] {
+    if (!(this.deps.sessionsKnown?.() ?? true)) {
+      this.absent.clear();
+      return [];
+    }
+    const gone: string[] = [];
+    const ended: HillDecision[] = [];
+    for (const decision of this.deps.store.all()) {
+      if (decision.state !== "open" || skip.has(decision.id)) continue;
+      const to = decision.replyTo ?? decision.from.address;
+      // A trick's decision with no `replyTo` types into nothing: the trick runner owns it.
+      if (decision.target === null || to === null) continue;
+      if (this.deps.place(to)?.address === to) continue;
+      if (this.absent.has(decision.id)) ended.push(decision);
+      else gone.push(decision.id);
+    }
+    this.absent = new Set(gone);
+    return ended;
   }
 
   /**
    * One answer from a phone, by the receipt rules of the contract, in this order: a known `rid`, the
    * decision open, the intent, the text rule, the target still live; then the receipt, the close and
-   * the send. `id` is the decision id the node named. `by` is the device's label, as operator walky uses it.
+   * the send. `id` is the decision id the node named. `by` is the device's label, as operator walky uses it;
+   * `deviceId` its pairing record's id ({@link hillDeviceId}), kept beside it on the receipt and the answer.
+   *
+   * A known `rid` with the same payload answers its stored receipt and runs nothing, with one exception:
+   * an `ok` receipt the decision does not show (the bridge stopped between the receipt and the close, or
+   * a close the receipt never heard of). That answer is settled once, in the claim lane: closed and
+   * delivered when the decision is still open, else answered `gone` with the state it has.
    */
-  answer(request: HillAnswerRequest, id: string, by: string): Promise<HillAnswerOutcome> {
+  answer(request: HillAnswerRequest, id: string, by: string, deviceId: string | null = null): Promise<HillAnswerOutcome> {
     const digest = hillAnswerDigest(request.node, request.intent, request.value.text);
     // SYNCHRONOUS from here to `track`: two requests with one rid must not both get past the look.
     const stored = this.deps.receipts.get(request.rid);
-    if (stored !== undefined) return Promise.resolve(stored.payloadDigest === digest ? { kind: "receipt", receipt: stored.receipt } : { kind: "reused" });
+    if (stored !== undefined) {
+      if (stored.payloadDigest !== digest) return Promise.resolve({ kind: "reused" });
+      if (!this.unsettled(stored, id)) return Promise.resolve({ kind: "receipt", receipt: stored.receipt });
+    }
     const running = this.deps.receipts.inflight(request.rid);
     if (running !== undefined) return digestDiffers(running, digest) ? Promise.resolve({ kind: "reused" }) : running;
-    const work = withDigest(this.run(request, id, by, digest), digest);
+    const work = withDigest(this.run(request, id, by, digest, deviceId), digest);
     this.deps.receipts.track(request.rid, work);
     return work;
   }
 
-  private async run(request: HillAnswerRequest, id: string, by: string, digest: string): Promise<HillAnswerOutcome> {
-    const claimed = this.lane.then(() => this.claim(request, id, by, digest));
+  /**
+   * Whether a stored receipt says `ok` for an answer its decision does not show: the decision is held and
+   * its answer is not this `rid`'s. A decision the store no longer holds left the closed list after it
+   * closed, so its `ok` stands.
+   */
+  private unsettled(stored: HillReceiptRecord, id: string): boolean {
+    if (stored.receipt.code !== "ok") return false;
+    const decision = this.deps.store.get(id);
+    return decision !== undefined && decision.answer?.rid !== stored.requestId;
+  }
+
+  private async run(request: HillAnswerRequest, id: string, by: string, digest: string, deviceId: string | null): Promise<HillAnswerOutcome> {
+    const claimed = this.lane.then(() => this.claim(request, id, by, digest, deviceId));
     this.lane = claimed.then(
       () => undefined,
       () => undefined,
@@ -661,14 +835,18 @@ export class HillService {
     const claim = await claimed;
     if (claim.kind === "done") return claim.outcome;
     let delivery: NonNullable<HillReceipt["delivery"]> = "none";
+    let threw = false;
     if (claim.send !== null) {
       try {
         delivery = await this.deps.send(claim.send.to, claim.send.body, by);
       } catch {
         // Not confirmed, and never sent again: the decision stays answered with `unknown`.
         delivery = "unknown";
+        threw = true;
       }
     }
+    // One line of its own: the answer is kept on the decision, and the session reads it with `collie hill status`.
+    if (claim.send !== null && delivery === "unknown") this.deps.audit?.({ action: "hill.undelivered", device: by, detail: { decisionId: id, why: threw ? "the send failed" : "not confirmed" } });
     let trick: NonNullable<HillReceipt["trick"]> = "none";
     if (claim.tap !== null) trick = (await this.runTap(claim.tap)) ? "ran" : "failed";
     const receipt: HillReceipt = { ...claim.record.receipt, delivery, trick };
@@ -690,41 +868,53 @@ export class HillService {
   }
 
   private auditAnswer(decision: Pick<HillDecision, "id">, request: HillAnswerRequest, by: string, receipt: HillReceipt): void {
-    this.deps.audit?.({
-      action: "hill.answer",
-      device: by,
-      detail: { decisionId: decision.id, intent: request.intent, textLength: request.value.text?.length ?? 0, receiptCode: receipt.code, delivery: receipt.delivery ?? "none", trick: receipt.trick ?? "none" },
-    });
+    const detail = { decisionId: decision.id, intent: request.intent, textLength: request.value.text?.length ?? 0, receiptCode: receipt.code, delivery: receipt.delivery ?? "none", trick: receipt.trick ?? "none" };
+    this.deps.audit?.({ action: "hill.answer", device: by, detail: receipt.deviceId === undefined ? detail : { ...detail, deviceId: receipt.deviceId } });
   }
 
-  /** A receipt that ends the answer before any send: written, audited, answered. */
-  private async final(request: HillAnswerRequest, id: string, by: string, digest: string, receipt: HillReceipt): Promise<Claim> {
-    await this.deps.receipts.record({ requestId: request.rid, payloadDigest: digest, receipt });
+  /**
+   * A receipt that ends the answer before any send: written (unless `keep` is false), audited, answered.
+   * It replaces a stored `ok` for the same `rid` that the decision never showed.
+   */
+  private async final(request: HillAnswerRequest, id: string, by: string, digest: string, receipt: HillReceipt, keep = true): Promise<Claim> {
+    if (keep) await this.deps.receipts.record({ requestId: request.rid, payloadDigest: digest, receipt });
     this.auditAnswer({ id }, request, by, receipt);
     return { kind: "done", outcome: { kind: "receipt", receipt } };
   }
 
-  private async claim(request: HillAnswerRequest, id: string, by: string, digest: string): Promise<Claim> {
+  private async claim(request: HillAnswerRequest, id: string, by: string, digest: string, deviceId: string | null): Promise<Claim> {
     const { rid, intent } = request;
+    // A retry of an unsettled `ok` (see `answer`) waited in the lane: another may have settled it meanwhile.
+    const known = this.deps.receipts.get(rid);
+    if (known !== undefined && !this.unsettled(known, id)) return { kind: "done", outcome: { kind: "receipt", receipt: known.receipt } };
     const now = this.now();
     const decision = this.deps.store.get(id);
-    if (decision === undefined) return this.final(request, id, by, digest, receiptOf(rid, now, "gone", "no such decision", null, null));
+    // No receipt for an id this bridge never held: junk ids must not push real receipts out of the capped file.
+    if (decision === undefined) return this.final(request, id, by, digest, receiptOf(rid, now, "gone", "no such decision", null, null), false);
     if (decision.state !== "open") return this.final(request, id, by, digest, receiptOf(rid, now, "gone", `the decision is ${decision.state}`, decision.state, null));
+    // Past its expiry and not swept yet: it is expired now, as the sweep would close it.
+    if (decision.expiresAt !== null && decision.expiresAt <= now) {
+      const expired = await this.final(request, id, by, digest, receiptOf(rid, now, "gone", "the decision is expired", "expired", null));
+      this.closeAs(id, now, "expired", EXPIRED);
+      return expired;
+    }
     const option = decision.options.find((candidate) => candidate.intent === intent);
+    // The intent is typed into the session; only a word the post rules let through ever is (a stored file is not re-checked on load).
+    if (option !== undefined && !isHillOptionIntent(option.intent)) return this.final(request, id, by, digest, receiptOf(rid, now, "rejected", "not an option of this decision", "open", null));
     if (option === undefined && intent !== "answer" && intent !== "dismiss") return this.final(request, id, by, digest, receiptOf(rid, now, "rejected", "not an option of this decision", "open", null));
     const cleaned = cleanText(request.value.text ?? "", HILL_ANSWER_TEXT_MAX);
     if (cleaned.over) return this.final(request, id, by, digest, receiptOf(rid, now, "rejected", `text is longer than ${String(HILL_ANSWER_TEXT_MAX)} characters`, "open", null));
     const text = cleaned.text === "" ? null : cleaned.text;
     const textRule = this.textRule(decision, intent, text);
     if (textRule !== null) return this.final(request, id, by, digest, receiptOf(rid, now, "rejected", textRule, "open", null));
-    const body = answerMessage(decision, intent, option?.label ?? null, text);
+    const body = answerMessage(decision, intent, option?.label ?? null, text, this.answersThePoster(decision));
     if (codePoints(body) > WALKY_BODY_MAX) return this.final(request, id, by, digest, receiptOf(rid, now, "rejected", "text is too long for one message", "open", null));
 
     // Where the answer goes: `replyTo`, else the poster. A trick with no `replyTo` has nothing to type into.
     const to = decision.replyTo ?? decision.from.address;
     if (decision.target !== null && to !== null && this.deps.place(to)?.address !== to) {
       const gone = await this.final(request, id, by, digest, receiptOf(rid, now, "gone", TARGET_ENDED, "undeliverable", null));
-      this.closeUndeliverable(id, now);
+      this.closeAs(id, now, "undeliverable", TARGET_ENDED);
       return gone;
     }
     const state: HillState = intent === "dismiss" ? "dismissed" : "answered";
@@ -733,7 +923,9 @@ export class HillService {
     // Written first, as not confirmed: a bridge that stops after this line never types the answer twice,
     // and never runs the trick's tap twice (it reads `failed`, the tap that did not run).
     const firstTrick = trick === null ? "none" : "failed";
-    const record: HillReceiptRecord = { requestId: rid, payloadDigest: digest, receipt: receiptOf(rid, now, "ok", null, state, typed ? "unknown" : "none", firstTrick) };
+    const first = receiptOf(rid, now, "ok", null, state, typed ? "unknown" : "none", firstTrick);
+    const device = deviceId !== null && HILL_DEVICE_ID_RE.test(deviceId) ? deviceId : null;
+    const record: HillReceiptRecord = { requestId: rid, payloadDigest: digest, receipt: device === null ? first : { ...first, deviceId: device } };
     if (!(await this.deps.receipts.recordFirst(record))) return { kind: "done", outcome: { kind: "unsaved" } };
     // A withdraw or an expiry may have closed it while the receipt was written.
     const fresh = this.deps.store.get(id);
@@ -741,13 +933,8 @@ export class HillService {
       const late = receiptOf(rid, now, "gone", `the decision is ${fresh?.state ?? "gone"}`, fresh?.state ?? null, null);
       return this.final(request, id, by, digest, late);
     }
-    const closed: HillDecision = {
-      ...fresh,
-      state,
-      closedAt: now,
-      closedReason: null,
-      answer: { rid, intent, label: option?.label ?? null, text, by: headerField(by, WALKY_LABEL_MAX), at: now, delivery: typed ? "unknown" : "none", trick: firstTrick },
-    };
+    const answer: NonNullable<HillDecision["answer"]> = { rid, intent, label: option?.label ?? null, text, by: headerField(by, WALKY_LABEL_MAX), at: now, delivery: typed ? "unknown" : "none", trick: firstTrick };
+    const closed: HillDecision = { ...fresh, state, closedAt: now, closedReason: null, answer: device === null ? answer : { ...answer, deviceId: device } };
     if (!this.deps.store.put(closed)) {
       const unsaved = receiptOf(rid, now, "unknown", "the answer could not be saved on this machine; nothing was typed", "open", null);
       return this.final(request, id, by, digest, unsaved);
@@ -773,9 +960,10 @@ export class HillService {
     return null;
   }
 
-  private closeUndeliverable(id: string, now: number): void {
+  /** Close an open decision with no answer, as the sweep would: `undeliverable` or `expired`, with its reason. */
+  private closeAs(id: string, now: number, state: "undeliverable" | "expired", reason: string): void {
     const decision = this.deps.store.get(id);
     if (decision === undefined || decision.state !== "open") return;
-    this.deps.store.put({ ...decision, state: "undeliverable", closedAt: now, closedReason: TARGET_ENDED });
+    this.deps.store.put({ ...decision, state, closedAt: now, closedReason: reason });
   }
 }

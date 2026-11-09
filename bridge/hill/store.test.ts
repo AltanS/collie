@@ -71,12 +71,59 @@ describe("the decisions file", () => {
     expect(readdirSync(dir).toSorted()).toEqual([`${DECISIONS_FILE}.bad-7000`, `${DECISIONS_FILE}.bad-7001`]);
   });
 
-  test("an entry that fails its reader is dropped, the good ones are kept", () => {
+  test("an entry that fails its reader is not listed, the good ones are", () => {
     const dir = hillDir(stateDir());
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, DECISIONS_FILE), JSON.stringify({ v: 1, decisions: [decision("dc_aaaaaaaaaaa1"), { v: 1, id: "dc_bad" }, 7] }));
     const store = new HillStore(dir, () => 1);
     expect(store.all().map((held) => held.id)).toEqual(["dc_aaaaaaaaaaa1"]);
+    expect(store.list().open.map((held) => held.id)).toEqual(["dc_aaaaaaaaaaa1"]);
+    expect(store.cleanlyLoaded()).toBe(true);
+  });
+
+  test("an entry a newer build wrote survives a load and every write, unchanged, and keeps its id taken", () => {
+    const dir = hillDir(stateDir());
+    mkdirSync(dir, { recursive: true });
+    const newer = { ...decision("dc_newer0000001"), v: 2, mood: "a field this build does not know" };
+    writeFileSync(join(dir, DECISIONS_FILE), JSON.stringify({ v: 1, decisions: [decision("dc_aaaaaaaaaaa1"), newer] }));
+    const store = new HillStore(dir, () => 1);
+    expect(store.get("dc_newer0000001")).toBeUndefined();
+    expect(store.taken("dc_newer0000001")).toBe(true);
+    expect(store.taken("dc_aaaaaaaaaaa1")).toBe(true);
+    expect(store.taken("dc_free00000001")).toBe(false);
+    expect(store.put(decision("dc_aaaaaaaaaaa1", { state: "withdrawn", closedAt: 5, closedReason: "by the poster" }))).toBe(true);
+    expect(store.put(decision("dc_bbbbbbbbbbb1"))).toBe(true);
+    const file = JSON.parse(readFileSync(join(dir, DECISIONS_FILE), "utf8"));
+    expect(file.decisions).toHaveLength(3);
+    expect(file.decisions).toContainEqual(newer);
+    // A restart of this build reads it as unread again; the build that wrote it reads it back.
+    const again = new HillStore(dir, () => 2);
+    expect(again.all().map((held) => held.id).toSorted()).toEqual(["dc_aaaaaaaaaaa1", "dc_bbbbbbbbbbb1"]);
+    again.put(decision("dc_ccccccccccc1"));
+    expect(JSON.parse(readFileSync(join(dir, DECISIONS_FILE), "utf8")).decisions).toContainEqual(newer);
+  });
+
+  test("the media keep set: every held id and every unread entry's id; none when an unread entry has no id", () => {
+    const dir = hillDir(stateDir());
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, DECISIONS_FILE), JSON.stringify({ v: 1, decisions: [decision("dc_aaaaaaaaaaa1"), { v: 2, id: "dc_newer0000001" }] }));
+    expect([...(new HillStore(dir, () => 1).mediaKeep() ?? [])].toSorted()).toEqual(["dc_aaaaaaaaaaa1", "dc_newer0000001"]);
+    writeFileSync(join(dir, DECISIONS_FILE), JSON.stringify({ v: 1, decisions: [decision("dc_aaaaaaaaaaa1"), 7] }));
+    expect(new HillStore(dir, () => 1).mediaKeep()).toBeNull();
+  });
+
+  test("a set-aside file, or one that cannot be read, leaves the store not cleanly loaded and keeps no media set", () => {
+    const dir = hillDir(stateDir());
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, DECISIONS_FILE), JSON.stringify({ v: 2, decisions: [] }));
+    const aside = new HillStore(dir, () => 1, () => undefined);
+    expect(aside.cleanlyLoaded()).toBe(false);
+    expect(aside.mediaKeep()).toBeNull();
+    // It stays so after the next write: the set-aside file may still name a folder.
+    aside.put(decision("dc_aaaaaaaaaaa1"));
+    expect(aside.mediaKeep()).toBeNull();
+    expect(new HillStore(null).cleanlyLoaded()).toBe(true);
+    expect(new HillStore(hillDir(stateDir())).cleanlyLoaded()).toBe(true);
   });
 
   test("every open decision is kept, and only the newest closed ones", () => {

@@ -108,6 +108,21 @@ describe("a stored decision", () => {
     expect(readDecision({ ...row, from: { ...oldFrom, trickHost: 5 } })).toBeNull();
   });
 
+  test("an answer's device id reads back when present and stays absent when not; a bad one fails the record", () => {
+    const answered = decision("dc_aaaaaaaaaaa1", { state: "answered", closedAt: 5, answer: { rid: RID, intent: "yes", label: "Yes", text: null, by: "Pixel", at: 5, delivery: "typed", trick: "none", deviceId: "dv_0123456789abcdef" } });
+    expect(readDecision(onDisk(answered))).toEqual(answered);
+    expect(readDecision(onDisk(answered, { answer: { ...answered.answer!, deviceId: "Pixel" } }))).toBeNull();
+  });
+
+  test("the post digest reads back when present and stays absent when not; a bad one fails the record", () => {
+    const digest = "a".repeat(64);
+    const withDigest = decision("dc_aaaaaaaaaaa1", { postDigest: digest });
+    expect(readDecision(onDisk(withDigest))).toEqual(withDigest);
+    expect(readDecision(onDisk(decision("dc_aaaaaaaaaaa1")))).not.toHaveProperty("postDigest");
+    expect(readDecision(onDisk(withDigest, { postDigest: "short" }))).toBeNull();
+    expect(readDecision(onDisk(withDigest, { postDigest: 7 }))).toBeNull();
+  });
+
   test("a field that fails its rule fails the record", () => {
     const whole = decision("dc_aaaaaaaaaaa1");
     expect(readDecision(onDisk(whole, { v: 2 }))).toBeNull();
@@ -133,6 +148,13 @@ describe("the receipt file", () => {
     const again = new HillReceiptStore(stateDir);
     await again.load();
     expect(again.get(RID)).toEqual(record);
+    // A receipt with the device's record id reads back with it.
+    const withDevice = { ...record, receipt: { ...record.receipt, deviceId: "dv_0123456789abcdef" } };
+    expect(await again.recordFirst(withDevice)).toBe(true);
+    const third = new HillReceiptStore(stateDir);
+    await third.load();
+    expect(third.get(RID)).toEqual(withDevice);
+    expect(coerceHillReceipt({ ...withDevice, receipt: { ...withDevice.receipt, deviceId: 5 } })).toBeNull();
   });
 
   test("the digest covers node, intent and text; a record whose rid is not its key is dropped", () => {

@@ -9,6 +9,7 @@ import { NO_SOCKET_TEXT, shown, type WalkyDeps } from "./walky.ts";
 import type { JsonObject, JsonValue } from "../bridge/json.ts";
 import { asJsonObject, asJsonString, parseJsonObject } from "../web/src/lib/json.ts";
 import { readDecision } from "../bridge/hill/parse.ts";
+import { HILL_DEFAULT_EXPIRY_DAYS } from "../bridge/hill/service.ts";
 import { parseAddress } from "../bridge/walky/address.ts";
 import { BARE_BAD_REQUEST, unknownOp } from "../bridge/walky/refusals.ts";
 import { walkySocketPath } from "../bridge/walky/socket.ts";
@@ -46,6 +47,7 @@ export const HILL_RULES = [
   "Always write the summary in plain words, and recommend one option with a why.",
   "One question per decision. To change one, post again with --supersedes; never repost.",
   "Do not wait in a loop. The answer arrives as a WalkyTalky message and starts your next turn.",
+  "If no answer arrived, read it with collie hill status <id>.",
   "A worker with a lead asks its lead first.",
 ] as const;
 
@@ -63,8 +65,10 @@ const USAGE = {
     "         [--reply-to <address>] [--supersedes dc_...] [--expires 2h|3d] [--request-id <uuid>] [--json] \\",
     '         [--image shots/a.png[="<caption>"] ...]   (PNG, JPEG or WebP, up to 4, 2 MB each) \\',
     '         [-- "<body in Markdown>"]   (no body after --: read from stdin when it is not a terminal)',
+    `  With no --expires, a decision closes as expired after ${String(HILL_DEFAULT_EXPIRY_DAYS)} days.`,
+    "  To retry a post, send it again with the same --request-id: it posts once. Other content under that id is refused.",
   ],
-  status: ["usage: collie hill status <dc_id> [--json]"],
+  status: ["usage: collie hill status <dc_id> [--json]   (yours, or one whose answer goes to this session)"],
   withdraw: ["usage: collie hill withdraw <dc_id> [--json]"],
   list: ["usage: collie hill list [--json]   (your own decisions, open first)"],
 } as const satisfies Record<(typeof HILL_SUBCOMMANDS)[number], readonly string[]>;
@@ -412,9 +416,13 @@ function targetWords(target: NonNullable<HillDecision["target"]>): string {
   return target.host === null ? shown(target.label) : `${shown(target.label)} on ${shown(target.host)}`;
 }
 
-/** A decision's state as `status` prints it: the state, where the answer goes, why it closed, and the answer when there is one. */
+/**
+ * A decision's state as `status` prints it: the state, the question, where the answer goes, why it
+ * closed, and the answer with its delivery when there is one. A session that missed the typed answer,
+ * or got one with no title (it went to a session other than the poster's), reads it here.
+ */
 export function statusLines(decision: HillDecision): string[] {
-  const lines = [`${decision.id} ${decision.state}`];
+  const lines = [`${decision.id} ${decision.state}`, `title: ${shown(decision.title)}`];
   if (decision.target !== null) lines.push(`goes to: ${targetWords(decision.target)}`);
   if (decision.closedReason !== null) lines.push(`reason: ${shown(decision.closedReason)}`);
   if (decision.supersededBy !== null) lines.push(`replaced by: ${decision.supersededBy}`);
