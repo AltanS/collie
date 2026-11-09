@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Changed
+
+- **The strings 1.28.0 added now speak all twelve languages.** Community themes, pasting a theme, the theme About sheet and the Make Collie your own card, plus the composer's expand and collapse buttons and the Nunito note, are now translated in German, Spanish, French, Italian, Japanese, Korean, Portuguese, Russian, Turkish and both Chinese variants. Before, they showed in English.
+
 ## [1.28.0] - 2026-11-09
 
 ### Added
