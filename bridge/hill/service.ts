@@ -108,10 +108,10 @@ export interface HillTrickSender {
   /** The trick's name, as its manifest gives it. Display only. */
   readonly label: string;
   /**
-   * The tricks host name the trick runs under (bridge/tricks/facts.ts `tricksHostName`); the tap goes
-   * there. It is stored as the decision's `from.trickHost`; `from.host` is the machine's display name.
+   * The member id of the bridge the trick runs on (bridge/bridge-id.ts); the tap goes there. It is
+   * stored as the decision's `from.trickHost`; `from.host` is the machine's display name.
    */
-  readonly host: string;
+  readonly memberId: string;
   /**
    * The trick's own folder, its real path, from the runner: the one root inside the config folder this
    * trick's images may come from (media.ts, "A TRICK'S OWN FOLDER"). Absent: the images take the agent's rules.
@@ -155,8 +155,11 @@ export interface HillServiceDeps {
   crewMode(): HillCrewMode;
   /** False with COLLIE_WALKY=off: no answer could be typed, so no decision is taken. */
   walkyOn(): boolean;
-  /** This bridge's crew member id, null on a solo install. */
-  readonly memberId: string | null;
+  /**
+   * This bridge's stable id (bridge/bridge-id.ts): the crew member id, or the install id on a solo
+   * install. Every decision's `from.memberId`. Not the walky member (`local` on a solo install).
+   */
+  readonly memberId: string;
   /** This machine's name, as walky's `who` prints it. */
   readonly machine: string;
   /**
@@ -594,7 +597,7 @@ export class HillService {
       from:
         from.kind === "agent"
           ? { kind: "agent", address: from.address, trickId: null, trickKey: null, memberId: from.memberId, harness: from.harness, label: this.nameOf(from.address, from.label), host: from.host, trickHost: null }
-          : { kind: "trick", address: null, trickId: from.trickId, trickKey: from.trickKey, memberId: this.deps.memberId, harness: null, label: headerField(from.label, WALKY_LABEL_MAX), host: this.deps.machine, trickHost: from.host },
+          : { kind: "trick", address: null, trickId: from.trickId, trickKey: from.trickKey, memberId: from.memberId, harness: null, label: headerField(from.label, WALKY_LABEL_MAX), host: this.deps.machine, trickHost: from.memberId },
       about: about?.address ?? null,
       priority,
       priorityAsked: asked,

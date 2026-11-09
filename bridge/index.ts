@@ -277,7 +277,8 @@ import { counterWordOf, HoldBook, HoldServer, takeHold, type HoldTarget } from "
 import { holdSocketPath } from "./beacon/paths.ts";
 import { VersionCache } from "./surface/binary-version.ts";
 import { findProfile, loadProfiles, type Profile } from "../web/src/lib/surface/profile.ts";
-import { factsWorldOf, tricksHostName } from "./tricks/facts.ts";
+import { factsWorldOf } from "./tricks/facts.ts";
+import { isOwnId, resolveBridgeId } from "./bridge-id.ts";
 import { scopeKeyAddress, TrickHill } from "./tricks/hill.ts";
 import { TricksService } from "./tricks/service.ts";
 import { createSessionFolders, createSessionLabels } from "./operator-space-labels.ts";
@@ -2050,6 +2051,12 @@ const walkyHost: WalkyHost = {
   },
 };
 const walkyMemberId = crew.mode === "solo" ? null : (trustStore.current()?.self.memberId ?? null);
+// This bridge's one stable id (bridge-id.ts): the crew member id when it has a trust store, else the
+// install id minted once into `<stateDir>/bridge-id.json`. The key of its tricks' parts and session ids
+// and every Decision's `from.memberId`, never the host name. Resolved ONCE, here: a bridge that joins a
+// crew while it runs keeps serving the id it booted with until it restarts (a join restarts it), and
+// `previous` keeps the id of the last boot after a join or a leave, so what was keyed on it still lands.
+const bridgeId = resolveBridgeId({ stateDir: cfg.stateDir, crewMemberId: trustStore.current()?.self.memberId ?? null });
 // A sibling instance on this machine (siblings.ts) may have recorded a message typed into a pane both
 // bridges watch: the pane's list merges its rows, read-only, off the hook target registry's live bridges.
 const walkySiblings = new SiblingLogs({
@@ -2158,10 +2165,9 @@ const hill = new HillService({
   sessionsKnown: () => walky.who().length > 0,
   crewMode: () => crew.mode,
   walkyOn: () => cfg.walky,
-  memberId: walkyMemberId,
+  memberId: bridgeId.id,
   machine: hostname(),
-  // `tricksHost` is declared further down; a list only ever reads it after boot.
-  tricksHost: () => tricksHost(),
+  tricksHost: () => bridgeId.id,
   audit: (entry) => audit.record(entry),
   // A trick's decision (M94): the answer reaches the trick's program as a tap. `tricks` is made further
   // down; an answer only ever comes after boot.
@@ -3213,28 +3219,25 @@ if (standbyServer !== null && standbyDoor !== null) {
 // timers wait for a paired phone to look (bridge/tricks/service.ts).
 const tricksFolders = createSessionFolders(cfg.spacesFile ?? null);
 const tricksLabels = createSessionLabels(cfg.spacesFile ?? null);
-const tricksHost = (): string => {
-  const data = trustStore.current();
-  return tricksHostName(data === null ? null : data.self.memberId);
-};
 const tricks =
   cfg.tricksDir === undefined
     ? undefined
     : new TricksService({
         configDir: dirname(cfg.tricksDir),
         stateDir: cfg.stateDir,
-        host: tricksHost,
+        memberId: bridgeId.id,
+        previousId: bridgeId.previous,
         // A trick's decisions go into the hill (M94, M96); `<stateDir>/hill/tricks.json` keeps the map.
         decisions: new TrickHill({
           stateDir: cfg.stateDir,
           hill,
-          addressOf: (scopeKey) => scopeKeyAddress(scopeKey, tricksHost(), walkyMemberId ?? LOCAL_MEMBER, hillPlace),
+          addressOf: (scopeKey) => scopeKeyAddress(scopeKey, (memberId) => isOwnId(bridgeId, memberId), walkyMemberId ?? LOCAL_MEMBER, hillPlace),
         }),
-        world: (host) => {
+        world: (memberId) => {
           void tricksFolders.refresh();
           void tricksLabels.refresh();
           const world = factsWorldOf({
-            host,
+            memberId,
             machine: hostname(),
             runtimes: registry.all().map((rt) => {
               const now = rt.engine.current();

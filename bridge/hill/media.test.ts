@@ -246,7 +246,7 @@ function rig(opts: { media?: boolean; failPut?: boolean } = {}): Rig {
     send: async () => "typed",
     crewMode: () => "solo",
     walkyOn: () => true,
-    memberId: null,
+    memberId: "m_aaaaaaaaaa",
     machine: "desk",
     now: () => time.now,
     mintId: () => {
@@ -436,7 +436,7 @@ describe("a trick's own folder", () => {
       send: async () => "typed",
       crewMode: () => "solo",
       walkyOn: () => true,
-      memberId: null,
+      memberId: "m_aaaaaaaaaa",
       machine: "desk",
       mintId: () => `dc_trk${String((n += 1)).padStart(9, "0")}`,
       media: new HillMediaStore(hillDir(l.state), deniedFoldersSync([l.state, l.config]), () => undefined),
@@ -447,7 +447,7 @@ describe("a trick's own folder", () => {
     const l = layout();
     const hill = trickHill(l);
     const shot = file(l.legs, "shot.png", png(390, 240));
-    const trick = { kind: "trick", trickId: "legs", trickKey: "case-8", label: "Browser leg", host: "desk" } as const;
+    const trick = { kind: "trick", trickId: "legs", trickKey: "case-8", label: "Browser leg", memberId: "desk" } as const;
     const posted = hill.postDecision({ ...trick, imageRoot: l.legs }, input([{ path: shot, caption: "the red case" }]));
     expect(posted).toMatchObject({ ok: true, decision: { media: [{ mime: "image/png", width: 390, height: 240, caption: "the red case" }] } });
     if (posted.ok) expect(hill.mediaFile(posted.decision.id, posted.decision.media[0]!.id)?.bytes).toEqual(png(390, 240));
@@ -512,7 +512,7 @@ describe("images leave with their decision", () => {
     const media = new HillMediaStore(hillDir(state), deniedFoldersSync([state]), () => undefined);
     media.save("dc_fromnewer001", [{ id: "im_aaaaaaaaaaaaaaaa", bytes: png() }]);
     const store = new HillStore(hillDir(state), () => 1000, () => undefined);
-    const hill = new HillService({ store, receipts: memoryHillReceipts(), media, place: () => null, send: async () => "typed", crewMode: () => "solo", walkyOn: () => true, memberId: null, machine: "desk", now: () => 1000 });
+    const hill = new HillService({ store, receipts: memoryHillReceipts(), media, place: () => null, send: async () => "typed", crewMode: () => "solo", walkyOn: () => true, memberId: "m_aaaaaaaaaa", machine: "desk", now: () => 1000 });
     expect(hill.pruneMedia()).toBe(0);
     hill.sweep();
     expect(readdirSync(join(hillDir(state), MEDIA_DIR))).toEqual(["dc_fromnewer001"]);
@@ -524,7 +524,7 @@ describe("images leave with their decision", () => {
     const media = new HillMediaStore(hillDir(state), deniedFoldersSync([state]), () => undefined);
     media.save("dc_fromnewer001", [{ id: "im_aaaaaaaaaaaaaaaa", bytes: png() }]);
     media.save("dc_orphan000000", [{ id: "im_aaaaaaaaaaaaaaaa", bytes: png() }]);
-    const deps = { receipts: memoryHillReceipts(), media, place: () => null, send: async (): Promise<"typed"> => "typed", crewMode: (): "solo" => "solo", walkyOn: () => true, memberId: null, machine: "desk", now: () => 1000 };
+    const deps = { receipts: memoryHillReceipts(), media, place: () => null, send: async (): Promise<"typed"> => "typed", crewMode: (): "solo" => "solo", walkyOn: () => true, memberId: "m_aaaaaaaaaa", machine: "desk", now: () => 1000 };
     writeFileSync(join(hillDir(state), DECISIONS_FILE), JSON.stringify({ v: 1, decisions: [{ v: 2, id: "dc_fromnewer001" }, "no id here"] }));
     const blind = new HillService({ ...deps, store: new HillStore(hillDir(state), () => 1000) });
     expect(blind.pruneMedia()).toBe(0);
@@ -674,7 +674,7 @@ describe("end to end", () => {
       send: walkySend(walky, { sleep: async () => undefined }),
       crewMode: () => "solo",
       walkyOn: () => true,
-      memberId: null,
+      memberId: "m_aaaaaaaaaa",
       machine: "desk",
       media,
     });

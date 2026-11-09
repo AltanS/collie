@@ -16,7 +16,7 @@ import { hillDir } from "../hill/store.ts";
 // decisions here, and this module makes the hill agree with them.
 //
 // ONE SENDER PER TRICK. `from` is stamped here from the trick's manifest (`kind: "trick"`, its id, its
-// name, the tricks host), never taken from the document. Each decision carries its document `key` as
+// name, this bridge's member id), never taken from the document. Each decision carries its document `key` as
 // `from.trickKey`, so the answer comes back to the trick as a tap on `hill/<key>`.
 //
 // DIFF BY KEY, against the trick's decisions this module posted:
@@ -97,7 +97,7 @@ export interface TrickHillDeps {
   readonly stateDir: string;
   readonly hill: TrickHillPort;
   /**
-   * The walky address of the live session a facts scope key (`host:paneId`) names now, or null when it
+   * The walky address of the live session a facts scope key (`<memberId>:paneId`) names now, or null when it
    * names none on this machine. The hill resolves the address to its session again at post time.
    */
   addressOf(scopeKey: string): string | null;
@@ -110,8 +110,8 @@ export interface TrickHillTrick {
   readonly id: string;
   /** The manifest's name: the sender's label. */
   readonly name: string;
-  /** The tricks host name (facts.ts `tricksHostName`). */
-  readonly host: string;
+  /** This bridge's stable id (bridge/bridge-id.ts): where the answer's tap goes. */
+  readonly memberId: string;
   /** The trick's own folder, `<configDir>/tricks/<id>`: where its decisions' images are. */
   readonly dir: string;
 }
@@ -280,8 +280,8 @@ export class TrickHill {
     return Object.values(keys).find((entry) => entry.decisionId === decisionId)?.hash;
   }
 
-  private sender(trick: Pick<TrickHillTrick, "id" | "name" | "host">, key: string, imageRoot: string | null = null): HillTrickSender {
-    const sender: HillTrickSender = { kind: "trick", trickId: trick.id, trickKey: key, label: trick.name, host: trick.host };
+  private sender(trick: Pick<TrickHillTrick, "id" | "name" | "memberId">, key: string, imageRoot: string | null = null): HillTrickSender {
+    const sender: HillTrickSender = { kind: "trick", trickId: trick.id, trickKey: key, label: trick.name, memberId: trick.memberId };
     return imageRoot === null ? sender : { ...sender, imageRoot };
   }
 
@@ -399,7 +399,7 @@ export class TrickHill {
    * The trick is switched off or removed: every open decision of it is withdrawn, "the trick is off".
    * Answered and dismissed keys are kept, so the same content stays closed when it comes back.
    */
-  off(trick: Pick<TrickHillTrick, "id" | "name" | "host">): void {
+  off(trick: Pick<TrickHillTrick, "id" | "name" | "memberId">): void {
     const record = this.map.get(trick.id);
     if (record === undefined) return;
     let changed = false;
@@ -429,9 +429,9 @@ export class TrickHill {
   }
 
   /** Every trick this map knows that `present` does not hold is off (removed while the bridge was down, too). */
-  prune(present: ReadonlySet<string>, host: string): void {
+  prune(present: ReadonlySet<string>, memberId: string): void {
     for (const id of this.map.keys()) {
-      if (!present.has(id)) this.off({ id, name: id, host });
+      if (!present.has(id)) this.off({ id, name: id, memberId });
     }
   }
 
@@ -484,14 +484,16 @@ function hillRefusal(answer: Extract<HillPostAnswer, { ok: false }>, path: strin
 }
 
 /**
- * A facts scope key (`host:paneId`) as the walky address of the live agent session in that pane, or
- * null. Only a session of this machine (`host` is the tricks host name): the facts list no other. The
- * address goes through `place`, the hill's own probe (bridge/hill/walky.ts `walkyPlace`), so it carries
- * the session's instance token and the hill takes it as it is.
+ * A facts scope key (`<memberId>:paneId`) as the walky address of the live agent session in that pane,
+ * or null. Only a session of this bridge (`own` says whether a member id is this bridge's: its id, or
+ * the id it served before a crew join, so a key a program kept from before the restart still lands):
+ * the facts list no other. The address goes through `place`, the hill's own probe
+ * (bridge/hill/walky.ts `walkyPlace`), so it carries the session's instance token and the hill takes it
+ * as it is.
  */
-export function scopeKeyAddress(scopeKey: string, host: string, walkyMember: string, place: (address: string) => { readonly address: string } | null): string | null {
+export function scopeKeyAddress(scopeKey: string, own: (memberId: string) => boolean, walkyMember: string, place: (address: string) => { readonly address: string } | null): string | null {
   const colon = scopeKey.indexOf(":");
-  if (colon <= 0 || scopeKey.slice(0, colon) !== host) return null;
+  if (colon <= 0 || !own(scopeKey.slice(0, colon))) return null;
   const paneId = scopeKey.slice(colon + 1);
   if (paneId === "") return null;
   return place(`${walkyMember}/${paneId}`)?.address ?? null;

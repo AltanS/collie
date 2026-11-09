@@ -138,7 +138,7 @@ describe("one look per list", () => {
       send: async () => "typed",
       crewMode: () => "solo",
       walkyOn: () => true,
-      memberId: null,
+      memberId: "m_aaaaaaaaaa",
       machine: "desk",
       now: () => 1000,
       mintId: () => `dc_look${String((n += 1)).padStart(8, "0")}`,

@@ -610,10 +610,12 @@ other file the program writes here counts as a code change and stops the trick.
 - Its working folder is this folder.
 - On stdin, one JSON document, the facts: \`v\` (1), \`trigger\` (\`start\`, \`timer\`, or \`tap\` with
   \`rid\`, \`node\` (the part id, or \`hill/<key>\` for a decision), \`intent\`, \`value\` and \`from\`),
-  \`trick\` (\`id\`, \`dir\`, and \`state\`, a folder of its own to keep files in), \`host\`, \`sessions\`
-  (each with \`id\` as \`host:paneId\`, \`memberId\`, \`sessionId\` (opaque, never parse it), \`paneId\`,
-  \`host\` (a name to show), \`name\`, \`agent\`, \`status\`, \`cwd\`, \`space\`, \`tab\`, \`lastActiveAt\`)
-  and \`spaces\` (\`name\`, \`folder\`).
+  \`trick\` (\`id\`, \`dir\`, and \`state\`, a folder of its own to keep files in), \`memberId\` (this
+  Collie's id: its crew member id, or \`m_\` and ten letters and digits on a solo install; it stays when
+  the machine is renamed, so key saved state on it), \`host\` (the machine's name, to show only, never a
+  key), \`sessions\` (each with \`id\` as \`memberId:paneId\`, \`memberId\`, \`sessionId\` (opaque, never
+  parse it), \`paneId\`, \`host\` (a name to show), \`name\`, \`agent\`, \`status\`, \`cwd\`, \`space\`,
+  \`tab\`, \`lastActiveAt\`) and \`spaces\` (\`name\`, \`folder\`).
 - A short list of the Collie service's environment: \`PATH\`, \`HOME\`, \`USER\`, \`LOGNAME\`,
   \`SHELL\`, \`LANG\`, \`LC_*\`, \`TZ\`, \`TERM\`, \`TMPDIR\`, the \`XDG_*_HOME\` folders,
   \`XDG_RUNTIME_DIR\`, \`NVM_DIR\` and \`BUN_INSTALL\`. Any other variable the program needs, list

@@ -129,9 +129,9 @@ export interface TricksHillPort {
   /** Make the hill agree with one successful run's decisions; the refusals join the trick's. */
   sync(trick: TrickHillTrick, run: TrickHillRun): Refusal[];
   /** Withdraw every open decision of a trick switched off or removed. */
-  off(trick: Pick<TrickHillTrick, "id" | "name" | "host">): void;
+  off(trick: Pick<TrickHillTrick, "id" | "name" | "memberId">): void;
   /** Every trick the map knows that is not in `present` is off. */
-  prune(present: ReadonlySet<string>, host: string): void;
+  prune(present: ReadonlySet<string>, memberId: string): void;
   /** The content hash of the decision the person answered. */
   seenOf(trickId: string, decisionId: string): string | undefined;
 }
@@ -155,13 +155,19 @@ export type SwitchAnswer =
 export interface TricksServiceDeps {
   configDir: string;
   stateDir: string;
-  /** This machine's host name for facts and part keys (facts.ts `tricksHostName`). */
-  host: () => string;
   /**
-   * The sessions and spaces, read at run time, with session ids keyed on `host`, and the machine's
+   * This bridge's stable id for facts, part keys and trick session ids (bridge/bridge-id.ts): the crew
+   * member id, or the install id. Resolved once at boot: a bridge that joins a crew while it runs keeps
+   * this id until it restarts.
+   */
+  memberId: string;
+  /** The id this bridge served before a crew join or leave: a tap or a switch under it still lands. */
+  previousId?: string | null;
+  /**
+   * The sessions and spaces, read at run time, with session ids keyed on `memberId`, and the machine's
    * display name (`machine`) the facts' `host` fields say.
    */
-  world: (host: string) => Omit<FactsWorld, "host">;
+  world: (memberId: string) => Omit<FactsWorld, "memberId">;
   /** The unit's environment; each run gets the allow-listed part of it (env.ts). */
   env: ProviderEnv;
   now?: () => number;
@@ -380,7 +386,7 @@ export class TricksService implements TricksSurface {
     if (!this.folderExists) return undefined;
     const all = this.store.reply(undefined);
     return trickSessionPanes({
-      host: this.deps.host(),
+      host: this.deps.memberId,
       tricks: all.tricks,
       parts: all.parts,
       dirOf: (id) => this.runtimes.get(id)?.found.dir,
@@ -423,7 +429,7 @@ export class TricksService implements TricksSurface {
   /** Fold a scan and the switches into the runtimes and the list. */
   private apply(scan: TricksScan, switches: Switches): void {
     this.folderExists = scan.exists;
-    const host = this.deps.host();
+    const host = this.deps.memberId;
     const ids = new Set(scan.tricks.map((m) => m.id));
     // A kept scan (it ran over, or the folder could not be listed) never removes a trick.
     if (scan.kept === undefined) {
@@ -441,7 +447,7 @@ export class TricksService implements TricksSurface {
 
   /** Fold one trick folder and its switch entry into its runtime and its list entry. */
   private applyOne(found: FoundTrick, entry: SwitchEntry | undefined): void {
-    const host = this.deps.host();
+    const host = this.deps.memberId;
     const on = entry !== undefined;
     const changed = isChanged(entry, found);
     const old = this.runtimes.get(found.id);
@@ -460,7 +466,7 @@ export class TricksService implements TricksSurface {
         docRefusals: [],
       });
       // Off at start (switched off while the bridge was down): its open decisions go.
-      if (!on) this.deps.decisions?.off({ id: found.id, name: found.manifest?.name ?? found.id, host });
+      if (!on) this.deps.decisions?.off({ id: found.id, name: found.manifest?.name ?? found.id, memberId: host });
       this.publish(found.id);
       return;
     }
@@ -488,7 +494,12 @@ export class TricksService implements TricksSurface {
 
   /** The trick as the hill's sender names it. */
   private hillTrick(rt: TrickRuntime): TrickHillTrick {
-    return { id: rt.found.id, name: rt.found.manifest?.name ?? rt.found.id, host: this.deps.host(), dir: rt.found.dir };
+    return { id: rt.found.id, name: rt.found.manifest?.name ?? rt.found.id, memberId: this.deps.memberId, dir: rt.found.dir };
+  }
+
+  /** Whether a route's host segment names this bridge: its id, or the id it served before a crew join. */
+  private isOwn(host: string): boolean {
+    return host === this.deps.memberId || (this.deps.previousId != null && host === this.deps.previousId);
   }
 
   private restart(rt: TrickRuntime): void {
@@ -504,7 +515,7 @@ export class TricksService implements TricksSurface {
     if (rt === undefined) return;
     const m = rt.found.manifest;
     const info: WireTrickInfo = {
-      host: this.deps.host(),
+      host: this.deps.memberId,
       id,
       name: m?.name ?? id,
       icon: m?.icon ?? "plug",
@@ -623,7 +634,7 @@ export class TricksService implements TricksSurface {
   /** Run the provider once and store what it left. The reply is the tap's, when the trigger is a tap. */
   private async runOnce(rt: TrickRuntime, trigger: FactsTrigger): Promise<TrickTapReply> {
     const manifest = rt.found.manifest;
-    const host = this.deps.host();
+    const host = this.deps.memberId;
     const id = rt.found.id;
     const rid = trigger.kind === "tap" ? trigger.rid : "";
     const revBefore = this.store.rev;
@@ -633,7 +644,7 @@ export class TricksService implements TricksSurface {
     // The provider's own folder under <stateDir>/tricks, owner only like the rest of the state folder.
     await mkdir(state, { recursive: true, mode: 0o700 }).catch(() => {});
     const world = this.deps.world(host);
-    const facts = buildFacts({ host, ...world }, { id, dir: rt.found.dir, state }, trigger);
+    const facts = buildFacts({ memberId: host, ...world }, { id, dir: rt.found.dir, state }, trigger);
     const outcome = await (this.deps.run ?? runProvider)({
       command: manifest.run,
       cwd: rt.found.dir,
@@ -678,7 +689,7 @@ export class TricksService implements TricksSurface {
     // whole (over the cap) changes nothing there either: the last good decisions stay, as the last good
     // parts do.
     const listRefused = parsed.refusals.some((refusal) => refusal.path === "/decisions" && refusal.decision === undefined);
-    const posted = listRefused || !decisionsListed ? [] : (this.deps.decisions?.sync({ ...this.hillTrick(rt), name: manifest.name, host }, { decisions: parsed.decisions, refusedKeys: parsed.refusedDecisions }) ?? []);
+    const posted = listRefused || !decisionsListed ? [] : (this.deps.decisions?.sync({ ...this.hillTrick(rt), name: manifest.name }, { decisions: parsed.decisions, refusedKeys: parsed.refusedDecisions }) ?? []);
     this.succeeded(rt, startedAt, [...parsed.refusals, ...posted]);
     this.publish(id);
     const mine = this.store.trickParts(host, id, revBefore);
@@ -712,7 +723,7 @@ export class TricksService implements TricksSurface {
   }
 
   async tap(host: string, id: string, body: JsonValue | undefined): Promise<TapAnswer> {
-    if (host !== this.deps.host()) return { status: 404, body: { error: "unknown-host" } };
+    if (!this.isOwn(host)) return { status: 404, body: { error: "unknown-host" } };
     const parsed = parseTapRequest(body);
     if (parsed.request === undefined) return { status: 400, body: { error: "tap-invalid", refusals: parsed.refusals } };
     // A decision's answer comes from the hill only (`tapFromHill`), so it is closed and receipted there.
@@ -737,7 +748,7 @@ export class TricksService implements TricksSurface {
   }
 
   private async runTap(host: string, id: string, request: TapRequest, seen: string | undefined): Promise<TapAnswer> {
-    if (host !== this.deps.host()) return { status: 404, body: { error: "unknown-host" } };
+    if (!this.isOwn(host)) return { status: 404, body: { error: "unknown-host" } };
     const digest = payloadDigest([id, request.node, request.intent, JSON.stringify(request.value ?? null), request.from?.session ?? ""]);
     // A replay answers the same receipt again, from the receipt log, unchanged (the tree's intent rule).
     const kept = this.receipts.get(request.rid);
@@ -805,7 +816,7 @@ export class TricksService implements TricksSurface {
    * (design §7).
    */
   async setSwitch(host: string, id: string, on: boolean): Promise<SwitchAnswer> {
-    if (host !== this.deps.host()) return { status: 404, body: { error: "unknown-host" } };
+    if (!this.isOwn(host)) return { status: 404, body: { error: "unknown-host" } };
     const turn = this.switching.then(() => this.writeSwitch(id, on));
     this.switching = turn.catch(() => {});
     return await turn;

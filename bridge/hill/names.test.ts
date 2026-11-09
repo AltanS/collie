@@ -53,7 +53,7 @@ function rig(withNames = true): Rig {
     send: async () => "typed",
     crewMode: () => "solo",
     walkyOn: () => true,
-    memberId: null,
+    memberId: "m_aaaaaaaaaa",
     machine: "bluefin",
     now: () => 1000,
     mintId: () => {

@@ -1038,9 +1038,15 @@ export type FactsTrigger =
   | { kind: "event"; event: TrickEvent; session?: string };
 
 export interface FactsSession {
-  /** The scope key `host:paneId`, the address a decision's `about` and `replyTo` name. */
+  /**
+   * The scope key `<memberId>:paneId`, the address a decision's `about` and `replyTo` name. The part
+   * before the first colon is the session's `memberId`; read that field instead of parsing this one.
+   */
   id: string;
-  /** The crew member the session runs on (the machine's own name on a solo install). */
+  /**
+   * The bridge the session runs on: its crew member id, or on a solo install its install id (`m_` and
+   * ten of `[a-z0-9]`, minted once and kept). Stable across a host rename. Never a host name.
+   */
   memberId: string;
   /** The session's id, an opaque string. UNSTABLE until v2 session ids exist; never parse it. */
   sessionId: string;
@@ -1064,6 +1070,9 @@ export interface TrickFacts {
   v: 1;
   trigger: FactsTrigger;
   trick: { id: string; dir: string; state: string };
+  /** The bridge that runs the trick: the key a program keeps (see `FactsSession.memberId`). */
+  memberId: string;
+  /** The machine's name, for display only. It changes when the machine is renamed; never key on it. */
   host: string;
   sessions: FactsSession[];
   spaces: FactsSpace[];
@@ -1117,6 +1126,10 @@ export interface TrickTapReply {
 
 /** The (host, trick, part) a stored part is keyed on, from slice 1, so the crew merge needs no rename. */
 export interface TrickPartKey {
+  /**
+   * The bridge's member id (`FactsSession.memberId`): its crew member id, or its install id on a solo
+   * install. Named `host` since slice 1; it is never the machine's host name.
+   */
   host: string;
   trick: string;
   part: string;
@@ -1141,6 +1154,7 @@ export const TRICK_STATES = ["ok", "failing", "stopped", "off", "skipped"] as co
 export type TrickState = (typeof TRICK_STATES)[number];
 /** One trick as the phone lists it: belt order, Settings → Tricks, the doctor row's summary. */
 export interface WireTrickInfo {
+  /** The bridge's member id, as in `TrickPartKey.host`. Never the machine's host name. */
   host: string;
   id: string;
   name: string;
@@ -1332,7 +1346,7 @@ function utf8Bytes(text: string): number {
 /** The prefix every trick session id, trick tab id and Tricks Space id starts with. Reserved: no real pane takes it. */
 export const TRICK_SESSION_PREFIX = "trick:";
 /**
- * A real session's scope key, `host:paneId`. The pane id follows the mux id rule and may hold colons
+ * A real session's scope key, `memberId:paneId`. The pane id follows the mux id rule and may hold colons
  * itself (`w6X:3`). A name (`composer`) has no host and is not one. A trick session's id
  * (`trick:bluefin:legs`) is not one either: it has no reply box and no terminal.
  */
@@ -2423,14 +2437,14 @@ function checkHref(push: (code: RefusalCode, name: string, reason: string) => vo
       if (!url) push("target", name, `"href" must be an https:// or http:// address of at most ${URL_MAX} characters (with "rel" "url").`);
       return;
     case "pane":
-      if (!session) push("target", name, '"href" must be a session\'s "id" from the facts (host:paneId), never a name (with "rel" "pane").');
+      if (!session) push("target", name, '"href" must be a session\'s "id" from the facts (memberId:paneId), never a name (with "rel" "pane").');
       return;
     case "file":
       push("target", name, '"rel": "file" is not in this Collie: a trick opens a page or a session, never a file. Use an https:// or http:// address.');
       return;
     case "row":
     case "link":
-      if (!url && !session) push("target", name, '"href" must be an https:// or http:// address, or a session\'s "id" from the facts (host:paneId). Nothing else opens.');
+      if (!url && !session) push("target", name, '"href" must be an https:// or http:// address, or a session\'s "id" from the facts (memberId:paneId). Nothing else opens.');
       return;
     default:
       // A bad `rel` is refused on its own; the href is not read against it.
@@ -3033,7 +3047,7 @@ function readSessionKey(f: Fields, key: string): string | undefined {
   if (value === undefined) return undefined;
   if (isScopeKey(value)) return value;
   const what = isTrickSessionId(value) ? `"${value}" is a trick session. It has no reply box and no Chat` : `"${value}" is not a session's scope key`;
-  f.push("target", key, `${what}. Use the "id" from the facts (host:paneId, such as bluefin:w6X:3), never a name.`);
+  f.push("target", key, `${what}. Use the "id" from the facts (memberId:paneId, such as bluefin:w6X:3), never a name.`);
   return undefined;
 }
 
@@ -3203,7 +3217,7 @@ export function parseManifest(doc: JsonValue | undefined, opts: ParseManifestOpt
 // ── The facts ────────────────────────────────────────────────────────────────────────────────
 
 /** Every key of the facts document, of a session in it, of a space, of the trick, and of each trigger. */
-export const FACTS_KEYS = ["v", "trigger", "trick", "host", "sessions", "spaces", "session"] as const;
+export const FACTS_KEYS = ["v", "trigger", "trick", "memberId", "host", "sessions", "spaces", "session"] as const;
 export const SESSION_FACT_KEYS = ["id", "memberId", "sessionId", "paneId", "host", "name", "agent", "status", "cwd", "space", "tab", "lastActiveAt"] as const;
 export const SPACE_FACT_KEYS = ["name", "folder"] as const;
 export const TRICK_FACT_KEYS = ["id", "dir", "state"] as const;
@@ -3239,6 +3253,8 @@ export function parseFacts(raw: JsonValue | undefined): ParsedFacts {
   if (trickId !== undefined && !isTrickId(trickId)) trickFields?.push("id", "id", '"id" is not a trick id.');
   const dir = trickFields?.text("dir", { max: FACT_TEXT_MAX_BYTES, required: true });
   const state = trickFields?.text("state", { max: FACT_TEXT_MAX_BYTES, required: true });
+  const memberId = f.text("memberId", { max: 64, required: true });
+  if (memberId !== undefined && !isHostName(memberId)) f.push("id", "memberId", '"memberId" is not a member id.');
   const host = f.text("host", { max: 64, required: true });
   if (host !== undefined && !isHostName(host)) f.push("id", "host", '"host" is not a host name.');
 
@@ -3261,10 +3277,10 @@ export function parseFacts(raw: JsonValue | undefined): ParsedFacts {
   });
   const session = f.has("session") ? readFactsSession(obj.session, "/session", refusals) : undefined;
 
-  if (refusals.length > 0 || trigger === undefined || trickId === undefined || dir === undefined || state === undefined || host === undefined) {
+  if (refusals.length > 0 || trigger === undefined || trickId === undefined || dir === undefined || state === undefined || memberId === undefined || host === undefined) {
     return { refusals: capRefusals(refusals) };
   }
-  const facts: TrickFacts = { v: 1, trigger, trick: { id: trickId, dir, state }, host, sessions, spaces };
+  const facts: TrickFacts = { v: 1, trigger, trick: { id: trickId, dir, state }, memberId, host, sessions, spaces };
   if (session !== undefined) facts.session = session;
   return { facts, refusals };
 }
@@ -3308,9 +3324,9 @@ function readFactsSession(value: JsonValue | undefined, path: string, sink: Refu
   const before = sink.length;
   s.keys(SESSION_FACT_KEYS);
   const id = s.text("id", { max: 256, required: true });
-  if (id !== undefined && !isScopeKey(id)) s.push("target", "id", '"id" must be the scope key host:paneId.');
+  if (id !== undefined && !isScopeKey(id)) s.push("target", "id", '"id" must be the scope key memberId:paneId.');
   const memberId = s.text("memberId", { max: 64, required: true });
-  if (memberId !== undefined && !isHostName(memberId)) s.push("id", "memberId", '"memberId" is not a crew member id.');
+  if (memberId !== undefined && !isHostName(memberId)) s.push("id", "memberId", '"memberId" is not a member id.');
   const sessionId = s.text("sessionId", { max: SESSION_ID_MAX, required: true });
   const paneId = s.text("paneId", { max: MUX_ID_MAX_BYTES, required: true });
   const host = s.text("host", { max: 256, required: true });
@@ -3393,6 +3409,6 @@ function readFromSession(f: Fields): string | undefined {
   const value = f.text("session", { max: 256, required: true });
   if (value === undefined) return undefined;
   if (isPaneTarget(value)) return value;
-  f.push("target", "session", `"${value}" is not a session's scope key. Use the "id" from the facts (host:paneId, such as bluefin:w6X:3), never a name.`);
+  f.push("target", "session", `"${value}" is not a session's scope key. Use the "id" from the facts (memberId:paneId, such as bluefin:w6X:3), never a name.`);
   return undefined;
 }

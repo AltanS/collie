@@ -8,7 +8,7 @@ import type { AgentView, WorkspaceView } from "../types.ts";
 import { parseFacts } from "../../web/src/lib/tricks/schema.ts";
 import { CODE_FILES_MAX, diskTrickFs, trickCodeHash, type TrickFs } from "./code-hash.ts";
 import { createTrickScanner, MANIFEST_BYTES_MAX, readManifestText, TRICKS_MAX } from "./discover.ts";
-import { buildFacts, factsWorldOf, tricksHostName } from "./facts.ts";
+import { buildFacts, factsWorldOf } from "./facts.ts";
 import { switchesPath } from "./paths.ts";
 import { TRICKS_ROUTE_RIGHTS, tricksSwitchRoute, tricksTapRoute, parseSince } from "./routes.ts";
 import type { TricksSurface } from "./service.ts";
@@ -308,7 +308,7 @@ function space(label: string, folder?: string): WorkspaceView {
 describe("the facts", () => {
   test("sessions by scope key, spaces with folders, and the document the schema reads back", () => {
     const world = factsWorldOf({
-      host: "bluefin-hc",
+      memberId: "bluefin-hc",
       machine: "bluefin",
       runtimes: [
         {
@@ -341,20 +341,28 @@ describe("the facts", () => {
       { id: "bluefin-hc:w6X:4", memberId: "bluefin-hc", sessionId: "bluefin-hc:w6X:4", paneId: "w6X:4", host: "bluefin", status: "idle", name: "shell", cwd: "/work/collie", space: "home", lastActiveAt: "2026-11-08T09:41:00.000Z" },
     ]);
     expect(world.spaces).toEqual([{ name: "collie", folder: "/work/collie-workspace" }, { name: "home" }, { name: "YouTube", folder: "/work/yt" }]);
-    expect(world.host).toBe("bluefin-hc");
+    expect(world.memberId).toBe("bluefin-hc");
     const facts = buildFacts(world, { id: "legs", dir: "/c/tricks/legs", state: "/s/tricks/legs" }, { kind: "timer" });
     expect(JSON.stringify(facts)).not.toContain("/secret/path.jsonl");
     const back = parseFacts(JSON.parse(JSON.stringify(facts)));
     expect(back.refusals).toEqual([]);
     expect(back.facts).toEqual(facts);
+    // The member id is the key a program keeps; `host` is the machine's name, for display only.
+    expect(facts.memberId).toBe("bluefin-hc");
     expect(facts.host).toBe("bluefin");
   });
 
-  test("the host is the member id, else the short host name, else local", () => {
-    expect(tricksHostName("bluefin-hc", "bluefin.lan")).toBe("bluefin-hc");
-    expect(tricksHostName(null, "bluefin.tail1234.ts.net")).toBe("bluefin");
-    expect(tricksHostName(null, "")).toBe("local");
-    expect(tricksHostName(null, "trick")).toBe("local");
+  test("a solo install keys its sessions on its install id, never on the host name", () => {
+    const world = factsWorldOf({
+      memberId: "m_k3x9q2w7ab",
+      machine: "bluefin.lan",
+      runtimes: [{ name: "default", agents: [pane({})], shellPanes: [], workspaces: [] }],
+    });
+    expect(world.sessions[0]).toMatchObject({ id: "m_k3x9q2w7ab:w6X:3", memberId: "m_k3x9q2w7ab", sessionId: "m_k3x9q2w7ab:w6X:3", host: "bluefin.lan" });
+    const facts = buildFacts(world, { id: "legs", dir: "/c/tricks/legs", state: "/s/tricks/legs" }, { kind: "timer" });
+    expect(facts).toMatchObject({ memberId: "m_k3x9q2w7ab", host: "bluefin.lan" });
+    expect(JSON.stringify(facts)).not.toContain('"bluefin.lan:');
+    expect(parseFacts(JSON.parse(JSON.stringify(facts))).refusals).toEqual([]);
   });
 });
 

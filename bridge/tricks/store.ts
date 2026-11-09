@@ -8,7 +8,12 @@ import {
   type WireTrickPart,
 } from "../../web/src/lib/tricks/schema.ts";
 
-// THE PARTS, KEYED BY (host, trick, part), EACH WITH A REV (M94 slice 01, design §4 rule 5).
+// THE PARTS, KEYED BY (memberId, trick, part), EACH WITH A REV (M94 slice 01, design §4 rule 5).
+//
+// The member id is this bridge's stable id (bridge/bridge-id.ts), resolved once at boot: the crew
+// member id, or the install id on a solo install. Never the host name, so a host rename or a crew join
+// orphans no part. It rides the wire in the part's `host` field (schema.ts `TrickPartKey`), a name kept
+// from slice 1 so the phone's part keys need no change; the value is the member id.
 //
 // One counter per bridge. Every change takes the next number: a part's value, its `asOf`, its stale
 // flag or problem, a part going away, and any change to a trick's entry in the list (its switch, state,
@@ -75,23 +80,23 @@ export class TricksStore {
   }
 
   /** The keys of one trick's stored parts. */
-  private keysOf(host: string, trick: string): string[] {
-    return [...this.parts.values()].filter((p) => p.host === host && p.trick === trick).map((p) => partKey(p));
+  private keysOf(memberId: string, trick: string): string[] {
+    return [...this.parts.values()].filter((p) => p.host === memberId && p.trick === trick).map((p) => partKey(p));
   }
 
   /**
    * Store the result of a document that parsed (`documentRefused` false). Accepted parts replace their
    * old value, refused parts keep theirs stale, and a part the document no longer has goes away.
    */
-  applyDocument(host: string, trick: string, parsed: ParsedTrickDocument, stamp: DocumentStamp): void {
+  applyDocument(memberId: string, trick: string, parsed: ParsedTrickDocument, stamp: DocumentStamp): void {
     const keep = new Set<string>();
     for (const accepted of parsed.parts) {
       const part = accepted.part.id;
-      keep.add(partKey({ host, trick, part }));
-      this.put({ host, trick, part, value: accepted.part, asOf: stamp.asOf, fresh: stamp.fresh });
+      keep.add(partKey({ host: memberId, trick, part }));
+      this.put({ host: memberId, trick, part, value: accepted.part, asOf: stamp.asOf, fresh: stamp.fresh });
     }
     for (const part of parsed.refusedParts) {
-      const key = partKey({ host, trick, part });
+      const key = partKey({ host: memberId, trick, part });
       const old = this.parts.get(key);
       if (old === undefined) continue;
       keep.add(key);
@@ -99,7 +104,7 @@ export class TricksStore {
       const { rev: _rev, ...rest } = old;
       this.put({ ...rest, stale: true, problem: problemLine(why) });
     }
-    for (const key of this.keysOf(host, trick)) {
+    for (const key of this.keysOf(memberId, trick)) {
       if (keep.has(key)) continue;
       this.parts.delete(key);
       this.next();
@@ -107,8 +112,8 @@ export class TricksStore {
   }
 
   /** A run failed or its document was refused whole: every part of the trick stays, stale. */
-  markStale(host: string, trick: string, problem: string): void {
-    for (const key of this.keysOf(host, trick)) {
+  markStale(memberId: string, trick: string, problem: string): void {
+    for (const key of this.keysOf(memberId, trick)) {
       const old = this.parts.get(key);
       if (old === undefined) continue;
       const { rev: _rev, ...rest } = old;
@@ -117,8 +122,8 @@ export class TricksStore {
   }
 
   /** Drop every part of a trick (switched off, folder gone). */
-  dropParts(host: string, trick: string): void {
-    const keys = this.keysOf(host, trick);
+  dropParts(memberId: string, trick: string): void {
+    const keys = this.keysOf(memberId, trick);
     for (const key of keys) this.parts.delete(key);
     if (keys.length > 0) this.next();
   }
@@ -131,8 +136,8 @@ export class TricksStore {
   }
 
   /** Forget a trick whose folder is gone, with its parts. */
-  removeTrick(host: string, id: string): void {
-    this.dropParts(host, id);
+  removeTrick(memberId: string, id: string): void {
+    this.dropParts(memberId, id);
     if (this.infos.delete(id)) this.next();
   }
 
@@ -142,8 +147,8 @@ export class TricksStore {
   }
 
   /** One trick's parts with a rev above `since`, and every key it has now. */
-  trickParts(host: string, trick: string, since: number): TrickPartsSince {
-    const mine = [...this.parts.values()].filter((p) => p.host === host && p.trick === trick);
+  trickParts(memberId: string, trick: string, since: number): TrickPartsSince {
+    const mine = [...this.parts.values()].filter((p) => p.host === memberId && p.trick === trick);
     return { parts: mine.filter((p) => p.rev > since), present: mine.map((p) => partKey(p)) };
   }
 

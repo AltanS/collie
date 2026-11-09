@@ -9,6 +9,7 @@
       "dir": "/var/home/altan/.config/collie/tricks/legs",
       "state": "/var/home/altan/.local/state/collie/tricks/legs"
     },
+    "memberId": "bluefin",
     "host": "bluefin",
     "sessions": [
       {
@@ -59,6 +60,7 @@
       "dir": "/var/home/altan/.config/collie/tricks/legs",
       "state": "/var/home/altan/.local/state/collie/tricks/legs"
     },
+    "memberId": "bluefin",
     "host": "bluefin",
     "sessions": [],
     "spaces": []
@@ -79,6 +81,7 @@
       "dir": "/var/home/altan/.config/collie/tricks/legs",
       "state": "/var/home/altan/.local/state/collie/tricks/legs"
     },
+    "memberId": "bluefin",
     "host": "bluefin",
     "sessions": [],
     "spaces": []
@@ -93,6 +96,7 @@
       "dir": "/var/home/altan/.config/collie/tricks/tracker",
       "state": "/var/home/altan/.local/state/collie/tricks/tracker"
     },
+    "memberId": "bluefin",
     "host": "bluefin",
     "sessions": [],
     "spaces": [
@@ -111,6 +115,7 @@
       "dir": "/var/home/altan/.config/collie/tricks/touched",
       "state": "/var/home/altan/.local/state/collie/tricks/touched"
     },
+    "memberId": "bluefin",
     "host": "bluefin",
     "sessions": [
       {

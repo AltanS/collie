@@ -188,7 +188,7 @@ describe("the service", () => {
       const service = new TricksService({
         configDir,
         stateDir,
-        host: () => HOST,
+        memberId: HOST,
         world: () => ({ machine: "bluefin.lan", sessions: [], spaces: [] }),
         env: { PATH: "/usr/bin:/bin" },
         now: () => clock.t,

@@ -66,8 +66,8 @@ export function findTrickSession(id: string, sessions: readonly AgentView[]): Ag
 }
 
 /**
- * The real pane a scope key (`host:paneId`, design §3.1) names. `tricksHost` is the host the bridge's
- * own tricks run on (the tapped part's), which is the name its panes go by in a key: on a solo snapshot
+ * The real pane a scope key (`memberId:paneId`, design §3.1) names. `tricksHost` is the member id the
+ * bridge's own tricks run on (the tapped part's `host`), which is the name its panes go by in a key: on a solo snapshot
  * they carry no host at all, and on a crew the lead's panes carry the lead's id. A trick session never
  * matches: it has no reply box (schema.ts `isScopeKey` refuses its id too).
  */

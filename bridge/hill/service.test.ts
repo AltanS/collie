@@ -46,7 +46,7 @@ interface Sent {
 
 /** A trick's sender for one decision key. */
 function trickSender(trickKey = "ship", trickId = "nightly-leg"): HillTrickSender {
-  return { kind: "trick", trickId, trickKey, label: "Nightly leg", host: TRICKS_HOST };
+  return { kind: "trick", trickId, trickKey, label: "Nightly leg", memberId: TRICKS_HOST };
 }
 
 interface Tapped {
@@ -113,7 +113,7 @@ function rig(receipts: HillReceiptSurface = memoryHillReceipts()): Rig {
     crewMode: () => state.mode,
     walkyOn: () => state.walky,
     sessionsKnown: () => state.known,
-    memberId: null,
+    memberId: "m_aaaaaaaaaa",
     machine: "desk",
     tricksHost: () => TRICKS_HOST,
     now: () => state.clock,
@@ -365,10 +365,18 @@ describe("posting a decision", () => {
     expect(refusal(r.hill.post(POSTER, input(4, { supersedes: mine.id })))).toBe("bad_supersedes");
   });
 
+  test("a solo bridge stamps its install id on an agent's decision too; host stays the display name", () => {
+    const r = rig();
+    const sender = r.hill.agentSender({ harness: "agent-x", label: "repo#one" }, "local/%1#aaaa");
+    expect(sender).toMatchObject({ memberId: "m_aaaaaaaaaa", host: "desk" });
+    const decision = posted(r.hill.post(sender, input(1)));
+    expect(decision.from).toMatchObject({ kind: "agent", memberId: "m_aaaaaaaaaa", host: "desk", trickHost: null });
+  });
+
   test("a trick posts through postDecision with no address; with no replyTo it has no target", () => {
     const r = rig();
     const decision = posted(r.hill.postDecision(trickSender(), input(1)));
-    expect(decision.from).toEqual({ kind: "trick", address: null, trickId: "nightly-leg", trickKey: "ship", memberId: null, harness: null, label: "Nightly leg", host: "desk", trickHost: TRICKS_HOST });
+    expect(decision.from).toEqual({ kind: "trick", address: null, trickId: "nightly-leg", trickKey: "ship", memberId: TRICKS_HOST, harness: null, label: "Nightly leg", host: "desk", trickHost: TRICKS_HOST });
     expect(decision.target).toBeNull();
   });
 
