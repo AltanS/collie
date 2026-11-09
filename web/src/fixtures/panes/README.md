@@ -2518,6 +2518,47 @@ chip, a review body with no `Review` heading, and a checkbox on the free-text ro
 | `oc--v211-question--two--review.txt` | The `Submit` tab with both answered: `Colour: Red` and `Size: Small` on consecutive rows, no `Review` heading | not read |
 | `oc--v211-question--multi--free-text.txt` | The free-text input OPEN: the row reads `5. [✓] <typed>`, the list's footer gives way to `⇆ tab  enter done  esc close`. Stays raw; the card with Escape covers it | not read |
 
+## opencode 2.2.6 box corpus (captured 2026-11-09, opencode 2.2.6 and 1.19.5, private tmux server, #749)
+
+Captures of the input box on **opencode 2.2.6** (the release tarball, checked against its
+`SHA256SUMS`) and, for comparison, **1.19.5** (npm), both in a lab prefix under `~/.cache/collie-lab/`
+with their own `HOME`, `OPENCODE_DISABLE_AUTOUPDATE=1`, an `OPENCODE_CONFIG` that asks for `bash` and
+`edit`, and a fresh `git init` in `/tmp/collie-oc-749`. Run in a private tmux server
+(`tmux -L <name>`, 120 by 40 and 50 by 40, `COLORTERM=truecolor`) and read with
+`tmux capture-pane -p -e`, CRLF added, as the 2.1 corpus above. `oc--v226-herdr--slash-models.txt` is
+a `herdr pane read --source recent --lines 40 --format ansi` of a pane in a private Herdr session
+(`herdr --session <name> server`, its own config), the read the bridge makes: its rows run past the box
+in the app's own fill. Pastes were bracketed (`tmux paste-buffer -p`); no text was submitted. The one
+model turn (`Reply with only ok`, on the free model the fresh install picks, no cost) made the session
+the `session-idle` and `slash-compact` captures show: `/compact` is listed only once a session exists.
+Every file was checked for user and host names, home paths and keys.
+
+The command list stands in the box's own edge run, right over the bare top edge row, each entry closed
+by a `┃` of its own, in the same shape on 1.18.32 (`oc--slash-palette.txt`), 1.19.5 and 2.2.6. The
+highlighted entry has no glyph: it stands on the accent fill, every other entry on the box's fill. A
+whole paste folds to `[Pasted ~N lines]`, N the lines, on both versions.
+
+| Fixture | State / what's in it | Herdr status |
+| --- | --- | --- |
+| `oc--v226-fresh-idle.txt` | Home screen: the recent-session row, the logo, the empty box with its `Ask anything… "…"` placeholder, the model row, the rule, then the cwd row with `shift+tab agents  ctrl+p commands`, and `2.2.6` alone at the foot | not read |
+| `oc--v226-narrow--fresh-idle.txt` | The same at 50 columns: the placeholder is cut at the box's edge, the cwd row shortens to `/…/collie-…` | not read |
+| `oc--v226-session-idle.txt` | After one turn: the transcript, then an empty box whose prompt row is bare (no placeholder in a session), the model row, the rule, the cwd and token row | not read |
+| `oc--v226-slash-palette.txt` | `/` typed: ten list rows over the top edge, the fill on `/agents` | not read |
+| `oc--v226-narrow--slash-palette.txt` | The same at 50 columns, descriptions cut before the closing `┃` | not read |
+| `oc--v226-slash-comp.txt` | `/comp` typed on the home screen: one row, `/review`, with the fill. No session, so no `/compact`; Enter would run `/review` | not read |
+| `oc--v226-narrow--slash-comp.txt` | The same at 50 columns | not read |
+| `oc--v226-slash-compact.txt` | `/compact` typed in the session: `/compact` with the fill, `/review` under it | not read |
+| `oc--v226-narrow--slash-compact.txt` | The same at 50 columns | not read |
+| `oc--v226-herdr--slash-models.txt` | Herdr read, home screen, `/models` typed: one row, `/models`, with the fill | not read |
+| `oc--v226-paste-200.txt` | A 200-character line pasted: `[Pasted ~1 lines]` | not read |
+| `oc--v226-narrow--paste-200.txt` | The same at 50 columns | not read |
+| `oc--v226-paste-600.txt` | 600 characters over four lines pasted: `[Pasted ~4 lines]` | not read |
+| `oc--v226-narrow--paste-600.txt` | The same at 50 columns | not read |
+| `oc--v226-command-palette.txt` | The ctrl+p palette: `Commands … esc` over `Search`, a `Suggested` group, cutting through the box | not read |
+| `oc--v226-models-picker.txt` | The `/models` picker (Enter on its own list row opened it): `Select model … esc` over `Search`, the free models | not read |
+| `oc--v1195-slash-comp.txt` | 1.19.5, `/comp` typed: the same one-row list on `/review`, the description column two cells narrower | not read |
+| `oc--v1195-paste-600.txt` | 1.19.5, the same four-line paste: `[Pasted ~4 lines]` | not read |
+
 
 ## Claude Code box table with a VS16 emoji (captured 2026-10-13, Claude Code 2.1.296, herdr 0.9.0, sandbox pane)
 

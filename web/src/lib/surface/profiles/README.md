@@ -37,6 +37,18 @@ need a rule to be read right.
 - The parser keeps the default in `keys.submit` and `keys.queueKey`, and the rest in `submitByPlatform` and `queueKeyByPlatform`.
 - The bridge resolves them with `forPlatform` from `process.platform`. `profileForPlatform` does both steps.
 
+## Command list
+
+- `idle.volatile.below.commandList.pointerFill` says the highlighted entry has no glyph and stands on a fill of its own. The box's fill is what the top edge row paints in the column where the command starts.
+- A read without colour finds no pointer there, so a command is not entered over that list.
+- `commandList.inEdgeRun` says the list stands in the box's own edge run, right over the top edge. The interior walk ends at the list's lowest entry.
+- A list in that run that is not the typed command's own reads as holding Enter, like a dialog over the box.
+
+## Paste
+
+- `paste.block` says the harness takes one bracketed paste of a whole text and folds a long one into `collapse.pattern`.
+- `paste.foldLines` says what the fold's `lines` group counts: `breaks` (the default, Claude Code) or `lines` (opencode). It needs `paste.block`.
+
 ## Identity
 
 - `identity.agentNames` lists other names a multiplexer reports for the harness.

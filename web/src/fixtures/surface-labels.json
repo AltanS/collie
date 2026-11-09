@@ -4065,6 +4065,96 @@
    "version": "unversioned",
    "state": "running"
   },
+  "oc--v226-fresh-idle.txt": {
+   "harness": "opencode",
+   "version": "2.2.6",
+   "state": "idle"
+  },
+  "oc--v226-narrow--fresh-idle.txt": {
+   "harness": "opencode",
+   "version": "2.2.6",
+   "state": "idle"
+  },
+  "oc--v226-session-idle.txt": {
+   "harness": "opencode",
+   "version": "2.2.6",
+   "state": "idle"
+  },
+  "oc--v226-slash-palette.txt": {
+   "harness": "opencode",
+   "version": "2.2.6",
+   "state": "dialog"
+  },
+  "oc--v226-narrow--slash-palette.txt": {
+   "harness": "opencode",
+   "version": "2.2.6",
+   "state": "dialog"
+  },
+  "oc--v226-slash-comp.txt": {
+   "harness": "opencode",
+   "version": "2.2.6",
+   "state": "dialog"
+  },
+  "oc--v226-narrow--slash-comp.txt": {
+   "harness": "opencode",
+   "version": "2.2.6",
+   "state": "dialog"
+  },
+  "oc--v226-slash-compact.txt": {
+   "harness": "opencode",
+   "version": "2.2.6",
+   "state": "popup"
+  },
+  "oc--v226-narrow--slash-compact.txt": {
+   "harness": "opencode",
+   "version": "2.2.6",
+   "state": "popup"
+  },
+  "oc--v226-herdr--slash-models.txt": {
+   "harness": "opencode",
+   "version": "2.2.6",
+   "state": "popup"
+  },
+  "oc--v226-paste-200.txt": {
+   "harness": "opencode",
+   "version": "2.2.6",
+   "state": "draft"
+  },
+  "oc--v226-narrow--paste-200.txt": {
+   "harness": "opencode",
+   "version": "2.2.6",
+   "state": "draft"
+  },
+  "oc--v226-paste-600.txt": {
+   "harness": "opencode",
+   "version": "2.2.6",
+   "state": "draft"
+  },
+  "oc--v226-narrow--paste-600.txt": {
+   "harness": "opencode",
+   "version": "2.2.6",
+   "state": "draft"
+  },
+  "oc--v226-command-palette.txt": {
+   "harness": "opencode",
+   "version": "2.2.6",
+   "state": "dialog"
+  },
+  "oc--v226-models-picker.txt": {
+   "harness": "opencode",
+   "version": "2.2.6",
+   "state": "dialog"
+  },
+  "oc--v1195-slash-comp.txt": {
+   "harness": "opencode",
+   "version": "1.19.5",
+   "state": "dialog"
+  },
+  "oc--v1195-paste-600.txt": {
+   "harness": "opencode",
+   "version": "1.19.5",
+   "state": "draft"
+  },
   "omp--answer-editor-empty.txt": {
    "harness": "omp",
    "version": "unversioned",

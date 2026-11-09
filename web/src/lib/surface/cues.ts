@@ -41,7 +41,7 @@
 // Pure: the same rows always give the same answer.
 
 import { displayWidth } from "../text-width";
-import { commandListNear, openedByText, pointsAt, type CommandListRead } from "./command-list";
+import { commandListNear, edgeRunListRow, openedByText, pointsAt, type CommandListRead } from "./command-list";
 import { popupUnder, type PopupRead } from "./popup";
 import { promptDraft, rowText, type Frame, type FrameRow, type IdleProfile } from "./frame";
 import { isSingleKeyRow } from "./key-row";
@@ -452,6 +452,17 @@ export function ownCommandList(texts: readonly string[], frame: Frame | null, id
   const rows = idle.volatile.below.commandList;
   const list = commandListAt(texts, frame, rows, styled);
   return list !== null && (pointsAt(list, frame.interior.text, rows) || openedByText(list, frame.interior.text, rows)) ? list : null;
+}
+
+/**
+ * Whether a command list drawn in the box's own edge run (`commandList.inEdgeRun`) stands right over the
+ * top edge and is not the box's own typeahead ({@link ownCommandList}): its pointer rests on another
+ * command, or was not read. Enter picks the list's entry there, so the list holds the keys the way a
+ * dialog over the box does. False on a profile whose list is not drawn in that run.
+ */
+export function edgeListHolds(texts: readonly string[], frame: Frame, idle: IdleProfile, styled?: readonly FrameRow[]): boolean {
+  if (frame.top === 0 || !edgeRunListRow(texts[frame.top - 1] ?? "", idle.volatile.below.commandList)) return false;
+  return ownCommandList(texts, frame, idle, styled) === null;
 }
 
 /** The rows with the rows `first` to `last` read as blank. */

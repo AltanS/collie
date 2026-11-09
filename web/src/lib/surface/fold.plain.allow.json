@@ -440,6 +440,27 @@
     "propose": "Upstream: the cursor position of the terminal, or a reverse or bg flag per cell run. Text only: none found, the chips show no pointer glyph in the captures.",
     "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
   },
+  "oc--v226-herdr--slash-models.txt": {
+    "why": "opencode's command list marks the pointed command with a fill of its own and no glyph (pointerFill). A plain read finds no pointer, so the typed command's own list reads as a list that holds Enter: composer unknown, modal unreadable.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/surface/command-list.ts paintsFill (profile opencode.json idle.volatile.below.commandList.pointerFill); web/src/lib/surface/cues.ts edgeListHolds",
+    "propose": "Upstream: a background per cell run. Text only: none, the list has no pointer glyph.",
+    "effect": "FAIL-CLOSED: a typed command is not pressed and stays in the box (typed_not_submitted)"
+  },
+  "oc--v226-narrow--slash-compact.txt": {
+    "why": "opencode's command list marks the pointed command with a fill of its own and no glyph (pointerFill). A plain read finds no pointer, so the typed command's own list reads as a list that holds Enter: composer unknown, modal unreadable.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/surface/command-list.ts paintsFill (profile opencode.json idle.volatile.below.commandList.pointerFill); web/src/lib/surface/cues.ts edgeListHolds",
+    "propose": "Upstream: a background per cell run. Text only: none, the list has no pointer glyph.",
+    "effect": "FAIL-CLOSED: a typed command is not pressed and stays in the box (typed_not_submitted)"
+  },
+  "oc--v226-slash-compact.txt": {
+    "why": "opencode's command list marks the pointed command with a fill of its own and no glyph (pointerFill). A plain read finds no pointer, so the typed command's own list reads as a list that holds Enter: composer unknown, modal unreadable.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/surface/command-list.ts paintsFill (profile opencode.json idle.volatile.below.commandList.pointerFill); web/src/lib/surface/cues.ts edgeListHolds",
+    "propose": "Upstream: a background per cell run. Text only: none, the list has no pointer glyph.",
+    "effect": "FAIL-CLOSED: a typed command is not pressed and stays in the box (typed_not_submitted)"
+  },
   "omp--v18-10-ask-batch-moved.txt": {
     "why": "omp marks the current tab of its ask stepper by a background on a bold label. A plain read has no current tab, so the ask reader returns null and the ask is lost. The modal reads unreadable.",
     "class": "colour-needed",

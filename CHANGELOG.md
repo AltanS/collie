@@ -49,6 +49,8 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 - **A pi pane with the pi-zentui editor takes sends again.** pi-zentui draws its input box with a rail on every row and the model name on the last row. Collie read the rails and the model row as a draft, so it refused every send to an empty box and held every WalkyTalky message. Collie now reads that box in its own shape: the text after the rail is the draft, and an empty box takes the send. Thanks @HickeyHsu (#747).
 
+- **Slash commands and long messages reach opencode 2.x again.** A command such as `/models` was typed but not sent, because opencode draws its command list over the top edge of the box. Collie now reads that list and presses Enter only when the list points at the command you typed. A message of more than about 150 characters was typed but not sent either: opencode shows it as `[Pasted ~N lines]`, where N counts the lines, not the line breaks. Collie now checks that count. Thanks @sigmanor (#749).
+
 ## [1.28.0] - 2026-11-09
 
 ### Added
