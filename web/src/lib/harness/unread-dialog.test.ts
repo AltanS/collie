@@ -321,6 +321,10 @@ const CARD_FIXTURES = {
       // opencode 2.1.1's open free-text input: the list's footer becomes `enter done  esc close`, so
       // no grammar lifts it and the card still has to stand over it (2026-10-27).
       "oc--v211-question--multi--free-text.txt",
+      // opencode 2.2.6's ctrl+p palette and `/models` picker: still pickers with `esc` on the title
+      // row, so the card stands over them as over 1.18's (#749, 2026-11-09).
+      "oc--v226-command-palette.txt",
+      "oc--v226-models-picker.txt",
     ],
     notModals: [],
   },

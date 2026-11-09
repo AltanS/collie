@@ -3768,6 +3768,34 @@ describe("pure helpers", () => {
     expect(boxMatches("[Image #1]see", "", [`see ${shot}`], collapse, null)).toBe(false);
   });
 
+  test("a fold that counts lines (paste.foldLines, opencode #749): one line is ~1, thirty are ~30, and the line-break count no longer passes", () => {
+    const opencode = profileFor("opencode", "2.2.6", { log: () => undefined });
+    const collapse = new RegExp(opencode!.profile.collapse.pattern, "uy");
+    const thirty = Array.from({ length: 30 }, (_, i) => `line ${String(i + 1)}`);
+    const one = ["word ".repeat(300).trim()];
+    const wholeThirty = wholePaste(opencode, thirty);
+    const wholeOne = wholePaste(opencode, one);
+    expect(wholeThirty).toMatchObject({ images: 0, foldsLines: true });
+    expect(wholeOne).toMatchObject({ images: 0, foldsLines: true });
+    expect(boxMatches("[Pasted ~30 lines]", "", thirty, collapse, wholeThirty)).toBe(true);
+    expect(boxMatches("[Pasted ~1 lines]", "", one, collapse, wholeOne)).toBe(true);
+    // Claude Code's count, and every other count, is another paste.
+    for (const box of ["[Pasted ~29 lines]", "[Pasted ~31 lines]", "[Pasted ~30 lines] x", "[Pasted ~30 lines][Pasted ~30 lines]", "line 1"]) {
+      expect(boxMatches(box, "", thirty, collapse, wholeThirty)).toBe(false);
+    }
+    expect(boxMatches("[Pasted ~0 lines]", "", one, collapse, wholeOne)).toBe(false);
+    // A paste opencode inserts literally is compared as typed.
+    expect(boxMatches("line 1 line 2", "", ["line 1", "line 2"], collapse, wholePaste(opencode, ["line 1", "line 2"]))).toBe(true);
+    expect(boxMatches("line 1 line 3", "", ["line 1", "line 2"], collapse, wholePaste(opencode, ["line 1", "line 2"]))).toBe(false);
+    // Claude Code keeps the line breaks: +29 for thirty lines.
+    const claude = profileFor("claude", "2.1.304", { log: () => undefined });
+    const claudeCollapse = new RegExp(claude!.profile.collapse.pattern, "uy");
+    const claudeThirty = wholePaste(claude, thirty);
+    expect(claudeThirty?.foldsLines).toBeUndefined();
+    expect(boxMatches("[Pasted text #1 +29 lines]", "", thirty, claudeCollapse, claudeThirty)).toBe(true);
+    expect(boxMatches("[Pasted text #1 +30 lines]", "", thirty, claudeCollapse, claudeThirty)).toBe(false);
+  });
+
   test("wholePaste: only a profile that measured it, only a long or multi-line text without a reserved lead, upload images taken off", () => {
     const match = profileFor("claude", "2.1.304", { log: () => undefined });
     expect(match?.profile.paste?.block).toBe(true);

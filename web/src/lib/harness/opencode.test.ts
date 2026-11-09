@@ -107,7 +107,8 @@ const QUESTION_GONE = ["oc--question--answered.txt", "oc--question--dismissed.tx
 const ownFixtures = allOcFixtures.filter((f) => f.includes("permission") || LIFTED_QUESTIONS.includes(f));
 
 /** The pickers in the corpus: every capture of one with its `Search` placeholder showing. */
-const PICKERS = ["oc--agents-picker.txt", "oc--command-palette.txt"];
+// opencode 2.2.6 draws its pickers in the same frame (#749 lab, 2026-11-09).
+const PICKERS = ["oc--agents-picker.txt", "oc--command-palette.txt", "oc--v226-command-palette.txt", "oc--v226-models-picker.txt"];
 
 describeAdapterConformance(opencodeAdapter, {
   ownFixtures,
@@ -774,8 +775,10 @@ describe("overlayHoldsKeyboard", () => {
   // overlay's filter, never the input box. Only a run of closed rows matches: a looser shape would
   // also match the composer's own interior rows and a pasted table's echo, and refuse live sends.
   it("sees the slash-palette overlay box, and nothing else in any corpus", () => {
-    expect(overlayHoldsKeyboard(loadLines("oc--slash-palette.txt"))).toBe(true);
-    const rest = readdirSync(PANES_DIR).filter((f) => f.endsWith(".txt") && f !== "oc--slash-palette.txt");
+    // The full list for a bare `/`, on 1.18.32 and on 2.2.6 at two widths (#749 lab).
+    const palettes = ["oc--slash-palette.txt", "oc--v226-slash-palette.txt", "oc--v226-narrow--slash-palette.txt"];
+    for (const name of palettes) expect(overlayHoldsKeyboard(loadLines(name)), name).toBe(true);
+    const rest = readdirSync(PANES_DIR).filter((f) => f.endsWith(".txt") && !palettes.includes(f));
     expect(rest.length).toBeGreaterThan(50);
     for (const name of rest) expect(overlayHoldsKeyboard(loadLines(name)), name).toBe(false);
   });

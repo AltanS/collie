@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Fixed
+
+- **Slash commands and long messages reach opencode 2.x again.** A command such as `/models` was typed but not sent, because opencode draws its command list over the top edge of the box. Collie now reads that list and presses Enter only when the list points at the command you typed. A message of more than about 150 characters was typed but not sent either: opencode shows it as `[Pasted ~N lines]`, where N counts the lines, not the line breaks. Collie now checks that count. Thanks @sigmanor (#749).
+
 ## [1.28.0] - 2026-11-09
 
 ### Added
