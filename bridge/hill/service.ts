@@ -108,10 +108,10 @@ export interface HillTrickSender {
   /** The trick's name, as its manifest gives it. Display only. */
   readonly label: string;
   /**
-   * The tricks host name the trick runs under (bridge/tricks/facts.ts `tricksHostName`); the tap goes
-   * there. It is stored as the decision's `from.trickHost`; `from.host` is the machine's display name.
+   * The member id of the bridge the trick runs on (bridge/bridge-id.ts); the tap goes there. It is
+   * stored as the decision's `from.trickHost`; `from.host` is the machine's display name.
    */
-  readonly host: string;
+  readonly memberId: string;
   /**
    * The trick's own folder, its real path, from the runner: the one root inside the config folder this
    * trick's images may come from (media.ts, "A TRICK'S OWN FOLDER"). Absent: the images take the agent's rules.
@@ -155,16 +155,15 @@ export interface HillServiceDeps {
   crewMode(): HillCrewMode;
   /** False with COLLIE_WALKY=off: no answer could be typed, so no decision is taken. */
   walkyOn(): boolean;
-  /** This bridge's crew member id, null on a solo install. */
-  readonly memberId: string | null;
+  /**
+   * This bridge's stable id (bridge/bridge-id.ts): the crew member id, or the install id on a solo
+   * install. Every decision's `from.memberId`. Not the walky member (`local` on a solo install).
+   */
+  readonly memberId: string;
+  /** Write `memberId` to the state folder before the first Decision stores it (bridge-id.ts `keep`). Absent in a test. */
+  readonly keepId?: () => void;
   /** This machine's name, as walky's `who` prints it. */
   readonly machine: string;
-  /**
-   * This bridge's tricks host name (bridge/tricks/facts.ts `tricksHostName`). Only for a trick's decision
-   * stored before `from.trickHost` existed: its `from.host` holds the routing value, and the list serves
-   * `machine` there instead when the two match. Absent: such a decision is served as stored.
-   */
-  readonly tricksHost?: () => string;
   readonly now?: () => number;
   readonly mintId?: () => string;
   readonly audit?: (entry: AuditEntry) => void;
@@ -421,10 +420,8 @@ function receiptOf(rid: string, at: number, code: HillReceipt["code"], reason: s
 
 /** The trick a decision came from, when it came from one: where its tap goes. */
 function trickOf(decision: HillDecision): { readonly host: string; readonly trickId: string; readonly trickKey: string } | null {
-  const { kind, trickId, trickKey } = decision.from;
-  // A decision stored before `trickHost` existed holds the routing value in `host`.
-  const host = decision.from.trickHost ?? decision.from.host;
-  return kind === "trick" && host !== null && trickId !== null && trickKey !== null ? { host, trickId, trickKey } : null;
+  const { kind, trickId, trickKey, trickHost } = decision.from;
+  return kind === "trick" && trickHost !== null && trickId !== null && trickKey !== null ? { host: trickHost, trickId, trickKey } : null;
 }
 
 /** What the claim step of an answer hands the send step, or the receipt that ends it. */
@@ -498,27 +495,13 @@ export class HillService {
   }
 
   /** An open decision with the names its sessions have now, while they are live. A closed one, as stored. */
-  private named(stored: HillDecision): HillDecision {
-    if (stored.state !== "open") return stored;
-    const decision = this.displayed(stored);
-    if (this.deps.sessionName === undefined) return decision;
+  private named(decision: HillDecision): HillDecision {
+    if (decision.state !== "open" || this.deps.sessionName === undefined) return decision;
     const fromLabel = decision.from.kind === "agent" ? this.nameOf(decision.from.address, decision.from.label) : decision.from.label;
     const to = decision.replyTo ?? decision.from.address;
     const target = decision.target === null ? null : { ...decision.target, label: this.nameOf(to, decision.target.label) };
     if (fromLabel === decision.from.label && target?.label === decision.target?.label) return decision;
     return { ...decision, from: { ...decision.from, label: fromLabel }, target };
-  }
-
-  /**
-   * An open trick's decision stored before `from.trickHost` existed holds the tricks host name (the
-   * routing value) in `from.host`; served with the machine's display name instead when that routing
-   * host is this bridge's own. The stored file is not rewritten: the next post of the key carries both.
-   */
-  private displayed(decision: HillDecision): HillDecision {
-    const { from } = decision;
-    if (from.kind !== "trick" || from.trickHost !== null || from.host === null) return decision;
-    if (this.deps.tricksHost === undefined || from.host !== this.deps.tricksHost()) return decision;
-    return { ...decision, from: { ...from, host: this.deps.machine } };
   }
 
   /** The sender a pane of this bridge stands for, at its walky address (`WalkyService.addressOf`). */
@@ -585,6 +568,8 @@ export class HillService {
     let id = this.mint();
     for (let tries = 0; this.deps.store.taken(id) && tries < 8; tries += 1) id = this.mint();
     if (this.deps.store.taken(id)) return refuse(null, "could not mint a decision id; try again");
+    // The Decision stores this bridge's id: it is written down before the first one does.
+    this.deps.keepId?.();
     const media = this.keepImages(id, images.images);
     if (media === null) return refuse(null, "the images could not be saved on this machine; nothing was posted");
     const decision: HillDecision = {
@@ -594,7 +579,7 @@ export class HillService {
       from:
         from.kind === "agent"
           ? { kind: "agent", address: from.address, trickId: null, trickKey: null, memberId: from.memberId, harness: from.harness, label: this.nameOf(from.address, from.label), host: from.host, trickHost: null }
-          : { kind: "trick", address: null, trickId: from.trickId, trickKey: from.trickKey, memberId: this.deps.memberId, harness: null, label: headerField(from.label, WALKY_LABEL_MAX), host: this.deps.machine, trickHost: from.host },
+          : { kind: "trick", address: null, trickId: from.trickId, trickKey: from.trickKey, memberId: from.memberId, harness: null, label: headerField(from.label, WALKY_LABEL_MAX), host: this.deps.machine, trickHost: from.memberId },
       about: about?.address ?? null,
       priority,
       priorityAsked: asked,

@@ -1783,6 +1783,8 @@ export function startServer(opts: {
     sessionName: string | undefined,
     device: DeviceAuth | null,
     widen = false,
+    // The body a LEAD reads of this member (`/crew/v1/snapshot`): no tricks at all. See below.
+    forCrew = false,
   ): SnapshotResponse | undefined => {
     const rt = registry.get(sessionName);
     if (!rt) return undefined;
@@ -1931,6 +1933,12 @@ export function startServer(opts: {
     if (device !== null) body.device = device;
     // Only while the mux is down for a cause the phone words (a refused token), like `device`.
     if (muxFault !== undefined) body.muxFault = muxFault;
+    // CREW HONESTY (M94 review row 12): tricks are not merged across the crew yet. The lead's phone could
+    // not tap a member's trick (its routes are this bridge's own, and a foreign host is 404), so a member
+    // tells its lead nothing about its tricks: no `tricksRev`, no Tricks Space, no trick tab, no trick
+    // pane. Dropped HERE, on the member, so no lead of any version can merge, push or count one. The lead's
+    // own body and a solo body are unchanged.
+    if (forCrew) return body;
     // Only when a tricks folder exists (M94): an install with no tricks sends the bytes it always sent.
     const tricksRev = opts.tricks?.rev();
     if (tricksRev !== undefined) body.tricksRev = tricksRev;
@@ -2635,7 +2643,7 @@ export function startServer(opts: {
     // not move, and a lead that does not send it still gets the primary session. A crew request may
     // still not name a host — widening is a second dimension of ONE machine, and a peer has no
     // peers (§4).
-    snapshot: (view) => localSnapshot(view.session, null, view.widen),
+    snapshot: (view) => localSnapshot(view.session, null, view.widen, true),
     // M22/03: this collie's own capability declaration, for `hello`. The SAME expression the
     // `/api/config` route below publishes to a browser — the primary session's adapter — so a peer
     // cannot report capabilities that differ from the ones it serves its own operator.

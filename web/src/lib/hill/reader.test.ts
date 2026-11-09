@@ -28,12 +28,21 @@ describe("readHillDecision", () => {
     expect(read?.options.map((o) => o.intent)).toEqual(["yes", "no"]);
   });
 
-  it("reads a trick's routing host, and reads a decision from a bridge before it as null", () => {
-    const from = { ...asJsonObject(wire({}).from), kind: "trick", host: "bluefin", trickHost: "bluefin-hc" };
-    expect(readHillDecision(wire({ from }))?.from).toMatchObject({ host: "bluefin", trickHost: "bluefin-hc" });
-    const { trickHost: _gone, ...old } = from;
-    expect(readHillDecision(wire({ from: old }))?.from).toMatchObject({ host: "bluefin", trickHost: null });
+  it("reads a trick's routing member id beside the host it shows", () => {
+    const from = { ...asJsonObject(wire({}).from), kind: "trick", host: "bluefin", memberId: "bluefin-hc", trickHost: "bluefin-hc" };
+    expect(readHillDecision(wire({ from }))?.from).toMatchObject({ host: "bluefin", memberId: "bluefin-hc", trickHost: "bluefin-hc" });
     expect(readHillDecision(wire({ from: { ...from, trickHost: 5 } }))).toBeNull();
+  });
+
+  it("drops an answer or a receipt without its trick delivery, which every bridge sends", () => {
+    const answered = asJsonObject(JSON.parse(JSON.stringify(hillDecision({ state: "answered", answer: { rid: "r", intent: "yes", label: "Yes", text: null, by: "phone", at: 1, delivery: "typed", trick: "none" } }))));
+    expect(answered === undefined ? null : readHillDecision(answered)?.answer).toMatchObject({ trick: "none" });
+    const answer = asJsonObject(answered?.answer);
+    const { trick: _drop, ...bare } = answer ?? {};
+    expect(answered === undefined ? undefined : readHillDecision({ ...answered, answer: bare })).toBeNull();
+    const receipt = asJsonObject(JSON.parse(JSON.stringify(hillReceipt())));
+    const { trick: _gone, ...old } = receipt ?? {};
+    expect(readHillReceipt(old)).toBeNull();
   });
 
   it("drops a decision with an unknown state, priority or text mode", () => {

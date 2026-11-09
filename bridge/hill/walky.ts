@@ -5,6 +5,7 @@
 
 import { maskTerminalTitle } from "../answer-mask.ts";
 import { paneName, type NameableP } from "../pane-name.ts";
+import { realAgentPanes } from "../tricks/panes.ts";
 import { isSelf, LOCAL_MEMBER, parseAddress } from "../walky/address.ts";
 import type { WalkyService } from "../walky/service.ts";
 import { mintWalkyId, type WalkyReceipt } from "../walky/types.ts";
@@ -89,7 +90,8 @@ export function hillSessionName(opts: {
     const placed = opts.place(raw);
     const at = placed === null ? null : parseAddress(placed.address);
     if (at === null || at.kind !== "pane" || !isSelf(at.memberId, opts.memberId)) return null;
-    const views = opts.views().filter((view) => view.paneId === at.paneId);
+    // A trick session is never a session a Decision names (its id is reserved, `trick:`); read past it anyway.
+    const views = realAgentPanes(opts.views()).filter((view) => view.paneId === at.paneId);
     if (views.length !== 1) return null;
     const view = views[0]!;
     const name = paneName(opts.redact ? maskTerminalTitle(view) : view).trim();

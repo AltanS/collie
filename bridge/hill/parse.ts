@@ -224,12 +224,13 @@ function readFrom(value: JsonValue | undefined): HillDecision["from"] | null {
   const harness = stringOrNull(row, "harness");
   const label = asJsonString(row.label);
   const host = stringOrNull(row, "host");
-  // Absent on a decision stored before tricks posted (M94): an agent's, so null.
-  const trickKey = row.trickKey === undefined ? null : stringOrNull(row, "trickKey");
+  const trickKey = stringOrNull(row, "trickKey");
+  const trickHost = stringOrNull(row, "trickHost");
   if ((kind !== "agent" && kind !== "trick") || address === undefined || trickId === undefined || memberId === undefined) return null;
-  // Absent on a decision stored before the display name and the routing host were told apart: null.
-  const trickHost = row.trickHost === undefined ? null : stringOrNull(row, "trickHost");
   if (harness === undefined || label === undefined || host === undefined || trickKey === undefined || trickHost === undefined) return null;
+  // A trick's decision names its trick, its key and the bridge its tap goes to. One without them (the dev
+  // lane stored some before `trickHost` existed) does not read: the store keeps it raw (store.ts).
+  if (kind === "trick" && (trickId === null || trickKey === null || trickHost === null)) return null;
   return { kind, address, trickId, trickKey, memberId, harness, label, host, trickHost };
 }
 
@@ -257,8 +258,7 @@ function readAnswer(value: JsonValue | undefined): HillDecision["answer"] | unde
   const at = asJsonNumber(row.at);
   const deliveryText = asJsonString(row.delivery);
   const delivery = DELIVERIES.find((candidate) => candidate === deliveryText);
-  // Absent on an answer stored before tricks posted (M94): an agent's, so "none".
-  const trickText = row.trick === undefined ? "none" : asJsonString(row.trick);
+  const trickText = asJsonString(row.trick);
   const trick = HILL_TRICK_DELIVERIES.find((candidate) => candidate === trickText);
   if (rid === undefined || intent === undefined || label === undefined || text === undefined || by === undefined) return undefined;
   if (at === undefined || !Number.isSafeInteger(at) || delivery === undefined || trick === undefined) return undefined;

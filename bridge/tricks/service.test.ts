@@ -86,10 +86,10 @@ async function rig(outcomes: Scripted[] | null, extra: Partial<TricksServiceDeps
   const deps: TricksServiceDeps = {
     configDir,
     stateDir,
-    host: () => HOST,
-    world: (host) => ({
+    memberId: HOST,
+    world: (memberId) => ({
       machine: "desk",
-      sessions: [{ id: `${host}:w6X:3`, memberId: host, sessionId: `${host}:w6X:3`, paneId: "w6X:3", host: "desk", name: "composer", agent: "claude", status: "working" }],
+      sessions: [{ id: `${memberId}:w6X:3`, memberId, sessionId: `${memberId}:w6X:3`, paneId: "w6X:3", host: "desk", name: "composer", agent: "claude", status: "working" }],
       spaces: [{ name: "collie", folder: "/work/collie" }],
     }),
     env: { PATH: process.env.PATH ?? "/usr/bin:/bin", COLLIE_TOKEN: "tok", OPENROUTER_API_KEY: "sk-or-v1-0123456789abcdef0123456789" },
@@ -594,6 +594,26 @@ describe("taps", () => {
     await switchOn(r.stateDir, "legs");
     await r.service.refresh(true);
     expect(ok200(await r.service.tap(HOST, "legs", tapBody())).code).toBe("ok");
+  });
+
+  test("a tap under the id the bridge served before a crew join still lands; parts stay under the id it serves now", async () => {
+    let kept = 0;
+    const r = await rig([exited(belt("1"))], { previousId: "m_aaaaaaaaaa", keepId: () => (kept += 1) });
+    // A scan alone keys nothing on the id: it is written down only before a program sees it.
+    await makeTrick(r.configDir, "other", MANIFEST.replace('id = "legs"', 'id = "other"'));
+    await r.service.refresh(true);
+    expect(kept).toBe(0);
+    await makeTrick(r.configDir, "legs", MANIFEST);
+    await switchOn(r.stateDir, "legs");
+    await r.service.refresh(true);
+    const reply = ok200(await r.service.tap("m_aaaaaaaaaa", "legs", tapBody()));
+    expect(reply.code).toBe("ok");
+    expect(reply.parts?.map((part) => part.host)).toEqual([HOST]);
+    expect((await r.service.reply(undefined)).tricks.map((trick) => trick.host)).toEqual([HOST, HOST]);
+    // The facts the program got carry the id the bridge serves now, never the old one.
+    expect(JSON.parse(r.specs[0]?.stdin ?? "{}")).toMatchObject({ memberId: HOST, host: "desk" });
+    expect(await r.service.tap("m_bbbbbbbbbb", "legs", tapBody(REQ2))).toEqual({ status: 404, body: { error: "unknown-host" } });
+    expect(kept).toBeGreaterThan(0);
   });
 
   test("a draft is refused as removed, from any run; the parts still draw", async () => {

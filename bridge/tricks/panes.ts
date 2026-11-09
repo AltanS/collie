@@ -18,6 +18,22 @@ import {
   type WireTrickPart,
 } from "../../web/src/lib/tricks/schema.ts";
 
+/** Whether a pane is a trick's own session (`kind: "trick"`), never a real agent or shell. */
+export function isTrickPane(pane: { readonly kind?: string }): boolean {
+  return pane.kind === "trick";
+}
+
+/**
+ * The real agent and shell panes of a list: every pane but a trick session. THE ONE FILTER (M94 review
+ * row 30): a trick session rides inside a snapshot's `agents` as a pane of `kind: "trick"`, so every
+ * consumer that must never meet one (push, a crew member's notifier, the hill's session names) reads
+ * its panes through this, never through a `kind` test of its own. A list with no trick pane comes back
+ * as the same array. The phone's twin is web/src/lib/tricks/places.ts `realAgentPanes`.
+ */
+export function realAgentPanes<T extends { readonly kind?: string }>(panes: readonly T[]): readonly T[] {
+  return panes.some(isTrickPane) ? panes.filter((pane) => !isTrickPane(pane)) : panes;
+}
+
 // THE TRICK SESSIONS AS PANES (M94 slice 03): an in-process pane source with no terminal behind it.
 //
 // Each `session` part of a trick that is on becomes one pane on the snapshot, of `kind: "trick"`, in ONE

@@ -331,7 +331,7 @@ describe("the hill operations (M96)", () => {
       send: async () => "typed",
       crewMode: () => mode,
       walkyOn: () => true,
-      memberId: null,
+      memberId: "m_aaaaaaaaaa",
       machine: "desk",
       now: () => 1000,
       mintId: () => "dc_aaaaaaaaaaa1",

@@ -18,6 +18,17 @@ export function isTrickPane(pane: Pick<AgentView, "kind">): boolean {
   return pane.kind === "trick";
 }
 
+/**
+ * The real agent and shell panes of a list: every pane but a trick session. THE ONE FILTER (M94 review
+ * row 30): every consumer that must never meet a trick session (triage and its counts, the root loader's
+ * split) reads its panes through this, never through a `kind` test of its own. A list with no trick pane
+ * comes back as the same array, so nothing re-renders for it. The bridge's twin is
+ * bridge/tricks/panes.ts `realAgentPanes`.
+ */
+export function realAgentPanes<T extends Pick<AgentView, "kind">>(panes: readonly T[]): readonly T[] {
+  return panes.some(isTrickPane) ? panes.filter((pane) => !isTrickPane(pane)) : panes;
+}
+
 /** Whether a Space or a tab id is a Tricks Space's or a trick's tab (schema.ts `trickSpaceId`, `trickSessionId`). */
 export function isTrickPlaceId(id: string): boolean {
   return id.startsWith(TRICK_SESSION_PREFIX);
@@ -47,8 +58,8 @@ export function splitTrickSessions(lists: {
   if (!any) return { ...lists, trickSessions: [] };
   const trickSessions = [...lists.agents, ...lists.shellPanes].filter(isTrickPane);
   return {
-    agents: lists.agents.filter((pane) => !isTrickPane(pane)),
-    shellPanes: lists.shellPanes.filter((pane) => !isTrickPane(pane)),
+    agents: [...realAgentPanes(lists.agents)],
+    shellPanes: [...realAgentPanes(lists.shellPanes)],
     workspaces: lists.workspaces.filter((space) => !isTrickPlaceId(space.workspaceId)),
     tabs: lists.tabs.filter((tab) => !isTrickPlaceId(tab.tabId)),
     trickSessions,
@@ -66,8 +77,8 @@ export function findTrickSession(id: string, sessions: readonly AgentView[]): Ag
 }
 
 /**
- * The real pane a scope key (`host:paneId`, design §3.1) names. `tricksHost` is the host the bridge's
- * own tricks run on (the tapped part's), which is the name its panes go by in a key: on a solo snapshot
+ * The real pane a scope key (`memberId:paneId`, design §3.1) names. `tricksHost` is the member id the
+ * bridge's own tricks run on (the tapped part's `host`), which is the name its panes go by in a key: on a solo snapshot
  * they carry no host at all, and on a crew the lead's panes carry the lead's id. A trick session never
  * matches: it has no reply box (schema.ts `isScopeKey` refuses its id too).
  */

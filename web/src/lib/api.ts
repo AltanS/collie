@@ -1768,6 +1768,7 @@ export async function postHillAnswer(body: HillAnswerRequest): Promise<HillRecei
     reason: code === "rejected" ? refusalReason(detail) : null,
     state: null,
     delivery: null,
+    trick: null,
     at: Date.now(),
   });
   const got = await req<JsonValue>("/api/hill/answer", { method: "POST", body: JSON.stringify(body) }, (status, detail) => {

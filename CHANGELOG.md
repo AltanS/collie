@@ -59,6 +59,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 - **`collie trick check` reads every file of a trick.** It greps every source file in the folder, not only the program on the `run` line, and warns about starting a process, reaching the network, writing outside the trick's state folder, and a timer that calls an agent program or a model API. The warnings come from a grep and say so. The folder `collie trick init` writes now says that a trick runs with your full rights, and that a document with no `decisions` key leaves its decisions as they are. (M94)
 
+- **A trick's facts name the bridge by a stable id, never by the host name.** The facts now carry `memberId` at the top: the crew member id, or on a solo install an install id, `m_` and ten letters and digits, that the bridge makes once and keeps in its state folder. Each session's `id` is `<memberId>:<paneId>`, and its own `memberId` says the same, so a program reads that field instead of parsing the id. `host` stays for display only. A host rename no longer changes session ids, part keys or trick sessions, and after the bridge joins a crew, a tap or a saved session id under its old id still reaches it. (M94)
+
+- **A crew member keeps its tricks to itself for now.** Until tricks are merged across a crew, a member's trick sessions, its Tricks Space and its tricks revision no longer reach the lead's phone, where a tap on them could not reach the member. The lead's own tricks and a solo install's show as before. (M94)
+
 ## [1.28.0] - 2026-11-09
 
 ### Added

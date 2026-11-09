@@ -448,7 +448,7 @@ describe("caps at the boundary", () => {
     for (const href of refusedHrefs) expect(parse(row({ attrs: { href } })), href).toEqual(["/parts/0/view/0/kids/0/attrs/href"]);
     const reason = parseTrickDocument(inView({ kind: "list", kids: [{ kind: "row", text: "x", attrs: { href: "javascript:alert(1)" } }] })).refusals[0]?.reason ?? "";
     expect(reason).toContain("https://");
-    expect(reason).toContain("host:paneId");
+    expect(reason).toContain("memberId:paneId");
   });
 
   it("a link: its href fits its rel, url by default", () => {
@@ -1118,6 +1118,17 @@ describe("parseFacts", () => {
       delete without[key];
       expect(parseFacts({ ...FACTS.timer, sessions: [without] }).refusals.map((r) => r.path), key).toEqual([`/sessions/0/${key}`]);
     }
+  });
+
+  it("names the bridge by its member id at the top, beside the host to show; both are required", () => {
+    expect(parseFacts(FACTS.timer).facts).toMatchObject({ memberId: "bluefin", host: "bluefin" });
+    expect(parseFacts({ ...FACTS.timer, memberId: "m_k3x9q2w7ab" }).facts?.memberId).toBe("m_k3x9q2w7ab");
+    for (const key of ["memberId", "host"]) {
+      const without: JsonObject = { ...FACTS.timer };
+      delete without[key];
+      expect(parseFacts(without).refusals.map((r) => r.path), key).toEqual([`/${key}`]);
+    }
+    expect(parseFacts({ ...FACTS.timer, memberId: "trick" }).refusals.map((r) => r.path)).toEqual(["/memberId"]);
   });
 
   it("carries a decision's answer as a tap on hill/<key>, with the person's words", () => {

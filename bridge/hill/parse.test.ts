@@ -98,14 +98,30 @@ describe("a stored decision", () => {
     expect(readDecision(onDisk(whole))).toEqual(whole);
   });
 
-  test("a trick's decision with `from.trickHost` reads back; one stored without it reads trickHost null", () => {
+  test("a trick's decision reads back only with its trick, its key and its routing member id", () => {
     const base = decision("dc_aaaaaaaaaaa1");
-    const trick = { ...base, from: { ...base.from, kind: "trick" as const, address: null, trickId: "legs", trickKey: "k", label: "Legs", host: "bluefin", trickHost: "bluefin-hc" } };
+    const trick = { ...base, from: { ...base.from, kind: "trick" as const, address: null, trickId: "legs", trickKey: "k", memberId: "bluefin-hc", label: "Legs", host: "bluefin", trickHost: "bluefin-hc" } };
     expect(readDecision(onDisk(trick))).toEqual(trick);
     const row = { ...parseJsonObject(JSON.stringify(trick)) };
-    const { trickHost: _gone, ...oldFrom } = { ...parseJsonObject(JSON.stringify(trick.from)) };
-    expect(readDecision({ ...row, from: oldFrom })?.from).toMatchObject({ host: "bluefin", trickHost: null });
-    expect(readDecision({ ...row, from: { ...oldFrom, trickHost: 5 } })).toBeNull();
+    const from = { ...parseJsonObject(JSON.stringify(trick.from)) };
+    // Absent fields are not read as null any more: those formats never shipped.
+    for (const key of ["trickHost", "trickKey"]) {
+      const { [key]: _gone, ...without } = from;
+      expect(readDecision({ ...row, from: without }), key).toBeNull();
+    }
+    // The dev lane stored trick decisions with `trickHost: null` and the routing value in `host`.
+    expect(readDecision({ ...row, from: { ...from, trickHost: null, host: "bluefin-hc" } })).toBeNull();
+    expect(readDecision({ ...row, from: { ...from, trickKey: null } })).toBeNull();
+    expect(readDecision({ ...row, from: { ...from, trickHost: 5 } })).toBeNull();
+    // An agent's decision has neither.
+    expect(readDecision(onDisk(base))?.from).toMatchObject({ kind: "agent", trickKey: null, trickHost: null });
+  });
+
+  test("an answer without its trick delivery does not read: every answer since M94 stores one", () => {
+    const answered = decision("dc_aaaaaaaaaaa1", { state: "answered", closedAt: 5, answer: { rid: RID, intent: "yes", label: "Yes", text: null, by: "Pixel", at: 5, delivery: "typed", trick: "none" } });
+    const row = { ...parseJsonObject(JSON.stringify(answered)) };
+    const { trick: _gone, ...bare } = { ...parseJsonObject(JSON.stringify(answered.answer)) };
+    expect(readDecision({ ...row, answer: bare })).toBeNull();
   });
 
   test("an answer's device id reads back when present and stays absent when not; a bad one fails the record", () => {
@@ -161,8 +177,12 @@ describe("the receipt file", () => {
     expect(hillAnswerDigest("hill/dc_aaaaaaaaaaa1", "yes", null)).toBe(hillAnswerDigest("hill/dc_aaaaaaaaaaa1", "yes", ""));
     expect(hillAnswerDigest("hill/dc_aaaaaaaaaaa1", "yes", "a")).not.toBe(hillAnswerDigest("hill/dc_aaaaaaaaaaa1", "yes", "b"));
     expect(hillAnswerDigest("hill/dc_aaaaaaaaaaa1", "yes", null)).not.toBe(hillAnswerDigest("hill/dc_aaaaaaaaaaa1", "no", null));
-    const receipt = { rid: RID, code: "ok", reason: null, state: "answered", delivery: "typed", at: 5 };
+    const receipt = { rid: RID, code: "ok", reason: null, state: "answered", delivery: "typed", trick: "none", at: 5 };
     expect(coerceHillReceipt({ requestId: RID, payloadDigest: "d", receipt })).not.toBeNull();
+    // Every receipt since M94 stores its trick delivery; one without it does not read (never shipped).
+    const { trick: _gone, ...bare } = receipt;
+    expect(coerceHillReceipt({ requestId: RID, payloadDigest: "d", receipt: bare })).toBeNull();
+    expect(coerceHillReceipt({ requestId: RID, payloadDigest: "d", receipt: { ...receipt, trick: null, delivery: null } })).not.toBeNull();
     expect(coerceHillReceipt({ requestId: RID, payloadDigest: "d", receipt: { ...receipt, rid: "00000000-0000-4000-8000-000000000000" } })).toBeNull();
     expect(coerceHillReceipt({ requestId: RID, payloadDigest: "d", receipt: { ...receipt, code: "fine" } })).toBeNull();
   });

@@ -27,6 +27,23 @@ the bridge, the CLI and the web all load it by relative path, with no DOM and no
 
 None of them throws. Each refusal has a JSON pointer `path`, a `code` and a plain `reason`.
 
+## The facts
+
+The bridge writes `{ v, trigger, trick, memberId, host, sessions, spaces }` on stdin (and `session`
+for a `view:<match>` run).
+
+- `memberId` names the bridge that runs the trick: its crew member id, or on a solo install its
+  install id, `m_` and ten of `[a-z0-9]`, minted once into `<stateDir>/bridge-id.json`. It stays the
+  same when the machine is renamed. Key anything a program keeps on it.
+- `host` is the machine's name, for display only. It changes with a rename. Never key on it.
+- Each session has `id`, its scope key `<memberId>:<paneId>` (pass it back in `about`, `replyTo`,
+  `href`), its own `memberId` (read it instead of parsing `id`), `sessionId` (opaque), `paneId`,
+  and `host` (display only), then `name`, `agent`, `status`, `cwd`, `space`, `tab`, `lastActiveAt`.
+
+The parts a trick prints are keyed by (member id, trick, part) on the bridge. The wire names the
+member id `host` in a part, a list entry, a tap path and a trick session id, a name kept from
+slice 1. Its value is the member id, never the host name.
+
 ## The document
 
 ```json
@@ -96,7 +113,7 @@ every status tone as `unknown`.
 - **The error line.** `part-frame.tsx` draws the last good part, says the run failed, and its button
   copies the masked line on the phone for an agent. It never fills a reply box.
 
-`href` accepts only an `http://` or `https://` URL or a session's scope key (`host:paneId`).
+`href` accepts only an `http://` or `https://` URL or a session's scope key (`memberId:paneId`).
 Anything else, `javascript:alert(1)` included, is refused at the bridge.
 
 ## The intent shape
@@ -120,7 +137,7 @@ the hill's: a lower-case word of up to 32 characters of `[a-z0-9-]`, starting wi
 pre-selected. `confirm` is the second label of the tree's button, so the phone arms the option on the
 first tap and sends the intent on the second, and the bridge sees one intent. `text` is `optional`
 (the default), `required` or `none`; `none` needs at least one option. `about` is a session's scope
-key (the facts' `id`, `host:paneId`) whose Chat the card opens. `replyTo` is a session's scope key:
+key (the facts' `id`, `memberId:paneId`) whose Chat the card opens. `replyTo` is a session's scope key:
 the person's answer reaches it as the person's own walky message. `media` is up to 4 images, each `{
 file, caption? }`: `file` names an image in the trick's own folder by a relative path with no `..`
 (`shots/red.png`), and `caption` is up to 80 characters.
@@ -224,7 +241,7 @@ when empty. A mark is always the same control. One with nothing to do is the sam
 
 `places.ts` takes the panes of `kind: "trick"` out of the snapshot's lists into
 `HomeData.trickSessions`, so no count, triage or push path meets one. The root loader calls
-`syncTricks(snap.tricksRev)`. A trick session id is `trick:<host>:<trick>:<part>`, with a colon
+`syncTricks(snap.tricksRev)`. A trick session id is `trick:<memberId>:<trick>:<part>`, with a colon
 because a pane id is one path segment. `hooks/use-trick-handlers.ts` is where a link goes.
 
 ## Fixtures

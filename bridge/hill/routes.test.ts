@@ -77,7 +77,7 @@ function rig(over: Partial<HillServiceDeps> = {}): Rig {
     }),
     crewMode: () => "solo",
     walkyOn: () => true,
-    memberId: null,
+    memberId: "m_aaaaaaaaaa",
     machine: "desk",
     now: () => 1000,
     mintId: () => {

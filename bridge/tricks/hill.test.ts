@@ -33,7 +33,7 @@ afterAll(() => {
 });
 
 const HOST = "bluefin";
-const LEGS = { id: "legs", name: "Browser leg", host: HOST } as const;
+const LEGS = { id: "legs", name: "Browser leg", memberId: HOST } as const;
 const uuid = (n: number): string => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 
 /** Two live agent sessions on this machine, as the hill's probe finds them. */
@@ -98,7 +98,7 @@ function rig(stateDir = join(tempDir(), "state"), hillAt = 1000): Rig {
     },
     crewMode: () => "solo",
     walkyOn: () => true,
-    memberId: null,
+    memberId: HOST,
     machine: "bluefin.lan",
     now: () => hillAt,
     mintId: () => `dc_trk${String((n += 1)).padStart(9, "0")}`,
@@ -110,7 +110,7 @@ function rig(stateDir = join(tempDir(), "state"), hillAt = 1000): Rig {
     },
   });
   const clock = { t: 50_000_000 };
-  const tricks = new TrickHill({ stateDir, hill, addressOf: (scopeKey) => scopeKeyAddress(scopeKey, HOST, "local", probe), now: () => clock.t });
+  const tricks = new TrickHill({ stateDir, hill, addressOf: (scopeKey) => scopeKeyAddress(scopeKey, (memberId) => memberId === HOST, "local", probe), now: () => clock.t });
   return Object.assign(state, { stateDir, configDir, trick, store, media, hill, tricks, clock, restart: () => rig(stateDir, hillAt) });
 }
 
@@ -142,7 +142,7 @@ describe("the diff by key", () => {
     const r = rig();
     expect(sync(r, [decision("case-8")])).toEqual([]);
     const [posted] = open(r);
-    expect(posted?.from).toEqual({ kind: "trick", address: null, trickId: "legs", trickKey: "case-8", memberId: null, harness: null, label: "Browser leg", host: "bluefin.lan", trickHost: HOST });
+    expect(posted?.from).toEqual({ kind: "trick", address: null, trickId: "legs", trickKey: "case-8", memberId: HOST, harness: null, label: "Browser leg", host: "bluefin.lan", trickHost: HOST });
     expect(posted?.requestId).toBe(trickRequestId("legs", "case-8", decisionContentHash(decision("case-8")), 0, 0));
     expect(posted?.target).toBeNull();
     expect(sync(r, [decision("case-8")])).toEqual([]);
@@ -303,12 +303,15 @@ describe("the sessions a decision names", () => {
     expect(open(r).map((held) => held.from.trickKey)).toEqual(["case-9"]);
   });
 
-  test("scopeKeyAddress: only this machine's sessions, through the probe", () => {
+  test("scopeKeyAddress: only this bridge's sessions, under its id or the one before a crew join, through the probe", () => {
     const probe = place(() => PLACES);
-    expect(scopeKeyAddress("bluefin:w6X:3", "bluefin", "local", probe)).toBe("local/w6X:3#aaaa");
-    expect(scopeKeyAddress("minibuch:w6X:3", "bluefin", "local", probe)).toBeNull();
-    expect(scopeKeyAddress("bluefin:", "bluefin", "local", probe)).toBeNull();
-    expect(scopeKeyAddress("bluefin:w6X:9", "bluefin", "local", probe)).toBeNull();
+    const own = (memberId: string): boolean => memberId === "bluefin" || memberId === "m_aaaaaaaaaa";
+    expect(scopeKeyAddress("bluefin:w6X:3", own, "local", probe)).toBe("local/w6X:3#aaaa");
+    // A key a program kept from before the bridge joined the crew still lands.
+    expect(scopeKeyAddress("m_aaaaaaaaaa:w6X:3", own, "local", probe)).toBe("local/w6X:3#aaaa");
+    expect(scopeKeyAddress("minibuch:w6X:3", own, "local", probe)).toBeNull();
+    expect(scopeKeyAddress("bluefin:", own, "local", probe)).toBeNull();
+    expect(scopeKeyAddress("bluefin:w6X:9", own, "local", probe)).toBeNull();
   });
 });
 
@@ -541,7 +544,7 @@ async function serviceRig(): Promise<ServiceRig> {
   const service = new TricksService({
     configDir,
     stateDir,
-    host: () => HOST,
+    memberId: HOST,
     world: () => ({ machine: "bluefin.lan", sessions: [], spaces: [] }),
     env: { PATH: process.env.PATH ?? "/usr/bin:/bin" },
     now: () => clock.t,
@@ -661,7 +664,7 @@ describe.skipIf(process.platform === "win32")("end to end with the legs trick", 
     const service = new TricksService({
       configDir,
       stateDir,
-      host: () => HOST,
+      memberId: HOST,
       world: () => ({ machine: "bluefin.lan", sessions: [], spaces: [] }),
       env: { PATH: process.env.PATH ?? "/usr/bin:/bin", LEGS_LOG_DIR: join(LEGS_DIR, "fixtures", "red"), LEGS_RUNNING: "0", LEGS_NOW: "1794130860", LEGS_TAP_LOG: tapLog, LEGS_SHOT: "red-case.png" },
       now: () => clock.t,
@@ -679,7 +682,7 @@ describe.skipIf(process.platform === "win32")("end to end with the legs trick", 
       send: async () => "typed",
       crewMode: () => "solo",
       walkyOn: () => true,
-      memberId: null,
+      memberId: HOST,
       machine: "bluefin.lan",
       now: () => clock.t,
       tap: (host, trickId, tap, decisionId) => service.tapFromHill(host, trickId, tap, decisionId),

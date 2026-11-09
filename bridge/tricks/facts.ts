@@ -1,12 +1,9 @@
-import { hostname } from "node:os";
-
 import { paneName } from "../pane-name.ts";
 import type { AgentView, WorkspaceView } from "../types.ts";
 import {
   FACT_SESSIONS_MAX,
   FACT_SPACES_MAX,
   FACT_TEXT_MAX_BYTES,
-  isHostName,
   isScopeKey,
   type FactsSession,
   type FactsSpace,
@@ -16,8 +13,10 @@ import {
 
 // THE FACTS A PROVIDER GETS ON STDIN (M94 slice 01): what the phone already sees, in the trick's words.
 //
-// Sessions are the snapshot's panes, agents and shells, each keyed by its scope key `host:paneId`
-// (never a name, so a draft or an open can name a session the bridge can find again). Spaces are the
+// Sessions are the snapshot's panes, agents and shells, each keyed by its scope key `<memberId>:paneId`
+// (never a name, so a draft or an open can name a session the bridge can find again). The member id is
+// this bridge's stable id (bridge/bridge-id.ts): the crew member id, or the install id on a solo
+// install. Never the host name: `host` is the machine's name for display only. Spaces are the
 // multiplexer's workspaces with their folders, then the folders `spaces.toml` gives its sessions.
 //
 // Not in the facts, on purpose: the instance name, any token, the pane's agent session ref (a filesystem
@@ -37,24 +36,12 @@ export interface FactsRuntime {
 
 /** Everything about the machine a provider is told, before the trigger and the trick are added. */
 export interface FactsWorld {
-  /** The tricks host name: the key of the session ids and the parts. */
-  host: string;
+  /** This bridge's stable id (bridge/bridge-id.ts): the key of the session ids and the parts. */
+  memberId: string;
   /** The machine's display name, what the facts' `host` fields say (what an agent's Decision shows too). */
   machine: string;
   sessions: FactsSession[];
   spaces: FactsSpace[];
-}
-
-/**
- * This machine's name for the facts and the part keys: the crew member id when there is one, else the
- * first label of the host name, cleaned to the host rule. `local` when nothing usable is left.
- * DECISION: the design names hosts like `bluefin`; a solo bridge has no member id, so the short host
- * name is the stable choice, and a crew member uses the id the lead already knows it by.
- */
-export function tricksHostName(memberId: string | null, raw: string = hostname()): string {
-  if (memberId !== null && isHostName(memberId)) return memberId;
-  const first = (raw.split(".")[0] ?? "").replace(/[^A-Za-z0-9._-]/g, "").slice(0, 64);
-  return first !== "" && isHostName(first) ? first : "local";
 }
 
 const encoder = new TextEncoder();
@@ -75,13 +62,13 @@ function factText(text: string | undefined): string | undefined {
 }
 
 /** One pane as a facts session, or null when its id cannot make a scope key. */
-export function factsSessionOf(host: string, machine: string, pane: AgentView, lastActiveMs: number | undefined): FactsSession | null {
-  const id = `${host}:${pane.paneId}`;
+export function factsSessionOf(memberId: string, machine: string, pane: AgentView, lastActiveMs: number | undefined): FactsSession | null {
+  const id = `${memberId}:${pane.paneId}`;
   if (!isScopeKey(id)) return null;
   // DECISION (M94 re-cut): until v2 session ids exist, the session id is the scope key and the member id
-  // is the tricks host name; both are documented as opaque, so a later id change breaks no trick.
+  // is this bridge's stable id; both are documented as opaque, so a later id change breaks no trick.
   // `host` is the machine's display name, never a key: a trick passes `id`, `memberId` and `sessionId` back.
-  const out: FactsSession = { id, memberId: host, sessionId: id, paneId: pane.paneId, host: machine, status: pane.status };
+  const out: FactsSession = { id, memberId, sessionId: id, paneId: pane.paneId, host: machine, status: pane.status };
   const name = factText(paneName(pane));
   if (name !== undefined) out.name = name;
   if (pane.kind !== "shell") {
@@ -101,8 +88,8 @@ export function factsSessionOf(host: string, machine: string, pane: AgentView, l
 }
 
 export interface FactsWorldInput {
-  /** The tricks host name (`tricksHostName`): keys the session ids. */
-  host: string;
+  /** This bridge's stable id (bridge/bridge-id.ts): keys the session ids. */
+  memberId: string;
   /** The machine's display name, the same value a decision's `from.host` carries. */
   machine: string;
   runtimes: readonly FactsRuntime[];
@@ -130,7 +117,7 @@ export function factsWorldOf(input: FactsWorldInput): FactsWorld {
   for (const rt of input.runtimes) {
     for (const pane of [...rt.agents, ...rt.shellPanes]) {
       if (sessions.length >= FACT_SESSIONS_MAX) break;
-      const s = factsSessionOf(input.host, input.machine, pane, input.activeAt?.(rt.name, pane.paneId));
+      const s = factsSessionOf(input.memberId, input.machine, pane, input.activeAt?.(rt.name, pane.paneId));
       if (s === null || seen.has(s.id)) continue;
       seen.add(s.id);
       sessions.push(s);
@@ -141,10 +128,10 @@ export function factsWorldOf(input: FactsWorldInput): FactsWorld {
     const folder = input.folderOf?.(rt.name);
     if (folder !== undefined) addSpace(input.labelOf?.(rt.name) ?? rt.name, folder);
   }
-  return { host: input.host, machine: input.machine, sessions, spaces };
+  return { memberId: input.memberId, machine: input.machine, sessions, spaces };
 }
 
-/** The whole facts document for one run. */
+/** The whole facts document for one run. `memberId` is the key a program may keep; `host` is display only. */
 export function buildFacts(world: FactsWorld, trick: { id: string; dir: string; state: string }, trigger: FactsTrigger): TrickFacts {
-  return { v: 1, trigger, trick, host: world.machine, sessions: world.sessions, spaces: world.spaces };
+  return { v: 1, trigger, trick, memberId: world.memberId, host: world.machine, sessions: world.sessions, spaces: world.spaces };
 }

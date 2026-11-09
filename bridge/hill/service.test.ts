@@ -46,7 +46,7 @@ interface Sent {
 
 /** A trick's sender for one decision key. */
 function trickSender(trickKey = "ship", trickId = "nightly-leg"): HillTrickSender {
-  return { kind: "trick", trickId, trickKey, label: "Nightly leg", host: TRICKS_HOST };
+  return { kind: "trick", trickId, trickKey, label: "Nightly leg", memberId: TRICKS_HOST };
 }
 
 interface Tapped {
@@ -77,7 +77,7 @@ interface Rig {
   known: boolean;
 }
 
-function rig(receipts: HillReceiptSurface = memoryHillReceipts()): Rig {
+function rig(receipts: HillReceiptSurface = memoryHillReceipts(), keepId?: () => void): Rig {
   let n = 0;
   const store = new HillStore(null, () => state.clock);
   const state: Omit<Rig, "hill"> = {
@@ -113,9 +113,9 @@ function rig(receipts: HillReceiptSurface = memoryHillReceipts()): Rig {
     crewMode: () => state.mode,
     walkyOn: () => state.walky,
     sessionsKnown: () => state.known,
-    memberId: null,
+    memberId: "m_aaaaaaaaaa",
+    keepId,
     machine: "desk",
-    tricksHost: () => TRICKS_HOST,
     now: () => state.clock,
     mintId: () => {
       n += 1;
@@ -365,10 +365,23 @@ describe("posting a decision", () => {
     expect(refusal(r.hill.post(POSTER, input(4, { supersedes: mine.id })))).toBe("bad_supersedes");
   });
 
+  test("a solo bridge stamps its install id on an agent's decision too; host stays the display name", () => {
+    let kept = 0;
+    const r = rig(memoryHillReceipts(), () => (kept += 1));
+    const sender = r.hill.agentSender({ harness: "agent-x", label: "repo#one" }, "local/%1#aaaa");
+    expect(sender).toMatchObject({ memberId: "m_aaaaaaaaaa", host: "desk" });
+    // A refused post keys nothing; the id is written down before the first Decision stores it.
+    r.hill.post(sender, { ...input(10), title: "" });
+    expect(kept).toBe(0);
+    const decision = posted(r.hill.post(sender, input(1)));
+    expect(kept).toBe(1);
+    expect(decision.from).toMatchObject({ kind: "agent", memberId: "m_aaaaaaaaaa", host: "desk", trickHost: null });
+  });
+
   test("a trick posts through postDecision with no address; with no replyTo it has no target", () => {
     const r = rig();
     const decision = posted(r.hill.postDecision(trickSender(), input(1)));
-    expect(decision.from).toEqual({ kind: "trick", address: null, trickId: "nightly-leg", trickKey: "ship", memberId: null, harness: null, label: "Nightly leg", host: "desk", trickHost: TRICKS_HOST });
+    expect(decision.from).toEqual({ kind: "trick", address: null, trickId: "nightly-leg", trickKey: "ship", memberId: TRICKS_HOST, harness: null, label: "Nightly leg", host: "desk", trickHost: TRICKS_HOST });
     expect(decision.target).toBeNull();
   });
 
@@ -923,47 +936,12 @@ describe("answering at the edges", () => {
 });
 
 describe("answering a trick's decision (M94)", () => {
-  /** A trick's decision as a build before `trickHost` stored it: the routing value sits in `from.host`. */
-  function storedBeforeTrickHost(r: Rig, host: string): HillDecision {
-    const fresh = posted(r.hill.postDecision(trickSender(), input(1)));
-    const old: HillDecision = { ...fresh, from: { ...fresh.from, host, trickHost: null } };
-    expect(r.store.put(old)).toBe(true);
-    return old;
-  }
-
-  test("a stored decision without trickHost: the answer's tap goes to the host `from.host` holds", async () => {
-    const r = rig();
-    const old = storedBeforeTrickHost(r, TRICKS_HOST);
-    expect(await receiptOf(r, answerOf(old, 100, "yes"))).toMatchObject({ code: "ok", trick: "ran" });
-    expect(r.taps).toEqual([{ host: TRICKS_HOST, trickId: "nightly-leg", tap: { rid: uuid(100), node: "hill/ship", intent: "yes", value: { text: null } } }]);
-  });
-
   test("a decision with trickHost routes the tap by it, whatever `from.host` shows", async () => {
     const r = rig();
     const decision = posted(r.hill.postDecision(trickSender(), input(1)));
     expect(decision.from).toMatchObject({ host: "desk", trickHost: TRICKS_HOST });
     await receiptOf(r, answerOf(decision, 100, "no"));
     expect(r.taps.map((tapped) => tapped.host)).toEqual([TRICKS_HOST]);
-  });
-
-  test("the list, status and mineList serve the display name for an open decision without trickHost on this tricks host; the file keeps its value", () => {
-    const r = rig();
-    const old = storedBeforeTrickHost(r, TRICKS_HOST);
-    expect(r.hill.list().open[0]?.from).toMatchObject({ host: "desk", trickHost: null });
-    const status = r.hill.status(trickSender(), old.id);
-    expect(status.ok && status.decision.from.host).toBe("desk");
-    expect(r.hill.mineList(trickSender())[0]?.from.host).toBe("desk");
-    expect(r.store.get(old.id)?.from).toMatchObject({ host: TRICKS_HOST, trickHost: null });
-  });
-
-  test("a decision without trickHost from another tricks host, and one that is closed, are served as stored", () => {
-    const r = rig();
-    storedBeforeTrickHost(r, "other-host");
-    expect(r.hill.list().open[0]?.from.host).toBe("other-host");
-    const again = rig();
-    const old = storedBeforeTrickHost(again, TRICKS_HOST);
-    again.hill.withdraw(trickSender(), old.id);
-    expect(again.hill.list().closed[0]?.from.host).toBe(TRICKS_HOST);
   });
 
   test("with replyTo: the receipt and the close first, then the walky message, then the tap, all on one rid", async () => {
