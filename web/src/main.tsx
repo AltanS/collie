@@ -4,10 +4,15 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
 import { App } from "./App";
+import { preloadMark } from "./components/brand-mark";
+import { glyphSetSettled, preloadGlyphSet } from "./components/icons/glyphs";
 import { onPreloadError } from "./lib/chunk-reload";
 import { designPrefs, initDesign, mathEngineOf } from "./lib/design";
+import { currentGlyphSetId, storedGlyphSetId } from "./lib/glyphs";
+import { currentMarkId } from "./lib/mark";
 import { isMathLoadError, loadMathEngine } from "./lib/math/engine";
 import { initTheme } from "./lib/theme/store";
+import { resumeTrial } from "./lib/theme/trial";
 import { initOperatorFonts } from "./lib/operator-config";
 import "./index.css";
 // Registers the service worker (precaches the app shell, enables install) and wires auto/manual
@@ -17,6 +22,14 @@ import "./lib/pwa";
 // `beforeinstallprompt`, which is long before any Settings component mounts (lib/install.ts).
 import "./lib/install";
 import { startPushTitleSync } from "./lib/push-titles";
+import { startViewportPin } from "./lib/viewport-pin";
+import { installHiddenPause } from "./lib/page-hidden";
+
+// A hidden page runs no animation (issue 748): the root carries an attribute while it is hidden, and
+// index.css pauses every animation under it. First, so a page opened in the background never starts.
+installHiddenPause();
+/** The longest the first paint waits for the worn glyph set's chunk. */
+const FIRST_PAINT_GLYPH_WAIT_MS = 150;
 
 // RECONCILES the typeface class, it does not apply it: public/theme-init.js has already put the
 // right one on <html> before first paint for every shipped face. This call is what covers the two
@@ -31,12 +44,26 @@ void loadMathEngine(mathEngineOf(designPrefs()));
 // that script leaves out (the theme-color metas, a token an imported theme sets in one half only).
 // For the default theme it removes nothing and adds nothing.
 initTheme();
+// A theme being tried in this tab (M59 spec 08) goes back on after a reload, over the device's own.
+resumeTrial();
+// The header logo, the same way: a theme that names a character other than Collie starts
+// fetching its chunk now, after the theme and the trial are settled (the resolver reads both), so the
+// header rarely draws its empty box. The Collie mark is in this bundle and loads nothing.
+void preloadMark(currentMarkId());
+// The glyph set too (ADR 0137): a theme that names one starts its chunk now, and the first paint waits
+// for it below. The stored theme's set as well, when a trial wears another, so Back finds it ready.
+const firstGlyphs = glyphSetSettled(currentGlyphSetId(), FIRST_PAINT_GLYPH_WAIT_MS);
+void preloadGlyphSet(storedGlyphSetId());
 // After it, and separately: this one injects the operator face design.ts mirrored into storage, so a
 // device set to one paints in it from the first frame instead of swapping when /api/config lands.
 initOperatorFonts();
 // Leaves this device's push titles, in its own language, where the service worker can read them —
 // a worker woken by a push cannot see the language setting itself (lib/push-titles.ts, ADR 0074).
 startPushTitleSync();
+// A page Android restored from the background can keep a layout height taller than the glass, which
+// pushed the composer off the bottom edge until a hard refresh. This pins the app's height to the
+// visible one on each return until the next real resize (lib/viewport-pin.ts).
+startViewportPin();
 
 // An old page asking for a chunk the new build dropped (the worker deletes the old precache at once):
 // reload once onto the new build rather than leave a blank app. lib/chunk-reload.ts has the guards.
@@ -50,8 +77,15 @@ window.addEventListener("vite:preloadError", (event) => {
 const root = document.getElementById("root");
 if (!root) throw new Error("missing #root");
 
-createRoot(root).render(
-  <StrictMode>
-    <App />
-  </StrictMode>,
-);
+// The first paint waits for the worn glyph set, at most FIRST_PAINT_GLYPH_WAIT_MS: a set the browser
+// has cached lands in a few milliseconds, so the icons paint in it and never flash lucide first. A
+// device on lucide, the default, waits for nothing.
+function paint(): void {
+  if (!root) return;
+  createRoot(root).render(
+    <StrictMode>
+      <App />
+    </StrictMode>,
+  );
+}
+void firstGlyphs.finally(paint);

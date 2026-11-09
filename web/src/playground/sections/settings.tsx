@@ -1,7 +1,7 @@
 // Settings section of the states playground. Split out of app.tsx; see that file's header comment
 // for the whole page's rules.
 
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useState } from "react";
 
 import { LauncherHowSheet } from "@/components/launcher-how-sheet";
 import { CommandPicker } from "@/components/new-command-picker";
@@ -9,7 +9,8 @@ import { FolderBrowse } from "@/components/new-space-browse";
 import { NoPromptsSheet } from "@/components/no-prompts-sheet";
 import { NotifyPrefsCard } from "@/components/notify-prefs-control";
 import { SpaceOverview } from "@/components/space-overview";
-import { ThemePickerControl, ThemePreviewSheet } from "@/components/theme-picker-control";
+import { ThemeBrowseSheet } from "@/components/theme-browse";
+import { ThemePasteSheet, ThemePickerControl, ThemePreviewSheet } from "@/components/theme-picker-control";
 import { CodexConsentSheet, SpeechCards, type SpeechCardsProps } from "@/components/speech-control";
 import { DEFAULT_THEME_ID, type Theme } from "@/lib/theme/schema";
 import { addImported, removeImported, shippedThemes } from "@/lib/theme/store";
@@ -274,6 +275,43 @@ function paleTheme(): Theme {
   };
 }
 
+/**
+ * Three community themes for the Browse sheet: the shipped looks under ids of their own, as the
+ * host would hand them over. A layout effect answers `GET /api/themes/registry` before the sheet's
+ * own effect asks, and gives every other request to the page's fetch.
+ */
+function useStagedRegistry(): void {
+  useLayoutEffect(() => {
+    const SHA = "0123456789abcdef0123456789abcdef01234567";
+    const named: Array<[string, string, string, string]> = [
+      ["harbour", "harbour-night", "Harbour night", "Sam Rivera"],
+      ["nightwatch", "ember", "Ember", "jo"],
+      ["daylight", "sunroom", "Sunroom", "Kim"],
+    ];
+    const themes = named.flatMap(([from, id, name, author]) => {
+      const base = shippedThemes().find((theme) => theme.id === from);
+      if (base === undefined) return [];
+      const text = JSON.stringify({ ...base, id, name, author });
+      return [{ repo: `${author.split(" ")[0]?.toLowerCase() ?? "sam"}/${id}`, sha: SHA, path: "collie-theme.json", text }];
+    });
+    const body = JSON.stringify({ fetchedAt: "2026-11-07T06:30:00.000Z", ageMs: 3 * 60 * 60 * 1000, generated: null, dropped: 1, fetching: false, themes });
+    const real = window.fetch;
+    window.fetch = (input, init) => {
+      const url = new URL(input instanceof Request ? input.url : String(input), window.location.href);
+      if (url.pathname !== "/api/themes/registry") return real(input, init);
+      return Promise.resolve(new Response(body, { status: 200, headers: { "content-type": "application/json" } }));
+    };
+    return () => {
+      window.fetch = real;
+    };
+  }, []);
+}
+
+function ThemeBrowseDemo() {
+  useStagedRegistry();
+  return <ThemeBrowseSheet open onClose={() => {}} onInstall={() => {}} onTry={() => {}} />;
+}
+
 /** The real card over a library that holds one imported theme, put there for as long as the card is mounted. */
 function ThemePickerDemo() {
   useEffect(() => {
@@ -334,6 +372,34 @@ export function SettingsSection() {
         >
           <PhoneFrameCard height={880}>
             <ThemePreviewSheet theme={paleTheme()} onApply={() => {}} onCancel={() => {}} />
+          </PhoneFrameCard>
+        </Card>
+
+        <Card
+          state="theme-browse"
+          label="the Browse sheet, three themes"
+          reach="open Settings, Appearance, and tap Browse community themes in the Theme card."
+          note="The host's copy of the community list, three hours old, one entry left out by the check. Each row is drawn from the theme's own tokens; Install opens the import preview. Nothing here fetches from the site: Refresh asks the host (M59 spec 06)."
+        >
+          <PhoneFrameCard height={844}>
+            <ThemeBrowseDemo />
+          </PhoneFrameCard>
+        </Card>
+
+        <Card
+          state="theme-paste"
+          label="the paste sheet, filled"
+          reach="open Settings, Appearance, and tap Paste in the Theme card."
+          note="One field and Read. Read opens the same preview or refusal sheet as Import. A pasted link is refused with a sentence, and nothing is fetched (ADR 0106, 2026-11-07)."
+        >
+          <PhoneFrameCard height={844}>
+            <ThemePasteSheet
+              open
+              value={'{\n  "version": 1,\n  "id": "my-day",\n  "name": "My day",\n  "light": { "background": "#fdfaf3" }\n}'}
+              onChange={() => {}}
+              onRead={() => {}}
+              onCancel={() => {}}
+            />
           </PhoneFrameCard>
         </Card>
       </Group>

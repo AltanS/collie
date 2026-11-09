@@ -5,6 +5,7 @@ import { encodeStyledRegion, styledRegionLines } from "../web/src/lib/styled-reg
 
 import {
   afterPaneInput,
+  isHeldCancel,
   isPaneInput,
   isTopologyWrite,
   freeSpaceName,
@@ -2637,6 +2638,11 @@ describe("cacheControlFor", () => {
     expect(cacheControlFor("assets/index-abc.css")).toBe("public, max-age=31536000, immutable");
   });
 
+  test("the hashed theme marks under marks/ are immutable too", () => {
+    expect(cacheControlFor("marks/kawaii-mark-DkeR4B3b.js")).toBe("public, max-age=31536000, immutable");
+    expect(cacheControlFor("marks/pixel-mark-axLcestm.js")).toBe("public, max-age=31536000, immutable");
+  });
+
   test("the math engines under math/ carry no hash, so they revalidate", () => {
     for (const rel of [
       "math/math-markup.js",
@@ -3665,11 +3671,12 @@ describe("the host gate — `?host=` selects among enrolled members and nothing 
     // read that checks a typed line before it runs (ADR 0095, amendment), and a durable program's
     // conversation list and the items or reopen of one (M53 spec 11), and Sent's read and its two
     // writes, served by one function with one resolve for the read and one for the writes (ADR 0107),
-    // and the New page's folder browser (#467), and a session's walky talky off switch (M89 spec 04)) reach their runtime through the caller's resolver and
+    // and the New page's folder browser (#467), and a session's walky talky off switch (M89 spec 04), and an
+    // answer to an ask by id, the hook hold card's tap on a member's pane (M56 spec 12)) reach their runtime through the caller's resolver and
     // nothing else. One of them, the launcher rows, hands the resolver the lead's merge (ADR 0127), and
     // two, the launch and the branch create, hand it the lead's row carry (ADR 0127 point 3).
     const carry = String.raw`undefined, leadRowCarry\(allowedLaunchers, homedir\(\)\)`;
-    expect([...src.matchAll(new RegExp(String.raw`await caller\.resolve\((?:leadRows|${carry})?\);`, "g"))]).toHaveLength(28);
+    expect([...src.matchAll(new RegExp(String.raw`await caller\.resolve\((?:leadRows|${carry})?\);`, "g"))]).toHaveLength(29);
     expect([...src.matchAll(/await caller\.resolve\(leadRows\);/g)]).toHaveLength(1);
     expect([...src.matchAll(new RegExp(String.raw`await caller\.resolve\(${carry}\);`, "g"))]).toHaveLength(2);
     // Exactly eight `registry.get(` calls remain, and each is a sanctioned one, named here rather
@@ -3927,6 +3934,27 @@ describe("the update write gate — POST api/update rides the pane path's own ga
           expect(await res.text()).toBe("telemetry.trouble_invalid");
         }
         expect(readTelemetryRecord(dir).trouble).toEqual([]);
+      } finally {
+        await rm(dir, { recursive: true, force: true });
+      }
+    });
+
+    test("a dialog signal with a screen hash is a 204 and counts on its own row; a send with one is a 400 (1.27.4)", async () => {
+      const dir = await mkdtemp(join(tmpdir(), "collie-trouble-route-"));
+      try {
+        const ping = telemetryIn(dir);
+        const dialog = { kind: "dialog", harness: "codex", version: "0.167.0", mux: "herdr" } as const;
+        expect(telemetryTroubleRoute(ping, { ...dialog, screen: "634c6530" }).status).toBe(204);
+        expect(telemetryTroubleRoute(ping, { ...dialog }).status).toBe(204);
+        for (const body of [{ ...SIGNAL, screen: "634c6530" }, { ...dialog, screen: "ENTER" }, { ...dialog, screen: "634c6530", row: "enter select" }]) {
+          const res = telemetryTroubleRoute(ping, body);
+          expect(res.status).toBe(400);
+          expect(await res.text()).toBe("telemetry.trouble_invalid");
+        }
+        expect(readTelemetryRecord(dir).trouble).toEqual([
+          { ...dialog, screen: "634c6530", count: 1 },
+          { ...dialog, count: 1 },
+        ]);
       } finally {
         await rm(dir, { recursive: true, force: true });
       }
@@ -5545,6 +5573,20 @@ describe("an input written to a pane makes its engine hot", () => {
     }
   });
 
+  // Issue 740: the Cancel or Dismiss on a crew member's queued row rides the pane route. Only a DELETE
+  // ends a held send; any other method at `held` is answered 405 by the pane block.
+  test("isHeldCancel takes a DELETE at a pane's held route and nothing else", () => {
+    expect(isHeldCancel("/api/pane/w1%3Ap1/held", "DELETE")).toBe(true);
+    for (const method of ["GET", "HEAD", "POST", "PUT"]) expect(isHeldCancel("/api/pane/w1%3Ap1/held", method)).toBe(false);
+    expect(isHeldCancel("/api/pane/w1%3Ap1/held/req00001", "DELETE")).toBe(false);
+    expect(isHeldCancel("/api/pane/w1%3Ap1", "DELETE")).toBe(false);
+    expect(isHeldCancel("/api/pane/w1%3Ap1/pins", "DELETE")).toBe(false);
+    expect(isHeldCancel("/api/send/req00001", "DELETE")).toBe(false);
+    // The gate asks for an authorised device on every method at `held`, a GET included.
+    expect(paneGateLevel("held", "GET")).toBe("write");
+    expect(paneGateLevel("held", "DELETE")).toBe("write");
+  });
+
   test("afterPaneInput tells the engine only when the write landed, and hands the response back", () => {
     let noted = 0;
     const engine = { noteInput: () => void noted++ };
@@ -5561,7 +5603,8 @@ describe("an input written to a pane makes its engine hot", () => {
     expect(src).toContain("return afterPaneInput(rt.engine, await replyPane(");
     expect(src).toContain("return afterPaneInput(rt.engine, await keysPane(");
     // On the lead: the forward's answer, so the lead's sweep follows the member it typed into.
-    expect(src).toContain("const input = isPaneInput(pathname, req.method) || isTopologyWrite(pathname, req.method);");
+    // An ask answer counts too (M56 spec 12): the hold it ends on a member must leave the phone on the next sweep.
+    expect(src).toContain("const input = isPaneInput(pathname, req.method) || isTopologyWrite(pathname, req.method) || (ASK_ROUTE.test(pathname) && req.method === \"POST\");");
     expect(src).toContain("return input && own !== undefined ? afterPaneInput(own, forwarded) : forwarded;");
     expect([...src.matchAll(/afterPaneInput\(/g)]).toHaveLength(4); // the definition and three calls
   });

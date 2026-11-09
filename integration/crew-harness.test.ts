@@ -11,6 +11,7 @@ import type { JsonValue } from "../bridge/json.ts";
 import { EXIT } from "../cli/io.ts";
 import { askSocket, cmdWalkySend, cmdWalkyStatus, type WalkyDeps } from "../cli/walky.ts";
 import { asJsonObject, asJsonString } from "../web/src/lib/json.ts";
+import type { AskReply } from "../web/src/lib/surface/ask.ts";
 import { signMessage } from "../bridge/walky/canonical.ts";
 import { walkySocketPath } from "../bridge/walky/socket.ts";
 import { readReceiptsAnswer, readWalkyReport } from "../bridge/walky/parse.ts";
@@ -857,6 +858,29 @@ describe("the lead speaks for the crew", () => {
     // The peer's uploads dir is the observable: a lead that served a peer pane locally would have
     // had to materialise something under its own state dir.
     expect(readdirSync(lead.stateDir).toSorted()).not.toContain("uploads");
+  });
+
+  // M56 spec 12: the hook hold card on a member's pane answers that member's ask. The lead forwards
+  // `POST /api/ask/<id>?host=` over the link and the member's own ask book answers it: it never minted
+  // this id, so it refuses it `ask_unknown` with no key, in its own receipt. Before the forward, the
+  // lead answered 400 ("does not cross a crew link yet") and nothing reached the member.
+  test("an ask answer to a member's pane is forwarded, and the member's own ask route answers it", async () => {
+    const peerId = peer.store()!.self.memberId;
+    const res = await lead.apiWrite(`/api/ask/ask-0123456789abcd?host=${peerId}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ pane: peer.paneId, hash: "0abc12", optionId: "1", origin: "person_tap", via: "hold-card" }),
+    });
+    expect(res.status).toBe(200);
+    // SAFETY: the member's `askRoute` answers an `AskReply` (web/src/lib/surface/ask.ts), read field by field below.
+    const reply = (await res.json()) as AskReply;
+    expect(reply.receipt).toMatchObject({ askId: "ask-0123456789abcd", paneId: peer.paneId, outcome: "refused", reason: "ask_unknown", keys: [] });
+    // Nothing was typed on the member: an id its book never minted sends no key.
+    expect(peer.herdr!.writes).toEqual([]);
+    // Two logs of one tap: the lead's line for the forward, and the member's own, stamped `via: crew`.
+    const askLines = (at: Instance): string[] => readFileSync(join(at.stateDir, "audit.log"), "utf8").split("\n").filter((line) => line.includes('"action":"ask"'));
+    expect(askLines(lead).some((line) => line.includes(`"host":"${peerId}"`) && line.includes('"forwarded":"http 200"'))).toBe(true);
+    expect(askLines(peer).some((line) => line.includes('"via":"crew"') && line.includes('"reason":"ask_unknown"'))).toBe(true);
   });
 });
 

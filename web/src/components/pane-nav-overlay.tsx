@@ -1,5 +1,6 @@
 import { createPortal } from "react-dom";
-import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
+import type { IconKey } from "@/components/icons/keys";
 
 import { StatusDot } from "@/components/status-badge";
 import { UnseenMark } from "@/components/ui/unseen-mark";
@@ -58,18 +59,18 @@ function SpaceMark({ panes }: { panes: readonly AgentView[] }) {
 }
 
 const PAD_ARROWS = [
-  { dir: "up", Icon: ArrowUp, x: 0, y: -1 },
-  { dir: "right", Icon: ArrowRight, x: 1, y: 0 },
-  { dir: "down", Icon: ArrowDown, x: 0, y: 1 },
-  { dir: "left", Icon: ArrowLeft, x: -1, y: 0 },
-] as const satisfies readonly { dir: Direction; Icon: typeof ArrowUp; x: number; y: number }[];
+  { dir: "up", icon: "pane-nav-up", x: 0, y: -1 },
+  { dir: "right", icon: "pane-nav-right", x: 1, y: 0 },
+  { dir: "down", icon: "pane-nav-down", x: 0, y: 1 },
+  { dir: "left", icon: "pane-nav-left", x: -1, y: 0 },
+] as const satisfies readonly { dir: Direction; icon: IconKey; x: number; y: number }[];
 
 /** Four arrows around a point, the `lit` one filled in the strong token, a pulse on each new `step`. */
 function DirectionPad({ center, lit, step }: { center: Point; lit: Direction | null; step: number }) {
   const c = fitCenter(center, { w: window.innerWidth, h: window.innerHeight }, { x: PAD_HALF, y: PAD_HALF });
   return (
     <div data-slot="pane-nav-pad" data-lit={lit ?? "none"} className="absolute" style={{ left: c.x, top: c.y }}>
-      {PAD_ARROWS.map(({ dir, Icon, x, y }) => {
+      {PAD_ARROWS.map(({ dir, icon, x, y }) => {
         const on = lit === dir;
         return (
           <span
@@ -88,7 +89,7 @@ function DirectionPad({ center, lit, step }: { center: Point; lit: Direction | n
                 on ? "border-primary bg-primary text-primary-foreground" : "border-border bg-card text-muted-foreground",
               )}
             >
-              <Icon className="size-5" strokeWidth={on ? 3 : 2} />
+              <Icon name={icon} className="size-5" strokeWidth={on ? 3 : 2} />
             </span>
           </span>
         );

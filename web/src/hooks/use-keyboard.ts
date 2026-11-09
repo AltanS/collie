@@ -89,6 +89,59 @@ export function raisesKeyboard(el: EventTarget | null): boolean {
   return el instanceof HTMLElement && el.isContentEditable === true;
 }
 
+/**
+ * Whether a field that types has focus, and for `lingerMs` after focus left it. Separate from
+ * {@link useKeyboardOpen} on purpose: that hook answers from the height, and the height races the
+ * media query change that the keyboard causes. Focus is set about 100 ms before the keyboard resizes
+ * the page, so it is already true when the query flips.
+ *
+ * The linger exists because the keyboard needs a moment to close after focus leaves. A tap on a tab
+ * or a button moves focus at mousedown, while the page is still short. A class that dropped in that
+ * moment would unmount the control under the finger before its click.
+ */
+export function useTypingFocus(lingerMs = 0): boolean {
+  const [typing, setTyping] = useState<boolean>(() => raisesKeyboard(document.activeElement));
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const clear = () => {
+      clearTimeout(timer);
+      timer = undefined;
+    };
+    // A field can take focus between the render and this effect.
+    setTyping(raisesKeyboard(document.activeElement));
+    const onFocusIn = (e: FocusEvent) => {
+      if (raisesKeyboard(e.target)) {
+        clear();
+        setTyping(true);
+        return;
+      }
+      // With a linger the focusout before this event already started the timer.
+      if (lingerMs > 0) return;
+      setTyping(false);
+    };
+    const onFocusOut = (e: FocusEvent) => {
+      clear();
+      if (raisesKeyboard(e.relatedTarget)) {
+        setTyping(true);
+        return;
+      }
+      if (lingerMs <= 0) {
+        setTyping(false);
+        return;
+      }
+      timer = setTimeout(() => setTyping(false), lingerMs);
+    };
+    document.addEventListener("focusin", onFocusIn);
+    document.addEventListener("focusout", onFocusOut);
+    return () => {
+      clear();
+      document.removeEventListener("focusin", onFocusIn);
+      document.removeEventListener("focusout", onFocusOut);
+    };
+  }, [lingerMs]);
+  return typing;
+}
+
 export function useKeyboardOpen(): boolean {
   const [open, setOpen] = useState(false);
   useEffect(() => {

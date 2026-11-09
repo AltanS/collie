@@ -2,6 +2,7 @@
 // duplicate so the web app builds independently of the Bun server's source tree.
 
 import type { ApiErrorCode, ApiErrorDetail } from "@/lib/api-error-codes";
+import type { JsonValue } from "@/lib/json";
 import { t } from "@/lib/i18n";
 import type { HeldRow } from "@/lib/surface/send";
 import type { Surface } from "@/lib/surface/surface";
@@ -2542,6 +2543,24 @@ export type MathPackStatus =
   | { state: "downloading"; received: number; total: number | null }
   | { state: "ready"; version: string; source: "store" | "build"; bytes: number | null }
   | { state: "unavailable"; reason: "dev-build" | "no-pack" };
+
+/**
+ * The host's copy of the community theme registry (M59 spec 06), as `GET` and `POST
+ * /api/themes/registry` answer it. Mirrors `RegistryStatus` in bridge/themes/registry.ts. `themes`
+ * is typed as raw JSON on purpose: the phone runs `readRegistryEntry` over every entry before it
+ * draws one, whatever the host checked.
+ */
+export interface ThemeRegistryStatus {
+  fetchedAt: string | null;
+  ageMs: number | null;
+  generated: string | null;
+  themes: JsonValue[];
+  dropped: number;
+  fetching: boolean;
+  error?: "fetch-failed" | "too-big" | "bad-registry";
+  /** The address in use, only when the operator's `COLLIE_THEME_REGISTRY_URL` replaced the default. */
+  address?: string;
+}
 
 /**
  * The Whistle model on the host and the host engine's switch, as `GET /api/stt/whistle` and

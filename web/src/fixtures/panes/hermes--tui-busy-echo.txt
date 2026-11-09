@@ -1,0 +1,40 @@
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  x x                                                                                                                                                                                                                  
+ ❯ some earlier echoed command                                                                                                                                                                                         
+  x x                                                                                                                                                                                                                  
+ ─ (⊙_⊙) formulating…   · 13m 32s │ Qwen3.8 27B pi oQ8e mtp xhigh │ 78.3k/262.1k │ 30% │ 語音已關 │ 7 個工作階段               ─  Fix TUI issues                                                                       
+ ❯ Ctrl+C 中斷…                                                                                                                                                                                                        

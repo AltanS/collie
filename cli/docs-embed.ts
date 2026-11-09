@@ -57,7 +57,11 @@ import WALKY_TALKY_SKILL_TEXT from "./skills/walky-talky.md" with { type: "text"
  */
 const WALKY_TALKY_SKILL_TEMPLATE = WALKY_TALKY_SKILL_TEXT.replaceAll("\r\n", "\n");
 
-export { SKILL_TEMPLATE, WALKY_TALKY_SKILL_TEMPLATE };
+// The brief `collie theme skill` prints for an agent that writes a theme (`cli/theme-skill.ts`). Its
+// one placeholder takes sections of `docs/themes.md` at print time.
+import THEME_SKILL_TEMPLATE from "./theme-skill.md" with { type: "text" };
+
+export { SKILL_TEMPLATE, THEME_SKILL_TEMPLATE, WALKY_TALKY_SKILL_TEMPLATE };
 
 export interface DocPage {
   /** The file stem, which is the name an operator types: `crew` for `docs/crew.md`. */

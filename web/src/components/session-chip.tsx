@@ -1,4 +1,4 @@
-import { Layers } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 
 import { AddressTag } from "@/components/ui/address-tag";
 import { primarySession, sessionDisplayNameOf } from "@/lib/hosts";
@@ -48,7 +48,7 @@ export function SessionChip({ session, host, className }: SessionChipProps) {
       // As with the host chip, the inner text is aria-hidden, so this one label has to carry the
       // MEANING: a bare session name is a noun with no verb.
       aria-label={t("connection.session.ariaIn", { name: shown })}
-      glyph={<Layers className="size-3 shrink-0" aria-hidden />}
+      glyph={<Icon name="session" className="size-3 shrink-0" aria-hidden />}
       name={shown}
       className={className}
     />

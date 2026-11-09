@@ -10,6 +10,7 @@ import { parseAnsi } from "@/lib/ansi";
 import { splitLines } from "@/lib/blocks";
 import { buildBlocks } from "@/lib/harness";
 import { claudeBuildBlocks } from "@/lib/harness/claude";
+import { WRAPPED_CHOICES, wrappedChoiceScreen } from "@/test/pi-wrapped-choice";
 import { fixtureRows } from "@/test/surface-corpus";
 
 // The composer offers "Answer the dialog" on a refusal only when the dock shows a dialog card (the
@@ -136,5 +137,31 @@ describe("the unread-dialog card signals once per instance", () => {
 
   it("calls nothing without the handler", () => {
     expect(() => render(<CardDock blocks={unreadBlocks()} paneId="w1:p1" />)).not.toThrow();
+  });
+});
+
+// Issue 746: a pi question whose option descriptions wrap (gentle-pi's ask_user_choice, built from the
+// capture as pi-tui draws a wrapped description, test/pi-wrapped-choice.ts). The Chat card is not a
+// button; the answer is the dock's. Before the fix the reader declined the wrapped rows and the dock
+// drew no option at all.
+describe("CardDock: a pi question whose descriptions wrap", () => {
+  const blocks = () => buildBlocks(splitLines(parseAnsi(wrappedChoiceScreen(0))), { agent: "pi" });
+
+  it("draws the options, and a tap on one hands that option to the answer", async () => {
+    const onPromptAction = vi.fn(() => true);
+    const user = userEvent.setup();
+    const shown = blocks();
+    expect(hasDialogCard(shown)).toBe(true);
+    render(<CardDock blocks={shown} onPromptAction={onPromptAction} />);
+    const card = screen.getByRole("group", { name: "Pick a color for the Collie probe" });
+    for (const choice of WRAPPED_CHOICES) {
+      expect(within(card).getByRole("button", { name: new RegExp(`^${choice.label}`) })).toBeInTheDocument();
+    }
+    await user.click(within(card).getByRole("button", { name: /^Green/ }));
+    expect(onPromptAction).toHaveBeenCalledTimes(1);
+    expect(onPromptAction).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: "option", option: expect.objectContaining({ label: "Green", keys: ["Down", "Enter"] }) }),
+      expect.objectContaining({ question: "Pick a color for the Collie probe" }),
+    );
   });
 });

@@ -46,7 +46,7 @@ export const ko: Dictionary = {
   "settings.theme.option.dark": "다크",
 
   "theme.title": "테마",
-  "theme.description": "모양을 선택하거나 파일에서 가져옵니다.",
+  "theme.description": "모양을 선택하거나, 새로 추가해 유지하기 전에 먼저 써 봅니다.",
   "theme.import": "가져오기",
   "theme.export": "내보내기",
   "theme.remove": "제거",
@@ -2898,6 +2898,8 @@ export const ko: Dictionary = {
   "telemetry.card.next.aria": "다음 메시지(JSON)",
   "telemetry.card.more": "전송되는 내용",
   "telemetry.notice.body": "Collie 1.27.0은 하루에 한 번 익명 텔레메트리를 전송합니다. 설정에서 끌 수 있습니다.",
+  "telemetry.notice.updateBody": "Collie의 일일 집계는 이제 읽지 못한 대화상자도 대화상자의 키 안내에서 만든 짧은 코드로 구분해 표시합니다. 사용자의 텍스트로는 절대 만들지 않습니다.",
+  "telemetry.notice.docs": "전송되는 내용",
   "telemetry.notice.open": "설정 열기",
   "telemetry.notice.dismiss": "알림 닫기",
   "apiError.telemetry.setting_invalid": "텔레메트리 설정은 켜짐 또는 꺼짐이어야 합니다. 변경된 내용이 없습니다.",

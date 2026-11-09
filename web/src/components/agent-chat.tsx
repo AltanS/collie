@@ -2,15 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { createPortal } from "react-dom";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import { useRevalidator } from "react-router";
-import {
-  ArrowUpToLine,
-  ChevronUp,
-  EllipsisVertical,
-  Loader2,
-  Minimize2,
-  ScrollText,
-  TerminalSquare,
-} from "lucide-react";
+import { useReadingReleasesKeyboard } from "@/hooks/use-reading-releases-keyboard";
 import { useKeyboardOpen } from "@/hooks/use-keyboard";
 import { useSheetPull } from "@/hooks/use-sheet-pull";
 import { usePaneNavigation } from "@/components/pane-nav";
@@ -149,7 +141,8 @@ import { zoomPillShown } from "@/lib/zoom-pill";
 import { paneRowKey, paneScope } from "@/lib/hosts";
 import { isLead, paneScopeKey } from "@/lib/scope";
 import { openReport, signalTrouble, unreadDialogReport } from "@/lib/report/store";
-import { answerRouteFor, textRouteFor } from "@/lib/send-path";
+import { unreadDialogScreen } from "@/lib/report/screen";
+import { answerRouteFor, holdAnswerRouteFor, textRouteFor } from "@/lib/send-path";
 import { useSessionCard, wearsExperimental } from "@/lib/session-cards";
 import { usePins } from "@/lib/pins";
 import { paneFilesDir } from "@/lib/file-paths";
@@ -170,6 +163,7 @@ import type {
 } from "@/lib/blocks";
 import { paneMirrorOverride, setPaneMirrorOverride } from "@/lib/mirror-invert";
 import type { Scope } from "@/lib/scope";
+import { Icon } from "@/components/icons/icon";
 
 interface AgentChatProps {
   paneId: string;
@@ -741,6 +735,20 @@ export function AgentChat({
             setDrawer("switcher");
           },
   });
+  // The reading area is the pane-nav gesture's surface and also where a finger scroll up closes the
+  // keyboard while the reply box keeps its draft (hooks/use-reading-releases-keyboard.ts, Altan,
+  // 2026-11-07). One element, one ref callback for both; `paneNav.setReading` is a state setter, so
+  // this callback is stable.
+  const [readingArea, setReadingArea] = useState<HTMLElement | null>(null);
+  const setPaneNavReading = paneNav.setReading;
+  const setReading = useCallback(
+    (node: HTMLElement | null) => {
+      setPaneNavReading(node);
+      setReadingArea(node);
+    },
+    [setPaneNavReading],
+  );
+  useReadingReleasesKeyboard(readingArea);
   // ── COMPOSING MODE — read ONCE, here, for the whole pane ──────────────────────
   // The soft keyboard takes roughly 45% of a phone. What is left has to hold the header, the tab
   // strip, the agent's statusline, the grab handle, the status band, the controls row and the draft
@@ -1014,6 +1022,8 @@ export function AgentChat({
   // Where a tap and a text go, by the session kind and the crew link (lib/send-path.ts, M56 spec 14).
   const sendPlace = { program: gridless, crew: !isLead(scope), sendProtocol: agent?.sendProtocol === true };
   const asksAnswered = answerRouteFor(sendPlace) === "api-ask";
+  // The hook hold card answers its ask on a crew member too, carried by the lead (M56 spec 12).
+  const holdsAnswered = holdAnswerRouteFor(sendPlace) === "api-ask";
   // A program pane's taps answer the contract ask its Surface carries, when the card is the oldest open ask.
   const oldestAsk = agent?.asks?.[0];
   const programContract = gridless && asksAnswered && surfaceAsk !== null && oldestAsk !== undefined ? { ask: surfaceAsk, oldest: oldestAsk.id } : null;
@@ -2281,7 +2291,7 @@ export function AgentChat({
                   aria-label={t("chat.paneMenu.aria")}
                   className="grid w-11 min-h-11 shrink-0 place-items-center self-stretch rounded-md text-muted-foreground transition-colors active:bg-muted/60 active:text-foreground"
                 >
-                  <EllipsisVertical className="size-5" />
+                  <Icon name="pane-menu" className="size-5" />
                 </button>
               ) : (
                 // The pane is gone. The column stays, empty, so the title beside it does not slide.
@@ -2434,7 +2444,7 @@ export function AgentChat({
                   <div className="relative shrink-0">
                     {isShell ? (
                       <div data-glide="tile" className="flex size-4 items-center justify-center rounded-sm border bg-muted">
-                        <TerminalSquare className="size-2.5 text-muted-foreground" />
+                        <Icon name="shell-pane" className="size-2.5 text-muted-foreground" />
                         {/* A shell pane has no agent status, so there is no dot to name — and the
                             composer's status band, which used to say "shell" in words a thumb's
                             width below, is gone. Unpainted the word costs nothing and a reader
@@ -2596,7 +2606,7 @@ export function AgentChat({
               aria-label={t("chat.zen.exitAria")}
               className="absolute right-3 top-3 z-20 grid size-11 place-items-center rounded-full border border-rule bg-chrome text-muted-foreground transition-colors active:bg-muted/60"
             >
-              <Minimize2 className="size-5" />
+              <Icon name="zen-exit" className="size-5" />
             </button>
           )}
 
@@ -2732,7 +2742,7 @@ export function AgentChat({
                           "flex size-7 shrink-0 items-center justify-center rounded-full border border-transparent text-muted-foreground transition-colors hover:bg-accent active:scale-95",
                         )}
                       >
-                        <ChevronUp className="size-4" />
+                        <Icon name="tab-fold" className="size-4" />
                       </button>
                     }
                   />
@@ -2827,7 +2837,7 @@ export function AgentChat({
               and `focusFromMirror` deliberately declines a tap that landed on a control or a text
               selection. It is a touch convenience layered over an already-reachable action. */}
           <div
-            ref={paneNav.setReading}
+            ref={setReading}
             role="presentation"
             data-slot="pane-reading"
             className={cn(
@@ -2960,7 +2970,7 @@ export function AgentChat({
                       onClick={() => nav.down(historyPath(paneId, scope))}
                       className="mb-2 flex w-full items-center justify-center gap-1.5 rounded-md py-2 text-xs font-medium text-muted-foreground transition-colors active:bg-muted/50"
                     >
-                      <ScrollText className="size-3.5" />
+                      <Icon name="history-screen" className="size-3.5" />
                       {t("chat.scrollback.showHistory")}
                     </button>
                   ) : moreScrollback ? (
@@ -2971,9 +2981,9 @@ export function AgentChat({
                       className="mb-2 flex w-full items-center justify-center gap-1.5 rounded-md py-2 text-xs font-medium text-muted-foreground transition-colors active:bg-muted/50 disabled:opacity-60"
                     >
                       {loadingOlder ? (
-                        <Loader2 className="size-3.5 animate-spin" />
+                        <Icon name="busy" className="size-3.5 animate-spin" />
                       ) : (
-                        <ArrowUpToLine className="size-3.5" />
+                        <Icon name="load-earlier" className="size-3.5" />
                       )}
                       {loadingOlder ? t("chat.scrollback.loading") : t("chat.scrollback.loadOlder")}
                     </button>
@@ -3125,7 +3135,7 @@ export function AgentChat({
           {agent?.hold !== undefined && (
             <HookHoldCard
               note={agent.hold}
-              disabled={readOnly || gone || !asksAnswered}
+              disabled={readOnly || gone || !holdsAnswered}
               onAnswer={handleHoldAnswer}
             />
           )}
@@ -3145,8 +3155,11 @@ export function AgentChat({
               // as in the pane menu, since the report route reads no member's pane yet.
               onUnreadDialogReport={isLead(scope) ? (cancel) => openReport(unreadDialogReport(paneId, scope, cancel)) : undefined}
               // The trouble signal (M86 spec 05): the bridge counts the card once per instance. Not from
-              // a screen drawn from the on-device cache; the live read that follows signals instead.
-              onUnreadDialogShown={actsDisabledByCache ? undefined : (cancel) => void signalTrouble({ kind: "dialog", paneId, scope, agent: cancel.agent })}
+              // a screen drawn from the on-device cache; the live read that follows signals instead. The
+              // signal carries the hash of the card's key-hint row (1.27.4), never the rows.
+              onUnreadDialogShown={
+                actsDisabledByCache ? undefined : (cancel) => void signalTrouble({ kind: "dialog", paneId, scope, agent: cancel.agent, screen: unreadDialogScreen(cancel) })
+              }
               promptDisabled={readOnly || gone}
               paneId={paneId}
               scope={scope}
@@ -3458,6 +3471,8 @@ export function AgentChat({
                       : undefined
                   }
                   draftNoticeSlot={draftNoticeSlot}
+                  // The fullscreen editor takes the reading area's column, the whole app height.
+                  expandArea={readingArea}
                   floatingHint={paneNav.hint}
                 />
                 )}

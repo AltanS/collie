@@ -1,5 +1,4 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { Keyboard } from "lucide-react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { Mark, TrickTapReply, TricksReply, WireTrickInfo, WireTrickPart } from "@/lib/tricks/schema";
@@ -45,7 +44,7 @@ function mount(store: TricksStore, onOpenSession = vi.fn(), handlers: TapHandler
   const marks = beltMarksOf({ parts: [LEGS, TRACKER, QUIET], handlersFor: () => handlers, sessions: [TRICK_SESSION], onOpenSession, store });
   render(
     <ActionsRow
-      general={[{ id: "keys", icon: Keyboard, label: "Keys", onSelect: vi.fn() }]}
+      general={[{ id: "keys", icon: "keys-drawer", label: "Keys", onSelect: vi.fn() }]}
       agent="claude"
       onRun={vi.fn()}
       pins={{ count: 2, onClick: vi.fn(), label: "2 pinned", expanded: false }}

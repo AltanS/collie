@@ -1,4 +1,4 @@
-import { Check, Copy } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 import { useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -73,7 +73,7 @@ export function LauncherHowSheet({ open, onClose, file }: { open: boolean; onClo
             className="w-full resize-none rounded-sm border border-border bg-background px-3 py-2 font-mono text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
           />
           <Button type="button" variant="outline" className="h-11 w-full gap-2" onClick={() => void copy()}>
-            {copied === "done" ? <Check className="size-4" aria-hidden="true" /> : <Copy className="size-4" aria-hidden="true" />}
+            {copied === "done" ? <Icon name="copied" className="size-4" aria-hidden="true" /> : <Icon name="copy" className="size-4" aria-hidden="true" />}
             <OneOf
               active={copied === "done" ? "done" : "idle"}
               className="justify-items-center"

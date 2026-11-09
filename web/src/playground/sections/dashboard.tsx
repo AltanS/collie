@@ -1,7 +1,7 @@
 // Dashboard section of the states playground. Split out of app.tsx; see that file's header comment
 // for the whole page's rules.
 
-import { ListTree, Network, Rows3 } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 import { useEffect, useState } from "react";
 import { MemoryRouter } from "react-router";
 
@@ -146,16 +146,16 @@ function DashboardTabsPhone({
         active={view}
         onSelect={setView}
         items={[
-          ...(crew ? [{ value: "crew" as const, label: t("crew.title"), icon: <Network className="size-5" /> }] : []),
+          ...(crew ? [{ value: "crew" as const, label: t("crew.title"), icon: <Icon name="crew" className="size-5" /> }] : []),
           {
             value: "dashboard",
             label: t("home.tabs.dashboard"),
-            icon: <Rows3 className="size-5" />,
+            icon: <Icon name="tab-dashboard" className="size-5" />,
             badge: blocked,
             dot: blocked === 0 && hasReady(herd),
             badgeLabel: blocked > 0 ? tn("home.tabs.blocked", blocked) : t("home.tabs.unseen"),
           },
-          { value: "changes", label: t("files.title"), icon: <ListTree className="size-5" /> },
+          { value: "changes", label: t("files.title"), icon: <Icon name="files" className="size-5" /> },
         ]}
       />
     </>

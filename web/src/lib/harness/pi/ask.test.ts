@@ -14,6 +14,7 @@ import { idleFor, readScreen } from "../../../test/surface-corpus";
 import { liftDialog } from "../../surface/lift";
 import { stripSgr } from "../../surface/plain";
 import { askOf, modalWord } from "../../surface/surface";
+import { WRAPPED_CHOICES, wrappedChoiceScreen } from "../../../test/pi-wrapped-choice";
 
 const PANES = join(import.meta.dirname, "../../../fixtures/panes");
 const raw = (name: string) => readFileSync(join(PANES, name), "utf8");
@@ -96,6 +97,16 @@ const LIFTS_397 = new Map<string, Expect>([
   // screen's last row (L12 of odd/tasks/gentle-pi-chat-cards.md).
   ["pi--v130-gentle-review-consent.txt", "walk"],
   ["pi--v130-gentle-review-consent-moved.txt", "walk"],
+  // gentle-pi 4.6.0 on pi 1.5.0 (issue 712): the Effect paragraph hangs eight columns in, and the extension
+  // draws one status row under the footer, in the three shapes the fixtures README names.
+  ["pi--v150-gentle-review-consent--w119.txt", "walk"],
+  ["pi--v150-gentle-review-consent-fullscreen--w129.txt", "walk"],
+  ["pi--v150-gentle-review-consent-fullscreen--w198.txt", "walk"],
+  ["pi--v150-gentle-review-consent-regular--w69.txt", "walk"],
+  // Derived: the first capture with the pointer on option 2 (fixtures README).
+  ["pi--v150-gentle-review-consent-moved--w119.txt", "walk"],
+  // The Gentle Shell side rail stands over the top rows only, the dialog under it (issue 710): it lifts.
+  ["pi--v150-gentle-review-consent-rail-tall--w198.txt", "walk"],
   // pi 1.3.0's stock question through a herdr-core bridge: a read with no styling at all (M78 spec 07).
   ["pi--v130-core-question--w120.txt", "walk"],
   ["pi--v130-core-question-moved--w120.txt", "walk"],
@@ -141,6 +152,8 @@ const RAW_MODALS = new Set([
   "pi--v0871-model-selector-empty--w120.txt",
   "pi--v130-model-selector-empty--w120.txt",
   "pi--v130-settings-screen--w120.txt",
+  // gentle-pi 4.6.0's review consent with Gentle Shell's side rail beside it (issue 710, open): raw.
+  "pi--v150-gentle-review-consent-rail-beside--w198.txt",
   // The model selector under pi-powerline-footer, which replaces pi's editor with its own (issue 544,
   // live 2026-10-20): pi's selector still takes the editor's place in column zero.
   "pi--v130-powerline-model-selector--w120.txt",
@@ -338,6 +351,57 @@ describe("unnumbered rows, and a frame with no status row (issue 455)", () => {
   });
 });
 
+// Issue 746: gentle-pi's ask_user_choice with descriptions longer than the pane. pi-tui wraps the
+// `   description` line with no indent, so every row after the first stands at column 1. Until this the
+// list ended at that row, the dialog read as unreadable, and the dock offered no option. Built from the
+// capture as the source draws it (test/pi-wrapped-choice.ts); no capture of the reporter's screen.
+describe("an unnumbered option whose description wraps (issue 746)", () => {
+  it("lifts every option with its whole description, and walks from the pointer", () => {
+    const lines = linesOf(wrappedChoiceScreen(0));
+    // The wrap is real: each description takes at least two rows, Green's three, Blue's last row is
+    // straight over the footer.
+    const texts = lines.map((l) => lineText(l).trimEnd());
+    expect(texts.filter((t) => /^ \S/.test(t) && !/^ [→↑]/.test(t)).length).toBeGreaterThanOrEqual(5);
+    const model = prompt(lines);
+    expect(model.question).toBe("Pick a color for the Collie probe");
+    expect(model.options).toEqual([
+      ...WRAPPED_CHOICES.map((c, i) => ({ label: c.label, description: c.description, keys: [...Array<string>(i).fill("Down"), "Enter"], keyLabel: i === 0 ? "→" : "" })),
+      { label: "Cancel", keys: ["Escape"], keyLabel: "Esc" },
+    ]);
+    expect(piAdapter.buildBlocks(lines).map((b) => b.kind)).toContain("prompt-select");
+  });
+
+  it("lifts again once the pointer walked past a wrapped description, and the walk keeps the core signature", () => {
+    const before = prompt(linesOf(wrappedChoiceScreen(0)));
+    for (const pointer of [1, 2]) {
+      const moved = prompt(linesOf(wrappedChoiceScreen(pointer)));
+      expect(moved.options.map((o) => o.label)).toEqual(["Red", "Green", "Blue", "Cancel"]);
+      expect(moved.options[pointer]!.keys).toEqual(["Enter"]);
+      expect(moved.signature).not.toBe(before.signature);
+      expect(moved.coreSignature).toBe(before.coreSignature);
+    }
+  });
+
+  it("lifts the same on a read with no styling", () => {
+    const styled = prompt(linesOf(wrappedChoiceScreen(1)));
+    expect(prompt(linesOf(stripSgr(wrappedChoiceScreen(1))))).toEqual(styled);
+  });
+
+  it("still declines a row at column 1 straight under a label: a label wrapped back is not a description", () => {
+    const screen = wrappedChoiceScreen(0);
+    const wrappedLabel = replaceLast(screen, "   Green", "   Green\r\n and the rest of a label too long for the pane");
+    expect(detectPiQuestion(linesOf(wrappedLabel))).toBeNull();
+    expect(piModalOnScreen(linesOf(wrappedLabel))).toBe(true);
+  });
+
+  it("does not take a title row over the first option for a wrapped description", () => {
+    // The title is a row at column 1 too; with no description row over it, it stays the question.
+    const model = prompt(linesOf(wrappedChoiceScreen(2)));
+    expect(model.question).toBe("Pick a color for the Collie probe");
+    expect(model.options[0]!.description).toBe(WRAPPED_CHOICES[0].description);
+  });
+});
+
 // pi's example `permission-gate.ts` asks before a risky bash command with pi's own selector,
 // `ctx.ui.select("⚠️ Dangerous command:\n\n  <command>\n\nAllow?", ["Yes", "No"])`. The title is several
 // rows, and the command row is three columns in, the shape of an unpointed option row. Collie 1.22.0 to
@@ -424,11 +488,18 @@ describe("pi's permission gate: a selector whose title quotes the command", () =
 
   it("declines gentle-pi's list when a label wrapped back to column 1 stands right over the pointer", () => {
     // The wrap reads as a title row, and the rows above it are options, not a quoted block: there is no
-    // blank row between the header and the list, so nothing indented may stand in the header.
+    // blank row between the header and the list, so nothing indented may stand in the header. Green
+    // loses its description here: a row at column 1 under a description row is that description
+    // wrapped, and lifts (issue 746, "an unnumbered option whose description wraps").
     const gentle = raw("pi--v130-gentle-choice.txt");
     const pointed = (label: string) => ` \x1b[0m\x1b[38;2;157;157;157m→ ${label}\x1b[0m`;
     const onBlue = replaceLast(replaceLast(gentle, pointed("Red"), "   Red"), "   Blue", `${pointed("Blue")}`);
-    const wrapped = replaceLast(onBlue, pointed("Blue"), ` continued\n${pointed("Blue")}`);
+    const bare = onBlue
+      .split("\r\n")
+      .filter((row) => !row.includes("Calm and natural"))
+      .join("\r\n");
+    const wrapped = replaceLast(bare, pointed("Blue"), ` continued\n${pointed("Blue")}`);
+    expect(bare).not.toBe(onBlue);
     expect(prompt(linesOf(onBlue)).options.map((o) => o.label)).toEqual(["Red", "Green", "Blue", "Cancel"]);
     expect(detectPiQuestion(linesOf(wrapped))).toBeNull();
   });
@@ -1278,5 +1349,111 @@ describe("a read with no styling (herdr-core)", () => {
     expect(detectPiQuestion(plain("pi--v130-gentle-review-consent.txt"))).toBeNull();
     expect(detectPiQuestion(load("pi--v110-single.txt"))?.kind).toBe("prompt-select");
     expect(detectPiQuestion(plain("pi--v110-single.txt"))).toBeNull();
+  });
+});
+
+// Issue 712: gentle-pi 4.6.0 on pi 1.5.0 wraps the Effect paragraph under its label and draws one status row
+// under the footer. Four captures lift; the two with Gentle Shell's side rail wait for issue 710.
+describe("a frameless dialog with a hanging Effect paragraph and a status row under the footer (issue 712)", () => {
+  const CASES: [string, string][] = [
+    ["pi--v150-gentle-review-consent--w119.txt", "git and context row straight under the footer"],
+    ["pi--v150-gentle-review-consent-fullscreen--w129.txt", "one blank row, then the branch and mode row"],
+    ["pi--v150-gentle-review-consent-fullscreen--w198.txt", "one blank row, then the branch and mode row, wide"],
+    ["pi--v150-gentle-review-consent-regular--w69.txt", "regular mode, a widget row straight over the title"],
+    ["pi--v150-gentle-review-consent-rail-tall--w198.txt", "the side rail above the dialog, not beside it"],
+  ];
+  const LABELS = ["Run the review now", "Not now, just this once", "Review and allow this session", "Cancel"];
+  const FOOTER = "↑↓ choose · Enter confirm · Esc cancel · D details";
+
+  it.each(CASES)("%s lifts the options with the walk to each answer (%s)", (name) => {
+    const lines = load(name);
+    const model = prompt(lines);
+    expect(model.family).toBe("select");
+    expect(model.question.startsWith("Review consent Gentle AI can review this change before you call it done. this change gets")).toBe(true);
+    expect(model.options).toEqual([
+      { label: LABELS[0], keys: ["Enter"], keyLabel: "→" },
+      { label: LABELS[1], keys: ["Down", "Enter"], keyLabel: "" },
+      { label: LABELS[2], keys: ["Down", "Down", "Enter"], keyLabel: "" },
+      { label: "Cancel", keys: ["Escape"], keyLabel: "Esc" },
+    ]);
+    expect(piModalOnScreen(lines)).toBe(true);
+    expect(piAdapter.composerReady?.(lines)).toBe(false);
+    const blocks = piAdapter.buildBlocks(lines);
+    expect(blocks.map((b) => b.kind)).toEqual(["raw", "prompt-select"]);
+    const card = blocks[1]!;
+    if (card.kind !== "prompt-select") throw new Error("not a prompt-select");
+    expect(lineText(card.lines[0]!).trimEnd()).toBe("Review consent");
+  });
+
+  it.each(CASES)("%s walks from the pointer on option 2 (%s)", (name) => {
+    const pointedRow = raw(name).split("\r\n").find((r) => r.includes("→ 1. Run the review now"))!;
+    const moved = raw(name)
+      .replace(pointedRow, pointedRow.replace("→ 1.", "  1."))
+      .replace("  2. Not now, just this once", "→ 2. Not now, just this once");
+    expect(moved).not.toBe(raw(name));
+    const model = prompt(linesOf(moved));
+    expect(model.options.map((o) => o.keys)).toEqual([["Up", "Enter"], ["Enter"], ["Down", "Enter"], ["Escape"]]);
+    const before = prompt(load(name));
+    expect(before.signature).not.toBe(model.signature);
+    expect(before.coreSignature).toBe(model.coreSignature);
+  });
+
+  it.each(CASES.filter(([name]) => !name.includes("rail-tall")))("%s keeps the status row out of the signature (%s)", (name) => {
+    const lines = load(name);
+    const texts = lines.map((l) => lineText(l).trimEnd());
+    const model = prompt(lines);
+    expect(model.signature.endsWith(FOOTER)).toBe(true);
+    expect(texts.at(-1)).not.toBe(FOOTER);
+  });
+
+  it("wraps the Effect paragraph under its label and reads the continuation rows as the note", () => {
+    const text = raw("pi--v150-gentle-review-consent--w119.txt");
+    expect(text).toContain("        high-risk candidate asks again.");
+    // A continuation indented by any other width is not the hanging indent.
+    const off = text.replace("        high-risk candidate", "      high-risk candidate");
+    expect(off).not.toBe(text);
+    expect(detectPiQuestion(linesOf(off))).toBeNull();
+    // Nor is an indented row with no label above it.
+    const noLabel = text.replace("Effect: Reviews this exact", "Reviews this exact");
+    expect(noLabel).not.toBe(text);
+    expect(detectPiQuestion(linesOf(noLabel))).toBeNull();
+    // Four rows is over the cap.
+    const rows = text.split("\r\n");
+    const at = rows.findIndex((r) => r.includes("        high-risk"));
+    const long = [...rows.slice(0, at + 1), rows[at]!, rows[at]!, ...rows.slice(at + 1)].join("\r\n");
+    expect(detectPiQuestion(linesOf(long))).toBeNull();
+  });
+
+  const paintedRow = (t: string) => `\x1b[0m\x1b[38;2;157;157;157m${t}\x1b[0m`;
+  const base = raw("pi--v150-gentle-review-consent--w119.txt").split("\r\n");
+  const statusAt = base.findLastIndex((r) => r.includes("~/proj"));
+  const withTail = (tail: string[]) => linesOf([...base.slice(0, statusAt), ...tail].join("\r\n"));
+
+  it.each([
+    ["a second status row after one", ["", paintedRow("~/proj  master"), paintedRow("ctx  0%  usage")]],
+    ["two blank rows before the status row", ["", "", paintedRow("~/proj  master")]],
+    ["a plain row under the footer", ["alice@box:~/project"]],
+    ["a painted shell prompt under a blank row", ["", paintedRow("alice  ~/project$")]],
+    ["a rule under a blank row", ["", paintedRow("─".repeat(40))]],
+  ])("stays raw with %s under the footer", (_name, tail) => {
+    expect(detectPiQuestion(withTail(tail))).toBeNull();
+    expect(piAdapter.buildBlocks(withTail(tail)).every((b) => b.kind === "raw")).toBe(true);
+  });
+
+  it("lifts with the status row, and with one blank row before it", () => {
+    expect(detectPiQuestion(withTail([paintedRow("~/proj  master")]))?.kind).toBe("prompt-select");
+    expect(detectPiQuestion(withTail(["", paintedRow("~/proj  master")]))?.kind).toBe("prompt-select");
+  });
+
+  it("stays paint-only on a read with no styling", () => {
+    expect(detectPiQuestion(linesOf(stripSgr(raw("pi--v150-gentle-review-consent--w119.txt"))))).toBeNull();
+  });
+
+  // Gentle Shell's side rail (issue 710): the dialog's rows stand beside the rail's boxes, so they do not
+  // read as column-0 rows. Raw until 710 reads the rail; the Escape card is still the way out.
+  it("stays raw while the dialog stands beside the side rail, until issue 710 reads the rail", () => {
+    const lines = load("pi--v150-gentle-review-consent-rail-beside--w198.txt");
+    expect(piAdapter.buildBlocks(lines).every((b) => b.kind === "raw")).toBe(true);
+    expect(detectPiQuestion(lines)).toBeNull();
   });
 });

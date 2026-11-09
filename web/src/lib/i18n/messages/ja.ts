@@ -43,7 +43,7 @@ export const ja: Dictionary = {
   "settings.theme.option.dark": "ダーク",
 
   "theme.title": "テーマ",
-  "theme.description": "外観を選択するか、ファイルからインポートします。",
+  "theme.description": "外観を選ぶか、新しく追加して、残す前に試します。",
   "theme.import": "インポート",
   "theme.export": "エクスポート",
   "theme.remove": "削除",
@@ -2905,6 +2905,8 @@ export const ja: Dictionary = {
   "telemetry.card.next.aria": "次のメッセージ（JSON）",
   "telemetry.card.more": "送られる内容",
   "telemetry.notice.body": "Collie 1.27.0は匿名のテレメトリーを1日1回送信します。「設定」でオフにできます。",
+  "telemetry.notice.updateBody": "Collieの日次集計は、読み取れなかった対話プロンプトも、そのキー操作のヒントから作った短いコードで識別するようになりました。入力したテキストから作られることはありません。",
+  "telemetry.notice.docs": "送られる内容",
   "telemetry.notice.open": "設定を開く",
   "telemetry.notice.dismiss": "お知らせを閉じる",
   "apiError.telemetry.setting_invalid": "テレメトリー設定は「オン」または「オフ」である必要があります。何も変更されませんでした。",

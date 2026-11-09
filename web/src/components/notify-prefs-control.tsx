@@ -1,4 +1,4 @@
-import { BellRing, Loader2 } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -91,13 +91,13 @@ export function NotifyPrefsCard({
     <Card className="gap-0 py-0">
       <div className="flex items-center justify-between gap-4 p-4">
         <div className="flex min-w-0 items-start gap-3">
-          <BellRing className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
+          <Icon name="notifications" className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
           <div className="min-w-0">
             <div className="font-medium">{t("settings.notify.title")}</div>
             <p className="text-sm text-muted-foreground">{t("settings.notify.description")}</p>
           </div>
         </div>
-        {!prefs && <Loader2 className="size-4 shrink-0 animate-spin text-muted-foreground" />}
+        {!prefs && <Icon name="busy" className="size-4 shrink-0 animate-spin text-muted-foreground" />}
       </div>
 
       {/* Rendered before `prefs` lands, not after. ROWS is static, so the card's SHAPE is known from

@@ -1,5 +1,4 @@
 import { useId, useState, useSyncExternalStore } from "react";
-import { Check, Loader2 } from "lucide-react";
 
 import { OptionButton, OptionGroupCaption, optionSurface, PromptPanel } from "@/components/option-button";
 import { Button } from "@/components/ui/button";
@@ -40,6 +39,7 @@ import { onBridgeClock } from "@/lib/server-clock";
 import { isProgramSession, useSessionCard } from "@/lib/session-cards";
 import type { Ask, AskField, AskOption } from "@/lib/types";
 import { mintRequestId } from "@/lib/worktree-name";
+import { Icon } from "@/components/icons/icon";
 
 // A DURABLE PROGRAM'S ASK, AS A CARD (ADR 0100).
 //
@@ -245,7 +245,7 @@ export function AskCardFace({ card, program, disabled = false, offline = false, 
                   onClick={() => onPress(option)}
                   trailing={
                     inFlight ? (
-                      <Loader2 className="mt-0.5 size-4 shrink-0 animate-spin text-muted-foreground" aria-label={t("prompt.sendingAria")} />
+                      <Icon name="busy" className="mt-0.5 size-4 shrink-0 animate-spin text-muted-foreground" aria-label={t("prompt.sendingAria")} />
                     ) : null
                   }
                 />
@@ -344,7 +344,7 @@ interface BodyProps {
 function SendButton({ ready, frozen, busy, onClick }: { ready: boolean; frozen: boolean; busy: boolean; onClick: () => void }) {
   return (
     <Button type="button" data-slot="ask-send" className="h-11" disabled={frozen || !ready} onClick={onClick}>
-      {busy ? <Loader2 className="size-4 animate-spin" aria-label={t("prompt.sendingAria")} /> : null}
+      {busy ? <Icon name="busy" className="size-4 animate-spin" aria-label={t("prompt.sendingAria")} /> : null}
       {t("ask.send")}
     </Button>
   );
@@ -355,7 +355,7 @@ function PickRow({ label, on, disabled, onClick }: { label: string; on: boolean;
   return (
     <button type="button" aria-pressed={on} disabled={disabled} onClick={onClick} className={optionSurface(on ? "selected" : "default")}>
       <span aria-hidden className="mt-px flex size-5 shrink-0 items-center justify-center rounded-md border border-border bg-background">
-        {on ? <Check className="size-3.5" /> : null}
+        {on ? <Icon name="selected" className="size-3.5" /> : null}
       </span>
       <span className="font-content min-w-0 flex-1 text-sm leading-snug font-medium wrap-anywhere text-foreground">{label}</span>
     </button>
@@ -404,7 +404,7 @@ function ChoiceBody({
             onClick={() => onSend({ optionIds: [option.id] })}
             trailing={
               inFlight ? (
-                <Loader2 className="mt-0.5 size-4 shrink-0 animate-spin text-muted-foreground" aria-label={t("prompt.sendingAria")} />
+                <Icon name="busy" className="mt-0.5 size-4 shrink-0 animate-spin text-muted-foreground" aria-label={t("prompt.sendingAria")} />
               ) : null
             }
           />

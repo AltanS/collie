@@ -66,17 +66,17 @@ describe("CopyableBlock", () => {
       vi.useFakeTimers();
       const { container } = render(<CopyableBlock text="raw"><p>rendered</p></CopyableBlock>);
       const button = within(container).getByRole("button", { name: "Copy" });
-      expect(button.querySelector("svg.lucide-copy")).not.toBeNull();
+      expect(button.querySelector('svg[data-icon="copy"]')).not.toBeNull();
       await act(async () => { fireEvent.click(button); });
-      expect(button.querySelector("svg.lucide-check")).not.toBeNull();
-      expect(button.querySelector("svg.lucide-copy")).toBeNull();
+      expect(button.querySelector('svg[data-icon="copied"]')).not.toBeNull();
+      expect(button.querySelector('svg[data-icon="copy"]')).toBeNull();
       expect(button).toHaveAttribute("aria-label", "Copied to clipboard");
       expect(button).toHaveAttribute("title", "Copied to clipboard");
       act(() => { vi.advanceTimersByTime(1499); });
-      expect(button.querySelector("svg.lucide-check")).not.toBeNull();
+      expect(button.querySelector('svg[data-icon="copied"]')).not.toBeNull();
       act(() => { vi.advanceTimersByTime(1); });
-      expect(button.querySelector("svg.lucide-copy")).not.toBeNull();
-      expect(button.querySelector("svg.lucide-check")).toBeNull();
+      expect(button.querySelector('svg[data-icon="copy"]')).not.toBeNull();
+      expect(button.querySelector('svg[data-icon="copied"]')).toBeNull();
       expect(button).toHaveAttribute("aria-label", "Copy");
     });
 
@@ -86,11 +86,11 @@ describe("CopyableBlock", () => {
       const { container } = render(<CopyableBlock text="raw"><p>rendered</p></CopyableBlock>);
       const button = within(container).getByRole("button", { name: "Copy" });
       await act(async () => { fireEvent.click(button); });
-      expect(button.querySelector("svg.lucide-x")).not.toBeNull();
-      expect(button.querySelector("svg.lucide-check")).toBeNull();
+      expect(button.querySelector('svg[data-icon="copy-failed"]')).not.toBeNull();
+      expect(button.querySelector('svg[data-icon="copied"]')).toBeNull();
       expect(button).toHaveAttribute("aria-label", "Couldn't copy to clipboard");
       act(() => { vi.advanceTimersByTime(1500); });
-      expect(button.querySelector("svg.lucide-copy")).not.toBeNull();
+      expect(button.querySelector('svg[data-icon="copy"]')).not.toBeNull();
       expect(button).toHaveAttribute("aria-label", "Copy");
     });
 
@@ -102,7 +102,7 @@ describe("CopyableBlock", () => {
       act(() => { vi.advanceTimersByTime(1000); });
       await act(async () => { fireEvent.click(button); });
       act(() => { vi.advanceTimersByTime(1000); });
-      expect(button.querySelector("svg.lucide-check")).not.toBeNull();
+      expect(button.querySelector('svg[data-icon="copied"]')).not.toBeNull();
       act(() => { vi.advanceTimersByTime(500); });
       expect(button).toHaveAttribute("aria-label", "Copy command");
     });

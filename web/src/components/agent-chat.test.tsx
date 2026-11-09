@@ -2445,14 +2445,16 @@ describe("the pane fits its viewport", () => {
     expect(secondMirror.className).toMatch(/(?:^|\s)mt-0(?=\s|$)/);
   });
 
-  it("caps the draft field as a fraction of the viewport, not at a constant", () => {
+  it("caps the draft field as a fraction of the visible height, not at a constant", () => {
     // `max-h-40` was 160px, chosen against a full-height screen — a THIRD of everything visible
-    // with the keyboard up, and the growth that pushed the send button off the bottom. `10rem` IS
-    // that 160px, so at rest on any ordinary screen this field is byte-identical to before; only
-    // the case that was broken changes.
+    // with the keyboard up, and the growth that pushed the send button off the bottom. Then
+    // `min(10rem,30dvh)`, which still left six lines of chat on a phone with the keyboard up (Altan,
+    // 2026-11-07). The cap is now the smaller of five rows and a fifth of the visible height,
+    // computed in lib/draft-cap.ts and handed to the field as `--draft-cap`.
     renderChat({ text: STATUS_TEXT });
     const field = screen.getByRole("textbox");
-    expect(field.className).toMatch(/max-h-\[min\(10rem,\d+dvh\)\]/);
+    expect(field.className).toMatch(/max-h-\[var\(--draft-cap\)\]/);
+    expect(field.style.getPropertyValue("--draft-cap")).toMatch(/^\d+px$/);
     expect(field.className).not.toMatch(/(?:^|\s)max-h-40(?=\s|$)/);
   });
 });

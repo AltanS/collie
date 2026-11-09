@@ -141,6 +141,7 @@ bridge is out of reach. Every item below has a size bound and a lifetime.
 | Pairing token | localStorage | until unpair, revoke or expiry | deleted |
 | Settings: theme, language, pins | localStorage | until you change them | kept |
 | Unsent drafts | localStorage | 48 hours | deleted |
+| A theme you are trying | sessionStorage | until Keep, Back or the tab closes | kept |
 | Push endpoint | localStorage | until it changes | deleted |
 | App shell | Cache Storage | until the next build | kept |
 | Fonts and push titles | Cache Storage | until replaced | deleted |
@@ -387,6 +388,23 @@ That line makes this machine refuse every message for its panes. The CLI on the 
 > way between machines and tells the receiver which machine sent it. It does not protect you from a
 > program on the same machine that lies about itself.
 
+The community theme list is another outbound call, and it also happens only on a tap: **Refresh** in
+the **Browse community themes** sheet of the **Theme** card. The bridge makes one anonymous HTTPS
+`GET`, with the user-agent `Collie/<version>` and nothing about you:
+
+```text
+https://colliepwa.dev/themes/registry.json
+```
+
+The address is fixed in the bridge. The one exception is `COLLIE_THEME_REGISTRY_URL`, for a test
+against a staged copy of the site ([Configure](configure.md#the-community-theme-list)). The bridge
+follows a redirect only on the address's own site, refuses a file that is not typed as JSON, over 1 MB or with more than 500 themes,
+and keeps a theme only when Collie's own theme parser accepts it. It keeps the list in the `themes` folder of its state folder.
+The phone checks every theme again before it draws one, and the page itself never calls colliepwa.dev.
+The refresh needs a write device, runs on the lead only, allows one fetch at a time and is audited.
+A refresh within a minute of a good fetch answers that copy and fetches nothing. A copy older than a
+week is not listed, so the next tap fetches again.
+
 WalkyTalky adds no outbound call. A message to another machine rides the crew link that already
 exists, and no model, cloud service or third party sees it.
 
@@ -532,11 +550,15 @@ error, with the fix. A folder that Collie cannot check is a warning: `cannot con
 From 1.27.0 each Collie bridge sends one small anonymous ping a day to our own analytics. It carries
 the Collie version, the operating system, how Collie was installed, and whether the bridge runs
 alone or in a crew, under a random ID made on your machine. No IP address is stored with the ping.
-When Collie shows one of its two trouble cards, the next ping also carries how often, with the name
-and version of the agent program and the multiplexer it ran on, never what was said or shown.
 Nothing else is sent: no host name, no folder, nothing you type or read. We need these numbers to
 spot regressions and slow degradations after a release, and to steer what gets built next. Up to
 1.26.x Collie sent nothing ([ADR 0129](../.adr/0129-an-anonymous-install-count-on-by-default.md)).
+
+When Collie shows one of its two trouble cards, the next ping also carries how often, in six fields:
+which card, the name and version of the agent program, the multiplexer it ran on, a count and, from
+1.27.4, a screen field on a dialog card. The screen field is a short hash of the dialog's key-hint
+row only, never a row with your text, never the screen or what you typed. It is absent unless that
+row is a short list of key hints, such as `enter select · esc back`.
 
 Turning it off is one switch: Settings, System, **Telemetry**. `COLLIE_TELEMETRY=0`,
 `telemetry = false` in `config.toml` or `DO_NOT_TRACK=1` do the same, and so does blocking the one

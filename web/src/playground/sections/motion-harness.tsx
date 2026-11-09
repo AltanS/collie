@@ -6,7 +6,7 @@
 // own driving own their own cleanup.
 
 import { useState, type ReactNode } from "react";
-import { RotateCcw } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 
 import { Button } from "@/components/ui/button";
 import { CardControls, Segmented } from "../layout";
@@ -32,7 +32,7 @@ export function Replay({ children }: { children: ReactNode }) {
           className="h-6 gap-1 px-2 text-[11px]"
           onClick={() => setKey((k) => k + 1)}
         >
-          <RotateCcw className="size-3" />
+          <Icon name="restore" className="size-3" />
           Replay
         </Button>
       </CardControls>

@@ -9,7 +9,7 @@
 // Read once when the sheet opens. A list that polled would be a second poller on a page that has one,
 // and a receipt does not change after it is written.
 
-import { ChevronDown } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 import { useEffect, useState } from "react";
 
 import { useLocale } from "@/hooks/use-locale";
@@ -80,7 +80,7 @@ export function SendReceiptsView({ rows, now = Date.now() }: { rows: readonly Se
                       </span>
                     )}
                     <span className="ml-auto shrink-0 text-muted-foreground">{timeAgo(row.at, now)}</span>
-                    <ChevronDown className={cn("size-3 shrink-0 text-muted-foreground transition-transform", expanded && "rotate-180")} aria-hidden />
+                    <Icon name="expand" className={cn("size-3 shrink-0 text-muted-foreground transition-transform", expanded && "rotate-180")} aria-hidden />
                   </span>
                   {row.line !== undefined && (
                     // Closed: one line, cut at the row's edge. Open: the whole line, wrapped.

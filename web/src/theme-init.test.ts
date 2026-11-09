@@ -5,7 +5,8 @@ import { describe, expect, it } from "vitest";
 
 import { DESIGN_STORAGE_KEY } from "@/lib/design";
 import type { JsonObject } from "@/lib/json";
-import { ALL_THEME_TOKENS, COLOUR_MAX, COLOUR_SOURCE, SHIPPED_THEME_IDS, THEME_TOKENS, isColour, type Theme } from "@/lib/theme/schema";
+import { THEME_ESCAPE_SOURCE } from "@/lib/theme/escape";
+import { ALL_THEME_TOKENS, COLOUR_MAX, COLOUR_SOURCE, SHIPPED_THEME_IDS, THEME_TOKENS, isColour, parseTheme, type Theme } from "@/lib/theme/schema";
 import { LIBRARY_STORAGE_KEY, applyTheme } from "@/lib/theme/store";
 import {
   ANSI_KEYS,
@@ -14,6 +15,8 @@ import {
   SURFACE_INIT_MARKER,
   SURFACE_PROPERTIES,
   SURFACE_TOKENS,
+  groundDeclarations,
+  groundWords,
   surfaceWords,
   wordDeclarations,
   withSurfaceInitLine,
@@ -45,6 +48,7 @@ describe("theme-init.js and lib/theme agree", () => {
   });
 
   it("holds the same colour pattern and the same length cap", () => {
+    expect(init).toContain(`/${THEME_ESCAPE_SOURCE}/.test(location.hash)`);
     const literal = /var COLOUR = \/(.*)\/;/.exec(init)?.[1];
     expect(literal).toBe(new RegExp(COLOUR_SOURCE).source);
     expect(init).toContain(`v.length <= ${COLOUR_MAX}`);
@@ -83,8 +87,9 @@ describe("theme-init.js and lib/theme agree", () => {
     expect(end).toBeGreaterThan(fn);
     // The block, the one call site, and the hand-off line that was not there before. Four more lines
     // since the default theme paints Collie's grain from :root: an imported theme names its own ground
-    // or says `flat`, so the budget moved from 60 to 64.
-    expect(end - start + 1 + 1).toBeLessThan(64);
+    // or says `flat`, so the budget moved from 60 to 64. Two more since the ground may be an object
+    // of four words (schema version 4): one line reads it, one applies its four small tables.
+    expect(end - start + 1 + 1).toBeLessThan(66);
   });
 });
 
@@ -122,7 +127,7 @@ describe("the colour pattern theme-init.js uses", () => {
 // RUNNING THE SCRIPT, not reading it. The cases above hold the lists equal; these run the file
 // against a stand-in document and a stand-in localStorage and look at what it wrote. It is the only
 // way to cover a branch like `lib.version === 1`, which no text comparison exercises.
-function runInit(store: Record<string, string>) {
+function runInit(store: Record<string, string>, hash = "") {
   const classes = new Set<string>();
   const attributes = new Map<string, string>();
   const properties = new Map<string, string>();
@@ -132,17 +137,20 @@ function runInit(store: Record<string, string>) {
     style: { setProperty: (k: string, v: string) => void properties.set(k, v) },
   };
   const storage = { getItem: (k: string) => store[k] ?? null };
-  new Function("document", "localStorage", init)({ documentElement: root }, storage);
+  new Function("document", "localStorage", "location", init)({ documentElement: root }, storage, { hash });
   return { classes: [...classes], attributes: [...attributes], properties: [...properties] };
 }
+
+/** A text token: kept readable on the stand-in ground, or the parser refuses the theme (F3). */
+const textToken = (token: string): boolean => token === "foreground" || token.endsWith("-foreground");
 
 /** The theme the stand-in library holds, as the store's type. */
 const midnightTheme = (): Theme => ({
   version: 1,
   id: "midnight",
   name: "Midnight",
-  light: Object.fromEntries(THEME_TOKENS.map((t) => [t, "#ffffff"])),
-  dark: Object.fromEntries(THEME_TOKENS.map((t) => [t, "#123456"])),
+  light: Object.fromEntries(THEME_TOKENS.map((t) => [t, textToken(t) ? "#1a1a1a" : "#ffffff"])),
+  dark: Object.fromEntries(THEME_TOKENS.map((t) => [t, textToken(t) ? "#f0f0f0" : "#123456"])),
 });
 
 const midnight = (version: number) => ({
@@ -152,8 +160,8 @@ const midnight = (version: number) => ({
       version: 1,
       id: "midnight",
       name: "Midnight",
-      light: Object.fromEntries(THEME_TOKENS.map((t) => [t, "#ffffff"])),
-      dark: Object.fromEntries(THEME_TOKENS.map((t) => [t, "#123456"])),
+      light: Object.fromEntries(THEME_TOKENS.map((t) => [t, textToken(t) ? "#1a1a1a" : "#ffffff"])),
+      dark: Object.fromEntries(THEME_TOKENS.map((t) => [t, textToken(t) ? "#f0f0f0" : "#123456"])),
     },
   ],
 });
@@ -172,6 +180,10 @@ describe("theme-init.js, the default face", () => {
 
   it("adds no face class for a stored atkinson", () => {
     expect(runInit({ "collie:design:v1": JSON.stringify({ font: "atkinson" }) }).classes).toEqual([]);
+  });
+
+  it("adds font-nunito for a stored nunito", () => {
+    expect(runInit({ "collie:design:v1": JSON.stringify({ font: "nunito" }) }).classes).toEqual(["font-nunito"]);
   });
 
   it("keeps Aldrich for a device that stored it", () => {
@@ -198,6 +210,15 @@ describe("theme-init.js, run", () => {
     expect(sheet).toContain(`--ground-image: ${grain};`);
   });
 
+  it("paints nothing from a library entry that claims the id collie (F12)", () => {
+    const entry = { ...midnight(1).themes[0], id: "collie" };
+    const seen = runInit({
+      "collie:design:v1": JSON.stringify({ theme: "collie" }),
+      "collie:themes:v1": JSON.stringify({ version: 1, themes: [entry] }),
+    });
+    expect(seen).toEqual({ classes: [], attributes: [], properties: [] });
+  });
+
   it("paints a stored collie-new as the default: no attribute and no property", () => {
     const seen = runInit({ "collie:design:v1": JSON.stringify({ font: "atkinson", theme: "collie-new" }) });
     expect(seen).toEqual({ classes: [], attributes: [], properties: [] });
@@ -213,6 +234,19 @@ describe("theme-init.js, run", () => {
     // The colour tokens, and `--ground-image: none`: a theme that names no ground must not inherit :root's grain.
     expect(seen.properties).toHaveLength(THEME_TOKENS.length + 1);
     expect(seen.properties).toContainEqual([GROUND, "none"]);
+  });
+
+  it("paints Collie under #theme=collie, the way back from any theme, and keeps the face", () => {
+    const store = {
+      "collie:design:v1": JSON.stringify({ font: "aldrich", theme: "midnight" }),
+      "collie:themes:v1": JSON.stringify(midnight(1)),
+    };
+    expect(runInit(store, "#theme=collie")).toEqual({ classes: ["font-aldrich"], attributes: [], properties: [] });
+    expect(runInit(store, "#a=1&theme=collie").properties).toEqual([]);
+    expect(runInit({ "collie:design:v1": JSON.stringify({ theme: "nightwatch" }) }, "#theme=collie").attributes).toEqual([]);
+    // Only that word: another theme name, or a longer value, is not the escape.
+    expect(runInit(store, "#theme=collies").properties).not.toEqual([]);
+    expect(runInit(store, "#theme=nightwatch").properties).not.toEqual([]);
   });
 
   it("applies nothing from a library that says version 2", () => {
@@ -308,8 +342,42 @@ describe("theme-init.js and lib/theme/surface.ts agree", () => {
       icons: "heavy",
       labels: "sentence",
     } as const;
-    expect(initSurface(surface)).toEqual(storeSurface({ ...midnightTheme(), version: 2, surface }));
+    // The script sets the ground after the other tokens; no property is set twice, so the order of
+    // the list does not change what the page draws.
+    const byProperty = (a: [string, string], b: [string, string]) => a[0].localeCompare(b[0]);
+    expect(initSurface(surface).toSorted(byProperty)).toEqual(storeSurface({ ...midnightTheme(), version: 2, surface }).toSorted(byProperty));
     expect(initSurface(surface)).toHaveLength(SURFACE_PROPERTIES.length);
+  });
+
+  // The object form of the ground (version 4): every pattern at every size and strength, in both inks,
+  // and the object with keys left out. The first frame sets what the store sets a moment later.
+  const GROUND_CASES: JsonObject[] = [
+    {},
+    { size: "wide" },
+    { ink: "primary" },
+    ...groundWords("pattern").flatMap((pattern) =>
+      groundWords("size").flatMap((size) =>
+        groundWords("strength").flatMap((strength) => groundWords("ink").map((ink) => ({ pattern, size, strength, ink }))),
+      ),
+    ),
+  ];
+  it.each(GROUND_CASES.map((ground) => [JSON.stringify(ground), ground] as const))("sets the store's declarations for the ground %s", (_, ground) => {
+    const surface = { ground };
+    const fromInit = initSurface(surface);
+    const parsed = parseTheme(JSON.stringify({ ...midnightTheme(), version: 4, surface }), { maxBytes: 64 * 1024 });
+    if (!parsed.ok) throw new Error(JSON.stringify(parsed.refusals));
+    const fromStore = storeSurface(parsed.theme);
+    const byProperty = (a: [string, string], b: [string, string]) => a[0].localeCompare(b[0]);
+    expect(fromInit.toSorted(byProperty)).toEqual(fromStore.toSorted(byProperty));
+    expect(new Map(fromInit)).toEqual(new Map(groundDeclarations(parsed.theme.surface?.ground)));
+  });
+
+  it("sets nothing from a ground key or word outside the table, and a word ground is its pattern", () => {
+    const flat = new Map(groundDeclarations("flat"));
+    for (const ground of [{ pattern: "constructor" }, { pattern: "__proto__" }, { size: "toString" }, { pattern: ["dots"] }]) {
+      expect(new Map(initSurface({ ground })), JSON.stringify(ground)).toEqual(flat);
+    }
+    expect(new Map(initSurface({ ground: { pattern: "grain" } }))).toEqual(new Map(initSurface({ ground: "grain" })));
   });
 
   it("sets nothing for a word or a block outside the table", () => {
@@ -372,7 +440,7 @@ function storeVersionTwo(theme: Theme): Array<[string, string]> {
 }
 
 describe("theme-init.js sets the display face and the palette as the store does", () => {
-  it.each(["system", "grotesk", "aldrich", "plex", "geist", "atkinson"])("display face %s", (face) => {
+  it.each(["system", "grotesk", "aldrich", "plex", "geist", "atkinson", "nunito"])("display face %s", (face) => {
     const fromInit = initVersionTwo({ fonts: { display: face } });
     expect(fromInit).toEqual([["--font-display", `var(--face-${face})`]]);
     expect(fromInit).toEqual(storeVersionTwo({ ...midnightTheme(), version: 2, fonts: { display: face } }));

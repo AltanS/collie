@@ -1,5 +1,5 @@
 import { memo } from "react";
-import { ChevronRight, Clock, Crown, Server } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 
 import { healthTone, healthWord } from "@/components/crew-formation";
 import { FiringLine, firingWords, readingLine } from "@/components/machine-load";
@@ -43,7 +43,7 @@ import { cn } from "@/lib/utils";
 export function LeadBadge() {
   return (
     <span className="flex h-5 items-center gap-1 rounded-md bg-muted px-1.5 text-[10px] font-medium label-caps text-muted-foreground">
-      <Crown className="size-2.5" aria-hidden />
+      <Icon name="role-lead" className="size-2.5" aria-hidden />
       {t("connection.host.lead")}
     </span>
   );
@@ -100,13 +100,13 @@ const MachineCardBody = memo(function MachineCardBody({ row, reading, age, showR
           onClick={() => onOpen(row)}
           className="flex min-h-11 min-w-0 items-center gap-2 text-left focus-visible:outline-none after:absolute after:inset-0 after:content-['']"
         >
-          <Server className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+          <Icon name="machine" className="size-4 shrink-0 text-muted-foreground" aria-hidden />
           <span className="truncate font-medium">{name}</span>
         </button>
         <div className="flex shrink-0 items-center gap-2 text-sm">
           {showRole && row.isLead && <LeadBadge />}
           <span className={healthTone(row)}>{healthWord(row)}</span>
-          <ChevronRight className="size-4 text-muted-foreground" aria-hidden />
+          <Icon name="row-go" className="size-4 text-muted-foreground" aria-hidden />
         </div>
       </div>
       <div className="px-4 pt-1 pb-4">
@@ -175,7 +175,7 @@ function Numbers({
       {firing !== null && <FiringLine words={firing} onOpen={onOpenAlerts} className="relative z-10" />}
       {stale && age !== null && (
         <p className="flex items-center gap-1.5 text-sm text-status-working">
-          <Clock className="size-4 shrink-0" aria-hidden />
+          <Icon name="time" className="size-4 shrink-0" aria-hidden />
           {age}
         </p>
       )}

@@ -107,6 +107,8 @@ const SESSIONS_VERBS = [SESSIONS_VERB];
 // Walky talky (M62). Declared after `sessions`. One spelling: the `wt` alias was dropped before
 // release, because Windows Terminal's binary is `wt.exe`.
 const WALKY_VERBS = ["walky"];
+// `theme check` (M59 spec 05), declared after `walky`. It reads files and touches no state.
+const THEME_VERBS = ["theme"];
 // The manual, printed out of the binary: `collie skill` for an AI agent, `collie docs` for the
 // operator pages. Neither was ever a shell verb — there was nothing to print before it was embedded.
 const MANUAL_VERBS = ["skill", "docs"];
@@ -133,6 +135,7 @@ describe("the verb table", () => {
       ...MUX_VERBS,
       ...SESSIONS_VERBS,
       ...WALKY_VERBS,
+      ...THEME_VERBS,
       ...CREW_VERBS,
       ...MANUAL_VERBS,
       "help",
@@ -458,6 +461,7 @@ describe("the subcommand trees", () => {
       "durable",
       "mux",
       "walky",
+      "theme",
       "crew",
       // The alias carries the SAME array — that is what `cli/crew.test.ts` pins.
       "pack",
@@ -597,8 +601,9 @@ describe("exit codes", () => {
       ...SESSIONS_VERBS,
     ];
     // `skill` and `docs` print text compiled into this binary. They read nothing, resolve no state
-    // dir and touch no machine, so the suite may run them for real.
-    const readOnly = ["version", "help", "skill", "docs"];
+    // dir and touch no machine, so the suite may run them for real. `theme` reads only the files it
+    // is named, resolves no context and writes nothing (cli/theme-check.test.ts).
+    const readOnly = ["version", "help", "skill", "docs", ...THEME_VERBS];
     for (const name of [...worldTouching, ...readOnly]) expect(findCommand(name)).toBeDefined();
     expect([...worldTouching, ...readOnly].length).toBe(COMMANDS.length);
     // The grep stops at the verb's closing quote, NOT at the `"]` that used to follow it: a verb

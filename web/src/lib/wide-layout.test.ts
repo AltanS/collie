@@ -11,6 +11,7 @@ import {
   EMPTY_STRIP,
   focusIndex,
   hasWidthChoice,
+  heldWidthClass,
   insertAt,
   isWideMode,
   landingOf,
@@ -39,6 +40,37 @@ const keysOf = (s: SpaceStrip) => s.cols.map((c) => c.key);
 describe("width classes", () => {
   it("cuts at 600 and 900 CSS px", () => {
     expect([343, 599, 600, 899, 900, 1280].map(widthClassOf)).toEqual(["compact", "compact", "medium", "medium", "expanded", "expanded"]);
+  });
+});
+
+describe("heldWidthClass", () => {
+  it("passes a wide window class through", () => {
+    expect(heldWidthClass("medium", "compact", false, "medium")).toBe("medium");
+    expect(heldWidthClass("expanded", "medium", true, "expanded")).toBe("expanded");
+  });
+
+  it("holds medium while a field types and the keyboard makes the window compact", () => {
+    expect(heldWidthClass("compact", "medium", true, "medium")).toBe("medium");
+  });
+
+  it("clamps a held expanded class to what the width allows", () => {
+    expect(heldWidthClass("compact", "expanded", true, "medium")).toBe("medium");
+  });
+
+  it("holds expanded when the width still allows it", () => {
+    expect(heldWidthClass("compact", "medium", true, "expanded")).toBe("expanded");
+  });
+
+  it("drops to compact when no field types", () => {
+    expect(heldWidthClass("compact", "medium", false, "medium")).toBe("compact");
+  });
+
+  it("never raises a compact class, a phone held sideways with its composer focused", () => {
+    expect(heldWidthClass("compact", "compact", true, "expanded")).toBe("compact");
+  });
+
+  it("is compact when the width alone is compact", () => {
+    expect(heldWidthClass("compact", "medium", true, "compact")).toBe("compact");
   });
 });
 

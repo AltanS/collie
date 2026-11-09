@@ -250,6 +250,12 @@ user, host or path is in either file.
 | `pi--v130-gentle-choice-moved.txt` | The same dialog after `herdr pane send-keys <pane> Down`, ` → Green` | walk (the pair in `walk-pairs.ts`) |
 | `pi--v130-gentle-review-consent.txt` | gentle-pi 4.2.0 on pi 1.3.0, the review-consent screen: NO rule frame and no editor or status row, a bold title, two prose rows, three numbered options with `→` at column 0 on option 1, an `Effect:` paragraph, and `↑↓ choose · Enter confirm · Esc cancel · D details` as the screen's last row | walk |
 | `pi--v130-gentle-review-consent-moved.txt` | The same screen after `herdr pane send-keys <pane> Down`: `→` on option 2, and the `Effect:` paragraph describes option 2 | walk (the pair in `walk-pairs.ts`) |
+| `pi--v150-gentle-review-consent--w119.txt` | gentle-pi 4.6.0 on pi 1.5.0 (issue 712, reporter's capture): the same screen, the `Effect:` paragraph wrapped with an 8-space hanging indent, and the git and context status row straight under the footer | walk |
+| `pi--v150-gentle-review-consent-moved--w119.txt` | **Derived**: the capture above with `→` on option 2 (the `Effect:` text is not re-captured; the note rows are blanked in the core signature) | walk (the pair in `walk-pairs.ts`) |
+| `pi--v150-gentle-review-consent-fullscreen--w129.txt`, `-fullscreen--w198.txt` | Gentle Shell fullscreen: one blank row under the footer, then a right-aligned `branch │ mode … ctx … $` row | walk |
+| `pi--v150-gentle-review-consent-regular--w69.txt` | Gentle Shell regular mode: a `✿ gentle shell ⟡ …` row under the footer, and an indented widget row straight over the title. The reporter's user name is cut to `someuse` | walk |
+| `pi--v150-gentle-review-consent-rail-tall--w198.txt` | Gentle Shell's side rail over the top rows, the dialog under it, no status row | walk |
+| `pi--v150-gentle-review-consent-rail-beside--w198.txt` | The dialog's rows beside the rail's boxes (issue 710, open) | raw, Escape card |
 
 ## gentle-pi soft-wrapped draft on pi 1.3.0 (issue 553, captured 2026-10-21, Herdr 0.9.5)
 
@@ -3116,6 +3122,15 @@ this corpus. Recipes: [`hermes/CLARIFY_NOTES.md`](../../lib/harness/hermes/CLARI
 | `hermes--slash-popup` | `/mo` typed, grey auto-suggestion `a`, completion menu under the input | composer, draft `/mo` |
 | `hermes--model-picker` | `/model`, the model list; status slot blank, input still idle | picker, Ctrl+C card |
 | `hermes--palette` | Ctrl+P palette; status slot blank, input still idle | picker, Ctrl+C card |
+| `hermes--tui-idle-hint` | Ink TUI (`hermes --tui`), issue 549, a fresh session: status row ` ─ 就緒 │ … ─ ~/workspace` one column in, ` ❯ 有什麼想問的？…` under it, no rule rows. From NCheuk's plain-text capture of 2026-11-04 (no SGR); the two transcript rows above are invented and the rows are padded to one width | composer, hint read as an empty box, free |
+| `hermes--tui-idle-title` | The same once the session has a title: the status row ends in the title and ` ❯` is bare (Ink shows no hint after the first turn) | composer, empty, free |
+| `hermes--tui-idle-en` | The English idle screen of the issue body (MigueMercedes, Hermes 0.22.2): ` ─ ready │ …` over ` ❯ Try "explain this codebase"`; the shell row above is the capture's | composer, hint read as an empty box, free |
+| `hermes--tui-draft` | A one-line draft ` ❯ testing idle with draft` under the status row, no title (NCheuk, 2026-11-04) | composer, draft read back |
+| `hermes--tui-draft-title` | The same with a titled status row | composer, draft read back |
+| `hermes--tui-busy` | A turn running: ` ─ (⊙_⊙) formulating…   · 13m 32s │ …` over ` ❯ Ctrl+C 中斷…`. NCheuk's capture of 2026-11-03 (issue 549 and PR 661): plain text, 215 columns, transcript rows invented | composer, turn running, the busy hint no draft (a send is held) |
+| `hermes--tui-busy-echo` | The same with an echoed ` ❯ some earlier echoed command` row in the transcript above | same read: the lowest box wins |
+| `hermes--tui-busy-fresh` | A turn running in a fresh session, ` ─ ヽ(>∀<☆)☆ deliberating…  · 0s │ …` (NCheuk, 2026-11-04) | composer, turn running |
+| `hermes--tui-busy-title` | The same with a titled status row | composer, turn running |
 | `hermes--exited` | The shell after `/exit` | no input, no card |
 | `hermes--v0225-title-idle` | Hermes 0.22.5, issue 657: the session title sits in the top rule, `── Session Title ─`, over the `❯` row and a 120-cell bottom rule. Three rows only, from the reporter's report; the styling, the placeholder row and the bottom rule's width (Hermes draws it across the pane) come from `hermes--idle`, and the rows start in column 0 (the report's one-space indent is Markdown, and a leading space fails the column-0 anchors). Not a `herdr pane read` of ours | composer, no draft, free |
 | `hermes--clarify-choices` | One question, three choices and Other, `❯` on 1, countdown `(3547s)` | digits 1 to 4 |
@@ -3438,6 +3453,23 @@ the status row above it named the operator's accounts and was dropped.
 | `omp--v18-16-0-ask-single-glyph-hide-moved--w200.txt` | `dialog` | The same dialog after one `Down` (`hc keys … down`), pointer on 배. Its walk pair |
 | `omp--v18-16-0-answer-editor-empty--w200.txt` | `idle` | `Enter` on `Other` opened `Custom answer: 과일을 고르세요`, hint `⏎ or ⌃Q submit  ⎋ cancel  ⌃G external editor`: the same prompt-style box as the `custom-answer-*` rows above, in the glyph keycap dialect, with no Ask box above it. Reads as a free box since #704 |
 
+## omp 18.16.0 plan review (captured 2026-11-07, Herdr 0.9.5, 80 and 140 columns)
+
+A real plan-mode turn in a scratch repo (Claude Haiku 5.5 over OpenRouter, the `unicode` symbol preset),
+captured with `herdr pane read --source recent --format ansi`. The overlay fills the pane, so each capture
+is the whole screen. omp 18.18.0 draws the same overlay (its `plan-review-overlay.ts` is unchanged). No
+private text was present. Grammar: `omp/plan-review.ts`.
+
+| Fixture | State | What it shows |
+| --- | --- | --- |
+| `omp--v18-16-0-plan-review--w80.txt` | `dialog` | `Plan Review` box, the plan, then `Plan mode - next step` and the five options, pointer on `Approve and execute`, footer `↑/↓ select · ⏎ confirm · c copy · ⇥ regions · Ctrl+G editor · ⎋ cancel`. Lifts |
+| `omp--v18-16-0-plan-review-moved--w80.txt` | `dialog` | The same review after one `Down`, pointer on `Approve and compact context`. Its walk pair |
+| `omp--v18-16-0-plan-review-regions--w80.txt` | `dialog` | After `Tab`: focus on the plan body, the footer names scroll keys and no `⏎ confirm`. Declines, and names no way out |
+| `omp--v18-16-0-plan-review-contents--w140.txt` | `dialog` | A plan with two headings: the Contents sidebar splits the top border (`┬`) and the divider (`┴`). Lifts |
+| `omp--v18-16-0-plan-review-slider--w140.txt` | `dialog` | Two role models: the `continue with  ◂  smol  ◀ default ▶  ▸` slider and its `↳ Claude Haiku 5.5` row above the options, footer with `←/→ model`. Lifts, the tier in the question |
+| `omp--v18-16-0-plan-review-slider-moved--w140.txt` | `dialog` | The same after two `Down`, pointer on `Approve and keep context`. Its walk pair |
+| `omp--v18-16-0-plan-review-slider-clipped--w80.txt` | `dialog` | The slider at 80 columns: omp cuts the footer with `…` before `⎋ cancel`. Declines, and names no way out |
+
 ## omp's rewind picker, Esc Esc (captured 2026-10-25, omp-gang tester 04 case 7)
 
 | Fixture | State | What it shows |
@@ -3756,6 +3788,26 @@ neutral text of the same length (`(local) example-model • max`); nothing else 
 | --- | --- | --- |
 | `pi--v150-core-permission-gate-no-cost--w200.txt` | `⚠️ Dangerous command:` over `chmod 777 gate-probe.txt`, `Allow?`, `→ Yes` / `No`, `↑↓ navigate  enter select  escape/ctrl+c cancel`; stats row `↑1.0k ↓45 0.4%/272k (auto)` with no cost | question ask, Yes / No and Cancel, walk |
 
+## pi with `❯` in column 0 of its own editor, a newline draft (issue 722)
+
+The reporter's extension keeps pi's editor and its two rules and puts `❯ ` in column 0 on the first input
+row, in the border colour; the rows under it keep two columns of lead. A draft typed with newlines then
+lines up under the glyph like a pointed list between two rules, and every send stopped at "Enter was not
+pressed". `pi--v150-gentle-quiet-two-line-draft.txt` is the screen of the report, plain text as the
+report card printed it (pi 1.5.0, herdr). The `pi--v130-quiet-prompt-*` captures are a repro of the same
+editor (an extension that subclasses `CustomEditor` and prefixes its rows), on pi 1.3.0, the version on
+the capture host, in a disposable 140 x 40 tmux server with `PI_SKIP_VERSION_CHECK=1` and no model
+configured, read with `tmux capture-pane -e -p`. Privacy: the install path in pi's no-model warning was
+replaced with neutral text of the same length; the working directory is a scratch path.
+
+| Fixture | State | What it shows |
+| --- | --- | --- |
+| `pi--v150-gentle-quiet-two-line-draft.txt` | `draft` | The report's screen: two widget boxes at column 138, blank rows, the rule, `❯ a`, `  Olá`, the rule. No styling, so no caret cell: the box stays a list, unreadable, never free |
+| `pi--v130-quiet-prompt-two-line-draft--w140.txt` | `draft` | `❯ a`, then `  Olá` with pi's caret cell (`ESC[7m` space) after it. Reads as the draft `a Olá` (`frame.draftCaret`) |
+| `pi--v130-quiet-prompt-three-line-draft--w140.txt` | `draft` | A third row, `  tudo bem`, the caret cell after it |
+| `pi--v130-quiet-prompt-three-line-cursor-up--w140.txt` | `draft` | The same draft after `Up Up`: the caret cell on the prompt row, after `a` |
+| `pi--v130-quiet-prompt-settings--w140.txt` | `dialog` | `/settings` over the same editor: a search field with its own caret cell, a `→` pointer and a key hint. Stays a dialog |
+
 ## omp 18.17.0, `/switch` and `/usage` on a phone (captured 2026-11-06, 120 columns by 40 rows, herdr 0.9.5)
 
 A reviewer reported that Collie's Chat view does not show `/usage` and `/switch` properly with omp. Each
@@ -3772,3 +3824,23 @@ token, so omp printed `unavailable` for its usage), and nothing else private was
 | `omp--v18-17-0-nerd-switch-moved--w120.txt` | `dialog` | One `Down` later: the pointer on `claude-fable-5-1`. The walk pair of the capture above |
 | `omp--v18-17-0-nerd-switch-search--w120.txt` | `dialog` | `opus-5` typed in the `nerd` picker: seven results, no rule. The way out reads `Clear search` |
 | `omp--v18-17-0-usage-dashboard--w120.txt` | `dialog` | `/usage`: a full-screen `╭─ Usage` box on the alternate screen, one account row (`unavailable`), a 53-week activity heatmap, about twenty blank rows, then `r refresh · ⏎ details · ⎋ close`. No grammar lifts it: it stays raw and takes the unread-dialog card with its Escape. The cues read `⎋ close` and, since 2026-11-06, `⏎ details` |
+
+## Codex 0.166.0 and 0.167.0 dialogs behind the trouble tally (captured 2026-11-07)
+
+The daily ping of 2026-11-07 counted 13 unread-dialog cards on `codex@0.167.0/herdr` from one solo
+install. A lab Codex 0.167.0 (and 0.166.0 beside it) ran in a Herdr pane of 120 and of 80 columns, 61
+rows, with its own `CODEX_HOME` holding the SessionStart hook Herdr's Codex integration installs. Every
+running turn read (composer found, no card); these screens did not. Privacy: the lab folder became
+`/tmp/collie-codex-lab`, and the command center's detail pane keeps only `/tmp/` and the folder's name.
+
+| Fixture | State | Reads as |
+| --- | --- | --- |
+| `codex--v0166-trust--w120.txt` | 0.166.0 folder trust, `2. Back to Agent Command Center`, `enter continue · esc back` | prompt-select, trust |
+| `codex--v0167-trust--w120.txt` | The same on 0.167.0 | prompt-select, trust |
+| `codex--v0167-trust--w80.txt` | The same at 80 columns, the paragraph on four rows | prompt-select, trust |
+| `codex--v0167-hooks-review--w120.txt` | `Hooks need review`, three rows, `›` on `1. Review hooks`, `enter confirm · esc skip` | prompt-select, trust (HOOKS_NOTES.md) |
+| `codex--v0167-hooks-review--w80.txt` | The same at 80 columns | prompt-select, trust |
+| `codex--v0167-hooks-review-moved--w80.txt` | The same after one `Down`, `›` on `2. Trust all and continue` | prompt-select, trust; the walk pair |
+| `codex--v0167-resume-tall--w120.txt` | `/resume` with one session: the title on row 1, the footer on rows 59 and 60 | menu (the title used to be out of reach) |
+| `codex--v0167-working--w120.txt` | A turn running: `• Working (4s • esc to interrupt) · 1 background terminal running`, the box, the status row, `← for agents · ? for shortcuts` | raw, composer found, no card |
+| `codex--v0167-command-center--w120.txt` | The agent command center, one task, a detail pane, `? help  esc back  ↑/↓ move  enter open  n new` | the unread-dialog card, by design |

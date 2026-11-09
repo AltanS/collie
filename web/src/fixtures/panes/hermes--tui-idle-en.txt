@@ -1,0 +1,40 @@
+                                                               
+                                                               
+                                                               
+                                                               
+                                                               
+                                                               
+                                                               
+                                                               
+                                                               
+                                                               
+                                                               
+                                                               
+                                                               
+                                                               
+                                                               
+                                                               
+                                                               
+                                                               
+                                                               
+                                                               
+                                                               
+                                                               
+                                                               
+                                                               
+                                                               
+                                                               
+                                                               
+                                                               
+                                                               
+                                                               
+                                                               
+                                                               
+                                                               
+                                                               
+                                                               
+❯ hermes                                                       
+                                                               
+                                                               
+ ─ ready │ sonnet 5.5[1m]    ─ migmer · …rmes/cache/scratch    
+ ❯ Try "explain this codebase"                                 

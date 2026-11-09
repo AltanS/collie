@@ -12,6 +12,7 @@ import { isStatusRow, lineText, PLACEHOLDER, PROMPT_GLYPHS, promptText } from ".
 import { detectApprovalRegion } from "./codex/approval";
 import { detectAskRegion } from "./codex/ask";
 import { detectTrustRegion } from "./codex/trust";
+import { detectHooksRegion } from "./codex/hooks";
 import { decorateCodexDisplay } from "./codex/display";
 import { describeAdapterConformance } from "./conformance";
 import { buildBlocks } from "./index";
@@ -107,8 +108,21 @@ const PINNED = [
   "codex--v0166-core-draft--w120.txt",
   "codex--v0166-core-idle--w120.txt",
   "codex--v0166-core-working--w120.txt",
+  // 0.166.0 and 0.167.0, the trouble tally of 2026-11-07 (codex@0.167.0 on Herdr, 13 cards in a day): the
+  // folder-trust prompt whose way out is now `Back to Agent Command Center`, the hook-trust prompt that
+  // Herdr's SessionStart hook brings up at every launch, `/resume` on a 61-row pane, a turn running, and
+  // the agent command center itself (no grammar; the card is right there).
+  "codex--v0166-trust--w120.txt",
   "codex--v0166-warning-art-empty--w120.txt",
   "codex--v0166-warning-typed--w120.txt",
+  "codex--v0167-command-center--w120.txt",
+  "codex--v0167-hooks-review--w120.txt",
+  "codex--v0167-hooks-review--w80.txt",
+  "codex--v0167-hooks-review-moved--w80.txt",
+  "codex--v0167-resume-tall--w120.txt",
+  "codex--v0167-trust--w120.txt",
+  "codex--v0167-trust--w80.txt",
+  "codex--v0167-working--w120.txt",
   "codex--working.txt",
 ];
 
@@ -130,6 +144,13 @@ const DIALOG = [
   "codex--v0156-approval-exec-wrapped.txt",
   "codex--v0156-approval-patch.txt",
   "codex--v0156-trust.txt",
+  "codex--v0166-trust--w120.txt",
+  "codex--v0167-hooks-review--w120.txt",
+  "codex--v0167-hooks-review--w80.txt",
+  "codex--v0167-hooks-review-moved--w80.txt",
+  "codex--v0167-resume-tall--w120.txt",
+  "codex--v0167-trust--w120.txt",
+  "codex--v0167-trust--w80.txt",
 ];
 
 const ownFixtures = DIALOG;
@@ -1700,5 +1721,111 @@ describe("codex: the /resume session picker lifts as a menu (0.159)", () => {
 
   it("changes its signature when the highlight moves, so a stale tap is refused", () => {
     expect(menuOf("codex--resume-picker-moved.txt")?.signature).not.toBe(menuOf("codex--resume-picker.txt")?.signature);
+  });
+});
+
+// The trouble tally of 2026-11-07: one Collie 1.27.2 on Herdr counted 13 unread-dialog cards on Codex
+// 0.167.0 in a day. Every running turn still reads (the strong lead was a missed composer mid-turn; it
+// is not it). Three dialogs did not: the folder-trust prompt's new way out, the hook-trust prompt that
+// Herdr's SessionStart hook raises at every launch until it is trusted, and `/resume` on a tall pane.
+describe("Codex 0.167.0: the dialogs behind the trouble tally", () => {
+  const promptOf = (name: string) => {
+    const block = codexAdapter.buildBlocks(fixtureLines(name)).find((b) => b.kind === "prompt-select");
+    if (block?.kind !== "prompt-select") throw new Error(`no prompt-select on ${name}`);
+    return block.prompt;
+  };
+
+  it("a running turn has a composer and no card", () => {
+    const lines = fixtureLines("codex--v0167-working--w120.txt");
+    expect(codexAdapter.composerReady!(lines)).toBe(true);
+    expect(buildBlocks(lines, { agent: "codex" }).map((b) => b.kind)).toEqual(["raw"]);
+  });
+
+  it.each(["codex--v0166-trust--w120.txt", "codex--v0167-trust--w120.txt", "codex--v0167-trust--w80.txt"])(
+    "lifts the trust prompt that goes back to the command center, not the card (%s)",
+    (name) => {
+      const prompt = promptOf(name);
+      expect(prompt.family).toBe("trust");
+      expect(prompt.question).toBe("Trust this folder?");
+      expect(prompt.options).toEqual([
+        { label: "Trust and continue", keys: ["Enter"], keyLabel: "›" },
+        { label: "Back to Agent Command Center", keys: ["Down", "Enter"] },
+      ]);
+      expect(buildBlocks(fixtureLines(name), { agent: "codex" }).some((b) => b.kind === "unread-dialog")).toBe(false);
+    },
+  );
+
+  it("refuses a trust prompt whose second label and footer come from different copies", () => {
+    const rows = [
+      "  Trust this folder? Codex can read, edit, and run files here.",
+      "",
+      "› 1. Trust and continue",
+      "  2. Back to Agent Command Center",
+      "",
+      "  enter continue · esc back",
+    ];
+    const read = (r: string[]) => detectTrustRegion(splitLines(parseAnsi(r.join("\n"))));
+    expect(read(rows)).not.toBeNull();
+    expect(read(rows.with(5, "  enter continue · esc quit"))).toBeNull();
+    expect(read(rows.with(3, "  2. Quit"))).toBeNull();
+  });
+
+  it.each(["codex--v0167-hooks-review--w120.txt", "codex--v0167-hooks-review--w80.txt"])(
+    "lifts the hook-trust prompt as a pointer walk plus Enter, never a digit (%s)",
+    (name) => {
+      const prompt = promptOf(name);
+      expect(prompt.family).toBe("trust");
+      expect(prompt.question).toBe("Hooks need review");
+      expect(prompt.options).toEqual([
+        { label: "Review hooks", keys: ["Enter"], keyLabel: "›" },
+        { label: "Trust all and continue", keys: ["Down", "Enter"] },
+        { label: "Continue without trusting (hooks won't run)", keys: ["Down", "Down", "Enter"] },
+      ]);
+      // The warning is the dialog's subject, so the card says what trusting means.
+      expect(prompt.subject?.map((l) => l.segments.map((s) => s.text).join("").trim())).toEqual([
+        "1 hook is new or changed.",
+        "Hooks can run outside the sandbox after you trust them.",
+      ]);
+      expect(buildBlocks(fixtureLines(name), { agent: "codex" }).some((b) => b.kind === "unread-dialog")).toBe(false);
+    },
+  );
+
+  const HOOKS = [
+    "  Hooks need review",
+    "  1 hook is new or changed.",
+    "  Hooks can run outside the sandbox after you trust them.",
+    "",
+    "  1. Review hooks",
+    "› 2. Trust all and continue",
+    "  3. Continue without trusting (hooks won't run)",
+    "",
+    "  enter confirm · esc skip",
+  ];
+  const readHooks = (rows: string[]) => detectHooksRegion(splitLines(parseAnsi(rows.join("\n"))));
+
+  it("walks from wherever the desk left the pointer", () => {
+    expect(readHooks(HOOKS)?.model.options.map((o) => o.keys)).toEqual([["Up", "Enter"], ["Enter"], ["Down", "Enter"]]);
+  });
+
+  it("the hook-trust prompt refuses altered labels, two pointers, no pointer, a wrapped row and a missing title", () => {
+    expect(readHooks(HOOKS.with(5, "› 2. Trust everything forever"))).toBeNull();
+    expect(readHooks(HOOKS.with(4, "› 1. Review hooks"))).toBeNull();
+    expect(readHooks(HOOKS.with(5, "  2. Trust all and continue"))).toBeNull();
+    expect(readHooks(HOOKS.with(6, "  3. Continue without trusting (hooks").toSpliced(7, 0, "     won't run)"))).toBeNull();
+    expect(readHooks(HOOKS.with(0, "  Something else"))).toBeNull();
+    expect(readHooks(HOOKS.with(8, "  enter confirm · esc quit"))).toBeNull();
+  });
+
+  it("reads /resume on a pane taller than 42 rows, where the title sits far above the footer", () => {
+    const blocks = codexAdapter.buildBlocks(fixtureLines("codex--v0167-resume-tall--w120.txt"));
+    const menu = blocks.find((b) => b.kind === "menu");
+    if (menu?.kind !== "menu") throw new Error("no menu");
+    expect(menu.menu.title).toBe("Resume a previous session");
+    expect(menu.menu.actions.map((a) => a.keys)).toEqual([["Enter"], ["Escape"]]);
+  });
+
+  it("leaves the agent command center to the card, its way out being Escape", () => {
+    const blocks = buildBlocks(fixtureLines("codex--v0167-command-center--w120.txt"), { agent: "codex" });
+    expect(blocks.map((b) => b.kind)).toEqual(["unread-dialog"]);
   });
 });

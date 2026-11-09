@@ -13,7 +13,7 @@
 // so the cards show the real geometry (the swap, the OK button on the mic's spot).
 
 import { useEffect, useState } from "react";
-import { Mic, Paperclip } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 
 import { ActionsRow } from "@/components/actions-row";
 import { MIRROR_INVERT, MIRROR_SPACE } from "@/components/mirror-space";
@@ -77,10 +77,10 @@ function DrawnBox() {
     <div className="flex items-end gap-1 rounded-xl border border-input bg-background p-1">
       <div className="min-h-9 min-w-0 flex-1 py-1.5 pl-2 font-mono text-[14px] leading-6 text-muted-foreground">Reply to the agent</div>
       <Button size="icon" variant="ghost" className={cn(TOOLBAR_TAP_TARGET, "size-9 shrink-0 rounded-full text-muted-foreground")} aria-label="Attach">
-        <Paperclip className="size-4" />
+        <Icon name="attach" className="size-4" />
       </Button>
       <Button size="icon" className={cn(TOOLBAR_TAP_TARGET, "size-9 shrink-0 rounded-full")} aria-label="Record a voice message">
-        <Mic className="size-4" />
+        <Icon name="mic" className="size-4" />
       </Button>
     </div>
   );

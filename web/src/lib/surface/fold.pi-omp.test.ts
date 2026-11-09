@@ -356,7 +356,8 @@ describe("a soft-wrapped draft in pi's box is no menu (issue 553)", () => {
   });
 
   // The controls stay dialogs: a choice between the rules is no soft wrap. An explicit-newline draft of
-  // short rows reads the same as such a list, so it stays a dialog too, the conservative side.
+  // short rows reads the same as such a list, so with no caret cell it stays a dialog too, the conservative
+  // side; the editor's own caret cell is what reads it as a draft (issue 722, below).
   const MENUS: readonly [string, string[]][] = [
     ["a yes/no choice", ["Yes", "No"]],
     ["a three-option menu", ["Option one", "Option two", "Option three"]],
@@ -389,6 +390,96 @@ describe("a soft-wrapped draft in pi's box is no menu (issue 553)", () => {
     expect(got.cues?.strength).toBe("strong");
     expect(isFree(got.surface)).toBe(false);
     expect(got.surface.modal).not.toBe("none");
+  });
+});
+
+// Issue 722: an extension keeps pi's own editor and rules and puts `❯ ` in column 0 on the first input row,
+// in the border colour; the rows under it keep two columns of lead. A draft typed with newlines (`a`, then
+// `Olá`) lines up like a pointed list between two rules, and the send stopped at "Enter was not pressed".
+// pi's editor draws its own cursor as one reverse-video cell (pi-tui `renderFakeCursor`), and the profile
+// says so (`frame.draftCaret`): rows under the glyph that hold that cell, and no option row, key hint or
+// command list, are the draft's own lines. A read with no styling has no cell, so it stays a list.
+describe("a newline draft under pi's column-0 prompt glyph (issue 722)", () => {
+  const pi = (rows: StyledLine[]) => readScreen(rows, agentOf("pi"), idleFor("pi"));
+  const row = (text: string): StyledLine => ({ segments: [{ text, style: {}, muted: false }] });
+  /** The rows with every reverse-video run made plain: the same screen as a read with no cursor cell. */
+  const uncursored = (rows: readonly StyledLine[]): StyledLine[] =>
+    rows.map((line) => ({ segments: line.segments.map((run) => (run.inverse === true ? { text: run.text, style: {}, muted: false } : run)) }));
+
+  // Real captures of the shape (pi 1.3.0, a repro of the reporter's editor, 140 x 40, tmux), cursor at the
+  // end of the last row, and once moved up onto the prompt row.
+  const DRAFTS: readonly [string, string][] = [
+    ["pi--v130-quiet-prompt-two-line-draft--w140.txt", "a Olá"],
+    ["pi--v130-quiet-prompt-three-line-draft--w140.txt", "a Olá tudo bem"],
+    ["pi--v130-quiet-prompt-three-line-cursor-up--w140.txt", "a Olá tudo bem"],
+  ];
+  for (const [name, text] of DRAFTS) {
+    it(`${name} reads as a draft with no modal`, () => {
+      const got = pi(fixtureRows(name));
+      expect(got.surface).toMatchObject({ turn: "idle", modal: "none", composer: "draft" });
+      expect(got.cues?.strength).not.toBe("strong");
+      expect(got.frame?.interior.text).toBe(text);
+    });
+
+    it(`${name} with no cursor cell still reads as a list, never as free`, () => {
+      const got = pi(uncursored(fixtureRows(name)));
+      expect(got.cues?.strength).toBe("strong");
+      expect(got.surface.modal).not.toBe("none");
+      expect(isFree(got.surface)).toBe(false);
+    });
+  }
+
+  // The field screen from the issue is plain text: no cell proves the editor, so it stays on the safe side.
+  it("the issue's plain-text screen finds the box and stays unreadable, never free", () => {
+    const rows = fixtureRows("pi--v150-gentle-quiet-two-line-draft.txt");
+    expect(findInputFrame(rows, idleFor("pi")!)?.interior.text).toBe("a Olá");
+    const got = pi(rows);
+    expect(got.surface.modal).not.toBe("none");
+    expect(isFree(got.surface)).toBe(false);
+  });
+
+  // The cell proves a focused editor only beside rows a dialog would not draw.
+  const at = (name: string, needle: string): number => fixtureRows(name).findIndex((line) => rowText(line).startsWith(needle));
+  const TWO = "pi--v130-quiet-prompt-two-line-draft--w140.txt";
+  const LISTS: readonly [string, string][] = [
+    ["a numbered row", "  2. Olá"],
+    ["a checkbox row", "  [ ] Olá"],
+    ["a key hint row", "  Enter to select"],
+  ];
+  for (const [what, text] of LISTS) {
+    it(`a cursored box with ${what} under the glyph stays a list, never a draft`, () => {
+      const rows = fixtureRows(TWO).map((line, i) => (i === at(TWO, "  Olá") ? { segments: [...row(text).segments, { text: " ", style: {}, muted: false, inverse: true }] } : line));
+      const got = pi(rows);
+      expect(got.surface.composer).not.toBe("draft");
+      expect(got.surface.modal).not.toBe("none");
+      expect(isFree(got.surface)).toBe(false);
+    });
+  }
+
+  it("a highlighted row (a reverse-video run wider than one cell) is no cursor", () => {
+    const rows = uncursored(fixtureRows(TWO)).map((line, i) =>
+      i === at(TWO, "  Olá") ? { segments: [{ text: "  ", style: {}, muted: false }, { text: "Olá", style: {}, muted: false, inverse: true }] } : line,
+    );
+    const got = pi(rows);
+    expect(got.cues?.strength).toBe("strong");
+    expect(isFree(got.surface)).toBe(false);
+  });
+
+  it("two reverse-video cells are no one cursor", () => {
+    const rows = fixtureRows(TWO).map((line, i) =>
+      i === at(TWO, "❯ a") ? { segments: [...line.segments, { text: " ", style: {}, muted: false, inverse: true }] } : line,
+    );
+    const got = pi(rows);
+    expect(got.cues?.strength).toBe("strong");
+    expect(isFree(got.surface)).toBe(false);
+  });
+
+  // pi's own dialogs draw a search field with that same cell (the settings list): its pointer row and key
+  // hint keep it a dialog.
+  it("pi's settings list, with its search field's cursor cell, stays a dialog", () => {
+    const got = pi(fixtureRows("pi--v130-quiet-prompt-settings--w140.txt"));
+    expect(got.surface.modal).not.toBe("none");
+    expect(isFree(got.surface)).toBe(false);
   });
 });
 

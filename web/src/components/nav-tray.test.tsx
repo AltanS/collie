@@ -338,7 +338,7 @@ describe("NavTray", () => {
     render(<NavTray onSend={vi.fn()} />);
 
     const alt = () => screen.getByRole("button", { name: "Alt" });
-    const isLocked = () => alt().querySelector(".lucide-lock") !== null;
+    const isLocked = () => alt().querySelector('[data-icon="modifier-lock"]') !== null;
 
     // off
     expect(alt()).toHaveAttribute("aria-pressed", "false");
@@ -394,7 +394,7 @@ describe("NavTray", () => {
     const ctrlBtn = () => screen.getByRole("button", { name: "Ctrl" });
     await user.click(ctrlBtn()); // once
     await user.click(ctrlBtn()); // locked
-    expect(ctrlBtn().querySelector(".lucide-lock")).not.toBeNull();
+    expect(ctrlBtn().querySelector('[data-icon="modifier-lock"]')).not.toBeNull();
 
     // Stage ctrl+Tab and send.
     await user.click(screen.getByRole("button", { name: "Tab" }));
@@ -424,7 +424,7 @@ describe("NavTray", () => {
     await user.click(screen.getByRole("button", { name: "Clear queued keys" }));
     expect(screen.queryByRole("button", { name: "Send" })).toBeNull(); // not composing
     expect(ctrlBtn()).toHaveAttribute("aria-pressed", "false"); // lock released
-    expect(ctrlBtn().querySelector(".lucide-lock")).toBeNull();
+    expect(ctrlBtn().querySelector('[data-icon="modifier-lock"]')).toBeNull();
   });
 
   // ── Ctrl presets: immediate two-tap when idle; plain stage when composing ──

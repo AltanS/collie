@@ -1,0 +1,39 @@
+
+[0m[38;5;4mproj[0m [0m[38;5;8mmaster[0m[38;5;218m*[0m[38;5;6m [0m
+[0m[1m[38;2;245;163;199m[0m pi --no-session --tui-mode regular -ne -e /home/someuser/.pi/agent
+/npm/node_modules/gentle-pi/extensions/gentle-ai.ts -e /home/someuse
+s/.pi/agent/npm/node_modules/gentle-pi/extensions/gentle-shell.ts -e
+ ./.pi/extensions/repro.ts
+[0m[38;5;3mWarning: No models match pattern "claude-bridge/claude-opus-5-5"[0m
+[0m[38;5;3mWarning: No models match pattern "claude-bridge/claude-sonnet-5-5"[0m
+[0m[38;5;3mWarning: No models match pattern "claude-bridge/claude-haiku-5-5"[0m
+
+ [0m[38;2;228;138;122m[48;2;79;142;179m▀[0m[38;2;228;138;122m▀█[0m  [0m[38;2;127;127;127mv1.5.0[0m                                                        
+ [0m[38;2;79;142;179m█▀[0m [0m[38;2;234;182;93m█[0m [0m[38;2;127;127;127mescape[0m[38;2;157;157;157m interrupt · [0m[38;2;127;127;127mctrl+c/ctrl+d[0m[38;2;157;157;157m clear/exit · [0m[38;2;127;127;127m/[0m[38;2;157;157;157m commands · [0m[38;2;127;127;127m![0m[38;2;157;157;157m  [0m
+ [0m[38;2;157;157;157mbash · [0m[38;2;127;127;127mctrl+o[0m[38;2;157;157;157m more[0m                                                 
+ [0m[38;2;127;127;127mPress ctrl+o to show full startup help.[0m                            
+                                                                    
+ [0m[38;2;127;127;127mPi can explain its own features and look up its docs. Ask it how   [0m
+ [0m[38;2;127;127;127mto use or extend Pi.[0m                                               
+
+
+ [0m[38;2;127;127;127mchoice -> {"question":"Which color for the                         [0m
+ [0m[38;2;127;127;127mprobe?","options":[{"label":"Red","value":"red","description":"War [0m
+ [0m[38;2;127;127;127mm"},{"label":"Green","value":"green","description":"Calm"},{"label [0m
+ [0m[38;2;127;127;127m":"Blue","value":"blue"}],"cancelled":true}[0m                        
+
+ 🚀 YOLO ON 🔥 — destructive confirmations remain                   
+[0m[1m[38;2;157;157;157mReview consent[0m
+Gentle AI can review this change before you call it done.
+this change gets a deeper review because it touches code that starts
+other processes in internal/runner/runner.go.
+[0m[38;2;157;157;157m→ 1. Run the review now[0m
+  2. Not now, just this once
+  3. Review and allow this session
+
+[0m[38;2;157;157;157mEffect: Reviews this exact frozen candidate now; nothing is granted[0m
+[0m[38;2;157;157;157m        for later candidates, so each later medium- or high-risk[0m
+[0m[38;2;157;157;157m        candidate asks again.[0m
+
+[0m[38;2;127;127;127m↑↓ choose · Enter confirm · Esc cancel · D details[0m
+[0m[38;2;157;157;157m✿ gentle shell[0m [0m[38;2;127;127;127m⟡[0m [0m[38;2;157;157;157mproj[0m master [0m[38;2;127;127;127m⟡[0m grok-4.7 [0m[38;2;157;157;157m·[0m [0m[38;2;157;157;157mhigh[0m [0m[38;2;127;127;127m⟡[0m [0m[38;2;157;157;157mctx[0m [0m[38;2;149;149;149m▱▱▱▱▱▱▱▱[0m 0%

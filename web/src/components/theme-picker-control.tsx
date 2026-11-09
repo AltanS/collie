@@ -1,5 +1,5 @@
-import { useRef, useState, type CSSProperties } from "react";
-import { ChevronDown, Palette } from "lucide-react";
+import { useRef, useState } from "react";
+import { Icon } from "@/components/icons/icon";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -7,18 +7,16 @@ import { CopyableBlock } from "@/components/ui/copyable-block";
 import { Notice } from "@/components/ui/notice";
 import { BottomSheet } from "@/components/ui/sheet";
 import { useLocale } from "@/hooks/use-locale";
-import { hasDocument } from "@/lib/env";
+import { abortSignalAfter, hasDocument } from "@/lib/env";
 import { t, type MessageKey } from "@/lib/i18n";
 import {
-  DEFAULT_THEME_ID,
-  THEME_TOKENS,
   contrastReport,
   fillHalves,
   parseTheme,
+  sizeRefusal,
   toSrgbHex,
   type Finding,
   type Refusal,
-  type RefusalCode,
   type Theme,
   type ThemeToken,
   versionOf,
@@ -26,24 +24,34 @@ import {
 import {
   LIBRARY_MAX,
   THEME_MAX_BYTES,
-  addImported,
+  installTheme,
+  replaceImported,
   removeImported,
   setActiveTheme,
+  type ReplaceResult,
+  type UpdateExpected,
   shippedThemes,
   useActiveTheme,
   useLibrary,
+  useThemeOrigins,
 } from "@/lib/theme/store";
 import {
   ANSI_KEYS,
   SURFACE_TOKENS,
-  displayDeclarations,
   fullSurfaceDeclarations,
+  groundText,
   resolveSurface,
   type Ansi,
-  type Declaration,
 } from "@/lib/theme/surface";
-import { isShippedFont } from "@/lib/shipped-fonts";
-import { SectionLabel } from "@/components/ui/section-label";
+import { CONTRAST_FAIL_KEY, HALF_KEYS, headlineVars, isMoreLine, refusalHeadline } from "@/lib/theme/report-words";
+import { ThemeBrowseSheet } from "@/components/theme-browse";
+import { ThemeAboutSheet } from "@/components/theme-about";
+import { dropTrial, startTrial } from "@/lib/theme/trial";
+import { registryRef, stamp, type ThemeSourceRef } from "@/lib/theme/origin";
+import type { RegistryTheme } from "@/lib/theme/registry";
+import { matchRegistryOrigin } from "@/lib/theme/registry-match";
+import { fetchThemeRegistry } from "@/lib/api";
+import { PageSample, ThemeFallbackLines, ThemeGlyphsLine, ThemeMarkLine, collieTheme, displayOf, styleOf } from "@/components/theme-page-sample";
 
 // The Theme card (M57): which colour theme this device wears, and the way in and out for a theme
 // file. It sits directly ABOVE the Appearance three-way (System, Light, Dark) on purpose: the first
@@ -55,9 +63,10 @@ import { SectionLabel } from "@/components/ui/section-label";
 // refused, and it does not trust its own preview: Apply goes through `addImported`, which parses the
 // theme again, because the store is the door to storage and checks at the door.
 //
-// NOTHING MOVES (DESIGN.md §2). The theme is one select row, the three buttons are always
+// NOTHING MOVES (DESIGN.md §2). The theme is one select row, the five buttons are always
 // there (Remove is a disabled slot while the active theme is not an imported one), and the promise
-// line is static. The only thing that floats is the sheet.
+// line is static. The About button beside the select is a disabled slot the same way. The only thing
+// that floats is the sheet.
 
 /** The eight tokens a preview shows per half: the ground, the card, the primary, three statuses, two lines. */
 const PREVIEW_TOKENS: readonly ThemeToken[] = [
@@ -74,48 +83,9 @@ const PREVIEW_TOKENS: readonly ThemeToken[] = [
 /** The most contrast failures a preview lists before it says how many more there are. */
 const FAILURES_SHOWN = 6;
 
-/** The refusal headlines, one per parser code. A record, so a new code cannot skip a sentence. */
-const REFUSAL_KEYS = {
-  size: "theme.refusal.size",
-  json: "theme.refusal.json",
-  version: "theme.refusal.version",
-  id: "theme.refusal.id",
-  name: "theme.refusal.name",
-  author: "theme.refusal.author",
-  "unknown-key": "theme.refusal.unknown-key",
-  value: "theme.refusal.value",
-  font: "theme.refusal.font",
-  "no-half": "theme.refusal.no-half",
-  "reserved-id": "theme.refusal.reserved-id",
-  surface: "theme.refusal.surface",
-  ansi: "theme.refusal.ansi",
-} as const satisfies Record<RefusalCode, MessageKey>;
-
-const HALF_KEYS = {
-  light: "settings.theme.option.light",
-  dark: "settings.theme.option.dark",
-} as const satisfies Record<"light" | "dark", MessageKey>;
-
-const MORE_PATTERN = /^and \d+ more$/;
-
-function collieTheme(): Theme {
-  const found = shippedThemes().find((theme) => theme.id === DEFAULT_THEME_ID);
-  if (found === undefined) throw new Error(`the shipped theme ${DEFAULT_THEME_ID} is missing`);
-  return found;
-}
-
 /** The sRGB hex of a token in one half of a theme, a half or a token it leaves out filled from `collie`. */
 function hexOf(theme: Theme, half: "light" | "dark", token: ThemeToken): string {
   return toSrgbHex(fillHalves(theme, collieTheme())[half][token] ?? "");
-}
-
-/** The size refusal for a file the card will not even read. The same words the parser uses. */
-function tooBig(bytes: number): Refusal {
-  return {
-    code: "size",
-    path: "$",
-    detail: `The file is ${bytes} bytes. A theme may be at most ${THEME_MAX_BYTES} bytes.`,
-  };
 }
 
 async function readCapped(file: File): Promise<string> {
@@ -126,7 +96,7 @@ async function readCapped(file: File): Promise<string> {
 
 /** A file's text, or the refusal that says why it was not read. */
 async function openFile(file: File): Promise<{ text: string } | { refusals: Refusal[] }> {
-  if (file.size > THEME_MAX_BYTES) return { refusals: [tooBig(file.size)] };
+  if (file.size > THEME_MAX_BYTES) return { refusals: [sizeRefusal(file.size, THEME_MAX_BYTES)] };
   return { text: await readCapped(file) };
 }
 
@@ -152,8 +122,8 @@ function downloadText(name: string, text: string): boolean {
 
 /**
  * The text of an exported file: the theme as the parser kept it, two-space indent, and the lowest
- * version that holds it: 2 only when it carries a shape, so a colour-only export still imports into
- * a Collie that reads version 1 alone.
+ * version that holds it: 2 only when it carries a shape, and 4 only when it names a character, so a
+ * colour-only export still imports into a Collie that reads version 1 alone.
  */
 export function themeFileText(theme: Theme): string {
   return JSON.stringify({ ...theme, version: versionOf(theme) }, null, 2);
@@ -166,6 +136,12 @@ interface PreviewSheetProps {
   theme: Theme | null;
   onApply: () => void;
   onCancel: () => void;
+  /** Try: wear the theme without keeping it (M59 spec 08). Absent draws no Try button. */
+  onTry?: () => void;
+  /** Where the theme comes from. A listed theme names its repo, so an update shows whose file it is. */
+  source?: ThemeSourceRef;
+  /** The apply button's word: Apply, or Update when the theme replaces a kept one. */
+  applyLabel?: MessageKey;
 }
 
 /**
@@ -198,20 +174,6 @@ function Swatches({ theme, half }: { theme: Theme; half: "light" | "dark" }) {
       </div>
     </div>
   );
-}
-
-/** The display face a file names, or the UI face: the declaration a sample box sets for its titles. */
-function displayOf(theme: Theme): readonly Declaration[] {
-  const face = theme.fonts?.display;
-  return face !== undefined && isShippedFont(face) ? displayDeclarations(face) : [["--font-display", "var(--font-sans)"]];
-}
-
-/** Declarations as a style object. */
-function styleOf(declarations: readonly Declaration[]): CSSProperties {
-  // SAFETY: React passes custom properties through to the style attribute verbatim; the cast exists
-  // only because CSSProperties has no index signature for `--*`. Names come from surface.ts and the
-  // token list, values from the table or from the parser's checked colours.
-  return Object.fromEntries(declarations) as CSSProperties;
 }
 
 /**
@@ -251,47 +213,11 @@ function SurfaceSample({ theme }: { theme: Theme }) {
       <ul className="mt-2 flex flex-wrap gap-x-3 gap-y-1 font-mono text-xs text-muted-foreground" data-testid="theme-shape-words">
         {SURFACE_TOKENS.map((token) => (
           <li key={token}>
-            {token}: {surface[token]}
+            {token}: {token === "ground" ? groundText(surface.ground) : surface[token]}
           </li>
         ))}
         {display !== undefined && <li>display: {display}</li>}
       </ul>
-    </div>
-  );
-}
-
-/**
- * One half of the file as a small page: the half's colours (a token it leaves out from `collie`) and
- * the file's words as custom properties on one box, its `color-scheme` set to the half. The band reads
- * `--band-ground` and `--band-rule`, the ground `--background` and `--ground-image`, the title the
- * display face, the icon the stroke, the label the label case, and the two rows the rows rule in
- * index.css. Decorative: the words below say the same in text.
- */
-function PageSample({ theme, half }: { theme: Theme; half: "light" | "dark" }) {
-  const filled = fillHalves(theme, collieTheme())[half];
-  const colours = THEME_TOKENS.flatMap((token): Declaration[] => {
-    const value = filled[token];
-    return value === undefined ? [] : [[`--${token}`, value]];
-  });
-  const style = { ...styleOf([...colours, ...fullSurfaceDeclarations(theme.surface), ...displayOf(theme)]), colorScheme: half };
-  return (
-    <div
-      aria-hidden
-      data-testid={`theme-page-sample-${half}`}
-      style={style}
-      className="overflow-hidden rounded-md border border-border text-foreground"
-    >
-      <div className="flex h-7 items-center gap-1.5 border-b border-band-rule bg-band-ground px-2">
-        <Palette className="size-3.5 shrink-0" />
-        <span className="truncate text-xs font-semibold [font-family:var(--font-display)]">{theme.name}</span>
-      </div>
-      <div className="bg-background px-2 pt-1.5 pb-2 [background-image:var(--ground-image)]">
-        <SectionLabel placement="above">{t(HALF_KEYS[half])}</SectionLabel>
-        <div data-slot="list-group" className="flex flex-col rounded-sm border-[length:var(--row-rule)] border-rule">
-          <div className="h-4" />
-          <div className="h-4" />
-        </div>
-      </div>
     </div>
   );
 }
@@ -331,7 +257,7 @@ function AnsiStrip({ ansi }: { ansi: Ansi }) {
 }
 
 function failureText(finding: Finding): string {
-  return t("theme.preview.contrast.fail", {
+  return t(CONTRAST_FAIL_KEY, {
     half: t(HALF_KEYS[finding.half]),
     check: finding.check,
     ratio: finding.ratio,
@@ -344,7 +270,7 @@ function failureText(finding: Finding): string {
  * file carries, a swatch row per half, the shape drawn and in words, and the contrast report. A failed floor WARNS and Apply stays
  * on; only a refusal, which never reaches this sheet, stops an import.
  */
-export function ThemePreviewSheet({ theme, onApply, onCancel }: PreviewSheetProps) {
+export function ThemePreviewSheet({ theme, onApply, onCancel, onTry, source, applyLabel = "theme.preview.apply" }: PreviewSheetProps) {
   useLocale();
   const findings = theme === null ? [] : contrastReport(theme, collieTheme());
   const failing = findings.filter((finding) => !finding.pass);
@@ -359,7 +285,13 @@ export function ThemePreviewSheet({ theme, onApply, onCancel }: PreviewSheetProp
             {theme.author !== undefined && (
               <div className="text-sm text-muted-foreground">{t("theme.preview.by", { author: theme.author })}</div>
             )}
+            {source?.kind === "registry" && (
+              <div className="truncate text-sm text-muted-foreground">{t("theme.preview.from", { repo: source.repo })}</div>
+            )}
             <div className="text-sm text-muted-foreground">{t(`theme.preview.halves.${halves}`)}</div>
+            <ThemeMarkLine theme={theme} />
+            <ThemeGlyphsLine theme={theme} />
+            <ThemeFallbackLines theme={theme} />
           </div>
 
           <div className="flex flex-col gap-2">
@@ -397,9 +329,14 @@ export function ThemePreviewSheet({ theme, onApply, onCancel }: PreviewSheetProp
             )}
           </div>
 
-          <div className="grid grid-cols-2 gap-2">
+          <div className={onTry === undefined ? "grid grid-cols-2 gap-2" : "grid grid-cols-3 gap-2"}>
+            {onTry !== undefined && (
+              <Button type="button" variant="outline" className="h-11" onClick={onTry}>
+                {t("theme.trial.try")}
+              </Button>
+            )}
             <Button type="button" className="h-11" onClick={onApply}>
-              {t("theme.preview.apply")}
+              {t(applyLabel)}
             </Button>
             <Button type="button" variant="outline" className="h-11" onClick={onCancel}>
               {t("theme.preview.cancel")}
@@ -426,11 +363,12 @@ export interface RefusalEntry {
 
 /** A parser refusal as a sheet line. The reserved id says it all in its headline, so it adds no detail. */
 export function entryOfRefusal(refusal: Refusal): RefusalEntry {
-  if (refusal.code === "json" && refusal.path === "$" && MORE_PATTERN.test(refusal.detail)) {
+  if (isMoreLine(refusal)) {
     return { headline: refusal.detail, tone: "neutral" };
   }
+  const headline = refusalHeadline(refusal);
   return {
-    headline: t(REFUSAL_KEYS[refusal.code]),
+    headline: t(headline.key, headlineVars(headline)),
     where: refusal.path,
     detail: refusal.code === "reserved-id" ? undefined : refusal.detail,
     tone: "danger",
@@ -474,6 +412,72 @@ export function ThemeRefusalSheet({ entries, onClose }: RefusalSheetProps) {
   );
 }
 
+// ── The paste sheet ─────────────────────────────────────────────────────────────────────────────
+
+/** Text that opens with a scheme and `//`: a link, which the card never fetches (ADR 0106, 2026-11-07). */
+const LINK_PATTERN = /^[a-z][a-z0-9+.-]*:\/\//i;
+
+/**
+ * Pasted text as a theme, or the lines that say why not. The same parser, cap and refusal words as a
+ * file: `parseTheme` measures the UTF-8 length before it parses anything. A link is refused before
+ * the parser, with a sentence that says what to paste instead, because the card fetches nothing.
+ */
+export function readPasted(text: string): { theme: Theme } | { entries: RefusalEntry[] } {
+  const value = text.trim();
+  if (LINK_PATTERN.test(value)) return { entries: [{ headline: t("theme.paste.refusal.link"), tone: "danger" }] };
+  const parsed = parseTheme(value, { maxBytes: THEME_MAX_BYTES });
+  if (!parsed.ok) return { entries: parsed.refusals.map(entryOfRefusal) };
+  return { theme: parsed.theme };
+}
+
+interface PasteSheetProps {
+  open: boolean;
+  value: string;
+  onChange: (value: string) => void;
+  onRead: () => void;
+  onCancel: () => void;
+}
+
+/**
+ * One text field for the JSON text of a theme, and Read. Read goes to the same preview or refusal
+ * sheet a file goes to. The field keeps its text when a refusal closes the sheet, so a person can fix
+ * one character and read it again.
+ */
+export function ThemePasteSheet({ open, value, onChange, onRead, onCancel }: PasteSheetProps) {
+  useLocale();
+  return (
+    <BottomSheet open={open} onClose={onCancel} title={t("theme.paste.title")}>
+      {open && (
+        <div className="flex flex-col gap-3">
+          <label htmlFor="theme-paste-text" className="text-sm font-medium">
+            {t("theme.paste.label")}
+          </label>
+          <textarea
+            id="theme-paste-text"
+            value={value}
+            onChange={(event) => onChange(event.target.value)}
+            rows={6}
+            autoCapitalize="off"
+            autoCorrect="off"
+            spellCheck={false}
+            placeholder='{ "version": 2, "id": "my-day", ... }'
+            className="min-h-32 w-full resize-y rounded-md border border-input bg-background p-3 font-mono text-xs text-foreground"
+          />
+          <p className="text-xs text-muted-foreground">{t("theme.paste.hint")}</p>
+          <div className="grid grid-cols-2 gap-2">
+            <Button type="button" className="h-11" disabled={value.trim() === ""} onClick={onRead}>
+              {t("theme.paste.read")}
+            </Button>
+            <Button type="button" variant="outline" className="h-11" onClick={onCancel}>
+              {t("theme.preview.cancel")}
+            </Button>
+          </div>
+        </div>
+      )}
+    </BottomSheet>
+  );
+}
+
 // ── The card ────────────────────────────────────────────────────────────────────────────────────
 
 const LIBRARY_REFUSALS = {
@@ -487,17 +491,69 @@ function libraryEntry(reason: "full" | "duplicate" | "invalid"): RefusalEntry {
   return { headline: t(LIBRARY_REFUSALS[reason], { count: LIBRARY_MAX }), tone: "danger" };
 }
 
-/** Settings card: pick a theme, import one from a file, export or remove the one on screen. */
+/** Why an update was refused, one sentence each, and each says the theme on the device is unchanged. */
+const UPDATE_REFUSALS = {
+  invalid: "theme.update.invalid",
+  duplicate: "theme.update.duplicate",
+  "reserved-id": "theme.update.reserved-id",
+  storage: "theme.update.storage",
+  changed: "theme.update.changed",
+} as const satisfies Record<Extract<ReplaceResult, { ok: false }>["reason"], MessageKey>;
+
+/** The longest an import waits for the host's copy of the list before it opens the preview without it. */
+const MATCH_WAIT_MS = 1500;
+
+/**
+ * The source of a file or a paste: the list entry it is the same theme as, on the host's EXISTING copy
+ * (`GET`, which fetches nothing), or `local` when there is no copy, no single match, or no answer
+ * within {@link MATCH_WAIT_MS} (registry-match.ts).
+ */
+async function sourceOf(theme: Theme, local: ThemeSourceRef): Promise<ThemeSourceRef> {
+  try {
+    const status = await fetchThemeRegistry(abortSignalAfter(MATCH_WAIT_MS) ?? undefined);
+    return matchRegistryOrigin(theme, status.themes) ?? local;
+  } catch {
+    return local;
+  }
+}
+
+/** A pick in the card puts a theme on itself, so a running trial ends without re-applying anything. */
+function pickTheme(id: string): void {
+  dropTrial();
+  setActiveTheme(id);
+}
+
+/** A theme on its way into the library: where it came from, and the kept theme it replaces on an update. */
+interface Pending {
+  theme: Theme;
+  source: ThemeSourceRef;
+  /** Update: the kept theme whose slot this takes, and what the slot held when About compared. */
+  replaces?: { id: string; expected: UpdateExpected };
+}
+
+/** Settings card: pick a theme, browse the community list, import one from a file or pasted text, export or remove the one on screen. */
 export function ThemePickerControl() {
   useLocale();
   const active = useActiveTheme();
   const imported = useLibrary();
   const input = useRef<HTMLInputElement>(null);
-  const [preview, setPreview] = useState<Theme | null>(null);
+  const [preview, setPreview] = useState<Pending | null>(null);
   const [refused, setRefused] = useState<readonly RefusalEntry[] | null>(null);
   const [exported, setExported] = useState<string | null>(null);
+  const [pasting, setPasting] = useState(false);
+  const [pasted, setPasted] = useState("");
+  const [browsing, setBrowsing] = useState(false);
+  const [about, setAbout] = useState<string | null>(null);
+  const origins = useThemeOrigins();
 
   const all: Theme[] = [...shippedThemes(), ...imported];
+  const aboutTheme = about === null ? null : (imported.find((theme) => theme.id === about) ?? null);
+
+  /** Update from About: the listed file, previewed over the same sheet, to take the old theme's slot. */
+  function updateFromAbout(oldId: string, item: RegistryTheme, expected: UpdateExpected) {
+    setAbout(null);
+    setPreview({ theme: item.theme, source: registryRef(item.entry), replaces: { id: oldId, expected } });
+  }
 
   function startImport() {
     if (imported.length >= LIBRARY_MAX) {
@@ -505,6 +561,35 @@ export function ThemePickerControl() {
       return;
     }
     input.current?.click();
+  }
+
+  function startPaste() {
+    if (imported.length >= LIBRARY_MAX) {
+      setRefused([libraryEntry("full")]);
+      return;
+    }
+    setPasting(true);
+  }
+
+  /** Install from the Browse sheet: the same preview a file opens, after the same cap check. */
+  function installFromBrowse(item: RegistryTheme) {
+    setBrowsing(false);
+    if (imported.length >= LIBRARY_MAX) {
+      setRefused([libraryEntry("full")]);
+      return;
+    }
+    setPreview({ theme: item.theme, source: registryRef(item.entry) });
+  }
+
+  async function readPaste() {
+    const read = readPasted(pasted);
+    setPasting(false);
+    if ("entries" in read) {
+      setRefused(read.entries);
+      return;
+    }
+    setPasted("");
+    setPreview({ theme: read.theme, source: await sourceOf(read.theme, { kind: "paste" }) });
   }
 
   async function onFile(file: File | undefined) {
@@ -521,12 +606,27 @@ export function ThemePickerControl() {
       setRefused(parsed.refusals.map(entryOfRefusal));
       return;
     }
-    setPreview(parsed.theme);
+    setPreview({ theme: parsed.theme, source: await sourceOf(parsed.theme, { kind: "file" }) });
+  }
+
+  /** Try: wear the theme across the app with the ribbon, and close whichever sheet offered it. */
+  function tryTheme(theme: Theme, source: ThemeSourceRef) {
+    setPreview(null);
+    setBrowsing(false);
+    startTrial(theme, source);
   }
 
   function apply() {
     if (preview === null) return;
-    const added = addImported(preview);
+    const origin = stamp(preview.source, Date.now());
+    if (preview.replaces !== undefined) {
+      const replaced = replaceImported(preview.replaces.id, preview.theme, origin, preview.replaces.expected);
+      setPreview(null);
+      if (replaced.ok) dropTrial();
+      else setRefused([{ headline: t(UPDATE_REFUSALS[replaced.reason]), tone: "danger" }]);
+      return;
+    }
+    const added = installTheme(preview.theme, origin);
     if (!added.ok) {
       setPreview(null);
       setRefused([
@@ -536,7 +636,7 @@ export function ThemePickerControl() {
       ]);
       return;
     }
-    setActiveTheme(preview.id);
+    dropTrial();
     setPreview(null);
   }
 
@@ -549,7 +649,7 @@ export function ThemePickerControl() {
     <Card className="gap-0 py-0">
       <div className="flex items-center justify-between gap-4 p-4">
         <div className="flex min-w-0 items-start gap-3">
-          <Palette className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
+          <Icon name="theme" className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
           <div className="min-w-0">
             <div className="font-medium">{t("theme.title")}</div>
             <p className="text-sm text-muted-foreground">{t("theme.description")}</p>
@@ -568,30 +668,49 @@ export function ThemePickerControl() {
           <label htmlFor="pref-theme" className="text-sm font-medium">
             {t("theme.title")}
           </label>
-          <div className="relative min-w-0 shrink-0">
-            <select
-              id="pref-theme"
-              value={active.id}
-              onChange={(event) => setActiveTheme(event.target.value)}
-              className="min-h-11 max-w-[60vw] appearance-none truncate rounded-md border border-border/60 bg-background py-2 pl-3 pr-9 text-sm font-medium text-foreground"
+          <div className="flex min-w-0 shrink-0 items-center gap-2">
+            <div className="relative min-w-0 shrink-0">
+              <select
+                id="pref-theme"
+                value={active.id}
+                onChange={(event) => pickTheme(event.target.value)}
+                className="min-h-11 max-w-[48vw] appearance-none truncate rounded-md border border-border/60 bg-background py-2 pl-3 pr-9 text-sm font-medium text-foreground"
+              >
+                {all.map((theme) => (
+                  <option key={theme.id} value={theme.id}>
+                    {theme.name}
+                  </option>
+                ))}
+              </select>
+              <Icon
+                name="select-caret"
+                aria-hidden="true"
+                className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+              />
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              className="size-11 shrink-0 p-0"
+              disabled={active.source !== "imported"}
+              aria-label={t("theme.about.aria", { name: active.theme.name })}
+              onClick={() => setAbout(active.id)}
             >
-              {all.map((theme) => (
-                <option key={theme.id} value={theme.id}>
-                  {theme.name}
-                </option>
-              ))}
-            </select>
-            <ChevronDown
-              aria-hidden="true"
-              className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
-            />
+              <Icon name="info" aria-hidden="true" className="size-4" />
+            </Button>
           </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-2 border-t border-border p-3">
+      <div className="grid grid-cols-2 gap-2 border-t border-border p-3">
+        <Button type="button" variant="outline" className="col-span-2 h-11" onClick={() => setBrowsing(true)}>
+          {t("theme.browse")}
+        </Button>
         <Button type="button" variant="outline" className="h-11" onClick={startImport}>
           {t("theme.import")}
+        </Button>
+        <Button type="button" variant="outline" className="h-11" onClick={startPaste}>
+          {t("theme.paste")}
         </Button>
         <Button type="button" variant="outline" className="h-11" onClick={exportActive}>
           {t("theme.export")}
@@ -601,7 +720,10 @@ export function ThemePickerControl() {
           variant="outline"
           className="h-11"
           disabled={active.source !== "imported"}
-          onClick={() => removeImported(active.id)}
+          onClick={() => {
+            dropTrial();
+            removeImported(active.id);
+          }}
         >
           {t("theme.remove")}
         </Button>
@@ -618,7 +740,36 @@ export function ThemePickerControl() {
         onChange={(event) => void onFile(event.target.files?.[0])}
       />
 
-      <ThemePreviewSheet theme={preview} onApply={apply} onCancel={() => setPreview(null)} />
+      <ThemeBrowseSheet
+        open={browsing}
+        onClose={() => setBrowsing(false)}
+        onInstall={installFromBrowse}
+        onTry={(item) => tryTheme(item.theme, registryRef(item.entry))}
+      />
+      <ThemePasteSheet
+        open={pasting}
+        value={pasted}
+        onChange={setPasted}
+        onRead={() => void readPaste()}
+        onCancel={() => setPasting(false)}
+      />
+      {/* An update offers no Try: Keep from the ribbon adds a theme, and an update replaces one. */}
+      <ThemePreviewSheet
+        theme={preview?.theme ?? null}
+        source={preview?.source}
+        applyLabel={preview?.replaces === undefined ? "theme.preview.apply" : "theme.about.update"}
+        onApply={apply}
+        onCancel={() => setPreview(null)}
+        onTry={preview === null || preview.replaces !== undefined ? undefined : () => tryTheme(preview.theme, preview.source)}
+      />
+      <ThemeAboutSheet
+        theme={aboutTheme}
+        origin={about === null ? undefined : origins.get(about)}
+        onClose={() => setAbout(null)}
+        onUpdate={(item, expected) => {
+          if (about !== null) updateFromAbout(about, item, expected);
+        }}
+      />
       <ThemeRefusalSheet entries={refused} onClose={() => setRefused(null)} />
       <BottomSheet open={exported !== null} onClose={() => setExported(null)} title={t("theme.export.title")}>
         {exported !== null && (

@@ -88,9 +88,17 @@ function detectLegacyTrust(lines: StyledLine[]): TrustRegion | null {
 // only what the screen names: Enter (the footer's `enter continue`) after the arrow walk the `›`
 // pointer implies, the recipe ADR 0055 set for Claude's pointed trust list. No digit is sent.
 // The pointer is in the signature, so a pointer moved at the desk refuses a stale tap.
-const NEW_FOOTER = /^\s*enter continue · esc quit$/;
+//
+// 0.166.0 and 0.167.0 (captured 2026-11-07, TRUST_NOTES.md) keep the widget and change its way out:
+// `2. Back to Agent Command Center` over `enter continue · esc back`, because a declined folder now goes
+// to Codex's task list instead of quitting. The reader took only the `Quit` copy, so every new folder
+// showed the unread-dialog card. Each copy is a pair of second label and footer, and a mixed pair
+// refuses.
+const NEW_COPIES = [
+  { no: "Quit", footer: /^\s*enter continue · esc quit$/ },
+  { no: "Back to Agent Command Center", footer: /^\s*enter continue · esc back$/ },
+] as const;
 const NEW_YES = /^Trust and continue$/;
-const NEW_NO = /^Quit$/;
 const NEW_QUESTION = /^\s*Trust this folder\?/;
 // The paragraph under the question wraps with the pane; at 50 columns it runs to seven rows.
 const NEW_QUESTION_REACH = 16;
@@ -99,7 +107,9 @@ const NEW_QUESTION_REACH = 16;
 function detectFolderAccessTrust(lines: StyledLine[]): TrustRegion | null {
   const texts = lines.map((l) => rstrip(lineText(l)));
   const fi = lastNonBlankIndex(texts);
-  if (fi < 2 || !NEW_FOOTER.test(texts[fi]!)) return null;
+  if (fi < 2) return null;
+  const copy = NEW_COPIES.find(({ footer }) => footer.test(texts[fi]!));
+  if (copy === undefined) return null;
 
   const bottom = skipBlanksUp(texts, fi - 1);
   if (bottom < 1) return null;
@@ -107,7 +117,7 @@ function detectFolderAccessTrust(lines: StyledLine[]): TrustRegion | null {
   const one = OPTION.exec(texts[bottom - 1]!);
   if (one === null || two === null) return null;
   if (one[1] !== "1" || two[1] !== "2") return null;
-  if (!NEW_YES.test(one[2]!.trim()) || !NEW_NO.test(two[2]!.trim())) return null;
+  if (!NEW_YES.test(one[2]!.trim()) || two[2]!.trim() !== copy.no) return null;
   // Exactly one row carries the pointer; it is where a bare Enter lands.
   const pointedOne = texts[bottom - 1]!.startsWith("› ");
   const pointedTwo = texts[bottom]!.startsWith("› ");
@@ -131,7 +141,7 @@ function detectFolderAccessTrust(lines: StyledLine[]): TrustRegion | null {
 
   const options: PromptOption[] = [
     { label: "Trust and continue", keys: pointerWalk(pointed, 0) },
-    { label: "Quit", keys: pointerWalk(pointed, 1) },
+    { label: copy.no, keys: pointerWalk(pointed, 1) },
   ];
   options[pointed] = { ...options[pointed]!, keyLabel: "›" };
 

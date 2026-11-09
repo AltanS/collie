@@ -44,7 +44,7 @@ export const de: Dictionary = {
   "settings.theme.option.dark": "Dunkel",
 
   "theme.title": "Design",
-  "theme.description": "Wähle ein Aussehen oder importiere eines aus einer Datei.",
+  "theme.description": "Wähle ein Aussehen, oder füge eines hinzu und probiere es aus, bevor du es behältst.",
   "theme.import": "Importieren",
   "theme.export": "Exportieren",
   "theme.remove": "Entfernen",
@@ -2924,6 +2924,8 @@ export const de: Dictionary = {
   "telemetry.card.next.aria": "Die nächste Nachricht als JSON",
   "telemetry.card.more": "Was gesendet wird",
   "telemetry.notice.body": "Collie 1.27.0 sendet einmal täglich anonyme Telemetrie. Schalte sie in den Einstellungen aus.",
+  "telemetry.notice.updateBody": "Die tägliche Zählung von Collie nennt jetzt auch einen Dialog, den sie nicht lesen konnte, über einen kurzen Code aus den Tastenhinweisen des Dialogs, nie aus deinem Text.",
+  "telemetry.notice.docs": "Was gesendet wird",
   "telemetry.notice.open": "Einstellungen öffnen",
   "telemetry.notice.dismiss": "Hinweis verwerfen",
   "apiError.telemetry.setting_invalid": "Die Telemetrie-Einstellung muss An oder Aus sein. Es wurde nichts geändert.",

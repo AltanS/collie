@@ -723,7 +723,7 @@ typed.
 ## Your own typefaces
 
 The interface font is a per-device setting. Under **Settings → Appearance → Typeface**, you can choose between
-System, Space Grotesk, Aldrich, IBM Plex Sans, Geist and Atkinson Hyperlegible Next (the default). A
+System, Space Grotesk, Aldrich, IBM Plex Sans, Geist, Atkinson Hyperlegible Next (the default) and Nunito. A
 [theme](themes.md) that names a face writes it here once, when you pick the theme. You can add custom fonts in
 `theme.toml`, the fourth configuration file:
 
@@ -1134,6 +1134,21 @@ This implementation has two practical consequences:
 > **Note.** Installed on iOS, in light mode, the status-bar text remains white and can blend into
 > the background. iOS does not allow web apps to update this value dynamically. Run Collie directly
 > in the browser instead of as an installed PWA to avoid this limitation.
+
+## The community theme list
+
+Refresh in **Browse community themes** fetches the list from colliepwa.dev, unless you name
+another address for a test against a staged copy of the site:
+
+```bash
+# in your .env
+COLLIE_THEME_REGISTRY_URL=http://myhost:8834/themes/registry.json
+```
+
+The address takes `https://` to any host. Plain `http://` works only for this machine, a tailnet
+address (`100.64.0.0/10` or a `.ts.net` name) or a name without a dot. Any other value prints one
+warning when the bridge starts, and colliepwa.dev is used. A list fetched from one address is not
+shown under another, so the next Refresh fetches again. Leave it unset for normal use.
 
 ## Math
 

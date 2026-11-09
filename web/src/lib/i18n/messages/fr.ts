@@ -39,7 +39,7 @@ export const fr: Dictionary = {
   "settings.theme.option.dark": "Sombre",
 
   "theme.title": "Thème",
-  "theme.description": "Choisissez une apparence, ou importez-en une depuis un fichier.",
+  "theme.description": "Choisissez une apparence, ou ajoutez-en une et essayez-la avant de la garder.",
   "theme.import": "Importer",
   "theme.export": "Exporter",
   "theme.remove": "Supprimer",
@@ -2737,6 +2737,8 @@ export const fr: Dictionary = {
   "telemetry.card.next.aria": "Le prochain message, en JSON",
   "telemetry.card.more": "Ce qui est envoyé",
   "telemetry.notice.body": "Collie 1.27.0 envoie des données de télémétrie anonymes une fois par jour. Désactivez cette option dans Paramètres.",
+  "telemetry.notice.updateBody": "Le décompte quotidien de Collie nomme désormais aussi une boîte de dialogue qu'il n'a pas pu lire, par un code court tiré des indications de touches de cette boîte, jamais de votre texte.",
+  "telemetry.notice.docs": "Ce qui est envoyé",
   "telemetry.notice.open": "Ouvrir les Paramètres",
   "telemetry.notice.dismiss": "Ignorer l'avis",
   "apiError.telemetry.setting_invalid": "Le paramètre de télémétrie doit être Activée ou Désactivée. Rien n'a été modifié.",

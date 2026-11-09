@@ -4,8 +4,14 @@
 
 import { AlphaBar } from "@/components/alpha-bar";
 import { AppHeaderHost, RouteHeader, SettingsGear } from "@/components/app-header";
-import { APPLYING_CLASS, CollieHome, RECONNECTED_CLASS } from "@/components/collie-home";
+import { CollieHome } from "@/components/collie-home";
+import type { MarkState } from "@/components/mark-contract";
 import { CollieMark } from "@/components/collie-mark";
+import { Icon } from "@/components/icons/icon";
+import { ICON_AREAS, ICON_KEYS, ICON_KEY_LIST } from "@/components/icons/keys";
+import { ICONOIR } from "@/components/icons/sets/iconoir";
+import { PHOSPHOR } from "@/components/icons/sets/phosphor";
+import { GLYPH_SETS, type GlyphSetId } from "@/lib/glyph-sets";
 import { homeSolo } from "../fixtures";
 import { RootRouter } from "../harness";
 import { Card, Group, Section, Stage, type SectionDef } from "../layout";
@@ -15,7 +21,7 @@ export const DEF: SectionDef = {
   id: "brand",
   title: "Brand",
   intent:
-    "The app's own voice: the UI typeface under a live switcher, then the three marks it wears. The Collie mark in every weight and state, the multiplexer's own logo as the header prints it, and the installed-app icons at the sizes a launcher actually asks for.",
+    "The app's own voice: the UI typeface under a live switcher, then the three marks it wears. The Collie mark in every weight and state, the multiplexer's own logo as the header prints it, and the installed-app icons at the sizes a launcher actually asks for. Then every icon key in each glyph set a theme can name (ADR 0137), one column per set; a faded cell is a key that set draws in lucide.",
 };
 
 export function BrandSection() {
@@ -34,10 +40,10 @@ export function BrandSection() {
         >
           <Stage>
             <div className="flex flex-wrap items-end gap-6 p-4">
-              <MarkSample size={40} weight="header" loading={false} />
-              <MarkSample size={40} weight="header" loading />
-              <MarkSample size={64} weight="header" loading={false} />
-              <MarkSample size={64} weight="header" loading />
+              <MarkSample size={40} weight="header" state="rest" />
+              <MarkSample size={40} weight="header" state="loading" />
+              <MarkSample size={64} weight="header" state="rest" />
+              <MarkSample size={64} weight="header" state="loading" />
             </div>
           </Stage>
         </Card>
@@ -49,9 +55,9 @@ export function BrandSection() {
         >
           <Stage>
             <div className="flex flex-wrap items-end gap-6 p-4">
-              <MarkSample size={96} weight="full" loading={false} />
-              <MarkSample size={96} weight="full" loading />
-              <MarkSample size={132} weight="full" loading />
+              <MarkSample size={96} weight="full" state="rest" />
+              <MarkSample size={96} weight="full" state="loading" />
+              <MarkSample size={132} weight="full" state="loading" />
             </div>
           </Stage>
         </Card>
@@ -63,9 +69,9 @@ export function BrandSection() {
         >
           <Stage>
             <div className="flex flex-wrap items-end gap-6 p-4">
-              <MarkSample size={40} weight="header" loading={false} muted />
-              <MarkSample size={64} weight="header" loading={false} muted />
-              <MarkSample size={96} weight="full" loading={false} muted />
+              <MarkSample size={40} weight="header" state="idle" />
+              <MarkSample size={64} weight="header" state="idle" />
+              <MarkSample size={96} weight="full" state="idle" />
             </div>
           </Stage>
         </Card>
@@ -74,7 +80,7 @@ export function BrandSection() {
           state="mark-applying"
           label="the mark, app updating"
           reach="leave the app open while a new build of it downloads, or while it waits to reload onto one. Tap the mark to open the dashboard's update line."
-          note="The band's old download row, moved onto the mark (2026-11-06). The loading rate, and every bead a full disc in --status-working. The paint is a class plus an index.css rule, because collie-mark.tsx is generated. Under reduced motion the orbit stops and the colour stays. The first sample is the real header button, with its updating name."
+          note="The band's old download row, moved onto the mark (2026-11-06). The loading rate, and every bead a full disc in --status-working. The mark paints it itself, from the applying state. Under reduced motion the orbit stops and the colour stays. The first sample is the real header button, with its updating name."
         >
           <Stage>
             <div className="flex flex-wrap items-end gap-6 p-4">
@@ -82,8 +88,8 @@ export function BrandSection() {
                 <CollieHome trouble={false} applying paper="var(--background)" />
                 <span className="font-mono text-[10px] text-muted-foreground">header button</span>
               </div>
-              <MarkSample size={64} weight="header" loading paint="applying" />
-              <MarkSample size={96} weight="full" loading paint="applying" />
+              <MarkSample size={64} weight="header" state="applying" />
+              <MarkSample size={96} weight="full" state="applying" />
             </div>
           </Stage>
         </Card>
@@ -91,7 +97,7 @@ export function BrandSection() {
           state="mark-reconnected"
           label="the mark, reconnected"
           reach="let the connection drop until the strip shows, then let it come back. The mark turns once in green and the status line says Reconnected."
-          note="The band's old green Connected strip, moved onto the mark (2026-11-07, lib/reconnected.ts). One full turn at the loading rate, every bead in --status-done, then rest. The same class-and-rule door as the update paint. The samples here hold the state; in the app it lasts one turn, 1.8s. Under reduced motion the orbit stays still and the colour holds for the same time."
+          note="The band's old green Connected strip, moved onto the mark (2026-11-07, lib/reconnected.ts). One full turn at the loading rate, every bead in --status-done, then rest. The same contract door. The samples here hold the state; in the app it lasts one turn, 1.8s. Under reduced motion the orbit stays still and the colour holds for the same time."
         >
           <Stage>
             <div className="flex flex-wrap items-end gap-6 p-4">
@@ -99,8 +105,8 @@ export function BrandSection() {
                 <CollieHome trouble={false} reconnected paper="var(--background)" />
                 <span className="font-mono text-[10px] text-muted-foreground">header button</span>
               </div>
-              <MarkSample size={64} weight="header" loading paint="reconnected" />
-              <MarkSample size={96} weight="full" loading paint="reconnected" />
+              <MarkSample size={64} weight="header" state="reconnected" />
+              <MarkSample size={96} weight="full" state="reconnected" />
             </div>
           </Stage>
         </Card>
@@ -145,6 +151,17 @@ export function BrandSection() {
         </Card>
       </Group>
 
+      <Group title="Glyph sets">
+        <Card
+          state="glyph-sets-every-key"
+          label="1 every key, five sets"
+          reach="a theme file that names glyphs (docs/themes.md, Glyphs). The key list is components/icons/KEYS.md."
+          span={2}
+        >
+          <GlyphGrid />
+        </Card>
+      </Group>
+
       <Group title="App icons">
         <Card
           state="app-icons-real-sizes"
@@ -181,35 +198,12 @@ export function BrandSection() {
   );
 }
 
-function MarkSample({
-  size,
-  weight,
-  loading,
-  muted = false,
-  paint,
-}: {
-  size: number;
-  weight: "full" | "header";
-  loading: boolean;
-  muted?: boolean;
-  /** A host paint on the beads: the app updating, or the link coming back. */
-  paint?: "applying" | "reconnected";
-}) {
-  const painted = paint === "applying" ? APPLYING_CLASS : paint === "reconnected" ? RECONNECTED_CLASS : undefined;
+function MarkSample({ size, weight, state }: { size: number; weight: "full" | "header"; state: MarkState }) {
   return (
     <div className="flex flex-col items-center gap-1.5">
-      <CollieMark
-        size={size}
-        weight={weight}
-        loading={loading}
-        paper="var(--background)"
-        className={muted ? "opacity-40 grayscale" : painted}
-      />
+      <CollieMark size={size} weight={weight} state={state} paper="var(--background)" />
       <span className="font-mono text-[10px] text-muted-foreground">
-        {size} {weight}
-        {loading ? " loading" : ""}
-        {muted ? " muted" : ""}
-        {paint === undefined ? "" : ` ${paint}`}
+        {size} {weight} {state}
       </span>
     </div>
   );
@@ -220,6 +214,58 @@ function IconSample({ src, size, label }: { src: string; size: number; label: st
     <div className="flex flex-col items-center gap-1.5">
       <img src={src} width={size} height={size} alt={label} className="max-w-full" />
       <span className="font-mono text-[10px] text-muted-foreground">{label}</span>
+    </div>
+  );
+}
+
+/** The family map behind a set, so a cell can say whether the set draws the key or falls back. */
+function familyGlyph(set: GlyphSetId, key: (typeof ICON_KEY_LIST)[number]): string | null {
+  const family = GLYPH_SETS.find((row) => row.id === set)?.family;
+  if (family === "phosphor") return PHOSPHOR[key];
+  if (family === "iconoir") return ICONOIR[key];
+  return ICON_KEYS[key].lucide;
+}
+
+/** Every key in a row, one column per set, grouped by the area of the app it shows in. */
+function GlyphGrid() {
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full border-collapse text-xs">
+        <thead>
+          <tr className="text-left text-muted-foreground">
+            <th className="py-1 pr-3 font-normal">key</th>
+            {GLYPH_SETS.map((set) => (
+              <th key={set.id} className="px-2 py-1 text-center font-normal">
+                {set.name}
+              </th>
+            ))}
+            <th className="py-1 pl-3 font-normal">meaning</th>
+          </tr>
+        </thead>
+        {Object.entries(ICON_AREAS).map(([area, title]) => (
+          <tbody key={area}>
+            <tr>
+              <th colSpan={GLYPH_SETS.length + 2} className="pt-3 pb-1 text-left font-mono text-[11px] uppercase tracking-wide">
+                {title}
+              </th>
+            </tr>
+            {ICON_KEY_LIST.filter((key) => ICON_KEYS[key].area === area).map((key) => (
+              <tr key={key} className="border-t border-rule">
+                <td className="py-1 pr-3 font-mono">{key}</td>
+                {GLYPH_SETS.map((set) => {
+                  const name = familyGlyph(set.id, key);
+                  return (
+                    <td key={set.id} title={name ?? "lucide fallback"} className="px-2 py-1 text-center">
+                      <Icon name={key} set={set.id} className={name === null ? "inline size-5 opacity-30" : "inline size-5"} />
+                    </td>
+                  );
+                })}
+                <td className="py-1 pl-3 text-muted-foreground">{ICON_KEYS[key].meaning}</td>
+              </tr>
+            ))}
+          </tbody>
+        ))}
+      </table>
     </div>
   );
 }

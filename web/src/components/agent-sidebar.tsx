@@ -1,4 +1,3 @@
-import { Loader2, Play, TerminalSquare } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { CacheChip } from "@/components/cache-chip";
@@ -24,6 +23,7 @@ import type { Scope } from "@/lib/scope";
 import { t } from "@/lib/i18n";
 import { useFrozenRanks } from "@/hooks/use-frozen-ranks";
 import { useLocale } from "@/hooks/use-locale";
+import { Icon } from "@/components/icons/icon";
 
 interface ThreadSidebarProps {
   agents: AgentView[];
@@ -541,7 +541,7 @@ function PaneRow({
       )}
     >
       {isShell ? (
-        <TerminalSquare className="size-3.5 shrink-0 text-muted-foreground" />
+        <Icon name="shell-pane" className="size-3.5 shrink-0 text-muted-foreground" />
       ) : (
         // EVERY ROW SAYS ITS OWN STATUS (issue #695): the mark on the logo's corner, as the closed rail
         // draws it. Before ADR 0063 the row's section said it. The heading's counts say how many panes
@@ -641,9 +641,9 @@ function LaunchRow({
       className="flex w-full min-h-11 items-center gap-2.5 rounded-lg border border-transparent px-2.5 py-2 text-left transition-colors hover:bg-muted/60 active:bg-muted disabled:opacity-60"
     >
       {busy ? (
-        <Loader2 className="size-4 shrink-0 animate-spin text-muted-foreground" aria-hidden />
+        <Icon name="busy" className="size-4 shrink-0 animate-spin text-muted-foreground" aria-hidden />
       ) : (
-        <Play className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+        <Icon name="launch" className="size-4 shrink-0 text-muted-foreground" aria-hidden />
       )}
       <span className="flex min-w-0 flex-col">
         <span className="flex min-w-0 items-baseline gap-1.5">

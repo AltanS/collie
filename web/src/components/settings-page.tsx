@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { ArrowLeft } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 
 import { RouteHeader } from "@/components/app-header";
 import { Button } from "@/components/ui/button";
@@ -39,7 +39,7 @@ export function SettingsPage({ title, parent, children }: { title: MessageKey; p
               onClick={() => nav.up(parent ?? settingsPath(scope))}
               aria-label={t("settings.nav.back")}
             >
-              <ArrowLeft className="size-5" />
+              <Icon name="back" className="size-5" />
             </Button>
             <h1 className="min-w-0 truncate text-lg font-semibold tracking-tight">{t(title)}</h1>
           </>

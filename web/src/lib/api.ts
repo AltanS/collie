@@ -15,6 +15,7 @@ import { noteSnapshotTaken } from "./snapshot-clock";
 import { markDead as markPaneDead, markLive as markPaneLive } from "./liveness";
 import { abortSignalAfter, abortSignalAny } from "./env";
 import { asJsonObject, asJsonString, parseJson, parseJsonObject, type JsonObject, type JsonValue } from "./json";
+import { readRegistryStatus } from "./theme/registry-status";
 import { readHeldCancelAnswer, readSendReceipts, readSendReply, type SendReply } from "./send-protocol";
 import { readReportContext, type ReportContext } from "./report/context";
 import type { TroubleSignal } from "./report/signal";
@@ -102,6 +103,7 @@ import type {
   WhistleStatus,
   WorktreePlanResponse,
   MathPackStatus,
+  ThemeRegistryStatus,
 } from "./types";
 import type { SubscribeBody } from "./push";
 
@@ -1805,15 +1807,18 @@ export async function dropWalky(paneId: string, id: string, scope?: Scope): Prom
 }
 
 /**
- * DELETE /api/send/<id>: take back a held send, or dismiss an ended one (M56 spec 15). `refused` is an
- * answer, not an error: the request is going out now, and a 409 carries it. This machine's own panes
- * only; the route does not cross a crew link, so a pane on a member never comes here.
+ * Take back a held send, or dismiss an ended one (M56 spec 15). `refused` is an answer, not an error:
+ * the request is going out now, and a 409 carries it. This machine's own panes use
+ * `DELETE /api/send/<id>?pane=<id>`; a pane on a crew member uses `DELETE /api/pane/<id>/held?request=<id>`,
+ * which the lead forwards to the member whose queue keeps the row (issue 740).
  */
 export async function cancelHeldSend(requestId: string, paneId: string, scope?: Scope): Promise<HeldCancelAnswer> {
-  if (!isLead(scope)) throw new ApiError("A held send on a crew member is cancelled on that machine.", 400);
   stampSend(paneId);
+  const path = isLead(scope)
+    ? `/api/send/${encodeURIComponent(requestId)}?pane=${encodeURIComponent(paneId)}`
+    : `/api/pane/${encodeURIComponent(paneId)}/held?request=${encodeURIComponent(requestId)}`;
   const got = await req<JsonObject>(
-    withScope(`/api/send/${encodeURIComponent(requestId)}?pane=${encodeURIComponent(paneId)}`, scope),
+    withScope(path, scope),
     { method: "DELETE" },
     // A 409 is the answer "it is going out now", a value; an unknown id (404) stays an error.
     sendRecover((status, detail) => (status === 409 ? (parseJsonObject(detail) ?? null) : null)),
@@ -2895,6 +2900,25 @@ export function startMathPack(): Promise<MathPackStatus> {
 /** Remove every math pack from the host (write-gated). */
 export function removeMathPack(): Promise<MathPackStatus> {
   return req<MathPackStatus>("/api/math", { method: "DELETE" });
+}
+
+// ── THE COMMUNITY THEME REGISTRY ON THE HOST (M59 spec 06) ────────────────────────────────────
+
+/** The host's copy of the community theme list. A read: the host fetches nothing for it. */
+export async function fetchThemeRegistry(signal?: AbortSignal): Promise<ThemeRegistryStatus> {
+  return registryStatusOf(await req<JsonValue>("/api/themes/registry", { signal }));
+}
+
+/** Ask the host to fetch the list once (write-gated). A failed fetch answers 502; read the status again for its word. */
+export async function refreshThemeRegistry(): Promise<ThemeRegistryStatus> {
+  return registryStatusOf(await req<JsonValue>("/api/themes/registry", { method: "POST" }));
+}
+
+/** The status checked for its shape (F11): a body that is not one fails as a broken read does. */
+function registryStatusOf(value: JsonValue): ThemeRegistryStatus {
+  const status = readRegistryStatus(value);
+  if (status === undefined) throw new Error("the host's theme list status is not an object");
+  return status;
 }
 
 // ── THE HOST'S SPEECH PROVIDER (ADR 0097) ─────────────────────────────────────────────────────

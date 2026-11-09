@@ -1,0 +1,40 @@
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  x x x x x                                                                                                                                                                                                            
+  x x x                                                                                                                                                                                                                
+ ─ (⊙_⊙) formulating…   · 13m 32s │ Qwen3.8 27B pi oQ8e mtp xhigh │ 78.3k/262.1k │ [███░░░░░░░] 30% │ 9h 19m │ ◎ 98% │ ◷ 12.9s │ ↑ 54 t/s │ 語音已關 │ 7 個工作階段               ─  Fix TUI issues in herdr and collie
+ ❯ Ctrl+C 中斷…                                                                                                                                                                                                        

@@ -14,11 +14,12 @@
 
 import { useSyncExternalStore } from "react";
 
-import { getReportContext, getSendReceipts, postTroubleSignal } from "../api";
+import { fetchConfig, getReportContext, getSendReceipts, postTroubleSignal } from "../api";
 import { asJsonNumber, asJsonObject, asJsonString, parseJson, type JsonValue } from "../json";
 import { SEND_OUTCOMES, SEND_REASONS, type SendOutcome, type SendReason, type SendReceiptRow } from "../surface/send";
 import type { DetectorVerdict, UnreadDialogModel } from "../harness/unread-dialog-model";
 import { isLead, type Scope } from "../scope";
+import { signalOncePerDay } from "./once";
 import { harnessOf, reportedSends, troubleSignal, type TroubleKind } from "./signal";
 import { closeOffer, NO_TROUBLE, noteSettled, offersReport, type SettledSend, type Trouble } from "./trouble";
 
@@ -207,9 +208,13 @@ export function streakIds(key: string): string[] {
 
 /**
  * Tell the bridge a trouble card showed. Reads the same facts the report sheet reads, cleans them to
- * {@link troubleSignal} and posts them once. Never throws and never retries. A crew member's pane has
- * no report context on the lead (the lead refuses it), so its signal carries the card's agent and an
- * `other` multiplexer, the same facts its report would have.
+ * {@link troubleSignal} and posts them once. A kind signals at most once per pane and UTC day on this
+ * device ({@link signalOncePerDay}), a dialog once per screen hash too, so a card that re-mounts is not
+ * counted again and two different dialogs are. Never throws and
+ * never retries. A crew member's pane has no report context on the lead (the lead refuses it), so its
+ * signal carries the card's agent, and the member's own multiplexer from `GET /api/config` for that
+ * host: the lead answers it from the member's last hello, without dialing the member. A failed config
+ * read leaves the multiplexer `other`.
  */
 export async function signalTrouble(a: {
   readonly kind: TroubleKind;
@@ -219,15 +224,24 @@ export async function signalTrouble(a: {
   readonly requestIds?: readonly string[] | undefined;
   /** The unread-dialog card's agent. */
   readonly agent?: string | undefined;
+  /** The unread-dialog card's screen hash (lib/report/screen.ts), never its rows. A dialog signal only. */
+  readonly screen?: string | null | undefined;
 }): Promise<void> {
+  await signalOncePerDay({ kind: a.kind, paneKey: `${a.scope?.host ?? "lead"}|${a.paneId}`, screen: a.screen }, () => postSignal(a));
+}
+
+async function postSignal(a: Parameters<typeof signalTrouble>[0]): Promise<void> {
   try {
-    const [context, rows] = await Promise.all([
-      isLead(a.scope) ? getReportContext(a.paneId, false, a.scope).catch(() => null) : Promise.resolve(null),
+    const lead = isLead(a.scope);
+    const [context, rows, memberMux] = await Promise.all([
+      lead ? getReportContext(a.paneId, false, a.scope).catch(() => null) : Promise.resolve(null),
       getSendReceipts(a.paneId, a.scope).catch((): SendReceiptRow[] => []),
+      lead ? Promise.resolve(undefined) : fetchConfig(a.scope).then((config) => config.mux?.name, () => undefined),
     ]);
     const dialog = a.agent === undefined ? undefined : { agent: a.agent };
     const facts = harnessOf({ sends: reportedSends(rows, a.requestIds), context, dialog });
-    const signal = troubleSignal({ kind: a.kind, harness: facts.harness, version: facts.version, mux: context?.mux });
+    const mux = lead ? context?.mux : memberMux;
+    const signal = troubleSignal({ kind: a.kind, harness: facts.harness, version: facts.version, mux, screen: a.screen });
     if (signal === null) return;
     await postTroubleSignal(signal);
   } catch {

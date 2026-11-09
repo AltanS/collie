@@ -1,6 +1,5 @@
 import { useSyncExternalStore } from "react";
 
-import { Hourglass } from "lucide-react";
 
 import { useLocale } from "@/hooks/use-locale";
 import { cacheClockNow, subscribeCacheClock } from "@/lib/cache-clock";
@@ -8,6 +7,7 @@ import { cacheChipView } from "@/lib/cache-view";
 import { t } from "@/lib/i18n";
 import type { PaneCache } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { Icon } from "@/components/icons/icon";
 
 // How long this pane's prompt cache stays warm, as one small run of type.
 //
@@ -118,7 +118,7 @@ export function CacheChip({ cache, variant = "row", onOpen, className }: CacheCh
           the line the number stands on (this file's header, both sections). `translate-y-[0.35px]`
           is the ink nudge that header measured — the box edge already sits on the baseline, the INK
           inside it does not, and 0.35px is what closed that gap in Chromium at device resolution. */}
-      <Hourglass className={cn("size-3 shrink-0 translate-y-[0.35px]", ink)} aria-hidden />
+      <Icon name="cache-age" className={cn("size-3 shrink-0 translate-y-[0.35px]", ink)} aria-hidden />
       <span aria-hidden>{view.label}</span>
       {view.overridden && (
         <>

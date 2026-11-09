@@ -275,7 +275,7 @@ export function BootSplash() {
             screen's ground, `bg-background`, the knockout that puts a near-side bead in front of
             the head. The "Connecting to the herd…" copy below carries the accessible meaning, so
             the mark is decorative. */}
-        <CollieMark size={64} weight="header" loading paper="var(--background)" />
+        <CollieMark size={64} weight="header" state="loading" paper="var(--background)" />
         <span className="text-sm">{t("error.boot.connecting")}</span>
       </div>
     );
@@ -288,7 +288,7 @@ export function BootSplash() {
           `paper` is this screen's ground, `bg-background`, which is the knockout colour that puts a
           near-side bead in front of the head. The "Not connected" copy below carries the accessible
           meaning, so the mark is decorative. */}
-      <CollieMark size={64} weight="header" paper="var(--background)" className="opacity-40 grayscale" />
+      <CollieMark size={64} weight="header" state="idle" paper="var(--background)" />
       <p className="font-medium text-foreground">{t("error.boot.title")}</p>
       <p className="max-w-xs text-sm text-muted-foreground">{t("error.boot.body")}</p>
       <button

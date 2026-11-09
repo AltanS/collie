@@ -1,4 +1,4 @@
-import { Maximize2 } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 
 import { Card } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
@@ -27,7 +27,7 @@ export function ZenControl() {
     <Card className="gap-0 py-0">
       <div className="flex items-center justify-between gap-4 p-4">
         <div className="flex min-w-0 items-start gap-3">
-          <Maximize2 className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
+          <Icon name="zen-enter" className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
           <div className="min-w-0">
             <div className="font-medium">{t("settings.zen.title")}</div>
             <p className="text-sm text-muted-foreground">{t("settings.zen.description")}</p>

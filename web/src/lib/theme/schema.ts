@@ -1,20 +1,34 @@
-// A theme file, versions 1, 2 and 3: the schema, the one parser, and the colour arithmetic the contrast
+// A theme file, versions 1, 2, 3 and 4: the schema, the one parser, and the colour arithmetic the contrast
 // report needs (M57, the shared contract in the milestone README).
 //
 // WHAT A THEME IS. One JSON file with an id, a name, two halves of named colour tokens (light and
 // dark), an optional bundled UI face, and from version 2 an optional `surface` block of shape words
-// (`surface.ts`), an optional display face (`fonts.display`) and an optional terminal palette (`ansi`). Nothing else: no free radius or spacing value, no raw CSS, no remote font. The
+// (`surface.ts`), an optional display face (`fonts.display`) and an optional terminal palette (`ansi`),
+// and from version 4 an optional header character (`character`, one of the fixed ids in `../mark-ids.ts`)
+// and an optional glyph set (`glyphs`, one of the fixed ids in `../glyph-sets.ts`). Nothing else: no free radius or spacing value, no raw CSS, no remote font. The
 // token list and the word lists are CLOSED, and the parser refuses any key or word it does not name,
 // so a file can never smuggle a property into the page.
 //
-// VERSIONS. The parser reads 1, 2 and 3 and hands back the LOWEST version that holds the content: 3
-// when the theme sets an optional token (`pane-active`, `tab-active`), else 2 when it carries
+// ONE SOFT EDGE: A DECORATION WORD THIS COLLIE DOES NOT KNOW. A theme written for a newer Collie may
+// name an icon set, a character, a ground word or a face that this one lacks. Refusing the whole file
+// for it would punish the person for updating the theme before the app. So in the decoration parts
+// alone (`glyphs`, `character`, the four words of a ground object, `fonts.ui`, `fonts.display`) a word
+// of the right SHAPE (`DECORATION_WORD`) that is not on the list is kept as written, and the theme
+// loads. `themeFallbacks` lists each one for the preview and `collie theme check`, and every reader
+// resolves it to that part's default (`knownCharacter`, `knownGlyphs`, `knownGround`, `isShippedFont`),
+// so such a word never reaches the page as itself. Everything else stays strict: the version, every
+// colour, every key, the type of a value, a word of any other part, and a decoration word of the
+// wrong shape.
+//
+// VERSIONS. The parser reads 1, 2, 3 and 4 and hands back the LOWEST version that holds the content: 4
+// when the theme sets a `character` or `glyphs`, else 3 when it sets an optional token (`pane-active`, `tab-active`), else 2 when it carries
 // a surface block, a display face or a palette, else 1. So a colour-only theme is stored and
 // exported as version 1, and a Collie from before version 2 (1.21.x after a rollback) still reads it.
 // A version 1 file has no surface block, which means the default word for every shape token. A
 // `surface` block, a `fonts.display` or an `ansi` block in a file that says version 1 is refused: the
 // file is older than the block. An optional token in a file that says version 1 or 2 is refused the
-// same way. Every file written before version 3 reads and exports exactly as it did.
+// same way, and so is a `character` or `glyphs` in a file that says version 1, 2 or 3. Every file written before
+// version 4 reads and exports exactly as it did.
 //
 // WHY THE PARSER IS TOTAL AND COLLECTS. A person imports a file someone else wrote. Telling them
 // about the first problem and hiding the next nine makes them fix a file nine more times. So
@@ -23,30 +37,38 @@
 //
 // WHY THIS FILE IMPORTS SO LITTLE. It loads without a DOM, without React and without the `@/` alias,
 // because `scripts/build-themes.ts` at the collie root imports it, and the bridge may validate an
-// operator theme with it later. Its two imports are leaf files with no imports of their own.
+// operator theme with it later. Its imports are leaf files with no imports of their own.
 
-import { asJsonNumber, asJsonObject, asJsonString, parseJsonObject, type JsonObject } from "../json";
+import { asJsonNumber, asJsonObject, asJsonString, parseJsonObject, type JsonObject, type JsonValue } from "../json";
+import { GLYPH_SET_IDS, isGlyphSetId, type GlyphSetId } from "../glyph-sets";
+import { MARK_IDS, isMarkId, type MarkId } from "../mark-ids";
 import { SHIPPED_FONTS } from "../shipped-fonts";
 import {
   ANSI_KEYS,
-  GROUND_GRADIENT_END,
-  GROUND_GRAIN_LINE,
+  GROUND_KEYS,
   SURFACE_TOKENS,
+  groundPaint,
+  groundWords,
+  isGroundWord,
+  knownGround,
+  resolveGround,
   isSurfaceToken,
   resolveSurface,
   surfaceWordOf,
   surfaceWords,
   type Ansi,
   type AnsiKey,
+  type GroundKey,
+  type GroundSpec,
   type Surface,
   type SurfaceToken,
 } from "./surface";
 
-/** The highest schema version this build reads and writes. Only a theme that sets an optional token needs it. */
-export const THEME_VERSION = 3;
+/** The highest schema version this build reads and writes. Only a theme that sets a `character` or `glyphs` needs it. */
+export const THEME_VERSION = 4;
 
 /** The schema versions this build reads. A file with any other `version` is refused. */
-export const THEME_VERSIONS_READ = [1, 2, 3] as const;
+export const THEME_VERSIONS_READ = [1, 2, 3, 4] as const;
 
 export type ThemeVersion = (typeof THEME_VERSIONS_READ)[number];
 
@@ -136,7 +158,7 @@ export const DEFAULT_THEME_ID: ShippedThemeId = "collie";
 export interface Half extends Partial<Record<AnyThemeToken, string>> {}
 
 export interface Theme {
-  /** The lowest version that holds the content: 2 with a `surface` block, 1 without (`versionOf`). */
+  /** The lowest version that holds the content: 4 with a `character` or `glyphs`, 3 with an optional token, 2 with a `surface` block, 1 without (`versionOf`). */
   version: ThemeVersion;
   id: string;
   name: string;
@@ -149,9 +171,16 @@ export interface Theme {
   surface?: Surface;
   /** Version 2: the terminal palette, all eighteen colours, dark-space and gate-checked. */
   ansi?: Ansi;
+  /**
+   * Version 4: the header character this theme wears, as written: a `MarkId`, or a word this Collie
+   * does not know, drawn as the default (`knownCharacter`). A device's own choice in Settings wins over it.
+   */
+  character?: string;
+  /** Version 4: the glyph set every icon is drawn in, as written: a `GlyphSetId`, or an unknown word drawn as lucide (`knownGlyphs`). Absent is lucide. */
+  glyphs?: string;
 }
 
-/** A theme's faces. Either may be absent; an empty `fonts` object carries no key. */
+/** A theme's faces, as written: a shipped face or an unknown word (checked by `isShippedFont` where used). Either may be absent; an empty `fonts` object carries no key. */
 export interface ThemeFonts {
   ui?: string;
   display?: string;
@@ -170,7 +199,10 @@ export type RefusalCode =
   | "no-half"
   | "reserved-id"
   | "surface"
-  | "ansi";
+  | "ansi"
+  | "character"
+  | "unreadable"
+  | "glyphs";
 
 /**
  * Why a file was refused. `path` is where (`$` for the whole file, `dark.status-blocked`,
@@ -180,6 +212,18 @@ export interface Refusal {
   code: RefusalCode;
   path: string;
   detail: string;
+  /** On a `version` refusal: the version the file says, when it is a whole number above the newest this Collie reads. */
+  newerVersion?: number;
+  /** On a contrast refusal: the two colours by path, what they measure and the floor, for a headline that names them. */
+  contrast?: RefusalContrast;
+}
+
+/** The parts of a contrast refusal: `ink` on `ground` (each a path such as `light.foreground`) measures `ratio`, below `floor`. */
+export interface RefusalContrast {
+  ink: string;
+  ground: string;
+  ratio: number;
+  floor: number;
 }
 
 export type ParsedTheme = { ok: true; theme: Theme } | { ok: false; refusals: Refusal[] };
@@ -197,7 +241,7 @@ export interface ParseThemeOptions {
 const ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,31}$/;
 const NAME_MAX = 40;
 const AUTHOR_MAX = 60;
-const TOP_KEYS = ["$schema", "version", "id", "name", "author", "light", "dark", "fonts", "surface", "ansi"] as const;
+const TOP_KEYS = ["$schema", "version", "id", "name", "author", "light", "dark", "fonts", "surface", "ansi", "character", "glyphs"] as const;
 const HALVES = ["light", "dark"] as const;
 
 export function isThemeToken(value: string): value is ThemeToken {
@@ -231,21 +275,29 @@ function charCount(value: string): number {
   return [...value].length;
 }
 
+/** The size cap on a theme file: an import, a link, a paste, a stored theme and `collie theme check`. */
+export const THEME_MAX_BYTES = 64 * 1024;
+
+/**
+ * The refusal for a file over the cap. Its own function because three readers stop before the parser
+ * would see the text (a file picked in the card, a link's body, a file on disk), and all three must
+ * say what the parser says.
+ */
+export function sizeRefusal(bytes: number, maxBytes: number): Refusal {
+  return {
+    code: "size",
+    path: "$",
+    detail: `The file is ${bytes} bytes. A theme may be at most ${maxBytes} bytes.`,
+  };
+}
+
 /**
  * Parse an untrusted theme file. Total: any string gives a theme or a non-empty list of refusals,
  * and every refusal in the file is collected, not only the first.
  */
 export function parseTheme(raw: string, opts: ParseThemeOptions): ParsedTheme {
   const bytes = new TextEncoder().encode(raw).length;
-  if (bytes > opts.maxBytes) {
-    return refuse([
-      {
-        code: "size",
-        path: "$",
-        detail: `The file is ${bytes} bytes. A theme may be at most ${opts.maxBytes} bytes.`,
-      },
-    ]);
-  }
+  if (bytes > opts.maxBytes) return refuse([sizeRefusal(bytes, opts.maxBytes)]);
   const doc = parseJsonObject(raw);
   if (doc === undefined) {
     return refuse([{ code: "json", path: "$", detail: "The file is not a JSON object." }]);
@@ -253,7 +305,7 @@ export function parseTheme(raw: string, opts: ParseThemeOptions): ParsedTheme {
 
   const refusals: Refusal[] = [];
   for (const key of Object.keys(doc)) {
-    if (!isTopKey(key)) refusals.push(unknownKey(key));
+    if (!isTopKey(key)) refusals.push(unknownKey("", key));
   }
 
   const version = readVersion(doc, refusals);
@@ -266,6 +318,8 @@ export function parseTheme(raw: string, opts: ParseThemeOptions): ParsedTheme {
   const fonts = readFonts(doc, version, refusals);
   const surface = readSurface(doc, version, refusals);
   const ansi = readAnsi(doc, version, refusals);
+  const character = readCharacter(doc, version, refusals);
+  const glyphs = readGlyphs(doc, version, refusals);
 
   if (countTokens(light) + countTokens(dark) === 0 && !hasHalfRefusal(refusals)) {
     refusals.push({
@@ -274,6 +328,10 @@ export function parseTheme(raw: string, opts: ParseThemeOptions): ParsedTheme {
       detail: "The file sets no colour. Give it a light half, a dark half, or both.",
     });
   }
+
+  // Last, and only for a file that passed every other rule: a theme whose body text cannot be read
+  // is refused, not warned, because once it is applied every control is drawn in it (F3).
+  if (refusals.length === 0) refusals.push(...readabilityRefusals(light, dark));
 
   if (refusals.length > 0 || id === undefined || name === undefined) return refuse(refusals);
 
@@ -286,6 +344,8 @@ export function parseTheme(raw: string, opts: ParseThemeOptions): ParsedTheme {
   if (fonts !== undefined) theme.fonts = fonts;
   if (surface !== undefined) theme.surface = surface;
   if (ansi !== undefined) theme.ansi = ansi;
+  if (character !== undefined) theme.character = character;
+  if (glyphs !== undefined) theme.glyphs = glyphs;
   theme.version = versionOf(theme);
   return { ok: true, theme };
 }
@@ -306,30 +366,71 @@ function refuse(refusals: Refusal[]): ParsedTheme {
 }
 
 /**
- * True when the text holds a control character: below U+0020, U+007F, or the C1 range U+0080 to
- * U+009F. A name or an author is shown in Settings and written into an export, and a line break or
- * a NUL there is never what the author meant.
+ * True when the text holds a control character: below U+0020, U+007F, the C1 range U+0080 to
+ * U+009F, or a bidi embedding, override or isolate (U+202A to U+202E, U+2066 to U+2069). A name or
+ * an author is shown in Settings, in the community list and in the trial ribbon, and written into an
+ * export. A line break or a NUL there is never what the author meant, and a bidi control can make a
+ * name read as another one (M59 review).
  */
 function hasControlCharacter(value: string): boolean {
   for (const ch of value) {
     const code = ch.codePointAt(0) ?? 0;
     if (code < 0x20 || (code >= 0x7f && code <= 0x9f)) return true;
+    if ((code >= 0x202a && code <= 0x202e) || (code >= 0x2066 && code <= 0x2069)) return true;
   }
   return false;
 }
 
-function unknownKey(path: string): Refusal {
+// ── Untrusted names in a refusal (F4) ───────────────────────────────────────────────────────────
+//
+// A refusal is read in Settings, printed by `collie theme check` to a terminal, and logged by the
+// site's sweep in CI. A key name comes from the file and may hold a line break, an escape sequence
+// (a terminal title, a clipboard write), a bidi control or 60 KiB of text. So a name the parser did
+// not choose is shown bare only when it is a plain token, and otherwise as an escaped, quoted string
+// of printable ASCII, cut to a length a line can carry.
+
+/** A key shown bare: the characters a real token, word or palette key uses, at most 64 of them. */
+const PLAIN_KEY = /^[A-Za-z0-9_.-]{1,64}$/;
+
+/** The most characters of an untrusted name a refusal shows. */
+export const SHOWN_MAX = 64;
+
+/**
+ * Untrusted text as one quoted string of printable ASCII, for a refusal or a log line. `"` and `\`
+ * are escaped, every other character outside U+0020 to U+007E becomes `\uXXXX` (a pair for one
+ * past U+FFFF), and text past `max` characters is cut, with `...` after the closing quote.
+ */
+export function escapedText(value: string, max: number = SHOWN_MAX): string {
+  const chars = [...value];
+  let out = '"';
+  for (const ch of chars.slice(0, max)) {
+    if (ch === '"' || ch === "\\") out += `\\${ch}`;
+    else if (/^[\x20-\x7e]$/.test(ch)) out += ch;
+    else for (let i = 0; i < ch.length; i++) out += `\\u${ch.charCodeAt(i).toString(16).padStart(4, "0")}`;
+  }
+  return `${out}"${chars.length > max ? "..." : ""}`;
+}
+
+/** `prefix` and an untrusted key, the key bare when plain and escaped when not. */
+function keyPath(prefix: string, key: string): string {
+  return `${prefix}${PLAIN_KEY.test(key) ? key : escapedText(key)}`;
+}
+
+function unknownKey(prefix: string, key: string): Refusal {
+  const path = keyPath(prefix, key);
   return {
     code: "unknown-key",
     path,
-    detail: `"${path}" is not part of a theme file. Remove it.`,
+    detail: PLAIN_KEY.test(key) ? `"${path}" is not part of a theme file. Remove it.` : `${path} is not part of a theme file. Remove it.`,
   };
 }
 
 const READ_TEXT = `${THEME_VERSIONS_READ.slice(0, -1).join(", ")} and ${THEME_VERSIONS_READ.at(-1)}`;
 
-/** The version a theme is written as: 3 with an optional token, 2 with a shape, a display face or a palette, else 1. */
+/** The version a theme is written as: 4 with a character or a glyph set, 3 with an optional token, 2 with a shape, a display face or a palette, else 1. */
 export function versionOf(theme: Theme): ThemeVersion {
+  const ground = theme.surface?.ground;
+  if (theme.character !== undefined || theme.glyphs !== undefined || (ground !== undefined && !isGroundWord(ground))) return 4;
   if (OPTIONAL_THEME_TOKENS.some((token) => setsOptionalToken(theme, token))) return 3;
   return theme.surface === undefined && theme.ansi === undefined && theme.fonts?.display === undefined ? 1 : 2;
 }
@@ -343,18 +444,27 @@ function olderThanBlock(block: string): Refusal {
   };
 }
 
+/** The `version` a file gave, as the refusal shows it: a short plain value bare, anything else escaped and cut. */
+function shownVersion(value: JsonValue): string {
+  const text = JSON.stringify(value);
+  return /^[\x20-\x7e]{1,16}$/.test(text) ? text : escapedText(text, 16);
+}
+
 function readVersion(doc: JsonObject, refusals: Refusal[]): ThemeVersion | undefined {
   const value = asJsonNumber(doc.version);
   const version = THEME_VERSIONS_READ.find((v) => v === value);
   if (version !== undefined) return version;
-  refusals.push({
+  const refusal: Refusal = {
     code: "version",
     path: "version",
     detail:
       doc.version === undefined
         ? `The file has no version. This Collie reads version ${READ_TEXT}.`
-        : `The file is version ${JSON.stringify(doc.version)}. This Collie reads version ${READ_TEXT}.`,
-  });
+        : `The file is version ${shownVersion(doc.version)}. This Collie reads version ${READ_TEXT}.`,
+  };
+  const newest = THEME_VERSIONS_READ[THEME_VERSIONS_READ.length - 1] ?? 0;
+  if (value !== undefined && Number.isSafeInteger(value) && value > newest) refusal.newerVersion = value;
+  refusals.push(refusal);
   return undefined;
 }
 
@@ -377,13 +487,20 @@ function readSurface(doc: JsonObject, version: ThemeVersion | undefined, refusal
   }
   const surface: Surface = {};
   for (const key of Object.keys(block)) {
-    const path = `surface.${key}`;
     if (!isSurfaceToken(key)) {
-      refusals.push(unknownKey(path));
+      refusals.push(unknownKey("surface.", key));
+      continue;
+    }
+    const path = `surface.${key}`;
+    // The ground alone may also be an object of four words (version 4).
+    const value = block[key];
+    if (key === "ground" && asJsonObject(value) !== undefined) {
+      const ground = readGround(asJsonObject(value) ?? {}, version, refusals);
+      if (ground !== undefined) surface.ground = ground;
       continue;
     }
     // A number, a list or an object is no word: `asJsonString` gives `undefined` and the token is refused.
-    if (!setSurfaceWord(surface, key, asJsonString(block[key]))) {
+    if (!setSurfaceWord(surface, key, asJsonString(value))) {
       refusals.push({
         code: "surface",
         path,
@@ -392,6 +509,44 @@ function readSurface(doc: JsonObject, version: ThemeVersion | undefined, refusal
     }
   }
   return Object.keys(surface).length === 0 ? undefined : surface;
+}
+
+/**
+ * The object form of `surface.ground` (version 4): any of `pattern`, `size`, `strength` and `ink`,
+ * each a word from its list. An unknown key is an unknown key, a word outside its list names the
+ * list, and the object in a file that says version 2 or 3 is refused as `character` is. An empty
+ * object is the flat ground.
+ */
+function readGround(block: JsonObject, version: ThemeVersion | undefined, refusals: Refusal[]): GroundSpec | undefined {
+  const before = refusals.length;
+  if (version !== undefined && version < 4) {
+    refusals.push({
+      code: "version",
+      path: "surface.ground",
+      detail: `A file with "surface.ground" as an object must say version 4. This one says version ${version}.`,
+    });
+  }
+  const ground: GroundSpec = {};
+  for (const key of Object.keys(block)) {
+    const groundKey = GROUND_KEYS.find((k) => k === key);
+    if (groundKey === undefined) {
+      refusals.push(unknownKey("surface.ground.", key));
+      continue;
+    }
+    if (!setGroundWord(ground, groundKey, block[key])) {
+      const path = `surface.ground.${groundKey}`;
+      refusals.push({ code: "surface", path, detail: `"${path}" must be one of: ${groundWords(groundKey).join(", ")}.` });
+    }
+  }
+  return refusals.length === before ? ground : undefined;
+}
+
+/** Put `value` into `ground` as written when it is a decoration word: a known word, or an unknown one kept. False when it is not a word. */
+function setGroundWord(ground: GroundSpec, key: GroundKey, value: JsonValue | undefined): boolean {
+  const word = decorationWord(value);
+  if (word === undefined) return false;
+  ground[key] = word;
+  return true;
 }
 
 /** Put `value` into `surface` as the word of `token` when it is one. False when it is not. */
@@ -437,6 +592,113 @@ function setSurfaceWord(surface: Surface, token: SurfaceToken, value: string | u
       surface.composer = surfaceWordOf("composer", value);
       return surface.composer !== undefined;
   }
+}
+
+// ── A decoration word this Collie does not know ─────────────────────────────────────────────────
+
+/**
+ * The shape of a decoration word: lower-case letters, digits and hyphens, a letter or digit first, 32
+ * at most. Every word on every decoration list has it, so a newer Collie's word will too. A string of
+ * another shape is not a word anyone will ship (a sentence, a URL, a control character), and is refused.
+ */
+export const DECORATION_WORD = /^[a-z0-9][a-z0-9-]{0,31}$/;
+
+/** A decoration word as written, or undefined for a value that is not one (another type, another shape). */
+function decorationWord(value: JsonValue | undefined): string | undefined {
+  const word = asJsonString(value);
+  return word !== undefined && DECORATION_WORD.test(word) ? word : undefined;
+}
+
+/** The decoration parts that fall back. */
+export type FallbackPart = "glyphs" | "character" | "ground" | "font";
+
+/** One unknown decoration word: its part, where in the file, and the word, escaped for display (F4). */
+export interface Fallback {
+  part: FallbackPart;
+  path: string;
+  word: string;
+}
+
+/** The character a theme names when this Collie has it; undefined for none or an unknown word. */
+export function knownCharacter(theme: Theme): MarkId | undefined {
+  const word = theme.character;
+  return word !== undefined && isMarkId(word) ? word : undefined;
+}
+
+/** The glyph set a theme names when this Collie has it; undefined for none or an unknown word. */
+export function knownGlyphs(theme: Theme): GlyphSetId | undefined {
+  const word = theme.glyphs;
+  return word !== undefined && isGlyphSetId(word) ? word : undefined;
+}
+
+/**
+ * Every decoration word of a theme this Collie does not know, in file order: the faces, the ground's
+ * words, the character, the glyph set. Empty for a theme every word of which is known. Read off the
+ * theme, not the parse, so a stored or tried theme reports the same lines as the file did.
+ */
+export function themeFallbacks(theme: Theme): Fallback[] {
+  const out: Fallback[] = [];
+  const push = (part: FallbackPart, path: string, word: string) => out.push({ part, path, word: escapedText(word) });
+  for (const key of ["ui", "display"] as const) {
+    const face = theme.fonts?.[key];
+    if (face !== undefined && !SHIPPED_FONTS.some((font) => font === face)) push("font", `fonts.${key}`, face);
+  }
+  const ground = theme.surface?.ground;
+  if (ground !== undefined && !isGroundWord(ground)) {
+    const known = knownGround(ground);
+    for (const key of GROUND_KEYS) {
+      const word = ground[key];
+      if (word !== undefined && known[key] === undefined) push("ground", `surface.ground.${key}`, word);
+    }
+  }
+  if (theme.character !== undefined && knownCharacter(theme) === undefined) push("character", "character", theme.character);
+  if (theme.glyphs !== undefined && knownGlyphs(theme) === undefined) push("glyphs", "glyphs", theme.glyphs);
+  return out;
+}
+
+/**
+ * The `character` key: one of the fixed mark ids, as a word. A number, a list or a word of the wrong
+ * shape is refused and names the list; a word of the right shape that is not on it is kept (the soft
+ * edge in the header). A character in a file that says version 1, 2 or 3 is refused as an
+ * optional token is, and the word is still read so its own fault shows too.
+ */
+function readCharacter(doc: JsonObject, version: ThemeVersion | undefined, refusals: Refusal[]): string | undefined {
+  if (doc.character === undefined) return undefined;
+  if (version !== undefined && version < 4) {
+    refusals.push({
+      code: "version",
+      path: "character",
+      detail: `A file with "character" must say version 4. This one says version ${version}.`,
+    });
+  }
+  const word = decorationWord(doc.character);
+  if (word === undefined) {
+    refusals.push({ code: "character", path: "character", detail: `"character" must be one of: ${MARK_IDS.join(", ")}.` });
+    return undefined;
+  }
+  return word;
+}
+
+/**
+ * The `glyphs` key: one of the fixed glyph set ids, as a word, read exactly as `character` is: a
+ * number, a list or a word of the wrong shape names the list, an unknown word of the right shape is
+ * kept, and a file that says version 1, 2 or 3 is older than the key.
+ */
+function readGlyphs(doc: JsonObject, version: ThemeVersion | undefined, refusals: Refusal[]): string | undefined {
+  if (doc.glyphs === undefined) return undefined;
+  if (version !== undefined && version < 4) {
+    refusals.push({
+      code: "version",
+      path: "glyphs",
+      detail: `A file with "glyphs" must say version 4. This one says version ${version}.`,
+    });
+  }
+  const word = decorationWord(doc.glyphs);
+  if (word === undefined) {
+    refusals.push({ code: "glyphs", path: "glyphs", detail: `"glyphs" must be one of: ${GLYPH_SET_IDS.join(", ")}.` });
+    return undefined;
+  }
+  return word;
 }
 
 function readId(doc: JsonObject, opts: ParseThemeOptions, refusals: Refusal[]): string | undefined {
@@ -515,11 +777,11 @@ function readHalf(
     return half;
   }
   for (const key of Object.keys(obj)) {
-    const path = `${which}.${key}`;
     if (!isThemeToken(key) && !isOptionalThemeToken(key)) {
-      refusals.push(unknownKey(path));
+      refusals.push(unknownKey(`${which}.`, key));
       continue;
     }
+    const path = `${which}.${key}`;
     // An optional token is older than any file that says version 1 or 2: the file is refused, as a
     // surface block in a version 1 file is, and the value is still read so its own fault shows too.
     if (isOptionalThemeToken(key) && version !== undefined && version < 3) {
@@ -553,7 +815,7 @@ function readFonts(doc: JsonObject, version: ThemeVersion | undefined, refusals:
     return undefined;
   }
   for (const key of Object.keys(fonts)) {
-    if (key !== "ui" && key !== "display") refusals.push(unknownKey(`fonts.${key}`));
+    if (key !== "ui" && key !== "display") refusals.push(unknownKey("fonts.", key));
   }
   const out: ThemeFonts = {};
   const ui = readFace(fonts, "ui", refusals);
@@ -564,11 +826,10 @@ function readFonts(doc: JsonObject, version: ThemeVersion | undefined, refusals:
   return Object.keys(out).length === 0 ? undefined : out;
 }
 
-/** One face of the `fonts` object: absent, or one of the shipped faces. Anything else is refused with its path. */
+/** One face of the `fonts` object: absent, a shipped face, or an unknown word of the right shape (kept). Anything else is refused with its path. */
 function readFace(fonts: JsonObject, key: "ui" | "display", refusals: Refusal[]): string | undefined {
   if (fonts[key] === undefined) return undefined;
-  const value = asJsonString(fonts[key]);
-  const shipped = SHIPPED_FONTS.find((font) => font === value);
+  const shipped = decorationWord(fonts[key]);
   if (shipped === undefined) {
     refusals.push({
       code: "font",
@@ -616,7 +877,7 @@ function readAnsi(doc: JsonObject, version: ThemeVersion | undefined, refusals: 
     return undefined;
   }
   for (const key of Object.keys(block)) {
-    if (!ANSI_KEYS.some((k) => k === key)) refusals.push(unknownKey(`ansi.${key}`));
+    if (!ANSI_KEYS.some((k) => k === key)) refusals.push(unknownKey("ansi.", key));
   }
   const missing = ANSI_KEYS.filter((key) => block[key] === undefined);
   if (missing.length > 0) {
@@ -664,6 +925,7 @@ function readAnsi(doc: JsonObject, version: ThemeVersion | undefined, refusals: 
       code: "ansi",
       path: "ansi.ink",
       detail: `"ansi.ink" on "ansi.ground" measures ${round2(inkRatio)}. The floor is ${TEXT_FLOOR}.`,
+      contrast: { ink: "ansi.ink", ground: "ansi.ground", ratio: round2(inkRatio), floor: TEXT_FLOOR },
     });
   }
   if (luminance(ground) >= luminance(ink)) {
@@ -683,6 +945,7 @@ function readAnsi(doc: JsonObject, version: ThemeVersion | undefined, refusals: 
         code: "ansi",
         path: `ansi.${key}`,
         detail: `"ansi.${key}" on "ansi.ground" measures ${round2(r)}. The floor is ${ANSI_SLOT_FLOOR}.`,
+        contrast: { ink: `ansi.${key}`, ground: "ansi.ground", ratio: round2(r), floor: ANSI_SLOT_FLOOR },
       });
     }
     const bright = ANSI_BRIGHT_SLOTS.includes(key);
@@ -900,6 +1163,56 @@ export function contrast(a: string, b: string): number {
   return ratio(ink.alpha < 1 ? over(ink, ground, ink.alpha) : ink, ground);
 }
 
+// ── The hard floor of body text (F3) ────────────────────────────────────────────────────────────
+//
+// The contrast report below WARNS, and a person may still Apply a theme that warns. These two rules
+// REFUSE, because a theme that breaks them leaves no way to read the screen, the Theme card included:
+//
+//   • `foreground` on `background` below {@link HARD_TEXT_FLOOR} in either half, each value the theme's
+//     own or, when it leaves one out, Collie's (the value the app fills it with);
+//   • any text colour of the file (`foreground` or a `*-foreground` token) that is fully transparent.
+//
+// The parser cannot import the shipped Collie file (it loads in the bridge and the site's sweep with no
+// bundler), so Collie's two values are spelled here and `schema.test.ts` holds them equal to the file.
+
+/** Below this ratio of `foreground` on `background`, a theme is refused. The report's text floor (4.5) still warns above it. */
+export const HARD_TEXT_FLOOR = 3;
+
+/** Collie's page text and ground, per half: what a theme that leaves one out is filled with. */
+export const COLLIE_TEXT_GROUND = {
+  light: { foreground: "oklch(0.14 0 0)", background: "oklch(0.955 0.003 80)" },
+  dark: { foreground: "oklch(0.985 0 0)", background: "oklch(0.17 0.003 80)" },
+} as const;
+
+function isTextToken(token: string): boolean {
+  return token === "foreground" || token.endsWith("-foreground");
+}
+
+function readabilityRefusals(light: Half, dark: Half): Refusal[] {
+  const refusals: Refusal[] = [];
+  for (const [which, half] of [["light", light], ["dark", dark]] as const) {
+    for (const token of ALL_THEME_TOKENS) {
+      const value = half[token];
+      if (!isTextToken(token) || value === undefined) continue;
+      if (toRgba(value)?.alpha === 0) {
+        refusals.push({ code: "unreadable", path: `${which}.${token}`, detail: `"${which}.${token}" is fully transparent, so no text would show.` });
+      }
+    }
+    const ink = half.foreground ?? COLLIE_TEXT_GROUND[which].foreground;
+    const ground = half.background ?? COLLIE_TEXT_GROUND[which].background;
+    const measured = Math.floor(contrast(ink, ground) * 100) / 100;
+    if (measured < HARD_TEXT_FLOOR) {
+      refusals.push({
+        code: "unreadable",
+        path: `${which}.foreground`,
+        detail: `In the ${which} half, foreground on background measures ${measured}. Text needs at least ${HARD_TEXT_FLOOR}.`,
+        contrast: { ink: `${which}.foreground`, ground: `${which}.background`, ratio: measured, floor: HARD_TEXT_FLOOR },
+      });
+    }
+  }
+  return refusals;
+}
+
 // ── Filling and writing ───────────────────────────────────────────────────────────────────────
 
 /** Both halves complete enough to write: every token the theme leaves out comes from `base`. */
@@ -1049,11 +1362,13 @@ export function contrastReport(theme: Theme, base: Theme): Finding[] {
     // on the other end: the gradient's bottom colour, or the grain's line colour, each the oklab mix
     // index.css draws. Under `chrome: band` the header and the two bars stand on `secondary`, so the
     // text they hold is measured there.
+    // Every pattern of the object form is measured the same way, on the one paint it draws at the
+    // strength and in the ink the file names.
     const surface = resolveSurface(theme.surface);
-    const groundMix = surface.ground === "gradient" ? GROUND_GRADIENT_END : surface.ground === "grain" ? GROUND_GRAIN_LINE : undefined;
+    const groundMix = groundPaint(surface.ground);
     if (groundMix !== undefined) {
       const end = mixOklab(values[groundMix.base] ?? "", values[groundMix.mix] ?? "", groundMix.percent);
-      const where = `the ${surface.ground} ground`;
+      const where = `the ${resolveGround(surface.ground).pattern} ground`;
       push(`foreground on ${where}`, contrast(values.foreground ?? "", end), TEXT_FLOOR);
       push(`muted-foreground on ${where}`, contrast(values["muted-foreground"] ?? "", end), TEXT_FLOOR);
       const endRgba = toRgba(end);

@@ -1,0 +1,25 @@
+
+[0m[38;2;153;153;153m✻ Waiting for [0m[1m[38;2;153;153;153m2[0m[38;2;153;153;153m background agents to finish[0m
+
+[0m[38;2;78;186;101m● [0mAgent "Sleep 1500 agent B" is waiting on its own background work[0m[38;2;153;153;153m · 9s[0m
+
+[0m[38;2;255;255;255m● [0mAgent B sent an interim notice. Its sleep command is still running in the background, and it has not said "done" yet. A new notice will come when it finishes. I am not waiting on it.
+
+[0m[38;2;153;153;153m✻ Waiting for [0m[1m[38;2;153;153;153m1[0m[38;2;153;153;153m background agent to finish[0m
+
+[0m[38;2;78;186;101m● [0mAgent "Sleep 1500 agent A" is waiting on its own background work[0m[38;2;153;153;153m · 11s[0m
+
+[0m[38;2;255;255;255m● [0mAgent A also sent an interim notice. Its sleep command is still running in the background, and it has not said "done" yet. Both agents are still working. I will not wait for them, as you asked.
+
+[0m[38;2;153;153;153m✻ Crunched for 22s · done 7:17 PM · 2 shells still running[0m
+
+[0m[38;2;136;136;136m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+❯ ⌁
+[0m[38;2;136;136;136m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+  [0m[38;5;103mCTX:[0m[38;5;71m4%[0m[38;2;153;153;153m [0m[38;5;103mCACHE:[0m[38;5;71m98%[0m[38;2;153;153;153m [0m[38;5;103mLIMITS[0m[38;2;153;153;153m [0m[38;5;103m7d:[0m[38;5;179m51%[0m[38;5;246m/3d:06h[0m
+  [0m[38;5;75m[Sonnet[0m[38;5;246m·high[0m[38;5;75m][0m[38;2;153;153;153m [0m[1m[38;5;7m~/scratch/claude-lab-panes[0m[38;2;153;153;153m [0m[38;5;109mon HEAD[0m
+  [0m[38;2;255;107;128m⏵⏵ bypass permissions on[0m[38;2;153;153;153m · [0m[38;2;0;204;204m2 shells[0m
+  
+[0m[1m  ● main[0m
+[0m[38;2;153;153;153m  ◯ general-purpose  Sleep 1500 agent A                                                                                                                                                                   11s · ↓ 25.2k tokens[0m
+[0m[38;2;153;153;153m  ◯ general-purpose[0m  [0m[38;2;153;153;153mSleep 1500 agent B[0m                                                                                                                                                                    [0m[38;2;153;153;153m9s · ↓ 25.1k tokens[0m

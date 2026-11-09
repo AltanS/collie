@@ -103,7 +103,7 @@ test("the Collie look fetches only its own face, and draws every default", async
       rowGap: style(row)?.marginTop,
       rowEdge: style(row)?.borderLeftWidth,
       rowShadow: style(row)?.boxShadow,
-      stroke: style(document.querySelector("svg.lucide"))?.strokeWidth,
+      stroke: style(document.querySelector("svg.icon"))?.strokeWidth,
       label: style(document.querySelector(".label-caps"))?.textTransform,
       tracking: style(document.querySelector(".label-caps"))?.letterSpacing,
     };
@@ -148,7 +148,7 @@ test("a theme naming all seven paints each one, and its display face costs exact
       rowGap: style(row)?.marginTop,
       rowEdge: style(row)?.borderTopWidth,
       rowShadow: style(row)?.boxShadow,
-      stroke: style(document.querySelector("svg.lucide"))?.strokeWidth,
+      stroke: style(document.querySelector("svg.icon"))?.strokeWidth,
       label: style(document.querySelector(".label-caps"))?.textTransform,
       identity: style(document.querySelector('[data-slot="header-identity"]'))?.fontFamily,
       meta,

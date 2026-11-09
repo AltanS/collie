@@ -160,7 +160,10 @@ const DRAWS_THE_SAME_BOX = (name: string): boolean =>
   name.startsWith("pi--omo-") ||
   name.startsWith("hermes--") ||
   name === "pi--prose-quoted-omo-dialog-above-editor.txt" ||
-  name === "pi--v130-gentle-draft-wrapped.txt";
+  name === "pi--v130-gentle-draft-wrapped.txt" ||
+  // An extension's editor with `❯` in column 0 between pi's own rules (issue 722).
+  name.startsWith("pi--v150-gentle-quiet-") ||
+  name.startsWith("pi--v130-quiet-prompt-");
 
 describe("non-Claude fixtures", () => {
   it("yield null with the Claude profile, except the harnesses that draw the same box", () => {

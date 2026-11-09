@@ -752,6 +752,11 @@ describe("solo zero-tax — routes", () => {
   test("server.ts registers exactly today's routes", () => {
     expect(declaredRoutes()).toEqual([
       "/",
+      // Ask v1 (M56 spec 08): a route that legitimately extends this list, named here rather than
+      // exempted. Write-gated through the caller's own gate, and a 404 when the Send Protocol is off
+      // (COLLIE_SEND_PROTOCOL=0, on by default since spec 06). A `?host=` answer is forwarded to the
+      // member whose ask book minted the id (the hook hold card, spec 12); a solo collie has no host.
+      "/^\\/api\\/ask\\/([^/]+)$/",
       // `focus` is the pane action that moves the OPERATOR's own terminal, and it is named here for
       // the reason every other one is: a route arrives on purpose or it does not arrive.
       // One content-addressed image out of a pi/omp journal's blob store — a SOLO route that
@@ -778,7 +783,9 @@ describe("solo zero-tax — routes", () => {
       // pane whose adapter raises asks as data takes it, so a solo Herdr bridge answers it the refusal.
       // `send` and `abort` name the turn the phone saw (ADR 0101): writes, forwarded the same way, and
       // only a pane whose adapter takes guarded controls takes them; a Herdr pane gets the refusal.
-      "/^\\/api\\/pane\\/([^/]+)(?:\\/(reply|keys|upload|close|rename|history|chat|changes|files|focus|answer|send|abort|clear|action|pins))?$/",
+      // `held` (issue 740) is the Cancel or Dismiss on a queued row, by pane, so it forwards to the member
+      // whose hold queue keeps the row; on a solo collie it answers what `DELETE /api/send/<id>` does.
+      "/^\\/api\\/pane\\/([^/]+)(?:\\/(reply|keys|upload|close|rename|history|chat|changes|files|focus|answer|send|abort|clear|action|pins|held))?$/",
       // The slash commands Claude Code would load in the pane's cwd: a read of this machine's disk,
       // asked only when the palette opens, so a solo instance pays nothing per poll.
       "/^\\/api\\/pane\\/([^/]+)\\/claude-commands$/",
@@ -827,10 +834,6 @@ describe("solo zero-tax — routes", () => {
       // included, and then answers 404 instead of the SPA's app shell. Not a route of its own, and it
       // registers nothing on the crew link.
       "/api/*",
-      // Ask v1 (M56 spec 08): a SOLO route that legitimately extends this list, named here rather than
-      // exempted. Write-gated through the same closure a send rides, this collie's own sessions only,
-      // and a 404 when the Send Protocol is off (COLLIE_SEND_PROTOCOL=0, on by default since spec 06). No crew route.
-      "/api/ask/*",
       // The prompt-cache rule catalog (M28/02). A process-scoped READ, gated exactly as `/api/config`
       // is, and the only route this feature adds. Not forwarded across the crew link.
       "/api/cache-rules",
@@ -959,6 +962,10 @@ describe("solo zero-tax — routes", () => {
       // The trouble tally (M86 spec 05): the phone's one count when a trouble card showed. Solo for the
       // same reason: the bridge the phone talks to counts it under its own install.
       "/api/telemetry/trouble",
+      // The community theme registry (M59 spec 06): a SOLO route that legitimately extends this list,
+      // named here rather than exempted. Lead-local like the math pack, and not forwardable. A bridge
+      // whose operator never taps Refresh in the Theme card fetches nothing and writes nothing.
+      "/api/themes/registry",
       // Collie tricks (M94 slice 01): the tricks list and the parts changed since a rev. A read, gated like
       // the snapshot, and its body is empty of tricks on an install with no `<configDir>/tricks/`.
       "/api/tricks",
@@ -1348,6 +1355,9 @@ const STATE_DIR_ENTRIES = [
   // last day sent, the phone's switch and the trouble tally (M86 spec 05). A NEW file; the ID and the
   // tally are deleted the moment the ping is off, and an older build ignores the file.
   "telemetry.json",
+  // The community theme registry (M59 spec 06): `<stateDir>/themes/registry.json`, the copy a tap on
+  // Refresh in the Theme card fetched. Written by that tap and by nothing else.
+  "themes",
   // Collie tricks (M94, bridge/tricks/paths.ts): `switches.json` and one state folder per trick that ran.
   // Written only by `collie trick on`/`off` and by a trick's run, so an install with no tricks has none.
   "tricks",

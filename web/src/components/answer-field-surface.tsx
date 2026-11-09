@@ -1,10 +1,10 @@
 import { useState, type ReactNode } from "react";
-import { MessageSquarePlus } from "lucide-react";
 
 import { InlineEditor, InlineEditorOffer } from "@/components/ui/inline-editor";
 import { ANSWER_MAX_LENGTH } from "@/lib/answer-field";
 import type { WizardStepChip } from "@/lib/harness/wizard-model";
 import { t } from "@/lib/i18n";
+import { Icon } from "@/components/icons/icon";
 
 /** The words a card's inline text field speaks: its offer, its editor and its states. */
 export interface FeedbackCopy {
@@ -45,7 +45,8 @@ export function answerFieldCopy(help: string): FeedbackCopy {
 export function TypedFieldCard({ prefix, text }: { prefix: string; text: string }) {
   return (
     <div className="flex items-start gap-2 rounded-lg border border-border/60 bg-muted/30 px-3 py-2">
-      <MessageSquarePlus
+      <Icon
+        name="add-note"
         className="mt-0.5 size-3.5 shrink-0 text-muted-foreground"
         aria-label={t("prompt.feedback.typedAria")}
       />

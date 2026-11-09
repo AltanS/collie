@@ -1,4 +1,4 @@
-import { X } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -208,7 +208,7 @@ function SentRow({ entry, machine, onPick, onForget }: SentRowProps) {
         onClick={() => void onForget(entry)}
         className="grid size-11 shrink-0 place-items-center text-muted-foreground active:bg-accent focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
       >
-        <X className="size-4" aria-hidden />
+        <Icon name="remove" className="size-4" aria-hidden />
       </button>
     </li>
   );

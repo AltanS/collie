@@ -41,7 +41,7 @@ export const ru: Dictionary = {
   "settings.theme.option.dark": "Темная",
 
   "theme.title": "Тема",
-  "theme.description": "Выберите вид или импортируйте его из файла.",
+  "theme.description": "Выберите вид или добавьте новый и примерьте его, прежде чем оставить.",
   "theme.import": "Импорт",
   "theme.export": "Экспорт",
   "theme.remove": "Удалить",
@@ -2865,6 +2865,8 @@ export const ru: Dictionary = {
   "telemetry.card.next.aria": "Следующее сообщение в формате JSON",
   "telemetry.card.more": "Что отправляется",
   "telemetry.notice.body": "Collie 1.27.0 отправляет анонимную телеметрию раз в день. Отключите ее в Настройках.",
+  "telemetry.notice.updateBody": "Ежедневный подсчет Collie теперь также указывает диалог, который не удалось прочитать, по короткому коду из подсказок клавиш этого диалога, но никогда не из вашего текста.",
+  "telemetry.notice.docs": "Что отправляется",
   "telemetry.notice.open": "Открыть настройки",
   "telemetry.notice.dismiss": "Закрыть уведомление",
   "apiError.telemetry.setting_invalid": "Параметр телеметрии должен быть «Вкл» или «Выкл». Ничего не изменено.",

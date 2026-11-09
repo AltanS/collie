@@ -1,4 +1,4 @@
-import { ListTree, Network, Rows3 } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { useRevalidator } from "react-router";
 
@@ -482,20 +482,20 @@ export function HomeRoute() {
         items={[
           // Crew leads, drawn only while a crew is configured (ADR 0085). Network is the Crew icon
           // the Settings card, the switcher sheet and the footer line wear.
-          ...(multi ? [{ value: "crew" as const, label: t("crew.title"), icon: <Network className="size-5" /> }] : []),
+          ...(multi ? [{ value: "crew" as const, label: t("crew.title"), icon: <Icon name="crew" className="size-5" /> }] : []),
           // The Dashboard tab carries the corner mark the Focus tab wore (ADR 0066 point 7), always:
           // it is information about the herd, not a nag, so it shows with the switch on or off.
           {
             value: "dashboard",
             label: t("home.tabs.dashboard"),
-            icon: <Rows3 className="size-5" />,
+            icon: <Icon name="tab-dashboard" className="size-5" />,
             badge: blockedCount,
             dot: readyUnseen,
             badgeLabel: blockedCount > 0 ? tn("home.tabs.blocked", blockedCount) : t("home.tabs.unseen"),
           },
           // The Files tab (2026-10-06, ADR 0085): the stored value stays `changes`. ListTree is the
           // one Files icon: the pane belt's pill and the Files screen's Tree toggle wear it.
-          ...(screenless ? [] : [{ value: "changes" as const, label: t("files.title"), icon: <ListTree className="size-5" /> }]),
+          ...(screenless ? [] : [{ value: "changes" as const, label: t("files.title"), icon: <Icon name="files" className="size-5" /> }]),
         ]}
       />
       )}

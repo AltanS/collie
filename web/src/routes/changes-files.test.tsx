@@ -213,7 +213,7 @@ describe("Changes: the marks on the tree", () => {
     const changed = await row(/^checkout\.tsx, file, 388 B, Modified$/);
     expect(changed.querySelector("svg")?.getAttribute("class")).toContain("text-status-working");
     // The icon switches shape too: a pen for a modified file, not the plain file glyph.
-    expect(changed.querySelector("svg")?.getAttribute("class")).toContain("lucide-file-pen");
+    expect(changed.querySelector("svg")?.getAttribute("data-icon")).toBe("file-modified");
     const letter = [...changed.querySelectorAll("span")].find((el) => el.textContent === "M");
     expect(letter?.className).toContain("text-status-working");
   });
@@ -225,7 +225,7 @@ describe("Changes: the marks on the tree", () => {
     // Not the list's quiet grey: a file the agent just wrote takes the added ink, letter and icon.
     expect(letter?.className).toContain("text-status-done");
     expect(note.querySelector("svg")?.getAttribute("class")).toContain("text-status-done");
-    expect(note.querySelector("svg")?.getAttribute("class")).toContain("lucide-file-plus");
+    expect(note.querySelector("svg")?.getAttribute("data-icon")).toBe("file-added");
     expect(await row(/^server, folder, 1 changed file$/)).toBeTruthy();
   });
 

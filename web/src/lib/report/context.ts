@@ -13,6 +13,8 @@ export interface ReportContext {
   readonly arch: string;
   readonly mux: string;
   readonly harness: string | null;
+  /** The bridge's own read of that agent's binary version (its Surface version cache). Null when it has none, and from an older bridge. */
+  readonly harnessVersion: string | null;
   readonly screenable: boolean;
   readonly screen?: string;
   /** The doctor's send rows for this report (M71 spec 05). Absent from an older bridge, or when its read failed. */
@@ -62,9 +64,10 @@ export function readReportContext(body: JsonValue | undefined): ReportContext | 
   if (collie === undefined || os === undefined || arch === undefined || mux === undefined) return null;
   const line = node.line === "stable" || node.line === "edge" ? node.line : null;
   const harness = asJsonString(node.harness) ?? null;
+  const harnessVersion = asJsonString(node.harnessVersion) ?? null;
   const screen = asJsonString(node.screen);
   const doctor = readDoctor(node.doctor);
-  const facts: ReportContext = { collie, line, os, arch, mux, harness, screenable: asJsonBoolean(node.screenable) === true };
+  const facts: ReportContext = { collie, line, os, arch, mux, harness, harnessVersion, screenable: asJsonBoolean(node.screenable) === true };
   const context = doctor === undefined ? facts : { ...facts, doctor };
   return screen === undefined ? context : { ...context, screen };
 }

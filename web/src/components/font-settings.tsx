@@ -1,4 +1,4 @@
-import { AArrowDown, AArrowUp, ChevronDown, Type } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -68,7 +68,7 @@ export function FontSettingsControl() {
     <Card className="gap-0 py-0">
       <div className="flex items-center justify-between gap-4 p-4">
         <div className="flex min-w-0 items-start gap-3">
-          <Type className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
+          <Icon name="font" className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
           <div className="min-w-0">
             <div className="font-medium">{t("settings.fonts.title")}</div>
             <p className="text-sm text-muted-foreground">{t("settings.fonts.description")}</p>
@@ -103,7 +103,8 @@ export function FontSettingsControl() {
                 </option>
               ))}
             </select>
-            <ChevronDown
+            <Icon
+              name="select-caret"
               aria-hidden="true"
               className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
             />
@@ -121,7 +122,7 @@ export function FontSettingsControl() {
               onClick={() => stepFontSize(-1)}
               aria-label={t("settings.display.textSize.decrease")}
             >
-              <AArrowDown className="size-4" />
+              <Icon name="text-smaller" className="size-4" />
             </Button>
             {/* Fixed width + tabular figures: the number must not resize its own slot as it steps,
                 or the two buttons beside it walk. */}
@@ -136,7 +137,7 @@ export function FontSettingsControl() {
               onClick={() => stepFontSize(1)}
               aria-label={t("settings.display.textSize.increase")}
             >
-              <AArrowUp className="size-4" />
+              <Icon name="text-larger" className="size-4" />
             </Button>
           </div>
         </div>
@@ -167,7 +168,7 @@ export function FontSettingsControl() {
               onClick={() => stepDraftFontSize(-1)}
               aria-label={t("settings.fonts.draftSize.decrease")}
             >
-              <AArrowDown className="size-4" />
+              <Icon name="text-smaller" className="size-4" />
             </Button>
             <span className="w-8 text-center text-xs tabular-nums text-muted-foreground">
               {prefs.draftFontSize}
@@ -180,7 +181,7 @@ export function FontSettingsControl() {
               onClick={() => stepDraftFontSize(1)}
               aria-label={t("settings.fonts.draftSize.increase")}
             >
-              <AArrowUp className="size-4" />
+              <Icon name="text-larger" className="size-4" />
             </Button>
           </div>
         </div>

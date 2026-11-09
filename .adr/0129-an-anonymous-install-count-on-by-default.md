@@ -132,3 +132,8 @@ at most 20 rows, a count at most 999. `telemetry/README.md` is the contract. The
 same release as the ping itself (1.27.0 Stable has not shipped; only an Edge build has), so the
 one-time notice of that release covers both and no second notice is shown; a field added after
 1.27.0 needs its own ADR and its own notice, as the Consequences say.
+
+## Pointer, 2026-11-08: the dialog's screen hash
+
+The `screen` field of a dialog row, added in 1.27.4, has its own record:
+[ADR 0134](./0134-the-trouble-tally-names-the-dialog-by-a-hash-of-its-key-hint-row.md).

@@ -55,6 +55,15 @@ const PINNED = [
   "hermes--palette.txt",
   "hermes--running.txt",
   "hermes--slash-popup.txt",
+  "hermes--tui-busy-echo.txt",
+  "hermes--tui-busy-fresh.txt",
+  "hermes--tui-busy-title.txt",
+  "hermes--tui-busy.txt",
+  "hermes--tui-draft-title.txt",
+  "hermes--tui-draft.txt",
+  "hermes--tui-idle-en.txt",
+  "hermes--tui-idle-hint.txt",
+  "hermes--tui-idle-title.txt",
   "hermes--v0225-title-idle.txt",
 ];
 

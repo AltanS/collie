@@ -374,15 +374,15 @@ describe("a peer failure navigates too, and truncates instead of clipping", () =
 });
 
 describe("a reload prompt does not look like an offer (M20/05)", () => {
-  /** The band's leading icon, by the class lucide stamps on every one of its svgs. */
+  /** The band's leading icon, by the `data-icon` key `Icon` stamps on every one of its svgs. */
   function icon(container: HTMLElement): string | null {
     const svg = band(container)?.querySelector("svg");
-    return svg === null || svg === undefined ? null : (svg.getAttribute("class")?.match(/lucide-[a-z-]+/)?.[0] ?? null);
+    return svg === null || svg === undefined ? null : svg.getAttribute("data-icon");
   }
 
   it("an OFFER keeps the up-arrow: there is a new version, and a tap starts something", async () => {
     const { container } = await renderBand(info());
-    expect(icon(container)).toBe("lucide-circle-arrow-up");
+    expect(icon(container)).toBe("update-available");
   });
 });
 

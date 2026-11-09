@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { Bot, PinOff, User, Wrench, type LucideIcon } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
+import type { IconKey } from "@/components/icons/keys";
 
 import { ItemView } from "@/components/chat-cards";
 import { Button } from "@/components/ui/button";
@@ -24,7 +25,13 @@ import { cn } from "@/lib/utils";
 // is the pane view's (hooks/use-message-pins.ts); this file holds nothing but which pin is open in the detail.
 // Unpin does not wait on the network there. The row leaves at once and comes back with a notice on a refusal.
 
-const KIND_GLYPH = { user: User, reply: Bot, thinking: Bot, notice: Bot, tool: Wrench } as const satisfies Record<PinKind, LucideIcon>;
+const KIND_GLYPH = {
+  user: "user-turn",
+  reply: "message-agent",
+  thinking: "message-agent",
+  notice: "message-agent",
+  tool: "message-tool",
+} as const satisfies Record<PinKind, IconKey>;
 
 interface PinsSheetProps {
   open: boolean;
@@ -125,7 +132,6 @@ function pinTime(pin: PinRow): string {
 }
 
 function PinListRow({ pin, onOpen, onUnpin }: { pin: PinRow; onOpen: () => void; onUnpin: () => void }) {
-  const Glyph = KIND_GLYPH[pin.kind];
   return (
     <li data-slot="pin-row" className="flex items-stretch">
       <button
@@ -133,7 +139,7 @@ function PinListRow({ pin, onOpen, onUnpin }: { pin: PinRow; onOpen: () => void;
         onClick={onOpen}
         className="flex min-h-11 min-w-0 flex-1 items-start gap-2.5 py-2.5 pl-4 text-left text-sm leading-snug"
       >
-        <Glyph aria-hidden className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+        <Icon name={KIND_GLYPH[pin.kind]} aria-hidden className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
         <span className="flex min-w-0 flex-1 flex-col gap-1">
           <span className="text-xs font-medium text-muted-foreground">{pinTitle(pin)}</span>
           <span data-slot="pin-excerpt" className="font-content line-clamp-3 break-words whitespace-pre-line">
@@ -150,7 +156,7 @@ function PinListRow({ pin, onOpen, onUnpin }: { pin: PinRow; onOpen: () => void;
         onClick={onUnpin}
         className="relative my-1.5 mr-2 ml-1 size-9 shrink-0 before:absolute before:-inset-1 before:content-['']"
       >
-        <PinOff className="size-4 text-muted-foreground" />
+        <Icon name="unpin" className="size-4 text-muted-foreground" />
       </Button>
     </li>
   );
@@ -200,7 +206,7 @@ function PinDetail({
         <ItemView item={pinAsItem(shown)} />
         <div className="sticky bottom-0 -mx-4 flex gap-2 border-t border-border bg-card px-4 py-2">
           <Button type="button" variant="outline" size="lg" onClick={onUnpin} className="flex-1">
-            <PinOff />
+            <Icon name="unpin" />
             {t("pins.action.unpin")}
           </Button>
           <Button type="button" size="lg" onClick={onShow} className="flex-1">

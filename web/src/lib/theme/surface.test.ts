@@ -20,6 +20,7 @@ import {
   displayDeclarations,
   displayInitTable,
   versionTwoDeclarations,
+  groundInitTable,
   surfaceInitTable,
   surfaceWordOf,
   surfaceWords,
@@ -77,20 +78,43 @@ const DESIGN = {
     default: [["--surface-border-width", "1px"]],
     strong: [["--surface-border-width", "2px"]],
   },
+  // Each ground word sets the same eight properties: the pattern's image, tile and ink, the size
+  // factor, and the four paints. The paints are today's mixes: the grain's line is 4 percent of the
+  // foreground and the gradient's end 12 percent of the primary, as before the object form.
   ground: {
-    flat: [["--ground-image", "none"]],
+    flat: [
+      ["--ground-image", "none"],
+      ["--ground-size", "auto"],
+      ["--ground-ink", "var(--foreground)"],
+      ["--ground-scale", "1"],
+      ["--ground-line", "color-mix(in oklab, var(--background) 96%, var(--ground-ink))"],
+      ["--ground-dot", "color-mix(in oklab, var(--background) 93%, var(--ground-ink))"],
+      ["--ground-area", "color-mix(in oklab, var(--background) 97%, var(--ground-ink))"],
+      ["--ground-tint", "color-mix(in oklab, var(--background) 88%, var(--ground-ink))"],
+    ],
     gradient: [
-      [
-        "--ground-image",
-        "linear-gradient(to bottom, var(--background), color-mix(in oklab, var(--background) 88%, var(--primary)))",
-      ],
+      ["--ground-image", "linear-gradient(to bottom, var(--background), var(--ground-tint))"],
+      ["--ground-size", "auto"],
+      ["--ground-ink", "var(--primary)"],
+      ["--ground-scale", "1"],
+      ["--ground-line", "color-mix(in oklab, var(--background) 96%, var(--ground-ink))"],
+      ["--ground-dot", "color-mix(in oklab, var(--background) 93%, var(--ground-ink))"],
+      ["--ground-area", "color-mix(in oklab, var(--background) 97%, var(--ground-ink))"],
+      ["--ground-tint", "color-mix(in oklab, var(--background) 88%, var(--ground-ink))"],
     ],
     grain: [
       [
         "--ground-image",
-        "repeating-linear-gradient(45deg, color-mix(in oklab, var(--background) 96%, var(--foreground)) 0 1px, transparent 1px 4px), " +
-          "repeating-linear-gradient(-45deg, color-mix(in oklab, var(--background) 96%, var(--foreground)) 0 1px, transparent 1px 4px)",
+        "repeating-linear-gradient(45deg, var(--ground-line) 0 1px, transparent 1px calc(4px * var(--ground-scale))), " +
+          "repeating-linear-gradient(-45deg, var(--ground-line) 0 1px, transparent 1px calc(4px * var(--ground-scale)))",
       ],
+      ["--ground-size", "auto"],
+      ["--ground-ink", "var(--foreground)"],
+      ["--ground-scale", "1"],
+      ["--ground-line", "color-mix(in oklab, var(--background) 96%, var(--ground-ink))"],
+      ["--ground-dot", "color-mix(in oklab, var(--background) 93%, var(--ground-ink))"],
+      ["--ground-area", "color-mix(in oklab, var(--background) 97%, var(--ground-ink))"],
+      ["--ground-tint", "color-mix(in oklab, var(--background) 88%, var(--ground-ink))"],
     ],
   },
   chrome: {
@@ -229,6 +253,13 @@ describe("the shape tokens", () => {
       "--font-weight-semibold",
       "--surface-border-width",
       "--ground-image",
+      "--ground-size",
+      "--ground-ink",
+      "--ground-scale",
+      "--ground-line",
+      "--ground-dot",
+      "--ground-area",
+      "--ground-tint",
       "--band-ground",
       "--band-rule",
       "--row-gap",
@@ -260,7 +291,7 @@ describe("the shape tokens", () => {
 describe("the display face and the terminal palette", () => {
   it("points the display face at its stack in index.css, one per shipped face", () => {
     expect(displayDeclarations("geist")).toEqual([["--font-display", "var(--face-geist)"]]);
-    expect(displayInitTable().map(([face]) => face)).toEqual(["system", "grotesk", "aldrich", "plex", "geist", "atkinson"]);
+    expect(displayInitTable().map(([face]) => face)).toEqual(["system", "grotesk", "aldrich", "plex", "geist", "atkinson", "nunito"]);
     expect(DISPLAY_PROPERTIES).toEqual(["--font-display"]);
   });
 
@@ -323,12 +354,14 @@ describe("words", () => {
 
 describe("the line theme-init.js carries", () => {
   it("holds the whole table as arrays", () => {
-    const parts = /^ {2}var SURFACE = (.*), DISPLAY = (.*), ANSI = (.*);$/.exec(SURFACE_INIT_LINE);
+    const parts = /^ {2}var SURFACE = (.*), GROUND = (.*), DISPLAY = (.*), ANSI = (.*);$/.exec(SURFACE_INIT_LINE);
     expect(JSON.parse(parts?.[1] ?? "")).toEqual(surfaceInitTable());
-    expect(JSON.parse(parts?.[2] ?? "")).toEqual(displayInitTable());
-    expect(JSON.parse(parts?.[3] ?? "")).toEqual(ansiInitTable());
+    expect(JSON.parse(parts?.[2] ?? "")).toEqual(groundInitTable());
+    expect(JSON.parse(parts?.[3] ?? "")).toEqual(displayInitTable());
+    expect(JSON.parse(parts?.[4] ?? "")).toEqual(ansiInitTable());
     const table = surfaceInitTable();
-    expect(table.map(([token]) => token)).toEqual([...SURFACE_TOKENS]);
+    // The ground is not in this table: the script reads it, word or object, from GROUND.
+    expect(table.map(([token]) => token)).toEqual(SURFACE_TOKENS.filter((token) => token !== "ground"));
     for (const [token, words] of table) {
       for (const [word, declarations] of words) {
         expect(declarations).toEqual(designOf(token, word));

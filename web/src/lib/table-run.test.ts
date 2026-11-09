@@ -358,6 +358,16 @@ describe("tableRuns — the whole pane corpus", () => {
       "omp--slash-palette--filtered.txt 2..20",
       "omp--slash-palette.txt 2..20",
       "omp--tree.txt 2..20",
+      // omp 18.16.0's plan review with the Contents sidebar (a plan with two headings): the sidebar and
+      // the plan body are a two-pane box, so the raw block above the plan card pans like the splash. The
+      // clipped 80-column capture is declined, and with no card over it its raw block is claimed too.
+      "omp--v18-16-0-plan-review-contents--w140.txt 0..51",
+      "omp--v18-16-0-plan-review-slider--w140.txt 0..49",
+      "omp--v18-16-0-plan-review-slider-clipped--w80.txt 0..49",
+      "omp--v18-16-0-plan-review-slider-moved--w140.txt 0..49",
+      // omp 18.18.0's plan review under the `nerd` preset, the same two-pane box.
+      "omp--v18-18-0-nerd-plan-review--w250.txt 0..48",
+      "omp--v18-18-0-nerd-plan-review-moved--w250.txt 0..48",
       "omp--v18-4-ask-note-editor.txt 2..20",
       "omp--v18-4-ask-single-moved.txt 2..20",
       "omp--v18-4-ask-single.txt 2..20",

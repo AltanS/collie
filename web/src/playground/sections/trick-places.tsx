@@ -9,7 +9,6 @@
 // DEV-ONLY, unreachable from the app entry: see ../app.tsx and web/playground.html.
 
 import { useEffect, useMemo, type ReactNode } from "react";
-import { Keyboard, Monitor } from "lucide-react";
 
 import { ActionsRow } from "@/components/actions-row";
 import { beltMarksOf } from "@/components/belt-trick-mark";
@@ -134,8 +133,8 @@ function Belt({ marks }: { marks: readonly WireTrickPart[] }) {
   return (
     <ActionsRow
       general={[
-        { id: "keys", icon: Keyboard, label: "Keys", onSelect: IGNORE },
-        { id: "screen", icon: Monitor, label: "Screen", onSelect: IGNORE },
+        { id: "keys", icon: "keys-drawer", label: "Keys", onSelect: IGNORE },
+        { id: "screen", icon: "screen", label: "Screen", onSelect: IGNORE },
       ]}
       agent="claude"
       onRun={RUN}
