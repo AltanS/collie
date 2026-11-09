@@ -1211,6 +1211,13 @@ export interface UpdateStatus {
    */
   packageCommand?: string;
   /**
+   * The build this process answers the crew with (`<semver>` or `<semver>+<sha>`), where `current`
+   * is `package.json`'s plain version. A `-dev` build here leads no crew run: it states no release,
+   * so no member would take a turn from it. Absent on a solo instance (no trust store, §11) and on an
+   * older bridge, both of which read as a release.
+   */
+  build?: string;
+  /**
    * The release whose OFFER the operator closed, or null when none was closed.
    *
    * It is the BRIDGE's fact, not a browser's: a dismissal is a decision about this machine's

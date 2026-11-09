@@ -1026,6 +1026,58 @@ describe("updateStartVerdict — a peers-only start over a crew that may already
   });
 });
 
+// ── A DEVELOPMENT BUILD CANNOT LEAD AN UPDATE (2026-11-09) ─────────────────────
+// A `-dev` build states no release (`leadReleaseHeader` in `crew/follow.ts`), so no member is ever
+// handed the turn: the run's legs waited twenty minutes for the wall clock. The incident's versions:
+// the update monitor's `current` is `package.json`'s plain `1.28.0`, the build this process answers
+// with is `1.28.0-dev+047ee5bbd0`, and both members run dev builds, which read as behind `1.28.0`.
+
+describe("updateStartVerdict — a lead on a development build", () => {
+  const row = (name: string, version: string | null): CrewUpdateRow => ({
+    name,
+    version,
+    verdict: "green",
+    reasons: [],
+    asOf: 1,
+  });
+  const crew = [row("minibuch", "1.28.0-dev+b178eb63f2"), row("bluefin-hc", "1.28.0-dev+047ee5bbd0")];
+  const devLead = (over: Partial<UpdateStartState> = {}) =>
+    state({ current: "1.28.0", latest: "1.28.0", build: "1.28.0-dev+047ee5bbd0", crew, ...over });
+
+  test("the incident: a peers-only start is refused at once with update.dev_lead", () => {
+    const v = updateStartVerdict(ask({ peersOnly: true }), devLead());
+    expect(v).toEqual({ kind: "refuse", status: 409, body: { code: "update.dev_lead", error: expect.any(String) } });
+  });
+
+  test("an ordinary start that would queue the crew is refused the same way", () => {
+    const v = updateStartVerdict(ask(), devLead({ current: "1.27.4", latest: "1.28.0", build: "1.27.4-dev+ab12cd3" }));
+    expect(v).toMatchObject({ kind: "refuse", status: 409, body: { code: "update.dev_lead" } });
+  });
+
+  test("a solo development build queues no crew, so its own start is not this refusal", () => {
+    const v = updateStartVerdict(ask(), devLead({ current: "1.27.4", latest: "1.28.0", build: "1.27.4-dev+ab12cd3", crew: [] }));
+    expect(v).toEqual({ kind: "start", to: "1.28.0", major: false });
+  });
+
+  test("a double tap still names the running run first", () => {
+    const v = updateStartVerdict(ask({ peersOnly: true }), devLead({ crewRunOpen: true }));
+    expect(v).toMatchObject({ kind: "refuse", status: 409, body: { code: "update.in_progress" } });
+  });
+
+  test("a release build and an Edge build lead as before", () => {
+    const behind = [row("minibuch", "1.27.4+ab12cd3")];
+    for (const build of ["1.28.0+b178eb63f2", "1.28.0", "1.28.0-edge.4+9ef26fb6e"]) {
+      const v = updateStartVerdict(ask({ peersOnly: true }), devLead({ build, crew: behind }));
+      expect(v).toEqual({ kind: "peers", to: "1.28.0" });
+    }
+    // And a bridge that passes no build at all, as every caller did before the field.
+    expect(updateStartVerdict(ask({ peersOnly: true }), devLead({ build: undefined, crew: behind }))).toEqual({
+      kind: "peers",
+      to: "1.28.0",
+    });
+  });
+});
+
 describe("POST api/update/rollback — the rollback verdict (M60 spec 01)", () => {
   const ID = "0f8fad5b-d9cb-469f-a165-70867728950e";
   const BACK = { ...GREEN, rollback: { from: "1.3.0", to: "1.2.4" } };

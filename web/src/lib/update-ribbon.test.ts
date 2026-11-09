@@ -25,7 +25,7 @@ import {
   truncateWords,
   type RibbonInput,
 } from "./update-ribbon";
-import type { UpdateInfo, UpdatePeerLeg, UpdatePeerLegState, UpdateRun, UpdateRunState } from "./types";
+import type { UpdateCrewMember, UpdateInfo, UpdatePeerLeg, UpdatePeerLegState, UpdateRun, UpdateRunState } from "./types";
 
 // The band's reading, as a pure function. The component test next door proves the row that comes out
 // of it; everything about WHICH state wins lives here, where it needs no DOM.
@@ -170,6 +170,65 @@ describe("run states belong to the screen", () => {
   it("keeps both download states, which are about the PWA and not about a run", () => {
     expect(read({ bundleStale: true, bundleInstalling: true })).toEqual({ kind: "bundle-installing" });
     expect(read({ bundleStale: true })).toEqual({ kind: "bundle" });
+  });
+});
+
+// ── THE LIVE DEV LANE, 2026-11-09 ───────────────────────────────────────────────────────────────
+// The lead answered the crew as `1.28.0-dev+047ee5bbd0` while its `current` was `package.json`'s plain
+// `1.28.0`. Its three members ran development builds of `1.28.0`, which read as behind `1.28.0`, so a
+// peers-only run was offered and taken; a development build states no release, so every leg ended
+// `unreachable` after the wall clock, and the failed row then never left.
+describe("a lead on a development build, over development members (2026-11-09)", () => {
+  const leg = (name: string): UpdatePeerLeg => ({
+    name,
+    state: "unreachable",
+    reason: "not started: the lead states no settled release, not 1.28.0",
+    updatedAt: NOW - 30 * 60_000,
+  });
+  const legs = [leg("minibuch"), leg("minibuch-hc"), leg("bluefin-hc")];
+  const member = (name: string, version: string): UpdateCrewMember => ({ name, version, verdict: "green", reasons: [], asOf: NOW });
+  const crewOn = (versions: readonly [string, string, string]): UpdateCrewMember[] => [
+    member("minibuch", versions[0]),
+    member("minibuch-hc", versions[1]),
+    member("bluefin-hc", versions[2]),
+  ];
+  const crew = crewOn(["1.28.0-dev+b178eb63f2", "1.28.0-dev+b178eb63f2", "1.28.0-dev+047ee5bbd0"]);
+  const live = (over: Partial<UpdateInfo> = {}): UpdateInfo =>
+    info({
+      current: "1.28.0",
+      latest: "1.28.0",
+      releaseAvailable: false,
+      newerVersions: [],
+      build: "1.28.0-dev+047ee5bbd0",
+      peers: legs,
+      settledAt: NOW - 10 * 60_000,
+      ...over,
+    });
+
+  it("names no failed leg, and the band says nothing", () => {
+    expect(readRun({ update: live(), crew, now: NOW }).failed).toBeNull();
+    expect(read({ update: live(), crew })).toEqual({ kind: "silent" });
+  });
+
+  it("stays silent before the census arrives, because the lead can hand nobody a turn", () => {
+    expect(read({ update: live() })).toEqual({ kind: "silent" });
+  });
+
+  it("stays silent over development members of an OLDER version too", () => {
+    const older = crewOn(["1.27.0-dev+b178eb63f2", "1.27.0-dev+b178eb63f2", "1.27.0-dev+b178eb63f2"]);
+    expect(read({ update: live(), crew: older })).toEqual({ kind: "silent" });
+  });
+
+  it("a release lead over the same members: they are level with it, so the row goes too", () => {
+    expect(read({ update: live({ build: "1.28.0+b178eb63f2" }), crew })).toEqual({ kind: "silent" });
+  });
+
+  it("a release lead over a member a release back still names the failed leg", () => {
+    const behind = crewOn(["1.27.4+ab12cd3", "1.27.4+ab12cd3", "1.27.4+ab12cd3"]);
+    expect(read({ update: live({ build: "1.28.0+b178eb63f2" }), crew: behind })).toMatchObject({
+      kind: "peer-failed",
+      name: "minibuch",
+    });
   });
 });
 

@@ -7,6 +7,7 @@ import type { PeerHealth } from "./crew/registry.ts";
 import { apiError, type ApiErrorBody, type ApiErrorDetail, type ErrorCode } from "./error-codes.ts";
 import { compareSemver, RUNNER_ENV_KEYS, UPDATE_MIRROR_ENV } from "./update.ts";
 import { inFlight, type UpdateRun, type UpdateRunState } from "./update-run.ts";
+import { developmentBase } from "./version.ts";
 import { isRequestId } from "./worktree-receipts.ts";
 
 // `POST /api/update` — the phone's one-tap-plus-one-confirm start, and the preflight it is gated on
@@ -793,6 +794,14 @@ export interface UpdateStartState {
    */
   readonly installKind?: UpdateStatus["installKind"];
   /**
+   * The BUILD this process answers with (`collieVersionBare`, `<semver>` or `<semver>+<sha>`), the
+   * string the crew reads. NOT {@link current}, which is `package.json`'s plain version and carries no
+   * `-dev`. Read for exactly one refusal: a development build states no release
+   * (`leadReleaseHeader` in `crew/follow.ts`), so no member would ever be handed a turn by it.
+   * Absent ⇒ not known, and nothing is refused on it.
+   */
+  readonly build?: string;
+  /**
    * Every member's row, as the sweep banked it (M16/03). Absent ⇒ solo, which is `[]` and green.
    *
    * One confirm covers the crew, so the gate covers the crew: a member that is red — or that nobody
@@ -844,6 +853,12 @@ export function updateStartVerdict(req: UpdateStartRequest, state: UpdateStartSt
   // renders: "An update is already running (levelling the crew). Nothing was started." The run is
   // bounded (`CREW_RUN_TTL_MS`), so this refusal is too.
   if (state.crewRunOpen === true) return refuse(409, "update.in_progress", { state: "levelling the crew" });
+
+  // ── A DEVELOPMENT BUILD CANNOT LEAD THE CREW (2026-11-09) ───────────────────
+  // A `-dev` build states no release, so a member never takes a turn from it and every leg waits for
+  // the twenty minute wall clock. Refused here, before any leg is queued, peers-only or not. A solo
+  // development build queues no leg, so its own start is left to the gates below.
+  if (leadsNoUpdate(req, state)) return refuse(409, "update.dev_lead");
 
   // ── THE PEERS-ONLY RUN (M16/04) ─────────────────────────────────────────────
   // Decided here, above the preflight, because the gates below are about THIS machine's own move and
@@ -917,6 +932,12 @@ export function updateStartVerdict(req: UpdateStartRequest, state: UpdateStartSt
     return refuse(409, "update.target_mismatch", { asked: req.target, would });
   }
   return { kind: "start", to: would, major: req.major };
+}
+
+/** Would this start queue crew legs on a lead whose build can never hand a member the turn? */
+function leadsNoUpdate(req: UpdateStartRequest, state: UpdateStartState): boolean {
+  if (leadLevelsCrew(state.build)) return false;
+  return req.peersOnly || (state.crew ?? []).length > 0;
 }
 
 // ── The rollback verdict (M60 spec 01) ───────────────────────────────────────
@@ -1100,7 +1121,22 @@ type LevelLeg = { readonly name: string; readonly state: string };
 export function memberBehind(member: LevelMember, current: string): boolean {
   if (current === "" || member.version === null) return false;
   if (member.installKind === "packaged") return false;
-  return compareSemver(member.version, current) < 0;
+  return compareSemver(levelVersion(member.version), current) < 0;
+}
+
+/**
+ * The version a member's report is LEVELLED by: a development build by the version it is built on
+ * (`1.28.0-dev+b178eb6` → `1.28.0`), anything else as it is. A `-dev` build is that release's code
+ * plus later commits, and no run can move it (it never self-levels, `crew/follow.ts`), so it is not
+ * behind its own base. A development build of an OLDER base is still behind. Twin of the phone's.
+ */
+function levelVersion(version: string): string {
+  return developmentBase(version) ?? version;
+}
+
+/** Can this lead's build hand a member the turn? A development build states no release, so never. */
+export function leadLevelsCrew(build: string | undefined): boolean {
+  return build === undefined || developmentBase(build) === null;
 }
 
 /**
@@ -1121,7 +1157,7 @@ export function legStillFailed(leg: LevelLeg, crew: readonly LevelMember[], curr
   if (current === "") return true;
   const version = member?.version ?? null;
   if (version === null) return true;
-  return compareSemver(version, current) < 0;
+  return compareSemver(levelVersion(version), current) < 0;
 }
 
 /**
@@ -1131,19 +1167,31 @@ export function legStillFailed(leg: LevelLeg, crew: readonly LevelMember[], curr
  */
 function packagedAndBehind(member: LevelMember, current: string): boolean {
   if (current === "" || member.version === null || member.installKind !== "packaged") return false;
-  return compareSemver(member.version, current) < 0;
+  return compareSemver(levelVersion(member.version), current) < 0;
 }
 
 /**
  * Is there anything for a retry to do — a member behind this lead's own version, or one the last run
- * failed that has not levelled since? The twin of `crewNeedsLevelling` on the phone.
+ * failed that has not levelled since? Never on a lead whose build is a development build: it can hand
+ * nobody a turn. The twin of `crewNeedsLevelling` on the phone.
  */
-export function crewNeedsLevelling(crew: readonly LevelMember[], legs: readonly LevelLeg[], current: string): boolean {
-  return crew.some((member) => memberBehind(member, current)) || legs.some((leg) => legStillFailed(leg, crew, current));
+export function crewNeedsLevelling(a: {
+  readonly crew: readonly LevelMember[];
+  readonly legs: readonly LevelLeg[];
+  /** The lead's `package.json` version, which members are compared against. */
+  readonly current: string;
+  /** The build the lead answers the crew with. Absent ⇒ not known, and read as a release. */
+  readonly build?: string;
+}): boolean {
+  if (!leadLevelsCrew(a.build)) return false;
+  return (
+    a.crew.some((member) => memberBehind(member, a.current)) ||
+    a.legs.some((leg) => legStillFailed(leg, a.crew, a.current))
+  );
 }
 
 function peersNeedLevelling(state: UpdateStartState): boolean {
-  return crewNeedsLevelling(state.crew ?? [], state.peers ?? [], state.current);
+  return crewNeedsLevelling({ crew: state.crew ?? [], legs: state.peers ?? [], current: state.current, build: state.build });
 }
 
 // ── The handoff ──────────────────────────────────────────────────────────────

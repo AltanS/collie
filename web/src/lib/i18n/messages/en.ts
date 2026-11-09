@@ -2036,6 +2036,7 @@ export const en = {
   "apiError.update.none_available": "There is no newer release to take.",
   "apiError.update.peers_packaged": "{name} is a packaged install. Its updates come from its own package manager.",
   "apiError.update.packaged": "Updates come from your package manager. Collie won't replace this install's files.",
+  "apiError.update.dev_lead": "This machine runs a development build. It cannot lead an update. Deploy it from its checkout.",
   "apiError.update.start_failed": "The update couldn't be started: {reason}",
   "apiError.update.request_id_required": "This action needs a request ID. Nothing was started.",
   "apiError.update.rollback_unavailable": "There's no previous build on this machine to roll back to.",
@@ -3343,6 +3344,8 @@ export const PENDING_TRANSLATION = [
   "theme.trial.keep",
   "theme.trial.back",
   "theme.trial.region",
+  // A development build cannot lead an update (2026-11-09).
+  "apiError.update.dev_lead",
 ] as const satisfies readonly MessageKey[];
 
 /** A key a bundle may leave out until the translation pass. */
