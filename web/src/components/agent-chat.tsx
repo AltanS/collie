@@ -142,7 +142,7 @@ import { paneRowKey, paneScope } from "@/lib/hosts";
 import { isLead, paneScopeKey } from "@/lib/scope";
 import { openReport, signalTrouble, unreadDialogReport } from "@/lib/report/store";
 import { unreadDialogScreen } from "@/lib/report/screen";
-import { answerRouteFor, textRouteFor } from "@/lib/send-path";
+import { answerRouteFor, holdAnswerRouteFor, textRouteFor } from "@/lib/send-path";
 import { useSessionCard, wearsExperimental } from "@/lib/session-cards";
 import { usePins } from "@/lib/pins";
 import { paneFilesDir } from "@/lib/file-paths";
@@ -994,6 +994,8 @@ export function AgentChat({
   // Where a tap and a text go, by the session kind and the crew link (lib/send-path.ts, M56 spec 14).
   const sendPlace = { program: gridless, crew: !isLead(scope), sendProtocol: agent?.sendProtocol === true };
   const asksAnswered = answerRouteFor(sendPlace) === "api-ask";
+  // The hook hold card answers its ask on a crew member too, carried by the lead (M56 spec 12).
+  const holdsAnswered = holdAnswerRouteFor(sendPlace) === "api-ask";
   // A program pane's taps answer the contract ask its Surface carries, when the card is the oldest open ask.
   const oldestAsk = agent?.asks?.[0];
   const programContract = gridless && asksAnswered && surfaceAsk !== null && oldestAsk !== undefined ? { ask: surfaceAsk, oldest: oldestAsk.id } : null;
@@ -3099,7 +3101,7 @@ export function AgentChat({
           {agent?.hold !== undefined && (
             <HookHoldCard
               note={agent.hold}
-              disabled={readOnly || gone || !asksAnswered}
+              disabled={readOnly || gone || !holdsAnswered}
               onAnswer={handleHoldAnswer}
             />
           )}

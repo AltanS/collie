@@ -744,6 +744,11 @@ describe("solo zero-tax — routes", () => {
   test("server.ts registers exactly today's routes", () => {
     expect(declaredRoutes()).toEqual([
       "/",
+      // Ask v1 (M56 spec 08): a route that legitimately extends this list, named here rather than
+      // exempted. Write-gated through the caller's own gate, and a 404 when the Send Protocol is off
+      // (COLLIE_SEND_PROTOCOL=0, on by default since spec 06). A `?host=` answer is forwarded to the
+      // member whose ask book minted the id (the hook hold card, spec 12); a solo collie has no host.
+      "/^\\/api\\/ask\\/([^/]+)$/",
       // `focus` is the pane action that moves the OPERATOR's own terminal, and it is named here for
       // the reason every other one is: a route arrives on purpose or it does not arrive.
       // One content-addressed image out of a pi/omp journal's blob store — a SOLO route that
@@ -814,10 +819,6 @@ describe("solo zero-tax — routes", () => {
       // included, and then answers 404 instead of the SPA's app shell. Not a route of its own, and it
       // registers nothing on the crew link.
       "/api/*",
-      // Ask v1 (M56 spec 08): a SOLO route that legitimately extends this list, named here rather than
-      // exempted. Write-gated through the same closure a send rides, this collie's own sessions only,
-      // and a 404 when the Send Protocol is off (COLLIE_SEND_PROTOCOL=0, on by default since spec 06). No crew route.
-      "/api/ask/*",
       // The prompt-cache rule catalog (M28/02). A process-scoped READ, gated exactly as `/api/config`
       // is, and the only route this feature adds. Not forwarded across the crew link.
       "/api/cache-rules",

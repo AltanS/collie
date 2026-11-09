@@ -168,6 +168,11 @@ const FORWARDABLE: readonly RegExp[] = [
   // which is the one that enforces it (§21), so a `?host=` set goes there. A WRITE: an idempotent set,
   // and the pane rides in the body as `pane`. Additive-optional (§7.1): a member that predates it answers 404.
   /^walky\/off$/,
+  // A tap on the hook hold card of a member's pane (M56 spec 12): one Answer to that member's ask, by id.
+  // A WRITE to the member whose ask book minted the id, which answers it through its own `/api/ask/<id>`
+  // with its own gate, audit and hash check; the pane rides in the body as `pane`. Mirrors `ASK_ROUTE` in
+  // bridge/server.ts one-for-one. Additive-optional (§7.1): a member that predates it answers 404.
+  /^ask\/[^/]+$/,
 ];
 
 /**
@@ -236,6 +241,9 @@ export type ForwardKind = "read" | "write";
 
 /** A pane's walky talky route: a GET there is the pane's list, a POST is a message (§21). */
 const WALKY_ROUTE = /^pane\/[^/]+\/walky$/;
+
+/** An answer to one ask by id (M56 spec 12): `ask/<id>`, a write whose pane rides in the body. */
+const ASK_ROUTE = /^ask\/[^/]+$/;
 
 /** A pane's pins route: a GET is the list, a POST pins a block and a DELETE drops one (M90). */
 const PINS_ROUTE = /^pane\/[^/]+\/pins$/;
@@ -314,7 +322,8 @@ const PANE_SCREEN_ROUTE = /^pane\/[^/]+$/;
  */
 export function budgetOf(kind: ForwardKind, route: string): number | undefined {
   if (kind === "write" && route === "worktree") return WORKTREE_WRITE_BUDGET_MS;
-  if (kind === "write") return route.startsWith("pane/") ? PANE_WRITE_BUDGET_MS : WRITE_BUDGET_MS;
+  // An ask answer may walk a dialog with keys on the member (ASK_LOCK_MS), so it dials on a pane write's budget.
+  if (kind === "write") return route.startsWith("pane/") || ASK_ROUTE.test(route) ? PANE_WRITE_BUDGET_MS : WRITE_BUDGET_MS;
   return PANE_SCREEN_ROUTE.test(route) ? PANE_READ_BUDGET_MS : undefined;
 }
 
@@ -367,6 +376,8 @@ export function forwardAuditAction(route: string, method?: string): string | nul
   if (route.startsWith("space/")) return "space.rename";
   // The member writes the same name for the switch (bridge/server.ts `walkyOffRoute`).
   if (route === "walky/off") return "walky.off";
+  // The member writes `ask` for the answer (bridge/server.ts `askRoute`), so the lead's line names the same act.
+  if (ASK_ROUTE.test(route)) return "ask";
   // The member writes `send-cancel` for the Cancel or Dismiss on a queued row (bridge/server.ts
   // `heldCancelRoute`, issue 740), so the lead's line names the same act. Only a DELETE is one.
   if (/^pane\/[^/]+\/held$/.test(route)) return method === undefined || method === "DELETE" ? "send-cancel" : null;
@@ -857,6 +868,34 @@ async function textSubmitId(req: Request): Promise<string | null> {
 }
 
 /**
+ * The pane an ask answer names in its body (`pane`), for the lead's own audit line, or undefined. Read
+ * from a clone like {@link textSubmitId}, so the original still streams to the member.
+ */
+async function askPaneOf(req: Request): Promise<string | undefined> {
+  try {
+    const body: JsonValue = await req.clone().json();
+    if (typeof body !== "object" || body === null || Array.isArray(body)) return undefined;
+    return typeof body.pane === "string" && body.pane !== "" && body.pane.length <= 256 ? body.pane : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * The ask route's own answer for a forwarded ask answer whose outcome the link cannot tell (§10.3): it
+ * went to the member and no reply came back, so it may have reached the hook. The phone reads
+ * `receipt.outcome: "unknown"` exactly as it reads the member's own unknown, in its own words, and it
+ * does not retry; neither does the lead. A 200 like every answer of the ask route, never a link error.
+ */
+export function askUnknownAnswer(route: string): Response {
+  const receipt: JsonObject = { askId: route.slice("ask/".length), outcome: "unknown", reason: "no_evidence" };
+  return new Response(JSON.stringify({ receipt }), {
+    status: 200,
+    headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" },
+  });
+}
+
+/**
  * Whether this request is a text submit to a pane's reply route: `POST pane/:id/reply` with a body of
  * `submit: true` (or no `submit`, which means true) and non-empty text. The body is read from a clone,
  * so the original still streams to the member. A body that is not JSON is not a text submit here, and
@@ -914,6 +953,9 @@ export async function forwardToPeer(req: Request, url: URL, deps: ForwardDeps): 
     return oldMemberRefusal(await textSubmitId(req));
   }
 
+  // An ask answer names its pane in the body, not the route: read here, before the body streams on.
+  const askPane = ASK_ROUTE.test(route) ? await askPaneOf(req) : undefined;
+
   // §13: the size bound is enforced BEFORE forwarding as well as by the peer. A phone on cellular
   // must not spend its uplink twice — once to the lead, once to a peer that was always going to
   // reject it — and the lead must not become a place where 10 MB of someone else's image is buffered.
@@ -970,7 +1012,7 @@ export async function forwardToPeer(req: Request, url: URL, deps: ForwardDeps): 
     budgetOf(kind, route),
   );
   const action = forwardAuditAction(route, req.method);
-  const paneId = forwardPaneId(route);
+  const paneId = forwardPaneId(route) ?? askPane;
   const session = url.searchParams.get("session");
   const record = (result: string): void => {
     if (action === null || deps.audit === undefined) return;
@@ -988,13 +1030,15 @@ export async function forwardToPeer(req: Request, url: URL, deps: ForwardDeps): 
       : classifyReadFailure(outcome, deps.link.memberId);
     // The lead's log records that it forwarded and what it learned — including "unknown", which is
     // the single most important line in this file to be able to find afterwards.
-    record(
+    const learned =
       outcome.state === "incompatible"
         ? "incompatible"
         : outcome.state === "unreachable" && outcome.attempted === false
           ? "refused"
-          : "unknown",
-    );
+          : "unknown";
+    record(learned);
+    // An ask answer that may have landed comes back in the ask route's own shape, which the phone reads.
+    if (kind === "write" && learned === "unknown" && ASK_ROUTE.test(route)) return askUnknownAnswer(route);
     if (kind === "read" && paneId !== undefined) deps.paneReads?.record(deps.link.memberId, paneId, response.status, `${outcome.state}: ${outcome.reason}`);
     return response;
   }

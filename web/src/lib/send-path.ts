@@ -11,6 +11,11 @@
 // `sendProtocol`, else the program's answer route for a program and the guarded key route for a
 // terminal pane.
 //
+// The hook hold card (M56 spec 12) is the one tap that takes the ask route on a crew member too: a
+// held permission has no dialog on the screen, so there is nothing for the key route to press. The
+// lead carries `POST /api/ask/<id>?host=` to the member, whose own ask book answers it. A crew
+// member's screen cards keep the guarded key route.
+//
 // Pure: no DOM, no fetch.
 
 /** Where a pane is: a terminal pane or a program, on this machine or on a crew member. */
@@ -39,4 +44,9 @@ export function textRouteFor(place: PanePlace, steer = false): TextRoute {
 export function answerRouteFor(place: PanePlace): AnswerRoute {
   if (!place.crew && place.sendProtocol) return "api-ask";
   return place.program ? "pane-answer" : "keys";
+}
+
+/** The route a tap on the hook hold card takes: the ask route wherever the pane's bridge marks it, a crew member's too. */
+export function holdAnswerRouteFor(place: PanePlace): AnswerRoute {
+  return place.sendProtocol ? "api-ask" : answerRouteFor(place);
 }

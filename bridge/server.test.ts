@@ -3671,11 +3671,12 @@ describe("the host gate — `?host=` selects among enrolled members and nothing 
     // read that checks a typed line before it runs (ADR 0095, amendment), and a durable program's
     // conversation list and the items or reopen of one (M53 spec 11), and Sent's read and its two
     // writes, served by one function with one resolve for the read and one for the writes (ADR 0107),
-    // and the New page's folder browser (#467), and a session's walky talky off switch (M89 spec 04)) reach their runtime through the caller's resolver and
+    // and the New page's folder browser (#467), and a session's walky talky off switch (M89 spec 04), and an
+    // answer to an ask by id, the hook hold card's tap on a member's pane (M56 spec 12)) reach their runtime through the caller's resolver and
     // nothing else. One of them, the launcher rows, hands the resolver the lead's merge (ADR 0127), and
     // two, the launch and the branch create, hand it the lead's row carry (ADR 0127 point 3).
     const carry = String.raw`undefined, leadRowCarry\(allowedLaunchers, homedir\(\)\)`;
-    expect([...src.matchAll(new RegExp(String.raw`await caller\.resolve\((?:leadRows|${carry})?\);`, "g"))]).toHaveLength(28);
+    expect([...src.matchAll(new RegExp(String.raw`await caller\.resolve\((?:leadRows|${carry})?\);`, "g"))]).toHaveLength(29);
     expect([...src.matchAll(/await caller\.resolve\(leadRows\);/g)]).toHaveLength(1);
     expect([...src.matchAll(new RegExp(String.raw`await caller\.resolve\(${carry}\);`, "g"))]).toHaveLength(2);
     // Exactly eight `registry.get(` calls remain, and each is a sanctioned one, named here rather
@@ -5602,7 +5603,8 @@ describe("an input written to a pane makes its engine hot", () => {
     expect(src).toContain("return afterPaneInput(rt.engine, await replyPane(");
     expect(src).toContain("return afterPaneInput(rt.engine, await keysPane(");
     // On the lead: the forward's answer, so the lead's sweep follows the member it typed into.
-    expect(src).toContain("const input = isPaneInput(pathname, req.method) || isTopologyWrite(pathname, req.method);");
+    // An ask answer counts too (M56 spec 12): the hold it ends on a member must leave the phone on the next sweep.
+    expect(src).toContain("const input = isPaneInput(pathname, req.method) || isTopologyWrite(pathname, req.method) || (ASK_ROUTE.test(pathname) && req.method === \"POST\");");
     expect(src).toContain("return input && own !== undefined ? afterPaneInput(own, forwarded) : forwarded;");
     expect([...src.matchAll(/afterPaneInput\(/g)]).toHaveLength(4); // the definition and three calls
   });

@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Fixed
+
+- **A held permission on a crew member can be answered from the phone.** The hook hold card on a member's pane drew its Yes and No switched off, so a held request waited out the hook's five minutes. The lead now carries the tap to the member over the crew link, where the member's own ask route answers it; a member that predates the route refuses it in the status line.
+
 ## [1.28.0] - 2026-11-06
 
 ### Added
