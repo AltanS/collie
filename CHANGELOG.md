@@ -25,7 +25,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Fixed
 
-- **An update started on a second instance restarts that instance.** On one install with two instances, an Update tap or `COLLIE_INSTANCE=core collie update` on `core` restarted the default `collie.service` instead, and left `core` on the old version with its update shown as interrupted. The runner that swaps and restarts starts in a fresh systemd unit that knows nothing of the instance, so it took the default one. It now gets the instance's name and paths the same way the first step of the update already did. Thanks @triss-smith (#754).
+- **An update started on a second instance restarts that instance.** On one install with two instances, an Update tap or `COLLIE_INSTANCE=core collie update` on `core` restarted the default `collie.service` instead, and left `core` on the old version with its update shown as interrupted. The runner that swaps and restarts starts in a fresh systemd unit that knows nothing of the instance, so it took the default one. It now gets the instance's name and paths the same way the first step of the update already did. The update that brings this fix still runs the old runner, so on a second instance run `COLLIE_INSTANCE=<name> collie restart` once after it. Thanks @triss-smith (#754).
 
 ## [1.28.0] - 2026-11-09
 
