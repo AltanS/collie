@@ -1,6 +1,6 @@
 ---
 name: collie-walky-talky
-description: Send a short message to another agent session, or read one sent to you, with Collie's WalkyTalky. Use it when you need to tell, ask or answer another agent, when a prompt starts with "[walky-talky wt_", or when the operator mentions WalkyTalky.
+description: Send a short message to another agent session, or read one sent to you, with Collie's WalkyTalky. Use it when you need to tell, ask or answer another agent, when a prompt starts with "[walky-talky wt_", or when the operator mentions WalkyTalky. Also use it when you need your operator to decide something (a Decision on the hill), and to learn what a Collie trick asks of you.
 ---
 
 # WalkyTalky
@@ -180,4 +180,33 @@ minutes, and a reply chain stops after 4 replies. A refusal says which limit it 
 
 If a send prints `not sent: off`, or the command cannot find a bridge, tell your operator. Do not work around it.
 
-<!-- collie-skill walky-talky v1 collie {{COLLIE_VERSION}} -->
+## Decisions (the hill)
+
+The hill is where you ask your operator one question that needs a person. You post a Decision with
+`{{COLLIE_BIN}} hill post`. Your operator answers it on the phone. The answer comes back as a WalkyTalky message
+from your operator. `{{COLLIE_BIN}} hill post --help` prints every flag. These are the rules:
+
+{{HILL_RULES}}
+
+```bash
+{{COLLIE_BIN}} hill post --title "Ship the fix in 1.28.1?" --summary "The pill moves out of Chat. The tests are green." \
+  --option yes="Yes, Edge first" --option no="No, wait for 1.29.0" \
+  --recommend yes --why "Edge users find it in a day."
+{{COLLIE_BIN}} hill status dc_...
+{{COLLIE_BIN}} hill withdraw dc_...
+{{COLLIE_BIN}} hill list
+```
+
+After `post`, end your turn. Do not poll and do not sleep.
+
+## Tricks
+
+A trick is a small program in a folder on this machine. It draws a view on your operator's phone. A trick may
+also ask something of you, for example a file to keep up to date.
+
+- `{{COLLIE_BIN}} trick list` names the tricks. The ones that are on show `on`. The SKILL column shows `yes` for a trick that has a SKILL.md.
+- `{{COLLIE_BIN}} trick skill <id>` prints what that trick asks of you. Read it, and do what it says.
+- A trick that is off asks nothing. `trick skill` refuses it. Do not switch a trick on yourself: that is your operator's yes to its code.
+- To write a trick, run `{{COLLIE_BIN}} trick skill` with no id. It prints the steps.
+
+<!-- collie-skill walky-talky v2 collie {{COLLIE_VERSION}} -->

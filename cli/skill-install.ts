@@ -4,6 +4,7 @@ import { codexHome } from "./codex-hooks.ts";
 import { WALKY_TALKY_SKILL_TEMPLATE } from "./docs-embed.ts";
 import { type CliContext, collieVersion } from "./context.ts";
 import { claudeSettingsTargets, realpathVia, resolveHookCommand } from "./hooks.ts";
+import { HILL_RULES } from "./hill.ts";
 import { EXIT, type Io } from "./io.ts";
 import type { LinkReader } from "./link.ts";
 import { type SyncResult, syncLines } from "./skill-sync-result.ts";
@@ -33,16 +34,16 @@ import type { Files } from "./sys.ts";
 //    only the text between {@link BLOCK_BEGIN} and {@link BLOCK_END}. The block is replaced in place,
 //    the file is created when it is absent, and every other byte stays where it was.
 //
-// DRIFT. The last line of the skill is the stamp, `<!-- collie-skill walky-talky v1 collie 1.23.0 -->`.
+// DRIFT. The last line of the skill is the stamp, `<!-- collie-skill walky-talky v2 collie 1.23.0 -->`.
 // `status` renders this build's text and compares it with each target. The version inside the stamp is
 // NOT compared: a release that did not change the skill must not tell every operator to reinstall. The
-// stamp's own `v1` is compared, so changing the shape of the text (a bump of {@link SKILL_FORMAT}) goes
+// stamp's own `v2` is compared, so changing the shape of the text (a bump of {@link SKILL_FORMAT}) goes
 // stale on purpose. A different path in the examples (the binary moved) or a different word is stale.
 
 // ── The text ─────────────────────────────────────────────────────────────────
 
 /** The text's format version. Bump it when an installed copy must be replaced whatever the words say. */
-export const SKILL_FORMAT = 1;
+export const SKILL_FORMAT = 2;
 
 export const BLOCK_BEGIN = `<!-- collie:walky-talky v${String(SKILL_FORMAT)} begin -->`;
 export const BLOCK_END = `<!-- collie:walky-talky v${String(SKILL_FORMAT)} end -->`;
@@ -56,11 +57,21 @@ const STAMP_VERSION = /^(<!-- collie-skill walky-talky v\d+ collie ).*( -->)[ \t
 /** The skill's own name, which is the folder Claude Code reads it from. */
 export const SKILL_NAME = "collie-walky-talky";
 
+/**
+ * The hill's rules as a bullet list, from {@link HILL_RULES}, the list `collie hill --help` prints. The
+ * command in a rule is written `collie hill`; here it is the placeholder, so it names the same binary the
+ * other examples do.
+ */
+function hillRulesList(): string {
+  return HILL_RULES.map((rule) => `- ${rule.replaceAll("collie hill", "{{COLLIE_BIN}} hill")}`).join("\n");
+}
+
 /** The embedded template with `{{COLLIE_BIN}}` and `{{COLLIE_VERSION}}` resolved. Front matter included. */
 export function renderWalkySkill(ctx: CliContext, fs: LinkReader): string {
   const binary = resolveHookCommand(ctx, fs).binary;
   const version = collieVersion(ctx.root);
-  return WALKY_TALKY_SKILL_TEMPLATE.replaceAll("{{COLLIE_BIN}}", binary)
+  return WALKY_TALKY_SKILL_TEMPLATE.replaceAll("{{HILL_RULES}}", hillRulesList())
+    .replaceAll("{{COLLIE_BIN}}", binary)
     .replaceAll("{{COLLIE_VERSION}}", version)
     .replace(/\n+$/u, "\n");
 }

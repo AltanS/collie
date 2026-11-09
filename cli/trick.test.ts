@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -7,7 +7,7 @@ import { trickCodeHash } from "../bridge/tricks/code-hash.ts";
 import { switchesPath } from "../bridge/tricks/paths.ts";
 import { EXIT, type Io } from "./io.ts";
 import { tricksFindings } from "./trick-findings.ts";
-import { checkStatic, cmdTrick, cmdTrickCheck, cmdTrickInit, cmdTrickList, cmdTrickSwitch, looksBinary, runsLines, type TrickCheckReport, type TrickDeps } from "./trick.ts";
+import { checkStatic, cmdTrick, cmdTrickCheck, cmdTrickInit, cmdTrickList, cmdTrickSkill, cmdTrickSwitch, looksBinary, runsLines, SKILL_BYTES_MAX, TRICK_WRITE_BRIEF, TRICK_SUBCOMMANDS, type TrickCheckReport, type TrickDeps } from "./trick.ts";
 import { realFiles } from "./sys.ts";
 import type { TricksReply } from "../web/src/lib/tricks/schema.ts";
 
@@ -260,8 +260,8 @@ describe("collie trick on, off and list", () => {
     await cmdTrickSwitch(d, ["legs"], true);
     d.out.length = 0;
     expect(await cmdTrickList(d, [])).toBe(EXIT.OK);
-    expect(d.out[0]).toMatch(/^ID\s+NAME\s+SWITCH\s+STATE\s+LAST RUN\s+LAST ERROR$/);
-    expect(d.out[1]).toMatch(/^legs\s+legs\s+on\s+failing\s+2026-11-08T09:41:00.000Z\s+The provider exited with 1$/);
+    expect(d.out[0]).toMatch(/^ID\s+NAME\s+SWITCH\s+SKILL\s+STATE\s+LAST RUN\s+LAST ERROR$/);
+    expect(d.out[1]).toMatch(/^legs\s+legs\s+on\s+-\s+failing\s+2026-11-08T09:41:00.000Z\s+The provider exited with 1$/);
     expect(d.asked[0]).toBe("http://127.0.0.1:18999/api/tricks");
   });
 
@@ -284,6 +284,116 @@ describe("collie trick on, off and list", () => {
     expect(cmdTrick({ io: c.io }, [])).toBe(EXIT.USAGE);
     expect(cmdTrick({ io: c.io }, ["add"])).toBe(EXIT.USAGE);
     expect(c.err.join("\n")).toContain('unknown trick subcommand "add"');
+  });
+});
+
+describe("collie trick skill", () => {
+  const TEXT = "# legs\n\nKeep the file notes.md up to date.\n";
+
+  /** A trick folder `legs` with a SKILL.md, switched on. */
+  async function onTrick(skill: string | null = TEXT): Promise<Awaited<ReturnType<typeof deps>>> {
+    const d = await deps();
+    await cmdTrickInit(d, ["legs"]);
+    if (skill !== null) await writeFile(join(d.configDir, "tricks", "legs", "SKILL.md"), skill);
+    expect(await cmdTrickSwitch(d, ["legs"], true)).toBe(EXIT.OK);
+    d.out.length = 0;
+    d.err.length = 0;
+    return d;
+  }
+
+  test("is a verb of the tree, and the list marks which tricks have a SKILL.md", async () => {
+    expect(TRICK_SUBCOMMANDS).toContain("skill");
+    const d = await deps();
+    await cmdTrickInit(d, ["legs"]);
+    await cmdTrickInit(d, ["plain"]);
+    await writeFile(join(d.configDir, "tricks", "legs", "SKILL.md"), TEXT);
+    d.out.length = 0;
+    expect(await cmdTrickList(d, [])).toBe(EXIT.OK);
+    expect(d.out[1]).toMatch(/^legs\s+legs\s+off\s+yes\s+/);
+    expect(d.out[2]).toMatch(/^plain\s+plain\s+off\s+-\s+/);
+    d.out.length = 0;
+    await cmdTrickList(d, ["--json"]);
+    // SAFETY: `list --json` prints one document, checked by value below.
+    const doc = JSON.parse(d.out.join("\n")) as { tricks: { id: string; skill: boolean }[] };
+    expect(doc.tricks.map((t) => [t.id, t.skill])).toEqual([["legs", true], ["plain", false]]);
+  });
+
+  test("prints SKILL.md of a trick that is on and unchanged, and nothing else", async () => {
+    const d = await onTrick();
+    expect(await cmdTrickSkill(d, ["legs"])).toBe(EXIT.OK);
+    expect(d.out.join("\n")).toBe(TEXT.trimEnd());
+    expect(d.err).toEqual([]);
+  });
+
+  test("a trick that is off, changed, unknown or without a manifest teaches nothing, in one line, exit 1", async () => {
+    const d = await onTrick();
+    // changed: an edit to the code after the switch
+    await writeFile(join(d.configDir, "tricks", "legs", "provider.sh"), "#!/bin/sh\necho changed\n");
+    expect(await cmdTrickSkill(d, ["legs"])).toBe(EXIT.FAIL);
+    expect(d.err).toEqual(["legs changed since it was switched on, so it teaches nothing until you switch it on again"]);
+    expect(d.out).toEqual([]);
+    // off
+    d.err.length = 0;
+    await cmdTrickSwitch(d, ["legs"], false);
+    expect(await cmdTrickSkill(d, ["legs"])).toBe(EXIT.FAIL);
+    expect(d.err.at(-1)).toBe("legs is off, so it teaches nothing");
+    // unknown
+    d.err.length = 0;
+    expect(await cmdTrickSkill(d, ["ghost"])).toBe(EXIT.FAIL);
+    expect(d.err).toEqual(["no such trick: ghost"]);
+    // a manifest that does not parse
+    await mkdir(join(d.configDir, "tricks", "broken"));
+    await writeFile(join(d.configDir, "tricks", "broken", "trick.toml"), 'id = "broken"\n');
+    await writeFile(join(d.configDir, "tricks", "broken", "SKILL.md"), TEXT);
+    d.err.length = 0;
+    d.out.length = 0;
+    expect(await cmdTrickSkill(d, ["broken"])).toBe(EXIT.FAIL);
+    expect(d.err).toEqual(["broken has a manifest that does not parse, so it teaches nothing"]);
+    expect(d.out).toEqual([]);
+  });
+
+  test("an on trick with no SKILL.md, a symlinked one, a directory and an oversized one are refused", async () => {
+    const none = await onTrick(null);
+    expect(await cmdTrickSkill(none, ["legs"])).toBe(EXIT.FAIL);
+    expect(none.err).toEqual(["legs has no SKILL.md"]);
+
+    const link = await onTrick(null);
+    await writeFile(join(link.configDir, "secret.txt"), "private\n");
+    await symlink(join(link.configDir, "secret.txt"), join(link.configDir, "tricks", "legs", "SKILL.md"));
+    // The symlink is part of the code: switch on again so the trick is not "changed", then ask.
+    await cmdTrickSwitch(link, ["legs"], true);
+    link.out.length = 0;
+    link.err.length = 0;
+    expect(await cmdTrickSkill(link, ["legs"])).toBe(EXIT.FAIL);
+    expect(link.out).toEqual([]);
+    expect(link.err[0]).toBe("legs has no SKILL.md (it is not a regular file)");
+
+    const big = await onTrick("x".repeat(SKILL_BYTES_MAX + 1));
+    expect(await cmdTrickSkill(big, ["legs"])).toBe(EXIT.FAIL);
+    expect(big.err).toEqual(["legs has a SKILL.md larger than 32 KiB, so it is not read"]);
+    expect(big.out).toEqual([]);
+
+    const edge = await onTrick("y".repeat(SKILL_BYTES_MAX));
+    expect(await cmdTrickSkill(edge, ["legs"])).toBe(EXIT.OK);
+    expect(edge.out[0]?.length).toBe(SKILL_BYTES_MAX);
+  });
+
+  test("the text goes through the secret mask", async () => {
+    const d = await onTrick(`Use the key ${KEY} for the call.\n`);
+    expect(await cmdTrickSkill(d, ["legs"])).toBe(EXIT.OK);
+    expect(d.out.join("\n")).not.toContain(KEY);
+    expect(d.out.join("\n")).toContain("Use the key ");
+  });
+
+  test("with no id it prints the brief for writing a trick; a bad id is usage", async () => {
+    const d = await deps();
+    expect(await cmdTrickSkill(d, [])).toBe(EXIT.OK);
+    expect(d.out).toEqual([...TRICK_WRITE_BRIEF]);
+    const text = d.out.join("\n");
+    expect(text).toContain("collie trick init <id>");
+    expect(text).toContain("AGENTS.md");
+    expect(text).toContain("collie trick check --run <folder>");
+    expect(await cmdTrickSkill(d, ["Bad Id"])).toBe(EXIT.USAGE);
   });
 });
 

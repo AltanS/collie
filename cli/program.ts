@@ -52,7 +52,7 @@ import {
   type LifecycleDeps,
 } from "./lifecycle.ts";
 import { cmdLink, cmdUnlink, type LinkDeps, realLinkFs } from "./link.ts";
-import { cmdTrick, cmdTrickCheck, cmdTrickInit, cmdTrickList, cmdTrickSwitch, TRICK_SUBCOMMANDS, type TrickDeps } from "./trick.ts";
+import { cmdTrick, cmdTrickCheck, cmdTrickInit, cmdTrickList, cmdTrickSkill, cmdTrickSwitch, TRICK_SUBCOMMANDS, type TrickDeps } from "./trick.ts";
 import { cmdMuxProbe } from "./mux-probe.ts";
 import {
   cmdJoin,
@@ -1010,6 +1010,11 @@ export const COMMANDS: readonly Command[] = [
         name: "init",
         summary: "make a new trick folder with a sample provider: <id>",
         run: async (args, s) => await cmdTrickInit(trickVerbDeps(s.io), args),
+      },
+      {
+        name: "skill",
+        summary: "what a trick that is on asks of an agent: <id>; with no id, how to write a trick",
+        run: async (args, s) => await cmdTrickSkill(trickVerbDeps(s.io), args),
       },
     ],
     run: (args, s) => cmdTrick({ io: s.io }, args),

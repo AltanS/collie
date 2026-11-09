@@ -2519,7 +2519,7 @@ beacon_env skill status --check || fail "an absent skill read as drift: ${STDERR
 mkdir -p "${BEACON_HOME}/.codex"
 printf '# My rules\nBe brief.\n' > "${BEACON_HOME}/.codex/AGENTS.md"
 beacon_env skill install codex || fail "\`collie skill install codex\` failed: ${STDERR}"
-assert_contains "$(cat "${BEACON_HOME}/.codex/AGENTS.md")" "collie:walky-talky v1 begin"
+assert_contains "$(cat "${BEACON_HOME}/.codex/AGENTS.md")" "collie:walky-talky v2 begin"
 assert_contains "$(cat "${BEACON_HOME}/.codex/AGENTS.md")" "Be brief."
 beacon_env skill status || fail "\`collie skill status\` failed after install: ${STDERR}"
 assert_contains "$STDOUT" "AGENTS.md: installed"

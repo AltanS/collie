@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { WALKY_TALKY_SKILL_TEMPLATE } from "./docs-embed.ts";
 import type { Environment } from "./context.ts";
 import { capture, context, fakeFiles, fakeLinkFs, HOME, ROOT, STATE } from "./fakes.ts";
+import { HILL_RULES, hillHelp, hillPostHelp } from "./hill.ts";
 import { EXIT } from "./io.ts";
 import {
   BLOCK_BEGIN,
@@ -18,6 +19,7 @@ import {
   insertBlock,
   removeBlock,
   renderWalkySkill,
+  SKILL_FORMAT,
   SKILL_TARGETS,
   type SkillDeps,
   skillFiles,
@@ -57,7 +59,60 @@ describe("the rendered skill", () => {
     expect(out).not.toContain("{{");
     expect(out).toContain(`${collieBinary(ROOT)} walky send`);
     expect(out.startsWith("---\nname: collie-walky-talky\n")).toBe(true);
-    expect(out.trimEnd().split("\n").at(-1)).toMatch(/^<!-- collie-skill walky-talky v1 collie .+ -->$/u);
+    expect(out.trimEnd().split("\n").at(-1)).toMatch(/^<!-- collie-skill walky-talky v2 collie .+ -->$/u);
+  });
+
+  test("the stamp and the block markers carry format 2, the one this text was written at", () => {
+    expect(SKILL_FORMAT).toBe(2);
+    expect(BLOCK_BEGIN).toBe("<!-- collie:walky-talky v2 begin -->");
+    expect(BLOCK_END).toBe("<!-- collie:walky-talky v2 end -->");
+    expect(WALKY_TALKY_SKILL_TEMPLATE.trimEnd().split("\n").at(-1)).toBe(`<!-- collie-skill walky-talky v${String(SKILL_FORMAT)} collie {{COLLIE_VERSION}} -->`);
+  });
+
+  test("teaches the hill with the very lines `collie hill --help` prints: one source, no drift", () => {
+    const d = deps();
+    const out = rendered(d);
+    const bin = collieBinary(ROOT);
+    expect(out).toContain("## Decisions (the hill)");
+    for (const rule of HILL_RULES) {
+      // The skill names the pinned binary where the help says `collie`; the words are the same.
+      expect(out).toContain(`- ${rule.replaceAll("collie hill", `${bin} hill`)}`);
+      expect(hillHelp()).toContain(rule);
+      expect(hillPostHelp()).toContain(rule);
+    }
+    expect(HILL_RULES.length).toBe(7);
+    // The parts an agent must find, by the words the brief asks for.
+    expect(out).toContain("only for what needs the person");
+    expect(out).toContain("recommend one option with a why");
+    expect(out).toContain("One question per decision");
+    expect(out).toContain("never repost");
+    expect(out).toContain("Do not wait in a loop");
+    expect(out).toContain("carries only the id and the option word");
+    expect(out).toContain("A worker with a lead asks its lead first.");
+    expect(out).toContain(`${bin} hill status dc_...`);
+  });
+
+  test("teaches tricks: list, skill <id>, off asks nothing, and where to learn to write one", () => {
+    const out = rendered(deps());
+    const bin = collieBinary(ROOT);
+    expect(out).toContain("## Tricks");
+    expect(out).toContain(`${bin} trick list`);
+    expect(out).toContain(`${bin} trick skill <id>`);
+    expect(out).toContain("A trick that is off asks nothing.");
+    expect(out).toContain(`run \`${bin} trick skill\` with no id`);
+  });
+
+  test("every harness gets both parts: the Claude file and each block form", () => {
+    const d = deps({ files: { [CODEX_FILE]: "", [OPENCODE_FILE]: "", [PI_FILE]: "", [GEMINI_FILE]: "" } });
+    for (const target of SKILL_TARGETS) expect(cmdSkillInstall(d, [target.harness])).toBe(EXIT.OK);
+    for (const path of [CLAUDE_FILE, CODEX_FILE, OPENCODE_FILE, PI_FILE, GEMINI_FILE]) {
+      const written = text(d, path) ?? "";
+      expect(written).toContain("## Decisions (the hill)");
+      expect(written).toContain("## Tricks");
+      expect(written).toContain(HILL_RULES[0]);
+    }
+    expect(text(d, CODEX_FILE)).toContain("<!-- collie:walky-talky v2 begin -->");
+    expect(text(d, CLAUDE_FILE)).toContain("<!-- collie-skill walky-talky v2 collie ");
   });
 
   test("carries the trust lines as the hardening writes them, and stays short", () => {
@@ -75,7 +130,8 @@ describe("the rendered skill", () => {
     expect(flat).toContain('If it says "may have arrived", do not send it again either');
     expect(flat).not.toContain("claims to");
     expect(flat).not.toMatch(/`wt` /u);
-    expect(WALKY_TALKY_SKILL_TEMPLATE.split("\n").length).toBeLessThan(185);
+    // 185 until the skill taught the hill and tricks (two short parts, about 30 lines).
+    expect(WALKY_TALKY_SKILL_TEMPLATE.split("\n").length).toBeLessThan(215);
     expect(WALKY_TALKY_SKILL_TEMPLATE).not.toContain("—");
     for (const verb of ["who", "send", "reply", "inbox"]) expect(WALKY_TALKY_SKILL_TEMPLATE).toContain(`walky ${verb}`);
   });
@@ -233,6 +289,21 @@ describe("status and drift", () => {
     expect(d.io.stdout.join("\n")).toContain("stale");
     cmdSkillInstall(d, ["claude"]);
     expect(cmdSkillStatus(d, ["--check"])).toBe(EXIT.OK);
+  });
+
+  test("a copy written at format 1 reads as stale, in the file form and in the block form", () => {
+    const d = deps();
+    cmdSkillInstall(d, ["claude"]);
+    cmdSkillInstall(d, ["codex"]);
+    const old = (t: string): string => t.replaceAll("walky-talky v2", "walky-talky v1");
+    d.files.entries.set(CLAUDE_FILE, { text: old(text(d, CLAUDE_FILE)!) });
+    d.files.entries.set(CODEX_FILE, { text: old(text(d, CODEX_FILE)!) });
+    expect(stateOf(d, CLAUDE_FILE)).toBe("stale");
+    expect(stateOf(d, CODEX_FILE)).toBe("stale");
+    expect(cmdSkillStatus(d, ["--check"])).toBe(EXIT.STATE);
+    cmdSkillSync(d, []);
+    expect(stateOf(d, CLAUDE_FILE)).toBe("installed");
+    expect(stateOf(d, CODEX_FILE)).toBe("installed");
   });
 
   test("a different binary path in the examples is stale", () => {

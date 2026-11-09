@@ -511,7 +511,10 @@ An agent uses WalkyTalky only when it knows how. Collie writes the skill that te
 your agents' own instruction files.
 
 The skill is a short text. It teaches the agent the `collie walky` verbs, how to read the header
-of a message, and when not to send.
+of a message, and when not to send. It also teaches the agent to put a Decision on the hill with
+`collie hill post`, with the same rules `collie hill post --help` prints, and to read what a trick asks of
+it with `collie trick skill <id>`. A copy installed before this text read as stale until the next
+`collie skill sync`.
 
 After each update, Collie installs the skill into every harness it finds on this machine, and
 keeps each copy current. A rollback and a switch of release line do the same with the build they
@@ -556,8 +559,8 @@ In a shared instruction file, Collie owns only the text between these two lines.
 stays as you wrote it.
 
 ```
-<!-- collie:walky-talky v1 begin -->
-<!-- collie:walky-talky v1 end -->
+<!-- collie:walky-talky v2 begin -->
+<!-- collie:walky-talky v2 end -->
 ```
 
 If the file is absent, Collie creates it. If the block is present, Collie replaces it in place.
