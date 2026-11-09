@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useRevalidator } from "react-router";
-import { ChevronDown, ChevronUp, Columns2, PanelLeftClose, PanelLeftOpen, Plus, Replace } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 
 import { ActionRow } from "@/components/action-sheet-rows";
 import { ThreadSidebar } from "@/components/agent-sidebar";
@@ -433,11 +433,19 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
         data-segment={book ? "left" : undefined}
         aria-label={t("wide.sidebar.label")}
         // Folded with one column, the sidebar fills the left segment; with two, it is the rail.
-        className={cn("flex shrink-0 flex-col border-r border-rule bg-card", book && sidebarShown && "fold-left-full")}
+        // `pt-[env(safe-area-inset-top)]`: the sidebar and the tab row beside it are the layout's top
+        // edge, so the two of them clear the status bar; the header docked lower down does not
+        // (app-header.tsx). The card paints under the bar, so the strip it reserves is the panel's own.
+        className={cn("flex shrink-0 flex-col border-r border-rule bg-card pt-[env(safe-area-inset-top)]", book && sidebarShown && "fold-left-full")}
         style={book && sidebarShown ? undefined : { width: sidebarShown ? SIDEBAR_WIDTH[widthClass] : RAIL_WIDTH }}
       >
         <SidebarTop open={sidebarShown} setMark={setMark} toggle={!book} />
-        <div {...hostProps} className="min-h-0 flex-1 overflow-y-auto [-webkit-touch-callout:none]">
+        {/* `relative`: the list's scroller is the containing block of everything absolute in it. A
+            row's `sr-only` word is `position: absolute`, and with no positioned box above it its
+            containing block was the page: a word far down a long list escaped this scroller and the
+            app's root and made the document taller than the screen, so a drag on the header scrolled
+            the whole app up under the status bar (1.27.1). */}
+        <div {...hostProps} className="relative min-h-0 flex-1 overflow-y-auto [-webkit-touch-callout:none]">
           {sidebarShown ? (
             <SidebarList agent={agent} paneId={paneId} scope={scope} onSelect={goTo} />
           ) : (
@@ -446,18 +454,24 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
         </div>
         {/* NEW SPACE and SETTINGS, pinned under the list so both are one tap away, however long the
             list. The pane header has no gear; this is the large screen's way to Settings. */}
+        {/* The foot clears the gesture bar the way the composer beside it does (composer.tsx's
+            bottom pad), so the two columns end on one line and NEW SPACE never sits under the bar.
+            With no bottom inset it is the 4px it always was. */}
         <div
           data-slot="sidebar-foot"
-          className={cn("flex shrink-0 items-center border-t border-rule", sidebarShown ? "gap-1 px-2 py-1" : "flex-col py-1")}
+          className={cn(
+            "flex shrink-0 items-center border-t border-rule pt-1 pb-[calc(0.25rem+env(safe-area-inset-bottom))]",
+            sidebarShown ? "gap-1 px-2" : "flex-col",
+          )}
         >
           {sidebarShown ? (
             <Button variant="ghost" data-slot="new-space" className="h-11 min-w-0 flex-1 justify-start gap-2.5 px-2 text-sm font-medium" onClick={toNew}>
-              <Plus className="size-5" aria-hidden />
+              <Icon name="new-space" className="size-5" aria-hidden />
               <span className="truncate">{t("wide.newSpace")}</span>
             </Button>
           ) : (
             <Button variant="ghost" size="lg" data-slot="new-space" className="size-11 px-0" aria-label={t("wide.newSpace")} onClick={toNew}>
-              <Plus className="size-5" aria-hidden />
+              <Icon name="new-space" className="size-5" aria-hidden />
             </Button>
           )}
           <SettingsGear scope={scope} />
@@ -471,13 +485,24 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
         <div
           data-slot="space-header"
           {...swipe}
-          className={cn("flex h-12 shrink-0 touch-none items-center gap-1 border-b border-rule bg-band-ground", bookPair ? "pr-1" : "pl-4 pr-1")}
+          // The row keeps its 48px and the status bar's inset goes on top of it, in the row's own
+          // ground, beside the sidebar's (the aside above says why). With no inset it is 48px as before.
+          className={cn(
+            "flex h-[calc(3rem+env(safe-area-inset-top))] shrink-0 touch-none items-center gap-1 border-b border-rule bg-band-ground pt-[env(safe-area-inset-top)]",
+            bookPair ? "pr-1" : "pl-4 pr-1",
+          )}
         >
           {/* Folded with two columns, the header is cut at the fold like the strip under it: the name
               over the left column, the buttons over the right one, nothing on the hinge. */}
           <div className={cn("flex min-w-0 items-center", bookPair ? "fold-left-col pl-4" : "flex-1")}>
-            {/* The bar's title: the space, in the face and weight of the pane names under it. */}
-            <div data-slot="space-title" className="min-w-0 max-w-[45%] shrink-0 truncate text-sm font-semibold">
+            {/* The bar's title: the space, in the face and weight of the pane names under it. At the
+                medium tier it gives up more of the row to the tabs: there a long name and the position
+                left the tab row under 90px on a 705px foldable, so the open tab was cut and its "+"
+                fell off the end (1.27.1). */}
+            <div
+              data-slot="space-title"
+              className={cn("min-w-0 shrink-0 truncate text-sm font-semibold", widthClass === "medium" ? "max-w-[30%]" : "max-w-[45%]")}
+            >
               {space?.label ?? ""}
               {machine !== undefined && <span className="font-normal text-muted-foreground"> · {machine}</span>}
             </div>
@@ -508,7 +533,9 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
             ) : (
               <span className="flex-1" />
             )}
-            {spaceAt >= 0 && (
+            {/* "space 1 of 2" only where the row has room for it. At the medium tier the chevrons beside
+                it still step through the spaces and the sidebar lists them all. */}
+            {spaceAt >= 0 && widthClass !== "medium" && (
               <span data-slot="space-position" className="shrink-0 px-2 text-xs tabular-nums text-muted-foreground">
                 {t("wide.space.position", { index: spaceAt + 1, total: spaces.length })}
               </span>
@@ -517,7 +544,7 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
           {bookPair && <span aria-hidden className="fold-gutter shrink-0" />}
           {bookPair && <span aria-hidden className="flex-1" />}
           <Button variant="ghost" size="lg" className="size-11 px-0" aria-label={t("wide.space.previous")} disabled={spaceAt <= 0} onClick={() => moveSpace(-1)}>
-            <ChevronUp className="size-5" />
+            <Icon name="space-prev" className="size-5" />
           </Button>
           <Button
             variant="ghost"
@@ -527,7 +554,7 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
             disabled={spaceAt < 0 || spaceAt >= spaces.length - 1}
             onClick={() => moveSpace(1)}
           >
-            <ChevronDown className="size-5" />
+            <Icon name="space-next" className="size-5" />
           </Button>
         </div>
 
@@ -633,7 +660,7 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
                       and stays in the visible part, at either edge of the strip. */}
                   <Button variant="ghost" data-slot="add-button" className="sticky inset-x-3 h-auto flex-col gap-2 px-3 py-2 text-sm text-muted-foreground" onClick={() => setAdding(true)}>
                     <span aria-hidden className="grid size-11 place-items-center rounded-md border border-rule bg-card text-foreground">
-                      <Plus className="size-5" />
+                      <Icon name="add" className="size-5" />
                     </span>
                     {t("wide.add.label")}
                   </Button>
@@ -685,7 +712,7 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
           ))}
           {agent !== undefined && space !== undefined && (
             <ActionRow
-              icon={<Plus className="size-5" />}
+              icon={<Icon name="new-agent" className="size-5" />}
               label={t("wide.add.newAgentHere")}
               onClick={() => {
                 setAdding(false);
@@ -694,7 +721,7 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
             />
           )}
           <ActionRow
-            icon={<Plus className="size-5" />}
+            icon={<Icon name="new-agent" className="size-5" />}
             label={t("wide.add.newAgent")}
             onClick={() => {
               setAdding(false);
@@ -707,7 +734,7 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
       <BottomSheet open={menuPane !== undefined} onClose={() => setMenuRow(null)} title={menuPane ? paneName(menuPane) : undefined}>
         <div className="flex flex-col py-1">
           <ActionRow
-            icon={<Replace className="size-5" />}
+            icon={<Icon name="open-here" className="size-5" />}
             label={t("wide.openHere")}
             onClick={() => {
               setMenuRow(null);
@@ -715,7 +742,7 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
             }}
           />
           <ActionRow
-            icon={<Columns2 className="size-5" />}
+            icon={<Icon name="open-beside" className="size-5" />}
             label={t("wide.openBeside")}
             onClick={() => {
               setMenuRow(null);
@@ -745,7 +772,7 @@ function SidebarTop({ open, setMark, toggle: hasToggle }: { open: boolean; setMa
       {/* 20px, like every icon button around it (the order glyphs, the space chevrons). A lucide stroke
           scales with its drawing, so at 24px this glyph drew a 2px line beside their 1.7px ones and
           read as another icon set. */}
-      {open ? <PanelLeftClose className="size-5 shrink-0" /> : <PanelLeftOpen className="size-5 shrink-0" />}
+      {open ? <Icon name="sidebar-hide" className="size-5 shrink-0" /> : <Icon name="sidebar-show" className="size-5 shrink-0" />}
     </Button>
   );
   if (!open) {

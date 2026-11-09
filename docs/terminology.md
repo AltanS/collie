@@ -27,6 +27,11 @@ tmux session is a space, a zellij session is a space, and a [durable agent](#dur
 A group of panes. A Herdr tab is a tab, and a tmux window is a tab
 ([Terminals](multiplexers.md#what-changes-compared-with-herdr)).
 
+## New tab sheet
+
+The sheet a workspace's **+** opens: that machine's agents and command rows, then **Just a shell** and
+**More options** ([A new tab from the plus](configure.md#a-new-tab-from-the-plus)).
+
 ## Pane
 
 One thing you can open on the phone. In a terminal it is a pane with a screen. In a durable agent it is
@@ -84,6 +89,14 @@ once. Collie never answers for you ([Durable agents](durable-agents.md#what-the-
 The action row above the composer. Its harness section holds the harness's own buttons
 ([Configure](configure.md#one-off-commands-and-their-history)).
 
+## Pins
+
+A copy of one Chat block (your message, a reply or a tool card) that the machine owning the pane keeps
+for one [session](#session). To pin a block, tap it, then its **⋯**, or hold it. The [belt](#belt) shows a mark with
+their count, and a tap opens them
+([Pinned messages](configure.md#chat-view)). They are not the **Pin to top** of a pane, which keeps the
+pane at the top of a list.
+
 ## Starter
 
 A row on the New page that makes a new pane in a durable agent
@@ -122,7 +135,7 @@ It holds the request id and the outcome, and it lets a retry replay and not run 
 receipts in its state folder
 ([Where Collie keeps a durable agent's data](durable-agents.md#where-collie-keeps-a-durable-agents-data)).
 
-A [walky talky](#walky-talky) message has a receipt too. It says whether the message is queued, typed
+A [WalkyTalky](#walkytalky) message has a receipt too. It says whether the message is queued, typed
 into the pane, waiting in the inbox or refused, and why ([Receipts](walky-talky.md#receipts)).
 
 ## Conversation
@@ -143,12 +156,15 @@ The rules Collie and a durable agent use to talk: a hello, then snapshots, event
 one version today, version 1. It runs over a private socket or over https with a token
 ([Versions](durable-agents.md#versions)).
 
-## Walky talky
+## WalkyTalky
 
 A short message from one agent session to another, or from you to a session. It works on any
 harness and across a crew, and every message has an id and a [receipt](#receipt). The command is
-`collie walky` ([Walky talky](walky-talky.md)). Across a crew a message goes through the lead, and the
+`collie walky` ([WalkyTalky](walky-talky.md)). Across a crew a message goes through the lead, and the
 lead tells the sender's machine how it ended.
+
+WalkyTalky is the name of the feature, written as one word. The CLI verb is `collie walky`. The skill
+and the docs page keep their file names, `walky-talky`.
 
 ## Nudge
 
@@ -167,7 +183,7 @@ pane reads it with `collie walky inbox`. It lands there when Collie could not ty
 
 One pane as Collie follows it, from the first time Collie sees it until it has been gone for 30
 seconds. A terminal gives a closed pane's id to the next pane, so Collie gives each pane a token of
-four characters too. A [walky talky](#walky-talky) address carries it after a `#`, for example
+four characters too. A [WalkyTalky](#walkytalky) address carries it after a `#`, for example
 `local/w6:p3#k3f9`, and reaches that pane only. A new pane that takes the same pane id is a new
 pane instance, with a new token and an empty [inbox](#inbox) ([Addresses](walky-talky.md#addresses)).
 It is not a Collie instance: that word means one running bridge ([Collie (an instance)](#collie-an-instance)).

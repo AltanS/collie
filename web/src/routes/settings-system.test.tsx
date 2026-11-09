@@ -43,7 +43,7 @@ describe("System — the telemetry row", () => {
     renderAt("/settings/system");
     const row = await screen.findByRole("button", { name: /Telemetry/ });
     await waitFor(() => expect(row.textContent).toContain("On, once a day"));
-    expect(row.querySelector("svg.lucide-chevron-right")).not.toBeNull();
+    expect(row.querySelector("svg[data-icon=\"row-go\"]")).not.toBeNull();
     expect(screen.queryByRole("switch", { name: "Telemetry" })).toBeNull();
     expect(screen.queryByRole("link", { name: "What is sent" })).toBeNull();
   });

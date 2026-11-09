@@ -60,6 +60,9 @@ export const WALK_PAIRS: readonly WalkPair[] = [
   ["omp", "omp--v18-8-ask-single-described.txt", "omp--v18-8-ask-single-described-moved.txt"],
   ["omp", "omp--v18-10-ask-batch.txt", "omp--v18-10-ask-batch-moved.txt"],
   ["omp", "omp--v18-16-0-ask-single-glyph-hide--w200.txt", "omp--v18-16-0-ask-single-glyph-hide-moved--w200.txt"],
+  // omp 18.16.0's plan review (omp/plan-review.ts): one `Down`, and a two-`Down` walk under the slider.
+  ["omp", "omp--v18-16-0-plan-review--w80.txt", "omp--v18-16-0-plan-review-moved--w80.txt"],
+  ["omp", "omp--v18-16-0-plan-review-slider--w140.txt", "omp--v18-16-0-plan-review-slider-moved--w140.txt"],
   // omp `/resume` picker. The unboxed pair differs in the ages too (`1 minute ago` against
   // `2 minutes ago`); `coreSignature` blanks them, so the pair holds.
   ["omp", "omp--v18-4-resume.txt", "omp--v18-4-resume-moved.txt"],
@@ -134,6 +137,8 @@ export const WALK_PAIRS: readonly WalkPair[] = [
   ["pi", "pi--v0871-permission-gate-narrow.txt", "pi--v0871-permission-gate-narrow-moved.txt"],
   // gentle-pi 4.2.0's review-consent screen (pi 1.3.0): no rule frame, footer last; the Effect paragraph follows the pointer.
   ["pi", "pi--v130-gentle-review-consent.txt", "pi--v130-gentle-review-consent-moved.txt"],
+  // gentle-pi 4.6.0 on pi 1.5.0 (issue 712): the hanging Effect paragraph and the status row under the footer; moved is derived (fixtures README).
+  ["pi", "pi--v150-gentle-review-consent--w119.txt", "pi--v150-gentle-review-consent-moved--w119.txt"],
   // A test selector under Gentle Shell 4.5.1 (pi 1.4.0) on herdr-core, its pointer on each of two choices (issue 660).
   ["pi", "pi--v140-gentle-float-dialog--w100.txt", "pi--v140-gentle-float-dialog-moved--w100.txt"],
   // Kiro V3 2.33.0: the startup workspace trust dialog, before and after one Down at each width.
@@ -167,6 +172,8 @@ export const WALK_PAIRS: readonly WalkPair[] = [
   ["kiro", "kiro--v3-write-trusted-allow-w120.txt", "kiro--v3-write-trusted-deny-w120.txt"],
   ["kiro", "kiro--v3-write-trusted-always-w120.txt", "kiro--v3-write-trusted-deny-w120.txt"],
   ["kiro", "kiro--v3-replace-trusted-allow-w120.txt", "kiro--v3-replace-trusted-deny-w120.txt"],
+  // Codex 0.167.0 hook-trust prompt (codex/hooks.ts): the pointer on Review hooks, then on Trust all.
+  ["codex", "codex--v0167-hooks-review--w80.txt", "codex--v0167-hooks-review-moved--w80.txt"],
 ];
 
 /**

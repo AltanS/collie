@@ -1,5 +1,6 @@
 import { useCallback, useState } from "react";
-import { Eye, EyeOff, File, FileInput, FileMinus, FilePen, FilePlus, Folder, FolderPlus, Link2 } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
+import type { IconKey } from "@/components/icons/keys";
 
 import { ChangesNoMatch, FilterRow, STATUS_FILL, STATUS_WORD, TREE_TONE } from "@/components/changes-view";
 import { LIST_ROW_CORNERS, ListGroup } from "@/components/ui/list-group";
@@ -137,7 +138,7 @@ export function FilesBreadcrumb({
   );
 }
 
-const KIND_ICON = { dir: Folder, file: File, link: Link2 } satisfies Record<FileEntryKind, typeof Folder>;
+const KIND_ICON = { dir: "folder", file: "file", link: "link" } satisfies Record<FileEntryKind, IconKey>;
 const KIND_WORD = {
   dir: "files.kind.dir",
   file: "files.kind.file",
@@ -169,16 +170,16 @@ function rowLabel(entry: FileEntry, mark: EntryMark | undefined): string {
 // a plus for new (added or untracked), a minus for deleted, an arrow in for renamed. A new folder
 // git lists whole is a folder with a plus. A link keeps its own glyph.
 const CHANGED_FILE_ICON = {
-  M: FilePen,
-  A: FilePlus,
-  "?": FilePlus,
-  D: FileMinus,
-  R: FileInput,
-} satisfies Record<ChangeStatus, typeof File>;
+  M: "file-modified",
+  A: "file-added",
+  "?": "file-added",
+  D: "file-deleted",
+  R: "file-renamed",
+} satisfies Record<ChangeStatus, IconKey>;
 
-function changedIcon(kind: FileEntryKind, status: ChangeStatus): typeof File {
-  if (kind === "dir") return status === "?" || status === "A" ? FolderPlus : Folder;
-  if (kind === "link") return Link2;
+function changedIcon(kind: FileEntryKind, status: ChangeStatus): IconKey {
+  if (kind === "dir") return status === "?" || status === "A" ? "folder-added" : "folder";
+  if (kind === "link") return "link";
   return CHANGED_FILE_ICON[status];
 }
 
@@ -225,7 +226,7 @@ export function FileRows({
     <ListGroup as="ul" data-list="file-rows">
       {entries.map((entry) => {
         const mark = marks?.get(entry.name);
-        const Icon = mark?.kind === "change" ? changedIcon(entry.kind, mark.status) : KIND_ICON[entry.kind];
+        const iconKey = mark?.kind === "change" ? changedIcon(entry.kind, mark.status) : KIND_ICON[entry.kind];
         const tone = mark?.kind === "change" ? TREE_TONE[mark.status] : undefined;
         const deleted = mark?.kind === "change" && mark.deleted === true;
         return (
@@ -237,6 +238,7 @@ export function FileRows({
               className={cn("flex min-h-11 w-full items-center gap-3 px-3.5 py-2 text-left active:bg-muted/50", LIST_ROW_CORNERS)}
             >
               <Icon
+                name={iconKey}
                 aria-hidden
                 className={cn(
                   "size-4 shrink-0",
@@ -293,13 +295,12 @@ export function IgnoredToggle({
 }) {
   useLocale();
   const state = t(showIgnored ? "files.ignored.stateShown" : "files.ignored.stateHidden");
-  const Icon = showIgnored ? Eye : EyeOff;
   return (
     <ToggleButton
       pressed={showIgnored}
       onPressedChange={onShowIgnored}
       label={t("files.ignored.toggleAria")}
-      icon={<Icon className={labelled ? "size-4" : "size-5"} />}
+      icon={<Icon name={showIgnored ? "show-ignored" : "hide-ignored"} className={labelled ? "size-4" : "size-5"} />}
       text={labelled ? state : undefined}
       title={labelled ? undefined : state}
     />

@@ -1,17 +1,31 @@
-import { Loader2, Plus } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 
 import { cn } from "@/lib/utils";
 
 /**
- * The face's drawn size. `sm` is 28px, for a row 30px tall or less: the pane screen's tab row and a
- * dashboard workspace heading. `md` is 32px, for the 34px pill strips: the space strip.
+ * The button's box. `xs` is 24px, for the pane screen's 30px tab row alone, where it draws {@link AddButtonFace}
+ * `bare`: centred there it keeps 3px of air above and below. `sm` is 28px, for a dashboard workspace heading. `md`
+ * is 32px, for the 34px pill strips: the space strip. The tab row takes `sm` and `md` too, bare, at the larger
+ * width classes, where its row is 36px and 40px (`tab-strip.tsx` § STEP).
  */
-export type AddButtonSize = "sm" | "md";
+export type AddButtonSize = "xs" | "sm" | "md";
 
-const FACE = {
+/**
+ * `ring` is the one look for "new" in a row: the dashed circle. `bare` is its one exception, the tab row's: the
+ * glyph alone, as the fold chevron beside it is drawn (DESIGN.md §1, decided 2026-11-06).
+ */
+export type AddButtonFace = "ring" | "bare";
+
+const BOX = {
+  xs: "size-6",
   sm: "size-7",
   md: "size-8",
 } as const satisfies Record<AddButtonSize, string>;
+
+const LOOK = {
+  ring: "border border-dashed border-border",
+  bare: "",
+} as const satisfies Record<AddButtonFace, string>;
 
 interface AddButtonProps {
   /** The accessible name, which says what the "+" makes and where: "New tab", "New tab in moonward". */
@@ -23,16 +37,19 @@ interface AddButtonProps {
    */
   busy?: boolean;
   size: AddButtonSize;
+  /** The dashed circle (default) or the bare glyph. */
+  face?: AddButtonFace;
   /**
    * The hit area, as a transparent `::before` recipe: `STRIP_TAP_TARGET_SQUARE` in a pill strip,
-   * `TAB_ROW_SQUARE_TAP_TARGET` in the tab row (both `ui/labelled-strip.tsx`), the caller's own
+   * `TAB_ROW_ADD_TAP_TARGET` in the tab row (both `ui/labelled-strip.tsx`), the caller's own
    * elsewhere. Required, because no one reach fits every row: a reach is measured against what sits
    * around the button, and only the call site can see that. Every recipe carries `relative` and
    * `before:content-['']`.
    *
-   * The face draws a 1px dashed border, and an absolutely placed `::before` resolves its insets
-   * against the PADDING box, 1px inside the drawn edge. So a reach of `-9px` on the 28px face is
-   * 26 + 18 = 44px across, and reaches 8px past the circle, not 9.
+   * The ring draws a 1px dashed border, and an absolutely placed `::before` resolves its insets
+   * against the PADDING box, 1px inside the drawn edge. So a reach of `-9px` on the 28px ring is
+   * 26 + 18 = 44px across, and reaches 8px past the circle, not 9. The bare face has no border, so
+   * its reach resolves against the whole box.
    */
   reach: string;
   className?: string;
@@ -45,12 +62,17 @@ interface AddButtonProps {
 //
 // A true square is the one shape allowed to keep `rounded-full` (DESIGN.md §3), so both faces are
 // circles. The glyph and the spinner are the same 16px in the same box, swapped in place, so the
-// button never resizes between its idle and busy shapes (DESIGN.md §2). `disabled:opacity-100`
+// button never resizes between its idle and busy shapes (DESIGN.md §2).
+//
+// THE ONE EXCEPTION IS THE TAB ROW (`face: "bare"`, 2026-11-06). In the 30px row, beside a folder tab's card and the
+// fold chevron that draws no ring, the dashed circle read as a placeholder (Altan's phone). There the "+" is the
+// glyph alone in a 24px box, in the chevron's ink, with the chevron's hover circle and press, so the row's two
+// controls read as one kind. Every other row keeps the ring. `disabled:opacity-100`
 // keeps a busy button at full ink: the spinner is the state, and a faded spinner reads as broken.
 //
 // It owns the look, the busy swap and the name. It owns no gate: whether the "+" is drawn at all is
 // the caller's capability check, and whether a tap may write is the caller's handler.
-export function AddButton({ label, onClick, busy = false, size, reach, className }: AddButtonProps) {
+export function AddButton({ label, onClick, busy = false, size, face = "ring", reach, className }: AddButtonProps) {
   return (
     <button
       type="button"
@@ -60,12 +82,13 @@ export function AddButton({ label, onClick, busy = false, size, reach, className
       aria-busy={busy}
       className={cn(
         reach,
-        FACE[size],
-        "flex shrink-0 items-center justify-center rounded-full border border-dashed border-border text-muted-foreground transition-colors hover:bg-accent active:scale-95 disabled:opacity-100",
+        BOX[size],
+        LOOK[face],
+        "flex shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent active:scale-95 disabled:opacity-100",
         className,
       )}
     >
-      {busy ? <Loader2 className="size-4 animate-spin" aria-hidden /> : <Plus className="size-4" />}
+      {busy ? <Icon name="busy" className="size-4 animate-spin" aria-hidden /> : <Icon name="add" className="size-4" />}
     </button>
   );
 }

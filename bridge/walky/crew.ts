@@ -642,7 +642,8 @@ export interface CrewMemberView {
  * Every agent pane on every member, from the bodies the lead's sweep already holds: no dial. A
  * member the lead cannot reach right now keeps its last panes, each with the state `unreachable`.
  * A pane that carries its instance token (`PaneWire.instance`) is listed as `<member>/<pane>#<token>`;
- * one from an older member, with no token, as `<member>/<pane>`.
+ * one from an older member, with no token, as `<member>/<pane>`. A pane that says its walky talky is
+ * off (`PaneWire.walkyOff`, M89) carries `walky: "off"`; an older member never says so, and reads as on.
  */
 export function crewTargets(members: readonly CrewMemberView[], titles: boolean): WalkyTarget[] {
   const out: WalkyTarget[] = [];
@@ -655,14 +656,15 @@ export function crewTargets(members: readonly CrewMemberView[], titles: boolean)
       const facts = { paneId: pane.paneId, cwd: pane.cwd, branch, paneLabel: pane.paneLabel, terminalTitle: pane.terminalTitle };
       // The token is the member's word, already parsed at the merge (crew/merge.ts `untagPane`); checked again here.
       const instance = pane.instance !== undefined && INSTANCE_TOKEN.test(pane.instance) ? pane.instance : null;
-      out.push({
+      const target: WalkyTarget = {
         address: paneAddress(member.memberId, pane.paneId, instance),
         memberId: member.memberId,
         machine: member.name,
         harness: pane.agent,
         label: labelOf(facts, titles),
         state: member.reachable ? pane.status : "unreachable",
-      });
+      };
+      out.push(pane.walkyOff === true ? { ...target, walky: "off" } : target);
     }
   }
   return out;

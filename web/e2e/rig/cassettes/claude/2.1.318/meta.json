@@ -5,8 +5,8 @@
   "legs": {
     "solo": {
       "model": "haiku",
-      "skill": "08449a37b87aa7f8",
-      "recordedAt": "2026-11-04T09:13:29.558Z",
+      "skill": "f6eff1a9c4b8983b",
+      "recordedAt": "2026-11-04T14:50:16.915Z",
       "cases": [
         "claude.load-older",
         "claude.permission",
@@ -26,8 +26,8 @@
     },
     "crew": {
       "model": "haiku",
-      "skill": "08449a37b87aa7f8",
-      "recordedAt": "2026-11-04T09:16:59.207Z",
+      "skill": "f6eff1a9c4b8983b",
+      "recordedAt": "2026-11-04T14:53:43.063Z",
       "cases": [
         "claude.walky-crew-agents",
         "claude.walky-crew-broadcast",

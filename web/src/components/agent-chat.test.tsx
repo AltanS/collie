@@ -53,7 +53,8 @@ import { __resetOperatorCommands } from "@/lib/operator-config";
 import { paneMirrorOverride, setPaneMirrorOverride } from "@/lib/mirror-invert";
 import { submitPromptOption } from "@/lib/prompt-action";
 import { submitWizardKeys } from "@/lib/wizard-action";
-import { fixtureAgents, fixtureShellPanes, fixtureTabs, fixtureTranscriptWithImage, paneTextWithDraft, recordedSends, sendAnswer, sendHandler } from "@/test/handlers";
+import { fixtureAgents, fixtureLaunchedTab, fixtureLaunchersWithAgents, fixtureShellPanes, fixtureTabs, fixtureTranscriptWithImage, paneTextWithDraft, recordedSends, sendAnswer, sendHandler } from "@/test/handlers";
+import type { StartLaunchBody } from "@/lib/api";
 import type { Ask, Surface } from "@/lib/surface/surface";
 import { parseAnsi } from "@/lib/ansi";
 import { splitLines } from "@/lib/blocks";
@@ -1420,6 +1421,31 @@ describe("AgentChat — status rides the header title slot, not the tab strip", 
   });
 });
 
+// The tab bar's "+" (M91): with an agent to offer it opens the New tab sheet, and a row starts as a tab
+// beside this workspace's own pane, through the same `POST /api/launch` the New page uses.
+describe("AgentChat \u2014 the tab bar's + opens the New tab sheet", () => {
+  it("lists the machine's agents and starts one beside the workspace's pane", async () => {
+    const launches: StartLaunchBody[] = [];
+    server.use(
+      http.get("/api/launchers", () => HttpResponse.json(fixtureLaunchersWithAgents)),
+      http.post("/api/launch", async ({ request }) => {
+        // SAFETY: the body is the app's own: `lib/api.ts`'s `startLaunch` is the only caller and it posts a `StartLaunchBody`.
+        launches.push((await request.json()) as StartLaunchBody);
+        return HttpResponse.json(fixtureLaunchedTab);
+      }),
+    );
+    const user = userEvent.setup();
+    renderChat({ tabs: fixtureTabs });
+
+    await user.click(screen.getByRole("button", { name: "New tab" }));
+    const sheet = within(await screen.findByRole("dialog", { name: "New tab in webapp" }));
+    await user.click(await sheet.findByRole("button", { name: /Claude Code/ }));
+
+    await waitFor(() => expect(launches).toHaveLength(1));
+    expect(launches[0]).toMatchObject({ harness: "claude", paneId: fixtureAgents[0]!.paneId });
+  });
+});
+
 // The History affordance opens the agent's own transcript — the only real scrollback a Claude pane
 // has, because its terminal runs on the alternate screen and Herdr retains nothing behind the
 // viewport. It's gated on the pane actually reporting an agent session, so the button can never
@@ -2419,14 +2445,16 @@ describe("the pane fits its viewport", () => {
     expect(secondMirror.className).toMatch(/(?:^|\s)mt-0(?=\s|$)/);
   });
 
-  it("caps the draft field as a fraction of the viewport, not at a constant", () => {
+  it("caps the draft field as a fraction of the visible height, not at a constant", () => {
     // `max-h-40` was 160px, chosen against a full-height screen — a THIRD of everything visible
-    // with the keyboard up, and the growth that pushed the send button off the bottom. `10rem` IS
-    // that 160px, so at rest on any ordinary screen this field is byte-identical to before; only
-    // the case that was broken changes.
+    // with the keyboard up, and the growth that pushed the send button off the bottom. Then
+    // `min(10rem,30dvh)`, which still left six lines of chat on a phone with the keyboard up (Altan,
+    // 2026-11-07). The cap is now the smaller of five rows and a fifth of the visible height,
+    // computed in lib/draft-cap.ts and handed to the field as `--draft-cap`.
     renderChat({ text: STATUS_TEXT });
     const field = screen.getByRole("textbox");
-    expect(field.className).toMatch(/max-h-\[min\(10rem,\d+dvh\)\]/);
+    expect(field.className).toMatch(/max-h-\[var\(--draft-cap\)\]/);
+    expect(field.style.getPropertyValue("--draft-cap")).toMatch(/^\d+px$/);
     expect(field.className).not.toMatch(/(?:^|\s)max-h-40(?=\s|$)/);
   });
 });

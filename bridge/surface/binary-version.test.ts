@@ -8,14 +8,13 @@ import {
   createVersionReader,
   mergePaths,
   PANE_READ_INTERVAL_MS,
-  spawnBinaryVersion,
   VERSION_CACHE_MS,
   VERSION_FAILED_CACHE_MS,
   VersionCache,
   type FileStamp,
 } from "./binary-version.ts";
 import { boundedRun } from "../login-path.ts";
-import { SurfaceShadow } from "./shadow.ts";
+import { pathVersionReader, SurfaceShadow } from "./shadow.ts";
 import { loadProfiles, parseProfile, profileFor } from "../../web/src/lib/surface/profile.ts";
 
 const [anyProfile] = [...loadProfiles().values()];
@@ -200,11 +199,11 @@ describe("mergePaths", () => {
 });
 
 describe("the shadow's default version reader", () => {
-  test("is spawnBinaryVersion, so it reads on the login shell's PATH", () => {
+  test("is the PATH read, so it reads on the login shell's PATH", () => {
     const mux = { readGrid: () => Promise.resolve({ ok: false as const, reason: "gone" as const, detail: "unused" }) };
     const shadow = new SurfaceShadow({ mux, pollMs: 1000, log: () => {} });
     // The field is private; reading it by name is the one way to see which reader the shadow defaulted to.
-    expect(shadow["readVersion"]).toBe(spawnBinaryVersion);
+    expect(shadow["readVersion"]).toBe(pathVersionReader);
   });
 });
 

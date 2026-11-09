@@ -17,7 +17,7 @@ import { useLocale } from "@/hooks/use-locale";
 // no herd chrome and no nav, so without it a full-viewport panel is unattributable — it could be any
 // app that happened to be open. The mark is <CollieMark/> still, and never the old gallop sprite
 // (removed in 1.20.0): its rest frame was a full-stretch mid-stride pose that read as "frozen
-// mid-run", and this screen is the app's most literal rest state. The paused state carries no `loading` — the pause is
+// mid-run", and this screen is the app's most literal rest state. The paused state is `rest` — the pause is
 // not work in flight; the catch-up refetch is, and it blooms the same mark (see below).
 //
 // No lock iconography and no "for safety" — the pause guards nothing (.adr/0007). Saying otherwise
@@ -63,7 +63,7 @@ export function IdleLock({ onUnlock, catchingUp = false }: IdleLockProps) {
               it would put a lighter, half-transparent layer between the mark and any colour we could
               name. */}
           <span className="grid size-20 shrink-0 place-items-center">
-            <CollieMark size={64} weight="header" loading={catchingUp} paper="var(--card)" />
+            <CollieMark size={64} weight="header" state={catchingUp ? "loading" : "rest"} paper="var(--card)" />
           </span>
           <span className="text-lg font-semibold tracking-tight">Collie</span>
         </div>

@@ -4,6 +4,7 @@ import { en } from "@/lib/i18n/messages/en";
 import { fixtureSnapshot } from "@/test/handlers";
 
 import { installApiStub } from "./fixtures/api";
+import { collieHalves } from "./fixtures/collie-theme";
 import { keepPhoneLayout } from "./fixtures/layout";
 
 // THE PANE SCREEN'S TWO STRIPS, measured in a real engine (option 3 of the 2026-09-23 top-bar
@@ -83,7 +84,8 @@ test("a tab alone answers its own row, all of it below the header", async ({ pag
     // (The 6px of air above a folder tab belongs to no tab, so the hit area is the tab's own 30px.)
     expect(span.height, name).toBeCloseTo(30, 0);
     // Sideways a text tab answers its drawn box (`min-w-11`), less the few pixels at its trailing
-    // edge that the "+" reach (-9px, past a 6px gap) takes; the "+" answers its full 44.
+    // edge that the "+" reach (10px past its 24px circle, `TAB_ROW_ADD_TAP_TARGET`) may take under the
+    // plain look; the "+" answers its full 44.
     expect(span.width, name).toBeGreaterThanOrEqual(name === en["space.tabStrip.new.aria"] ? 44 : 40);
     expect(span.bottom + 1, name).toBeLessThanOrEqual(tabsBottom + 0.5);
     // Not one pixel of the header: its own 44px buttons keep theirs.
@@ -171,3 +173,48 @@ test("opening a tab moves no neighbour", async ({ page }) => {
   await expect(tabNav(page).getByRole("button", { name: "shell" })).toHaveAttribute("aria-current", "true");
   expect(await widths()).toEqual(before);
 });
+
+// THE "+" SITS LEVEL IN ITS ROW, AS A BARE GLYPH (2026-11-06). The 28px ring kept 1px of air above and below in the
+// 30px row and read as sitting on the folder row's bottom rule; then a 24px ring read as a placeholder. It is the bare
+// glyph in a 24px box now, no border, keeping 3px each way: level with the labels, and with the open tab's card under
+// the folder look. Its hit stays the row's 30px and 44px across, and a text
+// tab keeps at least 40px of its own under the plain look, where the reach takes the last pixels of its padding. The
+// plain look is collie's own colours in an imported theme that names no `tabs` word.
+for (const look of ["folder", "plain"] as const) {
+  for (const pane of ["w2:p1", "w2:p2"]) {
+    test(`the tab row's "+" is a bare 24px box level with the tabs, ${look} look, ${pane} open`, async ({ page }) => {
+      if (look === "plain") {
+        await page.addInitScript(
+          ([design, library]) => {
+            localStorage.setItem("collie:design:v1", design!);
+            localStorage.setItem("collie:themes:v1", library!);
+          },
+          [JSON.stringify({ theme: "plain-collie" }), JSON.stringify({ version: 1, themes: [{ version: 2, id: "plain-collie", name: "Plain", ...collieHalves }] })],
+        );
+      }
+      await page.goto(`/pane/${encodeURIComponent(pane)}`);
+      await expect(tabNav(page)).toBeVisible();
+      const plus = tabNav(page).getByRole("button", { name: en["space.tabStrip.new.aria"], exact: true });
+      const face = (await plus.boundingBox())!;
+      const open = (await tabNav(page).locator('[aria-current="true"]').boundingBox())!;
+      const nav = (await tabNav(page).boundingBox())!;
+      expect(face.width).toBeCloseTo(24, 0);
+      expect(face.height).toBeCloseTo(24, 0);
+      // No ring: no border drawn at rest, and the glyph is the chevron's 16px.
+      expect(await plus.evaluate((el) => getComputedStyle(el).borderTopWidth)).toBe("0px");
+      expect((await plus.locator("svg").boundingBox())!.width).toBeCloseTo(16, 0);
+      // The same air above and below, against the open tab's box: under the folder look that box is the card.
+      expect(face.y - open.y).toBeCloseTo(3, 0);
+      expect(open.y + open.height - (face.y + face.height)).toBeCloseTo(3, 0);
+      expect(nav.height).toBeCloseTo(look === "folder" ? 36 : 30, 0);
+
+      const hit = await hitSpan(tabNav(page), en["space.tabStrip.new.aria"]);
+      expect(hit.height).toBeCloseTo(30, 0);
+      expect(hit.width).toBeGreaterThanOrEqual(44);
+      expect(hit.bottom + 1).toBeLessThanOrEqual(nav.y + nav.height + 0.5);
+      for (const name of ["code", "shell"]) {
+        expect((await hitSpan(tabNav(page), name)).width, name).toBeGreaterThanOrEqual(40);
+      }
+    });
+  }
+}

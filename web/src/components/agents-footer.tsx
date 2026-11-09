@@ -15,12 +15,12 @@
 // the state.
 
 import { useState } from "react";
-import { ChevronDown } from "lucide-react";
 import type { StyledLine } from "@/lib/blocks";
 import { MIRROR_INVERT, MIRROR_SPACE, segmentStyle } from "@/components/mirror-space";
 import type { MirrorFont } from "@/hooks/use-display-prefs";
 import { isTasksPopupHeader } from "@/lib/harness/muse/markers";
 import { cn } from "@/lib/utils";
+import { Icon } from "@/components/icons/icon";
 
 function isHeader(row: StyledLine): boolean {
   const text = row.segments.map((s) => s.text).join("").trim();
@@ -71,7 +71,8 @@ export function AgentsFooter({ rows, face }: { rows: StyledLine[]; face: MirrorF
       >
         {open ? <Row row={rows[0]!} className="min-w-0 flex-1" /> : <Row row={agents[0]!} className="min-w-0 flex-1" />}
         {!open && more > 0 && <span className="shrink-0 text-[#a3a3a3]">+{more}</span>}
-        <ChevronDown
+        <Icon
+          name="expand"
           aria-hidden
           className={cn("size-3 shrink-0 text-[#a3a3a3] transition-transform", open && "rotate-180")}
         />

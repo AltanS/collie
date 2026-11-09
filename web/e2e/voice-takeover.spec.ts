@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 
 import { en } from "@/lib/i18n/messages/en";
 
@@ -95,8 +95,11 @@ test.beforeEach(async ({ page }) => {
       }
     };
     // Playwright's Linux WebKit ships no MediaRecorder at all (a real iPhone has one), and without one
-    // the composer draws no mic. A bare stand-in, only there when the engine has none: it makes a
-    // small clip so the upload happens. The Web Audio graph under test stays the engine's own.
+    // the composer draws no mic. A bare stand-in, only there when the engine has none. It models what
+    // Safari's recorder does: a chunk with bytes on every timeslice (the page asks for one a second),
+    // and a final chunk on stop. The page goes live on the first chunk with bytes (#709), so a stand-in
+    // that spoke only on stop would never let OK enable in a quiet room, where the fake microphone's
+    // analyser reads exact digital silence. The Web Audio graph under test stays the engine's own.
     if (!("MediaRecorder" in window)) {
       class StandInRecorder extends EventTarget {
         static isTypeSupported(type: string) {
@@ -104,17 +107,24 @@ test.beforeEach(async ({ page }) => {
         }
         state = "inactive";
         mimeType = "audio/mp4";
-        start() {
+        private timer: ReturnType<typeof setInterval> | null = null;
+        private chunk(bytes: number) {
+          const event = new Event("dataavailable");
+          Object.defineProperty(event, "data", { value: new Blob([new Uint8Array(bytes)], { type: "audio/mp4" }) });
+          voice.recorded += bytes;
+          this.dispatchEvent(event);
+        }
+        start(timeslice?: number) {
           this.state = "recording";
-          // Ready at once: its clip is made on stop, whenever that is.
-          voice.recorded += 1;
+          if (timeslice === undefined) return;
+          this.timer = setInterval(() => this.chunk(512), timeslice);
         }
         stop() {
           if (this.state === "inactive") return;
           this.state = "inactive";
-          const event = new Event("dataavailable");
-          Object.defineProperty(event, "data", { value: new Blob([new Uint8Array(2048)], { type: "audio/mp4" }) });
-          this.dispatchEvent(event);
+          if (this.timer !== null) clearInterval(this.timer);
+          this.timer = null;
+          this.chunk(2048);
           this.dispatchEvent(new Event("stop"));
         }
       }
@@ -165,6 +175,41 @@ async function rects(page: Page) {
   });
 }
 
+/**
+ * The rects once the page has stopped moving: two reads 200 ms apart agree. The first read after
+ * `toBeVisible()` can land mid-layout on the tablet viewport (the composer sat 15 px off its resting
+ * place), and a baseline taken there makes every later "nothing moved" check fail.
+ */
+async function settledRects(page: Page) {
+  let last = JSON.stringify(await rects(page));
+  await expect
+    .poll(async () => {
+      await page.waitForTimeout(200);
+      const now = JSON.stringify(await rects(page));
+      const same = now === last;
+      last = now;
+      return same;
+    })
+    .toBe(true);
+  return rects(page);
+}
+
+/**
+ * OK stands on the mic's spot: the same centre, the same width, to the half pixel. The box is polled,
+ * not read once: right after the tap the composer's layout is still settling on a tablet viewport,
+ * and a single read caught it mid-move (the y offset came back 0, 15 or 36 px between runs). Each
+ * measure keeps its strict 0.5px bound; polling only waits until the layout has arrived there.
+ */
+async function expectOnMic(ok: Locator, micBox: { x: number; y: number; width: number; height: number }) {
+  const measure = async (read: (box: { x: number; y: number; width: number; height: number }) => number) => {
+    const box = await ok.boundingBox();
+    return box ? Math.abs(read(box)) : Infinity;
+  };
+  await expect.poll(() => measure((b) => b.x + b.width / 2 - (micBox.x + micBox.width / 2))).toBeLessThanOrEqual(0.5);
+  await expect.poll(() => measure((b) => b.y + b.height / 2 - (micBox.y + micBox.height / 2))).toBeLessThanOrEqual(0.5);
+  await expect.poll(() => measure((b) => b.width - micBox.width)).toBeLessThanOrEqual(0.5);
+}
+
 test("the takeover opens, records, transcribes and closes without moving anything", async ({ page }) => {
   // The takeover is measured on the field composer with a 1px rule. The default theme's box composer
   // has its own case below.
@@ -172,7 +217,7 @@ test("the takeover opens, records, transcribes and closes without moving anythin
   await page.goto("/pane/w1:p1");
   const mic = page.getByRole("button", { name: en["composer.mic.recordAria"] });
   await expect(mic).toBeVisible();
-  const before = await rects(page);
+  const before = await settledRects(page);
   const micBox = (await mic.boundingBox())!;
   // The block is whatever the composer is: never a number written down here.
   expect(before.block.height).toBeGreaterThan(80);
@@ -186,15 +231,12 @@ test("the takeover opens, records, transcribes and closes without moving anythin
   expect(Math.abs(regionBox.width - before.block.width)).toBeLessThanOrEqual(0.5);
   expect(Math.abs(regionBox.height - (before.block.height - 1))).toBeLessThanOrEqual(1.5);
   expect(Math.abs(regionBox.y - before.block.top)).toBeLessThanOrEqual(1.5);
-  expect(await rects(page)).toEqual(before);
+  await expect.poll(() => rects(page)).toEqual(before);
 
   // OK stands on the mic's spot: the same centre, the same size.
   const ok = page.getByRole("button", { name: en["composer.voice.okAria"] });
   await expect(ok).toBeEnabled();
-  const okBox = (await ok.boundingBox())!;
-  expect(Math.abs(okBox.x + okBox.width / 2 - (micBox.x + micBox.width / 2))).toBeLessThanOrEqual(0.5);
-  expect(Math.abs(okBox.y + okBox.height / 2 - (micBox.y + micBox.height / 2))).toBeLessThanOrEqual(0.5);
-  expect(Math.abs(okBox.width - micBox.width)).toBeLessThanOrEqual(0.5);
+  await expectOnMic(ok, micBox);
 
   // Listening, then hearing: the bars are reserved slots, so their boxes do not change with the voice.
   const slots = () =>
@@ -220,25 +262,34 @@ test("the takeover opens, records, transcribes and closes without moving anythin
   // The transcript lands in the box, the takeover goes, the composer is back in the same box.
   await expect(page.getByRole("textbox", { name: en["composer.placeholder.reply"] })).toHaveValue(TRANSCRIPT);
   await expect(region).toHaveCount(0);
-  expect(await rects(page)).toEqual(before);
+  await expect.poll(() => rects(page)).toEqual(before);
 });
 
 // THE BOX COMPOSER (the default theme Collie). OK is drawn in a row that copies the composer's box, so
-// it stands on the microphone it replaces: the same centre, to the half pixel, at rest and open.
+// it stands on the microphone it replaces: the same centre, to the half pixel, at rest and open. The
+// mic is read once it holds still, and the OK button is polled until it arrives, never read on the first frame.
 test("in the box composer the OK button stands on the microphone's centre", async ({ page }) => {
   await page.goto("/pane/w1:p1");
   await expect(page.locator('[data-slot="composer-box"]')).toHaveAttribute("data-layout", "box");
   const mic = page.getByRole("button", { name: en["composer.mic.recordAria"] });
   await expect(mic).toBeVisible();
+  // The mic's spot is read once it holds still: two reads 200 ms apart agree.
+  let lastMic = JSON.stringify(await mic.boundingBox());
+  await expect
+    .poll(async () => {
+      await page.waitForTimeout(200);
+      const now = JSON.stringify(await mic.boundingBox());
+      const same = now === lastMic;
+      lastMic = now;
+      return same;
+    })
+    .toBe(true);
   const micBox = (await mic.boundingBox())!;
 
   await mic.click();
   const ok = page.getByRole("button", { name: en["composer.voice.okAria"] });
   await expect(ok).toBeEnabled();
-  const okBox = (await ok.boundingBox())!;
-  expect(Math.abs(okBox.x + okBox.width / 2 - (micBox.x + micBox.width / 2))).toBeLessThanOrEqual(0.5);
-  expect(Math.abs(okBox.y + okBox.height / 2 - (micBox.y + micBox.height / 2))).toBeLessThanOrEqual(0.5);
-  expect(Math.abs(okBox.width - micBox.width)).toBeLessThanOrEqual(0.5);
+  await expectOnMic(ok, micBox);
 });
 
 test("two seconds of quiet after speech finishes the clip by itself; quiet alone never does", async ({ page }) => {
@@ -347,12 +398,12 @@ test("the bin throws the clip away and gives the mic back, the microphone releas
   await page.goto("/pane/w1:p1");
   const mic = page.getByRole("button", { name: en["composer.mic.recordAria"] });
   await expect(mic).toBeVisible();
-  const before = await rects(page);
+  const before = await settledRects(page);
   await mic.click();
   await page.getByRole("button", { name: en["composer.mic.discardAria"] }).click();
   await expect(page.getByRole("group", { name: en["composer.voice.regionAria"] })).toHaveCount(0);
   await expect(mic).toBeFocused();
-  expect(await rects(page)).toEqual(before);
+  await expect.poll(() => rects(page)).toEqual(before);
   // The one audio context the page made for the meter is closed: nothing keeps listening.
   await expect
     .poll(() =>

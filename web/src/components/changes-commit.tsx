@@ -1,4 +1,3 @@
-import { GitCommitHorizontal } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { ListGroup } from "@/components/ui/list-group";
@@ -6,6 +5,7 @@ import { useLocale } from "@/hooks/use-locale";
 import { timeAgo } from "@/lib/format";
 import { t } from "@/lib/i18n";
 import type { CleanRepo, CommitInfo } from "@/lib/types";
+import { Icon } from "@/components/icons/icon";
 
 // The commit view's two drawings (ADR 0065, the commit view). Agents commit their own work, so the
 // Changes list goes empty right after the change the operator most wants to read: `CleanRepos`
@@ -34,7 +34,7 @@ export function CleanRepos({
     return (
       <div className="flex justify-center">
         <Button variant="outline" className="h-11" onClick={() => onShow(repos[0]!.relPath)}>
-          <GitCommitHorizontal className="size-4" />
+          <Icon name="commit" className="size-4" />
           {t("changes.commit.show")}
         </Button>
       </div>

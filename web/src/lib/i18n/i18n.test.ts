@@ -9,7 +9,7 @@ import {
   whenLocaleReady,
 } from "./index";
 import { LOCALES } from "./locale";
-import { en, type MessageKey } from "./messages/en";
+import { PENDING_TRANSLATION, en, type MessageKey } from "./messages/en";
 
 /** The extra plural categories a language may carry beyond English's `.one`/`.other`. */
 const EXTRA_PLURAL_CATEGORIES = ["few", "many"] as const;
@@ -240,9 +240,15 @@ describe("every translated dictionary", () => {
       const dictionary = exports[0]!;
 
       const keys = Object.keys(dictionary);
+      const pending = new Set<string>(PENDING_TRANSLATION);
       expect(
-        englishKeys.filter((key) => !(key in dictionary)),
+        englishKeys.filter((key) => !(key in dictionary) && !pending.has(key)),
         `${code} lacks keys`,
+      ).toEqual([]);
+      // A pending key a bundle already carries is translated: it leaves the list in that commit.
+      expect(
+        PENDING_TRANSLATION.filter((key) => key in dictionary),
+        `${code} carries keys still listed as pending`,
       ).toEqual([]);
       // The one thing a bundle may add: `.few`/`.many` next to a `.one`/`.other` pair English has.
       const isExtraPlural = (key: string): boolean =>
@@ -269,6 +275,7 @@ describe("every translated dictionary", () => {
       expect(sameAsEnglish.length, `${code} looks like English`).toBeLessThan(englishKeys.length / 10);
 
       for (const key of englishKeys) {
+        if (pending.has(key)) continue;
         const value = dictionary[key]!;
         expect(slotsOf(value), `${code} ${key}`).toEqual(slotsOf(en[key]));
         expect(value, `${code} ${key} has an em dash`).not.toContain("\u2014");

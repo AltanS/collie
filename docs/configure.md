@@ -264,6 +264,13 @@ Gentle Shell's `bash_background` and `monitor` fill the jobs mark, only while th
 on a phone; the Screen view and the dashboard do not show it. The pane's working light stays as the
 multiplexer reports it.
 
+The pins mark, a pin, sits right of the jobs mark while the session has pinned messages. Its badge
+counts them, and it is hidden at zero. A tap opens the **Pinned messages** sheet, newest first, each
+row with its kind, the first lines of the text, how long ago, and an **Unpin** button. A tap on a row
+opens the whole text, which scrolls, with **Unpin** and **Show in Chat**. Show in Chat scrolls to the
+block when it is loaded. After the last Unpin the sheet closes and the mark goes. On a wide screen a tap
+on the mark of another column focuses that pane and opens the sheet.
+
 While the text box holds text or an attachment, an X sits at the belt's right end too, left of the
 Switch button. One tap empties the box and its saved draft, and sends nothing to the pane. The X then
 becomes Undo, which puts the text and the attachments back. Undo stays until your next act: a
@@ -348,7 +355,7 @@ Collie refuses before it presses when pressing could do harm:
 If no answer comes back from a crew machine in time, Collie says so. The Stop may have gone in, so
 check the pane before you tap Stop again.
 
-A Stop is always your tap. A walky talky message, a hook, the command line and a queued action never
+A Stop is always your tap. A WalkyTalky message, a hook, the command line and a queued action never
 press one. Over a crew, the machine that runs the pane presses the key, reads the screen and sends
 the receipt back through the lead.
 
@@ -526,11 +533,12 @@ harness = "claude"
 no_prompts = true
 ```
 
-Your rows appear in three places:
+Your rows appear in four places:
 
 - **On the New page** (tap **+ New** on the dashboard). The switch at the top reads **Agent** | **Shell**.
   A row with `harness` is in the **Agent** select. A row without `harness` is in the **Command** select,
   which is the select under **Shell**.
+- **In the New tab sheet** behind a workspace's **+** (below). Agents first, then commands.
 - **In a Launch section on the dashboard.** It folds like Spaces.
 - **In a Launch section in the switcher sheet** (swipe up from a pane).
 
@@ -560,6 +568,25 @@ select under **Shell**, starts in a pane like any command, and Collie shows no s
 
 To verify, reload the dashboard and look under the herd. If a row fails to load,
 `journalctl --user -u collie -n 20` prints the error.
+
+### A new tab from the plus
+
+The **+** at the end of a workspace's tab row, and the **+** on a workspace heading of the dashboard,
+open the **New tab** sheet for that workspace. Its title names the workspace, and the line under it
+shows the workspace's folder.
+
+The sheet lists that machine's agents, then its command rows, in the New page's order. An agent that
+is not installed there stays in the list, dimmed, with its reason. A row with a fixed `cwd` says where
+it always runs. On a crew, a lead's row on a member says **Lead**.
+
+A tap opens the row as a new tab in that workspace, in its folder, and the phone steps into the new
+pane. A row with `no_prompts` asks before its first start, as on the New page. **Just a shell** is last: it opens the
+plain shell the **+** opened before. **More options** opens the New page for that workspace, for
+another folder, a worktree or a one-off line.
+
+A machine with nothing to start beyond a shell (no agent installed, no row) shows no sheet: the **+**
+opens the shell at once. So does a dashboard heading that lists only a worktree's panes. On a large screen the tab row's **+** still opens a shell, and the space
+header's **New agent in this space** opens the New page.
 
 ### Launchers added from a phone
 
@@ -696,7 +723,7 @@ typed.
 ## Your own typefaces
 
 The interface font is a per-device setting. Under **Settings → Appearance → Typeface**, you can choose between
-System, Space Grotesk, Aldrich, IBM Plex Sans, Geist and Atkinson Hyperlegible Next (the default). A
+System, Space Grotesk, Aldrich, IBM Plex Sans, Geist, Atkinson Hyperlegible Next (the default) and Nunito. A
 [theme](themes.md) that names a face writes it here once, when you pick the theme. You can add custom fonts in
 `theme.toml`, the fourth configuration file:
 
@@ -1108,6 +1135,51 @@ This implementation has two practical consequences:
 > the background. iOS does not allow web apps to update this value dynamically. Run Collie directly
 > in the browser instead of as an installed PWA to avoid this limitation.
 
+## The community theme list
+
+Refresh in **Browse community themes** fetches the list from colliepwa.dev, unless you name
+another address for a test against a staged copy of the site:
+
+```bash
+# in your .env
+COLLIE_THEME_REGISTRY_URL=http://myhost:8834/themes/registry.json
+```
+
+The address takes `https://` to any host. Plain `http://` works only for this machine, a tailnet
+address (`100.64.0.0/10` or a `.ts.net` name) or a name without a dot. Any other value prints one
+warning when the bridge starts, and colliepwa.dev is used. A list fetched from one address is not
+shown under another, so the next Refresh fetches again. Leave it unset for normal use.
+
+## Math
+
+Math is off by default. To draw LaTeX as equations, a write device downloads the math engines to
+the host once, then each device picks its engine.
+
+1. Open **Settings → Appearance → Math**.
+2. Tap **Download the math engines (about 4 MB)**, or pick **KaTeX** or **MathJax** to download and choose in one tap.
+3. Wait for the progress bar to finish; the engine you picked becomes the choice.
+
+The download is one file that holds both engines. The host keeps it in the `math` folder of its
+state folder, `~/.local/state/collie/math/` unless `COLLIE_STATE_DIR` moves it, and serves it to
+every paired device. Each device then picks **Off**, **KaTeX** or **MathJax** for itself. Nothing
+downloads until someone taps, and a read-only device cannot start the download.
+
+| Card says | What it means |
+| --- | --- |
+| The download did not finish | The connection to GitHub broke. Nothing was kept; tap again. |
+| The host is short of disk space | The host needs about five times the pack's size free. |
+| The download did not match the release | The file's hash is not the one the release lists. Nothing was kept. |
+| This build has no math engines to download | A development build. A build from source serves `web/dist/math/` instead. |
+
+To remove the engines, tap **Remove the math engines** on the same card. That deletes them from
+the host and sets this device to Off. Another device that chose an engine then shows formulas as
+their source until the engines are downloaded again.
+
+> **Note.** An update does not bring the engines along. After an update the card offers the
+> download again, and until then equations show as their TeX source.
+
+What the engines draw, and how to write an equation, is in [Equations](changes.md#equations).
+
 ## Zen mode
 
 > **Note.** Zen mode is off by default.
@@ -1148,7 +1220,7 @@ The layout has three parts.
   work in moves you to a pane of the tab beside it. Its two buttons, or a vertical swipe, move to the space
   above or below.
 
-Each pane has a width: **1/2**, **4/5** or **Full** of the row. A pane is never narrower than 360
+Each pane has a width: **1/2**, **4/5** or **Full** of the row. A pane is never narrower than 440
 pixels, so a width that would make it narrower is not offered. When the row cannot hold two panes at
 that size, every pane is **Full** width and the control is hidden. The row snaps to the start of a
 pane when you stop scrolling, and a scroll to the side never goes back a page in the browser. The row
@@ -1225,6 +1297,25 @@ of disappearing. That happens when the agent sits idle with an empty box twice i
 minutes without a running turn. Its **Discard** button removes the card and sends nothing.
 
 The display gear has a **Stretchtext replies** switch, off by default. With it on, Chat, the full reply card and History show a reply written with the cc-stretch plugin as its short form, and a tap on a phrase opens it. A `{{name}}` without a bar shows as `name`.
+
+**Pinned messages.** Tap a message, a reply, a thinking block or a tool card in Chat, then its **⋯**,
+**Message actions**, which shows at the block's top right. The **⋯** opens a sheet with **Pin** (or
+**Unpin**), **Copy text** and **Select text**. The tap that shows the **⋯** does not open the keyboard. A
+hold on the block opens the same sheet at once. The **⋯** hides again after 4 seconds or on a tap elsewhere.
+
+On a phone a Chat block does not select text, so that the hold always opens the sheet. To select part of a
+block, choose **Select text** in its sheet, then hold the text. A tap outside the block ends it. On a desktop the
+**⋯** shows while the pointer is over the block, and a right click opens the sheet at once. A pinned block
+carries a small pin mark. A pin is a
+copy: the machine that owns the pane keeps the text in a file under its state folder, one file for each
+session, so a pin outlives the pane, a restart of the bridge and the paging of Chat, and a reopened
+session shows its pins again. The machine copies the block from its own log and never stores what the
+phone sends. A session keeps at most 100 pins, and a tool card pins with its name, its input and its
+result as Chat shows them, capped as Chat caps them. A pin is a copy that outlives the log, and every
+paired device can read it, tool results included. Unpin it to delete the copy. A reply that is still
+being written, a picture, a shell pane, a read-only device, a saved copy and a machine on a Collie
+older than 1.28.0 offer no Pin. On a crew, a member keeps its own pins and the phone reaches them
+through the lead.
 
 One thing in Chat is known to be incomplete. Hermes can remove a turn from its log after Collie
 read it, for example when it compacts. Chat then keeps showing that turn until the session is read

@@ -45,3 +45,12 @@ describe("readReportContext: the doctor rows (M71 spec 05)", () => {
     expect(context).toMatchObject({ collie: "1.24.2", harness: "claude", screen: "row", doctor: [] });
   });
 });
+
+describe("readReportContext: the cached harness version (1.27.4)", () => {
+  it("reads the bridge's version, and null from an older bridge or a value that is not a string", () => {
+    expect(readReportContext({ ...OLD, harnessVersion: "2.1.316" })?.harnessVersion).toBe("2.1.316");
+    expect(readReportContext({ ...OLD, harnessVersion: null })?.harnessVersion).toBeNull();
+    expect(readReportContext(OLD)?.harnessVersion).toBeNull();
+    expect(readReportContext({ ...OLD, harnessVersion: 2 })?.harnessVersion).toBeNull();
+  });
+});

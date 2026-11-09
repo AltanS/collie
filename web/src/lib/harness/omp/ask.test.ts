@@ -285,6 +285,84 @@ describe("the Nerd Font preset (18.4.4) lifts, read from its own glyphs", () => 
   });
 });
 
+// omp 18.18.0 under `symbolPreset: nerd` (2026-11-08, omp/keycaps.ts): a batch of two questions. The tab
+// segment's keycap is U+F0312, a saved answer is U+F192, the review's pointer is U+F054.
+describe("the Nerd Font preset in a batch (18.18.0) lifts each step and the review", () => {
+  /** The lines with one glyph swapped in every segment, the styles kept, for the mixed-preset controls.
+   *  With `onLine`, only on the rows whose text holds it. */
+  const swapped = (name: string, from: string, to: string, onLine?: string): StyledLine[] => {
+    const lines = structuredClone(load(name));
+    for (const line of lines) {
+      if (onLine !== undefined && !lineText(line).includes(onLine)) continue;
+      for (const segment of line.segments) segment.text = segment.text.replaceAll(from, to);
+    }
+    return lines;
+  };
+
+  it("the first question: its tab in the caption, the walk from the chevron, Cancel as Escape", () => {
+    const model = detectAskSelect(load("omp--v18-18-0-nerd-ask-batch--w250.txt"))!;
+    expect(model.caption).toBe("Ask (1/2) · color");
+    expect(model.question).toBe("Which color do you prefer?");
+    expect(model.options).toEqual([
+      { label: "red", keys: ["Enter"], keyLabel: "❯" },
+      { label: "green", keys: ["Down", "Enter"], keyLabel: "" },
+      { label: OTHER, keys: ["Down", "Down", "Enter"], keyLabel: "" },
+      { label: "Cancel", keys: ["Escape"], keyLabel: "Esc" },
+    ]);
+  });
+
+  it("the second question is told apart from the first by its tab", () => {
+    const model = detectAskSelect(load("omp--v18-18-0-nerd-ask-batch-q2--w250.txt"))!;
+    expect(model.caption).toBe("Ask (2/2) · pet");
+    expect(model.options.map((o) => o.label)).toEqual(["cat", "dog", OTHER, "Cancel"]);
+  });
+
+  it("a revisited question shows its saved answer (U+F192) and still lifts, one saved answer at most", () => {
+    const name = "omp--v18-18-0-nerd-ask-batch-saved--w250.txt";
+    const model = detectAskSelect(load(name))!;
+    expect(model.caption).toBe("Ask (2/2) · pet");
+    expect(model.options.map((o) => [o.label, o.keys])).toEqual([
+      ["cat", ["Enter"]],
+      ["dog", ["Down", "Enter"]],
+      [OTHER, ["Down", "Down", "Enter"]],
+      ["Cancel", ["Escape"]],
+    ]);
+    expect(detectAskSelect(swapped(name, "\u{F10C}", "\u{F192}", " dog"))).toBeNull();
+    // The unicode saved mark under nerd rows is a screen omp never draws.
+    expect(detectAskSelect(swapped(name, "\u{F192}", "◉"))).toBeNull();
+  });
+
+  it("the complete review: every answer on the card, Submit as Enter alone", () => {
+    const model = detectAskSelect(load("omp--v18-18-0-nerd-ask-review--w250.txt"))!;
+    expect(model.question).toBe("Review answers\n1. color: red\n2. pet: cat");
+    expect(model.options).toEqual([
+      { label: "Submit", keys: ["Enter"], keyLabel: "⏎" },
+      { label: "Cancel", keys: ["Escape"], keyLabel: "Esc" },
+    ]);
+  });
+
+  it("the review with every question unanswered declines, as in `unicode`", () => {
+    expect(detectAskSelect(load("omp--v18-18-0-nerd-ask-review-unanswered--w250.txt"))).toBeNull();
+  });
+
+  it.each([
+    ["the unicode tab keycap in the nerd footer", "omp--v18-18-0-nerd-ask-batch--w250.txt", "\u{F0312}", "⇥"],
+    ["the unicode pointer under the nerd footer", "omp--v18-18-0-nerd-ask-batch--w250.txt", "\u{F054}", "❯"],
+    ["the unicode Submit pointer under the nerd review footer", "omp--v18-18-0-nerd-ask-review--w250.txt", "\u{F054}", "❯"],
+    ["the unicode enter keycap in the nerd review footer", "omp--v18-18-0-nerd-ask-review--w250.txt", "\u{F0311}", "⏎"],
+  ])("%s declines: a screen omp never draws", (_name, name, from, to) => {
+    expect(detectAskSelect(load(name))).not.toBeNull();
+    expect(detectAskSelect(swapped(name, from, to))).toBeNull();
+  });
+
+  it("a batch under the 17.x text keycaps declines: no batch was captured in that dialect", () => {
+    const name = "omp--v18-18-0-nerd-ask-batch--w250.txt";
+    const text = swapped(name, "\u{F0311} select", "Enter select");
+    for (const line of text) for (const segment of line.segments) segment.text = segment.text.replace("\u{F12B7} cancel", "Esc cancel");
+    expect(detectAskSelect(text)).toBeNull();
+  });
+});
+
 describe("the 18.8.0 dialog with option descriptions (#372) lifts, each description on its option", () => {
   const DESCRIBED = "omp--v18-8-ask-single-described.txt";
   // Staging's description wraps onto a second row at the same indent, six columns in.
@@ -794,6 +872,10 @@ describe("the grammar claims nothing else in the corpus", () => {
     "omp--v18-10-ask-revisited.txt",
     "omp--v18-16-0-ask-single-glyph-hide--w200.txt",
     "omp--v18-16-0-ask-single-glyph-hide-moved--w200.txt",
+    "omp--v18-18-0-nerd-ask-batch--w250.txt",
+    "omp--v18-18-0-nerd-ask-batch-q2--w250.txt",
+    "omp--v18-18-0-nerd-ask-batch-saved--w250.txt",
+    "omp--v18-18-0-nerd-ask-review--w250.txt",
   ]);
 
   it("lifts only the supported Ask states in the complete corpus", () => {

@@ -696,16 +696,32 @@ describe("PaneActionsSheet — a saved copy", () => {
 describe("PaneActionsSheet — Messages (M62)", () => {
   it("shows no Messages row on a door that passes no callback", () => {
     renderSheet();
-    expect(screen.queryByRole("button", { name: "Messages" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "WalkyTalky" })).toBeNull();
   });
 
   it("closes the sheet first, then opens the Messages sheet, and stays a read row on a read-only device", async () => {
     const user = userEvent.setup();
     const onMessages = vi.fn();
     const props = renderSheet({ onMessages, readOnly: true });
-    await user.click(screen.getByRole("button", { name: "Messages" }));
+    await user.click(screen.getByRole("button", { name: "WalkyTalky" }));
     expect(onMessages).toHaveBeenCalledOnce();
     expect(vi.mocked(props.onClose).mock.invocationCallOrder[0]!).toBeLessThan(onMessages.mock.invocationCallOrder[0]!);
+  });
+});
+
+describe("PaneActionsSheet — a session with its walky talky off (M89 spec 04)", () => {
+  it("names the row `WalkyTalky off` and wears the struck radio while the session is off", () => {
+    renderSheet({ onMessages: vi.fn(), pane: { ...agent, walkyOff: true } });
+    const row = screen.getByRole("button", { name: "WalkyTalky off" });
+    expect(row.querySelector("svg.lucide-walky-talky-off")).not.toBeNull();
+    expect(screen.queryByRole("button", { name: "WalkyTalky" })).toBeNull();
+  });
+
+  it("keeps the plain row and the plain radio for a session that is on", () => {
+    renderSheet({ onMessages: vi.fn() });
+    const row = screen.getByRole("button", { name: "WalkyTalky" });
+    expect(row.querySelector("svg.lucide-walky-talky")).not.toBeNull();
+    expect(row.querySelector("svg.lucide-walky-talky-off")).toBeNull();
   });
 });
 

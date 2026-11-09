@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from "react";
-import { ArrowUpToLine, CornerDownLeft, History, Loader2 } from "lucide-react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type MutableRefObject, type RefObject } from "react";
+import { Icon } from "@/components/icons/icon";
 
 import { ItemView, PendingTurn, ToolGroup, groupRuns, standsAlone } from "@/components/chat-cards";
+import { StreamBlock } from "@/components/stream-block";
 import { PromptPin } from "@/components/prompt-pin";
 import { StatusDot } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
@@ -10,11 +11,12 @@ import { ChatMessageList, type ChatMessageListHandle } from "@/components/ui/cha
 import { useLocale } from "@/hooks/use-locale";
 import type { ChatFeed } from "@/hooks/use-chat-window";
 import { ASKS_SHOWN, asksAt, shownAsks } from "@/lib/ask";
-import { finished, itemsOf } from "@/lib/chat-items";
+import { finished, itemsOf, type ChatItem } from "@/lib/chat-items";
 import type { ChatStatus } from "@/lib/chat-window";
 import { dropPending, unmatched, usePending } from "@/lib/durable-pending";
 import { t, type MessageKey } from "@/lib/i18n";
-import type { Ask, QueuedSendRow } from "@/lib/types";
+import { blockOfPin, isPinnable, writingItemId } from "@/lib/message-pins";
+import type { Ask, PinRow, QueuedSendRow } from "@/lib/types";
 import { AskCard, type AskCardProps } from "@/components/ask-card";
 import { pinAt, promptMap } from "@/lib/prompt-pin";
 import { recallScroll, rememberScroll } from "@/lib/scroll-memory";
@@ -149,7 +151,7 @@ function QueuedCard({ queued, sendNow }: { queued: readonly string[]; sendNow: (
             aria-label={t("chat.stream.sendNowAria")}
             onClick={onTap}
           >
-            {pending ? <Loader2 aria-hidden className="size-3.5 animate-spin" /> : <CornerDownLeft aria-hidden className="size-3.5" />}
+            {pending ? <Icon name="busy" aria-hidden className="size-3.5 animate-spin" /> : <Icon name="send-now" aria-hidden className="size-3.5" />}
             {t("chat.stream.sendNow")}
           </Button>
         )}
@@ -291,9 +293,9 @@ function ReceiptCard({
                 onClick={() => onTap(button.action)}
               >
                 {pending === button.action ? (
-                  <Loader2 aria-hidden className="size-3.5 animate-spin" />
+                  <Icon name="busy" aria-hidden className="size-3.5 animate-spin" />
                 ) : (
-                  button.action === "submit" && <CornerDownLeft aria-hidden className="size-3.5" />
+                  button.action === "submit" && <Icon name="send-now" aria-hidden className="size-3.5" />
                 )}
                 {t(button.word)}
               </Button>
@@ -381,7 +383,7 @@ export function SavedCopyRow({ text }: { text: string }) {
       data-slot="saved-copy"
       className="mb-3 flex items-start justify-center gap-1.5 px-2 text-center text-[11px] leading-snug text-muted-foreground"
     >
-      <History aria-hidden className="mt-px size-3 shrink-0" />
+      <Icon name="saved-copy" aria-hidden className="mt-px size-3 shrink-0" />
       <span className="text-balance">{text}</span>
     </div>
   );
@@ -471,6 +473,7 @@ export function SessionStream({
   durable = false,
   questionPending = false,
   agent,
+  pins,
 }: {
   /** The held window plus its one control, from `useChatWindow`. */
   feed: ChatFeed;
@@ -536,6 +539,18 @@ export function SessionStream({
   questionPending?: boolean;
   /** The pane's agent string, named in the shared-folder line ({@link sharedFolderLine}). */
   agent?: string;
+  /**
+   * The pinned messages of this session (M90). `pinned` maps a Chat item id to its pin id, and a block in it
+   * wears the pin mark. `onActions` is the way in: the block's `⋯` and its hold open the actions sheet through
+   * it. Leave `onActions` out wherever Pin may not be offered (a shell, a read-only device, a saved copy, an
+   * older machine) and the blocks draw no way in; the marks of pins that exist still show.
+   */
+  pins?: {
+    pinned: ReadonlyMap<string, string>;
+    onActions?: (item: ChatItem) => void;
+    /** Filled with a function that scrolls to the block a pin came from, and says whether the stream holds it (M90). */
+    reveal?: MutableRefObject<((pin: Pick<PinRow, "itemId" | "anchor">) => boolean) | null>;
+  };
 }) {
   // The subscription every `t()` caller owes, plus the counter the memo below needs.
   const { revision } = useLocale();
@@ -587,6 +602,8 @@ export function SessionStream({
 
   // What the end of a durable thread says. The newest thing is the person's own when a line of theirs is waiting, or when
   // the last item is a user turn. A text still growing says it is working by itself, with its cursor.
+  // The reply a normal pane is still writing is not pinnable yet, whether or not the item says `partial`.
+  const writing = writingItemId(blocks, working);
   const newest = blocks.at(-1)?.at(-1);
   const personsNewest = lines.some((line) => line.state !== "notSent") || newest?.kind === "user";
   const growing = newest !== undefined && "partial" in newest && newest.partial === true;
@@ -767,6 +784,22 @@ export function SessionStream({
     setSeeking(null);
   }, [seeking, loadingOlder, blocks, window.hasOlder, onLoadOlder, jumpToBlock]);
 
+  // The Pins sheet's Show in Chat (M90): the block a pin came from, when this stream holds it. A block older than the
+  // loaded window is not fetched for it; the sheet says so instead.
+  const revealRef = pins?.reveal;
+  useEffect(() => {
+    if (revealRef === undefined) return;
+    revealRef.current = (target) => {
+      const index = blockOfPin(blocks, target);
+      if (index < 0) return false;
+      jumpToBlock(index);
+      return true;
+    };
+    return () => {
+      revealRef.current = null;
+    };
+  }, [revealRef, blocks, jumpToBlock]);
+
   const onPinTap = () => {
     if (pin === null) return;
     if (pin.kind === "held") jumpToBlock(pin.start);
@@ -821,7 +854,7 @@ export function SessionStream({
         <SavedCopyRow text={savedCopy} />
       ) : window.hasOlder ? (
         <button type="button" onClick={onLoadOlder} disabled={loadingOlder} className={EDGE_ROW}>
-          {loadingOlder ? <Loader2 className="size-3.5 animate-spin" /> : <ArrowUpToLine className="size-3.5" />}
+          {loadingOlder ? <Icon name="busy" className="size-3.5 animate-spin" /> : <Icon name="load-earlier" className="size-3.5" />}
           {loadingOlder ? t("chat.scrollback.loading") : t("chat.scrollback.loadOlder")}
         </button>
       ) : (
@@ -832,19 +865,28 @@ export function SessionStream({
         )
       )}
 
-      {blocks.map((group, index) => (
-        <div key={group[0]!.id} data-block data-n={group.length} className={STREAM_BLOCK}>
-          {/* A group of one is an ordinary block, EXCEPT a lone tool call while tool calls are off:
-              that one folds too, or "off" would leave every single-step turn drawn in full. An agent
-              call and a question never fold (`standsAlone`), so they are drawn either way. */}
-          {group.length === 1 && (showToolCalls || group[0]!.kind !== "tool" || standsAlone(group[0]!)) ? (
-            <ItemView item={group[0]!} />
-          ) : (
-            <ToolGroup items={group} liveOpens={showToolCalls} />
-          )}
-          {asks === undefined || askList === undefined ? null : asksAt(blocks, askList.shown, index).map((ask) => <AskCard key={ask.id} ask={ask} {...asks.card} />)}
-        </div>
-      ))}
+      {blocks.map((group, index) => {
+        // A group of one is an ordinary block, EXCEPT a lone tool call while tool calls are off:
+        // that one folds too, or "off" would leave every single-step turn drawn in full. An agent
+        // call and a question never fold (`standsAlone`), so they are drawn either way.
+        const drawn = group.length === 1 && (showToolCalls || group[0]!.kind !== "tool" || standsAlone(group[0]!));
+        // The block a pin can hang on is a single drawn item; a folded run is several, and has no one text to keep.
+        const item = drawn ? group[0]! : null;
+        const pinnable = item !== null && isPinnable(item) && item.id !== writing;
+        return (
+          <StreamBlock
+            key={group[0]!.id}
+            n={group.length}
+            item={pinnable ? item : null}
+            pinned={item !== null && pins?.pinned.has(item.id) === true}
+            onActions={pinnable ? pins?.onActions : undefined}
+            className={STREAM_BLOCK}
+          >
+            {drawn ? <ItemView item={group[0]!} /> : <ToolGroup items={group} liveOpens={showToolCalls} />}
+            {asks === undefined || askList === undefined ? null : asksAt(blocks, askList.shown, index).map((ask) => <AskCard key={ask.id} ask={ask} {...asks.card} />)}
+          </StreamBlock>
+        );
+      })}
 
       {/* The asks whose item is not on screen: older than the window, or never logged. They stand at
           the tail, where the next thing the program does will arrive, because an ask is the one block

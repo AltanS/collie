@@ -126,13 +126,13 @@ describe("the Windows check runs the flake's Bun", () => {
     expect(String(setup[0]?.with?.["bun-version"])).toBe(flakeBunVersion());
   });
 
-  test("windows-suites.ps1 gives each suite its own skip budget, 191 in all, each skip named", () => {
+  test("windows-suites.ps1 gives each suite its own skip budget, 203 in all, each skip named", () => {
     const script = readFileSync(join(ROOT, "scripts", "windows-suites.ps1"), "utf8");
     const budget = (suite: string): number => Number(new RegExp(`\\[int\\]\\$MaxSkips${suite} = (\\d+)`).exec(script)?.[1] ?? Number.NaN);
-    expect([budget("Bridge"), budget("Cli"), budget("Scripts")]).toEqual([106, 60, 25]);
+    expect([budget("Bridge"), budget("Cli"), budget("Scripts")]).toEqual([115, 63, 25]);
     // The bridge allowance is the local-cli tests that stay POSIX-only, the one real-engine Whistle
-    // case that needs the uncommitted model, the one scan of real links to /etc, the one telemetry file mode, the 5 hold socket tests, the 6
-    // walky mode and socket tests, the 30 durable example tests, the 10 durable-harness adapter skips and the 36 durable socket tests; the comment
+    // case that needs the uncommitted model, the one scan of real links to /etc, the one telemetry file mode, the 5 hold socket tests, the 7
+    // walky mode and socket tests, the 6 walky sibling registry tests, the 30 durable example tests, the 10 durable-harness adapter skips and the 36 durable socket tests; the comment
     // names them all.
     const localCli = readFileSync(join(ROOT, "bridge", "stt", "local-cli.test.ts"), "utf8");
     const posixOnly = [...localCli.matchAll(/test\.if\(posix\)\("([^"]+)"/g)].map((m) => m[1]!);
@@ -141,10 +141,10 @@ describe("the Windows check runs the flake's Bun", () => {
     expect(holdSocket).toHaveLength(5);
     for (const name of holdSocket) expect(script).toContain(name);
     // The walky tests: a file mode or a Unix socket, each one a skipped test beside a part that runs on Windows.
-    const walkySkips = ["instances", "log", "refusals", "seen", "socket"].flatMap((file) =>
+    const walkySkips = ["instances", "log", "off", "refusals", "seen", "socket"].flatMap((file) =>
       [...readFileSync(join(ROOT, "bridge", "walky", `${file}.test.ts`), "utf8").matchAll(/test\.skipIf\(POSIX_ONLY\)\("([^"]+)"/g)].map((m) => m[1]!),
     );
-    expect(walkySkips).toHaveLength(6);
+    expect(walkySkips).toHaveLength(7);
     for (const name of walkySkips) expect(script).toContain(name);
     expect(script).toContain("bridge/mux/durable/example-durable-harness.test.ts");
     // The /etc link scan: the one skip in bridge/claude-commands.test.ts.
@@ -155,6 +155,10 @@ describe("the Windows check runs the flake's Bun", () => {
     const telemetrySkips = [...readFileSync(join(ROOT, "bridge", "telemetry.test.ts"), "utf8").matchAll(/test\.skipIf\(process\.platform === "win32"\)\("([^"]+)"/g)].map((m) => m[1]!);
     expect(telemetrySkips).toHaveLength(1);
     for (const name of telemetrySkips) expect(script).toContain(name);
+    // The walky sibling registry: the cases that walk a live hook target registry, which needs a pid start-time probe win32 lacks.
+    const siblingSkips = [...readFileSync(join(ROOT, "bridge", "walky", "siblings.test.ts"), "utf8").matchAll(/test\.skipIf\(process\.platform === "win32"\)\("([^"]+)"/g)].map((m) => m[1]!);
+    expect(siblingSkips).toHaveLength(6);
+    for (const name of siblingSkips) expect(script).toContain(name);
     // The pane's program reads (.adr/0124): two boundedRun tests start a POSIX sh, the live /proc probe is
     // Linux only, and the "two copies" describe's one test and its hook use POSIX sh fakes.
     const boundedRunSkips = [...readFileSync(join(ROOT, "bridge", "surface", "binary-version.test.ts"), "utf8").matchAll(/test\.skipIf\(process\.platform === "win32"\)\("([^"]+)"/g)].map((m) => m[1]!);
@@ -165,6 +169,11 @@ describe("the Windows check runs the flake's Bun", () => {
     expect(paneBinary).toContain('describe.skipIf(process.platform === "win32")("two copies of one harness');
     expect(script).toContain("procProbe sees a live process's executable and folder");
     expect(script).toContain("two copies of one harness");
+    // N9 (trouble check 2026-11-08): the off-PATH agent is a `#!/bin/sh` script, so the describe's one test
+    // and its hook skip on Windows, as "two copies" does.
+    expect(paneBinary).toContain('describe.skipIf(process.platform === "win32")("createPaneVersion — a harness off the login PATH"');
+    expect(script).toContain("createPaneVersion — a harness off the login PATH");
+    const offPathSkips = 2;
     // The new worktree's fake git (M81): POSIX sh scripts Windows cannot spawn, each `test.skipIf` on win32.
     const fakeGitSkips = [...readFileSync(join(ROOT, "bridge", "worktree-add.test.ts"), "utf8").matchAll(/test\.skipIf\(process\.platform === "win32"\)\("([^"]+)"/g)].map((m) => m[1]!);
     expect(fakeGitSkips).toHaveLength(6);
@@ -173,11 +182,11 @@ describe("the Windows check runs the flake's Bun", () => {
     const rawEnterSkips = readFileSync(join(ROOT, "bridge", "surface", "protocol.unstyled.test.ts"), "utf8").includes('test.if(harness.id === "claude" || harness.id === "omp")(') ? 1 : 0;
     expect(rawEnterSkips).toBe(1);
     expect(script).toContain("protocol.unstyled.test.ts");
-    expect(budget("Bridge")).toBe(posixOnly.length + 1 + etcLinks.length + holdSocket.length + walkySkips.length + telemetrySkips.length + 30 + 10 + 36 + boundedRunSkips.length + 1 + 2 + rawEnterSkips + fakeGitSkips.length);
+    expect(budget("Bridge")).toBe(posixOnly.length + 1 + etcLinks.length + holdSocket.length + walkySkips.length + siblingSkips.length + telemetrySkips.length + 30 + 10 + 36 + boundedRunSkips.length + 1 + 2 + rawEnterSkips + fakeGitSkips.length + offPathSkips);
     // The cli allowance adds the three real runs of the POSIX install leg a crew member runs, and the
-    // 38 tests of cli/walky.test.ts that talk to a real walky socket (`socketTest`).
+    // 41 tests of cli/walky.test.ts that talk to a real walky socket (`socketTest`).
     const walkySocketTests = readFileSync(join(ROOT, "cli", "walky.test.ts"), "utf8").match(/^ {2}socketTest\(/gm) ?? [];
-    expect(walkySocketTests).toHaveLength(38);
+    expect(walkySocketTests).toHaveLength(41);
     // The statusLine wrapper's "runShell stops the whole command" block (3 tests) is skipped off Linux.
     expect(readFileSync(join(ROOT, "cli", "statusline.test.ts"), "utf8")).toContain('describe.skipIf(process.platform !== "linux")("runShell stops the whole command"');
     expect(script).toContain("runShell stops the whole command");

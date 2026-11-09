@@ -41,6 +41,12 @@ A machine saved in Herdr is not a crew member. Herdr's saved machines are ssh ta
 operator's own Herdr window. A crew is Collie on every machine, reached over Collie's own link. The
 operator sets ssh up once, and both tools use it.
 
+## Write a theme
+
+When the operator asks for a theme, run `collie theme skill` first and follow it. It holds every key a
+theme file may use, and the loop with `collie theme check` that proves the file before the operator
+imports it.
+
 ## Durable agents (experimental)
 
 A durable agent is a long-running agent built on the durable SDK. Collie shows it on the phone beside the

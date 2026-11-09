@@ -1,5 +1,5 @@
+import { Icon } from "@/components/icons/icon";
 import { useCallback } from "react";
-import { ArrowLeft } from "lucide-react";
 import { useLoaderData } from "react-router";
 
 import { RouteHeader } from "@/components/app-header";
@@ -60,7 +60,7 @@ export function MachinesRoute() {
               onClick={() => nav.up(settingsPath(scope))}
               aria-label={t("machines.nav.back")}
             >
-              <ArrowLeft className="size-5" />
+              <Icon name="back" className="size-5" />
             </Button>
             <h1 className="min-w-0 truncate text-lg font-semibold tracking-tight">{t("machines.title")}</h1>
           </>

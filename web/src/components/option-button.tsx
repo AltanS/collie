@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { SquareTerminal } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 
 import type { StyledLine } from "@/lib/blocks";
 import { RawMirror } from "@/components/raw-mirror";
@@ -149,7 +149,7 @@ export function PromptPanel({
           onClick={() => setShowRaw(true)}
           className={ghostControl}
         >
-          <SquareTerminal className="size-3.5 shrink-0" aria-hidden />
+          <Icon name="show-terminal-view" className="size-3.5 shrink-0" aria-hidden />
           {terminalLabel}
         </button>
       )}

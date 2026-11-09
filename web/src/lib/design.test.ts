@@ -9,8 +9,10 @@ import {
   __resetDesign,
   designPrefs,
   fontClass,
+  mathEngineOf,
   parseDesignPrefs,
   setDesignFont,
+  setDesignMath,
   setDesignTheme,
 } from "./design";
 
@@ -133,5 +135,53 @@ describe("the default face", () => {
     expect(classes()).toBe("font-aldrich");
     setDesignFont("atkinson");
     expect(classes()).toBe("");
+  });
+});
+
+describe("the math field", () => {
+  it("reads an engine and treats off, or anything else, as absence", () => {
+    expect(parseDesignPrefs('{"font":"aldrich","math":"katex"}')).toEqual({ font: "aldrich", math: "katex" });
+    expect(parseDesignPrefs('{"font":"aldrich","math":"mathjax"}').math).toBe("mathjax");
+    for (const bad of ['"off"', '"KaTeX"', '"tex"', "1", "null", "true"]) {
+      expect(parseDesignPrefs(`{"font":"aldrich","math":${bad}}`)).toEqual({ font: "aldrich" });
+    }
+  });
+
+  it("defaults to off on a device that never chose", () => {
+    expect(mathEngineOf(designPrefs())).toBe("off");
+  });
+
+  it("round-trips through storage, and off stores what a device that never chose stores", () => {
+    setDesignMath("mathjax");
+    expect(stored()).toEqual({ font: "atkinson", math: "mathjax" });
+    __resetDesign();
+    expect(mathEngineOf(designPrefs())).toBe("mathjax");
+    setDesignMath("off");
+    expect(stored()).toEqual({ font: "atkinson" });
+  });
+
+  it("ignores a value that is not an engine", () => {
+    setDesignMath("katex");
+    setDesignMath("latex");
+    expect(designPrefs().math).toBe("katex");
+  });
+
+  it("survives a change of face and of theme, and keeps both when it changes", () => {
+    setDesignMath("katex");
+    setDesignFont("op:depart.woff2", { family: "Depart", basename: "depart.woff2" });
+    setDesignTheme("midnight");
+    expect(stored()).toEqual({
+      font: "op:depart.woff2",
+      operatorFont: { family: "Depart", basename: "depart.woff2" },
+      theme: "midnight",
+      math: "katex",
+    });
+    setDesignMath("mathjax");
+    expect(stored()).toEqual({
+      font: "op:depart.woff2",
+      operatorFont: { family: "Depart", basename: "depart.woff2" },
+      theme: "midnight",
+      math: "mathjax",
+    });
   });
 });

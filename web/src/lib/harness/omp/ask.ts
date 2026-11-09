@@ -101,11 +101,11 @@
 // text above, they are current: the footer may now end `Alt+H hide` and `Ctrl+O expand`/`collapse`.
 //
 // BATCHED QUESTIONS. A call with several single-select questions adds the `⇥/←/→ question` footer
-// segment and a tab strip whose active tab is marked by background and bold ONLY. The grammar reads
-// the strip, binds the active tab's index into `coreSignature` and binds the styled region, so two
-// steps with identical words are not mistaken for one another. Enter saves the answer and advances; a
-// revisited step may show one saved `◉` answer. Unknown controls, scroll indicators and anything the
-// strip cannot place still decline.
+// segment (the tab keycap is the preset's) and a tab strip whose active tab is marked by background
+// and bold ONLY. The grammar reads the strip, binds the active tab's index into `coreSignature` and
+// binds the styled region, so two steps with identical words are not mistaken for one another. Enter
+// saves the answer and advances; a revisited step may show one saved `◉` answer (the preset's).
+// Unknown controls, scroll indicators and anything the strip cannot place still decline.
 //
 // THE REVIEW SCREEN. After the last question omp draws a review: one numbered answer per tab, the
 // Submit tab active and a static `❯ Submit` row, under the footer `⏎ submit · ↑/↓ scroll · ⎋ cancel`.
@@ -122,6 +122,7 @@
 import type { StyledLine } from "../../blocks";
 import { canonicalStyledLines, encodeStyledRegion } from "../../styled-region";
 import { hasHiddenCharacter, MAX_REGION_CHARS } from "../bound-region";
+import { OMP_NERD, OMP_UNICODE, type OmpGlyphPreset } from "./keycaps";
 import { pointerWalk } from "../menu-hints";
 import type { PromptModel, PromptOption } from "../prompt-model";
 import { isBlank, lineText, rstrip } from "./markers";
@@ -133,34 +134,36 @@ export interface AskSelectRegion {
   startLine: number;
 }
 
-/** One keycap dialect: the footer's two keycaps and the glyphs the same symbol preset draws in the
- *  body. A screen must match ONE preset in all four places, so a footer from one preset over rows from
- *  another is not a screen this grammar knows. */
-interface Preset {
-  enter: string;
-  escape: string;
-  /** `theme.nav.cursor`, the pointer in front of the pointed row. */
-  pointer: string;
-  /** `theme.radio.unselected`, the marker in front of every option of a single-select question. */
-  radio: string;
-}
+/** One keycap dialect: the footer's keycaps and the glyphs the same symbol preset draws in the body.
+ *  A screen must match ONE preset in every place, so a footer from one preset over rows from another
+ *  is not a screen this grammar knows. `tab` is null for a dialect no batch was captured in. */
+type Preset = Omit<OmpGlyphPreset, "name" | "tab"> & { readonly tab: string | null };
 
 const PRESETS: readonly Preset[] = [
   // omp 18.4 `unicode` preset, the default (`omp--v18-4-ask-single.txt`).
-  { enter: "⏎", escape: "⎋", pointer: "❯", radio: "○" },
+  OMP_UNICODE,
   // omp 17.x text keycaps over the same glyphs (`omp--select-menu.txt`, v17.2.12).
-  { enter: "Enter", escape: "Esc", pointer: "❯", radio: "○" },
-  // omp's `nerd` preset, private-use glyphs (`omp--select-menu-other.txt`, v18.4.4): U+F0311 for Enter,
-  // U+F12B7 for Escape, U+F054 (nf-fa-chevron_right) as the pointer, U+F10C (nf-fa-circle_o) as the radio.
-  { enter: "\u{F0311}", escape: "\u{F12B7}", pointer: "\u{F054}", radio: "\u{F10C}" },
+  { ...OMP_UNICODE, enter: "Enter", escape: "Esc", tab: null },
+  // omp's `nerd` preset, private-use glyphs (`omp--select-menu-other.txt`, v18.4.4; a batch and its
+  // review in `omp--v18-18-0-nerd-ask-*`, 18.18.0). The glyphs are listed in omp/keycaps.ts.
+  OMP_NERD,
 ];
 
 /** The footer, segment by segment, for a preset. Compared exactly: see the header. */
 function footerOf(preset: Preset, tabbed: boolean): string[] {
   const segments = [`${preset.enter} select`, "n note", "↑/↓ move"];
-  if (tabbed) segments.push("⇥/←/→ question");
+  if (tabbed) segments.push(`${preset.tab}/←/→ question`);
   segments.push(`${preset.escape} cancel`);
   return segments;
+}
+
+/** The preset whose question footer this is, and whether it carries the batch's tab segment. */
+function matchQuestionFooter(segments: string[]): { preset: Preset; tabbed: boolean } | null {
+  for (const preset of PRESETS) {
+    if (matchesAskFooter(segments, footerOf(preset, false), true)) return { preset, tabbed: false };
+    if (preset.tab !== null && matchesAskFooter(segments, footerOf(preset, true), true)) return { preset, tabbed: true };
+  }
+  return null;
 }
 
 /** omp's own label for the free-text row (`OTHER_OPTION` in ask-dialog.ts). omp renames any option
@@ -225,9 +228,9 @@ export function detectAskSelectRegion(lines: StyledLine[]): AskSelectRegion | nu
   if (footerRow === null) return null;
   const footer = readOmpHintList(footerRow[1]!);
   if (footer === null) return null;
-  const tabbed = footer.segments.includes("⇥/←/→ question");
-  const preset = PRESETS.find((p) => (!tabbed || p.enter === "⏎") && matchesAskFooter(footer.segments, footerOf(p, tabbed), true));
-  if (preset === undefined) return readReview(lines, texts, end, footer.segments);
+  const matched = matchQuestionFooter(footer.segments);
+  if (matched === null) return readReview(lines, texts, end, footer.segments);
+  const { preset, tabbed } = matched;
   const truncated = footer.segments.at(-1) === "Ctrl+O expand";
   const maxQuestionRows = footer.segments.at(-1) === "Ctrl+O collapse" ? MAX_BODY_ROWS : MAX_QUESTION_ROWS;
   const lowerDivider = end - 2;
@@ -313,7 +316,10 @@ export function detectAskSelect(lines: StyledLine[]): PromptModel | null {
 
 /** Review Enter submits once; Up/Down scroll here and must never be a pointer walk. */
 function readReview(lines: StyledLine[], texts: string[], end: number, footer: string[]): AskSelectRegion | null {
-  if (!matchesAskFooter(footer, ["⏎ submit", "↑/↓ scroll", "⎋ cancel"])) return null;
+  const preset = PRESETS.find(
+    (p) => p.tab !== null && matchesAskFooter(footer, [`${p.enter} submit`, "↑/↓ scroll", `${p.escape} cancel`]),
+  );
+  if (preset === undefined) return null;
   const lowerDivider = end - 2;
   if (!DIVIDER.test(texts[lowerDivider]!)) return null;
   let upperDivider = lowerDivider - 1;
@@ -328,7 +334,7 @@ function readReview(lines: StyledLine[], texts: string[], end: number, footer: s
   if (tabs === null || tabs.labels.length < 3 || tabs.current !== tabs.labels.length - 1) return null;
   const rows = texts.slice(upperDivider + 1, lowerDivider)
     .map((row) => BOX_ROW.exec(row)![1]!.trim()).filter((row) => row !== "");
-  if (rows.length !== tabs.labels.length || rows.at(-1) !== "❯ Submit") return null;
+  if (rows.length !== tabs.labels.length || rows.at(-1) !== `${preset.pointer} Submit`) return null;
   for (let i = 0; i < tabs.labels.length - 1; i++) {
     const prefix = `${i + 1}. ${tabs.labels[i]}: `;
     if (!rows[i]!.startsWith(prefix) || rows[i]!.length === prefix.length) return null;
@@ -420,7 +426,7 @@ function readBody(rows: string[], preset: Preset, allowSelected: boolean): Optio
       if (owner === undefined || owner.label === OTHER_LABEL) return null;
       // omp draws the description before the preview, never after it.
       if (owner.preview !== undefined) return null;
-      if (description.startsWith(preset.radio) || description.startsWith(preset.pointer) || description.startsWith("◉")) return null;
+      if ([preset.radio, preset.pointer, preset.radioSelected].some((glyph) => description.startsWith(glyph))) return null;
       owner.description = owner.description === undefined ? description : `${owner.description} ${description}`;
       continue;
     }
@@ -443,8 +449,9 @@ function readBody(rows: string[], preset: Preset, allowSelected: boolean): Optio
 function readOption(row: string, preset: Preset, bodyRow: number, allowSelected: boolean): Option | null {
   const inner = BOX_ROW.exec(row)?.[1]?.replace(/\s+$/, "");
   if (inner === undefined) return null;
-  const selected = allowSelected && (inner.startsWith(`${preset.pointer} ◉ `) || inner.startsWith("  ◉ "));
-  const radio = selected ? "◉" : preset.radio;
+  const selected =
+    allowSelected && (inner.startsWith(`${preset.pointer} ${preset.radioSelected} `) || inner.startsWith(`  ${preset.radioSelected} `));
+  const radio = selected ? preset.radioSelected : preset.radio;
   const pointed = inner.startsWith(`${preset.pointer} ${radio} `);
   if (!pointed && !inner.startsWith(`  ${radio} `)) return null;
   const rest = inner.slice((pointed ? preset.pointer.length : 1) + 1 + radio.length + 1);

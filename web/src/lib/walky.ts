@@ -78,7 +78,13 @@ export interface WalkyReceipt {
 }
 
 /** One row of `GET /api/pane/:id/walky`: the message with its receipt. */
-export type WalkyRow = WalkyMessage & { receipt: WalkyReceipt };
+export type WalkyRow = WalkyMessage & {
+  receipt: WalkyReceipt;
+  /** Present only on a row another Collie instance on the bridge's machine recorded: its state dir's name. */
+  recordedBy?: string;
+  /** With `recordedBy`: this pane's address in that instance's words (its member id), see {@link selfOf}. */
+  recordedAs?: string;
+};
 
 /** One reachable target of `GET /api/walky/who`. */
 export interface WalkyTarget {
@@ -88,6 +94,8 @@ export interface WalkyTarget {
   harness: string | null;
   label: string;
   state: string;
+  /** Present only when the session turned its walky talky off (M89). */
+  walky?: "off";
 }
 
 /**
@@ -425,6 +433,16 @@ export function bareAddress(address: string): string {
 export type WalkyDirection = "received" | "sent";
 
 /**
+ * The address a row is read against: this pane's own (`self`), or, on a row another Collie instance on
+ * the same machine recorded, this pane's address in that instance's words (`recordedAs`). Two instances
+ * that share one multiplexer see the same pane under two member ids, so a row's addresses name the pane
+ * with the recording instance's id and only that one tells sent from received, or this machine from another.
+ */
+export function selfOf(row: Pick<WalkyRow, "recordedAs">, self: string): string {
+  return row.recordedAs ?? self;
+}
+
+/**
  * Which way a row of a pane's list went, for the pane at address `self` (see {@link paneAddress}). The list
  * holds both the messages that reached the pane and the ones it sent (each with its receipt), and the row
  * has no field for the direction: it is read off the addresses. A row is SENT when its sender is this pane
@@ -432,9 +450,9 @@ export type WalkyDirection = "received" | "sent";
  * itself. With no `self` (a mount that cannot name its pane) every row reads as received, as it did before
  * the list held sent rows. Tokens are ignored on both sides ({@link bareAddress}).
  */
-export function directionOf(row: Pick<WalkyRow, "from" | "receipt">, self: string | undefined): WalkyDirection {
+export function directionOf(row: Pick<WalkyRow, "from" | "receipt" | "recordedAs">, self: string | undefined): WalkyDirection {
   if (self === undefined || row.from.address === null) return "received";
-  const me = bareAddress(self);
+  const me = bareAddress(selfOf(row, self));
   if (bareAddress(row.receipt.target) === me) return "received";
   return bareAddress(row.from.address) === me ? "sent" : "received";
 }
@@ -445,14 +463,15 @@ export function directionOf(row: Pick<WalkyRow, "from" | "receipt">, self: strin
  * machine is the same part of `self` (see {@link paneAddress}: the scope's host, the lead's id, or `local`).
  * An operator message, a solo install (no member id) and a mount with no `self` all read as this machine.
  */
-export function remoteMachineOf(row: Pick<WalkyRow, "kind" | "from">, self: string | undefined): string | null {
+export function remoteMachineOf(row: Pick<WalkyRow, "kind" | "from" | "recordedAs">, self: string | undefined): string | null {
   if (row.kind !== "agent" || self === undefined) return null;
+  const me = selfOf(row, self);
   const slashAt = row.from.address?.indexOf("/") ?? -1;
   const sender = slashAt > 0 && row.from.address !== null ? row.from.address.slice(0, slashAt) : row.from.memberId;
   if (sender === null || sender === "") return null;
-  const slash = self.indexOf("/");
+  const slash = me.indexOf("/");
   if (slash <= 0) return null;
-  return sender === self.slice(0, slash) ? null : sender;
+  return sender === me.slice(0, slash) ? null : sender;
 }
 
 const ID_ALPHABET = "abcdefghijklmnopqrstuvwxyz0123456789";
@@ -533,6 +552,11 @@ export function reasonWord(reason: string): string {
       return t("walky.reason.turnRunning");
     case "resting":
       return t("walky.reason.resting");
+    // A session that turned its walky talky off (M89): the target, or the sender itself.
+    case "walky talky off":
+      return t("walky.reason.walkyOff");
+    case "your walky talky is off":
+      return t("walky.reason.senderOff");
     default:
       return reason;
   }

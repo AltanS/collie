@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Check, CircleAlert, Mic, Trash2 } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 
 import { Button } from "@/components/ui/button";
 import { TOOLBAR_TAP_TARGET } from "@/components/ui/tap-target";
@@ -176,13 +176,13 @@ export function VoiceTakeover({
       <div aria-hidden className="flex min-h-0 flex-1 items-center justify-between gap-2 px-1 text-xs">
         {failed ? (
           <span className="flex min-w-0 items-center gap-1.5 font-medium text-status-blocked">
-            <CircleAlert className="size-3.5 shrink-0" />
+            <Icon name="error" className="size-3.5 shrink-0" />
             <span className="line-clamp-2 min-w-0 leading-4">{label}</span>
           </span>
         ) : (
           <>
             <span className="flex min-w-0 items-center gap-1.5 font-medium text-primary">
-              <Mic className={cn("size-3.5 shrink-0", !transcribing && "animate-pulse motion-reduce:animate-none")} />
+              <Icon name="mic" className={cn("size-3.5 shrink-0", !transcribing && "animate-pulse motion-reduce:animate-none")} />
               <span className="min-w-0 truncate">{label}</span>
             </span>
             <span className="shrink-0 tabular-nums text-muted-foreground">{elapsed}</span>
@@ -206,7 +206,7 @@ export function VoiceTakeover({
           aria-label={t("composer.mic.discardAria")}
           onClick={onDiscard}
         >
-          <Trash2 className="size-4" />
+          <Icon name="discard" className="size-4" />
         </Button>
         {failed && onSendToHost !== null && (
           <Button
@@ -246,7 +246,7 @@ export function VoiceTakeover({
               aria-label={sends ? t("composer.voice.okSendAria") : t("composer.voice.okAria")}
               onClick={onStop}
             >
-              <Check className="size-4" />
+              <Icon name="confirm" className="size-4" />
             </Button>
           )}
           {phase === "recording" && (

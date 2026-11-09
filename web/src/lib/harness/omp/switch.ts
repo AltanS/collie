@@ -152,7 +152,8 @@ const PRESETS: readonly SwitchPreset[] = [
     brain: "\u{EE9C}",
     window: "\u{E70F}",
     overContext: null,
-    hollowDot: null,
+    // The unselected role chip, first captured in 18.18.0 (`omp--v18-18-0-nerd-switch--w250.txt`).
+    hollowDot: "\u{F10C}",
   },
 ];
 

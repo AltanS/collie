@@ -1,0 +1,95 @@
+/* THE TRIAL RIBBON (M59 spec 08). Theme-proof by construction: every colour, the font and every size
+ * here is a literal, and nothing reads a custom property a theme sets. A theme that paints the page
+ * one colour, or hides its text, still leaves this bar and its two buttons readable, so the way back
+ * never depends on the theme being tried. The class names are this file's own; no token, utility or
+ * shared class reaches the ribbon, and `all: initial` drops whatever the page would pass down.
+ *
+ * While a trial runs, the root carries `collie-trial` and the app's height token `--app-h`
+ * (index.css) is 40px shorter, so the app, its composer and every sheet end above the ribbon instead
+ * of under it. The ribbon fills those 40px and the bottom safe area below them, where the app keeps
+ * only its own empty inset padding. The two rules below follow index.css's two `--app-h` rules; the
+ * one custom property read here is index.css's height token, which no theme sets. */
+
+:root.collie-trial {
+  --app-h: calc(100dvh - 40px);
+}
+@media (display-mode: standalone) {
+  @supports (-webkit-touch-callout: none) {
+    :root.collie-trial {
+      --app-h: calc(var(--app-h-ios-standalone) - 40px);
+    }
+  }
+}
+
+.collie-trial-ribbon {
+  all: initial;
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 2147483647;
+  pointer-events: auto;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: calc(40px + env(safe-area-inset-bottom, 0px));
+  padding: 0 0 env(safe-area-inset-bottom, 0px) 12px;
+  background: #111111;
+  border-top: 2px solid #ffd400;
+  color: #ffffff;
+  font: 600 13px/1.25 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  -webkit-text-size-adjust: 100%;
+}
+
+.collie-trial-ribbon__text {
+  all: initial;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: #ffffff;
+  font: 600 13px/1.25 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.collie-trial-ribbon__text[data-refused] {
+  color: #ffd400;
+  font-size: 12px;
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.collie-trial-ribbon__button {
+  all: initial;
+  box-sizing: border-box;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 38px;
+  min-width: 64px;
+  padding: 0 14px;
+  cursor: pointer;
+  pointer-events: auto;
+  font: 700 14px/1 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  text-align: center;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.collie-trial-ribbon__button:focus-visible {
+  outline: 2px solid #ffffff;
+  outline-offset: -4px;
+}
+
+.collie-trial-ribbon__keep {
+  background: #ffd400;
+  color: #111111;
+}
+
+.collie-trial-ribbon__back {
+  background: #ffffff;
+  color: #111111;
+}

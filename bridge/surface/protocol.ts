@@ -278,13 +278,13 @@ import {
   type HeldRow,
   STALE_SCREEN,
 } from "../../web/src/lib/surface/send.ts";
-import { askOf, frameImageKey, isFree, shortHash, type Surface } from "../../web/src/lib/surface/surface.ts";
+import { askOf, frameImageKey, isFree, shortHash, type Surface, type SurfaceTurn } from "../../web/src/lib/surface/surface.ts";
 import { closingReceipt, normalizePrompt, receiptWindowMs, type OpenReceipt } from "../../web/src/lib/surface/edges.ts";
 import type { CapState, CounterKey, ExampleEntry, InboxEntry } from "./counters.ts";
 import { askLifetimeOf, type AskBook } from "./ask.ts";
 import type { KeyGate } from "./key-gate.ts";
 import type { RequestStore, SendRecord } from "./requests.ts";
-import { HOLD_BRIDGE_MAX, HOLD_PANE_MAX, heldRow, type HeldEntry, type HoldCause, type HoldStore } from "./holds.ts";
+import { HOLD_BRIDGE_MAX, HOLD_ENDED_KEEP_MS, HOLD_PANE_MAX, heldRow, type HeldEntry, type HoldCause, type HoldStore } from "./holds.ts";
 import { QueuedSends, type BoxReading, type ReceiptQueued } from "./queued.ts";
 import { PROBE_MARKER, probeCharOf, probeResidue } from "./probe-marker.ts";
 
@@ -464,6 +464,12 @@ export interface SendTarget {
   readonly paneId: string;
   /** The agent string the multiplexer reports; it picks the profile by id. */
   readonly harness: string;
+}
+
+/** What {@link SendProtocol.expireHoldsOnStart} did on start: the ids it ended `expired`, and the ids it dropped. */
+export interface HoldsOnStart {
+  readonly ended: string[];
+  readonly dropped: string[];
 }
 
 /**
@@ -1926,8 +1932,25 @@ function aboveUnchanged(before: Snap, after: Snap, scroll = 0): boolean {
     if (tail.length === b.length && tail.every((row, i) => row === b[i])) return true;
     const lost = tail.length - b.length;
     if (bandMoved && lost > 0 && lost <= bandRows && b.some((row) => row.length > 0) && b.every((row, i) => row === tail[i])) return true;
+    if (shift > 0 && pinnedScroll(a, b, shift)) return true;
   }
   return false;
+}
+
+/**
+ * The scroll of {@link aboveUnchanged} under one pinned row: the screen's first row stays where it is,
+ * the same text, while the rows under it scroll up by `shift`. Every row under the pinned one must be
+ * the row `shift` lower down before, so no row is new; only rows that left at the top are gone. The
+ * running-turn compare holds the same rule ({@link aboveScrolled}). Claude Code 2.1.319 over Herdr
+ * (lab, 2026-11-07, 215 columns, a full screen): a slash command whose text wraps grows the box one row
+ * up, the transcript scrolls one row, and the screen's first row stays blank; read as a changed screen,
+ * every long `/subtask` was typed and never submitted.
+ */
+function pinnedScroll(before: readonly string[], after: readonly string[], shift: number): boolean {
+  if (before.length === 0 || after.length < 2 || before[0] !== after[0]) return false;
+  const rest = before.slice(1 + shift);
+  if (rest.length !== after.length - 1) return false;
+  return rest.some((row) => row.length > 0) && rest.every((row, i) => row === after[i + 1]);
 }
 
 /** The lines with the first one's lead character cut: a shell line's `!` turns into the box's prompt glyph. */
@@ -2566,6 +2589,19 @@ const CLEARED_FREE_POLLS = 1;
 const DRAFT_LEFT_MS = 2000;
 /** Polls in a row with no pane before its held requests end `pane_gone`. */
 const MISSING_POLLS = 3;
+/**
+ * Poll reads in a row, each taken after the row ended, that show the pane's box empty under no modal
+ * before a held row that ended `typed_not_submitted` goes ({@link SendProtocol.tickTyped}). Two, as a
+ * queued card's idle-and-empty exit (queued.ts `IDLE_EMPTY_POLLS`): one read can be a frame on its way.
+ */
+const TYPED_GONE_POLLS = 2;
+/**
+ * The least time between two reads that count for {@link SendProtocol.tickTyped}. A poke after a send
+ * takes two reads a few milliseconds apart, and those are one look at the pane, not two.
+ */
+const TYPED_GONE_GAP_MS = 1500;
+/** No typed row goes sooner than this after it ended, so the person sees its card ({@link SendProtocol.tickTyped}). */
+const TYPED_GONE_SEEN_MS = 5000;
 
 /** The agent part of a pane generation (`<agent>:<session id>`): a session id that resolves or a /clear keeps it. */
 function agentOfGeneration(generation: string): string {
@@ -2688,6 +2724,8 @@ export class SendProtocol {
   private readonly openSends: OpenSend[] = [];
   /** Sends that settled `sent` + `queued`, with their texts, until the journal or the box closes them (ADR 0122). */
   private readonly queuedSends: QueuedSends;
+  /** Per ended `typed_not_submitted` row: the empty-box polls in a row since it ended, and the newest one's time ({@link tickTyped}). */
+  private readonly typedEmpty = new Map<string, { count: number; at: number }>();
   /** Releases that went back because their box was still starting ({@link RunState.startWait}): no turn can come from them. */
   private readonly startWaits = new Set<string>();
 
@@ -2738,6 +2776,64 @@ export class SendProtocol {
       const read = boxOf(paneId);
       if (read !== null) this.boxRead(session, paneId, { ...read, poll: true });
     }
+  }
+
+  /**
+   * The poll's tick for the held rows that ended `typed_not_submitted` (#739). Such a row says its text
+   * is still in the box and offers Submit and Discard on that box. It used to have no exit but a tap or
+   * the hour of {@link HoldStore.prune}: on a crew member's pane, where the card has no buttons, it stood
+   * over an empty box until the hour ran out, and a restart read it back from disk. It now ends the way
+   * a returned queued card does (queued.ts, ADR 0122), when a later read shows the box without it, with
+   * the stricter reading of "without it" that cannot misread a wrapped, folded or scrolled draft: the
+   * box found and EMPTY, under no modal and with no turn running, on {@link TYPED_GONE_POLLS} poll reads
+   * in a row, each taken after the row ended, at least {@link TYPED_GONE_GAP_MS} after the one before it,
+   * and while no send runs on the pane (during a run the box holds that send's own text). Any other read
+   * starts the count again. No row goes before {@link TYPED_GONE_SEEN_MS} after it ended, so a person
+   * sees its card. The row's file goes and nothing is pressed; a box that
+   * shows only Collie's probe characters is not empty here, the safe side. No harness name: every
+   * profile reads its empty box as `""` (`SurfaceShadow.boxOf`, a placeholder included).
+   * Returns the ids that went, for a test. Never throws.
+   */
+  tickTyped(session: string, readOf: (paneId: string) => { readonly box: string | null; readonly at: number; readonly turn: SurfaceTurn } | null, surfaceOf: (paneId: string) => Surface | undefined): string[] {
+    const holds = this.deps.holds;
+    if (holds === undefined) return [];
+    const gone: string[] = [];
+    const open = new Set<string>();
+    try {
+      for (const entry of holds.list(session)) {
+        if (entry.state !== "ended" || entry.outcome !== "typed_not_submitted") continue;
+        open.add(entry.id);
+        const read = readOf(entry.paneId);
+        const surface = surfaceOf(entry.paneId);
+        const endedAt = entry.endedAt ?? entry.heldAt;
+        // A read from before the row ended, or one already counted, says nothing new.
+        const last = this.typedEmpty.get(entry.id);
+        if (read === null || read.at <= endedAt || (last !== undefined && read.at <= last.at)) continue;
+        const running = this.deps.locks.busy(`${session}\u0000${entry.paneId}`, this.now());
+        if (running) continue;
+        // Empty, and at rest: a turn that runs may still draw into the box.
+        const empty = read.box === "" && read.turn !== "running" && surface !== undefined && surface.modal === "none" && surface.turn !== "running";
+        if (!empty) {
+          this.typedEmpty.delete(entry.id);
+          continue;
+        }
+        // A read too soon after the one counted is the same look at the pane.
+        if (last !== undefined && read.at - last.at < TYPED_GONE_GAP_MS) continue;
+        const count = Math.min((last?.count ?? 0) + 1, TYPED_GONE_POLLS);
+        if (count < TYPED_GONE_POLLS || read.at < endedAt + TYPED_GONE_SEEN_MS) {
+          this.typedEmpty.set(entry.id, { count, at: read.at });
+          continue;
+        }
+        this.typedEmpty.delete(entry.id);
+        if (holds.remove(entry.id)) gone.push(entry.id);
+      }
+    } catch (err) {
+      console.warn(`[send] typed rows on ${session} failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+    // The count of a row that went another way (Dismiss, Submit, Discard, the hour) goes with it.
+    for (const id of this.typedEmpty.keys()) if (!open.has(id) && holds.get(id) === null) this.typedEmpty.delete(id);
+    if (gone.length > 0) console.log(`[send] ${String(gone.length)} typed row(s) on ${session} retired: the box reads empty`);
+    return gone;
   }
 
   /**
@@ -3419,6 +3515,52 @@ export class SendProtocol {
       changed++;
     }
     return changed;
+  }
+
+  /**
+   * On start, before the first poll (issue 740). A held request whose budget ran out while the bridge was
+   * down ends `expired` at its own `expiresAt`, not at the first poll: replayed, it ended with a fresh end
+   * time, so its "Not sent" card stood for another {@link HOLD_ENDED_KEEP_MS} after every restart. Its
+   * request settles `expired` and the counters take it, as {@link endHeld} does. The row stays only for
+   * what is left of that window, so a person who has not seen the card yet still does; a row whose end
+   * (now or earlier, `expired`) is older than the window goes outright, text and all. Returns the ids of
+   * both, for the one log line on start.
+   */
+  static expireHoldsOnStart(holds: HoldStore, store: RequestStore, now: number, ledger?: SendLedger): HoldsOnStart {
+    const ended: string[] = [];
+    const dropped: string[] = [];
+    for (const entry of holds.list()) {
+      if (entry.state === "held" && now >= entry.expiresAt) {
+        SendProtocol.settleExpired(store, entry.id, ledger);
+        if (now - entry.expiresAt > HOLD_ENDED_KEEP_MS) {
+          if (holds.remove(entry.id)) dropped.push(entry.id);
+          continue;
+        }
+        if (holds.end(entry.id, "expired", undefined, entry.expiresAt) !== null) ended.push(entry.id);
+        continue;
+      }
+      if (entry.state !== "ended" || entry.outcome !== "expired") continue;
+      if (now - (entry.endedAt ?? entry.heldAt) <= HOLD_ENDED_KEEP_MS) continue;
+      if (holds.remove(entry.id)) dropped.push(entry.id);
+    }
+    return { ended, dropped };
+  }
+
+  /** The request of a held row whose budget ran out settles `expired`, and the counters take it ({@link expireHoldsOnStart}). */
+  private static settleExpired(store: RequestStore, id: string, ledger: SendLedger | undefined): void {
+    const record = store.get(id);
+    const held = record?.receipt;
+    if (record === null || held === undefined || record.phase !== "held") return;
+    const { reason: _none, queued: _never, detail: _noDetail, saw: _noSaw, ...rest } = held;
+    store.settle(id, { ...rest, outcome: "expired" });
+    try {
+      ledger?.send(
+        { harness: held.harness === "" ? "-" : held.harness, version: held.version ?? "-", profileId: held.profileId ?? "-", status: held.profileStatus ?? "-" },
+        { outcome: "expired", reason: undefined, probed: false },
+      );
+    } catch (err) {
+      console.warn(`[surface] counters failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
 
   /**

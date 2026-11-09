@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { TerminalSquare } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 
 import { cn } from "@/lib/utils";
 import { useTabLook, type TabLook } from "@/lib/tab-look";
@@ -250,7 +250,7 @@ function PanePill({
       )}
     >
       {isShell ? (
-        <TerminalSquare className="size-3.5 shrink-0" />
+        <Icon name="shell-pane" className="size-3.5 shrink-0" />
       ) : (
         <StatusDot status={shownStatus(pane)} live className="size-2.5" />
       )}

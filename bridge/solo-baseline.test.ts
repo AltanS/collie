@@ -386,6 +386,12 @@ const PANE_WIRE_KEYS = {
   // 2026-10-18). A live solo bridge carries it on every pane, the change this baseline records on
   // purpose; the harness builds its wire with no instance registry, so no golden byte moved.
   instance: true,
+  // Not a crew dimension: a session turned its walky talky off (M89). Present only while it is off,
+  // and this harness builds its body with no reader, so no golden byte moved.
+  walkyOff: true,
+  // Not a crew dimension: how many pins the pane's session holds (M90). Present only above zero, and this
+  // harness builds its body with no pin store, so no golden byte moved.
+  pins: true,
   // Not a crew dimension: the pane's usage dots (bridge/usage.ts, .adr/0115). Attached at serialise
   // time from the statusLine wrapper's file, and this harness builds its body with no reader, so no
   // golden byte moved.
@@ -542,6 +548,7 @@ describe("solo zero-tax — wire shapes carry no crew dimension", () => {
       "model",
       "paneId",
       "paneLabel",
+      "pins",
       "progress",
       "readableLines",
       "sendProtocol",
@@ -560,6 +567,7 @@ describe("solo zero-tax — wire shapes carry no crew dimension", () => {
       "todos",
       "turnId",
       "usage",
+      "walkyOff",
       "workspaceId",
       "workspaceLabel",
       "workspaceNumber",
@@ -762,7 +770,9 @@ describe("solo zero-tax — routes", () => {
       // pane whose adapter raises asks as data takes it, so a solo Herdr bridge answers it the refusal.
       // `send` and `abort` name the turn the phone saw (ADR 0101): writes, forwarded the same way, and
       // only a pane whose adapter takes guarded controls takes them; a Herdr pane gets the refusal.
-      "/^\\/api\\/pane\\/([^/]+)(?:\\/(reply|keys|upload|close|rename|history|chat|changes|files|focus|answer|send|abort|clear|action))?$/",
+      // `held` (issue 740) is the Cancel or Dismiss on a queued row, by pane, so it forwards to the member
+      // whose hold queue keeps the row; on a solo collie it answers what `DELETE /api/send/<id>` does.
+      "/^\\/api\\/pane\\/([^/]+)(?:\\/(reply|keys|upload|close|rename|history|chat|changes|files|focus|answer|send|abort|clear|action|pins|held))?$/",
       // The slash commands Claude Code would load in the pane's cwd: a read of this machine's disk,
       // asked only when the palette opens, so a solo instance pays nothing per poll.
       "/^\\/api\\/pane\\/([^/]+)\\/claude-commands$/",
@@ -870,6 +880,10 @@ describe("solo zero-tax — routes", () => {
       "/api/launchers/added/rename",
       // Machines (ADR 0084): the list with each machine's latest sample. A read, gated as one.
       "/api/machines",
+      // The math pack (ADR 0132): a SOLO route that legitimately extends this list, named here rather
+      // than exempted. Lead-local like the Whistle route, gated like it, and not forwardable. A bridge
+      // whose operator never taps "Download the math engines" fetches nothing and writes nothing.
+      "/api/math",
       // The prompt-cache watch list (M28/03, ADR 0042). Three SOLO routes in the notifications family,
       // named here rather than exempted: the preference lives on the collie holding the subscription, so
       // none of the three is forwardable and `bridge/crew/router.test.ts` pins all three as 404 across a
@@ -932,6 +946,10 @@ describe("solo zero-tax — routes", () => {
       // The trouble tally (M86 spec 05): the phone's one count when a trouble card showed. Solo for the
       // same reason: the bridge the phone talks to counts it under its own install.
       "/api/telemetry/trouble",
+      // The community theme registry (M59 spec 06): a SOLO route that legitimately extends this list,
+      // named here rather than exempted. Lead-local like the math pack, and not forwardable. A bridge
+      // whose operator never taps Refresh in the Theme card fetches nothing and writes nothing.
+      "/api/themes/registry",
       // Starting an update from the phone (M15/05) — a SOLO route that legitimately extends this
       // list, named here rather than exempted. Write-gated through the same closure a send rides,
       // and it registers no crew sibling: a peer is levelled from the lead's terminal
@@ -958,6 +976,9 @@ describe("solo zero-tax — routes", () => {
       // the list of reachable targets (a read). SOLO routes; an address on another member is the crew
       // seam's business, never a route here.
       "/api/walky",
+      // A session's walky talky off switch (M89 spec 04): a write under the device gate, session-scoped,
+      // so a `?host=` set is forwarded to the member that owns the pane. Solo, it sets this bridge's own flag.
+      "/api/walky/off",
       "/api/walky/who",
       "/api/workspace",
       // The New sheet's branch from a FOLDER (M48, ADR 0093): the plan it shows before Start, and the
@@ -967,6 +988,9 @@ describe("solo zero-tax — routes", () => {
       "/api/worktree/plan",
       "/auth",
       "/auth/*",
+      // The math engines' files (ADR 0132): static, ungated like every other file of the web app,
+      // served from the store's pack or from `web/dist/math/` beside a source build.
+      "/math/*",
     ]);
   });
 
@@ -1272,11 +1296,17 @@ const STATE_DIR_ENTRIES = [
   // and a bridge only started and stopped does not. Both are driven in "the machine files appear …".
   "machine-alerts.json",
   "machine-history.json",
+  // The math pack (ADR 0132): `<stateDir>/math/<version>/`, the engines a tap in Settings fetched.
+  // Written by that tap and by nothing else: absent on every bridge whose operator never taps it.
+  "math",
   "notify-prefs.json",
   // Device pairing. Both are absent until the operator runs `collie pair`, and an install that
   // never does keeps writing exactly the six entries above it.
   "paired-devices.json",
   "pairing-pending.json",
+  // The pins of a session (M90): a folder, one file per session, written by use and by nothing else. Absent
+  // until the first pin from a phone; a read of the list or a bridge that is merely started never makes it.
+  "pins",
   "push-subscriptions.json",
   // The Send Protocol's request files and receipts (M56 spec 05), one per request id in this folder.
   // Created by a bridge that sends text, which is the default since spec 06: with COLLIE_SEND_PROTOCOL=0
@@ -1303,6 +1333,9 @@ const STATE_DIR_ENTRIES = [
   // last day sent, the phone's switch and the trouble tally (M86 spec 05). A NEW file; the ID and the
   // tally are deleted the moment the ping is off, and an older build ignores the file.
   "telemetry.json",
+  // The community theme registry (M59 spec 06): `<stateDir>/themes/registry.json`, the copy a tap on
+  // Refresh in the Theme card fetched. Written by that tap and by nothing else.
+  "themes",
   // The detached updater's own stdout and stderr (#283), with the run before it kept beside it as
   // `update-runner.log.1`. Absent until the first update started from the phone: the bridge opens it
   // only to hand the descriptor to the runner it spawns.

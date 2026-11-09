@@ -6,13 +6,14 @@ import { join } from "node:path";
 
 import type { BeaconMatcher } from "../beacon/decorate.ts";
 import { HOST, hostFor } from "../host.ts";
-import type { JsonValue } from "../json.ts";
+import type { JsonObject, JsonValue } from "../json.ts";
 import type { SendResult, WalkyHost, WalkyPane } from "./deliver.ts";
 import { WalkyLog } from "./log.ts";
 import { parseWalkyRequest, RAW_BODY_MAX, readWalkyRequest } from "./parse.ts";
 import { BAD_ACK_IDS, BAD_MESSAGE_ID, BAD_REQUEST_LINE, BARE_BAD_REQUEST, bodyOverRaw, NO_ADDRESS, unknownOp, unreadAddress } from "./refusals.ts";
 import { WalkyService } from "./service.ts";
-import { answerRequest, answerUnread, CANCEL_NEEDS_A_PANE, placeMarkers, walkySocketPath, WalkyServer, type PlaceTarget } from "./socket.ts";
+import { WalkyOff } from "./off.ts";
+import { answerRequest, answerUnread, CANCEL_NEEDS_A_PANE, placeMarkers, SWITCH_NEEDS_A_PANE, walkySocketPath, WalkyServer, type PlaceTarget } from "./socket.ts";
 
 // A Unix socket file with an owner-only mode is POSIX; Windows has no walky socket ("Windows has no
 // socket" below), so every part of this test is about that socket.
@@ -33,8 +34,8 @@ const target: PlaceTarget = { session: "main", matcher, paneIds: () => ["%1", "%
 const marker = (pane: string) => [{ namespace: "tmux", scope: "/tmp/tmux-1/default", pane }];
 
 const panes: WalkyPane[] = [
-  { session: "main", paneId: "%1", agent: true, harness: "agent-x", label: "repo#a", state: "idle", activeAt: null, instance: "aaaa", terminal: true },
-  { session: "main", paneId: "%2", agent: true, harness: "agent-y", label: "repo#b", state: "working", activeAt: null, instance: "bbbb", terminal: true },
+  { session: "main", paneId: "%1", agent: true, harness: "agent-x", label: "repo#a", state: "idle", activeAt: null, instance: "aaaa", terminal: true, off: false },
+  { session: "main", paneId: "%2", agent: true, harness: "agent-y", label: "repo#b", state: "working", activeAt: null, instance: "bbbb", terminal: true, off: false },
 ];
 
 const host: WalkyHost = {
@@ -56,6 +57,59 @@ describe("placing the CLI's pane", () => {
     expect(await placeMarkers(marker("%9"), [target])).toBeNull();
     expect(await placeMarkers([{ namespace: "tmux", scope: "/other", pane: "%2" }], [target])).toBeNull();
     expect(await placeMarkers(marker("%2"), [target, { ...target, session: "twin" }])).toBeNull();
+  });
+});
+
+describe("the off and on requests (M89)", () => {
+  /** A service whose host reads the off store, as the bridge's does; pane `%3` is a shell. */
+  function switched() {
+    const root = mkdtempSync(join(tmpdir(), "walky-socket-"));
+    roots.push(root);
+    const off = new WalkyOff(join(root, "walky"));
+    const shell: WalkyPane = { ...panes[0]!, paneId: "%3", agent: false, instance: "cccc" };
+    const switchHost: WalkyHost = { ...host, panes: () => [...panes, shell].map((pane): WalkyPane => Object.assign({}, pane, { off: off.isOff(pane) })) };
+    return { walky: new WalkyService({ log: new WalkyLog(join(root, "walky")), host: switchHost, off, memberId: null, enabled: () => true, machine: "desk", keyPem: () => null }), off };
+  }
+  const threePanes: PlaceTarget = { ...target, paneIds: () => ["%1", "%2", "%3"] };
+  const ask = async (walky: WalkyService, line: JsonObject) => answerRequest(walky, parseWalkyRequest(JSON.stringify({ v: 1, ...line }))!, [threePanes]);
+
+  test("off and on set the flag of the asker's own pane, and are idempotent", async () => {
+    const { walky, off } = switched();
+    expect(await ask(walky, { op: "off", markers: marker("%1") })).toEqual({ ok: true, off: true });
+    expect(off.all()).toMatchObject([{ session: "main", paneId: "%1", token: "aaaa", by: "session" }]);
+    expect(await ask(walky, { op: "off", markers: marker("%1") })).toEqual({ ok: true, off: true });
+    expect(off.isOff({ session: "main", paneId: "%2", instance: "bbbb" })).toBe(false);
+    expect(await ask(walky, { op: "on", markers: marker("%1") })).toEqual({ ok: true, off: false });
+    expect(await ask(walky, { op: "on", markers: marker("%1") })).toEqual({ ok: true, off: false });
+    expect(off.all()).toEqual([]);
+  });
+
+  test("a request with no markers, or from a shell pane, is refused; markers that name no pane here are `not here`", async () => {
+    const { walky, off } = switched();
+    expect(await ask(walky, { op: "off", markers: [] })).toEqual({ ok: false, error: SWITCH_NEEDS_A_PANE });
+    expect(await ask(walky, { op: "off", markers: marker("%3") })).toEqual({ ok: false, error: SWITCH_NEEDS_A_PANE });
+    expect(await ask(walky, { op: "on", markers: [] })).toEqual({ ok: false, error: SWITCH_NEEDS_A_PANE });
+    expect(await ask(walky, { op: "off", markers: marker("%9") })).toEqual({ ok: false, error: "not here" });
+    expect(off.all()).toEqual([]);
+  });
+
+  test("`who` says so of the asker and of the pane, and says nothing when on", async () => {
+    const { walky } = switched();
+    const on = await ask(walky, { op: "who", markers: marker("%1") });
+    expect("selfOff" in on).toBe(false);
+    await ask(walky, { op: "off", markers: marker("%1") });
+    expect(await ask(walky, { op: "who", markers: marker("%1") })).toMatchObject({ ok: true, selfOff: true, targets: [{ address: "local/%1#aaaa", walky: "off" }, { address: "local/%2#bbbb" }] });
+    const other = await ask(walky, { op: "who", markers: marker("%2") });
+    expect("selfOff" in other).toBe(false);
+  });
+
+  test("a socket send from the off pane is refused, and a send to it too", async () => {
+    const { walky } = switched();
+    await ask(walky, { op: "off", markers: marker("%1") });
+    expect(await ask(walky, { op: "send", markers: marker("%1"), id: "wt_aaaaaaaaaaa1", to: "local/%2", body: "hi" })).toMatchObject({ ok: true, receipts: [{ state: "refused", reason: "your walky talky is off" }] });
+    expect(await ask(walky, { op: "send", markers: marker("%2"), id: "wt_aaaaaaaaaaa2", to: "local/%1", body: "hi" })).toMatchObject({ ok: true, receipts: [{ state: "refused", reason: "walky talky off" }] });
+    await ask(walky, { op: "on", markers: marker("%1") });
+    expect(await ask(walky, { op: "send", markers: marker("%2"), id: "wt_aaaaaaaaaaa3", to: "local/%1", body: "hi" })).toMatchObject({ ok: true, receipts: [{ state: "accepted" }] });
   });
 });
 

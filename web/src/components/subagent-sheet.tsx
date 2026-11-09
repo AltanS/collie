@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type MutableRefObject, type ReactNode } from "react";
-import { Bot, Check, ChevronRight } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 
 import {
   ItemView,
@@ -213,7 +213,7 @@ export function SubagentSheet({
   const titleNode = target && (
     <span className="flex min-w-0 flex-col gap-0.5">
       <span className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-        <Bot className="size-3.5 shrink-0" />
+        <Icon name="subagent" className="size-3.5 shrink-0" />
         <span className="truncate">{agentLabel(target.agent)}</span>
         {running && (
           <StatusDot status="working" live label={t("chat.card.status.running")} className="size-2" />
@@ -245,7 +245,8 @@ export function SubagentSheet({
                 onClick={() => setPromptOpen((v) => !v)}
                 className="flex min-h-10 w-full min-w-0 items-center gap-2 px-3 py-2 text-left text-xs transition-colors active:bg-status-working/15"
               >
-                <ChevronRight
+                <Icon
+                  name="disclosure"
                   className={cn(
                     "size-3.5 shrink-0 text-status-working transition-transform",
                     promptOpen && "rotate-90",
@@ -286,7 +287,7 @@ export function SubagentSheet({
                   <span className="text-status-blocked">{t("chat.card.status.failed")}</span>
                 ) : (
                   <>
-                    <Check className="size-3.5 text-status-done" />
+                    <Icon name="done" className="size-3.5 text-status-done" />
                     <span>{t("chat.subagent.report")}</span>
                   </>
                 )}

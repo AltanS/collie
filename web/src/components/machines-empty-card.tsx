@@ -1,4 +1,4 @@
-import { Server } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 
 import { Card } from "@/components/ui/card";
 import { useLocale } from "@/hooks/use-locale";
@@ -15,7 +15,7 @@ export function MachinesEmptyCard({ reason }: { reason: "unavailable" | "error" 
   return (
     <Card className="gap-0 py-0">
       <div className="flex items-start gap-3 p-4">
-        <Server className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
+        <Icon name="machine" className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
         <div className="min-w-0">
           <div className="font-medium">{t(`machines.${reason}.title`)}</div>
           <p className="text-sm text-muted-foreground">{t(`machines.${reason}.description`)}</p>

@@ -46,14 +46,22 @@ export function widthClassOf(px: number): WidthClass {
   return "compact";
 }
 
-/** The sidebar's width by width class, and the rail it collapses to. Compact has neither. */
-export const SIDEBAR_WIDTH = { medium: 280, expanded: 320 } as const satisfies Record<Exclude<WidthClass, "compact">, number>;
+/** The sidebar's width by width class, and the rail it collapses to. Compact has neither.
+ *  MEDIUM IS 264, down from 280: on a 705px two-screen phone 280 was 40% of the screen. 264 is the
+ *  floor where the summary line's commonest English word still fits ("12 unseen", 77px of an 83px
+ *  slot); at 256 it fell back to a dot and a number. "1 needs you" wants 88px and drops its word
+ *  below 269 (status-counts.tsx's ladder: the dot and the number stay, nothing is cut). */
+export const SIDEBAR_WIDTH = { medium: 264, expanded: 320 } as const satisfies Record<Exclude<WidthClass, "compact">, number>;
 export const RAIL_WIDTH = 56;
 
 // ── Column widths ───────────────────────────────────────────────────────────────────────────────
 
-/** A pane is never narrower than this many CSS px. */
-export const MIN_PANE_WIDTH = 360;
+/** A pane is never narrower than this many CSS px. It is 440, not the 360 of the first cut: at 360
+ *  wide mode began at a 720px strip, so a lone column stood at 1/2 beside an empty add column on a
+ *  1114 or 1180px tablet in landscape (392 and 425px of chat), and closing the sidebar on an 820px
+ *  tablet in portrait made the chat NARROWER, 535 to 377px. From 440 wide mode begins at an 880px
+ *  strip, and those three screens draw one full column (ADR 0120, addendum 2026-11-07). */
+export const MIN_PANE_WIDTH = 440;
 
 /** A column's width as a share of the strip, in wide mode only. Niri's preset column widths. */
 export type Preset = "half" | "fourfifths" | "full";

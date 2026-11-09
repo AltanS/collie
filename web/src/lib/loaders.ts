@@ -20,6 +20,7 @@ import {
   fetchMachines,
   fetchPane,
   fetchPaneWalky,
+  fetchPanePins,
   fetchSnapshot,
   isApiErrorStatus,
   isPairingRefusal,
@@ -65,6 +66,7 @@ import type {
   PairedDeviceWire,
   PaneHistoryResponse,
   PaneReadResponse,
+  PinRow,
   ServerSummary,
   SessionSummary,
   SnapshotResponse,
@@ -748,6 +750,38 @@ async function readWalky(paneId: string, scope: Scope, signal: AbortSignal | und
     return rows;
   } catch {
     return lastWalky.get(key) ?? null;
+  }
+}
+
+/** The last list of pins each pane answered, so a pane opened again shows its mark before the next read lands (M90). */
+const lastPins = new Map<string, PinRow[]>();
+
+/** Forget every list of pins held, for a test: the lists outlive a pane view, so one case's would open the next. */
+export function resetPinsForTests(): void {
+  lastPins.clear();
+}
+
+/** The pins this phone last read for a pane, or `null` when it has not read any. */
+export function heldPins(paneId: string, scope: Scope | undefined): PinRow[] | null {
+  return lastPins.get(paneKey(paneId, scope)) ?? null;
+}
+
+/**
+ * The pane's pinned messages, newest first, or `null` when they could not be read now (M90). Never throws: the
+ * list is a nicety on a Chat view, and a failed read (an older machine with no route, a pane with no session,
+ * a dropped link) leaves the mark as the pane's own `pins` count has it. A good read is kept, so the next
+ * visit to the pane starts from it.
+ */
+export async function readPins(paneId: string, scope: Scope | undefined, signal?: AbortSignal): Promise<PinRow[] | null> {
+  try {
+    const fresh = await fetchPanePins(scope, paneId, signal);
+    const key = paneKey(paneId, scope);
+    const previous = lastPins.get(key);
+    const rows = previous === undefined ? fresh : shareEqual(previous, fresh);
+    lastPins.set(key, rows);
+    return rows;
+  } catch {
+    return null;
   }
 }
 

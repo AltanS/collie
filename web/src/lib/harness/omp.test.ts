@@ -80,9 +80,10 @@ const DECLINED_SWITCH = [
   "omp--v18-4-switch-quick-roles.txt",
   "omp--v18-4-switch-task.txt",
 ];
-// omp 18.17.0's picker captures (`unicode` and `nerd` presets, 2026-11-06) join the 18.4.10 cohort by name.
+// omp 18.17.0's picker captures (`unicode` and `nerd` presets, 2026-11-06) and 18.18.0's `nerd` one (2026-11-08)
+// join the 18.4.10 cohort by name.
 const SWITCH_COHORT = allOmpFixtures.filter(
-  (name) => name.startsWith("omp--v18-4-switch") || /^omp--v18-17-0-(?:nerd-)?switch/.test(name),
+  (name) => name.startsWith("omp--v18-4-switch") || /^omp--v18-1[78]-0-(?:nerd-)?switch/.test(name),
 );
 const SWITCH_LIFTED = SWITCH_COHORT.filter((name) => !DECLINED_SWITCH.includes(name));
 
@@ -118,6 +119,13 @@ const LIFTED = new Set([
   // omp 18.16.0's Ask, footer ending in the glyph keycap `⌥H hide` (omp/ask.ts).
   "omp--v18-16-0-ask-single-glyph-hide--w200.txt",
   "omp--v18-16-0-ask-single-glyph-hide-moved--w200.txt",
+  // omp 18.16.0's plan review, options focused (omp/plan-review.ts): plain, under the Contents sidebar,
+  // and with the model-tier slider.
+  "omp--v18-16-0-plan-review--w80.txt",
+  "omp--v18-16-0-plan-review-contents--w140.txt",
+  "omp--v18-16-0-plan-review-moved--w80.txt",
+  "omp--v18-16-0-plan-review-slider--w140.txt",
+  "omp--v18-16-0-plan-review-slider-moved--w140.txt",
   "omp--v18-10-ask-single.txt",
   "omp--v18-10-ask-batch.txt",
   "omp--v18-10-ask-batch-moved.txt",
@@ -143,6 +151,16 @@ const LIFTED = new Set([
   "omp--v18-12-6-ask-freetext--w120.txt",
   // omp 18.6.1's `Allow tool: goal`, a dialog with no body (approval.ts, BODYLESS_TOOLS).
   "omp--v18-6-1-approval-goal--w120.txt",
+  // omp 18.18.0 at 250 columns (2026-11-08): the divided approval in both presets, and the `nerd` preset's
+  // batched Ask (each question, a revisited one with its saved answer, the review) and plan review (omp/keycaps.ts).
+  "omp--v18-18-0-approval-bash--w250.txt",
+  "omp--v18-18-0-nerd-approval-bash--w250.txt",
+  "omp--v18-18-0-nerd-ask-batch--w250.txt",
+  "omp--v18-18-0-nerd-ask-batch-q2--w250.txt",
+  "omp--v18-18-0-nerd-ask-batch-saved--w250.txt",
+  "omp--v18-18-0-nerd-ask-review--w250.txt",
+  "omp--v18-18-0-nerd-plan-review--w250.txt",
+  "omp--v18-18-0-nerd-plan-review-moved--w250.txt",
   // The compact model picker's session state is DERIVED: every `omp--v18-4-switch*` capture except the
   // declined states listed in DECLINED_SWITCH. A new capture of it lifts by default, and the conformance
   // suite fails it loudly if it does not, which is the moment a person files it as declined with a reason.
@@ -403,9 +421,17 @@ const DECLINED = new Set([
   "omp--v18-16-0-custom-answer-typed--w200.txt",
   "omp--v18-16-0-custom-answer-wrapped--w200.txt",
   "omp--v18-16-0-note-editor-empty--w200.txt",
+  // — omp 18.16.0's plan review in states omp/plan-review.ts declines: focus on the plan body (the
+  //   footer names scroll keys, no `⏎ confirm`), and the slider footer clipped with `…` at 80 columns.
+  //   Neither names a way out, so neither draws the card either.
+  "omp--v18-16-0-plan-review-regions--w80.txt",
+  "omp--v18-16-0-plan-review-slider-clipped--w80.txt",
   // omp 18.17.0's `/usage` dashboard (2026-11-06): a full-screen modal with a way out (`⎋ close`) and no
   // list to point at. It stays raw and gets the unread-dialog card with its Escape, like `/settings`.
   "omp--v18-17-0-usage-dashboard--w120.txt",
+  // omp 18.18.0's `nerd` review with every question unanswered: ask.ts reads a review only when every
+  // answer is present, so it stays raw with the card's Escape, as in `unicode`.
+  "omp--v18-18-0-nerd-ask-review-unanswered--w250.txt",
   // — The full-screen pickers. No `menu` block for these: `parseKeyHintFooter` (the shared, pinned
   //   key-hint grammar) returns [] for the `/model` and `/resume` footers, and for `/settings` it
   //   yields only {Jump sections, [Tab]} + {Close, [Escape]} because `menuKeyFor` rejects the
@@ -618,11 +644,28 @@ describe("the omp corpus", () => {
     "omp--v18-16-0-custom-answer-typed--w200.txt",
     "omp--v18-16-0-custom-answer-wrapped--w200.txt",
     "omp--v18-16-0-note-editor-empty--w200.txt",
+    "omp--v18-16-0-plan-review--w80.txt",
+    "omp--v18-16-0-plan-review-contents--w140.txt",
+    "omp--v18-16-0-plan-review-moved--w80.txt",
+    "omp--v18-16-0-plan-review-regions--w80.txt",
+    "omp--v18-16-0-plan-review-slider--w140.txt",
+    "omp--v18-16-0-plan-review-slider-clipped--w80.txt",
+    "omp--v18-16-0-plan-review-slider-moved--w140.txt",
     "omp--v18-17-0-nerd-switch--w120.txt",
     "omp--v18-17-0-nerd-switch-moved--w120.txt",
     "omp--v18-17-0-nerd-switch-search--w120.txt",
     "omp--v18-17-0-switch--w120.txt",
     "omp--v18-17-0-usage-dashboard--w120.txt",
+    "omp--v18-18-0-approval-bash--w250.txt",
+    "omp--v18-18-0-nerd-approval-bash--w250.txt",
+    "omp--v18-18-0-nerd-ask-batch--w250.txt",
+    "omp--v18-18-0-nerd-ask-batch-q2--w250.txt",
+    "omp--v18-18-0-nerd-ask-batch-saved--w250.txt",
+    "omp--v18-18-0-nerd-ask-review--w250.txt",
+    "omp--v18-18-0-nerd-ask-review-unanswered--w250.txt",
+    "omp--v18-18-0-nerd-plan-review--w250.txt",
+    "omp--v18-18-0-nerd-plan-review-moved--w250.txt",
+    "omp--v18-18-0-nerd-switch--w250.txt",
     "omp--v18-4-approval-bash-moved.txt",
     "omp--v18-4-approval-bash.txt",
     "omp--v18-4-approval-write-long.txt",

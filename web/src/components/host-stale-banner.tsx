@@ -1,4 +1,4 @@
-import { ServerOff } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 
 import type { HostHealth } from "@/lib/host-health";
 import { cn } from "@/lib/utils";
@@ -93,7 +93,7 @@ export function HostStaleBanner({
         className,
       )}
     >
-      <ServerOff className="mt-px size-3.5 shrink-0" />
+      <Icon name="machine-offline" className="mt-px size-3.5 shrink-0" />
       <span>
         {/* The host name is operator-supplied (their `join` label) and, like every other such string
             that reaches this UI, is rendered as a text node and never as markup. */}

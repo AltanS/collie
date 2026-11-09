@@ -161,8 +161,13 @@ and the one case the phone cannot fix, see
 ![The Updates page on a lead, with the preflight per member and one button for the crew.](images/updates/updates-page-crew-available.png)
 
 A band across the top of every screen carries what is standing rather than what is running: the
-release on offer, a peer that could not update, and `New version — tap to update` when the app in
-your hand is behind the bridge. A running update is the sheet's, not the band's.
+release on offer, and a peer that could not update. A running update is the sheet's, not the band's.
+
+When the app in your hand is updating, the Collie mark in the header says so. Every bead turns fast
+and takes the update colour while the new version downloads and until the page reloads onto it.
+The band stays empty while it does.
+Tap the mark to open the dashboard. Its update line says `Downloading the new version…` with how
+far it is, or `New version, tap to update` when the download is done.
 
 ![The band when a new release is ready to install.](images/updates/band-available.png)
 
@@ -247,7 +252,7 @@ A deputy's standby door serves it at `/standby/update` while the main port is do
 If a new beacon hook event is available, `update` prints a notice to re-run `hooks install claude`.
 
 After each successful update, rollback or switch, the new build runs `collie skill sync`. It
-installs the walky talky skill into every agent harness on this machine and updates a copy that is
+installs the WalkyTalky skill into every agent harness on this machine and updates a copy that is
 behind, so your agents know the build you now run. It prints one line per file it changed, and it
 never fails the update: if it cannot run, `update` prints one note and you run `collie skill sync`
 by hand. It leaves out a harness where you ran `collie skill uninstall`. Set `COLLIE_SKILL_SYNC=off`
@@ -278,6 +283,9 @@ is detached and shallow, and it lives in a directory Herdr owns, so there is no 
 beside it, nothing to hand off, and nothing to flip back to. `--rollback` is refused there; the
 recovery path is a reinstall of a named tag
 (`herdr plugin install AltanS/collie --ref vX.Y.Z --yes`).
+
+**A rollback from 1.28 to 1.27 keeps the version 4 themes on each phone.** Adding or removing a theme
+on 1.27 drops them; [Versions](themes.md#versions) has the detail.
 
 **Rolling back from 1.8.0 to 1.7.0 needs two hand edits in the state directory.** 1.8.0 renames the
 three state files on its first start, so `~/.local/state/collie/` now holds `crew-trust.json`,
@@ -328,7 +336,8 @@ Expect the newest tag.
 
 **The phone's own bundle** is a separate thing. The PWA checks for a new build by itself and reloads
 within about a minute, and it holds that reload for the length of an update run. If you are mid-task
-it shows a "tap to update" banner and waits for your tap.
+the header mark turns in the update colour, and the dashboard's update line offers `New version, tap
+to update`. The page reloads on its own once you are done.
 
 ### On Windows
 

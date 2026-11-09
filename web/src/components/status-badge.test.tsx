@@ -154,11 +154,12 @@ describe("StatusDot — the glyph", () => {
     expect(notLive.container.querySelector(".status-breathe")).toBeNull();
   });
 
-  it("defines the turn as a linear 1.8s rotation and nothing else, and stops it under reduced motion", () => {
+  it("defines the turn as a 1.8s rotation in 24 steps and nothing else, and stops it under reduced motion", () => {
     // jsdom does not apply index.css, so the rule is read from the source: one keyframe, rotate only
-    // (no opacity, no scale), `linear`, 1.8s a turn, and `animation: none` in the reduced-motion
-    // query. The opacity breathe it replaced is gone.
-    const rule = /\.status-turn\s*\{\s*animation:\s*status-turn\s+1\.8s\s+linear\s+infinite;\s*\}/.exec(indexCss);
+    // (no opacity, no scale), 1.8s a turn in 24 steps, and `animation: none` in the reduced-motion
+    // query. The opacity breathe it replaced is gone. Stepped, not linear (issue 748): a linear turn
+    // asks for 60 frames a second for as long as an agent works, 24 steps for about 13.
+    const rule = /\.status-turn\s*\{\s*animation:\s*status-turn\s+1\.8s\s+steps\(24\)\s+infinite;\s*\}/.exec(indexCss);
     expect(rule).not.toBeNull();
     const frames = /@keyframes status-turn\s*\{([^@]*?\})\s*\}/.exec(indexCss)?.[1] ?? "";
     expect(frames).toContain("transform: rotate(360deg)");

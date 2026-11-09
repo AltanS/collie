@@ -244,6 +244,12 @@ export interface AgentView {
    * all, and the phone then draws exactly what it drew before the field existed.
    */
   gitHead?: GitHead;
+  /**
+   * How many pins the pane's session holds (M90, bridge/pins/store.ts). Set at snapshot time from the
+   * store, only when above zero, never `0`, so a pane of a session with no pins and every solo body stay
+   * what they were. The phone shows the Pins mark from it. An older bridge never sends it.
+   */
+  pins?: number;
 }
 
 /**
@@ -270,6 +276,13 @@ export type PaneWire = Omit<AgentView, "agentSession" | "sessionAgent"> & {
    * Absent from a bridge built without walky talky, and from an older member (CREW_PROTOCOL §21).
    */
   instance?: string;
+  /**
+   * True when the session turned its walky talky off (M89, bridge/walky/off.ts). Present only then,
+   * never `false`, so an on pane and every solo body stay what they were. The machine that owns the
+   * pane enforces it; everyone else only shows it (CREW_PROTOCOL §21). An older member never sends it,
+   * and its panes read as on.
+   */
+  walkyOff?: true;
   /**
    * Which member of the crew this pane lives on — the `?h=` value completing the `(host, session,
    * paneId)` address (CREW_PROTOCOL.md §4). Present exactly when {@link SnapshotResponse.servers}
@@ -636,18 +649,23 @@ export function journalAgentOf(pane: AgentView): string {
  * agent's pane still offers no affordance and reads like every other shell pane.
  *
  * `instance` is the pane's walky talky instance token, from the bridge's instance registry; absent,
- * the wire carries no `instance` key.
+ * the wire carries no `instance` key. `walkyOff` true adds `walkyOff: true`; otherwise no such key.
+ * `pins` above zero adds `pins: <count>` (M90); zero or absent, no such key.
  */
 export function toPaneWire(
   pane: AgentView,
   hasJournal: (agent: string) => boolean,
   discoversSessions: (agent: string) => boolean = () => false,
   instance?: string,
+  walkyOff = false,
+  pins = 0,
 ): PaneWire {
   const { agentSession, sessionAgent: _sessionAgent, ...rest } = pane;
   const addressable = agentSession !== undefined || discoversSessions(pane.agent);
   const wire: PaneWire = addressable && hasJournal(pane.agent) ? { ...rest, hasSession: true } : rest;
-  return instance === undefined ? wire : { ...wire, instance };
+  const placed = instance === undefined ? wire : { ...wire, instance };
+  const flagged = walkyOff ? { ...placed, walkyOff: true as const } : placed;
+  return pins > 0 ? { ...flagged, pins } : flagged;
 }
 
 /** A Herdr workspace ("space") — a project-scoped container of tabs. From `workspace.list`. */

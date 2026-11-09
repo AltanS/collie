@@ -39,6 +39,7 @@ const LIFTED = [
   "omp--v18-17-0-nerd-switch-moved--w120.txt",
   "omp--v18-17-0-nerd-switch-search--w120.txt",
   "omp--v18-17-0-switch--w120.txt",
+  "omp--v18-18-0-nerd-switch--w250.txt",
   "omp--v18-4-switch-moved-up.txt",
   "omp--v18-4-switch-moved.txt",
   "omp--v18-4-switch-narrow-moved.txt",
@@ -853,11 +854,20 @@ describe("the nerd preset lifts as the unicode one does", () => {
       expect(swap(unicode, "↑/↓ models · ⏎ use", "↑/↓ models · \u{F0311} use")).toBeNull();
     });
 
-    it("the nerd over-context mark and the unselected role dot were never captured, so each declines", () => {
+    it("the nerd over-context mark was never captured, so it declines; the unicode role dot under nerd declines", () => {
       // An over-context row in the unicode preset reads (over-context.test above); in nerd the mark is unknown.
       expect(swap(nerd, "claude-sonnet-5-5   ", "claude-sonnet-5-5 ⦸ context>8.2k")).toBeNull();
       expect(swap(nerd, /\u{F111} current/u, "○ current")).toBeNull();
-      expect(swap(nerd, /\u{F111} current/u, "\u{F10C} advisor")).toBeNull();
+    });
+
+    // omp 18.18.0 (2026-11-08) printed the nerd unselected role chip, U+F10C: `● current · ● default · ○ slow`.
+    it("the nerd unselected role dot (U+F10C, 18.18.0) reads, and the unicode `○` in its place declines", () => {
+      const name = "omp--v18-18-0-nerd-switch--w250.txt";
+      const texts = textsOf(name);
+      expect(texts.some((t) => /\u{F10C} slow/u.test(t))).toBe(true);
+      const model = detectSwitchPicker(load(name))!;
+      expect(model.question).toContain("● current: openrouter/anthropic/claude-haiku-5.5");
+      expect(swap(texts, "\u{F10C} slow", "○ slow")).toBeNull();
     });
 
     it("a footer of another preset's keycaps, or text keycaps, declines", () => {

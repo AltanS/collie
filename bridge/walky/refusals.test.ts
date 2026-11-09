@@ -91,7 +91,7 @@ describe("the refusal counter", () => {
 
 describe("the refusals of a workspace scope (M75 spec 02)", () => {
   const AT = 1_786_000_000_000;
-  const pane = (paneId: string, label: string): WalkyPane => ({ session: "main", paneId, agent: true, harness: "agent-x", label, state: "idle", activeAt: null, instance: "aaaa", terminal: true });
+  const pane = (paneId: string, label: string): WalkyPane => ({ session: "main", paneId, agent: true, harness: "agent-x", label, state: "idle", activeAt: null, instance: "aaaa", terminal: true, off: false });
   const host = (panes: WalkyPane[]): WalkyHost => ({
     panes: () => panes,
     send: async (): Promise<SendResult> => ({ outcome: "sent" }),

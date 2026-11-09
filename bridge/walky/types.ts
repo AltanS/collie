@@ -92,6 +92,11 @@ export function movesForward(held: WalkyReceipt, next: WalkyReceipt): boolean {
 /** The reason of a fan-out message left in the inbox of a pane that rests (M85). */
 export const RESTING = "resting";
 
+/** The reason of an agent's message to a session that turned its walky talky off (M89, off.ts). */
+export const WALKY_OFF = "walky talky off";
+/** The reason of a message from an agent whose own pane turned its walky talky off (M89). */
+export const SENDER_OFF = "your walky talky is off";
+
 /** The longest receipt `reason` read or written (CREW_PROTOCOL §21, added 2026-10-18). */
 export const RECEIPT_REASON_MAX = 120;
 
@@ -152,7 +157,21 @@ export interface WalkyReceipt {
 export const OUTCOME_ON_LEAD = "outcome known on the lead";
 
 /** A message as the log and the phone list it: the message, the pane it went to and its newest receipt. */
-export type WalkyEntry = WalkyMessage & { readonly receipt: WalkyReceipt };
+export type WalkyEntry = WalkyMessage & {
+  readonly receipt: WalkyReceipt;
+  /**
+   * Present only on a row ANOTHER Collie instance on this machine recorded (siblings.ts): the last
+   * segment of its state dir, `collie` or `collie-next`. A row this bridge recorded has no field, and
+   * an older member's answer has none either.
+   */
+  readonly recordedBy?: string;
+  /**
+   * With `recordedBy`: this pane's address in the recording instance's words, `<member>/<paneId>`.
+   * Its member id and token are that instance's, so the phone reads the row's direction and machine
+   * against this address, not against its own (web/src/lib/walky.ts `selfOf`).
+   */
+  readonly recordedAs?: string;
+};
 
 /** One reachable target, as `collie walky who` and `GET /api/walky/who` list it. */
 export interface WalkyTarget {
@@ -162,6 +181,8 @@ export interface WalkyTarget {
   readonly harness: string | null;
   readonly label: string;
   readonly state: string;
+  /** Present only when the session turned its walky talky off (M89). The owner machine enforces it; this only shows it. */
+  readonly walky?: "off";
 }
 
 /** A shell pane, which never receives a message: a broadcast lists it as skipped. */

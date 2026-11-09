@@ -3,6 +3,7 @@ import { RouterProvider } from "react-router";
 import { router } from "./router";
 import { BusyBar } from "@/components/busy-bar";
 import { IdleLock } from "@/components/idle-lock";
+import { ThemeTrialRibbon } from "@/components/theme-trial-ribbon";
 import { UpdateScreen } from "@/components/update-screen";
 import { UpdateScreenProvider, useUpdateScreenValue } from "@/components/update-screen-provider";
 import { useIdleLock } from "@/hooks/use-idle-lock";
@@ -48,12 +49,18 @@ function AppShell() {
   // BusyBar overlays every route (fixed, top of viewport) — a mutation anywhere shows the strip.
   return (
     <>
-      <div style={{ display: "contents" }} inert={covered || screen.blocking}>
+      {/* `data-app-covered` pauses every animation in the covered app (index.css, issue 748): the idle
+          lock and the update screen lay a veil over it, and an animation under a veil keeps the
+          whole screen redrawing for as long as the veil is up. Nobody can see it move there anyway. */}
+      <div style={{ display: "contents" }} inert={covered || screen.blocking} data-app-covered={covered || screen.blocking ? "" : undefined}>
         <BusyBar />
         <RouterProvider router={router} />
       </div>
       {covered && <IdleLock onUnlock={unlock} catchingUp={catchingUp} />}
       <UpdateScreen screen={screen} />
+      {/* A theme being tried (M59 spec 08): outside the inert wrapper and over everything, so the way
+          back stands whatever covers the app and whatever the theme does to it. */}
+      <ThemeTrialRibbon />
     </>
   );
 }

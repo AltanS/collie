@@ -1,4 +1,4 @@
-import { Check, ChevronLeft, ChevronRight } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 import type { ReactNode } from "react";
 
 import type { WizardStepChip } from "@/lib/blocks";
@@ -81,7 +81,7 @@ export function WizardStepper({
         onClick={onBack}
         className={CHEVRON_CLASS}
       >
-        {busyBack ? busyIcon : <ChevronLeft className="size-4" />}
+        {busyBack ? busyIcon : <Icon name="step-prev" className="size-4" />}
       </button>
       <ol aria-label={t("dialog.questionsAria")} className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
         {steps.map((step, i) => (
@@ -91,7 +91,7 @@ export function WizardStepper({
             className={cn(CHIP_CLASS, step.current ? CHIP_CURRENT : CHIP_IDLE)}
           >
             {step.answered ? (
-              <Check className="size-3 shrink-0 text-primary" aria-label={t("dialog.answeredAria")} />
+              <Icon name="answered" className="size-3 shrink-0 text-primary" aria-label={t("dialog.answeredAria")} />
             ) : null}
             <span className="font-content truncate">{step.label}</span>
           </li>
@@ -112,7 +112,7 @@ export function WizardStepper({
         onClick={onNext}
         className={CHEVRON_CLASS}
       >
-        {busyNext ? busyIcon : <ChevronRight className="size-4" />}
+        {busyNext ? busyIcon : <Icon name="step-next" className="size-4" />}
       </button>
     </div>
   );

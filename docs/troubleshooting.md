@@ -13,8 +13,8 @@ yet** · **the phone says Collie cannot read a screen the agent is not showing**
 and the phone offers a report** · **a send is refused and `⌁` shows in the box later** · **something looks wrong on a Herdr core (`herdr-core`) pane** ·
 **an agent is greyed
 out on the New page** · **Start says there is no folder, or says it could not confirm** ·
-**walky talky: send is refused, "run this inside a pane"** · **walky talky: the message sits in the
-inbox and was not typed** · **walky talky: "no log record on this machine"** · **walky talky: the
+**WalkyTalky: send is refused, "run this inside a pane"** · **WalkyTalky: the message sits in the
+inbox and was not typed** · **WalkyTalky: "no log record on this machine"** · **WalkyTalky: the
 skill is stale** · **a durable agent does not show up, or says Unreachable**.
 
 **`herdr plugin …` fails with `Error: Os { code: 2, kind: NotFound, message: "No such file or
@@ -420,10 +420,10 @@ grey completion after your last word, and the core sends it as plain text. Colli
 it typed and does not press Enter. Clear the box with the Keys tray and send again, or press Enter
 on the screen. This is known.
 
-## Walky talky
+## WalkyTalky
 
-Six symptoms of walky talky come up most. Each one has a command that shows the cause
-([Walky talky](walky-talky.md)).
+Six symptoms of WalkyTalky come up most. Each one has a command that shows the cause
+([WalkyTalky](walky-talky.md)).
 
 **`collie walky send` says "run this inside a pane, or send from the phone".** The command ran
 outside an agent's pane, in a plain terminal for example. Collie names the sender from the pane's
@@ -447,7 +447,7 @@ stayed busy, or a dialog stayed open, for the whole 60-minute hold: Collie never
 a dialog. "box not free" means Collie could not read a free input box. "pane busy" means an earlier
 message was still being typed there after 2 minutes. "pane replaced" means another session took the
 pane while the message waited. "no terminal" and "bridge restarted" are the other two. Run `collie
-walky inbox` in that pane, or open Messages in the pane's menu on the phone. Collie does not type the
+walky inbox` in that pane, or open WalkyTalky in the pane's menu on the phone. Collie does not type the
 message again.
 
 **`collie walky send` says "not sent: pane replaced".** The address ends with a token, such as
@@ -456,7 +456,7 @@ type the message there. Run `collie walky who` and send to the new address. A re
 "not sent: sender gone" has the same cause: the pane that sent the message has closed, or another
 pane holds its id now.
 
-**A header in a pane shows "no log record on this machine".** The phone found a walky talky header in
+**A header in a pane shows "no log record on this machine".** The phone found a WalkyTalky header in
 the screen text, and this machine's log holds no message with that id. Someone or something typed
 the line, or the log dropped it after 7 days or 2,000 lines, or another Collie holds it. Run
 `collie walky status <id>`: "no record of <id> on this machine" confirms it. For a pane on a crew

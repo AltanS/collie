@@ -14,7 +14,8 @@ import { Button } from "@/components/ui/button";
 import { Notice, NOTICE_ACTION, type NoticeTone, type NoticeVariant } from "@/components/ui/notice";
 import { StripHost, StripSlot } from "@/components/ui/strip-host";
 import { AUTH, OUTAGE, DEGRADED, UPDATE } from "@/lib/strip-priority";
-import { ConnectionBanner, GREEN_MS } from "@/components/connection-banner";
+import { ConnectionBanner } from "@/components/connection-banner";
+import { ORBIT_TURN_MS } from "@/components/collie-home";
 import { __resetConnectionHealth, markLive } from "@/lib/connection-health";
 import { TROUBLE_MS, CONNECTION_LOST_MS } from "@/hooks/use-connection-lost";
 import { UpdateRibbon } from "@/components/update-ribbon";
@@ -312,6 +313,22 @@ function ConnectionBannerLive({ lastSeenAt }: { lastSeenAt: number }) {
   );
 }
 
+// The real header over the strip, so the recovery shows where it lands now: the mark's one green
+// turn, with "Reconnected" on the status line under it (2026-11-07). The host reads the same context,
+// so the mark blooms, goes still and muted, and turns green in step with the strip.
+function ConnectionHeaderLive({ lastSeenAt }: { lastSeenAt: number }) {
+  const connected = useContext(ConnectedContext);
+  return (
+    <AppHeaderHost bridge={connected ? "connected" : "disconnected"} error={!connected} lastSeenAt={lastSeenAt}>
+      <RouteHeader wordmark />
+      <ConnectionBannerLive lastSeenAt={lastSeenAt} />
+      <div className="px-4 py-2">
+        <StatusArea />
+      </div>
+    </AppHeaderHost>
+  );
+}
+
 function ConnectionRecoveryStage() {
   const [playing, setPlaying] = useState(false);
   const [connected, setConnected] = useState(true);
@@ -367,7 +384,7 @@ function ConnectionRecoveryStage() {
       <Stage>
         <ConnectedContext.Provider value={connected}>
           <RootRouter data={homeSolo}>
-            <ConnectionBannerLive lastSeenAt={homeSolo.ts - 3_600_000} />
+            <ConnectionHeaderLive lastSeenAt={homeSolo.ts - 3_600_000} />
           </RootRouter>
         </ConnectedContext.Provider>
       </Stage>
@@ -381,17 +398,16 @@ function ConnectionRecoveryCard() {
       state="connection-recovery-flash"
       label="connection recovery, trouble to lost to live"
       reach="pull the tailnet out from under a running Collie, then let it return. Press Play to run
-        the same three-step escalation on demand: amber at 4s of no live data, red at 15s, a green
-        'Connected' flash on recovery."
-      note={`GREEN_MS = ${GREEN_MS}ms is how long the recovery flash holds. Overrides the shared
+        the same three-step escalation on demand: amber at 4s of no live data, red at 15s, and on
+        recovery the strip goes while the mark turns once in green with 'Reconnected' under it."
+      note={`The green strip is gone (2026-11-07): the mark's turn lasts ORBIT_TURN_MS = ${ORBIT_TURN_MS}ms,
+        and so does the word, on the status channel (lib/reconnected.ts). Overrides the shared
         connection-health clock (lib/connection-health.ts) while playing and restores it (markLive())
         when the sequence ends and on unmount. This is the SAME store the top bar's Connection clock
         control writes every second, so set that control to Live before pressing Play, or the two
         will race. ConnectionBanner registers a StripSlot into the real band RootRouter mounts
-        (AUTH/OUTAGE/DEGRADED, lib/strip-priority.ts), the same as it does in routes/root.tsx now, so
-        the green flash you see here is the band swapping to the SAME priority a red or amber strip
-        already held (DEGRADED for trouble and the flash, OUTAGE for lost), not a new row appearing
-        beside it.`}
+        (AUTH/OUTAGE/DEGRADED, lib/strip-priority.ts), the same as it does in routes/root.tsx now:
+        DEGRADED for trouble, OUTAGE for lost, and nothing at all once the link is back.`}
       span={2}
     >
       <Replay>

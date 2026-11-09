@@ -1,12 +1,12 @@
 import type { ReactNode } from "react";
 import { hasWindow } from "@/lib/env";
-import { Plug } from "lucide-react";
 
 import { Card } from "@/components/ui/card";
 import { useLocale } from "@/hooks/use-locale";
 import { t } from "@/lib/i18n";
 import { usePairing } from "@/lib/pairing";
 import type { BridgeStatus, DeviceAuth } from "@/lib/types";
+import { Icon } from "@/components/icons/icon";
 
 // A small read-only diagnostics panel for Settings: where this client is connected, whether it's a
 // secure context (PWA/push need one), the live bridge status, and — when per-device auth is on —
@@ -41,7 +41,7 @@ export function ConnectionInfo({
   return (
     <Card className="gap-0 py-0">
       <div className="flex items-center gap-3 p-4 pb-3">
-        <Plug className="size-5 shrink-0 text-muted-foreground" />
+        <Icon name="connection" className="size-5 shrink-0 text-muted-foreground" />
         <div>
           <div className="font-medium">{t("settings.connection.title")}</div>
           <p className="text-sm text-muted-foreground">{t("settings.connection.description")}</p>

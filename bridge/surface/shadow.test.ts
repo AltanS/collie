@@ -17,6 +17,9 @@ import { askOf, frameImageKey } from "../../web/src/lib/surface/surface.ts";
 import { parseAnsi } from "../../web/src/lib/ansi.ts";
 import { splitLines } from "../../web/src/lib/blocks.ts";
 import { rowText } from "../../web/src/lib/surface/frame.ts";
+import { hostFor } from "../host.ts";
+import { createPaneVersion } from "../pane-binary.ts";
+import { VersionCache } from "./binary-version.ts";
 import { SurfaceLedger } from "./counters.ts";
 import { DISAGREE_REPEAT_MS, DISAGREE_TAG, SurfaceShadow, freeOnOldAxis, maskSurface, surfaceRouteBody } from "./shadow.ts";
 
@@ -211,6 +214,85 @@ describe("surface shadow", () => {
     expect(shadow.surfaceOf("w1:p1")).toBeDefined();
   });
 
+  test("cachedVersion answers the version cache and never starts a binary read (1.27.4)", async () => {
+    let reads = 0;
+    let found: string | null = "2.1.296";
+    const mux = new FakeMux();
+    const shadow = new SurfaceShadow({ mux, pollMs: 1000, log: () => {}, now: () => 1_000_000, compare: false, version: async () => {
+      reads++;
+      return found;
+    } });
+    expect(shadow.cachedVersion("w1:p1", HARNESS)).toBeNull();
+    expect(reads).toBe(0);
+    mux.set("w1:p1", AGENTS, 11);
+    await shadow.observe([agent("w1:p1")]);
+    expect(reads).toBe(1);
+    expect(shadow.cachedVersion("w1:p1", HARNESS)).toBe("2.1.296");
+    expect(reads).toBe(1);
+    // An agent with no profile has no version.
+    expect(shadow.cachedVersion("w1:p1", "no-such-agent")).toBeNull();
+    // A binary read that found no version reads as null, never "unread".
+    found = null;
+    const unread = new SurfaceShadow({ mux, pollMs: 1000, log: () => {}, now: () => 1_000_000, compare: false, version: async () => found });
+    await unread.observe([agent("w1:p1")]);
+    expect(unread.cachedVersion("w1:p1", HARNESS)).toBeNull();
+  });
+
+  test("the version read is told which pane it is for, so a binary off the login PATH is still found (N9)", async () => {
+    // The send path reads the pane's own program (bridge/pane-binary.ts). A binary the login PATH does
+    // not hold answers only that read: a reader that is never told the pane finds no version, and every
+    // trouble row and report from a pane with no send named the agent `@-`.
+    const asked: (string | undefined)[] = [];
+    const mux = new FakeMux();
+    const shadow = new SurfaceShadow({ mux, pollMs: 1000, log: () => {}, now: () => 1_000_000, compare: false, version: async (_profile, paneId) => {
+      asked.push(paneId);
+      return paneId === "w1:p1" ? "2.1.296" : null;
+    } });
+    mux.set("w1:p1", AGENTS, 11);
+    await shadow.observe([agent("w1:p1")]);
+    expect(asked).toEqual(["w1:p1"]);
+    expect(shadow.cachedVersion("w1:p1", HARNESS)).toBe("2.1.296");
+    expect(shadow.counterKeyOf("w1:p1")).toMatchObject({ version: "2.1.296" });
+  });
+
+  test("two panes of one agent from two installs each keep their own version, one probe per file", async () => {
+    // The wiring of index.ts: the pane-aware reader over the send path's cache, which keys a read by the
+    // program file, its mtime and its size. The pane's foreground program is the only thing that differs.
+    const probes: string[] = [];
+    const cache = new VersionCache(
+      (_profile, pane) => {
+        probes.push(pane?.[0] ?? "PATH");
+        return Promise.resolve(pane?.[0] === "/nvm/bin/claude" ? "2.1.300" : pane?.[0] === "/usr/local/bin/claude" ? "2.1.301" : null);
+      },
+      () => 1_000_000,
+      4_000,
+      () => ({ mtimeMs: 1, size: 1 }),
+    );
+    const programOf = (paneId: string): string => (paneId === "w1:p1" ? "/nvm/bin/claude" : "/usr/local/bin/claude");
+    const binaries = new Map([...loadProfiles().values()].map((profile) => [profile.identity.binary.toLowerCase(), profile.id]));
+    const paneVersion = createPaneVersion({ versions: cache, binaries: () => binaries, host: hostFor("linux") });
+    const foreground = (paneId: string) => Promise.resolve({ ok: true as const, value: [{ argv: [programOf(paneId)] }] });
+    let clock = 1_000_000;
+    const mux = new FakeMux();
+    const shadow = new SurfaceShadow({ mux, pollMs: 1000, log: () => {}, now: () => clock, compare: false, version: async (profile, paneId) => (await paneVersion(profile, paneId, foreground)).version });
+    mux.set("w1:p1", AGENTS, 11);
+    mux.set("w1:p2", AGENTS, 11);
+    for (let round = 0; round < 3; round++) {
+      await shadow.observe([agent("w1:p1"), agent("w1:p2")]);
+      await shadow.observe([agent("w1:p2"), agent("w1:p1")]);
+      clock += 1_000;
+    }
+    expect(shadow.cachedVersion("w1:p1", HARNESS)).toBe("2.1.300");
+    expect(shadow.cachedVersion("w1:p2", HARNESS)).toBe("2.1.301");
+    expect(shadow.counterKeyOf("w1:p1")).toMatchObject({ version: "2.1.300" });
+    expect(shadow.counterKeyOf("w1:p2")).toMatchObject({ version: "2.1.301" });
+    expect(probes.toSorted()).toEqual(["/nvm/bin/claude", "/usr/local/bin/claude"]);
+    // A pane that closed takes its version with it.
+    await shadow.observe([agent("w1:p2")]);
+    expect(shadow.cachedVersion("w1:p1", HARNESS)).toBeNull();
+    expect(shadow.cachedVersion("w1:p2", HARNESS)).toBe("2.1.301");
+  });
+
   test("the same revision is counted and logged once, however many polls see it", async () => {
     const r = rig();
     r.mux.set("w1:p1", AGENTS, 11);
@@ -290,15 +372,21 @@ describe("surface shadow", () => {
     expect(r.versionReads()).toBe(0);
   });
 
-  test("reads the version once per profile and forgets panes that are gone", async () => {
+  test("asks the version once per pane and forgets panes that are gone", async () => {
+    // Once per pane, not per profile: two panes may run two installs. The reader's own cache keys the
+    // probe by the program file, so one file is still probed once (the two-installs test above).
     const r = rig();
     r.mux.set("w1:p1", IDLE, 1);
     r.mux.set("w1:p3", IDLE, 1);
     await r.shadow.observe([agent("w1:p1"), agent("w1:p3")]);
-    expect(r.versionReads()).toBe(1);
+    expect(r.versionReads()).toBe(2);
+    await r.shadow.observe([agent("w1:p1"), agent("w1:p3")]);
+    expect(r.versionReads()).toBe(2);
     await r.shadow.observe([agent("w1:p1")]);
     expect(r.shadow.surfaceOf("w1:p3")).toBeUndefined();
     expect(r.shadow.report().panes.map((p) => p.pane)).toEqual(["w1:p1"]);
+    await r.shadow.observe([agent("w1:p1"), agent("w1:p3")]);
+    expect(r.versionReads()).toBe(3);
   });
 
   test("never throws when a read rejects", async () => {

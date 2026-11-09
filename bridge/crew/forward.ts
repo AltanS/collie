@@ -80,7 +80,11 @@ const FORWARDABLE: readonly RegExp[] = [
   // `clear` (ADR 0116, the Clear paragraph): the same, for the receipt of a Clear of the box on a pane with a screen.
   // `action` (M53 spec 07): a tap on one of the program's belt buttons, a WRITE to the member that owns the
   // pane, where its receipt lives. Additive-optional the same way.
-  /^pane\/[^/]+(?:\/(?:reply|keys|upload|close|rename|history|chat|changes|files|focus|answer|send|abort|clear|action))?$/,
+  // `pins` (M90): the pins of the pane's session live on the machine that owns the pane. A GET lists them
+  // (a read), a POST pins a block and a DELETE drops one (writes). Additive-optional the same way.
+  // `held` (issue 740): the Cancel or Dismiss on a queued row, a WRITE (`DELETE`) to the member whose hold
+  // queue keeps the row. Additive-optional the same way: a member that predates it answers 404.
+  /^pane\/[^/]+(?:\/(?:reply|keys|upload|close|rename|history|chat|changes|files|focus|answer|send|abort|clear|action|pins|held))?$/,
   // One picture under the Files root, as bytes (ADR 0090): off the disk of the member that owns the
   // pane or the space, like the Files read it sits beside. Mirrors `PANE_FILES_IMAGE_ROUTE` and
   // `WORKSPACE_FILES_IMAGE_ROUTE` in bridge/server.ts one-for-one. Additive-optional (§7.1).
@@ -160,6 +164,10 @@ const FORWARDABLE: readonly RegExp[] = [
   // one-for-one. Additive-optional (§7.1): a member that predates them answers 404.
   /^durable\/conversations$/,
   /^durable\/conversation\/[^/]+\/(?:items|reopen)$/,
+  // A session's walky talky off switch (M89 spec 04): the flag lives on the member that owns the pane,
+  // which is the one that enforces it (§21), so a `?host=` set goes there. A WRITE: an idempotent set,
+  // and the pane rides in the body as `pane`. Additive-optional (§7.1): a member that predates it answers 404.
+  /^walky\/off$/,
 ];
 
 /**
@@ -168,7 +176,7 @@ const FORWARDABLE: readonly RegExp[] = [
  * by pane or by space. A picture (`files/image`) and a blob are bytes, never text, and stay byte for
  * byte, and so does every write's answer.
  */
-export type TextAnswer = "pane" | "history" | "chat" | "changes" | "files" | "sent";
+export type TextAnswer = "pane" | "history" | "chat" | "changes" | "files" | "sent" | "pins";
 
 /** Which {@link TextAnswer} a crew route answers with, or `null` for a route whose answer is not text. */
 export function textAnswerOf(route: string): TextAnswer | null {
@@ -181,6 +189,8 @@ export function textAnswerOf(route: string): TextAnswer | null {
   if (/^durable\/conversation\/[^/]+\/items$/.test(route)) return "history";
   // Sent's lines are what a person typed (ADR 0107): masked again on the lead, as every other text.
   if (route === "sent") return "sent";
+  // A pin is a copy of what a session said (M90): its list and its one pin are masked again on the lead.
+  if (/^pane\/[^/]+\/pins$/.test(route)) return "pins";
   return null;
 }
 
@@ -227,6 +237,14 @@ export type ForwardKind = "read" | "write";
 /** A pane's walky talky route: a GET there is the pane's list, a POST is a message (§21). */
 const WALKY_ROUTE = /^pane\/[^/]+\/walky$/;
 
+/** A pane's pins route: a GET is the list, a POST pins a block and a DELETE drops one (M90). */
+const PINS_ROUTE = /^pane\/[^/]+\/pins$/;
+
+/** Whether a request on `route` is the GET of a pane's pins, the one read on that route. */
+function isPinsList(route: string, method: string | undefined): boolean {
+  return method === "GET" && PINS_ROUTE.test(route);
+}
+
 /** Whether a request on `route` is the GET of a pane's walky talky list, the one read on that route. */
 function isWalkyList(route: string, method: string | undefined): boolean {
   return method === "GET" && WALKY_ROUTE.test(route);
@@ -237,13 +255,16 @@ function isWalkyList(route: string, method: string | undefined): boolean {
  * READ despite being an action segment — it only ever reads a log off disk — and everything else with
  * an action segment types into or restructures a terminal.
  *
- * `method` matters for one route only, `pane/<id>/walky`, where a GET is the pane's list and a POST is
- * a message. Absent, the route is judged as the write it was first added as.
+ * `method` matters for two routes, `pane/<id>/walky` and `pane/<id>/pins`, where a GET is the pane's list
+ * and anything else writes. Absent, the route is judged as the write it was first added as.
  */
 export function forwardKind(route: string, method?: string): ForwardKind {
   // A pane's walky list changes nothing on the member (§21): a read like `chat`, on the poll path, so
   // it is attempted against a stale member too and never refused before it is tried (§10.3).
   if (isWalkyList(route, method)) return "read";
+  // A pane's pins list changes nothing on the member (M90): a read, tried against a stale member too.
+  // Pinning and unpinning write that member's pins file, so they stay writes.
+  if (isPinsList(route, method)) return "read";
   // A GET that changes nothing, exactly like `pane/:id/history` — attempted even against a member
   // this lead has not heard from in a while, never refused before it is tried (§10.3's "a READ to a
   // dead member is still attempted").
@@ -318,6 +339,9 @@ export function forwardPaneId(route: string): string | undefined {
 export function forwardAuditAction(route: string, method?: string): string | null {
   // The pane's walky list is a read, audited on neither side (§21).
   if (isWalkyList(route, method)) return null;
+  // The pins list is a read too (M90). A pin or an unpin is audited `pins` here, and the member writes
+  // `pin.add` or `pin.remove` for the same event: the lead's line names the route, the member's the act.
+  if (isPinsList(route, method)) return null;
   if (route === "tab") return "tab.create";
   if (route === "workspace") return "workspace.create";
   // The member's own create writes `worktree.create`; its plan is a read.
@@ -341,6 +365,11 @@ export function forwardAuditAction(route: string, method?: string): string | nul
   if (route.startsWith("durable/")) return route.endsWith("/reopen") ? "durable.reopen" : null; // the list and the items are reads
   if (route.startsWith("tab/")) return route.endsWith("/close") ? "tab.close" : "tab.rename";
   if (route.startsWith("space/")) return "space.rename";
+  // The member writes the same name for the switch (bridge/server.ts `walkyOffRoute`).
+  if (route === "walky/off") return "walky.off";
+  // The member writes `send-cancel` for the Cancel or Dismiss on a queued row (bridge/server.ts
+  // `heldCancelRoute`, issue 740), so the lead's line names the same act. Only a DELETE is one.
+  if (/^pane\/[^/]+\/held$/.test(route)) return method === undefined || method === "DELETE" ? "send-cancel" : null;
   const action = route.split("/")[2];
   if (isPaneRead(action)) return null; // reads, and a read is audited on neither side
   // close, rename and focus namespace themselves on the peer's own handler; the rest stay bare.

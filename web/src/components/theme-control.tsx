@@ -1,5 +1,5 @@
-import { Moon, MonitorSmartphone, Sun } from "lucide-react";
-import type { LucideIcon } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
+import type { IconKey } from "@/components/icons/keys";
 
 import { Card } from "@/components/ui/card";
 import { useTheme } from "@/hooks/use-theme";
@@ -13,29 +13,29 @@ import { cn } from "@/lib/utils";
 // implies you are meant to keep reaching for it, and this is a set-once preference — System already
 // follows the phone, which is the situational flip (outdoors, in bed) happening on its own.
 
-const OPTIONS: ReadonlyArray<{ value: Theme; labelKey: MessageKey; icon: LucideIcon }> = [
-  { value: "system", labelKey: "settings.theme.option.system", icon: MonitorSmartphone },
-  { value: "light", labelKey: "settings.theme.option.light", icon: Sun },
-  { value: "dark", labelKey: "settings.theme.option.dark", icon: Moon },
+const OPTIONS: ReadonlyArray<{ value: Theme; labelKey: MessageKey; icon: IconKey }> = [
+  { value: "system", labelKey: "settings.theme.option.system", icon: "theme-system" },
+  { value: "light", labelKey: "settings.theme.option.light", icon: "theme-light" },
+  { value: "dark", labelKey: "settings.theme.option.dark", icon: "theme-dark" },
 ];
 
 /** The icon names the CURRENT mode, not the next one — so the button reads as a status display you
  *  can also press. Tapping advances System → Light → Dark → System. */
-export function themeIcon(theme: Theme): LucideIcon {
-  return OPTIONS.find((o) => o.value === theme)?.icon ?? MonitorSmartphone;
+function themeIcon(theme: Theme): IconKey {
+  return OPTIONS.find((o) => o.value === theme)?.icon ?? "theme-system";
 }
 
 /** Settings card. Mirrors the icon/title/description shape of the other rows. */
 export function ThemeControl() {
   useLocale();
   const { theme, setTheme } = useTheme();
-  const Icon = themeIcon(theme);
+  const icon = themeIcon(theme);
 
   return (
     <Card className="gap-0 py-0">
       <div className="flex items-center justify-between gap-4 p-4">
         <div className="flex min-w-0 items-start gap-3">
-          <Icon className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
+          <Icon name={icon} className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
           <div className="min-w-0">
             <div className="font-medium">{t("settings.theme.title")}</div>
             <p className="text-sm text-muted-foreground">{t("settings.theme.description")}</p>
@@ -67,7 +67,7 @@ export function ThemeControl() {
                 selected ? "bg-primary text-primary-foreground" : "text-muted-foreground active:bg-muted",
               )}
             >
-              <option.icon className="size-4 shrink-0" />
+              <Icon name={option.icon} className="size-4 shrink-0" />
               {t(option.labelKey)}
             </button>
           );

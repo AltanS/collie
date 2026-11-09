@@ -4,6 +4,7 @@ import {
   maskFileBody,
   maskHistoryPage,
   maskPaneRead,
+  maskPinsAnswer,
   maskSentAnswer,
 } from "../answer-mask.ts";
 import type { JsonObject, JsonValue } from "../json.ts";
@@ -73,12 +74,31 @@ function maskBody(answer: TextAnswer, body: JsonObject, raw: string): string | n
       return isFileText(body) ? JSON.stringify(maskFileBody(body, true)) : null;
     case "sent":
       return isSentAnswer(body) ? JSON.stringify(maskSentAnswer(body)) : null;
+    case "pins":
+      return isPinsAnswer(body) ? JSON.stringify(maskPinsAnswer(body)) : null;
   }
 }
 
 /** A Sent answer (ADR 0107) as deep as its mask reads it: an `entries` list whose every `line` is a string. */
 function isSentAnswer(body: JsonObject): body is JsonObject & { entries: { line: string }[] } {
   return Array.isArray(body.entries) && body.entries.every((entry) => isObject(entry) && typeof entry.line === "string");
+}
+
+function isWord(value: JsonValue | undefined): boolean {
+  return value === undefined || typeof value === "string";
+}
+
+/** A pins answer (M90) as deep as its mask reads it: a `pins` list or one `pin`, each with its words as strings. */
+function isPinsAnswer(body: JsonObject): body is JsonObject & { pins?: { text?: string }[]; pin?: { text?: string } } {
+  const isPin = (value: JsonValue | undefined) =>
+    isObject(value) &&
+    (typeof value.text === "string" || typeof value.excerpt === "string") &&
+    isWord(value.text) &&
+    isWord(value.excerpt) &&
+    isWord(value.anchor) &&
+    (value.tool === undefined || (isObject(value.tool) && isWord(value.tool.input)));
+  if (body.pin !== undefined) return isPin(body.pin) && body.pins === undefined;
+  return Array.isArray(body.pins) && body.pins.every(isPin);
 }
 
 function isObject(value: JsonValue | undefined): value is JsonObject {

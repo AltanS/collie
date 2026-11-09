@@ -5,8 +5,9 @@ import { dirname, join } from "node:path";
 
 import { hostFor } from "./host.ts";
 import type { ForegroundProcess } from "./journal/types.ts";
-import { argvFromCmdline, createPaneProfile, paneBinaryOf, procProbe, sharedForegroundRead, type ForegroundOutcome, type ProcessProbe } from "./pane-binary.ts";
+import { argvFromCmdline, createPaneProfile, createPaneVersion, PANE_LAST_GOOD_MS, paneBinaryOf, procProbe, sharedForegroundRead, type ForegroundOutcome, type ProcessProbe } from "./pane-binary.ts";
 import { createVersionReader, VersionCache } from "./surface/binary-version.ts";
+import { findTool } from "./tools.ts";
 import { loadProfiles, type Profile } from "../web/src/lib/surface/profile.ts";
 
 const linux = hostFor("linux");
@@ -192,11 +193,12 @@ describe("createPaneProfile — the version of the pane's own program", () => {
     expect(pane).toMatchObject({ version: "18.12.6", status: "provisional", binary: "/lab/omp-18.12.6/node_modules/.bin/omp" });
     expect(pane?.profile.id).toBe(ompProfile.id);
     // No pane, no read, a read that shows another harness, or a refused read: the PATH binary, no file named.
+    // (A fresh pane: on p1 the program's last answer would stand for PANE_LAST_GOOD_MS.)
     const path = await lookup("omp");
     expect(path).toMatchObject({ version: "18.6.1", status: "verified" });
     expect(path?.binary).toBeUndefined();
-    expect((await lookup("omp", "p1", () => Promise.resolve<ForegroundOutcome>({ ok: true, value: [ps(["/usr/local/bin/claude"])] })))?.binary).toBeUndefined();
-    expect((await lookup("omp", "p1", () => Promise.resolve<ForegroundOutcome>({ ok: false })))?.version).toBe("18.6.1");
+    expect((await lookup("omp", "p2", () => Promise.resolve<ForegroundOutcome>({ ok: true, value: [ps(["/usr/local/bin/claude"])] })))?.binary).toBeUndefined();
+    expect((await lookup("omp", "p3", () => Promise.resolve<ForegroundOutcome>({ ok: false })))?.version).toBe("18.6.1");
     expect(asked).toEqual([["/lab/omp-18.12.6/node_modules/.bin/omp"], undefined, undefined, undefined]);
   });
 
@@ -252,5 +254,60 @@ describe.skipIf(process.platform === "win32")("two copies of one harness: the pa
     const pane = await lookup("omp", "p1", () => Promise.resolve<ForegroundOutcome>({ ok: true, value: [ps(["bun", join(lab, "omp")])] }));
     expect(pane).toMatchObject({ version: "18.12.6", status: "provisional", binary: join(lab, "omp") });
     expect((await lookup("omp"))?.version).toBe("18.6.1");
+  });
+});
+
+// N9 (trouble check 2026-11-08): the Surface shadow read the PATH binary only, so a harness the login
+// shell does not put on the PATH named no version in the report and the trouble count, while a send on
+// the same pane read the pane's own program and named it. The shadow now reads through createPaneVersion.
+describe.skipIf(process.platform === "win32")("createPaneVersion — a harness off the login PATH", () => {
+  const root = mkdtempSync(join(tmpdir(), "collie-pane-version-"));
+  afterAll(() => rmSync(root, { recursive: true, force: true }));
+  // An nvm global: no folder of the PATH search (the login PATH, the bridge's, tools.ts fallbackDirs) holds it.
+  const offPath = join(root, "home", ".nvm", "versions", "node", "v24.0.0", "bin");
+  mkdirSync(offPath, { recursive: true });
+  writeFileSync(join(offPath, "omp"), "#!/bin/sh\necho omp/18.18.0\n");
+  chmodSync(join(offPath, "omp"), 0o755);
+  const path = ["/usr/bin", "/bin"].join(":");
+  // The PATH search with a home of its own, so this host's `~/.bun/bin` or `~/.local/bin` cannot answer.
+  const resolve = (binary: string, search: string | undefined): string | null => findTool(binary, { PATH: search }, join(root, "home"));
+  const versions = new VersionCache(createVersionReader({ env: { PATH: path }, loginPath: () => Promise.resolve(path), resolve }));
+  const versionOf = createPaneVersion({ versions, binaries: () => binaries, probe: probe(null) });
+  const omp = loadProfiles().get("omp")!;
+
+  test("the PATH finds no binary; the pane's program names the version", async () => {
+    expect((await versionOf(omp)).version).toBeNull();
+    const foreground = () => Promise.resolve<ForegroundOutcome>({ ok: true, value: [ps([join(offPath, "omp")])] });
+    expect(await versionOf(omp, "p1", foreground)).toEqual({ version: "18.18.0", command: [join(offPath, "omp")] });
+  });
+});
+
+describe("createPaneVersion — the pane's last answer while its agent is gone from the foreground", () => {
+  const omp = loadProfiles().get("omp")!;
+  const claude = loadProfiles().get("claude")!;
+  const versions = {
+    programVersion: (_profile: Profile, pane?: readonly string[]) =>
+      Promise.resolve({ version: pane === undefined ? "18.6.1" : "18.18.0", command: pane }),
+  };
+  const ompRunning = () => Promise.resolve<ForegroundOutcome>({ ok: true, value: [ps(["/nvm/bin/omp"])] });
+  const shell = () => Promise.resolve<ForegroundOutcome>({ ok: true, value: [ps(["/bin/bash"])] });
+
+  test("a shell in the foreground keeps the program's answer for PANE_LAST_GOOD_MS, then the PATH binary answers", async () => {
+    let clock = 0;
+    const versionOf = createPaneVersion({ versions, binaries: () => binaries, probe: probe(null), host: linux, now: () => clock });
+    expect((await versionOf(omp, "p1", ompRunning)).version).toBe("18.18.0");
+    clock += 5_000;
+    expect(await versionOf(omp, "p1", shell)).toEqual({ version: "18.18.0", command: ["/nvm/bin/omp"] });
+    // A failed or slow foreground read is no evidence either.
+    expect((await versionOf(omp, "p1", () => Promise.resolve<ForegroundOutcome>({ ok: false }))).version).toBe("18.18.0");
+    clock += PANE_LAST_GOOD_MS;
+    expect((await versionOf(omp, "p1", shell)).version).toBe("18.6.1");
+  });
+
+  test("the answer is the pane's and the agent's: another pane or another agent reads its own", async () => {
+    const versionOf = createPaneVersion({ versions, binaries: () => binaries, probe: probe(null), host: linux, now: () => 0 });
+    await versionOf(omp, "p1", ompRunning);
+    expect((await versionOf(omp, "p2", shell)).version).toBe("18.6.1");
+    expect((await versionOf(claude, "p1", shell)).command).toBeUndefined();
   });
 });

@@ -1,4 +1,4 @@
-import { ChevronRight, KeyRound, Lock } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 import { Link, useLocation } from "react-router";
 
 import { Collapse } from "@/components/ui/collapse";
@@ -113,15 +113,15 @@ export function ReadOnlyBanner({ device }: { device: DeviceAuth | undefined }) {
             variant="strip"
             tone="caution"
             announce="status"
-            icon={<KeyRound />}
-            action={<ChevronRight aria-hidden className="size-3.5 opacity-70" />}
+            icon={<Icon name="pairing" />}
+            action={<Icon name="row-go" aria-hidden className="size-3.5 opacity-70" />}
           >
             {/* An expired pairing names its own remedy: "pair again", not "pair" (M46 spec 01). */}
             {expired ? t("space.readOnly.expired") : t("space.readOnly.notPaired")}
           </Notice>
         </Link>
       ) : gate === "device" ? (
-        <Notice variant="strip" tone="caution" announce="status" icon={<Lock />}>
+        <Notice variant="strip" tone="caution" announce="status" icon={<Icon name="locked" />}>
           {t("space.readOnly.deviceUnauthorised")}
         </Notice>
       ) : null}

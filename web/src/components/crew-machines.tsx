@@ -1,4 +1,3 @@
-import { Server } from "lucide-react";
 
 import { CrewRoleBadge } from "@/components/crew-role-badge";
 import { healthTone, healthWord } from "@/components/crew-formation";
@@ -10,6 +9,7 @@ import type { Machine, MachineHealth } from "@/lib/machines";
 import { instanceLabel } from "@/lib/machines";
 import type { CrewMemberStatus, CrewStatusResponse, ServerSummary } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { Icon } from "@/components/icons/icon";
 
 // The crew census for a crew where one host runs more than one Collie instance (M77): one card per
 // MACHINE, one line per instance inside it.
@@ -104,7 +104,8 @@ function MachineCard({
     >
       <div className="flex items-start gap-2.5 px-3.5 py-3">
         {/* The identity tint on the glyph, never a wash (DESIGN.md "Host colour is an identity"). */}
-        <Server
+        <Icon
+          name="machine"
           className={cn("mt-0.5 size-4 shrink-0", slot === null ? "text-muted-foreground" : HOST_TEXT_CLASSES[slot])}
           aria-hidden
         />

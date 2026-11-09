@@ -12,6 +12,7 @@ import { signMessage } from "./canonical.ts";
 import { BODY_TOO_LONG, cleanBody } from "./clean.ts";
 import { CANCELLED_BY_SENDER, DROPPED_BY_OWNER, isFanOut, isResting, sendIdOf, withoutAnsweredLegs, WalkyDeliverer, type DelivererDeps, type SenderPane, type TakeBack, type WalkyPane } from "./deliver.ts";
 import { sameInstance, type LogRecord, type WalkyLog } from "./log.ts";
+import { WalkyOff, type WalkyOffBy } from "./off.ts";
 import { MEMBER_UNREACHABLE, NO_ADDRESS, type RefusalCounts } from "./refusals.ts";
 import { headerField, WALKY_LABEL_MAX, type WalkyEntry, type WalkyMessage, type WalkyReceipt, type WalkyReceiptState, type WalkySkipped, type WalkyTarget, type WalkyVerified } from "./types.ts";
 
@@ -47,6 +48,8 @@ export interface WalkyServiceDeps extends DelivererDeps {
   readonly leadName?: () => string | null;
   /** On a lead: the shell panes the crew's members report, which a broadcast skips. */
   readonly remoteSkipped?: () => readonly WalkySkipped[];
+  /** The off flags, `<stateDir>/walky/off.json` (M89). The host's `panes()` reads the same store. Absent: in memory. */
+  readonly off?: WalkyOff;
 }
 
 /** What `who` on a crew member adds below its own panes: the roster is the lead's, and the command to run there. */
@@ -126,13 +129,20 @@ function entryOf(message: WalkyMessage, receipt: WalkyReceipt): WalkyEntry {
   return { ...message, receipt };
 }
 
+/** How many audited sibling rows the service remembers before it starts over (one more audit line each). */
+const MERGED_SEEN_MAX = 4096;
+
 export class WalkyService {
   readonly deliverer: WalkyDeliverer;
   private readonly now: () => number;
+  private readonly off: WalkyOff;
+  /** The sibling rows already audited, as session, pane id and message id ({@link newSiblingRows}). */
+  private readonly mergedSeen = new Set<string>();
 
   constructor(private readonly deps: WalkyServiceDeps) {
     this.deliverer = new WalkyDeliverer(deps);
     this.now = deps.now ?? Date.now;
+    this.off = deps.off ?? new WalkyOff(null, this.now);
   }
 
   get log(): WalkyLog {
@@ -147,6 +157,11 @@ export class WalkyService {
   /** The instance token a pane of this bridge holds now, or null when no such pane is there. */
   instanceOf(session: string, paneId: string): string | null {
     return this.paneAt(session, paneId)?.instance ?? null;
+  }
+
+  /** Turn a pane's walky talky off or on (M89). Idempotent, and the last write wins. Answers the new value. */
+  setOff(pane: WalkyPane, off: boolean, by: WalkyOffBy): boolean {
+    return this.off.set(pane, off, by);
   }
 
   /** The address of a pane of this bridge, with its instance token when given (as `who` prints it). */
@@ -280,8 +295,14 @@ export class WalkyService {
     const local = this.deps.host
       .panes()
       .filter((pane) => pane.agent)
-      .map((pane) => ({ address: this.addressOf(pane.paneId, pane.instance), memberId, machine: this.deps.machine, harness: pane.harness, label: pane.label, state: pane.state }));
+      .map((pane) => this.targetRow(pane, memberId));
     return [...local, ...(this.deps.remoteTargets?.() ?? [])];
+  }
+
+  /** One pane of this bridge as `who` lists it. `walky` is there only while the session is off (M89). */
+  private targetRow(pane: WalkyPane, memberId: string): WalkyTarget {
+    const target: WalkyTarget = { address: this.addressOf(pane.paneId, pane.instance), memberId, machine: this.deps.machine, harness: pane.harness, label: pane.label, state: pane.state };
+    return pane.off ? { ...target, walky: "off" } : target;
   }
 
   /**
@@ -305,6 +326,19 @@ export class WalkyService {
    */
   paneList(session: string, paneId: string, instance: string, limit: number): WalkyEntry[] {
     return this.deps.log.forPane(session, paneId, instance, limit, true);
+  }
+
+  /**
+   * The rows of a pane's list that a sibling instance recorded (siblings.ts) and no earlier list of
+   * that pane held: what the route writes its one audit line about. A pane polls its list every few
+   * seconds, so a line for every answer that merged a row would fill the audit log with reads and
+   * rotate the writes out of it; one per newly merged row set keeps the trail.
+   */
+  newSiblingRows(session: string, paneId: string, entries: readonly WalkyEntry[]): WalkyEntry[] {
+    const fresh = entries.filter((entry) => entry.recordedBy !== undefined && !this.mergedSeen.has(`${session}\u0000${paneId}\u0000${entry.id}`));
+    if (this.mergedSeen.size + fresh.length > MERGED_SEEN_MAX) this.mergedSeen.clear();
+    for (const entry of fresh) this.mergedSeen.add(`${session}\u0000${paneId}\u0000${entry.id}`);
+    return fresh;
   }
 
   /**

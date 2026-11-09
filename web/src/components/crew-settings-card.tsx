@@ -1,4 +1,3 @@
-import { Activity, Network } from "lucide-react";
 
 import { Card } from "@/components/ui/card";
 import { useNav } from "@/hooks/use-nav";
@@ -7,6 +6,7 @@ import { useLocale } from "@/hooks/use-locale";
 import { t } from "@/lib/i18n";
 import { crewPath, machinesPath } from "@/lib/nav";
 import { useScope } from "@/lib/session";
+import { Icon } from "@/components/icons/icon";
 
 /**
  * The Settings entry point. Gated on `multi` like every other piece of host chrome — a solo install
@@ -27,7 +27,7 @@ export function CrewSettingsCard() {
         onClick={() => nav.down(crewPath(scope))}
         className="flex w-full items-center gap-3 p-4 text-left active:bg-muted/60"
       >
-        <Network className="size-5 shrink-0 text-muted-foreground" />
+        <Icon name="crew" className="size-5 shrink-0 text-muted-foreground" />
         <div className="min-w-0">
           <div className="font-medium">{t("crew.entry.title")}</div>
           <p className="text-sm text-muted-foreground">{t("crew.entry.description")}</p>
@@ -41,7 +41,7 @@ export function CrewSettingsCard() {
         onClick={() => nav.down(machinesPath(scope))}
         className="flex w-full items-center gap-3 border-t border-border p-4 text-left active:bg-muted/60"
       >
-        <Activity className="size-5 shrink-0 text-muted-foreground" />
+        <Icon name="machine-activity" className="size-5 shrink-0 text-muted-foreground" />
         <div className="min-w-0">
           <div className="font-medium">{t("machines.entry.title")}</div>
           <p className="text-sm text-muted-foreground">{t("machines.entry.description")}</p>

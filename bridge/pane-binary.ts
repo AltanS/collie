@@ -35,11 +35,11 @@
 
 import { readFileSync, readlinkSync } from "node:fs";
 
-import { findProfile, loadProfiles, profileForPlatform } from "../web/src/lib/surface/profile.ts";
+import { findProfile, loadProfiles, profileForPlatform, type Profile } from "../web/src/lib/surface/profile.ts";
 import { HOST, type Host } from "./host.ts";
 import type { ForegroundProcess } from "./journal/types.ts";
 import { FOREGROUND_READ_MS, harnessProcessOf, isInterpreter } from "./launch-window.ts";
-import type { VersionCache } from "./surface/binary-version.ts";
+import type { ProgramVersion, VersionCache } from "./surface/binary-version.ts";
 import type { PaneProfileMatch } from "./surface/protocol.ts";
 
 /** How long one foreground read answers the next asker on the same pane: the reads of one send. */
@@ -220,22 +220,70 @@ export interface PaneProfileDeps {
 }
 
 /**
+ * A profile's version as a pane runs it, the one rule the send path and the Surface shadow share: with a
+ * pane and a foreground read, a foreground process that runs THIS profile's harness gives the program
+ * read; a read that shows none of it, or no read, leaves the PATH binary. The PATH binary alone misses a
+ * harness the login shell does not put on the PATH (a bun or npm global added in an interactive rc
+ * file), which the pane's own program still finds.
+ */
+/** A profile's version as a pane runs it ({@link createPaneVersion}). */
+export type PaneVersion = (profile: Profile, paneId?: string, foreground?: ForegroundRead) => Promise<ProgramVersion>;
+
+export function createPaneVersion(deps: PaneVersionDeps): PaneVersion {
+  const now = deps.now ?? (() => Date.now());
+  const lastGood = new Map<string, { readonly profileId: string; readonly answer: ProgramVersion; readonly at: number }>();
+  return async (profile, paneId, foreground) => {
+    const read = paneId === undefined || foreground === undefined ? undefined : await foreground(paneId);
+    const pane = read?.ok === true ? paneBinaryOf(read.value, deps.binaries(), deps.probe, deps.host) : null;
+    const command = pane !== null && pane.harness === profile.id ? pane.command : undefined;
+    if (paneId !== undefined && command === undefined) {
+      // No program of this agent on the pane now (it exited to the shell, or the read failed): the
+      // program it ran a moment ago answers, so two sends a few seconds apart name one version.
+      const kept = lastGood.get(paneId);
+      if (kept !== undefined && kept.profileId === profile.id && now() - kept.at <= PANE_LAST_GOOD_MS) return kept.answer;
+    }
+    // The cache says which program answered: it falls back to the PATH binary for a file it cannot stat
+    // and for a pane that read its own program a moment ago, and then no file is named.
+    const answer = await deps.versions.programVersion(profile, command, paneId);
+    if (paneId !== undefined && answer.command !== undefined && answer.version !== null) {
+      lastGood.delete(paneId);
+      lastGood.set(paneId, { profileId: profile.id, answer, at: now() });
+      if (lastGood.size > LAST_GOOD_MAX) {
+        const oldest = lastGood.keys().next();
+        if (!oldest.done) lastGood.delete(oldest.value);
+      }
+    }
+    return answer;
+  };
+}
+
+export interface PaneVersionDeps extends Omit<PaneProfileDeps, "platform"> {
+  readonly now?: () => number;
+}
+
+/**
+ * How long a pane's last answer from its own program stands once the program is gone from the pane's
+ * foreground. Long enough for the sends of one exchange, short enough that a new install the operator
+ * starts in that pane is read.
+ */
+export const PANE_LAST_GOOD_MS = 30_000;
+
+/** The most panes whose last answer is kept. A safety bound: the oldest goes first. */
+const LAST_GOOD_MAX = 256;
+
+/**
  * The send path's profile lookup (`SendDeps.profile`): a harness's profile at its version, null when the
  * harness has none. With a pane and a foreground read, a foreground process that runs THIS harness
  * gives the program read, and the match names its file (`binary`); a read that shows none of it, or
  * no read, leaves the PATH binary. A harness with no profile reads nothing at all.
  */
-export function createPaneProfile(deps: PaneProfileDeps): (harness: string, paneId?: string, foreground?: ForegroundRead) => Promise<PaneProfileMatch | null> {
+export function createPaneProfile(deps: PaneProfileDeps & { readonly paneVersion?: PaneVersion }): (harness: string, paneId?: string, foreground?: ForegroundRead) => Promise<PaneProfileMatch | null> {
   const platform = deps.platform ?? HOST.platform;
+  const versionOf = deps.paneVersion ?? createPaneVersion(deps);
   return async (harness, paneId, foreground) => {
     const profile = findProfile(loadProfiles(), harness);
     if (profile === undefined) return null;
-    const read = paneId === undefined || foreground === undefined ? undefined : await foreground(paneId);
-    const pane = read?.ok === true ? paneBinaryOf(read.value, deps.binaries(), deps.probe, deps.host) : null;
-    const command = pane !== null && pane.harness === profile.id ? pane.command : undefined;
-    // The cache says which program answered: it falls back to the PATH binary for a file it cannot stat
-    // and for a pane that read its own program a moment ago, and then no file is named.
-    const answer = await deps.versions.programVersion(profile, command, paneId);
+    const answer = await versionOf(profile, paneId, foreground);
     const match = profileForPlatform(profile.id, answer.version, platform);
     const binary = answer.command?.at(-1);
     return match === null || binary === undefined ? match : { ...match, binary };

@@ -151,11 +151,12 @@ describe("one mark, in every state", () => {
     // state, only the colour it is drawn in.
     const marks = (["warm", "expiring", "cold"] as const).map((state) => {
       const view = render(<CacheChip cache={cache({ state })} />, { wrapper: one });
-      const glyph = chip()?.querySelector("svg")?.getAttribute("class") ?? "";
+      const svg = chip()?.querySelector("svg");
+      const glyph = `${svg?.getAttribute("class") ?? ""} ${svg?.getAttribute("data-icon") ?? ""}`;
       view.unmount();
       return glyph.replace(/text-status-\S+/, "");
     });
-    expect(marks[0]).toContain("lucide-hourglass");
+    expect(marks[0]).toContain("cache-age");
     expect(new Set(marks).size).toBe(1);
   });
 });

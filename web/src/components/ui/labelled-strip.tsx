@@ -42,9 +42,10 @@ export const STRIP_TAP_TARGET =
 export const STRIP_TAP_TARGET_SQUARE = `${STRIP_TAP_TARGET} before:-inset-x-[7px]`;
 
 /**
- * The hit box of a 28px square control in the pane screen's 30px tab row: the "+" and the fold
- * chevron (`tab-strip.tsx`). It is NOT centred on the drawn circle, and it ends on the row's own
- * bottom edge.
+ * The hit box of a 28px square control in the pane screen's 30px tab row: the fold chevron
+ * (`agent-chat.tsx`, pinned to the row by `tab-strip.tsx`). The row's "+" was the second one; it draws
+ * 24px now and has its own numbers, {@link TAB_ROW_ADD_TAP_TARGET}. It ends on the row's own bottom
+ * edge.
  *
  * THE REACH MAY NOT HANG BELOW THE ROW. It used to (`-bottom-4`, 44px tall, `z-[1]`), and the
  * 14px that lay over the content under the strip took the tap off a file-path link, or any other
@@ -64,6 +65,47 @@ export const STRIP_TAP_TARGET_SQUARE = `${STRIP_TAP_TARGET} before:-inset-x-[7px
  */
 export const TAB_ROW_SQUARE_TAP_TARGET =
   "relative before:absolute before:-inset-y-[2px] before:-inset-x-[9px] before:content-['']";
+
+/**
+ * The hit box of the tab row's "+", the bare glyph in a 24px `xs` box of `ui/add-button.tsx` (`tab-strip.tsx`). The
+ * same rule as {@link TAB_ROW_SQUARE_TAP_TARGET}, the row's own 30px tall and 44px wide and never below the row,
+ * re-measured for that box. The bare face has no border, so the `::before` resolves against the whole 24px box:
+ *
+ *  - top and bottom `-3px`: the 24px box is centred in 30, so its edges are 3px inside the row. 24 + 6 = 30, the
+ *    reach starts and ends on the row's edges.
+ *  - sideways `-10px`: 24 + 20 = 44 across. Under the folder look the last tab's card ends 12px left of the box
+ *    (the "+" carries `ml-3`), so the reach stops 2px short of it. Under the plain look the last tab's box ends 6px
+ *    left of it (the tab group's `-mx-1.5` pulls it into the scroller's 12px gap), so the reach takes the last 4px
+ *    of that tab's padding, never its label; the tab keeps at least 40px. On the right the scroller's `pr-3` (12px,
+ *    with the fold chevron pinned) or `px-4` holds the reach.
+ *
+ * Measured 2026-11-06 at 412x915 in Chromium (`e2e/pane-top-bar.spec.ts`).
+ */
+export const TAB_ROW_ADD_TAP_TARGET =
+  "relative before:absolute before:-inset-y-[3px] before:-inset-x-[10px] before:content-['']";
+
+/**
+ * {@link TAB_ROW_ADD_TAP_TARGET} one step up, for the tab row at the medium width class (`tab-strip.tsx` § STEP):
+ * the "+" is the 28px `sm` box in a 36px row. The same rule, re-measured:
+ *
+ *  - top and bottom `-4px`: 28 + 8 = 36, the reach starts and ends on the row's edges.
+ *  - sideways `-8px`: 28 + 16 = 44 across. Under the folder look the "+" stands 10px clear of the last tab's card
+ *    (the group's `-mx-3.5` against the tab's `px-3.5`), so the reach stops 2px short of it. Under the plain look
+ *    it takes the last 4px of the last tab's 8px padding, never its label.
+ */
+export const TAB_ROW_ADD_TAP_TARGET_MEDIUM =
+  "relative before:absolute before:-inset-y-[4px] before:-inset-x-[8px] before:content-['']";
+
+/**
+ * {@link TAB_ROW_ADD_TAP_TARGET} two steps up, for the tab row at the expanded width class: the "+" is the 32px
+ * `md` box in a 40px row.
+ *
+ *  - top and bottom `-4px`: 32 + 8 = 40, on the row's edges.
+ *  - sideways `-6px`: 32 + 12 = 44 across. Under the folder look 8px clear of the last card (`-mx-4` against
+ *    `px-4`), so 2px short of it again; under the plain look the last 4px of the last tab's 10px padding.
+ */
+export const TAB_ROW_ADD_TAP_TARGET_EXPANDED =
+  "relative before:absolute before:-inset-y-[4px] before:-inset-x-[6px] before:content-['']";
 
 /**
  * The sideways scroller the composer's thin rows are built on — the key rail and the actions row.

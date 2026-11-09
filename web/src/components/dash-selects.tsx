@@ -1,5 +1,4 @@
 import { useId, useState } from "react";
-import { Check, ChevronDown } from "lucide-react";
 
 import { Select } from "@/components/ui/select";
 import { BottomSheet } from "@/components/ui/sheet";
@@ -13,6 +12,7 @@ import { worstTriage, type TriageKey } from "@/lib/triage";
 import { statusLabel, type ServerSummary } from "@/lib/types";
 import type { WorkspaceGroup } from "@/lib/pane-groups";
 import { cn } from "@/lib/utils";
+import { Icon } from "@/components/icons/icon";
 
 // The two controls under the dashboard's summary line (2026-10-07): the workspace filter on the left,
 // the pane order on the right. They replaced the chip strip and the three-glyph order toggle, which
@@ -72,7 +72,7 @@ function CheckRow({
           checked ? "border-primary bg-primary/20 text-primary" : "border-border bg-background",
         )}
       >
-        {checked ? <Check className="size-3" /> : null}
+        {checked ? <Icon name="selected" className="size-3" /> : null}
       </span>
       <span className="min-w-0 flex-1 truncate">
         <span className="font-medium text-foreground">{label}</span>
@@ -166,7 +166,8 @@ export function WorkspaceFilter({
           {choiceLabel(chosen)}
         </span>
       </button>
-      <ChevronDown
+      <Icon
+        name="select-caret"
         aria-hidden
         className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
       />
@@ -220,13 +221,13 @@ export function PaneOrderSelect({
   className?: string;
 }) {
   useLocale();
-  const { Icon } = PANE_ORDER_SEGMENTS[order];
+  const { icon } = PANE_ORDER_SEGMENTS[order];
   return (
     <Select
       className={className}
       aria-label={t("paneOrder.aria")}
       value={order}
-      lead={<Icon className="size-4" />}
+      lead={<Icon name={icon} className="size-4" />}
       onChange={(event) => {
         const next = PANE_ORDERS.find((o) => o === event.target.value);
         if (next !== undefined) onChange(next);

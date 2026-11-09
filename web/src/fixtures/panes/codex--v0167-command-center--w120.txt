@@ -1,0 +1,61 @@
+  [0m[1mAgent command center[0m[2m  Group: Project  g[0m
+  [0m[1m[38;2;191;191;191m[48;2;76;76;76m All 1 [0m [0m[2m Needs you 0 [0m [0m[2m Working 0   Ready 0   Inactive 1                                          [0m[1m[38;2;191;191;191mtab/shift+tab[0m[38;2;125;125;125m filter[0m
+  [0m[2m─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+      [0m[2mTasks[0m                                            [0m[2mStatus         Updated  │ [0m[1mTask details[0m
+  [0m[2m/tmp/collie-codex-lab  1                                 │[0m
+  [0m[1m[38;2;0;0;46m[48;2;99;168;248m› [0m[1m[38;2;59;130;246m[48;2;99;168;248m●[0m[1m[38;2;0;0;46m[48;2;99;168;248m Inspect calc.py                                  Inactive        2m ago  [0m[2m│ [0m[1m[38;2;180;190;254mInspect calc.py[0m
+                                                                               [0m[2m│ ○ [0mInactive
+                                                                               [0m[2m│[0m
+                                                                               [0m[2m│ Model: [0mgpt-6-luna
+                                                                               [0m[2m│ Reasoning: [0mmedium
+                                                                               [0m[2m│[0m
+                                                                               [0m[2m│ Project[0m
+                                                                               [0m[2m│ [0m/tmp/
+                                                                               [0m[2m│ [0mtrouble-codex-sandbox
+                                                                               [0m[2m│[0m
+                                                                               [0m[2m│ Branch[0m
+                                                                               [0m[2m│ [0mmaster
+                                                                               [0m[2m│[0m
+                                                                               [0m[2m│ Last message[0m
+                                                                               [0m[2m│ [0mThe sleep command printed [0m[38;2;166;227;161mdone[0m, and
+                                                                               [0m[2m│ [0mthe curl command produced no output.
+                                                                               [0m[2m│[0m
+                                                                               [0m[2m│ Prompt[0m
+                                                                               [0m[2m│ [0mRun the shell command: sleep 6 && echo
+                                                                               [0m[2m│ …[0m
+                                                                               [0m[2m│[0m
+                                                                               [0m[2m│[0m
+                                                                               [0m[2m│[0m
+                                                                               [0m[2m│[0m
+                                                                               [0m[2m│[0m
+                                                                               [0m[2m│[0m
+                                                                               [0m[2m│[0m
+                                                                               [0m[2m│[0m
+                                                                               [0m[2m│[0m
+                                                                               [0m[2m│[0m
+                                                                               [0m[2m│[0m
+                                                                               [0m[2m│[0m
+                                                                               [0m[2m│[0m
+                                                                               [0m[2m│[0m
+                                                                               [0m[2m│[0m
+                                                                               [0m[2m│[0m
+                                                                               [0m[2m│[0m
+                                                                               [0m[2m│[0m
+                                                                               [0m[2m│[0m
+                                                                               [0m[2m│[0m
+                                                                               [0m[2m│[0m
+                                                                               [0m[2m│[0m
+                                                                               [0m[2m│[0m
+                                                                               [0m[2m│[0m
+                                                                               [0m[2m│[0m
+                                                                               [0m[2m│[0m
+                                                                               [0m[2m│[0m
+                                                                               [0m[2m│[0m
+                                                                               [0m[2m│[0m
+                                                                               [0m[2m│[0m
+                                                                               [0m[2m│[0m
+                                                                               [0m[2m│[0m
+                                                                               [0m[2m│[0m
+                                                                               [0m[2m│[0m
+                                                                               [0m[2m│[0m
+  [0m[1m[38;2;191;191;191m?[0m[38;2;125;125;125m help[0m[2m  [0m[1m[38;2;191;191;191mesc[0m[38;2;125;125;125m back[0m[2m  [0m[1m[38;2;191;191;191m↑/↓[0m[38;2;125;125;125m move[0m[2m  [0m[1m[38;2;191;191;191menter[0m[38;2;125;125;125m open[0m[2m  [0m[1m[38;2;191;191;191mn[0m[38;2;125;125;125m new[0m

@@ -1,7 +1,7 @@
 // Dashboard section of the states playground. Split out of app.tsx; see that file's header comment
 // for the whole page's rules.
 
-import { ListTree, Network, Rows3 } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 import { useEffect, useState } from "react";
 import { MemoryRouter } from "react-router";
 
@@ -20,7 +20,8 @@ import { ReadOnlyBanner } from "@/components/read-only-banner";
 import { SessionSwitcher } from "@/components/session-switcher";
 import { SpaceStrip } from "@/components/space-strip";
 import { TabStrip } from "@/components/tab-strip";
-import { UpdateBanner } from "@/components/update-banner";
+import { AppHeaderHost, RouteHeader } from "@/components/app-header";
+import { UpdateBanner, UpdateNoticeLine, updateNotice, type BundleFacts } from "@/components/update-banner";
 import { UpdateRibbon } from "@/components/update-ribbon";
 import { clearNotPaired, markNotPaired } from "@/lib/pairing";
 import { holdReload, releaseReload, __resetReloadGuard } from "@/lib/reload-guard";
@@ -145,16 +146,16 @@ function DashboardTabsPhone({
         active={view}
         onSelect={setView}
         items={[
-          ...(crew ? [{ value: "crew" as const, label: t("crew.title"), icon: <Network className="size-5" /> }] : []),
+          ...(crew ? [{ value: "crew" as const, label: t("crew.title"), icon: <Icon name="crew" className="size-5" /> }] : []),
           {
             value: "dashboard",
             label: t("home.tabs.dashboard"),
-            icon: <Rows3 className="size-5" />,
+            icon: <Icon name="tab-dashboard" className="size-5" />,
             badge: blocked,
             dot: blocked === 0 && hasReady(herd),
             badgeLabel: blocked > 0 ? tn("home.tabs.blocked", blocked) : t("home.tabs.unseen"),
           },
-          { value: "changes", label: t("files.title"), icon: <ListTree className="size-5" /> },
+          { value: "changes", label: t("files.title"), icon: <Icon name="files" className="size-5" /> },
         ]}
       />
     </>
@@ -386,12 +387,32 @@ export function DashboardSection() {
 
         <Card
           state="update-band-bundle-behind"
-          label="update band (c), this bundle is behind the bridge"
-          reach="a fresh build is confirmed on the server but the app cannot auto-update right now: unsent work, an open sheet, an upload — or it already auto-updated once for this build. With no hold at all the app reloads ITSELF and this row never appears, which is the normal path."
-          note="Driven through the actual controller: a reload hold is taken and a newer build id is observed twice, which is the hysteresis the real poll performs. `lib/self-update.ts` is a PAGE-WIDE singleton, exactly like lib/status.ts and lib/connection-health.ts, and every band on this page reads it — so driving it here puts every OTHER band card into this same state. Hence the toggle, and hence it is off by default. Two rows: with a Collie run behind the new build the band names the version, and with none it is the PWA row exactly as it has always been."
+          label="update band (c), now the mark's"
+          reach="a fresh build is confirmed on the server but the app cannot auto-update right now: unsent work, an open sheet, an upload — or it already auto-updated once for this build. With no hold at all the app reloads ITSELF and nothing shows, which is the normal path."
+          note="Since 2026-11-06 the band posts NOTHING for this state: the header mark turns in the update colour and the dashboard's update line offers the reload (the 'update line, the app bundle' card). Driven through the actual controller: a reload hold is taken and a newer build id is observed twice, which is the hysteresis the real poll performs. `lib/self-update.ts` is a PAGE-WIDE singleton, and every header and band on this page reads it, so the toggle is off by default. Three rows: the real header with its mark, a band over a crew that is level, and a band with no update behind it. Both bands stay empty while the toggle is on."
           span={2}
         >
           <StaleBuildHarness />
+        </Card>
+
+        <Card
+          state="update-line-app-bundle"
+          label="update line, the app bundle"
+          reach="tap the header mark while it turns in the update colour. The dashboard opens and brings this line into view."
+          note="Two lines, from the real precedence (updateNotice with the bundle's facts) and the real line. Downloading, with the per cent of files when the worker has counted any. Then the new build in and waiting: a button that reloads onto it, and, only while a reload hold is on, the sentence that it reloads on its own. Both outrank every release line."
+        >
+          <Stage>
+            <ListGroup>
+              {BUNDLE_LINES.map((facts) => {
+                const notice = updateNotice(undefined, facts);
+                return notice === null ? null : (
+                  <div key={facts.stage} className="p-3">
+                    <UpdateNoticeLine notice={notice} />
+                  </div>
+                );
+              })}
+            </ListGroup>
+          </Stage>
         </Card>
 
         <Card
@@ -614,6 +635,13 @@ function StartingRibbonHarness() {
  * Behind a toggle, and off by default, for the reason the card's own note gives: that controller is
  * one page-wide store and every band on this page reads it.
  */
+/** The update line's two bundle states, as `updateNotice` reads them. Static facts, so drawing them
+ *  moves none of the page-wide stores the toggle above owns. */
+const BUNDLE_LINES = [
+  { stage: "installing", progress: { done: 17, total: 42 }, reloadHeld: false },
+  { stage: "ready", progress: null, reloadHeld: true },
+] as const satisfies readonly BundleFacts[];
+
 function StaleBuildHarness() {
   const [stale, setStale] = useState(false);
   useEffect(() => {
@@ -640,6 +668,11 @@ function StaleBuildHarness() {
         offLabel="stale bundle: off — tap to confirm one (it takes over every other band card)"
       />
       <Stage>
+        <RootRouter data={homeSolo}>
+          <AppHeaderHost bridge="connected" error={false}>
+            <RouteHeader wordmark />
+          </AppHeaderHost>
+        </RootRouter>
         <RootRouter data={{ ...homeSolo, update: updateCrewLevel }}>
           <UpdateRibbon />
         </RootRouter>

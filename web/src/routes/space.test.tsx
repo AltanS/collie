@@ -1,4 +1,6 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { http, HttpResponse } from "msw";
 import { createMemoryRouter, RouterProvider } from "react-router";
 
 import { CrewProvider } from "@/components/crew-provider";
@@ -6,6 +8,8 @@ import { ROOT_ROUTE_ID, type HomeData } from "@/lib/loaders";
 import type { AgentView, TabView, WorkspaceView } from "@/lib/types";
 import { fixtureServers } from "@/test/handlers";
 import { withHeaderHost } from "@/test/header-host";
+import { server } from "@/test/msw";
+import type { StartLaunchBody } from "@/lib/api";
 import { SpaceRoute } from "./space";
 
 // The space screen on a crew. The one thing asserted here is the HOST the space is read on: a lead's
@@ -130,5 +134,45 @@ describe("SpaceRoute on a crew", () => {
     // Nothing of the peer's leaks in, and the lead's empty space says so rather than borrowing panes.
     expect(await screen.findByText("(empty tab)")).toBeInTheDocument();
     expect(screen.queryByText("peer pane")).not.toBeInTheDocument();
+  });
+});
+
+// THE TAB ROW'S "+" OFFERS THE MACHINE'S AGENTS (M91 spec 02): on the space view the "+" opens the
+// New tab sheet for the space on screen, read from that space's own machine, and a row starts as a tab
+// beside the space's pane there.
+describe("SpaceRoute, the tab row's '+'", () => {
+  it("opens the New tab sheet of the addressed machine, and starts a row beside the space's pane", async () => {
+    const reads: string[] = [];
+    const launches: { host: string | null; body: StartLaunchBody }[] = [];
+    server.use(
+      http.get("/api/launchers", ({ request }) => {
+        reads.push(new URL(request.url).searchParams.get("host") ?? "");
+        return HttpResponse.json({
+          launchers: [],
+          home: "/home/you",
+          harnesses: [],
+          items: [
+            { key: "harness:codex", start: { harness: "codex" }, group: "agents", label: "Codex", harness: "codex", source: "builtin", noPrompts: false, branch: true, available: true },
+            { key: "shell", start: { shell: true }, group: "commands", label: "Shell", source: "builtin", noPrompts: false, branch: true, available: true },
+          ],
+        });
+      }),
+      http.post("/api/launch", async ({ request }) => {
+        // SAFETY: the body is the app's own: `lib/api.ts`'s `startLaunch` is the only caller and it posts a `StartLaunchBody`.
+        const body = (await request.json()) as StartLaunchBody;
+        launches.push({ host: new URL(request.url).searchParams.get("host"), body });
+        return HttpResponse.json({ ok: true, pane: { paneId: "wA:p5", workspaceId: "wA", workspaceLabel: "Hermes", tabId: "wA:t2", cwd: "/home/you/hermes" } });
+      }),
+    );
+    const router = renderSpace("wA", PEER);
+    await userEvent.click(await screen.findByRole("button", { name: "New tab" }));
+    const sheet = within(await screen.findByRole("dialog", { name: "New tab in Hermes" }));
+    expect(sheet.getByText("In ~/hermes")).toBeInTheDocument();
+    await userEvent.click(await sheet.findByRole("button", { name: /Codex/ }));
+    await waitFor(() => expect(router.state.location.pathname).toBe("/pane/wA%3Ap5"));
+    expect(reads.every((h) => h === PEER)).toBe(true);
+    expect(launches).toHaveLength(1);
+    expect(launches[0]!.host).toBe(PEER);
+    expect(launches[0]!.body).toMatchObject({ harness: "codex", paneId: "wA:p2" });
   });
 });

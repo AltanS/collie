@@ -5,6 +5,8 @@ import { registerPushSubscription } from "./api";
 const body = {
   endpoint: "https://push.example.test/device",
   keys: { p256dh: "test-key", auth: "test-auth" },
+  closesOwn: true as const,
+  badges: false,
 };
 
 it("registers push with the API's XHR header and accepts the bridge's empty acknowledgement", async () => {

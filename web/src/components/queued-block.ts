@@ -27,12 +27,13 @@ export const QUEUED_TEXT = "wrap-anywhere text-sm whitespace-pre-wrap text-foreg
 export const QUEUED_BUTTON =
   "relative h-7 min-w-11 gap-1 px-2 text-xs before:absolute before:inset-x-0 before:-inset-y-2 before:content-['']";
 /**
- * The held-send card's own surface (composer-held.tsx): the floating notice's ground (`bg-card/95`,
- * `backdrop-blur-sm`, `shadow-md`, ADR 0061) under the queue's dashed edge, so it reads apart from the
+ * The held-send card's own surface (composer-held.tsx): the floating notice's ground (`bg-card`,
+ * `shadow-md`, ADR 0061; solid, with no `backdrop-blur`, because the chat under it animates while an
+ * agent works and a blur over an animation redraws every frame, issue 748) under the queue's dashed edge, so it reads apart from the
  * terminal behind it and still says "mine, not sent yet". Uniform border, no left accent. It sits in the
  * floating slot, so it takes touches back from the pass-through wrapper.
  */
 export const QUEUED_FLOAT =
-  "pointer-events-auto flex min-w-0 flex-col gap-1 rounded-lg border border-dashed border-status-working/40 bg-card/95 px-3 py-1.5 text-xs shadow-md backdrop-blur-sm";
+  "pointer-events-auto flex min-w-0 flex-col gap-1 rounded-lg border border-dashed border-status-working/40 bg-card px-3 py-1.5 text-xs shadow-md";
 /** A message inside the floating card: small text, the caller adds the line clamp. */
 export const QUEUED_FLOAT_TEXT = "wrap-anywhere text-xs leading-snug whitespace-pre-wrap text-foreground/80";

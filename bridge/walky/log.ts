@@ -122,6 +122,77 @@ function readLine(raw: string): LogLine | null {
   return senderSession === undefined || senderPane === undefined ? line : { ...line, sender: { session: senderSession, paneId: senderPane, instance: instanceField(asJsonString(from?.instance)) } };
 }
 
+/** Fold one line into the records: the first message line for a target wins, a receipt replaces the newest. */
+function indexLine(records: Map<string, LogRecord>, line: LogLine): void {
+  if (line.t === "message") {
+    const key = keyOf(line.message.id, line.target);
+    // The first message line for a target wins; a receipt may already be waiting for it.
+    if (records.has(key)) return;
+    const accepted: WalkyReceipt = { id: line.message.id, target: line.target, state: "accepted", verified: "none", at: line.at, by: "-" };
+    records.set(key, { session: line.session, paneId: line.paneId, instance: line.instance, target: line.target, message: line.message, receipt: accepted, sender: line.sender ?? null, acceptedAt: line.at });
+    return;
+  }
+  const key = keyOf(line.receipt.id, line.receipt.target);
+  const record = records.get(key);
+  if (record !== undefined) records.set(key, { ...record, receipt: line.receipt });
+}
+
+/**
+ * The records of a log file's text, in log order, read as {@link WalkyLog} reads its own: a line that
+ * does not parse is skipped. Only the newest `maxLines` lines count. For a reader of ANOTHER bridge's
+ * log (siblings.ts), which must never load that log as its own: a {@link WalkyLog} rotates the file.
+ */
+export function recordsOfText(text: string, maxLines: number = LOG_MAX_LINES): LogRecord[] {
+  const raw = text.split("\n").filter((line) => line.trim() !== "");
+  const records = new Map<string, LogRecord>();
+  for (const line of raw.slice(Math.max(0, raw.length - maxLines))) {
+    const parsed = readLine(line);
+    if (parsed !== null) indexLine(records, parsed);
+  }
+  return [...records.values()];
+}
+
+/** One row of a pane's list with the time its bridge logged it: what {@link mergeRows} orders by. */
+export interface SiblingRow {
+  readonly entry: WalkyEntry;
+  readonly acceptedAt: number;
+}
+
+/**
+ * The rows another Collie instance on this machine recorded for a pane (siblings.ts): two bridges
+ * that share one multiplexer see the same pane, and an agent's `collie walky send` reaches the one
+ * whose binary is on its PATH. Newest first, each entry carrying `recordedBy`.
+ */
+export interface SiblingSource {
+  forPane(session: string, paneId: string, limit: number, sent: boolean): SiblingRow[];
+}
+
+/**
+ * This log's rows and the siblings' rows as one list: newest first by when each bridge logged the
+ * row, an own row first on a tie, a sibling row whose message id this log holds dropped (the own
+ * record wins), and `limit` over the merged list. No sibling rows: the own list, untouched.
+ */
+export function mergeRows(own: readonly SiblingRow[], theirs: readonly SiblingRow[], limit: number): WalkyEntry[] {
+  if (theirs.length === 0) return own.slice(0, limit).map((row) => row.entry);
+  const ownIds = new Set(own.map((row) => row.entry.id));
+  const other = theirs.filter((row) => !ownIds.has(row.entry.id));
+  const out: WalkyEntry[] = [];
+  let i = 0;
+  let j = 0;
+  while (out.length < limit && (i < own.length || j < other.length)) {
+    const mine = own[i];
+    const sibling = other[j];
+    if (mine !== undefined && (sibling === undefined || mine.acceptedAt >= sibling.acceptedAt)) {
+      out.push(mine.entry);
+      i += 1;
+      continue;
+    }
+    if (sibling !== undefined) out.push(sibling.entry);
+    j += 1;
+  }
+  return out;
+}
+
 export class WalkyLog {
   private readonly dir: string;
   private readonly path: string;
@@ -134,6 +205,8 @@ export class WalkyLog {
   constructor(
     dir: string,
     private readonly now: () => number = Date.now,
+    /** The rows other instances on this machine recorded (siblings.ts), merged into {@link forPane}. Null: this log alone. */
+    private readonly siblings: SiblingSource | null = null,
   ) {
     this.dir = dir;
     this.path = join(dir, "log.jsonl");
@@ -197,17 +270,7 @@ export class WalkyLog {
   }
 
   private index(line: LogLine): void {
-    if (line.t === "message") {
-      const key = keyOf(line.message.id, line.target);
-      // The first message line for a target wins; a receipt may already be waiting for it.
-      if (this.records.has(key)) return;
-      const accepted: WalkyReceipt = { id: line.message.id, target: line.target, state: "accepted", verified: "none", at: line.at, by: "-" };
-      this.records.set(key, { session: line.session, paneId: line.paneId, instance: line.instance, target: line.target, message: line.message, receipt: accepted, sender: line.sender ?? null, acceptedAt: line.at });
-      return;
-    }
-    const key = keyOf(line.receipt.id, line.receipt.target);
-    const record = this.records.get(key);
-    if (record !== undefined) this.records.set(key, { ...record, receipt: line.receipt });
+    indexLine(this.records, line);
   }
 
   private append(line: LogLine): void {
@@ -272,13 +335,14 @@ export class WalkyLog {
    * the receipt of an agent's own message too, and tells the two apart by `from.address`.
    */
   forPane(session: string, paneId: string, instance: string, limit: number, sent = false): WalkyEntry[] {
-    const out: WalkyEntry[] = [];
+    const own: SiblingRow[] = [];
     const at = (place: Placement | null): boolean => place !== null && place.session === session && place.paneId === paneId && sameInstance(place.instance, instance);
     for (const record of [...this.records.values()].toReversed()) {
-      if (out.length >= limit) break;
-      if (at(record) || (sent && at(record.sender))) out.push({ ...record.message, receipt: record.receipt });
+      if (own.length >= limit) break;
+      if (at(record) || (sent && at(record.sender))) own.push({ entry: { ...record.message, receipt: record.receipt }, acceptedAt: record.acceptedAt });
     }
-    return out;
+    const theirs = this.siblings?.forPane(session, paneId, limit, sent) ?? [];
+    return mergeRows(own, theirs, limit);
   }
 
   /** The newest messages on this bridge, any pane, newest first. */

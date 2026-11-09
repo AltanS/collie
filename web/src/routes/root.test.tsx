@@ -8,7 +8,7 @@ import { server } from "@/test/setup";
 import { __resetOperatorCommands } from "@/lib/operator-config";
 import { CONNECTION_LOST_MS } from "@/hooks/use-connection-lost";
 import { __resetConnectionHealth } from "@/lib/connection-health";
-import { collieMark, markIsLive, markPaper } from "@/test/collie-mark";
+import { markIsLive, markPaper, markState } from "@/test/collie-mark";
 import { ROOT_ROUTE_ID, type HomeData, type PaneData } from "@/lib/loaders";
 import { en } from "@/lib/i18n/messages/en";
 import {
@@ -51,13 +51,12 @@ describe("BootSplash — escalates a stuck cold start", () => {
     expect(screen.getByText(/Can.t reach Collie/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
     // Same mark throughout — it is never swapped for a second drawing, it only stops blooming: the
-    // rest state is that mark still, muted. No bloom, because we have stopped trying, and a
+    // idle state is that mark still, dimmed. No bloom, because we have stopped trying, and a
     // blooming mark would say otherwise. No gallop sprite on this screen either (the app mounts one
     // animal).
     expect(container.querySelector(".dog-gallop")).toBeNull();
-    const mark = collieMark(container);
     expect(markIsLive(container)).toBe(false);
-    expect(mark?.getAttribute("class")).toMatch(/grayscale/);
+    expect(markState(container)).toBe("idle");
   });
 });
 

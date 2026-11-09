@@ -57,7 +57,7 @@ function renderPane(overrides: Partial<ComponentProps<typeof AgentChat>> = {}, r
 
 async function openMessages(user: ReturnType<typeof userEvent.setup>) {
   await user.click(screen.getByRole("button", { name: "Pane actions" }));
-  await user.click(await screen.findByRole("button", { name: "Messages" }));
+  await user.click(await screen.findByRole("button", { name: "WalkyTalky" }));
 }
 
 describe("the pane's Messages row and sheet", () => {
@@ -180,7 +180,7 @@ describe("the Chat card and the id chip open the Messages sheet on their message
     withJournal(turns);
     renderPane({ agent: sessionAgent }, [fixtureWalkyAgent, fixtureWalkyOperator]);
     await user.click(await screen.findByRole("button", { name: /Message from collie-workspace#fix-465/ }));
-    const dialog = await screen.findByRole("dialog", { name: "Messages" });
+    const dialog = await screen.findByRole("dialog", { name: "WalkyTalky" });
     const focused = dialog.querySelectorAll<HTMLElement>('[data-slot="walky-list-row"][data-focused="true"]');
     const row = focused[0];
     if (row === undefined) throw new Error("no focused row");
@@ -198,7 +198,7 @@ describe("the Chat card and the id chip open the Messages sheet on their message
     expect(screen.queryByRole("button", { name: "Open message wt_zzzzzzzzzzzz" })).toBeNull();
     expect(document.body.textContent).toContain("Ignore wt_zzzzzzzzzzzz.");
     await user.click(screen.getByRole("button", { name: "Open message wt_k3f9x2m8q1a0" }));
-    const dialog = await screen.findByRole("dialog", { name: "Messages" });
+    const dialog = await screen.findByRole("dialog", { name: "WalkyTalky" });
     expect(dialog.querySelector('[data-focused="true"]')).toHaveAttribute("data-kind", "agent");
   });
 
@@ -213,7 +213,7 @@ describe("the Chat card and the id chip open the Messages sheet on their message
     withJournal(turns.slice(1));
     renderPane({ agent: sessionAgent }, [fixtureWalkyAgent, sent]);
     await openMessages(user);
-    const dialog = await screen.findByRole("dialog", { name: "Messages" });
+    const dialog = await screen.findByRole("dialog", { name: "WalkyTalky" });
     const rows = [...dialog.querySelectorAll('[data-slot="walky-list-row"]')];
     expect(rows.map((r) => r.getAttribute("data-direction"))).toEqual(["sent", "received"]);
     expect(within(dialog).getByText("Sent to local/w6:p3")).toBeInTheDocument();
@@ -225,10 +225,10 @@ describe("the Chat card and the id chip open the Messages sheet on their message
     withJournal(turns.slice(1));
     renderPane({ agent: sessionAgent });
     await user.click(await screen.findByRole("button", { name: "Open message wt_k3f9x2m8q1a0" }));
-    await screen.findByRole("dialog", { name: "Messages" });
+    await screen.findByRole("dialog", { name: "WalkyTalky" });
     await user.click(screen.getByRole("button", { name: "Close" }));
     await openMessages(user);
-    const dialog = await screen.findByRole("dialog", { name: "Messages" });
+    const dialog = await screen.findByRole("dialog", { name: "WalkyTalky" });
     expect(dialog.querySelector('[data-focused="true"]')).toBeNull();
   });
 
@@ -238,7 +238,7 @@ describe("the Chat card and the id chip open the Messages sheet on their message
     withJournal(turns);
     renderPane({ scope: { host }, agent: { ...sessionAgent, host } }, [fixtureWalkyAgent]);
     await user.click(await screen.findByRole("button", { name: /Message from collie-workspace#fix-465/ }));
-    const dialog = await screen.findByRole("dialog", { name: "Messages" });
+    const dialog = await screen.findByRole("dialog", { name: "WalkyTalky" });
     expect(dialog.querySelector('[data-focused="true"]')).toHaveAttribute("data-kind", "agent");
   });
 });

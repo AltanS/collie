@@ -23,7 +23,9 @@ export type BeltIntent =
   /** The pinned Agents mark: the pane's running subagents. */
   | { readonly kind: "agents" }
   /** The pinned Jobs mark: the pane's background jobs. */
-  | { readonly kind: "jobs" };
+  | { readonly kind: "jobs" }
+  /** The pinned Pins mark: the session's pinned messages (M90). */
+  | { readonly kind: "pins" };
 
 /** How long an intent waits for its composer. */
 export const INTENT_TTL_MS = 5000;

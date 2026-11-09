@@ -1,4 +1,4 @@
-import { Server, ServerOff } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 import { useMemo } from "react";
 
 import { cn } from "@/lib/utils";
@@ -204,9 +204,10 @@ export function HostChip({ host, state, variant = "tag", sends, plain = false, c
         )}
       >
         {tone !== "quiet" ? (
-          <ServerOff className={cn("size-2.5 shrink-0", bare && "translate-y-[0.26px]")} aria-hidden />
+          <Icon name="machine-offline" className={cn("size-2.5 shrink-0", bare && "translate-y-[0.26px]")} aria-hidden />
         ) : (
-          <Server
+          <Icon
+            name="machine"
             className={cn(
               "size-2.5 shrink-0",
               bare && "translate-y-[0.26px]",
@@ -229,7 +230,7 @@ export function HostChip({ host, state, variant = "tag", sends, plain = false, c
   return (
     <AddressTag
       aria-label={label}
-      glyph={<Server className="size-3 shrink-0" aria-hidden />}
+      glyph={<Icon name="machine" className="size-3 shrink-0" aria-hidden />}
       prefix={target ? t("connection.host.onPrefix") : undefined}
       name={name}
       size={target ? "md" : "sm"}

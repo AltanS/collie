@@ -118,6 +118,8 @@ import {
   cmdWalky,
   cmdWalkyCancel,
   cmdWalkyInbox,
+  cmdWalkyOff,
+  cmdWalkyOn,
   cmdWalkyReply,
   cmdWalkySend,
   cmdWalkyStatus,
@@ -126,6 +128,8 @@ import {
   type WalkyDeps,
 } from "./walky.ts";
 import { cmdUpdateCheck, updateCheckDeps, wantsCheck } from "./update-check.ts";
+import { cmdTheme, cmdThemeCheck, realThemeFiles, THEME_SUBCOMMANDS } from "./theme-check.ts";
+import { cmdThemeSkill } from "./theme-skill.ts";
 
 // The `collie` binary's dispatch: argv in, exit code out. This module owns ONLY the dispatch —
 // every verb's behaviour lives in its own module under `cli/`, taking the resolved context as an
@@ -324,6 +328,16 @@ const WALKY_TREE: readonly Subcommand[] = [
     name: "cancel",
     summary: "take back a held message you sent: `walky cancel <id>` (it stays in the inbox, not typed)",
     run: (args, s) => cmdWalkyCancel(walkyDeps(s.io), args),
+  },
+  {
+    name: "off",
+    summary: "turn this session's WalkyTalky off: other agents cannot message it, your operator still can",
+    run: (args, s) => cmdWalkyOff(walkyDeps(s.io), args),
+  },
+  {
+    name: "on",
+    summary: "turn this session's WalkyTalky on again",
+    run: (args, s) => cmdWalkyOn(walkyDeps(s.io), args),
   },
 ];
 
@@ -976,9 +990,29 @@ export const COMMANDS: readonly Command[] = [
   // One spelling: `wt` was dropped before release, since Windows Terminal's binary is `wt.exe`.
   {
     name: "walky",
-    summary: `walky talky, messages between agent sessions: ${WALKY_SUBCOMMANDS.join(", ")}`,
+    summary: `WalkyTalky, messages between agent sessions: ${WALKY_SUBCOMMANDS.join(", ")}`,
     subcommands: WALKY_TREE,
     run: (args, s) => cmdWalky({ io: s.io }, args),
+  },
+  // ── Themes (M59 spec 05) ───────────────────────────────────────────────────
+  // `theme check` runs the app's own theme parser and contrast report over files on disk, for a
+  // theme repository's CI. No context and no state dir: it reads the files it is named and prints.
+  {
+    name: "theme",
+    summary: `check a theme file before you share it, or print the brief for an agent that writes one: ${THEME_SUBCOMMANDS.join(", ")}`,
+    subcommands: [
+      {
+        name: "check",
+        summary: "validate theme files with the app's parser; refusals, contrast warnings, exit 1 on a refusal (--json, --shipped)",
+        run: (args, s) => cmdThemeCheck({ io: s.io, files: realThemeFiles }, args),
+      },
+      {
+        name: "skill",
+        summary: "print the brief for an AI agent that writes a theme (also `collie theme --skill`)",
+        run: (_args, s) => cmdThemeSkill(s.io),
+      },
+    ],
+    run: (args, s) => cmdTheme({ io: s.io, files: realThemeFiles }, args),
   },
   // ── The crew (M4/07, renamed in M24) ──────────────────────────────────────
   // The only way a machine enters or leaves a crew. The verb is `crew`; `crew` is an alias onto the
@@ -1031,11 +1065,11 @@ export const COMMANDS: readonly Command[] = [
   {
     name: "skill",
     summary:
-      "print the agent-facing brief on Collie (also `collie --skill`), or install the walky talky skill into a harness: install, uninstall, sync, status, print",
+      "print the agent-facing brief on Collie (also `collie --skill`), or install the WalkyTalky skill into a harness: install, uninstall, sync, status, print",
     subcommands: [
       {
         name: "install",
-        summary: "write the walky talky skill: `skill install <claude|codex|opencode|pi|gemini|all>`",
+        summary: "write the WalkyTalky skill: `skill install <claude|codex|opencode|pi|gemini|all>`",
         run: (args, s) => cmdSkillInstall(skillDeps(s.io), args),
       },
       {

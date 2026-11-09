@@ -1,6 +1,7 @@
+import { Icon } from "@/components/icons/icon";
 import { useLoaderData } from "react-router";
-import { FlaskConical } from "lucide-react";
 
+import { AppearanceIntro } from "@/components/appearance-intro";
 import { SettingsPage } from "@/components/settings-page";
 import { Notice } from "@/components/ui/notice";
 import { useLocale } from "@/hooks/use-locale";
@@ -34,6 +35,7 @@ import { ToolCallsControl } from "@/components/tool-calls-control";
 import { TourControl } from "@/components/tour-control";
 import { TypefaceControl } from "@/components/typeface-control";
 import { TelemetrySettingsCard, TelemetrySettingsRow } from "@/components/telemetry-settings-card";
+import { MathControl } from "@/components/math-control";
 import { ZenControl } from "@/components/zen-control";
 import { useServerDiagnostics } from "@/hooks/use-server-diagnostics";
 import { EMPTY_DEVICES, type DevicesData } from "@/lib/loaders";
@@ -82,6 +84,11 @@ import { useScope } from "@/lib/session";
 export function SettingsAppearanceRoute() {
   return (
     <SettingsPage title="settings.section.appearance.title">
+      {/* "Make Collie your own": one line and a docs link over the two cards that make the app
+          yours, in the order a person decides them: the theme (Paste, Browse and Try live in its
+          card), then which half of the theme you see. The header's character comes with the theme
+          and has no card of its own: it is something a theme maker sets, not a device setting. */}
+      <AppearanceIntro />
       {/* Which theme, then which half of it: the picker sits directly above the three-way (System,
           Light, Dark) because the two are one question asked twice, and a person who finds one
           should find the other. First on the page, because it is the one people come here for. */}
@@ -94,6 +101,9 @@ export function SettingsAppearanceRoute() {
           Reading them one after the other is what makes the split obvious. */}
       <TypefaceControl />
       <FontSettingsControl />
+      {/* How agent prose draws LaTeX. Under the two font cards, because it is the same question —
+          what text looks like — asked of a formula, and above the cards that arrange surfaces. */}
+      <MathControl />
       {/* The harness bar, then the belt's size directly under what it carries: one factor for
           band, pills, icons and words (components/actions-row.tsx, `--belt-scale`). */}
       <HarnessBarControl />
@@ -225,7 +235,7 @@ export function SettingsAlertsRoute() {
 function ExperimentsContract() {
   useLocale();
   return (
-    <Notice variant="box" tone="caution" icon={<FlaskConical className="size-4" />}>
+    <Notice variant="box" tone="caution" icon={<Icon name="experiments" className="size-4" />}>
       {t("settings.experiments.contract")}
     </Notice>
   );

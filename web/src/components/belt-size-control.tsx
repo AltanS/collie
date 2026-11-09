@@ -1,10 +1,10 @@
-import { Rows3 } from "lucide-react";
 
 import { Card } from "@/components/ui/card";
 import { BELT_SCALES, useDashPrefs, type BeltScale } from "@/hooks/use-dash-prefs";
 import { useLocale } from "@/hooks/use-locale";
 import { t, type MessageKey } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
+import { Icon } from "@/components/icons/icon";
 
 // The composer's action belt size: one factor, `--belt-scale`, that the belt's band, pills, icons and
 // words all grow from together (`components/actions-row.tsx`). A per-device choice that sits with
@@ -26,7 +26,7 @@ export function BeltSizeControl() {
     <Card className="gap-0 py-0">
       <div className="flex items-center justify-between gap-4 p-4">
         <div className="flex min-w-0 items-start gap-3">
-          <Rows3 className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
+          <Icon name="belt-size" className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
           <div className="min-w-0">
             <div className="font-medium">{t("settings.beltSize.title")}</div>
             <p className="text-sm text-muted-foreground">{t("settings.beltSize.description")}</p>

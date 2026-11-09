@@ -1,4 +1,4 @@
-import { TriangleAlert } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 
 import { DismissButton, FLOATING_CARD } from "@/components/terminal-draft-preview";
 import { Button } from "@/components/ui/button";
@@ -16,7 +16,7 @@ export function ReportCard({ count, onReport, onClose }: { count: number; onRepo
   useLocale();
   return (
     <div data-slot="report-card" className={FLOATING_CARD}>
-      <TriangleAlert className="mt-0.5 size-3 shrink-0 text-status-working" />
+      <Icon name="warning" className="mt-0.5 size-3 shrink-0 text-status-working" />
       <div className="min-w-0 flex-1 self-center leading-snug">
         {tn("report.card.failed", count)} {t("report.card.bug")}
       </div>

@@ -1,10 +1,10 @@
 import type { KeyboardEvent as ReactKeyboardEvent, ReactNode, RefObject } from "react";
-import { ChevronLeft, Loader2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { t } from "@/lib/i18n";
 import { useLocale } from "@/hooks/use-locale";
+import { Icon } from "@/components/icons/icon";
 
 // Shared building blocks for the long-press action sheets — pane AND tab — so the two stay visually
 // and behaviourally identical (the user's ask: "they should be the same"). The plain action row, the
@@ -25,22 +25,26 @@ export function ActionRow({
   icon,
   label,
   hint,
+  disabled = false,
   onClick,
 }: {
   icon: ReactNode;
   label: string;
   hint?: string;
+  /** The row stays and reads as not yet available (dimmed, no tap). Absent on every other row. */
+  disabled?: boolean;
   onClick: () => void;
 }) {
   return (
     <button
       type="button"
+      disabled={disabled}
       onClick={onClick}
       // `min-h-11` — a REAL 44px hit box, stated (DESIGN.md §6). `px-3 py-2.5` around a 20px
       // `text-sm` line drew 40px, five under the floor, on rows a thumb reaches for in a sheet that
       // has just slid up under it. A floor rather than a fixed height, so a row whose label wraps on
       // a narrow phone still grows instead of clipping — and so a row carrying a hint grows too.
-      className="flex min-h-11 w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition-colors hover:bg-accent active:bg-muted"
+      className="flex min-h-11 w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition-colors hover:bg-accent active:bg-muted disabled:opacity-60 disabled:hover:bg-transparent"
     >
       {icon}
       {hint === undefined ? (
@@ -92,7 +96,7 @@ export function DestructiveActionRow({
           : "text-destructive hover:bg-destructive/10 active:bg-destructive/15",
       )}
     >
-      {closing ? <Loader2 className="size-4 shrink-0 animate-spin" /> : icon}
+      {closing ? <Icon name="busy" className="size-4 shrink-0 animate-spin" /> : icon}
       {closing ? closingLabel : armed ? confirmLabel : label}
     </button>
   );
@@ -138,7 +142,7 @@ export function RenameView({
         onClick={onBack}
         className="flex items-center gap-1 self-start rounded-md py-1 pr-2 text-xs font-medium text-muted-foreground transition-colors active:bg-muted"
       >
-        <ChevronLeft className="size-3.5" />
+        <Icon name="back" className="size-3.5" />
         {t("actionSheet.back")}
       </button>
       <label className="flex flex-col gap-1">
@@ -154,7 +158,7 @@ export function RenameView({
         />
       </label>
       <Button onClick={onSave} disabled={saving || !canSave} className="h-11">
-        {saving ? <Loader2 className="size-4 animate-spin" /> : t("actionSheet.save")}
+        {saving ? <Icon name="busy" className="size-4 animate-spin" /> : t("actionSheet.save")}
       </Button>
     </div>
   );

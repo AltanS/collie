@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Copy } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 
 import { BottomSheet } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
@@ -68,7 +68,7 @@ export function StatusDetailSheet({
         </p>
         <div className="flex gap-2">
           <Button type="button" variant="outline" size="lg" className="flex-1" onClick={() => void copy()}>
-            <Copy className="size-4" />
+            <Icon name="copy" className="size-4" />
             {copied ? t("status.detail.copied") : t("status.detail.copy")}
           </Button>
           {/* Dismissing is the destructive-ish half (the message is gone once cleared), so it is the

@@ -1,11 +1,17 @@
-import { act, render } from "@testing-library/react";
+import { act, render, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { __resetOperatorBusy, beginBusy } from "@/lib/busy";
+import { LIBRARY_STORAGE_KEY, __resetThemeStore, setActiveTheme } from "@/lib/theme/store";
 import { clearStatus, setStatus } from "@/lib/status";
-import { markIsLive } from "@/test/collie-mark";
+import { collieMark, markIsLive, markState } from "@/test/collie-mark";
 import { savedAtLabel } from "@/lib/format";
 import { CollieHome, spinRate } from "./collie-home";
+
+// The chunked marks are replaced by a marker each, so the header can be asked which mark it draws.
+vi.mock("./kawaii-mark", () => ({ KawaiiMark: () => <span data-mark="kawaii" /> }));
+vi.mock("./kawaii-tilt-mark", () => ({ KawaiiTiltMark: () => <span data-mark="kawaii-tilt" /> }));
+vi.mock("./pixel-mark", () => ({ PixelMark: () => <span data-mark="pixel" /> }));
 
 // THE ROUND IS AN EVENT, NOT A STATE. Any status the app publishes turns the orbit exactly once, at
 // the loading rate, before handing it back to the resting drift. These cases hold the two halves of
@@ -56,6 +62,17 @@ describe("CollieHome — the event round", () => {
     const { container } = render(<CollieHome trouble lost />);
     act(() => setStatus("claude is done · moonward", "success"));
     expect(markIsLive(container)).toBe(false);
+  });
+
+  // The header says ONE state, by precedence, and never dims or paints the mark itself.
+  it("says idle while lost and rest otherwise, whatever else is going on", () => {
+    const { container, rerender } = render(<CollieHome trouble={false} />);
+    expect(markState(container)).toBe("rest");
+    rerender(<CollieHome trouble lost />);
+    expect(markState(container)).toBe("idle");
+    expect(collieMark(container)?.getAttribute("class") ?? "").not.toContain("opacity-40");
+    rerender(<CollieHome trouble />);
+    expect(markState(container)).toBe("loading");
   });
 
   // The connection bloom outranks the round: it is already the loading input, and it must still be
@@ -221,19 +238,17 @@ describe("CollieHome — the lost badge", () => {
 
   it("wears CloudOff when lost and the phone reports online", () => {
     const { container } = render(<CollieHome trouble lost online />);
-    expect(badge(container)?.getAttribute("data-icon")).toBe("cloud-off");
-    expect(badge(container)?.getAttribute("class")).toMatch(/lucide-cloud-off/);
+    expect(badge(container)?.getAttribute("data-icon")).toBe("bridge-unreachable");
   });
 
   it("wears CloudOff by default, since online is the unremarkable case", () => {
     const { container } = render(<CollieHome trouble lost />);
-    expect(badge(container)?.getAttribute("data-icon")).toBe("cloud-off");
+    expect(badge(container)?.getAttribute("data-icon")).toBe("bridge-unreachable");
   });
 
   it("wears WifiOff when lost and the phone reports offline", () => {
     const { container } = render(<CollieHome trouble lost online={false} />);
-    expect(badge(container)?.getAttribute("data-icon")).toBe("wifi-off");
-    expect(badge(container)?.getAttribute("class")).toMatch(/lucide-wifi-off/);
+    expect(badge(container)?.getAttribute("data-icon")).toBe("offline");
   });
 
   it("is decorative: hidden from assistive tech, the button's label names the state", () => {
@@ -264,5 +279,144 @@ describe("CollieHome — the lost badge", () => {
     expect(cls).toMatch(/bg-band-ground/);
     expect(cls).toMatch(/ring-band-ground/);
     expect(cls).toMatch(/text-status-blocked/);
+  });
+});
+
+// ── THE APP UPDATING (2026-11-06) ────────────────────────────────────────────────────────────────
+//
+// While a new app build downloads or waits to load, the mark turns at the loading rate and every
+// bead takes the update colour. The header says only `state="applying"`; the mark does the rest
+// (mark-conformance.test.tsx holds every mark to it). So these cases hold two things: the
+// precedence, and the accessible name.
+describe("CollieHome — the app updating", () => {
+  const applyingClass = (root: ParentNode) => markState(root) === "applying";
+
+  it("turns the orbit in the applying state while the app updates", () => {
+    const { container, getByRole } = render(<CollieHome trouble={false} applying />);
+    expect(markIsLive(container)).toBe(true);
+    expect(applyingClass(container)).toBe(true);
+    expect(getByRole("button", { name: "Collie is updating the app. Open the dashboard." })).toBeInTheDocument();
+  });
+
+  it("outranks the bloom: the update colour and the update name while the link is troubled", () => {
+    const { container, getByRole } = render(<CollieHome trouble applying />);
+    expect(markIsLive(container)).toBe(true);
+    expect(applyingClass(container)).toBe(true);
+    expect(getByRole("button", { name: "Collie is updating the app. Open the dashboard." })).toBeInTheDocument();
+  });
+
+  it("outranks busy work and a round: still the update paint while both are on", () => {
+    vi.useFakeTimers();
+    try {
+      const { container } = render(<CollieHome trouble={false} applying />);
+      act(() => setStatus("claude is done · moonward", "success"));
+      act(() => {
+        beginBusy();
+      });
+      expect(applyingClass(container)).toBe(true);
+      expect(markIsLive(container)).toBe(true);
+    } finally {
+      act(() => {
+        clearStatus();
+        __resetOperatorBusy();
+      });
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not outrank lost: a dead link must not look like an update in flight", () => {
+    const { container, getByRole } = render(<CollieHome trouble lost applying />);
+    expect(markIsLive(container)).toBe(false);
+    expect(applyingClass(container)).toBe(false);
+    expect(getByRole("button", { name: "Collie home, not connected" })).toBeInTheDocument();
+  });
+
+  it("changes the state of the SAME mark: no remount when the update starts or ends", () => {
+    const { container, rerender } = render(<CollieHome trouble={false} />);
+    const before = collieMark(container);
+    rerender(<CollieHome trouble={false} applying />);
+    expect(collieMark(container)).toBe(before);
+    expect(applyingClass(container)).toBe(true);
+    rerender(<CollieHome trouble={false} />);
+    expect(collieMark(container)).toBe(before);
+    expect(applyingClass(container)).toBe(false);
+    expect(markIsLive(container)).toBe(false);
+  });
+});
+
+// ── THE LINK COMING BACK (2026-11-07) ───────────────────────────────────────────────────────────
+//
+// One turn in the done colour, in place of the band's old green "Connected" strip. The host passes
+// `reconnected` for exactly that turn (`lib/reconnected.ts`); these cases hold the precedence and
+// the name. The turn's length is the host's and the store's, asserted in app-header.test.
+describe("CollieHome — the link coming back", () => {
+  const greenClass = (root: ParentNode) => markState(root) === "reconnected";
+
+  it("turns the orbit in the reconnected state, with the reconnected name", () => {
+    const { container, getByRole } = render(<CollieHome trouble={false} reconnected />);
+    expect(markIsLive(container)).toBe(true);
+    expect(greenClass(container)).toBe(true);
+    expect(getByRole("button", { name: "Collie home, reconnected" })).toBeInTheDocument();
+  });
+
+  it("gives way to the app updating: the update state and name, never both colours", () => {
+    const { container, getByRole } = render(<CollieHome trouble={false} applying reconnected />);
+    expect(greenClass(container)).toBe(false);
+    expect(markState(container)).toBe("applying");
+    expect(getByRole("button", { name: "Collie is updating the app. Open the dashboard." })).toBeInTheDocument();
+  });
+
+  it("gives way to lost", () => {
+    const { container } = render(<CollieHome trouble lost reconnected />);
+    expect(greenClass(container)).toBe(false);
+    expect(markIsLive(container)).toBe(false);
+  });
+
+  it("changes the state of the SAME mark, and the mark rests again when it ends", () => {
+    const { container, rerender } = render(<CollieHome trouble={false} />);
+    const before = collieMark(container);
+    rerender(<CollieHome trouble={false} reconnected />);
+    expect(collieMark(container)).toBe(before);
+    expect(greenClass(container)).toBe(true);
+    rerender(<CollieHome trouble={false} />);
+    expect(collieMark(container)).toBe(before);
+    expect(greenClass(container)).toBe(false);
+    expect(markIsLive(container)).toBe(false);
+  });
+});
+
+// THE HEADER DRAWS THE WORN THEME'S CHARACTER, inside the same measurement box (`data-slot="collie-mark"`) whichever
+// one it is, so the agent-start handoff finds its anchor under every mark.
+describe("CollieHome — the mark", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    __resetThemeStore();
+  });
+  afterEach(() => {
+    localStorage.clear();
+    __resetThemeStore();
+  });
+
+  it("draws the Collie mark in its box by default", () => {
+    const { container } = render(<CollieHome trouble={false} />);
+    const box = container.querySelector('[data-slot="collie-mark"]');
+    expect(box).not.toBeNull();
+    expect(box?.querySelector('svg[data-mark="collie"]')).not.toBeNull();
+  });
+
+  it("draws the worn theme's character, in the same box, and Collie again under a theme with none", async () => {
+    const themes = [
+      { version: 4, id: "sunroom", name: "Sunroom", character: "kawaii", light: { background: "#fdfaf3" } },
+      { version: 1, id: "plain", name: "Plain", light: { background: "#fdfaf3" } },
+    ];
+    localStorage.setItem(LIBRARY_STORAGE_KEY, JSON.stringify({ version: 1, themes }));
+    __resetThemeStore();
+    const { container } = render(<CollieHome trouble={false} />);
+    const box = () => container.querySelector('[data-slot="collie-mark"]');
+    act(() => setActiveTheme("sunroom"));
+    await waitFor(() => expect(box()?.querySelector('[data-mark="kawaii"]')).not.toBeNull());
+    expect(collieMark(container)).toBeNull();
+    act(() => setActiveTheme("plain"));
+    expect(box()?.querySelector('svg[data-mark="collie"]')).not.toBeNull();
   });
 });

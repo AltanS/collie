@@ -57,6 +57,10 @@ export const en = {
   "settings.nav.back": "Back",
 
   // --- settings.theme ---
+  // The opening of Settings → Appearance (components/appearance-intro.tsx).
+  "settings.appearance.intro.title": "Make Collie your own",
+  "settings.appearance.intro.body": "Pick a theme for the colours, the shape and the character in the header, then light or dark.",
+  "settings.appearance.intro.docs": "How themes work",
   "settings.theme.title": "Appearance",
   "settings.theme.description": "Follow your phone, or pin one.",
   "settings.theme.option.system": "System",
@@ -65,7 +69,7 @@ export const en = {
 
   // --- theme (the picker, the importer; M57) ---
   "theme.title": "Theme",
-  "theme.description": "Pick a look, or import one from a file.",
+  "theme.description": "Pick a look, or add one and try it before you keep it.",
   "theme.import": "Import",
   "theme.export": "Export",
   "theme.remove": "Remove",
@@ -81,6 +85,12 @@ export const en = {
   "theme.preview.shape": "Shape",
   "theme.preview.shape.sample": "Sample",
   "theme.preview.ansi": "Terminal colours",
+  "theme.preview.mark": "Character: {name}",
+  "theme.preview.glyphs": "Icons: {name}",
+  "theme.fallback.glyphs": "This Collie does not have the icon set {word}; it shows the standard icons.",
+  "theme.fallback.character": "This Collie does not have the character {word}; it shows the standard character.",
+  "theme.fallback.ground": "This Collie does not know {word} for {path}; it uses the standard one.",
+  "theme.fallback.font": "This Collie does not have the typeface {word}; it uses the standard one.",
   "theme.preview.contrast.pass": "Every contrast check passes.",
   "theme.preview.contrast.fail": "{half}: {check} measures {ratio}. The floor is {floor}.",
   "theme.preview.contrast.more": "and {count} more checks fail",
@@ -89,7 +99,69 @@ export const en = {
   "theme.library.full": "You already hold {count} imported themes. Remove one, then import again.",
   "theme.library.duplicate": "A theme with this id is already imported. Remove it first, or change \"id\" in the file.",
   "theme.library.invalid": "This theme did not pass the check. Pick the file again.",
+  "theme.update.invalid": "The new version did not pass the check, so your current theme is unchanged.",
+  "theme.update.duplicate": "The new version has the id of another theme you kept, so your current theme is unchanged.",
+  "theme.update.reserved-id": "The new version has the id of a shipped theme, so your current theme is unchanged.",
+  "theme.update.storage": "This device could not save the new version, so your current theme is unchanged.",
+  "theme.update.changed": "This theme changed after About checked it, so your current theme is unchanged; open About again.",
   "theme.export.title": "Copy this theme",
+  // Paste a theme (M59 spec 04). English only until the translation pass: every key here is listed in
+  // PENDING_TRANSLATION below.
+  "theme.paste": "Paste",
+  "theme.paste.title": "Paste a theme",
+  "theme.paste.label": "The text of a theme file",
+  "theme.paste.hint": "Paste the JSON text of a theme file. Read shows the same preview as Import.",
+  "theme.paste.read": "Read",
+  "theme.paste.refusal.link": "Collie does not fetch a theme from a link. Open the link, copy the text of the file, and paste that.",
+  // Browse community themes (M59 spec 06). English only until the translation pass, like the paste keys.
+  "theme.browse": "Browse community themes",
+  "theme.browse.title": "Community themes",
+  "theme.browse.intro": "Themes people share on GitHub with the topic colliepwa-theme. The site, this host and this phone each check every file, and a theme can only change colours and words.",
+  "theme.browse.loading": "Reading the list on this host…",
+  "theme.browse.age": "List fetched {age}.",
+  "theme.browse.never": "This host has not fetched the list yet.",
+  "theme.browse.refresh": "Refresh",
+  "theme.browse.refreshing": "Fetching…",
+  "theme.browse.refreshNote": "Refresh asks this host to fetch the list from colliepwa.dev once.",
+  "theme.browse.empty": "The list has no themes yet.",
+  "theme.browse.dropped": "Left out because they failed the check: {count}.",
+  "theme.browse.error.fetch-failed": "The host could not fetch the list. It shows the list it had.",
+  "theme.browse.error.too-big": "The list was too big. The host kept the list it had.",
+  "theme.browse.error.bad-registry": "The list was not in a shape this Collie reads. The host kept the list it had.",
+  "theme.browse.error.read": "Could not read the list on this host. Check the connection and try again.",
+  "theme.browse.error.write": "Only a device that may write can ask the host to fetch the list.",
+  "theme.browse.older": "This host runs an older Collie without the community list. Update Collie to use it.",
+  "theme.browse.needsNewer": "Needs a newer Collie. Update Collie to install it.",
+  "theme.browse.install": "Install",
+  "theme.browse.owner": "@{owner}",
+  "theme.preview.from": "From {repo}",
+  "theme.about.aria": "About {name}",
+  "theme.about.title": "About this theme",
+  "theme.about.repo": "Repository",
+  "theme.about.repoLink": "@{repo}",
+  "theme.about.path": "File",
+  "theme.about.commit": "Commit",
+  "theme.about.installed": "Installed",
+  "theme.about.file": "Added from a file on {date}.",
+  "theme.about.paste": "Pasted on {date}.",
+  "theme.about.device": "Added on this device.",
+  "theme.about.newer": "A newer version is listed.",
+  "theme.about.update": "Update",
+  "theme.about.check": "Check for updates",
+  "theme.about.checkNote": "A check asks this host to fetch the list from colliepwa.dev once.",
+  "theme.about.current": "No newer version is listed.",
+  "theme.about.unlisted": "No longer listed. Your installed copy keeps working.",
+  "theme.about.needsNewer": "The listed version needs a newer Collie. Update Collie to get it; this copy keeps working.",
+  "theme.browse.stars": "★ {count}",
+  "theme.browse.starsAria": "Stars on GitHub: {count}",
+  "theme.browse.report": "Report",
+  "theme.browse.reportAria": "Report {name} on GitHub",
+  // Try a theme (M59 spec 08). English only until the translation pass, like the browse keys.
+  "theme.trial.try": "Try",
+  "theme.trial.trying": "Trying {name}",
+  "theme.trial.keep": "Keep",
+  "theme.trial.back": "Back",
+  "theme.trial.region": "Theme trial",
   "theme.refusal.size": "This file is too big for a theme.",
   "theme.refusal.json": "This file is not a JSON object.",
   "theme.refusal.version": "This file uses a theme version this Collie does not read.",
@@ -102,6 +174,11 @@ export const en = {
   "theme.refusal.no-half": "The file sets no colours.",
   "theme.refusal.surface": "A shape word is not valid.",
   "theme.refusal.ansi": "A terminal colour is not valid, or it fails its contrast floor.",
+  "theme.refusal.mark": "The character choice is not valid.",
+  "theme.refusal.unreadable": "The text of this theme cannot be read.",
+  "theme.refusal.glyphs": "The icon set choice is not valid.",
+  "theme.refusal.version-newer": "This file was made for a newer Collie (version {version}). Update Collie to use it.",
+  "theme.refusal.contrast": "{ink} on {ground} measures {ratio}. It needs at least {floor}.",
   "theme.refusal.reserved-id": "This id belongs to a shipped theme. Change \"id\" in the file to import your copy.",
 
   // --- settings.haptics ---
@@ -286,6 +363,8 @@ export const en = {
   "settings.updateBanner.releaseAvailable": "Collie {version} available",
   "settings.updateBanner.majorAvailable": "Collie {version}, a new major",
   "settings.updateBanner.copyAria": "Copy command: {command}",
+  "settings.updateBanner.bundleProgress": "{percent}% downloaded",
+  "settings.updateBanner.bundleReloads": "It reloads on its own once nothing is in progress.",
 
   // --- settings.typeface (the APP's own face — a per-device preference since ADR 0033) ---
   // FAMILY NAMES ARE NOT HERE, and must not be added: "Space Grotesk" and "Aldrich" are proper
@@ -305,7 +384,40 @@ export const en = {
   "settings.typeface.note.geist": "Plain and geometric, with a real bold.",
   // Atkinson Hyperlegible Next has a real 400-700 axis, so unlike Aldrich its bold is drawn.
   "settings.typeface.note.atkinson": "Made for low vision, with clear letters and a real bold.",
+  // Nunito has a real 400 to 700 axis, so unlike Aldrich its bold is drawn.
+  "settings.typeface.note.nunito": "Soft and rounded, with a real bold.",
   "settings.typeface.note.operator": "Added by this collie's operator.",
+  // --- settings.math (which engine typesets LaTeX in Markdown — a per-device preference) ---
+  "settings.math.title": "Math",
+  "settings.math.description": "LaTeX in chat and Markdown files, on this device.",
+  "settings.math.engine": "Engine",
+  "settings.math.off": "Off",
+  "settings.math.note.off": "Dollar signs stay text. Downloads nothing.",
+  "settings.math.note.katex": "Fast and compact. Loads its fonts on first use.",
+  "settings.math.note.mathjax": "Broader TeX support, drawn as SVG. A larger download.",
+  // The math pack on the host (ADR 0132). English only until the translation pass: every key here is
+  // listed in PENDING_TRANSLATION below.
+  "settings.appearance.math.download": "Download the math engines (about {size})",
+  "settings.appearance.math.downloadNote": "One download holds both engines. The host keeps it for every device.",
+  "settings.appearance.math.downloading": "Downloading the math engines to the host…",
+  "settings.appearance.math.progress": "{received} of {total}",
+  "settings.appearance.math.progressAria": "Math engines download",
+  "settings.appearance.math.readOnly": "This device can only read, so it cannot download the math engines.",
+  "settings.appearance.math.unavailable.devBuild": "This build has no math engines to download.",
+  "settings.appearance.math.unavailable.noPack": "This release has no math engines to download.",
+  "settings.appearance.math.error.downloadFailed": "The download did not finish. Nothing was kept.",
+  "settings.appearance.math.error.lowSpace": "The host is short of disk space. Nothing was kept.",
+  "settings.appearance.math.error.hashMismatch": "The download did not match the release. Nothing was kept.",
+  "settings.appearance.math.error.badPack": "The download is not a math pack this version accepts. Nothing was kept.",
+  "settings.appearance.math.remove": "Remove the math engines",
+  "settings.appearance.math.removeNote": "Math goes back to Off on this device. Other devices show formulas as text.",
+  "settings.appearance.math.remove.confirm": "Remove the math engines from the host?",
+  "settings.appearance.math.remove.cancel": "Cancel",
+  "settings.appearance.math.remove.action": "Remove",
+  "settings.appearance.math.unreachable": "The host did not answer, so the engines cannot be chosen yet. Collie keeps asking.",
+  "settings.appearance.math.refused.denied": "The host refused. This device may not change the math engines.",
+  "settings.appearance.math.refused.server": "The host could not do it. Try again later.",
+  "settings.appearance.math.refused.offline": "The host did not answer. Check the connection and try again.",
 
   // --- settings.fonts (the terminal face: the mirror's size and the draft field's; NOT the app's own typeface) ---
   "settings.fonts.title": "Terminal font",
@@ -384,6 +496,8 @@ export const en = {
   "composer.voice.sendToHostAria": "Send the recording to the host to transcribe",
   "composer.mic.discardAria": "Discard recording",
   "composer.attach.aria": "Attach file",
+  "composer.expand": "Expand",
+  "composer.collapse": "Collapse",
   "composer.attach.title": "Attach",
   "composer.attach.photos": "Photos",
   "composer.attach.files": "Files",
@@ -1127,6 +1241,8 @@ export const en = {
   "nav.home.aria.lost": "Collie home, not connected",
   "nav.home.aria.lostAt": "Collie home, not connected. Showing what was saved at {time}.",
   "nav.home.aria.reconnecting": "Collie home, reconnecting",
+  "nav.home.aria.updating": "Collie is updating the app. Open the dashboard.",
+  "nav.home.aria.reconnected": "Collie home, reconnected",
   "nav.mux.onPrefix": "on",
   "nav.prereleaseTitle": "Pre-release build {version}",
 
@@ -1444,7 +1560,7 @@ export const en = {
   "connection.dismiss.aria": "Hide this notice",
   "common.closeAria": "Close",
   "common.scrollToLatestAria": "Scroll to latest",
-  "connection.connected": "Connected",
+  "connection.reconnected": "Reconnected",
   "connection.reconnecting": "Reconnecting…",
   "connection.herdrDown": "Herdr is down on the host",
   "connection.tokenRefused": "The durable agent refused the token. Check COLLIE_DURABLE_TOKEN on this peer.",
@@ -2885,7 +3001,7 @@ export const en = {
   // `{sheet}` is the sheet's own title (`walky.sheet.title`), so the two can never name it differently.
   "walky.card.open": "Open in {sheet}",
   // The small word on a tool card that ran `collie walky`. The product's name; it claims nothing about a message.
-  "walky.tool.badge": "walky talky",
+  "walky.tool.badge": "WalkyTalky",
   // A message id in text, when the log holds it: a chip that opens the sheet on that message.
   "walky.chip.aria": "Open message {id}",
   "walky.chip.ariaNamed": "Open the message from {words}",
@@ -2909,6 +3025,12 @@ export const en = {
   "walky.reason.draftPresent": "that session has unsent text",
   "walky.reason.turnRunning": "that session is busy",
   "walky.reason.resting": "that session rests",
+  "walky.reason.walkyOff": "the session has its WalkyTalky off",
+  "walky.reason.senderOff": "the sending session has its WalkyTalky off",
+  "walky.off.label": "WalkyTalky",
+  "walky.off.hint": "Off: other agents cannot message this session. You still can.",
+  "walky.off.row": "WalkyTalky off",
+  "walky.off.failed": "Not changed: {error}",
   "walky.state.delivered": "typed into the pane",
   "walky.state.inboxOnly": "waiting in the inbox, not typed",
   "walky.state.inboxOnlyBecause": "waiting in the inbox, not typed: {reason}",
@@ -2920,8 +3042,8 @@ export const en = {
   "walky.state.held": "held: {reason}",
   "walky.state.heldHint": "Typed when the box clears or the turn ends, up to 60 minutes. Do not send it again.",
   // The pane sheet's row and the sheet it opens.
-  "walky.sheet.row": "Messages",
-  "walky.sheet.title": "Messages",
+  "walky.sheet.row": "WalkyTalky",
+  "walky.sheet.title": "WalkyTalky",
   "walky.sheet.empty": "No messages for this pane yet.",
   "walky.sheet.unavailable": "This machine does not keep messages yet.",
   "walky.sheet.reply": "Reply",
@@ -3077,6 +3199,8 @@ export const en = {
   "telemetry.card.next.aria": "The next message, as JSON",
   "telemetry.card.more": "What is sent",
   "telemetry.notice.body": "Collie 1.27.0 sends anonymous telemetry once a day. Turn it off in Settings.",
+  "telemetry.notice.updateBody": "Collie's daily count now also names a dialog it could not read, by a short code made from the dialog's key hints, never from your text.",
+  "telemetry.notice.docs": "What is sent",
   "telemetry.notice.open": "Open Settings",
   "telemetry.notice.dismiss": "Dismiss notice",
   "apiError.telemetry.setting_invalid": "The telemetry setting must be On or Off. Nothing was changed.",
@@ -3088,6 +3212,46 @@ export const en = {
   "settings.zoomPill.description": "The magnifier button on the belt that opens the screen full size. It never shows in Chat.",
   "settings.zoomPill.option.screen": "Screen view",
   "settings.zoomPill.option.off": "Off",
+
+  // --- pins (M90: pinned messages): the block actions, the mark, the refusals ---
+  "pins.action.pin": "Pin",
+  "pins.action.unpin": "Unpin",
+  "pins.action.copy": "Copy text",
+  "pins.action.selectText": "Select text",
+  "pins.selectText.hint": "Hold the text to select it. Tap outside the message to end.",
+  "pins.action.more": "Message actions",
+  "pins.mark": "Pinned",
+  "pins.sheet.kind.user": "Your message",
+  "pins.sheet.kind.reply": "Reply",
+  "pins.sheet.kind.tool": "Tool: {name}",
+  "pins.sheet.kind.thinking": "Thinking",
+  "pins.sheet.kind.notice": "Notice",
+  "pins.reason.notFound": "That block is no longer in this session's log.",
+  "pins.reason.cap": "This session has 100 pins, unpin one first.",
+  "pins.reason.noSession": "This pane has no session to keep pins for.",
+  "pins.reason.notPinnable": "That block cannot be pinned.",
+  "pins.reason.gone": "That pin is gone.",
+  "pins.reason.olderBridge": "That machine's Collie is older and cannot keep pins. Update it.",
+
+  // --- pins, belt mark and sheet (M90 spec 03) ---
+  "pins.belt.label": "{count} pinned",
+  "pins.sheet.title": "Pinned messages",
+  "pins.sheet.empty": "Nothing is pinned in this session.",
+  "pins.action.show": "Show in Chat",
+  "pins.notice.notLoaded": "That block is not loaded in Chat. Scroll up to load older messages.",
+
+  // --- pins, review fixes (M90) ---
+  "pins.sheet.kind.toolPlain": "Tool",
+  "pins.reason.notSettled": "That reply is still being written. Pin it when it is done.",
+  // --- newTab: the New tab sheet behind a workspace's "+" (M91) ---
+  "newTab.title": "New tab in {workspace}",
+  "newTab.folder": "In {folder}",
+  "newTab.group.agents": "Agents",
+  "newTab.group.commands": "Commands",
+  "newTab.more": "More options",
+  "newTab.fromLead": "Lead",
+  "newTab.loading": "Reading the agents on this machine…",
+  "newTab.shellUnknown": "Collie could not confirm the new tab. Look at the workspace's tabs before you try again, or you may get two.",
 } as const;
 
 /** Every key that exists, as a union of string literals. The completeness contract. */
@@ -3096,10 +3260,99 @@ export type MessageKey = keyof typeof en;
 /** The English bundle's exact shape (literal values). Other locales are `Dictionary`, not this. */
 export type Messages = typeof en;
 
+/**
+ * Keys that are English only until the next translation pass, and nothing else. A bundle may leave
+ * them out, and `t()` then reads English for that key alone. The pass translates them into every
+ * bundle and empties this list in the same commit; `i18n.test.ts` fails a listed key that a bundle
+ * already carries, so the list cannot outlive its translations. Never a way to skip translating a
+ * key for good: a key stays here only between a feature and its translation pass.
+ */
+export const PENDING_TRANSLATION = [
+  "composer.expand",
+  "composer.collapse",
+  "settings.appearance.intro.title",
+  "settings.appearance.intro.body",
+  "settings.appearance.intro.docs",
+  "settings.typeface.note.nunito",
+  "theme.preview.mark",
+  "theme.refusal.mark",
+  "theme.refusal.unreadable",
+  "theme.preview.glyphs",
+  "theme.fallback.glyphs",
+  "theme.fallback.character",
+  "theme.fallback.ground",
+  "theme.fallback.font",
+  "theme.refusal.glyphs",
+  "theme.paste",
+  "theme.paste.title",
+  "theme.paste.label",
+  "theme.paste.hint",
+  "theme.paste.read",
+  "theme.paste.refusal.link",
+  "theme.browse",
+  "theme.browse.title",
+  "theme.browse.intro",
+  "theme.browse.loading",
+  "theme.browse.age",
+  "theme.browse.never",
+  "theme.browse.refresh",
+  "theme.browse.refreshing",
+  "theme.browse.refreshNote",
+  "theme.browse.empty",
+  "theme.browse.dropped",
+  "theme.browse.error.fetch-failed",
+  "theme.browse.error.too-big",
+  "theme.browse.error.bad-registry",
+  "theme.browse.error.read",
+  "theme.browse.error.write",
+  "theme.browse.older",
+  "theme.browse.install",
+  "theme.browse.owner",
+  "theme.preview.from",
+  "theme.about.aria",
+  "theme.about.title",
+  "theme.about.repo",
+  "theme.about.repoLink",
+  "theme.about.path",
+  "theme.about.commit",
+  "theme.about.installed",
+  "theme.about.file",
+  "theme.about.paste",
+  "theme.about.device",
+  "theme.about.newer",
+  "theme.about.update",
+  "theme.about.check",
+  "theme.about.checkNote",
+  "theme.about.current",
+  "theme.about.unlisted",
+  "theme.about.needsNewer",
+  "theme.update.invalid",
+  "theme.update.duplicate",
+  "theme.update.reserved-id",
+  "theme.update.storage",
+  "theme.update.changed",
+  "theme.refusal.version-newer",
+  "theme.refusal.contrast",
+  "theme.browse.needsNewer",
+  "theme.browse.stars",
+  "theme.browse.starsAria",
+  "theme.browse.report",
+  "theme.browse.reportAria",
+  "theme.trial.try",
+  "theme.trial.trying",
+  "theme.trial.keep",
+  "theme.trial.back",
+  "theme.trial.region",
+] as const satisfies readonly MessageKey[];
+
+/** A key a bundle may leave out until the translation pass. */
+export type PendingKey = (typeof PENDING_TRANSLATION)[number];
+
 /** What a translated bundle must be: every key, any string. `Record` over a finite union of
  *  literals is complete in BOTH directions — a missing key fails the assignment, an extra one is
- *  caught as an excess property. That is the entire enforcement mechanism; don't loosen it. */
-export type Dictionary = Record<MessageKey, string> & Partial<Record<ExtraPluralKey, string>>;
+ *  caught as an excess property. That is the entire enforcement mechanism; don't loosen it. The one
+ *  exception is named, not open: {@link PENDING_TRANSLATION}. */
+export type Dictionary = Record<Exclude<MessageKey, PendingKey>, string> & Partial<Record<PendingKey | ExtraPluralKey, string>>;
 
 /** The base of every `.one`/`.other` pair English has. */
 type PluralBaseOf<K> = K extends `${infer Base}.one`

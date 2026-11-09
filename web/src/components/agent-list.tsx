@@ -1,4 +1,3 @@
-import { Inbox, KeyRound, Plus, WifiOff } from "lucide-react";
 import { useEffect, type ReactNode } from "react";
 
 import { clockTime } from "@/lib/format";
@@ -24,6 +23,7 @@ import { PaneOrderSelect, WorkspaceFilter } from "@/components/dash-selects";
 import { useFrozenRanks } from "@/hooks/use-frozen-ranks";
 import { showsPinHint, usePinHintRetired } from "@/lib/pin-hint";
 import type { Scope } from "@/lib/scope";
+import { besideOf, type NewTabTarget } from "@/hooks/use-new-tab-or-sheet";
 import { tabCreateKey } from "@/hooks/use-spaces";
 import { AgentCard } from "./agent-card";
 import { PinHint } from "./pin-hint";
@@ -31,6 +31,7 @@ import { WorkspaceNewTab } from "./workspace-new-tab";
 import { t } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import { useLocale } from "@/hooks/use-locale";
+import { Icon } from "@/components/icons/icon";
 
 interface AgentListProps {
   agents: AgentView[];
@@ -174,7 +175,8 @@ export interface HeadingNewTab {
   sessions?: readonly SessionSummary[] | undefined;
   /** The tab creates in flight, keyed by `tabCreateKey` (hooks/use-spaces.ts). */
   creating: ReadonlySet<string>;
-  onNewTab: (workspaceId: string, at: Scope) => void;
+  /** The heading's tap, after its machine's refusal: `useNewTabOrSheet`'s `request` (M91). */
+  onNewTab: (target: NewTabTarget) => void;
 }
 
 /** A module-level empty list: a fresh `[]` default per render is a new reference for nothing. */
@@ -326,7 +328,7 @@ export function AgentList({
       // first. The command stays literal, never translated, as on the pair form itself.
       return (
         <div className="flex flex-col items-center justify-center gap-3 px-4 py-24 text-muted-foreground">
-          <KeyRound className="size-7" />
+          <Icon name="pairing" className="size-7" />
           <span className="text-sm font-medium text-foreground">{t("settings.devices.pair.title")}</span>
           <code className="font-mono text-[13px]">collie pair</code>
         </div>
@@ -335,7 +337,7 @@ export function AgentList({
     if (error) {
       return (
         <div className="flex flex-col items-center justify-center gap-3 px-4 py-24 text-muted-foreground">
-          <WifiOff className="size-7" />
+          <Icon name="offline" className="size-7" />
           <span className="text-sm">
             {lastSeenAt === undefined
               ? t("home.empty.disconnected")
@@ -353,7 +355,7 @@ export function AgentList({
             className="flex w-full flex-col items-start gap-3 rounded-md border border-border bg-card px-4 py-6 text-left shadow-sm transition-colors active:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
           >
             <span className="flex size-12 items-center justify-center rounded-md bg-primary text-primary-foreground">
-              <Plus className="size-6" aria-hidden />
+              <Icon name="new-agent" className="size-6" aria-hidden />
             </span>
             <span className="text-lg font-semibold text-foreground">{t("newPage.first.title")}</span>
             <span className="text-sm text-muted-foreground">{t("newPage.first.body")}</span>
@@ -368,7 +370,7 @@ export function AgentList({
     }
     return (
       <div className="flex flex-col items-center justify-center gap-3 px-4 py-24 text-muted-foreground">
-        <Inbox className="size-7" />
+        <Icon name="empty-state" className="size-7" />
         <span className="text-sm">
           {bridge === "connected" ? t("home.empty.noAgents") : t("home.empty.waiting")}
         </span>
@@ -493,6 +495,9 @@ export function AgentList({
         label={g.label}
         at={at}
         host={first.host}
+        // The workspace's OWN pane: a group may list only a linked worktree's panes (issue #587), and a
+        // tab opened beside one of those would land in the worktree's space.
+        beside={besideOf(g.panes, workspaceId, first.host)}
         busy={newTab.creating.has(tabCreateKey(workspaceId, at))}
         onNewTab={newTab.onNewTab}
       />

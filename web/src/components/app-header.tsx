@@ -11,7 +11,7 @@ import {
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
-import { Settings } from "lucide-react";
+import { useLocation } from "react-router";
 
 import { isConnecting } from "@/lib/connection";
 import { useNav } from "@/hooks/use-nav";
@@ -22,7 +22,10 @@ import { useMuxLogoUrl, useMuxName } from "@/lib/mux-capability";
 import { useConnectionLost, useConnectionTrouble } from "@/hooks/use-connection-lost";
 import { useLoadingStalled } from "@/hooks/use-loading-stalled";
 import { useOnline } from "@/hooks/use-online";
-import { settingsPath } from "@/lib/nav";
+import { homePath, settingsPath } from "@/lib/nav";
+import { requestBundleFocus, useBundleApply } from "@/lib/bundle-apply";
+import { useReconnected } from "@/lib/reconnected";
+import { useScope } from "@/lib/session";
 import { useOptionalRootData } from "@/lib/route-data";
 import { releaseOffered } from "@/lib/update-ribbon";
 import { CollieHome } from "@/components/collie-home";
@@ -31,6 +34,7 @@ import { Collapse } from "@/components/ui/collapse";
 import { SectionLabel } from "@/components/ui/section-label";
 import type { BridgeStatus } from "@/lib/types";
 import type { Scope } from "@/lib/scope";
+import { Icon } from "@/components/icons/icon";
 
 /** What a route claims about the SHAPE of the shared row, as opposed to the content it portals into
  *  it. These are the three things the shell itself has to draw differently, and every one of them is
@@ -212,6 +216,16 @@ export function AppHeaderHost({ bridge, error, lastSeenAt, children }: AppHeader
   // Which icon the lost badge on the mark wears: the phone's own offline flag, the same fact the
   // strip's sentence turns on. Read here, beside `lost`, so the mark stays a function of its props.
   const online = useOnline();
+  // A new app build being applied on this phone (`lib/bundle-apply.ts`). The mark carries it, which is
+  // the band's old download row moved onto the mark (2026-11-06), and it changes what a tap does.
+  const applying = useBundleApply() !== null;
+  // The link just came back after a bar the operator saw (`lib/reconnected.ts`): one green turn of
+  // the mark, which is the band's old "Connected" strip moved onto the mark (2026-11-07). The tap
+  // keeps its ordinary meaning.
+  const reconnected = useReconnected();
+  const nav = useNav();
+  const scope = useScope();
+  const { pathname } = useLocation();
   // What this collie drives, printed beside the wordmark. It ALWAYS describes the LOCAL collie and
   // never changes with the viewed scope: `/api/config`'s mux block is this bridge's own, and a peer's
   // is not fetched (the crew link carries runtime data, not a second config channel). So on `?h=peer`
@@ -271,11 +285,28 @@ export function AppHeaderHost({ bridge, error, lastSeenAt, children }: AppHeader
     [dockRow, undockRow, docked, trail],
   );
   const dockedRow = docked?.row ?? null;
+  // THE MARK'S TAP. Normally the route's own (`RouteHeader`'s `onHome`, which may be up one level or
+  // nothing at all). While the app is updating it is the DASHBOARD, from every route, because that is
+  // where the update line says what is happening; the flag asks the dashboard to bring that line into
+  // view once. On the dashboard already there is nowhere to go, and the dashboard reacts to the flag
+  // in place. Up, not down: the dashboard is every route's ancestor (ADR 0067). `upTo`, the move to
+  // one NAMED parent, and not `up`: from a pane opened out of a space, `up` steps back to the space.
+  // Not while `lost`, when the mark does not show the update and the tap keeps its ordinary meaning.
+  const onHome = () => {
+    if (applying && !lost) {
+      requestBundleFocus();
+      if (pathname !== "/") nav.upTo(homePath(scope));
+      return;
+    }
+    home.current?.fn?.();
+  };
   const homeMark = (paper?: string, markSize?: number) => (
     <CollieHome
-      onHome={() => home.current?.fn?.()}
+      onHome={onHome}
       trouble={trouble}
       lost={lost}
+      applying={applying}
+      reconnected={reconnected}
       online={online}
       lastSeenAt={lastSeenAt}
       {...(paper === undefined ? {} : { paper })}
@@ -315,8 +346,14 @@ export function AppHeaderHost({ bridge, error, lastSeenAt, children }: AppHeader
            * hand the inset to the band while a strip showed above it (a context flag and a 240ms
            * padding transition kept the two in step); moving the band below the bar on 2026-10-07
            * made that handover, and the jog of the whole page it caused, unnecessary.
+           *
+           * DOCKED, IT IS NOT AT THE TOP EDGE, so it reserves nothing. On the large screen the bar
+           * sits in the focused column, under the space's tab row, and the layout's two top rows
+           * (the sidebar and the tab row, wide-layout.tsx) take the inset instead. Padding here as
+           * well pushed the pane's title down by the inset while those rows sat under the status bar
+           * (a foldable's screen recording, 1.27.1).
            */
-          "[padding-top:env(safe-area-inset-top)]",
+          dockedRow === null && "[padding-top:env(safe-area-inset-top)]",
           // The rule is RECOLOURED, never removed — DESIGN.md §2's own technique, and the width stays
           // reserved in the base string above. While a route has the row hidden (zen) there are no
           // two regions left to cut apart, so the edge goes transparent; nothing moves by a pixel
@@ -665,7 +702,7 @@ export function SettingsGear({ scope }: { scope?: Scope }) {
       // breadcrumb absorbs — it already truncates by design.
       className="relative grid size-11 shrink-0 place-items-center text-muted-foreground transition-colors hover:text-foreground"
     >
-      <Settings className="size-5" />
+      <Icon name="settings" className="size-5" />
       {offered && (
         // 6px, in the corner of the icon and inside the 44px box: a fact about the app, not a control.
         <span

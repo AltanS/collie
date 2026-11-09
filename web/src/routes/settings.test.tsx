@@ -141,8 +141,8 @@ describe("SettingsRoute — the Updates row", () => {
     expect(rows[0]).toContain("Updates");
     expect(rows[1]).toContain("Appearance");
     expect(row.textContent).toContain("Up to date · 1.26.4");
-    expect(row.querySelector("svg.lucide-circle-arrow-up")).not.toBeNull();
-    expect(row.querySelector("svg.lucide-chevron-right")).not.toBeNull();
+    expect(row.querySelector("svg[data-icon=\"update-available\"]")).not.toBeNull();
+    expect(row.querySelector("svg[data-icon=\"row-go\"]")).not.toBeNull();
     // Nothing is waiting, so no dot.
     expect(row.querySelector('[data-slot="update-dot"]')).toBeNull();
   });

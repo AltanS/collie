@@ -43,8 +43,8 @@ Anything that does not match is `400` and is stored nowhere. A good ping is `204
 
 When the phone shows one of Collie's two trouble cards ("Cannot read a dialog", "Send not landing"),
 it tells the bridge once: once per card instance for a dialog, once per streak for a send. The
-bridge counts it, and the next ping carries the tally since the ping before. Each row holds exactly
-five keys:
+bridge counts it, and the next ping carries the tally since the ping before. Each row holds five
+keys, and from 1.27.4 a `dialog` row may hold a sixth, `screen`:
 
 | Key       | Rule                                                                                  |
 | --------- | ------------------------------------------------------------------------------------- |
@@ -52,12 +52,31 @@ five keys:
 | `harness` | The agent program's name: lowercase letters, digits and `-`, 1 to 24 characters. A plain shell, no pane and any other word are `other`. |
 | `version` | The agent program's version, semver-like, at most 40 characters, or `null`.            |
 | `mux`     | The multiplexer's own name as the bridge reports it: lowercase letters, digits and `-`, 1 to 24 characters; `other` when the phone had none. |
+| `screen`  | Optional, `dialog` rows only: 8 lowercase hex characters, `^[0-9a-f]{8}$`. Absent otherwise. |
 | `count`   | How often since the last ping, 1 to 999.                                               |
 
 A tally holds at most 20 distinct rows; a signal for a 21st is dropped. The tally is cleared when the
 ping goes out (in the same write that records the day, so a crash never counts twice and a failure
 loses at most one day's tally), and with the install ID the moment the count is off for any reason.
 It never carries a pane, a host name, a path, a request id, the screen or anything typed.
+
+The `screen` field is a short hash of the dialog's key-hint row only, never a row with the person's
+text, never the screen or what was typed. It is absent unless that row is a short list of key
+hints. The phone takes the lowest of the screen's last six non-blank rows that names a way out
+(`esc`, `escape`, `⎋`), strips the box glyphs and spaces at its ends and collapses white space. It
+hashes that row, with FNV-1a 32 over its UTF-8 bytes, only when all of these hold:
+
+| Rule | Detail |
+| --- | --- |
+| Length | At most 160 characters. |
+| Segments | At least two, split at ` · `, ` • `, ` \| ` or `│`. |
+| Segment size | Each at most 6 words and 40 characters. |
+| Keys in segments | At least two segments hold a key token, such as `esc`, `⏎`, `↑`, `ctrl+g` or `enter`. |
+| A real key | At least one token is a key and nothing else. `enter`, `tab`, `space`, `home` and `end` do not count here. |
+
+A row without `screen` is byte for byte what 1.27.3 sends. The tally keeps one row per kind,
+harness, version, mux and screen. `bun scripts/trouble-screens.ts` prints the hash of every pane
+fixture, to look one up.
 
 A phone paired to a crew lead sees the members' panes through the lead. Its trouble signal goes to
 the bridge the phone talks to, so the lead counts a member's trouble under its own install.

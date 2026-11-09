@@ -14,11 +14,13 @@
 #              cannot hide behind a removed one in another. A test must not be skipped just to get
 #              green, so a higher count is a failure. Raise a number only with a reason.
 #              Bridge went from 2 to 0 when M43 spec 04 checked the access list instead of the mode.
-#              Today, 191 in all, each one named, with its reason:
-#              bridge 106. 5 are the POSIX-only and engine cases below, 1 the /etc link scan, 1 the telemetry file mode, 5 are the hold socket tests, 6 the walky ones, 30 are the
+#              Today, 203 in all, each one named, with its reason:
+#              bridge 115. 5 are the POSIX-only and engine cases below, 1 the /etc link scan, 1 the telemetry file mode, 5 are the hold socket tests, 7 the walky ones, 6 the walky sibling registry ones, 30 are the
 #                durable example apps, 10 are the durable-harness adapter test, 36 are the durable socket tests (see "Durable, bridge" below),
 #                5 are the pane's program reads (see "The pane's program, bridge" below), and 6 are the fake git of a new
 #                worktree (see "The fake git of a new worktree, bridge" below).
+#                2 are "createPaneVersion — a harness off the login PATH" in pane-binary.test.ts (the test and its
+#                describe): the off-PATH agent is a `#!/bin/sh` script, which Windows cannot run.
 #                Pi skips the raw-control one-line send test in protocol.unstyled.test.ts; its Alt+Enter remains a named key.
 #                Of the first 5, four are in bridge/stt/local-cli.test.ts. Windows has no executable bit
 #                and no file owner check in this provider:
@@ -48,14 +50,25 @@
 #                - "a placed request reaches the session; the decision travels back as one line" (the same)
 #                - "a request from another multiplexer's pane is dropped without a log line, a same-namespace miss is logged" (the same)
 #                - "an unparsed line is dropped" (the same)
-#              Walky talky, bridge (6). A file mode and a Unix socket are POSIX. In bridge/walky/ the checks of
+#              Walky talky, bridge (7). A file mode and a Unix socket are POSIX. In bridge/walky/ the checks of
 #                0700 and 0600 sit in their own skipped test, and the behaviour beside them runs on Windows:
 #                - "keeps its tokens at 0600 in a 0700 folder" (instances.test.ts, "the instance registry")
 #                - "is private: a 0700 folder and a 0600 file" (log.test.ts, "the log")
+#                - "the file is 0600 in a 0700 folder" (off.test.ts, "the off flag")
 #                - "keeps its file at 0600 in a 0700 folder" (refusals.test.ts, "the refusal counter")
 #                - "keeps an id and target a day, apart from the log, on disk at 0600" (seen.test.ts, "the seen file")
 #                - "is 0600, answers one line per connection, and refuses a second bridge on the same path" (socket.test.ts, "the socket"): every part of it is the Unix socket, and Windows builds no walky socket ("Windows has no socket" runs there)
 #                - "the server answers an unread line with its reason or `not here`, never the bare word" (socket.test.ts, "the socket"): the answer travels over the Unix socket
+#              The walky sibling registry, bridge (6). bridge/walky/siblings.test.ts walks a live hook target registry
+#                (liveHookTargets), which needs a pid start-time probe, and win32 has none: every target reads as dead, so
+#                the registry is empty there in production and there is nothing to merge. The rule, the merge, the cache and
+#                the fixture with the siblings handed in run on Windows. Each name sits on one line, so the pin test can find it:
+#                - "the next log's list for the pane holds the stable-recorded row, with `recordedBy`"
+#                - "the sibling's files are only read: the log, its inbox and its instances stay as they were"
+#                - "a registry that is not private reads as no siblings, and the list is the own one"
+#                - "a missing registry reads as no siblings"
+#                - "a sibling with no walky log adds nothing"
+#                - "a FIFO or a folder where a log should be is skipped, never opened" (mkfifo is POSIX only)
 #              Durable, bridge (30 + 36). Windows has no socket transport (WIRE.md section 1A), so a test
 #                that is about the Unix socket itself cannot run there. The tests about the wire (controls,
 #                asks, answers, receipts, events, Chat, starters, the conformance suite) run on Windows
@@ -94,7 +107,7 @@
 #                - "says the branch stayed behind when its delete fails" (the same)
 #                - "keeps the branch when the checkout could not be removed" (the same)
 #                - "never removes a folder that was there before the call" (the same)
-#              cli 60 in all: 19 in the next paragraph, then 3 of the statusLine wrapper and 38 of walky talky. Of the 19, 12 are every test of the "doctor durable" describe in cli/doctor.test.ts: each reads a
+#              cli 63 in all: 19 in the next paragraph, then 3 of the statusLine wrapper and 41 of walky talky. Of the 19, 12 are every test of the "doctor durable" describe in cli/doctor.test.ts: each reads a
 #                real Unix socket. Its Windows rows are tested in cli/durable-findings.test.ts with a fake
 #                platform. The other 7:
 #                "a per-call override wins over the Exec's own environment (#283) > a child killed by a signal says which one"
@@ -112,9 +125,9 @@
 #                `describe.skipIf` off Linux: it signals a POSIX process group, and the wrapper is not on Windows by design
 #                (the usage row, .adr/0115). Its 3 tests are "a SIGTERM to the wrapper stops a compound command's grandchild"
 #                (2, one per group layout) and "passes the command's output and exit code through".
-#              Walky talky, cli (38). cli/walky.test.ts runs the verbs against a real bridge socket in a temp state
+#              Walky talky, cli (41). cli/walky.test.ts runs the verbs against a real bridge socket in a temp state
 #                dir, and Windows cannot bind it (the same reason as the hold socket). Each of those tests is
-#                `socketTest`, 10 in "send", 24 in "reply, inbox, status, who" (two of them, from M85, are the resting-session sends and the `--wake` refusal on a reply), 1 in "cancel" and 3 in "on a crew member". The
+#                `socketTest`, 10 in "send", 27 in "reply, inbox, status, who" (two of them, from M85, are the resting-session sends and the `--wake` refusal on a reply; three, from M89, are `off` and `on`, the who marks and the two off refusals), 1 in "cancel" and 3 in "on a crew member". The
 #                tests that never reach the socket run on Windows: the usage errors, "no bridge at all is
 #                UNREACHABLE" and "on Windows it says why and exits STATE".
 #              scripts 25: 23 are every test of scripts/install.test.ts ("scripts/install.sh > ..."):
@@ -125,8 +138,8 @@
 #                  (it needs a tmux binary, and Windows has none)
 param(
   [Parameter(Mandatory = $true)][string]$Out,
-  [int]$MaxSkipsBridge = 106,
-  [int]$MaxSkipsCli = 60,
+  [int]$MaxSkipsBridge = 115,
+  [int]$MaxSkipsCli = 63,
   [int]$MaxSkipsScripts = 25
 )
 $skipBudget = @{ bridge = $MaxSkipsBridge; cli = $MaxSkipsCli; scripts = $MaxSkipsScripts }

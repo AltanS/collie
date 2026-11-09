@@ -265,9 +265,34 @@ describe("the sidebar", () => {
     for (const p of [A1, A2, A3, B1]) expect(sidebarRow(container, p)).not.toBeNull();
   });
 
-  it("is 280 px wide at medium", async () => {
+  it("clears the status bar on its two top rows and the gesture bar at its foot, and the docked header does not clear the bar again", async () => {
+    // A foldable draws the page under its status bar: the sidebar and the tab row are the top edge,
+    // so they take the inset. The header sits lower, in the column, and padding it as well pushed the
+    // pane's title down while the two top rows stayed under the bar (1.27.1).
+    const inset = "env(safe-area-inset-top)";
+    const { container } = await mount("w1:p1", 1200);
+    expect(q(container, "aside")?.className).toContain(`pt-[${inset}]`);
+    const tabRow = q(container, '[data-slot="space-header"]')!;
+    expect(tabRow.className).toContain(`pt-[${inset}]`);
+    expect(tabRow.className).toContain(`h-[calc(3rem+${inset})]`);
+    const header = q(container, "header")!;
+    expect(header.closest('[data-slot="column-head"]')).not.toBeNull();
+    expect(header.className).not.toContain(inset);
+    // At the bottom the foot clears the gesture bar as the composer beside it does.
+    expect(q(container, '[data-slot="sidebar-foot"]')?.className).toContain("pb-[calc(0.25rem+env(safe-area-inset-bottom))]");
+  });
+
+  it("is the containing block of everything absolute in its list, so a row's mark never grows the page", async () => {
+    // A mark far down a long list with no positioned box above it took the page as its containing
+    // block and made the document taller than the screen (1.27.1). The real layout is in e2e.
+    const { container } = await mount("w1:p1", 1200);
+    const list = q(container, '[data-slot="wide-sidebar"] > div.overflow-y-auto')!;
+    expect(list.className).toMatch(/(^|\s)relative(\s|$)/);
+  });
+
+  it("is 264 px wide at medium", async () => {
     const { container } = await mount("w1:p1", 700);
-    expect(q(container, "aside")?.style.width).toBe("280px");
+    expect(q(container, "aside")?.style.width).toBe("264px");
   });
 
   it("closes to a rail of icons with status marks, remembered on this device", async () => {
@@ -358,6 +383,26 @@ describe("the strip", () => {
     expect(other!.className).toContain("border-transparent");
   });
 
+  it("a tap on the pins mark in a column without focus leaves a pins intent for that pane (M90)", async () => {
+    const pinned: AgentView = { ...pane("w1:p4", "w1", "alpha"), pins: 3 };
+    extraAgents = [pinned];
+    const { container, router } = await mount("w1:p1", 1200);
+    await openBesideFromSidebar(container, pinned);
+    await openBesideFromSidebar(container, A2);
+    const other = columns(container).find((c) => c.dataset.colKey === key(pinned))!;
+    fireEvent.click(within(other).getByRole("button", { name: "3 pinned" }));
+    await waitFor(() => expect(router.state.location.pathname).toBe(panePath("w1:p4")));
+    // The tap left its act for that pane's own composer, and for no other pane.
+    expect(takeBeltIntent(key(A2))).toBeNull();
+    expect(takeBeltIntent(key(pinned))).toEqual({ kind: "pins" });
+  });
+
+  it("draws no pins mark on a column whose pane has no pins", async () => {
+    const { container } = await mount("w1:p1", 1200);
+    await openBesideFromSidebar(container, A2);
+    expect(within(columns(container)[0]!).queryByRole("button", { name: /pinned$/ })).toBeNull();
+  });
+
   it("shows a belt in every column, and the reply box only where the pane view is", async () => {
     const { container } = await mount("w1:p1", 1200);
     await openBesideFromSidebar(container, A2);
@@ -425,7 +470,7 @@ describe("the strip", () => {
 
 describe("width", () => {
   it("in wide mode a new column is 1/2 and the button cycles 1/2, 4/5, Full", async () => {
-    // 1200 less the 320 sidebar leaves 880, at least two panes of 360.
+    // 1200 less the 320 sidebar leaves 880, two panes of 440.
     const { container } = await mount("w1:p1", 1200);
     await openBesideFromSidebar(container, A2);
     const col = columns(container)[0]!;
@@ -444,7 +489,7 @@ describe("width", () => {
   });
 
   it("out of wide mode every column is full width and there is no width button", async () => {
-    // 700 less the 280 sidebar leaves 420, under two panes of 360.
+    // 700 less the 264 sidebar leaves 436, under two panes at the minimum width.
     const { container } = await mount("w1:p1", 700);
     await openBesideFromSidebar(container, A2);
     for (const col of columns(container)) {
@@ -603,10 +648,10 @@ describe("the add column", () => {
     fireEvent.click(widthButton());
     await waitFor(() => expect(widthButton().textContent).toBe("4/5"));
     // 1/5 of 880 is under a pane: the add column is a pane wide, so the strip scrolls to it.
-    expect(addColumn(container)?.style.flex).toBe("0 0 360px");
+    expect(addColumn(container)?.style.flex).toBe("0 0 440px");
     fireEvent.click(widthButton());
     await waitFor(() => expect(widthButton().textContent).toBe("Full"));
-    expect(addColumn(container)?.style.flex).toBe("0 0 360px");
+    expect(addColumn(container)?.style.flex).toBe("0 0 440px");
   });
 
   it("keeps its plus in the part of it that is in view", async () => {
@@ -627,7 +672,7 @@ describe("the add column", () => {
 
   it("stands out of wide mode too, a pane wide, and not in a book or below 600 px", async () => {
     const { container } = await mount("w1:p1", 700);
-    expect(addColumn(container)?.style.flex).toBe("0 0 360px");
+    expect(addColumn(container)?.style.flex).toBe("0 0 440px");
     cleanup();
     posture = "book";
     const book = await mount("w1:p1", 1200);
@@ -876,6 +921,20 @@ describe("the space header", () => {
     // Back up: alpha's own focus is where it was left.
     fireEvent.click(within(q(container, '[data-slot="space-header"]')!).getByRole("button", { name: "Previous space" }));
     await waitFor(() => expect(router.state.location.pathname).toBe(panePath("w1:p1")));
+  });
+
+  it("gives the tabs more of the row at the medium tier: a narrower title and no position text", async () => {
+    const medium = await mount("w1:p1", 700);
+    const header = q(medium.container, '[data-slot="space-header"]')!;
+    expect(q(header, '[data-slot="space-title"]')?.className).toContain("max-w-[30%]");
+    expect(q(header, '[data-slot="space-position"]')).toBeNull();
+    // The chevrons still step through the spaces.
+    expect(within(header).getByRole("button", { name: "Next space" })).toBeEnabled();
+    cleanup();
+    const expanded = await mount("w1:p1", 1200);
+    const wide = q(expanded.container, '[data-slot="space-header"]')!;
+    expect(q(wide, '[data-slot="space-title"]')?.className).toContain("max-w-[45%]");
+    expect(q(wide, '[data-slot="space-position"]')?.textContent).toBe("space 1 of 2");
   });
 });
 

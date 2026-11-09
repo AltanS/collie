@@ -4,7 +4,7 @@
 // Placeholders only: the fake key is built at run time, so no key shape sits in this file.
 import { describe, expect, test } from "bun:test";
 
-import { maskChatBody, maskDiff, maskFileBody, maskHistoryPage, maskPaneRead, maskSnapshotTitles, maskTodoList } from "../answer-mask.ts";
+import { maskChatBody, maskDiff, maskFileBody, maskHistoryPage, maskPaneRead, maskPinsAnswer, maskSnapshotTitles, maskTodoList } from "../answer-mask.ts";
 import type { ChatWindowBody } from "../journal/live.ts";
 import type { TranscriptEntry } from "../journal/types.ts";
 import type { ChangeDiff, FileReadAnswer, PaneReadResponse } from "../types.ts";
@@ -225,6 +225,39 @@ describe("an answer a 1.18 member already masked comes back byte for byte", () =
     expect(maskForwardedAnswer("files", listing)).toBe(listing);
     const changes = '{"paneId":"w1:p1", "available":true, "root":"/r", "repos":[]}';
     expect(maskForwardedAnswer("changes", changes)).toBe(changes);
+  });
+});
+
+describe("a member's pins reach the phone masked through the lead (M90)", () => {
+  const pin = { id: "p1", itemId: "toolu_01", kind: "tool", text: `echoed ${key}`, tool: { name: "Bash", input: `export OPENAI_API_KEY=${key}` }, pinnedAt: 1 };
+  const list = { pins: [pin, { ...pin, id: "p2", kind: "reply", text: "plain", tool: undefined }] };
+
+  test("the list and the one pin are masked by the function the member's own route uses", async () => {
+    const res = await viaLead("/api/pane/w1:p1/pins", member(JSON.stringify(list)).transport);
+    const out = await res.text();
+    expect(out).not.toContain(key);
+    expect(out).toBe(JSON.stringify(maskPinsAnswer(list)));
+    expect(maskForwardedAnswer("pins", JSON.stringify({ pin }))).toBe(JSON.stringify(maskPinsAnswer({ pin })));
+  });
+
+  test("a list row carries its words as an excerpt and an anchor, and both are masked", async () => {
+    const row = { id: "p1", itemId: "u1:0", kind: "user", excerpt: `the key is ${key}`, textLength: 400, anchor: `the key is ${key}`, pinnedAt: 1 };
+    const out = await (await viaLead("/api/pane/w1:p1/pins", member(JSON.stringify({ pins: [row] })).transport)).text();
+    expect(out).not.toContain(key);
+    expect(out).toBe(JSON.stringify(maskPinsAnswer({ pins: [row] })));
+    expect(out).toContain('"textLength":400');
+  });
+
+  test("an answer a member already masked comes back byte for byte", () => {
+    const done = JSON.stringify(maskPinsAnswer(list));
+    expect(maskForwardedAnswer("pins", done)).toBe(done);
+  });
+
+  test("a body that is not a pins answer is refused, never passed on raw", async () => {
+    expect(maskForwardedAnswer("pins", JSON.stringify({ pins: [{ id: "p1" }] }))).toBeNull();
+    expect(maskForwardedAnswer("pins", JSON.stringify({ pins: "x" }))).toBeNull();
+    expect(maskForwardedAnswer("pins", JSON.stringify({ pins: [{ id: "p1", excerpt: "x", anchor: 7 }] }))).toBeNull();
+    expect(maskForwardedAnswer("pins", "not json")).toBeNull();
   });
 });
 

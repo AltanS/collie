@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from "react";
-import { Send } from "lucide-react";
+import { useEffect, useId, useRef, useState } from "react";
+import { Icon } from "@/components/icons/icon";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -7,7 +7,8 @@ import { BottomSheet } from "@/components/ui/sheet";
 import { WalkyIdChip } from "@/components/walky-id-chip";
 import { useWalkyLive, useWalkyLog } from "@/components/walky-log";
 import { WalkyBodyText, sentTargetWords } from "@/components/walky-name-chip";
-import { WalkyIcon } from "@/components/walky-icon";
+import { WalkyIcon, WalkyOffIcon } from "@/components/walky-icon";
+import { Switch } from "@/components/ui/switch";
 import { useLocale } from "@/hooks/use-locale";
 import { clockTime, timeAgoShort } from "@/lib/format";
 import { t } from "@/lib/i18n";
@@ -67,6 +68,14 @@ interface WalkySheetProps {
   onCancel?: ((row: WalkyRow) => Promise<string | null>) | undefined;
   /** The pane's owner drops a message held for this pane (M62 spec 03). Resolves to a line for the row, or null. Absent: no Drop. */
   onDrop?: ((row: WalkyRow) => Promise<string | null>) | undefined;
+  /** Whether this session turned its walky talky off (M89), the pane row's `walkyOff`. */
+  walkyOff?: boolean | undefined;
+  /**
+   * Turn this session's walky talky off or on (M89 spec 04). Resolves to null once the bridge holds the
+   * value, or to a line to show under the switch. Absent, for a device that may not write, a saved copy,
+   * a quiet machine or a pane that is no agent's: no switch.
+   */
+  onWalkyOff?: ((off: boolean) => Promise<string | null>) | undefined;
 }
 
 /**
@@ -85,7 +94,7 @@ function centreInScroller(el: HTMLElement): void {
   box.scrollTop += a.top - b.top - (box.clientHeight - a.height) / 2;
 }
 
-export function WalkySheet({ open, onClose, onReply, canReply, focusId = null, self, onCancel, onDrop }: WalkySheetProps) {
+export function WalkySheet({ open, onClose, onReply, canReply, focusId = null, self, onCancel, onDrop, walkyOff = false, onWalkyOff }: WalkySheetProps) {
   useLocale();
   const log = useWalkyLog();
   const rows = log === null ? [] : newestFirst(log.rows);
@@ -100,6 +109,7 @@ export function WalkySheet({ open, onClose, onReply, canReply, focusId = null, s
   }, [wanted, rows.length]);
   return (
     <BottomSheet open={open} onClose={onClose} title={t("walky.sheet.title")}>
+      {onWalkyOff !== undefined && <WalkyOffSwitch off={walkyOff} onChange={onWalkyOff} />}
       {log === null ? (
         <p className="py-2 text-sm text-muted-foreground">{t("walky.sheet.unavailable")}</p>
       ) : rows.length === 0 ? (
@@ -124,6 +134,67 @@ export function WalkySheet({ open, onClose, onReply, canReply, focusId = null, s
         </ul>
       )}
     </BottomSheet>
+  );
+}
+
+/** How long the switch shows a value the pane row has not confirmed yet: a crew sweep (about 12 s) and some. */
+const ASKED_HOLD_MS = 15_000;
+
+/**
+ * The walky talky switch at the head of the sheet (M89 spec 04): off, no other agent can message this
+ * session and it cannot message them; the operator still can. The whole row is the tap target, at least
+ * 44 px tall, and the switch is named by its label. While the call runs the switch shows the new place
+ * and takes no second tap. After the call it is free again and keeps showing the value asked for until
+ * the pane row's flag moves, or for {@link ASKED_HOLD_MS} at most: a crew member's row can reach the lead
+ * a sweep late, and another hand (the session's own `collie walky on`) can change the flag meanwhile.
+ * A failed call puts it back with a line.
+ */
+function WalkyOffSwitch({ off, onChange }: { off: boolean; onChange: (off: boolean) => Promise<string | null> }) {
+  // The value asked for, and the row's value when it was asked: any move of the row ends the wait.
+  const [asked, setAsked] = useState<{ value: boolean; from: boolean } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+  const hintId = useId();
+  if (asked !== null && off !== asked.from) setAsked(null);
+  useEffect(() => {
+    if (asked === null || busy) return;
+    const timer = setTimeout(() => setAsked(null), ASKED_HOLD_MS);
+    return () => clearTimeout(timer);
+  }, [asked, busy]);
+  const shown = asked?.value ?? off;
+  const onToggle = async (next: boolean) => {
+    if (busy) return;
+    setAsked({ value: next, from: off });
+    setNote(null);
+    setBusy(true);
+    const failed = await onChange(next);
+    setBusy(false);
+    if (failed === null) return;
+    setAsked(null);
+    setNote(failed);
+  };
+  const Mark = shown ? WalkyOffIcon : WalkyIcon;
+  return (
+    <div data-slot="walky-off" data-off={shown ? "true" : "false"} className="mb-3">
+      <label className="flex min-h-11 cursor-pointer items-center justify-between gap-4">
+        <span className="flex min-w-0 items-start gap-2">
+          <Mark className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+          <span className="min-w-0">
+            <span className="block text-sm font-medium">{t("walky.off.label")}</span>
+            <span id={hintId} className="block text-xs leading-snug text-muted-foreground">
+              {t("walky.off.hint")}
+            </span>
+          </span>
+        </span>
+        {/* The switch reads ON while messages from agents get in, so off means the walky talky is off. */}
+        <Switch checked={!shown} disabled={busy} onCheckedChange={(on) => void onToggle(!on)} aria-label={t("walky.off.label")} aria-describedby={hintId} />
+      </label>
+      {note !== null && (
+        <p data-slot="walky-off-note" role="status" className="mt-1 text-[11px] text-status-blocked">
+          {note}
+        </p>
+      )}
+    </div>
   );
 }
 
@@ -184,7 +255,7 @@ function WalkyListRow({
       className={cn("rounded-md border px-3 py-2 transition-colors", focused ? "border-status-working/60 bg-status-working/8" : "border-border")}
     >
       <div className="mb-1 flex items-center gap-1.5 text-[11px] text-muted-foreground">
-        {sent ? <Send className="size-3.5 shrink-0" aria-hidden="true" /> : <WalkyIcon className="size-3.5 shrink-0" aria-hidden="true" />}
+        {sent ? <Icon name="message-sent" className="size-3.5 shrink-0" aria-hidden="true" /> : <WalkyIcon className="size-3.5 shrink-0" aria-hidden="true" />}
         {sent ? (
           <span data-slot="walky-sent-to" className="min-w-0 flex-1 truncate font-medium text-foreground">
             {t("walky.sheet.sentTo", { target })}

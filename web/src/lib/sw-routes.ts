@@ -116,6 +116,7 @@ export const UI_FONT_URLS = [
   "/fonts/ui-ibm-plex-sans-3.201-latin.woff2",
   "/fonts/ui-geist-1.800-latin.woff2",
   DEFAULT_UI_FONT_URL,
+  "/fonts/ui-nunito-3.602-latin.woff2",
   "/fonts/ui-aldrich-1.002-latin.woff2",
 ] as const;
 

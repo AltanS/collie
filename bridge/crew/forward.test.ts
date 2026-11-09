@@ -196,6 +196,19 @@ describe("which routes cross a link", () => {
     expect(calls[0]!.params).toEqual({ cwd: ["~/src", "/srv/data"] });
   });
 
+  test("a session's walky talky off switch crosses the link to the member that owns the pane (M89)", () => {
+    // The flag lives on the owner, which enforces it (§21): a `?host=` set reaches that member.
+    expect(crewRouteFor("/api/walky/off")).toBe("walky/off");
+    expect(apiPathFor("walky/off")).toBe("/api/walky/off");
+    // Nothing else under `walky/` rides the link: a message routes by its address, and `who` is the lead's.
+    expect(crewRouteFor("/api/walky")).toBeNull();
+    expect(crewRouteFor("/api/walky/who")).toBeNull();
+    expect(crewRouteFor("/api/walky/off/x")).toBeNull();
+    expect(forwardKind("walky/off", "POST")).toBe("write");
+    // The member writes the same audit name.
+    expect(forwardAuditAction("walky/off", "POST")).toBe("walky.off");
+  });
+
   test("the folder list and a star on it cross the link — folders live on the member that has them", () => {
     // #289: the new-space sheet's list is that member's own `folders.json`, so a `?host=` read or star
     // reaches the member, never the lead's file.
@@ -276,10 +289,17 @@ describe("which routes cross a link", () => {
     const alternation = /\(([a-z]+(?:\|[a-z]+)+)\)/;
     const paneActions = pane.match(alternation)![1]!.split("|").toSorted();
     // The list IS the inventory of what crosses a link; `chat` joined it with the live window, and
-    // `files` with the Files view (ADR 0083).
+    // `files` with the Files view (ADR 0083), `held` with the Cancel and Dismiss on a member's queued row (issue 740).
     expect(paneActions).toEqual([
-      "abort", "action", "answer", "changes", "chat", "clear", "close", "files", "focus", "history", "keys", "rename", "reply", "send", "upload",
+      "abort", "action", "answer", "changes", "chat", "clear", "close", "files", "focus", "held", "history", "keys", "pins", "rename", "reply", "send", "upload",
     ]);
+    // The Cancel or Dismiss on a member's queued row changes that member's hold queue: a write, audited on
+    // the lead under the member's own name for the act (issue 740).
+    expect(forwardKind("pane/x/held", "DELETE")).toBe("write");
+    expect(forwardAuditAction("pane/x/held", "DELETE")).toBe("send-cancel");
+    expect(forwardAuditAction("pane/x/held", "GET")).toBeNull();
+    expect(apiPathFor("pane/x/held")).toBe("/api/pane/x/held");
+    expect(crewRouteFor("/api/pane/x/held/req00001")).toBeNull();
     for (const action of paneActions) expect(crewRouteFor(`/api/pane/x/${action}`)).toBe(`pane/x/${action}`);
     const tabActions = tab.match(alternation)![1]!.split("|").toSorted();
     expect(tabActions).toEqual(["close", "rename"]);
@@ -374,6 +394,23 @@ describe("which routes cross a link", () => {
     // The image read is the same read on another cap (ADR 0090).
     expect(forwardKind("pane/w1:p1/files/image")).toBe("read");
     expect(forwardKind("workspace/w1/files/image")).toBe("read");
+  });
+
+  test("a pane's pins cross the link: the list is a read, a pin and an unpin are writes (M90)", () => {
+    expect(crewRouteFor("/api/pane/w1:p1/pins")).toBe("pane/w1:p1/pins");
+    expect(apiPathFor("pane/w1:p1/pins")).toBe("/api/pane/w1:p1/pins");
+    expect(crewRouteFor("/api/pane/w1:p1/pins/x")).toBeNull();
+    // The list is judged by its method: a GET reads, so a stale member is still asked.
+    expect(forwardKind("pane/w1:p1/pins", "GET")).toBe("read");
+    expect(forwardKind("pane/w1:p1/pins", "POST")).toBe("write");
+    expect(forwardKind("pane/w1:p1/pins", "DELETE")).toBe("write");
+    expect(forwardKind("pane/w1:p1/pins")).toBe("write");
+    // The lead writes `pins` for a forwarded pin or unpin and nothing for the list; the member writes
+    // `pin.add` or `pin.remove` itself.
+    expect(forwardAuditAction("pane/w1:p1/pins", "GET")).toBeNull();
+    expect(forwardAuditAction("pane/w1:p1/pins", "POST")).toBe("pins");
+    expect(forwardAuditAction("pane/w1:p1/pins", "DELETE")).toBe("pins");
+    expect(textAnswerOf("pane/w1:p1/pins")).toBe("pins");
   });
 
   test("the audit action a forward records is the one the peer will write", () => {
@@ -1050,6 +1087,7 @@ describe("a forwarded write carries its own budget (§10.1)", () => {
       "/api/workspace",
       "/api/launch",
       "/api/folders/star",
+      "/api/walky/off",
     ];
     for (const path of writes) {
       const { transport, calls } = transportOf(() => ok(new Response("{}")));

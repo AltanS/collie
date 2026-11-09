@@ -68,6 +68,14 @@ export const ACK_MANIFEST = {
     channel: "echo",
     why: "The Send Protocol's request for a program on this machine (M56 spec 14): the field holds Sending until the bridge answers; a sent text moves to the thread as a pending line the program's own line replaces, and any other outcome lands at the thumb as the terminal composer's notice.",
   },
+  pinItem: {
+    channel: "echo",
+    why: "The hold or the ⋯ on a Chat block (M90): the block wears its pin mark at once and the Pins mark's count steps, which is the acknowledgement at the thing the person touched; a refusal (a full session, a block that left the log, an older machine) takes the mark back and is said on the status channel.",
+  },
+  unpinItem: {
+    channel: "echo",
+    why: "Unpin on a block's sheet or on a Pins sheet row (M90): the mark and the row leave at once, which is what the person asked for and where they are looking; a refusal puts the row back and is said on the status channel.",
+  },
   postWalky: {
     channel: "inline",
     why: "An operator message (M62): the receipt's state, in words, stands beside the composer box (or in the Crew sheet's receipt rows) until it is dismissed, because a message that was kept in the inbox or refused is something the operator must read and act on, and a status line would be gone by then.",
@@ -79,6 +87,10 @@ export const ACK_MANIFEST = {
   dropWalky: {
     channel: "inline",
     why: "The pane owner's Drop on a held walky talky message (M62 spec 03): the row's receipt turns to `dropped by the pane's owner` on the next read and the held mark goes; an `already typed` answer and a failed call land as a line under the row.",
+  },
+  setWalkyOff: {
+    channel: "inline",
+    why: "The walky talky switch in a pane's Messages sheet (M89 spec 04): the switch itself is the receipt, it holds the new place while the call runs and the pane row's flag then confirms it; a failed call puts the switch back and lands as a line under it, because the operator asked for something that did not happen.",
   },
   cancelHeldSend: {
     channel: "silent",
@@ -295,6 +307,18 @@ export const ACK_MANIFEST = {
   removeWhistleModel: {
     channel: "inline",
     why: "The two-tap confirm sits in the Whistle card and its outcome is the card itself going back to the setup button; a refusal is written under it.",
+  },
+  startMathPack: {
+    channel: "inline",
+    why: "The Math card swaps the download button for the host's own progress bar, and a refusal is written inside that card, under the button the person tapped.",
+  },
+  removeMathPack: {
+    channel: "inline",
+    why: "The two-tap confirm sits in the Math card and its outcome is the card going back to the download button; a refusal is written under it.",
+  },
+  refreshThemeRegistry: {
+    channel: "inline",
+    why: "The Browse sheet is the acknowledgement: the button reads Refreshing while the host fetches, then the list and its age line change in place. A failed fetch, a too-big or bad list and a read-only device are each written inside that sheet, above the list they are about.",
   },
   setSttHost: {
     channel: "inline",

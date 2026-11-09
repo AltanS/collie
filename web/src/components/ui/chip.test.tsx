@@ -1,11 +1,11 @@
 import { render } from "@testing-library/react";
-import { Server } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 
 import { Chip } from "./chip";
 
 // The strip pill's two optional slots: a leading glyph, and a name that says the chip's act.
 
-const glyph = <Server aria-hidden className="size-3.5" />;
+const glyph = <Icon name="machine" aria-hidden className="size-3.5" />;
 
 describe("Chip — the leading glyph", () => {
   it("draws the glyph first, in every state, so a state change never moves the label", () => {

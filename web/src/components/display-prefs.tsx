@@ -1,5 +1,4 @@
 import type { ReactNode } from "react";
-import { AArrowDown, AArrowUp } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -9,6 +8,7 @@ import { useLocale } from "@/hooks/use-locale";
 import { t } from "@/lib/i18n";
 import type { PaneView } from "@/lib/pane-view";
 import { cn } from "@/lib/utils";
+import { Icon } from "@/components/icons/icon";
 
 // The pane body's display prefs, as LABELLED rows in the ⚙ sheet on the belt.
 //
@@ -140,7 +140,7 @@ function TextSizeRow({
             onClick={() => step(-1)}
             aria-label={t("settings.display.textSize.decrease")}
           >
-            <AArrowDown className="size-4" />
+            <Icon name="text-smaller" className="size-4" />
           </Button>
           <span className="w-8 text-center text-xs tabular-nums text-muted-foreground">{size}</span>
           <Button
@@ -151,7 +151,7 @@ function TextSizeRow({
             onClick={() => step(1)}
             aria-label={t("settings.display.textSize.increase")}
           >
-            <AArrowUp className="size-4" />
+            <Icon name="text-larger" className="size-4" />
           </Button>
         </div>
       }
