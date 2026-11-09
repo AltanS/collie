@@ -14,7 +14,8 @@ import { sortOpenDecisions, type HillDecision, type HillList, type HillReceipt }
 // moved nothing on the hill costs nothing. A number BELOW the held one is a bridge that restarted and
 // counts from the start again, so the store reads the whole list without `since`. A snapshot with no
 // number (a bridge older than the hill, or a crew member's own) empties the store: there is no hill
-// to show, and the Dashboard row goes with it.
+// to show, and the Dashboard row goes with it. What it keeps is the words of a gone answer (below), and
+// a read still in flight when it empties the store is dropped when it lands.
 //
 // One read at a time. A snapshot that names a newer number while a read is in flight is remembered,
 // and the store reads again once the first answer is in, so the last number always wins. A failed read
@@ -58,6 +59,11 @@ let held: HillHeld = EMPTY;
 /** The newest revision a snapshot named, or null when the last one named none. */
 let wanted: number | null = null;
 let reading = false;
+/**
+ * Counts the times the store was emptied. A read that started under one number and lands under another
+ * is the hill of a bridge that went away (or of a test that reset), and its answer is dropped.
+ */
+let generation = 0;
 /** The read loop in flight, for a test to wait on. */
 let inFlight: Promise<void> | null = null;
 const listeners = new Set<() => void>();
@@ -99,12 +105,16 @@ async function readUntilCurrent(): Promise<void> {
       if (target === null || target === held.rev) return;
       // Below the held number is a restarted bridge: its old revisions mean nothing, read it whole.
       const since = held.rev !== null && target > held.rev ? held.rev : undefined;
+      const startedIn = generation;
       let list: HillList;
       try {
         list = await fetchHill(since);
       } catch {
         return;
       }
+      // The store was emptied while the read was out: its answer is for a hill that went away. A number
+      // that came after the emptying reads again on the next pass.
+      if (startedIn !== generation) continue;
       // A snapshot with no number arrived while the read was out: the hill went away, keep nothing.
       if (wanted === null) return;
       take(list);
@@ -121,7 +131,11 @@ async function readUntilCurrent(): Promise<void> {
 export function syncHill(rev: number | undefined): void {
   if (rev === undefined) {
     wanted = null;
-    if (held !== EMPTY) publish(EMPTY);
+    generation += 1;
+    // The open and closed lists, the number and the receipts go; the words of a gone answer stay, because
+    // they are the person's own and the bridge no longer has them.
+    const holdsList = held.rev !== null || held.open.length > 0 || held.closed.length > 0 || held.receipts.size > 0;
+    if (holdsList) publish({ ...EMPTY, kept: held.kept });
     return;
   }
   wanted = rev;
@@ -190,6 +204,7 @@ export function useHillKept(): ReadonlyMap<string, string> {
 /** Forget everything. For tests, which share one module between cases. */
 export function __resetHill(): void {
   wanted = null;
+  generation += 1;
   reading = false;
   inFlight = null;
   publish(EMPTY);

@@ -117,4 +117,47 @@ describe("the hill store", () => {
     act(() => noteHillAnswer("dc_x", { receipt: hillReceipt({ at: HILL_T0 }), intent: "yes", text: "fine" }));
     expect(result.current.size).toBe(0);
   });
+
+  it("keeps the words of a gone answer when the snapshot carries no number, and drops the lists and receipts", async () => {
+    const decision = hillDecision();
+    serve(() => list(1, [decision], [hillDecision({ title: "closed" })]));
+    const { result } = renderHook(() => ({ held: useHillAnswerHeld(decision.id), kept: useHillKept(), open: useHillOpen(), count: useHillCount() }));
+    await sync(1);
+    act(() => noteHillAnswer(decision.id, { receipt: hillReceipt({ code: "gone", state: null, delivery: null }), intent: "yes", text: "my words" }));
+    await sync(undefined);
+    expect(result.current.count).toBe(0);
+    expect(result.current.open).toEqual([]);
+    expect(result.current.held).toBeNull();
+    expect(result.current.kept.get(decision.id)).toBe("my words");
+  });
+
+  it("drops a read that lands after the store was emptied, and reads again for the number that came after", async () => {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    server.use(
+      http.get("/api/hill", async ({ request }) => {
+        reads.push(new URL(request.url).searchParams.get("since"));
+        const first = reads.length === 1;
+        if (first) await gate;
+        return HttpResponse.json(list(4, [hillDecision({ title: first ? "from the old bridge" : "from the new one" })]));
+      }),
+    );
+    const { result } = renderHook(() => useHillOpen());
+    let settled: Promise<void> = Promise.resolve();
+    act(() => {
+      syncHill(4);
+      settled = __settleHill();
+    });
+    // The snapshot lost its number while the read was out, then a bridge came back with the same one.
+    act(() => syncHill(undefined));
+    act(() => syncHill(4));
+    act(() => {
+      release();
+    });
+    await act(async () => {
+      await settled;
+    });
+    expect(result.current.map((d) => d.title)).toEqual(["from the new one"]);
+    expect(reads).toEqual([null, null]);
+  });
 });
