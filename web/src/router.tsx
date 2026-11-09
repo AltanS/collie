@@ -35,6 +35,7 @@ import { CrewRoute } from "@/routes/crew";
 import { MachineRoute } from "@/routes/machine";
 import { MachinesRoute } from "@/routes/machines";
 import { UpdatesRoute } from "@/routes/updates";
+import { HillRoute } from "@/routes/hill";
 import {
   devicesLoader,
   historyLoader,
@@ -101,6 +102,9 @@ export const router = createBrowserRouter([
       // The New page (M48), a page since 1.19.0 and a bottom sheet before. No loader: it reads the root
       // snapshot (for a pane's folder and branch) and asks the chosen machine's bridge for its own lists.
       // Where it was opened from rides in the query (`?machine=`, `?pane=`, `?s=`), so a reload keeps it.
+      // The hill (M96): the Decisions agents posted, one level below the Dashboard. No loader: its
+      // lists live in lib/hill/store.ts, kept current by the root loader.
+      { path: "hill", element: <HillRoute /> },
       { path: "new", element: <NewRoute /> },
       // "Add your own" (ADR 0094): a page below New, for a launcher this phone adds on one machine.
       { path: "new/add", element: <NewAddRoute /> },

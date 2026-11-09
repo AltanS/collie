@@ -900,6 +900,12 @@ export interface SnapshotResponse {
   /** Update-availability signal. Optional — a stale bridge that predates the field simply omits it,
    *  which the client reads as "no info" (see bridge/update.ts). */
   update?: UpdateStatus;
+  /**
+   * The hill's revision (M96): it moves on every change to this bridge's decisions, and the phone
+   * refetches `GET /api/hill` when it does. Absent until the decisions file exists, so a bridge that
+   * never took a post serves the same body, and the same ETag, as a build without the hill.
+   */
+  hillRev?: number;
   ts: number;
 }
 

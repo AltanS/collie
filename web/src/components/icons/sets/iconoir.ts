@@ -224,6 +224,7 @@ export const ICONOIR = {
   "prompt-user": "user", // the pinned prompt · lucide User
   "queued": "clock", // queued, not yet sent · lucide Clock
   "quick-actions": "flash", // quick actions · lucide Zap
+  "recommended": "star", // the option the poster recommends · lucide Star
   "refresh": "refresh", // refresh or reload · lucide RefreshCw
   "release-line": "git-branch", // release line (Stable or Edge) · lucide GitBranch
   "remove": "xmark", // remove one item from a list · lucide X

@@ -26,7 +26,7 @@
 // session's scope key opens that Session. Nothing a trick draws can write into a reply box.
 
 import { Check, ChevronDown, Loader2, Minus, Pause, Play, X } from "lucide-react";
-import { useEffect, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode } from "react";
+import { useState, type CSSProperties, type MouseEvent, type ReactNode } from "react";
 
 import { Button } from "../../components/ui/button";
 import { Card } from "../../components/ui/card";
@@ -36,6 +36,7 @@ import { ListGroup } from "../../components/ui/list-group";
 import { OneOf } from "../../components/ui/one-of";
 import { Progress } from "../../components/ui/progress";
 import { SectionLabel } from "../../components/ui/section-label";
+import { useArm } from "../../hooks/use-arm";
 import { copyText } from "../clipboard";
 import { t } from "../i18n";
 import { setStatus } from "../status";
@@ -103,9 +104,6 @@ export interface RenderCtx {
   /** Pin the clock (epoch ms on the bridge's clock), for a test or a playground card. Absent: it ticks. */
   now?: number;
 }
-
-/** How long a `confirm` button stays armed after its first tap (VOCABULARY.md 2.8). */
-export const CONFIRM_MS = 4000;
 
 /** A row's or a link's `href` as a target, or `undefined` for one this Collie cannot open (the bridge checked it). */
 export function linkTargetOf(href: string): LinkTarget | undefined {
@@ -248,24 +246,14 @@ function copyValue(value: string): void {
   );
 }
 
-/** Whether a confirm button is armed now: the first tap arms it, for {@link CONFIRM_MS}, then it rests. */
-function useArmed(): [boolean, (on: boolean) => void] {
-  const [armed, setArmed] = useState(false);
-  const timer = useRef<number | undefined>(undefined);
-  useEffect(() => () => window.clearTimeout(timer.current), []);
-  const set = (on: boolean) => {
-    window.clearTimeout(timer.current);
-    setArmed(on);
-    if (on) timer.current = window.setTimeout(() => setArmed(false), CONFIRM_MS);
-  };
-  return [armed, set];
-}
-
 function ButtonView({ node, ctx, path, compact = false }: { node: ButtonNode; ctx: RenderCtx; path: string; compact?: boolean }) {
   const { attrs } = node;
   const state = controlState(ctx, path);
   const busy = state === "busy";
-  const [armed, setArmed] = useArmed();
+  // ARM, THEN ACT: the shared second-tap confirm (hooks/use-arm.ts), so a trick's button keeps the
+  // belt's Stop window and its dwell; one key, as the button holds one confirm.
+  const arm = useArm<"confirm">();
+  const armed = arm.armed === "confirm";
   const Icon = attrs.icon === undefined ? null : trickIconOf(attrs.icon);
   const label = armed && attrs.confirm !== undefined ? attrs.confirm : attrs.label;
   const ink = armed ? inkOf("danger", false) : inkOf(attrs.tone, ctx.stale);
@@ -276,11 +264,7 @@ function ButtonView({ node, ctx, path, compact = false }: { node: ButtonNode; ct
       return;
     }
     if (attrs.intent === undefined) return;
-    if (attrs.confirm !== undefined && !armed) {
-      setArmed(true);
-      return;
-    }
-    setArmed(false);
+    if (attrs.confirm !== undefined && arm.tap("confirm") !== "fire") return;
     ctx.onTap(ctx.partKey, attrs.intent, attrs.value, path);
   };
   // THE LABEL STAYS WHILE BUSY: a person reads what is running, not a lone spinner. With a glyph, the

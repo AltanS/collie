@@ -12,6 +12,12 @@
 //   cancel  { id }                      → { ok, results }   (M62 spec 03: the sender takes a held message back)
 //   off     {}                          → { ok, off }       (M89: the asker's own pane turns its walky talky off)
 //   on      {}                          → { ok, off }       (M89: and on again)
+// The hill (M96), four operations beside these, answered only by a bridge built with it:
+//   hill.post     { requestId, title, summary, ... } → { ok, decision } | { ok: false, error, code }
+//   hill.status   { id }                       → { ok, decision }   (the asker's own decisions only)
+//   hill.withdraw { id }                       → { ok, decision }   (now `withdrawn`, "by the poster")
+//   hill.list     { mine: true }               → { ok, decisions }  (the asker's own, open first)
+// Every hill refusal carries `hill: true`, so the CLI tells a bridge that knows the hill from an older one.
 // A refusal is `{ ok: false, error }`. `not here` means the markers name no pane of this bridge, so
 // the CLI asks the next bridge on the machine; a request this bridge cannot read answers the same when
 // its markers name no pane here, else `bad request: <reason>` (refusals.ts). A send with no markers
@@ -25,9 +31,12 @@ import { dirname, join } from "node:path";
 import type { BeaconMatcher } from "../beacon/decorate.ts";
 import type { BeaconMarker } from "../beacon/types.ts";
 import { HOST, type Host } from "../host.ts";
-import { readWalkyRequest, WALKY_LINE_MAX, type WalkyRequest, type WalkyRequestRead } from "./parse.ts";
+import type { HillDecision, HillRefusalCode } from "../../web/src/lib/hill/wire.ts";
+import type { HillService } from "../hill/service.ts";
+import { isHillOp, readWalkyRequest, WALKY_LINE_MAX, type WalkyRequest, type WalkyRequestRead } from "./parse.ts";
+import { unknownOp } from "./refusals.ts";
 import type { WalkyDelivery, WalkyService } from "./service.ts";
-import type { TakeBack } from "./deliver.ts";
+import type { TakeBack, WalkyPane } from "./deliver.ts";
 import type { WalkyEntry, WalkyMessage, WalkyReceipt, WalkyTarget } from "./types.ts";
 
 /** What the socket answers a send that names no pane. */
@@ -36,6 +45,11 @@ export const SEND_NEEDS_A_PANE = "run this inside a pane, or send from the phone
 export const CANCEL_NEEDS_A_PANE = "run this inside the pane that sent it, or cancel from the phone";
 /** What the socket answers `off` or `on` from outside an agent pane: the flag is the asker's own (M89). */
 export const SWITCH_NEEDS_A_PANE = "run this inside an agent pane";
+/** What the socket answers a hill operation from outside an agent pane (M96): a decision belongs to a session. */
+export const HILL_NEEDS_A_PANE = "run this inside an agent's pane: a decision belongs to the session that posts it";
+
+/** What the socket needs of the hill (M96). Absent: the bridge answers the four operations as unknown. */
+export type HillSocket = Pick<HillService, "agentSender" | "postFields" | "status" | "withdraw" | "mineList">;
 
 /** The socket of one state dir. */
 export function walkySocketPath(stateDir: string): string {
@@ -83,6 +97,8 @@ export interface WalkyServerDeps {
   readonly service: WalkyService;
   targets(): readonly PlaceTarget[];
   readonly log?: (line: string) => void;
+  /** The hill (M96). Absent: its operations are answered as an older bridge answers them. */
+  readonly hill?: HillSocket;
 }
 
 /** What one request is answered with. */
@@ -102,7 +118,11 @@ export type WalkyAnswer =
   | { readonly ok: true; readonly pane: string | null; readonly messages: readonly WalkyEntry[] }
   | { readonly ok: true; readonly acked: number }
   | { readonly ok: true; readonly off: boolean }
-  | { readonly ok: true; readonly results: readonly TakeBack[] };
+  | { readonly ok: true; readonly results: readonly TakeBack[] }
+  // The hill (M96).
+  | { readonly ok: false; readonly error: string; readonly hill: true; readonly code?: HillRefusalCode; readonly missing?: string }
+  | { readonly ok: true; readonly decision: HillDecision }
+  | { readonly ok: true; readonly decisions: readonly HillDecision[] };
 
 /**
  * A bridge that knows the pane but holds no message with the id (added 2026-10-30). It answers `not here`,
@@ -114,11 +134,14 @@ export function noMessageHere(sentence: string): WalkyAnswer {
 }
 
 /** Answer one parsed request. Exported for its test: the server only frames it. */
-export async function answerRequest(service: WalkyService, request: WalkyRequest, targets: readonly PlaceTarget[]): Promise<WalkyAnswer> {
+export async function answerRequest(service: WalkyService, request: WalkyRequest, targets: readonly PlaceTarget[], hill?: HillSocket): Promise<WalkyAnswer> {
+  // A bridge built without the hill answers its operations as it answers any op it does not know.
+  if (hill === undefined && isHillOp(request.op)) return answerUnread(service, { ok: false, markers: request.markers, reason: unknownOp(request.op) }, targets);
   const placed = request.markers.length === 0 ? null : await placeMarkers(request.markers, targets);
-  if (request.markers.length > 0 && placed === null) return { ok: false, error: "not here" };
+  const notHere: WalkyAnswer = hill !== undefined && isHillOp(request.op) ? { ok: false, error: "not here", hill: true } : { ok: false, error: "not here" };
+  if (request.markers.length > 0 && placed === null) return notHere;
   const pane = placed === null ? null : service.paneAt(placed.session, placed.paneId);
-  if (placed !== null && pane === null) return { ok: false, error: "not here" };
+  if (placed !== null && pane === null) return notHere;
   switch (request.op) {
     case "send": {
       // The kind fails closed: a send names its pane, or it is not taken. An operator sends from a
@@ -179,6 +202,41 @@ export async function answerRequest(service: WalkyService, request: WalkyRequest
         return { ok: false, error: SWITCH_NEEDS_A_PANE };
       }
       return { ok: true, off: service.setOff(pane, request.op === "off", "session") };
+    case "hill.post":
+    case "hill.status":
+    case "hill.withdraw":
+    case "hill.list":
+      return answerHill(service, request, pane, hill);
+  }
+}
+
+/**
+ * One hill operation (M96), from the pane the markers placed, never from a pane an argument names. The
+ * sender is that pane's walky address with its instance token, as a walky send names its sender. A
+ * decision this bridge does not hold from the sender answers `not here` with the sentence in `missing`,
+ * so the CLI asks the next bridge on the machine, as it does for a walky message id.
+ */
+function answerHill(service: WalkyService, request: Extract<WalkyRequest, { op: "hill.post" | "hill.status" | "hill.withdraw" | "hill.list" }>, pane: WalkyPane | null, hill: HillSocket | undefined): WalkyAnswer {
+  if (hill === undefined) return { ok: false, error: unknownOp(request.op) };
+  if (pane === null || !pane.agent) {
+    service.noteRefusal("no pane");
+    return { ok: false, error: HILL_NEEDS_A_PANE, hill: true };
+  }
+  const sender = hill.agentSender(pane, service.addressOf(pane.paneId, pane.instance));
+  switch (request.op) {
+    case "hill.post": {
+      const answer = hill.postFields(sender, request.fields);
+      if (answer.ok) return answer;
+      return answer.code === null ? { ok: false, error: answer.error, hill: true } : { ok: false, error: answer.error, hill: true, code: answer.code };
+    }
+    case "hill.status":
+    case "hill.withdraw": {
+      const answer = request.op === "hill.status" ? hill.status(sender, request.id) : hill.withdraw(sender, request.id);
+      if (answer.ok) return answer;
+      return answer.missing ? { ok: false, error: "not here", hill: true, missing: answer.error } : { ok: false, error: answer.error, hill: true };
+    }
+    case "hill.list":
+      return { ok: true, decisions: hill.mineList(sender) };
   }
 }
 
@@ -292,7 +350,7 @@ export class WalkyServer {
     try {
       const read = readWalkyRequest(line);
       if (!read.ok) return this.reply(socket, await answerUnread(this.deps.service, read, this.deps.targets()));
-      this.reply(socket, await answerRequest(this.deps.service, read.request, this.deps.targets()));
+      this.reply(socket, await answerRequest(this.deps.service, read.request, this.deps.targets(), this.deps.hill));
     } catch (err) {
       this.log(`[walky] request failed: ${err instanceof Error ? err.message : String(err)}`);
       this.reply(socket, { ok: false, error: "failed" });

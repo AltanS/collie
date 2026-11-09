@@ -67,6 +67,9 @@ const SNAPSHOT_KEYS = {
   // Not a crew dimension either: the tricks revision (M94), which the phone compares to the one it holds
   // before it asks `/api/tricks` for the changes. Optional, so a bridge with no tricks runner sends none.
   tricksRev: true,
+  // Not a crew dimension: the hill's revision (M96), a number the bridge puts on every snapshot,
+  // solo included, so the phone knows when to read the hill. The bridge half records its own golden.
+  hillRev: true,
 } satisfies Record<keyof SnapshotResponse, true>;
 
 const SESSION_SUMMARY_KEYS = {
@@ -248,6 +251,7 @@ describe("solo zero-tax — the client's mirror types carry no crew dimension", 
       "agents",
       "bridge",
       "device",
+      "hillRev",
       "muxFault",
       "notifications",
       "servers",

@@ -39,6 +39,8 @@ import { noteServerDate } from "./server-clock";
 import { mounted } from "./base-path";
 import { WALKY_LIST_LIMIT, type WalkyReceipt, type WalkyRefusals, type WalkyRow, type WalkySendBody, type WalkySkipped, type WalkyTakeBack, type WalkyTarget, type WalkyWho } from "./walky";
 import { CHAT_UNCHANGED, type ChatAnswer } from "./chat-window";
+import { readHillList, readHillReceipt } from "./hill/reader";
+import type { HillAnswerRequest, HillList, HillReceipt } from "./hill/wire";
 import { decidedOf, parseAsk, type AnswerResult, type AskAnswer } from "./ask";
 import type { ColumnRange } from "./column-range";
 import type {
@@ -1721,6 +1723,58 @@ export async function postWalky(body: WalkySendBody): Promise<WalkyReceipt[]> {
   });
   if (got.receipts !== undefined) return got.receipts;
   return got.receipt === undefined ? [] : [got.receipt];
+}
+
+/**
+ * GET /api/hill (M96): the open decisions and the newest closed ones. `since` is the revision this
+ * phone holds; the bridge answers `unchanged` when nothing moved. Omit it for a whole read, after a
+ * bridge restart put the revision below the one held. Carries no scope: the hill lives on the lead.
+ * Every decision is read by `lib/hill/reader.ts`, and a body that is no list at all throws.
+ */
+export async function fetchHill(since?: number, signal?: AbortSignal): Promise<HillList> {
+  const query = since === undefined ? "" : `?since=${Math.max(0, Math.floor(since))}`;
+  const got = await req<JsonValue>(`/api/hill${query}`, { signal });
+  const list = readHillList(got);
+  if (list === null) throw new ApiError("The hill route sent a body this phone cannot read.", 502);
+  return list;
+}
+
+/** The words of a refused answer: a JSON body's `reason`, else the plain text the bridge sends, else none. */
+function refusalReason(detail: string): string | null {
+  const parsed = parseJsonObject(detail);
+  if (parsed !== undefined) return asJsonString(parsed.reason) ?? null;
+  const plain = detail.trim();
+  return plain === "" ? null : plain.slice(0, 200);
+}
+
+/**
+ * POST /api/hill/answer (M96): one person's answer to one decision. The caller mints `rid` once per
+ * attempt and sends the same one on a retry, so a lost answer never answers twice: the bridge returns
+ * the receipt it already wrote for a known `rid` and runs nothing. A 401 or 403 is the guards' refusal
+ * and reads as a `denied` receipt; a 400 (a body the bridge could not read) and a 409 (the `rid` already
+ * answered with another choice) as `rejected`, with the bridge's words as the reason: the bridge says
+ * them as plain text, and a JSON `reason` is read first for a body that has one. A 503 (the first receipt
+ * could not be written, so nothing closed and nothing was sent) is NOT recovered here: it throws like a
+ * lost answer, the card says "Not sent." and the retry reuses the same `rid`. A 200 whose body is no
+ * receipt reads as `unknown`: the bridge took the request and may have acted on it, so the phone must
+ * not offer the same answer as unsent. A thrown request (no answer) is the retry case.
+ */
+export async function postHillAnswer(body: HillAnswerRequest): Promise<HillReceipt> {
+  // The refusal in the receipt's own shape, so one reader reads every answer.
+  const refused = (code: "denied" | "rejected", detail: string): JsonObject => ({
+    rid: body.rid,
+    code,
+    reason: code === "rejected" ? refusalReason(detail) : null,
+    state: null,
+    delivery: null,
+    at: Date.now(),
+  });
+  const got = await req<JsonValue>("/api/hill/answer", { method: "POST", body: JSON.stringify(body) }, (status, detail) => {
+    if (status === 401 || status === 403) return refused("denied", detail);
+    if (status === 400 || status === 409) return refused("rejected", detail);
+    return null;
+  });
+  return readHillReceipt(got) ?? { rid: body.rid, code: "unknown", reason: null, state: null, delivery: null, at: Date.now() };
 }
 
 /**

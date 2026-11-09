@@ -41,8 +41,17 @@ export type AuditContent = "preview" | "none";
  */
 const METADATA_KEYS: ReadonlySet<string> = new Set([
   "checked",
+  // The hill (M96): a decision id the bridge mints (`dc_` and 12 characters), never typed by a person.
+  "decisionId",
+  // The hill's answer: what walky reported (`typed`, `held`, `unknown`, `none`), an enum the bridge writes.
+  "delivery",
+  // The hill's answer: the option's intent, `answer` or `dismiss`. A lowercase word of at most 32
+  // characters the poster named for a button (`isHillOptionIntent`), never the person's text.
+  "intent",
   "passed",
   "reason",
+  // The hill's answer: the receipt's code (`ok`, `rejected`, `gone`, `unknown`), an enum the bridge writes.
+  "receiptCode",
   // The state dir name of the sibling instance a walky talky row came from (bridge/walky/siblings.ts):
   // `collie`, `collie-next`. The bridge reads it off the hook target registry, never a person's text.
   "recordedBy",
@@ -57,6 +66,8 @@ const METADATA_KEYS: ReadonlySet<string> = new Set([
   "styled",
   "submit",
   "submitted",
+  // The hill: the id of the decision a post replaces, minted by the bridge.
+  "supersedes",
   "tabId",
   "textDelivered",
   "workspaceId",

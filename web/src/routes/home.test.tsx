@@ -25,6 +25,8 @@ import type { StartLaunchBody } from "@/lib/api";
 import type { SnapshotResponse } from "@/lib/types";
 import { withHeaderHost } from "@/test/header-host";
 import { server } from "@/test/setup";
+import { __resetHill, __settleHill, syncHill } from "@/lib/hill/store";
+import { hillDecision } from "@/test/hill-fixtures";
 import { HomeRoute } from "./home";
 
 // The dashboard, one machine and several. The point of the pair is that the FIRST one is unchanged:
@@ -75,6 +77,7 @@ function renderHome(data: HomeData, initialPath?: string) {
       { path: "/pane/:paneId", element: <div data-testid="pane" /> },
       { path: "/space/:spaceId/changes", element: <div data-testid="space-changes" /> },
       { path: "/crew", element: <div data-testid="crew" /> },
+      { path: "/hill", element: <div data-testid="hill" /> },
     ],
     { initialEntries: [initialPath ?? (data.scope.host ? `/?h=${data.scope.host}` : "/")] },
   );
@@ -1169,5 +1172,45 @@ describe("the dashboard's update line after a tap on the updating mark", () => {
     expect(lineScrolls(spy)).toHaveLength(0);
     // And the stale request is gone, so a later plain visit cannot find it either.
     expect(bundleFocusPending()).toBe(false);
+  });
+});
+
+describe("the hill's row on the Dashboard (M96)", () => {
+  beforeEach(() => __resetHill());
+  afterEach(() => __resetHill());
+
+  async function openOnHill(count: number) {
+    const open = Array.from({ length: count }, (_, i) => hillDecision({ title: `Decision ${i + 1}`, priority: i === count - 1 ? "now" : "later" }));
+    server.use(http.get("/api/hill", () => HttpResponse.json({ v: 1, rev: 1, open, closed: [] })));
+    await act(async () => {
+      syncHill(1);
+      await __settleHill();
+    });
+  }
+
+  it("draws nothing while no Decision is open", async () => {
+    renderHome(solo());
+    await settled();
+    expect(document.querySelector('[data-slot="hill-entry"]')).toBeNull();
+  });
+
+  it("says one Decision in the singular, with its title", async () => {
+    await openOnHill(1);
+    renderHome(solo());
+    await settled();
+    const row = document.querySelector<HTMLElement>('[data-slot="hill-entry"]')!;
+    expect(row).toHaveTextContent("1 Decision needs you");
+    expect(row).toHaveTextContent("Decision 1");
+  });
+
+  it("says several in the plural, the most urgent title under it, and opens the hill", async () => {
+    await openOnHill(3);
+    const router = renderHome(solo());
+    await settled();
+    const row = document.querySelector<HTMLElement>('[data-slot="hill-entry"]')!;
+    expect(row).toHaveTextContent("3 Decisions need you");
+    expect(row.querySelector('[data-slot="hill-entry-title"]')).toHaveTextContent("Decision 3");
+    await userEvent.click(row);
+    await waitFor(() => expect(url(router)).toBe("/hill"));
   });
 });

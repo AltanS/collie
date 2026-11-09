@@ -98,6 +98,7 @@ export const SECTIONS: readonly SectionEntry[] = [
   { def: { id: "trick-render", title: "Trick render" }, load: () => import("./sections/trick-render").then((m) => ({ default: m.TrickRenderSection })) },
   { def: { id: "trick-places", title: "Trick places" }, load: () => import("./sections/trick-places").then((m) => ({ default: m.TrickPlacesSection })) },
   { def: { id: "trick-settings", title: "Trick settings" }, load: () => import("./sections/trick-settings").then((m) => ({ default: m.TrickSettingsSection })) },
+  { def: { id: "hill", title: "Hill" }, load: () => import("./sections/hill").then((m) => ({ default: m.HillSection })) },
 ];
 
 /** One `lazy` per section, made once: a fresh `lazy()` per render would suspend on every render. */

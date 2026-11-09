@@ -304,6 +304,10 @@ import { WalkySeen } from "./walky/seen.ts";
 import { WalkyService } from "./walky/service.ts";
 import { siblingDirsOf, SiblingLogs } from "./walky/siblings.ts";
 import { walkySocketPath, WalkyServer } from "./walky/socket.ts";
+import { HillReceiptStore } from "./hill/receipts.ts";
+import { HillService } from "./hill/service.ts";
+import { hillDir, HillStore } from "./hill/store.ts";
+import { walkyPlace, walkySend } from "./hill/walky.ts";
 
 // How often the registry rescans the filesystem for sessions that appeared/disappeared after boot.
 const SESSION_REFRESH_MS = 15_000;
@@ -2119,10 +2123,26 @@ const walkyCrew = new WalkyCrew({
 });
 const walkyRecovered = walky.deliverer.recover();
 if (walkyRecovered > 0) console.log(`[walky] settled ${String(walkyRecovered)} message(s) left open by the last run`);
+// The hill (M96): decisions agents post over the walky socket, answered on the phone and typed back as
+// the person's own operator walky message. `<stateDir>/hill/` is made by the first post, never at boot.
+const hillReceipts = new HillReceiptStore(cfg.stateDir);
+await hillReceipts.load();
+const hill = new HillService({
+  store: new HillStore(hillDir(cfg.stateDir)),
+  receipts: hillReceipts,
+  place: walkyPlace(walky, walkyMemberId),
+  send: walkySend(walky),
+  crewMode: () => crew.mode,
+  walkyOn: () => cfg.walky,
+  memberId: walkyMemberId,
+  machine: hostname(),
+  audit: (entry) => audit.record(entry),
+});
 const walkyServer = new WalkyServer({
   socketPath: walkySocketPath(cfg.stateDir),
   host: HOST,
   service: walky,
+  hill,
   targets: () => {
     const live = new Set(registry.ordered().map((runtime) => runtime.name));
     return [...edgeTargets].filter(([name]) => live.has(name)).map(([, target]) => target);
@@ -2132,6 +2152,8 @@ if (await walkyServer.start()) console.log(`[walky] socket at ${walkySocketPath(
 const refreshTimer = setInterval(() => {
   void registry.refresh();
   void checkpointRuntime();
+  // The hill's expiry (M96) rides this slow timer: a decision past its `expiresAt` closes `expired`.
+  hill.sweep(Date.now());
 }, SESSION_REFRESH_MS);
 refreshTimer.unref();
 
@@ -3232,6 +3254,7 @@ const server = listenOrExit("front door", cfg.host, cfg.port, () => startServer(
     return instance !== null && walkyOff.isOff({ session, paneId, instance });
   },
   walky,
+  hill,
   pins: pinStore,
   cacheWatch,
   folders,

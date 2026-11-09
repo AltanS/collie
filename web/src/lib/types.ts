@@ -1419,6 +1419,12 @@ export interface SnapshotResponse {
    * Absent on a bridge with no tricks runner.
    */
   tricksRev?: number;
+  /**
+   * The hill's revision (M96): it moves on every change to the hill's decisions, and the phone reads
+   * `GET /api/hill` when it does (lib/hill/store.ts). Absent on a bridge older than the hill, which
+   * reads as no hill at all.
+   */
+  hillRev?: number;
   ts: number;
 }
 

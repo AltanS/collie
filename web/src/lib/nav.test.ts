@@ -9,6 +9,7 @@ import {
   decodedPath,
   isAncestor,
   machinePath,
+  hillPath,
   machinesPath,
   machineTabOf,
   newAddPath,
@@ -63,6 +64,14 @@ describe("the machines paths", () => {
   it("keeps both views one level: their parents are the same, so a switch is a side move", () => {
     expect(ancestorsOf("/machines/bluefin")).toContain("/");
     expect(isAncestor("/machines/bluefin?tab=alerts", "/machines/bluefin")).toBe(false);
+  });
+});
+
+describe("the hill path", () => {
+  it("names the hill and carries the scope, one level under the Dashboard", () => {
+    expect(hillPath()).toBe("/hill");
+    expect(hillPath({ host: "badger", session: undefined })).toBe("/hill?h=badger");
+    expect(ancestorsOf("/hill")).toEqual(["/"]);
   });
 });
 
@@ -433,6 +442,9 @@ describe("parentChain: what a cold deep link gets behind it", () => {
     ["/new", "?machine=mini", ["/?h=mini"]],
     ["/new", "?pane=w1%3Ap1", ["/", "/pane/w1%3Ap1"]],
     ["/new", "?machine=mini&pane=w1%3Ap1&s=demo", ["/?h=mini&s=demo", "/pane/w1%3Ap1?h=mini&s=demo"]],
+    // The hill sits under the Dashboard, its only way in (M96).
+    ["/hill", "", ["/"]],
+    ["/hill", "?h=badger", ["/?h=badger"]],
     ["/nowhere", "", []],
   ])("%s%s → %j", (pathname, search, expected) => {
     expect(parentChain(pathname, search)).toEqual(expected);

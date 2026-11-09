@@ -4,7 +4,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { JsonObject, JsonValue } from "../json";
 import { LEGS_DOCUMENT, TRACKER_DOCUMENT, nodeDocument } from "./fixtures";
 import { heightCss, reservedHeight, viewForm, viewHeight } from "./layout";
-import { CONFIRM_MS, linkTargetOf, renderView, type RenderCtx } from "./render";
+import { ARM_DWELL_MS, ARM_MS } from "../arm";
+import { linkTargetOf, renderView, type RenderCtx } from "./render";
 import { NODE_KINDS, TONE_TEXT_CLASS, parseTrickDocument, type View } from "./schema";
 import type { TapState } from "./store";
 
@@ -268,6 +269,7 @@ describe("a button", () => {
   });
 
   it("with confirm, arms on the first tap in the danger ink and sends on the second", () => {
+    vi.useFakeTimers();
     const onTap = vi.fn();
     const { getByRole } = draw(viewOfNodes(bar(button({ label: "Stop", intent: "stop", confirm: "Stop the run?" }))), { onTap });
     fireEvent.click(getByRole("button"));
@@ -276,6 +278,7 @@ describe("a button", () => {
     expect(armed.dataset.armed).toBe("");
     expect(armed.className).toContain(TONE_TEXT_CLASS.danger);
     expect(armed.querySelector("[data-active]")?.textContent).toBe("Stop the run?");
+    act(() => vi.advanceTimersByTime(ARM_DWELL_MS));
     fireEvent.click(armed);
     expect(onTap).toHaveBeenCalledExactlyOnceWith(KEY, "stop", undefined, "v/0/0");
     expect(getByRole("button").dataset.armed).toBeUndefined();
@@ -286,12 +289,23 @@ describe("a button", () => {
     const onTap = vi.fn();
     const { getByRole } = draw(viewOfNodes(bar(button({ label: "Stop", intent: "stop", confirm: "Stop the run?" }))), { onTap });
     fireEvent.click(getByRole("button"));
-    act(() => vi.advanceTimersByTime(CONFIRM_MS - 1));
+    act(() => vi.advanceTimersByTime(ARM_MS - 1));
     expect(getByRole("button").dataset.armed).toBe("");
     act(() => vi.advanceTimersByTime(1));
     expect(getByRole("button").dataset.armed).toBeUndefined();
     expect(getByRole("button").querySelector("[data-active]")?.textContent).toBe("Stop");
     expect(onTap).not.toHaveBeenCalled();
+  });
+
+  it("with confirm, a second tap inside the dwell is the same touch: it sends nothing and the arm holds", () => {
+    vi.useFakeTimers();
+    const onTap = vi.fn();
+    const { getByRole } = draw(viewOfNodes(bar(button({ label: "Stop", intent: "stop", confirm: "Stop the run?" }))), { onTap });
+    fireEvent.click(getByRole("button"));
+    act(() => vi.advanceTimersByTime(ARM_DWELL_MS - 1));
+    fireEvent.click(getByRole("button"));
+    expect(onTap).not.toHaveBeenCalled();
+    expect(getByRole("button").dataset.armed).toBe("");
   });
 
   it("with does copy, copies its value on the phone and sends nothing, even while the part is busy", () => {

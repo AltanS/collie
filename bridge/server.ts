@@ -248,6 +248,8 @@ import { pinSessionKey } from "./pins/key.ts";
 import { PinKeys } from "./pins/keys.ts";
 import { pinsRoute, type PinsAnswer, type PinsSession } from "./pins/routes.ts";
 import { PinStore } from "./pins/store.ts";
+import { readAnswerRequest } from "./hill/parse.ts";
+import type { HillService } from "./hill/service.ts";
 import { isPaneId, parseAddress } from "./walky/address.ts";
 import { isWalkyId, parsePhoneSend } from "./walky/parse.ts";
 import { NOT_THE_SENDER, type TakeBackAnswer, type WalkyService } from "./walky/service.ts";
@@ -1222,6 +1224,11 @@ export function startServer(opts: {
    */
   walky?: WalkyService;
   /**
+   * The hill (M96): the decisions agents posted over the walky socket, and the phone's answers. Absent,
+   * `GET /api/hill` and `POST /api/hill/answer` answer 404 and the snapshot carries no `hillRev`.
+   */
+  hill?: HillService;
+  /**
    * Walky talky's crew half (CREW_PROTOCOL.md §21): on a member, the handler of the lead's
    * `POST /crew/v1/pane/<pane | all>/walky`, reached through the crew dispatch only. Absent (solo, a
    * test) ⇒ that POST answers 404, which the lead reads as an older member.
@@ -1526,6 +1533,7 @@ export function startServer(opts: {
     return key === null ? 0 : pins.count(key);
   };
   const walky = opts.walky;
+  const hill = opts.hill;
   const pairing = opts.pairing;
   const localCredential = opts.localCredential;
   /**
@@ -3070,9 +3078,11 @@ export function startServer(opts: {
         // A member's panes arrive as the member sent them, and one release behind it sent each
         // program-set title in clear, so the lead masks the merged titles by its own switch. Its own
         // titles are already masked, and the mask leaves a masked title as it is.
+        // The merge does not carry a member's `hillRev` yet: the hill is not merged across the crew (M96),
+        // and a member refuses posts (`not_on_lead`). The revision below is this bridge's own store.
         const merged = crewLead ? crewLead.merge(body, plan) : body;
         const out = crewLead && cfg.redact ? maskSnapshotTitles(merged) : merged;
-        return withBuildHeader(json(out, req.headers.get("accept-encoding")), await buildId());
+        return withBuildHeader(json(withHillRev(out, hill?.rev()), req.headers.get("accept-encoding")), await buildId());
       }
 
       // ── Surface shadow mode's debug route (M56 spec 04) ──────────────────
@@ -3231,6 +3241,29 @@ export function startServer(opts: {
           body = undefined;
         }
         return walkyPostRoute(walky, body, { audit, device: whois(req).device, acceptEncoding: req.headers.get("accept-encoding") });
+      }
+      // ── The hill (M96) ───────────────────────────────────────────────────
+      // The decisions agents posted on this bridge (a read), and the phone's answer to one: a write under
+      // the same gate and the same device label as `POST /api/walky`, because the answer is typed as an
+      // operator walky message. This machine only: the hill is not merged across the crew yet.
+      if (pathname === "/api/hill" && req.method === "GET") {
+        const denied = browserGate("read");
+        if (denied) return denied;
+        if (host.kind === "member") return text(HILL_LOCAL_TEXT, 400);
+        return hillListRoute(hill, url.searchParams.get("since"), req.headers.get("accept-encoding"));
+      }
+      if (pathname === "/api/hill/answer" && req.method === "POST") {
+        const denied = browserGate("write");
+        if (denied) return denied;
+        if (host.kind === "member") return text(HILL_LOCAL_TEXT, 400);
+        let body: JsonValue | undefined;
+        try {
+          // SAFETY: `Request.json()` output IS a JsonValue by construction; `readAnswerRequest` checks every field.
+          body = (await req.json()) as JsonValue;
+        } catch {
+          body = undefined;
+        }
+        return hillAnswerRoute(hill, body, { device: whois(req).device, acceptEncoding: req.headers.get("accept-encoding") });
       }
       if (pathname === "/api/walky/who" && req.method === "GET") {
         const denied = browserGate("read");
@@ -8882,6 +8915,55 @@ export const WALKY_OLDER_MEMBER_TEXT = "that machine runs a Collie older than wa
  */
 export function walkyOlderMemberAnswer(memberVersion: string | null, ownVersion: string): Response | null {
   return olderThanWalky(memberVersion, ownVersion, compareSemver) ? text(WALKY_OLDER_MEMBER_TEXT, 404) : null;
+}
+
+/** What a hill route answers on a bridge built without it (M96). */
+export const HILL_OFF_TEXT = "the hill is not running on this bridge";
+/** What a hill route answers with `?host=`: the hill is not merged across the crew yet. */
+export const HILL_LOCAL_TEXT = "the hill reads this machine only for now; ask the machine itself";
+/** What the answer route says of a `rid` already used for another answer. */
+export const HILL_RID_REUSED = "request-id-reused: this rid already answered with another choice";
+/** What the answer route says when the first receipt could not be written: nothing closed, nothing typed. */
+export const HILL_UNSAVED_TEXT = "the answer could not be recorded on this machine, so nothing was sent";
+
+/** The snapshot with the hill's revision (M96) when there is one. Absent, the body is unchanged, byte for byte. */
+export function withHillRev(body: SnapshotResponse, rev: number | undefined): SnapshotResponse {
+  return rev === undefined ? body : { ...body, hillRev: rev };
+}
+
+/**
+ * `GET /api/hill?since=<rev>` (M96): every open decision and the newest closed ones. With `since` equal
+ * to the revision, only `{ rev, unchanged: true }`.
+ */
+export function hillListRoute(hill: HillService | undefined, since: string | null, acceptEncoding: string | null): Response {
+  if (hill === undefined) return text(HILL_OFF_TEXT, 404);
+  const list = hill.list();
+  if (since !== null && since === String(list.rev)) return json({ rev: list.rev, unchanged: true }, acceptEncoding);
+  return json(list, acceptEncoding);
+}
+
+/**
+ * `POST /api/hill/answer` (M96): one answer from the phone, by the receipt rules of the hill. 200 for
+ * every receipt the bridge wrote, 400 for a body of another shape, 409 for a `rid` used for another
+ * answer, 503 when the first receipt could not be written. The gates' own 401 and 403 come before this.
+ */
+export async function hillAnswerRoute(
+  hill: HillService | undefined,
+  body: JsonValue | undefined,
+  context: { readonly device: string | null; readonly acceptEncoding: string | null },
+): Promise<Response> {
+  if (hill === undefined) return text(HILL_OFF_TEXT, 404);
+  const read = readAnswerRequest(body);
+  if (!read.ok) return text(read.error, 400);
+  const outcome = await hill.answer(read.request, read.id, context.device ?? "phone");
+  switch (outcome.kind) {
+    case "receipt":
+      return json(outcome.receipt, context.acceptEncoding);
+    case "reused":
+      return text(HILL_RID_REUSED, 409);
+    case "unsaved":
+      return text(HILL_UNSAVED_TEXT, 503);
+  }
 }
 
 /** `POST /api/walky`: one message from the phone, as an operator, under the device's label. */
