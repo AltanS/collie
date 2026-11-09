@@ -55,8 +55,7 @@ export function coerceHillReceipt(raw: JsonValue): HillReceiptRecord | null {
   const stateText = receipt.state === null ? null : asJsonString(receipt.state);
   const deliveryText = receipt.delivery === null ? null : asJsonString(receipt.delivery);
   const delivery = deliveryText === null ? null : DELIVERIES.find((candidate) => candidate === deliveryText);
-  // Absent on a receipt written before tricks posted (M94): an agent's, so "none" beside a delivery.
-  const trickText = receipt.trick === undefined ? (delivery === null ? null : "none") : receipt.trick === null ? null : asJsonString(receipt.trick);
+  const trickText = receipt.trick === null ? null : asJsonString(receipt.trick);
   const trick = trickText === null ? null : HILL_TRICK_DELIVERIES.find((candidate) => candidate === trickText);
   const at = asJsonNumber(receipt.at);
   if (trick === undefined) return null;

@@ -163,10 +163,8 @@ function readFrom(value: JsonValue | undefined): HillDecision["from"] | null {
   const memberId = nullableString(o.memberId);
   const harness = nullableString(o.harness);
   const host = nullableString(o.host);
-  // Absent on a bridge from before tricks posted (M94): an agent's, so null.
   const trickKey = nullableString(o.trickKey);
-  // Absent on a decision stored before the display name and the routing host were told apart: null.
-  const trickHost = o.trickHost === undefined ? null : nullableString(o.trickHost);
+  const trickHost = nullableString(o.trickHost);
   if (kind === undefined || label === undefined) return null;
   if (address === undefined || trickId === undefined || memberId === undefined || harness === undefined || host === undefined) return null;
   if (trickKey === undefined || trickHost === undefined) return null;
@@ -207,8 +205,7 @@ function readAnswer(value: JsonValue | undefined): HillDecision["answer"] | unde
   const by = asJsonString(o.by);
   const at = asJsonNumber(o.at);
   const delivery = oneOf(ANSWER_DELIVERIES, o.delivery);
-  // Absent on a bridge from before tricks posted (M94): an agent's answer, so "none".
-  const trick = o.trick === undefined ? "none" : oneOf(HILL_TRICK_DELIVERIES, o.trick);
+  const trick = oneOf(HILL_TRICK_DELIVERIES, o.trick);
   if (rid === undefined || intent === undefined || label === undefined || text === undefined) return undefined;
   if (by === undefined || at === undefined || delivery === undefined || trick === undefined) return undefined;
   return { rid, intent, label, text, by, at, delivery, trick };
@@ -344,8 +341,7 @@ export function readHillReceipt(value: JsonValue | undefined): HillReceipt | nul
   const at = asJsonNumber(o.at);
   const state = o.state === null || o.state === undefined ? null : oneOf(HILL_STATES, o.state);
   const delivery = o.delivery === null || o.delivery === undefined ? null : oneOf(DELIVERIES, o.delivery);
-  // Absent on a bridge from before tricks posted (M94): "none" beside a delivery, else null.
-  const trick = o.trick === null ? null : o.trick === undefined ? (delivery === null ? null : "none") : oneOf(HILL_TRICK_DELIVERIES, o.trick);
+  const trick = o.trick === null ? null : oneOf(HILL_TRICK_DELIVERIES, o.trick);
   if (rid === undefined || code === undefined || reason === undefined || at === undefined) return null;
   if (state === undefined || delivery === undefined || trick === undefined) return null;
   return { rid, code, reason, state, delivery, trick, at };

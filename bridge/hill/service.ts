@@ -162,12 +162,6 @@ export interface HillServiceDeps {
   readonly memberId: string;
   /** This machine's name, as walky's `who` prints it. */
   readonly machine: string;
-  /**
-   * This bridge's tricks host name (bridge/tricks/facts.ts `tricksHostName`). Only for a trick's decision
-   * stored before `from.trickHost` existed: its `from.host` holds the routing value, and the list serves
-   * `machine` there instead when the two match. Absent: such a decision is served as stored.
-   */
-  readonly tricksHost?: () => string;
   readonly now?: () => number;
   readonly mintId?: () => string;
   readonly audit?: (entry: AuditEntry) => void;
@@ -424,10 +418,8 @@ function receiptOf(rid: string, at: number, code: HillReceipt["code"], reason: s
 
 /** The trick a decision came from, when it came from one: where its tap goes. */
 function trickOf(decision: HillDecision): { readonly host: string; readonly trickId: string; readonly trickKey: string } | null {
-  const { kind, trickId, trickKey } = decision.from;
-  // A decision stored before `trickHost` existed holds the routing value in `host`.
-  const host = decision.from.trickHost ?? decision.from.host;
-  return kind === "trick" && host !== null && trickId !== null && trickKey !== null ? { host, trickId, trickKey } : null;
+  const { kind, trickId, trickKey, trickHost } = decision.from;
+  return kind === "trick" && trickHost !== null && trickId !== null && trickKey !== null ? { host: trickHost, trickId, trickKey } : null;
 }
 
 /** What the claim step of an answer hands the send step, or the receipt that ends it. */
@@ -501,27 +493,13 @@ export class HillService {
   }
 
   /** An open decision with the names its sessions have now, while they are live. A closed one, as stored. */
-  private named(stored: HillDecision): HillDecision {
-    if (stored.state !== "open") return stored;
-    const decision = this.displayed(stored);
-    if (this.deps.sessionName === undefined) return decision;
+  private named(decision: HillDecision): HillDecision {
+    if (decision.state !== "open" || this.deps.sessionName === undefined) return decision;
     const fromLabel = decision.from.kind === "agent" ? this.nameOf(decision.from.address, decision.from.label) : decision.from.label;
     const to = decision.replyTo ?? decision.from.address;
     const target = decision.target === null ? null : { ...decision.target, label: this.nameOf(to, decision.target.label) };
     if (fromLabel === decision.from.label && target?.label === decision.target?.label) return decision;
     return { ...decision, from: { ...decision.from, label: fromLabel }, target };
-  }
-
-  /**
-   * An open trick's decision stored before `from.trickHost` existed holds the tricks host name (the
-   * routing value) in `from.host`; served with the machine's display name instead when that routing
-   * host is this bridge's own. The stored file is not rewritten: the next post of the key carries both.
-   */
-  private displayed(decision: HillDecision): HillDecision {
-    const { from } = decision;
-    if (from.kind !== "trick" || from.trickHost !== null || from.host === null) return decision;
-    if (this.deps.tricksHost === undefined || from.host !== this.deps.tricksHost()) return decision;
-    return { ...decision, from: { ...from, host: this.deps.machine } };
   }
 
   /** The sender a pane of this bridge stands for, at its walky address (`WalkyService.addressOf`). */

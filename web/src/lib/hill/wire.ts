@@ -118,7 +118,10 @@ export interface HillDecision {
     trickId: string | null;
     /** The decision's `key` in the trick's document. Null for an agent. */
     trickKey: string | null;
-    /** The crew member the poster runs on. Null on a solo install. */
+    /**
+     * The bridge the poster runs on (bridge/bridge-id.ts): its crew member id, or its install id on a
+     * solo install. Null only on a decision stored before every bridge had an id.
+     */
     memberId: string | null;
     harness: string | null;
     /** The session's name as walky shows it. Display only. */
@@ -126,9 +129,8 @@ export interface HillDecision {
     /** The machine's display name, for every sender kind. Display only, never a key. */
     host: string | null;
     /**
-     * The tricks host a trick runs on: where its answer's tap is routed (bridge/tricks/facts.ts
-     * `tricksHostName`, the crew member id on a member). Null for an agent, and for a trick's decision
-     * stored before this field, which holds that routing value in `host`; read it as `trickHost ?? host`.
+     * The member id of the bridge a trick runs on: where its answer's tap is routed. Always set on a
+     * trick's decision, and the same value as `memberId` there; null for an agent.
      */
     trickHost: string | null;
   };

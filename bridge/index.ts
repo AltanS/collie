@@ -2167,7 +2167,6 @@ const hill = new HillService({
   walkyOn: () => cfg.walky,
   memberId: bridgeId.id,
   machine: hostname(),
-  tricksHost: () => bridgeId.id,
   audit: (entry) => audit.record(entry),
   // A trick's decision (M94): the answer reaches the trick's program as a tap. `tricks` is made further
   // down; an answer only ever comes after boot.
