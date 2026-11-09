@@ -23,12 +23,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
-### Fixed
-
-- **A held permission on a crew member can be answered from the phone.** The hook hold card on a member's pane drew its Yes and No switched off, so a held request waited out the hook's five minutes. The lead now carries the tap to the member over the crew link, where the member's own ask route answers it; a member that predates the route refuses it in the status line.
-- **The keyboard stays open on an unfolded foldable and on a tablet held sideways.** On an open Galaxy Z Fold a tap on the reply box raised the keyboard and it closed again at once, so you could not type. The keyboard took the page under 480px tall, the large-screen layout fell back to the phone layout, and that removed the box you were typing in. The layout now holds while a field that types has focus and for a second after, so a tap outside the field still lands. Thanks @jazzgil (#751).
-
-## [1.28.0] - 2026-11-06
+## [1.28.0] - 2026-11-09
 
 ### Added
 
@@ -114,6 +109,8 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **Collie no longer keeps the phone's graphics busy while nothing happens.** The header logo turned slowly all the time, so the browser drew a new frame 60 times a second for as long as Collie was open, and on one Android phone that made the system force-stop Chrome. Now the logo holds still at rest and finishes its turn before it stops, the working dot turns in steps, a hidden page or a page under the idle lock or the update screen pauses every animation, and no blur covers a moving part. Thanks @mfrep (#748).
 - **A repo opened in two workspaces no longer pulls its worktrees into one of them.** The pane list, the Spaces rows and the workspace filter picked a different "root" for the worktree, so it showed up under one workspace in one view and under the other in the next. Now a worktree folds under a root only when exactly one open workspace on that machine holds the repo. With two, each worktree stays its own group, as before 1.24.2. Thanks @rafaferry (#743).
 - **The trouble count and the report name an agent installed off the login PATH.** The bridge read the agent's version only from the login shell's PATH, so an agent installed under nvm, volta, mise or its own folder showed its version as unknown on a pane with no send. It now reads the program each pane runs, as a send already does, so two panes on two installs each name their own version, and the steer check sees that version too.
+- **A held permission on a crew member can be answered from the phone.** The hook hold card on a member's pane drew its Yes and No switched off, so a held request waited out the hook's five minutes. The lead now carries the tap to the member over the crew link, where the member's own ask route answers it; a member that predates the route refuses it in the status line. ([dc3c2b3](https://github.com/AltanS/collie/commit/dc3c2b3))
+- **The keyboard stays open on an unfolded foldable and on a tablet held sideways.** On an open Galaxy Z Fold a tap on the reply box raised the keyboard and it closed again at once, so you could not type. The keyboard took the page under 480px tall, the large-screen layout fell back to the phone layout, and that removed the box you were typing in. The layout now holds while a field that types has focus and for a second after, so a tap outside the field still lands. Thanks @jazzgil (#751). ([dfb7c36](https://github.com/AltanS/collie/commit/dfb7c36))
 
 ### Packaging
 
