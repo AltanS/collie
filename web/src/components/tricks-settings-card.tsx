@@ -5,6 +5,7 @@ import { Switch } from "@/components/ui/switch";
 import { useLocale } from "@/hooks/use-locale";
 import { switchTrick } from "@/lib/api";
 import { t, type MessageKey } from "@/lib/i18n";
+import { TrickBoundary } from "@/lib/tricks/boundary";
 import { useBridgeNow } from "@/lib/tricks/clock";
 import type { PlaceKind, WireTrickInfo } from "@/lib/tricks/schema";
 import { tricksStore, useTricksState, type TricksStore } from "@/lib/tricks/store";
@@ -48,8 +49,10 @@ export function useTricksPresent(store: TricksStore = tricksStore): boolean {
 }
 
 /** The place words of a trick, each kind once, in the manifest's order. */
-export function placesLine(places: readonly PlaceKind[]): string {
-  const words = [...new Set(places)].map((place) => t(`settings.tricks.place.${place}` satisfies MessageKey));
+export function placesLine(places: readonly PlaceKind[] | undefined): string {
+  // A trick entry with no `places` (an older bridge, a broken reply) is a manifest that declares none.
+  const held: readonly PlaceKind[] = Array.isArray(places) ? places : [];
+  const words = [...new Set(held)].map((place) => t(`settings.tricks.place.${place}` satisfies MessageKey));
   return words.length === 0 ? t("settings.tricks.places.none") : words.join(", ");
 }
 
@@ -106,6 +109,24 @@ export function TricksSettingsCard(props: TricksSettingsCardProps) {
   const state = useTricksState(store);
   if (state.rev === null) return null;
   return <TricksList {...props} tricks={state.tricks} />;
+}
+
+function TrickRow({ trick, clock, checked, canWrite, onFlip }: { trick: WireTrickInfo; clock: number; checked: boolean; canWrite: boolean; onFlip: (on: boolean) => void }) {
+  const slot = slotLine(trick, clock);
+  return (
+    <div data-trick={trick.id} className="flex min-h-11 items-center justify-between gap-4 px-4 py-3">
+      <div className="min-w-0 flex-1">
+        <div className="truncate font-medium">{trick.name}</div>
+        <p data-line="places" className="truncate text-sm text-muted-foreground">
+          {placesLine(trick.places)}
+        </p>
+        <p data-line="slot" data-trouble={slot.trouble ? "true" : undefined} className="truncate text-xs text-muted-foreground">
+          {slot.text}
+        </p>
+      </div>
+      <Switch checked={checked} onCheckedChange={onFlip} disabled={!canWrite} aria-label={trick.name} />
+    </div>
+  );
 }
 
 function TricksList({ tricks, onSwitch = switchTrick, now, readOnly }: TricksSettingsCardProps & { tricks: readonly WireTrickInfo[] }) {
@@ -179,29 +200,12 @@ function TricksList({ tricks, onSwitch = switchTrick, now, readOnly }: TricksSet
             <p className="truncate font-mono text-xs text-muted-foreground">collie trick init &lt;id&gt;</p>
           </div>
         )}
-        {tricks.map((trick) => {
-          const key = trickKey(trick);
-          const slot = slotLine(trick, clock);
-          return (
-            <div key={key} data-trick={trick.id} className="flex min-h-11 items-center justify-between gap-4 px-4 py-3">
-              <div className="min-w-0 flex-1">
-                <div className="truncate font-medium">{trick.name}</div>
-                <p data-line="places" className="truncate text-sm text-muted-foreground">
-                  {placesLine(trick.places)}
-                </p>
-                <p data-line="slot" data-trouble={slot.trouble ? "true" : undefined} className="truncate text-xs text-muted-foreground">
-                  {slot.text}
-                </p>
-              </div>
-              <Switch
-                checked={held.get(key) ?? trick.on}
-                onCheckedChange={(on) => void flip(trick, on)}
-                disabled={!canWrite}
-                aria-label={trick.name}
-              />
-            </div>
-          );
-        })}
+        {tricks.map((trick) => (
+          // One boundary per row: a row that throws leaves the others, and the switches of the others, drawn.
+          <TrickBoundary key={trickKey(trick)} fallback="none" resetKey={trick}>
+            <TrickRow trick={trick} clock={clock} checked={held.get(trickKey(trick)) ?? trick.on} canWrite={canWrite} onFlip={(on) => void flip(trick, on)} />
+          </TrickBoundary>
+        ))}
       </div>
       <p className="border-t border-border px-4 py-3 text-xs text-muted-foreground">{t("settings.tricks.foot")}</p>
     </Card>

@@ -9,8 +9,12 @@
 //
 // A dropped part's key stays in `present`, so the phone keeps the last good version of it, if it holds
 // one. One console warning per rev says how many went.
+//
+// It is also where a part's view is made whole: each node gets an `attrs` object and, for the kinds that
+// draw kids, a `kids` array (lib/tricks/safe.ts), so the renderer never meets a node it cannot read.
 
 import { asJsonObject, type JsonObject, type JsonValue } from "../json";
+import { safeValue } from "./safe";
 import type { TrickTapReply, TricksReply, WireTrickPart } from "./schema";
 import { readTapReply, readTricksReply } from "./wire";
 
@@ -42,8 +46,24 @@ function goodParts(raw: JsonValue | undefined): { parts: WireTrickPart[]; droppe
   return { parts, dropped: raw.length - parts.length };
 }
 
+/** A `parts` list with each part's view read node by node (lib/tricks/safe.ts). Anything that is no list is left as it came. */
+function partsSafe(raw: JsonValue | undefined): JsonValue | undefined {
+  if (!Array.isArray(raw)) return raw;
+  return raw.map((entry) => {
+    const part = asJsonObject(entry);
+    return part === undefined ? entry : { ...part, value: safeValue(part.value) };
+  });
+}
+
+/** The body with its parts made safe, or the body as it came when it is no object. */
+function bodySafe(raw: JsonValue | undefined): JsonValue | undefined {
+  const body = asJsonObject(raw);
+  return body === undefined || body.parts === undefined ? raw : { ...body, parts: partsSafe(body.parts) };
+}
+
 /** `GET /api/tricks` as the store merges it: a bad part is dropped, never the whole reply. */
-export function readTricksReplyTolerant(raw: JsonValue | undefined): TricksReply | undefined {
+export function readTricksReplyTolerant(wire: JsonValue | undefined): TricksReply | undefined {
+  const raw = bodySafe(wire);
   const whole = readTricksReply(raw);
   if (whole !== undefined) return whole;
   const body = asJsonObject(raw);
@@ -56,7 +76,8 @@ export function readTricksReplyTolerant(raw: JsonValue | undefined): TricksReply
 }
 
 /** A tap's receipt, with a bad part in it dropped instead of the receipt refused. */
-export function readTapReplyTolerant(raw: JsonValue | undefined): TrickTapReply | undefined {
+export function readTapReplyTolerant(wire: JsonValue | undefined): TrickTapReply | undefined {
+  const raw = bodySafe(wire);
   const whole = readTapReply(raw);
   if (whole !== undefined) return whole;
   const body = asJsonObject(raw);

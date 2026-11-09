@@ -266,3 +266,24 @@ describe("TricksSettingsCard: the switch", () => {
 beforeEach(() => {
   clearStatus();
 });
+
+// A ROW THAT FAILS DRAWS ALONE (M94 review).
+describe("a trick entry that is broken", () => {
+  it("draws a trick with no places as a manifest that declares none", async () => {
+    const bare: WireTrickInfo = JSON.parse('{"host":"bluefin","id":"bare","name":"Bare","icon":"flask","on":true,"state":"ok"}');
+    renderCard(await storeWith([bare, TRACKER]));
+    expect(within(rowOf("bare")).getByText("No parts")).toBeTruthy();
+    expect(placesLine(undefined)).toBe("No parts");
+    expect(rowOf("tracker")).toBeTruthy();
+  });
+
+  it("leaves the other rows and their switches drawn when one row throws", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const bomb: WireTrickInfo = { ...LEGS, id: "bomb", name: "Bomb", get state(): WireTrickInfo["state"] { throw new Error("a row that cannot be read"); } };
+    renderCard(await storeWith([bomb, TRACKER]));
+    expect(document.querySelector('[data-trick="bomb"]')).toBeNull();
+    expect(screen.getByRole("switch", { name: "Tracker" })).toBeTruthy();
+    vi.restoreAllMocks();
+  });
+});

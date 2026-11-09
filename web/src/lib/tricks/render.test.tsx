@@ -36,7 +36,7 @@ function foreign(json: string): View {
 }
 
 function ctxOf(over: Partial<RenderCtx> = {}): RenderCtx {
-  return { partKey: KEY, trickName: "Browser leg", stale: false, onTap: vi.fn(), onLink: vi.fn(), now: NOW, ...over };
+  return { partKey: KEY, stale: false, onTap: vi.fn(), onLink: vi.fn(), now: NOW, ...over };
 }
 
 function draw(view: View, over: Partial<RenderCtx> = {}) {
@@ -560,5 +560,39 @@ describe("faces and groups", () => {
     expect(code.dataset.lang).toBe("sh");
     expect(code.querySelectorAll("pre > div")).toHaveLength(4);
     expect(code.querySelector("button")).not.toBeNull();
+  });
+});
+
+describe("the clock's range", () => {
+  it("draws an empty clock for an instant past the schema's bound, instead of throwing", () => {
+    for (const clock of ["ago", "elapsed", "left", "time"] as const) {
+      const { container, unmount } = draw(foreign(JSON.stringify([{ kind: "run", text: "x", attrs: { at: "9999999999999999", clock } }])));
+      const time = container.querySelector("time");
+      expect(time?.textContent ?? "").toBe("");
+      expect(time?.getAttribute("datetime")).toBeNull();
+      unmount();
+    }
+  });
+
+  it("still draws a clock inside the bound", () => {
+    const { container } = draw(foreign(JSON.stringify([{ kind: "run", text: "x", attrs: { at: String(NOW - 120_000), clock: "ago" } }])));
+    expect(container.querySelector("time")?.textContent).not.toBe("");
+  });
+});
+
+describe("a container with no list of kids", () => {
+  it("draws every kind that holds kids with none, instead of throwing", () => {
+    for (const kind of ["card", "group", "list", "bar", "code", "row"]) {
+      const { container, unmount } = draw(foreign(JSON.stringify([{ kind, attrs: {} }])));
+      expect(container.querySelector("[data-trick-view]")).not.toBeNull();
+      unmount();
+    }
+    const { container } = draw(foreign(JSON.stringify([{ kind: "card", kids: "not a list" }])));
+    expect(container.querySelector('[data-trick-node="card"]')).not.toBeNull();
+  });
+
+  it("draws the placeholder for a view that is no list", () => {
+    const { container } = render(<div>{renderView(JSON.parse('"oops"'), ctxOf())}</div>);
+    expect(container.querySelector('[data-trick-node="placeholder"]')).not.toBeNull();
   });
 });

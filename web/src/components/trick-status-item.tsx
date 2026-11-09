@@ -7,6 +7,7 @@ import { setStatus } from "@/lib/status";
 import { useBridgeNow } from "@/lib/tricks/clock";
 import { isPastWindow } from "@/lib/tricks/frame";
 import { trickIconOf } from "@/lib/tricks/icons";
+import { TrickBoundary } from "@/lib/tricks/boundary";
 import { TrickClock } from "@/lib/tricks/render";
 import { partKey, type WireTrickPart } from "@/lib/tricks/schema";
 import { useTrickPart, tricksStore, type TricksStore } from "@/lib/tricks/store";
@@ -52,6 +53,8 @@ function TrickStatusItem({
   const value = part?.value;
   if (part === undefined || value?.at !== "status") return null;
   const chip = value.chip;
+  // A status part with no `chip` draws nothing.
+  if (chip === undefined || chip === null) return null;
   const trickName = trick?.name ?? part.trick;
   const stale = part.stale === true || isPastWindow(part, now);
   const ink = inkOf(chip.tone, stale);
@@ -109,7 +112,12 @@ export function statusItemsOf(opts: {
     return {
       id: key,
       trick: part.trick,
-      face: <TrickStatusItem partKey={key} session={sessionOfMark(part, opts.sessions)} onOpenSession={opts.onOpenSession} store={store} />,
+      // One boundary per item: an item that throws leaves the row's other items drawn, and draws nothing itself.
+      face: (
+        <TrickBoundary fallback="none" resetKey={`${key}@${part.rev}`}>
+          <TrickStatusItem partKey={key} session={sessionOfMark(part, opts.sessions)} onOpenSession={opts.onOpenSession} store={store} />
+        </TrickBoundary>
+      ),
     };
   });
 }

@@ -44,10 +44,11 @@ import { setStatus } from "../status";
 import { cn } from "../utils";
 import { useBridgeNow } from "./clock";
 import { keyGlyph, trickIconOf, type TrickGlyph } from "./icons";
-import { codeLines, groupHasHead, heightCss, isStepStrip, LEAF_REM, paraLines, reservedHeight, textOf } from "./layout";
+import { codeLines, groupHasHead, heightCss, isStepStrip, kidsOf, LEAF_REM, paraLines, reservedHeight, textOf } from "./layout";
 import {
   CUTS,
   TONES,
+  isEpochMs,
   isLinkSessionKey,
   isTrickUrl,
   type BarNode,
@@ -87,8 +88,6 @@ export type LinkTarget = { url: string; session?: undefined } | { session: strin
 export interface RenderCtx {
   /** The `partKey` of the part this view belongs to. */
   partKey: string;
-  /** The trick's name, for an accessible name. */
-  trickName: string;
   /** The part is past its fresh window: every status tone draws grey. */
   stale: boolean;
   /** The last tap on this part, from the store. */
@@ -229,7 +228,8 @@ function BadgeMark({ badge }: { badge: string | undefined }) {
 export function TrickClock({ at, clock, now }: { at: string; clock: Clock; now?: number }) {
   const ticking = useBridgeNow(now);
   const text = clockText(at, clock, ticking);
-  const iso = /^\d{1,16}$/.test(at) ? new Date(Number(at)).toISOString() : undefined;
+  // An instant past the schema's bound throws a RangeError in `toISOString`: it draws an empty clock.
+  const iso = isEpochMs(at) ? new Date(Number(at)).toISOString() : undefined;
   return (
     <time dateTime={iso} data-clock={clock} className="tabular-nums">
       {text ?? ""}
@@ -406,7 +406,7 @@ const STATE_WORD = {
  * whole list, with every state in words and the current step, is there for a screen reader.
  */
 function StripView({ node, ctx }: { node: BarNode; ctx: RenderCtx }) {
-  const chips = node.kids.filter((kid): kid is ChipNode => kid.kind === "chip");
+  const chips = kidsOf(node).filter((kid): kid is ChipNode => kid.kind === "chip");
   const steps = chips.filter((chip) => chip.attrs?.state !== undefined);
   const current = steps.findIndex((chip) => chip.attrs?.current !== undefined);
   return (
@@ -451,7 +451,7 @@ function BarView({ node, ctx, path }: { node: BarNode; ctx: RenderCtx; path: str
       aria-label={node.attrs?.label}
       className={cn("flex min-w-0 items-center gap-2", scroll ? "overflow-x-auto overscroll-x-contain" : "overflow-hidden", node.attrs?.role === "strip" && "border-y border-border")}
     >
-      {node.kids.map((kid, i) => {
+      {kidsOf(node).map((kid, i) => {
         const at = `${path}/${i}`;
         if (kid.kind === "button") {
           return (
@@ -596,7 +596,7 @@ function LineView({ node, ctx }: { node: LineNode; ctx: RenderCtx }) {
  * phone's copy button on it (`ui/copyable-block.tsx`), as every `code` has (VOCABULARY.md 2).
  */
 function CodeView({ node, ctx }: { node: CodeNode; ctx: RenderCtx }) {
-  const lines = node.kids.filter((kid): kid is LineNode => kid.kind === "line");
+  const lines = kidsOf(node).filter((kid): kid is LineNode => kid.kind === "line");
   const scrolls = lines.length > codeLines(node);
   return (
     <div {...leafBox(node)} data-lang={node.attrs?.lang} className="min-w-0">
@@ -788,7 +788,7 @@ function FlowKids({ kids, ctx, path, framed }: { kids: readonly ViewNode[]; ctx:
 }
 
 function ListView({ node, ctx, path }: { node: ListNode; ctx: RenderCtx; path: string }) {
-  const kids = node.kids ?? [];
+  const kids = kidsOf(node);
   // A list reserves its kids. One with none keeps the frame's two lines as air, so it is the height of
   // an empty frame and not a box with nothing in it.
   if (kids.length === 0) return <div data-trick-node="list" aria-hidden style={{ height: "calc(2 * var(--row-rule))" }} />;
@@ -836,7 +836,7 @@ function GroupView({ node, ctx, path, inList = false }: { node: GroupNode; ctx: 
       {head}
       <Collapse open={!foldable || open}>
         <div className={cn("flex min-w-0 flex-col", !inList && "gap-2")}>
-          <FlowKids kids={node.kids} ctx={ctx} path={path} framed={!inList} />
+          <FlowKids kids={kidsOf(node)} ctx={ctx} path={path} framed={!inList} />
         </div>
       </Collapse>
     </div>
@@ -867,7 +867,7 @@ function cardEdge(tone: string | undefined, stale: boolean): string {
 function CardView({ node, ctx, path }: { node: CardNode; ctx: RenderCtx; path: string }) {
   return (
     <Card data-trick-node="card" className={cn("min-w-0 gap-2 px-3.5 py-3 shadow-none transition-shadow", cardEdge(node.attrs?.tone, ctx.stale))}>
-      <FlowKids kids={node.kids} ctx={ctx} path={path} framed />
+      <FlowKids kids={kidsOf(node)} ctx={ctx} path={path} framed />
     </Card>
   );
 }
@@ -925,6 +925,9 @@ function renderNode(node: ViewNode, ctx: RenderCtx, path: string): ReactNode {
  * path is its place in the view below it, so a tap names the control that was pressed.
  */
 export function renderView(view: View, ctx: RenderCtx): ReactNode {
+  // A view that is no list draws the placeholder. A node with no `attrs` or `kids` was made whole at the
+  // door the store reads through (lib/tricks/read.ts), and `kidsOf` reads the rest.
+  if (!Array.isArray(view)) return <Placeholder />;
   return (
     <div data-trick-view="" className="flex min-w-0 flex-col gap-2">
       {view.map((node, i) => (

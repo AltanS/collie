@@ -71,7 +71,8 @@ export function clampCount(value: number, limits: { min: number; max: number }, 
   return Math.min(limits.max, Math.max(limits.min, Math.floor(value)));
 }
 
-function kidsOf(node: ViewNode): readonly ViewNode[] {
+/** The kids of a node, or none when it has no list of them: a node from the wire may carry any value in `kids`. */
+export function kidsOf(node: ViewNode): readonly ViewNode[] {
   return "kids" in node && Array.isArray(node.kids) ? node.kids : [];
 }
 

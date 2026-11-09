@@ -66,7 +66,7 @@ function stored(value: TrickPart | undefined, extra: Partial<WireTrickPart> = {}
 const IGNORE = () => {};
 
 function ctxOf(stale: boolean, tap?: TapState): RenderCtx {
-  return { partKey: "bluefin/legs/legs", trickName: TRICK.name, stale, tap, onTap: IGNORE, onLink: IGNORE, now: FIXTURE_NOW };
+  return { partKey: "bluefin/legs/legs", stale, tap, onTap: IGNORE, onLink: IGNORE, now: FIXTURE_NOW };
 }
 
 /** The glass: 390 px of the page colour with the page gutter, as a phone draws a trick session's body. */
