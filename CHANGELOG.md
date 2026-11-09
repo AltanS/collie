@@ -43,6 +43,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 - **Chrome stops showing "This site has been updated in the background" on a busy day too.** The 1.28.0 fix did not reach a phone in a pocket while agents came and went: each pane that stopped needing you still sent that phone a clear, about 24 in a day. Collie now sends each phone at most four clears in any 24 hours, and clears that come together count as one. Past that, a notification for something you already handled can stay until the same pane notifies again or until you next open Collie, which closes it then. The hourly log line counts the clears left out.
 
+- **pi's question cards and permission prompts read on pi's default theme.** On that theme the footer rows of pi's dialogs are only faint, and Collie did not see the dialog; now it does, and the card shows. Thanks @mithyer (#726).
+
+- **omp 18.18's batched questions show their answer buttons again.** With omp 18.18, a batch of questions moved its current tab onto a background without bold, and the card lost its buttons; the card now follows the batch, and a review with unanswered questions is never submitted. Thanks @minigold92 (#753).
+
 ## [1.28.0] - 2026-11-09
 
 ### Added
