@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { countBlocked, bucketOf } from "../triage";
+import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
+
+import { countAlerting, countBlocked, bucketOf, hasReady, triage, worstTriage } from "../triage";
 import { paneProgress } from "../pane-marks";
 import type { AgentView, TabView, WorkspaceView } from "../types";
-import { findTrickSession, findScopedPane, splitTrickSessions } from "./places";
+import { findTrickSession, findScopedPane, realAgentPanes, splitTrickSessions } from "./places";
 
 function pane(paneId: string, over: Partial<AgentView> = {}): AgentView {
   return { paneId, workspaceId: "w1", workspaceLabel: "collie", workspaceNumber: 1, tabId: "w1:t1", agent: "claude", status: "idle", cwd: "/w", focused: false, ...over };
@@ -52,6 +55,36 @@ describe("the trick sessions leave the herd", () => {
   it("keeps a trick pane outside triage even if one slips into a list", () => {
     expect(bucketOf({ ...TRICK, status: "blocked" })).toBe("recent");
     expect(countBlocked([{ ...TRICK, status: "blocked" }])).toBe(0);
+  });
+
+  it("realAgentPanes is the one filter: the real panes, and the same array when there is no trick pane", () => {
+    const list = [REAL, TRICK, TRICK2];
+    expect(realAgentPanes(list)).toEqual([REAL]);
+    const plain = [REAL];
+    expect(realAgentPanes(plain)).toBe(plain);
+  });
+
+  it("triage never receives a trick pane: no section, no count, no chip, whatever its status", () => {
+    const blocked = { ...TRICK, status: "blocked" as const };
+    const done = { ...TRICK2, status: "done" as const, lastActiveAt: 2, lastSeenAt: 1 };
+    const herd = [REAL, blocked, done];
+    const sections = triage(herd);
+    expect(sections.flatMap((section) => section.agents).map((agent) => agent.paneId)).toEqual([REAL.paneId]);
+    expect(countBlocked(herd)).toBe(0);
+    expect(countAlerting(herd, { blocked: true, done: true })).toBe(0);
+    expect(hasReady(herd)).toBe(false);
+    expect(worstTriage([blocked, done])).toBeNull();
+  });
+
+  it("no lib file tests a pane's kind for a trick but places.ts: each reads realAgentPanes or isTrickPane", () => {
+    // pane-marks.ts draws a trick session's progress (a look, not a filter), so it may name the kind.
+    const allowed = new Set(["tricks/places.ts", "pane-marks.ts"]);
+    const lib = join(__dirname, "..");
+    const offenders = readdirSync(lib, { recursive: true, encoding: "utf8" })
+      .filter((file) => /\.tsx?$/.test(file) && !/\.test\.tsx?$/.test(file) && !allowed.has(file.split("\\").join("/")))
+      // A Decision's `from.kind` is its sender, not a pane: not counted.
+      .filter((file) => /(?<!from\.)\bkind\s*[!=]==\s*"trick"/.test(readFileSync(join(lib, file), "utf8")));
+    expect(offenders).toEqual([]);
   });
 
   it("draws a trick session's progress in any state, and a program's only while it works", () => {

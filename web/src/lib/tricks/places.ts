@@ -18,6 +18,17 @@ export function isTrickPane(pane: Pick<AgentView, "kind">): boolean {
   return pane.kind === "trick";
 }
 
+/**
+ * The real agent and shell panes of a list: every pane but a trick session. THE ONE FILTER (M94 review
+ * row 30): every consumer that must never meet a trick session (triage and its counts, the root loader's
+ * split) reads its panes through this, never through a `kind` test of its own. A list with no trick pane
+ * comes back as the same array, so nothing re-renders for it. The bridge's twin is
+ * bridge/tricks/panes.ts `realAgentPanes`.
+ */
+export function realAgentPanes<T extends Pick<AgentView, "kind">>(panes: readonly T[]): readonly T[] {
+  return panes.some(isTrickPane) ? panes.filter((pane) => !isTrickPane(pane)) : panes;
+}
+
 /** Whether a Space or a tab id is a Tricks Space's or a trick's tab (schema.ts `trickSpaceId`, `trickSessionId`). */
 export function isTrickPlaceId(id: string): boolean {
   return id.startsWith(TRICK_SESSION_PREFIX);
@@ -47,8 +58,8 @@ export function splitTrickSessions(lists: {
   if (!any) return { ...lists, trickSessions: [] };
   const trickSessions = [...lists.agents, ...lists.shellPanes].filter(isTrickPane);
   return {
-    agents: lists.agents.filter((pane) => !isTrickPane(pane)),
-    shellPanes: lists.shellPanes.filter((pane) => !isTrickPane(pane)),
+    agents: [...realAgentPanes(lists.agents)],
+    shellPanes: [...realAgentPanes(lists.shellPanes)],
     workspaces: lists.workspaces.filter((space) => !isTrickPlaceId(space.workspaceId)),
     tabs: lists.tabs.filter((tab) => !isTrickPlaceId(tab.tabId)),
     trickSessions,

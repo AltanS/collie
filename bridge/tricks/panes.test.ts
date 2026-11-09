@@ -1,10 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { mkdir } from "node:fs/promises";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { readdirSync, readFileSync } from "node:fs";
+import { join, relative, sep } from "node:path";
 
 import { isTrickSessionId, isScopeKey, partKey, type TrickPart, type View, type WireTrickInfo, type WireTrickPart } from "../../web/src/lib/tricks/schema.ts";
-import { TRICKS_SPACE_LABEL, trickSessionPanes, trickSessionStatus, pastWindow, placeTrickSessions, type TrickSessionSource } from "./panes.ts";
+import { hillSessionName } from "../hill/walky.ts";
+import { realAgentPanes, TRICKS_SPACE_LABEL, trickSessionPanes, trickSessionStatus, pastWindow, placeTrickSessions, type TrickSessionSource } from "./panes.ts";
 
 const NOW = Date.parse("2026-11-08T09:41:00Z");
 const HOST = "bluefin";
@@ -224,6 +225,45 @@ describe("the service", () => {
       expect(service.sessionPanes()).toBeUndefined();
     } finally {
       await rm(root, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("the one filter for real agent panes (review row 30)", () => {
+  const real = { paneId: "w6X:3", kind: "agent" as const, agent: "claude", paneLabel: "composer" };
+  const trick = { paneId: "trick:bluefin:legs:legs", kind: "trick" as const, agent: "legs", paneLabel: "Browser leg" };
+
+  test("realAgentPanes drops trick sessions and hands back the same array when there is none", () => {
+    expect(realAgentPanes([real, trick])).toEqual([real]);
+    const plain = [real];
+    expect(realAgentPanes(plain)).toBe(plain);
+  });
+
+  test("the hill's session naming never names a trick pane", () => {
+    const name = hillSessionName({
+      place: (address) => ({ address, label: "x", host: null, unattended: false }),
+      views: () => [real, trick],
+      memberId: null,
+      redact: false,
+    });
+    expect(name("local/w6X:3#aaaa")).toBe("composer");
+    expect(name(`local/${trick.paneId}#aaaa`)).toBeNull();
+  });
+
+  test("no bridge file but panes.ts tests a pane's kind for a trick: push, the crew notifier and the hill read realAgentPanes", () => {
+    const root = join(import.meta.dir, "..");
+    const offenders: string[] = [];
+    for (const entry of readdirSync(root, { recursive: true, withFileTypes: true })) {
+      if (!entry.isFile() || !/\.tsx?$/.test(entry.name) || /\.test\.tsx?$/.test(entry.name)) continue;
+      const file = relative(root, join(entry.parentPath, entry.name)).split(sep).join("/");
+      // panes.ts owns the filter; the hill's reader and service test a Decision's sender kind, never a pane's.
+      if (file === "tricks/panes.ts" || file === "hill/parse.ts" || file === "hill/service.ts") continue;
+      // A Decision's `from.kind` names its sender, not a pane.
+      if (/(?<!from\.)\bkind\s*[!=]==\s*"trick"/.test(readFileSync(join(root, file), "utf8"))) offenders.push(file);
+    }
+    expect(offenders).toEqual([]);
+    for (const file of ["crew/notify.ts", "hill/walky.ts"]) {
+      expect(readFileSync(join(root, file), "utf8"), file).toContain("realAgentPanes(");
     }
   });
 });

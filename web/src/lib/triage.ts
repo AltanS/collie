@@ -12,6 +12,7 @@
 // "settled since you last looked" is `lastActiveAt > lastSeenAt`, which is the Ready·unseen bucket.
 import type { AgentStatus, AgentView } from "./types";
 import { t } from "./i18n";
+import { isTrickPane, realAgentPanes } from "./tricks/places";
 
 /** Which way the Recent section runs. Attention sections never invert. */
 export type RecentDir = "newest" | "oldest";
@@ -61,8 +62,8 @@ export function shownStatus(a: AgentView): AgentStatus {
  *  {@link worstTriage} both route through it, so a list and a chip can't disagree. */
 export function bucketOf(a: AgentView): TriageKey {
   // A trick session is outside triage (M94): it never needs you, is never ready and never counts as
-  // working. The root loader keeps it out of every list this reads; this holds if one slips through.
-  if (a.kind === "trick") return "recent";
+  // working. Every list function below reads `realAgentPanes`; this holds for a single pane too.
+  if (isTrickPane(a)) return "recent";
   if (a.status === "blocked") return "needs";
   if (isUnseen(a)) return "ready";
   if (a.status === "working") return "working";
@@ -87,7 +88,7 @@ export function needsYou(a: AgentView): boolean {
  */
 export function countBlocked(agents: readonly AgentView[]): number {
   let n = 0;
-  for (const a of agents) if (bucketOf(a) === "needs") n++;
+  for (const a of realAgentPanes(agents)) if (bucketOf(a) === "needs") n++;
   return n;
 }
 
@@ -98,7 +99,7 @@ export function countBlocked(agents: readonly AgentView[]): number {
  */
 export function countAlerting(agents: readonly AgentView[], kinds: { blocked: boolean; done: boolean }): number {
   let n = 0;
-  for (const a of agents) {
+  for (const a of realAgentPanes(agents)) {
     const bucket = bucketOf(a);
     if ((bucket === "needs" && kinds.blocked) || (bucket === "ready" && kinds.done)) n++;
   }
@@ -107,7 +108,7 @@ export function countAlerting(agents: readonly AgentView[], kinds: { blocked: bo
 
 /** Whether any pane is in the "ready" bucket: finished and unseen. The "Focus" tab's dot. */
 export function hasReady(agents: readonly AgentView[]): boolean {
-  return agents.some((a) => bucketOf(a) === "ready");
+  return realAgentPanes(agents).some((a) => bucketOf(a) === "ready");
 }
 
 /** Display order, most urgent first. */
@@ -131,7 +132,7 @@ export const TRIAGE_STATUS = {
  */
 export function worstTriage(agents: readonly AgentView[]): TriageKey | null {
   let best: number | null = null;
-  for (const a of agents) {
+  for (const a of realAgentPanes(agents)) {
     const rank = TRIAGE_ORDER.indexOf(bucketOf(a));
     if (best === null || rank < best) best = rank;
   }
@@ -175,7 +176,7 @@ export function triage(agents: readonly AgentView[], dir: RecentDir = "newest"):
   const recent: AgentView[] = [];
 
   const into = { needs, ready, working, recent };
-  for (const a of agents) into[bucketOf(a)].push(a);
+  for (const a of realAgentPanes(agents)) into[bucketOf(a)].push(a);
 
   if (dir === "oldest") recent.reverse();
 
