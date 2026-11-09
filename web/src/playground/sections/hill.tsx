@@ -2,8 +2,10 @@
 // the Dashboard's way in. Every card mounts the REAL component (`DecisionCard`, `HillView`,
 // `HillHeader`, `HillEntryRow`) with fixtures shaped by the wire (`fixtures/hill/decisions.ts`). There
 // is no bridge behind this page: a card's state is fixed, and a tap on a live card answers nothing.
+// The cards wear the machine tints of a two-machine crew (bluefin and minibuch), as `LiveDecisionCard`
+// would hand them on one.
 //
-// Cards are numbered 1 to 27.
+// Cards are numbered 1 to 31.
 
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 
@@ -19,12 +21,15 @@ import type { PaneOrder } from "@/lib/pane-order";
 import { herd, homeSolo, tabs } from "../fixtures";
 import {
   brokenImage,
+  busyOpen,
   closedRows,
   goneText,
   keptWords,
   oneImage,
   playgroundMedia,
+  quietOpen,
   receipts,
+  rich,
   sevenOpen,
   textOnly,
   textRequired,
@@ -46,6 +51,30 @@ export const DEF: SectionDef = {
 
 const NO_KEPT: ReadonlyMap<string, string> = new Map();
 const noSend = () => {};
+
+/** The tint slot per machine, as `lib/hosts.ts` would assign it on this two-machine crew. */
+const HOST_SLOT: ReadonlyMap<string, number> = new Map([
+  ["bluefin", 2],
+  ["minibuch", 6],
+]);
+
+/** The trick icon per trick id, as the tricks list would say it. */
+const TRICK_ICON: ReadonlyMap<string, string> = new Map([["look", "eye"]]);
+
+/** The real card with the playground's images, tints and trick icons. */
+function PlaygroundCard({ decision, answer = HILL_IDLE }: { decision: HillDecision; answer?: HillAnswerState }) {
+  const { from } = decision;
+  return (
+    <DecisionCard
+      decision={decision}
+      answer={answer}
+      onSend={noSend}
+      mediaSource={playgroundMedia}
+      hostSlot={from.host === null ? null : (HOST_SLOT.get(from.host) ?? null)}
+      trickIcon={from.trickId === null ? undefined : TRICK_ICON.get(from.trickId)}
+    />
+  );
+}
 
 /** A phone-wide box on the page colour, the card's own gutter around it. */
 function Phone({ height, children }: { height?: number; children: ReactNode }) {
@@ -76,18 +105,18 @@ function OneCard({ decision, answer = HILL_IDLE }: { decision: HillDecision; ans
   return (
     <Phone>
       <div className="p-4">
-        <DecisionCard decision={decision} answer={answer} onSend={noSend} mediaSource={playgroundMedia} />
+        <PlaygroundCard decision={decision} answer={answer} />
       </div>
     </Phone>
   );
 }
 
-/** The card with its body open by the real tap on its image, once mounted. */
-function OpenedCard({ decision }: { decision: HillDecision }) {
+/** The card with one of its folds open by the real tap on its toggle (More or Add a note), once mounted. */
+function OpenedCard({ decision, toggle }: { decision: HillDecision; toggle: "decision-more" | "decision-note" }) {
   const root = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    root.current?.querySelector<HTMLButtonElement>('[data-slot="hill-card-image"]')?.click();
-  }, []);
+    root.current?.querySelector<HTMLButtonElement>(`[data-slot="${toggle}"]`)?.click();
+  }, [toggle]);
   return (
     <div ref={root}>
       <OneCard decision={decision} />
@@ -123,18 +152,19 @@ function HillPhone({ open, closed, kept = NO_KEPT, unfold = false }: { open: rea
     if (unfold) root.current?.querySelector<HTMLButtonElement>('[data-slot="hill-answered"] button[aria-expanded="false"]')?.click();
   }, [unfold]);
   const sorted = sortOpenDecisions([...open]);
+  const nowCount = sorted.filter((d) => d.priority === "now").length;
   return (
     <div ref={root}>
       <Phone height={760}>
         <RootRouter data={homeSolo}>
           <AppHeaderHost bridge="connected" error={false}>
-            <HillHeader count={sorted.length} onBack={noSend} />
+            <HillHeader count={sorted.length} nowCount={nowCount} onBack={noSend} />
             <div data-pg-scroll className="min-h-0 flex-1 overflow-y-auto p-4">
               <HillView
                 open={sorted}
                 closed={closed}
                 kept={kept}
-                renderCard={(decision) => <DecisionCard key={decision.id} decision={decision} answer={HILL_IDLE} onSend={noSend} />}
+                renderCard={(decision) => <PlaygroundCard key={decision.id} decision={decision} />}
               />
             </div>
           </AppHeaderHost>
@@ -181,6 +211,9 @@ function DashboardPhone() {
 
 const undeliverableId = closedRows.find((row) => row.state === "undeliverable")?.id ?? "";
 
+/** Card 24: the three images with a body, so More has something to open beside the row. */
+const withImagesAndBody: HillDecision = { ...threeImages, body: "The new header keeps the count line in every state." };
+
 export function HillSection() {
   return (
     <Section def={DEF}>
@@ -213,6 +246,18 @@ export function HillSection() {
           <CardHead n={7} title="Target runs unattended" />
           <OneCard decision={unattended} />
         </Card>
+        <Card state="hill-card-rich" label="28: the rich Decision">
+          <CardHead n={28} title="The rich Decision" />
+          <OneCard decision={rich} />
+        </Card>
+        <Card state="hill-card-more-open" label="29: More open">
+          <CardHead n={29} title="More open" />
+          <OpenedCard decision={rich} toggle="decision-more" />
+        </Card>
+        <Card state="hill-card-note-open" label="30: Add a note open">
+          <CardHead n={30} title="Add a note open" />
+          <OpenedCard decision={twoOptions} toggle="decision-note" />
+        </Card>
       </Group>
 
       <Group title="Images">
@@ -226,7 +271,7 @@ export function HillSection() {
         </Card>
         <Card state="hill-card-image-body" label="24: three images, body open">
           <CardHead n={24} title="Three images, body open" />
-          <OpenedCard decision={threeImages} />
+          <OpenedCard decision={withImagesAndBody} toggle="decision-more" />
         </Card>
         <Card state="hill-card-image-failed" label="25: image not available">
           <CardHead n={25} title="Image not available" />
@@ -274,9 +319,13 @@ export function HillSection() {
       </Group>
 
       <Group title="The view">
-        <Card state="hill-view-seven" label="17: seven cards">
-          <CardHead n={17} title="Seven cards" />
-          <HillPhone open={sevenOpen} closed={closedRows} />
+        <Card state="hill-view-quiet" label="31: quiet, two cards">
+          <CardHead n={31} title="Quiet, two cards" />
+          <HillPhone open={quietOpen} closed={closedRows} />
+        </Card>
+        <Card state="hill-view-seven" label="17: busy, eight cards">
+          <CardHead n={17} title="Busy, eight cards" />
+          <HillPhone open={busyOpen} closed={closedRows} />
         </Card>
         <Card state="hill-view-empty" label="18: empty">
           <CardHead n={18} title="Empty" />

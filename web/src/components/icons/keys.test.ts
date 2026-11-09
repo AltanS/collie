@@ -34,7 +34,7 @@ describe("the icon key table", () => {
 // new one is a decision someone reads here. The brief's bar is under 5 percent per family.
 const FALLBACKS = {
   phosphor: ["key-space", "text-larger", "text-smaller"],
-  iconoir: ["busy", "key-space", "text-larger", "text-smaller"],
+  iconoir: ["busy", "hill", "key-space", "text-larger", "text-smaller"],
 };
 
 describe("the family maps", () => {

@@ -55,6 +55,9 @@ export const PHOSPHOR = {
   "copy": "copy", // copy · lucide Copy
   "copy-failed": "x", // the copy failed · lucide X
   "crew": "network", // the crew of machines · lucide Network
+  "decision-dismissed": "x", // a Decision that was dismissed · lucide X
+  "decision-superseded": "arrows-clockwise", // a Decision a newer one replaced · lucide RefreshCw
+  "decision-withdrawn": "arrow-u-up-left", // a Decision its poster took back · lucide Undo2
   "delete": "trash", // delete · lucide Trash2
   "detached-head": "git-commit", // HEAD is on a commit, not a branch · lucide GitCommitHorizontal
   "direct-typing": "keyboard", // keystrokes go straight to the terminal · lucide Keyboard
@@ -101,6 +104,7 @@ export const PHOSPHOR = {
   "harness-tree": "tree-view", // session tree (agent command) · lucide ListTree
   "harnesses": "robot", // harnesses · lucide Bot
   "hide-ignored": "eye-slash", // ignored files are hidden · lucide EyeOff
+  "hill": "mountains", // the Hill, where Decisions wait · lucide Mountain
   "history-screen": "scroll", // the scrollback history screen · lucide ScrollText
   "image": "image", // an image · lucide Image
   "info": "info", // information, or the facts of an option · lucide Info

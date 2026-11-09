@@ -38,19 +38,19 @@ beforeEach(() => __resetHill());
 afterEach(() => __resetHill());
 
 describe("the hill route", () => {
-  it("shows the title and how many need you", async () => {
-    await hillHolds([hillDecision(), hillDecision(), hillDecision()]);
+  it("shows the title and how many are open, and how many of them are Now", async () => {
+    await hillHolds([hillDecision({ priority: "now" }), hillDecision(), hillDecision()]);
     renderHill();
     expect(await screen.findByRole("heading", { name: "Hill" })).toBeInTheDocument();
-    expect(document.querySelector('[data-slot="hill-count"]')).toHaveTextContent("3 need you");
+    expect(document.querySelector('[data-slot="hill-count"]')).toHaveTextContent("3 open · 1 now");
     expect(document.querySelectorAll('[data-slot="decision-card"]')).toHaveLength(3);
   });
 
-  it("shows the empty state with no count when nothing is open", async () => {
+  it("shows the clear hill, and All clear in the count line, when nothing is open", async () => {
     renderHill();
     await screen.findByRole("heading", { name: "Hill" });
-    expect(document.querySelector('[data-slot="hill-count"]')).toBeNull();
-    expect(document.querySelector('[data-slot="hill-empty"]')).toHaveTextContent("Nothing needs you.");
+    expect(document.querySelector('[data-slot="hill-count"]')).toHaveTextContent("All clear");
+    expect(document.querySelector('[data-slot="hill-empty"]')).toHaveTextContent("The hill is clear.");
   });
 
   it("goes back up to the Dashboard", async () => {

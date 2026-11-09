@@ -55,6 +55,9 @@ export const ICONOIR = {
   "copy": "copy", // copy · lucide Copy
   "copy-failed": "xmark", // the copy failed · lucide X
   "crew": "network", // the crew of machines · lucide Network
+  "decision-dismissed": "xmark", // a Decision that was dismissed · lucide X
+  "decision-superseded": "refresh-double", // a Decision a newer one replaced · lucide RefreshCw
+  "decision-withdrawn": "undo", // a Decision its poster took back · lucide Undo2
   "delete": "trash", // delete · lucide Trash2
   "detached-head": "git-commit", // HEAD is on a commit, not a branch · lucide GitCommitHorizontal
   "direct-typing": "dialpad", // keystrokes go straight to the terminal · lucide Keyboard
@@ -101,6 +104,7 @@ export const ICONOIR = {
   "harness-tree": "view-structure-down", // session tree (agent command) · lucide ListTree
   "harnesses": "sparks", // harnesses · lucide Bot
   "hide-ignored": "eye-closed", // ignored files are hidden · lucide EyeOff
+  "hill": null, // the Hill, where Decisions wait · lucide Mountain
   "history-screen": "journal-page", // the scrollback history screen · lucide ScrollText
   "image": "media-image", // an image · lucide Image
   "info": "info-circle", // information, or the facts of an option · lucide Info

@@ -8,8 +8,9 @@ import { hillDecision, hillReceipt, trickDecision } from "@/test/hill-fixtures";
 
 import { DecisionCard } from "./decision-card";
 
-// The Decision card (M96): what it shows, that nothing is chosen for the person, the arm on a
-// confirm option and on Dismiss, the gate on a required answer, and what it says after each tap.
+// The Decision card (M96): what it shows, that nothing is chosen for the person, the numbered options,
+// More and Add a note, the arm on a confirm option and on Dismiss, the gate on a required answer, and
+// what it says after each tap.
 // Cases read the card through its data-slot hooks inside the render's own container (DESIGN.md §9).
 
 function renderCard(decision: HillDecision, answer: HillAnswerState = HILL_IDLE) {
@@ -21,7 +22,12 @@ function renderCard(decision: HillDecision, answer: HillAnswerState = HILL_IDLE)
     if (el === null) throw new Error(`no option ${intent}`);
     return el;
   };
-  return { ...view, onSend, slot, option };
+  /** Opens an optional note by its "Add a note" tap, the way a person does, and hands back the field. */
+  const openNote = () => {
+    fireEvent.click(slot("decision-note")!);
+    return slot("decision-text")!;
+  };
+  return { ...view, onSend, slot, option, openNote };
 }
 
 const answered = (receipt: HillReceipt, intent = "yes", text: string | null = null): HillAnswerState => ({ phase: "answered", intent, text, receipt });
@@ -38,6 +44,10 @@ describe("the Decision card, at rest", () => {
   it("shows the meta line, the title and the summary", () => {
     const { slot } = renderCard(hillDecision({ priority: "now", title: "Merge it?", summary: "CI is green." }));
     expect(slot("decision-priority")).toHaveTextContent("Now");
+    // The three peaks, all filled, named with the priority's word.
+    const glyph = slot("decision-priority")!.querySelector('[data-slot="peak-glyph"]')!;
+    expect(glyph).toHaveAttribute("data-filled", "3");
+    expect(glyph).toHaveAttribute("aria-label", "Now");
     expect(slot("decision-meta")).toHaveTextContent("collie lead");
     expect(slot("decision-meta")).toHaveTextContent("bluefin");
     expect(slot("decision-title")).toHaveTextContent("Merge it?");
@@ -45,9 +55,15 @@ describe("the Decision card, at rest", () => {
   });
 
   it("marks the recommended option but never selects or focuses it", () => {
-    const { slot, option } = renderCard(hillDecision({ recommends: { intent: "yes", why: "Edge reaches testers first." } }));
-    expect(slot("decision-recommends")).toHaveTextContent("Recommended: Yes, Edge first");
-    expect(slot("decision-recommends")).toHaveTextContent("Edge reaches testers first.");
+    const { slot, option, container } = renderCard(hillDecision({ recommends: { intent: "yes", why: "Edge reaches testers first." } }));
+    expect(slot("decision-recommends")).toHaveTextContent("collie lead suggests Yes, Edge first");
+    expect(slot("decision-recommends")).toHaveTextContent("“Edge reaches testers first.”");
+    // A screen reader hears which option it is beside the options.
+    expect(slot("decision-options")).toHaveTextContent("Recommended: Yes, Edge first");
+    // A neutral mark, never the caution ink: amber on the card says `now`.
+    const mark = option("yes").querySelector('[data-slot="decision-recommended-mark"]')!;
+    expect(mark.closest("span")?.className).toContain("text-foreground");
+    expect(container.querySelector('[data-slot="decision-recommends"]')?.innerHTML).not.toContain("status-working");
     expect(option("yes").querySelector('[data-slot="decision-recommended-mark"]')).not.toBeNull();
     expect(option("no").querySelector('[data-slot="decision-recommended-mark"]')).toBeNull();
     for (const intent of ["yes", "no"]) {
@@ -77,6 +93,14 @@ describe("the Decision card, at rest", () => {
     expect(renderCard(hillDecision()).slot("decision-more")).toBeNull();
   });
 
+  it("numbers the options 1, 2, 3 like the terminal menu, for the eye only", () => {
+    const { option } = renderCard(withConfirm());
+    expect(option("keep").querySelector('[aria-hidden="true"]')).toHaveTextContent("1");
+    expect(option("reset").querySelector('[aria-hidden="true"]')).toHaveTextContent("2");
+    // The number is not part of the button's name.
+    expect(option("keep")).not.toHaveAttribute("aria-label");
+  });
+
   it("says where the answer goes, and that the target runs without prompts", () => {
     const { slot } = renderCard(hillDecision({ target: { label: "m96-hill", host: "minibuch", unattended: true } }));
     expect(slot("decision-target")).toHaveTextContent("Your answer goes to m96-hill on minibuch");
@@ -85,22 +109,67 @@ describe("the Decision card, at rest", () => {
 
   it("turns spellcheck off and says the placeholder for the mode", () => {
     const optional = renderCard(hillDecision());
-    expect(optional.slot("decision-text")).toHaveAttribute("spellcheck", "false");
-    expect(optional.slot("decision-text")).toHaveAttribute("placeholder", "Add a note");
+    const note = optional.openNote();
+    expect(note).toHaveAttribute("spellcheck", "false");
+    expect(note).toHaveAttribute("placeholder", "Add a note");
     optional.unmount();
     const required = renderCard(hillDecision({ text: "required" }));
     expect(required.slot("decision-text")).toHaveAttribute("placeholder", "Write your answer");
   });
 
   it("draws no field when the decision takes no words", () => {
-    expect(renderCard(hillDecision({ text: "none" })).slot("decision-text")).toBeNull();
+    const { slot } = renderCard(hillDecision({ text: "none" }));
+    expect(slot("decision-text")).toBeNull();
+    expect(slot("decision-note")).toBeNull();
+  });
+});
+
+describe("Add a note", () => {
+  it("keeps an optional note behind its tap, and opens the field, the hint and Send", () => {
+    const { slot } = renderCard(hillDecision());
+    const toggle = slot("decision-note")!;
+    expect(toggle).toHaveTextContent("Add a note");
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(slot("decision-text")).toBeNull();
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    expect(toggle).toHaveAttribute("aria-controls", slot("decision-note-panel")!.id);
+    expect(slot("decision-text")).not.toBeNull();
+    expect(slot("decision-note-hint")).toHaveTextContent("The note goes with the option you tap.");
+    expect(slot("decision-send")).toBeDisabled();
+  });
+
+  it("keeps a note with words in it open, so the words never ride on a tap unseen", () => {
+    const { slot, openNote } = renderCard(hillDecision());
+    fireEvent.change(openNote(), { target: { value: "after the leg" } });
+    expect(slot("decision-note")).toBeDisabled();
+    fireEvent.change(slot("decision-text")!, { target: { value: "  " } });
+    expect(slot("decision-note")).toBeEnabled();
+  });
+
+  it("draws a required answer open, with no tap in front of it", () => {
+    const { slot } = renderCard(hillDecision({ text: "required" }));
+    expect(slot("decision-note")).toBeNull();
+    expect(slot("decision-text")).not.toBeNull();
+  });
+
+  it("draws the words of a Decision with no options open: they are the answer", () => {
+    const { slot } = renderCard(hillDecision({ options: [], text: "optional" }));
+    expect(slot("decision-note")).toBeNull();
+    expect(slot("decision-text")).not.toBeNull();
+    expect(slot("decision-send")).toHaveTextContent("Send answer");
+  });
+
+  it("takes no note on a card that takes no answers", () => {
+    const { slot } = renderCard(hillDecision(), { phase: "sending", intent: "yes", text: null });
+    expect(slot("decision-note")).toBeDisabled();
   });
 });
 
 describe("answering", () => {
   it("sends an option without a confirm on the first tap, with the note", () => {
-    const { option, slot, onSend } = renderCard(hillDecision());
-    fireEvent.change(slot("decision-text")!, { target: { value: "  after the leg  " } });
+    const { option, openNote, onSend } = renderCard(hillDecision());
+    fireEvent.change(openNote(), { target: { value: "  after the leg  " } });
     fireEvent.click(option("no"));
     expect(onSend).toHaveBeenCalledWith("no", "after the leg");
   });
@@ -193,8 +262,8 @@ describe("arm, then send", () => {
   });
 
   it("drops the arm when the answer's words change, so the second tap needs a new first one", () => {
-    const { slot, option, onSend } = renderCard(withConfirm());
-    fireEvent.change(slot("decision-text")!, { target: { value: "Because." } });
+    const { slot, option, openNote, onSend } = renderCard(withConfirm());
+    fireEvent.change(openNote(), { target: { value: "Because." } });
     fireEvent.click(option("reset"));
     expect(option("reset")).toHaveTextContent("Reset now");
     fireEvent.change(slot("decision-text")!, { target: { value: "Because main builds." } });
@@ -217,8 +286,8 @@ describe("arm, then send", () => {
   });
 
   it("sends a dismiss with no text even when the field holds words: the bridge refuses a dismiss that carries text", () => {
-    const { slot, onSend } = renderCard(hillDecision());
-    fireEvent.change(slot("decision-text")!, { target: { value: "never mind, not now" } });
+    const { slot, openNote, onSend } = renderCard(hillDecision());
+    fireEvent.change(openNote(), { target: { value: "never mind, not now" } });
     const dismiss = slot("decision-dismiss")!;
     fireEvent.click(dismiss);
     act(() => vi.advanceTimersByTime(ARM_DWELL_MS));
@@ -305,7 +374,8 @@ describe("a trick's decision", () => {
   it("shows the machine's name on the meta line, never the routing host", () => {
     const base = trickDecision();
     const { slot } = renderCard({ ...base, from: { ...base.from, host: "bluefin", trickHost: "collie-04rj6a" } });
-    expect(slot("decision-meta")?.textContent).toMatch(/Look\s*·\s*trick\s*·\s*bluefin/);
+    expect(slot("decision-meta")?.textContent).toMatch(/Look\s*·\s*trick\s*bluefin/);
+    expect(slot("decision-host")).toHaveTextContent("bluefin");
     expect(slot("decision-meta")).not.toHaveTextContent("collie-04rj6a");
   });
 
@@ -353,5 +423,27 @@ describe("a trick's decision", () => {
     const refused = hillReceipt({ code: "rejected", state: null, delivery: null, trick: null, reason: "text is required" });
     const { slot } = renderCard(trickDecision(), answered(refused));
     expect(slot("decision-receipt")?.textContent).toBe("Not accepted: an answer in words is required");
+  });
+});
+
+describe("who asks, on the first line", () => {
+  it("tints the machine's glyph on a crew, and only the glyph", () => {
+    const { container } = render(<DecisionCard decision={hillDecision()} answer={HILL_IDLE} onSend={() => {}} hostSlot={6} />);
+    const host = container.querySelector('[data-slot="decision-host"]')!;
+    expect(host.querySelector('[data-icon="machine"]')?.getAttribute("class")).toContain("text-host-6");
+    expect(host.className).not.toContain("text-host");
+  });
+
+  it("leaves the glyph muted on a solo install", () => {
+    const { container } = render(<DecisionCard decision={hillDecision()} answer={HILL_IDLE} onSend={() => {}} />);
+    expect(container.querySelector('[data-slot="decision-host"] [data-icon="machine"]')?.getAttribute("class")).toContain("text-muted-foreground");
+  });
+
+  it("draws a trick's own icon on a tile, and the default icon for a word it does not know", () => {
+    const known = render(<DecisionCard decision={trickDecision()} answer={HILL_IDLE} onSend={() => {}} trickIcon="search" />);
+    expect(known.container.querySelector('[data-slot="decision-trick-mark"] [data-icon]')).toHaveAttribute("data-icon", "mod-icon-search");
+    known.unmount();
+    const unknown = render(<DecisionCard decision={trickDecision()} answer={HILL_IDLE} onSend={() => {}} trickIcon="no-such-word" />);
+    expect(unknown.container.querySelector('[data-slot="decision-trick-mark"] svg')).not.toBeNull();
   });
 });

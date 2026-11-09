@@ -6,10 +6,10 @@ Every glyph the app draws is named by what it means. A theme's `glyphs` picks th
 them (ADR 0137). A family with no fitting glyph for a key draws the lucide one, shown as `(lucide)`.
 Phosphor's three sets share one map; the fill and duotone files add `-fill` and `-duotone`.
 
-327 keys.
+331 keys.
 
 Phosphor Fill draws these keys in the regular weight, so a cross stays a cross and an empty or
-not-started state stays empty: `action-check`, `action-x`, `answered`, `clear`, `close`, `confirm`, `copied`, `copy-failed`, `dismiss`, `done`, `mod-icon-check`, `mod-icon-x`, `mod-step-done`, `mod-step-failed`, `mod-step-todo`, `ok`, `plan-done`, `plan-pending`, `remove`, `selected`, `sent-ok`, `update-step-done`, `update-step-failed`, `update-step-skipped`, `voice-setup`, `zoom-out`.
+not-started state stays empty: `action-check`, `action-x`, `answered`, `clear`, `close`, `confirm`, `copied`, `copy-failed`, `decision-dismissed`, `dismiss`, `done`, `mod-icon-check`, `mod-icon-x`, `mod-step-done`, `mod-step-failed`, `mod-step-todo`, `ok`, `plan-done`, `plan-pending`, `remove`, `selected`, `sent-ok`, `update-step-done`, `update-step-failed`, `update-step-skipped`, `voice-setup`, `zoom-out`.
 
 ## Belt
 
@@ -173,9 +173,13 @@ not-started state stays empty: `action-check`, `action-x`, `answered`, `clear`, 
 | `archived` | an archived item | `Archive` | `archive` | `archive` |
 | `back` | go back | `ArrowLeft` | `arrow-left` | `arrow-left` |
 | `crew` | the crew of machines | `Network` | `network` | `network` |
+| `decision-dismissed` | a Decision that was dismissed | `X` | `x` | `xmark` |
+| `decision-superseded` | a Decision a newer one replaced | `RefreshCw` | `arrows-clockwise` | `refresh-double` |
+| `decision-withdrawn` | a Decision its poster took back | `Undo2` | `arrow-u-up-left` | `undo` |
 | `empty-state` | nothing to show here | `Inbox` | `tray` | `drawer` |
 | `files` | files | `ListTree` | `tree-view` | `view-structure-down` |
 | `hand` | which hand holds the phone | `Hand` | `hand` | `drag-hand-gesture` |
+| `hill` | the Hill, where Decisions wait | `Mountain` | `mountains` | (lucide) |
 | `launch` | launch an agent | `Play` | `play` | `play` |
 | `messages` | messages | `MessagesSquare` | `chats` | `multi-bubble` |
 | `needs-you` | only panes that need me | `CircleDot` | `radio-button` | `one-point-circle` |
