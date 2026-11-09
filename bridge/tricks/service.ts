@@ -164,6 +164,11 @@ export interface TricksServiceDeps {
   /** The id this bridge served before a crew join or leave: a tap or a switch under it still lands. */
   previousId?: string | null;
   /**
+   * Write the id to the state folder before a run hands it to a program (bridge-id.ts `keep`): a run is
+   * the first use, never the start. Absent in a test.
+   */
+  keepId?: () => void;
+  /**
    * The sessions and spaces, read at run time, with session ids keyed on `memberId`, and the machine's
    * display name (`machine`) the facts' `host` fields say.
    */
@@ -643,6 +648,8 @@ export class TricksService implements TricksSurface {
     const state = trickStateDir(this.deps.stateDir, id);
     // The provider's own folder under <stateDir>/tricks, owner only like the rest of the state folder.
     await mkdir(state, { recursive: true, mode: 0o700 }).catch(() => {});
+    // The program may keep the id in its own state: it is written down before the first run sees it.
+    this.deps.keepId?.();
     const world = this.deps.world(host);
     const facts = buildFacts({ memberId: host, ...world }, { id, dir: rt.found.dir, state }, trigger);
     const outcome = await (this.deps.run ?? runProvider)({

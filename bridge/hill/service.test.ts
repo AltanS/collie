@@ -77,7 +77,7 @@ interface Rig {
   known: boolean;
 }
 
-function rig(receipts: HillReceiptSurface = memoryHillReceipts()): Rig {
+function rig(receipts: HillReceiptSurface = memoryHillReceipts(), keepId?: () => void): Rig {
   let n = 0;
   const store = new HillStore(null, () => state.clock);
   const state: Omit<Rig, "hill"> = {
@@ -114,6 +114,7 @@ function rig(receipts: HillReceiptSurface = memoryHillReceipts()): Rig {
     walkyOn: () => state.walky,
     sessionsKnown: () => state.known,
     memberId: "m_aaaaaaaaaa",
+    keepId,
     machine: "desk",
     now: () => state.clock,
     mintId: () => {
@@ -365,10 +366,15 @@ describe("posting a decision", () => {
   });
 
   test("a solo bridge stamps its install id on an agent's decision too; host stays the display name", () => {
-    const r = rig();
+    let kept = 0;
+    const r = rig(memoryHillReceipts(), () => (kept += 1));
     const sender = r.hill.agentSender({ harness: "agent-x", label: "repo#one" }, "local/%1#aaaa");
     expect(sender).toMatchObject({ memberId: "m_aaaaaaaaaa", host: "desk" });
+    // A refused post keys nothing; the id is written down before the first Decision stores it.
+    r.hill.post(sender, { ...input(10), title: "" });
+    expect(kept).toBe(0);
     const decision = posted(r.hill.post(sender, input(1)));
+    expect(kept).toBe(1);
     expect(decision.from).toMatchObject({ kind: "agent", memberId: "m_aaaaaaaaaa", host: "desk", trickHost: null });
   });
 

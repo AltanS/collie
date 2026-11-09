@@ -10,7 +10,7 @@ import { asJsonString, parseJsonObject } from "../web/src/lib/json.ts";
 // machine is renamed, and trick programs bake the id into their own state files.
 //
 //   <stateDir>/bridge-id.json
-//   { "v": 1, "install": "m_k3x9q2w7ab", "id": "<the id served at the last boot>", "previous": "<id>" | null }
+//   { "v": 1, "install": "m_k3x9q2w7ab", "id": "<the id last kept>", "previous": "<id>" | null }
 //
 // THE ID is the crew member id when this bridge has one (the trust store's `self.memberId`), else the
 // install id. The install id is `m_` and ten of `[a-z0-9]`, minted once and kept in this file; it is
@@ -20,12 +20,15 @@ import { asJsonString, parseJsonObject } from "../web/src/lib/json.ts";
 // RESOLVED ONCE, AT BOOT (bridge/index.ts). A bridge that joins a crew while it runs keeps serving the
 // id it booted with until the next restart, so nothing keyed on it moves under a running trick.
 //
-// THE ALIAS. When the id served at this boot differs from the one served at the last (the bridge
-// joined a crew: install id to member id, or left one), `previous` keeps the old one, so a Decision
-// posted and a tap sent under it still reach this bridge after the restart. One step back only.
+// THE ALIAS. When the id this boot serves differs from the one the file last kept (the bridge joined
+// a crew: install id to member id, or left one), `previous` is the old one, so a Decision posted and a
+// tap sent under it still reach this bridge after the restart. One step back only.
 //
-// The file is written whole to a temp file and renamed (0600, inside the state folder), and only when
-// something in it changes, so a bridge that booted before with the same id writes nothing.
+// WRITTEN BY USE, NEVER AT START (solo zero-tax, solo-baseline.test.ts). Boot only reads the file. The
+// first thing that keys something on the id calls `keep()`: a trick's run (its program may store it)
+// and a post to the hill (the Decision stores it). Only then is the file written, whole to a temp
+// file and renamed (0600, inside the state folder), and only when something in it changed. An install
+// id minted at a boot that never kept it is thrown away with the process: nothing was keyed on it.
 
 /** The file's name inside the state folder. */
 export const BRIDGE_ID_FILE = "bridge-id.json";
@@ -61,11 +64,13 @@ export function isBridgeId(value: string): boolean {
   return value !== "trick" && (INSTALL_ID_RE.test(value) || isMemberId(value));
 }
 
-/** The id this boot serves, and the one the last boot served when it was another. */
+/** The id this boot serves, and the one the file kept before when it was another. */
 export interface BridgeIdentity {
   readonly id: string;
   /** The id served before a crew join or leave, still accepted on the way in. Null: none. */
   readonly previous: string | null;
+  /** Write the id to the state folder, once per process, when something is about to be keyed on it. Never throws. */
+  keep(): void;
 }
 
 interface BridgeIdFile {
@@ -105,48 +110,44 @@ export interface ResolveBridgeIdOptions {
 }
 
 /**
- * Read (and when needed write) `<stateDir>/bridge-id.json` and answer the id this boot serves. Never
- * throws: a file that cannot be written is warned about, and this boot serves the id it resolved.
- * A file that is there but does not read is set aside as `bridge-id.json.bad-<ms>` with a warning,
- * and a new install id is minted: there is no id left in it to keep.
+ * Read `<stateDir>/bridge-id.json` and answer the id this boot serves. Writes nothing: `keep()` does,
+ * at the first use. A file that is there but does not read is warned about now, and at `keep()` set
+ * aside as `bridge-id.json.bad-<ms>` before a new one is written: there is no id left in it to keep.
  */
 export function resolveBridgeId(opts: ResolveBridgeIdOptions): BridgeIdentity {
   const warn = opts.warn ?? ((line: string) => console.warn(line));
   const stateDir = opts.stateDir;
   const path = join(stateDir, BRIDGE_ID_FILE);
-  let held = readFile(path);
-  if (held === "bad") {
-    const aside = `${path}.bad-${String((opts.now ?? Date.now)())}`;
-    try {
-      renameSync(path, aside);
-      warn(`[bridge-id] ${path} did not read; set aside as ${aside}, minting a new install id`);
-    } catch (err) {
-      warn(`[bridge-id] ${path} did not read and could not be set aside: ${err instanceof Error ? err.message : String(err)}`);
-    }
-    held = null;
-  }
+  const read = readFile(path);
+  if (read === "bad") warn(`[bridge-id] ${path} did not read; a new install id replaces it at the first use`);
+  const held = read === "bad" ? null : read;
   const install = held?.install ?? (opts.mint ?? mintInstallId)();
   const crew = opts.crewMemberId !== null && isBridgeId(opts.crewMemberId) ? opts.crewMemberId : null;
   const id = crew ?? install;
   const last = held?.id ?? null;
-  // The id the last boot served, when it was another; else whatever alias the file already kept.
-  const previous = last !== null && last !== id ? last : (held?.previous ?? null);
-  const next: BridgeIdFile = { install, id, previous: previous === id ? null : previous };
-  if (held === null || held.install !== next.install || held.id !== next.id || held.previous !== next.previous) {
+  // The id the file last kept, when it was another; else whatever alias the file already kept.
+  const before = last !== null && last !== id ? last : (held?.previous ?? null);
+  const previous = before === id ? null : before;
+  let kept = false;
+  const keep = (): void => {
+    if (kept) return;
+    kept = true;
+    if (held !== null && held.install === install && held.id === id && held.previous === previous) return;
     try {
+      if (read === "bad") renameSync(path, `${path}.bad-${String((opts.now ?? Date.now)())}`);
       mkdirSync(stateDir, { recursive: true, mode: 0o700 });
       const temp = `${path}.tmp`;
-      writeFileSync(temp, `${JSON.stringify({ v: 1, ...next })}\n`, { mode: 0o600 });
+      writeFileSync(temp, `${JSON.stringify({ v: 1, install, id, previous })}\n`, { mode: 0o600 });
       chmodSync(temp, 0o600);
       renameSync(temp, path);
     } catch (err) {
       warn(`[bridge-id] could not save ${path}: ${err instanceof Error ? err.message : String(err)}`);
     }
-  }
-  return { id, previous: next.previous };
+  };
+  return { id, previous, keep };
 }
 
 /** Whether an id names this bridge: the one it serves, or the one it served before. */
-export function isOwnId(identity: BridgeIdentity, value: string): boolean {
+export function isOwnId(identity: Pick<BridgeIdentity, "id" | "previous">, value: string): boolean {
   return value === identity.id || (identity.previous !== null && value === identity.previous);
 }

@@ -2053,9 +2053,10 @@ const walkyHost: WalkyHost = {
 const walkyMemberId = crew.mode === "solo" ? null : (trustStore.current()?.self.memberId ?? null);
 // This bridge's one stable id (bridge-id.ts): the crew member id when it has a trust store, else the
 // install id minted once into `<stateDir>/bridge-id.json`. The key of its tricks' parts and session ids
-// and every Decision's `from.memberId`, never the host name. Resolved ONCE, here: a bridge that joins a
-// crew while it runs keeps serving the id it booted with until it restarts (a join restarts it), and
-// `previous` keeps the id of the last boot after a join or a leave, so what was keyed on it still lands.
+// and every Decision's `from.memberId`, never the host name. Resolved ONCE, here, by a read: a bridge
+// that joins a crew while it runs keeps serving the id it booted with until it restarts (a join restarts
+// it), and `previous` is the id kept before a join or a leave, so what was keyed on it still lands. The
+// file is written at the first use (`keep`: a trick run, a hill post), never at start.
 const bridgeId = resolveBridgeId({ stateDir: cfg.stateDir, crewMemberId: trustStore.current()?.self.memberId ?? null });
 // A sibling instance on this machine (siblings.ts) may have recorded a message typed into a pane both
 // bridges watch: the pane's list merges its rows, read-only, off the hook target registry's live bridges.
@@ -2166,6 +2167,7 @@ const hill = new HillService({
   crewMode: () => crew.mode,
   walkyOn: () => cfg.walky,
   memberId: bridgeId.id,
+  keepId: bridgeId.keep,
   machine: hostname(),
   audit: (entry) => audit.record(entry),
   // A trick's decision (M94): the answer reaches the trick's program as a tap. `tricks` is made further
@@ -3226,6 +3228,7 @@ const tricks =
         stateDir: cfg.stateDir,
         memberId: bridgeId.id,
         previousId: bridgeId.previous,
+        keepId: bridgeId.keep,
         // A trick's decisions go into the hill (M94, M96); `<stateDir>/hill/tricks.json` keeps the map.
         decisions: new TrickHill({
           stateDir: cfg.stateDir,

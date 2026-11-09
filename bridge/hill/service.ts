@@ -160,6 +160,8 @@ export interface HillServiceDeps {
    * install. Every decision's `from.memberId`. Not the walky member (`local` on a solo install).
    */
   readonly memberId: string;
+  /** Write `memberId` to the state folder before the first Decision stores it (bridge-id.ts `keep`). Absent in a test. */
+  readonly keepId?: () => void;
   /** This machine's name, as walky's `who` prints it. */
   readonly machine: string;
   readonly now?: () => number;
@@ -566,6 +568,8 @@ export class HillService {
     let id = this.mint();
     for (let tries = 0; this.deps.store.taken(id) && tries < 8; tries += 1) id = this.mint();
     if (this.deps.store.taken(id)) return refuse(null, "could not mint a decision id; try again");
+    // The Decision stores this bridge's id: it is written down before the first one does.
+    this.deps.keepId?.();
     const media = this.keepImages(id, images.images);
     if (media === null) return refuse(null, "the images could not be saved on this machine; nothing was posted");
     const decision: HillDecision = {

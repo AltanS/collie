@@ -1283,6 +1283,10 @@ const STATE_DIR_ENTRIES = [
   // READS it, and the emitter that fills it is a CLI verb the operator installs a hook for. An
   // instance whose operator never ran `collie hooks install` never has this directory at all.
   "beacons",
+  // This bridge's stable id (bridge/bridge-id.ts, M94 review row 11): the install id, minted once, and
+  // the id kept before a crew join. Written by use and by nothing else: boot only reads it, and the
+  // first trick run or hill post writes it, so a bridge that is merely started never has it.
+  "bridge-id.json",
   // The prompt-cache watch list (M28/03). Absent until the first watch toggle or the first warning sent
   // under the global switch — both are events, so a bridge that is merely started still writes the four
   // entries asserted below.
