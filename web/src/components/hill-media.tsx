@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Icon } from "@/components/icons/icon";
 import { ImageSheet } from "@/components/ui/image-sheet";
 import { useLocale } from "@/hooks/use-locale";
+import { useNearScreen } from "@/hooks/use-near-screen";
 import { useAuthedUrl } from "@/lib/authed-url";
 import { hillMediaPath, type HillMedia } from "@/lib/hill/wire";
 import { t } from "@/lib/i18n";
@@ -21,6 +22,9 @@ import { cn } from "@/lib/utils";
 // route cannot carry it, so the route is fetched through `useAuthedUrl` and drawn from the object URL
 // it hands back, as a journal picture is. A load that fails, at the fetch or at the decode, shows a
 // quiet placeholder with "Image not available" in the image's place, the same height on the card.
+//
+// AN IMAGE IS FETCHED ONLY NEAR THE SCREEN (hooks/use-near-screen.ts): within one screen height of the
+// visible part. Until then its slot is the reserved box, as it is while the fetch runs, so nothing moves.
 
 /** Where an image's bytes are: the bridge's route by default; the playground hands in its own. */
 export type HillMediaSource = (decisionId: string, media: HillMedia) => string;
@@ -49,8 +53,9 @@ interface ImageLoad {
   onError: () => void;
 }
 
-function useImage(src: string): ImageLoad {
-  const { url, failed } = useAuthedUrl(src);
+/** The bytes are fetched only once `near` is true: the slot's own box is reserved before and after, so the page does not move. */
+function useImage(src: string, near: boolean): ImageLoad {
+  const { url, failed } = useAuthedUrl(near ? src : null);
   const [broken, setBroken] = useState<string | null>(null);
   return { url, failed: failed || (url !== null && broken === url), onError: () => setBroken(url) };
 }
@@ -58,9 +63,11 @@ function useImage(src: string): ImageLoad {
 /** The first image on the card. A tap opens the body; `count` above one adds the "1 / n" mark. */
 export function HillCardImage({ src, media, count, onOpen }: { src: string; media: HillMedia; count: number; onOpen: () => void }) {
   useLocale();
-  const { url, failed, onError } = useImage(src);
+  const { ref, near } = useNearScreen();
+  const { url, failed, onError } = useImage(src, near);
   return (
     <button
+      ref={ref}
       type="button"
       data-slot="hill-card-image"
       aria-label={t("hill.media.open")}
@@ -83,10 +90,11 @@ export function HillCardImage({ src, media, count, onOpen }: { src: string; medi
 
 /** One image in the body: the column's width, its caption under it; a tap opens the picture sheet. */
 function BodyImage({ src, media, index, count }: { src: string; media: HillMedia; index: number; count: number }) {
-  const { url, failed, onError } = useImage(src);
+  const { ref, near } = useNearScreen();
+  const { url, failed, onError } = useImage(src, near);
   const alt = altOf(media, index, count);
   return (
-    <figure data-slot="hill-body-image" className="flex flex-col gap-1">
+    <figure ref={ref} data-slot="hill-body-image" className="flex flex-col gap-1">
       {failed ? (
         <Unavailable className="h-24 rounded-md border border-border bg-muted/30" />
       ) : url !== null ? (
