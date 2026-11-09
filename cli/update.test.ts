@@ -1726,6 +1726,27 @@ describe("collie update on a binary install", () => {
     expect(h.exec.spawned[0]?.command[0]).toBe("setsid");
   });
 
+  test("a manager reachable only through the derived session dir gets it on the client's env", async () => {
+    // A Herdr action injects no session variables at all (#194). The probe retries with
+    // /run/user/<uid> and succeeds; the `systemd-run` CLIENT it goes on to launch needs the same
+    // variables to find that bus, and `runnerEnv` alone cannot supply what the process never had.
+    const uid = process.getuid?.() ?? 0;
+    const h = binaryHarness({
+      others: ["0.9.0"],
+      answers: [
+        [
+          "systemctl --user show-environment",
+          { perCall: (_n, env) => ({ code: env?.XDG_RUNTIME_DIR === `/run/user/${uid}` ? 0 : 1 }) },
+        ],
+      ],
+    });
+    expect(await cmdUpdate(h.deps)).toBe(EXIT.OK);
+    const client = h.exec.ran[0];
+    expect(client?.command[0]).toBe("systemd-run");
+    expect(client?.env.XDG_RUNTIME_DIR).toBe(`/run/user/${uid}`);
+    expect(client?.env.DBUS_SESSION_BUS_ADDRESS).toBe(`unix:path=/run/user/${uid}/bus`);
+  });
+
   test("the runner flips `current` with one rename, restarts through it, and only then prunes", async () => {
     const h = binaryHarness({ others: ["0.9.0"] });
     expect(await runner(h, BINARY_APPLY)).toBe(EXIT.OK);
