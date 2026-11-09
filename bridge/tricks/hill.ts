@@ -30,9 +30,12 @@ import { hillDir } from "../hill/store.ts";
 //     the new version with `supersedes` while the old one is open, and as a fresh decision once the old
 //     one closed.
 //   * a key the document no longer lists is withdrawn, "by the trick".
-//   * a key the person answered or dismissed, or that expired or ended, stays closed while its content
-//     hash is unchanged. To ask again the trick changes the content, or drops the key for a run and
-//     lists it again (a drop moves the generation, so the request id is new).
+//   * a key the person answered or dismissed stays closed while its content hash is unchanged. To ask
+//     again the trick changes the content, or drops the key for a run and lists it again (a drop moves
+//     the generation, so the request id is new).
+//   * a key that closed without the person (`undeliverable`, `expired` or `withdrawn` by someone other
+//     than the trick) posts again on a later run that still lists it, at most once per
+//     {@link REASK_AFTER_MS} per key, counted from its last post.
 //   * a decision the parser refused, or that names no live session, or that the hill refused, changes
 //     nothing for its key: the version on the hill stays as it is. Each such one is a refusal.
 //   * a failed or timed-out run never reaches this module (service.ts): the last good decisions stay.
@@ -51,7 +54,7 @@ import { hillDir } from "../hill/store.ts";
 //
 // THE MAP. `<stateDir>/hill/tricks.json` keeps, per trick, the generation and per key the decision id,
 // the content hash and the state last seen:
-//   { "v": 1, "tricks": { "<trickId>": { "gen": 0, "keys": { "<key>": { "decisionId", "hash", "state", "seq" } } } } }
+//   { "v": 1, "tricks": { "<trickId>": { "gen": 0, "keys": { "<key>": { "decisionId", "hash", "state", "seq", "at" } } } } }
 // Beside the hill's own files, not in the trick's state folder (that folder is its program's). Written
 // whole to a temp file and renamed, 0600 in a 0700 folder, and only when something changed, so a
 // bridge whose tricks list no decisions writes no file.
@@ -62,6 +65,11 @@ export const TRICKS_MAP_FILE = "tricks.json";
 /** The hex characters of a content hash kept in the map and handed to the program as `seen`. */
 export const CONTENT_HASH_HEX = 16;
 
+/** The least time between two posts of a key that closed without the person. */
+export const REASK_AFTER_MS = 10 * 60_000;
+/** States a decision reaches without the person: its key may ask again. */
+const REASKABLE: ReadonlySet<HillState> = new Set(["undeliverable", "expired", "withdrawn"]);
+
 /** A key's last known decision on the hill. */
 export interface TrickHillEntry {
   readonly decisionId: string;
@@ -69,6 +77,8 @@ export interface TrickHillEntry {
   readonly state: HillState;
   /** How many times this key was posted in this generation: the next post's request id takes it. */
   readonly seq: number;
+  /** When it was last posted, epoch ms. Absent in a map written before re-asks: it may ask at once. */
+  readonly at?: number;
 }
 
 interface TrickHillRecord {
@@ -92,6 +102,7 @@ export interface TrickHillDeps {
    */
   addressOf(scopeKey: string): string | null;
   readonly warn?: (line: string) => void;
+  readonly now?: () => number;
 }
 
 /** The trick a run belongs to, as the runner knows it. */
@@ -209,7 +220,8 @@ function readMap(raw: string): Map<string, TrickHillRecord> {
       const state = asJsonString(entry?.state);
       const seq = asJsonNumber(entry?.seq);
       if (decisionId === undefined || hash === undefined || !isHillState(state) || seq === undefined || !Number.isSafeInteger(seq) || seq < 0) continue;
-      record.keys[key] = { decisionId, hash, state, seq };
+      const at = asJsonNumber(entry?.at);
+      record.keys[key] = at === undefined ? { decisionId, hash, state, seq } : { decisionId, hash, state, seq, at };
     }
     out.set(id, record);
   }
@@ -222,8 +234,11 @@ export class TrickHill {
   private readonly dir: string;
   private map: Map<string, TrickHillRecord>;
 
+  private readonly now: () => number;
+
   constructor(private readonly deps: TrickHillDeps) {
     this.warn = deps.warn ?? ((line) => console.warn(`[tricks] ${line}`));
+    this.now = deps.now ?? Date.now;
     this.dir = hillDir(deps.stateDir);
     this.path = join(this.dir, TRICKS_MAP_FILE);
     this.map = this.load();
@@ -328,8 +343,9 @@ export class TrickHill {
         images.map((image) => ({ bytes: imageFileDigest(image.path), caption: image.caption ?? null })),
       );
       const held = keys[decision.key];
-      // Unchanged: open stays open, and an answered, dismissed, expired or ended one stays closed.
-      if (held !== undefined && held.hash === hash) return;
+      // Unchanged: open stays open, and an answered or dismissed one stays closed. One that closed without
+      // the person asks again, once per REASK_AFTER_MS.
+      if (held !== undefined && held.hash === hash && !this.mayReask(held)) return;
       const replyTo = this.address(decision.replyTo, path, "replyTo", decision.key, refusals);
       const about = this.address(decision.about, path, "about", decision.key, refusals);
       if (replyTo === undefined || about === undefined) return;
@@ -354,7 +370,7 @@ export class TrickHill {
         refusals.push(hillRefusal(answer, path, decision, images));
         return;
       }
-      keys[decision.key] = { decisionId: answer.decision.id, hash, state: answer.decision.state, seq: (held?.seq ?? 0) + 1 };
+      keys[decision.key] = { decisionId: answer.decision.id, hash, state: answer.decision.state, seq: (held?.seq ?? 0) + 1, at: this.now() };
     });
 
     const next: TrickHillRecord = { gen, keys };
@@ -363,6 +379,11 @@ export class TrickHill {
     else this.map.set(trick.id, next);
     if (JSON.stringify(empty ? null : next) !== before) this.save();
     return refusals;
+  }
+
+  /** Whether an unchanged key may post again: it closed without the person, and its last post is old enough. */
+  private mayReask(held: TrickHillEntry): boolean {
+    return REASKABLE.has(held.state) && this.now() - (held.at ?? 0) >= REASK_AFTER_MS;
   }
 
   /** A scope key as a walky address: null when absent, undefined (and a refusal) when it names no live session. */

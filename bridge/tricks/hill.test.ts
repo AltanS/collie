@@ -12,7 +12,7 @@ import { hillAnswerRoute, hillListRoute, hillMediaRoute } from "../server.ts";
 import type { HillDecision, HillReceipt } from "../../web/src/lib/hill/wire.ts";
 import { parseJsonObject } from "../../web/src/lib/json.ts";
 import { parseFacts, type Refusal, type TrickDecision, type TrickFacts, type TrickTapReply } from "../../web/src/lib/tricks/schema.ts";
-import { decisionContentHash, imageFileDigest, scopeKeyAddress, TrickHill, TRICKS_MAP_FILE, trickRequestId, type TrickHillTrick } from "./hill.ts";
+import { decisionContentHash, imageFileDigest, REASK_AFTER_MS, scopeKeyAddress, TrickHill, TRICKS_MAP_FILE, trickRequestId, type TrickHillTrick } from "./hill.ts";
 import { TRICKS_DIR } from "./paths.ts";
 import { runProvider, type RunOutcome, type RunSpec } from "./run.ts";
 import { HILL_NODE_TAP_REFUSED, TricksService, type TapAnswer } from "./service.ts";
@@ -51,6 +51,8 @@ interface Rig {
   readonly media: HillMediaStore;
   readonly hill: HillService;
   readonly tricks: TrickHill;
+  /** The trick map's clock (re-asks count from it). */
+  readonly clock: { t: number };
   readonly sent: { to: string; body: string }[];
   live: HillPlace[];
   /** What the trick's tap callback is answered with, and every tap it got. */
@@ -105,8 +107,9 @@ function rig(stateDir = join(tempDir(), "state")): Rig {
       return state.tapResult;
     },
   });
-  const tricks = new TrickHill({ stateDir, hill, addressOf: (scopeKey) => scopeKeyAddress(scopeKey, HOST, "local", probe) });
-  return Object.assign(state, { stateDir, configDir, trick, store, media, hill, tricks, restart: () => rig(stateDir) });
+  const clock = { t: 50_000_000 };
+  const tricks = new TrickHill({ stateDir, hill, addressOf: (scopeKey) => scopeKeyAddress(scopeKey, HOST, "local", probe), now: () => clock.t });
+  return Object.assign(state, { stateDir, configDir, trick, store, media, hill, tricks, clock, restart: () => rig(stateDir) });
 }
 
 const decision = (key: string, over: Partial<TrickDecision> = {}): TrickDecision => ({
@@ -155,7 +158,7 @@ describe("the diff by key", () => {
     if (process.platform !== "win32") expect(statSync(path).mode & 0o777).toBe(0o600);
     const file = parseJsonObject(readFileSync(path, "utf8"));
     const held = open(r)[0]!;
-    expect(file).toEqual({ v: 1, tricks: { legs: { gen: 0, keys: { "case-8": { decisionId: held.id, hash: decisionContentHash(decision("case-8")), state: "open", seq: 1 } } } } });
+    expect(file).toEqual({ v: 1, tricks: { legs: { gen: 0, keys: { "case-8": { decisionId: held.id, hash: decisionContentHash(decision("case-8")), state: "open", seq: 1, at: expect.any(Number) } } } } });
   });
 
   test("the same key with changed content posts the new one with supersedes", () => {
@@ -226,6 +229,35 @@ describe("the diff by key", () => {
     const [asked] = open(r);
     expect(asked?.supersedes).toBeNull();
     expect(asked?.id).not.toBe(first.id);
+  });
+
+  test("a key that closed without the person asks again on a later run, at most once per 10 minutes", () => {
+    for (const closed of ["undeliverable", "expired", "withdrawn"] as const) {
+      const r = rig();
+      sync(r, [decision("case-8")]);
+      const first = open(r)[0]!;
+      r.store.put({ ...first, state: closed });
+      sync(r, [decision("case-8")]);
+      expect(open(r)).toEqual([]);
+      r.clock.t += REASK_AFTER_MS - 1;
+      sync(r, [decision("case-8")]);
+      expect(open(r)).toEqual([]);
+      r.clock.t += 1;
+      sync(r, [decision("case-8")]);
+      const [again] = open(r);
+      expect(again?.id).not.toBe(first.id);
+      expect(again?.supersedes).toBeNull();
+      expect(r.tricks.entries("legs")["case-8"]).toMatchObject({ decisionId: again?.id, state: "open", seq: 2, at: r.clock.t });
+    }
+  });
+
+  test("an answered or dismissed key never asks again by itself, however long it waits", async () => {
+    const r = rig();
+    sync(r, [decision("case-8")]);
+    await answer(r, open(r)[0]!, 100, "rerun");
+    r.clock.t += 24 * 60 * 60_000;
+    sync(r, [decision("case-8")]);
+    expect(open(r)).toEqual([]);
   });
 
   test("a dismissed key dropped for a run and listed again asks again", async () => {

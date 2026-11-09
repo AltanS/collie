@@ -41,6 +41,8 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 - **A trick's mark scrolls with the Belt.** The mark moves from the pinned block to the end of the scrolling strip, after Collie's own keys, so two or three marks no longer leave Stop and the keys out of reach. The pinned block holds Collie's own marks only. (M94)
 
+- **A trick's question that never reached you asks again.** When a trick's decision closed without you, because it could not be delivered, it expired or someone else withdrew it, the trick posts it again on a later run that still lists it, at most once every 10 minutes. A decision you answered or dismissed stays closed. (M94)
+
 ## [1.28.0] - 2026-11-09
 
 ### Added
