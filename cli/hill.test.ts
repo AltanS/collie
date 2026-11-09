@@ -365,6 +365,7 @@ describe("help", () => {
     "One question per decision. To change one, post again with --supersedes; never repost.",
     "Do not wait in a loop. The answer arrives as a WalkyTalky message and starts your next turn.",
     "If no answer arrived, read it with collie hill status <id>.",
+    "An answer typed into your session for a decision you did not post carries only the id and the option word. Read the rest with collie hill status <id>.",
     "A worker with a lead asks its lead first.",
   ];
 

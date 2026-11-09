@@ -2,11 +2,13 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, isAbsolute, join, resolve } from "node:path";
 
+import { redactText } from "../bridge/redact.ts";
 import { diskTrickFs, trickCodeHash, walkTrickCode, type CodeEntry } from "../bridge/tricks/code-hash.ts";
 import { createTrickScanner, readManifestFile, type FoundTrick } from "../bridge/tricks/discover.ts";
 import { isBaseEnvName, neverReason, scrubEnv } from "../bridge/tricks/env.ts";
 import { MANIFEST_FILE, tricksConfigDir, switchesPath } from "../bridge/tricks/paths.ts";
 import { outcomeProblem, runProvider, type RunOutcome } from "../bridge/tricks/run.ts";
+import { isChanged } from "../bridge/tricks/service.ts";
 import { parseSwitches, updateSwitches, withSwitch } from "../bridge/tricks/switches.ts";
 import type { CrewFetch } from "../bridge/crew/peer-client.ts";
 import { asJsonBoolean, asJsonObject, asJsonString, parseJson, type JsonValue } from "../web/src/lib/json.ts";
@@ -36,12 +38,14 @@ import type { Files } from "./sys.ts";
 //                     provider once against fixture facts, with the bridge's environment rule, and
 //                     parses what it prints
 //   init <id>         a new folder with `trick.toml`, a sample provider and an `AGENTS.md`
+//   skill [<id>]      what an agent reads: the `SKILL.md` of a trick that is ON and unchanged (what the
+//                     trick asks of the agent), or with no id the brief for writing a trick
 //
 // `check` exits 0 (clean, or only "later" notes), 1 (a refusal or a failed run) or 2 (usage: no
 // folder, or not a folder), like `config check`. `--json` prints one report document instead.
-// `add`, `update` and `skill` are a later slice.
+// `add` and `update` are a later slice.
 
-export const TRICK_SUBCOMMANDS = ["list", "on", "off", "check", "init"] as const;
+export const TRICK_SUBCOMMANDS = ["list", "on", "off", "check", "init", "skill"] as const;
 
 export interface TrickDeps {
   ctx: Pick<CliContext, "configDir" | "stateDir" | "env" | "port">;
@@ -107,6 +111,8 @@ export type TrickListRow = {
   state: string;
   lastRunAt: string | null;
   error: string | null;
+  /** Whether the folder holds a regular file `SKILL.md`: what `collie trick skill <id>` would print. */
+  skill: boolean;
 };
 
 /** What `trick list` and the doctor row read: the folders, the bridge's word, its runner's PATH. */
@@ -122,7 +128,8 @@ export async function trickListRows(deps: Pick<TrickDeps, "ctx" | "files" | "fet
   const found = await foundTricks(deps);
   const { switches } = switchesOf(deps);
   const bridge = found.exists ? await bridgeTricks(deps) : null;
-  const rows = found.tricks.map((m): TrickListRow => {
+  const skills = await Promise.all(found.tricks.map(async (m) => (await diskTrickFs.lstat(join(m.dir, SKILL_FILE)))?.kind === "file"));
+  const rows = found.tricks.map((m, i): TrickListRow => {
     const on = switches.on.has(m.id);
     const said = bridge?.tricks.get(m.id);
     const local = m.manifest === undefined ? "skipped" : on ? "on, not seen by the bridge" : "off";
@@ -134,6 +141,7 @@ export async function trickListRows(deps: Pick<TrickDeps, "ctx" | "files" | "fet
       state: said?.state ?? local,
       lastRunAt: said?.lastRunAt ?? null,
       error,
+      skill: skills[i] === true,
     };
   });
   const out: TrickList = { exists: found.exists, rows, bridge: bridge !== null };
@@ -158,11 +166,72 @@ export async function cmdTrickList(deps: TrickDeps, args: readonly string[]): Pr
     return EXIT.OK;
   }
   const lines = table([
-    ["ID", "NAME", "SWITCH", "STATE", "LAST RUN", "LAST ERROR"],
-    ...rows.map((r) => [r.id, r.name, r.on ? "on" : "off", r.state, r.lastRunAt ?? "-", r.error ?? "-"]),
+    ["ID", "NAME", "SWITCH", "SKILL", "STATE", "LAST RUN", "LAST ERROR"],
+    ...rows.map((r) => [r.id, r.name, r.on ? "on" : "off", r.skill ? "yes" : "-", r.state, r.lastRunAt ?? "-", r.error ?? "-"]),
   ]);
   for (const line of lines) deps.io.out(line);
   if (!bridge) deps.io.out("(the bridge did not answer: state and last run are from the files only)");
+  if (rows.some((r) => r.skill && r.on)) deps.io.out("An agent reads what a trick asks of it with: collie trick skill <id>");
+  return EXIT.OK;
+}
+
+// ── skill ────────────────────────────────────────────────────────────────────
+
+/** The file in a trick folder that says what the trick asks of an agent. */
+export const SKILL_FILE = "SKILL.md";
+/** The most `collie trick skill <id>` reads and prints. A larger file is refused, never cut. */
+export const SKILL_BYTES_MAX = 32 * 1024;
+
+/** The brief `collie trick skill` prints with no id: for an agent that wants to write a trick. */
+export const TRICK_WRITE_BRIEF = [
+  "A trick is a folder, <config dir>/tricks/<id>/, with a trick.toml and a program. The phone draws what the program prints.",
+  "To write one:",
+  "  1. Run `collie trick init <id>`. It makes the folder with a sample program and an AGENTS.md.",
+  "  2. Read that AGENTS.md. It says what the program gets, what it may print, and the limits.",
+  "  3. Write the trick, then run `collie trick check --run <folder>`. It reads the folder and runs the program once.",
+  "  4. Fix what it reports, and run it again until it is clean.",
+  "The trick stays off. Never switch it on yourself: `collie trick on <id>` is the person's approval of the code.",
+  "To teach other agents what the trick asks of them, add a SKILL.md to the folder. `collie trick skill <id>` prints it while the trick is on. SKILL.md is part of the trick's code, so an edit stops the trick until a person switches it on again.",
+] as const;
+
+/** One refusal of `trick skill <id>`: a plain line, and why it is a failure. */
+function skillRefusal(deps: Pick<TrickDeps, "io">, line: string): number {
+  deps.io.err(line);
+  return EXIT.FAIL;
+}
+
+/**
+ * `collie trick skill [<id>]`. With an id: the trick's `SKILL.md`, only when the folder exists, its manifest
+ * parses, the trick is ON and its code is not changed since it was switched on (the rule the bridge runs it
+ * by), so a trick that is off asks an agent nothing. The file is read the hardened way: `lstat`, a regular
+ * file only, at most {@link SKILL_BYTES_MAX} bytes, then through the secret mask.
+ */
+export async function cmdTrickSkill(deps: TrickDeps, args: readonly string[]): Promise<number> {
+  const id = args.find((a) => !a.startsWith("-"));
+  if (id === undefined) {
+    for (const line of TRICK_WRITE_BRIEF) deps.io.out(line);
+    return EXIT.OK;
+  }
+  if (!isTrickId(id)) {
+    deps.io.err("usage: collie trick skill [<id>]   (an id is 1 to 32 of a-z, 0-9 and -)");
+    return EXIT.USAGE;
+  }
+  const found = (await foundTricks(deps)).tricks.find((t) => t.id === id);
+  if (found === undefined) return skillRefusal(deps, `no such trick: ${id}`);
+  if (found.manifest === undefined) return skillRefusal(deps, `${id} has a manifest that does not parse, so it teaches nothing`);
+  const entry = switchesOf(deps).switches.on.get(id);
+  if (entry === undefined) return skillRefusal(deps, `${id} is off, so it teaches nothing`);
+  if (isChanged(entry, found)) return skillRefusal(deps, `${id} changed since it was switched on, so it teaches nothing until you switch it on again`);
+  const path = join(found.dir, SKILL_FILE);
+  const st = await diskTrickFs.lstat(path);
+  if (st === null) return skillRefusal(deps, `${id} has no ${SKILL_FILE}`);
+  if (st.kind !== "file") return skillRefusal(deps, `${id} has no ${SKILL_FILE} (it is not a regular file)`);
+  if (st.size > SKILL_BYTES_MAX) return skillRefusal(deps, `${id} has a ${SKILL_FILE} larger than ${String(SKILL_BYTES_MAX / 1024)} KiB, so it is not read`);
+  const bytes = await diskTrickFs.read(path, SKILL_BYTES_MAX + 1);
+  if (bytes === null) return skillRefusal(deps, `${id} has a ${SKILL_FILE} that cannot be read`);
+  if (bytes.length > SKILL_BYTES_MAX) return skillRefusal(deps, `${id} has a ${SKILL_FILE} larger than ${String(SKILL_BYTES_MAX / 1024)} KiB, so it is not read`);
+  if (looksBinary(new TextDecoder().decode(bytes))) return skillRefusal(deps, `${id} has a ${SKILL_FILE} that is not text`);
+  deps.io.out(redactText(new TextDecoder().decode(bytes)).replace(/\n+$/u, ""));
   return EXIT.OK;
 }
 

@@ -2182,6 +2182,7 @@ describe("beacon-hooks-claude", () => {
 
 describe("skill-walky-talky", () => {
   const SKILL = join(HOME, ".claude", "skills", "collie-walky-talky", "SKILL.md");
+  // An installed copy from a build before format 2 (before the skill taught the hill and tricks).
   const STAMP = "<!-- collie-skill walky-talky v1 collie 0.0.1 -->";
 
   test("no install anywhere is OK, because nothing writes the skill unless the operator asks", async () => {
