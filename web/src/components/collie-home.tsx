@@ -22,8 +22,8 @@ interface CollieHomeProps {
    *  we've in fact given up; muted says "not connected" at a glance, matching the boot splash. */
   lost?: boolean;
   /** A new app build is being applied on this phone: downloading, or waiting to reload onto
-   *  (`lib/bundle-apply.ts`). The orbit turns at the calm pace (20 s a turn, drawn in poses, so a
-   *  long wait costs a few frames a second) and every bead draws in the update
+   *  (`lib/bundle-apply.ts`). The orbit turns at the calm pace (20 s a turn, smooth, on the compositor, so a
+   *  long wait costs the main thread nothing) and every bead draws in the update
    *  colour, which is the band's old download row moved onto the mark (2026-11-06). Outranks the
    *  bloom, a round and busy work; `lost` outranks it. */
   applying?: boolean;
@@ -210,7 +210,7 @@ export function CollieHome({
   // It is the ORBIT that turns, not the whole SVG (the head would span round with it). The round
   // sets `state="loading"`: the same beads on the same path, at the live pace. A round is exactly one
   // turn, so it starts from the pose the drift is in and lands back on it, and the drift goes on from
-  // there (the contract's `useMark`: rest is drawn in poses, a few frames a second, issue 748). Every state differs from `rest` by colour too, so under
+  // there (the contract's `useMark`: rest drifts while the page is in use and holds once it is left alone, issue 748). Every state differs from `rest` by colour too, so under
   // `prefers-reduced-motion`, when the turning stops, the colour still says something happened.
   //
   // It never fights the connection state. `bloom` is already `loading` and outranks this, since a
@@ -320,8 +320,8 @@ export function CollieHome({
     timer.current = setTimeout(() => {
       timer.current = null;
       // Rate restored BEFORE the state flips, and in this order deliberately. Dropping `round`
-      // re-renders the mark at `rest`, which the ticker draws in poses at rate 1, and a rate other
-      // than 1 left behind would keep the mark running instead (the contract's `setRate`). The loop
+      // re-renders the mark at `rest`, which eases to a hold once the page is left alone at rate 1, and a rate
+      // other than 1 left behind would keep the mark running instead (the contract's `setRate`). The loop
       // is cancelled first so it cannot write a rate back after this.
       if (frame.current !== null) cancelAnimationFrame(frame.current);
       frame.current = null;

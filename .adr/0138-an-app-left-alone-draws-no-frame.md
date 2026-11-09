@@ -47,17 +47,38 @@ everyone who does not know to look for it.
 ## Amendment 2026-11-09
 
 Altan asked for the resting drift back ("without the performance hit"), and for the update's turn to
-be calmer ("maybe 2-3 times the idle"). Rule 1 now reads: **at rest no animation runs.** The mark's
-animations are still there in `rest` and `applying`, but paused (`data-ticked`), and one ticker per
-page seeks them forward `MARK_POSES.perSecond` times a second (the mark contract, sealed from
-collie-brand). The browser draws that many frames, not 60: 4 a second until Altan picks the rate on
-the comparison page. `applying` turns at a new calm pace, one turn in 20 s, in poses too. `idle` holds
-the pose it is in.
+be calmer ("maybe 2-3 times the idle"). A pose ticker, a few seeks a second, was built and rejected on
+the comparison page ("bead spinners all look bad"). What replaced it came from a trace, not a guess.
 
-- The ticker is one timer, never a `requestAnimationFrame` loop, and it stops on rule 2's own terms:
-  it reads `data-page-hidden` and `data-app-covered` (the contract's `MARK_HOLD`, pinned against
-  `index.css` by `mark-ticker.test.ts`), the document's visibility and `prefers-reduced-motion`.
-- The last lap is gone: every state change carries the phase, so nothing jumps. A short busy moment
-  now reads as a brief speed-up of the drift, not as one full lap.
-- Rule 4 holds with a smaller cost: a blur over the header mark would redraw a few times a second.
-- `loading` and `reconnected` stay running animations at the live pace, as the consequences above say.
+**What the old drift cost.** Headless Chromium at 3x, 10 s on the resting Collie mark alone: 60 frames,
+60 main-thread frames, 120 paints, 81 ms of main-thread work a second. With only the ball's texture
+roll paused (`cm-roll`, a texture that turns inside a `<mask>`): 60 frames, 0 main-thread frames,
+0 paints, under 1 ms a second. Every other character's drift (glass, glass-front, kawaii, kawaii-tilt,
+owl, sheep) already measured 0 main-thread frames and 0 paints: Chromium runs a transform on an SVG
+child on the compositor. Pixel draws about 9 frames a second, stepped. So the main-thread cost was the
+roll, and only the roll.
+
+**Rule 1 now reads: a page left alone runs no animation.**
+
+- The resting mark drifts, smooth, as plain CSS animations, while the page is in use: a touch, a key,
+  a wheel or a scroll in the last `MARK_DRIFT.windowMs` (20 s). Then its rate falls to nothing over
+  `MARK_DRIFT.easeMs` (2 s) and it holds where it is (`data-still`). The next input drifts on from the
+  held pose. One reading for the page, shared by every mark, one timer that re-arms only when it fires.
+- At the slow paces (`data-slow`: rest, idle, applying) the textures that turn inside a mask (`cm-roll`,
+  `cm-rock`, `cm-wobble`) are paused, so a slow mark asks the main thread for nothing. The live states
+  keep them: they are short.
+- `applying` turns at a new calm pace, one turn in 20 s, always, on the compositor. It does not wait
+  for input: a person waiting for an update wants to see it move.
+- `MARK_DRIFT.mode = "always"` would drift for as long as the page is open: 0 main-thread work, but
+  60 compositor frames a second, which is the GPU load this ADR is about. The default is `"in-use"`
+  until Altan picks on the comparison page (10 is always, 11 is in use).
+- Rule 2 holds unchanged: the `data-page-hidden` and `data-app-covered` rule in `index.css` pauses the
+  drift too, and `prefers-reduced-motion` stops it.
+- Every state change carries the phase, so nothing jumps, and the last lap is gone. A short busy moment
+  reads as a brief speed-up of the drift, not as one full lap.
+- `web/e2e/idle-repaint.spec.ts` now lets the window pass on a fake clock and then asks for no running
+  animation, for every character, as before.
+
+Measured on the comparison page (two marks, 10 s each, 3x): option 11 at rest, in use, 60 frames,
+0 main-thread frames, 0 paints, 0.6 ms a second; rested, 0 frames. Applying, either option, 60 frames,
+0 main-thread frames, 0 paints, about 2 ms a second (no timer, no script call in the trace).

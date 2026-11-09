@@ -1,4 +1,4 @@
-// generated: sha256=a733ec61696b4b2154c966b26ff0f657ff750b1183b28fc58755c8d0c35dd48d from=collie-brand/src/mark-contract.ts@e3dcec57368c
+// generated: sha256=775832920e999e82d1bf42c75fb8428fdcb8b409d360eecbcdb8db2b68d8e006 from=collie-brand/src/mark-contract.ts@e51f6910085a
 // COPIED WHOLE from collie-brand/src/mark-contract.ts. Edit it there, in collie-brand, and nowhere else.
 /**
  * THE MARK CONTRACT. One file that every Collie brand mark implements, the Collie mark included.
@@ -18,16 +18,15 @@
  * bead colours, a turn) and each mark decides HOW, in its own idiom.
  *
  * WHAT IS PUBLIC, all of it named here:
- *   props        size, weight, paper, title, className, state, beads, turn, ref (and `loading`,
- *                deprecated, an alias for state="loading")
+ *   props        size, weight, paper, title, className, state, beads, turn, drift, ref (and
+ *                `loading`, deprecated, an alias for state="loading")
  *   variables    --mark-turn, --mark-bead, --mark-bead-<i>, --mark-accent-1, --mark-accent-2,
  *                --mark-ink, --mark-paper, read on the mark's root or inherited from an ancestor
  *   attributes   data-mark="<id>" and data-state="<state>" on the root; data-bead while a bead
- *                colour is forced, data-still while the turn is held, data-ticked while the
- *                orbit is drawn in poses
+ *                colour is forced, data-still while the turn is held, data-slow while the pace
+ *                is one of the two slow ones (a mark pauses there what its compositor cannot run)
  *   handle       setRate(rate), through `ref`
- *   ticker       MARK_POSES, the poses a second; createMarkTicker, for a page that compares rates;
- *                MARK_HOLD, the host attributes that stop it
+ *   drift        MARK_DRIFT, when a resting mark drifts
  * EVERYTHING ELSE IS PRIVATE: a mark's class names, part names, keyframe names and its own custom
  * properties (`--cm-*`, `--ck-*` and so on) may change in any regeneration.
  *
@@ -36,7 +35,7 @@
  * `--mark-bead` from a stylesheet, because those states ARE the colour. Only the `beads` prop beats it.
  */
 import type { CSSProperties, Ref, SVGProps } from "react";
-import { useEffect, useId, useImperativeHandle, useRef, useState } from "react";
+import { useEffect, useId, useImperativeHandle, useRef, useState, useSyncExternalStore } from "react";
 
 // ─── the states ─────────────────────────────────────────────────────────────────────────────────
 
@@ -44,30 +43,35 @@ import { useEffect, useId, useImperativeHandle, useRef, useState } from "react";
  * What the mark says, never how it says it. Each mark draws each state in its own idiom (glass
  * lights up, pixel beads hop), and the meaning is shared:
  *
- *   rest         nothing is happening. The mark drifts, one turn in 48 s, drawn in poses.
+ *   rest         nothing is happening. The mark drifts, one turn in 48 s, while the page is in use.
  *   loading      something is being fetched or worked on. Fast, and the mark's live colours.
- *   applying     the app itself is updating. Calm, one turn in 20 s, drawn in poses, every bead in
- *                the status "working" colour.
+ *   applying     the app itself is updating. Calm, one turn in 20 s, every bead in the status
+ *                "working" colour.
  *   reconnected  the link came back. Fast, every bead in the status "done" colour, for one turn.
  *   idle         not connected, or put aside. Held in the pose it is in, dimmed and grey.
  *
- * SLOW IS DRAWN IN POSES. A running CSS animation asks the browser for a new frame 60 times a second
- * whatever its pace. Until issue 748 (collie) rest was such an animation, a 48 s drift, and on one
- * Android build that frame rate, all day, drove Chrome's GPU process past the system's file limit
- * until the system killed it. Collie 1.28.0 then held rest still. Since 2026-11-09 the drift is back,
- * without the frames: in `rest` and `applying` every animation in the mark is PAUSED (`data-ticked`),
- * and one ticker for the whole page seeks them forward `MARK_POSES.perSecond` times a second. The
- * browser draws only those poses. A slow orbit moves a few degrees a pose, so it still reads as
- * moving. The fast states (`loading`, `reconnected`) are real running animations: they are short,
- * and at 1.8 s a turn a pose a quarter second apart would read as a stutter.
+ * WHAT A FRAME COSTS (issue 748, collie). A running CSS animation asks for a new frame every vsync,
+ * whatever its pace. Until 1.28.0 the resting drift ran all day, and on one Android build that frame
+ * rate drove Chrome's GPU process past the system's file limit. Measured on 2026-11-09 in headless
+ * Chromium, the bead paths themselves are cheap: a transform or opacity animation on an SVG part runs
+ * on the compositor, with no style, layout or paint on the main thread. What cost 80 ms of main
+ * thread a second was the Collie mark's balls turning on their own axes, a texture moving inside a
+ * `<mask>`, which only the main thread can draw. So:
  *
- * ONE PHASE, WHATEVER DRAWS IT. A state change never restarts an animation: the paused ones and the
- * running ones are the same animations, so a mark that starts turning starts from the pose the
- * ticker last showed, and a mark that stops turning is ticked on from where it stopped. The phase
- * carry in `useMark` keeps the progress when the turn's length changes.
+ *   - At the two slow paces (`data-slow`) a mark pauses what its compositor cannot run (the Collie
+ *     mark's ball turn). The orbit itself runs, smooth.
+ *   - A resting mark drifts only while the page is IN USE (`MARK_DRIFT`): a touch, a key, a wheel or
+ *     a scroll in the last 20 s. Then it eases to a stop over 2 s and holds, so a page left alone
+ *     draws no frame at all. Any input sets it going again from the pose it held.
+ *   - `applying` always turns while it lasts; `loading` and `reconnected` are short.
+ *
+ * ONE PHASE. A state change never restarts an animation, so nothing jumps: a mark that starts or
+ * stops turning does so from the pose it is in, and the phase carry in `useMark` keeps the progress
+ * when the turn's length changes. A hidden page and a covered app pause every animation by the host's
+ * own rule, and under `prefers-reduced-motion` every mark stops turning.
  *
  * EVERY STATE DIFFERS FROM `rest` BY COLOUR, not only by movement. Under `prefers-reduced-motion`
- * every mark stops turning and the ticker stops, and the colour is then the whole message.
+ * every mark stops turning, and the colour is then the whole message.
  */
 export const MARK_STATES = ["rest", "loading", "applying", "reconnected", "idle"] as const;
 export type MarkState = (typeof MARK_STATES)[number];
@@ -89,21 +93,14 @@ export const MARK_TURN = { rest: 48, calm: 20, live: 1.8 } as const;
 export const ORBIT_TURN_MS = MARK_TURN.live * 1000;
 
 /**
- * How often the ticker draws a new pose of a mark in `rest` or `applying`, and how it gets there.
- * THE ONE NUMBER for the cost of a slow mark: the browser draws `perSecond` frames a second for it,
- * not 60. At 4 a second a pose moves the drift 1.9 degrees round its orbit and the update 4.5.
- * `glideMs` above 0 eases each pose in over that many milliseconds (at 60 frames a second while it
- * glides) instead of cutting to it.
+ * When a resting mark drifts. `in-use`: while the page has had a touch, a key, a wheel or a scroll in
+ * the last `windowMs`; then the drift eases to a stop over `easeMs` and holds until the next input.
+ * `always`: whenever the mark rests (a page that is only ever looked at, like a landing page).
  */
-export const MARK_POSES = { perSecond: 4, glideMs: 0 } as const;
+export const MARK_DRIFT = { mode: "in-use", windowMs: 20_000, easeMs: 2_000 } as const;
 
-/**
- * The attributes a host sets to stop every animation under them: `data-page-hidden` on `<html>`
- * while the page is hidden, `data-app-covered` on the app while a veil covers it (Collie's rule for
- * issue 748, in its `index.css`). A paused animation still draws a seek, so the ticker reads the
- * same two attributes and draws no pose for a mark under either.
- */
-export const MARK_HOLD = ["data-page-hidden", "data-app-covered"] as const;
+/** The two ways a resting mark drifts. */
+export type MarkDriftMode = "always" | "in-use";
 
 /** The dimmed look of `idle`: what the host used to add as `opacity-40 grayscale`. */
 export const MARK_DIM = { opacity: 0.4, filter: "grayscale(1)" } as const;
@@ -116,8 +113,8 @@ interface StateLook {
   /** A colour every bead takes, or null for the mark's own bead colours. */
   bead: string | null;
   dim: boolean;
-  /** How the orbit moves: a running animation, poses from the ticker, or held where it is. */
-  motion: "run" | "tick" | "hold";
+  /** How the orbit moves: always running, drifting while the page is in use, or held where it is. */
+  motion: "run" | "drift" | "hold";
 }
 
 /**
@@ -125,9 +122,9 @@ interface StateLook {
  * their dark-ground values, for a page that does not define them (the website).
  */
 export const MARK_STATE_LOOK = {
-  rest: { pace: "rest", look: "rest", bead: null, dim: false, motion: "tick" },
+  rest: { pace: "rest", look: "rest", bead: null, dim: false, motion: "drift" },
   loading: { pace: "live", look: "live", bead: null, dim: false, motion: "run" },
-  applying: { pace: "calm", look: "live", bead: "var(--status-working, oklch(0.84 0.15 82))", dim: false, motion: "tick" },
+  applying: { pace: "calm", look: "live", bead: "var(--status-working, oklch(0.84 0.15 82))", dim: false, motion: "run" },
   reconnected: { pace: "live", look: "live", bead: "var(--status-done, oklch(0.77 0.16 152))", dim: false, motion: "run" },
   idle: { pace: "rest", look: "rest", bead: null, dim: true, motion: "hold" },
 } as const satisfies Record<MarkState, StateLook>;
@@ -156,9 +153,11 @@ export interface MarkProps {
   beads?: string | readonly string[];
   /**
    * Seconds per turn, overriding the state's pace. `0` holds the orbit where it is. The state still
-   * decides how the orbit moves: in poses in `rest` and `applying`, running in the fast states.
+   * decides how the orbit moves: a drift in `rest`, a steady turn in `applying` and the fast states.
    */
   turn?: number;
+  /** When `rest` drifts, overriding `MARK_DRIFT.mode`. */
+  drift?: MarkDriftMode;
   /** The imperative half of the contract. */
   ref?: Ref<MarkHandle>;
 }
@@ -170,9 +169,8 @@ export interface MarkHandle {
    * would recompute style every frame. The mark carries no phase across it: a rate keeps the phase
    * by definition. Set it back to 1 before the next state change.
    *
-   * A rate other than 1 also lets a mark that is drawn in poses run as a real animation, until the
-   * rate is 1 again: a host that rates it frame by frame is drawing every frame anyway, and poses
-   * under a rate curve would stutter (the website's hover and throw rate a resting mark).
+   * A rate other than 1 also keeps a resting mark drifting while the page is not in use, until the
+   * rate is 1 again: a host that rates it frame by frame wants it to move (the website's hover).
    */
   setRate(rate: number): void;
 }
@@ -200,12 +198,10 @@ export interface MarkSpec {
 
 /**
  * The rules every mark's stylesheet starts with. A held turn pauses every animation in the mark, so
- * the phase is exactly where it was when the turn comes back. A mark drawn in poses pauses them too:
- * the ticker seeks them, and a paused animation asks for a frame only when it is sought. Scoped by
- * `data-mark`, which only a mark's root carries.
+ * the phase is exactly where it was when the turn comes back. Scoped by `data-mark`, which only a
+ * mark's root carries.
  */
-export const MARK_STYLE =
-  "[data-mark][data-still] *,[data-mark][data-ticked] *{animation-play-state:paused!important}";
+export const MARK_STYLE = "[data-mark][data-still] *{animation-play-state:paused!important}";
 
 // ─── the runtime ────────────────────────────────────────────────────────────────────────────────
 
@@ -228,166 +224,73 @@ function paced(el: SVGSVGElement, pattern: RegExp): Animation[] {
   });
 }
 
-/** Every CSS animation under `el`: the paced ones, and any of the mark's own (a twinkle). */
-function animationsUnder(el: SVGSVGElement): Animation[] {
-  if (!("getAnimations" in el)) return [];
-  return el.getAnimations({ subtree: true }).filter((a) => "animationName" in a);
-}
-
-/** The frame a glide is drawn at, in milliseconds. */
-const GLIDE_FRAME_MS = 1000 / 60;
-
-/** Ease in and out over [0, 1]. */
-function easeInOut(p: number): number {
-  return p < 0.5 ? 2 * p * p : 1 - (-2 * p + 2) ** 2 / 2;
-}
-
-/** Whether the reader asked for reduced motion. False where the engine has no `matchMedia` (jsdom). */
-function motionReduced(): boolean {
-  return window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
-}
-
-export interface MarkTicker {
-  /** Draw every animation under `el` in poses, until the returned function is called. */
-  add(el: SVGSVGElement): () => void;
-}
-
-/** One seek a pose asks for: the animation, where it was, and how far it moves. */
-interface Seek {
-  animation: Animation;
-  from: number;
-  by: number;
-}
+/** The milliseconds between two steps of the drift's ease to a stop. */
+const EASE_STEP_MS = 100;
 
 /**
- * A ticker: ONE timer for every mark it draws, never a `requestAnimationFrame` loop. Each tick seeks
- * every animation under each mark forward by the time since the last tick (times its playback rate),
- * so the orbit keeps the speed its turn says however late a timer fires.
- *
- * It runs only while it has something to draw: at least one mark, the document visible, no
- * `prefers-reduced-motion`, and a mark that is not under one of the `MARK_HOLD` attributes. Each of
- * those is watched, not polled, so a page left alone runs no timer at all. When it starts again it
- * starts from now: the time it was stopped is not caught up in one jump.
- *
- * `useMark` uses one shared ticker at `MARK_POSES`. A page that compares rates makes its own, and
- * holds those marks with `turn={0}` so the shared one leaves them alone.
+ * WHETHER THE PAGE IS IN USE: a touch, a key, a wheel or a scroll in the last `MARK_DRIFT.windowMs`.
+ * One reading for the page, shared by every mark. Listening costs nothing per event (it stores a
+ * time); one timer runs while a mark listens and re-arms itself only when it fires. A page that has
+ * just been opened counts as in use.
  */
-export function createMarkTicker({ perSecond, glideMs }: { perSecond: number; glideMs: number }): MarkTicker {
-  if (!(perSecond > 0)) throw new Error(`a ticker needs a positive pose rate, got ${perSecond}`);
-  const marks = new Set<SVGSVGElement>();
-  const holds = MARK_HOLD.map((name) => `[${name}]`).join(",");
-  let timer: ReturnType<typeof setInterval> | null = null;
-  let glideTimer: ReturnType<typeof setTimeout> | null = null;
-  let gliding: Seek[] = [];
-  let last = 0;
-  let unwatch: (() => void) | null = null;
+const INPUTS = ["pointerdown", "keydown", "wheel", "touchstart", "scroll"] as const;
+const inUseListeners = new Set<() => void>();
+let inUse = true;
+let lastInput = 0;
+let quietTimer: ReturnType<typeof setTimeout> | null = null;
 
-  const isHeld = (el: SVGSVGElement): boolean => !el.isConnected || el.closest(holds) !== null;
-  const shouldRun = (): boolean =>
-    marks.size > 0 && document.visibilityState !== "hidden" && !motionReduced() && [...marks].some((el) => !isHeld(el));
+function noteInput(): void {
+  lastInput = performance.now();
+  if (inUse) return;
+  inUse = true;
+  armQuiet(MARK_DRIFT.windowMs);
+  for (const listener of inUseListeners) listener();
+}
 
-  /** Finish a glide under way at once, so no seek outlives the pose it belongs to. */
-  function land(): void {
-    if (glideTimer !== null) clearTimeout(glideTimer);
-    glideTimer = null;
-    for (const seek of gliding) seek.animation.currentTime = seek.from + seek.by;
-    gliding = [];
-  }
-
-  function glide(seeks: Seek[], started: number): void {
-    land();
-    gliding = seeks;
-    const frame = (): void => {
-      const p = Math.min(1, (performance.now() - started) / glideMs);
-      for (const seek of gliding) seek.animation.currentTime = seek.from + seek.by * easeInOut(p);
-      if (p >= 1) {
-        gliding = [];
-        glideTimer = null;
-        return;
-      }
-      glideTimer = setTimeout(frame, GLIDE_FRAME_MS);
-    };
-    glideTimer = setTimeout(frame, GLIDE_FRAME_MS);
-  }
-
-  function tick(): void {
-    const now = performance.now();
-    const elapsed = now - last;
-    last = now;
-    const seeks: Seek[] = [];
-    for (const el of marks) {
-      if (isHeld(el)) continue;
-      for (const animation of animationsUnder(el)) {
-        // A time may be null or a typed value; anything but a plain number is left alone.
-        const from = Number(animation.currentTime ?? Number.NaN);
-        if (!Number.isFinite(from)) continue;
-        seeks.push({ animation, from, by: elapsed * animation.playbackRate });
-      }
-    }
-    if (glideMs > 0) {
-      glide(seeks, now);
+function armQuiet(delay: number): void {
+  if (quietTimer !== null) clearTimeout(quietTimer);
+  quietTimer = setTimeout(() => {
+    quietTimer = null;
+    const left = MARK_DRIFT.windowMs - (performance.now() - lastInput);
+    if (left > 0) {
+      armQuiet(left);
       return;
     }
-    for (const seek of seeks) seek.animation.currentTime = seek.from + seek.by;
-  }
+    inUse = false;
+    for (const listener of inUseListeners) listener();
+  }, delay);
+}
 
-  function sync(): void {
-    const run = shouldRun();
-    if (run && timer === null) {
-      last = performance.now();
-      timer = setInterval(tick, 1000 / perSecond);
-      return;
-    }
-    if (run || timer === null) return;
-    clearInterval(timer);
-    timer = null;
-    land();
+function subscribeInUse(listener: () => void): () => void {
+  inUseListeners.add(listener);
+  if (inUseListeners.size === 1) {
+    for (const type of INPUTS) window.addEventListener(type, noteInput, { capture: true, passive: true });
+    lastInput = performance.now();
+    inUse = true;
+    armQuiet(MARK_DRIFT.windowMs);
   }
-
-  function watch(): () => void {
-    const motion = window.matchMedia?.("(prefers-reduced-motion: reduce)");
-    const observer = new MutationObserver(sync);
-    observer.observe(document.documentElement, { attributes: true, subtree: true, attributeFilter: [...MARK_HOLD] });
-    document.addEventListener("visibilitychange", sync);
-    motion?.addEventListener?.("change", sync);
-    return () => {
-      observer.disconnect();
-      document.removeEventListener("visibilitychange", sync);
-      motion?.removeEventListener?.("change", sync);
-    };
-  }
-
-  return {
-    add(el) {
-      marks.add(el);
-      unwatch ??= watch();
-      sync();
-      return () => {
-        marks.delete(el);
-        land();
-        if (marks.size === 0) {
-          unwatch?.();
-          unwatch = null;
-        }
-        sync();
-      };
-    },
+  return () => {
+    inUseListeners.delete(listener);
+    if (inUseListeners.size > 0) return;
+    for (const type of INPUTS) window.removeEventListener(type, noteInput, { capture: true });
+    if (quietTimer !== null) clearTimeout(quietTimer);
+    quietTimer = null;
+    inUse = true;
   };
 }
 
-let shared: MarkTicker | null = null;
+const getInUse = (): boolean => inUse;
+const alwaysInUse = (): boolean => true;
+const subscribeNever = (): (() => void) => () => {};
 
-/** The page's one ticker for every mark, made on first use. */
-function sharedTicker(): MarkTicker {
-  shared ??= createMarkTicker(MARK_POSES);
-  return shared;
-}
-
-/** How the orbit moves, from the state's motion and the two things a host can say over it. */
-function motionOf(motion: StateLook["motion"], turn: number | undefined, rated: boolean): StateLook["motion"] {
-  if (turn === 0) return "hold";
-  if (motion === "tick" && rated) return "run";
-  return motion;
+/** How the orbit moves, from the state's motion and what the host and the page say over it. */
+function motionOf(
+  motion: StateLook["motion"],
+  over: { turn: number | undefined; rated: boolean; awake: boolean; easing: boolean },
+): "run" | "hold" {
+  if (over.turn === 0 || motion === "hold") return "hold";
+  if (motion === "run" || over.rated || over.awake || over.easing) return "run";
+  return "hold";
 }
 
 export interface MarkRoot {
@@ -410,18 +313,34 @@ export interface MarkRoot {
  * and never per frame. Where there is no `getAnimations` the pace still changes; it steps once on
  * the way.
  *
- * NO LAST LAP. Until the drift came back in poses, a mark that left a live state kept turning until
- * its orbit came home, so it would not jump to a still pose. Now nothing jumps: a mark that leaves a
- * live state for `rest` or `applying` is ticked on from the pose it is in, and one that leaves it for
- * `idle` holds that pose.
+ * NO LAST LAP. A mark that leaves a live state goes on from the pose it is in: at the drift's pace in
+ * `rest`, at the calm pace in `applying`, held in `idle`. A resting mark on a page nobody uses eases
+ * its rate down to nothing over `MARK_DRIFT.easeMs`, then holds.
  */
 export function useMark(spec: MarkSpec, props: MarkProps): MarkRoot {
   const { size = 32, weight = "full", paper, title, className, beads, turn, ref } = props;
+  const driftMode: MarkDriftMode = props.drift ?? MARK_DRIFT.mode;
   const state: MarkState = props.state ?? (props.loading === true ? "loading" : "rest");
   const look: StateLook = MARK_STATE_LOOK[state];
-  // Whether the host has a rate other than 1 on the orbit (`setRate`): it then runs, not ticks.
+  // Whether the host has a rate other than 1 on the orbit (`setRate`): a resting mark then drifts.
   const [rated, setRated] = useState(false);
-  const motion = motionOf(look.motion, turn, rated);
+  const watching = look.motion === "drift" && driftMode === "in-use";
+  const pageInUse = useSyncExternalStore(
+    watching ? subscribeInUse : subscribeNever,
+    watching ? getInUse : alwaysInUse,
+    alwaysInUse,
+  );
+  const awake = look.motion !== "drift" || pageInUse;
+  // THE EASE TO A STOP. When the page stops being in use, a drifting mark keeps running while its rate
+  // falls to nothing, then holds. Adjusted while rendering, React's pattern for state that follows a
+  // value, so the commit that ends the drift is already the one that keeps it running for the ease.
+  const [easing, setEasing] = useState(false);
+  const [wasAwake, setWasAwake] = useState(awake);
+  if (wasAwake !== awake) {
+    setWasAwake(awake);
+    setEasing(!awake);
+  }
+  const motion = motionOf(look.motion, { turn, rated, awake, easing });
   const live = look.look === "live";
   const pace = look.pace;
   const uid = useId().replace(/[^A-Za-z0-9_-]/g, "");
@@ -473,14 +392,24 @@ export function useMark(spec: MarkSpec, props: MarkProps): MarkRoot {
     // read at the next change of either; between them the orbit keeps its elapsed time, as CSS does.
   }, [pace, turn, spec]);
 
-  // The poses. Declared after the carry, so on a change into a ticked state the carry has re-timed
-  // the animations before the first pose is drawn. Leaving one, the ticker lands any glide first.
-  const ticked = motion === "tick";
+  // The ease: the paced animations' rate falls from 1 to 0 over `MARK_DRIFT.easeMs`, a few steps a
+  // second, then the mark holds. Whatever ends it (the ease running out, an input, a state change)
+  // puts the rate back to 1; by then the mark is held or running on, so the reset moves nothing.
   useEffect(() => {
+    if (!easing) return;
     const node = el.current;
-    if (!ticked || node === null) return;
-    return sharedTicker().add(node);
-  }, [ticked]);
+    const found = node === null ? [] : paced(node, spec.paced);
+    const started = performance.now();
+    const timer = setInterval(() => {
+      const p = Math.min(1, (performance.now() - started) / MARK_DRIFT.easeMs);
+      for (const a of found) a.updatePlaybackRate((1 - p) ** 2);
+      if (p >= 1) setEasing(false);
+    }, EASE_STEP_MS);
+    return () => {
+      clearInterval(timer);
+      for (const a of found) a.updatePlaybackRate(1);
+    };
+  }, [easing, spec]);
 
   useImperativeHandle(ref, () => ({
     setRate(rate: number) {
@@ -516,7 +445,7 @@ export function useMark(spec: MarkSpec, props: MarkProps): MarkRoot {
       "data-state": state,
       "data-bead": forced ? "" : undefined,
       "data-still": motion === "hold" ? "" : undefined,
-      "data-ticked": ticked ? "" : undefined,
+      "data-slow": pace === "live" ? undefined : "",
     },
     live,
     weight,

@@ -19,7 +19,7 @@ export function markState(root: ParentNode): MarkState | null {
 }
 
 /** Whether the mark wears its live look: loading, applying or reconnected. (Applying turns at the calm
- *  pace, drawn in poses; the other two at the live pace.) */
+ *  pace; the other two at the live pace.) */
 export function markIsLive(root: ParentNode): boolean {
   const state = markState(root);
   return state !== null && MARK_STATE_LOOK[state].look === "live";

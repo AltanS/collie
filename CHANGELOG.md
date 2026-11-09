@@ -25,7 +25,8 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Changed
 
-- **The update turn of the Collie mark is calm.** While a new app build downloads or waits for the reload, the orange beads now go round once in 20 seconds, not once in 1.8 seconds, so a long wait no longer looks like a race. The mark draws this turn in a few steps a second instead of 60 frames, so a wait of many minutes costs the phone almost nothing. A tap on the mark still opens the dashboard's update line.
+- **The update turn of the Collie mark is calm.** While a new app build downloads or waits for the reload, the orange beads now go round once in 20 seconds, not once in 1.8 seconds, so a long wait no longer looks like a race. The turn runs on the phone's graphics side alone, so a wait of many minutes costs the app's own work nothing. A tap on the mark still opens the dashboard's update line.
+- **The Collie mark drifts again while you use the app.** At rest its beads go round slowly, smooth, while you touch, scroll or type, and 20 seconds after the last touch they slow to a stop and hold. The next touch sets them going from where they stopped. A phone left alone draws no frame for the mark, as before. (#748)
 - **The dashboard's update line stands out while the app updates.** While a new app build downloads or waits for the reload, the line under the dashboard is a box in the update colour, edged on all four sides, at the same place in the list, and the reload is a real **Update now** button. A tap on the orange mark still brings this line into view. Every other update line looks as before.
 
 ## [1.28.0] - 2026-11-09
