@@ -75,6 +75,35 @@ describe("useHillAnswer", () => {
     expect(result.current.state).toMatchObject({ phase: "answered", receipt: { code: "rejected", reason: "not an option of this decision" } });
   });
 
+  it("reads the bridge's plain-text 400 and 409 as rejected with its words, never as sent", async () => {
+    server.use(http.post("/api/hill/answer", () => new HttpResponse("bad intent", { status: 400 })));
+    const { result } = renderHook(() => useHillAnswer("dc_e"));
+    await act(() => result.current.send("yes", null));
+    expect(result.current.state).toMatchObject({ phase: "answered", receipt: { code: "rejected", reason: "bad intent", state: null, delivery: null } });
+    server.use(http.post("/api/hill/answer", () => new HttpResponse("request-id-reused: this rid already answered with another choice", { status: 409 })));
+    await act(() => result.current.send("no", null));
+    expect(result.current.state).toMatchObject({ phase: "answered", receipt: { code: "rejected", reason: "request-id-reused: this rid already answered with another choice" } });
+    // A refusal is an answer: the next tap is a new attempt with a new request id.
+    server.use(http.post("/api/hill/answer", async ({ request }) => {
+      posted.push(parseJsonObject(await request.text()) ?? {});
+      return new HttpResponse("request-id-reused", { status: 409 });
+    }));
+    await act(() => result.current.send("no", null));
+    await act(() => result.current.send("no", null));
+    expect(posted[0]?.rid).not.toBe(posted[1]?.rid);
+  });
+
+  it("reads a 503 as not sent: the card offers the same answer again with the same rid", async () => {
+    answerWith(() => new HttpResponse("the answer could not be recorded on this machine, so nothing was sent", { status: 503 }));
+    const { result } = renderHook(() => useHillAnswer("dc_f"));
+    await act(() => result.current.send("yes", null));
+    expect(result.current.state).toEqual({ phase: "failed", intent: "yes", text: null });
+    answerWith(ok);
+    await act(() => result.current.send("yes", null));
+    expect(posted[0]?.rid).toBe(posted[1]?.rid);
+    expect(result.current.state).toMatchObject({ phase: "answered", receipt: { code: "ok" } });
+  });
+
   it("reads a 200 it cannot read as unknown, never as unsent", async () => {
     server.use(http.post("/api/hill/answer", () => HttpResponse.json({ hello: true })));
     const { result } = renderHook(() => useHillAnswer("dc_d"));

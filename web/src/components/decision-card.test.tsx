@@ -180,6 +180,17 @@ describe("arm, then send", () => {
     fireEvent.click(dismiss);
     expect(onSend).toHaveBeenCalledWith("dismiss", null);
   });
+
+  it("sends a dismiss with no text even when the field holds words: the bridge refuses a dismiss that carries text", () => {
+    const { slot, onSend } = renderCard(hillDecision());
+    fireEvent.change(slot("decision-text")!, { target: { value: "never mind, not now" } });
+    const dismiss = slot("decision-dismiss")!;
+    fireEvent.click(dismiss);
+    act(() => vi.advanceTimersByTime(ARM_DWELL_MS));
+    fireEvent.click(dismiss);
+    expect(onSend).toHaveBeenCalledTimes(1);
+    expect(onSend).toHaveBeenCalledWith("dismiss", null);
+  });
 });
 
 describe("after the tap", () => {
