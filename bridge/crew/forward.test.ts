@@ -22,6 +22,7 @@ import {
   type ForwardDeps,
   type ForwardErrorCode,
   type ForwardTransport,
+  ASK_BODY_READ_MAX,
 } from "./forward.ts";
 import type { JsonObject } from "../json.ts";
 import { LEAD_ROW_HEADER, LEAD_ROW_MARK, leadRowCarry } from "./launcher-rows.ts";
@@ -1390,6 +1391,17 @@ describe("an ask answer crosses the link to the member whose ask book minted the
     // The body streams on whole: the member's own parse and hash check see what the phone sent.
     expect(await new Response(calls[0]!.init.body).text()).toBe(body);
     expect(lines).toEqual([{ action: "ask", host: "laptop", paneId: "w1:p1", session: "work", outcome: "http 200" }]);
+  });
+
+  test("a body past the read cap is not parsed for the pane, and still streams to the member whole", async () => {
+    const lines: unknown[] = [];
+    const big = JSON.stringify({ pane: "w1:p1", hash: "0abc12", optionId: "1", origin: "person_tap", pad: "x".repeat(ASK_BODY_READ_MAX) });
+    const { transport, calls } = transportOf(() => ok(new Response("{}", { headers: { "content-type": "application/json" } })));
+    const [req, url] = post(`/api/ask/${ASK}?host=laptop`, big, { "content-type": "application/json" });
+    await forward(req, url, { transport, audit: (e) => void lines.push(e) });
+
+    expect(await new Response(calls[0]!.init.body).text()).toBe(big);
+    expect(lines).toEqual([{ action: "ask", host: "laptop", outcome: "http 200" }]);
   });
 
   test("a member refusal is the member's own answer too: a refused receipt, a 400 and a 403 pass as they are", async () => {

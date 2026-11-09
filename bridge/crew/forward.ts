@@ -245,6 +245,9 @@ const WALKY_ROUTE = /^pane\/[^/]+\/walky$/;
 /** An answer to one ask by id (M56 spec 12): `ask/<id>`, a write whose pane rides in the body. */
 const ASK_ROUTE = /^ask\/[^/]+$/;
 
+/** The largest ask answer body the lead reads for its audit line's pane ({@link askPaneOf}). */
+export const ASK_BODY_READ_MAX = 4096;
+
 /** A pane's pins route: a GET is the list, a POST pins a block and a DELETE drops one (M90). */
 const PINS_ROUTE = /^pane\/[^/]+\/pins$/;
 
@@ -872,12 +875,29 @@ async function textSubmitId(req: Request): Promise<string | null> {
  * from a clone like {@link textSubmitId}, so the original still streams to the member.
  */
 async function askPaneOf(req: Request): Promise<string | undefined> {
+  // An answer is a few hundred bytes. A body that says or turns out to be past the cap is not parsed
+  // here: it still streams on whole, and the member's own parse refuses it, so the lead never holds
+  // more than the cap of it.
+  if (Number(req.headers.get("content-length") ?? 0) > ASK_BODY_READ_MAX) return undefined;
+  const reader = req.clone().body?.getReader();
+  if (reader === undefined) return undefined;
   try {
-    const body: JsonValue = await req.clone().json();
+    const chunks: Uint8Array[] = [];
+    let size = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > ASK_BODY_READ_MAX) return undefined;
+      chunks.push(value);
+    }
+    const body: JsonValue = JSON.parse(new TextDecoder().decode(Buffer.concat(chunks)));
     if (typeof body !== "object" || body === null || Array.isArray(body)) return undefined;
     return typeof body.pane === "string" && body.pane !== "" && body.pane.length <= 256 ? body.pane : undefined;
   } catch {
     return undefined;
+  } finally {
+    void reader.cancel().catch(() => undefined);
   }
 }
 
