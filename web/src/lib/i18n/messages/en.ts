@@ -365,6 +365,9 @@ export const en = {
   "settings.updateBanner.copyAria": "Copy command: {command}",
   "settings.updateBanner.bundleProgress": "{percent}% downloaded",
   "settings.updateBanner.bundleReloads": "It reloads on its own once nothing is in progress.",
+  // The "card" look of the update line (2026-11-09), English only until the translation pass: listed
+  // in PENDING_TRANSLATION below.
+  "settings.updateBanner.updateNow": "Update now",
 
   // --- settings.typeface (the APP's own face — a per-device preference since ADR 0033) ---
   // FAMILY NAMES ARE NOT HERE, and must not be added: "Space Grotesk" and "Aldrich" are proper
@@ -3343,6 +3346,7 @@ export const PENDING_TRANSLATION = [
   "theme.trial.keep",
   "theme.trial.back",
   "theme.trial.region",
+  "settings.updateBanner.updateNow",
 ] as const satisfies readonly MessageKey[];
 
 /** A key a bundle may leave out until the translation pass. */

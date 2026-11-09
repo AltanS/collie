@@ -407,7 +407,7 @@ export function DashboardSection() {
                 const notice = updateNotice(undefined, facts);
                 return notice === null ? null : (
                   <div key={facts.stage} className="p-3">
-                    <UpdateNoticeLine notice={notice} />
+                    <UpdateNoticeLine notice={notice} applying />
                   </div>
                 );
               })}
