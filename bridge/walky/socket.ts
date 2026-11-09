@@ -14,7 +14,7 @@
 //   on      {}                          → { ok, off }       (M89: and on again)
 // The hill (M96), four operations beside these, answered only by a bridge built with it:
 //   hill.post     { requestId, title, summary, ... } → { ok, decision } | { ok: false, error, code }
-//   hill.status   { id }                       → { ok, decision }   (the asker's own decisions only)
+//   hill.status   { id }                       → { ok, decision }   (the poster, and the session its replyTo names)
 //   hill.withdraw { id }                       → { ok, decision }   (now `withdrawn`, "by the poster")
 //   hill.list     { mine: true }               → { ok, decisions }  (the asker's own, open first)
 // Every hill refusal carries `hill: true`, so the CLI tells a bridge that knows the hill from an older one.
