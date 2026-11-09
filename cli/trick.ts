@@ -325,7 +325,7 @@ export function checkFacts(manifest: TrickManifest, folder: string, state: strin
 }
 
 /** Run the provider once against fixture facts and parse its output, as the bridge would. */
-export async function checkRun(report: TrickCheckReport, env: CliContext["env"], configDir: string): Promise<void> {
+export async function checkRun(report: TrickCheckReport, env: CliContext["env"]): Promise<void> {
   const manifest = report.manifest;
   if (manifest === undefined) return;
   // A scratch state folder, so a check never writes the bridge's own state.
@@ -334,7 +334,7 @@ export async function checkRun(report: TrickCheckReport, env: CliContext["env"],
     const outcome = await runProvider({
       command: manifest.run,
       cwd: report.folder,
-      env: scrubEnv(env, configDir),
+      env: scrubEnv(env, manifest.env ?? []),
       stdin: JSON.stringify(checkFacts(manifest, report.folder, state)),
     });
     const problem = outcomeProblem(outcome, 400);
@@ -405,7 +405,7 @@ export async function cmdTrickCheck(deps: TrickDeps, args: readonly string[]): P
     return EXIT.USAGE;
   }
   const report = checkStatic(folder, deps.files);
-  if (run && report.manifest !== undefined && report.problems.length === 0) await checkRun(report, deps.ctx.env, deps.ctx.configDir);
+  if (run && report.manifest !== undefined && report.problems.length === 0) await checkRun(report, deps.ctx.env);
   if (json) deps.io.out(JSON.stringify(report, null, 2));
   else printReport(deps, report);
   return reportFails(report) ? EXIT.FAIL : EXIT.OK;
@@ -458,9 +458,12 @@ draws what it prints on the phone, with Collie's own parts in the current theme.
   (each with \`id\` as \`host:paneId\`, \`memberId\`, \`sessionId\` (opaque, never parse it), \`paneId\`,
   \`host\` (a name to show), \`name\`, \`agent\`, \`status\`, \`cwd\`, \`space\`, \`tab\`, \`lastActiveAt\`)
   and \`spaces\` (\`name\`, \`folder\`).
-- The environment of the Collie service, minus every \`COLLIE_\` variable and every variable whose name
-  holds TOKEN, SECRET, KEY, PASSWORD or a like word. A provider that needs a key reads it from its own
-  file.
+- A short list of the Collie service's environment: \`PATH\`, \`HOME\`, \`USER\`, \`LOGNAME\`,
+  \`SHELL\`, \`LANG\`, \`LC_*\`, \`TZ\`, \`TERM\`, \`TMPDIR\`, the \`XDG_*_HOME\` folders,
+  \`XDG_RUNTIME_DIR\`, \`NVM_DIR\` and \`BUN_INSTALL\`. Any other variable the program needs, list
+  in \`trick.toml\`: \`env = ["GH_TOKEN"]\`. \`collie trick check\` and the phone show each name you
+  list. A \`COLLIE_*\`, \`HERDR_*\`, \`*_SOCK\` or \`*_SOCKET\` variable is never passed, even when
+  listed.
 
 ## What it prints
 

@@ -138,7 +138,7 @@ export interface TricksServiceDeps {
    * display name (`machine`) the facts' `host` fields say.
    */
   world: (host: string) => Omit<FactsWorld, "host">;
-  /** The unit's environment, scrubbed before each run. */
+  /** The unit's environment; each run gets the allow-listed part of it (env.ts). */
   env: ProviderEnv;
   now?: () => number;
   /** The process runner. A test passes a fake or the real one with short limits. */
@@ -262,7 +262,7 @@ export class TricksService implements TricksSurface {
 
   /** The PATH a provider gets. */
   runnerPath(): string {
-    return scrubEnv(this.deps.env, this.deps.configDir).PATH ?? "";
+    return scrubEnv(this.deps.env).PATH ?? "";
   }
 
   async reply(since: number | undefined): Promise<TricksReply> {
@@ -386,6 +386,7 @@ export class TricksService implements TricksSurface {
     if (rt.lastRunAt !== undefined) info.lastRunAt = new Date(rt.lastRunAt).toISOString();
     const refusals = [...rt.found.refusals, ...rt.docRefusals].slice(0, REFUSALS_MAX);
     if (refusals.length > 0) info.refusals = refusals;
+    if (m?.env !== undefined) info.env = m.env;
     this.store.setInfo(info);
   }
 
@@ -449,7 +450,7 @@ export class TricksService implements TricksSurface {
     const outcome = await (this.deps.run ?? runProvider)({
       command: manifest.run,
       cwd: rt.found.dir,
-      env: scrubEnv(this.deps.env, this.deps.configDir),
+      env: scrubEnv(this.deps.env, manifest.env ?? []),
       stdin: JSON.stringify(facts),
       platform: this.deps.platform,
       ...this.deps.limits,

@@ -645,7 +645,7 @@ describe.skipIf(process.platform === "win32")("end to end with the legs trick", 
     cpSync(LEGS_DIR, dir, { recursive: true });
     // The same trick, its stdin copied to a file outside its folder first, so the test reads what the program got.
     writeFileSync(join(dir, "record.sh"), '#!/bin/sh\nf=$(cat)\nprintf \'%s\\n\' "$f" >> "$LEGS_TAP_LOG"\nprintf \'%s\' "$f" | ./program.sh\n', { mode: 0o755 });
-    writeFileSync(join(dir, "trick.toml"), readFileSync(join(LEGS_DIR, "trick.toml"), "utf8").replace('run = "./program.sh"', 'run = "./record.sh"').replace('every = "15s"\n', ""));
+    writeFileSync(join(dir, "trick.toml"), readFileSync(join(LEGS_DIR, "trick.toml"), "utf8").replace('run = "./program.sh"', 'run = "./record.sh"').replace('every = "15s"\n', 'env = ["LEGS_LOG_DIR", "LEGS_RUNNING", "LEGS_NOW", "LEGS_TAP_LOG", "LEGS_SHOT"]\n'));
     // LEGS_SHOT names one small PNG in the trick's folder; the program puts it on its decision.
     const shotBytes = png(64, 32, 7);
     writeFileSync(join(dir, "red-case.png"), shotBytes);
