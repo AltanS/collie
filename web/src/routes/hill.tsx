@@ -20,7 +20,7 @@ export function HillRoute() {
   const kept = useHillKept();
   return (
     <div className="mx-auto flex min-h-0 w-full max-w-screen-sm flex-1 flex-col">
-      <HillHeader count={open.length} onBack={() => nav.up(homePath(scope))} />
+      <HillHeader count={open.length} nowCount={open.filter((d) => d.priority === "now").length} onBack={() => nav.up(homePath(scope))} />
       <BandMain base={16} className="relative flex min-h-0 flex-1 flex-col overflow-y-auto p-4">
         <HillView open={open} closed={closed} kept={kept} renderCard={(decision) => <LiveDecisionCard key={decision.id} decision={decision} />} />
       </BandMain>
