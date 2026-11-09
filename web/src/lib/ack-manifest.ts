@@ -80,6 +80,10 @@ export const ACK_MANIFEST = {
     channel: "inline",
     why: "An operator message (M62): the receipt's state, in words, stands beside the composer box (or in the Crew sheet's receipt rows) until it is dismissed, because a message that was kept in the inbox or refused is something the operator must read and act on, and a status line would be gone by then.",
   },
+  postHillAnswer: {
+    channel: "inline",
+    why: "An answer to a Decision on the hill (M96): the card says Sending, then the receipt in words, in place, until the next list takes the card away; a refusal, a gone target and a failed call stay on the card with the person's words, because a status line would be gone before the person read why the answer did not land.",
+  },
   cancelWalky: {
     channel: "inline",
     why: "The operator's Cancel on a held walky talky message it sent (M62 spec 03): the row's receipt turns to `cancelled by sender` on the next read, so a taken message says nothing more; an `already typed` answer and a failed call land as a line under the row, because the operator asked for something that did not happen.",

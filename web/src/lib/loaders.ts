@@ -35,6 +35,7 @@ import { markLive as markPaneLive, markSavedCopy } from "@/lib/liveness";
 import { paneGridOf, settleSessionCapabilities } from "@/lib/mux-capability";
 import { ambientSpaces, findPane } from "@/lib/hosts";
 import { noteSessionCards } from "@/lib/session-cards";
+import { syncHill } from "@/lib/hill/store";
 import {
   loadLastPaneText,
   loadLastSnapshot,
@@ -494,6 +495,9 @@ export async function rootLoader({ request }: { request?: Request } = {}): Promi
       } else snap = outcome;
     } else snap = await fetching;
     answeredLive = true;
+    // The hill reads its list when the snapshot's number moved (lib/hill/store.ts). Live snapshots
+    // only: a saved copy's number is as old as the copy, and the store keeps what it last read.
+    syncHill(snap.hillRev);
     lastSnapshot.set(snapshotKey(scope, viewAll), snap);
     lastSnapshotAt.set(snapshotKey(scope, viewAll), Date.now());
     // Write-through: the same body, dated, in a store that outlives this page (lib/last-seen.ts).

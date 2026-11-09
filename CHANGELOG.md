@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Added
+
+- **The hill: answer an agent's Decision from the phone.** An agent posts a Decision, a question with its options, and the Hill lists the open ones, most urgent first. A card shows who asked and from which machine, the summary, the agent's recommendation when it made one (marked, never chosen for you), and More for the body and the links. A tap on an option answers; an option that asks for a confirm, and Dismiss, take a second tap. The card then says where the answer went, keeps your words with Copy when the session that asked has ended, and offers Try again with the same request when the network lost it. While a Decision is open, one row at the top of the Dashboard says how many need you and opens the Hill. (M96)
+
 ## [1.28.0] - 2026-11-09
 
 ### Added
