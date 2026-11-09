@@ -2,7 +2,6 @@
 // file's header comment for the whole page's rules.
 
 import { useState, type ReactNode } from "react";
-import { Keyboard, Settings2, Slash, Terminal, Zap } from "lucide-react";
 
 import type { GeneralAction } from "@/components/actions-row";
 import { PhoneFrame } from "../layout";
@@ -74,10 +73,10 @@ export function useRoomyActions(): readonly GeneralAction[] {
   const [typing, setTyping] = useState(false);
   const toggle = (id: string) => () => setOpen((was) => (was === id ? null : id));
   return [
-    { id: "keys", icon: Keyboard, label: "Keys", on: open === "keys", expanded: open === "keys", onSelect: toggle("keys") },
-    { id: "type", icon: Terminal, label: "Type into terminal", word: "Type", on: typing, pressed: typing, onSelect: () => setTyping((was) => !was) },
-    { id: "quick", icon: Zap, label: "Quick", on: open === "quick", expanded: open === "quick", onSelect: toggle("quick") },
-    { id: "agent", icon: Slash, label: "Agent", onSelect: toggle("cmd") },
-    { id: "display", icon: Settings2, label: "Display settings", word: "Display", on: open === "display", expanded: open === "display", onSelect: toggle("display") },
+    { id: "keys", icon: "keys-drawer", label: "Keys", on: open === "keys", expanded: open === "keys", onSelect: toggle("keys") },
+    { id: "type", icon: "type-into-terminal", label: "Type into terminal", word: "Type", on: typing, pressed: typing, onSelect: () => setTyping((was) => !was) },
+    { id: "quick", icon: "quick-actions", label: "Quick", on: open === "quick", expanded: open === "quick", onSelect: toggle("quick") },
+    { id: "agent", icon: "agent-commands", label: "Agent", onSelect: toggle("cmd") },
+    { id: "display", icon: "display-settings", label: "Display settings", word: "Display", on: open === "display", expanded: open === "display", onSelect: toggle("display") },
   ];
 }

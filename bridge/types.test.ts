@@ -35,6 +35,19 @@ describe("toPaneWire walkyOff (M89)", () => {
   });
 });
 
+describe("toPaneWire pins (M90)", () => {
+  test("carries the count only when above zero, and no key at zero or when absent", () => {
+    expect(toPaneWire(pane(), () => false, () => false, undefined, false, 3).pins).toBe(3);
+    expect("pins" in toPaneWire(pane(), () => false, () => false, undefined, false, 0)).toBe(false);
+    expect("pins" in toPaneWire(pane(), () => false)).toBe(false);
+  });
+
+  test("the count rides beside the flag and the token", () => {
+    const wire = toPaneWire(pane(), () => false, () => false, "k3f9", true, 2);
+    expect({ instance: wire.instance, walkyOff: wire.walkyOff, pins: wire.pins }).toEqual({ instance: "k3f9", walkyOff: true, pins: 2 });
+  });
+});
+
 describe("toPaneWire hasSession", () => {
   test("a reported ref plus an adapter offers History", () => {
     const wire = toPaneWire(pane({ agentSession: { ...REF } }), () => true);

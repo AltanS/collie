@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { CornerDownLeft, Pencil } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { SearchField } from "@/components/ui/search-field";
@@ -13,6 +12,7 @@ import type { Scope } from "@/lib/scope";
 import type { OperatorCommand } from "@/lib/types";
 import { t } from "@/lib/i18n";
 import { useLocale } from "@/hooks/use-locale";
+import { Icon } from "@/components/icons/icon";
 
 interface CommandPaletteProps {
   open: boolean;
@@ -181,9 +181,9 @@ export function CommandPalette({
               {isPending ? (
                 <span className="shrink-0 text-xs font-medium text-destructive">{t("commands.confirm")}</span>
               ) : c.takesArg ? (
-                <Pencil className="size-4 shrink-0 text-muted-foreground" />
+                <Icon name="command-takes-arg" className="size-4 shrink-0 text-muted-foreground" />
               ) : (
-                <CornerDownLeft className="size-4 shrink-0 text-muted-foreground" />
+                <Icon name="run-command" className="size-4 shrink-0 text-muted-foreground" />
               )}
             </button>
           );

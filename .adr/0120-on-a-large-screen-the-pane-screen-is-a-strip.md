@@ -174,3 +174,21 @@ pane view keeps all of it.
 The switcher sheet inside the pane screen is still mounted on a large screen, closed, with no pill to
 open it; the sidebar repeats its wiring. If the two drift, the sheet should take its list from the
 sidebar's component.
+
+## Addendum — 2026-11-07: a pane is at least 440px
+
+Decision 5's minimum pane width is 440px, not 360px, from 1.27.2. Wide mode now begins at an 880px
+strip, and the add column is at least 440px wide.
+
+At 360 wide mode began at a 720px strip, and the screens just past that line paid for it. A lone
+column stands at 1/2 (decision 3), so beside it stood an empty add column of the same width: on a
+1114px two-screen phone held sideways the chat was 392px wide, on an 1180px tablet in landscape
+425px, the narrowest reading column of any size surveyed. On an 820px tablet in portrait, closing the
+sidebar turned the 764px strip into wide mode and made the chat narrower, 535 to 377px. From 440 those
+three draw one full column (794, 860 and 764px). The rule runs at draw time, so a stored 1/2 needs no
+migration.
+
+The cost: an 1180px tablet in landscape no longer holds two panes beside the open sidebar. Closing
+the sidebar gives 562px each. A strip of 880px or more still draws a lone column at 1/2 beside an
+empty add column (a 1366px tablet: 518 and 523px); a lone column that fills the strip is a rule
+against decision 3, not a number, and is left for a later release.

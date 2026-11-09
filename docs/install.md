@@ -509,6 +509,11 @@ full-screen mode.
 Chrome and Edge show an install icon in the address bar, plus the **Install** card in Settings.
 On macOS, Safari 17 and newer uses **File → Add to Dock**.
 
+A browser tab you keep on one pane can open `/slot/<n>` instead, `n` from 1 to 99. The tab then
+reopens on the pane it last showed, after a browser restart too. A pane id another workspace took in
+the meantime sends the tab to that workspace's home. Slots live on the device, and unpairing forgets
+them. Thanks @eseninik.
+
 ### Notes for every device
 
 - Installing requires HTTPS. Under `COLLIE_SERVE_MODE=http`, browsers disable service workers,

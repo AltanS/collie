@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { createMemoryRouter, RouterProvider } from "react-router";
@@ -7,6 +7,7 @@ import { afterEach, beforeEach, vi } from "vitest";
 import { CrewProvider } from "@/components/crew-provider";
 import { ROOT_ROUTE_ID, type HomeData } from "@/lib/loaders";
 import { setPinned } from "@/lib/pins";
+import { __resetBundleFocus, BUNDLE_FOCUS_TTL_MS, bundleFocusPending, requestBundleFocus } from "@/lib/bundle-apply";
 import {
   fixtureAgents,
   fixtureCrewAgents,
@@ -20,6 +21,7 @@ import {
   fixtureTabs,
   fixtureWorkspaces,
 } from "@/test/handlers";
+import type { StartLaunchBody } from "@/lib/api";
 import type { SnapshotResponse } from "@/lib/types";
 import { withHeaderHost } from "@/test/header-host";
 import { server } from "@/test/setup";
@@ -1013,5 +1015,159 @@ describe("the dashboard on a saved copy", () => {
     await userEvent.click(screen.getByRole("button", { name: "New tab in webapp" }));
     expect(await screen.findByText(REFUSAL)).toBeInTheDocument();
     expect(created).toEqual([]);
+  });
+});
+
+// THE HEADING "+" OFFERS THE MACHINE'S AGENTS (M91 spec 02). With a row to offer, the "+" opens the
+// New tab sheet for that workspace; a tap starts the row as a tab beside the workspace's pane and steps
+// into it. With nothing beyond the shell it makes the shell at once, which the default world above
+// (no `items`) already pins for every other heading test in this file.
+describe("the dashboard heading's '+' and the New tab sheet", () => {
+  const items = [
+    { key: "harness:claude", start: { harness: "claude" }, group: "agents", label: "Claude Code", harness: "claude", source: "builtin", noPrompts: false, branch: true, available: true },
+    { key: "shell", start: { shell: true }, group: "commands", label: "Shell", source: "builtin", noPrompts: false, branch: true, available: true },
+  ];
+  const first = fixtureAgents.find((a) => a.workspaceLabel === "webapp")!;
+  const created = (paneId: string) => ({
+    ok: true,
+    pane: { paneId, workspaceId: first.workspaceId, workspaceLabel: first.workspaceLabel, tabId: `${first.workspaceId}:t9`, cwd: first.cwd },
+  });
+
+  function world() {
+    const sent = { launch: new Array<StartLaunchBody>(), tab: new Array<string>() };
+    server.use(
+      http.get("/api/launchers", () => HttpResponse.json({ launchers: [], home: "/home/you", harnesses: [], items })),
+      http.post("/api/launch", async ({ request }) => {
+        // SAFETY: the body is the app's own: `lib/api.ts`'s `startLaunch` is the only caller and it posts a `StartLaunchBody`.
+        sent.launch.push((await request.json()) as StartLaunchBody);
+        return HttpResponse.json(created("w1:p7"));
+      }),
+      http.post("/api/tab", async ({ request }) => {
+        sent.tab.push(await request.text());
+        return HttpResponse.json(created("w1:p8"));
+      }),
+    );
+    return sent;
+  }
+
+  it("opens the sheet for that workspace, and an agent starts as a tab beside its pane", async () => {
+    const sent = world();
+    const router = renderHome(solo());
+    await settled();
+    await userEvent.click(screen.getByRole("button", { name: "New tab in webapp" }));
+    const sheet = within(await screen.findByRole("dialog", { name: "New tab in webapp" }));
+    await userEvent.click(await sheet.findByRole("button", { name: /Claude Code/ }));
+    await waitFor(() => expect(url(router)).toBe("/pane/w1%3Ap7"));
+    expect(sent.launch).toHaveLength(1);
+    expect(sent.launch[0]).toMatchObject({ harness: "claude", paneId: first.paneId });
+    expect(sent.launch[0]!.requestId).toEqual(expect.any(String));
+    expect(sent.tab).toEqual([]);
+  });
+
+  it("Just a shell sends the create the '+' always sent", async () => {
+    const sent = world();
+    const router = renderHome(solo());
+    await settled();
+    await userEvent.click(screen.getByRole("button", { name: "New tab in webapp" }));
+    const sheet = within(await screen.findByRole("dialog", { name: "New tab in webapp" }));
+    await userEvent.click(sheet.getByRole("button", { name: "Just a shell" }));
+    await waitFor(() => expect(url(router)).toBe("/pane/w1%3Ap8"));
+    expect(sent.tab).toEqual([JSON.stringify({ workspaceId: first.workspaceId })]);
+    expect(sent.launch).toEqual([]);
+  });
+
+  it("mounts one sheet for the list: another heading's '+' retitles it", async () => {
+    world();
+    renderHome(solo());
+    await settled();
+    const headings = fixtureWorkspaces.filter((w) => fixtureAgents.some((a) => a.workspaceId === w.workspaceId));
+    expect(headings.length).toBeGreaterThan(1);
+    await userEvent.click(screen.getByRole("button", { name: `New tab in ${headings[0]!.label}` }));
+    await screen.findByRole("dialog", { name: `New tab in ${headings[0]!.label}` });
+    await userEvent.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await userEvent.click(screen.getByRole("button", { name: `New tab in ${headings[1]!.label}` }));
+    await screen.findByRole("dialog", { name: `New tab in ${headings[1]!.label}` });
+    expect(screen.getAllByRole("dialog")).toHaveLength(1);
+  });
+
+  it("on a saved copy refuses on the tap, before any sheet", async () => {
+    const sent = world();
+    renderHome({ ...solo(), stale: true });
+    await settled();
+    await userEvent.click(screen.getByRole("button", { name: "New tab in webapp" }));
+    expect(await screen.findByText("Saved copy. Reconnect to make changes.")).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "New tab in webapp" })).toBeNull();
+    expect(sent.launch).toEqual([]);
+    expect(sent.tab).toEqual([]);
+  });
+});
+
+// ── THE UPDATE LINE, BROUGHT INTO VIEW ONCE (2026-11-06) ─────────────────────────────────────────
+//
+// A tap on the header mark while the app updates asks for the dashboard's update line
+// (`lib/bundle-apply.ts`). The dashboard scrolls it into view once: on arrival, or in place when the
+// tap was made here. A plain visit never scrolls.
+describe("the dashboard's update line after a tap on the updating mark", () => {
+  const withRelease = () => ({
+    ...solo(),
+    update: {
+      current: "1.4.0",
+      latest: "1.5.0",
+      latestUrl: null,
+      releaseAvailable: true,
+      majorAvailable: null,
+      majorUrl: null,
+      bridgeStale: false,
+      checkedAt: null,
+    },
+  });
+  /** The scrolls that landed on the update line, by the element they were called on. */
+  const lineScrolls = (spy: { mock: { contexts: unknown[] } }) =>
+    spy.mock.contexts.filter((el) => el instanceof Element && (el.textContent ?? "").includes("Collie 1.5.0 available"));
+
+  let spy: ReturnType<typeof vi.fn<Element["scrollIntoView"]>>;
+  beforeEach(() => {
+    __resetBundleFocus();
+    spy = vi.fn<Element["scrollIntoView"]>();
+    vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(spy);
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+    __resetBundleFocus();
+  });
+
+  it("scrolls the line into view once on arrival, centred, and takes the request", async () => {
+    requestBundleFocus();
+    renderHome(withRelease());
+    await screen.findByText("Collie 1.5.0 available");
+    await waitFor(() => expect(lineScrolls(spy)).toHaveLength(1));
+    expect(spy.mock.calls.at(-1)?.[0]).toEqual({ block: "center" });
+    expect(bundleFocusPending()).toBe(false);
+  });
+
+  it("scrolls in place when the tap is made on the dashboard itself", async () => {
+    renderHome(withRelease());
+    await screen.findByText("Collie 1.5.0 available");
+    expect(lineScrolls(spy)).toHaveLength(0);
+    act(() => requestBundleFocus());
+    await waitFor(() => expect(lineScrolls(spy)).toHaveLength(1));
+  });
+
+  it("does not scroll on a plain visit", async () => {
+    renderHome(withRelease());
+    await screen.findByText("Collie 1.5.0 available");
+    await settled();
+    expect(lineScrolls(spy)).toHaveLength(0);
+  });
+
+  it("does not scroll for a request that went stale before the dashboard arrived", async () => {
+    requestBundleFocus(Date.now() - BUNDLE_FOCUS_TTL_MS - 1);
+    renderHome(withRelease());
+    await screen.findByText("Collie 1.5.0 available");
+    await settled();
+    expect(lineScrolls(spy)).toHaveLength(0);
+    // And the stale request is gone, so a later plain visit cannot find it either.
+    expect(bundleFocusPending()).toBe(false);
   });
 });

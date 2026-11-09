@@ -1,5 +1,5 @@
 import * as React from "react";
-import { ArrowDown } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -104,7 +104,7 @@ const ChatMessageList = React.forwardRef<ChatMessageListHandle, ChatMessageListP
             className="absolute bottom-3 left-1/2 z-10 size-9 -translate-x-1/2 rounded-full shadow-md"
             aria-label={t("common.scrollToLatestAria")}
           >
-            <ArrowDown className="size-4" />
+            <Icon name="scroll-to-latest" className="size-4" />
             {hasNew && (
               <span className="absolute -right-0.5 -top-0.5 size-2.5 rounded-full bg-status-blocked ring-2 ring-background" />
             )}

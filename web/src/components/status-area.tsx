@@ -1,4 +1,5 @@
-import { AlertCircle, AlertTriangle, CheckCircle2, Info, X } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
+import type { IconKey } from "@/components/icons/keys";
 
 import { cn } from "@/lib/utils";
 import { clearStatus, useStatus, type StatusTone } from "@/lib/status";
@@ -18,18 +19,18 @@ const TONE = {
 } satisfies Record<StatusTone, string>;
 
 const ICONS = {
-  info: Info,
-  note: Info,
-  success: CheckCircle2,
-  warn: AlertTriangle,
-  error: AlertCircle,
-} as const;
+  info: "info",
+  note: "info",
+  success: "success",
+  warn: "warning",
+  error: "error",
+} as const satisfies Record<StatusTone, IconKey>;
 
 export function StatusArea({ className }: { className?: string }) {
   useLocale();
   const status = useStatus();
   if (!status) return null;
-  const Icon = ICONS[status.tone];
+  const icon = ICONS[status.tone];
   const dismissable = status.tone === "error";
   return (
     // Two elements, because there are two jobs. The <output> is the ANNOUNCEMENT (role=status +
@@ -60,14 +61,16 @@ export function StatusArea({ className }: { className?: string }) {
         className={cn(
           // `rounded-full` over the house `rounded-md`: the house radius is for things that hold
           // space, and §3's own rule is that a pill is what a passing, self-sized thing wears.
-          "flex items-center justify-center gap-1.5 rounded-full border bg-background/95 px-3 py-1 text-xs font-medium shadow-sm backdrop-blur duration-200 animate-in fade-in",
+          // Solid, with no `backdrop-blur`: the pill floats over the pane, which animates while an agent
+          // works, and a blur over an animation redraws every frame (issue 748).
+          "flex items-center justify-center gap-1.5 rounded-full border bg-background px-3 py-1 text-xs font-medium shadow-sm duration-200 animate-in fade-in",
           dismissable ? "border-status-blocked/50" : "border-border/60",
           TONE[status.tone],
         )}
       >
-        <Icon className="size-3.5 shrink-0" />
+        <Icon name={icon} className="size-3.5 shrink-0" />
         <span className="truncate">{status.text}</span>
-        {dismissable && <X className="size-3.5 shrink-0 opacity-70" />}
+        {dismissable && <Icon name="dismiss" className="size-3.5 shrink-0 opacity-70" />}
       </output>
       {dismissable && (
         <button

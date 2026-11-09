@@ -8,7 +8,7 @@
 // filter — see lib/hosts.ts `spaceKey`, which degrades to a pure prefix (`"\0w1"`) on a solo
 // snapshot where no pane is host-tagged at all.
 import { paneGitHead } from "./git-head";
-import { paneSpaceKey, spaceKey } from "./hosts";
+import { hostKey, paneSpaceKey, spaceKey } from "./hosts";
 import { byPlaceInTab } from "./pane-groups";
 import { bucketOf, TRIAGE_ORDER, type TriageKey } from "./triage";
 import type { AgentView, GitHead, TabView, WorkspaceView } from "./types";
@@ -125,6 +125,41 @@ export function filterSpaces(
 }
 
 /**
+ * The key a repo's root is looked up under: the machine plus the repo path. A path alone would fold
+ * two machines' checkouts of `/home/me/app` into one (a crew list is merged, and so are its paths).
+ */
+export function repoRootKey(space: Pick<WorkspaceView, "host" | "repoRoot">): string {
+  return `${hostKey(space)}\u0000${space.repoRoot ?? ""}`;
+}
+
+/**
+ * The one open workspace that is a repo's own checkout, per machine and repo path (issue #743).
+ *
+ * A repo has a root only when EXACTLY ONE open non-worktree workspace on that machine holds it.
+ * With two (the same repo opened twice), no worktree can say which one it belongs to, so there is no
+ * root: nothing folds and nothing nests, and every worktree stays its own group, as before 1.24.2.
+ * Every view that folds a worktree (the pane list, the isolate keys, the Spaces rows) asks this one
+ * helper, so they cannot disagree about the root.
+ */
+export function uniqueRootByRepo(
+  workspaces: readonly WorkspaceView[],
+): Map<string, WorkspaceView> {
+  const roots = new Map<string, WorkspaceView>();
+  const doubled = new Set<string>();
+  for (const w of workspaces) {
+    if (w.repoRoot === undefined || w.isWorktree !== false) continue;
+    const key = repoRootKey(w);
+    if (roots.has(key)) {
+      doubled.add(key);
+      continue;
+    }
+    roots.set(key, w);
+  }
+  for (const key of doubled) roots.delete(key);
+  return roots;
+}
+
+/**
  * The spaces the Spaces section lists while the workspace filter isolates workspaces (issue #338; it
  * holds several since issue #527).
  *
@@ -148,15 +183,16 @@ export function isolateSpaces(
     return match === undefined ? [] : [{ match, host }];
   });
   if (matches.length === 0) return [...workspaces];
+  const roots = uniqueRootByRepo(workspaces);
   return workspaces.filter((w) =>
     matches.some(
       ({ match, host }) =>
         w === match ||
         (match.repoRoot !== undefined &&
-          match.isWorktree === false &&
           w.isWorktree === true &&
           w.repoRoot === match.repoRoot &&
-          (w.host ?? "") === host),
+          (w.host ?? "") === host &&
+          roots.get(repoRootKey(match)) === match),
     ),
   );
 }
@@ -190,29 +226,25 @@ export interface SpaceRow {
  * every caller today; this function only regroups, never re-sorts.
  */
 export function nestWorktrees(ordered: readonly WorkspaceView[]): SpaceRow[] {
-  // Only a space that IS the repo's own checkout can be a parent (`isWorktree === false`).
-  const parentByRepo = new Map<string, WorkspaceView>();
-  for (const space of ordered) {
-    if (space.repoRoot !== undefined && space.isWorktree === false) {
-      parentByRepo.set(space.repoRoot, space);
-    }
-  }
+  // Only a space that IS the repo's own checkout can be a parent (`isWorktree === false`), and only
+  // when it is the only one on its machine for that repo (issue #743). Keyed by machine and path.
+  const parentByRepo = uniqueRootByRepo(ordered);
 
   const childrenByParent = new Map<string, WorkspaceView[]>();
   for (const space of ordered) {
     if (space.repoRoot === undefined || space.isWorktree !== true) continue;
-    const parent = parentByRepo.get(space.repoRoot);
+    const parent = parentByRepo.get(repoRootKey(space));
     if (parent === undefined) continue; // orphan — rendered flat, below
-    const kin = childrenByParent.get(parent.workspaceId) ?? [];
+    const kin = childrenByParent.get(spaceKey(parent.host, parent.workspaceId)) ?? [];
     kin.push(space);
-    childrenByParent.set(parent.workspaceId, kin);
+    childrenByParent.set(spaceKey(parent.host, parent.workspaceId), kin);
   }
 
   const rows: SpaceRow[] = [];
   const placed = new Set<string>();
   for (const space of ordered) {
     if (placed.has(space.workspaceId)) continue;
-    const kin = childrenByParent.get(space.workspaceId);
+    const kin = childrenByParent.get(spaceKey(space.host, space.workspaceId));
     // A parent reached through its own position, or dragged up here by a child that came first.
     if (kin !== undefined) {
       rows.push({ space, depth: 0 });
@@ -225,11 +257,11 @@ export function nestWorktrees(ordered: readonly WorkspaceView[]): SpaceRow[] {
     }
     // A child met before its parent: emit the whole group HERE, at the child's (fresher) position.
     if (space.repoRoot !== undefined && space.isWorktree === true) {
-      const parent = parentByRepo.get(space.repoRoot);
+      const parent = parentByRepo.get(repoRootKey(space));
       if (parent !== undefined && !placed.has(parent.workspaceId)) {
         rows.push({ space: parent, depth: 0 });
         placed.add(parent.workspaceId);
-        for (const child of childrenByParent.get(parent.workspaceId) ?? []) {
+        for (const child of childrenByParent.get(spaceKey(parent.host, parent.workspaceId)) ?? []) {
           rows.push({ space: child, depth: 1 });
           placed.add(child.workspaceId);
         }

@@ -31,7 +31,7 @@ interface FakeRuntime {
 
 type FakeMux = { -readonly [K in keyof ReportRouteRuntime["herdr"]]: ReportRouteRuntime["herdr"][K] };
 
-function runtime(screen: string, program = false): FakeRuntime {
+function runtime(screen: string, program = false, versions?: Readonly<Record<string, string>>): FakeRuntime {
   const reads: MuxGridRequest[] = [];
   const herdr: FakeMux = {
     mux: "herdr",
@@ -51,7 +51,10 @@ function runtime(screen: string, program = false): FakeRuntime {
     noteInput: () => {},
     pokeNow: () => {},
   };
-  return { rt: { engine, herdr }, reads };
+  // The Surface shadow's version cache, keyed `<pane> <agent>`: the panes it read a binary for. Absent: no shadow.
+  if (versions === undefined) return { rt: { engine, herdr }, reads };
+  const surface: NonNullable<ReportRouteRuntime["surface"]> = { cachedVersion: (pane, harness) => versions[`${pane} ${harness}`] ?? null };
+  return { rt: { engine, herdr, surface }, reads };
 }
 
 describe("reportScreen", () => {
@@ -79,7 +82,7 @@ describe("reportContextRoute (ADR 0123)", () => {
     const res = await reportContextRoute(rt, null, false, MACHINE, null);
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body).toEqual({ collie: "1.24.1+abc1234", line: "edge", os: "linux", arch: "x64", mux: "herdr", harness: null, screenable: false });
+    expect(body).toEqual({ collie: "1.24.1+abc1234", line: "edge", os: "linux", arch: "x64", mux: "herdr", harness: null, harnessVersion: null, screenable: false });
     expect(reads).toEqual([]);
   });
 
@@ -120,8 +123,21 @@ describe("reportContextRoute (ADR 0123)", () => {
     const { rt } = runtime("claude ready");
     const body = await (await reportContextRoute(rt, "%1", false, MACHINE, null)).json();
     // The set of keys is the whole contract: a receipt's `binary` (an absolute local path) is not among them.
-    expect(Object.keys(body).toSorted()).toEqual(["arch", "collie", "harness", "line", "mux", "os", "screenable"]);
+    expect(Object.keys(body).toSorted()).toEqual(["arch", "collie", "harness", "harnessVersion", "line", "mux", "os", "screenable"]);
     expect(JSON.stringify(body)).not.toMatch(/\/(?:home|Users|root)\b/u);
+  });
+
+  test("names the pane's agent binary version from the shadow's cache, null when it has none (1.27.4)", async () => {
+    const { rt } = runtime("x", false, { "%1 claude": "2.1.316" });
+    expect((await (await reportContextRoute(rt, "%1", false, MACHINE, null)).json()).harnessVersion).toBe("2.1.316");
+    // A bare shell and the machine's half name no version, even with a cache.
+    expect((await (await reportContextRoute(rt, "%2", false, MACHINE, null)).json()).harnessVersion).toBeNull();
+    expect((await (await reportContextRoute(rt, null, false, MACHINE, null)).json()).harnessVersion).toBeNull();
+    // A cache that has not read this agent, and no shadow at all.
+    const unread = runtime("x", false, {});
+    expect((await (await reportContextRoute(unread.rt, "%1", false, MACHINE, null)).json()).harnessVersion).toBeNull();
+    const none = runtime("x");
+    expect((await (await reportContextRoute(none.rt, "%1", false, MACHINE, null)).json()).harnessVersion).toBeNull();
   });
 
   test("a program session has no screen: screenable is false and screen=1 is a 400", async () => {

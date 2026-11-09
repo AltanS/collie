@@ -1,4 +1,4 @@
-import { ChevronRight } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 
 import { ChangeCountSlot } from "@/components/change-count";
 import { ListGroup } from "@/components/ui/list-group";
@@ -64,7 +64,7 @@ export function WorkspaceChangesList({
                   <ChangeCountSlot count={count} glide="count" />
                 </span>
               </span>
-              <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+              <Icon name="row-go" className="size-4 shrink-0 text-muted-foreground" aria-hidden />
             </button>
           </li>
         );

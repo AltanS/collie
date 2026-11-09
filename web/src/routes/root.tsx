@@ -10,6 +10,7 @@ import {
 } from "react-router";
 
 import { useNavTrail } from "@/hooks/use-nav";
+import { useSlotMemory } from "@/hooks/use-slot-memory";
 import { readAgentLaunch } from "@/lib/agent-startup";
 import { usePolling } from "@/hooks/use-polling";
 import { usePollBusy } from "@/hooks/use-poll-busy";
@@ -106,6 +107,8 @@ export function RootLayout() {
   useBusyWhile(useNavigation().state !== "idle");
   // The history the tab has walked, for the Files breadcrumb's pop (lib/nav-trail.ts).
   useNavTrail();
+  // Which pane this tab reopens on, when it came through `/slot/<n>` (lib/slots.ts).
+  useSlotMemory();
   // The open pane as a ROW, so a peer's pane that shares its id is not silenced along with it.
   const openPane =
     paneId === undefined
@@ -167,7 +170,11 @@ export function RootLayout() {
       {/* Report a problem (ADR 0123): the one sheet the composer's card, the pane menu and Settings open
           through lib/report/store.ts. Renders nothing until the first open, and loads the sheet then. */}
       <ReportDoor />
-      <div className="flex h-(--app-h) flex-col overflow-hidden">
+      {/* `relative` makes this column the containing block of last resort, so its `overflow-hidden`
+          also clips an absolute element no closer box contains (an `sr-only` word deep in a list).
+          Without it such an element grew the DOCUMENT, and the page scrolled under the header
+          (1.27.1). Its box is the viewport's, so nothing that was placed against the page moves. */}
+      <div className="relative flex h-(--app-h) flex-col overflow-hidden">
         {/* THE ONE HEADER, and the first thing on the screen in every state. It survives a
             navigation because it is rendered HERE rather than inside `<Outlet/>`: all six routes used
             to mount their own copy, and a header inside the outlet unmounts and remounts on every
@@ -268,7 +275,7 @@ export function BootSplash() {
             screen's ground, `bg-background`, the knockout that puts a near-side bead in front of
             the head. The "Connecting to the herd…" copy below carries the accessible meaning, so
             the mark is decorative. */}
-        <CollieMark size={64} weight="header" loading paper="var(--background)" />
+        <CollieMark size={64} weight="header" state="loading" paper="var(--background)" />
         <span className="text-sm">{t("error.boot.connecting")}</span>
       </div>
     );
@@ -281,7 +288,7 @@ export function BootSplash() {
           `paper` is this screen's ground, `bg-background`, which is the knockout colour that puts a
           near-side bead in front of the head. The "Not connected" copy below carries the accessible
           meaning, so the mark is decorative. */}
-      <CollieMark size={64} weight="header" paper="var(--background)" className="opacity-40 grayscale" />
+      <CollieMark size={64} weight="header" state="idle" paper="var(--background)" />
       <p className="font-medium text-foreground">{t("error.boot.title")}</p>
       <p className="max-w-xs text-sm text-muted-foreground">{t("error.boot.body")}</p>
       <button

@@ -1,4 +1,4 @@
-import { MessagesSquare } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 
 import { ExperimentalBadge } from "@/components/experimental-badge";
 import { StatusDot } from "@/components/status-badge";
@@ -75,7 +75,7 @@ function Counts({ open, waiting }: { open: number; waiting: number }) {
         </span>
       )}
       <Badge variant="secondary" data-slot="program-space-open" className="tabular-nums text-muted-foreground">
-        <MessagesSquare aria-hidden />
+        <Icon name="messages" aria-hidden />
         <span aria-hidden>{open}</span>
         <span className="sr-only">{tn("space.program.open", open)}</span>
       </Badge>

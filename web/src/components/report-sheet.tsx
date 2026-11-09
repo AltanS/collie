@@ -15,7 +15,7 @@
 // preview shows the masked rows before anything leaves, so the person still reads them and can switch
 // them off. That door also adds the phone's own facts (`readClientFacts`) to the setup block.
 
-import { ExternalLink, Search } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 import { useEffect, useState, type MouseEvent } from "react";
 
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -291,12 +291,12 @@ export function ReportSheetView({ context, contextError, rows, episodes, fromSet
             onClick={link.clipboard ? (event) => void openWithClipboard(event) : undefined}
             className={cn(buttonVariants({ variant: "default" }), "h-11")}
           >
-            <ExternalLink className="size-4" />
+            <Icon name="open-external" className="size-4" />
             {t("report.sheet.open")}
           </a>
         ) : (
           <Button type="button" className="h-11" data-slot="report-open" disabled>
-            <ExternalLink className="size-4" />
+            <Icon name="open-external" className="size-4" />
             {t("report.sheet.open")}
           </Button>
         )}
@@ -312,7 +312,7 @@ export function ReportSheetView({ context, contextError, rows, episodes, fromSet
           rel="noopener noreferrer"
           className="inline-flex min-h-11 items-center justify-center gap-1.5 text-xs text-muted-foreground underline underline-offset-2"
         >
-          <Search className="size-3.5" />
+          <Icon name="search" className="size-3.5" />
           {t("report.sheet.search")}
         </a>
       </div>

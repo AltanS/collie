@@ -10,6 +10,7 @@ import { StatusArea } from "@/components/status-area";
 import { ToastViewport } from "@/components/ui/toast-viewport";
 import { BuildStamp } from "@/components/build-stamp";
 import { UpdateBanner } from "@/components/update-banner";
+import { besideOf, useNewTabOrSheet } from "@/hooks/use-new-tab-or-sheet";
 import { tabCreateKey, useSpaceActions } from "@/hooks/use-spaces";
 import { useNav } from "@/hooks/use-nav";
 import { usePaneOpen } from "@/hooks/use-pane-open";
@@ -31,7 +32,10 @@ export function SpaceRoute() {
   const { spaceId = "" } = useParams();
   const nav = useNav();
   const revalidator = useRevalidator();
-  const { newTab, creatingTab, creatingSpace } = useSpaceActions();
+  const actions = useSpaceActions();
+  const { creatingTab, creatingSpace } = actions;
+  // The tab row's "+" offers the machine's agents in a sheet, or makes the shell it always made (M91).
+  const plus = useNewTabOrSheet(actions, data.scope);
   // The New page's Favourites and Recent, read once ahead of the tap so the page opens at its final
   // height (lib/folders.ts). Once per mount, for the machine this view shows.
   const folderHost = data.scope?.host;
@@ -140,7 +144,13 @@ export function SpaceRoute() {
               agents={data.agents}
               selected={tab}
               onSelect={switchTab}
-              onNewTab={newTab}
+              onNewTab={(workspaceId) =>
+                plus.request({
+                  workspaceId,
+                  label: selectedWs.label,
+                  beside: besideOf([...data.agents, ...data.shellPanes], workspaceId, navHost),
+                })
+              }
               onNewStarters={() => nav.down(newPath({ machine: data.scope.host, session: data.scope.session }))}
               creatingTab={creatingTab.has(tabCreateKey(selectedWs.workspaceId, data.scope))}
               scope={data.scope}
@@ -167,6 +177,7 @@ export function SpaceRoute() {
                 host={navHost}
               />
             </main>
+            {plus.sheet}
           </>
         )}
 

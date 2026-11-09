@@ -40,20 +40,50 @@ export const WIDE_MIN_HEIGHT_PX = 480;
 export const MEDIUM_QUERY = `(min-width: ${MEDIUM_MIN_PX}px) and (min-height: ${WIDE_MIN_HEIGHT_PX}px)`;
 export const EXPANDED_QUERY = `(min-width: ${EXPANDED_MIN_PX}px) and (min-height: ${WIDE_MIN_HEIGHT_PX}px)`;
 
+/** The same two cuts by width alone, with no height test. Read while a field that types has focus
+ *  (see {@link heldWidthClass}). */
+export const MEDIUM_WIDTH_QUERY = `(min-width: ${MEDIUM_MIN_PX}px)`;
+export const EXPANDED_WIDTH_QUERY = `(min-width: ${EXPANDED_MIN_PX}px)`;
+
+/** Android closes the keyboard in about 300 ms. One second is far past it, and the only cost is a late drop to compact in a short window with no keyboard, which is rare. */
+export const KEYBOARD_CLOSE_LINGER_MS = 1000;
+
+/**
+ * The width class to draw, given what the window says now and what was drawn last. The soft keyboard
+ * shrinks the page height (`interactive-widget=resizes-content`), and under 480px tall the window
+ * reads compact. A drop to compact would unmount the focused field and close the keyboard, then the
+ * height returns and the layout flips back, so the person cannot type (issue 751). So while a typing
+ * field has focus, a class that was wide stays as wide as the WIDTH alone allows. It never raises a
+ * compact class: a phone held sideways starts compact and stays compact when its composer takes focus.
+ */
+export function heldWidthClass(fromWindow: WidthClass, last: WidthClass, typing: boolean, byWidth: WidthClass): WidthClass {
+  if (fromWindow !== "compact") return fromWindow;
+  if (!typing || last === "compact" || byWidth === "compact") return "compact";
+  return byWidth;
+}
+
 export function widthClassOf(px: number): WidthClass {
   if (px >= EXPANDED_MIN_PX) return "expanded";
   if (px >= MEDIUM_MIN_PX) return "medium";
   return "compact";
 }
 
-/** The sidebar's width by width class, and the rail it collapses to. Compact has neither. */
-export const SIDEBAR_WIDTH = { medium: 280, expanded: 320 } as const satisfies Record<Exclude<WidthClass, "compact">, number>;
+/** The sidebar's width by width class, and the rail it collapses to. Compact has neither.
+ *  MEDIUM IS 264, down from 280: on a 705px two-screen phone 280 was 40% of the screen. 264 is the
+ *  floor where the summary line's commonest English word still fits ("12 unseen", 77px of an 83px
+ *  slot); at 256 it fell back to a dot and a number. "1 needs you" wants 88px and drops its word
+ *  below 269 (status-counts.tsx's ladder: the dot and the number stay, nothing is cut). */
+export const SIDEBAR_WIDTH = { medium: 264, expanded: 320 } as const satisfies Record<Exclude<WidthClass, "compact">, number>;
 export const RAIL_WIDTH = 56;
 
 // ── Column widths ───────────────────────────────────────────────────────────────────────────────
 
-/** A pane is never narrower than this many CSS px. */
-export const MIN_PANE_WIDTH = 360;
+/** A pane is never narrower than this many CSS px. It is 440, not the 360 of the first cut: at 360
+ *  wide mode began at a 720px strip, so a lone column stood at 1/2 beside an empty add column on a
+ *  1114 or 1180px tablet in landscape (392 and 425px of chat), and closing the sidebar on an 820px
+ *  tablet in portrait made the chat NARROWER, 535 to 377px. From 440 wide mode begins at an 880px
+ *  strip, and those three screens draw one full column (ADR 0120, addendum 2026-11-07). */
+export const MIN_PANE_WIDTH = 440;
 
 /** A column's width as a share of the strip, in wide mode only. Niri's preset column widths. */
 export type Preset = "half" | "fourfifths" | "full";

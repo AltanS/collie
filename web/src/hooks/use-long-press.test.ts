@@ -223,6 +223,17 @@ describe("useLongPress", () => {
   describe("the holding state", () => {
     const holding = (props: ReturnType<typeof useLongPress>) => props["data-holding"];
 
+    it("shows no hold at all when `showHold` is off, though the hold still fires on time", () => {
+      const onLongPress = vi.fn();
+      const { result } = renderHook(() => useLongPress(onLongPress, { showHold: false }));
+      act(() => result.current.onPointerDown(down()));
+      act(() => vi.advanceTimersByTime(HOLD_FEEDBACK_DELAY_MS + 100));
+      expect(holding(result.current)).toBeUndefined();
+      expect(result.current.style).toBeUndefined();
+      act(() => vi.advanceTimersByTime(400));
+      expect(onLongPress).toHaveBeenCalledOnce();
+    });
+
     it("starts at rest: no attribute and no style", () => {
       const { result } = renderHook(() => useLongPress(vi.fn()));
       expect(holding(result.current)).toBeUndefined();
@@ -354,6 +365,75 @@ describe("useLongPress", () => {
       act(() => result.current.onPointerUp(pointerEndEvent()));
       act(() => vi.advanceTimersByTime(DELAY));
       expect(vibrate).not.toHaveBeenCalled();
+    });
+  });
+  describe("onTap", () => {
+    const up = (x = 0, y = 0) => stubPart<ReactPointerEvent>({ clientX: x, clientY: y, preventDefault: vi.fn() });
+    const move = (x: number, y: number) => stubPart<ReactPointerEvent>({ clientX: x, clientY: y });
+
+    it("runs on a lift that did not hold and did not move, with the lift's event", () => {
+      const onTap = vi.fn();
+      const { result } = renderHook(() => useLongPress(vi.fn(), { onTap }));
+      act(() => result.current.onPointerDown(down(10, 10)));
+      const lift = up(12, 12);
+      act(() => result.current.onPointerUp(lift));
+      expect(onTap).toHaveBeenCalledExactlyOnceWith(lift);
+    });
+
+    it("does not run after a hold fired", () => {
+      const onTap = vi.fn();
+      const { result } = renderHook(() => useLongPress(vi.fn(), { onTap }));
+      act(() => result.current.onPointerDown(down()));
+      act(() => vi.advanceTimersByTime(DELAY));
+      act(() => result.current.onPointerUp(up()));
+      expect(onTap).not.toHaveBeenCalled();
+    });
+
+    it("does not run when the press moved past 8px, though the hold's looser bound still holds", () => {
+      const onLongPress = vi.fn();
+      const onTap = vi.fn();
+      const { result } = renderHook(() => useLongPress(onLongPress, { onTap }));
+      act(() => result.current.onPointerDown(down(0, 0)));
+      act(() => result.current.onPointerMove(move(0, 9)));
+      act(() => result.current.onPointerUp(up(0, 9)));
+      expect(onTap).not.toHaveBeenCalled();
+      // 9px is inside the hold's 16px: a hold that wandered that far still fires.
+      act(() => result.current.onPointerDown(down(0, 0)));
+      act(() => result.current.onPointerMove(move(0, 9)));
+      act(() => vi.advanceTimersByTime(DELAY));
+      expect(onLongPress).toHaveBeenCalledOnce();
+    });
+
+    it("runs at exactly 8px of movement", () => {
+      const onTap = vi.fn();
+      const { result } = renderHook(() => useLongPress(vi.fn(), { onTap }));
+      act(() => result.current.onPointerDown(down(0, 0)));
+      act(() => result.current.onPointerMove(move(8, 0)));
+      act(() => result.current.onPointerUp(up(8, 0)));
+      expect(onTap).toHaveBeenCalledOnce();
+    });
+
+    it("does not run after a cancel or a leave: a touch scroll arrives as a cancel", () => {
+      const onTap = vi.fn();
+      const { result } = renderHook(() => useLongPress(vi.fn(), { onTap }));
+      act(() => result.current.onPointerDown(down()));
+      act(() => result.current.onPointerCancel(pointerEndEvent()));
+      act(() => result.current.onPointerUp(up()));
+      act(() => result.current.onPointerDown(down()));
+      act(() => result.current.onPointerLeave(pointerEndEvent()));
+      act(() => result.current.onPointerUp(up()));
+      expect(onTap).not.toHaveBeenCalled();
+    });
+
+    it("does not run for a secondary button, nor with no hold to arm it", () => {
+      const onTap = vi.fn();
+      const armed = renderHook(() => useLongPress(vi.fn(), { onTap }));
+      act(() => armed.result.current.onPointerDown(down(0, 0, 2)));
+      act(() => armed.result.current.onPointerUp(up()));
+      const inert = renderHook(() => useLongPress(undefined, { onTap }));
+      act(() => inert.result.current.onPointerDown(down()));
+      act(() => inert.result.current.onPointerUp(up()));
+      expect(onTap).not.toHaveBeenCalled();
     });
   });
 });

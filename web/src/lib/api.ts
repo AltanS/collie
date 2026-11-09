@@ -14,7 +14,8 @@ import {
 import { noteSnapshotTaken } from "./snapshot-clock";
 import { markDead as markPaneDead, markLive as markPaneLive } from "./liveness";
 import { abortSignalAfter, abortSignalAny } from "./env";
-import { asJsonObject, asJsonString, parseJsonObject, type JsonObject } from "./json";
+import { asJsonObject, asJsonString, parseJsonObject, type JsonObject, type JsonValue } from "./json";
+import { readRegistryStatus } from "./theme/registry-status";
 import { readHeldCancelAnswer, readSendReceipts, readSendReply, type SendReply } from "./send-protocol";
 import { readReportContext, type ReportContext } from "./report/context";
 import type { TroubleSignal } from "./report/signal";
@@ -28,6 +29,7 @@ import { pairingRefused } from "./wipe";
 import { mintRequestId } from "./worktree-name";
 import { fileVersionOf } from "./file-image-cache";
 import { isLead, normalizeScope, paneScopeKey, type Scope } from "./scope";
+import { closePaneNotifications } from "./pane-notifications";
 import { textRouteFor } from "./send-path";
 import { stampSend } from "./poll-intent";
 import { observeServerBuild, SERVER_BUILD_HEADER } from "./server-build";
@@ -76,6 +78,8 @@ import type {
   MachinesResponse,
   PaneReadResponse,
   PairFailure,
+  PinFull,
+  PinRow,
   SnapshotResponse,
   SttHostChoice,
   SttHostStatus,
@@ -96,6 +100,8 @@ import type {
   WorktreeFolderChoice,
   WhistleStatus,
   WorktreePlanResponse,
+  MathPackStatus,
+  ThemeRegistryStatus,
 } from "./types";
 import type { SubscribeBody } from "./push";
 
@@ -688,7 +694,12 @@ export async function fetchPane(
     // paired device's polls are what keep its "last seen" honest. Same injection point as `doReq`.
     ...authHeader(),
   });
-  if (seen) headers.set("x-collie-seen", "1");
+  // A seen read is also the bridge's cue that this device closed its own notification for the pane
+  // (lib/pane-notifications.ts, bridge/push.ts rule 2), so the close goes first and is not waited on.
+  if (seen) {
+    headers.set("x-collie-seen", "1");
+    void closePaneNotifications(paneId, scope);
+  }
   if (cached) headers.set("if-none-match", cached.etag);
 
   let res: Response;
@@ -1734,6 +1745,45 @@ export async function setWalkyOff(paneId: string, off: boolean, scope?: Scope): 
 }
 
 /**
+ * GET /api/pane/:id/pins: the pinned messages of the pane's session, newest first (M90). Each row carries an
+ * excerpt and the length of its text, never the text, so a list of a hundred stays small. A poll read, so it
+ * takes the poll's deadline. Scoped to the pane's own host: the lead forwards it to the member that owns the
+ * pane, whose own file answers.
+ */
+export async function fetchPanePins(scope: Scope | undefined, paneId: string, signal?: AbortSignal): Promise<PinRow[]> {
+  const got = await req<{ pins: PinRow[] }>(withScope(`/api/pane/${encodeURIComponent(paneId)}/pins`, scope), {
+    signal,
+    timeoutMs: POLL_TIMEOUT_MS,
+  });
+  return got.pins;
+}
+
+/** GET /api/pane/:id/pins?pin=<id>: one pin with its whole text (M90). A pin that is gone is a 404 `pin.not_found`. */
+export async function fetchPanePin(scope: Scope | undefined, paneId: string, pinId: string, signal?: AbortSignal): Promise<PinFull> {
+  const got = await req<{ pin: PinFull }>(withScope(`/api/pane/${encodeURIComponent(paneId)}/pins?pin=${encodeURIComponent(pinId)}`, scope), { signal });
+  return got.pin;
+}
+
+/**
+ * POST /api/pane/:id/pins: pin one Chat block (M90). The phone names the block by its item id and nothing else; the
+ * bridge copies the text from its own log. A block that is already pinned answers the pin it has (200), so a
+ * second tap is not a refusal. A refusal is an {@link ApiError} whose `fields.code` is a `pin.*` word, and an
+ * older bridge's plain 404 carries none (lib/message-pins.ts tells the two apart).
+ */
+export async function pinItem(scope: Scope | undefined, paneId: string, itemId: string): Promise<PinFull> {
+  const got = await req<{ pin: PinFull }>(withScope(`/api/pane/${encodeURIComponent(paneId)}/pins`, scope), {
+    method: "POST",
+    body: JSON.stringify({ itemId }),
+  });
+  return got.pin;
+}
+
+/** DELETE /api/pane/:id/pins?pin=<id>: drop one pin (M90). A 204, also when the pin was already gone. */
+export async function unpinItem(scope: Scope | undefined, paneId: string, pinId: string): Promise<void> {
+  await req<undefined>(withScope(`/api/pane/${encodeURIComponent(paneId)}/pins?pin=${encodeURIComponent(pinId)}`, scope), { method: "DELETE" });
+}
+
+/**
  * POST /api/walky/<id>/cancel (M62 spec 03): the sender takes a held operator message back. The bridge
  * answers one result per target; a message that typed, or is going out now, keeps its receipt and the
  * result says `already typed`. An agent's message is not the phone's to cancel (403, an error here).
@@ -1755,15 +1805,18 @@ export async function dropWalky(paneId: string, id: string, scope?: Scope): Prom
 }
 
 /**
- * DELETE /api/send/<id>: take back a held send, or dismiss an ended one (M56 spec 15). `refused` is an
- * answer, not an error: the request is going out now, and a 409 carries it. This machine's own panes
- * only; the route does not cross a crew link, so a pane on a member never comes here.
+ * Take back a held send, or dismiss an ended one (M56 spec 15). `refused` is an answer, not an error:
+ * the request is going out now, and a 409 carries it. This machine's own panes use
+ * `DELETE /api/send/<id>?pane=<id>`; a pane on a crew member uses `DELETE /api/pane/<id>/held?request=<id>`,
+ * which the lead forwards to the member whose queue keeps the row (issue 740).
  */
 export async function cancelHeldSend(requestId: string, paneId: string, scope?: Scope): Promise<HeldCancelAnswer> {
-  if (!isLead(scope)) throw new ApiError("A held send on a crew member is cancelled on that machine.", 400);
   stampSend(paneId);
+  const path = isLead(scope)
+    ? `/api/send/${encodeURIComponent(requestId)}?pane=${encodeURIComponent(paneId)}`
+    : `/api/pane/${encodeURIComponent(paneId)}/held?request=${encodeURIComponent(requestId)}`;
   const got = await req<JsonObject>(
-    withScope(`/api/send/${encodeURIComponent(requestId)}?pane=${encodeURIComponent(paneId)}`, scope),
+    withScope(path, scope),
     { method: "DELETE" },
     // A 409 is the answer "it is going out now", a value; an unknown id (404) stays an error.
     sendRecover((status, detail) => (status === 409 ? (parseJsonObject(detail) ?? null) : null)),
@@ -2006,8 +2059,8 @@ export type StartWhat =
 /** What can start on a new worktree: everything but a one-off line (`launch.run_no_branch`). */
 export type BranchableWhat = Exclude<StartWhat, { kind: "run" }>;
 
-/** POST /api/launch's body from the New page. A named contract so `startLaunch` infers against it. */
-interface StartLaunchBody {
+/** POST /api/launch's body from the New page. A named contract so `startLaunch` infers against it, and a test reads it. */
+export interface StartLaunchBody {
   command?: string;
   harness?: string;
   shell?: true;
@@ -2827,6 +2880,43 @@ export function startWhistleSetup(): Promise<WhistleStatus> {
 /** Remove the model from the host, and the `whistle` provider with it when it was the host's (write-gated). */
 export function removeWhistleModel(): Promise<WhistleStatus> {
   return req<WhistleStatus>("/api/stt/whistle", { method: "DELETE" });
+}
+
+// ── THE MATH PACK ON THE HOST (ADR 0132) ──────────────────────────────────────────────────────
+
+/** Where the host's math pack stands. A read that fetches nothing on the host; polled while it downloads. */
+export function fetchMathPack(signal?: AbortSignal): Promise<MathPackStatus> {
+  return req<MathPackStatus>("/api/math", { signal, timeoutMs: POLL_TIMEOUT_MS });
+}
+
+/** Ask the host to download the math pack (write-gated): `202` while it runs, `200` when it is there,
+ *  `409` when this build has none to offer. Every answer carries the status. */
+export function startMathPack(): Promise<MathPackStatus> {
+  return req<MathPackStatus>("/api/math", { method: "POST" });
+}
+
+/** Remove every math pack from the host (write-gated). */
+export function removeMathPack(): Promise<MathPackStatus> {
+  return req<MathPackStatus>("/api/math", { method: "DELETE" });
+}
+
+// ── THE COMMUNITY THEME REGISTRY ON THE HOST (M59 spec 06) ────────────────────────────────────
+
+/** The host's copy of the community theme list. A read: the host fetches nothing for it. */
+export async function fetchThemeRegistry(signal?: AbortSignal): Promise<ThemeRegistryStatus> {
+  return registryStatusOf(await req<JsonValue>("/api/themes/registry", { signal }));
+}
+
+/** Ask the host to fetch the list once (write-gated). A failed fetch answers 502; read the status again for its word. */
+export async function refreshThemeRegistry(): Promise<ThemeRegistryStatus> {
+  return registryStatusOf(await req<JsonValue>("/api/themes/registry", { method: "POST" }));
+}
+
+/** The status checked for its shape (F11): a body that is not one fails as a broken read does. */
+function registryStatusOf(value: JsonValue): ThemeRegistryStatus {
+  const status = readRegistryStatus(value);
+  if (status === undefined) throw new Error("the host's theme list status is not an object");
+  return status;
 }
 
 // ── THE HOST'S SPEECH PROVIDER (ADR 0097) ─────────────────────────────────────────────────────

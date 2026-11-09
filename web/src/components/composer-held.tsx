@@ -2,7 +2,9 @@
 // bottom edge (ADR 0061, amended 2026-10-18). A send the harness could not take while its turn ran waits
 // in the bridge, and goes out when the pane reads free; the row says so and offers Cancel. A request that
 // closed without reaching the agent stays as a row with its text, so nothing the person typed is lost:
-// Resend sends it again as a new request, Dismiss lets it go. The rows come from the snapshot, never
+// Resend sends it again as a new request, Dismiss lets it go. On a crew member's pane the row keeps
+// Cancel and Dismiss (the lead forwards them to the member, issue 740) and draws no Resend, Submit or
+// Discard, which would need the Send Protocol across the link. The rows come from the snapshot, never
 // from phone state, so a second phone on the same pane sees the same queue.
 //
 // THE CARD HOLDS NO SPACE. The rows used to sit in the composer's flow, so each held send grew the
@@ -74,8 +76,14 @@ interface HeldCardProps {
   scope?: Scope | undefined;
   /** The snapshot's rows, oldest first. The caller mounts the card only while there is at least one. */
   rows: readonly HeldRow[];
-  /** False on a crew member's pane (the cancel route does not cross a link) and on a locked composer: the rows show, with no row buttons. */
+  /** False on a locked composer: the rows show, with no row buttons. */
   canAct: boolean;
+  /**
+   * False on a crew member's pane: the Send Protocol does not cross a link, so Resend, Submit and Discard
+   * are not drawn there. Cancel and Dismiss are, through the pane route the lead forwards (issue 740).
+   * Absent reads as true.
+   */
+  canSend?: boolean;
   /** A send from the composer is running; Resend waits so two requests do not race for the box. */
   sending: boolean;
   /** Send for an ended row: again by its id (`resend`), or its text in the box submitted or discarded. True when the bridge took it. */
@@ -88,7 +96,7 @@ interface HeldCardProps {
 const CLAMP_ONE = "line-clamp-3";
 const CLAMP_COLLAPSED = "line-clamp-2";
 
-export function HeldCard({ paneId, scope, rows, canAct, sending, onSend, onChanged }: HeldCardProps) {
+export function HeldCard({ paneId, scope, rows, canAct, canSend = true, sending, onSend, onChanged }: HeldCardProps) {
   useLocale();
   // The request whose call is in flight: its buttons wait, the others stay live.
   const [busy, setBusy] = useState<string | null>(null);
@@ -148,12 +156,12 @@ export function HeldCard({ paneId, scope, rows, canAct, sending, onSend, onChang
     if (row.state !== "ended") return null;
     return (
       <span className="flex items-center gap-1">
-        {canResend(row) && (
+        {canSend && canResend(row) && (
           <Button type="button" variant="outline" size="sm" className={QUEUED_BUTTON} disabled={disabled || sending} aria-label={t("composer.held.resendAria")} onClick={() => void resend(row)}>
             {t("composer.held.resend")}
           </Button>
         )}
-        {row.outcome === "typed_not_submitted" && (
+        {canSend && row.outcome === "typed_not_submitted" && (
           <>
             <Button type="button" variant="outline" size="sm" className={QUEUED_BUTTON} disabled={disabled || sending} aria-label={t("composer.held.submitAria")} onClick={() => void settle(row, "submit")}>
               {t("composer.held.submit")}

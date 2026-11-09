@@ -24,6 +24,9 @@ import type {
   TranscriptEntry,
   TranscriptPart,
   WorkspaceView,
+  PinFull,
+  PinRow,
+  LaunchersResponse,
 } from "@/lib/types";
 import { asJsonObject, asJsonString, parseJsonObject, type JsonObject } from "@/lib/json";
 import type { Surface } from "@/lib/surface/surface";
@@ -293,6 +296,42 @@ export const fixtureNewTab: Extract<CreateResponse, { ok: true }> = {
     workspaceLabel: "collie",
     tabId: "w2:t9",
     cwd: "/home/you/collie",
+  },
+};
+
+/**
+ * A machine's launcher list with something to offer (M91, the New tab sheet): two agents Collie knows,
+ * one not installed, an operator's agent row that skips prompts, the shell, and one command row. The
+ * default `/api/launchers` world below sends none of this, so every "+" there still makes a bare shell;
+ * a case that wants the sheet serves this. Shared by the unit layer and the browser tier's stub.
+ */
+export const fixtureLaunchersWithAgents: LaunchersResponse = {
+  launchers: [],
+  home: "/home/you",
+  harnesses: [
+    { id: "claude", label: "Claude Code", found: true },
+    { id: "codex", label: "Codex", found: false },
+  ],
+  items: [
+    { key: "harness:claude", start: { harness: "claude" }, group: "agents", label: "Claude Code", harness: "claude", source: "builtin", noPrompts: false, branch: true, available: true },
+    { key: "harness:codex", start: { harness: "codex" }, group: "agents", label: "Codex", harness: "codex", source: "builtin", noPrompts: false, branch: true, available: false, reason: "not_found" },
+    { key: "shell", start: { shell: true }, group: "commands", label: "Shell", source: "builtin", noPrompts: false, branch: true, available: true },
+    { key: "row:htop", start: { command: "htop" }, group: "commands", label: "htop", command: "htop", source: "operator", noPrompts: false, branch: false, available: true },
+  ],
+};
+
+/**
+ * What `POST /api/launch` answers for a start beside a pane: the fresh pane of a new tab in `webapp`
+ * (w1), running what was asked. Shared by the unit layer and the browser tier's stub.
+ */
+export const fixtureLaunchedTab: Extract<CreateResponse, { ok: true }> = {
+  ok: true,
+  pane: {
+    paneId: "w1:p7",
+    workspaceId: "w1",
+    workspaceLabel: "webapp",
+    tabId: "w1:t7",
+    cwd: "/home/you/webapp",
   },
 };
 
@@ -698,6 +737,41 @@ export function recordedWalkyTakeBacks(): string[] {
 export function recordedWalkyPosts(): readonly WalkySendBody[] {
   return walkyPosts;
 }
+// ── The fake bridge's pinned messages (M90) ─────────────────────────────────────────────────────
+// `GET /api/pane/:id/pins` lists what a test set with `setMessagePins` (none by default), newest first, as the
+// bridge does: an excerpt and the length, no text. `GET ?pin=<id>` answers the whole pin, `POST { itemId }`
+// keeps a reply-shaped pin named after the item and answers 201 (200 for a block already pinned), and
+// `DELETE ?pin=<id>` drops one and answers 204.
+let messagePins: PinFull[] = [];
+let messagePinPosts: string[] = [];
+let messagePinMint = 0;
+/** The pins the fake bridge holds for every pane, oldest first on the way in. */
+export function setMessagePins(pins: readonly PinFull[]): void {
+  messagePins = [...pins];
+}
+/** The item ids `POST /api/pane/:id/pins` took in this test, oldest first. */
+export function messagePinItemIds(): readonly string[] {
+  return messagePinPosts;
+}
+/** The pins the fake bridge holds now, oldest first. */
+export function heldMessagePins(): readonly PinFull[] {
+  return messagePins;
+}
+/** A pin as a test writes one down: only what it cares about is named. */
+export function fixturePin(over: Partial<PinFull> & { itemId: string }): PinFull {
+  return { id: `pin-${over.itemId}`, kind: "reply", text: `text of ${over.itemId}`, anchor: `text of ${over.itemId}`, pinnedAt: 1_700_000_000_000, ...over };
+}
+/** Reset between tests (msw.ts afterEach). */
+export function resetMessagePins(): void {
+  messagePins = [];
+  messagePinPosts = [];
+  messagePinMint = 0;
+}
+function pinRowOf(pin: PinFull): PinRow {
+  const { text, ...rest } = pin;
+  return { ...rest, excerpt: text.slice(0, 400), textLength: text.length };
+}
+
 /** Reset between tests (msw.ts afterEach). */
 export function resetWalky(): void {
   walkyRows = [];
@@ -1022,6 +1096,28 @@ export const handlers = [
   // The session page's recent sends (M56 spec 09): none, unless a test says otherwise.
   http.get("/api/send/receipts", () => HttpResponse.json({ receipts: [] })),
   http.get(/\/api\/pane\/[^/]+\/walky/, () => HttpResponse.json({ messages: walkyRows })),
+  http.get(/\/api\/pane\/[^/]+\/pins$/, ({ request }) => {
+    const wanted = new URL(request.url).searchParams.get("pin");
+    if (wanted === null) return HttpResponse.json({ pins: messagePins.toReversed().map(pinRowOf) });
+    const found = messagePins.find((pin) => pin.id === wanted);
+    if (found === undefined) return HttpResponse.json({ error: "pin.not_found", code: "pin.not_found", message: "that pin does not exist" }, { status: 404 });
+    return HttpResponse.json({ pin: found });
+  }),
+  http.post(/\/api\/pane\/[^/]+\/pins$/, async ({ request }) => {
+    const itemId = asJsonString(parseJsonObject(await request.text())?.itemId) ?? "";
+    messagePinPosts.push(itemId);
+    const held = messagePins.find((pin) => pin.itemId === itemId);
+    if (held !== undefined) return HttpResponse.json({ pin: held }, { status: 200 });
+    messagePinMint += 1;
+    const made = fixturePin({ itemId, id: `made-${messagePinMint}`, pinnedAt: 1_800_000_000_000 + messagePinMint });
+    messagePins.push(made);
+    return HttpResponse.json({ pin: made }, { status: 201 });
+  }),
+  http.delete(/\/api\/pane\/[^/]+\/pins$/, ({ request }) => {
+    const wanted = new URL(request.url).searchParams.get("pin");
+    messagePins = messagePins.filter((pin) => pin.id !== wanted);
+    return new HttpResponse(null, { status: 204 });
+  }),
   http.post("/api/walky", async ({ request }) => {
     const body = parseJsonObject(await request.text());
     const posted: WalkySendBody = {

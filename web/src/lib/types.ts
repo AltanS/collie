@@ -2,6 +2,7 @@
 // duplicate so the web app builds independently of the Bun server's source tree.
 
 import type { ApiErrorCode, ApiErrorDetail } from "@/lib/api-error-codes";
+import type { JsonValue } from "@/lib/json";
 import { t } from "@/lib/i18n";
 import type { HeldRow } from "@/lib/surface/send";
 import type { Surface } from "@/lib/surface/surface";
@@ -19,6 +20,11 @@ export interface AgentView {
   instance?: string;
   /** True when the session turned its walky talky off (M89). Absent when on, and on an older machine. */
   walkyOff?: true;
+  /**
+   * How many pinned messages the pane's session holds (M90). Absent at zero, on a machine that predates pins, and on
+   * a pane whose session the bridge has not read yet, so the pane view reads the list once when it opens.
+   */
+  pins?: number;
   workspaceId: string;
   workspaceLabel: string;
   workspaceNumber: number;
@@ -652,6 +658,34 @@ export type SessionKind = "terminal" | "program";
 export type SessionWhere = "local" | "remote";
 /** {@link SessionSummary.state}. */
 export type SessionState = "ready" | "starting" | "unreachable";
+
+/** What a pinned message was, as Chat drew it (mirrors `PinKind` in bridge/pins/store.ts). */
+export type PinKind = "user" | "reply" | "thinking" | "notice" | "tool";
+
+/**
+ * One pin as the bridge's list answers it (M90): everything of the pin but its text, with the first 400
+ * characters of it and its length. The whole text is one `GET ?pin=<id>` away ({@link PinFull}).
+ */
+export interface PinRow {
+  id: string;
+  /** The Chat item id the pin was made from (lib/chat-items.ts). */
+  itemId: string;
+  kind: PinKind;
+  excerpt: string;
+  textLength: number;
+  /** The first 80 characters of the text, to find the block again when its id changed. */
+  anchor: string;
+  /** A tool card's name and the one-line gist of its input. */
+  tool?: { name: string; input?: string };
+  /** The block's own time in the log, ISO. */
+  ts?: string;
+  /** Epoch ms the pin was made. */
+  pinnedAt: number;
+}
+
+/** One pin with its whole text: `GET ?pin=<id>`, and the answer of a `POST`. */
+export type PinFull = Omit<PinRow, "excerpt" | "textLength"> & { text: string };
+
 
 /**
  * One member of the crew (CREW_PROTOCOL.md §9.2) — mirrors `ServerSummary` in bridge/types.ts field
@@ -2482,6 +2516,35 @@ export interface SttCapability {
 
 /** Where the host's copy of the Whistle model stands (ADR 0096 Decision 2). */
 export type WhistleState = "absent" | "downloading" | "ready" | "failed";
+
+/**
+ * The math pack on the host (ADR 0132), as `GET`, `POST` and `DELETE /api/math` answer it. Mirrors
+ * `MathPackStatus` in bridge/math/store.ts. A status read fetches nothing; only the POST downloads.
+ * `error` is one word for the line under the rows, never an upstream body.
+ */
+export type MathPackStatus =
+  | { state: "absent"; error?: "download-failed" | "low-space" | "hash-mismatch" | "bad-pack" }
+  | { state: "downloading"; received: number; total: number | null }
+  | { state: "ready"; version: string; source: "store" | "build"; bytes: number | null }
+  | { state: "unavailable"; reason: "dev-build" | "no-pack" };
+
+/**
+ * The host's copy of the community theme registry (M59 spec 06), as `GET` and `POST
+ * /api/themes/registry` answer it. Mirrors `RegistryStatus` in bridge/themes/registry.ts. `themes`
+ * is typed as raw JSON on purpose: the phone runs `readRegistryEntry` over every entry before it
+ * draws one, whatever the host checked.
+ */
+export interface ThemeRegistryStatus {
+  fetchedAt: string | null;
+  ageMs: number | null;
+  generated: string | null;
+  themes: JsonValue[];
+  dropped: number;
+  fetching: boolean;
+  error?: "fetch-failed" | "too-big" | "bad-registry";
+  /** The address in use, only when the operator's `COLLIE_THEME_REGISTRY_URL` replaced the default. */
+  address?: string;
+}
 
 /**
  * The Whistle model on the host and the host engine's switch, as `GET /api/stt/whistle` and

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { computeEtag } from "../http-cache.ts";
+import type { JsonValue } from "../json.ts";
 import type { PaneWire, SessionSummary, SnapshotResponse, TabView, WorkspaceView } from "../types.ts";
 import { NARROW_VIEW } from "../sessions.ts";
 import {
@@ -96,6 +97,17 @@ const peerBody: PeerSnapshotBody = body({
 const SELF = { id: "desk", name: "the herd" };
 
 // ── The lead's own roster label (§9.2: "operator-chosen label", never the crew's name) ──────────
+
+describe("a member's pin count (M90)", () => {
+  const parsed = (pins: JsonValue) =>
+    // SAFETY: a test body shaped as a member's snapshot; `pins` is deliberately of any type, the member's word.
+    parsePeerSnapshot({ sessions: [], agents: [{ ...pane({ paneId: "w1:p1" }), pins }], shellPanes: [], workspaces: [], tabs: [] } as never)?.agents[0];
+
+  test("keeps a whole number above zero and drops everything else", () => {
+    expect(parsed(3)?.pins).toBe(3);
+    for (const bad of [0, -1, 1.5, "3", null, true]) expect(parsed(bad) !== undefined && "pins" in parsed(bad)!).toBe(false);
+  });
+});
 
 describe("leadLabel — the lead's servers[].name is a machine label, not the crew's name", () => {
   test("a bare short hostname passes through unchanged", () => {

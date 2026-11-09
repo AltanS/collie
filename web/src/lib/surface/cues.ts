@@ -35,7 +35,8 @@
 // wrapped rows under it line up like a pointed list between two rules, and they are one paragraph.
 // The same rows with a row cut by an ellipsis read as neither: no cue, flagged `cutWrap`, unreadable.
 // A layout that names `frame.draftLines` reads a draft typed with newlines the same way, when its rows
-// hold no option, key hint or named command list: its dialogs never point with the prompt glyph.
+// hold no option, key hint or named command list: its dialogs never point with the prompt glyph. One that
+// names `frame.draftCaret` does so only while those rows also hold its editor's one reverse-video cursor cell.
 //
 // Pure: the same rows always give the same answer.
 
@@ -565,7 +566,7 @@ export function readCuesFor(allRows: readonly FrameRow[], frame: Frame | null, i
   // The box's own prompt glyph, where the layout names one (`frame.ownPrompt`), is no pointer there.
   const at = frame.top;
   // A draft-shaped box with a row cut by an ellipsis is neither a draft nor a dialog: claim unreadable.
-  if (plain.strength !== "strong" && wrapUnderGlyph(withoutOwnPrompt(rows, frame).map(rowText), frame, idle) === "cut") {
+  if (plain.strength !== "strong" && wrapUnderGlyph(withoutOwnPrompt(rows, frame), frame, idle) === "cut") {
     return { ...plain, cues: [], strength: "none", cutWrap: true };
   }
   const down = readCues(withoutDraftContinuation(withoutPromptGlyph(withoutOwnPrompt(rows, frame), frame, idle), frame, idle).slice(at), null, null);
@@ -597,7 +598,8 @@ function withoutDraftContinuation(rows: readonly FrameRow[], frame: Frame, idle:
  * `lines`: a layout that names `frame.draftLines` says no dialog in its box points with the prompt glyph.
  * There a box that fails the wrap test is still the draft's own lines when {@link ownLines} holds: no row
  * holds an option or a key hint, and no list the profile names stands in the box. Any of those keeps
- * the box a list.
+ * the box a list. A layout that names `frame.draftCaret` says its editor draws its cursor as one
+ * reverse-video cell: there the same holds only while the box's rows hold that cell ({@link oneCaretCell}).
  *
  * `cut`: the rows pass that test, but a row ends in an ellipsis ({@link endsInEllipsis}). pi cuts a menu
  * or hint row wider than the box with `…` (or `...`), so the row fills the width the way a soft wrap
@@ -606,10 +608,30 @@ function withoutDraftContinuation(rows: readonly FrameRow[], frame: Frame, idle:
  * a tap's Enter would submit the draft. So `cut` makes the read unreadable ({@link CueRead.cutWrap}):
  * no dialog card, no taps, no free Send. Unreadable is the safe failure; a wrong dialog is not.
  */
-function draftWrap(texts: readonly string[], frame: Frame, idle: IdleProfile): DraftRead {
+function draftWrap(rows: readonly FrameRow[], frame: Frame, idle: IdleProfile): DraftRead {
+  const texts = rows.map(rowText);
   const soft = softWrap(texts, frame);
-  if (soft !== "no" || idle.frame.draftLines !== true) return soft;
-  return ownLines(texts, frame, idle) ? "lines" : "no";
+  if (soft !== "no") return soft;
+  const lines = idle.frame.draftLines === true || (idle.frame.draftCaret === true && oneCaretCell(rows, frame));
+  return lines && ownLines(texts, frame, idle) ? "lines" : "no";
+}
+
+/**
+ * Whether a found box's rows, from its prompt row down to its last interior row, hold exactly one
+ * reverse-video run with visible text, and that run is one cell wide: an editor's own cursor drawn as a
+ * cell (`frame.draftCaret`). A text field's cursor is one cell; a dialog's highlighted row is wider, and
+ * two cells are no one cursor.
+ */
+function oneCaretCell(rows: readonly FrameRow[], frame: Frame): boolean {
+  let cells = 0;
+  for (let i = frame.interior.prompt; i <= frame.interior.last && i < rows.length; i++) {
+    for (const run of rows[i]!.segments) {
+      if (run.inverse !== true || run.text.length === 0) continue;
+      if (displayWidth(run.text) !== 1) return false;
+      cells++;
+    }
+  }
+  return cells === 1;
 }
 
 /** The {@link draftWrap} test of one paragraph soft-wrapped to the box's width, for every layout. */
@@ -665,11 +687,12 @@ function endsInEllipsis(text: string): boolean {
 
 /** The {@link draftWrap} of a box whose prompt row opens on a pointer glyph the frame took as the prompt
  *  marker (the draft does not start with it), or `no` for any other box. */
-function wrapUnderGlyph(texts: readonly string[], frame: Frame, idle: IdleProfile): DraftRead {
+function wrapUnderGlyph(rows: readonly FrameRow[], frame: Frame, idle: IdleProfile): DraftRead {
   if (frame.placeholder) return "no";
+  const texts = rows.map(rowText);
   const glyph = texts[frame.interior.prompt]!.trimStart()[0];
   if (glyph === undefined || !POINTERS.includes(glyph) || frame.interior.text.startsWith(glyph)) return "no";
-  return draftWrap(texts, frame, idle);
+  return draftWrap(rows, frame, idle);
 }
 
 /** The rows with the pointer glyph the box's prompt row opens on read as blank, when the frame took it as
@@ -677,7 +700,7 @@ function wrapUnderGlyph(texts: readonly string[], frame: Frame, idle: IdleProfil
  *  layout's own lines ({@link draftWrap}). */
 function withoutPromptGlyph(rows: readonly FrameRow[], frame: Frame, idle: IdleProfile): readonly FrameRow[] {
   const texts = rows.map(rowText);
-  const draft = wrapUnderGlyph(texts, frame, idle);
+  const draft = wrapUnderGlyph(rows, frame, idle);
   if (draft !== "wrapped" && draft !== "lines") return rows;
   const glyph = texts[frame.interior.prompt]!.trimStart()[0]!;
   const segments = [...rows[frame.interior.prompt]!.segments];

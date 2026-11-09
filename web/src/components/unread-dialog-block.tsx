@@ -1,4 +1,4 @@
-import { Bug } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 import { useEffect, useRef, useState } from "react";
 
 import { cn } from "@/lib/utils";
@@ -152,7 +152,7 @@ export function UnreadDialogBlock({ cancel, lines, onAction, disabled, wrap, onR
           onClick={onReport}
           className="inline-flex min-h-11 w-full items-center justify-center gap-1.5 text-xs text-muted-foreground underline underline-offset-2"
         >
-          <Bug className="size-3.5" />
+          <Icon name="report-problem" className="size-3.5" />
           {t("unreadDialog.report")}
         </button>
       )}

@@ -22,6 +22,7 @@ import {
   type ForwardDeps,
   type ForwardErrorCode,
   type ForwardTransport,
+  ASK_BODY_READ_MAX,
 } from "./forward.ts";
 import type { JsonObject } from "../json.ts";
 import { LEAD_ROW_HEADER, LEAD_ROW_MARK, leadRowCarry } from "./launcher-rows.ts";
@@ -289,10 +290,17 @@ describe("which routes cross a link", () => {
     const alternation = /\(([a-z]+(?:\|[a-z]+)+)\)/;
     const paneActions = pane.match(alternation)![1]!.split("|").toSorted();
     // The list IS the inventory of what crosses a link; `chat` joined it with the live window, and
-    // `files` with the Files view (ADR 0083).
+    // `files` with the Files view (ADR 0083), `held` with the Cancel and Dismiss on a member's queued row (issue 740).
     expect(paneActions).toEqual([
-      "abort", "action", "answer", "changes", "chat", "clear", "close", "files", "focus", "history", "keys", "rename", "reply", "send", "upload",
+      "abort", "action", "answer", "changes", "chat", "clear", "close", "files", "focus", "held", "history", "keys", "pins", "rename", "reply", "send", "upload",
     ]);
+    // The Cancel or Dismiss on a member's queued row changes that member's hold queue: a write, audited on
+    // the lead under the member's own name for the act (issue 740).
+    expect(forwardKind("pane/x/held", "DELETE")).toBe("write");
+    expect(forwardAuditAction("pane/x/held", "DELETE")).toBe("send-cancel");
+    expect(forwardAuditAction("pane/x/held", "GET")).toBeNull();
+    expect(apiPathFor("pane/x/held")).toBe("/api/pane/x/held");
+    expect(crewRouteFor("/api/pane/x/held/req00001")).toBeNull();
     for (const action of paneActions) expect(crewRouteFor(`/api/pane/x/${action}`)).toBe(`pane/x/${action}`);
     const tabActions = tab.match(alternation)![1]!.split("|").toSorted();
     expect(tabActions).toEqual(["close", "rename"]);
@@ -387,6 +395,23 @@ describe("which routes cross a link", () => {
     // The image read is the same read on another cap (ADR 0090).
     expect(forwardKind("pane/w1:p1/files/image")).toBe("read");
     expect(forwardKind("workspace/w1/files/image")).toBe("read");
+  });
+
+  test("a pane's pins cross the link: the list is a read, a pin and an unpin are writes (M90)", () => {
+    expect(crewRouteFor("/api/pane/w1:p1/pins")).toBe("pane/w1:p1/pins");
+    expect(apiPathFor("pane/w1:p1/pins")).toBe("/api/pane/w1:p1/pins");
+    expect(crewRouteFor("/api/pane/w1:p1/pins/x")).toBeNull();
+    // The list is judged by its method: a GET reads, so a stale member is still asked.
+    expect(forwardKind("pane/w1:p1/pins", "GET")).toBe("read");
+    expect(forwardKind("pane/w1:p1/pins", "POST")).toBe("write");
+    expect(forwardKind("pane/w1:p1/pins", "DELETE")).toBe("write");
+    expect(forwardKind("pane/w1:p1/pins")).toBe("write");
+    // The lead writes `pins` for a forwarded pin or unpin and nothing for the list; the member writes
+    // `pin.add` or `pin.remove` itself.
+    expect(forwardAuditAction("pane/w1:p1/pins", "GET")).toBeNull();
+    expect(forwardAuditAction("pane/w1:p1/pins", "POST")).toBe("pins");
+    expect(forwardAuditAction("pane/w1:p1/pins", "DELETE")).toBe("pins");
+    expect(textAnswerOf("pane/w1:p1/pins")).toBe("pins");
   });
 
   test("the audit action a forward records is the one the peer will write", () => {
@@ -1327,6 +1352,111 @@ describe("a launch of a lead row carries the row to the member (ADR 0127 point 3
 });
 
 // ── §12 The lead's own record of the forward ─────────────────────────────────
+
+// ── The hook hold card on a member's pane (M56 spec 12) ──────────────────────
+describe("an ask answer crosses the link to the member whose ask book minted the id", () => {
+  const ASK = "ask-0123456789abcd";
+  const body = JSON.stringify({ pane: "w1:p1", hash: "0abc12", optionId: "1", origin: "person_tap", via: "hold-card" });
+
+  test("the route grammar matches server.ts's ASK_ROUTE, and an answer is a write audited as `ask`", () => {
+    const server = readFileSync(join(import.meta.dir, "..", "server.ts"), "utf8");
+    expect(server.match(/^const ASK_ROUTE = (.+);$/m)![1]!).toBe("/^\\/api\\/ask\\/([^/]+)$/");
+    expect(crewRouteFor(`/api/ask/${ASK}`)).toBe(`ask/${ASK}`);
+    expect(apiPathFor(`ask/${ASK}`)).toBe(`/api/ask/${ASK}`);
+    expect(crewRouteFor(`/api/ask/${ASK}/x`)).toBeNull();
+    expect(crewRouteFor("/api/ask")).toBeNull();
+    expect(forwardKind(`ask/${ASK}`, "POST")).toBe("write");
+    // The member writes `ask` for the same tap (server.ts `askRoute`), so the two logs read against each other.
+    expect(forwardAuditAction(`ask/${ASK}`, "POST")).toBe("ask");
+    // It may walk a dialog with keys on the member, so it dials on a pane write's budget.
+    expect(budgetOf("write", `ask/${ASK}`)).toBe(PANE_WRITE_BUDGET_MS);
+    // The pane rides in the body, not the route.
+    expect(forwardPaneId(`ask/${ASK}`)).toBeUndefined();
+  });
+
+  test("the member's reply goes back to the phone unchanged, and the lead writes one line with the pane", async () => {
+    const lines: unknown[] = [];
+    const reply = `{"receipt":{"askId":"${ASK}","outcome":"sent","channel":"hook","decision":"allow","keys":[]}}`;
+    const { transport, calls } = transportOf(() => ok(new Response(reply, { headers: { "content-type": "application/json" } })));
+    const [req, url] = post(`/api/ask/${ASK}?host=laptop&session=work`, body, { "content-type": "application/json" });
+    const res = await forward(req, url, { transport, audit: (e) => void lines.push(e) });
+
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe(reply);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.route).toBe(`ask/${ASK}`);
+    // `host=` is dropped, `session=` rides through for the member's own registry.
+    expect(calls[0]!.params).toEqual({ session: "work" });
+    expect(calls[0]!.budgetMs).toBe(PANE_WRITE_BUDGET_MS);
+    // The body streams on whole: the member's own parse and hash check see what the phone sent.
+    expect(await new Response(calls[0]!.init.body).text()).toBe(body);
+    expect(lines).toEqual([{ action: "ask", host: "laptop", paneId: "w1:p1", session: "work", outcome: "http 200" }]);
+  });
+
+  test("a body past the read cap is not parsed for the pane, and still streams to the member whole", async () => {
+    const lines: unknown[] = [];
+    const big = JSON.stringify({ pane: "w1:p1", hash: "0abc12", optionId: "1", origin: "person_tap", pad: "x".repeat(ASK_BODY_READ_MAX) });
+    const { transport, calls } = transportOf(() => ok(new Response("{}", { headers: { "content-type": "application/json" } })));
+    const [req, url] = post(`/api/ask/${ASK}?host=laptop`, big, { "content-type": "application/json" });
+    await forward(req, url, { transport, audit: (e) => void lines.push(e) });
+
+    expect(await new Response(calls[0]!.init.body).text()).toBe(big);
+    expect(lines).toEqual([{ action: "ask", host: "laptop", outcome: "http 200" }]);
+  });
+
+  test("a member refusal is the member's own answer too: a refused receipt, a 400 and a 403 pass as they are", async () => {
+    for (const [status, text] of [
+      [200, `{"receipt":{"outcome":"refused","reason":"ask_desk"},"detail":"Another Collie answered."}`],
+      [400, "bad ask answer"],
+      [403, "write not allowed"],
+    ] as const) {
+      const { transport } = transportOf(() => ok(new Response(text, { status })));
+      const [req, url] = post(`/api/ask/${ASK}?host=laptop`, body);
+      const res = await forward(req, url, { transport });
+      expect(res.status).toBe(status);
+      expect(await res.text()).toBe(text);
+    }
+  });
+
+  test("a member that predates the route answers 404, passed on as a refusal, never retried", async () => {
+    const lines: { outcome: string }[] = [];
+    const { transport, calls } = transportOf(() => ok(new Response(`{"error":"not found"}`, { status: 404 })));
+    const [req, url] = post(`/api/ask/${ASK}?host=laptop`, body);
+    const res = await forward(req, url, { transport, audit: (e) => void lines.push(e) });
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: "not found" });
+    expect(calls).toHaveLength(1);
+    expect(lines.map((l) => l.outcome)).toEqual(["http 404"]);
+  });
+
+  test("a timeout after the answer left is the ask route's own `unknown`, logged and never retried", async () => {
+    const lines: { outcome: string }[] = [];
+    const { transport, calls } = transportOf(() => ({ ok: false, state: "unreachable", reason: `ask/${ASK}: timed out after 15000ms`, receivedAt: 2 }));
+    const [req, url] = post(`/api/ask/${ASK}?host=laptop`, body);
+    const res = await forward(req, url, { transport, audit: (e) => void lines.push(e) });
+    // A 200 in the shape the phone reads (web/src/lib/ask-reply.ts), never `write_outcome_unknown`.
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ receipt: { askId: ASK, outcome: "unknown", reason: "no_evidence" } });
+    expect(calls).toHaveLength(1);
+    expect(lines.map((l) => l.outcome)).toEqual(["unknown"]);
+  });
+
+  test("a fault that never left, and a member not taking writes, are refusals before any key, not unknowns", async () => {
+    const never = transportOf(() => ({ ok: false, state: "unreachable", reason: "no crew secret", attempted: false, receivedAt: 2 }));
+    const [req1, url1] = post(`/api/ask/${ASK}?host=laptop`, body);
+    const res1 = await forward(req1, url1, { transport: never.transport });
+    expect(res1.status).toBe(503);
+    expect((await failureBody(res1)).code).toBe("host_unreachable");
+
+    const dead = transportOf(() => ok(new Response("{}")));
+    const [req2, url2] = post(`/api/ask/${ASK}?host=laptop`, body);
+    const res2 = await forward(req2, url2, { transport: dead.transport, state: DEAD });
+    expect(res2.status).toBe(503);
+    expect((await failureBody(res2)).code).toBe("host_unreachable");
+    // Refused before it is tried (§10.3): nothing dialled.
+    expect(dead.calls).toHaveLength(0);
+  });
+});
 
 describe("the lead audits the forward, and the peer audits the action (§12)", () => {
   test("one line, `action` unchanged, plus the target host", async () => {

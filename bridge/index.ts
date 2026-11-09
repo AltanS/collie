@@ -3,6 +3,7 @@ import { mkdir, readFile as readFileAsync, realpath as realpathAsync, stat as st
 import { cpus, freemem, homedir, hostname, loadavg, totalmem } from "node:os";
 import { join } from "node:path";
 
+import { liveHookTargets } from "../cli/beacon.ts";
 import { classifyInstall, probeInstall } from "../cli/install-kind.ts";
 import { realLinkFs } from "../cli/link.ts";
 import { packageCommand } from "../cli/package-command.ts";
@@ -80,7 +81,7 @@ import { spaceFolders } from "./space-view.ts";
 import { WorktreeReceiptStore } from "./worktree-receipts.ts";
 import { LaunchReceiptStore } from "./launch-receipts.ts";
 import { LaunchWindow, foregroundHarnessOf } from "./launch-window.ts";
-import { createPaneProfile, procProbe, sharedForegroundRead } from "./pane-binary.ts";
+import { createPaneProfile, createPaneVersion, procProbe, sharedForegroundRead } from "./pane-binary.ts";
 import { StarterReceiptStore } from "./starter-launch.ts";
 import { AnswerReceiptStore } from "./durable/answer.ts";
 import { ControlReceiptStore } from "./durable/control.ts";
@@ -202,7 +203,7 @@ import {
   type Warrant,
 } from "./crew/trust-store.ts";
 import { currentWarrant, discardForeignWarrant, refreshWarrant, type WarrantPush } from "./crew/warrant.ts";
-import { Push } from "./push.ts";
+import { CLEAR_BURST_MS, Push } from "./push.ts";
 import { currentNotesReader } from "./release-notes.ts";
 import { pluginRoot } from "./root.ts";
 import { buildId, startServer } from "./server.ts";
@@ -275,7 +276,7 @@ import { deliverEdge, EdgeRouter, type EdgeTarget } from "./surface/edges.ts";
 import { counterWordOf, HoldBook, HoldServer, takeHold, type HoldTarget } from "./surface/hold.ts";
 import { holdSocketPath } from "./beacon/paths.ts";
 import { VersionCache } from "./surface/binary-version.ts";
-import { findProfile, loadProfiles } from "../web/src/lib/surface/profile.ts";
+import { findProfile, loadProfiles, type Profile } from "../web/src/lib/surface/profile.ts";
 import { labelOf } from "./walky/address.ts";
 import {
   crewSkipped,
@@ -293,10 +294,12 @@ import {
 import { isResting, type RouteRemote, type SendResult, type WalkyHost, type WalkyPane } from "./walky/deliver.ts";
 import { INSTANCE_TICK_MS, WalkyInstances } from "./walky/instances.ts";
 import { WalkyLog } from "./walky/log.ts";
+import { PinStore } from "./pins/store.ts";
 import { WalkyOff } from "./walky/off.ts";
 import { RefusalCounter } from "./walky/refusals.ts";
 import { WalkySeen } from "./walky/seen.ts";
 import { WalkyService } from "./walky/service.ts";
+import { siblingDirsOf, SiblingLogs } from "./walky/siblings.ts";
 import { walkySocketPath, WalkyServer } from "./walky/socket.ts";
 
 // How often the registry rescans the filesystem for sessions that appeared/disappeared after boot.
@@ -751,7 +754,9 @@ function crewStoreChanged(): void {
 }
 
 // ── Process-global services, shared across every session ─────────────────────
-const push = new Push(cfg);
+// Clears wait CLEAR_BURST_MS for company, so one retract across many agents is one push per device
+// (bridge/push.ts § the three rules). The CLI's own Push sends at once.
+const push = new Push(cfg, undefined, { clearBurstMs: CLEAR_BURST_MS });
 await push.init();
 
 const snooze = new Snooze(cfg);
@@ -1494,22 +1499,26 @@ if (sendStore !== null) {
   if (recoveredAsks.length > 0) console.log(`[ask] ${String(recoveredAsks.length)} ask answer(s) left unsettled by the last run read as unknown`);
   sendStore.prune();
 }
+// The Surface counters (M56 spec 09): one ledger for the bridge, a day file under `<stateDir>/surface/`.
+// Created with either flag, so an instance that computes no Surface touches no new file. It never
+// blocks a send and never changes a verdict. Made before the hold queue, whose start counts expired sends.
+const surfaceLedger = cfg.sendProtocol || cfg.surfaceShadow ? new SurfaceLedger(cfg.stateDir) : null;
 // The hold queue (M56 spec 15): a send the harness cannot take during its turn waits here, one file per
 // request under `<stateDir>/held/`, and is replayed on start. A request that was going out when the
 // last run stopped was settled `unknown` above; its row ends with that, the text kept for a Resend.
 const holdStore = sendStore === null ? null : new HoldStore(join(cfg.stateDir, "held"));
 if (holdStore !== null && sendStore !== null) {
   const changed = SendProtocol.reconcileHolds(holdStore, sendStore);
+  // A request whose budget ran out while the bridge was down ends at its own expiry, never at the first poll (issue 740).
+  const expired = SendProtocol.expireHoldsOnStart(holdStore, sendStore, Date.now(), surfaceLedger ?? undefined);
+  if (expired.ended.length > 0) console.log(`[send] hold queue: ${String(expired.ended.length)} request(s) ran out their budget while the bridge was down, ended expired: ${expired.ended.join(", ")}`);
+  if (expired.dropped.length > 0) console.log(`[send] hold queue: ${String(expired.dropped.length)} expired row(s) past the keep window dropped, not replayed: ${expired.dropped.join(", ")}`);
   const waiting = holdStore.list().filter((entry) => entry.state === "held").length;
   if (changed > 0 || waiting > 0) console.log(`[send] hold queue replayed: ${String(waiting)} held, ${String(changed)} row(s) settled after the last run`);
 }
 // Walky talky's last word before a held send goes out (M62 spec 02), set once its service exists below:
 // a message meant for a pane instance that is gone never reaches the pane that took its id.
 let walkyReleaseCheck: ((requestId: string, session: string, paneId: string) => boolean) | null = null;
-// The Surface counters (M56 spec 09): one ledger for the bridge, a day file under `<stateDir>/surface/`.
-// Created with either flag, so an instance that computes no Surface touches no new file. It never
-// blocks a send and never changes a verdict.
-const surfaceLedger = cfg.sendProtocol || cfg.surfaceShadow ? new SurfaceLedger(cfg.stateDir) : null;
 // The hook edges (M56 spec 11): the harness's own hook writes one file per event into
 // `<stateDir>/edges/`, and this router places each on one pane of a terminal session. Built with the
 // Surface, so an instance that computes no Surface takes no edge. Each session that can take edges
@@ -1563,10 +1572,14 @@ const SURFACE_PLATFORM = surfacePlatform({
   },
 });
 /**
- * A harness's profile at its version, for the send path: of the pane's own program when the pane's
- * foreground read shows it, else of the PATH binary (bridge/pane-binary.ts, ADR 0124).
+ * The pane's agent version, one reader for the send path and the Surface shadow over one cache: of the
+ * pane's own program when the pane's foreground read shows it, else of the PATH binary
+ * (bridge/pane-binary.ts, ADR 0124). A binary the login PATH misses still names its version in the
+ * send, the shadow, the report and the trouble count, and both keep one last answer per pane.
+ * `sendProfile` is the send path's profile at that version.
  */
-const sendProfile = createPaneProfile({ versions: sendVersions, binaries: harnessBinaries, probe: procProbe(), platform: SURFACE_PLATFORM });
+const paneVersion = createPaneVersion({ versions: sendVersions, binaries: harnessBinaries, probe: procProbe() });
+const sendProfile = createPaneProfile({ versions: sendVersions, binaries: harnessBinaries, platform: SURFACE_PLATFORM, paneVersion });
 
 const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
   const built = endpoint.kind === "program" ? programAdapter(endpoint.source) : terminalAdapter(endpoint.socketPath);
@@ -1720,7 +1733,18 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
   // The session's single-use ask ids (M56 spec 08): the poll's Surface, the Send Protocol's reads and
   // the answer route all lift through this one book, so the id on the phone is the id the route knows.
   const askBook = sends ? new AskBook() : undefined;
-  const shadowOptions: ShadowOptions = { mux: herdr, pollMs: cfg.pollMs, compare: cfg.surfaceShadow && !cfg.sendProtocol, ledger: surfaceLedger ?? undefined };
+  // The pane's foreground read, bounded and shared by the reads of one send (the launch window's and the
+  // profile's version read) and by the shadow's version read; absent where the multiplexer has none
+  // (tmux, zellij, tuios).
+  const foregroundRead = sharedForegroundRead(herdr.foregroundProcesses?.bind(herdr));
+  const shadowVersion = async (profile: Profile, paneId?: string): Promise<string | null> => (await paneVersion(profile, paneId, foregroundRead)).version;
+  const shadowOptions: ShadowOptions = {
+    mux: herdr,
+    pollMs: cfg.pollMs,
+    compare: cfg.surfaceShadow && !cfg.sendProtocol,
+    ledger: surfaceLedger ?? undefined,
+    version: shadowVersion,
+  };
   const surface = computeSurface
     ? new SurfaceShadow(askBook === undefined ? shadowOptions : { ...shadowOptions, asks: { book: askBook, generation: generationOf } })
     : undefined;
@@ -1741,6 +1765,8 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
         }
         // A queued send whose text a read shows back in the box (ADR 0122): its card says so.
         send?.tickQueued(name, (paneId) => surface.boxOf(paneId));
+        // A held row that ended with its text in the box goes once two reads show that box empty (#739).
+        send?.tickTyped(name, (paneId) => surface.boxOf(paneId), (paneId) => surface.surfaceOf(paneId));
         // The box text rides along: a box that holds only Collie's own probe characters is no draft. So
         // does whether the read carried no styling: there a draft may be the placeholder (M78 spec 06).
         return send?.tickHolds(
@@ -1757,9 +1783,6 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
   // never run on one pane at once and every key leaves through the one gate.
   const locks = new SessionLocks();
   const ring = new RowRing();
-  // The pane's foreground read, bounded and shared by the reads of one send (the launch window's and the
-  // profile's version read); absent where the multiplexer has none (tmux, zellij, tuios).
-  const foregroundRead = sharedForegroundRead(herdr.foregroundProcesses?.bind(herdr));
   const foregroundHarness = foregroundHarnessOf(foregroundRead, harnessBinaries);
   const paneProfile = (harness: string, paneId?: string): Promise<PaneProfileMatch | null> => sendProfile(harness, paneId, foregroundRead);
   const send =
@@ -1967,6 +1990,11 @@ hookTarget =
 const walkyInstances = new WalkyInstances(join(cfg.stateDir, "walky"));
 // A session that turned its walky talky off (M89, `<stateDir>/walky/off.json`). Read through the pane row.
 const walkyOff = new WalkyOff(join(cfg.stateDir, "walky"));
+// The pins of every session this machine keeps, one file each (M90).
+const pinStore = new PinStore(join(cfg.stateDir, "pins"));
+// Once at boot, before any pin is read: the files nobody wrote for 180 days go.
+const sweptPins = pinStore.sweep();
+if (sweptPins > 0) console.log(`[pins] swept ${String(sweptPins)} stale pin file(s) at startup`);
 /** Every pane of every session, without its token: what the instance registry observes. */
 const walkyRawPanes = (): Omit<WalkyPane, "instance" | "off">[] =>
   registry.ordered().flatMap((rt) => {
@@ -2013,7 +2041,12 @@ const walkyHost: WalkyHost = {
   },
 };
 const walkyMemberId = crew.mode === "solo" ? null : (trustStore.current()?.self.memberId ?? null);
-const walkyLog = new WalkyLog(join(cfg.stateDir, "walky"));
+// A sibling instance on this machine (siblings.ts) may have recorded a message typed into a pane both
+// bridges watch: the pane's list merges its rows, read-only, off the hook target registry's live bridges.
+const walkySiblings = new SiblingLogs({
+  dirs: () => siblingDirsOf(liveHookTargets({ ctx: { env: process.env, home: homedir() }, files: realFiles, uid: process.getuid?.() }), cfg.stateDir, (path) => realFiles.realpath(path)),
+});
+const walkyLog = new WalkyLog(join(cfg.stateDir, "walky"), Date.now, walkySiblings);
 // A pane instance that went takes its inbox with it: a new session that takes the id starts empty.
 walkyInstances.onDrop((session, paneId, token) => walkyLog.inboxDrop(session, paneId, token));
 // The same for the off flag (M89): it belongs to the session, and ends with it.
@@ -3162,6 +3195,7 @@ const server = listenOrExit("front door", cfg.host, cfg.port, () => startServer(
     return instance !== null && walkyOff.isOff({ session, paneId, instance });
   },
   walky,
+  pins: pinStore,
   cacheWatch,
   folders,
   worktreeReceipts,

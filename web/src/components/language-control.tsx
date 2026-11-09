@@ -1,4 +1,4 @@
-import { ChevronDown, Globe } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 
 import { Card } from "@/components/ui/card";
 import { useLocale } from "@/hooks/use-locale";
@@ -36,7 +36,7 @@ export function LanguageControl() {
     <Card className="gap-0 py-0">
       <div className="flex items-center justify-between gap-4 p-4">
         <div className="flex min-w-0 items-start gap-3">
-          <Globe className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
+          <Icon name="language" className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
           <div className="min-w-0">
             <div className="font-medium">{t("settings.language.title")}</div>
             <p className="text-sm text-muted-foreground">{t("settings.language.description")}</p>
@@ -68,7 +68,8 @@ export function LanguageControl() {
               </option>
             ))}
           </select>
-          <ChevronDown
+          <Icon
+            name="select-caret"
             aria-hidden="true"
             className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
           />

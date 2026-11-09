@@ -27,8 +27,13 @@ const hint = (text: string) => new RegExp(String.raw`(?:^\s*|\s{2,})${text}(?=\s
 const RESUME = hint("enter resume");
 const EXIT = hint("esc exit");
 const BROWSE = hint(String.raw`↑/↓ browse`);
-// The title sits above the filter rows and at most a screenful of sessions.
-const TITLE_SCAN_ROWS = 40;
+// The title sits above the filter rows and at most a screenful of sessions. A screenful is the pane's
+// height, not the list's length: Codex draws the picker over the whole screen, title on the top row and
+// footer on the bottom, with blank rows under a short list. 40 rows refused it on any pane taller than
+// about 42 rows, and `/resume` with one session on a 61-row pane showed the unread-dialog card (Codex
+// 0.167.0, codex--v0167-resume-tall--w120.txt, 2026-11-07). 200 is the bridge's default read
+// (`COLLIE_READ_LINES`).
+const TITLE_SCAN_ROWS = 200;
 // Non-blank rows above the browse row that may still belong to the footer.
 const FOOTER_ROWS = 2;
 

@@ -1,6 +1,5 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { Keyboard, Terminal } from "lucide-react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { __resetHarnessBar, setHarnessBarEnabled } from "@/lib/harness-bar-pref";
@@ -16,7 +15,7 @@ afterEach(() => {
 const took = async () => true;
 
 function general(over: Partial<GeneralAction> = {}): GeneralAction {
-  return { id: "keys", icon: Keyboard, label: "Keys", onSelect: vi.fn(), ...over };
+  return { id: "keys", icon: "keys-drawer", label: "Keys", onSelect: vi.fn(), ...over };
 }
 
 /** Every button in the row, in paint order, by its accessible name. */
@@ -26,7 +25,7 @@ describe("ActionsRow", () => {
   it("puts Collie's own actions first and the harness's own after them", () => {
     render(
       <ActionsRow
-        general={[general(), general({ id: "type", icon: Terminal, label: "Type into terminal" })]}
+        general={[general(), general({ id: "type", icon: "type-into-terminal", label: "Type into terminal" })]}
         agent="claude"
         onRun={took}
       />,
@@ -74,8 +73,8 @@ describe("ActionsRow", () => {
       <ActionsRow
         general={[
           general({ id: "keys", expanded: true, on: true, onSelect }),
-          general({ id: "type", icon: Terminal, label: "Type into terminal", pressed: true }),
-          general({ id: "quick", icon: Keyboard, label: "Quick", disabled: true }),
+          general({ id: "type", icon: "type-into-terminal", label: "Type into terminal", pressed: true }),
+          general({ id: "quick", icon: "keys-drawer", label: "Quick", disabled: true }),
         ]}
         agent="grok"
         onRun={took}
@@ -374,7 +373,7 @@ describe("ActionsRow — the agents mark's glyph and count", () => {
 
   it("draws the Bot glyph exactly as Files and the Switch mark draw theirs: same classes, no offset", () => {
     const { agents, files, handle } = renderMarks();
-    const glyph = (el: HTMLElement) => el.querySelector("svg.lucide")!.getAttribute("class")!.split(" ").filter((c) => !c.startsWith("lucide"));
+    const glyph = (el: HTMLElement) => el.querySelector("svg[data-icon]")!.getAttribute("class")!.split(" ").filter((c) => c !== "icon" && !c.startsWith("lucide"));
     expect(glyph(agents)).toEqual(glyph(files));
     expect(glyph(agents)).toEqual(glyph(handle));
     expect(glyph(agents).join(" ")).not.toMatch(/translate|mt-|mb-/);
@@ -430,8 +429,8 @@ describe("ActionsRow, the jobs mark", () => {
 
   it("draws the Timer glyph as its neighbours draw theirs, with the running count in the shared corner badge", () => {
     const jobs = renderJobs(2);
-    expect(jobs.querySelector("svg.lucide-timer")).not.toBeNull();
-    const glyph = (el: HTMLElement) => el.querySelector("svg.lucide")!.getAttribute("class")!.split(" ").filter((c) => !c.startsWith("lucide"));
+    expect(jobs.querySelector('svg[data-icon="jobs"]')).not.toBeNull();
+    const glyph = (el: HTMLElement) => el.querySelector("svg[data-icon]")!.getAttribute("class")!.split(" ").filter((c) => c !== "icon" && !c.startsWith("lucide"));
     expect(glyph(jobs)).toEqual(glyph(screen.getByRole("button", { name: "Files" })));
     const count = jobs.querySelector<HTMLElement>('[data-slot="belt-jobs-count"]')!;
     expect(count.textContent).toBe("2");
@@ -449,9 +448,76 @@ describe("ActionsRow, the jobs mark", () => {
   });
 
   it("a sixth pinned pill has its own first-frame inset", () => {
-    // 269 + 32 + 6 = 307 at scale 1; 85 + 6 × 37 + 5 × 6 = 337 at the default scale. Past six it holds.
-    expect([5, 6, 7].map((n) => switchPillInset(1, n))).toEqual([269, 307, 307]);
+    // 269 + 32 + 6 = 307 at scale 1; 85 + 6 × 37 + 5 × 6 = 337 at the default scale. The pins mark makes seven (345).
+    expect([5, 6, 7].map((n) => switchPillInset(1, n))).toEqual([269, 307, 345]);
     expect(switchPillInset(1.15, 6)).toBe(337);
+  });
+});
+
+// THE PINS MARK (M90 spec 03): the jobs mark's twin for pinned messages, right of it and left of Files, with the
+// count as the corner badge, and never drawn at zero (the pane view leaves the prop out then).
+describe("ActionsRow, the pins mark", () => {
+  function renderPins(count: number, onClick = vi.fn(), expanded = false) {
+    render(
+      <ActionsRow
+        general={[general()]}
+        agent="pi"
+        onRun={took}
+        jobs={{ count: 1, onClick: vi.fn(), label: "Jobs 1", expanded: false }}
+        pins={{ count, onClick, label: `${count} pinned`, expanded }}
+        changes={{ onClick: vi.fn(), label: "Files" }}
+        handle={{ ref: vi.fn(), onClick: vi.fn(), label: "Switch pane" }}
+      />,
+    );
+    return screen.getByRole("button", { name: `${count} pinned` });
+  }
+
+  it("stands right of the jobs mark and left of Files, and a tap calls its handler", async () => {
+    const onClick = vi.fn();
+    const pins = renderPins(3, onClick);
+    expect(pins).toHaveAttribute("data-slot", "belt-pins");
+    expect(pins).toHaveAttribute("aria-expanded", "false");
+    const order = names();
+    expect(order.indexOf("3 pinned")).toBe(order.indexOf("Jobs 1") + 1);
+    expect(order.indexOf("Files")).toBe(order.indexOf("3 pinned") + 1);
+    await userEvent.click(pins);
+    expect(onClick).toHaveBeenCalledTimes(1);
+  });
+
+  it("draws the Pin glyph as its neighbours draw theirs, with the count in the shared corner badge", () => {
+    const pins = renderPins(3);
+    expect(pins.querySelector('svg[data-icon="pins-list"]')).not.toBeNull();
+    const glyph = (el: HTMLElement) => el.querySelector("svg[data-icon]")!.getAttribute("class")!.split(" ").filter((c) => c !== "icon" && !c.startsWith("lucide"));
+    expect(glyph(pins)).toEqual(glyph(screen.getByRole("button", { name: "Files" })));
+    const count = pins.querySelector<HTMLElement>('[data-slot="belt-pins-count"]')!;
+    expect(count.textContent).toBe("3");
+    expect(count).toHaveClass("pointer-events-none", "absolute", "top-0.5", "right-0.5", "rounded-full", "bg-chrome", "ring-2", "ring-chrome", "tabular-nums");
+  });
+
+  it("reports its sheet open through aria-expanded", () => {
+    expect(renderPins(2, vi.fn(), true)).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("is not drawn without the prop", () => {
+    render(<ActionsRow general={[general()]} agent="pi" onRun={took} handle={{ ref: vi.fn(), onClick: vi.fn(), label: "Switch pane" }} />);
+    expect(document.querySelector('[data-slot="belt-pins"]')).toBeNull();
+  });
+
+  it("grows the spacer by one pill when it joins the block", () => {
+    const { container } = render(<ActionsRow general={[general()]} agent="claude" onRun={took} handle={{ ref: vi.fn(), onClick: vi.fn(), label: "Switch pane" }} />);
+    const alone = container.querySelector<HTMLElement>(".overflow-x-auto")!.lastElementChild!.getAttribute("style")!;
+    cleanup();
+    const both = render(
+      <ActionsRow
+        general={[general()]}
+        agent="claude"
+        onRun={took}
+        pins={{ count: 1, onClick: vi.fn(), label: "1 pinned", expanded: false }}
+        handle={{ ref: vi.fn(), onClick: vi.fn(), label: "Switch pane" }}
+      />,
+    );
+    const two = both.container.querySelector<HTMLElement>(".overflow-x-auto")!.lastElementChild!.getAttribute("style")!;
+    expect(parseInt(two.replace("width: ", "")) - parseInt(alone.replace("width: ", ""))).toBe(43);
   });
 });
 
@@ -702,7 +768,7 @@ describe("ActionsRow — hand", () => {
   const rows = (hand?: "right" | "left") =>
     render(
       <ActionsRow
-        general={[general(), general({ id: "type", icon: Terminal, label: "Type into terminal" })]}
+        general={[general(), general({ id: "type", icon: "type-into-terminal", label: "Type into terminal" })]}
         agent="claude"
         onRun={took}
         hand={hand}

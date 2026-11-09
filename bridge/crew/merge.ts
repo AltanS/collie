@@ -437,11 +437,13 @@ function untagSession(s: SessionSummary): SessionSummary {
 /**
  * A peer's pane without its own `host` claim. Its walky instance token (`PaneWire.instance`) is the
  * member's word and reaches an address (bridge/walky/crew.ts `crewTargets`), so it is kept only as
- * four characters of [a-z0-9]; anything else is dropped, as an older member sends none.
+ * four characters of [a-z0-9]; anything else is dropped, as an older member sends none. Its pin count
+ * (`PaneWire.pins`, M90) is a number the phone draws, so it is kept only as a whole number above zero.
  */
 function untagPane(p: PaneWire): PaneWire {
-  const { host: _ignored, instance, ...rest } = p;
-  return typeof instance === "string" && INSTANCE_TOKEN.test(instance) ? { ...rest, instance } : rest;
+  const { host: _ignored, instance, pins, ...rest } = p;
+  const tokened = typeof instance === "string" && INSTANCE_TOKEN.test(instance) ? { ...rest, instance } : rest;
+  return Number.isSafeInteger(pins) && pins !== undefined && pins > 0 ? { ...tokened, pins } : tokened;
 }
 
 function untagWorkspace(w: WorkspaceView): WorkspaceView {

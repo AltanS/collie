@@ -2,18 +2,11 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { createPortal } from "react-dom";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import { useRevalidator } from "react-router";
-import {
-  ArrowUpToLine,
-  ChevronUp,
-  EllipsisVertical,
-  Loader2,
-  Minimize2,
-  ScrollText,
-  TerminalSquare,
-} from "lucide-react";
+import { useReadingReleasesKeyboard } from "@/hooks/use-reading-releases-keyboard";
 import { useKeyboardOpen } from "@/hooks/use-keyboard";
 import { useSheetPull } from "@/hooks/use-sheet-pull";
 import { usePaneNavigation } from "@/components/pane-nav";
+import { besideOf, useNewTabOrSheet } from "@/hooks/use-new-tab-or-sheet";
 import { tabCreateKey, useSpaceActions } from "@/hooks/use-spaces";
 import { shownStatus } from "@/lib/triage";
 import { useNav } from "@/hooks/use-nav";
@@ -101,6 +94,11 @@ import { PaneSettingsSheet } from "@/components/pane-settings-sheet";
 import { WalkyOpenProvider, WalkyPanesProvider, type WalkyPanes } from "@/components/walky-log";
 import { paneAddress, takeBackNote } from "@/lib/walky";
 import { WalkySheet } from "@/components/walky-sheet";
+import { BlockActionsSheet } from "@/components/block-actions-sheet";
+import { useHostVersion } from "@/hooks/use-host-version";
+import { useMessagePins } from "@/hooks/use-message-pins";
+import type { ChatItem } from "@/lib/chat-items";
+import { hostKeepsPins } from "@/lib/message-pins";
 import { CompactStripLabels, TAB_ROW_SQUARE_TAP_TARGET } from "@/components/ui/labelled-strip";
 import { ReadOnlyBanner } from "@/components/read-only-banner";
 import { HostStaleBanner } from "@/components/host-stale-banner";
@@ -143,14 +141,15 @@ import { zoomPillShown } from "@/lib/zoom-pill";
 import { paneRowKey, paneScope } from "@/lib/hosts";
 import { isLead, paneScopeKey } from "@/lib/scope";
 import { openReport, signalTrouble, unreadDialogReport } from "@/lib/report/store";
-import { answerRouteFor, textRouteFor } from "@/lib/send-path";
+import { unreadDialogScreen } from "@/lib/report/screen";
+import { answerRouteFor, holdAnswerRouteFor, textRouteFor } from "@/lib/send-path";
 import { useSessionCard, wearsExperimental } from "@/lib/session-cards";
 import { usePins } from "@/lib/pins";
 import { paneFilesDir } from "@/lib/file-paths";
 import { changesPath, filesPath, historyPath, newPath, panePath, spacePath } from "@/lib/nav";
 import { isReadOnly, statusLabel } from "@/lib/types";
 import { usePairing } from "@/lib/pairing";
-import type { AgentView, BridgeStatus, DeviceAuth, ServerSummary, TabView } from "@/lib/types";
+import type { AgentView, BridgeStatus, DeviceAuth, PinRow, ServerSummary, TabView } from "@/lib/types";
 import type {
   MenuModel,
   MultiSelectModel,
@@ -161,6 +160,7 @@ import type {
 } from "@/lib/blocks";
 import { paneMirrorOverride, setPaneMirrorOverride } from "@/lib/mirror-invert";
 import type { Scope } from "@/lib/scope";
+import { Icon } from "@/components/icons/icon";
 
 interface AgentChatProps {
   paneId: string;
@@ -319,7 +319,10 @@ export function AgentChat({
   // last read failed or its screen is a saved copy. Set below, once both facts exist.
   const structuralWritesOff = useRef(false);
   const canWriteHere = useCallback(() => !structuralWritesOff.current, []);
-  const { newTab, launch, launching, creatingTab } = useSpaceActions(canWriteHere);
+  const spaceActions = useSpaceActions(canWriteHere);
+  const { launch, launching, creatingTab } = spaceActions;
+  // The tab bar's "+" offers this machine's agents in a sheet, or makes the shell it always made (M91).
+  const plus = useNewTabOrSheet(spaceActions, scope, !inStrip);
   // The pane's light-theme inversion override (lib/mirror-invert.ts). Read once at mount, which is
   // enough: DetailRoute keys this component by `paneScopeKey(scope, paneId)` — the full address, not
   // the id, for the reason that file records — so a walk to another pane, session or host remounts it
@@ -704,6 +707,20 @@ export function AgentChat({
             setDrawer("switcher");
           },
   });
+  // The reading area is the pane-nav gesture's surface and also where a finger scroll up closes the
+  // keyboard while the reply box keeps its draft (hooks/use-reading-releases-keyboard.ts, Altan,
+  // 2026-11-07). One element, one ref callback for both; `paneNav.setReading` is a state setter, so
+  // this callback is stable.
+  const [readingArea, setReadingArea] = useState<HTMLElement | null>(null);
+  const setPaneNavReading = paneNav.setReading;
+  const setReading = useCallback(
+    (node: HTMLElement | null) => {
+      setPaneNavReading(node);
+      setReadingArea(node);
+    },
+    [setPaneNavReading],
+  );
+  useReadingReleasesKeyboard(readingArea);
   // ── COMPOSING MODE — read ONCE, here, for the whole pane ──────────────────────
   // The soft keyboard takes roughly 45% of a phone. What is left has to hold the header, the tab
   // strip, the agent's statusline, the grab handle, the status band, the controls row and the draft
@@ -977,6 +994,8 @@ export function AgentChat({
   // Where a tap and a text go, by the session kind and the crew link (lib/send-path.ts, M56 spec 14).
   const sendPlace = { program: gridless, crew: !isLead(scope), sendProtocol: agent?.sendProtocol === true };
   const asksAnswered = answerRouteFor(sendPlace) === "api-ask";
+  // The hook hold card answers its ask on a crew member too, carried by the lead (M56 spec 12).
+  const holdsAnswered = holdAnswerRouteFor(sendPlace) === "api-ask";
   // A program pane's taps answer the contract ask its Surface carries, when the card is the oldest open ask.
   const oldestAsk = agent?.asks?.[0];
   const programContract = gridless && asksAnswered && surfaceAsk !== null && oldestAsk !== undefined ? { ask: surfaceAsk, oldest: oldestAsk.id } : null;
@@ -1859,6 +1878,45 @@ export function AgentChat({
   // as `savedCopy`, and the create hook above reads it through the ref. Nothing saved can act.
   const savedCopyWrites = actsDisabledByCache || !paneLive;
   structuralWritesOff.current = savedCopyWrites;
+
+  // ── PINNED MESSAGES (M90) ─────────────────────────────────────────────────────────────────────────────────────────────
+  // The pins of this pane's session, held here so the stream (a mark on each pinned block, the way in), the belt (the
+  // Pins mark and its count) and the sheets read one list. READING needs the pane to be a session the machine can
+  // answer for and the machine to be there: not a bare shell, not a pane that is gone, not a machine whose Collie
+  // predates pins (read off the lead's census for a member, hooks/use-host-version.ts), not a saved copy or a refused
+  // host. WRITING (the ⋯ and the hold on a block) needs everything a write needs on top.
+  const hostVersion = useHostVersion(agent?.host ?? scope?.host);
+  const pinsKept = agent !== undefined && agent.kind !== "shell" && !gone && hostKeepsPins(hostVersion);
+  const pinsReadable = pinsKept && !savedCopyWrites && !connecting && hostBlock === undefined;
+  const messagePins = useMessagePins({ paneId, scope, enabled: pinsReadable, wireCount: agent?.pins ?? 0 });
+  const pinsWritable = pinsReadable && !readOnly;
+  // The belt's mark and its sheet follow the wire like the Agents and Jobs marks (and like a column's belt,
+  // components/strip-column.tsx), so a pane the phone cannot ask right now (connecting, a saved copy, a refused
+  // host) still shows the mark the machine last counted; only the reading and the writing are gated above.
+  const pinsOnBelt = agent !== undefined && agent.kind !== "shell" && !gone;
+  // The block whose actions sheet is open, as the stream handed it over.
+  const [blockActions, setBlockActions] = useState<ChatItem | null>(null);
+  // Filled by the stream with "scroll to the block this pin came from" (Show in Chat on the Pins sheet).
+  const revealPin = useRef<((pin: Pick<PinRow, "itemId" | "anchor">) => boolean) | null>(null);
+  const showPin = (pin: PinRow): boolean => revealPin.current?.(pin) ?? false;
+  const pinnedPinId = (item: ChatItem): string => messagePins.pinned.get(item.id) ?? "";
+  const pinBlock = (item: ChatItem) => {
+    const refusal = refuseWrite();
+    if (refusal) {
+      setStatus(refusal, "error");
+      return;
+    }
+    void messagePins.pin(item);
+  };
+  const unpinById = (pinId: string) => {
+    const refusal = refuseWrite();
+    if (refusal) {
+      setStatus(refusal, "error");
+      return;
+    }
+    if (pinId !== "") void messagePins.unpin(pinId);
+  };
+  const unpinBlock = (item: ChatItem) => unpinById(pinnedPinId(item));
   const handleSendQueuedNow = useCallback(
     async (keys: readonly string[]): Promise<boolean> => {
       const refusal = refuseWrite();
@@ -2200,7 +2258,7 @@ export function AgentChat({
                   aria-label={t("chat.paneMenu.aria")}
                   className="grid w-11 min-h-11 shrink-0 place-items-center self-stretch rounded-md text-muted-foreground transition-colors active:bg-muted/60 active:text-foreground"
                 >
-                  <EllipsisVertical className="size-5" />
+                  <Icon name="pane-menu" className="size-5" />
                 </button>
               ) : (
                 // The pane is gone. The column stays, empty, so the title beside it does not slide.
@@ -2353,7 +2411,7 @@ export function AgentChat({
                   <div className="relative shrink-0">
                     {isShell ? (
                       <div data-glide="tile" className="flex size-4 items-center justify-center rounded-sm border bg-muted">
-                        <TerminalSquare className="size-2.5 text-muted-foreground" />
+                        <Icon name="shell-pane" className="size-2.5 text-muted-foreground" />
                         {/* A shell pane has no agent status, so there is no dot to name — and the
                             composer's status band, which used to say "shell" in words a thumb's
                             width below, is gone. Unpainted the word costs nothing and a reader
@@ -2515,7 +2573,7 @@ export function AgentChat({
               aria-label={t("chat.zen.exitAria")}
               className="absolute right-3 top-3 z-20 grid size-11 place-items-center rounded-full border border-rule bg-chrome text-muted-foreground transition-colors active:bg-muted/60"
             >
-              <Minimize2 className="size-5" />
+              <Icon name="zen-exit" className="size-5" />
             </button>
           )}
 
@@ -2615,7 +2673,13 @@ export function AgentChat({
                     agents={agents}
                     selected={agent.tabId}
                     onSelect={(id) => id && goToTab(id)}
-                    onNewTab={newTab}
+                    onNewTab={(workspaceId) =>
+                      plus.request({
+                        workspaceId,
+                        label: agent.workspaceLabel,
+                        beside: besideOf(herd, workspaceId, agent.host),
+                      })
+                    }
                     onNewStarters={() => nav.down(newPath({ machine: scope?.host, pane: paneId, session: scope?.session }))}
                     creatingTab={creatingTab.has(tabCreateKey(agent.workspaceId, scope))}
                     allowAll={false}
@@ -2630,9 +2694,10 @@ export function AgentChat({
                     onClosed={(tabId) => (agent?.tabId === tabId ? closeCurrentTab(tabId) : revalidator.revalidate())}
                     // The fold's own control, pinned to the row's trailing end where it costs no height:
                     // a 28px circle centred in the 30px tab row, its hit box the row itself and no
-                    // lower (the way every tab's is: a reach below the row steals taps from the content). Same square recipe as the "+" beside it, transparent
-                    // border included (the reach's numbers assume one): they are two controls of the
-                    // same rank in the same row, and drawing them differently would rank them.
+                    // lower (the way every tab's is: a reach below the row steals taps from the content). A transparent
+                    // border is reserved (the reach's numbers assume one). The "+" in the row is drawn like this one,
+                    // a bare glyph with the same ink, hover and press, in a 24px box with its own reach
+                    // (TAB_ROW_ADD_TAP_TARGET); this one keeps its 28px box.
                     trailing={
                       <button
                         type="button"
@@ -2644,7 +2709,7 @@ export function AgentChat({
                           "flex size-7 shrink-0 items-center justify-center rounded-full border border-transparent text-muted-foreground transition-colors hover:bg-accent active:scale-95",
                         )}
                       >
-                        <ChevronUp className="size-4" />
+                        <Icon name="tab-fold" className="size-4" />
                       </button>
                     }
                   />
@@ -2739,7 +2804,7 @@ export function AgentChat({
               and `focusFromMirror` deliberately declines a tap that landed on a control or a text
               selection. It is a touch convenience layered over an already-reachable action. */}
           <div
-            ref={paneNav.setReading}
+            ref={setReading}
             role="presentation"
             data-slot="pane-reading"
             className={cn(
@@ -2784,6 +2849,9 @@ export function AgentChat({
                   // "no transcript file" reading, which is only true of a pane that should have one.
                   starting={body === "start"}
                   agent={agent?.agent}
+                  // The pinned messages (M90): the mark on a pinned block always, the way in to Pin only where a
+                  // write is allowed (`pinsWritable`).
+                  pins={{ pinned: messagePins.pinned, onActions: pinsWritable ? setBlockActions : undefined, reveal: revealPin }}
                   // A pane with no screen is a durable conversation: its thread shows the person's line at once,
                   // a working row while the program thinks, and a cursor on a reply still being written.
                   durable={gridless}
@@ -2869,7 +2937,7 @@ export function AgentChat({
                       onClick={() => nav.down(historyPath(paneId, scope))}
                       className="mb-2 flex w-full items-center justify-center gap-1.5 rounded-md py-2 text-xs font-medium text-muted-foreground transition-colors active:bg-muted/50"
                     >
-                      <ScrollText className="size-3.5" />
+                      <Icon name="history-screen" className="size-3.5" />
                       {t("chat.scrollback.showHistory")}
                     </button>
                   ) : moreScrollback ? (
@@ -2880,9 +2948,9 @@ export function AgentChat({
                       className="mb-2 flex w-full items-center justify-center gap-1.5 rounded-md py-2 text-xs font-medium text-muted-foreground transition-colors active:bg-muted/50 disabled:opacity-60"
                     >
                       {loadingOlder ? (
-                        <Loader2 className="size-3.5 animate-spin" />
+                        <Icon name="busy" className="size-3.5 animate-spin" />
                       ) : (
-                        <ArrowUpToLine className="size-3.5" />
+                        <Icon name="load-earlier" className="size-3.5" />
                       )}
                       {loadingOlder ? t("chat.scrollback.loading") : t("chat.scrollback.loadOlder")}
                     </button>
@@ -3033,7 +3101,7 @@ export function AgentChat({
           {agent?.hold !== undefined && (
             <HookHoldCard
               note={agent.hold}
-              disabled={readOnly || gone || !asksAnswered}
+              disabled={readOnly || gone || !holdsAnswered}
               onAnswer={handleHoldAnswer}
             />
           )}
@@ -3053,8 +3121,11 @@ export function AgentChat({
               // as in the pane menu, since the report route reads no member's pane yet.
               onUnreadDialogReport={isLead(scope) ? (cancel) => openReport(unreadDialogReport(paneId, scope, cancel)) : undefined}
               // The trouble signal (M86 spec 05): the bridge counts the card once per instance. Not from
-              // a screen drawn from the on-device cache; the live read that follows signals instead.
-              onUnreadDialogShown={actsDisabledByCache ? undefined : (cancel) => void signalTrouble({ kind: "dialog", paneId, scope, agent: cancel.agent })}
+              // a screen drawn from the on-device cache; the live read that follows signals instead. The
+              // signal carries the hash of the card's key-hint row (1.27.4), never the rows.
+              onUnreadDialogShown={
+                actsDisabledByCache ? undefined : (cancel) => void signalTrouble({ kind: "dialog", paneId, scope, agent: cancel.agent, screen: unreadDialogScreen(cancel) })
+              }
               promptDisabled={readOnly || gone}
               paneId={paneId}
               scope={scope}
@@ -3310,6 +3381,11 @@ export function AgentChat({
                   todos={agent?.todos}
                   subagents={agent?.subagents}
                   jobs={agent?.jobs}
+                  pins={
+                    pinsOnBelt
+                      ? { count: messagePins.count, rows: messagePins.rows, onUnpin: unpinById, onOpened: messagePins.refresh, onShow: showPin }
+                      : undefined
+                  }
                   // The belt's ⚙: the button is the composer's, the sheet it opens is mounted below
                   // beside the switcher's, for the stacking-context reason the pane-menu note gives.
                   display={{
@@ -3360,6 +3436,8 @@ export function AgentChat({
                       : undefined
                   }
                   draftNoticeSlot={draftNoticeSlot}
+                  // The fullscreen editor takes the reading area's column, the whole app height.
+                  expandArea={readingArea}
                   floatingHint={paneNav.hint}
                 />
                 )}
@@ -3587,6 +3665,15 @@ export function AgentChat({
               : undefined
           }
         />
+        {/* What a hold (or the ⋯) on a Chat block offers: Pin or Unpin, and Copy text (M90). */}
+        <BlockActionsSheet
+          item={blockActions}
+          pinned={blockActions !== null && messagePins.pinned.has(blockActions.id)}
+          pinning={blockActions !== null && messagePins.pinned.get(blockActions.id) === ""}
+          onClose={() => setBlockActions(null)}
+          onPin={pinBlock}
+          onUnpin={unpinBlock}
+        />
         {/* The pane's walky talky messages (M62). Reply hands the sender to the composer, which sends through
             the bridge's walky route with `replyTo`; the sheet itself sends nothing. A reply is a write, so a
             read-only device, a saved copy, a quiet machine and a pane that is gone get the list without the button. */}
@@ -3663,6 +3750,8 @@ export function AgentChat({
         />
         {/* "Start without prompts?" for a Launch row that skips permission prompts. */}
         {noPromptsSheet}
+        {/* The tab bar "+"'s New tab sheet (M91). */}
+        {plus.sheet}
         {/* The output, zoomed (`/pane/:id/zoom`). Mounted here, a sibling of the sheets, for their
             reason: it is a `fixed` element with no portal, so it must not sit inside the animating
             Collapse or the sticky header. It reads the LIVE text, not the mirror's frozen `display`:

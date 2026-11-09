@@ -8,8 +8,8 @@ import { CLIPBOARD_LINE, doctorLine, rowsCutLine, FIELD_IDS, fitLink, hasTyped, 
 import type { DialogTrouble } from "./store";
 
 // The bridge's answer as JSON, for the reader.
-const WIRE: JsonObject = { collie: "1.24.1+abc1234", line: "edge", os: "linux", arch: "x64", mux: "herdr", harness: "claude", screenable: true };
-const CONTEXT: ReportContext = { collie: "1.24.1+abc1234", line: "edge", os: "linux", arch: "x64", mux: "herdr", harness: "claude", screenable: true };
+const WIRE: JsonObject = { collie: "1.24.1+abc1234", line: "edge", os: "linux", arch: "x64", mux: "herdr", harness: "claude", harnessVersion: null, screenable: true };
+const CONTEXT: ReportContext = { collie: "1.24.1+abc1234", line: "edge", os: "linux", arch: "x64", mux: "herdr", harness: "claude", harnessVersion: null, screenable: true };
 const AT = Date.parse("2026-10-25T18:00:00Z");
 
 function row(n: number, extra: Partial<SendReceiptRow> = {}): SendReceiptRow {

@@ -1,6 +1,6 @@
+import { Icon } from "@/components/icons/icon";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { useLocation } from "react-router";
-import { ArrowLeft, Check, History, Server } from "lucide-react";
 
 import { AgentIcon } from "@/components/agent-icon";
 import { RouteHeader } from "@/components/app-header";
@@ -30,7 +30,7 @@ import { describeApiError, describeThrownError } from "@/lib/api-error-message";
 import { paneBranchName, startFromChoices } from "@/lib/branch-off";
 import { useFolders } from "@/lib/folders";
 import { writeRefusal } from "@/lib/host-health";
-import { HOST_TEXT_CLASSES, hostSlot, isMultiHost, leadHost } from "@/lib/hosts";
+import { HOST_TEXT_CLASSES, hostSlot, isMultiHost, leadHost, paneScope } from "@/lib/hosts";
 import { t } from "@/lib/i18n";
 import { launchersKey, useLaunchers } from "@/lib/launchers";
 import { mutate } from "@/lib/mutate";
@@ -118,21 +118,27 @@ function NewPage({ search }: { search: string }) {
   const at = useMemo(() => readNewAt(search), [search]);
   const asked: Scope = { host: at.machine, session: at.session };
   const { start, creatingSpace } = useSpaceActions();
-  // A pane's own folder and branch, read off the snapshot. A pane that is gone leaves the plain page.
-  const paneAgent =
-    at.pane === undefined ? undefined : [...data.agents, ...data.shellPanes].find((a) => a.paneId === at.pane);
-  const from = paneAgent === undefined ? undefined : { cwd: paneAgent.cwd, branch: paneBranchName(paneAgent) };
-  // `?beside=`: the pane whose space this agent starts in, as a new tab there (a large screen's "New agent
-  // in this space"). A pane that is gone leaves the plain page, which starts a new space as it always did.
-  const besidePane =
-    at.beside === undefined || from !== undefined
-      ? undefined
-      : [...data.agents, ...data.shellPanes].find((a) => a.paneId === at.beside);
-
   // ── Which machine ─────────────────────────────────────────────────────────────────────────────
   const { servers, health } = useCrew();
   const multiHost = isMultiHost(servers);
   const lead = leadHost(servers);
+
+  // A pane named in the address, found on the address's own machine: a crew's snapshot holds every
+  // machine, and each numbers its panes from `w1:p1`, so a paneId alone could be the lead's pane when
+  // a member's was meant (the New tab sheet's More options on a member's heading). Both sides are
+  // normalised the way `paneScope` addresses a pane, so the lead's own id and its absence match.
+  const addressedHost = paneScope({}, { host: at.machine }, servers).host;
+  const named = (paneId: string | undefined) =>
+    paneId === undefined
+      ? undefined
+      : [...data.agents, ...data.shellPanes].find((a) => a.paneId === paneId && paneScope({}, a, servers).host === addressedHost);
+  // A pane's own folder and branch, read off the snapshot. A pane that is gone leaves the plain page.
+  const paneAgent = named(at.pane);
+  const from = paneAgent === undefined ? undefined : { cwd: paneAgent.cwd, branch: paneBranchName(paneAgent) };
+  // `?beside=`: the pane whose space this agent starts in, as a new tab there (a large screen's "New agent
+  // in this space", a New tab sheet's More options). A pane that is gone leaves the plain page, which
+  // starts a new space as it always did.
+  const besidePane = from !== undefined ? undefined : named(at.beside);
   // A page opened from a pane stays on that pane's machine: a worktree is made where the pane's folder
   // is (ADR 0126), and a space is on one machine, so a tab in it cannot start on another.
   const [host, setHost] = useState<string | undefined>(() =>
@@ -519,7 +525,7 @@ function NewPage({ search }: { search: string }) {
               onClick={() => nav.up(homePath({ host: at.machine, session: at.session }))}
               aria-label={backLabel}
             >
-              <ArrowLeft className="size-5" />
+              <Icon name="back" className="size-5" />
             </Button>
             <h1 className="min-w-0 truncate text-lg font-semibold tracking-tight">
               {offer.startersOnly ? t("newPage.starters.title") : besidePane !== undefined ? t("newPage.title.inSpace") : t("home.new.label")}
@@ -551,7 +557,7 @@ function NewPage({ search }: { search: string }) {
               disabled={busy}
               className="flex min-h-14 w-full items-center gap-3 rounded-md border border-border bg-muted px-3 py-2 text-left transition-colors active:bg-muted/70 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
             >
-              <History className="size-5 shrink-0 text-muted-foreground" aria-hidden />
+              <Icon name="reuse-last" className="size-5 shrink-0 text-muted-foreground" aria-hidden />
               <span className="flex min-w-0 flex-1 flex-col">
                 <span className="truncate text-sm font-medium">
                   {again.branch === null
@@ -857,7 +863,7 @@ function MachineSelect({
         <span className="text-xs font-medium text-muted-foreground">{t("space.new.host.label")}</span>
         <Select
           value={chosen ?? ""}
-          lead={<Server className={cn("size-4", slot === null ? "text-muted-foreground" : HOST_TEXT_CLASSES[slot])} />}
+          lead={<Icon name="machine" className={cn("size-4", slot === null ? "text-muted-foreground" : HOST_TEXT_CLASSES[slot])} />}
           onChange={(event) => onChoose(event.target.value)}
         >
           {servers.map((s) => {
@@ -1045,7 +1051,7 @@ function StarterRows({
             >
               <span className="min-w-0 flex-1 truncate">{optionText(item, t("newPage.shell"))}</span>
               <span aria-hidden className="flex size-4 shrink-0 items-center justify-center">
-                {on && <Check className="size-4" />}
+                {on && <Icon name="selected" className="size-4" />}
               </span>
             </button>
           );

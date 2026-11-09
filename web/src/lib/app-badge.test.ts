@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { badgeTotal, parseBadgeSlots, recordSlot, showBadge, slotCount, withSlot, type BadgeCaches, type BadgePush } from "./app-badge";
+import { badgeTotal, parseBadgeSlots, recordSlot, recordSlots, showBadge, slotCount, slotUpdates, withSlot, type BadgeCaches, type BadgePush } from "./app-badge";
 
 /** A push body as the worker gets it: parsed JSON of whatever shape the sender wrote. */
 function wire(text: string): BadgePush {
@@ -133,5 +133,60 @@ describe("showBadge", () => {
     await expect(showBadge(undefined, 2)).resolves.toBeUndefined();
     const refusing = { setAppBadge: async () => Promise.reject(new Error("NotAllowedError")) };
     await expect(showBadge(refusing, 2)).resolves.toBeUndefined();
+  });
+});
+
+// A push may now speak for several slots (bridge/push.ts): a clear of a burst names each, and a device
+// that was looking at the app is owed the counts of the pushes held from it.
+describe("slotUpdates", () => {
+  it("a clear of a burst zeroes every herd slot it names", () => {
+    expect(slotUpdates({ type: "clear", tag: "collie:herd:a", tags: ["collie:herd:a", "collie:herd:b", "collie:update"] })).toEqual([
+      ["collie:herd:a", 0],
+      ["collie:herd:b", 0],
+    ]);
+  });
+
+  it("owed counts go first, so the push's own slot has the last word", () => {
+    expect(
+      slotUpdates({ tag: "collie:herd:a", badge: 1, badgeSlots: { "collie:herd:a": 3, "collie:herd:b": 2 } }),
+    ).toEqual([
+      ["collie:herd:a", 3],
+      ["collie:herd:b", 2],
+      ["collie:herd:a", 1],
+    ]);
+  });
+
+  it("keeps only whole counts for herd slots from what is owed", () => {
+    expect(
+      slotUpdates({ type: "machine", tag: "collie:machine:x", badgeSlots: { "collie:herd:a": 1.5, "collie:herd:b": -1, "x": 2, "collie:herd:c": 0 } }),
+    ).toEqual([["collie:herd:c", 0]]);
+    expect(slotUpdates({ type: "machine", tag: "collie:machine:x", badgeSlots: [1, 2] })).toEqual([]);
+  });
+
+  it("an older push is the one slot slotCount reads, and nothing else", () => {
+    expect(slotUpdates({ tag: "collie:herd", badge: 2 })).toEqual([["collie:herd", 2]]);
+    expect(slotUpdates({ type: "clear", tag: "collie:herd" })).toEqual([["collie:herd", 0]]);
+    expect(slotUpdates({ type: "update", tag: "collie:update" })).toEqual([]);
+  });
+
+  it("recordSlots applies them in order in one write and answers the total", async () => {
+    const store = new Map<string, string>();
+    let writes = 0;
+    const caches: BadgeCaches = {
+      open: async () => ({
+        match: async (key: RequestInfo | URL) => {
+          const text = store.get(String(key));
+          return text === undefined ? undefined : new Response(text);
+        },
+        put: async (key: RequestInfo | URL, res: Response) => {
+          writes += 1;
+          store.set(String(key), await res.text());
+        },
+      }),
+    };
+    await recordSlots(caches, "https://h", "/", [["collie:herd:a", 1], ["collie:herd:b", 1], ["collie:herd:c", 1]]);
+    writes = 0;
+    expect(await recordSlots(caches, "https://h", "/", slotUpdates({ type: "clear", tag: "collie:herd:a", tags: ["collie:herd:a", "collie:herd:b"] }))).toBe(1);
+    expect(writes).toBe(1);
   });
 });

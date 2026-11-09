@@ -17,7 +17,9 @@ import { CrewProvider } from "./crew-provider";
 import { Composer } from "./composer";
 import { addRow, chordKey, DEFAULT_BOARD, setCell } from "@/lib/key-board";
 import { resetKeyBoard, setKeyBoard } from "@/lib/key-board-store";
-import { type PaneJob, type PaneSubagent, type ServerSummary, type TranscriptEntry } from "@/lib/types";
+import { type PaneJob, type PaneSubagent, type PinRow, type ServerSummary, type TranscriptEntry } from "@/lib/types";
+import { __resetBeltIntents, queueBeltIntent, takeBeltIntent } from "@/lib/belt-intent";
+import { paneScopeKey } from "@/lib/scope";
 import { SubagentSheetCtx, type SubagentSheetHandle, type SubagentTarget } from "./chat-cards";
 import type { Surface } from "@/lib/surface/surface";
 import { asJsonObject } from "@/lib/json";
@@ -5654,6 +5656,113 @@ describe("Composer jobs mark and sheet (issue 670)", () => {
     renderComposer({ jobs: [JOBS[1]!] });
     const mark = screen.getByRole("button", { name: "Jobs 0" });
     expect(mark.querySelector('[data-slot="belt-jobs-count"]')).toBeNull();
+  });
+});
+
+describe("Composer pins mark and sheet (M90 spec 03)", () => {
+  afterEach(() => __resetBeltIntents());
+  const NOW = Date.now();
+  const ROWS: PinRow[] = [
+    { id: "p1", itemId: "t1:0", kind: "user", excerpt: "what changed today?", textLength: 19, anchor: "what changed today?", pinnedAt: NOW - 120_000 },
+    { id: "p2", itemId: "t2:1", kind: "reply", excerpt: "One commit: abc1234.", textLength: 20, anchor: "One commit", pinnedAt: NOW - 60_000 },
+  ];
+
+  /** A composer whose pins list the test can empty, the way the pane view's hook does after an Unpin. */
+  function Pinned({ onShow, onOpened }: { onShow?: (pin: PinRow) => boolean; onOpened?: () => void }) {
+    const [rows, setRows] = useState<readonly PinRow[]>(ROWS);
+    return (
+      <Composer
+        paneId="w1:p1"
+        agent="claude"
+        isShell={false}
+        gone={false}
+        readOnly={false}
+        surface={FREE}
+        text="pane output"
+        terminalDraft={null}
+        rawTerminalDraft={null}
+        prefs={{ wrap: true, fontSize: 11, draftFontSize: 14, chatFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true, expandClippedReply: true, stretchText: false }}
+        display={{ open: false, onToggle: vi.fn() }}
+        onSent={vi.fn()}
+        changesPill={{ onClick: vi.fn(), label: "Files" }}
+        pins={{
+          count: rows.length,
+          rows,
+          onUnpin: (id) => setRows((held) => held.filter((row) => row.id !== id)),
+          onOpened: onOpened ?? vi.fn(),
+          onShow: onShow ?? (() => true),
+        }}
+      />
+    );
+  }
+  const mountPinned = (props: ComponentProps<typeof Pinned> = {}) =>
+    render(<RouterProvider router={createMemoryRouter([{ path: "/", element: <Pinned {...props} /> }])} />);
+
+  it("has no pins mark when the pane passes no pins, or none are left", () => {
+    renderComposer();
+    expect(document.querySelector('[data-slot="belt-pins"]')).toBeNull();
+    cleanup();
+    renderComposer({ pins: { count: 0, rows: [], onUnpin: vi.fn(), onOpened: vi.fn(), onShow: () => true } });
+    expect(document.querySelector('[data-slot="belt-pins"]')).toBeNull();
+  });
+
+  it("names the mark by the count, stands it in the fixed block left of Files, and opens the sheet with the list", async () => {
+    const user = userEvent.setup();
+    const onOpened = vi.fn();
+    mountPinned({ onOpened });
+    const mark = screen.getByRole("button", { name: "2 pinned" });
+    expect(mark).toHaveAttribute("data-slot", "belt-pins");
+    expect(mark.querySelector('[data-slot="belt-pins-count"]')!.textContent).toBe("2");
+    const scroller = document.querySelector<HTMLElement>('[data-slot="composer-controls"]')!;
+    expect(scroller.contains(mark)).toBe(false);
+    const files = screen.getByRole("button", { name: "Files" });
+    expect(Array.from(files.parentElement!.querySelectorAll("button")).map((b) => b.getAttribute("aria-label"))).toEqual(["2 pinned", "Files"]);
+    expect(onOpened).not.toHaveBeenCalled();
+
+    await user.click(mark);
+    expect(mark).toHaveAttribute("aria-expanded", "true");
+    const sheet = screen.getByRole("dialog", { name: "Pinned messages" });
+    expect(within(sheet).getByText("One commit: abc1234.")).toBeInTheDocument();
+    expect(within(sheet).getByText("what changed today?")).toBeInTheDocument();
+    expect(onOpened).toHaveBeenCalledTimes(1);
+  });
+
+  it("closes the sheet and takes the mark away after the last Unpin", async () => {
+    const user = userEvent.setup();
+    mountPinned();
+    await user.click(screen.getByRole("button", { name: "2 pinned" }));
+    const sheet = screen.getByRole("dialog", { name: "Pinned messages" });
+    await user.click(within(sheet).getAllByRole("button", { name: "Unpin" })[0]!);
+    expect(screen.getByRole("button", { name: "1 pinned" })).toBeInTheDocument();
+    await user.click(within(screen.getByRole("dialog", { name: "Pinned messages" })).getByRole("button", { name: "Unpin" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() => expect(document.querySelector('[data-slot="belt-pins"]')).toBeNull());
+  });
+
+  it("moves focus to the belt when the last Unpin takes the sheet and the mark away", async () => {
+    const user = userEvent.setup();
+    mountPinned();
+    await user.click(screen.getByRole("button", { name: "2 pinned" }));
+    for (let left = 2; left > 0; left -= 1) {
+      const sheet = screen.getByRole("dialog", { name: "Pinned messages" });
+      await user.click(within(sheet).getAllByRole("button", { name: "Unpin" })[0]!);
+    }
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    const belt = document.querySelector('[data-slot="composer-actions"]')!;
+    await waitFor(() => expect(belt.contains(document.activeElement)).toBe(true));
+  });
+
+  it("opens the sheet for a pins intent a column's tap left, once", async () => {
+    queueBeltIntent(paneScopeKey(undefined, "w1:p1"), { kind: "pins" });
+    mountPinned();
+    expect(await screen.findByRole("dialog", { name: "Pinned messages" })).toBeInTheDocument();
+    expect(takeBeltIntent(paneScopeKey(undefined, "w1:p1"))).toBeNull();
+  });
+
+  it("ignores a pins intent when the pane holds no pins", () => {
+    queueBeltIntent(paneScopeKey(undefined, "w1:p1"), { kind: "pins" });
+    renderComposer();
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 });
 

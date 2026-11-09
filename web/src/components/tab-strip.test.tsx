@@ -4,8 +4,11 @@ import { http, HttpResponse } from "msw";
 
 import { __resetOperatorCommands } from "@/lib/operator-config";
 import { server } from "@/test/setup";
+import { cn } from "@/lib/utils";
 import { TabStrip } from "./tab-strip";
+import { STRIP_TAP_TARGET, TAB_ROW_ADD_TAP_TARGET } from "./ui/labelled-strip";
 import type { AgentStatus, AgentView, MuxCapability, TabView } from "@/lib/types";
+import type { WidthClass } from "@/lib/wide-layout";
 
 // The theme on screen, with its `tabs` word set by the test (lib/tab-look.ts). Left undefined it is the
 // real active theme with no `tabs` word, which is the plain look (the default theme itself names `folder`).
@@ -27,6 +30,17 @@ vi.mock("@/lib/theme/store", async (importOriginal) => {
 });
 afterEach(() => {
   themeTabs.word = undefined;
+});
+
+// The window's width class (ADR 0120), set by the test. The row steps up with it (tab-strip.tsx § STEP);
+// every case that does not set it runs at compact, the phone, as the cases above always did.
+interface WindowWidth {
+  now: WidthClass;
+}
+const widthClass = vi.hoisted((): WindowWidth => ({ now: "compact" }));
+vi.mock("@/hooks/use-width-class", () => ({ useWidthClass: () => widthClass.now }));
+afterEach(() => {
+  widthClass.now = "compact";
 });
 
 // What the eye reads on a cell: its text without the `aria-hidden` semibold copy each label keeps
@@ -118,8 +132,11 @@ describe("TabStrip", () => {
     const tab = screen.getByRole("button", { name: "tab 2" });
     expect(tab.className).toMatch(/(?:^|\s)before:inset-y-0(?=\s|$)/);
     expect(tab.className).toMatch(/(?:^|\s)h-7\.5(?=\s|$)/);
+    // The bare "+" is a 24px box centred in the 30px row, with no border: its edges are 3px inside, so `-3px` ends on them.
     const plus = screen.getByRole("button", { name: "New tab" });
-    expect(plus.className).toMatch(/(?:^|\s)before:-inset-y-\[2px\](?=\s|$)/);
+    expect(plus.className).toMatch(/(?:^|\s)size-6(?=\s|$)/);
+    expect(plus.className).not.toMatch(/(?:^|\s)border(?=\s|$)/);
+    expect(plus.className).toMatch(/(?:^|\s)before:-inset-y-\[3px\](?=\s|$)/);
   });
 
   // INK AND WEIGHT ARE THE ONLY MARK (option 3 of the 2026-09-23 top-bar deck): the open tab is
@@ -832,6 +849,82 @@ describe("TabStrip under the folder look", () => {
       expect(open().className).not.toMatch(/border-x|shadow-|bg-background|rounded-t/);
       expect(other().className).not.toMatch(/border-x|shadow-/);
       expect(screen.getByRole("navigation", { name: "Tabs" }).className).not.toMatch(/shadow-/);
+      unmount();
+    }
+  });
+});
+
+// THE ROW STEPS UP BY WIDTH CLASS (tab-strip.tsx § STEP). jsdom has no layout, so these pin the classes
+// that draw each step; `e2e/wide-layout.spec.ts` measures the drawn heights.
+describe("TabStrip at each width class", () => {
+  function renderStrip() {
+    return render(
+      <TabStrip
+        workspaceId="w1"
+        tabs={[
+          { ...tabs[0]!, label: "Alpha" },
+          { ...tabs[1]!, label: "Beta" },
+        ]}
+        agents={[]}
+        selected="w1:t1"
+        onSelect={vi.fn()}
+        onNewTab={vi.fn()}
+        allowAll={false}
+      />,
+    );
+  }
+  const classesOf = (el: Element) => el.className.split(/\s+/).filter(Boolean).toSorted();
+  const has = (el: Element, cls: string) =>
+    expect(el.className).toMatch(new RegExp(`(?:^|\\s)${cls.replace(/[.[\]]/g, "\\$&")}(?=\\s|$)`));
+
+  it.each([
+    ["compact", "h-7.5", "text-[11px]", "min-w-11", "px-1.5", "size-6"],
+    ["medium", "h-9", "text-[12px]", "min-w-13", "px-2", "size-7"],
+    ["expanded", "h-10", "text-[13px]", "min-w-14", "px-2.5", "size-8"],
+  ] as const)("draws the %s step: a %s cell of %s type", (step, height, text, minWidth, px, plus) => {
+    widthClass.now = step;
+    renderStrip();
+    for (const name of ["Alpha", "Beta"]) {
+      const tab = screen.getByRole("button", { name });
+      for (const cls of [height, text, minWidth, px]) has(tab, cls);
+      // The hit box is the drawn cell at every step: nothing reaches below the row or into the header.
+      has(tab, "before:inset-y-0");
+      expect(tab.className).not.toMatch(/before:-inset-y-|before:-bottom-|before:-top-/);
+    }
+    has(screen.getByRole("button", { name: "New tab" }), plus);
+  });
+
+  it("keeps the phone's row exactly as it was at compact, class for class", () => {
+    widthClass.now = "compact";
+    renderStrip();
+    // Today's cell, spelled out as it stood before the row learned to step.
+    const before =
+      "relative flex h-7.5 min-w-11 shrink-0 select-none items-center justify-center gap-1.5 [-webkit-touch-callout:none] whitespace-nowrap px-1.5 text-[11px] transition-colors before:inset-y-0 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring";
+    const open = cn(STRIP_TAP_TARGET, before, "font-semibold text-foreground");
+    const other = cn(STRIP_TAP_TARGET, before, "font-medium text-muted-foreground hover:text-foreground");
+    expect(classesOf(screen.getByRole("button", { name: "Alpha" }))).toEqual(open.split(" ").toSorted());
+    expect(classesOf(screen.getByRole("button", { name: "Beta" }))).toEqual(other.split(" ").toSorted());
+    const plus = screen.getByRole("button", { name: "New tab" });
+    has(plus, "size-6");
+    for (const cls of TAB_ROW_ADD_TAP_TARGET.split(" ")) has(plus, cls);
+    expect(screen.getByRole("button", { name: "Alpha" }).parentElement!.className).toMatch(/(?:^|\s)-mx-1\.5(?=\s|$)/);
+  });
+
+  it("grows the folder look's padding and its group margin one step with the row", () => {
+    themeTabs.word = "folder";
+    for (const [step, px, mx] of [
+      ["compact", "px-3", "-mx-3"],
+      ["medium", "px-3.5", "-mx-3.5"],
+      ["expanded", "px-4", "-mx-4"],
+    ] as const) {
+      widthClass.now = step;
+      const { unmount } = renderStrip();
+      const open = screen.getByRole("button", { name: "Alpha" });
+      has(open, px);
+      has(screen.getByRole("button", { name: "Beta" }), px);
+      has(open.parentElement!, mx);
+      // The plain padding gives way to the folder one: one horizontal padding per cell.
+      expect(open.className.split(/\s+/).filter((c) => c.startsWith("px-"))).toEqual([px]);
       unmount();
     }
   });

@@ -49,3 +49,27 @@ stale tap.
 
 Probed live on 2026-09-26 in a fresh untrusted directory: `Down, Enter` quit Codex, and `Enter`
 trusted the folder and opened the composer.
+
+## Codex 0.166.0 and 0.167.0 (captured 2026-11-07, keys probed the same day)
+
+The widget stays; its way out changes (`codex--v0166-trust--w120.txt`, `codex--v0167-trust--w120.txt`,
+`codex--v0167-trust--w80.txt`). Codex now has an agent command center (`codex agents`), and a folder
+the person declines goes back there instead of quitting:
+
+```
+  Folder access
+  /tmp/collie-codex-lab
+  Trust this folder? Codex can read, edit, and run files here, subject to your permission …
+› 1. Trust and continue
+  2. Back to Agent Command Center
+  enter continue · esc back
+```
+
+The reader took only the `Quit` copy, so every new folder showed the unread-dialog card, and the card's
+Escape led to the command center, a second card. Each copy is now a pair of second label and footer,
+and a mixed pair refuses. The keys are the 0.156.1 recipe: `Trust and continue` is `Enter`, the other
+row `Down, Enter`.
+
+Probed live on 0.167.0 on 2026-11-07, each in a fresh untrusted folder: `Enter` trusted the folder and
+went on to the hook prompt (HOOKS_NOTES.md) or the composer; `Down, Enter` and `Escape` both opened the
+agent command center, and `Escape` there opened a composer in the untrusted folder.

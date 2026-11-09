@@ -244,6 +244,12 @@ export interface AgentView {
    * all, and the phone then draws exactly what it drew before the field existed.
    */
   gitHead?: GitHead;
+  /**
+   * How many pins the pane's session holds (M90, bridge/pins/store.ts). Set at snapshot time from the
+   * store, only when above zero, never `0`, so a pane of a session with no pins and every solo body stay
+   * what they were. The phone shows the Pins mark from it. An older bridge never sends it.
+   */
+  pins?: number;
 }
 
 /**
@@ -644,6 +650,7 @@ export function journalAgentOf(pane: AgentView): string {
  *
  * `instance` is the pane's walky talky instance token, from the bridge's instance registry; absent,
  * the wire carries no `instance` key. `walkyOff` true adds `walkyOff: true`; otherwise no such key.
+ * `pins` above zero adds `pins: <count>` (M90); zero or absent, no such key.
  */
 export function toPaneWire(
   pane: AgentView,
@@ -651,12 +658,14 @@ export function toPaneWire(
   discoversSessions: (agent: string) => boolean = () => false,
   instance?: string,
   walkyOff = false,
+  pins = 0,
 ): PaneWire {
   const { agentSession, sessionAgent: _sessionAgent, ...rest } = pane;
   const addressable = agentSession !== undefined || discoversSessions(pane.agent);
   const wire: PaneWire = addressable && hasJournal(pane.agent) ? { ...rest, hasSession: true } : rest;
   const placed = instance === undefined ? wire : { ...wire, instance };
-  return walkyOff ? { ...placed, walkyOff: true } : placed;
+  const flagged = walkyOff ? { ...placed, walkyOff: true as const } : placed;
+  return pins > 0 ? { ...flagged, pins } : flagged;
 }
 
 /** A Herdr workspace ("space") — a project-scoped container of tabs. From `workspace.list`. */

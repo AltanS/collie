@@ -297,6 +297,24 @@ describe("the New page: ?beside= (an agent in this space)", () => {
     ]);
   });
 
+  it("on a crew, finds the pane on the address's own machine, not the lead's pane with the same id", async () => {
+    serveLaunchers();
+    const onLead: AgentView = { ...PANE, host: "lead", cwd: "/home/op/lead-repo" };
+    const onMember: AgentView = { ...PANE, host: "mini", cwd: "/home/op/mini-repo" };
+    mount({ entries: [`/new?machine=mini&beside=${encodeURIComponent("w1:p1")}`], agents: [onLead, onMember], servers: roster });
+    expect(await screen.findByRole("heading", { name: "New in this space" })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Folder" })).toHaveValue("/home/op/mini-repo");
+  });
+
+  it("on a crew, the lead's own pane matches an address with no machine", async () => {
+    serveLaunchers();
+    const onLead: AgentView = { ...PANE, host: "lead", cwd: "/home/op/lead-repo" };
+    const onMember: AgentView = { ...PANE, host: "mini", cwd: "/home/op/mini-repo" };
+    mount({ entries: [beside], agents: [onMember, onLead], servers: roster });
+    expect(await screen.findByRole("heading", { name: "New in this space" })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Folder" })).toHaveValue("/home/op/lead-repo");
+  });
+
   it("a pane that is gone leaves the plain page: a new space, no paneId", async () => {
     serveLaunchers();
     const bodies: unknown[] = [];

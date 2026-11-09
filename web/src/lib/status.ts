@@ -55,6 +55,11 @@ export function clearStatus(): void {
   emit();
 }
 
+/** The status on screen now, or null. A plain read, for a caller that must not replace an error. */
+export function currentStatus(): StatusMessage | null {
+  return current;
+}
+
 function subscribe(cb: () => void): () => void {
   listeners.add(cb);
   return () => listeners.delete(cb);

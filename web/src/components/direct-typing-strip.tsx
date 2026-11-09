@@ -1,7 +1,7 @@
-import { Keyboard } from "lucide-react";
 
 import { useLocale } from "@/hooks/use-locale";
 import { t } from "@/lib/i18n";
+import { Icon } from "@/components/icons/icon";
 
 // The armed indicator for direct typing, in the same in-flow slot as the "You sent:" strip.
 //
@@ -22,7 +22,7 @@ export function DirectTypingStrip({ onStop }: { onStop: () => void }) {
   // noticed. Destructive tint + STOP button, always in flow above the input.
   return (
     <div className="flex items-center gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-2 py-1 text-xs font-medium text-destructive">
-      <Keyboard className="size-3.5 shrink-0" />
+      <Icon name="direct-typing" className="size-3.5 shrink-0" />
       <span className="min-w-0 flex-1 truncate">
         <span>{t("sendMode.armed.title")}</span>
         <span className="opacity-80"> — {t("sendMode.armed.hint")}</span>

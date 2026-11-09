@@ -1,9 +1,9 @@
 # ColliePWA
 
 <p align="center">
-  <!-- Baked by collie-brand's logo-ship.ts (collie-social-card-dark.png) and copied in whole, the
+  <!-- Baked by collie-brand's link-card.ts (assets/collie-link-card.png) and copied in whole, the
        same file colliepwa.dev serves as its social card. Do not retouch it here: regenerate it there. -->
-  <img src="assets/social-card.png" alt="The Collie mark beside the ColliePWA wordmark and the line: your agent herd, from your phone." width="640">
+  <img src="assets/social-card.png" alt="ColliePWA: your terminal agents, on your phone. Two phones show the dashboard and a chat with a coding agent, beside the logos of the agents and multiplexers it works with." width="640">
 </p>
 
 <p align="center">
@@ -12,30 +12,50 @@
   <sub>A real Collie build running in the page against faked data.</sub>
 </p>
 
-ColliePWA is an open-source (MIT) mobile client for [Herdr](https://herdr.dev), with experimental
-support for the new Herdr core (`herdr-core`, behind herdr-app), [tmux](https://github.com/tmux/tmux)
-and [zellij](https://zellij.dev). It is a
-self-hosted web app (PWA) for driving terminal AI agents such as Claude Code, Codex and OpenCode
-from your phone. Each instance connects to one terminal multiplexer, and can show your own agent
-durable agents beside it. It is served over Tailscale by default.
-Open the URL on an iPhone or Android phone to see which agent needs input and respond directly from
-your mobile keyboard.
+ColliePWA is an open-source (MIT) web app for your phone. It displays your terminal AI agents,
+including Claude Code, Codex and OpenCode, and lets you answer them remotely. You host it on your
+own computer alongside [Herdr](https://herdr.dev). Support for the new Herdr core,
+[tmux](https://github.com/tmux/tmux) and [zellij](https://zellij.dev) is experimental. ColliePWA
+is served over Tailscale, so only devices on your own tailnet reach it. You install it via your browser
+directly to your home screen, bypassing app stores.
 
 Using Herdr? Read about the
 [Herdr mobile client](https://colliepwa.dev/herdr-mobile-client?utm_source=github&utm_medium=readme&utm_campaign=collie&utm_content=herdr).
 
-The input box uses a standard text field compatible with system voice dictation. Collie also
-includes built-in [voice input](./docs/voice-and-push.md#voice-input-optional) that remains disabled
-until explicitly configured.
+## What you can do
+
+- **Answer what needs you.** The dashboard surfaces waiting agents first. Agent prompts turn into
+  buttons. Quick replies, a configurable keys board, and your system keyboard with voice
+  dictation handle input. [Guide](./docs/claude-code-on-your-phone.md)
+- **WalkyTalky: agents message each other, and you message them.** Send short messages between
+  agent sessions across programs and machines. Message any session from your phone. Every message
+  returns a receipt. [WalkyTalky](./docs/walky-talky.md)
+- **Start agents from the phone.** Use the **+ New** page to choose the machine, agent or
+  command, directory, and an optional git worktree. [Guide](./docs/claude-code-on-your-phone.md)
+- **Push notifications and voice input.** Receive alerts when an agent pauses or finishes.
+  Whistle, Collie's built-in speech engine, converts voice to text. It remains inactive until
+  configured. [Voice and push](./docs/voice-and-push.md)
+- **See what the agent changed.** The Files view displays the workspace folder, marks modified
+  files, and provides a read-only view of git diffs and the latest commit. [Changes](./docs/changes.md)
+- **Crews.** Cluster multiple Collie hosts behind one URL with manual failover.
+  [Crews](./docs/crew.md)
+
+Other features: output search, full conversation history, image and file attachments,
+[durable agents](./docs/durable-agents.md) (experimental), four [themes](./docs/themes.md), twelve
+languages, and per-device typeface selection. The Edge release line typesets chat equations when
+math is enabled ([syntax](./docs/changes.md#equations)). Edge receives features before Stable
+([Manage & update](./docs/upgrading.md)).
 
 ## Get it on your phone in 3 steps
 
-You need [Tailscale](https://tailscale.com) on your computer and your phone, and
-[Herdr](https://herdr.dev) (or the Herdr core, tmux or zellij, experimental) running on your computer. New to
-either? **[Install in five minutes](./docs/five-minute-install.md)** has one path per system. On
-Windows, follow [Install in five minutes → Windows](./docs/five-minute-install.md#windows).
+Prerequisites: [Tailscale](https://tailscale.com) on your computer and phone, and
+[Herdr](https://herdr.dev) (or experimental Herdr core, tmux, or zellij) running on your computer.
+For new setups, follow **[Install in five minutes](./docs/five-minute-install.md)** for
+platform-specific instructions, including [Windows](./docs/five-minute-install.md#windows).
+Alternative options (Arch, Nix, Herdr plugin, source) are in **[Install](./docs/install.md)**.
 
-**1. Install** on your computer (no `sudo`, checksum-verified):
+**1. Install** on your computer. Requires `curl`, `tar`, and a sha256 utility. Needs no `sudo` or
+compiler. Verifies checksums automatically:
 
 ```bash
 curl -fsSL https://colliepwa.dev/install.sh | sh
@@ -47,88 +67,30 @@ curl -fsSL https://colliepwa.dev/install.sh | sh
 COLLIE_MUX=herdr collie start          # or: herdr-core, tmux, zellij
 ```
 
-**3. Pair your phone.** Run `collie qr` and scan it. Add Collie to your home screen and open it from
-the icon. Then run `collie pair` and type the code under **Settings → System → Paired devices**.
+Without `COLLIE_MUX`, `collie start` checks for Herdr, tmux, and zellij and prompts you to pick
+one. It offers Herdr core only if the Herdr TUI is absent.
+
+**3. Put it on your phone and pair it.** Run `collie qr` and scan the code. Add ColliePWA to
+your home screen:
+
+- **iPhone:** In Safari, tap **Share** (under **⋯** in the default iOS 26 layout), tap
+  **Add to Home Screen**, then tap **Add**.
+- **Android:** In Chrome, open Collie **Settings** and tap **Install** on the top card.
 
 ![Put Collie on the home screen: iPhone and Android steps.](docs/images/install/pwa-install.svg)
 
-That's it: agents waiting on you show up first. Tap one to reply.
+ColliePWA is not on the App Store or Google Play; home-screen installation is required. Launch the
+installed app, run `collie pair` on your computer, and enter the code under
+**Settings → System → Paired devices**. Pair within the home-screen app, not the browser: iOS keeps
+their storage separate. The app displays no panes until paired.
 
-> Collie is remote shell access to your machine. Keep it on your tailnet (`tailscale serve`, never
-> `funnel`) and read [Security](#security--read-this-first) before you run it.
+Agents awaiting input appear first. Tap an agent to reply. To configure Collie using an agent,
+instruct it to run `collie skill` and follow the instructions.
 
-Prefer to have your agent do it? Ask it to run `collie skill` and follow the brief.
+> Collie exposes remote shell access to your machine. Keep it on your tailnet (`tailscale serve`,
+> never `funnel`). Read [Security](#security-read-this-first) before running.
 
-**Features**
-
-- **React Router + Vite** with TypeScript, Tailwind, shadcn, and a Bun bridge
-- **Status dashboard** led by what needs your input; every other pane sits under its own workspace, tab on the row
-- **Push notifications** when an agent blocks on user input
-- **Voice input**: speak a reply instead of typing it. Whistle, Collie's own speech engine, turns it into text on the phone or on your computer, so a phone whose browser cannot run it can still use voice. With Whistle the audio stays on your own devices. Off until you set it up
-- **Quick actions and slash commands** configured per agent
-- **Keys board you arrange**: `Esc`, `Ctrl+C`, arrows and modifier combinations, plus wider keys, your own chords and sequences, sticky `Ctrl`/`Alt`/`Shift`, presets (Claude Code, Prefix, Vim) and a layout code to share
-- **Start from the phone**: a **+ New** button opens one page where you pick the machine, an agent or a command, the folder and an optional new worktree; each machine shows which agents it has, a lost reply never opens a second pane, and your own launchers, the lead's and the ones you add from the phone, show on every machine of a crew
-- **Output search** and full conversation history beyond standard terminal scrollback
-- **Files screen**: the files of an agent's workspace folder with the changes marked, and a Changes segment with what it changed in its git repos, as diffs with syntax colour, and its last commit, read-only
-- **File attachments**: images from the camera roll, and markdown, text and code files
-- **Device pairing** always on: a device needs its token for every request, reads and writes, and an unpaired browser sees only the pair screen
-- **Crews**: several machines' Collies behind one URL, with operator-triggered failover
-- **WalkyTalky**: one agent session sends a short message to another, on any harness and across a crew, and you can message sessions from the phone; every message gets a receipt and a log entry, an address carries the pane's token so a message does not reach a new session in a reused pane id, and a crew machine signs it
-- **Durable agents**: a long-running durable agent is a session on the phone, with approvals and history (experimental)
-- **Twelve UI languages** and a per-device typeface setting
-- **Herdr session switching** managed from the web interface
-- **PWA support** running locally on loopback with no external accounts or cloud dependencies
-- **Telemetry**: new in 1.27.0 and on by default; before that Collie sent nothing. Once a day each bridge (one instance with its own state folder) sends a random ID, the version, the OS, the CPU, the install kind and the release line and, when a trouble card showed, the agent program's name and version and the multiplexer, as a count. No usage, no content. Turn it off on each machine in Settings, with `COLLIE_TELEMETRY=0` (in the instance's `.env` for a service), `telemetry = false` or `DO_NOT_TRACK=1` ([details](./docs/security.md#what-leaves-your-machine))
-
-## Demo
-
-Using Collie from a phone: the dashboard places agents that need input at the top. You can inspect
-spaces, tabs, and panes. Long-press a pane pill or tab chip to rename or close it; Claude panes
-reflect names set via `/rename`. Hold a dashboard row or a pane pill, or right-click it with a mouse,
-to pin that pane to the top of the dashboard and the switcher. Tap to answer an `AskUserQuestion`
-prompt, switch between herds, and receive push notifications when an agent blocks on input.
-
-The [interactive demo](https://colliepwa.dev/demo?utm_source=github&utm_medium=readme&utm_campaign=collie&utm_content=demo-section) runs the web client in your browser against mock
-data without installation.
-
-<table>
-  <tr>
-    <td align="center" width="50%"><img src="assets/dashboard.png" alt="Collie dashboard: a workspace filter, a status summary, then panes grouped by workspace" width="250"><br><sub><b>Dashboard</b> — every pane stays in its workspace, what needs you is marked in place</sub></td>
-    <td align="center" width="50%"><img src="assets/ask-question.png" alt="A Claude permission prompt up-leveled into tappable buttons" width="250"><br><sub><b>Ask</b> — the agent's own prompts become tappable buttons</sub></td>
-  </tr>
-  <tr>
-    <td align="center" width="50%"><img src="assets/space-detail.png" alt="A space's tabs and panes" width="250"><br><sub><b>Space</b> — its tabs and panes, deep-linkable</sub></td>
-    <td align="center" width="50%"><img src="assets/keys.png" alt="The special-keys pad — arrows, Esc, Tab, Ctrl, Alt, Shift" width="250"><br><sub><b>Keys</b> — the special-keys pad, arranged the way you work</sub></td>
-  </tr>
-  <tr>
-    <td align="center" width="50%"><img src="assets/quick.png" alt="The Quick dock — one-tap replies over a working pane" width="250"><br><sub><b>Quick</b> — your own one-tap replies, from <code>quick-replies.toml</code></sub></td>
-    <td align="center" width="50%"><img src="assets/settings.png" alt="Settings — appearance, language, typeface" width="250"><br><sub><b>Settings</b> — appearance, language, typeface, per device</sub></td>
-  </tr>
-</table>
-
-## Motivation
-
-I wanted to check on my agents from my phone. The usual route is [Termux](https://termux.dev) to SSH
-in and attach to the tmux or zellij session. Driving a TUI through on-screen controls is
-clumsy: special keys are fiddly, `Ctrl`/`Esc`/arrows require awkward chords, and simple text input
-fights the soft keyboard. I wanted a mobile interface instead of a terminal shoehorned onto a
-touchscreen. Collie lets you tap the agent that needs input, type normally, and send `Esc` or
-`Ctrl+C` with one thumb.
-
-## Who is this for
-
-Collie is for developers running AI agents in a terminal multiplexer who want to resume sessions
-from a phone. Herdr is the primary supported target in 1.0. Support for **tmux and zellij is
-experimental**: both run, but testing is limited to a single operator on one machine. If you use
-either, [bug reports are welcome](./docs/multiplexers.md#pointing-collie-at-a-multiplexer), including
-reports of working setups.
-
-The setup assumes a **[Tailscale](https://tailscale.com) tailnet**. Your phone and host must share a
-tailnet, with `tailscale serve` configured as the default ingress. Collie is **single-user**: it
-supports one operator on one tailnet, with no multi-tenant authentication. Do not use it for shared
-or public access. Read the security section below before running it.
-
-## Security — read this first
+## Security, read this first
 
 **Collie provides remote shell access to your machine by design.** A single Collie API call sends
 arbitrary keystrokes directly into a live terminal pane. Anyone with access to the URL can read pane
@@ -139,31 +101,40 @@ the core workflow. Treat the URL as a root login: bind it strictly to your tailn
 [`docs/security.md`](./docs/security.md) for details on the security model, defense layers, and
 device gating before running the service.
 
-> 🚫 **Never `tailscale funnel` this**: `funnel` exposes the port to the public internet, whereas
+> **Never `tailscale funnel` this.** `funnel` exposes the port to the public internet, whereas
 > `serve` limits access to your private tailnet. Do not funnel Collie under any circumstances.
 
-## Quickstart
+## Who this is for
 
-New to Tailscale or Herdr? **[Install in five minutes](./docs/five-minute-install.md)** walks the
-whole setup, from an empty computer to Collie on your phone.
+Collie is for developers running terminal-multiplexed AI agents who want phone access via a touch
+UI instead of an emulated terminal. Herdr is the primary target. **The Herdr core, tmux and zellij
+are experimental**: they function, but testing is limited.
+[Bug reports are welcome](./docs/multiplexers.md#pointing-collie-at-a-multiplexer), including reports
+of working setups.
 
-Run this on the host, not your phone. It requires `curl`, `tar`, and a sha256 utility. It needs no
-compiler toolchain and does not ask for `sudo`:
+The setup assumes a **[Tailscale](https://tailscale.com) tailnet**, with `tailscale serve` as the
+default ingress. Collie is strictly **single-user**: one operator per tailnet, without multi-tenant
+authentication. Do not deploy it for shared or public access.
 
-```bash
-curl -fsSL https://colliepwa.dev/install.sh | sh
-```
+## Demo
 
-The script downloads the latest release for your platform, verifies the sha256 checksum, installs
-the files, and puts `collie` on your PATH. It then prints the remaining steps, the same as
-[Get it on your phone in 3 steps](#get-it-on-your-phone-in-3-steps). Without `COLLIE_MUX`,
-`collie start` in a terminal detects Herdr, tmux, and zellij, then prompts for your choice. It
-offers the Herdr core only on a machine without the Herdr TUI. If you
-prefer to build from source, **[`docs/install.md`](./docs/install.md)** covers manual builds, each system and
-package, Herdr routes, and adding Collie to the home screen of an iPhone or Android phone.
+The [interactive demo](https://colliepwa.dev/demo?utm_source=github&utm_medium=readme&utm_campaign=collie&utm_content=demo-section)
+runs the client in your browser against mock data without requiring installation.
 
-ColliePWA is not in the App Store or Google Play. You add it to your home screen from the browser,
-and that is the only way to install it on a phone.
+<table>
+  <tr>
+    <td align="center" width="50%"><img src="assets/dashboard.png" alt="Collie dashboard: a workspace filter, a status summary, then panes grouped by workspace" width="250"><br><sub><b>Dashboard</b>: every pane stays in its workspace, what needs you is marked in place</sub></td>
+    <td align="center" width="50%"><img src="assets/ask-question.png" alt="A Claude permission prompt up-leveled into tappable buttons" width="250"><br><sub><b>Ask</b>: the agent's own prompts become tappable buttons</sub></td>
+  </tr>
+  <tr>
+    <td align="center" width="50%"><img src="assets/space-detail.png" alt="A space's tabs and panes" width="250"><br><sub><b>Space</b>: its tabs and panes, deep-linkable</sub></td>
+    <td align="center" width="50%"><img src="assets/keys.png" alt="The special-keys pad: arrows, Esc, Tab, Ctrl, Alt, Shift" width="250"><br><sub><b>Keys</b>: the special-keys pad, arranged the way you work</sub></td>
+  </tr>
+  <tr>
+    <td align="center" width="50%"><img src="assets/quick.png" alt="The Quick dock: one-tap replies over a working pane" width="250"><br><sub><b>Quick</b>: your own one-tap replies, from <code>quick-replies.toml</code></sub></td>
+    <td align="center" width="50%"><img src="assets/settings.png" alt="Settings: appearance, language, typeface" width="250"><br><sub><b>Settings</b>: appearance, language, typeface, per device</sub></td>
+  </tr>
+</table>
 
 ## Documentation
 
@@ -198,7 +169,7 @@ and that is the only way to install it on a phone.
 | | |
 | --- | --- |
 | [**Install**](./docs/install.md) | The front door you need, then the install for your system: Linux, Arch and Omarchy, Nix, macOS, Windows, or as a Herdr plugin. Covers first run, setup on an iPhone or Android phone, updates, and uninstallation |
-| [**Windows**](./docs/windows.md) | Windows 11 with Herdr: what is supported, installing with `install.ps1`, the unsigned binary, updating, long paths, and what is not tested |
+| [**Windows**](./docs/windows.md) | Windows 11 with Herdr: what is supported and what is still experimental, installing with `install.ps1`, the unsigned binary, updating, long paths, and what is not tested |
 | [**Security**](./docs/security.md) | What a Collie exposes, the defenses, and pairing a device, the credential for every request |
 | [**Configure**](./docs/configure.md) | The `.env`, your own slash commands, keys, quick replies, launchers and typefaces; appearance, Zen mode, language |
 | [**Themes**](./docs/themes.md) | The four looks Collie ships, picking one in Settings, importing a theme file after a preview, exporting one to edit, and writing your own: the 43 colour tokens, the shape and look words, the terminal palette, and what a theme cannot change |
@@ -212,89 +183,66 @@ and that is the only way to install it on a phone.
 | [**Terminology**](./docs/terminology.md) | Collie's words in plain words, beside the names other tools use: session, space, tab, pane, terminal, durable agent, harness, crew, lead, and more |
 | **For an AI coding agent in your terminal** | `collie skill` prints a brief on how Collie works, and `collie docs` prints the pages above, both out of the binary and with no network |
 
-Repository-level specifications live at the root: [`ARCHITECTURE.md`](./ARCHITECTURE.md) ·
-[`docs/deployment.md`](./docs/deployment.md) · [`MUX_CONTRACT.md`](./MUX_CONTRACT.md) ·
-[`CREW_PROTOCOL.md`](./CREW_PROTOCOL.md) · [`HERDR_API.md`](./HERDR_API.md) ·
-[`DESIGN.md`](./DESIGN.md) · [`CONTRIBUTING.md`](./CONTRIBUTING.md).
+Root specifications: [`ARCHITECTURE.md`](./ARCHITECTURE.md),
+[`MUX_CONTRACT.md`](./MUX_CONTRACT.md), [`CREW_PROTOCOL.md`](./CREW_PROTOCOL.md),
+[`HERDR_API.md`](./HERDR_API.md), [`HC_API.md`](./HC_API.md), [`DESIGN.md`](./DESIGN.md),
+[`HARNESS_CONTRIBUTING.md`](./HARNESS_CONTRIBUTING.md), and [`CONTRIBUTING.md`](./CONTRIBUTING.md).
 
 ## Deployment variants
 
-Collie always binds **loopback only**; what changes between deployments is *what sits in front
-of it* and *how a request proves who it is*. Variant A is the default and sits below; the other four
-are in [`docs/deployment.md`](./docs/deployment.md). Pick one.
+Collie always binds to **loopback only**. Deployment types differ by ingress configuration and
+authentication mechanism. Variant A is default. See [`docs/deployment.md`](./docs/deployment.md)
+for variants B through E.
 
 ### Variant A — `tailscale serve` + person identity (default)
 
-The happy path from [Install](./docs/install.md#install). `tailscale serve` terminates TLS on your MagicDNS name and
-injects `Tailscale-User-Login`; set `COLLIE_TRUSTED_USER` to your tailnet login and Collie
-rejects anyone else.
+Standard path from [Install](./docs/install.md#install). `tailscale serve` terminates TLS on your
+MagicDNS domain and injects `Tailscale-User-Login`, a header a client cannot forge through the proxy. Define
+`COLLIE_TRUSTED_USER` in `.env` to restrict access:
 
 ```bash
-# in your .env
 COLLIE_TRUSTED_USER=you@example.com
 ```
 
-- **Granularity:** the tailnet *person*, not the device.
-- **Why it's safe on bare `tailscale serve`:** serve is the *trusted injector* of
-  `Tailscale-User-Login` — it sets that header itself and a client can't forge it through the proxy.
-- Nothing else to configure; origins match automatically on the MagicDNS name.
-- Want *per-device* control without standing up a proxy? [Pair the
-  device](./docs/security.md#pair-a-device--the-write-credential) — it composes on top of this variant.
+This trusts the tailnet user, not the device. For device-level security,
+[pair the device](./docs/security.md#pair-a-device--the-write-credential). Use alternative variants
+only for proxy setups or environments without Tailscale:
 
-This is the right choice unless you specifically need a proxy in the path. If you do, or if Tailscale
-isn't in the path at all, [`docs/deployment.md`](./docs/deployment.md) has the rest:
-
-- **[B — identity-aware proxy, authorised by device](./docs/deployment.md#variant-b--identity-aware-proxy--per-device-authorisation)** — a proxy on this host; some devices drive, others watch.
-- **[C — reverse proxy as the only front door](./docs/deployment.md#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale)** — no Tailscale anywhere in the path.
-- **[D — off-host identity proxy over the tailnet](./docs/deployment.md#variant-d--off-host-identity-proxy-over-the-tailnet)** — one central ingress node fronting Collie among your other services.
-- **[E — any other mesh or tunnel](./docs/deployment.md#variant-e--any-other-mesh-or-tunnel-netbird-zerotier-cloudflare-tunnel)** — NetBird, ZeroTier, Cloudflare Tunnel: you own the ingress, Collie publishes nothing.
+- **[B, identity-aware proxy, authorised by device](./docs/deployment.md#variant-b--identity-aware-proxy--per-device-authorisation):** Host-level proxy with role-based access.
+- **[C, reverse proxy as the only front door](./docs/deployment.md#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale):** Direct reverse proxy without Tailscale.
+- **[D, off-host identity proxy over the tailnet](./docs/deployment.md#variant-d--off-host-identity-proxy-over-the-tailnet):** Shared ingress node routing traffic to Collie and other systems.
+- **[E, any other mesh or tunnel](./docs/deployment.md#variant-e--any-other-mesh-or-tunnel-netbird-zerotier-cloudflare-tunnel):** Custom network tunnels (NetBird, ZeroTier, Cloudflare Tunnel).
 
 ## Windows
-
-Linux and macOS: nothing changes for you.
 
 ```powershell
 irm https://colliepwa.dev/install.ps1 | iex
 ```
 
-v1.16.0 is the first release with a Windows zip. The installer was run against that public release on
-a Windows 11 VM, and `collie start`, `status`, `doctor` and `stop` worked. Phone access over HTTP
-through Tailscale Serve was run too. Not tested yet are an update between two real releases on
-Windows and the HTTPS form of Tailscale Serve on Windows, which is why it stays experimental.
+Windows 11 x64 running Herdr is maintained and tested directly. The platform stays labelled
+experimental until an update between two real releases is proven on it. Linux and macOS are unaffected. See
+[**docs/windows.md**](./docs/windows.md) for installation, updates, and limitations. Summary:
 
-The release check requires the Windows zip from now on. Only the maintainer can override that, for a
-Linux hotfix.
+- **Tested.** The `windows.yml` workflow tests the bridge, CLI, and scripts on every push. A
+  Windows 11 VM rehearses an install, an update and a rollback before each release tag
+  ([ADR 0075](./.adr/0075-windows-is-a-supported-host.md)).
+- **Installed without a toolchain.** Releases provide `collie-<version>-windows-x64.zip`,
+  installed via `scripts/install.ps1`. The binary is unsigned and may trigger Smart App Control.
+- **Run by Task Scheduler.** Commands `collie start`, `stop`, `restart`, `status`, and `uninstall`
+  work normally. The service runs as task `herdr.collie` at user login.
+- **Not covered.** tmux and zellij (no Windows binaries), Windows 10, Windows on ARM, and
+  a Windows machine in a crew without the [experimental](./docs/windows.md#crews) consent flag.
+  Herdr action buttons require `bash`, limiting manifest support to `linux` and `macos`.
 
-Windows 11 on x64 with Herdr is a supported host: the maintainer owns the code and tests it.
-The conditions for dropping the word are on the Windows page. [**docs/windows.md**](./docs/windows.md)
-has the install, the update, and what is not tested. In short:
-
-- **Tested.** The `windows.yml` workflow runs the bridge, cli and scripts tests on every push, and
-  a Windows 11 VM rehearses an install, an update and a rollback before each release tag.
-  ([ADR 0075](./.adr/0075-windows-is-a-supported-host.md))
-- **Installed without a toolchain.** Each release builds `collie-<version>-windows-x64.zip`, and
-  `scripts/install.ps1` installs it. The binary is unsigned, and Smart App Control can block it.
-- **Run by Task Scheduler.** `collie start`, `stop`, `restart`, `status` and `uninstall` work as they
-  do elsewhere. The task is named `herdr.collie` and starts at your logon.
-- **Not covered.** tmux and zellij (neither has a Windows build), Windows 10, Windows on ARM,
-  a Windows machine in a crew without the [experimental](./docs/windows.md#crews) consent flag, and a managed front door: Collie does not run `tailscale serve`
-  on Windows, so bring your own,
-  [Variant C](./docs/deployment.md#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale).
-  Herdr's action buttons need `bash`, so the manifest lists only `linux` and `macos`.
-
-Herdr on Windows exposes its control socket as a named pipe derived from the full socket path instead
-of an AF_UNIX socket. Collie connects through `node:net` rather than `Bun.connect`, with a single shim,
-[`bridge/dial.ts`](./bridge/dial.ts), which documents the path mapping. The socket path defaults to
-`%APPDATA%\herdr\herdr.sock`; override it with `HERDR_SOCKET_PATH`. Explicit `\\.\pipe\...` values pass
-through directly. The bridge logs `[events] stream up` on startup when event streaming runs over the pipe.
-
-`COLLIE_HERDR_DIAL=net` forces the `node:net` dialer on Linux and macOS. This allows testing the
-Windows connection path without a Windows environment; `bridge/dial.test.ts` relies on it.
+Herdr on Windows uses a named pipe for its control socket. Collie connects through `node:net`
+via [`bridge/dial.ts`](./bridge/dial.ts), which details the path mapping. The socket defaults to
+`%APPDATA%\herdr\herdr.sock`; override it with `HERDR_SOCKET_PATH`. Setting
+`COLLIE_HERDR_DIAL=net` enables this dialer on Linux and macOS for testing without Windows.
 
 ## Architecture
 
-A small Bun process sits between your phone and your multiplexer — the browser never touches the
-multiplexer.
+A Bun process bridges your phone and your terminal multiplexer. The browser never connects to the
+multiplexer directly.
 
 ```
   phone (PWA)
@@ -307,93 +255,61 @@ multiplexer.
      │  one mux adapter, chosen per install
      ▼
   the multiplexer        owns the panes, agents and terminal state
-  Herdr · tmux · zellij
+  Herdr · Herdr core · tmux · zellij
 ```
 
-Under [Variant C](./docs/deployment.md#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale) a
-reverse proxy replaces the `tailscale serve` box; everything below the front door is identical.
+Under [Variant C](./docs/deployment.md#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale),
+a standard reverse proxy replaces `tailscale serve`. The downstream components are unchanged.
 
-- **Only the adapter touches the multiplexer** (`bridge/mux/<name>/` — Herdr dials a Unix socket, tmux and zellij shell out to their CLIs); everything else speaks the bridge's HTTP API. What every adapter must answer is [`MUX_CONTRACT.md`](./MUX_CONTRACT.md).
-- **Polling is still the model** — the bridge takes one snapshot per tick from the adapter and the browser polls `/api/snapshot`; where the multiplexer offers an event stream (Herdr does) it only pokes the bridge's poll to go faster, it never replaces it. No resync logic.
-- **Actions are plain HTTP** — a reply or key `POST`s to `/api/pane/:id/{reply,keys}`, and the adapter types it into a real terminal (hence the security posture).
-- **The UI is a static PWA** — Vite builds `web/dist`, served from disk, so a rebuild is live with no restart.
-- **A second Collie is a peer, not a second bridge** — one machine's bridge mirrors one multiplexer, and a lead reads its peers over the crew link ([`CREW_PROTOCOL.md`](./CREW_PROTOCOL.md)).
+- **Only the adapter touches the multiplexer** (`bridge/mux/<name>/`: Herdr dials a Unix socket, tmux and zellij shell out to their CLIs); everything else speaks the bridge's HTTP API. What every adapter must answer is [`MUX_CONTRACT.md`](./MUX_CONTRACT.md).
+- **Polling is still the model.** The bridge takes one snapshot per tick from the adapter and the browser polls `/api/snapshot`; where the multiplexer offers an event stream (Herdr does) it only pokes the bridge's poll to go faster, it never replaces it. No resync logic.
+- **Actions are plain HTTP.** A reply or key `POST`s to `/api/pane/:id/{reply,keys}`, and the adapter types it into a real terminal (hence the security posture).
+- **The UI is a static PWA.** Vite builds `web/dist`, served from disk, so a rebuild is live with no restart.
+- **A second Collie is a peer, not a second bridge.** One machine's bridge mirrors one multiplexer, and a lead reads its peers over the crew link ([`CREW_PROTOCOL.md`](./CREW_PROTOCOL.md)).
 
-Full design rationale in [`ARCHITECTURE.md`](./ARCHITECTURE.md).
+Read [`ARCHITECTURE.md`](./ARCHITECTURE.md) for full design rationale.
 
 ## Developing
 
 Clone and build the repository
-([Install → the same result, from source](./docs/install.md#the-same-result-from-source)), then edit
-in place.
+([Install, the same result from source](./docs/install.md#the-same-result-from-source)), then edit
+the code.
 
 - **Every verb is implemented once, in `cli/`,** and runs as `bin/collie <verb>`
-  ([Commands](./docs/commands.md)). No other layer implements verbs. `scripts/collie-ctl.sh` is a
-  bootstrap shim that compiles the binary and passes your argv. The Herdr adapter's
-  `herdr-plugin.toml` is a thin registration file whose `[[actions]]` call that shim
-  ([Herdr actions](./docs/commands.md#herdr-actions)). Both files contain explanatory comments.
-- **Development loop asymmetry:** `web/` rebuilds appear immediately without a restart because the
-  bridge serves `web/dist` directly from disk. Changes to `bridge/` require
-  `systemctl --user restart collie`. Build, test, and versioning rules live in
-  [`CLAUDE.md`](./CLAUDE.md). Versioning is enforced by git hooks, so check the document before
-  committing.
+  ([Commands](./docs/commands.md)). `scripts/collie-ctl.sh` is a bootstrap shim that compiles the
+  binary and passes your argv. The Herdr adapter's `herdr-plugin.toml` is a thin registration file
+  whose `[[actions]]` call that shim ([Herdr actions](./docs/commands.md#herdr-actions)).
+- **Development loop:** `web/` rebuilds appear at once, because the bridge serves `web/dist` from
+  disk. Changes to `bridge/` need a restart (`systemctl --user restart collie`). Build, test and
+  versioning rules live in [`CLAUDE.md`](./CLAUDE.md), and git hooks enforce versioning, so read it
+  before you commit.
+- **Checks:** `bun run typecheck`, `bun run lint`, `bun test ./bridge ./cli ./scripts`, and in
+  `web/` `bun run typecheck` and `bun run test`. [`CONTRIBUTING.md`](./CONTRIBUTING.md) has the
+  full list.
 - **Multiplexer adapters:** [`MUX_CONTRACT.md`](./MUX_CONTRACT.md) defines the interface an adapter
   must implement, and [`MUX_CONTRIBUTING.md`](./MUX_CONTRIBUTING.md) covers the integration
   boundaries. [`ARCHITECTURE.md`](./ARCHITECTURE.md) §3 explains why Collie runs as a supervised
-  service instead of an embedded pane, which keeps the Herdr manifest limited to `[[actions]]` and
-  `[[build]]`.
-- **Pull requests:** [`CONTRIBUTING.md`](./CONTRIBUTING.md) documents base branches (`main` for
-  bugfixes, `v1` for features), CI checks, and version bump requirements.
+  service instead of an embedded pane. An agent program that Collie should read needs a harness
+  profile: [`HARNESS_CONTRIBUTING.md`](./HARNESS_CONTRIBUTING.md).
+- **Pull requests:** open them against `main`. [`CONTRIBUTING.md`](./CONTRIBUTING.md) has the CI
+  checks and the version rules.
 
 ### The states playground
 
-A development page that renders the web components across mock states (boot, idle, dashboard, crew,
-settings) without a running agent. This lets you inspect visual elements like banners, marks, boot
-screens, and lock states without manually reproducing each condition. Its browser tab wears a red
-icon, so it is never mistaken for a real Collie build.
+A local test page renders UI components across mock states (boot, idle, dashboard, crew,
+settings) without active agents. The tab shows a red icon to identify it as test-only.
 
 ```
 cd web && COLLIE_DEV_HOSTS=bluefin,localhost bun run playground
 ```
 
-Open `http://<host>:5199/playground.html`. Port 5199 redirects root requests to the playground and
-disables `/api`, preventing requests to a live Collie instance. Vite targets only `index.html`
-during production builds, keeping `playground.html` and `src/playground/` out of `dist` and the PWA
-precache. This exclusion is tested in `src/playground/playground-entry.test.ts`.
-
-The page is split into pages: one section is shown at a time, picked from a sidebar on wide screens
-and a top bar on narrow ones. Each section's code loads only when you open it, and only its
-components are mounted. The section lives in the URL hash, and a click pushes it, so Back returns to
-the page before. `#pane` opens the Pane section, and `#pane/<card-handle>` also scrolls that card
-into view once it mounts (the handle is the card's `data-state`, e.g. `pane-mid-tool-run`). A
-section's groups are sub-pages: the bar under its title opens one, `#changes:one-file`, and mounts
-only that group's cards. With no hash, the last section you were on is remembered (`localStorage`);
-with neither, the page opens on the first. `src/playground/layout.tsx` holds the page's layout and
-routes; `src/playground/harness.tsx` holds the routers that mount real app routes, so a section that
-needs no router never loads them.
-
-The tabs, in order: Dashboard, Pane, Crew, Settings, Boot & connection, Idle & resume, Brand,
-Notices, Motion. Notices covers everything that ANNOUNCES (the notice primitive, the strip band,
-the status toast); Motion covers everything that MOVES without announcing anything (collapse and
-swap primitives, loading bars, sheets, menus, pending and pulsing controls).
-
-A card shows its label and nothing else. Its `reach` and `note`, and a section's `intent`, appear
-only while the page's Notes switch is on (off by default, remembered in `localStorage`).
-`cd web && bun run playground:build` builds the page alone into `web/dist-playground/` (minified,
-one chunk per section, no service worker) for any static server; it never touches `dist/`.
-
-A design round that compares numbered options uses `Round` (`src/playground/round.tsx`): one Case
-switch drives every option, with Zoom, Replay and Flip.
-
-Within a tab, cards are grouped under a `Group` — a small heading over its own `.pg-grid` — ordered
-from the everyday state to the rare one, so a tab with a dozen cards can be skimmed by its group
-titles instead of scrolled blind.
-
-To add a state, add a `<Card>` to the relevant `Group` in the relevant file under
-`src/playground/sections/` and the corresponding mock data in `src/playground/fixtures.ts`. To add
-a whole new section, add a file there exporting `DEF` (a `SectionDef`) and a `<Something>Section`
-component wrapping its cards in one or more `Group`s, then add one line to the `SECTIONS` registry
-in `src/playground/app.tsx`.
+Open `http://<host>:5199/playground.html`. Port 5199 disables `/api` calls to ensure it never hits
+a live instance. `bun run playground:build` outputs the test assets to `web/dist-playground/`
+without touching `dist/`. The view shows one section at a time, tracked via the URL hash (`#pane`,
+`#pane/<card-handle>`, `#changes:one-file`). Add states by adding a `<Card>` to a `Group` in
+`web/src/playground/sections/` and mock entries to `web/src/playground/fixtures.ts`. Add sections
+by exporting `DEF` and a component from a new file, then register it in `SECTIONS` inside
+`web/src/playground/app.tsx`. Use `Round` (`web/src/playground/round.tsx`) to evaluate layout variants.
 
 For Herdr adapter development, refer to upstream documentation for the plugin system:
 [authoring](https://herdr.dev/docs/plugins/) ·
@@ -401,17 +317,34 @@ For Herdr adapter development, refer to upstream documentation for the plugin sy
 [example plugins](https://github.com/ogulcancelik/herdr-plugin-examples). Collie's socket
 integration is documented in [`HERDR_API.md`](./HERDR_API.md).
 
+## Telemetry
+
+New in 1.27.0 and on by default. Up to 1.26.x Collie sent nothing about your install
+([ADR 0129](./.adr/0129-an-anonymous-install-count-on-by-default.md)). Once a day each bridge (one
+instance with its own state folder) sends one small ping to `ping.colliepwa.dev`: a random ID made
+on your machine, the day, the version, the OS, the CPU, the install kind, the release line (Stable
+or Edge) and whether the bridge runs alone, leads a crew or is a member. When a trouble card showed
+("Cannot read a dialog" or "Send not landing"), it also carries a count: which card, the agent
+program's name and version, the multiplexer and, from 1.27.4, for a dialog a short hash of its
+key-hint row. No IP address is stored. No usage, no content, nothing you type or read.
+
+Turn it off on each machine in Settings, System, **Telemetry**, with `COLLIE_TELEMETRY=0` (in the
+instance's `.env` for a service), `telemetry = false` in `config.toml` or `DO_NOT_TRACK=1`. Blocking
+the host in your firewall works too. The update check is a separate anonymous request to GitHub's
+public tags API. [Details](./docs/security.md#what-leaves-your-machine) ·
+[exact message](./telemetry/README.md)
+
 ## See also
 
 - All how-to pages: [`docs/`](./docs/)
-- Deployment variants B through E: [`docs/deployment.md`](./docs/deployment.md)
 - Architecture and design rationale: [`ARCHITECTURE.md`](./ARCHITECTURE.md)
 - Multiplexer query interface and capabilities: [`MUX_CONTRACT.md`](./MUX_CONTRACT.md)
 - Lead-to-peer crew protocol: [`CREW_PROTOCOL.md`](./CREW_PROTOCOL.md) (topology diagram in
   [§2](./CREW_PROTOCOL.md#2-shape-of-the-thing))
 - Crew recovery from a phone after lead failure:
-  [`docs/deployment.md` → the standby door](./docs/deployment.md#the-standby-door--a-crews-failover-path)
-- Verified Herdr socket API: [`HERDR_API.md`](./HERDR_API.md)
+  [`docs/deployment.md`, the standby door](./docs/deployment.md#the-standby-door--a-crews-failover-path)
+- Verified Herdr socket API: [`HERDR_API.md`](./HERDR_API.md), and for the Herdr core
+  [`HC_API.md`](./HC_API.md)
 - Operations, versioning, and project conventions: [`CLAUDE.md`](./CLAUDE.md)
 - Contribution guidelines: [`CONTRIBUTING.md`](./CONTRIBUTING.md)
 - Names, logo and forks: [`TRADEMARKS.md`](./TRADEMARKS.md)

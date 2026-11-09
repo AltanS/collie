@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Bug, Copy, GitBranchPlus, Maximize2, MessagesSquare, Monitor, Pencil, Pin, PinOff, ScrollText, Search, SlidersHorizontal, SquareTerminal, XCircle } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 
 import { BottomSheet } from "@/components/ui/sheet";
 import { WalkyIcon, WalkyOffIcon } from "@/components/walky-icon";
@@ -410,7 +410,7 @@ export function PaneActionsSheet({
         <div className="mb-1 flex flex-col gap-1">
           {onFind && (
             <ActionRow
-              icon={<Search className="size-4 shrink-0 text-muted-foreground" />}
+              icon={<Icon name="find-in-pane" className="size-4 shrink-0 text-muted-foreground" />}
               label={t("chat.find.label")}
               onClick={() => {
                 // Close FIRST, then act. Both land in one React event, so the sheet unmounts in the
@@ -422,7 +422,7 @@ export function PaneActionsSheet({
           )}
           {onHistory && (
             <ActionRow
-              icon={<ScrollText className="size-4 shrink-0 text-muted-foreground" />}
+              icon={<Icon name="history-screen" className="size-4 shrink-0 text-muted-foreground" />}
               label={t("chat.history.label")}
               onClick={() => {
                 onClose();
@@ -436,7 +436,7 @@ export function PaneActionsSheet({
               the sheet unmounts. */}
           {onCopyOutput && (
             <ActionRow
-              icon={<Copy className="size-4 shrink-0 text-muted-foreground" />}
+              icon={<Icon name="copy" className="size-4 shrink-0 text-muted-foreground" />}
               label={t("chat.copyOutput.label")}
               onClick={() => {
                 onClose();
@@ -466,9 +466,9 @@ export function PaneActionsSheet({
             <ActionRow
               icon={
                 paneView === "chat" ? (
-                  <SquareTerminal className="size-4 shrink-0 text-muted-foreground" />
+                  <Icon name="view-terminal" className="size-4 shrink-0 text-muted-foreground" />
                 ) : (
-                  <MessagesSquare className="size-4 shrink-0 text-muted-foreground" />
+                  <Icon name="view-chat" className="size-4 shrink-0 text-muted-foreground" />
                 )
               }
               label={t(paneView === "chat" ? "chat.mode.terminal" : "chat.mode.chat")}
@@ -485,7 +485,7 @@ export function PaneActionsSheet({
               row states. */}
           {onSettings && (
             <ActionRow
-              icon={<SlidersHorizontal className="size-4 shrink-0 text-muted-foreground" />}
+              icon={<Icon name="pane-settings" className="size-4 shrink-0 text-muted-foreground" />}
               label={t("paneActions.settings.label")}
               onClick={() => {
                 onClose();
@@ -500,7 +500,7 @@ export function PaneActionsSheet({
               event, so the sheet unmounts in the same commit the chrome starts leaving. */}
           {onZen && (
             <ActionRow
-              icon={<Maximize2 className="size-4 shrink-0 text-muted-foreground" />}
+              icon={<Icon name="zen-enter" className="size-4 shrink-0 text-muted-foreground" />}
               label={t("chat.zen.label")}
               onClick={() => {
                 onClose();
@@ -512,9 +512,9 @@ export function PaneActionsSheet({
           <ActionRow
             icon={
               pinned ? (
-                <PinOff className="size-4 shrink-0 text-muted-foreground" />
+                <Icon name="unpin" className="size-4 shrink-0 text-muted-foreground" />
               ) : (
-                <Pin className="size-4 shrink-0 text-muted-foreground" />
+                <Icon name="pin" className="size-4 shrink-0 text-muted-foreground" />
               )
             }
             label={pinned ? t("paneActions.unpin.label") : t("paneActions.pin.label")}
@@ -525,7 +525,7 @@ export function PaneActionsSheet({
               Close-then-act, for the reason the find row states. */}
           {onReport && (
             <ActionRow
-              icon={<Bug className="size-4 shrink-0 text-muted-foreground" />}
+              icon={<Icon name="report-problem" className="size-4 shrink-0 text-muted-foreground" />}
               label={t("paneActions.report.label")}
               onClick={() => {
                 onClose();
@@ -560,14 +560,14 @@ export function PaneActionsSheet({
               rows are present on every adapter shipped today. */}
           {canRename.capable && (
             <ActionRow
-              icon={<Pencil className="size-4 shrink-0 text-muted-foreground" />}
+              icon={<Icon name="edit" className="size-4 shrink-0 text-muted-foreground" />}
               label={t("paneActions.rename.label")}
               onClick={() => setMode("rename")}
             />
           )}
           {canFocus.capable && (
             <ActionRow
-              icon={<Monitor className="size-4 shrink-0 text-muted-foreground" />}
+              icon={<Icon name="focus-on-machine" className="size-4 shrink-0 text-muted-foreground" />}
               label={
                 focusMux
                   ? t("paneActions.focus.labelWithMux", { mux: focusMux })
@@ -580,7 +580,7 @@ export function PaneActionsSheet({
               destructive row stays last; close-then-act, so the sheet is gone before the page opens. */}
           {showBranchOff && (
             <ActionRow
-              icon={<GitBranchPlus className="size-4 shrink-0 text-muted-foreground" />}
+              icon={<Icon name="branch-off" className="size-4 shrink-0 text-muted-foreground" />}
               label={t("paneActions.branchOff.label")}
               onClick={() => {
                 onClose();
@@ -590,7 +590,7 @@ export function PaneActionsSheet({
           )}
           {canClose.capable && (
             <DestructiveActionRow
-              icon={<XCircle className="size-4 shrink-0" />}
+              icon={<Icon name="close-pane" className="size-4 shrink-0" />}
               label={conversation ? t("paneActions.close.conversation") : t("paneActions.close.label")}
               confirmLabel={t("paneActions.close.confirm")}
               closingLabel={t("paneActions.close.closing")}

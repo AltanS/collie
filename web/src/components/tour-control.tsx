@@ -1,4 +1,4 @@
-import { Compass } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -26,7 +26,7 @@ export function TourControl() {
     <Card className="gap-0 py-0">
       <div className="flex items-center justify-between gap-4 p-4">
         <div className="flex min-w-0 items-start gap-3">
-          <Compass className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
+          <Icon name="tour" className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
           <div className="min-w-0">
             <div className="font-medium">{t("settings.tour.title")}</div>
             <p className="text-sm text-muted-foreground">{t("settings.tour.description")}</p>

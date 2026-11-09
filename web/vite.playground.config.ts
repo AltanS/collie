@@ -3,6 +3,9 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { readFileSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { glyphSetsPlugin } from "./vite-glyphs";
+
+import { mathEnginesPlugin } from "./vite.math";
 
 // `bun run playground:build`: the states playground alone, as static files in `dist-playground/`.
 // DEV-ONLY, like the page itself. It is a second config on purpose: vite.config.ts stays the app's
@@ -11,7 +14,8 @@ import { resolve } from "node:path";
 //
 // What it leaves out: the service worker, the PWA manifest, the build-info file, and `public/stt`
 // (the speech engine, 1 MB the page never loads). What it keeps: one chunk per section (the lazy
-// `import()`s in src/playground/app.tsx), minified. Serve it with any static server; `/api/*` then
+// `import()`s in src/playground/app.tsx), minified, and the math engines under `math/`
+// (vite.math.ts). Serve it with any static server; `/api/*` then
 // answers 404, which the page tolerates (it has no bridge either way).
 const WEB = import.meta.dirname;
 const OUT = resolve(WEB, "dist-playground");
@@ -50,7 +54,7 @@ export default defineConfig({
     },
   },
   define: { __BUILD_INFO__: JSON.stringify(BUILD_INFO) },
-  plugins: [react(), tailwindcss(), trimPublicPlugin],
+  plugins: [react(), tailwindcss(), mathEnginesPlugin(), trimPublicPlugin, glyphSetsPlugin(import.meta.dirname)],
   resolve: { alias: { "@": resolve(WEB, "src") } },
   build: {
     outDir: OUT,

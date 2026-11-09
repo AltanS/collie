@@ -1,8 +1,11 @@
-import { useState } from "react";
-import { Check, Copy } from "lucide-react";
+import { useState, useSyncExternalStore, type Ref } from "react";
+import { Icon } from "@/components/icons/icon";
 
 import { useLocale } from "@/hooks/use-locale";
+import { useBundleApply, type BundleApply } from "@/lib/bundle-apply";
 import { t } from "@/lib/i18n";
+import { checkForUpdate, getPrecacheProgress, subscribePrecacheProgress, type PrecacheProgress } from "@/lib/pwa";
+import { isReloadHeld, subscribeReloadHeld } from "@/lib/reload-guard";
 import { cn } from "@/lib/utils";
 import type { UpdateInfo } from "@/lib/types";
 import { useOptionalRootData } from "@/lib/route-data";
@@ -10,6 +13,16 @@ import { useOptionalRootData } from "@/lib/route-data";
 // The footer "update available" chip, sitting next to the build stamp. It reads the snapshot's
 // optional `update` field (surfaced on the root loader data) and, when there's something to do,
 // names it with the one command that fixes it. Everything renders as plain React text nodes.
+//
+// ── THE APP BUNDLE, FIRST (2026-11-06) ───────────────────────────────────────
+// While a new app build is being applied on this phone the header mark turns in the update colour,
+// and a tap on it lands here (`components/app-header.tsx`). So this line says what the mark means,
+// ahead of anything about Collie on the host: "downloading" with how far, or "tap to update" when the
+// new build is in and waiting. These are the two lines the strip band used to carry, and the
+// download line also shows on the automatic lane, where the band said nothing (`lib/bundle-apply.ts`
+// says when a download counts). The download
+// outranks the release lines because it is happening now and is the answer the tap came for; a
+// release offer is still standing when it is done.
 
 export interface UpdateNotice {
   /** The human line, e.g. "Bridge restart needed" / "Collie 0.12.0 available". */
@@ -22,15 +35,56 @@ export interface UpdateNotice {
   command?: string;
   /** GitHub release page for the available version — the line links to it. Absent for the restart case. */
   href?: string;
+  /** The line is a button that reloads THIS PAGE onto the new app build (`checkForUpdate()`). Only the
+   *  bundle's `ready` line carries it: a bundle that is in is the one thing a tap here can apply. */
+  reload?: true;
+  /** A second, quieter sentence after the line: how far a download is, or that the page reloads on
+   *  its own. */
+  detail?: string;
+}
+
+/** What the app bundle is doing, for {@link updateNotice}. The two client facts beside the stage. */
+export interface BundleFacts {
+  stage: BundleApply;
+  /** The precache's file count, or null before the worker's first message. */
+  progress: Pick<PrecacheProgress, "done" | "total"> | null;
+  /** A reload hold is active (`lib/reload-guard.ts`): the self-updater reloads the page as soon as it
+   *  clears. False means it will not reload by itself (it already spent its one automatic reload on
+   *  this build), so the line must not promise that it will. */
+  reloadHeld: boolean;
+}
+
+/** Whole per cent of the precache that has landed, or null when there is no count to divide. */
+export function bundlePercent(progress: BundleFacts["progress"]): number | null {
+  if (progress === null || progress.total <= 0) return null;
+  return Math.min(100, Math.max(0, Math.floor((progress.done / progress.total) * 100)));
+}
+
+function bundleNotice(bundle: BundleFacts): UpdateNotice | null {
+  if (bundle.stage === "installing") {
+    const notice: UpdateNotice = { line: t("pwa.updateInstalling") };
+    const percent = bundlePercent(bundle.progress);
+    if (percent !== null) notice.detail = t("settings.updateBanner.bundleProgress", { percent });
+    return notice;
+  }
+  if (bundle.stage === "ready") {
+    const notice: UpdateNotice = { line: t("pwa.updateAvailable"), reload: true };
+    if (bundle.reloadHeld) notice.detail = t("settings.updateBanner.bundleReloads");
+    return notice;
+  }
+  return null;
 }
 
 /**
- * Decide what (if anything) the footer should nudge, from the snapshot's `update`. Precedence: a
- * stale running PROCESS outranks an available release — restarting is the cheaper, more urgent fix,
- * and a release upgrade restarts the service anyway. `null` = nothing to say (an older bridge omits
- * `update`, or you're current). Kept pure and exported so the precedence is unit-tested directly.
+ * Decide what (if anything) the footer should nudge, from the snapshot's `update` and this phone's
+ * own bundle. Precedence: the app bundle being applied first (see the header), then a stale running
+ * PROCESS over an available release — restarting is the cheaper, more urgent fix, and a release
+ * upgrade restarts the service anyway. `null` = nothing to say (an older bridge omits `update`, or
+ * you're current). Kept pure and exported so the precedence is unit-tested directly.
  */
-export function updateNotice(update: UpdateInfo | undefined): UpdateNotice | null {
+export function updateNotice(update: UpdateInfo | undefined, bundle?: BundleFacts): UpdateNotice | null {
+  const applying = bundle === undefined ? null : bundleNotice(bundle);
+  if (applying !== null) return applying;
   if (!update) return null;
   // The command spelling is a function of the install kind (M14/01 §5.3): Herdr's plugin actions
   // reach only a Herdr-managed (detached) checkout — on a binary install, a linked dev clone or an
@@ -89,16 +143,35 @@ export function updateNotice(update: UpdateInfo | undefined): UpdateNotice | nul
   return null;
 }
 
-export function UpdateBanner({ className }: { className?: string }) {
+export function UpdateBanner({ className, ref }: { className?: string; ref?: Ref<HTMLDivElement> }) {
   useLocale();
   const data = useOptionalRootData();
-  const notice = updateNotice(data?.update);
+  const stage = useBundleApply();
+  const progress = useSyncExternalStore(subscribePrecacheProgress, getPrecacheProgress, getPrecacheProgress);
+  const reloadHeld = useSyncExternalStore(subscribeReloadHeld, isReloadHeld, isReloadHeld);
+  const notice = updateNotice(data?.update, { stage, progress, reloadHeld });
+  if (!notice) return null;
+  return <UpdateNoticeLine notice={notice} className={className} ref={ref} />;
+}
+
+/**
+ * The line itself, for a notice already decided. Split from {@link UpdateBanner} so the playground
+ * can draw the bundle's two lines from the real precedence without moving the app's own service
+ * worker and self-updater stores, which every header on that page reads too.
+ */
+export function UpdateNoticeLine({
+  notice,
+  className,
+  ref,
+}: {
+  notice: UpdateNotice;
+  className?: string;
+  ref?: Ref<HTMLDivElement>;
+}) {
   const [copied, setCopied] = useState(false);
 
-  if (!notice) return null;
-
   async function copy() {
-    if (!notice?.command) return;
+    if (!notice.command) return;
     try {
       await navigator.clipboard?.writeText(notice.command);
       setCopied(true);
@@ -110,12 +183,23 @@ export function UpdateBanner({ className }: { className?: string }) {
 
   return (
     <div
+      ref={ref}
       className={cn(
         "text-center text-[11px] leading-relaxed text-muted-foreground",
         className,
       )}
     >
-      {notice.href ? (
+      {notice.reload ? (
+        // The same path the build stamp's chip takes, and the band's old reload row before it. Never
+        // disabled: a second tap on a download already under way only follows it (`lib/pwa.ts`).
+        <button
+          type="button"
+          onClick={() => void checkForUpdate()}
+          className="font-medium text-status-working underline underline-offset-2"
+        >
+          {notice.line}
+        </button>
+      ) : notice.href ? (
         // Links to the GitHub release page for the available version (its notes carry the update
         // commands). External navigation — new tab.
         <a
@@ -140,13 +224,19 @@ export function UpdateBanner({ className }: { className?: string }) {
           >
             <code>{notice.command}</code>
             {copied ? (
-              <Check className="size-3 text-status-working" />
+              <Icon name="copied" className="size-3 text-status-working" />
             ) : (
-              <Copy className="size-3 opacity-60" />
+              <Icon name="copy" className="size-3 opacity-60" />
             )}
           </button>
         </>
       ) : null}
+      {notice.detail === undefined ? null : (
+        <>
+          {" · "}
+          <span>{notice.detail}</span>
+        </>
+      )}
     </div>
   );
 }

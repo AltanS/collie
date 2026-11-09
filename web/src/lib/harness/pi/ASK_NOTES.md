@@ -77,6 +77,18 @@ Read from source, not captured:
 Unnumbered rows are read at column 1 only, never beside a tab strip, with no trailer row (a label
 long enough to wrap comes back at column 1 and declines), and lift by plan (a) only.
 
+A description long enough to wrap (issue 746, gentle-pi 4.7.0 on pi 1.5.0, the report's options had
+two to six rows each) is read from source, not captured. gentle-pi 4.7.0 `lib/native-choice-list.ts`
+still draws `${prefix}${label}\n   ${description}` in a `Text` with one column of padding, and pi-tui
+1.5.0's `wrapTextWithAnsi` breaks between words, drops the space it broke on and keeps no indent, so
+the first description row stands four columns in and every later one at column 1, the padding column.
+Until then `readUnnumbered` stopped at that row and the screen read as an unread dialog: no option in
+the dock. A row at column 1 now joins the description when a description row stands right over it
+(`WRAPPED_DESCRIPTION_ROW`); straight under a label it is still a wrapped label and declines.
+`unnumberedStart` crosses such a run going up only when a description row tops it, so the title over
+the first option stays the question. The screen in the tests is the capture with long descriptions
+wrapped as the source draws them (`web/src/test/pi-wrapped-choice.ts`).
+
 ### pi's permission gate: a title of several rows (2026-10-17)
 
 pi's stock example `examples/extensions/permission-gate.ts` (the same file in 0.87.1 and 1.3.0) asks
@@ -133,6 +145,15 @@ pointer, so `coreSignature` blanks the note rows; without it the walk pair would
 dialog. The pair is in `walk-pairs.ts`.
 
 Not proven: a walked tap on this screen end to end through the phone.
+
+gentle-pi 4.6.0 on pi 1.5.0 (issue 712, `pi--v150-gentle-review-consent-*.txt`) changed two things, and
+`ask.ts` reads both by shape. The `Effect:` paragraph wraps under its label, so a continuation row hangs
+by the label's width (`Effect: ` is eight columns) and `framelessNote` accepts rows at exactly that
+indent, inside the same three-row cap. And one status row stands under the footer: `framelessFooter`
+takes the row above one painted status row (as `paintedStatus` says, no rule, not ending like a shell
+prompt), with at most one blank row between; the status row is outside the signature. A widget row
+at an indent straight over the title no longer joins the header block. With Gentle Shell's side rail
+beside the dialog (issue 710, open) the rows are cut by the rail and the screen stays raw.
 
 ## OmO, probed by the PR 412 author
 

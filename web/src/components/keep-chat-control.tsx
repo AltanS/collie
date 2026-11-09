@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { HardDrive, Loader2, Trash2 } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -49,7 +49,7 @@ export function KeepChatControl() {
     <Card className="gap-0 py-0">
       <div className="flex items-center justify-between gap-4 p-4">
         <div className="flex min-w-0 items-start gap-3">
-          <HardDrive className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
+          <Icon name="storage" className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
           <div className="min-w-0">
             <div className="font-medium">{t("settings.keepChat.title")}</div>
             <p className="text-sm text-muted-foreground">{t("settings.keepChat.description")}</p>
@@ -73,7 +73,7 @@ export function KeepChatControl() {
           {cleared ? t("settings.keepChat.cleared") : ""}
         </p>
         <Button variant="outline" size="sm" className="h-9 shrink-0" disabled={clearing} onClick={clearNow}>
-          {clearing ? <Loader2 className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
+          {clearing ? <Icon name="busy" className="size-4 animate-spin" /> : <Icon name="delete" className="size-4" />}
           {t("settings.keepChat.clearNow")}
         </Button>
       </div>

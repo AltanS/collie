@@ -27,4 +27,12 @@ describe("Progress", () => {
     expect(screen.getByRole("progressbar").className).toContain("h-px");
     expect(screen.getByRole("progressbar").className).not.toContain("bg-muted");
   });
+
+  it("with no value yet draws the track alone and claims no value", () => {
+    render(<Progress value={null} label="Progress" />);
+    const bar = screen.getByRole("progressbar", { name: "Progress" });
+    expect(bar).not.toHaveAttribute("aria-valuenow");
+    expect(bar).toHaveAttribute("data-indeterminate");
+    expect(bar.querySelector('[data-slot="progress-fill"]')).toHaveStyle({ width: "0%" });
+  });
 });

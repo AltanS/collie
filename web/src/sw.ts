@@ -5,8 +5,7 @@ import { clientsClaim } from "workbox-core";
 
 import { decidePush, notificationPath, type NotifData, type PushPayload } from "./lib/push-decision";
 import { askInApp, openNotificationTarget, type OpenOutcome, type OpenTargetClient } from "./lib/notification-open";
-import { recordSlot, showBadge, slotCount } from "./lib/app-badge";
-import { asJsonString } from "./lib/json";
+import { recordSlots, showBadge, slotUpdates } from "./lib/app-badge";
 import { readPushTitles } from "./lib/push-title-store";
 import { FONT_URLS, navigationNetworkOnlyUnder } from "./lib/sw-routes";
 import { stripMount, sttCacheName, sttCopyToStore, sttStorable, sttSweepKeeps } from "./lib/stt-cache";
@@ -186,6 +185,62 @@ self.addEventListener("activate", (event: ExtendableEvent) => {
   );
 });
 
+// ── The math engines (lib/math/engine.ts) ───────────────────────────────────────────────────────
+//
+// `math/` holds KaTeX, MathJax and MathJax's font ranges, out of the precache (vite.config.ts,
+// `math/**` in globIgnores): a device on Off, the default, never fetches a byte of them. A device
+// that chose an engine fetches it on first use, and this route keeps what it fetched, cache-first,
+// so the engine also starts offline. What may be stored is the font cache's rule widened to the
+// three types the folder holds: an unredirected 200 that claims to be a script, a stylesheet or a
+// font, so a proxy's sign-in page is never cached as an engine.
+//
+// The names carry no hash (one name is another file in the next release), and this worker does not
+// know the new build's list (it is not in the precache manifest). So an update empties the cache
+// rather than guessing which entries are stale: the engine is fetched again on its next use. The cost, stated
+// plainly: offline right after an update, a formula reads as its TeX source until the phone is
+// online once.
+const MATH_CACHE = MOUNT === "/" ? "collie-math" : `collie-math:${MOUNT}`;
+
+const mathStorable = (r: Response) =>
+  r.status === 200 && !r.redirected && /javascript|css|font/.test(r.headers.get("content-type") ?? "");
+
+// The two theme marks (components/brand-mark.tsx) live under `marks/` on the same terms and the
+// same reasoning: out of the precache, because Collie is the default mark, kept on first use so the
+// chosen one starts offline, emptied on an update. Offline right after an update the header draws the
+// Collie mark until the phone is online once (brand-mark.tsx's boundary), never an empty box.
+const MARK_CACHE = MOUNT === "/" ? "collie-marks" : `collie-marks:${MOUNT}`;
+
+// The glyph sets (components/icons/glyphs.ts, ADR 0137) under `glyphs/`, on the marks' terms: out of
+// the precache because lucide is the default and in the entry bundle, kept on first use, emptied on
+// an update. Offline right after an update the app draws the lucide glyphs until the set arrives.
+const GLYPH_CACHE = MOUNT === "/" ? "collie-glyphs" : `collie-glyphs:${MOUNT}`;
+
+/** Cache-first under `prefix`, keeping only what `keeps` accepts. */
+function keepOnFirstUse(prefix: string, cacheName: string, keeps: (r: Response) => boolean): void {
+  registerRoute(
+    ({ url, sameOrigin }) => sameOrigin && url.pathname.startsWith(under(prefix)),
+    async ({ request }) => {
+      const cache = await caches.open(cacheName);
+      const hit = await cache.match(request);
+      if (hit) return hit;
+      const response = await fetch(request);
+      // Best-effort and off the response path, like the font cache's write.
+      if (keeps(response)) void cache.put(request, response.clone()).catch(() => null);
+      return response;
+    },
+  );
+}
+
+keepOnFirstUse("/math/", MATH_CACHE, mathStorable);
+const scriptStorable = (r: Response) =>
+  r.status === 200 && !r.redirected && /javascript/.test(r.headers.get("content-type") ?? "");
+keepOnFirstUse("/marks/", MARK_CACHE, scriptStorable);
+keepOnFirstUse("/glyphs/", GLYPH_CACHE, scriptStorable);
+
+self.addEventListener("activate", (event: ExtendableEvent) => {
+  event.waitUntil(Promise.all([caches.delete(MATH_CACHE), caches.delete(MARK_CACHE), caches.delete(GLYPH_CACHE)]));
+});
+
 // `registerType: "autoUpdate"` means a fresh build should take over without a user gesture. With
 // injectManifest we own that lifecycle: skip the waiting phase on install, claim open clients on
 // activate. The message handler backs lib/pwa.ts's manual "tap to update" (postMessage SKIP_WAITING).
@@ -232,12 +287,12 @@ async function handlePush(event: PushEvent): Promise<void> {
     payload = { body: event.data?.text() };
   }
 
-  // Before the decision, because a push a visible tab suppresses still moves the icon's count.
-  const count = slotCount(payload);
-  const slotTag = asJsonString(payload.tag);
-  if (count !== undefined && slotTag !== undefined) {
+  // Before the decision, because a push a visible tab suppresses still moves the icon's count. A push
+  // may carry several slots: a clear of a burst names each, and counts this worker missed ride along.
+  const updates = slotUpdates(payload);
+  if (updates.length > 0) {
     try {
-      await showBadge(self.navigator, await recordSlot(self.caches, self.location.origin, MOUNT, slotTag, count));
+      await showBadge(self.navigator, await recordSlots(self.caches, self.location.origin, MOUNT, updates));
     } catch {
       // Cache Storage refused: the notification below matters more than the count.
     }
@@ -251,9 +306,13 @@ async function handlePush(event: PushEvent): Promise<void> {
   const decision = decidePush(payload, await anyVisibleClient(), templates);
   if (decision.kind === "suppress") return; // a visible Collie tab already surfaces it in-app
   if (decision.kind === "clear") {
-    // Retraction: close the slot and show nothing. Chrome's silent-push budget tolerates this.
-    const stale = await self.registration.getNotifications({ tag: decision.tag });
-    for (const n of stale) n.close();
+    // Retraction: close every slot it names and show nothing. Each one is a push that may end with
+    // nothing on screen, which Chrome charges to a small budget, so the bridge sends as few as it can
+    // (bridge/push.ts) and names a burst's slots in one.
+    for (const tag of decision.tags) {
+      const stale = await self.registration.getNotifications({ tag });
+      for (const n of stale) n.close();
+    }
     return;
   }
   // `renotify` isn't in this TS lib's NotificationOptions yet, though it's honoured by browsers that

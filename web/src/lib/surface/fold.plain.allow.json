@@ -475,6 +475,34 @@
     "propose": "Upstream: a bg or reverse flag per cell run. Text only: none found for the stepper chip.",
     "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
   },
+  "omp--v18-18-0-nerd-ask-batch--w250.txt": {
+    "why": "omp marks the current tab of its ask stepper by a background on a bold label. A plain read has no current tab, so the ask reader returns null and the ask is lost. The modal reads unreadable.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/omp/ask.ts:366 readTabs (segment.bg and segment.bold)",
+    "propose": "Upstream: a bg or reverse flag per cell run. Text only: none found for the stepper chip.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "omp--v18-18-0-nerd-ask-batch-q2--w250.txt": {
+    "why": "omp marks the current tab of its ask stepper by a background on a bold label. A plain read has no current tab, so the ask reader returns null and the ask is lost. The modal reads unreadable.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/omp/ask.ts:366 readTabs (segment.bg and segment.bold)",
+    "propose": "Upstream: a bg or reverse flag per cell run. Text only: none found for the stepper chip.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "omp--v18-18-0-nerd-ask-batch-saved--w250.txt": {
+    "why": "omp marks the current tab of its ask stepper by a background on a bold label. A plain read has no current tab, so the ask reader returns null and the ask is lost. The modal reads unreadable.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/omp/ask.ts:366 readTabs (segment.bg and segment.bold)",
+    "propose": "Upstream: a bg or reverse flag per cell run. Text only: none found for the stepper chip.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "omp--v18-18-0-nerd-ask-review--w250.txt": {
+    "why": "omp marks the current tab of its ask stepper by a background on a bold label. A plain read has no current tab, so the ask reader returns null and the ask is lost. The modal reads unreadable.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/omp/ask.ts:366 readTabs (segment.bg and segment.bold)",
+    "propose": "Upstream: a bg or reverse flag per cell run. Text only: none found for the stepper chip.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
   "omp--v18-10-ask-long-expanded.txt": {
     "why": "omp marks the current tab of its ask stepper by a background on a bold label. A plain read has no current tab, so the ask reader returns null and the ask is lost. The modal reads unreadable.",
     "class": "colour-needed",
@@ -642,5 +670,68 @@
     "rule": "web/src/lib/harness/pi/ask.ts:285 framelessFrame (skipped on a plain read in readPiFrame :234)",
     "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: none; with no rules and no status rows, numbered rows over a key-hint line are also what agent prose quoting the screen looks like.",
     "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "pi--v150-gentle-review-consent--w119.txt": {
+    "why": "A dialog with no rules (the Gentle AI review-consent screen) is told from prose by its paint alone: a painted footer as the screen's last row, a painted title and painted note rows. On a read with no styling the frameless reading is not tried, so the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/pi/ask.ts framelessFrame (skipped on a plain read in readPiFrame)",
+    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: none; with no rules, numbered rows over a key-hint line and one status row are also what agent prose quoting the screen looks like.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "pi--v150-gentle-review-consent-fullscreen--w129.txt": {
+    "why": "A dialog with no rules (the Gentle AI review-consent screen) is told from prose by its paint alone: a painted footer as the screen's last row, a painted title and painted note rows. On a read with no styling the frameless reading is not tried, so the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/pi/ask.ts framelessFrame (skipped on a plain read in readPiFrame)",
+    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: none; with no rules, numbered rows over a key-hint line and one status row are also what agent prose quoting the screen looks like.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "pi--v150-gentle-review-consent-fullscreen--w198.txt": {
+    "why": "A dialog with no rules (the Gentle AI review-consent screen) is told from prose by its paint alone: a painted footer as the screen's last row, a painted title and painted note rows. On a read with no styling the frameless reading is not tried, so the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/pi/ask.ts framelessFrame (skipped on a plain read in readPiFrame)",
+    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: none; with no rules, numbered rows over a key-hint line and one status row are also what agent prose quoting the screen looks like.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "pi--v150-gentle-review-consent-moved--w119.txt": {
+    "why": "A dialog with no rules (the Gentle AI review-consent screen) is told from prose by its paint alone: a painted footer as the screen's last row, a painted title and painted note rows. On a read with no styling the frameless reading is not tried, so the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/pi/ask.ts framelessFrame (skipped on a plain read in readPiFrame)",
+    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: none; with no rules, numbered rows over a key-hint line and one status row are also what agent prose quoting the screen looks like.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "pi--v150-gentle-review-consent-rail-tall--w198.txt": {
+    "why": "A dialog with no rules (the Gentle AI review-consent screen) is told from prose by its paint alone: a painted footer as the screen's last row, a painted title and painted note rows. On a read with no styling the frameless reading is not tried, so the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/pi/ask.ts framelessFrame (skipped on a plain read in readPiFrame)",
+    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: none; with no rules, numbered rows over a key-hint line and one status row are also what agent prose quoting the screen looks like.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "pi--v150-gentle-review-consent-regular--w69.txt": {
+    "why": "A dialog with no rules (the Gentle AI review-consent screen) is told from prose by its paint alone: a painted footer as the screen's last row, a painted title and painted note rows. On a read with no styling the frameless reading is not tried, so the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/pi/ask.ts framelessFrame (skipped on a plain read in readPiFrame)",
+    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: none; with no rules, numbered rows over a key-hint line and one status row are also what agent prose quoting the screen looks like.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "pi--v130-quiet-prompt-two-line-draft--w140.txt": {
+    "why": "An extension draws pi's editor with `❯` in column 0, and a draft typed with newlines lines up under it like a pointed list between two rules. Only the editor's own cursor, one reverse-video cell, proves the rows are the draft's lines (#722). A plain read has no cell, so the box stays a list.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/surface/cues.ts draftWrap / oneCaretCell (profile pi.json idle.frame.draftCaret)",
+    "propose": "Upstream: the cursor position in the read. Text only: none, a newline draft and a two-row menu under the glyph are the same rows.",
+    "effect": "SAFE SIDE: a newline draft under the glyph reads unreadable, so a send is refused, never typed into a dialog"
+  },
+  "pi--v130-quiet-prompt-three-line-draft--w140.txt": {
+    "why": "An extension draws pi's editor with `❯` in column 0, and a draft typed with newlines lines up under it like a pointed list between two rules. Only the editor's own cursor, one reverse-video cell, proves the rows are the draft's lines (#722). A plain read has no cell, so the box stays a list.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/surface/cues.ts draftWrap / oneCaretCell (profile pi.json idle.frame.draftCaret)",
+    "propose": "Upstream: the cursor position in the read. Text only: none, a newline draft and a two-row menu under the glyph are the same rows.",
+    "effect": "SAFE SIDE: a newline draft under the glyph reads unreadable, so a send is refused, never typed into a dialog"
+  },
+  "pi--v130-quiet-prompt-three-line-cursor-up--w140.txt": {
+    "why": "An extension draws pi's editor with `❯` in column 0, and a draft typed with newlines lines up under it like a pointed list between two rules. Only the editor's own cursor, one reverse-video cell, proves the rows are the draft's lines (#722). A plain read has no cell, so the box stays a list.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/surface/cues.ts draftWrap / oneCaretCell (profile pi.json idle.frame.draftCaret)",
+    "propose": "Upstream: the cursor position in the read. Text only: none, a newline draft and a two-row menu under the glyph are the same rows.",
+    "effect": "SAFE SIDE: a newline draft under the glyph reads unreadable, so a send is refused, never typed into a dialog"
   }
 }

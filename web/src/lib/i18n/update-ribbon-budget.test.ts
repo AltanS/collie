@@ -99,7 +99,7 @@ function longestStateWord(dictionary: Dictionary): string {
   const keys = (Object.keys(en) as MessageKey[]).filter((key) => key.startsWith("updateScreen.state."));
   let longest = "";
   for (const key of keys) {
-    const value = fill(dictionary[key]);
+    const value = fill(dictionary[key] ?? en[key]);
     if (value.length > longest.length) longest = value;
   }
   return longest;
@@ -114,7 +114,7 @@ describe("i18n — the update band", () => {
     for (const [locale, dictionary] of LOCALES) {
       const word = longestStateWord(dictionary);
       for (const key of keys) {
-        const line = fill(dictionary[key]).split("{word}").join(word);
+        const line = fill(dictionary[key] ?? en[key]).split("{word}").join(word);
         if (line.length > BUDGET) over.push(`${locale} ${key}: ${line.length} — "${line}"`);
       }
     }
@@ -136,7 +136,7 @@ describe("i18n — the update band", () => {
     const unknown = new Set<string>();
     for (const [, dictionary] of LOCALES) {
       for (const key of bandKeys()) {
-        for (const slot of dictionary[key].matchAll(/\{(\w+)\}/g)) {
+        for (const slot of (dictionary[key] ?? en[key]).matchAll(/\{(\w+)\}/g)) {
           // `word` is filled per locale by `longestStateWord`, not from the table above.
           if (slot[1] === "word") continue;
           if (!Object.hasOwn(SAMPLE, slot[1])) unknown.add(slot[1]);

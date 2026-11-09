@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ChevronRight, Info, TriangleAlert, User, Wrench } from "lucide-react";
+import { Icon } from "@/components/icons/icon";
 
 import { AgentIcon } from "@/components/agent-icon";
 import { JournalImage } from "@/components/journal-image";
@@ -97,9 +97,9 @@ function ToolPart({
         className="flex w-full items-center gap-1.5 px-2 py-1.5 text-left disabled:opacity-100"
       >
         {isError ? (
-          <TriangleAlert className="size-3.5 shrink-0 text-destructive" />
+          <Icon name="error" className="size-3.5 shrink-0 text-destructive" />
         ) : (
-          <Wrench className="size-3.5 shrink-0 text-muted-foreground" />
+          <Icon name="tool" className="size-3.5 shrink-0 text-muted-foreground" />
         )}
         <span className="shrink-0 font-mono text-xs font-semibold">{part.name}</span>
         {part.summary && (
@@ -109,7 +109,8 @@ function ToolPart({
           </span>
         )}
         {expandable && (
-          <ChevronRight
+          <Icon
+            name="disclosure"
             className={`size-3.5 shrink-0 text-muted-foreground transition-transform ${open ? "rotate-90" : ""}`}
           />
         )}
@@ -210,7 +211,7 @@ function Turn({
     return (
       <div className="rounded-lg border border-dashed bg-muted/30 px-3 py-2">
         <div className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold label-caps text-muted-foreground">
-          <Info className="size-3" />
+          <Icon name="info" className="size-3" />
           {entry.role === "summary" ? t("transcript.summaryLabel") : t("transcript.systemLabel")}
           {time && ` · ${time}`}
         </div>
@@ -231,7 +232,7 @@ function Turn({
       {showHeader && (
         <div className="mb-1 flex items-center gap-1.5">
           {isUser ? (
-            <User className="size-3.5 text-status-working" />
+            <Icon name="user-turn" className="size-3.5 text-status-working" />
           ) : (
             <AgentIcon agent={agent ?? "claude"} className="size-4" />
           )}
@@ -279,7 +280,7 @@ function HiddenTools({ count, onShow }: { count: number; onShow: () => void }) {
       // the transcript and not as an action the turn is offering.
       className="flex min-h-11 w-full items-center gap-2 text-left text-xs text-muted-foreground transition-colors active:bg-muted/60"
     >
-      <Wrench aria-hidden className="size-3.5 shrink-0" />
+      <Icon name="tool" aria-hidden className="size-3.5 shrink-0" />
       {tn("transcript.tools.hidden", count)}
     </button>
   );

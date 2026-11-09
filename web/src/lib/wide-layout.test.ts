@@ -11,6 +11,7 @@ import {
   EMPTY_STRIP,
   focusIndex,
   hasWidthChoice,
+  heldWidthClass,
   insertAt,
   isWideMode,
   landingOf,
@@ -42,6 +43,37 @@ describe("width classes", () => {
   });
 });
 
+describe("heldWidthClass", () => {
+  it("passes a wide window class through", () => {
+    expect(heldWidthClass("medium", "compact", false, "medium")).toBe("medium");
+    expect(heldWidthClass("expanded", "medium", true, "expanded")).toBe("expanded");
+  });
+
+  it("holds medium while a field types and the keyboard makes the window compact", () => {
+    expect(heldWidthClass("compact", "medium", true, "medium")).toBe("medium");
+  });
+
+  it("clamps a held expanded class to what the width allows", () => {
+    expect(heldWidthClass("compact", "expanded", true, "medium")).toBe("medium");
+  });
+
+  it("holds expanded when the width still allows it", () => {
+    expect(heldWidthClass("compact", "medium", true, "expanded")).toBe("expanded");
+  });
+
+  it("drops to compact when no field types", () => {
+    expect(heldWidthClass("compact", "medium", false, "medium")).toBe("compact");
+  });
+
+  it("never raises a compact class, a phone held sideways with its composer focused", () => {
+    expect(heldWidthClass("compact", "compact", true, "expanded")).toBe("compact");
+  });
+
+  it("is compact when the width alone is compact", () => {
+    expect(heldWidthClass("compact", "medium", true, "compact")).toBe("compact");
+  });
+});
+
 describe("column widths", () => {
   it("cycles 1/2, 4/5, Full and back", () => {
     expect(nextPreset("half")).toBe("fourfifths");
@@ -65,17 +97,28 @@ describe("column widths", () => {
   });
 
   it("is wide when the strip holds two panes at minimum width, and no sooner", () => {
-    expect(MIN_PANE_WIDTH).toBe(360);
-    expect(isWideMode(719)).toBe(false);
-    expect(isWideMode(720)).toBe(true);
+    expect(MIN_PANE_WIDTH).toBe(440);
+    expect(isWideMode(879)).toBe(false);
+    expect(isWideMode(880)).toBe(true);
     expect(isWideMode(639, 320)).toBe(false);
     expect(isWideMode(640, 320)).toBe(true);
   });
 
   it("hides the width button when no choice is left", () => {
     expect(hasWidthChoice(520)).toBe(false);
-    expect(hasWidthChoice(744)).toBe(true);
-    expect(hasWidthChoice(720)).toBe(true);
+    expect(hasWidthChoice(860)).toBe(false);
+    expect(hasWidthChoice(880)).toBe(true);
+    expect(hasWidthChoice(1046)).toBe(true);
+  });
+
+  it("draws one full column, not 1/2 beside an empty add column, on the tablets that showed it", () => {
+    // The strip is the window less the sidebar (320 at expanded) or the rail (56). At 360 these three
+    // were wide mode, so a lone column stood at 1/2 with an empty add column beside it.
+    expect(isWideMode(1114 - 320)).toBe(false); // a two-screen phone held sideways, 794
+    expect(isWideMode(1180 - 320)).toBe(false); // an 11-inch tablet in landscape, 860
+    expect(isWideMode(820 - 56)).toBe(false); // an 11-inch tablet in portrait, sidebar closed, 764
+    // A 13-inch tablet in landscape still holds two panes side by side, 1046.
+    expect(isWideMode(1366 - 320)).toBe(true);
   });
 
   it("draws a column at the next wider allowed preset when its own is too narrow", () => {

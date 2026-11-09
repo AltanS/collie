@@ -1,4 +1,3 @@
-import { ArrowLeft } from "lucide-react";
 
 import { BottomBar } from "@/components/ui/bottom-bar";
 import { Button } from "@/components/ui/button";
@@ -6,6 +5,7 @@ import type { Hand } from "@/hooks/use-display-prefs";
 import { useKeyboardOpen } from "@/hooks/use-keyboard";
 import { t } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
+import { Icon } from "@/components/icons/icon";
 
 // THE BACK A PHONE'S THUMB CAN REACH (DESIGN.md §12): a screen below a pane repeats its header's Back
 // at the bottom, on the side of the hand that holds the phone. The Changes screen was the first to
@@ -33,7 +33,7 @@ export interface BackControl {
 export function BackButton({ back, className }: { back: BackControl; className?: string }) {
   return (
     <Button variant="outline" className={cn("h-11", className)} onClick={back.go} aria-label={back.label}>
-      <ArrowLeft className="size-4" />
+      <Icon name="back" className="size-4" />
       {t("files.back")}
     </Button>
   );

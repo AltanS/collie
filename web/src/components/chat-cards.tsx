@@ -33,29 +33,6 @@
 // harness's own name are the agent's words or the machine's, and they go through as they arrived.
 
 import { createContext, memo, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import {
-  ArrowRightLeft,
-  Bot,
-  Check,
-  ChevronRight,
-  Circle,
-  CircleAlert,
-  CircleDot,
-  CircleMinus,
-  CircleQuestionMark,
-  Clock,
-  FilePlusCorner,
-  FileText,
-  Globe,
-  ListChecks,
-  Pencil,
-  Search,
-  SquareTerminal,
-  Trash2,
-  User,
-  Wrench,
-  type LucideIcon,
-} from "lucide-react";
 
 import { DiffView, TokenLine, useSyntaxTokens } from "@/components/changes-view";
 import { JournalImage } from "@/components/journal-image";
@@ -94,6 +71,8 @@ import {
 import type { Hunk, ToolQuestion } from "@/lib/types";
 import type { DiffRow } from "@/lib/unified-diff";
 import { cn } from "@/lib/utils";
+import { Icon } from "@/components/icons/icon";
+import type { IconKey } from "@/components/icons/keys";
 
 /**
  * How a harness spells its own name. Its own word, so it never goes through a dictionary.
@@ -299,7 +278,7 @@ export const ToolGroup = memo(
               className={cn(FOLD_ROW, "justify-start rounded-md border border-border")}
               onClick={() => setOpen(false)}
             >
-              <ChevronRight className="size-3.5 shrink-0 rotate-90" />
+              <Icon name="disclosure" className="size-3.5 shrink-0 rotate-90" />
               <span className="min-w-0 truncate">{summary}</span>
             </button>
           ) : (
@@ -310,7 +289,7 @@ export const ToolGroup = memo(
                 className={cn(FOLD_ROW, "justify-start rounded-md border border-border")}
                 onClick={() => setOpen(true)}
               >
-                <ChevronRight className="size-3.5 shrink-0" />
+                <Icon name="disclosure" className="size-3.5 shrink-0" />
                 {/* `tabular-nums` on the whole run rather than on one span: the sentence is one
                     message now, and every number in it (the count and the summary's own) steps. */}
                 <span className="min-w-0 truncate tabular-nums">{tn("chat.run.earlier", start, { summary })}</span>
@@ -333,7 +312,7 @@ export const ToolGroup = memo(
         className="flex min-h-11 w-full min-w-0 flex-col justify-center gap-0.5 rounded-md border border-border px-3 py-1.5 text-left transition-colors active:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
       >
         <span className="flex min-w-0 items-center gap-1.5 text-xs font-medium text-muted-foreground">
-          <ChevronRight className="size-3.5 shrink-0" />
+          <Icon name="disclosure" className="size-3.5 shrink-0" />
           <span className="min-w-0 truncate">{summary}</span>
           {failed > 0 && <BadBadge>{tn("chat.run.failed", failed)}</BadBadge>}
         </span>
@@ -413,7 +392,7 @@ export const ItemView = memo(function ItemView({ item }: { item: ChatItem }) {
       return <Growing partial={item.partial === true}><MarkdownText text={item.text} stretches /></Growing>;
     case "thinking":
       return (
-        <Disclosure label={t("chat.card.thinking")} icon={ChevronRight}>
+        <Disclosure label={t("chat.card.thinking")} icon="disclosure">
           {() => (
             <Growing partial={item.partial === true}>
               <MarkdownText text={item.text} className="px-5 pb-1 italic text-muted-foreground" />
@@ -480,7 +459,7 @@ function Notice({ item }: { item: Extract<ChatItem, { kind: "notice" }> }) {
     );
   }
   return (
-    <Disclosure label={t("transcript.systemLabel")} icon={ChevronRight}>
+    <Disclosure label={t("transcript.systemLabel")} icon="disclosure">
       {() => <MarkdownText text={item.text} className="px-5 pb-1 text-sm text-muted-foreground" />}
     </Disclosure>
   );
@@ -503,7 +482,7 @@ function Compacted({ item }: { item: Extract<ChatItem, { kind: "compacted" }> })
   }
   const text = item.text;
   return (
-    <Disclosure label={t("transcript.summaryLabel")} icon={ChevronRight}>
+    <Disclosure label={t("transcript.summaryLabel")} icon="disclosure">
       {() => <MarkdownText text={text} className="px-5 pb-1 text-sm text-muted-foreground" />}
     </Disclosure>
   );
@@ -536,7 +515,7 @@ function UserTurn({ text, ts, pending, notInLog = false }: { text: string; ts?: 
       )}
     >
       <div className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold label-caps text-status-working">
-        <User className="size-3.5" />
+        <Icon name="user-turn" className="size-3.5" />
         {/* The transcript's own word for the reader, so History and Chat never disagree. */}
         {t("transcript.youLabel")}
         {time && <span className="font-normal tabular-nums opacity-80">{time}</span>}
@@ -550,7 +529,7 @@ function UserTurn({ text, ts, pending, notInLog = false }: { text: string; ts?: 
         {/* The clock takes the slot the time takes once the program's line is here, so the swap moves nothing. */}
         {pending !== undefined && (
           <span className="flex items-center gap-1 font-normal normal-case tracking-normal opacity-80">
-            <Clock className="size-3" aria-hidden="true" />
+            <Icon name="queued" className="size-3" aria-hidden="true" />
             {pending === "sending" || pending === "sent" ? (
               <span className="sr-only">{t("durable.pending.sending")}</span>
             ) : (
@@ -611,18 +590,18 @@ function clockTimeOf(iso: string): string {
  */
 export function Disclosure({
   label,
-  icon: Icon,
+  icon,
   children,
 }: {
   label: ReactNode;
-  icon: LucideIcon;
+  icon: IconKey;
   children: () => ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   return (
     <div className="flex flex-col">
       <button type="button" aria-expanded={open} onClick={() => setOpen(!open)} className={cn(FOLD_ROW, "justify-start px-0")}>
-        <Icon className={cn("size-3.5 shrink-0 transition-transform", open && "rotate-90")} />
+        <Icon name={icon} className={cn("size-3.5 shrink-0 transition-transform", open && "rotate-90")} />
         {label}
       </button>
       {open && children()}
@@ -673,22 +652,22 @@ function planCount(call: Extract<ChatToolCall, { kind: "plan" }>): string {
 }
 
 const KIND_ICON = {
-  edit: Pencil,
-  execute: SquareTerminal,
-  read: FileText,
-  search: Search,
-  fetch: Globe,
-  task: Bot,
-  other: Wrench,
-  plan: ListChecks,
-  question: CircleQuestionMark,
-  delete: Trash2,
-  move: ArrowRightLeft,
-} satisfies Record<ChatToolCall["kind"], LucideIcon>;
+  edit: "tool-edit",
+  execute: "tool-execute",
+  read: "tool-read",
+  search: "tool-search",
+  fetch: "tool-fetch",
+  task: "tool-task",
+  other: "tool-other",
+  plan: "tool-plan",
+  question: "tool-question",
+  delete: "tool-delete",
+  move: "tool-move",
+} satisfies Record<ChatToolCall["kind"], IconKey>;
 
 /** A card's head row: glyph, the kind as a chrome word, the subject, the state slot. */
 function ToolHead({
-  icon: Icon,
+  icon,
   label,
   badge,
   children,
@@ -696,7 +675,7 @@ function ToolHead({
   status,
   exitCode,
 }: {
-  icon: LucideIcon;
+  icon: IconKey;
   label: string;
   /** A small word after the tool's name (the walky talky badge). */
   badge?: ReactNode;
@@ -707,7 +686,7 @@ function ToolHead({
 }) {
   return (
     <div className="flex min-h-9 min-w-0 items-center gap-2 px-3 py-1.5 text-xs">
-      <Icon className="size-3.5 shrink-0 text-muted-foreground" />
+      <Icon name={icon} className="size-3.5 shrink-0 text-muted-foreground" />
       <span className="shrink-0 font-medium">{label}</span>
       {badge}
       <span className="flex min-w-0 flex-1 items-center">{children}</span>
@@ -823,7 +802,7 @@ function WaitingArea({ waiting, line }: { waiting?: CardWaiting; line?: boolean 
               line ? "px-2 pb-1.5" : "border-t border-border px-3 py-2.5",
             )}
           >
-            <SquareTerminal className="mt-px size-3.5 shrink-0" />
+            <Icon name="tool-execute" className="mt-px size-3.5 shrink-0" />
             <span className="min-w-0">{note}</span>
           </p>
         )}
@@ -956,7 +935,7 @@ function ToolCardBody({
       return (
         <Card data-waiting={anchor} className={cn("gap-0 py-0", held)}>
           <ToolHead
-            icon={tool.created ? FilePlusCorner : Pencil}
+            icon={tool.created ? "tool-create-file" : "tool-edit"}
             label={t(tool.created ? "chat.card.create" : "chat.card.edit")}
             status={status}
             trailing={
@@ -980,7 +959,7 @@ function ToolCardBody({
       return (
         <Card data-waiting={anchor} className={cn("gap-0 py-0", held)}>
           <ToolHead
-            icon={SquareTerminal}
+            icon="tool-execute"
             label={t("chat.card.run")}
             badge={walky && <WalkyBadge />}
             status={status}
@@ -1002,7 +981,7 @@ function ToolCardBody({
       );
     case "read":
       return (
-        <LineTool anchor={anchor} icon={FileText} label={t("chat.card.read")} status={status} waiting={waiting}>
+        <LineTool anchor={anchor} icon="tool-read" label={t("chat.card.read")} status={status} waiting={waiting}>
           <ToolPath path={tool.path} line={tool.range?.[0]} />
           {tool.range && (
             <span className="shrink-0 pl-1.5 text-muted-foreground tabular-nums">
@@ -1104,11 +1083,11 @@ function ToolCardBody({
 }
 
 const PLAN_GLYPH = {
-  pending: { icon: Circle, tone: "text-muted-foreground", key: "chat.card.plan.pending" },
-  in_progress: { icon: CircleDot, tone: "text-status-working", key: "chat.card.plan.inProgress" },
-  done: { icon: Check, tone: "text-status-done", key: "chat.card.plan.done" },
-  blocked: { icon: CircleAlert, tone: "text-status-blocked", key: "chat.card.plan.blocked" },
-  dropped: { icon: CircleMinus, tone: "text-muted-foreground", key: "chat.card.plan.dropped" },
+  pending: { icon: "plan-pending", tone: "text-muted-foreground", key: "chat.card.plan.pending" },
+  in_progress: { icon: "plan-in-progress", tone: "text-status-working", key: "chat.card.plan.inProgress" },
+  done: { icon: "plan-done", tone: "text-status-done", key: "chat.card.plan.done" },
+  blocked: { icon: "plan-blocked", tone: "text-status-blocked", key: "chat.card.plan.blocked" },
+  dropped: { icon: "plan-dropped", tone: "text-muted-foreground", key: "chat.card.plan.dropped" },
 } as const;
 
 /**
@@ -1131,7 +1110,7 @@ function PlanTool({
   return (
     <Card data-waiting={anchor} className={cn("gap-0 overflow-hidden py-0", held)}>
       <ToolHead
-        icon={ListChecks}
+        icon="tool-plan"
         label={t("chat.card.plan")}
         status={status}
         trailing={<span className="shrink-0 font-mono text-xs tabular-nums text-muted-foreground">{planCount(call)}</span>}
@@ -1142,11 +1121,10 @@ function PlanTool({
         <ul data-slot="list-group" className="border-t border-border">
           {call.tasks.map((task, i) => {
             const glyph = PLAN_GLYPH[task.status];
-            const Icon = glyph.icon;
             return (
               <li key={i} data-status={task.status} className="flex items-start gap-2 px-3 py-1.5">
                 <span className="mt-0.5 flex size-3.5 shrink-0 items-center justify-center">
-                  <Icon role="img" aria-label={t(glyph.key)} className={cn("size-3.5", glyph.tone)} />
+                  <Icon name={glyph.icon} role="img" aria-label={t(glyph.key)} className={cn("size-3.5", glyph.tone)} />
                 </span>
                 <span
                   className={cn(
@@ -1199,7 +1177,7 @@ function QuestionTool({
   const asking = status === "running" && waiting?.body === undefined;
   return (
     <Card data-waiting={anchor} className={cn("gap-0 overflow-hidden py-0", held)}>
-      <ToolHead icon={CircleQuestionMark} label={header || t("chat.tool.question")} status={status} />
+      <ToolHead icon="tool-question" label={header || t("chat.tool.question")} status={status} />
       {call.questions.map((q, i) => (
         <QuestionBlock
           key={i}
@@ -1280,7 +1258,7 @@ function QuestionRow({
   return (
     <li aria-current={picked || undefined} className="flex items-start gap-2 px-3 py-1.5">
       <span aria-hidden className="mt-0.5 flex size-3.5 shrink-0 items-center justify-center">
-        {picked && <Check className="size-3.5 text-status-done" />}
+        {picked && <Icon name="selected" className="size-3.5 text-status-done" />}
       </span>
       <span className="flex min-w-0 flex-col">
         <span className={cn("font-content whitespace-pre-wrap break-words text-sm", muted && "text-muted-foreground")}>
@@ -1303,7 +1281,7 @@ function QuestionRow({
  */
 function LineTool({
   anchor,
-  icon: Icon,
+  icon,
   label,
   status,
   output,
@@ -1316,7 +1294,7 @@ function LineTool({
   children,
 }: {
   anchor?: string;
-  icon: LucideIcon;
+  icon: IconKey;
   label: string;
   status: ChatToolStatus;
   output?: string;
@@ -1335,13 +1313,14 @@ function LineTool({
   const interactive = onTap !== undefined || output !== undefined;
   const row = (
     <>
-      <Icon className="size-3.5 shrink-0 text-muted-foreground" />
+      <Icon name={icon} className="size-3.5 shrink-0 text-muted-foreground" />
       <span className={cn("shrink-0 font-medium text-muted-foreground", quiet && "opacity-60")}>{label}</span>
       {badge}
       <span className="flex min-w-0 flex-1 items-center">{children}</span>
       <StatusSlot status={status} />
       {interactive && (
-        <ChevronRight
+        <Icon
+          name="disclosure"
           className={cn(
             "size-3.5 shrink-0 text-muted-foreground transition-transform",
             onTap === undefined && open && "rotate-90",
@@ -1423,7 +1402,7 @@ function CommandBlock({ command, output, preview }: { command: string; output?: 
             onClick={() => setOpen(!open)}
             className={cn(FOLD_ROW, "flex-1 tabular-nums")}
           >
-            <ChevronRight className={cn("size-3.5 shrink-0 transition-transform", open && "rotate-90")} />
+            <Icon name="disclosure" className={cn("size-3.5 shrink-0 transition-transform", open && "rotate-90")} />
             {open ? t("chat.card.output.hide") : tn("chat.card.output.show", lines.length)}
           </button>
           {open && lines.length > TAIL && (

@@ -125,19 +125,21 @@
 //     anything else is another dialect and declines), and no row under the box except the composer's own
 //     band and empty prompt row. A draft in the composer relabels the Deny row `Deny and send message`
 //     and moves the pointer onto it; that label is no row this grammar knows, so the screen declines.
-//   * Only the `unicode` preset is captured. `❯` is the pointer and the footer carries the glyph keycaps.
+//   * The `unicode` and `nerd` presets are captured (omp/keycaps.ts): `❯` or U+F054 as the pointer, and the
+//     same preset's keycaps in the footer (`⏎`/`⎋`, or U+F0311/U+F12B7; `omp--v18-18-0-nerd-approval-bash`).
 //
 // THE SUMMARY TOOLS (`task`, 18.12.6). A subagent call's compact row is a summary by design, never the
 // whole call, so it is lifted with the clipped row as the screen shows it (see SUMMARY_TOOLS).
 //
 // Not read, and so declined: the `always-ask-cached` grants (`Remember across sessions`, `Approve
 // Directory: …`, `Approve Once`), a title with a countdown, the PgUp/PgDn scroll hint of an overflowing
-// body, a `write` or any other tool, and the nerd preset.
+// body, a `write` or any other tool, and the nerd preset in the first shape.
 //
 // Pure functions over `StyledLine[]`, tail-anchored like every other grammar.
 
 import type { StyledLine } from "../../blocks";
 import { hasHiddenCharacter, MAX_REGION_CHARS } from "../bound-region";
+import { OMP_GLYPH_PRESETS } from "./keycaps";
 import { pointerWalk } from "../menu-hints";
 import type { PromptModel, PromptOption } from "../prompt-model";
 import { isBlank, lineText, rstrip } from "./markers";
@@ -323,10 +325,17 @@ function detectBlankRowApproval(lines: StyledLine[]): ApprovalRegion | null {
 
 // ── The second shape: omp 18.12.6 ────────────────────────────────────────────────────────────────
 
-/** The footer of the divided panel, exactly, as the `unicode` preset prints it (see the header). */
-const DIVIDED_FOOTER = "↑/↓ choose · ⏎ select · Ctrl+⏎/Ctrl+Q approve · ⎋ deny · Ctrl+O details · type to deny and steer";
-/** The pointer of the `unicode` preset, then the one space omp puts before the label. */
-const DIVIDED_POINTER = "❯ ";
+/** One preset's divided panel: its footer, exactly (see the header), and its pointer with the one space
+ *  omp puts before the label. A screen must match both from ONE preset (omp/keycaps.ts). */
+interface DividedPreset {
+  footer: string;
+  pointer: string;
+}
+
+const DIVIDED_PRESETS: readonly DividedPreset[] = OMP_GLYPH_PRESETS.map((p) => ({
+  footer: `↑/↓ choose · ${p.enter} select · Ctrl+${p.enter}/Ctrl+Q approve · ${p.escape} deny · Ctrl+O details · type to deny and steer`,
+  pointer: `${p.pointer} `,
+}));
 /** The divider over the footer. */
 const DIVIDER = /^├─+┤$/;
 /** The tool whose summary row is captured as the command itself: the divided shape lifts it whole. */
@@ -357,13 +366,13 @@ interface DividedChoice {
   pointed: boolean;
 }
 
-/** A choice row of the divided panel: `│ ` then the pointer and a space, or two spaces, then the label. */
-function readDividedChoice(row: string): DividedChoice | null {
+/** A choice row of the divided panel: `│ ` then the preset's pointer and a space, or two spaces, then the label. */
+function readDividedChoice(row: string, preset: DividedPreset): DividedChoice | null {
   const inner = BOX_ROW.exec(row)?.[1]?.replace(/\s+$/, "");
   if (inner === undefined) return null;
-  const pointed = inner.startsWith(DIVIDED_POINTER);
+  const pointed = inner.startsWith(preset.pointer);
   if (!pointed && !inner.startsWith("  ")) return null;
-  const label = inner.slice(2);
+  const label = inner.slice(pointed ? preset.pointer.length : 2);
   return /^\S/.test(label) ? { label, pointed } : null;
 }
 
@@ -392,14 +401,15 @@ function detectDividedApproval(lines: StyledLine[]): ApprovalRegion | null {
 
   // 2. The footer and the divider over it.
   const footerRow = BOX_ROW.exec(texts[bottom - 1]!);
-  if (footerRow === null || footerRow[1]!.trim() !== DIVIDED_FOOTER) return null;
-  if (!DIVIDER.test(texts[bottom - 2]!)) return null;
+  if (footerRow === null) return null;
+  const preset = DIVIDED_PRESETS.find((p) => footerRow[1]!.trim() === p.footer);
+  if (preset === undefined || !DIVIDER.test(texts[bottom - 2]!)) return null;
 
   // 3. The choices, read up from the divider: Deny last, then `Approve`, with the session row between
   //    them when it is there.
-  const deny = readDividedChoice(texts[bottom - 3]!);
+  const deny = readDividedChoice(texts[bottom - 3]!, preset);
   if (deny?.label !== "Deny") return null;
-  const middle = readDividedChoice(texts[bottom - 4]!);
+  const middle = readDividedChoice(texts[bottom - 4]!, preset);
   if (middle === null) return null;
   let choices: DividedChoice[];
   let sessionTool: string | null = null;
@@ -407,7 +417,7 @@ function detectDividedApproval(lines: StyledLine[]): ApprovalRegion | null {
     choices = [middle, deny];
   } else {
     sessionTool = SESSION_LABEL.exec(middle.label)?.[1] ?? null;
-    const approve = readDividedChoice(texts[bottom - 5]!);
+    const approve = readDividedChoice(texts[bottom - 5]!, preset);
     if (sessionTool === null || approve?.label !== "Approve") return null;
     choices = [approve, middle, deny];
   }
@@ -436,7 +446,7 @@ function detectDividedApproval(lines: StyledLine[]): ApprovalRegion | null {
   const pointedAt = choices.findIndex((c) => c.pointed);
   const pointedRow = choicesAt + pointedAt;
   const coreSignature = region
-    .map((row, i) => (titleAt + i === pointedRow ? row.replace(DIVIDED_POINTER, "  ") : row))
+    .map((row, i) => (titleAt + i === pointedRow ? row.replace(preset.pointer, "  ") : row))
     .join("\n");
 
   const title = `Allow tool: ${tool}`;

@@ -15,6 +15,8 @@ import {
   type Channel,
   type ChannelEvidence,
 } from "./vite-icons";
+import { mathEnginesPlugin } from "./vite.math";
+import { glyphSetsPlugin, isGlyphChunkModule } from "./vite-glyphs";
 
 // The bridge (Bun server) serves the built app from `web/dist` and proxies nothing — the
 // browser talks to the same origin for both static files and /api. In `vite dev`, proxy the
@@ -157,12 +159,24 @@ const pkgVersion = (
   }
 ).version;
 const buildSha = gitSha();
-const buildTime = new Date().toISOString();
 // channelFor(pkgVersion's evidence) is computed ONCE and drives both the version stamp above and
 // the icon/manifest channel below — never call it twice, the two must always agree.
 const channel: Channel = channelFor(gitEvidence(pkgVersion));
 const releaseBuild = channel === "release";
 const stampedVersion = releaseBuild ? pkgVersion : `${pkgVersion}-dev`;
+// `COLLIE_BUILD_TIME` (an ISO time) wins over the clock, for a caller that must pin the stamp: the e2e
+// fixture builds the app twice and hands each build its own second (web/e2e/fixtures/builds.ts). The
+// release job never sets it. Nothing needs two builds to agree: the math engines, which once imported
+// the entry chunk that holds this stamp, are bundles of their own (vite.math.ts, ADR 0132).
+function stampTime(): string {
+  const forced = process.env.COLLIE_BUILD_TIME;
+  if (forced !== undefined && forced !== "") {
+    if (Number.isNaN(Date.parse(forced))) throw new Error(`COLLIE_BUILD_TIME is not a time: ${forced}`);
+    return new Date(forced).toISOString();
+  }
+  return new Date().toISOString();
+}
+const buildTime = stampTime();
 const BUILD_INFO = {
   version: stampedVersion,
   sha: buildSha,
@@ -204,6 +218,20 @@ const channelManifest = manifestFor(channel);
 
 // The speech worker's entry, the one worker built under `stt/` (the `worker` block below).
 const STT_WORKER_ENTRY = resolve(import.meta.dirname, "src/stt/worker.ts");
+
+// The theme marks (components/brand-mark.tsx). Each is a dynamic import and goes under `marks/`,
+// out of the precache like the math engines: the Collie mark is the default, and a device that never picks
+// another never downloads a byte of the others. Any `<id>-mark.tsx` but the Collie one and the host, so a new mark
+// needs no change here. src/sw.ts caches the chosen one on first use.
+const MARK_MODULE = /[\\/]src[\\/]components[\\/](?!(?:collie|brand)-mark\.tsx)[a-z][a-z-]*-mark\.tsx$/;
+
+/** The folder an output chunk goes in: `marks`, `glyphs`, or the app's own `assets`. */
+function chunkFolder(ids: readonly string[]): string {
+  if (ids.length > 0 && ids.every((id) => MARK_MODULE.test(id))) return "marks";
+  // The glyph sets (ADR 0137, vite-glyphs.ts): one chunk each, out of the precache like the marks.
+  if (ids.length > 0 && ids.every(isGlyphChunkModule)) return "glyphs";
+  return "assets";
+}
 
 // ADR 0052: ONE BUILD SERVES ANY MOUNT. The shell (index.html) is built ROOT-ABSOLUTE, every
 // reference `/…`, and the bridge resolves it to the mount it was started with when it serves the
@@ -251,7 +279,9 @@ export default defineConfig({
   define: { __BUILD_INFO__: JSON.stringify(BUILD_INFO) },
   plugins: [
     react(),
+    glyphSetsPlugin(import.meta.dirname),
     tailwindcss(),
+    mathEnginesPlugin(),
     buildInfoPlugin,
     channelIconsPlugin,
     VitePWA({
@@ -345,7 +375,11 @@ export default defineConfig({
         // The vendored speech engine (public/stt/, ADR 0096) stays out of the precache for the
         // reason the Nerd Font faces do: its glue is a .js file the glob would otherwise take, and
         // nobody who never taps Whistle should pay for it on install. It loads on first use.
-        globIgnores: [...precacheIgnoresFor(channel), "stt/**"],
+        // The math engines (`math/`, their own build, vite.math.ts) stay out for the same reason:
+        // they are a device's opt-in, and Off is the default.
+        // The theme marks (`marks/`) stay out too: Collie is the default mark. So do the glyph
+        // sets (`glyphs/`): lucide is in the entry bundle and draws until a set arrives.
+        globIgnores: [...precacheIgnoresFor(channel), "stt/**", "math/**", "marks/**", "glyphs/**"],
       },
       // Over plain HTTP (insecure context) the SW can't register; in dev we don't want it anyway.
       devOptions: { enabled: false },
@@ -382,6 +416,11 @@ export default defineConfig({
         codeSplitting: {
           groups: [{ name: "router", test: /node_modules\/(?:react-router|@remix-run)\// }],
         },
+        // NOTHING OF THE MATH ENGINES IS IN THIS BUILD. They are bundles of their own under `math/`,
+        // built after this one by mathEnginesPlugin (vite.math.ts), and the app loads them by URL
+        // (lib/math/engine.ts), so no chunk here imports one and none of them imports a chunk here.
+        // The theme marks and the glyph sets go in folders of their own (chunkFolder above).
+        chunkFileNames: (chunk) => `${chunkFolder(chunk.moduleIds)}/[name]-[hash].js`,
       },
     },
   },

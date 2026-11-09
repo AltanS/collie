@@ -348,29 +348,26 @@ export function readDelay(): DelayDirective | undefined {
  * stamp and the whole tier would prove nothing.
  */
 /**
- * Sit out the rest of the current wall-clock second.
+ * The stamp time of build `index`, handed to vite as `COLLIE_BUILD_TIME`.
  *
- * The build id ends in `Math.floor(Date.parse(buildTime) / 1000)` (`vite.config.ts:125`), so its
- * resolution is ONE SECOND, and a machine that runs two builds inside the same second would stamp
- * them identically. A build takes longer than that today, which is luck, not a guarantee. Waiting
- * out the second makes the two ids differ by construction. This is the build helper, not a case: no
- * case in this suite sleeps.
+ * The build id ends in `Math.floor(Date.parse(buildTime) / 1000)` (`vite.config.ts`), so its resolution
+ * is ONE SECOND. A clean tree on CI is a release build, whose stamp time is the commit's, so two builds
+ * of one commit would stamp one id. Naming a time per build, a second apart, makes the two ids differ by
+ * construction, with no sleep and no luck. This is the build helper, not a case.
  */
-function waitOutTheSecond(): void {
-  const rest = 1_000 - (Date.now() % 1_000) + 20;
-  execFileSync("sleep", [(rest / 1_000).toFixed(3)]);
+function buildTimeFor(index: number): string {
+  return new Date(Math.floor(Date.now() / 1_000) * 1_000 + index * 1_000).toISOString();
 }
 
 export function buildBoth(): void {
   mkdirSync(BUILDS_DIR, { recursive: true });
   // The server's own start, before any case can run: unguarded, like `spendFail`.
   clearDirectives();
-  for (const name of BUILD_NAMES) {
-    if (name !== BUILD_NAMES[0]) waitOutTheSecond();
+  for (const [index, name] of BUILD_NAMES.entries()) {
     execFileSync("bunx", ["vite", "build", "--outDir", join("e2e", ".builds", name), "--emptyOutDir"], {
       cwd: WEB_ROOT,
       stdio: ["ignore", "ignore", "inherit"],
-      env: { ...process.env, COLLIE_PLAYGROUND: "" },
+      env: { ...process.env, COLLIE_PLAYGROUND: "", COLLIE_BUILD_TIME: buildTimeFor(index) },
     });
   }
   const [a, b] = [readBuildStamp("a"), readBuildStamp("b")];
@@ -379,7 +376,7 @@ export function buildBoth(): void {
   // browser rather than as what it is.
   if (a.id === b.id) {
     throw new Error(
-      `e2e: build A and build B share the id ${a.id}. Two builds must differ; see vite.config.ts:63-68.`,
+      `e2e: build A and build B share the id ${a.id}. Two builds must differ; see COLLIE_BUILD_TIME in vite.config.ts.`,
     );
   }
   writeFileSync(POINTER, "a\n");
