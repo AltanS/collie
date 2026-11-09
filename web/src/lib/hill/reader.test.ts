@@ -1,6 +1,6 @@
 import { afterEach, vi } from "vitest";
 
-import type { JsonObject, JsonValue } from "@/lib/json";
+import { asJsonObject, type JsonObject, type JsonValue } from "@/lib/json";
 import { hillDecision, hillReceipt } from "@/test/hill-fixtures";
 
 import { isWebLink, linkHost, readHillDecision, readHillList, readHillReceipt } from "./reader";
@@ -26,6 +26,14 @@ describe("readHillDecision", () => {
     const read = readHillDecision(wire({ title: "Merge it?" }));
     expect(read).toMatchObject({ v: 1, title: "Merge it?", state: "open", priority: "today" });
     expect(read?.options.map((o) => o.intent)).toEqual(["yes", "no"]);
+  });
+
+  it("reads a trick's routing host, and reads a decision from a bridge before it as null", () => {
+    const from = { ...asJsonObject(wire({}).from), kind: "trick", host: "bluefin", trickHost: "bluefin-hc" };
+    expect(readHillDecision(wire({ from }))?.from).toMatchObject({ host: "bluefin", trickHost: "bluefin-hc" });
+    const { trickHost: _gone, ...old } = from;
+    expect(readHillDecision(wire({ from: old }))?.from).toMatchObject({ host: "bluefin", trickHost: null });
+    expect(readHillDecision(wire({ from: { ...from, trickHost: 5 } }))).toBeNull();
   });
 
   it("drops a decision with an unknown state, priority or text mode", () => {

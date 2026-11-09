@@ -15,7 +15,7 @@ export function hillDecision(over: Partial<HillDecision> = {}): HillDecision {
     v: 1,
     id,
     requestId: `00000000-0000-4000-8000-${String(seq).padStart(12, "0")}`,
-    from: { kind: "agent", address: "wt_aaaaaaaaaaaa", trickId: null, trickKey: null, memberId: null, harness: "claude", label: "collie lead", host: "bluefin" },
+    from: { kind: "agent", address: "wt_aaaaaaaaaaaa", trickId: null, trickKey: null, memberId: null, harness: "claude", label: "collie lead", host: "bluefin", trickHost: null },
     about: null,
     priority: "today",
     priorityAsked: "today",
@@ -53,7 +53,7 @@ export function trickDecision(over: Partial<HillDecision> = {}): HillDecision {
   const base = hillDecision();
   return {
     ...base,
-    from: { kind: "trick", address: null, trickId: "look", trickKey: "ship-zoom", memberId: null, harness: null, label: "Look", host: null },
+    from: { kind: "trick", address: null, trickId: "look", trickKey: "ship-zoom", memberId: null, harness: null, label: "Look", host: null, trickHost: null },
     target: null,
     ...over,
   };

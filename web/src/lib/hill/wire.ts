@@ -121,8 +121,14 @@ export interface HillDecision {
     harness: string | null;
     /** The session's name as walky shows it. Display only. */
     label: string;
-    /** The machine name. Display only. */
+    /** The machine's display name, for every sender kind. Display only, never a key. */
     host: string | null;
+    /**
+     * The tricks host a trick runs on: where its answer's tap is routed (bridge/tricks/facts.ts
+     * `tricksHostName`, the crew member id on a member). Null for an agent, and for a trick's decision
+     * stored before this field, which holds that routing value in `host`; read it as `trickHost ?? host`.
+     */
+    trickHost: string | null;
   };
   /** A walky address. The card opens that session's Chat. */
   about: string | null;

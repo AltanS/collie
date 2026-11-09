@@ -260,6 +260,13 @@ describe("a trick's decision", () => {
     expect(slot("decision-meta")).not.toHaveTextContent("collie lead");
   });
 
+  it("shows the machine's name on the meta line, never the routing host", () => {
+    const base = trickDecision();
+    const { slot } = renderCard({ ...base, from: { ...base.from, host: "bluefin", trickHost: "collie-04rj6a" } });
+    expect(slot("decision-meta")?.textContent).toMatch(/Look\s*·\s*trick\s*·\s*bluefin/);
+    expect(slot("decision-meta")).not.toHaveTextContent("collie-04rj6a");
+  });
+
   it("leaves an agent's meta line without the word trick", () => {
     const { slot } = renderCard(hillDecision());
     expect(slot("decision-meta")?.textContent).not.toContain("trick");

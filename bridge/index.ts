@@ -2152,6 +2152,8 @@ const hill = new HillService({
   walkyOn: () => cfg.walky,
   memberId: walkyMemberId,
   machine: hostname(),
+  // `tricksHost` is declared further down; a list only ever reads it after boot.
+  tricksHost: () => tricksHost(),
   audit: (entry) => audit.record(entry),
   // A trick's decision (M94): the answer reaches the trick's program as a tap. `tricks` is made further
   // down; an answer only ever comes after boot.
@@ -3224,6 +3226,7 @@ const tricks =
           void tricksLabels.refresh();
           const world = factsWorldOf({
             host,
+            machine: hostname(),
             runtimes: registry.all().map((rt) => {
               const now = rt.engine.current();
               return { name: rt.name, agents: now.agents, shellPanes: now.shellPanes, workspaces: now.workspaces };
@@ -3232,7 +3235,7 @@ const tricks =
             labelOf: (name) => tricksLabels.labelOf(name),
             activeAt: (session, paneId) => activity.get(session, paneId)?.activeAt,
           });
-          return { sessions: world.sessions, spaces: world.spaces };
+          return { machine: world.machine, sessions: world.sessions, spaces: world.spaces };
         },
         env: process.env,
       });

@@ -133,7 +133,10 @@ export interface TricksServiceDeps {
   stateDir: string;
   /** This machine's host name for facts and part keys (facts.ts `tricksHostName`). */
   host: () => string;
-  /** The sessions and spaces, read at run time, with session ids keyed on `host`. */
+  /**
+   * The sessions and spaces, read at run time, with session ids keyed on `host`, and the machine's
+   * display name (`machine`) the facts' `host` fields say.
+   */
   world: (host: string) => Omit<FactsWorld, "host">;
   /** The unit's environment, scrubbed before each run. */
   env: ProviderEnv;

@@ -187,7 +187,7 @@ describe("the service", () => {
         configDir,
         stateDir,
         host: () => HOST,
-        world: () => ({ sessions: [], spaces: [] }),
+        world: () => ({ machine: "bluefin.lan", sessions: [], spaces: [] }),
         env: { PATH: "/usr/bin:/bin" },
         now: () => clock.t,
         warn: () => {},

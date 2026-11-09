@@ -35,7 +35,10 @@ export interface FactsRuntime {
 
 /** Everything about the machine a provider is told, before the trigger and the trick are added. */
 export interface FactsWorld {
+  /** The tricks host name: the key of the session ids and the parts. */
   host: string;
+  /** The machine's display name, what the facts' `host` fields say (what an agent's Decision shows too). */
+  machine: string;
   sessions: FactsSession[];
   spaces: FactsSpace[];
 }
@@ -70,12 +73,13 @@ function factText(text: string | undefined): string | undefined {
 }
 
 /** One pane as a facts session, or null when its id cannot make a scope key. */
-export function factsSessionOf(host: string, pane: AgentView, lastActiveMs: number | undefined): FactsSession | null {
+export function factsSessionOf(host: string, machine: string, pane: AgentView, lastActiveMs: number | undefined): FactsSession | null {
   const id = `${host}:${pane.paneId}`;
   if (!isScopeKey(id)) return null;
   // DECISION (M94 re-cut): until v2 session ids exist, the session id is the scope key and the member id
   // is the tricks host name; both are documented as opaque, so a later id change breaks no trick.
-  const out: FactsSession = { id, memberId: host, sessionId: id, paneId: pane.paneId, host, status: pane.status };
+  // `host` is the machine's display name, never a key: a trick passes `id`, `memberId` and `sessionId` back.
+  const out: FactsSession = { id, memberId: host, sessionId: id, paneId: pane.paneId, host: machine, status: pane.status };
   const name = factText(paneName(pane));
   if (name !== undefined) out.name = name;
   if (pane.kind !== "shell") {
@@ -95,7 +99,10 @@ export function factsSessionOf(host: string, pane: AgentView, lastActiveMs: numb
 }
 
 export interface FactsWorldInput {
+  /** The tricks host name (`tricksHostName`): keys the session ids. */
   host: string;
+  /** The machine's display name, the same value a decision's `from.host` carries. */
+  machine: string;
   runtimes: readonly FactsRuntime[];
   /** A registry session's folder from `spaces.toml`, or undefined. */
   folderOf?: (name: string) => string | undefined;
@@ -121,7 +128,7 @@ export function factsWorldOf(input: FactsWorldInput): FactsWorld {
   for (const rt of input.runtimes) {
     for (const pane of [...rt.agents, ...rt.shellPanes]) {
       if (sessions.length >= FACT_SESSIONS_MAX) break;
-      const s = factsSessionOf(input.host, pane, input.activeAt?.(rt.name, pane.paneId));
+      const s = factsSessionOf(input.host, input.machine, pane, input.activeAt?.(rt.name, pane.paneId));
       if (s === null || seen.has(s.id)) continue;
       seen.add(s.id);
       sessions.push(s);
@@ -132,10 +139,10 @@ export function factsWorldOf(input: FactsWorldInput): FactsWorld {
     const folder = input.folderOf?.(rt.name);
     if (folder !== undefined) addSpace(input.labelOf?.(rt.name) ?? rt.name, folder);
   }
-  return { host: input.host, sessions, spaces };
+  return { host: input.host, machine: input.machine, sessions, spaces };
 }
 
 /** The whole facts document for one run. */
 export function buildFacts(world: FactsWorld, trick: { id: string; dir: string; state: string }, trigger: FactsTrigger): TrickFacts {
-  return { v: 1, trigger, trick, host: world.host, sessions: world.sessions, spaces: world.spaces };
+  return { v: 1, trigger, trick, host: world.machine, sessions: world.sessions, spaces: world.spaces };
 }

@@ -39,7 +39,7 @@ function decision(over: Fixture): HillDecision {
     v: 1,
     id: did,
     requestId: `0b6f2c1e-4a7d-4c1b-9e2f-${did.slice(-12)}`,
-    from: { kind: "agent", address: `wt_${did.slice(3, 15)}`, trickId: null, trickKey: null, memberId: null, harness: "claude", label: sender.label, host: sender.host },
+    from: { kind: "agent", address: `wt_${did.slice(3, 15)}`, trickId: null, trickKey: null, memberId: null, harness: "claude", label: sender.label, host: sender.host, trickHost: null },
     about: null,
     priority: "today",
     priorityAsked: "today",
@@ -166,7 +166,7 @@ export const later = decision({
 });
 
 /** A decision a trick posted: the poster is the trick, not a session, and its answer goes nowhere else. */
-const LOOK_FROM = { kind: "trick", address: null, trickId: "look", trickKey: "ship-zoom", memberId: null, harness: null, label: "Look", host: null } as const;
+const LOOK_FROM = { kind: "trick", address: null, trickId: "look", trickKey: "ship-zoom", memberId: null, harness: null, label: "Look", host: null, trickHost: null } as const;
 
 /** 26: a trick's decision with no target. The trick takes the answer itself. */
 export const trickOpen = decision({

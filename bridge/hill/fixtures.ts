@@ -10,7 +10,7 @@ export function decision(id: string, over: Partial<HillDecision> = {}): HillDeci
     v: 1,
     id,
     requestId: "0f8b5c1e-5a7d-4b8e-9f00-1a2b3c4d5e6f",
-    from: { kind: "agent", address: "local/%1#aaaa", trickId: null, trickKey: null, memberId: null, harness: "agent-x", label: "repo#one", host: "desk" },
+    from: { kind: "agent", address: "local/%1#aaaa", trickId: null, trickKey: null, memberId: null, harness: "agent-x", label: "repo#one", host: "desk", trickHost: null },
     about: null,
     priority: "today",
     priorityAsked: "today",

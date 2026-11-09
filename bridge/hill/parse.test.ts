@@ -98,6 +98,16 @@ describe("a stored decision", () => {
     expect(readDecision(onDisk(whole))).toEqual(whole);
   });
 
+  test("a trick's decision with `from.trickHost` reads back; one stored without it reads trickHost null", () => {
+    const base = decision("dc_aaaaaaaaaaa1");
+    const trick = { ...base, from: { ...base.from, kind: "trick" as const, address: null, trickId: "legs", trickKey: "k", label: "Legs", host: "bluefin", trickHost: "bluefin-hc" } };
+    expect(readDecision(onDisk(trick))).toEqual(trick);
+    const row = { ...parseJsonObject(JSON.stringify(trick)) };
+    const { trickHost: _gone, ...oldFrom } = { ...parseJsonObject(JSON.stringify(trick.from)) };
+    expect(readDecision({ ...row, from: oldFrom })?.from).toMatchObject({ host: "bluefin", trickHost: null });
+    expect(readDecision({ ...row, from: { ...oldFrom, trickHost: 5 } })).toBeNull();
+  });
+
   test("a field that fails its rule fails the record", () => {
     const whole = decision("dc_aaaaaaaaaaa1");
     expect(readDecision(onDisk(whole, { v: 2 }))).toBeNull();

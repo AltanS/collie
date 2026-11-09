@@ -80,7 +80,8 @@ async function rig(outcomes: Scripted[] | null, extra: Partial<TricksServiceDeps
     stateDir,
     host: () => HOST,
     world: (host) => ({
-      sessions: [{ id: `${host}:w6X:3`, memberId: host, sessionId: `${host}:w6X:3`, paneId: "w6X:3", host, name: "composer", agent: "claude", status: "working" }],
+      machine: "desk",
+      sessions: [{ id: `${host}:w6X:3`, memberId: host, sessionId: `${host}:w6X:3`, paneId: "w6X:3", host: "desk", name: "composer", agent: "claude", status: "working" }],
       spaces: [{ name: "collie", folder: "/work/collie" }],
     }),
     env: { PATH: process.env.PATH ?? "/usr/bin:/bin", COLLIE_TOKEN: "tok", OPENROUTER_API_KEY: "sk-or-v1-0123456789abcdef0123456789" },
@@ -181,6 +182,9 @@ describe("discovery and the switch", () => {
     expect(facts.trigger).toEqual({ kind: "start" });
     expect(facts.trick).toEqual({ id: "legs", dir, state: join(r.stateDir, TRICKS_DIR, "legs") });
     expect(facts.sessions[0]?.id).toBe("bluefin:w6X:3");
+    // `host` is the machine's display name; the keys a trick passes back stay on the tricks host name.
+    expect(facts.host).toBe("desk");
+    expect(facts.sessions[0]).toMatchObject({ memberId: "bluefin", sessionId: "bluefin:w6X:3", host: "desk" });
     expect(JSON.stringify(facts)).not.toContain(r.configDir.replace(/\/config$/, "/config/.env"));
     expect((await Bun.file(facts.trick.state).stat()).mode & 0o777).toBe(0o700);
     const reply = await r.service.reply(undefined);

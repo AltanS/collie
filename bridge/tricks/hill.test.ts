@@ -137,7 +137,7 @@ describe("the diff by key", () => {
     const r = rig();
     expect(sync(r, [decision("case-8")])).toEqual([]);
     const [posted] = open(r);
-    expect(posted?.from).toEqual({ kind: "trick", address: null, trickId: "legs", trickKey: "case-8", memberId: null, harness: null, label: "Browser leg", host: HOST });
+    expect(posted?.from).toEqual({ kind: "trick", address: null, trickId: "legs", trickKey: "case-8", memberId: null, harness: null, label: "Browser leg", host: "bluefin.lan", trickHost: HOST });
     expect(posted?.requestId).toBe(trickRequestId("legs", "case-8", decisionContentHash(decision("case-8")), 0, 0));
     expect(posted?.target).toBeNull();
     expect(sync(r, [decision("case-8")])).toEqual([]);
@@ -506,7 +506,7 @@ async function serviceRig(): Promise<ServiceRig> {
     configDir,
     stateDir,
     host: () => HOST,
-    world: () => ({ sessions: [], spaces: [] }),
+    world: () => ({ machine: "bluefin.lan", sessions: [], spaces: [] }),
     env: { PATH: process.env.PATH ?? "/usr/bin:/bin" },
     now: () => clock.t,
     warn: () => {},
@@ -625,7 +625,7 @@ describe.skipIf(process.platform === "win32")("end to end with the legs trick", 
       configDir,
       stateDir,
       host: () => HOST,
-      world: () => ({ sessions: [], spaces: [] }),
+      world: () => ({ machine: "bluefin.lan", sessions: [], spaces: [] }),
       env: { PATH: process.env.PATH ?? "/usr/bin:/bin", LEGS_LOG_DIR: join(LEGS_DIR, "fixtures", "red"), LEGS_RUNNING: "0", LEGS_NOW: "1794130860", LEGS_TAP_LOG: tapLog, LEGS_SHOT: "red-case.png" },
       now: () => clock.t,
       warn: () => {},

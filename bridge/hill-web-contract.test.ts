@@ -144,6 +144,17 @@ describe("the phone's reader reads the bridge's real list", () => {
     expect(phone.open[1]).toMatchObject({ options: [], text: "required" });
   });
 
+  test("a trick's decision reads with the machine's name in host and the routing host in trickHost; an agent's with trickHost null", async () => {
+    const r = rig();
+    serve(r);
+    const trick = r.hill.postDecision({ kind: "trick", trickId: "legs", trickKey: "case-8", label: "Browser leg", host: "desk-hc" }, TEXT_ONLY);
+    if (!trick.ok) throw new Error(trick.error);
+    const agent = posted(r, WITH_OPTIONS);
+    const phone = await fetchHill();
+    expect(phone.open.find((d) => d.id === trick.decision.id)?.from).toMatchObject({ kind: "trick", host: "desk", trickHost: "desk-hc" });
+    expect(phone.open.find((d) => d.id === agent.id)?.from).toMatchObject({ kind: "agent", host: "desk", trickHost: null });
+  });
+
   test("a read with the held revision is the bridge's `unchanged`, and the phone reads it as one", async () => {
     const r = rig();
     serve(r);

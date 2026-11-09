@@ -226,8 +226,10 @@ function readFrom(value: JsonValue | undefined): HillDecision["from"] | null {
   // Absent on a decision stored before tricks posted (M94): an agent's, so null.
   const trickKey = row.trickKey === undefined ? null : stringOrNull(row, "trickKey");
   if ((kind !== "agent" && kind !== "trick") || address === undefined || trickId === undefined || memberId === undefined) return null;
-  if (harness === undefined || label === undefined || host === undefined || trickKey === undefined) return null;
-  return { kind, address, trickId, trickKey, memberId, harness, label, host };
+  // Absent on a decision stored before the display name and the routing host were told apart: null.
+  const trickHost = row.trickHost === undefined ? null : stringOrNull(row, "trickHost");
+  if (harness === undefined || label === undefined || host === undefined || trickKey === undefined || trickHost === undefined) return null;
+  return { kind, address, trickId, trickKey, memberId, harness, label, host, trickHost };
 }
 
 function readTarget(value: JsonValue | undefined): HillDecision["target"] | undefined {

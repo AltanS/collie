@@ -142,10 +142,12 @@ function readFrom(value: JsonValue | undefined): HillDecision["from"] | null {
   const host = nullableString(o.host);
   // Absent on a bridge from before tricks posted (M94): an agent's, so null.
   const trickKey = nullableString(o.trickKey);
+  // Absent on a decision stored before the display name and the routing host were told apart: null.
+  const trickHost = o.trickHost === undefined ? null : nullableString(o.trickHost);
   if (kind === undefined || label === undefined) return null;
   if (address === undefined || trickId === undefined || memberId === undefined || harness === undefined || host === undefined) return null;
-  if (trickKey === undefined) return null;
-  return { kind, address, trickId, trickKey, memberId, harness, label, host };
+  if (trickKey === undefined || trickHost === undefined) return null;
+  return { kind, address, trickId, trickKey, memberId, harness, label, host, trickHost };
 }
 
 function readTarget(value: JsonValue | undefined): HillDecision["target"] | undefined {

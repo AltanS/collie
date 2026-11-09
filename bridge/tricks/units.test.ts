@@ -119,7 +119,8 @@ function space(label: string, folder?: string): WorkspaceView {
 describe("the facts", () => {
   test("sessions by scope key, spaces with folders, and the document the schema reads back", () => {
     const world = factsWorldOf({
-      host: "bluefin",
+      host: "bluefin-hc",
+      machine: "bluefin",
       runtimes: [
         {
           name: "default",
@@ -135,9 +136,9 @@ describe("the facts", () => {
     });
     expect(world.sessions).toEqual([
       {
-        id: "bluefin:w6X:3",
-        memberId: "bluefin",
-        sessionId: "bluefin:w6X:3",
+        id: "bluefin-hc:w6X:3",
+        memberId: "bluefin-hc",
+        sessionId: "bluefin-hc:w6X:3",
         paneId: "w6X:3",
         host: "bluefin",
         status: "working",
@@ -148,14 +149,16 @@ describe("the facts", () => {
         tab: "fix",
         lastActiveAt: "2026-11-08T09:41:00.000Z",
       },
-      { id: "bluefin:w6X:4", memberId: "bluefin", sessionId: "bluefin:w6X:4", paneId: "w6X:4", host: "bluefin", status: "idle", name: "shell", cwd: "/work/collie", space: "home", lastActiveAt: "2026-11-08T09:41:00.000Z" },
+      { id: "bluefin-hc:w6X:4", memberId: "bluefin-hc", sessionId: "bluefin-hc:w6X:4", paneId: "w6X:4", host: "bluefin", status: "idle", name: "shell", cwd: "/work/collie", space: "home", lastActiveAt: "2026-11-08T09:41:00.000Z" },
     ]);
     expect(world.spaces).toEqual([{ name: "collie", folder: "/work/collie-workspace" }, { name: "home" }, { name: "YouTube", folder: "/work/yt" }]);
+    expect(world.host).toBe("bluefin-hc");
     const facts = buildFacts(world, { id: "legs", dir: "/c/tricks/legs", state: "/s/tricks/legs" }, { kind: "timer" });
     expect(JSON.stringify(facts)).not.toContain("/secret/path.jsonl");
     const back = parseFacts(JSON.parse(JSON.stringify(facts)));
     expect(back.refusals).toEqual([]);
     expect(back.facts).toEqual(facts);
+    expect(facts.host).toBe("bluefin");
   });
 
   test("the host is the member id, else the short host name, else local", () => {
