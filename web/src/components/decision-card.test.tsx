@@ -128,6 +128,28 @@ describe("answering", () => {
   });
 });
 
+describe("lists the card keys by place and value", () => {
+  it("draws two options and two links that repeat a value without a key collision", () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const same = { label: "CI", href: "https://ci.example.com/a" };
+    const { container, slot } = renderCard(
+      hillDecision({
+        options: [
+          { intent: "yes", label: "Yes" },
+          { intent: "yes", label: "Yes, again" },
+        ],
+        links: [same, same],
+        body: "More.",
+      }),
+    );
+    fireEvent.click(slot("decision-more")!);
+    expect(container.querySelectorAll('[data-slot="decision-option"]')).toHaveLength(2);
+    expect(container.querySelectorAll('[data-slot="decision-link"]')).toHaveLength(2);
+    expect(error.mock.calls.filter(([message]) => String(message).includes("same key"))).toEqual([]);
+    error.mockRestore();
+  });
+});
+
 describe("arm, then send", () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());

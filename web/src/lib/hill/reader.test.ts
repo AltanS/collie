@@ -52,6 +52,29 @@ describe("readHillDecision", () => {
     expect(readHillDecision(wire({ options: [{ label: "Yes" }] }))).toBeNull();
   });
 
+  it("drops an option whose intent repeats an earlier one or is answer or dismiss, and keeps the decision", () => {
+    const read = readHillDecision(
+      wire({
+        options: [
+          { intent: "yes", label: "Yes" },
+          { intent: "yes", label: "Yes, again" },
+          { intent: "answer", label: "Answer" },
+          { intent: "dismiss", label: "Dismiss" },
+          { intent: "no", label: "No" },
+        ],
+      }),
+    );
+    expect(read?.options).toEqual([
+      { intent: "yes", label: "Yes" },
+      { intent: "no", label: "No" },
+    ]);
+  });
+
+  it("drops a decision whose only options are reserved ones when it has no field either", () => {
+    expect(readHillDecision(wire({ options: [{ intent: "dismiss", label: "Dismiss" }], text: "none" }))).toBeNull();
+    expect(readHillDecision(wire({ options: [{ intent: "dismiss", label: "Dismiss" }], text: "optional" }))?.options).toEqual([]);
+  });
+
   it("drops a decision that offers no way to answer", () => {
     expect(readHillDecision(wire({ options: [], text: "none" }))).toBeNull();
   });
@@ -74,6 +97,23 @@ describe("readHillDecision", () => {
       { id: "im_aaaaaaaaaaaaaaaa", kind: "image", mime: "image/png", bytes: 120, width: 390, height: 240, caption: "The card after" },
       { id: "im_bbbbbbbbbbbbbbbb", kind: "image", mime: "image/jpeg", bytes: 120, width: null, height: null },
     ]);
+  });
+
+  it("leaves out an image past the bytes cap or past 8192 px on a side, and keeps the one at the cap", () => {
+    const good = { id: "im_aaaaaaaaaaaaaaaa", kind: "image", mime: "image/png", bytes: 120, width: 390, height: 240 };
+    const read = readHillDecision(
+      wire({
+        media: [
+          { ...good, id: "im_bbbbbbbbbbbbbbbb", bytes: 2 * 1024 * 1024 },
+          { ...good, id: "im_cccccccccccccccc", bytes: 2 * 1024 * 1024 + 1 },
+          { ...good, id: "im_dddddddddddddddd", width: 8192, height: 8192 },
+          { ...good, id: "im_eeeeeeeeeeeeeeee", width: 8193 },
+          { ...good, id: "im_ffffffffffffffff", height: 100000 },
+          { ...good, id: "im_gggggggggggggggg", bytes: -1 },
+        ],
+      }),
+    );
+    expect(read?.media.map((m) => m.id)).toEqual(["im_bbbbbbbbbbbbbbbb", "im_dddddddddddddddd"]);
   });
 
   it("reads no images from a bridge before them, and at most four from any", () => {

@@ -309,8 +309,8 @@ export function DecisionCard({
                 {decision.media.length > 0 && <HillBodyImages decisionId={decision.id} media={decision.media} source={mediaSource} />}
                 {decision.links.length > 0 && (
                   <ListGroup as="ul">
-                    {decision.links.map((link) => (
-                      <li key={link.href}>
+                    {decision.links.map((link, i) => (
+                      <li key={`${i}:${link.href}`}>
                         <a
                           href={link.href}
                           target="_blank"
@@ -333,13 +333,13 @@ export function DecisionCard({
 
         {decision.options.length > 0 && (
           <div data-slot="decision-options" className={cn("grid gap-2", sideBySide(decision.options) ? "grid-cols-2" : "grid-cols-1")}>
-            {decision.options.map((option) => {
+            {decision.options.map((option, i) => {
               const isArmed = armed === `option:${option.intent}`;
               const busy = sendingIntent === option.intent;
               const isRecommended = recommended?.intent === option.intent;
               return (
                 <OptionButton
-                  key={option.intent}
+                  key={`${i}:${option.intent}`}
                   data-slot="decision-option"
                   data-intent={option.intent}
                   tone={busy ? "busy" : isArmed ? "armed" : "default"}

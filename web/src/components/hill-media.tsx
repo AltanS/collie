@@ -105,7 +105,7 @@ export function HillBodyImages({ decisionId, media, source = hillMediaSource }: 
   return (
     <div data-slot="hill-body-images" className="flex flex-col gap-3">
       {media.map((item, index) => (
-        <BodyImage key={item.id} src={source(decisionId, item)} media={item} index={index} count={media.length} />
+        <BodyImage key={`${index}:${item.id}`} src={source(decisionId, item)} media={item} index={index} count={media.length} />
       ))}
     </div>
   );
