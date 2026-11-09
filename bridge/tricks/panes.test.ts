@@ -163,6 +163,23 @@ describe("placing the Tricks Space in a body", () => {
     expect(snapshot.slice(added, added + 900)).toContain("body.agents = [...body.agents, ...placed.panes];");
     expect(snapshot.slice(added, added + 900)).toContain("session: widen ? registry.primary : undefined");
   });
+
+  test("a member's crew-facing snapshot carries no tricks: no rev, no Space, no tab, no pane (review row 12)", () => {
+    const src = readFileSync(join(import.meta.dir, "..", "server.ts"), "utf8");
+    const snapshot = src.slice(src.indexOf("const localSnapshot = ("), src.indexOf("const watchedPaneIds = ()"));
+    const cut = snapshot.indexOf("if (forCrew) return body;");
+    expect(cut).toBeGreaterThan(0);
+    // Everything about tricks comes after the cut, so a crew body returns before any of it.
+    for (const line of ["const tricksRev = opts.tricks?.rev();", "const trickSessions = opts.tricks?.sessionPanes();", "body.workspaces = [...body.workspaces, placed.workspace];", "body.tabs = [...body.tabs, ...placed.tabs];"]) {
+      expect(snapshot.indexOf(line), line).toBeGreaterThan(cut);
+    }
+    expect(snapshot.slice(0, cut)).not.toContain("opts.tricks");
+    // The crew closure asks for the crew body; the browser's route does not.
+    const crew = src.slice(src.indexOf("const crewHandler = opts.crewRouter?.({"));
+    expect(crew.slice(0, 2000)).toContain("snapshot: (view) => localSnapshot(view.session, null, view.widen, true),");
+    const calls = [...src.matchAll(/localSnapshot\(([^)]*)\)/g)].map((m) => m[1]);
+    expect(calls.filter((args) => args?.endsWith("true"))).toHaveLength(1);
+  });
 });
 
 describe("the service", () => {
