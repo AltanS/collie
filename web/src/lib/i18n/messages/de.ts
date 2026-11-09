@@ -99,7 +99,7 @@ export const de: Dictionary = {
   "theme.browse": "Community-Designs durchsuchen",
   "theme.browse.title": "Community-Designs",
   "theme.browse.intro":
-    "Designs, die auf GitHub unter dem Thema colliepwa-theme geteilt werden. Die Website, dieser Host und dieses Gerät prüfen jede Datei, und ein Design kann nur Farben und Wörter ändern.",
+    "Designs, die auf GitHub mit dem Topic colliepwa-theme geteilt werden. Die Website, dieser Host und dieses Gerät prüfen jede Datei, und ein Design kann nur Farben und Wörter ändern.",
   "theme.browse.loading": "Die Liste auf diesem Host wird gelesen…",
   "theme.browse.age": "Liste {age} abgerufen.",
   "theme.browse.never": "Dieser Host hat die Liste noch nicht abgerufen.",
