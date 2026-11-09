@@ -29,6 +29,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **A trick writes its view in the Tree UI's node names.** A trick's output uses the same parts, attributes and taps as the Tree UI, and it can add up to 20 decisions for you to answer, each with up to five options and the one it recommends. (M94)
 - **The phone draws every kind a trick writes.** All 16 kinds draw at fixed heights: a link opens a web page or a session, a button with a confirm asks twice, a copy button copies on the phone, and a trick's error line copies the fix for an agent instead of filling a reply box. A mark with nothing to do is now the same button, so it no longer slides under the pins mark. (M94)
 - **A trick can show one item in the status line above the belt.** The item is a short chip of up to 12 characters, with an icon and a tone if it wants one, and it stands after the model name and the usage figures. It is not a button: a tap opens the trick's session when it has one. When the line is too narrow, the trick items hide first, the newest before the older, and the model name and usage figures stay. A chip past its fresh window loses its tone, and a tap says how old it is. (M94)
+- **A decision option can ask for a second tap.** A trick's option may carry a second label, and the phone then arms the option on the first tap and sends its answer on the second, the way a button with a confirm does. (M94)
 
 ### Fixed
 

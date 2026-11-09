@@ -141,8 +141,9 @@ export const DECISION_SUMMARY_MAX = 280;
 export const DECISION_BODY_MAX = 4000;
 /** Options of one decision. Zero is a decision answered by text alone. */
 export const DECISION_OPTIONS_MAX = 5;
-/** A decision option's `label` (a button's) and its `detail` (a line). */
+/** A decision option's `label` (a button's), its `confirm` (a button's confirm label) and its `detail` (a line). */
 export const OPTION_LABEL_MAX = BUTTON_LABEL_MAX;
+export const OPTION_CONFIRM_MAX = BUTTON_LABEL_MAX;
 export const OPTION_DETAIL_MAX = LINE_MAX;
 /** `recommends.why`, one line of why. */
 export const RECOMMENDS_WHY_MAX = 200;
@@ -915,6 +916,11 @@ export interface DecisionOption {
   intent: string;
   label: string;
   detail?: string;
+  /**
+   * The second label, the tree button's `confirm` (VOCABULARY.md 2.8): the phone arms the option on the
+   * first tap and sends the intent on the second. The bridge sees one intent.
+   */
+  confirm?: string;
 }
 /** The trick's pick, never an answer: never pre-selected, never taken on a timeout. */
 export interface DecisionRecommends {
@@ -2852,7 +2858,7 @@ function readActions(f: Fields): TrickAction[] | undefined {
 
 /** Every key a decision takes (the Hill's decision shape, the fields a trick writes). */
 export const DECISION_KEYS = ["key", "title", "summary", "body", "options", "recommends", "priority", "about", "replyTo", "media", "links", "expiresAt"] as const;
-export const DECISION_OPTION_KEYS = ["intent", "label", "detail"] as const;
+export const DECISION_OPTION_KEYS = ["intent", "label", "detail", "confirm"] as const;
 export const DECISION_RECOMMENDS_KEYS = ["intent", "why"] as const;
 export const DECISION_MEDIA_KEYS = ["file", "caption"] as const;
 export const DECISION_LINK_KEYS = ["label", "href"] as const;
@@ -2945,8 +2951,12 @@ function readOptions(f: Fields): DecisionOption[] | undefined {
     if (intent !== undefined) intents.add(intent);
     const label = o.text("label", { max: OPTION_LABEL_MAX, required: true });
     const detail = o.text("detail", { max: OPTION_DETAIL_MAX });
+    const confirm = o.text("confirm", { max: OPTION_CONFIRM_MAX });
     if (intent === undefined || label === undefined) return;
-    out.push(detail === undefined ? { intent, label } : { intent, label, detail });
+    const option: DecisionOption = { intent, label };
+    if (detail !== undefined) option.detail = detail;
+    if (confirm !== undefined) option.confirm = confirm;
+    out.push(option);
   });
   return out;
 }

@@ -23,8 +23,10 @@ import {
 } from "./fixtures";
 import {
   ACTION_ICONS,
+  BUTTON_LABEL_MAX,
   DECISIONS_MAX,
   DECISION_KEYS,
+  DECISION_OPTION_KEYS,
   DOCUMENT_KEYS,
   DOCUMENT_MAX_BYTES,
   DRAW_TONES,
@@ -35,6 +37,7 @@ import {
   NODE_KIDS,
   NODE_KINDS,
   NODE_TEXT,
+  OPTION_CONFIRM_MAX,
   PART_KEYS,
   PART_MAX_BYTES,
   PLACE_KINDS,
@@ -566,6 +569,20 @@ describe("decisions", () => {
     expect(parse(d({ summary: "x".repeat(281) }))).toEqual(["/decisions/0/summary"]);
     expect(parse(d({ body: "x".repeat(4001) }))).toEqual(["/decisions/0/body"]);
     expect(parse({ v: 1, parts: [], decisions: [{ key: "k", title: "T" }] })).toEqual(["/decisions/0/summary"]);
+  });
+
+  it("an option's confirm is the button's second label: read as written, up to 24 characters, never empty", () => {
+    const option = (confirm: string) => ({ intent: "skip", label: "Skip", confirm });
+    const read = parseTrickDocument(d({ options: [option("Skip it for sure")] }));
+    expect(read.refusals).toEqual([]);
+    expect(read.decisions[0]?.options).toEqual([{ intent: "skip", label: "Skip", confirm: "Skip it for sure" }]);
+    expect(parseTrickDocument(d({ options: [{ intent: "skip", label: "Skip" }] })).decisions[0]?.options).toEqual([{ intent: "skip", label: "Skip" }]);
+    expect(parse(d({ options: [option("x".repeat(24))] }))).toEqual([]);
+    expect(parse(d({ options: [option("x".repeat(25))] }))).toEqual(["/decisions/0/options/0/confirm"]);
+    expect(parse(d({ options: [option("")] }))).toEqual(["/decisions/0/options/0/confirm"]);
+    expect(parse(d({ options: [option("   ")] }))).toEqual(["/decisions/0/options/0/confirm"]);
+    expect(DECISION_OPTION_KEYS).toEqual(["intent", "label", "detail", "confirm"]);
+    expect(OPTION_CONFIRM_MAX).toBe(BUTTON_LABEL_MAX);
   });
 
   it("0 to 5 options with unique intents, never the Hill's answer or dismiss; recommends names one, or is null", () => {

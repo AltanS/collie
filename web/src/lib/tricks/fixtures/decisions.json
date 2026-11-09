@@ -25,7 +25,8 @@
           {
             "intent": "skip",
             "label": "Skip today",
-            "detail": "The leg stays red until tomorrow's run."
+            "detail": "The leg stays red until tomorrow's run.",
+            "confirm": "Skip it for sure"
           }
         ],
         "recommends": {

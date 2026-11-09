@@ -105,7 +105,9 @@ and an `unknown` shows on the pressed control until the next tap.
 `decisions` is the trick's one path to the person's attention: a list of `{ key, title, summary,
 body?, options?, recommends?, priority?, about?, replyTo?, media?, links?, expiresAt? }`. Keys are 1
 to 64 characters of `[a-z0-9-]`, unique per document. `recommends.intent` is one of the options and
-is shown as "Recommended", never pre-selected. `about` is a session's scope key whose Chat the card
+is shown as "Recommended", never pre-selected. An option is `{ intent, label, detail?, confirm? }`:
+`confirm` is the second label of the tree's button (up to 24 characters), so the phone arms the
+option on the first tap and sends the intent on the second, and the bridge sees one intent. `about` is a session's scope key whose Chat the card
 opens. `replyTo` is a session's scope key: the person's answer reaches it as the person's own walky
 message. An answered or dismissed key stays closed until the trick stops listing it.
 
