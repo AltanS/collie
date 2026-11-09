@@ -32,6 +32,9 @@ const OPTIONS: readonly { id: OptionId; label: string }[] = [
   { id: "A1", label: "tiles under header" },
   { id: "A2", label: "icons in summary line" },
   { id: "A3", label: "sticky pills, title peek" },
+  { id: "A4", label: "bottom bar carries it all" },
+  { id: "A5", label: "Hill tab, tricks on top" },
+  { id: "A6", label: "bottom bar, tricks sheet" },
   { id: "B0", label: "today's card" },
   { id: "B1", label: "calm, typographic" },
   { id: "B2", label: "the sender carries it" },
@@ -151,7 +154,7 @@ export function HillLookSection() {
         <Segmented name="Case" value={caseId} options={CASES} onChange={setCaseId} />
       </div>
       <Group title="A Dashboard strip">
-        {(["A0", "A1", "A2", "A3"] as const).map((id) => (
+        {(["A0", "A1", "A2", "A3", "A4", "A5", "A6"] as const).map((id) => (
           <OptionCard key={id} id={id} caseId={caseId} />
         ))}
       </Group>

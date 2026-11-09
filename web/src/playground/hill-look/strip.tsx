@@ -2,7 +2,7 @@
 // trick, scrolling sideways with the house fade when it overflows (`OverflowEdges`, cue "none", as the
 // Belt has it). A0 is today's row. A tap here only highlights. DEV-ONLY.
 
-import { Mountain, MountainSnow } from "lucide-react";
+import { LayoutGrid, Mountain, MountainSnow } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
 import { AgentList } from "@/components/agent-list";
@@ -11,6 +11,9 @@ import { HillEntryRow } from "@/components/hill-view";
 import { NeedsYouSwitch } from "@/components/needs-you-switch";
 import { StatusCounts } from "@/components/status-counts";
 import { Collapse } from "@/components/ui/collapse";
+import { Icon } from "@/components/icons/icon";
+import { BottomSheet } from "@/components/ui/sheet";
+import { TabBar, type TabBarItem } from "@/components/ui/tab-bar";
 import { STRIP_TAP_TARGET } from "@/components/ui/labelled-strip";
 import { OverflowEdges } from "@/components/ui/overflow-edges";
 import type { PaneOrder } from "@/lib/pane-order";
@@ -24,7 +27,7 @@ import type { HillCase, StripTrick } from "./fixtures";
 
 const noop = () => {};
 
-export type StripId = "A0" | "A1" | "A2" | "A3";
+export type StripId = "A0" | "A1" | "A2" | "A3" | "A4" | "A5" | "A6";
 
 /** The highlighted item: a tap marks it, a second tap clears it. */
 function usePick() {
@@ -97,12 +100,14 @@ function TrickGlyph({ trick, className }: { trick: StripTrick; className?: strin
   return <Glyph aria-hidden className={cn("size-5", inkOf(trick.tone, false) || "text-foreground", className)} />;
 }
 
-function A1Strip({ c }: { c: HillCase }) {
+function A1Strip({ c, withHill = true }: { c: HillCase; withHill?: boolean }) {
   const { picked, pick } = usePick();
   const { count, now } = hillFacts(c);
   return (
     <div data-slot="a1-strip" className="border-b border-border pb-2 pt-2">
       <Scroller className="gap-1.5">
+        {withHill && (
+          <>
         <Tile
           label="Hill"
           picked={picked === "hill"}
@@ -112,6 +117,8 @@ function A1Strip({ c }: { c: HillCase }) {
           badge={count > 0 ? <CountBadge n={count} className={now ? "bg-status-working text-background" : "bg-foreground text-background"} /> : undefined}
         />
         <span aria-hidden className="mx-1 h-8 w-px shrink-0 self-center bg-border" />
+          </>
+        )}
         {c.tricks.map((trick) => (
           <Tile
             key={trick.id}
@@ -243,6 +250,179 @@ function A3Strip({ c }: { c: HillCase }) {
   );
 }
 
+
+// ── The bottom bar: today's tabs (the real TabBar), and A4 to A6 around them ───────────────────────
+
+type DashTab = "crew" | "dashboard" | "changes" | "hill";
+
+/** The needs-you count the Dashboard tab carries, as `routes/home.tsx` counts it. */
+const BLOCKED = herd.filter((a) => a.status === "blocked").length;
+
+/** Today's tabs on a crew with a screen: Crew, Dashboard, Files, as `routes/home.tsx` draws them. */
+const TABS: readonly TabBarItem<DashTab>[] = [
+  { value: "crew", label: "Crew", icon: <Icon name="crew" className="size-5" /> },
+  { value: "dashboard", label: "Dashboard", icon: <Icon name="tab-dashboard" className="size-5" />, badge: BLOCKED, badgeLabel: `${BLOCKED} blocked` },
+  { value: "changes", label: "Files", icon: <Icon name="files" className="size-5" /> },
+];
+
+/** The Hill as a tab item: the mountain, the red count in the bar's own badge, the snow cap in the caution ink while a Decision is `now`. */
+function hillTab(c: HillCase): TabBarItem<DashTab> {
+  const { count, now } = hillFacts(c);
+  const Peak = now ? MountainSnow : Mountain;
+  return {
+    value: "hill",
+    label: "Hill",
+    icon: <Peak className={cn("size-5", now && "text-status-working")} strokeWidth={1.75} />,
+    badge: count,
+    badgeLabel: `${count} open`,
+  };
+}
+
+/** Today's bar: the real TabBar, unchanged. */
+function TodayBar() {
+  const [tab, setTab] = useState<DashTab>("dashboard");
+  return <TabBar label="Dashboard views" active={tab} onSelect={setTab} items={TABS} />;
+}
+
+/**
+ * One item in the bar's own style, for the parts the TabBar cannot hold (it lays its tabs out
+ * equal and never scrolls): the TabBar button's classes, the same reserved 2px top edge, the same
+ * corner badge. A trick's count is not "waiting on you", so its badge is quiet, never red (ADR 0066).
+ */
+function BarItem({ label, icon, picked, onTap, badge, quiet = false, width = "w-[60px]" }: { label: string; icon: ReactNode; picked: boolean; onTap: () => void; badge?: number | string; quiet?: boolean; width?: string }) {
+  return (
+    <button
+      type="button"
+      aria-pressed={picked}
+      onClick={onTap}
+      className={cn(
+        "relative flex min-h-14 shrink-0 flex-col items-center justify-center gap-1 border-t-2 border-transparent px-1 text-[11px] font-medium select-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring",
+        width,
+        picked ? "border-foreground text-foreground" : "text-muted-foreground",
+      )}
+    >
+      <span className="relative flex size-5 items-center justify-center" aria-hidden>
+        {icon}
+        {badge !== undefined && badge !== 0 && (
+          <span
+            className={cn(
+              "absolute -top-1.5 left-[calc(100%-0.25rem)] flex h-4 min-w-4 items-center justify-center rounded-sm px-1 text-[10px] font-semibold leading-none tabular-nums",
+              quiet ? "border border-border bg-card text-foreground" : "bg-status-blocked text-background",
+            )}
+          >
+            {badge}
+          </span>
+        )}
+      </span>
+      <span className="max-w-full truncate leading-tight">{label}</span>
+    </button>
+  );
+}
+
+/** The band every bar option stands on: the TabBar's own ground, rule and safe area. */
+function Band({ children }: { children: ReactNode }) {
+  return (
+    <nav aria-label="Dashboard views" className="flex shrink-0 border-t border-band-rule bg-band-ground pb-[env(safe-area-inset-bottom)]">
+      {children}
+    </nav>
+  );
+}
+
+/** The real TabBar, its tabs pinned at the bar's left at a fixed width, its own band dropped (the Band draws it). */
+function PinnedTabs({ width }: { width: string }) {
+  const [tab, setTab] = useState<DashTab>("dashboard");
+  return <TabBar label="Dashboard tabs" active={tab} onSelect={setTab} items={TABS} className={cn("shrink-0 border-t-0 bg-transparent pb-0", width)} />;
+}
+
+function BarDivider() {
+  return <span aria-hidden className="my-3 w-px shrink-0 self-stretch bg-border" />;
+}
+
+function trickBadge(trick: StripTrick): string | undefined {
+  return trick.count !== undefined && trick.count.length <= 3 ? trick.count : undefined;
+}
+
+/** A4: the tabs pinned, a divider, the Hill pinned after it, then the tricks scrolling under the house fade. */
+function A4Bar({ c }: { c: HillCase }) {
+  const { picked, pick } = usePick();
+  const hill = hillTab(c);
+  return (
+    <Band>
+      <PinnedTabs width="w-[210px]" />
+      <BarDivider />
+      <div className="-mt-px flex shrink-0">
+        <BarItem label="Hill" icon={hill.icon} badge={hill.badge} picked={picked === "hill"} onTap={() => pick("hill")} width="w-14" />
+      </div>
+      <div className="-mt-px flex min-w-0 flex-1">
+        <OverflowEdges cue="none">
+          {(ref) => (
+            <div ref={ref} className="flex min-w-0 flex-1 overflow-x-auto overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              {c.tricks.map((trick) => (
+                <BarItem key={trick.id} label={trick.name} icon={<TrickGlyph trick={trick} />} badge={trickBadge(trick)} quiet picked={picked === trick.id} onTap={() => pick(trick.id)} width="w-14" />
+              ))}
+            </div>
+          )}
+        </OverflowEdges>
+      </div>
+    </Band>
+  );
+}
+
+/** A5: the Hill is a fourth tab at the bar's right end, under the thumb; the tricks go to the tiles at the top. */
+function A5Bar({ c }: { c: HillCase }) {
+  const [tab, setTab] = useState<DashTab>("dashboard");
+  return <TabBar label="Dashboard views" active={tab} onSelect={setTab} items={[...TABS, hillTab(c)]} />;
+}
+
+/** A6: no scrolling: the tabs, a divider, the Hill, and one Tricks item that opens a sheet of tiles. */
+function A6Bar({ c }: { c: HillCase }) {
+  const { picked, pick } = usePick();
+  const [sheet, setSheet] = useState(false);
+  const hill = hillTab(c);
+  const loud = c.tricks.filter((t) => t.tone === "warn" || t.tone === "danger").length;
+  return (
+    <>
+      <Band>
+        <PinnedTabs width="flex-[3]" />
+        <BarDivider />
+        <div className="-mt-px flex flex-[2]">
+          <BarItem label="Hill" icon={hill.icon} badge={hill.badge} picked={picked === "hill"} onTap={() => pick("hill")} width="flex-1" />
+          <BarItem
+            label="Tricks"
+            icon={<LayoutGrid className="size-5" strokeWidth={1.75} />}
+            badge={loud > 0 ? loud : undefined}
+            quiet
+            picked={sheet}
+            onTap={() => setSheet(true)}
+            width="flex-1"
+          />
+        </div>
+      </Band>
+      <BottomSheet open={sheet} onClose={() => setSheet(false)} title="Tricks">
+        <div className="grid grid-cols-4 justify-items-center gap-x-2 gap-y-3 px-4 pb-6 pt-1">
+          {c.tricks.map((trick) => (
+            <Tile
+              key={trick.id}
+              label={trick.name}
+              picked={picked === trick.id}
+              onTap={() => pick(trick.id)}
+              face={<TrickGlyph trick={trick} />}
+              badge={trickBadge(trick) !== undefined ? <CountBadge n={trickBadge(trick) ?? ""} className="border border-border bg-card text-foreground" /> : undefined}
+            />
+          ))}
+        </div>
+      </BottomSheet>
+    </>
+  );
+}
+
+function BottomBar({ option, c }: { option: StripId; c: HillCase }) {
+  if (option === "A4") return <A4Bar c={c} />;
+  if (option === "A5") return <A5Bar c={c} />;
+  if (option === "A6") return <A6Bar c={c} />;
+  return <TodayBar />;
+}
+
 // ── The Dashboard around the strip ─────────────────────────────────────────────────────────────────
 
 /** The real Dashboard: header, the strip where the option puts it, and the pane list under it. */
@@ -265,6 +445,7 @@ export function StripDashboard({ option, c }: { option: StripId; c: HillCase }) 
             </Collapse>
           )}
           {option === "A1" && <A1Strip c={c} />}
+          {option === "A5" && <A1Strip c={c} withHill={false} />}
           {option === "A3" && <A3Strip c={c} />}
           {option === "A2" && (
             <div className="px-4">
@@ -290,6 +471,7 @@ export function StripDashboard({ option, c }: { option: StripId; c: HillCase }) 
             />
           </div>
         </div>
+        <BottomBar option={option} c={c} />
       </AppHeaderHost>
     </RootRouter>
   );
