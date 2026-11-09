@@ -96,6 +96,11 @@ export interface HillTrickSender {
   readonly label: string;
   /** The tricks host name the trick runs under (bridge/tricks/facts.ts `tricksHostName`); the tap goes there. */
   readonly host: string;
+  /**
+   * The trick's own folder, its real path, from the runner: the one root inside the config folder this
+   * trick's images may come from (media.ts, "A TRICK'S OWN FOLDER"). Absent: the images take the agent's rules.
+   */
+  readonly imageRoot?: string;
 }
 
 /** The tap an answer to a trick's decision becomes: the answer's `rid`, `hill/<key>`, the intent, the words. */
@@ -461,7 +466,8 @@ export class HillService {
     if (open.length >= HILL_OPEN_MAX) return refuse("too_many_open", `this session has ${String(HILL_OPEN_MAX)} open decisions; withdraw one, or wait for answers`);
     const asked = input.priority ?? "today";
     const priority = asked === "now" && open.filter((decision) => decision.priority === "now").length >= HILL_NOW_MAX ? "today" : asked;
-    const images = this.readImages(input.images ?? []);
+    // A trick's own folder is a root for a trick's images only; an agent's post never has one.
+    const images = this.readImages(input.images ?? [], from.kind === "trick" ? (from.imageRoot ?? null) : null);
     if (!images.ok) return images;
 
     let id = this.mint();
@@ -506,7 +512,7 @@ export class HillService {
   }
 
   /** Read and check every image a post names, in order, before anything is kept. The first that fails refuses the post. */
-  private readImages(raw: readonly HillImageInput[]): { readonly ok: true; readonly images: Array<HillImageBytes & { readonly caption: string | null }> } | Extract<HillPostAnswer, { ok: false }> {
+  private readImages(raw: readonly HillImageInput[], trickRoot: string | null): { readonly ok: true; readonly images: Array<HillImageBytes & { readonly caption: string | null }> } | Extract<HillPostAnswer, { ok: false }> {
     if (raw.length === 0) return { ok: true, images: [] };
     if (raw.length > HILL_MEDIA_MAX) return { ok: false, code: "too_many_images", error: `a decision has at most ${String(HILL_MEDIA_MAX)} images` };
     const store = this.deps.media;
@@ -515,7 +521,7 @@ export class HillService {
     for (const image of raw) {
       const caption = cleanLine(image.caption ?? "", HILL_MEDIA_CAPTION_MAX);
       if (caption.over) return { ok: false, code: "bad_image", error: `an image caption is at most ${String(HILL_MEDIA_CAPTION_MAX)} characters` };
-      const read = store.read(image.path);
+      const read = store.read(image.path, trickRoot);
       if (!read.ok) return { ok: false, code: read.code, error: read.error };
       images.push({ mime: read.mime, bytes: read.bytes, width: read.width, height: read.height, caption: caption.text === "" ? null : caption.text });
     }

@@ -105,7 +105,7 @@ export interface TricksHillPort {
   /** Make the hill agree with one successful run's decisions; the refusals join the trick's. */
   sync(trick: TrickHillTrick, run: TrickHillRun): Refusal[];
   /** Withdraw every open decision of a trick switched off or removed. */
-  off(trick: TrickHillTrick): void;
+  off(trick: Pick<TrickHillTrick, "id" | "name" | "host">): void;
   /** Every trick the map knows that is not in `present` is off. */
   prune(present: ReadonlySet<string>, host: string): void;
   /** The content hash of the decision the person answered. */
@@ -353,7 +353,7 @@ export class TricksService implements TricksSurface {
 
   /** The trick as the hill's sender names it. */
   private hillTrick(rt: TrickRuntime): TrickHillTrick {
-    return { id: rt.found.id, name: rt.found.manifest?.name ?? rt.found.id, host: this.deps.host() };
+    return { id: rt.found.id, name: rt.found.manifest?.name ?? rt.found.id, host: this.deps.host(), dir: rt.found.dir };
   }
 
   private restart(rt: TrickRuntime): void {
@@ -481,7 +481,7 @@ export class TricksService implements TricksSurface {
     // The decisions reach the hill only from a run that succeeded. A list refused as a whole (over the
     // cap) changes nothing there either: the last good decisions stay, as the last good parts do.
     const listRefused = parsed.refusals.some((refusal) => refusal.path === "/decisions" && refusal.decision === undefined);
-    const posted = listRefused ? [] : (this.deps.decisions?.sync({ id, name: manifest.name, host }, { decisions: parsed.decisions, refusedKeys: parsed.refusedDecisions }) ?? []);
+    const posted = listRefused ? [] : (this.deps.decisions?.sync({ ...this.hillTrick(rt), name: manifest.name, host }, { decisions: parsed.decisions, refusedKeys: parsed.refusedDecisions }) ?? []);
     this.succeeded(rt, startedAt, [...parsed.refusals, ...posted]);
     this.publish(id);
     const mine = this.store.trickParts(host, id, revBefore);

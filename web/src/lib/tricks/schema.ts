@@ -41,6 +41,8 @@ import {
   HILL_LINK_HREF_MAX,
   HILL_LINK_LABEL_MAX,
   HILL_LINKS_MAX,
+  HILL_MEDIA_CAPTION_MAX,
+  HILL_MEDIA_MAX,
   HILL_NODE_PREFIX,
   HILL_OPEN_MAX,
   HILL_OPTION_CONFIRM_MAX,
@@ -72,8 +74,6 @@ export const PART_MAX_BYTES = 16 * 1024;
 export const DOCUMENT_MAX_BYTES = 64 * 1024;
 /** A button's `value`, an action's `value` and a tap's text value, at most this many UTF-8 bytes. */
 export const VALUE_MAX_BYTES = 1024;
-/** An `image` file and a decision's media file, checked by the runner on disk and by the phone on fetch. */
-export const IMAGE_MAX_BYTES = 512 * 1024;
 /** Parts per document. One trick in many places, not a page of widgets. */
 export const PARTS_MAX = 24;
 /** The most refusals a result lists. One more row counts the rest, as the theme parser does. */
@@ -162,9 +162,6 @@ export const DECISIONS_MAX = HILL_OPEN_MAX;
 export const DECISION_KEY_MAX = 64;
 /** A tap's `seen`, the content hash of the decision the person saw (the runner's hex digest). */
 export const DECISION_HASH_MAX = 64;
-/** Media files of one decision, and a caption. Images come to the hill later; until then they are noted, not posted. */
-export const DECISION_MEDIA_MAX = 4;
-export const MEDIA_CAPTION_MAX = LINE_MAX;
 
 /** Limits the view tree holds, as data, so the renderer and the docs read the same numbers. */
 export const VIEW_LIMITS = {
@@ -941,7 +938,11 @@ export interface DecisionRecommends {
   why: string;
 }
 export interface DecisionMedia {
-  /** A PNG or JPEG of the trick folder. The runner copies it into the Hill's media store. */
+  /**
+   * An image in the trick folder, as a relative path. The runner hands its real path to the hill, which
+   * reads it, keeps a copy and decides its type by its first bytes: PNG, JPEG or WebP, at most
+   * `HILL_MEDIA_BYTES_MAX` (bridge/tricks/hill.ts).
+   */
   file: string;
   caption?: string;
 }
@@ -1273,6 +1274,8 @@ const MUX_ID_MAX_BYTES = 128;
 const INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,9})?)?(Z|[+-]\d{2}:\d{2})$/;
 const INSTANT_MAX = 40;
 const IMAGE_SRC = /^(?!\/)(?!.*(^|\/)\.\.?(\/|$))[A-Za-z0-9._\-/]+\.(png|jpe?g)$/i;
+/** A decision's media `file`: the image `src` rule, and WebP too, which the hill keeps. */
+const MEDIA_FILE = /^(?!\/)(?!.*(^|\/)\.\.?(\/|$))[A-Za-z0-9._\-/]+\.(png|jpe?g|webp)$/i;
 /** The latest instant `Date` holds, in ms. */
 const EPOCH_MAX_MS = 8_640_000_000_000_000;
 
@@ -1412,6 +1415,11 @@ export function isTrickUrl(text: string): boolean {
 /** An image `src` or media `file`: relative to the trick folder, no `..` or `.` step, a `.png`, `.jpg` or `.jpeg`. */
 export function isImageSrc(text: string): boolean {
   return text.length <= IMAGE_SRC_MAX && IMAGE_SRC.test(text) && !text.includes("//");
+}
+
+/** A decision's media `file`: relative to the trick folder, no `..` or `.` step, a `.png`, `.jpg`, `.jpeg` or `.webp`. */
+export function isMediaFile(text: string): boolean {
+  return text.length <= IMAGE_SRC_MAX && MEDIA_FILE.test(text) && !text.includes("//");
 }
 
 /** A session a `link` with `rel` `pane` or a `row` opens: a real session's scope key, or a trick session's id. */
@@ -3021,7 +3029,7 @@ function readSessionKey(f: Fields, key: string): string | undefined {
 }
 
 function readMedia(f: Fields): DecisionMedia[] | undefined {
-  const list = f.array("media", { min: 0, max: DECISION_MEDIA_MAX, what: "images" });
+  const list = f.array("media", { min: 0, max: HILL_MEDIA_MAX, what: "images" });
   if (list === undefined) return undefined;
   const out: DecisionMedia[] = [];
   list.forEach((value, i) => {
@@ -3029,9 +3037,9 @@ function readMedia(f: Fields): DecisionMedia[] | undefined {
     if (m === undefined) return;
     m.keys(DECISION_MEDIA_KEYS);
     const file = m.text("file", { max: IMAGE_SRC_MAX, required: true });
-    if (file !== undefined && !isImageSrc(file)) m.push("target", "file", '"file" must be a .png, .jpg or .jpeg file inside the trick folder, as a relative path with no "..".');
-    const caption = m.text("caption", { max: MEDIA_CAPTION_MAX });
-    if (file === undefined || !isImageSrc(file)) return;
+    if (file !== undefined && !isMediaFile(file)) m.push("target", "file", '"file" must be a .png, .jpg, .jpeg or .webp file inside the trick folder, as a relative path with no "..".');
+    const caption = m.text("caption", { max: HILL_MEDIA_CAPTION_MAX });
+    if (file === undefined || !isMediaFile(file)) return;
     out.push(caption === undefined ? { file } : { file, caption });
   });
   return out;

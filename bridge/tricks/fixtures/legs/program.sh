@@ -10,6 +10,7 @@
 #                  Default: $HOME/.cache/collie-lab/leg-logs
 #   LEGS_RUNNING   1 or 0: skip the process check (used by test.sh)
 #   LEGS_NOW       epoch seconds: a fixed clock (used by test.sh)
+#   LEGS_SHOT      a PNG, JPEG or WebP in this trick's folder, by its name: the decision shows it
 
 export LC_ALL=C
 
@@ -98,8 +99,13 @@ fi
 skipped=""
 [ -n "$skipfile" ] && [ -r "$skipfile" ] && skipped=$(head -n 1 "$skipfile")
 
+# An image for the decision: a plain name of a file in this folder, else none.
+shot=${LEGS_SHOT:-}
+case "$shot" in ''|*[!A-Za-z0-9._-]*|.*) shot="" ;; esac
+[ -n "$shot" ] && [ ! -f "$shot" ] && shot=""
+
 awk -v logf="$log" -v running="$running" -v now="$now" -v mtime="$mtime" -v birth="$birth" \
-    -v nowiso="$nowiso" \
+    -v nowiso="$nowiso" -v shot="$shot" \
     -v scope="$scope" -v logbase="$logbase" -v skipped="$skipped" '
 function jstr(s) {
   gsub(/[^ -~]/, "", s)
@@ -227,6 +233,7 @@ END {
     out = out ",\"recommends\":{\"intent\":\"rerun\",\"why\":\"A red case in a replay leg is often a timeout, and a rerun shows it.\"}"
     out = out ",\"priority\":\"today\""
     if (scope != "") out = out ",\"about\":" jstr(scope) ",\"replyTo\":" jstr(scope)
+    if (shot != "") out = out ",\"media\":[{\"file\":" jstr(shot) ",\"caption\":" jstr(clip("Case " firstred, 80)) "}]"
     out = out "}]"
   }
   out = out "}"

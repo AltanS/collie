@@ -15,6 +15,7 @@
 //   3. Its real path is the path as given: no folder on the way is a symlink either.
 //   4. It is not inside the bridge's own state folder or config folder, not under a `.git` folder,
 //      and its name is not one of a state folder's secrets (`isDeniedPath`, the Files view's rule).
+//      One exception, for a trick's post only (M94): see "A TRICK'S OWN FOLDER" below.
 //   5. It is opened with O_NOFOLLOW (a symlink swapped in after the `lstat` fails the open) and
 //      O_NONBLOCK (a FIFO swapped in cannot hang the bridge). The open handle must be a regular file,
 //      the same device and inode the `lstat` saw, and on Linux the kernel's own name for it
@@ -24,6 +25,19 @@
 //
 // A hard link to a file elsewhere passes, as in the Files view: it is the same inode under a name the
 // agent made, which needs write access there, and the agent can read that file anyway.
+//
+// A TRICK'S OWN FOLDER (M94). A trick lives in `<configDir>/tricks/<id>/`, inside the config folder,
+// and its decisions name images in that folder. The tricks runner passes that folder's real path as
+// `root` ({@link HillImageRoot}); the service passes it on for a post whose sender is a trick, and
+// never for an agent's (the socket's sender type has no such field). With a root, and a real path
+// strictly below it, a denied folder that holds the root strictly above it (the config folder, in
+// practice) does not deny that one path. Nothing else moves: every other denied folder, the `.git`
+// rule, the secret names, and every check before and after (absolute and normal, no symlink, same
+// inode, the cap, the leading bytes) hold as for any post. A root inside the state folder or the
+// media folder (`never`) lifts nothing, and so does a root that IS a denied folder, so a root wider
+// than one trick's folder gains nothing. A real path has no symlink on the way, so a path below the
+// root in text is below it on disk: `../` out of the folder fails check 1, and a symlink in the
+// folder that points out fails check 2 or 3.
 //
 // THE NAME ON DISK IS NEVER THE POSTER'S. A decision's folder is its id (`dc_` and 12 characters) and
 // a file is its media id (`im_` and 16 characters), both minted by the bridge and checked against
@@ -49,11 +63,11 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { isAbsolute, join, normalize } from "node:path";
+import { dirname, isAbsolute, join, normalize } from "node:path";
 
 import { HILL_ID_RE, HILL_IMAGE_PATH_MAX, HILL_MEDIA_BYTES_MAX, HILL_MEDIA_ID_RE, HILL_MEDIA_MIMES, type HillMedia, type HillMediaMime } from "../../web/src/lib/hill/wire.ts";
 import { isDeniedPath, sniffImageType } from "../files-view.ts";
-import { HOST } from "../host.ts";
+import { HOST, isBelow } from "../host.ts";
 import { headerField } from "../walky/types.ts";
 
 /** The media folder's name inside the hill folder. */
@@ -199,11 +213,33 @@ function readUpTo(fd: number, want: number): Uint8Array<ArrayBuffer> {
   return bytes.subarray(0, got);
 }
 
+/** A trick's own folder, the one place inside a denied folder a trick's post may name (this file's header). */
+export interface HillImageRoot {
+  /** The trick folder's real path: absolute, normal, no symlink on the way. */
+  readonly root: string;
+  /** Folders a root inside lifts nothing: the state folder and the media folder, each as given and as its real path. */
+  readonly never: readonly string[];
+}
+
+/**
+ * The denied folders for one real path. With a trick's root and a path strictly below it, a denied
+ * folder that holds the root strictly above it is left out; every other folder stays. A root off its
+ * rule, or inside a `never` folder, leaves the list as it is.
+ */
+function deniedFor(real: string, denied: readonly string[], allowed: HillImageRoot | null): readonly string[] {
+  if (allowed === null) return denied;
+  const { root, never } = allowed;
+  if (!isAbsolute(root) || normalize(root) !== root || !isBelow(HOST, root, real)) return denied;
+  if (never.some((folder) => folder.trim() !== "" && isBelow(HOST, folder, root)) || never.includes(root)) return denied;
+  return denied.filter((folder) => !isBelow(HOST, folder, root));
+}
+
 /**
  * One image a post names, read by the checks in this file's header, in that order. `denied` is the
- * list {@link deniedFoldersSync} makes of the bridge's own folders. Total: no input makes it throw.
+ * list {@link deniedFoldersSync} makes of the bridge's own folders; `allowed` a trick's own folder, for
+ * a trick's post only. Total: no input makes it throw.
  */
-export function readPostedImage(path: string, denied: readonly string[]): HillImageRead {
+export function readPostedImage(path: string, denied: readonly string[], allowed: HillImageRoot | null = null): HillImageRead {
   if (path === "" || path.length > HILL_IMAGE_PATH_MAX || path.includes("\0")) return bad(path, "an image is named by an absolute path");
   if (!isAbsolute(path) || normalize(path) !== path || path.endsWith("/")) return bad(path, "an image is named by an absolute path with no . or .. in it");
   let link: ReturnType<typeof lstatSync>;
@@ -223,7 +259,7 @@ export function readPostedImage(path: string, denied: readonly string[]): HillIm
     return bad(path, "the bridge may not read it");
   }
   if (real !== path) return bad(path, "goes through a symlinked folder; name the real path");
-  if (isDeniedPath(real, denied)) return bad(path, "is inside Collie's own folders, a .git folder, or names a Collie secret");
+  if (isDeniedPath(real, deniedFor(real, denied, allowed))) return bad(path, "is inside Collie's own folders, a .git folder, or names a Collie secret");
   let fd: number;
   try {
     fd = openSync(path, OPEN_FLAGS);
@@ -279,6 +315,8 @@ export interface HillMediaFile {
  */
 export class HillMediaStore {
   private readonly root: string;
+  /** The state folder (the hill folder's parent) and the media folder: a trick's root inside them lifts nothing. */
+  private readonly never: readonly string[];
 
   /** `dir` is the hill folder (`hillDir(stateDir)`); `denied` the bridge's own folders, as {@link deniedFoldersSync} lists them. */
   constructor(
@@ -287,11 +325,15 @@ export class HillMediaStore {
     private readonly warn: (line: string) => void = (line) => console.warn(line),
   ) {
     this.root = join(dir, MEDIA_DIR);
+    this.never = deniedFoldersSync([dirname(dir), this.root]);
   }
 
-  /** Read and check one image a post names. */
-  read(path: string): HillImageRead {
-    return readPostedImage(path, [...this.denied, this.root]);
+  /**
+   * Read and check one image a post names. `trickRoot` is a trick's own folder, from the tricks runner
+   * through a trick sender only (this file's header); an agent's post never has one.
+   */
+  read(path: string, trickRoot: string | null = null): HillImageRead {
+    return readPostedImage(path, [...this.denied, this.root], trickRoot === null ? null : { root: trickRoot, never: this.never });
   }
 
   /** Keep a decision's images, each whole or none at all. False when any write failed; then nothing is left behind. */

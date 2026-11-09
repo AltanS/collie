@@ -1,17 +1,18 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 import type { JsonObject } from "../json.ts";
+import { deniedFoldersSync, HillMediaStore } from "../hill/media.ts";
 import { memoryHillReceipts } from "../hill/receipts.ts";
 import { HillService, type HillPlace } from "../hill/service.ts";
-import { HillStore } from "../hill/store.ts";
-import { hillAnswerRoute, hillListRoute } from "../server.ts";
+import { hillDir, HillStore } from "../hill/store.ts";
+import { hillAnswerRoute, hillListRoute, hillMediaRoute } from "../server.ts";
 import type { HillDecision, HillReceipt } from "../../web/src/lib/hill/wire.ts";
 import { parseJsonObject } from "../../web/src/lib/json.ts";
 import { parseFacts, type Refusal, type TrickDecision, type TrickFacts, type TrickTapReply } from "../../web/src/lib/tricks/schema.ts";
-import { decisionContentHash, IMAGES_LATER, scopeKeyAddress, TrickHill, TRICKS_MAP_FILE, trickRequestId, type TrickHillTrick } from "./hill.ts";
+import { decisionContentHash, imageFileDigest, scopeKeyAddress, TrickHill, TRICKS_MAP_FILE, trickRequestId, type TrickHillTrick } from "./hill.ts";
 import { TRICKS_DIR } from "./paths.ts";
 import { runProvider, type RunOutcome, type RunSpec } from "./run.ts";
 import { HILL_NODE_TAP_REFUSED, TricksService, type TapAnswer } from "./service.ts";
@@ -22,7 +23,7 @@ import { withSwitch, writeSwitches, type Switches } from "./switches.ts";
 
 const roots: string[] = [];
 function tempDir(): string {
-  const dir = mkdtempSync(join(tmpdir(), "collie-trick-hill-"));
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), "collie-trick-hill-")));
   roots.push(dir);
   return dir;
 }
@@ -31,7 +32,7 @@ afterAll(() => {
 });
 
 const HOST = "bluefin";
-const LEGS: TrickHillTrick = { id: "legs", name: "Browser leg", host: HOST };
+const LEGS = { id: "legs", name: "Browser leg", host: HOST } as const;
 const uuid = (n: number): string => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 
 /** Two live agent sessions on this machine, as the hill's probe finds them. */
@@ -42,7 +43,12 @@ const PLACES: HillPlace[] = [
 
 interface Rig {
   readonly stateDir: string;
+  /** The config folder beside the state folder; the legs trick's folder is `<configDir>/tricks/legs`. */
+  readonly configDir: string;
+  /** The legs trick as the runner hands it over, with its folder. */
+  readonly trick: TrickHillTrick;
   readonly store: HillStore;
+  readonly media: HillMediaStore;
   readonly hill: HillService;
   readonly tricks: TrickHill;
   readonly sent: { to: string; body: string }[];
@@ -62,9 +68,18 @@ function place(live: () => HillPlace[]): (address: string) => HillPlace | null {
   };
 }
 
-function rig(stateDir = tempDir()): Rig {
+function rig(stateDir = join(tempDir(), "state")): Rig {
   let n = 0;
-  const store = new HillStore(join(stateDir, "hill"), () => 1000);
+  let m = 0;
+  const configDir = join(dirname(stateDir), "config");
+  const trick: TrickHillTrick = { ...LEGS, dir: join(configDir, TRICKS_DIR, "legs") };
+  mkdirSync(stateDir, { recursive: true });
+  mkdirSync(trick.dir, { recursive: true });
+  // The media folder denies the state and the config folders, as bridge/index.ts makes it.
+  const media = new HillMediaStore(hillDir(stateDir), deniedFoldersSync([stateDir, configDir]), () => undefined);
+  const store = new HillStore(join(stateDir, "hill"), () => 1000, undefined, (ids) => {
+    for (const id of ids) media.remove(id);
+  });
   const taps: Rig["taps"] = [];
   const sent: Rig["sent"] = [];
   const state = { live: [...PLACES], tapResult: true, taps, sent };
@@ -83,13 +98,15 @@ function rig(stateDir = tempDir()): Rig {
     machine: "bluefin.lan",
     now: () => 1000,
     mintId: () => `dc_trk${String((n += 1)).padStart(9, "0")}`,
+    mintMediaId: () => `im_trk${String((m += 1)).padStart(13, "0")}`,
+    media,
     tap: async (host, trickId, tap, decisionId) => {
       state.taps.push({ host, trickId, node: tap.node, rid: tap.rid, decisionId });
       return state.tapResult;
     },
   });
   const tricks = new TrickHill({ stateDir, hill, addressOf: (scopeKey) => scopeKeyAddress(scopeKey, HOST, "local", probe) });
-  return Object.assign(state, { stateDir, store, hill, tricks, restart: () => rig(stateDir) });
+  return Object.assign(state, { stateDir, configDir, trick, store, media, hill, tricks, restart: () => rig(stateDir) });
 }
 
 const decision = (key: string, over: Partial<TrickDecision> = {}): TrickDecision => ({
@@ -104,7 +121,7 @@ const decision = (key: string, over: Partial<TrickDecision> = {}): TrickDecision
 });
 
 function sync(r: Rig, decisions: TrickDecision[], refusedKeys: string[] = []): Refusal[] {
-  return r.tricks.sync(LEGS, { decisions, refusedKeys });
+  return r.tricks.sync(r.trick, { decisions, refusedKeys });
 }
 
 const open = (r: Rig): HillDecision[] => r.store.all().filter((held) => held.state === "open");
@@ -152,7 +169,7 @@ describe("the diff by key", () => {
     expect(r.store.get(first.id)).toMatchObject({ state: "superseded", supersededBy: now?.id });
   });
 
-  test("every field the person sees moves the hash; the key, the expiry and the images do not", () => {
+  test("every field the person sees moves the hash; the key and the expiry do not", () => {
     const base = decisionContentHash(decision("k"));
     const changes: Partial<TrickDecision>[] = [
       { title: "Other" },
@@ -169,7 +186,13 @@ describe("the diff by key", () => {
     ];
     for (const change of changes) expect(decisionContentHash(decision("k", change)), JSON.stringify(change)).not.toBe(base);
     expect(decisionContentHash({ ...decision("k"), key: "other-key" })).toBe(base);
-    expect(decisionContentHash(decision("k", { expiresAt: 9_999_999_999_999, media: [{ file: "a.png" }] }))).toBe(base);
+    expect(decisionContentHash(decision("k", { expiresAt: 9_999_999_999_999 }))).toBe(base);
+    // The images count through their digests and captions, not through the names in `media`.
+    expect(decisionContentHash(decision("k", { media: [{ file: "a.png" }] }))).toBe(base);
+    const one = [{ bytes: "ab12", caption: null }];
+    expect(decisionContentHash(decision("k"), one)).not.toBe(base);
+    expect(decisionContentHash(decision("k"), [{ bytes: "ab13", caption: null }])).not.toBe(decisionContentHash(decision("k"), one));
+    expect(decisionContentHash(decision("k"), [{ bytes: "ab12", caption: "red" }])).not.toBe(decisionContentHash(decision("k"), one));
     expect(decisionContentHash(decision("k", { priority: "today", text: "optional" }))).toBe(base);
   });
 
@@ -265,11 +288,140 @@ describe("refusals and notes", () => {
     expect(open(r)).toHaveLength(20);
   });
 
-  test("a decision with images posts without them, with one note per run", () => {
+});
+
+// ── Images: a file in the trick's own folder reaches the hill ─────────────────────────────────
+
+/** A PNG's signature and IHDR, enough for the hill's sniff and size; `fill` makes two shots differ. */
+function png(width = 390, height = 240, fill = 0): Uint8Array<ArrayBuffer> {
+  const be32 = (n: number) => [(n >>> 24) & 0xff, (n >>> 16) & 0xff, (n >>> 8) & 0xff, n & 0xff];
+  return new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, ...be32(13), 0x49, 0x48, 0x44, 0x52, ...be32(width), ...be32(height), 8, 2, 0, 0, 0, ...be32(0), ...Array.from({ length: 64 }, () => fill)]);
+}
+
+function shot(r: Rig, name: string, bytes: Uint8Array): string {
+  const path = join(r.trick.dir, name);
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, bytes);
+  return path;
+}
+
+describe("images", () => {
+  test("a decision's image in the trick folder is on the card, read from the folder inside the config folder", () => {
     const r = rig();
-    const refusals = sync(r, [decision("a", { media: [{ file: "a.png" }] }), decision("b", { media: [{ file: "b.png" }] })]);
-    expect(refusals).toEqual([{ code: "later", path: "/decisions/0/media", reason: IMAGES_LATER, decision: "a" }]);
-    expect(open(r)).toHaveLength(2);
+    shot(r, "shots/red.png", png(390, 240, 1));
+    expect(sync(r, [decision("case-8", { media: [{ file: "shots/red.png", caption: "The red case" }] })])).toEqual([]);
+    const [held] = open(r);
+    expect(held?.media).toEqual([{ id: "im_trk0000000000001", kind: "image", mime: "image/png", bytes: png().length, width: 390, height: 240, caption: "The red case" }]);
+    expect(r.hill.mediaFile(held!.id, held!.media[0]!.id)?.bytes).toEqual(png(390, 240, 1));
+    // The trick's folder is never stored on the decision.
+    expect(JSON.stringify(r.store.all())).not.toContain(r.trick.dir);
+    // A second run with the same file posts nothing again.
+    expect(sync(r, [decision("case-8", { media: [{ file: "shots/red.png", caption: "The red case" }] })])).toEqual([]);
+    expect(r.store.all()).toHaveLength(1);
+  });
+
+  test("a changed screenshot under the same key replaces the open decision; seen is the new version's", () => {
+    const r = rig();
+    const media = [{ file: "red.png" }];
+    shot(r, "red.png", png(390, 240, 1));
+    sync(r, [decision("case-8", { media })]);
+    const first = open(r)[0]!;
+    const firstSeen = r.tricks.seenOf("legs", first.id);
+    shot(r, "red.png", png(390, 240, 2));
+    expect(sync(r, [decision("case-8", { media })])).toEqual([]);
+    const [now] = open(r);
+    expect(now?.supersedes).toBe(first.id);
+    expect(r.hill.mediaFile(now!.id, now!.media[0]!.id)?.bytes).toEqual(png(390, 240, 2));
+    expect(r.tricks.seenOf("legs", now!.id)).not.toBe(firstSeen);
+    expect(r.tricks.seenOf("legs", now!.id)).toBe(decisionContentHash(decision("case-8", { media }), [{ bytes: imageFileDigest(join(r.trick.dir, "red.png")), caption: null }]));
+    // A new caption alone asks again too.
+    sync(r, [decision("case-8", { media: [{ file: "red.png", caption: "Again" }] })]);
+    expect(open(r)[0]?.supersedes).toBe(now!.id);
+  });
+
+  test("a changed screenshot asks again after the person answered the old one", async () => {
+    const r = rig();
+    const media = [{ file: "red.png" }];
+    shot(r, "red.png", png(390, 240, 1));
+    sync(r, [decision("case-8", { media })]);
+    await answer(r, open(r)[0]!, 100, "rerun");
+    sync(r, [decision("case-8", { media })]);
+    expect(open(r)).toEqual([]);
+    shot(r, "red.png", png(390, 240, 3));
+    sync(r, [decision("case-8", { media })]);
+    expect(open(r)).toHaveLength(1);
+    expect(open(r)[0]?.supersedes).toBeNull();
+  });
+
+  test("an image the hill refuses refuses that one decision with the hill's reason; the version on the hill stays", () => {
+    const r = rig();
+    shot(r, "red.png", png(390, 240, 1));
+    sync(r, [decision("case-8", { media: [{ file: "red.png" }] })]);
+    const held = open(r)[0]!;
+    shot(r, "page.png", new TextEncoder().encode("<!doctype html><script>alert(1)</script>"));
+    const refusals = sync(r, [decision("case-8", { media: [{ file: "red.png" }, { file: "page.png" }] }), decision("case-9")]);
+    expect(refusals).toEqual([
+      {
+        code: "target",
+        path: "/decisions/0/media/1",
+        reason: 'The hill refused the image "page.png": is not a PNG, JPEG or WebP image (read from its first bytes, not its name).',
+        decision: "case-8",
+      },
+    ]);
+    expect(r.store.get(held.id)?.state).toBe("open");
+    expect(open(r).map((one) => one.from.trickKey).toSorted()).toEqual(["case-8", "case-9"]);
+    // A missing file and a file past the hill's cap are the hill's refusals too.
+    const big = new Uint8Array(2 * 1024 * 1024 + 1);
+    big.set(png());
+    shot(r, "big.png", big);
+    const more = sync(r, [decision("case-8", { media: [{ file: "big.png" }] }), decision("case-9", { media: [{ file: "gone.png" }] })]);
+    expect(more.map((one) => [one.code, one.path, one.decision])).toEqual([
+      ["size", "/decisions/0/media/0", "case-8"],
+      ["target", "/decisions/1/media/0", "case-9"],
+    ]);
+    expect(more[1]?.reason).toContain('"gone.png": no such file');
+    expect(r.store.get(held.id)?.state).toBe("open");
+  });
+
+  test.skipIf(process.platform === "win32")("a symlink in the trick folder that points out of it is refused, even to another trick's image", () => {
+    const r = rig();
+    const outside = join(dirname(r.configDir), "away.png");
+    writeFileSync(outside, png());
+    symlinkSync(outside, join(r.trick.dir, "away.png"));
+    const otherTrick = join(r.configDir, TRICKS_DIR, "other");
+    mkdirSync(otherTrick, { recursive: true });
+    writeFileSync(join(otherTrick, "shot.png"), png());
+    symlinkSync(otherTrick, join(r.trick.dir, "other"));
+    const refusals = sync(r, [decision("a", { media: [{ file: "away.png" }] }), decision("b", { media: [{ file: "other/shot.png" }] })]);
+    expect(refusals.map((one) => [one.path, one.reason])).toEqual([
+      ["/decisions/0/media/0", 'The hill refused the image "away.png": is a symlink; name the file itself.'],
+      ["/decisions/1/media/0", 'The hill refused the image "other/shot.png": goes through a symlinked folder; name the real path.'],
+    ]);
+    expect(open(r)).toEqual([]);
+  });
+
+  test("a name that leaves the folder is refused before the hill sees it (the schema refuses it first)", () => {
+    const r = rig();
+    writeFileSync(join(r.configDir, TRICKS_DIR, "x.png"), png());
+    const refusals = sync(r, [decision("a", { media: [{ file: "../x.png" }] })]);
+    expect(refusals).toEqual([{ code: "target", path: "/decisions/0/media", reason: '"../x.png" is not inside the trick folder, so the decision "a" was not posted.', decision: "a" }]);
+    expect(open(r)).toEqual([]);
+  });
+
+  test("the file digest is read once while the inode, size and mtime stay", () => {
+    const r = rig();
+    const path = shot(r, "cached.png", png(390, 240, 4));
+    // A whole second, so putting it back below is exact.
+    const mtime = new Date(1_794_130_000_000);
+    utimesSync(path, mtime, mtime);
+    const first = imageFileDigest(path);
+    // The same size, new bytes in place, and the old mtime put back: the cache answers, nothing is read.
+    writeFileSync(path, png(390, 240, 5));
+    utimesSync(path, mtime, mtime);
+    expect(imageFileDigest(path)).toBe(first);
+    utimesSync(path, mtime, new Date(mtime.getTime() + 5000));
+    expect(imageFileDigest(path)).not.toBe(first);
+    expect(imageFileDigest(join(r.trick.dir, "none.png"))).toBe("missing");
   });
 });
 
@@ -462,6 +614,9 @@ describe.skipIf(process.platform === "win32")("end to end with the legs trick", 
     // The same trick, its stdin copied to a file outside its folder first, so the test reads what the program got.
     writeFileSync(join(dir, "record.sh"), '#!/bin/sh\nf=$(cat)\nprintf \'%s\\n\' "$f" >> "$LEGS_TAP_LOG"\nprintf \'%s\' "$f" | ./program.sh\n', { mode: 0o755 });
     writeFileSync(join(dir, "trick.toml"), readFileSync(join(LEGS_DIR, "trick.toml"), "utf8").replace('run = "./program.sh"', 'run = "./record.sh"').replace('every = "15s"\n', ""));
+    // LEGS_SHOT names one small PNG in the trick's folder; the program puts it on its decision.
+    const shotBytes = png(64, 32, 7);
+    writeFileSync(join(dir, "red-case.png"), shotBytes);
     await switches(stateDir, true);
 
     const base = rig(stateDir);
@@ -471,7 +626,7 @@ describe.skipIf(process.platform === "win32")("end to end with the legs trick", 
       stateDir,
       host: () => HOST,
       world: () => ({ sessions: [], spaces: [] }),
-      env: { PATH: process.env.PATH ?? "/usr/bin:/bin", LEGS_LOG_DIR: join(LEGS_DIR, "fixtures", "red"), LEGS_RUNNING: "0", LEGS_NOW: "1794130860", LEGS_TAP_LOG: tapLog },
+      env: { PATH: process.env.PATH ?? "/usr/bin:/bin", LEGS_LOG_DIR: join(LEGS_DIR, "fixtures", "red"), LEGS_RUNNING: "0", LEGS_NOW: "1794130860", LEGS_TAP_LOG: tapLog, LEGS_SHOT: "red-case.png" },
       now: () => clock.t,
       warn: () => {},
       revBase: 1000,
@@ -481,6 +636,7 @@ describe.skipIf(process.platform === "win32")("end to end with the legs trick", 
     // The hill's tap goes to this runner, as bridge/index.ts wires it.
     const hill = new HillService({
       store: base.store,
+      media: base.media,
       receipts: memoryHillReceipts(),
       place: () => null,
       send: async () => "typed",
@@ -501,6 +657,12 @@ describe.skipIf(process.platform === "win32")("end to end with the legs trick", 
     expect(served).toMatchObject({ open: [{ id: card.id }] });
     expect(hill.list().open).toHaveLength(1);
     expect(card).toMatchObject({ title: "Leg red: case 8. Rerun it?", from: { kind: "trick", trickId: "legs", trickKey: "case-8", label: "Browser leg" }, target: null });
+    // The image came from the trick's folder, inside the config folder, and the phone's route serves its bytes.
+    expect(card.media).toMatchObject([{ kind: "image", mime: "image/png", width: 64, height: 32, bytes: shotBytes.length }]);
+    const image = hillMediaRoute(hill, card.id, card.media[0]!.id);
+    expect(image.status).toBe(200);
+    expect(image.headers.get("content-type")).toBe("image/png");
+    expect(new Uint8Array(await image.arrayBuffer())).toEqual(shotBytes);
 
     const seen = base.tricks.seenOf("legs", card.id);
     expect(seen).toMatch(/^[0-9a-f]{16}$/);

@@ -641,6 +641,12 @@ describe("decisions", () => {
     expect(parse(d({ media: [{ file: "a.png", caption: "the step" }, { file: "b.jpg" }] }))).toEqual([]);
     expect(parse(d({ media: [{ file: "a.svg" }] }))).toEqual(["/decisions/0/media/0/file"]);
     expect(parse(d({ media: [{ file: "../a.png" }] }))).toEqual(["/decisions/0/media/0/file"]);
+    // The hill's own caps: WebP too, four images, a caption of 80.
+    expect(parse(d({ media: [{ file: "shots/c.webp" }] }))).toEqual([]);
+    expect(parse(d({ media: [{ file: "/abs/a.png" }] }))).toEqual(["/decisions/0/media/0/file"]);
+    expect(parse(d({ media: Array.from({ length: 5 }, () => ({ file: "a.png" })) }))).toEqual(["/decisions/0/media"]);
+    expect(parse(d({ media: [{ file: "a.png", caption: "x".repeat(80) }] }))).toEqual([]);
+    expect(parse(d({ media: [{ file: "a.png", caption: "x".repeat(81) }] }))).toEqual(["/decisions/0/media/0/caption"]);
     expect(parse(d({ links: [{ label: "the report", href: "http://bluefin:8832/legs/24" }] }))).toEqual([]);
     expect(parse(d({ links: [{ label: "x", href: "file:///etc/passwd" }] }))).toEqual(["/decisions/0/links/0/href"]);
   });

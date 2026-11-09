@@ -342,6 +342,136 @@ describe("a post with images", () => {
   });
 });
 
+// ── A trick's own folder (M94): the one root inside the config folder, for a trick's post only ───
+
+describe("a trick's own folder", () => {
+  /** A state folder, a config folder with two trick folders, and a folder outside both. */
+  function layout() {
+    const root = folder("hill-trick-");
+    const state = join(root, "state");
+    const config = join(root, "config");
+    const legs = join(config, "tricks", "legs");
+    const other = join(config, "tricks", "other");
+    const outside = join(root, "outside");
+    for (const dir of [state, legs, other, outside]) mkdirSync(dir, { recursive: true });
+    const denied = deniedFoldersSync([state, config]);
+    const never = deniedFoldersSync([state, join(state, "hill", MEDIA_DIR)]);
+    return { root, state, config, legs, other, outside, denied, never };
+  }
+
+  test("a file in the trick's folder is read with its root; without the root it is refused as Collie's own", () => {
+    const l = layout();
+    const shot = file(l.legs, "shot.png", png());
+    mkdirSync(join(l.legs, "shots"));
+    const nested = file(join(l.legs, "shots"), "b.webp", webpX());
+    expect(readPostedImage(shot, l.denied, { root: l.legs, never: l.never })).toMatchObject({ ok: true, mime: "image/png" });
+    expect(readPostedImage(nested, l.denied, { root: l.legs, never: l.never })).toMatchObject({ ok: true, mime: "image/webp" });
+    const without = readPostedImage(shot, l.denied);
+    expect(without).toMatchObject({ ok: false, code: "bad_image" });
+    if (!without.ok) expect(without.error).toContain("Collie's own folders");
+  });
+
+  test("the root lifts nothing else: another trick's folder, the config folder itself, the state folder", () => {
+    const l = layout();
+    const allowed = { root: l.legs, never: l.never };
+    for (const path of [file(l.other, "shot.png", png()), file(l.config, "shot.png", png()), file(l.state, "shot.png", png())]) {
+      expect(readPostedImage(path, l.denied, allowed), path).toMatchObject({ ok: false, code: "bad_image" });
+    }
+  });
+
+  test("every other check holds inside the folder: the bytes, the cap, a .git folder, a secret's name, the manifest", () => {
+    const l = layout();
+    const allowed = { root: l.legs, never: l.never };
+    const big = new Uint8Array(HILL_MEDIA_BYTES_MAX + 1);
+    big.set(png());
+    mkdirSync(join(l.legs, ".git"));
+    writeFileSync(join(l.legs, "trick.toml"), 'id = "legs"\n');
+    expect(readPostedImage(join(l.legs, "trick.toml"), l.denied, allowed)).toMatchObject({ ok: false, code: "bad_image" });
+    expect(readPostedImage(file(l.legs, "page.png", HTML), l.denied, allowed)).toMatchObject({ ok: false, code: "bad_image" });
+    expect(readPostedImage(file(l.legs, "big.png", big), l.denied, allowed)).toMatchObject({ ok: false, code: "image_too_large" });
+    expect(readPostedImage(file(join(l.legs, ".git"), "a.png", png()), l.denied, allowed)).toMatchObject({ ok: false, code: "bad_image" });
+    expect(readPostedImage(file(l.legs, "paired-devices.json", png()), l.denied, allowed)).toMatchObject({ ok: false, code: "bad_image" });
+  });
+
+  posix("a symlink in the folder that points out, a symlinked folder in it, and `../` out of it are refused", () => {
+    const l = layout();
+    const allowed = { root: l.legs, never: l.never };
+    const away = file(l.outside, "away.png", png());
+    const sibling = file(l.other, "shot.png", png());
+    symlinkSync(away, join(l.legs, "out.png"));
+    symlinkSync(sibling, join(l.legs, "sibling.png"));
+    symlinkSync(l.outside, join(l.legs, "via"));
+    const reason = (path: string) => {
+      const read = readPostedImage(path, l.denied, allowed);
+      expect(read.ok, path).toBe(false);
+      return read.ok ? "" : read.error;
+    };
+    expect(reason(join(l.legs, "out.png"))).toContain("is a symlink");
+    expect(reason(join(l.legs, "sibling.png"))).toContain("is a symlink");
+    expect(reason(join(l.legs, "via", "away.png"))).toContain("symlinked folder");
+    expect(reason(`${l.legs}/../other/shot.png`)).toContain("no . or ..");
+    // The same file, named by its normal path, is another trick's: still Collie's own.
+    expect(reason(sibling)).toContain("Collie's own folders");
+  });
+
+  test("a root that is not one trick's folder lifts nothing: the config folder itself, inside the state folder, a relative or `..` root", () => {
+    const l = layout();
+    const inConfig = file(l.legs, "shot.png", png());
+    const stateTrick = join(l.state, "tricks", "legs");
+    mkdirSync(stateTrick, { recursive: true });
+    const inState = file(stateTrick, "shot.png", png());
+    expect(readPostedImage(inConfig, l.denied, { root: l.config, never: l.never })).toMatchObject({ ok: false, code: "bad_image" });
+    expect(readPostedImage(inState, l.denied, { root: stateTrick, never: l.never })).toMatchObject({ ok: false, code: "bad_image" });
+    expect(readPostedImage(inConfig, l.denied, { root: "config/tricks/legs", never: l.never })).toMatchObject({ ok: false, code: "bad_image" });
+    expect(readPostedImage(inConfig, l.denied, { root: `${l.legs}/../legs`, never: l.never })).toMatchObject({ ok: false, code: "bad_image" });
+  });
+
+  /** A hill with a media folder that denies the state and the config folders, as bridge/index.ts makes it. */
+  function trickHill(l: ReturnType<typeof layout>): HillService {
+    let n = 0;
+    return new HillService({
+      store: new HillStore(hillDir(l.state), () => 1000),
+      receipts: memoryHillReceipts(),
+      place: (address) => (address.startsWith("local/%1") ? { address: "local/%1#aaaa", label: "repo#one", host: "desk", unattended: false } : null),
+      send: async () => "typed",
+      crewMode: () => "solo",
+      walkyOn: () => true,
+      memberId: null,
+      machine: "desk",
+      mintId: () => `dc_trk${String((n += 1)).padStart(9, "0")}`,
+      media: new HillMediaStore(hillDir(l.state), deniedFoldersSync([l.state, l.config]), () => undefined),
+    });
+  }
+
+  test("through the service: a trick's post reads its own folder; an agent's post naming the same file is refused", () => {
+    const l = layout();
+    const hill = trickHill(l);
+    const shot = file(l.legs, "shot.png", png(390, 240));
+    const trick = { kind: "trick", trickId: "legs", trickKey: "case-8", label: "Browser leg", host: "desk" } as const;
+    const posted = hill.postDecision({ ...trick, imageRoot: l.legs }, input([{ path: shot, caption: "the red case" }]));
+    expect(posted).toMatchObject({ ok: true, decision: { media: [{ mime: "image/png", width: 390, height: 240, caption: "the red case" }] } });
+    if (posted.ok) expect(hill.mediaFile(posted.decision.id, posted.decision.media[0]!.id)?.bytes).toEqual(png(390, 240));
+    // The root is never stored on the decision.
+    if (posted.ok) expect(JSON.stringify(posted.decision)).not.toContain("imageRoot");
+    expect(hill.post(POSTER, input([{ path: shot }]))).toMatchObject({ ok: false, code: "bad_image" });
+    // An agent sender that carries a root anyway gets none.
+    // SAFETY: a deliberate widening for the test: HillAgentSender has no `imageRoot`, so only a cast can
+    // add one, and the service must ignore it on an agent's post.
+    const smuggled = { ...POSTER, imageRoot: l.legs } as HillAgentSender;
+    expect(hill.postDecision(smuggled, input([{ path: shot }]))).toMatchObject({ ok: false, code: "bad_image" });
+    // A trick with no root, or another trick's root, takes the agent's rules.
+    expect(hill.postDecision(trick, input([{ path: shot }]))).toMatchObject({ ok: false, code: "bad_image" });
+    expect(hill.postDecision({ ...trick, imageRoot: l.other }, input([{ path: shot }]))).toMatchObject({ ok: false, code: "bad_image" });
+  });
+
+  test("a root off the socket is not a field: readPostFields drops it", () => {
+    const read = readPostFields({ requestId: "0f8b5c1e-5a7d-4b8e-9f00-1a2b3c4d5e6f", title: "Look", summary: "s", imageRoot: "/x", images: [{ path: "/x/a.png", root: "/x" }] });
+    if (!read.ok) throw new Error(read.error);
+    expect(read.input.images).toEqual([{ path: "/x/a.png" }]);
+    expect(JSON.stringify(read.input)).not.toContain("root");
+  });
+});
+
 describe("images leave with their decision", () => {
   test("when the decision leaves the stored closed list, its folder goes", () => {
     const r = rig();

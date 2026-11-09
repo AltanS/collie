@@ -114,7 +114,9 @@ pre-selected. `confirm` is the second label of the tree's button, so the phone a
 first tap and sends the intent on the second, and the bridge sees one intent. `text` is `optional`
 (the default), `required` or `none`; `none` needs at least one option. `about` is a session's scope
 key (the facts' `id`, `host:paneId`) whose Chat the card opens. `replyTo` is a session's scope key:
-the person's answer reaches it as the person's own walky message.
+the person's answer reaches it as the person's own walky message. `media` is up to 4 images, each `{
+file, caption? }`: `file` names an image in the trick's own folder by a relative path with no `..`
+(`shots/red.png`), and `caption` is up to 80 characters.
 
 ### How the runner posts them
 
@@ -125,7 +127,8 @@ by key. The trick is one sender: its name is the card's, its id and the key ride
 - A new key posts once. Its request id is derived from the trick, the key and the content, so a second
   run or a bridge restart posts nothing twice.
 - The same key with changed content (the title, summary, body, options, recommends, text, links,
-  priority, about or replyTo) posts the new version, which replaces the open one.
+  priority, about, replyTo, or an image's bytes or caption) posts the new version, which replaces the
+  open one.
 - A key the list no longer holds is withdrawn, "by the trick".
 - A key the person answered or dismissed stays closed while its content is unchanged. To ask again,
   change the content, or drop the key for a run and list it again.
@@ -134,7 +137,15 @@ by key. The trick is one sender: its name is the card's, its id and the key ride
 - Switched off or removed, every open decision of the trick is withdrawn, "the trick is off".
 - `about` and `replyTo` are mapped to the session's walky address when the decision posts. A key that
   names no live session on this machine is refused alone, and the others post.
-- `media` is not posted yet: the decision posts without its images, with one note per run.
+- `media` reaches the card as it does for an agent's decision. The runner joins each `file` to the
+  trick folder's real path and the hill reads it. The trick's own folder is the one place inside the
+  config folder the hill reads a trick's image from, and only for that trick's own decisions. Every
+  other rule is the hill's: at most 4 images of 2 MB each, PNG, JPEG or WebP by the file's first bytes
+  (never its name), a regular file, and no symlink on the way. An image the hill refuses refuses that
+  one decision, and the version already on the hill stays.
+- The content hash holds each image's bytes and caption. A new screenshot under the same key replaces
+  the open decision, and asks again when the person had answered the old one. The runner reads an
+  image again only when its size or modification time moved.
 - A refusal of the hill (past 20 open, an expiry in the past) lands in the trick's refusals with the
   hill's words, the list `collie trick check` and Settings show.
 
@@ -153,7 +164,7 @@ answer's own `rid`, the chosen `intent` (an option's, `answer` for words alone, 
 ```
 
 `seen` is the content hash of the version of the decision the person saw: the runner's hash of the
-fields above, as hex. A trick that changed the decision since can tell an answer to the old words from
+fields above, its images included, as hex. A trick that changed the decision since can tell an answer to the old words from
 one to the new; it is absent only when the bridge lost track of it. With `replyTo`, the walky message
 goes first, then the tap. The receipt on the phone says whether the program took it ("recorded by"),
 and a failed run is never retried. The phone's own tap route refuses a `hill/` node: a decision is
