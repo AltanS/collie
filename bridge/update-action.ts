@@ -5,7 +5,7 @@ import type { JsonObject, JsonValue } from "./json.ts";
 import type { UpdateStatus } from "./types.ts";
 import type { PeerHealth } from "./crew/registry.ts";
 import { apiError, type ApiErrorBody, type ApiErrorDetail, type ErrorCode } from "./error-codes.ts";
-import { compareSemver, RUNNER_ENV_KEYS, UPDATE_MIRROR_ENV } from "./update.ts";
+import { compareSemver, runnerSetenvArgs } from "./update.ts";
 import { inFlight, type UpdateRun, type UpdateRunState } from "./update-run.ts";
 import { isRequestId } from "./worktree-receipts.ts";
 
@@ -1165,7 +1165,8 @@ function peersNeedLevelling(state: UpdateStartState): boolean {
  * least leaves the process group where there is no user manager; a bare spawn is the last resort on
  * a host with neither. That ladder is deliberately the same three tiers as `cli/update-run.ts`'s
  * `launchPlan`, for the same reasons written there — it is restated rather than imported because
- * nothing in `bridge/` may import from `cli/`.
+ * nothing in `bridge/` may import from `cli/`. The `--setenv=` arguments are NOT restated: both tiers
+ * call {@link runnerSetenvArgs} in `bridge/update.ts`, because the copy the handoff lacked was #754.
  *
  * **`detach` is the spawn's own `setsid()`, and it is on for every tier but `systemd-run`** (#213).
  * macOS has neither `systemd-run` nor a `setsid` binary, so the bare tier used to leave the runner in
@@ -1204,8 +1205,8 @@ export function updateStartCommand(a: {
    */
   readonly mirror?: string | null;
   /**
-   * The bridge's own environment. The systemd-run tier forwards the {@link RUNNER_ENV_KEYS} that are
-   * set in it, one `--setenv=` each, for the same reason the mirror is forwarded: the transient unit
+   * The bridge's own environment. The systemd-run tier forwards the runner keys that are set in it,
+   * one `--setenv=` each ({@link runnerSetenvArgs}), for the same reason the mirror is forwarded: the transient unit
    * has a bare environment, and without `COLLIE_INSTANCE`, `COLLIE_MUX` and `COLLIE_CONFIG_DIR` the
    * CLI there resolves the DEFAULT instance and updates and restarts the wrong service (seen
    * 2026-10-28: the Update tap on `next` took `collie.service`). The other tiers inherit it.
@@ -1232,12 +1233,7 @@ export function updateStartCommand(a: {
   if (a.rollback !== true && a.line !== undefined && a.line !== null) verb.push("--line", a.line);
   if (a.runId !== undefined && a.runId !== null) verb.push("--run-id", a.runId);
   if (a.platform === "linux" && a.hasSystemdRun) {
-    const setenv: string[] = [];
-    for (const key of RUNNER_ENV_KEYS) {
-      const value = a.env?.[key];
-      if (value !== undefined && value !== "") setenv.push(`--setenv=${key}=${value}`);
-    }
-    if (a.mirror !== undefined && a.mirror !== null) setenv.push(`--setenv=${UPDATE_MIRROR_ENV}=${a.mirror}`);
+    const setenv = runnerSetenvArgs({ env: a.env ?? {}, mirror: a.mirror ?? null });
     return {
       command: ["systemd-run", "--user", "--collect", "--unit", `collie-api-update-${a.stamp}`, ...setenv, a.binary, ...verb],
       detach: false,

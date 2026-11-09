@@ -535,6 +535,32 @@ export const RUNNER_ENV_KEYS = [
 /** The variable that names a rehearsal mirror. A test seam only; see the section above. */
 export const UPDATE_MIRROR_ENV = "COLLIE_UPDATE_MIRROR";
 
+/**
+ * The `--setenv=` arguments that start a detached runner AS the instance that asked for it.
+ *
+ * A transient `systemd-run --user` unit starts with the user manager's environment, not the caller's,
+ * so a runner without these resolves the DEFAULT instance and restarts the wrong service (2026-10-28 on
+ * the API runner, #754 on the handoff). ONE builder for both hops, `updateStartCommand` in
+ * `bridge/update-action.ts` and `launchPlan` in `cli/update-run.ts`, so the two cannot drift again.
+ * It lives here because `cli/` imports `bridge/` and never the other way round.
+ *
+ * The {@link RUNNER_ENV_KEYS} set in `env`, in list order, unset and empty values skipped; then the raw
+ * mirror value when there is one, valid or not, so the runner takes the same mirror or refuses the same
+ * bad value. Nothing off the list ever reaches a command line every process can read out of `ps`.
+ */
+export function runnerSetenvArgs(a: {
+  readonly env: Readonly<Record<string, string | undefined>>;
+  readonly mirror: string | null;
+}): string[] {
+  const args: string[] = [];
+  for (const key of RUNNER_ENV_KEYS) {
+    const value = a.env[key];
+    if (value !== undefined && value !== "") args.push(`--setenv=${key}=${value}`);
+  }
+  if (a.mirror !== null) args.push(`--setenv=${UPDATE_MIRROR_ENV}=${a.mirror}`);
+  return args;
+}
+
 /** `http://127.0.0.1` or `http://localhost`, an optional port and an optional plain path. Nothing else. */
 const LOOPBACK_MIRROR = /^http:\/\/(127\.0\.0\.1|localhost)(:[0-9]{1,5})?(\/[A-Za-z0-9._~/-]*)?$/;
 

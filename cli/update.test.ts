@@ -43,7 +43,8 @@ import { EXIT } from "./io.ts";
 import { WINDOWS_CHECKOUT_SENTENCE } from "./install-kind.ts";
 import { stagingLogPath, tailOf } from "../bridge/staging-log.ts";
 import type { JsonObject } from "../bridge/json.ts";
-import { latestUpdateInMajor, parseReleaseManifest } from "../bridge/update.ts";
+import { latestUpdateInMajor, mirrorValue, parseReleaseManifest } from "../bridge/update.ts";
+import { updateStartCommand } from "../bridge/update-action.ts";
 import { parseUpdateLine } from "../bridge/update-line.ts";
 import {
   type ApplyArgs,
@@ -3233,7 +3234,7 @@ describe("the detached updater's health gate", () => {
 });
 
 describe("the detached updater's launch seam", () => {
-  const base = { binary: "/inst/current/bin/collie", args: ["_apply-update", "--to", "1.1.0"], unit: "collie", stamp: "abc" };
+  const base = { binary: "/inst/current/bin/collie", args: ["_apply-update", "--to", "1.1.0"], unit: "collie", stamp: "abc", env: {} };
 
   test("linux launches the runner with systemd-run --user --collect and a transient unit name", () => {
     const plan = launchPlan({ ...base, host: hostFor("linux"), hasSystemdRun: true, hasSetsid: true });
@@ -3261,6 +3262,80 @@ describe("the detached updater's launch seam", () => {
     expect(bare.note).toContain("neither systemd-run nor setsid");
     expect(plan.confirms).toBe("none");
     expect(bare.confirms).toBe("none");
+  });
+
+  // #754: a transient user unit starts with the USER MANAGER's environment, not the caller's. Without
+  // `--setenv` the runner of a suffixed instance resolved the default one, restarted `collie.service`
+  // and left `collie-core` on the old version with its record at `staging`.
+  const coreEnv = {
+    HOME: "/home/pat",
+    COLLIE_INSTANCE: "core",
+    COLLIE_MUX: "",
+    COLLIE_STATE_DIR: "/home/pat/.local/state/collie-core",
+    OPENROUTER_API_KEY: "x",
+    GITHUB_TOKEN: "x",
+  };
+
+  test("the systemd-run tier hands the instance's identity to the runner, in list order, before the binary", () => {
+    const plan = launchPlan({ ...base, unit: "collie-core", env: coreEnv, host: hostFor("linux"), hasSystemdRun: true, hasSetsid: true });
+    expect(plan.command).toEqual([
+      "systemd-run",
+      "--user",
+      "--collect",
+      "--unit",
+      "collie-core-update-abc",
+      "--setenv=HOME=/home/pat",
+      "--setenv=COLLIE_INSTANCE=core",
+      "--setenv=COLLIE_STATE_DIR=/home/pat/.local/state/collie-core",
+      base.binary,
+      ...base.args,
+    ]);
+    // Narrow on purpose: a `--setenv` value is readable in `ps`, so a credential never rides it.
+    expect(plan.command.join(" ")).not.toContain("OPENROUTER_API_KEY");
+    expect(plan.command.join(" ")).not.toContain("GITHUB_TOKEN");
+    // An empty value is skipped, never forwarded as `COLLIE_MUX=`.
+    expect(plan.command.join(" ")).not.toContain("COLLIE_MUX");
+  });
+
+  test("an environment with none of the keys set adds no --setenv at all", () => {
+    const plan = launchPlan({ ...base, env: { OPENROUTER_API_KEY: "x" }, host: hostFor("linux"), hasSystemdRun: true, hasSetsid: true });
+    expect(plan.command).toEqual(["systemd-run", "--user", "--collect", "--unit", "collie-update-abc", base.binary, ...base.args]);
+  });
+
+  test("the setsid and fork tiers are unchanged: their child gets its environment from the spawn", () => {
+    const setsid = launchPlan({ ...base, env: coreEnv, host: hostFor("darwin"), hasSystemdRun: false, hasSetsid: true });
+    expect(setsid.command).toEqual(["setsid", base.binary, ...base.args]);
+    const bare = launchPlan({ ...base, env: coreEnv, host: hostFor("linux"), hasSystemdRun: false, hasSetsid: false });
+    expect(bare.command).toEqual([base.binary, ...base.args]);
+  });
+
+  test("the API runner and the handoff forward the same --setenv arguments for the same environment", () => {
+    const env = { ...coreEnv, PATH: "/usr/bin", COLLIE_PORT: "8788", COLLIE_UPDATE_MIRROR: "http://127.0.0.1:47321" };
+    const setenvOf = (command: readonly string[]): string[] => command.filter((part) => part.startsWith("--setenv="));
+    const api = updateStartCommand({
+      platform: "linux",
+      binary: base.binary,
+      major: false,
+      stamp: "abc",
+      hasSystemdRun: true,
+      hasSetsid: true,
+      mirror: mirrorValue(env),
+      env,
+    });
+    const handoff = launchPlan({ ...base, env, host: hostFor("linux"), hasSystemdRun: true, hasSetsid: true });
+    expect(setenvOf(handoff.command)).toEqual(setenvOf(api.command));
+    expect(setenvOf(handoff.command)).toContain("--setenv=COLLIE_INSTANCE=core");
+  });
+
+  test("a handoff on a suffixed instance names that instance to its runner", async () => {
+    const h = binaryHarness({ env: { COLLIE_INSTANCE: "core", OPENROUTER_API_KEY: "x" } });
+    await cmdUpdate({ ...h.deps, ctx: { ...h.deps.ctx, instance: "core" } });
+    const command = h.exec.ran.at(-1)?.command ?? [];
+    expect(command[0]).toBe("systemd-run");
+    expect(command[4]?.startsWith("collie-core-update-")).toBe(true);
+    expect(command.indexOf("--setenv=COLLIE_INSTANCE=core")).toBeGreaterThan(0);
+    expect(command.indexOf("--setenv=COLLIE_INSTANCE=core")).toBeLessThan(command.indexOf(BINARY));
+    expect(command.join(" ")).not.toContain("OPENROUTER_API_KEY");
   });
 
   test("the handoff spawns the runner detached and never flips anything itself", async () => {

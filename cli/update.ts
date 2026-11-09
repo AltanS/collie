@@ -3234,6 +3234,7 @@ function handOff(
     stamp: now.toString(36),
     hasSystemdRun: deps.exec.which("systemd-run") !== null && systemdUserReachable(deps.exec, deps.ctx.env),
     hasSetsid: deps.exec.which("setsid") !== null,
+    env: deps.ctx.env,
   });
   const logPath = logFilePath(deps.ctx.configDir, deps.ctx.instance);
   // A handoff that did not happen is a FAILURE, printed and recorded. Without this branch the record
