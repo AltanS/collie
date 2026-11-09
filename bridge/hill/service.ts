@@ -30,7 +30,12 @@
 // walky address stays the routing key and is never renamed.
 //
 // ORDER ON AN ANSWER. Write the receipt, close the decision, then send. A send that fails or throws
-// after the close leaves the decision answered with `delivery: "unknown"`, and nothing is sent again.
+// after the close leaves the decision answered with `delivery: "unknown"`, and nothing is sent again;
+// one `hill.undelivered` audit line says so, and the session reads the answer with `collie hill status`.
+// A bridge that stopped between the receipt and the close left an `ok` receipt the decision does not
+// show: a retry of that `rid` settles it once, in the claim lane, instead of answering the stale `ok`.
+// An answer to an id this bridge never held, or one past its expiry, is `gone`; the first stores no
+// receipt, so junk cannot push real receipts out of the capped file.
 //
 // A TRICK'S DECISION (M94). A trick posts through `postDecision` from the tricks runner
 // (bridge/tricks/hill.ts). The answer reaches the trick's program as a tap, after the walky message
@@ -751,17 +756,36 @@ export class HillService {
    * One answer from a phone, by the receipt rules of the contract, in this order: a known `rid`, the
    * decision open, the intent, the text rule, the target still live; then the receipt, the close and
    * the send. `id` is the decision id the node named. `by` is the device's label, as operator walky uses it.
+   *
+   * A known `rid` with the same payload answers its stored receipt and runs nothing, with one exception:
+   * an `ok` receipt the decision does not show (the bridge stopped between the receipt and the close, or
+   * a close the receipt never heard of). That answer is settled once, in the claim lane: closed and
+   * delivered when the decision is still open, else answered `gone` with the state it has.
    */
   answer(request: HillAnswerRequest, id: string, by: string): Promise<HillAnswerOutcome> {
     const digest = hillAnswerDigest(request.node, request.intent, request.value.text);
     // SYNCHRONOUS from here to `track`: two requests with one rid must not both get past the look.
     const stored = this.deps.receipts.get(request.rid);
-    if (stored !== undefined) return Promise.resolve(stored.payloadDigest === digest ? { kind: "receipt", receipt: stored.receipt } : { kind: "reused" });
+    if (stored !== undefined) {
+      if (stored.payloadDigest !== digest) return Promise.resolve({ kind: "reused" });
+      if (!this.unsettled(stored, id)) return Promise.resolve({ kind: "receipt", receipt: stored.receipt });
+    }
     const running = this.deps.receipts.inflight(request.rid);
     if (running !== undefined) return digestDiffers(running, digest) ? Promise.resolve({ kind: "reused" }) : running;
     const work = withDigest(this.run(request, id, by, digest), digest);
     this.deps.receipts.track(request.rid, work);
     return work;
+  }
+
+  /**
+   * Whether a stored receipt says `ok` for an answer its decision does not show: the decision is held and
+   * its answer is not this `rid`'s. A decision the store no longer holds left the closed list after it
+   * closed, so its `ok` stands.
+   */
+  private unsettled(stored: HillReceiptRecord, id: string): boolean {
+    if (stored.receipt.code !== "ok") return false;
+    const decision = this.deps.store.get(id);
+    return decision !== undefined && decision.answer?.rid !== stored.requestId;
   }
 
   private async run(request: HillAnswerRequest, id: string, by: string, digest: string): Promise<HillAnswerOutcome> {
@@ -773,14 +797,18 @@ export class HillService {
     const claim = await claimed;
     if (claim.kind === "done") return claim.outcome;
     let delivery: NonNullable<HillReceipt["delivery"]> = "none";
+    let threw = false;
     if (claim.send !== null) {
       try {
         delivery = await this.deps.send(claim.send.to, claim.send.body, by);
       } catch {
         // Not confirmed, and never sent again: the decision stays answered with `unknown`.
         delivery = "unknown";
+        threw = true;
       }
     }
+    // One line of its own: the answer is kept on the decision, and the session reads it with `collie hill status`.
+    if (claim.send !== null && delivery === "unknown") this.deps.audit?.({ action: "hill.undelivered", device: by, detail: { decisionId: id, why: threw ? "the send failed" : "not confirmed" } });
     let trick: NonNullable<HillReceipt["trick"]> = "none";
     if (claim.tap !== null) trick = (await this.runTap(claim.tap)) ? "ran" : "failed";
     const receipt: HillReceipt = { ...claim.record.receipt, delivery, trick };
@@ -809,19 +837,32 @@ export class HillService {
     });
   }
 
-  /** A receipt that ends the answer before any send: written, audited, answered. */
-  private async final(request: HillAnswerRequest, id: string, by: string, digest: string, receipt: HillReceipt): Promise<Claim> {
-    await this.deps.receipts.record({ requestId: request.rid, payloadDigest: digest, receipt });
+  /**
+   * A receipt that ends the answer before any send: written (unless `keep` is false), audited, answered.
+   * It replaces a stored `ok` for the same `rid` that the decision never showed.
+   */
+  private async final(request: HillAnswerRequest, id: string, by: string, digest: string, receipt: HillReceipt, keep = true): Promise<Claim> {
+    if (keep) await this.deps.receipts.record({ requestId: request.rid, payloadDigest: digest, receipt });
     this.auditAnswer({ id }, request, by, receipt);
     return { kind: "done", outcome: { kind: "receipt", receipt } };
   }
 
   private async claim(request: HillAnswerRequest, id: string, by: string, digest: string): Promise<Claim> {
     const { rid, intent } = request;
+    // A retry of an unsettled `ok` (see `answer`) waited in the lane: another may have settled it meanwhile.
+    const known = this.deps.receipts.get(rid);
+    if (known !== undefined && !this.unsettled(known, id)) return { kind: "done", outcome: { kind: "receipt", receipt: known.receipt } };
     const now = this.now();
     const decision = this.deps.store.get(id);
-    if (decision === undefined) return this.final(request, id, by, digest, receiptOf(rid, now, "gone", "no such decision", null, null));
+    // No receipt for an id this bridge never held: junk ids must not push real receipts out of the capped file.
+    if (decision === undefined) return this.final(request, id, by, digest, receiptOf(rid, now, "gone", "no such decision", null, null), false);
     if (decision.state !== "open") return this.final(request, id, by, digest, receiptOf(rid, now, "gone", `the decision is ${decision.state}`, decision.state, null));
+    // Past its expiry and not swept yet: it is expired now, as the sweep would close it.
+    if (decision.expiresAt !== null && decision.expiresAt <= now) {
+      const expired = await this.final(request, id, by, digest, receiptOf(rid, now, "gone", "the decision is expired", "expired", null));
+      this.closeAs(id, now, "expired", EXPIRED);
+      return expired;
+    }
     const option = decision.options.find((candidate) => candidate.intent === intent);
     // The intent is typed into the session; only a word the post rules let through ever is (a stored file is not re-checked on load).
     if (option !== undefined && !isHillOptionIntent(option.intent)) return this.final(request, id, by, digest, receiptOf(rid, now, "rejected", "not an option of this decision", "open", null));
@@ -838,7 +879,7 @@ export class HillService {
     const to = decision.replyTo ?? decision.from.address;
     if (decision.target !== null && to !== null && this.deps.place(to)?.address !== to) {
       const gone = await this.final(request, id, by, digest, receiptOf(rid, now, "gone", TARGET_ENDED, "undeliverable", null));
-      this.closeUndeliverable(id, now);
+      this.closeAs(id, now, "undeliverable", TARGET_ENDED);
       return gone;
     }
     const state: HillState = intent === "dismiss" ? "dismissed" : "answered";
@@ -887,9 +928,10 @@ export class HillService {
     return null;
   }
 
-  private closeUndeliverable(id: string, now: number): void {
+  /** Close an open decision with no answer, as the sweep would: `undeliverable` or `expired`, with its reason. */
+  private closeAs(id: string, now: number, state: "undeliverable" | "expired", reason: string): void {
     const decision = this.deps.store.get(id);
     if (decision === undefined || decision.state !== "open") return;
-    this.deps.store.put({ ...decision, state: "undeliverable", closedAt: now, closedReason: TARGET_ENDED });
+    this.deps.store.put({ ...decision, state, closedAt: now, closedReason: reason });
   }
 }

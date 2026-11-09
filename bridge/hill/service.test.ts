@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import type { AuditEntry } from "../audit.ts";
 import type { HillAnswerRequest, HillPostInput, HillDecision } from "../../web/src/lib/hill/wire.ts";
-import { memoryHillReceipts, type HillReceiptSurface } from "./receipts.ts";
+import { hillAnswerDigest, memoryHillReceipts, type HillReceiptSurface } from "./receipts.ts";
 import {
   answerMessage,
   BY_THE_POSTER,
@@ -775,6 +775,110 @@ describe("answering a decision: the receipt rules", () => {
     const expiring = posted(r.hill.post(POSTER, input(2, { expiresAt: 1500 })));
     r.hill.sweep(1500);
     expect(await receiptOf(r, answerOf(expiring, 101, "yes"))).toMatchObject({ code: "gone", state: "expired" });
+  });
+});
+
+describe("a stored receipt the decision does not show", () => {
+  /** The receipt a bridge wrote before it stopped, between the receipt and the close: `ok`, nothing typed. */
+  async function leftBehind(r: Rig, request: HillAnswerRequest): Promise<void> {
+    const digest = hillAnswerDigest(request.node, request.intent, request.value.text);
+    expect(await r.receipts.recordFirst({ requestId: request.rid, payloadDigest: digest, receipt: { rid: request.rid, code: "ok", reason: null, state: "answered", delivery: "unknown", trick: "none", at: 900 } })).toBe(true);
+  }
+
+  test("an ok receipt whose decision is still open is settled once: closed, typed, and the receipt says so", async () => {
+    const r = rig();
+    const decision = posted(r.hill.post(POSTER, input(1)));
+    const request = answerOf(decision, 100, "yes", "Go.");
+    await leftBehind(r, request);
+    r.clock = 5000;
+    const [first, second] = await Promise.all([receiptOf(r, request), receiptOf(r, request)]);
+    expect(first).toEqual({ rid: uuid(100), code: "ok", reason: null, state: "answered", delivery: "typed", trick: "none", at: 5000 });
+    expect(second).toEqual(first);
+    expect(r.sent).toHaveLength(1);
+    expect(r.store.get(decision.id)).toMatchObject({ state: "answered", answer: { rid: uuid(100), delivery: "typed" } });
+    // Settled: a further retry answers the stored receipt and types nothing.
+    expect(await receiptOf(r, request)).toEqual(first);
+    expect(r.sent).toHaveLength(1);
+  });
+
+  test("an ok receipt whose decision closed another way is answered gone with that state, and the receipt replaced", async () => {
+    const r = rig();
+    const decision = posted(r.hill.post(POSTER, input(1)));
+    const request = answerOf(decision, 100, "yes");
+    await leftBehind(r, request);
+    r.hill.withdraw(POSTER, decision.id);
+    const receipt = await receiptOf(r, request);
+    expect(receipt).toMatchObject({ code: "gone", reason: "the decision is withdrawn", state: "withdrawn" });
+    expect(r.receipts.get(uuid(100))?.receipt).toEqual(receipt);
+    expect(r.sent).toEqual([]);
+  });
+
+  test("an ok receipt whose decision the store no longer holds stands", async () => {
+    const r = rig();
+    const request: HillAnswerRequest = { rid: uuid(100), node: "hill/dc_long000gone1", intent: "yes", value: { text: null } };
+    const digest = hillAnswerDigest(request.node, request.intent, null);
+    const stored = { rid: uuid(100), code: "ok" as const, reason: null, state: "answered" as const, delivery: "typed" as const, trick: "none" as const, at: 900 };
+    await r.receipts.record({ requestId: uuid(100), payloadDigest: digest, receipt: stored });
+    expect(await receiptOf(r, request)).toEqual(stored);
+  });
+
+  test("a late close while the receipt was written answers gone and keeps no stale ok", async () => {
+    const receipts = memoryHillReceipts();
+    let release = (): void => undefined;
+    const slow: HillReceiptSurface = {
+      ...receipts,
+      recordFirst: async (record) => {
+        await new Promise<void>((resolve) => {
+          release = resolve;
+        });
+        return receipts.recordFirst(record);
+      },
+    };
+    const r = rig(slow);
+    const decision = posted(r.hill.post(POSTER, input(1)));
+    const pending = receiptOf(r, answerOf(decision, 100, "yes"));
+    await Bun.sleep(1);
+    r.hill.withdraw(POSTER, decision.id);
+    release();
+    expect(await pending).toMatchObject({ code: "gone", state: "withdrawn" });
+    expect(r.receipts.get(uuid(100))?.receipt.code).toBe("gone");
+    expect(r.sent).toEqual([]);
+  });
+});
+
+describe("answering at the edges", () => {
+  test("a decision past its expiry, not swept yet, answers gone and closes expired; nothing is typed", async () => {
+    const r = rig();
+    const decision = posted(r.hill.post(POSTER, input(1, { expiresAt: 2000 })));
+    r.clock = 2000;
+    const receipt = await receiptOf(r, answerOf(decision, 100, "yes"));
+    expect(receipt).toMatchObject({ code: "gone", reason: "the decision is expired", state: "expired" });
+    expect(r.store.get(decision.id)).toMatchObject({ state: "expired", closedAt: 2000, closedReason: "expired", answer: null });
+    expect(r.sent).toEqual([]);
+  });
+
+  test("an answer to an id the bridge never held answers gone and stores no receipt", async () => {
+    const r = rig();
+    const request: HillAnswerRequest = { rid: uuid(100), node: "hill/dc_neverheld001", intent: "yes", value: { text: null } };
+    expect(await receiptOf(r, request)).toMatchObject({ code: "gone", reason: "no such decision" });
+    expect(r.receipts.get(uuid(100))).toBeUndefined();
+  });
+
+  test("a delivery not confirmed, or a send that throws, writes one hill.undelivered line; the answer keeps unknown", async () => {
+    for (const delivery of ["unknown", "throw"] as const) {
+      const r = rig();
+      const decision = posted(r.hill.post(POSTER, input(1)));
+      r.delivery = delivery;
+      await receiptOf(r, answerOf(decision, 100, "yes"));
+      expect(r.audit.filter((entry) => entry.action === "hill.undelivered")).toEqual([
+        { action: "hill.undelivered", device: "Pixel 9", detail: { decisionId: decision.id, why: delivery === "throw" ? "the send failed" : "not confirmed" } },
+      ]);
+      expect(r.store.get(decision.id)?.answer?.delivery).toBe("unknown");
+    }
+    const typed = rig();
+    const decision = posted(typed.hill.post(POSTER, input(1)));
+    await receiptOf(typed, answerOf(decision, 100, "yes"));
+    expect(typed.audit.some((entry) => entry.action === "hill.undelivered")).toBe(false);
   });
 });
 
