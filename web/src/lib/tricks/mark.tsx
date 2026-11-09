@@ -16,8 +16,8 @@
 //
 // ONE CONTROL (step 3). A mark is always the same element, a button in its own frame with the 44px
 // reach, whether it has an intent, opens its trick's session, or does nothing at all. It used to drop
-// to a plain span when it had no tap, and that span shrank away under the belt's pinned block when the
-// belt overflowed. A mark with nothing to do says so with `aria-disabled` and keeps its box.
+// to a plain span when it had no tap, and that span shrank away when the belt overflowed. A mark with
+// nothing to do says so with `aria-disabled` and keeps its box.
 
 import { useRef } from "react";
 

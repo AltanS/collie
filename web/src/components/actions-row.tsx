@@ -582,13 +582,19 @@ export interface ActionsRowProps {
     /** The Pins sheet is open: `aria-expanded`. */
     expanded: boolean;
   };
-  /** The tricks' marks on the pinned block ({@link BeltMark}), in manifest order. Absent or empty: the block is unchanged. */
+  /**
+   * The tricks' marks ({@link BeltMark}), in manifest order, as the LAST section of the scrolling strip:
+   * after Collie's own pills, before the trailing spacer. They scroll with the strip and never take room
+   * in the pinned block, which holds Collie's own marks only. Absent or empty: the belt is unchanged, to
+   * the pixel.
+   */
   marks?: readonly BeltMark[];
 }
 
 /**
- * A TRICK'S MARK ON THE PINNED BLOCK (M94 slice 03): right of the pins mark, left of Changes, in manifest
- * order. `face` is the whole control, drawn in its own frame (lib/tricks/mark.tsx): it is never a status
+ * A TRICK'S MARK AT THE END OF THE SCROLLING STRIP (M94 slice 03, moved out of the pinned block): after
+ * every pill Collie itself draws in the strip, in manifest order, so it scrolls and takes no fixed room.
+ * `face` is the whole control, drawn in its own frame (lib/tricks/mark.tsx): it is never a status
  * mark and never a belt pill, so the row draws no button around it. Each mark comes and goes through
  * `Collapse` on its x axis, like the agents mark; a trick that has no belt part leaves no gap.
  */
@@ -613,8 +619,9 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, durable, sto
   // Anything pinned at the pinned end (right, or left under `hand="left"`): the composer's X, the agents mark, the jobs
   // mark, the pins mark, the Changes pill, the Zoom pill, the Switch mark, in any mix. The drag surface (`handle.ref`, `touch-pan-x`) stays
   // tied to `handle` alone.
-  const trickMarks = marks.length > 0;
-  const pinnedCount = (agents ? 1 : 0) + (jobs ? 1 : 0) + (pins ? 1 : 0) + marks.length + (clear ? 1 : 0) + (changes ? 1 : 0) + (zoom ? 1 : 0) + (handle ? 1 : 0);
+  // The tricks' marks are not here: they scroll in the strip (see the marks prop), so they neither count
+  // as pinned nor widen the block.
+  const pinnedCount = (agents ? 1 : 0) + (jobs ? 1 : 0) + (pins ? 1 : 0) + (clear ? 1 : 0) + (changes ? 1 : 0) + (zoom ? 1 : 0) + (handle ? 1 : 0);
   const pinned = pinnedCount > 0;
   const switchBlock = useSwitchBlockWidth(pinned);
   const switchInset = switchBlock.width ?? switchPillInset(beltScale, pinnedCount);
@@ -782,6 +789,36 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, durable, sto
             )}
             <HarnessBar agent={agent} mine={mine} onRun={onRun} disabled={disabled} hand={hand} />
             {durable !== undefined && <DurableBar items={durable.items} state={durable.state} disabled={disabled} hand={hand} />}
+            {/* THE TRICKS' MARKS (the `marks` prop, M94), THE LAST SECTION OF THE STRIP: after every pill
+                Collie itself puts here (Stop, the general run, the harness items, the durable items) and
+                directly before the trailing spacer. A trick never gets fixed room in the belt. The marks
+                were first drawn in the pinned block, and two word marks ("look 15", "triage 3") made that
+                block about 337px wide at 390px and left 43px of strip, most of it under the fade, so Stop
+                and the keys were out of reach. In the strip a mark scrolls like a pill, and the pinned block
+                stays Collie's own.
+                SPACING IS THE STRIP'S OWN GAP, and nothing else: no divider and no tint, the same `gap-1.5`
+                (6px) that stands between the general run and the harness section. Each mark keeps its own
+                frame and its 44px reach (lib/tricks/mark.tsx), and comes and goes through `Collapse` on its
+                x axis, so a trick that has no belt part leaves nothing behind. With no marks nothing is
+                rendered here at all, and the strip is the one it always was. The Collapse cancels one gap
+                with `-mr-1.5` and the slot pays it back as `pr-1.5`, the way the agents mark does in the
+                block. Under `hand="left"` the scroller is `[direction:rtl]`, so the same DOM order puts the
+                marks beside the block, and the box mirrors: the cancelled gap and the padding swap sides,
+                and the slot runs `ltr` again so a mark reads icon then word, as a pill does.
+                `shrink-0` on both boxes: a mark that could shrink would be squeezed to nothing. A sideways
+                drag that starts on a mark scrolls the strip, because the frame sets no `touch-action` of
+                its own and the belt's `touch-pan-x` (with a handle) leaves the horizontal pan to the scroller. */}
+            {marks.map((mark) => (
+              <Collapse key={mark.id} axis="x" appear open={mark.open ?? true} className={cn("shrink-0", left ? "-ml-1.5" : "-mr-1.5")}>
+                <span
+                  data-slot="belt-trick-mark"
+                  data-trick={mark.trick}
+                  className={cn("flex shrink-0 items-center", left ? "pl-1.5 [direction:ltr]" : "pr-1.5")}
+                >
+                  {mark.face}
+                </span>
+              </Collapse>
+            ))}
             {/* THE TRAILING SPACER — a real flex child, not padding. `paddingRight` on this
                 scroller was tried first and measured wrong in Chrome: the scroller is a `flex`
                 row and the harness section is itself a nested `flex` row (`BELT_SECTION`), so the
@@ -902,7 +939,7 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, durable, sto
                     }}
                     className={cn(
                       `${STRIP_ROW_PILL} ${PINNED_PILL}`,
-                      pinnedReach(true, !agents && !jobs && !pins && !trickMarks && !changes && !zoom && !handle, hand),
+                      pinnedReach(true, !agents && !jobs && !pins && !changes && !zoom && !handle, hand),
                       clear.inert === true && "opacity-50",
                     )}
                   >
@@ -937,7 +974,7 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, durable, sto
                     aria-label={agents.label}
                     aria-expanded={agents.expanded}
                     onClick={agents.onClick}
-                    className={cn(`${STRIP_ROW_PILL} ${PINNED_PILL}`, pinnedReach(!clear, !jobs && !pins && !trickMarks && !changes && !zoom && !handle, hand))}
+                    className={cn(`${STRIP_ROW_PILL} ${PINNED_PILL}`, pinnedReach(!clear, !jobs && !pins && !changes && !zoom && !handle, hand))}
                   >
                     <Icon name="subagent" className={cn(BELT_ICON, "text-primary")} />
                     <span
@@ -968,7 +1005,7 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, durable, sto
                     aria-label={jobs.label}
                     aria-expanded={jobs.expanded}
                     onClick={jobs.onClick}
-                    className={cn(`${STRIP_ROW_PILL} ${PINNED_PILL}`, pinnedReach(!clear && !agents, !pins && !trickMarks && !changes && !zoom && !handle, hand))}
+                    className={cn(`${STRIP_ROW_PILL} ${PINNED_PILL}`, pinnedReach(!clear && !agents, !pins && !changes && !zoom && !handle, hand))}
                   >
                     <Icon name="jobs" className={cn(BELT_ICON, "text-primary")} />
                     {jobs.count > 0 && (
@@ -1001,7 +1038,7 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, durable, sto
                     aria-label={pins.label}
                     aria-expanded={pins.expanded}
                     onClick={pins.onClick}
-                    className={cn(`${STRIP_ROW_PILL} ${PINNED_PILL}`, pinnedReach(!clear && !agents && !jobs, !trickMarks && !changes && !zoom && !handle, hand))}
+                    className={cn(`${STRIP_ROW_PILL} ${PINNED_PILL}`, pinnedReach(!clear && !agents && !jobs, !changes && !zoom && !handle, hand))}
                   >
                     <Icon name="pins-list" className={cn(BELT_ICON, "text-primary")} />
                     <span
@@ -1018,16 +1055,6 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, durable, sto
                 </span>
               )}
             </Collapse>
-            {/* THE TRICKS' MARKS (the `marks` prop, M94 slice 03): each one in its own frame, a 44px reach.
-                `shrink-0` on the slot (step 3): the block is a flex row, and a mark that could shrink was
-                squeezed to nothing under the block when the belt overflowed. A mark keeps its own width. */}
-            {marks.map((mark) => (
-              <Collapse key={mark.id} axis="x" appear open={mark.open ?? true} className="-mr-1.5 shrink-0">
-                <span data-slot="belt-trick-mark" data-trick={mark.trick} className="flex shrink-0 items-center pr-1.5">
-                  {mark.face}
-                </span>
-              </Collapse>
-            ))}
             {/* EXPERIMENT (operator, 2026-09-23): the Changes entry, moved here from the pane actions
                 sheet. Same box as the Switch mark beside it; it navigates rather than opening a sheet,
                 so no `aria-haspopup`. Revert with the `changes` prop above. */}
@@ -1040,7 +1067,7 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, durable, sto
                 onClick={changes.onClick}
                 // `PINNED_PILL` below, and a hit box set by where the pill stands (`pinnedReach`):
                 // 7px out on an end of the block, 3px toward a neighbour, so two reaches never meet.
-                className={cn(`${STRIP_ROW_PILL} ${PINNED_PILL}`, pinnedReach(!clear && !agents && !jobs && !pins && !trickMarks, !zoom && !handle, hand))}
+                className={cn(`${STRIP_ROW_PILL} ${PINNED_PILL}`, pinnedReach(!clear && !agents && !jobs && !pins, !zoom && !handle, hand))}
               >
                 <Icon name="files" className={cn(BELT_ICON, "text-primary")} />
               </Button>
@@ -1054,7 +1081,7 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, durable, sto
                 size="sm"
                 aria-label={zoom.label}
                 onClick={zoom.onClick}
-                className={cn(`${STRIP_ROW_PILL} ${PINNED_PILL}`, pinnedReach(!clear && !agents && !jobs && !pins && !trickMarks && !changes, !handle, hand))}
+                className={cn(`${STRIP_ROW_PILL} ${PINNED_PILL}`, pinnedReach(!clear && !agents && !jobs && !pins && !changes, !handle, hand))}
               >
                 <Icon name="zoom" className={cn(BELT_ICON, "text-primary")} />
               </Button>
@@ -1078,7 +1105,7 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, durable, sto
                 // square with the pill's own scaled height, 37px at the default scale. Its hit box
                 // reaches 3px left (half the 6px gap to a pill beside it, 7px when it stands alone)
                 // and 7px right (into `pr-3`), 47px across.
-                className={cn(`${STRIP_ROW_PILL} ${PINNED_PILL}`, pinnedReach(!agents && !jobs && !pins && !trickMarks && !clear && !changes && !zoom, true, hand))}
+                className={cn(`${STRIP_ROW_PILL} ${PINNED_PILL}`, pinnedReach(!agents && !jobs && !pins && !clear && !changes && !zoom, true, hand))}
               >
                 <Icon name="pane-switcher" className={cn(BELT_ICON, "text-primary")} />
                 {/* The needs-you mark (the triangle), on the mark's top-right corner, absolutely placed

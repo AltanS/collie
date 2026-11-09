@@ -174,7 +174,7 @@ answered on the Hill.
 
 | `at`            | Place                                     | This Collie                                 |
 | --------------- | ----------------------------------------- | ------------------------------------------- |
-| `belt`          | a mark at the end of the belt             | draws                                       |
+| `belt`          | a mark at the end of the scrolling strip of the Belt; it never takes fixed room | draws         |
 | `status`        | one item in the status line above the Belt | draws                                      |
 | `session`       | a trick session: Dashboard row and screen | draws                                       |
 | `tab:<match>`   | a mark on the tabs that match             | parses, a later slice draws                 |

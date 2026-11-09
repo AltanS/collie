@@ -1,5 +1,6 @@
 // The Trick places section of the states playground (M94 slice 03, re-cut 2026-11-08): the places
-// a trick draws in. The belt's end-block marks beside the pins mark (one with nothing to do among them),
+// a trick draws in. The belt's trick marks at the end of its scrolling strip, after Collie's own keys and
+// never in the pinned block (one with nothing to do among them; word marks, three of them, at 390 px),
 // and the trick session: its row on the Dashboard and in Switch session, and its screen with no Composer.
 // Then the `status` place, the tricks' items in the usage row above the belt, and the three look fixes
 // of the renderer. Every card
@@ -8,7 +9,7 @@
 //
 // DEV-ONLY, unreachable from the app entry: see ../app.tsx and web/playground.html.
 
-import { useEffect, useMemo, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, type ReactNode } from "react";
 
 import { ActionsRow } from "@/components/actions-row";
 import { beltMarksOf } from "@/components/belt-trick-mark";
@@ -38,6 +39,7 @@ const RUN = () => Promise.resolve(true);
 
 const LEGS: WireTrickInfo = { host: "bluefin", id: "legs", name: "Browser leg", icon: "flask", on: true, state: "ok", places: ["belt", "session"] };
 const TRACKER: WireTrickInfo = { host: "bluefin", id: "tracker", name: "Tracker", icon: "file", on: true, state: "ok", places: ["belt", "session"] };
+const TRIAGE: WireTrickInfo = { host: "bluefin", id: "triage", name: "Triage", icon: "eye", on: true, state: "ok", places: ["belt"] };
 const QUIET: WireTrickInfo = { host: "bluefin", id: "quiet", name: "Quiet", icon: "bell", on: true, state: "ok", places: ["belt"] };
 const SPEND: WireTrickInfo = { host: "bluefin", id: "spend", name: "Spend", icon: "tag", on: true, state: "ok", places: ["status"] };
 
@@ -61,6 +63,8 @@ function wire(trick: string, value: WireTrickPart["value"]): WireTrickPart {
 
 const LEGS_BELT = wire("legs", { at: "belt", id: "belt", mark: { icon: "flask", label: "23/34", tone: "accent", intent: "rerun" } });
 const TRACKER_BELT = wire("tracker", { at: "belt", id: "belt", mark: { icon: "file", label: "M94", tone: "plain" } });
+/** A third word mark, so the belt carries three at 390 px. */
+const TRIAGE_BELT = wire("triage", { at: "belt", id: "belt", mark: { icon: "eye", label: "triage 3", tone: "warn", intent: "triage" } });
 /** No intent, and no session in the pane list: the same button control, aria-disabled. */
 const QUIET_BELT = wire("quiet", { at: "belt", id: "belt", mark: { icon: "bell", label: "idle", tone: "muted" } });
 /** The legs trick's status item: the legs fixture's count as a chip, tapping opens its session. */
@@ -86,9 +90,9 @@ const TRACKER_SESSION = wire("tracker", { at: "session", id: "due", name: "Track
 
 /** A store over a stand-in bridge that answers a tap after a moment, so the busy state is seen. */
 function placesStore(): TricksStore {
-  const parts = [LEGS_BELT, TRACKER_BELT, QUIET_BELT, LEGS_SESSION, TRACKER_SESSION, LEGS_STATUS, SPEND_STATUS];
+  const parts = [LEGS_BELT, TRACKER_BELT, TRIAGE_BELT, QUIET_BELT, LEGS_SESSION, TRACKER_SESSION, LEGS_STATUS, SPEND_STATUS];
   return createTricksStore({
-    fetchTricks: () => Promise.resolve({ rev: 1, tricks: [LEGS, TRACKER, QUIET, SPEND], parts, present: parts.map(partKey) }),
+    fetchTricks: () => Promise.resolve({ rev: 1, tricks: [LEGS, TRACKER, TRIAGE, QUIET, SPEND], parts, present: parts.map(partKey) }),
     tapTrick: (_host, _trick, body) => new Promise<TrickTapReply>((resolve) => setTimeout(() => resolve({ rid: body.rid, code: "ok" }), 1500)),
     mintRequestId,
   });
@@ -127,22 +131,32 @@ function Glass({ children, className }: { children: ReactNode; className?: strin
   return <div className={`w-[390px] max-w-full rounded-sm border border-border bg-background ${className ?? "px-4 py-3"}`}>{children}</div>;
 }
 
-function Belt({ marks }: { marks: readonly WireTrickPart[] }) {
+/** `toEnd` scrolls the strip to its far end once it is drawn, so the marks and the block stand side by side. */
+function Belt({ marks, toEnd = false }: { marks: readonly WireTrickPart[]; toEnd?: boolean }) {
   const store = useStore();
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!toEnd) return;
+    const strip = box.current?.querySelector<HTMLElement>("div.overflow-x-auto");
+    const id = window.setTimeout(() => strip?.scrollTo({ left: strip.scrollWidth }), 400);
+    return () => window.clearTimeout(id);
+  }, [toEnd]);
   const shown = marks.length > 0 ? beltMarksOf({ parts: marks, handlersFor: () => ({}), sessions: [TRACKER_PANE], onOpenSession: IGNORE, store }) : undefined;
   return (
-    <ActionsRow
-      general={[
-        { id: "keys", icon: "keys-drawer", label: "Keys", onSelect: IGNORE },
-        { id: "screen", icon: "screen", label: "Screen", onSelect: IGNORE },
-      ]}
-      agent="claude"
-      onRun={RUN}
-      pins={{ count: 2, onClick: IGNORE, label: "2 pinned", expanded: false }}
-      marks={shown}
-      changes={{ onClick: IGNORE, label: "Files" }}
-      handle={{ ref: IGNORE, onClick: IGNORE, label: "Switch pane" }}
-    />
+    <div ref={box}>
+      <ActionsRow
+        general={[
+          { id: "keys", icon: "keys-drawer", label: "Keys", onSelect: IGNORE },
+          { id: "screen", icon: "screen", label: "Screen", onSelect: IGNORE },
+        ]}
+        agent="claude"
+        onRun={RUN}
+        pins={{ count: 2, onClick: IGNORE, label: "2 pinned", expanded: false }}
+        marks={shown}
+        changes={{ onClick: IGNORE, label: "Files" }}
+        handle={{ ref: IGNORE, onClick: IGNORE, label: "Switch pane" }}
+      />
+    </div>
   );
 }
 
@@ -183,9 +197,19 @@ export function TrickPlacesSection(): ReactNode {
   return (
     <Section def={DEF}>
       <Group title="The belt">
-        <Card state="trick-belt-marks" label="1 · two trick marks">
+        <Card state="trick-belt-marks" label="1 · two trick marks, at the end of the strip">
           <Glass className="py-2">
             <Belt marks={[LEGS_BELT, TRACKER_BELT]} />
+          </Glass>
+        </Card>
+        <Card state="trick-belt-marks-end" label="1b · the same, scrolled to the end">
+          <Glass className="py-2">
+            <Belt marks={[LEGS_BELT, TRACKER_BELT]} toEnd />
+          </Glass>
+        </Card>
+        <Card state="trick-belt-three" label="1c · three word marks, Collie's own keys reachable">
+          <Glass className="py-2">
+            <Belt marks={[LEGS_BELT, TRACKER_BELT, TRIAGE_BELT]} />
           </Glass>
         </Card>
         <Card state="trick-belt-none" label="2 · no trick, no gap">

@@ -10,14 +10,15 @@ import { parseTrickSessionId, partKey, type WireTrickPart } from "@/lib/tricks/s
 import { useTrickPart, type TricksStore, tricksStore, type TapHandlers, trickTapper } from "@/lib/tricks/store";
 import type { AgentView } from "@/lib/types";
 
-// THE BELT'S END-BLOCK MARKS (M94 slice 03): one per `belt` part of a trick that is on, between the pins
-// mark and Changes, in manifest order (lib/tricks/store.ts `useTrickParts`). Each is a `TrickMark` in its own
-// frame, never a pill and never a status mark.
+// THE BELT'S TRICK MARKS (M94 slice 03): one per `belt` part of a trick that is on, in manifest order
+// (lib/tricks/store.ts `useTrickParts`), at the end of the belt's scrolling strip after Collie's own pills
+// (actions-row.tsx draws them there; they never take room in the pinned block). Each is a `TrickMark` in its
+// own frame, never a pill and never a status mark.
 //
 // A TAP: a mark with an intent goes to the trick's provider (`trickTapper`), and shows Collie's spinner
 // in its icon's box while the tap is in flight. A mark without an intent opens the trick's own session
 // when it has one, one level down. A mark with neither is the same control, which does nothing and
-// says so (lib/tricks/mark.tsx, ONE CONTROL): it never drops to a span that shrinks under the block.
+// says so (lib/tricks/mark.tsx, ONE CONTROL): it never drops to a span that shrinks.
 
 /** The session a mark without an intent opens: the trick's first session part. */
 export function sessionOfMark(part: Pick<WireTrickPart, "host" | "trick">, sessions: readonly AgentView[]): AgentView | undefined {

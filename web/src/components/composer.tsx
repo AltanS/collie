@@ -333,7 +333,7 @@ interface ComposerProps {
    * Settings → Pane navigation is Joystick (ADR 0121). The pane decides; absent, nothing is drawn.
    */
   aboveBelt?: ReactNode;
-  /** The tricks' marks on the belt's pinned block (M94 slice 03), in manifest order. Absent: the belt is what it was. */
+  /** The tricks' marks (M94 slice 03), in manifest order, at the end of the belt's scrolling strip, never in its pinned block. Absent: the belt is what it was. */
   beltMarks?: readonly BeltMark[];
 
   /**
