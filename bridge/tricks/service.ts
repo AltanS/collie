@@ -5,6 +5,7 @@ import { redactText } from "../redact.ts";
 import { payloadDigest } from "../worktree-receipts.ts";
 import {
   freshWindowMs,
+  HILL_NODE_PREFIX,
   parseTrickDocumentText,
   parseTapRequest,
   REFUSALS_MAX,
@@ -17,9 +18,11 @@ import {
   type TapRequest,
   type WireTrickInfo,
 } from "../../web/src/lib/tricks/schema.ts";
+import type { HillTrickTap } from "../hill/service.ts";
 import { createTrickScanner, type FoundTrick, type TricksScan } from "./discover.ts";
 import { scrubEnv, type ProviderEnv } from "./env.ts";
 import { buildFacts, type FactsWorld } from "./facts.ts";
+import type { TrickHillRun, TrickHillTrick } from "./hill.ts";
 import { tricksConfigDir, trickStateDir, switchesPath } from "./paths.ts";
 import { trickSessionPanes, type TrickSessionPanes } from "./panes.ts";
 import { outcomeProblem, runProvider, type RunOutcome, type RunSpec } from "./run.ts";
@@ -58,6 +61,13 @@ import { createSwitchReader, parseSwitches, withSwitch, writeSwitches, type Swit
 // nothing; a repeat still in flight waits for the first; the same rid with another payload is refused.
 // A tap that ran nothing (the trick is off, busy or skipped) keeps no receipt, so the same rid may
 // simply be tried again.
+//
+// ── DECISIONS (M94, M96) ────────────────────────────────────────────────────────
+// After a run that succeeded, the document's decisions go to the hill through `deps.decisions`
+// (hill.ts): posted, superseded or withdrawn by key. Its refusals join the document's. A trick switched
+// off or removed has every open decision withdrawn. The answer comes back from the hill as a tap on
+// `hill/<key>` (`tapFromHill`), with the answer's own rid and `seen`, the content hash of the version
+// the person saw. The phone's tap route refuses a `hill/` node: a decision is answered on the Hill.
 
 /** How long a phone's look keeps timers running. */
 export const WATCH_WINDOW_MS = 5 * 60_000;
@@ -89,6 +99,21 @@ export interface TricksSurface {
   /** `POST /api/tricks/<host>/<id>/switch`: write the switch file, as `collie trick on|off` does. */
   setSwitch(host: string, id: string, on: boolean): Promise<SwitchAnswer>;
 }
+
+/** What the runner needs of the trick's decisions on the hill (hill.ts `TrickHill`). */
+export interface TricksHillPort {
+  /** Make the hill agree with one successful run's decisions; the refusals join the trick's. */
+  sync(trick: TrickHillTrick, run: TrickHillRun): Refusal[];
+  /** Withdraw every open decision of a trick switched off or removed. */
+  off(trick: TrickHillTrick): void;
+  /** Every trick the map knows that is not in `present` is off. */
+  prune(present: ReadonlySet<string>, host: string): void;
+  /** The content hash of the decision the person answered. */
+  seenOf(trickId: string, decisionId: string): string | undefined;
+}
+
+/** The phone's words when it taps a decision's node directly: answers go through the hill. */
+export const HILL_NODE_TAP_REFUSED = "A decision is answered on the Hill, not with a tap.";
 
 /** A tap route's answer: the HTTP status and the JSON body. */
 export type TapAnswer =
@@ -122,11 +147,20 @@ export interface TricksServiceDeps {
   revBase?: number;
   /** The platform, for the shell. */
   platform?: NodeJS.Platform;
+  /** The trick's decisions on the hill. Absent: decisions are parsed and posted nowhere. */
+  decisions?: TricksHillPort;
 }
 
 interface QueuedTap {
   request: TapRequest;
+  /** Only on a decision's answer from the hill: the content hash the person saw. */
+  seen?: string;
   resolve: (reply: TrickTapReply) => void;
+}
+
+/** A queued tap as the trigger its run gets. */
+function tapTrigger(tap: Pick<QueuedTap, "request" | "seen">): FactsTrigger {
+  return tap.seen === undefined ? { kind: "tap", ...tap.request } : { kind: "tap", ...tap.request, seen: tap.seen };
 }
 
 interface TrickRuntime {
@@ -271,11 +305,14 @@ export class TricksService implements TricksSurface {
     this.folderExists = scan.exists;
     const host = this.deps.host();
     const ids = new Set(scan.tricks.map((m) => m.id));
-    for (const id of this.runtimes.keys()) {
+    for (const [id, rt] of this.runtimes) {
       if (ids.has(id)) continue;
       this.runtimes.delete(id);
       this.store.removeTrick(host, id);
+      this.deps.decisions?.off(this.hillTrick(rt));
     }
+    // A trick removed while the bridge was down has its open decisions withdrawn too.
+    this.deps.decisions?.prune(ids, host);
     for (const found of scan.tricks) {
       const on = switches.on.has(found.id);
       const old = this.runtimes.get(found.id);
@@ -291,6 +328,8 @@ export class TricksService implements TricksSurface {
           queued: null,
           docRefusals: [],
         });
+        // Off at start (switched off while the bridge was down): its open decisions go.
+        if (!on) this.deps.decisions?.off({ id: found.id, name: found.manifest?.name ?? found.id, host });
         this.publish(found.id);
         continue;
       }
@@ -303,10 +342,18 @@ export class TricksService implements TricksSurface {
       if (old.on !== on) {
         old.on = on;
         if (on) this.restart(old);
-        else this.store.dropParts(host, found.id);
+        else {
+          this.store.dropParts(host, found.id);
+          this.deps.decisions?.off(this.hillTrick(old));
+        }
       }
       this.publish(found.id);
     }
+  }
+
+  /** The trick as the hill's sender names it. */
+  private hillTrick(rt: TrickRuntime): TrickHillTrick {
+    return { id: rt.found.id, name: rt.found.manifest?.name ?? rt.found.id, host: this.deps.host() };
   }
 
   private restart(rt: TrickRuntime): void {
@@ -377,8 +424,7 @@ export class TricksService implements TricksSurface {
       const next = rt.queued;
       if (next === null) return;
       rt.queued = null;
-      const tapTrigger: FactsTrigger = { kind: "tap", ...next.request };
-      void this.begin(rt, tapTrigger, next);
+      void this.begin(rt, tapTrigger(next), next);
     });
     return rt.running;
   }
@@ -432,7 +478,11 @@ export class TricksService implements TricksSurface {
     const freshMs = freshWindowMs(parsed.freshMs, manifest.everyMs);
     const asOf = parsed.asOf ?? new Date(startedAt).toISOString();
     this.store.applyDocument(host, id, parsed, { asOf, fresh: parsed.fresh ?? freshString(freshMs) });
-    this.succeeded(rt, startedAt, parsed.refusals);
+    // The decisions reach the hill only from a run that succeeded. A list refused as a whole (over the
+    // cap) changes nothing there either: the last good decisions stay, as the last good parts do.
+    const listRefused = parsed.refusals.some((refusal) => refusal.path === "/decisions" && refusal.decision === undefined);
+    const posted = listRefused ? [] : (this.deps.decisions?.sync({ id, name: manifest.name, host }, { decisions: parsed.decisions, refusedKeys: parsed.refusedDecisions }) ?? []);
+    this.succeeded(rt, startedAt, [...parsed.refusals, ...posted]);
     this.publish(id);
     const mine = this.store.trickParts(host, id, revBefore);
     return { rid, code: "ok", rev: this.store.rev, parts: mine.parts, present: mine.present };
@@ -468,7 +518,24 @@ export class TricksService implements TricksSurface {
     if (host !== this.deps.host()) return { status: 404, body: { error: "unknown-host" } };
     const parsed = parseTapRequest(body);
     if (parsed.request === undefined) return { status: 400, body: { error: "tap-invalid", refusals: parsed.refusals } };
-    const request = parsed.request;
+    // A decision's answer comes from the hill only (`tapFromHill`), so it is closed and receipted there.
+    if (parsed.request.node.startsWith(HILL_NODE_PREFIX)) return { status: 200, body: { rid: parsed.request.rid, code: "rejected", message: HILL_NODE_TAP_REFUSED } };
+    return this.runTap(host, id, parsed.request, undefined);
+  }
+
+  /**
+   * The answer to a trick's decision, from the hill (bridge/index.ts wires it as the hill's `tap`): one
+   * tap on `hill/<key>` with the answer's rid, and `seen`, the content hash of the version the person
+   * saw. True when the run succeeded; a refused, failed or timed-out run is false, and nothing retries.
+   */
+  async tapFromHill(host: string, id: string, tap: HillTrickTap, decisionId: string): Promise<boolean> {
+    const request: TapRequest = { rid: tap.rid, node: tap.node, intent: tap.intent, value: { text: tap.value.text } };
+    const answer = await this.runTap(host, id, request, this.deps.decisions?.seenOf(id, decisionId));
+    return answer.status === 200 && answer.body.code === "ok";
+  }
+
+  private async runTap(host: string, id: string, request: TapRequest, seen: string | undefined): Promise<TapAnswer> {
+    if (host !== this.deps.host()) return { status: 404, body: { error: "unknown-host" } };
     const digest = payloadDigest([id, request.node, request.intent, JSON.stringify(request.value ?? null), request.from?.session ?? ""]);
     // A replay answers the same receipt again, from the receipt log, unchanged (the tree's intent rule).
     const kept = this.receipts.get(request.rid);
@@ -492,12 +559,12 @@ export class TricksService implements TricksSurface {
     rt.failures = 0;
     rt.stopped = false;
     const reply = new Promise<TrickTapReply>((resolve) => {
-      const queued: QueuedTap = { request, resolve };
+      const queued: QueuedTap = seen === undefined ? { request, resolve } : { request, seen, resolve };
       if (rt.running !== null) {
         rt.queued = queued;
         return;
       }
-      void this.begin(rt, { kind: "tap", ...request }, queued);
+      void this.begin(rt, tapTrigger(queued), queued);
     });
     this.inflight.set(request.rid, { digest, reply });
     try {

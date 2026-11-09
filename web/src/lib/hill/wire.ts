@@ -84,6 +84,8 @@ export interface HillDecision {
     /** The poster's walky address. Null for a trick. */
     address: string | null;
     trickId: string | null;
+    /** The decision's `key` in the trick's document. Null for an agent. */
+    trickKey: string | null;
     /** The crew member the poster runs on. Null on a solo install. */
     memberId: string | null;
     harness: string | null;
@@ -143,8 +145,17 @@ export interface HillDecision {
     at: number;
     /** What walky reported. "none" for a dismiss with nothing to type. */
     delivery: "typed" | "held" | "unknown" | "none";
+    /** What the trick's program did with the answer, as a tap. "none" for an agent's decision. */
+    trick: HillTrickDelivery;
   } | null;
 }
+
+/**
+ * What a trick's program made of an answer: "ran" (the tap's run succeeded), "failed" (the run failed,
+ * timed out, or the trick was off or busy; nothing retries), "none" (an agent's decision, no trick).
+ */
+export type HillTrickDelivery = "ran" | "failed" | "none";
+export const HILL_TRICK_DELIVERIES: readonly HillTrickDelivery[] = ["ran", "failed", "none"];
 
 /** What the bridge serves at the hill read route. */
 export interface HillList {
@@ -178,6 +189,8 @@ export interface HillReceipt {
   /** The decision's state after this call. */
   state: HillState | null;
   delivery: "typed" | "held" | "unknown" | "none" | null;
+  /** What the trick's program made of the answer. Null where `delivery` is null. */
+  trick: HillTrickDelivery | null;
   at: number;
 }
 

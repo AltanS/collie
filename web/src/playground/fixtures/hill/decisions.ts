@@ -32,7 +32,7 @@ function decision(over: Fixture): HillDecision {
     v: 1,
     id: did,
     requestId: `0b6f2c1e-4a7d-4c1b-9e2f-${did.slice(-12)}`,
-    from: { kind: "agent", address: `wt_${did.slice(3, 15)}`, trickId: null, memberId: null, harness: "claude", label: sender.label, host: sender.host },
+    from: { kind: "agent", address: `wt_${did.slice(3, 15)}`, trickId: null, trickKey: null, memberId: null, harness: "claude", label: sender.label, host: sender.host },
     about: null,
     priority: "today",
     priorityAsked: "today",
@@ -158,6 +158,22 @@ export const later = decision({
   text: "none",
 });
 
+/** A decision a trick posted: the poster is the trick, not a session, and its answer goes nowhere else. */
+const LOOK_FROM = { kind: "trick", address: null, trickId: "look", trickKey: "ship-zoom", memberId: null, harness: null, label: "Look", host: null } as const;
+
+/** 8: a trick's decision with no target. The trick takes the answer itself. */
+export const trickOpen = decision({
+  title: "Ship the zoom fix in 1.28.1?",
+  summary: "Look watched the legs go green on the last three runs.",
+  ago: 5,
+  from: LOOK_FROM,
+  target: null,
+  options: [
+    { intent: "yes", label: "Yes, Edge first" },
+    { intent: "no", label: "Not yet" },
+  ],
+});
+
 /** The Hill with seven cards, in any order: the view sorts them. */
 export const sevenOpen: readonly HillDecision[] = [later, withBody, twoOptions, textOnly, threeWithConfirm, unattended, textRequired];
 
@@ -173,9 +189,21 @@ export const closedRows: readonly HillDecision[] = [
       summary: "Answered from the phone.",
       state: "answered",
       options: [{ intent: "yes", label: "Yes, Edge first" }],
-      answer: { rid: "6f1d2a4e-1b3c-4d5e-8f90-1a2b3c4d5e6f", intent: "yes", label: "Yes, Edge first", text: null, by: "phone", at: NOW - 4 * MIN, delivery: "typed" },
+      answer: { rid: "6f1d2a4e-1b3c-4d5e-8f90-1a2b3c4d5e6f", intent: "yes", label: "Yes, Edge first", text: null, by: "phone", at: NOW - 4 * MIN, delivery: "typed", trick: "none" },
     },
     4,
+  ),
+  closed(
+    {
+      title: "Keep the legs watch on?",
+      summary: "Answered from the phone, and the trick recorded it.",
+      state: "answered",
+      from: LOOK_FROM,
+      target: null,
+      options: [{ intent: "yes", label: "Yes" }],
+      answer: { rid: "3a7c9e21-6b4d-4e8f-a1b2-0c9d8e7f6a5b", intent: "yes", label: "Yes", text: null, by: "phone", at: NOW - 8 * MIN, delivery: "none", trick: "ran" },
+    },
+    8,
   ),
   closed({ title: "Rebuild the deputy now?", summary: "Dismissed.", state: "dismissed", sender: HILL }, 20),
   closed({ title: "Post the release thread before noon?", summary: "Nobody answered in time.", state: "expired", sender: SITE }, 60),
@@ -191,7 +219,7 @@ export const closedRows: readonly HillDecision[] = [
 export const keptWords = "Call it minibuch-hc, and keep the old name as an alias until 2.0.";
 
 function receipt(code: HillReceipt["code"], delivery: HillReceipt["delivery"], reason: string | null = null): HillReceipt {
-  return { rid: "2c9e7a10-5d4b-4f3a-9b8c-7d6e5f4a3b2c", code, reason, state: code === "ok" ? "answered" : null, delivery, at: NOW };
+  return { rid: "2c9e7a10-5d4b-4f3a-9b8c-7d6e5f4a3b2c", code, reason, state: code === "ok" ? "answered" : null, delivery, trick: delivery === null ? null : "none", at: NOW };
 }
 
 /** One receipt per card state. */

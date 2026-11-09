@@ -17,6 +17,13 @@
 //
 // ORDER ON AN ANSWER. Write the receipt, close the decision, then send. A send that fails or throws
 // after the close leaves the decision answered with `delivery: "unknown"`, and nothing is sent again.
+//
+// A TRICK'S DECISION (M94). A trick posts through `postDecision` from the tricks runner
+// (bridge/tricks/hill.ts). The answer reaches the trick's program as a tap, after the walky message
+// when `replyTo` is set, with the answer's own `rid`, through the injected `tap` (this file never
+// imports the tricks service; bridge/index.ts wires the two). The receipt and the answer record what
+// the tap came to in `trick`: `ran`, or `failed` (written first, so a bridge that stops before the tap
+// says so), never retried. A `gone` target runs no tap: one outcome, not half of one.
 
 import { randomBytes } from "node:crypto";
 
@@ -37,6 +44,7 @@ import {
   HILL_SUMMARY_MAX,
   HILL_TITLE_MAX,
   HILL_WHY_MAX,
+  hillNode,
   isHillOptionIntent,
   sortOpenDecisions,
   type HillAnswerRequest,
@@ -66,11 +74,24 @@ export interface HillAgentSender {
   readonly host: string | null;
 }
 
-/** Code inside the bridge that posts for itself (a trick, later). Never reachable from the socket. */
+/** A trick, posting through the tricks runner inside the bridge. Never reachable from the socket. */
 export interface HillTrickSender {
   readonly kind: "trick";
   readonly trickId: string;
+  /** The decision's `key` in the trick's document; the answer comes back to the trick as `hill/<key>`. */
+  readonly trickKey: string;
+  /** The trick's name, as its manifest gives it. Display only. */
   readonly label: string;
+  /** The tricks host name the trick runs under (bridge/tricks/facts.ts `tricksHostName`); the tap goes there. */
+  readonly host: string;
+}
+
+/** The tap an answer to a trick's decision becomes: the answer's `rid`, `hill/<key>`, the intent, the words. */
+export interface HillTrickTap {
+  readonly rid: string;
+  readonly node: string;
+  readonly intent: string;
+  readonly value: { readonly text: string | null };
 }
 
 export type HillSender = HillAgentSender | HillTrickSender;
@@ -108,6 +129,11 @@ export interface HillServiceDeps {
   readonly now?: () => number;
   readonly mintId?: () => string;
   readonly audit?: (entry: AuditEntry) => void;
+  /**
+   * Run a trick's program with an answer as its tap (bridge/index.ts wires it to the tricks runner).
+   * True when the run succeeded. Absent: no tricks runner, so every trick's answer is `failed`.
+   */
+  readonly tap?: (host: string, trickId: string, tap: HillTrickTap, decisionId: string) => Promise<boolean>;
 }
 
 /** A post's answer: the stored decision, or a refusal with its code and plain words the CLI prints. */
@@ -122,6 +148,10 @@ export const NOT_ON_LEAD = "the hill is not merged across the crew yet; post fro
 export const HILL_WALKY_OFF = "WalkyTalky is off on this machine (COLLIE_WALKY=off), so no answer could reach you";
 /** The closed reason of a withdrawn decision. */
 export const BY_THE_POSTER = "by the poster";
+/** The closed reason of a decision its trick no longer lists, or replaced while closed. */
+export const BY_THE_TRICK = "by the trick";
+/** The closed reason of every open decision of a trick switched off or removed. */
+export const TRICK_OFF = "the trick is off";
 /** The closed reason of a decision whose target session ended, and the receipt's reason. */
 export const TARGET_ENDED = "target session ended";
 /** The closed reason of an expired decision. */
@@ -272,14 +302,28 @@ function cleanPost(input: HillPostInput): { readonly ok: true; readonly fields: 
 }
 
 /** The receipt an answer writes, before or instead of any send. */
-function receiptOf(rid: string, at: number, code: HillReceipt["code"], reason: string | null, state: HillState | null, delivery: HillReceipt["delivery"]): HillReceipt {
-  return { rid, code, reason, state, delivery, at };
+function receiptOf(rid: string, at: number, code: HillReceipt["code"], reason: string | null, state: HillState | null, delivery: HillReceipt["delivery"], trick: HillReceipt["trick"] = null): HillReceipt {
+  return { rid, code, reason, state, delivery, trick, at };
+}
+
+/** The trick a decision came from, when it came from one: where its tap goes. */
+function trickOf(decision: HillDecision): { readonly host: string; readonly trickId: string; readonly trickKey: string } | null {
+  const { kind, host, trickId, trickKey } = decision.from;
+  return kind === "trick" && host !== null && trickId !== null && trickKey !== null ? { host, trickId, trickKey } : null;
 }
 
 /** What the claim step of an answer hands the send step, or the receipt that ends it. */
 type Claim =
   | { readonly kind: "done"; readonly outcome: HillAnswerOutcome }
-  | { readonly kind: "send"; readonly decision: HillDecision; readonly record: HillReceiptRecord; readonly to: string; readonly body: string };
+  | {
+      readonly kind: "deliver";
+      readonly decision: HillDecision;
+      readonly record: HillReceiptRecord;
+      /** The walky message, or null when nothing is typed (a trick with no `replyTo`). */
+      readonly send: { readonly to: string; readonly body: string } | null;
+      /** The trick's tap, or null for an agent's decision. */
+      readonly tap: { readonly host: string; readonly trickId: string; readonly decisionId: string; readonly tap: HillTrickTap } | null;
+    };
 
 export class HillService {
   private readonly now: () => number;
@@ -295,6 +339,11 @@ export class HillService {
   /** The revision on the snapshot, or undefined while no decisions file exists. */
   rev(): number | undefined {
     return this.deps.store.rev();
+  }
+
+  /** One decision by id, any sender (the tricks runner reads its own decisions' states). */
+  decision(id: string): HillDecision | undefined {
+    return this.deps.store.get(id);
   }
 
   /** What `GET /api/hill` serves. */
@@ -364,8 +413,8 @@ export class HillService {
       requestId: input.requestId,
       from:
         from.kind === "agent"
-          ? { kind: "agent", address: from.address, trickId: null, memberId: from.memberId, harness: from.harness, label: from.label, host: from.host }
-          : { kind: "trick", address: null, trickId: from.trickId, memberId: this.deps.memberId, harness: null, label: headerField(from.label, WALKY_LABEL_MAX), host: this.deps.machine },
+          ? { kind: "agent", address: from.address, trickId: null, trickKey: null, memberId: from.memberId, harness: from.harness, label: from.label, host: from.host }
+          : { kind: "trick", address: null, trickId: from.trickId, trickKey: from.trickKey, memberId: this.deps.memberId, harness: null, label: headerField(from.label, WALKY_LABEL_MAX), host: from.host },
       about: about?.address ?? null,
       priority,
       priorityAsked: asked,
@@ -407,12 +456,12 @@ export class HillService {
     return decision === null ? { ok: false, missing: true, error: `no decision ${id} from this session` } : { ok: true, decision };
   }
 
-  /** The poster takes an open decision back. It closes `withdrawn`, "by the poster". */
-  withdraw(sender: HillSender, id: string): HillOneAnswer {
+  /** The poster takes an open decision back. It closes `withdrawn`, "by the poster" (a trick's runner names its own reason). */
+  withdraw(sender: HillSender, id: string, reason: string = BY_THE_POSTER): HillOneAnswer {
     const decision = this.mine(sender, id);
     if (decision === null) return { ok: false, missing: true, error: `no decision ${id} from this session` };
     if (decision.state !== "open") return { ok: false, missing: false, error: `${id} is ${decision.state}, nothing to withdraw` };
-    const closed: HillDecision = { ...decision, state: "withdrawn", closedAt: this.now(), closedReason: BY_THE_POSTER };
+    const closed: HillDecision = { ...decision, state: "withdrawn", closedAt: this.now(), closedReason: reason };
     if (!this.deps.store.put(closed)) return { ok: false, missing: false, error: "the change could not be saved on this machine; the decision stays open" };
     this.deps.audit?.({ action: "hill.withdraw", detail: { decisionId: id } });
     return { ok: true, decision: closed };
@@ -460,26 +509,40 @@ export class HillService {
     );
     const claim = await claimed;
     if (claim.kind === "done") return claim.outcome;
-    let delivery: HillDelivery = "unknown";
-    try {
-      delivery = await this.deps.send(claim.to, claim.body, by);
-    } catch {
-      // Not confirmed, and never sent again: the decision stays answered with `unknown`.
-      delivery = "unknown";
+    let delivery: NonNullable<HillReceipt["delivery"]> = "none";
+    if (claim.send !== null) {
+      try {
+        delivery = await this.deps.send(claim.send.to, claim.send.body, by);
+      } catch {
+        // Not confirmed, and never sent again: the decision stays answered with `unknown`.
+        delivery = "unknown";
+      }
     }
-    const receipt: HillReceipt = { ...claim.record.receipt, delivery };
+    let trick: NonNullable<HillReceipt["trick"]> = "none";
+    if (claim.tap !== null) trick = (await this.runTap(claim.tap)) ? "ran" : "failed";
+    const receipt: HillReceipt = { ...claim.record.receipt, delivery, trick };
     await this.deps.receipts.record({ ...claim.record, receipt });
     const now = this.deps.store.get(id);
-    if (now?.answer?.rid === request.rid && now.answer.delivery !== delivery) this.deps.store.put({ ...now, answer: { ...now.answer, delivery } });
+    if (now?.answer?.rid === request.rid && (now.answer.delivery !== delivery || now.answer.trick !== trick)) this.deps.store.put({ ...now, answer: { ...now.answer, delivery, trick } });
     this.auditAnswer(claim.decision, request, by, receipt);
     return { kind: "receipt", receipt };
+  }
+
+  /** The trick's tap, run once. A throw, or no tricks runner, is a failed tap; nothing retries. */
+  private async runTap(tap: NonNullable<Extract<Claim, { kind: "deliver" }>["tap"]>): Promise<boolean> {
+    if (this.deps.tap === undefined) return false;
+    try {
+      return await this.deps.tap(tap.host, tap.trickId, tap.tap, tap.decisionId);
+    } catch {
+      return false;
+    }
   }
 
   private auditAnswer(decision: Pick<HillDecision, "id">, request: HillAnswerRequest, by: string, receipt: HillReceipt): void {
     this.deps.audit?.({
       action: "hill.answer",
       device: by,
-      detail: { decisionId: decision.id, intent: request.intent, textLength: request.value.text?.length ?? 0, receiptCode: receipt.code, delivery: receipt.delivery ?? "none" },
+      detail: { decisionId: decision.id, intent: request.intent, textLength: request.value.text?.length ?? 0, receiptCode: receipt.code, delivery: receipt.delivery ?? "none", trick: receipt.trick ?? "none" },
     });
   }
 
@@ -515,8 +578,11 @@ export class HillService {
     }
     const state: HillState = intent === "dismiss" ? "dismissed" : "answered";
     const typed = decision.target !== null && to !== null;
-    // Written first, as not confirmed: a bridge that stops after this line never types the answer twice.
-    const record: HillReceiptRecord = { requestId: rid, payloadDigest: digest, receipt: receiptOf(rid, now, "ok", null, state, typed ? "unknown" : "none") };
+    const trick = trickOf(decision);
+    // Written first, as not confirmed: a bridge that stops after this line never types the answer twice,
+    // and never runs the trick's tap twice (it reads `failed`, the tap that did not run).
+    const firstTrick = trick === null ? "none" : "failed";
+    const record: HillReceiptRecord = { requestId: rid, payloadDigest: digest, receipt: receiptOf(rid, now, "ok", null, state, typed ? "unknown" : "none", firstTrick) };
     if (!(await this.deps.receipts.recordFirst(record))) return { kind: "done", outcome: { kind: "unsaved" } };
     // A withdraw or an expiry may have closed it while the receipt was written.
     const fresh = this.deps.store.get(id);
@@ -529,17 +595,19 @@ export class HillService {
       state,
       closedAt: now,
       closedReason: null,
-      answer: { rid, intent, label: option?.label ?? null, text, by: headerField(by, WALKY_LABEL_MAX), at: now, delivery: typed ? "unknown" : "none" },
+      answer: { rid, intent, label: option?.label ?? null, text, by: headerField(by, WALKY_LABEL_MAX), at: now, delivery: typed ? "unknown" : "none", trick: firstTrick },
     };
     if (!this.deps.store.put(closed)) {
       const unsaved = receiptOf(rid, now, "unknown", "the answer could not be saved on this machine; nothing was typed", "open", null);
       return this.final(request, id, by, digest, unsaved);
     }
-    if (!typed || to === null) {
+    const send = typed && to !== null ? { to, body } : null;
+    const tap = trick === null ? null : { host: trick.host, trickId: trick.trickId, decisionId: id, tap: { rid, node: hillNode(trick.trickKey), intent, value: { text } } };
+    if (send === null && tap === null) {
       this.auditAnswer(closed, request, by, record.receipt);
       return { kind: "done", outcome: { kind: "receipt", receipt: record.receipt } };
     }
-    return { kind: "send", decision: closed, record, to, body };
+    return { kind: "deliver", decision: closed, record, send, tap };
   }
 
   /** Why the text breaks the decision's rule, or null when it keeps it. */

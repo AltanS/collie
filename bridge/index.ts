@@ -278,9 +278,10 @@ import { holdSocketPath } from "./beacon/paths.ts";
 import { VersionCache } from "./surface/binary-version.ts";
 import { findProfile, loadProfiles, type Profile } from "../web/src/lib/surface/profile.ts";
 import { factsWorldOf, tricksHostName } from "./tricks/facts.ts";
+import { scopeKeyAddress, TrickHill } from "./tricks/hill.ts";
 import { TricksService } from "./tricks/service.ts";
 import { createSessionFolders, createSessionLabels } from "./operator-space-labels.ts";
-import { labelOf } from "./walky/address.ts";
+import { labelOf, LOCAL_MEMBER } from "./walky/address.ts";
 import {
   crewSkipped,
   crewTargets,
@@ -2127,16 +2128,20 @@ if (walkyRecovered > 0) console.log(`[walky] settled ${String(walkyRecovered)} m
 // the person's own operator walky message. `<stateDir>/hill/` is made by the first post, never at boot.
 const hillReceipts = new HillReceiptStore(cfg.stateDir);
 await hillReceipts.load();
+const hillPlace = walkyPlace(walky, walkyMemberId);
 const hill = new HillService({
   store: new HillStore(hillDir(cfg.stateDir)),
   receipts: hillReceipts,
-  place: walkyPlace(walky, walkyMemberId),
+  place: hillPlace,
   send: walkySend(walky),
   crewMode: () => crew.mode,
   walkyOn: () => cfg.walky,
   memberId: walkyMemberId,
   machine: hostname(),
   audit: (entry) => audit.record(entry),
+  // A trick's decision (M94): the answer reaches the trick's program as a tap. `tricks` is made further
+  // down; an answer only ever comes after boot.
+  tap: (host, trickId, tap, decisionId) => tricks?.tapFromHill(host, trickId, tap, decisionId) ?? Promise.resolve(false),
 });
 const walkyServer = new WalkyServer({
   socketPath: walkySocketPath(cfg.stateDir),
@@ -3182,16 +3187,23 @@ if (standbyServer !== null && standbyDoor !== null) {
 // timers wait for a paired phone to look (bridge/tricks/service.ts).
 const tricksFolders = createSessionFolders(cfg.spacesFile ?? null);
 const tricksLabels = createSessionLabels(cfg.spacesFile ?? null);
+const tricksHost = (): string => {
+  const data = trustStore.current();
+  return tricksHostName(data === null ? null : data.self.memberId);
+};
 const tricks =
   cfg.tricksDir === undefined
     ? undefined
     : new TricksService({
         configDir: dirname(cfg.tricksDir),
         stateDir: cfg.stateDir,
-        host: () => {
-          const data = trustStore.current();
-          return tricksHostName(data === null ? null : data.self.memberId);
-        },
+        host: tricksHost,
+        // A trick's decisions go into the hill (M94, M96); `<stateDir>/hill/tricks.json` keeps the map.
+        decisions: new TrickHill({
+          stateDir: cfg.stateDir,
+          hill,
+          addressOf: (scopeKey) => scopeKeyAddress(scopeKey, tricksHost(), walkyMemberId ?? LOCAL_MEMBER, hillPlace),
+        }),
         world: (host) => {
           void tricksFolders.refresh();
           void tricksLabels.refresh();

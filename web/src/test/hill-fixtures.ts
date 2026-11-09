@@ -15,7 +15,7 @@ export function hillDecision(over: Partial<HillDecision> = {}): HillDecision {
     v: 1,
     id,
     requestId: `00000000-0000-4000-8000-${String(seq).padStart(12, "0")}`,
-    from: { kind: "agent", address: "wt_aaaaaaaaaaaa", trickId: null, memberId: null, harness: "claude", label: "collie lead", host: "bluefin" },
+    from: { kind: "agent", address: "wt_aaaaaaaaaaaa", trickId: null, trickKey: null, memberId: null, harness: "claude", label: "collie lead", host: "bluefin" },
     about: null,
     priority: "today",
     priorityAsked: "today",
@@ -44,7 +44,22 @@ export function hillDecision(over: Partial<HillDecision> = {}): HillDecision {
   };
 }
 
+/**
+ * A decision a trick posted (M94 in the hill): `from.kind` is "trick", `from.label` the trick's name, no
+ * session address. It has no target unless the case sets one (`replyTo` was set), and an open one has
+ * no answer.
+ */
+export function trickDecision(over: Partial<HillDecision> = {}): HillDecision {
+  const base = hillDecision();
+  return {
+    ...base,
+    from: { kind: "trick", address: null, trickId: "look", trickKey: "ship-zoom", memberId: null, harness: null, label: "Look", host: null },
+    target: null,
+    ...over,
+  };
+}
+
 /** A receipt for `rid`, `ok` and typed unless the case says otherwise. */
 export function hillReceipt(over: Partial<HillReceipt> = {}): HillReceipt {
-  return { rid: "00000000-0000-4000-8000-000000000001", code: "ok", reason: null, state: "answered", delivery: "typed", at: HILL_T0, ...over };
+  return { rid: "00000000-0000-4000-8000-000000000001", code: "ok", reason: null, state: "answered", delivery: "typed", trick: "none", at: HILL_T0, ...over };
 }

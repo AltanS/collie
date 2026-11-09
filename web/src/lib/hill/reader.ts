@@ -18,6 +18,7 @@ import {
   HILL_PRIORITIES,
   HILL_STATES,
   HILL_TEXT_MODES,
+  HILL_TRICK_DELIVERIES,
   type HillDecision,
   type HillList,
   type HillOption,
@@ -109,9 +110,12 @@ function readFrom(value: JsonValue | undefined): HillDecision["from"] | null {
   const memberId = nullableString(o.memberId);
   const harness = nullableString(o.harness);
   const host = nullableString(o.host);
+  // Absent on a bridge from before tricks posted (M94): an agent's, so null.
+  const trickKey = nullableString(o.trickKey);
   if (kind === undefined || label === undefined) return null;
   if (address === undefined || trickId === undefined || memberId === undefined || harness === undefined || host === undefined) return null;
-  return { kind, address, trickId, memberId, harness, label, host };
+  if (trickKey === undefined) return null;
+  return { kind, address, trickId, trickKey, memberId, harness, label, host };
 }
 
 function readTarget(value: JsonValue | undefined): HillDecision["target"] | undefined {
@@ -148,9 +152,11 @@ function readAnswer(value: JsonValue | undefined): HillDecision["answer"] | unde
   const by = asJsonString(o.by);
   const at = asJsonNumber(o.at);
   const delivery = oneOf(ANSWER_DELIVERIES, o.delivery);
+  // Absent on a bridge from before tricks posted (M94): an agent's answer, so "none".
+  const trick = o.trick === undefined ? "none" : oneOf(HILL_TRICK_DELIVERIES, o.trick);
   if (rid === undefined || intent === undefined || label === undefined || text === undefined) return undefined;
-  if (by === undefined || at === undefined || delivery === undefined) return undefined;
-  return { rid, intent, label, text, by, at, delivery };
+  if (by === undefined || at === undefined || delivery === undefined || trick === undefined) return undefined;
+  return { rid, intent, label, text, by, at, delivery, trick };
 }
 
 /** One decision as the contract shapes it, or null when it does not fit. */
@@ -275,7 +281,9 @@ export function readHillReceipt(value: JsonValue | undefined): HillReceipt | nul
   const at = asJsonNumber(o.at);
   const state = o.state === null || o.state === undefined ? null : oneOf(HILL_STATES, o.state);
   const delivery = o.delivery === null || o.delivery === undefined ? null : oneOf(DELIVERIES, o.delivery);
+  // Absent on a bridge from before tricks posted (M94): "none" beside a delivery, else null.
+  const trick = o.trick === null ? null : o.trick === undefined ? (delivery === null ? null : "none") : oneOf(HILL_TRICK_DELIVERIES, o.trick);
   if (rid === undefined || code === undefined || reason === undefined || at === undefined) return null;
-  if (state === undefined || delivery === undefined) return null;
-  return { rid, code, reason, state, delivery, at };
+  if (state === undefined || delivery === undefined || trick === undefined) return null;
+  return { rid, code, reason, state, delivery, trick, at };
 }

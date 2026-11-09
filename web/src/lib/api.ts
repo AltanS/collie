@@ -1774,7 +1774,7 @@ export async function postHillAnswer(body: HillAnswerRequest): Promise<HillRecei
     if (status === 400 || status === 409) return refused("rejected", detail);
     return null;
   });
-  return readHillReceipt(got) ?? { rid: body.rid, code: "unknown", reason: null, state: null, delivery: null, at: Date.now() };
+  return readHillReceipt(got) ?? { rid: body.rid, code: "unknown", reason: null, state: null, delivery: null, trick: null, at: Date.now() };
 }
 
 /**

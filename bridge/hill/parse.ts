@@ -10,6 +10,7 @@ import {
   HILL_PRIORITIES,
   HILL_STATES,
   HILL_TEXT_MODES,
+  HILL_TRICK_DELIVERIES,
   hillIdOfNode,
   type HillAnswerRequest,
   type HillDecision,
@@ -197,9 +198,11 @@ function readFrom(value: JsonValue | undefined): HillDecision["from"] | null {
   const harness = stringOrNull(row, "harness");
   const label = asJsonString(row.label);
   const host = stringOrNull(row, "host");
+  // Absent on a decision stored before tricks posted (M94): an agent's, so null.
+  const trickKey = row.trickKey === undefined ? null : stringOrNull(row, "trickKey");
   if ((kind !== "agent" && kind !== "trick") || address === undefined || trickId === undefined || memberId === undefined) return null;
-  if (harness === undefined || label === undefined || host === undefined) return null;
-  return { kind, address, trickId, memberId, harness, label, host };
+  if (harness === undefined || label === undefined || host === undefined || trickKey === undefined) return null;
+  return { kind, address, trickId, trickKey, memberId, harness, label, host };
 }
 
 function readTarget(value: JsonValue | undefined): HillDecision["target"] | undefined {
@@ -226,9 +229,12 @@ function readAnswer(value: JsonValue | undefined): HillDecision["answer"] | unde
   const at = asJsonNumber(row.at);
   const deliveryText = asJsonString(row.delivery);
   const delivery = DELIVERIES.find((candidate) => candidate === deliveryText);
+  // Absent on an answer stored before tricks posted (M94): an agent's, so "none".
+  const trickText = row.trick === undefined ? "none" : asJsonString(row.trick);
+  const trick = HILL_TRICK_DELIVERIES.find((candidate) => candidate === trickText);
   if (rid === undefined || intent === undefined || label === undefined || text === undefined || by === undefined) return undefined;
-  if (at === undefined || !Number.isSafeInteger(at) || delivery === undefined) return undefined;
-  return { rid, intent, label, text, by, at, delivery };
+  if (at === undefined || !Number.isSafeInteger(at) || delivery === undefined || trick === undefined) return undefined;
+  return { rid, intent, label, text, by, at, delivery, trick };
 }
 
 function readStoredOptions(value: JsonValue | undefined): HillOption[] | null {

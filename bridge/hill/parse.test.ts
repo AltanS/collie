@@ -93,7 +93,7 @@ describe("a stored decision", () => {
       links: [{ label: "L", href: "https://example.com" }],
       state: "answered",
       closedAt: 5,
-      answer: { rid: RID, intent: "yes", label: "Yes", text: null, by: "Pixel", at: 5, delivery: "typed" },
+      answer: { rid: RID, intent: "yes", label: "Yes", text: null, by: "Pixel", at: 5, delivery: "typed", trick: "none" },
     });
     expect(readDecision(onDisk(whole))).toEqual(whole);
   });
@@ -115,7 +115,7 @@ describe("the receipt file", () => {
     roots.push(stateDir);
     const store = new HillReceiptStore(stateDir);
     await store.load();
-    const record = { requestId: RID, payloadDigest: hillAnswerDigest("hill/dc_aaaaaaaaaaa1", "yes", null), receipt: { rid: RID, code: "ok" as const, reason: null, state: "answered" as const, delivery: "typed" as const, at: 5 } };
+    const record = { requestId: RID, payloadDigest: hillAnswerDigest("hill/dc_aaaaaaaaaaa1", "yes", null), receipt: { rid: RID, code: "ok" as const, reason: null, state: "answered" as const, delivery: "typed" as const, trick: "none" as const, at: 5 } };
     expect(await store.recordFirst(record)).toBe(true);
     const path = join(hillDir(stateDir), HILL_RECEIPTS_FILE);
     expect(statSync(path).mode & 0o777).toBe(0o600);

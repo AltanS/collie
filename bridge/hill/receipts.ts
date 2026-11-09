@@ -2,7 +2,7 @@ import { join } from "node:path";
 
 import type { JsonValue } from "../json.ts";
 import { asJsonNumber, asJsonObject, asJsonString } from "../../web/src/lib/json.ts";
-import { HILL_STATES, type HillReceipt, type HillState } from "../../web/src/lib/hill/wire.ts";
+import { HILL_STATES, HILL_TRICK_DELIVERIES, type HillReceipt, type HillState } from "../../web/src/lib/hill/wire.ts";
 import { isRequestId, memoryReceipts, payloadDigest, ReceiptFileStore, type ReceiptSurface } from "../worktree-receipts.ts";
 import { hillDir } from "./store.ts";
 
@@ -55,10 +55,14 @@ export function coerceHillReceipt(raw: JsonValue): HillReceiptRecord | null {
   const stateText = receipt.state === null ? null : asJsonString(receipt.state);
   const deliveryText = receipt.delivery === null ? null : asJsonString(receipt.delivery);
   const delivery = deliveryText === null ? null : DELIVERIES.find((candidate) => candidate === deliveryText);
+  // Absent on a receipt written before tricks posted (M94): an agent's, so "none" beside a delivery.
+  const trickText = receipt.trick === undefined ? (delivery === null ? null : "none") : receipt.trick === null ? null : asJsonString(receipt.trick);
+  const trick = trickText === null ? null : HILL_TRICK_DELIVERIES.find((candidate) => candidate === trickText);
   const at = asJsonNumber(receipt.at);
+  if (trick === undefined) return null;
   if (!isRequestId(requestId) || digest === undefined || rid !== requestId || code === undefined || reason === undefined) return null;
   if (stateText === undefined || (stateText !== null && !isState(stateText)) || delivery === undefined || at === undefined) return null;
-  return { requestId, payloadDigest: digest, receipt: { rid, code, reason, state: stateText, delivery, at } };
+  return { requestId, payloadDigest: digest, receipt: { rid, code, reason, state: stateText, delivery, trick, at } };
 }
 
 /**

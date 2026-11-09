@@ -17,6 +17,8 @@ import {
   type HillDelivery,
   type HillPlace,
   type HillPostAnswer,
+  type HillTrickSender,
+  type HillTrickTap,
 } from "./service.ts";
 import { HillStore } from "./store.ts";
 
@@ -38,6 +40,17 @@ interface Sent {
   readonly by: string;
 }
 
+/** A trick's sender for one decision key. */
+function trickSender(trickKey = "ship", trickId = "nightly-leg"): HillTrickSender {
+  return { kind: "trick", trickId, trickKey, label: "Nightly leg", host: "desk" };
+}
+
+interface Tapped {
+  readonly host: string;
+  readonly trickId: string;
+  readonly tap: HillTrickTap;
+}
+
 interface Rig {
   readonly hill: HillService;
   readonly store: HillStore;
@@ -50,6 +63,12 @@ interface Rig {
   clock: number;
   delivery: HillDelivery | "throw";
   onSend?: (to: string) => void;
+  /** Every tap the hill handed the tricks runner, in order. */
+  readonly taps: Tapped[];
+  /** What the trick's program makes of a tap. */
+  tapResult: boolean | "throw";
+  /** What happened, in order: "receipt", "closed", "send", "tap". */
+  readonly events: string[];
 }
 
 function rig(receipts: HillReceiptSurface = memoryHillReceipts()): Rig {
@@ -65,6 +84,9 @@ function rig(receipts: HillReceiptSurface = memoryHillReceipts()): Rig {
     walky: true,
     clock: 1000,
     delivery: "typed",
+    taps: [],
+    tapResult: true,
+    events: [],
   };
   const hill = new HillService({
     store,
@@ -75,6 +97,7 @@ function rig(receipts: HillReceiptSurface = memoryHillReceipts()): Rig {
       return hits.length === 1 ? hits[0]! : null;
     },
     send: async (to, body, by) => {
+      state.events.push("send");
       state.onSend?.(to);
       state.sent.push({ to, body, by });
       if (state.delivery === "throw") throw new Error("socket closed");
@@ -90,6 +113,12 @@ function rig(receipts: HillReceiptSurface = memoryHillReceipts()): Rig {
       return `dc_test${String(n).padStart(8, "0")}`;
     },
     audit: (entry) => state.audit.push(entry),
+    tap: async (host, trickId, tap) => {
+      state.events.push("tap");
+      state.taps.push({ host, trickId, tap });
+      if (state.tapResult === "throw") throw new Error("runner gone");
+      return state.tapResult;
+    },
   });
   return Object.assign(state, { hill });
 }
@@ -305,9 +334,17 @@ describe("posting a decision", () => {
 
   test("a trick posts through postDecision with no address; with no replyTo it has no target", () => {
     const r = rig();
-    const decision = posted(r.hill.postDecision({ kind: "trick", trickId: "nightly-leg", label: "Nightly leg" }, input(1)));
-    expect(decision.from).toEqual({ kind: "trick", address: null, trickId: "nightly-leg", memberId: null, harness: null, label: "Nightly leg", host: "desk" });
+    const decision = posted(r.hill.postDecision(trickSender(), input(1)));
+    expect(decision.from).toEqual({ kind: "trick", address: null, trickId: "nightly-leg", trickKey: "ship", memberId: null, harness: null, label: "Nightly leg", host: "desk" });
     expect(decision.target).toBeNull();
+  });
+
+  test("a trick is one sender: its keys share the 20-open cap, and the runner withdraws with its own reason", () => {
+    const r = rig();
+    for (let n = 1; n <= 20; n += 1) posted(r.hill.postDecision(trickSender(`k${String(n)}`), input(n)));
+    expect(refusal(r.hill.postDecision(trickSender("k21"), input(21)))).toBe("too_many_open");
+    const first = r.hill.mineList(trickSender("any"))[0]!;
+    expect(r.hill.withdraw(trickSender(), first.id, "the trick is off")).toMatchObject({ ok: true, decision: { state: "withdrawn", closedReason: "the trick is off" } });
   });
 });
 
@@ -383,7 +420,7 @@ describe("answering a decision: the receipt rules", () => {
     const decision = posted(r.hill.post(POSTER, input(1)));
     r.clock = 5000;
     const receipt = await receiptOf(r, answerOf(decision, 100, "yes", "Not before the browser leg is green."));
-    expect(receipt).toEqual({ rid: uuid(100), code: "ok", reason: null, state: "answered", delivery: "typed", at: 5000 });
+    expect(receipt).toEqual({ rid: uuid(100), code: "ok", reason: null, state: "answered", delivery: "typed", trick: "none", at: 5000 });
     expect(r.sent).toEqual([
       {
         to: "local/%1#aaaa",
@@ -394,12 +431,12 @@ describe("answering a decision: the receipt rules", () => {
     expect(r.store.get(decision.id)).toMatchObject({
       state: "answered",
       closedAt: 5000,
-      answer: { rid: uuid(100), intent: "yes", label: "Yes, Edge first", text: "Not before the browser leg is green.", by: "Pixel 9", at: 5000, delivery: "typed" },
+      answer: { rid: uuid(100), intent: "yes", label: "Yes, Edge first", text: "Not before the browser leg is green.", by: "Pixel 9", at: 5000, delivery: "typed", trick: "none" },
     });
     expect(r.receipts.get(uuid(100))?.receipt).toEqual(receipt);
     // The audit line names the decision, the intent and the length, never the text.
     const line = r.audit.find((entry) => entry.action === "hill.answer");
-    expect(line).toEqual({ action: "hill.answer", device: "Pixel 9", detail: { decisionId: decision.id, intent: "yes", textLength: 36, receiptCode: "ok", delivery: "typed" } });
+    expect(line).toEqual({ action: "hill.answer", device: "Pixel 9", detail: { decisionId: decision.id, intent: "yes", textLength: 36, receiptCode: "ok", delivery: "typed", trick: "none" } });
     expect(JSON.stringify(r.audit)).not.toContain("browser leg");
   });
 
@@ -527,12 +564,20 @@ describe("answering a decision: the receipt rules", () => {
     expect(r.sent).toEqual([]);
   });
 
-  test("a trick's decision with no target closes with delivery none and types nothing", async () => {
+  test("a trick's decision with no target closes with delivery none, types nothing, and the dismiss reaches the trick as a tap", async () => {
     const r = rig();
-    const decision = posted(r.hill.postDecision({ kind: "trick", trickId: "t1", label: "Trick" }, input(1)));
-    expect(await receiptOf(r, answerOf(decision, 100, "dismiss"))).toMatchObject({ code: "ok", state: "dismissed", delivery: "none" });
-    expect(r.store.get(decision.id)?.answer?.delivery).toBe("none");
+    const decision = posted(r.hill.postDecision(trickSender("t1-key", "t1"), input(1)));
+    expect(await receiptOf(r, answerOf(decision, 100, "dismiss"))).toMatchObject({ code: "ok", state: "dismissed", delivery: "none", trick: "ran" });
+    expect(r.store.get(decision.id)?.answer).toMatchObject({ delivery: "none", trick: "ran" });
     expect(r.sent).toEqual([]);
+    expect(r.taps).toEqual([{ host: "desk", trickId: "t1", tap: { rid: uuid(100), node: "hill/t1-key", intent: "dismiss", value: { text: null } } }]);
+  });
+
+  test("an agent's decision runs no tap: trick none", async () => {
+    const r = rig();
+    const decision = posted(r.hill.post(POSTER, input(1)));
+    expect(await receiptOf(r, answerOf(decision, 100, "yes"))).toMatchObject({ code: "ok", delivery: "typed", trick: "none" });
+    expect(r.taps).toEqual([]);
   });
 
   test("a withdrawn or expired decision answers gone with its state", async () => {
@@ -543,5 +588,77 @@ describe("answering a decision: the receipt rules", () => {
     const expiring = posted(r.hill.post(POSTER, input(2, { expiresAt: 1500 })));
     r.hill.sweep(1500);
     expect(await receiptOf(r, answerOf(expiring, 101, "yes"))).toMatchObject({ code: "gone", state: "expired" });
+  });
+});
+
+describe("answering a trick's decision (M94)", () => {
+  test("with replyTo: the receipt and the close first, then the walky message, then the tap, all on one rid", async () => {
+    const r = rig();
+    const decision = posted(r.hill.postDecision(trickSender(), input(1, { replyTo: "local/%2#bbbb" })));
+    expect(decision.target).toEqual({ label: "repo#two", host: "desk", unattended: true });
+    const seen: string[] = [];
+    r.onSend = () => {
+      seen.push(`send: receipt ${r.receipts.get(uuid(100)) === undefined ? "missing" : "written"}, ${r.store.get(decision.id)?.state ?? "-"}`);
+    };
+    r.clock = 5000;
+    const receipt = await receiptOf(r, answerOf(decision, 100, "yes", "after the leg"));
+    expect(seen).toEqual(["send: receipt written, answered"]);
+    expect(r.events).toEqual(["send", "tap"]);
+    expect(r.sent.map((sent) => sent.to)).toEqual(["local/%2#bbbb"]);
+    expect(r.taps).toEqual([{ host: "desk", trickId: "nightly-leg", tap: { rid: uuid(100), node: "hill/ship", intent: "yes", value: { text: "after the leg" } } }]);
+    expect(receipt).toEqual({ rid: uuid(100), code: "ok", reason: null, state: "answered", delivery: "typed", trick: "ran", at: 5000 });
+    expect(r.store.get(decision.id)?.answer).toMatchObject({ rid: uuid(100), delivery: "typed", trick: "ran" });
+    expect(r.receipts.get(uuid(100))?.receipt).toEqual(receipt);
+    expect(r.audit.at(-1)).toMatchObject({ action: "hill.answer", detail: { delivery: "typed", trick: "ran" } });
+  });
+
+  test("without replyTo: no walky message, the tap alone, with the same rid", async () => {
+    const r = rig();
+    const decision = posted(r.hill.postDecision(trickSender(), input(1)));
+    expect(await receiptOf(r, answerOf(decision, 100, "no"))).toMatchObject({ code: "ok", state: "answered", delivery: "none", trick: "ran" });
+    expect(r.events).toEqual(["tap"]);
+    expect(r.taps[0]?.tap).toEqual({ rid: uuid(100), node: "hill/ship", intent: "no", value: { text: null } });
+  });
+
+  test("a replyTo target that ended answers gone, closes undeliverable, and runs no tap", async () => {
+    const r = rig();
+    const decision = posted(r.hill.postDecision(trickSender(), input(1, { replyTo: "local/%2#bbbb" })));
+    r.live = r.live.filter((place) => place.address !== "local/%2#bbbb");
+    expect(await receiptOf(r, answerOf(decision, 100, "yes"))).toMatchObject({ code: "gone", reason: TARGET_ENDED, state: "undeliverable", delivery: null, trick: null });
+    expect(r.store.get(decision.id)).toMatchObject({ state: "undeliverable", answer: null });
+    expect(r.events).toEqual([]);
+  });
+
+  test("a tap the program fails is trick failed; the decision stays answered and nothing retries", async () => {
+    const r = rig();
+    r.tapResult = false;
+    const decision = posted(r.hill.postDecision(trickSender(), input(1)));
+    const request = answerOf(decision, 100, "yes");
+    expect(await receiptOf(r, request)).toMatchObject({ code: "ok", state: "answered", trick: "failed" });
+    expect(r.store.get(decision.id)).toMatchObject({ state: "answered", answer: { trick: "failed" } });
+    // The same rid answers the stored receipt and runs nothing again.
+    expect(await receiptOf(r, request)).toMatchObject({ trick: "failed" });
+    expect(r.taps).toHaveLength(1);
+  });
+
+  test("a tap that throws is trick failed too", async () => {
+    const r = rig();
+    r.tapResult = "throw";
+    const decision = posted(r.hill.postDecision(trickSender(), input(1)));
+    expect(await receiptOf(r, answerOf(decision, 100, "yes"))).toMatchObject({ code: "ok", trick: "failed" });
+  });
+
+  test("the first receipt reads trick failed until the tap ran, so a bridge that stops in between says so", async () => {
+    const r = rig();
+    const decision = posted(r.hill.postDecision(trickSender(), input(1)));
+    let during: string | undefined;
+    r.tapResult = true;
+    const original = r.taps.push.bind(r.taps);
+    r.taps.push = (...items: Tapped[]) => {
+      during = r.receipts.get(uuid(100))?.receipt.trick ?? "missing";
+      return original(...items);
+    };
+    await receiptOf(r, answerOf(decision, 100, "yes"));
+    expect(during).toBe("failed");
   });
 });

@@ -277,7 +277,7 @@ describe("end to end", () => {
 
     const res = await hillAnswerRoute(r.hill, answerBody("dc_e2e000000001", "yes", "Not before the browser leg is green."), { device: "Pixel 9", acceptEncoding: null });
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ rid: RID, code: "ok", reason: null, state: "answered", delivery: "typed", at: 1000 });
+    expect(await res.json()).toEqual({ rid: RID, code: "ok", reason: null, state: "answered", delivery: "typed", trick: "none", at: 1000 });
 
     expect(r.typed).toEqual([
       {
