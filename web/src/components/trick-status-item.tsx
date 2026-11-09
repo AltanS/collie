@@ -33,8 +33,13 @@ export interface StatusItem {
   face: ReactNode;
 }
 
-/** The tap's reach: the 12px line is far below the 44px floor (DESIGN.md section 6), so the button reaches 16px above and below. */
-const REACH = "relative pointer-events-auto before:absolute before:-inset-x-1 before:-inset-y-4 before:content-['']";
+/**
+ * The tap's reach. The 12px line is far below the 44px floor (DESIGN.md section 6), and the button floats
+ * over the mirror's last rows, so the reach may not go up: it took touches from the Chat above. It goes
+ * only into the 4px below the line (the tag's own `bottom-1`), a box 16px high and 4px wider each side.
+ * The same trade as the cache reading's reach in `pane-meta.tsx`, which is a 28px box.
+ */
+const REACH = "relative pointer-events-auto before:absolute before:-inset-x-1 before:top-0 before:-bottom-1 before:content-['']";
 
 function TrickStatusItem({
   partKey: key,

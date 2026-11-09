@@ -133,4 +133,11 @@ describe("a status part that is broken", () => {
     expect([...document.querySelectorAll("[data-slot='trick-status']")].map((el) => el.getAttribute("data-trick"))).toEqual(["tag", "spend"]);
     vi.restoreAllMocks();
   });
+
+  it("reaches no higher than its own line, so a touch above it reaches the Chat", async () => {
+    await mount([part("tag", { text: "tag 5/7" })], [SESSION]);
+    const reach = screen.getByRole("button", { name: /tag 5\/7/ }).className;
+    expect(reach).toContain("before:top-0");
+    expect(reach).not.toContain("-inset-y-4");
+  });
 });
