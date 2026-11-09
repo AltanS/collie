@@ -3,6 +3,7 @@ import { mkdir } from "node:fs/promises";
 import type { JsonValue } from "../json.ts";
 import { redactText } from "../redact.ts";
 import { payloadDigest } from "../worktree-receipts.ts";
+import { asJsonObject, parseJson } from "../../web/src/lib/json.ts";
 import {
   freshWindowMs,
   HILL_NODE_PREFIX,
@@ -19,32 +20,44 @@ import {
   type WireTrickInfo,
 } from "../../web/src/lib/tricks/schema.ts";
 import type { HillTrickTap } from "../hill/service.ts";
+import { trickCodeHash } from "./code-hash.ts";
 import { createTrickScanner, type FoundTrick, type TricksScan } from "./discover.ts";
 import { scrubEnv, type ProviderEnv } from "./env.ts";
 import { buildFacts, type FactsWorld } from "./facts.ts";
 import type { TrickHillRun, TrickHillTrick } from "./hill.ts";
-import { tricksConfigDir, trickStateDir, switchesPath } from "./paths.ts";
+import { tricksConfigDir, trickStateDir } from "./paths.ts";
 import { trickSessionPanes, type TrickSessionPanes } from "./panes.ts";
+import { receiptFrame, TrickReceiptStore, type TrickReceiptRecord, type TrickReceiptSurface } from "./receipts.ts";
 import { outcomeProblem, runProvider, type RunOutcome, type RunSpec } from "./run.ts";
 import { TricksStore, problemLine } from "./store.ts";
-import { createSwitchReader, parseSwitches, withSwitch, writeSwitches, type Switches } from "./switches.ts";
+import { createSwitchReader, updateSwitches, withSwitch, type SwitchEntry, type Switches } from "./switches.ts";
 
 // THE TRICKS RUNNER (M94 slice 01): which trick runs when, and what its run leaves behind.
 //
 // ── WHEN A TRICK RUNS ─────────────────────────────────────────────────────────────
-//   * Only while ON (the switch file) and only with a manifest that parsed.
+//   * Only while ON (the switch file), with a manifest that parsed, and with the code a person approved:
+//     the switch stores the code hash (code-hash.ts) of the folder when it was switched on, and a trick
+//     whose folder no longer hashes the same is "changed". A changed trick does not run, its parts go
+//     stale with {@link CHANGED_LINE}, its open decisions stay, and the list says `changed: true`. Switching
+//     it on again approves the code as it is now. A `config.toml` edit is not code and never stops it.
 //   * Timers run only while a phone has watched in the last five minutes ({@link WATCH_WINDOW_MS}):
 //     "watched" is a `/api/snapshot` or `/api/tricks` request from a paired phone (server.ts stamps it).
 //     The host's own CLI and a lead's sweep of this machine do not count. A `gh` trick on `30s` makes no
 //     call while the phone is in a pocket.
-//   * The first run after the trick is loaded, switched on, or its folder changed has the trigger
-//     `start`; later ones `timer`, every `every` (at least 5 s). A trick with no `every` runs once at
-//     start and then on taps only.
-//   * One run at a time per trick. A tick while one runs is skipped. A tap queues ONE deep, ahead of the
-//     timer; a second tap while one waits is refused as busy and may be tried again.
-//   * After a failed run: 1, 5, then 30 minutes, then the trick stops ({@link BACKOFF_MS}). A change in
-//     its folder, switching it on again, or a tap restarts it. A broken provider never runs 1,440
-//     times a day against a paid API.
+//   * The first run after the trick is loaded, switched on, or its code or `config.toml` changed has the
+//     trigger `start`; later ones `timer`, every `every` (at least 5 s) after the last run. A trick with
+//     no `every` runs once at start and then on taps only. Any other change in its folder (a log it
+//     appends to, a picture in `media/`) changes nothing in the schedule.
+//   * One run at a time per trick, and at most {@link RUNS_MAX} programs at once across all tricks;
+//     the others wait in order, taps and decision answers ahead of timers. A tick while one runs is
+//     skipped. A phone tap queues ONE deep; a second tap while one waits is refused as busy and may be
+//     tried again. A decision's answer from the hill is never refused as busy: answers wait in their own
+//     queue per trick (up to {@link HILL_QUEUE_MAX}), one at a time, before any timer run.
+//   * Before every spawn the trick is read again: still present, on, not changed, and its manifest
+//     parses. A tap that waited for a trick that went off answers `rejected`.
+//   * After a failed run: 1, 5, then 30 minutes, then the trick stops ({@link BACKOFF_MS}). A change of
+//     its code or `config.toml`, switching it on again, or a tap restarts it. A broken provider never
+//     runs 1,440 times a day against a paid API.
 //
 // ── WHAT A RUN LEAVES ───────────────────────────────────────────────────────────
 // stdout and stderr are masked in run.ts before anything here sees them. The document is parsed with
@@ -56,18 +69,21 @@ import { createSwitchReader, parseSwitches, withSwitch, writeSwitches, type Swit
 // ── TAPS ────────────────────────────────────────────────────────────────────────
 // `POST /api/tricks/<host>/<id>/tap` carries the tree's intent shape `{ rid, node, intent, value }`.
 // The receipt codes are the tree's: `ok` (applied), `rejected` (refused or the run failed), `unknown`
-// (the run timed out and may have done its work). The bridge keeps the last {@link TAP_RECEIPTS_MAX}
-// receipts of runs that STARTED, by rid: a repeat gets the same receipt again, unchanged, and runs
-// nothing; a repeat still in flight waits for the first; the same rid with another payload is refused.
-// A tap that ran nothing (the trick is off, busy or skipped) keeps no receipt, so the same rid may
-// simply be tried again.
+// (the run timed out and may have done its work). Before the program runs, the tap's `rid` is written
+// to the receipt file (receipts.ts) as an in-flight marker, and the receipt completes it after. A repeat
+// gets the same receipt again and runs nothing; a repeat still in flight waits for the first; the same
+// rid with another payload is refused. A repeat after a bridge restart that finds only the marker
+// answers `unknown` and runs nothing. A tap that ran nothing (the trick is off, busy or skipped) keeps
+// no receipt on disk, so the same rid may simply be tried again.
 //
 // ── DECISIONS (M94, M96) ────────────────────────────────────────────────────────
 // After a run that succeeded, the document's decisions go to the hill through `deps.decisions`
-// (hill.ts): posted, superseded or withdrawn by key. Its refusals join the document's. A trick switched
-// off or removed has every open decision withdrawn. The answer comes back from the hill as a tap on
-// `hill/<key>` (`tapFromHill`), with the answer's own rid and `seen`, the content hash of the version
-// the person saw. The phone's tap route refuses a `hill/` node: a decision is answered on the Hill.
+// (hill.ts): posted, superseded or withdrawn by key. A document with no `decisions` key leaves them as
+// they are; an empty list withdraws them. Its refusals join the document's. A trick switched off or
+// removed has every open decision withdrawn; a changed one keeps them. The answer comes back from the
+// hill as a tap on `hill/<key>` (`tapFromHill`), with the answer's own rid and `seen`, the content hash
+// of the version the person saw. The phone's tap route refuses a `hill/` node: a decision is answered
+// on the Hill.
 
 /** How long a phone's look keeps timers running. */
 export const WATCH_WINDOW_MS = 5 * 60_000;
@@ -77,8 +93,16 @@ export const BACKOFF_MS = [60_000, 5 * 60_000, 30 * 60_000] as const;
 export const TICK_MS = 1000;
 /** The least time between two scans of the tricks folder. */
 export const SCAN_EVERY_MS = 2000;
-/** The tap receipts kept, newest last. */
+/** The tap receipts kept in memory with their parts, newest last. The file keeps its own. */
 export const TAP_RECEIPTS_MAX = 200;
+/** The most trick programs running at once, across all tricks. */
+export const RUNS_MAX = 4;
+/** The most decision answers waiting for one trick. One more is refused as busy. */
+export const HILL_QUEUE_MAX = 32;
+/** The line a changed trick's parts and list entry carry. */
+export const CHANGED_LINE = "This trick changed. Switch it on again to run the new code.";
+/** The message of a retried tap whose run started before the bridge restarted. */
+export const TAP_LOST_LINE = "The bridge restarted while this tap ran. It may have done its work; nothing ran again.";
 
 /** What the server needs: the snapshot's rev, the watch stamp, the two routes. */
 export interface TricksSurface {
@@ -138,7 +162,7 @@ export interface TricksServiceDeps {
    * display name (`machine`) the facts' `host` fields say.
    */
   world: (host: string) => Omit<FactsWorld, "host">;
-  /** The unit's environment, scrubbed before each run. */
+  /** The unit's environment; each run gets the allow-listed part of it (env.ts). */
   env: ProviderEnv;
   now?: () => number;
   /** The process runner. A test passes a fake or the real one with short limits. */
@@ -152,12 +176,18 @@ export interface TricksServiceDeps {
   platform?: NodeJS.Platform;
   /** The trick's decisions on the hill. Absent: decisions are parsed and posted nowhere. */
   decisions?: TricksHillPort;
+  /** The tap receipt file. Default `<stateDir>/tricks/receipts.json`. */
+  receipts?: TrickReceiptSurface;
 }
 
 interface QueuedTap {
   request: TapRequest;
   /** Only on a decision's answer from the hill: the content hash the person saw. */
   seen?: string;
+  /** The in-flight marker written before the program runs. */
+  marker: TrickReceiptRecord;
+  /** Set once the marker reached disk: only then is the receipt completed on disk. */
+  marked: boolean;
   resolve: (reply: TrickTapReply) => void;
 }
 
@@ -169,6 +199,8 @@ function tapTrigger(tap: Pick<QueuedTap, "request" | "seen">): FactsTrigger {
 interface TrickRuntime {
   found: FoundTrick;
   on: boolean;
+  /** On, but the code no longer hashes as it did when it was switched on. */
+  changed: boolean;
   /** Failed runs in a row. */
   failures: number;
   stopped: boolean;
@@ -176,8 +208,12 @@ interface TrickRuntime {
   pendingStart: boolean;
   /** Earliest time the next start or timer run may begin. */
   nextAt: number;
+  /** The run this trick has going or waiting for a slot. */
   running: Promise<void> | null;
+  /** A phone tap waiting, one deep. */
   queued: QueuedTap | null;
+  /** Decision answers waiting, oldest first. */
+  hillQueue: QueuedTap[];
   lastRunAt?: number;
   lastError?: string;
   /** The last document's refusals. */
@@ -189,12 +225,18 @@ interface Receipt {
   reply: TrickTapReply;
 }
 
-/** A trick's state on the wire. */
-export function trickStateOf(rt: Pick<TrickRuntime, "on" | "found" | "stopped" | "failures">): TrickState {
+/** A trick's state on the wire. A changed trick reads as stopped, with {@link CHANGED_LINE} as its error. */
+export function trickStateOf(rt: Pick<TrickRuntime, "on" | "found" | "stopped" | "failures"> & { changed?: boolean }): TrickState {
   if (rt.found.manifest === undefined) return "skipped";
   if (!rt.on) return "off";
-  if (rt.stopped) return "stopped";
+  if (rt.stopped || rt.changed === true) return "stopped";
   return rt.failures > 0 ? "failing" : "ok";
+}
+
+/** Whether a switch entry approves this code: on, with the hash the folder has now. */
+export function isChanged(entry: SwitchEntry | undefined, found: FoundTrick): boolean {
+  if (entry === undefined || found.manifest === undefined) return false;
+  return entry.hash === null || entry.hash !== found.codeHash;
 }
 
 /** The wait after the `failures`-th failure in a row, or null when the trick stops. */
@@ -207,6 +249,58 @@ export function freshString(ms: number): string {
   return `${Math.max(1, Math.round(ms / 1000))}s`;
 }
 
+/**
+ * At most `max` holders at once. A waiter is let in by the holder that leaves, urgent ones (taps and
+ * decision answers) first, then in the order they came.
+ */
+export class RunSlots {
+  private active = 0;
+  private seq = 0;
+  private readonly waiting: { urgent: boolean; seq: number; go: () => void }[] = [];
+
+  constructor(private readonly max: number) {}
+
+  /** How many hold a slot now. */
+  get held(): number {
+    return this.active;
+  }
+
+  /** Wait for a slot; the answer gives it back, once. */
+  async acquire(urgent: boolean): Promise<() => void> {
+    if (this.active < this.max && this.waiting.length === 0) {
+      this.active += 1;
+      return this.releaser();
+    }
+    await new Promise<void>((go) => {
+      this.waiting.push({ urgent, seq: this.seq, go });
+      this.seq += 1;
+    });
+    return this.releaser();
+  }
+
+  private releaser(): () => void {
+    let done = false;
+    return () => {
+      if (done) return;
+      done = true;
+      this.handOver();
+    };
+  }
+
+  /** Pass the slot to the next waiter, or free it. */
+  private handOver(): void {
+    const urgent = this.waiting.filter((w) => w.urgent);
+    const pool = urgent.length > 0 ? urgent : this.waiting;
+    const next = pool.reduce<(typeof this.waiting)[number] | undefined>((best, w) => (best === undefined || w.seq < best.seq ? w : best), undefined);
+    if (next === undefined) {
+      this.active -= 1;
+      return;
+    }
+    this.waiting.splice(this.waiting.indexOf(next), 1);
+    next.go();
+  }
+}
+
 export class TricksService implements TricksSurface {
   private readonly deps: TricksServiceDeps;
   private readonly now: () => number;
@@ -217,10 +311,16 @@ export class TricksService implements TricksSurface {
   private readonly runtimes = new Map<string, TrickRuntime>();
   private readonly receipts = new Map<string, Receipt>();
   private readonly inflight = new Map<string, { digest: string; reply: Promise<TrickTapReply> }>();
+  private readonly receiptFile: TrickReceiptSurface;
+  private receiptsLoaded: Promise<void> | null = null;
+  private readonly slots = new RunSlots(RUNS_MAX);
   private watchedAt = -Infinity;
   private folderExists = false;
   private scannedAt = -Infinity;
   private scanning: Promise<void> | null = null;
+  /** Scans started, and the start number of the last one that finished: a write waits for a later scan. */
+  private scansStarted = 0;
+  private scanDone = 0;
   private timer: ReturnType<typeof setInterval> | null = null;
   /** Switch writes run one at a time, so two phones cannot lose each other's change. */
   private switching: Promise<unknown> = Promise.resolve();
@@ -230,8 +330,9 @@ export class TricksService implements TricksSurface {
     this.now = deps.now ?? Date.now;
     this.warn = deps.warn ?? ((line) => console.warn(`[tricks] ${line}`));
     this.store = new TricksStore(deps.revBase ?? Date.now());
-    this.scanner = createTrickScanner(tricksConfigDir(deps.configDir));
+    this.scanner = createTrickScanner(tricksConfigDir(deps.configDir), { warn: this.warn });
     this.readSwitches = createSwitchReader(deps.stateDir, this.warn);
+    this.receiptFile = deps.receipts ?? new TrickReceiptStore(deps.stateDir, this.warn);
   }
 
   /** Start the scheduler. Silent and nearly free while no phone watches: a tick then does nothing. */
@@ -262,7 +363,12 @@ export class TricksService implements TricksSurface {
 
   /** The PATH a provider gets. */
   runnerPath(): string {
-    return scrubEnv(this.deps.env, this.deps.configDir).PATH ?? "";
+    return scrubEnv(this.deps.env).PATH ?? "";
+  }
+
+  /** How many programs run (or hold a slot) now. For a test. */
+  runsHeld(): number {
+    return this.slots.held;
   }
 
   async reply(since: number | undefined): Promise<TricksReply> {
@@ -289,18 +395,29 @@ export class TricksService implements TricksSurface {
   refresh(force = false): Promise<void> {
     if (this.scanning !== null) return this.scanning;
     if (!force && this.now() - this.scannedAt < SCAN_EVERY_MS) return Promise.resolve();
+    this.scansStarted += 1;
+    const mine = this.scansStarted;
     this.scanning = (async () => {
       try {
-        const [scan, switches] = await Promise.all([this.scanner.scan(), this.readSwitches()]);
+        const switches = await this.readSwitches();
+        const scan = await this.scanner.scan(new Set(switches.on.keys()));
         this.apply(scan, switches);
       } catch (err) {
         this.warn(`the tricks folder could not be read: ${err instanceof Error ? err.message : String(err)}`);
       } finally {
         this.scannedAt = this.now();
+        this.scanDone = mine;
         this.scanning = null;
       }
     })();
     return this.scanning;
+  }
+
+  /** Wait for a scan that STARTED after this call, so an answer reflects a write just made. */
+  private async freshScan(): Promise<void> {
+    const need = this.scansStarted + 1;
+    // At most: join the scan in flight, then run one of our own.
+    for (let i = 0; i < 3 && this.scanDone < need; i += 1) await this.refresh(true);
   }
 
   /** Fold a scan and the switches into the runtimes and the list. */
@@ -308,50 +425,65 @@ export class TricksService implements TricksSurface {
     this.folderExists = scan.exists;
     const host = this.deps.host();
     const ids = new Set(scan.tricks.map((m) => m.id));
-    for (const [id, rt] of this.runtimes) {
-      if (ids.has(id)) continue;
-      this.runtimes.delete(id);
-      this.store.removeTrick(host, id);
-      this.deps.decisions?.off(this.hillTrick(rt));
+    // A kept scan (it ran over, or the folder could not be listed) never removes a trick.
+    if (scan.kept === undefined) {
+      for (const [id, rt] of this.runtimes) {
+        if (ids.has(id)) continue;
+        this.runtimes.delete(id);
+        this.store.removeTrick(host, id);
+        this.deps.decisions?.off(this.hillTrick(rt));
+      }
+      // A trick removed while the bridge was down has its open decisions withdrawn too.
+      this.deps.decisions?.prune(ids, host);
     }
-    // A trick removed while the bridge was down has its open decisions withdrawn too.
-    this.deps.decisions?.prune(ids, host);
-    for (const found of scan.tricks) {
-      const on = switches.on.has(found.id);
-      const old = this.runtimes.get(found.id);
-      if (old === undefined) {
-        this.runtimes.set(found.id, {
-          found,
-          on,
-          failures: 0,
-          stopped: false,
-          pendingStart: true,
-          nextAt: 0,
-          running: null,
-          queued: null,
-          docRefusals: [],
-        });
-        // Off at start (switched off while the bridge was down): its open decisions go.
-        if (!on) this.deps.decisions?.off({ id: found.id, name: found.manifest?.name ?? found.id, host });
-        this.publish(found.id);
-        continue;
-      }
-      // A folder that changed is a restart: the backoff is forgotten and the next run is a start.
-      if (old.found.fingerprint !== found.fingerprint) {
-        old.found = found;
-        this.restart(old);
-        if (found.manifest === undefined) this.store.markStale(host, found.id, problemLine(found.refusals[0]?.reason ?? "trick.toml is refused."));
-      }
-      if (old.on !== on) {
-        old.on = on;
-        if (on) this.restart(old);
-        else {
-          this.store.dropParts(host, found.id);
-          this.deps.decisions?.off(this.hillTrick(old));
-        }
-      }
+    for (const found of scan.tricks) this.applyOne(found, switches.on.get(found.id));
+  }
+
+  /** Fold one trick folder and its switch entry into its runtime and its list entry. */
+  private applyOne(found: FoundTrick, entry: SwitchEntry | undefined): void {
+    const host = this.deps.host();
+    const on = entry !== undefined;
+    const changed = isChanged(entry, found);
+    const old = this.runtimes.get(found.id);
+    if (old === undefined) {
+      this.runtimes.set(found.id, {
+        found,
+        on,
+        changed,
+        failures: 0,
+        stopped: false,
+        pendingStart: true,
+        nextAt: 0,
+        running: null,
+        queued: null,
+        hillQueue: [],
+        docRefusals: [],
+      });
+      // Off at start (switched off while the bridge was down): its open decisions go.
+      if (!on) this.deps.decisions?.off({ id: found.id, name: found.manifest?.name ?? found.id, host });
       this.publish(found.id);
+      return;
     }
+    if (old.found.fingerprint !== found.fingerprint) {
+      // Only a change of the code or of config.toml restarts the trick: a log or a picture changes nothing.
+      const restarts = old.found.codeHash !== found.codeHash || old.found.configHash !== found.configHash;
+      old.found = found;
+      if (restarts) this.restart(old);
+      if (found.manifest === undefined) this.store.markStale(host, found.id, problemLine(found.refusals[0]?.reason ?? "trick.toml is refused."));
+    }
+    const switched = old.on !== on;
+    const approvalMoved = old.changed !== changed;
+    old.on = on;
+    old.changed = changed;
+    if (switched && !on) {
+      this.store.dropParts(host, found.id);
+      this.deps.decisions?.off(this.hillTrick(old));
+    }
+    // Switched on, or approved again (switched on over a changed trick, or the code went back): a start run.
+    if ((switched || approvalMoved) && on && !changed) this.restart(old);
+    // Changed: the parts stay, stale, and the decisions stay open.
+    if (changed && (switched || approvalMoved)) this.store.markStale(host, found.id, CHANGED_LINE);
+    this.publish(found.id);
   }
 
   /** The trick as the hill's sender names it. */
@@ -381,22 +513,29 @@ export class TricksService implements TricksSurface {
       places: m?.places ?? [],
       provenance: { via: "folder" },
     };
-    const error = m === undefined ? rt.found.refusals[0]?.reason : rt.lastError;
+    const error = m === undefined ? rt.found.refusals[0]?.reason : rt.changed ? CHANGED_LINE : rt.lastError;
     if (error !== undefined) info.error = problemLine(error);
     if (rt.lastRunAt !== undefined) info.lastRunAt = new Date(rt.lastRunAt).toISOString();
     const refusals = [...rt.found.refusals, ...rt.docRefusals].slice(0, REFUSALS_MAX);
     if (refusals.length > 0) info.refusals = refusals;
+    if (rt.changed) info.changed = true;
+    if (m?.env !== undefined) info.env = m.env;
     this.store.setInfo(info);
+  }
+
+  /** Whether the trick may run at all: on, approved and with a manifest. */
+  private runnable(rt: TrickRuntime): boolean {
+    return rt.on && !rt.changed && rt.found.manifest !== undefined;
   }
 
   /** Whether a start or timer run is due now. */
   private due(rt: TrickRuntime, now: number): boolean {
-    if (!rt.on || rt.found.manifest === undefined || rt.stopped) return false;
-    if (rt.running !== null || rt.queued !== null) return false;
+    if (!this.runnable(rt) || rt.stopped) return false;
+    if (rt.running !== null || rt.queued !== null || rt.hillQueue.length > 0) return false;
     if (now < rt.nextAt) return false;
     // A failed start run keeps `pendingStart`, so it is tried again after its backoff; a trick with no
     // `every` never runs on the clock otherwise.
-    return rt.pendingStart || rt.found.manifest.everyMs !== undefined;
+    return rt.pendingStart || rt.found.manifest?.everyMs !== undefined;
   }
 
   /**
@@ -416,20 +555,69 @@ export class TricksService implements TricksSurface {
     await Promise.all(started);
   }
 
-  /** Start a run now and chain a queued tap after it. The promise ends when this run (not the tap) is done. */
+  /**
+   * Read one trick again before its program starts. Answers why it may not run, or null. A folder
+   * that changed is folded in on the way, so a code change stops this very run.
+   */
+  private async recheck(rt: TrickRuntime): Promise<string | null> {
+    const id = rt.found.id;
+    if (this.runtimes.get(id) !== rt) return "The trick is gone.";
+    const [found, switches] = await Promise.all([this.scanner.one(id), this.readSwitches()]);
+    if (found === null) return "The trick's folder could not be read again before the run.";
+    if (this.runtimes.get(id) !== rt) return "The trick is gone.";
+    this.applyOne(found, switches.on.get(id));
+    if (rt.found.manifest === undefined) return "The trick's trick.toml is refused. Run `collie trick check` on its folder.";
+    if (!rt.on) return "The trick is off.";
+    if (rt.changed) return CHANGED_LINE;
+    return null;
+  }
+
+  /**
+   * Run once: wait for a slot (a tap ahead of a timer), read the trick again, write the tap's marker,
+   * run, answer the tap. Then the next waiting tap of this trick. The promise ends when this run (not
+   * the next tap) is done.
+   */
   private begin(rt: TrickRuntime, trigger: FactsTrigger, tap: QueuedTap | null): Promise<void> {
+    const rid = trigger.kind === "tap" ? trigger.rid : "";
     const run = (async () => {
-      const reply = await this.runOnce(rt, trigger);
-      if (tap !== null) tap.resolve(reply);
+      const release = await this.slots.acquire(tap !== null);
+      try {
+        const why = await this.recheck(rt);
+        if (why !== null) {
+          tap?.resolve({ rid, code: "rejected", message: why });
+          return;
+        }
+        if (tap !== null) {
+          tap.marked = await this.receiptFile.recordFirst(tap.marker);
+          if (!tap.marked) {
+            tap.resolve({ rid, code: "rejected", message: "The tap could not be recorded, so nothing ran. Try again." });
+            return;
+          }
+        }
+        const reply = await this.runOnce(rt, trigger);
+        tap?.resolve(reply);
+      } catch (err) {
+        const line = problemLine(`The run could not start: ${err instanceof Error ? err.message : String(err)}`);
+        this.warn(`${rt.found.id}: ${line}`);
+        tap?.resolve({ rid, code: "rejected", message: line });
+      } finally {
+        release();
+      }
     })();
     rt.running = run.finally(() => {
       rt.running = null;
-      const next = rt.queued;
-      if (next === null) return;
-      rt.queued = null;
-      void this.begin(rt, tapTrigger(next), next);
+      this.pump(rt);
     });
     return rt.running;
+  }
+
+  /** Start the next waiting tap of a trick that runs nothing: a decision answer first, then a phone tap. */
+  private pump(rt: TrickRuntime): void {
+    if (rt.running !== null) return;
+    const next = rt.hillQueue.shift() ?? rt.queued;
+    if (next === null) return;
+    if (next === rt.queued) rt.queued = null;
+    void this.begin(rt, tapTrigger(next), next);
   }
 
   /** Run the provider once and store what it left. The reply is the tap's, when the trigger is a tap. */
@@ -449,22 +637,27 @@ export class TricksService implements TricksSurface {
     const outcome = await (this.deps.run ?? runProvider)({
       command: manifest.run,
       cwd: rt.found.dir,
-      env: scrubEnv(this.deps.env, this.deps.configDir),
+      env: scrubEnv(this.deps.env, manifest.env ?? []),
       stdin: JSON.stringify(facts),
       platform: this.deps.platform,
       ...this.deps.limits,
     });
     rt.lastRunAt = startedAt;
-    // A run that was switched off or removed while it ran leaves nothing behind.
+    // A run that was switched off, removed or changed while it ran leaves nothing behind.
     if (this.runtimes.get(id) !== rt || !rt.on) {
       return { rid, code: "rejected", message: "The trick was switched off while it ran." };
     }
+    if (rt.changed) return { rid, code: "rejected", message: CHANGED_LINE };
     let problem = outcomeProblem(outcome, 200);
     let parsed: ParsedTrickDocument | null = null;
+    let decisionsListed = false;
     if (problem === null && outcome.kind === "exited") {
       // Masked in run.ts already; again here, so no runner behind the seam can hand the parser a key.
-      parsed = parseTrickDocumentText(redactText(outcome.stdout), { declared: manifest.places });
+      const text = redactText(outcome.stdout);
+      parsed = parseTrickDocumentText(text, { declared: manifest.places });
       if (parsed.documentRefused) problem = `The output was refused: ${parsed.refusals[0]?.reason ?? "not a document"}`;
+      // An absent `decisions` key means "unchanged"; an empty list withdraws them all.
+      decisionsListed = asJsonObject(parseJson(text))?.decisions !== undefined;
     }
     if (problem !== null || parsed === null || parsed.documentRefused) {
       const line = problemLine(problem ?? "The run failed.");
@@ -481,10 +674,11 @@ export class TricksService implements TricksSurface {
     const freshMs = freshWindowMs(parsed.freshMs, manifest.everyMs);
     const asOf = parsed.asOf ?? new Date(startedAt).toISOString();
     this.store.applyDocument(host, id, parsed, { asOf, fresh: parsed.fresh ?? freshString(freshMs) });
-    // The decisions reach the hill only from a run that succeeded. A list refused as a whole (over the
-    // cap) changes nothing there either: the last good decisions stay, as the last good parts do.
+    // The decisions reach the hill only from a run that succeeded and listed them. A list refused as a
+    // whole (over the cap) changes nothing there either: the last good decisions stay, as the last good
+    // parts do.
     const listRefused = parsed.refusals.some((refusal) => refusal.path === "/decisions" && refusal.decision === undefined);
-    const posted = listRefused ? [] : (this.deps.decisions?.sync({ ...this.hillTrick(rt), name: manifest.name, host }, { decisions: parsed.decisions, refusedKeys: parsed.refusedDecisions }) ?? []);
+    const posted = listRefused || !decisionsListed ? [] : (this.deps.decisions?.sync({ ...this.hillTrick(rt), name: manifest.name, host }, { decisions: parsed.decisions, refusedKeys: parsed.refusedDecisions }) ?? []);
     this.succeeded(rt, startedAt, [...parsed.refusals, ...posted]);
     this.publish(id);
     const mine = this.store.trickParts(host, id, revBefore);
@@ -537,6 +731,11 @@ export class TricksService implements TricksSurface {
     return answer.status === 200 && answer.body.code === "ok";
   }
 
+  private loadReceipts(): Promise<void> {
+    this.receiptsLoaded ??= this.receiptFile.load().catch(() => {});
+    return this.receiptsLoaded;
+  }
+
   private async runTap(host: string, id: string, request: TapRequest, seen: string | undefined): Promise<TapAnswer> {
     if (host !== this.deps.host()) return { status: 404, body: { error: "unknown-host" } };
     const digest = payloadDigest([id, request.node, request.intent, JSON.stringify(request.value ?? null), request.from?.session ?? ""]);
@@ -551,44 +750,59 @@ export class TricksService implements TricksSurface {
       if (flying.digest !== digest) return { status: 409, body: { error: "request-id-reused", rid: request.rid } };
       return { status: 200, body: await flying.reply };
     }
+    // The file: a receipt from before a restart, or only its marker, which never runs twice.
+    await this.loadReceipts();
+    const stored = this.receiptFile.get(request.rid);
+    if (stored !== undefined) {
+      if (stored.payloadDigest !== digest) return { status: 409, body: { error: "request-id-reused", rid: request.rid } };
+      if (stored.pending || stored.reply === null) return { status: 200, body: { rid: request.rid, code: "unknown", message: TAP_LOST_LINE } };
+      return { status: 200, body: { rid: request.rid, ...stored.reply } };
+    }
     await this.refresh();
     const rt = this.runtimes.get(id);
     if (rt === undefined) return { status: 404, body: { error: "unknown-trick" } };
     const refuse = (message: string): TapAnswer => ({ status: 200, body: { rid: request.rid, code: "rejected", message } });
     if (rt.found.manifest === undefined) return refuse("The trick's trick.toml is refused. Run `collie trick check` on its folder.");
     if (!rt.on) return refuse("The trick is off.");
-    if (rt.queued !== null) return refuse("The trick is busy. Try again in a moment.");
+    if (rt.changed) return refuse(CHANGED_LINE);
+    const answer = request.node.startsWith(HILL_NODE_PREFIX);
+    // A decision's answer waits in its own queue; a phone tap queues one deep.
+    if (answer && rt.hillQueue.length >= HILL_QUEUE_MAX) return refuse("The trick has too many answers waiting. Try again in a moment.");
+    if (!answer && rt.queued !== null) return refuse("The trick is busy. Try again in a moment.");
     // A tap restarts a trick that backed off or stopped (design §3.2).
     rt.failures = 0;
     rt.stopped = false;
+    const marker: TrickReceiptRecord = { requestId: request.rid, payloadDigest: digest, at: this.now(), pending: true, reply: null };
+    let queued: QueuedTap | undefined;
     const reply = new Promise<TrickTapReply>((resolve) => {
-      const queued: QueuedTap = seen === undefined ? { request, resolve } : { request, seen, resolve };
-      if (rt.running !== null) {
-        rt.queued = queued;
-        return;
-      }
-      void this.begin(rt, tapTrigger(queued), queued);
+      queued = seen === undefined ? { request, marker, marked: false, resolve } : { request, seen, marker, marked: false, resolve };
     });
+    if (queued === undefined) throw new Error("the tap promise did not run its executor");
+    if (answer) rt.hillQueue.push(queued);
+    else rt.queued = queued;
     this.inflight.set(request.rid, { digest, reply });
+    this.pump(rt);
     try {
-      const answer = await reply;
-      this.receipts.set(request.rid, { digest, reply: answer });
+      const body = await reply;
+      this.receipts.set(request.rid, { digest, reply: body });
       while (this.receipts.size > TAP_RECEIPTS_MAX) {
         const oldest = this.receipts.keys().next().value;
         if (oldest === undefined) break;
         this.receipts.delete(oldest);
       }
-      return { status: 200, body: answer };
+      if (queued.marked) await this.receiptFile.record({ ...marker, pending: false, reply: receiptFrame(body) });
+      return { status: 200, body };
     } finally {
       this.inflight.delete(request.rid);
     }
   }
 
   /**
-   * Switch a trick on or off. The same file `collie trick on|off` writes, read fresh (not through the
-   * mtime reader) and written whole, then a forced scan so the list, the runtime and `tricksRev` move
-   * before the answer. Works for a trick whose manifest is refused or that keeps failing: the switch is
-   * Collie's, not the trick's (design §7).
+   * Switch a trick on or off: the same file `collie trick on|off` writes, through the one locked writer
+   * (switches.ts). On stores the code hash of the folder as it is now. Then the answer waits for a scan
+   * that started after the write, so the list, the runtime and `tricksRev` move before it. Works for a
+   * trick whose manifest is refused or that keeps failing: the switch is Collie's, not the trick's
+   * (design §7).
    */
   async setSwitch(host: string, id: string, on: boolean): Promise<SwitchAnswer> {
     if (host !== this.deps.host()) return { status: 404, body: { error: "unknown-host" } };
@@ -599,16 +813,16 @@ export class TricksService implements TricksSurface {
 
   private async writeSwitch(id: string, on: boolean): Promise<SwitchAnswer> {
     await this.refresh(true);
-    if (!this.runtimes.has(id)) return { status: 404, body: { error: "unknown-trick" } };
-    let text: string | null;
-    try {
-      text = await Bun.file(switchesPath(this.deps.stateDir)).text();
-    } catch {
-      text = null;
+    const rt = this.runtimes.get(id);
+    if (rt === undefined) return { status: 404, body: { error: "unknown-trick" } };
+    let hash: string | null = null;
+    if (on) {
+      const code = await trickCodeHash(rt.found.dir);
+      hash = code.ok ? code.hash : null;
     }
-    const { switches } = parseSwitches(text);
-    await writeSwitches(this.deps.stateDir, withSwitch(switches, id, on, new Date(this.now()).toISOString()));
-    await this.refresh(true);
+    const at = new Date(this.now()).toISOString();
+    await updateSwitches(this.deps.stateDir, (switches) => withSwitch(switches, id, on, at, hash));
+    await this.freshScan();
     const info = this.store.reply(this.store.rev).tricks.find((trick) => trick.id === id);
     if (info === undefined) return { status: 404, body: { error: "unknown-trick" } };
     return { status: 200, body: info };

@@ -15,7 +15,7 @@ const TROUBLE = new Set(["failing", "stopped", "skipped"]);
 export async function tricksFindings(deps: Pick<TrickDeps, "ctx" | "files" | "fetch">): Promise<Finding[]> {
   const { exists, rows, bridge, path: bridgePath } = await trickListRows(deps);
   if (!exists) return [];
-  const path = bridgePath ?? scrubEnv(deps.ctx.env, deps.ctx.configDir).PATH ?? "";
+  const path = bridgePath ?? scrubEnv(deps.ctx.env).PATH ?? "";
   const pathLine = bridgePath === undefined ? `PATH ${path} (as this shell sees it; the service has its own)` : `PATH ${path}`;
   const on = rows.filter((r) => r.on);
   const each = rows.map((r) => `${r.id} ${r.on ? "on" : "off"}, ${r.state}${r.error === null ? "" : `: ${r.error}`}`);
@@ -25,7 +25,7 @@ export async function tricksFindings(deps: Pick<TrickDeps, "ctx" | "files" | "fe
   const troubled = on.filter((r) => TROUBLE.has(r.state));
   if (troubled.length > 0) {
     const names = troubled.map((r) => r.id).join(", ");
-    return [{ ...warn("tricks", detail, `run \`collie trick check --run <folder>\` for ${names}; a change in the folder restarts it`), data }];
+    return [{ ...warn("tricks", detail, `run \`collie trick check --run <folder>\` for ${names}; a change of its code or config.toml, or a tap, restarts it`), data }];
   }
   return [{ ...ok("tricks", detail), data }];
 }

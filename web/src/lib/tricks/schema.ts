@@ -1005,6 +1005,8 @@ export interface TrickManifest {
   facts: number;
   icon: TrickIcon;
   places: PlaceKind[];
+  /** Environment names past the base allow-list the program asks for (bridge/tricks/env.ts). */
+  env?: string[];
 }
 
 /**
@@ -1157,6 +1159,13 @@ export interface WireTrickInfo {
   refusals?: Refusal[];
   /** Who added the trick, when and from where. */
   provenance?: TrickProvenance;
+  /**
+   * True when the trick is on but its code no longer hashes as it did when it was switched on: it does
+   * not run until it is switched on again.
+   */
+  changed?: boolean;
+  /** The environment names the manifest asks for past the base allow-list, so the person sees them. */
+  env?: string[];
 }
 /**
  * How a trick came to be on the machine. `folder` is a folder made by hand or by `collie trick init`;
@@ -3064,8 +3073,13 @@ function readLinks(f: Fields): DecisionLink[] | undefined {
 
 // ── The manifest ─────────────────────────────────────────────────────────────────────────────
 
+/** The most environment names a manifest lists, and the longest one. */
+export const ENV_NAMES_MAX = 32;
+export const ENV_NAME_MAX = 64;
+const ENV_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
 /** Every key `trick.toml` takes. */
-export const MANIFEST_KEYS = ["id", "name", "run", "every", "watch", "on", "mode", "facts", "icon", "places"] as const;
+export const MANIFEST_KEYS = ["id", "name", "run", "every", "watch", "on", "mode", "facts", "icon", "places", "env"] as const;
 
 export interface ParseManifestOptions {
   /** The folder's name. A manifest whose `id` differs is refused. */
@@ -3137,6 +3151,10 @@ export function parseManifest(doc: JsonValue | undefined, opts: ParseManifestOpt
     f.push("version", "facts", `The trick needs facts version ${facts}. This Collie gives version ${FACTS_VERSION}. Update Collie to run it.`);
   }
   const icon = f.icon("icon");
+  const env = readStrings(f, "env", { min: 0, max: ENV_NAMES_MAX, what: "names", text: { max: ENV_NAME_MAX } });
+  env?.forEach((envName, i) => {
+    if (!ENV_NAME_RE.test(envName)) refusals.push({ code: "word", path: pointer("/env", i), reason: "An environment name is letters, digits and _, and does not start with a digit." });
+  });
 
   const placeList = f.array("places", { min: 1, max: PLACE_KINDS.length, required: true, what: "places" });
   const places: PlaceKind[] = [];
@@ -3178,6 +3196,7 @@ export function parseManifest(doc: JsonValue | undefined, opts: ParseManifestOpt
   if (watch !== undefined && triggers.includes("watch")) manifest.watch = watch;
   if (on.length > 0 && triggers.includes("on")) manifest.on = on;
   if (mode === "serve" && triggers.includes("serve")) manifest.mode = "serve";
+  if (env !== undefined && env.length > 0) manifest.env = [...new Set(env)];
   return { manifest, refusals: capRefusals(refusals) };
 }
 

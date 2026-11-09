@@ -1,49 +1,79 @@
 import { redactText } from "../redact.ts";
 
-// THE PROVIDER'S ENVIRONMENT (M94 slice 01).
+// THE PROGRAM'S ENVIRONMENT (M94 slice 01): an allow-list.
 //
-// A provider runs as the operator, with the unit's environment, so `darius` and `gh` are found the
-// same way the bridge finds its own tools, and `collie trick check --run` (which scrubs its own shell's
-// environment the same way) shows "not found" before the phone does. What it never gets:
+// A program gets the variables a shell tool needs to find itself and the user's own files, and nothing
+// else of the bridge's environment: {@link BASE_ENV_NAMES} and every `LC_*`. A trick that needs more
+// names each variable in its manifest, `env = ["GH_TOKEN"]`; `collie trick check` and `GET /api/tricks`
+// show every name it asked for, so the person sees what it reads. Some names are never passed, even
+// when listed ({@link neverReason}): the bridge's own settings (`COLLIE_*`), the multiplexer's
+// (`HERDR_*`), and any socket (`*_SOCK`, `*_SOCKET`), which would hand the program an agent or a daemon
+// that acts for the user.
 //
-//   * any `COLLIE_*` variable: the bridge's own settings, the pairing and push keys among them;
-//   * a variable whose NAME says it holds a secret. Conservative on purpose: `KEY` alone drops
-//     `OPENROUTER_API_KEY`, `AWS_SECRET_ACCESS_KEY` and every `*_KEY`, and a provider that needs a key
-//     reads it from its own file, which it names in its own source where `collie trick check` shows it;
-//   * a variable whose VALUE the secret mask would change (`FOO=sk-or-v1-...` under any name);
-//   * the path of the config folder, which holds the `.env` with the token (`HERDR_PLUGIN_CONFIG_DIR`,
-//     and any variable whose value names that folder).
+// A base variable whose VALUE the secret mask would change is dropped too (`TERM=sk-or-v1-...`); a
+// listed one is passed as it is, because the person asked for it by name.
 //
-// A mitigation, not a sandbox: the provider runs as you and can read any file you can. The rule keeps
-// the token off the provider's path so a provider that prints its environment, or an agent that wrote
-// one, cannot carry the token to a model or a phone by accident.
+// This is a limit on what leaks by accident, not a sandbox. The program runs as the user, with the full
+// rights of the user: it can read any file the user can, the config folder too (its own folder is
+// inside it, and the facts carry that path as `trick.dir`).
 
-/** The name parts that mark a variable as a secret, matched anywhere in the name, any case. */
-const SECRET_NAME = /TOKEN|SECRET|KEY|PASSWORD|PASSWD|PASSPHRASE|CREDENTIAL|PRIVATE|AUTHORIZATION|BEARER|COOKIE/i;
+/** The variables every program gets, when the bridge has them. */
+export const BASE_ENV_NAMES = [
+  "PATH",
+  "HOME",
+  "USER",
+  "LOGNAME",
+  "SHELL",
+  "LANG",
+  "TZ",
+  "TERM",
+  "TMPDIR",
+  "XDG_RUNTIME_DIR",
+  "XDG_CONFIG_HOME",
+  "XDG_DATA_HOME",
+  "XDG_STATE_HOME",
+  "XDG_CACHE_HOME",
+  "NVM_DIR",
+  "BUN_INSTALL",
+] as const;
 
-/** Variables that name the config folder itself. */
-const CONFIG_DIR_NAMES = new Set(["HERDR_PLUGIN_CONFIG_DIR"]);
+const BASE = new Set<string>(BASE_ENV_NAMES);
 
 /** An environment: names to values. `undefined` reads as unset and is dropped. */
 export type ProviderEnv = Readonly<Record<string, string | undefined>>;
 
-/** Why a variable is kept out of the provider's environment, or `null` when it is kept. */
-export function scrubReason(name: string, value: string, configDir?: string): string | null {
-  if (name.toUpperCase().startsWith("COLLIE_")) return "a COLLIE_ variable";
-  if (SECRET_NAME.test(name)) return "a name that says secret";
-  if (CONFIG_DIR_NAMES.has(name.toUpperCase())) return "names the config folder";
-  if (configDir !== undefined && configDir !== "" && value.includes(configDir)) return "names the config folder";
+/** Why a name is never passed, even when a trick lists it, or null. */
+export function neverReason(name: string): string | null {
+  const upper = name.toUpperCase();
+  if (upper.startsWith("COLLIE_")) return "a COLLIE_ variable";
+  if (upper.startsWith("HERDR_")) return "a HERDR_ variable";
+  if (upper.endsWith("_SOCK") || upper.endsWith("_SOCKET")) return "a socket";
+  return null;
+}
+
+/** Whether a name is in the base set every program gets. */
+export function isBaseEnvName(name: string): boolean {
+  return BASE.has(name) || name.startsWith("LC_");
+}
+
+/** Why a variable is kept out of the program's environment, or `null` when it is passed. */
+export function scrubReason(name: string, value: string, listed: ReadonlySet<string> = new Set()): string | null {
+  const never = neverReason(name);
+  if (never !== null) return never;
+  if (listed.has(name)) return null;
+  if (!isBaseEnvName(name)) return "not on the allow-list; a trick lists it in env";
   if (redactText(value) !== value) return "a value the secret mask hides";
   return null;
 }
 
 /**
- * The environment a provider gets: `env` minus every variable {@link scrubReason} names. Pure; the
- * input is not changed. `configDir` is the bridge's config folder, so no value can point at it.
+ * The environment a program gets: the base names and the names the trick `listed`, minus every
+ * variable {@link scrubReason} names. Pure; the input is not changed.
  */
-export function scrubEnv(env: ProviderEnv, configDir?: string) {
+export function scrubEnv(env: ProviderEnv, listed: readonly string[] = []): Record<string, string> {
+  const names = new Set(listed);
   const kept = Object.entries(env).flatMap(([name, value]): [string, string][] =>
-    value === undefined || scrubReason(name, value, configDir) !== null ? [] : [[name, value]],
+    value === undefined || scrubReason(name, value, names) !== null ? [] : [[name, value]],
   );
   return Object.fromEntries(kept);
 }

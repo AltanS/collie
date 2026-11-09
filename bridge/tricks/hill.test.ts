@@ -12,7 +12,8 @@ import { hillAnswerRoute, hillListRoute, hillMediaRoute } from "../server.ts";
 import type { HillDecision, HillReceipt } from "../../web/src/lib/hill/wire.ts";
 import { parseJsonObject } from "../../web/src/lib/json.ts";
 import { parseFacts, type Refusal, type TrickDecision, type TrickFacts, type TrickTapReply } from "../../web/src/lib/tricks/schema.ts";
-import { decisionContentHash, imageFileDigest, scopeKeyAddress, TrickHill, TRICKS_MAP_FILE, trickRequestId, type TrickHillTrick } from "./hill.ts";
+import { decisionContentHash, imageFileDigest, REASK_AFTER_MS, scopeKeyAddress, TrickHill, TRICKS_MAP_FILE, trickRequestId, type TrickHillTrick } from "./hill.ts";
+import { trickCodeHash } from "./code-hash.ts";
 import { TRICKS_DIR } from "./paths.ts";
 import { runProvider, type RunOutcome, type RunSpec } from "./run.ts";
 import { HILL_NODE_TAP_REFUSED, TricksService, type TapAnswer } from "./service.ts";
@@ -51,6 +52,8 @@ interface Rig {
   readonly media: HillMediaStore;
   readonly hill: HillService;
   readonly tricks: TrickHill;
+  /** The trick map's clock (re-asks count from it). */
+  readonly clock: { t: number };
   readonly sent: { to: string; body: string }[];
   live: HillPlace[];
   /** What the trick's tap callback is answered with, and every tap it got. */
@@ -105,8 +108,9 @@ function rig(stateDir = join(tempDir(), "state")): Rig {
       return state.tapResult;
     },
   });
-  const tricks = new TrickHill({ stateDir, hill, addressOf: (scopeKey) => scopeKeyAddress(scopeKey, HOST, "local", probe) });
-  return Object.assign(state, { stateDir, configDir, trick, store, media, hill, tricks, restart: () => rig(stateDir) });
+  const clock = { t: 50_000_000 };
+  const tricks = new TrickHill({ stateDir, hill, addressOf: (scopeKey) => scopeKeyAddress(scopeKey, HOST, "local", probe), now: () => clock.t });
+  return Object.assign(state, { stateDir, configDir, trick, store, media, hill, tricks, clock, restart: () => rig(stateDir) });
 }
 
 const decision = (key: string, over: Partial<TrickDecision> = {}): TrickDecision => ({
@@ -155,7 +159,7 @@ describe("the diff by key", () => {
     if (process.platform !== "win32") expect(statSync(path).mode & 0o777).toBe(0o600);
     const file = parseJsonObject(readFileSync(path, "utf8"));
     const held = open(r)[0]!;
-    expect(file).toEqual({ v: 1, tricks: { legs: { gen: 0, keys: { "case-8": { decisionId: held.id, hash: decisionContentHash(decision("case-8")), state: "open", seq: 1 } } } } });
+    expect(file).toEqual({ v: 1, tricks: { legs: { gen: 0, keys: { "case-8": { decisionId: held.id, hash: decisionContentHash(decision("case-8")), state: "open", seq: 1, at: expect.any(Number) } } } } });
   });
 
   test("the same key with changed content posts the new one with supersedes", () => {
@@ -226,6 +230,35 @@ describe("the diff by key", () => {
     const [asked] = open(r);
     expect(asked?.supersedes).toBeNull();
     expect(asked?.id).not.toBe(first.id);
+  });
+
+  test("a key that closed without the person asks again on a later run, at most once per 10 minutes", () => {
+    for (const closed of ["undeliverable", "expired", "withdrawn"] as const) {
+      const r = rig();
+      sync(r, [decision("case-8")]);
+      const first = open(r)[0]!;
+      r.store.put({ ...first, state: closed });
+      sync(r, [decision("case-8")]);
+      expect(open(r)).toEqual([]);
+      r.clock.t += REASK_AFTER_MS - 1;
+      sync(r, [decision("case-8")]);
+      expect(open(r)).toEqual([]);
+      r.clock.t += 1;
+      sync(r, [decision("case-8")]);
+      const [again] = open(r);
+      expect(again?.id).not.toBe(first.id);
+      expect(again?.supersedes).toBeNull();
+      expect(r.tricks.entries("legs")["case-8"]).toMatchObject({ decisionId: again?.id, state: "open", seq: 2, at: r.clock.t });
+    }
+  });
+
+  test("an answered or dismissed key never asks again by itself, however long it waits", async () => {
+    const r = rig();
+    sync(r, [decision("case-8")]);
+    await answer(r, open(r)[0]!, 100, "rerun");
+    r.clock.t += 24 * 60 * 60_000;
+    sync(r, [decision("case-8")]);
+    expect(open(r)).toEqual([]);
   });
 
   test("a dismissed key dropped for a run and listed again asks again", async () => {
@@ -462,9 +495,11 @@ describe("seen", () => {
 
 const T0 = Date.parse("2026-11-09T09:00:00Z");
 
+/** Switch the legs trick on as a person does, with the code hash of its folder as it is now, or off. */
 async function switches(stateDir: string, on: boolean): Promise<void> {
-  let next: Switches = { on: new Map<string, string>() };
-  if (on) next = withSwitch(next, "legs", true, "2026-11-09T09:00:00Z");
+  let next: Switches = { on: new Map() };
+  const code = await trickCodeHash(join(dirname(stateDir), "config", TRICKS_DIR, "legs"));
+  if (on) next = withSwitch(next, "legs", true, "2026-11-09T09:00:00Z", code.ok ? code.hash : null);
   await writeSwitches(stateDir, next);
 }
 
@@ -613,7 +648,7 @@ describe.skipIf(process.platform === "win32")("end to end with the legs trick", 
     cpSync(LEGS_DIR, dir, { recursive: true });
     // The same trick, its stdin copied to a file outside its folder first, so the test reads what the program got.
     writeFileSync(join(dir, "record.sh"), '#!/bin/sh\nf=$(cat)\nprintf \'%s\\n\' "$f" >> "$LEGS_TAP_LOG"\nprintf \'%s\' "$f" | ./program.sh\n', { mode: 0o755 });
-    writeFileSync(join(dir, "trick.toml"), readFileSync(join(LEGS_DIR, "trick.toml"), "utf8").replace('run = "./program.sh"', 'run = "./record.sh"').replace('every = "15s"\n', ""));
+    writeFileSync(join(dir, "trick.toml"), readFileSync(join(LEGS_DIR, "trick.toml"), "utf8").replace('run = "./program.sh"', 'run = "./record.sh"').replace('every = "15s"\n', 'env = ["LEGS_LOG_DIR", "LEGS_RUNNING", "LEGS_NOW", "LEGS_TAP_LOG", "LEGS_SHOT"]\n'));
     // LEGS_SHOT names one small PNG in the trick's folder; the program puts it on its decision.
     const shotBytes = png(64, 32, 7);
     writeFileSync(join(dir, "red-case.png"), shotBytes);

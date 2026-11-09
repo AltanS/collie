@@ -49,6 +49,16 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 - **A trick's mark scrolls with the Belt.** The mark moves from the pinned block to the end of the scrolling strip, after Collie's own keys, so two or three marks no longer leave Stop and the keys out of reach. The pinned block holds Collie's own marks only. (M94)
 
+- **A trick's question that never reached you asks again.** When a trick's decision closed without you, because it could not be delivered, it expired or someone else withdrew it, the trick posts it again on a later run that still lists it, at most once every 10 minutes. A decision you answered or dismissed stays closed. (M94)
+
+- **A trick's program gets a short list of environment variables.** It sees `PATH`, `HOME`, the locale, the XDG folders and a few more, and any other variable only when its `trick.toml` lists the name in `env`. `collie trick check` and the phone's list show each name a trick asks for, and a `COLLIE_`, `HERDR_` or socket variable is never passed, even when listed. (M94)
+
+- **Switching a trick on approves its code as it is now.** The bridge keeps a hash of the trick's files and runs it only while they still hash the same. After an edit the trick stops and says "This trick changed. Switch it on again to run the new code.", and its open decisions stay. A `config.toml` edit, a log or a picture in `media/` never stops it, and `collie trick on` prints the hash it approved. (M94)
+
+- **Trick runs keep their pace, and your answers get through.** A trick that writes a log or a picture into its own folder keeps its timer and its backoff instead of running again at once. Every answer you give a trick's decision reaches it, one at a time, and is never refused as busy. At most four trick programs run at once, taps first, and a tap retried after a bridge restart never runs twice. A stuck or oversized `trick.toml` no longer holds up the tricks list, and a trick folder past the 64th is listed with its reason. (M94)
+
+- **`collie trick check` reads every file of a trick.** It greps every source file in the folder, not only the program on the `run` line, and warns about starting a process, reaching the network, writing outside the trick's state folder, and a timer that calls an agent program or a model API. The warnings come from a grep and say so. The folder `collie trick init` writes now says that a trick runs with your full rights, and that a document with no `decisions` key leaves its decisions as they are. (M94)
+
 ## [1.28.0] - 2026-11-09
 
 ### Added

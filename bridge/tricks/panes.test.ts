@@ -180,7 +180,9 @@ describe("the service", () => {
       await mkdir(dir, { recursive: true });
       await mkdir(stateDir, { recursive: true });
       await writeFile(join(dir, "trick.toml"), 'id = "legs"\nname = "Browser leg"\nrun = "./legs.sh"\nplaces = ["session"]\n');
-      await writeSwitches(stateDir, withSwitch({ on: new Map() }, "legs", true, "2026-11-08T09:00:00Z"));
+      const { trickCodeHash } = await import("./code-hash.ts");
+      const code = await trickCodeHash(dir);
+      await writeSwitches(stateDir, withSwitch({ on: new Map() }, "legs", true, "2026-11-08T09:00:00Z", code.ok ? code.hash : null));
       const doc = JSON.stringify({ v: 1, asOf: "2026-11-08T09:41:00Z", parts: [{ at: "session", id: "legs", tone: "accent", subtitle: "case 24 red", view: VIEW }] });
       const clock = { t: NOW };
       const service = new TricksService({

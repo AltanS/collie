@@ -20,9 +20,11 @@ import {
 // (never a name, so a draft or an open can name a session the bridge can find again). Spaces are the
 // multiplexer's workspaces with their folders, then the folders `spaces.toml` gives its sessions.
 //
-// Not in the facts, on purpose: the config folder (it holds the `.env` with the token), the instance
-// name, any token, the pane's agent session ref (a filesystem path, stripped from the wire too), and
-// the screen. A provider that wants more reads it itself, as the operator.
+// Not in the facts, on purpose: the instance name, any token, the pane's agent session ref (a filesystem
+// path, stripped from the wire too), and the screen. This is not a wall: `trick.dir` is the trick's own
+// folder, inside the config folder that holds the `.env` with the token, and the program runs with the
+// full rights of the user, so it can read that `.env` like any other file of the user. A provider that
+// wants more reads it itself, as the operator.
 
 /** One multiplexer session's view, as the state engine holds it. */
 export interface FactsRuntime {

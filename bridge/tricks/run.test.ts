@@ -51,20 +51,33 @@ describe("the env scrub", () => {
     UNSET: undefined,
   };
 
-  test("drops every COLLIE_ variable, every secret name, a masked value and the config folder", () => {
-    expect(scrubEnv(env, "/home/op/.config/collie")).toEqual({
+  test("an allow-list: only the base names reach the program, never a COLLIE_ or HERDR_ name, a socket or a key", () => {
+    expect(scrubEnv({ ...env, LC_ALL: "C", TERM: KEY })).toEqual({
       PATH: "/usr/bin:/bin",
       HOME: "/home/op",
       LANG: "C.UTF-8",
-      SSH_AUTH_SOCK: "/run/user/1000/ssh",
+      LC_ALL: "C",
+    });
+  });
+
+  test("a name the trick lists is passed as it is; a COLLIE_, HERDR_ or socket name never is, even listed", () => {
+    expect(scrubEnv(env, ["GH_TOKEN", "SOME_NAME", "SSH_AUTH_SOCK", "COLLIE_TOKEN", "HERDR_PLUGIN_CONFIG_DIR", "NOT_SET"])).toEqual({
+      PATH: "/usr/bin:/bin",
+      HOME: "/home/op",
+      LANG: "C.UTF-8",
+      GH_TOKEN: "ghp_x",
+      SOME_NAME: KEY,
     });
   });
 
   test("names why each one goes", () => {
     expect(scrubReason("COLLIE_TOKEN", "abc")).toBe("a COLLIE_ variable");
-    expect(scrubReason("OPENROUTER_API_KEY", KEY)).toBe("a name that says secret");
-    expect(scrubReason("SOME_NAME", KEY)).toBe("a value the secret mask hides");
-    expect(scrubReason("X", "/c/.env", "/c")).toBe("names the config folder");
+    expect(scrubReason("HERDR_PLUGIN_CONFIG_DIR", "/x")).toBe("a HERDR_ variable");
+    expect(scrubReason("SSH_AUTH_SOCK", "/run/x", new Set(["SSH_AUTH_SOCK"]))).toBe("a socket");
+    expect(scrubReason("DOCKER_SOCKET", "/run/x")).toBe("a socket");
+    expect(scrubReason("OPENROUTER_API_KEY", KEY)).toBe("not on the allow-list; a trick lists it in env");
+    expect(scrubReason("TERM", KEY)).toBe("a value the secret mask hides");
+    expect(scrubReason("OPENROUTER_API_KEY", KEY, new Set(["OPENROUTER_API_KEY"]))).toBeNull();
     expect(scrubReason("PATH", "/usr/bin")).toBeNull();
   });
 
