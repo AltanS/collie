@@ -1,7 +1,7 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 import { trickCodeHash } from "../bridge/tricks/code-hash.ts";
 import { switchesPath } from "../bridge/tricks/paths.ts";
@@ -96,7 +96,10 @@ describe("collie trick check", () => {
     const dir = join(root, id);
     await mkdir(dir);
     await writeFile(join(dir, "trick.toml"), manifest);
-    for (const [name, text] of Object.entries(files)) await writeFile(join(dir, name), text, { mode: 0o755 });
+    for (const [name, text] of Object.entries(files)) {
+      await mkdir(dirname(join(dir, name)), { recursive: true });
+      await writeFile(join(dir, name), text, { mode: 0o755 });
+    }
     return dir;
   }
 
@@ -127,16 +130,57 @@ describe("collie trick check", () => {
     const dir = await folder('id = "gh"\nname = "GH"\nrun = "./gh.sh"\nplaces = ["belt"]\n', {
       "gh.sh": "#!/bin/sh\n# lists my PRs\nprs=$(gh pr list --json number)\ncurl -s https://example.com\necho '{}'\n",
     });
-    const report = checkStatic(dir, realFiles);
+    const report = await checkStatic(dir, realFiles);
     expect(report.runs.map((r) => `${r.file}:${r.line}`)).toEqual(["gh.sh:3", "gh.sh:4"]);
     const missing = await folder('id = "m"\nname = "M"\nrun = "./gone.sh"\nplaces = ["belt"]\n');
-    expect(checkStatic(missing, realFiles).problems).toEqual(["The run line names ./gone.sh, which is not in the folder."]);
+    expect((await checkStatic(missing, realFiles)).problems).toEqual(["The run line names ./gone.sh, which is not in the folder."]);
     const binary = await folder('id = "b"\nname = "B"\nrun = "./b.sh"\nplaces = ["belt"]\n', { "b.sh": "\u007fELF\u0002\u0001\u0000\u0000" });
     const d = await deps();
     expect(await cmdTrickCheck(d, [binary])).toBe(EXIT.FAIL);
     expect(d.err.join("\n")).toContain("compiled program");
     expect(looksBinary("#!/bin/sh\n")).toBe(false);
     expect(runsLines([{ file: "p.ts", text: 'const r = Bun.spawn(["darius", "due"]);\n// gh comment\nconst x = 1;\n' }]).map((r) => r.line)).toEqual([1]);
+  });
+
+  test("the static half reads every source file in the folder and warns, never refuses", async () => {
+    const dir = await folder('id = "w"\nname = "W"\nrun = "./run.sh"\nevery = "5m"\nplaces = ["belt"]\nenv = ["GH_TOKEN", "SSH_AUTH_SOCK", "HOME"]\n', {
+      "run.sh": "#!/bin/sh\nexec bun ./lib/main.ts\n",
+      "lib/main.ts": [
+        'import { writeFileSync } from "node:fs";',
+        'const out = Bun.spawnSync(["claude", "-p", "summarise"]);',
+        'await fetch("https://api.openrouter.ai/v1");',
+        'writeFileSync("/tmp/x", "y");',
+        "writeFileSync(state + '/seen', 'y');",
+        "console.log('{}');",
+      ].join("\n"),
+      "media/ignored.ts": 'Bun.spawn(["rm"]);',
+      "config.toml": 'model = "claude"\n',
+    });
+    const report = await checkStatic(dir, realFiles);
+    expect(report.warnings.map((w) => `${w.kind} ${w.file}:${w.line}`)).toEqual([
+      "spawn lib/main.ts:2",
+      "model lib/main.ts:2",
+      "network lib/main.ts:3",
+      "model lib/main.ts:3",
+      "write lib/main.ts:4",
+    ]);
+    expect(report.env).toEqual([
+      { name: "GH_TOKEN", passed: true },
+      { name: "SSH_AUTH_SOCK", passed: false, reason: "never passed: a socket" },
+      { name: "HOME", passed: true, reason: "passed to every trick anyway" },
+    ]);
+    expect(report.codeHash).toMatch(/^[0-9a-f]{64}$/);
+    const d = await deps();
+    expect(await cmdTrickCheck(d, [dir])).toBe(EXIT.OK);
+    const printed = d.out.join("\n");
+    expect(printed).toContain("a timer that calls a model spends your subscription with no session to show for it");
+    expect(printed).toContain("a grep, not a proof");
+    expect(printed).toContain("env:    GH_TOKEN, SSH_AUTH_SOCK (never passed: a socket), HOME (passed to every trick anyway)");
+    // With no `every`, calling a model is the person's own tap: no model warning.
+    const tapOnly = await folder('id = "t"\nname = "T"\nrun = "claude -p hi"\nplaces = ["belt"]\n');
+    expect((await checkStatic(tapOnly, realFiles)).warnings).toEqual([]);
+    const timed = await folder('id = "u"\nname = "U"\nrun = "claude -p hi"\nevery = "1m"\nplaces = ["belt"]\n');
+    expect((await checkStatic(timed, realFiles)).warnings.map((w) => w.kind)).toEqual(["model"]);
   });
 
   test("--run runs the provider with the env scrub: no COLLIE_ variable, no key", async () => {

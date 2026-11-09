@@ -49,6 +49,8 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 - **Trick runs keep their pace, and your answers get through.** A trick that writes a log or a picture into its own folder keeps its timer and its backoff instead of running again at once. Every answer you give a trick's decision reaches it, one at a time, and is never refused as busy. At most four trick programs run at once, taps first, and a tap retried after a bridge restart never runs twice. A stuck or oversized `trick.toml` no longer holds up the tricks list, and a trick folder past the 64th is listed with its reason. (M94)
 
+- **`collie trick check` reads every file of a trick.** It greps every source file in the folder, not only the program on the `run` line, and warns about starting a process, reaching the network, writing outside the trick's state folder, and a timer that calls an agent program or a model API. The warnings come from a grep and say so. The folder `collie trick init` writes now says that a trick runs with your full rights, and that a document with no `decisions` key leaves its decisions as they are. (M94)
+
 ## [1.28.0] - 2026-11-09
 
 ### Added

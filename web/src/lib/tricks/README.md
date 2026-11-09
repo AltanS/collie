@@ -14,7 +14,10 @@ the bridge, the CLI and the web all load it by relative path, with no DOM and no
 ## The parsers
 
 - `parseManifest(toml)`: `trick.toml` after the TOML parse. A later field (`watch`, `on`, `serve`)
-  or a later place is skipped with a `later` refusal, and the trick still loads.
+  or a later place is skipped with a `later` refusal, and the trick still loads. `env` lists the
+  environment names the program needs past the bridge's allow-list (`bridge/tricks/env.ts`); the list
+  and `collie trick check` show each one, and a `COLLIE_*`, `HERDR_*`, `*_SOCK` or `*_SOCKET` name is
+  never passed, even when listed.
 - `parseFacts(json)`: a facts document, for `collie trick check --run` with fixture facts.
 - `parseTrickDocumentText(stdout, opts)` and `parseTrickDocument(json, opts)`: the program's output.
   `opts.declared` is the manifest's `places`, `opts.places` and `opts.kinds` what this Collie draws
@@ -33,6 +36,10 @@ None of them throws. Each refusal has a JSON pointer `path`, a `code` and a plai
 
 There is no `draft` and no `open`. A trick never writes into a reply box, and a tap never moves the
 phone. What a trick wants to show is a `link`. What it wants to tell the person is a decision.
+
+A document with no `decisions` key leaves the trick's decisions on the hill as they are. An empty
+list, `"decisions": []`, withdraws every open one. So a run that only redraws its parts (a tap on a
+part, a quick timer) may leave the key out.
 
 ## The view is a list
 
@@ -132,9 +139,13 @@ by key. The trick is one sender: its name is the card's, its id and the key ride
 - A key the list no longer holds is withdrawn, "by the trick".
 - A key the person answered or dismissed stays closed while its content is unchanged. To ask again,
   change the content, or drop the key for a run and list it again.
+- A key that closed without the person (undeliverable, expired, or withdrawn by someone other than the
+  trick) posts again on a later run that still lists it, at most once every 10 minutes.
+- A document with no `decisions` key changes nothing on the hill; `[]` withdraws them all.
 - A failed or timed-out run changes nothing: the last good decisions stay. So does a list refused as a
   whole, and a decision the parser refused alone.
-- Switched off or removed, every open decision of the trick is withdrawn, "the trick is off".
+- Switched off or removed, every open decision of the trick is withdrawn, "the trick is off". A trick
+  whose code changed since it was switched on keeps its open decisions; it only stops running.
 - `about` and `replyTo` are mapped to the session's walky address when the decision posts. A key that
   names no live session on this machine is refused alone, and the others post.
 - `media` reaches the card as it does for an agent's decision. The runner joins each `file` to the
