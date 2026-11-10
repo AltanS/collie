@@ -28,7 +28,7 @@ import { sendKeys } from "./api";
 import { describeApiError, describeThrownError } from "./api-error-message";
 import { type StyledLine } from "./blocks";
 import type { ColumnRange } from "./column-range";
-import { withUnreadDialog } from "./harness";
+import { adapterBlocks } from "./harness";
 import { adapterFor } from "./harness/registry";
 import {
   DIALOG_CONTRACT,
@@ -89,7 +89,8 @@ export function dialogDetector<K extends DialogKind>(
     // Through the unread-dialog post-pass, exactly as the renderer and `dialogPresent` are: the card
     // is a block kind with a contract row, so the guard must be able to re-derive it, and the pass
     // is outside the adapter (.adr/0053). Every other kind comes back untouched.
-    const blocks = withUnreadDialog(adapter, lines, adapter.buildBlocks(lines));
+    // The rows cut at a split screen, as the renderer cut them (.adr/0140 point 1).
+    const blocks = adapterBlocks(adapter, lines);
     for (let i = blocks.length - 1; i >= 0; i--) {
       const model = dialogModelOf(blocks[i]!, kind);
       if (model !== null) return model;

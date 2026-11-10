@@ -31,8 +31,7 @@
 // keys, outcome, never a message text.
 
 import type { MuxAck, MuxGrid, MuxGridRequest, MuxOutcome } from "../mux/types.ts";
-import { parseAnsi } from "../../web/src/lib/ansi.ts";
-import { splitLines } from "../../web/src/lib/blocks.ts";
+import { readRows } from "../../web/src/lib/surface/split.ts";
 import { surfaceOfScreen } from "../../web/src/lib/surface/fold.ts";
 import { liftAsk, readerBlocks } from "../../web/src/lib/surface/lift.ts";
 import type { ProfileMatch } from "../../web/src/lib/surface/profile.ts";
@@ -211,7 +210,7 @@ export class StopService {
     const at = (this.deps.now ?? Date.now)();
     const grid = await this.deps.mux.readGrid(paneId, { scope: "viewport", lines: STOP_READ_LINES, styling: "preserve" });
     if (!grid.ok) return null;
-    const rows = splitLines(parseAnsi(grid.value.text));
+    const rows = readRows(grid.value.text);
     const ask = liftAsk(readerBlocks(rows, harness), grid.value.revision);
     const read = surfaceOfScreen({ seq: 0, source: "screen", at, revision: grid.value.revision, rows, ask }, match.profile.idle);
     const box = read.frame === null ? null : read.frame.placeholder ? "" : read.frame.interior.text;

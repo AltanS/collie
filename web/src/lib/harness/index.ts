@@ -6,6 +6,7 @@
 // (and any future agent's) run; every non-adapter agent keeps the pure raw mirror.
 
 import { lineText, type Block, type StyledLine } from "../blocks";
+import { cutSplit } from "../surface/split";
 import { adapterFor, hasBlockGrammar } from "./registry";
 import { unreadDialogSignature, type DetectorVerdict } from "./unread-dialog-model";
 import type { DialogDetector, HarnessAdapter } from "./types";
@@ -36,13 +37,41 @@ export function buildBlocks(
   // `grammars: false` is the raw-terminal pref: no adapter runs, so no chrome is stripped and no
   // dialog is lifted, but a native-mirror agent still keeps its display passes below.
   const adapter = ctx?.grammars === false ? undefined : adapterFor(ctx?.agent);
-  const blocks = adapter?.buildBlocks(lines) ?? [{ kind: "raw", lines }];
+  if (adapter === undefined) return decorateNativeMirror([{ kind: "raw", lines }], ctx);
+  // The adapter reads the rows cut at a split screen (.adr/0140 point 1), the rows the bridge reads.
+  const { rows, column } = cutSplit(lines);
+  const blocks = adapter.buildBlocks(rows);
   // The unread-dialog post-pass runs LAST, over the DECORATED blocks. The display passes only ever
   // touch raw blocks, so running the card first would leave every Muse card showing an un-trimmed,
   // un-marked mirror — the card renders the region itself, and a native-mirror agent's region has to
   // arrive the way the mirror would have drawn it. With `grammars: false` there is no adapter, so the
   // raw-terminal pref still switches the card off for free.
-  return withUnreadDialog(adapter, lines, decorateNativeMirror(blocks, ctx));
+  return boundToCut(withUnreadDialog(adapter, rows, decorateNativeMirror(blocks, ctx)), column);
+}
+
+/**
+ * The adapter's blocks over `lines` for the dialog guard's re-derivation: the same cut, the same
+ * unread-dialog post-pass and the same binding as {@link buildBlocks}, without the display passes.
+ */
+export function adapterBlocks(adapter: HarnessAdapter, lines: StyledLine[]): Block[] {
+  const { rows, column } = cutSplit(lines);
+  return boundToCut(withUnreadDialog(adapter, rows, adapter.buildBlocks(rows)), column);
+}
+
+/**
+ * A question read from rows cut at a split binds to the kept columns, 0 to the cut, within any range
+ * its grammar named: the bridge cuts its fresh read the same way before it compares
+ * (`expected_columns`, lib/column-range.ts), so the panel beside it never refuses the tap. Every
+ * other dialog kind binds whole rows, which a cut read never matches: the bridge refuses the tap.
+ */
+function boundToCut(blocks: Block[], column: number | null): Block[] {
+  if (column === null) return blocks;
+  return blocks.map((block) => {
+    if (block.kind !== "prompt-select") return block;
+    const own = block.prompt.bindColumns;
+    const bindColumns = own === undefined ? { start: 0, end: column } : { start: own.start, end: Math.min(own.end, column) };
+    return { ...block, prompt: { ...block.prompt, bindColumns } };
+  });
 }
 
 /** The native display passes (.adr/0047), unchanged: bright-foreground marks for the light native

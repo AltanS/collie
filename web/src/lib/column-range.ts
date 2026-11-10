@@ -16,6 +16,7 @@
 // It lives under web/src/lib, beside `styled-region.ts`, and the bridge imports it by relative path.
 //
 // Pure, no harness imports.
+import type { StyledLine } from "./blocks";
 import { graphemeSegmenter } from "./env";
 import { displayWidth } from "./text-width";
 
@@ -113,4 +114,32 @@ export function cropRawColumns(text: string, range: ColumnRange): string {
     .split("\n")
     .map((row) => cropRawRow(row, range))
     .join("\n");
+}
+
+/** The first `columns` display columns of a plain text, a wide glyph that crosses the edge dropped
+ *  whole, as {@link cropRawColumns} drops it for the range `0..columns`. */
+export function cropText(text: string, columns: number): string {
+  let out = "";
+  let used = 0;
+  for (const cluster of clusters(text)) {
+    const width = displayWidth(cluster);
+    if (used + width > columns) break;
+    out += cluster;
+    used += width;
+  }
+  return out;
+}
+
+/** One styled row cut to its first `columns` display columns, styles kept (see {@link cropText}). */
+export function cropLine(line: StyledLine, columns: number): StyledLine {
+  const segments: StyledLine["segments"] = [];
+  let used = 0;
+  for (const segment of line.segments) {
+    if (used >= columns) break;
+    const kept = cropText(segment.text, columns - used);
+    if (kept.length > 0) segments.push(kept.length === segment.text.length ? segment : { ...segment, text: kept });
+    used += displayWidth(kept);
+    if (kept.length < segment.text.length) break;
+  }
+  return { ...line, segments };
 }

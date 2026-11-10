@@ -63,6 +63,7 @@ import { blockOwnsKeyboard } from "@/lib/harness/dialog-contract";
 import { paneSurface } from "@/lib/send-slot";
 import { answerAsk, cardHashOf, type AskTapResult } from "@/lib/dialog-ask";
 import { holdAskOfNote, screenCardMayAnswer } from "@/lib/surface/hold";
+import { readRows } from "@/lib/surface/split";
 import { askOptionFor } from "@/lib/ask-reply";
 import { cancelHeldSend, cancelWalky, dropWalky, refreshNow, setWalkyOff } from "@/lib/api";
 import { describeThrownError } from "@/lib/api-error-message";
@@ -938,7 +939,7 @@ export function AgentChat({
   // render hot path.
   const statusLines = useMemo(
     () =>
-      grammarsOn ? adapterFor(agent?.agent)?.extractStatusLines(splitLines(parseAnsi(display))) ?? [] : [],
+      grammarsOn ? adapterFor(agent?.agent)?.extractStatusLines(readRows(display)) ?? [] : [],
     [display, agent?.agent, grammarsOn],
   );
   // Settings → Harness configurations: whether this device draws the lifted status line, and for
@@ -954,7 +955,7 @@ export function AgentChat({
   const agentsFooter = useMemo(
     () =>
       grammarsOn
-        ? adapterFor(agent?.agent)?.extractAgentsFooter?.(splitLines(parseAnsi(display))) ?? []
+        ? adapterFor(agent?.agent)?.extractAgentsFooter?.(readRows(display)) ?? []
         : [],
     [display, agent?.agent, grammarsOn],
   );
@@ -963,7 +964,7 @@ export function AgentChat({
   // ready editor, pi/ask.ts). Same parse source and adapter as the probes around it. Chat draws one
   // status line for it; the terminal view shows the banner itself, so nothing else reads this.
   const questionPending = useMemo(
-    () => grammarsOn && adapterFor(agent?.agent)?.questionPending?.(splitLines(parseAnsi(display))) === true,
+    () => grammarsOn && adapterFor(agent?.agent)?.questionPending?.(readRows(display)) === true,
     [display, agent?.agent, grammarsOn],
   );
 
@@ -976,7 +977,7 @@ export function AgentChat({
   const rawTerminalDraft = useMemo(
     () =>
       grammarsOn
-        ? adapterFor(agent?.agent)?.extractInputDraft(splitLines(parseAnsi(display))) ?? null
+        ? adapterFor(agent?.agent)?.extractInputDraft(readRows(display)) ?? null
         : null,
     [display, agent?.agent, grammarsOn],
   );

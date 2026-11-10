@@ -22,8 +22,7 @@
 import type { MuxAdapter } from "../mux/types.ts";
 import { redactText } from "../redact.ts";
 import type { AgentView } from "../types.ts";
-import { parseAnsi } from "../../web/src/lib/ansi.ts";
-import { splitLines } from "../../web/src/lib/blocks.ts";
+import { readRows } from "../../web/src/lib/surface/split.ts";
 import { DEFAULT_EDGE_PROFILE, type EdgeKind } from "../../web/src/lib/surface/edges.ts";
 import { emptyFoldState, readFold, stepFold, type FoldContext, type FoldState, type SurfaceInput, type SurfaceRead } from "../../web/src/lib/surface/fold.ts";
 import { readIsUnstyled, rowText, type IdleProfile } from "../../web/src/lib/surface/frame.ts";
@@ -428,7 +427,7 @@ export class SurfaceShadow {
     } else {
       readKey = `${String(grid.value.revision)}:${shortHash(grid.value.text)}`;
       state.lastRevision = grid.value.revision;
-      const rows = splitLines(parseAnsi(grid.value.text));
+      const rows = readRows(grid.value.text);
       const blocks = readerBlocks(rows, harness);
       this.push(state, { seq: ++state.seq, source: "screen", at, revision: grid.value.revision, rows, ask: this.askOf(agent.paneId, blocks, grid.value.revision, profile) });
       state.lastLegacy = this.options.compare === false ? false : legacyFree(rows, blocks, harness);

@@ -30,9 +30,9 @@
 //
 // Pure: the caller hands in the text of the file and a way to read a fixture. No DOM, no Bun API.
 
-import { parseAnsi } from "../ansi";
 import { asJsonBoolean, asJsonNumber, asJsonObject, asJsonString, parseJson, type JsonObject, type JsonValue } from "../json";
-import { splitLines, type StyledLine } from "../blocks";
+import { type StyledLine } from "../blocks";
+import { readRows } from "./split";
 import { closingReceipt, edgeKindOf, invertEdge, tracePromptHash, type EdgeKind, type OpenReceipt } from "./edges";
 import { emptyFoldState, readFold, stepFold, SURFACE_SOURCES, type FoldContext, type FoldState, type SurfaceInput, type SurfaceSource } from "./fold";
 import { liftAsk, readerBlocks } from "./lift";
@@ -236,7 +236,7 @@ const TRACE_PANE = "trace";
 
 function rowsOf(read: { readonly text?: string; readonly fixture?: string; readonly styled?: readonly StyledLine[] }, fixture: (name: string) => string): StyledLine[] {
   if (read.styled !== undefined) return [...read.styled];
-  return splitLines(parseAnsi(read.text ?? fixture(read.fixture ?? "")));
+  return readRows(read.text ?? fixture(read.fixture ?? ""));
 }
 
 function check(expect: TraceExpect | undefined, surface: Surface, state: FoldState, receipts: Record<string, "open" | "effective">): string[] {

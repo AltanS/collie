@@ -243,11 +243,10 @@ import { statSync } from "node:fs";
 import type { MuxAck, MuxGrid, MuxGridRequest, MuxOutcome } from "../mux/types.ts";
 import type { AgentStatus } from "../types.ts";
 import { FOREGROUND_UNREAD, type ForegroundUnread } from "../launch-window.ts";
-import { parseAnsi } from "../../web/src/lib/ansi.ts";
-import { splitLines } from "../../web/src/lib/blocks.ts";
 import { noEchoPromptIn } from "../../web/src/lib/no-echo.ts";
 import { isUploadImagePath, pastePieces } from "../../web/src/lib/upload-path.ts";
 import { BAD_HEAD, hasViewHead, VIEW_NO_PROFILE } from "../../web/src/lib/agent-view/wire.ts";
+import { readRows } from "../../web/src/lib/surface/split.ts";
 import { pointsAt, staleListUnder } from "../../web/src/lib/surface/command-list.ts";
 import type { PopupRead } from "../../web/src/lib/surface/popup.ts";
 import { commandListAnyText, commandListAt, isRunningRow, noticeOver, ownCommandList, popupAt, readCues, readCuesFor, runningSign, withoutCommandList, withoutPopup, withoutPromptEchoes, type CommandListRead, type Cue } from "../../web/src/lib/surface/cues.ts";
@@ -5028,7 +5027,7 @@ export class SendProtocol {
       state.partialRead = true;
       return null;
     }
-    const rows = splitLines(parseAnsi(grid.value.text));
+    const rows = readRows(grid.value.text);
     const idle = state.match?.profile.idle ?? null;
     const frame = idle === null ? null : findInputFrame(rows, idle);
     const blocks = readerBlocks(rows, harness);
