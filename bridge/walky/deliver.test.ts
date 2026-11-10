@@ -21,13 +21,18 @@ import { OUT_OF_SCOPE } from "./refusals.ts";
 import { NOT_THE_SENDER, WalkyService, type WalkyServiceDeps } from "./service.ts";
 import { RESTING, SENDER_OFF, WALKY_OFF, type WalkyTarget } from "./types.ts";
 
+import { spaceOf } from "./space.ts";
+
+/** One unnamed space on one machine: every fixture pane shares it, and no rule reads it yet. */
+const SOLO_SPACE = spaceOf({ memberId: "local", spaceId: "w1", spaceLabel: "w1" });
+
 const roots: string[] = [];
 afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
 function pane(paneId: string, over: Partial<WalkyPane> = {}): WalkyPane {
-  return { session: "main", paneId, agent: true, harness: "agent-x", label: `repo#${paneId}`, state: "idle", activeAt: null, instance: "aaaa", terminal: true, off: false, ...over };
+  return { session: "main", paneId, agent: true, harness: "agent-x", label: `repo#${paneId}`, state: "idle", activeAt: null, instance: "aaaa", terminal: true, off: false, space: SOLO_SPACE, ...over };
 }
 
 class FakeHost implements WalkyHost {
@@ -290,7 +295,7 @@ describe("fan-out and senders", () => {
 
   test("`who` lists agent panes only, with machine, harness, label and state", () => {
     const r = rig([pane("w1:p1"), pane("w1:p2", { agent: false, harness: null })]);
-    expect(r.service.who()).toEqual([{ address: "local/w1:p1#aaaa", memberId: "local", machine: "desk", harness: "agent-x", label: "repo#w1:p1", state: "idle" }]);
+    expect(r.service.who()).toEqual([{ address: "local/w1:p1#aaaa", memberId: "local", machine: "desk", harness: "agent-x", label: "repo#w1:p1", state: "idle", space: SOLO_SPACE }]);
   });
 });
 
@@ -1438,6 +1443,7 @@ describe("a workspace scope (M75 spec 02)", () => {
     harness: "agent-x",
     label,
     state,
+    space: SOLO_SPACE,
   });
   const targetsOf = (answer: Awaited<ReturnType<WalkyService["send"]>>) => (answer.ok ? answer.receipts.map((receipt) => `${receipt.target} ${receipt.state}`) : [answer.error]);
 
@@ -1792,7 +1798,7 @@ describe("a session with its walky talky off (M89)", () => {
       memberId: "desk",
       knownMembers: () => ["desk", "laptop"],
       // The sweep already says the member's pane is off. The lead does not enforce it.
-      remoteTargets: () => [{ address: "laptop/w1:p8#k3f9", memberId: "laptop", machine: "laptop", harness: "agent-x", label: "repo#c", state: "idle", walky: "off" }],
+      remoteTargets: () => [{ address: "laptop/w1:p8#k3f9", memberId: "laptop", machine: "laptop", harness: "agent-x", label: "repo#c", state: "idle", walky: "off", space: SOLO_SPACE }],
       routeRemote: async (m, members, panes) => {
         legs.push(`${members} ${(panes ?? []).join(",")}`);
         return (panes ?? []).map((paneId) => ({ id: m.id, target: `${members}/${paneId}`, state: "refused" as const, reason: WALKY_OFF, verified: "lead" as const, at: 1, by: members }));

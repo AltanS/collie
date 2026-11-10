@@ -301,7 +301,7 @@ export class WalkyService {
 
   /** One pane of this bridge as `who` lists it. `walky` is there only while the session is off (M89). */
   private targetRow(pane: WalkyPane, memberId: string): WalkyTarget {
-    const target: WalkyTarget = { address: this.addressOf(pane.paneId, pane.instance), memberId, machine: this.deps.machine, harness: pane.harness, label: pane.label, state: pane.state };
+    const target: WalkyTarget = { address: this.addressOf(pane.paneId, pane.instance), memberId, machine: this.deps.machine, harness: pane.harness, label: pane.label, state: pane.state, space: pane.space };
     return pane.off ? { ...target, walky: "off" } : target;
   }
 

@@ -311,6 +311,7 @@ import { WalkyLog } from "./walky/log.ts";
 import { PinStore } from "./pins/store.ts";
 import { WalkyOff } from "./walky/off.ts";
 import { RefusalCounter } from "./walky/refusals.ts";
+import { spaceOfPane } from "./walky/space.ts";
 import { WalkySeen } from "./walky/seen.ts";
 import { WalkyService } from "./walky/service.ts";
 import { siblingDirsOf, SiblingLogs } from "./walky/siblings.ts";
@@ -2164,7 +2165,8 @@ const walkyRawPanes = (): Omit<WalkyPane, "instance" | "off">[] =>
       const facts = { paneId: view.paneId, cwd: view.cwd, branch: head?.kind === "branch" ? head.name : null, paneLabel: view.paneLabel, terminalTitle: view.terminalTitle };
       // The last status change comes from the activity ledger: the engine's views carry no time (it rides the wire at serialise time).
       const activeAt = activity.get(rt.name, view.paneId)?.activeAt ?? null;
-      return { session: rt.name, paneId: view.paneId, agent, harness: agent ? view.agent : null, label: labelOf(facts, !cfg.redact), state: view.status, activeAt, terminal: rt.send !== undefined };
+      const space = spaceOfPane(walkyMemberId ?? LOCAL_MEMBER, view);
+      return { session: rt.name, paneId: view.paneId, agent, harness: agent ? view.agent : null, label: labelOf(facts, !cfg.redact), state: view.status, activeAt, terminal: rt.send !== undefined, space };
     };
     const out = agents.map((view) => of(view, true));
     for (const view of shellPanes) out.push(of(view, false));

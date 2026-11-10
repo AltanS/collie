@@ -5,6 +5,7 @@
 // No harness name lives under bridge/walky/ (no-harness-names.test.ts scans this folder). A
 // message names its sender's harness as an open string from the adapter registry.
 
+import type { WalkySpace } from "./space.ts";
 import { randomBytes } from "node:crypto";
 
 /** The wire version of a message. */
@@ -183,6 +184,11 @@ export interface WalkyTarget {
   readonly state: string;
   /** Present only when the session turned its walky talky off (M89). The owner machine enforces it; this only shows it. */
   readonly walky?: "off";
+  /**
+   * The pane's space and its key (M98, space.ts). On a row from a member below this version, computed
+   * from the member's pane list with the default for `named`.
+   */
+  readonly space: WalkySpace;
 }
 
 /** A shell pane, which never receives a message: a broadcast lists it as skipped. */

@@ -198,3 +198,24 @@ describe("absoluteCwd", () => {
     expect(absoluteCwd("~/x", "")).toBe("");
   });
 });
+
+describe("whether a space has a name of its own (M98)", () => {
+  const namedBy = (terminals: Parameters<typeof toSnapshot>[0]) => Object.fromEntries(toSnapshot(terminals, LAYOUT, "/home/dev").panes.map((pane) => [pane.paneId, pane.spaceNamed]));
+
+  test("only a space the layout document names is named", () => {
+    expect(namedBy([terminal({ address: "t1", labels: inSpace("spB", "tbB1") })])).toEqual({ t1: true });
+  });
+
+  test("a space named after a `where` label or a folder is not named", () => {
+    expect(
+      namedBy([
+        terminal({ address: "t1", labels: inSpace("spA", "tbA1", "collie-workspace / 1") }),
+        terminal({ address: "t2", labels: inSpace("spA", "tbA1"), foreground: { name: "bash", cwd: "/home/dev/repo" } }),
+      ]),
+    ).toEqual({ t1: false, t2: false });
+  });
+
+  test("a space the document does not know is not named, and neither is the implicit one", () => {
+    expect(namedBy([terminal({ address: "t1", labels: inSpace("spZ", "tbZ", "elsewhere / 1") }), terminal({ address: "t2", labels: {} })])).toEqual({ t1: false, t2: false });
+  });
+});

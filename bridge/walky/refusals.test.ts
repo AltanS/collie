@@ -22,6 +22,11 @@ import {
 import { WalkyService } from "./service.ts";
 import { RECEIPT_REASON_MAX } from "./types.ts";
 
+import { spaceOf } from "./space.ts";
+
+/** One unnamed space on one machine: every fixture pane shares it, and no rule reads it yet. */
+const SOLO_SPACE = spaceOf({ memberId: "local", spaceId: "w1", spaceLabel: "w1" });
+
 // File modes and Unix sockets are POSIX. Windows has no 0700 or 0600, so those checks sit in a test
 // that is skipped there, and the behaviour beside them still runs.
 const POSIX_ONLY = HOST.platform === "win32";
@@ -91,7 +96,7 @@ describe("the refusal counter", () => {
 
 describe("the refusals of a workspace scope (M75 spec 02)", () => {
   const AT = 1_786_000_000_000;
-  const pane = (paneId: string, label: string): WalkyPane => ({ session: "main", paneId, agent: true, harness: "agent-x", label, state: "idle", activeAt: null, instance: "aaaa", terminal: true, off: false });
+  const pane = (paneId: string, label: string): WalkyPane => ({ session: "main", paneId, agent: true, harness: "agent-x", label, state: "idle", activeAt: null, instance: "aaaa", terminal: true, off: false, space: SOLO_SPACE });
   const host = (panes: WalkyPane[]): WalkyHost => ({
     panes: () => panes,
     send: async (): Promise<SendResult> => ({ outcome: "sent" }),

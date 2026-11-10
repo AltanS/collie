@@ -47,6 +47,11 @@ import type { JsonValue } from "../json.ts";
 import { parseJson } from "../../web/src/lib/json.ts";
 import { movesForward, type WalkyMessage, type WalkyReceipt, type WalkyTarget } from "./types.ts";
 
+import { spaceOf } from "./space.ts";
+
+/** One unnamed space on one machine: every fixture pane shares it, and no rule reads it yet. */
+const SOLO_SPACE = spaceOf({ memberId: "local", spaceId: "w1", spaceLabel: "w1" });
+
 /** A value as it arrives off the wire: through JSON, so a test hands a handler exactly what a request would. */
 function wire<T>(value: T): JsonValue {
   // SAFETY: `JSON.parse` output IS a JsonValue by construction.
@@ -92,7 +97,7 @@ function OPERATOR(memberId: string): Partial<WalkyMessage> {
 }
 
 function pane(paneId: string, over: Partial<WalkyPane> = {}): WalkyPane {
-  return { session: "main", paneId, agent: true, harness: "agent-x", label: `repo#${paneId}`, state: "idle", activeAt: null, instance: "aaaa", terminal: true, off: false, ...over };
+  return { session: "main", paneId, agent: true, harness: "agent-x", label: `repo#${paneId}`, state: "idle", activeAt: null, instance: "aaaa", terminal: true, off: false, space: SOLO_SPACE, ...over };
 }
 
 class FakeHost implements WalkyHost {
@@ -894,7 +899,7 @@ describe("`who` on a lead", () => {
   test("lists every member's agent panes from the sweep's bodies, with the member's address", () => {
     const paneOf = (paneId: string, over: Partial<PaneWire> = {}): PaneWire =>
       // SAFETY: a test fixture carrying the fields `crewTargets` reads; the rest of the wire shape is irrelevant here.
-      ({ paneId, agent: "agent-x", status: "idle", cwd: "/home/a/collie", gitHead: { kind: "branch", name: "main" }, ...over }) as PaneWire;
+      ({ paneId, agent: "agent-x", status: "idle", cwd: "/home/a/collie", workspaceId: "w1", workspaceLabel: "w1", gitHead: { kind: "branch", name: "main" }, ...over }) as PaneWire;
     const targets = crewTargets(
       [
         { memberId: "laptop", name: "laptop", reachable: true, body: { sessions: [], agents: [paneOf("w1:p9"), paneOf("w1:p9"), paneOf("w1:p3", { kind: "shell" })], shellPanes: [], workspaces: [], tabs: [] } },
@@ -904,8 +909,8 @@ describe("`who` on a lead", () => {
       true,
     );
     expect(targets).toEqual([
-      { address: "laptop/w1:p9", memberId: "laptop", machine: "laptop", harness: "agent-x", label: "collie#main", state: "idle" },
-      { address: "other/w2:p1", memberId: "other", machine: "other", harness: "agent-x", label: "collie#main", state: "unreachable" },
+      { address: "laptop/w1:p9", memberId: "laptop", machine: "laptop", harness: "agent-x", label: "collie#main", state: "idle", space: spaceOf({ memberId: "laptop", spaceId: "w1", spaceLabel: "w1" }) },
+      { address: "other/w2:p1", memberId: "other", machine: "other", harness: "agent-x", label: "collie#main", state: "unreachable", space: spaceOf({ memberId: "other", spaceId: "w1", spaceLabel: "w1" }) },
     ]);
   });
 
@@ -1428,7 +1433,7 @@ describe("a pane receipt under a leg sent as a whole (§21, added 2026-10-18)", 
 describe("a workspace scope across a crew of two members (M75 spec 02)", () => {
   /** `who` on the lead, from a member's panes: what its sweep would hold. */
   const listed = (memberId: string, panes: readonly WalkyPane[]): WalkyTarget[] =>
-    panes.filter((p) => p.agent).map((p) => ({ address: `${memberId}/${p.paneId}#${p.instance}`, memberId, machine: memberId, harness: p.harness, label: p.label, state: "idle" }));
+    panes.filter((p) => p.agent).map((p) => ({ address: `${memberId}/${p.paneId}#${p.instance}`, memberId, machine: memberId, harness: p.harness, label: p.label, state: "idle", space: SOLO_SPACE }));
   const otherStore = (): TrustStoreData => peerStore({ self: createTrustStore(selfIdentity("other", material("other"), T0)).self });
 
   /** A lead `desk` and two members, `laptop` and `other`, wired end to end through the real crew halves. */

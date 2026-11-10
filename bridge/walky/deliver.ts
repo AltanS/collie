@@ -34,6 +34,7 @@ import type { LogRecord, Placement, WalkyLog } from "./log.ts";
 import { MEMBER_LIMIT, PAIR_LIMIT, pairKey, RateLimiter, senderKey } from "./rate.ts";
 import { HERE_FROM_PHONE, hereWithoutFolder, MEMBER_UNREACHABLE, OUT_OF_SCOPE, RefusalCounter, scopeEmpty, scopeIsMember, scopeTooWide, type RefusalCounts } from "./refusals.ts";
 import { seenHash, WalkySeen } from "./seen.ts";
+import type { WalkySpace } from "./space.ts";
 import { formatEnvelope, receiptReason, SEND_ID, RESTING, SENDER_OFF, WALKY_OFF, type WalkyMessage, type WalkyReceipt, type WalkyReceiptState, type WalkyTarget, type WalkyVerified } from "./types.ts";
 
 /**
@@ -116,6 +117,8 @@ export interface WalkyPane {
   readonly terminal: boolean;
   /** True when the session turned its walky talky off (M89, off.ts): no agent message goes in or out. */
   readonly off: boolean;
+  /** The pane's space and its key (space.ts), under this bridge's member id. No rule reads it yet (M98). */
+  readonly space: WalkySpace;
 }
 
 /**

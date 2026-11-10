@@ -11,14 +11,19 @@ import { WalkyOff } from "./off.ts";
 import { WalkyService } from "./service.ts";
 import type { WalkyEntry } from "./types.ts";
 
+import { spaceOf } from "./space.ts";
+
+/** One unnamed space on one machine: every fixture pane shares it, and no rule reads it yet. */
+const SOLO_SPACE = spaceOf({ memberId: "local", spaceId: "w1", spaceLabel: "w1" });
+
 const roots: string[] = [];
 afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
 const panes: WalkyPane[] = [
-  { session: "main", paneId: "w1:p1", agent: true, harness: "agent-x", label: "repo#a", state: "idle", activeAt: null, instance: "aaaa", terminal: true, off: false },
-  { session: "main", paneId: "w1:p2", agent: true, harness: "agent-y", label: "repo#b", state: "idle", activeAt: null, instance: "aaaa", terminal: true, off: false },
+  { session: "main", paneId: "w1:p1", agent: true, harness: "agent-x", label: "repo#a", state: "idle", activeAt: null, instance: "aaaa", terminal: true, off: false, space: SOLO_SPACE },
+  { session: "main", paneId: "w1:p2", agent: true, harness: "agent-y", label: "repo#b", state: "idle", activeAt: null, instance: "aaaa", terminal: true, off: false, space: SOLO_SPACE },
 ];
 const host: WalkyHost = { panes: () => panes, send: async () => ({ outcome: "sent" }), sendState: () => null, cancelHeld: () => undefined };
 
@@ -90,7 +95,7 @@ describe("`who` for the Crew page", () => {
   test("adds the shell panes a broadcast skips, and the refusal counts with no body", async () => {
     const root = mkdtempSync(join(tmpdir(), "walky-routes-"));
     roots.push(root);
-    const withShell: WalkyHost = { ...host, panes: () => [...panes, { session: "main", paneId: "w1:p3", agent: false, harness: null, label: "repo#c", state: "idle", activeAt: null, instance: "aaaa", terminal: true, off: false }] };
+    const withShell: WalkyHost = { ...host, panes: () => [...panes, { session: "main", paneId: "w1:p3", agent: false, harness: null, label: "repo#c", state: "idle", activeAt: null, instance: "aaaa", terminal: true, off: false, space: SOLO_SPACE }] };
     const walky = new WalkyService({ log: new WalkyLog(join(root, "walky")), host: withShell, memberId: null, enabled: () => true, machine: "desk", keyPem: () => null, now: () => 7 });
     await walky.send({ id: "wt_aaaaaaaaaaa1", to: "local/w9:p9", body: "secret words", replyTo: null }, { kind: "operator", label: "cli" });
     const body = await walkyWhoRoute(walky, null).json();
@@ -286,7 +291,7 @@ describe("POST /api/walky/off, the phone's switch (M89 spec 04)", () => {
     const root = mkdtempSync(join(tmpdir(), "walky-routes-"));
     roots.push(root);
     const off = new WalkyOff(join(root, "walky"));
-    const shell: WalkyPane = { session: "main", paneId: "w1:p9", agent: false, harness: null, label: "repo", state: "idle", activeAt: null, instance: "cccc", terminal: true, off: false };
+    const shell: WalkyPane = { session: "main", paneId: "w1:p9", agent: false, harness: null, label: "repo", state: "idle", activeAt: null, instance: "cccc", terminal: true, off: false, space: SOLO_SPACE };
     const offHost: WalkyHost = { ...host, panes: () => [...panes, shell].map((pane): WalkyPane => Object.assign({}, pane, { off: off.isOff(pane) })) };
     const walky = new WalkyService({ log: new WalkyLog(join(root, "walky")), host: offHost, memberId: null, enabled: () => true, machine: "desk", keyPem: () => null, off });
     return { walky, off };

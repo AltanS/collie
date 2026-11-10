@@ -253,6 +253,9 @@ function toPane(terminal: WireTerminal, place: PanePlace): MuxPane {
     paneId: terminal.address,
     spaceId: place.space.id,
     spaceLabel: place.label,
+    // Named only when the layout document names the space: the implicit space and a label read off
+    // herdr-app's `where` label or the folder (which shares a name across unrelated spaces) are not names.
+    spaceNamed: place.space.docName !== "",
     spaceNumber: place.spaceNumber,
     tabId: place.tab.id,
     // Where the program is now, which is what herdr-app names a space after; the start folder when

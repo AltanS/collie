@@ -530,6 +530,8 @@ function toMuxPane(
     paneId: raw.pane_id,
     spaceId: raw.workspace_id,
     spaceLabel,
+    // A workspace Herdr lists with a label of its own is named; the id a missing record falls back to is not.
+    spaceNamed: space !== undefined && space.label.trim() !== "" && space.label !== raw.workspace_id,
     spaceNumber: space?.number ?? 0,
     tabId: raw.tab_id,
     // The program in front, else the launch folder: any non-empty string wins, as in herdr-core (layout.ts).

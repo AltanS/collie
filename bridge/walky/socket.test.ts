@@ -20,6 +20,11 @@ import { HillService } from "../hill/service.ts";
 import { HillStore } from "../hill/store.ts";
 import { walkyPlace } from "../hill/walky.ts";
 
+import { spaceOf } from "./space.ts";
+
+/** One unnamed space on one machine: every fixture pane shares it, and no rule reads it yet. */
+const SOLO_SPACE = spaceOf({ memberId: "local", spaceId: "w1", spaceLabel: "w1" });
+
 // A Unix socket file with an owner-only mode is POSIX; Windows has no walky socket ("Windows has no
 // socket" below), so every part of this test is about that socket.
 const POSIX_ONLY = HOST.platform === "win32";
@@ -39,8 +44,8 @@ const target: PlaceTarget = { session: "main", matcher, paneIds: () => ["%1", "%
 const marker = (pane: string) => [{ namespace: "tmux", scope: "/tmp/tmux-1/default", pane }];
 
 const panes: WalkyPane[] = [
-  { session: "main", paneId: "%1", agent: true, harness: "agent-x", label: "repo#a", state: "idle", activeAt: null, instance: "aaaa", terminal: true, off: false },
-  { session: "main", paneId: "%2", agent: true, harness: "agent-y", label: "repo#b", state: "working", activeAt: null, instance: "bbbb", terminal: true, off: false },
+  { session: "main", paneId: "%1", agent: true, harness: "agent-x", label: "repo#a", state: "idle", activeAt: null, instance: "aaaa", terminal: true, off: false, space: SOLO_SPACE },
+  { session: "main", paneId: "%2", agent: true, harness: "agent-y", label: "repo#b", state: "working", activeAt: null, instance: "bbbb", terminal: true, off: false, space: SOLO_SPACE },
 ];
 
 const host: WalkyHost = {

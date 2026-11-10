@@ -1432,6 +1432,12 @@ prevents (`web/src/lib/api.ts:201-203`).
 - **A pane may carry `walkyOff: true`** (additive-optional, §7.1, added 2026-11-06): the session
   turned its walky talky off. Only `true` means off; absent reads as on, which is what every older
   member sends. It only shows: the member that owns the pane refuses (§21, "Pane instances").
+- **A pane may carry `workspaceNamed`** (additive-optional, §7.1, added 2026-11-10, M98): whether the
+  pane's `workspaceLabel` is a name of the space's own, a boolean, sent only when it differs from the
+  default `workspaceLabel !== workspaceId`. Absent means the default, which is what every older member
+  sends. The lead keeps it only as a boolean and drops anything else. Walky talky reads it to key a
+  space: a named space joins the space of the same name on another member, an unnamed one stays on its
+  machine (§21).
 - **A pane may carry `pins`** (additive-optional, §7.1, added 2026-11-06, M90): how many pins the
   pane's session holds on the member that owns it, a whole number above zero. Absent means none,
   which is what every older member sends and what a session with no pins sends. The lead keeps the

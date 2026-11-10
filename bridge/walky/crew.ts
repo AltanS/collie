@@ -41,6 +41,7 @@ import type { RouteRemote } from "./deliver.ts";
 import type { LogRecord, WalkyLog } from "./log.ts";
 import { readCrewDelivery, readErrorText, readMessage, readOutcomesPush, readReceiptsAnswer, readWalkyCursor, type CrewSenderBlock, type WalkyReportBody } from "./parse.ts";
 import type { WalkyService } from "./service.ts";
+import { spaceOfPane } from "./space.ts";
 import { movesForward, receiptReason, WALKY_BODY_MAX, WALKY_HARNESS_MAX, WALKY_LABEL_MAX, type WalkyMessage, type WalkyReceipt, type WalkyReceiptState, type WalkySkipped, type WalkyTarget, type WalkyVerified } from "./types.ts";
 
 /** The member-to-lead route, under the crew prefix: `POST /crew/v1/walky`. */
@@ -663,6 +664,7 @@ export function crewTargets(members: readonly CrewMemberView[], titles: boolean)
         harness: pane.agent,
         label: labelOf(facts, titles),
         state: member.reachable ? pane.status : "unreachable",
+        space: spaceOfPane(member.memberId, pane),
       };
       out.push(pane.walkyOff === true ? { ...target, walky: "off" } : target);
     }

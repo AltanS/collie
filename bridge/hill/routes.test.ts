@@ -18,6 +18,11 @@ import { hillDeviceId, HillService, type HillServiceDeps } from "./service.ts";
 import { HillStore } from "./store.ts";
 import { walkyPlace, walkySend } from "./walky.ts";
 
+import { spaceOf } from "../walky/space.ts";
+
+/** One unnamed space on one machine: every fixture pane shares it, and no rule reads it yet. */
+const SOLO_SPACE = spaceOf({ memberId: "local", spaceId: "w1", spaceLabel: "w1" });
+
 const roots: string[] = [];
 const stops: (() => void)[] = [];
 afterEach(() => {
@@ -29,8 +34,8 @@ const RID = "0f8b5c1e-5a7d-4b8e-9f00-1a2b3c4d5e6f";
 const OTHER_RID = "11111111-1111-4111-8111-111111111111";
 
 const panes: WalkyPane[] = [
-  { session: "main", paneId: "%1", agent: true, harness: "agent-x", label: "repo#one", state: "idle", activeAt: null, instance: "aaaa", terminal: true, off: false },
-  { session: "main", paneId: "%2", agent: true, harness: "agent-y", label: "repo#two", state: "idle", activeAt: null, instance: "bbbb", terminal: true, off: false },
+  { session: "main", paneId: "%1", agent: true, harness: "agent-x", label: "repo#one", state: "idle", activeAt: null, instance: "aaaa", terminal: true, off: false, space: SOLO_SPACE },
+  { session: "main", paneId: "%2", agent: true, harness: "agent-y", label: "repo#two", state: "idle", activeAt: null, instance: "bbbb", terminal: true, off: false, space: SOLO_SPACE },
 ];
 
 interface Rig {

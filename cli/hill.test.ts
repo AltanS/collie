@@ -45,6 +45,11 @@ import { run } from "./program.ts";
 import { realFiles } from "./sys.ts";
 import { askSocket } from "./walky.ts";
 
+import { spaceOf } from "../bridge/walky/space.ts";
+
+/** One unnamed space on one machine: every fixture pane shares it, and no rule reads it yet. */
+const SOLO_SPACE = spaceOf({ memberId: "local", spaceId: "w1", spaceLabel: "w1" });
+
 // `collie hill` against a real bridge socket in a temp state dir, as cli/walky.test.ts drives walky: the
 // socket, the request lines and the answers are the real ones; only the panes and the send are fakes.
 const socketTest = test.skipIf(HOST.platform === "win32");
@@ -64,8 +69,8 @@ const target: PlaceTarget = { session: "main", matcher, paneIds: () => ["%1", "%
 const inPane = (pane: string) => ({ TMUX: "/tmp/tmux-1/default,123,0", TMUX_PANE: pane });
 
 const panes: WalkyPane[] = [
-  { session: "main", paneId: "%1", agent: true, harness: "agent-x", label: "repo#one", state: "idle", activeAt: null, instance: "aaaa", terminal: true, off: false },
-  { session: "main", paneId: "%2", agent: true, harness: "agent-y", label: "repo#two", state: "working", activeAt: null, instance: "bbbb", terminal: true, off: false },
+  { session: "main", paneId: "%1", agent: true, harness: "agent-x", label: "repo#one", state: "idle", activeAt: null, instance: "aaaa", terminal: true, off: false, space: SOLO_SPACE },
+  { session: "main", paneId: "%2", agent: true, harness: "agent-y", label: "repo#two", state: "working", activeAt: null, instance: "bbbb", terminal: true, off: false, space: SOLO_SPACE },
 ];
 
 interface Bridge {

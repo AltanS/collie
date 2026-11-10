@@ -49,6 +49,13 @@ export interface AgentView {
   paneId: string;
   workspaceId: string;
   workspaceLabel: string;
+  /**
+   * Whether `workspaceLabel` is a name of the space's own (`MuxPane.spaceNamed`). Present only when it
+   * differs from the default `workspaceLabel !== workspaceId`, so a pane whose adapter agrees with the
+   * default is byte-identical to one from before this field. Absent from an older peer: read it through
+   * `spaceNamedOf` (bridge/walky/space.ts), which computes the default.
+   */
+  workspaceNamed?: boolean;
   workspaceNumber: number;
   tabId: string;
   agent: string;

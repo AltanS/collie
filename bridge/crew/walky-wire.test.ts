@@ -3,6 +3,8 @@ import { describe, expect, test } from "bun:test";
 import type { JsonValue } from "../json.ts";
 import { DEFAULT_MAX_UPLOAD_BYTES } from "../uploads.ts";
 import type { WalkyReceipt } from "../walky/types.ts";
+import { crewTargets } from "../walky/crew.ts";
+import { parsePeerSnapshot } from "./merge.ts";
 import { member, neverProxy } from "./fixtures.ts";
 import { apiPathFor, crewRouteFor, forwardAuditAction, forwardKind, forwardPaneId, forwardToPeer, type ForwardAuditEntry, type ForwardTransport } from "./forward.ts";
 import { CrewLead } from "./lead.ts";
@@ -155,5 +157,32 @@ describe("the sweep hands a member's walky report to the lead", () => {
       await l.sweep();
       expect(seen).toEqual([]);
     }
+  });
+});
+
+describe("a pane's space rides the snapshot as additive fields (M98 spec 01)", () => {
+  const pane = (over: Record<string, JsonValue>): JsonValue => ({ paneId: "w1:p1", status: "idle", workspaceNumber: 1, workspaceId: "w1", workspaceLabel: "api", agent: "agent-x", cwd: "/work/api", focused: false, tabId: "t1", ...over });
+  const peer = (agents: JsonValue[]) => {
+    const parsed = parsePeerSnapshot({ ...body, agents });
+    if (parsed === null) throw new Error("the peer body should parse");
+    return parsed;
+  };
+  const rowsOf = (agents: JsonValue[]) => crewTargets([{ memberId: "laptop", name: "laptop", reachable: true, body: peer(agents) }], true).map((target) => target.space);
+
+  test("a member that sends `workspaceNamed` has it kept, and the row's space follows it", () => {
+    expect(rowsOf([pane({ workspaceNamed: true })])).toEqual([{ key: "api", named: true, label: "api" }]);
+    expect(rowsOf([pane({ workspaceLabel: "work", workspaceNamed: false })])).toEqual([{ key: "laptop\u0000w1", named: false, label: "work" }]);
+  });
+
+  test("a member below this version sends none: the default is a label that is not the id", () => {
+    expect(rowsOf([pane({})])).toEqual([{ key: "api", named: true, label: "api" }]);
+    expect(rowsOf([pane({ workspaceLabel: "w1" })])).toEqual([{ key: "laptop\u0000w1", named: false, label: "w1" }]);
+  });
+
+  test("a `workspaceNamed` that is not a boolean is dropped at the merge, and a pane with no space words still lists", () => {
+    expect(peer([pane({ workspaceNamed: "yes" })]).agents[0]?.workspaceNamed).toBeUndefined();
+    expect(rowsOf([pane({ workspaceNamed: "yes" })])).toEqual([{ key: "api", named: true, label: "api" }]);
+    const bare = { paneId: "w1:p2", status: "idle", workspaceNumber: 1, agent: "agent-x", cwd: "/work" } satisfies Record<string, JsonValue>;
+    expect(rowsOf([bare])).toEqual([{ key: "laptop\u0000", named: false, label: "" }]);
   });
 });

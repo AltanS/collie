@@ -322,3 +322,39 @@ describe("readGrid viewport: the live screen, whatever the operator's scroll", (
     expect(fake.gets).toBe(1);
   });
 });
+
+describe("whether a space has a name of its own (M98)", () => {
+  /** Seeded panes sit in w1 and w5; this fake relabels them and can drop a workspace record. */
+  class LabelledHerdr extends FakeHerdr {
+    constructor(private readonly labelOf: (id: string) => string | null) {
+      super();
+    }
+
+    override async sessionSnapshot(): Promise<WireSnapshot> {
+      const snapshot = await super.sessionSnapshot();
+      const workspaces: WireWorkspace[] = [];
+      for (const workspace of snapshot.workspaces) {
+        const label = this.labelOf(workspace.workspace_id);
+        if (label !== null) workspaces.push({ ...workspace, label });
+      }
+      return { ...snapshot, workspaces };
+    }
+  }
+
+  const spaceNamedBy = async (fake: FakeHerdr): Promise<Record<string, boolean | undefined>> => {
+    const { panes } = await new HerdrMux(fake, () => []).snapshot();
+    return Object.fromEntries(panes.map((pane) => [pane.spaceId, pane.spaceNamed]));
+  };
+
+  test("a workspace listed with a label of its own is named", async () => {
+    expect(await spaceNamedBy(new LabelledHerdr((id) => `name of ${id}`))).toEqual({ w1: true, w5: true });
+  });
+
+  test("a label that is the id, or empty, is not a name", async () => {
+    expect(await spaceNamedBy(new LabelledHerdr((id) => (id === "w1" ? id : "  ")))).toEqual({ w1: false, w5: false });
+  });
+
+  test("a pane whose workspace the listing does not hold fell back to its id: not named", async () => {
+    expect(await spaceNamedBy(new LabelledHerdr((id) => (id === "w1" ? "kept" : null)))).toEqual({ w1: true, w5: false });
+  });
+});
