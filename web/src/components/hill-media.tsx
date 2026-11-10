@@ -1,12 +1,15 @@
 import { useState } from "react";
 
 import { Icon } from "@/components/icons/icon";
+import { FocusFrame, FocusImage } from "@/components/ui/focus-image";
 import { ImageStrip, ImageStripItem, stripSize, type StripSize } from "@/components/ui/image-strip";
+import { PagerSheet } from "@/components/ui/pager-sheet";
 import { useLocale } from "@/hooks/use-locale";
 import { useNearScreen } from "@/hooks/use-near-screen";
 import { useAuthedUrl } from "@/lib/authed-url";
 import { hillMediaPath, type HillMedia } from "@/lib/hill/wire";
 import { t } from "@/lib/i18n";
+import type { ViewPictureDraw, ViewPictures } from "@/lib/tricks/render";
 
 // THE IMAGES OF A DECISION (M96).
 //
@@ -26,6 +29,12 @@ import { t } from "@/lib/i18n";
 // visible part. The ROW is what is watched, not each image: the row scrolls on its own, and an observer
 // rooted in it would call every image in it visible however far the card is from the screen. Until the
 // row comes near, each image's box is reserved and empty, as it is while the fetch runs, so nothing moves.
+//
+// AN IMAGE THE VIEW PLACES (2026-11-10). A Decision's view may set one of these images among its facts,
+// cropped (`image` with a `ref`), or two side by side (`compare`). The renderer lays out the frame
+// (lib/tricks/render.tsx); this file hands it the bytes the same way (`viewPictures`), and a tap opens
+// the picture at full size in a sheet that pages through the frames' set (`PagerSheet`). The card leaves
+// such an image out of the row above, so it is not shown twice.
 
 /** Where an image's bytes are: the bridge's route by default; the playground hands in its own. */
 export type HillMediaSource = (decisionId: string, media: HillMedia) => string;
@@ -106,4 +115,69 @@ export function HillImageStrip({
       ))}
     </ImageStrip>
   );
+}
+
+/** One picture at full size in the pager: its own fetch, from the cache the frame already filled. */
+function PagerPicture({ src, alt }: { src: string; alt: string }) {
+  const { url, failed } = useAuthedUrl(src);
+  if (failed) return <Unavailable />;
+  if (url === null) return <span aria-hidden className="block h-40 w-full" />;
+  return <img src={url} alt={alt} className="mx-auto h-auto max-h-[70dvh] w-auto max-w-full rounded" />;
+}
+
+/** A frame a Decision's view placed: the picture cropped in it, near the screen only; a tap opens the pager on it. */
+function ViewPictureFrame({ decisionId, media, source, draw }: { decisionId: string; media: readonly HillMedia[]; source: HillMediaSource; draw: ViewPictureDraw }) {
+  useLocale();
+  const [open, setOpen] = useState(false);
+  const [page, setPage] = useState(draw.index);
+  const { ref, near } = useNearScreen();
+  const item = media[draw.refs[draw.index] ?? -1];
+  const { url, failed, onError } = useImage(item === undefined ? "" : source(decisionId, item), near && item !== undefined);
+  if (item === undefined) return null;
+  const altAt = (i: number) => {
+    const place = draw.refs[i] ?? 0;
+    const at = media[place];
+    return at === undefined ? "" : altOf(at, place, media.length);
+  };
+  const alt = altAt(draw.index);
+  const shown = media[draw.refs[page] ?? -1];
+  return (
+    <span ref={ref} className="block min-w-0" style={draw.width === undefined ? undefined : { width: draw.width }}>
+      <FocusFrame
+        ratio={draw.ratio}
+        maxHeight={draw.maxHeight}
+        label={t("hill.media.open", { name: alt })}
+        onOpen={() => {
+          setPage(draw.index);
+          setOpen(true);
+        }}
+      >
+        {failed ? <Unavailable /> : url === null ? null : <FocusImage src={url} alt={alt} fit={draw.fit} crop={draw.crop} onError={onError} />}
+      </FocusFrame>
+      <PagerSheet
+        open={open && shown !== undefined}
+        onClose={() => setOpen(false)}
+        title={altAt(page)}
+        index={page}
+        count={draw.refs.length}
+        onIndex={setPage}
+        prevLabel={t("hill.media.prev")}
+        nextLabel={t("hill.media.next")}
+        position={t("hill.media.position", { index: page + 1, count: draw.refs.length })}
+      >
+        {shown !== undefined && <PagerPicture key={shown.id} src={source(decisionId, shown)} alt={altAt(page)} />}
+      </PagerSheet>
+    </span>
+  );
+}
+
+/** The Decision's images as a view's `image` and `compare` read them: each one's shape and words, and its frame. */
+export function viewPictures(decisionId: string, media: readonly HillMedia[], source: HillMediaSource = hillMediaSource): ViewPictures {
+  return {
+    at: (ref) => {
+      const item = media[ref];
+      return item === undefined ? undefined : { width: item.width, height: item.height, alt: altOf(item, ref, media.length) };
+    },
+    draw: (draw) => <ViewPictureFrame decisionId={decisionId} media={media} source={source} draw={draw} />,
+  };
 }

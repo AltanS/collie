@@ -181,3 +181,41 @@ describe("an image is fetched only near the screen", () => {
     expect(all("image-strip-item")[0]!.querySelector("img")).not.toBeNull();
   });
 });
+
+describe("an image the view places (2026-11-10)", () => {
+  const compareView: HillDecision["view"] = [{ kind: "compare", kids: [{ kind: "image", attrs: { ref: "0" } }, { kind: "image", attrs: { ref: "2", focus: "50 10 2" } }] }];
+
+  it("draws a placed image among the facts and leaves it out of the row above", () => {
+    const { slot, all } = renderCard(hillDecision({ media: [media(1, "Before"), media(2), media(3, "After")], view: compareView }), DATA);
+    // Only the picture the view does not place stays in the row.
+    const items = all("image-strip-item");
+    expect(items.map((f) => f.querySelector("img")?.getAttribute("src"))).toEqual([DATA("", media(2))]);
+    const frames = [...slot("decision-view")!.querySelectorAll<HTMLElement>('[data-slot="focus-frame"]')];
+    expect(frames.map((f) => f.querySelector("img")?.getAttribute("src"))).toEqual([media(1), media(3)].map((m) => DATA("", m)));
+    // The focus crops the second one: its point stays put and it zooms about it.
+    expect(frames[1]!.querySelector("img")!.style.transform).toBe("scale(2)");
+    expect(frames[1]!.querySelector("img")!.style.objectPosition).toBe("50% 10%");
+  });
+
+  it("draws no row at all when the view places every image", () => {
+    const { slot } = renderCard(hillDecision({ media: [media(1), media(2)], view: [{ kind: "compare", kids: [{ kind: "image", attrs: { ref: "0" } }, { kind: "image", attrs: { ref: "1" } }] }] }), DATA);
+    expect(slot("image-strip")).toBeNull();
+    expect(slot("decision-view")!.querySelectorAll('[data-slot="focus-frame"]')).toHaveLength(2);
+  });
+
+  it("opens a compare's picture at full size and pages to the other one, the ends stopping", () => {
+    const { slot } = renderCard(hillDecision({ media: [media(1, "Before"), media(2), media(3, "After")], view: compareView }), DATA);
+    const frames = [...slot("decision-view")!.querySelectorAll<HTMLElement>('[data-slot="focus-frame"]')];
+    expect(frames[0]).toHaveAttribute("aria-label", "Open Before at full size");
+    fireEvent.click(frames[0]!);
+    const dialog = screen.getByRole("dialog");
+    const prev = screen.getByRole("button", { name: "Previous picture" });
+    const next = screen.getByRole("button", { name: "Next picture" });
+    expect(dialog).toHaveTextContent("1 of 2");
+    expect(prev).toBeDisabled();
+    fireEvent.click(next);
+    expect(dialog).toHaveTextContent("2 of 2");
+    expect(next).toBeDisabled();
+    expect(dialog.querySelector("img")?.getAttribute("src")).toBe(DATA("", media(3)));
+  });
+});

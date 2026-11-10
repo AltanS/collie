@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import { AgentIcon } from "@/components/agent-icon";
 import { DecisionView } from "@/components/decision-view";
@@ -28,6 +28,7 @@ import { HOST_TEXT_CLASSES } from "@/lib/hosts";
 import { t } from "@/lib/i18n";
 import { onBridgeClock } from "@/lib/server-clock";
 import { trickIconOf } from "@/lib/tricks/icons";
+import { viewImageRefs } from "@/lib/tricks/layout";
 import { cn } from "@/lib/utils";
 
 // A DECISION, AS A CARD ON THE HILL (M96).
@@ -324,6 +325,11 @@ export function DecisionCard({
   const noteId = useId();
   const hintId = useId();
   const locked = lockedBy(answer);
+  // An image the view places among its facts is drawn there, not again in the row above it.
+  const stripMedia = useMemo(() => {
+    const placed = decision.view === undefined ? new Set<number>() : viewImageRefs(decision.view);
+    return decision.media.filter((_, i) => !placed.has(i));
+  }, [decision.media, decision.view]);
 
   // A card that takes no more answers holds no armed button: the arm was for an answer not yet given.
   useEffect(() => {
@@ -436,12 +442,12 @@ export function DecisionCard({
         </p>
       </div>
 
-      {decision.media.length > 0 && (
+      {stripMedia.length > 0 && (
         // B1's row: 16px past the text's edge on each side, its first picture on the text's edge.
-        <HillImageStrip decisionId={decision.id} media={decision.media} source={mediaSource} className="-mx-4" scrollerClassName="px-4" />
+        <HillImageStrip decisionId={decision.id} media={stripMedia} source={mediaSource} className="-mx-4" scrollerClassName="px-4" />
       )}
 
-      {decision.view !== undefined && <DecisionView decisionId={decision.id} view={decision.view} sender={decision.from.label} />}
+      {decision.view !== undefined && <DecisionView decisionId={decision.id} view={decision.view} sender={decision.from.label} media={decision.media} mediaSource={mediaSource} />}
 
       {decision.recommends !== null && recommended !== undefined && (
         <figure data-slot="decision-recommends" className="flex flex-col gap-1.5 border-y border-border py-3">
