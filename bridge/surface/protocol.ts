@@ -80,10 +80,11 @@
 // S2 that ends with the text still in the box ends `unknown(dialog_after_enter)`: a dialog that drew
 // before Enter took it and closed.
 //
-// A pane whose harness has a profile is read through its input frame. A pane with no profile (a bare
-// shell, a program, an agent Collie has no profile for) has no input box to prove free, so a send or
-// a command on it is typed and Entered blind, as before the protocol: no probe, no S1, no S2, never
-// held. Its one S0 read only looks for a password prompt on the last rows, which refuses the send
+// A pane whose harness has a profile is read through its input frame. A shell pane (the multiplexer
+// names no agent, so `harness` is empty) has no input box to prove free, so a send or a command on it
+// is typed and Entered blind, as before the protocol: no probe, no S1, no S2, never held. A pane the
+// multiplexer names as an agent Collie has no profile for is never typed into blind: S0 finds no
+// box there, so it takes the manual Send below, probed and confirmed by a tap. Its one S0 read only looks for a password prompt on the last rows, which refuses the send
 // before any key (#103). Its receipt says `sent` once Enter went out, and its `saw` says `no-profile`. A pane that
 // has a profile but whose frame S0 cannot find reads unknown(no-match): every send on it is probed,
 // and the probe's own landing spot (the row and column where the probe character appeared) is what S1
@@ -3757,8 +3758,9 @@ export class SendProtocol {
     const state = this.bareState({ id: "prepare", text: "", mode: "prepare" }, prepareRecord(target, this.now()), target, match);
     try {
       const snap = await this.stableRead(state, "prepare");
-      // A pane with no profile offers nothing: its next tap is a plain send, typed blind.
-      return { surface: snap.surface, rowsHash: snap.rowsHash, offers: match === null ? [] : prepareOffers(snap) };
+      // A shell pane offers nothing: its next tap is a plain send, typed blind. A named agent with no
+      // profile is read like any screen Collie cannot read.
+      return { surface: snap.surface, rowsHash: snap.rowsHash, offers: match === null && target.harness === "" ? [] : prepareOffers(snap) };
     } catch (err) {
       if (err instanceof Ended) return answerWith({ offers: ["keys"] }, { ...err.extra, detail: err.extra.detail ?? err.message });
       throw err;
@@ -4066,7 +4068,10 @@ export class SendProtocol {
 
     // A send with a view's head goes only where S0 can prove the session free (rule 5): never blind.
     if (match === null && request.view?.head === true) throw new Ended("refused", "not_free", { detail: VIEW_NO_PROFILE });
-    if (match === null && (request.mode === "send" || request.mode === "command")) {
+    // Only a pane the multiplexer reports as a shell (no agent named, `harness` empty) takes the blind
+    // road. An agent Collie has no profile for gets the manual Send: S0 reads no box there, so the first
+    // tap is refused `unconfirmed`, and the confirm is probed and read back before Enter.
+    if (match === null && state.target.harness === "" && (request.mode === "send" || request.mode === "command")) {
       await this.blindSend(state, lines);
       return;
     }

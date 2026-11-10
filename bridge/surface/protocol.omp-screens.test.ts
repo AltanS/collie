@@ -235,7 +235,7 @@ describe("a send in the launch window: the bridge started omp in this pane and t
 
   test("a shell screen is refused before any key: no text, no probe, no Enter", async () => {
     const pane = startingPane();
-    const { send } = rig(pane, { starting: () => "omp", harness: "shell" });
+    const { send } = rig(pane, { starting: () => "omp", harness: "" });
     const answer = await send("hello");
     expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "probe_failed", keys: [], profileId: "omp" });
     expect(answer.receipt?.detail).toBe("The pane shows no omp input box yet; it may still be starting. Nothing was typed.");
@@ -246,7 +246,7 @@ describe("a send in the launch window: the bridge started omp in this pane and t
 
   test("a command is refused the same way", async () => {
     const pane = startingPane();
-    const { send } = rig(pane, { starting: () => "omp", harness: "shell" });
+    const { send } = rig(pane, { starting: () => "omp", harness: "" });
     const answer = await send("/wx", { mode: "command" });
     expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "probe_failed", keys: [] });
     expect(pane.calls).toEqual([]);
@@ -255,7 +255,7 @@ describe("a send in the launch window: the bridge started omp in this pane and t
 
   test("the same pane once omp's input box is on screen takes the send", async () => {
     const pane = startingPane();
-    const { send } = rig(pane, { starting: () => "omp", harness: "shell" });
+    const { send } = rig(pane, { starting: () => "omp", harness: "" });
     expect((await send("hello")).receipt?.outcome).toBe("refused");
     pane.load(OMP_UP);
     const answer = await send("hello");
@@ -265,7 +265,7 @@ describe("a send in the launch window: the bridge started omp in this pane and t
 
   test("a pane the bridge did not start anything in is still a shell that takes a blind send", async () => {
     const pane = startingPane();
-    const { send } = rig(pane, { harness: "shell" });
+    const { send } = rig(pane, { harness: "" });
     const answer = await send("ls -la");
     expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["Enter"], profileId: null });
     expect(pane.calls).toEqual(["type:ls -la"]);
@@ -273,7 +273,7 @@ describe("a send in the launch window: the bridge started omp in this pane and t
 
   test("a started harness with no profile of its own leaves the pane a blind shell", async () => {
     const pane = startingPane();
-    const { send } = rig(pane, { starting: () => "nothing-known", harness: "shell" });
+    const { send } = rig(pane, { starting: () => "nothing-known", harness: "" });
     expect((await send("ls -la")).receipt).toMatchObject({ outcome: "sent", keys: ["Enter"], profileId: null });
   });
 });
@@ -299,7 +299,7 @@ describe("a pane where omp is starting that the bridge did not launch (gang thre
    * The bridge's wiring of the launch window for one session, over a foreground that runs `argv`:
    * `null` is a multiplexer with no foreground read, `unread` a read that gave no answer.
    */
-  function windowed(pane: OmpPane, foreground: { argv: string[] | null | "unread" }, harness = "shell") {
+  function windowed(pane: OmpPane, foreground: { argv: string[] | null | "unread" }, harness = "") {
     const window = new LaunchWindow();
     const framed: string[] = [];
     const { send } = rig(pane, {
@@ -392,7 +392,7 @@ describe("a pane where omp is starting that the bridge did not launch (gang thre
 
   test("a starting read that throws is no evidence: the shell takes the blind send", async () => {
     const pane = startingPane();
-    const { send } = rig(pane, { harness: "shell", starting: () => Promise.reject(new Error("socket gone")) });
+    const { send } = rig(pane, { harness: "", starting: () => Promise.reject(new Error("socket gone")) });
     expect((await send("ls -la")).receipt).toMatchObject({ outcome: "sent", keys: ["Enter"], profileId: null });
   });
 
