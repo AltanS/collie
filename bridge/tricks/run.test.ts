@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { scrubEnv, scrubReason } from "./env.ts";
-import { BUN_BE_BUN, launchOf, outcomeProblem, runProvider, runtimeScript, shellArgv, STDERR_CAP_BYTES, type RunSpec } from "./run.ts";
+import { BUN_BE_BUN, launchOf, outcomeProblem, runProgram, runtimeScript, shellArgv, STDERR_CAP_BYTES, type RunSpec } from "./run.ts";
 
 const dirs: string[] = [];
 async function tempDir(): Promise<string> {
@@ -20,7 +20,7 @@ const KEY = "sk-or-v1-0123456789abcdef0123456789abcdef";
 
 async function run(command: string, extra: Partial<RunSpec> = {}) {
   const cwd = await tempDir();
-  return await runProvider({ command, cwd, env: { PATH: process.env.PATH ?? "/usr/bin:/bin" }, stdin: "{}", ...extra });
+  return await runProgram({ command, cwd, env: { PATH: process.env.PATH ?? "/usr/bin:/bin" }, stdin: "{}", ...extra });
 }
 
 function alive(pid: number): boolean {
@@ -70,6 +70,13 @@ describe("the env scrub", () => {
     });
   });
 
+  test("a TRICK_ test hook passes only with testHooks (trick dev, check --run), never in a bridge run, even listed", () => {
+    const hooks = { ...env, TRICK_NOW: "1794225600", TRICK_TOOLS_ONLY_PATH: "1", trick_lower: "x" };
+    expect(scrubEnv(hooks, ["TRICK_NOW"])).toEqual({ PATH: "/usr/bin:/bin", HOME: "/home/op", LANG: "C.UTF-8" });
+    expect(scrubEnv(hooks, [], { testHooks: true })).toEqual({ PATH: "/usr/bin:/bin", HOME: "/home/op", LANG: "C.UTF-8", TRICK_NOW: "1794225600", TRICK_TOOLS_ONLY_PATH: "1" });
+    expect(scrubReason("TRICK_NOW", "1", new Set(["TRICK_NOW"]))).toBe("a test hook, passed only by collie trick dev and check --run");
+  });
+
   test("names why each one goes", () => {
     expect(scrubReason("COLLIE_TOKEN", "abc")).toBe("a COLLIE_ variable");
     expect(scrubReason("HERDR_PLUGIN_CONFIG_DIR", "/x")).toBe("a HERDR_ variable");
@@ -96,7 +103,7 @@ describe("the env scrub", () => {
 describe("one run", () => {
   test("stdin carries the facts, stdout comes back, cwd is the folder", async () => {
     const cwd = await tempDir();
-    const outcome = await runProvider({ command: 'cat; printf " %s" "$(pwd)"', cwd, env: { PATH: process.env.PATH ?? "" }, stdin: '{"v":1}' });
+    const outcome = await runProgram({ command: 'cat; printf " %s" "$(pwd)"', cwd, env: { PATH: process.env.PATH ?? "" }, stdin: '{"v":1}' });
     expect(outcome).toMatchObject({ kind: "exited", code: 0 });
     if (outcome.kind === "exited") expect(outcome.stdout).toBe(`{"v":1} ${cwd}`);
   });
@@ -104,7 +111,7 @@ describe("one run", () => {
   test("the timeout kills the whole process group", async () => {
     const cwd = await tempDir();
     const pidFile = join(cwd, "child.pid");
-    const outcome = await runProvider({
+    const outcome = await runProgram({
       command: `sleep 30 & echo $! > "${pidFile}"; sleep 30`,
       cwd,
       env: { PATH: process.env.PATH ?? "" },
@@ -154,7 +161,7 @@ describe("one run", () => {
   });
 
   test("a folder that is not there is a spawn failure, not a throw", async () => {
-    const outcome = await runProvider({ command: "true", cwd: "/nonexistent/collie-trick", env: {}, stdin: "" });
+    const outcome = await runProgram({ command: "true", cwd: "/nonexistent/collie-trick", env: {}, stdin: "" });
     expect(outcome.kind).toBe("spawn-failed");
     expect(outcomeProblem(outcome, 200)).toStartWith("The provider did not start");
   });
@@ -206,7 +213,7 @@ describe("the two forms of a run line", () => {
     await writeFile(join(cwd, "program.ts"), 'const facts = await Bun.stdin.text();\nconsole.log(JSON.stringify({ facts, cwd: process.cwd(), be: process.env.BUN_BE_BUN ?? null, token: process.env.COLLIE_TOKEN ?? null }));\n');
     const env = scrubEnv({ ...process.env, COLLIE_TOKEN: "tok-must-not-leak" });
     for (const compiled of [false, true]) {
-      const outcome = await runProvider({ command: "program.ts", cwd, env, stdin: '{"v":1}', runtime: { execPath: process.execPath, compiled } });
+      const outcome = await runProgram({ command: "program.ts", cwd, env, stdin: '{"v":1}', runtime: { execPath: process.execPath, compiled } });
       expect(outcome.kind).toBe("exited");
       if (outcome.kind !== "exited") return;
       expect(JSON.parse(outcome.stdout)).toEqual({ facts: '{"v":1}', cwd, be: compiled ? "1" : null, token: null });

@@ -31,8 +31,11 @@ run((t) => {
 
 `trick.ts` is one self-contained file (`cli/trick-kit/trick.ts` in this repo, held in the binary as
 text). It imports only `node:` built-ins and Bun, and its first line names its version, `// collie
-trick helper v1`. `collie trick helper <id>` rewrites it with the version this Collie carries; the
+trick helper v2`. `collie trick helper <id>` rewrites it with the version this Collie carries; the
 helper is part of the trick's code, so a trick that is on stops until a person switches it on again.
+`collie trick check` lists a `trick.ts` whose bytes are a helper this Collie ships as "helper v2" (an
+older one with the command to update it) and does not grep it; a changed one is grepped as the trick's
+own code and called a modified helper.
 
 | API | What it does |
 | --- | ------------ |
@@ -48,10 +51,20 @@ helper is part of the trick's code, so a trick that is on stops until a person s
 | `v.card`, `v.group`, `v.list`, `v.row`, `v.bar`, `v.chip`, `v.button`, `v.para`, `v.line`, `v.run`, `v.code`, `v.link`, `v.image`, `v.meter`, `v.spacer`, `v.number` | one builder per node kind; a number attribute may be a number, a flag `true` |
 | `t.decide({ key, title, summary, options, recommends?, body?, text?, priority?, about?, replyTo?, media?, links?, view? })` | asks the person on the Hill; `view` is a list of display nodes under the summary (see "A Decision's view") |
 | `t.keepDecisions()` | leaves the `decisions` key out: the open Decisions stay as they are |
-| `t.state.get(name, fallback)`, `t.state.set(name, value)` | JSON files in the trick's state folder, written whole (a temp file, then a rename) |
-| `t.sh(cmd, args, { timeoutMs = 5000, cwd? })` | runs a program without a shell; `{ ok, code, stdout, stderr }`, never throws, 256 KiB of output kept |
+| `t.state.get(name, fallback)`, `t.state.set(name, value)` | JSON files in the trick's state folder, written whole (a temp file, then a rename); a name may hold folders (`cache/ci`), never `..` or a dot first |
+| `t.log(name)` | an append-only JSON-lines file `<name>.jsonl` in the state folder: `.append(entry)`, `.all()`, `.last(n)`, `.has(rid)`, and `.once(rid, entry)`, which appends only when no entry has that rid and says whether it wrote |
+| `t.cached(name, ttlMs, loader)` | a read kept in `<name>.json` with its time: `{ value, at, stale, error }`. A fresh value is served as it is; else the loader runs and its value is kept. A loader that throws serves the old value with `stale: true`, or `value: null` when there is none. Pass `Infinity` on a tap so a tap never waits on the network |
+| `t.closedUntil(key, untilMs)`, `t.isClosed(key)` | close a key for a while (a held or dismissed Decision), in `closed.json`; `isClosed` answers when it opens again, or null |
+| `t.path(p)` | a path from `config.toml`, made absolute: `~/` is the home folder, a relative path is taken from the trick folder |
+| `t.tool(name, extraDirs?)` | the absolute path of a program on PATH, else in `extraDirs`, `~/.local/bin`, `~/.bun/bin`, Homebrew's and the system folders, or null |
+| `t.show(defaults)`, `t.put(places, { label, icon?, badge?, word?, tone?, itemTone? })` | `show` of `config.toml` (a list of `dashboard`, `tabbar`, `status`, `belt`) as a set, within the manifest's `places`; then one count in each place: a tile and a bar item always, the chip and the Belt mark only while `word` is set |
+| `t.configWarn(text)` | one more problem for the `config.toml` warn row the session ends with; `t.show` adds one for a word it cannot use |
+| `t.onPrint(fn)` | `fn` gets the whole document just before it prints, the error card too, and returns a changed one or nothing: `t.onPrint((doc) => mapText(doc, mask))` |
+| `t.sh(cmd, args, { timeoutMs = 5000, cwd? })` | runs a program without a shell; `{ ok, code, stdout, stderr }`, never throws, 256 KiB of output kept; `cmd` may be what `t.tool` found, and null is `ok: false` |
 | `t.sessionAt(folder)`, `t.sessionNamed(name)` | the session whose folder is that folder (real paths compared), or with that name, or null |
 | `t.fresh(duration)`, `t.asOf(when)` | the document's `fresh` window and `asOf` instant |
+| `now()`, `iso(ms?)`, `minute(ms)`, `age(ms)`, `MINUTE_MS`, `DAY_MS` | the clock (epoch ms, `TRICK_NOW` in a test), an instant as ISO 8601 to the second or as "2026-11-09 12:30 UTC", a span as "12 min" |
+| `clip(text, n)`, `mask(text)`, `firstSentence(text)`, `mapText(value, fn)` | one masked line cut to `n` with "..."; keys and tokens cut to four characters and the home folder as `~`; the first sentence; every string of a JSON value through `fn` |
 
 Decisions are declarative: a run that calls neither `t.decide` nor `t.keepDecisions` prints
 `"decisions": []`, so the trick wants none and the open ones are withdrawn. A thrown error prints one
@@ -60,8 +73,14 @@ warn card with the error's message in the trick's session and exits 0 when the t
 rules and backoff apply. The stack goes to stderr, the message on its last line, which is the line the
 bridge and `collie trick check` show.
 
+Two test hooks are helper features: `TRICK_NOW` (epoch seconds) fixes the clock `now()` reads, and
+`TRICK_TOOLS_ONLY_PATH=1` makes `t.tool` look on PATH alone. Any `TRICK_*` variable of the caller's
+environment reaches the program from `collie trick dev` and `collie trick check --run` only. The
+bridge never passes one, even when `env` in `trick.toml` lists it (`bridge/tricks/env.ts`).
+
 The schema's own tests never load the helper, so `cli/trick-kit/trick.test.ts` parses the output of
-every builder, every place method and the init sample with the real parser.
+every builder, every place method and the init sample with the real parser, and tests each helper
+call in the process.
 
 ## Trying a trick: `collie trick dev`
 
@@ -75,6 +94,16 @@ problem line and the tail of stderr.
 
 - `--tap <intent> [--text <words>] [--node <node>]` runs it as a tap. `--node` defaults to `main`; a
   `hill/<key>` node carries `{ text }`, as a Decision's answer does.
+- `--rid <uuid>` is the request id of that tap. It goes with `--tap` only, and it must be a UUID. Without
+  it each run gets a fresh one.
+- `--facts <file.json>` runs the program on your facts instead of the fixture's. The file goes through
+  `parseFacts`; a missing file, a file that is not JSON, or a refused one prints each refusal with its
+  path (`error: --facts f.json: /sessions/0/status: ...`) and exits with 2 before anything runs. The
+  `trick` field (id, dir, state) is always this run's own. Without `--tap` the file's trigger is used,
+  and that may be a tap; `--tap` replaces it.
+- `--state <dir>` uses this state folder instead of a scratch one, and keeps it. It is created when
+  missing and never removed, so a program that keeps notes there sees them on the next run. With
+  `--watch` every run uses the same folder. `--json` then adds `"state"`.
 - `--json` prints the parsed result: the parts, the Decisions, the refusals, the outcome and the sizes.
 - `--watch` runs it again when a file in the folder changes, 300 ms after the last change (code and
   `config.toml`; never a `*.log`, a dot file, `media/` or `captures/`). Ctrl-C stops it.
@@ -98,6 +127,13 @@ runner and `collie trick check --run` share):
 - **A shell command line**: anything else (`./legs.sh`, `bun program.ts`, `darius due --json`), run
   by `/bin/sh -c` (or `cmd.exe /c`) in the trick folder, as before. It never sees `BUN_BE_BUN`: the
   environment scrub never passes it, even when `env` lists it.
+
+`collie trick check` greps only code. README.md, SKILL.md, AGENTS.md, every `*.md`, `*.toml`,
+`*.json` and `*.txt`, a `test.sh`, a `*.test.*` file and anything under `fixtures/` are listed as not
+grepped, and they still count in the code hash. In a code file a command counts only where a program
+runs it: a whole string literal (`t.sh("git", ...)`, `Bun.spawn(["gh", ...])`), `t.sh(`, a spawn or a
+`fetch(`, never a word like `node` in a name, a comment or a sentence. A shell file keeps the bare
+words, since every word there is in command position.
 
 ## The parsers
 

@@ -179,6 +179,15 @@
       }
     },
     {
+      // The trick helper (M94) is copied into a trick folder as text and runs as the trick's own program, outside Collie. Its one `typeof` sits in `mapText`, a walk over an arbitrary JSON document where `typeof` IS the dispatch, audit.ts's `sanitize()` case.
+      "files": [
+        "**/cli/trick-kit/trick.ts"
+      ],
+      "rules": {
+        "anti-slop/no-runtime-typeof": "off"
+      }
+    },
+    {
       // The Cloudflare Access gate (#341, ADR 0081) parses an untrusted JWT off a request header and a JWKS document off the network. Every `typeof` sits inside `verifyAccessToken` or `importAccessKeys`, the module's own parse of those two inputs.
       "files": [
         "**/bridge/access-jwt.ts"

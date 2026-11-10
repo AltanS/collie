@@ -2,12 +2,12 @@ import { join } from "node:path";
 
 // Where tricks live on disk (M94, Collie tricks, slice 01). Two folders, one per side of the line:
 //
-//   * `<configDir>/tricks/<id>/` holds a trick: its `trick.toml` and its provider. The operator's code,
+//   * `<configDir>/tricks/<id>/` holds a trick: its `trick.toml` and its program. The operator's code,
 //     beside the other operator files, and per instance like them. Collie never writes here except
 //     `collie trick init`, which makes a new folder and refuses an existing one.
 //   * `<stateDir>/tricks/` holds what the bridge keeps about tricks: `switches.json` (which tricks are on,
 //     each with the code hash approved), `receipts.json` (one receipt per tap that ran) and one `<id>/`
-//     per trick that has run, handed to the provider as its own state folder.
+//     per trick that has run, handed to the program as its own state folder.
 //
 // The state folder is created only when a switch is written, a trick runs or a tap is answered, so an
 // install with no tricks writes no file (solo-baseline.test.ts).
@@ -36,7 +36,7 @@ export function switchesPath(stateDir: string): string {
   return join(tricksStateDir(stateDir), SWITCHES_FILE);
 }
 
-/** `<stateDir>/tricks/<id>`: the provider's own state folder, `trick.state` in the facts. */
+/** `<stateDir>/tricks/<id>`: the program's own state folder, `trick.state` in the facts. */
 export function trickStateDir(stateDir: string, id: string): string {
   return join(tricksStateDir(stateDir), id);
 }

@@ -15,7 +15,7 @@ import { parseFacts, type Refusal, type TrickDecision, type TrickFacts, type Tri
 import { decisionContentHash, imageFileDigest, REASK_AFTER_MS, scopeKeyAddress, TrickHill, TRICKS_MAP_FILE, trickRequestId, type TrickHillTrick } from "./hill.ts";
 import { trickCodeHash } from "./code-hash.ts";
 import { TRICKS_DIR } from "./paths.ts";
-import { runProvider, type RunOutcome, type RunSpec } from "./run.ts";
+import { runProgram, type RunOutcome, type RunSpec } from "./run.ts";
 import { HILL_NODE_TAP_REFUSED, TricksService, type TapAnswer } from "./service.ts";
 import { withSwitch, writeSwitches, type Switches } from "./switches.ts";
 
@@ -684,7 +684,7 @@ describe.skipIf(process.platform === "win32")("end to end with the legs trick", 
       warn: () => {},
       revBase: 1000,
       decisions: base.tricks,
-      run: (spec) => runProvider(spec),
+      run: (spec) => runProgram(spec),
     });
     // The hill's tap goes to this runner, as bridge/index.ts wires it.
     const hill = new HillService({

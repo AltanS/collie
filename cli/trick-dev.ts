@@ -5,16 +5,19 @@ import { join, relative, resolve, sep } from "node:path";
 import { skippedName } from "../bridge/tricks/code-hash.ts";
 import { tricksConfigDir } from "../bridge/tricks/paths.ts";
 import { RUN_TIMEOUT_MS, STDOUT_CAP_BYTES } from "../bridge/tricks/run.ts";
-import { HILL_NODE_PREFIX, isTrickId, type FactsTrigger, type ParsedPart, type Refusal, type TrickDecision, type View, type ViewNode } from "../web/src/lib/tricks/schema.ts";
+import { parseJson } from "../web/src/lib/json.ts";
+import { HILL_NODE_PREFIX, isRequestId, isTrickId, parseFacts, type FactsTrigger, type ParsedPart, type Refusal, type TrickDecision, type TrickFacts, type View, type ViewNode } from "../web/src/lib/tricks/schema.ts";
 import { EXIT } from "./io.ts";
-import { checkStatic, runAgainstFixture, type FixtureRun, type TrickDeps } from "./trick.ts";
+import { checkStatic, runAgainstFixture, type FixtureOptions, type FixtureRun, type TrickDeps } from "./trick.ts";
 
 // `collie trick dev <folder|id>` (M94 review 4): `check --run` made friendly. It runs the program once
 // against the same fixture facts `check --run` uses, through the same run path (`runAgainstFixture`:
 // the scrub, the launch rule, the caps, the one parser), and prints what the phone would get as a
 // short summary: each part with its place, id and shape, each Decision, every refusal with its path,
-// and the run's time and stdout size against the caps. `--tap <intent>` runs it as a tap instead,
-// `--json` prints the parsed result, and `--watch` runs it again on each change in the folder.
+// and the run's time and stdout size against the caps. `--tap <intent>` runs it as a tap instead
+// (`--rid <uuid>` fixes the tap's request id), `--facts <file.json>` hands it your own facts in place of
+// the fixture's, `--state <dir>` keeps the state folder between runs, `--json` prints the parsed
+// result, and `--watch` runs it again on each change in the folder.
 //
 // It never talks to the bridge and never posts: nothing it prints reaches a phone or the hill.
 
@@ -34,9 +37,15 @@ export interface DevArgs {
   tap: DevTap | null;
   json: boolean;
   watch: boolean;
+  /** The path after `--facts`, as typed. Reading it is `cmdTrickDev`'s job. */
+  facts: string | null;
+  /** The path after `--state`, as typed. */
+  state: string | null;
+  /** The request id after `--rid`, a UUID. */
+  rid: string | null;
 }
 
-const DEV_USAGE = "usage: collie trick dev <folder|id> [--tap <intent> [--text <words>] [--node <node>]] [--json] [--watch]";
+const DEV_USAGE = "usage: collie trick dev <folder|id> [--tap <intent> [--text <words>] [--node <node>] [--rid <uuid>]] [--facts <file.json>] [--state <dir>] [--json] [--watch]";
 
 export function parseDevArgs(args: readonly string[]): DevArgs | { error: string } {
   let target: string | undefined;
@@ -45,29 +54,37 @@ export function parseDevArgs(args: readonly string[]): DevArgs | { error: string
   let node: string | undefined;
   let json = false;
   let watching = false;
+  let facts: string | null = null;
+  let state: string | null = null;
+  let rid: string | null = null;
   for (let i = 0; i < args.length; i += 1) {
     const arg = args[i] ?? "";
     if (arg === "--json") json = true;
     else if (arg === "--watch") watching = true;
-    else if (arg === "--tap" || arg === "--text" || arg === "--node") {
+    else if (arg === "--tap" || arg === "--text" || arg === "--node" || arg === "--facts" || arg === "--state" || arg === "--rid") {
       const value = args[i + 1];
       if (value === undefined) return { error: `${arg} needs a value` };
       i += 1;
       if (arg === "--tap") intent = value;
       else if (arg === "--text") text = value;
-      else node = value;
+      else if (arg === "--node") node = value;
+      else if (arg === "--facts") facts = value;
+      else if (arg === "--state") state = value;
+      else rid = value;
     } else if (arg.startsWith("-")) return { error: `unknown flag ${arg}` };
     else if (target === undefined) target = arg;
     else return { error: `one folder or id, not "${arg}" too` };
   }
   if (target === undefined) return { error: "name a trick folder or id" };
   if (intent === undefined && (text !== null || node !== undefined)) return { error: "--text and --node go with --tap" };
-  return { target, tap: intent === undefined ? null : { intent, text, node: node ?? "main" }, json, watch: watching };
+  if (intent === undefined && rid !== null) return { error: "--rid goes with --tap" };
+  if (rid !== null && !isRequestId(rid)) return { error: `--rid must be a UUID, not "${rid}"` };
+  return { target, tap: intent === undefined ? null : { intent, text, node: node ?? "main" }, json, watch: watching, facts, state, rid };
 }
 
-/** The tap trigger `--tap` sends: a hill node carries `{ text }`, any other node the text as its value. */
-export function devTrigger(tap: DevTap): FactsTrigger {
-  const trigger: FactsTrigger = { kind: "tap", rid: randomUUID(), node: tap.node, intent: tap.intent };
+/** The tap trigger `--tap` sends: a hill node carries `{ text }`, any other node the text as its value. `rid` is a fresh UUID unless `--rid` gave one. */
+export function devTrigger(tap: DevTap, rid: string = randomUUID()): FactsTrigger {
+  const trigger: FactsTrigger = { kind: "tap", rid, node: tap.node, intent: tap.intent };
   if (tap.node.startsWith(HILL_NODE_PREFIX)) trigger.value = { text: tap.text };
   else if (tap.text !== null) trigger.value = tap.text;
   return trigger;
@@ -199,8 +216,30 @@ export function watchFolder(folder: string, onChange: () => void, debounceMs = W
   };
 }
 
+/** What the flags that touch the run's inputs resolved to, once, before the first run. */
+interface DevInputs {
+  /** The facts of `--facts`, parsed, and the path as typed (for the words that name it). */
+  facts?: { file: string; value: TrickFacts };
+  /** The absolute state folder of `--state`. */
+  state?: string;
+}
+
+/** Read and parse a `--facts` file: the facts, or one line per problem, each naming the file and the path. */
+export function loadFactsFile(deps: Pick<TrickDeps, "files">, file: string): { facts: TrickFacts } | { errors: string[] } {
+  const text = deps.files.read(resolve(file));
+  if (text === null) return { errors: [`--facts ${file}: cannot read the file`] };
+  const json = parseJson(text);
+  if (json === undefined) return { errors: [`--facts ${file}: not JSON`] };
+  const parsed = parseFacts(json);
+  if (parsed.facts === undefined || parsed.refusals.length > 0) {
+    const errors = parsed.refusals.map((r) => `--facts ${file}: ${r.path === "" ? "(the document)" : r.path}: ${r.reason}`);
+    return { errors: errors.length > 0 ? errors : [`--facts ${file}: the facts do not parse`] };
+  }
+  return { facts: parsed.facts };
+}
+
 /** One dev run: the static check, then the run, printed. True when nothing was refused and the run went well. */
-async function devOnce(deps: TrickDeps, folder: string, args: DevArgs): Promise<boolean> {
+async function devOnce(deps: TrickDeps, folder: string, args: DevArgs, inputs: DevInputs): Promise<boolean> {
   const report = await checkStatic(folder, deps.files);
   const manifest = report.manifest;
   const blocking = report.refusals.filter((r) => r.code !== "later");
@@ -213,16 +252,29 @@ async function devOnce(deps: TrickDeps, folder: string, args: DevArgs): Promise<
     }
     return false;
   }
-  const ran = await runAgainstFixture(manifest, folder, deps.ctx.env, args.tap === null ? undefined : devTrigger(args.tap));
+  const opts: FixtureOptions = {};
+  if (args.tap !== null) opts.trigger = devTrigger(args.tap, args.rid ?? undefined);
+  if (inputs.facts !== undefined) opts.facts = inputs.facts.value;
+  if (inputs.state !== undefined) opts.state = inputs.state;
+  const ran = await runAgainstFixture(manifest, folder, deps.ctx.env, opts);
   const refusals = ran.parsed?.refusals ?? [];
   if (args.json) {
     const stderr = ran.outcome.kind === "spawn-failed" ? "" : ran.outcome.stderr;
     const parsed = ran.parsed;
-    const body = { folder, trigger: args.tap === null ? "timer" : "tap", outcome: ran.outcome.kind, ms: ran.outcome.ms, stdoutBytes: ran.stdoutBytes, problem: ran.problem, stderr, decisionsListed: ran.decisionsListed, parts: parsed?.parts ?? [], decisions: parsed?.decisions ?? [], refusals };
-    deps.io.out(JSON.stringify(body, null, 2));
+    const kind = args.tap === null ? (inputs.facts?.value.trigger.kind ?? "timer") : "tap";
+    const body = { folder, trigger: kind, outcome: ran.outcome.kind, ms: ran.outcome.ms, stdoutBytes: ran.stdoutBytes, problem: ran.problem, stderr, decisionsListed: ran.decisionsListed, parts: parsed?.parts ?? [], decisions: parsed?.decisions ?? [], refusals };
+    deps.io.out(JSON.stringify(inputs.state === undefined ? body : { ...body, state: inputs.state }, null, 2));
   } else {
-    const how = args.tap === null ? "fixture facts, a timer run" : `a tap: ${args.tap.intent} on ${args.tap.node}`;
-    deps.io.out(`trick ${manifest.id} (${manifest.name}) in ${folder}, ${how}`);
+    const source = inputs.facts === undefined ? "fixture facts" : `facts from ${inputs.facts.file}`;
+    const trigger = args.tap === null ? inputs.facts?.value.trigger : undefined;
+    const what =
+      args.tap !== null
+        ? `a tap: ${args.tap.intent} on ${args.tap.node}`
+        : trigger?.kind === "tap"
+          ? `a tap: ${trigger.intent} on ${trigger.node}`
+          : `a ${trigger?.kind ?? "timer"} run`;
+    deps.io.out(`trick ${manifest.id} (${manifest.name}) in ${folder}, ${source}, ${what}`);
+    if (inputs.state !== undefined) deps.io.out(`  state kept in ${inputs.state}`);
     for (const line of devSummary(ran, refusals)) deps.io.out(line);
   }
   return ran.problem === null && refusals.length === 0;
@@ -242,14 +294,24 @@ export async function cmdTrickDev(deps: TrickDeps, args: readonly string[], unti
     deps.io.err(`error: ${parsed.target} is not a trick folder.`);
     return EXIT.USAGE;
   }
-  const ok = await devOnce(deps, folder, parsed);
+  const inputs: DevInputs = {};
+  if (parsed.facts !== null) {
+    const loaded = loadFactsFile(deps, parsed.facts);
+    if ("errors" in loaded) {
+      for (const line of loaded.errors) deps.io.err(`error: ${line}`);
+      return EXIT.USAGE;
+    }
+    inputs.facts = { file: parsed.facts, value: loaded.facts };
+  }
+  if (parsed.state !== null) inputs.state = resolve(parsed.state);
+  const ok = await devOnce(deps, folder, parsed, inputs);
   if (!parsed.watch) return ok ? EXIT.OK : EXIT.FAIL;
   deps.io.out(`watching ${folder}; Ctrl-C stops`);
   // One run at a time: a change while one runs queues the next behind it.
   let running: Promise<boolean> = Promise.resolve(ok);
   const again = async (): Promise<boolean> => {
     deps.io.out("");
-    return await devOnce(deps, folder, parsed);
+    return await devOnce(deps, folder, parsed, inputs);
   };
   const stop = watchFolder(folder, () => {
     running = running.then(again);

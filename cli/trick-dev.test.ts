@@ -1,12 +1,14 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
+import { existsSync } from "node:fs";
 
 import { EXIT, type Io } from "./io.ts";
 import { realFiles } from "./sys.ts";
 import { cmdTrickDev, devTrigger, parseDevArgs, watchCounts, watchFolder } from "./trick-dev.ts";
 import { cmdTrickInit, type TrickDeps } from "./trick.ts";
+import { FACTS } from "../web/src/lib/tricks/fixtures/index.ts";
 
 const dirs: string[] = [];
 async function tempDir(): Promise<string> {
@@ -53,12 +55,15 @@ async function trickWith(d: Awaited<ReturnType<typeof deps>>, id: string, progra
 
 describe("the flags", () => {
   test("a folder, --tap with its --text and --node, --json and --watch", () => {
-    expect(parseDevArgs(["."])).toEqual({ target: ".", tap: null, json: false, watch: false });
+    expect(parseDevArgs(["."])).toEqual({ target: ".", tap: null, json: false, watch: false, facts: null, state: null, rid: null });
     expect(parseDevArgs(["look", "--tap", "rerun", "--text", "go on", "--node", "hill/case-24", "--json", "--watch"])).toEqual({
       target: "look",
       tap: { intent: "rerun", text: "go on", node: "hill/case-24" },
       json: true,
       watch: true,
+      facts: null,
+      state: null,
+      rid: null,
     });
     expect(parseDevArgs(["--tap", "x"])).toEqual({ error: "name a trick folder or id" });
     expect(parseDevArgs([".", "--text", "x"])).toEqual({ error: "--text and --node go with --tap" });
@@ -76,6 +81,140 @@ describe("the flags", () => {
   test("--watch counts code and config.toml, never a log, a dot file, media/ or captures/", () => {
     for (const yes of ["program.ts", "config.toml", "lib/x.ts", "trick.toml"]) expect(watchCounts(yes)).toBe(true);
     for (const no of ["run.log", ".cache/x", "media/shot.png", "captures/a.png", "node_modules/x/index.js", "lib/.hidden", ""]) expect(watchCounts(no)).toBe(false);
+  });
+});
+
+const RID = "0b9f6c1e-3d52-4c8a-9a47-5e1d2f7a8b90";
+
+describe("--facts, --state and --rid", () => {
+  test("the flags parse, and each error says what is wrong", () => {
+    expect(parseDevArgs([".", "--facts", "f.json", "--state", "keep"])).toMatchObject({ facts: "f.json", state: "keep", rid: null });
+    expect(parseDevArgs([".", "--tap", "go", "--rid", RID])).toMatchObject({ tap: { intent: "go" }, rid: RID });
+    expect(parseDevArgs([".", "--facts"])).toEqual({ error: "--facts needs a value" });
+    expect(parseDevArgs([".", "--state"])).toEqual({ error: "--state needs a value" });
+    expect(parseDevArgs([".", "--tap", "go", "--rid"])).toEqual({ error: "--rid needs a value" });
+    expect(parseDevArgs([".", "--rid", RID])).toEqual({ error: "--rid goes with --tap" });
+    expect(parseDevArgs([".", "--tap", "go", "--rid", "abc"])).toEqual({ error: '--rid must be a UUID, not "abc"' });
+  });
+
+  test("devTrigger uses the rid it is given, else a fresh UUID each time", () => {
+    const tap = { intent: "go", text: null, node: "main" };
+    expect(devTrigger(tap, RID)).toMatchObject({ kind: "tap", rid: RID });
+    const a = devTrigger(tap);
+    const b = devTrigger(tap);
+    expect(a.kind === "tap" && /^[0-9a-f-]{36}$/u.test(a.rid)).toBe(true);
+    expect(a).not.toEqual(b);
+  });
+
+  /** A program that reads the facts from stdin itself and prints one status chip made from `chip(f)`. */
+  const echo = (chip: string): string => `const f = JSON.parse(await Bun.stdin.text());
+const text = String(${chip}).slice(0, 12);
+console.log(JSON.stringify({ v: 1, parts: [{ at: "status", id: "status", chip: { text } }] }));
+`;
+
+  test("--facts: the program sees the file's facts, with this run's folder and state in place of the file's", async () => {
+    const d = await deps();
+    const dir = await trickWith(d, "mine", echo("f.host + \"/\" + f.sessions.length + (f.trick.id === \"mine\" ? \"+\" : \"!\")"), '["status"]');
+    const file = join(await tempDir(), "facts.json");
+    const own = { ...FACTS.timer, host: "lonehost", sessions: [], trick: { id: "other", dir: "/nowhere", state: "/nowhere/state" } };
+    await writeFile(file, JSON.stringify(own));
+    expect(await cmdTrickDev(d, [dir, "--facts", file])).toBe(EXIT.OK);
+    const text = d.out.join("\n");
+    expect(d.out[0]).toContain(`facts from ${file}, a timer run`);
+    expect(text).toContain('"lonehost/0+"');
+    d.out.length = 0;
+    expect(await cmdTrickDev(d, [dir, "--json"])).toBe(EXIT.OK);
+    expect(JSON.parse(d.out.join("\n")).parts[0].part.chip.text).toBe("bluefin/2+");
+  });
+
+  test("--facts: the file's own tap trigger runs, and --tap replaces it", async () => {
+    const d = await deps();
+    const dir = await trickWith(d, "trig", echo("f.trigger.kind + \":\" + (f.trigger.rid ?? \"-\")"), '["status"]');
+    const file = join(await tempDir(), "facts.json");
+    const tapFacts = { ...FACTS.timer, trigger: { kind: "tap", rid: RID, node: "main", intent: "again" } };
+    await writeFile(file, JSON.stringify(tapFacts));
+    expect(await cmdTrickDev(d, [dir, "--facts", file, "--json"])).toBe(EXIT.OK);
+    const body = JSON.parse(d.out.join("\n"));
+    expect(body.trigger).toBe("tap");
+    expect(body.parts[0].part.chip.text).toBe(`tap:${RID}`.slice(0, 12));
+    d.out.length = 0;
+    const other = "7c1d0e52-8a3b-4f6e-b2d9-14a5c6e7f890";
+    expect(await cmdTrickDev(d, [dir, "--facts", file, "--tap", "skip", "--rid", other, "--json"])).toBe(EXIT.OK);
+    expect(JSON.parse(d.out.join("\n")).parts[0].part.chip.text).toBe(`tap:${other}`.slice(0, 12));
+  });
+
+  test("--facts: a missing file, a file that is not JSON and a refused file are usage errors that name the file and the path, and nothing runs", async () => {
+    const d = await deps();
+    const marker = join(await tempDir(), "ran");
+    const dir = await trickWith(d, "never", `await Bun.write(${JSON.stringify(marker)}, "x");\nconsole.log(JSON.stringify({ v: 1, parts: [] }));\n`, '["status"]');
+    const folder = await tempDir();
+    const missing = join(folder, "missing.json");
+    expect(await cmdTrickDev(d, [dir, "--facts", missing])).toBe(EXIT.USAGE);
+    expect(d.err.join("\n")).toContain(`error: --facts ${missing}: cannot read the file`);
+    const junk = join(folder, "junk.json");
+    await writeFile(junk, "{ not json");
+    d.err.length = 0;
+    expect(await cmdTrickDev(d, [dir, "--facts", junk])).toBe(EXIT.USAGE);
+    expect(d.err.join("\n")).toContain(`error: --facts ${junk}: not JSON`);
+    const refused = join(folder, "refused.json");
+    await writeFile(refused, JSON.stringify(FACTS.timer).replace('"status":"working"', '"status":"napping"'));
+    d.err.length = 0;
+    expect(await cmdTrickDev(d, [dir, "--facts", refused])).toBe(EXIT.USAGE);
+    expect(d.err.join("\n")).toMatch(new RegExp(`error: --facts ${refused.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")}: /sessions/0/status: .+`, "u"));
+    expect(existsSync(marker)).toBe(false);
+  });
+
+  test("--state: the folder is kept and shared by two runs, and shown in --json only when given", async () => {
+    const d = await deps();
+    const dir = await trickWith(
+      d,
+      "counter",
+      `import { appendFileSync, readFileSync } from "node:fs";
+const f = JSON.parse(await Bun.stdin.text());
+const file = f.trick.state + "/runs";
+appendFileSync(file, "x");
+const n = readFileSync(file, "utf8").length;
+console.log(JSON.stringify({ v: 1, parts: [{ at: "status", id: "status", chip: { text: "run " + n } }] }));
+`,
+      '["status"]',
+    );
+    const keep = join(await tempDir(), "nested", "state");
+    expect(await cmdTrickDev(d, [dir, "--state", keep, "--json"])).toBe(EXIT.OK);
+    const first = JSON.parse(d.out.join("\n"));
+    expect(first.state).toBe(keep);
+    expect(first.parts[0].part.chip.text).toBe("run 1");
+    d.out.length = 0;
+    expect(await cmdTrickDev(d, [dir, "--state", keep, "--json"])).toBe(EXIT.OK);
+    expect(JSON.parse(d.out.join("\n")).parts[0].part.chip.text).toBe("run 2");
+    expect(await readFile(join(keep, "runs"), "utf8")).toBe("xx");
+    d.out.length = 0;
+    expect(await cmdTrickDev(d, [dir, "--json"])).toBe(EXIT.OK);
+    const plain = JSON.parse(d.out.join("\n"));
+    expect(plain).not.toHaveProperty("state");
+    expect(plain.parts[0].part.chip.text).toBe("run 1");
+  });
+
+  test("--state resolves a relative path against the working directory", async () => {
+    const d = await deps();
+    const dir = await trickWith(d, "rel", echo("f.trick.state"), '["status"]');
+    const name = `collie-dev-state-${String(process.pid)}-${String(Date.now())}`;
+    const expected = resolve(name);
+    dirs.push(expected);
+    expect(await cmdTrickDev(d, [dir, "--state", name, "--json"])).toBe(EXIT.OK);
+    expect(JSON.parse(d.out.join("\n")).state).toBe(expected);
+    expect(existsSync(expected)).toBe(true);
+  });
+
+  test("--rid reaches the program as the tap's rid; without it each run gets a fresh one", async () => {
+    const d = await deps();
+    const dir = await trickWith(d, "ridder", echo("f.trigger.rid"), '["status"]');
+    expect(await cmdTrickDev(d, [dir, "--tap", "go", "--rid", RID, "--json"])).toBe(EXIT.OK);
+    expect(JSON.parse(d.out.join("\n")).parts[0].part.chip.text).toBe(RID.slice(0, 12));
+    d.out.length = 0;
+    expect(await cmdTrickDev(d, [dir, "--tap", "go", "--json"])).toBe(EXIT.OK);
+    expect(JSON.parse(d.out.join("\n")).parts[0].part.chip.text).not.toBe(RID.slice(0, 12));
+    expect(await cmdTrickDev(d, [dir, "--rid", RID])).toBe(EXIT.USAGE);
+    expect(d.err.join("\n")).toContain("error: --rid goes with --tap");
   });
 });
 

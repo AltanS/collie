@@ -22,13 +22,13 @@ import {
 import type { HillTrickTap } from "../hill/service.ts";
 import { trickCodeHash } from "./code-hash.ts";
 import { createTrickScanner, type FoundTrick, type TricksScan } from "./discover.ts";
-import { scrubEnv, type ProviderEnv } from "./env.ts";
+import { scrubEnv, type ProgramEnv } from "./env.ts";
 import { buildFacts, type FactsWorld } from "./facts.ts";
 import type { TrickHillRun, TrickHillTrick } from "./hill.ts";
 import { tricksConfigDir, trickStateDir } from "./paths.ts";
 import { trickSessionPanes, type TrickSessionPanes } from "./panes.ts";
 import { receiptFrame, TrickReceiptStore, type TrickReceiptRecord, type TrickReceiptSurface } from "./receipts.ts";
-import { outcomeProblem, runProvider, type RunOutcome, type RunSpec } from "./run.ts";
+import { outcomeProblem, runProgram, type RunOutcome, type RunSpec } from "./run.ts";
 import { TricksStore, problemLine } from "./store.ts";
 import { createSwitchReader, updateSwitches, withSwitch, type SwitchEntry, type Switches } from "./switches.ts";
 
@@ -56,7 +56,7 @@ import { createSwitchReader, updateSwitches, withSwitch, type SwitchEntry, type 
 //   * Before every spawn the trick is read again: still present, on, not changed, and its manifest
 //     parses. A tap that waited for a trick that went off answers `rejected`.
 //   * After a failed run: 1, 5, then 30 minutes, then the trick stops ({@link BACKOFF_MS}). A change of
-//     its code or `config.toml`, switching it on again, or a tap restarts it. A broken provider never
+//     its code or `config.toml`, switching it on again, or a tap restarts it. A broken program never
 //     runs 1,440 times a day against a paid API.
 //
 // ── WHAT A RUN LEAVES ───────────────────────────────────────────────────────────
@@ -174,7 +174,7 @@ export interface TricksServiceDeps {
    */
   world: (memberId: string) => Omit<FactsWorld, "memberId">;
   /** The unit's environment; each run gets the allow-listed part of it (env.ts). */
-  env: ProviderEnv;
+  env: ProgramEnv;
   now?: () => number;
   /** The process runner. A test passes a fake or the real one with short limits. */
   run?: (spec: RunSpec) => Promise<RunOutcome>;
@@ -372,7 +372,7 @@ export class TricksService implements TricksSurface {
     return this.now() - this.watchedAt < WATCH_WINDOW_MS;
   }
 
-  /** The PATH a provider gets. */
+  /** The PATH a program gets. */
   runnerPath(): string {
     return scrubEnv(this.deps.env).PATH ?? "";
   }
@@ -636,7 +636,7 @@ export class TricksService implements TricksSurface {
     void this.begin(rt, tapTrigger(next), next);
   }
 
-  /** Run the provider once and store what it left. The reply is the tap's, when the trigger is a tap. */
+  /** Run the program once and store what it left. The reply is the tap's, when the trigger is a tap. */
   private async runOnce(rt: TrickRuntime, trigger: FactsTrigger): Promise<TrickTapReply> {
     const manifest = rt.found.manifest;
     const host = this.deps.memberId;
@@ -646,13 +646,13 @@ export class TricksService implements TricksSurface {
     if (manifest === undefined) return { rid, code: "rejected", message: "The trick's trick.toml is refused." };
     const startedAt = this.now();
     const state = trickStateDir(this.deps.stateDir, id);
-    // The provider's own folder under <stateDir>/tricks, owner only like the rest of the state folder.
+    // The program's own folder under <stateDir>/tricks, owner only like the rest of the state folder.
     await mkdir(state, { recursive: true, mode: 0o700 }).catch(() => {});
     // The program may keep the id in its own state: it is written down before the first run sees it.
     this.deps.keepId?.();
     const world = this.deps.world(host);
     const facts = buildFacts({ memberId: host, ...world }, { id, dir: rt.found.dir, state }, trigger);
-    const outcome = await (this.deps.run ?? runProvider)({
+    const outcome = await (this.deps.run ?? runProgram)({
       command: manifest.run,
       cwd: rt.found.dir,
       env: scrubEnv(this.deps.env, manifest.env ?? []),

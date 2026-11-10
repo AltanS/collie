@@ -4,7 +4,7 @@ import { ok, warn, type Finding } from "./finding.ts";
 import { trickListRows, type TrickDeps } from "./trick.ts";
 
 // The doctor's `tricks` row (M94 slice 01, design §7): how many tricks, which are on, each one's state and
-// last masked error, and the PATH the runner gives providers, so "darius: not found" on the phone has
+// last masked error, and the PATH the runner gives programs, so "darius: not found" on the phone has
 // its answer here. A read: the folders, the switch file, and this bridge's own `GET /api/tricks` with
 // the local credential. No row at all when there is no tricks folder, so a host that never made a trick
 // reads exactly as before.

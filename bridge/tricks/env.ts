@@ -13,6 +13,11 @@ import { redactText } from "../redact.ts";
 // A base variable whose VALUE the secret mask would change is dropped too (`TERM=sk-or-v1-...`); a
 // listed one is passed as it is, because the person asked for it by name.
 //
+// The test hooks (`TRICK_NOW`, `TRICK_TOOLS_ONLY_PATH`, any `TRICK_*` name) reach a program only from
+// `collie trick dev` and `collie trick check --run`, which pass `{ testHooks: true }`. The bridge never
+// does, and never passes one even when a manifest lists it: a hook that fixes the clock or hides a tool
+// has no business in a run the phone sees.
+//
 // This is a limit on what leaks by accident, not a sandbox. The program runs as the user, with the full
 // rights of the user: it can read any file the user can, the config folder too (its own folder is
 // inside it, and the facts carry that path as `trick.dir`).
@@ -40,7 +45,7 @@ export const BASE_ENV_NAMES = [
 const BASE = new Set<string>(BASE_ENV_NAMES);
 
 /** An environment: names to values. `undefined` reads as unset and is dropped. */
-export type ProviderEnv = Readonly<Record<string, string | undefined>>;
+export type ProgramEnv = Readonly<Record<string, string | undefined>>;
 
 /** Why a name is never passed, even when a trick lists it, or null. */
 export function neverReason(name: string): string | null {
@@ -50,7 +55,13 @@ export function neverReason(name: string): string | null {
   if (upper.endsWith("_SOCK") || upper.endsWith("_SOCKET")) return "a socket";
   // The runner adds it to a script run alone (run.ts): passed on, it turns any `collie` the program calls into `bun`.
   if (upper === "BUN_BE_BUN") return "Collie's own runtime switch";
+  if (isTestHookName(name)) return "a test hook, passed only by collie trick dev and check --run";
   return null;
+}
+
+/** Whether a name is a test hook a program reads: `TRICK_` and upper-case letters, digits and `_`. */
+export function isTestHookName(name: string): boolean {
+  return /^TRICK_[A-Z0-9_]+$/.test(name);
 }
 
 /** Whether a name is in the base set every program gets. */
@@ -70,12 +81,15 @@ export function scrubReason(name: string, value: string, listed: ReadonlySet<str
 
 /**
  * The environment a program gets: the base names and the names the trick `listed`, minus every
- * variable {@link scrubReason} names. Pure; the input is not changed.
+ * variable {@link scrubReason} names. With `testHooks` (the CLI's `trick dev` and `check --run` only,
+ * never the bridge) every `TRICK_*` variable of `env` is passed too. Pure; the input is not changed.
  */
-export function scrubEnv(env: ProviderEnv, listed: readonly string[] = []): Record<string, string> {
+export function scrubEnv(env: ProgramEnv, listed: readonly string[] = [], opts: { testHooks?: boolean } = {}): Record<string, string> {
   const names = new Set(listed);
-  const kept = Object.entries(env).flatMap(([name, value]): [string, string][] =>
-    value === undefined || scrubReason(name, value, names) !== null ? [] : [[name, value]],
-  );
+  const kept = Object.entries(env).flatMap(([name, value]): [string, string][] => {
+    if (value === undefined) return [];
+    if (opts.testHooks === true && isTestHookName(name)) return [[name, value]];
+    return scrubReason(name, value, names) !== null ? [] : [[name, value]];
+  });
   return Object.fromEntries(kept);
 }

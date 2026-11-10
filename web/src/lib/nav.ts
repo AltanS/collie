@@ -505,7 +505,7 @@ export function ancestorsOf(pathname: string): string[] {
   // a belt mark), and a trick's own view may open another trick's session.
   if (head === "trick" && seg.length === 2) return ["/", ANY_PANE, ANY_TRICK];
   if (head === "settings" && seg.length === 1) return ["/"];
-  // The hill is opened from the Dashboard's row alone (M96).
+  // The hill is opened from the Dashboard's bottom bar alone, its fixed Hill item (M96).
   if (head === "hill" && seg.length === 1) return ["/"];
   // A durable program's conversations are opened from a space's sheet (dashboard or space page) and
   // from a pane's menu; one conversation sits below the list.

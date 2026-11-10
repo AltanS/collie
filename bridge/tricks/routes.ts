@@ -17,7 +17,7 @@ import type { TricksSurface, SwitchAnswer, TapAnswer } from "./service.ts";
 
 /**
  * The right each tricks route needs. Every intent (a tap, a decision's answer) and the switch need a
- * device key with the write right: a tap runs the provider, and the switch changes what runs. The
+ * device key with the write right: a tap runs the program, and the switch changes what runs. The
  * list is read only. server.ts gates each route at its level here, so the requirement has one home.
  */
 export const TRICKS_ROUTE_RIGHTS = {

@@ -7,7 +7,7 @@ import { trickCodeHash } from "../bridge/tricks/code-hash.ts";
 import { switchesPath } from "../bridge/tricks/paths.ts";
 import { EXIT, type Io } from "./io.ts";
 import { tricksFindings } from "./trick-findings.ts";
-import { checkStatic, isBareImport, cmdTrick, cmdTrickCheck, cmdTrickHelper, cmdTrickInit, HELPER_VERSION, helperVersion, sampleProgram, TRICK_HELPER, cmdTrickList, cmdTrickSkill, cmdTrickSwitch, looksBinary, runsLines, sampleAgents, SKILL_BYTES_MAX, TRICK_WRITE_BRIEF, TRICK_SUBCOMMANDS, type TrickCheckReport, type TrickDeps } from "./trick.ts";
+import { checkStatic, checkWarnings, runAgainstFixture, isBareImport, isScannedFile, shippedHelperVersion, cmdTrick, cmdTrickCheck, cmdTrickHelper, cmdTrickInit, HELPER_VERSION, helperVersion, sampleProgram, TRICK_HELPER, cmdTrickList, cmdTrickSkill, cmdTrickSwitch, looksBinary, runsLines, sampleAgents, SKILL_BYTES_MAX, TRICK_WRITE_BRIEF, TRICK_SUBCOMMANDS, type TrickCheckReport, type TrickDeps } from "./trick.ts";
 import { realFiles } from "./sys.ts";
 import { parseTrickDocument, type TricksReply } from "../web/src/lib/tricks/schema.ts";
 
@@ -248,6 +248,74 @@ describe("collie trick check", () => {
     expect((await checkStatic(timed, realFiles)).warnings.map((w) => w.kind)).toEqual(["model"]);
   });
 
+  test("a trick.ts that is a helper this Collie ships is named, not grepped; a modified one is grepped and flagged", async () => {
+    const dir = await folder('id = "kit"\nname = "Kit"\nrun = "program.ts"\nplaces = ["status"]\n', {
+      "program.ts": 'import { run } from "./trick.ts";\nrun((t) => t.status({ text: "ok" }));\n',
+      "trick.ts": TRICK_HELPER,
+    });
+    const report = await checkStatic(dir, realFiles);
+    expect(report.helper).toEqual({ version: HELPER_VERSION, current: true, modified: false });
+    expect(report.warnings.filter((w) => w.file === "trick.ts")).toEqual([]);
+    expect(report.runs.filter((r) => r.file === "trick.ts")).toEqual([]);
+    expect(report.notScanned).toContain("trick.ts");
+    const d = await deps();
+    expect(await cmdTrickCheck(d, [dir])).toBe(EXIT.OK);
+    expect(d.out.join("\n")).toContain(`helper: trick.ts is collie trick helper v${String(HELPER_VERSION)}, Collie's own code, not checked line by line`);
+    await writeFile(join(dir, "trick.ts"), `${TRICK_HELPER}\nBun.spawn(["curl", "https://example.com"]);\n`);
+    const modified = await checkStatic(dir, realFiles);
+    expect(modified.helper).toEqual({ version: HELPER_VERSION, current: false, modified: true });
+    expect(modified.warnings.some((w) => w.file === "trick.ts" && w.kind === "spawn")).toBe(true);
+    const e = await deps();
+    await cmdTrickCheck(e, [dir]);
+    expect(e.out.join("\n")).toContain("helper: trick.ts is a modified helper (its first line says v2), so it is checked as the trick's own code");
+    expect(shippedHelperVersion(TRICK_HELPER)).toBe(HELPER_VERSION);
+    expect(shippedHelperVersion("// collie trick helper v1\nexport {};\n")).toBeNull();
+    const old = "// collie trick helper v1\nold text\n";
+    const oldHash = new Bun.CryptoHasher("sha256").update(old).digest("hex");
+    expect(shippedHelperVersion(old, new Map([[oldHash, 1]]))).toBe(1);
+  });
+
+  test("only code files are grepped: docs, data, tests and fixtures are listed as not grepped and still count in the code hash", async () => {
+    const dir = await folder('id = "docs"\nname = "Docs"\nrun = "program.ts"\nevery = "5m"\nplaces = ["status"]\n', {
+      "program.ts": 'console.log("{}");\n',
+      "README.md": "Run `gh api user` and $(curl https://x) > out.txt, then node.\n",
+      "SKILL.md": "claude -p hi\n",
+      "notes.txt": "writeFileSync(x)\n",
+      "data.json": '{ "cmd": "rm -rf" }\n',
+      "test.sh": '#!/bin/sh\nout=$(bun ./program.ts) > "$tmp/x"\ncurl -s https://example.com\n',
+      "program.test.ts": 'await fetch("https://example.com");\n',
+      "fixtures/fake-gh.ts": 'Bun.spawn(["gh", "pr", "list"]);\n',
+    });
+    const report = await checkStatic(dir, realFiles);
+    expect(report.warnings).toEqual([]);
+    expect(report.runs).toEqual([]);
+    expect(report.notScanned.toSorted()).toEqual(["README.md", "SKILL.md", "data.json", "fixtures/fake-gh.ts", "notes.txt", "program.test.ts", "test.sh"]);
+    const before = report.codeHash;
+    await writeFile(join(dir, "README.md"), "changed\n");
+    expect((await checkStatic(dir, realFiles)).codeHash).not.toBe(before);
+    expect(["a.ts", "lib/x.mjs", "run.sh", "AGENTS.md", "config.TOML", "x.test.tsx", "fixtures/a.sh", "deep/fixtures/b.ts"].map(isScannedFile)).toEqual([true, true, true, false, false, false, false, false]);
+  });
+
+  test("runs: and the warnings match command invocations in a code file, never a word in an identifier, a comment or a sentence", () => {
+    const text = [
+      'import { readFileSync } from "node:fs";',
+      'const n = v.node("row");',
+      "/** git and gh, in a comment */",
+      'const sum = 1; // runs gh pr list',
+      "const s = `the node ${n}`;",
+      "const m = rest.match(/$(?![\\s\\S])/);",
+      'notes.push("gh api user failed, node said no");',
+      'await Bun.write(Bun.stdout, "{}");',
+      'const gh = t.tool("gh");',
+      'const r = await t.sh(gh, ["pr", "list"]);',
+      'await Bun.write("/tmp/out", "x");',
+    ].join("\n");
+    expect(runsLines([{ file: "program.ts", text }]).map((r) => r.line)).toEqual([9, 10]);
+    expect(checkWarnings([{ file: "program.ts", text }], true).map((w) => `${w.kind}:${String(w.line)}`)).toEqual(["network:9", "spawn:10", "write:11"]);
+    // In a shell file a tool's bare name is in command position.
+    expect(runsLines([{ file: "p.sh", text: "#!/bin/sh\nnode x.js\necho hi\n" }]).map((r) => r.line)).toEqual([2]);
+  });
+
   test("--run runs the provider with the env scrub: no COLLIE_ variable, no key", async () => {
     const dir = await folder('id = "env"\nname = "Env"\nrun = "bun provider.ts"\nplaces = ["belt"]\n', {
       "provider.ts": [
@@ -264,6 +332,24 @@ describe("collie trick check", () => {
     expect(report.run?.outcome).toBe("exited");
     expect(report.run?.problem).toBeNull();
     expect(report.run?.parts).toEqual(["belt belt"]);
+  });
+
+  test("--run passes the TRICK_ test hooks of the environment; a manifest that lists one is told it is never passed", async () => {
+    const dir = await folder('id = "hook"\nname = "Hook"\nrun = "bun program.ts"\nplaces = ["belt"]\nenv = ["TRICK_FIXTURE"]\n', {
+      "program.ts": 'console.log(JSON.stringify({ v: 1, parts: [{ at: "belt", id: "belt", mark: { label: process.env.TRICK_NOW ?? "none" } }] }));\n',
+    });
+    const d = await deps();
+    d.ctx.env = { ...d.ctx.env, TRICK_NOW: "1794225" };
+    expect(await cmdTrickCheck(d, ["--run", "--json", dir])).toBe(EXIT.OK);
+    // SAFETY: `--json` prints exactly one TrickCheckReport, and the fields read below are checked by value.
+    const report = JSON.parse(d.out.join("\n")) as TrickCheckReport;
+    expect(report.env).toEqual([{ name: "TRICK_FIXTURE", passed: false, reason: "never passed: a test hook, passed only by collie trick dev and check --run" }]);
+    expect(report.run?.problem).toBeNull();
+    const manifest = report.manifest;
+    if (manifest === undefined) throw new Error("the manifest did not parse");
+    const label = async (env: TrickDeps["ctx"]["env"]) => JSON.stringify((await runAgainstFixture(manifest, dir, env)).parsed?.parts[0]?.part);
+    expect(await label(d.ctx.env)).toContain('"label":"1794225"');
+    expect(await label({ PATH: process.env.PATH ?? "/usr/bin:/bin" })).toContain('"label":"none"');
   });
 
   test("--run prints the refusals of the output, masked stderr of a failure, and exits 1", async () => {

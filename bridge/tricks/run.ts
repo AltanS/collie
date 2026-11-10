@@ -7,12 +7,12 @@ import { isEmbedded } from "../root.ts";
 // ONE RUN OF A PROVIDER (M94 slice 01): spawn, feed the facts, read with caps, kill on time.
 //
 // The limits are the point of this file:
-//   * 10 s, then the whole process GROUP is killed. The provider is started as a group leader, so a
-//     `sh -c` that started `curl` takes `curl` down with it. A provider that starts long work must
-//     detach it and return (design §3.2: long work is the provider's to detach).
+//   * 10 s, then the whole process GROUP is killed. The program is started as a group leader, so a
+//     `sh -c` that started `curl` takes `curl` down with it. A program that starts long work must
+//     detach it and return (design §3.2: long work is the program's to detach).
 //   * 64 KiB of stdout, then the run FAILS and the group is killed: a document past the cap is refused
-//     whole by the parser anyway, and reading on would let a runaway provider fill the bridge's memory.
-//   * 8 KiB of stderr is kept for the error line; the rest is read and dropped, so a chatty provider
+//     whole by the parser anyway, and reading on would let a runaway program fill the bridge's memory.
+//   * 8 KiB of stderr is kept for the error line; the rest is read and dropped, so a chatty program
 //     cannot block on a full pipe.
 // Every byte that leaves this file has been through the secret mask (`redactText`), stdout before the
 // parser sees it and stderr before a log line or the doctor row does.
@@ -107,12 +107,12 @@ export type RunOutcome =
   | { kind: "overflow"; stderr: string; ms: number }
   | { kind: "spawn-failed"; message: string; ms: number };
 
-/** The argv that runs a `run` line: the shell, so `./legs.sh` and `bun provider.ts` both work. */
+/** The argv that runs a `run` line: the shell, so `./legs.sh` and `bun program.ts` both work. */
 export function shellArgv(command: string, platform: NodeJS.Platform): string[] {
   return platform === "win32" ? ["cmd.exe", "/d", "/s", "/c", command] : ["/bin/sh", "-c", command];
 }
 
-/** Kill the whole group the provider leads. A group that is gone already is not an error. */
+/** Kill the whole group the program leads. A group that is gone already is not an error. */
 function killGroup(pid: number, platform: NodeJS.Platform): void {
   try {
     if (platform === "win32") {
@@ -125,7 +125,7 @@ function killGroup(pid: number, platform: NodeJS.Platform): void {
   }
 }
 
-/** Once the provider has exited, how long a pipe its detached work still holds may stay open. */
+/** Once the program has exited, how long a pipe its detached work still holds may stay open. */
 export const PIPE_GRACE_MS = 250;
 
 interface Capped {
@@ -192,14 +192,14 @@ function readCapped(stream: ReadableStream<Uint8Array>, cap: number, stopAtCap: 
 }
 
 /**
- * Run a provider once. Never throws: a spawn that fails, a timeout and an overflow are outcomes, and
+ * Run a program once. Never throws: a spawn that fails, a timeout and an overflow are outcomes, and
  * the caller decides what each costs (the backoff in `service.ts`).
  *
- * A normal exit kills nothing: work the provider started in the background and left running is the
- * provider's choice. Its pipes get {@link PIPE_GRACE_MS} after the exit and are then let go, so a
+ * A normal exit kills nothing: work the program started in the background and left running is the
+ * program's choice. Its pipes get {@link PIPE_GRACE_MS} after the exit and are then let go, so a
  * background job that kept stdout open cannot hold the run open.
  */
-export async function runProvider(spec: RunSpec): Promise<RunOutcome> {
+export async function runProgram(spec: RunSpec): Promise<RunOutcome> {
   const platform = spec.platform ?? HOST.platform;
   const timeoutMs = spec.timeoutMs ?? RUN_TIMEOUT_MS;
   const started = performance.now();
@@ -213,7 +213,7 @@ export async function runProvider(spec: RunSpec): Promise<RunOutcome> {
       stdin: "pipe",
       stdout: "pipe",
       stderr: "pipe",
-      // A group of its own, so the kill below reaches every process the provider started.
+      // A group of its own, so the kill below reaches every process the program started.
       detached: platform !== "win32",
     });
   } catch (err) {
@@ -238,7 +238,7 @@ export async function runProvider(spec: RunSpec): Promise<RunOutcome> {
       child.stdin.write(spec.stdin);
       await child.stdin.end();
     } catch {
-      // The provider closed stdin without reading it, which a provider that needs no facts may do.
+      // The program closed stdin without reading it, which a program that needs no facts may do.
     }
     const code = await child.exited;
     grace = setTimeout(() => {

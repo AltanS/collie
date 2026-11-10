@@ -22,7 +22,7 @@ import {
 // Not in the facts, on purpose: the instance name, any token, the pane's agent session ref (a filesystem
 // path, stripped from the wire too), and the screen. This is not a wall: `trick.dir` is the trick's own
 // folder, inside the config folder that holds the `.env` with the token, and the program runs with the
-// full rights of the user, so it can read that `.env` like any other file of the user. A provider that
+// full rights of the user, so it can read that `.env` like any other file of the user. A program that
 // wants more reads it itself, as the operator.
 
 /** One multiplexer session's view, as the state engine holds it. */
@@ -34,7 +34,7 @@ export interface FactsRuntime {
   workspaces: readonly WorkspaceView[];
 }
 
-/** Everything about the machine a provider is told, before the trigger and the trick are added. */
+/** Everything about the machine a program is told, before the trigger and the trick are added. */
 export interface FactsWorld {
   /** This bridge's stable id (bridge/bridge-id.ts): the key of the session ids and the parts. */
   memberId: string;

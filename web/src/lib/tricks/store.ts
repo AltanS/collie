@@ -223,7 +223,7 @@ export function createTricksStore(transport: TricksTransport, clock: () => numbe
       reply = await transport.tapTrick(input.host, input.trick, body);
     } catch (error) {
       // A refusal before the run (a 4xx) ran nothing, so it is a plain failure. No answer at all, a
-      // deadline or a 5xx may have come after the provider ran, so the phone does not know.
+      // deadline or a 5xx may have come after the program ran, so the phone does not know.
       const status = apiErrorStatus(error);
       if (status !== undefined && status >= 400 && status < 500) return settle(key, input, rid, "rejected", t("tricks.tap.refused", { status }));
       return settle(key, input, rid, "unknown");

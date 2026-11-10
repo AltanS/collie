@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { builtinModules } from "node:module";
 import { tmpdir } from "node:os";
@@ -8,7 +9,7 @@ import { CONFIG_FILE, diskTrickFs, trickCodeHash, walkTrickCode, type CodeEntry 
 import { createTrickScanner, readManifestFile, type FoundTrick } from "../bridge/tricks/discover.ts";
 import { isBaseEnvName, neverReason, scrubEnv } from "../bridge/tricks/env.ts";
 import { MANIFEST_FILE, tricksConfigDir, switchesPath } from "../bridge/tricks/paths.ts";
-import { outcomeProblem, runProvider, runtimeScript, type RunOutcome } from "../bridge/tricks/run.ts";
+import { outcomeProblem, runProgram, runtimeScript, type RunOutcome } from "../bridge/tricks/run.ts";
 import { isChanged } from "../bridge/tricks/service.ts";
 import { parseSwitches, updateSwitches, withSwitch } from "../bridge/tricks/switches.ts";
 import type { CrewFetch } from "../bridge/crew/peer-client.ts";
@@ -39,7 +40,7 @@ import type { Files } from "./sys.ts";
 //                     the code stops the trick until it is switched on again
 //   check <folder>    the static check: the manifest, its places, the command lines and the warnings of
 //                     every source file in the folder (a grep, not a proof). `--run` also runs the
-//                     provider once against fixture facts, with the bridge's environment rule, and
+//                     program once against fixture facts, with the bridge's environment rule, and
 //                     parses what it prints
 //   dev <folder>      `check --run` made friendly (cli/trick-dev.ts): one run, a short summary of each
 //                     part, Decision and refusal; `--tap`, `--json`, `--watch`
@@ -297,7 +298,7 @@ export async function cmdTrickSwitch(deps: TrickDeps, args: readonly string[], o
 
 // ── check ────────────────────────────────────────────────────────────────────
 
-/** One command-looking line of the provider's source. */
+/** One command-looking line of the program's source. */
 export interface RunsLine {
   file: string;
   line: number;
@@ -329,13 +330,17 @@ export interface TrickCheckReport {
   manifest?: TrickManifest;
   /** The manifest's refusals, "later" ones included. */
   refusals: Refusal[];
-  /** Problems that are not a refusal of a field: a missing or binary provider, a folder past the cap. */
+  /** Problems that are not a refusal of a field: a missing or binary program, a folder past the cap. */
   problems: string[];
-  /** The provider files the `run` line names, inside the folder. */
+  /** The program files the `run` line names, inside the folder. */
   files: string[];
   runs: RunsLine[];
-  /** What a grep of every source file in the folder flags. */
+  /** What a grep of every code file in the folder flags. */
   warnings: CheckWarning[];
+  /** The files the grep skips: docs, data, tests and fixtures, and a `trick.ts` that is a helper this Collie ships. */
+  notScanned: string[];
+  /** What `trick.ts` is, when it names itself a helper: a version this Collie ships (`current` when the newest), or a modified one. */
+  helper?: { version: number; current: boolean; modified: boolean };
   /** The names `env` lists, past the base allow-list. */
   env: CheckEnvName[];
   /** The code hash `collie trick on` would approve. */
@@ -350,12 +355,17 @@ export interface TrickCheckReport {
   };
 }
 
+/** The programs a "runs:" line names. */
+const TOOL_WORDS = "curl|wget|gh|git|darius|collie|bunx?|node|npx|npm|pnpm|yarn|deno|python3?|pip3?|ruby|perl|ssh|scp|rsync|rm|mv|cp|chmod|chown|sudo|doas|docker|podman|systemctl|kill|pkill|eval|exec|nc|tailscale|herdr|tmux|zellij|make|jq";
 /**
- * A line that runs or reaches something: a tool a provider would call, a subshell, a spawn, a fetch.
- * A grep, honest but not a proof: a provider can build a command out of pieces no pattern sees.
+ * A line that runs or reaches something: a tool a program would call, a subshell, a spawn, a fetch.
+ * In a shell file every word is in command position, so a tool's name is enough. In a code file a tool
+ * runs only from a string (`t.sh("git", ...)`, `Bun.spawn(["gh", ...])`), so the name must be a whole
+ * string literal, never a word inside an identifier, a comment or a sentence ("node" in `v.node`).
+ * A grep, honest but not a proof: a program can build a command out of pieces no pattern sees.
  */
-const COMMAND_LINE =
-  /\b(?:curl|wget|gh|git|darius|collie|bunx?|node|npx|npm|pnpm|yarn|deno|python3?|pip3?|ruby|perl|ssh|scp|rsync|rm|mv|cp|chmod|chown|sudo|doas|docker|podman|systemctl|kill|pkill|eval|exec|nc|tailscale|herdr|tmux|zellij|make|jq)\b|\$\(|`|Bun\.spawn|Bun\.\$|child_process|\bspawn(?:Sync)?\(|\bexec(?:Sync|File)?\(|\bfetch\(/;
+const SHELL_COMMAND_LINE = new RegExp(`\\b(?:${TOOL_WORDS})\\b|\\$\\(|\`|Bun\\.spawn|Bun\\.\\$|child_process|\\bspawn(?:Sync)?\\(|\\bexec(?:Sync|File)?\\(|\\bfetch\\(`);
+const CODE_COMMAND_LINE = new RegExp(`(["'\`])(?:${TOOL_WORDS})\\1|\\.sh\\s*\\(|\\bBun\\.spawn|\\bBun\\.\\$|child_process|\\b(?:spawn|spawnSync|execSync|execFile|execFileSync|fork|exec)\\s*\\(|\\bfetch\\s*\\(`);
 /** The most "runs:" lines printed. */
 const RUNS_MAX = 40;
 /** The most warnings kept. */
@@ -366,14 +376,20 @@ const SOURCE_READ_MAX = 256 * 1024;
 
 /** The agent programs and model APIs a timer should never call. */
 const AGENT_NAMES = "claude|codex|pi|opencode|omp";
-/** What each warning looks for, in any source file. */
+/**
+ * What each warning looks for in a code file. A shell file adds its own forms below. `t.sh(` is the
+ * helper's spawn. A tool that reaches the network is named as a whole string literal (`t.sh("gh", ...)`),
+ * never as a word in a sentence.
+ */
 const WARN_PATTERNS = {
-  spawn: /\bBun\.spawn(?:Sync)?\b|\bBun\.\$|child_process|\b(?:spawn|spawnSync|execSync|execFile|execFileSync|fork)\s*\(|\bexec\s*\(|\bsubprocess\b|\bos\.system\b|\$\(/,
-  network: /\bfetch\s*\(|\bcurl\b|\bwget\b|\bWebSocket\b|\bXMLHttpRequest\b|\bnet\.connect\b|\bhttps?\.(?:request|get)\s*\(|\brequests\.(?:get|post|put|delete)\b|\burllib\b|\bgh\s+(?:api|pr|issue|run|repo|release|search)\b|["'`]gh["'`]/,
-  write: /\b(?:writeFile|writeFileSync|appendFile|appendFileSync|createWriteStream|copyFile|copyFileSync|rename|renameSync|rm|rmSync|unlink|unlinkSync|mkdir|mkdirSync)\s*\(|\bBun\.write\s*\(/,
-  model: new RegExp(`\\b(?:anthropic|openai|openrouter)\\b|\\[\\s*["'\`](?:${AGENT_NAMES})["'\`]|\\b(?:which|findTool|Bun\\.which)\\s*\\(\\s*["'\`](?:${AGENT_NAMES})["'\`]`, "i"),
+  spawn: /\.sh\s*\(|\bBun\.spawn(?:Sync)?\b|\bBun\.\$|child_process|\b(?:spawn|spawnSync|execSync|execFile|execFileSync|fork)\s*\(|\bexec\s*\(|\bsubprocess\b|\bos\.system\b/,
+  network: /\bfetch\s*\(|\bWebSocket\b|\bXMLHttpRequest\b|\bnet\.connect\b|\bhttps?\.(?:request|get)\s*\(|\brequests\.(?:get|post|put|delete)\b|\burllib\b|(["'`])(?:gh|curl|wget|ssh)\1/,
+  write: /\b(?:writeFile|writeFileSync|appendFile|appendFileSync|createWriteStream|copyFile|copyFileSync|rename|renameSync|rm|rmSync|unlink|unlinkSync|mkdir|mkdirSync)\s*\(|\bBun\.write\s*\((?!\s*Bun\.std(?:out|err)\b)/,
+  model: new RegExp(`\\b(?:anthropic|openai|openrouter)\\b|\\[\\s*["'\`](?:${AGENT_NAMES})["'\`]|\\b(?:which|findTool|tool|Bun\\.which)\\s*\\(\\s*["'\`](?:${AGENT_NAMES})["'\`]`, "i"),
 } satisfies Record<Exclude<CheckWarningKind, "import">, RegExp>;
-/** In a shell file: a redirect into a file, and an agent program in command position. */
+/** In a shell file: a subshell, a tool that reaches the network by its bare name, a redirect into a file, and an agent program in command position. */
+const SHELL_SPAWN = /\$\(/;
+const SHELL_NETWORK = /\bcurl\b|\bwget\b|\bssh\b|\bgh\s+(?:api|pr|issue|run|repo|release|search)\b/;
 const SHELL_WRITE = /(?:^|[^<>&0-9=-])>>?\s*(?!&|\/dev\/null)[^\s>&|;)]/;
 const SHELL_MODEL = new RegExp(`(?:^|[;&|(]|\\$\\(|\\bexec\\s+|\\bcommand\\s+-v\\s+)\\s*(?:${AGENT_NAMES})(?=\\s|$|\\))`);
 /** A write that names the state folder (or the trick's own media folder) is the trick's own business. */
@@ -424,13 +440,13 @@ export function importWarnings(sources: readonly { file: string; text: string }[
 }
 
 /** The files inside `folder` that the `run` line names, by its whitespace-split words. */
-/** The provider files a `run` line names, and the `./` words that name nothing. */
-export interface ProviderFiles {
+/** The program files a `run` line names, and the `./` words that name nothing. */
+export interface ProgramFiles {
   files: string[];
   missing: string[];
 }
 
-export function providerFiles(run: string, folder: string, files: Pick<Files, "entryType">): ProviderFiles {
+export function programFiles(run: string, folder: string, files: Pick<Files, "entryType">): ProgramFiles {
   const out: string[] = [];
   const missing: string[] = [];
   for (const raw of run.split(/\s+/)) {
@@ -459,22 +475,51 @@ function shortLine(t: string): string {
 }
 
 function isCommentLine(t: string): boolean {
-  return t === "" || t.startsWith("#") || t.startsWith("//") || t.startsWith("*");
+  return t === "" || t.startsWith("#") || t.startsWith("//") || t.startsWith("/*") || t.startsWith("*");
 }
 
-/** The command-looking lines of the provider's source files. */
-export function runsLines(sources: readonly { file: string; text: string }[]): RunsLine[] {
+/** A code line without its trailing `// comment` (a `//` after a space, so an `https://` stays). */
+function codePart(t: string): string {
+  return t.replace(/\s\/\/.*$/u, "");
+}
+
+/** The command-looking lines of the program's code files. */
+export function runsLines(sources: readonly { file: string; text: string; shell?: boolean }[]): RunsLine[] {
   const out: RunsLine[] = [];
-  for (const { file, text } of sources) {
+  for (const { file, text, shell: asShell } of sources) {
+    const shell = asShell ?? isShell(file, text);
     const lines = text.slice(0, SOURCE_READ_MAX).split(/\r?\n/);
     lines.forEach((raw, i) => {
       const t = raw.trim();
       if (isCommentLine(t)) return;
-      if (!COMMAND_LINE.test(t)) return;
+      if (!(shell ? SHELL_COMMAND_LINE.test(t) : CODE_COMMAND_LINE.test(codePart(t)))) return;
       out.push({ file, line: i + 1, text: shortLine(t) });
     });
   }
   return out;
+}
+
+/**
+ * Whether a file is code the grep reads: not a doc, data or a test. README.md, SKILL.md, AGENTS.md and
+ * every `*.md`, `*.toml`, `*.json` and `*.txt`, a `test.sh`, a `*.test.*` file and anything under a
+ * `fixtures/` folder are skipped. They still count in the code hash.
+ */
+export function isScannedFile(rel: string): boolean {
+  const name = basename(rel);
+  if (/\.(?:md|toml|json|txt)$/iu.test(name) || name === "test.sh" || /\.test\./u.test(name)) return false;
+  return !rel.split("/").includes("fixtures");
+}
+
+function sha256(text: string): string {
+  return createHash("sha256").update(text).digest("hex");
+}
+/** The older helpers this Collie shipped, by the SHA-256 of their text: v1 (1.29.0-edge, M94 review 4). */
+const OLDER_HELPERS: ReadonlyMap<string, number> = new Map([["534f992f9aa2a4a6e53945c1b46e7b407ab9528b3839970e6552d83b23ed13bb", 1]]);
+
+/** The version of a helper this Collie ships (this one, or one of `older`) whose bytes `text` are, or null for any other text. */
+export function shippedHelperVersion(text: string, older: ReadonlyMap<string, number> = OLDER_HELPERS): number | null {
+  const hash = sha256(text);
+  return hash === sha256(TRICK_HELPER) ? HELPER_VERSION : (older.get(hash) ?? null);
 }
 
 /** Whether a source file is a shell script: by its name, or by its first line. */
@@ -497,11 +542,12 @@ export function checkWarnings(sources: readonly { file: string; text: string; sh
       .forEach((raw, i) => {
         const t = raw.trim();
         if (isCommentLine(t)) return;
+        const code = shell ? t : codePart(t);
         const hit = (kind: CheckWarningKind) => out.push({ kind, file, line: i + 1, text: shortLine(t) });
-        if (WARN_PATTERNS.spawn.test(t)) hit("spawn");
-        if (WARN_PATTERNS.network.test(t)) hit("network");
-        if ((WARN_PATTERNS.write.test(t) || (shell && SHELL_WRITE.test(t))) && !OWN_PLACES.test(t)) hit("write");
-        if (timer && (WARN_PATTERNS.model.test(t) || (shell && SHELL_MODEL.test(t)))) hit("model");
+        if (WARN_PATTERNS.spawn.test(code) || (shell && SHELL_SPAWN.test(t))) hit("spawn");
+        if (WARN_PATTERNS.network.test(code) || (shell && SHELL_NETWORK.test(t))) hit("network");
+        if ((WARN_PATTERNS.write.test(code) || (shell && SHELL_WRITE.test(t))) && !OWN_PLACES.test(code)) hit("write");
+        if (timer && (WARN_PATTERNS.model.test(code) || (shell && SHELL_MODEL.test(t)))) hit("model");
       });
   }
   return out;
@@ -534,11 +580,11 @@ export function envNames(manifest: TrickManifest): CheckEnvName[] {
 export async function checkStatic(folder: string, files: Pick<Files, "read" | "entryType">): Promise<TrickCheckReport> {
   const id = basename(folder);
   const read = await readManifestFile(diskTrickFs, folder, id);
-  const report: TrickCheckReport = { folder, id, refusals: read.refusals, problems: [], files: [], runs: [], warnings: [], env: [] };
+  const report: TrickCheckReport = { folder, id, refusals: read.refusals, problems: [], files: [], runs: [], warnings: [], notScanned: [], env: [] };
   if (read.manifest === undefined) return report;
   report.manifest = read.manifest;
   report.env = envNames(read.manifest);
-  const named = providerFiles(read.manifest.run, folder, files);
+  const named = programFiles(read.manifest.run, folder, files);
   report.files = named.files;
   for (const word of named.missing) report.problems.push(`The run line names ${word}, which is not in the folder.`);
   const script = runtimeScript(read.manifest.run);
@@ -549,7 +595,7 @@ export async function checkStatic(folder: string, files: Pick<Files, "read" | "e
       report.problems.push(`${basename(file)} cannot be read.`);
       continue;
     }
-    if (looksBinary(text)) report.problems.push(`${basename(file)} is a compiled program. A trick's provider is source a person can read.`);
+    if (looksBinary(text)) report.problems.push(`${basename(file)} is a compiled program. A trick's program is source a person can read.`);
   }
   const walk = await walkTrickCode(diskTrickFs, folder);
   if (!walk.ok) {
@@ -558,21 +604,32 @@ export async function checkStatic(folder: string, files: Pick<Files, "read" | "e
   }
   const code = await trickCodeHash(folder);
   if (code.ok) report.codeHash = code.hash;
-  const sources = await folderSources(folder, walk.entries);
+  const all = await folderSources(folder, walk.entries);
+  // A `trick.ts` whose bytes are a helper this Collie ships is Collie's code, not the trick's: it is named,
+  // not grepped. A file that names itself a helper but differs is grepped as code, and flagged.
+  const helperText = all.find((src) => src.file === HELPER_FILE)?.text;
+  const shipped = helperText === undefined ? null : shippedHelperVersion(helperText);
+  const claimed = helperText === undefined ? null : helperVersion(helperText);
+  if (shipped !== null) report.helper = { version: shipped, current: shipped === HELPER_VERSION, modified: false };
+  else if (claimed !== null) report.helper = { version: claimed, current: false, modified: true };
+  const sources = all.filter((src) => src.file !== MANIFEST_FILE && isScannedFile(src.file) && !(src.file === HELPER_FILE && shipped !== null));
+  report.notScanned = all.filter((src) => src.file !== MANIFEST_FILE && !sources.includes(src)).map((src) => src.file);
   // A run line that names no file of the folder IS the command (`run = "darius due --json"`): list it.
-  const runLine = named.files.length === 0 ? [{ file: MANIFEST_FILE, text: `run = ${read.manifest.run}` }] : [];
-  const scanned = [...sources.filter((src) => src.file !== MANIFEST_FILE), ...runLine];
-  report.runs = runsLines(scanned).slice(0, RUNS_MAX);
+  const runLine = named.files.length === 0 ? [{ file: MANIFEST_FILE, text: `run = ${read.manifest.run}`, shell: true }] : [];
+  report.runs = runsLines([...sources, ...runLine]).slice(0, RUNS_MAX);
   // The run line itself is a shell command line, whatever it names.
-  const graded = [...sources.filter((src) => src.file !== MANIFEST_FILE), { file: MANIFEST_FILE, text: read.manifest.run, shell: true }];
+  const graded = [...sources, { file: MANIFEST_FILE, text: read.manifest.run, shell: true }];
   const imports = script === null ? [] : importWarnings(sources);
   report.warnings = [...checkWarnings(graded, read.manifest.everyMs !== undefined), ...imports].slice(0, WARNINGS_MAX);
   return report;
 }
 
-/** Fixture facts for a `--run`: the schema's timer facts (or `trigger`), with this folder and a scratch state folder. */
-export function checkFacts(manifest: TrickManifest, folder: string, state: string, trigger?: FactsTrigger): TrickFacts {
-  const parsed = parseFacts(FACTS.timer);
+/**
+ * The facts of a `--run`: the schema's timer facts, or `base` (`trick dev --facts`), with this folder and
+ * the state folder, and `trigger` in place of the facts' own when one is given.
+ */
+export function checkFacts(manifest: TrickManifest, folder: string, state: string, trigger?: FactsTrigger, base?: TrickFacts): TrickFacts {
+  const parsed = base === undefined ? parseFacts(FACTS.timer) : { facts: base };
   if (parsed.facts === undefined) throw new Error("the fixture facts do not parse");
   const facts: TrickFacts = { ...parsed.facts, trick: { id: manifest.id, dir: folder, state } };
   if (trigger !== undefined) facts.trigger = trigger;
@@ -592,20 +649,31 @@ export interface FixtureRun {
   decisionsListed: boolean;
 }
 
+/** What a fixture run may change: the trigger, the facts (`trick dev --facts`), a state folder to keep (`--state`). */
+export interface FixtureOptions {
+  trigger?: FactsTrigger;
+  facts?: TrickFacts;
+  /** A state folder to use and keep. Without one, the run gets a scratch folder that is removed after it. */
+  state?: string;
+}
+
 /**
  * Run a trick's program once against fixture facts and parse what it prints, with the bridge's own
  * rules: the environment scrub, the launch rule of run.ts, the caps, the parser against the manifest's
- * places. The one run path `check --run` and `trick dev` share. The state folder is a scratch folder,
- * so a check never writes the bridge's own state.
+ * places. The one run path `check --run` and `trick dev` share. The state folder is a scratch folder
+ * unless `opts.state` names one, so a check never writes the bridge's own state. Unlike a bridge run,
+ * the test hooks (`TRICK_*` variables of `env`) pass the scrub.
  */
-export async function runAgainstFixture(manifest: TrickManifest, folder: string, env: CliContext["env"], trigger?: FactsTrigger): Promise<FixtureRun> {
-  const state = await mkdtemp(join(tmpdir(), `collie-trick-check-${manifest.id}-`));
+export async function runAgainstFixture(manifest: TrickManifest, folder: string, env: CliContext["env"], opts: FixtureOptions = {}): Promise<FixtureRun> {
+  const kept = opts.state !== undefined;
+  const state = opts.state ?? (await mkdtemp(join(tmpdir(), `collie-trick-check-${manifest.id}-`)));
+  if (kept) await mkdir(state, { recursive: true, mode: 0o700 });
   try {
-    const outcome = await runProvider({
+    const outcome = await runProgram({
       command: manifest.run,
       cwd: folder,
-      env: scrubEnv(env, manifest.env ?? []),
-      stdin: JSON.stringify(checkFacts(manifest, folder, state, trigger)),
+      env: scrubEnv(env, manifest.env ?? [], { testHooks: true }),
+      stdin: JSON.stringify(checkFacts(manifest, folder, state, opts.trigger, opts.facts)),
     });
     const problem = outcomeProblem(outcome, 400);
     if (problem !== null || outcome.kind !== "exited") return { outcome, problem, stdoutBytes: 0, parsed: null, decisionsListed: false };
@@ -613,11 +681,11 @@ export async function runAgainstFixture(manifest: TrickManifest, folder: string,
     const decisionsListed = asJsonObject(parseJson(outcome.stdout))?.decisions !== undefined;
     return { outcome, problem, stdoutBytes: new TextEncoder().encode(outcome.stdout).length, parsed, decisionsListed };
   } finally {
-    await rm(state, { recursive: true, force: true });
+    if (!kept) await rm(state, { recursive: true, force: true });
   }
 }
 
-/** Run the provider once against fixture facts and parse its output, as the bridge would. */
+/** Run the program once against fixture facts and parse its output, as the bridge would. */
 export async function checkRun(report: TrickCheckReport, env: CliContext["env"]): Promise<void> {
   const manifest = report.manifest;
   if (manifest === undefined) return;
@@ -654,6 +722,12 @@ function printReport(deps: Pick<TrickDeps, "io">, report: TrickCheckReport): voi
     io.out(`  env:    ${names.join(", ")}`);
   }
   if (report.codeHash !== undefined) io.out(`  code:   sha256 ${report.codeHash} (what \`collie trick on\` approves)`);
+  const h = report.helper;
+  if (h !== undefined && h.modified) io.out(`  helper: ${HELPER_FILE} is a modified helper (its first line says v${String(h.version)}), so it is checked as the trick's own code`);
+  else if (h !== undefined && h.current) io.out(`  helper: ${HELPER_FILE} is collie trick helper v${String(h.version)}, Collie's own code, not checked line by line`);
+  else if (h !== undefined) io.out(`  helper: ${HELPER_FILE} is helper v${String(h.version)}, an older one; update with collie trick helper ${m?.id ?? report.id}`);
+  const others = report.notScanned.filter((f) => f !== HELPER_FILE);
+  if (others.length > 0) io.out(`  not grepped (docs, data, tests): ${others.slice(0, 8).join(", ")}${others.length > 8 ? ` and ${String(others.length - 8)} more` : ""}`);
   if (report.runs.length > 0) {
     io.out("  runs:");
     for (const r of report.runs) io.out(`    ${r.file}:${r.line}  ${r.text}`);
@@ -703,8 +777,8 @@ export async function cmdTrickCheck(deps: TrickDeps, args: readonly string[]): P
 
 /** The helper file a TypeScript trick imports. */
 export const HELPER_FILE = "trick.ts";
-/** The version of the helper this Collie writes. Its first line names it: `// collie trick helper v1`. */
-export const HELPER_VERSION = 1;
+/** The version of the helper this Collie writes. Its first line names it: `// collie trick helper v2`. */
+export const HELPER_VERSION = 2;
 /** The helper's source (cli/trick-kit/trick.ts), held in the binary as text. */
 export const TRICK_HELPER: string = trickHelperSource();
 
@@ -714,7 +788,7 @@ export function helperVersion(text: string): number | null {
   return match === null ? null : Number(match[1]);
 }
 
-/** The two forms `init` writes: a TypeScript program with the helper (the default), or a shell provider (`--sh`). */
+/** The two forms `init` writes: a TypeScript program with the helper (the default), or a shell program (`--sh`). */
 export type InitForm = "ts" | "sh";
 
 /** The sample manifest `init` writes. */
@@ -767,10 +841,10 @@ run((t) => {
 `;
 }
 
-/** The sample provider: it counts the sessions in the facts and prints one belt mark. */
-export const SAMPLE_PROVIDER = `#!/bin/sh
-# A Collie trick provider. Collie runs it with the facts on stdin (one JSON document) and reads one JSON
-# document from stdout. This one counts the sessions and prints one mark in the belt's end block.
+/** The shell sample: it counts the sessions in the facts and prints one belt mark. */
+export const SAMPLE_SHELL_PROGRAM = `#!/bin/sh
+# A Collie trick program. Collie runs it with the facts on stdin (one JSON document) and reads one JSON
+# document from stdout. This one counts the sessions and prints one mark at the end of the Belt.
 facts=$(cat)
 n=$(printf '%s' "$facts" | grep -o '"paneId"' | wc -l | tr -d ' ')
 printf '{"v":1,"parts":[{"at":"belt","id":"belt","mark":{"icon":"plug","label":"%s","tone":"plain"}}]}\\n' "$n"
@@ -784,7 +858,8 @@ function agentsTsLoop(id: string): string {
    runtime and installs nothing, so it imports only files in this folder and the \`node:\` and \`bun:\`
    built-ins.
 2. Run \`collie trick dev .\` to see what the phone would get: each part, each Decision, every refusal.
-   \`collie trick dev . --watch\` runs it again on each change; \`--tap <intent>\` runs it as a tap.
+   \`collie trick dev . --watch\` runs it again on each change; \`--tap <intent>\` runs it as a tap;
+   \`--facts <file.json>\`, \`--state <dir>\` and \`--rid <uuid>\` set the facts, the state folder and the tap's id.
 3. Run \`collie trick check --run .\` and fix every error it prints. Read its warnings too.
 4. Switch the trick on with \`collie trick on ${id}\`. It runs while a phone watches.
 
@@ -801,10 +876,20 @@ version. \`run((t) => { ... })\` reads the facts, calls your function once and p
 | \`t.status\`, \`t.belt\`, \`t.dashboard\`, \`t.tabbar\`, \`t.session\` | one part in each place; list the place in \`places\` |
 | \`v.card\`, \`v.row\`, \`v.para\`, and the rest of \`v\` | one builder per node kind, for a view |
 | \`t.decide\`, \`t.keepDecisions\` | ask the person on the Hill; leave the open Decisions as they are |
-| \`t.state.get\`, \`t.state.set\` | small JSON files in the trick's state folder |
-| \`t.sh\` | run a program without a shell; never throws |
+| \`t.state.get\`, \`t.state.set\` | small JSON files in the trick's state folder; a name may hold folders (\`cache/ci\`) |
+| \`t.log(name)\` | an append-only JSON-lines record: \`.append\`, \`.all\`, \`.last(n)\`, \`.has(rid)\`, and \`.once(rid, entry)\`, one entry per tap |
+| \`t.cached(name, ttlMs, loader)\` | a read kept with its time; a failed read serves the old value as \`stale\` |
+| \`t.closedUntil\`, \`t.isClosed\` | close a key for a while, such as a Decision held for a day |
+| \`t.path(p)\` | a path from \`config.toml\` made absolute: \`~/\` is home, a relative path is this folder's |
+| \`t.tool(name)\`, \`t.sh\` | find a program on PATH or in the usual user folders; run it without a shell, never throws |
+| \`t.show(defaults)\`, \`t.put\` | where \`show\` in \`config.toml\` puts the count, and the count in each of those places |
+| \`t.onPrint(fn)\` | change the whole document just before it prints, such as \`mapText(doc, mask)\` |
 | \`t.sessionAt\`, \`t.sessionNamed\` | the session in a folder, or with a name |
 | \`t.fresh\`, \`t.asOf\` | how long the parts stay fresh, and when the data was true |
+| \`now\`, \`iso\`, \`minute\`, \`age\`, \`clip\`, \`mask\` | the clock, times as words, one masked line cut to a length |
+
+In a test, \`TRICK_NOW\` (epoch seconds) fixes the clock and \`TRICK_TOOLS_ONLY_PATH=1\` makes \`t.tool\`
+look on PATH alone. \`collie trick dev\` passes every \`TRICK_*\` variable you set; the bridge never does.
 
 A Decision may carry a \`view\`: display nodes under its summary (a bar of chips, rows with their
 proof, a code hunk), at most 8 KiB, 100 nodes and 4 deep, with no button, card or image. The options
@@ -921,7 +1006,7 @@ export async function cmdTrickInit(deps: TrickDeps, args: readonly string[]): Pr
   await writeFile(join(dir, MANIFEST_FILE), sampleManifest(id, form));
   await writeFile(join(dir, "AGENTS.md"), sampleAgents(id, form));
   if (form === "sh") {
-    await writeFile(join(dir, "provider.sh"), SAMPLE_PROVIDER, { mode: 0o755 });
+    await writeFile(join(dir, "provider.sh"), SAMPLE_SHELL_PROGRAM, { mode: 0o755 });
     deps.io.out(`Made ${dir} with trick.toml, provider.sh and AGENTS.md. The trick is off.`);
   } else {
     await writeFile(join(dir, "program.ts"), sampleProgram(id));

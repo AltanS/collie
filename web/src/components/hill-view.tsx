@@ -22,7 +22,7 @@ import { cn } from "@/lib/utils";
 
 // THE HILL (M96): the open Decisions agents and tricks posted, as cards, grouped by priority (Now,
 // Today, Later), and under them a fold "Answered" with the closed ones the bridge serves. One view, its
-// own route (`/hill`), reached from the Dashboard's row while something is open. "Hill" is the view's
+// own route (`/hill`), reached from the Hill item, the fixed fourth item of the Dashboard's bottom bar. "Hill" is the view's
 // name, the same in every language. The look is calm, by priority (the owner's pick, C1, 2026-11-09).
 //
 // This file draws; it reads nothing but the crew roster and the tricks list, for a card's machine tint
