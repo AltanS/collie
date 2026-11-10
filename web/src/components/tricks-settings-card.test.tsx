@@ -4,10 +4,10 @@ import { http, HttpResponse } from "msw";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { HOLD_MS, TricksSettingsCard, autoLine, placesLine, provenanceLine, slotLine, useTricksPresent, warningLines } from "@/components/tricks-settings-card";
+import { HOLD_MS, TricksSettingsCard, autoLine, placesLine, provenanceLine, readsLine, slotLine, useTricksPresent, warningLines } from "@/components/tricks-settings-card";
 import { setTrickAuto, switchTrick, undoTrick } from "@/lib/api";
 import { ROOT_ROUTE_ID } from "@/lib/loaders";
-import type { TricksReply, WireTrickInfo } from "@/lib/tricks/schema";
+import { inputsSentence, type TricksReply, type WireTrickInfo } from "@/lib/tricks/schema";
 import { createTricksStore, type TricksStore } from "@/lib/tricks/store";
 import { readTrick } from "@/lib/tricks/wire";
 import { clearStatus, currentStatus } from "@/lib/status";
@@ -208,6 +208,34 @@ describe("TricksSettingsCard: the warnings before the switch (review 15)", () =>
     expect(readTrick(base)).not.toHaveProperty("warnings");
     expect(readTrick({ ...base, warnings: "loud" })).not.toHaveProperty("warnings");
     expect(readTrick({ ...base, warnings: [{ kind: "network", text: "x" }, 5, { kind: 1, text: "y" }, null] })?.warnings).toEqual([{ kind: "network", text: "x" }]);
+  });
+});
+
+describe("TricksSettingsCard: what a contract 2 trick reads (M99)", () => {
+  it("says the globs in one sentence under the places, with every machine on a crew's lead", async () => {
+    const solo: WireTrickInfo = { ...TRACKER, inputs: { globs: ["TODO.md", "shots/*.png"], crew: false } };
+    const crew: WireTrickInfo = { ...LEGS, inputs: { globs: ["TODO.md"], crew: true } };
+    renderCard(await storeWith([crew, solo]));
+    expect((await within(rowOf("tracker")).findByText(/^Reads /u)).textContent).toBe("Reads TODO.md, shots/*.png in your agent sessions' folders.");
+    expect(rowOf("legs").querySelector('[data-line="reads"]')?.textContent).toBe("Reads TODO.md in your agent sessions' folders on every machine of the crew.");
+  });
+
+  it("speaks the same words as the version card and collie trick check", () => {
+    for (const crew of [false, true]) {
+      const globs = ["TODO.md", "notes/*.md"];
+      expect(readsLine({ globs, crew })).toBe(inputsSentence(globs, crew));
+    }
+  });
+
+  it("draws no line for a trick without inputs, and reads a malformed field as none", async () => {
+    renderCard(await storeWith([LEGS]));
+    await screen.findByRole("switch", { name: "Browser leg" });
+    expect(rowOf("legs").querySelector('[data-line="reads"]')).toBeNull();
+    const base = { host: "bluefin", id: "legs", name: "Legs", icon: "plug", on: false, state: "off", places: ["belt"] };
+    expect(readTrick({ ...base, inputs: { globs: ["TODO.md"], crew: true } })?.inputs).toEqual({ globs: ["TODO.md"], crew: true });
+    for (const inputs of ["TODO.md", { globs: [], crew: false }, { globs: ["a"] }, { globs: [5], crew: false }, { globs: Array.from({ length: 9 }, () => "a"), crew: false }, { globs: ["x".repeat(257)], crew: true }]) {
+      expect(readTrick({ ...base, inputs }), JSON.stringify(inputs).slice(0, 40)).not.toHaveProperty("inputs");
+    }
   });
 });
 

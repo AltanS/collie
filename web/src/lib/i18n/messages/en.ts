@@ -3351,6 +3351,10 @@ export const en = {
   "settings.tricks.undo": "Undo",
   "settings.tricks.undoArmed": "Undo?",
   "settings.tricks.undoFailed": "Could not undo {name}. Try again.",
+  // What a contract 2 trick reads (M99): English only until the translation pass, listed in
+  // PENDING_TRANSLATION below. The same words as schema.ts `inputsSentence`, held there by a test.
+  "settings.tricks.reads.solo": "Reads {globs} in your agent sessions' folders.",
+  "settings.tricks.reads.crew": "Reads {globs} in your agent sessions' folders on every machine of the crew.",
 
   // --- hill: the Decisions agents post, and the view that answers them (M96) ---
   // "Hill" is the view's name, a Collie word like a brand: the same in every language, never
@@ -3667,6 +3671,8 @@ export const PENDING_TRANSLATION = [
   "settings.tricks.undo",
   "settings.tricks.undoArmed",
   "settings.tricks.undoFailed",
+  "settings.tricks.reads.solo",
+  "settings.tricks.reads.crew",
   "hill.receipt.dismissedOffline",
 ] as const satisfies readonly MessageKey[];
 

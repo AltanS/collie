@@ -265,6 +265,12 @@ interface TrickRowProps {
   onUndo: () => void;
 }
 
+/** What a contract 2 trick reads, in one sentence: schema.ts `inputsSentence` in the phone's words. */
+export function readsLine(inputs: NonNullable<WireTrickInfo["inputs"]>): string {
+  const globs = inputs.globs.join(", ");
+  return inputs.crew ? t("settings.tricks.reads.crew", { globs }) : t("settings.tricks.reads.solo", { globs });
+}
+
 function TrickRow({ trick, clock, checked, auto, canWrite, hillOff, undoing, onFlip, onAuto, onUndo }: TrickRowProps) {
   const slot = slotLine(trick, clock, hillOff);
   const warnings = warningLines(trick);
@@ -278,6 +284,11 @@ function TrickRow({ trick, clock, checked, auto, canWrite, hillOff, undoing, onF
           <p data-line="places" className="truncate text-sm text-muted-foreground">
             {placesLine(trick.places)}
           </p>
+          {trick.inputs !== undefined && (
+            <p data-line="reads" className="break-words text-xs text-muted-foreground">
+              {readsLine(trick.inputs)}
+            </p>
+          )}
           <p data-line="slot" data-trouble={slot.trouble ? "true" : undefined} className="truncate text-xs text-muted-foreground">
             {slot.text}
           </p>
