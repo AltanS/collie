@@ -3,7 +3,7 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import type { JsonObject, JsonValue } from "../json.ts";
-import { isFingerprint, isMemberId } from "./identity.ts";
+import { isFingerprint, isMemberId, isReservedMemberId } from "./identity.ts";
 import type { Enrollment } from "./mode.ts";
 
 // The trust store: the one file a crew member persists. It holds this collie's own identity and key
@@ -347,9 +347,24 @@ export interface TrustStoreData {
 export function enrollmentOf(data: TrustStoreData | null): Enrollment | null {
   if (data === null) return null;
   return {
-    peers: data.peers.filter((p) => p.status === "enrolled").map((p) => ({ memberId: p.memberId })),
-    lead: data.lead !== null && data.lead.status === "enrolled" ? { memberId: data.lead.memberId } : null,
+    peers: data.peers.filter(isActiveMember).map((p) => ({ memberId: p.memberId })),
+    lead: data.lead !== null && isActiveMember(data.lead) ? { memberId: data.lead.memberId } : null,
   };
+}
+
+/**
+ * Whether a roster row counts: enrolled, and not holding a member id the address grammar keeps
+ * (`local`, `all`, `here`; identity.ts `RESERVED_MEMBER_IDS`, security re-review A1). Such a row stays in
+ * the store as the operator wrote it; it is only never trusted, dialled or swept.
+ */
+export function isActiveMember(member: Pick<TrustedMember, "status" | "memberId">): boolean {
+  return member.status === "enrolled" && !isReservedMemberId(member.memberId);
+}
+
+/** The roster rows refused for a reserved member id, for the one line the bridge prints at boot. */
+export function reservedMembers(data: TrustStoreData | null): string[] {
+  if (data === null) return [];
+  return [...(data.lead === null ? [] : [data.lead]), ...data.peers].filter((m) => m.status === "enrolled" && isReservedMemberId(m.memberId)).map((m) => m.memberId);
 }
 
 // ── Parsing ──────────────────────────────────────────────────────────────────

@@ -11,7 +11,11 @@
 // body. A body that names a session of another machine, as `from.address` or as `as`, is the uniform
 // 401. A `replyTo` or an `about` that names a session of another machine is refused `bad_target`
 // (`foreignTarget`): the tap is typed where `replyTo` points, with the person's authority, so a member
-// may only point it at its own sessions. The labels a member sends are display data. The member's claim about its own pane stands in for
+// may only point it at its own sessions. Each of these is checked twice (security re-review A1): the
+// string names the signing member, and the address the lead's own `place()` RETURNS for it names that
+// member too, so an alias the lead reads as its own (`local/<pane>`) never becomes the lead's session.
+// A member id that is such a word (`local`, `all`, `here`) is never minted, never admitted, and refused
+// here as well (crew/identity.ts `RESERVED_MEMBER_IDS`). The labels a member sends are display data. The member's claim about its own pane stands in for
 // the lead's `place()` only for the poster's own session, because a pane opened a second ago may not be
 // in the lead's sweep yet; the instance token is checked again on the member when the answer is typed.
 //
@@ -27,6 +31,7 @@ import { createHash } from "node:crypto";
 import type { JsonObject, JsonValue } from "../json.ts";
 import { asJsonBoolean, asJsonObject, asJsonString } from "../../web/src/lib/json.ts";
 import { HILL_ID_RE, HILL_MEDIA_BYTES_MAX, HILL_MEDIA_MAX, type HillDecision, type HillRefusalCode } from "../../web/src/lib/hill/wire.ts";
+import { isReservedMemberId } from "../crew/identity.ts";
 import { parseAddress } from "../walky/address.ts";
 import { olderThanFloor, type CrewDialAnswer } from "../walky/crew.ts";
 import { headerField, WALKY_HARNESS_MAX, WALKY_LABEL_MAX } from "../walky/types.ts";
@@ -125,9 +130,24 @@ function strictBase64(text: string): Uint8Array | null {
  * address of another machine, `local`, a scope or anything that is not an address: the caller's 401.
  */
 export function ownAddress(raw: string, memberId: string): string | null {
-  if (raw !== raw.trim()) return null;
+  if (raw !== raw.trim() || isReservedMemberId(memberId)) return null;
   const address = parseAddress(raw);
   return address !== null && address.kind === "pane" && address.memberId === memberId ? raw : null;
+}
+
+/**
+ * Whether an address of the signing member still names a pane of that member once the lead resolves it
+ * (security re-review A1): the address `place()` RETURNS is compared, not only the string the member
+ * sent, so an alias the lead reads as its own (`local/<pane>`) or a sweep that went wrong cannot turn a
+ * member's address into the lead's session. An address the lead does not list yet passes: the member's
+ * claim stands for its own new pane, and the instance token is checked again on the member.
+ */
+export function resolvesToOwn(raw: string, memberId: string, place: ((address: string) => HillPlace | null) | undefined): boolean {
+  if (ownAddress(raw, memberId) === null) return false;
+  const placed = place?.(raw) ?? null;
+  if (placed === null) return true;
+  const at = parseAddress(placed.address);
+  return at !== null && at.kind === "pane" && at.memberId === memberId;
 }
 
 /**
@@ -141,7 +161,7 @@ export function ownAddress(raw: string, memberId: string): string | null {
  * names another machine's session is a claim this member cannot make. Both are the agent's own words,
  * so the refusal is `bad_target` with words, not the 401 an identity claim (`from.address`, `as`) gets.
  */
-export function foreignTarget(fields: JsonObject, memberId: string): string | null {
+export function foreignTarget(fields: JsonObject, memberId: string, place?: (address: string) => HillPlace | null): string | null {
   for (const key of ["replyTo", "about"] as const) {
     const raw = fields[key];
     if (raw === undefined || raw === null) continue;
@@ -149,7 +169,7 @@ export function foreignTarget(fields: JsonObject, memberId: string): string | nu
     // Not a string: the reader refuses the shape with its own words.
     if (text === undefined) continue;
     if (key === "about" && (text.trim() === "" || text.trim() === "here")) continue;
-    if (ownAddress(text, memberId) === null) {
+    if (!resolvesToOwn(text, memberId, place)) {
       return `\`${headerField(text, 80)}\` is not a session on this machine: a Decision from a crew member answers to, and is about, a session on that member only`;
     }
   }
@@ -229,6 +249,8 @@ export interface HillCrewLeadDeps {
   readonly walkyOn?: () => boolean;
   /** The lead's own name for a member, from its sweep (the Crew page's), or null to keep the member's word. */
   readonly machineOf?: (memberId: string) => string | null;
+  /** The lead's address probe (walky.ts `walkyPlace`, the Hill's own): what it returns is checked against the signing member. */
+  readonly place?: (address: string) => HillPlace | null;
 }
 
 /** The fields a forwarded post may never carry: the member's socket frame, the bridge's own `from`, and the paths. */
@@ -273,8 +295,8 @@ export class HillCrewLead {
     const fields = asJsonObject(row?.fields);
     const address = asJsonString(from?.address);
     if (row === undefined || from === undefined || fields === undefined || address === undefined) return badRequest("a post is { from: { address, harness, label, host }, fields, images }");
-    if (ownAddress(address, memberId) === null) return UNAUTHORIZED;
-    const foreign = foreignTarget(fields, memberId);
+    if (!resolvesToOwn(address, memberId, this.deps.place)) return UNAUTHORIZED;
+    const foreign = foreignTarget(fields, memberId, this.deps.place);
     if (foreign !== null) return refused("bad_target", foreign);
     // Images ride by hash, uploaded first: a path in the fields names a file on the member, never here.
     if (fields.images !== undefined) return badRequest("a forwarded post names its images by hash, never by path");
@@ -323,7 +345,7 @@ export class HillCrewLead {
     const op = asJsonString(row?.op);
     const as = asJsonString(row?.as);
     if (row === undefined || as === undefined || (op !== "status" && op !== "withdraw" && op !== "list")) return badRequest("a call is { op: status | withdraw | list, id?, as }");
-    if (ownAddress(as, memberId) === null) return UNAUTHORIZED;
+    if (!resolvesToOwn(as, memberId, this.deps.place)) return UNAUTHORIZED;
     // Only the address keys a sender's Decisions; the other fields are display data and unused here.
     const sender: HillAgentSender = { kind: "agent", address: as, memberId, harness: null, label: "", host: null };
     if (op === "list") return { status: 200, body: { ok: true, decisions: this.deps.hill.mineList(sender) } };

@@ -12,6 +12,7 @@ import {
   type CrewRequestFacts,
 } from "./admission.ts";
 import { leadStore, material, member, CREW, peerStore } from "./fixtures.ts";
+import { enrollmentOf } from "./trust-store.ts";
 
 // The two-factor gate (CREW_PROTOCOL.md §8.1) is the whole of federation's security posture, so it
 // is tested as a MATRIX rather than as a set of happy paths: every combination of "which factor did
@@ -54,6 +55,15 @@ describe("admitCrewRequest — the failure matrix", () => {
     if (!verdict.ok || verdict.caller !== "member") throw new Error("unreachable");
     expect(verdict.member.memberId).toBe("nas");
     expect(verdict.self).toBe("desk");
+  });
+
+  test("A1: a pinned member whose id is a word the address grammar keeps is refused, and the store is left alone", () => {
+    for (const word of ["local", "all", "here"]) {
+      const held = leadStore({ peers: [member({ memberId: word })] });
+      expect(admitCrewRequest(held, facts({ signedMember: word }))).toEqual({ ok: false, refusal: "unauthorized", factor: "certificate" });
+      expect(held.peers.map((p) => p.memberId)).toEqual([word]);
+      expect(enrollmentOf(held)?.peers).toEqual([]);
+    }
   });
 
   test("no secret at all is refused", () => {

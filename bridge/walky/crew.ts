@@ -30,7 +30,7 @@
 import { randomBytes } from "node:crypto";
 
 import type { JsonObject, JsonValue } from "../json.ts";
-import { fingerprintOfCert } from "../crew/identity.ts";
+import { fingerprintOfCert, isReservedMemberId } from "../crew/identity.ts";
 import type { PeerSnapshotBody } from "../crew/merge.ts";
 import { signCanonical, verifyCanonical } from "../crew/signing.ts";
 import type { TrustedMember, TrustStoreData } from "../crew/trust-store.ts";
@@ -167,8 +167,9 @@ export function checkCrewMessage(message: WalkyMessage): CrewMessageProblem {
   if (message.kind === "agent" && message.from.address === null) return { status: 400, error: "the sender's address does not fit its kind" };
   if (message.kind === "operator" && message.from.space !== undefined && message.from.space !== null) return { status: 400, error: "the sender's space does not fit its kind" };
   if (!crewAddressable(message.to)) return { status: 400, error: "an address on a crew names its member" };
-  // The machine that signed is the machine that sent, and an agent's pane is on that machine.
-  if (message.signer === null || message.from.memberId !== message.signer) return { status: 401 };
+  // The machine that signed is the machine that sent, and an agent's pane is on that machine. A signer
+  // whose id is a word the address grammar keeps (`local`, `all`, `here`) is no machine (A1).
+  if (message.signer === null || isReservedMemberId(message.signer) || message.from.memberId !== message.signer) return { status: 401 };
   if (message.from.address !== null) {
     const from = parseAddress(message.from.address);
     if (from === null || from.kind !== "pane" || from.memberId !== message.signer) return { status: 401 };

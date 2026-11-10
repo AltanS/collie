@@ -978,6 +978,14 @@ Run **on the peer**, once.
    > A member that joins again with the same fingerprint keeps its id and is never refused. An older
    > lead keeps the suffix behaviour.
 
+   > **Note, added in 1.29.0. The words an address keeps are no machine's name.** `local` (this machine,
+   > on every bridge), `all` and `here` are words of the walky address grammar, so a member id that is
+   > one of them would name another target: on the lead, `local/<pane>` is the lead's own pane. A label
+   > that becomes one of them is refused with the same `422` and `"takenBy": "reserved"`; no path mints
+   > such an id; a member that joins again under one gets a fresh id; and a member already enrolled under
+   > one is refused at admission with the uniform `401` (the store is not rewritten) and named once in the
+   > bridge's log at boot, with `collie crew remove <id>` as the way out.
+
 **`<lead-address>` is whatever the operator can reach.** Any network: tailnet, LAN, WireGuard,
 someone else's overlay, an SSH tunnel. Collie owns authentication; **the operator owns reachability**.
 There is no discovery, no enumeration, and no overlay-network integration — ever.
