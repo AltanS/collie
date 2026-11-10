@@ -75,8 +75,8 @@ const NOT_REACHED_BY_WINDOWS: readonly Allowed[] = [
   { file: "cli/install-kind.ts", pattern: "splitOnSlash", count: 2, why: "git remote URLs, always slashes" },
   { file: "cli/update.ts", pattern: "splitOnSlash", count: 2, why: "a literal list of payload names, joined by path.join; and a systemd unit path" },
   { file: "cli/fakes.ts", pattern: "splitOnSlash", count: 2, why: "test-only fake filesystem, keys are POSIX by design" },
-  { file: "cli/trick.ts", pattern: "startsWithSlash", count: 1, why: "`isBareImport` reads an import specifier, a module path written with `/` on every host, never a file path" },
-  { file: "cli/trick.ts", pattern: "splitOnSlash", count: 1, why: "`isScannedFile` reads a path `walkTrickCode` built by joining names with `/` on every host (M94)" },
+  { file: "bridge/tricks/scan.ts", pattern: "startsWithSlash", count: 1, why: "`isBareImport` reads an import specifier, a module path written with `/` on every host, never a file path" },
+  { file: "bridge/tricks/scan.ts", pattern: "splitOnSlash", count: 1, why: "`isScannedFile` reads a path `walkTrickCode` built by joining names with `/` on every host (M94)" },
 ];
 
 /**

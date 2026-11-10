@@ -8,7 +8,8 @@ import { switchesPath } from "../bridge/tricks/paths.ts";
 import { HILL_WRITING } from "./hill-rules.ts";
 import { EXIT, type Io } from "./io.ts";
 import { tricksFindings } from "./trick-findings.ts";
-import { checkStatic, checkWarnings, runAgainstFixture, isBareImport, isScannedFile, shippedHelperVersion, cmdTrick, cmdTrickCheck, cmdTrickHelper, cmdTrickInit, HELPER_VERSION, helperVersion, sampleProgram, TRICK_HELPER, cmdTrickList, cmdTrickSkill, cmdTrickSwitch, looksBinary, runsLines, sampleAgents, SKILL_BYTES_MAX, TRICK_WRITE_BRIEF, TRICK_SUBCOMMANDS, type TrickCheckReport, type TrickDeps } from "./trick.ts";
+import { checkStatic, runAgainstFixture, cmdTrick, cmdTrickCheck, cmdTrickHelper, cmdTrickInit, sampleProgram, cmdTrickList, cmdTrickSkill, cmdTrickSwitch, sampleAgents, SKILL_BYTES_MAX, TRICK_WRITE_BRIEF, TRICK_SUBCOMMANDS, type TrickCheckReport, type TrickDeps } from "./trick.ts";
+import { checkWarnings, HELPER_VERSION, helperVersion, isBareImport, isScannedFile, looksBinary, runsLines, shippedHelperVersion, TRICK_HELPER } from "../bridge/tricks/scan.ts";
 import { realFiles } from "./sys.ts";
 import { parseTrickDocument, TRICK_CONTRACT, type TricksReply } from "../web/src/lib/tricks/schema.ts";
 
@@ -498,6 +499,27 @@ describe("collie trick on, off and list", () => {
     expect(await cmdTrickSwitch(d, [], true)).toBe(EXIT.USAGE);
   });
 
+  test("on prints the check scan's warnings above its confirmation, says they are a text search, and still switches on", async () => {
+    const d = await deps();
+    await cmdTrickInit(d, ["--sh", "legs"]);
+    const dir = join(d.configDir, "tricks", "legs");
+    await writeFile(join(dir, "program.sh"), '#!/bin/sh\ncurl -s https://example.com\nclaude -p "summarise"\nprintf \'{"v":1,"parts":[]}\\n\'\n');
+    d.out.length = 0;
+    expect(await cmdTrickSwitch(d, ["legs"], true)).toBe(EXIT.OK);
+    const on = d.out.findIndex((l) => l.startsWith("legs is on."));
+    const warns = d.out.slice(0, on);
+    expect(warns.some((l) => l.startsWith("warn: program.sh:2 reaches the network"))).toBe(true);
+    expect(warns.some((l) => l.startsWith("warn: program.sh:3 calls an agent program or a model API"))).toBe(true);
+    expect(warns.at(-1)).toContain("text search of the code, not a proof");
+    expect(JSON.parse(await readFile(switchesPath(d.stateDir), "utf8")).on.legs).toBeDefined();
+    // A clean trick prints no warning and no honesty line.
+    const clean = await deps();
+    await cmdTrickInit(clean, ["quiet"]);
+    clean.out.length = 0;
+    expect(await cmdTrickSwitch(clean, ["quiet"], true)).toBe(EXIT.OK);
+    expect(clean.out[0]).toStartWith("quiet is on.");
+  });
+
   test("list shows the bridge's state, last run and error when it answers", async () => {
     const d = await deps({
       rev: 5,
@@ -532,8 +554,8 @@ describe("collie trick on, off and list", () => {
   test("a bare or unknown subcommand is usage", async () => {
     const c = capture();
     expect(cmdTrick({ io: c.io }, [])).toBe(EXIT.USAGE);
-    expect(cmdTrick({ io: c.io }, ["add"])).toBe(EXIT.USAGE);
-    expect(c.err.join("\n")).toContain('unknown trick subcommand "add"');
+    expect(cmdTrick({ io: c.io }, ["frob"])).toBe(EXIT.USAGE);
+    expect(c.err.join("\n")).toContain('unknown trick subcommand "frob"');
   });
 });
 
