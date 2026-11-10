@@ -696,12 +696,36 @@ describe("a Decision's view (M96)", () => {
     expect(where([{ kind: "image", attrs: { src: "media/a.png" } }])).toEqual(["/view/0/kind"]);
   });
 
-  it("refuses intent, does, confirm and href on every node but a link's web href", () => {
-    expect(where([{ kind: "list", kids: [{ kind: "row", text: "x", attrs: { intent: "go" } }] }])).toEqual(["/view/0/kids/0/attrs/intent"]);
-    expect(where([{ kind: "list", kids: [{ kind: "row", text: "x", attrs: { href: "https://example.com" } }] }])).toEqual(["/view/0/kids/0/attrs/href"]);
-    expect(where([{ kind: "para", kids: [{ kind: "link", text: "x", attrs: { href: "collie://pane/1" } }] }])).not.toEqual([]);
+  it("refuses intent, does, confirm and href on every node but the web href of a link and a row", () => {
+    const rowOf = (attrs: JsonObject) => [{ kind: "list", kids: [{ kind: "row", text: "x", attrs }] }];
+    expect(where(rowOf({ intent: "go" }))).toEqual(["/view/0/kids/0/attrs/intent"]);
+    expect(where([{ kind: "list", kids: [{ kind: "row", text: "x", attrs: { disabled: "no", href: "https://example.com" } }] }])).toEqual([]);
+    expect(where([{ kind: "list", kids: [{ kind: "row", text: "x", kids: [{ kind: "button", attrs: { label: "Go", intent: "go" } }] }] }])).toEqual(["/view/0/kids/0/kids/0/kind"]);
+    expect(where([{ kind: "para", kids: [{ kind: "link", text: "x", attrs: { href: "collie://pane/1" } }] }])).toEqual(["/view/0/kids/0/attrs/href"]);
     expect(where([{ kind: "para", kids: [{ kind: "link", text: "x", attrs: { href: "https://example.com", rel: "pane" } }] }])).not.toEqual([]);
     expect(where([{ kind: "para", kids: [{ kind: "link", text: "x", attrs: { href: "https://example.com" } }] }])).toEqual([]);
+  });
+
+  it("a row keeps its href when it is a web address; a session key, javascript: and an empty one are refused", () => {
+    const rowOf = (attrs: JsonObject) => [{ kind: "list", kids: [{ kind: "row", text: "Where", attrs }] }];
+    expect(where(rowOf({ href: "https://example.com/settings/tricks" }))).toEqual([]);
+    expect(where(rowOf({ href: "http://bluefin:8788/settings/tricks", end: "open" }))).toEqual([]);
+    const at = ["/view/0/kids/0/attrs/href"];
+    expect(where(rowOf({ href: "bluefin:w6X:3" }))).toEqual(at);
+    expect(reason(rowOf({ href: "bluefin:w6X:3" }))).toContain("web page");
+    expect(where(rowOf({ href: "javascript:alert(1)" }))).toEqual(at);
+    expect(where(rowOf({ href: "file:///etc/hosts" }))).toEqual(at);
+    expect(where(rowOf({ href: "" }))).toEqual(at);
+    // The same row outside a Decision's view keeps both targets.
+    expect(parse(inView({ kind: "list", kids: [{ kind: "row", text: "x", attrs: { href: "bluefin:w6X:3" } }] }))).toEqual([]);
+  });
+
+  it("a group holds a link; a link outside a Decision's view keeps its session target", () => {
+    const view = [{ kind: "group", attrs: { label: "Proof" }, kids: [{ kind: "link", text: "the run", attrs: { href: "https://ci.example.com/run/1" } }] }];
+    expect(parseDecisionView(view)).toEqual({ view, refusals: [] });
+    expect(where([{ kind: "group", kids: [{ kind: "link", text: "x", attrs: { href: "bluefin:w6X:3" } }] }])).toEqual(["/view/0/kids/0/attrs/href"]);
+    expect(parse(inView({ kind: "group", kids: [{ kind: "link", text: "x", attrs: { href: "https://a.example/" } }] }))).toEqual([]);
+    expect(parse(inView({ kind: "card", kids: [{ kind: "link", text: "x", attrs: { href: "https://a.example/" } }] }))).toEqual(["/parts/0/view/0/kids/0/kind"]);
   });
 
   it("caps: 8 KiB of compact JSON, 100 nodes, depth 4", () => {

@@ -156,7 +156,7 @@ The 16 kinds, and what each may hold:
 | Kind     | Holds                                                      | Notes                                                     |
 | -------- | ---------------------------------------------------------- | --------------------------------------------------------- |
 | `card`   | para, line, chip, button, meter, image, bar, group, number, spacer | `tone` draws as Collie's edge, never a fill       |
-| `group`  | row, group, bar, para, line, meter, number, spacer         | `label`, `badge`; `fold` open or closed makes the head a toggle |
+| `group`  | row, group, bar, para, line, link, meter, number, spacer   | `label`, `badge`; `fold` open or closed makes the head a toggle |
 | `list`   | row, group                                                 | the rows framed together                                  |
 | `row`    | para (its second line), chip, button (one, trailing)       | `href`, `end`, `badge`, `tone`, `icon`, `cut`, `disabled` |
 | `bar`    | button, chip, link                                         | the one row; chips with `state` draw the step strip       |
@@ -239,15 +239,16 @@ document, an agent's `collie hill post --view <file.json>` and the phone alike.
 
 - **Display only.** It takes group, list, row, bar, chip, para, line, run, code, link, meter, spacer
   and number. No button, card or image: the options are the taps, and the images are `media`.
-- **Nothing acts.** `intent`, `does`, `confirm` and `href` are refused on every node, except a link's
-  `href`, which must be an `https://` or `http://` address (never `rel: "pane"`).
+- **Nothing acts.** `intent`, `does`, `confirm` and `href` are refused on every node, except the
+  `href` of a link and of a row. That `href` must be a web address, `https://` or `http://`. A session's
+  scope key and `rel: "pane"` are refused. The card shows the host.
 - **Small.** At most 8 KiB of compact JSON, 100 nodes and 4 levels deep.
 - A view that breaks a rule refuses its decision alone in a trick's document (the path names the node,
   `/decisions/0/view/1/kind`), and refuses an agent's post with `bad_body` and the same path. The
   view is part of the content hash and of the post's digest; a decision without one keeps the hash
   and the digest it always had.
 - **The card.** The phone draws the view in a quiet frame captioned "From <sender>", with the trick
-  renderer and no tap handler. A link shows its host and opens in a new tab. A bar wraps instead of
+  renderer and no tap handler. A link, and a row with an `href`, show their host and open in a new tab. A bar wraps instead of
   clipping. Past 240 px the frame folds behind "Show all", with no scroller inside the card. A stored
   view the phone cannot read is dropped and the decision stays; one that throws while it draws shows
   the placeholder.

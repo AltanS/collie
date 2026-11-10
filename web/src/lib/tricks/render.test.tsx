@@ -194,6 +194,14 @@ describe("a node's height is its form's, not its data's", () => {
     expect(reservedHeight(foreign('[{"kind":"list","kids":[]}]')[0]!)).toEqual({ rem: 0, px: 2 });
   });
 
+  it("reserves a link that is a box of its own (in a bar or a group) the tap floor", () => {
+    const h = (node: JsonObject) => heightCss(reservedHeight(viewOfNodes(node)[0]!));
+    const link = { kind: "link", text: "the run", attrs: { href: "https://example.invalid/run" } };
+    expect(h({ kind: "group", kids: [link] })).toBe("2.75rem");
+    expect(h({ kind: "group", kids: [link, link] })).toBe("6rem");
+    expect(h(bar(link))).toBe("2.75rem");
+  });
+
   it("reserves a closed group's head alone, and a step strip one height whatever its steps", () => {
     const [closed] = viewOfNodes({ kind: "group", attrs: { label: "Older", fold: "closed" }, kids: [row("a"), row("b")] });
     expect(heightCss(reservedHeight(closed!))).toBe("1.5rem");

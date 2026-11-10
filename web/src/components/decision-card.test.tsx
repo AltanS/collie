@@ -171,6 +171,43 @@ describe("the poster's view", () => {
     expect(open).toHaveBeenCalledWith("https://ci.example.com/run/7", "_blank", "noopener,noreferrer");
   });
 
+  it("a row with a web href shows its host in the end slot and opens in a new tab; it stays one tap target", () => {
+    const open = vi.spyOn(window, "open").mockReturnValue(null);
+    const rows: HillDecision["view"] = [
+      {
+        kind: "list",
+        kids: [
+          { kind: "row", text: "Where", attrs: { href: "http://bluefin:8788/settings/tricks" } },
+          { kind: "row", text: "With an end", attrs: { href: "https://ci.example.com/run/7", end: "1 of 18" } },
+          { kind: "row", text: "No link", attrs: { end: "x" } },
+        ],
+      },
+    ];
+    const { slot } = renderCard(hillDecision({ view: rows }));
+    const frame = slot("decision-view")!;
+    const hosts = [...frame.querySelectorAll("[data-trick-link-host]")].map((el) => el.textContent);
+    expect(hosts).toEqual(["bluefin:8788", "ci.example.com"]);
+    const first = frame.querySelectorAll('[data-slot="trick-row"]')[0]!;
+    expect(first.querySelectorAll("a")).toHaveLength(1);
+    expect(first.querySelector("button")).toBeNull();
+    expect(first.querySelector("a")).toHaveTextContent("bluefin:8788");
+    // The end slot keeps its own words beside the host.
+    expect(frame.querySelectorAll('[data-slot="trick-row"]')[1]).toHaveTextContent("1 of 18");
+    expect(frame.querySelectorAll('[data-slot="trick-row"]')[2]!.querySelector("[data-trick-link-host]")).toBeNull();
+    fireEvent.click(within(frame).getByText("Where"));
+    expect(open).toHaveBeenCalledWith("http://bluefin:8788/settings/tricks", "_blank", "noopener,noreferrer");
+  });
+
+  it("a link in a group draws as a block, with its host, and opens in a new tab", () => {
+    const open = vi.spyOn(window, "open").mockReturnValue(null);
+    const view: HillDecision["view"] = [{ kind: "group", attrs: { label: "Proof" }, kids: [{ kind: "link", text: "the run", attrs: { href: "https://ci.example.com/run/7" } }] }];
+    const { slot } = renderCard(hillDecision({ view }));
+    const frame = slot("decision-view")!;
+    expect(frame.querySelector("[data-trick-link-host]")).toHaveTextContent("ci.example.com");
+    fireEvent.click(within(frame).getByText("the run"));
+    expect(open).toHaveBeenCalledWith("https://ci.example.com/run/7", "_blank", "noopener,noreferrer");
+  });
+
   it("a view that throws while it draws takes only itself: the placeholder, and the options stay", () => {
     vi.spyOn(console, "error").mockImplementation(() => undefined);
     vi.spyOn(console, "warn").mockImplementation(() => undefined);

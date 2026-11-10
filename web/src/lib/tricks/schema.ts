@@ -557,7 +557,7 @@ export const NODE_REQUIRED_ATTRS = {
 /** The kinds each container holds, in the tree's words (VOCABULARY.md 2, 2.12). A kind not listed holds no kids. */
 export const NODE_KIDS = {
   card: ["para", "line", "chip", "button", "meter", "image", "bar", "group", "number", "spacer"],
-  group: ["row", "group", "bar", "para", "line", "meter", "number", "spacer"],
+  group: ["row", "group", "bar", "para", "line", "link", "meter", "number", "spacer"],
   list: ["group", "row"],
   row: ["para", "chip", "button"],
   bar: ["button", "chip", "link"],
@@ -2518,7 +2518,7 @@ function checkMeter(push: (code: RefusalCode, name: string, reason: string) => v
 // A Decision may carry a small view under its summary: a few rows, a strip of chips, a code hunk, the
 // facts a person reads before they choose. It is DISPLAY ONLY. The options are the Decision's taps, so
 // its view holds no control: no `button`, no `intent`, `does`, `confirm` or `href` on any node but a
-// `link`, and a link opens a web page only. No `card` (the Decision's card is its frame) and no `image`
+// `link` or a `row`, and those open a web page only. No `card` (the Decision's card is its frame) and no `image`
 // (pictures are the Decision's `media`). It is the part view's parser, the same function, with these
 // rules and smaller caps on top: the bridge refuses a post that breaks one, and the phone drops a view
 // that does not pass them and keeps the Decision.
@@ -2536,24 +2536,37 @@ const DECISION_VIEW_REFUSED = {
   image: 'pictures go in the Decision\'s "media"',
 } as const satisfies Readonly<Record<string, string>>;
 
-/** The attributes that act. On a Decision's view only a `link` keeps one, its `href`. */
+/** The attributes that act. On a Decision's view a `link` and a `row` keep one, their `href`, as a web address. */
 const ACTING_ATTRS = ["intent", "does", "confirm", "href"] as const;
 
-/** A Decision's view acts on nothing: no acting attribute but a link's `href`, and that one a web address. */
+/** The kinds whose `href` a Decision's view keeps: a web address, drawn with its host. */
+const VIEW_HREF_KINDS: ReadonlySet<NodeKind> = new Set<NodeKind>(["link", "row"]);
+
+/**
+ * A Decision's view acts on nothing: no acting attribute but the `href` of a link or a row, and that
+ * one a web address (a session's scope key and `rel: "pane"` open a Session, which a view never does).
+ * One refusal per path: a shape the generic rule already refused is not refused twice.
+ */
 function checkDisplayOnly(kind: NodeKind, f: Fields): void {
   const raw = f.has("attrs") ? asJsonObject(f.obj.attrs) : undefined;
   if (raw === undefined) return;
   const attrsPath = f.at("attrs");
+  const refuse = (name: string, reason: string) => {
+    const path = pointer(attrsPath, name);
+    if (f.sink.some((refusal) => refusal.path === path)) return;
+    f.sink.push({ code: "target", path, reason });
+  };
+  const keepsHref = VIEW_HREF_KINDS.has(kind);
   for (const name of ACTING_ATTRS) {
     // An attribute the kind never takes is refused by its own rule already: one refusal per key.
     const takes: readonly string[] = NODE_ATTRS[kind];
-    if (raw[name] === undefined || !takes.includes(name) || (kind === "link" && name === "href")) continue;
-    f.sink.push({ code: "target", path: pointer(attrsPath, name), reason: `A Decision's view takes no "${name}" on a ${kind}: only a link opens anything, and the options are the taps.` });
+    if (raw[name] === undefined || !takes.includes(name) || (keepsHref && name === "href")) continue;
+    refuse(name, `A Decision's view takes no "${name}" on a ${kind}: only a link or a row opens anything, and the options are the taps.`);
   }
-  if (kind !== "link") return;
+  if (!keepsHref) return;
   const href = asJsonString(raw.href);
   if (asJsonString(raw.rel) === "pane" || (href !== undefined && !isTrickUrl(href))) {
-    f.sink.push({ code: "target", path: pointer(attrsPath, "href"), reason: "A link in a Decision's view opens a web page: an https:// or http:// address." });
+    refuse("href", `A ${kind} in a Decision's view opens a web page: an https:// or http:// address, never a session.`);
   }
 }
 

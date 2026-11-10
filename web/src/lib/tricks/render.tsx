@@ -104,8 +104,9 @@ export interface RenderCtx {
   /** Pin the clock (epoch ms on the bridge's clock), for a test or a playground card. Absent: it ticks. */
   now?: number;
   /**
-   * The host a web link goes to, drawn small after the link's words (a Decision's view on the hill, where
-   * the words are the poster's and the host is the truth). Absent: a link draws its words alone.
+   * The host a web link or a web row goes to, drawn small after the link's words and in the row's end slot
+   * (a Decision's view on the hill, where the words are the poster's and the host is the truth). Absent:
+   * a link or a row draws its words alone.
    */
   hostOf?: (href: string) => string;
   /**
@@ -753,6 +754,9 @@ function RowView({ node, ctx, path }: { node: RowNode; ctx: RenderCtx; path: str
   const Icon = attrs?.icon === undefined ? null : trickIconOf(attrs.icon);
   const disabled = attrs?.disabled !== undefined;
   const target = attrs?.href === undefined || disabled ? undefined : linkTargetOf(attrs.href);
+  // Where a web row goes, when the place asks for it (a Decision's view): the host, small, in the end
+  // slot beside `end`. One line, so the row keeps its height; a session target has no host to show.
+  const host = target?.url === undefined ? "" : (ctx.hostOf?.(target.url) ?? "");
   const body = (
     <>
       {Icon !== null && <Icon aria-hidden className={cn("size-4 shrink-0 transition-colors", ink)} />}
@@ -764,6 +768,11 @@ function RowView({ node, ctx, path }: { node: RowNode; ctx: RenderCtx; path: str
         <ChipView key={i} node={chip} ctx={ctx} />
       ))}
       <BadgeMark badge={attrs?.badge} />
+      {host !== "" && (
+        <span data-trick-link-host="" className="max-w-[40%] shrink-0 truncate font-mono text-[11px] text-muted-foreground">
+          {host}
+        </span>
+      )}
       {attrs?.end !== undefined && <span className={cn("max-w-[40%] shrink-0 truncate text-xs tabular-nums transition-colors", ink === "" ? "text-muted-foreground" : ink)}>{attrs.end}</span>}
     </>
   );

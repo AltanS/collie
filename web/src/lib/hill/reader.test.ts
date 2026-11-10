@@ -154,9 +154,11 @@ describe("readHillDecision", () => {
   it("reads a display view; a view that breaks a rule is dropped and the decision stays", () => {
     const view = [{ kind: "bar", kids: [{ kind: "chip", text: "unit", attrs: { tone: "ok" } }] }];
     expect(readHillDecision(wire({ view }))?.view).toEqual(view);
+    const where = [{ kind: "list", kids: [{ kind: "row", text: "Where", attrs: { href: "http://bluefin:8788/settings/tricks" } }] }];
+    expect(readHillDecision(wire({ view: where }))?.view).toEqual(where);
     expect(readHillDecision(wire())).not.toHaveProperty("view");
     expect(readHillDecision(wire({ view: null }))).not.toHaveProperty("view");
-    for (const bad of [[{ kind: "button", text: "Go", attrs: { intent: "go" } }], [{ kind: "list", kids: [{ kind: "row", text: "x", attrs: { href: "https://example.com" } }] }], "rows", [{ kind: "para", text: "x".repeat(9000) }]]) {
+    for (const bad of [[{ kind: "button", text: "Go", attrs: { intent: "go" } }], [{ kind: "list", kids: [{ kind: "row", text: "x", attrs: { href: "bluefin:w6X:3" } }] }], [{ kind: "list", kids: [{ kind: "row", text: "x", attrs: { intent: "go" } }] }], "rows", [{ kind: "para", text: "x".repeat(9000) }]]) {
       const read = readHillDecision(wire({ view: bad }));
       expect(read?.title).toBe("Ship the zoom fix in 1.28.1?");
       expect(read).not.toHaveProperty("view");

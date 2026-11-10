@@ -149,8 +149,11 @@ export function reservedHeight(node: ViewNode): Reserve {
     case "line":
       return { rem: LEAF_REM.line, px: 0 };
     case "run":
-    case "link":
       return { rem: LEAF_REM.paraLine, px: 0 };
+    case "link":
+      // A link that is a box of its own (in a bar or a group) draws the tap floor: `LinkView` with `block`.
+      // Inside a para or a line it is words, and the para's or the line's own height covers it.
+      return { rem: LEAF_REM.tap, px: 0 };
     case "code":
       return { rem: codeLines(node) * LEAF_REM.line + CODE_PAD_REM, px: FRAME_PX };
     case "image":

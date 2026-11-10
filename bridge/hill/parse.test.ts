@@ -102,6 +102,10 @@ describe("a post's view", () => {
     expect(refusal([{ kind: "card", kids: [{ kind: "para", text: "x" }] }])).toStartWith("bad_body the view is refused at /view/0");
     expect(refusal([{ kind: "image", attrs: { src: "media/a.png" } }])).toStartWith("bad_body the view is refused at /view/0");
     expect(refusal([{ kind: "list", kids: [{ kind: "row", text: "x", attrs: { intent: "go" } }] }])).toStartWith("bad_body the view is refused at /view/0/kids/0/attrs/intent");
+    // A row may open a web page, and nothing else.
+    const web = parseJson('[{"kind":"list","kids":[{"kind":"row","text":"Where","attrs":{"href":"http://bluefin:8788/settings/tricks"}}]}]') ?? null;
+    expect(readPostFields({ ...base, view: web }).ok).toBe(true);
+    expect(refusal([{ kind: "list", kids: [{ kind: "row", text: "x", attrs: { href: "bluefin:w6X:3" } }] }])).toStartWith("bad_body the view is refused at /view/0/kids/0/attrs/href");
     expect(refusal("rows")).toStartWith("bad_body");
   });
 
