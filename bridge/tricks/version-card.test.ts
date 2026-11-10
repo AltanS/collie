@@ -152,7 +152,8 @@ describe("the card's words and view", () => {
     );
     expect(card?.view).toBeDefined();
     const table = card?.view?.[0];
-    expect(table?.kids?.[4]).toEqual({ kind: "cell", text: "evil?gnp.ts" });
+    expect(table?.kind).toBe("table");
+    expect(table !== undefined && "kids" in table ? table.kids?.[4] : undefined).toEqual({ kind: "cell", text: "evil?gnp.ts" });
     expect(card?.view?.[1]).toMatchObject({ kind: "diff", attrs: { file: "evil?gnp.ts" } });
   });
 
