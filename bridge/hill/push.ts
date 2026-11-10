@@ -31,10 +31,13 @@ import type { HillDecision } from "../../web/src/lib/hill/wire.ts";
 /**
  * How often `now` Decisions may ring the phone: at most `perSender` an hour from one sender (an agent's
  * address, or a trick), `perMember` an hour from the agents of one crew member together (posting through
- * their lead; CREW_PROTOCOL §22, 1.29.0), and `total` an hour from every sender together. Past
- * any of them, the decision posts and shows, and only its push is skipped.
+ * their lead; CREW_PROTOCOL §22, 1.29.0), `crew` an hour from the agents of every member together, and
+ * `total` an hour from every sender together. `crew` is below `total`, so the lead's own sessions and
+ * tricks always keep `total - crew` (4) of the hour however many members post; `perMember` is below
+ * `crew`, so one member cannot take the whole crew share. Past any of them, the decision posts and shows,
+ * and only its push is skipped.
  */
-export const HILL_PUSH_RATE = { perSender: 3, perMember: 6, total: 10, windowMs: 60 * 60_000 } as const;
+export const HILL_PUSH_RATE = { perSender: 3, perMember: 4, crew: 6, total: 10, windowMs: 60 * 60_000 } as const;
 
 const TAG_PREFIX = "collie:hill:";
 
@@ -67,7 +70,7 @@ export function hillPushMessage(decision: Pick<HillDecision, "id" | "title" | "s
 }
 
 /** Whether a `now` push may go: yes, or which gate holds it. */
-export type HillPushVerdict = "send" | "off" | "sender" | "member" | "total";
+export type HillPushVerdict = "send" | "off" | "sender" | "member" | "crew" | "total";
 
 /** What the hill service needs of the phone push (service.ts). */
 export interface HillPushPort {
@@ -77,8 +80,11 @@ export interface HillPushPort {
    * bridge's own sessions and for a trick, which count only as a sender and toward the total.
    */
   check(sender: string, member?: string | null): HillPushVerdict;
-  /** Send a stored decision's push into its `pushTag` slot, and count it against the rate. */
-  send(sender: string, decision: HillDecision): void;
+  /**
+   * Send a stored decision's push into its `pushTag` slot, and count it against the rate. `member` as
+   * in `check`: the crew member it came from through this lead, or null for this bridge's own senders.
+   */
+  send(sender: string, decision: HillDecision, member?: string | null): void;
   /** Close the notification in a slot. */
   clear(tag: string): void;
 }
@@ -106,13 +112,14 @@ export class HillPush implements HillPushPort {
     this.sent = this.sent.filter((entry) => now - entry.at < HILL_PUSH_RATE.windowMs);
     if (this.sent.filter((entry) => entry.sender === sender).length >= HILL_PUSH_RATE.perSender) return "sender";
     if (member !== null && this.sent.filter((entry) => entry.member === member).length >= HILL_PUSH_RATE.perMember) return "member";
+    if (member !== null && this.sent.filter((entry) => entry.member !== null).length >= HILL_PUSH_RATE.crew) return "crew";
     if (this.sent.length >= HILL_PUSH_RATE.total) return "total";
     return "send";
   }
 
-  send(sender: string, decision: HillDecision): void {
+  send(sender: string, decision: HillDecision, member: string | null = null): void {
     if (decision.pushTag === undefined) return;
-    this.sent.push({ at: this.now(), sender, member: decision.from.kind === "agent" ? decision.from.memberId : null });
+    this.sent.push({ at: this.now(), sender, member });
     this.deps.send(hillPushMessage(decision, decision.pushTag));
   }
 

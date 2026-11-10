@@ -4091,7 +4091,9 @@ none. Before 1.29.0 a member refused every post with `not_on_lead`.
   `supersedes` names a Decision of the same session only, on the lead as on one machine.
 - `hill/media` carries one image: `sha256` is the lowercase hex SHA-256 of the bytes, `b64` the bytes
   in standard base64. The lead decodes it strictly, checks the hash, and sniffs the first bytes: PNG,
-  JPEG or WebP only, at most 2 MB, the same rules as an image on the lead's own machine. It holds the
+  JPEG or WebP only, at most 2 MB, the same rules as an image on the lead's own machine. With the Hill
+  or WalkyTalky off on the lead, it refuses the image first (`hill_off`, `walky_off`) and neither
+  decodes nor holds it, since no post could follow. It holds the
   image in memory by member and hash, for 15 minutes from the last upload, at most 16 MiB per member.
   The same hash again refreshes the time and costs nothing. A lead restart drops them all.
 - `hill/post` carries the post's fields as `collie hill post` sends them, without the socket's frame,
@@ -4112,9 +4114,12 @@ none. Before 1.29.0 a member refused every post with `not_on_lead`.
 - No Decision stays open past **30 days** (`HILL_MAX_EXPIRY_DAYS`), a member's or the lead's own: a
   later `expiresAt` is held to 30 days from the post, never refused. `collie hill post --expires`
   refuses a longer duration before it asks.
-- A `now` Decision rings the phone at most **6 times an hour from one member**, beside 3 an hour per
-  session and 10 in total. Past it, the Decision posts and shows, and only its push is skipped. The
-  lead's own sessions count only toward the per-session and total limits.
+- A `now` Decision rings the phone at most **4 times an hour from one member**, and at most **6 times
+  an hour from all members together**, beside 3 an hour per session and 10 in total
+  (`HILL_PUSH_RATE`, `bridge/hill/push.ts`). The crew share is below the total, so the lead's own
+  sessions and tricks always keep 4 of the hour, however many members post. Past a limit, the
+  Decision posts and shows, and only its push is skipped. The lead's own sessions count only toward
+  the per-session and total limits.
 
 ### Idempotency
 

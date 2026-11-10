@@ -2373,7 +2373,7 @@ const hill = new HillService({
 });
 hill.pruneMedia();
 // The lead's half of §22: a member's images wait here by hash for the post that names them.
-const hillCrewLead = crew.mode === "lead" ? new HillCrewLead({ hill, held: new HillHeldMedia(), machineOf: (memberId) => memberId }) : null;
+const hillCrewLead = crew.mode === "lead" ? new HillCrewLead({ hill, held: new HillHeldMedia(), machineOf: (memberId) => memberId, walkyOn: () => cfg.walky }) : null;
 const walkyServer = new WalkyServer({
   socketPath: walkySocketPath(cfg.stateDir),
   host: HOST,

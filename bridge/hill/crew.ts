@@ -32,7 +32,7 @@ import { olderThanFloor, type CrewDialAnswer } from "../walky/crew.ts";
 import { headerField, WALKY_HARNESS_MAX, WALKY_LABEL_MAX } from "../walky/types.ts";
 import { hillImageMime, hillImageSize, type HillImageBytes } from "./media.ts";
 import { readDecision, readPostFields, HILL_RAW_MAX } from "./parse.ts";
-import type { HillAgentSender, HillOneAnswer, HillPlace, HillPostAnswer, HillService } from "./service.ts";
+import { HILL_OFF, HILL_WALKY_OFF, type HillAgentSender, type HillOneAnswer, type HillPlace, type HillPostAnswer, type HillService } from "./service.ts";
 
 /**
  * The first release whose lead takes Decisions from its members (§22), and whose crew carries the
@@ -223,8 +223,10 @@ export class HillHeldMedia {
 // ── On the lead: the three routes ───────────────────────────────────────────────────────────────────
 
 export interface HillCrewLeadDeps {
-  readonly hill: Pick<HillService, "postDecision" | "status" | "withdraw" | "mineList">;
+  readonly hill: Pick<HillService, "postDecision" | "status" | "withdraw" | "mineList" | "isOn">;
   readonly held: HillHeldMedia;
+  /** False with COLLIE_WALKY=off on the lead: no answer could be typed, so no image is held. Absent: on. */
+  readonly walkyOn?: () => boolean;
   /** The lead's own name for a member, from its sweep (the Crew page's), or null to keep the member's word. */
   readonly machineOf?: (memberId: string) => string | null;
 }
@@ -241,6 +243,9 @@ export class HillCrewLead {
 
   /** `POST /crew/v1/hill/media`: one image, sniffed and held by its hash for the post that names it. */
   media(body: JsonValue | undefined, memberId: string): HillCrewAnswer {
+    // First: with the Hill or WalkyTalky off here no post can follow, so nothing is decoded or held.
+    if (!this.deps.hill.isOn()) return refused("hill_off", HILL_OFF);
+    if (this.deps.walkyOn?.() === false) return refused("walky_off", HILL_WALKY_OFF);
     const row = asJsonObject(body);
     const sha = asJsonString(row?.sha256);
     const b64 = asJsonString(row?.b64);

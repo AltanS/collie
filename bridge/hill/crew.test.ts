@@ -29,6 +29,8 @@ import {
   type HillLeadLink,
 } from "./crew.ts";
 import { deniedFoldersSync, HillMediaStore } from "./media.ts";
+import { HILL_PUSH_RATE, HillPush } from "./push.ts";
+import type { PushMessage } from "../push.ts";
 import { memoryHillReceipts } from "./receipts.ts";
 import { HILL_MAX_EXPIRY_MS, HILL_OPEN_MEMBER_MAX, HillService, NOT_ON_LEAD, notAnswering, type HillAgentSender, type HillCrewMode, type HillPlace } from "./service.ts";
 import { hillDir, HillStore } from "./store.ts";
@@ -85,7 +87,7 @@ interface Bridge {
 }
 
 /** One bridge's hill, on disk under a fresh folder: a lead, or a member with a forward. */
-function bridge(mode: HillCrewMode, opts: { forward?: HillMemberForward; memberId: string } = { memberId: "m_lead000000" }): Bridge {
+function bridge(mode: HillCrewMode, opts: { forward?: HillMemberForward; memberId: string; push?: HillPush; hillOn?: () => boolean } = { memberId: "m_lead000000" }): Bridge {
   const state = folder("hill-crew-state-");
   const work = folder("hill-crew-work-");
   const media = new HillMediaStore(hillDir(state), deniedFoldersSync([state]), () => undefined);
@@ -117,6 +119,8 @@ function bridge(mode: HillCrewMode, opts: { forward?: HillMemberForward; memberI
     audit: (entry) => b.audit.push(entry),
     forward: opts.forward,
     offline: mode === "lead" ? () => b.offline : undefined,
+    push: opts.push,
+    hillSwitch: opts.hillOn === undefined ? undefined : { on: opts.hillOn },
   });
   return Object.assign(b, { hill });
 }
@@ -334,6 +338,68 @@ describe("the lead's routes", () => {
     }
     expect(crewLead.post({ from: { address: "laptop/%20#zzzz", label: "repo" }, fields: fields() }, "laptop").body).toMatchObject({ ok: false, code: "too_many_open" });
     expect(crewLead.post({ from: { address: "mini/%1#aaaa", label: "repo" }, fields: fields() }, "mini").body).toMatchObject({ ok: true });
+  });
+});
+
+describe("what the lead refuses of a member", () => {
+  test("an image while the Hill is off, or WalkyTalky is off, on the lead: refused before it is read or held", () => {
+    let on = false;
+    const lead = bridge("lead", { memberId: "m_lead000000", hillOn: () => on });
+    const held = new HillHeldMedia(() => lead.clock);
+    let walky = true;
+    const crewLead = new HillCrewLead({ hill: lead.hill, held, walkyOn: () => walky });
+    const bytes = png();
+    const image = { sha256: sha256Hex(bytes), b64: b64(bytes) };
+    expect(crewLead.media(image, "laptop")).toEqual({ status: 200, body: { ok: false, code: "hill_off", error: expect.stringContaining("the Hill is off") } });
+    // Even a body that is no image is not looked at.
+    expect(crewLead.media({ junk: true }, "laptop").body).toMatchObject({ ok: false, code: "hill_off" });
+    on = true;
+    walky = false;
+    expect(crewLead.media(image, "laptop").body).toMatchObject({ ok: false, code: "walky_off" });
+    expect(held.bytesOf("laptop")).toBe(0);
+    walky = true;
+    expect(crewLead.media(image, "laptop").body).toMatchObject({ ok: true });
+  });
+
+  test("a forwarded post whose view the parser refuses: a button, a javascript: link", () => {
+    const { crewLead, lead } = crew();
+    const button = [{ kind: "bar", kids: [{ kind: "button", text: "Merge", attrs: { intent: "merge" } }] }];
+    const script = [{ kind: "para", kids: [{ kind: "link", text: "Open", attrs: { href: "javascript:alert(1)" } }] }];
+    for (const [view, at] of [
+      [button, "/view/0/kids/0/kind"],
+      [script, "/view/0/kids/0/attrs/href"],
+    ] as const) {
+      const answer = crewLead.post({ from: { address: LAPTOP_PANE, label: "repo#main" }, fields: fields({ view }) }, "laptop");
+      expect(answer).toEqual({ status: 200, body: { ok: false, code: "bad_body", error: expect.stringContaining(`the view is refused at ${at}:`) } });
+    }
+    expect(lead.store.all()).toHaveLength(0);
+  });
+
+  test("now pushes from members: at most 4 an hour from one machine and 6 from all members together; the lead's own still ring", () => {
+    const pushes: PushMessage[] = [];
+    let clock = 1000;
+    const lead = bridge("lead", { memberId: "m_lead000000", push: new HillPush({ ready: () => true, send: (message) => pushes.push(message), now: () => clock }) });
+    clock = lead.clock;
+    const crewLead = new HillCrewLead({ hill: lead.hill, held: new HillHeldMedia(() => lead.clock) });
+    const rings = () => pushes.filter((p) => p.type === undefined).length;
+    const skipped = () => lead.audit.filter((e) => e.action === "hill.push.skipped").map((e) => e.detail?.why);
+    // One member, three sessions (each under its own 3 an hour): the fifth `now` is past 4 from this machine.
+    for (const [i, pane] of ["laptop/%1#aaaa", "laptop/%1#aaaa", "laptop/%2#bbbb", "laptop/%2#bbbb", "laptop/%3#cccc"].entries()) {
+      expect(crewLead.post({ from: { address: pane, label: "repo" }, fields: fields({ priority: "now", title: `Ship ${String(i)}?` }) }, "laptop").body).toMatchObject({ ok: true });
+    }
+    expect(rings()).toBe(HILL_PUSH_RATE.perMember);
+    expect(skipped()).toEqual(["more than 4 an hour from this machine"]);
+    // A second member rings until all members together reach 6.
+    for (const pane of ["mini/%1#aaaa", "mini/%2#bbbb", "mini/%3#cccc"]) {
+      expect(crewLead.post({ from: { address: pane, label: "repo" }, fields: fields({ priority: "now" }) }, "mini").body).toMatchObject({ ok: true });
+    }
+    expect(rings()).toBe(HILL_PUSH_RATE.crew);
+    expect(skipped().at(-1)).toBe("more than 6 an hour from the crew's other machines");
+    // The lead's own session keeps its share of the hour.
+    lead.live.push({ address: "desk/%1#aaaa", label: "lead", host: "desk", unattended: false });
+    const own = lead.hill.post({ kind: "agent", address: "desk/%1#aaaa", memberId: "m_lead000000", harness: null, label: "lead", host: "desk" }, { requestId: uuid(), title: "Mine?", summary: "Mine.", options: [{ intent: "yes", label: "Yes" }], priority: "now" });
+    expect(own.ok).toBe(true);
+    expect(rings()).toBe(HILL_PUSH_RATE.crew + 1);
   });
 });
 

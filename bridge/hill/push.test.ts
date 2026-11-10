@@ -198,12 +198,35 @@ describe("the rate and the gates", () => {
       for (let i = 0; i < (address === panes[3] ? 1 : 2); i += 1) posted(r.hill.postDecision(sender, input((n += 1)), { own, images: [] }));
     }
     expect(renders(r)).toHaveLength(HILL_PUSH_RATE.perMember);
-    expect(r.audit.filter((e) => e.action === "hill.push.skipped").map((e) => e.detail?.why)).toEqual(["more than 6 an hour from this machine"]);
+    const why = r.audit.filter((e) => e.action === "hill.push.skipped").map((e) => e.detail?.why);
+    expect(why).toHaveLength(7 - HILL_PUSH_RATE.perMember);
+    expect(new Set(why)).toEqual(new Set([`more than ${String(HILL_PUSH_RATE.perMember)} an hour from this machine`]));
     // Another member, and this lead's own session, still ring.
     const mini: HillAgentSender = { kind: "agent", address: "mini/%1#aaaa", memberId: "mini", harness: "agent-x", label: "repo", host: "mini" };
     posted(r.hill.postDecision(mini, input(90), { own: { address: mini.address, label: "repo", host: "mini", unattended: false }, images: [] }));
     posted(r.hill.post(POSTER, input(91)));
     expect(renders(r)).toHaveLength(HILL_PUSH_RATE.perMember + 2);
+  });
+
+  test(`the members together ring at most ${String(HILL_PUSH_RATE.crew)} an hour, so this lead's own senders keep the rest of the ${String(HILL_PUSH_RATE.total)}`, () => {
+    expect(HILL_PUSH_RATE.perMember).toBeLessThan(HILL_PUSH_RATE.crew);
+    expect(HILL_PUSH_RATE.crew).toBeLessThan(HILL_PUSH_RATE.total);
+    const r = rig();
+    let n = 0;
+    // Four members, two sessions each, one `now` each: eight crew posts.
+    for (const member of ["laptop", "mini", "tower", "pi"]) {
+      for (const pane of ["%1#aaaa", "%2#bbbb"]) {
+        const address = `${member}/${pane}`;
+        const sender: HillAgentSender = { kind: "agent", address, memberId: member, harness: "agent-x", label: "repo", host: member };
+        posted(r.hill.postDecision(sender, input((n += 1)), { own: { address, label: "repo", host: member, unattended: false }, images: [] }));
+      }
+    }
+    expect(renders(r)).toHaveLength(HILL_PUSH_RATE.crew);
+    expect(r.audit.filter((e) => e.action === "hill.push.skipped").map((e) => e.detail?.why)).toEqual(["more than 6 an hour from the crew's other machines", "more than 6 an hour from the crew's other machines"]);
+    // This lead's own sessions and tricks ring up to the total.
+    posted(r.hill.post(POSTER, input(90)));
+    for (let t = 1; t <= HILL_PUSH_RATE.total; t += 1) posted(r.hill.postDecision(trick(`t${String(t)}`), input(100 + t)));
+    expect(renders(r)).toHaveLength(HILL_PUSH_RATE.total);
   });
 
   test(`past ${String(HILL_PUSH_RATE.total)} an hour from every sender together the push is skipped`, () => {

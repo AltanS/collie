@@ -426,8 +426,9 @@ When the lead does not answer, `collie hill post` says so, exits 5, and posts no
 comes late, it says the post is not confirmed, and exits 5. Either way it prints the command to send
 the same post again, with its `--request-id`: the lead keeps one Decision for it.
 
-One machine's agents hold at most 40 open Decisions on the lead, and ring the phone at most six
-times an hour.
+One machine's agents hold at most 40 open Decisions on the lead, and ring the phone at most four
+times an hour. All members together ring it at most six times an hour, so the lead's own sessions
+always keep a share.
 
 > **Note.** Decisions from a member need Collie 1.29.0 on the lead and on that member. An older lead
 > is refused with "the lead runs a Collie older than 1.29.0", and the post is not sent. Post from a

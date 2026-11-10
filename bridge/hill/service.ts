@@ -769,7 +769,7 @@ export class HillService {
     this.deps.audit?.({ action: "hill.post", detail });
     if (push.skipped !== null) this.deps.audit?.({ action: "hill.push.skipped", detail: { decisionId: id, why: push.skipped } });
     // Only while it is still open: nothing between the write and here closes it, and a push is never late.
-    if (push.send && this.deps.store.get(id)?.state === "open") this.deps.push?.send(key, decision);
+    if (push.send && this.deps.store.get(id)?.state === "open") this.deps.push?.send(key, decision, crewMember);
     return { ok: true, decision: served(decision) };
   }
 
@@ -791,7 +791,9 @@ export class HillService {
         ? `more than ${String(HILL_PUSH_RATE.perSender)} an hour from this sender`
         : verdict === "member"
           ? `more than ${String(HILL_PUSH_RATE.perMember)} an hour from this machine`
-          : `more than ${String(HILL_PUSH_RATE.total)} an hour in total`;
+          : verdict === "crew"
+            ? `more than ${String(HILL_PUSH_RATE.crew)} an hour from the crew's other machines`
+            : `more than ${String(HILL_PUSH_RATE.total)} an hour in total`;
     return { tag: inherited, send: false, skipped: why };
   }
 
