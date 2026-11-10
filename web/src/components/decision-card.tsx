@@ -19,7 +19,7 @@ import { useArm } from "@/hooks/use-arm";
 import type { HillAnswerState } from "@/hooks/use-hill-answer";
 import { useLocale } from "@/hooks/use-locale";
 import { cacheClockNow, subscribeCacheClock } from "@/lib/cache-clock";
-import { hasResizeObserver } from "@/lib/env";
+import { hasResizeObserver, pageFonts } from "@/lib/env";
 import { linkHost } from "@/lib/hill/reader";
 import type { HillDecision, HillOption, HillReceipt } from "@/lib/hill/wire";
 import { HILL_ANSWER_TEXT_MAX } from "@/lib/hill/wire";
@@ -197,6 +197,17 @@ function useHidesLines<T extends HTMLElement>(clamped: boolean) {
     const ro = new ResizeObserver(measure);
     ro.observe(el);
     return () => ro.disconnect();
+  }, [measure]);
+  // A web font that lands after the first draw can turn three lines into four inside the same clamped
+  // box, which no resize reports: read again once the page's fonts are ready, so More is offered then.
+  useEffect(() => {
+    const fonts = pageFonts();
+    if (fonts === null) return;
+    let live = true;
+    void fonts.ready.then(() => (live ? measure() : undefined));
+    return () => {
+      live = false;
+    };
   }, [measure]);
   return { ref, hides };
 }

@@ -3,9 +3,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { JsonObject, JsonValue } from "../json";
 import { LEGS_DOCUMENT, TRACKER_DOCUMENT, nodeDocument } from "./fixtures";
-import { heightCss, reservedHeight, viewForm, viewHeight } from "./layout";
+import { heightCss, reservedHeight, stripFitsOneRow, viewForm, viewHeight } from "./layout";
 import { ARM_DWELL_MS, ARM_MS } from "../arm";
-import { linkTargetOf, renderView, type RenderCtx } from "./render";
+import { hostParts, linkTargetOf, renderView, type RenderCtx } from "./render";
 import { NODE_KINDS, TONE_TEXT_CLASS, parseTrickDocument, type View } from "./schema";
 import type { TapState } from "./store";
 
@@ -408,7 +408,7 @@ describe("a chip and the step strip", () => {
     const strip = container.querySelector<HTMLElement>("[data-strip]");
     expect(strip).not.toBeNull();
     expect(strip?.getAttribute("aria-label")).toBe("Legs");
-    expect([...(strip?.querySelectorAll<HTMLElement>('[data-slot="trick-strip-track"] > [data-state]') ?? [])].map((s) => s.dataset.state)).toEqual(["working", "idle", "idle"]);
+    expect([...(strip?.querySelectorAll<HTMLElement>('[data-slot="trick-strip-segment"]') ?? [])].map((s) => s.dataset.state)).toEqual(["working", "idle", "idle"]);
     const words = strip?.querySelector("ol.sr-only")?.textContent ?? "";
     expect(words).toContain("Solo leg, herdr: working");
     expect(words).toContain("1 of 3");
@@ -566,7 +566,7 @@ describe("faces and groups", () => {
     const { container } = draw(viewOf(nodeDocument("code")));
     const code = nodeEl(container, "code");
     expect(code.dataset.lang).toBe("sh");
-    expect(code.querySelectorAll("pre > div")).toHaveLength(4);
+    expect(code.querySelectorAll('[data-slot="trick-code-lines"] > div')).toHaveLength(4);
     expect(code.querySelector("button")).not.toBeNull();
   });
 });
@@ -602,5 +602,120 @@ describe("a container with no list of kids", () => {
   it("draws the placeholder for a view that is no list", () => {
     const { container } = render(<div>{renderView(JSON.parse('"oops"'), ctxOf())}</div>);
     expect(container.querySelector('[data-trick-node="placeholder"]')).not.toBeNull();
+  });
+});
+
+// The owner's card on a 360 px phone (2026-11-10): chips cut to "s…" and "qu…", rows squeezed. A
+// Decision's view sits in no fixed band (`wrap`), so words take another line there; a Session keeps its
+// fixed heights and scrolls or cuts with the whole words in `title`.
+describe("words are never cut where they could wrap", () => {
+  const done = (text: string): JsonObject => ({ kind: "chip", text, attrs: { state: "done" } });
+  const numbered = bar(...["1", "2", "3", "4", "5", "6", "7"].map(done));
+  const words = bar(...["star", "quote", "view", "images", "Now"].map(done));
+
+  it("keeps a step strip on its one row only when every label is at most three characters", () => {
+    const [n] = viewOfNodes(numbered);
+    const [w] = viewOfNodes(words);
+    const [ok] = viewOfNodes(bar(done("ok"), done("ok")));
+    const [clock] = viewOfNodes(bar({ kind: "chip", text: "1", attrs: { state: "done", at: String(NOW - 60_000), clock: "ago" } }));
+    const [short] = viewOfNodes(bar({ kind: "chip", text: "Solo leg, herdr", attrs: { state: "done", short: "s" } }));
+    expect(stripFitsOneRow(n!)).toBe(true);
+    expect(stripFitsOneRow(ok!)).toBe(true);
+    expect(stripFitsOneRow(w!)).toBe(false);
+    expect(stripFitsOneRow(clock!)).toBe(false);
+    expect(stripFitsOneRow(short!)).toBe(true);
+  });
+
+  it("draws the Tag trick's seven numbered gates as the strip in a Decision view: one row, a segment under each chip", () => {
+    const { container } = draw(viewOfNodes(numbered), { wrap: true });
+    const strip = container.querySelector<HTMLElement>("[data-strip]")!;
+    expect(strip).not.toBeNull();
+    const steps = [...strip.querySelectorAll<HTMLElement>('[data-slot="trick-strip-step"]')];
+    expect(steps.map((step) => step.textContent)).toEqual(["1", "2", "3", "4", "5", "6", "7"]);
+    for (const step of steps) expect(step.querySelector('[data-slot="trick-strip-segment"]')).not.toBeNull();
+  });
+
+  it("wraps five word steps as chips with their state mark in a Decision view, with no segment line", () => {
+    const { container } = draw(viewOfNodes(words), { wrap: true });
+    expect(container.querySelector("[data-strip]")).toBeNull();
+    const group = container.querySelector<HTMLElement>("[data-steps-wrap]")!;
+    expect(group.querySelector(".flex-wrap")).not.toBeNull();
+    const chips = [...group.querySelectorAll<HTMLElement>('[data-trick-node="chip"]')];
+    expect(chips.map((chip) => chip.textContent)).toEqual(["star", "quote", "view", "images", "Now"]);
+    for (const chip of chips) expect(chip.querySelector("svg")).not.toBeNull();
+    expect(group.querySelector('[data-slot="trick-strip-segment"]')).toBeNull();
+    // A screen reader still hears each step and its state.
+    expect(group.querySelector("ol.sr-only")?.textContent).toContain("quote: done");
+  });
+
+  it("keeps word steps on the strip's one row in a Session, whole, scrolling sideways instead of cutting", () => {
+    const { container } = draw(viewOfNodes(words));
+    const strip = container.querySelector<HTMLElement>("[data-strip]")!;
+    expect(strip.className).toContain("overflow-x-auto");
+    expect(strip.style.height).toBe("2rem");
+    for (const word of strip.querySelectorAll('[data-trick-node="chip"] span')) expect(word.className).not.toMatch(/\btruncate\b/u);
+  });
+
+  it("gives a row's title its room beside a long end: a floor for each, and the end wraps, not the title", () => {
+    const { container } = draw(viewOfNodes(list(row("Old cards", { end: "have none of these" }), row("Harness", { end: "+12 −3" }))));
+    const [long, short] = [...container.querySelectorAll<HTMLElement>('[data-slot="trick-row"]')];
+    const text = long!.querySelector<HTMLElement>('[data-slot="trick-row-text"]')!;
+    expect(text.className).toContain("min-w-[40%]");
+    const end = long!.querySelector<HTMLElement>('[data-slot="trick-row-end"]')!;
+    expect(end.className).toContain("max-w-[60%]");
+    expect(end.className).toContain("min-w-[30%]");
+    expect(end.className).toMatch(/\bline-clamp-2\b/u);
+    expect(end).toHaveAttribute("title", "have none of these");
+    // A short end stays on one line and needs no floor.
+    const shortEnd = short!.querySelector<HTMLElement>('[data-slot="trick-row-end"]')!;
+    expect(shortEnd.className).toContain("whitespace-nowrap");
+    expect(shortEnd.className).not.toContain("min-w-[30%]");
+  });
+
+  it("lets a row grow in a Decision view: its height a floor, every word of its title and end shown", () => {
+    const { container } = draw(viewOfNodes(list(row("A row title that goes on for a while", { end: "the end words wrap too" }))), { wrap: true });
+    const box = container.querySelector<HTMLElement>('[data-slot="trick-row"]')!;
+    expect(box.style.height).toBe("");
+    expect(box.style.minHeight).toBe("2.75rem");
+    expect(box.querySelector('[data-slot="trick-row-end"]')!.className).not.toMatch(/\bline-clamp-2\b/u);
+    expect(box.querySelector('[data-slot="trick-row-text"] span')!.className).not.toMatch(/\btruncate\b/u);
+  });
+
+  it("puts a web row's host on a line of its own under the title in a Decision view", () => {
+    const { container } = draw(viewOfNodes(list(row("Release notes", { href: "https://release-notes.colliepwa.dev/1.28", end: "draft" }))), {
+      wrap: true,
+      hostOf: (href) => new URL(href).host,
+    });
+    const text = container.querySelector<HTMLElement>('[data-slot="trick-row-text"]')!;
+    expect(text.querySelector("[data-trick-link-host]")?.textContent).toBe("release-notes.colliepwa.dev");
+  });
+
+  it("splits a host where it may give way: the last two names always stay", () => {
+    expect(hostParts("github.com")).toEqual({ head: "", tail: "github.com" });
+    expect(hostParts("release-notes.downloads.colliepwa.dev")).toEqual({ head: "release-notes.downloads.", tail: "colliepwa.dev" });
+  });
+
+  it("wraps a number's, a meter's and a group's label in a Decision view, and cuts them with a title in a Session", () => {
+    const label = "Replay budget the browser leg used today";
+    const nodes = [
+      { kind: "number", text: "62", attrs: { label } },
+      { kind: "meter", attrs: { value: "0.62", label } },
+      { kind: "group", attrs: { label, fold: "open" }, kids: [row("lint")] },
+    ];
+    const grown = draw(viewOfNodes(...nodes), { wrap: true });
+    for (const el of grown.container.querySelectorAll<HTMLElement>(`[title="${label}"]`)) expect(el).toBeNull();
+    expect(nodeEl(grown.container, "number").style.minHeight).toBe("3rem");
+    grown.unmount();
+    const fixed = draw(viewOfNodes(...nodes));
+    const cut = [...fixed.container.querySelectorAll<HTMLElement>(`[title="${label}"]`)];
+    expect(cut).toHaveLength(3);
+    for (const el of cut) expect(`${el.className} ${el.parentElement?.className ?? ""}`).toMatch(/\btruncate\b/u);
+  });
+
+  it("scrolls a code block's long lines sideways inside its frame, never cut", () => {
+    const { container } = draw(viewOfNodes({ kind: "code", kids: [{ kind: "line", text: "export function aVeryLongNameThatRunsPastTheFrame(paneId: string): SendResult {" }] }));
+    const lines = container.querySelector<HTMLElement>('[data-slot="trick-code-lines"]')!;
+    expect(lines.className).toContain("overflow-x-auto");
+    for (const line of lines.querySelectorAll("span")) expect(line.className).not.toMatch(/\btruncate\b/u);
   });
 });

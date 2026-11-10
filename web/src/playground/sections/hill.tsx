@@ -5,7 +5,7 @@
 // The cards wear the machine tints of a two-machine crew (bluefin and minibuch), as `LiveDecisionCard`
 // would hand them on one.
 //
-// Cards are numbered 1 to 33.
+// Cards are numbered 1 to 36.
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 
@@ -33,12 +33,15 @@ import {
   gateStrip,
   goneText,
   keptWords,
+  mixedImages,
   oneImage,
   playgroundMedia,
   quietOpen,
   receipts,
   rich,
+  roughCard,
   sevenOpen,
+  stressCard,
   textOnly,
   textRequired,
   threeImages,
@@ -405,9 +408,50 @@ function MatchGroup() {
   );
 }
 
+
+// ── The rough card (2026-11-10) ─────────────────────────────────────────────────────────────────────
+// The owner's card on a 360 px phone, word for word, the stress card with every view kind in long
+// words, and a portrait shot beside a wide one. `?card=<rough|stress|mixed>#hill` draws one card over
+// the whole screen at the window's own width, so a shot at 360 or 390 px is the phone's; `&open=1`
+// opens the view's fold first.
+
+const ROUGH_CARDS = { rough: roughCard, stress: stressCard, mixed: mixedImages } as const;
+type RoughId = keyof typeof ROUGH_CARDS;
+
+function isRoughId(word: string | null): word is RoughId {
+  return word === "rough" || word === "stress" || word === "mixed";
+}
+
+/** The card with its view's "Show all" tapped once, as the person would, when `open` is set. */
+function RoughCard({ decision, open }: { decision: HillDecision; open: boolean }) {
+  const root = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    // The fold is measured after the first paint: tap it on the next frame.
+    const frame = requestAnimationFrame(() => root.current?.querySelector<HTMLButtonElement>('[data-slot="decision-view-more"]')?.click());
+    return () => cancelAnimationFrame(frame);
+  }, [open]);
+  return (
+    <div ref={root}>
+      <PlaygroundCard decision={decision} />
+    </div>
+  );
+}
+
+/** One rough card over the whole page, at the window's width, on the page's own gutter. The page scrolls, so a full-page shot holds the whole card. */
+function RoughSolo({ id, open }: { id: RoughId; open: boolean }) {
+  return (
+    <div className="absolute inset-x-0 top-0 z-[60] min-h-[100dvh] bg-background p-4 text-foreground">
+      <RoughCard decision={ROUGH_CARDS[id]} open={open} />
+    </div>
+  );
+}
+
 export function HillSection() {
   const match = matchParam("match");
   const asked = matchParam("case");
+  const rough = matchParam("card");
+  if (isRoughId(rough)) return <RoughSolo id={rough} open={matchParam("open") === "1"} />;
   if (isMatchId(match)) return <MatchSolo id={match} caseId={isCaseId(asked) ? asked : "busy"} />;
   return (
     <Section def={DEF}>
@@ -482,6 +526,21 @@ export function HillSection() {
         <Card state="hill-card-view-diff" label="33: a diff summary">
           <CardHead n={33} title="A diff summary" />
           <OneCard decision={diffSummary} />
+        </Card>
+      </Group>
+
+      <Group title="Rough edges, at the narrowest phone">
+        <Card state="hill-card-rough" label="34: the rough card">
+          <CardHead n={34} title="The rough card: two phone shots, five word steps, four rows" />
+          <OneCard decision={roughCard} />
+        </Card>
+        <Card state="hill-card-stress" label="35: every view kind, long words">
+          <CardHead n={35} title="Every view kind, long words" />
+          <OneCard decision={stressCard} />
+        </Card>
+        <Card state="hill-card-mixed-images" label="36: a phone shot and a wide one">
+          <CardHead n={36} title="A phone shot and a wide one" />
+          <OneCard decision={mixedImages} />
         </Card>
       </Group>
 

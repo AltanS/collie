@@ -1,7 +1,7 @@
 import { useState } from "react";
 
 import { Icon } from "@/components/icons/icon";
-import { ImageStrip, ImageStripItem } from "@/components/ui/image-strip";
+import { ImageStrip, ImageStripItem, stripSize, type StripSize } from "@/components/ui/image-strip";
 import { useLocale } from "@/hooks/use-locale";
 import { useNearScreen } from "@/hooks/use-near-screen";
 import { useAuthedUrl } from "@/lib/authed-url";
@@ -12,7 +12,9 @@ import { t } from "@/lib/i18n";
 //
 // An agent may attach up to four images to a Decision. The card shows all of them under the summary,
 // in the poster's order, as one row at one height that scrolls sideways (`ui/image-strip.tsx`), each
-// with its caption under it. A tap on an image opens it at full size in the app's own picture sheet
+// with its caption under it. The height comes from the images' shapes on the wire (`stripSize`): a row
+// of phone screenshots is tall enough to read, a row with a wide shot keeps the short height, and a
+// single image may use the card's width. A tap on an image opens it at full size in the app's own picture sheet
 // (`ImageSheet`, the one a journal picture in Chat opens), so there is no zoom of the hill's own.
 //
 // THE BYTES COME WITH THE PAIRING TOKEN. Reads need it (ADR 0086), and an `<img src>` to an `/api`
@@ -60,12 +62,14 @@ function useImage(src: string, near: boolean): ImageLoad {
 }
 
 /** One image of the row: its box from its known size, the picture once loaded, the placeholder if it failed. */
-function StripImage({ src, media, index, count, near }: { src: string; media: HillMedia; index: number; count: number; near: boolean }) {
+function StripImage({ src, media, index, count, near, size }: { src: string; media: HillMedia; index: number; count: number; near: boolean; size: StripSize }) {
   const { url, failed, onError } = useImage(src, near);
   return (
     <ImageStripItem
       width={media.width}
       height={media.height}
+      size={size}
+      single={count === 1}
       src={failed ? null : url}
       alt={altOf(media, index, count)}
       caption={media.caption}
@@ -94,10 +98,11 @@ export function HillImageStrip({
 }) {
   useLocale();
   const { ref, near } = useNearScreen();
+  const size = stripSize(media);
   return (
     <ImageStrip ref={ref} label={t("hill.media.label")} className={className} scrollerClassName={scrollerClassName}>
       {media.map((item, index) => (
-        <StripImage key={`${index}:${item.id}`} src={source(decisionId, item)} media={item} index={index} count={media.length} near={near} />
+        <StripImage key={`${index}:${item.id}`} src={source(decisionId, item)} media={item} index={index} count={media.length} near={near} size={size} />
       ))}
     </ImageStrip>
   );

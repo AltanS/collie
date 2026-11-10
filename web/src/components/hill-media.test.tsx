@@ -62,6 +62,23 @@ describe("a Decision with images", () => {
     expect(dialog.querySelector("img")).toHaveAttribute("src", DATA("", media(2)));
   });
 
+  it("picks one height for the row from the images' shapes (2026-11-10)", () => {
+    const phone = (n: number): HillMedia => ({ ...media(n), width: 390, height: 844 });
+    // Two phone screenshots: the tall row, so a phone shot reads.
+    const tall = renderCard(hillDecision({ media: [phone(1), phone(2)] }), DATA);
+    expect(tall.all("image-strip-item").map((item) => item.dataset.size)).toEqual(["tall", "tall"]);
+    tall.unmount();
+    // A phone shot beside a wide one: the short row, where the wide one reads.
+    const mixed = renderCard(hillDecision({ media: [phone(1), media(2)] }), DATA);
+    expect(mixed.all("image-strip-item").map((item) => item.dataset.size)).toEqual(["short", "short"]);
+    mixed.unmount();
+    // One image, any shape: tall, and as wide as the card lets it be.
+    const single = renderCard(hillDecision({ media: [media(1)] }), DATA);
+    const item = single.all("image-strip-item")[0]!;
+    expect(item.dataset.size).toBe("tall");
+    expect(item.style.getPropertyValue("--strip-item-w")).toContain("100%");
+  });
+
   it("makes no More for images alone: the row shows them all", () => {
     const { slot } = renderCard(hillDecision({ media: [media(1), media(2)] }), DATA);
     expect(slot("decision-more")).toBeNull();
@@ -70,11 +87,12 @@ describe("a Decision with images", () => {
   it("an image that does not decode shows the quiet placeholder in its own box", () => {
     const { slot, all } = renderCard(hillDecision({ media: [media(1)] }), DATA);
     const item = all("image-strip-item")[0]!;
-    const width = item.style.width;
+    const width = item.style.getPropertyValue("--strip-item-w");
+    expect(width).not.toBe("");
     fireEvent.error(item.querySelector("img")!);
     expect(item.querySelector("img")).toBeNull();
     expect(slot("hill-media-unavailable")).toHaveTextContent("Image not available");
-    expect(item.style.width).toBe(width);
+    expect(item.style.getPropertyValue("--strip-item-w")).toBe(width);
   });
 
   it("fetches the bytes from the bridge's route with the pairing token, and a refused load shows the placeholder", async () => {
@@ -136,7 +154,7 @@ describe("an image is fetched only near the screen", () => {
     const { all } = renderCard(hillDecision({ media: [media(1), media(2)] }));
     // Each image's box is reserved from its known shape: 390 x 240 at the row's 112 px is 182 px wide.
     for (const box of all("image-strip-item")) {
-      expect(box.style.width).toBe("182px");
+      expect(box.style.getPropertyValue("--strip-item-w")).toBe("182px");
       expect(box.querySelector("img")).toBeNull();
     }
     expect(asked).toEqual([]);

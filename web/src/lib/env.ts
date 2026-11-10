@@ -39,6 +39,12 @@ export function cacheStorage(): CacheStorage | null {
   return globalThis.caches ?? null;
 }
 
+/** The page's set of web fonts, or `null` where there is none: the service worker, and jsdom. */
+export function pageFonts(): FontFaceSet | null {
+  if (!hasDocument()) return null;
+  return "fonts" in document ? document.fonts : null;
+}
+
 /** True where element resizes can be observed. jsdom has no `ResizeObserver`. */
 export function hasResizeObserver(): boolean {
   return globalThis.ResizeObserver !== undefined;

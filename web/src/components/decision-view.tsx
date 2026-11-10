@@ -18,16 +18,36 @@ import { cn } from "@/lib/utils";
 //
 // It is drawn with the trick renderer (`renderView`), with no tap handler: a link is the one thing that
 // opens anything, a web page in a new tab, and it shows its host beside the poster's words. A bar wraps
-// instead of clipping, so a strip of seven gates keeps its words on a phone. The frame is
+// instead of clipping, so a strip of seven gates keeps its words on a phone, and every leaf's words take
+// another line instead of being cut (`wrap`: the view sits in no fixed band). The frame is
 // quiet (a thin border on all four sides) and captioned with who drew it, so the facts never read as the
 // app's own. Past VIEW_CAP_PX the frame is clipped with a fade and a "Show all" toggle opens it in
 // place: the card scrolls with the hill, never inside itself.
+//
+// THE FOLD CUTS BETWEEN ROWS (2026-11-10). The clip ends at the bottom of the last whole node or row
+// that fits under the cap (`foldCut`), never through the middle of a row, and the toggle sits under a
+// rule of its own, so it reads as the frame's control and not as the list's next row.
 //
 // A view that throws while it draws takes only itself: the boundary draws the placeholder, and the
 // question and its options stay.
 
 /** The tallest a view draws before it folds, in CSS pixels. */
 export const VIEW_CAP_PX = 240;
+
+/** The fold never cuts higher than this share of the cap: a short first node and a tall second one cut at the cap. */
+const FOLD_MIN_SHARE = 0.5;
+
+/** The boxes a fold may end under: each node of the view, and each row of a list. */
+const FOLD_STOPS = '[data-trick-view] > *, [data-slot="trick-row"]';
+
+/**
+ * Where a folded view is cut, in px from its top: the lowest bottom edge of a node or a row that still
+ * fits under the cap (and is past half of it), so no row is cut through; the cap when none is.
+ */
+export function foldCut(bottoms: readonly number[], cap: number = VIEW_CAP_PX): number {
+  const fits = bottoms.filter((bottom) => bottom <= cap && bottom >= cap * FOLD_MIN_SHARE);
+  return fits.length === 0 ? cap : Math.max(...fits);
+}
 
 /** A no-op: a Decision's view has no button, so nothing in it can tap. */
 const NO_TAP = (): void => undefined;
@@ -38,14 +58,19 @@ function openViewLink(target: LinkTarget): void {
   window.open(target.url, "_blank", "noopener,noreferrer");
 }
 
-/** Whether the content inside `ref` is taller than the cap: read on mount and whenever it changes size. */
+/** Whether the content inside `ref` is taller than the cap, and where its fold cuts: read on mount and whenever it changes size. */
 function useTallerThanCap<T extends HTMLElement>() {
   const ref = useRef<T>(null);
   const [tall, setTall] = useState(false);
+  const [cut, setCut] = useState(VIEW_CAP_PX);
   const measure = useCallback(() => {
     const el = ref.current;
     if (el === null) return;
-    setTall(el.scrollHeight > VIEW_CAP_PX + 1);
+    const isTall = el.scrollHeight > VIEW_CAP_PX + 1;
+    setTall(isTall);
+    if (!isTall) return;
+    const top = el.getBoundingClientRect().top;
+    setCut(foldCut([...el.querySelectorAll(FOLD_STOPS)].map((stop) => Math.round(stop.getBoundingClientRect().bottom - top))));
   }, []);
   useLayoutEffect(measure);
   // A font finishing, the viewport turning. Guarded for jsdom.
@@ -54,17 +79,22 @@ function useTallerThanCap<T extends HTMLElement>() {
     if (el === null || !hasResizeObserver()) return;
     const ro = new ResizeObserver(measure);
     ro.observe(el);
-    return () => ro.disconnect();
+    // The rows rise in as they arrive (a transform no resize reports): read the fold again once they land.
+    el.addEventListener("animationend", measure);
+    return () => {
+      ro.disconnect();
+      el.removeEventListener("animationend", measure);
+    };
   }, [measure]);
-  return { ref, tall };
+  return { ref, tall, cut };
 }
 
 export function DecisionView({ decisionId, view, sender }: { decisionId: string; view: View; sender: string }) {
   const [open, setOpen] = useState(false);
-  const { ref, tall } = useTallerThanCap<HTMLDivElement>();
+  const { ref, tall, cut } = useTallerThanCap<HTMLDivElement>();
   const bodyId = useId();
   const clipped = tall && !open;
-  const ctx: RenderCtx = { partKey: `hill/${decisionId}`, stale: false, onTap: NO_TAP, onLink: openViewLink, hostOf: linkHost, wrapBars: true };
+  const ctx: RenderCtx = { partKey: `hill/${decisionId}`, stale: false, onTap: NO_TAP, onLink: openViewLink, hostOf: linkHost, wrap: true };
   return (
     <figure data-slot="decision-view" className="flex min-w-0 flex-col gap-2 rounded-lg border border-border px-3.5 pt-2.5 pb-3">
       <figcaption data-slot="decision-view-from" className="truncate text-xs text-muted-foreground">
@@ -75,17 +105,18 @@ export function DecisionView({ decisionId, view, sender }: { decisionId: string;
         data-slot="decision-view-body"
         data-clipped={clipped ? "" : undefined}
         className={cn("relative min-w-0", clipped && "overflow-hidden")}
-        style={clipped ? { maxHeight: VIEW_CAP_PX } : undefined}
+        style={clipped ? { maxHeight: cut } : undefined}
       >
         <div ref={ref} className="font-content min-w-0">
           <TrickBoundary fallback="placeholder" resetKey={decisionId}>
             {renderView(view, ctx)}
           </TrickBoundary>
         </div>
-        {clipped && <div aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-card to-transparent" />}
+        {clipped && <div aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-card to-transparent" />}
       </div>
       {tall && (
-        <div className="-mx-3 -mb-2 flex">
+        // Under a rule of its own, the frame's control: never the list's next row.
+        <div data-slot="decision-view-fold" className="-mx-3.5 -mb-3 flex border-t border-border px-0.5">
           <MoreToggle
             data-slot="decision-view-more"
             open={open}

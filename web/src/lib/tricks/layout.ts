@@ -115,6 +115,23 @@ export function isStepStrip(node: ViewNode): boolean {
   return kids.length > 0 && kids.every((kid) => kid.kind === "chip") && kids.some((kid) => kid.kind === "chip" && kid.attrs?.state !== undefined);
 }
 
+/** The longest label a step keeps on the strip's one row: a number, "ok". */
+export const STRIP_LABEL_MAX = 3;
+
+/**
+ * Whether a step strip's chips are short enough for its one row: every chip's shown words (`short`,
+ * else `text`) at most `STRIP_LABEL_MAX` characters, and no live clock. Measure-free on purpose: the
+ * words decide, never the width. A strip of words ("star", "quote") fails it, and a place that may
+ * grow (a Decision's view) wraps its chips instead of cutting them to "s…".
+ */
+export function stripFitsOneRow(node: ViewNode): boolean {
+  return kidsOf(node).every((kid) => {
+    if (kid.kind !== "chip") return false;
+    if (kid.attrs?.at !== undefined && kid.attrs.clock !== undefined) return false;
+    return [...(kid.attrs?.short ?? kid.text ?? "")].length <= STRIP_LABEL_MAX;
+  });
+}
+
 /** Whether a group draws its head: a label or a badge. A group with neither is a plain flow of its kids. */
 export function groupHasHead(node: ViewNode): boolean {
   return node.kind === "group" && (node.attrs?.label !== undefined || node.attrs?.badge !== undefined);

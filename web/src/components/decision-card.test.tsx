@@ -7,7 +7,7 @@ import type { HillDecision, HillReceipt } from "@/lib/hill/wire";
 import { hillDecision, hillReceipt, trickDecision } from "@/test/hill-fixtures";
 
 import { DecisionCard } from "./decision-card";
-import { VIEW_CAP_PX } from "./decision-view";
+import { VIEW_CAP_PX, foldCut } from "./decision-view";
 
 // The Decision card (M96): what it shows, that nothing is chosen for the person, the numbered options,
 // More and Add a note, the arm on a confirm option and on Dismiss, the gate on a required answer, and
@@ -106,6 +106,44 @@ describe("the Decision card, at rest", () => {
 
   it("has no More without a body or links", () => {
     expect(renderCard(hillDecision()).slot("decision-more")).toBeNull();
+  });
+
+  it("offers More whenever the three lines hide some of the summary, with no body and no links (2026-11-10)", () => {
+    // The summary's clamped box is shorter than its words: the cut the owner saw end in "…".
+    vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(120);
+    vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(72);
+    onTestFinished(() => {
+      vi.restoreAllMocks();
+    });
+    const { slot } = renderCard(hillDecision({ body: "", links: [] }));
+    const more = slot("decision-more")!;
+    expect(more).not.toBeNull();
+    fireEvent.click(more);
+    // With no body, More opens the summary itself.
+    expect(more).toHaveAttribute("aria-controls", slot("decision-summary")!.id);
+    expect(slot("decision-summary")!.className).not.toMatch(/\bline-clamp-3\b/u);
+    // Open, the summary hides nothing, and Less is still there to fold it again.
+    expect(slot("decision-more")).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("reads the summary again once the page's fonts are ready, so a late font that adds a line brings More", async () => {
+    let ready: () => void = () => undefined;
+    const fonts = { ready: new Promise<void>((resolve) => (ready = resolve)) };
+    Object.defineProperty(document, "fonts", { configurable: true, value: fonts });
+    const tall = vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(72);
+    vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(72);
+    onTestFinished(() => {
+      vi.restoreAllMocks();
+      Reflect.deleteProperty(document, "fonts");
+    });
+    const { slot } = renderCard(hillDecision({ body: "", links: [] }));
+    expect(slot("decision-more")).toBeNull();
+    tall.mockReturnValue(120);
+    await act(async () => {
+      ready();
+      await fonts.ready;
+    });
+    expect(slot("decision-more")).not.toBeNull();
   });
 
   it("numbers the options 1, 2, 3 like the terminal menu, for the eye only", () => {
@@ -259,6 +297,29 @@ describe("the poster's view", () => {
     const short = renderCard(hillDecision({ view: gate }));
     expect(short.slot("decision-view-more")).toBeNull();
     expect(short.slot("decision-view-body")).not.toHaveAttribute("data-clipped");
+  });
+
+  it("puts Show all under a rule of its own, so it never reads as the list's next row", () => {
+    vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(VIEW_CAP_PX + 160);
+    onTestFinished(() => {
+      vi.restoreAllMocks();
+    });
+    const { slot } = renderCard(hillDecision({ view: gate }));
+    const fold = slot("decision-view-fold")!;
+    expect(fold.className).toContain("border-t");
+    expect(fold.querySelector('[data-slot="decision-view-more"]')).not.toBeNull();
+  });
+});
+
+describe("where a folded view is cut", () => {
+  it("cuts at the bottom of the last whole node or row under the cap, never through one", () => {
+    // A strip ending at 32, rows ending at 177 and 238, the next at 282: the cut is under the row at 238.
+    expect(foldCut([32, 124, 444, 177, 238, 282], 240)).toBe(238);
+  });
+
+  it("cuts at the cap when nothing ends between half of it and the cap", () => {
+    expect(foldCut([30, 600], 240)).toBe(240);
+    expect(foldCut([], 240)).toBe(240);
   });
 });
 

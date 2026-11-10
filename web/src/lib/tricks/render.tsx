@@ -13,7 +13,9 @@
 // FIXED HEIGHTS. Every leaf states its own height from `layout.ts` and clips inside it: a `para` its
 // lines (from its text's length), a `code` its `max` lines, a `row` one or two lines, a `number`, a
 // `meter`, a `chip` and a step strip one height each. A container is the sum of its kids, so a data
-// change repaints and a shape change waits while a finger is down (part-frame.tsx).
+// change repaints and a shape change waits while a finger is down (part-frame.tsx). In a place with
+// no fixed band (`ctx.wrap`, a Decision's view on the hill) each height is a floor instead, and words
+// that do not fit take another line rather than being cut (2026-11-10).
 //
 // A KIND THIS COLLIE DOES NOT KNOW (a crew member on a newer version) draws the one placeholder: a box
 // of the tap floor's height that says "This Collie cannot draw this part".
@@ -35,6 +37,7 @@ import { Collapse } from "../../components/ui/collapse";
 import { CopyableBlock } from "../../components/ui/copyable-block";
 import { ListGroup } from "../../components/ui/list-group";
 import { OneOf } from "../../components/ui/one-of";
+import { OverflowEdges } from "../../components/ui/overflow-edges";
 import { Progress } from "../../components/ui/progress";
 import { SectionLabel } from "../../components/ui/section-label";
 import { useArm } from "../../hooks/use-arm";
@@ -44,7 +47,7 @@ import { setStatus } from "../status";
 import { cn } from "../utils";
 import { useBridgeNow } from "./clock";
 import { keyGlyph, trickIconOf, type TrickGlyph } from "./icons";
-import { codeLines, groupHasHead, heightCss, isStepStrip, kidsOf, LEAF_REM, paraLines, reservedHeight, textOf } from "./layout";
+import { codeLines, groupHasHead, heightCss, isStepStrip, kidsOf, LEAF_REM, paraLines, reservedHeight, stripFitsOneRow, textOf } from "./layout";
 import {
   CUTS,
   TONES,
@@ -110,10 +113,14 @@ export interface RenderCtx {
    */
   hostOf?: (href: string) => string;
   /**
-   * A bar wraps its kids onto more lines instead of clipping them (a Decision's view, which sits in no
-   * fixed band, so seven chips on a 390 px phone keep their words). Absent: a bar is one line.
+   * The view sits in no fixed band (a Decision's view on the hill): a leaf's reserved height is a floor,
+   * not a cap, so words that do not fit take another line instead of being cut. A bar wraps its kids, a
+   * step strip of words wraps as chips, a row's title, second line and `end` wrap, a para shows all its
+   * lines, and a number's, a meter's, a spacer's and a group's label wrap. Absent (a trick's Session, a
+   * fixed band): every leaf keeps the height `layout.ts` gives it and cuts what does not fit, with the
+   * whole words in a `title`.
    */
-  wrapBars?: boolean;
+  wrap?: boolean;
 }
 
 /** A row's or a link's `href` as a target, or `undefined` for one this Collie cannot open (the bridge checked it). */
@@ -146,6 +153,12 @@ interface LeafBoxProps {
 /** A leaf's own box: its kind for a test and a reader, and its reserved height. */
 function leafBox(node: ViewNode): LeafBoxProps {
   return { "data-trick-node": node.kind, style: { height: heightCss(reservedHeight(node)) } };
+}
+
+/** A leaf's box in a view that wraps: its reserved height as a floor, so its words may take more lines. */
+function floorBox(node: ViewNode, ctx: RenderCtx): LeafBoxProps {
+  const box = leafBox(node);
+  return ctx.wrap === true ? { ...box, style: { minHeight: box.style.height } } : box;
 }
 
 /** Collie's enter for a node that arrives in a list or a flow: fade and rise, 160 ms (VOCABULARY.md 6). */
@@ -357,7 +370,12 @@ function chipTone(node: ChipNode): string | undefined {
   return node.attrs?.tone ?? (node.attrs?.state === undefined ? undefined : STATE_TONE[node.attrs.state]);
 }
 
-function ChipView({ node, ctx }: { node: ChipNode; ctx: RenderCtx }) {
+/**
+ * One chip. `step` is a chip on the strip's one row: its words are never cut (the strip scrolls
+ * sideways instead), it fills its step's column, and it sits closer to its glyph, so the Tag trick's
+ * seven numbered gates fit a 360 px phone.
+ */
+function ChipView({ node, ctx, step = false }: { node: ChipNode; ctx: RenderCtx; step?: boolean }) {
   const attrs = node.attrs;
   const [full, setFull] = useState(false);
   const ink = inkOf(chipTone(node), ctx.stale);
@@ -368,12 +386,13 @@ function ChipView({ node, ctx }: { node: ChipNode; ctx: RenderCtx }) {
   const body = (
     <>
       {Glyph !== null && <Glyph aria-hidden className={cn("size-3 shrink-0", ink)} />}
-      {shown !== "" && <span className="min-w-0 truncate">{shown}</span>}
+      {shown !== "" && <span className={step ? "whitespace-nowrap" : "min-w-0 truncate"}>{shown}</span>}
       {attrs?.at !== undefined && attrs.clock !== undefined && <TrickClock at={attrs.at} clock={attrs.clock} now={ctx.now} />}
     </>
   );
   const frame = cn(
-    "inline-flex h-6 max-w-full min-w-0 items-center gap-1 rounded-sm border px-2 text-xs transition-colors",
+    "inline-flex h-6 items-center rounded-sm border text-xs transition-colors",
+    step ? "w-full justify-center gap-0.5 px-1" : "max-w-full min-w-0 gap-1 px-2",
     attrs?.current === undefined ? "border-border" : "border-current font-semibold",
     ink,
     ENTER,
@@ -409,43 +428,85 @@ const STATE_WORD = {
   gone: "tricks.state.gone",
 } as const satisfies { readonly [S in ChipState]: string };
 
-/**
- * THE STEP STRIP: a `bar` of `chip` with `state` and `current` (the first schema's `steps`), in one
- * fixed height whatever its number: the chips on one line, and under them a track of one segment per
- * chip with a state. A done segment is full, a working one half full, a waiting one full in the warn
- * ink, an idle or gone one the bare track; the chip's own `tone` wins (a red step is `danger`). The
- * whole list, with every state in words and the current step, is there for a screen reader.
- */
-function StripView({ node, ctx }: { node: BarNode; ctx: RenderCtx }) {
-  const chips = kidsOf(node).filter((kid): kid is ChipNode => kid.kind === "chip");
+/** A step's segment of the track: full when done or waiting, half when working, the bare track when idle or gone. */
+function StepSegment({ chip, ctx }: { chip: ChipNode; ctx: RenderCtx }) {
+  const state = chip.attrs?.state ?? "idle";
+  const filled = state === "done" || state === "working" || state === "waiting";
+  return (
+    <span data-slot="trick-strip-segment" data-state={state} className={cn("block h-1 overflow-hidden rounded-sm bg-muted", inkOf(chipTone(chip), ctx.stale))}>
+      {filled && <span className={cn("block h-full rounded-sm bg-current transition-transform", state === "working" ? "w-1/2" : "w-full")} />}
+    </span>
+  );
+}
+
+/** The steps in words, for a screen reader: each step with its state, and which one is current. */
+function StepWords({ chips }: { chips: readonly ChipNode[] }) {
   const steps = chips.filter((chip) => chip.attrs?.state !== undefined);
   const current = steps.findIndex((chip) => chip.attrs?.current !== undefined);
   return (
-    <div {...leafBox(node)} data-strip="" role="group" aria-label={node.attrs?.label} className="flex min-w-0 flex-col justify-between overflow-hidden">
-      <div aria-hidden className="flex h-6 min-w-0 items-center gap-1.5 overflow-hidden">
+    <ol className="sr-only">
+      {steps.map((chip, i) => (
+        <li key={i} aria-current={i === current ? "step" : undefined}>
+          {textOf(chip)}: {t(STATE_WORD[chip.attrs?.state ?? "idle"])}
+        </li>
+      ))}
+      {current >= 0 && <li>{t("tricks.steps.of", { n: current + 1, m: steps.length })}</li>}
+    </ol>
+  );
+}
+
+function stripChips(node: BarNode): ChipNode[] {
+  return kidsOf(node).filter((kid): kid is ChipNode => kid.kind === "chip");
+}
+
+/**
+ * THE STEP STRIP: a `bar` of `chip` with `state` and `current` (the first schema's `steps`), in one
+ * fixed height whatever its number. Each step is a column: its chip, and under it its segment of the
+ * track, so a segment always sits under its own chip. A done segment is full, a working one half full,
+ * a waiting one full in the warn ink, an idle or gone one the bare track; the chip's own `tone` wins
+ * (a red step is `danger`). The columns share the width and each is at least as wide as its chip's
+ * words: a chip is never cut, and a row wider than the place scrolls sideways inside its own height.
+ * The whole list, with every state in words and the current step, is there for a screen reader.
+ */
+function StripView({ node, ctx }: { node: BarNode; ctx: RenderCtx }) {
+  const chips = stripChips(node);
+  return (
+    <div
+      {...leafBox(node)}
+      data-strip=""
+      role="group"
+      aria-label={node.attrs?.label}
+      className="min-w-0 overflow-x-auto overflow-y-hidden overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+    >
+      <div aria-hidden className="flex h-full w-max min-w-full gap-1">
+        {chips.map((chip, i) => (
+          <div key={i} data-slot="trick-strip-step" className="flex min-w-max flex-1 basis-0 flex-col justify-between">
+            <ChipView node={chip} ctx={ctx} step />
+            {chip.attrs?.state === undefined ? <span className="h-1" /> : <StepSegment chip={chip} ctx={ctx} />}
+          </div>
+        ))}
+      </div>
+      <StepWords chips={chips} />
+    </div>
+  );
+}
+
+/**
+ * A step strip of WORDS in a view that wraps (a Decision's view): the chips wrap onto more rows as
+ * plain chips with their state glyph, and no track, because a segment line under chips of different
+ * widths on different rows would say nothing. One row stays the strip only for short labels
+ * (`stripFitsOneRow`): "s…" and "qu…" were the defect this fixes (2026-11-10).
+ */
+function StepChipsView({ node, ctx }: { node: BarNode; ctx: RenderCtx }) {
+  const chips = stripChips(node);
+  return (
+    <div data-trick-node="bar" data-steps-wrap="" role="group" aria-label={node.attrs?.label} style={{ minHeight: `${LEAF_REM.chip}rem` }} className="min-w-0">
+      <div aria-hidden className="flex min-w-0 flex-wrap items-center gap-1.5">
         {chips.map((chip, i) => (
           <ChipView key={i} node={chip} ctx={ctx} />
         ))}
       </div>
-      <div aria-hidden data-slot="trick-strip-track" className="flex h-1 gap-0.5">
-        {steps.map((chip, i) => {
-          const state = chip.attrs?.state ?? "idle";
-          const filled = state === "done" || state === "working" || state === "waiting";
-          return (
-            <span key={i} data-state={state} className={cn("h-full flex-1 overflow-hidden rounded-sm bg-muted", inkOf(chipTone(chip), ctx.stale))}>
-              {filled && <span className={cn("block h-full rounded-sm bg-current transition-transform", state === "working" ? "w-1/2" : "w-full")} />}
-            </span>
-          );
-        })}
-      </div>
-      <ol className="sr-only">
-        {steps.map((chip, i) => (
-          <li key={i} aria-current={i === current ? "step" : undefined}>
-            {textOf(chip)}: {t(STATE_WORD[chip.attrs?.state ?? "idle"])}
-          </li>
-        ))}
-        {current >= 0 && <li>{t("tricks.steps.of", { n: current + 1, m: steps.length })}</li>}
-      </ol>
+      <StepWords chips={chips} />
     </div>
   );
 }
@@ -453,9 +514,13 @@ function StripView({ node, ctx }: { node: BarNode; ctx: RenderCtx }) {
 // ── bar ───────────────────────────────────────────────────────────────────────────────────────
 
 function BarView({ node, ctx, path }: { node: BarNode; ctx: RenderCtx; path: string }) {
-  if (isStepStrip(node)) return <StripView node={node} ctx={ctx} />;
+  if (isStepStrip(node)) {
+    // Words on a strip wrap where the place may grow; in a fixed band the strip keeps its row and scrolls.
+    if (ctx.wrap === true && !stripFitsOneRow(node)) return <StepChipsView node={node} ctx={ctx} />;
+    return <StripView node={node} ctx={ctx} />;
+  }
   const scroll = node.attrs?.scroll === "x";
-  const wrap = !scroll && ctx.wrapBars === true;
+  const wrap = !scroll && ctx.wrap === true;
   const box = leafBox(node);
   // A bar that wraps reserves its one line as a floor and grows past it; one that does not keeps its line.
   const style = wrap ? { minHeight: box.style.height } : box.style;
@@ -520,6 +585,61 @@ function Target({ href, ctx, className, children }: { href: string; ctx: RenderC
 
 const LINK_INK = "text-primary underline underline-offset-2 decoration-primary/40 transition-colors hover:decoration-primary";
 
+/** A host in two pieces: the head that may give way, and the tail that always shows. */
+export interface HostParts {
+  head: string;
+  tail: string;
+}
+
+/**
+ * A host split where it may give way: the head (the sub-names) and the tail, the last two names
+ * ("colliepwa.dev", "github.com"), which say where a tap goes. A host of two names or fewer is all tail.
+ */
+export function hostParts(host: string): HostParts {
+  const names = host.split(".");
+  if (names.length <= 2) return { head: "", tail: host };
+  const tail = names.slice(-2).join(".");
+  return { head: host.slice(0, host.length - tail.length), tail };
+}
+
+/**
+ * A web link's host on one line, small and mono, in a box that may be narrower than it (a row's end
+ * slot, a link in a bar). Only its HEAD gives way ("release-no…colliepwa.dev"); the tail always shows
+ * whole, and the whole host is its `title`.
+ */
+function HostText({ host, className }: { host: string; className?: string }) {
+  const { head, tail } = hostParts(host);
+  return (
+    <span data-trick-link-host="" title={host} className={cn("flex min-w-0 overflow-hidden font-mono text-[11px] text-muted-foreground", className)}>
+      {/* At least the ellipsis' width, so a head with no room left reads "…" and never a stray letter. */}
+      {head !== "" && <span className="min-w-[1ch] truncate">{head}</span>}
+      <span className="shrink-0 whitespace-pre">{tail}</span>
+    </span>
+  );
+}
+
+/**
+ * A host as words: it may break after each dot, and anywhere only when a name is longer than the line.
+ * Inline after a link's words in a para, or `line`: a line of its own under a row's title.
+ */
+function HostWords({ host, line = false }: { host: string; line?: boolean }) {
+  const names = host.split(".");
+  return (
+    <span data-trick-link-host="" title={host} className={cn("font-mono text-[11px] break-words text-muted-foreground", line ? "block leading-4" : "ml-1.5")}>
+      {names.map((name, i) => (
+        <span key={i}>
+          {name}
+          {i < names.length - 1 && (
+            <>
+              .<wbr />
+            </>
+          )}
+        </span>
+      ))}
+    </span>
+  );
+}
+
 function LinkView({ node, ctx, block = false }: { node: LinkNode; ctx: RenderCtx; block?: boolean }) {
   const Icon = node.attrs.icon === undefined ? null : trickIconOf(node.attrs.icon);
   const host = ctx.hostOf?.(node.attrs.href) ?? "";
@@ -527,10 +647,12 @@ function LinkView({ node, ctx, block = false }: { node: LinkNode; ctx: RenderCtx
     <Target
       href={node.attrs.href}
       ctx={ctx}
-      className={cn(LINK_INK, block ? "inline-flex h-11 shrink-0 items-center gap-1.5 px-1 text-sm" : "inline items-baseline")}
+      className={cn(LINK_INK, block ? "inline-flex h-11 min-w-0 items-center gap-1.5 px-1 text-sm" : "inline items-baseline")}
     >
       {Icon !== null && <Icon aria-hidden className={cn("inline size-3.5 shrink-0", !block && "mr-1 align-[-2px]")} />}
-      <span data-trick-node="link">{node.text}</span>
+      <span data-trick-node="link" className={block ? "truncate" : undefined}>
+        {node.text}
+      </span>
       {node.attrs.badge !== undefined && (
         <span className="ml-1 inline-flex align-middle">
           <BadgeMark badge={node.attrs.badge} />
@@ -539,12 +661,20 @@ function LinkView({ node, ctx, block = false }: { node: LinkNode; ctx: RenderCtx
     </Target>
   );
   if (host === "") return link;
+  // A link that is a box of its own keeps its host beside it on one line; the link's words give way
+  // first, the host keeps at least its tail. Inside a para the host is words and may break anywhere.
+  if (block) {
+    return (
+      <span className="flex max-w-full min-w-0 items-center gap-1">
+        {link}
+        <HostText host={host} className="max-w-[50%] shrink-0" />
+      </span>
+    );
+  }
   return (
     <>
       {link}
-      <span data-trick-link-host="" className="ml-1.5 font-mono text-[11px] text-muted-foreground">
-        {host}
-      </span>
+      <HostWords host={host} />
     </>
   );
 }
@@ -590,12 +720,13 @@ const PARA_ROLE_CLASS = {
 
 function ParaView({ node, ctx }: { node: ParaNode; ctx: RenderCtx }) {
   const attrs = node.attrs;
-  const lines = paraLines(node);
-  // One line truncates; more lines clamp at their count, so a long text never grows the box.
-  const clamp: CSSProperties = lines === 1 ? {} : { display: "-webkit-box", WebkitBoxOrient: "vertical", WebkitLineClamp: lines };
+  // In a view that wraps every line shows (the reserve is a floor). Else one line truncates and more
+  // lines clamp at their count, so a long text never grows the box.
+  const lines = ctx.wrap === true ? 0 : paraLines(node);
+  const clamp: CSSProperties = lines <= 1 ? {} : { display: "-webkit-box", WebkitBoxOrient: "vertical", WebkitLineClamp: lines };
   const role = attrs?.role ?? "body";
   return (
-    <div {...leafBox(node)} className="flex min-w-0 gap-1.5 overflow-hidden">
+    <div {...floorBox(node, ctx)} className="flex min-w-0 gap-1.5 overflow-hidden">
       {attrs?.bullet !== undefined && <span className="w-4 shrink-0 font-content text-sm leading-5 text-muted-foreground tabular-nums">{attrs.bullet}</span>}
       <p style={clamp} className={cn(PARA_ROLE_CLASS[role], "min-w-0 flex-1 overflow-hidden", lines === 1 ? "truncate" : "break-words whitespace-pre-line")}>
         {attrs?.term !== undefined && <span className="font-semibold not-italic">{attrs.term} </span>}
@@ -607,25 +738,45 @@ function ParaView({ node, ctx }: { node: ParaNode; ctx: RenderCtx }) {
 
 const LINE_ROLE_CLASS = { text: "", status: "font-semibold", note: "italic text-muted-foreground" } as const;
 
-function LineBody({ node, ctx }: { node: LineNode; ctx: RenderCtx }) {
+/** A box that scrolls sideways on its own, with no scrollbar drawn. */
+const SIDEWAYS = "overflow-x-auto overflow-y-hidden overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden";
+
+/** One screen line. `cut`: it truncates at its box; else it keeps its whole width and the box around it scrolls sideways. */
+function LineBody({ node, ctx, cut = true }: { node: LineNode; ctx: RenderCtx; cut?: boolean }) {
   return (
-    <span className={cn("block truncate whitespace-pre [tab-size:4]", styleClass(node.attrs?.style, ctx.stale), LINE_ROLE_CLASS[node.attrs?.role ?? "text"])}>
+    <span className={cn("block whitespace-pre [tab-size:4]", cut && "truncate", styleClass(node.attrs?.style, ctx.stale), LINE_ROLE_CLASS[node.attrs?.role ?? "text"])}>
       {node.text ?? <Inline kids={node.kids} ctx={ctx} />}
     </span>
   );
 }
 
+/** A screen line is never wrapped (it is the screen's). In a view that wraps it scrolls sideways instead of being cut. */
 function LineView({ node, ctx }: { node: LineNode; ctx: RenderCtx }) {
+  if (ctx.wrap !== true) {
+    return (
+      <div {...leafBox(node)} className={cn("min-w-0 overflow-hidden font-mono text-xs leading-4", ENTER)}>
+        <LineBody node={node} ctx={ctx} />
+      </div>
+    );
+  }
   return (
-    <div {...leafBox(node)} className={cn("min-w-0 overflow-hidden font-mono text-xs leading-4", ENTER)}>
-      <LineBody node={node} ctx={ctx} />
+    <div {...leafBox(node)} className={cn("flex min-w-0 font-mono text-xs leading-4", ENTER)}>
+      <OverflowEdges cue="none">
+        {(scroller) => (
+          <div ref={scroller} className={cn("min-w-0 flex-1", SIDEWAYS)}>
+            <LineBody node={node} ctx={ctx} cut={false} />
+          </div>
+        )}
+      </OverflowEdges>
     </div>
   );
 }
 
 /**
  * A code block: its lines in mono, `max` lines reserved, scrolling on its own past them, and the
- * phone's copy button on it (`ui/copyable-block.tsx`), as every `code` has (VOCABULARY.md 2).
+ * phone's copy button on it (`ui/copyable-block.tsx`), as every `code` has (VOCABULARY.md 2). A line
+ * wider than the block is never cut: the block scrolls sideways inside its own frame, so the code is
+ * whole and the card around it never grows wider than the screen.
  */
 function CodeView({ node, ctx }: { node: CodeNode; ctx: RenderCtx }) {
   const lines = kidsOf(node).filter((kid): kid is LineNode => kid.kind === "line");
@@ -633,12 +784,24 @@ function CodeView({ node, ctx }: { node: CodeNode; ctx: RenderCtx }) {
   return (
     <div {...leafBox(node)} data-lang={node.attrs?.lang} className="min-w-0">
       <CopyableBlock text={lines.map(textOf).join("\n")} className="h-full">
-        <pre className={cn("h-full rounded-sm border border-border bg-muted/40 py-2 pr-9 pl-3 font-mono text-xs leading-4", scrolls ? "overflow-y-auto overscroll-contain" : "overflow-hidden")}>
-          {lines.map((line, i) => (
-            <div key={i} className="h-4 min-w-0">
-              <LineBody node={line} ctx={ctx} />
-            </div>
-          ))}
+        {/* The sideways scroller ends at the gutter the copy button sits in, so no line runs under it. */}
+        <pre
+          className={cn(
+            "flex h-full rounded-sm border border-border bg-muted/40 py-2 pr-9 pl-3 font-mono text-xs leading-4",
+            scrolls ? "overflow-y-auto overscroll-contain" : "overflow-hidden",
+          )}
+        >
+          <OverflowEdges cue="none" className="self-start">
+            {(scroller) => (
+              <div ref={scroller} data-slot="trick-code-lines" className={cn("min-w-0 flex-1", SIDEWAYS)}>
+                {lines.map((line, i) => (
+                  <div key={i} className="h-4 w-max min-w-full">
+                    <LineBody node={line} ctx={ctx} cut={false} />
+                  </div>
+                ))}
+              </div>
+            )}
+          </OverflowEdges>
         </pre>
       </CopyableBlock>
     </div>
@@ -680,10 +843,13 @@ function MeterView({ node, ctx }: { node: MeterNode; ctx: RenderCtx }) {
   const value = attrs?.value === undefined ? null : Number(attrs.value);
   const percent = value === null || !Number.isFinite(value) || !(max > 0) ? null : Math.min(100, Math.max(0, (value / max) * 100));
   const label = attrs?.label ?? "";
+  const wrap = ctx.wrap === true;
   return (
-    <div {...leafBox(node)} data-role={attrs?.role ?? "meter"} className="flex min-w-0 flex-col justify-between overflow-hidden">
-      <div className="flex h-5 min-w-0 items-center justify-between gap-3 text-xs">
-        <span className="truncate text-muted-foreground">{label}</span>
+    <div {...floorBox(node, ctx)} data-role={attrs?.role ?? "meter"} className={cn("flex min-w-0 flex-col justify-between overflow-hidden", wrap && "gap-2")}>
+      <div className={cn("flex min-w-0 justify-between gap-3 text-xs", wrap ? "min-h-5 items-start leading-5" : "h-5 items-center")}>
+        <span title={wrap ? undefined : label} className={cn("min-w-0 text-muted-foreground", wrap ? "break-words" : "truncate")}>
+          {label}
+        </span>
         <span className={cn("shrink-0 tabular-nums transition-colors", inkOf(attrs?.tone, ctx.stale))}>
           {percent === null ? "" : t("chat.progress.percent", { value: Math.round(percent) })}
         </span>
@@ -695,26 +861,32 @@ function MeterView({ node, ctx }: { node: MeterNode; ctx: RenderCtx }) {
 
 function NumberView({ node, ctx }: { node: NumberNode; ctx: RenderCtx }) {
   const attrs = node.attrs;
+  const wrap = ctx.wrap === true;
   return (
-    <div {...leafBox(node)} className="flex min-w-0 flex-col overflow-hidden">
+    <div {...floorBox(node, ctx)} className="flex min-w-0 flex-col overflow-hidden">
       <span className="flex h-8 min-w-0 items-baseline gap-1.5">
         <span className={cn("truncate text-2xl leading-8 font-semibold tabular-nums transition-colors", inkOf(attrs?.tone, ctx.stale))}>{node.text}</span>
         {attrs?.unit !== undefined && <span className="shrink-0 text-sm text-muted-foreground">{attrs.unit}</span>}
       </span>
       {/* The label's line is reserved even when the number has none, so adding one moves nothing. */}
-      <span className="h-4 truncate text-xs leading-4 text-muted-foreground">{attrs?.label ?? ""}</span>
+      <span title={wrap ? undefined : attrs?.label} className={cn("text-xs leading-4 text-muted-foreground", wrap ? "min-h-4 break-words" : "h-4 truncate")}>
+        {attrs?.label ?? ""}
+      </span>
     </div>
   );
 }
 
-function SpacerView({ node }: { node: SpacerNode }) {
+function SpacerView({ node, ctx }: { node: SpacerNode; ctx: RenderCtx }) {
   const label = node.attrs?.label;
   if (label === undefined) return <div {...leafBox(node)} aria-hidden />;
+  const wrap = ctx.wrap === true;
   return (
-    <div {...leafBox(node)} role="separator" aria-label={label} className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
-      <span aria-hidden className="h-px flex-1 bg-border" />
-      <span className="shrink truncate">{label}</span>
-      <span aria-hidden className="h-px flex-1 bg-border" />
+    <div {...floorBox(node, ctx)} role="separator" aria-label={label} className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
+      <span aria-hidden className="h-px min-w-4 flex-1 bg-border" />
+      <span title={wrap ? undefined : label} className={cn("min-w-0 shrink", wrap ? "text-center break-words" : "truncate")}>
+        {label}
+      </span>
+      <span aria-hidden className="h-px min-w-4 flex-1 bg-border" />
     </div>
   );
 }
@@ -724,24 +896,45 @@ function SpacerView({ node }: { node: SpacerNode }) {
 /** A long title cut in the middle: the head truncates, the last characters stay. */
 const MID_TAIL = 10;
 
-function RowTitle({ text, cut }: { text: string; cut: (typeof CUTS)[number] | undefined }) {
+/**
+ * A row's title. `cut: mid` (a path) keeps its tail on one line. Otherwise, in a view that wraps it
+ * shows every word; in a fixed band it takes two lines when the row has no second line (two 20px lines
+ * fit the 44px row) and one when it has, and cuts the rest with the whole title in `title`.
+ */
+function RowTitle({ text, cut, wrap, lines }: { text: string; cut: (typeof CUTS)[number] | undefined; wrap: boolean; lines: 1 | 2 }) {
   if (cut === "mid" && text.length > MID_TAIL * 2) {
     return (
-      <span className="flex min-w-0 font-content text-sm leading-5">
+      <span title={text} className="flex min-w-0 font-content text-sm leading-5">
         <span className="truncate">{text.slice(0, -MID_TAIL)}</span>
         <span className="shrink-0 whitespace-pre">{text.slice(-MID_TAIL)}</span>
       </span>
     );
   }
-  return <span className="truncate font-content text-sm leading-5">{text}</span>;
+  if (wrap) return <span className="font-content text-sm leading-5 break-words">{text}</span>;
+  return (
+    <span title={text} className={cn("font-content text-sm leading-5", lines === 2 ? "line-clamp-2 break-words" : "truncate")}>
+      {text}
+    </span>
+  );
 }
 
 const ROW_PAD = "flex min-w-0 items-center gap-3 px-3.5";
+
+/** An `end` this short fits beside any title as it is ("34 of 34", "+12 −3"); a longer one keeps a floor. */
+const END_SHORT = 8;
 
 /**
  * One row: a title, at most one `para` (its second line), any `chip`, `end` (a quiet trailing value),
  * a `badge`, and at most one trailing `button`. With `href` the row is a control that opens a page or a
  * Session. With a trailing button the row is TWO tap targets side by side, never one inside the other.
+ *
+ * THE TITLE KEEPS ITS ROOM. The title and `end` share the row by their lengths, inside floors: the
+ * title's column never narrower than 40% of the row, `end` never wider than 60%; an `end` of at most
+ * END_SHORT characters never wraps, and a longer one is never narrower than 30%.
+ * A short title leaves a long `end` its one line; a long `end` beside a long title wraps onto a second
+ * line (two 16px lines fit the 44px row) instead of pushing the title down to one word per line, and
+ * what still does not fit is cut with the whole words in `title`. A web row's host is a line of its own
+ * under the title.
  */
 function RowView({ node, ctx, path }: { node: RowNode; ctx: RenderCtx; path: string }) {
   const attrs = node.attrs;
@@ -754,26 +947,43 @@ function RowView({ node, ctx, path }: { node: RowNode; ctx: RenderCtx; path: str
   const Icon = attrs?.icon === undefined ? null : trickIconOf(attrs.icon);
   const disabled = attrs?.disabled !== undefined;
   const target = attrs?.href === undefined || disabled ? undefined : linkTargetOf(attrs.href);
-  // Where a web row goes, when the place asks for it (a Decision's view): the host, small, in the end
-  // slot beside `end`. One line, so the row keeps its height; a session target has no host to show.
+  // Where a web row goes, when the place asks for it (a Decision's view): the host, small, as a line of
+  // its own under the title, so it never takes the title's or `end`'s room on a narrow phone. A session
+  // target has no host to show.
   const host = target?.url === undefined ? "" : (ctx.hostOf?.(target.url) ?? "");
+  const wrap = ctx.wrap === true;
+  const secondText = second === undefined ? undefined : textOf(second);
   const body = (
     <>
       {Icon !== null && <Icon aria-hidden className={cn("size-4 shrink-0 transition-colors", ink)} />}
-      <span className="flex min-w-0 flex-1 flex-col">
-        <RowTitle text={node.text} cut={attrs?.cut} />
-        {second !== undefined && <span className="truncate font-content text-xs leading-4 text-muted-foreground">{textOf(second)}</span>}
+      <span data-slot="trick-row-text" className={cn("flex min-w-[40%] flex-auto flex-col", wrap && "py-2.5")}>
+        <RowTitle text={node.text} cut={attrs?.cut} wrap={wrap} lines={second === undefined && host === "" ? 2 : 1} />
+        {secondText !== undefined && (
+          <span title={wrap ? undefined : secondText} className={cn("font-content text-xs leading-4 text-muted-foreground", wrap ? "break-words" : "truncate")}>
+            {secondText}
+          </span>
+        )}
+        {host !== "" && <HostWords host={host} line />}
       </span>
       {chips.map((chip, i) => (
         <ChipView key={i} node={chip} ctx={ctx} />
       ))}
       <BadgeMark badge={attrs?.badge} />
-      {host !== "" && (
-        <span data-trick-link-host="" className="max-w-[40%] shrink-0 truncate font-mono text-[11px] text-muted-foreground">
-          {host}
+      {attrs?.end !== undefined && (
+        <span
+          data-slot="trick-row-end"
+          title={wrap ? undefined : attrs.end}
+          className={cn(
+            "max-w-[60%] text-right text-xs leading-4 tabular-nums break-words transition-colors",
+            // A short end never wraps; a long one keeps a floor, so a long title beside it never squeezes it to a word a line.
+            [...attrs.end].length > END_SHORT ? "min-w-[30%]" : "shrink-0 whitespace-nowrap",
+            !wrap && "line-clamp-2",
+            ink === "" ? "text-muted-foreground" : ink,
+          )}
+        >
+          {attrs.end}
         </span>
       )}
-      {attrs?.end !== undefined && <span className={cn("max-w-[40%] shrink-0 truncate text-xs tabular-nums transition-colors", ink === "" ? "text-muted-foreground" : ink)}>{attrs.end}</span>}
     </>
   );
   const main = cn(ROW_PAD, "h-full flex-1 text-left", disabled && "opacity-60");
@@ -794,7 +1004,7 @@ function RowView({ node, ctx, path }: { node: RowNode; ctx: RenderCtx; path: str
     );
   }
   return (
-    <div {...leafBox(node)} data-slot="trick-row" className={cn("flex min-w-0 items-stretch", ENTER)}>
+    <div {...floorBox(node, ctx)} data-slot="trick-row" className={cn("flex min-w-0 items-stretch", ENTER)}>
       {head}
       {button?.kind === "button" && (
         <div className="flex shrink-0 items-center pr-1.5">
@@ -854,15 +1064,22 @@ function GroupView({ node, ctx, path, inList = false }: { node: GroupNode; ctx: 
   const foldable = attrs?.fold !== undefined;
   const [open, setOpen] = useState(attrs?.fold !== "closed");
   const headed = groupHasHead(node);
+  const wrap = ctx.wrap === true;
+  // The label gives way before the badge and the chevron: it wraps where the view may grow, and is cut
+  // with its words in `title` in a fixed band. Never pushed past the frame.
   const headWords = (
     <>
-      {attrs?.label !== undefined && <SectionLabel>{attrs.label}</SectionLabel>}
-      <span className="text-muted-foreground">
+      {attrs?.label !== undefined && (
+        <SectionLabel className={cn("min-w-0 shrink", wrap ? "break-words" : "truncate")}>
+          <span title={wrap ? undefined : attrs.label}>{attrs.label}</span>
+        </SectionLabel>
+      )}
+      <span className="shrink-0 text-muted-foreground">
         <BadgeMark badge={attrs?.badge} />
       </span>
     </>
   );
-  const headClass = cn("flex h-6 min-w-0 items-center gap-2", inList && "px-3.5");
+  const headClass = cn("flex min-w-0 items-center gap-2", wrap ? "min-h-6 py-0.5" : "h-6", inList && "px-3.5");
   const head = !headed ? null : foldable ? (
     <button type="button" aria-expanded={open} onClick={() => setOpen((was) => !was)} className={cn(headClass, "w-full text-left")}>
       {headWords}
@@ -949,7 +1166,7 @@ function renderNode(node: ViewNode, ctx: RenderCtx, path: string): ReactNode {
     case "meter":
       return <MeterView node={node} ctx={ctx} />;
     case "spacer":
-      return <SpacerView node={node} />;
+      return <SpacerView node={node} ctx={ctx} />;
     case "number":
       return <NumberView node={node} ctx={ctx} />;
     default: {

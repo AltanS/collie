@@ -181,10 +181,37 @@ export const trickOpen = decision({
   ],
 });
 
+/**
+ * A drawn phone screen, 390 x 844, as an SVG data URL: a title bar, a few grey text lines, two panels
+ * and three option rows, in flat colours. Made for this page (never a capture of anyone's screen); its
+ * shape is a phone screenshot's, which is what the strip must keep readable.
+ */
+function phoneScreen(word: string, panel: string): string {
+  const lines = [148, 168, 188].map((y, i) => `<rect x="24" y="${y}" width="${[300, 260, 180][i]}" height="8" rx="2" fill="#8a8f98"/>`).join("");
+  const rows = [560, 620, 680].map((y) => `<rect x="20" y="${y}" width="350" height="48" rx="2" fill="none" stroke="#5b616b" stroke-width="2"/>`).join("");
+  const svg = [
+    `<svg xmlns="http://www.w3.org/2000/svg" width="390" height="844" viewBox="0 0 390 844">`,
+    `<rect width="390" height="844" fill="#1d1f23"/>`,
+    `<rect x="24" y="96" width="250" height="22" rx="2" fill="#e8e9eb"/>`,
+    lines,
+    `<rect x="24" y="230" width="200" height="140" rx="2" fill="${panel}"/>`,
+    `<rect x="232" y="230" width="134" height="140" rx="2" fill="#b0652f"/>`,
+    `<text x="124" y="306" font-family="sans-serif" font-size="22" fill="#ffffff" text-anchor="middle">${word}</text>`,
+    `<rect x="24" y="410" width="320" height="8" rx="2" fill="#8a8f98"/><rect x="24" y="430" width="240" height="8" rx="2" fill="#8a8f98"/>`,
+    rows,
+    `<rect x="20" y="760" width="350" height="56" rx="2" fill="#2a2d33"/>`,
+    `</svg>`,
+  ].join("");
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+}
+
 const SHOTS = new Map<string, string>([
   ["im_pgbefore00000001", shotBefore],
   ["im_pgafter000000001", shotAfter],
   ["im_pgdiff0000000001", shotDiff],
+  ["im_pgphoneoption001", phoneScreen("Option", "#2f7fb0")],
+  ["im_pgphonebuild0001", phoneScreen("Build", "#2f9a6a")],
+  ["im_pgphonewide00001", phoneScreen("Wide", "#7a4fb0")],
   // Bytes no browser decodes: the card's failed state.
   ["im_pgbroken00000001", "data:image/png;base64,AAAA"],
 ]);
@@ -192,10 +219,13 @@ const SHOTS = new Map<string, string>([
 /** Where the playground's images are: the inlined panels by media id. */
 export const playgroundMedia: HillMediaSource = (_decision, media) => SHOTS.get(media.id) ?? "data:image/png;base64,AAAA";
 
-function shot(mediaId: string, caption?: string): HillMedia {
-  const media: HillMedia = { id: mediaId, kind: "image", mime: "image/png", bytes: 1800, width: 600, height: 360 };
+function shot(mediaId: string, caption?: string, size: { width: number; height: number } = { width: 600, height: 360 }): HillMedia {
+  const media: HillMedia = { id: mediaId, kind: "image", mime: "image/png", bytes: 1800, ...size };
   return caption === undefined ? media : { ...media, caption };
 }
+
+/** A phone screenshot's size, in CSS px: portrait. */
+const PHONE = { width: 390, height: 844 } as const;
 
 /** 22: one image under the summary. */
 export const oneImage = decision({
@@ -390,4 +420,127 @@ export const diffSummary = decision({
       ],
     },
   ],
+});
+
+/** A collie tricks sender, as the owner's screenshot of 2026-11-10 shows it. */
+const TRICKS = { label: "collie tricks", host: "bluefin" } as const;
+
+/** A step chip that is done, with the words a poster gave it. */
+function doneChip(text: string) {
+  return { kind: "chip", text, attrs: { state: "done" } } as const;
+}
+
+/**
+ * 34: the rough card (2026-11-10). The owner's screenshot, word for word: two portrait phone shots, a
+ * bar of five word chips that are all done, and four rows with their proof at the end. At 360 px it
+ * drew 55 px tiles with cut captions and chips cut to "s…" and "qu…".
+ */
+export const roughCard = decision({
+  title: "Is this the card you chose?",
+  summary:
+    "This card uses every new part: a recommendation, priority Now, two images and a view. The two older cards below use none, so they look almost as before. Tap More to read the rest of this line.",
+  sender: TRICKS,
+  ago: 1,
+  priority: "now",
+  priorityAsked: "now",
+  options: [
+    { intent: "yes", label: "Yes, this is B1" },
+    { intent: "change", label: "Change something" },
+  ],
+  recommends: { intent: "yes", why: "The build matches the B1 option in 15 states, measured." },
+  media: [shot("im_pgphoneoption001", "The option you chose", PHONE), shot("im_pgphonebuild0001", "The build", PHONE)],
+  view: [
+    { kind: "bar", kids: [doneChip("star"), doneChip("quote"), doneChip("view"), doneChip("images"), doneChip("Now")] },
+    {
+      kind: "list",
+      kids: [
+        { kind: "row", text: "Recommendation", attrs: { end: "amber star" } },
+        { kind: "row", text: "Priority Now", attrs: { end: "three peaks" } },
+        { kind: "row", text: "This frame", attrs: { end: "a Decision view" } },
+        { kind: "row", text: "Old cards", attrs: { end: "have none of these" } },
+      ],
+    },
+  ],
+});
+
+/** 35: every kind a Decision's view draws, each with words as long as the schema lets them be, for the narrowest phone. */
+export const stressCard = decision({
+  title: "Does every part of a view read at 360 px?",
+  summary: "Long words in every kind a view can draw.",
+  sender: TRICKS,
+  ago: 2,
+  options: [{ intent: "ok", label: "It reads" }],
+  media: [shot("im_pgphonewide00001", "One portrait shot may use the whole width of the card", PHONE)],
+  view: [
+    // The Tag trick's seven numbered gates: the step strip, one row.
+    { kind: "bar", attrs: { label: "Gates" }, kids: ["1", "2", "3", "4", "5", "6", "7"].map(doneChip) },
+    // Word steps: they wrap as chips.
+    {
+      kind: "bar",
+      attrs: { label: "Steps" },
+      kids: [
+        doneChip("typecheck"),
+        doneChip("lint"),
+        { kind: "chip", text: "browser leg on the core", attrs: { state: "working", current: "" } },
+        { kind: "chip", text: "windows rehearsal", attrs: { state: "idle" } },
+        { kind: "chip", text: "tag", attrs: { state: "idle" } },
+      ],
+    },
+    {
+      kind: "list",
+      kids: [
+        { kind: "row", text: "A short title", attrs: { end: "an end that runs long" } },
+        { kind: "row", text: "A row title that goes on for a while", attrs: { end: "the end words wrap too" } },
+        { kind: "row", text: "web/src/components/decision-view.tsx", attrs: { end: "+120 −48", cut: "mid" } },
+        { kind: "row", text: "Release notes", attrs: { href: "https://release-notes.downloads.colliepwa.example.com/1.28.2", end: "draft" } },
+        { kind: "row", text: "Browser leg", attrs: { end: "34 of 34 green" }, kids: [{ kind: "para", text: "replayed from the recording, with no live turns spent" }] },
+        { kind: "row", text: "Gate", attrs: { tone: "warn" }, kids: [{ kind: "chip", text: "waiting on review", attrs: { tone: "warn" } }] },
+      ],
+    },
+    { kind: "number", text: "1,284", attrs: { label: "Lines changed in each package since 1.28", unit: "lines" } },
+    { kind: "meter", attrs: { value: "0.62", label: "Replay budget the browser leg used today", role: "meter" } },
+    {
+      kind: "group",
+      attrs: { label: "Folded: the three gates that passed with a warning", fold: "closed", badge: "3" },
+      kids: [{ kind: "row", text: "lint", attrs: { end: "2 warnings" } }],
+    },
+    {
+      kind: "group",
+      attrs: { label: "Open: what the run touched", fold: "open" },
+      kids: [{ kind: "row", text: "bridge/send/path.ts", attrs: { end: "+12 −3" } }],
+    },
+    {
+      kind: "code",
+      attrs: { lang: "ts" },
+      kids: [
+        { kind: "line", text: "export function sendPathWithAVeryLongNameThatRunsPastTheFrame(paneId: string, text: string): SendResult {" },
+        { kind: "line", text: "  return panes.get(paneId)?.send(text) ?? { refused: \"gone\" };" },
+        { kind: "line", text: "}" },
+      ],
+    },
+    { kind: "para", attrs: { role: "quote" }, text: "The leg passed on the first tap in every case, and the only red was a timing budget on a loaded machine." },
+    {
+      kind: "para",
+      kids: [
+        { kind: "run", text: "The full report: " },
+        { kind: "link", text: "browser leg report", attrs: { href: "https://reports.browser-leg.downloads.colliepwa.example.com/runs/7731" } },
+      ],
+    },
+    { kind: "bar", kids: [{ kind: "link", text: "CI run 7731", attrs: { href: "https://github-actions-artifacts.colliepwa.example.com/runs/7731" } }] },
+    { kind: "spacer", attrs: { label: "Everything above came from this morning" } },
+    { kind: "line", text: "tail: ok 34/34 · replay · 0 live turns · 4 min 12 s · budget 0.62 of 1.00" },
+  ],
+});
+
+/** 36: one portrait shot and one landscape shot: the strip keeps today's height. */
+export const mixedImages = decision({
+  title: "Which shot goes in the release post?",
+  summary: "A phone shot and a wide one.",
+  sender: TRICKS,
+  ago: 3,
+  options: [
+    { intent: "phone", label: "The phone shot" },
+    { intent: "wide", label: "The wide one" },
+  ],
+  media: [shot("im_pgphoneoption001", "On the phone", PHONE), shot("im_pgafter000000001", "On a laptop")],
 });
