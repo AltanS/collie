@@ -73,7 +73,7 @@ interface HeaderClaim {
    *  Keeping the inset is deliberate: the notch is not screen a mirror could use anyway, and a route
    *  that took the inset over would double it against the header's own the moment the row came back. */
   hidden: boolean;
-  /** An agent is starting on this screen: the mark turns with half its beads in the info colour
+  /** An agent is starting on this screen: the mark turns with most of its beads in the info colour
    *  (`CollieHome`'s `starting`). A claim, not a prop on the mark, because the shell owns the mark. */
   starting: boolean;
 }
@@ -608,7 +608,7 @@ interface RouteHeaderProps {
   hidden?: boolean;
 
   /** An agent is starting on this screen (the bridge has not read its first screen yet). The mark
-   *  turns at the loading pace with every other bead in the info colour. See `HeaderClaim.starting`. */
+   *  turns at the loading pace with three beads in four in the info colour. See `HeaderClaim.starting`. */
   starting?: boolean;
 }
 

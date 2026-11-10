@@ -33,8 +33,8 @@ interface CollieHomeProps {
    *  it outranks the bloom, a round and busy work. */
   reconnected?: boolean;
   /** The phone started an agent and the bridge has not read its first screen yet
-   *  (`hooks/use-startup-readiness.ts`). The orbit turns at the loading pace and every other bead
-   *  draws in the info colour, the other half keeping the mark's own. Below `lost` and `applying`,
+   *  (`hooks/use-startup-readiness.ts`). The orbit turns at the loading pace and three beads in
+   *  four draw in the info colour, the fourth keeping the mark's own. Below `lost` and `applying`,
    *  above the link coming back, the bloom, a round and busy work. */
   starting?: boolean;
   /** `navigator.onLine`, read by the host (the mark never calls the hook). Only picks which icon the
@@ -152,14 +152,15 @@ export function spinRate(elapsedMs: number, totalMs = ORBIT_TURN_MS): number {
 export type MarkTarget = "home" | "update-line";
 
 /**
- * The beads of an agent that is starting, in bead order, repeated: every other bead in the info
- * colour. `initial` is the contract's way to say "the mark's own colour" here: a custom property set
+ * The beads of an agent that is starting, in bead order, repeated: one bead in the mark's own colour,
+ * then three in the info colour, so six of the Collie mark's eight are blue (Altan, 2026-11-10: half
+ * was not blue enough). `initial` is the contract's way to say "the mark's own colour" here: a custom property set
  * to `initial` is the guaranteed-invalid value, so `beadFill`'s `var(--mark-bead-<i>, var(--mark-bead,
  * own))` falls through to the bead's own fill, which is exactly what `loading` draws. It is first, so
  * `--mark-bead` (the list's first entry) is invalid too and a bead on the blue entry is the only one
  * that reads a colour. No contract change: the entry is plain CSS, and every mark reads it the same.
  */
-export const STARTING_BEADS = ["initial", "var(--status-info)"] as const;
+export const STARTING_BEADS = ["initial", "var(--status-info)", "var(--status-info)", "var(--status-info)"] as const;
 
 /** What the mark shows and where its tap goes, decided together. */
 export interface MarkReading {
@@ -172,7 +173,7 @@ export interface MarkReading {
 /**
  * THE MARK'S ONE READING: its state, its beads and its tap, from the same inputs in one pass, so the
  * look and the tap cannot disagree. By precedence: a dead link outranks everything (dimmed, held),
- * then the app updating, then an agent starting (the loading pace, half the beads in the info
+ * then the app updating, then an agent starting (the loading pace, three beads in four in the info
  * colour), then the link coming back, then any loading input, else rest. Only a state that is ABOUT
  * a place points there; the link coming back, loading, starting and a dead link keep the ordinary
  * tap, and the mark carries no machine or crew health of its own.

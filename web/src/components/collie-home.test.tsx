@@ -388,19 +388,21 @@ describe("CollieHome — the link coming back", () => {
 // ── AN AGENT STARTING ────────────────────────────────────────────────────────────────────────────
 //
 // The phone launched an agent and the bridge has not read its first screen. The mark turns at the
-// loading pace, every other bead in the info colour, the rest in the mark's own (`initial` leaves
+// loading pace, three beads in four in the info colour, the fourth in the mark's own (`initial` leaves
 // that bead's variable unset, so its fill falls through to the mark's own colour, as in `loading`).
 describe("CollieHome — an agent starting", () => {
   const bead = (root: ParentNode, i: number) => collieMark(root)?.style.getPropertyValue(`--mark-bead-${i}`);
 
-  it("turns at the loading pace, with every other bead in the info colour and the rest left alone", () => {
+  it("turns at the loading pace, with six of eight beads in the info colour and the rest left alone", () => {
     const { container, getByRole } = render(<CollieHome trouble={false} starting />);
     expect(markState(container)).toBe("loading");
     expect(markIsLive(container)).toBe(true);
     expect(bead(container, 0)).toBe("initial");
     expect(bead(container, 1)).toBe("var(--status-info)");
-    expect(bead(container, 2)).toBe("initial");
+    expect(bead(container, 2)).toBe("var(--status-info)");
     expect(bead(container, 3)).toBe("var(--status-info)");
+    expect(bead(container, 4)).toBe("initial");
+    expect(bead(container, 7)).toBe("var(--status-info)");
     expect(getByRole("button", { name: "Starting…" })).toBeInTheDocument();
   });
 

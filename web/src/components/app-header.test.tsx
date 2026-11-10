@@ -208,12 +208,12 @@ describe("the header — the one shared shell", () => {
 // signals: it gallops only once trouble is sustained (≥4s, the flicker fix), and rests muted once lost
 // (≥15s). Fake timers drive the wall-clock hooks (Vitest advances Date.now with them).
 // A ROUTE CAN SAY AN AGENT IS STARTING (`RouteHeader`'s `starting`, a claim like the others): the one
-// mark turns at the loading pace with every other bead in the info colour, and rests again when the
+// mark turns at the loading pace with three beads in four in the info colour, and rests again when the
 // route stops saying it.
 describe("the header — a route's starting claim", () => {
   beforeEach(() => __resetConnectionHealth());
 
-  it("turns the mark with half its beads in the info colour, and lets go when the claim does", async () => {
+  it("turns the mark with most of its beads in the info colour, and lets go when the claim does", async () => {
     const user = userEvent.setup();
     function Route() {
       const [starting, setStarting] = useState(false);
