@@ -745,6 +745,8 @@ interface Snap {
   readonly ownList: CommandListRead | null;
   /** A short hash of the whole read. */
   readonly hash: string;
+  /** {@link plain} as the rows hash reads it: the rows above the box tick-marked when the profile says they tick. */
+  readonly checked: readonly string[];
   /** A short hash of the bottom window, the rows a person checks before a two-tap send. */
   readonly rowsHash: string;
 }
@@ -844,6 +846,40 @@ export function steadyRow(row: string, signs: readonly RegExp[] = []): string {
  */
 function tickMarked(row: string): string {
   return row.replace(/[\u2800-\u28ff]/gu, "*").replace(/\d+/gu, "0");
+}
+
+/** A row with each digit run read as one fixed mark and each run of blanks as one: `9s  │` and `10s │` agree. */
+function digitsMarked(row: string): string {
+  return row.replace(/\d+/gu, "0").replace(/ +/gu, " ");
+}
+
+/** A row's digit runs alone. */
+function digitsOf(row: string): string {
+  return (row.match(/\d+/gu) ?? []).join(" ");
+}
+
+/**
+ * The rows S0's two reads show differently in their digits alone (ADR 0140 pt 2): a clock or a
+ * counter seen ticking, on any row, named by no profile. Rows pair by index, so two reads of a
+ * different row count share none. `box` rows (the input box's own, top and bottom included) are never
+ * ticking: a draft that changed is a change, digits or not.
+ */
+export function tickingRows(first: readonly string[], second: readonly string[], box: { readonly top: number; readonly bottom: number } | null = null): ReadonlySet<number> {
+  const rows = new Set<number>();
+  if (first.length !== second.length) return rows;
+  for (let i = 0; i < first.length; i++) {
+    if (box !== null && i >= box.top && i <= box.bottom) continue;
+    const a = first[i]!;
+    const b = second[i]!;
+    if (digitsOf(a) !== digitsOf(b) && digitsMarked(a) === digitsMarked(b)) rows.add(i);
+  }
+  return rows;
+}
+
+/** The rows hash of a read's checked rows: the bottom window of its texts. */
+function rowsHashOf(checked: readonly string[], texts: readonly string[]): string {
+  const win = bottomWindow(texts);
+  return shortHash(checked.slice(win.first, win.end).join("\n"));
 }
 
 function mark(snap: Snap | null): ReadMark | null {
@@ -4955,7 +4991,6 @@ export class SendProtocol {
     // The rows a person checks, with the rows above the box read as the compares read them: a counter
     // that ticked over the box between the look and the tap is no screen the person did not see.
     const checked = ticks && frame !== null ? plain.map((row, i) => (i < frame.top ? tickMarked(row) : row)) : plain;
-    const win = bottomWindow(texts);
     this.deps.ring.push({ requestId: state.record.id, step, at: this.now(), rows: texts });
     const framed = readCuesFor(rows, frame, idle);
     // The frameless reads never see a row the profile names as a footer row (the frame found it), nor
@@ -5009,8 +5044,9 @@ export class SendProtocol {
       listAnyText: frame === null ? null : commandListAnyText(texts, frame, idle?.volatile.below.commandList, rows),
       ownList,
       hash: shortHash(texts.join("\n")),
+      checked,
       // A running row's timer is masked (steadyRow): a ticking timer is not a screen the person did not see.
-      rowsHash: shortHash(checked.slice(win.first, win.end).join("\n")),
+      rowsHash: rowsHashOf(checked, texts),
     };
     const snap = ghostView(state.ghost, read);
     state.previousRead = state.lastRead;
@@ -5047,19 +5083,27 @@ export class SendProtocol {
     // by its two edges alone: its placeholder may appear, go or change between the reads (Claude
     // Code's "Press up to edit queued messages" going as the queue is taken, a prompt suggestion
     // painted in the placeholder's own colour) without the box having moved. With no frame the
-    // bottom window is compared with its running rows masked, for the same reason.
+    // bottom window is compared with its running rows masked, for the same reason. A row the two reads
+    // show differently in its digits alone is a clock seen ticking (ADR 0140 pt 2): its digits are a
+    // fixed mark here and in the rows hash, whether or not a profile names it.
+    const ticking = tickingRows(first.plain, second.plain, second.frame);
+    const steady = (rows: readonly string[]): readonly string[] => (ticking.size === 0 ? rows : rows.map((row, i) => (ticking.has(i) ? digitsMarked(row) : row)));
     const key = (snap: Snap): string => {
-      if (snap.frame !== null && boxText(snap.frame) === "") return `${snap.plain[snap.frame.top] ?? ""}\n${snap.plain[snap.frame.bottom] ?? ""}`;
-      if (snap.frame !== null) return snap.plain.slice(snap.frame.top, snap.frame.bottom + 1).join("\n");
-      const win = bottomWindow(snap.plain);
-      return snap.plain.slice(win.first, win.end).join("\n");
+      const plain = steady(snap.plain);
+      if (snap.frame !== null && boxText(snap.frame) === "") return `${plain[snap.frame.top] ?? ""}\n${plain[snap.frame.bottom] ?? ""}`;
+      if (snap.frame !== null) return plain.slice(snap.frame.top, snap.frame.bottom + 1).join("\n");
+      const win = bottomWindow(plain);
+      return plain.slice(win.first, win.end).join("\n");
     };
     if ((first.frame === null) !== (second.frame === null) || key(first) !== key(second)) {
       const moved = new Ended("refused", "not_free", { surface: second.surface, detail: "The input box moved between two reads." });
       if (inFlux(first, second)) moved.extra.inFlux = true;
       throw moved;
     }
-    return second;
+    if (ticking.size === 0) return second;
+    const held: Snap = { ...second, rowsHash: rowsHashOf(steady(second.checked), second.texts) };
+    if (state.lastRead === second) state.lastRead = held;
+    return held;
   }
 
   /**

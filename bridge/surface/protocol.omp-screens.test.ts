@@ -11,7 +11,7 @@ import { muxAck, muxOk, type MuxAck, type MuxGrid, type MuxGridRequest, type Mux
 import { loadProfiles, profileFor, type Profile } from "../../web/src/lib/surface/profile.ts";
 import type { SendAnswer } from "../../web/src/lib/surface/send.ts";
 import { KeyGate } from "./key-gate.ts";
-import { RowRing, SendProtocol, SessionLocks, type SendRequest } from "./protocol.ts";
+import { RowRing, SendProtocol, SessionLocks, tickingRows, type SendRequest } from "./protocol.ts";
 import { RequestStore } from "./requests.ts";
 import { FOREGROUND_UNREAD, LaunchWindow, harnessOfProcesses, type ForegroundUnread } from "../launch-window.ts";
 
@@ -504,5 +504,54 @@ describe("a live band taller than the volatile band over the box (omp 18.13.1, r
     expect(second).toBe(first);
     const [before, after] = await hashes(noTicks);
     expect(after).not.toBe(before);
+  });
+});
+
+describe("a clock seen ticking between S0's two reads (ADR 0140 pt 2)", () => {
+  /** An agent with no profile whose status row's seconds tick on every read, as Hermes Ink's does. */
+  function clocked(status: (n: number) => string = (n) => `─ ready │ sonnet │ 20m ${String(40 + n)}s │ ✓ 21m ${String(50 + n)}s`): OmpPane {
+    // The capture is never drawn: every read answers the clocked screen.
+    const pane = new OmpPane("╰─");
+    let n = 0;
+    pane.readGrid = (paneId) => {
+      n++;
+      return Promise.resolve(muxOk({ paneId, text: ["● the reply so far", "", status(n), " ❯"].join("\n"), truncated: false, revision: n }));
+    };
+    return pane;
+  }
+
+  test("a status row whose digits alone changed holds S0 still: the manual Send's confirm, not `not_free`", async () => {
+    const pane = clocked();
+    const { send } = rig(pane, { harness: "inkling" });
+    const answer = await send("hello");
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "unconfirmed", keys: [], profileId: null });
+    expect(answer.rowsHash).toBeString();
+    expect(pane.calls).toEqual([]);
+  });
+
+  test("a row that changed in anything but digits still moves the screen", async () => {
+    const pane = clocked((n) => (n % 2 === 0 ? "─ busy │ sonnet │ 20m 41s" : "─ ready │ sonnet │ 20m 41s"));
+    const { send } = rig(pane, { harness: "inkling" });
+    const answer = await send("hello");
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "not_free", detail: "The input box moved between two reads.", keys: [] });
+  });
+
+  test("the rows hash reads the ticking row's digits as a fixed mark", async () => {
+    const { send } = rig(clocked(), { harness: "inkling" });
+    const first = (await send("", { mode: "prepare" })).rowsHash;
+    const second = (await send("", { mode: "prepare" })).rowsHash;
+    expect(first).toBeString();
+    expect(second).toBe(first);
+  });
+});
+
+describe("tickingRows", () => {
+  test("only rows that differ in their digits alone, padding included; box rows never", () => {
+    const before = ["title", "20m 9s  │ x", "ready", "box 1", "13:04"];
+    const after = ["title", "20m 10s │ x", "busy", "box 12", "13:05"];
+    expect([...tickingRows(before, after)]).toEqual([1, 3, 4]);
+    expect([...tickingRows(before, after, { top: 3, bottom: 3 })]).toEqual([1, 4]);
+    expect(tickingRows(before, after.slice(1)).size).toBe(0);
+    expect(tickingRows(before, before).size).toBe(0);
   });
 });
