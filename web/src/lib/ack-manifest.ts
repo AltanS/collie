@@ -96,6 +96,10 @@ export const ACK_MANIFEST = {
     channel: "inline",
     why: "The walky talky switch in a pane's Messages sheet (M89 spec 04): the switch itself is the receipt, it holds the new place while the call runs and the pane row's flag then confirms it; a failed call puts the switch back and lands as a line under it, because the operator asked for something that did not happen.",
   },
+  setHillSwitch: {
+    channel: "inline",
+    why: "The Hill's switch on Settings → Alerts and on the Hill's own off state (hooks/use-hill-switch.ts): the switch itself is the receipt, it holds the new place while the call runs and the snapshot's hillOff then confirms it on every phone; a failed call puts the switch back and says so on the status line, because the operator asked for something that did not happen.",
+  },
   cancelHeldSend: {
     channel: "silent",
     why: "Cancel or Dismiss on a held send's queued row (M56 spec 15): the row leaving the composer IS the receipt, so a success says nothing more; a Cancel that came too late, and a failed call, land as a status line.",
@@ -335,6 +339,14 @@ export const ACK_MANIFEST = {
   switchTrick: {
     channel: "echo",
     why: "The trick's switch flips on the spot and holds that position until the bridge's list agrees (components/tricks-settings-card.tsx); a refused or lost post puts it back and says so in the status line, because the reason is about that one trick.",
+  },
+  setTrickAuto: {
+    channel: "echo",
+    why: "The trick's take-changes-without-asking switch flips on the spot and holds that position until the bridge's list agrees (components/tricks-settings-card.tsx); a refused or lost post puts it back and says so in the status line, because the reason is about that one trick.",
+  },
+  undoTrick: {
+    channel: "silent",
+    why: "Undo under a trick that took a change without asking (components/tricks-settings-card.tsx): the line itself goes once the bridge's list shows the earlier version, so the row is the receipt; a refused or lost post says so in the status line, because the reason is about that one trick.",
   },
   tapTrick: {
     channel: "echo",

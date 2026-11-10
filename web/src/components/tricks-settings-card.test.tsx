@@ -1,11 +1,11 @@
-import { act, render, renderHook, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, renderHook, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { HOLD_MS, TricksSettingsCard, placesLine, provenanceLine, slotLine, useTricksPresent, warningLines } from "@/components/tricks-settings-card";
-import { switchTrick } from "@/lib/api";
+import { HOLD_MS, TricksSettingsCard, autoLine, placesLine, provenanceLine, slotLine, useTricksPresent, warningLines } from "@/components/tricks-settings-card";
+import { setTrickAuto, switchTrick, undoTrick } from "@/lib/api";
 import { ROOT_ROUTE_ID } from "@/lib/loaders";
 import type { TricksReply, WireTrickInfo } from "@/lib/tricks/schema";
 import { createTricksStore, type TricksStore } from "@/lib/tricks/store";
@@ -146,7 +146,10 @@ describe("TricksSettingsCard: the rows", () => {
     await screen.findByText("Bad");
     for (const id of ["legs", "tracker", "bad"]) {
       const row = rowOf(id);
-      expect(row.querySelectorAll("[data-line]").length).toBe(2);
+      // The three lines; a trick that is on adds its changes row below them (crew slice 3), whatever its state.
+      const lines = [...row.querySelectorAll<HTMLElement>("[data-line]")].filter((el) => el.closest('[data-line="changes"]') === null);
+      expect(lines.length).toBe(2);
+      expect(row.querySelector('[data-line="changes"]') !== null).toBe(id !== "tracker");
       expect(row.querySelector('[data-line="places"]')?.textContent).not.toBe("");
       expect(row.querySelector('[data-line="slot"]')?.textContent).not.toBe("");
     }
@@ -426,5 +429,95 @@ describe("a new version waits", () => {
     expect(readTrick({ ...base, pending: { ...PENDING, files: { added: -1, changed: 0, removed: 0 } } })).not.toHaveProperty("pending");
     expect(readTrick({ ...base, pending: { ...PENDING, powersChanged: "yes" } })).not.toHaveProperty("pending");
     expect(readTrick({ ...base, pending: "soon" })).not.toHaveProperty("pending");
+  });
+});
+
+describe("take changes without asking, and undo an automatic change (crew slice 3)", () => {
+  function renderWith(store: TricksStore, calls: { onAuto?: (host: string, id: string, on: boolean) => Promise<WireTrickInfo>; onUndo?: (host: string, id: string) => Promise<WireTrickInfo> }) {
+    const router = createMemoryRouter([{ id: ROOT_ROUTE_ID, path: "/", element: <TricksSettingsCard store={store} now={NOW} onAuto={calls.onAuto} onUndo={calls.onUndo} /> }], { initialEntries: ["/"] });
+    return render(<RouterProvider router={router} />);
+  }
+
+  it("draws the switch with its hint under a trick that is on, and nothing under one that is off", async () => {
+    renderWith(await storeWith([{ ...LEGS, auto: false }, TRACKER]), {});
+    await screen.findByText("Browser leg");
+    const changes = rowOf("legs").querySelector<HTMLElement>('[data-line="changes"]');
+    expect(changes).toHaveTextContent("Take changes without asking");
+    expect(changes).toHaveTextContent("A change that asks for new rights still asks.");
+    expect(within(changes!).getByRole("switch", { name: "Take changes without asking" })).not.toBeChecked();
+    expect(rowOf("tracker").querySelector('[data-line="changes"]')).toBeNull();
+    expect(rowOf("legs").querySelector('[data-line="auto-at"]')).toBeNull();
+  });
+
+  it("posts the new position, flips at once, and goes back with a status line when the bridge refuses", async () => {
+    const user = userEvent.setup();
+    const onAuto = vi.fn(async (_host: string, _id: string, on: boolean) => ({ ...LEGS, auto: on }));
+    renderWith(await storeWith([LEGS]), { onAuto });
+    const sw = await screen.findByRole("switch", { name: "Take changes without asking" });
+    await user.click(sw);
+    expect(onAuto).toHaveBeenCalledWith("bluefin", "legs", true);
+    expect(screen.getByRole("switch", { name: "Take changes without asking" })).toBeChecked();
+    onAuto.mockRejectedValueOnce(new Error("409"));
+    await user.click(screen.getByRole("switch", { name: "Take changes without asking" }));
+    expect(currentStatus()?.text).toBe("Could not change Browser leg. Try again.");
+  });
+
+  it("says when a version was taken without asking, and Undo asks for a second tap before it goes back", async () => {
+    const onUndo = vi.fn(async () => ({ ...LEGS, auto: true }));
+    renderWith(await storeWith([{ ...LEGS, auto: true, autoAt: "2026-11-08T07:41:00Z" }]), { onUndo });
+    await screen.findByText("Browser leg");
+    const line = rowOf("legs").querySelector<HTMLElement>('[data-line="auto-at"]');
+    expect(line).toHaveTextContent("Updated 2 h ago, automatically.");
+    const undo = within(line!).getByRole("button");
+    const front = () => undo.querySelector("[data-active]")?.textContent;
+    expect(front()).toBe("Undo");
+    const t0 = Date.now();
+    const clock = vi.spyOn(Date, "now").mockReturnValue(t0);
+    fireEvent.click(undo);
+    expect(onUndo).not.toHaveBeenCalled();
+    expect(front()).toBe("Undo?");
+    expect(undo.className).toContain("text-destructive");
+    // Inside the dwell the same touch landing twice does nothing; after it, the second tap goes back.
+    clock.mockReturnValue(t0 + 100);
+    fireEvent.click(undo);
+    expect(onUndo).not.toHaveBeenCalled();
+    clock.mockReturnValue(t0 + 600);
+    await act(async () => fireEvent.click(undo));
+    expect(onUndo).toHaveBeenCalledWith("bluefin", "legs");
+    clock.mockRestore();
+  });
+
+  it("autoLine: only for a trick that is on with a time it can read", () => {
+    expect(autoLine({ on: true, autoAt: "2026-11-08T09:38:00Z" }, NOW)).toBe("Updated 3 min ago, automatically.");
+    expect(autoLine({ on: false, autoAt: "2026-11-08T09:38:00Z" }, NOW)).toBeNull();
+    expect(autoLine({ on: true }, NOW)).toBeNull();
+    expect(autoLine({ on: true, autoAt: "soon" }, NOW)).toBeNull();
+  });
+
+  it("readTrick keeps a boolean auto and a time autoAt, and drops either of another shape", () => {
+    const base = { host: "bluefin", id: "legs", name: "Legs", icon: "plug", on: true, state: "ok", places: ["belt"] };
+    expect(readTrick({ ...base, auto: true, autoAt: "2026-11-08T07:41:00Z" })).toMatchObject({ auto: true, autoAt: "2026-11-08T07:41:00Z" });
+    expect(readTrick({ ...base, auto: "yes", autoAt: 5 })).not.toHaveProperty("auto");
+    expect(readTrick({ ...base, auto: "yes", autoAt: "later" })).not.toHaveProperty("autoAt");
+  });
+});
+
+describe("the auto and undo calls (crew slice 3)", () => {
+  it("setTrickAuto posts { on } and undoTrick posts {}, each to its route, and read the trick back", async () => {
+    const seen: { path: string; body: unknown }[] = [];
+    server.use(
+      http.post(/\/api\/tricks\/[^/]+\/[^/]+\/(auto|undo)$/, async ({ request }) => {
+        seen.push({ path: new URL(request.url).pathname, body: await request.json() });
+        return HttpResponse.json({ ...LEGS, auto: true });
+      }),
+    );
+    expect(await setTrickAuto("blue fin", "legs", true)).toMatchObject({ id: "legs", auto: true });
+    expect(await undoTrick("bluefin", "legs")).toMatchObject({ id: "legs" });
+    expect(seen).toEqual([
+      { path: "/api/tricks/blue%20fin/legs/auto", body: { on: true } },
+      { path: "/api/tricks/bluefin/legs/undo", body: {} },
+    ]);
+    server.use(http.post(/\/undo$/, () => HttpResponse.json({ error: "no-previous", message: "There is no earlier version to go back to." }, { status: 409 })));
+    await expect(undoTrick("bluefin", "legs")).rejects.toThrow();
   });
 });
