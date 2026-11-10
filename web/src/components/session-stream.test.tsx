@@ -9,7 +9,8 @@ import { EMPTY_CHAT_WINDOW, type ChatWindow } from "@/lib/chat-window";
 import type { ChatItem } from "@/lib/chat-items";
 import type { ChatEntry } from "@/lib/types";
 import { BLOCK_HOLD_MS } from "./stream-block";
-import { USER_WELL, USER_WELL_HUG } from "./user-well";
+import { USER_WELL, USER_WELL_HUG, USER_WELL_META, USER_WELL_TIME } from "./user-well";
+import { clockTimeOf } from "@/lib/format";
 import { CHAT_LOOK_BEFORE, ChatLookContext } from "@/lib/chat-look";
 
 // The pane view's second body. The load-bearing behaviours: the two empty answers are never drawn
@@ -900,7 +901,7 @@ describe("SessionStream — the prompt pin", () => {
       return DOMRect.fromRect({ x: 0, y: index * step - scrolled, width: 390, height: 100 });
     });
   }
-  const prompt = (uuid: string, seq: number, text: string) => entry(uuid, seq, text, { role: "user" });
+  const prompt = (uuid: string, seq: number, text: string, ts = "2026-09-30T10:00:00.000Z") => entry(uuid, seq, text, { role: "user", ts });
 
   afterEach(() => vi.restoreAllMocks());
 
@@ -944,6 +945,60 @@ describe("SessionStream — the prompt pin", () => {
     expect(pin.querySelector("svg")).toBeNull();
     // The pin sits beside the scrollport, so the chat font size tokens ride on its wrapper.
     expect(pin.parentElement?.style.getPropertyValue("--text-sm")).toBe("14px");
+  });
+
+  describe("the time on the pin", () => {
+    const TS = "2026-09-30T10:07:00.000Z";
+    // An empty `ts` is a prompt with no time: the resting turn draws none, and so must the pin.
+    const stampedFeed = (ts: string) =>
+      feedOf({
+        status: { kind: "live" },
+        entries: [prompt("p1", BASE, "fix the flaky test", ts), entry("a", BASE + 1, "one"), entry("b", BASE + 2, "two"), entry("c", BASE + 3, "three")],
+      });
+    const pinOf = () => document.querySelector<HTMLElement>('[data-slot="prompt-pin"]')!;
+    const restingMeta = () => {
+      const resting = screen.getAllByText("fix the flaky test").map((el) => el.closest<HTMLElement>("[data-block]")).find((el) => el !== null)!;
+      return resting.querySelector<HTMLElement>("p > span.float-right");
+    };
+
+    it("shows the resting turn's time, in the same element classes, under the 1.29 look", () => {
+      layOut(250);
+      renderStream(stampedFeed(TS));
+      const expected = clockTimeOf(TS);
+      expect(expected).not.toBe("");
+      const resting = restingMeta()!;
+      expect(resting).toHaveTextContent(expected);
+      const time = pinOf().querySelector<HTMLElement>('[data-slot="prompt-pin-time"]')!;
+      expect(time).toHaveTextContent(expected);
+      // Same classes as the resting turn's small print, and inside the well, not a row of its own.
+      for (const cls of USER_WELL_META.split(" ")) expect(time).toHaveClass(cls);
+      expect(resting.className).toBe(USER_WELL_META);
+      expect(time.firstElementChild).toHaveClass(USER_WELL_TIME);
+      expect(pinOf().querySelector(":scope > span")!.contains(time)).toBe(true);
+      // The fixed two-line height holds.
+      expect(pinOf()).toHaveClass("h-14");
+    });
+
+    it("shows none under the look before 1.29", () => {
+      layOut(250);
+      const listRef = createRef<ChatMessageListHandle>();
+      render(
+        <ChatLookContext.Provider value={CHAT_LOOK_BEFORE}>
+          <SessionStream feed={stampedFeed(TS)} address="w1:p1" working={false} showToolCalls showCompactions={false} fontSize={14} listRef={listRef} agent="muse" />
+        </ChatLookContext.Provider>,
+      );
+      expect(pinOf()).toBeInTheDocument();
+      expect(pinOf().querySelector('[data-slot="prompt-pin-time"]')).toBeNull();
+      expect(pinOf()).not.toHaveTextContent(clockTimeOf(TS));
+    });
+
+    it("shows none for a prompt with no time, as the resting turn does", () => {
+      layOut(250);
+      renderStream(stampedFeed(""));
+      expect(restingMeta()).toBeNull();
+      expect(pinOf()).toBeInTheDocument();
+      expect(pinOf().querySelector('[data-slot="prompt-pin-time"]')).toBeNull();
+    });
   });
 
   it("the look before 1.29 keeps the pin full width with its icon", () => {

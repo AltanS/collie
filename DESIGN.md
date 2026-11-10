@@ -491,7 +491,9 @@ named for the screen reader only, by a visually hidden label as the well's first
 already say whose turn it is, and a caption row spent a line on it. The classes live in
 `components/user-well.ts`. The prompt pin (`prompt-pin.tsx`), which holds the current turn at the top of Chat
 while its answer scrolls under it, wears the same side, cap, well and text size, and no prompt icon, so the
-message does not move sideways when it sticks or lets go.
+message does not move sideways when it sticks or lets go. It also shows the turn's time, the same element
+(`USER_WELL_META`), at the well's right edge on its first line: the pin clamps its text to two lines, so a time
+after the last line would hide, and the two-line height does not change.
 
 **In Chat a new turn starts 20px under the block above, and blocks inside an agent run sit 8px apart.**
 Reason: the old 12px between everything made a question and the answer to the one before it look alike.

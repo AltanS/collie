@@ -25,6 +25,8 @@ export interface PromptRun {
   /** Index into the blocks of the prompt's first user block. */
   start: number;
   text: string;
+  /** When the prompt's first block was written (an ISO time), if the block says. The pin shows its clock time. */
+  ts?: string;
 }
 
 /** The prompts in a stream, and for each block the prompt it follows (`-1`: none held above it). */
@@ -35,8 +37,8 @@ export interface PromptMap {
 
 /** What the pin shows. `null` draws nothing. */
 export type Pin =
-  | { kind: "held"; text: string; start: number }
-  | { kind: "reported"; text: string; truncated: boolean }
+  | { kind: "held"; text: string; start: number; ts?: string }
+  | { kind: "reported"; text: string; truncated: boolean; ts?: string }
   | { kind: "earlier" }
   | null;
 
@@ -46,10 +48,10 @@ export type Pin =
  * so it is no prompt: it neither starts a run nor extends one, and it closes an open one like any
  * other block that is not a prompt. An operator walky turn is the person's own words and stays one.
  */
-function promptText(group: readonly ChatItem[]): string | null {
+function promptOf(group: readonly ChatItem[]): { text: string; ts?: string } | null {
   const item = group[0];
   if (group.length !== 1 || item?.kind !== "user") return null;
-  return item.walky?.kind === "agent" ? null : item.text;
+  return item.walky?.kind === "agent" ? null : { text: item.text, ts: item.ts };
 }
 
 /**
@@ -63,10 +65,10 @@ export function promptMap(blocks: readonly (readonly ChatItem[])[]): PromptMap {
   const owner: number[] = [];
   let open = false;
   blocks.forEach((group, i) => {
-    const text = promptText(group);
-    if (text !== null) {
-      if (open) runs[runs.length - 1]!.text += `\n\n${text}`;
-      else runs.push({ start: i, text });
+    const prompt = promptOf(group);
+    if (prompt !== null) {
+      if (open) runs[runs.length - 1]!.text += `\n\n${prompt.text}`;
+      else runs.push({ start: i, text: prompt.text, ts: prompt.ts });
       open = true;
     } else {
       open = false;
@@ -105,10 +107,10 @@ export function pinAt(
   const at = map.owner[visible]!;
   if (at >= 0) {
     const run = map.runs[at]!;
-    return run.start < visible ? { kind: "held", text: run.text, start: run.start } : null;
+    return run.start < visible ? { kind: "held", text: run.text, start: run.start, ts: run.ts } : null;
   }
   if (reportedPrompt !== null && !holdsLastPrompt) {
-    return { kind: "reported", text: reportedPrompt.text, truncated: reportedPrompt.truncated === true };
+    return { kind: "reported", text: reportedPrompt.text, truncated: reportedPrompt.truncated === true, ts: reportedPrompt.ts };
   }
   return hasOlder ? { kind: "earlier" } : null;
 }

@@ -56,7 +56,7 @@ import type { ChatItem, ChatToolCall, ChatToolStatus } from "@/lib/chat-items";
 import { useChatLook, type ChatLook } from "@/lib/chat-look";
 import { findFilePaths } from "@/lib/file-paths";
 import type { PendingState } from "@/lib/durable-pending";
-import { clockTime } from "@/lib/format";
+import { clockTimeOf } from "@/lib/format";
 import { t, tn, type PluralKey } from "@/lib/i18n";
 import { useScope } from "@/lib/session";
 import {
@@ -73,7 +73,7 @@ import {
 import type { Hunk, ToolQuestion } from "@/lib/types";
 import type { DiffRow } from "@/lib/unified-diff";
 import { cn } from "@/lib/utils";
-import { USER_WELL, USER_WELL_HUG, USER_WELL_TEXT } from "@/components/user-well";
+import { USER_WELL, USER_WELL_HUG, USER_WELL_META, USER_WELL_TEXT, USER_WELL_TIME } from "@/components/user-well";
 import { Icon } from "@/components/icons/icon";
 import type { IconKey } from "@/components/icons/keys";
 
@@ -671,8 +671,8 @@ function BareUserTurn({
       <p className={USER_WELL_TEXT}>
         {text}
         {meta && (
-          <span className="float-right mt-1 ml-3 flex h-4 items-center gap-1 font-sans text-[10px] font-medium tabular-nums text-status-working">
-            {time && <span className="opacity-80">{time}</span>}
+          <span className={USER_WELL_META}>
+            {time && <span className={USER_WELL_TIME}>{time}</span>}
             {notInLog && (
               <span data-slot="walky-not-in-log" className="opacity-80">
                 {t("walky.card.notInLog")}
@@ -699,11 +699,6 @@ function BareUserTurn({
 export function PendingTurn({ text, state }: { text: string; state: PendingState }) {
   useLocale();
   return <UserTurn text={text} pending={state} />;
-}
-
-function clockTimeOf(iso: string): string {
-  const ms = Date.parse(iso);
-  return Number.isNaN(ms) ? "" : clockTime(ms);
 }
 
 /**

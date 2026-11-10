@@ -1,7 +1,9 @@
 import { Icon } from "@/components/icons/icon";
 
-import { USER_WELL_HUG } from "@/components/user-well";
+import { USER_WELL_HUG, USER_WELL_META, USER_WELL_TIME } from "@/components/user-well";
 import { useChatLook } from "@/lib/chat-look";
+import { useLocale } from "@/hooks/use-locale";
+import { clockTimeOf } from "@/lib/format";
 import { t } from "@/lib/i18n";
 import type { Pin } from "@/lib/prompt-pin";
 import { cn } from "@/lib/utils";
@@ -24,6 +26,13 @@ import { cn } from "@/lib/utils";
 // pin seeks, the well pulses instead of swapping its icon for a spinner, so the width never changes
 // under the reader's thumb. The pin's height stays fixed at two lines in every look (above), so the
 // room the thread keeps for it (`PIN_ROOM`) does not depend on the prompt.
+//
+// THE TIME. The resting turn shows its clock time in the well, small, at the right edge (`USER_WELL_META`,
+// `clockTimeOf`). The pin shows the same time, in the same element and classes, when it draws that look and
+// the prompt carries one. The resting turn floats it after the text's last line; the pin clamps its text to two
+// lines and a float after hidden text would hide with it, so the pin makes it a flex item at the well's right
+// edge, on the first line. It takes no row of its own: the height stays two lines, and `gap-0` plus the
+// element's own `ml-3` keep the words-to-time gap the resting turn has, so a one-line prompt hugs the same width.
 
 const PIN =
   "pointer-events-auto flex h-14 w-full min-w-0 items-start gap-2 overflow-hidden rounded-md border border-status-working/25 bg-background text-left shadow-sm transition-colors active:bg-muted";
@@ -31,8 +40,11 @@ const PIN_WELL = "flex h-full w-full min-w-0 items-start gap-2 bg-status-working
 const PIN_TEXT = "font-content line-clamp-2 min-w-0 flex-1 text-sm leading-5 wrap-anywhere whitespace-pre-wrap";
 
 export function PromptPin({ pin, busy, onTap }: { pin: Exclude<Pin, null>; busy: boolean; onTap: () => void }) {
+  useLocale();
   const hug = useChatLook().userTurn === "hug";
   const earlier = pin.kind === "earlier";
+  // The hugging look shows the time at rest; "earlier" points at no one message and shows none.
+  const time = hug && !earlier && pin.ts !== undefined ? clockTimeOf(pin.ts) : "";
   // The hugging look draws no icon on a prompt; "earlier" has no resting twin and keeps its own.
   const icon = !hug || earlier;
   const iconKey = busy ? "busy" : earlier ? "prompt-earlier" : "prompt-user";
@@ -45,7 +57,7 @@ export function PromptPin({ pin, busy, onTap }: { pin: Exclude<Pin, null>; busy:
       disabled={busy}
       aria-busy={busy}
     >
-      <span className={cn(PIN_WELL, hug && busy && !earlier && "animate-pulse")}>
+      <span className={cn(PIN_WELL, hug && !earlier && "gap-0", hug && busy && !earlier && "animate-pulse")}>
         {icon && (
           <Icon
             name={iconKey}
@@ -61,6 +73,11 @@ export function PromptPin({ pin, busy, onTap }: { pin: Exclude<Pin, null>; busy:
             <span className="sr-only">{t("chat.pin.label")}: </span>
             {pin.text}
             {pin.kind === "reported" && pin.truncated && "…"}
+          </span>
+        )}
+        {time !== "" && (
+          <span data-slot="prompt-pin-time" className={cn(USER_WELL_META, "shrink-0")}>
+            <span className={USER_WELL_TIME}>{time}</span>
           </span>
         )}
       </span>
