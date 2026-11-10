@@ -130,10 +130,24 @@ export function TrickSettingsSection(): ReactNode {
       </Group>
       <Group title="The Hill switched off">
         <ListCard
-          n={8}
+          n={9}
           state="trick-settings-hill-off"
           label="Hill off, one trick asks"
           tricks={[trick("legs", "Browser leg", { decides: true, provenance: { via: "agent", at: "2026-11-08T07:41:00Z" } }), HEALTHY[2] ?? trick("x", "x")]}
+          hillOff
+        />
+        <ListCard
+          n={10}
+          state="trick-settings-hill-off-warnings"
+          label="Hill off, changed trick with warnings"
+          tricks={[
+            trick("legs", "Browser leg", {
+              decides: true,
+              changed: true,
+              provenance: { via: "agent", at: "2026-11-08T07:41:00Z" },
+              warnings: [{ kind: "network", text: "This trick reaches the network." }],
+            }),
+          ]}
           hillOff
         />
       </Group>

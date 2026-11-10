@@ -382,4 +382,14 @@ describe("the Hill switched off", () => {
     expect(rowOf("legs").querySelector('[data-line="slot"]')).toHaveTextContent("The Hill is off: this trick's Decisions are not shown.");
     expect(rowOf("tracker").querySelector('[data-line="slot"]')).not.toHaveTextContent("The Hill is off");
   });
+
+  it("a row can carry the warnings list and the Hill-off note together", async () => {
+    const both: WireTrickInfo = { ...ASKS, changed: true, warnings: [{ kind: "network", text: "x" }] };
+    const store = await storeWith([both]);
+    const router = createMemoryRouter([{ id: ROOT_ROUTE_ID, path: "/", element: <TricksSettingsCard store={store} now={NOW} />, loader: () => ({ hillOff: true }) }], { initialEntries: ["/"] });
+    render(<RouterProvider router={router} />);
+    await screen.findByText("Browser leg");
+    expect(rowOf("legs").querySelector('[data-line="slot"]')).toHaveTextContent("The Hill is off: this trick's Decisions are not shown.");
+    expect(await within(rowOf("legs")).findByText("This trick reaches the network.")).toBeInTheDocument();
+  });
 });
