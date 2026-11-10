@@ -1,7 +1,8 @@
-import { cleanup, fireEvent, render } from "@testing-library/react";
+import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import { createMemoryRouter, RouterProvider } from "react-router";
 
 import { HILL_IDLE } from "@/hooks/use-hill-answer";
+import { ARM_DWELL_MS, ARM_MS } from "@/lib/arm";
 import { sortOpenDecisions, type HillDecision } from "@/lib/hill/wire";
 import { withHeaderHost } from "@/test/header-host";
 import { HILL_T0, hillDecision, trickDecision } from "@/test/hill-fixtures";
@@ -161,5 +162,99 @@ describe("the Hill's header", () => {
     const calm = header(2, 0).querySelector('[data-slot="hill-mark"]')!;
     expect(calm.className).not.toContain("status-working");
     expect(calm.className).toMatch(/\bborder-border\b/u);
+  });
+});
+
+// Clear on the Answered header: one quiet button, armed by the first tap, fired by the second, dropped
+// by time and by a count that moved, and drawn only when the view is given the way to clear.
+describe("the Clear button on the Answered group", () => {
+  const closed = () => [hillDecision({ state: "answered", closedAt: HILL_T0 }), hillDecision({ state: "dismissed", closedAt: HILL_T0 - 1 })];
+  const shown = (root: HTMLElement) => root.querySelector('[data-slot="hill-clear"] [data-active]')?.textContent;
+
+  function renderClear(over: { closedTotal?: number; canWrite?: boolean; busy?: boolean; onClear?: () => void; rows?: HillDecision[] } = {}) {
+    const props = (rows: HillDecision[]) => ({
+      open: [],
+      closed: rows,
+      kept: NO_KEPT,
+      closedTotal: over.closedTotal,
+      clear: { canWrite: over.canWrite ?? true, busy: over.busy ?? false, onClear: over.onClear ?? (() => {}) },
+      renderCard: () => null,
+    });
+    const view = render(<HillView {...props(over.rows ?? closed())} />);
+    return { ...view, again: (rows: HillDecision[]) => view.rerender(<HillView {...props(rows)} />) };
+  }
+
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it("is drawn only with a way to clear: a view without one has no button", () => {
+    const { container } = render(<HillView open={[]} closed={closed()} kept={NO_KEPT} renderCard={() => null} />);
+    expect(container.querySelector('[data-slot="hill-clear"]')).toBeNull();
+  });
+
+  it("sits beside the Answered fold button, not inside it, so a tap on it never folds the group", () => {
+    const { container } = renderClear();
+    const fold = container.querySelector('[data-slot="hill-answered"] button[aria-expanded]')!;
+    const clear = container.querySelector('[data-slot="hill-clear"]')!;
+    expect(fold.contains(clear)).toBe(false);
+    fireEvent.click(clear);
+    expect(fold).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("arms on the first tap, fires on the second after the dwell, and spends the arm", () => {
+    const onClear = vi.fn();
+    const { container } = renderClear({ onClear });
+    const clear = () => container.querySelector<HTMLButtonElement>('[data-slot="hill-clear"]')!;
+    fireEvent.click(clear());
+    expect(shown(container)).toBe("Clear 2 entries?");
+    // Inside the dwell: the same touch landing twice.
+    act(() => vi.advanceTimersByTime(ARM_DWELL_MS - 100));
+    fireEvent.click(clear());
+    expect(onClear).not.toHaveBeenCalled();
+    act(() => vi.advanceTimersByTime(200));
+    fireEvent.click(clear());
+    expect(onClear).toHaveBeenCalledTimes(1);
+    expect(shown(container)).toBe("Clear");
+  });
+
+  it("lapses after the arm window, and a tap after that is a first tap again", () => {
+    const onClear = vi.fn();
+    const { container } = renderClear({ onClear });
+    const clear = () => container.querySelector<HTMLButtonElement>('[data-slot="hill-clear"]')!;
+    fireEvent.click(clear());
+    act(() => vi.advanceTimersByTime(ARM_MS + 10));
+    expect(shown(container)).toBe("Clear");
+    fireEvent.click(clear());
+    expect(onClear).not.toHaveBeenCalled();
+    expect(shown(container)).toBe("Clear 2 entries?");
+  });
+
+  it("drops an arm when the count it asked about moves", () => {
+    const { container, again } = renderClear();
+    fireEvent.click(container.querySelector('[data-slot="hill-clear"]')!);
+    expect(shown(container)).toBe("Clear 2 entries?");
+    again([hillDecision({ state: "answered", closedAt: HILL_T0 })]);
+    expect(shown(container)).toBe("Clear");
+  });
+
+  it("counts what the bridge holds when that is more than the rows served", () => {
+    const { container } = renderClear({ closedTotal: 31 });
+    fireEvent.click(container.querySelector('[data-slot="hill-clear"]')!);
+    expect(shown(container)).toBe("Clear 31 entries?");
+  });
+
+  it("is disabled for a device that may not write and while a clear is in flight", () => {
+    expect(renderClear({ canWrite: false }).container.querySelector('[data-slot="hill-clear"]')).toBeDisabled();
+    cleanup();
+    expect(renderClear({ busy: true }).container.querySelector('[data-slot="hill-clear"]')).toBeDisabled();
+  });
+
+  it("is a 44px target and keeps the muted ink at rest, the destructive tint when armed", () => {
+    const { container } = renderClear();
+    const clear = container.querySelector<HTMLButtonElement>('[data-slot="hill-clear"]')!;
+    expect(clear.className).toContain("h-11");
+    expect(clear.className).toContain("text-muted-foreground");
+    fireEvent.click(clear);
+    expect(clear.className).toContain("bg-destructive/10");
   });
 });

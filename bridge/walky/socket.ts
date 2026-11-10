@@ -17,6 +17,7 @@
 //   hill.status   { id }                       → { ok, decision }   (the poster, and the session its replyTo names)
 //   hill.withdraw { id }                       → { ok, decision }   (now `withdrawn`, "by the poster")
 //   hill.list     { mine: true }               → { ok, decisions }  (the asker's own, open first)
+//   hill.clear    {}                           → { ok, cleared }    (every closed decision; no pane needed, never an open one)
 // Every hill refusal carries `hill: true`, so the CLI tells a bridge that knows the hill from an older one.
 // Morph, six operations beside these, answered only by a bridge built with it, always for the asking
 // pane's own session (bridge/morph/service.ts). Every one MAY carry `session` (the address the caller
@@ -66,7 +67,7 @@ export const MORPH_NEEDS_A_PANE = "run this inside an agent's pane: a Morph scre
 export type MorphSocket = Pick<MorphService, "start" | "show" | "clear" | "setOn" | "status">;
 
 /** What the socket needs of the hill (M96). Absent: the bridge answers the four operations as unknown. */
-export type HillSocket = Pick<HillService, "agentSender" | "postFields" | "status" | "withdraw" | "mineList">;
+export type HillSocket = Pick<HillService, "agentSender" | "postFields" | "status" | "withdraw" | "mineList" | "clear">;
 
 /** The socket of one state dir. */
 export function walkySocketPath(stateDir: string): string {
@@ -142,6 +143,7 @@ export type WalkyAnswer =
   | { readonly ok: false; readonly error: string; readonly hill: true; readonly code?: HillRefusalCode; readonly missing?: string }
   | { readonly ok: true; readonly decision: HillDecision }
   | { readonly ok: true; readonly decisions: readonly HillDecision[] }
+  | { readonly ok: true; readonly cleared: number }
   // Morph.
   | { readonly ok: false; readonly error: string; readonly morph: true; readonly code?: MorphRefusalCode; readonly refusals?: readonly Refusal[] }
   | { readonly ok: true; readonly morph: MorphSession };
@@ -161,6 +163,8 @@ export async function answerRequest(service: WalkyService, request: WalkyRequest
   if (hill === undefined && isHillOp(request.op)) return answerUnread(service, { ok: false, markers: request.markers, reason: unknownOp(request.op) }, targets);
   // And so does a bridge built without Morph.
   if (morph === undefined && isMorphOp(request.op)) return answerUnread(service, { ok: false, markers: request.markers, reason: unknownOp(request.op) }, targets);
+  // Clear is the person's verb from a terminal: it names no pane, so the markers are not placed.
+  if (request.op === "hill.clear" && hill !== undefined) return answerClear(hill);
   const placed = request.markers.length === 0 ? null : await placeMarkers(request.markers, targets);
   const notHere = notHereFor(request.op, hill !== undefined, morph !== undefined);
   if (request.markers.length > 0 && placed === null) return notHere;
@@ -235,6 +239,9 @@ export async function answerRequest(service: WalkyService, request: WalkyRequest
     case "hill.withdraw":
     case "hill.list":
       return answerHill(service, request, pane, hill);
+    case "hill.clear":
+      // Answered above, before any pane is placed; kept so the switch stays exhaustive.
+      return hill === undefined ? { ok: false, error: unknownOp(request.op) } : answerClear(hill);
     case "morph.start":
     case "morph.show":
     case "morph.clear":
@@ -301,6 +308,13 @@ function morphAnswerOf(
     case "morph.status":
       return { ok: true, session: morph.status(session) };
   }
+}
+
+/** Clear every closed decision: the count, or a refusal when the write failed (nothing was cleared). */
+function answerClear(hill: HillSocket): WalkyAnswer {
+  const cleared = hill.clear(null);
+  if (cleared === null) return { ok: false, error: "the Hill could not be saved on this machine; nothing was cleared", hill: true };
+  return { ok: true, cleared: cleared.cleared.length };
 }
 
 /**

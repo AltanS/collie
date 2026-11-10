@@ -150,7 +150,7 @@ export function readReceipt(value: JsonValue | undefined): WalkyReceipt | null {
 export type WalkyOp = "send" | "inbox" | "who" | "status" | "ack" | "cancel" | "off" | "on" | HillOp | MorphOp;
 
 /** The hill's operations (M96), beside walky's own. Added, never a change to one of them. */
-export type HillOp = "hill.post" | "hill.status" | "hill.withdraw" | "hill.list";
+export type HillOp = "hill.post" | "hill.status" | "hill.withdraw" | "hill.list" | "hill.clear";
 
 export type WalkyRequest =
   | {
@@ -173,6 +173,8 @@ export type WalkyRequest =
   | { readonly op: "hill.post"; readonly markers: readonly BeaconMarker[]; readonly fields: JsonObject }
   | { readonly op: "hill.status" | "hill.withdraw"; readonly markers: readonly BeaconMarker[]; readonly id: string }
   | { readonly op: "hill.list"; readonly markers: readonly BeaconMarker[] }
+  // Clear every closed decision, from the person's terminal: it names no pane and no id.
+  | { readonly op: "hill.clear"; readonly markers: readonly BeaconMarker[] }
   // Morph: a show's and a start's fields are read by bridge/morph/service.ts, which owns their shape.
   // `session` is the address the caller names with `--session`, or null: the bridge checks it against
   // the pane the markers placed and never takes it in their place.
@@ -189,7 +191,7 @@ export function isMorphOp(op: string | null): op is MorphOp {
 
 /** Whether a request is one of the hill's operations (M96). */
 export function isHillOp(op: string | null): op is HillOp {
-  return op === "hill.post" || op === "hill.status" || op === "hill.withdraw" || op === "hill.list";
+  return op === "hill.post" || op === "hill.status" || op === "hill.withdraw" || op === "hill.list" || op === "hill.clear";
 }
 
 /**
@@ -247,7 +249,7 @@ export function readWalkyRequest(line: string): WalkyRequestRead {
     const id = text(row, "id");
     return id !== null && HILL_ID_RE.test(id) ? done({ op, markers, id }) : unread(HILL_BAD_ID, markers);
   }
-  if (op === "hill.list") return done({ op, markers });
+  if (op === "hill.list" || op === "hill.clear") return done({ op, markers });
   // Morph. A bridge built without it answers these as it answers any op it does not know.
   if (isMorphOp(op)) {
     // `session` is absent, null, or text; anything else is a request this bridge cannot read.

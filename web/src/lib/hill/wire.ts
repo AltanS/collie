@@ -233,6 +233,11 @@ export interface HillList {
   open: HillDecision[];
   /** The newest closed decisions, newest first. */
   closed: HillDecision[];
+  /**
+   * How many closed decisions the bridge holds, which may be more than `closed` carries. What Clear
+   * says it will remove. Absent from a bridge before Clear: the phone counts `closed`.
+   */
+  closedTotal?: number;
 }
 
 /** What the phone sends to answer a decision. */
