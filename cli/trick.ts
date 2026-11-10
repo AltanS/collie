@@ -4,6 +4,7 @@ import { basename, isAbsolute, join, resolve } from "node:path";
 
 import { redactText } from "../bridge/redact.ts";
 import { CONFIG_FILE, diskTrickFs, trickCodeHash, walkTrickCode } from "../bridge/tricks/code-hash.ts";
+import { originShort } from "../bridge/tricks/origin.ts";
 import {
   HELPER_FILE,
   HELPER_VERSION,
@@ -49,7 +50,11 @@ import type { Files } from "./sys.ts";
 // `collie trick` (M94 slice 01): the machine's half of Collie tricks. A trick is added on the machine and
 // switched on from here (or, later, the phone); the bridge runs it.
 //
-//   list              every trick folder, its switch, and what the running bridge says of it
+//   list              every trick folder, its switch, its origin and what the running bridge says of it
+//   add [<source>]    copy a trick from a git repository into the tricks folder, OFF (cli/trick-add.ts);
+//                     with no source, list the tricks of the official repository
+//   update <id>       fetch a trick added with `add` again and replace its code, keeping config.toml
+//   remove <id>       delete a trick folder that is off, and its state folder
 //   on <id> / off <id>  write the switch (`<stateDir>/tricks/switches.json`); the bridge rereads it. On
 //                     approves the code as it is now: the switch stores its code hash, and an edit to
 //                     the code stops the trick until it is switched on again. On prints the check
@@ -68,9 +73,8 @@ import type { Files } from "./sys.ts";
 //
 // `check` exits 0 (clean, or only "later" notes), 1 (a refusal or a failed run) or 2 (usage: no
 // folder, or not a folder), like `config check`. `--json` prints one report document instead.
-// `add` and `update` are a later slice.
 
-export const TRICK_SUBCOMMANDS = ["list", "on", "off", "check", "dev", "init", "helper", "skill"] as const;
+export const TRICK_SUBCOMMANDS = ["list", "add", "update", "remove", "on", "off", "check", "dev", "init", "helper", "skill"] as const;
 
 export interface TrickDeps {
   ctx: Pick<CliContext, "configDir" | "stateDir" | "env" | "port">;
@@ -138,6 +142,8 @@ export type TrickListRow = {
   error: string | null;
   /** Whether the folder holds a regular file `SKILL.md`: what `collie trick skill <id>` would print. */
   skill: boolean;
+  /** Where `collie trick add` took it from, short (`owner/repo/legs@abc1234`), or null for a folder made here. */
+  origin: string | null;
 };
 
 /** What `trick list` and the doctor row read: the folders, the bridge's word, its runner's PATH. */
@@ -167,6 +173,7 @@ export async function trickListRows(deps: Pick<TrickDeps, "ctx" | "files" | "fet
       lastRunAt: said?.lastRunAt ?? null,
       error,
       skill: skills[i] === true,
+      origin: m.origin === undefined ? null : originShort(m.origin),
     };
   });
   const out: TrickList = { exists: found.exists, rows, bridge: bridge !== null };
@@ -187,12 +194,12 @@ export async function cmdTrickList(deps: TrickDeps, args: readonly string[]): Pr
     return EXIT.OK;
   }
   if (!exists || rows.length === 0) {
-    deps.io.out(`No tricks in ${tricksConfigDir(deps.ctx.configDir)}. Make one: collie trick init <id>`);
+    deps.io.out(`No tricks in ${tricksConfigDir(deps.ctx.configDir)}. Make one: collie trick init <id>, or add one: collie trick add`);
     return EXIT.OK;
   }
   const lines = table([
-    ["ID", "NAME", "SWITCH", "SKILL", "STATE", "LAST RUN", "LAST ERROR"],
-    ...rows.map((r) => [r.id, r.name, r.on ? "on" : "off", r.skill ? "yes" : "-", r.state, r.lastRunAt ?? "-", r.error ?? "-"]),
+    ["ID", "NAME", "SWITCH", "SKILL", "ORIGIN", "STATE", "LAST RUN", "LAST ERROR"],
+    ...rows.map((r) => [r.id, r.name, r.on ? "on" : "off", r.skill ? "yes" : "-", r.origin ?? "-", r.state, r.lastRunAt ?? "-", r.error ?? "-"]),
   ]);
   for (const line of lines) deps.io.out(line);
   if (!bridge) deps.io.out("(the bridge did not answer: state and last run are from the files only)");

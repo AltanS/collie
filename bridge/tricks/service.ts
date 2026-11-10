@@ -25,6 +25,7 @@ import { createTrickScanner, type FoundTrick, type TricksScan } from "./discover
 import { scrubEnv, type ProgramEnv } from "./env.ts";
 import { buildFacts, type FactsWorld } from "./facts.ts";
 import { readTrickMedia, type TrickMediaFile } from "./media.ts";
+import { originRepoName } from "./origin.ts";
 import type { TrickHillRun, TrickHillTrick } from "./hill.ts";
 import { tricksConfigDir, trickStateDir } from "./paths.ts";
 import { trickSessionPanes, type TrickSessionPanes } from "./panes.ts";
@@ -68,6 +69,9 @@ import { createSwitchReader, updateSwitches, withSwitch, type SwitchEntry, type 
 // other nodes and parts draw; the decisions are read strictly. A failed run keeps the last good parts,
 // stale. The error line is masked and capped, and goes to the list entry, the doctor row and one log
 // line when it changes, never once per run.
+//
+// ── PROVENANCE (review 15) ──────────────────────────────────────────────────────
+// A trick `collie trick add` made shows its origin record (origin.ts) as its provenance.
 //
 // ── TAPS ────────────────────────────────────────────────────────────────────────
 // `POST /api/tricks/<host>/<id>/tap` carries the tree's intent shape `{ rid, node, intent, value }`.
@@ -537,6 +541,8 @@ export class TricksService implements TricksSurface {
       places: m?.places ?? [],
       provenance: { via: "folder" },
     };
+    const origin = rt.found.origin;
+    if (origin !== undefined) info.provenance = { via: "repo", at: origin.at, repo: originRepoName(origin.url), sha: origin.commit };
     const error = m === undefined ? rt.found.refusals[0]?.reason : rt.changed ? CHANGED_LINE : rt.lastError;
     if (error !== undefined) info.error = problemLine(error);
     if (rt.lastRunAt !== undefined) info.lastRunAt = new Date(rt.lastRunAt).toISOString();

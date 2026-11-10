@@ -53,6 +53,7 @@ import {
 } from "./lifecycle.ts";
 import { cmdLink, cmdUnlink, type LinkDeps, realLinkFs } from "./link.ts";
 import { cmdTrickDev } from "./trick-dev.ts";
+import { cmdTrickAdd, cmdTrickRemove, cmdTrickUpdate } from "./trick-add.ts";
 import { cmdTrick, cmdTrickCheck, cmdTrickHelper, cmdTrickInit, cmdTrickList, cmdTrickSkill, cmdTrickSwitch, TRICK_SUBCOMMANDS, type TrickDeps } from "./trick.ts";
 import { cmdMuxProbe } from "./mux-probe.ts";
 import {
@@ -991,6 +992,21 @@ export const COMMANDS: readonly Command[] = [
         name: "list",
         summary: "every trick folder: its switch, state, last run and last error (--json)",
         run: async (args, s) => await cmdTrickList(trickVerbDeps(s.io), args),
+      },
+      {
+        name: "add",
+        summary: "copy a trick from a git repository into the tricks folder, off: <name> or <https-url>[//<folder>][#<ref>]; with none, list the official tricks",
+        run: async (args, s) => await cmdTrickAdd(trickVerbDeps(s.io), args),
+      },
+      {
+        name: "update",
+        summary: "fetch a trick added with add again and replace its code, keeping config.toml: <id> (--ref <ref>, --dry-run)",
+        run: async (args, s) => await cmdTrickUpdate(trickVerbDeps(s.io), args),
+      },
+      {
+        name: "remove",
+        summary: "delete a trick that is off, with its state folder: <id>",
+        run: async (args, s) => await cmdTrickRemove(trickVerbDeps(s.io), args),
       },
       {
         name: "on",

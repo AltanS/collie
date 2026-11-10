@@ -532,8 +532,8 @@ describe("collie trick on, off and list", () => {
     await cmdTrickSwitch(d, ["legs"], true);
     d.out.length = 0;
     expect(await cmdTrickList(d, [])).toBe(EXIT.OK);
-    expect(d.out[0]).toMatch(/^ID\s+NAME\s+SWITCH\s+SKILL\s+STATE\s+LAST RUN\s+LAST ERROR$/);
-    expect(d.out[1]).toMatch(/^legs\s+legs\s+on\s+-\s+failing\s+2026-11-08T09:41:00.000Z\s+The program exited with 1$/);
+    expect(d.out[0]).toMatch(/^ID\s+NAME\s+SWITCH\s+SKILL\s+ORIGIN\s+STATE\s+LAST RUN\s+LAST ERROR$/);
+    expect(d.out[1]).toMatch(/^legs\s+legs\s+on\s+-\s+-\s+failing\s+2026-11-08T09:41:00.000Z\s+The program exited with 1$/);
     expect(d.asked[0]).toBe("http://127.0.0.1:18999/api/tricks");
   });
 

@@ -926,3 +926,15 @@ describe("real programs", () => {
     expect(await readFile(join(r.stateDir, TRICKS_DIR, "bunny", "runs.log"), "utf8")).toBe("start\n");
   });
 });
+
+describe("provenance and warnings at the switch (review 15)", () => {
+  test("a clean trick carries no warnings key, and a trick add made shows its origin as the provenance", async () => {
+    const r = await rig([exited(belt("1"))]);
+    const dir = await makeTrick(r.configDir, "legs", MANIFEST, { "legs.sh": "#!/bin/sh\nprintf '{}'\n" });
+    const commit = "3f2a91c0d4e5f60718293a4b5c6d7e8f90a1b2c3";
+    await writeFile(join(dir, ".collie-origin.json"), JSON.stringify({ v: 1, url: "https://github.com/AltanS/collie-tricks", ref: null, commit, subdir: "legs", at: "2026-11-10T09:41:00.000Z" }));
+    const row = (await r.service.reply(undefined)).tricks.find((t) => t.id === "legs");
+    expect(row && "warnings" in row).toBe(false);
+    expect(row?.provenance).toEqual({ via: "repo", at: "2026-11-10T09:41:00.000Z", repo: "AltanS/collie-tricks", sha: commit });
+  });
+});
