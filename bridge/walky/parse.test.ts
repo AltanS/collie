@@ -131,3 +131,54 @@ describe("wake on the wire (M85)", () => {
     expect(readMessage({ ...plain, wake: "yes" })).not.toHaveProperty("wake");
   });
 });
+
+describe("the space and the outside flag on the wire (M98 spec 02)", () => {
+  const base = { v: 1, op: "send", markers: [], id: "wt_aaaaaaaaaaa1", to: "laptop/w1:p9", body: "hi", replyTo: null };
+  const agent = { v: 1, id: "wt_aaaaaaaaaaa1", kind: "agent", from: { memberId: "desk", address: "desk/w1:p1", harness: "agent-x", label: "repo#a" }, to: "laptop/w1:p9", replyTo: null, at: 1, body: "hi", signer: null, signature: null };
+  const withSpace = (space: JsonValue) => ({ ...agent, from: { ...agent.from, space } });
+
+  test("a send line carries `outside: true` through, and anything else reads as false", () => {
+    expect(parseWalkyRequest(JSON.stringify({ ...base, outside: true }))).toMatchObject({ op: "send", outside: true });
+    for (const outside of [false, "true", 1, null]) expect(parseWalkyRequest(JSON.stringify({ ...base, outside }))).toMatchObject({ outside: false });
+    expect(parseWalkyRequest(JSON.stringify(base))).toMatchObject({ outside: false });
+  });
+
+  test("a message keeps `outside: true` and no other value", () => {
+    expect(readMessage({ ...agent, outside: true })).toMatchObject({ outside: true });
+    expect(readMessage(agent)).not.toHaveProperty("outside");
+    expect(readMessage({ ...agent, outside: "yes" })).not.toHaveProperty("outside");
+  });
+
+  test("a named and an unnamed space read back whole; null is an operator's; absent stays absent", () => {
+    expect(readMessage(withSpace({ key: "api", named: true, label: "api" }))?.from.space).toEqual({ key: "api", named: true, label: "api" });
+    expect(readMessage(withSpace({ key: "desk\u0000w1", named: false, label: "w1" }))?.from.space).toEqual({ key: "desk\u0000w1", named: false, label: "w1" });
+    expect(readMessage(withSpace({ key: "local\u0000", named: false, label: "" }))?.from.space).toEqual({ key: "local\u0000", named: false, label: "" });
+    expect(readMessage(withSpace(null))?.from.space).toBeNull();
+    expect(readMessage(agent)?.from).not.toHaveProperty("space");
+  });
+
+  test("a space that is there and not one fails the message", () => {
+    for (const space of [
+      "api",
+      { key: "api", named: true },
+      { key: "", named: true, label: "" },
+      { key: "api", named: "yes", label: "api" },
+      // `named` must be the key's form.
+      { key: "desk\u0000w1", named: true, label: "w1" },
+      { key: "api", named: false, label: "api" },
+      // An unnamed key is one member id, one NUL, one space id.
+      { key: "desk\u0000w1\u0000w2", named: false, label: "w1" },
+      { key: "Not A Member\u0000w1", named: false, label: "w1" },
+      { key: "x".repeat(1025), named: true, label: "x" },
+      { key: "api", named: true, label: "x".repeat(1025) },
+    ]) {
+      expect(readMessage(withSpace(space))).toBeNull();
+    }
+  });
+
+  test("unknown fields of a space and of a sender are dropped", () => {
+    const spaced = withSpace({ key: "api", named: true, label: "api", colour: "red" });
+    const read = readMessage({ ...spaced, from: { ...spaced.from, extra: 1 } });
+    expect(read?.from).toEqual({ memberId: "desk", address: "desk/w1:p1", harness: "agent-x", label: "repo#a", space: { key: "api", named: true, label: "api" } });
+  });
+});

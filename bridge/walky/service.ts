@@ -27,6 +27,8 @@ export interface SendInput {
   readonly replyTo: string | null;
   /** M85: a scope or `all` also types into panes that rest. Absent: they get the inbox only. */
   readonly wake?: boolean;
+  /** M98: the message may leave the sender's space. Signed on the message as `outside: true`. */
+  readonly outside?: boolean;
 }
 
 export type SendAnswer =
@@ -206,10 +208,11 @@ export class WalkyService {
     const memberId = this.deps.memberId;
     const from =
       sender.kind === "agent"
-        ? { memberId, address: paneAddress(memberId, sender.pane.paneId, sender.pane.instance), harness: sender.pane.harness, label: sender.pane.label }
-        : { memberId, address: null, harness: null, label: headerField(sender.label, WALKY_LABEL_MAX) };
+        ? { memberId, address: paneAddress(memberId, sender.pane.paneId, sender.pane.instance), harness: sender.pane.harness, label: sender.pane.label, space: sender.pane.space }
+        : { memberId, address: null, harness: null, label: headerField(sender.label, WALKY_LABEL_MAX), space: null };
     const base: WalkyMessage = { v: 1, id: input.id, kind: sender.kind, from, to: input.to, replyTo: input.replyTo, at: this.now(), body: clean.body, signer: null, signature: null };
-    const message: WalkyMessage = input.wake === true ? { ...base, wake: true } : base;
+    const woken: WalkyMessage = input.wake === true ? { ...base, wake: true } : base;
+    const message: WalkyMessage = input.outside === true ? { ...woken, outside: true } : woken;
     const key = this.deps.keyPem();
     return key === null || memberId === null ? message : signMessage(message, key, memberId);
   }

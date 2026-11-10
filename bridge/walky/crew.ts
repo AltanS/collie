@@ -136,7 +136,11 @@ export type CrewMessageProblem = { readonly status: 400; readonly error: string 
  *   - an agent's `from.address` names a pane on the signer's member; an operator names no address and
  *     no harness;
  *   - `from.label` and `from.harness`: printable ASCII with no `[ ] ( )`, at most 48 and 32 characters;
- *   - the body as the sender's bridge cleans it, and an address that names its member.
+ *   - the body as the sender's bridge cleans it, and an address that names its member;
+ *   - the sender's space (M98): well formed (parse.ts `readSpace`, or the message did not read at all),
+ *     null or absent for an operator, and an unnamed key under the signer's own member id, so a member
+ *     cannot claim another machine's unnamed space. A named key is taken as claimed: the name is the
+ *     operator's to give, and a named space joins the space of that name on every machine.
  *
  * A malformed field is a 400 that says why (the caller passed both factors, §8.5); a claim that does
  * not match the signer is the uniform 401 (§8.1).
@@ -155,6 +159,7 @@ export function checkCrewMessage(message: WalkyMessage): CrewMessageProblem {
     return { status: 400, error: "the sender's address does not fit its kind" };
   }
   if (message.kind === "agent" && message.from.address === null) return { status: 400, error: "the sender's address does not fit its kind" };
+  if (message.kind === "operator" && message.from.space !== undefined && message.from.space !== null) return { status: 400, error: "the sender's space does not fit its kind" };
   if (!crewAddressable(message.to)) return { status: 400, error: "an address on a crew names its member" };
   // The machine that signed is the machine that sent, and an agent's pane is on that machine.
   if (message.signer === null || message.from.memberId !== message.signer) return { status: 401 };
@@ -162,6 +167,9 @@ export function checkCrewMessage(message: WalkyMessage): CrewMessageProblem {
     const from = parseAddress(message.from.address);
     if (from === null || from.kind !== "pane" || from.memberId !== message.signer) return { status: 401 };
   }
+  // An unnamed space is a space on one machine (space.ts): its key must name the machine that signed.
+  const space = message.from.space;
+  if (space !== undefined && space !== null && !space.named && !space.key.startsWith(`${message.signer}\u0000`)) return { status: 401 };
   return null;
 }
 
@@ -493,6 +501,22 @@ export const WAKE_FIRST_VERSION = "1.26.1";
  */
 export function olderThanWake(version: string | null, own: string, compare: (a: string, b: string) => number): boolean {
   return olderThanFloor(version, own, compare, WAKE_FIRST_VERSION);
+}
+
+/**
+ * The first release that carries the sender's space and the outside flag on a message (M98): its
+ * canonical string may hold the space line and the `outside` line, and its bridge enforces the space
+ * border for its own panes. A bridge below it cannot verify a message with either line.
+ */
+export const SPACE_FIRST_VERSION = "1.29.0";
+
+/**
+ * Whether a version is too old for the space (M98): below 1.29.0, or, on a build made before 1.29.0 that
+ * carries the feature, below that build's own version. Same rules as {@link olderThanWalky}: a version
+ * that names no release, and no version at all, is never called older.
+ */
+export function olderThanSpace(version: string | null, own: string, compare: (a: string, b: string) => number): boolean {
+  return olderThanFloor(version, own, compare, SPACE_FIRST_VERSION);
 }
 
 /** One dial of the lead's seam: the member, the route's pane segment, and the target its receipts name. */

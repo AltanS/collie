@@ -33,6 +33,13 @@ export interface WalkySender {
   readonly harness: string | null;
   /** Display data, not signed. Agent: `<repo>#<branch>` or the pane title; operator: device label or `cli`. */
   readonly label: string;
+  /**
+   * The space the message comes from (M98, space.ts): the sending pane's for an agent, null for an
+   * operator. Its key is signed when it is an object (canonical.ts), so a crew hop cannot change it, and
+   * an unnamed key names the signer's own machine (crew.ts `checkCrewMessage`). Absent on a message
+   * from a bridge before 1.29.0 (`SPACE_FIRST_VERSION`, crew.ts), whose canonical string has no space line.
+   */
+  readonly space?: WalkySpace | null;
 }
 
 export interface WalkyMessage {
@@ -53,6 +60,11 @@ export interface WalkyMessage {
    * present (canonical.ts), so a crew hop cannot add or drop it.
    */
   readonly wake?: true;
+  /**
+   * True when the sender said the message may leave its space (M98, the outside flag). Absent otherwise,
+   * which is every message an older bridge knows. Signed when present (canonical.ts), as `wake` is.
+   */
+  readonly outside?: true;
   /** The member id whose key made `signature`; null when unsigned (solo). */
   readonly signer: string | null;
   /** Base64 ECDSA P-256 SHA-256 over the canonical string (canonical.ts). */

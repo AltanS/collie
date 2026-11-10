@@ -9,7 +9,8 @@ import { asJsonBoolean, asJsonNumber, asJsonObject, asJsonString } from "../../w
 import { MEMBER_ID_RE } from "../crew/identity.ts";
 import { HILL_ID_RE } from "../../web/src/lib/hill/wire.ts";
 import { HILL_BAD_ID } from "../hill/parse.ts";
-import { parseAddress } from "./address.ts";
+import { LOCAL_MEMBER, parseAddress } from "./address.ts";
+import type { WalkySpace } from "./space.ts";
 import { BAD_ACK_IDS, BAD_MESSAGE_ID, BAD_REQUEST_LINE, bodyOverRaw, NO_ADDRESS, unknownOp, unreadAddress } from "./refusals.ts";
 import {
   isPrintableAscii,
@@ -44,6 +45,35 @@ export function isWalkyId(value: string | null | undefined): value is string {
   return value !== null && value !== undefined && WALKY_ID.test(value);
 }
 
+/** The longest space key or label a message may carry (M98). A space name is far shorter. */
+export const WALKY_SPACE_MAX = 1024;
+
+/** The separator of an unnamed space key (space.ts). */
+const UNNAMED_SEPARATOR = "\u0000";
+
+/**
+ * A sender's space (M98) as the wire or the log carries it: the space, null (an operator's), undefined
+ * when the field is absent (a bridge before 1.29.0), or false when it is there and not one. A space is
+ * `{ key, named, label }`, both strings within {@link WALKY_SPACE_MAX}. `named` must be the key's form:
+ * a named key holds no NUL, an unnamed key is `<member id>\u0000<space id>` with one NUL and a member
+ * id before it (space.ts `spaceOf`). Whose member id it is, is the crew check's (crew.ts).
+ */
+export function readSpace(value: JsonValue | undefined): WalkySpace | null | undefined | false {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  const row = asJsonObject(value);
+  if (row === undefined) return false;
+  const key = asJsonString(row.key);
+  const named = asJsonBoolean(row.named);
+  const label = asJsonString(row.label);
+  if (key === undefined || named === undefined || label === undefined) return false;
+  if (key === "" || key.length > WALKY_SPACE_MAX || label.length > WALKY_SPACE_MAX) return false;
+  const parts = key.split(UNNAMED_SEPARATOR);
+  if (named && parts.length !== 1) return false;
+  if (!named && (parts.length !== 2 || !(parts[0] === LOCAL_MEMBER || MEMBER_ID_RE.test(parts[0]!)))) return false;
+  return { key, named, label };
+}
+
 function readSender(value: JsonValue | undefined): WalkySender | null {
   const row = asJsonObject(value);
   if (row === undefined) return null;
@@ -51,10 +81,13 @@ function readSender(value: JsonValue | undefined): WalkySender | null {
   const address = textOrNull(row, "address");
   const harness = textOrNull(row, "harness");
   const label = text(row, "label");
-  if (memberId === undefined || address === undefined || harness === undefined || label === null) return null;
+  const space = readSpace(row.space);
+  if (memberId === undefined || address === undefined || harness === undefined || label === null || space === false) return null;
   if (address !== null && parseAddress(address)?.kind !== "pane") return null;
   if (harness !== null && !/^[a-z0-9][a-z0-9._-]{0,31}$/u.test(harness)) return null;
-  return { memberId, address, harness, label: label.slice(0, 200) };
+  const sender: WalkySender = { memberId, address, harness, label: label.slice(0, 200) };
+  // Absent stays absent: a message from an older bridge has no space, and its canonical string no line.
+  return space === undefined ? sender : { ...sender, space };
 }
 
 /** A message as the log stored it, or as a crew hop carries it (spec 03). Null when any field fails. */
@@ -75,7 +108,8 @@ export function readMessage(value: JsonValue | undefined): WalkyMessage | null {
   if (replyTo === undefined || (replyTo !== null && !isWalkyId(replyTo))) return null;
   if (at === undefined || !Number.isSafeInteger(at) || body === null || signer === undefined || signature === undefined) return null;
   const message: WalkyMessage = { v: 1, id, kind, from, to, replyTo, at, body, signer, signature };
-  return asJsonBoolean(row.wake) === true ? { ...message, wake: true } : message;
+  const woken: WalkyMessage = asJsonBoolean(row.wake) === true ? { ...message, wake: true } : message;
+  return asJsonBoolean(row.outside) === true ? { ...woken, outside: true } : woken;
 }
 
 const VERIFIED: readonly WalkyVerified[] = ["origin", "lead", "local", "none"];
@@ -114,7 +148,17 @@ export type WalkyOp = "send" | "inbox" | "who" | "status" | "ack" | "cancel" | "
 export type HillOp = "hill.post" | "hill.status" | "hill.withdraw" | "hill.list";
 
 export type WalkyRequest =
-  | { readonly op: "send"; readonly markers: readonly BeaconMarker[]; readonly id: string; readonly to: string | null; readonly body: string; readonly replyTo: string | null; readonly wake: boolean }
+  | {
+      readonly op: "send";
+      readonly markers: readonly BeaconMarker[];
+      readonly id: string;
+      readonly to: string | null;
+      readonly body: string;
+      readonly replyTo: string | null;
+      readonly wake: boolean;
+      /** M98: the message may leave the sender's space. Absent or anything but `true` reads as false. */
+      readonly outside: boolean;
+    }
   | { readonly op: "inbox"; readonly markers: readonly BeaconMarker[]; readonly all: boolean; readonly ack: boolean; readonly id: string | null }
   | { readonly op: "who" | "off" | "on"; readonly markers: readonly BeaconMarker[] }
   | { readonly op: "status"; readonly markers: readonly BeaconMarker[]; readonly id: string }
@@ -199,7 +243,7 @@ export function readWalkyRequest(line: string): WalkyRequestRead {
   if (to !== null && parseAddress(to) === null) return unread(unreadAddress(to), markers);
   if (body === null) return unread(BAD_REQUEST_LINE, markers);
   if (body.length > RAW_BODY_MAX) return unread(bodyOverRaw(RAW_BODY_MAX), markers);
-  return done({ op, markers, id, to, body, replyTo, wake: asJsonBoolean(row.wake) === true });
+  return done({ op, markers, id, to, body, replyTo, wake: asJsonBoolean(row.wake) === true, outside: asJsonBoolean(row.outside) === true });
 }
 
 /** One request line, or null. `v` must be 1; an unknown op, a bad id or a bad address fails. */

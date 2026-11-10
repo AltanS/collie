@@ -3566,6 +3566,23 @@ Two signed objects, each behind its own fixed domain tag, LF between fields, `-`
 collie-walky-v1\n<id>\n<kind>\n<from.memberId>\n<from.address>\n<from.harness>\n<to>\n<replyTo>\n<at>\n<sha256(body) hex>
 ```
 
+Optional lines follow the ten fields, each only when it is set and always in this order, so a message
+without them keeps the string above and every older bridge still verifies it:
+
+```
+wake
+space "<from.space.key as a JSON string>"
+outside
+```
+
+- `wake` (added 2026-11-04, M85): the message has `wake: true`.
+- `space` (added 2026-11-10, M98): the message's `from.space` is an object. The key is written with
+  `JSON.stringify`, so the NUL of an unnamed key reads `\u0000` and the line stays one line whatever
+  the space is called. `named` and `label` are not signed: `named` is the key's form, checked where the
+  message is read, and the label is display data like `from.label`.
+- `outside` (added 2026-11-10, M98): the message has `outside: true`, the sender's word that it may
+  leave its space.
+
 The lead's attestation, signed by the lead's key, beside a message it routes to one member:
 
 ```
@@ -3608,9 +3625,41 @@ Both receiving sides run ONE shape check on the message as it arrived, before th
   characters. Neither is signed; both reach a header line.
 - **The body** is one a second clean leaves unchanged, at most 4,000 characters, and **the address**
   names its member (`local/…` is a solo word).
+- **`from.space`** (added 2026-11-10, M98) is null or absent for an operator, a 400 otherwise. For an
+  agent, an unnamed key must start with the signer's member id and a NUL: a member cannot claim
+  another machine's unnamed space, and a claim that does not match the signer is the uniform 401. A
+  named key is taken as claimed, because the name is the operator's to give.
 
 A malformed field is a 400 that says why, because the caller passed both factors. A sender or a pane
 that does not match the signer is the uniform 401.
+
+### The space of a message *(added 2026-11-10, M98)*
+
+A walky message names the space it comes from, under the sender's signature, and may carry the
+sender's word that it may leave that space. Both fields are additive-optional (§7.1):
+
+- **`from.space`**: `{ key, named, label }` for an agent, the space of the sending pane
+  (`bridge/walky/space.ts`), or `null` for an operator. `key` is the space's raw name from the
+  multiplexer, NFC and trimmed, when the space is named; an unnamed space's key is
+  `<member id>\u0000<space id>`, so it is a space on that one machine and never joins one elsewhere.
+  `named` must match the key's form: a named key holds no NUL, an unnamed one holds exactly one, after a
+  member id. Both strings are at most 1,024 characters. A field that is there and not one fails the
+  message: a malformed body, a 400. Absent on a message from a bridge below 1.29.0.
+- **`outside`**: `true`, or absent. Any other value reads as absent.
+
+Both are signed (the optional lines above). A bridge below 1.29.0 drops both fields when it reads a
+message, and cannot verify a canonical string that holds either line.
+
+The skew rule (`SPACE_FIRST_VERSION`, 1.29.0, in `bridge/walky/crew.ts`, and `olderThanSpace`, which
+reads a version like `olderThanWalky`):
+
+1. **A member below 1.29.0 cannot enforce the border.** Its lead checks the border for it before the
+   hop, from that member's pane list (each `PaneWire` carries its space), and routes it a copy without
+   the space line and the `outside` line, attested over that copy.
+2. **A message signed by a bridge below 1.29.0 carries no space.** A receiver lets it pass as before
+   and its receipt notes the pass as `legacy`. A crew levels within a day.
+3. **A message signed by a bridge at or above 1.29.0, of kind agent, with no space**, is refused as a
+   bad request.
 
 ### What the lead checks, in order
 

@@ -22,10 +22,12 @@ import {
   LEAD_REFUSED_WAKE,
   memberRouteRemote,
   mergeReport,
+  olderThanSpace,
   olderThanWake,
   olderThanWalky,
   receiptsOfAnswer,
   senderBlockFor,
+  SPACE_FIRST_VERSION,
   WalkyCrew,
   WalkyLeadSide,
   WalkyReport,
@@ -49,8 +51,12 @@ import { movesForward, type WalkyMessage, type WalkyReceipt, type WalkyTarget } 
 
 import { spaceOf } from "./space.ts";
 
-/** One unnamed space on one machine: every fixture pane shares it, and no rule reads it yet. */
-const SOLO_SPACE = spaceOf({ memberId: "local", spaceId: "w1", spaceLabel: "w1" });
+/**
+ * One named space, `work`, that every fixture pane on every member shares (M98): a named space joins the
+ * space of the same name on another machine, so a fixture message stays inside it. An unnamed key names
+ * one machine, and a member may not sign another machine's (`checkCrewMessage`).
+ */
+const SOLO_SPACE = spaceOf({ memberId: "local", spaceId: "w1", spaceLabel: "work" });
 
 /** A value as it arrives off the wire: through JSON, so a test hands a handler exactly what a request would. */
 function wire<T>(value: T): JsonValue {
@@ -244,6 +250,74 @@ describe("the one shape check both crew hops share", () => {
     const claimed = signMessage(unsigned("wt_aaaaaaaaaaa5", "other", "laptop/w1:p9"), material("desk").keyPem, "desk");
     const answer = leadCheck({ message: claimed, attest: attestFor(claimed, material("desk").keyPem, CREW.crewId, "laptop") }, "w1:p9", lead, CREW.crewId, "laptop");
     expect(answer).toMatchObject({ ok: false, answer: { status: 401 } });
+  });
+});
+
+describe("the sender's space on a crew hop (M98 spec 02)", () => {
+  const laptop = member({ memberId: "laptop" });
+  const lead = member({ memberId: "desk", role: "lead" });
+  const withSpace = (space: WalkyMessage["from"]["space"], over: Partial<WalkyMessage> = {}) =>
+    signMessage(unsigned("wt_aaaaaaaaaab1", "laptop", "desk/w1:p1", { ...over, from: { memberId: "laptop", address: "laptop/w1:p1", harness: "agent-x", label: "repo#main", space } }), material("laptop").keyPem, "laptop");
+
+  test("a named space, the signer's own unnamed space and the outside flag pass both hops", () => {
+    for (const message of [withSpace({ key: "api", named: true, label: "api" }), withSpace({ key: "laptop\u0000w1", named: false, label: "w1" }, { outside: true })]) {
+      expect(checkCrewMessage(message)).toBeNull();
+      expect(memberCheck(message, laptop)).toMatchObject({ ok: true });
+      const routed = { ...message, to: "other/w1:p9" };
+      const resigned = signMessage(routed, material("laptop").keyPem, "laptop");
+      expect(leadCheck({ message: resigned, attest: attestFor(resigned, material("desk").keyPem, CREW.crewId, "other") }, "w1:p9", lead, CREW.crewId, "other")).toMatchObject({ ok: true });
+    }
+  });
+
+  test("an unnamed space on another machine is the uniform 401: a member cannot claim it", () => {
+    for (const key of ["other\u0000w1", "desk\u0000w1", "local\u0000w1"]) {
+      const forged = withSpace({ key, named: false, label: "w1" });
+      expect(checkCrewMessage(forged)).toEqual({ status: 401 });
+      expect(memberCheck(forged, laptop)).toMatchObject({ ok: false, answer: { status: 401, body: { error: "unauthorized" } } });
+    }
+  });
+
+  test("an operator's message with a space is a 400; with null or none it passes", () => {
+    const operator = (space: WalkyMessage["from"]["space"]) =>
+      signMessage(unsigned("wt_aaaaaaaaaab2", "laptop", "desk/w1:p1", { kind: "operator", from: { memberId: "laptop", address: null, harness: null, label: "phone", space } }), material("laptop").keyPem, "laptop");
+    expect(checkCrewMessage(operator({ key: "api", named: true, label: "api" }))).toEqual({ status: 400, error: "the sender's space does not fit its kind" });
+    expect(checkCrewMessage(operator(null))).toBeNull();
+    expect(checkCrewMessage(signed("wt_aaaaaaaaaab3", "laptop", "desk/w1:p1", OPERATOR("laptop")))).toBeNull();
+  });
+
+  test("a malformed space is a malformed body, a 400 that says so", () => {
+    const good = withSpace({ key: "api", named: true, label: "api" });
+    const bad = { ...good, from: { ...good.from, space: { key: "laptop\u0000w1", named: true, label: "w1" } } };
+    expect(memberCheck(bad, laptop)).toMatchObject({ ok: false, answer: { status: 400, body: { error: "a walky message needs a well-formed message" } } });
+  });
+
+  test("a message without a space, as an older member signs it, still verifies, and unknown fields are dropped", () => {
+    const old = signed("wt_aaaaaaaaaab4", "laptop", "desk/w1:p1");
+    const checked = memberCheck({ ...old, colour: "red", from: { ...old.from, colour: "red" } }, laptop);
+    expect(checked).toMatchObject({ ok: true });
+    if (!checked.ok) throw new Error("the old message should pass");
+    expect(checked.message).not.toHaveProperty("colour");
+    expect(checked.message.from).toEqual({ memberId: "laptop", address: "laptop/w1:p1", harness: "agent-x", label: "repo#main" });
+  });
+
+  test("a space or the outside flag added or dropped on the way is the uniform 401", () => {
+    const named = withSpace({ key: "api", named: true, label: "api" });
+    const { space: _space, ...bare } = named.from;
+    for (const changed of [{ ...named, outside: true as const }, { ...named, from: bare }, { ...named, from: { ...named.from, space: { key: "web", named: true, label: "web" } } }]) {
+      expect(memberCheck(changed, laptop)).toMatchObject({ ok: false, answer: { status: 401 } });
+    }
+  });
+
+  test("olderThanSpace: below 1.29.0, the build's own version when it predates it, no release is never older", () => {
+    expect(SPACE_FIRST_VERSION).toBe("1.29.0");
+    expect(olderThanSpace("1.28.1", "1.29.0", compareSemver)).toBe(true);
+    expect(olderThanSpace("1.29.0", "1.29.0", compareSemver)).toBe(false);
+    expect(olderThanSpace("1.30.0", "1.29.0", compareSemver)).toBe(false);
+    // A development build before 1.29.0 that carries the space: its own version is the floor.
+    expect(olderThanSpace("1.28.1", "1.28.1", compareSemver)).toBe(false);
+    expect(olderThanSpace("1.28.0", "1.28.1", compareSemver)).toBe(true);
+    expect(olderThanSpace(null, "1.29.0", compareSemver)).toBe(false);
+    expect(olderThanSpace("unknown", "1.29.0", compareSemver)).toBe(false);
   });
 });
 

@@ -4,6 +4,7 @@ import type { JsonValue } from "../json.ts";
 import { DEFAULT_MAX_UPLOAD_BYTES } from "../uploads.ts";
 import type { WalkyReceipt } from "../walky/types.ts";
 import { crewTargets } from "../walky/crew.ts";
+import { readCrewDelivery } from "../walky/parse.ts";
 import { parsePeerSnapshot } from "./merge.ts";
 import { member, neverProxy } from "./fixtures.ts";
 import { apiPathFor, crewRouteFor, forwardAuditAction, forwardKind, forwardPaneId, forwardToPeer, type ForwardAuditEntry, type ForwardTransport } from "./forward.ts";
@@ -184,5 +185,37 @@ describe("a pane's space rides the snapshot as additive fields (M98 spec 01)", (
     expect(rowsOf([pane({ workspaceNamed: "yes" })])).toEqual([{ key: "api", named: true, label: "api" }]);
     const bare = { paneId: "w1:p2", status: "idle", workspaceNumber: 1, agent: "agent-x", cwd: "/work" } satisfies Record<string, JsonValue>;
     expect(rowsOf([bare])).toEqual([{ key: "laptop\u0000", named: false, label: "" }]);
+  });
+});
+
+describe("a message's space and outside flag ride the lead-to-member body (M98 spec 02)", () => {
+  const message = {
+    v: 1,
+    id: "wt_aaaaaaaaaaa1",
+    kind: "agent",
+    from: { memberId: "desk", address: "desk/w1:p1#k3f9", harness: "agent-x", label: "repo#a", space: { key: "api", named: true, label: "api" } },
+    to: "laptop/w1:p9",
+    replyTo: null,
+    at: NOW,
+    body: "hi",
+    outside: true,
+    signer: "desk",
+    signature: "c2ln",
+  } satisfies Record<string, JsonValue>;
+
+  test("both read back whole, through JSON, beside the attestation", () => {
+    // SAFETY: `JSON.parse` output IS a JsonValue by construction.
+    const read = readCrewDelivery(JSON.parse(JSON.stringify({ message, attest: "YXR0ZXN0" })) as JsonValue);
+    expect(read?.message.from.space).toEqual({ key: "api", named: true, label: "api" });
+    expect(read?.message.outside).toBe(true);
+  });
+
+  test("a body from an older lead carries neither and reads as before; a malformed space fails the body", () => {
+    const { space: _space, ...from } = message.from;
+    const { outside: _outside, ...older } = message;
+    const read = readCrewDelivery({ message: { ...older, from }, attest: "YXR0ZXN0" });
+    expect(read?.message.from).not.toHaveProperty("space");
+    expect(read?.message).not.toHaveProperty("outside");
+    expect(readCrewDelivery({ message: { ...message, from: { ...message.from, space: { key: "api" } } }, attest: "YXR0ZXN0" })).toBeNull();
   });
 });
