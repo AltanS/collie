@@ -2007,6 +2007,8 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
           blindSent: sentRecorder(sentStore, () => engine.current().shellPanes),
           // A box proven stale (a probe that missed it, and a second read of the same rows): the Surface says so until the rows change.
           staleFrame: (paneId, frame) => surface?.markStale(paneId, frame),
+          // The multiplexer's `blocked` on the pane's agent refuses a send Collie cannot prove on the screen.
+          muxStatus: (paneId) => engine.current().agents.find((agent) => agent.paneId === paneId)?.status,
         })
       : undefined;
   // Each poll tells the launch window which panes the multiplexer names an agent on now: a newly named

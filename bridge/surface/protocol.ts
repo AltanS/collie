@@ -241,6 +241,7 @@
 
 import { statSync } from "node:fs";
 import type { MuxAck, MuxGrid, MuxGridRequest, MuxOutcome } from "../mux/types.ts";
+import type { AgentStatus } from "../types.ts";
 import { FOREGROUND_UNREAD, type ForegroundUnread } from "../launch-window.ts";
 import { parseAnsi } from "../../web/src/lib/ansi.ts";
 import { splitLines } from "../../web/src/lib/blocks.ts";
@@ -581,6 +582,12 @@ export interface SendDeps {
    * reads that show the same rows `staleFrame` until one differs. Called inside a try.
    */
   readonly staleFrame?: (paneId: string, frame: string) => void;
+  /**
+   * The status the multiplexer reports for the pane's agent now, or undefined for none. `blocked`
+   * refuses a send Collie cannot prove on the screen before any key (ADR 0140 point 4): the manual
+   * Send and a Submit or Discard confirmed on the rows hash. A throw reads as no report. Absent: none.
+   */
+  readonly muxStatus?: ((paneId: string) => AgentStatus | undefined) | undefined;
   /** Whether an upload path still names a file the harness can attach (`wholePaste`). Absent: a regular file on this disk. */
   readonly imageFile?: (path: string) => boolean;
   readonly now?: () => number;
@@ -1705,6 +1712,8 @@ const NOTICE_DIGIT_LEFT = "The key is still in the box: the notice did not take 
 const NOTICE_NOT_TAKEN = "The notice did not take the number. Check the pane.";
 /** The {@link SendAnswer.cause} of every send the notice digit rule decides. */
 const NOTICE_KEY: SendCause = "notice_key";
+/** The detail of a send the multiplexer's `blocked` refused: the phone shows it under its sentence. */
+const MUX_BLOCKED = "The multiplexer says the agent is waiting on you. Answer it on the screen, then send again.";
 /** The cause of a refusal on a screen whose input box does not take keys (2026-10-25). */
 const STALE_CAUSE: SendCause = "stale_screen";
 /** The cause of that refusal when the box held only Collie's probe characters: they showed late (#623). */
@@ -4684,6 +4693,8 @@ export class SendProtocol {
    *  on the same rows, and the cap may ask for one more confirm. */
   private gateManual(state: RunState, s0: Snap, unconfirmed: string, cause?: SendCause): void {
     const { surface } = s0;
+    // A notice's key answers a screen Collie reads, as the cap below says: the multiplexer's word does not decide it.
+    if (cause !== NOTICE_KEY) this.gateBlocked(state, s0);
     if (state.request.rowsHash === undefined) {
       const note: EndNote = { surface, rowsHash: s0.rowsHash, detail: unconfirmed };
       if (cause !== undefined) note.cause = cause;
@@ -4694,6 +4705,22 @@ export class SendProtocol {
     }
     // The cap counts sends typed past a screen Collie cannot read; a notice's digit is no such screen.
     if (cause !== NOTICE_KEY) this.gateCap(state, s0);
+  }
+
+  /**
+   * The multiplexer's `blocked` (ADR 0140 point 4): a send Collie cannot prove on the screen (the
+   * manual Send, a Submit or Discard confirmed on the rows hash) is refused before any key, on either
+   * tap, as the multiplexer's own agent prompt refuses. The agent waits on the person, and Enter may answer it.
+   * Collie's own reading decides every other send. A throw reads as no report.
+   */
+  private gateBlocked(state: RunState, s0: Snap): void {
+    let status: AgentStatus | undefined;
+    try {
+      status = this.deps.muxStatus?.(state.target.paneId);
+    } catch {
+      status = undefined;
+    }
+    if (status === "blocked") throw new Ended("refused", "not_free", { surface: s0.surface, detail: MUX_BLOCKED });
   }
 
   /**
@@ -4760,6 +4787,7 @@ export class SendProtocol {
       state.heldOther = true;
     }
     if (frame === null && !takesManualSend(surface) && !isFree(surface)) throw new Ended("refused", "not_free", { surface, detail: "The input box is not free." });
+    this.gateBlocked(state, s0);
     const hash = state.request.rowsHash;
     if (hash === undefined) throw new Ended("refused", "not_free", { surface, detail: BOX_CHANGED });
     if (!rowsAgree(hash, s0.rowsHash, frame !== null)) {

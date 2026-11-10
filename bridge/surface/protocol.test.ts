@@ -407,6 +407,8 @@ function rig(
     holds?: HoldStore;
     generation?: () => string | null;
     clock?: { now: number };
+    /** The status the multiplexer reports for the pane's agent. */
+    muxStatus?: SendDeps["muxStatus"];
   } = {},
 ): Rig {
   const pane = options.pane ?? new FakePane(options.mode ?? "claude");
@@ -442,6 +444,7 @@ function rig(
       return Promise.resolve(status === undefined ? match : { ...match, status });
     },
     generation: options.generation ?? (() => "gen-1"),
+    muxStatus: options.muxStatus,
     ledger: options.ledger,
     holds: options.holds,
     imageFile: (path: string) => (options.imageFiles ?? []).includes(path),
@@ -1100,6 +1103,84 @@ describe("a pane the multiplexer names as an agent Collie has no profile for tak
     expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "stale_surface", keys: [] });
     expect(pane.calls).toEqual([]);
     expect(pane.keysSeen).toEqual([]);
+  });
+});
+
+describe("the multiplexer's blocked refuses a send Collie cannot prove on the screen, before any key (ADR 0140 point 4)", () => {
+  const BLOCKED = "The multiplexer says the agent is waiting on you. Answer it on the screen, then send again.";
+
+  test("the first tap of the manual Send on a blocked pane is refused not_free with the key pad, no rows hash to confirm, nothing held", async () => {
+    const holds = new HoldStore(join(dir, "held"));
+    const pane = new FakePane("generic");
+    const { send } = rig({ pane, harness: NO_PROFILE, holds, muxStatus: () => "blocked" });
+    const answer = await send("claude-danger");
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "not_free", keys: [] });
+    expect(answer.detail).toBe(BLOCKED);
+    expect(answer.offers).toEqual(["keys"]);
+    expect(holds.waitingCount()).toBe(0);
+    expect(pane.keysSeen).toEqual([]);
+  });
+
+  test("a confirm on the rows the person saw is refused once the multiplexer says blocked: no probe, no text, no Enter", async () => {
+    let status: "idle" | "blocked" = "idle";
+    const pane = new FakePane("generic");
+    const { send } = rig({ pane, harness: NO_PROFILE, muxStatus: () => status });
+    const first = await send("claude-danger");
+    expect(first.receipt).toMatchObject({ outcome: "refused", reason: "unconfirmed" });
+    status = "blocked";
+    const answer = await send("claude-danger", { rowsHash: first.rowsHash! });
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "not_free", keys: [] });
+    expect(pane.calls.filter((call) => call.startsWith("type:"))).toEqual([]);
+    expect(pane.keysSeen).toEqual([]);
+  });
+
+  test("a frameless Submit after typed_not_submitted is refused on a blocked pane: Enter may answer what the agent waits on", async () => {
+    let status: "working" | "blocked" = "working";
+    const pane = new HerdrCodexPane();
+    const render = pane.render.bind(pane);
+    pane.render = () => (pane.box.length > 1 ? render().replace("  GPT-6-Luna medium", "  ❯ hello-world.ts") : render());
+    const r = rig({ pane, harness: FRAMELESS, muxStatus: () => status });
+    const look = await r.send("hello there");
+    const typed = await r.send("hello there", { rowsHash: look.rowsHash! });
+    expect(typed.receipt).toMatchObject({ outcome: "typed_not_submitted" });
+    status = "blocked";
+    pane.keysSeen = [];
+    for (const mode of ["submit", "discard"] as const) {
+      const answer = await r.send("hello there", { mode, rowsHash: typed.rowsHash! });
+      expect(answer.receipt, mode).toMatchObject({ outcome: "refused", reason: "not_free", keys: [] });
+      expect(answer.detail, mode).toBe(BLOCKED);
+    }
+    expect(pane.keysSeen).toEqual([]);
+  });
+
+  test("a notice's key over an idle box is a screen Collie reads: blocked leaves its confirm as it was", async () => {
+    const { pane, send } = rig({ muxStatus: () => "blocked" });
+    pane.over = ["✦ Heads up · With GitHub triggers, anyone who files an issue can put text in front of a session", "  1: Learn more   2: Knew this already   0: Dismiss", ""];
+    const answer = await send("1");
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "unconfirmed", keys: [] });
+    expect(answer.cause).toBe("notice_key");
+  });
+
+  test("a free box Collie reads goes ahead whatever the multiplexer says: its own reading decides", async () => {
+    const { pane, send } = rig({ muxStatus: () => "blocked" });
+    const answer = await send("hello");
+    expect(answer.receipt).toMatchObject({ outcome: "sent" });
+    expect(pane.keysSeen.at(-1)).toBe("Enter");
+  });
+
+  const reports: readonly (readonly [string, NonNullable<SendDeps["muxStatus"]>])[] = [
+    ["idle", () => "idle"],
+    ["no report", () => undefined],
+    ["a throw", () => {
+      throw new Error("engine gone");
+    }],
+  ];
+  test.each(reports)("%s keeps the manual Send as it was: the first tap is refused unconfirmed with the rows hash", async (_name, muxStatus) => {
+    const pane = new FakePane("generic");
+    const { send } = rig({ pane, harness: NO_PROFILE, muxStatus });
+    const answer = await send("claude-danger");
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "unconfirmed", keys: [] });
+    expect(answer.offers).toEqual(["commit", "keys"]);
   });
 });
 
