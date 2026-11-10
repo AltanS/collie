@@ -13,8 +13,9 @@ import { collieHalves } from "./fixtures/collie-theme";
 // dashboard at rest runs no animation anywhere, and a hidden page pauses the ones a working pane runs.
 // Since 2026-11-09 the resting mark drifts again, smooth, while the page is in use: a person touched,
 // scrolled or typed in the last MARK_DRIFT.windowMs. Then it eases to a stop and holds (`data-still`),
-// every animation paused. The cases fake the clock and let that window pass, so the claims below hold
-// for a page left alone, which is the page issue 748 is about.
+// every animation paused. A page that was only opened, with no input, is not in use and holds from the
+// first frame. The cases fake the clock and let the window pass, so the claims below hold for a page
+// left alone, which is the page issue 748 is about.
 
 test.use({ serviceWorkers: "block" });
 
@@ -61,8 +62,8 @@ for (const { id } of MARKS) {
     await page.goto("/");
     const mark = page.getByRole("button", { name: en["nav.home.aria.default"] }).locator(`svg[data-mark="${id}"]`);
     await expect(mark).toHaveAttribute("data-state", "rest");
-    // The load itself may turn the mark (a route loader is work the operator waits on). Then the drift
-    // runs while the page counts as in use, eases, and holds: every animation is there, every one paused.
+    // The load itself may turn the mark (a route loader is work the operator waits on). A page nobody
+    // touched is not in use, so the mark rests from the first frame: every animation is there, every one paused.
     await page.clock.runFor(LEFT_ALONE_MS);
     await expect(mark).toHaveAttribute("data-still", "", { timeout: 5000 });
     await expect.poll(() => runningIn(mark)).toEqual([]);

@@ -49,14 +49,15 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 - **An agent's WalkyTalky message stays in its space.** A space is the workspace or session your multiplexer keeps, and a space of the same name on another machine is the same space. A space with no name of its own, such as a tmux session named only with digits, stays on its one machine. The machine that owns the target pane refuses an agent's message to a pane of another space with `outside your space`, and checks again before it types a held message. A message passes when both panes share a space, when it answers a message that pane sent to the sender, or when the sender adds `--outside`. A message that crossed into another space with `--outside` has the word `outside` in its header; to a pane of your own space the flag adds no word. An agent's `all` needs `--outside` too. Your own messages from the phone are not bound. A lead checks the border for a crew member older than 1.29.0, and a crew whose lead is older refuses a member's agent message until you update the lead. (M98)
 - **`here` now means the sender's space, not its folder.** A message to `here` reaches every agent in the sender's space on every machine of the crew, and never the sender. Before, it reached every agent in the same folder name, across spaces. `<repo>` and `<repo>#<branch>` keep their meaning but reach only panes in the sender's space, unless the sender adds `--outside`. (M98)
-
-### Changed
-
 - **Your own messages in Chat and History are a right-aligned well with no caption.** The orange well now hugs its text, at most 85 percent of the column wide, and the "You" row is gone, so a short question costs one line. The time sits at the end of the last line in Chat and on the well's last row in History, and a screen reader still hears "You" first.
 - **A run of tool steps is one soft ground, and a card's kind word is muted.** In Chat, a working run is drawn as one panel with thin lines between its steps, not a stack of boxes, and the folded row has no frame of its own. The word that names a step, such as Edit or Run, takes the muted ink the other rows already use.
 - **Code blocks are neutral and set at 12px.** A fenced block stands on the grey ground with a thin edge, no longer on the info blue, and its text is one size larger. Inline code keeps its blue.
 - **A new turn starts further down, and quiet lines sit between two thin lines.** In Chat a new turn starts 20px under the block above, and the blocks of one agent run sit 8px apart. Notices, the compaction marker and the top-of-thread line, and History's day divider and compaction marker, are drawn the same way.
 - **The WalkyTalky skill teaches how to word a Decision.** The skill an agent reads now carries the same wording rules as `collie hill post --help`: a title that asks the decision as a question, a summary of two sentences, and options that start with a verb and are never a bare Yes or No. The skill's example Decision follows them. Run `collie skill sync` to replace an installed copy; `collie update` does it for you.
+
+### Fixed
+
+- **The Collie mark rests until you touch the app.** Since 1.28.1 every page you opened drifted the mark for its first 20 seconds, with no touch at all, background tabs included. Now a page you only opened, a page left open and a page in the background draw nothing for the mark. The first touch, key, wheel or scroll sets the beads going, and 20 seconds after the last one they slow to a stop as before. This also undoes a slowdown in Safari's engine (WebKit) that 1.28.1 brought.
 
 ## [1.28.1] - 2026-11-10
 
