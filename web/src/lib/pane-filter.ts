@@ -26,7 +26,7 @@ import { matchTerm, queryTerms, type MatchLevel, type Range } from "@/lib/fuzzy"
 import { baseName } from "@/lib/format";
 import { paneGitHead, shortSha } from "@/lib/git-head";
 import { isMultiHost, paneRowKey } from "@/lib/hosts";
-import { t } from "@/lib/i18n";
+import { t, type MessageKey } from "@/lib/i18n";
 import { groupByHost, machineLabel, type Machine } from "@/lib/machines";
 import { paneName, panePlaceParts } from "@/lib/pane-name";
 import type { AgentView, ServerSummary, TabView } from "@/lib/types";
@@ -211,4 +211,22 @@ export function matchPanes(
 export function byScore(rows: readonly AgentView[], hits: ReadonlyMap<string, PaneMatch>): AgentView[] {
   const scoreOf = (p: AgentView) => hits.get(paneRowKey(p))?.hit.score ?? -1;
   return rows.filter((p) => hits.has(paneRowKey(p))).toSorted((a, b) => scoreOf(b) - scoreOf(a));
+}
+
+/** The word before a field a row does not draw, on its second line while it is why the row matched. */
+export function viaLabelKey(field: PaneField): MessageKey | null {
+  switch (field) {
+    case "branch":
+      return "sessionFilter.field.branch";
+    case "folder":
+      return "sessionFilter.field.folder";
+    case "agent":
+      return "sessionFilter.field.agent";
+    case "machine":
+      return "sessionFilter.field.machine";
+    case "name":
+    case "space":
+    case "tab":
+      return null;
+  }
 }

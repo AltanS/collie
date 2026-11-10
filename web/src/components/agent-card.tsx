@@ -10,6 +10,8 @@ import { PaneMeta } from "@/components/pane-meta";
 import { PaneHint } from "@/components/pane-hint";
 import { PaneBadge } from "@/components/pane-badge";
 import { BranchLabel } from "@/components/ui/branch-label";
+import { MatchText } from "@/components/ui/match-text";
+import { viaLabelKey, type PaneMatch } from "@/lib/pane-filter";
 import { paneGitHead } from "@/lib/git-head";
 import { paneProgress, paneSubtitle } from "@/lib/pane-marks";
 import { Progress } from "@/components/ui/progress";
@@ -86,6 +88,13 @@ interface AgentCardProps {
    * which draws its own saved copy; nothing on it acts from cache (spec 11).
    */
   stale?: boolean;
+  /**
+   * How the session filter's query matched this row (lib/pane-filter.ts, M97). Given, the matched letters
+   * of the name, branch, space and tab are marked (`MatchText`), and a row that matched only in a field it
+   * does not draw (its folder, its agent, its machine) says that field on line 2 in place of the place,
+   * in the same line box. Absent, with no query, the row is drawn exactly as it was.
+   */
+  match?: PaneMatch | undefined;
 }
 
 /** The row's text: line 1's name, and line 2's two runs. */
@@ -136,6 +145,7 @@ export function AgentCard({
   unseen = false,
   tint = false,
   stale = false,
+  match,
 }: AgentCardProps) {
   useLocale();
   // Inert when `onHold` is undefined: every handler returns at once, the native context menu stays,
@@ -198,6 +208,16 @@ export function AgentCard({
           tailPositional: place.tab?.positional ?? false,
         };
   const { primary, detailLead, detailTail } = lines;
+  // THE FILTER'S MARKS (M97). A range indexes the string `paneFields` read, which is the string drawn
+  // here, except the tab: a one-pane tab named for the pane draws the live title in its place, so no tab
+  // mark applies then. The tab of a `tab` scope row is the path, not a tab.
+  const marks = match?.hit.marks;
+  const tabMarks = nameIsTab || inTab ? undefined : marks?.tab;
+  const leadMarks = inTab ? undefined : marks?.space;
+  // A field the row does not draw (its folder, agent or machine) that is the reason for the match takes
+  // line 2, in the slot the line already has, so the reason is on the row and the row keeps its height.
+  const via = match?.hit.via ?? null;
+  const viaLabel = via === null ? null : viaLabelKey(via);
   // THE BRANCH LEADS LINE 2, in every scope: the one fact that tells two checkouts of one repo apart,
   // which neither the workspace nor the tab says. It sits in the 16px slot the line already has, so
   // the row keeps its stated 44px, and it is mono at 11px (ui/branch-label.tsx). It gives way less
@@ -216,7 +236,7 @@ export function AgentCard({
   // A workspace-grouped row whose tab has no name of its own reads its position instead — `tab 2` —
   // via `tabTitle` (`lib/pane-name.ts`) — or, when the raw label carries no digit at all, nothing:
   // the slot is then skipped outright, unless the branch fills it.
-  const skipBlankSlot = inPlace && detailTail === null && head === null;
+  const skipBlankSlot = inPlace && detailTail === null && head === null && via === null;
   // The dot leads line 1, INLINE, ahead of the tile — not on the tile's corner. The corner was
   // right at `size-9`: a 10px badge on a 36px tile is a badge. On a 16px tile it is most of the
   // artwork, and shrinking it to fit kills the one glance cue the row has — the resting states are
@@ -331,7 +351,7 @@ export function AgentCard({
                 sits right after whatever survives the truncation. `PaneMeta`'s own `ml-auto` is what
                 claims the row's spare width now, so it still lands at the end. */}
             <span data-glide="name" className="min-w-0 truncate self-baseline font-medium">
-              {primary}
+              <MatchText text={primary} ranges={marks?.name} />
             </span>
             {/* A finished pane you haven't opened yet: the square (ui/unseen-mark.tsx). Right after
                 the name, never before it, and its slot is reserved on a flat row so the name
@@ -353,12 +373,20 @@ export function AgentCard({
               its own is a one-line row. A workspace-grouped row is the exception: its slot is
               always there, holding the tab's name or its position — UNLESS neither is available,
               which skips the slot outright and centres the name in the 44px row instead. */}
-          {subtitleInSlot && (
+          {subtitleInSlot && via === null && (
             <div data-slot="agent-row-detail" className="h-4 min-w-0 truncate text-xs leading-4 text-muted-foreground">
               {subtitle}
             </div>
           )}
-          {!subtitleInSlot && !skipBlankSlot && (inPlace || hasRest || head !== null) && (
+          {via !== null && match !== undefined && (
+            <div data-slot="agent-row-detail" className={cn("flex min-w-0 items-baseline gap-1 text-xs text-muted-foreground", flat && "h-4 items-center")}>
+              {viaLabel !== null && <span className="shrink-0 text-muted-foreground/70">{t(viaLabel)}</span>}
+              <span data-slot="agent-row-via" className="min-w-0 flex-1 truncate">
+                <MatchText text={match.fields[via]} ranges={marks?.[via]} />
+              </span>
+            </div>
+          )}
+          {via === null && !subtitleInSlot && !skipBlankSlot && (inPlace || hasRest || head !== null) && (
             <div
               data-slot="agent-row-detail"
               className={cn(
@@ -370,7 +398,7 @@ export function AgentCard({
             >
               {head !== null && (
                 <>
-                  <BranchLabel head={head} className={cn("shrink", hasRest && "max-w-[78%]")} />
+                  <BranchLabel head={head} ranges={marks?.branch} className={cn("shrink", hasRest && "max-w-[78%]")} />
                   {hasRest && (
                     // Two facts side by side rather than one containing the other, so a middot, not
                     // the place's own crumb.
@@ -384,7 +412,7 @@ export function AgentCard({
                 // The unnamed tab's position, a shade lighter than an ordinary tab name so it never
                 // reads as one.
                 <span className="min-w-0 flex-1 truncate text-muted-foreground/70">
-                  {detailTail}
+                  <MatchText text={detailTail} ranges={tabMarks} />
                 </span>
               ) : (
                 <>
@@ -393,7 +421,9 @@ export function AgentCard({
                       space gives up width first; the tab takes the rest. A positional tail (`tab
                       2`) takes the same shade-lighter ink here as it does alone above. */}
                   {detailLead !== null && (
-                    <span className="min-w-0 shrink truncate">{detailLead}</span>
+                    <span className="min-w-0 shrink truncate">
+                      <MatchText text={detailLead} ranges={leadMarks} />
+                    </span>
                   )}
                   {detailLead !== null && detailTail !== null && (
                     // The place's own separator, the same glyph the joined form uses (PLACE_SEP): a
@@ -410,7 +440,7 @@ export function AgentCard({
                         lines.tailPositional && "text-muted-foreground/70",
                       )}
                     >
-                      {detailTail}
+                      <MatchText text={detailTail} ranges={tabMarks} />
                     </span>
                   )}
                 </>

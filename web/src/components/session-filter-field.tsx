@@ -1,6 +1,7 @@
-import { useRef, type FormEvent, type KeyboardEvent } from "react";
+import { useCallback, useRef, type FormEvent, type KeyboardEvent, type RefCallback } from "react";
 
 import { Icon } from "@/components/icons/icon";
+import { Button } from "@/components/ui/button";
 import { SearchField } from "@/components/ui/search-field";
 import { useLocale } from "@/hooks/use-locale";
 import { t } from "@/lib/i18n";
@@ -16,6 +17,13 @@ export interface SessionFilterFieldProps {
   onGo: () => void;
   /** The block's own place: sticky, bleed, padding. The field and the count line are drawn the same way everywhere. */
   className?: string;
+  /** The `<input>`, for a caller that moves the caret in (the Dashboard's magnifier asks for the keyboard). Fires when the field mounts. */
+  inputRef?: RefCallback<HTMLInputElement>;
+  /**
+   * An Escape on an EMPTY field. Absent, it is left to whatever holds the field (the sheet closes on it);
+   * the Dashboard's opened field closes itself here.
+   */
+  onEscapeEmpty?: () => void;
 }
 
 /**
@@ -36,9 +44,16 @@ export interface SessionFilterFieldProps {
  * - No autofocus: on a phone the keyboard would cover the list the person just opened. No shortcut is
  *   the way in (mobile first).
  */
-export function SessionFilterField({ query, onQuery, shown, total, onGo, className }: SessionFilterFieldProps) {
+export function SessionFilterField({ query, onQuery, shown, total, onGo, className, inputRef, onEscapeEmpty }: SessionFilterFieldProps) {
   useLocale();
-  const input = useRef<HTMLInputElement>(null);
+  const input = useRef<HTMLInputElement | null>(null);
+  const setInput = useCallback(
+    (el: HTMLInputElement | null) => {
+      input.current = el;
+      inputRef?.(el);
+    },
+    [inputRef],
+  );
   const active = query !== "";
   const name = t("sessionFilter.placeholder");
 
@@ -48,6 +63,12 @@ export function SessionFilterField({ query, onQuery, shown, total, onGo, classNa
       // Handled here, so the form's own submit does not fire a second time.
       e.preventDefault();
       onGo();
+      return;
+    }
+    if (e.key === "Escape" && !active && onEscapeEmpty !== undefined) {
+      e.preventDefault();
+      e.stopPropagation();
+      onEscapeEmpty();
       return;
     }
     if (e.key !== "Escape" || !active) return;
@@ -64,7 +85,7 @@ export function SessionFilterField({ query, onQuery, shown, total, onGo, classNa
   return (
     <form role="search" aria-label={name} data-slot="session-filter" onSubmit={onSubmit} className={cn("flex flex-col gap-1", className)}>
       <SearchField
-        ref={input}
+        ref={setInput}
         value={query}
         onChange={onQuery}
         placeholder={name}
@@ -96,5 +117,21 @@ export function SessionFilterField({ query, onQuery, shown, total, onGo, classNa
         {active ? t("sessionFilter.count", { shown, total }) : ""}
       </p>
     </form>
+  );
+}
+
+/**
+ * What stands in the list's place when the query matches no session: one line naming the query, and the
+ * way out. The switcher and the Dashboard draw the same one. `query` is the trimmed text the person typed.
+ */
+export function SessionFilterEmpty({ query, onClear }: { query: string; onClear: () => void }) {
+  useLocale();
+  return (
+    <div data-slot="session-filter-empty" className="flex flex-col items-center gap-2 px-2 py-8 text-center">
+      <p className="min-w-0 break-words text-sm text-muted-foreground">{t("sessionFilter.noMatch", { query })}</p>
+      <Button variant="ghost" size="lg" className="text-sm text-primary" onClick={onClear}>
+        {t("sessionFilter.clear")}
+      </Button>
+    </div>
   );
 }

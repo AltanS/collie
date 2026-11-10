@@ -27,6 +27,8 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 - **The session switcher has a filter field.** On a list of more than five sessions, the Switch pane sheet and the large screen's sidebar start with a field that narrows the list as you type. A loose match finds a session by its name, space, tab, branch, folder, agent or machine, and the matched letters are marked. The list keeps its order and its sections. A session found by a field its row does not show, such as the branch, shows that field on its second line. Enter opens the first session shown, and the field is empty again the next time the sheet opens.
 
+- **The dashboard has a filter field too.** On a dashboard of more than five sessions, a magnifier at the right end of the controls opens a field under them. Typing narrows the rows with the same loose match, marks the matched letters, keeps the order and the workspace groups, and says what is left (`3 of 14`). A session found by its folder, agent or machine, which its row does not show, shows that field on its second line. It combines with the workspace choice and the needs-you switch, Enter opens the first session shown, and the query stays while you visit a session and come back. The magnifier reads pressed while a query is set.
+
 ### Changed
 
 - **The strings 1.28.0 added now speak all twelve languages.** Community themes, pasting a theme, the theme About sheet and the Make Collie your own card, plus the composer's expand and collapse buttons and the Nunito note, are now translated in German, Spanish, French, Italian, Japanese, Korean, Portuguese, Russian, Turkish and both Chinese variants. Before, they showed in English.

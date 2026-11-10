@@ -1448,6 +1448,7 @@ export const en = {
   "sessionFilter.field.folder": "folder",
   "sessionFilter.field.agent": "agent",
   "sessionFilter.field.machine": "machine",
+  "sessionFilter.toggle": "Filter sessions",
 
   // --- space (spaces overview/strip/view, tabs, panes, new-space) ---
   "space.overview.title": "Spaces",
@@ -3294,6 +3295,8 @@ export const PENDING_TRANSLATION = [
   "sessionFilter.field.folder",
   "sessionFilter.field.agent",
   "sessionFilter.field.machine",
+  // The Dashboard's magnifier (M97 spec 04).
+  "sessionFilter.toggle",
 ] as const satisfies readonly MessageKey[];
 
 /** A key a bundle may leave out until the translation pass. */

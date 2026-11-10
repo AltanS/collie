@@ -1,6 +1,8 @@
-import { act, createEvent, fireEvent, render, within } from "@testing-library/react";
+import { act, cleanup, createEvent, fireEvent, render, within } from "@testing-library/react";
 
 import { AgentCard } from "./agent-card";
+import { paneRowKey } from "@/lib/hosts";
+import { matchPanes, type PaneField } from "@/lib/pane-filter";
 import { fixtureAgents } from "@/test/handlers";
 import type { JsonValue } from "@/lib/json";
 import type { AgentView } from "@/lib/types";
@@ -488,5 +490,68 @@ describe("AgentCard: progress", () => {
     expect(bar(idle.container)).toBeNull();
     const none = render(<AgentCard agent={agent({ status: "working" })} onClick={() => {}} />);
     expect(bar(none.container)).toBeNull();
+  });
+});
+
+// THE FILTER (M97 spec 04): the row marks matched letters and, for a field it does not draw, says it on line 2.
+describe("AgentCard's filter marks", () => {
+  const hit = (pane: AgentView, query: string, hidden: "second-line" | "drawn-only" = "second-line") => {
+    const found = matchPanes([pane], query, { level: "anchored", drawn: new Set<PaneField>(["name", "branch", "space", "tab"]), hidden });
+    return found?.get(paneRowKey(pane));
+  };
+  const flat = (pane: AgentView, query: string, scope: "place" | "herd" = "place") =>
+    render(<AgentCard agent={pane} scope={scope} density="row" statusStyle="dot" onClick={() => {}} match={hit(pane, query)} />);
+  const marked = (c: HTMLElement) => [...c.querySelectorAll("mark")].map((m) => m.textContent);
+
+  it("marks the name, and the flat row keeps its stated height and its two slots", () => {
+    const pane = agent({ sessionName: "rewrite the loader", tabLabel: "review" });
+    const plain = render(<AgentCard agent={pane} scope="place" density="row" statusStyle="dot" onClick={() => {}} />);
+    const before = plain.container.querySelector("button > div")!.className;
+    plain.unmount();
+    const { container } = flat(pane, "load");
+    expect(marked(container)).toEqual(["load"]);
+    expect(container.querySelector("button > div")!.className).toBe(before);
+    expect(container.querySelector("button > div")!.className).toMatch(/(?:^|\s)h-11(?=\s|$)/);
+  });
+
+  it("marks the branch on the branch line", () => {
+    const { container } = flat(agent({ sessionName: "x", gitHead: { kind: "branch", name: "fix/748-sheet" } }), "f7");
+    expect(marked(container)).toEqual(["f", "7"]);
+    expect(container.querySelector('[data-slot="branch-label"]')!.querySelectorAll("mark")).toHaveLength(2);
+  });
+
+  it("marks the tab on a place row, and the space and the tab on a herd row", () => {
+    const pane = agent({ sessionName: "x", tabLabel: "review" });
+    expect(marked(flat(pane, "rev", "place").container)).toEqual(["rev"]);
+    cleanup();
+    expect(marked(flat(pane, "web", "herd").container)).toEqual(["web"]);
+    cleanup();
+    expect(marked(flat(pane, "rev", "herd").container)).toEqual(["rev"]);
+  });
+
+  it("puts a field the row does not draw on line 2, in the slot, in place of the place", () => {
+    const { container } = flat(agent({ sessionName: "x", tabLabel: "review", cwd: "/srv/zebra-farm" }), "zebra", "herd");
+    const slot = container.querySelector('[data-slot="agent-row-detail"]')!;
+    expect(slot).toHaveTextContent(/^folderzebra-farm$/);
+    expect(marked(container)).toEqual(["zebra"]);
+    expect(slot.className).toMatch(/(?:^|\s)h-4(?=\s|$)/);
+    expect(container.querySelectorAll('[data-slot="agent-row-detail"]')).toHaveLength(1);
+  });
+
+  it("gives a place row with no line 2 its slot while the reason for the match needs it", () => {
+    const pane = agent({ sessionName: "x", tabLabel: undefined, cwd: "/srv/zebra-farm" });
+    expect(flat(pane, "zzz").container.querySelector('[data-slot="agent-row-detail"]')).toBeNull();
+    cleanup();
+    expect(flat(pane, "zebra").container.querySelector('[data-slot="agent-row-via"]')).toHaveTextContent("zebra-farm");
+  });
+
+  it("with no match the DOM is the one it was", () => {
+    const pane = agent({ sessionName: "rewrite the loader", tabLabel: "review", gitHead: { kind: "branch", name: "main" } });
+    const a = render(<AgentCard agent={pane} scope="place" density="row" onClick={() => {}} />);
+    const html = a.container.innerHTML;
+    a.unmount();
+    const b = render(<AgentCard agent={pane} scope="place" density="row" onClick={() => {}} match={undefined} />);
+    expect(b.container.innerHTML).toBe(html);
+    expect(b.container.querySelector("mark")).toBeNull();
   });
 });

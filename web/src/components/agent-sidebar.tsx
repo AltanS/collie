@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 import { CacheChip } from "@/components/cache-chip";
 import { HostChip } from "@/components/host-chip";
 import { PaneOrderToggle } from "@/components/pane-order-toggle";
-import { SessionFilterField } from "@/components/session-filter-field";
+import { SessionFilterEmpty, SessionFilterField } from "@/components/session-filter-field";
 import { MatchText } from "@/components/ui/match-text";
 import { SectionHeader } from "@/components/section-header";
 import { StatusCounts, StatusSummaryLine } from "@/components/status-counts";
@@ -23,6 +23,7 @@ import {
   type PaneFilterLevel,
   type PaneFilterOrder,
   type PaneMatch,
+  viaLabelKey,
 } from "@/lib/pane-filter";
 import { pinMatcher, type Pin } from "@/lib/pins";
 import { paneName, panePlaceParts } from "@/lib/pane-name";
@@ -34,11 +35,10 @@ import { shortenHome } from "@/lib/shorten-home";
 import { bucketOf, isAttention, isUnseen, worstTriage, type TriageKey } from "@/lib/triage";
 import type { AgentStatus, AgentView, Launcher, ServerSummary, SessionSummary, TabView, WorkspaceView } from "@/lib/types";
 import type { Scope } from "@/lib/scope";
-import { t, type MessageKey } from "@/lib/i18n";
+import { t } from "@/lib/i18n";
 import { useFrozenRanks } from "@/hooks/use-frozen-ranks";
 import { useLocale } from "@/hooks/use-locale";
 import { Icon } from "@/components/icons/icon";
-import { Button } from "@/components/ui/button";
 
 interface ThreadSidebarProps {
   agents: AgentView[];
@@ -197,24 +197,6 @@ function jumpTo(pane: AgentView): void {
 
 /** The switcher row draws the name, the space and the tab as text; the machine is a glyph only. */
 const SWITCHER_DRAWN: ReadonlySet<PaneField> = new Set<PaneField>(["name", "space", "tab"]);
-
-/** The word before a field a row does not draw, on its second line while it is why the row matched. */
-function viaLabelKey(field: PaneField): MessageKey | null {
-  switch (field) {
-    case "branch":
-      return "sessionFilter.field.branch";
-    case "folder":
-      return "sessionFilter.field.folder";
-    case "agent":
-      return "sessionFilter.field.agent";
-    case "machine":
-      return "sessionFilter.field.machine";
-    case "name":
-    case "space":
-    case "tab":
-      return null;
-  }
-}
 
 export function ThreadSidebar({
   agents,
@@ -519,12 +501,7 @@ export function ThreadSidebar({
 
       {/* Nothing matches: one line and the way out, in the list's place. */}
       {hits !== null && shownRows.length === 0 && (
-        <div data-slot="session-filter-empty" className="flex flex-col items-center gap-2 px-2 py-8 text-center">
-          <p className="min-w-0 break-words text-sm text-muted-foreground">{t("sessionFilter.noMatch", { query: activeQuery.trim() })}</p>
-          <Button variant="ghost" size="lg" className="text-sm text-primary" onClick={() => setQuery("")}>
-            {t("sessionFilter.clear")}
-          </Button>
-        </div>
+        <SessionFilterEmpty query={activeQuery.trim()} onClear={() => setQuery("")} />
       )}
 
       {/* The Launch rows are not sessions: they hide while a query is set. */}
