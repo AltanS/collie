@@ -886,7 +886,7 @@ version. \`run((t) => { ... })\` reads the facts, calls your function once and p
 | ---- | ------------ |
 | \`t.facts\` | the facts (below), typed |
 | \`t.config\` | \`config.toml\`, parsed; {} when there is none |
-| \`t.tap\`, \`t.hillAnswer\` | the tap that started this run, and the answer to a Decision (\`key\`, \`intent\`, \`text\`), or null |
+| \`t.tap\` | the tap that started this run, or null: \`rid\`, \`node\`, \`intent\`, \`value\`, and for an answer to a Decision \`decision\` (its key), \`text\` and \`seen\` |
 | \`t.status\`, \`t.belt\`, \`t.dashboard\`, \`t.tabbar\`, \`t.session\` | one part in each place; list the place in \`places\` |
 | \`v.card\`, \`v.row\`, \`v.para\`, and the rest of \`v\` | one builder per node kind, for a view |
 | \`t.decide\`, \`t.keepDecisions\` | ask the person on the Hill; leave the open Decisions as they are |
@@ -948,7 +948,7 @@ other file the program writes here counts as a code change and stops the trick.
 ## What the program gets
 
 - Its working folder is this folder.
-- On stdin, one JSON document, the facts: \`v\` (1), \`trigger\` (\`start\`, \`timer\`, or \`tap\` with
+- On stdin, one JSON document, the facts: \`contract\` (${String(TRICK_CONTRACT)}), \`trigger\` (\`start\`, \`timer\`, or \`tap\` with
   \`rid\`, \`node\` (the part id, or \`hill/<key>\` for a decision), \`intent\`, \`value\` and \`from\`),
   \`trick\` (\`id\`, \`dir\`, and \`state\`, a folder of its own to keep files in), \`memberId\` (this
   Collie's id: its crew member id, or \`m_\` and ten letters and digits on a solo install; it stays when
@@ -965,10 +965,10 @@ other file the program writes here counts as a code change and stops the trick.
 
 ## What it prints
 
-One JSON document on stdout, at most 64 KiB, within 10 seconds:
+One JSON document on stdout, at most 64 KiB, within 10 seconds. \`v\` is the contract number:
 
 \`\`\`json
-{ "v": 1, "parts": [ { "at": "belt", "id": "belt", "mark": { "icon": "plug", "label": "3", "tone": "ok" } } ] }
+{ "v": ${String(TRICK_CONTRACT)}, "parts": [ { "at": "belt", "id": "belt", "mark": { "icon": "plug", "label": "3", "tone": "ok" } } ] }
 \`\`\`
 
 - Each part has an \`at\` (a place listed in \`places\` in \`trick.toml\`) and an \`id\` unique in the
@@ -985,12 +985,23 @@ One JSON document on stdout, at most 64 KiB, within 10 seconds:
   shows the part's age and drops its tone.
 - A part's \`view\` is a list of nodes \`{ kind, text, attrs, kids }\`, the Tree UI's kinds (\`card\`,
   \`group\`, \`list\`, \`row\`, \`bar\`, \`chip\`, \`button\`, \`para\`, \`line\`, \`run\`, \`code\`, \`link\`,
-  \`image\`, \`meter\`, \`spacer\`) and \`number\`. Every attribute value is a string.
+  \`image\`, \`meter\`, \`spacer\`) and \`number\`. Every attribute value is a string. An \`image\`
+  names a file in this folder's \`media/\` (\`media/chart.png\`: PNG, JPEG or WebP, at most 2 MB).
 - Optional: \`decisions\`, up to 20 questions for the person (\`key\`, \`title\`, \`summary\`, \`options\`,
   \`recommends\`, and \`view\` for display nodes under the summary: no button, card or image). The
   answer comes back as a tap on \`hill/<key>\`. Leave the \`decisions\` key out
   and the open decisions stay as they are; an empty list \`[]\` withdraws them all.
-- Unknown keys are refused, and a string over its cap is refused, never cut.
+- A value that breaks a rule is refused, and a string over its cap is refused, never cut. What this
+  Collie does not know is left out instead: a node of an unknown kind, or a part in an unknown place,
+  is dropped with one note on the trick's row, and an unknown key or attribute is ignored. \`collie
+  trick dev\` and \`collie trick check --run\` print each one as a note; read them, they are often a typo.
+  \`trick.toml\` and a Decision stay strict: an unknown key there is refused.
+
+## The contract
+
+\`trick.toml\` names the trick contract this folder is written for, \`contract = ${String(TRICK_CONTRACT)}\`, the facts carry
+it as \`contract\`, and the output's \`v\` is it. Within one number Collie only adds keys, kinds and
+places. A Collie that knows an older number refuses the trick with one line that names both numbers.
 
 ## Limits
 

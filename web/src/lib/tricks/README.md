@@ -8,8 +8,59 @@ Collie decides HOW, with its own primitives, so the look stays Collie's. The des
 tricks" milestone in the tracker.
 
 `schema.ts` is the contract. It holds every type a trick reads or writes, the caps, the closed lists
-(tones, icons, places, node kinds) and one total parser per document. It imports only `../json`, so
-the bridge, the CLI and the web all load it by relative path, with no DOM and no `@/` alias.
+(tones, icons, places, node kinds) and one total parser per document. It imports only `../json` and
+`./contract` (the contract number), so the bridge, the CLI and the web all load it by relative path,
+with no DOM and no `@/` alias.
+
+## Contract 1
+
+Everything a trick and Collie exchange has one version number, the trick contract, `TRICK_CONTRACT`
+in `contract.ts`. The bridge (through `schema.ts`), the CLI and the helper's tests read it there; the
+helper (`cli/trick-kit/trick.ts`, a file a trick folder copies) carries the same literal as
+`CONTRACT`, held to it by a test. This Collie speaks contract 1.
+
+**The manifest**, `trick.toml`: `id`, `name`, `run`, `every`, `icon`, `places`, `env`, `contract`, and
+the later `watch`, `on` and `mode`. `contract` is the number the trick is written for, a whole number,
+1 when left out. A trick that names a higher number than this Collie knows is refused with one line,
+"This trick needs a newer Collie: it is written for trick contract 2, and this Collie knows contract
+1. Update Collie to run it.", and nothing else is checked. At the same number an unknown key is
+refused, so a typo shows. A place word this Collie does not know is left out with a `later` note.
+
+**The facts**, one JSON document on stdin: `contract`, `trigger` (`start`, `timer`, or `tap` with
+`rid`, `node`, `intent`, `value`, `from` and, for an answer, `seen`), `trick` (`id`, `dir`, `state`),
+`memberId`, `host`, `sessions` (each `id`, `memberId`, `sessionId`, `paneId`, `host`, `name`, `agent`,
+`status`, `cwd`, `space`, `tab`, `lastActiveAt`) and `spaces` (`name`, `folder`). A program ignores a
+field it does not know: a later Collie at the same number may add one.
+
+**The output**, one JSON document on stdout: `{ v, parts, decisions?, asOf?, fresh? }`. `v` is the
+contract number. A part is `{ at, id, ... }` with the keys its place takes (below); a view is a list of
+nodes `{ kind, text?, attrs?, kids? }` of the 16 kinds (below), every attribute a string.
+
+**The places**: `belt`, `session`, `dashboard`, `status` and `tabbar`, each drawn by the phone (see
+"Places"). Nothing else: a place no surface draws is not in the contract.
+
+**The limits**: 64 KiB of stdout and 10 s per run, 24 parts of at most 16 KiB each, 24 nodes at a
+view's top, 6 levels and 300 nodes in a view, 20 decisions, `every` and `fresh` from 5 s to 24 h, 32
+names in `env`, an image of at most 2 MB from the trick's `media/` folder. Every text cap is in
+`schema.ts` beside its field.
+
+**Strict at write, tolerant at read.** What a trick writes is checked strictly where a person or an
+agent writes it: `trick.toml`, `collie hill post`, and a trick's Decisions (a Decision's view
+included) refuse an unknown key, kind or attribute. A program's output is read tolerantly where the
+phone shows it: a node of a kind this Collie does not know, or a part in a place it does not know, is
+left out with one `dropped` note, and the rest of the view and the other parts still draw; an unknown
+key or attribute on a known node, a part or the document is ignored with an `ignored` note. The notes
+are `notes` on the parse (never `refusals`): the trick's row in Settings shows the `dropped` ones, and
+`collie trick check --run` and `collie trick dev` print every one and still pass. A bad value of a
+known field is refused as before, part by part. So a trick written for a newer Collie at the same
+number runs on an older one, which leaves out only what it does not know.
+
+**What contract 2 means.** Inside contract 1 Collie only adds: an optional manifest key, a facts field,
+a node kind, a place, an attribute. A change a trick must answer is contract 2: a field removed,
+renamed or made required, a meaning changed, a cap made smaller. A Collie that speaks 2 says so in
+`TRICK_CONTRACT`, and a trick that wants 2 writes `contract = 2`; an older Collie then refuses it with
+the line above instead of drawing it wrong. Whether a Collie that speaks 2 still runs a trick written
+for 1 is decided with contract 2.
 
 ## Writing a trick in TypeScript
 
@@ -17,7 +68,7 @@ the bridge, the CLI and the web all load it by relative path, with no DOM and no
 `run = "program.ts"`, `program.ts` (about 25 lines: a status chip, a Dashboard tile, a session with a
 row per session, and a Decision commented out), `trick.ts` (the helper), `config.toml` (settings the
 program reads) and `AGENTS.md` (the contract for an agent that grows the trick). `collie trick init
---sh <id>` writes the shell sample instead (`provider.sh`, one belt mark).
+--sh <id>` writes the shell sample instead (`program.sh`, one belt mark).
 
 ```ts
 import { run, v } from "./trick.ts";
@@ -31,19 +82,18 @@ run((t) => {
 
 `trick.ts` is one self-contained file (`cli/trick-kit/trick.ts` in this repo, held in the binary as
 text). It imports only `node:` built-ins and Bun, and its first line names its version, `// collie
-trick helper v2`. `collie trick helper <id>` rewrites it with the version this Collie carries; the
+trick helper v3`. `collie trick helper <id>` rewrites it with the version this Collie carries; the
 helper is part of the trick's code, so a trick that is on stops until a person switches it on again.
-`collie trick check` lists a `trick.ts` whose bytes are a helper this Collie ships as "helper v2" (an
+`collie trick check` lists a `trick.ts` whose bytes are a helper this Collie ships as "helper v3" (an
 older one with the command to update it) and does not grep it; a changed one is grepped as the trick's
 own code and called a modified helper.
 
 | API | What it does |
 | --- | ------------ |
 | `run(async (t) => { ... })` | reads the facts from stdin, calls the function, prints the document once, exits 0 |
-| `t.facts` | the facts, typed: `v`, `trigger`, `trick` (`id`, `dir`, `state`), `host`, `memberId`, `sessions`, `spaces` |
+| `t.facts` | the facts, typed: `contract`, `trigger`, `trick` (`id`, `dir`, `state`), `host`, `memberId`, `sessions`, `spaces` |
 | `t.config` | `config.toml` of the trick folder, parsed with `Bun.TOML`; `{}` when there is none |
-| `t.tap` | the tap that started the run, `{ intent, value, node, rid, seen? }`, or null |
-| `t.hillAnswer` | the answer to one of the trick's Decisions, `{ key, intent, text }`, or null |
+| `t.tap` | the tap that started the run, or null; one shape from every place: `{ rid, node, intent, value, decision, text, from, seen }`. A part's tap has `value` (a string or null) and `from`; an answer to a Decision has `decision` (its key), `text` (the person's words or null) and `seen`. The fields a tap does not have are null |
 | `t.status({ text, icon?, tone? })` | the chip in the status line (part id `status`) |
 | `t.belt({ label, icon?, tone?, badge?, intent? })` | the mark at the end of the Belt (part id `belt`) |
 | `t.dashboard(item)`, `t.tabbar(item)` | the Dashboard tile and the bottom bar item, `{ label, icon?, badge?, tone? }` |
@@ -146,15 +196,15 @@ words, since every word there is in command position.
 - `parseTrickDocumentText(stdout, opts)` and `parseTrickDocument(json, opts)`: the program's output.
   `opts.declared` is the manifest's `places`, `opts.places` and `opts.kinds` what this Collie draws
   (default: all of them). A bad part is refused alone, and `refusedParts` names it so the runner keeps
-  its last good version, stale. `documentRefused` says no part was read at all.
+  its last good version, stale. `documentRefused` says no part was read at all. `notes` lists what
+  the tolerant read left out or ignored ("Contract 1").
 - `parseTapRequest(json)`: the body of `POST /api/tricks/<host>/<id>/tap`.
 
 None of them throws. Each refusal has a JSON pointer `path`, a `code` and a plain `reason`.
 
 ## The facts
 
-The bridge writes `{ v, trigger, trick, memberId, host, sessions, spaces }` on stdin (and `session`
-for a `view:<match>` run).
+The bridge writes `{ contract, trigger, trick, memberId, host, sessions, spaces }` on stdin.
 
 - `memberId` names the bridge that runs the trick: its crew member id, or on a solo install its
   install id, `m_` and ten of `[a-z0-9]`, minted once into `<stateDir>/bridge-id.json`. It stays the
@@ -175,7 +225,8 @@ slice 1. Its value is the member id, never the host name.
   "decisions": [], "asOf": "2026-11-08T09:41:00Z", "fresh": "90s" }
 ```
 
-There is no `draft` and no `open`. A trick never writes into a reply box, and a tap never moves the
+`v` is the contract number. There is no `draft` and no `open` (a document that still sends one has
+the key ignored, with a note). A trick never writes into a reply box, and a tap never moves the
 phone. What a trick wants to show is a `link`. What it wants to tell the person is a decision.
 
 A document with no `decisions` key leaves the trick's decisions on the hill as they are. An empty
@@ -203,7 +254,7 @@ The 16 kinds, and what each may hold:
 | `run`    | words                                                      | `style`, `code`, `href`, a clock                          |
 | `code`   | line                                                       | `lang`, `max` lines; the phone's copy button              |
 | `link`   | words                                                      | `href`, `rel`, `icon`, `badge`                            |
-| `image`  | nothing                                                    | `src` in the trick folder, `alt`, `w`, `h`                |
+| `image`  | nothing                                                    | `src` in the trick's `media/` folder, `alt`, `w`, `h`     |
 | `meter`  | nothing                                                    | `value`, `max`, `label`, `tone`; `role` meter or progress |
 | `spacer` | nothing                                                    | an optional `label`                                       |
 | `number` | words                                                      | the big figure; `label`, `unit`, `tone`                   |
@@ -363,14 +414,16 @@ answered on the Hill.
 | `belt`          | a mark at the end of the scrolling strip of the Belt; it never takes fixed room | draws         |
 | `status`        | one item in the status line above the Belt | draws                                      |
 | `session`       | a trick session: Dashboard row and screen | draws                                       |
-| `tab:<match>`   | a mark on the tabs that match             | parses, a later slice draws                 |
-| `tab`           | the trick's own tab in a Space            | parses, a later slice draws                 |
-| `view:<match>`  | a view on the sessions that match         | parses, a later slice draws                 |
 | `dashboard`     | a tile in the strip at the top of the Dashboard | draws                                 |
 | `tabbar`        | an item in the Dashboard's bottom bar, after the Hill | draws                           |
 | `header.line`   |                                           | refused, code `later`, the place named      |
 | `menu:<match>`  |                                           | refused, code `later`, the place named      |
 | `settings`      |                                           | refused, code `later`, the place named      |
+
+In a program's output, a part at a place this Collie does not draw (a later place, a newer Collie's,
+or the `tab`, `tab:<match>` and `view:<match>` of the first schema, removed by M94 review 11 because
+no surface drew them) is left out with a `dropped` note, and the other parts draw. In `places` such a
+word is a `later` note; a manifest with no place left is refused.
 
 A `status` part is `{ at: "status", id, chip: { text, icon?, tone?, at?, clock? } }`: one chip, with
 the tree's chip attributes and no others, in the usage row after Collie's own items, in manifest
@@ -391,7 +444,8 @@ tile (`components/trick-place-items.tsx`, on `ui/tile-strip.tsx`). A `tabbar` it
 Dashboard's bottom bar after the Hill; with at least one, the bar's views and the Hill keep a fixed
 width and stay pinned, and the items scroll after a thin divider (`ui/tab-bar.tsx`, ADR 0066 and
 ADR 0085 as amended on 2026-11-10). Past `fresh` either loses its tone. The first schema's `dashboard`
-took a whole `view` that nothing drew; a part that still sends one is refused with code `removed`.
+took a whole `view` that nothing drew; a part that still sends one has the key ignored, with a note
+that says it is one `item` now.
 
 A mark is `{ icon, label, badge, tone, intent }`: `label` is the face word, `badge` a count or the dot
 when empty. A mark is always the same control. One with nothing to do is the same button,
@@ -402,6 +456,7 @@ when empty. A mark is always the same control. One with nothing to do is the sam
 | Who          | Action                               | Needs                                 |
 | ------------ | ------------------------------------ | ------------------------------------- |
 | a phone      | read the parts (`GET /api/tricks`)   | a device key with `read`              |
+| a phone      | read a picture of a trick's `media/` | a device key with `read`              |
 | a phone      | tap an intent, answer a decision     | a device key with `write`             |
 | a phone      | switch a trick on or off             | a device key with `write`             |
 | the trick    | redraw its parts, post a decision    | its own run, from the bridge          |
@@ -409,6 +464,20 @@ when empty. A mark is always the same control. One with nothing to do is the sam
 | the bridge   | set `composer.draft`                 | never                                 |
 
 `TRICKS_ROUTE_RIGHTS` in `bridge/tricks/routes.ts` is the one home of the route levels.
+
+## Pictures
+
+An `image` node's `src` is `media/` and a file in the trick's own `media/` folder (`media/chart.png`),
+with no step that starts with a dot, and a `.png`, `.jpg`, `.jpeg` or `.webp` name. The folder is
+outside the code hash, so a program may write a new picture there between runs. The phone reads it at
+`GET /api/tricks/<memberId>/<id>/media/<file>` (`trickMediaPath`), with the pairing token
+(`authedObjectUrl`, through `TrickView`), and the part's rev as a query, so a new version of the part
+fetches again; a new picture under the same name shows when the part changes. The bridge
+(`bridge/tricks/media.ts`) serves it only for its own trick that is switched on, and reads it with the
+hill's checks (`readPostedImage`): the trick folder's real path, no symlink anywhere below it, a
+regular file of at most 2 MB, opened without following a link, and PNG, JPEG or WebP by its first
+bytes, never its name. Every miss is the same 404, and the answer carries `no-store` and a sandboxed
+CSP. Until the bytes arrive, and when they fail, the box keeps its size and says its `alt`.
 
 ## Places in the app
 

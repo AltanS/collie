@@ -82,6 +82,8 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 - **A trick's image shows its picture.** An `image` node names a file in the trick's own `media/` folder, such as `media/chart.png`, and the phone fetches it from the bridge with its pairing key. The bridge serves only PNG, JPEG and WebP files of that folder, read off their first bytes, at most 2 MB, never through a symlink, and only for a trick that is switched on; every other request gets the same "no such image". A new version of the part fetches the picture again. (M94)
 
+- **The `AGENTS.md` that `collie trick init` writes states contract 1.** It names `contract = 1`, the facts' `contract` field, the one `t.tap` shape, pictures in `media/`, and the rule that an unknown kind or place is left out and an unknown key is ignored while `trick.toml` and Decisions stay strict. (M94)
+
 ## [1.28.0] - 2026-11-09
 
 ### Added

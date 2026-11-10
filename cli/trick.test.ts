@@ -9,7 +9,7 @@ import { EXIT, type Io } from "./io.ts";
 import { tricksFindings } from "./trick-findings.ts";
 import { checkStatic, checkWarnings, runAgainstFixture, isBareImport, isScannedFile, shippedHelperVersion, cmdTrick, cmdTrickCheck, cmdTrickHelper, cmdTrickInit, HELPER_VERSION, helperVersion, sampleProgram, TRICK_HELPER, cmdTrickList, cmdTrickSkill, cmdTrickSwitch, looksBinary, runsLines, sampleAgents, SKILL_BYTES_MAX, TRICK_WRITE_BRIEF, TRICK_SUBCOMMANDS, type TrickCheckReport, type TrickDeps } from "./trick.ts";
 import { realFiles } from "./sys.ts";
-import { parseTrickDocument, type TricksReply } from "../web/src/lib/tricks/schema.ts";
+import { parseTrickDocument, TRICK_CONTRACT, type TricksReply } from "../web/src/lib/tricks/schema.ts";
 
 const dirs: string[] = [];
 async function tempDir(): Promise<string> {
@@ -74,6 +74,25 @@ describe("collie trick init", () => {
       const parsed = parseTrickDocument({ v: 1, parts: [{ at, id: "i", item: JSON.parse(example ?? "null") }] });
       expect(parsed.refusals).toEqual([]);
     }
+  });
+
+  test("AGENTS.md agrees with contract 1: the number, the facts field, one tap shape, the tolerant read, media/", () => {
+    for (const form of ["ts", "sh"] as const) {
+      const text = sampleAgents("legs", form);
+      expect(text, form).toContain(`contract = ${String(TRICK_CONTRACT)}`);
+      expect(text, form).toContain(`\`contract\` (${String(TRICK_CONTRACT)})`);
+      expect(text, form).toContain(`{ "v": ${String(TRICK_CONTRACT)}, "parts"`);
+      expect(text, form).toContain("left out");
+      expect(text, form).toContain("is ignored");
+      expect(text, form).toContain("`media/`");
+      expect(text, form).not.toContain("hillAnswer");
+      expect(text, form).not.toContain("Unknown keys are refused");
+      expect(text, form).not.toMatch(/`v` \(1\)/u);
+    }
+    expect(sampleAgents("legs")).toContain("`decision` (its key)");
+    // The output example in AGENTS.md parses clean.
+    const example = /```json\n(.+)\n```/u.exec(sampleAgents("legs"))?.[1];
+    expect(parseTrickDocument(JSON.parse(example ?? "null")).refusals).toEqual([]);
   });
 
   test("writes a TypeScript trick by default: trick.toml, program.ts, the helper, config.toml and AGENTS.md", async () => {
