@@ -5,6 +5,7 @@ import { createMemoryRouter, Outlet, RouterProvider, type InitialEntry } from "r
 import { vi } from "vitest";
 
 import { __resetHill, __settleHill, syncHill } from "@/lib/hill/store";
+import { clearStatus, currentStatus } from "@/lib/status";
 import { asJsonString, parseJsonObject } from "@/lib/json";
 import { ROOT_ROUTE_ID, type HomeData } from "@/lib/loaders";
 import { partKey, type TricksReply, type WireTrickPart } from "@/lib/tricks/schema";
@@ -279,5 +280,65 @@ describe("the Dashboard's bar on the hill route (amended 2026-11-10)", () => {
     renderHill(undefined, home({ hill: false }));
     await screen.findByRole("heading", { name: "Hill" });
     expect(bar().querySelector('[data-slot="tab-link"]')).toBeNull();
+  });
+});
+
+// The Hill switched off (bridge/hill/switch.ts): the snapshot carries `hillOff` and no `hillRev`, so the
+// root data says `hillOff: true, hill: false`. The route stays and says so, with the way back on.
+describe("the hill route with the Hill switched off", () => {
+  const offBar = () => document.querySelector<HTMLElement>('[data-slot="tab-bar"]');
+
+  it("shows the off state, Off in the count line, and no Hill item in the bar", async () => {
+    renderHill(undefined, home({ hill: false, hillOff: true }));
+    await screen.findByRole("heading", { name: "Hill" });
+    expect(document.querySelector('[data-slot="hill-count"]')).toHaveTextContent("Off");
+    expect(document.querySelector('[data-slot="hill-off"]')).toHaveTextContent("The Hill is off.");
+    expect(document.querySelector('[data-slot="hill-off"]')).toHaveTextContent("Agents and tricks cannot ask you here. Open Decisions come back when you switch it on.");
+    expect(document.querySelector('[data-slot="hill-empty"]')).toBeNull();
+    expect(offBar()?.querySelector('[data-slot="tab-link"]')).toBeNull();
+  });
+
+  it("switches the Hill on from the off state: one POST { on: true }, then the snapshot is read again", async () => {
+    let posted = "";
+    server.use(
+      http.post("/api/hill/switch", async ({ request }) => {
+        posted = await request.text();
+        return HttpResponse.json({ on: true });
+      }),
+    );
+    let data = home({ hill: false, hillOff: true });
+    const router = createMemoryRouter(
+      [
+        {
+          id: ROOT_ROUTE_ID,
+          path: "/",
+          loader: () => data,
+          element: withHeaderHost(<Outlet />),
+          children: [{ path: "hill", element: <HillRoute /> }],
+        },
+      ],
+      { initialEntries: ["/hill"] },
+    );
+    render(<RouterProvider router={router} />);
+    const button = await screen.findByRole("button", { name: "Switch the Hill on" });
+    data = home({ hill: true });
+    await userEvent.click(button);
+    await waitFor(() => expect(document.querySelector('[data-slot="hill-empty"]')).toHaveTextContent("The hill is clear."));
+    expect(posted).toBe('{"on":true}');
+    expect(document.querySelector('[data-slot="hill-off"]')).toBeNull();
+  });
+
+  it("a refused switch keeps the off state and says so on the status line", async () => {
+    server.use(http.post("/api/hill/switch", () => new HttpResponse("nope", { status: 503 })));
+    renderHill(undefined, home({ hill: false, hillOff: true }));
+    await userEvent.click(await screen.findByRole("button", { name: "Switch the Hill on" }));
+    await waitFor(() => expect(currentStatus()).toMatchObject({ text: "Could not switch the Hill. Try again.", tone: "error" }));
+    expect(document.querySelector('[data-slot="hill-off"]')).not.toBeNull();
+    clearStatus();
+  });
+
+  it("a device that may only read sees the button, disabled", async () => {
+    renderHill(undefined, home({ hill: false, hillOff: true, device: { enforced: true, device: "tablet", authorized: false } }));
+    expect(await screen.findByRole("button", { name: "Switch the Hill on" })).toBeDisabled();
   });
 });

@@ -2,9 +2,10 @@ import { useEffect, useRef } from "react";
 import { useLocation } from "react-router";
 
 import { DashboardRouteBar, footAir } from "@/components/dashboard-route-bar";
-import { HillHeader, HillView, LiveDecisionCard } from "@/components/hill-view";
+import { HillHeader, HillOff, HillView, LiveDecisionCard } from "@/components/hill-view";
 import { BandMain } from "@/components/ui/strip-host";
 import { useDashboardBar } from "@/hooks/use-dashboard-bar";
+import { useHillSwitch } from "@/hooks/use-hill-switch";
 import { useLocale } from "@/hooks/use-locale";
 import { useNav } from "@/hooks/use-nav";
 import { useHillClosed, useHillKept, useHillOpen } from "@/lib/hill/store";
@@ -24,6 +25,11 @@ import { cn } from "@/lib/utils";
 //
 // `/hill#<decision id>` is where a `now` Decision's notification lands (lib/push-decision.ts): the route
 // scrolls that card into view once it is on the list. A closed one, or an unknown id, scrolls nothing.
+//
+// THE HILL SWITCHED OFF (the snapshot's `hillOff`, bridge/hill/switch.ts): the route stays, under the
+// same header, and shows a calm off state with the switch's way back on (`HillOff`), not a redirect: a
+// person who lands here from an old notification or a bookmark learns why the Hill is empty, and turns
+// it on in one tap. The bar has no Hill item then, as on the Dashboard.
 
 const AT_HILL = { kind: "hill" } as const;
 
@@ -35,12 +41,18 @@ export function HillRoute() {
   const closed = useHillClosed();
   const kept = useHillKept();
   const bar = useDashboardBar();
+  const sw = useHillSwitch();
+  const off = !sw.on;
   useScrollToDecision(open);
   return (
     <div className="mx-auto flex min-h-0 w-full max-w-screen-sm flex-1 flex-col">
-      <HillHeader count={open.length} nowCount={open.filter((d) => d.priority === "now").length} onBack={() => nav.up(homePath(scope))} />
+      <HillHeader count={open.length} nowCount={open.filter((d) => d.priority === "now").length} onBack={() => nav.up(homePath(scope))} off={off} />
       <BandMain base={16} data-slot="hill-scroll" className={cn("relative flex min-h-0 flex-1 flex-col overflow-y-auto px-4 pt-4", footAir(bar.shown, "pb-4"))}>
-        <HillView open={open} closed={closed} kept={kept} renderCard={(decision) => <LiveDecisionCard key={decision.id} decision={decision} />} />
+        {off ? (
+          <HillOff canWrite={sw.canWrite} busy={sw.busy} onTurnOn={() => void sw.set(true)} />
+        ) : (
+          <HillView open={open} closed={closed} kept={kept} renderCard={(decision) => <LiveDecisionCard key={decision.id} decision={decision} />} />
+        )}
       </BandMain>
       <DashboardRouteBar bar={bar} at={AT_HILL} />
     </div>

@@ -47,6 +47,13 @@
 // A `now` DECISION RINGS THE PHONE ONCE (push.ts). Decided at the fresh post or supersede and recorded as
 // `pushTag` in the same write; every write goes through `save`, which closes the notification of a
 // decision that closed holding a slot no successor took.
+//
+// THE SWITCH (switch.ts). With the Hill off, a post from an agent or a trick is refused (`hill_off`) and
+// an answer from the phone is refused too (`off`), so nothing pushes, nothing is typed and no tap runs.
+// The open decisions stay as they are: nothing withdraws or closes them, and they show again when the
+// Hill is back on. The sweep still closes an expired one, or one whose target ended. Status, list and
+// withdraw keep working, so an agent can clean up. When the switch is seen to go off, the notification
+// of every open `now` decision is closed once, so the phone does not keep a question it cannot open.
 
 import { randomBytes } from "node:crypto";
 
@@ -194,6 +201,11 @@ export interface HillServiceDeps {
   readonly sessionsKnown?: () => boolean;
   /** The phone push of a `now` decision (push.ts). Absent: no decision pushes. */
   readonly push?: HillPushPort;
+  /**
+   * The Hill's own switch (switch.ts `HillSwitch`), read on each use, and written by the phone's route
+   * (`set`, true when written). Absent: always on, and the switch cannot be moved.
+   */
+  readonly hillSwitch?: { on(): boolean; set?(on: boolean): boolean };
 }
 
 /** What a new decision does about the phone: the slot it holds, whether it sends, and why a rate held it. */
@@ -220,6 +232,8 @@ export type HillOneAnswer = { readonly ok: true; readonly decision: HillDecision
 
 /** The sentence a crew member answers a post with. */
 export const NOT_ON_LEAD = "the hill is not merged across the crew yet; post from a session on the lead machine";
+/** The sentence a bridge with the Hill switched off answers a post with: what is off, and the way back on. */
+export const HILL_OFF = "the Hill is off on this Collie; your person can switch it on in Settings, Alerts, on the phone, or with: collie hill on";
 /** The sentence a bridge with WalkyTalky off answers a post with. */
 export const HILL_WALKY_OFF = "WalkyTalky is off on this machine (COLLIE_WALKY=off), so no answer could reach you";
 /** The closed reason of a withdrawn decision. */
@@ -472,6 +486,8 @@ export class HillService {
   private lane: Promise<void> = Promise.resolve();
   /** The open decisions whose target the last sweep found gone. Gone at two sweeps in a row closes one. */
   private absent = new Set<string>();
+  /** The switch as last seen, so the move to off closes the open notifications once. */
+  private wasOn = true;
 
   constructor(private readonly deps: HillServiceDeps) {
     this.now = deps.now ?? Date.now;
@@ -491,6 +507,31 @@ export class HillService {
       this.namesSeen = names;
     }
     return stored + this.namesMoved;
+  }
+
+  /**
+   * Whether the Hill is on (switch.ts). Each call reads the switch; the first call that sees it go off
+   * closes the notification of every open decision that holds one. The decisions themselves stay open.
+   */
+  isOn(): boolean {
+    const on = this.deps.hillSwitch?.on() ?? true;
+    if (this.wasOn && !on) {
+      const tags = new Set(this.deps.store.all().flatMap((decision) => (decision.state === "open" && decision.pushTag !== undefined ? [decision.pushTag] : [])));
+      for (const tag of tags) this.deps.push?.clear(tag);
+      if (tags.size > 0) this.deps.audit?.({ action: "hill.push.cleared", detail: { why: "the Hill is off", count: tags.size } });
+    }
+    this.wasOn = on;
+    return on;
+  }
+
+  /**
+   * Move the switch from the phone. Answers whether the Hill is on now, or null when the switch could not
+   * be written (nothing changed). One `hill.switch` audit line for a write.
+   */
+  switchTo(on: boolean, device: string | null = null): boolean | null {
+    if (this.deps.hillSwitch?.set?.(on) !== true) return null;
+    this.deps.audit?.({ action: "hill.switch", device, detail: { on } });
+    return this.isOn();
   }
 
   /** `fn` under one look at the live sessions, when the bridge gives one. */
@@ -548,6 +589,8 @@ export class HillService {
 
   /** One post, from an agent or from a trick inside the bridge. */
   postDecision(from: HillSender, input: HillPostInput, opts: HillPostOptions = {}): HillPostAnswer {
+    // First: with the Hill off nothing is taken, not even a repeat of a post it once took.
+    if (!this.isOn()) return refuse("hill_off", HILL_OFF);
     if (!this.deps.walkyOn()) return refuse("walky_off", HILL_WALKY_OFF);
     if (this.deps.crewMode() === "peer") return refuse("not_on_lead", NOT_ON_LEAD);
     const key = senderKey(from);
@@ -804,6 +847,8 @@ export class HillService {
    * `replyTo` has no session to end; its runner owns it.
    */
   sweep(now: number = this.now()): number {
+    // A switch the CLI moved is seen here within one sweep, so its notifications close without a phone.
+    this.isOn();
     this.pruneMedia();
     const due = this.deps.store.all().filter((decision) => decision.state === "open" && decision.expiresAt !== null && decision.expiresAt <= now);
     const expired = due.map((decision): HillDecision => Object.assign({}, decision, { state: "expired" as const, closedAt: now, closedReason: EXPIRED }));
@@ -849,6 +894,8 @@ export class HillService {
    * delivered when the decision is still open, else answered `gone` with the state it has.
    */
   answer(request: HillAnswerRequest, id: string, by: string, deviceId: string | null = null): Promise<HillAnswerOutcome> {
+    // With the Hill off nothing is typed and no tap runs; the decision stays open for when it is back.
+    if (!this.isOn()) return Promise.resolve({ kind: "off" });
     const digest = hillAnswerDigest(request.node, request.intent, request.value.text);
     // SYNCHRONOUS from here to `track`: two requests with one rid must not both get past the look.
     const stored = this.deps.receipts.get(request.rid);

@@ -3,7 +3,8 @@ import { join } from "node:path";
 
 import type { JsonValue } from "../json.ts";
 import { parseManifest, type TrickManifest, type Refusal } from "../../web/src/lib/tricks/schema.ts";
-import { CONFIG_FILE, diskTrickFs, hashCodeEntries, walkFingerprint, walkTrickCode, type TrickFs } from "./code-hash.ts";
+import { CONFIG_FILE, diskTrickFs, hashCodeEntries, walkFingerprint, walkTrickCode, type FsStat, type TrickFs } from "./code-hash.ts";
+import { ORIGIN_FILE, readOrigin, type TrickOrigin } from "./origin.ts";
 import { MANIFEST_FILE } from "./paths.ts";
 
 // FINDING TRICKS (M94 slice 01): every folder under `<configDir>/tricks/` is a trick, named by the folder.
@@ -11,9 +12,9 @@ import { MANIFEST_FILE } from "./paths.ts";
 //
 // Reread on change, on the operator-file posture (operator-file.ts): each scan walks every trick folder
 // with `lstat` only (code-hash.ts), and only a folder whose fingerprint moved is read again: its
-// manifest parsed, its `config.toml` and its code hashed. The fingerprint covers the code files and
-// `config.toml`, never `media/`, `captures/` or a `*.log`, so a program that writes its log or its
-// pictures into its own folder moves nothing.
+// manifest parsed, its `config.toml` and its code hashed. The fingerprint covers the code files,
+// `config.toml` and the origin record (origin.ts), never `media/`, `captures/` or a `*.log`, so a program
+// that writes its log or its pictures into its own folder moves nothing.
 //
 // Hardened reads: `trick.toml` and `config.toml` must be regular files of at most 64 KiB, opened without
 // following a symlink and without blocking on a FIFO. One whole scan has {@link SCAN_TIMEOUT_MS}; a scan
@@ -42,6 +43,8 @@ export interface FoundTrick {
   codeHash?: string;
   /** The SHA-256 of `config.toml`, or null when the folder has none. */
   configHash: string | null;
+  /** Where `collie trick add` took the trick from (origin.ts), when the folder has a record of it. */
+  origin?: TrickOrigin;
 }
 
 /** What a scan saw: whether the tricks folder exists at all, and each trick folder in name order. */
@@ -97,12 +100,19 @@ export async function readManifestFile(fs: TrickFs, dir: string, id: string): Pr
   return readManifestText(read.kind === "absent" ? null : new TextDecoder().decode(read.bytes), id);
 }
 
+/** One entry's `lstat` as a word for a fingerprint: it moves when the entry is written or replaced. */
+function statStamp(st: FsStat | null): string {
+  return st === null ? "none" : `${st.kind}:${String(st.size)}:${String(st.mtimeMs)}:${String(st.ino)}`;
+}
+
 /** Read one trick folder: reuse `known` when the fingerprint did not move. */
 async function scanFolder(fs: TrickFs, root: string, id: string, known: FoundTrick | undefined): Promise<FoundTrick> {
   const dir = join(root, id);
   const walk = await walkTrickCode(fs, dir);
   const config = await fs.lstat(join(dir, CONFIG_FILE));
-  const configStamp = config === null ? "none" : `${config.kind}:${String(config.size)}:${String(config.mtimeMs)}:${String(config.ino)}`;
+  const origin = await fs.lstat(join(dir, ORIGIN_FILE));
+  // The origin record is outside the code hash, but its stamp is in the fingerprint, so a rewrite shows.
+  const configStamp = `${statStamp(config)}|${statStamp(origin)}`;
   const fingerprint = walk.ok ? walkFingerprint(walk.entries, configStamp) : `refused:${walk.reason}:${configStamp}`;
   if (known !== undefined && known.fingerprint === fingerprint) return known;
 
@@ -115,6 +125,8 @@ async function scanFolder(fs: TrickFs, root: string, id: string, known: FoundTri
   if (!walk.ok) refusals.push({ code: "count", path: "", reason: walk.reason });
   const found: FoundTrick = { id, dir, fingerprint, refusals, configHash };
   if (walk.ok) found.codeHash = await hashCodeEntries(fs, dir, walk.entries);
+  const record = origin === null ? null : await readOrigin(dir, fs);
+  if (record !== null) found.origin = record;
   if (read.manifest !== undefined && walk.ok && configRead.kind !== "refused") found.manifest = read.manifest;
   return found;
 }
@@ -151,7 +163,7 @@ export interface TrickScannerOptions {
 }
 
 /** `work` within `ms`, or `null` when it ran over. The work goes on, unawaited. */
-async function within<T>(work: Promise<T>, ms: number): Promise<T | null> {
+export async function within<T>(work: Promise<T>, ms: number): Promise<T | null> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const late = new Promise<null>((resolve) => {
     timer = setTimeout(() => resolve(null), ms);

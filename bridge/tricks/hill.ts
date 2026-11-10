@@ -53,6 +53,11 @@ import { hillDir } from "../hill/store.ts";
 //
 // SWITCHED OFF OR REMOVED: every open decision of the trick is withdrawn at once, "the trick is off".
 //
+// THE HILL SWITCHED OFF (hill/switch.ts): a run's decisions are not posted, superseded or withdrawn, and
+// the map is left as it is, so nothing on the hill moves while it is off. The trick keeps running; its
+// row in Settings says its Decisions are not shown (the phone reads `decides` on the trick's entry
+// beside the snapshot's `hillOff`). The first run after the Hill is back on makes the hill agree again.
+//
 // THE MAP. `<stateDir>/hill/tricks.json` keeps, per trick, the generation and per key the decision id,
 // the content hash and the state last seen:
 //   { "v": 1, "tricks": { "<trickId>": { "gen": 0, "keys": { "<key>": { "decisionId", "hash", "state", "seq", "at" } } } } }
@@ -92,6 +97,8 @@ export interface TrickHillPort {
   postDecision(from: HillTrickSender, input: HillPostInput, opts?: HillPostOptions): HillPostAnswer;
   withdraw(from: HillTrickSender, id: string, reason: string): HillOneAnswer;
   decision(id: string): HillDecision | undefined;
+  /** Whether the Hill is switched on (hill/service.ts `isOn`). Absent: always on. */
+  isOn?(): boolean;
 }
 
 export interface TrickHillDeps {
@@ -305,6 +312,8 @@ export class TrickHill {
    * own (the list `collie trick check` and the Settings row read). Never throws.
    */
   sync(trick: TrickHillTrick, run: TrickHillRun): Refusal[] {
+    // The Hill is off: nothing is posted and nothing withdrawn, and the map waits for the Hill to be back.
+    if (this.deps.hill.isOn?.() === false) return [];
     const refusals: Refusal[] = [];
     const before = JSON.stringify(this.map.get(trick.id) ?? null);
     const record: TrickHillRecord = this.map.get(trick.id) ?? { gen: 0, keys: {} };

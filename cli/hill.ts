@@ -11,6 +11,7 @@ import type { JsonObject, JsonValue } from "../bridge/json.ts";
 import { asJsonObject, asJsonString, parseJson, parseJsonObject } from "../web/src/lib/json.ts";
 import { readDecision } from "../bridge/hill/parse.ts";
 import { HILL_DEFAULT_EXPIRY_DAYS } from "../bridge/hill/service.ts";
+import { readHillSwitch, writeHillSwitch } from "../bridge/hill/switch.ts";
 import { parseAddress } from "../bridge/walky/address.ts";
 import { BARE_BAD_REQUEST, unknownOp } from "../bridge/walky/refusals.ts";
 import { walkySocketPath } from "../bridge/walky/socket.ts";
@@ -40,7 +41,7 @@ import { isRequestId } from "../bridge/worktree-receipts.ts";
 // bridge that does not know the pane answers `not here`, and one that does not know the hill answers as
 // it answers any op it cannot read; both lead to the next. When no bridge knows the hill, it says so.
 
-export const HILL_SUBCOMMANDS = ["post", "status", "withdraw", "list"] as const;
+export const HILL_SUBCOMMANDS = ["post", "status", "withdraw", "list", "on", "off"] as const;
 
 export { HILL_RULES, HILL_WRITING };
 
@@ -70,6 +71,8 @@ const USAGE = {
   status: ["usage: collie hill status <dc_id> [--json]   (yours, or one whose answer goes to this session)"],
   withdraw: ["usage: collie hill withdraw <dc_id> [--json]"],
   list: ["usage: collie hill list [--json]   (your own decisions, open first)"],
+  on: ["usage: collie hill on    (switch the Hill on for this Collie; it is on unless switched off)"],
+  off: ["usage: collie hill off   (switch the Hill off: every post is refused, the open decisions stay)"],
 } as const satisfies Record<(typeof HILL_SUBCOMMANDS)[number], readonly string[]>;
 
 /** `collie hill post --help`: the usage, how to word the card, then the rules. */
@@ -135,11 +138,21 @@ async function walk(deps: HillDeps, body: JsonObject, all = false): Promise<{ re
     }
     if (unknownToBridge(error, op)) continue;
     if (answer.hill !== true) continue;
-    return { answers, failure: { ok: false, error, code: asJsonString(answer.code) ?? null, exit: asJsonString(answer.code) === undefined ? EXIT.STATE : EXIT.REFUSED } };
+    const code = asJsonString(answer.code) ?? null;
+    return { answers, failure: { ok: false, error, code, exit: refusalExit(code) } };
   }
   if (missing !== null) return { answers, failure: { ok: false, error: missing, code: null, exit: EXIT.STATE } };
   if (knows && notHere) return { answers, failure: { ok: false, error: HILL_NOT_HERE, code: null, exit: EXIT.STATE } };
   return { answers, failure: { ok: false, error: HILL_UNKNOWN, code: null, exit: EXIT.UNREACHABLE } };
+}
+
+/**
+ * The exit code of a bridge's refusal. A post the bridge refused for its content is `REFUSED` (4); a
+ * refusal with no code, and the Hill switched off on this Collie, are a state of the machine, `STATE`
+ * (3): a retry of the same post can pass once the person switches the Hill on.
+ */
+export function refusalExit(code: string | null): number {
+  return code === null || code === "hill_off" ? EXIT.STATE : EXIT.REFUSED;
 }
 
 async function request(deps: HillDeps, body: JsonObject): Promise<Answer> {
@@ -527,6 +540,42 @@ export async function cmdHillList(deps: HillDeps, args: readonly string[]): Prom
     const to = decision.target === null ? "" : `  (to ${targetWords(decision.target)})`;
     deps.io.out(`${decision.id}  ${decision.state.padEnd(13)}  ${decision.priority.padEnd(5)}  ${shown(decision.title)}${to}`);
   }
+  return EXIT.OK;
+}
+
+/** What `collie hill off` says once the switch is written. */
+export const HILL_OFF_WORDS = "The Hill is off on this Collie. Agents and tricks cannot post, and the Hill leaves the phone's bar. The open decisions stay and show again when you switch it on: collie hill on";
+/** What `collie hill on` says once the switch is written. */
+export const HILL_ON_WORDS = "The Hill is on. Agents and tricks can ask you again, and the open decisions are back on the phone.";
+
+/**
+ * `hill on|off`: the Hill's switch for this Collie (bridge/hill/switch.ts). Written straight into this
+ * instance's state folder, as `collie trick on|off` writes the tricks' switch; the running bridge reads
+ * it again within seconds, with no restart. Works with no bridge running.
+ */
+export function cmdHillSwitch(deps: Pick<HillDeps, "ctx" | "io" | "now">, verb: "on" | "off", args: readonly string[]): number {
+  const unknown = args.find((arg) => arg !== "--json");
+  if (unknown !== undefined) {
+    deps.io.err(`error: unknown argument \`${unknown}\``);
+    for (const line of USAGE[verb]) deps.io.err(line);
+    return EXIT.USAGE;
+  }
+  const on = verb === "on";
+  const json = args.includes("--json");
+  const held = readHillSwitch(deps.ctx.stateDir);
+  if (held.on === on && held.problem === null) {
+    if (json) deps.io.out(JSON.stringify({ on }));
+    else deps.io.out(on ? "The Hill is already on." : "The Hill is already off.");
+    return EXIT.OK;
+  }
+  try {
+    writeHillSwitch(deps.ctx.stateDir, on, (deps.now ?? Date.now)());
+  } catch (err) {
+    deps.io.err(`hill: could not write the switch in ${deps.ctx.stateDir}: ${err instanceof Error ? err.message : String(err)}`);
+    return EXIT.FAIL;
+  }
+  if (json) deps.io.out(JSON.stringify({ on }));
+  else deps.io.out(on ? HILL_ON_WORDS : HILL_OFF_WORDS);
   return EXIT.OK;
 }
 

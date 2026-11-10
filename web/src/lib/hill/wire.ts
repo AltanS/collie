@@ -304,6 +304,7 @@ export type HillRefusalCode =
   | "too_many_open"
   | "not_on_lead"
   | "walky_off"
+  | "hill_off"
   | "bad_image"
   | "too_many_images"
   | "image_too_large"
