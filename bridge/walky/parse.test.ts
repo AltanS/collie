@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
-import type { JsonValue } from "../json.ts";
-import { parsePhoneSend, parseWalkyRequest, readMessage, readCrewDelivery, readOutcomesPush, readReceipt, readWhoAnswer, readWalkyCursor, SENDER_CERT_MAX, SIGNATURE_MAX } from "./parse.ts";
+import type { JsonObject, JsonValue } from "../json.ts";
+import { parsePhoneSend, parseWalkyRequest, readWalkyRequest, readMessage, readCrewDelivery, readOutcomesPush, readReceipt, readWhoAnswer, readWalkyCursor, SENDER_CERT_MAX, SIGNATURE_MAX } from "./parse.ts";
 import type { WalkyMessage, WalkyReceipt } from "./types.ts";
 
 // The crew readers added on 2026-10-18 (CREW_PROTOCOL §21): the report's ack cursor, the delivery's
@@ -197,5 +197,22 @@ describe("the space and the outside flag on the wire (M98 spec 02)", () => {
     const spaced = withSpace({ key: "api", named: true, label: "api", colour: "red" });
     const read = readMessage({ ...spaced, from: { ...spaced.from, extra: 1 } });
     expect(read?.from).toEqual({ memberId: "desk", address: "desk/w1:p1", harness: "agent-x", label: "repo#a", space: { key: "api", named: true, label: "api" } });
+  });
+});
+
+describe("the Morph requests on the socket", () => {
+  const line = (row: JsonObject): string => JSON.stringify({ v: 1, markers: [], ...row });
+
+  test("start, show and the plain ops carry the session they name, or null", () => {
+    expect(readWalkyRequest(line({ op: "morph.start", note: "Drawing", session: "local/%1#aaaa" }))).toMatchObject({ ok: true, request: { op: "morph.start", session: "local/%1#aaaa" } });
+    expect(readWalkyRequest(line({ op: "morph.start" }))).toMatchObject({ ok: true, request: { op: "morph.start", session: null } });
+    expect(readWalkyRequest(line({ op: "morph.show", view: [], session: null }))).toMatchObject({ ok: true, request: { op: "morph.show", session: null } });
+    expect(readWalkyRequest(line({ op: "morph.clear", session: "local/%1" }))).toMatchObject({ ok: true, request: { op: "morph.clear", session: "local/%1" } });
+    expect(readWalkyRequest(line({ op: "morph.status" }))).toMatchObject({ ok: true, request: { op: "morph.status", session: null } });
+  });
+
+  test("a session that is not text is a request this bridge cannot read", () => {
+    expect(readWalkyRequest(line({ op: "morph.start", session: 7 }))).toMatchObject({ ok: false });
+    expect(readWalkyRequest(line({ op: "morph.clear", session: ["x"] }))).toMatchObject({ ok: false });
   });
 });

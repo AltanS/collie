@@ -4,8 +4,10 @@ import { postMorphSwitch } from "@/lib/api";
 import { describeThrownError } from "@/lib/api-error-message";
 import { t } from "@/lib/i18n";
 import { noteMorphSwitch, useMorphAvailable, useMorphSession } from "@/lib/morph/store";
-import type { MorphView } from "@/lib/morph/wire";
+import { picksAfter, picksFor, requestAfter, type MorphPicks, type MorphRequest, type MorphRequestNote } from "@/lib/morph/reader";
+import type { MorphDrawing, MorphView } from "@/lib/morph/wire";
 import type { PaneView } from "@/lib/pane-view";
+import { onBridgeClock } from "@/lib/server-clock";
 
 // ONE SESSION'S MORPH, for the session screen (components/agent-chat.tsx): whether it is on, whether its
 // body is on screen, its hint and its screen, the switch, and the way back to Chat or the terminal.
@@ -14,6 +16,12 @@ import type { PaneView } from "@/lib/pane-view";
 // Chat. Picking Terminal or Chat shows that body for this session (`aside`) and leaves Morph on; picking
 // Morph shows it again. The choice lives in this component's state, for the session it was made on: a
 // new session, a reload or turning Morph off forgets it. No device preference is written.
+//
+// THE REQUEST AND THE PICKS LIVE HERE TOO, so a look at Terminal and back loses neither. The composer
+// tells the hook when a send that carried the hint starts and how it ended (`noteRequest`), per session;
+// the Morph body shows the text at once and the status under it. A tap the bridge confirmed is a pick
+// (`notePressed`): its button stays marked until the next screen (a new `rev`), and a pick in the same
+// bar moves the mark.
 
 export interface MorphPane {
   /** The bridge has Morph and this session may use it. */
@@ -22,8 +30,20 @@ export interface MorphPane {
   on: boolean;
   /** The Morph body is on screen: on, and no look aside at Terminal or Chat. */
   showing: boolean;
-  /** The hint a send carries while the Morph body shows, or undefined. */
+  /** The head a send carries in front of its text while the Morph body shows, or undefined (an older bridge, or no Morph body). */
+  head: string | undefined;
+  /** The tail a send carries behind its text while the Morph body shows, or undefined. */
   hint: string | undefined;
+  /** The agent's `morph start`, or undefined. */
+  drawing: MorphDrawing | undefined;
+  /** The latest send of this session that carried the hint, as the composer told it, or undefined (a reload). */
+  request: MorphRequest | undefined;
+  /** The composer's word on a send that carried the hint. Pass it to the composer. */
+  noteRequest: (note: MorphRequestNote) => void;
+  /** The control paths of the buttons the operator picked on the screen now. */
+  pressed: readonly string[];
+  /** A tap the bridge confirmed: mark that button, and clear the mark of its siblings in the same bar. */
+  notePressed: (control: string) => void;
   /** The screen the agent drew last. */
   view: MorphView | undefined;
   /** The body the operator looks at instead of Morph, or null. */
@@ -49,15 +69,34 @@ export function useMorphPane({
   const bridgeHasMorph = useMorphAvailable();
   const session = useMorphSession(address);
   const [asideHeld, setAsideHeld] = useState<{ address: string; view: PaneView } | null>(null);
+  const [requests, setRequests] = useState<Readonly<Record<string, MorphRequest>>>({});
+  const [picks, setPicks] = useState<MorphPicks | null>(null);
   const available = bridgeHasMorph && eligible;
   const on = available && session?.on === true;
   const aside = on && asideHeld?.address === address ? asideHeld.view : null;
   const showing = on && aside === null;
   const hint = showing && session !== null && session.hint !== "" ? session.hint : undefined;
+  const head = hint === undefined ? undefined : session?.head;
+  const rev = on ? session?.view?.rev : undefined;
+  const pressed = picksFor(picks, { address, rev });
 
   const setAside = useCallback(
     (view: PaneView | null) => setAsideHeld(view === null ? null : { address, view }),
     [address],
+  );
+
+  const noteRequest = useCallback(
+    (note: MorphRequestNote) =>
+      setRequests((held) => ({ ...held, [address]: requestAfter(held[address], note, onBridgeClock(Date.now())) })),
+    [address],
+  );
+
+  const notePressed = useCallback(
+    (control: string) => {
+      if (rev === undefined) return;
+      setPicks((held) => picksAfter(held, { address, rev, control }));
+    },
+    [address, rev],
   );
 
   const setOn = useCallback(
@@ -75,5 +114,20 @@ export function useMorphPane({
     [address, onChanged],
   );
 
-  return { available, on, showing, hint, view: on ? session?.view : undefined, aside, setAside, setOn };
+  return {
+    available,
+    on,
+    showing,
+    head,
+    hint,
+    drawing: on ? session?.drawing : undefined,
+    request: requests[address],
+    noteRequest,
+    pressed,
+    notePressed,
+    view: on ? session?.view : undefined,
+    aside,
+    setAside,
+    setOn,
+  };
 }

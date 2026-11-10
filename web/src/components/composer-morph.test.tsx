@@ -6,6 +6,7 @@ import { createMemoryRouter, RouterProvider } from "react-router";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { markLive, resetLiveness } from "@/lib/liveness";
+import type { MorphRequestNote } from "@/lib/morph/reader";
 import { parseMorphView } from "@/lib/morph/wire";
 import { clearStatus } from "@/lib/status";
 import { server } from "@/test/setup";
@@ -14,10 +15,12 @@ import { Composer, type ComposerHandle } from "./composer";
 import { MorphView } from "./morph-view";
 
 // Morph's sends ride the composer's own send path: one Send Protocol request with its request id. While
-// the Morph view shows (`morphHint`), every text carries the hint after one space, a tap on a Morph
-// button included; a slash command carries none, and a refused send shows the composer's own notice.
+// the Morph view shows (`morphHead`, `morphHint`), every text goes as `<head> <text> <hint>` on one line, a
+// tap on a Morph button included; a slash command carries none, and a refused send shows the composer's
+// own notice. The view is told the plain text when the send starts (`onMorphRequest`), and how it ended.
 
-const HINT = "(answer with collie morph show)";
+const HEAD = "[morph] from operator:";
+const HINT = "[rules: /bin/collie morph help --session local/w1:p1#ab12]";
 
 beforeAll(() => {
   if (!Element.prototype.scrollTo) Element.prototype.scrollTo = () => {};
@@ -67,6 +70,7 @@ function renderScreen(overrides: Partial<ComponentProps<typeof Composer>> = {}) 
     display: { open: false, onToggle: vi.fn() },
     onSent: vi.fn(),
     morphHint: HINT,
+    morphHead: HEAD,
     ...overrides,
   };
   const element = (
@@ -89,14 +93,14 @@ function renderScreen(overrides: Partial<ComponentProps<typeof Composer>> = {}) 
 }
 
 describe("Morph sends through the composer", () => {
-  it("a tap on a Morph button posts its value with the hint, as one Send Protocol request", async () => {
+  it("a tap on a Morph button posts its words with the head and the hint, as one Send Protocol request", async () => {
     const sends = bridge();
     renderScreen();
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Ship" }));
     });
     await waitFor(() => expect(sends).toHaveLength(1));
-    expect(sends[0]).toMatchObject({ text: `Ship it now ${HINT}`, mode: "send" });
+    expect(sends[0]).toMatchObject({ text: `${HEAD} tapped "Ship": Ship it now ${HINT}`, mode: "send" });
     expect(sends[0]!.id).toMatch(/^[A-Za-z0-9_-]{8,64}$/);
   });
 
@@ -107,7 +111,58 @@ describe("Morph sends through the composer", () => {
     await user.type(screen.getByPlaceholderText(/type a reply/i), "show the plan");
     await user.click(screen.getByRole("button", { name: "Send" }));
     await waitFor(() => expect(sends).toHaveLength(1));
+    expect(sends[0]!.text).toBe(`${HEAD} show the plan ${HINT}`);
+  });
+
+  it("an older bridge served no head: the text goes with the hint behind it, exactly as served", async () => {
+    const sends = bridge();
+    const ref = renderScreen({ morphHead: undefined });
+    await act(async () => {
+      await ref.current?.sendLine("show the plan");
+    });
     expect(sends[0]!.text).toBe(`show the plan ${HINT}`);
+  });
+
+  it("tells the view the plain text when the send starts, then that it was sent", async () => {
+    bridge();
+    const notes: MorphRequestNote[] = [];
+    const ref = renderScreen({ onMorphRequest: (note) => notes.push(note) });
+    await act(async () => {
+      await ref.current?.sendLine("show the plan");
+    });
+    expect(notes).toEqual([
+      { text: "show the plan", phase: "sending", reason: null },
+      { text: "show the plan", phase: "sent", reason: null },
+    ]);
+  });
+
+  it("tells the view a send failed, with the composer's own refusal words", async () => {
+    bridge("refused");
+    const notes: MorphRequestNote[] = [];
+    const ref = renderScreen({ onMorphRequest: (note) => notes.push(note) });
+    await act(async () => {
+      await ref.current?.sendLine("show the plan");
+    });
+    expect(notes.map((note) => note.phase)).toEqual(["sending", "failed"]);
+    const words = document.querySelector("[data-slot=composer-refusal]")?.textContent ?? "";
+    expect(notes[1]?.reason).not.toBeNull();
+    expect(words).toContain(notes[1]!.reason!);
+  });
+
+  it("tells the view nothing for a send that carries no hint, and for a send with no Morph view", async () => {
+    bridge();
+    const notes: MorphRequestNote[] = [];
+    const ref = renderScreen({ onMorphRequest: (note) => notes.push(note) });
+    await act(async () => {
+      await ref.current?.sendLine("/compact");
+    });
+    expect(notes).toEqual([]);
+    cleanup();
+    const plain = renderScreen({ morphHint: undefined, onMorphRequest: (note) => notes.push(note) });
+    await act(async () => {
+      await plain.current?.sendLine("hello");
+    });
+    expect(notes).toEqual([]);
   });
 
   it("a slash command carries no hint", async () => {

@@ -16,21 +16,25 @@ import { WalkyService } from "../bridge/walky/service.ts";
 import { MORPH_NEEDS_A_PANE, walkySocketPath, WalkyServer, type PlaceTarget } from "../bridge/walky/socket.ts";
 import { spaceOf } from "../bridge/walky/space.ts";
 import { parseJsonObject } from "../web/src/lib/json.ts";
-import { parseMorphView } from "../web/src/lib/morph/wire.ts";
-import { NODE_ATTRS, NODE_KINDS } from "../web/src/lib/tricks/schema.ts";
+import { MORPH_NOTE_MAX, parseMorphView } from "../web/src/lib/morph/wire.ts";
+import { NODE_ATTRS, NODE_KINDS, TONES } from "../web/src/lib/tricks/schema.ts";
 import { capture, context } from "./fakes.ts";
 import { EXIT } from "./io.ts";
 import {
+  attrsOf,
   cmdMorph,
   cmdMorphClear,
   cmdMorphHelp,
   cmdMorphOff,
   cmdMorphOn,
   cmdMorphShow,
+  cmdMorphStart,
   cmdMorphStatus,
+  MORPH_CLOSED_SETS,
   MORPH_EXAMPLE,
   MORPH_NOT_HERE,
   MORPH_UNKNOWN,
+  morphClosedSetLines,
   morphHelp,
   morphKindLines,
   parseShowArgs,
@@ -143,6 +147,57 @@ describe("help", () => {
     for (const words of ["One screen per answer", '"confirm"', "Never imitate a permission dialog", '"value"']) expect(text).toContain(words);
   });
 
+  test("the first rule is to call start first, then show", () => {
+    const first = morphHelp().find((line) => line.startsWith("- "));
+    expect(first).toContain("FIRST");
+    expect(first).toContain("morph start");
+    expect(first).toContain("morph show");
+  });
+
+  test("states the button's attrs, that a button takes no text, and when to use para and line", () => {
+    const text = morphHelp().join("\n");
+    expect(text).toContain('"label" and "intent" (use "intent": "reply")');
+    expect(text).toContain('A button takes no "text"');
+    expect(text).toContain("Write sentences as `para` nodes. Use `line` only for short monospace text");
+    expect(text).toContain("redraw the screen with \"pressed\": \"true\"");
+    expect(text).toContain("Ask one decision per screen");
+    expect(text).toContain("use a `code` node as a monospace mock");
+  });
+
+  test("with a session every command carries it; without, the commands say where to copy it from", () => {
+    const filled = morphHelp("local/%1#aaaa").join("\n");
+    expect(filled).toContain('collie morph start --session local/%1#aaaa "<3 to 6 words on what you are doing>"');
+    expect(filled).toContain("collie morph show --session local/%1#aaaa <file.json>");
+    expect(filled).not.toContain("<session>");
+    const bare = morphHelp().join("\n");
+    expect(bare).toContain('collie morph start --session <session> "<3 to 6 words on what you are doing>"');
+    expect(bare).toContain("replace <session> with the address after --session");
+    expect(bare).toContain("never invent one");
+    expect(morphHelp("local/a b#aaaa").join("\n")).toContain("--session 'local/a b#aaaa' <file.json>");
+  });
+
+  test("every attribute with a closed set lists its values, from the schema, tones first", () => {
+    const lines = morphClosedSetLines();
+    expect(lines[1]).toStartWith("  tone (");
+    expect(lines[1]).toContain(TONES.join(", "));
+    expect(lines[1]).not.toContain("success");
+    expect(lines.join("\n")).toContain("pressed (button): true, false, mixed");
+    // Every (kind, attribute) pair the table names exists in the schema's own table.
+    for (const set of MORPH_CLOSED_SETS) {
+      expect(set.kinds.length).toBeGreaterThan(0);
+      for (const kind of set.kinds) expect(attrsOf(kind).includes(set.attr)).toBe(true);
+    }
+  });
+
+  test("`morph help --session <address>` only prints, with the address filled in, and takes any address-shaped text", () => {
+    const d = deps([]);
+    expect(cmdMorphHelp(d, ["--session", "anything/%9#zzzz"])).toBe(EXIT.OK);
+    expect(d.io.stdout.join("\n")).toContain("collie morph show --session anything/%9#zzzz <file.json>");
+    const bad = deps([]);
+    expect(cmdMorphHelp(bad, ["--session"])).toBe(EXIT.USAGE);
+    expect(cmdMorphHelp(deps([]), ["--session", "a'b"])).toBe(EXIT.USAGE);
+  });
+
   test("the kinds come from the schema: every kind is named, with every attribute", () => {
     const kinds = morphKindLines().join("\n");
     for (const kind of NODE_KINDS) expect(kinds).toContain(kind);
@@ -162,8 +217,12 @@ describe("help", () => {
 
 describe("show's arguments and file", () => {
   test("reads a path or -, a title and --json", () => {
-    expect(parseShowArgs(["s.json", "--title", "Tests", "--json"])).toEqual({ source: "s.json", title: "Tests", json: true });
-    expect(parseShowArgs(["-"])).toEqual({ source: "-", title: null, json: false });
+    expect(parseShowArgs(["s.json", "--title", "Tests", "--json"])).toEqual({ source: "s.json", title: "Tests", json: true, session: null });
+    expect(parseShowArgs(["-"])).toEqual({ source: "-", title: null, json: false, session: null });
+    expect(parseShowArgs(["--session", "local/%1#aaaa", "s.json"])).toEqual({ source: "s.json", title: null, json: false, session: "local/%1#aaaa" });
+    expect(parseShowArgs(["--session"])).toHaveProperty("error");
+    expect(parseShowArgs(["--session", "a b", "s.json"])).toHaveProperty("error");
+    expect(parseShowArgs(["--session", "a", "--session", "b", "s.json"])).toHaveProperty("error");
     expect(parseShowArgs([])).toHaveProperty("error");
     expect(parseShowArgs(["a", "b"])).toHaveProperty("error");
     expect(parseShowArgs(["a", "--nope"])).toHaveProperty("error");
@@ -209,7 +268,71 @@ describe("against a bridge", () => {
     // Another pane's session is its own.
     const other = deps([walkySocketPath(b.stateDir)], inPane("%2"));
     expect(await cmdMorphStatus(other, [])).toBe(EXIT.OK);
-    expect(other.io.stdout).toEqual(["morph: off", "screen: none", expect.stringContaining(`${BIN} morph show`)]);
+    expect(other.io.stdout).toEqual(["session: local/%2#bbbb", "morph: off", "screen: none", `sent as: [morph] from operator: <text> [rules: ${BIN} morph help --session local/%2#bbbb]`]);
+  });
+
+  socketTest("start sets the drawing, status prints the session first and the drawing, show ends it", async () => {
+    const b = await bridge();
+    const sockets = [walkySocketPath(b.stateDir)];
+    const started = deps(sockets);
+    expect(await cmdMorphStart(started, ["Checking", "the", "tests"])).toBe(EXIT.OK);
+    expect(started.io.stdout[0]).toStartWith("started. Morph is off for this session");
+    expect(b.morph.status("local/%1#aaaa").drawing?.note).toBe("Checking the tests");
+
+    const status = deps(sockets);
+    expect(await cmdMorphStatus(status, [])).toBe(EXIT.OK);
+    expect(status.io.stdout[0]).toBe("session: local/%1#aaaa");
+    expect(status.io.stdout.some((line) => line.startsWith("drawing: since ") && line.endsWith(", Checking the tests"))).toBe(true);
+
+    await cmdMorphOn(deps(sockets), []);
+    const noNote = deps(sockets);
+    expect(await cmdMorphStart(noNote, ["--json"])).toBe(EXIT.OK);
+    expect(JSON.parse(noNote.io.stdout[0]!)).toMatchObject({ morph: { session: "local/%1#aaaa", on: true } });
+    expect(b.morph.status("local/%1#aaaa").drawing?.note).toBeUndefined();
+
+    const shown = deps(sockets);
+    expect(await cmdMorphShow(shown, [screenFile(shown, JSON.stringify(MORPH_EXAMPLE))])).toBe(EXIT.OK);
+    expect(b.morph.status("local/%1#aaaa").drawing).toBeUndefined();
+  });
+
+  socketTest("a note past the cap is refused with exit 4", async () => {
+    const b = await bridge();
+    const d = deps([walkySocketPath(b.stateDir)]);
+    expect(await cmdMorphStart(d, ["x".repeat(MORPH_NOTE_MAX + 1)])).toBe(EXIT.REFUSED);
+    expect(d.io.stderr[0]).toContain("(bad_note)");
+  });
+
+  socketTest("--session naming the pane's own session is accepted, with or without the token", async () => {
+    const b = await bridge();
+    const sockets = [walkySocketPath(b.stateDir)];
+    for (const given of ["local/%1#aaaa", "local/%1"]) {
+      const d = deps(sockets);
+      expect(await cmdMorphStart(d, ["--session", given, "Drawing"])).toBe(EXIT.OK);
+    }
+    const shown = deps(sockets);
+    expect(await cmdMorphShow(shown, ["--session", "local/%1#aaaa", screenFile(shown, JSON.stringify(MORPH_EXAMPLE))])).toBe(EXIT.OK);
+    const clear = deps(sockets);
+    expect(await cmdMorphClear(clear, ["--session", "local/%1"])).toBe(EXIT.OK);
+  });
+
+  socketTest("--session naming another session is refused wrong_session with both addresses, exit 4, and nothing is drawn", async () => {
+    const b = await bridge();
+    const sockets = [walkySocketPath(b.stateDir)];
+    // A wrong token in the same pane, and another pane's address.
+    for (const given of ["local/%1#bbbb", "local/%2#bbbb", "elsewhere/%1#aaaa"]) {
+      const start = deps(sockets);
+      expect(await cmdMorphStart(start, ["--session", given, "Drawing"])).toBe(EXIT.REFUSED);
+      expect(start.io.stderr[0]).toContain("(wrong_session)");
+      expect(start.io.stderr[0]).toContain(`this pane is local/%1#aaaa, the command names ${given}`);
+      const show = deps(sockets);
+      expect(await cmdMorphShow(show, ["--session", given, screenFile(show, JSON.stringify(MORPH_EXAMPLE))])).toBe(EXIT.REFUSED);
+      const clear = deps(sockets);
+      expect(await cmdMorphClear(clear, ["--session", given])).toBe(EXIT.REFUSED);
+    }
+    expect(b.morph.status("local/%1#aaaa")).toMatchObject({ on: false });
+    expect(b.morph.status("local/%1#aaaa").view).toBeUndefined();
+    expect(b.morph.status("local/%1#aaaa").drawing).toBeUndefined();
+    expect(b.morph.status("local/%2#bbbb").view).toBeUndefined();
   });
 
   socketTest("reads the screen from stdin with -", async () => {

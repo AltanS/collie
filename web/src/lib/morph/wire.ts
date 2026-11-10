@@ -17,8 +17,18 @@ import { DOCUMENT_VERSION, parseTrickDocument, type Refusal, type View } from ".
 
 /** A Morph title, in characters. */
 export const MORPH_TITLE_MAX = 80;
-/** The hint line the phone appends to a request sent from Morph, in characters. */
-export const MORPH_HINT_MAX = 200;
+/**
+ * The tail the phone appends to a request sent from Morph: `[rules: <bin> morph help --session <addr>]`,
+ * naming the binary's absolute path and the session's own address. The lane path (58 characters) with an
+ * address of 30 is about 120, so there is room for a quoted path and a longer address.
+ */
+export const MORPH_HINT_MAX = 160;
+/** The head the phone puts in front of a request sent from Morph, in characters. The bridge owns the words. */
+export const MORPH_HEAD_MAX = 40;
+/** A `morph start` note, in characters: what the agent does, one line. */
+export const MORPH_NOTE_MAX = 80;
+/** How long a `start` counts as morphing, in ms. The bridge stops serving an older one; the phone ignores it too. */
+export const MORPH_DRAWING_MAX_MS = 10 * 60 * 1000;
 /** The longest session key the wire carries. */
 export const MORPH_SESSION_MAX = 256;
 /** The read route. `?since=<rev>` gives the short answer when nothing moved. */
@@ -38,15 +48,30 @@ export interface MorphView {
   view: View;
 }
 
+/** The agent called `morph start`: it is drawing, and has not shown yet. */
+export interface MorphDrawing {
+  /** ISO time of the start. */
+  at: string;
+  /** What the agent says it does, at most {@link MORPH_NOTE_MAX} characters, one line. */
+  note?: string;
+}
+
 /** One session's Morph. */
 export interface MorphSession {
   /** The session's walky address, the key the hill names a session with. */
   session: string;
   on: boolean;
-  /** One line the phone appends to a request sent from Morph. The bridge owns the wording. */
+  /**
+   * The head the phone puts in front of a request sent from Morph (`[morph] from operator:`), so the
+   * terminal shows who wrote and where. Absent from an older bridge: the phone then sends no head.
+   */
+  head?: string;
+  /** The tail the phone appends to a request sent from Morph (`[rules: ...]`). The bridge owns the wording. */
   hint: string;
   /** The current view. Absent before the first show and after a clear. */
   view?: MorphView;
+  /** The agent's `morph start`, until the next show, a clear, the switch going off, or ten minutes. Optional: an older reader ignores it. */
+  drawing?: MorphDrawing;
 }
 
 /** What `GET /api/morph[?since=<rev>]` answers. */
@@ -135,6 +160,29 @@ export function readMorphView(raw: JsonValue | undefined): MorphView | null {
 }
 
 /**
+ * An address as one shell word: bare when its characters are safe, in single quotes when not, null when
+ * it cannot be quoted (an empty text, a control character or a quote). The hint and `morph help` print
+ * it so a line can be copied as it stands.
+ */
+export function morphShellWord(address: string): string | null {
+  // eslint-disable-next-line no-control-regex
+  if (address === "" || /[\u0000-\u001f\u007f']/u.test(address)) return null;
+  return /^[\w./:%@+=,-]+(#[\w./:%@+=,-]*)*$/u.test(address) ? address : `'${address}'`;
+}
+
+/** A stored or served drawing mark, or null when any field does not fit. */
+export function readMorphDrawing(raw: JsonValue | undefined): MorphDrawing | null {
+  const obj = asJsonObject(raw);
+  if (obj === undefined) return null;
+  const at = asJsonString(obj.at);
+  if (at === undefined || !isIsoTime(at)) return null;
+  if (obj.note === undefined) return { at };
+  const note = asJsonString(obj.note);
+  if (note === undefined || cleanMorphLine(note, MORPH_NOTE_MAX) !== note) return null;
+  return { at, note };
+}
+
+/**
  * One session, or null when its key, switch or hint does not fit. A view that does not fit is left out
  * and the session kept: the switch still reads, and the phone shows no screen rather than half of one.
  */
@@ -147,8 +195,14 @@ export function readMorphSession(raw: JsonValue | undefined): MorphSession | nul
   if (!isSessionKey(session) || on === undefined || hint === undefined) return null;
   if (cleanMorphLine(hint, MORPH_HINT_MAX) !== hint) return null;
   const out: MorphSession = { session, on, hint };
+  // A head that does not fit is left out, as an older bridge's would be: the request goes without one.
+  const head = obj.head === undefined ? undefined : asJsonString(obj.head);
+  if (head !== undefined && cleanMorphLine(head, MORPH_HEAD_MAX) === head) out.head = head;
   const view = obj.view === undefined ? null : readMorphView(obj.view);
   if (view !== null) out.view = view;
+  // A drawing that does not fit is left out, as a view is: the session stays.
+  const drawing = obj.drawing === undefined ? null : readMorphDrawing(obj.drawing);
+  if (drawing !== null) out.drawing = drawing;
   return out;
 }
 

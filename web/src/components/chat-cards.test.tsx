@@ -690,3 +690,15 @@ describe("a quiet other tool", () => {
     expect(screen.getByText("mem_save")).not.toHaveClass("opacity-60");
   });
 });
+
+describe("a user turn that carried the Morph wording", () => {
+  it("is drawn without the head and the tail, and a plain turn is untouched", () => {
+    const sent = '[morph] from operator: tapped "Fast" in "Speed" [rules: /bin/collie morph help --session local/w1:p1#ab12]';
+    const { container, rerender } = render(<ItemView item={{ id: "u", kind: "user", text: sent }} />);
+    expect(container.textContent).toContain('tapped "Fast" in "Speed"');
+    expect(container.textContent).not.toContain("[morph]");
+    expect(container.textContent).not.toContain("rules");
+    rerender(<ItemView item={{ id: "u", kind: "user", text: "please continue" }} />);
+    expect(container.textContent).toContain("please continue");
+  });
+});

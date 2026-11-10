@@ -5,8 +5,9 @@
 // into a pane, and nothing here knows a harness or a multiplexer.
 //
 // Two ways in, both through this service:
-//   - the walky socket, for the CLI in an agent's pane (`show`, `clear`, `on`, `off`, `status`). The
-//     socket names the session from the pane's markers; an argument never names it.
+//   - the walky socket, for the CLI in an agent's pane (`start`, `show`, `clear`, `on`, `off`, `status`).
+//     The socket names the session from the pane's markers. A request MAY also name it (`--session`),
+//     and the bridge then checks the name against the markers: a session never draws for another one.
 //   - the phone, `GET /api/morph` and `POST /api/morph/switch` (bridge/server.ts).
 //
 // A SESSION IS ITS WALKY ADDRESS with the instance token, as the hill names a session. The phone's
@@ -25,24 +26,29 @@ import { isAbsolute } from "node:path";
 
 import type { JsonObject, JsonValue } from "../json.ts";
 import { asJsonString } from "../../web/src/lib/json.ts";
+import { LOCAL_MEMBER, parseAddress } from "../walky/address.ts";
 import {
   cleanMorphLine,
+  MORPH_DRAWING_MAX_MS,
   MORPH_HINT_MAX,
+  morphShellWord,
+  MORPH_NOTE_MAX,
   MORPH_TITLE_MAX,
   parseMorphView,
   type MorphAnswer,
+  type MorphDrawing,
   type MorphSession,
   type MorphSwitchBody,
   type MorphView,
 } from "../../web/src/lib/morph/wire.ts";
 import type { Refusal } from "../../web/src/lib/tricks/schema.ts";
-import type { MorphEntry, MorphStore } from "./store.ts";
+import { morphEntry, type MorphEntry, type MorphStore } from "./store.ts";
 
 /** How the bridge sits in a crew. A member (`peer`) refuses a show: the phone reads the lead. */
 export type MorphCrewMode = "solo" | "lead" | "peer";
 
 /** Why the bridge refuses a socket operation. */
-export type MorphRefusalCode = "bad_view" | "bad_title" | "not_on_lead" | "unsaved";
+export type MorphRefusalCode = "bad_view" | "bad_title" | "bad_note" | "not_on_lead" | "unsaved" | "wrong_session";
 
 /** The sentence a crew member answers a show or a switch with. */
 export const MORPH_NOT_ON_LEAD = "Morph reads this machine only for now; run it in a session on the lead machine";
@@ -85,26 +91,49 @@ export interface MorphShowFields {
   readonly title: string | null;
 }
 
-/** The hint wordings, longest first. The first one under {@link MORPH_HINT_MAX} is used. */
-const HINT_WORDINGS: readonly ((bin: string) => string)[] = [
-  (bin) => `[morph: I read this on Collie's Morph view. Answer by drawing one screen: ${bin} morph show <file.json>. Kinds and an example: ${bin} morph help]`,
-  (bin) => `[morph: read on Collie's Morph view. Answer with one screen: ${bin} morph show <file.json>. How: ${bin} morph help]`,
-  (bin) => `[morph: read on Collie's Morph view. Answer with one screen: ${bin} morph show <file.json>. How: the same binary with morph help]`,
-];
+/** The head the phone puts in front of a request sent from Morph: who wrote it, so the terminal shows where it came from. */
+export const MORPH_HEAD = "[morph] from operator:";
 
 /**
- * The one line the phone appends to a request sent from Morph, naming this bridge's own binary by its
- * absolute path (the `collie` on PATH may be another lane's, without the verb). Throws when the path is
- * so long that no wording fits on one line under the cap: the caller then runs without Morph.
+ * The tail the phone appends to a request sent from Morph for ONE session: where the rules are, with the
+ * session's own address filled in, so the agent copies the line and never invents an address. It names
+ * this bridge's own binary by its absolute path (the `collie` on PATH may be another lane's, without the
+ * verb). Throws when the path is so long that even the fallback does not fit on one line under the cap:
+ * the caller then runs without Morph. A session whose address cannot ride a shell line, or does not fit,
+ * gets the fallback without it.
  */
-export function morphHint(binary: string): string {
+export function morphHint(binary: string, session: string): string {
   // eslint-disable-next-line no-control-regex
   if (!isAbsolute(binary) || /[\u0000-\u001f\u007f']/u.test(binary)) throw new Error(`morph: the binary path is not an absolute path a shell line can carry: ${binary}`);
   // A path with a blank is quoted, so the line still runs as one command.
   const bin = /\s/u.test(binary) ? `'${binary}'` : binary;
-  const fits = HINT_WORDINGS.map((wording) => wording(bin)).find((line) => line.length < MORPH_HINT_MAX);
+  const word = morphShellWord(session);
+  const lines = [...(word === null ? [] : [`[rules: ${bin} morph help --session ${word}]`]), `[rules: ${bin} morph help]`];
+  const fits = lines.find((line) => line.length < MORPH_HINT_MAX);
   if (fits === undefined) throw new Error(`morph: the binary path is too long for a one-line hint: ${binary}`);
   return fits;
+}
+
+/** An address a hint is probed with at boot: a pane id of the usual length, and a member id of a crew member's. */
+const PROBE_SESSION = "bluefin-hc/terminal_12345#ab12";
+
+/**
+ * Whether the address a request names is the session the markers placed. Canonical, as the hill's probe
+ * reads an address: `local/` and this bridge's own member id name the same machine, and an address
+ * without the `#token` names whatever session holds the pane id now. A given token that is not the
+ * session's own is another session in the same pane.
+ */
+export function sameSession({ own, given }: { own: string; given: string }): boolean {
+  const mine = parseAddress(own);
+  const named = parseAddress(given);
+  if (mine?.kind !== "pane" || named?.kind !== "pane") return false;
+  if (named.memberId !== mine.memberId && named.memberId !== LOCAL_MEMBER) return false;
+  return named.paneId === mine.paneId && (named.instance === null || named.instance === mine.instance);
+}
+
+/** The sentence a request that names another session than its pane's own is refused with. */
+export function wrongSessionWords({ own, given }: { own: string; given: string }): string {
+  return `this pane is ${own}, the command names ${given}; copy the session from the request line, or leave --session out`;
 }
 
 function refusalWords(refusals: readonly Refusal[]): string {
@@ -114,17 +143,17 @@ function refusalWords(refusals: readonly Refusal[]): string {
 }
 
 export class MorphService {
-  private readonly hintLine: string;
   private readonly now: () => number;
 
   constructor(private readonly deps: MorphServiceDeps) {
-    this.hintLine = morphHint(deps.binary);
+    // Probed once, so a path that fits no wording leaves the bridge without Morph at boot, not at a serve.
+    morphHint(deps.binary, PROBE_SESSION);
     this.now = deps.now ?? Date.now;
   }
 
-  /** The hint every served session carries. */
-  hint(): string {
-    return this.hintLine;
+  /** The tail one session carries: the same words for every session, with that session's own address. */
+  hint(session: string): string {
+    return morphHint(this.deps.binary, session);
   }
 
   /** The revision for the snapshot's `morphRev`, undefined while Morph was never used here. */
@@ -140,22 +169,39 @@ export class MorphService {
   /** One session as served. A session the store does not hold is off with no screen. */
   status(session: string): MorphSession {
     const entry = this.deps.store.get(session);
-    return entry === undefined ? { session, on: false, hint: this.hintLine } : this.served(entry);
+    return entry === undefined ? { session, on: false, head: MORPH_HEAD, hint: this.hint(session) } : this.served(entry);
+  }
+
+  /**
+   * `morph start` from the socket: the agent says it is drawing, until its show, a clear, the switch going
+   * off, or ten minutes. Taken while Morph is off, as a show is: the entry keeps it and the phone shows it
+   * once the operator turns Morph on.
+   */
+  start(session: string, fields: MorphStartFields): MorphOpAnswer {
+    if (this.deps.crewMode() === "peer") return { ok: false, error: MORPH_NOT_ON_LEAD, code: "not_on_lead" };
+    const note = fields.note === null ? null : cleanMorphLine(fields.note, MORPH_NOTE_MAX);
+    if (fields.note !== null && note === null) return { ok: false, error: `a note is one line of 1 to ${String(MORPH_NOTE_MAX)} characters`, code: "bad_note" };
+    const at = new Date(this.now()).toISOString();
+    const drawing: MorphDrawing = note === null ? { at } : { at, note };
+    return this.commit({ ...this.base(session), drawing, changedAt: this.now() });
   }
 
   /** `morph on` and `morph off` from the socket, for the caller's own session. */
   setOn(session: string, on: boolean): MorphOpAnswer {
     if (this.deps.crewMode() === "peer") return { ok: false, error: MORPH_NOT_ON_LEAD, code: "not_on_lead" };
     const held = this.deps.store.get(session);
-    if (held?.on === on) return { ok: true, session: this.served(held) };
-    return this.commit({ ...this.base(session), on });
+    // Off ends a drawing too, so an off that only has a drawing to end is still a change.
+    if (held?.on === on && !(on === false && held.drawing !== undefined)) return { ok: true, session: this.served(held) };
+    const base = this.base(session);
+    if (on) return this.commit({ ...base, on });
+    return this.commit(morphEntry({ session, on, shows: base.shows, changedAt: this.now(), view: base.view, drawing: undefined }));
   }
 
-  /** `morph clear` from the socket: the screen goes, the switch stays. */
+  /** `morph clear` from the socket: the screen and the drawing go, the switch stays. */
   clear(session: string): MorphOpAnswer {
     if (this.deps.crewMode() === "peer") return { ok: false, error: MORPH_NOT_ON_LEAD, code: "not_on_lead" };
     const held = this.deps.store.get(session);
-    if (held?.view === undefined) return { ok: true, session: this.status(session) };
+    if (held === undefined || (held.view === undefined && held.drawing === undefined)) return { ok: true, session: this.status(session) };
     return this.commit({ session, on: held.on, shows: held.shows, changedAt: this.now() });
   }
 
@@ -197,16 +243,37 @@ export class MorphService {
     return { ok: true, session: this.served(entry) };
   }
 
-  /** An entry says something while Morph is on, a screen is up, or a show was counted (the next rev). */
+  /** A drawing counts for ten minutes: checked when it is read, with no timer. */
+  private freshDrawing(entry: MorphEntry): MorphDrawing | undefined {
+    if (entry.drawing === undefined) return undefined;
+    const age = this.now() - Date.parse(entry.drawing.at);
+    return age < MORPH_DRAWING_MAX_MS ? entry.drawing : undefined;
+  }
+
+  /** An entry says something while Morph is on, a screen is up, a show was counted (the next rev), or a drawing is fresh. */
   private worthKeeping(entry: MorphEntry): boolean {
-    return entry.on || entry.view !== undefined || entry.shows > 0;
+    return entry.on || entry.view !== undefined || entry.shows > 0 || this.freshDrawing(entry) !== undefined;
   }
 
   private served(entry: MorphEntry): MorphSession {
-    const session: MorphSession = { session: entry.session, on: entry.on, hint: this.hintLine };
+    const session: MorphSession = { session: entry.session, on: entry.on, head: MORPH_HEAD, hint: this.hint(entry.session) };
     if (entry.view !== undefined) session.view = entry.view;
+    const drawing = this.freshDrawing(entry);
+    if (drawing !== undefined) session.drawing = drawing;
     return session;
   }
+}
+
+/** A `morph.start` request's fields, as the socket carries them: an optional `note`. */
+export interface MorphStartFields {
+  readonly note: string | null;
+}
+
+/** A `morph.start` request's fields: the note, or the reason it is not one. */
+export function readStartFields(fields: JsonObject): MorphStartFields | { readonly error: string } {
+  const note = fields.note === undefined || fields.note === null ? null : asJsonString(fields.note);
+  if (note === undefined) return { error: "a note is text" };
+  return { note };
 }
 
 /** A `morph.show` request's fields, as the socket carries them: `view` (any JSON) and an optional `title`. */

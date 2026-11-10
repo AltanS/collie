@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { MORPH_HINT_MAX, MORPH_TITLE_MAX, parseMorphView, readMorphAnswer, readMorphSession, readMorphSwitchBody, readMorphView } from "./wire";
+import { MORPH_HINT_MAX, MORPH_NOTE_MAX, MORPH_TITLE_MAX, parseMorphView, readMorphAnswer, readMorphSession, readMorphSwitchBody, readMorphView } from "./wire";
 
 const SESSION = "local/%1#aaaa";
 const HINT = "[morph: answer by drawing one screen]";
@@ -72,6 +72,15 @@ describe("readMorphSession", () => {
     expect(readMorphSession({ session: SESSION, on: true, hint: HINT })).toEqual({ session: SESSION, on: true, hint: HINT });
     const kept = readMorphSession({ session: SESSION, on: false, hint: HINT, view: { rev: 1, at: "bad", view: goodView } });
     expect(kept).toEqual({ session: SESSION, on: false, hint: HINT });
+  });
+
+  it("reads the head and the drawing when they fit, and leaves a bad one out with the session kept", () => {
+    const drawing = { at: "2026-11-10T10:00:00.000Z", note: "Checking the tests" };
+    expect(readMorphSession({ session: SESSION, on: true, head: "[morph] from operator:", hint: HINT, drawing })).toEqual({ session: SESSION, on: true, head: "[morph] from operator:", hint: HINT, drawing });
+    expect(readMorphSession({ session: SESSION, on: true, hint: HINT, drawing: { at: "2026-11-10T10:00:00.000Z" } })).toEqual({ session: SESSION, on: true, hint: HINT, drawing: { at: "2026-11-10T10:00:00.000Z" } });
+    expect(readMorphSession({ session: SESSION, on: true, head: "a\nb", hint: HINT })).toEqual({ session: SESSION, on: true, hint: HINT });
+    expect(readMorphSession({ session: SESSION, on: true, hint: HINT, drawing: { at: "soon" } })).toEqual({ session: SESSION, on: true, hint: HINT });
+    expect(readMorphSession({ session: SESSION, on: true, hint: HINT, drawing: { at: drawing.at, note: "x".repeat(MORPH_NOTE_MAX + 1) } })).toEqual({ session: SESSION, on: true, hint: HINT });
   });
 
   it("drops a session with a bad key, switch or hint", () => {

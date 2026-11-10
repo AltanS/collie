@@ -130,7 +130,7 @@ import {
   WALKY_SUBCOMMANDS,
   type WalkyDeps,
 } from "./walky.ts";
-import { cmdMorph, cmdMorphClear, cmdMorphHelp, cmdMorphOff, cmdMorphOn, cmdMorphShow, cmdMorphStatus, MORPH_SUBCOMMANDS, morphHelp, type MorphDeps } from "./morph.ts";
+import { cmdMorph, cmdMorphClear, cmdMorphHelp, cmdMorphOff, cmdMorphOn, cmdMorphShow, cmdMorphStart, cmdMorphStatus, MORPH_SUBCOMMANDS, morphHelp, type MorphDeps } from "./morph.ts";
 import { cmdHill, cmdHillList, cmdHillPost, cmdHillStatus, cmdHillSwitch, cmdHillWithdraw, HILL_SUBCOMMANDS, hillPostHelp, type HillDeps } from "./hill.ts";
 import { cmdUpdateCheck, updateCheckDeps, wantsCheck } from "./update-check.ts";
 import { cmdTheme, cmdThemeCheck, realThemeFiles, THEME_SUBCOMMANDS } from "./theme-check.ts";
@@ -356,8 +356,13 @@ function morphDeps(io: Io): MorphDeps {
 /** The sub-verbs of `morph`. `help` prints what an agent reads first: the rules, the kinds, an example. */
 const MORPH_TREE: readonly Subcommand[] = [
   {
+    name: "start",
+    summary: "say you are drawing, so the phone shows \"Morphing…\": `morph start --session <address> \"<what you do>\"`",
+    run: (args, s) => cmdMorphStart(morphDeps(s.io), args),
+  },
+  {
     name: "show",
-    summary: "draw one screen for this session: `morph show <file.json | -> [--title ...]`",
+    summary: "draw one screen for this session: `morph show --session <address> <file.json | -> [--title ...]`",
     run: (args, s) => cmdMorphShow(morphDeps(s.io), args),
   },
   {
@@ -377,14 +382,14 @@ const MORPH_TREE: readonly Subcommand[] = [
   },
   {
     name: "status",
-    summary: "this session's switch, screen and hint line",
+    summary: "this session's address, switch, screen and hint line",
     run: (args, s) => cmdMorphStatus(morphDeps(s.io), args),
   },
   {
     name: "help",
-    summary: "what Morph is, the rules, the kinds and one example",
+    summary: "what Morph is, your commands (`--session <address>` fills the session in), the rules, the kinds and one example",
     usage: morphHelp,
-    run: (_args, s) => cmdMorphHelp({ io: s.io }),
+    run: (args, s) => cmdMorphHelp({ io: s.io }, args),
   },
 ];
 

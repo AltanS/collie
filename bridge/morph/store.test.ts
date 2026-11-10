@@ -20,6 +20,19 @@ const view = { rev: 2, at: "2026-11-10T10:00:00.000Z", title: "Tests", view: [{ 
 const entry = (session: string, changedAt: number, over: Partial<MorphEntry> = {}): MorphEntry => ({ session, on: true, shows: 0, changedAt, ...over });
 
 describe("MorphStore", () => {
+  test("keeps a drawing in the file as an optional field, and reads a file without one", () => {
+    const dir = stateDir();
+    const store = new MorphStore(morphDir(dir), () => 5000);
+    const drawing = { at: "2026-11-10T10:00:00.000Z", note: "Checking" };
+    expect(store.replace([entry("local/%1#aaaa", 5000, { drawing }), entry("local/%2#bbbb", 5000)])).toBe(true);
+    const again = new MorphStore(morphDir(dir), () => 9000);
+    expect(again.get("local/%1#aaaa")?.drawing).toEqual(drawing);
+    expect(again.get("local/%2#bbbb")).toEqual(entry("local/%2#bbbb", 5000));
+    // A drawing that does not fit is dropped, the entry kept.
+    writeFileSync(join(morphDir(dir), MORPH_STATE_FILE), JSON.stringify({ v: 1, sessions: [{ session: "local/%1#aaaa", on: true, drawing: { at: "yesterday" } }] }));
+    expect(new MorphStore(morphDir(dir), () => 9000).get("local/%1#aaaa")).toEqual({ session: "local/%1#aaaa", on: true, shows: 0, changedAt: 0 });
+  });
+
   test("has no revision and no folder until the first write", () => {
     const dir = stateDir();
     const store = new MorphStore(morphDir(dir), () => 5000);

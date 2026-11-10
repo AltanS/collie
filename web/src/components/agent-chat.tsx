@@ -2889,6 +2889,12 @@ export function AgentChat({
               <MorphView
                 session={walkySelf}
                 view={morph.view}
+                request={morph.request}
+                head={morph.head}
+                hint={morph.hint}
+                drawing={morph.drawing}
+                pressed={morph.pressed}
+                onPressed={morph.notePressed}
                 working={agent?.status === "working" && !connecting}
                 entries={chatEntries}
                 canAct={!(readOnly || hostBlock !== undefined || actsDisabledByCache || connecting || !paneLive || gone)}
@@ -3426,6 +3432,9 @@ export function AgentChat({
                   chatEntries={chatEntries}
                   // While the Morph body shows, every text this composer sends carries the session's hint.
                   morphHint={morph.hint}
+                  morphHead={morph.head}
+                  // And it tells the Morph body the plain text when the send starts, and how it ended.
+                  onMorphRequest={morph.noteRequest}
                   // NO `status` AND NO `stale` GO DOWN ANY MORE. The composer drew the state as a
                   // word on a 14px band above its controls row; Altan asked for that band's status
                   // half to go, so the prop went with it. The state is stated up here instead — the

@@ -173,16 +173,18 @@ export type WalkyRequest =
   | { readonly op: "hill.post"; readonly markers: readonly BeaconMarker[]; readonly fields: JsonObject }
   | { readonly op: "hill.status" | "hill.withdraw"; readonly markers: readonly BeaconMarker[]; readonly id: string }
   | { readonly op: "hill.list"; readonly markers: readonly BeaconMarker[] }
-  // Morph: a show's fields are read by bridge/morph/service.ts, which owns their shape.
-  | { readonly op: "morph.show"; readonly markers: readonly BeaconMarker[]; readonly fields: JsonObject }
-  | { readonly op: "morph.clear" | "morph.on" | "morph.off" | "morph.status"; readonly markers: readonly BeaconMarker[] };
+  // Morph: a show's and a start's fields are read by bridge/morph/service.ts, which owns their shape.
+  // `session` is the address the caller names with `--session`, or null: the bridge checks it against
+  // the pane the markers placed and never takes it in their place.
+  | { readonly op: "morph.show" | "morph.start"; readonly markers: readonly BeaconMarker[]; readonly session: string | null; readonly fields: JsonObject }
+  | { readonly op: "morph.clear" | "morph.on" | "morph.off" | "morph.status"; readonly markers: readonly BeaconMarker[]; readonly session: string | null };
 
 /** Morph's operations, beside walky's own and the hill's. Added, never a change to one of them. */
-export type MorphOp = "morph.show" | "morph.clear" | "morph.on" | "morph.off" | "morph.status";
+export type MorphOp = "morph.start" | "morph.show" | "morph.clear" | "morph.on" | "morph.off" | "morph.status";
 
 /** Whether a request is one of Morph's operations. */
 export function isMorphOp(op: string | null): op is MorphOp {
-  return op === "morph.show" || op === "morph.clear" || op === "morph.on" || op === "morph.off" || op === "morph.status";
+  return op === "morph.start" || op === "morph.show" || op === "morph.clear" || op === "morph.on" || op === "morph.off" || op === "morph.status";
 }
 
 /** Whether a request is one of the hill's operations (M96). */
@@ -247,8 +249,13 @@ export function readWalkyRequest(line: string): WalkyRequestRead {
   }
   if (op === "hill.list") return done({ op, markers });
   // Morph. A bridge built without it answers these as it answers any op it does not know.
-  if (op === "morph.show") return done({ op, markers, fields: row });
-  if (op === "morph.clear" || op === "morph.on" || op === "morph.off" || op === "morph.status") return done({ op, markers });
+  if (isMorphOp(op)) {
+    // `session` is absent, null, or text; anything else is a request this bridge cannot read.
+    const session = row.session === undefined || row.session === null ? null : asJsonString(row.session);
+    if (session === undefined) return unread(BAD_REQUEST_LINE, markers);
+    if (op === "morph.show" || op === "morph.start") return done({ op, markers, session, fields: row });
+    return done({ op, markers, session });
+  }
   if (op !== "send") return unread(op === null ? BAD_REQUEST_LINE : unknownOp(op), markers);
   const id = text(row, "id");
   // The address as the bridge spells it: `parseAddress` reads past blanks, and the signed `to` must not

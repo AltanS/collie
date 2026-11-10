@@ -1,7 +1,7 @@
 // Morph's state, kept on the machine whose bridge took the show.
 //
 //   <stateDir>/morph/state.json
-//   { "v": 1, "sessions": [ { "session", "on", "view"? }, ... ] }
+//   { "v": 1, "sessions": [ { "session", "on", "view"?, "drawing"? }, ... ] }
 //
 // One entry per session, keyed by the session's walky address with its instance token (the key the
 // hill names a session with), so a new session in a reused pane starts with Morph off and no screen.
@@ -22,7 +22,7 @@ import { join } from "node:path";
 
 import { asJsonBoolean, asJsonNumber, asJsonObject, asJsonString, parseJsonObject } from "../../web/src/lib/json.ts";
 import type { JsonValue } from "../json.ts";
-import { MORPH_SESSION_MAX, readMorphView, type MorphView } from "../../web/src/lib/morph/wire.ts";
+import { MORPH_SESSION_MAX, readMorphDrawing, readMorphView, type MorphDrawing, type MorphView } from "../../web/src/lib/morph/wire.ts";
 
 /** Morph's folder inside a state dir. */
 export function morphDir(stateDir: string): string {
@@ -40,6 +40,8 @@ export interface MorphEntry {
   readonly session: string;
   readonly on: boolean;
   readonly view?: MorphView;
+  /** The agent's `morph start`, until a show, a clear, the switch going off, or ten minutes. An older build ignores the field. */
+  readonly drawing?: MorphDrawing;
   /** How many shows this session took: the next show's `rev` is one more, even after a clear. */
   readonly shows: number;
   readonly changedAt: number;
@@ -60,7 +62,25 @@ function readEntry(raw: JsonValue): MorphEntry | null {
   const view = obj.view === undefined ? null : readMorphView(obj.view);
   // A view's rev never falls below the count: a hand-edited count cannot make the next show go back.
   const shows = Math.max(count(obj.shows), view?.rev ?? 0);
-  return view === null ? { session, on, shows, changedAt } : { session, on, view, shows, changedAt };
+  const drawing = obj.drawing === undefined ? null : readMorphDrawing(obj.drawing);
+  return morphEntry({ session, on, shows, changedAt, view: view ?? undefined, drawing: drawing ?? undefined });
+}
+
+/** One entry built from its parts: `view` and `drawing` are on it only when given. */
+export function morphEntry(parts: {
+  session: string;
+  on: boolean;
+  shows: number;
+  changedAt: number;
+  view: MorphView | undefined;
+  drawing: MorphDrawing | undefined;
+}): MorphEntry {
+  const { view, drawing } = parts;
+  const base = { session: parts.session, on: parts.on, shows: parts.shows, changedAt: parts.changedAt };
+  if (view !== undefined && drawing !== undefined) return { ...base, view, drawing };
+  if (view !== undefined) return { ...base, view };
+  if (drawing !== undefined) return { ...base, drawing };
+  return base;
 }
 
 /** The entries to keep: the newest {@link MORPH_SESSIONS_KEPT} by last change, in their held order. */

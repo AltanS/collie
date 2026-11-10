@@ -18,8 +18,10 @@
 //   hill.withdraw { id }                       → { ok, decision }   (now `withdrawn`, "by the poster")
 //   hill.list     { mine: true }               → { ok, decisions }  (the asker's own, open first)
 // Every hill refusal carries `hill: true`, so the CLI tells a bridge that knows the hill from an older one.
-// Morph, five operations beside these, answered only by a bridge built with it, always for the asking
-// pane's own session (bridge/morph/service.ts):
+// Morph, six operations beside these, answered only by a bridge built with it, always for the asking
+// pane's own session (bridge/morph/service.ts). Every one MAY carry `session` (the address the caller
+// names); the bridge refuses `wrong_session` unless it is the session the markers placed.
+//   morph.start   { note? }         → { ok, morph } | { ok: false, error, code }
 //   morph.show    { view, title? }  → { ok, morph } | { ok: false, error, code, refusals? }
 //   morph.clear | morph.on | morph.off | morph.status  {}  → { ok, morph }
 // Every Morph refusal carries `morph: true`, as the hill's carry `hill: true`.
@@ -38,10 +40,10 @@ import type { BeaconMarker } from "../beacon/types.ts";
 import { HOST, type Host } from "../host.ts";
 import type { HillDecision, HillRefusalCode } from "../../web/src/lib/hill/wire.ts";
 import type { HillService } from "../hill/service.ts";
-import { readShowFields, type MorphRefusalCode, type MorphService } from "../morph/service.ts";
+import { readShowFields, readStartFields, sameSession, wrongSessionWords, type MorphRefusalCode, type MorphService } from "../morph/service.ts";
 import type { MorphSession } from "../../web/src/lib/morph/wire.ts";
 import type { Refusal } from "../../web/src/lib/tricks/schema.ts";
-import { isHillOp, isMorphOp, readWalkyRequest, WALKY_LINE_MAX, type WalkyRequest, type WalkyRequestRead } from "./parse.ts";
+import { isHillOp, isMorphOp, readWalkyRequest, WALKY_LINE_MAX, type MorphOp, type WalkyRequest, type WalkyRequestRead } from "./parse.ts";
 import { unknownOp } from "./refusals.ts";
 import type { WalkyDelivery, WalkyService } from "./service.ts";
 import type { TakeBack, WalkyPane } from "./deliver.ts";
@@ -61,7 +63,7 @@ export const HILL_NEEDS_A_PANE = "run this inside an agent's pane: a decision be
 export const MORPH_NEEDS_A_PANE = "run this inside an agent's pane: a Morph screen belongs to the session that draws it";
 
 /** What the socket needs of Morph. Absent: the bridge answers the five operations as unknown. */
-export type MorphSocket = Pick<MorphService, "show" | "clear" | "setOn" | "status">;
+export type MorphSocket = Pick<MorphService, "start" | "show" | "clear" | "setOn" | "status">;
 
 /** What the socket needs of the hill (M96). Absent: the bridge answers the four operations as unknown. */
 export type HillSocket = Pick<HillService, "agentSender" | "postFields" | "status" | "withdraw" | "mineList">;
@@ -233,6 +235,7 @@ export async function answerRequest(service: WalkyService, request: WalkyRequest
     case "hill.withdraw":
     case "hill.list":
       return answerHill(service, request, pane, hill);
+    case "morph.start":
     case "morph.show":
     case "morph.clear":
     case "morph.on":
@@ -255,7 +258,7 @@ function notHereFor(op: WalkyRequest["op"], knowsHill: boolean, knowsMorph: bool
  */
 function answerMorph(
   service: WalkyService,
-  request: Extract<WalkyRequest, { op: "morph.show" | "morph.clear" | "morph.on" | "morph.off" | "morph.status" }>,
+  request: Extract<WalkyRequest, { op: MorphOp }>,
   pane: WalkyPane | null,
   morph: MorphSocket | undefined,
 ): WalkyAnswer {
@@ -265,17 +268,26 @@ function answerMorph(
     return { ok: false, error: MORPH_NEEDS_A_PANE, morph: true };
   }
   const session = service.addressOf(pane.paneId, pane.instance);
+  // The markers prove the caller. A session the request names must be the same one, or nothing is done.
+  if (request.session !== null && !sameSession({ own: session, given: request.session })) {
+    return { ok: false, error: wrongSessionWords({ own: session, given: request.session }), morph: true, code: "wrong_session" };
+  }
   const answer = morphAnswerOf(request, session, morph);
   if (answer.ok) return { ok: true, morph: answer.session };
   return answer.refusals === undefined ? { ok: false, error: answer.error, morph: true, code: answer.code } : { ok: false, error: answer.error, morph: true, code: answer.code, refusals: answer.refusals };
 }
 
 function morphAnswerOf(
-  request: Extract<WalkyRequest, { op: "morph.show" | "morph.clear" | "morph.on" | "morph.off" | "morph.status" }>,
+  request: Extract<WalkyRequest, { op: MorphOp }>,
   session: string,
   morph: MorphSocket,
 ): ReturnType<MorphSocket["show"]> {
   switch (request.op) {
+    case "morph.start": {
+      const fields = readStartFields(request.fields);
+      if ("error" in fields) return { ok: false, error: fields.error, code: "bad_note" };
+      return morph.start(session, fields);
+    }
     case "morph.show": {
       const fields = readShowFields(request.fields);
       if ("error" in fields) return { ok: false, error: fields.error, code: "bad_title" };

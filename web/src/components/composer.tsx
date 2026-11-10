@@ -34,7 +34,7 @@ import { SendOfferStrip } from "@/components/send-offer-strip";
 import { HeldCard, type HeldAction } from "@/components/composer-held";
 import { offerMode, type SendNote } from "@/lib/send-protocol";
 import { modeFor, sendText } from "@/lib/reply-action";
-import { withMorphHint } from "@/lib/morph/reader";
+import { withMorphHint, type MorphRequestNote } from "@/lib/morph/reader";
 import { fieldLocked, sendSlot, unreachable } from "@/lib/send-slot";
 import { wayOut } from "@/lib/way-out";
 import type { Surface } from "@/lib/surface/surface";
@@ -387,6 +387,13 @@ interface ComposerProps {
    * a text with a reserved lead and a send with attachments. Absent: sending is exactly as before.
    */
   morphHint?: string | undefined;
+  /** The head that goes in front of the text with the hint (`[morph] from operator:`). Absent from an older bridge. */
+  morphHead?: string | undefined;
+  /**
+   * Told when a send that carried the hint starts, and how it ended: the plain text (never the hint), the
+   * phase, and the refusal's own words for a send that failed. The Morph body draws it at once.
+   */
+  onMorphRequest?: ((note: MorphRequestNote) => void) | undefined;
 }
 
 // The composer cluster at the bottom of the pane view — everything a phone keyboard can't do on its
@@ -537,7 +544,7 @@ function moveCaret(from: HTMLTextAreaElement | null, to: HTMLTextAreaElement | n
 }
 
 export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
-  { paneId, instance, surface, starting = false, unreachableNote, scope, stopOffered = false, agent, canSteer, returnedDraft = false, isShell, cwd, gone, readOnly, composing, onAnswerDialog, dialogCard = false, text, terminalDraft, rawTerminalDraft, prefs, display, onSent, onOpenMessages, held: heldRows, chatEntries, pullHandle, draftNoticeSlot, expandArea, changesPill, zoomPill, stale, hand = "right", layout = "field", aboveBelt, beltMarks, floatingHint, screen, todos, subagents, jobs, pins, morphHint },
+  { paneId, instance, surface, starting = false, unreachableNote, scope, stopOffered = false, agent, canSteer, returnedDraft = false, isShell, cwd, gone, readOnly, composing, onAnswerDialog, dialogCard = false, text, terminalDraft, rawTerminalDraft, prefs, display, onSent, onOpenMessages, held: heldRows, chatEntries, pullHandle, draftNoticeSlot, expandArea, changesPill, zoomPill, stale, hand = "right", layout = "field", aboveBelt, beltMarks, floatingHint, screen, todos, subagents, jobs, pins, morphHint, morphHead, onMorphRequest },
   ref,
 ) {
   const revalidator = useRevalidator();
@@ -859,6 +866,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // (field case 2026-10-15, M56 spec 07): a refusal, a text left in the box, a send that ended unknown,
   // no answer, a link that is down, a dialog that owns the keys.
   const [sendRefusal, setSendRefusalState] = useState<SendRefusal | null>(null);
+  // The sentence of the notice just raised, for the Morph body's "Not sent" line to mirror (`onMorphRequest`).
+  const refusalWordsRef = useRef<string | null>(null);
   // Which notice that is (send-notice.tsx `refusalKey`: the screen it is about and its words), and
   // the one the person hid with its ✕ or the offers' ✕. A hidden notice stays hidden until a refusal
   // reads another Surface (its hash or its revision) or says other words, or a tap meets the same
@@ -871,6 +880,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
    * the notice is the tap's only visible answer (review of 2026-10-16). With offers, the strip answers.
    */
   function setSendRefusal(next: SendRefusal | null, on: Surface | null = shownSurface, offers = false) {
+    refusalWordsRef.current = next?.sentence ?? null;
     setSendRefusalState(next);
     const key = next === null ? null : refusalKey(next, on);
     setShownRefusalKey(key);
@@ -1691,21 +1701,37 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     const trimmed = value.trim();
     const t = isShell ? value.trimEnd() : trimmed;
     if (!trimmed || starting || locked || sending) return false;
+    // MORPH: while the Morph view shows, the text carries the session's head and hint (lib/morph/reader.ts).
+    // The mode is read from the text as typed, so the wording never turns a send into a command. A send
+    // that carries it is a request to the Morph view: the view is told the plain text now, and how it ended.
+    const words = withMorphHint({ text: t, hint: morphHint, head: morphHead, attachments: isDraft ? attachmentsRef.current.length : 0 });
+    const tell = (phase: MorphRequestNote["phase"], reason: string | null = null): void => {
+      if (words !== t) onMorphRequest?.({ text: t, phase, reason });
+    };
     if (offlineRef.current) {
-      setSendRefusal(phoneRefusal(translate("composer.send.reconnect")));
+      const refusal = phoneRefusal(translate("composer.send.reconnect"));
+      setSendRefusal(refusal);
+      tell("failed", refusal.sentence);
       return false;
     }
     // A modal ask is a parsed fact: its own buttons answer it, and its word stands in the Send slot.
     // A typed text would be refused by the bridge anyway; the phone does not ask (spec 10). A send that
     // comes from elsewhere (a quick reply, a harness command) is told so at the Send slot.
     if (slot === "answer") {
-      setSendRefusal(phoneRefusal(translate("composer.status.dialogWaiting"), true));
+      const refusal = phoneRefusal(translate("composer.status.dialogWaiting"), true);
+      setSendRefusal(refusal);
+      tell("failed", refusal.sentence);
       return false;
     }
-    // MORPH: while the Morph view shows, the text carries the session's hint (lib/morph/reader.ts). The
-    // mode is read from the text as typed, so the hint never turns a send into a command.
-    const words = withMorphHint({ text: t, hint: morphHint, attachments: isDraft ? attachmentsRef.current.length : 0 });
-    return sendThroughProtocol(words, isDraft, modeFor(trimmed), null, false, undefined, when);
+    tell("sending");
+    try {
+      const sent = await sendThroughProtocol(words, isDraft, modeFor(trimmed), null, false, undefined, when);
+      tell(sent ? "sent" : "failed", sent ? null : refusalWordsRef.current);
+      return sent;
+    } catch (thrown) {
+      tell("failed", thrown instanceof Error ? thrown.message : String(thrown));
+      throw thrown;
+    }
   }
   sendLineRef.current = (line) => send(line, false);
 

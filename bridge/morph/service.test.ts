@@ -3,11 +3,13 @@ import { readFileSync } from "node:fs";
 
 import { MORPH_BAD_SWITCH, MORPH_LOCAL_TEXT, MORPH_OFF_TEXT, morphListRoute, morphSwitchRoute, withMorphRev } from "../server.ts";
 import type { SnapshotResponse } from "../types.ts";
-import { MORPH_HINT_MAX } from "../../web/src/lib/morph/wire.ts";
-import { MORPH_NO_SESSION, MORPH_NOT_ON_LEAD, morphHint, MorphService, type MorphCrewMode, type MorphServiceDeps } from "./service.ts";
+import { MORPH_DRAWING_MAX_MS, MORPH_HINT_MAX, MORPH_NOTE_MAX } from "../../web/src/lib/morph/wire.ts";
+import { MORPH_HEAD, MORPH_NO_SESSION, MORPH_NOT_ON_LEAD, morphHint, MorphService, sameSession, type MorphCrewMode, type MorphServiceDeps } from "./service.ts";
 import { MorphStore } from "./store.ts";
 
 const BIN = "/home/op/apps/collie/bin/collie";
+/** The lane's own binary: 59 characters, the longest path the hint has to carry. */
+const LANE_BIN = "/var/home/altan/projects/collie-workspace/collie/bin/collie";
 const ONE = "local/%1#aaaa";
 const TWO = "local/%2#bbbb";
 
@@ -25,6 +27,8 @@ interface World {
 interface Rig extends World {
   readonly morph: MorphService;
   readonly store: MorphStore;
+  /** Move the service's clock on, in ms. */
+  readonly advance: (ms: number) => void;
 }
 
 function rig(over: Partial<MorphServiceDeps> = {}): Rig {
@@ -45,28 +49,150 @@ function rig(over: Partial<MorphServiceDeps> = {}): Rig {
     now: () => (clock += 1),
     ...over,
   });
-  return Object.assign(r, { morph, store });
+  return Object.assign(r, { morph, store, advance: (ms: number) => void (clock += ms) });
 }
 
 describe("the hint", () => {
-  test("names the bridge's own binary twice, on one line under the cap, in the brief's words", () => {
-    const hint = morphHint(BIN);
-    expect(hint).toBe(`[morph: I read this on Collie's Morph view. Answer by drawing one screen: ${BIN} morph show <file.json>. Kinds and an example: ${BIN} morph help]`);
-    expect(hint.length).toBeLessThan(MORPH_HINT_MAX);
+  test("is the tail only: where the rules are, with the session's own address filled in", () => {
+    expect(morphHint(BIN, ONE)).toBe(`[rules: ${BIN} morph help --session ${ONE}]`);
+    expect(MORPH_HEAD).toBe("[morph] from operator:");
   });
 
-  test("falls to a shorter wording for a longer path, and keeps the absolute path", () => {
-    const long = "/var/home/operator/.cache/collie-lab/morph/bin/collie";
-    const hint = morphHint(long);
-    expect(hint.length).toBeLessThan(MORPH_HINT_MAX);
-    expect(hint).toContain(`${long} morph show <file.json>`);
+  test("the lane path with an address of 30 fits one line under the cap, with room to spare", () => {
+    const address = `bluefin-hc/terminal_12345#ab12`;
+    expect(address.length).toBe(30);
+    const hint = morphHint(LANE_BIN, address);
+    expect(LANE_BIN.length).toBe(59);
+    expect(hint).toBe(`[rules: ${LANE_BIN} morph help --session ${address}]`);
+    expect(hint.length).toBeLessThan(MORPH_HINT_MAX - 20);
     expect(hint).not.toContain("\n");
   });
 
-  test("quotes a path with a blank, and refuses a relative one or one too long for any wording", () => {
-    expect(morphHint("/home/a b/bin/collie")).toContain("'/home/a b/bin/collie' morph show");
-    expect(() => morphHint("bin/collie")).toThrow();
-    expect(() => morphHint(`/${"x".repeat(150)}/collie`)).toThrow();
+  test("the hint of two sessions differs only in the address", () => {
+    const one = morphHint(LANE_BIN, ONE);
+    const two = morphHint(LANE_BIN, TWO);
+    expect(one).not.toBe(two);
+    expect(one.replace(ONE, "<s>")).toBe(two.replace(TWO, "<s>"));
+  });
+
+  test("quotes a path or an address a shell would split, and refuses a relative path or one too long for any wording", () => {
+    expect(morphHint("/home/a b/bin/collie", ONE)).toContain("'/home/a b/bin/collie' morph help");
+    expect(morphHint(BIN, "local/a b#aaaa")).toBe(`[rules: ${BIN} morph help --session 'local/a b#aaaa']`);
+    expect(() => morphHint("bin/collie", ONE)).toThrow();
+    expect(() => morphHint(`/${"x".repeat(150)}/collie`, ONE)).toThrow();
+  });
+
+  test("an address no shell word can carry gets the fallback without it", () => {
+    expect(morphHint(BIN, "local/a'b#aaaa")).toBe(`[rules: ${BIN} morph help]`);
+  });
+
+  test("every served session carries the head and its own tail", () => {
+    const r = rig();
+    r.morph.setOn(ONE, true);
+    r.morph.setOn(TWO, true);
+    const served = r.morph.answer().sessions;
+    expect(served.map((s) => s.head)).toEqual([MORPH_HEAD, MORPH_HEAD]);
+    expect(served.map((s) => s.hint)).toEqual([morphHint(BIN, ONE), morphHint(BIN, TWO)]);
+  });
+});
+
+describe("the session a request names", () => {
+  const own = "local/%1#aaaa";
+
+  test("matches with and without the token, and by the lead's own member id", () => {
+    expect(sameSession({ own, given: "local/%1#aaaa" })).toBe(true);
+    expect(sameSession({ own, given: "local/%1" })).toBe(true);
+    expect(sameSession({ own: "lead/%1#aaaa", given: "local/%1#aaaa" })).toBe(true);
+    expect(sameSession({ own: "lead/%1#aaaa", given: "lead/%1" })).toBe(true);
+  });
+
+  test("a token that does not match, another pane, another machine or a scope is another session", () => {
+    expect(sameSession({ own, given: "local/%1#bbbb" })).toBe(false);
+    expect(sameSession({ own, given: "local/%2#aaaa" })).toBe(false);
+    expect(sameSession({ own, given: "other/%1#aaaa" })).toBe(false);
+    expect(sameSession({ own: "lead/%1#aaaa", given: "other/%1#aaaa" })).toBe(false);
+    expect(sameSession({ own, given: "all" })).toBe(false);
+    expect(sameSession({ own, given: "repo#branch" })).toBe(false);
+    expect(sameSession({ own: "local/%1", given: "local/%1#aaaa" })).toBe(false);
+  });
+});
+
+describe("start", () => {
+  test("sets the drawing, bumps the rev, and is taken while Morph is off", () => {
+    const r = rig();
+    const answer = r.morph.start(ONE, { note: "Checking the tests" });
+    expect(answer.ok && answer.session).toMatchObject({ session: ONE, on: false, drawing: { note: "Checking the tests" } });
+    expect(r.store.rev()).toBeDefined();
+    const rev = r.store.rev();
+    r.morph.start(ONE, { note: "Still checking" });
+    expect(r.store.rev()).toBeGreaterThan(rev!);
+    expect(r.morph.status(ONE).drawing?.note).toBe("Still checking");
+  });
+
+  test("a start with no note says only the time", () => {
+    const r = rig();
+    const answer = r.morph.start(ONE, { note: null });
+    expect(answer.ok && answer.session.drawing?.note).toBeUndefined();
+    expect(answer.ok && answer.session.drawing?.at).toBeDefined();
+  });
+
+  test("a note of two lines or past the cap is refused, and nothing is stored", () => {
+    const r = rig();
+    expect(r.morph.start(ONE, { note: "a\nb" })).toMatchObject({ ok: false, code: "bad_note" });
+    expect(r.morph.start(ONE, { note: "x".repeat(MORPH_NOTE_MAX + 1) })).toMatchObject({ ok: false, code: "bad_note" });
+    expect(r.morph.start(ONE, { note: "x".repeat(MORPH_NOTE_MAX) })).toMatchObject({ ok: true });
+    expect(r.store.get(TWO)).toBeUndefined();
+  });
+
+  test("a show, a clear and switching off end it; switching on keeps it", () => {
+    const r = rig();
+    r.morph.setOn(ONE, true);
+    r.morph.start(ONE, { note: "Drawing" });
+    r.morph.setOn(ONE, true);
+    expect(r.morph.status(ONE).drawing).toBeDefined();
+    r.morph.show(ONE, { view: goodView, title: null });
+    expect(r.morph.status(ONE).drawing).toBeUndefined();
+    r.morph.start(ONE, { note: "Again" });
+    r.morph.clear(ONE);
+    expect(r.morph.status(ONE).drawing).toBeUndefined();
+    r.morph.start(ONE, { note: "Once more" });
+    r.morph.setOn(ONE, false);
+    expect(r.morph.status(ONE).drawing).toBeUndefined();
+  });
+
+  test("a drawing is ended by an off even when Morph was already off", () => {
+    const r = rig();
+    r.morph.start(ONE, { note: "Drawing" });
+    r.morph.setOn(ONE, false);
+    expect(r.morph.status(ONE).drawing).toBeUndefined();
+  });
+
+  test("a drawing older than ten minutes is not served, with no timer, and its entry is then pruned at the next write", () => {
+    const r = rig();
+    r.morph.setOn(ONE, true);
+    r.morph.start(ONE, { note: "Drawing" });
+    r.advance(MORPH_DRAWING_MAX_MS - 1000);
+    expect(r.morph.status(ONE).drawing).toBeDefined();
+    r.advance(2000);
+    expect(r.morph.status(ONE).drawing).toBeUndefined();
+    expect(r.morph.answer().sessions[0]?.drawing).toBeUndefined();
+    // Off with a stale drawing and nothing else: nothing left to say.
+    r.morph.setOn(ONE, false);
+    expect(r.morph.answer().sessions).toEqual([]);
+  });
+
+  test("survives in the state file as an optional field an older read ignores", () => {
+    const r = rig();
+    r.morph.start(ONE, { note: "Drawing" });
+    const held = r.store.get(ONE);
+    expect(held?.drawing?.note).toBe("Drawing");
+    expect(Object.keys(JSON.parse(JSON.stringify(held)))).toContain("drawing");
+  });
+
+  test("a crew member refuses it", () => {
+    const r = rig();
+    r.mode = "peer";
+    expect(r.morph.start(ONE, { note: null })).toMatchObject({ ok: false, code: "not_on_lead" });
   });
 });
 
@@ -159,7 +285,7 @@ describe("the routes", () => {
     r.morph.setOn(ONE, true);
     const rev = r.morph.rev()!;
     const list = await morphListRoute(r.morph, null, null).json();
-    expect(list).toEqual({ rev, sessions: [{ session: ONE, on: true, hint: morphHint(BIN) }] });
+    expect(list).toEqual({ rev, sessions: [{ session: ONE, on: true, head: MORPH_HEAD, hint: morphHint(BIN, ONE) }] });
     expect(await morphListRoute(r.morph, String(rev), null).json()).toEqual({ rev, unchanged: true, sessions: [] });
   });
 
