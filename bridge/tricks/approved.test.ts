@@ -1,9 +1,9 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { chmod, mkdir, mkdtemp, readdir, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readdir, readFile, rm, stat, symlink, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, sep } from "node:path";
 
-import { approveFolder, fileCounts, migrateSwitches, powersOf, promoteCopy, pruneCopies, removeTrickCopies, snapshotTrick, syncConfig, verifyCopy } from "./approved.ts";
+import { approveFolder, copyListing, fileCounts, migrateSwitches, powersOf, promoteCopy, pruneCopies, removeTrickCopies, snapshotTrick, syncConfig, verifyCopy } from "./approved.ts";
 import { trickCodeHash } from "./code-hash.ts";
 import { createTrickScanner } from "./discover.ts";
 import { APPROVED_DIR, approvedCopyDir, approvedTrickDir, hash16, PENDING_DIR, pendingTrickDir, switchesPath, TRICKS_DIR } from "./paths.ts";
@@ -173,6 +173,26 @@ describe("nothing unseen enters the copy (security re-review)", () => {
     const check = await verifyCopy(dir, "0".repeat(64));
     expect(check).toMatchObject({ ok: false, missing: false });
     if (!check.ok) expect(check.reason).toContain("symbolic link");
+  });
+
+  test("B8: a code file rewritten in place with its size and mtime put back still moves the copy's listing (ctime)", async () => {
+    const { configDir, dir } = await setup({ "lib/util.ts": "export const x = 1;\n" });
+    const snap = await snapshotTrick({ src: dir, parent: approvedTrickDir(configDir, "legs") });
+    if (!snap.ok) throw new Error(snap.reason);
+    const file = join(snap.dir, "lib", "util.ts");
+    const when = new Date("2026-01-01T00:00:00Z");
+    await utimes(file, when, when);
+    const before = await copyListing(snap.dir);
+    const st = await stat(file);
+    await Bun.sleep(15);
+    await chmod(file, 0o600);
+    await writeFile(file, "export const x = 2;\n");
+    await chmod(file, 0o400);
+    await utimes(file, when, when);
+    expect((await stat(file)).mtimeMs).toBe(st.mtimeMs);
+    expect((await stat(file)).ino).toBe(st.ino);
+    expect(await copyListing(snap.dir)).not.toBe(before);
+    expect(await verifyCopy(snap.dir, snap.hash)).toMatchObject({ ok: false, reason: "The approved copy changed on disk." });
   });
 
   test("B2: a file name with a control or an invisible direction character is refused for approval", async () => {

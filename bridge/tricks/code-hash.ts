@@ -37,8 +37,8 @@ import { join } from "node:path";
 // a scan. More than {@link CODE_FILES_MAX} files or {@link CODE_BYTES_MAX} bytes refuses the trick with
 // a reason: a folder that big is a mistake, and hashing it every change would cost the bridge.
 //
-// The cheap half is the walk: one `lstat` per file, no read. Its fingerprint (path, kind, size, mtime
-// and inode of each entry) tells the scanner when to hash again, so the 2 s scan reads no file while
+// The cheap half is the walk: one `lstat` per file, no read. Its fingerprint (path, kind, size, mtime,
+// inode and ctime of each entry) tells the scanner when to hash again, so the 2 s scan reads no file while
 // nothing moved.
 
 /** The most files hashed. More refuses the trick. */
@@ -86,6 +86,8 @@ export interface FsStat {
   size: number;
   mtimeMs: number;
   ino: number;
+  /** The inode change time: unlike mtime, no caller can set it back. Absent from a test's fake. */
+  ctimeMs?: number;
 }
 
 /** A folder listing: its entries, or why it could not be listed (`missing` for ENOENT only). */
@@ -124,7 +126,7 @@ export const diskTrickFs: TrickFs = {
   async lstat(path) {
     try {
       const st = await lstat(path);
-      return { kind: kindOf(st), size: st.size, mtimeMs: st.mtimeMs, ino: st.ino };
+      return { kind: kindOf(st), size: st.size, mtimeMs: st.mtimeMs, ino: st.ino, ctimeMs: st.ctimeMs };
     } catch {
       return null;
     }
@@ -167,6 +169,8 @@ export interface CodeEntry {
   size: number;
   mtimeMs: number;
   ino: number;
+  /** The inode change time, so a file rewritten in place with its mtime put back still moves the listing. */
+  ctimeMs?: number;
 }
 
 /**
@@ -227,7 +231,9 @@ export async function walkTrickCode(fs: TrickFs, dir: string): Promise<CodeWalk>
       // Gone between the listing and the stat: the next scan sees the folder as it settled.
       if (st === null || st.kind === "dir") continue;
       if (st.kind === "symlink") return { ok: false, code: "link", reason: linkRefusal(rel) };
-      entries.push({ rel, kind: st.kind, size: st.size, mtimeMs: st.mtimeMs, ino: st.ino });
+      const entry: CodeEntry = { rel, kind: st.kind, size: st.size, mtimeMs: st.mtimeMs, ino: st.ino };
+      if (st.ctimeMs !== undefined) entry.ctimeMs = st.ctimeMs;
+      entries.push(entry);
       if (entries.length > CODE_FILES_MAX) return { ok: false, reason: `The trick folder holds more than ${CODE_FILES_MAX} files. Move what is not code out of it, or into media/.` };
       if (st.kind === "file") bytes += st.size;
       if (bytes > CODE_BYTES_MAX) return { ok: false, reason: `The trick folder holds more than ${CODE_BYTES_MAX / (1024 * 1024)} MB of code. Move what is not code out of it, or into media/.` };
@@ -236,10 +242,13 @@ export async function walkTrickCode(fs: TrickFs, dir: string): Promise<CodeWalk>
   return { ok: true, entries: entries.toSorted(byPath) };
 }
 
-/** The walk's fingerprint: moves when any code entry is added, removed, resized, touched or replaced. */
+/**
+ * The walk's fingerprint: moves when any code entry is added, removed, resized, touched or replaced, or
+ * changed in place with its mtime put back (the ctime moves; security re-review B8).
+ */
 export function walkFingerprint(entries: readonly CodeEntry[], extra: string): string {
   const h = createHash("sha256");
-  for (const e of entries) h.update(`${e.kind}\0${e.rel}\0${String(e.size)}\0${String(e.mtimeMs)}\0${String(e.ino)}\n`);
+  for (const e of entries) h.update(`${e.kind}\0${e.rel}\0${String(e.size)}\0${String(e.mtimeMs)}\0${String(e.ino)}\0${String(e.ctimeMs ?? "")}\n`);
   h.update(extra);
   return h.digest("hex");
 }
