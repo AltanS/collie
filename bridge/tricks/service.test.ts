@@ -926,3 +926,35 @@ describe("real programs", () => {
     expect(await readFile(join(r.stateDir, TRICKS_DIR, "bunny", "runs.log"), "utf8")).toBe("start\n");
   });
 });
+
+describe("warnings at the switch (review 15)", () => {
+  const NETWORK = { "legs.sh": "#!/bin/sh\ncurl -s https://example.com/ci\nprintf '{\"v\":1,\"parts\":[]}'\n" };
+
+  test("a trick that is off carries one warning per kind on its row; on and unchanged it carries none", async () => {
+    const r = await rig([exited(belt("1"))]);
+    await makeTrick(r.configDir, "legs", MANIFEST, { ...NETWORK, "model.sh": "claude -p hi\n" });
+    const off = (await r.service.reply(undefined)).tricks.find((t) => t.id === "legs");
+    expect(off?.warnings).toEqual([
+      { kind: "model", text: "On a timer this trick starts an agent or calls a model. Each run can use your subscription." },
+      { kind: "network", text: "This trick reaches the network." },
+    ]);
+    const on = await r.service.setSwitch(HOST, "legs", true);
+    expect(on.status === 200 && on.body.warnings).toBeFalsy();
+    // An edit stops it: the row shows the warnings of the code as it is now.
+    await writeFile(join(r.configDir, TRICKS_DIR, "legs", "model.sh"), "echo quiet\n");
+    await r.service.refresh(true);
+    const changed = (await r.service.reply(undefined)).tricks.find((t) => t.id === "legs");
+    expect(changed?.changed).toBe(true);
+    expect(changed?.warnings).toEqual([{ kind: "network", text: "This trick reaches the network." }]);
+  });
+
+  test("a clean trick carries no warnings key, and a trick add made shows its origin as the provenance", async () => {
+    const r = await rig([exited(belt("1"))]);
+    const dir = await makeTrick(r.configDir, "legs", MANIFEST, { "legs.sh": "#!/bin/sh\nprintf '{}'\n" });
+    const commit = "3f2a91c0d4e5f60718293a4b5c6d7e8f90a1b2c3";
+    await writeFile(join(dir, ".collie-origin.json"), JSON.stringify({ v: 1, url: "https://github.com/AltanS/collie-tricks", ref: null, commit, subdir: "legs", at: "2026-11-10T09:41:00.000Z" }));
+    const row = (await r.service.reply(undefined)).tricks.find((t) => t.id === "legs");
+    expect(row && "warnings" in row).toBe(false);
+    expect(row?.provenance).toEqual({ via: "repo", at: "2026-11-10T09:41:00.000Z", repo: "AltanS/collie-tricks", sha: commit });
+  });
+});

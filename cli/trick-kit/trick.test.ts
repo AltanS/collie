@@ -6,7 +6,8 @@ import { join } from "node:path";
 import { FACTS } from "../../web/src/lib/tricks/fixtures/index.ts";
 import { parseJson } from "../../web/src/lib/json.ts";
 import { PLACE_KINDS, parseDecisionView, parseFacts, parseTrickDocumentText, TRICK_CONTRACT, type TrickFacts } from "../../web/src/lib/tricks/schema.ts";
-import { sampleConfig, sampleManifest, sampleProgram, TRICK_HELPER } from "../trick.ts";
+import { TRICK_HELPER } from "../../bridge/tricks/scan.ts";
+import { sampleConfig, sampleManifest, sampleProgram } from "../trick.ts";
 import { age, clip, CONTRACT, firstSentence, iso, mapText, mask, minute, now, Trick, v, type Facts, type Node } from "./trick.ts";
 
 // The helper (cli/trick-kit/trick.ts) is copied into a trick folder as text, so nothing in the schema's

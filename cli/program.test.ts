@@ -598,6 +598,8 @@ describe("exit codes", () => {
       ...CONFIG_VERBS,
       // `trick on`/`off`/`init` write into the developer's own config and state dirs, `list` dials this
       // host's bridge, and `check --run` runs a provider. cli/trick.test.ts drives all five against temp dirs.
+      // `add`/`update` fetch over the network and write a trick folder, `remove` deletes one;
+      // cli/trick-add.test.ts drives them against a local bare repository through the test seam.
       ...TRICK_VERBS,
       ...DURABLE_VERBS,
       // `mux list` resolves the real context and reads the real hook target registry, and removes the
