@@ -443,7 +443,7 @@ describe("take changes without asking, and undo an automatic change (crew slice 
     await screen.findByText("Browser leg");
     const changes = rowOf("legs").querySelector<HTMLElement>('[data-line="changes"]');
     expect(changes).toHaveTextContent("Take changes without asking");
-    expect(changes).toHaveTextContent("A change that asks for new rights still asks.");
+    expect(changes).toHaveTextContent("A change that asks for new rights, or does something new such as reaching the network, still asks.");
     expect(within(changes!).getByRole("switch", { name: "Take changes without asking" })).not.toBeChecked();
     expect(rowOf("tracker").querySelector('[data-line="changes"]')).toBeNull();
     expect(rowOf("legs").querySelector('[data-line="auto-at"]')).toBeNull();

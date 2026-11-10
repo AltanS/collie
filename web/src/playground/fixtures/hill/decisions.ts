@@ -715,7 +715,7 @@ export const versionPlain = decision({
   text: "none",
   options: [
     { intent: "use", label: "Use the new version" },
-    { intent: "always", label: "Use it and stop asking", detail: "Later changes are taken without asking, unless they ask for new rights." },
+    { intent: "always", label: "Use it and stop asking", detail: "Later changes are taken without asking, unless they ask for new rights or do something new." },
     { intent: "keep", label: "Keep the old version" },
   ],
   recommends: { intent: "use", why: "It asks for no new rights, and a text search of its code finds nothing new." },

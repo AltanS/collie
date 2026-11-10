@@ -135,7 +135,7 @@ describe("the card's words and view", () => {
     });
     expect(card?.options).toEqual([
       { intent: "use", label: "Use the new version" },
-      { intent: "always", label: "Use it and stop asking", detail: "Later changes are taken without asking, unless they ask for new rights." },
+      { intent: "always", label: "Use it and stop asking", detail: "Later changes are taken without asking, unless they ask for new rights or do something new." },
       { intent: "keep", label: "Keep the old version" },
     ]);
     const view = card?.view ?? [];

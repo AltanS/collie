@@ -54,7 +54,8 @@ it on, the bridge copies its code into `tricks/.collie-approved/<id>/<hash16>/` 
 folder and the `media/` the phone reads all name the copy. An edit of the trick folder never stops the
 trick. The bridge copies the new code to `.collie-pending/` and the row says "A new version waits for your
 yes."; switching the trick on again approves it, and so does the card on the Hill (see "The new version
-card" below). A new version whose `env` and `places` are unchanged is taken without asking when the
+card" below). A new version whose `env` and `places` are unchanged, and in which the text search finds no warning
+kind the approved copy did not have (network, spawn, write, model, import), is taken without asking when the
 trick has `collie trick auto <id> on`, or the switch "Take changes without asking" in Settings → Tricks. So a program must not write
 into its own code folder: the copy's code files are read-only (not on Windows, where the hash check
 alone catches it), and a change there stops the trick with "The approved copy changed on disk". It keeps its notes in `trick.state`, the

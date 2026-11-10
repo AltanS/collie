@@ -65,8 +65,8 @@ import type { Files } from "./sys.ts";
 //                     version waits for a yes. On prints the check scan's warnings, and still switches
 //                     on. It refuses in a pane where the running bridge sees an agent (a speed bump,
 //                     not a wall: see cmdTrickSwitch)
-//   auto <id> on|off  "take changes without asking": a new version whose powers did not move is
-//                     approved on its own; a change of powers always waits
+//   auto <id> on|off  "take changes without asking": a new version whose powers did not move and
+//                     that does nothing new (no new warning kind) is approved on its own; else it waits
 //   check <folder>    the static check: the manifest, its places, the command lines and the warnings of
 //                     every source file in the folder (a grep, not a proof). `--run` also runs the
 //                     program once against fixture facts, with the bridge's environment rule, and
@@ -403,7 +403,7 @@ export async function cmdTrickAuto(deps: TrickDeps, args: readonly string[]): Pr
   }
   deps.io.out(
     auto
-      ? `${id} takes a new version on its own when its powers (environment names, places) did not change. A change of powers still waits for your yes.`
+      ? `${id} takes a new version on its own when its powers (environment names, places) did not change and it does nothing new. A change of powers, or something new such as reaching the network, still waits for your yes.`
       : `${id} asks again: every new version waits for your yes.`,
   );
   return EXIT.OK;

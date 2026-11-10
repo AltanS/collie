@@ -166,7 +166,7 @@ export function versionCard(subject: TrickVersionSubject, diff: VersionDiff): Om
   const full = `${filesSentence(fileCount)} ${fact}${tail}`;
   const summary = [...full].length <= HILL_SUMMARY_MAX ? full : `${filesSentence(fileCount)} ${short}${tail}`;
   const options: HillPostInput["options"] = [{ intent: "use", label: "Use the new version" }];
-  if (!powersChanged) options.push({ intent: "always", label: "Use it and stop asking", detail: "Later changes are taken without asking, unless they ask for new rights." });
+  if (!powersChanged) options.push({ intent: "always", label: "Use it and stop asking", detail: "Later changes are taken without asking, unless they ask for new rights or do something new." });
   options.push({ intent: "keep", label: "Keep the old version" });
   const card: Omit<HillPostInput, "requestId"> = {
     title: versionTitle(subject.name),

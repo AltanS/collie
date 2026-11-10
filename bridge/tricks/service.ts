@@ -90,8 +90,10 @@ import { createSwitchReader, updateSwitches, withApproval, withEntry, withSwitch
 // the warnings that are new since the approved version. {@link TricksService.approvePending},
 // {@link TricksService.declinePending} and {@link TricksService.undo} are the seam a card builds on; each
 // refuses when the folder moved again after the snapshot. With `auto` on (`collie trick auto <id> on`) a
-// new version whose powers did not move is approved on its own, with an audit line and `previous` kept
-// for undo; a change of powers always waits. A declined version is not offered again.
+// new version whose powers did not move and that does nothing new (no warning KIND the approved copy
+// did not have: network, spawn, write, model, import) is approved on its own, with an audit line and
+// `previous` kept for undo; a change of powers, or a new kind of warning, always waits for a person (a
+// card on the Hill). A declined version is not offered again.
 //
 // ── WARNINGS AT THE SWITCH (review 15) ─────────────────────────────────────────
 // The row of a trick that is off, or on and changed, carries the check scan's warnings (scan.ts), one per
@@ -304,6 +306,11 @@ interface PendingVersion {
   info: WireTrickPending;
   /** The snapshot's manifest, as read when it was taken; absent when it did not parse. */
   manifest?: TrickManifest;
+  /**
+   * The new version does something the approved one did not: a warning KIND the approved copy did not
+   * have (network, spawn, write, model, import), or its warnings could not be read. `auto` holds it.
+   */
+  doesMore: boolean;
 }
 
 /** What a version change answers: the trick as the list now shows it, or why not. */
@@ -767,7 +774,8 @@ export class TricksService implements TricksSurface {
       }
       rt.pending = { hash, dir: snap.dir, ...(await this.pendingInfo(rt, snap.dir, hash)) };
       this.publish(rt.found.id);
-      if (entry.auto && rt.approved !== null && rt.copyProblem === null && !rt.pending.info.powersChanged) {
+      // Auto takes a version only when its rights did not move AND it does nothing new (security re-review B5).
+      if (entry.auto && rt.approved !== null && rt.copyProblem === null && !rt.pending.info.powersChanged && !rt.pending.doesMore) {
         const took = await this.promote(rt, hash, "auto");
         if (took.ok) this.warn(`${rt.found.id}: took the new version ${hash.slice(0, 16)} without asking (auto); undo restores ${entry.hash?.slice(0, 16) ?? "nothing"}`);
       }
@@ -788,17 +796,21 @@ export class TricksService implements TricksSurface {
    * and the snapshot's manifest for the card. A warning is new when its KIND is (crew slice 3): a new
    * line of a kind the approved copy already had says nothing the person did not see at the switch.
    */
-  private async pendingInfo(rt: TrickRuntime, dir: string, hash: string): Promise<{ info: WireTrickPending; manifest?: TrickManifest }> {
+  private async pendingInfo(rt: TrickRuntime, dir: string, hash: string): Promise<Omit<PendingVersion, "hash" | "dir">> {
     const next = await scanTrickDir(diskTrickFs, dir, rt.found.id, undefined);
     const base = rt.approved !== null && rt.copyProblem === null ? rt.approved : null;
     const files = await fileCounts(base?.dir ?? null, dir);
     const was = base?.found.manifest;
     const now = next.manifest;
     const powersChanged = was === undefined || now === undefined || powersOf(was) !== powersOf(now);
+    // A read that fails counts against the new version: a failed read of the approved copy makes every
+    // kind new, and a failed read of the new version holds auto.
     const before = new Set((was === undefined || base === null ? [] : await trickWarnings(base.dir, was).catch(() => [])).map((w) => w.kind));
-    const after = now === undefined ? [] : await trickWarnings(dir, now).catch(() => []);
-    const info: WireTrickPending = { hash, files, powersChanged, warnings: wireWarnings(after.filter((w) => !before.has(w.kind))) };
-    return now === undefined ? { info } : { info, manifest: now };
+    const after = now === undefined ? null : await trickWarnings(dir, now).catch(() => null);
+    const added = (after ?? []).filter((w) => !before.has(w.kind));
+    const info: WireTrickPending = { hash, files, powersChanged, warnings: wireWarnings(added) };
+    const doesMore = after === null || added.length > 0;
+    return now === undefined ? { info, doesMore } : { info, manifest: now, doesMore };
   }
 
   /** Tell the "new version" card every trick that is on, as it is now. Never throws. */
