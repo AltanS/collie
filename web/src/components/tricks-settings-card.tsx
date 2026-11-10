@@ -1,13 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 
+import { Icon } from "@/components/icons/icon";
 import { Card } from "@/components/ui/card";
+import { Collapse } from "@/components/ui/collapse";
 import { Switch } from "@/components/ui/switch";
 import { useLocale } from "@/hooks/use-locale";
 import { switchTrick } from "@/lib/api";
 import { t, type MessageKey } from "@/lib/i18n";
 import { TrickBoundary } from "@/lib/tricks/boundary";
 import { useBridgeNow } from "@/lib/tricks/clock";
-import type { PlaceKind, WireTrickInfo } from "@/lib/tricks/schema";
+import { TRICK_WARNING_KINDS, TRICK_WARNINGS_MAX, type PlaceKind, type TrickWarningKind, type WireTrickInfo } from "@/lib/tricks/schema";
 import { tricksStore, useTricksState, type TricksStore } from "@/lib/tricks/store";
 import { trickTimeText } from "@/lib/tricks/time";
 import { usePairing } from "@/lib/pairing";
@@ -29,6 +31,13 @@ import { isReadOnly } from "@/lib/types";
 //      masked last error for a trick that is failing or stopped, or the first refusal for a trick whose
 //      manifest was refused. Clipped to one line. The slot is reserved for both, so the row is one
 //      height whether or not the trick is well.
+//
+// UNDER THEM, BEFORE THE SWITCH, THE WARNINGS (review 15). The bridge puts what a text search of the code
+// flags on the row of a trick that is off or changed (bridge/tricks/scan.ts), one per kind. The row lists
+// them in quiet words, with one line that they are a text search and not a proof, while the switch is off
+// or the trick changed. They never refuse and never ask a second tap: the switch stays one tap. The list
+// comes and goes through `Collapse`, the one way an in-flow part appears; a tap on the switch closes it.
+// A bridge that sends no warnings (an older one) draws the three lines as before.
 //
 // THE CARD IS ABSENT UNLESS THE PHONE HOLDS A TRICKS REPLY. The store takes its first reply only when
 // the snapshot carries `tricksRev`, and the bridge carries that only when a tricks folder exists, so an
@@ -90,6 +99,25 @@ export function slotLine(trick: WireTrickInfo, now: number): SlotLine {
   return { text: provenanceLine(trick, now), trouble: false };
 }
 
+/** One warning as the row shows it: the phone's own words for a kind it knows, the bridge's for another. */
+export interface WarningLine {
+  kind: string;
+  text: string;
+}
+
+function isKnownKind(kind: string): kind is TrickWarningKind {
+  return TRICK_WARNING_KINDS.some((known) => known === kind);
+}
+
+/**
+ * The warnings a trick's row carries, in the phone's own words for a kind it knows and the bridge's for
+ * another. The wire reader (lib/tricks/wire.ts `readWarnings`) already left out a malformed entry.
+ */
+export function warningLines(trick: Pick<WireTrickInfo, "warnings">): WarningLine[] {
+  const held = Array.isArray(trick.warnings) ? trick.warnings.slice(0, TRICK_WARNINGS_MAX) : [];
+  return held.map(({ kind, text }) => ({ kind, text: isKnownKind(kind) ? t(`settings.tricks.warn.${kind}` satisfies MessageKey) : text }));
+}
+
 const trickKey = (trick: Pick<WireTrickInfo, "host" | "id">): string => `${trick.host}/${trick.id}`;
 
 export interface TricksSettingsCardProps {
@@ -111,8 +139,28 @@ export function TricksSettingsCard(props: TricksSettingsCardProps) {
   return <TricksList {...props} tricks={state.tricks} />;
 }
 
+/** The warnings under a row: one quiet line each, then the line that they are a text search. */
+function TrickWarnings({ lines }: { lines: readonly WarningLine[] }) {
+  return (
+    <div data-line="warnings" className="pt-2">
+      <ul aria-label={t("settings.tricks.warn.label")} className="space-y-1">
+        {lines.map((line) => (
+          <li key={line.kind} data-warning={line.kind} className="flex items-start gap-1.5 text-xs text-muted-foreground">
+            <Icon name="warning" className="mt-px size-3 shrink-0" />
+            <span className="min-w-0">{line.text}</span>
+          </li>
+        ))}
+      </ul>
+      <p className="pt-1 text-xs text-muted-foreground">{t("settings.tricks.warn.honesty")}</p>
+    </div>
+  );
+}
+
 function TrickRow({ trick, clock, checked, canWrite, onFlip }: { trick: WireTrickInfo; clock: number; checked: boolean; canWrite: boolean; onFlip: (on: boolean) => void }) {
   const slot = slotLine(trick, clock);
+  const warnings = warningLines(trick);
+  // Before the switch: off, or on with code nobody approved yet. A tap on the switch closes the list.
+  const showWarnings = warnings.length > 0 && (!checked || trick.changed === true);
   return (
     <div data-trick={trick.id} className="flex min-h-11 items-center justify-between gap-4 px-4 py-3">
       <div className="min-w-0 flex-1">
@@ -123,6 +171,7 @@ function TrickRow({ trick, clock, checked, canWrite, onFlip }: { trick: WireTric
         <p data-line="slot" data-trouble={slot.trouble ? "true" : undefined} className="truncate text-xs text-muted-foreground">
           {slot.text}
         </p>
+        <Collapse open={showWarnings}>{showWarnings ? <TrickWarnings lines={warnings} /> : null}</Collapse>
       </div>
       <Switch checked={checked} onCheckedChange={onFlip} disabled={!canWrite} aria-label={trick.name} />
     </div>

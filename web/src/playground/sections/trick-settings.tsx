@@ -104,6 +104,26 @@ export function TrickSettingsSection(): ReactNode {
           ]}
         />
       </Group>
+      <Group title="Before the switch">
+        <ListCard
+          n={8}
+          state="trick-settings-warnings"
+          label="warnings before the switch"
+          tricks={[
+            trick("standup", "Standup notes", {
+              on: false,
+              state: "off",
+              places: ["session"],
+              provenance: { via: "repo", at: "2026-11-08T09:38:00Z", repo: "AltanS/collie-tricks", sha: "9c41d07e2b6a" },
+              warnings: [
+                { kind: "model", text: "On a timer this trick starts an agent or calls a model. Each run can use your subscription." },
+                { kind: "network", text: "This trick reaches the network." },
+              ],
+            }),
+            trick("clock", "Clock", { on: false, state: "off", places: ["belt"], provenance: { via: "cli", at: "2026-11-08T09:38:00Z" } }),
+          ]}
+        />
+      </Group>
       <Group title="Nothing to list">
         <ListCard n={6} state="trick-settings-empty" label="folder, no trick" tricks={[]} />
         <ListCard n={7} state="trick-settings-read-only" label="a device that may only read" tricks={HEALTHY.slice(0, 2)} readOnly />

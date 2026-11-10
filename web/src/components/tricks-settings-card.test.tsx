@@ -4,11 +4,12 @@ import { http, HttpResponse } from "msw";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { HOLD_MS, TricksSettingsCard, placesLine, provenanceLine, slotLine, useTricksPresent } from "@/components/tricks-settings-card";
+import { HOLD_MS, TricksSettingsCard, placesLine, provenanceLine, slotLine, useTricksPresent, warningLines } from "@/components/tricks-settings-card";
 import { switchTrick } from "@/lib/api";
 import { ROOT_ROUTE_ID } from "@/lib/loaders";
 import type { TricksReply, WireTrickInfo } from "@/lib/tricks/schema";
 import { createTricksStore, type TricksStore } from "@/lib/tricks/store";
+import { readTrick } from "@/lib/tricks/wire";
 import { clearStatus, currentStatus } from "@/lib/status";
 import { server } from "@/test/setup";
 
@@ -157,6 +158,53 @@ describe("TricksSettingsCard: the rows", () => {
     expect(screen.getByText("collie trick init <id>").className).toContain("font-mono");
     expect(screen.queryAllByRole("switch")).toHaveLength(0);
     expect(screen.getByText("A trick runs as you.")).toBeInTheDocument();
+  });
+});
+
+describe("TricksSettingsCard: the warnings before the switch (review 15)", () => {
+  const WARNED: WireTrickInfo = {
+    ...TRACKER,
+    warnings: [
+      { kind: "model", text: "bridge words for model" },
+      { kind: "network", text: "bridge words for network" },
+    ],
+  };
+  const MODEL_LINE = "On a timer this trick starts an agent or calls a model. Each run can use your subscription.";
+  const HONESTY = "Found by a text search of its code, not a proof.";
+
+  it("lists a trick's warnings in the phone's words under an off trick, with the honesty line", async () => {
+    renderCard(await storeWith([LEGS, WARNED]));
+    const row = within(rowOf("tracker"));
+    const list = await row.findByRole("list", { name: "What a text search of its code found" });
+    expect(within(list).getAllByRole("listitem").map((li) => li.textContent)).toEqual([MODEL_LINE, "This trick reaches the network."]);
+    expect(row.getByText(HONESTY)).toBeInTheDocument();
+    // A trick with none draws the three lines alone.
+    expect(rowOf("legs").querySelector('[data-line="warnings"]')).toBeNull();
+  });
+
+  it("keeps the switch one tap: no second confirm and no button", async () => {
+    const user = userEvent.setup();
+    const onSwitch = vi.fn(async (_host: string, _id: string, on: boolean) => ({ ...WARNED, on, state: "ok" as const, warnings: undefined }));
+    renderCard(await storeWith([WARNED]), onSwitch);
+    await user.click(await screen.findByRole("switch", { name: "Tracker" }));
+    expect(onSwitch).toHaveBeenCalledTimes(1);
+    expect(onSwitch).toHaveBeenCalledWith("bluefin", "tracker", true);
+    expect(screen.getByRole("switch", { name: "Tracker" })).toBeChecked();
+    expect(screen.queryByRole("button")).toBeNull();
+  });
+
+  it("shows them for a changed trick that is on, and the bridge's own words for a kind it does not know", async () => {
+    const changed: WireTrickInfo = { ...LEGS, state: "stopped", changed: true, error: "This trick changed.", warnings: [{ kind: "teleport", text: "This trick moves the moon." }] };
+    renderCard(await storeWith([changed]));
+    expect(await within(rowOf("legs")).findByText("This trick moves the moon.")).toBeInTheDocument();
+    expect(warningLines({ warnings: undefined })).toEqual([]);
+  });
+
+  it("reads a bridge that sends none, and leaves out a malformed entry", () => {
+    const base = { host: "bluefin", id: "legs", name: "Legs", icon: "plug", on: false, state: "off", places: ["belt"] };
+    expect(readTrick(base)).not.toHaveProperty("warnings");
+    expect(readTrick({ ...base, warnings: "loud" })).not.toHaveProperty("warnings");
+    expect(readTrick({ ...base, warnings: [{ kind: "network", text: "x" }, 5, { kind: 1, text: "y" }, null] })?.warnings).toEqual([{ kind: "network", text: "x" }]);
   });
 });
 

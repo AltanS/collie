@@ -3332,6 +3332,14 @@ export const en = {
   "settings.tricks.withTime": "{what} · {time}",
   "settings.tricks.refused": "Manifest refused: {reason}",
   "settings.tricks.refusedBare": "Manifest refused",
+  // Warnings at the switch (M94 review 15): English only until the translation pass, listed in PENDING_TRANSLATION below.
+  "settings.tricks.warn.label": "What a text search of its code found",
+  "settings.tricks.warn.spawn": "This trick starts other programs on this machine.",
+  "settings.tricks.warn.network": "This trick reaches the network.",
+  "settings.tricks.warn.write": "This trick writes files outside its own state folder.",
+  "settings.tricks.warn.model": "On a timer this trick starts an agent or calls a model. Each run can use your subscription.",
+  "settings.tricks.warn.import": "This trick imports a package Collie does not install, so it may not run.",
+  "settings.tricks.warn.honesty": "Found by a text search of its code, not a proof.",
 
   // --- hill: the Decisions agents post, and the view that answers them (M96) ---
   // "Hill" is the view's name, a Collie word like a brand: the same in every language, never
@@ -3591,6 +3599,14 @@ export const PENDING_TRANSLATION = [
   // The Hill's push switch (M96, 2026-11-10).
   "settings.notify.decisions.label",
   "settings.notify.decisions.hint",
+  // A trick's warnings at the switch (M94 review 15).
+  "settings.tricks.warn.label",
+  "settings.tricks.warn.spawn",
+  "settings.tricks.warn.network",
+  "settings.tricks.warn.write",
+  "settings.tricks.warn.model",
+  "settings.tricks.warn.import",
+  "settings.tricks.warn.honesty",
 ] as const satisfies readonly MessageKey[];
 
 /** A key a bundle may leave out until the translation pass. */

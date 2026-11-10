@@ -163,7 +163,7 @@ export interface TrickScannerOptions {
 }
 
 /** `work` within `ms`, or `null` when it ran over. The work goes on, unawaited. */
-async function within<T>(work: Promise<T>, ms: number): Promise<T | null> {
+export async function within<T>(work: Promise<T>, ms: number): Promise<T | null> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const late = new Promise<null>((resolve) => {
     timer = setTimeout(() => resolve(null), ms);

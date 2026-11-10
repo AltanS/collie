@@ -18,10 +18,11 @@ import {
   type Refusal,
   type TapRequest,
   type WireTrickInfo,
+  type WireTrickWarning,
 } from "../../web/src/lib/tricks/schema.ts";
 import type { HillTrickTap } from "../hill/service.ts";
 import { trickCodeHash } from "./code-hash.ts";
-import { createTrickScanner, type FoundTrick, type TricksScan } from "./discover.ts";
+import { createTrickScanner, SCAN_TIMEOUT_MS, within, type FoundTrick, type TricksScan } from "./discover.ts";
 import { scrubEnv, type ProgramEnv } from "./env.ts";
 import { buildFacts, type FactsWorld } from "./facts.ts";
 import { readTrickMedia, type TrickMediaFile } from "./media.ts";
@@ -31,6 +32,7 @@ import { tricksConfigDir, trickStateDir } from "./paths.ts";
 import { trickSessionPanes, type TrickSessionPanes } from "./panes.ts";
 import { receiptFrame, TrickReceiptStore, type TrickReceiptRecord, type TrickReceiptSurface } from "./receipts.ts";
 import { outcomeProblem, runProgram, type RunOutcome, type RunSpec } from "./run.ts";
+import { trickWarnings, wireWarnings } from "./scan.ts";
 import { TricksStore, problemLine } from "./store.ts";
 import { createSwitchReader, updateSwitches, withSwitch, type SwitchEntry, type Switches } from "./switches.ts";
 
@@ -70,7 +72,11 @@ import { createSwitchReader, updateSwitches, withSwitch, type SwitchEntry, type 
 // stale. The error line is masked and capped, and goes to the list entry, the doctor row and one log
 // line when it changes, never once per run.
 //
-// ── PROVENANCE (review 15) ──────────────────────────────────────────────────────
+// ── WARNINGS AT THE SWITCH (review 15) ─────────────────────────────────────────
+// The row of a trick that is off, or on and changed, carries the check scan's warnings (scan.ts), one per
+// kind with a plain sentence, so Settings shows them before the person switches it on. They are taken
+// after a scan, once per code hash, never while a trick is on and unchanged, and a slow read never holds
+// the scan past {@link SCAN_TIMEOUT_MS}: the row then gains them when the read ends. They never refuse.
 // A trick `collie trick add` made shows its origin record (origin.ts) as its provenance.
 //
 // ── TAPS ────────────────────────────────────────────────────────────────────────
@@ -347,6 +353,10 @@ export class TricksService implements TricksSurface {
   private timer: ReturnType<typeof setInterval> | null = null;
   /** Switch writes run one at a time, so two phones cannot lose each other's change. */
   private switching: Promise<unknown> = Promise.resolve();
+  /** The warnings of each trick's code, by the code hash they were taken for. */
+  private readonly warningsOf = new Map<string, { codeHash: string; warnings: WireTrickWarning[] }>();
+  /** The warnings read in flight, one at a time. */
+  private warningRead: Promise<void> | null = null;
 
   constructor(deps: TricksServiceDeps) {
     this.deps = deps;
@@ -425,6 +435,7 @@ export class TricksService implements TricksSurface {
         const switches = await this.readSwitches();
         const scan = await this.scanner.scan(new Set(switches.on.keys()));
         this.apply(scan, switches);
+        await this.readWarnings();
       } catch (err) {
         this.warn(`the tricks folder could not be read: ${err instanceof Error ? err.message : String(err)}`);
       } finally {
@@ -509,6 +520,34 @@ export class TricksService implements TricksSurface {
     this.publish(found.id);
   }
 
+  /** Whether a trick's row shows its warnings: a manifest that parsed, and off or changed. */
+  private wantsWarnings(rt: TrickRuntime): boolean {
+    return rt.found.manifest !== undefined && rt.found.codeHash !== undefined && (!rt.on || rt.changed);
+  }
+
+  /**
+   * Take the warnings of every trick that shows them and whose code moved since they were taken, then
+   * publish its row again. Waits at most {@link SCAN_TIMEOUT_MS}; a read that runs over goes on, and its
+   * rows move when it ends. Never throws.
+   */
+  private async readWarnings(): Promise<void> {
+    for (const id of this.warningsOf.keys()) if (!this.runtimes.has(id)) this.warningsOf.delete(id);
+    const stale = [...this.runtimes.values()].filter((rt) => this.wantsWarnings(rt) && this.warningsOf.get(rt.found.id)?.codeHash !== rt.found.codeHash);
+    if (stale.length === 0 && this.warningRead === null) return;
+    this.warningRead ??= (async () => {
+      for (const rt of stale) {
+        const { manifest, codeHash, dir, id } = rt.found;
+        if (manifest === undefined || codeHash === undefined) continue;
+        const warnings = wireWarnings(await trickWarnings(dir, manifest).catch(() => []));
+        this.warningsOf.set(id, { codeHash, warnings });
+        this.publish(id);
+      }
+    })().finally(() => {
+      this.warningRead = null;
+    });
+    await within(this.warningRead, SCAN_TIMEOUT_MS);
+  }
+
   /** The trick as the hill's sender names it. */
   private hillTrick(rt: TrickRuntime): TrickHillTrick {
     return { id: rt.found.id, name: rt.found.manifest?.name ?? rt.found.id, memberId: this.deps.memberId, dir: rt.found.dir };
@@ -550,6 +589,8 @@ export class TricksService implements TricksSurface {
     if (refusals.length > 0) info.refusals = refusals;
     if (rt.changed) info.changed = true;
     if (m?.env !== undefined) info.env = m.env;
+    const taken = this.warningsOf.get(id);
+    if (this.wantsWarnings(rt) && taken !== undefined && taken.codeHash === rt.found.codeHash && taken.warnings.length > 0) info.warnings = taken.warnings;
     this.store.setInfo(info);
   }
 
