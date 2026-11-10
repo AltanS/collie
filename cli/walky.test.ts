@@ -18,6 +18,7 @@ import { capture, context } from "./fakes.ts";
 import { EXIT } from "./io.ts";
 import { realFiles } from "./sys.ts";
 import {
+  askPaneKind,
   askSocket,
   cmdWalky,
   cmdWalkyCancel,
@@ -712,6 +713,16 @@ describe("reply, inbox, status, who", () => {
     expect(await cmdWalkyOff(mixed, [])).toBe(EXIT.OK);
     expect(mixed.io.stderr).toEqual([`walky talky: ${OLDER_BRIDGE_SWITCH}`]);
     expect(mixed.io.stdout).toEqual([OFF_WORDS]);
+  });
+
+  socketTest("askPaneKind: the bridge says agent for an agent's pane; no pane, no bridge or an older one say unknown", async () => {
+    const b = await bridge();
+    expect(await askPaneKind(deps(b, inPane("%1")))).toBe("agent");
+    expect(await askPaneKind(deps(b))).toBe("unknown");
+    expect(await askPaneKind(deps(b, inPane("%9")))).toBe("unknown");
+    const older = await olderBridge();
+    expect(await askPaneKind(deps(b, inPane("%1"), { sockets: () => [older.path] }))).toBe("unknown");
+    expect(await askPaneKind(deps(b, inPane("%1"), { sockets: () => [] }))).toBe("unknown");
   });
 
   socketTest("who marks an off session in STATE and in --json, and tells an off asker how to turn on", async () => {

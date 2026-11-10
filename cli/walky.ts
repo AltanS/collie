@@ -5,7 +5,7 @@ import { readEnvMarkers, edgeStateDirs, type EdgeTargetDeps } from "./beacon.ts"
 import { holdSocketSafe } from "./hold.ts";
 import { EXIT, type Io } from "./io.ts";
 import type { JsonObject, JsonValue } from "../bridge/json.ts";
-import { asJsonNumber, asJsonObject, asJsonString, parseJsonObject } from "../web/src/lib/json.ts";
+import { asJsonBoolean, asJsonNumber, asJsonObject, asJsonString, parseJsonObject } from "../web/src/lib/json.ts";
 import { inScope, LOCAL_MEMBER, parseAddress, type WalkyScope } from "../bridge/walky/address.ts";
 import { OUTSIDE_YOUR_SPACE } from "../bridge/walky/border.ts";
 import { readMessage, readReceipt, readSpace } from "../bridge/walky/parse.ts";
@@ -106,6 +106,22 @@ async function request(deps: WalkyDeps, body: JsonObject, path?: string, first?:
   if (unread) return { ok: false, error: UNREAD_BY_OLDER_BRIDGE };
   if (notHere) return { ok: false, error: "no Collie bridge on this machine knows this pane" };
   return { ok: false, error: "no running Collie bridge answers on this machine" };
+}
+
+/** What the bridge says of the pane the CLI runs in. `unknown`: no pane, no bridge, or a bridge before the `pane` op. */
+export type PaneKind = "agent" | "shell" | "unknown";
+
+/**
+ * Ask the local bridges whether this pane runs an agent (crew slice 3). Outside a pane, with no bridge
+ * answering, or with only bridges that do not know the op, the answer is `unknown`: the caller decides
+ * what that means. `collie trick on` treats it as a shell, a speed bump and not a wall.
+ */
+export async function askPaneKind(deps: WalkyDeps): Promise<PaneKind> {
+  if (readEnvMarkers(deps.ctx.env).length === 0) return "unknown";
+  const answer = await request(deps, { op: "pane" }).catch(() => null);
+  const agent = answer?.ok === true ? asJsonBoolean(answer.body.agent) : undefined;
+  if (agent === undefined) return "unknown";
+  return agent ? "agent" : "shell";
 }
 
 /**

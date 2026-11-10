@@ -12,6 +12,8 @@
 //   cancel  { id }                      → { ok, results }   (M62 spec 03: the sender takes a held message back)
 //   off     {}                          → { ok, off }       (M89: the asker's own pane turns its walky talky off)
 //   on      {}                          → { ok, off }       (M89: and on again)
+//   pane    {}                          → { ok, agent }     (crew slice 3: whether the asking pane runs an
+//                                                            agent; `collie trick on` asks it before it refuses)
 // The hill (M96), four operations beside these, answered only by a bridge built with it:
 //   hill.post     { requestId, title, summary, ... } → { ok, decision } | { ok: false, error, code }
 //   hill.status   { id }                       → { ok, decision }   (the poster, and the session its replyTo names)
@@ -123,6 +125,7 @@ export type WalkyAnswer =
   | { readonly ok: true; readonly pane: string | null; readonly messages: readonly WalkyEntry[] }
   | { readonly ok: true; readonly acked: number }
   | { readonly ok: true; readonly off: boolean }
+  | { readonly ok: true; readonly agent: boolean }
   | { readonly ok: true; readonly results: readonly TakeBack[] }
   // The hill (M96).
   | { readonly ok: false; readonly error: string; readonly hill: true; readonly code?: HillRefusalCode; readonly missing?: string }
@@ -211,6 +214,11 @@ export async function answerRequest(service: WalkyService, request: WalkyRequest
         return { ok: false, error: SWITCH_NEEDS_A_PANE };
       }
       return { ok: true, off: service.setOff(pane, request.op === "off", "session") };
+    case "pane":
+      // What the asking pane runs, from the pane its markers place: an agent's session, or a bare shell.
+      // `collie trick on` refuses only for an agent (cli/trick.ts); with no markers there is no pane to say.
+      if (pane === null) return { ok: false, error: "needs a pane" };
+      return { ok: true, agent: pane.agent };
     case "hill.post":
     case "hill.status":
     case "hill.withdraw":

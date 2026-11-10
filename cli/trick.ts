@@ -43,6 +43,7 @@ import {
   type Refusal,
 } from "../web/src/lib/tricks/schema.ts";
 import { readEnvMarkers } from "./beacon.ts";
+import type { PaneKind } from "./walky.ts";
 import type { CliContext } from "./context.ts";
 import { hillWordingWarnings, HILL_WRITING } from "./hill-rules.ts";
 import { EXIT, type Io } from "./io.ts";
@@ -89,6 +90,8 @@ export interface TrickDeps {
   files: Pick<Files, "read" | "exists" | "entryType">;
   fetch: CrewFetch;
   now: () => number;
+  /** What the local bridge says of the pane this runs in (`askPaneKind`, cli/walky.ts). None: not asked, so allowed. */
+  paneKind?: () => Promise<PaneKind>;
 }
 
 // ── list ─────────────────────────────────────────────────────────────────────
@@ -294,17 +297,25 @@ export async function cmdTrickSkill(deps: TrickDeps, args: readonly string[]): P
 // ── on / off / auto ──────────────────────────────────────────────────────────
 
 /**
- * The line `collie trick on` refuses with inside a multiplexer pane. A SPEED BUMP, NOT A WALL: the pane's
- * markers (`readEnvMarkers`, cli/beacon.ts, the same ones `collie walky` and `collie hill` send) are what
- * make the bridge take a caller for an agent, and an agent should ask, not approve its own code. A process
- * that strips them, or writes the switch file itself, gets past it: the user account is the real boundary.
+ * The line `collie trick on` refuses with inside an agent's pane. A SPEED BUMP, NOT A WALL: the CLI asks
+ * the local bridge over the walky socket whether the pane its markers name (`readEnvMarkers`,
+ * cli/beacon.ts) runs an agent, and refuses only on a yes. A shell pane in the multiplexer is a person's
+ * terminal and may approve. No bridge, a bridge that does not know the pane, or one before the question
+ * lets the yes through: an agent should ask, not approve its own code, but a process that strips the
+ * markers, or writes the switch file itself, gets past any check here. The user account is the real boundary.
  */
 export function agentPaneRefusal(id: string): string[] {
   return [
-    "error: collie trick on is a person's yes to the code, and this runs inside a multiplexer pane, where Collie takes the caller for an agent.",
+    "error: collie trick on is a person's yes to the code, and this runs in a pane where an agent works.",
     `An agent does not approve its own trick. Tell your operator that ${id} is ready to switch on.`,
-    `A person approves it on the phone (Settings, Tricks), or runs collie trick on ${id} in a terminal outside the multiplexer.`,
+    `A person approves it on the phone (Settings, Tricks), or runs collie trick on ${id} in a shell pane or a terminal.`,
   ];
+}
+
+/** Whether the bridge says this pane runs an agent. Outside a pane, or with no answer, it is not (see above). */
+async function inAgentPane(deps: TrickDeps): Promise<boolean> {
+  if (readEnvMarkers(deps.ctx.env).length === 0 || deps.paneKind === undefined) return false;
+  return (await deps.paneKind().catch(() => "unknown" as const)) === "agent";
 }
 
 export async function cmdTrickSwitch(deps: TrickDeps, args: readonly string[], on: boolean): Promise<number> {
@@ -327,7 +338,7 @@ export async function cmdTrickSwitch(deps: TrickDeps, args: readonly string[], o
     deps.io.out(`${id} is off. The bridge stops running it and its parts go from the phone.`);
     return EXIT.OK;
   }
-  if (readEnvMarkers(deps.ctx.env).length > 0) {
+  if (await inAgentPane(deps)) {
     for (const line of agentPaneRefusal(id)) deps.io.err(line);
     return EXIT.REFUSED;
   }
@@ -377,7 +388,7 @@ export async function cmdTrickAuto(deps: TrickDeps, args: readonly string[]): Pr
     deps.io.err("usage: collie trick auto <id> on|off   (take a new version whose powers did not change without asking)");
     return EXIT.USAGE;
   }
-  if (word === "on" && readEnvMarkers(deps.ctx.env).length > 0) {
+  if (word === "on" && (await inAgentPane(deps))) {
     for (const line of agentPaneRefusal(id)) deps.io.err(line);
     return EXIT.REFUSED;
   }

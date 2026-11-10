@@ -117,6 +117,7 @@ import { HOST } from "../bridge/host.ts";
 import { cmdSupervise, realSuperviseDeps } from "./task-scheduler.ts";
 import { cmdApplyUpdate, cmdUpdate } from "./update.ts";
 import {
+  askPaneKind,
   askSocket,
   cmdWalky,
   cmdWalkyCancel,
@@ -422,7 +423,7 @@ function configVerbDeps(io: Io): ConfigDeps {
 
 /** `trick`: the context, the filesystem, and the one read `list` makes of this instance's own bridge. */
 function trickVerbDeps(io: Io): TrickDeps {
-  return { ctx: loadContext(io.err), io, files: realFiles, fetch: (url, init) => fetch(url, init), now: Date.now };
+  return { ctx: loadContext(io.err), io, files: realFiles, fetch: (url, init) => fetch(url, init), now: Date.now, paneKind: () => askPaneKind(walkyDeps(io)) };
 }
 
 /**
