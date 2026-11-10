@@ -82,11 +82,15 @@ crew routes make kind `agent`, the trick runner makes kind `trick`, and a decisi
 read only from the bridge's own store. Its `from.ref` is `{ type: "version", id, hash }`, the pending
 snapshot's code hash. The summary counts the changed files and names any new right (an `env` name or a
 place). The view shows a chip per new right, a line per warning kind that is new since the
-approved copy, a table of the files with their `+` and `-` counts, up to two diffs, and "and N more
-files"; it stays under 8 KiB. The counts and diffs come from `git diff --no-index -U2` run from `/` with
-the Files view's hardening, `--no-ext-diff`, `--no-textconv`, 5 s and 256 KiB per run
-(`bridge/tricks/version-diff.ts`); every line is masked like screen text. Without git the table lists
-the files only. The options are "Use the new version", "Use it and stop asking" (only when no new right
+approved copy, a table of the files with their `+` and `-` counts, the diffs of the largest text changes
+as many as fit, and "and N more files"; it stays under 8 KiB. The counts and diffs come from `git diff
+--no-index -U2` run from `/` with the Files view's hardening, `--no-ext-diff`, `--no-textconv`, 5 s and
+256 KiB per run (`bridge/tricks/version-diff.ts`); every line is masked like screen text, and a character
+the view refuses becomes `?`. Without git the table lists the files only. Collie recommends "Use the new
+version" only when the rights did not change, the text search finds nothing new, and every changed file
+is shown whole: its whole diff in the view, no line cut at 200 characters, no key masked, git's output
+not cut. Otherwise the summary says how much is shown ("1 of 3 files shown."), and a card with no view at
+all says "The change is too large to show here. Read it on the machine before you say yes." The options are "Use the new version", "Use it and stop asking" (only when no new right
 is asked) and "Keep the old version". A tap acts on exactly the hash on the card: when the folder moved
 since, the tap is refused with "The trick changed again since this card. A new card replaces this one."
 and the card stays open. A newer change replaces the card; approving elsewhere, the folder going back,

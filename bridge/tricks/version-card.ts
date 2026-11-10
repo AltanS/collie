@@ -1,9 +1,10 @@
 import { createHash } from "node:crypto";
 
 import { parseJson } from "../../web/src/lib/json.ts";
-import type { HillCollieRef, HillDecision, HillPostInput } from "../../web/src/lib/hill/wire.ts";
+import { HILL_SUMMARY_MAX, type HillCollieRef, type HillDecision, type HillPostInput } from "../../web/src/lib/hill/wire.ts";
 import { DECISION_VIEW_LIMITS, DIFF_LIMITS, LINE_MAX, parseDecisionView, PLACE_KINDS, TABLE_LIMITS, type PlaceKind, type TrickManifest, type View, type ViewNode } from "../../web/src/lib/tricks/schema.ts";
 import type { HillCollieSender, HillCollieVerdict, HillOneAnswer, HillPostAnswer } from "../hill/service.ts";
+import { unsafeText } from "./code-hash.ts";
 import { WARN_PLAIN } from "./scan.ts";
 import type { TrickVersionsPort, TrickVersionSubject, VersionAnswer } from "./service.ts";
 import { versionDiff, type ChangedFile, type VersionDiff } from "./version-diff.ts";
@@ -21,9 +22,17 @@ import { versionDiff, type ChangedFile, type VersionDiff } from "./version-diff.
 // ── WHAT THE PERSON SEES ───────────────────────────────────────────────────────────────────────────
 // Title "Use the new version of <name>?". The summary says what changed and the deciding fact: "3
 // files changed. It asks for no new rights." or "It now also asks for GITHUB_TOKEN." Options: use,
-// always (only when the rights did not change), keep. Collie recommends `use` only when the rights did
-// not change and a text search finds nothing new. The view, at most 8 KiB: a chip per new right, the
-// new warnings, the table of changed files with their line counts, up to two hunks, "and N more files".
+// always (only when the rights did not change), keep. The view, at most 8 KiB: a chip per new right,
+// the new warnings, the table of changed files with their line counts, the hunks of the largest text
+// changes as many as fit, "and N more files".
+//
+// WHAT IS SHOWN DECIDES THE RECOMMENDATION (security re-review B2, B6). A file counts as shown only
+// when its whole hunk is in the view: no line cut at 200 characters, no line past the hunk's cap, no key
+// masked in it, and git's output not cut. Collie recommends `use` only when every changed file is
+// shown, the rights did not change and a text search finds nothing new. Otherwise the summary says how
+// much is shown ("1 of 3 files shown."), and a card with no view at all says "The change is too large
+// to show here. Read it on the machine before you say yes." A file name is cleaned for the view (a
+// character the view refuses becomes `?`); the walk refuses such names anyway (code-hash.ts).
 //
 // ── THE ANSWER ─────────────────────────────────────────────────────────────────────────────────────
 // `answer` runs inside the Hill's claim (hill/service.ts `onCollieAnswer`), with the ref's hash: use
@@ -126,6 +135,14 @@ function filesSentence(count: number): string {
   return count === 1 ? "1 file changed." : `${String(count)} files changed.`;
 }
 
+/** The summary's sentence for a card whose view could not be made at all. */
+export const VERSION_NOT_SHOWN = "The change is too large to show here. Read it on the machine before you say yes.";
+
+/** "1 of 3 files shown." */
+function shownSentence(shown: number, total: number): string {
+  return `${String(shown)} of ${String(total)} ${total === 1 ? "file" : "files"} shown.`;
+}
+
 /** The card for one waiting version: title, summary, options, recommendation and view. */
 export function versionCard(subject: TrickVersionSubject, diff: VersionDiff): Omit<HillPostInput, "requestId"> | null {
   const pending = subject.pending;
@@ -139,7 +156,15 @@ export function versionCard(subject: TrickVersionSubject, diff: VersionDiff): Om
   // The outer list takes a comma before its last part, as a part may itself say "a and b".
   const alsoWords = also.length <= 1 ? also.join("") : `${also.slice(0, -1).join(", ")}, and ${also.at(-1) ?? ""}`;
   const fact = also.length > 0 ? `It now also ${alsoWords}.` : powersChanged ? "Its rights changed." : "It asks for no new rights.";
-  const summary = `${filesSentence(fileCount)} ${fact}`;
+  // The view is what the person reads before the yes: how much of the change it holds decides the rest.
+  const shown = versionViewShown(rights, warnings, diff);
+  const total = Math.max(fileCount, diff.files.length);
+  const whole = shown.view !== null && shown.shown >= total;
+  const tail = shown.view === null ? ` ${VERSION_NOT_SHOWN}` : whole ? "" : ` ${shownSentence(shown.shown, total)}`;
+  // A long list of new rights is cut to its gist so the summary stays within the Hill's cap; the chips say it all.
+  const short = rights.length > 0 ? "It asks for new rights, listed below." : "It does something new, listed below.";
+  const full = `${filesSentence(fileCount)} ${fact}${tail}`;
+  const summary = [...full].length <= HILL_SUMMARY_MAX ? full : `${filesSentence(fileCount)} ${short}${tail}`;
   const options: HillPostInput["options"] = [{ intent: "use", label: "Use the new version" }];
   if (!powersChanged) options.push({ intent: "always", label: "Use it and stop asking", detail: "Later changes are taken without asking, unless they ask for new rights." });
   options.push({ intent: "keep", label: "Keep the old version" });
@@ -149,16 +174,15 @@ export function versionCard(subject: TrickVersionSubject, diff: VersionDiff): Om
     options,
     text: "none",
     priority: "today",
-    recommends: powersChanged || warnings.length > 0 ? null : { intent: "use", why: "It asks for no new rights, and a text search of its code finds nothing new." },
+    recommends: powersChanged || warnings.length > 0 || !whole ? null : { intent: "use", why: "It asks for no new rights, and a text search of its code finds nothing new." },
   };
-  const view = versionView(rights, warnings, diff);
-  return view === null ? card : { ...card, view };
+  return shown.view === null ? card : { ...card, view: shown.view };
 }
 
-/** A path as one cell: masked by the caller's diff, cut from the start to fit, so the file name shows. */
+/** A path as one cell: any character the view refuses as `?`, cut from the start to fit, so the file name shows. */
 function cellPath(rel: string): string {
-  const chars = [...rel];
-  return chars.length <= LINE_MAX ? rel : `…${chars.slice(chars.length - LINE_MAX + 1).join("")}`;
+  const chars = [...rel].map((ch) => (unsafeText(ch) ? "?" : ch));
+  return chars.length <= LINE_MAX ? chars.join("") : `…${chars.slice(chars.length - LINE_MAX + 1).join("")}`;
 }
 
 function countCell(n: number | null, sign: string): string {
@@ -179,11 +203,13 @@ function filesTable(files: readonly ChangedFile[], rows: number): ViewNode {
   return { kind: "table", kids };
 }
 
-/** One hunk as a diff node: at most `lines` lines of {@link DIFF_LIMITS} characters. */
-function hunkNode(file: ChangedFile, lines: number): ViewNode | null {
-  const hunk = (file.hunk ?? []).slice(0, lines).map((line) => [...line].slice(0, DIFF_LIMITS.lineChars).join(""));
+/** One hunk as a diff node: at most `lines` lines of {@link DIFF_LIMITS} characters, and whether it is the whole hunk. */
+function hunkNode(file: ChangedFile, lines: number): { node: ViewNode; whole: boolean } | null {
+  const all = file.hunk ?? [];
+  const hunk = all.slice(0, lines).map((line) => [...line].slice(0, DIFF_LIMITS.lineChars).join(""));
   if (hunk.length === 0) return null;
-  return { kind: "diff", text: hunk.join("\n"), attrs: { file: cellPath(file.rel) } };
+  const whole = file.cut !== true && all.length <= lines && all.every((line) => [...line].length <= DIFF_LIMITS.lineChars);
+  return { node: { kind: "diff", text: hunk.join("\n"), attrs: { file: cellPath(file.rel) } }, whole };
 }
 
 function bytesOf(view: View): number {
@@ -196,42 +222,57 @@ function checked(view: View): View | undefined {
 }
 
 /**
- * The card's view: a chip per new right, the new warnings, the changed files, up to two hunks of the
- * largest text changes, and "and N more files". Cut until it fits {@link DECISION_VIEW_LIMITS} and the
- * schema takes it: the second hunk first, then the first hunk's lines, then the table's rows. Null when
- * there is nothing to show or nothing fits.
+ * The card's view: a chip per new right, the new warnings, the changed files, the hunks of the largest
+ * text changes as many as fit, and "and N more files". Cut until it fits {@link DECISION_VIEW_LIMITS} and
+ * the schema takes it: the smallest hunk first, then the last hunk's lines, then the table's rows. Null
+ * when there is nothing to show or nothing fits.
  */
 export function versionView(rights: readonly string[], warnings: readonly (keyof typeof WARN_PLAIN)[], diff: VersionDiff): View | null {
+  return versionViewShown(rights, warnings, diff).view;
+}
+
+/** The card's view, and how many changed files it shows whole: a row in the table and its whole hunk. */
+export interface VersionViewShown {
+  view: View | null;
+  shown: number;
+}
+
+/** The view, and how many changed files it shows whole: a row in the table and its whole hunk. */
+export function versionViewShown(rights: readonly string[], warnings: readonly (keyof typeof WARN_PLAIN)[], diff: VersionDiff): VersionViewShown {
   const head: ViewNode[] = [];
   if (rights.length > 0) head.push({ kind: "bar", attrs: { label: "New rights" }, kids: rights.slice(0, 8).map((right): ViewNode => ({ kind: "chip", text: [...right].slice(0, 60).join(""), attrs: { tone: "warn" } })) });
   for (const kind of warnings) head.push({ kind: "para", text: WARN_PLAIN[kind] });
   const files = diff.files;
-  const largest = files
-    .filter((file) => (file.hunk ?? []).length > 0)
-    .toSorted((a, b) => (b.plus ?? 0) + (b.minus ?? 0) - ((a.plus ?? 0) + (a.minus ?? 0)))
-    .slice(0, 2);
+  const largest = files.filter((file) => (file.hunk ?? []).length > 0).toSorted((a, b) => (b.plus ?? 0) + (b.minus ?? 0) - ((a.plus ?? 0) + (a.minus ?? 0)));
   let rows = Math.min(files.length, TABLE_LIMITS.rows.max);
   let hunks = largest.length;
   let lines: number = DIFF_LIMITS.lines;
-  for (let tries = 0; tries < 64; tries += 1) {
+  // Bounded: every miss takes one hunk, halves the last hunk's lines, or takes one row.
+  for (let tries = 0; tries < 256; tries += 1) {
     const view: View = [...head];
     if (rows > 0) view.push(filesTable(files, rows));
-    for (const file of largest.slice(0, hunks)) {
-      const node = hunkNode(file, lines);
-      if (node !== null) view.push(node);
+    let shown = 0;
+    const listed = new Set(files.slice(0, rows).map((file) => file.rel));
+    for (const [i, file] of largest.slice(0, hunks).entries()) {
+      const hunk = hunkNode(file, i === hunks - 1 ? lines : DIFF_LIMITS.lines);
+      if (hunk === null) continue;
+      view.push(hunk.node);
+      if (hunk.whole && listed.has(file.rel)) shown += 1;
     }
     const more = files.length - rows;
     if (more > 0) view.push({ kind: "line", text: more === 1 ? "and 1 more file" : `and ${String(more)} more files`, attrs: { role: "note" } });
-    if (view.length === 0) return null;
+    if (view.length === 0) return { view: null, shown: 0 };
     const read = bytesOf(view) <= DECISION_VIEW_LIMITS.bytes ? checked(view) : undefined;
-    if (read !== undefined) return read;
-    if (hunks > 1) hunks -= 1;
-    else if (hunks === 1 && lines > 8) lines = Math.floor(lines / 2);
-    else if (hunks === 1) hunks = 0;
-    else if (rows > 1) rows -= 1;
-    else return head.length > 0 ? (checked(head) ?? null) : null;
+    if (read !== undefined) return { view: read, shown };
+    if (hunks > 1 && lines >= DIFF_LIMITS.lines) hunks -= 1;
+    else if (hunks >= 1 && lines > 8) lines = Math.floor(lines / 2);
+    else if (hunks >= 1) {
+      hunks -= 1;
+      lines = DIFF_LIMITS.lines;
+    } else if (rows > 1) rows -= 1;
+    else return { view: head.length > 0 ? (checked(head) ?? null) : null, shown: 0 };
   }
-  return null;
+  return { view: null, shown: 0 };
 }
 
 /** A canonical UUID for one card: the trick, the hash and how many cards of this trick came before. */
