@@ -90,6 +90,19 @@ open pane under `tabs: folder`; `pane-active` is the frame of the active pane co
   reads them (`lib/tab-look.ts`, `lib/composer-layout.ts`). They reach no pair the report measures,
   so the checks that existed before are unchanged; the new ones are the two ink pairs.
 
+## The find mark
+
+`find` (1.29.0) is the third optional token: the ground under a found or matched piece of text, a hit
+of Find in Chat and the marked letters of the session filter. The file keeps the amber the app drew
+before the token existed, so nothing looks different. The value carries an alpha, because it lies
+over whatever the text sits on.
+
+| token  | light                            | dark                           |
+| ------ | -------------------------------- | ------------------------------ |
+| `find` | oklch(0.879 0.169 91.605 / 0.7)  | oklch(0.769 0.188 70.08 / 0.4) |
+
+- `foreground` on `find` laid over the page: 14.64 light, 7.80 dark, over the 4.5 text needs.
+
 ## Status
 
 The old default's hues (blocked 25, working 72, done 152, idle and unknown 250, info 230). Light inks are 0.01
