@@ -94,13 +94,20 @@ export function Round({
   cases,
   options,
   frame,
+  caseValue: heldCase,
+  onCaseChange,
 }: {
   id: string;
   cases: readonly RoundCase[];
   options: readonly RoundOption[];
   frame: RoundFrame;
+  /** With `onCaseChange`, the case is the caller's: several rounds on one page then share ONE case. */
+  caseValue?: string;
+  onCaseChange?: (next: string) => void;
 }) {
-  const [caseValue, setCaseValue] = useState(cases[0]?.value ?? "");
+  const [ownCase, setOwnCase] = useState(cases[0]?.value ?? "");
+  const caseValue = heldCase ?? ownCase;
+  const setCaseValue = onCaseChange ?? setOwnCase;
   const [zoom, setZoom] = useState<(typeof ZOOMS)[number]["value"]>("1");
   const [replay, setReplay] = useState(0);
   const [flip, setFlip] = useState(false);

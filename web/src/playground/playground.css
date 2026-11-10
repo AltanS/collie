@@ -215,3 +215,11 @@
 .pg-scroll-row > * {
   flex-shrink: 0;
 }
+
+/* The "Chat look" section (sections/chat-look.tsx): a round's phones stay on ONE row, today always first at the
+   left, and the row pans sideways when the window holds fewer phones than the round has. */
+[data-pg-chat-look] .pg-round-row.pg-grid {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  padding-bottom: 0.5rem;
+}
