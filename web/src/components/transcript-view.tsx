@@ -12,6 +12,7 @@ import type { TranscriptEntry, TranscriptPart } from "@/lib/types";
 import { getLocaleSnapshot, t, tn } from "@/lib/i18n";
 import { useDashPrefs } from "@/hooks/use-dash-prefs";
 import { useLocale } from "@/hooks/use-locale";
+import { USER_WELL, USER_WELL_HUG } from "@/components/user-well";
 
 // Renders an agent transcript — the conversation history a Claude pane's terminal structurally
 // cannot hold (it runs on the alternate screen, which keeps no scrollback ring; see
@@ -234,7 +235,7 @@ function Turn({
   // as Chat's does; it is the well's last row instead.
   if (isUser) {
     return (
-      <div className="ml-auto w-fit max-w-[85%] rounded-md border border-status-working/25 bg-status-working/8 px-3 py-2">
+      <div className={cn(USER_WELL, USER_WELL_HUG)}>
         <span className="sr-only">{t("transcript.youLabel")}</span>
         <div className="space-y-1.5">
           {entry.parts.map((part, i) => (

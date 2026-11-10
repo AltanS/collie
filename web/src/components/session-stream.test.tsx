@@ -9,6 +9,8 @@ import { EMPTY_CHAT_WINDOW, type ChatWindow } from "@/lib/chat-window";
 import type { ChatItem } from "@/lib/chat-items";
 import type { ChatEntry } from "@/lib/types";
 import { BLOCK_HOLD_MS } from "./stream-block";
+import { USER_WELL, USER_WELL_HUG } from "./user-well";
+import { CHAT_LOOK_BEFORE, ChatLookContext } from "@/lib/chat-look";
 
 // The pane view's second body. The load-bearing behaviours: the two empty answers are never drawn
 // alike, a pane with nothing to read says nothing until it has actually asked, older turns come off
@@ -912,6 +914,56 @@ describe("SessionStream — the prompt pin", () => {
     );
     const pin = document.querySelector('[data-slot="prompt-pin"]');
     expect(pin).toHaveTextContent("fix the flaky test");
+  });
+
+  it("the pin leans right in the same well as the resting turn, so the message does not move when it sticks", () => {
+    layOut(250);
+    renderStream(
+      feedOf({
+        status: { kind: "live" },
+        entries: [prompt("p1", BASE, "fix the flaky test"), entry("a", BASE + 1, "one"), entry("b", BASE + 2, "two"), entry("c", BASE + 3, "three")],
+      }),
+    );
+    const pin = document.querySelector<HTMLElement>('[data-slot="prompt-pin"]')!;
+    // The resting turn: the well that holds the same words in the thread.
+    const resting = screen.getAllByText("fix the flaky test").map((el) => el.closest<HTMLElement>("[data-block]")).find((el) => el !== null)!;
+    const well = resting.querySelector<HTMLElement>(".ml-auto")!;
+    // Side, width cap and hairline sit on the button; the wash and the padding on the well inside it
+    // (the button's own ground stays opaque, so the thread does not show through the tint).
+    for (const cls of USER_WELL_HUG.split(" ")) {
+      expect(well).toHaveClass(cls);
+      expect(pin).toHaveClass(cls);
+    }
+    const inner = pin.querySelector<HTMLElement>(":scope > span")!;
+    for (const cls of USER_WELL.split(" ")) {
+      expect(well).toHaveClass(cls);
+      expect([pin, inner].some((el) => el.classList.contains(cls))).toBe(true);
+    }
+    expect(pin).not.toHaveClass("w-full");
+    // No prompt icon: the resting turn has none, and it would push the words right.
+    expect(pin.querySelector("svg")).toBeNull();
+    // The pin sits beside the scrollport, so the chat font size tokens ride on its wrapper.
+    expect(pin.parentElement?.style.getPropertyValue("--text-sm")).toBe("14px");
+  });
+
+  it("the look before 1.29 keeps the pin full width with its icon", () => {
+    layOut(250);
+    const feed = feedOf({
+      status: { kind: "live" },
+      entries: [prompt("p1", BASE, "fix the flaky test"), entry("a", BASE + 1, "one"), entry("b", BASE + 2, "two"), entry("c", BASE + 3, "three")],
+    });
+    const listRef = createRef<ChatMessageListHandle>();
+    render(
+      <ChatLookContext.Provider value={CHAT_LOOK_BEFORE}>
+        <SessionStream feed={feed} address="w1:p1" working={false} showToolCalls showCompactions={false} fontSize={14} listRef={listRef} agent="muse" />
+      </ChatLookContext.Provider>,
+    );
+    const pin = document.querySelector<HTMLElement>('[data-slot="prompt-pin"]')!;
+    expect(pin).toHaveClass("w-full");
+    expect(pin).not.toHaveClass("ml-auto");
+    expect(pin).not.toHaveClass("w-fit");
+    expect(pin.querySelector("svg")).not.toBeNull();
+    expect(pin.parentElement?.style.getPropertyValue("--text-sm")).toBe("");
   });
 
   it("pins nothing while the prompt itself is the top block", () => {

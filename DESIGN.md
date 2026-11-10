@@ -488,7 +488,10 @@ prose around it.
 the right, carries no caption row and shows its time on its last line. Orange stays its colour. The speaker is
 named for the screen reader only, by a visually hidden label as the well's first child. Chat
 (`chat-cards.tsx`) and History (`transcript-view.tsx`) draw the same well. Reason: the colour and the side
-already say whose turn it is, and a caption row spent a line on it.
+already say whose turn it is, and a caption row spent a line on it. The classes live in
+`components/user-well.ts`. The prompt pin (`prompt-pin.tsx`), which holds the current turn at the top of Chat
+while its answer scrolls under it, wears the same side, cap, well and text size, and no prompt icon, so the
+message does not move sideways when it sticks or lets go.
 
 **In Chat a new turn starts 20px under the block above, and blocks inside an agent run sit 8px apart.**
 Reason: the old 12px between everything made a question and the answer to the one before it look alike.

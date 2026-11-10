@@ -73,6 +73,7 @@ import {
 import type { Hunk, ToolQuestion } from "@/lib/types";
 import type { DiffRow } from "@/lib/unified-diff";
 import { cn } from "@/lib/utils";
+import { USER_WELL, USER_WELL_HUG, USER_WELL_TEXT } from "@/components/user-well";
 import { Icon } from "@/components/icons/icon";
 import type { IconKey } from "@/components/icons/keys";
 
@@ -660,14 +661,14 @@ function BareUserTurn({
       data-slot={pending === undefined ? undefined : "pending-turn"}
       data-pending={pending}
       className={cn(
-        "rounded-md border border-status-working/25 bg-status-working/8 px-3 py-2",
-        hug && "ml-auto w-fit max-w-[85%]",
+        USER_WELL,
+        hug && USER_WELL_HUG,
         pending !== undefined && "opacity-70",
       )}
     >
       {/* The caption row is gone, so the speaker is named for the screen reader alone. */}
       <span className="sr-only">{t("transcript.youLabel")}</span>
-      <p className="font-content whitespace-pre-wrap break-words text-sm">
+      <p className={USER_WELL_TEXT}>
         {text}
         {meta && (
           <span className="float-right mt-1 ml-3 flex h-4 items-center gap-1 font-sans text-[10px] font-medium tabular-nums text-status-working">

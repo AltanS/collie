@@ -884,6 +884,10 @@ export function SessionStream({
       // older turns is an ordinary act in this body and a rare one in that one.
       className={look.gutter === "16" ? "px-4 pt-0 pb-3" : "px-3 pt-0 pb-3"}
       style={textTokens(fontSize)}
+      // The pin sits beside the scrollport, so it takes the gutter and the chat font size from here. Only the
+      // hugging look does: the look before it keeps the overlay as it was.
+      overlayClassName={look.userTurn === "hug" && look.gutter === "16" ? "px-4" : undefined}
+      overlayStyle={look.userTurn === "hug" ? textTokens(fontSize) : undefined}
       overlay={pin !== null ? <PromptPin pin={pin} busy={seeking !== null || (pin.kind === "earlier" && loadingOlder)} onTap={onPinTap} /> : null}
     >
       {/* Top of the window. Older turns come off `hasOlder` and nothing else: what the live window
