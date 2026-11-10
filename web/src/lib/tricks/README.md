@@ -11,6 +11,58 @@ tricks" milestone in the tracker.
 (tones, icons, places, node kinds) and one total parser per document. It imports only `../json`, so
 the bridge, the CLI and the web all load it by relative path, with no DOM and no `@/` alias.
 
+## Writing a trick in TypeScript
+
+`collie trick init <id>` makes `<config dir>/tricks/<id>/` with five files: `trick.toml` with
+`run = "program.ts"`, `program.ts` (about 25 lines: a status chip, a Dashboard tile, a session with a
+row per session, and a Decision commented out), `trick.ts` (the helper), `config.toml` (settings the
+program reads) and `AGENTS.md` (the contract for an agent that grows the trick). `collie trick init
+--sh <id>` writes the shell sample instead (`provider.sh`, one belt mark).
+
+```ts
+import { run, v } from "./trick.ts";
+
+run((t) => {
+  const busy = t.facts.sessions.filter((s) => s.status === "working").length;
+  t.status({ text: `${busy} busy`, tone: busy > 0 ? "accent" : "muted" });
+  t.session({ view: [v.list(t.facts.sessions.map((s) => v.row(s.name ?? s.paneId, { end: s.status })))] });
+});
+```
+
+`trick.ts` is one self-contained file (`cli/trick-kit/trick.ts` in this repo, held in the binary as
+text). It imports only `node:` built-ins and Bun, and its first line names its version, `// collie
+trick helper v1`. `collie trick helper <id>` rewrites it with the version this Collie carries; the
+helper is part of the trick's code, so a trick that is on stops until a person switches it on again.
+
+| API | What it does |
+| --- | ------------ |
+| `run(async (t) => { ... })` | reads the facts from stdin, calls the function, prints the document once, exits 0 |
+| `t.facts` | the facts, typed: `v`, `trigger`, `trick` (`id`, `dir`, `state`), `host`, `memberId`, `sessions`, `spaces` |
+| `t.config` | `config.toml` of the trick folder, parsed with `Bun.TOML`; `{}` when there is none |
+| `t.tap` | the tap that started the run, `{ intent, value, node, rid, seen? }`, or null |
+| `t.hillAnswer` | the answer to one of the trick's Decisions, `{ key, intent, text }`, or null |
+| `t.status({ text, icon?, tone? })` | the chip in the status line (part id `status`) |
+| `t.belt({ label, icon?, tone?, badge?, intent? })` | the mark at the end of the Belt (part id `belt`) |
+| `t.dashboard(item)`, `t.tabbar(item)` | the Dashboard tile and the bottom bar item, `{ label, icon?, badge?, tone? }` |
+| `t.session({ id?, name?, subtitle?, badge?, progress?, actions?, view })` | the trick's session; keep the default id `main` |
+| `v.card`, `v.group`, `v.list`, `v.row`, `v.bar`, `v.chip`, `v.button`, `v.para`, `v.line`, `v.run`, `v.code`, `v.link`, `v.image`, `v.meter`, `v.spacer`, `v.number` | one builder per node kind; a number attribute may be a number, a flag `true` |
+| `t.decide({ key, title, summary, options, recommends?, body?, text?, priority?, about?, replyTo?, media?, links? })` | asks the person on the Hill |
+| `t.keepDecisions()` | leaves the `decisions` key out: the open Decisions stay as they are |
+| `t.state.get(name, fallback)`, `t.state.set(name, value)` | JSON files in the trick's state folder, written whole (a temp file, then a rename) |
+| `t.sh(cmd, args, { timeoutMs = 5000, cwd? })` | runs a program without a shell; `{ ok, code, stdout, stderr }`, never throws, 256 KiB of output kept |
+| `t.sessionAt(folder)`, `t.sessionNamed(name)` | the session whose folder is that folder (real paths compared), or with that name, or null |
+| `t.fresh(duration)`, `t.asOf(when)` | the document's `fresh` window and `asOf` instant |
+
+Decisions are declarative: a run that calls neither `t.decide` nor `t.keepDecisions` prints
+`"decisions": []`, so the trick wants none and the open ones are withdrawn. A thrown error prints one
+warn card with the error's message in the trick's session and exits 0 when the trick has a session
+(the run named one, or `places` lists `session`); without one it exits 1, so the bridge's failure
+rules and backoff apply. The stack goes to stderr, the message on its last line, which is the line the
+bridge and `collie trick check` show.
+
+The schema's own tests never load the helper, so `cli/trick-kit/trick.test.ts` parses the output of
+every builder, every place method and the init sample with the real parser.
+
 ## The run line
 
 `run` in `trick.toml` takes two forms (`bridge/tricks/run.ts`, `launchOf`, the one rule the bridge's

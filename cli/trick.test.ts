@@ -7,7 +7,7 @@ import { trickCodeHash } from "../bridge/tricks/code-hash.ts";
 import { switchesPath } from "../bridge/tricks/paths.ts";
 import { EXIT, type Io } from "./io.ts";
 import { tricksFindings } from "./trick-findings.ts";
-import { checkStatic, isBareImport, cmdTrick, cmdTrickCheck, cmdTrickInit, cmdTrickList, cmdTrickSkill, cmdTrickSwitch, looksBinary, runsLines, sampleAgents, SKILL_BYTES_MAX, TRICK_WRITE_BRIEF, TRICK_SUBCOMMANDS, type TrickCheckReport, type TrickDeps } from "./trick.ts";
+import { checkStatic, isBareImport, cmdTrick, cmdTrickCheck, cmdTrickHelper, cmdTrickInit, HELPER_VERSION, helperVersion, sampleProgram, TRICK_HELPER, cmdTrickList, cmdTrickSkill, cmdTrickSwitch, looksBinary, runsLines, sampleAgents, SKILL_BYTES_MAX, TRICK_WRITE_BRIEF, TRICK_SUBCOMMANDS, type TrickCheckReport, type TrickDeps } from "./trick.ts";
 import { realFiles } from "./sys.ts";
 import { parseTrickDocument, type TricksReply } from "../web/src/lib/tricks/schema.ts";
 
@@ -76,13 +76,17 @@ describe("collie trick init", () => {
     }
   });
 
-  test("writes trick.toml, an executable provider.sh and AGENTS.md, and refuses an existing folder", async () => {
+  test("writes a TypeScript trick by default: trick.toml, program.ts, the helper, config.toml and AGENTS.md", async () => {
     const d = await deps();
     expect(await cmdTrickInit(d, ["legs"])).toBe(EXIT.OK);
     const dir = join(d.configDir, "tricks", "legs");
-    expect(await readFile(join(dir, "trick.toml"), "utf8")).toContain('places = ["belt"]');
-    expect((await stat(join(dir, "provider.sh"))).mode & 0o111).not.toBe(0);
-    expect(await readFile(join(dir, "AGENTS.md"), "utf8")).toContain("collie trick check --run .");
+    expect(await readFile(join(dir, "trick.toml"), "utf8")).toContain('run = "program.ts"');
+    expect(await readFile(join(dir, "program.ts"), "utf8")).toContain('import { run, v } from "./trick.ts";');
+    const helper = await readFile(join(dir, "trick.ts"), "utf8");
+    expect(helper).toBe(TRICK_HELPER);
+    expect(helperVersion(helper)).toBe(HELPER_VERSION);
+    expect(await readFile(join(dir, "config.toml"), "utf8")).toContain("rows = 8");
+    expect(await readFile(join(dir, "AGENTS.md"), "utf8")).toContain("collie trick helper legs");
     expect((await stat(join(d.configDir, "tricks"))).mode & 0o777).toBe(0o700);
     expect(d.out.join("\n")).toContain("The trick is off.");
     expect(await cmdTrickInit(d, ["legs"])).toBe(EXIT.FAIL);
@@ -90,13 +94,63 @@ describe("collie trick init", () => {
     expect(await cmdTrickInit(d, ["Bad_Id"])).toBe(EXIT.USAGE);
   });
 
-  test("the folder init writes passes check --run", async () => {
+  test("--sh writes the shell sample: an executable provider.sh, no helper", async () => {
+    const d = await deps();
+    expect(await cmdTrickInit(d, ["--sh", "legs"])).toBe(EXIT.OK);
+    const dir = join(d.configDir, "tricks", "legs");
+    expect(await readFile(join(dir, "trick.toml"), "utf8")).toContain('places = ["belt"]');
+    expect((await stat(join(dir, "provider.sh"))).mode & 0o111).not.toBe(0);
+    expect(await readFile(join(dir, "AGENTS.md"), "utf8")).toContain("collie trick check --run .");
+    expect(await Bun.file(join(dir, "trick.ts")).exists()).toBe(false);
+  });
+
+  test("the sample program is short: about 25 lines", () => {
+    expect(sampleProgram("legs").trimEnd().split("\n").length).toBeLessThanOrEqual(30);
+  });
+
+  test("the folder init writes passes check --run with no refusal, in both forms", async () => {
     const d = await deps();
     await cmdTrickInit(d, ["hello"]);
     const dir = join(d.configDir, "tricks", "hello");
-    expect(await cmdTrickCheck(d, ["--run", dir])).toBe(EXIT.OK);
-    expect(d.out.join("\n")).toContain("parts: belt belt");
-    expect(d.out.at(-1)).toBe("ok: no problems.");
+    const before = d.out.length;
+    expect(await cmdTrickCheck(d, ["--run", "--json", dir])).toBe(EXIT.OK);
+    // SAFETY: `--json` prints exactly one TrickCheckReport, and the fields read below are checked by value.
+    const report = JSON.parse(d.out.slice(before).join("\n")) as TrickCheckReport;
+    expect(report.refusals).toEqual([]);
+    expect(report.problems).toEqual([]);
+    expect(report.warnings.filter((w) => w.kind === "import")).toEqual([]);
+    expect(report.run?.problem).toBeNull();
+    expect(report.run?.refusals).toEqual([]);
+    expect(report.run?.parts).toEqual(["status status", "dashboard dashboard", "session main"]);
+    const e = await deps();
+    await cmdTrickInit(e, ["--sh", "plain"]);
+    expect(await cmdTrickCheck(e, ["--run", join(e.configDir, "tricks", "plain")])).toBe(EXIT.OK);
+    expect(e.out.join("\n")).toContain("parts: belt belt");
+    expect(e.out.at(-1)).toBe("ok: no problems.");
+  });
+});
+
+describe("collie trick helper", () => {
+  test("rewrites an old trick.ts with the current helper and says the trick must be switched on again", async () => {
+    const d = await deps();
+    await cmdTrickInit(d, ["legs"]);
+    const dir = join(d.configDir, "tricks", "legs");
+    await writeFile(join(dir, "trick.ts"), "// collie trick helper v0\nexport {};\n");
+    expect(await cmdTrickSwitch(d, ["legs"], true)).toBe(EXIT.OK);
+    expect(await cmdTrickHelper(d, ["legs"])).toBe(EXIT.OK);
+    expect(await readFile(join(dir, "trick.ts"), "utf8")).toBe(TRICK_HELPER);
+    expect(d.out.join("\n")).toContain("(it was v0)");
+    expect(d.out.join("\n")).toContain("stops until you switch it on again: collie trick on legs");
+  });
+
+  test("a current helper is left alone; a missing folder fails; no argument is usage", async () => {
+    const d = await deps();
+    await cmdTrickInit(d, ["legs"]);
+    expect(await cmdTrickHelper(d, ["legs"])).toBe(EXIT.OK);
+    expect(d.out.at(-1)).toContain("is the current helper");
+    expect(await cmdTrickHelper(d, [join(d.configDir, "tricks", "legs")])).toBe(EXIT.OK);
+    expect(await cmdTrickHelper(d, ["nope"])).toBe(EXIT.FAIL);
+    expect(await cmdTrickHelper(d, [])).toBe(EXIT.USAGE);
   });
 });
 

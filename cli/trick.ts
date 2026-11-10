@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { basename, isAbsolute, join, resolve } from "node:path";
 
 import { redactText } from "../bridge/redact.ts";
-import { diskTrickFs, trickCodeHash, walkTrickCode, type CodeEntry } from "../bridge/tricks/code-hash.ts";
+import { CONFIG_FILE, diskTrickFs, trickCodeHash, walkTrickCode, type CodeEntry } from "../bridge/tricks/code-hash.ts";
 import { createTrickScanner, readManifestFile, type FoundTrick } from "../bridge/tricks/discover.ts";
 import { isBaseEnvName, neverReason, scrubEnv } from "../bridge/tricks/env.ts";
 import { MANIFEST_FILE, tricksConfigDir, switchesPath } from "../bridge/tricks/paths.ts";
@@ -23,6 +23,7 @@ import {
   type Refusal,
 } from "../web/src/lib/tricks/schema.ts";
 import type { CliContext } from "./context.ts";
+import { trickHelperSource } from "./trick-kit/source.ts" with { type: "macro" };
 import { EXIT, type Io } from "./io.ts";
 import { identityHeader, readOwnSnapshot } from "./snapshot-read.ts";
 import type { Files } from "./sys.ts";
@@ -38,7 +39,9 @@ import type { Files } from "./sys.ts";
 //                     every source file in the folder (a grep, not a proof). `--run` also runs the
 //                     provider once against fixture facts, with the bridge's environment rule, and
 //                     parses what it prints
-//   init <id>         a new folder with `trick.toml`, a sample provider and an `AGENTS.md`
+//   init <id>         a new folder with `trick.toml`, a TypeScript program, the helper `trick.ts`, a
+//                     `config.toml` and an `AGENTS.md`; `--sh` writes the shell sample instead
+//   helper <id>       rewrite `trick.ts` in a trick folder with the helper this Collie carries
 //   skill [<id>]      what an agent reads: the `SKILL.md` of a trick that is ON and unchanged (what the
 //                     trick asks of the agent), or with no id the brief for writing a trick
 //
@@ -46,7 +49,7 @@ import type { Files } from "./sys.ts";
 // folder, or not a folder), like `config check`. `--json` prints one report document instead.
 // `add` and `update` are a later slice.
 
-export const TRICK_SUBCOMMANDS = ["list", "on", "off", "check", "init", "skill"] as const;
+export const TRICK_SUBCOMMANDS = ["list", "on", "off", "check", "init", "helper", "skill"] as const;
 
 export interface TrickDeps {
   ctx: Pick<CliContext, "configDir" | "stateDir" | "env" | "port">;
@@ -665,18 +668,70 @@ export async function cmdTrickCheck(deps: TrickDeps, args: readonly string[]): P
 
 // ── init ─────────────────────────────────────────────────────────────────────
 
+/** The helper file a TypeScript trick imports. */
+export const HELPER_FILE = "trick.ts";
+/** The version of the helper this Collie writes. Its first line names it: `// collie trick helper v1`. */
+export const HELPER_VERSION = 1;
+/** The helper's source (cli/trick-kit/trick.ts), held in the binary as text. */
+export const TRICK_HELPER: string = trickHelperSource();
+
+/** The version a helper file names on its first line, or null when it names none. */
+export function helperVersion(text: string): number | null {
+  const match = /^\/\/ collie trick helper v(\d+)\r?\n/u.exec(text);
+  return match === null ? null : Number(match[1]);
+}
+
+/** The two forms `init` writes: a TypeScript program with the helper (the default), or a shell provider (`--sh`). */
+export type InitForm = "ts" | "sh";
+
 /** The sample manifest `init` writes. */
-export function sampleManifest(id: string): string {
+export function sampleManifest(id: string, form: InitForm = "ts"): string {
+  const ts = form === "ts";
   return [
     `# Collie trick "${id}". Check it with: collie trick check --run <this folder>`,
     `id = "${id}"`,
     `name = "${id}"`,
-    `run = "./provider.sh"`,
+    ts ? `run = "program.ts"` : `run = "./provider.sh"`,
     `every = "30s"`,
     `icon = "plug"`,
-    `places = ["belt"]`,
+    ts ? `places = ["status", "dashboard", "session"]` : `places = ["belt"]`,
     "",
   ].join("\n");
+}
+
+/** The sample `config.toml` of a TypeScript trick: settings the program reads as `t.config`. */
+export function sampleConfig(id: string): string {
+  return [`# Settings of the trick "${id}", read by the program as t.config. Not part of the code hash: edit freely.`, "rows = 8", ""].join("\n");
+}
+
+/** The sample program of a TypeScript trick: a status chip, a Dashboard tile, a session with rows, and a Decision to start from. */
+export function sampleProgram(id: string): string {
+  return `// The Collie trick "${id}". Collie runs this file with the facts on stdin and draws what it prints.
+// Try it: collie trick dev .    The helper's API is in trick.ts.
+import { run, v } from "./trick.ts";
+
+run((t) => {
+  const sessions = t.facts.sessions;
+  const busy = sessions.filter((s) => s.status === "working").length;
+  const rows = Number(t.config.rows ?? 8);
+
+  t.status({ text: \`\${busy} busy\`, icon: "plug", tone: busy > 0 ? "accent" : "muted" });
+  t.dashboard({ label: t.facts.trick.id.slice(0, 16), icon: "plug", badge: sessions.length });
+  t.session({
+    subtitle: \`\${sessions.length} sessions on \${t.facts.host}\`,
+    view: [v.list(sessions.slice(0, rows).map((s) => v.row((s.name ?? s.paneId).slice(0, 60), { end: s.status })))],
+  });
+
+  // Ask the person on the Hill. The answer comes back as a tap: read it in t.hillAnswer.
+  // t.decide({
+  //   key: "tidy",
+  //   title: "Close the idle sessions?",
+  //   summary: \`\${sessions.length - busy} sessions are idle.\`,
+  //   options: [{ intent: "close", label: "Close them" }, { intent: "keep", label: "Keep them" }],
+  //   recommends: { intent: "keep", why: "Nothing is in the way yet." },
+  // });
+});
+`;
 }
 
 /** The sample provider: it counts the sessions in the facts and prints one belt mark. */
@@ -688,19 +743,58 @@ n=$(printf '%s' "$facts" | grep -o '"paneId"' | wc -l | tr -d ' ')
 printf '{"v":1,"parts":[{"at":"belt","id":"belt","mark":{"icon":"plug","label":"%s","tone":"plain"}}]}\\n' "$n"
 `;
 
-/** The `AGENTS.md` `init` writes: the contract, in prose, for the agent that grows the trick. */
-export function sampleAgents(id: string): string {
-  return `# The Collie trick "${id}"
+/** The loop and the helper's table, for a TypeScript trick. */
+function agentsTsLoop(id: string): string {
+  return `## The loop
 
-This folder is a Collie trick. Collie's bridge runs the provider named by \`run\` in \`trick.toml\` and
-draws what it prints on the phone, with Collie's own parts in the current theme.
+1. Change \`program.ts\`. It imports \`./trick.ts\`, the helper. Collie runs the program with its own
+   runtime and installs nothing, so it imports only files in this folder and the \`node:\` and \`bun:\`
+   built-ins.
+2. Run \`collie trick check --run .\` and fix every error it prints. Read its warnings too.
+3. Switch the trick on with \`collie trick on ${id}\`. It runs while a phone watches.
 
-## The loop
+## The helper
+
+\`trick.ts\` is Collie's helper. Do not edit it: \`collie trick helper ${id}\` rewrites it with the newest
+version. \`run((t) => { ... })\` reads the facts, calls your function once and prints the document.
+
+| Call | What it does |
+| ---- | ------------ |
+| \`t.facts\` | the facts (below), typed |
+| \`t.config\` | \`config.toml\`, parsed; {} when there is none |
+| \`t.tap\`, \`t.hillAnswer\` | the tap that started this run, and the answer to a Decision (\`key\`, \`intent\`, \`text\`), or null |
+| \`t.status\`, \`t.belt\`, \`t.dashboard\`, \`t.tabbar\`, \`t.session\` | one part in each place; list the place in \`places\` |
+| \`v.card\`, \`v.row\`, \`v.para\`, and the rest of \`v\` | one builder per node kind, for a view |
+| \`t.decide\`, \`t.keepDecisions\` | ask the person on the Hill; leave the open Decisions as they are |
+| \`t.state.get\`, \`t.state.set\` | small JSON files in the trick's state folder |
+| \`t.sh\` | run a program without a shell; never throws |
+| \`t.sessionAt\`, \`t.sessionNamed\` | the session in a folder, or with a name |
+| \`t.fresh\`, \`t.asOf\` | how long the parts stay fresh, and when the data was true |
+
+When neither \`t.decide\` nor \`t.keepDecisions\` is called, the run wants no Decisions and the open ones
+are withdrawn. A thrown error shows one warn card in the trick's session, or fails the run when the
+trick has no session.
+`;
+}
+
+/** The loop of a shell trick. */
+function agentsShLoop(id: string): string {
+  return `## The loop
 
 1. Change \`provider.sh\` (or point \`run\` at another program in this folder).
 2. Run \`collie trick check --run .\` and fix every error it prints. Read its warnings too.
 3. Switch the trick on with \`collie trick on ${id}\`. It runs while a phone watches.
+`;
+}
 
+/** The `AGENTS.md` `init` writes: the contract, in prose, for the agent that grows the trick. */
+export function sampleAgents(id: string, form: InitForm = "ts"): string {
+  return `# The Collie trick "${id}"
+
+This folder is a Collie trick. Collie's bridge runs the program named by \`run\` in \`trick.toml\` and
+draws what it prints on the phone, with Collie's own parts in the current theme.
+
+${form === "ts" ? agentsTsLoop(id) : agentsShLoop(id)}
 ## Switching on approves this code
 
 The trick runs with the full rights of the user who runs Collie: it can read and change any file that
@@ -715,7 +809,7 @@ program), a top-level \`media/\` and \`captures/\` folder, any \`*.log\` file, d
 folders, and \`node_modules/\`. Keep state in \`trick.state\` (see below), never in this folder: any
 other file the program writes here counts as a code change and stops the trick.
 
-## What the provider gets
+## What the program gets
 
 - Its working folder is this folder.
 - On stdin, one JSON document, the facts: \`v\` (1), \`trigger\` (\`start\`, \`timer\`, or \`tap\` with
@@ -771,9 +865,10 @@ Everything printed, stderr too, goes through Collie's secret mask.
 }
 
 export async function cmdTrickInit(deps: TrickDeps, args: readonly string[]): Promise<number> {
+  const form: InitForm = args.includes("--sh") ? "sh" : "ts";
   const id = args.find((a) => !a.startsWith("-"));
   if (id === undefined || !isTrickId(id)) {
-    deps.io.err("usage: collie trick init <id>   (an id is 1 to 32 of a-z, 0-9 and -)");
+    deps.io.err("usage: collie trick init [--sh] <id>   (an id is 1 to 32 of a-z, 0-9 and -)");
     return EXIT.USAGE;
   }
   const root = tricksConfigDir(deps.ctx.configDir);
@@ -785,12 +880,57 @@ export async function cmdTrickInit(deps: TrickDeps, args: readonly string[]): Pr
   // The tricks folder sits in the config folder beside `.env`, owner only like it.
   await mkdir(root, { recursive: true, mode: 0o700 });
   await mkdir(dir, { mode: 0o700 });
-  await writeFile(join(dir, MANIFEST_FILE), sampleManifest(id));
-  await writeFile(join(dir, "provider.sh"), SAMPLE_PROVIDER, { mode: 0o755 });
-  await writeFile(join(dir, "AGENTS.md"), sampleAgents(id));
-  deps.io.out(`Made ${dir} with trick.toml, provider.sh and AGENTS.md. The trick is off.`);
+  await writeFile(join(dir, MANIFEST_FILE), sampleManifest(id, form));
+  await writeFile(join(dir, "AGENTS.md"), sampleAgents(id, form));
+  if (form === "sh") {
+    await writeFile(join(dir, "provider.sh"), SAMPLE_PROVIDER, { mode: 0o755 });
+    deps.io.out(`Made ${dir} with trick.toml, provider.sh and AGENTS.md. The trick is off.`);
+  } else {
+    await writeFile(join(dir, "program.ts"), sampleProgram(id));
+    await writeFile(join(dir, HELPER_FILE), TRICK_HELPER);
+    await writeFile(join(dir, CONFIG_FILE), sampleConfig(id));
+    deps.io.out(`Made ${dir} with trick.toml, program.ts, trick.ts (the helper), config.toml and AGENTS.md. The trick is off.`);
+  }
   deps.io.out(`Check it: collie trick check --run ${dir}`);
   deps.io.out(`Switch it on: collie trick on ${id}`);
+  return EXIT.OK;
+}
+
+// ── helper ───────────────────────────────────────────────────────────────────
+
+/**
+ * `collie trick helper <id|folder>`: write the helper this Collie carries into an existing trick folder,
+ * over the old `trick.ts`. The helper is part of the trick's code, so a changed file stops a trick that
+ * is on until a person switches it on again; the verb says so, and never switches anything itself.
+ */
+export async function cmdTrickHelper(deps: TrickDeps, args: readonly string[]): Promise<number> {
+  const named = args.find((a) => !a.startsWith("-"));
+  if (named === undefined) {
+    deps.io.err("usage: collie trick helper <id|folder>   (rewrites trick.ts with the helper this Collie carries)");
+    return EXIT.USAGE;
+  }
+  const dir = isTrickId(named) && !named.includes(".") ? join(tricksConfigDir(deps.ctx.configDir), named) : resolve(named);
+  if (deps.files.entryType(dir) !== "directory") {
+    deps.io.err(`error: there is no trick folder ${dir}.`);
+    return EXIT.FAIL;
+  }
+  const path = join(dir, HELPER_FILE);
+  const kind = deps.files.entryType(path);
+  if (kind !== null && kind !== "file") {
+    deps.io.err(`error: ${path} is not a regular file, so it is left alone.`);
+    return EXIT.FAIL;
+  }
+  const held = kind === "file" ? deps.files.read(path) : null;
+  if (held === TRICK_HELPER) {
+    deps.io.out(`${path} is the current helper (v${String(HELPER_VERSION)}). Nothing changed.`);
+    return EXIT.OK;
+  }
+  const was = held === null ? "none" : helperVersion(held) === null ? "a file that is not the helper" : `v${String(helperVersion(held))}`;
+  await writeFile(path, TRICK_HELPER);
+  deps.io.out(`Wrote ${path}: collie trick helper v${String(HELPER_VERSION)} (it was ${was}).`);
+  const id = basename(dir);
+  if (switchesOf(deps).switches.on.has(id)) deps.io.out(`The trick's code changed, so ${id} stops until you switch it on again: collie trick on ${id}`);
+  else deps.io.out(`The trick's code changed. Check it: collie trick check --run ${dir}`);
   return EXIT.OK;
 }
 

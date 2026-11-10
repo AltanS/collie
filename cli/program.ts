@@ -52,7 +52,7 @@ import {
   type LifecycleDeps,
 } from "./lifecycle.ts";
 import { cmdLink, cmdUnlink, type LinkDeps, realLinkFs } from "./link.ts";
-import { cmdTrick, cmdTrickCheck, cmdTrickInit, cmdTrickList, cmdTrickSkill, cmdTrickSwitch, TRICK_SUBCOMMANDS, type TrickDeps } from "./trick.ts";
+import { cmdTrick, cmdTrickCheck, cmdTrickHelper, cmdTrickInit, cmdTrickList, cmdTrickSkill, cmdTrickSwitch, TRICK_SUBCOMMANDS, type TrickDeps } from "./trick.ts";
 import { cmdMuxProbe } from "./mux-probe.ts";
 import {
   cmdJoin,
@@ -1008,8 +1008,13 @@ export const COMMANDS: readonly Command[] = [
       },
       {
         name: "init",
-        summary: "make a new trick folder with a sample provider: <id>",
+        summary: "make a new trick folder with a TypeScript program and the helper: <id> (--sh for a shell provider)",
         run: async (args, s) => await cmdTrickInit(trickVerbDeps(s.io), args),
+      },
+      {
+        name: "helper",
+        summary: "rewrite a trick's trick.ts with the helper this Collie carries: <id|folder>",
+        run: async (args, s) => await cmdTrickHelper(trickVerbDeps(s.io), args),
       },
       {
         name: "skill",
