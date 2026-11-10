@@ -1252,6 +1252,19 @@ instant nobody has pinned the caller (§8.2).
   many times what the route sends today: the largest walky talky message, 4,000 characters of body
   with its space line and every label at its maximum, is under 40 KiB as JSON, and a roster carries
   about 1.5 KB per member. A request without the signature header is never read here, as before.
+- **What needs no body is checked before the body is read** *(added in 1.29.0)*. The crew secret
+  (`Authorization`) is compared first: admission refuses every request without it whatever its
+  signature says, so a signed request with a wrong or absent secret is the uniform 401 (audited with
+  the factor `secret`) and not one byte of its body is read. A `X-Crew-Timestamp` that is not a
+  timestamp is the uniform 401 there too. The skew window is still checked after the signature, as
+  above. Telling "read" from "not read" apart only says whether a guessed secret is right, and the
+  secret is 256 random bits.
+- **At most 4 large signed bodies are read at once** *(added in 1.29.0)*: those of a route whose cap
+  is over 256 KiB (`hill/media`, `lead`, `warrant`, `takeover`; `SIGNED_READS_MAX` in
+  `bridge/crew/router.ts`), so at most 12 MiB sits unverified in memory. One more is answered `503`
+  with `Retry-After: 1` and `{ error, code: "signed_reads_busy" }`, its body unread, audited as
+  `crew.refused` with the factor `signed-reads-busy`. The routes with a smaller cap are not counted. A
+  member reads the 503 as a dial that did not land.
 
 **The warrant is a SECOND signed object under the same key** (§18, added 2026-08-20). It reuses these
 primitives unchanged — base64 ECDSA-P256-SHA256, made with the signer's own key and verified against

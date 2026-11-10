@@ -423,6 +423,14 @@ describe("a member's forward", () => {
     expect(lead.store.all()).toHaveLength(0);
   });
 
+  test("a lead busy reading other uploads (503, the body unread) is a refused dial: nothing posted, the retry named", async () => {
+    const { member, link, lead } = crew();
+    link.status = 503;
+    const row = fields();
+    expect(await member.hill.postFields(SENDER, row)).toEqual({ ok: false, code: LEAD_UNREACHABLE_CODE, error: `the lead (desk) is not answering; nothing was posted. Post again with --request-id ${String(row.requestId)}: it posts once` });
+    expect(lead.store.all()).toHaveLength(0);
+  });
+
   test("a 401 from a lead known to be at 1.29.0 or later is the signature, said plainly", async () => {
     const { member, link } = crew();
     link.atFloor = true;

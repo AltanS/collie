@@ -416,7 +416,7 @@ export const HILL_SIGNATURE_REFUSED = "the lead refused this machine's signature
  * refused only from a lead KNOWN to be at the floor (`atFloor`): a lead below 1.29.0 does not count these
  * routes as signable and answers each call with the uniform 401, so from a lead whose release is not
  * known, or older, it reads as an older lead. A 404 (a collie that does not lead, or a lead built without
- * the routes) reads as older too.
+ * the routes) reads as older too. A 503 is a body the lead did not read: refused, nothing landed.
  */
 function readDial(answer: CrewDialAnswer, atFloor: boolean): Read {
   const signature: Read = atFloor ? { kind: "failed", error: HILL_SIGNATURE_REFUSED } : { kind: "older" };
@@ -424,6 +424,8 @@ function readDial(answer: CrewDialAnswer, atFloor: boolean): Read {
   if (answer.kind === "unknown") return { kind: "unknown" };
   if (answer.status === 404) return { kind: "older" };
   if (answer.status === 401) return signature;
+  // The lead turned the body away unread (busy reading other uploads, §8.6): nothing landed there.
+  if (answer.status === 503) return { kind: "refused" };
   const body = asJsonObject(answer.body ?? undefined);
   if (answer.status === 200 && body !== undefined) return { kind: "body", body };
   return { kind: "failed", error: `the lead answered HTTP ${String(answer.status)}: ${leadWords(asJsonString(body?.error), "no reason")}` };

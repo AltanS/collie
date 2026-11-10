@@ -15,6 +15,8 @@ import {
   CREW_HILL_MEDIA_PATH,
   CREW_HILL_OP_PATH,
   CREW_HILL_POST_PATH,
+  SIGNED_READS_BUSY,
+  SIGNED_READS_MAX,
   CREW_LAUNCHERS_COPY_PATH,
   CREW_LEAD_PATH,
   CREW_LEAVE_PATH,
@@ -3235,6 +3237,79 @@ describe("signed body caps — a body over its route's cap is refused before it 
     expect(res.status).toBe(200);
     expect(seen).toHaveLength(1);
     expect(Buffer.byteLength(json)).toBeLessThan(SIGNED_BODY_CAPS.get(CREW_WALKY_PATH)!);
+  });
+
+  test("a junk signature without the crew secret is refused before one byte of the body is read", async () => {
+    const { h, handler, seen } = capRig();
+    for (const headers of [
+      { "x-crew-protocol": "2", authorization: "Bearer not-the-secret" },
+      { "x-crew-protocol": "2" },
+    ]) {
+      const body = counted(new Uint8Array(2 * 1024 * 1024).fill(0x61));
+      const url = new URL(`https://peer.example${CREW_HILL_MEDIA_PATH}`);
+      const req = new Request(url, { method: "POST", headers: { ...headers, "content-type": "application/json", [SIGNATURE_HEADER]: "AAAA", [TIMESTAMP_HEADER]: String(T0) }, body: body.stream });
+      const res = (await handler(req, url))!;
+      expect(res.status).toBe(401);
+      expect(await res.json()).toEqual({ error: "unauthorized" });
+      expect(body.pulled()).toBe(0);
+    }
+    expect(seen).toEqual([]);
+    expect(h.lines.filter((line) => line.action === "crew.refused" && line.detail?.factor === "secret")).toHaveLength(2);
+  });
+
+  test("with the secret, a timestamp that is no timestamp is refused before the body is read too", async () => {
+    const { handler, seen } = capRig();
+    const body = counted(new Uint8Array(1024 * 1024).fill(0x61));
+    const url = new URL(`https://peer.example${CREW_HILL_MEDIA_PATH}`);
+    const req = new Request(url, { method: "POST", headers: { ...authed, "content-type": "application/json", [SIGNATURE_HEADER]: "AAAA", [TIMESTAMP_HEADER]: "soon" }, body: body.stream });
+    expect((await handler(req, url))!.status).toBe(401);
+    expect(body.pulled()).toBe(0);
+    expect(seen).toEqual([]);
+  });
+
+  test("at most four large signed bodies are read at once: a fifth is 503 unread; a small route still goes; the slot comes back", async () => {
+    const { h, handler, seen } = capRig();
+    const image = JSON.stringify({ sha256: "a".repeat(64), b64: Buffer.alloc(1024).toString("base64") });
+    // A body that sends its first byte, then waits for the gate before the rest.
+    let open: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      open = resolve;
+    });
+    const held = (json: string) => {
+      const bytes = new TextEncoder().encode(json);
+      let sent = false;
+      return new ReadableStream<Uint8Array>({
+        async pull(controller) {
+          if (!sent) {
+            sent = true;
+            controller.enqueue(bytes.subarray(0, 1));
+            return;
+          }
+          await gate;
+          controller.enqueue(bytes.subarray(1));
+          controller.close();
+        },
+      });
+    };
+    const media = (body: BodyInit) => {
+      const url = new URL(`https://peer.example${CREW_HILL_MEDIA_PATH}`);
+      return handler(new Request(url, { method: "POST", headers: { ...authed, "content-type": "application/json", ...signed("laptop", "POST", CREW_HILL_MEDIA_PATH, image, T0) }, body }), url);
+    };
+    const inFlight = Array.from({ length: SIGNED_READS_MAX }, () => media(held(image)));
+    await Bun.sleep(20);
+    const fifth = counted(new TextEncoder().encode(image));
+    const busy = (await media(fifth.stream))!;
+    expect(busy.status).toBe(503);
+    expect(busy.headers.get("retry-after")).toBe("1");
+    expect(await busy.json()).toMatchObject({ code: SIGNED_READS_BUSY });
+    expect(fifth.pulled()).toBe(0);
+    expect(h.lines.some((line) => line.action === "crew.refused" && line.detail?.factor === "signed-reads-busy")).toBe(true);
+    // A route with a small cap is not counted.
+    expect((await call(handler, CREW_HILL_OP_PATH, signedPost("laptop", CREW_HILL_OP_PATH, { op: "list" }, T0)))!.status).toBe(200);
+    open();
+    for (const res of await Promise.all(inFlight)) expect(res!.status).toBe(200);
+    expect((await media(image))!.status).toBe(200);
+    expect(seen.filter((entry) => entry.startsWith("media:"))).toHaveLength(SIGNED_READS_MAX + 1);
   });
 
   test("an image at the hill's 2 MB limit, written as base64, passes the media cap", async () => {
