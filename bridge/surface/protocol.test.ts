@@ -3477,6 +3477,18 @@ describe("the offers as new requests", () => {
     expect((await r.send("hello there", { mode: "submit", rowsHash: moved.rowsHash! })).receipt).toMatchObject({ outcome: "sent", keys: ["Enter"] });
   });
 
+  test("submit and discard with no frame: a draft whose digits alone changed since the person looked is a moved screen", async () => {
+    for (const mode of ["submit", "discard"] as const) {
+      const { r, pane } = stuckCodex();
+      const typed = await typedNotSubmitted(r, "pay 100 now");
+      pane.box = "pay 900 now";
+      pane.keysSeen = [];
+      const moved = await r.send("pay 100 now", { mode, rowsHash: typed.rowsHash! });
+      expect(moved.receipt, mode).toMatchObject({ outcome: "refused", reason: "stale_surface", keys: [] });
+      expect(pane.keysSeen, mode).toEqual([]);
+    }
+  });
+
   test("submit on a framed box that shows other text goes on the rows hash the person saw; without it, it is refused", async () => {
     const { pane, send } = rig();
     pane.dropLastChar = true;

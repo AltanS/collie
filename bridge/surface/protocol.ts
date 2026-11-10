@@ -897,10 +897,15 @@ function rawRows(token: string): string {
   return token.slice(0, ROWS_HALF);
 }
 
-/** Whether the rows token the person confirmed agrees with this read's: raw half to raw half, or masked half to masked half. */
-export function rowsAgree(asked: string, token: string): boolean {
+/**
+ * Whether the rows token the person confirmed agrees with this read's: raw half to raw half, or, with
+ * `masked`, masked half to masked half. The masked half may confirm only where nothing it hid can be
+ * the person's own text: a framed box, whose rows it never masks, or a send that is probed and
+ * read back. A Submit or Discard with no frame acts on a draft found nowhere, so the raw half alone.
+ */
+export function rowsAgree(asked: string, token: string, masked = true): boolean {
   if (asked.length !== 2 * ROWS_HALF || token.length !== 2 * ROWS_HALF) return false;
-  return asked.slice(0, ROWS_HALF) === token.slice(0, ROWS_HALF) || asked.slice(ROWS_HALF) === token.slice(ROWS_HALF);
+  return asked.slice(0, ROWS_HALF) === token.slice(0, ROWS_HALF) || (masked && asked.slice(ROWS_HALF) === token.slice(ROWS_HALF));
 }
 
 function mark(snap: Snap | null): ReadMark | null {
@@ -4757,7 +4762,7 @@ export class SendProtocol {
     if (frame === null && !takesManualSend(surface) && !isFree(surface)) throw new Ended("refused", "not_free", { surface, detail: "The input box is not free." });
     const hash = state.request.rowsHash;
     if (hash === undefined) throw new Ended("refused", "not_free", { surface, detail: BOX_CHANGED });
-    if (!rowsAgree(hash, s0.rowsHash)) {
+    if (!rowsAgree(hash, s0.rowsHash, frame !== null)) {
       throw new Ended("refused", "stale_surface", { surface, rowsHash: s0.rowsHash, offers: ["submit", "discard", "keys"], detail: "The screen moved since you looked. Check it, then tap Submit or Discard again." });
     }
     if (frame !== null) return null;

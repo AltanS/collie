@@ -101,7 +101,9 @@ the bridge's reads were never cut.
    as a fixed mark. The two taps of a manual Send are two reads too: the rows hash is a raw hash and a
    hash with the digits of every row but the box's own read as a fixed mark, and the confirm passes if
    either agrees. A row that changed in anything but digits still moves the screen, and so does a
-   digit in the box. No profile names a clock.
+   digit in the box. With no frame there is no box to spare, so a Submit or Discard of text left in
+   the pane confirms on the raw hash alone; a send that is probed and read back keeps either. No
+   profile names a clock.
 3. **The launch window also ends on the multiplexer's word.** It ends when the multiplexer reports
    the starting harness `idle` or `working`. pi reports that from Herdr's own pi extension
    (`herdr-agent-state.ts`), not from the screen. Without such a report it ends as it does today.
