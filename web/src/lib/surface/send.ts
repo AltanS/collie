@@ -271,8 +271,11 @@ export interface SendReceipt {
 /** {@link SendReceipt.via} for a send typed into the screen by the Send Protocol. */
 export const SCREEN = "screen";
 
-/** What may happen to a settled receipt later (see {@link SendReceipt.late}). One word today. */
-export const SEND_LATES = ["returned"] as const;
+/**
+ * What may happen to a settled receipt later (see {@link SendReceipt.late}): its queued text came back to
+ * the box (`returned`, ADR 0122), or the journal shows a door's send only merged or changed (`merged`, ADR 0141).
+ */
+export const SEND_LATES = ["returned", "merged"] as const;
 
 /**
  * The receipt detail when Discard on a returned queued card (ADR 0122) found the box changed: nothing

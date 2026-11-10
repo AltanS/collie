@@ -25,7 +25,7 @@ import { join } from "node:path";
 import { asJsonNumber, asJsonObject, asJsonString, type JsonValue } from "../../web/src/lib/json.ts";
 import { ASK_ID, ASK_OUTCOMES, ASK_REASONS, type AskReceipt } from "../../web/src/lib/surface/ask.ts";
 import { ASK_CHANNELS } from "../../web/src/lib/surface/surface.ts";
-import { readSendCap, readSurfaceWords, RECEIPT_DETAIL_MAX, REQUEST_ID, SEND_LATES, SEND_MODES, SEND_OUTCOMES, SEND_REASONS, type ReadMark, type SendMode, type SendReceipt, type SendStep } from "../../web/src/lib/surface/send.ts";
+import { readSendCap, readSurfaceWords, RECEIPT_DETAIL_MAX, REQUEST_ID, SCREEN, SEND_LATES, SEND_MODES, SEND_OUTCOMES, SEND_REASONS, type ReadMark, type SendMode, type SendReceipt, type SendStep } from "../../web/src/lib/surface/send.ts";
 import { SENT_MAX_LINE, sentLineOf } from "../secret-line.ts";
 
 /** How long a settled request is kept, so a retry after a long network gap still finds its receipt. */
@@ -411,7 +411,8 @@ export class RequestStore {
 
   /**
    * A settled `sent` or `unknown` that a matching prompt edge confirmed (M56 spec 11) becomes
-   * `effective`, its reason dropped. That and {@link markReturned} are the changes a settled record can
+   * `effective`, its reason dropped, and so does a door's send whose own prompt the journal shows (ADR
+   * 0141 point 4). That, {@link markReturned} and {@link markMerged} are the changes a settled record can
    * take, each once. Returns the outcome it had, or null when the record is not one a prompt edge may close.
    */
   markEffective(id: string): "sent" | "unknown" | null {
@@ -437,6 +438,20 @@ export class RequestStore {
     const waited = (receipt.outcome === "sent" && receipt.queued === true) || receipt.outcome === "steered";
     if (!waited || receipt.late !== undefined) return false;
     this.write({ ...known, receipt: { ...receipt, late: "returned" } });
+    return true;
+  }
+
+  /**
+   * A settled door's send (`via` not `screen`) that said `sent` or `unknown` gets `late: "merged"` (ADR
+   * 0141 point 4): the journal shows its text only inside a longer or changed prompt. The outcome stays.
+   * Taken once. Returns whether the record took it.
+   */
+  markMerged(id: string): boolean {
+    const known = this.get(id);
+    const receipt = known?.receipt;
+    if (known === null || known.phase !== "settled" || receipt === undefined || receipt.late !== undefined) return false;
+    if (receipt.via === undefined || receipt.via === SCREEN || (receipt.outcome !== "sent" && receipt.outcome !== "unknown")) return false;
+    this.write({ ...known, receipt: { ...receipt, late: "merged" } });
     return true;
   }
 

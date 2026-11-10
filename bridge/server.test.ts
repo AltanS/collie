@@ -6489,7 +6489,7 @@ describe("paneHistory — two muse tabs in one workspace read their own transcri
         ];
       };
       const url = new URL("http://x/api/pane/w1:p1/chat");
-      const res = await paneChat(cfg(), journals, live, engine, mux, "w1:p1", url, new Request(url), queuedOf);
+      const res = await paneChat(cfg(), journals, live, engine, mux, "w1:p1", url, new Request(url), { of: queuedOf, prove: () => {} });
       const text = await res.text();
       expect(text).not.toContain(key);
       // SAFETY: the bridge's own JSON, served by the call above.

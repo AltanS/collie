@@ -226,3 +226,50 @@ test("the route: a door's send pokes the engine though it pressed no key, and th
   await sendRoute(rt, { id, pane: "%1", text: "hello" }, context);
   expect(pokes).toEqual({ input: 1, now: 1 });
 });
+
+describe("the journal proves a door's send (ADR 0141 point 4)", () => {
+  const receiptOf = (id: string) => new RequestStore(join(dir, "sends")).get(id)?.receipt;
+
+  test("its own prompt settles it `effective` and its card goes; a containing one marks it merged and keeps the card", async () => {
+    const { protocol, send } = rig(new FakeDoor());
+    const landed = (await send("first")).receipt!.requestId;
+    const merged = (await send("second")).receipt!.requestId;
+    protocol.proveDoor("main", "%1", [
+      { requestId: landed, how: "landed" },
+      { requestId: merged, how: "merged" },
+    ]);
+    expect(receiptOf(landed)).toMatchObject({ outcome: "effective", via: "claude" });
+    expect(receiptOf(merged)).toMatchObject({ outcome: "sent", via: "claude", late: "merged" });
+    expect(protocol.queuedOf("main", "%1").map((card) => [card.requestId, card.merged ?? false])).toEqual([[merged, true]]);
+  });
+
+  test("an uncertain submit the journal shows is settled `effective` too: the card is never a forever `unknown`", async () => {
+    const { protocol, send } = rig(new FakeDoor(undefined, () => Promise.reject(new Error("connection dropped after write"))));
+    const id = (await send("hello")).receipt!.requestId;
+    protocol.proveDoor("main", "%1", [{ requestId: id, how: "landed" }]);
+    expect(receiptOf(id)).toMatchObject({ outcome: "effective", via: "claude" });
+    expect(protocol.queuedOf("main", "%1")).toEqual([]);
+  });
+
+  test("a proof for a screen send, or for another pane, changes nothing", async () => {
+    const { protocol, send } = rig(null);
+    const id = (await send("hello")).receipt!.requestId;
+    protocol.proveDoor("main", "%1", [{ requestId: id, how: "merged" }]);
+    protocol.proveDoor("main", "%2", [{ requestId: id, how: "landed" }]);
+    expect(receiptOf(id)).toMatchObject({ outcome: "sent", queued: true, via: "screen" });
+    expect(receiptOf(id)?.late).toBeUndefined();
+  });
+
+  test("after a restart a door's `unknown` and a merged send come back as door cards", async () => {
+    const lost = (await rig(new FakeDoor(undefined, () => Promise.reject(new Error("dropped")))).send("hello")).receipt!.requestId;
+    const first = rig(new FakeDoor());
+    const merged = (await first.send("second")).receipt!.requestId;
+    first.protocol.proveDoor("main", "%1", [{ requestId: merged, how: "merged" }]);
+    const cards = rig(new FakeDoor()).protocol.queuedOf("main", "%1");
+    // Both rigs start on one clock, so the two cards tie on time: the order is not the point.
+    expect(cards.map((card) => [card.requestId, card.door ?? false, card.merged ?? false]).toSorted()).toEqual([
+      [lost, true, false],
+      [merged, true, true],
+    ]);
+  });
+});

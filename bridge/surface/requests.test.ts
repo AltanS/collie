@@ -295,6 +295,31 @@ describe("phases and receipts", () => {
   });
 });
 
+describe("a door's send the journal shows merged or changed (ADR 0141 point 4)", () => {
+  test("a settled door `sent` or `unknown` takes `late: merged` once, keeps its outcome, and survives a restart", () => {
+    const store = new RequestStore(dir);
+    const sent = store.accept(input({ id: "req-door-sent-1" })).record;
+    store.settle("req-door-sent-1", { ...receiptFor(sent), queued: true, via: "pi" });
+    expect(store.markMerged("req-door-sent-1")).toBe(true);
+    expect(store.markMerged("req-door-sent-1")).toBe(false);
+    expect(new RequestStore(dir).get("req-door-sent-1")?.receipt).toMatchObject({ outcome: "sent", via: "pi", late: "merged" });
+    const lost = store.accept(input({ id: "req-door-unkn-1" })).record;
+    store.settle("req-door-unkn-1", { ...receiptFor(lost, "unknown"), via: "pi" });
+    expect(store.markMerged("req-door-unkn-1")).toBe(true);
+    expect(store.get("req-door-unkn-1")?.receipt).toMatchObject({ outcome: "unknown", late: "merged" });
+  });
+
+  test("a screen send never takes it, nor a refused door send", () => {
+    const store = new RequestStore(dir);
+    const typed = store.accept(input({ id: "req-screen-0001" })).record;
+    store.settle("req-screen-0001", { ...receiptFor(typed), queued: true, via: "screen" });
+    expect(store.markMerged("req-screen-0001")).toBe(false);
+    const refused = store.accept(input({ id: "req-door-ref-01" })).record;
+    store.settle("req-door-ref-01", { ...receiptFor(refused, "refused"), via: "pi" });
+    expect(store.markMerged("req-door-ref-01")).toBe(false);
+  });
+});
+
 // Ask answers live in the same store (M56 spec 08), under their own file names.
 describe("a queued receipt whose text came back (ADR 0122)", () => {
   test("a settled `sent` + `queued` takes `late: returned` once; outcome and queued stay; it survives a restart", () => {

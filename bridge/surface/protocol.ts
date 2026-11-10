@@ -290,7 +290,7 @@ import { tryDoor, type DoorRegistry } from "../door/door.ts";
 import type { KeyGate } from "./key-gate.ts";
 import type { RequestStore, SendRecord } from "./requests.ts";
 import { HOLD_BRIDGE_MAX, HOLD_ENDED_KEEP_MS, HOLD_PANE_MAX, heldRow, type HeldEntry, type HoldCause, type HoldStore } from "./holds.ts";
-import { QueuedSends, type BoxReading, type ReceiptQueued } from "./queued.ts";
+import { QueuedSends, type BoxReading, type DoorProof, type ReceiptQueued } from "./queued.ts";
 import { PROBE_MARKER, probeCharOf, probeResidue } from "./probe-marker.ts";
 
 /** The step bounds, written as (max reads, max ms). */
@@ -2872,6 +2872,25 @@ export class SendProtocol {
   }
 
   /**
+   * What the live window's journal proved of the pane's door sends (ADR 0141 point 4,
+   * journal/receipt-queue.ts), written to their receipts: their own prompt settles them `effective` and
+   * their card goes; a prompt that holds them merged or changed marks them `late: "merged"` and keeps the
+   * card. A proof for a send that is no open door send of this pane changes nothing. Never throws.
+   */
+  proveDoor(session: string, paneId: string, proofs: readonly DoorProof[]): void {
+    for (const proof of proofs) {
+      try {
+        if (!this.queuedSends.proved(session, paneId, proof.requestId, proof.how)) continue;
+        if (proof.how === "landed") this.deps.store.markEffective(proof.requestId);
+        else this.deps.store.markMerged(proof.requestId);
+        console.log(`[send] ${proof.requestId}: the journal shows the door's send ${proof.how === "landed" ? "as its own prompt" : "merged or changed"}`);
+      } catch (err) {
+        console.warn(`[send] could not record the journal's proof of ${proof.requestId}: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+  }
+
+  /**
    * One read of a pane (ADR 0122): its input box ("" for an empty box, null when the read found no box)
    * and its turn. Marks the open queued sends whose texts the box holds as returned (their receipts take
    * `late: "returned"`), ends the returned ones it no longer holds, keeps a running turn's queued cards
@@ -4072,6 +4091,7 @@ export class SendProtocol {
         collapse: state.match?.profile.collapse.pattern ?? null,
         at: this.now(),
         steer: receipt.outcome === "steered",
+        door: state.via !== SCREEN,
       });
     }
     this.count(state, receipt, end.extra.surface);

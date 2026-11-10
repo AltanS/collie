@@ -102,4 +102,31 @@ describe("QueuedSends", () => {
     expect(m.sends.of("main", "%1")).toEqual([]);
     expect(m.sends.panes("main")).toEqual([]);
   });
+
+  test("a door's send is never taken back from the box: a desk draft with its text is not the send come back", () => {
+    const m = memory();
+    m.sends.add({ id: "queued-door-001", session: "main", paneId: "%1", generation: "omp:session", text: "fix the tests", collapse: null, at: m.clock.now, door: true });
+    m.clock.now += 1_000;
+    expect(m.sends.boxRead("main", "%1", { box: "fix the tests", at: m.clock.now, turn: "idle", poll: true })).toEqual([]);
+    expect(m.marked).toEqual([]);
+    expect(m.sends.of("main", "%1")).toEqual([{ requestId: "queued-door-001", text: "fix the tests", at: m.clock.now - 1_000, state: "queued", door: true }]);
+  });
+
+  test("the journal's proof: landed ends a door's card, merged marks it, and Discard takes a merged card", () => {
+    const m = memory();
+    const door = (id: string): void => m.sends.add({ id, session: "main", paneId: "%1", generation: "omp:session", text: id, collapse: null, at: m.clock.now, door: true });
+    door("queued-door-002");
+    door("queued-door-003");
+    m.add("queued-scr-0001", "typed");
+    expect(m.sends.proved("main", "%1", "queued-door-002", "landed")).toBe(true);
+    expect(m.sends.proved("main", "%1", "queued-door-003", "merged")).toBe(true);
+    expect(m.sends.proved("main", "%1", "queued-scr-0001", "landed")).toBe(false);
+    expect(m.sends.proved("main", "%2", "queued-door-003", "landed")).toBe(false);
+    expect(m.sends.of("main", "%1").map((card) => [card.requestId, card.merged ?? false])).toEqual([
+      ["queued-door-003", true],
+      ["queued-scr-0001", false],
+    ]);
+    expect(m.sends.dismissUnconfirmed("main", "%1", "queued-door-003")).toBe(true);
+    expect(m.sends.dismissUnconfirmed("main", "%1", "queued-scr-0001")).toBe(false);
+  });
 });

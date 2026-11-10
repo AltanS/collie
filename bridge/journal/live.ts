@@ -40,7 +40,7 @@ import type { Cursor } from "./cursor.ts";
 import { NO_CURSOR } from "./cursor.ts";
 import type { RowReducer } from "./reduce.ts";
 import type { TranscriptStore } from "./store.ts";
-import { receiptQueue, type QueuedSendWire, type ReceiptQueued } from "./receipt-queue.ts";
+import { receiptQueue, type DoorProof, type QueuedSendWire, type ReceiptQueued } from "./receipt-queue.ts";
 import type { AgentSessionRef, JournalAdapter, TranscriptEntry } from "./types.ts";
 import { LIVE_TURNS, MAX_PAGE_ROWS, pageStart } from "./turns.ts";
 import { redactText } from "../redact.ts";
@@ -707,7 +707,7 @@ class LiveWindow {
    * everything after each instead, held to `limit` rows at least and {@link MAX_PAGE_ROWS} at most
    * (`journal/turns.ts`). That is a first paint.
    */
-  body(after: ChatAfter | null, limit: number, receipts: readonly ReceiptQueued[] = []): ChatWindowBody {
+  body(after: ChatAfter | null, limit: number, receipts: readonly ReceiptQueued[] = [], prove?: (proofs: DoorProof[]) => void): ChatWindowBody {
     const rows =
       after !== null && after.gen === this.gen
         ? this.rows.filter((row) => row.rev > after.rev)
@@ -731,8 +731,10 @@ class LiveWindow {
     if (this.adapter.sendQueuedNow !== undefined) body.sendQueuedNow = [...this.adapter.sendQueuedNow];
     // Collie's own queued sends (ADR 0122), checked against every prompt the window holds, not the page.
     if (receipts.length > 0) {
-      const cards = receiptQueue(receipts, this.rows.map((row) => row.entry), this.adapter.recordsQueue === true, body.queued);
+      const { cards, proofs } = receiptQueue(receipts, this.rows.map((row) => row.entry), this.adapter.recordsQueue === true, body.queued);
       if (cards.length > 0) body.queuedSends = cards;
+      // The door sends the journal settled (ADR 0141 point 4), for the Send Protocol to write down.
+      if (proofs.length > 0) prove?.(proofs);
     }
     // Over every row the window holds, not the `limit` sent: the point is the prompt the first paint
     // left out. A window that opened mid-run holds none, and then the one looked up behind its front
@@ -825,13 +827,14 @@ export class LiveWindows {
    *
    * `receipts` are the pane's open queued sends from Collie's own receipts (ADR 0122): the answer lists
    * those the journal does not show as a prompt yet. Per pane, not per window: two panes on one session
-   * each see their own sends.
+   * each see their own sends. `prove` is told what the journal proved of the door sends among them.
    */
   async window(
     adapter: JournalAdapter,
     ref: AgentSessionRef,
     params: ChatParams,
     receipts: readonly ReceiptQueued[] = [],
+    prove?: (proofs: DoorProof[]) => void,
   ): Promise<ChatWindowBody | null> {
     const key = (await adapter.source.resolve(ref)) ?? (await adapter.source.pending?.(ref)) ?? null;
     if (key === null) return null;
@@ -855,7 +858,7 @@ export class LiveWindows {
         () => window.settleLookup(gen, null),
       );
     }
-    return window.body(params.after ?? null, params.limit, receipts);
+    return window.body(params.after ?? null, params.limit, receipts, prove);
   }
 
   /**
