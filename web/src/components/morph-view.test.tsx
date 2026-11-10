@@ -295,3 +295,84 @@ describe("the operator's pick stays visible", () => {
     expect(failed).not.toHaveBeenCalled();
   });
 });
+
+describe("pictures and the decision block", () => {
+  const MEDIA = [
+    { id: "im_aaaaaaaaaaaaaaaa", kind: "image" as const, mime: "image/png" as const, bytes: 100, width: 390, height: 844, caption: "Now" },
+    { id: "im_bbbbbbbbbbbbbbbb", kind: "image" as const, mime: "image/png" as const, bytes: 100, width: 390, height: 844, caption: "Compact" },
+    { id: "im_cccccccccccccccc", kind: "image" as const, mime: "image/png" as const, bytes: 100, width: 390, height: 844, caption: "Tall" },
+    { id: "im_dddddddddddddddd", kind: "image" as const, mime: "image/png" as const, bytes: 100, width: 800, height: 400, caption: "Loose" },
+  ];
+
+  function pictured(choice: MorphScreen["choice"]): MorphScreen {
+    const parsed = parseMorphView([{ kind: "para", text: "The header" }, { kind: "image", attrs: { ref: "0" } }], "/view", { images: MEDIA.length });
+    if (parsed.view === undefined) throw new Error(JSON.stringify(parsed.refusals));
+    const out: MorphScreen = { rev: 4, at: AT, view: parsed.view, set: "dc_aaaaaaaaaaaa", media: MEDIA };
+    if (choice !== undefined) out.choice = choice;
+    return out;
+  }
+
+  const CHOICE: NonNullable<MorphScreen["choice"]> = {
+    question: "Which header?",
+    options: [
+      { label: "Compact", detail: "One line", value: "Use the compact header.", preview: 1 },
+      { label: "Tall", confirm: "Sure?", preview: 2 },
+    ],
+    recommends: { option: 0, why: "More room for the list" },
+  };
+
+  it("places a picture by ref, and shows only the unplaced, unpreviewed one in the row", () => {
+    const { container } = draw({ view: pictured(CHOICE) });
+    // The view's picture: a frame that opens it at full size.
+    expect(screen.getByRole("button", { name: "Open Now at full size" })).toBeInTheDocument();
+    const strip = container.querySelector("[data-slot=image-strip]") ?? screen.getByRole("region", { name: "Images" });
+    expect(strip.textContent).toContain("Loose");
+    expect(strip.textContent).not.toContain("Compact");
+  });
+
+  it("draws the question, each option with its preview card, the star on the recommended one and its why", () => {
+    const { container } = draw({ view: pictured(CHOICE) });
+    expect(screen.getByText("Which header?")).toBeInTheDocument();
+    expect(container.querySelectorAll("[data-slot=morph-option-card]")).toHaveLength(2);
+    expect(screen.getByRole("button", { name: "Open Compact at full size" })).toBeInTheDocument();
+    expect(container.querySelector("[data-slot=morph-choice-options]")?.getAttribute("data-layout")).toBe("side");
+    const compact = screen.getByRole("button", { name: /^Compact/ });
+    expect(compact.querySelector("[data-slot=morph-recommended-mark]")).not.toBeNull();
+    expect(screen.getByText("More room for the list")).toBeInTheDocument();
+  });
+
+  it("a pick sends picked with the value, holds the other option while in flight, and is marked after", async () => {
+    let finish: (sent: boolean) => void = () => undefined;
+    const onSend = vi.fn(() => new Promise<boolean>((resolve) => (finish = resolve)));
+    const onPressed = vi.fn();
+    draw({ view: pictured(CHOICE), onSend, onPressed });
+    fireEvent.click(screen.getByRole("button", { name: /^Compact/ }));
+    expect(onSend).toHaveBeenCalledWith('picked "Compact": Use the compact header.');
+    expect(screen.getByRole("button", { name: /^Tall/ })).toBeDisabled();
+    await act(async () => finish(true));
+    expect(onPressed).toHaveBeenCalledWith("choice/0");
+  });
+
+  it("an option with confirm needs two taps; a pick without a value sends the label alone", () => {
+    vi.useFakeTimers();
+    const onSend = vi.fn(() => Promise.resolve(true));
+    draw({ view: pictured(CHOICE), onSend });
+    fireEvent.click(screen.getByRole("button", { name: /^Tall/ }));
+    expect(onSend).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Sure?: tap again to confirm" })).toBeInTheDocument();
+    act(() => vi.advanceTimersByTime(ARM_DWELL_MS));
+    fireEvent.click(screen.getByRole("button", { name: "Sure?: tap again to confirm" }));
+    expect(onSend).toHaveBeenCalledWith('picked "Tall"');
+  });
+
+  it("the picked option stays selected until the next screen", () => {
+    draw({ view: pictured(CHOICE), pressed: ["choice/1"] });
+    expect(screen.getByRole("button", { name: /^Tall/ }).className).toContain("bg-primary/10");
+  });
+
+  it("stacks options when a text would not stay readable side by side", () => {
+    const long = { ...CHOICE, options: [CHOICE.options[0]!, { label: "Tall", detail: "A title, a subtitle and the search field under them, all in view", preview: 2 }] };
+    const { container } = draw({ view: pictured(long) });
+    expect(container.querySelector("[data-slot=morph-choice-options]")?.getAttribute("data-layout")).toBe("stack");
+  });
+});

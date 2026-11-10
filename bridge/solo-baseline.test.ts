@@ -804,6 +804,9 @@ describe("solo zero-tax — routes", () => {
       // collie answer for every machine they keep watch over; a peer 404s (`crew.not_lead`), and none
       // is forwardable — `bridge/crew/router.test.ts` pins all three as 404 across a link.
       "/^\\/api\\/machines\\/([^/]+)\\/(history|alerts)$/",
+      // One picture of a Morph screen: a read, both ids checked against their patterns before any path is
+      // built, lead-local like the hill's image route. A bridge that never kept a picture answers 404.
+      "/^\\/api\\/morph\\/media\\/([^/]+)\\/([^/]+)$/",
       // `changes` is the Changes view (ADR 0065): read-only git over the pane's folder, read-gated
       // like `history` beside it and forwarded to the member that owns the pane. `chat` is the live
       // half of `history` (journal/live.ts): the same log, asked "anything after this?" — a read, on

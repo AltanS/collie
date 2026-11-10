@@ -25,30 +25,47 @@
 import { isAbsolute } from "node:path";
 
 import type { JsonObject, JsonValue } from "../json.ts";
-import { asJsonString } from "../../web/src/lib/json.ts";
+import { asJsonObject, asJsonString } from "../../web/src/lib/json.ts";
 import { LOCAL_MEMBER, parseAddress } from "../walky/address.ts";
 import {
   cleanMorphLine,
   MORPH_DRAWING_MAX_MS,
   MORPH_HINT_MAX,
+  MORPH_MEDIA_ID_RE,
+  MORPH_MEDIA_MAX,
+  MORPH_SET_RE,
   morphShellWord,
   MORPH_NOTE_MAX,
   MORPH_TITLE_MAX,
+  parseMorphChoice,
   parseMorphView,
   type MorphAnswer,
+  type MorphChoice,
   type MorphDrawing,
   type MorphSession,
   type MorphSwitchBody,
   type MorphView,
 } from "../../web/src/lib/morph/wire.ts";
 import type { Refusal } from "../../web/src/lib/tricks/schema.ts";
+import { keepPictures, MORPH_MINTERS, MORPH_TOO_MANY_IMAGES, type MorphImageInput, type MorphMediaKeep, type MorphMinters, type MorphPictureSet } from "./media.ts";
 import { morphEntry, type MorphEntry, type MorphStore } from "./store.ts";
 
 /** How the bridge sits in a crew. A member (`peer`) refuses a show: the phone reads the lead. */
 export type MorphCrewMode = "solo" | "lead" | "peer";
 
 /** Why the bridge refuses a socket operation. */
-export type MorphRefusalCode = "bad_view" | "bad_title" | "bad_note" | "not_on_lead" | "unsaved" | "wrong_session";
+export type MorphRefusalCode =
+  | "bad_view"
+  | "bad_title"
+  | "bad_note"
+  | "not_on_lead"
+  | "unsaved"
+  | "wrong_session"
+  // Pictures and the decision block: added, never a change to the codes above.
+  | "bad_image"
+  | "too_many_images"
+  | "image_too_large"
+  | "bad_choice";
 
 /** The sentence a crew member answers a show or a switch with. */
 export const MORPH_NOT_ON_LEAD = "Morph reads this machine only for now; run it in a session on the lead machine";
@@ -75,6 +92,13 @@ export interface MorphServiceDeps {
   /** The absolute path of this bridge's own `collie` binary, named in the hint. */
   readonly binary: string;
   readonly now?: () => number;
+  /**
+   * Where pictures are kept: a second instance of the hill's media store, rooted at Morph's own folder
+   * (bridge/morph/media.ts). Absent, a command that names a picture is refused and nothing else changes.
+   */
+  readonly media?: MorphMediaKeep;
+  /** How set and picture ids are minted. A test pins them. */
+  readonly mint?: MorphMinters;
 }
 
 /** A socket operation's answer: the caller's session as served, or a refusal with its code. */
@@ -85,10 +109,20 @@ export type MorphOpAnswer =
 /** The phone's switch: the session as served, or an HTTP status with a sentence. */
 export type MorphSwitchAnswer = { readonly ok: true; readonly session: MorphSession } | { readonly ok: false; readonly status: 400 | 404 | 503; readonly error: string };
 
-/** A show's fields, read from the socket: the view as raw JSON (checked here) and the title. */
+/** A show's fields, read from the socket: the view and the choice as raw JSON (checked here), the title and the pictures. */
 export interface MorphShowFields {
   readonly view: JsonValue | undefined;
   readonly title: string | null;
+  /** Absolute paths on this machine; the bridge reads the files. Absent or empty for none. */
+  readonly images?: readonly MorphImageInput[];
+  /** The decision block, absent for none. */
+  readonly choice?: JsonValue;
+}
+
+/** One picture's bytes and type, for the media route. */
+export interface MorphMediaFile {
+  readonly bytes: Uint8Array<ArrayBuffer>;
+  readonly mime: string;
 }
 
 /** The head the phone puts in front of a request sent from Morph: who wrote it, so the terminal shows where it came from. */
@@ -144,11 +178,13 @@ function refusalWords(refusals: readonly Refusal[]): string {
 
 export class MorphService {
   private readonly now: () => number;
+  private readonly mint: MorphMinters;
 
   constructor(private readonly deps: MorphServiceDeps) {
     // Probed once, so a path that fits no wording leaves the bridge without Morph at boot, not at a serve.
     morphHint(deps.binary, PROBE_SESSION);
     this.now = deps.now ?? Date.now;
+    this.mint = deps.mint ?? MORPH_MINTERS;
   }
 
   /** The tail one session carries: the same words for every session, with that session's own address. */
@@ -205,17 +241,58 @@ export class MorphService {
     return this.commit({ session, on: held.on, shows: held.shows, changedAt: this.now() });
   }
 
-  /** `morph show` from the socket: one screen for the caller's session, stored even while Morph is off. */
+  /**
+   * `morph show` from the socket: one screen for the caller's session, stored even while Morph is off.
+   * Checked cheapest first: the title, the picture count, the view and the choice, and only then are the
+   * pictures read and written. A refusal anywhere changes nothing.
+   */
   show(session: string, fields: MorphShowFields): MorphOpAnswer {
     if (this.deps.crewMode() === "peer") return { ok: false, error: MORPH_NOT_ON_LEAD, code: "not_on_lead" };
     const title = fields.title === null ? null : cleanMorphLine(fields.title, MORPH_TITLE_MAX);
     if (fields.title !== null && title === null) return { ok: false, error: `a title is one line of 1 to ${String(MORPH_TITLE_MAX)} characters`, code: "bad_title" };
-    const parsed = parseMorphView(fields.view);
+    const named = fields.images ?? [];
+    const images = named.length;
+    if (images > MORPH_MEDIA_MAX) return { ok: false, error: MORPH_TOO_MANY_IMAGES, code: "too_many_images" };
+    const parsed = parseMorphView(fields.view, "/view", { images });
     if (parsed.view === undefined) return { ok: false, error: `the view was refused: ${refusalWords(parsed.refusals)}`, code: "bad_view", refusals: parsed.refusals.slice(0, MORPH_REFUSALS_SHOWN) };
+    const choice = this.choiceOf(fields.choice, images);
+    if (!choice.ok) return choice;
+    const kept = images === 0 ? null : keepPictures({ keep: this.deps.media, mint: this.mint, held: null, added: named });
+    if (kept !== null && !kept.ok) return { ok: false, error: kept.error, code: kept.code };
+    const pictures = kept === null ? null : kept.pictures;
     const base = this.base(session);
     const shows = base.shows + 1;
-    const view: MorphView = title === null ? { rev: shows, at: new Date(this.now()).toISOString(), view: parsed.view } : { rev: shows, at: new Date(this.now()).toISOString(), title, view: parsed.view };
-    return this.commit({ session, on: base.on, shows, view, changedAt: this.now() });
+    const view = screenOf({ rev: shows, at: new Date(this.now()).toISOString(), title, view: parsed.view, pictures, choice: choice.choice });
+    const answer = this.commit({ session, on: base.on, shows, view, changedAt: this.now() });
+    if (!answer.ok && pictures !== null) this.deps.media?.remove(pictures.set);
+    return answer;
+  }
+
+  /** The bytes of one picture a held screen names, or null. Both ids are checked before the store is asked. */
+  mediaFile(set: string, mediaId: string): MorphMediaFile | null {
+    if (!MORPH_SET_RE.test(set) || !MORPH_MEDIA_ID_RE.test(mediaId) || this.deps.media === undefined) return null;
+    const view = this.deps.store.all().find((entry) => entry.view?.set === set)?.view;
+    const media = view?.media?.find((item) => item.id === mediaId);
+    if (media === undefined) return null;
+    const bytes = this.deps.media.bytesOf(set, media);
+    return bytes === null ? null : { bytes, mime: media.mime };
+  }
+
+  /** Remove every picture set no held screen names: at boot, as the hill prunes its media. */
+  pruneMedia(): void {
+    this.deps.media?.prune(this.heldSets(this.deps.store.all()));
+  }
+
+  /** The decision block, read with the screen's picture count; undefined for none. */
+  private choiceOf(raw: JsonValue | undefined, images: number): { readonly ok: true; readonly choice: MorphChoice | undefined } | Extract<MorphOpAnswer, { ok: false }> {
+    if (raw === undefined) return { ok: true, choice: undefined };
+    const parsed = parseMorphChoice(raw, "/choice", { images });
+    if (parsed.choice === undefined) return { ok: false, error: `the choice was refused: ${refusalWords(parsed.refusals)}`, code: "bad_choice", refusals: parsed.refusals.slice(0, MORPH_REFUSALS_SHOWN) };
+    return { ok: true, choice: parsed.choice };
+  }
+
+  private heldSets(entries: readonly MorphEntry[]): Set<string> {
+    return new Set(entries.flatMap((entry) => (entry.view?.set === undefined ? [] : [entry.view.set])));
   }
 
   /** The phone's switch: the address is resolved to the live session it names here, then switched. */
@@ -240,6 +317,8 @@ export class MorphService {
     const rest = this.deps.store.all().filter((held) => held.session !== entry.session && this.worthKeeping(held) && (!known || this.deps.place(held.session) !== null));
     const next = this.worthKeeping(entry) ? [...rest, entry] : rest;
     if (!this.deps.store.replace(next)) return { ok: false, error: MORPH_UNSAVED, code: "unsaved" };
+    // A set no held screen names goes with the write that dropped it, as the hill prunes on write.
+    this.deps.media?.prune(this.heldSets(this.deps.store.all()));
     return { ok: true, session: this.served(entry) };
   }
 
@@ -276,9 +355,46 @@ export function readStartFields(fields: JsonObject): MorphStartFields | { readon
   return { note };
 }
 
-/** A `morph.show` request's fields, as the socket carries them: `view` (any JSON) and an optional `title`. */
-export function readShowFields(fields: JsonObject): MorphShowFields | { readonly error: string } {
+/** A field the socket could not read, with the code its refusal carries. */
+export interface MorphFieldError {
+  readonly error: string;
+  readonly code: MorphRefusalCode;
+}
+
+/** One screen built from its parts: the pictures and the choice are on it only when given. */
+export function screenOf(parts: { rev: number; at: string; title: string | null; view: MorphView["view"]; pictures: MorphPictureSet | null; choice: MorphChoice | undefined }): MorphView {
+  const screen: MorphView = { rev: parts.rev, at: parts.at, view: parts.view };
+  if (parts.title !== null) screen.title = parts.title;
+  if (parts.pictures !== null) {
+    screen.set = parts.pictures.set;
+    screen.media = [...parts.pictures.media];
+  }
+  if (parts.choice !== undefined) screen.choice = parts.choice;
+  return screen;
+}
+
+/** The pictures a request names: `[{ path, caption? }]`, absent or null for none. The bridge reads the files. */
+export function readImageFields(raw: JsonValue | undefined): readonly MorphImageInput[] | MorphFieldError {
+  if (raw === undefined || raw === null) return [];
+  if (!Array.isArray(raw)) return { error: 'pictures are a list of { "path", "caption"? }', code: "bad_image" };
+  if (raw.length > MORPH_MEDIA_MAX) return { error: MORPH_TOO_MANY_IMAGES, code: "too_many_images" };
+  const out: MorphImageInput[] = [];
+  for (const item of raw) {
+    const row = asJsonObject(item);
+    const path = asJsonString(row?.path);
+    const caption = row?.caption === undefined || row.caption === null ? null : asJsonString(row.caption);
+    if (path === undefined || caption === undefined) return { error: 'a picture is { "path": "<absolute path>", "caption"?: "<text>" }', code: "bad_image" };
+    out.push({ path, caption });
+  }
+  return out;
+}
+
+/** A `morph.show` request's fields, as the socket carries them: `view` and `choice` (any JSON), an optional `title`, and `images`. */
+export function readShowFields(fields: JsonObject): MorphShowFields | MorphFieldError {
   const title = fields.title === undefined || fields.title === null ? null : asJsonString(fields.title);
-  if (title === undefined) return { error: "a title is text" };
-  return { view: fields.view, title };
+  if (title === undefined) return { error: "a title is text", code: "bad_title" };
+  const images = readImageFields(fields.images);
+  if ("error" in images) return images;
+  if (fields.choice === undefined || fields.choice === null) return { view: fields.view, title, images };
+  return { view: fields.view, title, images, choice: fields.choice };
 }

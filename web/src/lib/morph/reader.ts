@@ -25,7 +25,7 @@ import { kidsOf } from "@/lib/tricks/layout";
 import type { View, ViewNode } from "@/lib/tricks/schema";
 import type { TranscriptEntry } from "@/lib/types";
 
-import { MORPH_DRAWING_MAX_MS, type MorphDrawing, type MorphView } from "./wire";
+import { MORPH_DRAWING_MAX_MS, type MorphChoice, type MorphDrawing, type MorphView } from "./wire";
 
 /** The word Morph. A name, never translated, so it is no dictionary key (like a typeface's family name). */
 export const MORPH_NAME = "Morph";
@@ -171,6 +171,42 @@ export function withPressed(view: View, controls: readonly string[]): View {
       return kids.length === 0 ? node : Object.assign({}, node, { kids: walk(kids, path) });
     });
   return walk(view, "v");
+}
+
+// ── the decision block ──────────────────────────────────────────────────────────────────────────
+
+/**
+ * The control a pick in the decision block is filed under, beside the view's own `v/...` paths, so the
+ * picks logic holds both: the block's options share the parent `choice`, so one pick moves the mark.
+ */
+export function choiceControl(index: number): string {
+  return `choice/${String(index)}`;
+}
+
+/** The option marked among the picks, or null. */
+export function pickedOption(controls: readonly string[]): number | null {
+  for (const control of controls.toReversed()) {
+    const match = /^choice\/(\d+)$/u.exec(control);
+    if (match !== null) return Number(match[1]);
+  }
+  return null;
+}
+
+/**
+ * The words a pick in the decision block sends: `picked "<label>"`, or `picked "<label>": <value>` when the
+ * option has a value that is not its label. Null when the index names no option, so nothing is sent.
+ */
+export function pickTextOf(choice: MorphChoice, index: number): string | null {
+  const option = choice.options[index];
+  if (option === undefined) return null;
+  const label = option.label.trim();
+  const value = option.value?.trim() ?? "";
+  return value === "" || value === label ? `picked "${label}"` : `picked "${label}": ${value}`;
+}
+
+/** The picture refs the decision block draws as previews: the row of pictures leaves them out. */
+export function previewRefs(choice: MorphChoice | undefined): Set<number> {
+  return new Set((choice?.options ?? []).flatMap((option) => (option.preview === undefined ? [] : [option.preview])));
 }
 
 /** The control path of a button's parent: its siblings share it. */

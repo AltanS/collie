@@ -254,7 +254,7 @@ import { readAnswerRequest } from "./hill/parse.ts";
 import { HILL_ID_RE, HILL_MEDIA_ID_RE } from "../web/src/lib/hill/wire.ts";
 import { hillDeviceId, type HillService } from "./hill/service.ts";
 import type { MorphService } from "./morph/service.ts";
-import { readMorphSwitchBody } from "../web/src/lib/morph/wire.ts";
+import { MORPH_MEDIA_ID_RE, MORPH_SET_RE, readMorphSwitchBody } from "../web/src/lib/morph/wire.ts";
 import { isPaneId, parseAddress } from "./walky/address.ts";
 import { isWalkyId, parsePhoneSend } from "./walky/parse.ts";
 import { NOT_THE_SENDER, type TakeBackAnswer, type WalkyService } from "./walky/service.ts";
@@ -561,6 +561,8 @@ const BLOB_ROUTE = /^\/api\/blobs\/([^/]+)$/;
  * like the rest of the hill: not forwarded across a crew link.
  */
 const HILL_IMAGE_ROUTE = /^\/api\/hill\/media\/([^/]+)\/([^/]+)$/;
+/** `GET /api/morph/media/<set id>/<media id>`: one picture of a Morph screen. Both ids are checked before any path is built. */
+const MORPH_IMAGE_ROUTE = /^\/api\/morph\/media\/([^/]+)\/([^/]+)$/;
 
 /**
  * Walky talky's list for one pane (M62): the messages that reached it, newest first, each with its
@@ -3358,6 +3360,14 @@ export function startServer(opts: {
           body = undefined;
         }
         return morphSwitchRoute(morph, body, req.headers.get("accept-encoding"));
+      }
+      // A picture of a Morph screen: the read gate, this machine only, as the hill's images.
+      const morphImage = pathname.match(MORPH_IMAGE_ROUTE);
+      if (morphImage && req.method === "GET") {
+        const denied = browserGate("read");
+        if (denied) return denied;
+        if (host.kind === "member") return text(MORPH_LOCAL_TEXT, 400);
+        return morphMediaRoute(morph, morphImage[1]!, morphImage[2]!);
       }
       const hillImage = pathname.match(HILL_IMAGE_ROUTE);
       if (hillImage && req.method === "GET") {
@@ -9107,6 +9117,20 @@ export function morphSwitchRoute(morph: MorphService | undefined, body: JsonValu
   const answer = morph.switch(read);
   if (!answer.ok) return text(answer.error, answer.status);
   return json(answer.session, acceptEncoding);
+}
+
+/**
+ * `GET /api/morph/media/<set id>/<media id>`: the bytes of one picture of a Morph screen, with the type
+ * the bridge read off them when it kept the file and the hill's image headers (`no-store`, a sandboxed
+ * CSP, `nosniff`). Each id is checked against its pattern before the service is asked, and the service
+ * builds a path only for a pair a held screen names. Every miss is the same 404.
+ */
+export function morphMediaRoute(morph: MorphService | undefined, set: string, mediaId: string): Response {
+  if (morph === undefined) return text(MORPH_OFF_TEXT, 404);
+  if (!MORPH_SET_RE.test(set) || !MORPH_MEDIA_ID_RE.test(mediaId)) return text(HILL_MEDIA_MISSING, 404);
+  const file = morph.mediaFile(set, mediaId);
+  if (file === null) return text(HILL_MEDIA_MISSING, 404);
+  return secure(new Response(file.bytes, { headers: { "content-type": file.mime, ...HILL_MEDIA_HEADERS } }));
 }
 
 /**

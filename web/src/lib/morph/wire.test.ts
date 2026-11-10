@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { MORPH_HINT_MAX, MORPH_NOTE_MAX, MORPH_TITLE_MAX, parseMorphView, readMorphAnswer, readMorphSession, readMorphSwitchBody, readMorphView } from "./wire";
+import { MORPH_HINT_MAX, MORPH_NOTE_MAX, MORPH_TITLE_MAX, parseMorphChoice, parseMorphView, readMorphAnswer, readMorphSession, readMorphSwitchBody, readMorphView } from "./wire";
 
 const SESSION = "local/%1#aaaa";
 const HINT = "[morph: answer by drawing one screen]";
@@ -115,5 +115,82 @@ describe("readMorphSwitchBody", () => {
     expect(readMorphSwitchBody({ session: SESSION })).toBeNull();
     expect(readMorphSwitchBody({ session: " padded ", on: false })).toBeNull();
     expect(readMorphSwitchBody([])).toBeNull();
+  });
+});
+
+describe("pictures by ref", () => {
+  const button = { kind: "bar", kids: [{ kind: "button", attrs: { label: "Ship it", intent: "reply" } }] };
+
+  it("takes a button and an image by ref on one screen, keeping the picture node as drawn", () => {
+    const parsed = parseMorphView([{ kind: "image", attrs: { ref: "0", focus: "50 20 2" } }, button], "/view", { images: 1 });
+    expect(parsed.refusals).toEqual([]);
+    expect(parsed.view?.[0]).toMatchObject({ kind: "image", attrs: { ref: "0", focus: "50 20 2" } });
+    expect(parsed.view?.[1]?.kind).toBe("bar");
+  });
+
+  it("takes a compare of two pictures inside a group, beside a button", () => {
+    const compare = { kind: "compare", kids: [{ kind: "image", attrs: { ref: "0" } }, { kind: "image", attrs: { ref: "1", caption: "New" } }] };
+    const parsed = parseMorphView([{ kind: "group", attrs: { label: "Look" }, kids: [{ kind: "para", text: "Before and after" }, compare] }, button], "/view", { images: 2 });
+    expect(parsed.refusals).toEqual([]);
+    const group = parsed.view?.[0];
+    expect(group?.kind === "group" ? group.kids[1]?.kind : null).toBe("compare");
+  });
+
+  it("refuses a ref past the pictures, with the picture's own path", () => {
+    const parsed = parseMorphView([{ kind: "para", text: "Look" }, { kind: "group", kids: [{ kind: "image", attrs: { ref: "2" } }] }], "/view", { images: 2 });
+    expect(parsed.view).toBeUndefined();
+    expect(parsed.refusals.map((r) => r.path)).toContain("/view/1/kids/0/attrs/ref");
+  });
+
+  it("still reads a src image as the part parser does", () => {
+    const src = [{ kind: "image", attrs: { src: "shot.png", alt: "A shot", w: "300", h: "200" } }];
+    expect(parseMorphView(src)).toEqual(parseMorphView(src, "/view", { images: 0 }));
+    expect(parseMorphView([{ kind: "image", attrs: { alt: "no src" } }]).view).toBeUndefined();
+  });
+
+  it("refuses a part-parser fault beside a picture under its real path", () => {
+    const parsed = parseMorphView([{ kind: "image", attrs: { ref: "0" } }, { kind: "bar", kids: [{ kind: "button", attrs: { label: "x" } }] }], "/view", { images: 1 });
+    expect(parsed.refusals.some((r) => r.path.startsWith("/view/1/kids/0"))).toBe(true);
+  });
+
+  it("serves a view with its set, its pictures and a picture placed by ref", () => {
+    const media = [{ id: "im_aaaaaaaaaaaaaaaa", kind: "image", mime: "image/png", bytes: 120, width: 390, height: 844, caption: "Now" }];
+    const read = readMorphView({ rev: 2, at: "2026-11-10T10:00:00.000Z", set: "dc_aaaaaaaaaaaa", media, view: [{ kind: "image", attrs: { ref: "0" } }] });
+    expect(read?.set).toBe("dc_aaaaaaaaaaaa");
+    expect(read?.media).toHaveLength(1);
+    expect(readMorphView({ rev: 2, at: "2026-11-10T10:00:00.000Z", view: [{ kind: "image", attrs: { ref: "0" } }] })).toBeNull();
+    expect(readMorphView({ rev: 2, at: "2026-11-10T10:00:00.000Z", set: "../etc", media, view: [{ kind: "para", text: "x" }] })).toBeNull();
+  });
+});
+
+describe("parseMorphChoice", () => {
+  it("reads a question, options with every field, and a recommendation", () => {
+    const parsed = parseMorphChoice(
+      {
+        question: "Which layout?",
+        options: [
+          { label: "Cards", detail: "One per row", value: "Use cards.", preview: 0 },
+          { label: "Table", confirm: "Sure?", preview: 1 },
+        ],
+        recommends: { option: 0, why: "Reads better on a phone" },
+      },
+      "/choice",
+      { images: 2 },
+    );
+    expect(parsed.refusals).toEqual([]);
+    expect(parsed.choice?.options[0]).toEqual({ label: "Cards", detail: "One per row", value: "Use cards.", preview: 0 });
+    expect(parsed.choice?.recommends).toEqual({ option: 0, why: "Reads better on a phone" });
+  });
+
+  it("refuses too many options, a long label, an unknown key, a preview past the pictures and a stray recommendation", () => {
+    expect(parseMorphChoice({ options: [] }, "/choice", { images: 0 }).refusals[0]?.path).toBe("/choice/options");
+    const six = Array.from({ length: 6 }, (_, i) => ({ label: `O${String(i)}` }));
+    expect(parseMorphChoice({ options: six }, "/choice", { images: 0 }).choice).toBeUndefined();
+    const paths = parseMorphChoice({ colour: "red", options: [{ label: "x".repeat(41) }, { label: "B", preview: 1 }], recommends: { option: 5 } }, "/choice", { images: 1 }).refusals.map((r) => r.path);
+    expect(paths).toEqual(expect.arrayContaining(["/choice/colour", "/choice/options/0/label", "/choice/options/1/preview", "/choice/recommends/option"]));
+  });
+
+  it("refuses two options with the same label, since the pick is sent by its label", () => {
+    expect(parseMorphChoice({ options: [{ label: "A" }, { label: "A" }] }, "/choice", { images: 0 }).refusals[0]?.code).toBe("duplicate");
   });
 });

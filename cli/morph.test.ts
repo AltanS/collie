@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
 import type { BeaconMatcher } from "../bridge/beacon/decorate.ts";
+import { deniedFoldersSync, HillMediaStore } from "../bridge/hill/media.ts";
 import { walkyPlace } from "../bridge/hill/walky.ts";
 import { HOST } from "../bridge/host.ts";
 import { MorphService } from "../bridge/morph/service.ts";
@@ -15,8 +16,8 @@ import { unknownOp } from "../bridge/walky/refusals.ts";
 import { WalkyService } from "../bridge/walky/service.ts";
 import { MORPH_NEEDS_A_PANE, walkySocketPath, WalkyServer, type PlaceTarget } from "../bridge/walky/socket.ts";
 import { spaceOf } from "../bridge/walky/space.ts";
-import { parseJsonObject } from "../web/src/lib/json.ts";
-import { MORPH_NOTE_MAX, parseMorphView } from "../web/src/lib/morph/wire.ts";
+import { asJsonObject, parseJsonObject } from "../web/src/lib/json.ts";
+import { MORPH_NOTE_MAX, parseMorphChoice, parseMorphView } from "../web/src/lib/morph/wire.ts";
 import { NODE_ATTRS, NODE_KINDS, TONES } from "../web/src/lib/tricks/schema.ts";
 import { capture, context } from "./fakes.ts";
 import { EXIT } from "./io.ts";
@@ -30,6 +31,8 @@ import {
   cmdMorphShow,
   cmdMorphStart,
   cmdMorphStatus,
+  MORPH_CHOICE_EXAMPLE,
+  MORPH_CHOICE_EXAMPLE_IMAGES,
   MORPH_CLOSED_SETS,
   MORPH_EXAMPLE,
   MORPH_NOT_HERE,
@@ -63,6 +66,8 @@ const matcher: BeaconMatcher = {
   notesWithoutHooks: { agentDetection: "", agentSessionRef: "" },
 };
 const target: PlaceTarget = { session: "main", matcher, paneIds: () => ["%1", "%2", "%3"] };
+/** A PNG's signature and IHDR (390 x 844), enough for the bridge's sniff and size. */
+const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52, 0, 0, 1, 0x86, 0, 0, 3, 0x4c, 8, 2, 0, 0, 0, 0, 0, 0, 0, ...Array.from({ length: 32 }, () => 0)]);
 const inPane = (pane: string) => ({ TMUX: "/tmp/tmux-1/default,123,0", TMUX_PANE: pane });
 
 const panes: WalkyPane[] = [
@@ -83,6 +88,7 @@ async function bridge(withMorph = true): Promise<{ readonly stateDir: string; re
     crewMode: () => "solo",
     binary: BIN,
     now: () => Date.parse("2026-11-10T10:00:00.000Z"),
+    media: new HillMediaStore(join(stateDir, "morph"), deniedFoldersSync([stateDir]), () => undefined),
   });
   const base = { socketPath: walkySocketPath(stateDir), service: walky, targets: () => [target], log: () => undefined };
   const server = withMorph ? new WalkyServer({ ...base, morph }) : new WalkyServer(base);
@@ -161,7 +167,9 @@ describe("help", () => {
     expect(text).toContain("Write sentences as `para` nodes. Use `line` only for short monospace text");
     expect(text).toContain("redraw the screen with \"pressed\": \"true\"");
     expect(text).toContain("Ask one decision per screen");
-    expect(text).toContain("use a `code` node as a monospace mock");
+    expect(text).toContain('place it with {"kind":"image","attrs":{"ref":"0"}}');
+    expect(text).toContain('For a decision, use "choice", one decision per screen');
+    expect(text).toContain('For a UI question give every option a "preview" picture');
   });
 
   test("with a session every command carries it; without, the commands say where to copy it from", () => {
@@ -215,11 +223,33 @@ describe("help", () => {
   });
 });
 
+describe("pictures and the decision block", () => {
+  test("the choice example parses with its three pictures, view and choice alike", () => {
+    const example = asJsonObject(MORPH_CHOICE_EXAMPLE);
+    expect(parseMorphView(example?.view, "/view", { images: MORPH_CHOICE_EXAMPLE_IMAGES }).refusals).toEqual([]);
+    expect(parseMorphChoice(example?.choice, "/choice", { images: MORPH_CHOICE_EXAMPLE_IMAGES }).refusals).toEqual([]);
+    const printed = morphHelp().find((line) => line.startsWith('{"title"'));
+    expect(printed === undefined ? undefined : JSON.parse(printed)).toEqual(MORPH_CHOICE_EXAMPLE);
+  });
+
+  test("--image takes a path and a caption, at most four times", () => {
+    expect(parseShowArgs(["s.json", "--image", "a.png", "--image", "b.png=The new header"])).toMatchObject({ images: [{ path: "a.png" }, { path: "b.png", caption: "The new header" }] });
+    expect(parseShowArgs(["s.json", "--image"])).toHaveProperty("error");
+    expect(parseShowArgs(["s.json", "--image", "a.png="])).toHaveProperty("error");
+    expect(parseShowArgs(["s.json", ...Array.from({ length: 5 }, (_, i) => ["--image", `${String(i)}.png`]).flat()])).toHaveProperty("error");
+  });
+
+  test("the screen object takes a choice beside its view and title", () => {
+    expect(readScreen(JSON.stringify({ view: [], choice: { options: [{ label: "A" }] } }), null)).toEqual({ view: [], title: null, choice: { options: [{ label: "A" }] } });
+    expect(readScreen(JSON.stringify({ view: [], extra: 1 }), null)).toHaveProperty("error");
+  });
+});
+
 describe("show's arguments and file", () => {
   test("reads a path or -, a title and --json", () => {
-    expect(parseShowArgs(["s.json", "--title", "Tests", "--json"])).toEqual({ source: "s.json", title: "Tests", json: true, session: null });
-    expect(parseShowArgs(["-"])).toEqual({ source: "-", title: null, json: false, session: null });
-    expect(parseShowArgs(["--session", "local/%1#aaaa", "s.json"])).toEqual({ source: "s.json", title: null, json: false, session: "local/%1#aaaa" });
+    expect(parseShowArgs(["s.json", "--title", "Tests", "--json"])).toEqual({ source: "s.json", title: "Tests", json: true, session: null, images: [] });
+    expect(parseShowArgs(["-"])).toEqual({ source: "-", title: null, json: false, session: null, images: [] });
+    expect(parseShowArgs(["--session", "local/%1#aaaa", "s.json"])).toEqual({ source: "s.json", title: null, json: false, session: "local/%1#aaaa", images: [] });
     expect(parseShowArgs(["--session"])).toHaveProperty("error");
     expect(parseShowArgs(["--session", "a b", "s.json"])).toHaveProperty("error");
     expect(parseShowArgs(["--session", "a", "--session", "b", "s.json"])).toHaveProperty("error");
@@ -256,6 +286,13 @@ describe("against a bridge", () => {
     const status = deps([walkySocketPath(b.stateDir)], inPane("%1"));
     expect(await cmdMorphStatus(status, ["--json"])).toBe(EXIT.OK);
     expect(JSON.parse(status.io.stdout[0]!)).toMatchObject({ morph: { session: "local/%1#aaaa", on: true, view: { rev: 2 } } });
+
+    const pictured = deps([walkySocketPath(b.stateDir)]);
+    writeFileSync(join(pictured.cwd!(), "shot.png"), PNG);
+    expect(await cmdMorphShow(pictured, [screenFile(pictured, JSON.stringify({ view: [{ kind: "image", attrs: { ref: "0" } }], choice: { options: [{ label: "This", preview: 0 }] } })), "--image", "shot.png=Now"])).toBe(EXIT.OK);
+    const screen = b.morph.status("local/%1#aaaa").view;
+    expect(screen?.media?.map((m) => [m.mime, m.caption])).toEqual([["image/png", "Now"]]);
+    expect(screen?.choice?.options[0]).toEqual({ label: "This", preview: 0 });
 
     const clear = deps([walkySocketPath(b.stateDir)]);
     expect(await cmdMorphClear(clear, [])).toBe(EXIT.OK);

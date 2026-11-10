@@ -11,9 +11,32 @@
 // vocabulary (buttons allowed, the `VIEW_LIMITS` caps, a part's byte cap), not the display-only
 // Decision reader, and holds it strictly: a node or an attribute the parser would only drop or ignore
 // is refused here, so what the agent drew is what the phone draws.
+//
+// PICTURES ARE THE HILL'S. A screen may carry up to four pictures (`collie morph show --image`), kept by
+// the bridge in a second instance of the hill's media store and named by an opaque set id of the hill's
+// decision id shape. The view places one with `image` and a `ref` (the index into the pictures), or two
+// with `compare`, exactly as a Decision's view does. The trick part parser refuses a `ref` and the
+// Decision parser refuses a button, so `parseMorphView` reads every picture subtree with the Decision
+// parser and the rest with the part parser, the pictures swapped for a neutral `spacer` (see there).
+//
+// THE DECISION BLOCK. Beside its view a screen may carry one `choice`: a question and one to five
+// options, drawn under the view with the hill's option buttons. Its caps are the hill's option caps.
 
-import { asJsonBoolean, asJsonNumber, asJsonObject, asJsonString, type JsonValue } from "../json";
-import { DOCUMENT_VERSION, parseTrickDocument, type Refusal, type View } from "../tricks/schema";
+import { asJsonBoolean, asJsonNumber, asJsonObject, asJsonString, type JsonObject, type JsonValue } from "../json";
+import {
+  HILL_ID_RE,
+  HILL_MEDIA_CAPTION_MAX,
+  HILL_MEDIA_ID_RE,
+  HILL_MEDIA_MIMES,
+  HILL_OPTION_CONFIRM_MAX,
+  HILL_OPTION_DETAIL_MAX,
+  HILL_OPTION_LABEL_MAX,
+  HILL_OPTIONS_MAX,
+  HILL_TITLE_MAX,
+  HILL_WHY_MAX,
+  type HillMedia,
+} from "../hill/wire";
+import { DOCUMENT_VERSION, PART_MAX_BYTES, parseDecisionView, parseTrickDocument, VALUE_MAX_BYTES, VIEW_LIMITS, type Refusal, type View, type ViewNode } from "../tricks/schema";
 
 /** A Morph title, in characters. */
 export const MORPH_TITLE_MAX = 80;
@@ -36,6 +59,58 @@ export const MORPH_ROUTE = "/api/morph";
 /** The switch route, a paired device's write. */
 export const MORPH_SWITCH_ROUTE = "/api/morph/switch";
 
+/** Pictures one screen carries, in all: a show's and every later block's together. Morph's own cap. */
+export const MORPH_MEDIA_MAX = 4;
+/** The largest picture Morph keeps, in bytes actually read. Morph's own cap, checked before and after the read. */
+export const MORPH_MEDIA_BYTES_MAX = 2 * 1024 * 1024;
+/** The bytes one session's picture set may hold on disk. */
+export const MORPH_SET_BYTES_MAX = 8 * 1024 * 1024;
+/** A picture's caption, in characters: the hill's. */
+export const MORPH_CAPTION_MAX = HILL_MEDIA_CAPTION_MAX;
+/** A picture set's id: the hill's decision id shape (`dc_` and 12 characters), minted by the bridge per set. */
+export const MORPH_SET_RE = HILL_ID_RE;
+/** A picture's id: the hill's media id shape, minted by the bridge. */
+export const MORPH_MEDIA_ID_RE = HILL_MEDIA_ID_RE;
+/** Where the phone reads a picture's bytes: `${MORPH_MEDIA_ROUTE}<set id>/<media id>`. */
+export const MORPH_MEDIA_ROUTE = "/api/morph/media/";
+
+/** One picture of a screen, as the bridge kept it: the hill's media shape. */
+export type MorphMedia = HillMedia;
+
+/** The route a picture's bytes are read at. Both ids are checked by the bridge before any path is built. */
+export function morphMediaPath(set: string, mediaId: string): string {
+  return `${MORPH_MEDIA_ROUTE}${encodeURIComponent(set)}/${encodeURIComponent(mediaId)}`;
+}
+
+/** The decision block's question, in characters: the hill's title cap. */
+export const MORPH_QUESTION_MAX = HILL_TITLE_MAX;
+/** Options in one decision block: the hill's. */
+export const MORPH_OPTIONS_MAX = HILL_OPTIONS_MAX;
+
+/** One option of the decision block. */
+export interface MorphOption {
+  /** At most {@link HILL_OPTION_LABEL_MAX} characters, one line. */
+  label: string;
+  /** At most {@link HILL_OPTION_DETAIL_MAX} characters, one line. */
+  detail?: string;
+  /** The text sent back after the label; absent, the label alone is sent. At most 1 KiB, one line. */
+  value?: string;
+  /** A short word for the second tap, at most {@link HILL_OPTION_CONFIRM_MAX} characters. */
+  confirm?: string;
+  /** A picture ref: this option's preview. */
+  preview?: number;
+}
+
+/** The decision block a screen may carry beside its view: one decision per screen. */
+export interface MorphChoice {
+  /** At most {@link MORPH_QUESTION_MAX} characters, drawn as the block's heading. */
+  question?: string;
+  /** One to {@link MORPH_OPTIONS_MAX}. */
+  options: MorphOption[];
+  /** The option the agent suggests (an index into `options`), and why. Never pre-selected. */
+  recommends?: { option: number; why?: string };
+}
+
 /** The screen the agent drew last for one session. */
 export interface MorphView {
   /** Rises with every show for this session. */
@@ -44,8 +119,14 @@ export interface MorphView {
   at: string;
   /** At most {@link MORPH_TITLE_MAX} characters, one line. */
   title?: string;
-  /** A trick part's view, checked by {@link parseMorphView}. Buttons allowed. */
+  /** A trick part's view, checked by {@link parseMorphView}. Buttons allowed, pictures by `ref`. */
   view: View;
+  /** The picture set's id, present exactly when `media` is. */
+  set?: string;
+  /** Up to {@link MORPH_MEDIA_MAX} pictures, in the order given. A view's `ref` and an option's `preview` index into it. */
+  media?: MorphMedia[];
+  /** The decision block under the view. */
+  choice?: MorphChoice;
 }
 
 /** The agent called `morph start`: it is drawing, and has not shown yet. */
@@ -95,8 +176,20 @@ export interface ParsedMorphView {
   refusals: Refusal[];
 }
 
+/** What `parseMorphView` may know of the screen around the view. */
+export interface MorphViewOptions {
+  /** How many pictures the screen holds. Given, a `ref` past them is refused; absent, any `ref` from 0 to 3 passes. */
+  images?: number;
+}
+
 const PROBE_PART_ID = "morph";
 const PROBE_PREFIX = "/parts/0/view";
+/** The path a picture subtree is read under by the Decision parser; its refusals are mapped back. */
+const PICTURE_PROBE = "/~picture";
+/** The node a picture subtree is swapped for while the part parser reads the rest: valid wherever a picture is. */
+const NEUTRAL_NODE: JsonObject = { kind: "spacer" };
+/** How deep the picture walk looks. Past the part parser's own depth cap the part parser refuses anyway. */
+const PICTURE_WALK_DEPTH = VIEW_LIMITS.depth.max + 1;
 
 /** Map a refusal's pointer inside the probe document onto the caller's own `path`. */
 function rebase(refusal: Refusal, path: string): Refusal {
@@ -104,14 +197,92 @@ function rebase(refusal: Refusal, path: string): Refusal {
   return { code: refusal.code, path: `${path}${inner}`, reason: refusal.reason };
 }
 
-/**
- * Read a Morph view: a list of nodes in a trick part's vocabulary, under the part caps. Total: garbage
- * is a refusal, never a throw. Strict: what the tolerant trick read would drop or ignore is refused.
- * The view is read as the `view` of a session part in a one-part trick document, the parser's only
- * public way in, so every rule and cap is the trick parser's own.
- */
-export function parseMorphView(raw: JsonValue | undefined, path = "/view"): ParsedMorphView {
-  if (raw === undefined) return { refusals: [{ code: "missing", path, reason: 'A Morph screen needs "view": a list of nodes.' }] };
+/** A picture subtree: where it sits (index steps through `kids`) and the raw node. */
+interface PictureAt {
+  readonly steps: readonly number[];
+  readonly node: JsonValue;
+}
+
+function utf8Length(text: string): number {
+  return new TextEncoder().encode(text).length;
+}
+
+/** The node's `kids` as a JSON list, or undefined. */
+function rawKids(node: JsonValue | undefined): JsonValue[] | undefined {
+  const obj = asJsonObject(node);
+  return obj !== undefined && Array.isArray(obj.kids) ? obj.kids : undefined;
+}
+
+/** An `image` that names a picture by `ref` (the Decision form), not a trick file by `src`. */
+function isRefImage(node: JsonValue | undefined): boolean {
+  const obj = asJsonObject(node);
+  return obj?.kind === "image" && asJsonObject(obj.attrs)?.ref !== undefined;
+}
+
+/** A picture subtree: an image by `ref`, or a `compare` with at least one such image. A compare of `src` images stays the part's. */
+function isPictureNode(node: JsonValue | undefined): boolean {
+  if (isRefImage(node)) return true;
+  return asJsonObject(node)?.kind === "compare" && (rawKids(node) ?? []).some(isRefImage);
+}
+
+/** Every picture subtree of a raw view, outermost only, with its place. Total on any JSON. */
+function picturesIn(raw: readonly JsonValue[]): PictureAt[] {
+  const found: PictureAt[] = [];
+  const walk = (nodes: readonly JsonValue[], steps: readonly number[]): void => {
+    if (steps.length >= PICTURE_WALK_DEPTH) return;
+    nodes.forEach((node, i) => {
+      const at = [...steps, i];
+      if (isPictureNode(node)) {
+        found.push({ steps: at, node });
+        return;
+      }
+      const kids = rawKids(node);
+      if (kids !== undefined) walk(kids, at);
+    });
+  };
+  walk(raw, []);
+  return found;
+}
+
+/** The JSON pointer of a place under `path`: `/0/kids/2`. */
+function pointerOf(path: string, steps: readonly number[]): string {
+  return steps.reduce((acc, step, depth) => `${acc}${depth === 0 ? "" : "/kids"}/${String(step)}`, path);
+}
+
+/** A raw list with the node at `steps` replaced, every list on the way copied. */
+function replacedRaw(nodes: readonly JsonValue[], steps: readonly number[], next: JsonValue): JsonValue[] {
+  const [head, ...rest] = steps;
+  if (head === undefined) return [...nodes];
+  return nodes.map((node, i) => {
+    if (i !== head) return node;
+    if (rest.length === 0) return next;
+    const obj = asJsonObject(node);
+    const kids = rawKids(node);
+    if (obj === undefined || kids === undefined) return node;
+    return { ...obj, kids: replacedRaw(kids, rest, next) };
+  });
+}
+
+/** A parsed list with the node at `steps` replaced, every list on the way copied. */
+function replacedNode(nodes: readonly ViewNode[], steps: readonly number[], next: ViewNode): ViewNode[] {
+  const [head, ...rest] = steps;
+  if (head === undefined) return [...nodes];
+  return nodes.map((node, i) => {
+    if (i !== head) return node;
+    if (rest.length === 0) return next;
+    if (!("kids" in node) || !Array.isArray(node.kids)) return node;
+    return Object.assign({}, node, { kids: replacedNode(node.kids, rest, next) });
+  });
+}
+
+/** Every node of a raw view, kids counted, as far as the walk depth. */
+function rawNodeCount(nodes: readonly JsonValue[], depth = 0): number {
+  if (depth > PICTURE_WALK_DEPTH) return 0;
+  return nodes.reduce<number>((sum, node) => sum + 1 + rawNodeCount(rawKids(node) ?? [], depth + 1), 0);
+}
+
+/** Read the view as a trick part's view, through the parser's only public way in. */
+function parseAsPart(raw: JsonValue, path: string): ParsedMorphView {
   const doc: JsonValue = { v: DOCUMENT_VERSION, parts: [{ at: "session", id: PROBE_PART_ID, view: raw }] };
   const parsed = parseTrickDocument(doc);
   const refusals = [...parsed.refusals, ...parsed.notes].map((r) => rebase(r, path));
@@ -119,6 +290,215 @@ export function parseMorphView(raw: JsonValue | undefined, path = "/view"): Pars
   const part = parsed.parts[0];
   if (part?.place !== "session") return { refusals: [{ code: "type", path, reason: "The view did not read as a screen." }] };
   return { view: part.part.view, refusals: [] };
+}
+
+/** Read one picture subtree with the Decision parser, as a one-node view, its refusals under its own place. */
+function parsePicture(picture: PictureAt, path: string, opts: MorphViewOptions): { node?: ViewNode; refusals: Refusal[] } {
+  const own = pointerOf(path, picture.steps);
+  const probeNode = `${PICTURE_PROBE}/0`;
+  const parsed = parseDecisionView([picture.node], PICTURE_PROBE, opts.images === undefined ? {} : { images: opts.images });
+  const refusals = parsed.refusals.map((r) => {
+    const inner = r.path.startsWith(probeNode) ? r.path.slice(probeNode.length) : "";
+    return { code: r.code, path: `${own}${inner}`, reason: r.reason };
+  });
+  const node = parsed.view?.[0];
+  return refusals.length > 0 || node === undefined ? { refusals } : { node, refusals: [] };
+}
+
+/**
+ * Read a Morph view: a list of nodes in a trick part's vocabulary, under the part caps, with pictures
+ * by `ref` as a Decision's view takes them. Total: garbage is a refusal, never a throw. Strict: what the
+ * tolerant trick read would drop or ignore is refused.
+ *
+ * The part parser refuses a `ref` and the Decision parser refuses a button, and the schema is not
+ * Morph's to change. So the view is read in two passes over the same JSON: every picture subtree (an
+ * `image` with a `ref`, a `compare` holding one) is read alone by the Decision parser, with the screen's
+ * picture count, and the rest by the part parser with each picture swapped for a `spacer`, which is
+ * valid everywhere a picture is, so every index, path and depth stays. The part's byte and node caps are
+ * checked on the ORIGINAL view, which the swap only makes smaller. The view answered holds the original
+ * picture nodes in their places.
+ */
+export function parseMorphView(raw: JsonValue | undefined, path = "/view", opts: MorphViewOptions = {}): ParsedMorphView {
+  if (raw === undefined) return { refusals: [{ code: "missing", path, reason: 'A Morph screen needs "view": a list of nodes.' }] };
+  if (!Array.isArray(raw)) return parseAsPart(raw, path);
+  const pictures = picturesIn(raw);
+  if (pictures.length === 0) return parseAsPart(raw, path);
+  const refusals: Refusal[] = [];
+  const bytes = utf8Length(JSON.stringify(raw));
+  if (bytes > PART_MAX_BYTES) refusals.push({ code: "size", path, reason: `The view is ${String(bytes)} bytes. A screen holds at most ${String(PART_MAX_BYTES / 1024)} KiB of compact JSON.` });
+  const nodes = rawNodeCount(raw);
+  if (nodes > VIEW_LIMITS.nodes.max) refusals.push({ code: "count", path, reason: `The view holds ${String(nodes)} nodes. A screen holds at most ${String(VIEW_LIMITS.nodes.max)}.` });
+  const read = pictures.map((picture) => ({ picture, ...parsePicture(picture, path, opts) }));
+  const swapped = pictures.reduce<JsonValue[]>((list, picture) => replacedRaw(list, picture.steps, NEUTRAL_NODE), raw);
+  const rest = parseAsPart(swapped, path);
+  refusals.push(...rest.refusals, ...read.flatMap((r) => r.refusals));
+  if (refusals.length > 0 || rest.view === undefined) return { refusals };
+  let view: View = rest.view;
+  for (const r of read) {
+    if (r.node === undefined) return { refusals: [{ code: "type", path: pointerOf(path, r.picture.steps), reason: "The picture did not read." }] };
+    view = replacedNode(view, r.picture.steps, r.node);
+  }
+  return { view, refusals: [] };
+}
+
+// ── the decision block ───────────────────────────────────────────────────────────────────────
+
+/** What `parseMorphChoice` answers: the block when it passed, else every refusal with a pointer under `path`. */
+export interface ParsedMorphChoice {
+  choice?: MorphChoice;
+  refusals: Refusal[];
+}
+
+const CHOICE_KEYS = ["question", "options", "recommends"] as const;
+const OPTION_KEYS = ["label", "detail", "value", "confirm", "preview"] as const;
+const RECOMMENDS_KEYS = ["option", "why"] as const;
+
+/** Keys of an object outside `allowed`, each refused once. */
+function unknownKeys(obj: JsonObject, allowed: readonly string[], path: string, what: string): Refusal[] {
+  return Object.keys(obj)
+    .filter((key) => !allowed.includes(key))
+    .map((key) => ({ code: "unknown-key" as const, path: `${path}/${key}`, reason: `${what} takes ${allowed.map((k) => `"${k}"`).join(", ")}, not "${key}".` }));
+}
+
+/** A text field as read: its clean line, its refusal, or neither when it is absent. */
+interface LineRead {
+  value?: string;
+  refusal?: Refusal;
+}
+
+/** An option as read: the option when it passed, else its refusals. */
+interface OptionRead {
+  option?: MorphOption;
+  refusals: Refusal[];
+}
+
+/** One line of 1 to `max` characters once trimmed, or the refusal. Absent reads as undefined. */
+function lineField(obj: JsonObject, key: string, max: number, path: string, what: string): LineRead {
+  const raw = obj[key];
+  if (raw === undefined) return {};
+  const text = asJsonString(raw);
+  const line = text === undefined ? null : cleanMorphLine(text, max);
+  if (line === null) return { refusal: { code: "text", path: `${path}/${key}`, reason: `${what} is one line of 1 to ${String(max)} characters.` } };
+  return { value: line };
+}
+
+/** A whole number from 0 below `count`, or null. */
+function indexBelow(value: JsonValue | undefined, count: number): number | null {
+  const n = asJsonNumber(value);
+  return n !== undefined && Number.isSafeInteger(n) && n >= 0 && n < count ? n : null;
+}
+
+function readOption(raw: JsonValue | undefined, path: string, images: number): OptionRead {
+  const obj = asJsonObject(raw);
+  if (obj === undefined) return { refusals: [{ code: "type", path, reason: 'An option is an object: { "label", "detail"?, "value"?, "confirm"?, "preview"? }.' }] };
+  const refusals = unknownKeys(obj, OPTION_KEYS, path, "An option");
+  const label = lineField(obj, "label", HILL_OPTION_LABEL_MAX, path, "An option's label");
+  if (obj.label === undefined) refusals.push({ code: "missing", path: `${path}/label`, reason: `An option needs "label", 1 to ${String(HILL_OPTION_LABEL_MAX)} characters.` });
+  const detail = lineField(obj, "detail", HILL_OPTION_DETAIL_MAX, path, "An option's detail");
+  const confirm = lineField(obj, "confirm", HILL_OPTION_CONFIRM_MAX, path, "An option's confirm word");
+  const value = lineField(obj, "value", VALUE_MAX_BYTES, path, "An option's value");
+  for (const field of [label, detail, confirm, value]) if (field.refusal !== undefined) refusals.push(field.refusal);
+  if (value.value !== undefined && utf8Length(value.value) > VALUE_MAX_BYTES) refusals.push({ code: "size", path: `${path}/value`, reason: `An option's value is at most ${String(VALUE_MAX_BYTES)} bytes.` });
+  const preview = obj.preview === undefined ? undefined : indexBelow(obj.preview, images);
+  if (preview === null) {
+    const held = images === 0 ? "the screen holds no pictures; add one with --image" : `0 to ${String(images - 1)}`;
+    refusals.push({ code: "range", path: `${path}/preview`, reason: `"preview" is a picture ref, a whole number: ${held}.` });
+  }
+  if (refusals.length > 0 || label.value === undefined) return { refusals };
+  const option: MorphOption = { label: label.value };
+  if (detail.value !== undefined) option.detail = detail.value;
+  if (value.value !== undefined) option.value = value.value;
+  if (confirm.value !== undefined) option.confirm = confirm.value;
+  if (preview !== undefined && preview !== null) option.preview = preview;
+  return { option, refusals: [] };
+}
+
+/**
+ * Read a decision block: `{ question?, options: [1 to 5], recommends? }`, with the hill's option caps.
+ * `images` is how many pictures the screen holds: an option's `preview` must name one. Total and strict,
+ * as {@link parseMorphView}: an unknown key is refused, a text past its cap is refused, never cut.
+ */
+export function parseMorphChoice(raw: JsonValue | undefined, path = "/choice", { images }: { images: number }): ParsedMorphChoice {
+  const obj = asJsonObject(raw);
+  if (obj === undefined) return { refusals: [{ code: "type", path, reason: 'A choice is an object: { "question"?, "options": [...], "recommends"? }.' }] };
+  const refusals = unknownKeys(obj, CHOICE_KEYS, path, "A choice");
+  const question = lineField(obj, "question", MORPH_QUESTION_MAX, path, "A choice's question");
+  if (question.refusal !== undefined) refusals.push(question.refusal);
+  const list = Array.isArray(obj.options) ? obj.options : null;
+  if (list === null || list.length < 1 || list.length > MORPH_OPTIONS_MAX) {
+    refusals.push({ code: "count", path: `${path}/options`, reason: `A choice has 1 to ${String(MORPH_OPTIONS_MAX)} options.` });
+    return { refusals };
+  }
+  const options: MorphOption[] = [];
+  list.forEach((item, i) => {
+    const read = readOption(item, `${path}/options/${String(i)}`, images);
+    refusals.push(...read.refusals);
+    if (read.option === undefined) return;
+    if (options.some((other) => other.label === read.option?.label)) {
+      refusals.push({ code: "duplicate", path: `${path}/options/${String(i)}/label`, reason: `Two options share the label "${read.option.label}"; the pick is sent by its label.` });
+    }
+    options.push(read.option);
+  });
+  let recommends: MorphChoice["recommends"];
+  if (obj.recommends !== undefined) {
+    const rec = asJsonObject(obj.recommends);
+    const at = `${path}/recommends`;
+    if (rec === undefined) {
+      refusals.push({ code: "type", path: at, reason: 'A recommendation is { "option": <index>, "why"? }.' });
+    } else {
+      refusals.push(...unknownKeys(rec, RECOMMENDS_KEYS, at, "A recommendation"));
+      const option = indexBelow(rec.option, list.length);
+      if (option === null) refusals.push({ code: "range", path: `${at}/option`, reason: `"option" is an option's index, 0 to ${String(list.length - 1)}.` });
+      const why = lineField(rec, "why", HILL_WHY_MAX, at, "The why");
+      if (why.refusal !== undefined) refusals.push(why.refusal);
+      if (option !== null) recommends = why.value === undefined ? { option } : { option, why: why.value };
+    }
+  }
+  if (refusals.length > 0) return { refusals };
+  const choice: MorphChoice = { options };
+  if (question.value !== undefined) choice.question = question.value;
+  if (recommends !== undefined) choice.recommends = recommends;
+  return { choice, refusals: [] };
+}
+
+// ── pictures ─────────────────────────────────────────────────────────────────────────────────
+
+/** A picture's side off its header: a whole number above 0, or null when the bridge could not read it. Undefined: it does not fit. */
+function sideOf(value: JsonValue | undefined): number | null | undefined {
+  if (value === null) return null;
+  const n = asJsonNumber(value);
+  return n !== undefined && Number.isSafeInteger(n) && n > 0 ? n : undefined;
+}
+
+/** One stored or served picture, or null when any field does not fit. */
+export function readMorphMedia(raw: JsonValue | undefined): MorphMedia | null {
+  const obj = asJsonObject(raw);
+  if (obj === undefined) return null;
+  const id = asJsonString(obj.id);
+  const mime = HILL_MEDIA_MIMES.find((m) => m === obj.mime);
+  const bytes = asJsonNumber(obj.bytes);
+  if (id === undefined || !MORPH_MEDIA_ID_RE.test(id) || obj.kind !== "image" || mime === undefined) return null;
+  if (bytes === undefined || !Number.isSafeInteger(bytes) || bytes <= 0 || bytes > MORPH_MEDIA_BYTES_MAX) return null;
+  const width = sideOf(obj.width);
+  const height = sideOf(obj.height);
+  if (width === undefined || height === undefined) return null;
+  const media: MorphMedia = { id, kind: "image", mime, bytes, width, height };
+  if (obj.caption === undefined) return media;
+  const caption = asJsonString(obj.caption);
+  if (caption === undefined || cleanMorphLine(caption, MORPH_CAPTION_MAX) !== caption) return null;
+  media.caption = caption;
+  return media;
+}
+
+/** A stored or served picture set: `{ set, media }` both, or neither. Null when it does not fit. */
+function readMorphSet(obj: JsonObject): { set: string; media: MorphMedia[] } | "none" | null {
+  if (obj.set === undefined && obj.media === undefined) return "none";
+  const set = asJsonString(obj.set);
+  if (set === undefined || !MORPH_SET_RE.test(set) || !Array.isArray(obj.media)) return null;
+  if (obj.media.length < 1 || obj.media.length > MORPH_MEDIA_MAX) return null;
+  const media = obj.media.map(readMorphMedia);
+  if (media.some((m) => m === null)) return null;
+  return { set, media: media.filter((m): m is MorphMedia => m !== null) };
 }
 
 /** One line, trimmed, no control character. Null when it is empty or longer than `max`. */
@@ -149,9 +529,21 @@ export function readMorphView(raw: JsonValue | undefined): MorphView | null {
   const rev = asJsonNumber(obj.rev);
   const at = asJsonString(obj.at);
   if (!isRev(rev) || at === undefined || !isIsoTime(at)) return null;
-  const parsed = parseMorphView(obj.view);
+  const pictures = readMorphSet(obj);
+  if (pictures === null) return null;
+  const images = pictures === "none" ? 0 : pictures.media.length;
+  const parsed = parseMorphView(obj.view, "/view", { images });
   if (parsed.view === undefined) return null;
   const out: MorphView = { rev, at, view: parsed.view };
+  if (pictures !== "none") {
+    out.set = pictures.set;
+    out.media = pictures.media;
+  }
+  if (obj.choice !== undefined) {
+    const choice = parseMorphChoice(obj.choice, "/choice", { images });
+    if (choice.choice === undefined) return null;
+    out.choice = choice.choice;
+  }
   if (obj.title === undefined) return out;
   const title = asJsonString(obj.title);
   if (title === undefined || cleanMorphLine(title, MORPH_TITLE_MAX) !== title) return null;

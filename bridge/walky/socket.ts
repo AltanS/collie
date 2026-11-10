@@ -22,7 +22,7 @@
 // pane's own session (bridge/morph/service.ts). Every one MAY carry `session` (the address the caller
 // names); the bridge refuses `wrong_session` unless it is the session the markers placed.
 //   morph.start   { note? }         → { ok, morph } | { ok: false, error, code }
-//   morph.show    { view, title? }  → { ok, morph } | { ok: false, error, code, refusals? }
+//   morph.show    { view, title?, images?: [{ path, caption? }], choice? }  → { ok, morph } | { ok: false, error, code, refusals? }
 //   morph.clear | morph.on | morph.off | morph.status  {}  → { ok, morph }
 // Every Morph refusal carries `morph: true`, as the hill's carry `hill: true`.
 // A refusal is `{ ok: false, error }`. `not here` means the markers name no pane of this bridge, so
@@ -290,7 +290,7 @@ function morphAnswerOf(
     }
     case "morph.show": {
       const fields = readShowFields(request.fields);
-      if ("error" in fields) return { ok: false, error: fields.error, code: "bad_title" };
+      if ("error" in fields) return { ok: false, error: fields.error, code: fields.code };
       return morph.show(session, fields);
     }
     case "morph.clear":

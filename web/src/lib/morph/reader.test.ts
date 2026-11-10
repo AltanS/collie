@@ -2,6 +2,7 @@ import type { JsonValue } from "@/lib/json";
 import type { TranscriptEntry } from "@/lib/types";
 
 import {
+  choiceControl,
   isUnanswered,
   latestRequestIn,
   morphRequestOf,
@@ -9,7 +10,9 @@ import {
   morphStatusOf,
   nodeAtControl,
   parentControl,
+  pickedOption,
   picksAfter,
+  pickTextOf,
   picksFor,
   requestAfter,
   stripMorphHint,
@@ -326,5 +329,23 @@ describe("requestAfter", () => {
     expect(requestAfter(held, { text: "again", phase: "sending", reason: null }, 7000).at).toBe(7000);
     expect(requestAfter(held, { text: "go", phase: "sending", reason: null }, 8000).at).toBe(8000);
     expect(requestAfter(undefined, { text: "go", phase: "failed", reason: "Offline" }, 9000)).toMatchObject({ at: 9000, phase: "failed" });
+  });
+});
+
+describe("the decision block's words", () => {
+  const choice = { options: [{ label: "Cards", value: "Use cards." }, { label: "Table" }, { label: "Same", value: "Same" }] };
+
+  it("sends picked with the value after a colon, the label alone without one or when they match", () => {
+    expect(pickTextOf(choice, 0)).toBe('picked "Cards": Use cards.');
+    expect(pickTextOf(choice, 1)).toBe('picked "Table"');
+    expect(pickTextOf(choice, 2)).toBe('picked "Same"');
+    expect(pickTextOf(choice, 3)).toBeNull();
+  });
+
+  it("files a pick beside the view's controls and reads it back", () => {
+    expect(choiceControl(2)).toBe("choice/2");
+    expect(pickedOption(["v/1/0", "choice/2"])).toBe(2);
+    expect(pickedOption(["v/1/0"])).toBeNull();
+    expect(parentControl(choiceControl(0))).toBe(parentControl(choiceControl(4)));
   });
 });

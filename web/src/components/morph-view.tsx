@@ -1,25 +1,32 @@
 import { useCallback, useMemo, useState } from "react";
 
 import { UserTurn } from "@/components/chat-cards";
+import { HillImageStrip, viewPictures, type HillMediaSource } from "@/components/hill-media";
 import { MarkdownText } from "@/components/markdown-text";
+import { MorphChoiceBlock } from "@/components/morph-choice";
 import { StatusDot } from "@/components/status-badge";
 import { OneOf } from "@/components/ui/one-of";
 import { useLocale } from "@/hooks/use-locale";
 import { t } from "@/lib/i18n";
 import {
+  choiceControl,
   isUnanswered,
   morphRequestOf,
   morphStateOf,
   morphStatusOf,
+  pickedOption,
+  pickTextOf,
+  previewRefs,
   tapTextOf,
   textAnswerAfter,
   withPressed,
   type MorphRequest,
   type MorphStatus,
 } from "@/lib/morph/reader";
-import type { MorphDrawing, MorphView as MorphScreen } from "@/lib/morph/wire";
+import { morphMediaPath, type MorphDrawing, type MorphView as MorphScreen } from "@/lib/morph/wire";
 import { TrickBoundary } from "@/lib/tricks/boundary";
 import { useBridgeNow } from "@/lib/tricks/clock";
+import { viewImageRefs } from "@/lib/tricks/layout";
 import { renderView, type LinkTarget, type RenderCtx } from "@/lib/tricks/render";
 import type { TapValue } from "@/lib/tricks/schema";
 import type { TapState } from "@/lib/tricks/store";
@@ -39,6 +46,15 @@ import { cn } from "@/lib/utils";
 // and, when the agent answered a later request in text, that text under a small line. The request block
 // is there as soon as a send starts, before any screen, so an empty body never reads as "nothing
 // happened". Which state is on screen, and where the request stands, is lib/morph/reader.ts's call.
+//
+// PICTURES ARE THE HILL'S. A screen's pictures are drawn by the hill's own pieces (components/hill-media.tsx)
+// with Morph's media route as their source: a view's `image` by `ref` and its `compare` through the
+// renderer's `pictures` (crop by `focus`, near-screen loading, the authed fetch, tap to zoom), and the
+// pictures the view does not place, nor the decision block as a preview, in the hill's row under the
+// title, as the Decision card does.
+//
+// THE DECISION BLOCK (components/morph-choice.tsx) sits under the view. A pick sends `picked "<label>"`
+// through the same path as a tap, and is marked the same way until the next screen.
 //
 // A TAP SENDS A MESSAGE. A button's tap goes to `onSend`, which is the composer's own send path
 // (`ComposerHandle.sendLine`): one Send Protocol request with its request id, the composer's refusal
@@ -76,6 +92,9 @@ export interface MorphViewProps {
   /** Pin the clock (epoch ms on the bridge's clock), for a test. */
   now?: number;
 }
+
+/** Where a Morph picture's bytes are: the set id stands where the hill's source takes a decision id. */
+export const morphMediaSource: HillMediaSource = (set, media) => morphMediaPath(set, media.id);
 
 /** A tap state that makes every button wait, with no spinner on any. */
 const NO_CONTROLS: readonly string[] = [];
@@ -211,13 +230,43 @@ export function MorphView({ session, view, request: told, head, hint, drawing, p
     return canAct ? undefined : ALL_WAIT;
   }, [busyControl, canAct]);
 
+  const pictures = useMemo(() => (view?.set === undefined || view.media === undefined ? undefined : viewPictures(view.set, view.media, morphMediaSource)), [view?.set, view?.media]);
+  // The pictures neither the view places nor the decision block previews: the row under the title.
+  const stripMedia = useMemo(() => {
+    if (view?.media === undefined) return [];
+    const placed = viewImageRefs(view.view);
+    const previews = previewRefs(view.choice);
+    return view.media.filter((_, i) => !placed.has(i) && !previews.has(i));
+  }, [view]);
+
+  const onPick = useCallback(
+    (index: number) => {
+      const choice = view?.choice;
+      if (choice === undefined || busyControl !== null || !canAct) return;
+      const text = pickTextOf(choice, index);
+      if (text === null) throw new Error(`morph: the picked option ${String(index)} is not in the choice`);
+      const control = choiceControl(index);
+      setBusyControl(control);
+      void onSend(text)
+        .then((sent) => {
+          if (sent) onPressed?.(control);
+          return sent;
+        })
+        .finally(() => setBusyControl(null));
+    },
+    [view?.choice, busyControl, canAct, onSend, onPressed],
+  );
+
   const drawn = useMemo(() => {
     if (view === undefined) return null;
     const ctx: RenderCtx = { partKey, stale: false, onTap, onLink, wrap: true };
     if (tap !== undefined) ctx.tap = tap;
     if (now !== undefined) ctx.now = now;
+    if (pictures !== undefined) ctx.pictures = pictures;
     return renderView(withPressed(view.view, pressed), ctx);
-  }, [view, pressed, partKey, onTap, onLink, tap, now]);
+  }, [view, pressed, partKey, onTap, onLink, tap, now, pictures]);
+
+  const busyOption = busyControl === null ? null : pickedOption([busyControl]);
 
   return (
     <div data-slot="morph-view" data-state={state} className="relative h-full w-full min-w-0">
@@ -230,6 +279,9 @@ export function MorphView({ session, view, request: told, head, hint, drawing, p
         )}
         {/* The request's status line carries the working mark once there is a request. */}
         <MorphCaption view={view} working={working && request === null} now={now} />
+        {view?.set !== undefined && stripMedia.length > 0 && (
+          <HillImageStrip decisionId={view.set} media={stripMedia} source={morphMediaSource} className="-mx-4 mt-2" scrollerClassName="px-4" />
+        )}
         {view === undefined && request === null && (
           <p data-slot="morph-empty" className="py-16 text-center text-sm text-muted-foreground">
             {t("morph.empty")}
@@ -241,6 +293,18 @@ export function MorphView({ session, view, request: told, head, hint, drawing, p
             <TrickBoundary fallback="placeholder" resetKey={`${partKey}@${view.rev}`}>
               {drawn}
             </TrickBoundary>
+            {view.choice !== undefined && (
+              <MorphChoiceBlock
+                key={view.rev}
+                choice={view.choice}
+                pictures={pictures}
+                media={view.media ?? []}
+                picked={pickedOption(pressed)}
+                busy={busyOption}
+                canAct={canAct}
+                onPick={onPick}
+              />
+            )}
           </div>
         )}
         {state === "text" && answer !== null && (

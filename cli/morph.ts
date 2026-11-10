@@ -4,12 +4,24 @@ import { resolve } from "node:path";
 import { edgeStateDirs, readEnvMarkers } from "./beacon.ts";
 import { holdSocketSafe } from "./hold.ts";
 import { EXIT } from "./io.ts";
+import { imagePathOf, parseImageArg } from "./hill.ts";
 import { NO_SOCKET_TEXT, shown, type WalkyDeps } from "./walky.ts";
 import type { JsonObject, JsonValue } from "../bridge/json.ts";
 import { asJsonObject, asJsonString, parseJson, parseJsonObject } from "../web/src/lib/json.ts";
 import { BARE_BAD_REQUEST, unknownOp } from "../bridge/walky/refusals.ts";
 import { walkySocketPath } from "../bridge/walky/socket.ts";
-import { MORPH_NOTE_MAX, MORPH_TITLE_MAX, morphShellWord, readMorphSession, type MorphSession } from "../web/src/lib/morph/wire.ts";
+import type { HillImageInput } from "../web/src/lib/hill/wire.ts";
+import {
+  MORPH_CAPTION_MAX,
+  MORPH_MEDIA_BYTES_MAX,
+  MORPH_MEDIA_MAX,
+  MORPH_NOTE_MAX,
+  MORPH_OPTIONS_MAX,
+  MORPH_TITLE_MAX,
+  morphShellWord,
+  readMorphSession,
+  type MorphSession,
+} from "../web/src/lib/morph/wire.ts";
 import {
   BAR_ROLES,
   BAR_SCROLLS,
@@ -70,8 +82,9 @@ const USAGE = {
     `  Say first that you are drawing: the phone shows "Morphing…" and your note (3 to 6 words, at most ${String(MORPH_NOTE_MAX)} characters) until your show lands.`,
   ],
   show: [
-    `usage: collie morph show ${SESSION_USAGE} <file.json | -> [--title "<one line, at most ${String(MORPH_TITLE_MAX)}>"] [--json]`,
-    "  The file holds the view (a list of nodes), or { \"title\": ..., \"view\": [...] }. `-` reads stdin.",
+    `usage: collie morph show ${SESSION_USAGE} <file.json | -> [--title "<one line, at most ${String(MORPH_TITLE_MAX)}>"] [--image <path>[=<caption>]]... [--json]`,
+    '  The file holds the view (a list of nodes), or { "title"?, "view": [...], "choice"? }. `-` reads stdin.',
+    `  --image adds a picture (PNG, JPEG or WebP, at most ${String(MORPH_MEDIA_BYTES_MAX / (1024 * 1024))} MB, at most ${String(MORPH_MEDIA_MAX)}); the first is ref "0". A caption is at most ${String(MORPH_CAPTION_MAX)} characters.`,
   ],
   clear: [`usage: collie morph clear ${SESSION_USAGE} [--json]   (the screen goes; the switch stays)`],
   on: [`usage: collie morph on ${SESSION_USAGE} [--json]   (turn Morph on for this session)`],
@@ -84,7 +97,7 @@ const USAGE = {
 export const MORPH_ABOUT: readonly string[] = [
   "Morph is a third view of your session on Collie, the operator's phone app, beside Terminal and Chat.",
   "When the operator writes to you from Morph, the message starts with [morph] from operator: and ends with a [rules: ...] tail, and you answer by drawing one screen.",
-  "A tap on a button reaches you the same way, as tapped \"<label>\" (with the button's value after a colon when it has one, and the group's label after in when the button sits in a labelled group).",
+  "A tap on a button reaches you the same way, as tapped \"<label>\" (with the button's value after a colon when it has one, and the group's label after in when the button sits in a labelled group). A pick in a choice reaches you as picked \"<label>\".",
 ];
 
 /** Where an address stands in a command when none was given: copy it from the request line. */
@@ -118,7 +131,8 @@ export const MORPH_RULES: readonly string[] = [
   '- After the operator picks, redraw the screen with "pressed": "true" on the chosen option, or move on to the next screen. Collie marks a tapped button until your next screen arrives, but your redraw is what carries the pick.',
   "- Show only what the operator needs now: the answer, the facts behind it, and the next choices. No logs, no essays.",
   "- Write sentences as `para` nodes. Use `line` only for short monospace text, such as a path or a command.",
-  "- For a UI choice, show a preview per option. Pictures are not drawn yet: use a `code` node as a monospace mock.",
+  `- To show a picture (a screenshot, a mockup you rendered), pass it with --image <path> (at most ${String(MORPH_MEDIA_MAX)}; the first is ref "0") and place it with {"kind":"image","attrs":{"ref":"0"}}. "focus": "<x> <y> [zoom]" crops to a point in percent; {"kind":"compare","kids":[two images by ref]} shows before and after. A picture you do not place is shown in a row under the title. Use "ref", never "src".`,
+  `- For a decision, use "choice", one decision per screen: {"question"?, "options": [1 to ${String(MORPH_OPTIONS_MAX)} of {"label", "detail"?, "value"?, "confirm"?, "preview"?}], "recommends"?: {"option": <index>, "why"?}}. The pick reaches you as picked "<label>" (with ": <value>" when it has a value). For a UI question give every option a "preview" picture (its ref).`,
   `- A button needs the attrs "label" and "intent" (use "intent": "reply"). "value" is the text sent back to you after the tapped "<label>" words, at most ${String(VALUE_MAX_BYTES)} bytes; without a value, only the label is sent. A button takes no "text".`,
   '- Give a button "confirm" (a short second label) for anything risky: deleting, pushing, spending, anything you cannot undo.',
   '- An attribute with a closed set of values takes one of those and no other, or the whole screen is refused (see Closed sets). A tone for success is "ok", for failure "danger".',
@@ -127,8 +141,8 @@ export const MORPH_RULES: readonly string[] = [
   "- Keep answering in the terminal as well when the operator asked there; Morph is only for messages that carry the [morph] from operator: head.",
 ];
 
-/** Kinds the parser takes that Morph draws no picture for yet: there is no media route in Morph. */
-const UNDRAWN_KINDS: readonly NodeKind[] = ["image", "compare"];
+/** The attributes of an image in Morph: a picture by `ref`, as a Decision's view takes it. `src`, `alt`, `w` and `h` are a trick's. */
+const MORPH_IMAGE_ATTRS = ["ref*", "caption", "fit", "focus"] as const;
 
 /** A kind's row in one of the schema's partial tables, or undefined when the table does not list it. */
 function rowOf<T>(table: Readonly<Record<string, T>>, kind: NodeKind): T | undefined {
@@ -136,6 +150,7 @@ function rowOf<T>(table: Readonly<Record<string, T>>, kind: NodeKind): T | undef
 }
 
 function kindLine(kind: NodeKind): string {
+  if (kind === "image") return `  image  attrs: ${MORPH_IMAGE_ATTRS.join(", ")}  (ref names a picture given with --image, "0" is the first)`;
   const required: readonly string[] = rowOf(NODE_REQUIRED_ATTRS, kind) ?? [];
   const attrs = NODE_ATTRS[kind].map((name) => (required.includes(name) ? `${name}*` : name));
   const text = rowOf(NODE_TEXT, kind);
@@ -149,12 +164,10 @@ function kindLine(kind: NodeKind): string {
 
 /** The kinds and their main attributes, generated from the trick schema's own tables, so it cannot drift. */
 export function morphKindLines(): string[] {
-  const drawn = NODE_KINDS.filter((kind) => !UNDRAWN_KINDS.includes(kind));
   return [
     "Kinds (* is required; a node is { \"kind\", \"text\"?, \"attrs\"?, \"kids\"? }, every attribute value is text):",
-    `  top level: ${VIEW_ROOT_KINDS.filter((kind) => !UNDRAWN_KINDS.includes(kind)).join(", ")}`,
-    ...drawn.map(kindLine),
-    `  ${UNDRAWN_KINDS.join(", ")}: accepted, but Morph draws no picture yet.`,
+    `  top level: ${VIEW_ROOT_KINDS.join(", ")}`,
+    ...NODE_KINDS.map(kindLine),
   ];
 }
 
@@ -228,6 +241,26 @@ export const MORPH_EXAMPLE: JsonValue = [
   },
 ];
 
+/** A screen with a picture and a decision block: the object form, as `morph show <file> --image ...` takes it. */
+export const MORPH_CHOICE_EXAMPLE: JsonValue = {
+  title: "Pick a header",
+  view: [
+    { kind: "para", text: "The header now, on a phone:" },
+    { kind: "image", attrs: { ref: "0", focus: "50 10 2" } },
+  ],
+  choice: {
+    question: "Which header?",
+    options: [
+      { label: "Compact", detail: "One line, 44 px", value: "Use the compact header.", preview: 1 },
+      { label: "Tall", detail: "Title and subtitle", value: "Use the tall header.", preview: 2 },
+    ],
+    recommends: { option: 0, why: "Leaves more room for the list" },
+  },
+};
+
+/** How many pictures {@link MORPH_CHOICE_EXAMPLE} names: its `--image` flags. */
+export const MORPH_CHOICE_EXAMPLE_IMAGES = 3;
+
 /**
  * `collie morph help [--session <address>]`: what Morph is, your commands, the rules, the kinds with their
  * closed sets, one example, and the sub-verbs. With a session the commands carry it, ready to copy.
@@ -248,6 +281,9 @@ export function morphHelp(session: string | null = null): string[] {
     "",
     `Example (save as screen.json, run command 1, then \`collie morph show --session ${address} screen.json\`):`,
     JSON.stringify(MORPH_EXAMPLE),
+    "",
+    `Example with pictures and a choice (\`collie morph show --session ${address} pick.json --image now.png --image compact.png --image tall.png\`):`,
+    JSON.stringify(MORPH_CHOICE_EXAMPLE),
     "",
     "Commands:",
     ...commands,
@@ -332,6 +368,8 @@ export interface ShowArgs {
   readonly title: string | null;
   readonly json: boolean;
   readonly session: string | null;
+  /** The `--image` values, paths as given (resolved later against the working folder). */
+  readonly images: readonly HillImageInput[];
 }
 
 /** A `--session` value: one line of text with no blank, the address as the request line spells it. */
@@ -347,6 +385,7 @@ export function parseShowArgs(args: readonly string[]): ShowArgs | { readonly er
   let title: string | null = null;
   let json = false;
   let session: string | null = null;
+  const images: HillImageInput[] = [];
   for (let i = 0; i < args.length; i++) {
     const arg = args[i]!;
     if (arg === "--json") {
@@ -358,6 +397,16 @@ export function parseShowArgs(args: readonly string[]): ShowArgs | { readonly er
       if ("error" in value) return value;
       if (session !== null) return { error: "`--session` is given twice" };
       session = value.session;
+      i += 1;
+      continue;
+    }
+    if (arg === "--image") {
+      const value = args[i + 1];
+      if (value === undefined) return { error: "`--image` needs <path> or <path>=<caption>" };
+      const image = parseImageArg(value);
+      if ("error" in image) return image;
+      images.push(image);
+      if (images.length > MORPH_MEDIA_MAX) return { error: `a screen holds at most ${String(MORPH_MEDIA_MAX)} pictures` };
       i += 1;
       continue;
     }
@@ -374,23 +423,24 @@ export function parseShowArgs(args: readonly string[]): ShowArgs | { readonly er
     source = arg;
   }
   if (source === null) return { error: "name the screen's JSON file, or - for stdin" };
-  return { source, title, json, session };
+  return { source, title, json, session, images };
 }
 
-/** The screen file's text as JSON: a list of nodes, or `{ title?, view }`. An error is the one-line reason. */
-export function readScreen(text: string, flagTitle: string | null): { readonly view: JsonValue; readonly title: string | null } | { readonly error: string } {
+/** The screen file's text as JSON: a list of nodes, or `{ title?, view, choice? }`. An error is the one-line reason. */
+export function readScreen(text: string, flagTitle: string | null): { readonly view: JsonValue; readonly title: string | null; readonly choice?: JsonValue } | { readonly error: string } {
   if (new TextEncoder().encode(text).length > MORPH_FILE_MAX) return { error: `the screen is larger than ${String(MORPH_FILE_MAX / 1024)} KiB` };
   const parsed = parseJson(text);
   if (parsed === undefined) return { error: "the screen is not JSON" };
   if (Array.isArray(parsed)) return { view: parsed, title: flagTitle };
   const obj = asJsonObject(parsed);
-  if (obj === undefined || obj.view === undefined) return { error: 'the screen is a list of nodes, or an object with "view" (and "title")' };
-  const extra = Object.keys(obj).find((key) => key !== "view" && key !== "title");
-  if (extra !== undefined) return { error: `the screen object takes "view" and "title" only, not "${extra}"` };
+  if (obj === undefined || obj.view === undefined) return { error: 'the screen is a list of nodes, or an object with "view" (and "title", "choice")' };
+  const extra = Object.keys(obj).find((key) => key !== "view" && key !== "title" && key !== "choice");
+  if (extra !== undefined) return { error: `the screen object takes "view", "title" and "choice" only, not "${extra}"` };
   const fileTitle = obj.title === undefined ? null : asJsonString(obj.title);
   if (fileTitle === undefined) return { error: '"title" is text' };
   if (fileTitle !== null && flagTitle !== null) return { error: "the title is given twice: in the file and with `--title`" };
-  return { view: obj.view, title: flagTitle ?? fileTitle };
+  const title = flagTitle ?? fileTitle;
+  return obj.choice === undefined ? { view: obj.view, title } : { view: obj.view, title, choice: obj.choice };
 }
 
 function readSource(deps: MorphDeps, source: string): Promise<string> | { readonly error: string } {
@@ -407,6 +457,21 @@ function readSource(deps: MorphDeps, source: string): Promise<string> | { readon
     return { error: `\`${source}\`: no such file` };
   }
   return Promise.resolve(readFileSync(path, "utf8"));
+}
+
+/**
+ * The pictures as the bridge is sent them: absolute paths with every folder on the way resolved, as
+ * `collie hill post` sends them (`imagePathOf`). The bridge reads the files; the CLI sends no bytes.
+ */
+function imageFields(deps: MorphDeps, images: readonly HillImageInput[]): { readonly list: JsonValue[] } | { readonly error: string } {
+  const cwd = (deps.cwd ?? (() => process.cwd()))();
+  const list: JsonValue[] = [];
+  for (const image of images) {
+    const resolved = imagePathOf(image.path, cwd);
+    if ("error" in resolved) return resolved;
+    list.push(image.caption === undefined ? { path: resolved.path } : { path: resolved.path, caption: image.caption });
+  }
+  return { list };
 }
 
 /** The session the bridge answered with, or a failure when it answered without one. */
@@ -446,7 +511,12 @@ export async function cmdMorphShow(deps: MorphDeps, args: readonly string[]): Pr
   if ("error" in text) return usage(deps, "show", text.error);
   const screen = readScreen(await text, parsed.title);
   if ("error" in screen) return usage(deps, "show", screen.error);
-  const fields: JsonObject = screen.title === null ? { view: screen.view } : { view: screen.view, title: screen.title };
+  const images = imageFields(deps, parsed.images);
+  if ("error" in images) return usage(deps, "show", images.error);
+  const fields: JsonObject = { view: screen.view };
+  if (screen.title !== null) fields.title = screen.title;
+  if (screen.choice !== undefined) fields.choice = screen.choice;
+  if (images.list.length > 0) fields.images = images.list;
   const answer = await request(deps, bodyOf({ op: "morph.show", session: parsed.session, fields }));
   if (!answer.ok) return failed(deps, answer);
   const session = sessionOf(answer);

@@ -2364,6 +2364,9 @@ const morph = ((): MorphService | undefined => {
   try {
     return new MorphService({
       store: new MorphStore(morphDir(cfg.stateDir)),
+      // Pictures: a second instance of the hill's media store, rooted at Morph's own folder
+      // (`<stateDir>/morph/media/`), with the same denied folders. Made by the first picture, never at boot.
+      media: new HillMediaStore(morphDir(cfg.stateDir), deniedFoldersSync(filesPrivateFolders(cfg))),
       place: hillPlace,
       sessionsKnown: () => walky.who().length > 0,
       crewMode: () => crew.mode,
@@ -2374,6 +2377,7 @@ const morph = ((): MorphService | undefined => {
     return undefined;
   }
 })();
+morph?.pruneMedia();
 const walkyServer = new WalkyServer({
   socketPath: walkySocketPath(cfg.stateDir),
   host: HOST,
