@@ -411,8 +411,9 @@ async function readText(path: string): Promise<string | null> {
 }
 
 /**
- * Migrate a version 1 or 2 switch file to version 3. An entry whose folder still hashes to its approved
- * hash is copied into `.collie-approved/` and keeps running. A changed entry, or a version 1 entry with no hash,
+ * Migrate a version 1 or 2 switch file to layout 3. An entry whose approved copy is still on disk and
+ * verifies (a file the previous build rewrote after a rollback), or whose folder still hashes to its
+ * approved hash, is copied into `.collie-approved/` and keeps running. A changed entry, or a version 1 entry with no hash,
  * keeps its place but approves nothing (`hash: null`): its old bytes are gone, so it waits for a person's
  * yes to the current folder. Version 3 is written only after the copies exist, under the lock, against the
  * file as it is then. Null when there was nothing to migrate.
@@ -425,6 +426,13 @@ export async function migrateSwitches(opts: MigrateOptions): Promise<Migration |
   const copied = new Map<string, { hash: string; powers: string | null }>();
   for (const [id, entry] of read.switches.on) {
     if (entry.hash === null || !isTrickId(id)) continue;
+    // A file the previous build rewrote after a rollback (B4): the approved copy of that hash may still
+    // be on disk, and it holds exactly the bytes approved, whatever the folder holds now.
+    const held = approvedCopyDir(opts.configDir, id, entry.hash);
+    if ((await verifyCopy(held, entry.hash, fs)).ok) {
+      copied.set(id, { hash: entry.hash, powers: await powersOfDir(held, id, fs) });
+      continue;
+    }
     const snap = await snapshotTrick({ src: join(tricksConfigDir(opts.configDir), id), parent: approvedTrickDir(opts.configDir, id), expect: entry.hash, fs, platform: opts.platform });
     if (snap.ok) copied.set(id, { hash: snap.hash, powers: await powersOfDir(snap.dir, id, fs) });
   }

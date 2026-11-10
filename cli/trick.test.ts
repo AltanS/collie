@@ -479,7 +479,7 @@ describe("collie trick on, off and list", () => {
     expect((await stat(path)).mode & 0o777).toBe(0o600);
     const code = await trickCodeHash(join(d.configDir, "tricks", "legs"));
     const hash = code.ok ? code.hash : "";
-    expect(JSON.parse(await readFile(path, "utf8"))).toEqual({ v: 3, on: { legs: { at: "2026-11-08T09:00:00.000Z", hash, auto: false, by: "cli", powers: expect.stringMatching(/^[0-9a-f]{16}$/) } } });
+    expect(JSON.parse(await readFile(path, "utf8"))).toEqual({ v: 2, layout: 3, on: { legs: { at: "2026-11-08T09:00:00.000Z", hash, auto: false, by: "cli", powers: expect.stringMatching(/^[0-9a-f]{16}$/) } } });
     expect(d.out.at(-1)).toBe(`Approved the code of legs as it is now: sha256 ${hash}. The bridge runs this copy; an edit of the folder waits for your yes.`);
     // The approved copy holds exactly the bytes approved.
     expect(await trickCodeHash(approvedCopyDir(d.configDir, "legs", hash))).toEqual(code);
@@ -491,7 +491,7 @@ describe("collie trick on, off and list", () => {
     expect(JSON.parse(await readFile(path, "utf8")).on.legs).toMatchObject({ previous: { hash } });
     expect(JSON.parse(await readFile(path, "utf8")).on.legs.hash).not.toBe(hash);
     expect(await cmdTrickSwitch(d, ["legs"], false)).toBe(EXIT.OK);
-    expect(JSON.parse(await readFile(path, "utf8"))).toEqual({ v: 3, on: {} });
+    expect(JSON.parse(await readFile(path, "utf8"))).toEqual({ v: 2, layout: 3, on: {} });
     expect(await cmdTrickSwitch(d, ["legs"], false)).toBe(EXIT.OK);
     expect(d.out.at(-1)).toBe("legs is already off.");
     expect(await cmdTrickSwitch(d, ["ghost"], true)).toBe(EXIT.FAIL);
@@ -825,7 +825,7 @@ describe("approving from inside an agent's pane, auto, and a version waiting", (
     await writeFile(switchesPath(d.stateDir), JSON.stringify({ v: 2, on: { other: { at: "t", hash } } }));
     expect(await cmdTrickSwitch(d, ["legs"], true)).toBe(EXIT.OK);
     const file = JSON.parse(await readFile(switchesPath(d.stateDir), "utf8"));
-    expect(file.v).toBe(3);
+    expect([file.v, file.layout]).toEqual([2, 3]);
     expect(file.on.other).toMatchObject({ hash, by: "migrated" });
     expect(await trickCodeHash(approvedCopyDir(d.configDir, "other", hash))).toEqual(other);
   });

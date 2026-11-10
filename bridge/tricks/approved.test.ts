@@ -4,10 +4,11 @@ import { tmpdir } from "node:os";
 import { join, sep } from "node:path";
 
 import { approveFolder, copyListing, fileCounts, migrateSwitches, powersOf, promoteCopy, pruneCopies, removeTrickCopies, snapshotTrick, syncConfig, verifyCopy } from "./approved.ts";
+import { asJsonNumber, asJsonObject, asJsonString, parseJson } from "../../web/src/lib/json.ts";
 import { trickCodeHash } from "./code-hash.ts";
 import { createTrickScanner } from "./discover.ts";
 import { APPROVED_DIR, approvedCopyDir, approvedTrickDir, hash16, PENDING_DIR, pendingTrickDir, switchesPath, TRICKS_DIR } from "./paths.ts";
-import { parseSwitches, withSwitch, type Switches } from "./switches.ts";
+import { parseSwitches, updateSwitches, withEntry, withSwitch, type Switches } from "./switches.ts";
 
 const dirs: string[] = [];
 async function tempDir(): Promise<string> {
@@ -294,6 +295,35 @@ describe("approveFolder and migration", () => {
     expect(await migrateSwitches({ stateDir, configDir })).toBeNull();
   });
 
+  test("B4: the previous build's parser reads the new file, and a write by it loses nothing it should not", async () => {
+    const { configDir, stateDir, dir } = await setup();
+    const hash = await hashOf(dir);
+    const approved = await approveFolder({ stateDir, configDir, id: "legs", by: "cli", at: "t1" });
+    expect(approved).toMatchObject({ ok: true, hash });
+    await updateSwitches(stateDir, (now) => withEntry(withSwitch(now, "waits", true, "t2", null), "legs", { ...now.on.get("legs")!, auto: true, declined: "e".repeat(64) }));
+    const written = await readFile(switchesPath(stateDir), "utf8");
+    // The previous build (int at b9ac68b28) reads every trick as on, with the hash approved.
+    const old = previousBuildParse(written);
+    expect(old.problem).toBeNull();
+    expect([...old.switches.on]).toEqual([
+      ["legs", { at: "t1", hash }],
+      ["waits", { at: "t2", hash: null }],
+    ]);
+    // Rolled back, it switches one more trick on: it writes its own version 2, and keeps every other trick.
+    await writeFile(switchesPath(stateDir), previousBuildRender(previousBuildWithSwitch(old.switches, "more", true, "t3", "f".repeat(64))));
+    const back = parseSwitches(await readFile(switchesPath(stateDir), "utf8"));
+    expect([...back.switches.on.keys()]).toEqual(["legs", "more", "waits"]);
+    expect(back.switches.version).toBe(2);
+    // Rolled forward, the migration finds the approved copy of `legs` still there and keeps it running,
+    // even though the folder moved in between; what that build could not keep (auto, declined) is gone.
+    await writeFile(join(dir, "p.sh"), "#!/bin/sh\necho changed\n");
+    expect(await migrateSwitches({ stateDir, configDir })).toEqual({ kept: ["legs"], waiting: ["more", "waits"] });
+    const forward = parseSwitches(await readFile(switchesPath(stateDir), "utf8")).switches;
+    expect(forward.version).toBe(3);
+    expect(forward.on.get("legs")).toMatchObject({ hash, auto: false, by: "migrated" });
+    expect(forward.on.get("legs")?.declined).toBeUndefined();
+  });
+
   test("no file and a file that does not parse migrate nothing", async () => {
     const { configDir, stateDir } = await setup();
     expect(await migrateSwitches({ stateDir, configDir })).toBeNull();
@@ -338,3 +368,59 @@ describe("pruning", () => {
     expect(await readdir(join(configDir, TRICKS_DIR, PENDING_DIR))).toEqual([]);
   });
 });
+
+// ── The previous build's switch file, as a fixture (git show b9ac68b28:bridge/tricks/switches.ts) ──────
+// Copied as it was, so a test can prove the file this build writes stays readable after a rollback.
+
+interface PreviousEntry {
+  at: string;
+  hash: string | null;
+}
+
+interface PreviousSwitches {
+  on: ReadonlyMap<string, PreviousEntry>;
+}
+
+interface PreviousParsed {
+  switches: PreviousSwitches;
+  problem: string | null;
+}
+
+function previousBuildParse(text: string | null): PreviousParsed {
+  const empty: PreviousSwitches = { on: new Map<string, PreviousEntry>() };
+  if (text === null) return { switches: empty, problem: null };
+  const doc = asJsonObject(parseJson(text));
+  const v = asJsonNumber(doc?.v);
+  if (doc === undefined || (v !== 1 && v !== 2)) return { switches: empty, problem: "switches.json is not a version 1 or 2 switch file; every trick reads as off" };
+  const on = asJsonObject(doc.on);
+  if (on === undefined) return { switches: empty, problem: 'switches.json has no "on" table; every trick reads as off' };
+  const map = new Map<string, PreviousEntry>();
+  for (const [id, value] of Object.entries(on)) {
+    const plain = asJsonString(value);
+    if (plain !== undefined) {
+      map.set(id, { at: plain, hash: null });
+      continue;
+    }
+    const entry = asJsonObject(value);
+    const at = asJsonString(entry?.at);
+    const hash = asJsonString(entry?.hash);
+    if (at !== undefined) map.set(id, { at, hash: hash !== undefined && /^[0-9a-f]{64}$/.test(hash) ? hash : null });
+  }
+  return { switches: { on: map }, problem: null };
+}
+
+function previousBuildRender(switches: PreviousSwitches): string {
+  const on: Record<string, { at: string; hash: string | null }> = {};
+  for (const id of [...switches.on.keys()].toSorted()) {
+    const entry = switches.on.get(id);
+    if (entry !== undefined) on[id] = { at: entry.at, hash: entry.hash };
+  }
+  return `${JSON.stringify({ v: 2, on }, null, 2)}\n`;
+}
+
+function previousBuildWithSwitch(switches: PreviousSwitches, id: string, on: boolean, at: string, hash: string | null = null): PreviousSwitches {
+  const next = new Map(switches.on);
+  if (on) next.set(id, { at, hash });
+  else next.delete(id);
+  return { on: next };
+}

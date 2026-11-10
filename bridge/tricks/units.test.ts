@@ -51,11 +51,11 @@ describe("the switch file", () => {
     expect(warnings.length).toBe(1);
   });
 
-  test("render is version 3 and stable, on/off round-trips, and switching on again stores the new hash", () => {
+  test("render is layout 3 as version 2 (B4) and stable, on/off round-trips, and switching on again stores the new hash", () => {
     const one = withSwitch({ on: new Map() }, "b", true, "t1", HASH);
     const two = withSwitch(one, "a", true, "t2");
     const entry = (at: string, hash: string | null) => `{\n      "at": "${at}",\n      "hash": ${hash === null ? "null" : `"${hash}"`},\n      "auto": false,\n      "by": "cli",\n      "powers": null\n    }`;
-    expect(renderSwitches(two)).toBe(`{\n  "v": 3,\n  "on": {\n    "a": ${entry("t2", null)},\n    "b": ${entry("t1", HASH)}\n  }\n}\n`);
+    expect(renderSwitches(two)).toBe(`{\n  "v": 2,\n  "layout": 3,\n  "on": {\n    "a": ${entry("t2", null)},\n    "b": ${entry("t1", HASH)}\n  }\n}\n`);
     expect(parseSwitches(renderSwitches(two)).switches.on.get("b")).toEqual({ at: "t1", hash: HASH, auto: false, by: "cli", powers: null });
     expect(parseSwitches(renderSwitches(two)).switches.version).toBe(3);
     expect(withSwitch(two, "b", true, "later", HASH2).on.get("b")).toEqual({ at: "later", hash: HASH2, auto: false, by: "cli", powers: null });

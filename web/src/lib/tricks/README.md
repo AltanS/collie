@@ -72,9 +72,12 @@ symbolic link". `collie trick on` and `collie trick auto
 <id> on` refuse in a multiplexer pane where the running bridge sees an agent (the walky socket's `pane`
 op): an agent does not approve its own trick. In a shell pane they work. With no bridge, or a bridge
 that does not know the op or the pane, they do not refuse. It is a speed bump, not a lock: the user
-account is the real boundary, and the person approves from the phone or a terminal. A `switches.json` from an older Collie (version 1 or 2) is moved to version 3 at the
-bridge's first look: a trick whose folder still matches the hash a person approved keeps running from a
-fresh copy, and any other waits, on, for a new yes.
+account is the real boundary, and the person approves from the phone or a terminal. A `switches.json` from an older Collie (version 1 or 2) is moved to the approved-copy layout at the
+bridge's first look: a trick whose approved copy is still on disk, or whose folder still matches the hash
+a person approved, keeps running from that copy, and any other waits, on, for a new yes. The file is
+written as `"v": 2` with `"layout": 3` (`bridge/tricks/switches.ts`), so the previous build still reads
+every switch after a rollback, and a write by it keeps every switch and hash; it drops `auto`,
+`previous` and `declined`, which the next migration reads as off, none and none.
 
 **The new version card.** When the folder of a trick that is on moves past its approved copy, the bridge
 puts one Decision of kind `collie` on the Hill (`bridge/tricks/version-card.ts`): "Use the new version

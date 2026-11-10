@@ -257,7 +257,7 @@ describe("the switch route", () => {
     expect(on.body.state).not.toBe("off");
     expect((await r.service.reply(undefined)).rev).toBeGreaterThan(before);
     const file = JSON.parse(await readFile(join(r.stateDir, "tricks", "switches.json"), "utf8"));
-    expect(file.v).toBe(3);
+    expect([file.v, file.layout]).toEqual([2, 3]);
     expect(Object.keys(file.on)).toEqual(["legs"]);
     // On approves the code as it is now: the file holds its hash, and the copy of those bytes exists.
     const code = await trickCodeHash(join(r.configDir, TRICKS_DIR, "legs"));
@@ -1201,7 +1201,7 @@ describe("migrating switches.json from version 2 at boot", () => {
     expect(r.specs.length).toBe(1);
     expect(r.specs[0]?.cwd).toBe(approvedCopyDir(r.configDir, "legs", code.hash));
     const file = JSON.parse(await readFile(join(r.stateDir, TRICKS_DIR, "switches.json"), "utf8"));
-    expect(file.v).toBe(3);
+    expect([file.v, file.layout]).toEqual([2, 3]);
     expect(file.on.legs).toMatchObject({ at: "2026-11-01T00:00:00.000Z", hash: code.hash, auto: false, by: "migrated" });
     expect(file.on.legs.powers).toMatch(/^[0-9a-f]{16}$/);
     expect(r.warnings.some((line) => line.includes("version 3 now: 1 trick(s) run from an approved copy, 0 wait"))).toBe(true);
@@ -1216,7 +1216,7 @@ describe("migrating switches.json from version 2 at boot", () => {
     await tickAt(r, T0);
     expect(r.specs.length).toBe(0);
     const file = JSON.parse(await readFile(join(r.stateDir, TRICKS_DIR, "switches.json"), "utf8"));
-    expect(file.v).toBe(3);
+    expect([file.v, file.layout]).toEqual([2, 3]);
     expect(file.on.legs).toMatchObject({ hash: null, by: "migrated" });
     expect(file.on.old).toMatchObject({ hash: null, by: "migrated" });
     const rows = (await r.service.reply(undefined)).tricks;
@@ -1235,6 +1235,6 @@ describe("migrating switches.json from version 2 at boot", () => {
     await tickAt(r, T0);
     expect(r.specs.length).toBe(0);
     const file = JSON.parse(await readFile(join(r.stateDir, TRICKS_DIR, "switches.json"), "utf8"));
-    expect(file).toEqual({ v: 3, on: { legs: { at: "2026-11-01T00:00:00Z", hash: null, auto: false, by: "migrated", powers: null } } });
+    expect(file).toEqual({ v: 2, layout: 3, on: { legs: { at: "2026-11-01T00:00:00Z", hash: null, auto: false, by: "migrated", powers: null } } });
   });
 });
