@@ -64,7 +64,9 @@ export function walkyPlace(walky: Pick<WalkyService, "who">, memberId: string | 
     });
     if (hits.length !== 1) return null;
     const hit = hits[0]!;
-    return { address: hit.address, label: hit.label, host: hit.machine, unattended: unattended(hit.address) };
+    const place = { address: hit.address, label: hit.label, host: hit.machine, unattended: unattended(hit.address) };
+    // §22: a member the lead's sweep cannot reach now. Its Decisions wait; an answer to one is refused.
+    return hit.state === "unreachable" ? { ...place, reachable: false } : place;
   };
 }
 

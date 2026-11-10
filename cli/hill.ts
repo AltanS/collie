@@ -149,9 +149,12 @@ async function walk(deps: HillDeps, body: JsonObject, all = false): Promise<{ re
 /**
  * The exit code of a bridge's refusal. A post the bridge refused for its content is `REFUSED` (4); a
  * refusal with no code, and the Hill switched off on this Collie, are a state of the machine, `STATE`
- * (3): a retry of the same post can pass once the person switches the Hill on.
+ * (3): a retry of the same post can pass once the person switches the Hill on. A crew member whose lead
+ * did not answer the forwarded post is `UNREACHABLE` (5): the same post with the same `--request-id`
+ * may go again, and the lead keeps one decision for it (CREW_PROTOCOL §22).
  */
 export function refusalExit(code: string | null): number {
+  if (code === "lead_unreachable") return EXIT.UNREACHABLE;
   return code === null || code === "hill_off" ? EXIT.STATE : EXIT.REFUSED;
 }
 

@@ -260,6 +260,11 @@ export interface HillReceipt {
   at: number;
   /** On an `ok` receipt: the paired device it came from, as the stored answer's `deviceId`. Absent when unknown. */
   deviceId?: string;
+  /**
+   * On a `rejected` receipt only: the crew machine the answer goes to, which is not answering (1.29.0).
+   * Nothing was sent and the Decision stays open. Absent from an older bridge, which never refuses so.
+   */
+  machine?: string;
 }
 
 /** One image a post names: a file on the bridge's own machine, read by the bridge. */
@@ -308,7 +313,9 @@ export type HillRefusalCode =
   | "bad_image"
   | "too_many_images"
   | "image_too_large"
-  | "request_id_reused";
+  | "request_id_reused"
+  /** A crew member's post that did not reach its lead (CREW_PROTOCOL §22, 1.29.0): nothing was posted. */
+  | "lead_unreachable";
 
 /** The node name of a decision: "hill/<id>". */
 export function hillNode(id: string): string {

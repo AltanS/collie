@@ -20,8 +20,8 @@
 // notification on the phone (service.ts `save`).
 //
 // THE GATES. Push live (VAPID keys), the "Decisions that need you now" switch (`decisions`, notify-prefs),
-// not snoozed, and not a crew member (a member refuses posts anyway; the lead holds the subscriptions,
-// as for every other push). Then the rate below. A decision past a gate still posts and shows; only the
+// not snoozed, and not a crew member (a member forwards its posts to the lead, CREW_PROTOCOL §22; the
+// lead holds the subscriptions, as for every other push). Then the rate below. A decision past a gate still posts and shows; only the
 // push is skipped, and a skip for the rate writes one `hill.push.skipped` audit line.
 
 import { PUSH_LINE_MAX, PUSH_TITLE_MAX } from "../mux/durable/clean.ts";
@@ -30,10 +30,11 @@ import type { HillDecision } from "../../web/src/lib/hill/wire.ts";
 
 /**
  * How often `now` Decisions may ring the phone: at most `perSender` an hour from one sender (an agent's
- * address, or a trick), and `total` an hour from every sender together. Past either, the decision posts
- * and shows, and only its push is skipped.
+ * address, or a trick), `perMember` an hour from the agents of one crew member together (posting through
+ * their lead; CREW_PROTOCOL §22, 1.29.0), and `total` an hour from every sender together. Past
+ * any of them, the decision posts and shows, and only its push is skipped.
  */
-export const HILL_PUSH_RATE = { perSender: 3, total: 10, windowMs: 60 * 60_000 } as const;
+export const HILL_PUSH_RATE = { perSender: 3, perMember: 6, total: 10, windowMs: 60 * 60_000 } as const;
 
 const TAG_PREFIX = "collie:hill:";
 
@@ -66,12 +67,16 @@ export function hillPushMessage(decision: Pick<HillDecision, "id" | "title" | "s
 }
 
 /** Whether a `now` push may go: yes, or which gate holds it. */
-export type HillPushVerdict = "send" | "off" | "sender" | "total";
+export type HillPushVerdict = "send" | "off" | "sender" | "member" | "total";
 
 /** What the hill service needs of the phone push (service.ts). */
 export interface HillPushPort {
-  /** Whether a `now` push from `sender` may go now. Spends nothing. */
-  check(sender: string): HillPushVerdict;
+  /**
+   * Whether a `now` push from `sender` may go now. Spends nothing. `member` is the crew member an agent
+   * sender posts from through this lead (its decision's `from.memberId`); absent or null for this
+   * bridge's own sessions and for a trick, which count only as a sender and toward the total.
+   */
+  check(sender: string, member?: string | null): HillPushVerdict;
   /** Send a stored decision's push into its `pushTag` slot, and count it against the rate. */
   send(sender: string, decision: HillDecision): void;
   /** Close the notification in a slot. */
@@ -88,25 +93,26 @@ export interface HillPushDeps {
 /** The phone push of `now` decisions: the gates, the rate, the message. */
 export class HillPush implements HillPushPort {
   /** The pushes sent inside the rate's window, oldest first. In memory: a restart forgives. */
-  private sent: Array<{ readonly at: number; readonly sender: string }> = [];
+  private sent: Array<{ readonly at: number; readonly sender: string; readonly member: string | null }> = [];
   private readonly now: () => number;
 
   constructor(private readonly deps: HillPushDeps) {
     this.now = deps.now ?? Date.now;
   }
 
-  check(sender: string): HillPushVerdict {
+  check(sender: string, member: string | null = null): HillPushVerdict {
     if (!this.deps.ready()) return "off";
     const now = this.now();
     this.sent = this.sent.filter((entry) => now - entry.at < HILL_PUSH_RATE.windowMs);
     if (this.sent.filter((entry) => entry.sender === sender).length >= HILL_PUSH_RATE.perSender) return "sender";
+    if (member !== null && this.sent.filter((entry) => entry.member === member).length >= HILL_PUSH_RATE.perMember) return "member";
     if (this.sent.length >= HILL_PUSH_RATE.total) return "total";
     return "send";
   }
 
   send(sender: string, decision: HillDecision): void {
     if (decision.pushTag === undefined) return;
-    this.sent.push({ at: this.now(), sender });
+    this.sent.push({ at: this.now(), sender, member: decision.from.kind === "agent" ? decision.from.memberId : null });
     this.deps.send(hillPushMessage(decision, decision.pushTag));
   }
 

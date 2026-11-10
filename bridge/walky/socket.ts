@@ -18,6 +18,7 @@
 //   hill.withdraw { id }                       → { ok, decision }   (now `withdrawn`, "by the poster")
 //   hill.list     { mine: true }               → { ok, decisions }  (the asker's own, open first)
 // Every hill refusal carries `hill: true`, so the CLI tells a bridge that knows the hill from an older one.
+// On a crew member from 1.29.0 the four go to the lead, which holds the one Hill (CREW_PROTOCOL §22).
 // A refusal is `{ ok: false, error }`. `not here` means the markers name no pane of this bridge, so
 // the CLI asks the next bridge on the machine; a request this bridge cannot read answers the same when
 // its markers name no pane here, else `bad request: <reason>` (refusals.ts). A send with no markers
@@ -49,8 +50,11 @@ export const SWITCH_NEEDS_A_PANE = "run this inside an agent pane";
 /** What the socket answers a hill operation from outside an agent pane (M96): a decision belongs to a session. */
 export const HILL_NEEDS_A_PANE = "run this inside an agent's pane: a decision belongs to the session that posts it";
 
-/** What the socket needs of the hill (M96). Absent: the bridge answers the four operations as unknown. */
-export type HillSocket = Pick<HillService, "agentSender" | "postFields" | "status" | "withdraw" | "mineList">;
+/**
+ * What the socket needs of the hill (M96). Absent: the bridge answers the four operations as unknown. The
+ * `ask` calls answer from this bridge, or on a crew member from its lead (CREW_PROTOCOL §22).
+ */
+export type HillSocket = Pick<HillService, "agentSender" | "postFields" | "askStatus" | "askWithdraw" | "askList">;
 
 /** The socket of one state dir. */
 export function walkySocketPath(stateDir: string): string {
@@ -211,7 +215,7 @@ export async function answerRequest(service: WalkyService, request: WalkyRequest
     case "hill.status":
     case "hill.withdraw":
     case "hill.list":
-      return answerHill(service, request, pane, hill);
+      return await answerHill(service, request, pane, hill);
   }
 }
 
@@ -221,7 +225,7 @@ export async function answerRequest(service: WalkyService, request: WalkyRequest
  * decision this bridge does not hold from the sender answers `not here` with the sentence in `missing`,
  * so the CLI asks the next bridge on the machine, as it does for a walky message id.
  */
-function answerHill(service: WalkyService, request: Extract<WalkyRequest, { op: "hill.post" | "hill.status" | "hill.withdraw" | "hill.list" }>, pane: WalkyPane | null, hill: HillSocket | undefined): WalkyAnswer {
+async function answerHill(service: WalkyService, request: Extract<WalkyRequest, { op: "hill.post" | "hill.status" | "hill.withdraw" | "hill.list" }>, pane: WalkyPane | null, hill: HillSocket | undefined): Promise<WalkyAnswer> {
   if (hill === undefined) return { ok: false, error: unknownOp(request.op) };
   if (pane === null || !pane.agent) {
     service.noteRefusal("no pane");
@@ -230,18 +234,20 @@ function answerHill(service: WalkyService, request: Extract<WalkyRequest, { op: 
   const sender = hill.agentSender(pane, service.addressOf(pane.paneId, pane.instance));
   switch (request.op) {
     case "hill.post": {
-      const answer = hill.postFields(sender, request.fields);
+      const answer = await hill.postFields(sender, request.fields);
       if (answer.ok) return answer;
       return answer.code === null ? { ok: false, error: answer.error, hill: true } : { ok: false, error: answer.error, hill: true, code: answer.code };
     }
     case "hill.status":
     case "hill.withdraw": {
-      const answer = request.op === "hill.status" ? hill.status(sender, request.id) : hill.withdraw(sender, request.id);
+      const answer = request.op === "hill.status" ? await hill.askStatus(sender, request.id) : await hill.askWithdraw(sender, request.id);
       if (answer.ok) return answer;
       return answer.missing ? { ok: false, error: "not here", hill: true, missing: answer.error } : { ok: false, error: answer.error, hill: true };
     }
-    case "hill.list":
-      return { ok: true, decisions: hill.mineList(sender) };
+    case "hill.list": {
+      const answer = await hill.askList(sender);
+      return answer.ok ? { ok: true, decisions: answer.decisions } : { ok: false, error: answer.error, hill: true };
+    }
   }
 }
 
