@@ -39,7 +39,11 @@
         "hintsNote": "Live check 2026-10-30, Claude Code 2.1.312 over tmux, 120 columns: a fresh pane draws `You've used 75% of your weekly limit · resets Nov 4, 2am (…) · /usage-credits to keep using Claude Code` under the footer, and drops it once the box grows to two rows. The rows under the box went from 2 to 1 and the send ended typed_not_submitted (changed). The pattern covers any percentage and any limit name (`weekly`, `5-hour`, `Opus weekly`); the tail after `limit` is free. Fixture claude--v2312-weekly-limit-row--w120. Lab 2026-11-01, Claude Code 2.1.316 over tmux (focus-events off, the tmux default), 100 columns: while a turn runs, Claude draws `tmux focus-events off · add 'set -g focus-events on' to ~/.tmux.conf and reattach for focus tracking` under the footer, and drops it once the box holds a draft of two paragraphs (the footer turns to `ctrl+g to edit in nano`). The rows under the box went from 2 to 1 and a two-paragraph send into the turn ended typed_not_submitted (changed); the same send with focus-events on, on an idle box, and over Herdr was sent. Fixtures bridge/surface/fixtures/claude--v2316-two-paragraphs-*--w100.",
         "footerRows": [
           { "name": "agents-panel-main", "pattern": "^\\s*(?:❯\\s+)?●\\s+main(?:\\s.*)?$" },
-          { "name": "agents-panel-agent", "pattern": "^\\s*(?:❯\\s+)?◯\\s+\\S.*$" },
+          {
+            "name": "agents-panel-agent",
+            "pattern": "^\\s*(?:❯\\s+)?◯\\s+\\S.*$",
+            "wrapped": "^ {4,}(?![●◯❯↓⏵⏸?\\[(]|[0-9]+[.)]\\s)\\S.*$"
+          },
           { "name": "agents-panel-more", "pattern": "^\\s*↓ \\d+ more$" },
           { "name": "agents-panel-manage-hint", "pattern": "^\\s*↓ to manage$" },
           { "name": "tasks-view-hint", "pattern": "^\\s*(?:⏵⏵|⏸|\\?)\\s.*\\s·\\s↓ to view(?:\\s·\\s|$)" }

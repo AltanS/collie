@@ -142,6 +142,7 @@ interface CompiledInterior {
 interface CompiledFooterRow {
   readonly name: string;
   readonly pattern: RegExp;
+  readonly wrapped: RegExp | null;
 }
 
 interface Compiled {
@@ -180,7 +181,11 @@ function compile(idle: IdleProfile): Compiled {
     // `d` gives the draft hole's offset, so the placeholder test reads only the runs inside it.
     prompt: compileAnchor(prompt, "du"),
     bottom: compileAnchor(bottom, "u"),
-    footerRows: (idle.volatile.below.footerRows ?? []).map((row) => ({ name: row.name, pattern: new RegExp(row.pattern, "u") })),
+    footerRows: (idle.volatile.below.footerRows ?? []).map((row) => ({
+      name: row.name,
+      pattern: new RegExp(row.pattern, "u"),
+      wrapped: row.wrapped === undefined ? null : new RegExp(row.wrapped, "u"),
+    })),
     interior: {
       rows: rows === undefined ? null : new RegExp(rows, "u"),
       trailerRow: trailer === undefined ? null : new RegExp(trailer.row, "u"),
@@ -596,6 +601,14 @@ function footerRowIndex(text: string, rows: readonly CompiledFooterRow[], from: 
   return -1;
 }
 
+/** Whether `text` matches the `wrapped` continuation pattern of any named footer row at or after `from`. */
+function isFooterWrappedRow(text: string, rows: readonly CompiledFooterRow[], from: number): boolean {
+  if (isBlank(text)) return false;
+  const trimmed = text.trimEnd();
+  for (let k = from; k < rows.length; k++) if (rows[k]!.wrapped?.test(trimmed) === true) return true;
+  return false;
+}
+
 /** The statusline run, the footer, and the named rows under the bottom edge (`Frame.volatile`). */
 interface NamedBelowRun extends BelowRun {
   readonly named: readonly NamedRow[];
@@ -606,8 +619,10 @@ interface NamedBelowRun extends BelowRun {
  *
  * The named run sits at the bottom. It starts on a row the FIRST entry of the list matches, set
  * apart by a blank row over it, and every row after it matches a later entry in the list's order
- * (the first entry only once); blank rows may stand between. It is at most `footerMaxRows` tall.
- * Anything else is no named run, and the rows walk as before ({@link walkBelow}) with nothing named.
+ * (the first entry only once) or the current entry's `wrapped` continuation directly under it; blank
+ * rows may stand between entries. It holds at most `footerMaxRows` logical entries (blank separator
+ * rows and wrapped continuation rows do not consume the entry budget). Anything else is no named run,
+ * and the rows walk as before ({@link walkBelow}) with nothing named.
  *
  * Over an accepted run the rows walk as a statusline with NO footer of their own, so a popup or a
  * dialog between the statusline and the run fails the walk instead of passing as a second footer.
@@ -619,22 +634,39 @@ function walkBelowNamed(texts: readonly string[], bottom: number, end: number, i
   const plain = (): NamedBelowRun => ({ ...walkBelow(texts, bottom, end, below), named: [] });
   if (rows.length === 0) return plain();
 
-  // Up from the last row over blank rows and rows a later entry matches, to the first entry's row.
+  // Up from the last row over blank rows and rows a later entry (or its continuation) matches, to the first entry's row.
   let first = end - 1;
-  while (first > bottom && (isBlank(texts[first]!) || footerRowIndex(texts[first]!, rows, 1) >= 0)) first--;
+  while (first > bottom && (isBlank(texts[first]!) || footerRowIndex(texts[first]!, rows, 1) >= 0 || isFooterWrappedRow(texts[first]!, rows, 1))) first--;
   if (first <= bottom + 1 || footerRowIndex(texts[first]!, rows, 0) !== 0 || !isBlank(texts[first - 1]!)) return plain();
-  if (end - first > below.footerMaxRows) return plain();
 
-  // Down the run: each row matches an entry at or after the last one, never the first entry again.
+  // Down the run: each row matches an entry at or after the last one, or the current entry's wrapped
+  // continuation when no blank row intervened, never the first entry again (#740).
   const named: NamedRow[] = [{ row: first, name: rows[0]!.name }];
+  let entries = 1;
   let at = 1;
+  let canWrap = rows[0]!.wrapped !== null;
+  let wrapIndex = 0;
   for (let j = first + 1; j < end; j++) {
-    if (isBlank(texts[j]!)) continue;
+    if (isBlank(texts[j]!)) {
+      canWrap = false;
+      continue;
+    }
     const k = footerRowIndex(texts[j]!, rows, at);
-    if (k < 0) return plain();
-    named.push({ row: j, name: rows[k]!.name });
-    at = k;
+    if (k >= 0) {
+      named.push({ row: j, name: rows[k]!.name });
+      entries++;
+      at = k;
+      wrapIndex = k;
+      canWrap = rows[k]!.wrapped !== null;
+      continue;
+    }
+    if (canWrap && rows[wrapIndex]!.wrapped?.test(texts[j]!.trimEnd()) === true) {
+      named.push({ row: j, name: rows[wrapIndex]!.name });
+      continue;
+    }
+    return plain();
   }
+  if (entries > below.footerMaxRows) return plain();
 
   let rest = first;
   while (rest > bottom + 1 && isBlank(texts[rest - 1]!)) rest--;

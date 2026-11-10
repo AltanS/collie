@@ -161,6 +161,12 @@ export interface FooterRow {
   readonly name: string;
   /** A regular expression source, matched on the row with its trailing space cut. */
   readonly pattern: string;
+  /**
+   * A regular expression source for a wrapped continuation row directly under this entry (no blank row
+   * between). A continuation row joins `Frame.volatile.named` under the same `name` without counting
+   * as a separate logical entry against `footerMaxRows`. Optional.
+   */
+  readonly wrapped?: string;
 }
 
 /**
@@ -1165,7 +1171,10 @@ function footerRows(value: JsonValue | undefined): FooterRow[] {
     names.add(name);
     const compiled = pattern(field(node, "pattern", at), `${at}.pattern`);
     if (compiled.test("")) fail(`${at}.pattern`, "must not match a blank row");
-    return { name, pattern: compiled.source };
+    if (node.wrapped === undefined) return { name, pattern: compiled.source };
+    const wrapped = pattern(node.wrapped, `${at}.wrapped`);
+    if (wrapped.test("")) fail(`${at}.wrapped`, "must not match a blank row");
+    return { name, pattern: compiled.source, wrapped: wrapped.source };
   });
 }
 
