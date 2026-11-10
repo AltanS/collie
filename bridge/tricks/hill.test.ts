@@ -255,6 +255,40 @@ describe("the diff by key", () => {
     expect(asked?.id).not.toBe(first.id);
   });
 
+  test("a cleared answered key stays closed, even when no run saw it close before the clear", async () => {
+    const r = rig();
+    sync(r, [decision("case-8")]);
+    const first = open(r)[0]!;
+    await answer(r, first, 100, "rerun");
+    // The map still says `open`: no run has read the hill since the answer. Then the person clears it.
+    expect(r.tricks.entries("legs")["case-8"]).toMatchObject({ state: "open" });
+    expect(r.hill.clear(null)?.cleared).toEqual([first.id]);
+    sync(r, [decision("case-8")]);
+    expect(open(r)).toEqual([]);
+    expect(r.store.all()).toEqual([]);
+    expect(r.tricks.entries("legs")["case-8"]).toMatchObject({ decisionId: first.id, state: "answered" });
+    // A bridge restart reads the same: the tombstone is in the file.
+    const again = r.restart();
+    sync(again, [decision("case-8")]);
+    expect(again.store.all()).toEqual([]);
+    // Changed content asks again, as for an answered key that was never cleared.
+    sync(again, [decision("case-8", { summary: "Red again after the rerun." })]);
+    expect(again.store.all().filter((d) => d.state === "open")).toHaveLength(1);
+  });
+
+  test("a cleared key that closed without the person still asks again after 10 minutes", () => {
+    const r = rig();
+    sync(r, [decision("case-8")]);
+    const first = open(r)[0]!;
+    r.store.put({ ...first, state: "expired", closedAt: 1100, closedReason: "expired" });
+    sync(r, [decision("case-8")]);
+    r.hill.clear(null);
+    r.clock.t += REASK_AFTER_MS;
+    sync(r, [decision("case-8")]);
+    const [again] = open(r);
+    expect(again?.id).not.toBe(first.id);
+  });
+
   test("a key that closed without the person asks again on a later run, at most once per 10 minutes", () => {
     for (const closed of ["undeliverable", "expired", "withdrawn"] as const) {
       const r = rig();

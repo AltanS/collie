@@ -4,6 +4,7 @@ import { http, HttpResponse } from "msw";
 import { createMemoryRouter, Outlet, RouterProvider, type InitialEntry } from "react-router";
 import { vi } from "vitest";
 
+import { ARM_DWELL_MS } from "@/lib/arm";
 import { __resetHill, __settleHill, syncHill } from "@/lib/hill/store";
 import { clearStatus, currentStatus } from "@/lib/status";
 import { asJsonString, parseJsonObject } from "@/lib/json";
@@ -340,5 +341,146 @@ describe("the hill route with the Hill switched off", () => {
   it("a device that may only read sees the button, disabled", async () => {
     renderHill(undefined, home({ hill: false, hillOff: true, device: { enforced: true, device: "tablet", authorized: false } }));
     expect(await screen.findByRole("button", { name: "Switch the Hill on" })).toBeDisabled();
+  });
+});
+
+// CLEAR on the Answered group: the quiet button at the right end of its header, one tap to arm and a
+// second to clear every closed entry, the rows leaving at once and coming back if the bridge refuses.
+describe("clearing the closed entries", () => {
+  const closedRow = (state: "answered" | "dismissed" | "expired", at: number) => hillDecision({ state, closedAt: at, closedReason: state === "expired" ? "expired" : null });
+
+  async function hillHoldsClosed(open: ReturnType<typeof hillDecision>[], closed: ReturnType<typeof hillDecision>[], closedTotal?: number) {
+    server.use(http.get("/api/hill", () => HttpResponse.json({ v: 1, rev: 1, open, closed, closedTotal: closedTotal ?? null })));
+    await act(async () => {
+      syncHill(1);
+      await __settleHill();
+    });
+  }
+
+  const clearButton = () => document.querySelector<HTMLButtonElement>('[data-slot="hill-clear"]');
+  /** The word the button shows now: its slot holds both, and only the active layer is on top. */
+  const shown = () => clearButton()?.querySelector("[data-active]")?.textContent;
+  const rows = () => document.querySelectorAll('[data-slot="hill-closed-row"]').length;
+  const dwell = () => new Promise((resolve) => setTimeout(resolve, ARM_DWELL_MS + 60));
+
+  it("puts a Clear button at the right end of the Answered header, 44px tall, and none when nothing is closed", async () => {
+    await hillHoldsClosed([], [closedRow("answered", 3), closedRow("dismissed", 2), closedRow("expired", 1)]);
+    renderHill();
+    await waitFor(() => expect(clearButton()).not.toBeNull());
+    const header = document.querySelector('[data-slot="hill-answered"] h2')?.parentElement;
+    expect(header?.lastElementChild).toContainElement(clearButton());
+    expect(shown()).toBe("Clear");
+    expect(clearButton()).toHaveAccessibleName("Clear");
+    expect(clearButton()?.className).toContain("h-11");
+    expect(rows()).toBe(3);
+  });
+
+  it("draws no button when there are no closed entries", async () => {
+    await hillHolds([hillDecision()]);
+    renderHill();
+    await screen.findByRole("heading", { name: "Hill" });
+    expect(clearButton()).toBeNull();
+    expect(document.querySelector('[data-slot="hill-answered"]')).toBeNull();
+  });
+
+  it("the first tap only arms it, in place: Clear 3 entries?, and nothing is sent", async () => {
+    let posted = 0;
+    server.use(
+      http.post("/api/hill/clear", () => {
+        posted += 1;
+        return HttpResponse.json({ cleared: 3, skipped: [] });
+      }),
+    );
+    await hillHoldsClosed([], [closedRow("answered", 3), closedRow("dismissed", 2), closedRow("expired", 1)]);
+    renderHill();
+    await waitFor(() => expect(clearButton()).not.toBeNull());
+    await userEvent.click(clearButton()!);
+    expect(shown()).toBe("Clear 3 entries?");
+    expect(clearButton()).toHaveAccessibleName("Clear 3 entries?: tap again to confirm");
+    expect(clearButton()?.className).toContain("text-destructive");
+    expect(posted).toBe(0);
+    expect(rows()).toBe(3);
+    // A tap inside the dwell is the same touch landing twice.
+    await userEvent.click(clearButton()!);
+    expect(posted).toBe(0);
+  });
+
+  it("the second tap posts {} once, the rows and their group leave at once, and the empty Hill shows", async () => {
+    let body = "";
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    server.use(
+      http.post("/api/hill/clear", async ({ request }) => {
+        body = await request.text();
+        await held;
+        return HttpResponse.json({ cleared: 2, skipped: [] });
+      }),
+    );
+    await hillHoldsClosed([], [closedRow("answered", 3), closedRow("dismissed", 2)]);
+    renderHill();
+    await waitFor(() => expect(clearButton()).not.toBeNull());
+    await userEvent.click(clearButton()!);
+    await dwell();
+    await userEvent.click(clearButton()!);
+    // The request is still in flight: the rows are already gone.
+    await waitFor(() => expect(document.querySelector('[data-slot="hill-answered"]')).toBeNull());
+    expect(document.querySelector('[data-slot="hill-empty"]')).toHaveTextContent("Nothing waits on you.");
+    await waitFor(() => expect(body).toBe("{}"));
+    release();
+    await waitFor(() => expect(currentStatus()).toBeNull());
+    expect(document.querySelector('[data-slot="hill-answered"]')).toBeNull();
+  });
+
+  it("with open Decisions, the open cards stay and only the Answered group goes", async () => {
+    server.use(http.post("/api/hill/clear", () => HttpResponse.json({ cleared: 1, skipped: [] })));
+    await hillHoldsClosed([hillDecision(), hillDecision()], [closedRow("answered", 3)]);
+    renderHill();
+    await waitFor(() => expect(clearButton()).not.toBeNull());
+    await userEvent.click(clearButton()!);
+    await dwell();
+    await userEvent.click(clearButton()!);
+    await waitFor(() => expect(document.querySelector('[data-slot="hill-answered"]')).toBeNull());
+    expect(document.querySelectorAll('[data-slot="decision-card"]')).toHaveLength(2);
+    expect(document.querySelector('[data-slot="hill-empty"]')).toBeNull();
+  });
+
+  it("a refusal puts the rows back and says Could not clear. Try again. on the status line", async () => {
+    server.use(http.post("/api/hill/clear", () => new HttpResponse("nope", { status: 503 })));
+    await hillHoldsClosed([], [closedRow("answered", 3), closedRow("dismissed", 2)]);
+    renderHill();
+    await waitFor(() => expect(clearButton()).not.toBeNull());
+    await userEvent.click(clearButton()!);
+    await dwell();
+    await userEvent.click(clearButton()!);
+    await waitFor(() => expect(currentStatus()).toMatchObject({ text: "Could not clear. Try again.", tone: "error" }));
+    await waitFor(() => expect(rows()).toBe(2));
+    // Back to idle: the button says Clear and takes a new first tap.
+    expect(shown()).toBe("Clear");
+    expect(clearButton()).toBeEnabled();
+    clearStatus();
+  });
+
+  it("asks about every closed entry the bridge holds, not only the rows it serves", async () => {
+    const served = Array.from({ length: 3 }, (_, i) => closedRow("answered", 10 - i));
+    await hillHoldsClosed([], served, 45);
+    renderHill();
+    await waitFor(() => expect(clearButton()).not.toBeNull());
+    await userEvent.click(clearButton()!);
+    expect(shown()).toBe("Clear 45 entries?");
+  });
+
+  it("says entry, not entries, for one", async () => {
+    await hillHoldsClosed([], [closedRow("answered", 3)]);
+    renderHill();
+    await waitFor(() => expect(clearButton()).not.toBeNull());
+    await userEvent.click(clearButton()!);
+    expect(shown()).toBe("Clear 1 entry?");
+  });
+
+  it("a device that may only read sees the button, disabled", async () => {
+    await hillHoldsClosed([], [closedRow("answered", 3)]);
+    renderHill(undefined, home({ device: { enforced: true, device: "tablet", authorized: false } }));
+    await waitFor(() => expect(clearButton()).not.toBeNull());
+    expect(clearButton()).toBeDisabled();
   });
 });

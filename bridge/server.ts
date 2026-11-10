@@ -4,7 +4,7 @@ import { homedir, hostname, networkInterfaces } from "node:os";
 import { basename, dirname, extname, isAbsolute, join, normalize, sep } from "node:path";
 import { createAccessGate, DOOR_PRESETS, FORWARDING_HEADERS } from "./access-jwt.ts";
 import type { JsonObject, JsonValue } from "./json.ts";
-import { asJsonBoolean, asJsonObject } from "../web/src/lib/json.ts";
+import { asJsonBoolean, asJsonObject, asJsonString } from "../web/src/lib/json.ts";
 import type { ActivityLedger } from "./activity.ts";
 import { type AuditDetail, type AuditEntry, AuditLog } from "./audit.ts";
 import { isLoopbackBindHost, type Config } from "./config.ts";
@@ -3358,6 +3358,21 @@ export function startServer(opts: {
           body = undefined;
         }
         return morphSwitchRoute(morph, body, req.headers.get("accept-encoding"));
+      }
+      // Clear: remove closed decisions from the Hill, all of them or the ids named. The write right of an
+      // answer, and it works with the Hill off (it types nothing and rings nothing). Never an open one.
+      if (pathname === "/api/hill/clear" && req.method === "POST") {
+        const denied = browserGate("write");
+        if (denied) return denied;
+        if (host.kind === "member") return text(HILL_LOCAL_TEXT, 400);
+        let body: JsonValue | undefined;
+        try {
+          // SAFETY: `Request.json()` output IS a JsonValue by construction; `hillClearRoute` checks the one field.
+          body = (await req.json()) as JsonValue;
+        } catch {
+          body = undefined;
+        }
+        return hillClearRoute(hill, body, { device: whois(req).device, acceptEncoding: req.headers.get("accept-encoding") });
       }
       const hillImage = pathname.match(HILL_IMAGE_ROUTE);
       if (hillImage && req.method === "GET") {
@@ -9179,6 +9194,42 @@ export async function hillAnswerRoute(
     case "off":
       return text(HILL_SWITCHED_OFF_TEXT, 409);
   }
+}
+
+/** What the clear route says when the write failed: nothing was removed. */
+export const HILL_CLEAR_UNSAVED_TEXT = "the Hill could not be saved on this machine; nothing was cleared";
+/** The most ids one clear names. */
+export const HILL_CLEAR_IDS_MAX = 200;
+
+/**
+ * `POST /api/hill/clear`: remove closed decisions. The body is `{}` (every closed decision) or
+ * `{ "ids": ["dc_..."] }` (those, when closed). 200 `{ cleared, skipped }`: `cleared` is how many went,
+ * `skipped` the ids left alone, `open` for an open decision and `missing` for one this bridge does not
+ * hold. 400 for another body, 503 when the write failed. Works with the Hill off.
+ */
+export function hillClearRoute(
+  hill: Pick<HillService, "clear"> | undefined,
+  body: JsonValue | undefined,
+  context: { readonly device: string | null; readonly acceptEncoding: string | null },
+): Response {
+  if (hill === undefined) return text(HILL_OFF_TEXT, 404);
+  const doc = asJsonObject(body);
+  const bad = text('bad request: the body is {} or { "ids": ["dc_..."] }', 400);
+  if (doc === undefined || Object.keys(doc).some((key) => key !== "ids")) return bad;
+  let ids: string[] | null = null;
+  if (doc.ids !== undefined) {
+    const raw = doc.ids;
+    if (!Array.isArray(raw) || raw.length > HILL_CLEAR_IDS_MAX) return bad;
+    ids = [];
+    for (const entry of raw) {
+      const id = asJsonString(entry);
+      if (id === undefined || !HILL_ID_RE.test(id)) return bad;
+      ids.push(id);
+    }
+  }
+  const answer = hill.clear(ids, context.device);
+  if (answer === null) return text(HILL_CLEAR_UNSAVED_TEXT, 503);
+  return json({ cleared: answer.cleared.length, skipped: answer.skipped }, context.acceptEncoding);
 }
 
 /**
