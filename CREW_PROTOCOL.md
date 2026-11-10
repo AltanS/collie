@@ -121,7 +121,9 @@ The lead is the only dialler: a peer never calls the lead except at `join`, `lea
 (§8.6), and publishes nothing for the phone to reach ([ADR 0013](./.adr/0013-a-peer-listens-without-becoming-a-front-door.md)).
 The dotted edges are `collie crew add` / `collie crew update`, which push a git bundle over the
 operator's own ssh ([ADR 0016](./.adr/0016-updates-ride-the-operators-ssh.md)); the crew link carries
-runtime data and never software.
+runtime data and never Collie itself. Since 2026-11-10 (ADR 0016's second addendum) the code of a trick
+may cross it **only as inert data**: held, never installed and never run, until a person taps on the
+surface of the machine that will run it. A remote command on a member stays refused.
 
 Three rules generate most of this document:
 

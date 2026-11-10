@@ -324,7 +324,11 @@ a machine of its own in the list.
 ![Code reaches a member over your own ssh, never over the crew link.](images/crew/crew-ssh-rides.svg)
 
 Code rides your own ssh to every machine. `crew add` installs a member that way and `crew update`
-levels it. The crew link carries runtime data, and it never becomes a distribution channel.
+levels it. The crew link carries runtime data, and it never becomes a distribution channel for Collie.
+
+The code of a trick may cross the link only as inert data. It is held, never installed and never run,
+until you tap on the screen of the machine that will run it. No machine of the crew can run a command
+on another.
 
 ![The deputy's standby door opens only when the lead goes quiet.](images/crew/crew-deputy-standby.svg)
 
