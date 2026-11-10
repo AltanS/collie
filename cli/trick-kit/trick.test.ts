@@ -132,6 +132,7 @@ describe("the builders cannot drift from the schema", () => {
       v.stat("34/34", "cases", { trend: [30, 32, 34], tone: "ok" }),
       v.stat(7, "minutes"),
       v.checks([{ label: "lint", ok: true }, { label: "e2e", ok: false, note: "two cases red on WebKit" }]),
+      v.checks([{ label: "types", ok: true }], { label: "Checks" }),
       v.group([v.table({ columns: ["file", "lines"], rows: [["src/app.ts", "+12 -3"]] }), v.diff("@@ -1 +1 @@\n-a\n+b")], { label: "Changes" }),
       v.spark([1, -2.5, 0.000001], { label: "drift" }),
     ];
@@ -149,6 +150,7 @@ describe("the builders cannot drift from the schema", () => {
     expect(v.table({ columns: ["a", "b"], rows: [["x", 1]] }).kids?.map((k) => `${k.kind}:${k.text ?? ""}`)).toEqual(["col:a", "col:b", "cell:x", "cell:1"]);
     expect(v.compare(0, 1).kids?.map((k) => k.attrs?.ref)).toEqual(["0", "1"]);
     expect(v.checks([{ label: "lint", ok: true }]).kids?.[0]).toEqual({ kind: "row", text: "lint", attrs: { icon: "check", tone: "ok" } });
+    expect(v.checks([{ label: "lint", ok: true }], { label: "Checks" })).toMatchObject({ kind: "group", attrs: { label: "Checks" }, kids: [{ kind: "row" }] });
     expect(v.stat(7, "min")).toEqual({ kind: "number", text: "7", attrs: { label: "min" } });
   });
 

@@ -175,14 +175,15 @@ export const v = {
   /** Two of the Decision's pictures as before and after, cropped to the same point. */
   beforeAfter: (aRef: number, bRef: number, opts: { before?: string; after?: string; fit?: "contain" | "cover"; focus?: Focus } = {}): Node =>
     node("compare", undefined, {}, [image(aRef, { caption: opts.before, fit: opts.fit, focus: opts.focus }), image(bRef, { caption: opts.after, fit: opts.fit, focus: opts.focus })]),
-  /** Checks as rows: a green check or a red cross, the note as the row's second line. */
-  checks: (list: { label: string; ok: boolean; note?: string }[]): Node =>
-    node(
-      "list",
-      undefined,
-      {},
-      list.map((c) => node("row", c.label, { icon: c.ok ? "check" : "x", tone: c.ok ? "ok" : "danger" }, c.note === undefined ? undefined : [node("para", c.note)])),
-    ),
+  /**
+   * Checks as rows: a green check or a red cross, the note as the row's second line. A list at the top
+   * of a view; with `label`, a labelled group of the rows instead, a section of its own (a list cannot
+   * sit in a group, a group's rows can).
+   */
+  checks: (list: { label: string; ok: boolean; note?: string }[], opts: { label?: string } = {}): Node => {
+    const rows = list.map((c) => node("row", c.label, { icon: c.ok ? "check" : "x", tone: c.ok ? "ok" : "danger" }, c.note === undefined ? undefined : [node("para", c.note)]));
+    return opts.label === undefined ? node("list", undefined, {}, rows) : node("group", undefined, { label: opts.label }, rows);
+  },
   /** A figure with its label, and its trend under it when `trend` gives the numbers. */
   stat: (value: Num, label: string, opts: { trend?: number[]; tone?: Tone; unit?: string } = {}): Node => {
     const figure = node("number", String(value), { label, tone: opts.tone, unit: opts.unit });
