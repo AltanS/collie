@@ -4,7 +4,8 @@ import { join } from "node:path";
 import { WALKY_TALKY_SKILL_TEMPLATE } from "./docs-embed.ts";
 import type { Environment } from "./context.ts";
 import { capture, context, fakeFiles, fakeLinkFs, HOME, ROOT, STATE } from "./fakes.ts";
-import { HILL_RULES, hillHelp, hillPostHelp } from "./hill.ts";
+import { HILL_RULES, HILL_WRITING, hillHelp, hillPostHelp } from "./hill.ts";
+import { hillWordingWarnings } from "./hill-rules.ts";
 import { EXIT } from "./io.ts";
 import {
   BLOCK_BEGIN,
@@ -92,6 +93,27 @@ describe("the rendered skill", () => {
     expect(out).toContain(`${bin} hill status dc_...`);
   });
 
+  test("teaches the wording rules of a Decision from the same list the help prints, right before the rules", () => {
+    const out = rendered(deps());
+    const writing = HILL_WRITING.join("\n");
+    expect(out).toContain(writing);
+    expect(out.split(HILL_WRITING[0]).length).toBe(2);
+    expect(out.indexOf(writing)).toBeLessThan(out.indexOf(`- ${HILL_RULES[0]}`));
+    for (const help of [hillHelp(), hillPostHelp()]) expect(help.filter((line) => line === HILL_WRITING[0]).length).toBe(1);
+  });
+
+  test("the example Decision obeys the wording rules it sits under", () => {
+    const example = WALKY_TALKY_SKILL_TEMPLATE.slice(WALKY_TALKY_SKILL_TEMPLATE.indexOf("hill post --title"));
+    const flat = example.slice(0, example.indexOf("hill status")).replaceAll("\\\n", "");
+    const title = /--title "([^"]+)"/u.exec(flat)?.[1] ?? "";
+    const summary = /--summary "([^"]+)"/u.exec(flat)?.[1] ?? "";
+    const options = [...flat.matchAll(/--option (\w+)="([^"]+)"/gu)].map((m) => ({ intent: m[1] ?? "", label: m[2] ?? "" }));
+    expect(title).not.toBe("");
+    expect(options.length).toBe(2);
+    expect(hillWordingWarnings({ title, summary, options })).toEqual([]);
+    expect(flat).toContain(`--recommend ${options[0]?.intent ?? "?"}`);
+  });
+
   test("teaches tricks: list, skill <id>, off asks nothing, and where to learn to write one", () => {
     const out = rendered(deps());
     const bin = collieBinary(ROOT);
@@ -130,8 +152,8 @@ describe("the rendered skill", () => {
     expect(flat).toContain('If it says "may have arrived", do not send it again either');
     expect(flat).not.toContain("claims to");
     expect(flat).not.toMatch(/`wt` /u);
-    // 185 until the skill taught the hill and tricks (two short parts, about 30 lines).
-    expect(WALKY_TALKY_SKILL_TEMPLATE.split("\n").length).toBeLessThan(215);
+    // 185 until the skill taught the hill and tricks (two short parts, about 30 lines), 225 with the wording rules.
+    expect(WALKY_TALKY_SKILL_TEMPLATE.split("\n").length).toBeLessThan(225);
     expect(WALKY_TALKY_SKILL_TEMPLATE).not.toContain("—");
     for (const verb of ["who", "send", "reply", "inbox"]) expect(WALKY_TALKY_SKILL_TEMPLATE).toContain(`walky ${verb}`);
   });
