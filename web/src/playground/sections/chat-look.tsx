@@ -16,8 +16,8 @@ import { CHAT_LOOK, ChatLookContext, type ChatLook } from "@/lib/chat-look";
 import { EMPTY_CHAT_WINDOW } from "@/lib/chat-window";
 import { addPending, dropPending } from "@/lib/durable-pending";
 
-import { Section, type SectionDef } from "../layout";
-import { Round, type RoundOption } from "../round";
+import { Section, Segmented, type SectionDef } from "../layout";
+import { Round, type RoundCase, type RoundOption } from "../round";
 import { CHAT_LOOK_CASES, CHAT_LOOK_THREADS, WAITING_PENDING, type ChatLookCase } from "./chat-look-fixtures";
 
 export const DEF: SectionDef = { id: "chat-look", title: "Chat look" };
@@ -74,6 +74,11 @@ interface IdeaOption {
 interface Idea {
   readonly id: string;
   readonly title: string;
+  /**
+   * The cases where every option of the round differs from today, the one that shows it best first: the round
+   * opens on it. Measured by pixels (experiments/chat-look/diff.sh), never assumed.
+   */
+  readonly cases: readonly ChatLookCase[];
   readonly options: readonly IdeaOption[];
 }
 
@@ -94,6 +99,7 @@ const IDEAS: readonly Idea[] = [
   {
     id: "a",
     title: "A. Turn rhythm",
+    cases: ["short", "work", "waiting"],
     options: [
       { title: "More air between turns", look: { rhythm: "airy" } },
       { title: "Air and a rule", look: { rhythm: "rule" } },
@@ -102,16 +108,18 @@ const IDEAS: readonly Idea[] = [
   {
     id: "b",
     title: "B. Your turn",
+    cases: ["short", "waiting", "long", "work", "code"],
     options: [
       { title: "No caption, time inline", look: { userTurn: "time-end" } },
       { title: "Hugs its text, right", look: { userTurn: "hug" } },
       { title: "Neutral well, orange icon", look: { userTurn: "neutral" } },
     ],
   },
-  { id: "c", title: "C. Agent mark", options: [{ title: "Agent icon and time", look: { agentHead: "icon-time" } }] },
+  { id: "c", title: "C. Agent mark", cases: ["short", "work", "long", "code", "waiting"], options: [{ title: "Agent icon and time", look: { agentHead: "icon-time" } }] },
   {
     id: "d",
     title: "D. Tool steps",
+    cases: ["work"],
     options: [
       { title: "Fold rows lose border", look: { steps: "quiet" } },
       { title: "One shared ground", look: { steps: "ground" } },
@@ -121,6 +129,7 @@ const IDEAS: readonly Idea[] = [
   {
     id: "e",
     title: "E. Code blocks",
+    cases: ["code"],
     options: [
       { title: "Neutral ground", look: { code: "neutral" } },
       { title: "Neutral at 12 px", look: { code: "neutral-12" } },
@@ -129,6 +138,7 @@ const IDEAS: readonly Idea[] = [
   {
     id: "f",
     title: "F. Tables",
+    cases: ["code"],
     options: [
       { title: "Rules only, muted header", look: { table: "rules" } },
       { title: "Rules and row bands", look: { table: "bands" } },
@@ -137,16 +147,17 @@ const IDEAS: readonly Idea[] = [
   {
     id: "g",
     title: "G. Prose size",
+    cases: ["long", "short", "work", "code", "waiting"],
     options: [
       { title: "Prose at 15 px", look: { prose: "15" } },
       { title: "15 px, larger headings", look: { prose: "15-headings" } },
     ],
   },
-  { id: "h", title: "H. Quiet lines", options: [{ title: "Text between hairlines", look: { quiet: "divided" } }] },
-  { id: "i", title: "I. Inline code", options: [{ title: "Neutral chips", look: { chip: "neutral" } }] },
-  { id: "j", title: "J. Side gutter", options: [{ title: "16 px gutter", look: { gutter: "16" } }] },
-  { id: "k", title: "K. Card labels", options: [{ title: "Muted kind word", look: { cardLabel: "muted" } }] },
-  { id: "z", title: "Z. All together", options: [{ title: "Recommended set", look: RECOMMENDED }] },
+  { id: "h", title: "H. Quiet lines", cases: ["waiting", "short", "long", "work", "code"], options: [{ title: "Text between hairlines", look: { quiet: "divided" } }] },
+  { id: "i", title: "I. Inline code", cases: ["long", "work", "short"], options: [{ title: "Neutral chips", look: { chip: "neutral" } }] },
+  { id: "j", title: "J. Side gutter", cases: ["short", "long", "work", "code", "waiting"], options: [{ title: "16 px gutter", look: { gutter: "16" } }] },
+  { id: "k", title: "K. Card labels", cases: ["work", "waiting"], options: [{ title: "Muted kind word", look: { cardLabel: "muted" } }] },
+  { id: "z", title: "Z. All together", cases: ["work", "short", "long", "code", "waiting"], options: [{ title: "Recommended set", look: RECOMMENDED }] },
 ];
 
 /** The Round hands its case back as a plain string; this finds it among the five, or the first. */
@@ -176,27 +187,35 @@ function optionsOf(idea: Idea): RoundOption[] {
   ];
 }
 
+function casesOf(idea: Idea): RoundCase[] {
+  return idea.cases.map((value) => ({ value, label: CHAT_LOOK_CASES.find((c) => c.value === value)?.label ?? value }));
+}
+
+const ON_OFF = [
+  { value: "on", label: "On" },
+  { value: "off", label: "Off" },
+] as const satisfies readonly { value: "on" | "off"; label: string }[];
+
 function RoundTitle({ children }: { children: ReactNode }) {
   return <h3 className="mt-8 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground first:mt-4">{children}</h3>;
 }
 
 export function ChatLookSection() {
-  const [caseValue, setCaseValue] = useState<string>(CHAT_LOOK_CASES[0].value);
+  const [mark, setMark] = useState<"on" | "off">("on");
   return (
     <Section def={DEF}>
-      {IDEAS.map((idea) => (
-        <div key={idea.id} data-pg-chat-look="">
-          <RoundTitle>{idea.title}</RoundTitle>
-          <Round
-            id={`chat-look-${idea.id}`}
-            cases={CHAT_LOOK_CASES}
-            caseValue={caseValue}
-            onCaseChange={setCaseValue}
-            options={optionsOf(idea)}
-            frame={{ kind: "phone", height: 1120 }}
-          />
-        </div>
-      ))}
+      <div className="mt-3 flex items-center gap-2">
+        <span className="text-[11px] text-muted-foreground">Mark changes</span>
+        <Segmented name="Mark changes" value={mark} options={ON_OFF} onChange={setMark} />
+      </div>
+      <div className={mark === "on" ? "pg-mark-changes" : undefined}>
+        {IDEAS.map((idea) => (
+          <div key={idea.id} data-pg-chat-look="">
+            <RoundTitle>{idea.title}</RoundTitle>
+            <Round id={`chat-look-${idea.id}`} cases={casesOf(idea)} options={optionsOf(idea)} frame={{ kind: "phone", height: 1120 }} />
+          </div>
+        ))}
+      </div>
     </Section>
   );
 }

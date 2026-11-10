@@ -223,3 +223,19 @@
   overflow-x: auto;
   padding-bottom: 0.5rem;
 }
+
+/* "Mark changes" (sections/chat-look.tsx): where an option differs from today. A compare aid of the page, never part
+   of a look. The components wear these classes only while a word other than `today` changed them (lib/chat-look.ts).
+   Outline and inset shadow only, so marking moves nothing. */
+.pg-mark-changes .chat-look-mark {
+  outline: 2px dashed var(--status-info);
+  outline-offset: -1px;
+}
+.pg-mark-changes .chat-look-mark-gap {
+  box-shadow: inset 4px 0 0 var(--status-info);
+}
+.pg-mark-changes .chat-look-mark-gutter {
+  box-shadow:
+    inset 16px 0 0 color-mix(in oklab, var(--status-info) 22%, transparent),
+    inset -16px 0 0 color-mix(in oklab, var(--status-info) 22%, transparent);
+}

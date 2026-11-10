@@ -6,7 +6,7 @@ import { MathText } from "@/components/math-text";
 import { WalkyIdChip, WalkyIds } from "@/components/walky-id-chip";
 import { useWalkyChips } from "@/components/walky-log";
 import { useLocale } from "@/hooks/use-locale";
-import { useChatLook } from "@/lib/chat-look";
+import { LOOK_MARK, useChatLook } from "@/lib/chat-look";
 import { mathEngineOf, useDesignPrefs } from "@/lib/design";
 import { codeSpanPath, findFilePaths } from "@/lib/file-paths";
 import { t } from "@/lib/i18n";
@@ -259,7 +259,7 @@ const CHIP_CLASS =
 
 /** Chat look I (lib/chat-look.ts): the chip on the neutral ground a code block takes under E. */
 const CHIP_CLASS_NEUTRAL =
-  "rounded-sm border border-border bg-muted px-1 py-px font-mono text-[0.9em] [font-variant-ligatures:none] text-foreground";
+  `rounded-sm border border-border bg-muted px-1 py-px font-mono text-[0.9em] [font-variant-ligatures:none] text-foreground ${LOOK_MARK}`;
 
 function useChipClass(): string {
   return useChatLook().chip === "neutral" ? CHIP_CLASS_NEUTRAL : CHIP_CLASS;
@@ -520,16 +520,16 @@ const DOCUMENT_HEADING_FALLBACK = "mt-4 mb-1 text-sm font-semibold leading-snug"
 // Chat look G2 (lib/chat-look.ts): one step larger than HEADING_CLASS, measured from the stream's own
 // text token so the reader's text size still moves them, and more air above than below.
 const HEADING_CLASS_LARGE = new Map<number, string>([
-  [1, "mt-5 text-[length:calc(var(--text-sm)*1.35)] font-semibold"],
-  [2, "mt-5 text-[length:calc(var(--text-sm)*1.2)] font-semibold"],
-  [3, "mt-5 text-[length:calc(var(--text-sm)+1px)] font-semibold"],
+  [1, `mt-5 text-[length:calc(var(--text-sm)*1.35)] font-semibold ${LOOK_MARK}`],
+  [2, `mt-5 text-[length:calc(var(--text-sm)*1.2)] font-semibold ${LOOK_MARK}`],
+  [3, `mt-5 text-[length:calc(var(--text-sm)+1px)] font-semibold ${LOOK_MARK}`],
 ]);
 
 /** Chat look E (lib/chat-look.ts): a fenced block's box, by word. `today` is the string Chat has always drawn. */
 const CODE_CLASS = {
   today: "overflow-x-auto rounded-md border border-status-info/20 bg-status-info/5 px-2 py-1.5 font-mono text-[11px] leading-snug [font-variant-ligatures:none]",
-  neutral: "overflow-x-auto rounded-md border border-border bg-muted px-2 py-1.5 font-mono text-[11px] leading-snug [font-variant-ligatures:none]",
-  "neutral-12": "overflow-x-auto rounded-md border border-border bg-muted px-2.5 py-2 font-mono text-xs leading-normal [font-variant-ligatures:none]",
+  neutral: `overflow-x-auto rounded-md border border-border bg-muted px-2 py-1.5 font-mono text-[11px] leading-snug [font-variant-ligatures:none] ${LOOK_MARK}`,
+  "neutral-12": `overflow-x-auto rounded-md border border-border bg-muted px-2.5 py-2 font-mono text-xs leading-normal [font-variant-ligatures:none] ${LOOK_MARK}`,
 } as const;
 
 /** Chat look F (lib/chat-look.ts): a table's cells, by word. `today` boxes every cell. */
@@ -613,7 +613,7 @@ function Block({ block, anchor, variant }: { block: MdBlock; anchor: string | nu
         );
       }
       if (look.prose === "15-headings") {
-        const large = HEADING_CLASS_LARGE.get(block.level) ?? "mt-5 text-[length:calc(var(--text-sm)+1px)] font-semibold";
+        const large = HEADING_CLASS_LARGE.get(block.level) ?? `mt-5 text-[length:calc(var(--text-sm)+1px)] font-semibold ${LOOK_MARK}`;
         return (
           <div id={anchor ?? undefined} className={`${large} leading-snug first:mt-0 ${anchor === null ? "" : "scroll-mt-28"}`}>
             <Spans spans={block.spans} />
@@ -674,7 +674,7 @@ function Block({ block, anchor, variant }: { block: MdBlock; anchor: string | nu
         // scroller's visible corner.
         <CopyableBlock text={block.source} className="w-fit max-w-full">
           <div className="overflow-x-auto">
-            <table className="w-max border-collapse text-xs">
+            <table className={look.table === "today" ? "w-max border-collapse text-xs" : `w-max border-collapse text-xs ${LOOK_MARK}`}>
               <thead>
                 <tr>
                   {block.header.map((cell, i) => (
@@ -768,7 +768,7 @@ export function MarkdownText({
   // Chat look G (lib/chat-look.ts): agent reply prose one pixel over the stream's text token. `stretches`
   // is the prop that already says "this text is agent reply prose", so thinking, notices and History keep text-sm.
   const prose = useChatLook().prose;
-  const size = stretches && prose !== "today" ? "text-[length:calc(var(--text-sm)+1px)]" : "text-sm";
+  const size = stretches && prose !== "today" ? `text-[length:calc(var(--text-sm)+1px)] ${LOOK_MARK}` : "text-sm";
   return (
     <QueryContext.Provider value={query}>
       <LinkContext.Provider value={resolveLink ?? null}>

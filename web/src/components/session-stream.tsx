@@ -13,7 +13,7 @@ import { useLocale } from "@/hooks/use-locale";
 import type { ChatFeed } from "@/hooks/use-chat-window";
 import { ASKS_SHOWN, asksAt, shownAsks } from "@/lib/ask";
 import { finished, itemsOf, type ChatItem } from "@/lib/chat-items";
-import { useChatLook, type ChatLook } from "@/lib/chat-look";
+import { LOOK_MARK, LOOK_MARK_GAP, LOOK_MARK_GUTTER, useChatLook, type ChatLook } from "@/lib/chat-look";
 import type { ChatStatus } from "@/lib/chat-window";
 import { dropPending, unmatched, usePending } from "@/lib/durable-pending";
 import { clockTime } from "@/lib/format";
@@ -77,10 +77,10 @@ function rhythmClass(rhythm: ChatLook["rhythm"], blocks: readonly (readonly Chat
   if (rhythm === "today" || index === 0) return "";
   if (isUserGroup(blocks[index])) {
     return rhythm === "rule"
-      ? "relative mt-3 before:pointer-events-none before:absolute before:inset-x-3 before:top-0 before:h-px before:bg-rule"
-      : "mt-2";
+      ? `relative mt-3 before:pointer-events-none before:absolute before:inset-x-3 before:top-0 before:h-px before:bg-rule ${LOOK_MARK_GAP}`
+      : `mt-2 ${LOOK_MARK_GAP}`;
   }
-  return isUserGroup(blocks[index - 1]) ? "" : "-mt-4";
+  return isUserGroup(blocks[index - 1]) ? "" : `-mt-4 ${LOOK_MARK_GAP}`;
 }
 
 /**
@@ -90,7 +90,7 @@ function rhythmClass(rhythm: ChatLook["rhythm"], blocks: readonly (readonly Chat
 function AgentHead({ agent, ts }: { agent: string | undefined; ts: string | undefined }) {
   const ms = ts === undefined ? Number.NaN : Date.parse(ts);
   return (
-    <div data-slot="agent-head" className="mb-1.5 flex h-4 items-center gap-1.5 text-[11px] tabular-nums text-muted-foreground">
+    <div data-slot="agent-head" className={`mb-1.5 flex h-4 items-center gap-1.5 text-[11px] tabular-nums text-muted-foreground ${LOOK_MARK}`}>
       {agent === undefined ? null : <AgentIcon agent={agent} className="size-4" />}
       {Number.isNaN(ms) ? null : <span>{clockTime(ms)}</span>}
     </div>
@@ -881,7 +881,7 @@ export function SessionStream({
       // watching the tail", and it also freezes the mirror text the card dock is built from — so
       // scrolling back through a conversation would stop a permission dialog appearing. Reading
       // older turns is an ordinary act in this body and a rare one in that one.
-      className={look.gutter === "16" ? "px-4 pt-0 pb-3" : "px-3 pt-0 pb-3"}
+      className={look.gutter === "16" ? `px-4 pt-0 pb-3 ${LOOK_MARK_GUTTER}` : "px-3 pt-0 pb-3"}
       style={textTokens(fontSize)}
       overlay={pin !== null ? <PromptPin pin={pin} busy={seeking !== null || (pin.kind === "earlier" && loadingOlder)} onTap={onPinTap} /> : null}
     >

@@ -49,6 +49,17 @@ export const CHAT_LOOK: ChatLook = {
   cardLabel: "today",
 };
 
+/**
+ * A class an element wears only while a word other than `today` changed it, and no stylesheet of the app reads.
+ * The playground's Mark changes switch outlines it, so a compare can show WHERE an option differs. With every word
+ * at `today` no element wears it, so the app's markup is unchanged.
+ */
+export const LOOK_MARK = "chat-look-mark";
+/** The same, for a block whose only change is the space around it: the switch marks its left edge. */
+export const LOOK_MARK_GAP = "chat-look-mark-gap";
+/** The same, for the stream's side gutter: the switch tints the gutter itself. */
+export const LOOK_MARK_GUTTER = "chat-look-mark-gutter";
+
 export const ChatLookContext = createContext<ChatLook>(CHAT_LOOK);
 
 export function useChatLook(): ChatLook {
