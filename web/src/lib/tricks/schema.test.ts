@@ -29,6 +29,8 @@ import {
   DECISIONS_MAX,
   DECISION_KEYS,
   DECISION_OPTION_KEYS,
+  DECISION_VIEW_KINDS,
+  DECISION_VIEW_LIMITS,
   DOCUMENT_KEYS,
   DOCUMENT_MAX_BYTES,
   DRAW_TONES,
@@ -67,6 +69,7 @@ import {
   trickSessionId,
   trickSpaceId,
   parseAt,
+  parseDecisionView,
   parseDuration,
   parseFacts,
   parseManifest,
@@ -190,7 +193,7 @@ describe("the module", () => {
 
   it("exports every key list the contract reference reads", () => {
     expect(Object.keys(PART_KEYS).toSorted()).toEqual([...PLACE_KINDS].toSorted());
-    expect(DECISION_KEYS).toEqual(["key", "title", "summary", "body", "options", "recommends", "priority", "text", "about", "replyTo", "media", "links", "expiresAt"]);
+    expect(DECISION_KEYS).toEqual(["key", "title", "summary", "body", "options", "recommends", "priority", "text", "about", "replyTo", "media", "links", "expiresAt", "view"]);
     expect(SESSION_FACT_KEYS).toEqual(expect.arrayContaining(["memberId", "sessionId", "paneId", "host"]));
     expect(new Set(REFUSAL_CODES).size).toBe(REFUSAL_CODES.length);
   });
@@ -660,6 +663,73 @@ describe("decisions", () => {
     expect(paths(over)).toEqual(["/decisions"]);
     expect(over.parts).toHaveLength(1);
     expect(over.documentRefused).toBe(false);
+  });
+});
+
+describe("a Decision's view (M96)", () => {
+  const where = (value: JsonValue) => {
+    const read = parseDecisionView(value);
+    return "refusals" in read ? read.refusals.map((r) => r.path) : [];
+  };
+  const reason = (value: JsonValue) => {
+    const read = parseDecisionView(value);
+    return "refusals" in read ? (read.refusals[0]?.reason ?? "") : "";
+  };
+  const nest = (depth: number): JsonObject => (depth === 1 ? { kind: "para", text: "deep" } : { kind: "group", kids: [nest(depth - 1)] });
+
+  it("draws the display kinds and nothing that acts: no button, card or image", () => {
+    expect(DECISION_VIEW_KINDS).toEqual(["group", "list", "row", "bar", "chip", "para", "line", "run", "code", "link", "meter", "spacer", "number"]);
+    expect(DECISION_VIEW_LIMITS).toEqual({ bytes: 8 * 1024, nodes: 100, depth: 4 });
+    const gate = [
+      { kind: "bar", kids: [{ kind: "chip", text: "unit", attrs: { tone: "ok", icon: "check" } }] },
+      { kind: "list", kids: [{ kind: "row", text: "legs", kids: [{ kind: "para", text: "34 of 34" }, { kind: "chip", text: "+12 \u22123" }] }] },
+      { kind: "code", kids: [{ kind: "line", text: "+ ok" }] },
+      { kind: "para", kids: [{ kind: "run", text: "see " }, { kind: "link", text: "the log", attrs: { href: "https://ci.example.com/run/1" } }] },
+      { kind: "meter", attrs: { value: "3", max: "7" } },
+      { kind: "spacer" },
+      { kind: "number", text: "7", attrs: { label: "green" } },
+    ];
+    expect(parseDecisionView(gate)).toEqual({ view: gate, refusals: [] });
+    expect(where([{ kind: "button", text: "Merge", attrs: { intent: "merge" } }])).toEqual(["/view/0/kind"]);
+    expect(reason([{ kind: "button", text: "Merge", attrs: { intent: "merge" } }])).toContain('takes no "button"');
+    expect(where([{ kind: "card", kids: [{ kind: "para", text: "x" }] }])).toEqual(["/view/0/kind"]);
+    expect(where([{ kind: "image", attrs: { src: "media/a.png" } }])).toEqual(["/view/0/kind"]);
+  });
+
+  it("refuses intent, does, confirm and href on every node but a link's web href", () => {
+    expect(where([{ kind: "list", kids: [{ kind: "row", text: "x", attrs: { intent: "go" } }] }])).toEqual(["/view/0/kids/0/attrs/intent"]);
+    expect(where([{ kind: "list", kids: [{ kind: "row", text: "x", attrs: { href: "https://example.com" } }] }])).toEqual(["/view/0/kids/0/attrs/href"]);
+    expect(where([{ kind: "para", kids: [{ kind: "link", text: "x", attrs: { href: "collie://pane/1" } }] }])).not.toEqual([]);
+    expect(where([{ kind: "para", kids: [{ kind: "link", text: "x", attrs: { href: "https://example.com", rel: "pane" } }] }])).not.toEqual([]);
+    expect(where([{ kind: "para", kids: [{ kind: "link", text: "x", attrs: { href: "https://example.com" } }] }])).toEqual([]);
+  });
+
+  it("caps: 8 KiB of compact JSON, 100 nodes, depth 4", () => {
+    expect(where([nest(4)])).toEqual([]);
+    expect(where([nest(5)])).not.toEqual([]);
+    // Two lists of rows: a list holds 50 at most, so the 100 nodes count across the whole view.
+    const rows = (n: number) => [{ kind: "list", kids: Array.from({ length: 49 }, () => ({ kind: "row", text: "x" })) }, { kind: "list", kids: Array.from({ length: n - 51 }, () => ({ kind: "row", text: "x" })) }];
+    expect(where(rows(100))).toEqual([]);
+    expect(where(rows(101))).toEqual(["/view"]);
+    expect(reason([{ kind: "row", text: "x" }])).not.toContain("card");
+    expect(where([{ kind: "para", text: "x".repeat(DECISION_VIEW_LIMITS.bytes) }])).toEqual(["/view"]);
+    expect(where("rows")).toEqual(["/view"]);
+  });
+
+  it("a trick decision with a bad view is refused alone: the parts and the other decisions stay", () => {
+    const doc = {
+      v: 1,
+      parts: [{ at: "belt", id: "belt", mark: { label: "ok" } }],
+      decisions: [
+        { key: "good", title: "T", summary: "S", view: [{ kind: "para", text: "fine" }] },
+        { key: "bad", title: "T", summary: "S", view: [{ kind: "button", text: "Go", attrs: { intent: "go" } }] },
+      ],
+    };
+    const read = parseTrickDocument(doc);
+    expect(read.decisions.map((x) => x.key)).toEqual(["good"]);
+    expect(read.decisions[0]?.view).toEqual([{ kind: "para", text: "fine" }]);
+    expect(paths(read)).toEqual(["/decisions/1/view/0/kind"]);
+    expect(read.parts).toHaveLength(1);
   });
 });
 

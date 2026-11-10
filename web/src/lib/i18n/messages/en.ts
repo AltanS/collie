@@ -3388,6 +3388,9 @@ export const en = {
   "hill.media.unavailable": "Image not available",
   "hill.media.alt": "Image {index} of {count}",
   "hill.media.label": "Images",
+  "hill.view.from": "From {sender}",
+  "hill.view.more": "Show all",
+  "hill.view.less": "Show less",
 } as const;
 
 /** Every key that exists, as a union of string literals. The completeness contract. */
@@ -3606,6 +3609,9 @@ export const PENDING_TRANSLATION = [
   "hill.media.unavailable",
   "hill.media.alt",
   "hill.media.label",
+  "hill.view.from",
+  "hill.view.more",
+  "hill.view.less",
   "home.tabs.hill.one",
   "home.tabs.hill.other",
 ] as const satisfies readonly MessageKey[];

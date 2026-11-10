@@ -319,7 +319,7 @@ export function sessionLabel(raw: string): string {
 
 /**
  * What a post asks for, as a digest (`payloadDigest`), defaults filled: the words, the options, the
- * links, the priority, the addresses and the images as named. Not `expiresAt` (a retried
+ * links, the priority, the addresses, the images as named and the view. Not `expiresAt` (a retried
  * `collie hill post --expires 2h` counts it again from its own clock) and not `supersedes` (a trick
  * names it from the state it reads, which a first post that went through has moved).
  */
@@ -329,7 +329,8 @@ export function hillPostDigest(input: HillPostInput): string {
   const links = (input.links ?? []).map((link) => [link.label, link.href]);
   const images = (input.images ?? []).map((image) => [image.path, image.caption ?? null]);
   const parts = [input.title, input.summary, input.body ?? "", options, input.text ?? "optional", recommends, links, input.priority ?? "today", input.about ?? null, input.replyTo ?? null, images];
-  return payloadDigest([JSON.stringify(parts)]);
+  // The view joins only when there is one, so a post without one keeps the digest it always had.
+  return payloadDigest([JSON.stringify(input.view === undefined ? parts : [...parts, input.view])]);
 }
 
 /** A decision as the phone and the socket get it: without `postDigest`, which only the store needs. */
@@ -598,6 +599,7 @@ export class HillService {
       answer: null,
       postDigest: digest,
     };
+    if (input.view !== undefined) decision.view = input.view;
     const replaced: HillDecision[] = superseded === null ? [] : [{ ...superseded, state: "superseded", supersededBy: id, closedAt: now, closedReason: `superseded by ${id}` }];
     if (!this.deps.store.put(decision, ...replaced)) {
       if (media.length > 0) this.deps.media?.remove(id);

@@ -4,7 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { FACTS } from "../../web/src/lib/tricks/fixtures/index.ts";
-import { PLACE_KINDS, parseFacts, parseTrickDocumentText, type TrickFacts } from "../../web/src/lib/tricks/schema.ts";
+import { parseJson } from "../../web/src/lib/json.ts";
+import { PLACE_KINDS, parseDecisionView, parseFacts, parseTrickDocumentText, type TrickFacts } from "../../web/src/lib/tricks/schema.ts";
 import { sampleConfig, sampleManifest, sampleProgram, TRICK_HELPER } from "../trick.ts";
 import { v, type Node } from "./trick.ts";
 
@@ -96,6 +97,20 @@ describe("the builders cannot drift from the schema", () => {
     const parsed = parseTrickDocumentText(JSON.stringify({ v: 1, parts: [{ at: "session", id: "main", view }] }), { declared: ALL_PLACES });
     expect(parsed.refusals).toEqual([]);
     expect(parsed.parts).toHaveLength(1);
+  });
+
+  test("the display builders make a Decision's view the parser takes", () => {
+    const view: Node[] = [
+      v.bar([v.chip("unit", { tone: "ok", icon: "check" }), v.chip("e2e", { tone: "danger", icon: "x" })]),
+      v.list([v.row("src/app.ts", { end: "+12 \u22123" }, [v.para("the send path")])]),
+      v.code("@@ -1,3 +1,4 @@\n+const a = 1;"),
+      v.para([v.run("see "), v.link("the log", "https://ci.example.com/run/1")]),
+      v.group([v.meter({ value: 3, max: 7, label: "Green" }), v.number("7", { label: "legs" })], { label: "Legs" }),
+      v.spacer("divider"),
+    ];
+    const read = parseDecisionView(parseJson(JSON.stringify(view)));
+    expect(read.refusals).toEqual([]);
+    expect(read.view).toHaveLength(view.length);
   });
 
   test("the sample program prints a document the parser takes whole, and it is about 25 lines", async () => {

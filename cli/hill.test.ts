@@ -30,10 +30,13 @@ import {
   HILL_NOT_HERE,
   HILL_RULES,
   HILL_UNKNOWN,
+  HILL_VIEW_DROPPED,
+  HILL_VIEW_FILE_MAX,
   hillPostHelp,
   imagePathOf,
   parseImageArg,
   parsePostArgs,
+  readViewFile,
   statusLines,
   type HillDeps,
 } from "./hill.ts";
@@ -194,6 +197,7 @@ describe("post's flags", () => {
       images: [],
       requestId: "0f8b5c1e-5a7d-4b8e-9f00-1a2b3c4d5e6f",
       expiresInMs: 7_200_000,
+      viewPath: null,
       body: "Body in Markdown",
       json: true,
     });
@@ -367,6 +371,7 @@ describe("help", () => {
     "If no answer arrived, read it with collie hill status <id>.",
     "An answer typed into your session for a decision you did not post carries only the id and the option word. Read the rest with collie hill status <id>.",
     "A worker with a lead asks its lead first.",
+    "A --view only shows facts. No buttons: the options are the taps.",
   ];
 
   test("the rules are worded as the brief words them", () => {
@@ -466,6 +471,80 @@ describe("post --image", () => {
     expect(await cmdHillPost(d, [...POST, "--image", "a.png"])).toBe(EXIT.OK);
     expect(d.io.stdout).toEqual(["dc_older0000001"]);
     expect(d.io.stderr).toEqual([`hill: ${HILL_IMAGES_DROPPED}`]);
+  });
+});
+
+describe("post --view", () => {
+  const VIEW = [
+    { kind: "bar", kids: [{ kind: "chip", text: "unit", attrs: { tone: "ok" } }, { kind: "chip", text: "e2e", attrs: { tone: "danger" } }] },
+    { kind: "list", kids: [{ kind: "row", text: "src/app.ts", kids: [{ kind: "chip", text: "+12 \u22123" }] }] },
+  ];
+
+  function work(): string {
+    const dir = realpathSync(mkdtempSync(join(tmpdir(), "hill-cli-view-")));
+    cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
+    return dir;
+  }
+
+  test("the file is read as JSON; a missing file, a folder, a file past 16 KiB or not JSON says so in one line", () => {
+    const dir = work();
+    writeFileSync(join(dir, "v.json"), JSON.stringify(VIEW));
+    writeFileSync(join(dir, "big.json"), `[${" ".repeat(HILL_VIEW_FILE_MAX)}]`);
+    writeFileSync(join(dir, "bad.json"), "[{");
+    mkdirSync(join(dir, "folder"));
+    expect(readViewFile("v.json", dir)).toEqual({ view: VIEW });
+    expect(readViewFile(join(dir, "v.json"), "/")).toEqual({ view: VIEW });
+    expect(readViewFile("none.json", dir)).toEqual({ error: "`--view none.json`: no such file" });
+    expect(readViewFile("folder", dir)).toEqual({ error: "`--view folder` is not a file" });
+    expect(readViewFile("big.json", dir)).toEqual({ error: "`--view big.json` is larger than 16 KiB" });
+    expect(readViewFile("bad.json", dir)).toEqual({ error: "`--view bad.json` is not JSON" });
+  });
+
+  test("a file that cannot be read is a usage error, and nothing is posted", async () => {
+    const dir = work();
+    const d = deps([], inPane("%1"), { cwd: () => dir });
+    expect(await cmdHillPost(d, [...POST, "--view", "none.json"])).toBe(EXIT.USAGE);
+    expect(d.io.stderr[0]).toContain("`--view none.json`: no such file");
+  });
+
+  socketTest("the view goes on the decision; a button in it is refused bad_body with the path of the node", async () => {
+    const b = await bridge();
+    const dir = work();
+    writeFileSync(join(dir, "v.json"), JSON.stringify(VIEW));
+    writeFileSync(join(dir, "button.json"), JSON.stringify([{ kind: "para", text: "x" }, { kind: "button", text: "Merge", attrs: { intent: "merge" } }]));
+    const d = deps([walkySocketPath(b.stateDir)], inPane("%1"), { cwd: () => dir });
+    expect(await cmdHillPost(d, [...POST, "--view", "v.json", "--json"])).toBe(EXIT.OK);
+    expect(JSON.parse(d.io.stdout[0]!)).toMatchObject({ decision: { view: VIEW } });
+    const refused = deps([walkySocketPath(b.stateDir)], inPane("%1"), { cwd: () => dir, mintRequestId: () => "0f8b5c1e-5a7d-4b8e-9f00-1a2b3c4d5e70" });
+    expect(await cmdHillPost(refused, [...POST, "--view", "button.json"])).toBe(EXIT.REFUSED);
+    expect(refused.io.stderr[0]).toContain("/view/1");
+    expect(refused.io.stderr[0]).toEndWith("(bad_body)");
+  });
+
+  socketTest("a bridge that took the post without its view says so on stderr", async () => {
+    const stateDir = mkdtempSync(join(tmpdir(), "hill-noview-"));
+    const path = walkySocketPath(stateDir);
+    mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+    const server = createServer((socket) => {
+      socket.setEncoding("utf8");
+      socket.once("data", () => socket.end(`${JSON.stringify({ ok: true, decision: storedDecision("dc_older0000002") })}\n`));
+    });
+    await new Promise<void>((resolve) => server.listen(path, resolve));
+    cleanups.push(() => {
+      server.close();
+      rmSync(stateDir, { recursive: true, force: true });
+    });
+    const dir = work();
+    writeFileSync(join(dir, "v.json"), JSON.stringify(VIEW));
+    const d = deps([path], inPane("%1"), { cwd: () => dir });
+    expect(await cmdHillPost(d, [...POST, "--view", "v.json"])).toBe(EXIT.OK);
+    expect(d.io.stderr).toEqual([`hill: ${HILL_VIEW_DROPPED}`]);
+  });
+
+  test("the help names the kinds and says the options are the taps", () => {
+    const help = hillPostHelp().join("\n");
+    expect(help).toContain("--view view.json");
+    expect(help).toContain("No buttons: the options are the taps");
   });
 });
 

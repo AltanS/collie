@@ -124,6 +124,8 @@ export interface Decision {
   body?: string; text?: "none" | "optional" | "required"; priority?: "now" | "today" | "later";
   about?: string; replyTo?: string; media?: { file: string; caption?: string }[];
   links?: { label: string; href: string }[];
+  /** Facts drawn under the summary: display kinds only (no button, card or image), 8 KiB, 100 nodes, depth 4. */
+  view?: Node[];
 }
 export interface ShResult { ok: boolean; code: number; stdout: string; stderr: string }
 /** What a run prints. `decisions` is left out only after `keepDecisions()`. */

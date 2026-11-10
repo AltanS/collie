@@ -13,4 +13,5 @@ export const HILL_RULES = [
   "If no answer arrived, read it with collie hill status <id>.",
   "An answer typed into your session for a decision you did not post carries only the id and the option word. Read the rest with collie hill status <id>.",
   "A worker with a lead asks its lead first.",
+  "A --view only shows facts. No buttons: the options are the taps.",
 ] as const;

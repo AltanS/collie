@@ -103,6 +103,16 @@ export interface RenderCtx {
   imageUrl?: (src: string) => string | undefined;
   /** Pin the clock (epoch ms on the bridge's clock), for a test or a playground card. Absent: it ticks. */
   now?: number;
+  /**
+   * The host a web link goes to, drawn small after the link's words (a Decision's view on the hill, where
+   * the words are the poster's and the host is the truth). Absent: a link draws its words alone.
+   */
+  hostOf?: (href: string) => string;
+  /**
+   * A bar wraps its kids onto more lines instead of clipping them (a Decision's view, which sits in no
+   * fixed band, so seven chips on a 390 px phone keep their words). Absent: a bar is one line.
+   */
+  wrapBars?: boolean;
 }
 
 /** A row's or a link's `href` as a target, or `undefined` for one this Collie cannot open (the bridge checked it). */
@@ -444,12 +454,23 @@ function StripView({ node, ctx }: { node: BarNode; ctx: RenderCtx }) {
 function BarView({ node, ctx, path }: { node: BarNode; ctx: RenderCtx; path: string }) {
   if (isStepStrip(node)) return <StripView node={node} ctx={ctx} />;
   const scroll = node.attrs?.scroll === "x";
+  const wrap = !scroll && ctx.wrapBars === true;
+  const box = leafBox(node);
+  // A bar that wraps reserves its one line as a floor and grows past it; one that does not keeps its line.
+  const style = wrap ? { minHeight: box.style.height } : box.style;
   return (
     <div
-      {...leafBox(node)}
+      {...box}
+      style={style}
       role="group"
       aria-label={node.attrs?.label}
-      className={cn("flex min-w-0 items-center gap-2", scroll ? "overflow-x-auto overscroll-x-contain" : "overflow-hidden", node.attrs?.role === "strip" && "border-y border-border")}
+      className={cn(
+        "flex min-w-0 items-center gap-2",
+        scroll && "overflow-x-auto overscroll-x-contain",
+        wrap && "flex-wrap",
+        !scroll && !wrap && "overflow-hidden",
+        node.attrs?.role === "strip" && "border-y border-border",
+      )}
     >
       {kidsOf(node).map((kid, i) => {
         const at = `${path}/${i}`;
@@ -500,7 +521,8 @@ const LINK_INK = "text-primary underline underline-offset-2 decoration-primary/4
 
 function LinkView({ node, ctx, block = false }: { node: LinkNode; ctx: RenderCtx; block?: boolean }) {
   const Icon = node.attrs.icon === undefined ? null : trickIconOf(node.attrs.icon);
-  return (
+  const host = ctx.hostOf?.(node.attrs.href) ?? "";
+  const link = (
     <Target
       href={node.attrs.href}
       ctx={ctx}
@@ -514,6 +536,15 @@ function LinkView({ node, ctx, block = false }: { node: LinkNode; ctx: RenderCtx
         </span>
       )}
     </Target>
+  );
+  if (host === "") return link;
+  return (
+    <>
+      {link}
+      <span data-trick-link-host="" className="ml-1.5 font-mono text-[11px] text-muted-foreground">
+        {host}
+      </span>
+    </>
   );
 }
 

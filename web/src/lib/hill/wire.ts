@@ -2,6 +2,8 @@
 // sends back. The bridge and the web app both import this file, so it holds types, constants and
 // small pure helpers only. No I/O, no React, no runtime dependency.
 
+import type { View } from "../tricks/schema";
+
 /** How soon the poster wants a person to look. */
 export type HillPriority = "now" | "today" | "later";
 
@@ -152,6 +154,11 @@ export interface HillDecision {
   media: HillMedia[];
   /** Links on the card. Only http and https. */
   links: Array<{ label: string; href: string }>;
+  /**
+   * A small display-only view under the summary, in the trick node vocabulary, checked by
+   * `parseDecisionView` (lib/tricks/schema.ts) at post time and again on the phone. Absent: none.
+   */
+  view?: View;
   /** A walky address. Null means the answer goes to the poster's own address. */
   replyTo: string | null;
   /** Where the answer goes, resolved at post time for the card's "goes to" line. */
@@ -272,6 +279,8 @@ export interface HillPostInput {
   expiresAt?: number | null;
   /** Up to {@link HILL_MEDIA_MAX} images. */
   images?: HillImageInput[];
+  /** A display-only view under the summary (`parseDecisionView`). */
+  view?: View;
 }
 
 /** Why the bridge refuses a post. */

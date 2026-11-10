@@ -7,6 +7,7 @@ import type { HillDecision, HillReceipt } from "@/lib/hill/wire";
 import { hillDecision, hillReceipt, trickDecision } from "@/test/hill-fixtures";
 
 import { DecisionCard } from "./decision-card";
+import { VIEW_CAP_PX } from "./decision-view";
 
 // The Decision card (M96): what it shows, that nothing is chosen for the person, the numbered options,
 // More and Add a note, the arm on a confirm option and on Dismiss, the gate on a required answer, and
@@ -121,6 +122,92 @@ describe("the Decision card, at rest", () => {
     const { slot } = renderCard(hillDecision({ text: "none" }));
     expect(slot("decision-text")).toBeNull();
     expect(slot("decision-note")).toBeNull();
+  });
+});
+
+describe("the poster's view", () => {
+  const gate: HillDecision["view"] = [
+    { kind: "bar", kids: [{ kind: "chip", text: "unit", attrs: { tone: "ok" } }, { kind: "chip", text: "e2e", attrs: { tone: "danger" } }] },
+    { kind: "para", kids: [{ kind: "run", text: "see " }, { kind: "link", text: "the run", attrs: { href: "https://ci.example.com/run/7" } }] },
+  ];
+
+  afterEach(() => vi.restoreAllMocks());
+
+  it("draws the view under the summary in its own frame, captioned with the sender, and no button in it", () => {
+    const { slot } = renderCard(hillDecision({ view: gate }));
+    const frame = slot("decision-view")!;
+    expect(within(frame).getByText("From collie lead")).toBeInTheDocument();
+    expect(within(frame).getByText("unit")).toBeInTheDocument();
+    expect(within(frame).getByText("e2e")).toBeInTheDocument();
+    expect(frame.querySelector("button")).toBeNull();
+    // A bar wraps in a view, so seven chips keep their words on a phone: no fixed line, nothing clipped.
+    const bar = frame.querySelector<HTMLElement>('[data-trick-node="bar"]')!;
+    expect(bar.className).toContain("flex-wrap");
+    expect(bar.style.height).toBe("");
+    // Under the summary, and above the options.
+    expect(slot("decision-summary")!.compareDocumentPosition(frame) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(frame.compareDocumentPosition(slot("decision-options")!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("draws under the images when there are some", () => {
+    const media = [{ id: "im_aaaaaaaaaaaaaaaa", kind: "image" as const, mime: "image/png" as const, bytes: 10, width: 390, height: 240 }];
+    const { container, slot } = renderCard(hillDecision({ view: gate, media }));
+    const strip = container.querySelector('[data-slot="image-strip"]');
+    expect(strip).not.toBeNull();
+    expect(strip!.compareDocumentPosition(slot("decision-view")!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("has no frame without a view", () => {
+    const { slot } = renderCard(hillDecision());
+    expect(slot("decision-view")).toBeNull();
+  });
+
+  it("shows a link's host and opens it in a new tab, the phone staying where it is", () => {
+    const open = vi.spyOn(window, "open").mockReturnValue(null);
+    const { slot } = renderCard(hillDecision({ view: gate }));
+    const frame = slot("decision-view")!;
+    expect(frame.querySelector("[data-trick-link-host]")).toHaveTextContent("ci.example.com");
+    fireEvent.click(within(frame).getByText("the run"));
+    expect(open).toHaveBeenCalledWith("https://ci.example.com/run/7", "_blank", "noopener,noreferrer");
+  });
+
+  it("a view that throws while it draws takes only itself: the placeholder, and the options stay", () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const throwing: HillDecision["view"] = [
+      {
+        kind: "para",
+        get text(): string {
+          throw new Error("boom");
+        },
+      },
+    ];
+    const { slot, option } = renderCard(hillDecision({ view: throwing }));
+    expect(slot("decision-view")).not.toBeNull();
+    expect(slot("decision-view")!.querySelector('[data-trick-node="placeholder"]')).not.toBeNull();
+    expect(option("yes")).toBeEnabled();
+  });
+
+  it("folds past the cap behind Show all, clipped with no scroller inside; a short view has no toggle", () => {
+    vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(VIEW_CAP_PX + 160);
+    const tall = renderCard(hillDecision({ view: gate }));
+    const body = tall.slot("decision-view-body")!;
+    expect(body).toHaveAttribute("data-clipped");
+    expect(body.style.maxHeight).toBe(`${VIEW_CAP_PX}px`);
+    expect(body.className).toContain("overflow-hidden");
+    expect(body.className).not.toMatch(/overflow-(auto|scroll|y-auto)/u);
+    const more = tall.slot("decision-view-more")!;
+    expect(more).toHaveTextContent("Show all");
+    fireEvent.click(more);
+    expect(body).not.toHaveAttribute("data-clipped");
+    expect(body.style.maxHeight).toBe("");
+    expect(more).toHaveAttribute("aria-expanded", "true");
+    tall.unmount();
+    vi.restoreAllMocks();
+    vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(VIEW_CAP_PX - 40);
+    const short = renderCard(hillDecision({ view: gate }));
+    expect(short.slot("decision-view-more")).toBeNull();
+    expect(short.slot("decision-view-body")).not.toHaveAttribute("data-clipped");
   });
 });
 

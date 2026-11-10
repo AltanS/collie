@@ -26,7 +26,7 @@ import { hillDir } from "../hill/store.ts";
 //     after the post, so a bridge that stops in between derives the same id again; it also keeps a
 //     content that comes back (A, then B, then A) from meeting its own first post.
 //   * the same key with changed content (anything the person sees: title, summary, body, options,
-//     recommends, text mode, links, priority, about, replyTo, and each image's bytes and caption) posts
+//     recommends, text mode, links, priority, about, replyTo, the view, and each image's bytes and caption) posts
 //     the new version with `supersedes` while the old one is open, and as a fresh decision once the old
 //     one closed.
 //   * a key the document no longer lists is withdrawn, "by the trick".
@@ -170,7 +170,8 @@ export interface TrickHillRun {
 /**
  * The content hash of a decision: everything the person sees, defaults filled, in a fixed order, as hex.
  * Not the key, not `expiresAt`. `images` are the decision's media as digests of their bytes, with their
- * captions ({@link imageFileDigest}); a decision with none hashes as it did before images.
+ * captions ({@link imageFileDigest}); a decision with none hashes as it did before images. The view
+ * counts too, so a changed view supersedes; a decision with no view hashes as it did before views.
  */
 export function decisionContentHash(decision: TrickDecision, images: readonly DecisionImageDigest[] = []): string {
   const fields = {
@@ -185,7 +186,9 @@ export function decisionContentHash(decision: TrickDecision, images: readonly De
     about: decision.about ?? null,
     replyTo: decision.replyTo ?? null,
   };
-  const seen = images.length === 0 ? fields : { ...fields, images: images.map((image) => [image.bytes, image.caption]) };
+  // Images and the view join only when there are some, so a decision without them hashes as it always did.
+  const withImages = images.length === 0 ? fields : { ...fields, images: images.map((image) => [image.bytes, image.caption]) };
+  const seen = decision.view === undefined ? withImages : { ...withImages, view: decision.view };
   return createHash("sha256").update(JSON.stringify(seen)).digest("hex").slice(0, CONTENT_HASH_HEX);
 }
 
@@ -365,6 +368,7 @@ export class TrickHill {
         expiresAt: decision.expiresAt ?? null,
       };
       if (images.length > 0) input.images = images;
+      if (decision.view !== undefined) input.view = decision.view;
       const answer = this.deps.hill.postDecision(this.sender(trick, decision.key, images.length > 0 ? root : null), input);
       if (!answer.ok) {
         refusals.push(hillRefusal(answer, path, decision, images));

@@ -998,6 +998,8 @@ export interface TrickDecision {
   links?: DecisionLink[];
   /** Epoch ms. Past it the decision closes as expired. */
   expiresAt?: number;
+  /** A small display-only view under the summary (`parseDecisionView`): facts to read, never a control. */
+  view?: View;
 }
 
 /** A decision's priority, its default filled. */
@@ -2019,6 +2021,18 @@ interface ViewContext {
   nodes: number;
   /** Set once the node cap is passed, so the cap is refused once, not once per node. */
   overflow: boolean;
+  /** The node cap and the depth cap: a part's view takes {@link VIEW_LIMITS}, a Decision's {@link DECISION_VIEW_LIMITS}. */
+  maxNodes: number;
+  maxDepth: number;
+  /** A Decision's view: display only (`parseDecisionView`). */
+  display: boolean;
+}
+
+/** The caps of a view other than a part's own. */
+interface ViewCaps {
+  nodes: number;
+  depth: number;
+  display: boolean;
 }
 
 type AttrRule =
@@ -2134,7 +2148,7 @@ function isContainer(kind: NodeKind): kind is ContainerKind {
   return hasKey(NODE_KIDS, kind);
 }
 
-function readView(value: JsonValue | undefined, path: string, sink: Refusal[], kinds: readonly NodeKind[]): View | undefined {
+function readView(value: JsonValue | undefined, path: string, sink: Refusal[], kinds: readonly NodeKind[], caps?: ViewCaps): View | undefined {
   if (asJsonObject(value) !== undefined) {
     sink.push({ code: "type", path, reason: '"view" is a list of nodes now, the kids of the place\'s frame. Wrap the node in [ ].' });
     return undefined;
@@ -2147,7 +2161,7 @@ function readView(value: JsonValue | undefined, path: string, sink: Refusal[], k
     sink.push({ code: "count", path, reason: `"view" holds ${value.length}. It must hold ${VIEW_LIMITS.root.min} to ${VIEW_LIMITS.root.max} nodes.` });
     return undefined;
   }
-  const ctx: ViewContext = { kinds, nodes: 0, overflow: false };
+  const ctx: ViewContext = { kinds, nodes: 0, overflow: false, maxNodes: caps?.nodes ?? VIEW_LIMITS.nodes.max, maxDepth: caps?.depth ?? VIEW_LIMITS.depth.max, display: caps?.display ?? false };
   const before = sink.length;
   const out: ViewNode[] = [];
   value.forEach((item, i) => {
@@ -2155,7 +2169,7 @@ function readView(value: JsonValue | undefined, path: string, sink: Refusal[], k
     if (node !== undefined) out.push(node);
   });
   if (ctx.overflow) {
-    sink.push({ code: "count", path, reason: `The view holds more than ${VIEW_LIMITS.nodes.max} nodes. Draw less, or split it.` });
+    sink.push({ code: "count", path, reason: `The view holds more than ${ctx.maxNodes} nodes. Draw less, or split it.` });
     return undefined;
   }
   return sink.length === before ? out : undefined;
@@ -2171,12 +2185,12 @@ interface NodeReading {
 
 function readNode(value: JsonValue | undefined, path: string, sink: Refusal[], ctx: ViewContext, depth: number, parent: Parent): ViewNode | undefined {
   ctx.nodes += 1;
-  if (ctx.nodes > VIEW_LIMITS.nodes.max) {
+  if (ctx.nodes > ctx.maxNodes) {
     ctx.overflow = true;
     return undefined;
   }
-  if (depth > VIEW_LIMITS.depth.max) {
-    sink.push({ code: "depth", path, reason: `The view nests deeper than ${VIEW_LIMITS.depth.max} levels.` });
+  if (depth > ctx.maxDepth) {
+    sink.push({ code: "depth", path, reason: `The view nests deeper than ${ctx.maxDepth} levels.` });
     return undefined;
   }
   const obj = asJsonObject(value);
@@ -2200,7 +2214,13 @@ function readNode(value: JsonValue | undefined, path: string, sink: Refusal[], c
     return undefined;
   }
   const kind: NodeKind = rawKind;
-  const allowed = kindsUnder(parent);
+  const notShown = ctx.display ? reasonOf(DECISION_VIEW_REFUSED, kind) : undefined;
+  if (notShown !== undefined) {
+    sink.push({ code: "removed", path: kindPath, reason: `A Decision's view takes no "${kind}": ${notShown}.` });
+    return undefined;
+  }
+  // A Decision's view names only the kinds it draws, so the hint never offers a card or an image.
+  const allowed = ctx.display ? kindsUnder(parent).filter((k) => reasonOf(DECISION_VIEW_REFUSED, k) === undefined) : kindsUnder(parent);
   if (!allowed.includes(kind)) {
     sink.push({ code: "parent", path: kindPath, reason: `A "${kind}" cannot sit in ${parentWords(parent)}. ${capital(parentWords(parent))} holds: ${quoteList(allowed)}.` });
     return undefined;
@@ -2221,6 +2241,7 @@ function readNode(value: JsonValue | undefined, path: string, sink: Refusal[], c
   const kids = readKids(kind, f, ctx, depth);
   if (kids !== undefined) node.kids = kids;
   checkNode(kind, f, attrsClean ? (attrs ?? {}) : undefined, kids);
+  if (ctx.display) checkDisplayOnly(kind, f);
   // SAFETY: every key of `node` passed its kind's rule above (the text, each attribute, each kid), and a
   // refusal of any of them returns `undefined` here, so what is left is exactly the kind's node type.
   return sink.length === before ? (node as ViewNode) : undefined;
@@ -2490,6 +2511,72 @@ function checkMeter(push: (code: RefusalCode, name: string, reason: string) => v
   if (role === "meter" && maxText !== undefined && max <= 0) push("range", "max", '"max" must be above 0.');
   if (role === "meter" && valueText === undefined) push("missing", "value", 'A meter with role "meter" needs "value". Only a progress may leave it out (indeterminate).');
   if (valueText !== undefined && Number(valueText) > max) push("range", "value", `"value" is above "max" (${maxText ?? "1"}).`);
+}
+
+// ── A Decision's view (M96) ──────────────────────────────────────────────────────────────────
+//
+// A Decision may carry a small view under its summary: a few rows, a strip of chips, a code hunk, the
+// facts a person reads before they choose. It is DISPLAY ONLY. The options are the Decision's taps, so
+// its view holds no control: no `button`, no `intent`, `does`, `confirm` or `href` on any node but a
+// `link`, and a link opens a web page only. No `card` (the Decision's card is its frame) and no `image`
+// (pictures are the Decision's `media`). It is the part view's parser, the same function, with these
+// rules and smaller caps on top: the bridge refuses a post that breaks one, and the phone drops a view
+// that does not pass them and keeps the Decision.
+
+/** The kinds a Decision's view may hold. */
+export const DECISION_VIEW_KINDS = ["group", "list", "row", "bar", "chip", "para", "line", "run", "code", "link", "meter", "spacer", "number"] as const satisfies readonly NodeKind[];
+
+/** The caps of a Decision's view: its compact JSON, every node counted, and the nesting. */
+export const DECISION_VIEW_LIMITS = { bytes: 8 * 1024, nodes: 100, depth: 4 } as const;
+
+/** The kinds a Decision's view refuses, each with what to write instead. */
+const DECISION_VIEW_REFUSED = {
+  button: "no buttons, the options are the taps",
+  card: "the Decision's card is its frame; list the nodes without one",
+  image: 'pictures go in the Decision\'s "media"',
+} as const satisfies Readonly<Record<string, string>>;
+
+/** The attributes that act. On a Decision's view only a `link` keeps one, its `href`. */
+const ACTING_ATTRS = ["intent", "does", "confirm", "href"] as const;
+
+/** A Decision's view acts on nothing: no acting attribute but a link's `href`, and that one a web address. */
+function checkDisplayOnly(kind: NodeKind, f: Fields): void {
+  const raw = f.has("attrs") ? asJsonObject(f.obj.attrs) : undefined;
+  if (raw === undefined) return;
+  const attrsPath = f.at("attrs");
+  for (const name of ACTING_ATTRS) {
+    // An attribute the kind never takes is refused by its own rule already: one refusal per key.
+    const takes: readonly string[] = NODE_ATTRS[kind];
+    if (raw[name] === undefined || !takes.includes(name) || (kind === "link" && name === "href")) continue;
+    f.sink.push({ code: "target", path: pointer(attrsPath, name), reason: `A Decision's view takes no "${name}" on a ${kind}: only a link opens anything, and the options are the taps.` });
+  }
+  if (kind !== "link") return;
+  const href = asJsonString(raw.href);
+  if (asJsonString(raw.rel) === "pane" || (href !== undefined && !isTrickUrl(href))) {
+    f.sink.push({ code: "target", path: pointer(attrsPath, "href"), reason: "A link in a Decision's view opens a web page: an https:// or http:// address." });
+  }
+}
+
+/** What `parseDecisionView` answers: the view when it passed, and every refusal (with a JSON pointer under `path`). */
+export interface ParsedDecisionView {
+  view?: View;
+  refusals: Refusal[];
+}
+
+/**
+ * Read a Decision's `view`: a list of nodes of {@link DECISION_VIEW_KINDS}, display only, at most
+ * {@link DECISION_VIEW_LIMITS}. The one reader of it, for a trick's document, an agent's post and the
+ * phone. Total: garbage is a refusal, never a throw.
+ */
+export function parseDecisionView(value: JsonValue | undefined, path = "/view"): ParsedDecisionView {
+  const refusals: Refusal[] = [];
+  const bytes = value === undefined ? 0 : utf8Bytes(JSON.stringify(value));
+  if (bytes > DECISION_VIEW_LIMITS.bytes) {
+    refusals.push({ code: "size", path, reason: `The view is ${String(bytes)} bytes. A Decision's view holds at most ${String(DECISION_VIEW_LIMITS.bytes / 1024)} KiB.` });
+    return { refusals };
+  }
+  const view = readView(value, path, refusals, DECISION_VIEW_KINDS, { nodes: DECISION_VIEW_LIMITS.nodes, depth: DECISION_VIEW_LIMITS.depth, display: true });
+  return view === undefined || refusals.length > 0 ? { refusals } : { view, refusals };
 }
 
 // ── Marks ────────────────────────────────────────────────────────────────────────────────────
@@ -3003,7 +3090,7 @@ function readActions(f: Fields): TrickAction[] | undefined {
 // ── Decisions ────────────────────────────────────────────────────────────────────────────────
 
 /** Every key a decision takes (the Hill's decision shape, the fields a trick writes). */
-export const DECISION_KEYS = ["key", "title", "summary", "body", "options", "recommends", "priority", "text", "about", "replyTo", "media", "links", "expiresAt"] as const;
+export const DECISION_KEYS = ["key", "title", "summary", "body", "options", "recommends", "priority", "text", "about", "replyTo", "media", "links", "expiresAt", "view"] as const;
 export const DECISION_OPTION_KEYS = ["intent", "label", "detail", "confirm"] as const;
 export const DECISION_RECOMMENDS_KEYS = ["intent", "why"] as const;
 export const DECISION_MEDIA_KEYS = ["file", "caption"] as const;
@@ -3070,6 +3157,8 @@ function readDecision(value: JsonValue, path: string, sink: Refusal[]): Decision
   const media = readMedia(f);
   const links = readLinks(f);
   const expiresAt = f.int("expiresAt", { min: 1, max: EPOCH_MAX_MS });
+  const view = f.has("view") ? parseDecisionView(f.obj.view, f.at("view")) : undefined;
+  if (view !== undefined) f.sink.push(...view.refusals);
   if (key === undefined || title === undefined || summary === undefined) return { key };
   const decision: TrickDecision = { key, title, summary };
   if (body !== undefined) decision.body = body;
@@ -3082,6 +3171,7 @@ function readDecision(value: JsonValue, path: string, sink: Refusal[]): Decision
   if (media !== undefined) decision.media = media;
   if (links !== undefined) decision.links = links;
   if (expiresAt !== undefined) decision.expiresAt = expiresAt;
+  if (view?.view !== undefined) decision.view = view.view;
   return { key, decision };
 }
 

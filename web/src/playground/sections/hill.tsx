@@ -5,7 +5,7 @@
 // The cards wear the machine tints of a two-machine crew (bluefin and minibuch), as `LiveDecisionCard`
 // would hand them on one.
 //
-// Cards are numbered 1 to 31.
+// Cards are numbered 1 to 33.
 
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 
@@ -24,6 +24,8 @@ import {
   brokenImage,
   busyOpen,
   closedRows,
+  diffSummary,
+  gateStrip,
   goneText,
   keptWords,
   oneImage,
@@ -293,6 +295,17 @@ export function HillSection() {
         <Card state="hill-card-image-failed" label="25: image not available">
           <CardHead n={25} title="Image not available" />
           <OneCard decision={brokenImage} />
+        </Card>
+      </Group>
+
+      <Group title="A view under the summary">
+        <Card state="hill-card-view-gates" label="32: a gate strip">
+          <CardHead n={32} title="A gate strip" />
+          <OneCard decision={gateStrip} />
+        </Card>
+        <Card state="hill-card-view-diff" label="33: a diff summary">
+          <CardHead n={33} title="A diff summary" />
+          <OneCard decision={diffSummary} />
         </Card>
       </Group>
 

@@ -1,6 +1,7 @@
 import { useEffect, useId, useState, useSyncExternalStore } from "react";
 
 import { AgentIcon } from "@/components/agent-icon";
+import { DecisionView } from "@/components/decision-view";
 import { HillPriorityMark } from "@/components/hill-priority";
 import { HillImageStrip, hillMediaSource, type HillMediaSource } from "@/components/hill-media";
 import { Icon } from "@/components/icons/icon";
@@ -34,7 +35,8 @@ import { cn } from "@/lib/utils";
 // An agent, or a trick, posted a question with its options, and the person answers it here. The look
 // is calm and typographic (the owner's pick, B1, 2026-11-09). Top to bottom: the first line (the
 // priority as three peaks and a word, who asked with their mark, the machine, how old it is), the title
-// in a reading size, the summary, the images as one sideways row, the recommendation as a quote between
+// in a reading size, the summary, the images as one sideways row, the poster's view of the facts in a
+// quiet frame (decision-view.tsx), the recommendation as a quote between
 // two rules, a row of two quiet taps ("More" for the body and the links, "Add a note" for an optional
 // note), the options numbered 1, 2, 3 like the terminal's own menu, a required answer's field, what
 // happened after the tap, and the line that says where the answer goes with a quiet Dismiss beside it.
@@ -360,6 +362,8 @@ export function DecisionCard({
         // The row runs to the card's edges, its first picture on the text's edge (the card's p-5).
         <HillImageStrip decisionId={decision.id} media={decision.media} source={mediaSource} className="-mx-5" scrollerClassName="px-5" />
       )}
+
+      {decision.view !== undefined && <DecisionView decisionId={decision.id} view={decision.view} sender={decision.from.label} />}
 
       {decision.recommends !== null && recommended !== undefined && (
         <figure data-slot="decision-recommends" className="flex flex-col gap-1.5 border-y border-border py-3">

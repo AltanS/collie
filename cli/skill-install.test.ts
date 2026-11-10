@@ -80,7 +80,7 @@ describe("the rendered skill", () => {
       expect(hillHelp()).toContain(rule);
       expect(hillPostHelp()).toContain(rule);
     }
-    expect(HILL_RULES.length).toBe(7);
+    expect(HILL_RULES.length).toBe(8);
     // The parts an agent must find, by the words the brief asks for.
     expect(out).toContain("only for what needs the person");
     expect(out).toContain("recommend one option with a why");

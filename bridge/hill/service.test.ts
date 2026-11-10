@@ -9,6 +9,7 @@ import {
   HILL_DEFAULT_EXPIRY_MS,
   HILL_WALKY_OFF,
   HillService,
+  hillPostDigest,
   messageTitle,
   mintDecisionId,
   NOT_ON_LEAD,
@@ -318,6 +319,19 @@ describe("posting a decision", () => {
     expect(r.store.get(first.id)?.postDigest).toMatch(/^[0-9a-f]{64}$/u);
     expect(first.postDigest).toBeUndefined();
     expect(r.hill.list().open[0]?.postDigest).toBeUndefined();
+  });
+
+  test("the view is stored on the decision and joins the digest; a post without one keeps the digest it had", () => {
+    const view = [{ kind: "para" as const, text: "unit 7/7, e2e red" }];
+    const r = rig();
+    const first = posted(r.hill.post(POSTER, input(1, { view })));
+    expect(first.view).toEqual(view);
+    expect(r.store.get(first.id)?.view).toEqual(view);
+    expect(r.hill.post(POSTER, input(1, { view: [{ kind: "para", text: "other" }] }))).toMatchObject({ ok: false, code: "request_id_reused" });
+    expect(r.hill.post(POSTER, input(1))).toMatchObject({ ok: false, code: "request_id_reused" });
+    expect(posted(r.hill.post(POSTER, input(1, { view }))).id).toBe(first.id);
+    expect(hillPostDigest(input(2, { view: undefined }))).toBe(hillPostDigest(input(2)));
+    expect(posted(r.hill.post(POSTER, input(2)))).not.toHaveProperty("view");
   });
 
   test("a decision stored before posts carried a digest answers any repeat of its request id as stored", () => {

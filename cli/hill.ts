@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { realpathSync } from "node:fs";
+import { readFileSync, realpathSync, statSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 
 import { edgeStateDirs, readEnvMarkers } from "./beacon.ts";
@@ -8,7 +8,7 @@ import { holdSocketSafe } from "./hold.ts";
 import { EXIT } from "./io.ts";
 import { NO_SOCKET_TEXT, shown, type WalkyDeps } from "./walky.ts";
 import type { JsonObject, JsonValue } from "../bridge/json.ts";
-import { asJsonObject, asJsonString, parseJsonObject } from "../web/src/lib/json.ts";
+import { asJsonObject, asJsonString, parseJson, parseJsonObject } from "../web/src/lib/json.ts";
 import { readDecision } from "../bridge/hill/parse.ts";
 import { HILL_DEFAULT_EXPIRY_DAYS } from "../bridge/hill/service.ts";
 import { parseAddress } from "../bridge/walky/address.ts";
@@ -57,9 +57,13 @@ const USAGE = {
     '         [--text none|optional|required] [--link "<label>=https://..."] [--about here|<address>] \\',
     "         [--reply-to <address>] [--supersedes dc_...] [--expires 2h|3d] [--request-id <uuid>] [--json] \\",
     '         [--image shots/a.png[="<caption>"] ...]   (PNG, JPEG or WebP, up to 4, 2 MB each) \\',
+    "         [--view view.json]   (a small view under the summary, see below) \\",
     '         [-- "<body in Markdown>"]   (no body after --: read from stdin when it is not a terminal)',
     `  With no --expires, a decision closes as expired after ${String(HILL_DEFAULT_EXPIRY_DAYS)} days.`,
     "  To retry a post, send it again with the same --request-id: it posts once. Other content under that id is refused.",
+    "  --view names a JSON file (at most 16 KiB) with a list of nodes, drawn under the summary: group, list, row, bar, chip,",
+    "  para, line, run, code, link, meter, spacer and number, as a trick writes them, at most 8 KiB, 100 nodes and 4 levels.",
+    "  It only shows facts. No buttons: the options are the taps, and only a link opens anything, a web page.",
   ],
   status: ["usage: collie hill status <dc_id> [--json]   (yours, or one whose answer goes to this session)"],
   withdraw: ["usage: collie hill withdraw <dc_id> [--json]"],
@@ -181,6 +185,8 @@ export interface PostArgs {
   readonly images: readonly HillImageInput[];
   readonly requestId: string | null;
   readonly expiresInMs: number | null;
+  /** The `--view` file as given, not yet read, or null. */
+  readonly viewPath: string | null;
   /** The body after `--`, or null to read stdin. */
   readonly body: string | null;
   readonly json: boolean;
@@ -194,7 +200,10 @@ function isTextMode(value: string): value is HillTextMode {
   return HILL_TEXT_MODES.some((mode) => mode === value);
 }
 
-const VALUE_FLAGS = new Set(["--title", "--summary", "--option", "--recommend", "--why", "--confirm", "--detail", "--priority", "--text", "--link", "--about", "--reply-to", "--supersedes", "--expires", "--request-id", "--image"]);
+const VALUE_FLAGS = new Set(["--title", "--summary", "--option", "--recommend", "--why", "--confirm", "--detail", "--priority", "--text", "--link", "--about", "--reply-to", "--supersedes", "--expires", "--request-id", "--image", "--view"]);
+
+/** The most bytes `--view` reads of its file. The bridge holds the view itself to 8 KiB of compact JSON. */
+export const HILL_VIEW_FILE_MAX = 16 * 1024;
 
 /** One `--image` value: `<path>` or `<path>=<caption>`, split at the first `=`. An error is the one-line reason. */
 export function parseImageArg(raw: string): HillImageInput | { readonly error: string } {
@@ -323,9 +332,30 @@ export function parsePostArgs(args: readonly string[]): PostArgs | { readonly er
     images,
     requestId,
     expiresInMs,
+    viewPath: one.get("--view") ?? null,
     body,
     json,
   };
+}
+
+/**
+ * The `--view` file, read and parsed as JSON, or the one-line reason it cannot be sent. What the nodes
+ * may be is the bridge's to judge (`parseDecisionView`): it refuses a bad view with the path of the node.
+ */
+export function readViewFile(raw: string, cwd: string): { readonly view: JsonValue } | { readonly error: string } {
+  const path = resolve(cwd, raw);
+  let size: number;
+  try {
+    const st = statSync(path);
+    if (!st.isFile()) return { error: `\`--view ${raw}\` is not a file` };
+    size = st.size;
+  } catch {
+    return { error: `\`--view ${raw}\`: no such file` };
+  }
+  if (size > HILL_VIEW_FILE_MAX) return { error: `\`--view ${raw}\` is larger than ${String(HILL_VIEW_FILE_MAX / 1024)} KiB` };
+  const view = parseJson(readFileSync(path, "utf8"));
+  if (view === undefined) return { error: `\`--view ${raw}\` is not JSON` };
+  return { view };
 }
 
 /** The body: the words after `--`, else stdin when it is not a terminal, else none. */
@@ -336,7 +366,7 @@ async function bodyOf(deps: HillDeps, body: string | null): Promise<string> {
 }
 
 /** The `hill.post` request, field by field. The bridge fills `from` from this process's pane, never from here. */
-function postLine(fields: PostArgs["fields"], requestId: string, body: string, expiresAt: number | null, images: readonly HillImageInput[]): JsonObject {
+function postLine(fields: PostArgs["fields"], requestId: string, body: string, expiresAt: number | null, images: readonly HillImageInput[], view: JsonValue | null): JsonObject {
   const options = (fields.options ?? []).map((option): JsonObject => {
     const row: JsonObject = { intent: option.intent, label: option.label };
     if (option.detail !== undefined) row.detail = option.detail;
@@ -364,11 +394,15 @@ function postLine(fields: PostArgs["fields"], requestId: string, body: string, e
   // Paths, never bytes: the bridge reads each file itself (bridge/hill/media.ts). Sent only when there
   // are images, so a post without them is the line it was.
   if (images.length > 0) line.images = images.map((image): JsonObject => (image.caption === undefined ? { path: image.path } : { path: image.path, caption: image.caption }));
+  // Sent only when there is one, as images are.
+  if (view !== null) line.view = view;
   return line;
 }
 
 /** What the CLI says when a bridge took the post and kept none of its images: a build from before images. */
 export const HILL_IMAGES_DROPPED = "the bridge posted the decision without its images: it is older than images on the hill";
+/** What the CLI says when a bridge took the post without its view: a build from before views. */
+export const HILL_VIEW_DROPPED = "the bridge posted the decision without its view: it is older than views on the hill";
 
 /** `hill post ...`: post one decision and print its id. It never waits for the answer. */
 export async function cmdHillPost(deps: HillDeps, args: readonly string[]): Promise<number> {
@@ -382,14 +416,21 @@ export async function cmdHillPost(deps: HillDeps, args: readonly string[]): Prom
     if ("error" in resolved) return usage(deps, "post", resolved.error);
     images.push(image.caption === undefined ? { path: resolved.path } : { path: resolved.path, caption: image.caption });
   }
+  let view: JsonValue | null = null;
+  if (parsed.viewPath !== null) {
+    const read = readViewFile(parsed.viewPath, cwd);
+    if ("error" in read) return usage(deps, "post", read.error);
+    view = read.view;
+  }
   const body = await bodyOf(deps, parsed.body);
   const requestId = parsed.requestId ?? (deps.mintRequestId ?? randomUUID)();
   const expiresAt = parsed.expiresInMs === null ? null : (deps.now ?? Date.now)() + parsed.expiresInMs;
-  const answer = await request(deps, postLine(parsed.fields, requestId, body, expiresAt, images));
+  const answer = await request(deps, postLine(parsed.fields, requestId, body, expiresAt, images, view));
   if (!answer.ok) return failed(deps, answer);
   const decision = readDecision(answer.body.decision);
   if (decision === null) return failed(deps, { ok: false, error: "the bridge answered without a decision", code: null, exit: EXIT.FAIL });
   if (images.length > 0 && decision.media.length === 0) deps.io.err(`hill: ${HILL_IMAGES_DROPPED}`);
+  if (view !== null && decision.view === undefined) deps.io.err(`hill: ${HILL_VIEW_DROPPED}`);
   if (parsed.json) deps.io.out(JSON.stringify({ decision }));
   else deps.io.out(decision.id);
   return EXIT.OK;

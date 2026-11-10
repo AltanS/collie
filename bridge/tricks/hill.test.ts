@@ -188,6 +188,7 @@ describe("the diff by key", () => {
       { priority: "now" },
       { replyTo: "bluefin:w6X:3" },
       { about: "bluefin:w6X:3" },
+      { view: [{ kind: "para", text: "unit 7/7" }] },
     ];
     for (const change of changes) expect(decisionContentHash(decision("k", change)), JSON.stringify(change)).not.toBe(base);
     expect(decisionContentHash({ ...decision("k"), key: "other-key" })).toBe(base);
@@ -199,6 +200,18 @@ describe("the diff by key", () => {
     expect(decisionContentHash(decision("k"), [{ bytes: "ab13", caption: null }])).not.toBe(decisionContentHash(decision("k"), one));
     expect(decisionContentHash(decision("k"), [{ bytes: "ab12", caption: "red" }])).not.toBe(decisionContentHash(decision("k"), one));
     expect(decisionContentHash(decision("k", { priority: "today", text: "optional" }))).toBe(base);
+  });
+
+  test("the view goes on the posted decision; a new view supersedes the old one", () => {
+    const r = rig();
+    const view = [{ kind: "para" as const, text: "unit 7/7, e2e red" }];
+    sync(r, [decision("case-8", { view })]);
+    const first = open(r)[0]!;
+    expect(first.view).toEqual(view);
+    sync(r, [decision("case-8", { view: [{ kind: "para", text: "unit 7/7, e2e green" }] })]);
+    const [now] = open(r);
+    expect(now?.supersedes).toBe(first.id);
+    expect(now?.view).toEqual([{ kind: "para", text: "unit 7/7, e2e green" }]);
   });
 
   test("a key the document no longer lists is withdrawn, by the trick", () => {

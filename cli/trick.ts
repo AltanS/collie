@@ -806,7 +806,9 @@ version. \`run((t) => { ... })\` reads the facts, calls your function once and p
 | \`t.sessionAt\`, \`t.sessionNamed\` | the session in a folder, or with a name |
 | \`t.fresh\`, \`t.asOf\` | how long the parts stay fresh, and when the data was true |
 
-When neither \`t.decide\` nor \`t.keepDecisions\` is called, the run wants no Decisions and the open ones
+A Decision may carry a \`view\`: display nodes under its summary (a bar of chips, rows with their
+proof, a code hunk), at most 8 KiB, 100 nodes and 4 deep, with no button, card or image. The options
+are the taps. When neither \`t.decide\` nor \`t.keepDecisions\` is called, the run wants no Decisions and the open ones
 are withdrawn. A thrown error shows one warn card in the trick's session, or fails the run when the
 trick has no session.
 `;
@@ -886,7 +888,8 @@ One JSON document on stdout, at most 64 KiB, within 10 seconds:
   \`group\`, \`list\`, \`row\`, \`bar\`, \`chip\`, \`button\`, \`para\`, \`line\`, \`run\`, \`code\`, \`link\`,
   \`image\`, \`meter\`, \`spacer\`) and \`number\`. Every attribute value is a string.
 - Optional: \`decisions\`, up to 20 questions for the person (\`key\`, \`title\`, \`summary\`, \`options\`,
-  \`recommends\`). The answer comes back as a tap on \`hill/<key>\`. Leave the \`decisions\` key out
+  \`recommends\`, and \`view\` for display nodes under the summary: no button, card or image). The
+  answer comes back as a tap on \`hill/<key>\`. Leave the \`decisions\` key out
   and the open decisions stay as they are; an empty list \`[]\` withdraws them all.
 - Unknown keys are refused, and a string over its cap is refused, never cut.
 

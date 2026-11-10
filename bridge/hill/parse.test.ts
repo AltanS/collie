@@ -4,8 +4,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { HOST } from "../host.ts";
-import { parseJsonObject, type JsonObject, type JsonValue } from "../../web/src/lib/json.ts";
+import { parseJson, parseJsonObject, type JsonObject, type JsonValue } from "../../web/src/lib/json.ts";
 import type { HillDecision } from "../../web/src/lib/hill/wire.ts";
+import type { View } from "../../web/src/lib/tricks/schema.ts";
 import { decision } from "./fixtures.ts";
 import { HILL_RAW_MAX, readAnswerRequest, readDecision, readPostFields } from "./parse.ts";
 import { coerceHillReceipt, hillAnswerDigest, HILL_RECEIPTS_FILE, HillReceiptStore } from "./receipts.ts";
@@ -81,6 +82,36 @@ describe("a phone's answer body", () => {
 });
 
 /** A decision as the file would hold it, through JSON and back, with `over` written on top. */
+describe("a post's view", () => {
+  const base = { requestId: RID, title: "Ship?", summary: "Green." };
+  const gate: View = [{ kind: "bar", kids: [{ kind: "chip", text: "unit", attrs: { tone: "ok" } }] }, { kind: "list", kids: [{ kind: "row", text: "legs", kids: [{ kind: "chip", text: "7/7" }] }] }];
+  const refusal = (view: JsonValue) => {
+    const read = readPostFields({ ...base, view });
+    return read.ok ? "ok" : `${String(read.code)} ${read.error}`;
+  };
+
+  test("a display view reads onto the input; null or absent is no view", () => {
+    const read = readPostFields({ ...base, view: parseJson(JSON.stringify(gate)) ?? null });
+    expect(read.ok ? read.input.view : null).toEqual(gate);
+    const none = readPostFields({ ...base, view: null });
+    expect(none.ok && !("view" in none.input)).toBe(true);
+  });
+
+  test("a button, a card, an image or an intent is refused bad_body, the reason naming the path", () => {
+    expect(refusal([{ kind: "button", text: "Merge", attrs: { intent: "merge" } }])).toStartWith("bad_body the view is refused at /view/0");
+    expect(refusal([{ kind: "card", kids: [{ kind: "para", text: "x" }] }])).toStartWith("bad_body the view is refused at /view/0");
+    expect(refusal([{ kind: "image", attrs: { src: "media/a.png" } }])).toStartWith("bad_body the view is refused at /view/0");
+    expect(refusal([{ kind: "list", kids: [{ kind: "row", text: "x", attrs: { intent: "go" } }] }])).toStartWith("bad_body the view is refused at /view/0/kids/0/attrs/intent");
+    expect(refusal("rows")).toStartWith("bad_body");
+  });
+
+  test("past 8 KiB, 100 nodes or depth 4 is refused", () => {
+    expect(refusal([{ kind: "para", text: "x".repeat(9000) }])).toContain("bad_body");
+    expect(refusal([{ kind: "list", kids: Array.from({ length: 120 }, () => ({ kind: "row", text: "x" })) }])).toContain("bad_body");
+    expect(refusal([{ kind: "group", kids: [{ kind: "group", kids: [{ kind: "group", kids: [{ kind: "group", kids: [{ kind: "para", text: "deep" }] }] }] }] }])).toContain("bad_body");
+  });
+});
+
 function onDisk(whole: HillDecision, over: JsonObject = {}): JsonValue | undefined {
   const row = parseJsonObject(JSON.stringify(whole));
   return row === null ? undefined : { ...row, ...over };
@@ -137,6 +168,15 @@ describe("a stored decision", () => {
     expect(readDecision(onDisk(decision("dc_aaaaaaaaaaa1")))).not.toHaveProperty("postDigest");
     expect(readDecision(onDisk(withDigest, { postDigest: "short" }))).toBeNull();
     expect(readDecision(onDisk(withDigest, { postDigest: 7 }))).toBeNull();
+  });
+
+  test("a stored view reads back; a view that fails its rule is dropped and the decision stays", () => {
+    const view: View = [{ kind: "para", text: "From the leg." }];
+    const withView = decision("dc_aaaaaaaaaaa1", { view });
+    expect(readDecision(onDisk(withView))).toEqual(withView);
+    const bad = readDecision(onDisk(withView, { view: [{ kind: "button", text: "x", attrs: { intent: "go" } }] }));
+    expect(bad?.id).toBe("dc_aaaaaaaaaaa1");
+    expect(bad).not.toHaveProperty("view");
   });
 
   test("a field that fails its rule fails the record", () => {

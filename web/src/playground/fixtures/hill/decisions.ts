@@ -321,3 +321,73 @@ export const receipts = {
 
 /** The answer a person typed before the target ended: the `gone` card keeps it with Copy. */
 export const goneText = "Not before the browser leg is green.";
+
+/** 32: a gate strip in the view (M96): seven gates as a bar of chips, and the two that need a look, with their proof. */
+export const gateStrip = decision({
+  title: "Tag 1.28.2 with the e2e gate red?",
+  summary: "Six of the seven gates are green. The e2e gate failed once, on a timing budget.",
+  sender: HILL,
+  ago: 6,
+  options: [
+    { intent: "rerun", label: "Rerun e2e first" },
+    { intent: "tag", label: "Tag it now", confirm: "Tag now" },
+  ],
+  recommends: { intent: "rerun", why: "The same case passed on the last two runs." },
+  view: [
+    {
+      kind: "bar",
+      kids: [
+        { kind: "chip", text: "types", attrs: { tone: "ok", icon: "check" } },
+        { kind: "chip", text: "lint", attrs: { tone: "ok", icon: "check" } },
+        { kind: "chip", text: "unit", attrs: { tone: "ok", icon: "check" } },
+        { kind: "chip", text: "web", attrs: { tone: "ok", icon: "check" } },
+        { kind: "chip", text: "e2e", attrs: { tone: "danger", icon: "x" } },
+        { kind: "chip", text: "legs", attrs: { tone: "ok", icon: "check" } },
+        { kind: "chip", text: "windows", attrs: { tone: "ok", icon: "check" } },
+      ],
+    },
+    {
+      kind: "list",
+      kids: [
+        { kind: "row", text: "e2e: pane glide", attrs: { tone: "danger", end: "1 of 18" }, kids: [{ kind: "para", text: "612 ms against a 400 ms budget" }] },
+        { kind: "row", text: "legs", attrs: { end: "34 of 34" }, kids: [{ kind: "para", text: "replayed, no live turns" }] },
+      ],
+    },
+    { kind: "para", kids: [{ kind: "run", text: "The run: " }, { kind: "link", text: "CI run 7731", attrs: { href: "https://github.com/AltanS/collie/actions" } }] },
+  ],
+});
+
+/** 33: a diff summary in the view (M96): one row per file ending in its counts, and the one hunk worth reading. */
+export const diffSummary = decision({
+  title: "Merge the send path fix?",
+  summary: "Three files change. The hunk below is the whole behaviour change; the rest is tests.",
+  sender: LEAD,
+  ago: 3,
+  options: [
+    { intent: "merge", label: "Merge it" },
+    { intent: "wait", label: "Wait for the leg" },
+  ],
+  view: [
+    {
+      kind: "list",
+      kids: [
+        { kind: "row", text: "bridge/send/path.ts", attrs: { end: "+12 −3", cut: "mid" } },
+        { kind: "row", text: "bridge/send/path.test.ts", attrs: { end: "+48 −0", cut: "mid" } },
+        { kind: "row", text: "CHANGELOG.md", attrs: { end: "+1 −0", cut: "mid" } },
+      ],
+    },
+    {
+      kind: "code",
+      attrs: { lang: "ts" },
+      kids: [
+        { kind: "line", kids: [{ kind: "run", text: "@@ -41,6 +41,9 @@ export function sendPath(", attrs: { style: "dim" } }] },
+        { kind: "line", kids: [{ kind: "run", text: "   const pane = panes.get(id);" }] },
+        { kind: "line", kids: [{ kind: "run", text: "-  if (!pane) return null;", attrs: { style: "fg-red" } }] },
+        { kind: "line", kids: [{ kind: "run", text: "+  if (pane === undefined) {", attrs: { style: "fg-green" } }] },
+        { kind: "line", kids: [{ kind: "run", text: "+    return { refused: \"gone\" };", attrs: { style: "fg-green" } }] },
+        { kind: "line", kids: [{ kind: "run", text: "+  }", attrs: { style: "fg-green" } }] },
+        { kind: "line", kids: [{ kind: "run", text: "   return pane.send(text);" }] },
+      ],
+    },
+  ],
+});

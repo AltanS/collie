@@ -29,6 +29,7 @@ import {
   type HillTextMode,
 } from "../../web/src/lib/hill/wire.ts";
 import { isRequestId } from "../worktree-receipts.ts";
+import { parseDecisionView, type View } from "../../web/src/lib/tricks/schema.ts";
 
 /** What the socket answers a status or withdraw whose id is not a decision id. */
 export const HILL_BAD_ID = "bad request: a decision id is dc_ and 12 characters";
@@ -170,10 +171,15 @@ export function readPostFields(row: JsonObject): HillPostRead {
     if (image === null) return refused("bad_image", "an image is a path and an optional caption");
     images.push(image);
   }
-  return {
-    ok: true,
-    input: { requestId, title, summary, body: body ?? "", options, text, recommends, links, priority, about, replyTo, supersedes, expiresAt, images },
-  };
+  const input: HillPostInput = { requestId, title, summary, body: body ?? "", options, text, recommends, links, priority, about, replyTo, supersedes, expiresAt, images };
+  // The view is the one field read with the schema's own view parser: its refusal names the node.
+  if (row.view !== undefined && row.view !== null) {
+    const read = parseDecisionView(row.view);
+    const first = read.refusals[0];
+    if (read.view === undefined) return refused("bad_body", first === undefined ? "the view is refused" : `the view is refused at ${first.path}: ${first.reason}`);
+    input.view = read.view;
+  }
+  return { ok: true, input };
 }
 
 /** What `readAnswerRequest` answers: the request, or the words of the 400. */
@@ -323,6 +329,16 @@ function readStoredMedia(value: JsonValue | undefined): HillMedia[] | null {
   return out;
 }
 
+/**
+ * A stored decision's view: absent reads as none (a file written before views). One the schema's
+ * parser refuses now (a rule a later build tightened) is left out and the decision stays, as the phone
+ * does with a view it cannot draw: the person still sees the question and its options.
+ */
+function storedView(value: JsonValue | undefined): View | undefined {
+  if (value === undefined) return undefined;
+  return parseDecisionView(value).view;
+}
+
 /** One decision as the file stored it, or null when any field fails. */
 export function readDecision(value: JsonValue | undefined): HillDecision | null {
   const row = asJsonObject(value);
@@ -367,6 +383,7 @@ export function readDecision(value: JsonValue | undefined): HillDecision | null 
   if (links === null || replyTo === undefined || target === undefined || supersedes === undefined || supersededBy === undefined) return null;
   if (expiresAt === undefined || at === undefined || !Number.isSafeInteger(at) || !isState(stateText)) return null;
   if (closedAt === undefined || closedReason === undefined || answer === undefined) return null;
+  const view = storedView(row.view);
   const decision: HillDecision = {
     v: 1,
     id,
@@ -394,5 +411,6 @@ export function readDecision(value: JsonValue | undefined): HillDecision | null 
     closedReason,
     answer,
   };
+  if (view !== undefined) decision.view = view;
   return postDigest === undefined ? decision : { ...decision, postDigest };
 }

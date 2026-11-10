@@ -46,7 +46,7 @@ helper is part of the trick's code, so a trick that is on stops until a person s
 | `t.dashboard(item)`, `t.tabbar(item)` | the Dashboard tile and the bottom bar item, `{ label, icon?, badge?, tone? }` |
 | `t.session({ id?, name?, subtitle?, badge?, progress?, actions?, view })` | the trick's session; keep the default id `main` |
 | `v.card`, `v.group`, `v.list`, `v.row`, `v.bar`, `v.chip`, `v.button`, `v.para`, `v.line`, `v.run`, `v.code`, `v.link`, `v.image`, `v.meter`, `v.spacer`, `v.number` | one builder per node kind; a number attribute may be a number, a flag `true` |
-| `t.decide({ key, title, summary, options, recommends?, body?, text?, priority?, about?, replyTo?, media?, links? })` | asks the person on the Hill |
+| `t.decide({ key, title, summary, options, recommends?, body?, text?, priority?, about?, replyTo?, media?, links?, view? })` | asks the person on the Hill; `view` is a list of display nodes under the summary (see "A Decision's view") |
 | `t.keepDecisions()` | leaves the `decisions` key out: the open Decisions stay as they are |
 | `t.state.get(name, fallback)`, `t.state.set(name, value)` | JSON files in the trick's state folder, written whole (a temp file, then a rename) |
 | `t.sh(cmd, args, { timeoutMs = 5000, cwd? })` | runs a program without a shell; `{ ok, code, stdout, stderr }`, never throws, 256 KiB of output kept |
@@ -215,7 +215,7 @@ and an `unknown` shows on the pressed control until the next tap.
 ## Decisions
 
 `decisions` is the trick's one path to the person's attention: a list of `{ key, title, summary,
-body?, options?, recommends?, priority?, text?, about?, replyTo?, media?, links?, expiresAt? }`. Keys
+body?, options?, recommends?, priority?, text?, about?, replyTo?, media?, links?, expiresAt?, view? }`. Keys
 are 1 to 64 characters of `[a-z0-9-]`, unique per document. Every other cap and rule is the hill's
 (M96), imported from `../hill/wire.ts`, never copied here: a title of 120, a summary of 280, a body of
 4000, up to 5 options, an option label of 40 and a detail of 120, a `confirm` of 24, a why of 200, up
@@ -230,6 +230,39 @@ the person's answer reaches it as the person's own walky message. `media` is up 
 file, caption? }`: `file` names an image in the trick's own folder by a relative path with no `..`
 (`shots/red.png`), and `caption` is up to 80 characters.
 
+### A Decision's view
+
+`view` (M96) puts the facts behind the question on the card, under the summary and under the images
+when there are some: a strip of gates, a few rows with their proof, a hunk of a diff. It is a list of
+nodes like a part's view, read by one function, `parseDecisionView` in `schema.ts`, for a trick's
+document, an agent's `collie hill post --view <file.json>` and the phone alike.
+
+- **Display only.** It takes group, list, row, bar, chip, para, line, run, code, link, meter, spacer
+  and number. No button, card or image: the options are the taps, and the images are `media`.
+- **Nothing acts.** `intent`, `does`, `confirm` and `href` are refused on every node, except a link's
+  `href`, which must be an `https://` or `http://` address (never `rel: "pane"`).
+- **Small.** At most 8 KiB of compact JSON, 100 nodes and 4 levels deep.
+- A view that breaks a rule refuses its decision alone in a trick's document (the path names the node,
+  `/decisions/0/view/1/kind`), and refuses an agent's post with `bad_body` and the same path. The
+  view is part of the content hash and of the post's digest; a decision without one keeps the hash
+  and the digest it always had.
+- **The card.** The phone draws the view in a quiet frame captioned "From <sender>", with the trick
+  renderer and no tap handler. A link shows its host and opens in a new tab. A bar wraps instead of
+  clipping. Past 240 px the frame folds behind "Show all", with no scroller inside the card. A stored
+  view the phone cannot read is dropped and the decision stays; one that throws while it draws shows
+  the placeholder.
+
+```json
+{ "key": "tag-1-28-2", "title": "Tag 1.28.2 with the e2e gate red?", "summary": "Six of seven gates are green.",
+  "options": [{ "intent": "rerun", "label": "Rerun e2e first" }, { "intent": "tag", "label": "Tag it now" }],
+  "view": [
+    { "kind": "bar", "kids": [{ "kind": "chip", "text": "unit", "attrs": { "tone": "ok", "icon": "check" } },
+                              { "kind": "chip", "text": "e2e", "attrs": { "tone": "danger", "icon": "x" } }] },
+    { "kind": "list", "kids": [{ "kind": "row", "text": "e2e: pane glide", "attrs": { "end": "1 of 18" },
+                                 "kids": [{ "kind": "para", "text": "612 ms against a 400 ms budget" }] }] }
+  ] }
+```
+
 ### How the runner posts them
 
 After a run that succeeded, the runner (`bridge/tricks/hill.ts`) makes the hill agree with the list,
@@ -239,7 +272,7 @@ by key. The trick is one sender: its name is the card's, its id and the key ride
 - A new key posts once. Its request id is derived from the trick, the key and the content, so a second
   run or a bridge restart posts nothing twice.
 - The same key with changed content (the title, summary, body, options, recommends, text, links,
-  priority, about, replyTo, or an image's bytes or caption) posts the new version, which replaces the
+  priority, about, replyTo, the view, or an image's bytes or caption) posts the new version, which replaces the
   open one.
 - A key the list no longer holds is withdrawn, "by the trick".
 - A key the person answered or dismissed stays closed while its content is unchanged. To ask again,

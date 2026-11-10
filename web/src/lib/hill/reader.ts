@@ -10,9 +10,12 @@
 // The caps of the contract are not checked here. The bridge cleans and caps every string before it
 // stores one, and a long title is still a title: the card truncates it. What is checked is what
 // would make a card lie: an unknown state, a priority or a text mode outside the closed lists, an
-// option without an intent, a link that is not http or https.
+// option without an intent, a link that is not http or https. A view (M96) is the one exception: it is
+// read with the same rules the bridge holds a post to (`parseDecisionView`), and one that fails is
+// dropped alone, so the card keeps its question and its options.
 
 import { asJsonBoolean, asJsonNumber, asJsonObject, asJsonString, type JsonObject, type JsonValue } from "@/lib/json";
+import { parseDecisionView } from "@/lib/tricks/schema";
 
 import {
   HILL_MEDIA_BYTES_MAX,
@@ -264,7 +267,7 @@ export function readHillDecision(value: JsonValue): HillDecision | null {
   if (about === undefined || replyTo === undefined || supersedes === undefined || supersededBy === undefined) return null;
   if (expiresAt === undefined || closedAt === undefined || closedReason === undefined) return null;
 
-  return {
+  const decision: HillDecision = {
     v: 1,
     id,
     requestId,
@@ -291,6 +294,11 @@ export function readHillDecision(value: JsonValue): HillDecision | null {
     closedReason,
     answer,
   };
+  // A view that does not fit is left out and the decision stays: the facts under the summary go, the
+  // question and its options do not. An older bridge sends none.
+  const view = o.view === undefined || o.view === null ? undefined : parseDecisionView(o.view).view;
+  if (view !== undefined) decision.view = view;
+  return decision;
 }
 
 /** The decisions of one list that fit, and how many did not. */
