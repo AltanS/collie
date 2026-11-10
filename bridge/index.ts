@@ -291,7 +291,7 @@ import { isOwnId, resolveBridgeId } from "./bridge-id.ts";
 import { scopeKeyAddress, TrickHill } from "./tricks/hill.ts";
 import { TricksService } from "./tricks/service.ts";
 import { createSessionFolders, createSessionLabels } from "./operator-space-labels.ts";
-import { labelOf, LOCAL_MEMBER } from "./walky/address.ts";
+import { labelOf, LOCAL_MEMBER, parseAddress } from "./walky/address.ts";
 import {
   crewSkipped,
   crewTargets,
@@ -323,6 +323,7 @@ import { deniedFoldersSync, HillMediaStore } from "./hill/media.ts";
 import { HillPush } from "./hill/push.ts";
 import { HillReceiptStore } from "./hill/receipts.ts";
 import { HillService } from "./hill/service.ts";
+import { HillCrewLead, HillHeldMedia, HillMemberForward, olderThanTricksCrew } from "./hill/crew.ts";
 import { hillDir, HillStore } from "./hill/store.ts";
 import { HillSwitch } from "./hill/switch.ts";
 import { hillSessionName, OneLook, walkyPlace, walkySend } from "./hill/walky.ts";
@@ -2317,6 +2318,9 @@ const hillViews = new OneLook(() => registry.ordered().flatMap((rt) => rt.engine
 // `unattended` (the card's "runs unattended" mark) keeps walkyPlace's default, false: no bridge fact
 // says yet whether a session runs in bypass or auto-approve mode, so nothing is wired here.
 const hillPlace = walkyPlace({ who: hillWho.read }, walkyMemberId);
+// On a lead (CREW_PROTOCOL §22): the crew machine an address is on when it is not answering now, read
+// off the sweep's ledger. Assigned where the lead runtime is built, after this.
+let hillOffline: (address: string) => string | null = () => null;
 const hill = new HillService({
   store: new HillStore(hillDir(cfg.stateDir), Date.now, undefined, (ids) => {
     for (const id of ids) hillMedia.remove(id);
@@ -2353,8 +2357,22 @@ const hill = new HillService({
   // The Hill's switch (hill/switch.ts): on by default, `<stateDir>/hill/switch.json` once the phone or
   // `collie hill on|off` moved it. Read behind a stat check, so a switch needs no restart.
   hillSwitch: new HillSwitch(cfg.stateDir),
+  // A crew member posts on its lead's Hill (CREW_PROTOCOL §22, 1.29.0): images read here, then uploaded,
+  // then the post, over the member's signed dial of its lead. A lead below 1.29.0 is refused up front
+  // when its release is known, and by its 404 when not.
+  forward:
+    crew.mode === "peer" && walkyMemberId !== null
+      ? new HillMemberForward({
+          call: (route, payload, budgetMs) => walkyToLead(payload, route, budgetMs),
+          leadName: () => trustStore.current()?.lead?.memberId ?? null,
+          leadOlder: () => olderThanTricksCrew(heardLeadRelease, crewVersion, compareSemver),
+        })
+      : undefined,
+  offline: crew.mode === "lead" ? (address) => hillOffline(address) : undefined,
 });
 hill.pruneMedia();
+// The lead's half of §22: a member's images wait here by hash for the post that names them.
+const hillCrewLead = crew.mode === "lead" ? new HillCrewLead({ hill, held: new HillHeldMedia(), machineOf: (memberId) => memberId }) : null;
 const walkyServer = new WalkyServer({
   socketPath: walkySocketPath(cfg.stateDir),
   host: HOST,
@@ -2882,6 +2900,16 @@ const crewLead = (() => {
 if (crewLead !== undefined && walkyMemberId !== null) {
   const lead = crewLead;
   walkyMemberVersion = (memberId) => lead.contributions().find((c) => c.state.memberId === memberId)?.state.version ?? null;
+  // §22: a session on a member this lead cannot reach now, by the sweep's own reading (the one `who`
+  // shows as `unreachable`). Its Decisions wait.
+  hillOffline = (address) => {
+    const at = parseAddress(address);
+    if (at === null || at.kind !== "pane") return null;
+    // The lead's own sessions are not a contribution, so they never read as away.
+    const member = lead.contributions().find((c) => c.state.memberId === at.memberId);
+    if (member === undefined) return null;
+    return member.state.health === "reachable" ? null : member.name;
+  };
   walkyLeadHalf = {
     route: leadRouteRemote({
       self: walkyMemberId,
@@ -3127,7 +3155,7 @@ if (crewLead) {
  * and attested on every dial, with no pin for the lead (its address is a front door that terminates
  * TLS, the CLI's rule). Built on first use and kept (`walkyLeadClient`): the store is read on every dial.
  */
-async function walkyToLead(payload: string, route: string = CREW_WALKY_ROUTE): Promise<CrewDialAnswer> {
+async function walkyToLead(payload: string, route: string = CREW_WALKY_ROUTE, budgetMs: number = WRITE_BUDGET_MS): Promise<CrewDialAnswer> {
   const data = trustStore.current();
   const lead = data?.lead ?? null;
   if (data === null || lead === null) return { kind: "refused", reason: "this machine has no lead" };
@@ -3146,7 +3174,7 @@ async function walkyToLead(payload: string, route: string = CREW_WALKY_ROUTE): P
     route,
     undefined,
     { method: "POST", headers: { "content-type": "application/json" }, body: payload },
-    WRITE_BUDGET_MS,
+    budgetMs,
     true,
   );
   if (outcome.ok) {
@@ -3543,6 +3571,15 @@ const server = listenOrExit("front door", cfg.host, cfg.port, () => startServer(
               // §21 (added 2026-10-18): a member takes its lead's push of how its own messages ended.
               outcomes: crew.mode === "peer" ? (body, from) => walkyCrew.outcomes(body, from) : undefined,
             },
+            // §22 (added in 1.29.0): a lead takes a member's Decision, its images and its follow-up calls.
+            hill:
+              hillCrewLead === null
+                ? undefined
+                : {
+                    media: (body, member) => hillCrewLead.media(body, member.memberId),
+                    post: (body, member) => hillCrewLead.post(body, member.memberId),
+                    op: (body, member) => hillCrewLead.op(body, member.memberId),
+                  },
             transportPinned,
             // Present only on a two-anchored peer. Its presence is what makes a dial attestation
             // mandatory and identity signature-resolved (§8.1's 2026-08-20 amendment).
