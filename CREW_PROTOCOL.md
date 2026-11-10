@@ -3615,8 +3615,8 @@ the value the trust store pins (`fingerprintOfCert`, `bridge/crew/identity.ts`).
 A walky message's `to` may also be a scope as the sender typed it (added 2026-10-30, M75): `<repo>`,
 `<repo>#<branch>` or `here`. It stays the signed `to` on every hop, so a recipient reads the group the
 message was addressed to, not its own pane address. A member that delivers a scope reads the label of
-the pane the route names at that moment, and delivers only while the label sits in the scope (for
-`here`, in the repo of the sender's `from.label`), so a pane outside the scope cannot ride it. The
+the pane the route names at that moment, and delivers only while the pane sits in the scope (for
+`here`, in the sender's signed space; from 1.29.0, M98), so a pane outside the scope cannot ride it. The
 attestation binds the crew and the receiver (§16's rule for a broadened pin), so a member cannot
 present an attested message at a sibling or in another crew. The voucher binds the crew and names the
 member and its certificate; it names no message, so the attestation is still what binds one message
@@ -3684,16 +3684,20 @@ check, the lead's included, on the signed fields above (`bridge/walky/border.ts`
    word. A phone's message is not bound by a space.
 2. **A message with no `from.space` is not checked** when its signer is below 1.29.0 (the skew rule
    above). From a signer at or above 1.29.0 it is a bad request.
-3. **`outside: true` passes.** An agent's `all` and `<member>/all` are refused without it.
-4. **The same space passes**: the sender's `space.key` equals the target pane's, exactly. A named key
-   joins across machines. An unnamed key holds its member id and so never equals a key elsewhere.
+3. **The same space passes**: the sender's `space.key` equals the target pane's, exactly. A named key
+   joins across machines. An unnamed key holds its member id and so never equals a key elsewhere. This
+   check comes before the flag: a message with `outside: true` to a pane of the sender's own space
+   passes as `in`, and its header carries no `outside` word.
+4. **`outside: true` passes.** An agent's `all` and `<member>/all` are refused without it. With the flag
+   they reach every pane, and each pane of the sender's own space still passes as `in`; only the others
+   pass as `outside`.
 5. **A reply passes** when it answers a message the TARGET pane sent and that went to the sender. Both
    facts come from the receiving bridge's own log, never from the message, so a pane cannot reply
    across the border to an id it only knows.
 6. **Anything else is refused** with the receipt reason `outside your space`.
 
-A bridge that receives a message by the outside flag types its header with the word `outside` after
-the sender's parenthesis and before any `reply to`. A reader that predates the word takes it as part of
+A bridge that passes a message by the outside flag (rule 4, not rule 3) types its header with the word
+`outside` after the sender's parenthesis and before any `reply to`. A reader that predates the word takes it as part of
 the sender's text. The receipt records how the message passed (`via`: `operator`, `in`, `reply`,
 `outside` or `legacy`), an additive-optional field (§7.1).
 

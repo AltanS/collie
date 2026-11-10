@@ -13,8 +13,11 @@
 //                  before rules 2 to 4 because 9c holds whatever else the message says: a bridge that
 //                  writes the outside flag always writes the space. For every well-formed message the
 //                  order gives the spec's table (rule 5 there).
-//   2. `outside`   the sender said the message may leave its space (`outside: true`, signed).
-//   3. `in`        the sender's space is the target's: the keys are equal (space.ts `sameSpace`).
+//   2. `in`        the sender's space is the target's: the keys are equal (space.ts `sameSpace`). This
+//                  holds before the flag: a message with the outside flag to a pane of the sender's own
+//                  space passes as `in`, and its header carries no `outside` word, because the sender
+//                  is of the receiver's space (lead's decision, 2026-11-10).
+//   3. `outside`   the sender said the message may leave its space (`outside: true`, signed).
 //   4. `reply`     the message answers one the TARGET pane sent, and that one went to the sender. Both read
 //                  from THIS bridge's log, never from the message (`BorderParent`), so a pane cannot reply
 //                  across the border to a message it only knows the id of. A thread goes on both ways:
@@ -116,8 +119,8 @@ export function borderVerdict(input: BorderInput): BorderAnswer {
   if (message.kind === "operator" && message.from.address === null) return { via: "operator" };
   const space = message.from.space ?? null;
   if (space === null) return input.signerVersion === "older" ? { via: "legacy" } : { refuse: NO_SPACE };
-  if (message.outside === true) return { via: "outside" };
   if (input.target.space !== null && sameSpace(space, input.target.space)) return { via: "in" };
+  if (message.outside === true) return { via: "outside" };
   if (replyHolds(input)) return { via: "reply" };
   return { refuse: OUTSIDE_YOUR_SPACE };
 }

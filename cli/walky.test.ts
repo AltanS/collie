@@ -347,26 +347,39 @@ describe("send", () => {
       return request?.op === "send" ? [request] : [];
     });
 
-  socketTest("--outside rides the send request, and an agent's `all` with it is delivered; the receiver's inbox header says outside (M98)", async () => {
-    const b = await bridge();
+  socketTest("--outside rides the send request, and an agent's `all` with it is delivered; the inbox header of a pane in another space says outside (M98)", async () => {
+    // %2 sits in another space: a message to a pane of the sender's own space passes as `in` and carries no word.
+    const sent: string[] = [];
+    const elsewhere = spaceOf({ memberId: "local", spaceId: "w2", spaceLabel: "other", spaceNamed: true });
+    const host: WalkyHost = {
+      panes: () => [
+        { session: "main", paneId: "%1", agent: true, harness: "agent-x", label: "repo#one", state: "idle", activeAt: null, instance: "aaaa", terminal: true, off: false, space: SOLO_SPACE },
+        { session: "main", paneId: "%2", agent: true, harness: "agent-y", label: "repo#two", state: "working", activeAt: null, instance: "bbbb", terminal: true, off: false, space: elsewhere },
+      ],
+      send: async (_pane, _id, text) => {
+        sent.push(text);
+        return { outcome: "sent" };
+      },
+      sendState: () => ({ outcome: "sent" }),
+      cancelHeld: () => undefined,
+    };
+    const b = await bridge({ host });
     const seen = recording();
     const d = deps(b, inPane("%1"), { ask: seen.ask });
     expect(await cmdWalkySend(d, ["--outside", "all", "standup"])).toBe(EXIT.OK);
     expect(sends(seen.lines)).toEqual([expect.objectContaining({ to: "all", outside: true })]);
     expect(d.io.stdout.join("\n")).toContain("typed into the pane");
-    expect(b.sent).toHaveLength(1);
+    expect(sent).toHaveLength(1);
     // The pane that got it reads the word in its header, as the envelope it was typed with does.
     const inbox = deps(b, inPane("%2"));
     expect(await cmdWalkyInbox(inbox, [])).toBe(EXIT.OK);
     expect(inbox.io.stdout[0]).toMatch(/^\[walky-talky wt_aaaaaaaaaaa1\] from agent local\/%1#aaaa \(agent-x, repo#one\) outside$/u);
-    // A message with no flag carries no such word and no such field.
+    // A message with no flag carries no such field, and across the border it is refused.
     const plain = recording();
     const quiet = deps(b, inPane("%1"), { ask: plain.ask, mintId: () => "wt_aaaaaaaaaaa2" });
-    expect(await cmdWalkySend(quiet, ["local/%2", "hi"])).toBe(EXIT.OK);
+    expect(await cmdWalkySend(quiet, ["local/%2", "hi"])).toBe(EXIT.REFUSED);
     expect(sends(plain.lines)[0]).not.toHaveProperty("outside");
-    const again = deps(b, inPane("%2"));
-    expect(await cmdWalkyInbox(again, ["--all"])).toBe(EXIT.OK);
-    expect(again.io.stdout.filter((line) => line.startsWith("[walky-talky wt_aaaaaaaaaaa2]"))).toEqual(["[walky-talky wt_aaaaaaaaaaa2] from agent local/%1#aaaa (agent-x, repo#one)"]);
+    expect(sent).toHaveLength(1);
   });
 
   socketTest("--outside on `here` is accepted and changes nothing: the request carries no flag and the message no outside word (M98)", async () => {

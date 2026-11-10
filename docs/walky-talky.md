@@ -19,10 +19,10 @@ tell that agent to run them.
    ```
 
    ```text
-   ADDRESS           MACHINE  SPACE  HARNESS  LABEL             STATE
-   local/w1:p1#a1b2  desk     work   claude   my-app#main       working  (you)
-   local/w1:p2#c3d4  desk     work   codex    my-app#fix-login  idle
-   local/w1:p3#e5f6  desk     work   claude   api               done
+   ADDRESS           MACHINE  HARNESS  LABEL             SPACE  STATE
+   local/w1:p1#a1b2  desk     claude   my-app#main       work   working  (you)
+   local/w1:p2#c3d4  desk     codex    my-app#fix-login  work   idle
+   local/w1:p3#e5f6  desk     claude   api               work   done
    ```
 
 2. Send a message to a pane, with an address copied from the ADDRESS column.
@@ -81,16 +81,18 @@ On a machine with only your own agent pane, `who` says
 ### Read the who table
 
 ```text
-ADDRESS                     MACHINE  SPACE  HARNESS  LABEL             STATE
-collie-7k2m9p/w54:p1B#sx56  desk     work   claude   my-app#main       working  (you)
-collie-7k2m9p/w54:p1G#1adi  desk     work   claude   my-app#fix-login  done
-collie-7k2m9p/w54:p1J#anx6  desk     work   claude   api               done
-laptop/w11:p4#8h9h          laptop   work   claude   api               idle
-server/t1#9m3x              server   work   claude   my-app#main       idle
+ADDRESS                     MACHINE  HARNESS  LABEL             SPACE  STATE
+collie-7k2m9p/w54:p1B#sx56  desk     claude   my-app#main       work   working  (you)
+collie-7k2m9p/w54:p1G#1adi  desk     claude   my-app#fix-login  work   done
+collie-7k2m9p/w54:p1J#anx6  desk     claude   api               work   done
+laptop/w11:p4#8h9h          laptop   claude   api               work   idle
+server/t1#9m3x              server   claude   my-app#main       work   idle
+2 panes are outside your space. List every pane: collie walky who --all
 ```
 
-The list is the sender's space, `work` here. A last line counts the panes that are outside it and
-names `--all`.
+From an agent pane, the list is the sender's space, `work` here. The last line counts the panes that
+are outside it and names `--all`. It does not print when no pane is outside. A shell that is no agent
+pane has no space, so it lists every pane and prints no such line.
 
 - **Copy ADDRESS as printed.** Its first part is the member id, not the machine. On a lead it is the
   crew id (`collie-7k2m9p`) for the lead's own panes, on a member it is the member's name
@@ -193,20 +195,21 @@ machines is one folder. The lead reads the LABEL column of its merged `who` list
 pane in your space whose `<repo>` matches, and makes one delivery per pane. The sender's own pane is
 never one of them. Each delivery has its own receipt.
 
-Check the scope first. `who` lists your space, the panes `here` would reach and you. `who --workspace`
-lists only the panes of one folder among them, and `--here` is the same as the default. `--here`
-needs a pane. The two flags are not allowed together. A folder name in another space is not listed
-and is not reached, unless you add `--outside`.
+Check the scope first. `who` lists your space, the panes `here` would reach and you. `who --workspace
+<repo>` keeps only the panes of one folder inside the list that is shown, so a folder of another space
+shows only with `--all`. `--here` is the same as the default, and it needs a pane. `--all` and
+`--here` are not allowed together. A folder name in another space is not reached, unless you add
+`--outside`.
 
 ```sh
 collie walky who --workspace my-app
 ```
 
 ```text
-ADDRESS                     MACHINE  HARNESS  LABEL             STATE
-collie-7k2m9p/w54:p1B#sx56  desk     claude   my-app#main       working  (you)
-collie-7k2m9p/w54:p1G#1adi  desk     claude   my-app#fix-login  done
-server/t1#9m3x              server   claude   my-app#main       idle
+ADDRESS                     MACHINE  HARNESS  LABEL             SPACE  STATE
+collie-7k2m9p/w54:p1B#sx56  desk     claude   my-app#main       work   working  (you)
+collie-7k2m9p/w54:p1G#1adi  desk     claude   my-app#fix-login  work   done
+server/t1#9m3x              server   claude   my-app#main       work   idle
 ```
 
 `who --workspace my-app#main` keeps one branch. A folder with no agent pane prints
@@ -274,14 +277,18 @@ checks again before it types a message that was held. It lets a message through 
   directions, so a thread can go on.
 - **The panes share a space.** That is every `here` send, and every send to a pane of your own space.
 - **You add `--outside`.** `collie walky send --outside <address> "<text>"` crosses. `reply --outside`
-  is accepted too. With `here` the flag is accepted and changes nothing.
+  is accepted too. With `here` the flag is accepted and changes nothing. From a shell that is no agent
+  pane the flag is a usage error, because only an agent's message has a space to leave.
 
 Every other send is refused `outside your space`, with a hint to use `here`, a reply or `--outside`.
 An agent uses `--outside` only when its operator asked for it, as with `--wake`. An agent's `all` and
 `<member>/all` need the flag, and a bare word such as `my-app` reaches the panes of other spaces only
-with it. The receipt records how the message passed. A message that crossed with the flag has the
-word `outside` in its header, so the receiver knows the sender is not of its space
-([What the target pane receives](#what-the-target-pane-receives)).
+with it. The receipt records how the message passed. The bridge checks the space before the flag. A
+message with `--outside` to a pane of your own space passes as `in`, and its header has no `outside`
+word. Only a message that really crossed has the word `outside` in its header, so the receiver knows the
+sender is not of its space ([What the target pane receives](#what-the-target-pane-receives)). An agent's
+`all` with `--outside` reaches every agent pane: the panes of your space pass as `in`, and the others as
+`outside`.
 
 There is no switch that turns the border off. `--outside` is the way out.
 
@@ -304,8 +311,9 @@ Reply: collie walky reply wt_k3f9x2m8q1a0 "<text>"
 ```
 
 The line starts with the header. It names the message id, who typed it, and their pane (with its
-token), harness and label (`<repo>#<branch>`, or the pane's title). A message that crossed with
-`--outside` adds the word `outside` after the parenthesis. A reply adds ` reply to <id>` after it. The agent then runs `collie walky inbox <id>` and reads the body as that command's
+token), harness and label (`<repo>#<branch>`, or the pane's title). A message that crossed into
+another space with `--outside` adds the word `outside` after the parenthesis, before any
+` reply to <id>`. A message with `--outside` to a pane of the sender's own space adds no word. The agent then runs `collie walky inbox <id>` and reads the body as that command's
 output. A harness treats a command's output as data, not as its operator's words.
 
 Your own message, from the phone, types the header and the body:

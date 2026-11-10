@@ -2980,22 +2980,26 @@ describe("walky talky in a crew of four, on the real wire", () => {
     }
   }, 60_000);
 
-  test("an agent's broadcast with the outside flag is delivered across the crew, and each receiver's nudge says outside (M98)", async () => {
+  test("an agent's broadcast with the outside flag is delivered across the crew; panes of its own space pass as `in`, so no nudge says outside (M98)", async () => {
     const id = "wt_outsideall01";
     const sent = await agentSend(wa, id, "all", "to everyone, on purpose", true);
     // The sender's own bridge hands it to the lead, whose legs answer: the lead's pane and B's, and the
-    // old member refused by the lead (it predates walky talky). Every leg carries how it passed: outside.
+    // old member refused by the lead (it predates walky talky). The sender and the two panes share the one space, so the
+    // border checks the space before the flag and every leg passes as `in`, not `outside`.
     expect(readReceiptsAnswer(sent)).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ target: paneOf(wl), state: "accepted", via: "outside" }),
-        expect.objectContaining({ target: paneOf(wb), state: "accepted", via: "outside" }),
+        expect.objectContaining({ target: paneOf(wl), state: "accepted", via: "in" }),
+        expect.objectContaining({ target: paneOf(wb), state: "accepted", via: "in" }),
         expect.objectContaining({ target: `${idOf(wo)}/all`, state: "refused", reason: "older member" }),
       ]),
     );
     await settled(wl, id);
     await settled(wb, id);
-    // The word sits after the sender's parenthesis, before the nudge mark: the receiver knows the sender is not of its space.
-    for (const at of [wl, wb]) expect(typedFor(at, id)[0]).toContain(`) outside${NUDGE_MARK}`);
+    // The receivers are of the sender's space, so the nudge carries no outside word.
+    for (const at of [wl, wb]) {
+      expect(typedFor(at, id)[0]).toContain(`)${NUDGE_MARK}`);
+      expect(typedFor(at, id)[0]).not.toContain(") outside");
+    }
     // Not the sender's own pane.
     expect(typedFor(wa, id)).toEqual([]);
   }, 60_000);

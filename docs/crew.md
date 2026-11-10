@@ -378,7 +378,7 @@ collie walky who
 A member sends the message to the lead. The lead checks the member's signature, then passes the
 message on to the machine that the address names, and that machine checks the lead's. The lead also
 sends the sender's certificate, so that machine checks the sender's signature too. A member's
-`who` asks the lead for the crew's panes, and lists its own panes only when the lead does not answer. The lead learns the outcome of every message, and sends it back to the
+`who` asks the lead for the crew's panes, and lists its own panes, with a note that other machines are the lead's to list, only when the lead does not answer. The lead learns the outcome of every message, and sends it back to the
 member that sent it. Run `collie walky status <id>` on the sender's machine or on the lead
 ([Across a crew](walky-talky.md#across-a-crew)).
 

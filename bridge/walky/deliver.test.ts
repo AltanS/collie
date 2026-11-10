@@ -2010,6 +2010,19 @@ describe("the space border (M98 spec 03)", () => {
     expect(receiptsOf(await r.service.send(send("wt_aaaaaaaaaaa1", "local/w2:p1"), operator))).toEqual([{ target: "local/w2:p1", state: "accepted", reason: undefined, via: "operator" }]);
   });
 
+  test("`--outside` to a pane of the sender's own space passes as `in`: the typed line carries no outside word", async () => {
+    const panes = three();
+    const r = rig(panes);
+    const answer = await r.service.send({ ...send("wt_aaaaaaaaaaa1", "local/w1:p2"), outside: true }, agentOf(panes[0]!));
+    expect(receiptsOf(answer)).toEqual([{ target: "local/w1:p2", state: "accepted", reason: undefined, via: "in" }]);
+    await r.service.deliverer.settled();
+    expect(r.service.status("wt_aaaaaaaaaaa1").receipts[0]).toMatchObject({ state: "delivered", via: "in" });
+    expect(r.host.sends[0]!.text).toStartWith("[walky-talky wt_aaaaaaaaaaa1] from agent local/w1:p1#aaaa (agent-x, repo#a)");
+    expect(r.host.sends[0]!.text.includes(" outside")).toBe(false);
+    // The flag is still the sender's signed word on the message.
+    expect(r.service.status("wt_aaaaaaaaaaa1").message?.outside).toBe(true);
+  });
+
   test("`--outside` lets the message across, and the typed line carries the outside word after the sender", async () => {
     const panes = three();
     const r = rig(panes);
@@ -2067,7 +2080,7 @@ describe("the space border (M98 spec 03)", () => {
     const r = rig(panes);
     const targets = (answer: Awaited<ReturnType<WalkyService["send"]>>) => receiptsOf(answer).map((receipt) => `${receipt.target} ${receipt.state} ${receipt.via}`);
     expect(targets(await r.service.send(send("wt_aaaaaaaaaaa1", "repo"), agentOf(panes[0]!)))).toEqual(["local/w1:p2 accepted in"]);
-    expect(targets(await r.service.send({ ...send("wt_aaaaaaaaaaa2", "repo"), outside: true }, agentOf(panes[0]!)))).toEqual(["local/w1:p2 accepted outside", "local/w2:p1 accepted outside"]);
+    expect(targets(await r.service.send({ ...send("wt_aaaaaaaaaaa2", "repo"), outside: true }, agentOf(panes[0]!)))).toEqual(["local/w1:p2 accepted in", "local/w2:p1 accepted outside"]);
     // The operator's scope knows no space.
     expect(targets(await r.service.send(send("wt_aaaaaaaaaaa3", "repo"), operator))).toEqual(["local/w1:p1 accepted operator", "local/w1:p2 accepted operator", "local/w2:p1 accepted operator"]);
   });
@@ -2084,7 +2097,12 @@ describe("the space border (M98 spec 03)", () => {
     const r = rig(panes);
     expect(receiptsOf(await r.service.send(send("wt_aaaaaaaaaaa1", "all"), agentOf(panes[0]!)))).toEqual([{ target: "all", state: "refused", reason: "outside your space", via: undefined }]);
     const answer = await r.service.send({ ...send("wt_aaaaaaaaaaa2", "all"), outside: true }, agentOf(panes[0]!));
-    expect(receiptsOf(answer).map((receipt) => `${receipt.target} ${receipt.state} ${receipt.via}`)).toEqual(["local/w1:p2 accepted outside", "local/w2:p1 accepted outside"]);
+    // The panes of the sender's own space pass as `in`; only the pane of another space is `outside`.
+    expect(receiptsOf(answer).map((receipt) => `${receipt.target} ${receipt.state} ${receipt.via}`)).toEqual(["local/w1:p2 accepted in", "local/w2:p1 accepted outside"]);
+    await r.service.deliverer.settled();
+    const typed = (paneId: string) => r.host.sends.find((sent) => sent.pane === paneId)?.text ?? "";
+    expect(typed("w1:p2").includes(" outside")).toBe(false);
+    expect(typed("w2:p1")).toContain("(agent-x, repo#a) outside");
   });
 
   test("a message held for a draft ends refused when the pane moved to another space before the release", async () => {
@@ -2134,7 +2152,8 @@ describe("the space border (M98 spec 03)", () => {
     await r.service.deliverer.settled();
     expect(r.service.status("wt_aaaaaaaaaaa1").receipts[0]?.state).toBe("delivered");
     expect(r.service.status("wt_aaaaaaaaaaa2").receipts[0]).toMatchObject({ state: "refused", reason: "outside your space" });
-    expect(r.service.status("wt_aaaaaaaaaaa3").receipts[0]).toMatchObject({ state: "delivered", via: "outside" });
+    // Accepted while the pane was in the sender's space, so the receipt stays `in`; the flag carries it past the second check.
+    expect(r.service.status("wt_aaaaaaaaaaa3").receipts[0]).toMatchObject({ state: "delivered", via: "in" });
     expect(r.host.sends.map((typed) => typed.id)).toEqual([sendIdOf("wt_aaaaaaaaaaa1", "local/w1:p2"), sendIdOf("wt_aaaaaaaaaaa3", "local/w1:p2")]);
   });
 

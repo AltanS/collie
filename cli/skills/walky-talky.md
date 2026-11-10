@@ -65,10 +65,11 @@ List who you can reach. When you pick an address yourself, copy it from this lis
 ```
 
 ```text
-ADDRESS                     MACHINE   SPACE    HARNESS  LABEL                  STATE
-collie-04rj6a/w54:p1B#sx56  bluefin   collie   claude   collie-workspace#main  working  (you)
-collie-04rj6a/w54:p1J#anx6  bluefin   collie   claude   walky-live             done
-minibuch/w11:p4#8h9h        minibuch  collie   claude   walky-live             idle
+ADDRESS                     MACHINE   HARNESS  LABEL                  SPACE   STATE
+collie-04rj6a/w54:p1B#sx56  bluefin   claude   collie-workspace#main  collie  working  (you)
+collie-04rj6a/w54:p1J#anx6  bluefin   claude   walky-live             collie  done
+minibuch/w11:p4#8h9h        minibuch  claude   walky-live             collie  idle
+2 panes are outside your space. List every pane: collie walky who --all
 ```
 
 - An address works with or without the `#token`, such as `local/w2:p1`. The token pins the
@@ -79,8 +80,8 @@ minibuch/w11:p4#8h9h        minibuch  collie   claude   walky-live             i
 - When a message body names another session, write its full address as `who` prints it, such as
   `collie-04rj6a/w54:p1J#anx6`. Never write a bare pane id (`w54:p1J`), a window id (`w54`) or a label
   alone. A label repeats, and your operator's phone draws the session's name in place of the address.
-- Your space is the workspace or session of your pane, the SPACE column. Your messages stay in it. A space of
-  the same name on another machine is the same space. `who` lists your space, `who --all` every pane.
+- Your space is the workspace or session of your pane (SPACE). Your messages stay in it. The same name on another
+  machine is the same space. `who` lists it and counts the panes outside. `who --all` lists every pane.
 - A word with no `/` is a folder inside your space. `<repo>` is every agent pane in that folder, on any branch.
   `<repo>#<branch>` is one branch. `here` is your whole space on every machine, without your own pane. `<repo>`
   is the first part of LABEL, such as `collie-workspace` in `collie-workspace#main`.
@@ -122,12 +123,11 @@ is for all of them. If one agent has what you need, ask that agent. Every pane i
 {{COLLIE_BIN}} walky send here "I changed the Send Protocol. Rebase before you push."
 ```
 
-`who` lists the panes `here` would reach, and you. Look before you send. `send` prints one line per pane,
-then `status` adds a totals line. A machine out of reach prints `unreachable`: do not send it again.
-
+Look before you send: `who` lists the panes `here` would reach, and you. `send` prints one line per pane, and `status`
+adds a totals line. A machine out of reach prints `unreachable`: do not send it again.
 A pane outside your space refuses your message: `not sent: outside your space`. A `reply` to a message that pane
 sent you always works. Add `--outside` (`send --outside <address> "<text>"`) only when your operator asked you
-to leave your space. Otherwise tell your operator and stop.
+to leave your space, else tell your operator and stop. With `here` the flag changes nothing.
 
 Answer a message by its id. The reply goes back to the sender.
 

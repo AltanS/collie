@@ -47,17 +47,22 @@ describe("the rule, row by row", () => {
     expect(borderVerdict(input(WEB, {}, { kind: "operator" }))).toEqual({ refuse: OUTSIDE_YOUR_SPACE });
   });
 
-  test("2. the outside flag passes as `outside`, across any space", () => {
-    expect(borderVerdict(input(WEB, {}, { outside: true }))).toEqual({ via: "outside" });
-    expect(borderVerdict(input(UNNAMED_LAPTOP, { target: target(UNNAMED_DESK) }, { outside: true }))).toEqual({ via: "outside" });
-  });
-
-  test("3. the same space passes as `in`: a named space joins across machines", () => {
+  test("2. the same space passes as `in`: a named space joins across machines", () => {
     expect(borderVerdict(input(API_LAPTOP))).toEqual({ via: "in" });
     expect(borderVerdict(input(UNNAMED_DESK, { target: target(UNNAMED_DESK) }))).toEqual({ via: "in" });
   });
 
-  test("3. two unnamed spaces of the same id on two machines are two spaces", () => {
+  test("2. the outside flag to a pane of the sender's own space still passes as `in`, so no `outside` word follows", () => {
+    expect(borderVerdict(input(API_LAPTOP, {}, { outside: true }))).toEqual({ via: "in" });
+    expect(borderVerdict(input(UNNAMED_DESK, { target: target(UNNAMED_DESK) }, { outside: true }))).toEqual({ via: "in" });
+  });
+
+  test("3. the outside flag passes as `outside`, across any space", () => {
+    expect(borderVerdict(input(WEB, {}, { outside: true }))).toEqual({ via: "outside" });
+    expect(borderVerdict(input(UNNAMED_LAPTOP, { target: target(UNNAMED_DESK) }, { outside: true }))).toEqual({ via: "outside" });
+  });
+
+  test("2. two unnamed spaces of the same id on two machines are two spaces", () => {
     expect(UNNAMED_DESK.label).toBe(UNNAMED_LAPTOP.label);
     expect(borderVerdict(input(UNNAMED_LAPTOP, { target: target(UNNAMED_DESK) }))).toEqual({ refuse: OUTSIDE_YOUR_SPACE });
   });
