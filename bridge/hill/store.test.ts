@@ -23,7 +23,7 @@ describe("the decisions file", () => {
     const dir = hillDir(stateDir());
     const store = new HillStore(dir, () => 5000);
     expect(store.rev()).toBeUndefined();
-    expect(store.list()).toEqual({ rev: 0, open: [], closed: [] });
+    expect(store.list()).toEqual({ rev: 0, open: [], closed: [], closedTotal: 0 });
     expect(existsSync(dir)).toBe(false);
   });
 
@@ -145,5 +145,91 @@ describe("the decisions file", () => {
     expect(list.open.map((held) => held.id)).toEqual(["dc_oooooooooooo"]);
     expect(list.closed).toHaveLength(20);
     expect(list.closed[0]!.id).toBe("dc_c00000000024");
+  });
+});
+
+describe("forgetting closed decisions", () => {
+  const stone = (id: string, over: Partial<{ requestId: string; key: string; digest: string | null; state: "answered" | "withdrawn"; closedAt: number }> = {}) => ({
+    id,
+    requestId: "0f8b5c1e-5a7d-4b8e-9f00-1a2b3c4d5e6f",
+    key: "local/%1#aaaa",
+    digest: "d".repeat(64),
+    state: "answered" as const,
+    closedAt: 1100,
+    ...over,
+  });
+
+  test("a closed decision goes with a tombstone in the same file, the revision moves, and `dropped` hears the id", () => {
+    const dir = hillDir(stateDir());
+    const heard: string[][] = [];
+    const store = new HillStore(dir, () => 5000, undefined, (ids) => heard.push([...ids]));
+    store.put(decision("dc_aaaaaaaaaaa1", { state: "answered", closedAt: 1100 }), decision("dc_aaaaaaaaaaa2"));
+    const rev = store.rev()!;
+    expect(store.forget([stone("dc_aaaaaaaaaaa1")])).toEqual(["dc_aaaaaaaaaaa1"]);
+    expect(store.rev()).toBeGreaterThan(rev);
+    expect(store.all().map((d) => d.id)).toEqual(["dc_aaaaaaaaaaa2"]);
+    expect(store.tombstone("dc_aaaaaaaaaaa1")?.state).toBe("answered");
+    expect(store.taken("dc_aaaaaaaaaaa1")).toBe(true);
+    expect(heard).toEqual([["dc_aaaaaaaaaaa1"]]);
+    const file = JSON.parse(readFileSync(join(dir, DECISIONS_FILE), "utf8"));
+    expect(file.decisions).toHaveLength(1);
+    expect(file.cleared).toEqual([stone("dc_aaaaaaaaaaa1")]);
+    // The tombstone holds none of the words.
+    expect(JSON.stringify(file.cleared)).not.toContain("Ship it?");
+  });
+
+  test("a restart reads the tombstones back; a file with none carries no `cleared` key", () => {
+    const dir = hillDir(stateDir());
+    const store = new HillStore(dir, () => 5000);
+    store.put(decision("dc_aaaaaaaaaaa1", { state: "answered", closedAt: 1100 }));
+    expect(JSON.parse(readFileSync(join(dir, DECISIONS_FILE), "utf8")).cleared).toBeUndefined();
+    store.forget([stone("dc_aaaaaaaaaaa1")]);
+    const again = new HillStore(dir, () => 9000);
+    expect(again.tombstone("dc_aaaaaaaaaaa1")).toEqual(stone("dc_aaaaaaaaaaa1"));
+    expect(again.tombstoneOfRequest(stone("x").requestId, "local/%1#aaaa")?.id).toBe("dc_aaaaaaaaaaa1");
+    expect(again.tombstoneOfRequest(stone("x").requestId, "local/%2#bbbb")).toBeUndefined();
+  });
+
+  test("an open decision, or an id the store does not hold, is never removed", () => {
+    const store = new HillStore(null, () => 5000);
+    store.put(decision("dc_aaaaaaaaaaa1"));
+    const rev = store.rev();
+    expect(store.forget([stone("dc_aaaaaaaaaaa1"), stone("dc_unknown00001")])).toEqual([]);
+    expect(store.get("dc_aaaaaaaaaaa1")?.state).toBe("open");
+    expect(store.tombstone("dc_aaaaaaaaaaa1")).toBeUndefined();
+    expect(store.rev()).toBe(rev);
+  });
+
+  test("a failed write keeps memory as it was and answers null", () => {
+    const root = stateDir();
+    const dir = hillDir(root);
+    const store = new HillStore(dir, () => 5000, () => undefined);
+    store.put(decision("dc_aaaaaaaaaaa1", { state: "answered", closedAt: 1100 }));
+    // A directory where the temp file goes makes the write fail.
+    mkdirSync(join(dir, `${DECISIONS_FILE}.tmp`));
+    expect(store.forget([stone("dc_aaaaaaaaaaa1")])).toBeNull();
+    expect(store.get("dc_aaaaaaaaaaa1")).toBeDefined();
+    expect(store.tombstone("dc_aaaaaaaaaaa1")).toBeUndefined();
+  });
+
+  test("the file keeps the newest 500 tombstones", () => {
+    const store = new HillStore(null, () => 5000);
+    for (let i = 0; i < 502; i += 1) {
+      const id = `dc_${String(i).padStart(11, "0")}`;
+      store.put(decision(id, { state: "answered", closedAt: 1100 }));
+      store.forget([stone(id, { requestId: `00000000-0000-4000-8000-${String(i).padStart(12, "0")}` })]);
+    }
+    expect(store.tombstone("dc_00000000000")).toBeUndefined();
+    expect(store.tombstone("dc_00000000001")).toBeUndefined();
+    expect(store.tombstone("dc_00000000002")).toBeDefined();
+    expect(store.tombstone("dc_00000000501")).toBeDefined();
+  });
+
+  test("the list counts every closed decision held, past the rows it serves", () => {
+    const store = new HillStore(null, () => 5000);
+    for (let i = 0; i < 25; i += 1) store.put(decision(`dc_${String(i).padStart(11, "0")}`, { state: "answered", closedAt: 1000 + i }));
+    const list = store.list();
+    expect(list.closed).toHaveLength(20);
+    expect(list.closedTotal).toBe(25);
   });
 });

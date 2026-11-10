@@ -23,6 +23,14 @@
 // `cleanlyLoaded`, and the service then never prunes the image folders: the set-aside file may still
 // name them, and the operator may put it back.
 //
+// CLEARED DECISIONS (the phone's and the CLI's Clear). A person may clear the closed ones: the decision
+// and its images go, and a TOMBSTONE stays in the same file, under `cleared`: the id, the request id and
+// sender key it was posted under, the post's digest, the state it closed in and when. It holds none of the
+// person's or the agent's words. Two rules read it: a post that repeats a cleared request id is not taken
+// a second time, and a late answer to a cleared id still reads `gone, the decision is <state>`, as it did
+// before the clear. The trick map (tricks/hill.ts) reads the state too, so an answered key stays closed.
+// The newest {@link HILL_CLEARED_KEPT} are kept. A build from before Clear reads the file without them.
+//
 // AN ENTRY THIS BUILD CANNOT READ (a newer build wrote it, before a rollback) is kept as the raw value
 // it was, never listed and never served, and written back unchanged on every write, so a build that
 // can read it finds it again after the next update. Its `id`, when it has a string one, stays taken.
@@ -31,8 +39,8 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSy
 import { join } from "node:path";
 
 import type { JsonValue } from "../json.ts";
-import { asJsonObject, asJsonString, parseJsonObject } from "../../web/src/lib/json.ts";
-import { HILL_CLOSED_SERVED, type HillDecision, type HillList } from "../../web/src/lib/hill/wire.ts";
+import { asJsonNumber, asJsonObject, asJsonString, parseJsonObject } from "../../web/src/lib/json.ts";
+import { HILL_CLOSED_SERVED, HILL_STATES, type HillDecision, type HillList, type HillState } from "../../web/src/lib/hill/wire.ts";
 import { readDecision } from "./parse.ts";
 
 /** The hill's folder inside a state dir. */
@@ -45,6 +53,35 @@ export const DECISIONS_FILE = "decisions.json";
 
 /** How many closed decisions the file keeps, newest first. Every open one is kept. */
 export const HILL_CLOSED_KEPT = 100;
+
+/** How many tombstones of cleared decisions the file keeps, newest last. */
+export const HILL_CLEARED_KEPT = 500;
+
+/** What stays of a cleared decision: enough to keep a retry and a trick's answered key as they were. */
+export interface HillTombstone {
+  readonly id: string;
+  /** The request id the decision was posted under. */
+  readonly requestId: string;
+  /** The sender's key (an agent's walky address, or `trick:<id>`), as the service files decisions under it. */
+  readonly key: string;
+  /** The post's digest, or null for a decision stored before digests. */
+  readonly digest: string | null;
+  /** The closed state it was cleared in. */
+  readonly state: Exclude<HillState, "open">;
+  readonly closedAt: number;
+}
+
+function readTombstone(raw: JsonValue): HillTombstone | null {
+  const row = asJsonObject(raw);
+  const id = asJsonString(row?.id);
+  const requestId = asJsonString(row?.requestId);
+  const key = asJsonString(row?.key);
+  const state = HILL_STATES.find((candidate) => candidate === asJsonString(row?.state));
+  const closedAt = asJsonNumber(row?.closedAt);
+  const digest = row?.digest === null ? null : asJsonString(row?.digest);
+  if (id === undefined || requestId === undefined || key === undefined || state === undefined || state === "open" || closedAt === undefined || digest === undefined) return null;
+  return { id, requestId, key, digest, state, closedAt };
+}
 
 /** When a closed decision closed, for its place among the closed. */
 function closedOrder(decision: HillDecision): number {
@@ -67,6 +104,8 @@ export class HillStore {
   private decisions: HillDecision[] = [];
   /** The entries this build could not read, as they were, in file order. Written back on every write. */
   private opaque: JsonValue[] = [];
+  /** The tombstones of cleared decisions, oldest first. */
+  private tombstones: HillTombstone[] = [];
   private revision: number | undefined;
   private readonly path: string | null;
   private clean = true;
@@ -110,6 +149,7 @@ export class HillStore {
     }
     this.decisions = read;
     this.opaque = opaque;
+    this.tombstones = Array.isArray(file.cleared) ? file.cleared.flatMap((entry) => readTombstone(entry) ?? []).slice(-HILL_CLEARED_KEPT) : [];
     this.revision = this.now();
   }
 
@@ -139,7 +179,17 @@ export class HillStore {
 
   /** Whether `id` names a held decision or an unread entry, so a new decision must not take it. */
   taken(id: string): boolean {
-    return this.get(id) !== undefined || this.opaque.some((entry) => rawId(entry) === id);
+    return this.get(id) !== undefined || this.tombstone(id) !== undefined || this.opaque.some((entry) => rawId(entry) === id);
+  }
+
+  /** The tombstone of a cleared decision by id. */
+  tombstone(id: string): HillTombstone | undefined {
+    return this.tombstones.find((stone) => stone.id === id);
+  }
+
+  /** The tombstone of a cleared decision a sender posted under this request id. */
+  tombstoneOfRequest(requestId: string, key: string): HillTombstone | undefined {
+    return this.tombstones.find((stone) => stone.requestId === requestId && stone.key === key);
   }
 
   /** Move a file that does not read out of the way, so the next write starts a good one. */
@@ -171,15 +221,13 @@ export class HillStore {
 
   /**
    * What `GET /api/hill` serves: every open decision, the {@link HILL_CLOSED_SERVED} newest closed,
-   * newest first. Rev 0 while no file exists: the phone then shows an empty hill.
+   * newest first, and how many closed ones the store holds (`closedTotal`, for the phone's Clear). Rev 0 while no file exists: the phone then shows an empty hill.
    */
   list(): HillList {
     const open = this.decisions.filter((decision) => decision.state === "open");
-    const closed = this.decisions
-      .filter((decision) => decision.state !== "open")
-      .toSorted((a, b) => closedOrder(b) - closedOrder(a))
-      .slice(0, HILL_CLOSED_SERVED);
-    return { rev: this.revision ?? 0, open, closed };
+    const allClosed = this.decisions.filter((decision) => decision.state !== "open").toSorted((a, b) => closedOrder(b) - closedOrder(a));
+    const closed = allClosed.slice(0, HILL_CLOSED_SERVED);
+    return { rev: this.revision ?? 0, open, closed, closedTotal: allClosed.length };
   }
 
   /**
@@ -203,14 +251,33 @@ export class HillStore {
     return true;
   }
 
-  private write(decisions: readonly HillDecision[]): boolean {
+  /**
+   * Remove closed decisions and keep a tombstone for each, in one write. An id that is not held, or is
+   * open, is left alone: the store never drops an open decision this way. Answers the ids it removed, or
+   * null when the write failed (memory stays as it was). The images go with them, as with an old closed one.
+   */
+  forget(stones: readonly HillTombstone[]): string[] | null {
+    const removable = new Set(stones.filter((stone) => this.decisions.some((held) => held.id === stone.id && held.state !== "open")).map((stone) => stone.id));
+    if (removable.size === 0) return [];
+    const next = this.decisions.filter((held) => !removable.has(held.id));
+    const marked = [...this.tombstones.filter((old) => !removable.has(old.id)), ...stones.filter((stone) => removable.has(stone.id))].slice(-HILL_CLEARED_KEPT);
+    if (!this.write(next, marked)) return null;
+    this.decisions = next;
+    this.tombstones = marked;
+    this.revision = Math.max((this.revision ?? 0) + 1, this.now());
+    const gone = [...removable];
+    this.dropped?.(gone);
+    return gone;
+  }
+
+  private write(decisions: readonly HillDecision[], tombstones: readonly HillTombstone[] = this.tombstones): boolean {
     if (this.path === null || this.dir === null) return true;
     try {
       mkdirSync(this.dir, { recursive: true, mode: 0o700 });
       chmodSync(this.dir, 0o700);
       const temp = `${this.path}.tmp`;
       // The entries this build could not read go back as they came, after the ones it can.
-      writeFileSync(temp, `${JSON.stringify({ v: 1, decisions: [...decisions, ...this.opaque] })}\n`, { mode: 0o600 });
+      writeFileSync(temp, `${JSON.stringify(tombstones.length === 0 ? { v: 1, decisions: [...decisions, ...this.opaque] } : { v: 1, decisions: [...decisions, ...this.opaque], cleared: tombstones })}\n`, { mode: 0o600 });
       chmodSync(temp, 0o600);
       renameSync(temp, this.path);
       return true;

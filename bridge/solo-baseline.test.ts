@@ -896,7 +896,9 @@ describe("solo zero-tax — routes", () => {
       // exempted. A bridge that never took a post answers an empty list and writes nothing.
       "/api/hill",
       "/api/hill/answer",
-    "/api/hill/switch",
+      // Clear (the Answered group's button): a SOLO write under the same device gate, named here.
+      "/api/hill/clear",
+      "/api/hill/switch",
       // The operator's own launcher rows (`launchers.toml`) — a SOLO route that legitimately
       // extends this list, named here rather than exempted. It is session-scoped and write-gated
       // through the same closure `/api/workspace` rides, and the configured rows are its allowlist:
