@@ -13,6 +13,10 @@ import { cn } from "@/lib/utils";
 // The face is full round because it is as wide as it is tall (§3). Never a status shape: the face
 // carries the caller's icon in the caller's ink, and the badge is outlined, never the red count.
 //
+// A BADGE IS SHORT OR ABSENT. The face shows a badge of at most three characters ("3", "M96"), as the
+// chosen option A5 draws it; a longer one ("23/34", "$7.42") would hang across the face, so the face
+// shows none and the tile's name still says it to a screen reader.
+//
 // Owns no words and no data: the caller names the row (`label`) and each tile, and says whether a tile
 // takes a tap. A tile with no tap is a span, drawn the same, and no control at all.
 
@@ -36,7 +40,7 @@ export function TileStrip({
             ref={scroller}
             data-slot="tile-strip-scroller"
             // The row runs to the column's edges and starts its first tile on the page gutter.
-            className="flex min-w-0 flex-1 items-start gap-1.5 overflow-x-auto overscroll-x-contain px-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+            className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto overscroll-x-contain px-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
           >
             {children}
           </div>
@@ -50,7 +54,7 @@ export interface TileStripItemProps {
   label: string;
   /** The face's glyph, already inked by the caller. */
   icon: ReactNode;
-  /** A quiet outlined count or short word on the face's corner. 0 draws none. */
+  /** A quiet outlined count or short word on the face's corner. 0, or more than `BADGE_MAX` characters, draws none. */
   badge?: number | string;
   /** ALREADY TRANSLATED. The tile's whole name for a screen reader. */
   name: string;
@@ -60,11 +64,14 @@ export interface TileStripItemProps {
   data?: Readonly<Record<`data-${string}`, string | undefined>>;
 }
 
+/** The longest badge the face shows, in characters (A5). */
+export const BADGE_MAX = 3;
+
 /** The tile's box: 60px wide, 72px tall, a 44px floor met in both directions (§6). */
 const TILE = "group flex w-[60px] shrink-0 touch-manipulation flex-col items-center gap-1 rounded-sm py-1";
 
 export function TileStripItem({ label, icon, badge, name, onSelect, data }: TileStripItemProps) {
-  const shown = badge === undefined || badge === 0 ? undefined : String(badge);
+  const shown = badge === undefined || badge === 0 || String(badge).length > BADGE_MAX ? undefined : String(badge);
   const face = (
     <>
       <span
@@ -79,9 +86,9 @@ export function TileStripItem({ label, icon, badge, name, onSelect, data }: Tile
         {shown !== undefined && (
           <span
             data-slot="tile-badge"
-            className="absolute -top-1 -right-1 flex h-[18px] max-w-14 min-w-[18px] items-center justify-center rounded-sm border border-border bg-card px-1 text-[10px] leading-none font-semibold text-foreground tabular-nums"
+            className="absolute -top-1 -right-1 flex h-[18px] min-w-[18px] items-center justify-center rounded-sm border border-border bg-card px-1 text-[10px] leading-none font-semibold text-foreground tabular-nums"
           >
-            <span className="truncate">{shown}</span>
+            {shown}
           </span>
         )}
       </span>

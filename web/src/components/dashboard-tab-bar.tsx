@@ -7,6 +7,7 @@ import { useLocale } from "@/hooks/use-locale";
 import type { DashView } from "@/lib/dash-view";
 import { t, tn } from "@/lib/i18n";
 import type { WireTrickPart } from "@/lib/tricks/schema";
+import { cn } from "@/lib/utils";
 import type { TricksStore } from "@/lib/tricks/store";
 import type { AgentView } from "@/lib/types";
 
@@ -17,8 +18,9 @@ import type { AgentView } from "@/lib/types";
 // THE HILL IS A FOURTH FIXED ITEM, NOT A VIEW (M96, the owner's pick "A5"). The mountain, at the bar's
 // right end under the thumb, and the bar's own red count of the open Decisions. A tap opens the Hill's
 // route one level down, so it is never drawn as the selected tab. It is there with nothing open too (no
-// badge then), so the bar does not change shape when a Decision arrives. A `now` Decision says so with
-// the red count alone: no amber element of its own. Where the hill does not exist (the snapshot carries
+// badge then), so the bar does not change shape when a Decision arrives. While a `now` Decision is open
+// the mountain wears its snow cap in the warm accent, as A5 draws it (DESIGN.md §4, "The Hill's warm
+// accent"); the word stays the bar's muted ink. Where the hill does not exist (the snapshot carries
 // no `hillRev`: a bridge older than the hill, or a crew member's own scope) there is no Hill item.
 //
 // THE TRICKS' ITEMS FOLLOW IT (the `tabbar` place, components/trick-place-items.tsx). With one or more the
@@ -38,6 +40,8 @@ export interface DashboardTabBarProps {
   readyUnseen: boolean;
   /** The open Decisions, or null where this view has no hill. */
   hill: number | null;
+  /** Whether one of them is `now`: the mountain then wears its snow cap in the warm accent. */
+  hillNow?: boolean;
   onOpenHill: () => void;
   /** The held `tabbar` parts, in manifest order (`useTrickParts("tabbar")`). */
   tabbarParts: readonly WireTrickPart[];
@@ -48,7 +52,7 @@ export interface DashboardTabBarProps {
   store?: TricksStore;
 }
 
-export function DashboardTabBar({ view, onSelect, crew, files, blockedCount, readyUnseen, hill, onOpenHill, tabbarParts, sessions, onOpenSession, store }: DashboardTabBarProps) {
+export function DashboardTabBar({ view, onSelect, crew, files, blockedCount, readyUnseen, hill, hillNow = false, onOpenHill, tabbarParts, sessions, onOpenSession, store }: DashboardTabBarProps) {
   useLocale();
   const items: TabBarItem<DashView>[] = [
     // Crew leads, drawn only while a crew is configured (ADR 0085). Network is the Crew icon
@@ -71,7 +75,16 @@ export function DashboardTabBar({ view, onSelect, crew, files, blockedCount, rea
   const links: TabBarLink[] =
     hill === null
       ? []
-      : [{ id: "hill", label: t("hill.title"), icon: <Icon name="hill" className="size-5" />, badge: hill, badgeLabel: tn("home.tabs.hill", hill), onSelect: onOpenHill }];
+      : [
+          {
+            id: "hill",
+            label: t("hill.title"),
+            icon: <Icon name={hillNow ? "hill-now" : "hill"} className={cn("size-5", hillNow && "text-status-working")} />,
+            badge: hill,
+            badgeLabel: tn("home.tabs.hill", hill),
+            onSelect: onOpenHill,
+          },
+        ];
   const extras = useMemo(() => trickTabbarExtras({ parts: tabbarParts, sessions, onOpenSession, store }), [tabbarParts, sessions, onOpenSession, store]);
   return <TabBar<DashView> label={t("home.tabs.aria")} active={view} onSelect={onSelect} items={items} links={links} extras={extras} />;
 }

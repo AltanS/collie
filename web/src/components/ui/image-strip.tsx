@@ -99,7 +99,7 @@ export function ImageStripItem({
       ) : (
         <span className={cn(BOX, "flex items-center justify-center overflow-hidden px-2")}>{fallback}</span>
       )}
-      {caption !== undefined && <figcaption className="font-content truncate text-xs text-muted-foreground">{caption}</figcaption>}
+      {caption !== undefined && <figcaption className="font-content truncate text-[11px] text-muted-foreground">{caption}</figcaption>}
     </figure>
   );
 }

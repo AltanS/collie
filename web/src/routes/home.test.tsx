@@ -1219,6 +1219,8 @@ describe("the Hill in the Dashboard's bar (M96)", () => {
     const item = hillItem()!;
     expect(item.querySelector('[data-slot="tab-badge"]')).toHaveTextContent("3");
     expect(item).toHaveAccessibleName("Hill, 3 Decisions wait on you");
+    // One of them is `now`: the mountain wears its snow cap in the warm accent (A5).
+    expect(item.querySelector('[data-icon="hill-now"]')?.getAttribute("class")).toContain("text-status-working");
     await userEvent.click(item);
     await waitFor(() => expect(url(router)).toBe("/hill"));
   });

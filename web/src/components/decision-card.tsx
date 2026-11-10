@@ -1,4 +1,4 @@
-import { useEffect, useId, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import { AgentIcon } from "@/components/agent-icon";
 import { DecisionView } from "@/components/decision-view";
@@ -13,13 +13,13 @@ import { Card } from "@/components/ui/card";
 import { Collapse } from "@/components/ui/collapse";
 import { CopyableBlock } from "@/components/ui/copyable-block";
 import { FoldPanel, MoreToggle, NoteToggle } from "@/components/ui/fold-toggle";
-import { ListGroup } from "@/components/ui/list-group";
 import { Notice, type NoticeTone } from "@/components/ui/notice";
 import { OneOf } from "@/components/ui/one-of";
 import { useArm } from "@/hooks/use-arm";
 import type { HillAnswerState } from "@/hooks/use-hill-answer";
 import { useLocale } from "@/hooks/use-locale";
 import { cacheClockNow, subscribeCacheClock } from "@/lib/cache-clock";
+import { hasResizeObserver } from "@/lib/env";
 import { linkHost } from "@/lib/hill/reader";
 import type { HillDecision, HillOption, HillReceipt } from "@/lib/hill/wire";
 import { HILL_ANSWER_TEXT_MAX } from "@/lib/hill/wire";
@@ -50,10 +50,17 @@ import { cn } from "@/lib/utils";
 // never the app's face (DESIGN.md §5). The numbers on the options are display only: no key sends one.
 //
 // ── NOTHING IS CHOSEN FOR THE PERSON ───────────────────────────────────────────────────────────────
-// The recommended option carries a small neutral star, and the quote above says which one and why. It
-// is never pre-selected and never focused: a recommendation the person does not read must not become
-// the answer by default. The star is the foreground ink, not a status colour: amber on the card says
-// `now`, and a recommendation is not a thing that needs you (DESIGN.md §4).
+// The recommended option carries a small star, and the quote above says which one and why, with the
+// same star. It is never pre-selected and never focused: a recommendation the person does not read must
+// not become the answer by default. Both stars wear the warm accent (`--status-working`), as the chosen
+// option B1 draws them: the owner's exception to "a status colour is never an accent", 2026-11-10
+// (DESIGN.md §4, "The Hill's warm accent").
+//
+// ── THE LOOK IS THE OPTION'S, TO THE PIXEL ─────────────────────────────────────────────────────────
+// Sizes, inks and spacing are option B1's own (web/src/playground/hill-look/cards.tsx), free sizes
+// included (the 19px title, the 15px summary and quote, the 11px caption): the owner chose that card by
+// name, so a nearest Tailwind step is a deviation. The summary shows three lines; the rest opens with
+// More, which is offered whenever the three lines hide some of it.
 //
 // ── A NOTE IS OFFERED, AN ANSWER IN WORDS IS ASKED ─────────────────────────────────────────────────
 // An optional note sits behind "Add a note"; a required answer, and the words of a Decision with no
@@ -98,25 +105,31 @@ function SenderMark({ decision, trickIcon }: { decision: HillDecision; trickIcon
   const Glyph = trickIconOf(trickIcon);
   return (
     <span aria-hidden data-slot="decision-trick-mark" className="flex size-4 shrink-0 items-center justify-center rounded-sm border border-border bg-secondary text-foreground">
-      <Glyph className="size-2.5" />
+      <Glyph className="size-[60%]" />
     </span>
   );
 }
 
-/** The first line: priority, who asked, the word trick for a trick, the machine with its glyph in the machine's tint, the age. */
+/**
+ * The first line: priority, a bar, who asked, the word trick with its plug for a trick, the machine with
+ * its glyph in the machine's tint, the age. Every piece sits 8px from the next (B1's `gap-2`).
+ */
 function MetaLine({ decision, hostSlot, trickIcon }: { decision: HillDecision; hostSlot: number | null; trickIcon: string | undefined }) {
   const { from } = decision;
   const hostInk = hostSlot === null ? "text-muted-foreground" : (HOST_TEXT_CLASSES[hostSlot] ?? "text-muted-foreground");
   return (
     <div data-slot="decision-meta" className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
       <HillPriorityMark priority={decision.priority} />
-      <span aria-hidden className="h-3 w-px shrink-0 bg-border" />
+      {/* B1's divider is the bar character in the border ink, as tall as the line's own type. */}
+      <span aria-hidden className="text-border">
+        |
+      </span>
       <SenderMark decision={decision} trickIcon={trickIcon} />
       <span className="min-w-0 truncate text-foreground">{from.label}</span>
       {from.kind === "trick" && (
-        <span className="shrink-0">
-          <span aria-hidden>· </span>
-          {t("hill.trick")}
+        <span data-slot="decision-trick-word" className="inline-flex min-w-0 shrink items-center gap-1">
+          <Icon name="mod-icon-plug" aria-hidden className="size-3 shrink-0" />
+          <span className="truncate">{t("hill.trick")}</span>
         </span>
       )}
       {from.host !== null && (
@@ -142,6 +155,50 @@ function Suggests({ from, label }: { from: string; label: string }) {
       {after}
     </span>
   );
+}
+
+/** The poster's why between quote marks, the marks in the muted ink and a hair off the words (B1). The marks come from `hill.why`, so a language keeps its own. */
+function Why({ why }: { why: string }) {
+  const MARK = "\u0000";
+  const [open = "", close = ""] = t("hill.why", { why: MARK }).split(MARK);
+  return (
+    <>
+      {open !== "" && (
+        <span aria-hidden className="mr-0.5 text-muted-foreground">
+          {open}
+        </span>
+      )}
+      {why}
+      {close !== "" && (
+        <span aria-hidden className="ml-0.5 text-muted-foreground">
+          {close}
+        </span>
+      )}
+    </>
+  );
+}
+
+/**
+ * Whether a clamped block hides some of its lines: read on mount and whenever it changes size. Off while
+ * `clamped` is false (the block shows everything then). Guarded for jsdom, where nothing has a size.
+ */
+function useHidesLines<T extends HTMLElement>(clamped: boolean) {
+  const ref = useRef<T>(null);
+  const [hides, setHides] = useState(false);
+  const measure = useCallback(() => {
+    const el = ref.current;
+    if (el === null || !clamped) return;
+    setHides(el.scrollHeight > el.clientHeight + 1);
+  }, [clamped]);
+  useLayoutEffect(measure);
+  useEffect(() => {
+    const el = ref.current;
+    if (el === null || !hasResizeObserver()) return;
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [measure]);
+  return { ref, hides };
 }
 
 /** Which notice tone a receipt wears: it landed, it may have, or it did not. */
@@ -252,6 +309,7 @@ export function DecisionCard({
   const [noteOpen, setNoteOpen] = useState(false);
   const { armed, tap, disarm } = useArm<string>();
   const bodyId = useId();
+  const summaryId = useId();
   const noteId = useId();
   const hintId = useId();
   const locked = lockedBy(answer);
@@ -270,7 +328,11 @@ export function DecisionCard({
   const noteBehindTap = decision.text === "optional" && hasOptions;
   const fieldOpen = decision.text !== "none" && !noteBehindTap;
   const optionsBlocked = locked || (required && text === null);
-  const hasMore = decision.body.trim() !== "" || decision.links.length > 0;
+  const hasBody = decision.body.trim() !== "" || decision.links.length > 0;
+  // The summary shows three lines while More is closed (B1); More opens the rest of it with the body.
+  const summary = useHidesLines<HTMLParagraphElement>(!moreOpen);
+  const summaryHides = summary.hides;
+  const hasMore = hasBody || summaryHides;
   const recommended = decision.options.find((o) => o.intent === decision.recommends?.intent);
   const sendingIntent = answer.phase === "sending" ? answer.intent : null;
   const target = decision.target;
@@ -350,26 +412,34 @@ export function DecisionCard({
       <MetaLine decision={decision} hostSlot={hostSlot} trickIcon={trickIcon} />
 
       <div className="flex flex-col gap-1.5">
-        <h3 data-slot="decision-title" className="font-content break-words text-lg font-semibold leading-snug tracking-tight text-balance">
+        <h3 data-slot="decision-title" className="font-content break-words text-[19px] font-semibold leading-snug tracking-tight text-balance">
           {decision.title}
         </h3>
-        <p data-slot="decision-summary" className="font-content whitespace-pre-wrap break-words text-sm leading-relaxed text-muted-foreground">
+        <p
+          ref={summary.ref}
+          id={summaryId}
+          data-slot="decision-summary"
+          className={cn("font-content whitespace-pre-wrap break-words text-[15px] leading-relaxed text-muted-foreground", !moreOpen && "line-clamp-3")}
+        >
           {decision.summary}
         </p>
       </div>
 
       {decision.media.length > 0 && (
-        // The row runs to the card's edges, its first picture on the text's edge (the card's p-5).
-        <HillImageStrip decisionId={decision.id} media={decision.media} source={mediaSource} className="-mx-5" scrollerClassName="px-5" />
+        // B1's row: 16px past the text's edge on each side, its first picture on the text's edge.
+        <HillImageStrip decisionId={decision.id} media={decision.media} source={mediaSource} className="-mx-4" scrollerClassName="px-4" />
       )}
 
       {decision.view !== undefined && <DecisionView decisionId={decision.id} view={decision.view} sender={decision.from.label} />}
 
       {decision.recommends !== null && recommended !== undefined && (
         <figure data-slot="decision-recommends" className="flex flex-col gap-1.5 border-y border-border py-3">
-          <blockquote className="font-content text-sm leading-relaxed text-foreground">{t("hill.why", { why: decision.recommends.why })}</blockquote>
+          <blockquote className="font-content text-[15px] leading-relaxed text-foreground">
+            <Why why={decision.recommends.why} />
+          </blockquote>
           <figcaption className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
-            <Icon name="recommended" aria-hidden className="size-3.5 shrink-0 text-foreground" />
+            {/* The warm accent, as B1 draws it (DESIGN.md §4, "The Hill's warm accent"). */}
+            <Icon name="recommended" aria-hidden className="size-3.5 shrink-0 text-status-working" />
             <Suggests from={decision.from.label} label={recommended.label} />
           </figcaption>
         </figure>
@@ -383,7 +453,7 @@ export function DecisionCard({
                 data-slot="decision-more"
                 open={moreOpen}
                 onToggle={() => setMoreOpen((open) => !open)}
-                controls={bodyId}
+                controls={hasBody ? bodyId : summaryId}
                 more={t("hill.more")}
                 less={t("hill.less")}
               />
@@ -402,27 +472,28 @@ export function DecisionCard({
               />
             )}
           </div>
-          {hasMore && (
-            <FoldPanel id={bodyId} open={moreOpen} data-slot="decision-body" className="flex flex-col gap-3 pb-2">
+          {hasBody && (
+            <FoldPanel id={bodyId} open={moreOpen} data-slot="decision-body" className="flex flex-col gap-2 pb-2">
               {decision.body.trim() !== "" && <MarkdownText text={decision.body} />}
               {decision.links.length > 0 && (
-                <ListGroup as="ul">
+                <ul className="flex flex-col">
                   {decision.links.map((link, i) => (
                     <li key={`${i}:${link.href}`}>
+                      {/* B1's bare link row. The host after the words is the build's: where a tap goes, before it goes. */}
                       <a
                         href={link.href}
                         target="_blank"
                         rel="noopener noreferrer"
                         data-slot="decision-link"
-                        className="flex min-h-11 min-w-0 items-center gap-3 px-3.5 py-2 transition-colors hover:bg-muted/50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                        className="flex min-h-11 min-w-0 items-center gap-2 text-sm font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
                       >
                         <Icon name="open-external" aria-hidden className="size-4 shrink-0 text-muted-foreground" />
-                        <span className="font-content min-w-0 flex-1 truncate text-sm font-medium">{link.label}</span>
-                        <span className="min-w-0 max-w-[45%] shrink truncate font-mono text-[11px] text-muted-foreground">{linkHost(link.href)}</span>
+                        <span className="font-content min-w-0 truncate">{link.label}</span>
+                        <span className="ml-auto min-w-0 max-w-[45%] shrink truncate pl-2 font-mono text-[11px] font-normal text-muted-foreground">{linkHost(link.href)}</span>
                       </a>
                     </li>
                   ))}
-                </ListGroup>
+                </ul>
               )}
             </FoldPanel>
           )}
@@ -461,7 +532,8 @@ export function DecisionCard({
                 className="min-h-12 items-center px-3"
                 trailing={
                   // One 16px slot on every option, so the spinner or the mark arriving moves no label.
-                  <span aria-hidden className="flex size-4 shrink-0 items-center justify-center text-foreground">
+                  // The star in the warm accent, as B1 draws it (DESIGN.md §4, "The Hill's warm accent").
+                  <span aria-hidden className="flex size-4 shrink-0 items-center justify-center text-status-working">
                     {busy ? (
                       <Icon name="busy" className="size-3.5 animate-spin text-muted-foreground" />
                     ) : isRecommended ? (

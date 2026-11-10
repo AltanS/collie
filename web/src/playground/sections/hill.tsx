@@ -7,19 +7,24 @@
 //
 // Cards are numbered 1 to 33.
 
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 
 import { AgentList } from "@/components/agent-list";
 import { AppHeaderHost, RouteHeader } from "@/components/app-header";
 import { DecisionCard } from "@/components/decision-card";
 import { DashboardTabBar } from "@/components/dashboard-tab-bar";
 import { HillHeader, HillView } from "@/components/hill-view";
+import { TrickDashboardStrip } from "@/components/trick-place-items";
 import { HILL_IDLE, type HillAnswerState } from "@/hooks/use-hill-answer";
 import type { HillDecision, HillReceipt } from "@/lib/hill/wire";
 import { sortOpenDecisions } from "@/lib/hill/wire";
 import type { PaneOrder } from "@/lib/pane-order";
+import { partKey, type PlaceItem, type WireTrickInfo, type WireTrickPart } from "@/lib/tricks/schema";
+import { createTricksStore, type TricksStore } from "@/lib/tricks/store";
+import { mintRequestId } from "@/lib/worktree-name";
 
 import { herd, homeSolo, tabs } from "../fixtures";
+import { CASE_DATA, CASES, HOST_SLOT as LOOK_HOST_SLOT, TRICK_ICON_OF, isCaseId, type CaseId, type HillCase } from "../hill-look/fixtures";
 import {
   brokenImage,
   busyOpen,
@@ -44,7 +49,7 @@ import {
   withBody,
 } from "../fixtures/hill/decisions";
 import { RootRouter } from "../harness";
-import { Card, CardControls, Group, Section, type SectionDef } from "../layout";
+import { Card, CardControls, Group, Section, Segmented, type SectionDef } from "../layout";
 
 export const DEF: SectionDef = {
   id: "hill",
@@ -233,9 +238,180 @@ const undeliverableId = closedRows.find((row) => row.state === "undeliverable")?
 /** Card 24: the three images with a body, so More has something to open beside the row. */
 const withImagesAndBody: HillDecision = { ...threeImages, body: "The new header keeps the count line in every state." };
 
+// ── The chosen look, on the option's own data (2026-11-10) ───────────────────────────────────────────
+// The owner picked B1, C1 and A5 from the "Hill look" section. These screens mount the REAL components
+// on that section's fixtures (`../hill-look/fixtures.ts`, cases a to d), so a shot of an option and a
+// shot of the build compare one to one: `?case=<case>&match=<B1|C1|A5>#hill` draws one over the whole
+// screen, as the look section's `solo` does.
+
+type MatchId = "B1" | "C1" | "A5";
+const MATCHES: readonly MatchId[] = ["B1", "C1", "A5"];
+
+function isMatchId(word: string | null): word is MatchId {
+  return MATCHES.some((m) => m === word);
+}
+
+/** The real card with the look section's tints and trick icons. */
+function MatchCard({ decision }: { decision: HillDecision }) {
+  const { from } = decision;
+  return (
+    <DecisionCard
+      decision={decision}
+      answer={HILL_IDLE}
+      onSend={noSend}
+      mediaSource={playgroundMedia}
+      hostSlot={from.kind === "agent" && from.host !== null ? (LOOK_HOST_SLOT.get(from.host) ?? null) : null}
+      trickIcon={from.trickId === null ? undefined : TRICK_ICON_OF.get(from.trickId)}
+    />
+  );
+}
+
+/** B1's list: the case's open Decisions as real cards, in the option's own list frame. */
+function MatchCards({ c }: { c: HillCase }) {
+  return (
+    <div data-pg-scroll className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4 [&>*]:shrink-0">
+      {c.open.map((d) => (
+        <MatchCard key={d.id} decision={d} />
+      ))}
+    </div>
+  );
+}
+
+/** C1: the real header and view. */
+function MatchView({ c }: { c: HillCase }) {
+  return (
+    <RootRouter data={homeSolo}>
+      <AppHeaderHost bridge="connected" error={false}>
+        <HillHeader count={c.open.length} nowCount={c.open.filter((d) => d.priority === "now").length} onBack={noSend} />
+        <div data-pg-scroll className="min-h-0 flex-1 overflow-y-auto p-4">
+          <HillView open={c.open} closed={c.closed} kept={NO_KEPT} renderCard={(d) => <MatchCard key={d.id} decision={d} />} />
+        </div>
+      </AppHeaderHost>
+    </RootRouter>
+  );
+}
+
+/** The case's tricks as `dashboard` parts in a store of their own, so the real strip draws them. */
+function useCaseTricksStore(c: HillCase): TricksStore {
+  const store = useMemo(() => {
+    const infos: WireTrickInfo[] = c.tricks.map((trick) => ({ host: "bluefin", id: trick.id, name: trick.name, icon: trick.icon, on: true, state: "ok", places: ["dashboard"] }));
+    const asOf = new Date().toISOString();
+    const parts: WireTrickPart[] = c.tricks.map((trick) => {
+      const item: PlaceItem = { icon: trick.icon, label: trick.name };
+      if (trick.count !== undefined) item.badge = trick.count;
+      if (trick.tone !== undefined) item.tone = trick.tone;
+      return { host: "bluefin", trick: trick.id, part: "dashboard", rev: 1, value: { at: "dashboard", id: "dashboard", item }, asOf, fresh: "1h" };
+    });
+    return createTricksStore({
+      fetchTricks: () => Promise.resolve({ rev: 1, tricks: infos, parts, present: parts.map(partKey) }),
+      tapTrick: (_host, _trick, body) => Promise.resolve({ rid: body.rid, code: "ok" }),
+      mintRequestId,
+    });
+  }, [c]);
+  useEffect(() => {
+    void store.syncTricks(1);
+  }, [store]);
+  return store;
+}
+
+/** A5: the real Dashboard, the tricks' tiles at the top, the Hill as the bar's fourth item. */
+function MatchDashboard({ c }: { c: HillCase }) {
+  const [order, setOrder] = useState<PaneOrder>("place");
+  const store = useCaseTricksStore(c);
+  return (
+    <RootRouter data={homeSolo}>
+      <AppHeaderHost bridge="connected" error={false}>
+        <RouteHeader wordmark width="column" />
+        <div data-pg-scroll className="relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
+          <TrickDashboardStrip sessions={[]} onOpenSession={noSend} store={store} />
+          <AgentList
+            agents={herd}
+            shellPanes={[]}
+            bridge="connected"
+            onOpen={noSend}
+            tabs={tabs}
+            order={order}
+            onOrderChange={setOrder}
+            isolated={[]}
+            hidden={[]}
+            onIsolate={noSend}
+            onToggleHidden={noSend}
+            needsYouOnly={false}
+            onNeedsYouOnlyChange={noSend}
+          />
+        </div>
+        <DashboardTabBar
+          view="dashboard"
+          onSelect={noSend}
+          crew
+          files
+          blockedCount={herd.filter((pane) => pane.status === "blocked").length}
+          readyUnseen={false}
+          hill={c.open.length}
+          hillNow={c.open.some((d) => d.priority === "now")}
+          onOpenHill={noSend}
+          tabbarParts={[]}
+          sessions={[]}
+          onOpenSession={noSend}
+        />
+      </AppHeaderHost>
+    </RootRouter>
+  );
+}
+
+function MatchScreen({ id, c }: { id: MatchId; c: HillCase }) {
+  if (id === "B1") return <MatchCards c={c} />;
+  if (id === "C1") return <MatchView c={c} />;
+  return <MatchDashboard c={c} />;
+}
+
+function matchParam(name: string): string | null {
+  return new URLSearchParams(window.location.search).get(name);
+}
+
+/** One match screen over the whole page, for a phone and for the shots. */
+function MatchSolo({ id, caseId }: { id: MatchId; caseId: CaseId }) {
+  const style: CSSProperties & { "--app-h"?: string } = { "--app-h": "100dvh" };
+  return (
+    <div className="fixed inset-0 z-[60] flex flex-col overflow-hidden bg-background text-foreground" style={style}>
+      <MatchScreen id={id} c={CASE_DATA[caseId]} />
+    </div>
+  );
+}
+
+function MatchGroup() {
+  const asked = matchParam("case");
+  const [caseId, setCaseId] = useState<CaseId>(isCaseId(asked) ? asked : "busy");
+  return (
+    <>
+      <div className="sticky top-0 z-40 -mx-4 bg-background/95 px-4 py-2 backdrop-blur-sm">
+        <Segmented name="Case" value={caseId} options={CASES} onChange={setCaseId} />
+      </div>
+      <Group title="The chosen look, on the option's data">
+      {MATCHES.map((id) => (
+        <Card key={id} state={`hill-match-${id.toLowerCase()}`} label={`${id} built`}>
+          <CardControls className="flex items-center gap-3">
+            <a href={`?case=${caseId}&match=${id}#hill`} className="text-sm font-semibold text-foreground underline">
+              {id} built, full screen
+            </a>
+          </CardControls>
+          <Phone height={760}>
+            <MatchScreen key={caseId} id={id} c={CASE_DATA[caseId]} />
+          </Phone>
+        </Card>
+      ))}
+      </Group>
+    </>
+  );
+}
+
 export function HillSection() {
+  const match = matchParam("match");
+  const asked = matchParam("case");
+  if (isMatchId(match)) return <MatchSolo id={match} caseId={isCaseId(asked) ? asked : "busy"} />;
   return (
     <Section def={DEF}>
+      <MatchGroup />
       <Group title="The card">
         <Card state="hill-card-recommended" label="1: two options, recommended">
           <CardHead n={1} title="Two options, recommended" />

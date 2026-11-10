@@ -61,10 +61,10 @@ describe("the Decision card, at rest", () => {
     expect(slot("decision-recommends")).toHaveTextContent("“Edge reaches testers first.”");
     // A screen reader hears which option it is beside the options.
     expect(slot("decision-options")).toHaveTextContent("Recommended: Yes, Edge first");
-    // A neutral mark, never the caution ink: amber on the card says `now`.
+    // Both stars wear the warm accent, as the chosen option B1 draws them (DESIGN.md §4).
     const mark = option("yes").querySelector('[data-slot="decision-recommended-mark"]')!;
-    expect(mark.closest("span")?.className).toContain("text-foreground");
-    expect(container.querySelector('[data-slot="decision-recommends"]')?.innerHTML).not.toContain("status-working");
+    expect(mark.closest("span")?.className).toContain("text-status-working");
+    expect(container.querySelector('[data-slot="decision-recommends"] figcaption [data-icon="recommended"]')?.getAttribute("class")).toContain("text-status-working");
     expect(option("yes").querySelector('[data-slot="decision-recommended-mark"]')).not.toBeNull();
     expect(option("no").querySelector('[data-slot="decision-recommended-mark"]')).toBeNull();
     for (const intent of ["yes", "no"]) {
@@ -88,6 +88,20 @@ describe("the Decision card, at rest", () => {
     expect(link).toHaveAttribute("rel", "noopener noreferrer");
     expect(link).toHaveTextContent("CI run 4821");
     expect(link).toHaveTextContent("ci.example.com");
+  });
+
+  it("sets the why between muted quote marks, the marks out of the reader's way", () => {
+    const { slot } = renderCard(hillDecision({ recommends: { intent: "yes", why: "Edge first." } }));
+    const marks = [...slot("decision-recommends")!.querySelectorAll('blockquote > span[aria-hidden="true"]')];
+    expect(marks.map((m) => m.textContent)).toEqual(["“", "”"]);
+    for (const m of marks) expect(m.className).toContain("text-muted-foreground");
+  });
+
+  it("shows three lines of the summary until More opens the rest (B1)", () => {
+    const { slot } = renderCard(hillDecision({ body: "More words." }));
+    expect(slot("decision-summary")!.className).toMatch(/\bline-clamp-3\b/u);
+    fireEvent.click(slot("decision-more")!);
+    expect(slot("decision-summary")!.className).not.toMatch(/\bline-clamp-3\b/u);
   });
 
   it("has no More without a body or links", () => {
@@ -491,14 +505,15 @@ describe("a trick's decision", () => {
 
   it("names the trick and the word trick on the meta line, in the poster's slot", () => {
     const { slot } = renderCard(trickDecision());
-    expect(slot("decision-meta")?.textContent).toMatch(/Look\s*·\s*trick/);
+    expect(slot("decision-meta")?.textContent).toMatch(/Look\s*trick/);
+    expect(slot("decision-trick-word")?.querySelector('[data-icon="mod-icon-plug"]')).not.toBeNull();
     expect(slot("decision-meta")).not.toHaveTextContent("collie lead");
   });
 
   it("shows the machine's name on the meta line, never the routing host", () => {
     const base = trickDecision();
     const { slot } = renderCard({ ...base, from: { ...base.from, host: "bluefin", trickHost: "collie-04rj6a" } });
-    expect(slot("decision-meta")?.textContent).toMatch(/Look\s*·\s*trick\s*bluefin/);
+    expect(slot("decision-meta")?.textContent).toMatch(/Look\s*trick\s*bluefin/);
     expect(slot("decision-host")).toHaveTextContent("bluefin");
     expect(slot("decision-meta")).not.toHaveTextContent("collie-04rj6a");
   });

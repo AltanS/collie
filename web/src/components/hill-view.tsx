@@ -4,7 +4,7 @@ import { RouteHeader } from "@/components/app-header";
 import { BrandMark } from "@/components/brand-mark";
 import { useCrew } from "@/components/crew-provider";
 import { DecisionCard, KeptWords } from "@/components/decision-card";
-import { HillPriorityGlyph, PRIORITY_INK } from "@/components/hill-priority";
+import { HillPriorityGlyph, PRIORITY_WORD_INK } from "@/components/hill-priority";
 import { Icon } from "@/components/icons/icon";
 import type { IconKey } from "@/components/icons/keys";
 import { SectionHeader } from "@/components/section-header";
@@ -51,8 +51,18 @@ export function HillHeader({ count, nowCount, onBack }: { count: number; nowCoun
           >
             <Icon name="back" className="size-5" />
           </Button>
-          {/* The mark is a disc because it is as wide as it is tall (DESIGN.md §3). Neutral ink: the count line says `now`. */}
-          <span aria-hidden data-slot="hill-mark" className="flex size-9 shrink-0 items-center justify-center rounded-full border border-border bg-card text-foreground">
+          {/* The mark is a disc because it is as wide as it is tall (DESIGN.md §3). While a `now` Decision is
+              open its ring and its mountain take the warm accent, as C1 draws them (DESIGN.md §4, "The
+              Hill's warm accent"); the count line says it in words. */}
+          <span
+            aria-hidden
+            data-slot="hill-mark"
+            data-now={nowCount > 0 ? "" : undefined}
+            className={cn(
+              "flex size-9 shrink-0 items-center justify-center rounded-full border bg-card",
+              nowCount > 0 ? "border-status-working/60 text-status-working" : "border-border text-foreground",
+            )}
+          >
             <Icon name="hill" className="size-5" />
           </span>
           <div className="ml-1 flex min-w-0 flex-col">
@@ -126,14 +136,17 @@ function HillClear({ answered }: { answered: number }) {
   );
 }
 
-/** One priority's cards under its heading: the three peaks, the word, how many. */
+/**
+ * One priority's cards under its heading: the three peaks, the word, how many, at C1's 13px. The empty
+ * peaks are filled with the card colour, as C1 draws them.
+ */
 function PriorityGroup({ priority, decisions, renderCard }: { priority: HillDecision["priority"]; decisions: readonly HillDecision[]; renderCard: (decision: HillDecision) => ReactNode }) {
   const headingId = useId();
   return (
     <section data-slot="hill-group" data-priority={priority} aria-labelledby={headingId} className="flex flex-col gap-3">
-      <h2 id={headingId} className="flex items-center gap-2 text-sm font-semibold">
-        <HillPriorityGlyph priority={priority} surface="background" decorative />
-        <span className={PRIORITY_INK[priority]}>{priorityWord(priority)}</span>
+      <h2 id={headingId} className="flex items-center gap-2 text-[13px] font-semibold">
+        <HillPriorityGlyph priority={priority} surface="card" decorative />
+        <span className={PRIORITY_WORD_INK[priority]}>{priorityWord(priority)}</span>
         <span className="tabular-nums text-muted-foreground">{decisions.length}</span>
       </h2>
       {decisions.map((decision) => renderCard(decision))}

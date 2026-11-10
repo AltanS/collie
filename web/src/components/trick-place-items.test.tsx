@@ -96,6 +96,13 @@ describe("the Dashboard's strip of tricks' tiles", () => {
     expect(legs!.textContent).toContain("Legs");
   });
 
+  it("draws no badge on the face for one longer than three characters, and still names it (A5)", async () => {
+    await mountStrip([part("legs", "dashboard", { icon: "flask", label: "Legs", badge: "23/34" })]);
+    const [legs] = tiles();
+    expect(legs!.querySelector('[data-slot="tile-badge"]')).toBeNull();
+    expect(legs!.textContent).toContain("23/34");
+  });
+
   it("scrolls sideways with no scrollbar under the house fade, and each tile meets the 44px floor", async () => {
     await mountStrip(Array.from({ length: 9 }, (_, i) => part(`t${i}`, "dashboard", { label: `Trick ${i}` })));
     const scroller = document.querySelector<HTMLElement>('[data-slot="tile-strip-scroller"]')!;

@@ -59,7 +59,7 @@ import { programScope, programSessions, programsAbove, waitingPrograms } from "@
 import { cn } from "@/lib/utils";
 import { isReadOnly, type AgentView, type ServerSummary, type SessionSummary } from "@/lib/types";
 import { useRootData } from "@/lib/route-data";
-import { useHillCount } from "@/lib/hill/store";
+import { useHillCount, useHillOpen } from "@/lib/hill/store";
 import { useTrickParts } from "@/lib/tricks/store";
 
 const NO_TRICK_SESSIONS: readonly AgentView[] = [];
@@ -313,6 +313,8 @@ export function HomeRoute() {
   // carries no `hillRev` (a bridge older than the hill, a crew member's own scope): no Hill item there.
   const hillCount = useHillCount();
   const hill = data.hill === true ? hillCount : null;
+  // A `now` Decision gives the Hill item its snow cap in the warm accent (the owner's pick A5).
+  const hillNow = useHillOpen().some((d) => d.priority === "now");
   // The tricks' bottom bar items (the `tabbar` place), after the Hill.
   const tabbarParts = useTrickParts("tabbar");
   // The footer's tabs: Crew while a crew is configured, the Dashboard, and Files on a machine with a screen,
@@ -499,6 +501,7 @@ export function HomeRoute() {
           blockedCount={blockedCount}
           readyUnseen={readyUnseen}
           hill={hill}
+          hillNow={hill !== null && hillNow}
           onOpenHill={() => nav.down(hillPath(data.scope))}
           tabbarParts={tabbarParts}
           sessions={data.trickSessions ?? NO_TRICK_SESSIONS}

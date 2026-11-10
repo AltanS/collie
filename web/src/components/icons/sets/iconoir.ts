@@ -57,7 +57,7 @@ export const ICONOIR = {
   "crew": "network", // the crew of machines · lucide Network
   "decision-dismissed": "xmark", // a Decision that was dismissed · lucide X
   "decision-superseded": "refresh-double", // a Decision a newer one replaced · lucide RefreshCw
-  "decision-withdrawn": "undo", // a Decision its poster took back · lucide Undo2
+  "decision-withdrawn": "arrow-left", // a Decision its poster took back · lucide ArrowLeft
   "delete": "trash", // delete · lucide Trash2
   "detached-head": "git-commit", // HEAD is on a commit, not a branch · lucide GitCommitHorizontal
   "direct-typing": "dialpad", // keystrokes go straight to the terminal · lucide Keyboard
@@ -105,6 +105,7 @@ export const ICONOIR = {
   "harnesses": "sparks", // harnesses · lucide Bot
   "hide-ignored": "eye-closed", // ignored files are hidden · lucide EyeOff
   "hill": null, // the Hill, where Decisions wait · lucide Mountain
+  "hill-now": null, // the Hill while a `now` Decision is open · lucide MountainSnow
   "history-screen": "journal-page", // the scrollback history screen · lucide ScrollText
   "image": "media-image", // an image · lucide Image
   "info": "info-circle", // information, or the facts of an option · lucide Info

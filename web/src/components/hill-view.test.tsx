@@ -1,4 +1,4 @@
-import { fireEvent, render } from "@testing-library/react";
+import { cleanup, fireEvent, render } from "@testing-library/react";
 import { createMemoryRouter, RouterProvider } from "react-router";
 
 import { HILL_IDLE } from "@/hooks/use-hill-answer";
@@ -153,5 +153,13 @@ describe("the Hill's header", () => {
 
   it("wears the Hill's mountain through its icon key", () => {
     expect(header(1, 0).querySelector('[data-slot="hill-mark"] [data-icon="hill"]')).not.toBeNull();
+  });
+
+  it("gives the mark the warm accent while a Decision is Now, and the plain ink otherwise (C1)", () => {
+    expect(header(2, 1).querySelector('[data-slot="hill-mark"]')!.className).toMatch(/\bborder-status-working\/60\b.*\btext-status-working\b/u);
+    cleanup();
+    const calm = header(2, 0).querySelector('[data-slot="hill-mark"]')!;
+    expect(calm.className).not.toContain("status-working");
+    expect(calm.className).toMatch(/\bborder-border\b/u);
   });
 });
