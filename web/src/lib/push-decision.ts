@@ -69,6 +69,8 @@ export interface NotifData {
   target?: string;
   /** The crew member a `target: "machine"` alert is about, as `/api/machines` names it. Not `host`. */
   machine?: string;
+  /** The Decision a `target: "hill"` push is about (bridge/hill/push.ts): the tap opens its card. */
+  decision?: string;
 }
 
 export type PushDecision =
@@ -92,6 +94,8 @@ export type PushDecision =
       target?: string;
       /** The crew member a machine alert is about; undefined for every other push. */
       machine?: string;
+      /** The Decision a Hill push is about; undefined for every other push. */
+      decision?: string;
       renotify: boolean;
     };
 
@@ -106,6 +110,9 @@ export type PushDecision =
  * the base the discriminator — `@` ⇒ a peer's slot, `:` ⇒ a name on this machine.
  */
 export const HOST_TAG_SEP = "@";
+
+/** A Decision id as the bridge mints it (`HILL_ID_RE` in lib/hill/wire.ts, restated so the worker stays small). */
+const HILL_DECISION_ID = /^dc_[a-z0-9]{12}$/;
 
 /**
  * Qualify a notification slot with the host that owns it. `host === undefined` (solo, or the lead's
@@ -166,6 +173,7 @@ export function decidePush(
   const host = payload.data?.host;
   const target = payload.data?.target;
   const machine = payload.data?.machine;
+  const decision = payload.data?.decision;
   // ONE derivation, both directions. A retraction that computed a different tag than its render did
   // would leave a dead notification on the lock screen forever, with nothing left that will ever
   // close it — so `clear` and `show` resolve the slot on this single line, before they diverge.
@@ -185,13 +193,14 @@ export function decidePush(
     host,
     target,
     machine,
+    decision,
     renotify: payload.renotify ?? false,
   };
 }
 
 /**
- * The URL a notification tap opens — `/settings/updates` for an update alert, otherwise the agent's
- * pane scoped to the machine and session it actually lives on.
+ * The URL a notification tap opens — `/settings/updates` for an update alert, the Hill at its card for
+ * a `now` Decision, otherwise the agent's pane scoped to the machine and session it actually lives on.
  *
  * The WIRE spelling stays `"settings"` (bridge/push.ts) while the destination moves, and that is
  * deliberate: an old cached service worker holds its own copy of this function, sends the tap to
@@ -216,6 +225,9 @@ export function notificationPath(data: NotifData = {}): string {
   // names where a pane lives, and a machine alert has no pane. A push without a machine has nowhere
   // better to go than Machines itself. The paths are nav.ts's own (kept in machine-paths.ts for the worker), unscoped: the page is the lead's.
   if (data.target === "machine") return data.machine ? machinePath(data.machine) : machinesPath();
+  // A `now` Decision (bridge/hill/push.ts) opens the Hill at its card, named by the hash the route scrolls
+  // to (routes/hill.tsx). The Hill is the lead's, so unscoped. An id of any other shape opens the Hill.
+  if (data.target === "hill") return data.decision !== undefined && HILL_DECISION_ID.test(data.decision) ? `/hill#${data.decision}` : "/hill";
   const base = data.paneId && data.paneId !== "test" ? `/pane/${encodeURIComponent(data.paneId)}` : "/";
   return `${base}${scopeSearch({ host: data.host, session: data.session })}`;
 }
