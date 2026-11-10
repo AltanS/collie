@@ -143,7 +143,8 @@ export function describeMarkConformance(entries: readonly MarkEntry[]): void {
           expect(root.getAttribute("data-state")).toBe(state);
           expect(root.getAttribute("width")).toBe("64");
           expect(root.hasAttribute("data-bead")).toBe(MARK_STATE_LOOK[state].bead !== null);
-          expect(root.hasAttribute("data-still")).toBe(MARK_STATE_LOOK[state].motion === "hold");
+          // Before any input a drifting state is held too: only a `run` state turns on a page nobody touched.
+          expect(root.hasAttribute("data-still")).toBe(MARK_STATE_LOOK[state].motion !== "run");
           expect(root.hasAttribute("data-slow")).toBe(MARK_STATE_LOOK[state].pace !== "live");
           expect(root.getAttribute("viewBox")).not.toBeNull();
         });
@@ -242,12 +243,71 @@ export function describeMarkConformance(entries: readonly MarkEntry[]): void {
     // holds once it is not; the update always turns, at the calm pace. The engine half (what a real
     // browser runs, for every character) is web/e2e/idle-repaint.spec.ts.
     it("drifts at rest while the page is in use, slow and smooth, and holds idle where it is", () => {
-      for (const state of MARK_STATES) {
-        const root = rootOf(render(<Mark state={state} />).container);
+      const roots = MARK_STATES.map((state) => ({ state, root: rootOf(render(<Mark state={state} />).container) }));
+      // Opening a page is not use: only the update and the fast states turn before the first input.
+      for (const { state, root } of roots) {
+        const turns = state === "loading" || state === "applying" || state === "reconnected";
+        expect(root.hasAttribute("data-still"), `${state} before input`).toBe(!turns);
+      }
+      act(() => {
+        window.dispatchEvent(new Event("pointerdown"));
+      });
+      for (const { state, root } of roots) {
         expect(root.hasAttribute("data-still"), state).toBe(state === "idle");
         expect(root.hasAttribute("data-slow"), state).toBe(state === "rest" || state === "idle" || state === "applying");
       }
       expect(MARK_STYLE).toBe("[data-mark][data-still] *{animation-play-state:paused!important}");
+    });
+
+    it("rests from the first frame on a page nobody has touched, and an input starts the drift", () => {
+      vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "setTimeout", "clearTimeout", "performance", "Date"] });
+      const probe = render(<Mark />);
+      const names = keyframeNames(sheetOf(rootOf(probe.container)));
+      probe.unmount();
+      const fakes = names.map((name) => new FakeAnimation(name, 0));
+      installAnimations(fakes);
+      const { container, unmount } = render(<Mark />);
+      const root = rootOf(container);
+      // A fresh page is not in use: held at once, and a long wait with no input changes nothing.
+      expect(root.hasAttribute("data-still")).toBe(true);
+      act(() => vi.advanceTimersByTime(MARK_DRIFT.windowMs + MARK_DRIFT.easeMs + 1000));
+      expect(root.hasAttribute("data-still")).toBe(true);
+      expect(fakes.flatMap((a) => a.rates)).toEqual([]);
+      // One input arms the window; with no second input it ends after `windowMs` and the mark holds again.
+      act(() => {
+        window.dispatchEvent(new Event("keydown"));
+      });
+      expect(root.hasAttribute("data-still")).toBe(false);
+      act(() => vi.advanceTimersByTime(MARK_DRIFT.windowMs - 1));
+      expect(root.hasAttribute("data-still")).toBe(false);
+      act(() => vi.advanceTimersByTime(1));
+      act(() => vi.advanceTimersByTime(MARK_DRIFT.easeMs + 200));
+      expect(root.hasAttribute("data-still")).toBe(true);
+      unmount();
+    });
+
+    it("counts no input as use on a hidden page, and stops at once when the page turns hidden", () => {
+      vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "setTimeout", "clearTimeout", "performance", "Date"] });
+      const visibility = vi.spyOn(document, "visibilityState", "get");
+      visibility.mockReturnValue("hidden");
+      const { container, unmount } = render(<Mark />);
+      const root = rootOf(container);
+      act(() => {
+        window.dispatchEvent(new Event("pointerdown"));
+      });
+      expect(root.hasAttribute("data-still")).toBe(true);
+      visibility.mockReturnValue("visible");
+      act(() => {
+        window.dispatchEvent(new Event("pointerdown"));
+      });
+      expect(root.hasAttribute("data-still")).toBe(false);
+      visibility.mockReturnValue("hidden");
+      act(() => {
+        document.dispatchEvent(new Event("visibilitychange"));
+      });
+      act(() => vi.advanceTimersByTime(MARK_DRIFT.easeMs + 200));
+      expect(root.hasAttribute("data-still")).toBe(true);
+      unmount();
     });
 
     it("eases to a stop when nobody uses the page, holds, and drifts on at the next input", () => {
@@ -259,6 +319,9 @@ export function describeMarkConformance(entries: readonly MarkEntry[]): void {
       installAnimations(fakes);
       const { container, unmount } = render(<Mark />);
       const root = rootOf(container);
+      act(() => {
+        window.dispatchEvent(new Event("pointerdown"));
+      });
       act(() => vi.advanceTimersByTime(MARK_DRIFT.windowMs - 1));
       expect(root.hasAttribute("data-still")).toBe(false);
       act(() => vi.advanceTimersByTime(1));
@@ -293,6 +356,9 @@ export function describeMarkConformance(entries: readonly MarkEntry[]): void {
     it("comes off a fast state with no last lap: rest drifts on at once, idle holds", () => {
       const { container, rerender } = render(<Mark state="loading" />);
       expect(rootOf(container).hasAttribute("data-slow")).toBe(false);
+      act(() => {
+        window.dispatchEvent(new Event("pointerdown"));
+      });
       rerender(<Mark state="rest" />);
       expect(rootOf(container).hasAttribute("data-still")).toBe(false);
       expect(rootOf(container).hasAttribute("data-slow")).toBe(true);
