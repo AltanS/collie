@@ -393,3 +393,38 @@ describe("the Hill switched off", () => {
     expect(await within(rowOf("legs")).findByText("This trick reaches the network.")).toBeInTheDocument();
   });
 });
+
+// A new version waits (crew slice 2, bridge/tricks/service.ts): the trick keeps running the approved copy,
+// and its row says once that a newer folder waits for a yes. The note takes the provenance's slot, never a
+// trouble report's, and the row grows no button: the switch, switched on again, is the yes.
+describe("a new version waits", () => {
+  const PENDING = { hash: "ab".repeat(32), files: { added: 1, changed: 2, removed: 0 }, powersChanged: false, warnings: [] };
+  const WAITING: WireTrickInfo = { ...LEGS, pending: PENDING };
+
+  it("slotLine: the note for a trick that is on, after any trouble and before the Hill note", () => {
+    expect(slotLine(WAITING, NOW)).toEqual({ text: "A new version waits for your yes.", trouble: false });
+    expect(slotLine({ ...WAITING, decides: true }, NOW, true).text).toBe("A new version waits for your yes.");
+    expect(slotLine({ ...WAITING, on: false, state: "off" }, NOW).text).toBe("Added by agent · 2 h ago");
+    expect(slotLine({ ...WAITING, state: "failing", error: "exit 2" }, NOW)).toEqual({ text: "exit 2", trouble: true });
+  });
+
+  it("the row shows the note and adds no button", async () => {
+    renderCard(await storeWith([WAITING, TRACKER]));
+    await screen.findByText("Browser leg");
+    expect(rowOf("legs").querySelector('[data-line="slot"]')).toHaveTextContent("A new version waits for your yes.");
+    expect(rowOf("tracker").querySelector('[data-line="slot"]')).not.toHaveTextContent("A new version waits");
+    expect(within(rowOf("legs")).queryByRole("button")).toBeNull();
+  });
+
+  it("readTrick keeps a well-formed pending and drops a malformed one", () => {
+    const base = { host: "bluefin", id: "legs", name: "Legs", icon: "plug", on: true, state: "ok", places: ["belt"] };
+    expect(readTrick(base)).not.toHaveProperty("pending");
+    expect(readTrick({ ...base, pending: PENDING })?.pending).toEqual(PENDING);
+    const warned = { ...PENDING, warnings: [{ kind: "network", text: "x" }, 7] };
+    expect(readTrick({ ...base, pending: warned })?.pending?.warnings).toEqual([{ kind: "network", text: "x" }]);
+    expect(readTrick({ ...base, pending: { ...PENDING, hash: 5 } })).not.toHaveProperty("pending");
+    expect(readTrick({ ...base, pending: { ...PENDING, files: { added: -1, changed: 0, removed: 0 } } })).not.toHaveProperty("pending");
+    expect(readTrick({ ...base, pending: { ...PENDING, powersChanged: "yes" } })).not.toHaveProperty("pending");
+    expect(readTrick({ ...base, pending: "soon" })).not.toHaveProperty("pending");
+  });
+});

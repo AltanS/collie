@@ -20,6 +20,7 @@ import {
   type TapCode,
   type WireTrickInfo,
   type WireTrickPart,
+  type WireTrickPending,
   type WireTrickWarning,
 } from "./schema";
 
@@ -98,6 +99,28 @@ export function readWarnings(raw: JsonValue | undefined): WireTrickWarning[] {
   return out.slice(0, TRICK_WARNINGS_MAX);
 }
 
+/** A count of files on the wire: a whole number from 0. */
+function readCount(raw: JsonValue | undefined): number | undefined {
+  const n = asJsonNumber(raw);
+  return n !== undefined && Number.isInteger(n) && n >= 0 ? n : undefined;
+}
+
+/**
+ * A trick's waiting version (crew slice 2), read tolerantly: kept only with a hash, three counts and the
+ * powers flag; its warnings are read like the row's. Anything else is left out, as from an older bridge.
+ */
+export function readPending(raw: JsonValue | undefined): WireTrickPending | undefined {
+  const body = asJsonObject(raw);
+  const files = asJsonObject(body?.files);
+  const hash = asJsonString(body?.hash);
+  const powersChanged = asJsonBoolean(body?.powersChanged);
+  const added = readCount(files?.added);
+  const changed = readCount(files?.changed);
+  const removed = readCount(files?.removed);
+  if (body === undefined || hash === undefined || powersChanged === undefined || added === undefined || changed === undefined || removed === undefined) return undefined;
+  return { hash, files: { added, changed, removed }, powersChanged, warnings: readWarnings(body.warnings) };
+}
+
 /** One trick entry as the list and the switch route give it, or `undefined` for a body of another shape. */
 export function readTrick(raw: JsonValue | undefined): WireTrickInfo | undefined {
   // The closed words (`icon`, `state`, `places`) were written by the bridge from the schema's lists; the
@@ -106,12 +129,15 @@ export function readTrick(raw: JsonValue | undefined): WireTrickInfo | undefined
   if (body === undefined) return undefined;
   // Read as JSON before the frame check narrows the body to the wire type.
   const sent = body.warnings;
+  const waiting = body.pending;
   if (!isTrickValue(body)) return undefined;
-  if (sent === undefined) return body;
-  // The one field read past the frame: the Tricks card lists it, so its shape is held here.
+  if (sent === undefined && waiting === undefined) return body;
+  // The two fields read past the frame: the Tricks card lists them, so their shapes are held here.
   const warnings = readWarnings(sent);
-  const { warnings: _sent, ...rest } = body;
-  return warnings.length === 0 ? rest : { ...rest, warnings };
+  const pending = readPending(waiting);
+  const { warnings: _sent, pending: _waiting, ...rest } = body;
+  const out: WireTrickInfo = warnings.length === 0 ? rest : { ...rest, warnings };
+  return pending === undefined ? out : { ...out, pending };
 }
 
 /** `GET /api/tricks?since=` as the store merges it, or `undefined` for a body of another shape. */

@@ -3341,6 +3341,7 @@ export const en = {
   "settings.tricks.warn.import": "This trick imports a package Collie does not install, so it may not run.",
   "settings.tricks.warn.honesty": "Found by a text search of its code, not a proof.",
   "settings.tricks.hillOff": "The Hill is off: this trick's Decisions are not shown.",
+  "settings.tricks.pending": "A new version waits for your yes.",
 
   // --- hill: the Decisions agents post, and the view that answers them (M96) ---
   // "Hill" is the view's name, a Collie word like a brand: the same in every language, never
@@ -3503,6 +3504,7 @@ export const PENDING_TRANSLATION = [
   "settings.tricks.withTime",
   "settings.tricks.refused",
   "settings.tricks.refusedBare",
+  "settings.tricks.pending",
   "hill.title",
   "hill.back",
   "hill.open.one",

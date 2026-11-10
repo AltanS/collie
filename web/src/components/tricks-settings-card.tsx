@@ -29,8 +29,10 @@ import { isReadOnly } from "@/lib/types";
 //      between runs does not change this line;
 //   3. ONE slot, which reads the provenance (who added it, from where, when) for a healthy trick and the
 //      masked last error for a trick that is failing or stopped, or the first refusal for a trick whose
-//      manifest was refused. Clipped to one line. The slot is reserved for both, so the row is one
-//      height whether or not the trick is well.
+//      manifest was refused, or "A new version waits for your yes." for a trick that is on and whose
+//      folder moved past the version a person approved (it keeps running that version; the switch,
+//      switched on again, approves the new one). Clipped to one line. The slot is reserved for all of
+//      them, so the row is one height whether or not the trick is well.
 //
 // UNDER THEM, BEFORE THE SWITCH, THE WARNINGS (review 15). The bridge puts what a text search of the code
 // flags on the row of a trick that is off or changed (bridge/tricks/scan.ts), one per kind. The row lists
@@ -89,9 +91,10 @@ export interface SlotLine {
 }
 
 /**
- * The third line: the reason a trick is not well, else the one note that the Hill is off for a trick
- * that is on and asks Decisions (`hillOff`, the snapshot's; bridge/tricks/hill.ts: they are not posted,
- * the trick keeps running), else where it came from.
+ * The third line: the reason a trick is not well, else that a new version waits for a yes (`pending`,
+ * from a bridge since crew slice 2), else the one note that the Hill is off for a trick that is on and
+ * asks Decisions (`hillOff`, the snapshot's; bridge/tricks/hill.ts: they are not posted, the trick keeps
+ * running), else where it came from.
  */
 export function slotLine(trick: WireTrickInfo, now: number, hillOff = false): SlotLine {
   if (trick.state === "skipped") {
@@ -100,6 +103,7 @@ export function slotLine(trick: WireTrickInfo, now: number, hillOff = false): Sl
   }
   const failing = trick.state === "failing" || trick.state === "stopped";
   if (failing && trick.error !== undefined) return { text: trick.error, trouble: true };
+  if (trick.on && trick.pending !== undefined) return { text: t("settings.tricks.pending"), trouble: false };
   if (hillOff && trick.on && trick.decides === true) return { text: t("settings.tricks.hillOff"), trouble: false };
   return { text: provenanceLine(trick, now), trouble: false };
 }
