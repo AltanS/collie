@@ -68,6 +68,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **A new turn starts further down, and quiet lines sit between two thin lines.** In Chat a new turn starts 20px under the block above, and the blocks of one agent run sit 8px apart. Notices, the compaction marker and the top-of-thread line, and History's day divider and compaction marker, are drawn the same way.
 - **The WalkyTalky skill teaches how to word a Decision.** The skill an agent reads now carries the same wording rules as `collie hill post --help`: a title that asks the decision as a question, a summary of two sentences, and options that start with a verb and are never a bare Yes or No. The skill's example Decision follows them. Run `collie skill sync` to replace an installed copy; `collie update` does it for you.
 - **A signed crew request has a size cap, checked before the body is read.** Each route a member signs has its own cap, from 4 KiB to 3 MiB, many times what it sends today. A larger body is refused with 413 before Collie reads it, so a caller that cannot sign cannot make the lead hold a large body in memory. (CREW_PROTOCOL §8.6)
+- **`collie trick list` marks a waiting version with NEW.** A new column, VERSION, reads NEW for a trick whose folder moved past the version you approved, and one line under the table says to approve it on the Hill or with `collie trick on <id>`. The STATE column no longer carries it.
 
 ### Fixed
 

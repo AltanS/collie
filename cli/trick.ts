@@ -63,8 +63,8 @@ import type { Files } from "./sys.ts";
 //                     `<configDir>/tricks/.collie-approved/<id>/<hash16>/` and stores the copy's hash, and the
 //                     bridge runs that copy, so an edit of the folder never stops the trick: the new
 //                     version waits for a yes. On prints the check scan's warnings, and still switches
-//                     on. It refuses inside a multiplexer pane, where Collie takes the caller for an
-//                     agent (a speed bump, not a wall: see cmdTrickSwitch)
+//                     on. It refuses in a pane where the running bridge sees an agent (a speed bump,
+//                     not a wall: see cmdTrickSwitch)
 //   auto <id> on|off  "take changes without asking": a new version whose powers did not move is
 //                     approved on its own; a change of powers always waits
 //   check <folder>    the static check: the manifest, its places, the command lines and the warnings of
@@ -218,11 +218,11 @@ export async function cmdTrickList(deps: TrickDeps, args: readonly string[]): Pr
     return EXIT.OK;
   }
   const lines = table([
-    ["ID", "NAME", "SWITCH", "AUTO", "SKILL", "ORIGIN", "STATE", "LAST RUN", "LAST ERROR"],
-    ...rows.map((r) => [r.id, r.name, r.on ? "on" : "off", r.auto ? "on" : "-", r.skill ? "yes" : "-", r.origin ?? "-", r.pending ? `${r.state}, new version waits` : r.state, r.lastRunAt ?? "-", r.error ?? "-"]),
+    ["ID", "NAME", "SWITCH", "AUTO", "SKILL", "ORIGIN", "VERSION", "STATE", "LAST RUN", "LAST ERROR"],
+    ...rows.map((r) => [r.id, r.name, r.on ? "on" : "off", r.auto ? "on" : "-", r.skill ? "yes" : "-", r.origin ?? "-", r.pending ? "NEW" : "-", r.state, r.lastRunAt ?? "-", r.error ?? "-"]),
   ]);
   for (const line of lines) deps.io.out(line);
-  if (rows.some((r) => r.pending)) deps.io.out("A new version waits for your yes: approve it on the phone, or with collie trick on <id>.");
+  if (rows.some((r) => r.pending)) deps.io.out("NEW: a new version waits for your yes. Approve it on the Hill, or with collie trick on <id>.");
   if (!bridge) deps.io.out("(the bridge did not answer: state and last run are from the files only)");
   if (rows.some((r) => r.skill && r.on)) deps.io.out("An agent reads what a trick asks of it with: collie trick skill <id>");
   return EXIT.OK;

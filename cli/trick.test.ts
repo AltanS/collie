@@ -535,8 +535,8 @@ describe("collie trick on, off and list", () => {
     await cmdTrickSwitch(d, ["legs"], true);
     d.out.length = 0;
     expect(await cmdTrickList(d, [])).toBe(EXIT.OK);
-    expect(d.out[0]).toMatch(/^ID\s+NAME\s+SWITCH\s+AUTO\s+SKILL\s+ORIGIN\s+STATE\s+LAST RUN\s+LAST ERROR$/);
-    expect(d.out[1]).toMatch(/^legs\s+legs\s+on\s+-\s+-\s+-\s+failing\s+2026-11-08T09:41:00.000Z\s+The program exited with 1$/);
+    expect(d.out[0]).toMatch(/^ID\s+NAME\s+SWITCH\s+AUTO\s+SKILL\s+ORIGIN\s+VERSION\s+STATE\s+LAST RUN\s+LAST ERROR$/);
+    expect(d.out[1]).toMatch(/^legs\s+legs\s+on\s+-\s+-\s+-\s+-\s+failing\s+2026-11-08T09:41:00.000Z\s+The program exited with 1$/);
     expect(d.asked[0]).toBe("http://127.0.0.1:18999/api/tricks");
   });
 
@@ -805,8 +805,9 @@ describe("approving from inside an agent's pane, auto, and a version waiting", (
     await writeFile(join(d.configDir, "tricks", "legs", "program.sh"), "#!/bin/sh\necho changed\n");
     d.out.length = 0;
     await cmdTrickList(d, []);
-    expect(d.out[1]).toContain("on, not seen by the bridge, new version waits");
-    expect(d.out).toContain("A new version waits for your yes: approve it on the phone, or with collie trick on <id>.");
+    expect(d.out[0]).toContain("VERSION");
+    expect(d.out[1]).toMatch(/ NEW +on, not seen by the bridge/);
+    expect(d.out).toContain("NEW: a new version waits for your yes. Approve it on the Hill, or with collie trick on <id>.");
     d.out.length = 0;
     await cmdTrickList(d, ["--json"]);
     // SAFETY: `list --json` prints one document, checked by value below.

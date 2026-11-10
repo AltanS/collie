@@ -53,18 +53,38 @@ it on, the bridge copies its code into `tricks/.collie-approved/<id>/<hash16>/` 
 (`bridge/tricks/approved.ts`, the first 16 hex digits of the code hash) and runs that copy: `trick.dir` in the facts, the working
 folder and the `media/` the phone reads all name the copy. An edit of the trick folder never stops the
 trick. The bridge copies the new code to `.collie-pending/` and the row says "A new version waits for your
-yes."; switching the trick on again approves it. A new version whose `env` and `places` are unchanged
-is taken without asking when the trick has `collie trick auto <id> on`. So a program must not write
+yes."; switching the trick on again approves it, and so does the card on the Hill (see "The new version
+card" below). A new version whose `env` and `places` are unchanged is taken without asking when the
+trick has `collie trick auto <id> on`, or the switch "Take changes without asking" in Settings → Tricks. So a program must not write
 into its own code folder: the copy's code files are read-only (not on Windows, where the hash check
 alone catches it), and a change there stops the trick with "The approved copy changed on disk". It keeps its notes in `trick.state`, the
 state folder, which is never copied. `media/` and `captures/` are seeded into the copy once (at most
 500 files and 64 MiB) and stay writable; `inputs/` starts empty. Dot files, dot folders and
-`node_modules/` are not copied, as with `collie trick add`. `collie trick on` refuses inside a
-multiplexer pane, where Collie takes the caller for an agent: an agent does not approve its own trick.
-It is a speed bump, not a lock; the person approves from the phone or a terminal outside the
-multiplexer. A `switches.json` from an older Collie (version 1 or 2) is moved to version 3 at the
+`node_modules/` are not copied, as with `collie trick add`. `collie trick on` and `collie trick auto
+<id> on` refuse in a multiplexer pane where the running bridge sees an agent (the walky socket's `pane`
+op): an agent does not approve its own trick. In a shell pane they work. With no bridge, or a bridge
+that does not know the op or the pane, they do not refuse. It is a speed bump, not a lock: the user
+account is the real boundary, and the person approves from the phone or a terminal. A `switches.json` from an older Collie (version 1 or 2) is moved to version 3 at the
 bridge's first look: a trick whose folder still matches the hash a person approved keeps running from a
 fresh copy, and any other waits, on, for a new yes.
+
+**The new version card.** When the folder of a trick that is on moves past its approved copy, the bridge
+puts one Decision of kind `collie` on the Hill (`bridge/tricks/version-card.ts`): "Use the new version
+of <name>?". It is minted inside the bridge only (`HillService.postCollie`); the walky socket and the
+crew routes make kind `agent`, the trick runner makes kind `trick`, and a decision of kind `collie` is
+read only from the bridge's own store. Its `from.ref` is `{ type: "version", id, hash }`, the pending
+snapshot's code hash. The summary counts the changed files and names any new right (an `env` name or a
+place). The view shows a chip per new right, a line per warning kind that is new since the
+approved copy, a table of the files with their `+` and `-` counts, up to two diffs, and "and N more
+files"; it stays under 8 KiB. The counts and diffs come from `git diff --no-index -U2` run from `/` with
+the Files view's hardening, `--no-ext-diff`, `--no-textconv`, 5 s and 256 KiB per run
+(`bridge/tricks/version-diff.ts`); every line is masked like screen text. Without git the table lists
+the files only. The options are "Use the new version", "Use it and stop asking" (only when no new right
+is asked) and "Keep the old version". A tap acts on exactly the hash on the card: when the folder moved
+since, the tap is refused with "The trick changed again since this card. A new card replaces this one."
+and the card stays open. A newer change replaces the card; approving elsewhere, the folder going back,
+or the trick going off withdraws it. After a change taken without asking, the row in Settings → Tricks
+says when, with Undo, which brings back the version before (`POST /api/tricks/<host>/<id>/undo`).
 
 **Strict at write, tolerant at read.** What a trick writes is checked strictly where a person or an
 agent writes it: `trick.toml`, `collie hill post`, and a trick's Decisions (a Decision's view
