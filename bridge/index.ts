@@ -298,6 +298,7 @@ import {
   CREW_WALKY_ROUTE,
   leadRouteRemote,
   memberRouteRemote,
+  olderThanSpace,
   olderThanWake,
   olderThanWalky,
   WalkyCrew,
@@ -2233,6 +2234,9 @@ const walkyRefusals = new RefusalCounter(join(cfg.stateDir, "walky"));
 let walkyLeadClient: PeerClient | null = null;
 // The lead runtime's own crew client, kept for the outcomes push (§21): assigned where the lead is built.
 let crewLeadClient: PeerClient | null = null;
+// On a lead, the version a member last reported on the sweep (§19), for the space rule's skew (M98):
+// assigned where the lead is built, read per message.
+let walkyMemberVersion: (memberId: string) => string | null = () => null;
 let walkyLeadHalf: {
   readonly route: RouteRemote;
   readonly targets: () => ReturnType<typeof crewTargets>;
@@ -2267,6 +2271,15 @@ const walky = new WalkyService({
   },
   leadName: () => trustStore.current()?.lead?.memberId ?? null,
   remoteSkipped: crew.mode === "lead" ? () => walkyLeadHalf?.skipped() ?? [] : undefined,
+  // An agent's message with no space passes the border as `legacy` only from a signer below 1.29.0
+  // (M98, README decision 9b and 9c). A lead knows each member's reported version; a member knows its
+  // lead's stated release, and takes its lead's word for any other member's message: the lead refused
+  // such a message before routing it unless it knew that member to be older. Unknown is not older.
+  signerOlderThanSpace: (signer) => {
+    if (signer === null || signer === walkyMemberId) return false;
+    if (crew.mode === "lead") return olderThanSpace(walkyMemberVersion(signer), crewVersion, compareSemver);
+    return signer === trustStore.current()?.lead?.memberId ? olderThanSpace(heardLeadRelease, crewVersion, compareSemver) : true;
+  },
 });
 walkyReleaseCheck = (requestId, session, paneId) => walky.deliverer.stillMeant(requestId, session, paneId);
 // A member reports, on each snapshot answer, how the messages from elsewhere ended on its panes, until
@@ -2853,6 +2866,7 @@ const crewLead = (() => {
 // bodies the sweep already holds.
 if (crewLead !== undefined && walkyMemberId !== null) {
   const lead = crewLead;
+  walkyMemberVersion = (memberId) => lead.contributions().find((c) => c.state.memberId === memberId)?.state.version ?? null;
   walkyLeadHalf = {
     route: leadRouteRemote({
       self: walkyMemberId,
@@ -2860,6 +2874,10 @@ if (crewLead !== undefined && walkyMemberId !== null) {
       older: (memberId) => olderThanWalky(lead.contributions().find((c) => c.state.memberId === memberId)?.state.version ?? null, crewVersion, compareSemver),
       // A member below 1.26.1 never rests a pane: a `wake` message goes to it as a plain send.
       olderThanWake: (memberId) => olderThanWake(lead.contributions().find((c) => c.state.memberId === memberId)?.state.version ?? null, crewVersion, compareSemver),
+      // A member below 1.29.0 cannot check the space border (M98): this lead checks it for it, from the
+      // sweep's pane list and its own log, and sends it the message without the space and outside lines.
+      olderThanSpace: (memberId) => olderThanSpace(walkyMemberVersion(memberId), crewVersion, compareSemver),
+      border: (message, memberId, paneId) => walky.deliverer.remoteBorder(message, memberId, paneId),
       members: () => (trustStore.current()?.peers ?? []).filter((member) => member.status === "enrolled").map((member) => member.memberId),
       // A message from another member travels with that member's pinned certificate and this lead's
       // voucher, so the receiving member checks the origin itself (§21, added 2026-10-18).

@@ -19,7 +19,7 @@ import { WalkyLog } from "./log.ts";
 import { RateLimiter } from "./rate.ts";
 import { OUT_OF_SCOPE } from "./refusals.ts";
 import { NOT_THE_SENDER, WalkyService, type WalkyServiceDeps } from "./service.ts";
-import { RESTING, SENDER_OFF, WALKY_OFF, type WalkyTarget } from "./types.ts";
+import { RESTING, SENDER_OFF, WALKY_OFF, type WalkyMessage, type WalkySender, type WalkyTarget } from "./types.ts";
 
 import { spaceOf } from "./space.ts";
 
@@ -267,11 +267,11 @@ describe("fan-out and senders", () => {
     expect(r.host.sends.map((sent) => sent.pane)).toEqual(["w1:p1", "w1:p2", "w1:p4"]);
   });
 
-  test("an agent may not broadcast: `all` and `<member>/all` are refused and type nothing", async () => {
+  test("an agent's `all` and `<member>/all` without the outside flag are `outside your space` and type nothing (M98)", async () => {
     const panes = [pane("w1:p1"), pane("w1:p2")];
     const r = rig(panes);
     for (const [id, to] of [["wt_aaaaaaaaaaa1", "all"], ["wt_aaaaaaaaaaa2", "local/all"]] as const) {
-      expect(await r.service.send(send(id, to), { kind: "agent", pane: panes[0]! })).toMatchObject({ ok: true, receipts: [{ state: "refused", reason: "only the operator may broadcast" }] });
+      expect(await r.service.send(send(id, to), { kind: "agent", pane: panes[0]! })).toMatchObject({ ok: true, receipts: [{ state: "refused", reason: "outside your space" }] });
     }
     await r.service.deliverer.settled();
     expect(r.host.sends).toEqual([]);
@@ -459,7 +459,7 @@ describe("pane instances: a pane id another session took since", () => {
 
   test("a crew hop's message to its sender's own pane is refused by either spelling", async () => {
     const r = rig([pane("w1:p1", { instance: "aaaa" })], { memberId: "desk" });
-    const from = { memberId: "desk", address: "desk/w1:p1#aaaa", harness: "agent-x", label: "x" };
+    const from = { memberId: "desk", address: "desk/w1:p1#aaaa", harness: "agent-x", label: "x", space: SOLO_SPACE };
     for (const [id, to] of [["wt_aaaaaaaaaaa1", "desk/w1:p1"], ["wt_aaaaaaaaaaa2", "desk/w1:p1#aaaa"]] as const) {
       const message = { v: 1 as const, id, kind: "agent" as const, from, to, replyTo: null, at: r.clock, body: "to myself", signer: null, signature: null };
       expect(await r.service.receive(message, "lead", true)).toMatchObject([{ state: "refused", reason: "that is your own pane", target: "desk/w1:p1" }]);
@@ -1465,8 +1465,8 @@ describe("a workspace scope (M75 spec 02)", () => {
     expect(targetsOf(await r.service.send(send("wt_aaaaaaaaaaa1", "collie-workspace#feat"), operator))).toEqual(["local/w1:p2 accepted"]);
   });
 
-  test("`here` is the sender's folder on every branch, without the sender's own pane", async () => {
-    const panes = [ws("w1:p1", "collie-workspace#main"), ws("w1:p2", "collie-workspace#feat"), ws("w1:p3", "other#main")];
+  test("`here` is the sender's space, without the sender's own pane (M98)", async () => {
+    const panes = [ws("w1:p1", "collie-workspace#main"), ws("w1:p2", "collie-workspace#feat"), ws("w1:p3", "other#main", { space: spaceOf({ memberId: "local", spaceId: "w2", spaceLabel: "w2" }) })];
     const r = rig(panes);
     expect(targetsOf(await r.service.send(send("wt_aaaaaaaaaaa1", "here"), agentOf(panes[0]!)))).toEqual(["local/w1:p2 accepted"]);
   });
@@ -1567,7 +1567,7 @@ describe("a workspace scope (M75 spec 02)", () => {
       v: 1 as const,
       id: "wt_aaaaaaaaaaa1",
       kind: "agent" as const,
-      from: { memberId: "laptop", address: "laptop/w1:p8#bbbb", harness: "agent-x", label: "collie-workspace#main" },
+      from: { memberId: "laptop", address: "laptop/w1:p8#bbbb", harness: "agent-x", label: "collie-workspace#main", space: SOLO_SPACE },
       to: "here",
       replyTo: null,
       at: 1_786_000_000_000,
@@ -1822,7 +1822,7 @@ describe("a session with its walky talky off (M89)", () => {
       v: 1 as const,
       id,
       kind,
-      from: { memberId: "desk", address: kind === "agent" ? "desk/w1:p1#aaaa" : null, harness: kind === "agent" ? "agent-x" : null, label: "repo#a" },
+      from: { memberId: "desk", address: kind === "agent" ? "desk/w1:p1#aaaa" : null, harness: kind === "agent" ? "agent-x" : null, label: "repo#a", space: kind === "agent" ? SOLO_SPACE : null },
       to: "repo",
       replyTo: null,
       at: 1_786_000_000_000,
@@ -1969,5 +1969,227 @@ describe("a session with its walky talky off (M89)", () => {
     expect(await r.service.send(send("wt_aaaaaaaaaaa2", "local/w1:p1"), from)).toMatchObject({ receipts: [{ state: "accepted" }] });
     await r.service.deliverer.settled();
     expect(r.service.status("wt_aaaaaaaaaaa2").receipts[0]?.state).toBe("delivered");
+  });
+});
+
+describe("the space border (M98 spec 03)", () => {
+  const API = spaceOf({ memberId: "local", spaceId: "w1", spaceLabel: "api" });
+  const WEB = spaceOf({ memberId: "local", spaceId: "w2", spaceLabel: "web" });
+  /** `w1:p1` and `w1:p2` in `api`, `w2:p1` in `web`, each with its own instance token. */
+  const three = () => [pane("w1:p1", { label: "repo#a", space: API }), pane("w1:p2", { label: "repo#b", instance: "bbbb", space: API }), pane("w2:p1", { label: "repo#c", instance: "cccc", space: WEB })];
+  const agentOf = (from: WalkyPane) => ({ kind: "agent" as const, pane: from });
+  const receiptsOf = (answer: Awaited<ReturnType<WalkyService["send"]>>) => {
+    if (!answer.ok) throw new Error(answer.error);
+    return answer.receipts.map(({ target, state, reason, via }) => ({ target, state, reason, via }));
+  };
+
+  test("an agent's message to a pane of another space ends refused: nothing typed, nothing in the inbox, the refusal counted", async () => {
+    const panes = three();
+    const r = rig(panes);
+    const answer = await r.service.send(send("wt_aaaaaaaaaaa1", "local/w2:p1"), agentOf(panes[0]!));
+    expect(receiptsOf(answer)).toEqual([{ target: "local/w2:p1", state: "refused", reason: "outside your space", via: undefined }]);
+    await r.service.deliverer.settled();
+    expect(r.host.sends).toEqual([]);
+    expect(r.log.inbox("main", "w2:p1", "cccc")).toEqual([]);
+    expect(r.service.refusals().counts["outside your space"]).toBe(1);
+  });
+
+  test("a message in the sender's own space passes as `in`, and the receipt says so", async () => {
+    const panes = three();
+    const r = rig(panes);
+    expect(receiptsOf(await r.service.send(send("wt_aaaaaaaaaaa1", "local/w1:p2"), agentOf(panes[0]!)))).toEqual([{ target: "local/w1:p2", state: "accepted", reason: undefined, via: "in" }]);
+    await r.service.deliverer.settled();
+    expect(r.service.status("wt_aaaaaaaaaaa1").receipts[0]).toMatchObject({ state: "delivered", via: "in" });
+    // No outside word on a message in the space.
+    expect(r.host.sends[0]!.text).toStartWith("[walky-talky wt_aaaaaaaaaaa1] from agent local/w1:p1#aaaa (agent-x, repo#a)");
+    expect(r.host.sends[0]!.text.includes(" outside")).toBe(false);
+  });
+
+  test("the operator's message passes every border as `operator`", async () => {
+    const r = rig(three());
+    expect(receiptsOf(await r.service.send(send("wt_aaaaaaaaaaa1", "local/w2:p1"), operator))).toEqual([{ target: "local/w2:p1", state: "accepted", reason: undefined, via: "operator" }]);
+  });
+
+  test("`--outside` lets the message across, and the typed line carries the outside word after the sender", async () => {
+    const panes = three();
+    const r = rig(panes);
+    const answer = await r.service.send({ ...send("wt_aaaaaaaaaaa1", "local/w2:p1"), outside: true }, agentOf(panes[0]!));
+    expect(receiptsOf(answer)).toEqual([{ target: "local/w2:p1", state: "accepted", reason: undefined, via: "outside" }]);
+    await r.service.deliverer.settled();
+    expect(r.host.sends[0]!.text).toStartWith("[walky-talky wt_aaaaaaaaaaa1] from agent local/w1:p1#aaaa (agent-x, repo#a) outside");
+    expect(r.service.status("wt_aaaaaaaaaaa1").message?.outside).toBe(true);
+  });
+
+  test("a reply chain goes back and forth across the border after one outside message, each hop `reply`", async () => {
+    const panes = three();
+    const r = rig(panes);
+    await r.service.send({ ...send("wt_aaaaaaaaaaa1", "local/w2:p1"), outside: true }, agentOf(panes[0]!));
+    const reply = (id: string, replyTo: string, from: WalkyPane) => r.service.send({ id, to: null, body: "ok", replyTo }, agentOf(from));
+    expect(receiptsOf(await reply("wt_aaaaaaaaaaa2", "wt_aaaaaaaaaaa1", panes[2]!))).toEqual([{ target: "local/w1:p1", state: "accepted", reason: undefined, via: "reply" }]);
+    expect(receiptsOf(await reply("wt_aaaaaaaaaaa3", "wt_aaaaaaaaaaa2", panes[0]!))).toEqual([{ target: "local/w2:p1", state: "accepted", reason: undefined, via: "reply" }]);
+    expect(receiptsOf(await reply("wt_aaaaaaaaaaa4", "wt_aaaaaaaaaaa3", panes[2]!))).toEqual([{ target: "local/w1:p1", state: "accepted", reason: undefined, via: "reply" }]);
+    await r.service.deliverer.settled();
+    expect(r.host.sends.map((sent) => sent.pane)).toEqual(["w2:p1", "w1:p1", "w2:p1", "w1:p1"]);
+    // A reply carries no outside word: only the message that said `--outside` does.
+    expect(r.host.sends.slice(1).every((sent) => !sent.text.includes(" outside"))).toBe(true);
+  });
+
+  test("a pane cannot reply across the border to a message it was not sent", async () => {
+    const panes = three();
+    const r = rig(panes);
+    // `w1:p1` writes to `w1:p2` in its own space; `w2:p1` knows the id but was not sent it. On one
+    // machine the reply guard (M62 F) answers first; across machines the border does (crew hop below).
+    await r.service.send(send("wt_aaaaaaaaaaa1", "local/w1:p2"), agentOf(panes[0]!));
+    const answer = await r.service.send({ id: "wt_aaaaaaaaaaa2", to: null, body: "me too", replyTo: "wt_aaaaaaaaaaa1" }, agentOf(panes[2]!));
+    expect(receiptsOf(answer)[0]).toMatchObject({ state: "refused" });
+    await r.service.deliverer.settled();
+    expect(r.host.sends.map((sent) => sent.pane)).toEqual(["w1:p2"]);
+  });
+
+  test("the border refuses before the pair limit: a refused message takes no token", async () => {
+    const panes = three();
+    const r = rig(panes, { pairs: new RateLimiter(1) });
+    for (const id of ["wt_aaaaaaaaaaa1", "wt_aaaaaaaaaaa2"]) {
+      expect(receiptsOf(await r.service.send(send(id, "local/w2:p1"), agentOf(panes[0]!)))[0]).toMatchObject({ reason: "outside your space" });
+    }
+    expect(receiptsOf(await r.service.send({ ...send("wt_aaaaaaaaaaa3", "local/w2:p1"), outside: true }, agentOf(panes[0]!)))[0]).toMatchObject({ state: "accepted", via: "outside" });
+  });
+
+  test("the border refuses before `walky talky off`: an off pane of another space reads as outside", async () => {
+    const panes = three();
+    const r = rig([panes[0]!, panes[1]!, pane("w2:p1", { instance: "cccc", space: WEB, off: true })]);
+    expect(receiptsOf(await r.service.send(send("wt_aaaaaaaaaaa1", "local/w2:p1"), agentOf(panes[0]!)))[0]).toMatchObject({ state: "refused", reason: "outside your space" });
+    expect(receiptsOf(await r.service.send({ ...send("wt_aaaaaaaaaaa2", "local/w2:p1"), outside: true }, agentOf(panes[0]!)))[0]).toMatchObject({ state: "refused", reason: WALKY_OFF });
+  });
+
+  test("`<repo>` reaches the folder's panes in the sender's space, and every space with `--outside`", async () => {
+    const panes = three();
+    const r = rig(panes);
+    const targets = (answer: Awaited<ReturnType<WalkyService["send"]>>) => receiptsOf(answer).map((receipt) => `${receipt.target} ${receipt.state} ${receipt.via}`);
+    expect(targets(await r.service.send(send("wt_aaaaaaaaaaa1", "repo"), agentOf(panes[0]!)))).toEqual(["local/w1:p2 accepted in"]);
+    expect(targets(await r.service.send({ ...send("wt_aaaaaaaaaaa2", "repo"), outside: true }, agentOf(panes[0]!)))).toEqual(["local/w1:p2 accepted outside", "local/w2:p1 accepted outside"]);
+    // The operator's scope knows no space.
+    expect(targets(await r.service.send(send("wt_aaaaaaaaaaa3", "repo"), operator))).toEqual(["local/w1:p1 accepted operator", "local/w1:p2 accepted operator", "local/w2:p1 accepted operator"]);
+  });
+
+  test("`here` is the sender's space, and stays the sender's space with `--outside`", async () => {
+    const panes = three();
+    const r = rig(panes);
+    expect(receiptsOf(await r.service.send(send("wt_aaaaaaaaaaa1", "here"), agentOf(panes[0]!))).map((receipt) => receipt.target)).toEqual(["local/w1:p2"]);
+    expect(receiptsOf(await r.service.send({ ...send("wt_aaaaaaaaaaa2", "here"), outside: true }, agentOf(panes[0]!))).map((receipt) => receipt.target)).toEqual(["local/w1:p2"]);
+  });
+
+  test("an agent's `all` is refused `outside your space`; with `--outside` it reaches every agent pane but the sender", async () => {
+    const panes = three();
+    const r = rig(panes);
+    expect(receiptsOf(await r.service.send(send("wt_aaaaaaaaaaa1", "all"), agentOf(panes[0]!)))).toEqual([{ target: "all", state: "refused", reason: "outside your space", via: undefined }]);
+    const answer = await r.service.send({ ...send("wt_aaaaaaaaaaa2", "all"), outside: true }, agentOf(panes[0]!));
+    expect(receiptsOf(answer).map((receipt) => `${receipt.target} ${receipt.state} ${receipt.via}`)).toEqual(["local/w1:p2 accepted outside", "local/w2:p1 accepted outside"]);
+  });
+
+  test("a message held for a draft ends refused when the pane moved to another space before the release", async () => {
+    const panes = three();
+    const r = rig(panes);
+    r.host.answer = { outcome: "held", reason: "draft_present" };
+    const sendId = sendIdOf("wt_aaaaaaaaaaa1", "local/w1:p2");
+    await r.service.send(send("wt_aaaaaaaaaaa1", "local/w1:p2"), agentOf(panes[0]!));
+    expect(r.service.deliverer.stillMeant(sendId, "main", "w1:p2")).toBe(true);
+    r.host.list = [panes[0]!, pane("w1:p2", { label: "repo#b", instance: "bbbb", space: WEB }), panes[2]!];
+    expect(r.service.deliverer.stillMeant(sendId, "main", "w1:p2")).toBe(false);
+    r.host.states.set(sendId, { outcome: "refused", reason: "pane_gone" });
+    await r.service.deliverer.settled();
+    expect(r.service.status("wt_aaaaaaaaaaa1").receipts[0]).toMatchObject({ state: "refused", reason: "outside your space" });
+    expect(r.log.inbox("main", "w1:p2", "bbbb")).toEqual([]);
+  });
+
+  test("a message held past its clock ends refused when the pane moved to another space meanwhile", async () => {
+    const panes = three();
+    const r = rig(panes);
+    r.host.answer = { outcome: "held" };
+    await r.service.send(send("wt_aaaaaaaaaaa1", "local/w1:p2"), agentOf(panes[0]!));
+    r.host.list = [panes[0]!, pane("w1:p2", { label: "repo#b", instance: "bbbb", space: WEB }), panes[2]!];
+    await r.service.deliverer.settled();
+    expect(r.service.status("wt_aaaaaaaaaaa1").receipts[0]).toMatchObject({ state: "refused", reason: "outside your space" });
+    expect(r.log.inbox("main", "w1:p2", "bbbb")).toEqual([]);
+  });
+
+  test("a message that waited in the lane is refused when the pane moved to another space meanwhile; an outside one still goes", async () => {
+    const panes = three();
+    const r = rig(panes);
+    const gate = Promise.withResolvers<SendResult>();
+    const sent = r.host.send.bind(r.host);
+    let first = true;
+    r.host.send = async (...args) => {
+      if (!first) return sent(...args);
+      first = false;
+      await sent(...args);
+      return gate.promise;
+    };
+    const from = agentOf(panes[0]!);
+    await r.service.send(send("wt_aaaaaaaaaaa1", "local/w1:p2"), from);
+    await r.service.send(send("wt_aaaaaaaaaaa2", "local/w1:p2"), from);
+    await r.service.send({ ...send("wt_aaaaaaaaaaa3", "local/w1:p2"), outside: true }, from);
+    r.host.list = [panes[0]!, pane("w1:p2", { label: "repo#b", instance: "bbbb", space: WEB }), panes[2]!];
+    gate.resolve({ outcome: "sent" });
+    await r.service.deliverer.settled();
+    expect(r.service.status("wt_aaaaaaaaaaa1").receipts[0]?.state).toBe("delivered");
+    expect(r.service.status("wt_aaaaaaaaaaa2").receipts[0]).toMatchObject({ state: "refused", reason: "outside your space" });
+    expect(r.service.status("wt_aaaaaaaaaaa3").receipts[0]).toMatchObject({ state: "delivered", via: "outside" });
+    expect(r.host.sends.map((typed) => typed.id)).toEqual([sendIdOf("wt_aaaaaaaaaaa1", "local/w1:p2"), sendIdOf("wt_aaaaaaaaaaa3", "local/w1:p2")]);
+  });
+
+  test("the operator's held message still goes when the pane moved: the release reads no space for it", async () => {
+    const panes = three();
+    const r = rig(panes);
+    r.host.answer = { outcome: "held", reason: "draft_present" };
+    const sendId = sendIdOf("wt_aaaaaaaaaaa1", "local/w1:p2");
+    await r.service.send(send("wt_aaaaaaaaaaa1", "local/w1:p2"), operator);
+    r.host.list = [panes[0]!, pane("w1:p2", { label: "repo#b", instance: "bbbb", space: WEB }), panes[2]!];
+    expect(r.service.deliverer.stillMeant(sendId, "main", "w1:p2")).toBe(true);
+  });
+
+  describe("a message a crew hop brought", () => {
+    const LAPTOP_API = spaceOf({ memberId: "laptop", spaceId: "w4", spaceLabel: "api" });
+    const LAPTOP_UNNAMED = spaceOf({ memberId: "laptop", spaceId: "w1", spaceLabel: "w1" });
+    /** An agent's message signed by `laptop` for `desk/<paneId>`, its sender in `space`. */
+    const hop = (id: string, to: string, space: ReturnType<typeof spaceOf> | null | undefined, extra: { outside?: true; replyTo?: string } = {}): WalkyMessage => {
+      const bare: WalkySender = { memberId: "laptop", address: "laptop/w4:p1#zzzz", harness: "agent-x", label: "repo#z" };
+      const from: WalkySender = space === undefined ? bare : { ...bare, space };
+      const message: WalkyMessage = { v: 1, id, kind: "agent", from, to, replyTo: extra.replyTo ?? null, at: 1_786_000_000_000, body: "hello", signer: "laptop", signature: "c2ln" };
+      return extra.outside === true ? { ...message, outside: true } : message;
+    };
+    const deskPanes = () => [pane("w1:p1", { space: spaceOf({ memberId: "desk", spaceId: "w1", spaceLabel: "api" }) }), pane("w2:p1", { instance: "cccc", space: spaceOf({ memberId: "desk", spaceId: "w2", spaceLabel: "w2" }) })];
+
+    test("a named space joins across machines; an unnamed one does not; the outside flag crosses", async () => {
+      const r = rig(deskPanes(), { memberId: "desk" });
+      expect(await r.service.receive(hop("wt_aaaaaaaaaaa1", "desk/w1:p1", LAPTOP_API), "lead", true)).toMatchObject([{ state: "accepted", via: "in" }]);
+      expect(await r.service.receive(hop("wt_aaaaaaaaaaa2", "desk/w2:p1", LAPTOP_API), "lead", true)).toMatchObject([{ state: "refused", reason: "outside your space" }]);
+      expect(await r.service.receive(hop("wt_aaaaaaaaaaa3", "desk/w2:p1", LAPTOP_UNNAMED), "lead", true)).toMatchObject([{ state: "refused", reason: "outside your space" }]);
+      expect(await r.service.receive(hop("wt_aaaaaaaaaaa4", "desk/w2:p1", LAPTOP_UNNAMED, { outside: true }), "lead", true)).toMatchObject([{ state: "accepted", via: "outside" }]);
+    });
+
+    test("an agent's message with no space is a bad request from a signer at or above 1.29.0, and passes as `legacy` from an older one", async () => {
+      const current = rig(deskPanes(), { memberId: "desk" });
+      expect(await current.service.receive(hop("wt_aaaaaaaaaaa1", "desk/w2:p1", undefined), "lead", true)).toMatchObject([{ state: "refused", reason: "bad request: an agent's message from this version must name its space" }]);
+      const older = rig(deskPanes(), { memberId: "desk", signerOlderThanSpace: (signer) => signer === "laptop" });
+      expect(await older.service.receive(hop("wt_aaaaaaaaaaa1", "desk/w2:p1", undefined), "lead", true)).toMatchObject([{ state: "accepted", via: "legacy" }]);
+    });
+
+    test("a reply from another machine passes when this bridge's pane sent the parent to the replier", async () => {
+      const panes = deskPanes();
+      const r = rig(panes, { memberId: "desk", routeRemote: async (m, member, legPanes) => [{ id: m.id, target: `${member}/${(legPanes ?? ["w4:p1"])[0]}`, state: "accepted", verified: "lead", at: 1, by: member }] });
+      // `desk/w2:p1` writes out to `laptop/w4:p1`.
+      await r.service.send({ ...send("wt_aaaaaaaaaaa1", "laptop/w4:p1"), outside: true }, agentOf(panes[1]!));
+      expect(await r.service.receive(hop("wt_aaaaaaaaaaa2", "desk/w2:p1", LAPTOP_API, { replyTo: "wt_aaaaaaaaaaa1" }), "lead", true)).toMatchObject([{ state: "accepted", via: "reply" }]);
+      // The same reply aimed at the pane that did not send the parent is refused.
+      expect(await r.service.receive(hop("wt_aaaaaaaaaaa3", "desk/w1:p1", LAPTOP_UNNAMED, { replyTo: "wt_aaaaaaaaaaa1" }), "lead", true)).toMatchObject([{ state: "refused", reason: "outside your space" }]);
+    });
+
+    test("a member delivers a routed `here` only to a pane of the sender's space", async () => {
+      const r = rig([pane("w1:p8", { space: spaceOf({ memberId: "laptop", spaceId: "w1", spaceLabel: "api" }) }), pane("w2:p9", { instance: "cccc", space: spaceOf({ memberId: "laptop", spaceId: "w2", spaceLabel: "w2" }) })], { memberId: "laptop" });
+      const message = (id: string) => ({ ...hop(id, "here", spaceOf({ memberId: "desk", spaceId: "w3", spaceLabel: "api" })), from: { memberId: "desk", address: "desk/w3:p1#dddd", harness: "agent-x", label: "repo#d", space: spaceOf({ memberId: "desk", spaceId: "w3", spaceLabel: "api" }) }, signer: "desk" });
+      expect(await r.service.receive(message("wt_aaaaaaaaaaa1"), "lead", true, undefined, "w1:p8")).toMatchObject([{ target: "laptop/w1:p8", state: "accepted" }]);
+      expect(await r.service.receive(message("wt_aaaaaaaaaaa2"), "lead", true, undefined, "w2:p9")).toMatchObject([{ target: "laptop/w2:p9", state: "refused", reason: OUT_OF_SCOPE }]);
+    });
   });
 });

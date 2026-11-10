@@ -13,6 +13,7 @@ import { LOCAL_MEMBER, parseAddress } from "./address.ts";
 import type { WalkySpace } from "./space.ts";
 import { BAD_ACK_IDS, BAD_MESSAGE_ID, BAD_REQUEST_LINE, bodyOverRaw, NO_ADDRESS, unknownOp, unreadAddress } from "./refusals.ts";
 import {
+  BORDER_VERDICTS,
   isPrintableAscii,
   RECEIPT_REASON_MAX,
   RECEIPT_STATES,
@@ -137,7 +138,10 @@ export function readReceipt(value: JsonValue | undefined): WalkyReceipt | null {
   const rawSendId = text(row, "sendId");
   const sendId = rawSendId !== null && SEND_ID.test(rawSendId) ? rawSendId : null;
   const withReason = reason === null ? receipt : { ...receipt, reason };
-  return sendId === null ? withReason : { ...withReason, sendId };
+  const withSend = sendId === null ? withReason : { ...withReason, sendId };
+  // How the message passed the space border (M98): one of the five words, or dropped.
+  const via = BORDER_VERDICTS.find((candidate) => candidate === row.via);
+  return via === undefined ? withSend : { ...withSend, via };
 }
 
 // ── The local socket's requests ──────────────────────────────────────────────────────────────────

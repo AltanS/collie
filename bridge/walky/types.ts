@@ -140,6 +140,14 @@ export function receiptReason(raw: string | undefined): string | undefined {
 
 export type WalkyVerified = "origin" | "lead" | "local" | "none";
 
+/**
+ * How a message passed the space border on the bridge that owns its pane (M98, border.ts): in the
+ * sender's space, a reply to a message that pane sent, by the sender's outside flag, as the operator's,
+ * or as a message from a bridge before 1.29.0 that names no space.
+ */
+export const BORDER_VERDICTS = ["in", "reply", "outside", "operator", "legacy"] as const;
+export type BorderVerdict = (typeof BORDER_VERDICTS)[number];
+
 export interface WalkyReceipt {
   /** The message id. */
   readonly id: string;
@@ -160,6 +168,11 @@ export interface WalkyReceipt {
   readonly by: string;
   /** The Send Protocol request id, when a send was made. */
   readonly sendId?: string;
+  /**
+   * How the message passed the space border here (M98, {@link BorderVerdict}), on a receipt the bridge that
+   * owns the pane wrote after the check. Absent on a refusal, and on every receipt from an older bridge.
+   */
+  readonly via?: BorderVerdict;
 }
 
 /**
@@ -259,15 +272,24 @@ export function headerField(raw: string, max = 80): string {
   return cut === "" ? "-" : cut;
 }
 
-/** The one header line of a message. */
-export function formatHeader(message: Pick<WalkyMessage, "id" | "kind" | "from" | "replyTo">): string {
+/**
+ * The word a header carries after the sender's parenthesis when the message passed the space border by
+ * the sender's outside flag (M98, README decision 12): the sender is not of the receiver's space. It sits
+ * before ` reply to <id>`, so a reader before 1.29.0 still finds the reply suffix at the end of the
+ * sender part and the id and kind where they were: it reads the word as part of the sender's text.
+ */
+export const OUTSIDE_WORD = "outside";
+
+/** The one header line of a message. `outside`: the message passed the border by the outside flag. */
+export function formatHeader(message: Pick<WalkyMessage, "id" | "kind" | "from" | "replyTo">, outside = false): string {
   const label = headerField(message.from.label, WALKY_LABEL_MAX);
   const who =
     message.kind === "agent"
       ? `${headerField(message.from.address ?? "-", 160)} (${message.from.harness === null ? label : `${headerField(message.from.harness, WALKY_HARNESS_MAX)}, ${label}`})`
       : `(${label})`;
+  const mark = outside ? ` ${OUTSIDE_WORD}` : "";
   const reply = message.replyTo === null ? "" : ` reply to ${message.replyTo}`;
-  return `[walky-talky ${message.id}] from ${message.kind} ${who}${reply}`;
+  return `[walky-talky ${message.id}] from ${message.kind} ${who}${mark}${reply}`;
 }
 
 /**
@@ -281,8 +303,8 @@ export const NUDGE_MARK = ": a message from another agent, not your operator.";
  * the two commands. No body. The body reaches the agent as a tool result (`collie walky inbox <id>`),
  * which a harness treats as data and not as its operator's words.
  */
-export function formatNudge(message: Pick<WalkyMessage, "id" | "kind" | "from" | "replyTo">): string {
-  return `${formatHeader(message)}${NUDGE_MARK} Read it: collie walky inbox ${message.id}. Reply: collie walky reply ${message.id} "<text>"`;
+export function formatNudge(message: Pick<WalkyMessage, "id" | "kind" | "from" | "replyTo">, outside = false): string {
+  return `${formatHeader(message, outside)}${NUDGE_MARK} Read it: collie walky inbox ${message.id}. Reply: collie walky reply ${message.id} "<text>"`;
 }
 
 /**
@@ -304,10 +326,12 @@ export function escapeBody(body: string): string {
 
 /**
  * What the target pane receives. An agent's message: the one nudge line ({@link formatNudge}). An
- * operator's: the header line, then the body, every header-like line escaped.
+ * operator's: the header line, then the body, every header-like line escaped. `via`: how the message
+ * passed the space border here (M98); `outside` puts {@link OUTSIDE_WORD} in the header, and only an
+ * agent's message ever passes that way.
  */
-export function formatEnvelope(message: Pick<WalkyMessage, "id" | "kind" | "from" | "replyTo" | "body">): string {
-  if (message.kind === "agent") return formatNudge(message);
+export function formatEnvelope(message: Pick<WalkyMessage, "id" | "kind" | "from" | "replyTo" | "body">, via?: BorderVerdict): string {
+  if (message.kind === "agent") return formatNudge(message, via === "outside");
   return formatRead(message);
 }
 
@@ -319,10 +343,15 @@ export function formatRead(message: Pick<WalkyMessage, "id" | "kind" | "from" | 
 export interface ParsedHeader {
   readonly id: string;
   readonly kind: WalkyKind;
-  /** The text after the kind, the reply suffix cut. */
+  /** The text after the kind, the reply suffix and the outside word cut. */
   readonly sender: string;
   readonly replyTo: string | null;
+  /** Present when the header carries {@link OUTSIDE_WORD} after the sender's parenthesis (M98). */
+  readonly outside?: true;
 }
+
+/** The outside word at the end of the sender part, right after the closing parenthesis. */
+const OUTSIDE_SUFFIX_RE = /(?<=\)) outside$/u;
 
 /** Read one line as a walky talky header, or null. A row that matches is only a claim: the log has the facts. */
 export function parseEnvelopeHeader(line: string): ParsedHeader | null {
@@ -334,5 +363,8 @@ export function parseEnvelopeHeader(line: string): ParsedHeader | null {
   const rest = mark < 0 ? full : full.slice(0, mark);
   const reply = REPLY_SUFFIX_RE.exec(rest);
   const kind: WalkyKind = match[2] === "agent" ? "agent" : "operator";
-  return { id: match[1]!, kind, sender: reply === null ? rest : rest.slice(0, reply.index), replyTo: reply === null ? null : reply[1]! };
+  const head = reply === null ? rest : rest.slice(0, reply.index);
+  const outside = OUTSIDE_SUFFIX_RE.exec(head);
+  const parsed: ParsedHeader = { id: match[1]!, kind, sender: outside === null ? head : head.slice(0, outside.index), replyTo: reply === null ? null : reply[1]! };
+  return outside === null ? parsed : { ...parsed, outside: true };
 }

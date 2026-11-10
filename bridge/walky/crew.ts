@@ -35,6 +35,7 @@ import type { PeerSnapshotBody } from "../crew/merge.ts";
 import { signCanonical, verifyCanonical } from "../crew/signing.ts";
 import type { TrustedMember, TrustStoreData } from "../crew/trust-store.ts";
 import { bareAddress, INSTANCE_TOKEN, isPaneId, isScopeAddress, labelOf, LOCAL_MEMBER, paneAddress, parseAddress, type WalkyAddress } from "./address.ts";
+import { OLDER_MEMBER, type BorderAnswer } from "./border.ts";
 import { attestationString, signMessage, verifyMessage, voucherString } from "./canonical.ts";
 import { cleanBody } from "./clean.ts";
 import type { RouteRemote } from "./deliver.ts";
@@ -441,6 +442,19 @@ export interface LeadRouteDeps {
    * such a member as a plain send, see {@link leadRouteRemote}. Absent: every member gets the message as sent.
    */
   readonly olderThanWake?: (memberId: string) => boolean;
+  /**
+   * Whether a member's reported version predates the space (`olderThanSpace`, M98). Such a member cannot
+   * enforce the border and cannot verify a canonical string with the space line or the `outside` line:
+   * this lead checks the border for it ({@link border}) and sends it the message without both lines, see
+   * {@link leadRouteRemote}. Absent: every member enforces for itself and gets the message as sent.
+   */
+  readonly olderThanSpace?: (memberId: string) => boolean;
+  /**
+   * The border for one pane on a member, as this lead decides it for a member below 1.29.0 (deliver.ts
+   * `remoteBorder`, README decision 9a). Absent while `olderThanSpace` says older: the leg is refused
+   * `older member`, never sent unchecked.
+   */
+  readonly border?: (message: WalkyMessage, memberId: string, paneId: string) => BorderAnswer;
   /** How long one member's leg may take before it is `unknown: member slow`. Default {@link WALKY_LEG_MS}. */
   readonly legMs?: number;
   readonly now?: () => number;
@@ -559,13 +573,26 @@ export function leadRouteRemote(deps: LeadRouteDeps): RouteRemote {
         if (!roster.includes(memberId)) return [ownReceipt(message, target, "refused", deps.self, now(), "no such member")];
         if (deps.older?.(memberId) === true) return [ownReceipt(message, target, "refused", deps.self, now(), "older member")];
         if (signing === null) return [ownReceipt(message, target, "refused", deps.self, now(), "no crew key")];
+        // A member older than 1.29.0 does not check the space border (M98, README decision 9a): this lead
+        // checks it here, before the hop, for a leg that names one pane (a pane address, or one pane of a
+        // scope). A leg to a whole machine needs no pane: an agent's `all` reached this point only with
+        // the outside flag, and such a member refuses an agent's broadcast on its own anyway.
+        const olderSpace = deps.olderThanSpace?.(memberId) === true;
+        if (olderSpace && segment !== WALKY_ALL_SEGMENT) {
+          const verdict = deps.border?.(message, memberId, segment) ?? { refuse: OLDER_MEMBER };
+          if ("refuse" in verdict) return [ownReceipt(message, target, "refused", deps.self, now(), verdict.refuse)];
+        }
         // A member older than 1.26.1 never rests a pane, so a plain send already types into every pane
         // there: `--wake` asks for nothing it does not do. Its bridge also cannot verify the canonical
         // string with the `wake` line, and would answer the uniform 401. So this leg carries the message
         // without `wake`, attested over that copy (plainCopy says what signature it carries). The sender's
         // own signature covered the `wake` string and cannot vouch for it, so the leg has no `sender` block.
-        const plain = message.wake === true && deps.olderThanWake?.(memberId) === true;
-        const legMessage = plain ? plainCopy(message, signing.keyPem, deps.self) : message;
+        // The same holds for the space line and the `outside` line on a member older than 1.29.0 (M98):
+        // this lead checked the border for it just above, so the copy drops both.
+        const dropWake = message.wake === true && deps.olderThanWake?.(memberId) === true;
+        const dropSpace = olderSpace && carriesSpace(message);
+        const plain = dropWake || dropSpace;
+        const legMessage = plain ? plainCopy(message, { wake: dropWake, space: dropSpace }, signing.keyPem, deps.self) : message;
         const attest = attestFor(legMessage, signing.keyPem, signing.crewId, memberId);
         // Every member is dialled at once, and each leg is cut at WALKY_LEG_MS.
         const body = sender === null || plain ? { message: legMessage, attest } : { message: legMessage, attest, sender };
@@ -582,17 +609,27 @@ export function leadRouteRemote(deps: LeadRouteDeps): RouteRemote {
   };
 }
 
+/** Whether a message's canonical string holds the space line or the `outside` line (M98). */
+export function carriesSpace(message: Pick<WalkyMessage, "from" | "outside">): boolean {
+  return (message.from.space !== undefined && message.from.space !== null) || message.outside === true;
+}
+
 /**
- * The message without `wake`, as a member below 1.26.1 can take it. The lead's own message is signed
- * again with the lead's key, so the member still reads it as `origin`. Another member's message keeps
- * the signer and signature its sender made: they cover the string with the `wake` line, so they no
- * longer verify, but the member never checks them without a `sender` block. It trusts the lead's
- * attestation and reads the message as `lead`, exactly as it did before sender blocks existed. The
- * signer must stay the sender: the member's shape check refuses a signer that is not `from.memberId`.
+ * The message without the lines an older member cannot verify: `wake` for a member below 1.26.1, the
+ * sender's space and `outside` for one below 1.29.0 (M98). The lead's own message is signed again with
+ * the lead's key, so the member still reads it as `origin`. Another member's message keeps the signer
+ * and signature its sender made: they cover the string with the dropped lines, so they no longer
+ * verify, but the member never checks them without a `sender` block. It trusts the lead's attestation
+ * and reads the message as `lead`, exactly as it did before sender blocks existed. The signer must stay
+ * the sender: the member's shape check refuses a signer that is not `from.memberId`.
  */
-function plainCopy(message: WalkyMessage, keyPem: string, self: string): WalkyMessage {
-  const { wake: _wake, ...rest } = message;
-  return message.signer === self ? signMessage(rest, keyPem, self) : rest;
+function plainCopy(message: WalkyMessage, drop: { readonly wake: boolean; readonly space: boolean }, keyPem: string, self: string): WalkyMessage {
+  const { wake, outside, from, ...rest } = message;
+  const { space: _space, ...bare } = from;
+  const kept: WalkyMessage = { ...rest, from: drop.space ? bare : from };
+  const woken: WalkyMessage = wake === true && !drop.wake ? { ...kept, wake } : kept;
+  const copy: WalkyMessage = outside === true && !drop.space ? { ...woken, outside } : woken;
+  return message.signer === self ? signMessage(copy, keyPem, self) : copy;
 }
 
 /**
@@ -620,7 +657,8 @@ export interface MemberRouteDeps {
   readonly post: (payload: string) => Promise<CrewDialAnswer>;
   /**
    * The release this member last heard its lead state, or null when it heard none (a dev build, or a
-   * lead mid-update). A `wake` message is refused up front for a lead below 1.26.1. Absent: never known.
+   * lead mid-update). A `wake` message is refused up front for a lead below 1.26.1, and a message with
+   * the space line or the `outside` line for a lead below 1.29.0 (M98). Absent: never known.
    */
   readonly leadRelease?: () => string | null;
   /** This member's own version, the floor's stand-in on a build made before 1.26.1. */
@@ -630,6 +668,12 @@ export interface MemberRouteDeps {
   readonly now?: () => number;
 }
 
+/**
+ * The receipt reason for a message with the space line or the `outside` line (M98, every agent's message
+ * from 1.29.0 on) when the lead runs a release below 1.29.0: its bridge cannot verify that string and
+ * would answer the uniform 401. Members follow their lead's release, so this lasts until the lead updates.
+ */
+export const LEAD_OLDER_THAN_SPACE = "lead older than 1.29.0: update the lead";
 /** The receipt reason for a `wake` message a lead below 1.26.1 cannot take. */
 export const LEAD_OLDER_THAN_WAKE = "lead older than 1.26.1: send without --wake";
 /** The reason when the lead answered 401 to a `wake` message and its release was not known up front. */
@@ -644,6 +688,11 @@ export function memberRouteRemote(deps: MemberRouteDeps): RouteRemote {
     // member knows the lead's release, it says so before any dial; when it does not, the 401 is read below.
     if (message.wake === true && deps.compare !== undefined && olderThanWake(deps.leadRelease?.() ?? null, deps.own ?? WAKE_FIRST_VERSION, deps.compare)) {
       return [ownReceipt(message, target, "refused", deps.self, now(), LEAD_OLDER_THAN_WAKE)];
+    }
+    // The same for the space line and the `outside` line (M98), before any dial. A lead whose release is
+    // not known is dialled, and its 401 reads as `signature`, as before.
+    if (carriesSpace(message) && deps.compare !== undefined && olderThanSpace(deps.leadRelease?.() ?? null, deps.own ?? SPACE_FIRST_VERSION, deps.compare)) {
+      return [ownReceipt(message, target, "refused", deps.self, now(), LEAD_OLDER_THAN_SPACE)];
     }
     const answer = await deps.post(JSON.stringify(message));
     if (message.wake === true && answer.kind === "answer" && answer.status === 401) {

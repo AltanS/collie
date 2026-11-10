@@ -318,11 +318,11 @@ describe("send", () => {
     expect(receiptLine({ ...receipt, reason: "draft present" }, true, new Set(["local/%2"]))).toBe("local/%2: held: draft present");
   });
 
-  socketTest("an agent's `all` is refused: only the operator may broadcast", async () => {
+  socketTest("an agent's `all` without the outside flag is refused: outside your space (M98)", async () => {
     const b = await bridge();
     const d = deps(b, inPane("%1"));
     expect(await cmdWalkySend(d, ["all", "standup"])).toBe(EXIT.REFUSED);
-    expect(d.io.stdout).toEqual(["wt_aaaaaaaaaaa1", "to all", "not sent: only the operator may broadcast"]);
+    expect(d.io.stdout).toEqual(["wt_aaaaaaaaaaa1", "to all", "not sent: outside your space"]);
     expect(b.sent).toEqual([]);
   });
 

@@ -18,6 +18,7 @@ import {
   crewSkipped,
   crewTargets,
   leadRouteRemote,
+  LEAD_OLDER_THAN_SPACE,
   LEAD_OLDER_THAN_WAKE,
   LEAD_REFUSED_WAKE,
   memberRouteRemote,
@@ -47,7 +48,7 @@ import { OUT_OF_SCOPE, scopeEmpty, scopeIsMember } from "./refusals.ts";
 import { WalkyService, type WalkyServiceDeps } from "./service.ts";
 import type { JsonValue } from "../json.ts";
 import { parseJson } from "../../web/src/lib/json.ts";
-import { movesForward, type WalkyMessage, type WalkyReceipt, type WalkyTarget } from "./types.ts";
+import { isPrintableAscii, movesForward, RECEIPT_REASON_MAX, type WalkyMessage, type WalkyReceipt, type WalkyTarget } from "./types.ts";
 
 import { spaceOf } from "./space.ts";
 
@@ -57,6 +58,8 @@ import { spaceOf } from "./space.ts";
  * one machine, and a member may not sign another machine's (`checkCrewMessage`).
  */
 const SOLO_SPACE = spaceOf({ memberId: "local", spaceId: "w1", spaceLabel: "work" });
+/** A second named space, for the panes a test keeps out of `work`'s scopes. */
+const ELSEWHERE = spaceOf({ memberId: "local", spaceId: "w2", spaceLabel: "elsewhere" });
 
 /** A value as it arrives off the wire: through JSON, so a test hands a handler exactly what a request would. */
 function wire<T>(value: T): JsonValue {
@@ -81,7 +84,7 @@ function unsigned(id: string, from: string, to: string, over: Partial<WalkyMessa
     v: 1,
     id,
     kind: "agent",
-    from: { memberId: from, address: `${from}/w1:p1`, harness: "agent-x", label: "repo#main" },
+    from: { memberId: from, address: `${from}/w1:p1`, harness: "agent-x", label: "repo#main", space: SOLO_SPACE },
     to,
     replyTo: null,
     at: AT,
@@ -292,7 +295,7 @@ describe("the sender's space on a crew hop (M98 spec 02)", () => {
   });
 
   test("a message without a space, as an older member signs it, still verifies, and unknown fields are dropped", () => {
-    const old = signed("wt_aaaaaaaaaab4", "laptop", "desk/w1:p1");
+    const old = signed("wt_aaaaaaaaaab4", "laptop", "desk/w1:p1", { from: { memberId: "laptop", address: "laptop/w1:p1", harness: "agent-x", label: "repo#main" } });
     const checked = memberCheck({ ...old, colour: "red", from: { ...old.from, colour: "red" } }, laptop);
     expect(checked).toMatchObject({ ok: true });
     if (!checked.ok) throw new Error("the old message should pass");
@@ -465,7 +468,7 @@ describe("the lead takes a member's message", () => {
     }
     expect(await fromMemberOf(crew, signed("wt_pppppppppppz", "laptop", "desk/w1:p1"), laptop)).toMatchObject({ body: { receipts: [{ state: "refused", reason: "pair limit" }] } });
     // Another pane of the same machine is another pair.
-    const other = signed("wt_qqqqqqqqqqq1", "laptop", "desk/w1:p1", { from: { memberId: "laptop", address: "laptop/w2:p2", harness: "agent-x", label: "repo#b" } });
+    const other = signed("wt_qqqqqqqqqqq1", "laptop", "desk/w1:p1", { from: { memberId: "laptop", address: "laptop/w2:p2", harness: "agent-x", label: "repo#b", space: SOLO_SPACE } });
     expect(await fromMemberOf(crew, other, laptop)).toMatchObject({ body: { receipts: [{ state: "accepted" }] } });
   });
 
@@ -473,7 +476,7 @@ describe("the lead takes a member's message", () => {
     const lead = service("desk", [pane("w1:p1")], undefined, { members: new RateLimiter(3) });
     const crew = new WalkyCrew({ service: lead.service, trust: () => leadStore(), now: () => AT });
     const laptop = member({ memberId: "laptop" });
-    const from = (n: number) => ({ memberId: "laptop", address: `laptop/w${String(n)}:p1`, harness: "agent-x", label: "repo#x" });
+    const from = (n: number) => ({ memberId: "laptop", address: `laptop/w${String(n)}:p1`, harness: "agent-x", label: "repo#x", space: SOLO_SPACE });
     for (let n = 0; n < 3; n += 1) {
       expect(await fromMemberOf(crew, signed(`wt_${n.toString().padStart(12, "m")}`, "laptop", "desk/w1:p1", { from: from(n) }), laptop)).toMatchObject({ body: { receipts: [{ state: "accepted" }] } });
     }
@@ -506,7 +509,8 @@ describe("the lead takes a member's message", () => {
     const lead = service("desk", [pane("w1:p1")]);
     const crew = new WalkyCrew({ service: lead.service, trust: () => leadStore(), now: () => AT });
     const answer = await fromMemberOf(crew, signed("wt_aaaaaaaaaaa1", "laptop", "all"), member({ memberId: "laptop" }));
-    expect(answer).toMatchObject({ body: { receipts: [{ state: "refused", reason: "only the operator may broadcast" }] } });
+    // M98: an agent's broadcast leaves its space, so without the outside flag it is `outside your space`.
+    expect(answer).toMatchObject({ body: { receipts: [{ state: "refused", reason: "outside your space" }] } });
     expect(lead.host.sends).toEqual([]);
   });
 
@@ -534,7 +538,7 @@ describe("the lead takes a member's message", () => {
       return { kind: "answer", status: 200, body: { receipts: [{ id: "wt_aaaaaaaaaaa1", target: `${memberId}/w9:p9`, state: "accepted", verified: "lead", at: AT, by: memberId }] } };
     });
     const crew = new WalkyCrew({ service: lead.service, trust: () => leadStore(), now: () => AT });
-    const sent = signed("wt_aaaaaaaaaaa1", "laptop", "other/w9:p9#k3f9", { from: { memberId: "laptop", address: "laptop/w1:p1#aaaa", harness: "agent-x", label: "repo#main" } });
+    const sent = signed("wt_aaaaaaaaaaa1", "laptop", "other/w9:p9#k3f9", { from: { memberId: "laptop", address: "laptop/w1:p1#aaaa", harness: "agent-x", label: "repo#main", space: SOLO_SPACE } });
     const answer = await fromMemberOf(crew, sent, member({ memberId: "laptop" }));
     expect(answer).toMatchObject({ status: 200, body: { receipts: [{ state: "accepted", target: "other/w9:p9", by: "other" }] } });
     expect(posts.map((post) => `${post.memberId} ${post.segment} ${post.body.message.to}`)).toEqual(["other w9:p9 other/w9:p9#k3f9"]);
@@ -764,8 +768,8 @@ describe("wake across versions (M85)", () => {
     });
     expect(await route(signed("wt_aaaaaaaaaaa4", "laptop", "all", { wake: true }), "all")).toMatchObject([{ state: "refused", reason: LEAD_OLDER_THAN_WAKE, target: "all" }]);
     expect(payloads).toEqual([]);
-    // A plain send to the same lead still goes.
-    await route(signed("wt_aaaaaaaaaaa5", "laptop", "all"), "all");
+    // A plain send to the same lead still goes: the operator's, which carries no space line (M98).
+    await route(signed("wt_aaaaaaaaaaa5", "laptop", "all", OPERATOR("laptop")), "all");
     expect(payloads.length).toBe(1);
   });
 
@@ -1507,15 +1511,15 @@ describe("a pane receipt under a leg sent as a whole (§21, added 2026-10-18)", 
 describe("a workspace scope across a crew of two members (M75 spec 02)", () => {
   /** `who` on the lead, from a member's panes: what its sweep would hold. */
   const listed = (memberId: string, panes: readonly WalkyPane[]): WalkyTarget[] =>
-    panes.filter((p) => p.agent).map((p) => ({ address: `${memberId}/${p.paneId}#${p.instance}`, memberId, machine: memberId, harness: p.harness, label: p.label, state: "idle", space: SOLO_SPACE }));
+    panes.filter((p) => p.agent).map((p) => ({ address: `${memberId}/${p.paneId}#${p.instance}`, memberId, machine: memberId, harness: p.harness, label: p.label, state: "idle", space: p.space }));
   const otherStore = (): TrustStoreData => peerStore({ self: createTrustStore(selfIdentity("other", material("other"), T0)).self });
 
   /** A lead `desk` and two members, `laptop` and `other`, wired end to end through the real crew halves. */
   function crewOfThree() {
     const crews = new Map<string, WalkyCrew>();
-    const deskPanes = [pane("w1:p1", { label: "collie-workspace#main" }), pane("w1:p2", { label: "elsewhere#main" })];
+    const deskPanes = [pane("w1:p1", { label: "collie-workspace#main" }), pane("w1:p2", { label: "elsewhere#main", space: ELSEWHERE })];
     const laptopPanes = [pane("w1:p8", { label: "collie-workspace#main" }), pane("w1:p9", { label: "collie-workspace#feat" })];
-    const otherPanes = [pane("w2:p1", { label: "collie-workspace#main" }), pane("w2:p2", { label: "elsewhere#main" })];
+    const otherPanes = [pane("w2:p1", { label: "collie-workspace#main" }), pane("w2:p2", { label: "elsewhere#main", space: ELSEWHERE })];
     const legs: string[] = [];
     const lead = service(
       "desk",
@@ -1593,7 +1597,7 @@ describe("a workspace scope across a crew of two members (M75 spec 02)", () => {
   test("`here` from a herdr-core member's flat pane, through that member's socket and the crew hop, reaches the lead's pane in the same folder (2026-10-30)", async () => {
     // The live shape: member `bluefin-hc` (a hyphen), its pane the flat `t1`, placed by HC_TERMINAL_* markers.
     const hcPanes = [pane("t1", { label: "collie-workspace#main" })];
-    const deskPanes = [pane("w1:p1", { label: "collie-workspace#main" }), pane("w1:p2", { label: "elsewhere#main" })];
+    const deskPanes = [pane("w1:p1", { label: "collie-workspace#main" }), pane("w1:p2", { label: "elsewhere#main", space: ELSEWHERE })];
     const lead = service("desk", deskPanes, undefined, { remoteTargets: () => listed("bluefin-hc", hcPanes), knownMembers: () => ["desk", "bluefin-hc"] });
     const leadCrew = new WalkyCrew({ service: lead.service, trust: () => leadStore(), now: () => AT });
     const hops: string[] = [];
@@ -1651,5 +1655,238 @@ describe("a workspace scope across a crew of two members (M75 spec 02)", () => {
     expect(await send("wt_aaaaaaaaaaa4", "other")).toMatchObject({ ok: true, receipts: [{ target: "other", state: "refused", reason: scopeIsMember("other") }] });
     expect(await send("wt_aaaaaaaaaaa5", "nowhere")).toMatchObject({ ok: true, receipts: [{ target: "nowhere", state: "refused", reason: scopeEmpty("nowhere") }] });
     expect(legs).toEqual([]);
+  });
+});
+
+describe("the space border across a crew (M98 spec 03)", () => {
+  /** A named space joins across machines; an unnamed one is its machine's alone. */
+  const API = spaceOf({ memberId: "local", spaceId: "w1", spaceLabel: "api" });
+  const DESK_W2 = spaceOf({ memberId: "desk", spaceId: "w2", spaceLabel: "w2" });
+  const LAPTOP_W3 = spaceOf({ memberId: "laptop", spaceId: "w3", spaceLabel: "w3" });
+  const OTHER_W2 = spaceOf({ memberId: "other", spaceId: "w2", spaceLabel: "w2" });
+  const listed = (memberId: string, panes: readonly WalkyPane[]): WalkyTarget[] =>
+    panes.map((p) => ({ address: `${memberId}/${p.paneId}#${p.instance}`, memberId, machine: memberId, harness: p.harness, label: p.label, state: "idle", space: p.space }));
+  const otherStore = (): TrustStoreData => peerStore({ self: createTrustStore(selfIdentity("other", material("other"), T0)).self });
+
+  /** A lead `desk` and members `laptop` and `other`, all at this version, wired through the real crew halves. */
+  function crew() {
+    const crews = new Map<string, WalkyCrew>();
+    const deskPanes = [pane("w1:p1", { label: "repo#a", instance: "d1d1", space: API }), pane("w2:p1", { label: "repo#b", instance: "d2d2", space: DESK_W2 })];
+    const laptopPanes = [pane("w1:p8", { label: "repo#c", instance: "l1l1", space: API }), pane("w3:p1", { label: "repo#d", instance: "l2l2", space: LAPTOP_W3 })];
+    const otherPanes = [pane("w2:p1", { label: "repo#e", instance: "o1o1", space: OTHER_W2 })];
+    const legs: string[] = [];
+    const lead = service(
+      "desk",
+      deskPanes,
+      async (memberId, segment, payload) => {
+        legs.push(`${memberId} ${segment}`);
+        // SAFETY: the route posts the JSON it built itself.
+        const answer = await crews.get(memberId)!.fromLead(segment, JSON.parse(payload) as JsonValue, "desk");
+        return { kind: "answer", status: answer.status, body: wire(answer.body) };
+      },
+      { remoteTargets: () => [...listed("laptop", laptopPanes), ...listed("other", otherPanes)], knownMembers: () => ["desk", "laptop", "other"] },
+    );
+    const leadCrew = new WalkyCrew({ service: lead.service, trust: () => leadStore(), now: () => AT });
+    const viaLead = (self: string) =>
+      memberRouteRemote({
+        self,
+        post: async (payload) => {
+          // SAFETY: the member posts the JSON it built itself.
+          const answer = await leadCrew.fromMember(JSON.parse(payload) as JsonValue, member({ memberId: self }));
+          return { kind: "answer", status: answer.status, body: wire(answer.body) };
+        },
+        now: () => AT,
+      });
+    const laptop = service("laptop", laptopPanes, undefined, { outcomesOnLead: true, knownMembers: () => ["laptop", "desk"], routeRemote: viaLead("laptop") });
+    const other = service("other", otherPanes, undefined, { outcomesOnLead: true, knownMembers: () => ["other", "desk"], routeRemote: viaLead("other") });
+    crews.set("laptop", new WalkyCrew({ service: laptop.service, trust: () => peerStore(), now: () => AT }));
+    crews.set("other", new WalkyCrew({ service: other.service, trust: otherStore, now: () => AT }));
+    return { lead, laptop, other, deskPanes, laptopPanes, otherPanes, legs, leadCrew };
+  }
+  const agent = (p: WalkyPane) => ({ kind: "agent" as const, pane: p });
+  const one = (answer: Awaited<ReturnType<WalkyService["send"]>>) => {
+    if (!answer.ok) throw new Error(answer.error);
+    expect(answer.receipts).toHaveLength(1);
+    return answer.receipts[0]!;
+  };
+
+  test("a named space joins across the crew; an unnamed one stays on its machine; the outside flag crosses", async () => {
+    const { lead, laptop, laptopPanes } = crew();
+    expect(one(await laptop.service.send({ id: "wt_aaaaaaaaaaa1", to: "desk/w1:p1", body: "hi", replyTo: null }, agent(laptopPanes[0]!)))).toMatchObject({ state: "accepted", by: "desk" });
+    expect(one(await laptop.service.send({ id: "wt_aaaaaaaaaaa2", to: "desk/w2:p1", body: "hi", replyTo: null }, agent(laptopPanes[1]!)))).toMatchObject({ state: "refused", reason: "outside your space", by: "desk" });
+    expect(one(await laptop.service.send({ id: "wt_aaaaaaaaaaa3", to: "desk/w2:p1", body: "hi", replyTo: null, outside: true }, agent(laptopPanes[1]!)))).toMatchObject({ state: "accepted", by: "desk" });
+    expect(lead.log.get("wt_aaaaaaaaaaa1", "desk/w1:p1")?.receipt.via).toBe("in");
+    expect(lead.log.get("wt_aaaaaaaaaaa3", "desk/w2:p1")?.receipt.via).toBe("outside");
+    await lead.service.deliverer.settled();
+    expect(lead.host.sends).toEqual(["w1:p1", "w2:p1"]);
+  });
+
+  test("a member at this version enforces the border for itself: the lead dials it, and the member refuses", async () => {
+    const { lead, laptop, deskPanes, legs } = crew();
+    const receipt = one(await lead.service.send({ id: "wt_aaaaaaaaaaa1", to: "laptop/w3:p1", body: "hi", replyTo: null }, agent(deskPanes[0]!)));
+    expect(legs).toEqual(["laptop w3:p1"]);
+    expect(receipt).toMatchObject({ state: "refused", reason: "outside your space", by: "laptop" });
+    await laptop.service.deliverer.settled();
+    expect(laptop.host.sends).toEqual([]);
+    expect(laptop.service.refusals().counts["outside your space"]).toBe(1);
+  });
+
+  test("a reply chain between the lead and a member: one outside message, then four replies, each way", async () => {
+    const { lead, laptop, deskPanes, laptopPanes } = crew();
+    const [, d2] = deskPanes;
+    const [, l2] = laptopPanes;
+    // Started on the lead.
+    expect(one(await lead.service.send({ id: "wt_aaaaaaaaaaa1", to: "laptop/w3:p1", body: "q", replyTo: null, outside: true }, agent(d2!)))).toMatchObject({ state: "accepted", by: "laptop" });
+    expect(one(await laptop.service.send({ id: "wt_aaaaaaaaaaa2", to: null, body: "a", replyTo: "wt_aaaaaaaaaaa1" }, agent(l2!)))).toMatchObject({ state: "accepted", by: "desk" });
+    expect(one(await lead.service.send({ id: "wt_aaaaaaaaaaa3", to: null, body: "b", replyTo: "wt_aaaaaaaaaaa2" }, agent(d2!)))).toMatchObject({ state: "accepted", by: "laptop" });
+    expect(one(await laptop.service.send({ id: "wt_aaaaaaaaaaa4", to: null, body: "c", replyTo: "wt_aaaaaaaaaaa3" }, agent(l2!)))).toMatchObject({ state: "accepted", by: "desk" });
+    expect(one(await lead.service.send({ id: "wt_aaaaaaaaaaa5", to: null, body: "d", replyTo: "wt_aaaaaaaaaaa4" }, agent(d2!)))).toMatchObject({ state: "accepted", by: "laptop" });
+    expect(lead.log.get("wt_aaaaaaaaaaa2", "desk/w2:p1")?.receipt.via).toBe("reply");
+    expect(laptop.log.get("wt_aaaaaaaaaaa3", "laptop/w3:p1")?.receipt.via).toBe("reply");
+  });
+
+  test("the same chain started on the member", async () => {
+    const { lead, laptop, deskPanes, laptopPanes } = crew();
+    const [, d2] = deskPanes;
+    const [, l2] = laptopPanes;
+    expect(one(await laptop.service.send({ id: "wt_bbbbbbbbbbb1", to: "desk/w2:p1", body: "q", replyTo: null, outside: true }, agent(l2!)))).toMatchObject({ state: "accepted", by: "desk" });
+    expect(one(await lead.service.send({ id: "wt_bbbbbbbbbbb2", to: null, body: "a", replyTo: "wt_bbbbbbbbbbb1" }, agent(d2!)))).toMatchObject({ state: "accepted", by: "laptop" });
+    expect(one(await laptop.service.send({ id: "wt_bbbbbbbbbbb3", to: null, body: "b", replyTo: "wt_bbbbbbbbbbb2" }, agent(l2!)))).toMatchObject({ state: "accepted", by: "desk" });
+    expect(one(await lead.service.send({ id: "wt_bbbbbbbbbbb4", to: null, body: "c", replyTo: "wt_bbbbbbbbbbb3" }, agent(d2!)))).toMatchObject({ state: "accepted", by: "laptop" });
+    expect(one(await laptop.service.send({ id: "wt_bbbbbbbbbbb5", to: null, body: "d", replyTo: "wt_bbbbbbbbbbb4" }, agent(l2!)))).toMatchObject({ state: "accepted", by: "desk" });
+  });
+
+  test("a reply chain between two members through the lead: each member checks the reply against its own log", async () => {
+    const { laptop, other, laptopPanes, otherPanes, legs } = crew();
+    const [, l2] = laptopPanes;
+    const [o1] = otherPanes;
+    expect(one(await laptop.service.send({ id: "wt_aaaaaaaaaaa1", to: "other/w2:p1", body: "q", replyTo: null, outside: true }, agent(l2!)))).toMatchObject({ state: "accepted", by: "other" });
+    expect(one(await other.service.send({ id: "wt_aaaaaaaaaaa2", to: null, body: "a", replyTo: "wt_aaaaaaaaaaa1" }, agent(o1!)))).toMatchObject({ state: "accepted", by: "laptop" });
+    expect(one(await laptop.service.send({ id: "wt_aaaaaaaaaaa3", to: null, body: "b", replyTo: "wt_aaaaaaaaaaa2" }, agent(l2!)))).toMatchObject({ state: "accepted", by: "other" });
+    expect(one(await other.service.send({ id: "wt_aaaaaaaaaaa4", to: null, body: "c", replyTo: "wt_aaaaaaaaaaa3" }, agent(o1!)))).toMatchObject({ state: "accepted", by: "laptop" });
+    expect(other.log.get("wt_aaaaaaaaaaa3", "other/w2:p1")?.receipt.via).toBe("reply");
+    expect(laptop.log.get("wt_aaaaaaaaaaa4", "laptop/w3:p1")?.receipt.via).toBe("reply");
+    expect(legs).toEqual(["other w2:p1", "laptop w3:p1", "other w2:p1", "laptop w3:p1"]);
+    // Without the outside flag the thread never starts.
+    expect(one(await laptop.service.send({ id: "wt_ccccccccccc1", to: "other/w2:p1", body: "q", replyTo: null }, agent(l2!)))).toMatchObject({ state: "refused", reason: "outside your space", by: "other" });
+  });
+
+  test("a legacy sender passes with the note `legacy` when the lead knows its signer is below 1.29.0; from a current signer it is a bad request", async () => {
+    const desk = [pane("w2:p1", { label: "repo#b", space: DESK_W2 })];
+    // The message an older member signs: no space line, and none of the new fields.
+    const old = signed("wt_aaaaaaaaaaa1", "laptop", "desk/w2:p1", { from: { memberId: "laptop", address: "laptop/w1:p1", harness: "agent-x", label: "repo#main" } });
+    const older = service("desk", desk, undefined, { signerOlderThanSpace: (signer) => signer === "laptop" });
+    const olderCrew = new WalkyCrew({ service: older.service, trust: () => leadStore(), now: () => AT });
+    const taken = await fromMemberOf(olderCrew, old, member({ memberId: "laptop" }));
+    expect(taken.body).toMatchObject({ receipts: [{ target: "desk/w2:p1", state: "accepted", via: "legacy" }] });
+    const current = service("desk", desk);
+    const currentCrew = new WalkyCrew({ service: current.service, trust: () => leadStore(), now: () => AT });
+    const refused = await fromMemberOf(currentCrew, old, member({ memberId: "laptop" }));
+    expect(refused.body).toMatchObject({ receipts: [{ state: "refused", reason: "bad request: an agent's message from this version must name its space" }] });
+  });
+
+  describe("a member below 1.29.0 (README decision 9a)", () => {
+    const lead = member({ memberId: "desk", role: "lead" });
+    /** A lead that routes to `old` (below 1.29.0) and `new`, checking the border for `old` through its own deliverer. */
+    function rig(over: { border?: boolean } = {}) {
+      const bodies = new Map<string, { message: WalkyMessage; attest: string; sender?: unknown }>();
+      const checked = new Map<string, string>();
+      // The sweep lists `old`'s first pane in `api` and its second in an unnamed space. A member below
+      // 1.29.0 sends no space; the lead computes it from the member's pane list (crewTargets).
+      const desk = service("desk", [pane("w9:p9", { space: API })], undefined, {
+        remoteTargets: () => [{ address: "old/w1:p1#aaaa", memberId: "old", machine: "old", harness: "agent-x", label: "repo#x", state: "idle", space: API }, { address: "old/w1:p2#bbbb", memberId: "old", machine: "old", harness: "agent-x", label: "repo#y", state: "idle", space: spaceOf({ memberId: "old", spaceId: "w2", spaceLabel: "w2" }) }],
+      });
+      const route = leadRouteRemote({
+        self: "desk",
+        members: () => ["old", "new"],
+        signing: () => ({ keyPem: material("desk").keyPem, crewId: CREW.crewId }),
+        senderCert: (memberId) => material(memberId).certPem,
+        olderThanSpace: (memberId) => memberId === "old",
+        border: over.border === false ? undefined : (message, memberId, paneId) => desk.service.deliverer.remoteBorder(message, memberId, paneId),
+        post: async (memberId, segment, payload) => {
+          // SAFETY: the route posts the JSON it built itself.
+          const body = JSON.parse(payload) as { message: WalkyMessage; attest: string; sender?: unknown };
+          bodies.set(`${memberId} ${segment}`, body);
+          const check = checkFromLead(wire(body), segment, lead, CREW.crewId, memberId);
+          checked.set(`${memberId} ${segment}`, check.ok ? check.verified : "refused");
+          return { kind: "answer", status: 200, body: { receipts: [] } };
+        },
+        now: () => AT,
+      });
+      return { route, bodies, checked, desk };
+    }
+    const fromApi = (id: string, to: string, over: Partial<WalkyMessage> = {}) =>
+      signed(id, "sender", to, { from: { memberId: "sender", address: "sender/w1:p1#ssss", harness: "agent-x", label: "repo#s", space: API }, ...over });
+
+    test("the lead checks the border before the hop, and the leg carries the message without the space line, attested as the lead's word", async () => {
+      const { route, bodies, checked } = rig();
+      expect(await route(fromApi("wt_aaaaaaaaaaa1", "old/w1:p1"), "old")).toMatchObject([{ target: "old/w1:p1", state: "accepted" }]);
+      const leg = bodies.get("old w1:p1")!;
+      expect(leg.message.from).not.toHaveProperty("space");
+      expect(leg).not.toHaveProperty("sender");
+      expect(checked.get("old w1:p1")).toBe("lead");
+    });
+
+    test("an outside message crosses, and the copy drops the outside line too", async () => {
+      const { route, bodies, checked } = rig();
+      const message = signed("wt_aaaaaaaaaaa1", "sender", "old/w1:p1", { from: { memberId: "sender", address: "sender/w1:p1#ssss", harness: "agent-x", label: "repo#s", space: spaceOf({ memberId: "sender", spaceId: "w5", spaceLabel: "w5" }) }, outside: true });
+      expect(await route(message, "old")).toMatchObject([{ state: "accepted" }]);
+      expect(bodies.get("old w1:p1")!.message).not.toHaveProperty("outside");
+      expect(bodies.get("old w1:p1")!.message.from).not.toHaveProperty("space");
+      expect(checked.get("old w1:p1")).toBe("lead");
+    });
+
+    test("a crossing message is refused `outside your space` at the lead, and nothing is dialled", async () => {
+      const { route, bodies } = rig();
+      const message = signed("wt_aaaaaaaaaaa1", "sender", "old/w1:p1", { from: { memberId: "sender", address: "sender/w1:p1#ssss", harness: "agent-x", label: "repo#s", space: spaceOf({ memberId: "sender", spaceId: "w5", spaceLabel: "w5" }) } });
+      expect(await route(message, "old")).toMatchObject([{ target: "old/w1:p1", state: "refused", reason: "outside your space", by: "desk" }]);
+      expect(bodies.size).toBe(0);
+    });
+
+    test("a crossing reply the lead's log cannot show, and a crossing message to a pane the lead's list does not hold, are `older member`", async () => {
+      const { route, bodies } = rig();
+      const reply = signed("wt_aaaaaaaaaaa1", "sender", "old/w1:p1", { from: { memberId: "sender", address: "sender/w1:p1#ssss", harness: "agent-x", label: "repo#s", space: spaceOf({ memberId: "sender", spaceId: "w5", spaceLabel: "w5" }) }, replyTo: "wt_unknown00001" });
+      expect(await route(reply, "old")).toMatchObject([{ state: "refused", reason: "older member" }]);
+      expect(await route(fromApi("wt_aaaaaaaaaaa2", "old/w1:p3"), "old")).toMatchObject([{ target: "old/w1:p3", state: "refused", reason: "older member" }]);
+      expect(bodies.size).toBe(0);
+    });
+
+    test("a lead with no border check for an older member refuses `older member`", async () => {
+      const { route, bodies } = rig({ border: false });
+      expect(await route(fromApi("wt_aaaaaaaaaaa1", "old/w1:p1"), "old")).toMatchObject([{ state: "refused", reason: "older member" }]);
+      expect(bodies.size).toBe(0);
+    });
+
+    test("the operator's message and a member at this version get the message as signed", async () => {
+      const { route, bodies, checked } = rig();
+      const operatorMessage = signed("wt_aaaaaaaaaaa1", "sender", "old/w1:p2", OPERATOR("sender"));
+      await route(operatorMessage, "old");
+      expect(bodies.get("old w1:p2")!.message).toEqual(operatorMessage);
+      expect(checked.get("old w1:p2")).toBe("origin");
+      const message = fromApi("wt_aaaaaaaaaaa2", "new/w1:p1", { outside: true });
+      await route(message, "new");
+      expect(bodies.get("new w1:p1")!.message).toEqual(message);
+      expect(checked.get("new w1:p1")).toBe("origin");
+    });
+  });
+
+  test("a member that knows its lead is below 1.29.0 refuses a message with a space before any dial; the operator's still goes", async () => {
+    const payloads: string[] = [];
+    const route = memberRouteRemote({
+      self: "laptop",
+      post: async (payload) => {
+        payloads.push(payload);
+        return { kind: "answer", status: 200, body: { receipts: [] } };
+      },
+      leadRelease: () => "1.28.1",
+      own: "1.29.0",
+      compare: compareSemver,
+      now: () => AT,
+    });
+    expect(await route(signed("wt_aaaaaaaaaaa1", "laptop", "desk/w1:p1"), "desk")).toMatchObject([{ state: "refused", reason: LEAD_OLDER_THAN_SPACE }]);
+    expect(payloads).toEqual([]);
+    await route(signed("wt_aaaaaaaaaaa2", "laptop", "desk/w1:p1", OPERATOR("laptop")), "desk");
+    expect(payloads).toHaveLength(1);
+    expect(isPrintableAscii(LEAD_OLDER_THAN_SPACE) && LEAD_OLDER_THAN_SPACE.length <= RECEIPT_REASON_MAX).toBe(true);
   });
 });

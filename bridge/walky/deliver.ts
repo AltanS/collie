@@ -28,14 +28,15 @@
 import { createHash } from "node:crypto";
 
 import { bareAddress, inScope, isScopeAddress, LOCAL_MEMBER, isSelf, labelScope, paneAddress, parseAddress, type WalkyAddress, type WalkyScope } from "./address.ts";
+import { borderVerdict, NO_SPACE, OLDER_MEMBER, OUTSIDE_YOUR_SPACE, type BorderAnswer, type BorderParent } from "./border.ts";
 import { canonicalMessage } from "./canonical.ts";
 import { WALKY_LEG_PANES_MAX } from "./crew.ts";
 import type { LogRecord, Placement, WalkyLog } from "./log.ts";
 import { MEMBER_LIMIT, PAIR_LIMIT, pairKey, RateLimiter, senderKey } from "./rate.ts";
 import { HERE_FROM_PHONE, hereWithoutFolder, MEMBER_UNREACHABLE, OUT_OF_SCOPE, RefusalCounter, scopeEmpty, scopeIsMember, scopeTooWide, type RefusalCounts } from "./refusals.ts";
 import { seenHash, WalkySeen } from "./seen.ts";
-import type { WalkySpace } from "./space.ts";
-import { formatEnvelope, receiptReason, SEND_ID, RESTING, SENDER_OFF, WALKY_OFF, type WalkyMessage, type WalkyReceipt, type WalkyReceiptState, type WalkyTarget, type WalkyVerified } from "./types.ts";
+import { sameSpace, type WalkySpace } from "./space.ts";
+import { formatEnvelope, receiptReason, SEND_ID, RESTING, SENDER_OFF, WALKY_OFF, type BorderVerdict, type WalkyMessage, type WalkyReceipt, type WalkyReceiptState, type WalkyTarget, type WalkyVerified } from "./types.ts";
 
 /**
  * How long a held send may wait before the message is left in the inbox only: one clock per message,
@@ -117,7 +118,7 @@ export interface WalkyPane {
   readonly terminal: boolean;
   /** True when the session turned its walky talky off (M89, off.ts): no agent message goes in or out. */
   readonly off: boolean;
-  /** The pane's space and its key (space.ts), under this bridge's member id. No rule reads it yet (M98). */
+  /** The pane's space and its key (space.ts), under this bridge's member id: the border of an agent's message (M98, border.ts). */
   readonly space: WalkySpace;
 }
 
@@ -157,8 +158,23 @@ export interface WalkyHost {
  */
 export type RouteRemote = (message: WalkyMessage, members: string, panes?: readonly string[]) => Promise<readonly WalkyReceipt[]>;
 
-/** The folder a scope names, or why it names none (deliver.ts `scopeOf`). */
-type ScopeOf = { readonly ok: true; readonly scope: WalkyScope } | { readonly ok: false; readonly reason: string };
+/**
+ * Which panes a scope reaches (M75, M98): those in a folder (`folder`, null for any) and in a space
+ * (`space`, null for any). Both are checked; a null is no check.
+ */
+interface Reach {
+  readonly folder: WalkyScope | null;
+  readonly space: WalkySpace | null;
+}
+
+/** The panes a scope reaches, or why it reaches none (deliver.ts `scopeOf`). */
+type ScopeOf = { readonly ok: true; readonly reach: Reach } | { readonly ok: false; readonly reason: string };
+
+/** Whether a pane sits in a scope's reach: its label in the folder, and its space the space. */
+function inReach(reach: Reach, label: string, paneId: string, space: WalkySpace): boolean {
+  if (reach.folder !== null && !inScope(label, paneId, reach.folder)) return false;
+  return reach.space === null || sameSpace(space, reach.space);
+}
 
 /** How one delivery runs. The defaults are a message this bridge built itself. */
 export interface DeliverOptions {
@@ -190,6 +206,8 @@ interface ReceiptExtra {
   readonly reason?: string | undefined;
   readonly sendId?: string | undefined;
   readonly verified?: WalkyVerified;
+  /** How the message passed the space border here (M98). */
+  readonly via?: BorderVerdict | undefined;
 }
 
 /** The deepest reply chain a message may sit in: a fifth reply in a row is refused `thread depth`. */
@@ -269,6 +287,15 @@ export interface DelivererDeps {
   readonly outcomesOnLead?: boolean;
   /** Every member id of the crew this bridge knows, read per message: a bare word that names one is no scope (M75). */
   readonly knownMembers?: () => readonly string[];
+  /**
+   * Whether an agent's message signed by `signer` may name no space (M98, README decision 9b): true when
+   * this bridge knows the signer runs a release below 1.29.0 (on a lead, the member's reported version;
+   * on a member, its lead's stated release), and on a member for a message its lead attested from
+   * another member, because a lead at or above 1.29.0 refused such a message before it routed it if it
+   * did not know that member to be older (README decision 9c), and a lead below it routes everything.
+   * False otherwise, an unknown version included: the message is then a bad request. Absent: false.
+   */
+  readonly signerOlderThanSpace?: (signer: string | null) => boolean;
   /** The dedupe file, `<stateDir>/walky/seen.json`. Absent: in memory, for a test. */
   readonly seen?: WalkySeen;
   /** The refusal counter, `<stateDir>/walky/refusals.json`. Absent: in memory. */
@@ -339,7 +366,8 @@ export class WalkyDeliverer {
     // Cleaned to the form every reader keeps (types.ts `receiptReason`): an error text can be anything.
     const reason = receiptReason(extra.reason);
     const withReason = reason === undefined ? base : { ...base, reason };
-    return extra.sendId === undefined ? withReason : { ...withReason, sendId: extra.sendId };
+    const withSend = extra.sendId === undefined ? withReason : { ...withReason, sendId: extra.sendId };
+    return extra.via === undefined ? withSend : { ...withSend, via: extra.via };
   }
 
   /** A refusal written by this bridge: nothing typed, nothing logged but the count (M62 hardening I). */
@@ -358,9 +386,12 @@ export class WalkyDeliverer {
     return this.refusals.current();
   }
 
-  /** A newer receipt for a logged record: same id, target and verification, a new state. */
+  /**
+   * A newer receipt for a logged record: same id, target, verification and border verdict, a new state.
+   * A refusal carries no verdict: the message did not pass.
+   */
   private next(record: LogRecord, state: WalkyReceiptState, reason?: string, sendId?: string): WalkyReceipt {
-    return this.receipt(record.message.id, record.target, state, { reason, sendId, verified: record.receipt.verified });
+    return this.receipt(record.message.id, record.target, state, { reason, sendId, verified: record.receipt.verified, via: state === "refused" ? undefined : record.receipt.via });
   }
 
   /** Resolves when every delivery started so far has settled. For tests and a clean stop. */
@@ -412,7 +443,8 @@ export class WalkyDeliverer {
    *
    *   `no such pane`                    the address does not parse, or names another machine on a crew hop
    *   `id reused`                       the id is taken by another message
-   *   `only the operator may broadcast` an agent named `all` or `<member>/all`
+   *   `bad request: ...name its space`  an agent's message with no space from a signer at or above 1.29.0 (M98)
+   *   `outside your space`              an agent named `all` or `<member>/all` without the outside flag (M98)
    *   `that is your own pane`           the target is the sender's own pane
    *   `your walky talky is off`         the sending agent's own pane is off (M89)
    *   `thread depth`                    the reply chain is deeper than 4 in this bridge's log
@@ -420,9 +452,21 @@ export class WalkyDeliverer {
    *   `ambiguous pane`                  more than one session has a pane with the target's id (and token)
    *   `pane replaced`                   the address names a token, and the pane id is held by another instance
    *   `sender gone`                     a reply's pane is gone, now in another session, or another instance
+   *   `outside your space`              the target is in another space, and none of the border's ways holds (M98, border.ts)
    *   `not an agent pane`               the target is a shell
    *   `rate limit` / `pair limit`       a cap is full: the sender's, the lead's per member, or the pair's
    *   `walky talky off`                 the target session is off, for an agent's message ({@link place})
+   *
+   * Where the border sits in that order (M98). The checks before it are about the message and its sender
+   * alone (its form, its own pane, its thread, this machine's switch) or resolve the address to one pane
+   * (`no such pane`, `ambiguous pane`, `pane replaced`, `sender gone`): a sender learns there only what
+   * `who` already lists to it, that a pane id exists. The border then needs only that pane's space, so it
+   * is the first check that reads the target, and everything about the target comes after it: whether it
+   * is a shell, and whether its session is off. A sender across the border learns `outside your space`
+   * and nothing more of the pane than it did before. It also comes before the caps: a message refused
+   * anyway takes no token from the sender's bucket or from the pair's, which the target shares, and the
+   * refusal is the more specific reason. The same check runs again in {@link place}, the step every
+   * delivery ends in, and before a placed message is typed ({@link stopped}).
    */
   async deliver(message: WalkyMessage, sender: SenderPane | null, options: DeliverOptions = {}): Promise<WalkyReceipt[]> {
     const verified = options.verified ?? "local";
@@ -435,7 +479,9 @@ export class WalkyDeliverer {
     const done = this.prior(message, verified);
     if (done === null) return refuse("id reused");
     if (done.size > 0 && address.kind === "pane") return [...done.values()];
-    if (address.kind !== "pane" && message.kind === "agent") return refuse("only the operator may broadcast");
+    if (this.spaceless(message)) return refuse(NO_SPACE);
+    // An agent's broadcast leaves its space by definition: only with the outside flag (M98, README decision 3).
+    if (address.kind !== "pane" && message.kind === "agent" && message.outside !== true) return refuse(OUTSIDE_YOUR_SPACE);
     const remote = address.kind !== "all" && !isSelf(address.memberId, this.deps.memberId);
     if (remote && options.localOnly === true) return refuse("no such pane");
     if (message.from.address !== null && this.ownPane(message.from.address, message.to)) return refuse("that is your own pane");
@@ -466,6 +512,9 @@ export class WalkyDeliverer {
       }
       if (pane === undefined) return refuse("no such pane");
       if (isSender(pane)) return refuse("that is your own pane");
+      // The border, before anything about the pane itself and before the caps (see the order above).
+      const border = this.borderOf(message, `${self}/${pane.paneId}`, pane);
+      if ("refuse" in border) return refuse(border.refuse);
       if (!pane.agent) return refuse("not an agent pane");
       targets = [pane];
     } else {
@@ -514,14 +563,18 @@ export class WalkyDeliverer {
    * line and the inbox entry, and the receipt ends `inbox-only: resting` at once, with no Send Protocol
    * call, unless the sender asked to wake (`message.wake`). A message to one address is always typed.
    *
-   * THE OFF RULE (M89) sits here too, first, because a direct send, a reply, a scope pane and a pane a
-   * lead routed all end in this one step: an agent's message to a session that is off is refused. It is
-   * not logged, not in the inbox and not typed, and `wake` does not override it. An operator's message
-   * never reads the flag.
+   * THE BORDER (M98, border.ts) and THE OFF RULE (M89) sit here too, first, because a direct send, a
+   * reply, a scope pane and a pane a lead routed all end in this one step. The border goes first: a
+   * sender across it learns `outside your space` and not whether the session is off. A refusal of
+   * either is not logged, not in the inbox and not typed, and `wake` does not override it. An agent's
+   * message to a session that is off is refused; an operator's message never reads the flag. The
+   * verdict rides the receipt (`via`), so a log line says why a message crossed.
    */
   private place(message: WalkyMessage, target: string, pane: WalkyPane, sender: SenderPane | null, verified: WalkyVerified, fan = false): WalkyReceipt {
+    const verdict = this.borderOf(message, target, pane);
+    if ("refuse" in verdict) return this.refusal(message.id, target, verdict.refuse, verified);
     if (message.kind === "agent" && pane.off) return this.refusal(message.id, target, WALKY_OFF, verified);
-    const accepted = this.receipt(message.id, target, "accepted", { verified });
+    const accepted = this.receipt(message.id, target, "accepted", { verified, via: verdict.via });
     this.seen.add(message, target);
     const record = this.deps.log.record(message, target, { session: pane.session, paneId: pane.paneId, instance: pane.instance }, accepted, sender);
     this.deps.log.inboxAdd(pane.session, pane.paneId, pane.instance, message);
@@ -532,6 +585,70 @@ export class WalkyDeliverer {
     }
     this.track(this.inLane(record, pane));
     return accepted;
+  }
+
+  /** Whether this bridge lets the signer's agent messages name no space (README 9b, {@link DelivererDeps.signerOlderThanSpace}). */
+  private signerOlder(message: WalkyMessage): boolean {
+    return this.deps.signerOlderThanSpace?.(message.signer) ?? false;
+  }
+
+  /** An agent's message with no space from a signer this bridge does not know to be older: a bad request (README 9c). */
+  private spaceless(message: WalkyMessage): boolean {
+    return message.kind === "agent" && (message.from.space ?? null) === null && !this.signerOlder(message);
+  }
+
+  /**
+   * The parent of a reply as THIS bridge's log holds it, for the border's rule 4: the record `replyPin`
+   * reads (`log.first`), its `sender` (the pane this bridge took it from) and every target this log holds
+   * for the id. Null when the message replies to nothing or the log does not hold the parent.
+   */
+  private borderParent(replyTo: string | null): BorderParent | null {
+    if (replyTo === null) return null;
+    const parent = this.deps.log.first(replyTo);
+    if (parent === null) return null;
+    return {
+      from: parent.message.from.address === null ? null : this.normal(parent.message.from.address),
+      sender: parent.sender,
+      targets: this.deps.log.all(replyTo).map((record) => bareAddress(this.normal(record.target))),
+      to: this.normal(parent.message.to),
+    };
+  }
+
+  /** The border's answer for one pane of this bridge (border.ts). */
+  private borderOf(message: WalkyMessage, target: string, pane: WalkyPane): BorderAnswer {
+    return borderVerdict({
+      message,
+      sender: message.from.address === null ? null : this.normal(message.from.address),
+      target: { address: bareAddress(this.normal(target)), space: pane.space, pane: { session: pane.session, paneId: pane.paneId, instance: pane.instance }, instance: pane.instance },
+      replyParent: this.borderParent(message.replyTo),
+      signerVersion: this.signerOlder(message) ? "older" : "current",
+    });
+  }
+
+  /**
+   * On a lead, the border for one pane on a member below 1.29.0, which cannot check it itself (README
+   * decision 9a, crew.ts `leadRouteRemote`). The pane's space is what the lead's sweep lists for it
+   * (`remoteTargets`); a pane the list does not hold has no known space, so only the operator, the
+   * outside flag, a legacy sender or a reply passes. The parent of a reply is the one this lead logged
+   * when it routed it. A crossing reply the lead's log cannot show is refused `older member`, not
+   * `outside your space`: the lead may lack the parent, and the member is too old to decide. So is any
+   * crossing message to a pane the list does not hold.
+   */
+  remoteBorder(message: WalkyMessage, memberId: string, paneId: string): BorderAnswer {
+    const listed = (this.deps.remoteTargets?.() ?? []).find((target) => {
+      const at = parseAddress(target.address);
+      return at?.kind === "pane" && at.memberId === memberId && at.paneId === paneId;
+    });
+    const at = listed === undefined ? null : parseAddress(listed.address);
+    const verdict = borderVerdict({
+      message,
+      sender: message.from.address === null ? null : this.normal(message.from.address),
+      target: { address: `${memberId}/${paneId}`, space: listed?.space ?? null, pane: null, instance: at?.kind === "pane" ? at.instance : null },
+      replyParent: this.borderParent(message.replyTo),
+      signerVersion: this.signerOlder(message) ? "older" : "current",
+    });
+    if (!("refuse" in verdict) || verdict.refuse !== OUTSIDE_YOUR_SPACE) return verdict;
+    return listed === undefined || message.replyTo !== null ? { refuse: OLDER_MEMBER } : verdict;
   }
 
   /**
@@ -552,23 +669,31 @@ export class WalkyDeliverer {
   }
 
   /**
-   * The folder a scope names: the address's own for `<repo>` and `<repo>#<branch>`; for `here`, the
-   * repo of the sender's pane label (any branch). A refusal's reason when there is none: a phone has
-   * no pane, and a label that is the bare pane id names no folder.
+   * The panes a scope reaches (M75, M98). `<repo>` and `<repo>#<branch>`: the address's folder, inside
+   * the sender's space; with the outside flag, or from a sender with no space (the operator, a bridge
+   * before 1.29.0), over the whole crew as before. `here`: the sender's space on every machine of the
+   * crew. A refusal's reason when there is none: a phone has no pane, so no space either.
+   *
+   * `here without a folder` stays for one case only: a message from a bridge before 1.29.0 names no
+   * space, so its `here` keeps the meaning that bridge gave it, the repo of the sender's pane label
+   * (any branch), and a label that is the bare pane id names no folder. A pane of a bridge at or above
+   * 1.29.0 always has a space, so the refusal cannot reach it.
    */
   private scopeOf(message: WalkyMessage, address: Extract<WalkyAddress, { kind: "workspace" | "here" }>): ScopeOf {
-    if (address.kind === "workspace") return { ok: true, scope: { repo: address.repo, branch: address.branch } };
+    const space = message.from.space ?? null;
+    if (address.kind === "workspace") return { ok: true, reach: { folder: { repo: address.repo, branch: address.branch }, space: message.outside === true ? null : space } };
     const from = message.from.address === null ? null : parseAddress(message.from.address);
     if (message.kind === "operator" || from?.kind !== "pane") return { ok: false, reason: HERE_FROM_PHONE };
+    if (space !== null) return { ok: true, reach: { folder: null, space } };
     const own = labelScope(message.from.label, from.paneId);
-    return own === null ? { ok: false, reason: hereWithoutFolder(message.from.label) } : { ok: true, scope: { repo: own.repo, branch: null } };
+    return own === null ? { ok: false, reason: hereWithoutFolder(message.from.label) } : { ok: true, reach: { folder: { repo: own.repo, branch: null }, space: null } };
   }
 
   /**
    * A scope (M75): `<repo>`, `<repo>#<branch>` or `here`. THE EXPANSION RUNS HERE, on the lead (or a solo
    * install), once, when the send arrives: from a local pane, from the phone, or over the crew hop from
    * a member. It reads the merged `who` list (this machine's agent panes and `remoteTargets`), keeps the
-   * panes whose label sits in the scope, drops the sender's own pane, and makes one delivery per pane:
+   * panes in the scope's reach ({@link scopeOf}: the folder, the space), drops the sender's own pane, and makes one delivery per pane:
    * this machine's through the same log-then-type step as a fan-out, another member's through the crew
    * seam, one leg per pane. Every delivery has its own receipt under the message id, which is the
    * group's one parent id. A member the lead cannot reach gets one `<member>/all` line, `refused:
@@ -585,13 +710,14 @@ export class WalkyDeliverer {
     const refuse = (reason: string): WalkyReceipt[] => [this.refusal(message.id, message.to, reason, verified)];
     const done = this.prior(message, verified);
     if (done === null) return refuse("id reused");
+    if (this.spaceless(message)) return refuse(NO_SPACE);
     if (options.localOnly === true) return this.scopeDelivery(message, address, options, done);
     // The same id again: what it already holds. A scope is expanded once.
     if (done.size > 0) return withoutAnsweredLegs([...done.values()]);
     if (this.senderOff(message, sender)) return refuse(SENDER_OFF);
     const resolved = this.scopeOf(message, address);
     if (!resolved.ok) return refuse(resolved.reason);
-    const { scope } = resolved;
+    const { reach } = resolved;
     if (address.kind === "workspace" && address.branch === null && this.isMemberWord(address.repo)) return refuse(scopeIsMember(address.repo));
     if (this.threadDepth(message) > THREAD_DEPTH_MAX) return refuse("thread depth");
     // A member hands the scope to its lead whole: one token from the sender's bucket, and the lead expands it.
@@ -609,7 +735,7 @@ export class WalkyDeliverer {
     const local: WalkyPane[] = [];
     const ambiguous = new Set<string>();
     for (const pane of panes) {
-      if (!pane.agent || (sender !== null && isPaneOf(pane, sender)) || isFrom(self, pane.paneId) || !inScope(pane.label, pane.paneId, scope)) continue;
+      if (!pane.agent || (sender !== null && isPaneOf(pane, sender)) || isFrom(self, pane.paneId) || !inReach(reach, pane.label, pane.paneId, pane.space)) continue;
       if ((counts.get(pane.paneId) ?? 0) > 1) ambiguous.add(`${self}/${pane.paneId}`);
       else local.push(pane);
     }
@@ -618,7 +744,7 @@ export class WalkyDeliverer {
     const unreachable = new Set<string>();
     for (const target of this.deps.remoteTargets?.() ?? []) {
       const at = parseAddress(target.address);
-      if (at?.kind !== "pane" || at.memberId === self || isFrom(at.memberId, at.paneId) || !inScope(target.label, at.paneId, scope)) continue;
+      if (at?.kind !== "pane" || at.memberId === self || isFrom(at.memberId, at.paneId) || !inReach(reach, target.label, at.paneId, target.space)) continue;
       if (target.state === "unreachable") {
         unreachable.add(at.memberId);
         continue;
@@ -647,9 +773,10 @@ export class WalkyDeliverer {
 
   /**
    * On a member, one pane of a scope its lead routed here (M75). The member does not trust the lead's
-   * list: it reads the label of the pane the route names NOW and delivers only while that label sits in
-   * the scope the signed `to` names (for `here`, the repo of the sender's label), so a pane outside it
-   * cannot ride a scope. The lead counted the sender's token; this member counts the pair's.
+   * list: it reads the label and the space of the pane the route names NOW and delivers only while the
+   * pane sits in the reach of the scope the signed `to` names ({@link scopeOf}: for `here`, the sender's
+   * signed space), so a pane outside it cannot ride a scope. The lead counted the sender's token; this
+   * member counts the pair's.
    */
   private scopeDelivery(
     message: WalkyMessage,
@@ -673,7 +800,7 @@ export class WalkyDeliverer {
     if (pane === undefined) return refuse("no such pane");
     if (!pane.agent) return refuse("not an agent pane");
     if (message.from.address !== null && this.ownPane(message.from.address, target)) return refuse("that is your own pane");
-    if (!inScope(pane.label, pane.paneId, resolved.scope)) return refuse(OUT_OF_SCOPE);
+    if (!inReach(resolved.reach, pane.label, pane.paneId, pane.space)) return refuse(OUT_OF_SCOPE);
     const caps = this.scopeCaps(message, [target], options, false);
     if ("refused" in caps) return refuse(caps.refused);
     if (caps.full.has(target)) return refuse("pair limit");
@@ -875,9 +1002,11 @@ export class WalkyDeliverer {
   /** Type one logged message into its pane, and write how it ended. `answered`: the Send Protocol answered. */
   private async type(record: LogRecord, pane: WalkyPane, answered: () => void = () => undefined): Promise<void> {
     const { message, target } = record;
-    // A message that waited in the lane: the session may have turned off since it was placed.
-    if (this.turnedOff(record)) {
-      this.refuseOff(record);
+    // A message that waited in the lane: the session may have turned off, or the pane moved to another
+    // space (a renamed session), since it was placed.
+    const stop = this.stopped(record);
+    if (stop !== null) {
+      this.refuseStopped(record, stop);
       return;
     }
     if (!pane.terminal) {
@@ -889,7 +1018,7 @@ export class WalkyDeliverer {
     this.deps.log.update(this.next(record, "accepted", undefined, sendId));
     let result: SendResult;
     try {
-      result = await this.deps.host.send(pane, sendId, formatEnvelope(message), { draftHolds: true, holdUntil: record.acceptedAt + HELD_LIMIT_MS });
+      result = await this.deps.host.send(pane, sendId, formatEnvelope(message, record.receipt.via), { draftHolds: true, holdUntil: record.acceptedAt + HELD_LIMIT_MS });
     } catch (err) {
       result = { outcome: "unknown", reason: err instanceof Error ? err.message : String(err) };
     }
@@ -951,9 +1080,10 @@ export class WalkyDeliverer {
         return;
       }
     }
-    // The release found the session off (`stillMeant`): refused, and out of the inbox.
-    if (result.outcome === "refused" && result.reason === "pane_gone" && this.turnedOff(record)) {
-      this.refuseOff(record, sendId);
+    // The release found the session off, or the pane across the border now (`stillMeant`): refused, and out of the inbox.
+    const stop = result.outcome === "refused" && result.reason === "pane_gone" ? this.stopped(record) : null;
+    if (stop !== null) {
+      this.refuseStopped(record, stop, sendId);
       return;
     }
     if (result.outcome === "sent" || result.outcome === "effective") {
@@ -970,27 +1100,37 @@ export class WalkyDeliverer {
     this.deps.log.update(this.next(record, "inbox-only", reasonOf(result), sendId));
   }
 
-  /** A hold's one clock ran out. The message stays in the inbox, unless the session turned off meanwhile. */
+  /** A hold's one clock ran out. The message stays in the inbox, unless the session turned off or the pane crossed the border meanwhile. */
   private heldPast(record: LogRecord, sendId: string): void {
-    if (this.turnedOff(record)) this.refuseOff(record, sendId);
+    const stop = this.stopped(record);
+    if (stop !== null) this.refuseStopped(record, stop, sendId);
     else this.deps.log.update(this.next(record, "inbox-only", HELD_PAST, sendId));
   }
 
-  /** Whether this record is an agent's message whose pane instance is off now (M89). */
-  private turnedOff(record: LogRecord): boolean {
-    if (record.message.kind !== "agent" || record.session === null || record.paneId === null) return false;
+  /**
+   * Why a placed message may no longer go into its pane instance, or null: the pane is in another space
+   * now and the message passes none of the border's ways (M98, a session renamed while the message
+   * waited), or the session turned its walky talky off, for an agent's message (M89). The border first,
+   * as in {@link place}. A pane that is gone or holds another instance is not this rule's.
+   */
+  private stopped(record: LogRecord): string | null {
+    if (record.session === null || record.paneId === null) return null;
     const pane = this.deps.host.panes().find((candidate) => candidate.session === record.session && candidate.paneId === record.paneId);
-    return pane?.off === true && (record.instance === null || pane.instance === record.instance);
+    if (pane === undefined || (record.instance !== null && pane.instance !== record.instance)) return null;
+    const verdict = this.borderOf(record.message, record.target, pane);
+    if ("refuse" in verdict) return verdict.refuse;
+    return record.message.kind === "agent" && pane.off ? WALKY_OFF : null;
   }
 
   /**
-   * A placed message meets a session that turned off before it was typed: the receipt ends `refused`,
-   * the refusal is counted, and the inbox entry goes, so the session finds no agent mail and the sender
-   * knows to go through the operator (M89, decisions 2 and 5).
+   * A placed message meets a session that turned off, or a pane that crossed the border, before it was
+   * typed: the receipt ends `refused` with the reason, the refusal is counted, and the inbox entry goes,
+   * so the session finds no agent mail and the sender knows to go through the operator (M89, decisions 2
+   * and 5; M98).
    */
-  private refuseOff(record: LogRecord, sendId?: string): void {
-    this.refusals.count(WALKY_OFF);
-    this.deps.log.update(this.next(record, "refused", WALKY_OFF, sendId));
+  private refuseStopped(record: LogRecord, reason: string, sendId?: string): void {
+    this.refusals.count(reason);
+    this.deps.log.update(this.next(record, "refused", reason, sendId));
     if (record.session !== null && record.paneId !== null && record.instance !== null) this.deps.log.ack(record.session, record.paneId, record.instance, [record.message.id]);
   }
 
@@ -1038,14 +1178,15 @@ export class WalkyDeliverer {
    * The Send Protocol's last check before a held send goes out (its `releaseCheck`, M62 spec 02): false
    * when the send is a walky message of this log whose pane is gone or holds another instance now, so a
    * replaced pane never takes it. An agent's message to a session that turned off is not meant any more
-   * either (M89). A request this log does not know, or a record from before instances, goes ahead.
+   * either (M89), nor one to a pane that crossed the space border meanwhile (M98). A request this log
+   * does not know, or a record from before instances, goes ahead.
    */
   stillMeant(sendId: string, session: string, paneId: string): boolean {
     if (!SEND_ID.test(sendId)) return true;
     const id = sendId.slice(0, sendId.lastIndexOf("-"));
     const record = this.deps.log.all(id).find((candidate) => candidate.session === session && candidate.paneId === paneId && sendIdOf(candidate.message.id, candidate.target) === sendId);
     if (record === undefined || record.instance === null) return true;
-    if (this.turnedOff(record)) return false;
+    if (this.stopped(record) !== null) return false;
     const pane = this.deps.host.panes().find((candidate) => candidate.session === session && candidate.paneId === paneId);
     return pane !== undefined && pane.instance === record.instance;
   }
