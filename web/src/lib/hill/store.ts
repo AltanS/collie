@@ -23,9 +23,16 @@ import { sortOpenDecisions, type HillDecision, type HillList, type HillReceipt }
 //
 // ── A RECEIPT LIVES UNTIL THE NEXT LIST ──────────────────────────────────────────────────────────
 // An answer's receipt is kept per decision, so the card says what happened. The next list that
-// changed (the bridge closed the decision, so its number moved) replaces the lists and drops every
-// receipt: the card has left the open list by then, or, for a refusal, is open again with nothing to
-// say. One kind outlives the list: a `gone` answer that carried words. The bridge closes that
+// changed (the bridge closed the decision, so its number moved) replaces the lists and drops the
+// receipt of every decision that is open in it: for a refusal the card is open again with nothing to
+// say. A decision that list serves as CLOSED keeps its receipt for as long as it is served, because its
+// card is leaving the open list right then (ui/presence.tsx), and it must leave showing what happened,
+// not snap back to its options for the 240 ms of its exit.
+//
+// An answer that closed its decision also reads the list at once (`readHillNow`), a short moment after
+// the tap (`HILL_LIST_READ_AFTER_MS`, lib/hill/motion.ts), instead of waiting for the next snapshot:
+// the bridge moved its number when it answered, so the card leaves while the person still looks at it,
+// not up to six seconds later on an idle poll. One read per answer, never repeated. One kind outlives the list: a `gone` answer that carried words. The bridge closes that
 // decision as undeliverable and the card leaves the open list, so the person's words are KEPT here,
 // keyed by the decision, for as long as the page lives, and its row under Answered shows them with
 // Copy. Nothing is persisted: a reload reads the bridge's own list.
@@ -59,6 +66,8 @@ let held: HillHeld = EMPTY;
 /** The newest revision a snapshot named, or null when the last one named none. */
 let wanted: number | null = null;
 let reading = false;
+/** True when `readHillNow` asked for one read whatever the numbers say; the read loop spends it. */
+let forced = false;
 /**
  * Counts the times the store was emptied. A read that started under one number and lands under another
  * is the hill of a bridge that went away (or of a test that reset), and its answer is dropped.
@@ -78,6 +87,17 @@ function subscribe(listener: () => void): () => void {
   return () => void listeners.delete(listener);
 }
 
+/** The receipts of the decisions a new list serves as closed: their cards leave showing them. */
+function receiptsOfClosed(closed: readonly HillDecision[]): ReadonlyMap<string, HillAnswerHeld> {
+  if (held.receipts.size === 0 || closed.length === 0) return NO_RECEIPTS;
+  const keep = new Map<string, HillAnswerHeld>();
+  for (const decision of closed) {
+    const receipt = held.receipts.get(decision.id);
+    if (receipt !== undefined) keep.set(decision.id, receipt);
+  }
+  return keep.size === 0 ? NO_RECEIPTS : keep;
+}
+
 /** Take a list the bridge served. An `unchanged` answer moves the number only. */
 function take(list: HillList): void {
   if (list.unchanged === true) {
@@ -88,7 +108,7 @@ function take(list: HillList): void {
     rev: list.rev,
     open: list.open.length === 0 ? NO_DECISIONS : sortOpenDecisions(list.open),
     closed: list.closed.length === 0 ? NO_DECISIONS : list.closed,
-    receipts: NO_RECEIPTS,
+    receipts: receiptsOfClosed(list.closed),
     kept: held.kept,
   });
 }
@@ -102,9 +122,11 @@ async function readUntilCurrent(): Promise<void> {
     // keeps moving the number while reads are slow gets one read per pass, never a loop of its own.
     for (let pass = 0; pass < 4; pass += 1) {
       const target = wanted;
-      if (target === null || target === held.rev) return;
+      if (target === null) return;
+      if (target === held.rev && !forced) return;
+      forced = false;
       // Below the held number is a restarted bridge: its old revisions mean nothing, read it whole.
-      const since = held.rev !== null && target > held.rev ? held.rev : undefined;
+      const since = held.rev !== null && target >= held.rev ? held.rev : undefined;
       const startedIn = generation;
       let list: HillList;
       try {
@@ -118,6 +140,9 @@ async function readUntilCurrent(): Promise<void> {
       // A snapshot with no number arrived while the read was out: the hill went away, keep nothing.
       if (wanted === null) return;
       take(list);
+      // The list is newer than the snapshot that asked for it (the bridge moved on meanwhile, or a read
+      // forced by an answer overtook a snapshot still on its way): what is held already covers it.
+      if (held.rev !== null && held.rev > target && wanted === target) return;
     }
   } finally {
     reading = false;
@@ -140,6 +165,18 @@ export function syncHill(rev: number | undefined): void {
   }
   wanted = rev;
   if (rev === held.rev || reading) return;
+  inFlight = readUntilCurrent();
+}
+
+/**
+ * Read the list now, once, whatever the last snapshot said: an answer just closed a decision, so the
+ * bridge's number has moved and the snapshot that says so may be seconds away. Nothing while no hill
+ * is held (no snapshot named one). A read already out reads once more when it lands.
+ */
+export function readHillNow(): void {
+  if (wanted === null) return;
+  forced = true;
+  if (reading) return;
   inFlight = readUntilCurrent();
 }
 
@@ -204,6 +241,7 @@ export function useHillKept(): ReadonlyMap<string, string> {
 /** Forget everything. For tests, which share one module between cases. */
 export function __resetHill(): void {
   wanted = null;
+  forced = false;
   generation += 1;
   reading = false;
   inFlight = null;

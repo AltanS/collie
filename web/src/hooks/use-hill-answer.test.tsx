@@ -1,7 +1,8 @@
 import { act, renderHook } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 
-import { __resetHill } from "@/lib/hill/store";
+import { HILL_LIST_READ_AFTER_MS } from "@/lib/hill/motion";
+import { __resetHill, __settleHill, syncHill } from "@/lib/hill/store";
 import { asJsonString, parseJsonObject, type JsonObject } from "@/lib/json";
 import { hillReceipt } from "@/test/hill-fixtures";
 import { server } from "@/test/setup";
@@ -109,5 +110,54 @@ describe("useHillAnswer", () => {
     const { result } = renderHook(() => useHillAnswer("dc_d"));
     await act(() => result.current.send("yes", null));
     expect(result.current.state).toMatchObject({ phase: "answered", receipt: { code: "unknown" } });
+  });
+
+  it("reads the list once, a short moment after the tap, when the answer closed the decision", async () => {
+    // The card leaves when the list says so; the list is read at once instead of on the next poll.
+    const reads: (string | null)[] = [];
+    server.use(
+      http.get("/api/hill", ({ request }) => {
+        reads.push(new URL(request.url).searchParams.get("since"));
+        return HttpResponse.json({ v: 1, rev: reads.length === 1 ? 1 : 2, open: [], closed: [] });
+      }),
+    );
+    await act(async () => {
+      syncHill(1);
+      await __settleHill();
+    });
+    answerWith(ok);
+    const { result } = renderHook(() => useHillAnswer("dc_a"));
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    try {
+      await act(() => result.current.send("yes", null));
+      expect(reads).toEqual([null]);
+      await act(async () => {
+        vi.advanceTimersByTime(HILL_LIST_READ_AFTER_MS);
+        await __settleHill();
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+    await act(async () => {
+      await __settleHill();
+    });
+    expect(reads).toEqual([null, "1"]);
+  });
+
+  it("reads nothing early after a refusal: the decision is still open", async () => {
+    const reads: string[] = [];
+    server.use(http.get("/api/hill", () => (reads.push("read"), HttpResponse.json({ v: 1, rev: 1, open: [], closed: [] }))));
+    await act(async () => {
+      syncHill(1);
+      await __settleHill();
+    });
+    answerWith(() => HttpResponse.json({ reason: "not an option of this decision" }, { status: 400 }));
+    const { result } = renderHook(() => useHillAnswer("dc_a"));
+    await act(() => result.current.send("maybe", null));
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, HILL_LIST_READ_AFTER_MS + 20));
+      await __settleHill();
+    });
+    expect(reads).toEqual(["read"]);
   });
 });

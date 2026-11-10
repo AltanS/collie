@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { hillMediaSource, viewPictures, type HillMediaSource } from "@/components/hill-media";
+import { usePrefersReducedMotion } from "@/components/ui/collapse";
 import { MoreToggle } from "@/components/ui/fold-toggle";
+import { PRESENCE_DURATION, PRESENCE_EASE, PRESENCE_MS } from "@/components/ui/presence";
 import { hasResizeObserver } from "@/lib/env";
 import { isWebLink, linkHost } from "@/lib/hill/reader";
 import type { HillMedia } from "@/lib/hill/wire";
@@ -33,6 +35,12 @@ import { cn } from "@/lib/utils";
 // that fits under the cap (`foldCut`), never through the middle of a row (a list's, a table's, or a
 // line of a diff), and the toggle sits under a rule of its own, so it reads as the frame's control and
 // not as the list's next row.
+//
+// THE FOLD MOVES (2026-11-10). Show all and Show less ease the frame's height between the cut and the
+// whole view on the presence curve and time (ui/presence.tsx), and the fade at the cut fades with it,
+// instead of jumping. The height is a `max-height` between two measured numbers on this one box; at rest
+// open it is `none` again, so a picture that loads later still grows the frame. Under reduced motion it
+// moves in one step.
 //
 // A view that throws while it draws takes only itself: the boundary draws the placeholder, and the
 // question and its options stay.
@@ -72,11 +80,13 @@ function useTallerThanCap<T extends HTMLElement>() {
   const ref = useRef<T>(null);
   const [tall, setTall] = useState(false);
   const [cut, setCut] = useState(VIEW_CAP_PX);
+  const [full, setFull] = useState(VIEW_CAP_PX);
   const measure = useCallback(() => {
     const el = ref.current;
     if (el === null) return;
     const isTall = el.scrollHeight > VIEW_CAP_PX + 1;
     setTall(isTall);
+    setFull(el.scrollHeight);
     if (!isTall) return;
     const top = el.getBoundingClientRect().top;
     setCut(foldCut([...el.querySelectorAll(FOLD_STOPS)].map((stop) => Math.round(stop.getBoundingClientRect().bottom - top))));
@@ -95,7 +105,42 @@ function useTallerThanCap<T extends HTMLElement>() {
       el.removeEventListener("animationend", measure);
     };
   }, [measure]);
-  return { ref, tall, cut };
+  return { ref, tall, cut, full };
+}
+
+/**
+ * Where the fold is: `shut` (clipped at the cut) and `open` (all of it) at rest; `opening` and
+ * `closing` while the height eases between the two, and `closing-from` for the one frame that pins the
+ * open height as a number, because a transition cannot start from `none`.
+ */
+type Fold = "shut" | "opening" | "open" | "closing-from" | "closing";
+
+/** The fold's motion: the state, the toggle, and whether it reads as open (for `aria-expanded` and the words). */
+function useFold() {
+  const reduced = usePrefersReducedMotion();
+  const [fold, setFold] = useState<Fold>("shut");
+  useEffect(() => {
+    if (fold === "closing-from") {
+      // Two frames, Collapse's reason: the pinned open height must be painted before the cut is asked for.
+      let second = 0;
+      const first = requestAnimationFrame(() => {
+        second = requestAnimationFrame(() => setFold("closing"));
+      });
+      return () => {
+        cancelAnimationFrame(first);
+        cancelAnimationFrame(second);
+      };
+    }
+    if (fold !== "opening" && fold !== "closing") return;
+    const done = window.setTimeout(() => setFold(fold === "opening" ? "open" : "shut"), PRESENCE_MS);
+    return () => clearTimeout(done);
+  }, [fold]);
+  const open = fold === "opening" || fold === "open";
+  const toggle = () => {
+    if (reduced) setFold(open ? "shut" : "open");
+    else setFold(open ? "closing-from" : "opening");
+  };
+  return { fold, open, toggle };
 }
 
 export function DecisionView({
@@ -112,10 +157,14 @@ export function DecisionView({
   media?: readonly HillMedia[];
   mediaSource?: HillMediaSource;
 }) {
-  const [open, setOpen] = useState(false);
-  const { ref, tall, cut } = useTallerThanCap<HTMLDivElement>();
+  const { fold, open, toggle } = useFold();
+  const { ref, tall, cut, full } = useTallerThanCap<HTMLDivElement>();
   const bodyId = useId();
-  const clipped = tall && !open;
+  // At rest shut, the view is clipped at the cut. While it moves it is clipped too, at the height the
+  // motion has reached; at rest open nothing clips it.
+  const clipped = tall && fold === "shut";
+  const moving = tall && fold !== "shut" && fold !== "open";
+  const maxHeight = !tall || fold === "open" ? undefined : fold === "opening" || fold === "closing-from" ? full : cut;
   const pictures = useMemo(() => viewPictures(decisionId, media, mediaSource), [decisionId, media, mediaSource]);
   const ctx: RenderCtx = { partKey: `hill/${decisionId}`, stale: false, onTap: NO_TAP, onLink: openViewLink, hostOf: linkHost, wrap: true, pictures };
   return (
@@ -127,15 +176,24 @@ export function DecisionView({
         id={bodyId}
         data-slot="decision-view-body"
         data-clipped={clipped ? "" : undefined}
-        className={cn("relative min-w-0", clipped && "overflow-hidden")}
-        style={clipped ? { maxHeight: cut } : undefined}
+        className={cn("relative min-w-0", (clipped || moving) && "overflow-hidden", moving && cn("transition-[max-height]", PRESENCE_DURATION, PRESENCE_EASE))}
+        style={maxHeight === undefined ? undefined : { maxHeight }}
       >
         <div ref={ref} className="font-content min-w-0">
           <TrickBoundary fallback="placeholder" resetKey={decisionId}>
             {renderView(view, ctx)}
           </TrickBoundary>
         </div>
-        {clipped && <div aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-card to-transparent" />}
+        {(clipped || moving) && (
+          <div
+            aria-hidden
+            className={cn(
+              "pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-card to-transparent transition-opacity ease-out",
+              PRESENCE_DURATION,
+              clipped || fold === "closing" ? "opacity-100" : "opacity-0",
+            )}
+          />
+        )}
       </div>
       {tall && (
         // Under a rule of its own, the frame's control: never the list's next row.
@@ -143,7 +201,7 @@ export function DecisionView({
           <MoreToggle
             data-slot="decision-view-more"
             open={open}
-            onToggle={() => setOpen((was) => !was)}
+            onToggle={toggle}
             controls={bodyId}
             more={t("hill.view.more")}
             less={t("hill.view.less")}

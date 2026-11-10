@@ -1,10 +1,13 @@
-import { cleanup, fireEvent, render } from "@testing-library/react";
+import { act, cleanup, fireEvent, render } from "@testing-library/react";
+import { afterEach, beforeEach, vi } from "vitest";
 import { createMemoryRouter, RouterProvider } from "react-router";
 
 import { HILL_IDLE } from "@/hooks/use-hill-answer";
 import { sortOpenDecisions, type HillDecision } from "@/lib/hill/wire";
 import { withHeaderHost } from "@/test/header-host";
 import { HILL_T0, hillDecision, trickDecision } from "@/test/hill-fixtures";
+
+import { PRESENCE_MS } from "@/components/ui/presence";
 
 import { DecisionCard } from "./decision-card";
 import { HillHeader, HillView } from "./hill-view";
@@ -125,6 +128,83 @@ describe("the Hill", () => {
     const row = container.querySelector('[data-slot="hill-closed-row"]')!;
     expect(row).toHaveTextContent("Could not be delivered");
     expect(row.querySelector('[data-slot="decision-kept"]')).toHaveTextContent("Call it minibuch-hc.");
+  });
+});
+
+describe("nothing arrives or leaves the Hill with a jump (2026-11-10)", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  const view = (open: HillDecision[], closed: HillDecision[] = []) => (
+    <HillView open={sortOpenDecisions(open)} closed={closed} kept={NO_KEPT} renderCard={(d) => <DecisionCard key={d.id} decision={d} answer={HILL_IDLE} onSend={() => {}} />} />
+  );
+  const itemOf = (el: Element | null | undefined) => el?.closest('[data-slot="presence-item"]');
+
+  it("keeps a card that left the list where it stood, collapsing and out of reach, then lets it go", () => {
+    const a = hillDecision({ title: "First?", at: HILL_T0 });
+    const b = hillDecision({ title: "Second?", at: HILL_T0 + 1 });
+    const c = hillDecision({ title: "Third?", at: HILL_T0 + 2 });
+    const { container, rerender } = render(view([a, b, c]));
+    rerender(view([a, c]));
+    expect(titles(container)).toEqual(["First?", "Second?", "Third?"]);
+    const leaving = itemOf(container.querySelector(`[data-id="${b.id}"]`))!;
+    expect(leaving).toHaveAttribute("data-state", "closed");
+    expect(leaving).toHaveAttribute("inert");
+    // Its 12px gap goes with it, so the card below lands where it stays.
+    expect(leaving.getAttribute("style")).toContain("margin-bottom: -12px");
+    act(() => vi.advanceTimersByTime(PRESENCE_MS));
+    expect(titles(container)).toEqual(["First?", "Third?"]);
+  });
+
+  it("lets a priority group leave with its last card, heading and all, in one motion", () => {
+    const now = hillDecision({ title: "Now?", priority: "now" });
+    const today = hillDecision({ title: "Today?", priority: "today" });
+    const { container, rerender } = render(view([now, today]));
+    rerender(view([today]));
+    const group = container.querySelector<HTMLElement>('[data-slot="hill-group"][data-priority="now"]')!;
+    expect(group).toHaveTextContent("Now?");
+    expect(itemOf(group)).toHaveAttribute("data-state", "closed");
+    expect(itemOf(group)!.getAttribute("style")).toContain("margin-bottom: -28px");
+    // The card inside rides with the group; it does not collapse on its own.
+    expect(itemOf(group.querySelector('[data-slot="decision-card"]'))).toHaveAttribute("data-state", "open");
+    act(() => vi.advanceTimersByTime(PRESENCE_MS));
+    expect(container.querySelector('[data-slot="hill-group"][data-priority="now"]')).toBeNull();
+  });
+
+  it("trades the last card for the clear hill in one band", () => {
+    const last = hillDecision({ title: "Last one?" });
+    const { container, rerender } = render(view([last]));
+    expect(container.querySelector('[data-slot="hill-empty"]')).toBeNull();
+    rerender(view([], [{ ...last, state: "dismissed" }]));
+    // Both in the band for the motion: the card collapsing, the ridge fading in where it stood.
+    expect(titles(container)).toEqual(["Last one?"]);
+    expect(container.querySelector('[data-slot="hill-empty"]')).not.toBeNull();
+    act(() => vi.advanceTimersByTime(PRESENCE_MS));
+    expect(titles(container)).toEqual([]);
+    expect(container.querySelector('[data-slot="hill-empty"]')).not.toBeNull();
+  });
+
+  it("brings Answered in through a Collapse the first time, and grows a new row in at its top", () => {
+    const open = hillDecision({ title: "Open?" });
+    const first = hillDecision({ title: "First closed", state: "expired" });
+    const { container, rerender } = render(view([open]));
+    expect(container.querySelector('[data-slot="hill-answered"]')).toBeNull();
+    rerender(view([open], [first]));
+    const answered = container.querySelector('[data-slot="hill-answered"]')!;
+    expect(answered.closest('[data-slot="collapse"]')).toHaveAttribute("data-state", "closed");
+    act(() => vi.advanceTimersByTime(64));
+    expect(answered.closest('[data-slot="collapse"]')).toHaveAttribute("data-state", "open");
+    fireEvent.click(answered.querySelector("button[aria-expanded]")!);
+    act(() => vi.advanceTimersByTime(PRESENCE_MS + 64));
+    const second = hillDecision({ title: "Second closed", state: "withdrawn" });
+    rerender(view([open], [second, first]));
+    const rows = [...container.querySelectorAll('[data-slot="hill-closed-row"]')];
+    expect(rows.map((row) => row.querySelector(".font-content")?.textContent)).toEqual(["Second closed", "First closed"]);
+    const arriving = itemOf(rows[0])!;
+    expect(arriving.tagName).toBe("LI");
+    expect(arriving).toHaveAttribute("data-state", "closed");
+    act(() => vi.advanceTimersByTime(48));
+    expect(arriving).toHaveAttribute("data-state", "open");
   });
 });
 

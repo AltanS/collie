@@ -2,7 +2,9 @@ import { act, fireEvent, render, within } from "@testing-library/react";
 import { afterEach, beforeEach, onTestFinished, vi } from "vitest";
 
 import { HILL_IDLE, type HillAnswerState } from "@/hooks/use-hill-answer";
+import { PRESENCE_MS } from "@/components/ui/presence";
 import { ARM_DWELL_MS, ARM_MS } from "@/lib/arm";
+import { HILL_ACK_MS } from "@/lib/hill/motion";
 import type { HillDecision, HillReceipt } from "@/lib/hill/wire";
 import { hillDecision, hillReceipt, trickDecision } from "@/test/hill-fixtures";
 
@@ -32,6 +34,9 @@ function renderCard(decision: HillDecision, answer: HillAnswerState = HILL_IDLE)
 }
 
 const answered = (receipt: HillReceipt, intent = "yes", text: string | null = null): HillAnswerState => ({ phase: "answered", intent, text, receipt });
+
+/** The words an option shows now: its label, or the confirm word while armed (both sit in one slot, one shown). */
+const shownLabel = (option: HTMLElement) => option.querySelector("[data-active]")?.textContent ?? "";
 
 const withConfirm = () =>
   hillDecision({
@@ -287,10 +292,28 @@ describe("the poster's view", () => {
     expect(body.className).not.toMatch(/overflow-(auto|scroll|y-auto)/u);
     const more = tall.slot("decision-view-more")!;
     expect(more).toHaveTextContent("Show all");
+    vi.useFakeTimers();
+    onTestFinished(() => {
+      vi.useRealTimers();
+    });
     fireEvent.click(more);
+    // It eases open on the presence curve: clipped at the full height while it moves, then free.
     expect(body).not.toHaveAttribute("data-clipped");
-    expect(body.style.maxHeight).toBe("");
+    expect(body.style.maxHeight).toBe(`${VIEW_CAP_PX + 160}px`);
+    expect(body.className).toContain("transition-[max-height]");
     expect(more).toHaveAttribute("aria-expanded", "true");
+    act(() => vi.advanceTimersByTime(PRESENCE_MS));
+    expect(body.style.maxHeight).toBe("");
+    expect(body.className).not.toContain("overflow-hidden");
+    // And back: pinned at the full height for two frames, then eased to the cut.
+    fireEvent.click(more);
+    expect(more).toHaveAttribute("aria-expanded", "false");
+    expect(body.style.maxHeight).toBe(`${VIEW_CAP_PX + 160}px`);
+    act(() => vi.advanceTimersByTime(48));
+    expect(body.style.maxHeight).toBe(`${VIEW_CAP_PX}px`);
+    act(() => vi.advanceTimersByTime(PRESENCE_MS));
+    expect(body).toHaveAttribute("data-clipped");
+    vi.useRealTimers();
     tall.unmount();
     vi.restoreAllMocks();
     vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(VIEW_CAP_PX - 40);
@@ -426,7 +449,7 @@ describe("arm, then send", () => {
     const { option, onSend } = renderCard(withConfirm());
     fireEvent.click(option("reset"));
     expect(onSend).not.toHaveBeenCalled();
-    expect(option("reset")).toHaveTextContent("Reset now");
+    expect(shownLabel(option("reset"))).toBe("Reset now");
     expect(option("reset")).toHaveAttribute("aria-label", "Reset now: tap again to confirm");
     expect(option("reset").className).toContain("border-destructive/40");
   });
@@ -446,10 +469,10 @@ describe("arm, then send", () => {
     const { option, onSend } = renderCard(withConfirm());
     fireEvent.click(option("reset"));
     act(() => vi.advanceTimersByTime(ARM_MS));
-    expect(option("reset")).toHaveTextContent("Reset to main");
+    expect(shownLabel(option("reset"))).toBe("Reset to main");
     fireEvent.click(option("reset"));
     expect(onSend).not.toHaveBeenCalled();
-    expect(option("reset")).toHaveTextContent("Reset now");
+    expect(shownLabel(option("reset"))).toBe("Reset now");
   });
 
   it("drops the arm when another option is tapped", () => {
@@ -457,20 +480,30 @@ describe("arm, then send", () => {
     fireEvent.click(option("reset"));
     fireEvent.click(option("keep"));
     expect(onSend).toHaveBeenCalledWith("keep", null);
-    expect(option("reset")).toHaveTextContent("Reset to main");
+    expect(shownLabel(option("reset"))).toBe("Reset to main");
   });
 
   it("drops the arm when the answer's words change, so the second tap needs a new first one", () => {
     const { slot, option, openNote, onSend } = renderCard(withConfirm());
     fireEvent.change(openNote(), { target: { value: "Because." } });
     fireEvent.click(option("reset"));
-    expect(option("reset")).toHaveTextContent("Reset now");
+    expect(shownLabel(option("reset"))).toBe("Reset now");
     fireEvent.change(slot("decision-text")!, { target: { value: "Because main builds." } });
-    expect(option("reset")).toHaveTextContent("Reset to main");
+    expect(shownLabel(option("reset"))).toBe("Reset to main");
     act(() => vi.advanceTimersByTime(ARM_DWELL_MS));
     fireEvent.click(option("reset"));
     expect(onSend).not.toHaveBeenCalled();
-    expect(option("reset")).toHaveTextContent("Reset now");
+    expect(shownLabel(option("reset"))).toBe("Reset now");
+  });
+
+  it("reserves the larger of the label and the confirm word, so arming never changes the row", () => {
+    const { option } = renderCard(withConfirm());
+    const layers = () => [...option("reset").querySelectorAll("[data-active], [aria-hidden='true'][inert]")].map((el) => el.textContent);
+    expect(layers()).toEqual(expect.arrayContaining(["Reset to main", "Reset now"]));
+    const before = option("reset").childElementCount;
+    fireEvent.click(option("reset"));
+    expect(option("reset").childElementCount).toBe(before);
+    expect(layers()).toEqual(expect.arrayContaining(["Reset to main", "Reset now"]));
   });
 
   it("asks for a second tap on Dismiss too", () => {
@@ -497,11 +530,88 @@ describe("arm, then send", () => {
 });
 
 describe("after the tap", () => {
-  it("says Sending… and locks the card while the answer is in flight", () => {
-    const { slot, option } = renderCard(hillDecision(), { phase: "sending", intent: "yes", text: null });
+  it("says Sending… in the options' place and locks the card while the answer is in flight", () => {
+    const { slot } = renderCard(hillDecision(), { phase: "sending", intent: "yes", text: null });
     expect(slot("decision-status")).toHaveTextContent("Sending…");
-    expect(option("yes")).toBeDisabled();
+    expect(slot("decision-answer")!.contains(slot("decision-status"))).toBe(true);
+    expect(slot("decision-options")).toBeNull();
     expect(slot("decision-dismiss")).toBeDisabled();
+  });
+
+  describe("the moment of answering", () => {
+    beforeEach(() => vi.useFakeTimers());
+    afterEach(() => vi.useRealTimers());
+
+    const sending: HillAnswerState = { phase: "sending", intent: "yes", text: null };
+
+    it("shows the chosen option in place first, the others dimmed, and moves nothing yet", () => {
+      const view = renderCard(hillDecision());
+      view.rerender(<DecisionCard decision={hillDecision()} answer={sending} onSend={view.onSend} />);
+      // Acknowledge: the options are still there, the tapped one in the chosen tone, all locked.
+      expect(view.option("yes").className).toContain("border-primary");
+      expect(view.option("no")).toBeDisabled();
+      expect(view.slot("decision-status")).toBeNull();
+      act(() => vi.advanceTimersByTime(HILL_ACK_MS - 1));
+      expect(view.slot("decision-status")).toBeNull();
+      // Settle: the status line takes the options' band, and the options leave it (held, out of reach).
+      act(() => vi.advanceTimersByTime(1));
+      expect(view.slot("decision-status")).toHaveTextContent("Sending…");
+      const leaving = view.container.querySelector('[data-swap-layer="answer"]')!;
+      expect(leaving).toHaveAttribute("inert");
+      act(() => vi.advanceTimersByTime(PRESENCE_MS));
+      expect(view.container.querySelector('[data-swap-layer="answer"]')).toBeNull();
+      expect(view.slot("decision-options")).toBeNull();
+    });
+
+    it("never shows the status under the options while it acknowledges", () => {
+      const view = renderCard(hillDecision());
+      view.rerender(<DecisionCard decision={hillDecision()} answer={sending} onSend={view.onSend} />);
+      act(() => vi.advanceTimersByTime(HILL_ACK_MS / 2));
+      expect(view.container.querySelectorAll('[data-slot="decision-status"]')).toHaveLength(0);
+    });
+
+    it("trades Sending… for the receipt in the same band", () => {
+      const view = renderCard(hillDecision());
+      view.rerender(<DecisionCard decision={hillDecision()} answer={sending} onSend={view.onSend} />);
+      // Two steps: the settle's timer starts only once the acknowledge has rendered.
+      act(() => vi.advanceTimersByTime(HILL_ACK_MS));
+      act(() => vi.advanceTimersByTime(PRESENCE_MS));
+      view.rerender(<DecisionCard decision={hillDecision()} answer={answered(hillReceipt())} onSend={view.onSend} />);
+      expect(view.container.querySelector('[data-swap-layer="receipt"]')).toHaveAttribute("data-active");
+      expect(view.slot("decision-receipt")).toHaveTextContent("Sent to collie lead");
+      // The "Sending…" layer fades out on top, held and out of reach.
+      expect(view.container.querySelector('[data-swap-layer="sending"]')).toHaveAttribute("inert");
+      act(() => vi.advanceTimersByTime(PRESENCE_MS));
+      expect(view.container.querySelector('[data-swap-layer="sending"]')).toBeNull();
+    });
+
+    it("gives the options back with the error under them when the send fails, and Try again sends again", () => {
+      const view = renderCard(hillDecision());
+      view.rerender(<DecisionCard decision={hillDecision()} answer={sending} onSend={view.onSend} />);
+      // Two steps: the settle's timer starts only once the acknowledge has rendered.
+      act(() => vi.advanceTimersByTime(HILL_ACK_MS));
+      act(() => vi.advanceTimersByTime(PRESENCE_MS));
+      expect(view.slot("decision-options")).toBeNull();
+      view.rerender(<DecisionCard decision={hillDecision()} answer={{ phase: "failed", intent: "yes", text: null }} onSend={view.onSend} />);
+      // The band swaps back at once, no acknowledge delay on the way back.
+      expect(view.container.querySelector('[data-swap-layer="answer"]')).toHaveAttribute("data-active");
+      expect(view.option("yes")).toBeEnabled();
+      const status = view.container.querySelectorAll<HTMLElement>('[data-slot="decision-status"]');
+      expect([...status].some((el) => el.textContent?.includes("Not sent."))).toBe(true);
+      act(() => vi.advanceTimersByTime(PRESENCE_MS));
+      expect(view.container.querySelector('[data-swap-layer="sending"]')).toBeNull();
+      fireEvent.click(view.slot("decision-retry")!);
+      expect(view.onSend).toHaveBeenCalledWith("yes", null);
+    });
+
+    it("keeps Dismiss in its chosen tint, undimmed, while the dismiss is sent", () => {
+      const view = renderCard(hillDecision());
+      view.rerender(<DecisionCard decision={hillDecision()} answer={{ phase: "sending", intent: "dismiss", text: null }} onSend={view.onSend} />);
+      const dismiss = view.slot("decision-dismiss")!;
+      expect(dismiss).toBeDisabled();
+      expect(dismiss.className).toContain("text-destructive");
+      expect(dismiss.className).toContain("disabled:opacity-100");
+    });
   });
 
   it.each<[string, HillReceipt, string, string]>([
@@ -520,7 +630,9 @@ describe("after the tap", () => {
 
   it("locks the card after an answer that landed, and keeps it open after a refusal", () => {
     const landed = renderCard(hillDecision(), answered(hillReceipt()));
-    expect(landed.option("yes")).toBeDisabled();
+    // The receipt holds the options' place: nothing is left to tap.
+    expect(landed.slot("decision-options")).toBeNull();
+    expect(landed.slot("decision-dismiss")).toBeDisabled();
     landed.unmount();
     const refused = renderCard(hillDecision(), answered(hillReceipt({ code: "rejected", state: null, delivery: null })));
     expect(refused.option("yes")).toBeEnabled();
