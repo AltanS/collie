@@ -48,7 +48,8 @@ own code and called a modified helper.
 | `t.belt({ label, icon?, tone?, badge?, intent? })` | the mark at the end of the Belt (part id `belt`) |
 | `t.dashboard(item)`, `t.tabbar(item)` | the Dashboard tile and the bottom bar item, `{ label, icon?, badge?, tone? }` |
 | `t.session({ id?, name?, subtitle?, badge?, progress?, actions?, view })` | the trick's session; keep the default id `main` |
-| `v.card`, `v.group`, `v.list`, `v.row`, `v.bar`, `v.chip`, `v.button`, `v.para`, `v.line`, `v.run`, `v.code`, `v.link`, `v.image`, `v.meter`, `v.spacer`, `v.number` | one builder per node kind; a number attribute may be a number, a flag `true` |
+| `v.card`, `v.group`, `v.list`, `v.row`, `v.bar`, `v.chip`, `v.button`, `v.para`, `v.line`, `v.run`, `v.code`, `v.link`, `v.image`, `v.meter`, `v.spacer`, `v.number`, `v.compare`, `v.table`, `v.diff`, `v.spark` | one builder per node kind; a number attribute may be a number, a flag `true`. `v.image(ref, { caption?, fit?, focus? })` names a Decision's picture, `v.image(src, alt, w, h, look?)` a file of the trick folder; `focus` is `{ x, y, zoom? }`. `v.table({ columns, rows })` writes the heads and cells for you, `v.diff(lines, { file? })` takes a list or a text, `v.spark(values, { tone?, label? })` a list of numbers |
+| `v.beforeAfter(aRef, bRef, { before?, after?, fit?, focus? })`, `v.checks([{ label, ok, note? }])`, `v.stat(value, label, { trend?, tone?, unit? })` | recipes made of the kinds above: a compare of two of the Decision's pictures cropped to one point; a list of rows with a green check or a red cross and the note as the second line; a number, with a spark under it when `trend` gives the numbers |
 | `t.decide({ key, title, summary, options, recommends?, body?, text?, priority?, about?, replyTo?, media?, links?, view? })` | asks the person on the Hill; `view` is a list of display nodes under the summary (see "A Decision's view") |
 | `t.keepDecisions()` | leaves the `decisions` key out: the open Decisions stay as they are |
 | `t.state.get(name, fallback)`, `t.state.set(name, value)` | JSON files in the trick's state folder, written whole (a temp file, then a rename); a name may hold folders (`cache/ci`), never `..` or a dot first |
@@ -187,12 +188,12 @@ part, a quick timer) may leave the key out.
 A part's `view` is a list of nodes. They flow down the place's frame with one gap; there is no
 `stack`. A node is `{ kind, text?, attrs?, kids? }`, and every attribute value is a string.
 
-The 16 kinds, and what each may hold:
+The 22 kinds, and what each may hold:
 
 | Kind     | Holds                                                      | Notes                                                     |
 | -------- | ---------------------------------------------------------- | --------------------------------------------------------- |
-| `card`   | para, line, chip, button, meter, image, bar, group, number, spacer | `tone` draws as Collie's edge, never a fill       |
-| `group`  | row, group, bar, para, line, link, meter, number, spacer   | `label`, `badge`; `fold` open or closed makes the head a toggle |
+| `card`   | para, line, chip, button, meter, image, bar, group, number, spacer, compare, table, diff, spark | `tone` draws as Collie's edge, never a fill |
+| `group`  | row, group, bar, para, line, link, meter, number, spacer, image, compare, table, diff, spark | `label`, `badge`; `fold` open or closed makes the head a toggle |
 | `list`   | row, group                                                 | the rows framed together                                  |
 | `row`    | para (its second line), chip, button (one, trailing)       | `href`, `end`, `badge`, `tone`, `icon`, `cut`, `disabled` |
 | `bar`    | button, chip, link                                         | the one row; chips with `state` draw the step strip       |
@@ -203,12 +204,18 @@ The 16 kinds, and what each may hold:
 | `run`    | words                                                      | `style`, `code`, `href`, a clock                          |
 | `code`   | line                                                       | `lang`, `max` lines; the phone's copy button              |
 | `link`   | words                                                      | `href`, `rel`, `icon`, `badge`                            |
-| `image`  | nothing                                                    | `src` in the trick folder, `alt`, `w`, `h`                |
+| `image`  | nothing                                                    | in a part `src` in the trick folder, `alt`, `w`, `h`; on a Decision's view `ref` instead; both take `caption`, `fit` (contain or cover) and `focus` ("x y" or "x y zoom", percent and 1 to 8) |
 | `meter`  | nothing                                                    | `value`, `max`, `label`, `tone`; `role` meter or progress |
 | `spacer` | nothing                                                    | an optional `label`                                       |
 | `number` | words                                                      | the big figure; `label`, `unit`, `tone`                   |
+| `compare` | two image                                                 | side by side at one height, labelled Before and After unless a `caption` names a side; stacked below 300 px |
+| `table`  | col (1 to 4, first), then cell (rows as wide as the heads, at most 12) | `col` has its head as words and `align` start or end; `cell` its words (may be empty) and `tone`; a column of figures keeps the end side |
+| `col`, `cell` | words                                                 | only inside a table                                       |
+| `diff`   | words                                                      | the lines (at most 40, each at most 200 characters), `+`, `-`, `@@` tinted; `file` |
+| `spark`  | nothing                                                    | `values`: 2 to 32 numbers with one space between, oldest first; `label`, `tone` |
 
-A view's top level takes card, group, list, bar, para, line, code, meter, image, spacer and number.
+A view's top level takes card, group, list, bar, para, line, code, meter, image, spacer, number,
+compare, table, diff and spark.
 
 ## The renderer
 
@@ -221,8 +228,9 @@ every status tone as `unknown`.
 - **Fixed heights** (`layout.ts`). Every leaf states its height from its shape, never its data. A
   `para` reserves its lines from its text's length (about 40 characters a line, at most 8, a heading
   at most 2). A `code` with `max` reserves `max` lines. A `list` reserves its kids. A `number`, a
-  `meter`, a `chip`, a `button` and a step strip are one height each. An `image` reserves its box
-  from `w` and `h`. A new form waits while a finger is down (`part-frame.tsx`).
+  `meter`, a `chip`, a `button`, a `spark` and a step strip are one height each. An `image` reserves its box
+  from `w` and `h`, a `compare` from the taller of its two. A `table` reserves its head and a two-line
+  floor per row; a `diff` reserves its lines, and the file line when it has one. A new form waits while a finger is down (`part-frame.tsx`).
 - **Taps.** A `button` sends its intent with the part key, its `value` and its path in the view, so
   the busy and unknown states land on that control. With `confirm` it arms on the first tap, shows
   the confirm words in the danger ink for 4 s, and sends on the second. With `does: copy` it copies
@@ -273,8 +281,15 @@ when there are some: a strip of gates, a few rows with their proof, a hunk of a 
 nodes like a part's view, read by one function, `parseDecisionView` in `schema.ts`, for a trick's
 document, an agent's `collie hill post --view <file.json>` and the phone alike.
 
-- **Display only.** It takes group, list, row, bar, chip, para, line, run, code, link, meter, spacer
-  and number. No button, card or image: the options are the taps, and the images are `media`.
+- **Display only.** It takes group, list, row, bar, chip, para, line, run, code, link, meter, spacer,
+  number, image, compare, table (with col and cell), diff and spark. No button and no card: the options
+  are the taps.
+- **The Decision's own pictures.** An `image` on a view names one of the Decision's `media` by its
+  place, `ref` (0 is the first), never by a file: `src`, `alt`, `w` and `h` are refused there, and a
+  `ref` past the pictures the Decision holds is refused with its path. `focus` crops the picture on the
+  phone, so the poster needs no image tool. A `compare` holds two such images. A picture the view
+  places is drawn among the facts and not again in the row of images above; a tap opens it at full
+  size, and the sheet pages through a compare's two.
 - **Nothing acts.** `intent`, `does`, `confirm` and `href` are refused on every node, except the
   `href` of a link and of a row. That `href` must be a web address, `https://` or `http://`. A session's
   scope key and `rel: "pane"` are refused. The card shows the host.
@@ -285,9 +300,13 @@ document, an agent's `collie hill post --view <file.json>` and the phone alike.
   and the digest it always had.
 - **The card.** The phone draws the view in a quiet frame captioned "From <sender>", with the trick
   renderer and no tap handler. A link, and a row with an `href`, show their host and open in a new tab. A bar wraps instead of
-  clipping. Past 240 px the frame folds behind "Show all", with no scroller inside the card. A stored
-  view the phone cannot read is dropped and the decision stays; one that throws while it draws shows
-  the placeholder.
+  clipping. Past 240 px the frame folds behind "Show all", with no scroller inside the card. The phone
+  reads a stored view whole, and when that fails, node by node at the top level: a node it cannot read
+  is dropped and the rest draws (a newer poster's kind, a `ref` past the pictures it got). A view with
+  nothing left is dropped and the decision stays; one that throws while it draws shows the placeholder.
+- **The rhythm.** In the card a labelled group after other facts opens a section, with more space
+  above it and its head close to its own rows; rows that stand together keep one icon lane, so their
+  titles start on one edge.
 
 ```json
 { "key": "tag-1-28-2", "title": "Tag 1.28.2 with the e2e gate red?", "summary": "Six of seven gates are green.",
