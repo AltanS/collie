@@ -4,6 +4,7 @@ import { homedir, hostname, networkInterfaces } from "node:os";
 import { basename, dirname, extname, isAbsolute, join, normalize, sep } from "node:path";
 import { createAccessGate, DOOR_PRESETS, FORWARDING_HEADERS } from "./access-jwt.ts";
 import type { JsonObject, JsonValue } from "./json.ts";
+import { asJsonBoolean, asJsonObject } from "../web/src/lib/json.ts";
 import type { ActivityLedger } from "./activity.ts";
 import { type AuditDetail, type AuditEntry, AuditLog } from "./audit.ts";
 import { isLoopbackBindHost, type Config } from "./config.ts";
@@ -3115,7 +3116,7 @@ export function startServer(opts: {
         // and a member refuses posts (`not_on_lead`). The revision below is this bridge's own store.
         const merged = crewLead ? crewLead.merge(body, plan) : body;
         const out = crewLead && cfg.redact ? maskSnapshotTitles(merged) : merged;
-        return withBuildHeader(json(withHillRev(out, hill?.rev()), req.headers.get("accept-encoding")), await buildId());
+        return withBuildHeader(json(withHill(out, hill), req.headers.get("accept-encoding")), await buildId());
       }
 
       // ── Surface shadow mode's debug route (M56 spec 04) ──────────────────
@@ -3295,6 +3296,24 @@ export function startServer(opts: {
         if (denied) return denied;
         if (host.kind === "member") return text(HILL_LOCAL_TEXT, 400);
         return hillListRoute(hill, url.searchParams.get("since"), req.headers.get("accept-encoding"));
+      }
+      // The Hill's switch: read by any paired device, moved with the write right, as a trick's switch is,
+      // because off refuses every agent's post on this machine. The value also rides on the snapshot as
+      // `hillOff`, which is what the phone draws from; this route is the write and a plain read.
+      if (pathname === "/api/hill/switch" && (req.method === "GET" || req.method === "POST")) {
+        const denied = browserGate(req.method === "GET" ? "read" : "write");
+        if (denied) return denied;
+        if (host.kind === "member") return text(HILL_LOCAL_TEXT, 400);
+        let body: JsonValue | undefined;
+        if (req.method === "POST") {
+          try {
+            // SAFETY: `Request.json()` output IS a JsonValue by construction; `hillSwitchRoute` checks the one field.
+            body = (await req.json()) as JsonValue;
+          } catch {
+            body = undefined;
+          }
+        }
+        return hillSwitchRoute(hill, req.method === "POST" ? { body } : null, { device: whois(req).device, acceptEncoding: req.headers.get("accept-encoding") });
       }
       if (pathname === "/api/hill/answer" && req.method === "POST") {
         const denied = browserGate("write");
@@ -9023,6 +9042,41 @@ export function withHillRev(body: SnapshotResponse, rev: number | undefined): Sn
 }
 
 /**
+ * The snapshot with what the phone needs of the hill. On: its revision, as {@link withHillRev}. Off (the
+ * Hill's switch): no revision, so the phone empties its list and the bar loses the Hill item, and
+ * `hillOff: true`, so the Hill's route and Settings say it is off. With the Hill on the body carries no
+ * `hillOff` key at all, so an install that never switched it keeps its bytes.
+ */
+export function withHill(body: SnapshotResponse, hill: Pick<HillService, "isOn" | "rev"> | undefined): SnapshotResponse {
+  if (hill === undefined) return body;
+  if (!hill.isOn()) return { ...body, hillOff: true };
+  return withHillRev(body, hill.rev());
+}
+
+/** What the answer route says while the Hill is switched off: nothing was typed, and the decision stays open. */
+export const HILL_SWITCHED_OFF_TEXT = "the Hill is off on this Collie, so nothing was sent";
+
+/**
+ * `GET` and `POST /api/hill/switch`: the Hill's switch. `GET` (`write` null) answers `{ on }`. `POST`
+ * takes `{ "on": boolean }` and nothing else, and answers `{ on }` as the switch now reads; 400 for
+ * another body, 503 when the switch file could not be written.
+ */
+export function hillSwitchRoute(
+  hill: Pick<HillService, "isOn" | "switchTo"> | undefined,
+  write: { readonly body: JsonValue | undefined } | null,
+  context: { readonly device: string | null; readonly acceptEncoding: string | null },
+): Response {
+  if (hill === undefined) return text(HILL_OFF_TEXT, 404);
+  if (write === null) return json({ on: hill.isOn() }, context.acceptEncoding);
+  const doc = asJsonObject(write.body);
+  const on = asJsonBoolean(doc?.on);
+  if (doc === undefined || on === undefined || Object.keys(doc).length !== 1) return text("bad request: the body is { \"on\": true } or { \"on\": false }", 400);
+  const now = hill.switchTo(on, context.device);
+  if (now === null) return text("the Hill's switch could not be saved on this machine; nothing changed", 503);
+  return json({ on: now }, context.acceptEncoding);
+}
+
+/**
  * `GET /api/hill?since=<rev>` (M96): every open decision and the newest closed ones. With `since` equal
  * to the revision, only `{ rev, unchanged: true }`.
  */
@@ -9054,6 +9108,8 @@ export async function hillAnswerRoute(
       return text(HILL_RID_REUSED, 409);
     case "unsaved":
       return text(HILL_UNSAVED_TEXT, 503);
+    case "off":
+      return text(HILL_SWITCHED_OFF_TEXT, 409);
   }
 }
 

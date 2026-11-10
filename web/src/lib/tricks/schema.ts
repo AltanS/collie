@@ -1240,6 +1240,11 @@ export interface WireTrickInfo {
    * not run until it is switched on again.
    */
   changed?: boolean;
+  /**
+   * True when the trick's last good document listed at least one Decision. With the Hill switched off
+   * (the snapshot's `hillOff`), its row in Settings says those Decisions are not shown.
+   */
+  decides?: boolean;
   /** The environment names the manifest asks for past the base allow-list, so the person sees them. */
   env?: string[];
 }
