@@ -4095,6 +4095,9 @@ none. Before 1.29.0 a member refused every post with `not_on_lead`.
 
 - One member's agents hold at most **40 open Decisions** on the lead, across all its sessions, beside
   the 20 per session and 200 in total. A post past it is refused `too_many_open`.
+- No Decision stays open past **30 days** (`HILL_MAX_EXPIRY_DAYS`), a member's or the lead's own: a
+  later `expiresAt` is held to 30 days from the post, never refused. `collie hill post --expires`
+  refuses a longer duration before it asks.
 - A `now` Decision rings the phone at most **6 times an hour from one member**, beside 3 an hour per
   session and 10 in total. Past it, the Decision posts and shows, and only its push is skipped. The
   lead's own sessions count only toward the per-session and total limits.
@@ -4143,6 +4146,11 @@ A session on a member the lead cannot reach now is one the lead's sweep marks `u
 the reason "<machine> is not answering. Your answer was not sent." and the additive-optional field
 `machine`. The card stays open, and the same tap may go once the machine is back. Nothing is queued
 (§10.3). The sweep never closes a Decision for a session whose machine is not answering.
+
+A **dismiss always closes**, even then: a card no tap could close would stay on the phone until it
+expires. The Decision closes `dismissed`, nothing is typed, the answer's `delivery` is `none`, and the
+`ok` receipt carries `machine` too, so the phone says "Dismissed. <machine> is not answering, so the
+session was not told." The poster reads the dismiss with `collie hill status` when its machine is back.
 
 ### Compatibility
 

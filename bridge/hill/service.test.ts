@@ -7,6 +7,7 @@ import {
   answerMessage,
   BY_THE_POSTER,
   HILL_DEFAULT_EXPIRY_MS,
+  HILL_MAX_EXPIRY_MS,
   HILL_WALKY_OFF,
   HillService,
   hillPostDigest,
@@ -578,6 +579,13 @@ describe("the hill's caps", () => {
     expect(r.hill.sweep(plain.expiresAt! - 1)).toBe(1);
     expect(r.hill.sweep(plain.expiresAt!)).toBe(1);
     expect(r.store.get(plain.id)).toMatchObject({ state: "expired", closedReason: "expired" });
+  });
+
+  test("an expiry past 30 days is held to 30 days, so no card stays open for years", () => {
+    const r = rig();
+    expect(HILL_MAX_EXPIRY_MS).toBe(30 * 24 * 60 * 60 * 1000);
+    expect(posted(r.hill.post(POSTER, input(1, { expiresAt: 253_402_300_799_000 }))).expiresAt).toBe(1000 + HILL_MAX_EXPIRY_MS);
+    expect(posted(r.hill.post(POSTER, input(2, { expiresAt: 1000 + HILL_MAX_EXPIRY_MS }))).expiresAt).toBe(1000 + HILL_MAX_EXPIRY_MS);
   });
 });
 

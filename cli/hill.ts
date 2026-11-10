@@ -10,7 +10,7 @@ import { NO_SOCKET_TEXT, shown, type WalkyDeps } from "./walky.ts";
 import type { JsonObject, JsonValue } from "../bridge/json.ts";
 import { asJsonObject, asJsonString, parseJson, parseJsonObject } from "../web/src/lib/json.ts";
 import { readDecision } from "../bridge/hill/parse.ts";
-import { HILL_DEFAULT_EXPIRY_DAYS } from "../bridge/hill/service.ts";
+import { HILL_DEFAULT_EXPIRY_DAYS, HILL_MAX_EXPIRY_DAYS, HILL_MAX_EXPIRY_MS } from "../bridge/hill/service.ts";
 import { readHillSwitch, writeHillSwitch } from "../bridge/hill/switch.ts";
 import { parseAddress } from "../bridge/walky/address.ts";
 import { BARE_BAD_REQUEST, unknownOp } from "../bridge/walky/refusals.ts";
@@ -60,7 +60,7 @@ const USAGE = {
     '         [--image shots/a.png[="<caption>"] ...]   (PNG, JPEG or WebP, up to 4, 2 MB each) \\',
     "         [--view view.json]   (a small view under the summary, see below) \\",
     '         [-- "<body in Markdown>"]   (no body after --: read from stdin when it is not a terminal)',
-    `  With no --expires, a decision closes as expired after ${String(HILL_DEFAULT_EXPIRY_DAYS)} days.`,
+    `  With no --expires, a decision closes as expired after ${String(HILL_DEFAULT_EXPIRY_DAYS)} days. --expires is at most ${String(HILL_MAX_EXPIRY_DAYS)} days.`,
     "  To retry a post, send it again with the same --request-id: it posts once. Other content under that id is refused.",
     "  --view names a JSON file (at most 16 KiB) with a list of nodes, drawn under the summary: group, list, row, bar, chip,",
     "  para, line, run, code, link, meter, spacer, number, image, compare, table, diff and spark, as a trick writes them,",
@@ -332,6 +332,7 @@ export function parsePostArgs(args: readonly string[]): PostArgs | { readonly er
   const expires = one.get("--expires");
   const expiresInMs = expires === undefined ? null : durationMs(expires);
   if (expires !== undefined && expiresInMs === null) return { error: `\`--expires ${expires}\` is a duration such as 30m, 2h, 3d or 1w` };
+  if (expiresInMs !== null && expiresInMs > HILL_MAX_EXPIRY_MS) return { error: `\`--expires ${expires ?? ""}\` is longer than ${String(HILL_MAX_EXPIRY_DAYS)} days, the most a decision stays open` };
   const requestId = one.get("--request-id") ?? null;
   if (requestId !== null && !isRequestId(requestId)) return { error: `\`--request-id ${requestId}\` is not a UUID` };
   return {

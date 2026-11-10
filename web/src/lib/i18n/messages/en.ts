@@ -3393,6 +3393,8 @@ export const en = {
   // An answer to a session on a crew machine that is not answering (CREW_PROTOCOL §22): English only
   // until the translation pass, listed in PENDING_TRANSLATION below.
   "hill.receipt.offline": "{machine} is not answering. Your answer was not sent.",
+  // A dismiss that closed the card while the session's crew machine was not answering (CREW_PROTOCOL §22).
+  "hill.receipt.dismissedOffline": "Dismissed. {machine} is not answering, so the session was not told.",
   "hill.retry": "Try again",
   "hill.reason.textRequired": "an answer in words is required",
   "hill.reason.notAnOption": "that is not an option of this Decision",
@@ -3629,6 +3631,7 @@ export const PENDING_TRANSLATION = [
   "hill.off.turnOn",
   // An answer refused for a crew machine that is not answering (2026-11-10).
   "hill.receipt.offline",
+  "hill.receipt.dismissedOffline",
 ] as const satisfies readonly MessageKey[];
 
 /** A key a bundle may leave out until the translation pass. */

@@ -28,7 +28,7 @@ import {
 } from "./crew.ts";
 import { deniedFoldersSync, HillMediaStore } from "./media.ts";
 import { memoryHillReceipts } from "./receipts.ts";
-import { HILL_OPEN_MEMBER_MAX, HillService, NOT_ON_LEAD, notAnswering, type HillAgentSender, type HillCrewMode, type HillPlace } from "./service.ts";
+import { HILL_MAX_EXPIRY_MS, HILL_OPEN_MEMBER_MAX, HillService, NOT_ON_LEAD, notAnswering, type HillAgentSender, type HillCrewMode, type HillPlace } from "./service.ts";
 import { hillDir, HillStore } from "./store.ts";
 
 // The Hill across a crew (CREW_PROTOCOL §22): a member's agent posts on its lead's Hill, the lead holds
@@ -413,6 +413,23 @@ describe("an answer for a machine that is not answering", () => {
     const sent = await lead.hill.answer(request, id, "Pixel 9");
     expect(sent).toMatchObject({ kind: "receipt", receipt: { code: "ok", state: "answered" } });
     expect(lead.sent.map((s) => s.to)).toEqual([LAPTOP_PANE]);
+  });
+
+  test("a dismiss always closes: with the machine away it closes with nothing sent, and the receipt names the machine", async () => {
+    const { lead, crewLead } = crew();
+    const posted = crewLead.post({ from: { address: LAPTOP_PANE, label: "repo#main" }, fields: fields({ expiresAt: 253_402_300_799_000 }) }, "laptop");
+    const id = idOf(posted);
+    lead.offline = "laptop";
+    const dismissed = await lead.hill.answer({ rid: uuid(), node: `hill/${id}`, intent: "dismiss", value: { text: null } }, id, "Pixel 9");
+    expect(dismissed).toMatchObject({ kind: "receipt", receipt: { code: "ok", state: "dismissed", delivery: "none", machine: "laptop" } });
+    expect(lead.store.get(id)).toMatchObject({ state: "dismissed", answer: { intent: "dismiss", delivery: "none" } });
+    expect(lead.sent).toEqual([]);
+  });
+
+  test("a forwarded post's expiry is held to 30 days too", () => {
+    const { lead, crewLead } = crew();
+    const posted = crewLead.post({ from: { address: LAPTOP_PANE, label: "repo#main" }, fields: fields({ expiresAt: 253_402_300_799_000 }) }, "laptop");
+    expect(lead.store.get(idOf(posted))?.expiresAt).toBe(lead.clock + HILL_MAX_EXPIRY_MS);
   });
 
   test("a session the sweep lists as unreachable is refused the same way, by its place", async () => {

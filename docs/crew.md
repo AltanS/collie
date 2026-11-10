@@ -419,7 +419,8 @@ name a session on that same machine.
 Your answer goes back to the session as a WalkyTalky message, through the lead. When the session's
 machine is not answering, the phone says "laptop is not answering. Your answer was not sent." The
 card stays open, and you can answer again when the machine is back. A Decision is never closed
-because its machine went away.
+because its machine went away. Dismiss still closes the card: the phone then says the session was not
+told.
 
 When the lead does not answer, `collie hill post` says so, exits 5, and posts nothing. Run the same
 command again with the `--request-id` it prints: the lead keeps one Decision for it.

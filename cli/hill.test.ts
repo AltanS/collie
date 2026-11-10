@@ -235,6 +235,9 @@ describe("post's flags", () => {
     expect(error([...POST, "--text", "lots"])).toBe("`--text` is none, optional or required");
     expect(error(["--title", "t", "--summary", "s", "--text", "none"])).toBe("`--text none` needs at least one `--option`");
     expect(error([...POST, "--expires", "soon"])).toBe("`--expires soon` is a duration such as 30m, 2h, 3d or 1w");
+    expect(error([...POST, "--expires", "31d"])).toBe("`--expires 31d` is longer than 30 days, the most a decision stays open");
+    expect(error([...POST, "--expires", "5w"])).toBe("`--expires 5w` is longer than 30 days, the most a decision stays open");
+    expect(parsePostArgs([...POST, "--expires", "30d"])).toMatchObject({ expiresInMs: 30 * 86_400_000 });
     expect(error([...POST, "--request-id", "abc"])).toBe("`--request-id abc` is not a UUID");
     expect(error([...POST, "--supersedes", "wt_aaaaaaaaaaa1"])).toContain("is not a decision id");
     expect(error([...POST, "--reply-to", "all"])).toContain("is not a session");
@@ -481,7 +484,7 @@ describe("help", () => {
     expect(await run(["hill", "post", "--help"], io)).toBe(EXIT.OK);
     expect(io.stdout).toEqual(hillPostHelp());
     expect(io.stdout[0]).toStartWith("usage: collie hill post");
-    expect(io.stdout).toContain("  With no --expires, a decision closes as expired after 14 days.");
+    expect(io.stdout).toContain("  With no --expires, a decision closes as expired after 14 days. --expires is at most 30 days.");
     expect(io.stdout.slice(-RULES.length)).toEqual(RULES);
   });
 });
