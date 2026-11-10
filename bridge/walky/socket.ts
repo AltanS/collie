@@ -25,6 +25,11 @@
 //   morph.start   { note? }         → { ok, morph } | { ok: false, error, code }
 //   morph.show    { view, title?, images?: [{ path, caption? }], choice? }  → { ok, morph } | { ok: false, error, code, refusals? }
 //   morph.clear | morph.on | morph.off | morph.status  {}  → { ok, morph }
+//   morph.set     { id, node, after? | first?, images? }   → { ok, morph } | { ok: false, error, code, refusals? }
+//   morph.pending { id, label, after? | first? }           → the same
+//   morph.remove  { id }                                    → the same
+//   morph.keep    { ids: [...] } | { all: true }            → the same ("choice" names the decision block)
+//   morph.choice  { choice } | { clear: true }              → the same
 // Every Morph refusal carries `morph: true`, as the hill's carry `hill: true`.
 // A refusal is `{ ok: false, error }`. `not here` means the markers name no pane of this bridge, so
 // the CLI asks the next bridge on the machine; a request this bridge cannot read answers the same when
@@ -41,6 +46,7 @@ import type { BeaconMarker } from "../beacon/types.ts";
 import { HOST, type Host } from "../host.ts";
 import type { HillDecision, HillRefusalCode } from "../../web/src/lib/hill/wire.ts";
 import type { HillService } from "../hill/service.ts";
+import { readChoiceFields, readKeepFields, readPendingFields, readRemoveFields, readSetFields } from "../morph/blocks.ts";
 import { readShowFields, readStartFields, sameSession, wrongSessionWords, type MorphRefusalCode, type MorphService } from "../morph/service.ts";
 import type { MorphSession } from "../../web/src/lib/morph/wire.ts";
 import type { Refusal } from "../../web/src/lib/tricks/schema.ts";
@@ -64,7 +70,7 @@ export const HILL_NEEDS_A_PANE = "run this inside an agent's pane: a decision be
 export const MORPH_NEEDS_A_PANE = "run this inside an agent's pane: a Morph screen belongs to the session that draws it";
 
 /** What the socket needs of Morph. Absent: the bridge answers the five operations as unknown. */
-export type MorphSocket = Pick<MorphService, "start" | "show" | "clear" | "setOn" | "status">;
+export type MorphSocket = Pick<MorphService, "start" | "show" | "clear" | "setOn" | "status" | "set" | "pending" | "remove" | "keep" | "setChoice">;
 
 /** What the socket needs of the hill (M96). Absent: the bridge answers the four operations as unknown. */
 export type HillSocket = Pick<HillService, "agentSender" | "postFields" | "status" | "withdraw" | "mineList" | "clear">;
@@ -248,6 +254,11 @@ export async function answerRequest(service: WalkyService, request: WalkyRequest
     case "morph.on":
     case "morph.off":
     case "morph.status":
+    case "morph.set":
+    case "morph.pending":
+    case "morph.remove":
+    case "morph.keep":
+    case "morph.choice":
       return answerMorph(service, request, pane, morph);
   }
 }
@@ -307,6 +318,26 @@ function morphAnswerOf(
       return morph.setOn(session, request.op === "morph.on");
     case "morph.status":
       return { ok: true, session: morph.status(session) };
+    case "morph.set": {
+      const fields = readSetFields(request.fields);
+      return "error" in fields ? { ok: false, error: fields.error, code: fields.code } : morph.set(session, fields);
+    }
+    case "morph.pending": {
+      const fields = readPendingFields(request.fields);
+      return "error" in fields ? { ok: false, error: fields.error, code: fields.code } : morph.pending(session, fields);
+    }
+    case "morph.remove": {
+      const fields = readRemoveFields(request.fields);
+      return "error" in fields ? { ok: false, error: fields.error, code: fields.code } : morph.remove(session, fields.id);
+    }
+    case "morph.keep": {
+      const fields = readKeepFields(request.fields);
+      return "error" in fields ? { ok: false, error: fields.error, code: fields.code } : morph.keep(session, fields.ids);
+    }
+    case "morph.choice": {
+      const fields = readChoiceFields(request.fields);
+      return "error" in fields ? { ok: false, error: fields.error, code: fields.code } : morph.setChoice(session, fields.choice);
+    }
   }
 }
 

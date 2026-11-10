@@ -35,11 +35,14 @@ import {
   MORPH_MEDIA_MAX,
   MORPH_SET_RE,
   morphShellWord,
+  MORPH_CHOICE_BLOCK,
   MORPH_NOTE_MAX,
+  MORPH_NOTES_MAX,
   MORPH_TITLE_MAX,
   parseMorphChoice,
   parseMorphView,
   type MorphAnswer,
+  type MorphBlock,
   type MorphChoice,
   type MorphDrawing,
   type MorphSession,
@@ -47,7 +50,8 @@ import {
   type MorphView,
 } from "../../web/src/lib/morph/wire.ts";
 import type { Refusal } from "../../web/src/lib/tricks/schema.ts";
-import { keepPictures, MORPH_MINTERS, MORPH_TOO_MANY_IMAGES, type MorphImageInput, type MorphMediaKeep, type MorphMinters, type MorphPictureSet } from "./media.ts";
+import { keepPictures, MORPH_MINTERS, MORPH_TOO_MANY_IMAGES, readImageFields, type MorphFieldError, type MorphImageInput, type MorphMediaKeep, type MorphMinters, type MorphPictureSet } from "./media.ts";
+import { draftOf, keptBlocks, PENDING_NODE, placed, removed, shownBlocks, type MorphDraft, type MorphPendingFields, type MorphSetFields } from "./blocks.ts";
 import { morphEntry, type MorphEntry, type MorphStore } from "./store.ts";
 
 /** How the bridge sits in a crew. A member (`peer`) refuses a show: the phone reads the lead. */
@@ -65,7 +69,10 @@ export type MorphRefusalCode =
   | "bad_image"
   | "too_many_images"
   | "image_too_large"
-  | "bad_choice";
+  | "bad_choice"
+  // Blocks: an id off its pattern or naming no block, and an edit of a screen that is not there.
+  | "bad_block"
+  | "no_screen";
 
 /** The sentence a crew member answers a show or a switch with. */
 export const MORPH_NOT_ON_LEAD = "Morph reads this machine only for now; run it in a session on the lead machine";
@@ -218,8 +225,13 @@ export class MorphService {
     const note = fields.note === null ? null : cleanMorphLine(fields.note, MORPH_NOTE_MAX);
     if (fields.note !== null && note === null) return { ok: false, error: `a note is one line of 1 to ${String(MORPH_NOTE_MAX)} characters`, code: "bad_note" };
     const at = new Date(this.now()).toISOString();
+    const base = this.base(session);
+    // A start inside a run adds its note to the run's list; a start with no run held begins one.
+    const prior = this.freshDrawing(base)?.notes ?? [];
+    const notes = note === null ? prior : [...prior, { at, note }].slice(-MORPH_NOTES_MAX);
     const drawing: MorphDrawing = note === null ? { at } : { at, note };
-    return this.commit({ ...this.base(session), drawing, changedAt: this.now() });
+    if (notes.length > 0) drawing.notes = notes;
+    return this.commit({ ...base, drawing, changedAt: this.now() });
   }
 
   /** `morph on` and `morph off` from the socket, for the caller's own session. */
@@ -262,9 +274,117 @@ export class MorphService {
     const pictures = kept === null ? null : kept.pictures;
     const base = this.base(session);
     const shows = base.shows + 1;
-    const view = screenOf({ rev: shows, at: new Date(this.now()).toISOString(), title, view: parsed.view, pictures, choice: choice.choice });
+    const at = new Date(this.now()).toISOString();
+    // A show stamps every block fresh and drops everything older.
+    const blocks = shownBlocks(parsed.ids ?? parsed.view.map(() => null), at);
+    const view = screenOf({ rev: shows, at, title, view: parsed.view, pictures, choice: choice.choice, choiceAt: at, blocks });
     const answer = this.commit({ session, on: base.on, shows, view, changedAt: this.now() });
     if (!answer.ok && pictures !== null) this.deps.media?.remove(pictures.set);
+    return answer;
+  }
+
+  /**
+   * `morph set <id>` from the socket: replace one block, or insert it (at the end, first, or after another
+   * block). Pictures named here are ADDED to the screen's set, four in all. With no screen yet, the block
+   * starts one. The whole screen that results must pass `parseMorphView`, or nothing changes.
+   */
+  set(session: string, fields: MorphSetFields): MorphOpAnswer {
+    if (this.deps.crewMode() === "peer") return { ok: false, error: MORPH_NOT_ON_LEAD, code: "not_on_lead" };
+    const held = this.deps.store.get(session)?.view;
+    const node = singleNode(fields.node, fields.id);
+    if ("error" in node) return { ok: false, error: node.error, code: "bad_view" };
+    const heldPictures = picturesOf(held);
+    const images = (heldPictures?.media.length ?? 0) + fields.images.length;
+    if (images > MORPH_MEDIA_MAX) return { ok: false, error: MORPH_TOO_MANY_IMAGES, code: "too_many_images" };
+    const at = new Date(this.now()).toISOString();
+    const draft = placed(draftOf(held), { node: node.node, block: { id: fields.id, at }, place: fields.place });
+    if ("error" in draft) return { ok: false, error: draft.error, code: "bad_block" };
+    // The screen is checked with the picture count it will have before any picture is read.
+    const checked = this.checkDraft(draft, images);
+    if (checked !== null) return checked;
+    const kept = fields.images.length === 0 ? null : keepPictures({ keep: this.deps.media, mint: this.mint, held: heldPictures, added: fields.images });
+    if (kept !== null && !kept.ok) return { ok: false, error: kept.error, code: kept.code };
+    return this.finish(session, { draft, held, pictures: kept === null ? heldPictures : kept.pictures, added: kept === null ? null : kept.pictures.set });
+  }
+
+  /** `morph pending <id> "<label>"` from the socket: a placeholder block, a `spacer` in the view and its label in `blocks`. */
+  pending(session: string, fields: MorphPendingFields): MorphOpAnswer {
+    if (this.deps.crewMode() === "peer") return { ok: false, error: MORPH_NOT_ON_LEAD, code: "not_on_lead" };
+    const held = this.deps.store.get(session)?.view;
+    const block: MorphBlock = { id: fields.id, at: new Date(this.now()).toISOString(), pending: fields.label };
+    const draft = placed(draftOf(held), { node: PENDING_NODE, block, place: fields.place });
+    if ("error" in draft) return { ok: false, error: draft.error, code: "bad_block" };
+    return this.finish(session, { draft, held, pictures: picturesOf(held), added: null });
+  }
+
+  /** `morph remove <id>` from the socket: one block goes; the last block stays (`morph clear` takes the screen). */
+  remove(session: string, id: string): MorphOpAnswer {
+    if (this.deps.crewMode() === "peer") return { ok: false, error: MORPH_NOT_ON_LEAD, code: "not_on_lead" };
+    const held = this.deps.store.get(session)?.view;
+    if (held === undefined) return { ok: false, error: MORPH_NO_SCREEN, code: "no_screen" };
+    const draft = removed(draftOf(held), id);
+    if ("error" in draft) return { ok: false, error: draft.error, code: "bad_block" };
+    return this.finish(session, { draft, held, pictures: picturesOf(held), added: null });
+  }
+
+  /** `morph keep <id>... | --all` from the socket: those blocks are still valid for the current request, re-stamped without being sent again. */
+  keep(session: string, ids: readonly string[] | "all"): MorphOpAnswer {
+    if (this.deps.crewMode() === "peer") return { ok: false, error: MORPH_NOT_ON_LEAD, code: "not_on_lead" };
+    const held = this.deps.store.get(session)?.view;
+    if (held === undefined) return { ok: false, error: MORPH_NO_SCREEN, code: "no_screen" };
+    const at = new Date(this.now()).toISOString();
+    if (ids !== "all" && ids.includes(MORPH_CHOICE_BLOCK) && held.choice === undefined) return { ok: false, error: "this screen has no choice to keep", code: "bad_block" };
+    const draft = keptBlocks(draftOf(held), { ids, at });
+    if ("error" in draft) return { ok: false, error: draft.error, code: "bad_block" };
+    const keepChoice = held.choice !== undefined && (ids === "all" || ids.includes(MORPH_CHOICE_BLOCK));
+    return this.finish(session, { draft, held, pictures: picturesOf(held), added: null, choiceAt: keepChoice ? at : held.choiceAt });
+  }
+
+  /** `morph choice <file> | --clear` from the socket: set or drop the decision block alone. */
+  setChoice(session: string, raw: JsonValue | null): MorphOpAnswer {
+    if (this.deps.crewMode() === "peer") return { ok: false, error: MORPH_NOT_ON_LEAD, code: "not_on_lead" };
+    const held = this.deps.store.get(session)?.view;
+    if (held === undefined) return { ok: false, error: MORPH_NO_SCREEN, code: "no_screen" };
+    const pictures = picturesOf(held);
+    if (raw === null) return this.finish(session, { draft: draftOf(held), held, pictures, added: null, choice: null });
+    const choice = this.choiceOf(raw, pictures?.media.length ?? 0);
+    if (!choice.ok) return choice;
+    return this.finish(session, { draft: draftOf(held), held, pictures, added: null, choice: choice.choice ?? null, choiceAt: new Date(this.now()).toISOString() });
+  }
+
+  /** The refusal for a draft whose whole screen does not pass, or null when it passes. */
+  private checkDraft(draft: MorphDraft, images: number): Extract<MorphOpAnswer, { ok: false }> | null {
+    const parsed = parseMorphView([...draft.nodes], "/view", { images });
+    if (parsed.view !== undefined) return null;
+    return { ok: false, error: `the screen would be refused: ${refusalWords(parsed.refusals)}`, code: "bad_view", refusals: parsed.refusals.slice(0, MORPH_REFUSALS_SHOWN) };
+  }
+
+  /**
+   * Store an edited screen: checked whole, a new rev and `at`, the title kept, the drawing kept (only a
+   * show ends a drawing run). A picture set minted for this edit (`added`) is removed again on a refusal.
+   * `choice` null drops the decision block, undefined keeps the held one.
+   */
+  private finish(
+    session: string,
+    edit: { draft: MorphDraft; held: MorphView | undefined; pictures: MorphPictureSet | null; added: string | null; choice?: MorphChoice | null; choiceAt?: string | undefined },
+  ): MorphOpAnswer {
+    const images = edit.pictures?.media.length ?? 0;
+    const parsed = parseMorphView([...edit.draft.nodes], "/view", { images });
+    const drop = () => {
+      if (edit.added !== null) this.deps.media?.remove(edit.added);
+    };
+    if (parsed.view === undefined) {
+      drop();
+      return { ok: false, error: `the screen would be refused: ${refusalWords(parsed.refusals)}`, code: "bad_view", refusals: parsed.refusals.slice(0, MORPH_REFUSALS_SHOWN) };
+    }
+    const base = this.base(session);
+    const shows = base.shows + 1;
+    const at = new Date(this.now()).toISOString();
+    const choice = edit.choice === undefined ? edit.held?.choice : (edit.choice ?? undefined);
+    const choiceAt = choice === undefined ? undefined : (edit.choiceAt ?? edit.held?.choiceAt ?? at);
+    const view = screenOf({ rev: shows, at, title: edit.held?.title ?? null, view: parsed.view, pictures: edit.pictures, choice, choiceAt, blocks: [...edit.draft.blocks] });
+    const answer = this.commit(morphEntry({ session, on: base.on, shows, changedAt: this.now(), view, drawing: base.drawing }));
+    if (!answer.ok) drop();
     return answer;
   }
 
@@ -298,9 +418,9 @@ export class MorphService {
   /** The phone's switch: the address is resolved to the live session it names here, then switched. */
   switch(body: MorphSwitchBody): MorphSwitchAnswer {
     if (this.deps.crewMode() === "peer") return { ok: false, status: 400, error: MORPH_NOT_ON_LEAD };
-    const placed = this.deps.place(body.session);
-    if (placed === null) return { ok: false, status: 404, error: MORPH_NO_SESSION };
-    const answer = this.setOn(placed.address, body.on);
+    const where = this.deps.place(body.session);
+    if (where === null) return { ok: false, status: 404, error: MORPH_NO_SESSION };
+    const answer = this.setOn(where.address, body.on);
     if (answer.ok) return answer;
     return { ok: false, status: answer.code === "unsaved" ? 503 : 400, error: answer.error };
   }
@@ -355,38 +475,51 @@ export function readStartFields(fields: JsonObject): MorphStartFields | { readon
   return { note };
 }
 
-/** A field the socket could not read, with the code its refusal carries. */
-export interface MorphFieldError {
-  readonly error: string;
-  readonly code: MorphRefusalCode;
-}
-
-/** One screen built from its parts: the pictures and the choice are on it only when given. */
-export function screenOf(parts: { rev: number; at: string; title: string | null; view: MorphView["view"]; pictures: MorphPictureSet | null; choice: MorphChoice | undefined }): MorphView {
+/** One screen built from its parts: the pictures, the choice and the blocks are on it only when given. */
+export function screenOf(parts: {
+  rev: number;
+  at: string;
+  title: string | null;
+  view: MorphView["view"];
+  pictures: MorphPictureSet | null;
+  choice: MorphChoice | undefined;
+  choiceAt?: string | undefined;
+  blocks?: MorphBlock[];
+}): MorphView {
   const screen: MorphView = { rev: parts.rev, at: parts.at, view: parts.view };
   if (parts.title !== null) screen.title = parts.title;
   if (parts.pictures !== null) {
     screen.set = parts.pictures.set;
     screen.media = [...parts.pictures.media];
   }
-  if (parts.choice !== undefined) screen.choice = parts.choice;
+  if (parts.choice !== undefined) {
+    screen.choice = parts.choice;
+    screen.choiceAt = parts.choiceAt ?? parts.at;
+  }
+  if (parts.blocks !== undefined) screen.blocks = parts.blocks;
   return screen;
 }
 
-/** The pictures a request names: `[{ path, caption? }]`, absent or null for none. The bridge reads the files. */
-export function readImageFields(raw: JsonValue | undefined): readonly MorphImageInput[] | MorphFieldError {
-  if (raw === undefined || raw === null) return [];
-  if (!Array.isArray(raw)) return { error: 'pictures are a list of { "path", "caption"? }', code: "bad_image" };
-  if (raw.length > MORPH_MEDIA_MAX) return { error: MORPH_TOO_MANY_IMAGES, code: "too_many_images" };
-  const out: MorphImageInput[] = [];
-  for (const item of raw) {
-    const row = asJsonObject(item);
-    const path = asJsonString(row?.path);
-    const caption = row?.caption === undefined || row.caption === null ? null : asJsonString(row.caption);
-    if (path === undefined || caption === undefined) return { error: 'a picture is { "path": "<absolute path>", "caption"?: "<text>" }', code: "bad_image" };
-    out.push({ path, caption });
-  }
-  return out;
+/** The sentence an edit of a session with no screen yet is refused with. */
+export const MORPH_NO_SCREEN = "this session has no screen yet; draw one with `morph show` first";
+
+/** A screen's picture set, or null. */
+function picturesOf(view: MorphView | undefined): MorphPictureSet | null {
+  return view?.set === undefined || view.media === undefined ? null : { set: view.set, media: view.media };
+}
+
+/**
+ * The ONE node of a `set`: a node, or a list of exactly one. A node may carry `id` only when it is the
+ * block's own id (as a `show` file would spell it); it is taken off, since the schema refuses it.
+ */
+export function singleNode(raw: JsonValue, id: string): { readonly node: JsonValue } | { readonly error: string } {
+  const one = Array.isArray(raw) ? (raw.length === 1 ? raw[0] : undefined) : raw;
+  const obj = asJsonObject(one);
+  if (obj === undefined) return { error: "a block is ONE node, or a list of exactly one" };
+  if (obj.id === undefined) return { node: obj };
+  const { id: named, ...node } = obj;
+  if (named !== id) return { error: `the node names the block "${asJsonString(named) ?? "?"}", the command names "${id}"` };
+  return { node };
 }
 
 /** A `morph.show` request's fields, as the socket carries them: `view` and `choice` (any JSON), an optional `title`, and `images`. */

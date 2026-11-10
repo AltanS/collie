@@ -21,6 +21,14 @@
 //
 // THE DECISION BLOCK. Beside its view a screen may carry one `choice`: a question and one to five
 // options, drawn under the view with the hill's option buttons. Its caps are the hill's option caps.
+//
+// A SCREEN IS A LIST OF BLOCKS. A block is one top-level node of the view plus a stable id, so an agent
+// changes one block (`morph set <id>`) instead of redrawing the screen. In a `morph show` file a
+// top-level node may carry `"id"`; the schema refuses `id` on a node, so `parseMorphView` strips the
+// top-level ids before it validates and answers them beside the view. The wire carries them in
+// `MorphView.blocks`, same length and order as `view`, each with the time it was last set, kept or
+// shown (`at`): the phone calls a block older than the operator's latest request STALE. A pending block
+// (`morph pending`) holds a `spacer` in the view, so every index stays aligned, and its label in `blocks`.
 
 import { asJsonBoolean, asJsonNumber, asJsonObject, asJsonString, type JsonObject, type JsonValue } from "../json";
 import {
@@ -109,6 +117,27 @@ export interface MorphChoice {
   options: MorphOption[];
   /** The option the agent suggests (an index into `options`), and why. Never pre-selected. */
   recommends?: { option: number; why?: string };
+  /** A settled decision: the option that was picked. The block then draws as done and takes no tap. */
+  picked?: number;
+}
+
+/** A block id: 1 to 32 of a-z, 0-9 and `-`. `choice` names the decision block in `morph keep`, never a block. */
+export const MORPH_BLOCK_ID_RE = /^[a-z0-9-]{1,32}$/u;
+/** The word `morph keep` names the decision block with. */
+export const MORPH_CHOICE_BLOCK = "choice";
+/** A pending block's label, in characters. */
+export const MORPH_PENDING_MAX = 40;
+/** The `morph start` notes one drawing run keeps, newest last. */
+export const MORPH_NOTES_MAX = 8;
+
+/** One block of a screen: the top-level node at the same index of `view`. */
+export interface MorphBlock {
+  /** Stable across `set`, `keep` and `pending`; minted `b1`, `b2`… for a node shown without one. */
+  id: string;
+  /** ISO time the bridge last set, kept or showed this block. Older than the latest request: stale. */
+  at: string;
+  /** A placeholder's label, at most {@link MORPH_PENDING_MAX} characters: the block is in work, its view node is a `spacer`. */
+  pending?: string;
 }
 
 /** The screen the agent drew last for one session. */
@@ -127,6 +156,16 @@ export interface MorphView {
   media?: MorphMedia[];
   /** The decision block under the view. */
   choice?: MorphChoice;
+  /** ISO time the decision block was last set, kept or shown. Present with `choice`. */
+  choiceAt?: string;
+  /** One per top-level node of `view`, same order. Absent on a screen stored before blocks: {@link morphBlocksOf} derives them. */
+  blocks?: MorphBlock[];
+}
+
+/** One `morph start` note, with the time it came. */
+export interface MorphNote {
+  at: string;
+  note: string;
 }
 
 /** The agent called `morph start`: it is drawing, and has not shown yet. */
@@ -135,6 +174,12 @@ export interface MorphDrawing {
   at: string;
   /** What the agent says it does, at most {@link MORPH_NOTE_MAX} characters, one line. */
   note?: string;
+  /**
+   * The notes of this drawing run, oldest first, at most {@link MORPH_NOTES_MAX}: every `start` with a note
+   * appends one; a run ends with a `show`, a `clear`, the switch going off, or ten minutes. Each carries
+   * its time, so the phone lists only the notes of the operator's latest request.
+   */
+  notes?: MorphNote[];
 }
 
 /** One session's Morph. */
@@ -174,6 +219,8 @@ export interface MorphSwitchBody {
 export interface ParsedMorphView {
   view?: View;
   refusals: Refusal[];
+  /** The top-level block ids the view named, one per node, null where a node named none. */
+  ids?: (string | null)[];
 }
 
 /** What `parseMorphView` may know of the screen around the view. */
@@ -321,6 +368,44 @@ function parsePicture(picture: PictureAt, path: string, opts: MorphViewOptions):
 export function parseMorphView(raw: JsonValue | undefined, path = "/view", opts: MorphViewOptions = {}): ParsedMorphView {
   if (raw === undefined) return { refusals: [{ code: "missing", path, reason: 'A Morph screen needs "view": a list of nodes.' }] };
   if (!Array.isArray(raw)) return parseAsPart(raw, path);
+  const split = splitBlockIds(raw, path);
+  const parsed = parseNodes(split.nodes, path, opts);
+  const refusals = [...split.refusals, ...parsed.refusals];
+  if (refusals.length > 0 || parsed.view === undefined) return { refusals };
+  return { view: parsed.view, refusals: [], ids: split.ids };
+}
+
+/** The top-level nodes without their `id`, the ids in order, and a refusal for each id off its pattern or named twice. */
+/** A view's top-level nodes split from their block ids. */
+interface SplitBlockIds {
+  nodes: JsonValue[];
+  ids: (string | null)[];
+  refusals: Refusal[];
+}
+
+function splitBlockIds(raw: readonly JsonValue[], path: string): SplitBlockIds {
+  const refusals: Refusal[] = [];
+  const ids: (string | null)[] = [];
+  const nodes = raw.map((node, i) => {
+    const obj = asJsonObject(node);
+    if (obj === undefined || obj.id === undefined) {
+      ids.push(null);
+      return node;
+    }
+    const { id: rawId, ...rest } = obj;
+    const id = asJsonString(rawId);
+    const at = `${path}/${String(i)}/id`;
+    const isBad = id === undefined || !MORPH_BLOCK_ID_RE.test(id) || id === MORPH_CHOICE_BLOCK;
+    if (isBad) refusals.push({ code: "id", path: at, reason: `A block id is 1 to 32 of a-z, 0-9 and -, and not "${MORPH_CHOICE_BLOCK}".` });
+    if (!isBad && ids.includes(id)) refusals.push({ code: "duplicate", path: at, reason: `Two blocks share the id "${id}".` });
+    ids.push(id ?? null);
+    return rest;
+  });
+  return { nodes, ids, refusals };
+}
+
+/** A view's nodes, ids already stripped: pictures by the Decision parser, the rest by the part parser. */
+function parseNodes(raw: JsonValue[], path: string, opts: MorphViewOptions): ParsedMorphView {
   const pictures = picturesIn(raw);
   if (pictures.length === 0) return parseAsPart(raw, path);
   const refusals: Refusal[] = [];
@@ -349,7 +434,7 @@ export interface ParsedMorphChoice {
   refusals: Refusal[];
 }
 
-const CHOICE_KEYS = ["question", "options", "recommends"] as const;
+const CHOICE_KEYS = ["question", "options", "recommends", "picked"] as const;
 const OPTION_KEYS = ["label", "detail", "value", "confirm", "preview"] as const;
 const RECOMMENDS_KEYS = ["option", "why"] as const;
 
@@ -439,26 +524,31 @@ export function parseMorphChoice(raw: JsonValue | undefined, path = "/choice", {
     }
     options.push(read.option);
   });
-  let recommends: MorphChoice["recommends"];
-  if (obj.recommends !== undefined) {
-    const rec = asJsonObject(obj.recommends);
-    const at = `${path}/recommends`;
-    if (rec === undefined) {
-      refusals.push({ code: "type", path: at, reason: 'A recommendation is { "option": <index>, "why"? }.' });
-    } else {
-      refusals.push(...unknownKeys(rec, RECOMMENDS_KEYS, at, "A recommendation"));
-      const option = indexBelow(rec.option, list.length);
-      if (option === null) refusals.push({ code: "range", path: `${at}/option`, reason: `"option" is an option's index, 0 to ${String(list.length - 1)}.` });
-      const why = lineField(rec, "why", HILL_WHY_MAX, at, "The why");
-      if (why.refusal !== undefined) refusals.push(why.refusal);
-      if (option !== null) recommends = why.value === undefined ? { option } : { option, why: why.value };
-    }
-  }
+  const recommends = obj.recommends === undefined ? undefined : readRecommends({ raw: obj.recommends, path: `${path}/recommends`, options: list.length, refusals });
+  const picked = obj.picked === undefined ? undefined : indexBelow(obj.picked, list.length);
+  if (picked === null) refusals.push({ code: "range", path: `${path}/picked`, reason: `"picked" is the picked option's index, 0 to ${String(list.length - 1)}.` });
   if (refusals.length > 0) return { refusals };
   const choice: MorphChoice = { options };
   if (question.value !== undefined) choice.question = question.value;
   if (recommends !== undefined) choice.recommends = recommends;
+  if (picked !== undefined && picked !== null) choice.picked = picked;
   return { choice, refusals: [] };
+}
+
+/** A choice's `recommends`: `{ option, why? }`, its refusals pushed onto `refusals`; undefined when it did not pass. */
+function readRecommends({ raw, path, options, refusals }: { raw: JsonValue; path: string; options: number; refusals: Refusal[] }): MorphChoice["recommends"] {
+  const rec = asJsonObject(raw);
+  if (rec === undefined) {
+    refusals.push({ code: "type", path, reason: 'A recommendation is { "option": <index>, "why"? }.' });
+    return undefined;
+  }
+  refusals.push(...unknownKeys(rec, RECOMMENDS_KEYS, path, "A recommendation"));
+  const option = indexBelow(rec.option, options);
+  if (option === null) refusals.push({ code: "range", path: `${path}/option`, reason: `"option" is an option's index, 0 to ${String(options - 1)}.` });
+  const why = lineField(rec, "why", HILL_WHY_MAX, path, "The why");
+  if (why.refusal !== undefined) refusals.push(why.refusal);
+  if (option === null) return undefined;
+  return why.value === undefined ? { option } : { option, why: why.value };
 }
 
 // ── pictures ─────────────────────────────────────────────────────────────────────────────────
@@ -522,6 +612,39 @@ function isSessionKey(text: string | undefined): text is string {
   return text !== undefined && cleanMorphLine(text, MORPH_SESSION_MAX) === text;
 }
 
+/** One stored or served block, or null when a field does not fit. */
+function readMorphBlock(raw: JsonValue | undefined): MorphBlock | null {
+  const obj = asJsonObject(raw);
+  const id = asJsonString(obj?.id);
+  const at = asJsonString(obj?.at);
+  if (obj === undefined || id === undefined || !MORPH_BLOCK_ID_RE.test(id) || id === MORPH_CHOICE_BLOCK || at === undefined || !isIsoTime(at)) return null;
+  if (obj.pending === undefined) return { id, at };
+  const pending = asJsonString(obj.pending);
+  if (pending === undefined || cleanMorphLine(pending, MORPH_PENDING_MAX) !== pending) return null;
+  return { id, at, pending };
+}
+
+/** A view's blocks: one per node, unique ids. Null when the list does not fit the view. */
+function readMorphBlocks(raw: JsonValue, length: number): MorphBlock[] | null {
+  if (!Array.isArray(raw) || raw.length !== length) return null;
+  const blocks = raw.map(readMorphBlock);
+  if (blocks.some((block) => block === null)) return null;
+  const kept = blocks.filter((block): block is MorphBlock => block !== null);
+  return new Set(kept.map((block) => block.id)).size === kept.length ? kept : null;
+}
+
+/** A screen's blocks: the wire's, or `b1`, `b2`… stamped at the screen's own time for a screen stored before blocks. */
+export function morphBlocksOf(view: MorphView): MorphBlock[] {
+  return view.blocks ?? view.view.map((_, i) => ({ id: `b${String(i + 1)}`, at: view.at }));
+}
+
+/** The first `b<n>` id none of `taken` holds. Of `b1` to `b<size + 1>` at least one is free. */
+export function nextBlockId(taken: ReadonlySet<string>): string {
+  const free = Array.from({ length: taken.size + 1 }, (_, i) => `b${String(i + 1)}`).find((id) => !taken.has(id));
+  if (free === undefined) throw new Error("morph: no free block id among size + 1 candidates");
+  return free;
+}
+
 /** A stored or served view, or null when any field does not fit. */
 export function readMorphView(raw: JsonValue | undefined): MorphView | null {
   const obj = asJsonObject(raw);
@@ -543,6 +666,14 @@ export function readMorphView(raw: JsonValue | undefined): MorphView | null {
     const choice = parseMorphChoice(obj.choice, "/choice", { images });
     if (choice.choice === undefined) return null;
     out.choice = choice.choice;
+    const choiceAt = obj.choiceAt === undefined ? at : asJsonString(obj.choiceAt);
+    if (choiceAt === undefined || !isIsoTime(choiceAt)) return null;
+    out.choiceAt = choiceAt;
+  }
+  if (obj.blocks !== undefined) {
+    const blocks = readMorphBlocks(obj.blocks, parsed.view.length);
+    if (blocks === null) return null;
+    out.blocks = blocks;
   }
   if (obj.title === undefined) return out;
   const title = asJsonString(obj.title);
@@ -568,9 +699,23 @@ export function readMorphDrawing(raw: JsonValue | undefined): MorphDrawing | nul
   if (obj === undefined) return null;
   const at = asJsonString(obj.at);
   if (at === undefined || !isIsoTime(at)) return null;
-  if (obj.note === undefined) return { at };
-  const note = asJsonString(obj.note);
-  if (note === undefined || cleanMorphLine(note, MORPH_NOTE_MAX) !== note) return null;
+  const out: MorphDrawing = { at };
+  if (obj.note !== undefined) {
+    const note = asJsonString(obj.note);
+    if (note === undefined || cleanMorphLine(note, MORPH_NOTE_MAX) !== note) return null;
+    out.note = note;
+  }
+  // Notes that do not fit are left out, one by one: the drawing stays, as a view does in a session.
+  const notes = Array.isArray(obj.notes) ? obj.notes.slice(-MORPH_NOTES_MAX).flatMap((item) => readMorphNote(item) ?? []) : [];
+  if (notes.length > 0) out.notes = notes;
+  return out;
+}
+
+function readMorphNote(raw: JsonValue | undefined): MorphNote | null {
+  const obj = asJsonObject(raw);
+  const at = asJsonString(obj?.at);
+  const note = asJsonString(obj?.note);
+  if (at === undefined || !isIsoTime(at) || note === undefined || cleanMorphLine(note, MORPH_NOTE_MAX) !== note) return null;
   return { at, note };
 }
 

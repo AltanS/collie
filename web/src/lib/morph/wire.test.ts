@@ -1,6 +1,20 @@
 import { describe, expect, it } from "vitest";
 
-import { MORPH_HINT_MAX, MORPH_NOTE_MAX, MORPH_TITLE_MAX, parseMorphChoice, parseMorphView, readMorphAnswer, readMorphSession, readMorphSwitchBody, readMorphView } from "./wire";
+import {
+  MORPH_HINT_MAX,
+  MORPH_NOTE_MAX,
+  MORPH_NOTES_MAX,
+  MORPH_TITLE_MAX,
+  morphBlocksOf,
+  nextBlockId,
+  parseMorphChoice,
+  parseMorphView,
+  readMorphAnswer,
+  readMorphDrawing,
+  readMorphSession,
+  readMorphSwitchBody,
+  readMorphView,
+} from "./wire";
 
 const SESSION = "local/%1#aaaa";
 const HINT = "[morph: answer by drawing one screen]";
@@ -192,5 +206,60 @@ describe("parseMorphChoice", () => {
 
   it("refuses two options with the same label, since the pick is sent by its label", () => {
     expect(parseMorphChoice({ options: [{ label: "A" }, { label: "A" }] }, "/choice", { images: 0 }).refusals[0]?.code).toBe("duplicate");
+  });
+});
+
+describe("blocks", () => {
+  const AT = "2026-11-10T10:00:00.000Z";
+  const two = [{ kind: "para", text: "a" }, { kind: "para", text: "b" }];
+
+  it("takes the ids off the top-level nodes and answers them in order, null for a node with none", () => {
+    const parsed = parseMorphView([{ id: "intro", ...two[0] }, two[1]]);
+    expect(parsed.view).toEqual(two);
+    expect(parsed.ids).toEqual(["intro", null]);
+  });
+
+  it("refuses an id off its pattern, the reserved word, and two nodes with one id, each at its path", () => {
+    expect(parseMorphView([{ id: "Intro", ...two[0] }]).refusals[0]).toMatchObject({ code: "id", path: "/view/0/id" });
+    expect(parseMorphView([{ id: "choice", ...two[0] }]).refusals[0]).toMatchObject({ code: "id" });
+    expect(parseMorphView([{ id: "x".repeat(33), ...two[0] }]).refusals[0]).toMatchObject({ code: "id" });
+    expect(parseMorphView([{ id: "a", ...two[0] }, { id: "a", ...two[1] }]).refusals[0]).toMatchObject({ code: "duplicate", path: "/view/1/id" });
+  });
+
+  it("an id below the top level stays the part parser's to refuse", () => {
+    expect(parseMorphView([{ kind: "card", kids: [{ id: "deep", kind: "para", text: "x" }] }]).view).toBeUndefined();
+  });
+
+  it("reads a stored view's blocks, one per node, a pending label kept; a list that does not fit drops the view", () => {
+    const blocks = [{ id: "a", at: AT }, { id: "b", at: AT, pending: "Running the tests" }];
+    expect(readMorphView({ rev: 1, at: AT, view: two, blocks })?.blocks).toEqual(blocks);
+    expect(readMorphView({ rev: 1, at: AT, view: two, blocks: [blocks[0]!] })).toBeNull();
+    expect(readMorphView({ rev: 1, at: AT, view: two, blocks: [blocks[0]!, { id: "a", at: AT }] })).toBeNull();
+    expect(readMorphView({ rev: 1, at: AT, view: two, blocks: [blocks[0]!, { id: "b", at: AT, pending: "a\nb" }] })).toBeNull();
+  });
+
+  it("a view stored before blocks reads as b1, b2 at its own time", () => {
+    const view = readMorphView({ rev: 1, at: AT, view: two });
+    expect(view === null ? null : morphBlocksOf(view)).toEqual([{ id: "b1", at: AT }, { id: "b2", at: AT }]);
+  });
+
+  it("the next minted id is the first free b<n>", () => {
+    expect(nextBlockId(new Set())).toBe("b1");
+    expect(nextBlockId(new Set(["b1", "b3"]))).toBe("b2");
+    expect(nextBlockId(new Set(["b1", "x"]))).toBe("b2");
+  });
+
+  it("a choice's time defaults to the screen's, and a choice may carry the option picked", () => {
+    const choice = { options: [{ label: "Yes" }, { label: "No" }], picked: 1 };
+    expect(readMorphView({ rev: 1, at: AT, view: two, choice })).toMatchObject({ choiceAt: AT, choice: { picked: 1 } });
+    expect(parseMorphChoice({ ...choice, picked: 2 }, "/choice", { images: 0 }).refusals[0]).toMatchObject({ code: "range", path: "/choice/picked" });
+  });
+
+  it("a drawing keeps its run's notes, newest last, at most eight, and leaves out one that does not fit", () => {
+    const notes = Array.from({ length: MORPH_NOTES_MAX + 2 }, (_, i) => ({ at: AT, note: `Step ${String(i)}` }));
+    const read = readMorphDrawing({ at: AT, notes: [...notes, { at: AT, note: "a\nb" }] });
+    expect(read?.notes).toHaveLength(MORPH_NOTES_MAX - 1);
+    expect(read?.notes?.at(-1)?.note).toBe(`Step ${String(MORPH_NOTES_MAX + 1)}`);
+    expect(readMorphDrawing({ at: AT })?.notes).toBeUndefined();
   });
 });

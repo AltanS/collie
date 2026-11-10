@@ -209,6 +209,10 @@ describe("the Morph requests on the socket", () => {
     expect(readWalkyRequest(line({ op: "morph.show", view: [], session: null }))).toMatchObject({ ok: true, request: { op: "morph.show", session: null } });
     expect(readWalkyRequest(line({ op: "morph.clear", session: "local/%1" }))).toMatchObject({ ok: true, request: { op: "morph.clear", session: "local/%1" } });
     expect(readWalkyRequest(line({ op: "morph.status" }))).toMatchObject({ ok: true, request: { op: "morph.status", session: null } });
+    // The block verbs carry their row as fields, for the morph service's own readers.
+    for (const op of ["morph.set", "morph.pending", "morph.remove", "morph.keep", "morph.choice"]) {
+      expect(readWalkyRequest(line({ op, id: "b1", session: "local/%1" }))).toMatchObject({ ok: true, request: { op, session: "local/%1", fields: { id: "b1" } } });
+    }
   });
 
   test("a session that is not text is a request this bridge cannot read", () => {

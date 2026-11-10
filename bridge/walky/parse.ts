@@ -178,15 +178,23 @@ export type WalkyRequest =
   // Morph: a show's and a start's fields are read by bridge/morph/service.ts, which owns their shape.
   // `session` is the address the caller names with `--session`, or null: the bridge checks it against
   // the pane the markers placed and never takes it in their place.
-  | { readonly op: "morph.show" | "morph.start"; readonly markers: readonly BeaconMarker[]; readonly session: string | null; readonly fields: JsonObject }
+  | { readonly op: "morph.show" | "morph.start" | MorphBlockOp; readonly markers: readonly BeaconMarker[]; readonly session: string | null; readonly fields: JsonObject }
   | { readonly op: "morph.clear" | "morph.on" | "morph.off" | "morph.status"; readonly markers: readonly BeaconMarker[]; readonly session: string | null };
 
 /** Morph's operations, beside walky's own and the hill's. Added, never a change to one of them. */
-export type MorphOp = "morph.start" | "morph.show" | "morph.clear" | "morph.on" | "morph.off" | "morph.status";
+export type MorphOp = "morph.start" | "morph.show" | "morph.clear" | "morph.on" | "morph.off" | "morph.status" | MorphBlockOp;
+
+/** Morph's block operations (a screen is a list of blocks): added beside the six above, never a change to one. */
+export type MorphBlockOp = "morph.set" | "morph.pending" | "morph.remove" | "morph.keep" | "morph.choice";
+
+/** Whether a request is one of Morph's block operations, which carry fields. */
+export function isMorphBlockOp(op: string | null): op is MorphBlockOp {
+  return op === "morph.set" || op === "morph.pending" || op === "morph.remove" || op === "morph.keep" || op === "morph.choice";
+}
 
 /** Whether a request is one of Morph's operations. */
 export function isMorphOp(op: string | null): op is MorphOp {
-  return op === "morph.start" || op === "morph.show" || op === "morph.clear" || op === "morph.on" || op === "morph.off" || op === "morph.status";
+  return op === "morph.start" || op === "morph.show" || op === "morph.clear" || op === "morph.on" || op === "morph.off" || op === "morph.status" || isMorphBlockOp(op);
 }
 
 /** Whether a request is one of the hill's operations (M96). */
@@ -255,7 +263,7 @@ export function readWalkyRequest(line: string): WalkyRequestRead {
     // `session` is absent, null, or text; anything else is a request this bridge cannot read.
     const session = row.session === undefined || row.session === null ? null : asJsonString(row.session);
     if (session === undefined) return unread(BAD_REQUEST_LINE, markers);
-    if (op === "morph.show" || op === "morph.start") return done({ op, markers, session, fields: row });
+    if (op === "morph.show" || op === "morph.start" || isMorphBlockOp(op)) return done({ op, markers, session, fields: row });
     return done({ op, markers, session });
   }
   if (op !== "send") return unread(op === null ? BAD_REQUEST_LINE : unknownOp(op), markers);

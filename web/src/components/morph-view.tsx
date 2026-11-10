@@ -23,6 +23,7 @@ import {
   type MorphRequest,
   type MorphStatus,
 } from "@/lib/morph/reader";
+import { useMorphLive } from "@/lib/morph/store";
 import { morphMediaPath, type MorphDrawing, type MorphView as MorphScreen } from "@/lib/morph/wire";
 import { TrickBoundary } from "@/lib/tricks/boundary";
 import { useBridgeNow } from "@/lib/tricks/clock";
@@ -207,6 +208,8 @@ export function MorphView({ session, view, request: told, head, hint, drawing, p
   const state = morphStateOf({ view, working, answer });
   const status = useMemo(() => morphStatusOf({ request, view, drawing, working, entries, now: clock }), [request, view, drawing, working, entries, clock]);
   const dimmed = state === "working" || isUnanswered(status);
+  // While the session is in work, the store reads the screen fast, so blocks land as they are set.
+  useMorphLive(working || isUnanswered(status));
   const partKey = `morph:${session}`;
 
   const onTap = useCallback(

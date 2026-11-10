@@ -21,6 +21,9 @@
 import { lstatSync } from "node:fs";
 import { isAbsolute } from "node:path";
 
+import type { JsonValue } from "../json.ts";
+import { asJsonObject, asJsonString } from "../../web/src/lib/json.ts";
+import type { MorphRefusalCode } from "./service.ts";
 import { sniffImageType } from "../files-view.ts";
 import { mintMediaId, type HillMediaFile, type HillMediaStore } from "../hill/media.ts";
 import { mintDecisionId } from "../hill/service.ts";
@@ -180,3 +183,28 @@ export function keepPictures({
   if (!keep.save(set, pictures.map((picture) => picture.file))) return refused("unsaved", "the bridge could not keep the pictures; nothing changed");
   return { ok: true, pictures: { set, media: pictures.map((picture) => picture.media) } };
 }
+
+// ── the socket's fields ──────────────────────────────────────────────────────────────────────────
+
+/** A field the socket could not read, with the code its refusal carries. */
+export interface MorphFieldError {
+  readonly error: string;
+  readonly code: MorphRefusalCode;
+}
+
+/** The pictures a request names: `[{ path, caption? }]`, absent or null for none. The bridge reads the files. */
+export function readImageFields(raw: JsonValue | undefined): readonly MorphImageInput[] | MorphFieldError {
+  if (raw === undefined || raw === null) return [];
+  if (!Array.isArray(raw)) return { error: 'pictures are a list of { "path", "caption"? }', code: "bad_image" };
+  if (raw.length > MORPH_MEDIA_MAX) return { error: MORPH_TOO_MANY_IMAGES, code: "too_many_images" };
+  const out: MorphImageInput[] = [];
+  for (const item of raw) {
+    const row = asJsonObject(item);
+    const path = asJsonString(row?.path);
+    const caption = row?.caption === undefined || row.caption === null ? null : asJsonString(row.caption);
+    if (path === undefined || caption === undefined) return { error: 'a picture is { "path": "<absolute path>", "caption"?: "<text>" }', code: "bad_image" };
+    out.push({ path, caption });
+  }
+  return out;
+}
+

@@ -24,15 +24,22 @@ import { EXIT } from "./io.ts";
 import {
   attrsOf,
   cmdMorph,
+  cmdMorphChoice,
   cmdMorphClear,
   cmdMorphHelp,
+  cmdMorphKeep,
   cmdMorphOff,
   cmdMorphOn,
+  cmdMorphPending,
+  cmdMorphRemove,
+  cmdMorphSet,
   cmdMorphShow,
   cmdMorphStart,
   cmdMorphStatus,
+  MORPH_BLOCKS_EXAMPLE,
   MORPH_CHOICE_EXAMPLE,
   MORPH_CHOICE_EXAMPLE_IMAGES,
+  MORPH_SUBCOMMANDS,
   MORPH_CLOSED_SETS,
   MORPH_EXAMPLE,
   MORPH_NOT_HERE,
@@ -40,7 +47,10 @@ import {
   morphClosedSetLines,
   morphHelp,
   morphKindLines,
+  parseBlockArgs,
   parseShowArgs,
+  readBlock,
+  readChoice,
   readScreen,
   type MorphDeps,
 } from "./morph.ts";
@@ -133,10 +143,10 @@ function deps(sockets: string[], env: Record<string, string> = inPane("%1"), ove
   };
 }
 
-function screenFile(d: MorphDeps, content: string): string {
-  const path = join(d.cwd!(), "screen.json");
+function screenFile(d: MorphDeps, content: string, name = "screen.json"): string {
+  const path = join(d.cwd!(), name);
   writeFileSync(path, content);
-  return "screen.json";
+  return name;
 }
 
 describe("help", () => {
@@ -416,5 +426,111 @@ describe("against a bridge", () => {
     const b = await bridge(false);
     const d = deps([walkySocketPath(b.stateDir)]);
     expect(await cmdMorphStatus(d, [])).toBe(EXIT.UNREACHABLE);
+  });
+
+  socketTest("the block cycle: outline, pending, set fills it, set inserts, remove, keep, choice; status names the blocks", async () => {
+    const b = await bridge();
+    const sockets = [walkySocketPath(b.stateDir)];
+    const session = "local/%1#aaaa";
+    await cmdMorphOn(deps(sockets), []);
+
+    const outline = deps(sockets);
+    expect(await cmdMorphShow(outline, [screenFile(outline, JSON.stringify(MORPH_BLOCKS_EXAMPLE.outline))])).toBe(EXIT.OK);
+    expect(b.morph.status(session).view?.blocks?.map((block) => block.id)).toEqual(["summary"]);
+
+    const pending = deps(sockets);
+    expect(await cmdMorphPending(pending, [MORPH_BLOCKS_EXAMPLE.pending.id, "Running", "the", "tests"])).toBe(EXIT.OK);
+    expect(pending.io.stdout[0]).toBe("pending: block tests, rev 2");
+    expect(pending.io.stdout).toContain('blocks: summary, tests (pending: "Running the tests")');
+
+    const set = deps(sockets);
+    expect(await cmdMorphSet(set, ["tests", screenFile(set, JSON.stringify(MORPH_BLOCKS_EXAMPLE.block), "tests.json")])).toBe(EXIT.OK);
+    expect(set.io.stdout[0]).toBe("set: block tests, rev 3");
+    expect(b.morph.status(session).view?.view[1]).toMatchObject({ kind: "list" });
+    expect(b.morph.status(session).view?.blocks?.[1]?.pending).toBeUndefined();
+
+    const first = deps(sockets);
+    expect(await cmdMorphSet(first, ["intro", screenFile(first, JSON.stringify([{ kind: "para", text: "Hello" }]), "intro.json"), "--first"])).toBe(EXIT.OK);
+    expect(b.morph.status(session).view?.blocks?.map((block) => block.id)).toEqual(["intro", "summary", "tests"]);
+
+    const removed = deps(sockets);
+    expect(await cmdMorphRemove(removed, ["intro"])).toBe(EXIT.OK);
+    expect(removed.io.stdout[0]).toBe("removed: block intro, rev 5");
+
+    const choice = deps(sockets);
+    expect(await cmdMorphChoice(choice, [screenFile(choice, JSON.stringify({ question: "Go on?", options: [{ label: "Yes" }, { label: "No" }], picked: 0 }), "choice.json")])).toBe(EXIT.OK);
+    expect(choice.io.stdout).toContain("choice: 2 options, picked 0");
+
+    const kept = deps(sockets);
+    expect(await cmdMorphKeep(kept, ["summary", "choice"])).toBe(EXIT.OK);
+    expect(kept.io.stdout[0]).toBe('kept: summary, choice, rev 7');
+
+    const cleared = deps(sockets);
+    expect(await cmdMorphChoice(cleared, ["--clear"])).toBe(EXIT.OK);
+    expect(b.morph.status(session).view?.choice).toBeUndefined();
+  });
+
+  socketTest("a block edit that would break the screen is refused, exit 4, and the screen stays", async () => {
+    const b = await bridge();
+    const sockets = [walkySocketPath(b.stateDir)];
+    const shown = deps(sockets);
+    expect(await cmdMorphShow(shown, [screenFile(shown, JSON.stringify(MORPH_EXAMPLE))])).toBe(EXIT.OK);
+    const before = b.morph.status("local/%1#aaaa").view;
+
+    const bad = deps(sockets);
+    expect(await cmdMorphSet(bad, ["b2", screenFile(bad, JSON.stringify({ kind: "button", attrs: { label: "Go" } }), "bad.json")])).toBe(EXIT.REFUSED);
+    expect(bad.io.stderr[0]).toContain("(bad_view)");
+
+    const missing = deps(sockets);
+    expect(await cmdMorphKeep(missing, ["nope"])).toBe(EXIT.REFUSED);
+    expect(missing.io.stderr[0]).toContain("(bad_block)");
+    expect(b.morph.status("local/%1#aaaa").view).toEqual(before);
+  });
+});
+
+describe("the block verbs' arguments", () => {
+  test("help lists every verb's usage and the cycle, keep and picked rules", () => {
+    const text = morphHelp("local/%1#aaaa").join("\n");
+    for (const verb of MORPH_SUBCOMMANDS) expect(text).toContain(`collie morph ${verb} `);
+    expect(text).toContain("Draw the outline first: `morph show` with the blocks you know, or `morph pending <id>");
+    expect(text).toContain("do not redraw the whole screen");
+    expect(text).toContain("When a new request arrives, the operator's screen is cleared of your old blocks.");
+    expect(text).toContain("To show a past decision as settled, send its `choice` with \"picked\"");
+    expect(text).toContain("collie morph pending --session local/%1#aaaa tests \"Running the tests\"");
+  });
+
+  test("the blocks example parses: the outline as a view, the block as one node", () => {
+    expect(parseMorphView(MORPH_BLOCKS_EXAMPLE.outline).ids).toEqual(["summary"]);
+    expect(parseMorphView([MORPH_BLOCKS_EXAMPLE.block]).refusals).toEqual([]);
+  });
+
+  test("a verb takes only its own flags; --first and --after exclude each other", () => {
+    expect(parseBlockArgs(["b1", "f.json", "--after", "b0"], { place: true })).toMatchObject({ words: ["b1", "f.json"], after: "b0", first: false });
+    expect(parseBlockArgs(["b1", "--first", "--after", "b0"], { place: true })).toHaveProperty("error");
+    expect(parseBlockArgs(["b1", "--after"], { place: true })).toHaveProperty("error");
+    expect(parseBlockArgs(["b1", "--first"], {})).toHaveProperty("error");
+    expect(parseBlockArgs(["--clear"], { clear: true })).toMatchObject({ clear: true, words: [] });
+    expect(parseBlockArgs(["--all"], { clear: true })).toHaveProperty("error");
+    expect(parseBlockArgs(["b1", "-"], { images: true })).toMatchObject({ words: ["b1", "-"] });
+  });
+
+  test("a block file is one node or a list of one; a choice file is an object", () => {
+    expect(readBlock('{"kind":"para","text":"x"}')).toEqual({ node: { kind: "para", text: "x" } });
+    expect(readBlock('[{"kind":"para","text":"x"}]')).toEqual({ node: [{ kind: "para", text: "x" }] });
+    expect(readBlock("[]")).toHaveProperty("error");
+    expect(readBlock('[{"kind":"para"},{"kind":"para"}]')).toHaveProperty("error");
+    expect(readBlock("nope")).toHaveProperty("error");
+    expect(readChoice('{"options":[]}')).toEqual({ choice: { options: [] } });
+    expect(readChoice("[]")).toHaveProperty("error");
+  });
+
+  test("usage errors exit 2 before any bridge is asked", async () => {
+    expect(await cmdMorphSet(deps([]), ["b1"])).toBe(EXIT.USAGE);
+    expect(await cmdMorphPending(deps([]), ["b1"])).toBe(EXIT.USAGE);
+    expect(await cmdMorphRemove(deps([]), [])).toBe(EXIT.USAGE);
+    expect(await cmdMorphChoice(deps([]), [])).toBe(EXIT.USAGE);
+    expect(await cmdMorphChoice(deps([]), ["c.json", "--clear"])).toBe(EXIT.USAGE);
+    expect(await cmdMorphKeep(deps([]), [])).toBe(EXIT.USAGE);
+    expect(await cmdMorphKeep(deps([]), ["b1", "--all"])).toBe(EXIT.USAGE);
   });
 });

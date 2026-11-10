@@ -85,9 +85,8 @@ export function MorphChoiceBlock({ choice, pictures, media, picked, busy, canAct
 
   function choose(option: MorphOption, index: number) {
     if (blocked) return;
-    if (option.confirm !== undefined) {
-      if (tap(`option:${String(index)}`) !== "fire") return;
-    } else disarm();
+    if (option.confirm !== undefined && tap(`option:${String(index)}`) !== "fire") return;
+    if (option.confirm === undefined) disarm();
     onPick(index);
   }
 

@@ -130,7 +130,24 @@ import {
   WALKY_SUBCOMMANDS,
   type WalkyDeps,
 } from "./walky.ts";
-import { cmdMorph, cmdMorphClear, cmdMorphHelp, cmdMorphOff, cmdMorphOn, cmdMorphShow, cmdMorphStart, cmdMorphStatus, MORPH_SUBCOMMANDS, morphHelp, type MorphDeps } from "./morph.ts";
+import {
+  cmdMorph,
+  cmdMorphChoice,
+  cmdMorphClear,
+  cmdMorphHelp,
+  cmdMorphKeep,
+  cmdMorphOff,
+  cmdMorphOn,
+  cmdMorphPending,
+  cmdMorphRemove,
+  cmdMorphSet,
+  cmdMorphShow,
+  cmdMorphStart,
+  cmdMorphStatus,
+  MORPH_SUBCOMMANDS,
+  morphHelp,
+  type MorphDeps,
+} from "./morph.ts";
 import { cmdHill, cmdHillClear, cmdHillList, cmdHillPost, cmdHillStatus, cmdHillSwitch, cmdHillWithdraw, HILL_SUBCOMMANDS, hillPostHelp, type HillDeps } from "./hill.ts";
 import { cmdUpdateCheck, updateCheckDeps, wantsCheck } from "./update-check.ts";
 import { cmdTheme, cmdThemeCheck, realThemeFiles, THEME_SUBCOMMANDS } from "./theme-check.ts";
@@ -369,6 +386,31 @@ const MORPH_TREE: readonly Subcommand[] = [
     name: "show",
     summary: "draw one screen for this session: `morph show --session <address> <file.json | -> [--title ...]`",
     run: (args, s) => cmdMorphShow(morphDeps(s.io), args),
+  },
+  {
+    name: "set",
+    summary: "put one block on the screen, by id: `morph set --session <address> <id> <file.json | -> [--after <id> | --first] [--image ...]`",
+    run: (args, s) => cmdMorphSet(morphDeps(s.io), args),
+  },
+  {
+    name: "pending",
+    summary: "a placeholder block for one still in work: `morph pending --session <address> <id> \"<label>\"`",
+    run: (args, s) => cmdMorphPending(morphDeps(s.io), args),
+  },
+  {
+    name: "remove",
+    summary: "take one block off the screen: `morph remove --session <address> <id>`",
+    run: (args, s) => cmdMorphRemove(morphDeps(s.io), args),
+  },
+  {
+    name: "choice",
+    summary: "set or drop the decision block alone: `morph choice --session <address> <file.json | -> | --clear`",
+    run: (args, s) => cmdMorphChoice(morphDeps(s.io), args),
+  },
+  {
+    name: "keep",
+    summary: "say which blocks still hold for the new request: `morph keep --session <address> <id>... | --all`",
+    run: (args, s) => cmdMorphKeep(morphDeps(s.io), args),
   },
   {
     name: "clear",

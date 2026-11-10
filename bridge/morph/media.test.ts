@@ -220,3 +220,41 @@ describe("the decision block", () => {
     expect(readShowFields({ view: [], images: "a.png" })).toMatchObject({ code: "bad_image" });
   });
 });
+
+describe("a block set with pictures", () => {
+  posix("adds to the screen's set under a new set id: a ref counts the whole set, and the old folder goes", () => {
+    const r = rig();
+    const one = file(r.work, "a.png", png(120));
+    const two = file(r.work, "b.png", png(140));
+    r.morph.show(SESSION, { view: view(1), title: null, images: [{ path: one, caption: "Now" }] });
+    const first = r.morph.status(SESSION).view;
+    const answer = r.morph.set(SESSION, { id: "after", node: { kind: "image", attrs: { ref: "1" } }, place: { kind: "end" }, images: [{ path: two, caption: "Next" }] });
+    expect(answer.ok).toBe(true);
+    const screen = r.morph.status(SESSION).view;
+    expect(screen?.set).not.toBe(first?.set);
+    expect(screen?.media?.map((m) => m.caption)).toEqual(["Now", "Next"]);
+    expect(readdirSync(r.mediaRoot)).toEqual([screen!.set!]);
+  });
+
+  posix("past four in all, or a view the new pictures would break, is refused, and no set is written", () => {
+    const r = rig();
+    const pics = Array.from({ length: 4 }, (_, i) => file(r.work, `${String(i)}.png`, png(100 + i)));
+    r.morph.show(SESSION, { view: view(4), title: null, images: pics.map((path) => ({ path, caption: null })) });
+    const held = r.morph.status(SESSION).view;
+    const extra = file(r.work, "x.png", png(90));
+    expect(r.morph.set(SESSION, { id: "x", node: { kind: "image", attrs: { ref: "4" } }, place: { kind: "end" }, images: [{ path: extra, caption: null }] })).toMatchObject({ ok: false, code: "too_many_images" });
+    expect(r.morph.status(SESSION).view).toEqual(held);
+    expect(readdirSync(r.mediaRoot)).toEqual([held!.set!]);
+  });
+
+  posix("a picture refused by a set leaves the screen and its set as they were", () => {
+    const r = rig();
+    r.morph.show(SESSION, { view: view(1), title: null, images: [{ path: file(r.work, "a.png", png(120)), caption: null }] });
+    const held = r.morph.status(SESSION).view;
+    const gif = file(r.work, "g.gif", GIF);
+    expect(r.morph.set(SESSION, { id: "g", node: { kind: "image", attrs: { ref: "1" } }, place: { kind: "end" }, images: [{ path: gif, caption: null }] })).toMatchObject({ ok: false, code: "bad_image" });
+    expect(r.morph.status(SESSION).view).toEqual(held);
+    expect(existsSync(join(r.mediaRoot, held!.set!))).toBe(true);
+    expect(readdirSync(r.mediaRoot)).toEqual([held!.set!]);
+  });
+});

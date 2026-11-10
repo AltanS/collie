@@ -4,7 +4,18 @@ import { http, HttpResponse } from "msw";
 import type { JsonObject, JsonValue } from "@/lib/json";
 import { server } from "@/test/setup";
 
-import { __resetMorph, __settleMorph, noteMorphSwitch, syncMorph, useMorphAvailable, useMorphSession } from "./store";
+import {
+  __resetMorph,
+  __settleMorph,
+  holdMorphFast,
+  MORPH_FAST_MS,
+  MORPH_FAST_QUIET_MS,
+  noteMorphSwitch,
+  syncMorph,
+  useMorphAvailable,
+  useMorphLive,
+  useMorphSession,
+} from "./store";
 
 // The snapshot's morphRev says when to read. The same number reads nothing, a higher one reads with
 // `since`, a lower one is a restarted bridge and reads the whole list, and no number empties the store.
@@ -140,5 +151,161 @@ describe("the Morph store", () => {
     expect(result.current).toEqual({ session: ADDRESS, on: true, hint: "" });
     act(() => noteMorphSwitch(ADDRESS, false, null));
     expect(result.current?.on).toBe(false);
+  });
+});
+
+describe("the fast read while a screen is in work", () => {
+  let releases: (() => void)[] = [];
+
+  beforeEach(() => {
+    releases = [];
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+  });
+
+  afterEach(() => {
+    for (const release of releases) release();
+    vi.useRealTimers();
+    setHidden(false);
+  });
+
+  function hold(busy: boolean) {
+    const release = holdMorphFast(busy);
+    releases.push(release);
+    return release;
+  }
+
+  async function tick(ms = MORPH_FAST_MS) {
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(ms);
+      await __settleMorph();
+    });
+  }
+
+  function setHidden(hidden: boolean) {
+    Object.defineProperty(document, "visibilityState", { configurable: true, get: () => (hidden ? "hidden" : "visible") });
+    document.dispatchEvent(new Event("visibilitychange"));
+  }
+
+  /** A bridge whose number never moves: the whole list once, then `unchanged`. */
+  function quiet(since: string | null) {
+    return since === null ? { rev: 3, sessions: [] } : { rev: 3, unchanged: true, sessions: [] };
+  }
+
+  /** A bridge whose number moves on each fast read: rev 3 on the whole read, then 4, 5, ... */
+  function moving() {
+    let rev = 3;
+    serve((since) => {
+      if (since !== null) rev += 1;
+      return { rev, sessions: [session(true, { at: "2026-11-10T10:00:00.000Z", rev, view: [{ kind: "para", text: "Two steps." }] })] };
+    });
+  }
+
+  it("reads with since every 800 ms while a busy body holds it, and the new screen lands", async () => {
+    moving();
+    const { result } = renderHook(() => useMorphSession(ADDRESS));
+    await sync(3);
+    hold(true);
+    await tick();
+    expect(reads).toEqual([null, "3"]);
+    expect(result.current?.view?.rev).toBe(4);
+    await tick();
+    expect(reads).toEqual([null, "3", "4"]);
+  });
+
+  it("one timer for every holder: two busy bodies read once per beat", async () => {
+    moving();
+    await sync(3);
+    hold(true);
+    hold(true);
+    await tick();
+    expect(reads).toEqual([null, "3"]);
+  });
+
+  it("reads nothing before the bridge said it has Morph, and nothing once let go", async () => {
+    moving();
+    const release = hold(true);
+    await tick();
+    expect(reads).toEqual([]);
+    await sync(3);
+    await tick();
+    expect(reads).toEqual([null, "3"]);
+    release();
+    await tick(MORPH_FAST_MS * 3);
+    expect(reads).toEqual([null, "3"]);
+  });
+
+  it("stops while the page is hidden, and starts again when it shows", async () => {
+    moving();
+    await sync(3);
+    hold(true);
+    setHidden(true);
+    await tick(MORPH_FAST_MS * 3);
+    expect(reads).toEqual([null]);
+    setHidden(false);
+    await tick();
+    expect(reads).toEqual([null, "3"]);
+  });
+
+  it("a body that is not busy keeps reading only for the quiet window after the last change", async () => {
+    serve(quiet);
+    await sync(3);
+    vi.advanceTimersByTime(MORPH_FAST_QUIET_MS + 1);
+    hold(false);
+    await tick(MORPH_FAST_MS * 3);
+    expect(reads).toEqual([null]);
+  });
+
+  it("a quiet body reads while a change is fresh, then stops", async () => {
+    serve(quiet);
+    await sync(3);
+    hold(false);
+    await tick();
+    expect(reads).toEqual([null, "3"]);
+    await tick(MORPH_FAST_QUIET_MS);
+    const count = reads.length;
+    await tick(MORPH_FAST_MS * 5);
+    expect(reads.length).toBe(count);
+  });
+
+  it("slows down after three failed reads in a row", async () => {
+    let fail = false;
+    serve(() => (fail ? new HttpResponse("down", { status: 500 }) : { rev: 3, sessions: [] }));
+    await sync(3);
+    fail = true;
+    hold(true);
+    await tick();
+    await tick();
+    await tick();
+    expect(reads.length).toBe(4);
+    // The fourth read waits 1600 ms, not 800.
+    await tick();
+    expect(reads.length).toBe(4);
+    await tick();
+    expect(reads.length).toBe(5);
+  });
+
+  it("a snapshot behind the fast read reads nothing; one below the last snapshot is a restart", async () => {
+    moving();
+    await sync(3);
+    hold(true);
+    await tick();
+    await tick();
+    expect(reads).toEqual([null, "3", "4"]);
+    releases.splice(0).forEach((release) => release());
+    await sync(4);
+    expect(reads).toEqual([null, "3", "4"]);
+    await sync(1);
+    expect(reads).toEqual([null, "3", "4", null]);
+  });
+
+  it("useMorphLive holds while mounted and lets go on unmount", async () => {
+    moving();
+    await sync(3);
+    const { unmount } = renderHook(() => useMorphLive(true));
+    await tick();
+    expect(reads).toEqual([null, "3"]);
+    unmount();
+    await tick(MORPH_FAST_MS * 3);
+    expect(reads).toEqual([null, "3"]);
   });
 });
