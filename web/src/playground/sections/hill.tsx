@@ -5,7 +5,7 @@
 // The cards wear the machine tints of a two-machine crew (bluefin and minibuch), as `LiveDecisionCard`
 // would hand them on one.
 //
-// Cards are numbered 1 to 36.
+// Cards are numbered 1 to 46.
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 
@@ -59,6 +59,7 @@ import {
   withBody,
 } from "../fixtures/hill/decisions";
 import { RootRouter } from "../harness";
+import { isNet, MotionHill, NETS, type Net } from "../hill-motion";
 import { Card, CardControls, Group, Section, Segmented, type SectionDef } from "../layout";
 
 export const DEF: SectionDef = {
@@ -483,7 +484,40 @@ function RoughSolo({ id, open }: { id: RoughId; open: boolean }) {
   );
 }
 
+/** The moment of answering, live, in a phone: the pretend bridge's delay, and a way to start over. */
+function MotionCard() {
+  const [net, setNet] = useState<Net>("quick");
+  const [round, setRound] = useState(0);
+  return (
+    <>
+      <CardControls className="flex flex-wrap items-center gap-3">
+        <Segmented name="Network" value={net} options={NETS} onChange={setNet} />
+        <button type="button" className="rounded-md border border-border px-2 py-1 text-[11px] font-medium" onClick={() => setRound((n) => n + 1)}>
+          Start over
+        </button>
+        <a href={`?motion=1&net=${net}#hill`} className="text-sm font-semibold text-foreground underline">
+          Full screen
+        </a>
+      </CardControls>
+      <Phone height={760}>
+        <MotionHill key={`${net}:${round}`} net={net} height={760} />
+      </Phone>
+    </>
+  );
+}
+
+/** The live Hill over the whole page, at the window's own size, for a phone and for frame-by-frame shots. */
+function MotionSolo() {
+  const net = matchParam("net");
+  return (
+    <div className="fixed inset-0 z-[60] flex flex-col overflow-hidden bg-background">
+      <MotionHill net={isNet(net) ? net : "quick"} answered={matchParam("answered") === "1"} />
+    </div>
+  );
+}
+
 export function HillSection() {
+  if (matchParam("motion") === "1") return <MotionSolo />;
   const match = matchParam("match");
   const asked = matchParam("case");
   const rough = matchParam("card");
@@ -601,6 +635,13 @@ export function HillSection() {
         <Card state="hill-card-mixed-images" label="36: a phone shot and a wide one">
           <CardHead n={36} title="A phone shot and a wide one" />
           <OneCard decision={mixedImages} />
+        </Card>
+      </Group>
+
+      <Group title="The moment of answering, live">
+        <Card state="hill-motion" label="46: answer and dismiss, live">
+          <CardHead n={46} title="Answer, confirm, dismiss and retry on ten cards: the whole motion" />
+          <MotionCard />
         </Card>
       </Group>
 
