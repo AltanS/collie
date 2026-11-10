@@ -261,6 +261,9 @@ export const en = {
   "settings.notify.updates.hint": "a new Collie version is available",
   "settings.notify.machines.label": "Machine load stays high",
   "settings.notify.machines.hint": "CPU or memory stays above a rule you set on a machine",
+  // English only until the translation pass: listed in PENDING_TRANSLATION below.
+  "settings.notify.decisions.label": "Decisions that need you now",
+  "settings.notify.decisions.hint": "an agent or a trick posts a Decision marked now on the Hill",
   "settings.notify.cache.label": "Cache about to go cold",
   // The second clause is the whole point of this hint: the rule is global OR per-pane, with no per-pane
   // off, so a watched list keeps working under this switch and the operator is told once, here.
@@ -3585,6 +3588,9 @@ export const PENDING_TRANSLATION = [
   "sessionFilter.toggle",
   // The space border's refusal word (M98, 2026-11-10).
   "walky.reason.outsideSpace",
+  // The Hill's push switch (M96, 2026-11-10).
+  "settings.notify.decisions.label",
+  "settings.notify.decisions.hint",
 ] as const satisfies readonly MessageKey[];
 
 /** A key a bundle may leave out until the translation pass. */
