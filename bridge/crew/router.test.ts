@@ -3241,10 +3241,9 @@ describe("signed body caps — a body over its route's cap is refused before it 
 
   test("a junk signature without the crew secret is refused before one byte of the body is read", async () => {
     const { h, handler, seen } = capRig();
-    for (const headers of [
-      { "x-crew-protocol": "2", authorization: "Bearer not-the-secret" },
-      { "x-crew-protocol": "2" },
-    ]) {
+    const wrongSecret = { "x-crew-protocol": "2", authorization: "Bearer not-the-secret" } satisfies HeadersInit;
+    const noSecret = { "x-crew-protocol": "2" } satisfies HeadersInit;
+    for (const headers of [wrongSecret, noSecret]) {
       const body = counted(new Uint8Array(2 * 1024 * 1024).fill(0x61));
       const url = new URL(`https://peer.example${CREW_HILL_MEDIA_PATH}`);
       const req = new Request(url, { method: "POST", headers: { ...headers, "content-type": "application/json", [SIGNATURE_HEADER]: "AAAA", [TIMESTAMP_HEADER]: String(T0) }, body: body.stream });
