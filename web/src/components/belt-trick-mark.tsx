@@ -16,7 +16,7 @@ import type { AgentView } from "@/lib/types";
 // (actions-row.tsx draws them there; they never take room in the pinned block). Each is a `TrickMark` in its
 // own frame, never a pill and never a status mark.
 //
-// A TAP: a mark with an intent goes to the trick's provider (`trickTapper`), and shows Collie's spinner
+// A TAP: a mark with an intent goes to the trick's program (`trickTapper`), and shows Collie's spinner
 // in its icon's box while the tap is in flight. A mark without an intent opens the trick's own session
 // when it has one, one level down. A mark with neither is the same control, which does nothing and
 // says so (lib/tricks/mark.tsx, ONE CONTROL): it never drops to a span that shrinks.

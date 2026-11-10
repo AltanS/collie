@@ -8,7 +8,7 @@ import { ActionsRow, type BeltMark } from "./actions-row";
 import { beltMarksOf } from "./belt-trick-mark";
 
 // THE BELT'S END-BLOCK MARKS (M94 slice 03): between the pins mark and Changes, in manifest order, each
-// in its own frame; a tap with an intent goes to the provider and shows busy; a mark with no intent
+// in its own frame; a tap with an intent goes to the program and shows busy; a mark with no intent
 // opens the trick's session, or is no control at all.
 
 const AS_OF = new Date().toISOString();

@@ -370,7 +370,7 @@ describe("backoff", () => {
     expect(r.specs.length).toBe(4);
     const stopped = await r.service.reply(undefined);
     expect(stopped.tricks[0]?.state).toBe("stopped");
-    expect(stopped.tricks[0]?.error).toBe("The provider exited with 1");
+    expect(stopped.tricks[0]?.error).toBe("The program exited with 1");
     await tickAt(r, T0 + 100 * 60 * 60_000);
     expect(r.specs.length).toBe(4);
     // A change of config.toml restarts it with a start run (an edit of the code would stop it instead).
@@ -495,7 +495,7 @@ describe("taps", () => {
     return r;
   }
 
-  test("a tap runs the provider with the tap trigger and replies ok with the new parts", async () => {
+  test("a tap runs the program with the tap trigger and replies ok with the new parts", async () => {
     const r = await onRig([exited(belt("24 red"))]);
     const answer = await r.service.tap(HOST, "legs", tapBody());
     expect(answer.status).toBe(200);
@@ -572,10 +572,10 @@ describe("taps", () => {
     ]);
     const unknown = ok200(await r.service.tap(HOST, "legs", tapBody(REQ)));
     expect(unknown.code).toBe("unknown");
-    expect(unknown.message).toBe("The provider ran past 10 s and was stopped");
+    expect(unknown.message).toBe("The program ran past 10 s and was stopped");
     const failed = ok200(await r.service.tap(HOST, "legs", tapBody(REQ2)));
     expect(failed.code).toBe("rejected");
-    expect(failed.message).toStartWith("The provider exited with 1: curl: 401");
+    expect(failed.message).toStartWith("The program exited with 1: curl: 401");
     expect(failed.message).not.toContain("0123456789abcdef");
   });
 
@@ -858,14 +858,14 @@ describe("taps, answers and slots", () => {
   });
 });
 
-describe("real providers", () => {
-  test("an sh provider and a bun provider run through the real runner", async () => {
+describe("real programs", () => {
+  test("an sh program and a bun program run through the real runner", async () => {
     const r = await rig(null);
-    await makeTrick(r.configDir, "hello", 'id = "hello"\nname = "Hello"\nrun = "./provider.sh"\nplaces = ["belt"]\n', {
-      "provider.sh": `#!/bin/sh\nfacts=$(cat)\nn=$(printf '%s' "$facts" | grep -o '"paneId"' | wc -l | tr -d ' ')\nprintf '{"v":1,"parts":[{"at":"belt","id":"belt","mark":{"label":"%s"}}]}' "$n"\n`,
+    await makeTrick(r.configDir, "hello", 'id = "hello"\nname = "Hello"\nrun = "./program.sh"\nplaces = ["belt"]\n', {
+      "program.sh": `#!/bin/sh\nfacts=$(cat)\nn=$(printf '%s' "$facts" | grep -o '"paneId"' | wc -l | tr -d ' ')\nprintf '{"v":1,"parts":[{"at":"belt","id":"belt","mark":{"label":"%s"}}]}' "$n"\n`,
     });
-    await makeTrick(r.configDir, "bunny", 'id = "bunny"\nname = "Bunny"\nrun = "bun provider.ts"\nplaces = ["belt"]\n', {
-      "provider.ts": [
+    await makeTrick(r.configDir, "bunny", 'id = "bunny"\nname = "Bunny"\nrun = "bun program.ts"\nplaces = ["belt"]\n', {
+      "program.ts": [
         'import { appendFileSync } from "node:fs";',
         "const facts = JSON.parse(await Bun.stdin.text());",
         'appendFileSync(`${facts.trick.state}/runs.log`, facts.trigger.kind + "\\n");',

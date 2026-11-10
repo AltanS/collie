@@ -74,6 +74,8 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 - **A trick names the contract it is written for.** `trick.toml` takes `contract = 1`, the default when it is left out, in place of `facts`, and the facts a program reads carry `"contract": 1` in place of `"v"`. A trick written for a newer contract is refused with one line that names both numbers and says it needs a newer Collie, instead of a list of keys this Collie does not know. At the same number an unknown key in `trick.toml` is still refused, so a typo shows. The helper moves to v3: `t.tap` is the one way to read a tap, from a part or from the Hill, with `decision`, `text`, `from` and `seen` on it, and `t.hillAnswer` is gone. `collie trick helper <id>` writes the new one. (M94)
 
+- **A trick's run problems name its program.** The lines on a trick's row, in `collie trick check` and `collie trick dev` say "The program did not start", "The program exited with 1" and so on, and `collie trick init --sh` writes `program.sh`. (M94)
+
 ## [1.28.0] - 2026-11-09
 
 ### Added

@@ -122,18 +122,18 @@ describe("one run", () => {
     const child = Number((await readFile(pidFile, "utf8")).trim());
     await Bun.sleep(100);
     expect(alive(child)).toBe(false);
-    expect(outcomeProblem(outcome, 200)).toBe("The provider ran past 0 s and was stopped");
+    expect(outcomeProblem(outcome, 200)).toBe("The program ran past 0 s and was stopped");
   });
 
-  test("stdout past 64 KiB fails the run and stops the provider", async () => {
+  test("stdout past 64 KiB fails the run and stops the program", async () => {
     const started = performance.now();
     const outcome = await run("yes aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
     expect(outcome.kind).toBe("overflow");
     expect(performance.now() - started).toBeLessThan(5000);
-    expect(outcomeProblem(outcome, 200)).toBe("The provider printed more than 64 KiB and was stopped");
+    expect(outcomeProblem(outcome, 200)).toBe("The program printed more than 64 KiB and was stopped");
   });
 
-  test("stderr is kept to 8 KiB and drained, so a chatty provider does not block", async () => {
+  test("stderr is kept to 8 KiB and drained, so a chatty program does not block", async () => {
     const outcome = await run("head -c 200000 /dev/zero | tr '\\0' e >&2; echo done");
     expect(outcome.kind).toBe("exited");
     if (outcome.kind !== "exited") return;
@@ -149,7 +149,7 @@ describe("one run", () => {
     expect(outcome.stdout).toContain("sk-o•");
     expect(outcome.stderr).not.toContain(KEY);
     const line = outcomeProblem(outcome, 200);
-    expect(line).toStartWith("The provider exited with 3: curl failed");
+    expect(line).toStartWith("The program exited with 3: curl failed");
     expect(line).not.toContain(KEY);
   });
 
@@ -163,7 +163,7 @@ describe("one run", () => {
   test("a folder that is not there is a spawn failure, not a throw", async () => {
     const outcome = await runProgram({ command: "true", cwd: "/nonexistent/collie-trick", env: {}, stdin: "" });
     expect(outcome.kind).toBe("spawn-failed");
-    expect(outcomeProblem(outcome, 200)).toStartWith("The provider did not start");
+    expect(outcomeProblem(outcome, 200)).toStartWith("The program did not start");
   });
 
   test("a clean exit is no problem", async () => {
@@ -194,7 +194,7 @@ describe("the two forms of a run line", () => {
   });
 
   test("the shell form is unchanged, and never carries BUN_BE_BUN, not even under a compiled bridge", () => {
-    for (const command of ["./run.sh ./program.ts", "./provider.sh", "darius due --json"]) {
+    for (const command of ["./run.sh ./program.ts", "./program.sh", "darius due --json"]) {
       const launch = launchOf(command, ENV, { cwd: "/t/look", platform: "linux", runtime: COMPILED });
       expect(launch.argv).toEqual(shellArgv(command, "linux"));
       expect(launch.env).toEqual(ENV);
