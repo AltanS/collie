@@ -160,6 +160,12 @@ export const FACT_TEXT_MAX_BYTES = 4096;
 /** Sessions and spaces in one facts document (WIRE.md §6, panes and workspaces per snapshot). */
 export const FACT_SESSIONS_MAX = 256;
 export const FACT_SPACES_MAX = 64;
+/**
+ * The most bytes the sessions of one facts document take, written as JSON. On a crew's lead the facts
+ * list every member's sessions too; past this cap (or past {@link FACT_SESSIONS_MAX}) the rest are left
+ * out and `sessionsOmitted` counts them. The lead's own sessions come first, so they are never the cut.
+ */
+export const FACT_SESSIONS_MAX_BYTES = 512 * 1024;
 /** A facts session's opaque `sessionId`. */
 export const SESSION_ID_MAX = 256;
 /** A refused tap's or a failed run's one line of words on the wire. */
@@ -1124,6 +1130,11 @@ export interface FactsSession {
   space?: string;
   tab?: string;
   lastActiveAt?: string;
+  /**
+   * On a crew's lead only: whether the lead's last sweep reached the session's machine. The lead's own
+   * sessions are always `true`. Absent on a solo bridge, where every session is this machine's.
+   */
+  reachable?: boolean;
 }
 export interface FactsSpace {
   name: string;
@@ -1140,6 +1151,8 @@ export interface TrickFacts {
   host: string;
   sessions: FactsSession[];
   spaces: FactsSpace[];
+  /** How many sessions the facts left out past {@link FACT_SESSIONS_MAX} or {@link FACT_SESSIONS_MAX_BYTES}. Absent when none. */
+  sessionsOmitted?: number;
 }
 
 // ── Types: taps and the wire ─────────────────────────────────────────────────────────────────
@@ -3556,8 +3569,8 @@ export function parseManifest(doc: JsonValue | undefined, opts: ParseManifestOpt
 // ── The facts ────────────────────────────────────────────────────────────────────────────────
 
 /** Every key of the facts document, of a session in it, of a space, of the trick, and of each trigger. */
-export const FACTS_KEYS = ["contract", "trigger", "trick", "memberId", "host", "sessions", "spaces"] as const;
-export const SESSION_FACT_KEYS = ["id", "memberId", "sessionId", "paneId", "host", "name", "agent", "status", "cwd", "space", "tab", "lastActiveAt"] as const;
+export const FACTS_KEYS = ["contract", "trigger", "trick", "memberId", "host", "sessions", "spaces", "sessionsOmitted"] as const;
+export const SESSION_FACT_KEYS = ["id", "memberId", "sessionId", "paneId", "host", "name", "agent", "status", "cwd", "space", "tab", "lastActiveAt", "reachable"] as const;
 export const SPACE_FACT_KEYS = ["name", "folder"] as const;
 export const TRICK_FACT_KEYS = ["id", "dir", "state"] as const;
 export const TRIGGER_KINDS = ["start", "timer", "tap", "watch", "event"] as const;
@@ -3615,10 +3628,14 @@ export function parseFacts(raw: JsonValue | undefined): ParsedFacts {
     spaces.push(folder === undefined ? { name } : { name, folder });
   });
 
+  const omitted = f.int("sessionsOmitted", { min: 1, max: 1_000_000 });
+
   if (refusals.length > 0 || trigger === undefined || trickId === undefined || dir === undefined || state === undefined || memberId === undefined || host === undefined) {
     return { refusals: capRefusals(refusals) };
   }
-  return { facts: { contract: TRICK_CONTRACT, trigger, trick: { id: trickId, dir, state }, memberId, host, sessions, spaces }, refusals };
+  const facts: TrickFacts = { contract: TRICK_CONTRACT, trigger, trick: { id: trickId, dir, state }, memberId, host, sessions, spaces };
+  if (omitted !== undefined) facts.sessionsOmitted = omitted;
+  return { facts, refusals };
 }
 
 function readTrigger(f: Fields): FactsTrigger | undefined {
@@ -3675,6 +3692,8 @@ function readFactsSession(value: JsonValue | undefined, path: string, sink: Refu
   const last = s.text("lastActiveAt", { max: INSTANT_MAX });
   if (last !== undefined && !isInstant(last)) s.push("text", "lastActiveAt", '"lastActiveAt" must be an ISO 8601 instant.');
   if (last !== undefined) out.lastActiveAt = last;
+  const reachable = s.bool("reachable");
+  if (reachable !== undefined) out.reachable = reachable;
   return sink.length === before ? out : undefined;
 }
 

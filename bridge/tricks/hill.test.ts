@@ -119,7 +119,7 @@ function rig(stateDir = join(tempDir(), "state"), hillAt = 1000): Rig {
     hillSwitch: { on: () => state.hillOn },
   });
   const clock = { t: 50_000_000 };
-  const tricks = new TrickHill({ stateDir, hill, addressOf: (scopeKey) => scopeKeyAddress(scopeKey, (memberId) => memberId === HOST, "local", probe), now: () => clock.t });
+  const tricks = new TrickHill({ stateDir, hill, addressOf: (scopeKey, listed) => scopeKeyAddress(scopeKey, (memberId) => memberId === HOST, "local", probe, listed), now: () => clock.t });
   return Object.assign(state, { stateDir, configDir, trick, store, media, hill, tricks, clock, restart: () => rig(stateDir, hillAt) });
 }
 
@@ -134,8 +134,8 @@ const decision = (key: string, over: Partial<TrickDecision> = {}): TrickDecision
   ...over,
 });
 
-function sync(r: Rig, decisions: TrickDecision[], refusedKeys: string[] = []): Refusal[] {
-  return r.tricks.sync(r.trick, { decisions, refusedKeys });
+function sync(r: Rig, decisions: TrickDecision[], refusedKeys: string[] = [], sessions?: ReadonlySet<string>): Refusal[] {
+  return r.tricks.sync(r.trick, sessions === undefined ? { decisions, refusedKeys } : { decisions, refusedKeys, sessions });
 }
 
 const open = (r: Rig): HillDecision[] => r.store.all().filter((held) => held.state === "open");
@@ -406,6 +406,38 @@ describe("the sessions a decision names", () => {
     expect(scopeKeyAddress("bluefin:", own, "local", probe)).toBeNull();
     expect(scopeKeyAddress("bluefin:w6X:9", own, "local", probe)).toBeNull();
   });
+
+  // M99 slice 5: on a crew's lead the facts list every member's sessions, and a decision may name one.
+  const MEMBER_PANE: HillPlace = { address: "minibuch/%1#cccc", label: "remote", host: "minibuch", unattended: false };
+
+  test("scopeKeyAddress: another member's session resolves only when the run's facts listed it, through the lead's pane list", () => {
+    const probe = place(() => [...PLACES, MEMBER_PANE]);
+    const own = (memberId: string): boolean => memberId === "bluefin";
+    // Not listed: refused, even though the lead's pane list holds it.
+    expect(scopeKeyAddress("minibuch:%1", own, "local", probe)).toBeNull();
+    expect(scopeKeyAddress("minibuch:%1", own, "local", probe, new Set(["bluefin:w6X:3"]))).toBeNull();
+    // Listed and live: the member's own address, with its instance token.
+    expect(scopeKeyAddress("minibuch:%1", own, "local", probe, new Set(["minibuch:%1"]))).toBe("minibuch/%1#cccc");
+    // Listed, but no member of the crew holds it (a member removed since, or a name a program made up
+    // that slipped into a set): the lead's pane list is the second look, and it refuses.
+    expect(scopeKeyAddress("stranger:%1", own, "local", probe, new Set(["stranger:%1"]))).toBeNull();
+    expect(scopeKeyAddress("minibuch:%2", own, "local", probe, new Set(["minibuch:%2"]))).toBeNull();
+    // This bridge's own sessions resolve as before, listed or not.
+    expect(scopeKeyAddress("bluefin:w6X:4", own, "local", probe, new Set())).toBe("local/w6X:4#bbbb");
+  });
+
+  test("a decision may reply to another member's session in the run's facts; an address outside the crew is refused", () => {
+    const r = rig();
+    r.live = [...PLACES, MEMBER_PANE];
+    const listed = new Set(["bluefin:w6X:3", "minibuch:%1", "outsider:%9"]);
+    const refusals = sync(r, [decision("remote", { replyTo: "minibuch:%1" }), decision("outsider", { replyTo: "outsider:%9" }), decision("unlisted", { about: "minibuch:%7" })], [], listed);
+    expect(refusals.map((refusal) => [refusal.code, refusal.path, refusal.decision])).toEqual([
+      ["target", "/decisions/1/replyTo", "outsider"],
+      ["target", "/decisions/2/about", "unlisted"],
+    ]);
+    expect(refusals[0]?.reason).toBe(`"outsider:%9" names no live agent session in this run's facts, so the decision "outsider" was not posted.`);
+    expect(open(r).map((held) => [held.from.trickKey, held.replyTo])).toEqual([["remote", "minibuch/%1#cccc"]]);
+  });
 });
 
 describe("refusals and notes", () => {
@@ -528,6 +560,14 @@ describe("images", () => {
       ["/decisions/1/media/0", 'The hill refused the image "other/shot.png": goes through a symlinked folder; name the real path.'],
     ]);
     expect(open(r)).toEqual([]);
+  });
+
+  test("a decision's image may be a file the trick read from a session folder, under inputs/ (M99 slice 6)", () => {
+    const r = rig();
+    shot(r, "inputs/minibuch/_25_31/shots/red.png", png(390, 240, 7));
+    expect(sync(r, [decision("case-8", { media: [{ file: "inputs/minibuch/_25_31/shots/red.png" }] })])).toEqual([]);
+    const [held] = open(r);
+    expect(r.hill.mediaFile(held!.id, held!.media[0]!.id)?.bytes).toEqual(png(390, 240, 7));
   });
 
   test("a name that leaves the folder is refused before the hill sees it (the schema refuses it first)", () => {

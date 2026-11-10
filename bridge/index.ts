@@ -286,7 +286,7 @@ import { counterWordOf, HoldBook, HoldServer, takeHold, type HoldTarget } from "
 import { holdSocketPath } from "./beacon/paths.ts";
 import { VersionCache } from "./surface/binary-version.ts";
 import { findProfile, loadProfiles, type Profile } from "../web/src/lib/surface/profile.ts";
-import { factsWorldOf } from "./tricks/facts.ts";
+import { crewFactsWorld, factsWorldOf, type FactsWorld } from "./tricks/facts.ts";
 import { isOwnId, resolveBridgeId } from "./bridge-id.ts";
 import { scopeKeyAddress, TrickHill } from "./tricks/hill.ts";
 import { TricksService } from "./tricks/service.ts";
@@ -3455,7 +3455,9 @@ const tricks =
           stateDir: cfg.stateDir,
           // With the Hill switched off (`hill.isOn()`) a trick's Decisions are not posted, and the map stays.
           hill,
-          addressOf: (scopeKey) => scopeKeyAddress(scopeKey, (memberId) => isOwnId(bridgeId, memberId), walkyMemberId ?? LOCAL_MEMBER, hillPlace),
+          // A key of another member resolves only when the run's own facts listed it (M99 slice 5), through
+          // the lead's pane list, so a program cannot name a machine outside the crew.
+          addressOf: (scopeKey, listed) => scopeKeyAddress(scopeKey, (memberId) => isOwnId(bridgeId, memberId), walkyMemberId ?? LOCAL_MEMBER, hillPlace, listed),
         }),
         world: (memberId) => {
           void tricksFolders.refresh();
@@ -3471,7 +3473,20 @@ const tricks =
             labelOf: (name) => tricksLabels.labelOf(name),
             activeAt: (session, paneId) => activity.get(session, paneId)?.activeAt,
           });
-          return { machine: world.machine, sessions: world.sessions, spaces: world.spaces };
+          // On a crew's lead the facts list every member's sessions too, off the sweep's own bodies, read and
+          // never refreshed (M99 slice 5). A solo bridge and a member see their own only.
+          const lead = crewLead;
+          const merged =
+            lead === undefined
+              ? world
+              : crewFactsWorld(
+                  world,
+                  lead.contributions().map((c) => ({ memberId: c.state.memberId, name: c.name, reachable: c.state.health === "reachable", body: c.body })),
+                  (id) => isOwnId(bridgeId, id),
+                );
+          const out: Omit<FactsWorld, "memberId"> = { machine: merged.machine, sessions: merged.sessions, spaces: merged.spaces };
+          if (merged.sessionsOmitted !== undefined) out.sessionsOmitted = merged.sessionsOmitted;
+          return out;
         },
         env: process.env,
         // Only a lead or a solo bridge that is not deposed schedules tricks (§18.12): a peer, a deputy and

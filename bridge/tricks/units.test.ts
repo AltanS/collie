@@ -5,10 +5,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import type { AgentView, WorkspaceView } from "../types.ts";
-import { parseFacts, TRICK_CONTRACT } from "../../web/src/lib/tricks/schema.ts";
+import { FACT_SESSIONS_MAX, FACT_SESSIONS_MAX_BYTES, parseFacts, TRICK_CONTRACT } from "../../web/src/lib/tricks/schema.ts";
 import { CODE_FILES_MAX, diskTrickFs, trickCodeHash, type TrickFs } from "./code-hash.ts";
 import { createTrickScanner, MANIFEST_BYTES_MAX, readManifestText, TRICKS_MAX } from "./discover.ts";
-import { buildFacts, factsWorldOf } from "./facts.ts";
+import { buildFacts, crewFactsWorld, factsWorldOf } from "./facts.ts";
 import { switchesPath } from "./paths.ts";
 import { TRICKS_ROUTE_RIGHTS, tricksAutoRoute, tricksMediaRoute, tricksSwitchRoute, tricksTapRoute, tricksUndoRoute, parseSince } from "./routes.ts";
 import type { TricksSurface } from "./service.ts";
@@ -387,6 +387,62 @@ describe("the facts", () => {
     expect(facts).toMatchObject({ memberId: "m_k3x9q2w7ab", host: "bluefin.lan" });
     expect(JSON.stringify(facts)).not.toContain('"bluefin.lan:');
     expect(parseFacts(JSON.parse(JSON.stringify(facts))).refusals).toEqual([]);
+    // A solo bridge's facts carry no crew field.
+    expect(Object.keys(facts)).not.toContain("sessionsOmitted");
+    expect(Object.keys(world.sessions[0] ?? {})).not.toContain("reachable");
+  });
+});
+
+describe("the facts on a crew's lead (M99 slice 5)", () => {
+  const own = factsWorldOf({ memberId: "bluefin", machine: "bluefin", runtimes: [{ name: "default", agents: [pane({})], shellPanes: [], workspaces: [space("collie", "/work/collie")] }] });
+  const isOwn = (id: string): boolean => id === "bluefin";
+
+  test("every member's sessions, each with its own memberId, its machine's name and reachable; the lead's first", () => {
+    const world = crewFactsWorld(
+      own,
+      [
+        { memberId: "minibuch", name: "minibuch", reachable: true, body: { agents: [pane({ paneId: "%1", paneLabel: "builder" })], shellPanes: [pane({ paneId: "%2", kind: "shell", agent: "shell" })] } },
+        { memberId: "laptop", name: "laptop", reachable: false, body: { agents: [pane({ paneId: "w1:2" })], shellPanes: [] } },
+        { memberId: "fresh", name: "fresh", reachable: false, body: null },
+      ],
+      isOwn,
+    );
+    expect(world.sessions.map((s) => [s.id, s.memberId, s.host, s.reachable])).toEqual([
+      ["bluefin:w6X:3", "bluefin", "bluefin", true],
+      ["minibuch:%1", "minibuch", "minibuch", true],
+      ["minibuch:%2", "minibuch", "minibuch", true],
+      ["laptop:w1:2", "laptop", "laptop", false],
+    ]);
+    // The spaces stay the lead's own.
+    expect(world.spaces).toEqual(own.spaces);
+    // A trick tells its own sessions from the others by memberId.
+    const facts = buildFacts(world, { id: "legs", dir: "/c/tricks/legs", state: "/s/tricks/legs" }, { kind: "timer" });
+    expect(facts.sessions.filter((s) => s.memberId === facts.memberId).map((s) => s.id)).toEqual(["bluefin:w6X:3"]);
+    const back = parseFacts(JSON.parse(JSON.stringify(facts)));
+    expect(back.refusals).toEqual([]);
+    expect(back.facts).toEqual(facts);
+  });
+
+  test("no member can pose as the lead: a contribution under the lead's own id is skipped", () => {
+    const world = crewFactsWorld(own, [{ memberId: "bluefin", name: "imposter", reachable: true, body: { agents: [pane({ paneId: "w6X:9" })], shellPanes: [] } }], isOwn);
+    expect(world.sessions.map((s) => s.id)).toEqual(["bluefin:w6X:3"]);
+  });
+
+  test("past the session count or the byte cap the rest are left out and counted, never the lead's own", () => {
+    const many = Array.from({ length: FACT_SESSIONS_MAX + 5 }, (_, i) => pane({ paneId: `%${String(i)}` }));
+    const world = crewFactsWorld(own, [{ memberId: "minibuch", name: "minibuch", reachable: true, body: { agents: many, shellPanes: [] } }], isOwn);
+    expect(world.sessions).toHaveLength(FACT_SESSIONS_MAX);
+    expect(world.sessions[0]?.id).toBe("bluefin:w6X:3");
+    expect(world.sessionsOmitted).toBe(6);
+    const facts = buildFacts(world, { id: "legs", dir: "/c/tricks/legs", state: "/s/tricks/legs" }, { kind: "timer" });
+    expect(facts.sessionsOmitted).toBe(6);
+    expect(parseFacts(JSON.parse(JSON.stringify(facts))).facts?.sessionsOmitted).toBe(6);
+
+    const wide = Array.from({ length: 200 }, (_, i) => pane({ paneId: `%${String(i)}`, cwd: `/${"x".repeat(4000)}` }));
+    const heavy = crewFactsWorld(own, [{ memberId: "minibuch", name: "minibuch", reachable: true, body: { agents: wide, shellPanes: [] } }], isOwn);
+    const bytes = new TextEncoder().encode(JSON.stringify(heavy.sessions)).length;
+    expect(bytes).toBeLessThanOrEqual(FACT_SESSIONS_MAX_BYTES + heavy.sessions.length + 2);
+    expect(heavy.sessionsOmitted).toBe(201 - heavy.sessions.length);
   });
 });
 

@@ -1225,7 +1225,7 @@ export class TricksService implements TricksSurface {
     // whole (over the cap) changes nothing there either: the last good decisions stay, as the last good
     // parts do.
     const listRefused = parsed.refusals.some((refusal) => refusal.path === "/decisions" && refusal.decision === undefined);
-    const posted = listRefused || !decisionsListed ? [] : (this.deps.decisions?.sync({ ...this.hillTrick(rt), name: manifest.name }, { decisions: parsed.decisions, refusedKeys: parsed.refusedDecisions }) ?? []);
+    const posted = listRefused || !decisionsListed ? [] : (this.deps.decisions?.sync({ ...this.hillTrick(rt), name: manifest.name }, { decisions: parsed.decisions, refusedKeys: parsed.refusedDecisions, sessions: new Set(facts.sessions.map((session) => session.id)) }) ?? []);
     // An absent `decisions` key leaves the trick's Decisions as they were, so it leaves this as it was too.
     if (!listRefused && decisionsListed) rt.decides = parsed.decisions.length > 0;
     // What the tolerant read left out (a node kind or a place this Collie does not draw) is one note on
