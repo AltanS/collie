@@ -5,7 +5,7 @@
 // The cards wear the machine tints of a two-machine crew (bluefin and minibuch), as `LiveDecisionCard`
 // would hand them on one.
 //
-// Cards are numbered 1 to 48.
+// Cards are numbered 1 to 51.
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 
@@ -809,16 +809,16 @@ export function HillSection() {
       </Group>
 
       <Group title="Collie's own decision">
-        <Card state="hill-card-version" label="46: a new version, no new rights">
-          <CardHead n={46} title="A trick's new version, no new rights" />
+        <Card state="hill-card-version" label="49: a new version, no new rights">
+          <CardHead n={49} title="A trick's new version, no new rights" />
           <OneCard decision={versionPlain} />
         </Card>
-        <Card state="hill-card-version-rights" label="47: a new version with a new right">
-          <CardHead n={47} title="A trick's new version asks for a new right" />
+        <Card state="hill-card-version-rights" label="50: a new version with a new right">
+          <CardHead n={50} title="A trick's new version asks for a new right" />
           <OneCard decision={versionRights} />
         </Card>
-        <Card state="hill-card-version-used" label="48: the new version used">
-          <CardHead n={48} title="The new version used" />
+        <Card state="hill-card-version-used" label="51: the new version used">
+          <CardHead n={51} title="The new version used" />
           <OneCard decision={versionPlain} answer={answered({ ...receipts.typed, delivery: "none" }, "use")} />
         </Card>
       </Group>

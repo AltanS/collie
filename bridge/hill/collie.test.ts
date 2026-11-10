@@ -215,3 +215,24 @@ describe("reading Collie's own Decision", () => {
     expect(JSON.parse(readFileSync(file, "utf8")).decisions.map((entry: { id: string }) => entry.id)).toContain(decision.id);
   });
 });
+
+describe("clearing Collie's own Decision", () => {
+  test("a closed one leaves a tombstone under its collie key, an open one stays, and a repeated request id is refused", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "hill-collie-"));
+    roots.push(dir);
+    const r = rig(dir);
+    const closed = posted(r.hill.postCollie(SENDER, card(1)));
+    await tap(r, closed, 50, "keep");
+    const open = posted(r.hill.postCollie({ ...SENDER, ref: { ...REF, id: "other" } }, card(2)));
+    expect(r.hill.clear(null)).toEqual({ cleared: [closed.id], skipped: [] });
+    expect(r.store.get(closed.id)).toBeUndefined();
+    expect(r.store.get(open.id)?.state).toBe("open");
+    expect(r.hill.clearedState(closed.id)).toBe("answered");
+    expect(r.store.tombstone(closed.id)).toMatchObject({ requestId: uuid(1), key: "collie:version:legs", state: "answered" });
+    // The tombstone is on disk: a restarted bridge still refuses the same request id instead of posting twice.
+    const again = rig(dir);
+    expect(again.hill.clearedState(closed.id)).toBe("answered");
+    const repost = again.hill.postCollie(SENDER, card(1));
+    expect(repost.ok).toBe(false);
+  });
+});
