@@ -1,10 +1,10 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { scrubEnv, scrubReason } from "./env.ts";
-import { outcomeProblem, runProvider, STDERR_CAP_BYTES, type RunSpec } from "./run.ts";
+import { BUN_BE_BUN, launchOf, outcomeProblem, runProvider, runtimeScript, shellArgv, STDERR_CAP_BYTES, type RunSpec } from "./run.ts";
 
 const dirs: string[] = [];
 async function tempDir(): Promise<string> {
@@ -161,5 +161,61 @@ describe("one run", () => {
 
   test("a clean exit is no problem", async () => {
     expect(outcomeProblem(await run("echo '{}'"), 200)).toBeNull();
+  });
+});
+
+describe("the two forms of a run line", () => {
+  const COMPILED = { execPath: "/opt/collie/bin/collie", compiled: true };
+  const PLAIN = { execPath: "/usr/local/bin/bun", compiled: false };
+  const ENV = { PATH: "/usr/bin:/bin", HOME: "/home/op" };
+
+  test("a single script path in the folder is the script form; anything with shell words is not", () => {
+    for (const ok of ["program.ts", "./program.ts", "src/main.mts", "a_b-c.1.js", "x.mjs"]) expect(runtimeScript(ok)).toBe(ok.replace(/^\.\//u, ""));
+    for (const shell of ["./run.sh ./program.ts", "bun program.ts", "program.ts --flag", "/abs/program.ts", "../up.ts", ".hidden/x.ts", "x.ts;rm -rf", "x.py", "program.tsx", "'program.ts'", "a//b.ts", "a/../b.ts", ""]) {
+      expect(runtimeScript(shell)).toBeNull();
+    }
+  });
+
+  test("the script form runs Collie's own executable on the script, with BUN_BE_BUN only when it is compiled", () => {
+    const compiled = launchOf("program.ts", ENV, { cwd: "/t/look", platform: "linux", runtime: COMPILED });
+    expect(compiled.argv).toEqual(["/opt/collie/bin/collie", "--no-install", "/t/look/program.ts"]);
+    expect(compiled.env).toEqual({ ...ENV, [BUN_BE_BUN]: "1" });
+    const plain = launchOf("./program.ts", ENV, { cwd: "/t/look", platform: "linux", runtime: PLAIN });
+    expect(plain.argv).toEqual(["/usr/local/bin/bun", "--no-install", "/t/look/program.ts"]);
+    expect(plain.env).toEqual(ENV);
+    expect(ENV).not.toHaveProperty(BUN_BE_BUN);
+  });
+
+  test("the shell form is unchanged, and never carries BUN_BE_BUN, not even under a compiled bridge", () => {
+    for (const command of ["./run.sh ./program.ts", "./provider.sh", "darius due --json"]) {
+      const launch = launchOf(command, ENV, { cwd: "/t/look", platform: "linux", runtime: COMPILED });
+      expect(launch.argv).toEqual(shellArgv(command, "linux"));
+      expect(launch.env).toEqual(ENV);
+    }
+  });
+
+  test("the scrub still applies: BUN_BE_BUN from the bridge's environment never passes, even listed", () => {
+    expect(scrubReason(BUN_BE_BUN, "1", new Set([BUN_BE_BUN]))).toBe("Collie's own runtime switch");
+    const scrubbed = scrubEnv({ ...ENV, BUN_BE_BUN: "1", COLLIE_TOKEN: "tok", OPENROUTER_API_KEY: KEY }, [BUN_BE_BUN]);
+    expect(scrubbed).toEqual(ENV);
+    expect(launchOf("./x.sh", scrubbed, { cwd: "/t", platform: "linux", runtime: COMPILED }).env).not.toHaveProperty(BUN_BE_BUN);
+  });
+
+  test("a script runs with the given runtime: the facts on stdin, the folder as cwd, the variable only when compiled", async () => {
+    const cwd = await tempDir();
+    await writeFile(join(cwd, "program.ts"), 'const facts = await Bun.stdin.text();\nconsole.log(JSON.stringify({ facts, cwd: process.cwd(), be: process.env.BUN_BE_BUN ?? null, token: process.env.COLLIE_TOKEN ?? null }));\n');
+    const env = scrubEnv({ ...process.env, COLLIE_TOKEN: "tok-must-not-leak" });
+    for (const compiled of [false, true]) {
+      const outcome = await runProvider({ command: "program.ts", cwd, env, stdin: '{"v":1}', runtime: { execPath: process.execPath, compiled } });
+      expect(outcome.kind).toBe("exited");
+      if (outcome.kind !== "exited") return;
+      expect(JSON.parse(outcome.stdout)).toEqual({ facts: '{"v":1}', cwd, be: compiled ? "1" : null, token: null });
+    }
+  });
+
+  test("a shell run under a compiled bridge sees no BUN_BE_BUN", async () => {
+    const outcome = await run("env", { env: scrubEnv({ ...process.env, BUN_BE_BUN: "1" }), runtime: COMPILED });
+    expect(outcome.kind).toBe("exited");
+    if (outcome.kind === "exited") expect(outcome.stdout).not.toContain("BUN_BE_BUN");
   });
 });

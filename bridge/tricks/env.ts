@@ -7,8 +7,8 @@ import { redactText } from "../redact.ts";
 // names each variable in its manifest, `env = ["GH_TOKEN"]`; `collie trick check` and `GET /api/tricks`
 // show every name it asked for, so the person sees what it reads. Some names are never passed, even
 // when listed ({@link neverReason}): the bridge's own settings (`COLLIE_*`), the multiplexer's
-// (`HERDR_*`), and any socket (`*_SOCK`, `*_SOCKET`), which would hand the program an agent or a daemon
-// that acts for the user.
+// (`HERDR_*`), any socket (`*_SOCK`, `*_SOCKET`), which would hand the program an agent or a daemon
+// that acts for the user, and `BUN_BE_BUN`, which only the runner sets, for a script run (run.ts).
 //
 // A base variable whose VALUE the secret mask would change is dropped too (`TERM=sk-or-v1-...`); a
 // listed one is passed as it is, because the person asked for it by name.
@@ -48,6 +48,8 @@ export function neverReason(name: string): string | null {
   if (upper.startsWith("COLLIE_")) return "a COLLIE_ variable";
   if (upper.startsWith("HERDR_")) return "a HERDR_ variable";
   if (upper.endsWith("_SOCK") || upper.endsWith("_SOCKET")) return "a socket";
+  // The runner adds it to a script run alone (run.ts): passed on, it turns any `collie` the program calls into `bun`.
+  if (upper === "BUN_BE_BUN") return "Collie's own runtime switch";
   return null;
 }
 

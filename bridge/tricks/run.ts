@@ -1,5 +1,8 @@
+import { join } from "node:path";
+
 import { HOST } from "../host.ts";
 import { redactText } from "../redact.ts";
+import { isEmbedded } from "../root.ts";
 
 // ONE RUN OF A PROVIDER (M94 slice 01): spawn, feed the facts, read with caps, kill on time.
 //
@@ -22,7 +25,10 @@ export const STDOUT_CAP_BYTES = 64 * 1024;
 export const STDERR_CAP_BYTES = 8 * 1024;
 
 export interface RunSpec {
-  /** The manifest's `run` line, run by the shell in `cwd`. */
+  /**
+   * The manifest's `run` line. A single script path (`program.ts`) runs with Collie's own runtime; any
+   * other line is run by the shell in `cwd` ({@link launchOf}).
+   */
   command: string;
   cwd: string;
   env: Record<string, string>;
@@ -33,6 +39,65 @@ export interface RunSpec {
   stderrCap?: number;
   /** The platform, for the shell. Default `HOST.platform` (bridge/host.ts). */
   platform?: NodeJS.Platform;
+  /** The runtime a script line runs with. Default this process's own ({@link ownRuntime}). For a test. */
+  runtime?: Runtime;
+}
+
+// ── THE TWO FORMS OF A RUN LINE (M94 review 4) ──────────────────────────────────────────────────
+// `run = "program.ts"` (or `.js`, `.mjs`, `.mts`): one relative path to a script inside the trick
+// folder, no shell words. It runs with Collie's own runtime: the compiled `collie` is a Bun executable,
+// and with `BUN_BE_BUN=1` in its environment it behaves as the `bun` CLI. So the bridge spawns its own
+// `process.execPath` on the script, with that one variable added to the scrubbed environment, and the
+// trick needs no `bun` on the unit's PATH. Under plain `bun` (a source checkout, the tests) the
+// executable already is bun, and the variable is left out. `--no-install` keeps Bun from fetching a
+// package a bare import names: a script imports only relative files in its own folder and the
+// `node:` and `bun:` built-ins.
+//
+// Every other `run` value is a shell command line, as it always was (`./legs.sh`, `bun x.ts`,
+// `darius due --json`). `BUN_BE_BUN` never reaches one: env.ts never passes it, even when listed.
+
+/** The script extensions a run line names to run with Collie's own runtime. */
+export const RUNTIME_EXTENSIONS = ["ts", "js", "mjs", "mts"] as const;
+
+/** One relative path, each segment starting with a letter, digit or `_` (no `..`, no dot folder), ending in a runtime extension. */
+const RUNTIME_SCRIPT = /^(?:\.\/)?(?:[A-Za-z0-9_][A-Za-z0-9._-]*\/)*[A-Za-z0-9_][A-Za-z0-9._-]*\.(?:ts|js|mjs|mts)$/;
+
+/** The variable that turns a compiled Bun executable into the `bun` CLI. */
+export const BUN_BE_BUN = "BUN_BE_BUN";
+
+/** The script a run line names for Collie's own runtime (without a leading `./`), or null for a shell line. */
+export function runtimeScript(command: string): string | null {
+  if (!RUNTIME_SCRIPT.test(command)) return null;
+  return command.startsWith("./") ? command.slice(2) : command;
+}
+
+/** The executable a script line runs with, and whether it is a compiled Collie (which needs `BUN_BE_BUN`). */
+export interface Runtime {
+  execPath: string;
+  compiled: boolean;
+}
+
+/** This process's own runtime: the compiled `collie`, or the `bun` that runs a source checkout. */
+export function ownRuntime(): Runtime {
+  return { execPath: process.execPath, compiled: isEmbedded(Bun.main) };
+}
+
+/** What a run spawns: the argv and the environment. */
+export interface Launch {
+  argv: string[];
+  env: Record<string, string>;
+}
+
+/**
+ * How a run line starts, the one rule the bridge's runner and `collie trick check --run` share: a
+ * script line runs with `runtime` (plus `BUN_BE_BUN=1` when it is compiled), any other line with the
+ * shell. `env` is the scrubbed environment (env.ts); it is copied, never changed.
+ */
+export function launchOf(command: string, env: Record<string, string>, opts: { cwd: string; platform: NodeJS.Platform; runtime: Runtime }): Launch {
+  const script = runtimeScript(command);
+  if (script === null) return { argv: shellArgv(command, opts.platform), env };
+  const argv = [opts.runtime.execPath, "--no-install", join(opts.cwd, script)];
+  return { argv, env: opts.runtime.compiled ? { ...env, [BUN_BE_BUN]: "1" } : env };
 }
 
 /** How a run ended. Every text here is masked. */
@@ -141,9 +206,10 @@ export async function runProvider(spec: RunSpec): Promise<RunOutcome> {
   const elapsed = (): number => Math.round(performance.now() - started);
   let child: ReturnType<typeof Bun.spawn<"pipe", "pipe", "pipe">>;
   try {
-    child = Bun.spawn(shellArgv(spec.command, platform), {
+    const launch = launchOf(spec.command, spec.env, { cwd: spec.cwd, platform, runtime: spec.runtime ?? ownRuntime() });
+    child = Bun.spawn(launch.argv, {
       cwd: spec.cwd,
-      env: spec.env,
+      env: launch.env,
       stdin: "pipe",
       stdout: "pipe",
       stderr: "pipe",

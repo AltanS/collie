@@ -11,6 +11,24 @@ tricks" milestone in the tracker.
 (tones, icons, places, node kinds) and one total parser per document. It imports only `../json`, so
 the bridge, the CLI and the web all load it by relative path, with no DOM and no `@/` alias.
 
+## The run line
+
+`run` in `trick.toml` takes two forms (`bridge/tricks/run.ts`, `launchOf`, the one rule the bridge's
+runner and `collie trick check --run` share):
+
+- **A script**: `run = "program.ts"` (or `.js`, `.mjs`, `.mts`), one relative path inside the trick
+  folder with no shell words. Collie runs it with its own runtime: the compiled `collie` is a Bun
+  executable, and the runner spawns it on the script with `BUN_BE_BUN=1` added to the scrubbed
+  environment, so the bridge's unit needs no `bun` on its PATH. Under plain `bun` (a source checkout,
+  the tests) the runner spawns that `bun` without the variable. Nothing is installed and nothing is
+  fetched (`--no-install`): a script imports only relative files in its own folder and the `node:`
+  and `bun:` built-ins. `collie trick check` warns on each line that imports a package by a bare name.
+  `BUN_BE_BUN` is visible to the script, so a script that starts `collie` itself removes it from the
+  child's environment first (the helper's `t.sh` does).
+- **A shell command line**: anything else (`./legs.sh`, `bun program.ts`, `darius due --json`), run
+  by `/bin/sh -c` (or `cmd.exe /c`) in the trick folder, as before. It never sees `BUN_BE_BUN`: the
+  environment scrub never passes it, even when `env` lists it.
+
 ## The parsers
 
 - `parseManifest(toml)`: `trick.toml` after the TOML parse. A later field (`watch`, `on`, `serve`)

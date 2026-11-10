@@ -7,7 +7,7 @@ import { trickCodeHash } from "../bridge/tricks/code-hash.ts";
 import { switchesPath } from "../bridge/tricks/paths.ts";
 import { EXIT, type Io } from "./io.ts";
 import { tricksFindings } from "./trick-findings.ts";
-import { checkStatic, cmdTrick, cmdTrickCheck, cmdTrickInit, cmdTrickList, cmdTrickSkill, cmdTrickSwitch, looksBinary, runsLines, sampleAgents, SKILL_BYTES_MAX, TRICK_WRITE_BRIEF, TRICK_SUBCOMMANDS, type TrickCheckReport, type TrickDeps } from "./trick.ts";
+import { checkStatic, isBareImport, cmdTrick, cmdTrickCheck, cmdTrickInit, cmdTrickList, cmdTrickSkill, cmdTrickSwitch, looksBinary, runsLines, sampleAgents, SKILL_BYTES_MAX, TRICK_WRITE_BRIEF, TRICK_SUBCOMMANDS, type TrickCheckReport, type TrickDeps } from "./trick.ts";
 import { realFiles } from "./sys.ts";
 import { parseTrickDocument, type TricksReply } from "../web/src/lib/tricks/schema.ts";
 
@@ -227,6 +227,52 @@ describe("collie trick check", () => {
     const printed = e.err.join("\n");
     expect(printed).toContain("darius: not found");
     expect(printed).not.toContain(KEY);
+  });
+});
+
+describe("collie trick check, a script Collie's runtime runs", () => {
+  async function scriptFolder(files: Record<string, string>, run = "program.ts"): Promise<string> {
+    const root = await tempDir();
+    const dir = join(root, "rt");
+    await mkdir(dir);
+    await writeFile(join(dir, "trick.toml"), `id = "rt"\nname = "Rt"\nrun = "${run}"\nplaces = ["belt"]\n`);
+    for (const [name, text] of Object.entries(files)) {
+      await mkdir(dirname(join(dir, name)), { recursive: true });
+      await writeFile(join(dir, name), text);
+    }
+    return dir;
+  }
+
+  test("isBareImport: relative, node:, bun: and the built-ins need no install; a package name does", () => {
+    for (const ok of ["./trick.ts", "../x.ts", "/abs.ts", "node:fs", "bun:sqlite", "bun", "fs", "path"]) expect(isBareImport(ok)).toBe(false);
+    for (const bare of ["left-pad", "@scope/pkg", "zod", "lodash/fp"]) expect(isBareImport(bare)).toBe(true);
+  });
+
+  test("warns on each line that imports a package; relative, built-in and type imports pass", async () => {
+    const dir = await scriptFolder({
+      "program.ts": ['import { run } from "./trick.ts";', 'import { readFileSync } from "node:fs";', 'import type { X } from "some-types";', 'import { z } from "zod";', 'const m = await import("left-pad");', "run(async () => {});"].join("\n"),
+      "trick.ts": 'export const run = (f: () => Promise<void>) => f();\nexport * from "chalk";\n',
+    });
+    const report = await checkStatic(dir, realFiles);
+    const imports = report.warnings.filter((w) => w.kind === "import").map((w) => `${w.file}:${w.line}`);
+    expect(imports).toEqual(["program.ts:4", "program.ts:5", "trick.ts:2"]);
+    expect(report.problems).toEqual([]);
+  });
+
+  test("a shell-form trick gets no import warning; a script line that names a missing file is a problem", async () => {
+    const shell = await scriptFolder({ "p.sh": "#!/bin/sh\n", "x.ts": 'import { z } from "zod";\n' }, "./p.sh");
+    expect((await checkStatic(shell, realFiles)).warnings.filter((w) => w.kind === "import")).toEqual([]);
+    const missing = await scriptFolder({});
+    expect((await checkStatic(missing, realFiles)).problems).toEqual(["The run line names program.ts, which is not in the folder."]);
+  });
+
+  test("--run runs the script with the runtime that runs the tests, and parses what it prints", async () => {
+    const dir = await scriptFolder({
+      "program.ts": 'const facts = JSON.parse(await Bun.stdin.text());\nconsole.log(JSON.stringify({ v: 1, parts: [{ at: "belt", id: "belt", mark: { label: String(facts.sessions.length) } }] }));\n',
+    });
+    const d = await deps();
+    expect(await cmdTrickCheck(d, ["--run", dir])).toBe(EXIT.OK);
+    expect(d.out.join("\n")).toContain("parts: belt belt");
   });
 });
 

@@ -1,4 +1,5 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { builtinModules } from "node:module";
 import { tmpdir } from "node:os";
 import { basename, isAbsolute, join, resolve } from "node:path";
 
@@ -7,7 +8,7 @@ import { diskTrickFs, trickCodeHash, walkTrickCode, type CodeEntry } from "../br
 import { createTrickScanner, readManifestFile, type FoundTrick } from "../bridge/tricks/discover.ts";
 import { isBaseEnvName, neverReason, scrubEnv } from "../bridge/tricks/env.ts";
 import { MANIFEST_FILE, tricksConfigDir, switchesPath } from "../bridge/tricks/paths.ts";
-import { outcomeProblem, runProvider, type RunOutcome } from "../bridge/tricks/run.ts";
+import { outcomeProblem, runProvider, runtimeScript, type RunOutcome } from "../bridge/tricks/run.ts";
 import { isChanged } from "../bridge/tricks/service.ts";
 import { parseSwitches, updateSwitches, withSwitch } from "../bridge/tricks/switches.ts";
 import type { CrewFetch } from "../bridge/crew/peer-client.ts";
@@ -296,7 +297,7 @@ export interface RunsLine {
 }
 
 /** What a warning is about. */
-export type CheckWarningKind = "spawn" | "network" | "write" | "model";
+export type CheckWarningKind = "spawn" | "network" | "write" | "model" | "import";
 
 /** One line a grep flags. A warning, never a refusal: `check` still passes. */
 export interface CheckWarning {
@@ -363,7 +364,7 @@ const WARN_PATTERNS = {
   network: /\bfetch\s*\(|\bcurl\b|\bwget\b|\bWebSocket\b|\bXMLHttpRequest\b|\bnet\.connect\b|\bhttps?\.(?:request|get)\s*\(|\brequests\.(?:get|post|put|delete)\b|\burllib\b|\bgh\s+(?:api|pr|issue|run|repo|release|search)\b|["'`]gh["'`]/,
   write: /\b(?:writeFile|writeFileSync|appendFile|appendFileSync|createWriteStream|copyFile|copyFileSync|rename|renameSync|rm|rmSync|unlink|unlinkSync|mkdir|mkdirSync)\s*\(|\bBun\.write\s*\(/,
   model: new RegExp(`\\b(?:anthropic|openai|openrouter)\\b|\\[\\s*["'\`](?:${AGENT_NAMES})["'\`]|\\b(?:which|findTool|Bun\\.which)\\s*\\(\\s*["'\`](?:${AGENT_NAMES})["'\`]`, "i"),
-} satisfies Record<CheckWarningKind, RegExp>;
+} satisfies Record<Exclude<CheckWarningKind, "import">, RegExp>;
 /** In a shell file: a redirect into a file, and an agent program in command position. */
 const SHELL_WRITE = /(?:^|[^<>&0-9=-])>>?\s*(?!&|\/dev\/null)[^\s>&|;)]/;
 const SHELL_MODEL = new RegExp(`(?:^|[;&|(]|\\$\\(|\\bexec\\s+|\\bcommand\\s+-v\\s+)\\s*(?:${AGENT_NAMES})(?=\\s|$|\\))`);
@@ -375,7 +376,44 @@ const WARN_TEXT = {
   network: "reaches the network",
   write: "writes a file outside the trick's state folder, as far as a grep can tell",
   model: "calls an agent program or a model API; a timer run should only read; a timer that calls a model spends your subscription with no session to show for it",
+  import: "imports a package; a script Collie's runtime runs gets no install, so it may import only files in its own folder and node: or bun: built-ins",
 } satisfies Record<CheckWarningKind, string>;
+
+/** The import specifiers of one source line: `import ... from "x"`, `export ... from "x"`, `import("x")`, `require("x")`. */
+const IMPORT_SPECIFIERS = /(?:^|[\s;])(?:import|export)\s+(?:[^'"`;]*?\sfrom\s+)?["']([^"']+)["']|\b(?:import|require)\s*\(\s*["']([^"']+)["']\s*\)/g;
+/** The file names a runtime-run trick's sources are read for imports by. */
+const SCRIPT_FILE = /\.(?:ts|mts|cts|js|mjs|cjs|tsx|jsx)$/;
+/** The names a script may import bare: Bun's own module and Node's built-ins. */
+const BARE_BUILTINS: ReadonlySet<string> = new Set(["bun", ...builtinModules]);
+
+/** Whether an import specifier needs an install: not relative, not absolute, not `node:` or `bun:`, not a built-in. */
+export function isBareImport(specifier: string): boolean {
+  if (specifier.startsWith("./") || specifier.startsWith("../") || specifier.startsWith("/")) return false;
+  if (specifier.startsWith("node:") || specifier.startsWith("bun:")) return false;
+  return !BARE_BUILTINS.has(specifier);
+}
+
+/**
+ * The warnings for a trick Collie's own runtime runs: every line of a script file that imports a
+ * package by a bare name. A grep, as the others are: an import built at run time is not seen.
+ */
+export function importWarnings(sources: readonly { file: string; text: string }[]): CheckWarning[] {
+  const out: CheckWarning[] = [];
+  for (const { file, text } of sources) {
+    if (!SCRIPT_FILE.test(file)) continue;
+    text
+      .slice(0, SOURCE_READ_MAX)
+      .split(/\r?\n/)
+      .forEach((raw, i) => {
+        const t = raw.trim();
+        // A type import is erased before the script runs: it needs no install.
+        if (isCommentLine(t) || /^(?:import|export)\s+type\s/u.test(t)) return;
+        const bare = [...t.matchAll(IMPORT_SPECIFIERS)].some((m) => isBareImport(m[1] ?? m[2] ?? "./"));
+        if (bare) out.push({ kind: "import", file, line: i + 1, text: shortLine(t) });
+      });
+  }
+  return out;
+}
 
 /** The files inside `folder` that the `run` line names, by its whitespace-split words. */
 /** The provider files a `run` line names, and the `./` words that name nothing. */
@@ -495,6 +533,8 @@ export async function checkStatic(folder: string, files: Pick<Files, "read" | "e
   const named = providerFiles(read.manifest.run, folder, files);
   report.files = named.files;
   for (const word of named.missing) report.problems.push(`The run line names ${word}, which is not in the folder.`);
+  const script = runtimeScript(read.manifest.run);
+  if (script !== null && named.files.length === 0 && !named.missing.includes(read.manifest.run)) report.problems.push(`The run line names ${script}, which is not in the folder.`);
   for (const file of named.files) {
     const text = files.read(file);
     if (text === null) {
@@ -517,7 +557,8 @@ export async function checkStatic(folder: string, files: Pick<Files, "read" | "e
   report.runs = runsLines(scanned).slice(0, RUNS_MAX);
   // The run line itself is a shell command line, whatever it names.
   const graded = [...sources.filter((src) => src.file !== MANIFEST_FILE), { file: MANIFEST_FILE, text: read.manifest.run, shell: true }];
-  report.warnings = checkWarnings(graded, read.manifest.everyMs !== undefined).slice(0, WARNINGS_MAX);
+  const imports = script === null ? [] : importWarnings(sources);
+  report.warnings = [...checkWarnings(graded, read.manifest.everyMs !== undefined), ...imports].slice(0, WARNINGS_MAX);
   return report;
 }
 
