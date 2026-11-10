@@ -84,7 +84,7 @@
       "s"
     ]
   },
-  "removed-table": {
+  "table-first-schema": {
     "doc": {
       "v": 1,
       "parts": [
@@ -118,13 +118,16 @@
         }
       ]
     },
-    "paths": [],
+    "paths": [
+      "/parts/1/view/1/kids"
+    ],
     "notes": [
-      "/parts/1/view/1/kind"
+      "/parts/1/view/1/columns",
+      "/parts/1/view/1/rows",
+      "/parts/1/view/1/items"
     ],
     "keeps": [
-      "belt",
-      "s"
+      "belt"
     ]
   },
   "removed-kv": {
@@ -514,7 +517,7 @@
       "s"
     ]
   },
-  "removed-spark": {
+  "spark-first-schema": {
     "doc": {
       "v": 1,
       "parts": [
@@ -545,13 +548,14 @@
         }
       ]
     },
-    "paths": [],
+    "paths": [
+      "/parts/1/view/1/attrs"
+    ],
     "notes": [
-      "/parts/1/view/1/kind"
+      "/parts/1/view/1/values"
     ],
     "keeps": [
-      "belt",
-      "s"
+      "belt"
     ]
   },
   "removed-ring": {

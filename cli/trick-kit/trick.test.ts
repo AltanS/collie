@@ -122,6 +122,47 @@ describe("the builders cannot drift from the schema", () => {
     expect(read.view).toHaveLength(view.length);
   });
 
+  test("the display kinds of 2026-11-10: each builder's node parses in a Session and in a Decision's view", () => {
+    const session: Node[] = [
+      v.image("media/shot.png", "a shot", 390, 844, { caption: "the card", fit: "cover", focus: { x: 50, y: 20, zoom: 2 } }),
+      v.compare(v.image("media/a.png", "old", 390, 844), v.image("media/b.png", "new", 390, 844)),
+      v.table({ columns: ["check", { label: "ms", align: "end" }], rows: [["lint", 812], ["types", { text: "4031", tone: "warn" }]] }),
+      v.diff(["@@ -1 +1 @@", "-old", "+new"], { file: "src/app.ts" }),
+      v.spark([4.2, 3.9, 4.8, 3.1], { label: "CI minutes", tone: "ok" }),
+      v.card([v.table({ columns: ["a"], rows: [["one"]] }), v.spark([1, 2]), v.diff("+x"), v.compare(v.image("media/a.png", "a", 4, 3), v.image("media/b.png", "b", 4, 3))]),
+    ];
+    const parsed = parseTrickDocumentText(JSON.stringify({ v: 1, parts: [{ at: "session", id: "main", view: session }] }), { declared: ALL_PLACES });
+    expect(parsed.refusals).toEqual([]);
+
+    const view: Node[] = [
+      v.image(0, { caption: "The card after the change", focus: { x: 50, y: 30 } }),
+      v.compare(0, { ref: 1, label: "1.28", focus: { x: 50, y: 10, zoom: 1.5 } }),
+      v.beforeAfter(0, 1, { before: "1.27", fit: "cover", focus: { x: 50, y: 0 } }),
+      v.stat("34/34", "cases", { trend: [30, 32, 34], tone: "ok" }),
+      v.stat(7, "minutes"),
+      v.checks([{ label: "lint", ok: true }, { label: "e2e", ok: false, note: "two cases red on WebKit" }]),
+      v.checks([{ label: "types", ok: true }], { label: "Checks" }),
+      v.group([v.table({ columns: ["file", "lines"], rows: [["src/app.ts", "+12 -3"]] }), v.diff("@@ -1 +1 @@\n-a\n+b")], { label: "Changes" }),
+      v.spark([1, -2.5, 0.000001], { label: "drift" }),
+    ];
+    const read = parseDecisionView(parseJson(JSON.stringify(view)), "/view", { images: 2 });
+    expect(read.refusals).toEqual([]);
+    expect(read.view).toHaveLength(view.length);
+    // A ref past the Decision's pictures is refused, at write.
+    expect(parseDecisionView(parseJson(JSON.stringify([v.image(2)])), "/view", { images: 2 }).refusals.map((r) => r.path)).toEqual(["/view/0/attrs/ref"]);
+  });
+
+  test("the new builders write the schema's words: focus and values as text, a table flat as heads then cells", () => {
+    expect(v.image(1, { focus: { x: 50, y: 20 } })).toEqual({ kind: "image", attrs: { ref: "1", focus: "50 20" } });
+    expect(v.image(0, { focus: { x: 12.5, y: 0, zoom: 2 } }).attrs?.focus).toBe("12.5 0 2");
+    expect(v.spark([1, 0.1 + 0.2, -0]).attrs?.values).toBe("1 0.3 0");
+    expect(v.table({ columns: ["a", "b"], rows: [["x", 1]] }).kids?.map((k) => `${k.kind}:${k.text ?? ""}`)).toEqual(["col:a", "col:b", "cell:x", "cell:1"]);
+    expect(v.compare(0, 1).kids?.map((k) => k.attrs?.ref)).toEqual(["0", "1"]);
+    expect(v.checks([{ label: "lint", ok: true }]).kids?.[0]).toEqual({ kind: "row", text: "lint", attrs: { icon: "check", tone: "ok" } });
+    expect(v.checks([{ label: "lint", ok: true }], { label: "Checks" })).toMatchObject({ kind: "group", attrs: { label: "Checks" }, kids: [{ kind: "row" }] });
+    expect(v.stat(7, "min")).toEqual({ kind: "number", text: "7", attrs: { label: "min" } });
+  });
+
   test("the sample program prints a document the parser takes whole, and it is about 25 lines", async () => {
     const { dir, state } = await trickFolder(sampleProgram("kit"), ["status", "dashboard", "session"]);
     await writeFile(join(dir, "config.toml"), sampleConfig("kit"));

@@ -179,7 +179,7 @@
       }
     },
     {
-      // The trick helper (M94) is copied into a trick folder as text and runs as the trick's own program, outside Collie. Its one `typeof` sits in `mapText`, a walk over an arbitrary JSON document where `typeof` IS the dispatch, audit.ts's `sanitize()` case.
+      // The trick helper (M94) is copied into a trick folder as text and runs as the trick's own program, outside Collie. Its `typeof` sits in `mapText`, a walk over an arbitrary JSON document where `typeof` IS the dispatch, audit.ts's `sanitize()` case, and in the view builders that take a union argument (`v.image`, `v.compare`, `v.table`), where it picks the form.
       "files": [
         "**/cli/trick-kit/trick.ts"
       ],

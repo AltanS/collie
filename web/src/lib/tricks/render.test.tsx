@@ -5,8 +5,8 @@ import type { JsonObject, JsonValue } from "../json";
 import { LEGS_DOCUMENT, TRACKER_DOCUMENT, nodeDocument } from "./fixtures";
 import { heightCss, reservedHeight, stripFitsOneRow, viewForm, viewHeight } from "./layout";
 import { ARM_DWELL_MS, ARM_MS } from "../arm";
-import { hostParts, linkTargetOf, renderView, type RenderCtx } from "./render";
-import { NODE_KINDS, TONE_TEXT_CLASS, parseTrickDocument, type View } from "./schema";
+import { hostParts, linkTargetOf, renderView, type RenderCtx, type ViewPicture, type ViewPictureDraw, type ViewPictures } from "./render";
+import { NODE_KINDS, TONE_TEXT_CLASS, parseDecisionView, parseTrickDocument, type View } from "./schema";
 import type { TapState } from "./store";
 
 const copyText = vi.hoisted(() => vi.fn((_text: string) => Promise.resolve()));
@@ -51,8 +51,8 @@ function nodeEl(container: HTMLElement, kind: string): HTMLElement {
 
 /** Every box that states its own size, in order: what fixes the view's height in the DOM. */
 function heightEvidence(container: HTMLElement): string {
-  return [...container.querySelectorAll<HTMLElement>("[data-trick-node]")]
-    .map((el) => `${el.dataset.trickNode}:${el.style.height}${el.style.aspectRatio === "" ? "" : `@${el.style.aspectRatio}`}`)
+  return [...container.querySelectorAll<HTMLElement>('[data-trick-node], [data-slot="focus-frame"]')]
+    .map((el) => `${el.dataset.trickNode ?? "frame"}:${el.style.height}${el.style.aspectRatio === "" ? "" : `@${el.style.aspectRatio}`}`)
     .join(",");
 }
 
@@ -61,13 +61,20 @@ const list = (...kids: JsonObject[]): JsonObject => ({ kind: "list", kids });
 const bar = (...kids: JsonObject[]): JsonObject => ({ kind: "bar", kids });
 const button = (attrs: JsonObject): JsonObject => ({ kind: "button", attrs });
 const para = (text: string, attrs?: JsonObject): JsonObject => ({ kind: "para", text, ...(attrs && { attrs }) });
+const shot = (src: string, alt: string, extra: JsonObject = {}): JsonObject => ({ kind: "image", attrs: { src, alt, w: "390", h: "844", ...extra } });
+const cell = (text: string, attrs?: JsonObject): JsonObject => (attrs === undefined ? { kind: "cell", text } : { kind: "cell", text, attrs });
+const table = (heads: string[], rows: string[][], cellAttrs?: JsonObject): JsonObject => ({
+  kind: "table",
+  kids: [...heads.map((text) => ({ kind: "col", text })), ...rows.flat().map((text) => cell(text, cellAttrs))],
+});
 
 beforeEach(() => copyText.mockClear());
 
 describe("every kind draws", () => {
   it.each(NODE_KINDS)("%s, as its snapshot", (kind) => {
     const { container } = draw(viewOf(nodeDocument(kind)));
-    expect(container.querySelector(`[data-trick-node="${kind}"]`)).not.toBeNull();
+    // A table's heads and cells are drawn by the table, as the cells of one MiniTable.
+    expect(container.querySelector(`[data-trick-node="${kind === "col" || kind === "cell" ? "table" : kind}"]`)).not.toBeNull();
     expect(container.querySelector('[data-trick-node="placeholder"]')).toBeNull();
     expect(container.innerHTML).toMatchSnapshot();
   });
@@ -147,6 +154,21 @@ const PAIRS = {
   number: [
     { kind: "number", text: "7" },
     { kind: "number", text: "1234/5678", attrs: { label: "cases green", unit: "cases", tone: "ok" } },
+  ],
+  compare: [
+    { kind: "compare", kids: [shot("media/a.png", "a"), shot("media/b.png", "b")] },
+    { kind: "compare", kids: [shot("media/before.png", "the reply box before", { caption: "Was" }), shot("media/after.png", "the reply box after", { focus: "50 80 3", fit: "cover" })] },
+  ],
+  table: [table(["a", "b"], [["1", "2"]]), table(["Case", "Time"], [["pane glide, the long one", "612 ms"]], { tone: "danger" })],
+  col: [table(["a"], [["1"]]), table(["A much longer head"], [["1"]])],
+  cell: [table(["a"], [["1"], ["2"]]), table(["a"], [["one, two, three"], [""]], { tone: "ok" })],
+  diff: [
+    { kind: "diff", text: "+a\n-b" },
+    { kind: "diff", text: "@@ -1 +1 @@\n context line that runs on" },
+  ],
+  spark: [
+    { kind: "spark", attrs: { values: "1 2" } },
+    { kind: "spark", attrs: { values: "612 580 540 455 380", tone: "ok", label: "pane glide, ms" } },
   ],
 } satisfies { readonly [K in (typeof NODE_KINDS)[number]]: readonly [JsonObject, JsonObject] };
 
@@ -454,7 +476,8 @@ describe("a meter, a number, an image", () => {
 
   it("reserves an image's box from w and h, and says its alt with no URL", () => {
     const { container } = draw(viewOf(nodeDocument("image")));
-    const box = nodeEl(container, "image");
+    const box = nodeEl(container, "image").querySelector<HTMLElement>('[data-slot="focus-frame"]');
+    if (box === null) throw new Error("no frame");
     expect(box.style.aspectRatio).toBe("1280 / 720");
     expect(box.querySelector("img")).toBeNull();
     expect(box.textContent).toBe("The reply box with the draft still in it");
@@ -467,7 +490,7 @@ describe("a meter, a number, an image", () => {
     expect(imageUrl).toHaveBeenCalledWith("media/case-24.png");
     expect(img?.getAttribute("loading")).toBe("lazy");
     expect(img?.getAttribute("src")).toBe("/api/tricks/image?src=media/case-24.png");
-    expect(img?.getAttribute("width")).toBe("1280");
+    expect(img?.style.objectFit).toBe("contain");
   });
 });
 
@@ -717,5 +740,142 @@ describe("words are never cut where they could wrap", () => {
     const lines = container.querySelector<HTMLElement>('[data-slot="trick-code-lines"]')!;
     expect(lines.className).toContain("overflow-x-auto");
     for (const line of lines.querySelectorAll("span")) expect(line.className).not.toMatch(/\btruncate\b/u);
+  });
+});
+
+describe("the display kinds of 2026-11-10", () => {
+  /** A Decision's view, as the schema reads it with `images` pictures attached. */
+  function decisionView(nodes: JsonObject[], images: number): View {
+    const parsed = parseDecisionView(nodes, "/view", { images });
+    if (parsed.view === undefined) throw new Error(`refused: ${JSON.stringify(parsed.refusals)}`);
+    return parsed.view;
+  }
+
+  /** The place's pictures, and every frame the renderer asked it to draw. */
+  interface PlacePictures {
+    pictures: ViewPictures;
+    asked: ViewPictureDraw[];
+  }
+
+  /** The place's pictures: two known sizes, each frame drawn as a marker that carries what the renderer asked for. */
+  function picturesOf(): PlacePictures {
+    const asked: ViewPictureDraw[] = [];
+    const known: ViewPicture[] = [
+      { width: 1200, height: 800, alt: "the old card" },
+      { width: 390, height: 844, alt: "the new card" },
+    ];
+    return {
+      asked,
+      pictures: {
+        at: (ref) => known[ref],
+        draw: (picture) => {
+          asked.push(picture);
+          return <span data-testid="picture" data-refs={picture.refs.join(",")} data-index={picture.index} />;
+        },
+      },
+    };
+  }
+
+  it("draws an image by ref through the place, cropped by focus, its caption under it", () => {
+    const { pictures, asked } = picturesOf();
+    const view = decisionView([{ kind: "image", attrs: { ref: "1", caption: "The card after the change", fit: "cover", focus: "50 20 2" } }], 2);
+    const { container } = draw(view, { pictures, wrap: true });
+    expect(asked).toHaveLength(1);
+    expect(asked[0]).toMatchObject({ refs: [1], index: 0, fit: "cover", crop: { x: 50, y: 20, zoom: 2 } });
+    expect(nodeEl(container, "image").querySelector("figcaption")?.textContent).toBe("The card after the change");
+  });
+
+  it("draws the placeholder for an image by ref with no pictures, or a ref the place does not hold", () => {
+    const view = decisionView([{ kind: "image", attrs: { ref: "1" } }], 2);
+    const bare = draw(view, { wrap: true });
+    expect(bare.container.querySelector('[data-trick-node="placeholder"]')).not.toBeNull();
+    bare.unmount();
+    const { container } = draw(view, { wrap: true, pictures: { at: () => undefined, draw: () => null } });
+    expect(container.querySelector('[data-trick-node="placeholder"]')).not.toBeNull();
+  });
+
+  it("draws a compare as two frames of one shape, labelled Before and After, a tap paging through both", () => {
+    const { pictures, asked } = picturesOf();
+    const view = decisionView([{ kind: "compare", kids: [{ kind: "image", attrs: { ref: "0" } }, { kind: "image", attrs: { ref: "1", caption: "1.28" } }] }], 2);
+    const { container } = draw(view, { pictures, wrap: true });
+    expect(asked.map((a) => [a.refs, a.index])).toEqual([
+      [[0, 1], 0],
+      [[0, 1], 1],
+    ]);
+    // Both take the taller shape, the phone shot's.
+    expect(new Set(asked.map((a) => a.ratio)).size).toBe(1);
+    const labels = [...nodeEl(container, "compare").querySelectorAll("figcaption")].map((el) => el.textContent);
+    expect(labels).toEqual(["Before", "1.28"]);
+  });
+
+  it("stacks a compare's two sides below 300 px of column", () => {
+    const { container } = draw(viewOfNodes({ kind: "compare", kids: [shot("media/a.png", "a"), shot("media/b.png", "b")] }));
+    const grid = nodeEl(container, "compare").firstElementChild!;
+    expect(grid.className).toContain("grid-cols-2");
+    expect(grid.className).toContain("@max-[299px]:grid-cols-1");
+  });
+
+  it("draws a table's heads and rows, a column of figures at the end side, a cell in its tone's ink", () => {
+    const view = viewOfNodes(table(["check", "ms"], [["lint", "812"], ["types", "4031"]], { tone: "ok" }));
+    const { container } = draw(view);
+    const heads = [...container.querySelectorAll("th")];
+    expect(heads.map((th) => th.textContent)).toEqual(["check", "ms"]);
+    expect(heads[1]!.className).toContain("text-right");
+    expect(heads[0]!.className).toContain("text-left");
+    const cells = [...container.querySelectorAll("td")];
+    expect(cells.map((td) => td.textContent)).toEqual(["lint", "812", "types", "4031"]);
+    expect(cells[1]!.className).toContain("tabular-nums");
+    expect(cells[0]!.className).toContain(TONE_TEXT_CLASS.ok);
+  });
+
+  it("keeps a table's rows at a fixed height in a Session and lets them grow in a Decision view", () => {
+    const view = viewOfNodes(table(["a", "b"], [["one", "two"]]));
+    const fixed = draw(view);
+    expect(fixed.container.querySelector("tbody tr")!.className).toContain("h-10");
+    fixed.unmount();
+    const grown = draw(view, { wrap: true });
+    expect(grown.container.querySelector("tbody tr")!.className).not.toContain("h-10");
+  });
+
+  it("tints a diff's lines by their first characters, the file over them", () => {
+    const { container } = draw(viewOfNodes({ kind: "diff", attrs: { file: "web/src/app.tsx" }, text: "@@ -1,2 +1,2 @@\n context\n-old\n+new" }));
+    const kinds = [...container.querySelectorAll<HTMLElement>("[data-diff-line]")].map((el) => el.dataset.diffLine);
+    expect(kinds).toEqual(["hunk", "context", "del", "add"]);
+    expect(container.querySelector('[data-slot="diff-lines-file"]')?.textContent).toBe("web/src/app.tsx");
+  });
+
+  it("draws a spark with its label and last figure, and says the lowest, the highest and the last", () => {
+    const { container } = draw(viewOfNodes({ kind: "spark", attrs: { values: "4.2 3.9 4.8 3.1", label: "CI minutes", tone: "ok" } }));
+    const spark = nodeEl(container, "spark");
+    expect(spark.textContent).toContain("CI minutes");
+    expect(spark.textContent).toContain("3.1");
+    expect(spark.querySelector("svg")?.getAttribute("aria-label")).toBe("CI minutes: from 3.1 to 4.8, last 3.1");
+  });
+});
+
+describe("the composition of a view that wraps (2026-11-10)", () => {
+  const facts = [{ kind: "number", text: "34", attrs: { label: "cases" } }, { kind: "meter", attrs: { value: "0.8", label: "budget" } }, { kind: "group", attrs: { label: "Proof" }, kids: [row("lint")] }];
+
+  it("opens a labelled group after other facts as a section: more space above, its head close to its kids", () => {
+    const { container } = draw(viewOfNodes(...facts), { wrap: true });
+    const wrappers = [...container.querySelectorAll<HTMLElement>("[data-trick-view] > div")];
+    expect(wrappers.map((el) => el.hasAttribute("data-trick-section"))).toEqual([false, false, true]);
+    expect(wrappers[2]!.className).toContain("pt-2");
+    expect(nodeEl(container, "group").className).toContain("gap-1.5");
+  });
+
+  it("keeps a Session's one gap, its height reserved from it", () => {
+    const { container } = draw(viewOfNodes(...facts));
+    expect(container.querySelectorAll("[data-trick-section]")).toHaveLength(0);
+    expect(nodeEl(container, "group").className).toContain("gap-2");
+  });
+
+  it("lines up the titles of rows that stand together when one of them has an icon", () => {
+    const rows = list(row("lint", { icon: "check" }), row("types"));
+    const grown = draw(viewOfNodes(rows), { wrap: true });
+    expect(grown.container.querySelectorAll('[data-slot="trick-row-icon-lane"]')).toHaveLength(1);
+    grown.unmount();
+    const fixed = draw(viewOfNodes(rows));
+    expect(fixed.container.querySelectorAll('[data-slot="trick-row-icon-lane"]')).toHaveLength(0);
   });
 });

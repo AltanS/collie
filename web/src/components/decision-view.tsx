@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 
+import { hillMediaSource, viewPictures, type HillMediaSource } from "@/components/hill-media";
 import { MoreToggle } from "@/components/ui/fold-toggle";
 import { hasResizeObserver } from "@/lib/env";
 import { isWebLink, linkHost } from "@/lib/hill/reader";
+import type { HillMedia } from "@/lib/hill/wire";
 import { t } from "@/lib/i18n";
 import { TrickBoundary } from "@/lib/tricks/boundary";
 import { renderView, type LinkTarget, type RenderCtx } from "@/lib/tricks/render";
@@ -12,9 +14,12 @@ import { cn } from "@/lib/utils";
 // A DECISION'S VIEW, ON ITS CARD (M96).
 //
 // The poster's facts under the summary (and under the images, when there are some): a strip of seven
-// gates, a few rows with their proof, a hunk of a diff. Display only: the bridge refused every button,
-// card, image and acting attribute before it stored the view (`parseDecisionView`), and the phone read
-// it again with the same rules. The options below the view are the taps.
+// gates, a few rows with their proof, a hunk of a diff, a table, a trend, a before and after. Display
+// only: the bridge refused every button, card and acting attribute before it stored the view
+// (`parseDecisionView`), and the phone read it again with the same rules. The options below the view
+// are the taps. A picture the view places (`image`, `compare`) is one of the Decision's own images,
+// drawn through `viewPictures`; a tap on it opens the picture sheet, the one thing besides a link that
+// opens anything.
 //
 // It is drawn with the trick renderer (`renderView`), with no tap handler: a link is the one thing that
 // opens anything, a web page in a new tab, and it shows its host beside the poster's words. A bar wraps
@@ -25,8 +30,9 @@ import { cn } from "@/lib/utils";
 // place: the card scrolls with the hill, never inside itself.
 //
 // THE FOLD CUTS BETWEEN ROWS (2026-11-10). The clip ends at the bottom of the last whole node or row
-// that fits under the cap (`foldCut`), never through the middle of a row, and the toggle sits under a
-// rule of its own, so it reads as the frame's control and not as the list's next row.
+// that fits under the cap (`foldCut`), never through the middle of a row (a list's, a table's, or a
+// line of a diff), and the toggle sits under a rule of its own, so it reads as the frame's control and
+// not as the list's next row.
 //
 // A view that throws while it draws takes only itself: the boundary draws the placeholder, and the
 // question and its options stay.
@@ -37,8 +43,8 @@ export const VIEW_CAP_PX = 240;
 /** The fold never cuts higher than this share of the cap: a short first node and a tall second one cut at the cap. */
 const FOLD_MIN_SHARE = 0.5;
 
-/** The boxes a fold may end under: each node of the view, and each row of a list. */
-const FOLD_STOPS = '[data-trick-view] > *, [data-slot="trick-row"]';
+/** The boxes a fold may end under: each node of the view, each row of a list or a table, each line of a diff. */
+const FOLD_STOPS = '[data-trick-view] > *, [data-slot="trick-row"], [data-slot="mini-table"] tr, [data-diff-line]';
 
 /**
  * Where a folded view is cut, in px from its top: the lowest bottom edge of a node or a row that still
@@ -48,6 +54,9 @@ export function foldCut(bottoms: readonly number[], cap: number = VIEW_CAP_PX): 
   const fits = bottoms.filter((bottom) => bottom <= cap && bottom >= cap * FOLD_MIN_SHARE);
   return fits.length === 0 ? cap : Math.max(...fits);
 }
+
+/** A Decision with no images: one list, so the pictures are not made again on every draw. */
+const NO_MEDIA: readonly HillMedia[] = [];
 
 /** A no-op: a Decision's view has no button, so nothing in it can tap. */
 const NO_TAP = (): void => undefined;
@@ -89,12 +98,26 @@ function useTallerThanCap<T extends HTMLElement>() {
   return { ref, tall, cut };
 }
 
-export function DecisionView({ decisionId, view, sender }: { decisionId: string; view: View; sender: string }) {
+export function DecisionView({
+  decisionId,
+  view,
+  sender,
+  media = NO_MEDIA,
+  mediaSource = hillMediaSource,
+}: {
+  decisionId: string;
+  view: View;
+  sender: string;
+  /** The Decision's images, which an `image` or a `compare` names by `ref`. */
+  media?: readonly HillMedia[];
+  mediaSource?: HillMediaSource;
+}) {
   const [open, setOpen] = useState(false);
   const { ref, tall, cut } = useTallerThanCap<HTMLDivElement>();
   const bodyId = useId();
   const clipped = tall && !open;
-  const ctx: RenderCtx = { partKey: `hill/${decisionId}`, stale: false, onTap: NO_TAP, onLink: openViewLink, hostOf: linkHost, wrap: true };
+  const pictures = useMemo(() => viewPictures(decisionId, media, mediaSource), [decisionId, media, mediaSource]);
+  const ctx: RenderCtx = { partKey: `hill/${decisionId}`, stale: false, onTap: NO_TAP, onLink: openViewLink, hostOf: linkHost, wrap: true, pictures };
   return (
     <figure data-slot="decision-view" className="flex min-w-0 flex-col gap-2 rounded-lg border border-border px-3.5 pt-2.5 pb-3">
       <figcaption data-slot="decision-view-from" className="truncate text-xs text-muted-foreground">

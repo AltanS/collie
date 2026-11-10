@@ -165,6 +165,31 @@ describe("readHillDecision", () => {
     }
   });
 
+  it("drops the top-level nodes it cannot read and draws the rest", () => {
+    const good = { kind: "para", text: "Six of seven gates are green." };
+    const bad = { kind: "button", attrs: { label: "Go", intent: "go" } };
+    const table = { kind: "table", kids: [{ kind: "col", text: "Gate" }, { kind: "cell", text: "e2e", attrs: { tone: "danger" } }] };
+    expect(readHillDecision(wire({ view: [good, bad, table] }))?.view).toEqual([good, table]);
+    // A node of a newer Collie's vocabulary goes, the known ones stay.
+    expect(readHillDecision(wire({ view: [{ kind: "chart", attrs: {} }, good] }))?.view).toEqual([good]);
+  });
+
+  it("maps an image's ref onto the images the phone kept, and drops one whose picture it left out", () => {
+    const shot = (id: string, bytes = 1800) => ({ id, kind: "image", mime: "image/png", bytes, width: 600, height: 360 });
+    // The first picture is past the bytes cap, so the phone keeps two and the second moves to place 0.
+    const media = [shot("im_aaaaaaaaaaaaaaaa", 3 * 1024 * 1024), shot("im_bbbbbbbbbbbbbbbb"), shot("im_cccccccccccccccc")];
+    const view = [
+      { kind: "image", attrs: { ref: "0", caption: "gone" } },
+      { kind: "group", attrs: { label: "Look" }, kids: [{ kind: "image", attrs: { ref: "2", focus: "50 50 2" } }, { kind: "para", text: "x" }] },
+      { kind: "compare", kids: [{ kind: "image", attrs: { ref: "0" } }, { kind: "image", attrs: { ref: "1" } }] },
+    ];
+    const read = readHillDecision(wire({ media, view }));
+    expect(read?.media.map((m) => m.id)).toEqual(["im_bbbbbbbbbbbbbbbb", "im_cccccccccccccccc"]);
+    expect(read?.view).toEqual([{ kind: "group", attrs: { label: "Look" }, kids: [{ kind: "image", attrs: { ref: "1", focus: "50 50 2" } }, { kind: "para", text: "x" }] }]);
+    // A ref past the images is dropped, not drawn as a stranger's picture.
+    expect(readHillDecision(wire({ media: [shot("im_bbbbbbbbbbbbbbbb")], view: [{ kind: "image", attrs: { ref: "3" } }] }))).not.toHaveProperty("view");
+  });
+
   it("fills an absent body, text mode and priorityAsked", () => {
     const read = readHillDecision(wire({ body: undefined, text: undefined, priorityAsked: undefined, priority: "now" }));
     expect(read).toMatchObject({ body: "", text: "optional", priorityAsked: "now" });

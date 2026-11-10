@@ -985,10 +985,12 @@ One JSON document on stdout, at most 64 KiB, within 10 seconds. \`v\` is the con
   shows the part's age and drops its tone.
 - A part's \`view\` is a list of nodes \`{ kind, text, attrs, kids }\`, the Tree UI's kinds (\`card\`,
   \`group\`, \`list\`, \`row\`, \`bar\`, \`chip\`, \`button\`, \`para\`, \`line\`, \`run\`, \`code\`, \`link\`,
-  \`image\`, \`meter\`, \`spacer\`) and \`number\`. Every attribute value is a string. An \`image\`
+  \`image\`, \`meter\`, \`spacer\`), \`number\`, and the display kinds \`compare\`, \`table\` (with
+  \`col\` and \`cell\`), \`diff\` and \`spark\`. Every attribute value is a string. An \`image\`
   names a file in this folder's \`media/\` (\`media/chart.png\`: PNG, JPEG or WebP, at most 2 MB).
 - Optional: \`decisions\`, up to 20 questions for the person (\`key\`, \`title\`, \`summary\`, \`options\`,
-  \`recommends\`, and \`view\` for display nodes under the summary: no button, card or image). The
+  \`recommends\`, and \`view\` for display nodes under the summary: no button or card; an \`image\`
+  or a \`compare\` there names one of the Decision's own \`media\` by \`ref\`). The
   answer comes back as a tap on \`hill/<key>\`. Leave the \`decisions\` key out
   and the open decisions stay as they are; an empty list \`[]\` withdraws them all.
 - A value that breaks a rule is refused, and a string over its cap is refused, never cut. What this

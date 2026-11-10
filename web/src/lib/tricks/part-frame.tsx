@@ -164,7 +164,8 @@ function useHeldView(view: View | undefined): HeldView {
 /** Every image `src` in a view, in order, each once. */
 function imageSrcsOf(nodes: readonly ViewNode[] | undefined, out: string[] = []): string[] {
   for (const node of nodes ?? []) {
-    if (node.kind === "image" && !out.includes(node.attrs.src)) out.push(node.attrs.src);
+    const src = node.kind === "image" ? node.attrs.src : undefined;
+    if (src !== undefined && !out.includes(src)) out.push(src);
     if ("kids" in node) imageSrcsOf(node.kids, out);
   }
   return out;

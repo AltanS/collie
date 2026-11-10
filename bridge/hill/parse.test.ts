@@ -100,13 +100,36 @@ describe("a post's view", () => {
   test("a button, a card, an image or an intent is refused bad_body, the reason naming the path", () => {
     expect(refusal([{ kind: "button", text: "Merge", attrs: { intent: "merge" } }])).toStartWith("bad_body the view is refused at /view/0");
     expect(refusal([{ kind: "card", kids: [{ kind: "para", text: "x" }] }])).toStartWith("bad_body the view is refused at /view/0");
-    expect(refusal([{ kind: "image", attrs: { src: "media/a.png" } }])).toStartWith("bad_body the view is refused at /view/0");
+    expect(refusal([{ kind: "image", attrs: { src: "media/a.png" } }])).toStartWith("bad_body the view is refused at /view/0/attrs/src");
     expect(refusal([{ kind: "list", kids: [{ kind: "row", text: "x", attrs: { intent: "go" } }] }])).toStartWith("bad_body the view is refused at /view/0/kids/0/attrs/intent");
     // A row may open a web page, and nothing else.
     const web = parseJson('[{"kind":"list","kids":[{"kind":"row","text":"Where","attrs":{"href":"http://bluefin:8788/settings/tricks"}}]}]') ?? null;
     expect(readPostFields({ ...base, view: web }).ok).toBe(true);
     expect(refusal([{ kind: "list", kids: [{ kind: "row", text: "x", attrs: { href: "bluefin:w6X:3" } }] }])).toStartWith("bad_body the view is refused at /view/0/kids/0/attrs/href");
     expect(refusal("rows")).toStartWith("bad_body");
+  });
+
+  test("an image or a compare names the post's own images by ref; a ref past them is refused", () => {
+    const shot = { path: "shots/a.png" };
+    const one = [{ kind: "image", attrs: { ref: "0", focus: "50 30 2" } }];
+    expect(readPostFields({ ...base, images: [shot], view: one }).ok).toBe(true);
+    const past = readPostFields({ ...base, images: [shot], view: [{ kind: "image", attrs: { ref: "1" } }] });
+    expect(past.ok ? "ok" : `${String(past.code)} ${past.error}`).toStartWith("bad_body the view is refused at /view/0/attrs/ref");
+    expect(refusal(one)).toStartWith("bad_body the view is refused at /view/0/attrs/ref");
+    const pair = [{ kind: "compare", kids: [{ kind: "image", attrs: { ref: "0" } }, { kind: "image", attrs: { ref: "1", caption: "Fixed" } }] }];
+    expect(readPostFields({ ...base, images: [shot, { path: "shots/b.png" }], view: pair }).ok).toBe(true);
+  });
+
+  test("a table, a diff and a spark read onto the input", () => {
+    const view = parseJson(
+      JSON.stringify([
+        { kind: "table", kids: [{ kind: "col", text: "Case" }, { kind: "col", text: "ms" }, { kind: "cell", text: "glide" }, { kind: "cell", text: "380", attrs: { tone: "ok" } }] },
+        { kind: "diff", text: "@@ -1 +1 @@\n-a\n+b", attrs: { file: "a.ts" } },
+        { kind: "spark", attrs: { values: "612 380", label: "glide" } },
+      ]),
+    );
+    const read = readPostFields({ ...base, view: view ?? null });
+    expect(read.ok ? read.input.view?.length : read.error).toBe(3);
   });
 
   test("past 8 KiB, 100 nodes or depth 4 is refused", () => {

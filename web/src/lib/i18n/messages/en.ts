@@ -3391,6 +3391,14 @@ export const en = {
   "hill.view.from": "From {sender}",
   "hill.view.more": "Show all",
   "hill.view.less": "Show less",
+  "hill.media.prev": "Previous picture",
+  "hill.media.next": "Next picture",
+  "hill.media.position": "{index} of {count}",
+  "hill.media.open": "Open {name} at full size",
+  "tricks.compare.before": "Before",
+  "tricks.compare.after": "After",
+  "tricks.spark.trend": "Trend",
+  "tricks.spark.aria": "{label}: from {min} to {max}, last {last}",
 } as const;
 
 /** Every key that exists, as a union of string literals. The completeness contract. */
@@ -3612,6 +3620,14 @@ export const PENDING_TRANSLATION = [
   "hill.view.from",
   "hill.view.more",
   "hill.view.less",
+  "hill.media.prev",
+  "hill.media.next",
+  "hill.media.position",
+  "hill.media.open",
+  "tricks.compare.before",
+  "tricks.compare.after",
+  "tricks.spark.trend",
+  "tricks.spark.aria",
   "home.tabs.hill.one",
   "home.tabs.hill.other",
 ] as const satisfies readonly MessageKey[];

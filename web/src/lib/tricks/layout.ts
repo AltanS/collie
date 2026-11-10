@@ -11,7 +11,8 @@
 // its kids (they flow down; a `bar` is the tallest of its kids), which the leaves already fix. The
 // same function decides whether a new view is a new FORM, which waits while a finger is down.
 
-import { VIEW_LIMITS, type View, type ViewNode } from "./schema";
+import { DIFF_LINE_REM } from "../../components/ui/diff-lines";
+import { VIEW_LIMITS, type CellNode, type ColAlign, type View, type ViewNode } from "./schema";
 
 /** A reserved height: rem, which scales with the text size, plus px, which does not. */
 export interface Reserve {
@@ -41,6 +42,12 @@ export const LEAF_REM = {
   spacer: 1,
   /** A group's head: its label and badge on a 24px line. */
   groupHead: 1.5,
+  /** A table's head: two 16px lines at most and the 4px under them, with its rule. */
+  tableHead: 2.25,
+  /** A table's row in a fixed band: two 16px lines and 12px of air (`h-10`). */
+  tableRow: 2.5,
+  /** A spark: its 16px line of words over the 24px line. */
+  spark: 2.5,
 } as const;
 
 /** The gap between the nodes of a flow (a view, a card, a group): Tailwind's `gap-2`. */
@@ -50,6 +57,37 @@ const CARD_PAD_REM = 1.5;
 const FRAME_PX = 2;
 /** A code block's padding top and bottom (`py-2`). */
 const CODE_PAD_REM = 1;
+
+/**
+ * A cell that reads as a figure: an optional sign or currency, digits with points, commas or colons,
+ * and at most a short unit after ("612 ms", "-3", "98.5%", "1,204", "$4", "0:42"). A column of them keeps
+ * the end side, so its figures line up.
+ */
+const FIGURE = /^[+\-−±~≈]?[$€£]?\d[\d.,:']*\s?[%a-zA-Zµ×]{0,3}$/u;
+
+/** One table, read into its heads (with each column's side) and its rows. Undefined for one this Collie cannot lay out. */
+export interface TableGrid {
+  cols: { text: string; align: ColAlign }[];
+  rows: CellNode[][];
+}
+
+/** A table's heads and rows: the `col` kids first, then the `cell`s in rows as wide as the heads. */
+export function tableGrid(node: ViewNode): TableGrid | undefined {
+  if (node.kind !== "table") return undefined;
+  const kids = kidsOf(node);
+  const heads = kids.filter((kid) => kid.kind === "col");
+  const cells = kids.filter((kid): kid is CellNode => kid.kind === "cell");
+  if (heads.length === 0 || cells.length === 0) return undefined;
+  const rows: CellNode[][] = [];
+  for (let i = 0; i < cells.length; i += heads.length) rows.push(cells.slice(i, i + heads.length));
+  const cols = heads.map((head, c) => {
+    const words = rows.map((row) => row[c]?.text ?? "").filter((text) => text.trim() !== "");
+    const figures = words.length > 0 && words.every((text) => FIGURE.test(text.trim()));
+    const own = head.kind === "col" ? head.attrs?.align : undefined;
+    return { text: head.kind === "col" ? head.text : "", align: own ?? (figures ? "end" : "start") };
+  });
+  return { cols, rows };
+}
 
 /**
  * THE PARA ESTIMATE. A para reserves the lines its text needs at the phone's width, from the text's
@@ -182,6 +220,23 @@ export function reservedHeight(node: ViewNode): Reserve {
       return { rem: LEAF_REM.spacer, px: 0 };
     case "number":
       return { rem: LEAF_REM.number, px: 0 };
+    case "compare":
+      // Two pictures' frames: their height is a ratio of the column's width, reserved by `aspect-ratio`.
+      return { rem: 0, px: 0 };
+    case "table": {
+      const rows = tableGrid(node)?.rows.length ?? 0;
+      return { rem: LEAF_REM.tableHead + rows * LEAF_REM.tableRow, px: 0 };
+    }
+    case "col":
+    case "cell":
+      // Drawn inside their table, whose own height covers them.
+      return { rem: 0, px: 0 };
+    case "diff": {
+      const lines = node.text.split("\n").length;
+      return { rem: lines * DIFF_LINE_REM + (node.attrs?.file === undefined ? 0 : DIFF_LINE_REM), px: FRAME_PX + (node.attrs?.file === undefined ? 0 : 1) };
+    }
+    case "spark":
+      return { rem: LEAF_REM.spark, px: 0 };
     default:
       return { rem: LEAF_REM.tap, px: 0 };
   }
@@ -189,6 +244,17 @@ export function reservedHeight(node: ViewNode): Reserve {
 
 function add(a: Reserve, b: Reserve): Reserve {
   return { rem: a.rem + b.rem, px: a.px + b.px };
+}
+
+/** Every picture a view places by `ref` (an `image`, the two of a `compare`), at any depth. */
+export function viewImageRefs(view: View): Set<number> {
+  const refs = new Set<number>();
+  const walk = (node: ViewNode): void => {
+    if (node.kind === "image" && node.attrs.ref !== undefined && /^\d+$/.test(node.attrs.ref)) refs.add(Number(node.attrs.ref));
+    kidsOf(node).forEach(walk);
+  };
+  view.forEach(walk);
+  return refs;
 }
 
 /** The height a whole view reserves: its nodes flow down the frame with the flow gap. */
@@ -204,7 +270,7 @@ export function heightCss(reserve: Reserve): string {
 
 /** The shape words of a node that change its boxes without changing its height: an image's ratio, a fold. */
 function formWords(node: ViewNode): string {
-  if (node.kind === "image") return `${node.attrs.w}x${node.attrs.h}`;
+  if (node.kind === "image") return node.attrs.ref === undefined ? `${node.attrs.w ?? ""}x${node.attrs.h ?? ""}` : `ref${node.attrs.ref}`;
   if (node.kind === "group") return node.attrs?.fold ?? "";
   if (node.kind === "bar") return isStepStrip(node) ? "strip" : (node.attrs?.scroll ?? "");
   return "";
@@ -219,7 +285,7 @@ function formWords(node: ViewNode): string {
 export function nodeForm(node: ViewNode): string {
   const height = heightCss(reservedHeight(node));
   // A para's and a line's kids are words; a code's lines scroll inside its reserved box: none is a box of its own.
-  const kids = node.kind === "para" || node.kind === "line" || node.kind === "code" ? [] : kidsOf(node);
+  const kids = node.kind === "para" || node.kind === "line" || node.kind === "code" || node.kind === "table" ? [] : kidsOf(node);
   const head = `${node.kind}:${height}:${formWords(node)}`;
   return kids.length === 0 ? head : `${head}(${kids.map(nodeForm).join(",")})`;
 }

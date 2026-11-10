@@ -26,6 +26,11 @@
 // (VOCABULARY.md 2.8). A `button` with `does: copy` copies its `value` on the phone and sends nothing.
 // A `row` with `href` and a `link` go to `ctx.onLink`: an http(s) address opens in the browser, a
 // session's scope key opens that Session. Nothing a trick draws can write into a reply box.
+//
+// PICTURES (2026-11-10). An `image` with a `ref` and a `compare` draw the Decision's own pictures through
+// `ctx.pictures`, which the place hands in (a Decision card: the bytes come with the pairing token, and a
+// tap opens them at full size). The renderer owns the layout (the frame's shape, the crop, the labels),
+// the place owns the bytes and the sheet. Without `ctx.pictures` such an image draws the placeholder.
 
 import { useState, type CSSProperties, type MouseEvent, type ReactNode } from "react";
 
@@ -35,11 +40,15 @@ import { Button } from "../../components/ui/button";
 import { Card } from "../../components/ui/card";
 import { Collapse } from "../../components/ui/collapse";
 import { CopyableBlock } from "../../components/ui/copyable-block";
+import { DiffLines } from "../../components/ui/diff-lines";
+import { FocusFrame, FocusImage, type FocusCrop } from "../../components/ui/focus-image";
 import { ListGroup } from "../../components/ui/list-group";
+import { MiniTable, type MiniTableColumn } from "../../components/ui/mini-table";
 import { OneOf } from "../../components/ui/one-of";
 import { OverflowEdges } from "../../components/ui/overflow-edges";
 import { Progress } from "../../components/ui/progress";
 import { SectionLabel } from "../../components/ui/section-label";
+import { SparkLine } from "../../components/ui/spark-line";
 import { useArm } from "../../hooks/use-arm";
 import { copyText } from "../clipboard";
 import { t } from "../i18n";
@@ -47,13 +56,15 @@ import { setStatus } from "../status";
 import { cn } from "../utils";
 import { useBridgeNow } from "./clock";
 import { keyGlyph, trickIconOf, type TrickGlyph } from "./icons";
-import { codeLines, groupHasHead, heightCss, isStepStrip, kidsOf, LEAF_REM, paraLines, reservedHeight, stripFitsOneRow, textOf } from "./layout";
+import { codeLines, groupHasHead, heightCss, isStepStrip, kidsOf, LEAF_REM, paraLines, reservedHeight, stripFitsOneRow, tableGrid, textOf } from "./layout";
 import {
   CUTS,
   TONES,
   isEpochMs,
   isLinkSessionKey,
   isTrickUrl,
+  readFocus,
+  readSparkValues,
   type BarNode,
   type ButtonNode,
   type CardNode,
@@ -61,7 +72,10 @@ import {
   type ChipState,
   type Clock,
   type CodeNode,
+  type CompareNode,
+  type DiffNode,
   type GroupNode,
+  type ImageFit,
   type ImageNode,
   type LineNode,
   type LinkNode,
@@ -72,6 +86,8 @@ import {
   type RowNode,
   type RunNode,
   type SpacerNode,
+  type SparkNode,
+  type TableNode,
   type TapValue,
   type Tone,
   type View,
@@ -86,6 +102,36 @@ import { inkOf } from "./tone";
  * real session's scope key, opened one level down. The renderer's own, not the wire's.
  */
 export type LinkTarget = { url: string; session?: undefined } | { session: string; url?: undefined };
+
+/** One of the Decision's pictures, as the place knows it: its shape when the wire gave it, and its words. */
+export interface ViewPicture {
+  width: number | null;
+  height: number | null;
+  /** The picture's own words (its caption on the wire), or "Image 2 of 3". */
+  alt: string;
+}
+
+/** What the renderer asks the place to draw for one picture: the frame's shape and the crop are the renderer's. */
+export interface ViewPictureDraw {
+  /** The pictures a tap pages through, by `ref`, and which of them this frame draws. */
+  refs: readonly number[];
+  index: number;
+  fit: ImageFit;
+  crop?: FocusCrop;
+  /** The frame's ratio as CSS (`"600 / 360"`) and its cap, which the renderer chose. */
+  ratio: string;
+  maxHeight: string;
+  /** The frame's own width, as CSS, when it is narrower than its column. */
+  width?: string;
+}
+
+/** The Decision's pictures, which a view's `image` and `compare` name by `ref` (a Decision card hands these in). */
+export interface ViewPictures {
+  /** The picture at `ref`, or undefined when the Decision holds none there. */
+  at: (ref: number) => ViewPicture | undefined;
+  /** One picture in its frame, cropped; a tap opens it at full size, paging through `refs`. */
+  draw: (picture: ViewPictureDraw) => ReactNode;
+}
 
 /** What a view needs from the place that mounts it. */
 export interface RenderCtx {
@@ -104,6 +150,8 @@ export interface RenderCtx {
    * the image's reserved box draws its `alt` words and fetches nothing.
    */
   imageUrl?: (src: string) => string | undefined;
+  /** The Decision's own pictures, for an `image` with a `ref` and a `compare`. Absent outside a Decision's view. */
+  pictures?: ViewPictures;
   /** Pin the clock (epoch ms on the bridge's clock), for a test or a playground card. Absent: it ticks. */
   now?: number;
   /**
@@ -810,25 +858,189 @@ function CodeView({ node, ctx }: { node: CodeNode; ctx: RenderCtx }) {
 
 // ── image, meter, number, spacer ──────────────────────────────────────────────────────────────
 
+/** The tallest a Decision's picture draws: a phone screenshot stops here and keeps its shape. */
+const PICTURE_MAX_PX = 220;
+/** The shape of a picture whose size the wire did not give. */
+const UNKNOWN_RATIO = "16 / 10";
+
+/** A picture's ratio as CSS, and as a number (height over width) to compare two by. */
+interface PictureRatio {
+  css: string;
+  tall: number;
+}
+
+/** A picture's ratio, from its size when the wire gave one. */
+function ratioOf(picture: Pick<ViewPicture, "width" | "height"> | undefined): PictureRatio {
+  if (picture === undefined || picture.width === null || picture.height === null || picture.width <= 0 || picture.height <= 0) return { css: UNKNOWN_RATIO, tall: 10 / 16 };
+  return { css: `${String(picture.width)} / ${String(picture.height)}`, tall: picture.height / picture.width };
+}
+
+/** An image's crop and fit, from its attributes. A `focus` this Collie cannot read is no crop. */
+function cropOf(node: ImageNode): { fit: ImageFit; crop?: FocusCrop } {
+  const crop = node.attrs.focus === undefined ? undefined : readFocus(node.attrs.focus);
+  const fit: ImageFit = node.attrs.fit === "cover" ? "cover" : "contain";
+  return crop === undefined ? { fit } : { fit, crop };
+}
+
+/** A caption under a picture: up to two lines, the whole words in `title`. */
+function PictureCaption({ text }: { text: string }) {
+  return (
+    <figcaption title={text} className="font-content line-clamp-2 text-[11px] leading-4 break-words text-muted-foreground">
+      {text}
+    </figcaption>
+  );
+}
+
+/** An image with its caption taken off: in a `compare` the caption is the label under the frame. */
+function withoutCaption(node: ImageNode): ImageNode {
+  const { caption: _caption, ...attrs } = node.attrs;
+  return { kind: "image", attrs };
+}
+
+/** An image's `ref` as an index, or undefined. */
+function refOf(node: ImageNode): number | undefined {
+  const ref = node.attrs.ref;
+  return ref !== undefined && /^\d+$/.test(ref) ? Number(ref) : undefined;
+}
+
+/**
+ * One of the Decision's pictures among the facts: its own shape, never taller than PICTURE_MAX_PX and
+ * never wider than the column, cropped by `focus`, its caption under it. A tap opens it at full size.
+ */
+function DecisionImageView({ node, at: ref, ctx }: { node: ImageNode; at: number; ctx: RenderCtx }) {
+  const picture = ctx.pictures?.at(ref);
+  if (ctx.pictures === undefined || picture === undefined) return <Placeholder kind="image" />;
+  const { css } = ratioOf(picture);
+  const draw: ViewPictureDraw = { refs: [ref], index: 0, ...cropOf(node), ratio: css, maxHeight: `${String(PICTURE_MAX_PX)}px`, width: `min(100%, calc(${String(PICTURE_MAX_PX)}px * ${css}))` };
+  return (
+    <figure data-trick-node="image" className="flex min-w-0 flex-col gap-1">
+      {ctx.pictures.draw(draw)}
+      {node.attrs.caption !== undefined && <PictureCaption text={node.attrs.caption} />}
+    </figure>
+  );
+}
+
 /**
  * An image of the trick folder, its box reserved from `w` and `h` before a byte arrives, so nothing
- * below it moves when it loads. It loads lazily from the bridge's URL; with no URL the box keeps its
- * size and says its `alt`.
+ * below it moves when it loads. It loads lazily from the bridge's URL, cropped by `focus`; with no URL
+ * the box keeps its size and says its `alt`.
  */
-function ImageView({ node, ctx }: { node: ImageNode; ctx: RenderCtx }) {
-  const { src, alt, w, h } = node.attrs;
-  const url = ctx.imageUrl?.(src);
+function PartImageView({ node, ctx }: { node: ImageNode; ctx: RenderCtx }) {
+  const { src = "", alt = "", w = "1", h = "1", caption } = node.attrs;
+  const url = src === "" ? undefined : ctx.imageUrl?.(src);
+  const { fit, crop } = cropOf(node);
   return (
-    <div
-      data-trick-node="image"
-      style={{ aspectRatio: `${w} / ${h}`, maxWidth: `${w}px` }}
-      className="flex w-full min-w-0 items-center justify-center overflow-hidden rounded-sm border border-border bg-muted"
-    >
-      {url === undefined ? (
-        <span className="line-clamp-3 px-3 text-center text-xs text-muted-foreground">{alt}</span>
-      ) : (
-        <img src={url} alt={alt} width={Number(w)} height={Number(h)} loading="lazy" decoding="async" className="size-full object-contain" />
-      )}
+    <figure data-trick-node="image" className="flex min-w-0 flex-col gap-1">
+      <FocusFrame ratio={`${w} / ${h}`} style={{ maxWidth: `${w}px` }}>
+        {url === undefined ? (
+          <span className="line-clamp-3 px-3 text-center text-xs text-muted-foreground">{alt}</span>
+        ) : (
+          <FocusImage src={url} alt={alt} fit={fit} crop={crop} />
+        )}
+      </FocusFrame>
+      {caption !== undefined && <PictureCaption text={caption} />}
+    </figure>
+  );
+}
+
+function ImageView({ node, ctx }: { node: ImageNode; ctx: RenderCtx }) {
+  const ref = refOf(node);
+  return ref === undefined ? <PartImageView node={node} ctx={ctx} /> : <DecisionImageView node={node} at={ref} ctx={ctx} />;
+}
+
+/**
+ * Two pictures side by side at one height, each with its label under it ("Before" and "After" unless
+ * its caption names it). Both frames take the taller of the two shapes, so they are one height and a
+ * picture of another shape sits whole on the muted ground. Below 300 px of column they stack. A tap on
+ * either opens it at full size, and the sheet pages to the other one.
+ */
+function CompareView({ node, ctx }: { node: CompareNode; ctx: RenderCtx }) {
+  const images = kidsOf(node).filter((kid): kid is ImageNode => kid.kind === "image");
+  if (images.length !== 2) return <Placeholder kind="compare" />;
+  const refs = images.map(refOf);
+  const labels = [t("tricks.compare.before"), t("tricks.compare.after")];
+  const pictures = refs.map((ref) => (ref === undefined ? undefined : ctx.pictures?.at(ref)));
+  // The taller shape of the two, so both frames share one height and neither picture is cut.
+  const ratios = images.map((image, i) => (refs[i] === undefined ? ratioOf({ width: Number(image.attrs.w), height: Number(image.attrs.h) }) : ratioOf(pictures[i])));
+  const tallest = ratios.reduce((a, b) => (b.tall > a.tall ? b : a));
+  const known = refs.filter((ref): ref is number => ref !== undefined);
+  return (
+    <div data-trick-node="compare" className="@container min-w-0">
+      <div className="grid grid-cols-2 gap-2 @max-[299px]:grid-cols-1">
+        {images.map((image, i) => {
+          const ref = refs[i];
+          const label = image.attrs.caption ?? labels[i] ?? "";
+          let frame: ReactNode;
+          if (ref === undefined) frame = <PartImageView node={withoutCaption(image)} ctx={ctx} />;
+          else if (ctx.pictures === undefined || pictures[i] === undefined) frame = <Placeholder kind="image" />;
+          else frame = ctx.pictures.draw({ refs: known, index: known.indexOf(ref), ...cropOf(image), ratio: tallest.css, maxHeight: `${String(PICTURE_MAX_PX)}px` });
+          return (
+            <figure key={i} data-slot="trick-compare-side" className="flex min-w-0 flex-col gap-1">
+              {frame}
+              <figcaption title={label} className="truncate text-xs font-medium text-muted-foreground">
+                {label}
+              </figcaption>
+            </figure>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * A small table: its heads, then its rows. A column whose cells all read as figures keeps the end side
+ * and tabular figures unless its head says `align`; a cell takes at most two lines and its tone's ink.
+ * In a fixed band each row keeps two lines' height; in a view that wraps a row is as tall as its words.
+ */
+function TableView({ node, ctx }: { node: TableNode; ctx: RenderCtx }) {
+  const grid = tableGrid(node);
+  if (grid === undefined) return <Placeholder kind="table" />;
+  const columns: MiniTableColumn[] = grid.cols.map((col) => ({ label: col.text, align: col.align }));
+  const rows = grid.rows.map((row) => row.map((cell) => ({ text: cell.text ?? "", className: inkOf(cell.attrs?.tone, ctx.stale) })));
+  const fixed = ctx.wrap !== true;
+  return (
+    // In a view that wraps the rows take their words' height, so no floor is set at all.
+    <div {...(fixed ? leafBox(node) : { "data-trick-node": "table" })} className="min-w-0 overflow-hidden">
+      <MiniTable columns={columns} rows={rows} rowClassName={fixed ? "h-10" : undefined} />
+    </div>
+  );
+}
+
+/** A hunk of a diff, as the Changes view tints one: mono, scrolling sideways inside its own frame. */
+function DiffView({ node, ctx }: { node: DiffNode; ctx: RenderCtx }) {
+  return (
+    <div {...floorBox(node, ctx)} className="min-w-0">
+      <DiffLines lines={node.text.split("\n")} file={node.attrs?.file} />
+    </div>
+  );
+}
+
+/** A number as a spark's screen reader says it: as written, up to six places, no trailing zeros. */
+function figure(n: number): string {
+  return String(Math.round(n * 1e6) / 1e6);
+}
+
+/**
+ * A trend: its label and its last figure on one line, the line under them, the last point marked. A
+ * screen reader hears the label with the lowest, the highest and the last figure.
+ */
+function SparkView({ node, ctx }: { node: SparkNode; ctx: RenderCtx }) {
+  const values = readSparkValues(node.attrs.values);
+  if (values === undefined) return <Placeholder kind="spark" />;
+  const label = node.attrs.label;
+  const last = values.at(-1) ?? 0;
+  const ink = inkOf(node.attrs.tone, ctx.stale);
+  const aria = t("tricks.spark.aria", { label: label ?? t("tricks.spark.trend"), min: figure(Math.min(...values)), max: figure(Math.max(...values)), last: figure(last) });
+  return (
+    <div {...leafBox(node)} className="flex min-w-0 flex-col">
+      <div aria-hidden className="flex h-4 min-w-0 items-center justify-between gap-3 text-xs leading-4">
+        <span title={label} className="min-w-0 truncate text-muted-foreground">
+          {label ?? ""}
+        </span>
+        <span className={cn("shrink-0 tabular-nums", ink)}>{figure(last)}</span>
+      </div>
+      <SparkLine values={values} label={aria} className={ink === "" ? "text-foreground" : ink} />
     </div>
   );
 }
@@ -936,7 +1148,7 @@ const END_SHORT = 8;
  * what still does not fit is cut with the whole words in `title`. A web row's host is a line of its own
  * under the title.
  */
-function RowView({ node, ctx, path }: { node: RowNode; ctx: RenderCtx; path: string }) {
+function RowView({ node, ctx, path, iconLane = false }: { node: RowNode; ctx: RenderCtx; path: string; iconLane?: boolean }) {
   const attrs = node.attrs;
   const kids = node.kids ?? [];
   const second = kids.find((kid): kid is ParaNode => kid.kind === "para");
@@ -956,6 +1168,7 @@ function RowView({ node, ctx, path }: { node: RowNode; ctx: RenderCtx; path: str
   const body = (
     <>
       {Icon !== null && <Icon aria-hidden className={cn("size-4 shrink-0 transition-colors", ink)} />}
+      {Icon === null && iconLane && <span aria-hidden data-slot="trick-row-icon-lane" className="size-4 shrink-0" />}
       <span data-slot="trick-row-text" className={cn("flex min-w-[40%] flex-auto flex-col", wrap && "py-2.5")}>
         <RowTitle text={node.text} cut={attrs?.cut} wrap={wrap} lines={second === undefined && host === "" ? 2 : 1} />
         {secondText !== undefined && (
@@ -1015,9 +1228,18 @@ function RowView({ node, ctx, path }: { node: RowNode; ctx: RenderCtx; path: str
   );
 }
 
+/**
+ * In a view that wraps (a Decision's), rows that stand together line up: when any of them has an icon,
+ * the others keep its lane empty, so every title starts on one edge. A Session's rows keep their own.
+ */
+function iconLaneOf(kids: readonly ViewNode[], ctx: RenderCtx): boolean {
+  return ctx.wrap === true && kids.some((kid) => kid.kind === "row" && kid.attrs?.icon !== undefined);
+}
+
 /** A run of kids inside a list or a group: rows framed together, the rest in the flow. */
 function FlowKids({ kids, ctx, path, framed }: { kids: readonly ViewNode[]; ctx: RenderCtx; path: string; framed: boolean }) {
   const out: ReactNode[] = [];
+  const iconLane = iconLaneOf(kids, ctx);
   let rows: ReactNode[] = [];
   const flush = (key: string) => {
     if (rows.length === 0) return;
@@ -1027,7 +1249,7 @@ function FlowKids({ kids, ctx, path, framed }: { kids: readonly ViewNode[]; ctx:
   kids.forEach((kid, i) => {
     const at = `${path}/${i}`;
     if (kid.kind === "row") {
-      rows.push(<RowView key={i} node={kid} ctx={ctx} path={at} />);
+      rows.push(<RowView key={i} node={kid} ctx={ctx} path={at} iconLane={iconLane} />);
       return;
     }
     flush(`rows-${i}`);
@@ -1042,11 +1264,12 @@ function ListView({ node, ctx, path }: { node: ListNode; ctx: RenderCtx; path: s
   // A list reserves its kids. One with none keeps the frame's two lines as air, so it is the height of
   // an empty frame and not a box with nothing in it.
   if (kids.length === 0) return <div data-trick-node="list" aria-hidden style={{ height: "calc(2 * var(--row-rule))" }} />;
+  const iconLane = iconLaneOf(kids, ctx);
   return (
     <ListGroup data-trick-node="list" className="min-w-0 overflow-hidden">
       {kids.map((kid, i) => {
         const at = `${path}/${i}`;
-        if (kid.kind === "row") return <RowView key={i} node={kid} ctx={ctx} path={at} />;
+        if (kid.kind === "row") return <RowView key={i} node={kid} ctx={ctx} path={at} iconLane={iconLane} />;
         if (kid.kind === "group") return <GroupView key={i} node={kid} ctx={ctx} path={at} inList />;
         return <Placeholder key={i} kind={kid.kind} />;
       })}
@@ -1089,7 +1312,9 @@ function GroupView({ node, ctx, path, inList = false }: { node: GroupNode; ctx: 
     <div className={headClass}>{headWords}</div>
   );
   return (
-    <div data-trick-node="group" className={cn("flex min-w-0 flex-col", !inList && "gap-2")}>
+    // In a view that wraps a labelled group reads as a section: its head sits closer to its own kids
+    // (gap-1.5) than to what came before it (renderView's section space).
+    <div data-trick-node="group" className={cn("flex min-w-0 flex-col", !inList && (wrap && headed ? "gap-1.5" : "gap-2"))}>
       {head}
       <Collapse open={!foldable || open}>
         <div className={cn("flex min-w-0 flex-col", !inList && "gap-2")}>
@@ -1169,6 +1394,18 @@ function renderNode(node: ViewNode, ctx: RenderCtx, path: string): ReactNode {
       return <SpacerView node={node} ctx={ctx} />;
     case "number":
       return <NumberView node={node} ctx={ctx} />;
+    case "compare":
+      return <CompareView node={node} ctx={ctx} />;
+    case "table":
+      return <TableView node={node} ctx={ctx} />;
+    case "diff":
+      return <DiffView node={node} ctx={ctx} />;
+    case "spark":
+      return <SparkView node={node} ctx={ctx} />;
+    case "col":
+    case "cell":
+      // A table's own kids: drawn by the table, never on their own.
+      return <Placeholder kind={node.kind} />;
     default: {
       // A kind this Collie has never heard of: a crew member on a newer version sent it.
       const stray: { kind: string } = node;
@@ -1181,17 +1418,30 @@ function renderNode(node: ViewNode, ctx: RenderCtx, path: string): ReactNode {
  * Draw a view: its nodes top to bottom with the flow gap. The first node's path is `v/0`; a control's
  * path is its place in the view below it, so a tap names the control that was pressed.
  */
+/**
+ * THE RHYTHM OF A VIEW THAT WRAPS (a Decision's, 2026-11-10). Facts that belong together (a number, a
+ * meter, a spark, a row) stand at the flow gap; a labelled group after them opens a section, with twice
+ * the space above it. A Session's view keeps the one gap: its height is reserved from it (layout.ts).
+ */
+function sectionBreak(view: View, i: number, ctx: RenderCtx): boolean {
+  const node = view[i];
+  return ctx.wrap === true && i > 0 && node?.kind === "group" && groupHasHead(node);
+}
+
 export function renderView(view: View, ctx: RenderCtx): ReactNode {
   // A view that is no list draws the placeholder. A node with no `attrs` or `kids` was made whole at the
   // door the store reads through (lib/tricks/read.ts), and `kidsOf` reads the rest.
   if (!Array.isArray(view)) return <Placeholder />;
   return (
     <div data-trick-view="" className="flex min-w-0 flex-col gap-2">
-      {view.map((node, i) => (
-        <div key={i} className={cn("min-w-0", ENTER)}>
-          {renderNode(node, ctx, `v/${i}`)}
-        </div>
-      ))}
+      {view.map((node, i) => {
+        const section = sectionBreak(view, i, ctx);
+        return (
+          <div key={i} data-trick-section={section ? "" : undefined} className={cn("min-w-0", ENTER, section && "pt-2")}>
+            {renderNode(node, ctx, `v/${i}`)}
+          </div>
+        );
+      })}
     </div>
   );
 }

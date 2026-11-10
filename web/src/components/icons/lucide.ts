@@ -274,6 +274,8 @@ export const LUCIDE = {
   "hill-now": MountainSnow,
   "history-screen": ScrollText,
   "image": Image,
+  "image-next": ChevronRight,
+  "image-prev": ChevronLeft,
   "info": Info,
   "install-app": MonitorDown,
   "jobs": Timer,

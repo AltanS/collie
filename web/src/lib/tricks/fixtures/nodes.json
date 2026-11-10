@@ -405,5 +405,132 @@
       "tone": "accent",
       "unit": "cases"
     }
+  },
+  "compare": {
+    "kind": "compare",
+    "kids": [
+      {
+        "kind": "image",
+        "attrs": {
+          "src": "media/before.png",
+          "alt": "The reply box before the fix",
+          "w": "390",
+          "h": "844",
+          "caption": "Before"
+        }
+      },
+      {
+        "kind": "image",
+        "attrs": {
+          "src": "media/after.png",
+          "alt": "The reply box after the fix",
+          "w": "390",
+          "h": "844",
+          "focus": "50 80 2"
+        }
+      }
+    ]
+  },
+  "table": {
+    "kind": "table",
+    "kids": [
+      {
+        "kind": "col",
+        "text": "Case"
+      },
+      {
+        "kind": "col",
+        "text": "Before"
+      },
+      {
+        "kind": "col",
+        "text": "After",
+        "attrs": {
+          "align": "end"
+        }
+      },
+      {
+        "kind": "cell",
+        "text": "pane glide"
+      },
+      {
+        "kind": "cell",
+        "text": "612 ms"
+      },
+      {
+        "kind": "cell",
+        "text": "380 ms",
+        "attrs": {
+          "tone": "ok"
+        }
+      },
+      {
+        "kind": "cell",
+        "text": "first paint"
+      },
+      {
+        "kind": "cell",
+        "text": "1.2 s"
+      },
+      {
+        "kind": "cell",
+        "text": ""
+      }
+    ]
+  },
+  "col": {
+    "kind": "table",
+    "kids": [
+      {
+        "kind": "col",
+        "text": "Gate",
+        "attrs": {
+          "align": "start"
+        }
+      },
+      {
+        "kind": "cell",
+        "text": "e2e"
+      }
+    ]
+  },
+  "cell": {
+    "kind": "table",
+    "kids": [
+      {
+        "kind": "col",
+        "text": "Gate"
+      },
+      {
+        "kind": "col",
+        "text": "Runs"
+      },
+      {
+        "kind": "cell",
+        "text": "e2e",
+        "attrs": {
+          "tone": "danger"
+        }
+      },
+      {
+        "kind": "cell",
+        "text": "18"
+      }
+    ]
+  },
+  "diff": {
+    "kind": "diff",
+    "text": "@@ -12,3 +12,3 @@\n const budget = 400;\n-const wait = 612;\n+const wait = 380;",
+    "attrs": {
+      "file": "web/e2e/pane-glide.spec.ts"
+    }
+  },
+  "spark": {
+    "kind": "spark",
+    "attrs": {
+      "values": "612 580 540 455 380",
+      "tone": "ok",
+      "label": "pane glide, ms"
+    }
   }
 }

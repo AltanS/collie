@@ -226,6 +226,32 @@ describe("TrickView", () => {
     await waitFor(() => expect(img()?.getAttribute("src")).toBe("blob:/api/tricks/bluefin/deploy/media/shots/a%20b.png?rev=5"));
   });
 
+  it("fetches both sides of a compare with the token, and keeps an image's focus, fit and caption", async () => {
+    const side = (src: string, extra: Record<string, string> = {}) => ({ kind: "image" as const, attrs: { src, alt: src, w: "320", h: "200", ...extra } });
+    const picture: TrickPart = {
+      at: "session",
+      id: "deploy",
+      view: [
+        { kind: "image", attrs: { src: "media/chart.png", alt: "the chart", w: "320", h: "200", focus: "20 80 2", fit: "cover", caption: "Last week" } },
+        { kind: "compare", kids: [side("media/before.png"), side("media/after.png", { caption: "Now" })] },
+      ],
+    };
+    const { store } = storeWith([stored(picture)]);
+    await store.syncTricks(1);
+    const { container } = render(<TrickView partKey="bluefin/deploy/deploy" store={store} onLink={vi.fn()} now={T0} />);
+    for (const file of ["chart", "before", "after"]) {
+      await waitFor(() => expect(authedObjectUrl).toHaveBeenCalledWith(`/api/tricks/bluefin/deploy/media/${file}.png?rev=1`));
+    }
+    await waitFor(() => expect(container.querySelectorAll('[data-trick-node="compare"] img')).toHaveLength(2));
+    const chart = container.querySelector<HTMLImageElement>('[data-trick-node="image"] img');
+    expect(chart?.getAttribute("src")).toBe("blob:/api/tricks/bluefin/deploy/media/chart.png?rev=1");
+    expect(chart?.style.objectFit).toBe("cover");
+    expect(chart?.style.objectPosition).toBe("20% 80%");
+    expect(chart?.style.transform).toBe("scale(2)");
+    expect(container.querySelector('[data-trick-node="image"] figcaption')?.textContent).toBe("Last week");
+    expect([...container.querySelectorAll('[data-slot="trick-compare-side"] > figcaption')].map((c) => c.textContent)).toEqual(["Before", "Now"]);
+  });
+
   it("draws an image's alt in its box when the fetch fails", async () => {
     authedObjectUrl.mockRejectedValueOnce(new Error("403"));
     const picture: TrickPart = { at: "session", id: "deploy", view: [{ kind: "image", attrs: { src: "media/gone.png", alt: "the chart", w: "320", h: "200" } }] };

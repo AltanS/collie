@@ -174,7 +174,8 @@ export function readPostFields(row: JsonObject): HillPostRead {
   const input: HillPostInput = { requestId, title, summary, body: body ?? "", options, text, recommends, links, priority, about, replyTo, supersedes, expiresAt, images };
   // The view is the one field read with the schema's own view parser: its refusal names the node.
   if (row.view !== undefined && row.view !== null) {
-    const read = parseDecisionView(row.view);
+    // An image node's `ref` names one of this post's images, so the count goes with the view.
+    const read = parseDecisionView(row.view, "/view", { images: images.length });
     const first = read.refusals[0];
     if (read.view === undefined) return refused("bad_body", first === undefined ? "the view is refused" : `the view is refused at ${first.path}: ${first.reason}`);
     input.view = read.view;
@@ -334,9 +335,9 @@ function readStoredMedia(value: JsonValue | undefined): HillMedia[] | null {
  * parser refuses now (a rule a later build tightened) is left out and the decision stays, as the phone
  * does with a view it cannot draw: the person still sees the question and its options.
  */
-function storedView(value: JsonValue | undefined): View | undefined {
+function storedView(value: JsonValue | undefined, images: number): View | undefined {
   if (value === undefined) return undefined;
-  return parseDecisionView(value).view;
+  return parseDecisionView(value, "/view", { images }).view;
 }
 
 /** One decision as the file stored it, or null when any field fails. */
@@ -383,7 +384,7 @@ export function readDecision(value: JsonValue | undefined): HillDecision | null 
   if (links === null || replyTo === undefined || target === undefined || supersedes === undefined || supersededBy === undefined) return null;
   if (expiresAt === undefined || at === undefined || !Number.isSafeInteger(at) || !isState(stateText)) return null;
   if (closedAt === undefined || closedReason === undefined || answer === undefined) return null;
-  const view = storedView(row.view);
+  const view = storedView(row.view, media.length);
   const decision: HillDecision = {
     v: 1,
     id,

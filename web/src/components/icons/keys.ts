@@ -147,6 +147,8 @@ export const ICON_KEYS = {
   "hill-now": { meaning: "the Hill while a `now` Decision is open", area: "navigation", lucide: "MountainSnow" },
   "history-screen": { meaning: "the scrollback history screen", area: "chat", lucide: "ScrollText" },
   "image": { meaning: "an image", area: "composer", lucide: "Image" },
+  "image-next": { meaning: "the next picture in the picture sheet", area: "shared", lucide: "ChevronRight" },
+  "image-prev": { meaning: "the previous picture in the picture sheet", area: "shared", lucide: "ChevronLeft" },
   "info": { meaning: "information, or the facts of an option", area: "chat", lucide: "Info" },
   "install-app": { meaning: "install the app", area: "sheets", lucide: "MonitorDown" },
   "jobs": { meaning: "running jobs", area: "belt", lucide: "Timer" },
