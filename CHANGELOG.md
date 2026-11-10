@@ -62,7 +62,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Fixed
 
-- **The Collie mark rests until you touch the app.** Since 1.28.1 every page you opened drifted the mark for its first 20 seconds, with no touch at all, background tabs included. Now a page you only opened, a page left open and a page in the background draw nothing for the mark. The first touch, key, wheel or scroll sets the beads going, and 20 seconds after the last one they slow to a stop as before. This also undoes a slowdown in Safari's engine (WebKit) that 1.28.1 brought.
+- **The Collie mark rests until you touch the app.** Since 1.28.1 a page you opened drifted the mark for its first 20 seconds with no touch at all, background tabs included. Now the mark rests until your first touch, key press or mouse wheel, and 20 seconds after the last one it slows to a stop as before. A page left open and a page in the background draw nothing for the mark. A scroll the app makes by itself, such as the chat following new output, does not count as a touch. This undoes a slowdown seen in WebKit (Safari's engine) tests since 1.28.1.
 
 ## [1.28.1] - 2026-11-10
 
