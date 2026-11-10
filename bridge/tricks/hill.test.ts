@@ -5,7 +5,9 @@ import { dirname, join } from "node:path";
 
 import type { JsonObject } from "../json.ts";
 import { deniedFoldersSync, HillMediaStore } from "../hill/media.ts";
+import { HillPush } from "../hill/push.ts";
 import { memoryHillReceipts } from "../hill/receipts.ts";
+import type { PushMessage } from "../push.ts";
 import { HillService, type HillPlace } from "../hill/service.ts";
 import { hillDir, HillStore } from "../hill/store.ts";
 import { hillAnswerRoute, hillListRoute, hillMediaRoute } from "../server.ts";
@@ -59,6 +61,8 @@ interface Rig {
   /** What the trick's tap callback is answered with, and every tap it got. */
   tapResult: boolean;
   readonly taps: { host: string; trickId: string; node: string; rid: string; decisionId: string }[];
+  /** Every phone push the hill handed the push path (hill/push.ts), renders and clears. */
+  readonly pushes: PushMessage[];
   /** A fresh TrickHill and HillService over the same files: what a bridge restart reads. */
   restart(): Rig;
 }
@@ -86,7 +90,8 @@ function rig(stateDir = join(tempDir(), "state"), hillAt = 1000): Rig {
   });
   const taps: Rig["taps"] = [];
   const sent: Rig["sent"] = [];
-  const state = { live: [...PLACES], tapResult: true, taps, sent };
+  const pushes: PushMessage[] = [];
+  const state = { live: [...PLACES], tapResult: true, taps, sent, pushes };
   const probe = place(() => state.live);
   const hill = new HillService({
     store,
@@ -108,6 +113,7 @@ function rig(stateDir = join(tempDir(), "state"), hillAt = 1000): Rig {
       state.taps.push({ host, trickId, node: tap.node, rid: tap.rid, decisionId });
       return state.tapResult;
     },
+    push: new HillPush({ ready: () => true, send: (message) => state.pushes.push(message), now: () => hillAt }),
   });
   const clock = { t: 50_000_000 };
   const tricks = new TrickHill({ stateDir, hill, addressOf: (scopeKey) => scopeKeyAddress(scopeKey, (memberId) => memberId === HOST, "local", probe), now: () => clock.t });
@@ -264,6 +270,22 @@ describe("the diff by key", () => {
       expect(again?.supersedes).toBeNull();
       expect(r.tricks.entries("legs")["case-8"]).toMatchObject({ decisionId: again?.id, state: "open", seq: 2, at: r.clock.t });
     }
+  });
+
+  test("a now key rings the phone once; its re-ask shows again and does not push again; new content does", () => {
+    const r = rig();
+    sync(r, [decision("case-8", { priority: "now" })]);
+    const first = open(r)[0]!;
+    expect(r.pushes.map((p) => [p.type ?? "render", p.decision ?? p.tag])).toEqual([["render", first.id]]);
+    r.hill.sweep(first.expiresAt ?? 0);
+    expect(r.pushes.at(-1)).toMatchObject({ type: "clear", tag: `collie:hill:${first.id}` });
+    r.clock.t += REASK_AFTER_MS;
+    sync(r, [decision("case-8", { priority: "now" })]);
+    const again = open(r)[0]!;
+    expect(again.id).not.toBe(first.id);
+    expect(r.pushes.filter((p) => p.type === undefined)).toHaveLength(1);
+    sync(r, [decision("case-8", { priority: "now", summary: "Case 8 failed again, 10 passed." })]);
+    expect(r.pushes.filter((p) => p.type === undefined).map((p) => p.body)).toEqual(["Case 8 failed, 10 passed.", "Case 8 failed again, 10 passed."]);
   });
 
   test("an answered or dismissed key never asks again by itself, however long it waits", async () => {

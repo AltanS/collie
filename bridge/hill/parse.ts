@@ -29,6 +29,7 @@ import {
   type HillTextMode,
 } from "../../web/src/lib/hill/wire.ts";
 import { isRequestId } from "../worktree-receipts.ts";
+import { isHillPushTag } from "./push.ts";
 import { parseDecisionView, type View } from "../../web/src/lib/tricks/schema.ts";
 
 /** What the socket answers a status or withdraw whose id is not a decision id. */
@@ -385,6 +386,9 @@ export function readDecision(value: JsonValue | undefined): HillDecision | null 
   // Absent on a decision stored before posts carried a digest: kept absent.
   const postDigest = row.postDigest === undefined ? undefined : asJsonString(row.postDigest);
   if (media === null || (row.postDigest !== undefined && (postDigest === undefined || !/^[0-9a-f]{64}$/u.test(postDigest)))) return null;
+  // Absent on a decision that holds no notification slot: kept absent.
+  const pushTag = row.pushTag === undefined ? undefined : asJsonString(row.pushTag);
+  if (row.pushTag !== undefined && (pushTag === undefined || !isHillPushTag(pushTag))) return null;
   if (links === null || replyTo === undefined || target === undefined || supersedes === undefined || supersededBy === undefined) return null;
   if (expiresAt === undefined || at === undefined || !Number.isSafeInteger(at) || !isState(stateText)) return null;
   if (closedAt === undefined || closedReason === undefined || answer === undefined) return null;
@@ -417,5 +421,6 @@ export function readDecision(value: JsonValue | undefined): HillDecision | null 
     answer,
   };
   if (view !== undefined) decision.view = view;
+  if (pushTag !== undefined) decision.pushTag = pushTag;
   return postDigest === undefined ? decision : { ...decision, postDigest };
 }

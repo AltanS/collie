@@ -341,6 +341,7 @@ AGENTS.md:
 - **Summary**: at most two sentences. The first says what the recommended option does, the second gives
   the one fact that decides it. The evidence goes in the view or the body.
 - **Options** start with a verb and say what happens: "Hold until CI", never a bare Yes or No.
+- **Priority** `now` sends a notification to the person's phone, so use it only for what cannot wait.
 
 `collie hill post` (on stderr), `collie trick dev` and `collie trick check --run` warn about a title
 past 60 characters or with no question mark, a summary past two sentences or 200 characters, and an

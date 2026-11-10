@@ -24,7 +24,7 @@ afterAll(async () => {
 
 describe("coerceNotifyPrefs", () => {
   test("fills missing / non-boolean keys from defaults", () => {
-    const defaults = { blocked: true, done: false, individual: true, updates: true, cache: false, machines: true };
+    const defaults = { blocked: true, done: false, individual: true, updates: true, cache: false, machines: true, decisions: true };
     expect(coerceNotifyPrefs(undefined)).toEqual(defaults);
     expect(coerceNotifyPrefs(null)).toEqual(defaults);
     expect(coerceNotifyPrefs({})).toEqual(defaults);
@@ -39,7 +39,9 @@ describe("coerceNotifyPrefs", () => {
     expect(coerceNotifyPrefs({ cache: true })).toEqual({ ...defaults, cache: true });
     // `machines` is the fifth, and defaults ON: a rule set per machine is the opt-in (ADR 0084).
     expect(coerceNotifyPrefs({ machines: false })).toEqual({ ...defaults, machines: false });
-    expect(coerceNotifyPrefs({ blocked: "yes", done: 1, updates: 0, cache: "on", machines: 0 })).toEqual(defaults);
+    // `decisions` is the sixth, and defaults ON: the poster's `now` is the opt-in, and the hill caps it.
+    expect(coerceNotifyPrefs({ decisions: false })).toEqual({ ...defaults, decisions: false });
+    expect(coerceNotifyPrefs({ blocked: "yes", done: 1, updates: 0, cache: "on", machines: 0, decisions: "no" })).toEqual(defaults);
   });
 });
 
@@ -65,12 +67,12 @@ describe("NotifyPrefsStore", () => {
     const cfg = await tempCfg();
     const store = new NotifyPrefsStore(cfg);
     const updated = await store.set({ done: true, updates: false, cache: true, machines: false });
-    expect(updated).toEqual({ blocked: true, done: true, individual: true, updates: false, cache: true, machines: false });
+    expect(updated).toEqual({ blocked: true, done: true, individual: true, updates: false, cache: true, machines: false, decisions: true });
 
     // Round-trips through disk: a fresh store reloads the same values (survives a restart).
     const reloaded = new NotifyPrefsStore(cfg);
     await reloaded.load();
-    expect(reloaded.current()).toEqual({ blocked: true, done: true, individual: true, updates: false, cache: true, machines: false });
+    expect(reloaded.current()).toEqual({ blocked: true, done: true, individual: true, updates: false, cache: true, machines: false, decisions: true });
   });
 
   test("current() returns a copy — callers can't mutate the store's state", async () => {
@@ -101,7 +103,7 @@ describe("NotifyPrefsStore", () => {
     await writeFile(join(cfg.stateDir, "notify-prefs.json"), JSON.stringify({ blocked: false }));
     const store = new NotifyPrefsStore(cfg);
     await store.load();
-    expect(store.current()).toEqual({ blocked: false, done: false, individual: true, updates: true, cache: false, machines: true });
+    expect(store.current()).toEqual({ blocked: false, done: false, individual: true, updates: true, cache: false, machines: true, decisions: true });
   });
 
   test("load tolerates a missing file (keeps defaults)", async () => {

@@ -320,6 +320,7 @@ import { WalkyService } from "./walky/service.ts";
 import { siblingDirsOf, SiblingLogs } from "./walky/siblings.ts";
 import { walkySocketPath, WalkyServer } from "./walky/socket.ts";
 import { deniedFoldersSync, HillMediaStore } from "./hill/media.ts";
+import { HillPush } from "./hill/push.ts";
 import { HillReceiptStore } from "./hill/receipts.ts";
 import { HillService } from "./hill/service.ts";
 import { hillDir, HillStore } from "./hill/store.ts";
@@ -2342,6 +2343,12 @@ const hill = new HillService({
   // A trick's decision (M94): the answer reaches the trick's program as a tap. `tricks` is made further
   // down; an answer only ever comes after boot.
   tap: (host, trickId, tap, decisionId) => tricks?.tapFromHill(host, trickId, tap, decisionId) ?? Promise.resolve(false),
+  // A `now` Decision rings the phone once (hill/push.ts): push live, its switch on, not snoozed. A crew
+  // member refuses posts anyway; the lead holds the subscriptions, as for every other push.
+  push: new HillPush({
+    ready: () => push.enabled && notifyPrefs.current().decisions && !snooze.isMuted() && crew.mode !== "peer",
+    send: (message) => void push.send(message),
+  }),
 });
 hill.pruneMedia();
 const walkyServer = new WalkyServer({

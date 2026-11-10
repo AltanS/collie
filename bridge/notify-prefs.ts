@@ -34,6 +34,10 @@ export interface NotifyPrefs {
    *  ON, unlike `cache`: a rule is the opt-in, set per machine, so this switch only silences rules the
    *  operator already asked for. Not an agent status; the machine watch reads it directly. */
   machines: boolean;
+  /** Push when a Decision of priority `now` opens on the hill (`bridge/hill/push.ts`). Default ON: the
+   *  poster's `now` is the opt-in, and the hill caps how often it may ring. Not an agent status; the
+   *  hill reads it directly. */
+  decisions: boolean;
 }
 
 export const DEFAULT_NOTIFY_PREFS: NotifyPrefs = {
@@ -43,6 +47,7 @@ export const DEFAULT_NOTIFY_PREFS: NotifyPrefs = {
   updates: true,
   cache: false,
   machines: true,
+  decisions: true,
 };
 
 /**
@@ -59,6 +64,7 @@ export function coerceNotifyPrefs(raw: JsonValue | undefined): NotifyPrefs {
     updates: typeof o.updates === "boolean" ? o.updates : DEFAULT_NOTIFY_PREFS.updates,
     cache: typeof o.cache === "boolean" ? o.cache : DEFAULT_NOTIFY_PREFS.cache,
     machines: typeof o.machines === "boolean" ? o.machines : DEFAULT_NOTIFY_PREFS.machines,
+    decisions: typeof o.decisions === "boolean" ? o.decisions : DEFAULT_NOTIFY_PREFS.decisions,
   };
 }
 
@@ -102,6 +108,7 @@ export class NotifyPrefsStore {
     if (patch.updates !== undefined) this.prefs.updates = patch.updates;
     if (patch.cache !== undefined) this.prefs.cache = patch.cache;
     if (patch.machines !== undefined) this.prefs.machines = patch.machines;
+    if (patch.decisions !== undefined) this.prefs.decisions = patch.decisions;
     await this.save();
     return this.current();
   }
