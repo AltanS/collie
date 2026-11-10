@@ -821,9 +821,12 @@ describe("solo zero-tax — routes", () => {
       "/^\\/api\\/tab\\/([^/]+)\\/(rename|close)$/",
       // Collie tricks (M94 slice 01): a tap on a trick's control. A SOLO route that legitimately extends
       // this list, named here rather than exempted: this bridge's own host only (another host is 404
-      // until the crew merge), write-gated because it runs the provider, and 404 with no runner.
+      // until the crew merge), write-gated because it runs the program, and 404 with no runner.
       // And its off switch (slice 04): the same file `collie trick on|off` writes, write-gated, this
       // bridge's own host only, 404 with no runner.
+      // And a picture of the trick's own `media/` folder (M94 review 11): a read, gated like the list,
+      // the hill image's checks and headers, this bridge's own host and a trick that is on only.
+      "/^\\/api\\/tricks\\/([^/]+)\\/([^/]+)\\/(media\\/.+)$/",
       "/^\\/api\\/tricks\\/([^/]+)\\/([^/]+)\\/switch$/",
       "/^\\/api\\/tricks\\/([^/]+)\\/([^/]+)\\/tap$/",
       // The operator's Cancel on a held walky talky message it sent (M62 spec 03): a write, solo; a

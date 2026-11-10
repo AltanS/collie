@@ -141,14 +141,6 @@ export function partSummary(parsed: ParsedPart): string {
       add("view", viewWords(part.view));
       break;
     }
-    case "tab":
-      if ("view" in parsed.part) add("view", viewWords(parsed.part.view));
-      else add("mark", parsed.part.mark.label);
-      break;
-    case "view":
-      add("", quoted(parsed.part.title));
-      add("view", viewWords(parsed.part.view));
-      break;
   }
   return words.join("  ");
 }
@@ -186,6 +178,8 @@ export function devSummary(ran: FixtureRun, refusals: readonly Refusal[]): strin
     for (const decision of parsed.decisions) out.push(`  decision  ${decisionLine(decision)}`);
   }
   for (const refusal of refusals) out.push(`  refused  ${refusal.path === "" ? "(the document)" : refusal.path}  ${refusal.reason}`);
+  // What the tolerant read left out or ignored: never a failure, said so the author sees a typo.
+  for (const note of parsed?.notes ?? []) out.push(`  ${note.code}  ${note.path === "" ? "(the document)" : note.path}  ${note.reason}`);
   const exit = ran.outcome.kind === "exited" ? `exit ${String(ran.outcome.code)}` : ran.outcome.kind;
   out.push(`  ran in ${String(ran.outcome.ms)} ms of ${String(RUN_TIMEOUT_MS / 1000)} s, ${exit}, stdout ${kib(ran.stdoutBytes)} of ${kib(STDOUT_CAP_BYTES)}`);
   if (ran.problem !== null) out.push(`  problem: ${ran.problem}`);
@@ -262,7 +256,7 @@ async function devOnce(deps: TrickDeps, folder: string, args: DevArgs, inputs: D
     const stderr = ran.outcome.kind === "spawn-failed" ? "" : ran.outcome.stderr;
     const parsed = ran.parsed;
     const kind = args.tap === null ? (inputs.facts?.value.trigger.kind ?? "timer") : "tap";
-    const body = { folder, trigger: kind, outcome: ran.outcome.kind, ms: ran.outcome.ms, stdoutBytes: ran.stdoutBytes, problem: ran.problem, stderr, decisionsListed: ran.decisionsListed, parts: parsed?.parts ?? [], decisions: parsed?.decisions ?? [], refusals };
+    const body = { folder, trigger: kind, outcome: ran.outcome.kind, ms: ran.outcome.ms, stdoutBytes: ran.stdoutBytes, problem: ran.problem, stderr, decisionsListed: ran.decisionsListed, parts: parsed?.parts ?? [], decisions: parsed?.decisions ?? [], refusals, notes: parsed?.notes ?? [] };
     deps.io.out(JSON.stringify(inputs.state === undefined ? body : { ...body, state: inputs.state }, null, 2));
   } else {
     const source = inputs.facts === undefined ? "fixture facts" : `facts from ${inputs.facts.file}`;

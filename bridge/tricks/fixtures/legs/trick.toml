@@ -6,4 +6,4 @@ run = "./program.sh"
 every = "15s"
 icon = "flask"
 places = ["belt", "session"]
-facts = 1
+contract = 1

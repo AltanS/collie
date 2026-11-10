@@ -170,7 +170,7 @@ describe("discovery and the switch", () => {
     const info = (await r.service.reply(undefined)).tricks[0];
     expect(info?.state).toBe("skipped");
     expect(info?.refusals?.[0]?.path).toBe("/places/0");
-    expect(info?.error).toStartWith("A place is one of");
+    expect(info?.error).toStartWith('"nowhere" is not a place this Collie knows');
     expect(r.specs).toEqual([]);
   });
 
@@ -370,7 +370,7 @@ describe("backoff", () => {
     expect(r.specs.length).toBe(4);
     const stopped = await r.service.reply(undefined);
     expect(stopped.tricks[0]?.state).toBe("stopped");
-    expect(stopped.tricks[0]?.error).toBe("The provider exited with 1");
+    expect(stopped.tricks[0]?.error).toBe("The program exited with 1");
     await tickAt(r, T0 + 100 * 60 * 60_000);
     expect(r.specs.length).toBe(4);
     // A change of config.toml restarts it with a start run (an edit of the code would stop it instead).
@@ -472,15 +472,35 @@ describe("last good, per part, and the rev", () => {
     expect((await r.service.reply(undefined)).present).toEqual(["bluefin/legs/belt"]);
   });
 
-  test("a removed kind is refused by name, and the runner keeps nothing of that part", async () => {
-    const doc = JSON.stringify({ v: 1, parts: [{ at: "session", id: "s", view: [{ kind: "divider" }] }] });
+  test("a node of a kind this Collie does not know is left out by name, with one note on the row; the rest draws", async () => {
+    const view = [{ kind: "line", text: "kept" }, { kind: "divider" }, { kind: "sparkline", values: [1, 2] }];
+    const doc = JSON.stringify({ v: 1, parts: [{ at: "session", id: "s", view }, { at: "belt", id: "belt", mark: { label: "1" } }] });
     const r = await rig([exited(doc)]);
     await makeTrick(r.configDir, "legs", MANIFEST);
     await switchOn(r.stateDir, "legs");
     await tickAt(r, T0);
     const reply = await r.service.reply(undefined);
-    expect(reply.parts).toEqual([]);
-    expect(reply.tricks[0]?.refusals?.[0]?.code).toBe("removed");
+    expect(reply.parts.map((p) => p.value)).toEqual([
+      { at: "session", id: "s", view: [{ kind: "line", text: "kept" }] },
+      { at: "belt", id: "belt", mark: { label: "1" } },
+    ]);
+    expect(reply.tricks[0]?.state).toBe("ok");
+    expect(reply.tricks[0]?.refusals?.map((x) => [x.code, x.path])).toEqual([
+      ["dropped", "/parts/0/view/1/kind"],
+      ["dropped", "/parts/0/view/2/kind"],
+    ]);
+    expect(reply.tricks[0]?.refusals?.[0]?.reason).toContain('"divider"');
+  });
+
+  test("a part in a place this Collie does not know is left out, with one note on the row; the other parts draw", async () => {
+    const doc = JSON.stringify({ v: 1, parts: [{ at: "sidebar", id: "x", panel: {} }, { at: "belt", id: "belt", mark: { label: "1" } }] });
+    const r = await rig([exited(doc)]);
+    await makeTrick(r.configDir, "legs", MANIFEST);
+    await switchOn(r.stateDir, "legs");
+    await tickAt(r, T0);
+    const reply = await r.service.reply(undefined);
+    expect(reply.present).toEqual(["bluefin/legs/belt"]);
+    expect(reply.tricks[0]?.refusals?.map((x) => [x.code, x.path])).toEqual([["dropped", "/parts/0/at"]]);
   });
 });
 
@@ -495,7 +515,7 @@ describe("taps", () => {
     return r;
   }
 
-  test("a tap runs the provider with the tap trigger and replies ok with the new parts", async () => {
+  test("a tap runs the program with the tap trigger and replies ok with the new parts", async () => {
     const r = await onRig([exited(belt("24 red"))]);
     const answer = await r.service.tap(HOST, "legs", tapBody());
     expect(answer.status).toBe(200);
@@ -572,10 +592,10 @@ describe("taps", () => {
     ]);
     const unknown = ok200(await r.service.tap(HOST, "legs", tapBody(REQ)));
     expect(unknown.code).toBe("unknown");
-    expect(unknown.message).toBe("The provider ran past 10 s and was stopped");
+    expect(unknown.message).toBe("The program ran past 10 s and was stopped");
     const failed = ok200(await r.service.tap(HOST, "legs", tapBody(REQ2)));
     expect(failed.code).toBe("rejected");
-    expect(failed.message).toStartWith("The provider exited with 1: curl: 401");
+    expect(failed.message).toStartWith("The program exited with 1: curl: 401");
     expect(failed.message).not.toContain("0123456789abcdef");
   });
 
@@ -616,12 +636,37 @@ describe("taps", () => {
     expect(kept).toBeGreaterThan(0);
   });
 
-  test("a draft is refused as removed, from any run; the parts still draw", async () => {
+  test("a draft is ignored, from any run: no note on the row, and the parts still draw", async () => {
     const r = await onRig([exited(belt("1", { draft: { session: "bluefin:w6X:3", text: "x" } }))]);
     await tickAt(r, T0);
     const reply = await r.service.reply(undefined);
     expect(reply.present).toEqual(["bluefin/legs/belt"]);
-    expect(reply.tricks[0]?.refusals?.map((x) => x.code)).toEqual(["removed"]);
+    expect(reply.tricks[0]?.refusals).toBeUndefined();
+  });
+});
+
+describe("a trick's pictures", () => {
+  const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52, 0, 0, 0, 1, 0, 0, 0, 1]);
+
+  test("serves a picture of media/ for a trick that is on, of this bridge; nothing for one off, unknown or of another host", async () => {
+    const r = await rig([]);
+    const dir = await makeTrick(r.configDir, "legs", MANIFEST);
+    await mkdir(join(dir, "media"));
+    await writeFile(join(dir, "media", "chart.png"), PNG);
+    await makeTrick(r.configDir, "off", MANIFEST.replace('id = "legs"', 'id = "off"'));
+    await mkdir(join(r.configDir, TRICKS_DIR, "off", "media"));
+    await writeFile(join(r.configDir, TRICKS_DIR, "off", "media", "chart.png"), PNG);
+    expect(await r.service.media(HOST, "legs", "media/chart.png")).toBeNull();
+    await switchOn(r.stateDir, "legs");
+    await r.service.refresh(true);
+    const file = await r.service.media(HOST, "legs", "media/chart.png");
+    expect(file?.mime).toBe("image/png");
+    expect(file?.bytes).toEqual(PNG);
+    expect(await r.service.media(HOST, "off", "media/chart.png")).toBeNull();
+    expect(await r.service.media(HOST, "gone", "media/chart.png")).toBeNull();
+    expect(await r.service.media("m_bbbbbbbbbb", "legs", "media/chart.png")).toBeNull();
+    expect(await r.service.media(HOST, "legs", "trick.toml")).toBeNull();
+    expect(await r.service.media(HOST, "legs", "media/../trick.toml")).toBeNull();
   });
 });
 
@@ -858,14 +903,14 @@ describe("taps, answers and slots", () => {
   });
 });
 
-describe("real providers", () => {
-  test("an sh provider and a bun provider run through the real runner", async () => {
+describe("real programs", () => {
+  test("an sh program and a bun program run through the real runner", async () => {
     const r = await rig(null);
-    await makeTrick(r.configDir, "hello", 'id = "hello"\nname = "Hello"\nrun = "./provider.sh"\nplaces = ["belt"]\n', {
-      "provider.sh": `#!/bin/sh\nfacts=$(cat)\nn=$(printf '%s' "$facts" | grep -o '"paneId"' | wc -l | tr -d ' ')\nprintf '{"v":1,"parts":[{"at":"belt","id":"belt","mark":{"label":"%s"}}]}' "$n"\n`,
+    await makeTrick(r.configDir, "hello", 'id = "hello"\nname = "Hello"\nrun = "./program.sh"\nplaces = ["belt"]\n', {
+      "program.sh": `#!/bin/sh\nfacts=$(cat)\nn=$(printf '%s' "$facts" | grep -o '"paneId"' | wc -l | tr -d ' ')\nprintf '{"v":1,"parts":[{"at":"belt","id":"belt","mark":{"label":"%s"}}]}' "$n"\n`,
     });
-    await makeTrick(r.configDir, "bunny", 'id = "bunny"\nname = "Bunny"\nrun = "bun provider.ts"\nplaces = ["belt"]\n', {
-      "provider.ts": [
+    await makeTrick(r.configDir, "bunny", 'id = "bunny"\nname = "Bunny"\nrun = "bun program.ts"\nplaces = ["belt"]\n', {
+      "program.ts": [
         'import { appendFileSync } from "node:fs";',
         "const facts = JSON.parse(await Bun.stdin.text());",
         'appendFileSync(`${facts.trick.state}/runs.log`, facts.trigger.kind + "\\n");',

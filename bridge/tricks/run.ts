@@ -4,7 +4,7 @@ import { HOST } from "../host.ts";
 import { redactText } from "../redact.ts";
 import { isEmbedded } from "../root.ts";
 
-// ONE RUN OF A PROVIDER (M94 slice 01): spawn, feed the facts, read with caps, kill on time.
+// ONE RUN OF A TRICK'S PROGRAM (M94 slice 01): spawn, feed the facts, read with caps, kill on time.
 //
 // The limits are the point of this file:
 //   * 10 s, then the whole process GROUP is killed. The program is started as a group leader, so a
@@ -273,13 +273,13 @@ export function outcomeProblem(outcome: RunOutcome, max: number): string | null 
   const line = ((): string | null => {
     switch (outcome.kind) {
       case "spawn-failed":
-        return `The provider did not start: ${outcome.message}`;
+        return `The program did not start: ${outcome.message}`;
       case "timeout":
-        return `The provider ran past ${Math.round(outcome.limitMs / 1000)} s and was stopped${tail(outcome.stderr)}`;
+        return `The program ran past ${Math.round(outcome.limitMs / 1000)} s and was stopped${tail(outcome.stderr)}`;
       case "overflow":
-        return `The provider printed more than ${STDOUT_CAP_BYTES / 1024} KiB and was stopped${tail(outcome.stderr)}`;
+        return `The program printed more than ${STDOUT_CAP_BYTES / 1024} KiB and was stopped${tail(outcome.stderr)}`;
       case "exited":
-        return outcome.code === 0 ? null : `The provider exited with ${outcome.code}${tail(outcome.stderr)}`;
+        return outcome.code === 0 ? null : `The program exited with ${outcome.code}${tail(outcome.stderr)}`;
     }
   })();
   if (line === null) return null;

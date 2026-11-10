@@ -220,7 +220,7 @@ exports[`valid fixtures > the image node reads back as written, as its snapshot 
     "attrs": {
       "alt": "The reply box with the draft still in it",
       "h": "720",
-      "src": "shots/case-24.png",
+      "src": "media/case-24.png",
       "w": "1280",
     },
     "kind": "image",

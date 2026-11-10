@@ -5,13 +5,14 @@ import {
   FACT_SPACES_MAX,
   FACT_TEXT_MAX_BYTES,
   isScopeKey,
+  TRICK_CONTRACT,
   type FactsSession,
   type FactsSpace,
   type FactsTrigger,
   type TrickFacts,
 } from "../../web/src/lib/tricks/schema.ts";
 
-// THE FACTS A PROVIDER GETS ON STDIN (M94 slice 01): what the phone already sees, in the trick's words.
+// THE FACTS A PROGRAM GETS ON STDIN (M94 slice 01): what the phone already sees, in the trick's words.
 //
 // Sessions are the snapshot's panes, agents and shells, each keyed by its scope key `<memberId>:paneId`
 // (never a name, so a draft or an open can name a session the bridge can find again). The member id is
@@ -133,5 +134,5 @@ export function factsWorldOf(input: FactsWorldInput): FactsWorld {
 
 /** The whole facts document for one run. `memberId` is the key a program may keep; `host` is display only. */
 export function buildFacts(world: FactsWorld, trick: { id: string; dir: string; state: string }, trigger: FactsTrigger): TrickFacts {
-  return { v: 1, trigger, trick, memberId: world.memberId, host: world.machine, sessions: world.sessions, spaces: world.spaces };
+  return { contract: TRICK_CONTRACT, trigger, trick, memberId: world.memberId, host: world.machine, sessions: world.sessions, spaces: world.spaces };
 }

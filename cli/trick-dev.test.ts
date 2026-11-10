@@ -242,7 +242,7 @@ describe("one run", () => {
       `import { run } from "./trick.ts";
 run((t) => {
   t.belt({ label: "far too long a face word" });
-  t.status({ text: t.hillAnswer === null ? "asking" : "got " + t.hillAnswer.intent });
+  t.status({ text: t.tap?.decision == null ? "asking" : "got " + t.tap.intent });
   t.decide({ key: "case-24", title: "Rerun case 24?", summary: "It failed twice.", options: [{ intent: "rerun", label: "Rerun" }, { intent: "skip", label: "Skip" }], recommends: { intent: "rerun", why: "It passed yesterday." }, media: [{ file: "media/a.png" }] });
 });
 `,
@@ -261,11 +261,30 @@ run((t) => {
     expect(body.refusals[0].path).toBe("/parts/0/mark/label");
   });
 
+  test("what the output holds that this Collie does not know is a note, never a failure, and in --json", async () => {
+    const d = await deps();
+    const doc = { v: 1, parts: [{ at: "sidebar", id: "x" }, { at: "belt", id: "belt", mark: { label: "1", shine: "x" } }] };
+    const dir = await trickWith(d, "newer", `console.log(${JSON.stringify(JSON.stringify(doc))});\n`, '["belt"]');
+    expect(await cmdTrickDev(d, [dir])).toBe(EXIT.OK);
+    const text = d.out.join("\n");
+    expect(text).toMatch(/dropped {2}\/parts\/0\/at {2}/u);
+    expect(text).toMatch(/ignored {2}\/parts\/1\/mark\/shine {2}/u);
+    d.out.length = 0;
+    expect(await cmdTrickDev(d, [dir, "--json"])).toBe(EXIT.OK);
+    const body = JSON.parse(d.out.join("\n"));
+    expect(body.refusals).toEqual([]);
+    expect(body.notes.map((n: { code: string; path: string }) => [n.code, n.path])).toEqual([
+      ["dropped", "/parts/0/at"],
+      ["ignored", "/parts/1/mark/shine"],
+    ]);
+    expect(body.parts.map((p: { part: { id: string } }) => p.part.id)).toEqual(["belt"]);
+  });
+
   test("a failed run prints the problem and the stderr tail; keepDecisions says they stay", async () => {
     const d = await deps();
     const dir = await trickWith(d, "boom", `import { run } from "./trick.ts";\nrun(() => { throw new Error("no gh on PATH"); });\n`, '["belt"]');
     expect(await cmdTrickDev(d, [dir])).toBe(EXIT.FAIL);
-    expect(d.out.join("\n")).toContain("problem: The provider exited with 1: error: no gh on PATH");
+    expect(d.out.join("\n")).toContain("problem: The program exited with 1: error: no gh on PATH");
     const e = await deps();
     const kept = await trickWith(e, "keep", `import { run } from "./trick.ts";\nrun((t) => { t.belt({ label: "ok" }); t.keepDecisions(); });\n`, '["belt"]');
     expect(await cmdTrickDev(e, [kept])).toBe(EXIT.OK);

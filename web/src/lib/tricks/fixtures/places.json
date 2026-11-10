@@ -46,47 +46,6 @@
       }
     ]
   },
-  "tab": {
-    "v": 1,
-    "parts": [
-      {
-        "at": "tab:fix space:collie",
-        "id": "fix-tab",
-        "mark": {
-          "icon": "flask",
-          "badge": "1",
-          "tone": "danger"
-        }
-      }
-    ]
-  },
-  "view": {
-    "v": 1,
-    "parts": [
-      {
-        "at": "view:agent:claude cwd:~/projects/*",
-        "id": "touched",
-        "title": "Touched",
-        "icon": "file",
-        "view": [
-          {
-            "kind": "list",
-            "kids": [
-              {
-                "kind": "row",
-                "text": "web/src/lib/tricks/schema.ts",
-                "attrs": {
-                  "end": "+812",
-                  "cut": "mid",
-                  "href": "bluefin:w6X:3"
-                }
-              }
-            ]
-          }
-        ]
-      }
-    ]
-  },
   "dashboard": {
     "v": 1,
     "parts": [

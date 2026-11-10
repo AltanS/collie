@@ -19,6 +19,7 @@ import {
   isTrickId,
   parseFacts,
   parseTrickDocumentText,
+  TRICK_CONTRACT,
   type FactsTrigger,
   type ParsedTrickDocument,
   type TrickFacts,
@@ -351,6 +352,8 @@ export interface TrickCheckReport {
     problem: string | null;
     parts: string[];
     refusals: Refusal[];
+    /** What the tolerant read left out (`dropped`) or ignored (`ignored`). Never fails the check. */
+    notes: Refusal[];
     stderr: string;
   };
 }
@@ -513,8 +516,14 @@ export function isScannedFile(rel: string): boolean {
 function sha256(text: string): string {
   return createHash("sha256").update(text).digest("hex");
 }
-/** The older helpers this Collie shipped, by the SHA-256 of their text: v1 (1.29.0-edge, M94 review 4). */
-const OLDER_HELPERS: ReadonlyMap<string, number> = new Map([["534f992f9aa2a4a6e53945c1b46e7b407ab9528b3839970e6552d83b23ed13bb", 1]]);
+/**
+ * The older helpers this Collie shipped, by the SHA-256 of their text: v1 (1.29.0-edge, M94 review 4) and
+ * v2 (the facts' `v`, `t.hillAnswer` beside `t.tap`; M94 review 11 made it v3).
+ */
+const OLDER_HELPERS: ReadonlyMap<string, number> = new Map([
+  ["534f992f9aa2a4a6e53945c1b46e7b407ab9528b3839970e6552d83b23ed13bb", 1],
+  ["ec9ce0acd1c1691f61bb63a0f9f136578c9bf9250c7aa66d3d1186ee030b98a9", 2],
+]);
 
 /** The version of a helper this Collie ships (this one, or one of `older`) whose bytes `text` are, or null for any other text. */
 export function shippedHelperVersion(text: string, older: ReadonlyMap<string, number> = OLDER_HELPERS): number | null {
@@ -692,10 +701,11 @@ export async function checkRun(report: TrickCheckReport, env: CliContext["env"])
   const ran = await runAgainstFixture(manifest, report.folder, env);
   const { outcome, problem } = ran;
   const stderr = outcome.kind === "spawn-failed" ? "" : outcome.stderr;
-  const run: NonNullable<TrickCheckReport["run"]> = { outcome: outcome.kind, ms: outcome.ms, problem, parts: [], refusals: [], stderr };
+  const run: NonNullable<TrickCheckReport["run"]> = { outcome: outcome.kind, ms: outcome.ms, problem, parts: [], refusals: [], notes: [], stderr };
   if (ran.parsed !== null) {
     run.parts = ran.parsed.parts.map((p) => `${p.part.at} ${p.part.id}`);
     run.refusals = ran.parsed.refusals;
+    run.notes = ran.parsed.notes;
   }
   report.run = run;
 }
@@ -745,6 +755,8 @@ function printReport(deps: Pick<TrickDeps, "io">, report: TrickCheckReport): voi
     io.out(`  ran in ${run.ms} ms: ${run.problem ?? "exit 0"}`);
     if (run.parts.length > 0) io.out(`  parts: ${run.parts.join(", ")}`);
     for (const r of run.refusals) io.err(`error: output ${r.path === "" ? "" : `${r.path} `}${r.reason}`);
+    // Notes never fail the check: a node or a part this Collie leaves out, a key it ignores.
+    for (const n of run.notes) io.out(`  note: output ${n.path === "" ? "" : `${n.path} `}${n.reason}`);
     if (run.problem !== null && run.stderr.trim() !== "") {
       io.err("  stderr:");
       for (const line of run.stderr.trimEnd().split(/\r?\n/).slice(-10)) io.err(`    ${line}`);
@@ -777,8 +789,8 @@ export async function cmdTrickCheck(deps: TrickDeps, args: readonly string[]): P
 
 /** The helper file a TypeScript trick imports. */
 export const HELPER_FILE = "trick.ts";
-/** The version of the helper this Collie writes. Its first line names it: `// collie trick helper v2`. */
-export const HELPER_VERSION = 2;
+/** The version of the helper this Collie writes. Its first line names it: `// collie trick helper v3`. */
+export const HELPER_VERSION = 3;
 /** The helper's source (cli/trick-kit/trick.ts), held in the binary as text. */
 export const TRICK_HELPER: string = trickHelperSource();
 
@@ -798,10 +810,12 @@ export function sampleManifest(id: string, form: InitForm = "ts"): string {
     `# Collie trick "${id}". Check it with: collie trick check --run <this folder>`,
     `id = "${id}"`,
     `name = "${id}"`,
-    ts ? `run = "program.ts"` : `run = "./provider.sh"`,
+    ts ? `run = "program.ts"` : `run = "./program.sh"`,
     `every = "30s"`,
     `icon = "plug"`,
     ts ? `places = ["status", "dashboard", "session"]` : `places = ["belt"]`,
+    `# The trick contract this trick is written for. A Collie that does not know it refuses the trick.`,
+    `contract = ${String(TRICK_CONTRACT)}`,
     "",
   ].join("\n");
 }
@@ -829,7 +843,7 @@ run((t) => {
     view: [v.list(sessions.slice(0, rows).map((s) => v.row((s.name ?? s.paneId).slice(0, 60), { end: s.status })))],
   });
 
-  // Ask the person on the Hill. The answer comes back as a tap: read it in t.hillAnswer.
+  // Ask the person on the Hill. The answer comes back as a tap: t.tap.decision is the key, t.tap.intent the option.
   // t.decide({
   //   key: "tidy",
   //   title: "Close the idle sessions?",
@@ -847,7 +861,7 @@ export const SAMPLE_SHELL_PROGRAM = `#!/bin/sh
 # document from stdout. This one counts the sessions and prints one mark at the end of the Belt.
 facts=$(cat)
 n=$(printf '%s' "$facts" | grep -o '"paneId"' | wc -l | tr -d ' ')
-printf '{"v":1,"parts":[{"at":"belt","id":"belt","mark":{"icon":"plug","label":"%s","tone":"plain"}}]}\\n' "$n"
+printf '{"v":${String(TRICK_CONTRACT)},"parts":[{"at":"belt","id":"belt","mark":{"icon":"plug","label":"%s","tone":"plain"}}]}\\n' "$n"
 `;
 
 /** The loop and the helper's table, for a TypeScript trick. */
@@ -872,7 +886,7 @@ version. \`run((t) => { ... })\` reads the facts, calls your function once and p
 | ---- | ------------ |
 | \`t.facts\` | the facts (below), typed |
 | \`t.config\` | \`config.toml\`, parsed; {} when there is none |
-| \`t.tap\`, \`t.hillAnswer\` | the tap that started this run, and the answer to a Decision (\`key\`, \`intent\`, \`text\`), or null |
+| \`t.tap\` | the tap that started this run, or null: \`rid\`, \`node\`, \`intent\`, \`value\`, and for an answer to a Decision \`decision\` (its key), \`text\` and \`seen\` |
 | \`t.status\`, \`t.belt\`, \`t.dashboard\`, \`t.tabbar\`, \`t.session\` | one part in each place; list the place in \`places\` |
 | \`v.card\`, \`v.row\`, \`v.para\`, and the rest of \`v\` | one builder per node kind, for a view |
 | \`t.decide\`, \`t.keepDecisions\` | ask the person on the Hill; leave the open Decisions as they are |
@@ -903,7 +917,7 @@ trick has no session.
 function agentsShLoop(id: string): string {
   return `## The loop
 
-1. Change \`provider.sh\` (or point \`run\` at another program in this folder).
+1. Change \`program.sh\` (or point \`run\` at another program in this folder).
 2. Run \`collie trick check --run .\` and fix every error it prints. Read its warnings too.
 3. Switch the trick on with \`collie trick on ${id}\`. It runs while a phone watches.
 `;
@@ -934,7 +948,7 @@ other file the program writes here counts as a code change and stops the trick.
 ## What the program gets
 
 - Its working folder is this folder.
-- On stdin, one JSON document, the facts: \`v\` (1), \`trigger\` (\`start\`, \`timer\`, or \`tap\` with
+- On stdin, one JSON document, the facts: \`contract\` (${String(TRICK_CONTRACT)}), \`trigger\` (\`start\`, \`timer\`, or \`tap\` with
   \`rid\`, \`node\` (the part id, or \`hill/<key>\` for a decision), \`intent\`, \`value\` and \`from\`),
   \`trick\` (\`id\`, \`dir\`, and \`state\`, a folder of its own to keep files in), \`memberId\` (this
   Collie's id: its crew member id, or \`m_\` and ten letters and digits on a solo install; it stays when
@@ -951,10 +965,10 @@ other file the program writes here counts as a code change and stops the trick.
 
 ## What it prints
 
-One JSON document on stdout, at most 64 KiB, within 10 seconds:
+One JSON document on stdout, at most 64 KiB, within 10 seconds. \`v\` is the contract number:
 
 \`\`\`json
-{ "v": 1, "parts": [ { "at": "belt", "id": "belt", "mark": { "icon": "plug", "label": "3", "tone": "ok" } } ] }
+{ "v": ${String(TRICK_CONTRACT)}, "parts": [ { "at": "belt", "id": "belt", "mark": { "icon": "plug", "label": "3", "tone": "ok" } } ] }
 \`\`\`
 
 - Each part has an \`at\` (a place listed in \`places\` in \`trick.toml\`) and an \`id\` unique in the
@@ -971,12 +985,23 @@ One JSON document on stdout, at most 64 KiB, within 10 seconds:
   shows the part's age and drops its tone.
 - A part's \`view\` is a list of nodes \`{ kind, text, attrs, kids }\`, the Tree UI's kinds (\`card\`,
   \`group\`, \`list\`, \`row\`, \`bar\`, \`chip\`, \`button\`, \`para\`, \`line\`, \`run\`, \`code\`, \`link\`,
-  \`image\`, \`meter\`, \`spacer\`) and \`number\`. Every attribute value is a string.
+  \`image\`, \`meter\`, \`spacer\`) and \`number\`. Every attribute value is a string. An \`image\`
+  names a file in this folder's \`media/\` (\`media/chart.png\`: PNG, JPEG or WebP, at most 2 MB).
 - Optional: \`decisions\`, up to 20 questions for the person (\`key\`, \`title\`, \`summary\`, \`options\`,
   \`recommends\`, and \`view\` for display nodes under the summary: no button, card or image). The
   answer comes back as a tap on \`hill/<key>\`. Leave the \`decisions\` key out
   and the open decisions stay as they are; an empty list \`[]\` withdraws them all.
-- Unknown keys are refused, and a string over its cap is refused, never cut.
+- A value that breaks a rule is refused, and a string over its cap is refused, never cut. What this
+  Collie does not know is left out instead: a node of an unknown kind, or a part in an unknown place,
+  is dropped with one note on the trick's row, and an unknown key or attribute is ignored. \`collie
+  trick dev\` and \`collie trick check --run\` print each one as a note; read them, they are often a typo.
+  \`trick.toml\` and a Decision stay strict: an unknown key there is refused.
+
+## The contract
+
+\`trick.toml\` names the trick contract this folder is written for, \`contract = ${String(TRICK_CONTRACT)}\`, the facts carry
+it as \`contract\`, and the output's \`v\` is it. Within one number Collie only adds keys, kinds and
+places. A Collie that knows an older number refuses the trick with one line that names both numbers.
 
 ## Limits
 
@@ -1006,8 +1031,8 @@ export async function cmdTrickInit(deps: TrickDeps, args: readonly string[]): Pr
   await writeFile(join(dir, MANIFEST_FILE), sampleManifest(id, form));
   await writeFile(join(dir, "AGENTS.md"), sampleAgents(id, form));
   if (form === "sh") {
-    await writeFile(join(dir, "provider.sh"), SAMPLE_SHELL_PROGRAM, { mode: 0o755 });
-    deps.io.out(`Made ${dir} with trick.toml, provider.sh and AGENTS.md. The trick is off.`);
+    await writeFile(join(dir, "program.sh"), SAMPLE_SHELL_PROGRAM, { mode: 0o755 });
+    deps.io.out(`Made ${dir} with trick.toml, program.sh and AGENTS.md. The trick is off.`);
   } else {
     await writeFile(join(dir, "program.ts"), sampleProgram(id));
     await writeFile(join(dir, HELPER_FILE), TRICK_HELPER);

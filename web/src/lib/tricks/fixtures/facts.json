@@ -1,6 +1,6 @@
 {
   "timer": {
-    "v": 1,
+    "contract": 1,
     "trigger": {
       "kind": "timer"
     },
@@ -44,7 +44,7 @@
     ]
   },
   "tap": {
-    "v": 1,
+    "contract": 1,
     "trigger": {
       "kind": "tap",
       "rid": "7f0c1d2e-3b4a-4c5d-8e6f-708192a3b4c5",
@@ -66,7 +66,7 @@
     "spaces": []
   },
   "answer": {
-    "v": 1,
+    "contract": 1,
     "trigger": {
       "kind": "tap",
       "rid": "0b9e8d7c-6f5a-4b3c-9d2e-1f0a9b8c7d6e",
@@ -87,7 +87,7 @@
     "spaces": []
   },
   "start": {
-    "v": 1,
+    "contract": 1,
     "trigger": {
       "kind": "start"
     },
@@ -104,41 +104,5 @@
         "name": "collie"
       }
     ]
-  },
-  "view": {
-    "v": 1,
-    "trigger": {
-      "kind": "timer"
-    },
-    "trick": {
-      "id": "touched",
-      "dir": "/var/home/altan/.config/collie/tricks/touched",
-      "state": "/var/home/altan/.local/state/collie/tricks/touched"
-    },
-    "memberId": "bluefin",
-    "host": "bluefin",
-    "sessions": [
-      {
-        "id": "bluefin:w6X:3",
-        "memberId": "bluefin",
-        "sessionId": "bluefin:w6X:3",
-        "paneId": "w6X:3",
-        "host": "bluefin",
-        "name": "composer",
-        "agent": "claude",
-        "status": "idle"
-      }
-    ],
-    "spaces": [],
-    "session": {
-      "id": "bluefin:w6X:3",
-      "memberId": "bluefin",
-      "sessionId": "bluefin:w6X:3",
-      "paneId": "w6X:3",
-      "host": "bluefin",
-      "name": "composer",
-      "agent": "claude",
-      "status": "idle"
-    }
   }
 }

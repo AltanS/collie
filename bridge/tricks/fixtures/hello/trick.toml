@@ -1,7 +1,8 @@
 # A fixture trick for `collie trick check` (M94 slice 01). It prints one belt mark.
 id = "hello"
 name = "Hello"
-run = "./provider.sh"
+run = "./program.sh"
 every = "30s"
 icon = "plug"
 places = ["belt"]
+contract = 1

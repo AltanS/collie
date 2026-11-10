@@ -25,10 +25,21 @@
 // last good version of a refused part and marks it stale; `refusedParts` names them. A decision is
 // refused alone in the same way (`refusedDecisions`).
 //
-// CLOSED, NOT CLEANED. Unknown keys, kinds, attributes, places, tones and icons are refused, never
-// dropped, and a string over its cap is refused, never cut. The durable adapter cuts, because a
-// program's pane must still show; a trick's part has a last good version to fall back on, and a cut
-// string would hide a bug the author can fix with one `collie trick check`.
+// STRICT AT WRITE, TOLERANT AT READ (M94 review 11). What a person or an agent WRITES into Collie is
+// read strictly: `trick.toml` (an unknown key at the same contract is a typo, and refuses), a tap, the
+// facts, an agent's `collie hill post`, and every Decision a trick lists (the poster gets the error).
+// What Collie READS from a program's output to draw is read tolerantly, so a trick written for a newer
+// Collie at the same contract still draws on an older one:
+//   * an unknown node kind (or one this Collie leaves out) drops that node, and an unknown place drops
+//     that part, each with one note (code `dropped`); the other nodes and parts draw;
+//   * an unknown field on a known node, part or document (a key, an attribute) is ignored, with a note
+//     (code `ignored`), and never reaches the phone.
+// Notes are not refusals: `notes` on the result, never `refusals`. The trick's row shows the `dropped`
+// ones, and `collie trick check` and `collie trick dev` print every note without failing. A value that
+// breaks its rule (a tone that is no tone, a string over its cap, a bad `href`) still refuses its part,
+// never cut: the durable adapter cuts, because a program's pane must still show; a trick's part has a
+// last good version to fall back on, and a cut string would hide a bug the author can fix with one
+// `collie trick check`.
 //
 // WHY THIS FILE IMPORTS SO LITTLE. It loads without a DOM, React or the `@/` alias, because the
 // bridge and the CLI import it by relative path, as they import `../json`. It must also pass the root
@@ -60,13 +71,17 @@ import {
   type HillTextMode,
 } from "../hill/wire";
 import { asJsonNumber, asJsonObject, asJsonString, asJsonBoolean, parseJson, type JsonObject, type JsonValue } from "../json";
+import { TRICK_CONTRACT } from "./contract";
+
+export { TRICK_CONTRACT };
 
 // ── Versions and byte caps ───────────────────────────────────────────────────────────────────
 
-/** The output document version this build reads (`"v": 1`). The tree re-cut is v1: no outside trick existed before it. */
-export const DOCUMENT_VERSION = 1;
-/** The facts document version this build writes. A manifest that needs a higher one is skipped. */
-export const FACTS_VERSION = 1;
+/**
+ * The output document's `"v"`: the trick contract number (contract.ts), the same one the manifest's
+ * `contract` and the facts' `contract` name. One number, not three.
+ */
+export const DOCUMENT_VERSION = TRICK_CONTRACT;
 
 /** One part, serialised as compact JSON, at most this many UTF-8 bytes. */
 export const PART_MAX_BYTES = 16 * 1024;
@@ -101,8 +116,6 @@ export const PROGRESS_MAX = 12;
 export const FACE_MAX = 12;
 /** The trick's `name` in the manifest, and a trick session's `name`. */
 export const NAME_MAX = 40;
-/** A view's `title` in the view picker, beside "Conversation" and "Terminal". */
-export const VIEW_TITLE_MAX = 24;
 /** A `group`'s `label`. */
 export const TITLE_MAX = 60;
 /** A `para`'s text, and a `run`'s. One paragraph: no line break (the tree strips control characters). */
@@ -466,21 +479,16 @@ export type SessionStatus = (typeof SESSION_STATUSES)[number];
 // ── Places ───────────────────────────────────────────────────────────────────────────────────
 
 /**
- * Where a part draws, by kind. The `at` of a part names one (`belt`, `tab:fix`, `view:agent:claude`)
- * and the manifest's `places` lists the kinds it uses. The place word is the `at` word before its
- * match: `tab` is both `tab:<tabmatch>`, the mark after a tab's title, and a bare `tab`, a trick's own
- * tab entry in a Space (slice 06, the shape of the first schema), because both live in the Tab row;
- * `view` is `view:<match>`.
- * DECISION: the manifest declares kinds, not whole `at` strings, so a trick may compute its matches at
- * run time.
+ * Where a part draws. The `at` of a part names one, and the manifest's `places` lists the ones it uses.
+ * Every place here is drawn by this Collie: `belt` (agent-chat.tsx), `status` (trick-status-item.tsx),
+ * `dashboard` and `tabbar` (trick-place-items.tsx, dashboard-tab-bar.tsx) and `session` (the bridge's
+ * Tricks Space, panes.ts, and routes/trick-session.tsx). M94 review 11 removed `tab`, `tab:<match>` and
+ * `view:<match>`, which parsed and drew nowhere; a later Collie adds a place back at the same contract,
+ * and an older one leaves a part there out (`parseTrickDocument`).
  */
-export const PLACE_KINDS = ["belt", "session", "tab", "view", "dashboard", "status", "tabbar"] as const;
+export const PLACE_KINDS = ["belt", "session", "dashboard", "status", "tabbar"] as const;
 export type PlaceKind = (typeof PLACE_KINDS)[number];
-/**
- * The places a parser call with no `places` accepts: every kind (step 3). Parsing is not drawing: this
- * Collie draws `belt`, `session`, `status`, `dashboard` and `tabbar`; the others are held, and a slice
- * draws them in the shape parsed.
- */
+/** The places a parser call with no `places` accepts: every place. */
 export const NEAR_PLACES: readonly PlaceKind[] = PLACE_KINDS;
 /** The place kinds a later slice builds and a caller may refuse as "later" by leaving them out of `places`. None since step 3. */
 export const LATER_PLACES: readonly PlaceKind[] = [];
@@ -488,14 +496,12 @@ export const LATER_PLACES: readonly PlaceKind[] = [];
  * Place words of the first schema that come back later, each refused with the code "later" and its
  * place named, in an `at` and in the manifest's `places`. `menu` is the word of `menu:<match>`.
  */
+/** The most place words a manifest's `places` may list, known or not. */
+export const PLACES_LISTED_MAX = 16;
 export const LATER_PLACE_WORDS = {
   "header.line": '"header.line" is a later place, not in this Collie yet. The other parts still draw.',
   menu: '"menu:<match>" is a later place, not in this Collie yet. The other parts still draw.',
   settings: '"settings" is a later place, not in this Collie yet. The other parts still draw.',
-} as const satisfies Readonly<Record<string, string>>;
-/** `at` words of the first schema that are gone, refused with what to write instead. */
-export const REMOVED_PLACES = {
-  "tab-mark": 'The tab mark\'s "at" is "tab:<tabmatch>", and its place word is "tab".',
 } as const satisfies Readonly<Record<string, string>>;
 
 // ── Node kinds ───────────────────────────────────────────────────────────────────────────────
@@ -771,31 +777,6 @@ export type ViewNode =
 /** A part's view: the nodes of the place's frame, top to bottom. */
 export type View = ViewNode[];
 
-// ── Types: matches ───────────────────────────────────────────────────────────────────────────
-
-/**
- * One term of a session match. A match is one or more terms separated by single spaces, and ALL must
- * hold (DECISION: the design names the terms, not how they combine). Globs take `*` and `?` only.
- * A match never reaches a trick session unless one term is `kind:trick`.
- */
-export type MatchTerm =
-  | { term: "any" }
-  | { term: "name"; glob: string }
-  | { term: "agent"; agent: string }
-  | { term: "cwd"; glob: string }
-  | { term: "space"; glob: string }
-  | { term: "trick" };
-export interface SessionMatch {
-  text: string;
-  terms: MatchTerm[];
-}
-/** One term of a tab match: `*`, a title glob, `space:<glob>`. All must hold. */
-export type TabMatchTerm = { term: "any" } | { term: "title"; glob: string } | { term: "space"; glob: string };
-export interface TabMatch {
-  text: string;
-  terms: TabMatchTerm[];
-}
-
 // ── Types: parts ─────────────────────────────────────────────────────────────────────────────
 
 /**
@@ -896,41 +877,13 @@ export interface SessionPart {
   actions?: TrickAction[];
   view: View;
 }
-/** A trick's own tab entry in the Tab row of the first Space whose name matches `space` (slice 06). Its body is a view. */
-export interface TabPart {
-  at: "tab";
-  id: string;
-  /** The tab's title in the Tab row. */
-  title: string;
-  icon?: TrickIcon;
-  /** A Space name glob. The tab joins the first Space in Collie's order that matches, and stays. */
-  space: string;
-  view: View;
-}
-export interface TabMarkPart {
-  at: `tab:${string}`;
-  id: string;
-  /** No `intent`: a tap on the tab opens the tab. */
-  mark: Mark;
-}
-export interface ViewPart {
-  at: `view:${string}`;
-  id: string;
-  /** The view's name in the picker. */
-  title: string;
-  icon?: TrickIcon;
-  view: View;
-}
-export type TrickPart = BeltPart | SessionPart | TabPart | TabMarkPart | ViewPart | DashboardPart | StatusPart | TabbarPart;
+export type TrickPart = BeltPart | SessionPart | DashboardPart | StatusPart | TabbarPart;
 
-/** A part the parser accepted, with its place kind and its match read out of `at`. */
+/** A part the parser accepted, with its place. */
 export type ParsedPart =
   | { place: "belt"; part: BeltPart }
   | { place: "status"; part: StatusPart }
   | { place: "session"; part: SessionPart }
-  | { place: "tab"; part: TabMarkPart; tabMatch: TabMatch }
-  | { place: "tab"; part: TabPart; tabMatch?: undefined }
-  | { place: "view"; part: ViewPart; match: SessionMatch }
   | { place: "dashboard"; part: DashboardPart }
   | { place: "tabbar"; part: TabbarPart };
 
@@ -1028,8 +981,8 @@ export interface TrickManifest {
   watch?: string[];
   on?: TrickEvent[];
   mode: TrickMode;
-  /** The facts version the program needs. */
-  facts: number;
+  /** The trick contract the trick was written for (contract.ts). At most this Collie's `TRICK_CONTRACT`. */
+  contract: number;
   icon: TrickIcon;
   places: PlaceKind[];
   /** Environment names past the base allow-list the program asks for (bridge/tricks/env.ts). */
@@ -1094,7 +1047,8 @@ export interface FactsSpace {
   folder?: string;
 }
 export interface TrickFacts {
-  v: 1;
+  /** The trick contract these facts follow (contract.ts). */
+  contract: typeof TRICK_CONTRACT;
   trigger: FactsTrigger;
   trick: { id: string; dir: string; state: string };
   /** The bridge that runs the trick: the key a program keeps (see `FactsSession.memberId`). */
@@ -1103,8 +1057,6 @@ export interface TrickFacts {
   host: string;
   sessions: FactsSession[];
   spaces: FactsSpace[];
-  /** Only for a `view:<match>` run: the session the view is drawn for. */
-  session?: FactsSession;
 }
 
 // ── Types: taps and the wire ─────────────────────────────────────────────────────────────────
@@ -1176,7 +1128,7 @@ export interface WireTrickPart extends TrickPartKey {
 export const TRICK_STATES = ["ok", "failing", "stopped", "off", "skipped"] as const;
 /**
  * A trick's state on the wire: `ok`; `failing` (backing off); `stopped` (backoff ran out); `off` (the
- * switch); `skipped` (the manifest was refused, or needs a newer facts version).
+ * switch); `skipped` (the manifest was refused, or asks for a newer trick contract).
  */
 export type TrickState = (typeof TRICK_STATES)[number];
 /** One trick as the phone lists it: belt order, Settings → Tricks, the doctor row's summary. */
@@ -1276,6 +1228,10 @@ export const REFUSAL_CODES = [
   "status",
   "depth",
   "more",
+  // Notes of a tolerant read (`ParsedTrickDocument.notes`), never refusals: a node or a part left out,
+  // and a key or an attribute ignored.
+  "dropped",
+  "ignored",
 ] as const;
 export type RefusalCode = (typeof REFUSAL_CODES)[number];
 
@@ -1310,7 +1266,6 @@ const TRICK_ID = /^[a-z0-9][a-z0-9-]{0,31}$/;
 const PART_ID = /^[a-z0-9][a-z0-9-]{0,31}$/;
 const DECISION_KEY = /^[a-z0-9-]{1,64}$/;
 const INTENT = /^[a-z0-9][a-z0-9._-]{0,47}$/;
-const AGENT = /^[a-z0-9][a-z0-9._-]{0,31}$/;
 const HOST = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const LANG = /^[a-z0-9][a-z0-9+#._-]{0,23}$/;
@@ -1323,7 +1278,13 @@ const MUX_ID_MAX_BYTES = 128;
 /** An instant: date, time, optional fraction, `Z` or an offset. `Date.parse` must also accept it. */
 const INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,9})?)?(Z|[+-]\d{2}:\d{2})$/;
 const INSTANT_MAX = 40;
-const IMAGE_SRC = /^(?!\/)(?!.*(^|\/)\.\.?(\/|$))[A-Za-z0-9._\-/]+\.(png|jpe?g)$/i;
+/**
+ * An image node's `src`: a file in the trick's own `media/` folder, the one folder the bridge serves
+ * (bridge/tricks/media.ts) and the code hash leaves out. No step starts with a dot (no `.`, `..` or
+ * hidden name), and the type is one the route sends: PNG, JPEG or WebP.
+ */
+// `media/` is matched as written (a `MEDIA/` folder is another folder); the extension in either case.
+const IMAGE_SRC = /^media\/(?!(?:.*\/)?\.)[A-Za-z0-9._\-/]+\.(?:[pP][nN][gG]|[jJ][pP][eE]?[gG]|[wW][eE][bB][pP])$/;
 /** A decision's media `file`: the image `src` rule, and WebP too, which the hill keeps. */
 const MEDIA_FILE = /^(?!\/)(?!.*(^|\/)\.\.?(\/|$))[A-Za-z0-9._\-/]+\.(png|jpe?g|webp)$/i;
 /** The latest instant `Date` holds, in ms. */
@@ -1462,9 +1423,23 @@ export function isTrickUrl(text: string): boolean {
   }
 }
 
-/** An image `src` or media `file`: relative to the trick folder, no `..` or `.` step, a `.png`, `.jpg` or `.jpeg`. */
+/** The trick folder's own folder of pictures: an image's `src` names a file in it. */
+export const TRICK_MEDIA_DIR = "media";
+
+/** An image `src`: `media/` and a file in it, no step that starts with a dot, a `.png`, `.jpg`, `.jpeg` or `.webp`. */
 export function isImageSrc(text: string): boolean {
   return text.length <= IMAGE_SRC_MAX && IMAGE_SRC.test(text) && !text.includes("//");
+}
+
+/**
+ * Where the phone reads an image node's bytes: `GET /api/tricks/<host>/<id>/<src>`, `src` being
+ * `media/` and the file (bridge/tricks/media.ts). Each step is encoded on its own. `rev`, the part's
+ * revision, rides as a query the bridge ignores, so a new version of the part asks again.
+ */
+export function trickMediaPath(host: string, trick: string, src: string, rev?: number): string {
+  const file = src.split("/").map(encodeURIComponent).join("/");
+  const path = `/api/tricks/${encodeURIComponent(host)}/${encodeURIComponent(trick)}/${file}`;
+  return rev === undefined ? path : `${path}?rev=${String(rev)}`;
 }
 
 /** A decision's media `file`: relative to the trick folder, no `..` or `.` step, a `.png`, `.jpg`, `.jpeg` or `.webp`. */
@@ -1560,12 +1535,27 @@ class Fields {
   readonly sink: Refusal[];
   /** What the object is, in words, for the unknown-key sentence ("a belt part", "a decision"). */
   readonly what: string;
+  /**
+   * Set on a tolerant read (a program's output, not a Decision): an unknown key is a note here, ignored,
+   * never a refusal. Absent: an unknown key refuses (strict at write).
+   */
+  readonly notes: Refusal[] | undefined;
 
-  constructor(obj: JsonObject, path: string, sink: Refusal[], what: string) {
+  constructor(obj: JsonObject, path: string, sink: Refusal[], what: string, notes?: Refusal[]) {
     this.obj = obj;
     this.path = path;
     this.sink = sink;
     this.what = what;
+    this.notes = notes;
+  }
+
+  /** Ignore `key` on a tolerant read, with a note; or refuse it. */
+  unknown(code: RefusalCode, key: string, reason: string): void {
+    if (this.notes === undefined) {
+      this.push(code, key, reason);
+      return;
+    }
+    this.notes.push({ code: "ignored", path: this.at(key), reason: `${reason} This Collie ignores it.` });
   }
 
   at(key: string): string {
@@ -1586,10 +1576,10 @@ class Fields {
       if (allowed.includes(key)) continue;
       const own = special?.(key);
       if (own !== undefined) {
-        this.push(own.code, key, own.reason);
+        this.unknown(own.code, key, own.reason);
         continue;
       }
-      this.push("unknown-key", key, `"${key}" is not part of ${this.what}. Remove it.`);
+      this.unknown("unknown-key", key, `"${key}" is not part of ${this.what}.${this.notes === undefined ? " Remove it." : ""}`);
     }
   }
 
@@ -1718,7 +1708,7 @@ class Fields {
       this.push("type", key, `"${key}" must be ${what}.`);
       return undefined;
     }
-    return new Fields(value, this.at(key), this.sink, what);
+    return new Fields(value, this.at(key), this.sink, what, this.notes);
   }
 
   /** An intent name. */
@@ -1816,202 +1806,34 @@ function readStrings(fields: Fields, key: string, rule: IntRule & { what: string
   return ok ? out : undefined;
 }
 
-function itemFields(value: JsonValue, path: string, sink: Refusal[], what: string): Fields | undefined {
+function itemFields(value: JsonValue, path: string, sink: Refusal[], what: string, notes?: Refusal[]): Fields | undefined {
   const obj = asJsonObject(value);
   if (obj === undefined) {
     sink.push({ code: "type", path, reason: `This must be ${what}, an object.` });
     return undefined;
   }
-  return new Fields(obj, path, sink, what);
+  return new Fields(obj, path, sink, what, notes);
 }
 
-// ── Matches ──────────────────────────────────────────────────────────────────────────────────
-
-const GLOB_BAD = /[\s\p{C}]/u;
-
-function globProblem(glob: string): string | undefined {
-  if (glob === "") return "is empty";
-  if (GLOB_BAD.test(glob)) return "holds a space or a control character";
-  return undefined;
+/** What an `at` string says: the place it names. */
+export interface AtReading {
+  place: PlaceKind;
 }
 
-/**
- * Read a session match (`*`, `composer*`, `agent:claude`, `cwd:~/projects/*`, `space:collie`,
- * `kind:trick`, or several of them with single spaces between). A term with a colon must use one of the
- * known prefixes, so a later prefix never reads as a name glob today.
- */
-export function parseSessionMatch(text: string): { match: SessionMatch } | { reason: string } {
-  if (text === "") return { reason: "The match is empty. Use * for every session." };
-  const words = text.split(" ");
-  const terms: MatchTerm[] = [];
-  for (const word of words) {
-    if (word === "") return { reason: "The match has a double or an outer space." };
-    const term = readMatchTerm(word);
-    if ("reason" in term) return term;
-    terms.push(term);
-  }
-  return { match: { text, terms } };
-}
-
-function readMatchTerm(word: string): MatchTerm | { reason: string } {
-  if (word === "*") return { term: "any" };
-  if (word === "kind:trick") return { term: "trick" };
-  const colon = word.indexOf(":");
-  if (colon < 0) {
-    const problem = globProblem(word);
-    return problem === undefined ? { term: "name", glob: word } : { reason: `The name glob "${word}" ${problem}.` };
-  }
-  const prefix = word.slice(0, colon);
-  const rest = word.slice(colon + 1);
-  if (prefix === "agent") {
-    return AGENT.test(rest) ? { term: "agent", agent: rest } : { reason: `"${word}": an agent is 1 to 32 of a-z, 0-9, ".", "_", "-".` };
-  }
-  if (prefix === "cwd" || prefix === "space") {
-    const problem = globProblem(rest);
-    if (problem !== undefined) return { reason: `"${word}": the glob ${problem}.` };
-    return prefix === "cwd" ? { term: "cwd", glob: rest } : { term: "space", glob: rest };
-  }
-  return { reason: `"${word}" is not a match term. Use *, a name glob, agent:, cwd:, space: or kind:trick.` };
-}
-
-/** Read a tab match: `*`, a title glob, `space:<glob>`, single spaces between. */
-export function parseTabMatch(text: string): { match: TabMatch } | { reason: string } {
-  if (text === "") return { reason: "The tab match is empty. Use * for every tab." };
-  const terms: TabMatchTerm[] = [];
-  for (const word of text.split(" ")) {
-    if (word === "") return { reason: "The tab match has a double or an outer space." };
-    if (word === "*") {
-      terms.push({ term: "any" });
-      continue;
-    }
-    if (word.startsWith("space:")) {
-      const glob = word.slice("space:".length);
-      const problem = globProblem(glob);
-      if (problem !== undefined) return { reason: `"${word}": the glob ${problem}.` };
-      terms.push({ term: "space", glob });
-      continue;
-    }
-    if (word.includes(":")) return { reason: `"${word}" is not a tab match term. Use *, a title glob or space:.` };
-    const problem = globProblem(word);
-    if (problem !== undefined) return { reason: `The title glob "${word}" ${problem}.` };
-    terms.push({ term: "title", glob: word });
-  }
-  return { match: { text, terms } };
-}
-
-/** Whether `text` matches `glob`, where `*` is any run and `?` one character. Case-sensitive. */
-export function globMatches(glob: string, text: string): boolean {
-  const g = [...glob];
-  const t = [...text];
-  let gi = 0;
-  let ti = 0;
-  let star = -1;
-  let mark = 0;
-  while (ti < t.length) {
-    const gc = g[gi];
-    if (gc !== undefined && (gc === "?" || gc === t[ti])) {
-      gi += 1;
-      ti += 1;
-      continue;
-    }
-    if (gc === "*") {
-      star = gi;
-      mark = ti;
-      gi += 1;
-      continue;
-    }
-    if (star < 0) return false;
-    gi = star + 1;
-    mark += 1;
-    ti = mark;
-  }
-  while (g[gi] === "*") gi += 1;
-  return gi === g.length;
-}
-
-/**
- * What a session match is held against. The caller passes `cwd` already through realpath, and
- * `home` to expand a leading `~/` in a `cwd:` glob; the caller realpaths the glob's folder too when it
- * must (`/home` is a link on Fedora Atomic). This file touches no disk.
- */
-export interface MatchSubject {
-  name?: string;
-  agent?: string;
-  cwd?: string;
-  space?: string;
-  /** True for a trick's own session. */
-  trick: boolean;
-}
-
-export function matchesSession(match: SessionMatch, subject: MatchSubject, home?: string): boolean {
-  const wantsTrick = match.terms.some((t) => t.term === "trick");
-  if (subject.trick !== wantsTrick) return false;
-  return match.terms.every((term) => {
-    switch (term.term) {
-      case "any":
-      case "trick":
-        return true;
-      case "name":
-        return subject.name !== undefined && globMatches(term.glob, subject.name);
-      case "agent":
-        return subject.agent === term.agent;
-      case "space":
-        return subject.space !== undefined && globMatches(term.glob, subject.space);
-      case "cwd": {
-        if (subject.cwd === undefined) return false;
-        const glob = home !== undefined && term.glob.startsWith("~/") ? `${home}${term.glob.slice(1)}` : term.glob;
-        return globMatches(glob, subject.cwd);
-      }
-    }
-  });
-}
-
-export function matchesTab(match: TabMatch, tab: { title: string; space?: string }): boolean {
-  return match.terms.every((term) => {
-    switch (term.term) {
-      case "any":
-        return true;
-      case "title":
-        return globMatches(term.glob, tab.title);
-      case "space":
-        return tab.space !== undefined && globMatches(term.glob, tab.space);
-    }
-  });
-}
-
-/** What an `at` string says: the place kind, and its match when it has one. */
-export type AtReading =
-  | { place: "belt" | "session" | "dashboard" | "status" | "tabbar" }
-  | { place: "tab"; tabMatch: TabMatch }
-  /** A bare `tab`: the trick's own tab entry. */
-  | { place: "tab"; tabMatch?: undefined }
-  | { place: "view"; match: SessionMatch };
-
-/** An `at` that does not read, with its refusal code: `place` for an unknown word, `later` for a later place. */
+/** An `at` that does not read: `place` for a word that is no place, `later` for a later place. */
 export interface AtProblem {
   reason: string;
   code: "place" | "later";
 }
 
-/** Read a part's `at`. */
+/** Read a part's `at`: one of the place words, nothing more. */
 export function parseAt(at: string): AtReading | AtProblem {
   if (codePoints(at) > AT_MAX) return { code: "place", reason: `"at" is longer than ${AT_MAX} characters.` };
-  if (at === "belt" || at === "session" || at === "dashboard" || at === "status" || at === "tabbar") return { place: at };
-  if (at === "tab") return { place: "tab" };
-  if (at.startsWith("tab:")) {
-    const read = parseTabMatch(at.slice("tab:".length));
-    return "reason" in read ? { code: "place", reason: read.reason } : { place: "tab", tabMatch: read.match };
-  }
-  if (at.startsWith("view:")) {
-    const read = parseSessionMatch(at.slice("view:".length));
-    return "reason" in read ? { code: "place", reason: read.reason } : { place: "view", match: read.match };
-  }
+  if (isOneOf(PLACE_KINDS, at)) return { place: at };
   const word = at.startsWith("menu:") ? "menu" : at;
   const later = reasonOf(LATER_PLACE_WORDS, word);
   if (later !== undefined) return { code: "later", reason: later };
-  const removed = reasonOf(REMOVED_PLACES, word);
-  if (removed !== undefined) return { code: "place", reason: removed };
-  return { code: "place", reason: `"${at}" is not a place. Use belt, status, session, tab, tab:<tabmatch>, view:<match>, dashboard or tabbar (later: header.line, menu:<match>, settings).` };
+  return { code: "place", reason: `"${at}" is not a place this Collie knows. The places are: ${quoteList(PLACE_KINDS)}.` };
 }
 
 // ── The view tree reader ─────────────────────────────────────────────────────────────────────
@@ -2026,6 +1848,8 @@ interface ViewContext {
   maxDepth: number;
   /** A Decision's view: display only (`parseDecisionView`). */
   display: boolean;
+  /** Set on a tolerant read (a part's view): an unknown kind drops its node, an unknown key is ignored. */
+  notes?: Refusal[];
 }
 
 /** The caps of a view other than a part's own. */
@@ -2148,7 +1972,7 @@ function isContainer(kind: NodeKind): kind is ContainerKind {
   return hasKey(NODE_KIDS, kind);
 }
 
-function readView(value: JsonValue | undefined, path: string, sink: Refusal[], kinds: readonly NodeKind[], caps?: ViewCaps): View | undefined {
+function readView(value: JsonValue | undefined, path: string, sink: Refusal[], kinds: readonly NodeKind[], caps?: ViewCaps, notes?: Refusal[]): View | undefined {
   if (asJsonObject(value) !== undefined) {
     sink.push({ code: "type", path, reason: '"view" is a list of nodes now, the kids of the place\'s frame. Wrap the node in [ ].' });
     return undefined;
@@ -2162,6 +1986,7 @@ function readView(value: JsonValue | undefined, path: string, sink: Refusal[], k
     return undefined;
   }
   const ctx: ViewContext = { kinds, nodes: 0, overflow: false, maxNodes: caps?.nodes ?? VIEW_LIMITS.nodes.max, maxDepth: caps?.depth ?? VIEW_LIMITS.depth.max, display: caps?.display ?? false };
+  if (notes !== undefined && ctx.display === false) ctx.notes = notes;
   const before = sink.length;
   const out: ViewNode[] = [];
   value.forEach((item, i) => {
@@ -2206,6 +2031,13 @@ function readNode(value: JsonValue | undefined, path: string, sink: Refusal[], c
   const kindPath = pointer(path, "kind");
   if (!isOneOf(NODE_KINDS, rawKind)) {
     const removed = reasonOf(REMOVED_KINDS, rawKind);
+    // Tolerant: a kind this Collie does not know (a newer Collie's, or one of the first schema's) is left
+    // out with one note, and the rest of the view draws.
+    if (ctx.notes !== undefined) {
+      const why = removed === undefined ? `"${rawKind}" is not a node kind this Collie knows` : `"${rawKind}" is not in a trick's vocabulary: ${removed}`;
+      ctx.notes.push({ code: "dropped", path: kindPath, reason: `${why}. This Collie leaves the node out; the rest draws.` });
+      return undefined;
+    }
     sink.push(
       removed === undefined
         ? { code: "unknown-kind", path: kindPath, reason: `"${rawKind}" is not a node kind. Use one of: ${quoteList(NODE_KINDS)}.` }
@@ -2226,11 +2058,15 @@ function readNode(value: JsonValue | undefined, path: string, sink: Refusal[], c
     return undefined;
   }
   if (!ctx.kinds.includes(kind)) {
+    if (ctx.notes !== undefined) {
+      ctx.notes.push({ code: "dropped", path: kindPath, reason: `"${kind}" is not drawn by this Collie. It leaves the node out; the rest draws.` });
+      return undefined;
+    }
     sink.push({ code: "later", path: kindPath, reason: `"${kind}" is not in this Collie yet.` });
     return undefined;
   }
   const before = sink.length;
-  const f = new Fields(obj, path, sink, `a "${kind}" node`);
+  const f = new Fields(obj, path, sink, `a "${kind}" node`, ctx.notes);
   f.keys(NODE_KEYS, (key) => nodeKeyHint(kind, key));
   const node: NodeReading = { kind };
   readNodeText(kind, f, node);
@@ -2263,7 +2099,7 @@ function nodeKeyHint(kind: NodeKind, key: string): { code: RefusalCode; reason: 
 function readNodeText(kind: NodeKind, f: Fields, node: NodeReading): void {
   const rule = hasKey(NODE_TEXT, kind) ? NODE_TEXT[kind] : undefined;
   if (rule === undefined) {
-    if (f.has("text")) f.push("unknown-key", "text", textHome(kind));
+    if (f.has("text")) f.unknown("unknown-key", "text", textHome(kind));
     return;
   }
   // `para` and `line` take text or kids; `chip` takes text or a clock. `checkNode` holds those pairs.
@@ -2295,10 +2131,12 @@ function readAttrs(kind: NodeKind, f: Fields): JsonObject | undefined {
   if (a === undefined) return undefined;
   const rules: { readonly [name: string]: AttrRule } = NODE_ATTR_RULES[kind];
   const out: JsonObject = {};
+  let ignored = false;
   for (const name of Object.keys(a.obj)) {
     const rule = rules[name];
     if (rule === undefined) {
-      a.push(attrCode(name), name, attrReason(kind, name));
+      a.unknown(attrCode(name), name, attrReason(kind, name));
+      ignored = true;
       continue;
     }
     const raw = a.obj[name];
@@ -2316,6 +2154,8 @@ function readAttrs(kind: NodeKind, f: Fields): JsonObject | undefined {
     out[name] = value;
   }
   for (const name of required) if (a.obj[name] === undefined) a.missing(name, "an attribute");
+  // Every attribute ignored: the node draws as if it had none, not with an empty "attrs".
+  if (ignored && Object.keys(out).length === 0) return undefined;
   return out;
 }
 
@@ -2378,7 +2218,7 @@ function attrProblem(rule: AttrRule, value: string): { code: RefusalCode; reason
       // A row's or a link's target: its shape depends on the link's `rel`, which `checkNode` reads.
       return value === "" ? { code: "text", reason: "is empty." } : undefined;
     case "src":
-      return isImageSrc(value) ? undefined : { code: "target", reason: 'must be a .png, .jpg or .jpeg file inside the trick folder, as a relative path with no "..".' };
+      return isImageSrc(value) ? undefined : { code: "target", reason: 'must name a .png, .jpg, .jpeg or .webp file in the trick\'s "media/" folder, such as "media/chart.png", with no step that starts with a dot.' };
     case "lang":
       return LANG.test(value) ? undefined : { code: "word", reason: 'must be a language word of 1 to 24 of a-z, 0-9, "+", "#", ".", "_", "-".' };
   }
@@ -2386,7 +2226,7 @@ function attrProblem(rule: AttrRule, value: string): { code: RefusalCode; reason
 
 function readKids(kind: NodeKind, f: Fields, ctx: ViewContext, depth: number): ViewNode[] | undefined {
   if (!isContainer(kind)) {
-    if (f.has("kids")) f.push("unknown-key", "kids", `A ${kind} holds no kids.`);
+    if (f.has("kids")) f.unknown("unknown-key", "kids", `A ${kind} holds no kids.`);
     return undefined;
   }
   const count = KIDS_COUNT[kind];
@@ -2601,17 +2441,15 @@ export const MARK_KEYS = ["icon", "label", "badge", "tone", "intent"] as const;
  * A mark's attributes. `tappable` is false on a tab mark: a tap on the tab opens the tab, so DECISION:
  * a tab mark takes no intent. Keys that would draw a status mark get their own reason.
  */
-function readMark(f: Fields, tappable: boolean): Mark {
+function readMark(f: Fields): Mark {
   const own = (key: string): { code: RefusalCode; reason: string } | undefined => {
     if (isOneOf(STATUS_MARK_KEYS, key)) return { code: "status", reason: `"${key}" would draw Collie's status mark. A trick mark draws its own icon and words; use "tone".` };
-    if (!tappable && key === "intent") return { code: "target", reason: "A tab mark takes no intent: a tap on the tab opens the tab." };
     if (key === "face") return { code: "unknown-key", reason: '"face" is "label" now, the mark\'s live word.' };
     if (key === "count") return { code: "unknown-key", reason: '"count" is "badge" now, as text ("3"), or "" for a dot.' };
     if (key === "args") return { code: "unknown-key", reason: '"args" is gone: an intent names what it does, and a button\'s "value" carries one fixed string.' };
     return undefined;
   };
-  const allowed: readonly string[] = tappable ? MARK_KEYS : MARK_KEYS.filter((key) => key !== "intent");
-  f.keys(allowed, own);
+  f.keys(MARK_KEYS, own);
   const mark: Mark = {};
   const icon = f.icon("icon");
   const label = f.text("label", { max: FACE_MAX });
@@ -2624,10 +2462,8 @@ function readMark(f: Fields, tappable: boolean): Mark {
   if (!f.has("icon") && !f.has("label") && !f.has("badge")) {
     f.push("missing", undefined, 'A mark needs "icon", "label" or "badge". To show nothing, leave the part out.');
   }
-  if (tappable) {
-    const intent = f.intent("intent", false);
-    if (intent !== undefined) mark.intent = intent;
-  }
+  const intent = f.intent("intent", false);
+  if (intent !== undefined) mark.intent = intent;
   return mark;
 }
 
@@ -2750,28 +2586,21 @@ export const SUB_KEYS = {
 export const PART_KEYS = {
   belt: ["at", "id", "mark"],
   session: ["at", "id", "name", "icon", "tone", "subtitle", "badge", "progress", "actions", "view"],
-  tab: ["at", "id", "mark"],
-  view: ["at", "id", "title", "icon", "view"],
   dashboard: ["at", "id", "item"],
   status: ["at", "id", "chip"],
   tabbar: ["at", "id", "item"],
 } as const satisfies { readonly [K in PlaceKind]: readonly string[] };
 
-/** The keys of a trick's own tab, the bare `tab` (slice 06). `PART_KEYS.tab` is the tab mark's. */
-export const OWN_TAB_KEYS = ["at", "id", "title", "icon", "space", "view"] as const;
-
 const PLACE_WORDS = {
   belt: "a belt part",
   session: "a session part",
-  tab: "a tab mark part",
-  view: "a view part",
   dashboard: "a dashboard part",
   status: "a status part",
   tabbar: "a tabbar part",
 } as const satisfies { readonly [K in PlaceKind]: string };
 
 export interface ParseTrickDocumentOptions {
-  /** The place kinds this Collie draws. Default `NEAR_PLACES`; a later place is refused as "later". */
+  /** The place kinds this Collie draws. Default `NEAR_PLACES`; a part in another place is left out with a note. */
   places?: readonly PlaceKind[];
   /** The node kinds this Collie draws. Default every kind. */
   kinds?: readonly NodeKind[];
@@ -2795,6 +2624,11 @@ export interface ParsedTrickDocument {
    * `parts` not a list): no part was read, so the runner keeps every last good part, stale.
    */
   documentRefused: boolean;
+  /**
+   * What the tolerant read left out, never a refusal: a node or a part this Collie does not draw
+   * (`dropped`), a key or an attribute it does not know (`ignored`). Capped like the refusals.
+   */
+  notes: Refusal[];
   asOf?: string;
   fresh?: string;
   freshMs?: number;
@@ -2818,13 +2652,15 @@ export function parseTrickDocumentText(text: string, opts: ParseTrickDocumentOpt
 }
 
 function wholeRefused(code: RefusalCode, reason: string): ParsedTrickDocument {
-  return { parts: [], decisions: [], refusals: [{ code, path: "", reason }], refusedParts: [], refusedDecisions: [], documentRefused: true };
+  return { parts: [], decisions: [], refusals: [{ code, path: "", reason }], refusedParts: [], refusedDecisions: [], documentRefused: true, notes: [] };
 }
 
 /**
  * Parse a program's output. Total: any JSON value gives a result, and every refusal is collected. A
  * bad part is refused alone and the others are kept. A bad decision is refused alone too. A bad
- * `asOf` or `fresh` is refused alone, and the parts still draw.
+ * `asOf` or `fresh` is refused alone, and the parts still draw. Tolerant where it reads to draw (the
+ * header's "strict at write, tolerant at read"): an unknown kind or place is left out and an unknown
+ * key ignored, each with a note; the decisions are read strictly.
  */
 export function parseTrickDocument(raw: JsonValue | undefined, opts: ParseTrickDocumentOptions = {}): ParsedTrickDocument {
   const obj = asJsonObject(raw);
@@ -2832,12 +2668,13 @@ export function parseTrickDocument(raw: JsonValue | undefined, opts: ParseTrickD
   const bytes = utf8Bytes(JSON.stringify(obj));
   if (bytes > DOCUMENT_MAX_BYTES) return wholeRefused("size", `The document is ${bytes} bytes. At most ${DOCUMENT_MAX_BYTES}.`);
   const refusals: Refusal[] = [];
-  const top = new Fields(obj, "", refusals, "a trick document");
+  const notes: Refusal[] = [];
+  const top = new Fields(obj, "", refusals, "a trick document", notes);
   top.keys(DOCUMENT_KEYS, (key) => {
     const removed = reasonOf(REMOVED_DOCUMENT_KEYS, key);
     return removed === undefined ? undefined : { code: "removed", reason: removed };
   });
-  const refused = (): ParsedTrickDocument => ({ parts: [], decisions: [], refusals: capRefusals(refusals), refusedParts: [], refusedDecisions: [], documentRefused: true });
+  const refused = (): ParsedTrickDocument => ({ parts: [], decisions: [], refusals: capRefusals(refusals), refusedParts: [], refusedDecisions: [], documentRefused: true, notes: capRefusals(notes) });
   if (asJsonNumber(obj.v) !== DOCUMENT_VERSION) {
     const said = obj.v === undefined ? 'has no "v"' : `says "v": ${JSON.stringify(obj.v)}`;
     refusals.push({ code: "version", path: "/v", reason: `The document ${said}. This Collie reads "v": ${DOCUMENT_VERSION}.` });
@@ -2846,7 +2683,7 @@ export function parseTrickDocument(raw: JsonValue | undefined, opts: ParseTrickD
   const list = top.array("parts", { min: 0, max: PARTS_MAX, required: true, what: "parts" });
   if (list === undefined) return refused();
 
-  const result: ParsedTrickDocument = { parts: [], decisions: [], refusals, refusedParts: [], refusedDecisions: [], documentRefused: false };
+  const result: ParsedTrickDocument = { parts: [], decisions: [], refusals, refusedParts: [], refusedDecisions: [], documentRefused: false, notes };
 
   const seen = new Set<string>();
   let belt = false;
@@ -2856,8 +2693,12 @@ export function parseTrickDocument(raw: JsonValue | undefined, opts: ParseTrickD
   list.forEach((value, i) => {
     const path = pointer("/parts", i);
     const sink: Refusal[] = [];
-    const parsed = readPart(value, path, sink, opts);
+    const partNotes: Refusal[] = [];
+    const parsed = readPart(value, path, sink, opts, partNotes);
     const id = parsed.id;
+    for (const note of partNotes) notes.push(id === undefined ? note : { ...note, part: id });
+    // A part in a place this Collie does not draw is left out: no refusal, no last good version.
+    if (parsed.dropped === true) return;
     if (id !== undefined && seen.has(id)) sink.push({ code: "duplicate", path: pointer(path, "id"), reason: `The part id "${id}" is used twice. Each part needs its own.` });
     if (parsed.part?.place === "belt" && belt) {
       sink.push({ code: "duplicate", path: pointer(path, "at"), reason: "A trick has one belt mark. This is a second one." });
@@ -2886,6 +2727,7 @@ export function parseTrickDocument(raw: JsonValue | undefined, opts: ParseTrickD
   readDecisions(top, result);
   readDocumentExtras(top, result);
   result.refusals = capRefusals(refusals);
+  result.notes = capRefusals(notes);
   return result;
 }
 
@@ -2909,16 +2751,27 @@ function readDocumentExtras(top: Fields, out: ParsedTrickDocument): void {
 interface PartReading {
   id?: string;
   part?: ParsedPart;
+  /** The part names a place this Collie does not draw: left out, with a note. */
+  dropped?: true;
 }
 
-function readPart(value: JsonValue, path: string, sink: Refusal[], opts: ParseTrickDocumentOptions): PartReading {
+function readPart(value: JsonValue, path: string, sink: Refusal[], opts: ParseTrickDocumentOptions, notes: Refusal[]): PartReading {
   const obj = asJsonObject(value);
   if (obj === undefined) {
     sink.push({ code: "type", path, reason: 'A part must be an object with "at" and "id".' });
     return {};
   }
+  // The place first: a part in a place this Collie does not draw (a newer Collie's, a later one) is
+  // left out whole, whatever else it holds.
   const idRaw = asJsonString(obj.id);
   const id = idRaw !== undefined && isPartId(idRaw) ? idRaw : undefined;
+  const atRaw = asJsonString(obj.at);
+  const reading = atRaw === undefined ? undefined : parseAt(atRaw);
+  if (reading !== undefined && ("reason" in reading || !(opts.places ?? NEAR_PLACES).includes(reading.place))) {
+    const why = "reason" in reading ? reading.reason : `"${reading.place}" is not drawn by this Collie.`;
+    notes.push({ code: "dropped", path: pointer(path, "at"), reason: `${why} This Collie leaves the part out; the other parts draw.` });
+    return id === undefined ? { dropped: true } : { id, dropped: true };
+  }
   if (id === undefined) {
     sink.push({ code: "id", path: pointer(path, "id"), reason: 'A part needs an "id" of 1 to 32 lower-case letters, digits and hyphens.' });
   }
@@ -2927,50 +2780,38 @@ function readPart(value: JsonValue, path: string, sink: Refusal[], opts: ParseTr
     sink.push({ code: "size", path, reason: `The part is ${bytes} bytes. A part may be at most ${PART_MAX_BYTES}.` });
     return { id };
   }
-  const atRaw = asJsonString(obj.at);
-  if (atRaw === undefined) {
+  if (reading === undefined) {
     sink.push({ code: "missing", path: pointer(path, "at"), reason: 'A part needs "at": where it draws.' });
     return { id };
   }
-  const reading = parseAt(atRaw);
-  if ("reason" in reading) {
-    sink.push({ code: reading.code, path: pointer(path, "at"), reason: reading.reason });
-    return { id };
-  }
   const place = reading.place;
-  const enabled = opts.places ?? NEAR_PLACES;
-  if (!enabled.includes(place)) {
-    sink.push({ code: "later", path: pointer(path, "at"), reason: `"${place}" is not in this Collie. The other parts still draw.` });
-    return { id };
-  }
   if (opts.declared !== undefined && !opts.declared.includes(place)) {
     sink.push({ code: "undeclared", path: pointer(path, "at"), reason: `The manifest's "places" does not list "${place}". Add it there.` });
     return { id };
   }
-  const ownTab = reading.place === "tab" && reading.tabMatch === undefined;
-  const f = new Fields(obj, path, sink, ownTab ? "a tab part" : PLACE_WORDS[place]);
-  f.keys(ownTab ? OWN_TAB_KEYS : PART_KEYS[place], (key) => {
+  const f = new Fields(obj, path, sink, PLACE_WORDS[place], notes);
+  f.keys(PART_KEYS[place], (key) => {
     // The first schema's `dashboard` took a whole view, and nothing drew it. It is one item now.
     if (place === "dashboard" && key === "view") return { code: "removed", reason: 'A dashboard part draws one tile now, not a view: give it an "item" with "label", and "icon", "badge" or "tone".' };
     return undefined;
   });
   const kinds = opts.kinds ?? NODE_KINDS;
-  const part = readPartBody(reading, atRaw, id ?? "", f, kinds);
+  const part = readPartBody(place, id ?? "", f, kinds);
   return { id, part };
 }
 
-function readPartBody(reading: AtReading, at: string, id: string, f: Fields, kinds: readonly NodeKind[]): ParsedPart | undefined {
+function readPartBody(place: PlaceKind, id: string, f: Fields, kinds: readonly NodeKind[]): ParsedPart | undefined {
   const view = (): View => {
     if (!f.has("view")) {
       f.missing("view", "the nodes it draws");
       return [];
     }
-    return readView(f.obj.view, f.at("view"), f.sink, kinds) ?? [];
+    return readView(f.obj.view, f.at("view"), f.sink, kinds, undefined, f.notes) ?? [];
   };
-  switch (reading.place) {
+  switch (place) {
     case "belt": {
       const markFields = f.object("mark", "a mark", true);
-      const mark = markFields === undefined ? {} : readMark(markFields, true);
+      const mark = markFields === undefined ? {} : readMark(markFields);
       return { place: "belt", part: { at: "belt", id, mark } };
     }
     case "status": {
@@ -2978,40 +2819,15 @@ function readPartBody(reading: AtReading, at: string, id: string, f: Fields, kin
       const chip = chipFields === undefined ? { text: "" } : readStatusChip(chipFields);
       return { place: "status", part: { at: "status", id, chip } };
     }
-    case "tab": {
-      if (reading.tabMatch === undefined) return readOwnTabPart(f, id, view());
-      const markFields = f.object("mark", "a mark", true);
-      const mark = markFields === undefined ? {} : readMark(markFields, false);
-      // SAFETY: `parseAt` read this `at` as `tab:<tabmatch>`, so it starts with "tab:".
-      return { place: "tab", part: { at: at as `tab:${string}`, id, mark }, tabMatch: reading.tabMatch };
-    }
     case "session":
       return readSessionPart(f, id, view());
-    case "view": {
-      // SAFETY: `parseAt` read this `at` as `view:<match>`, so it starts with "view:".
-      const part: ViewPart = { at: at as `view:${string}`, id, title: f.text("title", { max: VIEW_TITLE_MAX, required: true }) ?? "", view: view() };
-      const icon = f.icon("icon");
-      if (icon !== undefined) part.icon = icon;
-      return { place: "view", part, match: reading.match };
-    }
     case "dashboard":
     case "tabbar": {
       const placeFields = f.object("item", "an item", true);
-      const item = placeFields === undefined ? { label: "" } : readPlaceItem(placeFields, reading.place);
-      return reading.place === "dashboard" ? { place: "dashboard", part: { at: "dashboard", id, item } } : { place: "tabbar", part: { at: "tabbar", id, item } };
+      const item = placeFields === undefined ? { label: "" } : readPlaceItem(placeFields, place);
+      return place === "dashboard" ? { place: "dashboard", part: { at: "dashboard", id, item } } : { place: "tabbar", part: { at: "tabbar", id, item } };
     }
   }
-}
-
-function readOwnTabPart(f: Fields, id: string, view: View): ParsedPart {
-  const title = f.text("title", { max: VIEW_TITLE_MAX, required: true }) ?? "";
-  const space = f.text("space", { max: 128, required: true }) ?? "";
-  const problem = space === "" ? undefined : globProblem(space);
-  if (problem !== undefined) f.push("text", "space", `"space" is a Space name glob; it ${problem}.`);
-  const part: TabPart = { at: "tab", id, title, space, view };
-  const icon = f.icon("icon");
-  if (icon !== undefined) part.icon = icon;
-  return { place: "tab", part };
 }
 
 function readSessionPart(f: Fields, id: string, view: View): ParsedPart {
@@ -3080,7 +2896,7 @@ function readActions(f: Fields): TrickAction[] | undefined {
   const out: TrickAction[] = [];
   const ids = new Set<string>();
   list.forEach((value, i) => {
-    const a = itemFields(value, pointer(f.at("actions"), i), f.sink, "an action");
+    const a = itemFields(value, pointer(f.at("actions"), i), f.sink, "an action", f.notes);
     if (a === undefined) return;
     a.keys(SUB_KEYS.action, (key) => (key === "args" ? { code: "unknown-key", reason: '"args" is "value" now: one fixed string the tap sends.' } : undefined));
     const idRaw = asJsonString(a.obj.id);
@@ -3285,7 +3101,18 @@ export const ENV_NAME_MAX = 64;
 const ENV_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 /** Every key `trick.toml` takes. */
-export const MANIFEST_KEYS = ["id", "name", "run", "every", "watch", "on", "mode", "facts", "icon", "places", "env"] as const;
+export const MANIFEST_KEYS = ["id", "name", "run", "every", "watch", "on", "mode", "contract", "icon", "places", "env"] as const;
+
+/** The highest `contract` a manifest may write before it is refused as a typo rather than a newer Collie. */
+const CONTRACT_MAX = 999;
+
+/**
+ * The refusal of a manifest that asks for a contract this Collie does not speak. Exported so the CLI
+ * and the bridge say the same sentence, naming both numbers.
+ */
+export function newerContractReason(asked: number): string {
+  return `This trick needs a newer Collie: it is written for trick contract ${asked}, and this Collie knows contract ${TRICK_CONTRACT}. Update Collie to run it.`;
+}
 
 export interface ParseManifestOptions {
   /** The folder's name. A manifest whose `id` differs is refused. */
@@ -3311,7 +3138,13 @@ export function parseManifest(doc: JsonValue | undefined, opts: ParseManifestOpt
   if (obj === undefined) return { refusals: [{ code: "type", path: "", reason: "trick.toml must be a table of keys." }] };
   const refusals: Refusal[] = [];
   const f = new Fields(obj, "", refusals, "trick.toml");
-  f.keys(MANIFEST_KEYS);
+  // The contract first: a trick written for a newer contract may use keys this Collie has never heard
+  // of, so it is refused with the one sentence that names both numbers, never with a list of unknown keys.
+  const contract = f.int("contract", { min: 1, max: CONTRACT_MAX }) ?? (f.has("contract") ? undefined : TRICK_CONTRACT);
+  if (contract !== undefined && contract > TRICK_CONTRACT) {
+    return { refusals: [{ code: "version", path: "/contract", reason: newerContractReason(contract) }] };
+  }
+  f.keys(MANIFEST_KEYS, (key) => (key === "facts" ? { code: "unknown-key", reason: '"facts" is "contract" now: the trick contract number, 1, or leave it out.' } : undefined));
   const triggers = opts.triggers ?? [];
   const enabled = opts.places ?? NEAR_PLACES;
 
@@ -3352,17 +3185,14 @@ export function parseManifest(doc: JsonValue | undefined, opts: ParseManifestOpt
   const mode = f.word("mode", TRICK_MODES);
   if (mode === "serve" && !triggers.includes("serve")) f.push("later", "mode", '"mode = serve" is not in this Collie yet. The trick runs once per trigger.');
 
-  const facts = f.int("facts", { min: 1, max: 999 });
-  if (facts !== undefined && facts > FACTS_VERSION) {
-    f.push("version", "facts", `The trick needs facts version ${facts}. This Collie gives version ${FACTS_VERSION}. Update Collie to run it.`);
-  }
   const icon = f.icon("icon");
   const env = readStrings(f, "env", { min: 0, max: ENV_NAMES_MAX, what: "names", text: { max: ENV_NAME_MAX } });
   env?.forEach((envName, i) => {
     if (!ENV_NAME_RE.test(envName)) refusals.push({ code: "word", path: pointer("/env", i), reason: "An environment name is letters, digits and _, and does not start with a digit." });
   });
 
-  const placeList = f.array("places", { min: 1, max: PLACE_KINDS.length, required: true, what: "places" });
+  // Room for the places of a newer Collie at the same contract: the words this one does not know are left out.
+  const placeList = f.array("places", { min: 1, max: PLACES_LISTED_MAX, required: true, what: "places" });
   const places: PlaceKind[] = [];
   placeList?.forEach((value, i) => {
     const word = asJsonString(value);
@@ -3372,9 +3202,14 @@ export function parseManifest(doc: JsonValue | undefined, opts: ParseManifestOpt
       refusals.push({ code: "later", path, reason: later });
       return;
     }
-    if (word === undefined || !isOneOf(PLACE_KINDS, word)) {
-      const removed = word === undefined ? undefined : reasonOf(REMOVED_PLACES, word);
-      refusals.push({ code: "place", path, reason: removed === undefined ? `A place is one of: ${quoteList(PLACE_KINDS)}.` : `${removed} A place is one of: ${quoteList(PLACE_KINDS)}.` });
+    if (word === undefined) {
+      refusals.push({ code: "type", path, reason: `A place is a word, one of: ${quoteList(PLACE_KINDS)}.` });
+      return;
+    }
+    // A place word this Collie does not know is left out, like a later one: a trick written for a newer
+    // Collie at the same contract still runs with the places this one draws.
+    if (!isOneOf(PLACE_KINDS, word)) {
+      refusals.push({ code: "later", path, reason: `"${word}" is not a place this Collie knows, so it is left out. The places are: ${quoteList(PLACE_KINDS)}.` });
       return;
     }
     if (places.includes(word)) {
@@ -3393,8 +3228,8 @@ export function parseManifest(doc: JsonValue | undefined, opts: ParseManifestOpt
   }
 
   const fatal = refusals.some((r) => r.code !== "later");
-  if (fatal || id === undefined || name === undefined || run === undefined) return { refusals: capRefusals(refusals) };
-  const manifest: TrickManifest = { id, name, run, mode: "once", facts: facts ?? 1, icon: icon ?? DEFAULT_TRICK_ICON, places };
+  if (fatal || id === undefined || name === undefined || run === undefined || contract === undefined) return { refusals: capRefusals(refusals) };
+  const manifest: TrickManifest = { id, name, run, mode: "once", contract, icon: icon ?? DEFAULT_TRICK_ICON, places };
   if (every !== undefined && everyMs !== undefined && everyOk) {
     manifest.every = every;
     manifest.everyMs = everyMs;
@@ -3409,7 +3244,7 @@ export function parseManifest(doc: JsonValue | undefined, opts: ParseManifestOpt
 // ── The facts ────────────────────────────────────────────────────────────────────────────────
 
 /** Every key of the facts document, of a session in it, of a space, of the trick, and of each trigger. */
-export const FACTS_KEYS = ["v", "trigger", "trick", "memberId", "host", "sessions", "spaces", "session"] as const;
+export const FACTS_KEYS = ["contract", "trigger", "trick", "memberId", "host", "sessions", "spaces"] as const;
 export const SESSION_FACT_KEYS = ["id", "memberId", "sessionId", "paneId", "host", "name", "agent", "status", "cwd", "space", "tab", "lastActiveAt"] as const;
 export const SPACE_FACT_KEYS = ["name", "folder"] as const;
 export const TRICK_FACT_KEYS = ["id", "dir", "state"] as const;
@@ -3437,7 +3272,7 @@ export function parseFacts(raw: JsonValue | undefined): ParsedFacts {
   const refusals: Refusal[] = [];
   const f = new Fields(obj, "", refusals, "the facts");
   f.keys(FACTS_KEYS);
-  if (asJsonNumber(obj.v) !== FACTS_VERSION) f.push("version", "v", `The facts must say "v": ${FACTS_VERSION}.`);
+  if (asJsonNumber(obj.contract) !== TRICK_CONTRACT) f.push("version", "contract", `The facts must say "contract": ${TRICK_CONTRACT}.`);
   const trigger = readTrigger(f);
   const trickFields = f.object("trick", 'an object with "id", "dir" and "state"', true);
   trickFields?.keys(TRICK_FACT_KEYS);
@@ -3467,14 +3302,11 @@ export function parseFacts(raw: JsonValue | undefined): ParsedFacts {
     if (name === undefined) return;
     spaces.push(folder === undefined ? { name } : { name, folder });
   });
-  const session = f.has("session") ? readFactsSession(obj.session, "/session", refusals) : undefined;
 
   if (refusals.length > 0 || trigger === undefined || trickId === undefined || dir === undefined || state === undefined || memberId === undefined || host === undefined) {
     return { refusals: capRefusals(refusals) };
   }
-  const facts: TrickFacts = { v: 1, trigger, trick: { id: trickId, dir, state }, memberId, host, sessions, spaces };
-  if (session !== undefined) facts.session = session;
-  return { facts, refusals };
+  return { facts: { contract: TRICK_CONTRACT, trigger, trick: { id: trickId, dir, state }, memberId, host, sessions, spaces }, refusals };
 }
 
 function readTrigger(f: Fields): FactsTrigger | undefined {

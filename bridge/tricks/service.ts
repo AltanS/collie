@@ -24,6 +24,7 @@ import { trickCodeHash } from "./code-hash.ts";
 import { createTrickScanner, type FoundTrick, type TricksScan } from "./discover.ts";
 import { scrubEnv, type ProgramEnv } from "./env.ts";
 import { buildFacts, type FactsWorld } from "./facts.ts";
+import { readTrickMedia, type TrickMediaFile } from "./media.ts";
 import type { TrickHillRun, TrickHillTrick } from "./hill.ts";
 import { tricksConfigDir, trickStateDir } from "./paths.ts";
 import { trickSessionPanes, type TrickSessionPanes } from "./panes.ts";
@@ -62,7 +63,9 @@ import { createSwitchReader, updateSwitches, withSwitch, type SwitchEntry, type 
 // ── WHAT A RUN LEAVES ───────────────────────────────────────────────────────────
 // stdout and stderr are masked in run.ts before anything here sees them. The document is parsed with
 // the schema's one parser, against the manifest's declared places and every node kind, and stored per
-// part with a rev (store.ts). A failed run keeps the last good parts,
+// part with a rev (store.ts). The read is tolerant (schema.ts, "strict at write, tolerant at read"): a
+// node kind or a place this Collie does not draw is left out with a note on the list entry, and the
+// other nodes and parts draw; the decisions are read strictly. A failed run keeps the last good parts,
 // stale. The error line is masked and capped, and goes to the list entry, the doctor row and one log
 // line when it changes, never once per run.
 //
@@ -122,6 +125,11 @@ export interface TricksSurface {
   sessionPanes(): TrickSessionPanes | undefined;
   /** `POST /api/tricks/<host>/<id>/switch`: write the switch file, as `collie trick on|off` does. */
   setSwitch(host: string, id: string, on: boolean): Promise<SwitchAnswer>;
+  /**
+   * `GET /api/tricks/<host>/<id>/media/<file>`: one picture of the trick's own `media/` folder
+   * (media.ts), or null for every miss. Only a trick of this bridge that is switched on.
+   */
+  media(host: string, id: string, rel: string): Promise<TrickMediaFile | null>;
 }
 
 /** What the runner needs of the trick's decisions on the hill (hill.ts `TrickHill`). */
@@ -697,7 +705,10 @@ export class TricksService implements TricksSurface {
     // parts do.
     const listRefused = parsed.refusals.some((refusal) => refusal.path === "/decisions" && refusal.decision === undefined);
     const posted = listRefused || !decisionsListed ? [] : (this.deps.decisions?.sync({ ...this.hillTrick(rt), name: manifest.name }, { decisions: parsed.decisions, refusedKeys: parsed.refusedDecisions }) ?? []);
-    this.succeeded(rt, startedAt, [...parsed.refusals, ...posted]);
+    // What the tolerant read left out (a node kind or a place this Collie does not draw) is one note on
+    // the trick's row; an ignored key is for `collie trick check` and `dev` only.
+    const dropped = parsed.notes.filter((note) => note.code === "dropped");
+    this.succeeded(rt, startedAt, [...parsed.refusals, ...dropped, ...posted]);
     this.publish(id);
     const mine = this.store.trickParts(host, id, revBefore);
     return { rid, code: "ok", rev: this.store.rev, parts: mine.parts, present: mine.present };
@@ -822,6 +833,15 @@ export class TricksService implements TricksSurface {
    * trick whose manifest is refused or that keeps failing: the switch is Collie's, not the trick's
    * (design §7).
    */
+  async media(host: string, id: string, rel: string): Promise<TrickMediaFile | null> {
+    if (!this.isOwn(host)) return null;
+    await this.refresh();
+    const rt = this.runtimes.get(id);
+    // A trick the person never switched on gets nothing served, whatever its folder holds.
+    if (rt === undefined || !rt.on) return null;
+    return readTrickMedia(rt.found.dir, rel);
+  }
+
   async setSwitch(host: string, id: string, on: boolean): Promise<SwitchAnswer> {
     if (!this.isOwn(host)) return { status: 404, body: { error: "unknown-host" } };
     const turn = this.switching.then(() => this.writeSwitch(id, on));

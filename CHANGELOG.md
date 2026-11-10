@@ -72,6 +72,18 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 - **A crew member keeps its tricks to itself for now.** Until tricks are merged across a crew, a member's trick sessions, its Tricks Space and its tricks revision no longer reach the lead's phone, where a tap on them could not reach the member. The lead's own tricks and a solo install's show as before. (M94)
 
+- **A trick names the contract it is written for.** `trick.toml` takes `contract = 1`, the default when it is left out, in place of `facts`, and the facts a program reads carry `"contract": 1` in place of `"v"`. A trick written for a newer contract is refused with one line that names both numbers and says it needs a newer Collie, instead of a list of keys this Collie does not know. At the same number an unknown key in `trick.toml` is still refused, so a typo shows. The helper moves to v3: `t.tap` is the one way to read a tap, from a part or from the Hill, with `decision`, `text`, `from` and `seen` on it, and `t.hillAnswer` is gone. `collie trick helper <id>` writes the new one. (M94)
+
+- **A trick's run problems name its program.** The lines on a trick's row, in `collie trick check` and `collie trick dev` say "The program did not start", "The program exited with 1" and so on, and `collie trick init --sh` writes `program.sh`. (M94)
+
+- **A trick's output is checked strictly when it is written and read tolerantly when it is shown.** A node of a kind this Collie does not know, or a part in a place it does not know, is left out with one note on the trick's row, and the rest of the view and the other parts still draw. An attribute or key this Collie does not know is ignored. `collie trick check --run` and `collie trick dev` print each of these as a note and still pass. A bad value of a known field is still refused, and `trick.toml`, `collie hill post` and a trick's Decisions stay strict. (M94)
+
+- **A trick draws only where Collie draws it.** The `tab`, `tab:<match>` and `view:<match>` places are gone: they were read but drawn nowhere. A trick draws in the belt, a session, the Dashboard, the status bar and the bottom bar, and a place word this Collie does not know is left out of `places` with a note. The facts no longer carry the `session` field of a view run. (M94)
+
+- **A trick's image shows its picture.** An `image` node names a file in the trick's own `media/` folder, such as `media/chart.png`, and the phone fetches it from the bridge with its pairing key. The bridge serves only PNG, JPEG and WebP files of that folder, read off their first bytes, at most 2 MB, never through a symlink, and only for a trick that is switched on; every other request gets the same "no such image". A new version of the part fetches the picture again. (M94)
+
+- **The `AGENTS.md` that `collie trick init` writes states contract 1.** It names `contract = 1`, the facts' `contract` field, the one `t.tap` shape, pictures in `media/`, and the rule that an unknown kind or place is left out and an unknown key is ignored while `trick.toml` and Decisions stay strict. (M94)
+
 ## [1.28.0] - 2026-11-09
 
 ### Added
