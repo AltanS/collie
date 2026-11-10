@@ -12,7 +12,7 @@ import { collieHalves } from "./fixtures/collie-theme";
 // because jsdom runs no CSS animation: the header mark holds still at rest for every character, a
 // dashboard at rest runs no animation anywhere, and a hidden page pauses the ones a working pane runs.
 // Since 2026-11-09 the resting mark drifts again, smooth, while the page is in use: a person touched,
-// scrolled or typed in the last MARK_DRIFT.windowMs. Then it eases to a stop and holds (`data-still`),
+// wheeled or typed in the last MARK_DRIFT.windowMs. Then it eases to a stop and holds (`data-still`),
 // every animation paused. A page that was only opened, with no input, is not in use and holds from the
 // first frame. The cases fake the clock and let the window pass, so the claims below hold for a page
 // left alone, which is the page issue 748 is about.
