@@ -17,6 +17,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { Icon } from "../../components/icons/icon";
 import { Button } from "../../components/ui/button";
+import { authedObjectUrl } from "../authed-url";
 import { copyText } from "../clipboard";
 import { setStatus } from "../status";
 import { Collapse } from "../../components/ui/collapse";
@@ -28,7 +29,7 @@ import { TrickBoundary } from "./boundary";
 import { problemOf, readFrame, type FrameLine } from "./frame";
 import { viewForm } from "./layout";
 import { Placeholder, renderView, type LinkTarget, type RenderCtx } from "./render";
-import { partKey as keyOfPart, type TrickPart, type View, type WireTrickInfo, type WireTrickPart } from "./schema";
+import { parsePartKey, partKey as keyOfPart, trickMediaPath, type TrickPart, type View, type ViewNode, type WireTrickInfo, type WireTrickPart } from "./schema";
 import { trickTapper, tricksStore, useTrickPart, type TricksStore, type TapHandlers, type TapState } from "./store";
 import { trickTimeText, spanText } from "./time";
 
@@ -160,12 +161,62 @@ function useHeldView(view: View | undefined): HeldView {
   return { view: waits ? held : view, onPointerDown: () => setDown(true) };
 }
 
+/** Every image `src` in a view, in order, each once. */
+function imageSrcsOf(nodes: readonly ViewNode[] | undefined, out: string[] = []): string[] {
+  for (const node of nodes ?? []) {
+    if (node.kind === "image" && !out.includes(node.attrs.src)) out.push(node.attrs.src);
+    if ("kids" in node) imageSrcsOf(node.kids, out);
+  }
+  return out;
+}
+
+/**
+ * The images of a part's view, from the trick's own `media/` folder (bridge/tricks/media.ts). An `<img
+ * src>` cannot carry the pairing token (ADR 0086), so each picture is fetched with it
+ * (`authedObjectUrl`) and handed to the view as an object URL; until it arrives, and when it fails, the
+ * image's reserved box says its `alt`. The part's rev rides in the path, so a new version asks again.
+ */
+function useTrickImages(key: string, rev: number, view: View | undefined): ((src: string) => string | undefined) | undefined {
+  const paths = useMemo(() => {
+    const parsed = parsePartKey(key);
+    if (parsed === undefined) return new Map<string, string>();
+    return new Map(imageSrcsOf(view).map((src) => [src, trickMediaPath(parsed.host, parsed.trick, src, rev)]));
+  }, [key, rev, view]);
+  // Object URLs by path: a path names one src at one rev, so a stale answer never lands on a new rev.
+  const [urls, setUrls] = useState<ReadonlyMap<string, string>>(new Map());
+  useEffect(() => {
+    let live = true;
+    const load = async (path: string): Promise<void> => {
+      try {
+        const url = await authedObjectUrl(path);
+        if (live) setUrls((had) => new Map(had).set(path, url));
+      } catch {
+        // A picture that does not load keeps its box and its alt words.
+      }
+    };
+    for (const path of paths.values()) void load(path);
+    return () => {
+      live = false;
+    };
+  }, [paths]);
+  return useMemo(() => {
+    if (paths.size === 0) return undefined;
+    return (src: string) => {
+      const path = paths.get(src);
+      return path === undefined ? undefined : urls.get(path);
+    };
+  }, [paths, urls]);
+}
+
 export interface TrickViewProps {
   /** The `partKey` of a part whose place has a view: a trick session, a trick's own tab, a view on a session. */
   partKey: string;
   /** A row's `href` or a link was tapped. */
   onLink: (target: LinkTarget) => void;
-  /** The bridge's URL of an image of the trick folder. Absent: an image draws its reserved box and its alt. */
+  /**
+   * The URL of an image of the trick folder, for a playground card. Absent: the picture is fetched from
+   * the trick's `media/` folder on its bridge, with the pairing token.
+   */
   imageUrl?: (src: string) => string | undefined;
   /** The session open on the phone, sent with a tap. */
   from?: string;
@@ -199,6 +250,8 @@ function TrickViewBody({ partKey, part, trick, tap, onLink, imageUrl, from, stor
   // Read once per version of the part, so the held view keeps one identity between redraws.
   const live = useMemo(() => viewOf(partValue), [partValue]);
   const { view, onPointerDown } = useHeldView(live);
+  const fetched = useTrickImages(partKey, part.rev, view);
+  const images = imageUrl ?? fetched;
   const onTap = useMemo(() => {
     const handlers: TapHandlers = {};
     if (from !== undefined) handlers.from = { session: from };
@@ -209,10 +262,10 @@ function TrickViewBody({ partKey, part, trick, tap, onLink, imageUrl, from, stor
       ({ stale }: { stale: boolean }) => {
         if (view === undefined) return <Placeholder />;
         const ctx: RenderCtx = { partKey, stale, tap, onTap, onLink, now };
-        if (imageUrl !== undefined) ctx.imageUrl = imageUrl;
+        if (images !== undefined) ctx.imageUrl = images;
         return renderView(view, ctx);
       },
-    [view, partKey, tap, onTap, onLink, imageUrl, now],
+    [view, partKey, tap, onTap, onLink, images, now],
   );
   return (
     <div onPointerDown={onPointerDown} className="min-w-0">

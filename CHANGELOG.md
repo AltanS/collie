@@ -80,6 +80,8 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 - **A trick draws only where Collie draws it.** The `tab`, `tab:<match>` and `view:<match>` places are gone: they were read but drawn nowhere. A trick draws in the belt, a session, the Dashboard, the status bar and the bottom bar, and a place word this Collie does not know is left out of `places` with a note. The facts no longer carry the `session` field of a view run. (M94)
 
+- **A trick's image shows its picture.** An `image` node names a file in the trick's own `media/` folder, such as `media/chart.png`, and the phone fetches it from the bridge with its pairing key. The bridge serves only PNG, JPEG and WebP files of that folder, read off their first bytes, at most 2 MB, never through a symlink, and only for a trick that is switched on; every other request gets the same "no such image". A new version of the part fetches the picture again. (M94)
+
 ## [1.28.0] - 2026-11-09
 
 ### Added

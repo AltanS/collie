@@ -355,7 +355,7 @@
   "image": {
     "kind": "image",
     "attrs": {
-      "src": "shots/case-24.png",
+      "src": "media/case-24.png",
       "alt": "The reply box with the draft still in it",
       "w": "1280",
       "h": "720"

@@ -516,14 +516,14 @@ describe("caps at the boundary", () => {
     for (const style of ["", "fg-orange", "bold  dim", "bold bold", "#ff0000"]) expect(parse(inView({ kind: "line", text: "x", attrs: { style } })), style).toEqual(["/parts/0/view/0/attrs/style"]);
   });
 
-  it("image: a file under the trick folder, with its size in pixels", () => {
+  it("image: a file in the trick's media/ folder, with its size in pixels", () => {
     const image = (src: string, w = "320") => inView({ kind: "image", attrs: { src, alt: "a figure", w, h: "200" } });
-    for (const src of ["a.png", "shots/b.jpeg", "c.JPG"]) expect(parse(image(src))).toEqual([]);
-    for (const src of ["/etc/x.png", "../x.png", "a/../x.png", "./x.png", "x.svg", "x.png?y", "a//b.png"]) {
-      expect(parse(image(src)), src).toEqual(["/parts/0/view/0/attrs/src"]);
-    }
-    expect(parse(image("a.png", "4097"))).toEqual(["/parts/0/view/0/attrs/w"]);
-    expect(parse(image("a.png", "0"))).toEqual(["/parts/0/view/0/attrs/w"]);
+    for (const src of ["media/a.png", "media/shots/b.jpeg", "media/c.JPG", "media/d.webp"]) expect(parse(image(src)), src).toEqual([]);
+    const outside = ["a.png", "shots/b.png", "MEDIA/a.png", "media", "media/", "/etc/x.png", "../x.png", "media/../x.png", "media/a/../x.png", "media/./x.png", "media/.x.png", "media/a/.b/c.png", "media/x.svg", "media/x.gif", "media/x.png?y", "media//b.png"];
+    for (const src of outside) expect(parse(image(src)), src).toEqual(["/parts/0/view/0/attrs/src"]);
+    expect(parseTrickDocument(image("a.png")).refusals[0]?.reason).toContain('"media/"');
+    expect(parse(image("media/a.png", "4097"))).toEqual(["/parts/0/view/0/attrs/w"]);
+    expect(parse(image("media/a.png", "0"))).toEqual(["/parts/0/view/0/attrs/w"]);
   });
 
   it("a part is at most 16 KiB on the wire", () => {

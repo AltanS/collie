@@ -2395,7 +2395,7 @@
             {
               "kind": "image",
               "attrs": {
-                "src": "a.png",
+                "src": "media/a.png",
                 "alt": "x"
               }
             }

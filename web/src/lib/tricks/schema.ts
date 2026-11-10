@@ -1278,7 +1278,13 @@ const MUX_ID_MAX_BYTES = 128;
 /** An instant: date, time, optional fraction, `Z` or an offset. `Date.parse` must also accept it. */
 const INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,9})?)?(Z|[+-]\d{2}:\d{2})$/;
 const INSTANT_MAX = 40;
-const IMAGE_SRC = /^(?!\/)(?!.*(^|\/)\.\.?(\/|$))[A-Za-z0-9._\-/]+\.(png|jpe?g)$/i;
+/**
+ * An image node's `src`: a file in the trick's own `media/` folder, the one folder the bridge serves
+ * (bridge/tricks/media.ts) and the code hash leaves out. No step starts with a dot (no `.`, `..` or
+ * hidden name), and the type is one the route sends: PNG, JPEG or WebP.
+ */
+// `media/` is matched as written (a `MEDIA/` folder is another folder); the extension in either case.
+const IMAGE_SRC = /^media\/(?!(?:.*\/)?\.)[A-Za-z0-9._\-/]+\.(?:[pP][nN][gG]|[jJ][pP][eE]?[gG]|[wW][eE][bB][pP])$/;
 /** A decision's media `file`: the image `src` rule, and WebP too, which the hill keeps. */
 const MEDIA_FILE = /^(?!\/)(?!.*(^|\/)\.\.?(\/|$))[A-Za-z0-9._\-/]+\.(png|jpe?g|webp)$/i;
 /** The latest instant `Date` holds, in ms. */
@@ -1417,9 +1423,23 @@ export function isTrickUrl(text: string): boolean {
   }
 }
 
-/** An image `src` or media `file`: relative to the trick folder, no `..` or `.` step, a `.png`, `.jpg` or `.jpeg`. */
+/** The trick folder's own folder of pictures: an image's `src` names a file in it. */
+export const TRICK_MEDIA_DIR = "media";
+
+/** An image `src`: `media/` and a file in it, no step that starts with a dot, a `.png`, `.jpg`, `.jpeg` or `.webp`. */
 export function isImageSrc(text: string): boolean {
   return text.length <= IMAGE_SRC_MAX && IMAGE_SRC.test(text) && !text.includes("//");
+}
+
+/**
+ * Where the phone reads an image node's bytes: `GET /api/tricks/<host>/<id>/<src>`, `src` being
+ * `media/` and the file (bridge/tricks/media.ts). Each step is encoded on its own. `rev`, the part's
+ * revision, rides as a query the bridge ignores, so a new version of the part asks again.
+ */
+export function trickMediaPath(host: string, trick: string, src: string, rev?: number): string {
+  const file = src.split("/").map(encodeURIComponent).join("/");
+  const path = `/api/tricks/${encodeURIComponent(host)}/${encodeURIComponent(trick)}/${file}`;
+  return rev === undefined ? path : `${path}?rev=${String(rev)}`;
 }
 
 /** A decision's media `file`: relative to the trick folder, no `..` or `.` step, a `.png`, `.jpg`, `.jpeg` or `.webp`. */
@@ -2198,7 +2218,7 @@ function attrProblem(rule: AttrRule, value: string): { code: RefusalCode; reason
       // A row's or a link's target: its shape depends on the link's `rel`, which `checkNode` reads.
       return value === "" ? { code: "text", reason: "is empty." } : undefined;
     case "src":
-      return isImageSrc(value) ? undefined : { code: "target", reason: 'must be a .png, .jpg or .jpeg file inside the trick folder, as a relative path with no "..".' };
+      return isImageSrc(value) ? undefined : { code: "target", reason: 'must name a .png, .jpg, .jpeg or .webp file in the trick\'s "media/" folder, such as "media/chart.png", with no step that starts with a dot.' };
     case "lang":
       return LANG.test(value) ? undefined : { code: "word", reason: 'must be a language word of 1 to 24 of a-z, 0-9, "+", "#", ".", "_", "-".' };
   }

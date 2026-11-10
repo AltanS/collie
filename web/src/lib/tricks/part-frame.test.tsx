@@ -10,6 +10,10 @@ import { TONE_TEXT_CLASS, parseTrickDocument, partKey, type TrickPart, type Tric
 import { readTricksReplyTolerant } from "./read";
 import { createTricksStore, type TricksStore } from "./store";
 
+// A picture is fetched with the pairing token; here the "object URL" names the path it was asked for.
+const authedObjectUrl = vi.hoisted(() => vi.fn(async (path: string) => `blob:${path}`));
+vi.mock("../authed-url", () => ({ authedObjectUrl }));
+
 const AS_OF = "2026-11-08T09:41:00Z";
 const T0 = Date.parse(AS_OF);
 
@@ -207,6 +211,30 @@ describe("TrickView", () => {
     });
     expect(rows()).toBe(4);
     expect(container.textContent).toContain("three");
+  });
+
+  it("fetches an image from the trick's media/ folder with the token, its rev in the path, and says its alt until then", async () => {
+    const picture: TrickPart = { at: "session", id: "deploy", view: [{ kind: "image", attrs: { src: "media/shots/a b.png", alt: "the chart", w: "320", h: "200" } }] };
+    const { store, push } = storeWith([stored(picture, { rev: 4 })]);
+    await store.syncTricks(1);
+    const { container } = render(<TrickView partKey="bluefin/deploy/deploy" store={store} onLink={vi.fn()} now={T0} />);
+    const img = () => container.querySelector('[data-trick-node="image"] img');
+    await waitFor(() => expect(img()?.getAttribute("src")).toBe("blob:/api/tricks/bluefin/deploy/media/shots/a%20b.png?rev=4"));
+    expect(authedObjectUrl).toHaveBeenCalledWith("/api/tricks/bluefin/deploy/media/shots/a%20b.png?rev=4");
+    // A new version of the part asks again: a program may write a new picture under the same name.
+    await act(() => push([stored(picture, { rev: 5 })], 2));
+    await waitFor(() => expect(img()?.getAttribute("src")).toBe("blob:/api/tricks/bluefin/deploy/media/shots/a%20b.png?rev=5"));
+  });
+
+  it("draws an image's alt in its box when the fetch fails", async () => {
+    authedObjectUrl.mockRejectedValueOnce(new Error("403"));
+    const picture: TrickPart = { at: "session", id: "deploy", view: [{ kind: "image", attrs: { src: "media/gone.png", alt: "the chart", w: "320", h: "200" } }] };
+    const { store } = storeWith([stored(picture)]);
+    await store.syncTricks(1);
+    const { container } = render(<TrickView partKey="bluefin/deploy/deploy" store={store} onLink={vi.fn()} now={T0} />);
+    await waitFor(() => expect(authedObjectUrl).toHaveBeenCalledWith("/api/tricks/bluefin/deploy/media/gone.png?rev=1"));
+    expect(container.querySelector('[data-trick-node="image"] img')).toBeNull();
+    expect(container.querySelector('[data-trick-node="image"]')?.textContent).toBe("the chart");
   });
 
   it("draws nothing for a part it does not hold", () => {

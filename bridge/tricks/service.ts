@@ -24,6 +24,7 @@ import { trickCodeHash } from "./code-hash.ts";
 import { createTrickScanner, type FoundTrick, type TricksScan } from "./discover.ts";
 import { scrubEnv, type ProgramEnv } from "./env.ts";
 import { buildFacts, type FactsWorld } from "./facts.ts";
+import { readTrickMedia, type TrickMediaFile } from "./media.ts";
 import type { TrickHillRun, TrickHillTrick } from "./hill.ts";
 import { tricksConfigDir, trickStateDir } from "./paths.ts";
 import { trickSessionPanes, type TrickSessionPanes } from "./panes.ts";
@@ -124,6 +125,11 @@ export interface TricksSurface {
   sessionPanes(): TrickSessionPanes | undefined;
   /** `POST /api/tricks/<host>/<id>/switch`: write the switch file, as `collie trick on|off` does. */
   setSwitch(host: string, id: string, on: boolean): Promise<SwitchAnswer>;
+  /**
+   * `GET /api/tricks/<host>/<id>/media/<file>`: one picture of the trick's own `media/` folder
+   * (media.ts), or null for every miss. Only a trick of this bridge that is switched on.
+   */
+  media(host: string, id: string, rel: string): Promise<TrickMediaFile | null>;
 }
 
 /** What the runner needs of the trick's decisions on the hill (hill.ts `TrickHill`). */
@@ -827,6 +833,15 @@ export class TricksService implements TricksSurface {
    * trick whose manifest is refused or that keeps failing: the switch is Collie's, not the trick's
    * (design §7).
    */
+  async media(host: string, id: string, rel: string): Promise<TrickMediaFile | null> {
+    if (!this.isOwn(host)) return null;
+    await this.refresh();
+    const rt = this.runtimes.get(id);
+    // A trick the person never switched on gets nothing served, whatever its folder holds.
+    if (rt === undefined || !rt.on) return null;
+    return readTrickMedia(rt.found.dir, rel);
+  }
+
   async setSwitch(host: string, id: string, on: boolean): Promise<SwitchAnswer> {
     if (!this.isOwn(host)) return { status: 404, body: { error: "unknown-host" } };
     const turn = this.switching.then(() => this.writeSwitch(id, on));

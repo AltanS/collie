@@ -89,7 +89,7 @@ export const v = {
     node("code", undefined, attrs, Array.isArray(body) ? body : body.split("\n").map((l) => node("line", l.trim() === "" ? undefined : l))),
   /** A link: an https address, or a session's `id` from the facts. */
   link: (text: string, href: string, attrs: { rel?: "url" | "pane"; badge?: Num; icon?: Icon } = {}): Node => node("link", text, { href, ...attrs }),
-  /** An image file of the trick folder (.png or .jpg), `w` by `h`. Not on a Decision's view. */
+  /** An image in the trick's `media/` folder (`media/chart.png`: .png, .jpg or .webp), `w` by `h`. Not on a Decision's view. */
   image: (src: string, alt: string, w: Num, h: Num): Node => node("image", undefined, { src, alt, w, h }),
   /** An amount (`role` meter, the default) or a task (`role` progress). */
   meter: (attrs: { value?: Num; max?: Num; tone?: Tone; label?: string; role?: "progress" | "meter" }): Node => node("meter", undefined, attrs),

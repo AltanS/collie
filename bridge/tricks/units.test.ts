@@ -10,7 +10,7 @@ import { CODE_FILES_MAX, diskTrickFs, trickCodeHash, type TrickFs } from "./code
 import { createTrickScanner, MANIFEST_BYTES_MAX, readManifestText, TRICKS_MAX } from "./discover.ts";
 import { buildFacts, factsWorldOf } from "./facts.ts";
 import { switchesPath } from "./paths.ts";
-import { TRICKS_ROUTE_RIGHTS, tricksSwitchRoute, tricksTapRoute, parseSince } from "./routes.ts";
+import { TRICKS_ROUTE_RIGHTS, tricksMediaRoute, tricksSwitchRoute, tricksTapRoute, parseSince } from "./routes.ts";
 import type { TricksSurface } from "./service.ts";
 import { createSwitchReader, parseSwitches, renderSwitches, SWITCH_LOCK_STALE_MS, updateSwitches, withSwitch, writeSwitches } from "./switches.ts";
 
@@ -391,6 +391,7 @@ describe("the routes", () => {
         return { status: 404, body: { error: "unknown-trick" } };
       },
       setSwitch: async () => ({ status: 404, body: { error: "unknown-trick" } }),
+      media: async () => null,
     };
     const route = /^\/api\/tricks\/([^/]+)\/([^/]+)\/tap$/;
     const match = route.exec("/api/tricks/blue%66in/legs/tap");
@@ -414,6 +415,7 @@ describe("the routes", () => {
         calls.push([host, id, on]);
         return { status: 404, body: { error: "unknown-trick" } };
       },
+      media: async () => null,
     };
     const route = /^\/api\/tricks\/([^/]+)\/([^/]+)\/switch$/;
     const match = route.exec("/api/tricks/blue%66in/legs/switch");
@@ -429,11 +431,39 @@ describe("the routes", () => {
     expect(await tricksSwitchRoute(surface, broken, { on: true })).toEqual({ status: 404, body: { error: "unknown-host" } });
   });
 
+  test("the media path is decoded and handed on; a segment that does not decode is a miss", async () => {
+    const calls: [string, string, string][] = [];
+    const surface: TricksSurface = {
+      rev: () => 1,
+      noteWatched: () => {},
+      reply: async () => ({ rev: 1, tricks: [], parts: [], present: [] }),
+      tap: async () => ({ status: 404, body: { error: "unknown-trick" } }),
+      sessionPanes: () => undefined,
+      setSwitch: async () => ({ status: 404, body: { error: "unknown-trick" } }),
+      media: async (host, id, rel) => {
+        calls.push([host, id, rel]);
+        return null;
+      },
+    };
+    const route = /^\/api\/tricks\/([^/]+)\/([^/]+)\/(media\/.+)$/;
+    const match = route.exec("/api/tricks/blue%66in/legs/media/shots/case%2024.png");
+    if (match === null) throw new Error("no match");
+    expect(await tricksMediaRoute(surface, match)).toBeNull();
+    expect(calls).toEqual([["bluefin", "legs", "media/shots/case 24.png"]]);
+    for (const path of ["/api/tricks/%E0%A4%A/legs/media/a.png", "/api/tricks/bluefin/legs/media/%E0%A4%A.png"]) {
+      const broken = route.exec(path);
+      if (broken === null) throw new Error("no match");
+      expect(await tricksMediaRoute(surface, broken)).toBeNull();
+    }
+    expect(calls.length).toBe(1);
+    expect(route.exec("/api/tricks/bluefin/legs/trick.toml")).toBeNull();
+  });
+
   test("server.ts gates the list as a read and the tap as a write, stamps the watch for a paired phone only, the switch as a write, and declares both routes", () => {
     const src = readFileSync(join(import.meta.dir, "..", "server.ts"), "utf8");
     const list = src.slice(src.indexOf('if (pathname === "/api/tricks" && req.method === "GET")'));
     // The rights live in one table in routes.ts; server.ts reads each route's level from it.
-    expect(TRICKS_ROUTE_RIGHTS).toEqual({ reply: "read", tap: "write", switch: "write" });
+    expect(TRICKS_ROUTE_RIGHTS).toEqual({ reply: "read", tap: "write", switch: "write", media: "read" });
     expect(list.slice(0, 400)).toContain("guard(req, cfg, TRICKS_ROUTE_RIGHTS.reply, pairingGate)");
     expect(list.slice(0, 600)).toContain("if (pairedLabel(req, pairingGate) !== null) tricks.noteWatched();");
     const tap = src.slice(src.indexOf("const tricksTap = TRICKS_TAP_ROUTE.exec(pathname);"));
@@ -442,6 +472,12 @@ describe("the routes", () => {
     expect(sw.slice(0, 300)).toContain("guard(req, cfg, TRICKS_ROUTE_RIGHTS.switch, pairingGate)");
     expect(src).toContain("const TRICKS_SWITCH_ROUTE = /^\\/api\\/tricks\\/([^/]+)\\/([^/]+)\\/switch$/;");
     expect(src).toContain("const TRICKS_TAP_ROUTE = /^\\/api\\/tricks\\/([^/]+)\\/([^/]+)\\/tap$/;");
+    // A picture: read-gated, the hill image's headers, and one 404 for every miss.
+    expect(src).toContain("const TRICKS_MEDIA_ROUTE = /^\\/api\\/tricks\\/([^/]+)\\/([^/]+)\\/(media\\/.+)$/;");
+    const media = src.slice(src.indexOf("const tricksMedia = TRICKS_MEDIA_ROUTE.exec(pathname);"));
+    expect(media.slice(0, 200)).toContain('req.method === "GET"');
+    expect(media.slice(0, 300)).toContain("guard(req, cfg, TRICKS_ROUTE_RIGHTS.media, pairingGate)");
+    expect(media.slice(0, 900)).toContain("secure(new Response(file.bytes, { headers: { \"content-type\": file.mime, ...HILL_MEDIA_HEADERS } }))");
     expect(src).toContain("if (poller !== null) opts.tricks?.noteWatched();");
     expect(src).toContain("if (tricksRev !== undefined) body.tricksRev = tricksRev;");
   });

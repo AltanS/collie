@@ -645,6 +645,31 @@ describe("taps", () => {
   });
 });
 
+describe("a trick's pictures", () => {
+  const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52, 0, 0, 0, 1, 0, 0, 0, 1]);
+
+  test("serves a picture of media/ for a trick that is on, of this bridge; nothing for one off, unknown or of another host", async () => {
+    const r = await rig([]);
+    const dir = await makeTrick(r.configDir, "legs", MANIFEST);
+    await mkdir(join(dir, "media"));
+    await writeFile(join(dir, "media", "chart.png"), PNG);
+    await makeTrick(r.configDir, "off", MANIFEST.replace('id = "legs"', 'id = "off"'));
+    await mkdir(join(r.configDir, TRICKS_DIR, "off", "media"));
+    await writeFile(join(r.configDir, TRICKS_DIR, "off", "media", "chart.png"), PNG);
+    expect(await r.service.media(HOST, "legs", "media/chart.png")).toBeNull();
+    await switchOn(r.stateDir, "legs");
+    await r.service.refresh(true);
+    const file = await r.service.media(HOST, "legs", "media/chart.png");
+    expect(file?.mime).toBe("image/png");
+    expect(file?.bytes).toEqual(PNG);
+    expect(await r.service.media(HOST, "off", "media/chart.png")).toBeNull();
+    expect(await r.service.media(HOST, "gone", "media/chart.png")).toBeNull();
+    expect(await r.service.media("m_bbbbbbbbbb", "legs", "media/chart.png")).toBeNull();
+    expect(await r.service.media(HOST, "legs", "trick.toml")).toBeNull();
+    expect(await r.service.media(HOST, "legs", "media/../trick.toml")).toBeNull();
+  });
+});
+
 describe("consent tied to the code", () => {
   /** A hill port that records what reached it. */
   function hillSpy() {

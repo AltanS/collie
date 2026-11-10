@@ -136,8 +136,8 @@ const PAIRS = {
     { kind: "code", attrs: { max: "3" }, kids: ["a", "b", "c", "d", "e"].map((text) => ({ kind: "line", text })) },
   ],
   image: [
-    { kind: "image", attrs: { src: "a.png", alt: "a", w: "1280", h: "720" } },
-    { kind: "image", attrs: { src: "shots/b.png", alt: "a much longer description", w: "1280", h: "720" } },
+    { kind: "image", attrs: { src: "media/a.png", alt: "a", w: "1280", h: "720" } },
+    { kind: "image", attrs: { src: "media/shots/b.png", alt: "a much longer description", w: "1280", h: "720" } },
   ],
   meter: [
     { kind: "meter", attrs: { value: "1", max: "2" } },
@@ -215,8 +215,8 @@ describe("a node's height is its form's, not its data's", () => {
     expect(viewForm(viewOfNodes(para("x".repeat(40))))).not.toBe(viewForm(viewOfNodes(para("x".repeat(41)))));
     expect(viewForm(viewOfNodes(list(row("a"), row("b"))))).not.toBe(viewForm(viewOfNodes(list(row("a"), row("b"), row("c")))));
     expect(viewForm(viewOfNodes(para("23/34 green")))).toBe(viewForm(viewOfNodes(para("24/34 green"))));
-    expect(viewForm(viewOfNodes({ kind: "image", attrs: { src: "a.png", alt: "a", w: "4", h: "3" } }))).not.toBe(
-      viewForm(viewOfNodes({ kind: "image", attrs: { src: "a.png", alt: "a", w: "16", h: "9" } })),
+    expect(viewForm(viewOfNodes({ kind: "image", attrs: { src: "media/a.png", alt: "a", w: "4", h: "3" } }))).not.toBe(
+      viewForm(viewOfNodes({ kind: "image", attrs: { src: "media/a.png", alt: "a", w: "16", h: "9" } })),
     );
   });
 });
@@ -464,9 +464,9 @@ describe("a meter, a number, an image", () => {
     const imageUrl = vi.fn((src: string) => `/api/tricks/image?src=${src}`);
     const { container } = draw(viewOf(nodeDocument("image")), { imageUrl });
     const img = nodeEl(container, "image").querySelector("img");
-    expect(imageUrl).toHaveBeenCalledWith("shots/case-24.png");
+    expect(imageUrl).toHaveBeenCalledWith("media/case-24.png");
     expect(img?.getAttribute("loading")).toBe("lazy");
-    expect(img?.getAttribute("src")).toBe("/api/tricks/image?src=shots/case-24.png");
+    expect(img?.getAttribute("src")).toBe("/api/tricks/image?src=media/case-24.png");
     expect(img?.getAttribute("width")).toBe("1280");
   });
 });

@@ -211,7 +211,7 @@ import { modeForWire } from "./crew/mode.ts";
 import type { CrewRuntime } from "./crew/config.ts";
 import type { CrewLead } from "./crew/lead.ts";
 import { crewDeviceOf, crewGate, type GateLevel } from "./crew/peer-gate.ts";
-import { TRICKS_ROUTE_RIGHTS, tricksSwitchRoute, tricksTapRoute, parseSince } from "./tricks/routes.ts";
+import { TRICKS_ROUTE_RIGHTS, tricksMediaRoute, tricksSwitchRoute, tricksTapRoute, parseSince } from "./tricks/routes.ts";
 import { placeTrickSessions } from "./tricks/panes.ts";
 import type { TricksSurface } from "./tricks/service.ts";
 import { snapshotPlan } from "./crew/merge.ts";
@@ -591,6 +591,9 @@ const WALKY_DROP_ROUTE = /^\/api\/pane\/([^/]+)\/walky\/([^/]+)\/drop$/;
 const TRICKS_TAP_ROUTE = /^\/api\/tricks\/([^/]+)\/([^/]+)\/tap$/;
 // And the off switch (M94 slice 04): write-gated like the tap, the same file `collie trick on|off` writes.
 const TRICKS_SWITCH_ROUTE = /^\/api\/tricks\/([^/]+)\/([^/]+)\/switch$/;
+// And a picture of the trick's own `media/` folder (M94 review 11), read-gated like the list. Group 3 is
+// `media/` and the file; bridge/tricks/media.ts checks it before any path is built.
+const TRICKS_MEDIA_ROUTE = /^\/api\/tricks\/([^/]+)\/([^/]+)\/(media\/.+)$/;
 
 /**
  * How long a worktree create may hold its connection open, in seconds (ADR 0089). Above Herdr's own
@@ -3118,7 +3121,7 @@ export function startServer(opts: {
 
       // ── Collie tricks (M94 slice 01) ───────────────────────────────────────
       // The parts and the list since a rev, and a tap. Both are this bridge's own, gated like the
-      // snapshot (a tap as a write, since it runs the provider), and both answer 404 without a runner.
+      // snapshot (a tap as a write, since it runs the program), and both answer 404 without a runner.
       // `?host=` plays no part: the trick's host is in the tap's path, and a foreign one is 404 until
       // the crew merge (a later slice).
       if (pathname === "/api/tricks" && req.method === "GET") {
@@ -3160,6 +3163,17 @@ export function startServer(opts: {
         }
         const answer = await tricksSwitchRoute(tricks, tricksSwitch, body);
         return json(answer.body, req.headers.get("accept-encoding"), answer.status);
+      }
+      const tricksMedia = TRICKS_MEDIA_ROUTE.exec(pathname);
+      if (tricksMedia !== null && req.method === "GET") {
+        const denied = guard(req, cfg, TRICKS_ROUTE_RIGHTS.media, pairingGate);
+        if (denied) return denied;
+        const tricks = opts.tricks;
+        if (tricks === undefined) return text(HILL_MEDIA_MISSING, 404);
+        const file = await tricksMediaRoute(tricks, tricksMedia);
+        if (file === null) return text(HILL_MEDIA_MISSING, 404);
+        // The hill image's headers: no-store, a sandboxed CSP and inline, beside `secure`'s nosniff.
+        return secure(new Response(file.bytes, { headers: { "content-type": file.mime, ...HILL_MEDIA_HEADERS } }));
       }
 
       // ── Session-scoped routes: the pane family, tabs, workspaces ─────────
