@@ -30,6 +30,7 @@ export const HILL_WRITING = [
   "- No inner names or ids in the title that the person would not know.",
   "- Summary: at most two sentences. The first says what the recommended option does, the second gives the one fact that decides it. Put the evidence in the view or the body.",
   '- Each option starts with a verb and says what happens: "Ship it", "Hold until CI". Never a bare Yes or No.',
+  "- --priority now sends a notification to the person's phone. Use it only for what cannot wait.",
 ] as const;
 
 /** The title's soft limit in characters (`HILL_WRITING`); the hard cap is the wire's. */

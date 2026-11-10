@@ -9,7 +9,7 @@ import { HOST, isBelow } from "../host.ts";
 import { headerField } from "../walky/types.ts";
 import { asJsonNumber, asJsonObject, asJsonString, parseJsonObject } from "../../web/src/lib/json.ts";
 import { DEFAULT_DECISION_PRIORITY, DEFAULT_DECISION_TEXT, pointer, type Refusal, type TrickDecision } from "../../web/src/lib/tricks/schema.ts";
-import { BY_THE_TRICK, TRICK_OFF, type HillOneAnswer, type HillPostAnswer, type HillTrickSender } from "../hill/service.ts";
+import { BY_THE_TRICK, TRICK_OFF, type HillOneAnswer, type HillPostAnswer, type HillPostOptions, type HillTrickSender } from "../hill/service.ts";
 import { hillDir } from "../hill/store.ts";
 
 // A TRICK POSTS INTO THE HILL (M94, M96): after a run that succeeded, the runner hands the document's
@@ -35,7 +35,8 @@ import { hillDir } from "../hill/store.ts";
 //     the generation, so the request id is new).
 //   * a key that closed without the person (`undeliverable`, `expired` or `withdrawn` by someone other
 //     than the trick) posts again on a later run that still lists it, at most once per
-//     {@link REASK_AFTER_MS} per key, counted from its last post.
+//     {@link REASK_AFTER_MS} per key, counted from its last post. A re-ask never rings the phone again
+//     (hill/push.ts): it posts with `reask`.
 //   * a decision the parser refused, or that names no live session, or that the hill refused, changes
 //     nothing for its key: the version on the hill stays as it is. Each such one is a refusal.
 //   * a failed or timed-out run never reaches this module (service.ts): the last good decisions stay.
@@ -88,7 +89,7 @@ interface TrickHillRecord {
 
 /** What this module needs of the hill (bridge/hill/service.ts `HillService`). */
 export interface TrickHillPort {
-  postDecision(from: HillTrickSender, input: HillPostInput): HillPostAnswer;
+  postDecision(from: HillTrickSender, input: HillPostInput, opts?: HillPostOptions): HillPostAnswer;
   withdraw(from: HillTrickSender, id: string, reason: string): HillOneAnswer;
   decision(id: string): HillDecision | undefined;
 }
@@ -369,7 +370,9 @@ export class TrickHill {
       };
       if (images.length > 0) input.images = images;
       if (decision.view !== undefined) input.view = decision.view;
-      const answer = this.deps.hill.postDecision(this.sender(trick, decision.key, images.length > 0 ? root : null), input);
+      // Past the check above, an unchanged hash is a re-ask: it shows again, and does not push again.
+      const reask = held !== undefined && held.hash === hash;
+      const answer = this.deps.hill.postDecision(this.sender(trick, decision.key, images.length > 0 ? root : null), input, { reask });
       if (!answer.ok) {
         refusals.push(hillRefusal(answer, path, decision, images));
         return;

@@ -161,6 +161,25 @@ describe("the hill route", () => {
     await waitFor(() => expect(document.querySelector('[data-slot="decision-receipt"]')).toHaveTextContent("Sent to collie lead"));
     expect(node).toBe(`hill/${decision.id}`);
   });
+
+  // Where a `now` Decision's notification lands (lib/push-decision.ts `notificationPath`).
+  it("scrolls the card the hash names into view, once, and nothing for an id the list does not hold", async () => {
+    const target = hillDecision();
+    await hillHolds([hillDecision(), hillDecision(), target]);
+    const scrolled = vi.spyOn(Element.prototype, "scrollIntoView");
+    scrolled.mockClear();
+    renderHill(["/", { pathname: "/hill", hash: `#${target.id}`, state: { from: "/" } }]);
+    await waitFor(() => expect(scrolled).toHaveBeenCalledTimes(1));
+    const card = scrolled.mock.contexts[0];
+    if (!(card instanceof HTMLElement)) throw new Error("scrollIntoView ran on no element");
+    expect(card.dataset.slot).toBe("decision-card");
+    expect(card.dataset.id).toBe(target.id);
+    scrolled.mockClear();
+    renderHill(["/", { pathname: "/hill", hash: "#dc_zzzzzzzzzzzz", state: { from: "/" } }]);
+    await screen.findAllByRole("heading", { name: "Hill" });
+    expect(scrolled).not.toHaveBeenCalled();
+    scrolled.mockRestore();
+  });
 });
 
 describe("the Dashboard's bar on the hill route (amended 2026-11-10)", () => {

@@ -2682,6 +2682,9 @@ export interface NotifyPrefs {
   /** Push when a machine's CPU or memory stays above one of its alert rules (ADR 0084). Default on:
    *  a rule is something the operator set on purpose, so this switch only silences them all at once. */
   machines: boolean;
+  /** Push when a Decision of priority `now` opens on the Hill (bridge/hill/push.ts). Default on: the
+   *  poster's `now` is the opt-in, and the bridge caps how often it may ring. */
+  decisions: boolean;
 }
 
 /**

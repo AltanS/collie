@@ -43,6 +43,10 @@
 // imports the tricks service; bridge/index.ts wires the two). The receipt and the answer record what
 // the tap came to in `trick`: `ran`, or `failed` (written first, so a bridge that stops before the tap
 // says so), never retried. A `gone` target runs no tap: one outcome, not half of one.
+//
+// A `now` DECISION RINGS THE PHONE ONCE (push.ts). Decided at the fresh post or supersede and recorded as
+// `pushTag` in the same write; every write goes through `save`, which closes the notification of a
+// decision that closed holding a slot no successor took.
 
 import { randomBytes } from "node:crypto";
 
@@ -85,6 +89,7 @@ import { headerField, WALKY_BODY_MAX, WALKY_LABEL_MAX } from "../walky/types.ts"
 import { digestDiffers, payloadDigest, withDigest } from "../worktree-receipts.ts";
 import { readPostFields } from "./parse.ts";
 import { mintMediaId, type HillImageBytes, type HillMediaStore } from "./media.ts";
+import { HILL_PUSH_RATE, hillPushTag, type HillPushPort } from "./push.ts";
 import { hillAnswerDigest, type HillAnswerOutcome, type HillReceiptRecord, type HillReceiptSurface } from "./receipts.ts";
 import type { HillStore } from "./store.ts";
 
@@ -187,6 +192,24 @@ export interface HillServiceDeps {
    * then the sweep closes nothing for a target that seems gone. Absent: always true.
    */
   readonly sessionsKnown?: () => boolean;
+  /** The phone push of a `now` decision (push.ts). Absent: no decision pushes. */
+  readonly push?: HillPushPort;
+}
+
+/** What a new decision does about the phone: the slot it holds, whether it sends, and why a rate held it. */
+interface HillPushPlan {
+  readonly tag: string | undefined;
+  readonly send: boolean;
+  readonly skipped: string | null;
+}
+
+/** How a post came about, beyond its input. Only code inside the bridge sets it. */
+export interface HillPostOptions {
+  /**
+   * A trick posts a key again, unchanged, after its decision closed without the person (tricks/hill.ts
+   * `mayReask`). It shows as any post does, and never pushes: the phone heard of that question once.
+   */
+  readonly reask?: boolean;
 }
 
 /** A post's answer: the stored decision, or a refusal with its code and plain words the CLI prints. */
@@ -333,11 +356,12 @@ export function hillPostDigest(input: HillPostInput): string {
   return payloadDigest([JSON.stringify(input.view === undefined ? parts : [...parts, input.view])]);
 }
 
-/** A decision as the phone and the socket get it: without `postDigest`, which only the store needs. */
+/** A decision as the phone and the socket get it: without `postDigest` and `pushTag`, which only the bridge needs. */
 function served(decision: HillDecision): HillDecision {
-  if (decision.postDigest === undefined) return decision;
+  if (decision.postDigest === undefined && decision.pushTag === undefined) return decision;
   const copy = { ...decision };
   delete copy.postDigest;
+  delete copy.pushTag;
   return copy;
 }
 
@@ -523,7 +547,7 @@ export class HillService {
   }
 
   /** One post, from an agent or from a trick inside the bridge. */
-  postDecision(from: HillSender, input: HillPostInput): HillPostAnswer {
+  postDecision(from: HillSender, input: HillPostInput, opts: HillPostOptions = {}): HillPostAnswer {
     if (!this.deps.walkyOn()) return refuse("walky_off", HILL_WALKY_OFF);
     if (this.deps.crewMode() === "peer") return refuse("not_on_lead", NOT_ON_LEAD);
     const key = senderKey(from);
@@ -600,8 +624,10 @@ export class HillService {
       postDigest: digest,
     };
     if (input.view !== undefined) decision.view = input.view;
+    const push = this.pushPlan(key, priority, opts, superseded, id);
+    if (push.tag !== undefined) decision.pushTag = push.tag;
     const replaced: HillDecision[] = superseded === null ? [] : [{ ...superseded, state: "superseded", supersededBy: id, closedAt: now, closedReason: `superseded by ${id}` }];
-    if (!this.deps.store.put(decision, ...replaced)) {
+    if (!this.save(decision, ...replaced)) {
       if (media.length > 0) this.deps.media?.remove(id);
       return refuse(null, "the decision could not be saved on this machine; nothing was posted");
     }
@@ -609,7 +635,42 @@ export class HillService {
     // The images as a count and a byte sum, never a path or a caption.
     const detail = media.length === 0 ? base : { ...base, images: media.length, imageBytes: media.reduce((sum, item) => sum + item.bytes, 0) };
     this.deps.audit?.({ action: "hill.post", detail });
+    if (push.skipped !== null) this.deps.audit?.({ action: "hill.push.skipped", detail: { decisionId: id, why: push.skipped } });
+    // Only while it is still open: nothing between the write and here closes it, and a push is never late.
+    if (push.send && this.deps.store.get(id)?.state === "open") this.deps.push?.send(key, decision);
     return { ok: true, decision: served(decision) };
+  }
+
+  /**
+   * Whether a new decision pushes, and the slot it holds (push.ts). A `now` decision that may push opens
+   * a slot, or keeps the one of the decision it supersedes, so the new notification replaces the old. A
+   * `now` decision held by a gate sends nothing, and still keeps a superseded one's slot: the notification
+   * on the phone stays until the question closes. Anything else holds no slot.
+   */
+  private pushPlan(key: string, priority: HillDecision["priority"], opts: HillPostOptions, superseded: HillDecision | null, id: string): HillPushPlan {
+    const inherited = superseded?.pushTag;
+    if (priority !== "now" || this.deps.push === undefined) return { tag: undefined, send: false, skipped: null };
+    if (opts.reask === true) return { tag: inherited, send: false, skipped: null };
+    const verdict = this.deps.push.check(key);
+    if (verdict === "send") return { tag: inherited ?? hillPushTag(id), send: true, skipped: null };
+    if (verdict === "off") return { tag: inherited, send: false, skipped: null };
+    const why = verdict === "sender" ? `more than ${String(HILL_PUSH_RATE.perSender)} an hour from this sender` : `more than ${String(HILL_PUSH_RATE.total)} an hour in total`;
+    return { tag: inherited, send: false, skipped: why };
+  }
+
+  /**
+   * Every write of the hill. After it, a decision that closed holding a notification slot that no decision
+   * left open in the same write holds gets one clear, so the phone does not keep a closed question.
+   */
+  private save(...changed: HillDecision[]): boolean {
+    const before = new Map(changed.map((decision) => [decision.id, this.deps.store.get(decision.id)?.state]));
+    if (!this.deps.store.put(...changed)) return false;
+    const held = new Set(changed.filter((decision) => decision.state === "open").map((decision) => decision.pushTag));
+    for (const decision of changed) {
+      if (decision.state === "open" || before.get(decision.id) !== "open" || decision.pushTag === undefined || held.has(decision.pushTag)) continue;
+      this.deps.push?.clear(decision.pushTag);
+    }
+    return true;
   }
 
   /** Read and check every image a post names, in order, before anything is kept. The first that fails refuses the post. */
@@ -719,7 +780,7 @@ export class HillService {
     if (decision === null) return { ok: false, missing: true, error: `no decision ${id} from this session` };
     if (decision.state !== "open") return { ok: false, missing: false, error: `${id} is ${decision.state}, nothing to withdraw` };
     const closed: HillDecision = { ...decision, state: "withdrawn", closedAt: this.now(), closedReason: reason };
-    if (!this.deps.store.put(closed)) return { ok: false, missing: false, error: "the change could not be saved on this machine; the decision stays open" };
+    if (!this.save(closed)) return { ok: false, missing: false, error: "the change could not be saved on this machine; the decision stays open" };
     this.deps.audit?.({ action: "hill.withdraw", detail: { decisionId: id } });
     return { ok: true, decision: served(closed) };
   }
@@ -749,7 +810,7 @@ export class HillService {
     const ended = this.look(() => this.endedTargets(new Set(due.map((decision) => decision.id))));
     const closed = [...expired, ...ended.map((decision): HillDecision => Object.assign({}, decision, { state: "undeliverable" as const, closedAt: now, closedReason: TARGET_ENDED }))];
     if (closed.length === 0) return 0;
-    if (this.deps.store.put(...closed)) return closed.length;
+    if (this.save(...closed)) return closed.length;
     // Not saved: the ended ones are still absent, and the next sweep tries them again.
     for (const decision of ended) this.absent.add(decision.id);
     return 0;
@@ -839,7 +900,7 @@ export class HillService {
     const receipt: HillReceipt = { ...claim.record.receipt, delivery, trick };
     await this.deps.receipts.record({ ...claim.record, receipt });
     const now = this.deps.store.get(id);
-    if (now?.answer?.rid === request.rid && (now.answer.delivery !== delivery || now.answer.trick !== trick)) this.deps.store.put({ ...now, answer: { ...now.answer, delivery, trick } });
+    if (now?.answer?.rid === request.rid && (now.answer.delivery !== delivery || now.answer.trick !== trick)) this.save({ ...now, answer: { ...now.answer, delivery, trick } });
     this.auditAnswer(claim.decision, request, by, receipt);
     return { kind: "receipt", receipt };
   }
@@ -922,7 +983,7 @@ export class HillService {
     }
     const answer: NonNullable<HillDecision["answer"]> = { rid, intent, label: option?.label ?? null, text, by: headerField(by, WALKY_LABEL_MAX), at: now, delivery: typed ? "unknown" : "none", trick: firstTrick };
     const closed: HillDecision = { ...fresh, state, closedAt: now, closedReason: null, answer: device === null ? answer : { ...answer, deviceId: device } };
-    if (!this.deps.store.put(closed)) {
+    if (!this.save(closed)) {
       const unsaved = receiptOf(rid, now, "unknown", "the answer could not be saved on this machine; nothing was typed", "open", null);
       return this.final(request, id, by, digest, unsaved);
     }
@@ -951,6 +1012,6 @@ export class HillService {
   private closeAs(id: string, now: number, state: "undeliverable" | "expired", reason: string): void {
     const decision = this.deps.store.get(id);
     if (decision === undefined || decision.state !== "open") return;
-    this.deps.store.put({ ...decision, state, closedAt: now, closedReason: reason });
+    this.save({ ...decision, state, closedAt: now, closedReason: reason });
   }
 }

@@ -207,6 +207,13 @@ export interface HillDecision {
    * before it existed: a repeat of that one is answered as stored.
    */
   postDigest?: string;
+  /**
+   * The phone notification slot this decision holds (bridge/hill/push.ts), stored only and never served,
+   * as `postDigest`. Set in the write that stores the decision when its `now` push went, or carried over
+   * from the decision it superseded; a close clears the slot unless a successor holds it. Its presence is
+   * also why a decision id is never pushed twice. Absent: no notification.
+   */
+  pushTag?: string;
 }
 
 /**
