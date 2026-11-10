@@ -8,6 +8,8 @@ import { createMemoryRouter, RouterProvider } from "react-router";
 import { fixtureAgents, sendAnswer, sendHandler } from "@/test/handlers";
 import { server } from "@/test/setup";
 import { withHeaderHost } from "@/test/header-host";
+import { collieMark } from "@/test/collie-mark";
+import { clearStatus } from "@/lib/status";
 import { http, HttpResponse } from "msw";
 import { paneScopeKey } from "@/lib/scope";
 import { UNREAD_SURFACE } from "@/lib/send-slot";
@@ -46,7 +48,14 @@ function mount(overrides: Partial<ComponentProps<typeof AgentChat>> = {}) {
   return { router, update: (props: Partial<ComponentProps<typeof AgentChat>>) => act(() => update(props)), onReady };
 }
 
+// What the header says while a launch starts: "Starting…" in the title slot (the only place it is
+// said now, the composer carries no notice) and the second bead's colour on the mark.
+const startingTitle = () => document.querySelector('[data-slot="header-condition"]');
+const startingBeads = () => collieMark(document.body)?.style.getPropertyValue("--mark-bead-1");
+
 beforeEach(() => {
+  // An event status ("Sent ✓" from the case before) would take the title slot over the condition.
+  clearStatus();
   liveness.live = true;
   server.use(http.get("/api/sent", () => HttpResponse.json({ rows: [], next: null })));
   if (!Element.prototype.scrollTo) Element.prototype.scrollTo = () => {};
@@ -61,7 +70,9 @@ describe("AgentChat: a launch's startup gate", () => {
     const box = screen.getByRole("textbox");
     expect(box).not.toBeDisabled();
     await user.type(box, "draft survives startup");
-    expect(screen.getByText("Starting…")).toBeInTheDocument();
+    // The header says it, in its title slot and on the mark; the composer carries no notice.
+    expect(startingTitle()).toBeInTheDocument();
+    expect(startingBeads()).toBe("var(--status-info)");
     expect(screen.getByRole("button", { name: /^Send$/ })).toHaveAttribute("aria-disabled", "true");
     fireEvent.keyDown(box, { key: "Enter", metaKey: true });
     // The multiplexer names the agent before the bridge has read it: still starting.
@@ -72,6 +83,8 @@ describe("AgentChat: a launch's startup gate", () => {
     view.update({ text: READY, agent: { ...known, surface: FREE } });
     await waitFor(() => expect(screen.getByRole("button", { name: /^Send$/ })).not.toHaveAttribute("aria-disabled"));
     expect(view.onReady).toHaveBeenCalledOnce();
+    expect(startingTitle()).toBeNull();
+    expect(startingBeads()).toBe("");
     expect(box).toHaveValue("draft survives startup");
     view.update({ agentLaunch: undefined });
     expect(sent).not.toHaveBeenCalled();
@@ -86,17 +99,19 @@ describe("AgentChat: a launch's startup gate", () => {
     view.update({ text: TRUST, agent: { ...known, surface: ASK } });
     await waitFor(() => expect(screen.getByRole("button", { name: "Answer the dialog" })).toBeInTheDocument());
     expect(view.onReady).toHaveBeenCalledOnce();
-    expect(screen.getByText("Starting…").closest('[data-slot="collapse"]')).toHaveAttribute("data-state", "closed");
+    expect(startingTitle()).toBeNull();
+    expect(startingBeads()).toBe("");
     expect(screen.getByRole("textbox")).toHaveValue("kept");
   });
 
   it("does not open on a saved read, and does not unlock a pane whose sending is off", () => {
     const view = mount({ text: READY, agent: { ...known, surface: FREE }, stale: true });
-    expect(screen.getByText("Starting…")).toBeInTheDocument();
+    expect(startingTitle()).toBeInTheDocument();
     expect(view.onReady).not.toHaveBeenCalled();
     view.update({ stale: false, text: "$ kiro", agent: { ...known, sendProtocol: undefined } });
     expect(screen.getByRole("textbox")).toBeDisabled();
-    expect(screen.getByText("Starting…").closest('[data-slot="collapse"]')).toHaveAttribute("data-state", "closed");
+    // The header follows the launch, not the composer's lock: the agent is still starting.
+    expect(startingTitle()).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Keys" })).not.toBeDisabled();
   });
 
@@ -106,7 +121,8 @@ describe("AgentChat: a launch's startup gate", () => {
     server.use(...sendHandler((request) => { sent(request.text); return sendAnswer(request.id, "sent"); }));
     mount({ agentLaunch: undefined, agent });
     await user.type(screen.getByRole("textbox"), "ordinary text");
-    expect(screen.queryByText("Starting…")).toBeNull();
+    expect(startingTitle()).toBeNull();
+    expect(startingBeads()).toBe("");
     await user.click(screen.getByRole("button", { name: /^Send$/ }));
     await waitFor(() => expect(sent).toHaveBeenCalledExactlyOnceWith("ordinary text"));
   });

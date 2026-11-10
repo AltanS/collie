@@ -175,3 +175,63 @@ describe("HeaderStatus — error opens the detail sheet instead of dismissing on
     expect(screen.queryByRole("button", { name: "Show the whole message" })).not.toBeInTheDocument();
   });
 });
+
+// A CONDITION is a state of the screen, not an event: the pane's "Starting…" while an agent launches.
+// It rides in the same box as an event, in the note look, and an event outranks it.
+describe("HeaderStatus — a condition holds the title while it is true", () => {
+  const starting = { text: "Starting…", tone: "note" } as const;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    clearStatus();
+  });
+  afterEach(() => {
+    act(() => clearStatus());
+    vi.useRealTimers();
+  });
+
+  it("replaces the title, announced, in the note look with the info icon and no dismiss button", () => {
+    const { container } = render(
+      <HeaderStatus condition={starting}>
+        <span>webapp › main</span>
+      </HeaderStatus>,
+    );
+    expect(screen.queryByText("webapp › main")).not.toBeInTheDocument();
+    const line = screen.getByRole("status");
+    expect(line).toHaveTextContent("Starting…");
+    expect(line).toHaveAttribute("aria-live", "polite");
+    expect(line.className).toContain("text-status-info");
+    expect(line.querySelector("svg")).not.toBeNull();
+    expect(screen.queryByRole("button")).toBeNull();
+    // The same box as an event's, so the title never changes height when either shows.
+    expect(container.querySelector('[data-slot="header-condition"]')?.className).toContain("min-h-11");
+  });
+
+  it("gives the title back when the condition ends", () => {
+    const { rerender } = render(
+      <HeaderStatus condition={starting}>
+        <span>webapp › main</span>
+      </HeaderStatus>,
+    );
+    rerender(
+      <HeaderStatus>
+        <span>webapp › main</span>
+      </HeaderStatus>,
+    );
+    expect(screen.getByText("webapp › main")).toBeInTheDocument();
+    expect(screen.queryByRole("status")).toBeNull();
+  });
+
+  it("gives way to an event status, and comes back when the event clears", () => {
+    render(
+      <HeaderStatus condition={starting}>
+        <span>webapp › main</span>
+      </HeaderStatus>,
+    );
+    act(() => setStatus("Sent", "success"));
+    expect(screen.getByRole("status")).toHaveTextContent("Sent");
+    expect(screen.queryByText("Starting…")).toBeNull();
+    act(() => clearStatus());
+    expect(screen.getByRole("status")).toHaveTextContent("Starting…");
+  });
+});
