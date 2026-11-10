@@ -947,7 +947,7 @@ describe("SessionStream — the prompt pin", () => {
     expect(pin.parentElement?.style.getPropertyValue("--text-sm")).toBe("14px");
   });
 
-  it("the pin's row carries a full-width fade ground behind the hugging well, so no thread shows beside it", () => {
+  it("the pin's row is a full-width opaque band holding the hugging well, so no thread shows beside it", () => {
     layOut(250);
     renderStream(
       feedOf({
@@ -957,18 +957,11 @@ describe("SessionStream — the prompt pin", () => {
     );
     const pin = document.querySelector<HTMLElement>('[data-slot="prompt-pin"]')!;
     const band = pin.parentElement!;
-    // The overlay row spans the scroller's width and has no rule and no ground of its own.
-    expect(band).toHaveClass("absolute", "inset-x-0", "pb-1");
-    expect(band.className).not.toMatch(/border|bg-background/);
-    // Its ground is a fade layer: page colour, solid then to transparent, hanging below the room, out of flow.
-    const fade = band.querySelector<HTMLElement>('[data-slot="pin-fade"]')!;
-    expect(fade.parentElement).toBe(band);
-    expect(fade).toHaveClass("pointer-events-none", "absolute", "inset-x-0", "top-0", "-bottom-3", "-z-10", "bg-gradient-to-b", "from-background", "from-55%", "to-transparent");
-    expect(fade).toHaveAttribute("aria-hidden", "true");
-    expect(fade.className).not.toMatch(/border|bg-background\/|opacity/);
-    // The well keeps its place: the hugging button, not a full-width one, is the band's only content.
-    expect(pin.parentElement).toBe(band);
-    expect(band.children).toHaveLength(2);
+    // The overlay row spans the scroller's width, in the page colour, ending in the region rule.
+    expect(band).toHaveClass("absolute", "inset-x-0", "bg-background", "border-b", "border-rule");
+    expect(band.className).not.toMatch(/bg-background\/|opacity/);
+    // The well keeps its place: the hugging button, not a full-width one, is the band's only child.
+    expect(band.children).toHaveLength(1);
     expect(pin).toHaveClass("ml-auto");
     expect(pin).not.toHaveClass("w-full");
     // The band takes no tap of its own and is a sibling of the scroller, so it moves no content.
@@ -989,8 +982,7 @@ describe("SessionStream — the prompt pin", () => {
     );
     const pin = document.querySelector<HTMLElement>('[data-slot="prompt-pin"]')!;
     expect(pin).toHaveTextContent("Asked further back");
-    expect(pin.parentElement).toHaveClass("absolute", "inset-x-0", "pb-1", "pointer-events-none");
-    expect(pin.parentElement!.querySelector('[data-slot="pin-fade"]')).not.toBeNull();
+    expect(pin.parentElement).toHaveClass("absolute", "inset-x-0", "bg-background", "border-b", "border-rule", "pointer-events-none");
     expect(pin).toHaveClass("ml-auto", "pointer-events-auto");
   });
 
@@ -1066,12 +1058,10 @@ describe("SessionStream — the prompt pin", () => {
     expect(pin).not.toHaveClass("w-fit");
     expect(pin.querySelector("svg")).not.toBeNull();
     expect(pin.parentElement?.style.getPropertyValue("--text-sm")).toBe("");
-    // The overlay row is as it was: no ground, no fade, no rule, only the scroller's own gutter and top room.
+    // The overlay row is as it was: no ground, no rule, only the scroller's own gutter and top room.
     const row = pin.parentElement!;
     expect(row.className).toBe("pointer-events-none absolute inset-x-0 top-0 z-10 px-3 pt-1");
     expect(row.className).not.toMatch(/bg-background|border-rule|pb-/);
-    expect(row.querySelector('[data-slot="pin-fade"]')).toBeNull();
-    expect(row.children).toHaveLength(1);
   });
 
   it("pins nothing while the prompt itself is the top block", () => {
