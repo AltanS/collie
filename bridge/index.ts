@@ -290,6 +290,7 @@ import { factsWorldOf } from "./tricks/facts.ts";
 import { isOwnId, resolveBridgeId } from "./bridge-id.ts";
 import { scopeKeyAddress, TrickHill } from "./tricks/hill.ts";
 import { TricksService } from "./tricks/service.ts";
+import { VersionCards } from "./tricks/version-card.ts";
 import { createSessionFolders, createSessionLabels } from "./operator-space-labels.ts";
 import { labelOf, LOCAL_MEMBER, parseAddress } from "./walky/address.ts";
 import {
@@ -2321,6 +2322,9 @@ const hillPlace = walkyPlace({ who: hillWho.read }, walkyMemberId);
 // On a lead (CREW_PROTOCOL §22): the crew machine an address is on when it is not answering now, read
 // off the sweep's ledger. Assigned where the lead runtime is built, after this.
 let hillOffline: (address: string) => string | null = () => null;
+// The "new version" card of a trick (crew slice 3): built after the Hill, which it posts into; the Hill
+// hands it the answer to one of its cards. An answer only ever comes after boot.
+let versionCards: VersionCards | undefined;
 const hill = new HillService({
   store: new HillStore(hillDir(cfg.stateDir), Date.now, undefined, (ids) => {
     for (const id of ids) hillMedia.remove(id);
@@ -2348,6 +2352,8 @@ const hill = new HillService({
   // A trick's decision (M94): the answer reaches the trick's program as a tap. `tricks` is made further
   // down; an answer only ever comes after boot.
   tap: (host, trickId, tap, decisionId) => tricks?.tapFromHill(host, trickId, tap, decisionId) ?? Promise.resolve(false),
+  // A Decision of Collie's own (crew slice 3): its answer acts here, on exactly the version the card shows.
+  onCollieAnswer: (ref, intent) => versionCards?.answer(ref, intent) ?? Promise.resolve({ ok: false, reason: "Tricks are not running on this bridge." }),
   // A `now` Decision rings the phone once (hill/push.ts): push live, its switch on, not snoozed. A crew
   // member refuses posts anyway; the lead holds the subscriptions, as for every other push.
   push: new HillPush({
@@ -2371,6 +2377,7 @@ const hill = new HillService({
   offline: crew.mode === "lead" ? (address) => hillOffline(address) : undefined,
 });
 hill.pruneMedia();
+versionCards = new VersionCards({ hill, tricks: () => tricks ?? null, warn: (line) => console.warn(`[tricks] ${line}`) });
 // The lead's half of §22: a member's images wait here by hash for the post that names them.
 const hillCrewLead = crew.mode === "lead" ? new HillCrewLead({ hill, held: new HillHeldMedia(), machineOf: (memberId) => memberId }) : null;
 const walkyServer = new WalkyServer({
@@ -3471,6 +3478,8 @@ const tricks =
         active: () => crew.mode !== "peer" && deposed === null,
         // Every version the bridge approves, declines or undoes, `auto` included, leaves an audit line.
         audit: (entry) => audit.record({ action: entry.action, detail: entry.detail }),
+        // A new version that waits gets its card on the Hill; the card goes when nothing waits any more.
+        versions: versionCards,
       });
 tricks?.start();
 

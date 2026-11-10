@@ -213,7 +213,7 @@ import { modeForWire } from "./crew/mode.ts";
 import type { CrewRuntime } from "./crew/config.ts";
 import type { CrewLead } from "./crew/lead.ts";
 import { crewDeviceOf, crewGate, type GateLevel } from "./crew/peer-gate.ts";
-import { TRICKS_ROUTE_RIGHTS, tricksMediaRoute, tricksSwitchRoute, tricksTapRoute, parseSince } from "./tricks/routes.ts";
+import { TRICKS_ROUTE_RIGHTS, tricksAutoRoute, tricksMediaRoute, tricksSwitchRoute, tricksTapRoute, tricksUndoRoute, parseSince } from "./tricks/routes.ts";
 import { placeTrickSessions } from "./tricks/panes.ts";
 import type { TricksSurface } from "./tricks/service.ts";
 import { snapshotPlan } from "./crew/merge.ts";
@@ -593,6 +593,9 @@ const WALKY_DROP_ROUTE = /^\/api\/pane\/([^/]+)\/walky\/([^/]+)\/drop$/;
 const TRICKS_TAP_ROUTE = /^\/api\/tricks\/([^/]+)\/([^/]+)\/tap$/;
 // And the off switch (M94 slice 04): write-gated like the tap, the same file `collie trick on|off` writes.
 const TRICKS_SWITCH_ROUTE = /^\/api\/tricks\/([^/]+)\/([^/]+)\/switch$/;
+// Take changes without asking, and go back one version (crew slice 3): write-gated like the switch.
+const TRICKS_AUTO_ROUTE = /^\/api\/tricks\/([^/]+)\/([^/]+)\/auto$/;
+const TRICKS_UNDO_ROUTE = /^\/api\/tricks\/([^/]+)\/([^/]+)\/undo$/;
 // And a picture of the trick's own `media/` folder (M94 review 11), read-gated like the list. Group 3 is
 // `media/` and the file; bridge/tricks/media.ts checks it before any path is built.
 const TRICKS_MEDIA_ROUTE = /^\/api\/tricks\/([^/]+)\/([^/]+)\/(media\/.+)$/;
@@ -3176,6 +3179,23 @@ export function startServer(opts: {
           body = undefined;
         }
         const answer = await tricksSwitchRoute(tricks, tricksSwitch, body);
+        return json(answer.body, req.headers.get("accept-encoding"), answer.status);
+      }
+      const tricksVersion = TRICKS_AUTO_ROUTE.exec(pathname) ?? TRICKS_UNDO_ROUTE.exec(pathname);
+      if (tricksVersion !== null && req.method === "POST") {
+        const auto = pathname.endsWith("/auto");
+        const denied = guard(req, cfg, auto ? TRICKS_ROUTE_RIGHTS.auto : TRICKS_ROUTE_RIGHTS.undo, pairingGate);
+        if (denied) return denied;
+        const tricks = opts.tricks;
+        if (tricks === undefined) return jsonError({ error: "not found" }, 404, null);
+        let body: JsonValue | undefined;
+        try {
+          // SAFETY: `Request.json()` output IS a JsonValue by construction; the route reads every field it takes.
+          body = (await req.json()) as JsonValue;
+        } catch {
+          body = undefined;
+        }
+        const answer = auto ? await tricksAutoRoute(tricks, tricksVersion, body) : await tricksUndoRoute(tricks, tricksVersion, body);
         return json(answer.body, req.headers.get("accept-encoding"), answer.status);
       }
       const tricksMedia = TRICKS_MEDIA_ROUTE.exec(pathname);

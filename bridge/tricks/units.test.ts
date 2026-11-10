@@ -10,7 +10,7 @@ import { CODE_FILES_MAX, diskTrickFs, trickCodeHash, type TrickFs } from "./code
 import { createTrickScanner, MANIFEST_BYTES_MAX, readManifestText, TRICKS_MAX } from "./discover.ts";
 import { buildFacts, factsWorldOf } from "./facts.ts";
 import { switchesPath } from "./paths.ts";
-import { TRICKS_ROUTE_RIGHTS, tricksMediaRoute, tricksSwitchRoute, tricksTapRoute, parseSince } from "./routes.ts";
+import { TRICKS_ROUTE_RIGHTS, tricksAutoRoute, tricksMediaRoute, tricksSwitchRoute, tricksTapRoute, tricksUndoRoute, parseSince } from "./routes.ts";
 import type { TricksSurface } from "./service.ts";
 import { createSwitchReader, parseSwitches, renderSwitches, SWITCH_LOCK_STALE_MS, updateSwitches, withApproval, withEntry, withSwitch, writeSwitches } from "./switches.ts";
 
@@ -413,6 +413,8 @@ describe("the routes", () => {
       },
       setSwitch: async () => ({ status: 404, body: { error: "unknown-trick" } }),
       media: async () => null,
+      autoRoute: async () => ({ status: 404, body: { error: "unknown-trick" } }),
+      undoRoute: async () => ({ status: 404, body: { error: "unknown-trick" } }),
     };
     const route = /^\/api\/tricks\/([^/]+)\/([^/]+)\/tap$/;
     const match = route.exec("/api/tricks/blue%66in/legs/tap");
@@ -437,6 +439,8 @@ describe("the routes", () => {
         return { status: 404, body: { error: "unknown-trick" } };
       },
       media: async () => null,
+      autoRoute: async () => ({ status: 404, body: { error: "unknown-trick" } }),
+      undoRoute: async () => ({ status: 404, body: { error: "unknown-trick" } }),
     };
     const route = /^\/api\/tricks\/([^/]+)\/([^/]+)\/switch$/;
     const match = route.exec("/api/tricks/blue%66in/legs/switch");
@@ -452,6 +456,44 @@ describe("the routes", () => {
     expect(await tricksSwitchRoute(surface, broken, { on: true })).toEqual({ status: 404, body: { error: "unknown-host" } });
   });
 
+  test("auto takes exactly { on: boolean } and undo exactly {}; both decode the path; server.ts gates both as writes", async () => {
+    const calls: string[] = [];
+    const surface: TricksSurface = {
+      rev: () => 1,
+      noteWatched: () => {},
+      reply: async () => ({ rev: 1, tricks: [], parts: [], present: [] }),
+      tap: async () => ({ status: 404, body: { error: "unknown-trick" } }),
+      sessionPanes: () => undefined,
+      setSwitch: async () => ({ status: 404, body: { error: "unknown-trick" } }),
+      media: async () => null,
+      autoRoute: async (host, id, on) => {
+        calls.push(`auto ${host} ${id} ${String(on)}`);
+        return { status: 409, body: { error: "off", message: "The trick is off." } };
+      },
+      undoRoute: async (host, id) => {
+        calls.push(`undo ${host} ${id}`);
+        return { status: 409, body: { error: "no-previous", message: "There is no earlier version to go back to." } };
+      },
+    };
+    const auto = /^\/api\/tricks\/([^/]+)\/([^/]+)\/auto$/.exec("/api/tricks/blue%66in/legs/auto");
+    const undo = /^\/api\/tricks\/([^/]+)\/([^/]+)\/undo$/.exec("/api/tricks/bluefin/legs/undo");
+    if (auto === null || undo === null) throw new Error("no match");
+    expect(await tricksAutoRoute(surface, auto, { on: true })).toEqual({ status: 409, body: { error: "off", message: "The trick is off." } });
+    expect(await tricksUndoRoute(surface, undo, {})).toMatchObject({ status: 409, body: { error: "no-previous" } });
+    for (const body of [undefined, null, [], {}, { on: "yes" }, { on: true, extra: 1 }]) {
+      expect(await tricksAutoRoute(surface, auto, body)).toEqual({ status: 400, body: { error: "auto-invalid" } });
+    }
+    for (const body of [undefined, null, [], { hash: "a" }]) {
+      expect(await tricksUndoRoute(surface, undo, body)).toEqual({ status: 400, body: { error: "undo-invalid" } });
+    }
+    expect(calls).toEqual(["auto bluefin legs true", "undo bluefin legs"]);
+    const src = readFileSync(join(import.meta.dir, "..", "server.ts"), "utf8");
+    expect(src).toContain("const TRICKS_AUTO_ROUTE = /^\\/api\\/tricks\\/([^/]+)\\/([^/]+)\\/auto$/;");
+    expect(src).toContain("const TRICKS_UNDO_ROUTE = /^\\/api\\/tricks\\/([^/]+)\\/([^/]+)\\/undo$/;");
+    const block = src.slice(src.indexOf("const tricksVersion = TRICKS_AUTO_ROUTE.exec(pathname)"));
+    expect(block.slice(0, 400)).toContain("guard(req, cfg, auto ? TRICKS_ROUTE_RIGHTS.auto : TRICKS_ROUTE_RIGHTS.undo, pairingGate)");
+  });
+
   test("the media path is decoded and handed on; a segment that does not decode is a miss", async () => {
     const calls: [string, string, string][] = [];
     const surface: TricksSurface = {
@@ -465,6 +507,8 @@ describe("the routes", () => {
         calls.push([host, id, rel]);
         return null;
       },
+      autoRoute: async () => ({ status: 404, body: { error: "unknown-trick" } }),
+      undoRoute: async () => ({ status: 404, body: { error: "unknown-trick" } }),
     };
     const route = /^\/api\/tricks\/([^/]+)\/([^/]+)\/(media\/.+)$/;
     const match = route.exec("/api/tricks/blue%66in/legs/media/shots/case%2024.png");
@@ -484,7 +528,7 @@ describe("the routes", () => {
     const src = readFileSync(join(import.meta.dir, "..", "server.ts"), "utf8");
     const list = src.slice(src.indexOf('if (pathname === "/api/tricks" && req.method === "GET")'));
     // The rights live in one table in routes.ts; server.ts reads each route's level from it.
-    expect(TRICKS_ROUTE_RIGHTS).toEqual({ reply: "read", tap: "write", switch: "write", media: "read" });
+    expect(TRICKS_ROUTE_RIGHTS).toEqual({ reply: "read", tap: "write", switch: "write", media: "read", auto: "write", undo: "write" });
     expect(list.slice(0, 400)).toContain("guard(req, cfg, TRICKS_ROUTE_RIGHTS.reply, pairingGate)");
     expect(list.slice(0, 600)).toContain("if (pairedLabel(req, pairingGate) !== null) tricks.noteWatched();");
     const tap = src.slice(src.indexOf("const tricksTap = TRICKS_TAP_ROUTE.exec(pathname);"));

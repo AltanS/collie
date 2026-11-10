@@ -130,14 +130,20 @@ export function readTrick(raw: JsonValue | undefined): WireTrickInfo | undefined
   // Read as JSON before the frame check narrows the body to the wire type.
   const sent = body.warnings;
   const waiting = body.pending;
+  const auto = asJsonBoolean(body.auto);
+  const autoAt = asJsonString(body.autoAt);
   if (!isTrickValue(body)) return undefined;
-  if (sent === undefined && waiting === undefined) return body;
-  // The two fields read past the frame: the Tricks card lists them, so their shapes are held here.
+  if (sent === undefined && waiting === undefined && body.auto === undefined && body.autoAt === undefined) return body;
+  // The fields read past the frame: the Tricks card lists them, so their shapes are held here. One of
+  // another shape is left out, as from an older bridge.
   const warnings = readWarnings(sent);
   const pending = readPending(waiting);
-  const { warnings: _sent, pending: _waiting, ...rest } = body;
+  const { warnings: _sent, pending: _waiting, auto: _auto, autoAt: _autoAt, ...rest } = body;
   const out: WireTrickInfo = warnings.length === 0 ? rest : { ...rest, warnings };
-  return pending === undefined ? out : { ...out, pending };
+  if (pending !== undefined) out.pending = pending;
+  if (auto !== undefined) out.auto = auto;
+  if (autoAt !== undefined && Number.isFinite(Date.parse(autoAt))) out.autoAt = autoAt;
+  return out;
 }
 
 /** `GET /api/tricks?since=` as the store merges it, or `undefined` for a body of another shape. */

@@ -17,6 +17,7 @@ import {
   type ParsedTrickDocument,
   type Refusal,
   type TapRequest,
+  type TrickManifest,
   type WireTrickInfo,
   type WireTrickPending,
   type WireTrickWarning,
@@ -34,7 +35,7 @@ import { approvedCopyDir, approvedTrickDir, pendingTrickDir, tricksConfigDir, tr
 import { trickSessionPanes, type TrickSessionPanes } from "./panes.ts";
 import { receiptFrame, TrickReceiptStore, type TrickReceiptRecord, type TrickReceiptSurface } from "./receipts.ts";
 import { outcomeProblem, runProgram, type RunOutcome, type RunSpec } from "./run.ts";
-import { trickWarnings, wireWarnings, type CheckWarning } from "./scan.ts";
+import { trickWarnings, wireWarnings } from "./scan.ts";
 import { TricksStore, problemLine } from "./store.ts";
 import { createSwitchReader, updateSwitches, withApproval, withEntry, withSwitch, type SwitchEntry, type Switches } from "./switches.ts";
 
@@ -163,6 +164,10 @@ export interface TricksSurface {
   sessionPanes(): TrickSessionPanes | undefined;
   /** `POST /api/tricks/<host>/<id>/switch`: write the switch file, as `collie trick on|off` does. */
   setSwitch(host: string, id: string, on: boolean): Promise<SwitchAnswer>;
+  /** `POST /api/tricks/<host>/<id>/auto`: take changes without asking, as `collie trick auto` does (crew slice 3). */
+  autoRoute(host: string, id: string, on: boolean): Promise<VersionRouteAnswer>;
+  /** `POST /api/tricks/<host>/<id>/undo`: go back to the version before the last one (crew slice 3). */
+  undoRoute(host: string, id: string): Promise<VersionRouteAnswer>;
   /**
    * `GET /api/tricks/<host>/<id>/media/<file>`: one picture of the trick's own `media/` folder
    * (media.ts), or null for every miss. Only a trick of this bridge that is switched on.
@@ -182,6 +187,25 @@ export interface TricksHillPort {
   seenOf(trickId: string, decisionId: string): string | undefined;
 }
 
+/**
+ * One trick that is on, as the "new version" card reads it (crew slice 3, version-card.ts). `waiting`:
+ * the folder holds code that is neither approved nor declined, so a card may stand even while the
+ * snapshot settles. `pending`: the snapshot, once taken. `base`: the approved copy that runs, if any.
+ */
+export interface TrickVersionSubject {
+  id: string;
+  name: string;
+  waiting: boolean;
+  pending: { hash: string; dir: string; info: WireTrickPending; manifest?: TrickManifest } | null;
+  base: { dir: string; manifest?: TrickManifest } | null;
+}
+
+/** What the runner tells the "new version" card after each scan and each version change. */
+export interface TrickVersionsPort {
+  /** Every trick that is on, as it is now. A trick not listed is off or gone: its card goes. Never blocks. */
+  sync(subjects: readonly TrickVersionSubject[]): void;
+}
+
 /** The phone's words when it taps a decision's node directly: answers go through the hill. */
 export const HILL_NODE_TAP_REFUSED = "A decision is answered on the Hill, not with a tap.";
 
@@ -191,6 +215,20 @@ export type TapAnswer =
   | { status: 400; body: { error: "tap-invalid"; refusals: Refusal[] } }
   | { status: 404; body: { error: "unknown-host" | "unknown-trick" } }
   | { status: 409; body: { error: "request-id-reused"; rid: string } };
+
+/** The auto and undo routes' answer: the trick as the list now shows it, or why not, in plain words. */
+export type VersionRouteAnswer =
+  | { status: 200; body: WireTrickInfo }
+  | { status: 400; body: { error: "auto-invalid" | "undo-invalid" } }
+  | { status: 404; body: { error: "unknown-host" | "unknown-trick" } }
+  | { status: 409; body: { error: "off" | "no-pending" | "moved" | "no-previous" | "copy-failed"; message: string } };
+
+/** A version change as a route's answer. */
+function routeAnswer(answer: VersionAnswer): VersionRouteAnswer {
+  if (answer.ok) return { status: 200, body: answer.info };
+  if (answer.code === "unknown-trick") return { status: 404, body: { error: "unknown-trick" } };
+  return { status: 409, body: { error: answer.code, message: answer.message } };
+}
 
 /** The switch route's answer: the trick as the list now shows it, or why not. */
 export type SwitchAnswer =
@@ -243,6 +281,8 @@ export interface TricksServiceDeps {
   active?: () => boolean;
   /** One audit line per version the bridge approves, declines or undoes (bridge/audit.ts). Absent in a test. */
   audit?: (entry: { action: string; detail: Record<string, string> }) => void;
+  /** The "new version" card on the Hill (version-card.ts). Absent: no card, Settings alone says it. */
+  versions?: TrickVersionsPort;
 }
 
 /** The approved copy a trick runs from, as read and verified. */
@@ -260,6 +300,8 @@ interface PendingVersion {
   hash: string;
   dir: string;
   info: WireTrickPending;
+  /** The snapshot's manifest, as read when it was taken; absent when it did not parse. */
+  manifest?: TrickManifest;
 }
 
 /** What a version change answers: the trick as the list now shows it, or why not. */
@@ -355,11 +397,6 @@ export function backoffAfter(failures: number): number | null {
 /** A fresh window as the `fresh` string a part carries, so the phone needs no manifest. */
 export function freshString(ms: number): string {
   return `${Math.max(1, Math.round(ms / 1000))}s`;
-}
-
-/** One warning as a key, to tell the warnings a new version adds from the ones its approved copy had. */
-function warningKey(w: CheckWarning): string {
-  return `${w.kind}\0${w.file}\0${w.text}`;
 }
 
 /**
@@ -532,6 +569,7 @@ export class TricksService implements TricksSurface {
         const runtimes = [...this.runtimes.values()];
         for (const rt of runtimes) await this.ensureApproved(rt);
         for (const rt of runtimes) await this.notePending(rt);
+        this.syncVersions();
         await this.readWarnings();
         await this.prune(switches);
       } catch (err) {
@@ -725,7 +763,7 @@ export class TricksService implements TricksSurface {
         rt.settle = null;
         return;
       }
-      rt.pending = { hash, dir: snap.dir, info: await this.pendingInfo(rt, snap.dir, hash) };
+      rt.pending = { hash, dir: snap.dir, ...(await this.pendingInfo(rt, snap.dir, hash)) };
       this.publish(rt.found.id);
       if (entry.auto && rt.approved !== null && rt.copyProblem === null && !rt.pending.info.powersChanged) {
         const took = await this.promote(rt, hash, "auto");
@@ -743,17 +781,43 @@ export class TricksService implements TricksSurface {
     this.publish(rt.found.id);
   }
 
-  /** What the row says of a pending snapshot: the file counts, whether its powers moved, its new warnings. */
-  private async pendingInfo(rt: TrickRuntime, dir: string, hash: string): Promise<WireTrickPending> {
+  /**
+   * What the row says of a pending snapshot: the file counts, whether its powers moved, its new warnings,
+   * and the snapshot's manifest for the card. A warning is new when its KIND is (crew slice 3): a new
+   * line of a kind the approved copy already had says nothing the person did not see at the switch.
+   */
+  private async pendingInfo(rt: TrickRuntime, dir: string, hash: string): Promise<{ info: WireTrickPending; manifest?: TrickManifest }> {
     const next = await scanTrickDir(diskTrickFs, dir, rt.found.id, undefined);
     const base = rt.approved !== null && rt.copyProblem === null ? rt.approved : null;
     const files = await fileCounts(base?.dir ?? null, dir);
     const was = base?.found.manifest;
     const now = next.manifest;
     const powersChanged = was === undefined || now === undefined || powersOf(was) !== powersOf(now);
-    const before = new Set((was === undefined || base === null ? [] : await trickWarnings(base.dir, was).catch(() => [])).map(warningKey));
+    const before = new Set((was === undefined || base === null ? [] : await trickWarnings(base.dir, was).catch(() => [])).map((w) => w.kind));
     const after = now === undefined ? [] : await trickWarnings(dir, now).catch(() => []);
-    return { hash, files, powersChanged, warnings: wireWarnings(after.filter((w) => !before.has(warningKey(w)))) };
+    const info: WireTrickPending = { hash, files, powersChanged, warnings: wireWarnings(after.filter((w) => !before.has(w.kind))) };
+    return now === undefined ? { info } : { info, manifest: now };
+  }
+
+  /** Tell the "new version" card every trick that is on, as it is now. Never throws. */
+  private syncVersions(): void {
+    const port = this.deps.versions;
+    if (port === undefined) return;
+    const subjects: TrickVersionSubject[] = [];
+    for (const rt of this.runtimes.values()) {
+      const entry = rt.entry;
+      if (!rt.on || entry === undefined) continue;
+      const hash = rt.found.codeHash;
+      const waiting = rt.found.manifest !== undefined && hash !== undefined && hash !== entry.hash && hash !== entry.declined;
+      const base = rt.approved !== null && rt.copyProblem === null ? { dir: rt.approved.dir, manifest: rt.approved.found.manifest } : null;
+      const pending = rt.pending === null ? null : { hash: rt.pending.hash, dir: rt.pending.dir, info: rt.pending.info, manifest: rt.pending.manifest };
+      subjects.push({ id: rt.found.id, name: this.shownOf(rt).manifest?.name ?? rt.found.id, waiting, pending, base });
+    }
+    try {
+      port.sync(subjects);
+    } catch (err) {
+      this.warn(`the new version card could not be updated: ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
 
   /**
@@ -787,6 +851,7 @@ export class TricksService implements TricksSurface {
     this.applyOne(found, switches.on.get(found.id));
     await this.ensureApproved(rt);
     this.publish(found.id);
+    this.syncVersions();
     const info = this.store.reply(this.store.rev).tricks.find((trick) => trick.id === found.id);
     if (info === undefined) return { ok: false, code: "unknown-trick", message: "The trick is gone." };
     return { ok: true, info };
@@ -868,6 +933,34 @@ export class TricksService implements TricksSurface {
       this.deps.audit?.({ action: "trick.undo", detail: { trick: id, hash: previous.hash.slice(0, 16) } });
       return await this.foldIn(rt, rt.found, written);
     });
+  }
+
+  /**
+   * Take changes without asking, or ask again (crew slice 3; `collie trick auto` writes the same field).
+   * Only for a trick that is on. A version already waiting is not taken by this: the next one is.
+   */
+  async setAuto(id: string, on: boolean): Promise<VersionAnswer> {
+    return await this.serial(async () => {
+      const rt = this.onRuntime(id);
+      if (!("found" in rt)) return rt;
+      const written = await updateSwitches(this.deps.stateDir, (now) => {
+        const held = now.on.get(id);
+        return held === undefined ? now : withEntry(now, id, { ...held, auto: on });
+      });
+      if (!written.on.has(id)) return { ok: false, code: "off", message: "The trick is off." };
+      this.deps.audit?.({ action: on ? "trick.auto.on" : "trick.auto.off", detail: { trick: id } });
+      return await this.foldIn(rt, rt.found, written);
+    });
+  }
+
+  async autoRoute(host: string, id: string, on: boolean): Promise<VersionRouteAnswer> {
+    if (!this.isOwn(host)) return { status: 404, body: { error: "unknown-host" } };
+    return routeAnswer(await this.setAuto(id, on));
+  }
+
+  async undoRoute(host: string, id: string): Promise<VersionRouteAnswer> {
+    if (!this.isOwn(host)) return { status: 404, body: { error: "unknown-host" } };
+    return routeAnswer(await this.undo(id));
   }
 
   /** Remove the copies nothing names, at most once a minute. */
@@ -961,6 +1054,9 @@ export class TricksService implements TricksSurface {
     if (rt.pending !== null) info.pending = rt.pending.info;
     if (rt.decides === true) info.decides = true;
     if (m?.env !== undefined) info.env = m.env;
+    if (rt.on && rt.entry !== undefined) info.auto = rt.entry.auto;
+    // Undo is offered only for a version taken without asking, while the one before it is there.
+    if (rt.on && rt.entry?.by === "auto" && rt.entry.previous !== undefined) info.autoAt = rt.entry.at;
     const taken = this.warningsOf.get(id);
     if (this.wantsWarnings(rt) && taken !== undefined && taken.codeHash === rt.found.codeHash && taken.warnings.length > 0) info.warnings = taken.warnings;
     this.store.setInfo(info);

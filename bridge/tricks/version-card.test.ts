@@ -1,0 +1,359 @@
+import { afterAll, describe, expect, test } from "bun:test";
+import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import { memoryHillReceipts } from "../hill/receipts.ts";
+import { HillService } from "../hill/service.ts";
+import { HillStore } from "../hill/store.ts";
+import type { HillDecision, HillReceipt } from "../../web/src/lib/hill/wire.ts";
+import { DECISION_VIEW_LIMITS, parseDecisionView } from "../../web/src/lib/tricks/schema.ts";
+import { parseJson } from "../../web/src/lib/json.ts";
+import { TRICKS_DIR } from "./paths.ts";
+import { PENDING_SETTLE_MS, TricksService, type TrickVersionSubject } from "./service.ts";
+import { trickCodeHash } from "./code-hash.ts";
+import { withSwitch, writeSwitches } from "./switches.ts";
+import { VERSION_CARD_GONE, VERSION_MOVED, VERSION_NEW_RIGHTS, VersionCards, versionCard, versionRequestId, versionTitle, versionView } from "./version-card.ts";
+import { diffArgv, readPatch, versionDiff, viewLine, type DiffRun, type VersionDiff } from "./version-diff.ts";
+
+// THE "NEW VERSION" CARD (crew slice 3): the diff of two copies, the card's words and view, and the
+// card's life on a real Hill beside a real tricks runner.
+
+const dirs: string[] = [];
+async function tempDir(): Promise<string> {
+  const dir = await realpath(await mkdtemp(join(tmpdir(), "collie-version-card-")));
+  dirs.push(dir);
+  return dir;
+}
+afterAll(async () => {
+  await Promise.all(dirs.map((d) => rm(d, { recursive: true, force: true })));
+});
+
+async function folder(files: Record<string, string | Uint8Array>): Promise<string> {
+  const dir = await tempDir();
+  for (const [name, body] of Object.entries(files)) {
+    await mkdir(join(dir, name, ".."), { recursive: true });
+    await writeFile(join(dir, name), body);
+  }
+  return dir;
+}
+
+const MANIFEST = 'id = "legs"\nname = "Browser leg"\nrun = "./legs.sh"\nevery = "30s"\nplaces = ["belt"]\n';
+const HAS_GIT = Bun.which("git") !== null;
+const gitTest = test.skipIf(!HAS_GIT);
+
+describe("the diff of two copies", () => {
+  gitTest("lists added, changed and removed code files with their line counts and masked hunks", async () => {
+    const base = await folder({ "trick.toml": MANIFEST, "legs.sh": "#!/bin/sh\necho 1\necho keep\n", "old.sh": "gone\n" });
+    const next = await folder({ "trick.toml": MANIFEST, "legs.sh": '#!/bin/sh\necho 2\necho keep\nKEY="sk-or-v1-0123456789abcdef0123456789abcdef"\n', "new.sh": "a\nb\n" });
+    const diff = await versionDiff({ base, next });
+    expect(diff.counted).toBe(true);
+    expect(diff.files.map((file) => [file.rel, file.change, file.plus, file.minus])).toEqual([
+      ["legs.sh", "changed", 2, 1],
+      ["new.sh", "added", 2, 0],
+      ["old.sh", "removed", 0, 1],
+    ]);
+    const hunk = diff.files[0]?.hunk ?? [];
+    expect(hunk[0]).toStartWith("@@");
+    expect(hunk.join("\n")).not.toContain("0123456789abcdef");
+    expect(hunk.join("\n")).toContain("+echo 2");
+  });
+
+  test("with no git, every file is listed by what happened to it, with no counts and no hunks", async () => {
+    const base = await folder({ "trick.toml": MANIFEST, "legs.sh": "1\n" });
+    const next = await folder({ "trick.toml": MANIFEST, "legs.sh": "2\n" });
+    expect(await versionDiff({ base, next, git: null })).toEqual({ files: [{ rel: "legs.sh", change: "changed", plus: null, minus: null, hunk: null }], counted: false });
+  });
+
+  test("git runs hardened from argv only; a binary file and a failed run are listed, not counted", async () => {
+    const base = await folder({ "trick.toml": MANIFEST, "a.sh": "1\n", "pic.bin": new Uint8Array([0, 1, 2]) });
+    const next = await folder({ "trick.toml": MANIFEST, "a.sh": "2\n", "pic.bin": new Uint8Array([0, 1, 3]) });
+    const argvs: (readonly string[])[] = [];
+    const run = async (argv: readonly string[]): Promise<DiffRun> => {
+      argvs.push(argv);
+      return { code: 2, stdout: "", timedOut: false };
+    };
+    const diff = await versionDiff({ base, next, git: "/usr/bin/git", run });
+    expect(diff.counted).toBe(false);
+    expect(argvs).toHaveLength(1);
+    expect(argvs[0]).toEqual(diffArgv("/usr/bin/git", join(base, "a.sh"), join(next, "a.sh")));
+    const argv = argvs[0] ?? [];
+    expect(argv.slice(0, 2)).toEqual(["/usr/bin/git", "--no-pager"]);
+    for (const flag of ["--no-index", "--no-ext-diff", "--no-textconv", "--no-color", "-U2", "core.hooksPath=/dev/null", "diff.external=", "core.fsmonitor=false"]) expect(argv).toContain(flag);
+    expect(argv.indexOf("--")).toBe(argv.length - 3);
+  });
+
+  test("a patch's counts skip its headers; a view line is masked and holds no control character", () => {
+    expect(readPatch("diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -1 +1 @@\n-a\n+b\n\\ No newline at end of file\n")).toEqual({ plus: 1, minus: 1, hunk: ["@@ -1 +1 @@", "-a", "+b"] });
+    expect(viewLine("+\tx\u0007‮")).toBe("+  x??");
+  });
+});
+
+const subject = (over: Partial<TrickVersionSubject> = {}): TrickVersionSubject => ({
+  id: "legs",
+  name: "Browser leg",
+  waiting: true,
+  pending: { hash: "b".repeat(64), dir: "/x", info: { hash: "b".repeat(64), files: { added: 0, changed: 3, removed: 0 }, powersChanged: false, warnings: [] }, manifest: { id: "legs", name: "Browser leg", run: "./legs.sh", mode: "once", contract: 1, icon: "plug", places: ["belt"] } },
+  base: { dir: "/y", manifest: { id: "legs", name: "Browser leg", run: "./legs.sh", mode: "once", contract: 1, icon: "plug", places: ["belt"] } },
+  ...over,
+});
+
+const DIFF: VersionDiff = {
+  counted: true,
+  files: [
+    { rel: "legs.sh", change: "changed", plus: 2, minus: 1, hunk: ["@@ -1,2 +1,3 @@", " #!/bin/sh", "-echo 1", "+echo 2", "+echo 3"] },
+    { rel: "lib/a.ts", change: "added", plus: 1, minus: 0, hunk: ["@@ -0,0 +1 @@", "+export {};"] },
+    { rel: "old.ts", change: "removed", plus: 0, minus: 4, hunk: ["@@ -1,4 +0,0 @@", "-a", "-b", "-c", "-d"] },
+  ],
+};
+
+describe("the card's words and view", () => {
+  test("no new rights: three options, Collie recommends use, and the summary says so in two sentences", () => {
+    const card = versionCard(subject(), DIFF);
+    expect(card).toMatchObject({
+      title: "Use the new version of Browser leg?",
+      summary: "3 files changed. It asks for no new rights.",
+      text: "none",
+      priority: "today",
+      recommends: { intent: "use", why: "It asks for no new rights, and a text search of its code finds nothing new." },
+    });
+    expect(card?.options).toEqual([
+      { intent: "use", label: "Use the new version" },
+      { intent: "always", label: "Use it and stop asking", detail: "Later changes are taken without asking, unless they ask for new rights." },
+      { intent: "keep", label: "Keep the old version" },
+    ]);
+    const view = card?.view ?? [];
+    expect(view.map((node) => node.kind)).toEqual(["table", "diff", "diff"]);
+    expect(parseDecisionView(parseJson(JSON.stringify(view))).refusals).toEqual([]);
+  });
+
+  test("a new right and a new warning: no always, no recommendation, a chip per right in a bar, the warning in words", () => {
+    const base = subject();
+    const pending = base.pending!;
+    const card = versionCard(
+      { ...base, pending: { ...pending, info: { ...pending.info, powersChanged: true, warnings: [{ kind: "network", text: "x" }] }, manifest: { ...pending.manifest!, env: ["GITHUB_TOKEN"], places: ["belt", "status"] } } },
+      DIFF,
+    );
+    expect(card?.summary).toBe("3 files changed. It now also asks for GITHUB_TOKEN and the status line, and reaches the network.");
+    expect(card?.recommends).toBeNull();
+    expect(card?.options?.map((option) => option.intent)).toEqual(["use", "keep"]);
+    const view = card?.view ?? [];
+    expect(view[0]).toEqual({ kind: "bar", attrs: { label: "New rights" }, kids: [{ kind: "chip", text: "GITHUB_TOKEN", attrs: { tone: "warn" } }, { kind: "chip", text: "the status line", attrs: { tone: "warn" } }] });
+    expect(view[1]).toEqual({ kind: "para", text: "This trick reaches the network." });
+  });
+
+  test("a long name is cut so the title stays a short question; a big change fits 8 KiB, with 'and N more files'", () => {
+    expect(versionTitle("A very long trick name that goes on and on and on")).toBe("Use the new version of A very long trick name that goes on…?");
+    expect([...versionTitle("A very long trick name that goes on and on and on")].length).toBeLessThanOrEqual(60);
+    const wide = "x".repeat(190);
+    const files = Array.from({ length: 30 }, (_, i) => ({ rel: `file-${String(i).padStart(2, "0")}.ts`, change: "changed" as const, plus: 40, minus: 0, hunk: ["@@ -1 +1,40 @@", ...Array.from({ length: 40 }, () => `+${wide}`)] }));
+    const view = versionView([], [], { counted: true, files }) ?? [];
+    expect(new TextEncoder().encode(JSON.stringify(view)).byteLength).toBeLessThanOrEqual(DECISION_VIEW_LIMITS.bytes);
+    expect(view.at(-1)).toEqual({ kind: "line", text: "and 18 more files", attrs: { role: "note" } });
+    expect(parseDecisionView(parseJson(JSON.stringify(view))).refusals).toEqual([]);
+  });
+
+  test("a request id is a canonical UUID that moves with the trick, the hash and the count", () => {
+    const one = versionRequestId("legs", "a".repeat(64), 0);
+    expect(one).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+    expect(versionRequestId("legs", "a".repeat(64), 1)).not.toBe(one);
+  });
+});
+
+// ── The card's life: a real tricks runner, a real Hill, the card between them ─────────────────────
+
+const T0 = Date.parse("2026-11-10T09:00:00Z");
+
+interface Life {
+  configDir: string;
+  stateDir: string;
+  dir: string;
+  clock: { t: number };
+  hill: HillService;
+  store: HillStore;
+  cards: VersionCards;
+  service: TricksService;
+}
+
+async function life(): Promise<Life> {
+  const root = await tempDir();
+  const configDir = join(root, "config");
+  const stateDir = join(root, "state");
+  const dir = join(configDir, TRICKS_DIR, "legs");
+  await mkdir(dir, { recursive: true });
+  await mkdir(stateDir, { recursive: true });
+  await writeFile(join(dir, "trick.toml"), MANIFEST);
+  await writeFile(join(dir, "legs.sh"), "#!/bin/sh\necho 1\n", { mode: 0o755 });
+  const code = await trickCodeHash(dir);
+  if (!code.ok) throw new Error(code.reason);
+  await writeSwitches(stateDir, withSwitch({ on: new Map() }, "legs", true, "2026-11-10T08:00:00Z", code.hash));
+  const clock = { t: T0 };
+  const store = new HillStore(null, () => clock.t);
+  let n = 0;
+  let service: TricksService | null = null;
+  let cards: VersionCards | null = null;
+  const hill = new HillService({
+    store,
+    receipts: memoryHillReceipts(),
+    place: () => null,
+    send: async () => "typed",
+    crewMode: () => "solo",
+    walkyOn: () => true,
+    memberId: "bluefin",
+    machine: "bluefin",
+    now: () => clock.t,
+    mintId: () => `dc_ver${String((n += 1)).padStart(9, "0")}`,
+    onCollieAnswer: (ref, intent) => cards?.answer(ref, intent) ?? Promise.resolve({ ok: false, reason: "no cards" }),
+  });
+  cards = new VersionCards({ hill, tricks: () => service, diff: (base, next) => versionDiff({ base, next, git: null }) });
+  service = new TricksService({
+    configDir,
+    stateDir,
+    memberId: "bluefin",
+    world: () => ({ machine: "bluefin", sessions: [], spaces: [] }),
+    env: { PATH: process.env.PATH ?? "/usr/bin:/bin" },
+    now: () => clock.t,
+    warn: () => undefined,
+    revBase: 1000,
+    run: async () => ({ kind: "exited", code: 0, stdout: JSON.stringify({ v: 1, parts: [] }), stderr: "", ms: 1 }),
+    versions: cards,
+  });
+  await scan({ clock, service, cards }, T0);
+  return { configDir, stateDir, dir, clock, hill, store, cards, service };
+}
+
+async function scan(l: Pick<Life, "clock" | "service" | "cards">, t: number): Promise<void> {
+  l.clock.t = t;
+  await l.service.refresh(true);
+  await l.cards.settled();
+}
+
+/** Edit the program and let the folder settle, so the snapshot is taken and its card posted. */
+async function edit(l: Life, at: number, text: string, manifest = MANIFEST): Promise<string> {
+  await writeFile(join(l.dir, "trick.toml"), manifest);
+  await writeFile(join(l.dir, "legs.sh"), text);
+  await scan(l, at);
+  await scan(l, at + PENDING_SETTLE_MS);
+  const code = await trickCodeHash(l.dir);
+  if (!code.ok) throw new Error(code.reason);
+  return code.hash;
+}
+
+const cardsOf = (l: Life): HillDecision[] => l.hill.collieDecisions("version");
+const openCard = (l: Life): HillDecision | undefined => cardsOf(l).find((decision) => decision.state === "open");
+
+async function tap(l: Life, decision: HillDecision, rid: number, intent: string): Promise<HillReceipt> {
+  const outcome = await l.hill.answer({ rid: `00000000-0000-4000-8000-${String(rid).padStart(12, "0")}`, node: `hill/${decision.id}`, intent, value: { text: null } }, decision.id, "Pixel 9");
+  if (outcome.kind !== "receipt") throw new Error(outcome.kind);
+  return outcome.receipt;
+}
+
+async function switchFile(l: Life): Promise<{ hash: string; auto: boolean; declined?: string }> {
+  return JSON.parse(await readFile(join(l.stateDir, TRICKS_DIR, "switches.json"), "utf8")).on.legs;
+}
+
+describe("the card's life", () => {
+  test("a waiting version gets one card; use approves exactly that version and closes it answered", async () => {
+    const l = await life();
+    expect(cardsOf(l)).toEqual([]);
+    const v2 = await edit(l, T0 + 1000, "#!/bin/sh\necho 2\n");
+    const card = openCard(l);
+    expect(card?.from).toMatchObject({ kind: "collie", label: "Collie", ref: { type: "version", id: "legs", hash: v2 } });
+    expect(card).toMatchObject({ title: "Use the new version of Browser leg?", summary: "1 file changed. It asks for no new rights.", priority: "today" });
+    // A second scan posts nothing more.
+    await scan(l, T0 + 20_000);
+    expect(cardsOf(l)).toHaveLength(1);
+    expect(await tap(l, card!, 1, "use")).toMatchObject({ code: "ok", state: "answered", delivery: "none" });
+    expect((await switchFile(l)).hash).toBe(v2);
+    await scan(l, T0 + 30_000);
+    expect(cardsOf(l).map((decision) => decision.state)).toEqual(["answered"]);
+  });
+
+  test("a newer version supersedes the card; the folder going back withdraws it; keep declines", async () => {
+    const l = await life();
+    const v2 = await edit(l, T0 + 1000, "#!/bin/sh\necho 2\n");
+    const first = openCard(l);
+    const v3 = await edit(l, T0 + 20_000, "#!/bin/sh\necho 3\n");
+    expect(l.store.get(first!.id)?.state).toBe("superseded");
+    expect(openCard(l)?.from.ref?.hash).toBe(v3);
+    expect(v3).not.toBe(v2);
+    await edit(l, T0 + 40_000, "#!/bin/sh\necho 1\n");
+    expect(openCard(l)).toBeUndefined();
+    expect(cardsOf(l).at(-1)).toMatchObject({ state: "withdrawn", closedReason: VERSION_CARD_GONE });
+    const v4 = await edit(l, T0 + 60_000, "#!/bin/sh\necho 4\n");
+    const card = openCard(l);
+    expect(card?.from.ref?.hash).toBe(v4);
+    expect(await tap(l, card!, 2, "keep")).toMatchObject({ code: "ok", state: "answered" });
+    expect((await switchFile(l)).declined).toBe(v4);
+    await scan(l, T0 + 80_000);
+    expect(openCard(l)).toBeUndefined();
+  });
+
+  test("a folder that moved after the card refuses the answer in plain words and keeps the card open", async () => {
+    const l = await life();
+    await edit(l, T0 + 1000, "#!/bin/sh\necho 2\n");
+    const card = openCard(l);
+    await writeFile(join(l.dir, "legs.sh"), "#!/bin/sh\necho moved\n");
+    expect(await tap(l, card!, 1, "use")).toMatchObject({ code: "rejected", reason: VERSION_MOVED, state: "open" });
+    expect(l.store.get(card!.id)?.state).toBe("open");
+  });
+
+  test("always approves and turns auto on; Settings then shows it and the next change is taken without asking", async () => {
+    const l = await life();
+    const v2 = await edit(l, T0 + 1000, "#!/bin/sh\necho 2\n");
+    expect(await tap(l, openCard(l)!, 1, "always")).toMatchObject({ code: "ok" });
+    expect(await switchFile(l)).toMatchObject({ hash: v2, auto: true });
+    const v3 = await edit(l, T0 + 20_000, "#!/bin/sh\necho 3\n");
+    expect((await switchFile(l)).hash).toBe(v3);
+    const row = (await l.service.reply(undefined)).tricks[0];
+    expect(row).toMatchObject({ auto: true, autoAt: new Date(T0 + 20_000 + PENDING_SETTLE_MS).toISOString() });
+    expect(openCard(l)).toBeUndefined();
+    // Undo goes back; the row then has nothing to undo.
+    expect(await l.service.undoRoute("bluefin", "legs")).toMatchObject({ status: 200 });
+    expect((await l.service.reply(undefined)).tricks[0]?.autoAt).toBeUndefined();
+  });
+
+  test("a version that asks for new rights has no always; a forged always is refused", async () => {
+    const l = await life();
+    await edit(l, T0 + 1000, "#!/bin/sh\necho 2\n", `${MANIFEST}env = ["GH_TOKEN"]\n`);
+    const card = openCard(l);
+    expect(card?.options.map((option) => option.intent)).toEqual(["use", "keep"]);
+    expect(card?.recommends).toBeNull();
+    expect(card?.summary).toBe("2 files changed. It now also asks for GH_TOKEN.");
+    expect(await tap(l, card!, 1, "always")).toMatchObject({ code: "rejected", reason: "not an option of this decision" });
+    expect(await l.cards.answer(card!.from.ref!, "always")).toEqual({ ok: false, reason: VERSION_NEW_RIGHTS });
+  });
+
+  test("a warning is new by its kind: another line of a kind the approved copy had keeps the recommendation", async () => {
+    const l = await life();
+    await edit(l, T0 + 1000, "#!/bin/sh\ncurl https://example.invalid/a\n");
+    const first = openCard(l);
+    expect(first?.recommends).toBeNull();
+    expect(first?.summary).toBe("1 file changed. It now also reaches the network.");
+    expect(await tap(l, first!, 1, "use")).toMatchObject({ code: "ok" });
+    await edit(l, T0 + 20_000, "#!/bin/sh\ncurl https://example.invalid/a\ncurl https://example.invalid/b\n");
+    const second = openCard(l);
+    expect(second?.summary).toBe("1 file changed. It asks for no new rights.");
+    expect(second?.recommends?.intent).toBe("use");
+  });
+
+  test("switching the trick off withdraws its card", async () => {
+    const l = await life();
+    await edit(l, T0 + 1000, "#!/bin/sh\necho 2\n");
+    expect(openCard(l)).toBeDefined();
+    expect(await l.service.setSwitch("bluefin", "legs", false)).toMatchObject({ status: 200 });
+    await l.cards.settled();
+    expect(openCard(l)).toBeUndefined();
+    expect(cardsOf(l)[0]?.closedReason).toBe(VERSION_CARD_GONE);
+  });
+
+  test("the auto route writes the switch, and is refused for a trick that is off", async () => {
+    const l = await life();
+    expect(await l.service.autoRoute("bluefin", "legs", true)).toMatchObject({ status: 200, body: { auto: true } });
+    expect((await switchFile(l)).auto).toBe(true);
+    expect(await l.service.autoRoute("elsewhere", "legs", true)).toEqual({ status: 404, body: { error: "unknown-host" } });
+    await l.service.setSwitch("bluefin", "legs", false);
+    expect(await l.service.autoRoute("bluefin", "legs", true)).toMatchObject({ status: 409, body: { error: "off" } });
+    expect(await l.service.undoRoute("bluefin", "nope")).toEqual({ status: 404, body: { error: "unknown-trick" } });
+  });
+});

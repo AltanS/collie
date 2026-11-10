@@ -1259,6 +1259,16 @@ export interface WireTrickInfo {
    * is on and unchanged, and from an older bridge. A warning never refuses: the switch stays one tap.
    */
   warnings?: WireTrickWarning[];
+  /**
+   * Take a new version whose rights did not change without asking (crew slice 3), on a trick that is on.
+   * Absent: off, or an older bridge.
+   */
+  auto?: boolean;
+  /**
+   * When the version that runs was taken without asking (ISO time), while an earlier version is there to
+   * go back to. Settings then offers Undo. Absent otherwise, and from an older bridge.
+   */
+  autoAt?: string;
 }
 /** The kinds of warning the check scan gives. A phone reads a kind it does not know as plain text. */
 export const TRICK_WARNING_KINDS = ["spawn", "network", "write", "model", "import"] as const;
