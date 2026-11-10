@@ -48,6 +48,24 @@ view's top, 6 levels and 300 nodes in a view, 20 decisions, `every` and `fresh` 
 names in `env`, an image of at most 2 MB from the trick's `media/` folder. Every text cap is in
 `schema.ts` beside its field.
 
+**Where a trick runs: the approved copy.** A trick does not run from its folder. When a person switches
+it on, the bridge copies its code into `tricks/.collie-approved/<id>/<hash16>/` beside the trick folders
+(`bridge/tricks/approved.ts`, the first 16 hex digits of the code hash) and runs that copy: `trick.dir` in the facts, the working
+folder and the `media/` the phone reads all name the copy. An edit of the trick folder never stops the
+trick. The bridge copies the new code to `.collie-pending/` and the row says "A new version waits for your
+yes."; switching the trick on again approves it. A new version whose `env` and `places` are unchanged
+is taken without asking when the trick has `collie trick auto <id> on`. So a program must not write
+into its own code folder: the copy's code files are read-only (not on Windows, where the hash check
+alone catches it), and a change there stops the trick with "The approved copy changed on disk". It keeps its notes in `trick.state`, the
+state folder, which is never copied. `media/` and `captures/` are seeded into the copy once (at most
+500 files and 64 MiB) and stay writable; `inputs/` starts empty. Dot files, dot folders and
+`node_modules/` are not copied, as with `collie trick add`. `collie trick on` refuses inside a
+multiplexer pane, where Collie takes the caller for an agent: an agent does not approve its own trick.
+It is a speed bump, not a lock; the person approves from the phone or a terminal outside the
+multiplexer. A `switches.json` from an older Collie (version 1 or 2) is moved to version 3 at the
+bridge's first look: a trick whose folder still matches the hash a person approved keeps running from a
+fresh copy, and any other waits, on, for a new yes.
+
 **Strict at write, tolerant at read.** What a trick writes is checked strictly where a person or an
 agent writes it: `trick.toml`, `collie hill post`, and a trick's Decisions (a Decision's view
 included) refuse an unknown key, kind or attribute. A program's output is read tolerantly where the
@@ -87,7 +105,8 @@ run((t) => {
 `trick.ts` is one self-contained file (`cli/trick-kit/trick.ts` in this repo, held in the binary as
 text). It imports only `node:` built-ins and Bun, and its first line names its version, `// collie
 trick helper v3`. `collie trick helper <id>` rewrites it with the version this Collie carries; the
-helper is part of the trick's code, so a trick that is on stops until a person switches it on again.
+helper is part of the trick's code, so a trick that is on keeps running the approved copy, and the new
+helper waits for a person's yes.
 `collie trick check` lists a `trick.ts` whose bytes are a helper this Collie ships as "helper v3" (an
 older one with the command to update it) and does not grep it; a changed one is grepped as the trick's
 own code and called a modified helper.
@@ -204,7 +223,8 @@ list` in its ORIGIN column.
 `--ref`), checks it the same way, and prints the old and new commit, how many code files are added,
 changed and removed, and the warnings that are new. Then it swaps the folder in two renames, keeping
 `config.toml` and the trick's state folder, and rewrites the origin record. The new code hashes
-differently, so a trick that was on stops until the person switches it on again, and the verb says so.
+differently, so a trick that was on keeps running the version the person approved, the new one waits
+for their yes, and the verb says so.
 `--dry-run` prints the summary and changes nothing. A folder without an origin record has nothing to
 update from.
 
@@ -212,7 +232,8 @@ update from.
 read by the CLI and the bridge alike. `collie trick on` prints its warnings above the confirmation, with
 one line that they come from a text search and are not a proof, and still switches on. The bridge puts
 them on the row of a trick that is off or changed (`WireTrickInfo.warnings`: one `{ kind, text }` per
-kind, at most 8), and Settings → Tricks lists them under that trick before the switch. They never
+kind, at most 8; a waiting version carries the ones new since the approved copy in
+`WireTrickInfo.pending.warnings`), and Settings → Tricks lists them under that trick before the switch. They never
 refuse, and the switch stays one tap.
 
 ## The run line
@@ -467,7 +488,8 @@ by key. The trick is one sender: its name is the card's, its id and the key ride
 - A failed or timed-out run changes nothing: the last good decisions stay. So does a list refused as a
   whole, and a decision the parser refused alone.
 - Switched off or removed, every open decision of the trick is withdrawn, "the trick is off". A trick
-  whose code changed since it was switched on keeps its open decisions; it only stops running.
+  whose folder changed since it was switched on keeps its open decisions and keeps running the
+  approved copy.
 - `about` and `replyTo` are mapped to the session's walky address when the decision posts. A key that
   names no live session on this machine is refused alone, and the others post.
 - `media` reaches the card as it does for an agent's decision. The runner joins each `file` to the
