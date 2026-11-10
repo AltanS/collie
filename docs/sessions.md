@@ -32,6 +32,21 @@ conversations, and a control appears only when that durable agent says it can do
 
 The words are in [Terminology](terminology.md).
 
+## Find a session
+
+On a list of more than five sessions, the pane switcher starts with a **Filter sessions** field. The
+switcher is the sheet that the Switch button at the belt's right end opens, and the sidebar on a large
+screen. Type a few letters and the list narrows. A loose match finds a session by its name, space, tab,
+branch, folder, agent or machine, and the matched letters are marked. The list keeps its order and its
+sections. When a session matched in a field its row does not show, such as its branch, the row's
+second line shows that field. Enter opens the first session shown. The field is empty again the next
+time the switcher opens.
+
+The Dashboard has the same filter. With more than five sessions, a magnifier at the right end of its
+controls opens the field. The filter works together with the workspace choice and the needs-you
+switch, and says how many rows are left, such as `3 of 14`. The query stays while you visit a session
+and come back. It is never stored on the device.
+
 ## One machine, or several
 
 One Collie carries a terminal and durable agents together. A machine with Herdr and a durable agent needs no
