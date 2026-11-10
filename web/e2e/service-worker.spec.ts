@@ -102,8 +102,13 @@ const CHIP = en["settings.buildStamp.tapToUpdate"];
  *  `checkForUpdate()`. It is the repeat-tap surface: the footer chip disables itself for the rest of
  *  the page's life on the first tap, so a case about tapping three times has to address this line.
  *  Until 2026-11-06 it was the band under the header; the header mark carries the bundle now, and a
- *  tap on the mark opens this line. Every case here starts on the dashboard, where it sits. */
-const BAND = en["pwa.updateAvailable"];
+ *  tap on the mark opens this line. Every case here starts on the dashboard, where it sits.
+ *
+ *  Since 2026-11-09 the line is a card while the app updates (`UPDATE_LINE_LOOK`), and the tappable
+ *  control in the offer state is the card's "Update now" button. "New version, tap to update"
+ *  (`pwa.updateAvailable`) is still the card's sentence, but it is plain text beside the button and
+ *  no longer a button itself, so a role lookup by that name finds nothing. */
+const BAND = en["settings.updateBanner.updateNow"];
 /** What the same line says once a worker is on its way in (2026-09-12). It does not go away on the
  *  tap, it changes its words: a download the operator can see is a download they wait out. */
 const DOWNLOADING = en["pwa.updateInstalling"];
