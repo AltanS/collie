@@ -14,7 +14,7 @@ import {
 import { noteSnapshotTaken } from "./snapshot-clock";
 import { markDead as markPaneDead, markLive as markPaneLive } from "./liveness";
 import { abortSignalAfter, abortSignalAny } from "./env";
-import { asJsonBoolean, asJsonObject, asJsonString, parseJson, parseJsonObject, type JsonObject, type JsonValue } from "./json";
+import { asJsonBoolean, asJsonNumber, asJsonObject, asJsonString, parseJson, parseJsonObject, type JsonObject, type JsonValue } from "./json";
 import { readRegistryStatus } from "./theme/registry-status";
 import { readHeldCancelAnswer, readSendReceipts, readSendReply, type SendReply } from "./send-protocol";
 import { readReportContext, type ReportContext } from "./report/context";
@@ -3072,6 +3072,18 @@ export async function setHillSwitch(on: boolean): Promise<boolean> {
   const held = asJsonBoolean(asJsonObject(raw)?.on);
   if (held === undefined) throw new Error("/api/hill/switch answered with a body that is not { on }");
   return held;
+}
+
+/**
+ * POST /api/hill/clear: remove every closed Decision from the Hill. Answers how many went. The lists
+ * come back through the snapshot's `hillRev`, as for any change to the Hill; a refusal or a body that is
+ * not `{ cleared }` throws, so the caller puts the rows back.
+ */
+export async function clearHillClosed(): Promise<number> {
+  const raw = await req<JsonValue>("/api/hill/clear", { method: "POST", body: JSON.stringify({}) });
+  const cleared = asJsonNumber(asJsonObject(raw)?.cleared);
+  if (cleared === undefined) throw new Error("/api/hill/clear answered with a body that is not { cleared }");
+  return cleared;
 }
 
 /**
