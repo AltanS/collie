@@ -94,6 +94,7 @@ export const SECTIONS: readonly SectionEntry[] = [
   { def: { id: "grounds", title: "Grounds" }, load: () => import("./sections/grounds").then((m) => ({ default: m.GroundsSection })) },
   { def: { id: "pins", title: "Pinned messages" }, load: () => import("./sections/pins").then((m) => ({ default: m.PinsSection })) },
   { def: { id: "switcher", title: "Session switcher" }, load: () => import("./sections/switcher").then((m) => ({ default: m.SwitcherSection })) },
+  { def: { id: "filter", title: "Session filter" }, load: () => import("./sections/filter").then((m) => ({ default: m.FilterRoundSection })) },
   { def: { id: "new-tab", title: "New tab sheet" }, load: () => import("./sections/new-tab").then((m) => ({ default: m.NewTabSection })) },
   { def: { id: "primitives", title: "Primitives" }, load: () => import("./sections/primitives").then((m) => ({ default: m.PrimitivesSection })) },
   { def: { id: "report", title: "Report a problem" }, load: () => import("./sections/report").then((m) => ({ default: m.ReportSection })) },
