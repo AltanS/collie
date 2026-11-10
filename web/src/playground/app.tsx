@@ -104,6 +104,7 @@ export const SECTIONS: readonly SectionEntry[] = [
   { def: { id: "hill", title: "Hill" }, load: () => import("./sections/hill").then((m) => ({ default: m.HillSection })) },
   { def: { id: "hill-look", title: "Hill look" }, load: () => import("./sections/hill-look").then((m) => ({ default: m.HillLookSection })) },
   { def: { id: "dashboard-places", title: "Dashboard places" }, load: () => import("./sections/dashboard-places").then((m) => ({ default: m.DashboardPlacesSection })) },
+  { def: { id: "chat-look", title: "Chat look" }, load: () => import("./sections/chat-look").then((m) => ({ default: m.ChatLookSection })) },
 ];
 
 /** One `lazy` per section, made once: a fresh `lazy()` per render would suspend on every render. */

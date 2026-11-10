@@ -48,13 +48,15 @@ import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Collapse } from "@/components/ui/collapse";
 import { CopyableBlock } from "@/components/ui/copyable-block";
+import { DividedLine } from "@/components/ui/divided-line";
 import { OneOf } from "@/components/ui/one-of";
 import { SectionLabel } from "@/components/ui/section-label";
 import { useLocale } from "@/hooks/use-locale";
 import type { ChatItem, ChatToolCall, ChatToolStatus } from "@/lib/chat-items";
+import { useChatLook, type ChatLook } from "@/lib/chat-look";
 import { findFilePaths } from "@/lib/file-paths";
 import type { PendingState } from "@/lib/durable-pending";
-import { clockTime } from "@/lib/format";
+import { clockTimeOf } from "@/lib/format";
 import { t, tn, type PluralKey } from "@/lib/i18n";
 import { useScope } from "@/lib/session";
 import {
@@ -71,6 +73,7 @@ import {
 import type { Hunk, ToolQuestion } from "@/lib/types";
 import type { DiffRow } from "@/lib/unified-diff";
 import { cn } from "@/lib/utils";
+import { USER_WELL, USER_WELL_HUG, USER_WELL_META, USER_WELL_TEXT, USER_WELL_TIME } from "@/components/user-well";
 import { Icon } from "@/components/icons/icon";
 import type { IconKey } from "@/components/icons/keys";
 
@@ -214,6 +217,41 @@ export function groupRuns(items: ChatItem[], minRun = 3): ChatItem[][] {
 /** A live run shows only its newest steps; the rest wait behind one tap. */
 export const LIVE_TAIL = 6;
 
+/** Chat look D (lib/chat-look.ts): a fold row's edge. Reserved in every word, so only its colour changes. */
+function foldEdge(steps: ChatLook["steps"]): string {
+  return steps === "today" ? "rounded-md border border-border" : "rounded-md border border-transparent";
+}
+
+/** Chat look D: the folded run's one row. `today` is the string the row has always worn. */
+const FOLDED_RUN = {
+  today: "rounded-md border border-border",
+  quiet: "rounded-md border border-transparent",
+  ground: "rounded-md border border-transparent bg-muted/40",
+  // Square, because a left accent is never drawn with a rounded corner.
+  rail: "rounded-none border border-transparent border-l-rule",
+} as const;
+
+/** Chat look D: an open run's frame. */
+const OPEN_RUN = {
+  today: "flex flex-col gap-1.5",
+  quiet: "flex flex-col gap-1.5",
+  ground: "flex flex-col divide-y divide-border rounded-md bg-muted/40",
+  rail: "flex flex-col gap-1.5 border-l border-rule pl-2",
+} as const;
+
+/**
+ * True inside an open run. A card there drops its own frame under Chat look D's `ground` and `rail`, so the
+ * run reads as one thing rather than a stack of boxes. Outside a run a card keeps its frame in every word.
+ */
+const InRunCtx = createContext(false);
+
+/** The classes a card adds to drop its frame inside a run, or false where it keeps it. */
+function useRunFrame(): string | false {
+  const inRun = useContext(InRunCtx);
+  const steps = useChatLook().steps;
+  return inRun && (steps === "ground" || steps === "rail") && "border-transparent bg-transparent shadow-none";
+}
+
 /**
  * A full-width fold row: the 44px tap floor as a drawn box (DESIGN.md §6), muted small chrome text,
  * the same shape as the pane's own "Show entire history" row (agent-chat.tsx).
@@ -224,6 +262,7 @@ const FOLD_ROW =
 export const ToolGroup = memo(
   function ToolGroup({ items, liveOpens = true }: { items: ChatItem[]; liveOpens?: boolean }) {
     useLocale();
+    const steps = useChatLook().steps;
     const waiting = useContext(CardWaitingCtx);
     // A RUNNING STEP OPENS ITS OWN RUN, UNLESS THE READER SAID NOT TO.
     //
@@ -270,12 +309,12 @@ export const ToolGroup = memo(
         ? 0
         : Math.max(0, Math.min(items.length - LIVE_TAIL, firstWaiting >= 0 ? firstWaiting : items.length));
       return (
-        <div className="flex flex-col gap-1.5">
+        <div className={OPEN_RUN[steps]}>
           {open ? (
             <button
               type="button"
               aria-expanded
-              className={cn(FOLD_ROW, "justify-start rounded-md border border-border")}
+              className={cn(FOLD_ROW, "justify-start", foldEdge(steps))}
               onClick={() => setOpen(false)}
             >
               <Icon name="disclosure" className="size-3.5 shrink-0 rotate-90" />
@@ -286,7 +325,7 @@ export const ToolGroup = memo(
               <button
                 type="button"
                 aria-expanded={false}
-                className={cn(FOLD_ROW, "justify-start rounded-md border border-border")}
+                className={cn(FOLD_ROW, "justify-start", foldEdge(steps))}
                 onClick={() => setOpen(true)}
               >
                 <Icon name="disclosure" className="size-3.5 shrink-0" />
@@ -296,9 +335,11 @@ export const ToolGroup = memo(
               </button>
             )
           )}
-          {items.slice(start).map((i) => (
-            <ItemView key={i.id} item={i} />
-          ))}
+          <InRunCtx.Provider value>
+            {items.slice(start).map((i) => (
+              <ItemView key={i.id} item={i} />
+            ))}
+          </InRunCtx.Provider>
         </div>
       );
     }
@@ -309,7 +350,7 @@ export const ToolGroup = memo(
         type="button"
         aria-expanded={false}
         onClick={() => setOpen(true)}
-        className="flex min-h-11 w-full min-w-0 flex-col justify-center gap-0.5 rounded-md border border-border px-3 py-1.5 text-left transition-colors active:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+        className={`flex min-h-11 w-full min-w-0 flex-col justify-center gap-0.5 ${FOLDED_RUN[steps]} px-3 py-1.5 text-left transition-colors active:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring`}
       >
         <span className="flex min-w-0 items-center gap-1.5 text-xs font-medium text-muted-foreground">
           <Icon name="disclosure" className="size-3.5 shrink-0" />
@@ -450,7 +491,9 @@ const NOTICE_FOLD_CHARS = 160;
  * status line.
  */
 function Notice({ item }: { item: Extract<ChatItem, { kind: "notice" }> }) {
+  const divided = useChatLook().quiet === "divided";
   const folds = item.note === true && (item.text.length > NOTICE_FOLD_CHARS || item.text.includes("\n"));
+  if (!folds && divided) return <DividedLine partial={item.partial === true}>{item.text}</DividedLine>;
   if (!folds) {
     return (
       <p data-partial={item.partial === true ? "true" : undefined} className="py-1 text-center text-xs text-muted-foreground">
@@ -472,6 +515,15 @@ function Notice({ item }: { item: Extract<ChatItem, { kind: "notice" }> }) {
  * DOM only while open.
  */
 function Compacted({ item }: { item: Extract<ChatItem, { kind: "compacted" }> }) {
+  const divided = useChatLook().quiet === "divided";
+  if (item.text === undefined && divided) {
+    return (
+      <DividedLine>
+        {t("transcript.summaryLabel")}
+        {item.ts && ` · ${clockTimeOf(item.ts)}`}
+      </DividedLine>
+    );
+  }
   if (item.text === undefined) {
     return (
       <p className="py-1 text-center text-xs text-muted-foreground">
@@ -503,19 +555,31 @@ function Compacted({ item }: { item: Extract<ChatItem, { kind: "compacted" }> })
  * blue is "this is literal", the orange is "this is yours".
  */
 function UserTurn({ text, ts, pending, notInLog = false }: { text: string; ts?: string; pending?: PendingState; notInLog?: boolean }) {
+  const look = useChatLook().userTurn;
   const time = ts && pending === undefined ? clockTimeOf(ts) : "";
+  if (look === "time-end" || look === "hug") {
+    return <BareUserTurn text={text} time={time} pending={pending} notInLog={notInLog} hug={look === "hug"} />;
+  }
+  // Chat look B3 (lib/chat-look.ts): the well on the neutral ground, the orange left on the icon alone.
+  const neutral = look === "neutral";
   return (
     <div
       data-slot={pending === undefined ? undefined : "pending-turn"}
       data-pending={pending}
       className={cn(
-        "rounded-md border border-status-working/25 bg-status-working/8 px-3 py-2",
+        neutral ? "rounded-md border border-border bg-muted px-3 py-2" : "rounded-md border border-status-working/25 bg-status-working/8 px-3 py-2",
         // A line the program has not written back yet: the same well at a lower weight, so it reads as "mine, on its way".
         pending !== undefined && "opacity-70",
       )}
     >
-      <div className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold label-caps text-status-working">
-        <Icon name="user-turn" className="size-3.5" />
+      <div
+        className={
+          neutral
+            ? "mb-1 flex items-center gap-1.5 text-[11px] font-semibold label-caps text-muted-foreground"
+            : "mb-1 flex items-center gap-1.5 text-[11px] font-semibold label-caps text-status-working"
+        }
+      >
+        <Icon name="user-turn" className={neutral ? "size-3.5 text-status-working" : "size-3.5"} />
         {/* The transcript's own word for the reader, so History and Chat never disagree. */}
         {t("transcript.youLabel")}
         {time && <span className="font-normal tabular-nums opacity-80">{time}</span>}
@@ -573,15 +637,68 @@ function EnvelopeTurn({ text, ts, header }: { text: string; ts?: string; header:
   return <UserTurn text={text} ts={ts} notInLog={absent && absentSince !== null && reads > absentSince} />;
 }
 
+/**
+ * Chat look B1 and B2 (lib/chat-look.ts): the well with no caption row. The time, or the pending clock in its place,
+ * floats at the right of the text's last line, so a short line costs no second row; a full last line pushes it under.
+ * `hug` sizes the well to its text, at most 85 percent of the column, at the right.
+ */
+function BareUserTurn({
+  text,
+  time,
+  pending,
+  notInLog,
+  hug,
+}: {
+  text: string;
+  time: string;
+  pending?: PendingState;
+  notInLog: boolean;
+  hug: boolean;
+}) {
+  const meta = time !== "" || notInLog || pending !== undefined;
+  return (
+    <div
+      data-slot={pending === undefined ? undefined : "pending-turn"}
+      data-pending={pending}
+      className={cn(
+        USER_WELL,
+        hug && USER_WELL_HUG,
+        pending !== undefined && "opacity-70",
+      )}
+    >
+      {/* The caption row is gone, so the speaker is named for the screen reader alone. */}
+      <span className="sr-only">{t("transcript.youLabel")}</span>
+      <p className={USER_WELL_TEXT}>
+        {text}
+        {meta && (
+          <span className={USER_WELL_META}>
+            {time && <span className={USER_WELL_TIME}>{time}</span>}
+            {notInLog && (
+              <span data-slot="walky-not-in-log" className="opacity-80">
+                {t("walky.card.notInLog")}
+              </span>
+            )}
+            {pending !== undefined && (
+              <span className="flex items-center gap-1 opacity-80">
+                <Icon name="queued" className="size-3" aria-hidden="true" />
+                {pending === "sending" || pending === "sent" ? (
+                  <span className="sr-only">{t("durable.pending.sending")}</span>
+                ) : (
+                  <span>{t(pending === "unconfirmed" ? "durable.pending.unconfirmed" : "durable.pending.notSent")}</span>
+                )}
+              </span>
+            )}
+          </span>
+        )}
+      </p>
+    </div>
+  );
+}
+
 /** The person's own line, put in the thread when they sent it and not yet written back by the program (lib/durable-pending.ts). */
 export function PendingTurn({ text, state }: { text: string; state: PendingState }) {
   useLocale();
   return <UserTurn text={text} pending={state} />;
-}
-
-function clockTimeOf(iso: string): string {
-  const ms = Date.parse(iso);
-  return Number.isNaN(ms) ? "" : clockTime(ms);
 }
 
 /**
@@ -684,10 +801,12 @@ function ToolHead({
   status: ChatToolStatus;
   exitCode?: number;
 }) {
+  // Chat look K (lib/chat-look.ts): the kind word in the muted ink a line row's word already wears.
+  const muted = useChatLook().cardLabel === "muted";
   return (
     <div className="flex min-h-9 min-w-0 items-center gap-2 px-3 py-1.5 text-xs">
       <Icon name={icon} className="size-3.5 shrink-0 text-muted-foreground" />
-      <span className="shrink-0 font-medium">{label}</span>
+      <span className={muted ? "shrink-0 font-medium text-muted-foreground" : "shrink-0 font-medium"}>{label}</span>
       {badge}
       <span className="flex min-w-0 flex-1 items-center">{children}</span>
       {trailing}
@@ -929,11 +1048,12 @@ function ToolCardBody({
   }, [isActiveSubagent, syncSubagent, subagentCardKey, taskAgent, taskSummary, taskAgentId, status, taskOutput]);
   // A card waiting on the reader recolours the edge it always has (DESIGN.md §2): the border is in
   // every card's base, so the body arriving changes paint, not the box.
+  const frame = useRunFrame();
   const held = waiting?.body !== undefined && "border-status-blocked";
   switch (tool.kind) {
     case "edit":
       return (
-        <Card data-waiting={anchor} className={cn("gap-0 py-0", held)}>
+        <Card data-waiting={anchor} className={cn("gap-0 py-0", frame, held)}>
           <ToolHead
             icon={tool.created ? "tool-create-file" : "tool-edit"}
             label={t(tool.created ? "chat.card.create" : "chat.card.edit")}
@@ -957,7 +1077,7 @@ function ToolCardBody({
       );
     case "execute":
       return (
-        <Card data-waiting={anchor} className={cn("gap-0 py-0", held)}>
+        <Card data-waiting={anchor} className={cn("gap-0 py-0", frame, held)}>
           <ToolHead
             icon="tool-execute"
             label={t("chat.card.run")}
@@ -991,9 +1111,9 @@ function ToolCardBody({
         </LineTool>
       );
     case "plan":
-      return <PlanTool call={tool} status={status} anchor={anchor} held={held} />;
+      return <PlanTool call={tool} status={status} anchor={anchor} held={cn(frame, held) || false} />;
     case "question":
-      return <QuestionTool call={tool} status={status} waiting={waiting} anchor={anchor} held={held} />;
+      return <QuestionTool call={tool} status={status} waiting={waiting} anchor={anchor} held={cn(frame, held) || false} />;
     case "search":
     case "fetch":
     case "task":

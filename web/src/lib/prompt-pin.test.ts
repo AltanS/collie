@@ -91,7 +91,7 @@ describe("pinAt", () => {
   });
 
   test("at the stream's top edge a prompt that is not held still pins, standing in for 'Load older'", () => {
-    expect(pinAt(map, -1, reported, false, true)).toEqual({ kind: "reported", text: "the newest prompt", truncated: false });
+    expect(pinAt(map, -1, reported, false, true)).toEqual({ kind: "reported", text: "the newest prompt", truncated: false, ts: "" });
   });
 
   test("at the top edge a held prompt is on screen, so nothing covers the edge", () => {
@@ -100,7 +100,7 @@ describe("pinAt", () => {
   });
 
   test("turns before any held prompt pin the reported prompt when the client does not hold it", () => {
-    expect(pinAt(map, 0, reported, false, true)).toEqual({ kind: "reported", text: "the newest prompt", truncated: false });
+    expect(pinAt(map, 0, reported, false, true)).toEqual({ kind: "reported", text: "the newest prompt", truncated: false, ts: "" });
   });
 
   test("a held reported prompt means the turns above it answer an earlier one", () => {
@@ -117,7 +117,7 @@ describe("pinAt", () => {
 
   test("a capped report says so", () => {
     const capped = { ...reported, truncated: true };
-    expect(pinAt(map, 0, capped, false, true)).toEqual({ kind: "reported", text: "the newest prompt", truncated: true });
+    expect(pinAt(map, 0, capped, false, true)).toEqual({ kind: "reported", text: "the newest prompt", truncated: true, ts: "" });
   });
 
   test("a reported prompt that is a walky talky message pins as if none was reported", () => {
@@ -132,6 +132,31 @@ describe("pinAt", () => {
 
   test("a reported prompt that is the operator's walky talky message still pins", () => {
     const operator = { uuid: "p7", ts: "", text: "[walky-talky wt_abc123def456] from operator the phone\nrun the tests again" };
-    expect(pinAt(map, 0, operator, false, true)).toEqual({ kind: "reported", text: operator.text, truncated: false });
+    expect(pinAt(map, 0, operator, false, true)).toEqual({ kind: "reported", text: operator.text, truncated: false, ts: "" });
+  });
+});
+
+describe("the prompt's time", () => {
+  const stamped = (id: string, text: string, ts?: string): ChatItem[] => [{ id, kind: "user", text, ts }];
+
+  test("a held run carries its first block's time", () => {
+    const map = promptMap([stamped("u1", "first", "2026-09-30T10:07:00.000Z"), stamped("u2", "second", "2026-09-30T10:08:00.000Z"), reply("r1"), reply("r2")]);
+    expect(map.runs[0]?.ts).toBe("2026-09-30T10:07:00.000Z");
+    expect(pinAt(map, 3, null, false, false)).toEqual({ kind: "held", text: "first\n\nsecond", start: 0, ts: "2026-09-30T10:07:00.000Z" });
+  });
+
+  test("a held run with no time carries none", () => {
+    const map = promptMap([user("u1", "first"), reply("r1"), reply("r2")]);
+    expect(pinAt(map, 2, null, false, false)).toMatchObject({ kind: "held", ts: undefined });
+  });
+
+  test("a reported prompt carries the bridge's time", () => {
+    const map = promptMap([reply("r0"), reply("r1")]);
+    expect(pinAt(map, 0, { ...reported, ts: "2026-09-30T10:07:00.000Z" }, false, false)).toMatchObject({ kind: "reported", ts: "2026-09-30T10:07:00.000Z" });
+  });
+
+  test("the earlier pin carries no time", () => {
+    const map = promptMap([reply("r0"), reply("r1")]);
+    expect(pinAt(map, 0, null, false, true)).toEqual({ kind: "earlier" });
   });
 });

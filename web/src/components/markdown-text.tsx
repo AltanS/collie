@@ -6,6 +6,7 @@ import { MathText } from "@/components/math-text";
 import { WalkyIdChip, WalkyIds } from "@/components/walky-id-chip";
 import { useWalkyChips } from "@/components/walky-log";
 import { useLocale } from "@/hooks/use-locale";
+import { useChatLook } from "@/lib/chat-look";
 import { mathEngineOf, useDesignPrefs } from "@/lib/design";
 import { codeSpanPath, findFilePaths } from "@/lib/file-paths";
 import { t } from "@/lib/i18n";
@@ -256,12 +257,21 @@ const InLinkContext = createContext(false);
 const CHIP_CLASS =
   "rounded-sm border border-status-info/20 bg-status-info/10 px-1 py-px font-mono text-[0.9em] [font-variant-ligatures:none] text-status-info";
 
+/** Chat look I (lib/chat-look.ts): the chip on the neutral ground a code block takes under E. */
+const CHIP_CLASS_NEUTRAL =
+  "rounded-sm border border-border bg-muted px-1 py-px font-mono text-[0.9em] [font-variant-ligatures:none] text-foreground";
+
+function useChipClass(): string {
+  return useChatLook().chip === "neutral" ? CHIP_CLASS_NEUTRAL : CHIP_CLASS;
+}
+
 /**
  * A path the agent printed, as a chip that opens it in Files (ADR 0088). The chip is the code chip,
  * and the link affordance is the one every in-app link here wears, an underline, in the chip's own
  * ink: no new colour. A plain tap moves inside the app; a modified click is the browser's.
  */
 function PathChip({ target, text }: { target: FileLinkTarget; text: string }) {
+  const chip = useChipClass();
   return (
     <a
       href={target.href}
@@ -272,7 +282,7 @@ function PathChip({ target, text }: { target: FileLinkTarget; text: string }) {
       }}
       className="rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
     >
-      <code className={`${CHIP_CLASS} underline underline-offset-2 ${breakClass(text)}`}>
+      <code className={`${chip} underline underline-offset-2 ${breakClass(text)}`}>
         <Hit text={text} />
       </code>
     </a>
@@ -341,6 +351,7 @@ function UrlLink({ href, text }: { href: string; text: string }) {
  * takes the other's text (a `://` run is never a file path).
  */
 function CodeSpan({ text }: { text: string }) {
+  const chip = useChipClass();
   const open = useFileLinks();
   const inLink = useContext(InLinkContext);
   const chips = useWalkyChips();
@@ -356,7 +367,7 @@ function CodeSpan({ text }: { text: string }) {
         rel="noopener noreferrer"
         className="rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
       >
-        <code className={`${CHIP_CLASS} underline underline-offset-2 ${breakClass(text)}`}>
+        <code className={`${chip} underline underline-offset-2 ${breakClass(text)}`}>
           <Hit text={text} />
         </code>
       </a>
@@ -371,13 +382,13 @@ function CodeSpan({ text }: { text: string }) {
       at = u.end;
     }
     if (at < text.length) nodes.push(<Hit key={`t${at}`} text={text.slice(at)} />);
-    return <code className={`${CHIP_CLASS} ${breakClass(text)}`}>{nodes}</code>;
+    return <code className={`${chip} ${breakClass(text)}`}>{nodes}</code>;
   }
   const found = open === null || inLink ? null : codeSpanPath(text);
   const target = found === null || open === null ? null : open(found);
   if (target !== null) return <PathChip target={target} text={text} />;
   return (
-    <code className={`${CHIP_CLASS} ${breakClass(text)}`}>
+    <code className={`${chip} ${breakClass(text)}`}>
       <Hit text={text} />
     </code>
   );
@@ -506,6 +517,36 @@ const DOCUMENT_HEADING_CLASS = new Map<number, string>([
 ]);
 const DOCUMENT_HEADING_FALLBACK = "mt-4 mb-1 text-sm font-semibold leading-snug";
 
+// Chat look G2 (lib/chat-look.ts): one step larger than HEADING_CLASS, measured from the stream's own
+// text token so the reader's text size still moves them, and more air above than below.
+const HEADING_CLASS_LARGE = new Map<number, string>([
+  [1, "mt-5 text-[length:calc(var(--text-sm)*1.35)] font-semibold"],
+  [2, "mt-5 text-[length:calc(var(--text-sm)*1.2)] font-semibold"],
+  [3, "mt-5 text-[length:calc(var(--text-sm)+1px)] font-semibold"],
+]);
+
+/** Chat look E (lib/chat-look.ts): a fenced block's box, by word. `today` is the string Chat has always drawn. */
+const CODE_CLASS = {
+  today: "overflow-x-auto rounded-md border border-status-info/20 bg-status-info/5 px-2 py-1.5 font-mono text-[11px] leading-snug [font-variant-ligatures:none]",
+  neutral: "overflow-x-auto rounded-md border border-border bg-muted px-2 py-1.5 font-mono text-[11px] leading-snug [font-variant-ligatures:none]",
+  "neutral-12": "overflow-x-auto rounded-md border border-border bg-muted px-2.5 py-2 font-mono text-xs leading-normal [font-variant-ligatures:none]",
+} as const;
+
+/** Chat look F (lib/chat-look.ts): a table's cells, by word. `today` boxes every cell. */
+const TABLE_CELL = {
+  today: { th: "border px-2 py-1 font-semibold", td: "border px-2 py-1 align-top", tr: "" },
+  rules: {
+    th: "border-b border-rule px-2 py-1.5 text-[11px] font-semibold label-caps text-muted-foreground",
+    td: "border-b border-border px-2 py-1.5 align-top",
+    tr: "",
+  },
+  bands: {
+    th: "border-b border-rule px-2 py-1.5 text-[11px] font-semibold label-caps text-muted-foreground",
+    td: "border-b border-border px-2 py-1.5 align-top",
+    tr: "even:bg-muted/50",
+  },
+} as const;
+
 const ALIGN_CLASS = new Map<string, string>([
   ["left", "text-left"],
   ["center", "text-center"],
@@ -549,6 +590,7 @@ function useStretchBlocks(text: string, withImages: boolean, drawn: boolean, que
 export type MarkdownVariant = "chat" | "document";
 
 function Block({ block, anchor, variant }: { block: MdBlock; anchor: string | null; variant: MarkdownVariant }) {
+  const look = useChatLook();
   switch (block.kind) {
     case "math":
       return (
@@ -570,6 +612,14 @@ function Block({ block, anchor, variant }: { block: MdBlock; anchor: string | nu
           </div>
         );
       }
+      if (look.prose === "15-headings") {
+        const large = HEADING_CLASS_LARGE.get(block.level) ?? "mt-5 text-[length:calc(var(--text-sm)+1px)] font-semibold";
+        return (
+          <div id={anchor ?? undefined} className={`${large} leading-snug first:mt-0 ${anchor === null ? "" : "scroll-mt-28"}`}>
+            <Spans spans={block.spans} />
+          </div>
+        );
+      }
       const cls = HEADING_CLASS.get(block.level) ?? "text-sm font-semibold";
       // `scroll-mt-28` clears the Files screen's sticky file bar, so a tap on `#install` leaves the
       // heading in view and not behind it. Harmless where nothing sticks.
@@ -582,7 +632,7 @@ function Block({ block, anchor, variant }: { block: MdBlock; anchor: string | nu
     case "code":
       return (
         <CopyableBlock text={block.text}>
-          <pre className="overflow-x-auto rounded-md border border-status-info/20 bg-status-info/5 px-2 py-1.5 font-mono text-[11px] leading-snug [font-variant-ligatures:none]">
+          <pre className={CODE_CLASS[look.code]}>
             <Hit text={block.text} />
           </pre>
         </CopyableBlock>
@@ -630,7 +680,7 @@ function Block({ block, anchor, variant }: { block: MdBlock; anchor: string | nu
                   {block.header.map((cell, i) => (
                     <th
                       key={i}
-                      className={`border px-2 py-1 font-semibold ${ALIGN_CLASS.get(block.align[i] ?? "left") ?? "text-left"}`}
+                      className={`${TABLE_CELL[look.table].th} ${ALIGN_CLASS.get(block.align[i] ?? "left") ?? "text-left"}`}
                     >
                       <Spans spans={cell} />
                     </th>
@@ -639,11 +689,11 @@ function Block({ block, anchor, variant }: { block: MdBlock; anchor: string | nu
               </thead>
               <tbody>
                 {block.rows.map((row, r) => (
-                  <tr key={r}>
+                  <tr key={r} className={TABLE_CELL[look.table].tr || undefined}>
                     {row.map((cell, c) => (
                       <td
                         key={c}
-                        className={`border px-2 py-1 align-top ${ALIGN_CLASS.get(block.align[c] ?? "left") ?? "text-left"}`}
+                        className={`${TABLE_CELL[look.table].td} ${ALIGN_CLASS.get(block.align[c] ?? "left") ?? "text-left"}`}
                       >
                         <Spans spans={cell} />
                       </td>
@@ -715,12 +765,16 @@ export function MarkdownText({
     math,
   );
   const anchors = useMemo(() => (headingIds ? headingAnchors(blocks) : null), [blocks, headingIds]);
+  // Chat look G (lib/chat-look.ts): agent reply prose one pixel over the stream's text token. `stretches`
+  // is the prop that already says "this text is agent reply prose", so thinking, notices and History keep text-sm.
+  const prose = useChatLook().prose;
+  const size = stretches && prose !== "today" ? "text-[length:calc(var(--text-sm)+1px)]" : "text-sm";
   return (
     <QueryContext.Provider value={query}>
       <LinkContext.Provider value={resolveLink ?? null}>
         <ImageContext.Provider value={resolveImage ?? null}>
           <StretchControlContext.Provider value={control}>
-            <div className={`font-content space-y-2 text-sm break-words ${className ?? ""}`}>
+            <div className={`font-content space-y-2 ${size} break-words ${className ?? ""}`}>
               {blocks.map((block, i) => (
                 <Block key={i} block={block} anchor={anchors?.[i] ?? null} variant={variant} />
               ))}

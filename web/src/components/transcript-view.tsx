@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Icon } from "@/components/icons/icon";
 
 import { AgentIcon } from "@/components/agent-icon";
+import { DividedLine } from "@/components/ui/divided-line";
 import { JournalImage } from "@/components/journal-image";
 import { MarkdownText } from "@/components/markdown-text";
 import { cn } from "@/lib/utils";
@@ -11,6 +12,7 @@ import type { TranscriptEntry, TranscriptPart } from "@/lib/types";
 import { getLocaleSnapshot, t, tn } from "@/lib/i18n";
 import { useDashPrefs } from "@/hooks/use-dash-prefs";
 import { useLocale } from "@/hooks/use-locale";
+import { USER_WELL, USER_WELL_HUG } from "@/components/user-well";
 
 // Renders an agent transcript — the conversation history a Claude pane's terminal structurally
 // cannot hold (it runs on the alternate screen, which keeps no scrollback ring; see
@@ -198,10 +200,10 @@ function Turn({
   // asked for it, the page keeps the place it happened and none of the text.
   if (entry.role === "summary" && !drawCompactions) {
     return (
-      <p className="py-1 text-center text-xs text-muted-foreground">
+      <DividedLine>
         {t("transcript.summaryLabel")}
         {time && ` · ${time}`}
-      </p>
+      </DividedLine>
     );
   }
 
@@ -227,18 +229,31 @@ function Turn({
   // grey. Chat's stream draws the same well for the same reason (chat-cards.tsx § UserTurn) — one
   // treatment, two surfaces. Orange and not the info blue: inline code owns that blue, and a code
   // chip inside a user turn would otherwise sit on a ground of its own hue.
+  //
+  // The well hugs its text, at the right, and has no caption row: the speaker is named for the
+  // screen reader alone. This page's parts are blocks, so the time cannot float in the last line
+  // as Chat's does; it is the well's last row instead.
+  if (isUser) {
+    return (
+      <div className={cn(USER_WELL, USER_WELL_HUG)}>
+        <span className="sr-only">{t("transcript.youLabel")}</span>
+        <div className="space-y-1.5">
+          {entry.parts.map((part, i) => (
+            <Part key={i} part={part} query={query} scope={scope} fromAgent={false} />
+          ))}
+        </div>
+        {showHeader && time !== "" && (
+          <div className="mt-1 text-right font-sans text-[10px] font-medium tabular-nums text-status-working opacity-80">{time}</div>
+        )}
+      </div>
+    );
+  }
   return (
-    <div className={isUser ? "rounded-lg border border-status-working/25 bg-status-working/8 px-3 py-2" : "px-1"}>
+    <div className="px-1">
       {showHeader && (
         <div className="mb-1 flex items-center gap-1.5">
-          {isUser ? (
-            <Icon name="user-turn" className="size-3.5 text-status-working" />
-          ) : (
-            <AgentIcon agent={agent ?? "claude"} className="size-4" />
-          )}
-          <span className={`text-[11px] font-semibold label-caps ${isUser ? "text-status-working" : "text-muted-foreground"}`}>
-            {isUser ? t("transcript.youLabel") : (agent ?? t("transcript.agentFallback"))}
-          </span>
+          <AgentIcon agent={agent ?? "claude"} className="size-4" />
+          <span className="text-[11px] font-semibold label-caps text-muted-foreground">{agent ?? t("transcript.agentFallback")}</span>
           {time && <span className="text-[11px] text-muted-foreground">{time}</span>}
         </div>
       )}
@@ -404,11 +419,7 @@ export function TranscriptView({
             )}
           >
             {newDay && (
-              <div className="flex items-center gap-2 pt-1">
-                <div className="h-px flex-1 bg-border" />
-                <span className="text-[11px] font-medium text-muted-foreground">{day}</span>
-                <div className="h-px flex-1 bg-border" />
-              </div>
+              <DividedLine>{day}</DividedLine>
             )}
             <TurnBody
               entry={entry}
