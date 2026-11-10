@@ -1,5 +1,4 @@
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
 
 // THE HELPER AS TEXT (M94 review 4). `collie trick init` writes `trick.ts` into a new trick folder and
 // `collie trick helper <id>` rewrites it, so the CLI carries the helper's source. `cli/trick.ts` imports
@@ -10,5 +9,5 @@ import { join } from "node:path";
 
 /** The helper's source, `trick.ts`, as the trick folder gets it. */
 export function trickHelperSource(): string {
-  return readFileSync(join(import.meta.dir, "trick.ts"), "utf8");
+  return readFileSync(new URL("./trick.ts", import.meta.url), "utf8");
 }
