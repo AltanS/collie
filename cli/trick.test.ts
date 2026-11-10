@@ -7,9 +7,9 @@ import { trickCodeHash } from "../bridge/tricks/code-hash.ts";
 import { switchesPath } from "../bridge/tricks/paths.ts";
 import { EXIT, type Io } from "./io.ts";
 import { tricksFindings } from "./trick-findings.ts";
-import { checkStatic, cmdTrick, cmdTrickCheck, cmdTrickInit, cmdTrickList, cmdTrickSkill, cmdTrickSwitch, looksBinary, runsLines, SKILL_BYTES_MAX, TRICK_WRITE_BRIEF, TRICK_SUBCOMMANDS, type TrickCheckReport, type TrickDeps } from "./trick.ts";
+import { checkStatic, cmdTrick, cmdTrickCheck, cmdTrickInit, cmdTrickList, cmdTrickSkill, cmdTrickSwitch, looksBinary, runsLines, sampleAgents, SKILL_BYTES_MAX, TRICK_WRITE_BRIEF, TRICK_SUBCOMMANDS, type TrickCheckReport, type TrickDeps } from "./trick.ts";
 import { realFiles } from "./sys.ts";
-import type { TricksReply } from "../web/src/lib/tricks/schema.ts";
+import { parseTrickDocument, type TricksReply } from "../web/src/lib/tricks/schema.ts";
 
 const dirs: string[] = [];
 async function tempDir(): Promise<string> {
@@ -65,6 +65,17 @@ async function deps(answer: TricksReply | null = null): Promise<TrickDeps & Capt
 }
 
 describe("collie trick init", () => {
+  test("AGENTS.md names every place this Collie draws, and its item example parses in both item places", () => {
+    const text = sampleAgents("legs");
+    for (const place of ["belt", "status", "session", "dashboard", "tabbar"]) expect(text).toContain(`\`${place}\``);
+    const example = /`(\{ "label": [^`]+\})`/u.exec(text)?.[1];
+    expect(example).toBeDefined();
+    for (const at of ["dashboard", "tabbar"]) {
+      const parsed = parseTrickDocument({ v: 1, parts: [{ at, id: "i", item: JSON.parse(example ?? "null") }] });
+      expect(parsed.refusals).toEqual([]);
+    }
+  });
+
   test("writes trick.toml, an executable provider.sh and AGENTS.md, and refuses an existing folder", async () => {
     const d = await deps();
     expect(await cmdTrickInit(d, ["legs"])).toBe(EXIT.OK);

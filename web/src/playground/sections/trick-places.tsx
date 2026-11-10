@@ -2,8 +2,9 @@
 // a trick draws in. The belt's trick marks at the end of its scrolling strip, after Collie's own keys and
 // never in the pinned block (one with nothing to do among them; word marks, three of them, at 390 px),
 // and the trick session: its row on the Dashboard and in Switch session, and its screen with no Composer.
-// Then the `status` place, the tricks' items in the usage row above the belt, and the three look fixes
-// of the renderer. Every card
+// Then the `status` place, the tricks' items in the usage row above the belt, the `dashboard` and
+// `tabbar` places (tiles at the top of the Dashboard, items in its bottom bar after the Hill; the whole
+// Dashboard with both is the "Dashboard places" section), and the three look fixes of the renderer. Every card
 // mounts the REAL components at 390 px over a store of its own, so a tap shows the busy state and the
 // receipt with no bridge.
 //
@@ -13,13 +14,15 @@ import { useEffect, useMemo, useRef, type ReactNode } from "react";
 
 import { ActionsRow } from "@/components/actions-row";
 import { beltMarksOf } from "@/components/belt-trick-mark";
+import { DashboardTabBar } from "@/components/dashboard-tab-bar";
+import { TrickDashboardStrip } from "@/components/trick-place-items";
 import { ModelTag } from "@/components/model-tag";
 import { statusItemsOf } from "@/components/trick-status-item";
 import { TrickSessionRow, TrickSpaceSection } from "@/components/trick-session";
 import { PartFrame } from "@/lib/tricks/part-frame";
 import { renderView, type RenderCtx } from "@/lib/tricks/render";
 import { partKey, type TrickTapReply, type ListNode, type View, type WireTrickInfo, type WireTrickPart } from "@/lib/tricks/schema";
-import { createTricksStore, type TricksStore } from "@/lib/tricks/store";
+import { createTricksStore, useTrickParts, type TricksStore } from "@/lib/tricks/store";
 import type { AgentView } from "@/lib/types";
 import { mintRequestId } from "@/lib/worktree-name";
 import { TrickSessionBody, TrickSessionHeaderRow } from "@/routes/trick-session";
@@ -29,7 +32,7 @@ import { Card, Group, Section, type SectionDef } from "../layout";
 export const DEF: SectionDef = {
   id: "trick-places",
   title: "Trick places",
-  intent: "The belt's trick marks, the status line's trick items, the trick session, three look fixes, at 390 px.",
+  intent: "The belt's trick marks, the status line's trick items, the Dashboard's tiles and bar items, the trick session, three look fixes, at 390 px.",
 };
 
 const NOW = Date.now();
@@ -41,7 +44,7 @@ const LEGS: WireTrickInfo = { host: "bluefin", id: "legs", name: "Browser leg", 
 const TRACKER: WireTrickInfo = { host: "bluefin", id: "tracker", name: "Tracker", icon: "file", on: true, state: "ok", places: ["belt", "session"] };
 const TRIAGE: WireTrickInfo = { host: "bluefin", id: "triage", name: "Triage", icon: "eye", on: true, state: "ok", places: ["belt"] };
 const QUIET: WireTrickInfo = { host: "bluefin", id: "quiet", name: "Quiet", icon: "bell", on: true, state: "ok", places: ["belt"] };
-const SPEND: WireTrickInfo = { host: "bluefin", id: "spend", name: "Spend", icon: "tag", on: true, state: "ok", places: ["status"] };
+const SPEND: WireTrickInfo = { host: "bluefin", id: "spend", name: "Spend", icon: "tag", on: true, state: "ok", places: ["status", "dashboard", "tabbar"] };
 
 const LEGS_ROWS: ListNode = {
   kind: "list",
@@ -88,9 +91,17 @@ const LEGS_SESSION = wire("legs", {
 });
 const TRACKER_SESSION = wire("tracker", { at: "session", id: "due", name: "Tracker", tone: "ok", subtitle: "M94 slice 03 next", view: TRACKER_VIEW });
 
+/** The `dashboard` and `tabbar` items: the legs trick opens its session, Spend has none and is inert, Triage is warn. */
+const LEGS_TILE = wire("legs", { at: "dashboard", id: "dashboard", item: { icon: "flask", label: "Legs", badge: "23/34", tone: "accent" } });
+const TRACKER_TILE = wire("tracker", { at: "dashboard", id: "dashboard", item: { icon: "file", label: "Tracker", badge: "M96" } });
+const SPEND_TILE = wire("spend", { at: "dashboard", id: "dashboard", item: { label: "Spend", badge: "$7.42" } });
+const LEGS_TAB = wire("legs", { at: "tabbar", id: "tabbar", item: { icon: "flask", label: "Legs", badge: 1, tone: "accent" } });
+const TRIAGE_TAB = wire("triage", { at: "tabbar", id: "tabbar", item: { icon: "eye", label: "Triage", badge: 3, tone: "warn" } });
+const SPEND_TAB = wire("spend", { at: "tabbar", id: "tabbar", item: { label: "Spend" } });
+
 /** A store over a stand-in bridge that answers a tap after a moment, so the busy state is seen. */
 function placesStore(): TricksStore {
-  const parts = [LEGS_BELT, TRACKER_BELT, TRIAGE_BELT, QUIET_BELT, LEGS_SESSION, TRACKER_SESSION, LEGS_STATUS, SPEND_STATUS];
+  const parts = [LEGS_BELT, TRACKER_BELT, TRIAGE_BELT, QUIET_BELT, LEGS_SESSION, TRACKER_SESSION, LEGS_STATUS, SPEND_STATUS, LEGS_TILE, TRACKER_TILE, SPEND_TILE, LEGS_TAB, TRIAGE_TAB, SPEND_TAB];
   return createTricksStore({
     fetchTricks: () => Promise.resolve({ rev: 1, tricks: [LEGS, TRACKER, TRIAGE, QUIET, SPEND], parts, present: parts.map(partKey) }),
     tapTrick: (_host, _trick, body) => new Promise<TrickTapReply>((resolve) => setTimeout(() => resolve({ rid: body.rid, code: "ok" }), 1500)),
@@ -175,6 +186,34 @@ function StatusLine({ parts, width = 390, own = true }: { parts: readonly WireTr
   );
 }
 
+/** The Dashboard's strip of tiles, over the places store: Legs opens its session, the others are inert. */
+function Tiles() {
+  const store = useStore();
+  return <TrickDashboardStrip sessions={[LEGS_PANE]} onOpenSession={IGNORE} store={store} />;
+}
+
+/** The Dashboard's bottom bar with the Hill and the tricks' items, as `routes/home.tsx` builds it. */
+function Bar({ crew }: { crew: boolean }) {
+  const store = useStore();
+  const tabbarParts = useTrickParts("tabbar", undefined, store);
+  return (
+    <DashboardTabBar
+      view="dashboard"
+      onSelect={IGNORE}
+      crew={crew}
+      files
+      blockedCount={2}
+      readyUnseen={false}
+      hill={4}
+      onOpenHill={IGNORE}
+      tabbarParts={tabbarParts}
+      sessions={[LEGS_PANE]}
+      onOpenSession={IGNORE}
+      store={store}
+    />
+  );
+}
+
 function Screen() {
   const store = useStore();
   return (
@@ -235,6 +274,23 @@ export function TrickPlacesSection(): ReactNode {
         </Card>
         <Card state="trick-status-stale" label="7 · stale, tone gone">
           <StatusLine parts={[LEGS_STATUS, SPEND_OLD]} />
+        </Card>
+      </Group>
+      <Group title="The Dashboard">
+        <Card state="trick-dashboard-tiles" label="7b · tiles at the top of the Dashboard">
+          <Glass className="p-0">
+            <Tiles />
+          </Glass>
+        </Card>
+        <Card state="trick-tabbar-items" label="7c · bar items after the Hill, solo">
+          <Glass className="p-0">
+            <Bar crew={false} />
+          </Glass>
+        </Card>
+        <Card state="trick-tabbar-items-crew" label="7d · bar items after the Hill, crew, scrolling">
+          <Glass className="p-0">
+            <Bar crew />
+          </Glass>
         </Card>
       </Group>
       <Group title="The trick session">

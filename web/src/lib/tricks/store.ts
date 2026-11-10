@@ -269,7 +269,7 @@ export function useTricksState(store: TricksStore = tricksStore): TricksState {
 
 /** The place an `at` names, read by its prefix. The match inside it is the place's own business. A bare `tab` and `tab:<match>` are both `tab`. */
 export function placeOfAt(at: string): PlaceKind | undefined {
-  if (at === "belt" || at === "session" || at === "dashboard" || at === "tab" || at === "status") return at;
+  if (at === "belt" || at === "session" || at === "dashboard" || at === "tab" || at === "status" || at === "tabbar") return at;
   if (at.startsWith("tab:")) return "tab";
   if (at.startsWith("view:")) return "view";
   return undefined;

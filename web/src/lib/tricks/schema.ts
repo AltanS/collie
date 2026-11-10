@@ -123,6 +123,8 @@ export const CHIP_TEXT_MAX = 60;
 export const SHORT_MAX = 12;
 /** A `status` part's chip text: the face word's cap, as the line it sits in is one 390 px row. */
 export const STATUS_TEXT_MAX = 12;
+/** An `item`'s `label` (a `dashboard` tile's or a `tabbar` item's short name), truncated on the glass. */
+export const ITEM_LABEL_MAX = 16;
 /** A `para`'s `bullet` marker (`-`, `1.`, `12.`). */
 export const BULLET_MAX = 4;
 /** One `line`, a mono screen line; a tab is allowed. */
@@ -472,11 +474,12 @@ export type SessionStatus = (typeof SESSION_STATUSES)[number];
  * DECISION: the manifest declares kinds, not whole `at` strings, so a trick may compute its matches at
  * run time.
  */
-export const PLACE_KINDS = ["belt", "session", "tab", "view", "dashboard", "status"] as const;
+export const PLACE_KINDS = ["belt", "session", "tab", "view", "dashboard", "status", "tabbar"] as const;
 export type PlaceKind = (typeof PLACE_KINDS)[number];
 /**
  * The places a parser call with no `places` accepts: every kind (step 3). Parsing is not drawing: this
- * Collie draws `belt`, `session` and `status`; the others are held, and a slice draws them in the shape parsed.
+ * Collie draws `belt`, `session`, `status`, `dashboard` and `tabbar`; the others are held, and a slice
+ * draws them in the shape parsed.
  */
 export const NEAR_PLACES: readonly PlaceKind[] = PLACE_KINDS;
 /** The place kinds a later slice builds and a caller may refuse as "later" by leaving them out of `places`. None since step 3. */
@@ -850,6 +853,32 @@ export interface StatusPart {
   id: string;
   chip: StatusChip;
 }
+/**
+ * A trick's item in a fixed place of the app's own chrome (2026-11-10): a tile in the Dashboard's strip
+ * (`dashboard`) or an item in the Dashboard's bottom bar (`tabbar`). An icon over a short name, an
+ * optional badge (a count or a short word) and a tone. No `intent` and no status shape: the item is not
+ * a control. A tap opens the trick's session when it has one.
+ */
+export interface PlaceItem {
+  icon?: TrickIcon;
+  /** 1 to {@link ITEM_LABEL_MAX} characters. */
+  label: string;
+  /** A count from 0 to {@link COUNT_MAX} (0 draws no badge), or 1 to {@link BADGE_TEXT_MAX} characters. */
+  badge?: number | string;
+  tone?: Tone;
+}
+/** One tile in the strip at the top of the Dashboard. One per trick. */
+export interface DashboardPart {
+  at: "dashboard";
+  id: string;
+  item: PlaceItem;
+}
+/** One item in the Dashboard's bottom bar, after the Hill, in the scrolling run. One per trick. */
+export interface TabbarPart {
+  at: "tabbar";
+  id: string;
+  item: PlaceItem;
+}
 export interface SessionPart {
   at: "session";
   id: string;
@@ -892,12 +921,7 @@ export interface ViewPart {
   icon?: TrickIcon;
   view: View;
 }
-export interface DashboardPart {
-  at: "dashboard";
-  id: string;
-  view: View;
-}
-export type TrickPart = BeltPart | SessionPart | TabPart | TabMarkPart | ViewPart | DashboardPart | StatusPart;
+export type TrickPart = BeltPart | SessionPart | TabPart | TabMarkPart | ViewPart | DashboardPart | StatusPart | TabbarPart;
 
 /** A part the parser accepted, with its place kind and its match read out of `at`. */
 export type ParsedPart =
@@ -907,7 +931,8 @@ export type ParsedPart =
   | { place: "tab"; part: TabMarkPart; tabMatch: TabMatch }
   | { place: "tab"; part: TabPart; tabMatch?: undefined }
   | { place: "view"; part: ViewPart; match: SessionMatch }
-  | { place: "dashboard"; part: DashboardPart };
+  | { place: "dashboard"; part: DashboardPart }
+  | { place: "tabbar"; part: TabbarPart };
 
 // ── Types: decisions (the Hill's decision shape, as a trick lists it) ───────────────────────
 
@@ -1954,7 +1979,7 @@ export function matchesTab(match: TabMatch, tab: { title: string; space?: string
 
 /** What an `at` string says: the place kind, and its match when it has one. */
 export type AtReading =
-  | { place: "belt" | "session" | "dashboard" | "status" }
+  | { place: "belt" | "session" | "dashboard" | "status" | "tabbar" }
   | { place: "tab"; tabMatch: TabMatch }
   /** A bare `tab`: the trick's own tab entry. */
   | { place: "tab"; tabMatch?: undefined }
@@ -1969,7 +1994,7 @@ export interface AtProblem {
 /** Read a part's `at`. */
 export function parseAt(at: string): AtReading | AtProblem {
   if (codePoints(at) > AT_MAX) return { code: "place", reason: `"at" is longer than ${AT_MAX} characters.` };
-  if (at === "belt" || at === "session" || at === "dashboard" || at === "status") return { place: at };
+  if (at === "belt" || at === "session" || at === "dashboard" || at === "status" || at === "tabbar") return { place: at };
   if (at === "tab") return { place: "tab" };
   if (at.startsWith("tab:")) {
     const read = parseTabMatch(at.slice("tab:".length));
@@ -1984,7 +2009,7 @@ export function parseAt(at: string): AtReading | AtProblem {
   if (later !== undefined) return { code: "later", reason: later };
   const removed = reasonOf(REMOVED_PLACES, word);
   if (removed !== undefined) return { code: "place", reason: removed };
-  return { code: "place", reason: `"${at}" is not a place. Use belt, status, session, tab, tab:<tabmatch>, view:<match> or dashboard (later: header.line, menu:<match>, settings).` };
+  return { code: "place", reason: `"${at}" is not a place. Use belt, status, session, tab, tab:<tabmatch>, view:<match>, dashboard or tabbar (later: header.line, menu:<match>, settings).` };
 }
 
 // ── The view tree reader ─────────────────────────────────────────────────────────────────────
@@ -2533,6 +2558,48 @@ function readStatusChip(f: Fields): StatusChip {
   return chip;
 }
 
+/**
+ * The `item` of a `dashboard` or a `tabbar` part: `label` (1 to {@link ITEM_LABEL_MAX} characters), `icon`,
+ * `badge` and `tone`. DECISION: no `intent` (the item is not a control; a tap opens the trick's session when
+ * it has one), and no key that would draw a status shape. `badge` is a count from 0 to {@link COUNT_MAX} or 1
+ * to {@link BADGE_TEXT_MAX} characters, the status chip's cap, so the corner it sits in stays small.
+ */
+function readPlaceItem(f: Fields, place: "dashboard" | "tabbar"): PlaceItem {
+  const what = place === "dashboard" ? "A Dashboard tile" : "A bottom bar item";
+  const own = (key: string): { code: RefusalCode; reason: string } | undefined => {
+    if (isOneOf(STATUS_MARK_KEYS, key)) return { code: "status", reason: `"${key}" would draw Collie's status mark. ${what} draws its own icon and words; use "tone".` };
+    if (key === "intent") return { code: "target", reason: `${what} takes no intent: it is not a control. A tap opens the trick's session when it has one.` };
+    if (key === "text") return { code: "unknown-key", reason: '"text" is "label" in an item, its short name.' };
+    return undefined;
+  };
+  f.keys(SUB_KEYS.item, own);
+  const item: PlaceItem = { label: f.text("label", { max: ITEM_LABEL_MAX, required: true }) ?? "" };
+  const icon = f.icon("icon");
+  const tone = f.tone();
+  if (icon !== undefined) item.icon = icon;
+  if (tone !== undefined) item.tone = tone;
+  const badge = readItemBadge(f);
+  if (badge !== undefined) item.badge = badge;
+  return item;
+}
+
+/** An item's `badge`: a whole number from 0 to {@link COUNT_MAX}, or text of 1 to {@link BADGE_TEXT_MAX} characters. */
+function readItemBadge(f: Fields): number | string | undefined {
+  const raw = f.obj.badge;
+  if (raw === undefined) return undefined;
+  const count = asJsonNumber(raw);
+  if (count !== undefined) {
+    if (Number.isInteger(count) && count >= 0 && count <= COUNT_MAX) return count;
+    f.push("range", "badge", `"badge" as a number is a count from 0 to ${COUNT_MAX}.`);
+    return undefined;
+  }
+  if (asJsonString(raw) === undefined) {
+    f.push("type", "badge", `"badge" is a count from 0 to ${COUNT_MAX}, or text of 1 to ${BADGE_TEXT_MAX} characters.`);
+    return undefined;
+  }
+  return f.text("badge", { max: BADGE_TEXT_MAX, required: true });
+}
+
 /** A chip attribute of the tree's kind, as text, by the tree's own rule. */
 function readChipAttr(f: Fields, key: string, rule: AttrRule): string | undefined {
   const raw = f.obj[key];
@@ -2576,6 +2643,8 @@ export const SUB_KEYS = {
   action: ["id", "label", "intent", "value", "icon", "disabled"],
   /** The chip of a `status` part: a tree chip's text and four of its attributes, never `state`, `current` or `short`. */
   chip: ["text", "icon", "tone", "at", "clock"],
+  /** The item of a `dashboard` or a `tabbar` part: an icon over a short name, a badge, a tone. */
+  item: ["icon", "label", "badge", "tone"],
 } as const;
 
 export const PART_KEYS = {
@@ -2583,8 +2652,9 @@ export const PART_KEYS = {
   session: ["at", "id", "name", "icon", "tone", "subtitle", "badge", "progress", "actions", "view"],
   tab: ["at", "id", "mark"],
   view: ["at", "id", "title", "icon", "view"],
-  dashboard: ["at", "id", "view"],
+  dashboard: ["at", "id", "item"],
   status: ["at", "id", "chip"],
+  tabbar: ["at", "id", "item"],
 } as const satisfies { readonly [K in PlaceKind]: readonly string[] };
 
 /** The keys of a trick's own tab, the bare `tab` (slice 06). `PART_KEYS.tab` is the tab mark's. */
@@ -2597,6 +2667,7 @@ const PLACE_WORDS = {
   view: "a view part",
   dashboard: "a dashboard part",
   status: "a status part",
+  tabbar: "a tabbar part",
 } as const satisfies { readonly [K in PlaceKind]: string };
 
 export interface ParseTrickDocumentOptions {
@@ -2680,6 +2751,8 @@ export function parseTrickDocument(raw: JsonValue | undefined, opts: ParseTrickD
   const seen = new Set<string>();
   let belt = false;
   let status = false;
+  let dashboard = false;
+  let tabbar = false;
   list.forEach((value, i) => {
     const path = pointer("/parts", i);
     const sink: Refusal[] = [];
@@ -2692,6 +2765,12 @@ export function parseTrickDocument(raw: JsonValue | undefined, opts: ParseTrickD
     if (parsed.part?.place === "status" && status) {
       sink.push({ code: "duplicate", path: pointer(path, "at"), reason: "A trick has one status item. This is a second one." });
     }
+    if (parsed.part?.place === "dashboard" && dashboard) {
+      sink.push({ code: "duplicate", path: pointer(path, "at"), reason: "A trick has one Dashboard tile. This is a second one." });
+    }
+    if (parsed.part?.place === "tabbar" && tabbar) {
+      sink.push({ code: "duplicate", path: pointer(path, "at"), reason: "A trick has one bottom bar item. This is a second one." });
+    }
     if (id !== undefined) seen.add(id);
     if (sink.length > 0 || parsed.part === undefined) {
       for (const r of sink) refusals.push(id === undefined ? r : { ...r, part: id });
@@ -2700,6 +2779,8 @@ export function parseTrickDocument(raw: JsonValue | undefined, opts: ParseTrickD
     }
     if (parsed.part.place === "belt") belt = true;
     if (parsed.part.place === "status") status = true;
+    if (parsed.part.place === "dashboard") dashboard = true;
+    if (parsed.part.place === "tabbar") tabbar = true;
     result.parts.push(parsed.part);
   });
   readDecisions(top, result);
@@ -2768,7 +2849,11 @@ function readPart(value: JsonValue, path: string, sink: Refusal[], opts: ParseTr
   }
   const ownTab = reading.place === "tab" && reading.tabMatch === undefined;
   const f = new Fields(obj, path, sink, ownTab ? "a tab part" : PLACE_WORDS[place]);
-  f.keys(ownTab ? OWN_TAB_KEYS : PART_KEYS[place]);
+  f.keys(ownTab ? OWN_TAB_KEYS : PART_KEYS[place], (key) => {
+    // The first schema's `dashboard` took a whole view, and nothing drew it. It is one item now.
+    if (place === "dashboard" && key === "view") return { code: "removed", reason: 'A dashboard part draws one tile now, not a view: give it an "item" with "label", and "icon", "badge" or "tone".' };
+    return undefined;
+  });
   const kinds = opts.kinds ?? NODE_KINDS;
   const part = readPartBody(reading, atRaw, id ?? "", f, kinds);
   return { id, part };
@@ -2810,7 +2895,11 @@ function readPartBody(reading: AtReading, at: string, id: string, f: Fields, kin
       return { place: "view", part, match: reading.match };
     }
     case "dashboard":
-      return { place: "dashboard", part: { at: "dashboard", id, view: view() } };
+    case "tabbar": {
+      const placeFields = f.object("item", "an item", true);
+      const item = placeFields === undefined ? { label: "" } : readPlaceItem(placeFields, reading.place);
+      return reading.place === "dashboard" ? { place: "dashboard", part: { at: "dashboard", id, item } } : { place: "tabbar", part: { at: "tabbar", id, item } };
+    }
   }
 }
 

@@ -2,7 +2,7 @@ import { cleanup, render, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
-import { TabBar } from "./tab-bar";
+import { TabBar, TabBarExtraItem, type TabBarExtra, type TabBarLink } from "./tab-bar";
 
 type V = "panes" | "focus" | "changes";
 
@@ -83,5 +83,91 @@ describe("TabBar", () => {
       expect(b.className).toMatch(/\bborder-t-2\b/u);
       expect(b.className).toMatch(/\bmin-h-14\b/u);
     }
+  });
+});
+
+describe("TabBar's links and its scrolling run (2026-11-10)", () => {
+  const ITEMS = [
+    { value: "panes" as const, label: "Panes", icon: <span /> },
+    { value: "focus" as const, label: "Focus", icon: <span /> },
+  ];
+  function renderModes(opts: { badge?: number; extras?: TabBarExtra[]; onHill?: () => void }) {
+    const hill: TabBarLink = { id: "hill", label: "Hill", icon: <span />, badge: opts.badge, badgeLabel: `${opts.badge ?? 0} waiting`, onSelect: opts.onHill ?? vi.fn() };
+    const { container } = render(<TabBar<"panes" | "focus"> label="Views" active="focus" onSelect={vi.fn()} items={ITEMS} links={[hill]} extras={opts.extras} />);
+    const nav = container.querySelector<HTMLElement>('[data-slot="tab-bar"]')!;
+    return { nav, bar: within(container), link: container.querySelector<HTMLElement>('[data-slot="tab-link"]')! };
+  }
+  const extra = (key: string, onSelect?: () => void): TabBarExtra => ({ key, node: <TabBarExtraItem label={key} icon={<span />} name={key} badge={3} onSelect={onSelect} /> });
+
+  it("shares the width equally with no extras: the tabs and the link are flex-1, and nothing scrolls", () => {
+    const { nav } = renderModes({});
+    expect(nav.dataset.mode).toBe("equal");
+    for (const cell of nav.querySelectorAll<HTMLElement>('[data-slot="tab"], [data-slot="tab-link"]')) expect(cell.className).toMatch(/\bflex-1\b/u);
+    expect(nav.querySelector('[data-slot="tab-bar-extras"]')).toBeNull();
+    expect(nav.querySelector('[data-slot="tab-bar-divider"]')).toBeNull();
+  });
+
+  it("pins the tabs and the link at a fixed width with extras, and puts the extras after a divider in a scroller", () => {
+    const { nav } = renderModes({ extras: [extra("legs"), extra("tracker")] });
+    expect(nav.dataset.mode).toBe("scroll");
+    for (const cell of nav.querySelectorAll<HTMLElement>('[data-slot="tab"], [data-slot="tab-link"]')) {
+      expect(cell.className).toMatch(/\bw-16\b/u);
+      expect(cell.className).toMatch(/\bshrink-0\b/u);
+      expect(cell.className).not.toMatch(/\bflex-1\b/u);
+    }
+    const run = nav.querySelector<HTMLElement>('[data-slot="tab-bar-extras"]')!;
+    expect(run.className).toMatch(/\boverflow-x-auto\b/u);
+    expect(run.className).toContain("[scrollbar-width:none]");
+    // The house fade wraps the run (ui/overflow-edges.tsx), and the divider sits before it.
+    expect(run.closest("[data-overflow]")).not.toBeNull();
+    expect(nav.querySelector('[data-slot="tab-bar-divider"]')!.compareDocumentPosition(run) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect([...run.querySelectorAll('[data-slot="tab-extra"]')].map((el) => el.querySelector(".max-w-full.truncate")?.textContent)).toEqual(["legs", "tracker"]);
+  });
+
+  it("never draws the link as the selected tab, in either mode", () => {
+    for (const extras of [undefined, [extra("legs")]]) {
+      const { link } = renderModes({ badge: 2, extras });
+      expect(link).not.toHaveAttribute("aria-current");
+      expect(link.className).not.toMatch(/\bborder-foreground\b/u);
+      expect(link.className).toMatch(/\bborder-t-2\b/u);
+      cleanup();
+    }
+  });
+
+  it("gives the link the red count only while it is above zero, and its words to a screen reader", () => {
+    const zero = renderModes({ badge: 0 });
+    expect(zero.link.querySelector('[data-slot="tab-badge"]')).toBeNull();
+    expect(zero.link).toHaveAccessibleName("Hill");
+    cleanup();
+    const three = renderModes({ badge: 3 });
+    expect(three.link.querySelector('[data-slot="tab-badge"]')).toHaveTextContent("3");
+    expect(three.link.querySelector('[data-slot="tab-badge"]')!.className).toMatch(/\bbg-status-blocked\b/u);
+    expect(three.link).toHaveAccessibleName("Hill, 3 waiting");
+  });
+
+  it("hands a link's tap to its own handler, never to onSelect", async () => {
+    const onHill = vi.fn();
+    const { link } = renderModes({ onHill });
+    await userEvent.click(link);
+    expect(onHill).toHaveBeenCalledOnce();
+  });
+
+  it("draws an extra's badge quiet and outlined, never red, and an extra with no tap as no control", async () => {
+    const onSelect = vi.fn();
+    const { nav } = renderModes({ extras: [extra("legs", onSelect), extra("quiet")] });
+    const [legs, quiet] = [...nav.querySelectorAll<HTMLElement>('[data-slot="tab-extra"]')];
+    const badge = legs!.querySelector<HTMLElement>('[data-slot="tab-extra-badge"]')!;
+    expect(badge.className).toMatch(/\bborder-border\b/u);
+    expect(badge.className).not.toMatch(/\bbg-status-blocked\b/u);
+    expect(legs!.tagName).toBe("BUTTON");
+    await userEvent.click(legs!);
+    expect(onSelect).toHaveBeenCalledOnce();
+    expect(quiet!.tagName).toBe("SPAN");
+    expect(quiet!.textContent).toContain("quiet");
+  });
+
+  it("keeps every cell the same 56px row in both modes, so the bar's height never changes", () => {
+    const { nav } = renderModes({ extras: [extra("legs")] });
+    for (const cell of nav.querySelectorAll<HTMLElement>('[data-slot="tab"], [data-slot="tab-link"], [data-slot="tab-extra"]')) expect(cell.className).toMatch(/\bmin-h-14\b/u);
   });
 });

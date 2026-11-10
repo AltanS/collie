@@ -25,6 +25,7 @@ import {
 import {
   ACTION_ICONS,
   BUTTON_LABEL_MAX,
+  COUNT_MAX,
   DECISIONS_MAX,
   DECISION_KEYS,
   DECISION_OPTION_KEYS,
@@ -32,6 +33,7 @@ import {
   DOCUMENT_MAX_BYTES,
   DRAW_TONES,
   FRESH_MAX_MS,
+  ITEM_LABEL_MAX,
   LATER_PLACES,
   NEAR_PLACES,
   NODE_ATTRS,
@@ -728,9 +730,10 @@ describe("matches", () => {
       ["view:*", "view"],
       ["dashboard", "dashboard"],
       ["status", "status"],
+      ["tabbar", "tabbar"],
     ];
     for (const [at, kind] of expected) expect(place(at), at).toBe(kind);
-    for (const bad of ["Status", "status:x", "Belt", "view:", "tab:", "tab-mark", "header", "header.line", "menu:*", "settings", "view", `view:${"x".repeat(160)}`]) expect(place(bad), bad).toBeUndefined();
+    for (const bad of ["Status", "status:x", "tabbar:x", "Tabbar", "tab-bar", "Belt", "view:", "tab:", "tab-mark", "header", "header.line", "menu:*", "settings", "view", `view:${"x".repeat(160)}`]) expect(place(bad), bad).toBeUndefined();
   });
 
   it("refuses header.line, menu:<match> and settings as later, with the place named", () => {
@@ -748,7 +751,7 @@ describe("matches", () => {
     expect(parseAt("nowhere")).toMatchObject({ code: "place" });
   });
 
-  it("parses every place by default: belt, session, tab:<match>, tab, view:<match>, dashboard, status", () => {
+  it("parses every place by default: belt, session, tab:<match>, tab, view:<match>, dashboard, status, tabbar", () => {
     const doc = {
       v: 1,
       parts: [
@@ -757,13 +760,14 @@ describe("matches", () => {
         { at: "tab:fix", id: "c", mark: { label: "2" } },
         { at: "tab", id: "d", title: "Board", space: "collie*", icon: "flask", view: [{ kind: "para", text: "x" }] },
         { at: "view:agent:claude", id: "e", title: "Legs", view: [{ kind: "para", text: "x" }] },
-        { at: "dashboard", id: "f", view: [{ kind: "para", text: "x" }] },
+        { at: "dashboard", id: "f", item: { label: "Tracker" } },
         { at: "status", id: "g", chip: { text: "$7.42" } },
+        { at: "tabbar", id: "h", item: { label: "Legs" } },
       ],
     };
     const parsed = parseTrickDocument(doc);
     expect(parsed.refusals).toEqual([]);
-    expect(parsed.parts.map((p) => p.place)).toEqual(["belt", "session", "tab", "tab", "view", "dashboard", "status"]);
+    expect(parsed.parts.map((p) => p.place)).toEqual(["belt", "session", "tab", "tab", "view", "dashboard", "status", "tabbar"]);
     const own = parsed.parts[3];
     expect(own?.part).toEqual({ at: "tab", id: "d", title: "Board", space: "collie*", icon: "flask", view: [{ kind: "para", text: "x" }] });
     expect(own?.place === "tab" && own.tabMatch).toBeUndefined();
@@ -899,6 +903,105 @@ describe("the status place", () => {
     for (const key of SUB_KEYS.chip.filter((k) => k !== "text")) expect(NODE_ATTRS.chip).toContain(key);
     expect(SUB_KEYS.chip).not.toContain("state");
     expect(SUB_KEYS.chip).not.toContain("intent");
+  });
+});
+
+describe("the dashboard and tabbar places", () => {
+  const item = (at: "dashboard" | "tabbar", body: JsonValue, extra: JsonObject = {}) => parseTrickDocument({ v: 1, parts: [{ at, id: "i", item: body, ...extra }] });
+  const refusalsOf = (doc: ReturnType<typeof parseTrickDocument>) => doc.refusals.map((r) => [r.code, r.path]);
+  const both = ["dashboard", "tabbar"] as const;
+
+  it.each(both)("reads a %s item with its icon, label, badge and tone, as written", (at) => {
+    const parsed = item(at, { icon: "flask", label: "Legs", badge: 3, tone: "accent" });
+    expect(parsed.refusals).toEqual([]);
+    expect(parsed.parts[0]).toEqual({ place: at, part: { at, id: "i", item: { icon: "flask", label: "Legs", badge: 3, tone: "accent" } } });
+    const word = item(at, { label: "Tracker", badge: "M96" });
+    expect(word.refusals).toEqual([]);
+    expect(word.parts[0]?.part).toEqual({ at, id: "i", item: { label: "Tracker", badge: "M96" } });
+  });
+
+  it.each(both)("takes a %s label of 16 characters and refuses 17, an empty one and none", (at) => {
+    expect(ITEM_LABEL_MAX).toBe(16);
+    expect(item(at, { label: "x".repeat(ITEM_LABEL_MAX) }).refusals).toEqual([]);
+    const long = item(at, { label: "x".repeat(ITEM_LABEL_MAX + 1) });
+    expect(refusalsOf(long)).toEqual([["text", "/parts/0/item/label"]]);
+    expect(long.refusedParts).toEqual(["i"]);
+    expect(refusalsOf(item(at, { label: "" }))).toEqual([["text", "/parts/0/item/label"]]);
+    expect(refusalsOf(item(at, { icon: "flask" }))).toEqual([["missing", "/parts/0/item/label"]]);
+  });
+
+  it.each(both)("takes a %s badge of 0 to 9999 or 1 to 12 characters, and refuses the rest", (at) => {
+    expect(item(at, { label: "a", badge: 0 }).refusals).toEqual([]);
+    expect(item(at, { label: "a", badge: COUNT_MAX }).refusals).toEqual([]);
+    expect(item(at, { label: "a", badge: "x".repeat(12) }).refusals).toEqual([]);
+    expect(refusalsOf(item(at, { label: "a", badge: COUNT_MAX + 1 }))).toEqual([["range", "/parts/0/item/badge"]]);
+    expect(refusalsOf(item(at, { label: "a", badge: -1 }))).toEqual([["range", "/parts/0/item/badge"]]);
+    expect(refusalsOf(item(at, { label: "a", badge: 1.5 }))).toEqual([["range", "/parts/0/item/badge"]]);
+    expect(refusalsOf(item(at, { label: "a", badge: "x".repeat(13) }))).toEqual([["text", "/parts/0/item/badge"]]);
+    expect(refusalsOf(item(at, { label: "a", badge: "" }))).toEqual([["text", "/parts/0/item/badge"]]);
+    expect(refusalsOf(item(at, { label: "a", badge: true }))).toEqual([["type", "/parts/0/item/badge"]]);
+  });
+
+  it.each(both)("refuses on a %s item a state, an intent, text and an unknown key, with the reason for each", (at) => {
+    const state = item(at, { label: "a", state: "done" });
+    expect(refusalsOf(state)).toEqual([["status", "/parts/0/item/state"]]);
+    expect(state.refusals[0]?.reason).toContain("status mark");
+    const intent = item(at, { label: "a", intent: "open" });
+    expect(refusalsOf(intent)).toEqual([["target", "/parts/0/item/intent"]]);
+    expect(intent.refusals[0]?.reason).toContain("not a control");
+    expect(refusalsOf(item(at, { label: "a", text: "x" }))).toEqual([["unknown-key", "/parts/0/item/text"]]);
+    expect(refusalsOf(item(at, { label: "a", clock: "ago" }))).toEqual([["unknown-key", "/parts/0/item/clock"]]);
+    expect(refusalsOf(item(at, { label: "a", tone: "blocked" }))[0]?.[1]).toBe("/parts/0/item/tone");
+    expect(refusalsOf(item(at, { label: "a", icon: "rocket" }))).toEqual([["icon", "/parts/0/item/icon"]]);
+  });
+
+  it.each(both)("refuses a %s part with no item, or a mark or a chip on it", (at) => {
+    expect(refusalsOf(parseTrickDocument({ v: 1, parts: [{ at, id: "i" }] }))).toEqual([["missing", "/parts/0/item"]]);
+    expect(refusalsOf(item(at, { label: "a" }, { mark: { label: "x" } }))).toEqual([["unknown-key", "/parts/0/mark"]]);
+    expect(refusalsOf(item(at, { label: "a" }, { chip: { text: "x" } }))).toEqual([["unknown-key", "/parts/0/chip"]]);
+  });
+
+  it("refuses the first schema's dashboard view, saying it is one item now", () => {
+    const old = parseTrickDocument({ v: 1, parts: [{ at: "dashboard", id: "d", view: [{ kind: "para", text: "x" }] }] });
+    expect(refusalsOf(old)).toEqual([
+      ["removed", "/parts/0/view"],
+      ["missing", "/parts/0/item"],
+    ]);
+    expect(old.refusals[0]?.reason).toContain('"item"');
+    // A view on a tabbar part is a plain unknown key: that place never took one.
+    expect(refusalsOf(item("tabbar", { label: "a" }, { view: [] }))).toEqual([["unknown-key", "/parts/0/view"]]);
+  });
+
+  it.each(both)("allows one %s part per trick: the second is refused alone, the first still draws", (at) => {
+    const parsed = parseTrickDocument({
+      v: 1,
+      parts: [
+        { at, id: "a", item: { label: "one" } },
+        { at, id: "b", item: { label: "two" } },
+        { at: "belt", id: "c", mark: { label: "x" } },
+      ],
+    });
+    expect(parsed.parts.map((p) => p.part.id)).toEqual(["a", "c"]);
+    expect(parsed.refusedParts).toEqual(["b"]);
+    expect(refusalsOf(parsed)).toEqual([["duplicate", "/parts/1/at"]]);
+  });
+
+  it("lets one trick hold a tile and a bar item together", () => {
+    const parsed = parseTrickDocument({ v: 1, parts: [{ at: "dashboard", id: "a", item: { label: "a" } }, { at: "tabbar", id: "b", item: { label: "b" } }] });
+    expect(parsed.refusals).toEqual([]);
+  });
+
+  it.each(both)("refuses a %s part the manifest does not declare", (at) => {
+    expect(refusalsOf(parseTrickDocument({ v: 1, parts: [{ at, id: "i", item: { label: "a" } }] }, { declared: ["belt"] }))).toEqual([["undeclared", "/parts/0/at"]]);
+  });
+
+  it("is in the contract key lists: the places, the parts' keys and the item's keys", () => {
+    expect(PLACE_KINDS).toEqual(expect.arrayContaining(["dashboard", "tabbar"]));
+    expect(NEAR_PLACES).toEqual(expect.arrayContaining(["dashboard", "tabbar"]));
+    expect(PART_KEYS.dashboard).toEqual(["at", "id", "item"]);
+    expect(PART_KEYS.tabbar).toEqual(["at", "id", "item"]);
+    expect(SUB_KEYS.item).toEqual(["icon", "label", "badge", "tone"]);
+    expect(SUB_KEYS.item).not.toContain("intent");
   });
 });
 
@@ -1087,6 +1190,7 @@ describe("parseManifest", () => {
     expect(bad({ icon: "rocket" }).refusals.map((r) => r.path)).toEqual(["/icon"]);
     expect(bad({ places: ["belt", "belt"] }).refusals.map((r) => r.code)).toEqual(["duplicate"]);
     expect(bad({ places: ["dashboard"] }).refusals).toEqual([]);
+    expect(bad({ places: ["dashboard", "tabbar"] }).refusals).toEqual([]);
     expect(bad({ places: ["settings"] }).refusals.map((r) => r.code)).toEqual(["later", "place"]);
     expect(bad({ places: ["settings"] }).manifest).toBeUndefined();
     expect(bad({ places: ["tab-mark"] }).refusals[0]?.reason).toContain("tab:<tabmatch>");

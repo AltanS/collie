@@ -702,6 +702,14 @@ One JSON document on stdout, at most 64 KiB, within 10 seconds:
 
 - Each part has an \`at\` (a place listed in \`places\` in \`trick.toml\`) and an \`id\` unique in the
   document. A part that does not parse is refused alone; the others still draw.
+- The places a part may name, each listed in \`places\` when used: \`belt\` (a mark at the end of the
+  Belt: \`mark\` with \`icon\`, \`label\`, \`badge\`, \`tone\`, \`intent\`), \`status\` (a chip in the
+  status line above the Belt: \`chip\` with \`text\`, \`icon\`, \`tone\`), \`session\` (a session of its
+  own, with a \`view\`), \`dashboard\` (a tile in the strip at the top of the Dashboard) and \`tabbar\`
+  (an item in the Dashboard's bottom bar, after the Hill). A \`dashboard\` and a \`tabbar\` part take
+  one \`item\`: \`{ "label": "Legs", "icon": "flask", "badge": 3, "tone": "ok" }\`, the label 1 to 16
+  characters, the badge a count from 0 to 9999 or 1 to 12 characters. An item takes no \`intent\`: a
+  tap opens the trick's session when it has one. One belt, status, dashboard and tabbar part per trick.
 - Optional: \`asOf\` (an ISO 8601 instant) and \`fresh\` (such as \`"90s"\`): past that window the phone
   shows the part's age and drops its tone.
 - A part's \`view\` is a list of nodes \`{ kind, text, attrs, kids }\`, the Tree UI's kinds (\`card\`,

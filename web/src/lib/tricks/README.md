@@ -208,7 +208,8 @@ answered on the Hill.
 | `tab:<match>`   | a mark on the tabs that match             | parses, a later slice draws                 |
 | `tab`           | the trick's own tab in a Space            | parses, a later slice draws                 |
 | `view:<match>`  | a view on the sessions that match         | parses, a later slice draws                 |
-| `dashboard`     | a section of the Dashboard                | parses, a later slice draws                 |
+| `dashboard`     | a tile in the strip at the top of the Dashboard | draws                                 |
+| `tabbar`        | an item in the Dashboard's bottom bar, after the Hill | draws                           |
 | `header.line`   |                                           | refused, code `later`, the place named      |
 | `menu:<match>`  |                                           | refused, code `later`, the place named      |
 | `settings`      |                                           | refused, code `later`, the place named      |
@@ -219,6 +220,20 @@ order. `text` is 1 to 12 characters. There is no `state` and no `intent`: the ch
 and a tap opens the trick's session when it has one. One per trick. When the line is wider than its
 room the trick items hide first, the newest (the last) before the older, and Collie's own items never
 move (`status.ts`, measured by `ModelTag`). Past `fresh` the chip loses its tone and its tap says its age.
+
+A `dashboard` part and a `tabbar` part are `{ at, id, item: { label, icon?, badge?, tone? } }`: one
+item, an icon over a short name. `label` is 1 to 16 characters and truncates on the glass. `badge` is
+a count from 0 to 9999 (0 draws none) or a short word of 1 to 12 characters, drawn as a quiet outlined
+badge, never the red count, which means "waiting on you". `icon` falls back on the manifest's icon.
+There is no `intent` and no status shape: the item is not a control, and a tap opens the trick's
+session when it has one; without one the item is drawn and takes no tap. One of each per trick. A
+`dashboard` tile stands in a strip at the top of the Dashboard view, under the header and above the
+summary line, which scrolls sideways when it overflows and is not drawn at all while no trick has a
+tile (`components/trick-place-items.tsx`, on `ui/tile-strip.tsx`). A `tabbar` item stands in the
+Dashboard's bottom bar after the Hill; with at least one, the bar's views and the Hill keep a fixed
+width and stay pinned, and the items scroll after a thin divider (`ui/tab-bar.tsx`, ADR 0066 and
+ADR 0085 as amended on 2026-11-10). Past `fresh` either loses its tone. The first schema's `dashboard`
+took a whole `view` that nothing drew; a part that still sends one is refused with code `removed`.
 
 A mark is `{ icon, label, badge, tone, intent }`: `label` is the face word, `badge` a count or the dot
 when empty. A mark is always the same control. One with nothing to do is the same button,

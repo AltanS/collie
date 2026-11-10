@@ -1404,6 +1404,8 @@ export const en = {
   "home.tabs.blocked.one": "{count} blocked",
   "home.tabs.blocked.other": "{count} blocked",
   "home.tabs.unseen": "finished panes unseen",
+  "home.tabs.hill.one": "{count} Decision waits on you",
+  "home.tabs.hill.other": "{count} Decisions wait on you",
   "home.changes.listAria": "Changes by workspace",
   "home.changes.loading": "Reading…",
   "home.changes.clean": "No changes",
@@ -3297,8 +3299,9 @@ export const en = {
   "settings.tricks.place.tab-mark": "tab mark",
   "settings.tricks.place.tab": "tab",
   "settings.tricks.place.view": "view",
-  "settings.tricks.place.dashboard": "dashboard",
+  "settings.tricks.place.dashboard": "Dashboard",
   "settings.tricks.place.status": "status",
+  "settings.tricks.place.tabbar": "Bottom bar",
   "settings.tricks.place.header.line": "header",
   "settings.tricks.place.menu": "menu",
   "settings.tricks.place.settings": "settings",
@@ -3447,6 +3450,7 @@ export const PENDING_TRANSLATION = [
   "settings.tricks.place.view",
   "settings.tricks.place.dashboard",
   "settings.tricks.place.status",
+  "settings.tricks.place.tabbar",
   "settings.tricks.place.header.line",
   "settings.tricks.place.menu",
   "settings.tricks.place.settings",
@@ -3606,6 +3610,8 @@ export const PENDING_TRANSLATION = [
   "hill.media.unavailable",
   "hill.media.alt",
   "hill.media.label",
+  "home.tabs.hill.one",
+  "home.tabs.hill.other",
 ] as const satisfies readonly MessageKey[];
 
 /** A key a bundle may leave out until the translation pass. */
