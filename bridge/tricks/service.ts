@@ -247,6 +247,11 @@ interface TrickRuntime {
   lastError?: string;
   /** The last document's refusals. */
   docRefusals: Refusal[];
+  /**
+   * The last good document listed at least one Decision. On the wire as `decides`, so the phone can say
+   * on the trick's row that its Decisions are not shown while the Hill is switched off. Absent: none yet.
+   */
+  decides?: boolean;
 }
 
 interface Receipt {
@@ -588,6 +593,7 @@ export class TricksService implements TricksSurface {
     const refusals = [...rt.found.refusals, ...rt.docRefusals].slice(0, REFUSALS_MAX);
     if (refusals.length > 0) info.refusals = refusals;
     if (rt.changed) info.changed = true;
+    if (rt.decides === true) info.decides = true;
     if (m?.env !== undefined) info.env = m.env;
     const taken = this.warningsOf.get(id);
     if (this.wantsWarnings(rt) && taken !== undefined && taken.codeHash === rt.found.codeHash && taken.warnings.length > 0) info.warnings = taken.warnings;
@@ -752,6 +758,8 @@ export class TricksService implements TricksSurface {
     // parts do.
     const listRefused = parsed.refusals.some((refusal) => refusal.path === "/decisions" && refusal.decision === undefined);
     const posted = listRefused || !decisionsListed ? [] : (this.deps.decisions?.sync({ ...this.hillTrick(rt), name: manifest.name }, { decisions: parsed.decisions, refusedKeys: parsed.refusedDecisions }) ?? []);
+    // An absent `decisions` key leaves the trick's Decisions as they were, so it leaves this as it was too.
+    if (!listRefused && decisionsListed) rt.decides = parsed.decisions.length > 0;
     // What the tolerant read left out (a node kind or a place this Collie does not draw) is one note on
     // the trick's row; an ignored key is for `collie trick check` and `dev` only.
     const dropped = parsed.notes.filter((note) => note.code === "dropped");

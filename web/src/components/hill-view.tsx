@@ -33,9 +33,9 @@ import { cn } from "@/lib/utils";
  * The header: back to the Dashboard, the Hill's mountain mark, the title, and one line under it that
  * is always there ("3 open · 1 now", or "All clear"), so a count arriving or leaving moves nothing.
  */
-export function HillHeader({ count, nowCount, onBack }: { count: number; nowCount: number; onBack: () => void }) {
+export function HillHeader({ count, nowCount, onBack, off = false }: { count: number; nowCount: number; onBack: () => void; off?: boolean }) {
   useLocale();
-  const line = count === 0 ? t("hill.clear") : nowCount > 0 ? `${tn("hill.open", count)} · ${t("hill.now", { count: nowCount })}` : tn("hill.open", count);
+  const line = off ? t("hill.off.line") : count === 0 ? t("hill.clear") : nowCount > 0 ? `${tn("hill.open", count)} · ${t("hill.now", { count: nowCount })}` : tn("hill.open", count);
   return (
     <RouteHeader
       width="column"
@@ -115,23 +115,53 @@ function ClosedRow({ decision, kept }: { decision: HillDecision; kept: string | 
   );
 }
 
+/** The ridge of the empty hill, one traced line; `mark` puts the resting mark on its top peak. */
+function HillRidge({ mark }: { mark: boolean }) {
+  return (
+    <div aria-hidden className="relative h-[104px] w-[248px]">
+      <svg viewBox="0 0 248 104" className="absolute inset-0 size-full">
+        <path d="M4 100 L58 56 L84 74 L138 26 L170 54 L196 40 L244 100 Z" className="fill-muted stroke-rule" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+      </svg>
+      {/* On the top peak (138, 26): the mark's 52px box, its feet on the ridge line. */}
+      {mark && (
+        <span className="absolute left-[112px] top-[-22px]">
+          <BrandMark size={52} state="rest" />
+        </span>
+      )}
+    </div>
+  );
+}
+
 /** The empty hill: a ridge drawn as one traced line, the mark resting on its top, and the words. */
 function HillClear({ answered }: { answered: number }) {
   return (
     <div data-slot="hill-empty" className="flex flex-col items-center gap-4 pb-2 pt-8 text-center">
-      <div aria-hidden className="relative h-[104px] w-[248px]">
-        <svg viewBox="0 0 248 104" className="absolute inset-0 size-full">
-          <path d="M4 100 L58 56 L84 74 L138 26 L170 54 L196 40 L244 100 Z" className="fill-muted stroke-rule" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
-        </svg>
-        {/* On the top peak (138, 26): the mark's 52px box, its feet on the ridge line. */}
-        <span className="absolute left-[112px] top-[-22px]">
-          <BrandMark size={52} state="rest" />
-        </span>
-      </div>
+      <HillRidge mark />
       <div className="flex flex-col gap-1">
         <p className="text-base font-semibold">{t("hill.empty.title")}</p>
         <p className="text-sm text-muted-foreground">{answered > 0 ? tn("hill.empty.answered", answered) : t("hill.empty.body")}</p>
       </div>
+    </div>
+  );
+}
+
+/**
+ * The Hill switched off (bridge/hill/switch.ts): the bare ridge, nobody on it, the words, and the way
+ * back on, right here, because a stale notification or a bookmark is how a person lands on an off Hill.
+ * The button is the switch in Settings → Alerts; a device that may not write sees it disabled.
+ */
+export function HillOff({ canWrite, busy, onTurnOn }: { canWrite: boolean; busy: boolean; onTurnOn: () => void }) {
+  useLocale();
+  return (
+    <div data-slot="hill-off" className="flex flex-col items-center gap-4 pb-2 pt-8 text-center">
+      <HillRidge mark={false} />
+      <div className="flex flex-col gap-1">
+        <p className="text-base font-semibold">{t("hill.off.title")}</p>
+        <p className="text-sm text-muted-foreground">{t("hill.off.body")}</p>
+      </div>
+      <Button variant="outline" onClick={onTurnOn} disabled={!canWrite || busy}>
+        {t("hill.off.turnOn")}
+      </Button>
     </div>
   );
 }

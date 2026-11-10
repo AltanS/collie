@@ -379,6 +379,11 @@ the person's answer reaches it as the person's own walky message. `media` is up 
 file, caption? }`: `file` names an image in the trick's own folder by a relative path with no `..`
 (`shots/red.png`), and `caption` is up to 80 characters.
 
+With the Hill switched off (`bridge/hill/switch.ts`, Settings → Alerts, `collie hill on|off`) the
+bridge posts, replaces and withdraws none of a trick's Decisions and keeps its map of the posted ones
+as it was. The trick still runs, and its row in Settings → Tricks says its Decisions are not shown.
+The first run after the Hill is back on syncs the list again.
+
 ### Wording a Decision
 
 The person opens the card cold, between other things. The words are `HILL_WRITING` in

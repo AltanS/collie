@@ -14,7 +14,7 @@ import {
 import { noteSnapshotTaken } from "./snapshot-clock";
 import { markDead as markPaneDead, markLive as markPaneLive } from "./liveness";
 import { abortSignalAfter, abortSignalAny } from "./env";
-import { asJsonObject, asJsonString, parseJson, parseJsonObject, type JsonObject, type JsonValue } from "./json";
+import { asJsonBoolean, asJsonObject, asJsonString, parseJson, parseJsonObject, type JsonObject, type JsonValue } from "./json";
 import { readRegistryStatus } from "./theme/registry-status";
 import { readHeldCancelAnswer, readSendReceipts, readSendReply, type SendReply } from "./send-protocol";
 import { readReportContext, type ReportContext } from "./report/context";
@@ -3060,6 +3060,18 @@ export async function tapTrick(host: string, trick: string, body: TapRequest): P
   const reply = readTapReplyTolerant(raw);
   if (reply === undefined) throw new Error(`${path} answered with a body that is not a tap receipt`);
   return reply;
+}
+
+/**
+ * POST /api/hill/switch: switch the Hill on or off for this bridge. Answers the value the switch holds
+ * now. The snapshot carries it too (`hillOff`), so a caller revalidates after a write and draws from
+ * the root data, never from this answer alone.
+ */
+export async function setHillSwitch(on: boolean): Promise<boolean> {
+  const raw = await req<JsonValue>("/api/hill/switch", { method: "POST", body: JSON.stringify({ on }) });
+  const held = asJsonBoolean(asJsonObject(raw)?.on);
+  if (held === undefined) throw new Error("/api/hill/switch answered with a body that is not { on }");
+  return held;
 }
 
 /**
