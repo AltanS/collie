@@ -326,6 +326,7 @@ import { HillService } from "./hill/service.ts";
 import { MorphService } from "./morph/service.ts";
 import { morphDir, MorphStore } from "./morph/store.ts";
 import { hillDir, HillStore } from "./hill/store.ts";
+import { HillSwitch } from "./hill/switch.ts";
 import { hillSessionName, OneLook, walkyPlace, walkySend } from "./hill/walky.ts";
 
 // How often the registry rescans the filesystem for sessions that appeared/disappeared after boot.
@@ -2351,6 +2352,9 @@ const hill = new HillService({
     ready: () => push.enabled && notifyPrefs.current().decisions && !snooze.isMuted() && crew.mode !== "peer",
     send: (message) => void push.send(message),
   }),
+  // The Hill's switch (hill/switch.ts): on by default, `<stateDir>/hill/switch.json` once the phone or
+  // `collie hill on|off` moved it. Read behind a stat check, so a switch needs no restart.
+  hillSwitch: new HillSwitch(cfg.stateDir),
 });
 hill.pruneMedia();
 // Morph: the one screen an agent draws per session (`collie morph show`), and the phone's per-session
@@ -3433,6 +3437,7 @@ const tricks =
         // A trick's decisions go into the hill (M94, M96); `<stateDir>/hill/tricks.json` keeps the map.
         decisions: new TrickHill({
           stateDir: cfg.stateDir,
+          // With the Hill switched off (`hill.isOn()`) a trick's Decisions are not posted, and the map stays.
           hill,
           addressOf: (scopeKey) => scopeKeyAddress(scopeKey, (memberId) => isOwnId(bridgeId, memberId), walkyMemberId ?? LOCAL_MEMBER, hillPlace),
         }),

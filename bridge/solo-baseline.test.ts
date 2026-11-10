@@ -277,6 +277,9 @@ const SNAPSHOT_KEYS = {
   // Not a crew dimension: Morph's revision, absent until a session's Morph is switched on or a screen
   // is shown on this bridge, so a solo body that never used Morph carries no such key.
   morphRev: true,
+  // Not a crew dimension: the Hill's switch, present only while it is off, so a solo body that never
+  // switched it carries no such key and no golden byte moved.
+  hillOff: true,
 } satisfies Record<keyof SnapshotResponse, true>;
 
 const SESSION_SUMMARY_KEYS = {
@@ -510,6 +513,8 @@ describe("solo zero-tax — wire shapes carry no crew dimension", () => {
       "device",
       // The hill's revision (M96): present only on a bridge built with the hill, a number and nothing
       // of the crew; the phone refetches `GET /api/hill` when it moves.
+      // The Hill's switch: present only while it is off, `true` and nothing of the crew.
+      "hillOff",
       "hillRev",
       // Morph's revision: present only once Morph was used on this bridge, a number and nothing of the
       // crew; the phone refetches `GET /api/morph` when it moves.
@@ -897,6 +902,7 @@ describe("solo zero-tax — routes", () => {
       // exempted. A bridge that never took a post answers an empty list and writes nothing.
       "/api/hill",
       "/api/hill/answer",
+    "/api/hill/switch",
       // The operator's own launcher rows (`launchers.toml`) — a SOLO route that legitimately
       // extends this list, named here rather than exempted. It is session-scoped and write-gated
       // through the same closure `/api/workspace` rides, and the configured rows are its allowlist:

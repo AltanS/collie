@@ -53,6 +53,7 @@ import {
 } from "./lifecycle.ts";
 import { cmdLink, cmdUnlink, type LinkDeps, realLinkFs } from "./link.ts";
 import { cmdTrickDev } from "./trick-dev.ts";
+import { cmdTrickAdd, cmdTrickRemove, cmdTrickUpdate } from "./trick-add.ts";
 import { cmdTrick, cmdTrickCheck, cmdTrickHelper, cmdTrickInit, cmdTrickList, cmdTrickSkill, cmdTrickSwitch, TRICK_SUBCOMMANDS, type TrickDeps } from "./trick.ts";
 import { cmdMuxProbe } from "./mux-probe.ts";
 import {
@@ -130,7 +131,7 @@ import {
   type WalkyDeps,
 } from "./walky.ts";
 import { cmdMorph, cmdMorphClear, cmdMorphHelp, cmdMorphOff, cmdMorphOn, cmdMorphShow, cmdMorphStatus, MORPH_SUBCOMMANDS, morphHelp, type MorphDeps } from "./morph.ts";
-import { cmdHill, cmdHillList, cmdHillPost, cmdHillStatus, cmdHillWithdraw, HILL_SUBCOMMANDS, hillPostHelp, type HillDeps } from "./hill.ts";
+import { cmdHill, cmdHillList, cmdHillPost, cmdHillStatus, cmdHillSwitch, cmdHillWithdraw, HILL_SUBCOMMANDS, hillPostHelp, type HillDeps } from "./hill.ts";
 import { cmdUpdateCheck, updateCheckDeps, wantsCheck } from "./update-check.ts";
 import { cmdTheme, cmdThemeCheck, realThemeFiles, THEME_SUBCOMMANDS } from "./theme-check.ts";
 import { cmdThemeSkill } from "./theme-skill.ts";
@@ -333,6 +334,17 @@ const HILL_TREE: readonly Subcommand[] = [
     name: "list",
     summary: "your own decisions, open first",
     run: (args, s) => cmdHillList(hillDeps(s.io), args),
+  },
+  // The Hill's switch: a file in this instance's state folder, read again by the running bridge.
+  {
+    name: "on",
+    summary: "switch the Hill on for this Collie (it is on unless switched off)",
+    run: (args, s) => cmdHillSwitch(hillDeps(s.io), "on", args),
+  },
+  {
+    name: "off",
+    summary: "switch the Hill off: agents and tricks cannot post, the open decisions stay",
+    run: (args, s) => cmdHillSwitch(hillDeps(s.io), "off", args),
   },
 ];
 
@@ -1032,6 +1044,21 @@ export const COMMANDS: readonly Command[] = [
         name: "list",
         summary: "every trick folder: its switch, state, last run and last error (--json)",
         run: async (args, s) => await cmdTrickList(trickVerbDeps(s.io), args),
+      },
+      {
+        name: "add",
+        summary: "copy a trick from a git repository into the tricks folder, off: <name> or <https-url>[//<folder>][#<ref>]; with none, list the official tricks",
+        run: async (args, s) => await cmdTrickAdd(trickVerbDeps(s.io), args),
+      },
+      {
+        name: "update",
+        summary: "fetch a trick added with add again and replace its code, keeping config.toml: <id> (--ref <ref>, --dry-run)",
+        run: async (args, s) => await cmdTrickUpdate(trickVerbDeps(s.io), args),
+      },
+      {
+        name: "remove",
+        summary: "delete a trick that is off, with its state folder: <id>",
+        run: async (args, s) => await cmdTrickRemove(trickVerbDeps(s.io), args),
       },
       {
         name: "on",

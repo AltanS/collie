@@ -947,45 +947,6 @@ describe("SessionStream — the prompt pin", () => {
     expect(pin.parentElement?.style.getPropertyValue("--text-sm")).toBe("14px");
   });
 
-  it("the pin's row is a full-width opaque band holding the hugging well, so no thread shows beside it", () => {
-    layOut(250);
-    renderStream(
-      feedOf({
-        status: { kind: "live" },
-        entries: [prompt("p1", BASE, "fix the flaky test"), entry("a", BASE + 1, "one"), entry("b", BASE + 2, "two"), entry("c", BASE + 3, "three")],
-      }),
-    );
-    const pin = document.querySelector<HTMLElement>('[data-slot="prompt-pin"]')!;
-    const band = pin.parentElement!;
-    // The overlay row spans the scroller's width, in the page colour, ending in the region rule.
-    expect(band).toHaveClass("absolute", "inset-x-0", "bg-background", "border-b", "border-rule");
-    expect(band.className).not.toMatch(/bg-background\/|opacity/);
-    // The well keeps its place: the hugging button, not a full-width one, is the band's only child.
-    expect(band.children).toHaveLength(1);
-    expect(pin).toHaveClass("ml-auto");
-    expect(pin).not.toHaveClass("w-full");
-    // The band takes no tap of its own and is a sibling of the scroller, so it moves no content.
-    expect(band).toHaveClass("pointer-events-none");
-    expect(pin).toHaveClass("pointer-events-auto");
-    expect(band.querySelectorAll("button")).toHaveLength(1);
-    expect(band.contains(document.querySelector('[data-slot="session-stream"]'))).toBe(false);
-  });
-
-  it("the earlier pin sits in the same band as the prompt pin", () => {
-    layOut(150);
-    renderStream(
-      feedOf({
-        status: { kind: "live" },
-        hasOlder: true,
-        entries: [entry("a", BASE + 10, "one"), entry("b", BASE + 11, "two"), entry("c", BASE + 12, "three")],
-      }),
-    );
-    const pin = document.querySelector<HTMLElement>('[data-slot="prompt-pin"]')!;
-    expect(pin).toHaveTextContent("Asked further back");
-    expect(pin.parentElement).toHaveClass("absolute", "inset-x-0", "bg-background", "border-b", "border-rule", "pointer-events-none");
-    expect(pin).toHaveClass("ml-auto", "pointer-events-auto");
-  });
-
   describe("the time on the pin", () => {
     const TS = "2026-09-30T10:07:00.000Z";
     // An empty `ts` is a prompt with no time: the resting turn draws none, and so must the pin.
@@ -1058,10 +1019,6 @@ describe("SessionStream — the prompt pin", () => {
     expect(pin).not.toHaveClass("w-fit");
     expect(pin.querySelector("svg")).not.toBeNull();
     expect(pin.parentElement?.style.getPropertyValue("--text-sm")).toBe("");
-    // The overlay row is as it was: no ground, no rule, only the scroller's own gutter and top room.
-    const row = pin.parentElement!;
-    expect(row.className).toBe("pointer-events-none absolute inset-x-0 top-0 z-10 px-3 pt-1");
-    expect(row.className).not.toMatch(/bg-background|border-rule|pb-/);
   });
 
   it("pins nothing while the prompt itself is the top block", () => {

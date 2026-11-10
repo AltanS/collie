@@ -13,12 +13,14 @@
 import { asJsonBoolean, asJsonNumber, asJsonObject, asJsonString, type JsonObject, type JsonValue } from "../json";
 import {
   TAP_CODES,
+  TRICK_WARNINGS_MAX,
   type TrickPart,
   type TrickTapReply,
   type TricksReply,
   type TapCode,
   type WireTrickInfo,
   type WireTrickPart,
+  type WireTrickWarning,
 } from "./schema";
 
 function asJsonArray(value: JsonValue | undefined): JsonValue[] | undefined {
@@ -81,12 +83,35 @@ function readKeys(raw: JsonValue | undefined): string[] | undefined {
   return keys;
 }
 
+/**
+ * A trick's warnings (review 15), read tolerantly: each `{ kind, text }` with two strings is kept, any
+ * other entry is left out, at most `TRICK_WARNINGS_MAX`. A bridge that sends none (an older one) gives [].
+ */
+export function readWarnings(raw: JsonValue | undefined): WireTrickWarning[] {
+  const out: WireTrickWarning[] = [];
+  for (const entry of asJsonArray(raw) ?? []) {
+    const warning = asJsonObject(entry);
+    const kind = asJsonString(warning?.kind);
+    const text = asJsonString(warning?.text);
+    if (kind !== undefined && text !== undefined) out.push({ kind, text });
+  }
+  return out.slice(0, TRICK_WARNINGS_MAX);
+}
+
 /** One trick entry as the list and the switch route give it, or `undefined` for a body of another shape. */
 export function readTrick(raw: JsonValue | undefined): WireTrickInfo | undefined {
   // The closed words (`icon`, `state`, `places`) were written by the bridge from the schema's lists; the
   // renderer falls back on an icon it does not know, and a state it does not know reads as ok.
-  const trick = asJsonObject(raw);
-  return trick !== undefined && isTrickValue(trick) ? trick : undefined;
+  const body = asJsonObject(raw);
+  if (body === undefined) return undefined;
+  // Read as JSON before the frame check narrows the body to the wire type.
+  const sent = body.warnings;
+  if (!isTrickValue(body)) return undefined;
+  if (sent === undefined) return body;
+  // The one field read past the frame: the Tricks card lists it, so its shape is held here.
+  const warnings = readWarnings(sent);
+  const { warnings: _sent, ...rest } = body;
+  return warnings.length === 0 ? rest : { ...rest, warnings };
 }
 
 /** `GET /api/tricks?since=` as the store merges it, or `undefined` for a body of another shape. */

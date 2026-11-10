@@ -11,6 +11,7 @@ import { HOST } from "../bridge/host.ts";
 import { memoryHillReceipts } from "../bridge/hill/receipts.ts";
 import { HillService } from "../bridge/hill/service.ts";
 import { HillStore } from "../bridge/hill/store.ts";
+import { HillSwitch, readHillSwitch } from "../bridge/hill/switch.ts";
 import { walkyPlace } from "../bridge/hill/walky.ts";
 import type { WalkyHost, WalkyPane } from "../bridge/walky/deliver.ts";
 import { WalkyLog } from "../bridge/walky/log.ts";
@@ -24,8 +25,11 @@ import {
   cmdHillList,
   cmdHillPost,
   cmdHillStatus,
+  cmdHillSwitch,
   cmdHillWithdraw,
   durationMs,
+  HILL_OFF_WORDS,
+  HILL_ON_WORDS,
   HILL_IMAGES_DROPPED,
   HILL_NOT_HERE,
   HILL_RULES,
@@ -38,6 +42,7 @@ import {
   parseImageArg,
   parsePostArgs,
   readViewFile,
+  refusalExit,
   statusLines,
   type HillDeps,
 } from "./hill.ts";
@@ -102,6 +107,8 @@ async function bridge(withHill = true): Promise<Bridge> {
       return `dc_cli${String(n).padStart(9, "0")}`;
     },
     media: new HillMediaStore(join(stateDir, "hill"), deniedFoldersSync([stateDir])),
+    // The real switch on this bridge's own state folder, so `collie hill on|off` moves it.
+    hillSwitch: new HillSwitch(stateDir, () => undefined),
   });
   const base = { socketPath: walkySocketPath(stateDir), service: walky, targets: () => [target], log: () => undefined };
   const server = withHill ? new WalkyServer({ ...base, hill }) : new WalkyServer(base);
@@ -320,6 +327,73 @@ describe("post, status, withdraw and list against a bridge", () => {
   });
 });
 
+describe("the Hill's switch", () => {
+  socketTest("off: a post is refused with the way back on and exits STATE; status, list and withdraw keep working; on again: it posts", async () => {
+    const b = await bridge();
+    const sock = [walkySocketPath(b.stateDir)];
+    expect(await cmdHillPost(deps(sock), POST)).toBe(EXIT.OK);
+    const own = { ctx: context({}, { stateDir: b.stateDir }), now: () => 1000 };
+    const off = { ...own, io: capture() };
+    expect(cmdHillSwitch(off, "off", [])).toBe(EXIT.OK);
+    expect(off.io.stdout).toEqual([HILL_OFF_WORDS]);
+    expect(readHillSwitch(b.stateDir)).toEqual({ on: false, problem: null });
+
+    const refused = deps(sock, inPane("%1"), { mintRequestId: () => "0f8b5c1e-5a7d-4b8e-9f00-1a2b3c4d5e71" });
+    expect(await cmdHillPost(refused, POST)).toBe(EXIT.STATE);
+    expect(refused.io.stderr.at(-1)).toBe("hill: the Hill is off on this Collie; your person can switch it on in Settings, Alerts, on the phone, or with: collie hill on (hill_off)");
+    // The open decision is still there, and its poster can read, list and withdraw it while the Hill is off.
+    const status = deps(sock);
+    expect(await cmdHillStatus(status, ["dc_cli000000001"])).toBe(EXIT.OK);
+    expect(status.io.stdout[0]).toBe("dc_cli000000001 open");
+    const list = deps(sock);
+    expect(await cmdHillList(list, [])).toBe(EXIT.OK);
+    expect(list.io.stdout.map((line) => line.split("  ")[0])).toEqual(["dc_cli000000001"]);
+    const withdraw = deps(sock);
+    expect(await cmdHillWithdraw(withdraw, ["dc_cli000000001"])).toBe(EXIT.OK);
+    expect(withdraw.io.stdout[0]).toBe("dc_cli000000001 withdrawn");
+
+    const on = { ...own, io: capture() };
+    expect(cmdHillSwitch(on, "on", [])).toBe(EXIT.OK);
+    expect(on.io.stdout).toEqual([HILL_ON_WORDS]);
+    const again = deps(sock, inPane("%1"), { mintRequestId: () => "0f8b5c1e-5a7d-4b8e-9f00-1a2b3c4d5e72" });
+    expect(await cmdHillPost(again, POST)).toBe(EXIT.OK);
+    expect(again.io.stdout).toEqual(["dc_cli000000002"]);
+  });
+
+  test("a switch already in place says so and writes nothing; --json prints the value; another argument is a usage error", () => {
+    const stateDir = mkdtempSync(join(tmpdir(), "hill-switch-"));
+    cleanups.push(() => rmSync(stateDir, { recursive: true, force: true }));
+    const own = { ctx: context({}, { stateDir }), now: () => 1000 };
+    const already = { ...own, io: capture() };
+    expect(cmdHillSwitch(already, "on", [])).toBe(EXIT.OK);
+    expect(already.io.stdout).toEqual(["The Hill is already on."]);
+    expect(readHillSwitch(stateDir)).toEqual({ on: true, problem: null });
+    const json = { ...own, io: capture() };
+    expect(cmdHillSwitch(json, "off", ["--json"])).toBe(EXIT.OK);
+    expect(json.io.stdout).toEqual(['{"on":false}']);
+    const twice = { ...own, io: capture() };
+    expect(cmdHillSwitch(twice, "off", [])).toBe(EXIT.OK);
+    expect(twice.io.stdout).toEqual(["The Hill is already off."]);
+    const bad = { ...own, io: capture() };
+    expect(cmdHillSwitch(bad, "on", ["now"])).toBe(EXIT.USAGE);
+    expect(bad.io.stderr[0]).toBe("error: unknown argument `now`");
+  });
+
+  test("`hill_off` exits STATE, apart from a post refused for its content (REFUSED)", () => {
+    expect(refusalExit("hill_off")).toBe(EXIT.STATE);
+    expect(refusalExit(null)).toBe(EXIT.STATE);
+    expect(refusalExit("bad_title")).toBe(EXIT.REFUSED);
+    expect(refusalExit("walky_off")).toBe(EXIT.REFUSED);
+  });
+
+  test("`collie hill on` and `off` are verbs of the tree", async () => {
+    const help = capture();
+    expect(await run(["hill", "--help"], help)).toBe(EXIT.OK);
+    expect(help.stdout).toContain("  collie hill on    (switch the Hill on for this Collie; it is on unless switched off)");
+    expect(help.stdout).toContain("  collie hill off   (switch the Hill off: every post is refused, the open decisions stay)");
+  });
+});
+
 describe("an older bridge on the same machine", () => {
   socketTest("an older bridge asked first that does not know the hill leads the CLI to the next socket, the pane's own", async () => {
     const older = await olderBridge();
@@ -389,7 +463,7 @@ describe("help", () => {
   test("`collie hill --help` prints the usage and the rules and exits 0; a bare `collie hill` exits 2", async () => {
     const help = capture();
     expect(await run(["hill", "--help"], help)).toBe(EXIT.OK);
-    expect(help.stdout[0]).toBe("usage: collie hill {post|status|withdraw|list}");
+    expect(help.stdout[0]).toBe("usage: collie hill {post|status|withdraw|list|on|off}");
     expect(help.stdout.slice(-RULES.length)).toEqual(RULES);
     const bare = capture();
     expect(cmdHill({ io: bare }, [])).toBe(EXIT.USAGE);

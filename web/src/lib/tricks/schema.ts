@@ -1240,9 +1240,30 @@ export interface WireTrickInfo {
    * not run until it is switched on again.
    */
   changed?: boolean;
+  /**
+   * True when the trick's last good document listed at least one Decision. With the Hill switched off
+   * (the snapshot's `hillOff`), its row in Settings says those Decisions are not shown.
+   */
+  decides?: boolean;
   /** The environment names the manifest asks for past the base allow-list, so the person sees them. */
   env?: string[];
+  /**
+   * What a text search of the code flags (bridge/tricks/scan.ts), one entry per kind, for a trick that is
+   * off or changed, so the person sees them before the switch. Absent when there is none, on a trick that
+   * is on and unchanged, and from an older bridge. A warning never refuses: the switch stays one tap.
+   */
+  warnings?: WireTrickWarning[];
 }
+/** The kinds of warning the check scan gives. A phone reads a kind it does not know as plain text. */
+export const TRICK_WARNING_KINDS = ["spawn", "network", "write", "model", "import"] as const;
+export type TrickWarningKind = (typeof TRICK_WARNING_KINDS)[number];
+/** One warning on a trick's row: its kind and one plain English sentence. */
+export interface WireTrickWarning {
+  kind: string;
+  text: string;
+}
+/** The most warnings a trick's row carries. */
+export const TRICK_WARNINGS_MAX = 8;
 /**
  * How a trick came to be on the machine. `folder` is a folder made by hand or by `collie trick init`;
  * `cli`, `agent` and `repo` are for `collie trick add`, which records `at`, `repo` and `sha`.

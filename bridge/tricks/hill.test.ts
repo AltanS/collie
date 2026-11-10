@@ -63,6 +63,8 @@ interface Rig {
   readonly taps: { host: string; trickId: string; node: string; rid: string; decisionId: string }[];
   /** Every phone push the hill handed the push path (hill/push.ts), renders and clears. */
   readonly pushes: PushMessage[];
+  /** The Hill's switch (hill/switch.ts), as the hill reads it on each use. */
+  hillOn: boolean;
   /** A fresh TrickHill and HillService over the same files: what a bridge restart reads. */
   restart(): Rig;
 }
@@ -91,7 +93,7 @@ function rig(stateDir = join(tempDir(), "state"), hillAt = 1000): Rig {
   const taps: Rig["taps"] = [];
   const sent: Rig["sent"] = [];
   const pushes: PushMessage[] = [];
-  const state = { live: [...PLACES], tapResult: true, taps, sent, pushes };
+  const state = { live: [...PLACES], tapResult: true, taps, sent, pushes, hillOn: true };
   const probe = place(() => state.live);
   const hill = new HillService({
     store,
@@ -114,6 +116,7 @@ function rig(stateDir = join(tempDir(), "state"), hillAt = 1000): Rig {
       return state.tapResult;
     },
     push: new HillPush({ ready: () => true, send: (message) => state.pushes.push(message), now: () => hillAt }),
+    hillSwitch: { on: () => state.hillOn },
   });
   const clock = { t: 50_000_000 };
   const tricks = new TrickHill({ stateDir, hill, addressOf: (scopeKey) => scopeKeyAddress(scopeKey, (memberId) => memberId === HOST, "local", probe), now: () => clock.t });
@@ -520,6 +523,28 @@ describe("switched off", () => {
   });
 });
 
+describe("the Hill switched off", () => {
+  test("a run posts nothing, withdraws nothing and leaves the map; back on, the next run makes the hill agree", () => {
+    const r = rig();
+    sync(r, [decision("a"), decision("b")]);
+    const before = readFileSync(join(r.stateDir, "hill", TRICKS_MAP_FILE), "utf8");
+    const [a, b] = open(r);
+    r.hillOn = false;
+    // Dropped b, changed a, added c: none of it reaches the hill, and no refusal reaches the trick's row.
+    expect(sync(r, [decision("a", { summary: "Case 8 failed again." }), decision("c")])).toEqual([]);
+    expect(open(r).map((held) => held.id)).toEqual([a!.id, b!.id]);
+    expect(readFileSync(join(r.stateDir, "hill", TRICKS_MAP_FILE), "utf8")).toBe(before);
+    expect(r.pushes).toEqual([]);
+    r.hillOn = true;
+    expect(sync(r, [decision("a", { summary: "Case 8 failed again." }), decision("c")])).toEqual([]);
+    expect(r.store.get(b!.id)).toMatchObject({ state: "withdrawn", closedReason: "by the trick" });
+    expect(open(r).map((held) => [held.from.trickKey, held.supersedes])).toEqual([
+      ["a", a!.id],
+      ["c", null],
+    ]);
+  });
+});
+
 describe("seen", () => {
   test("the content hash of the answered version, by decision id", () => {
     const r = rig();
@@ -637,6 +662,26 @@ describe("the runner posts", () => {
     await runNow(r);
     const info = (await r.service.reply(undefined)).tricks.find((trick) => trick.id === "legs");
     expect(info?.refusals?.map((refusal) => [refusal.code, refusal.path, refusal.decision])).toEqual([["target", "/decisions/0/replyTo", "case-8"]]);
+  });
+
+  test("decides: the trick's entry says its last good document lists Decisions, so the row can say they are not shown", async () => {
+    const r = await serviceRig();
+    await switches(r.stateDir, true);
+    r.hillOn = false;
+    await runNow(r);
+    const legs = async () => (await r.service.reply(undefined)).tricks.find((trick) => trick.id === "legs");
+    expect((await legs())?.decides).toBe(true);
+    // Not posted, and the trick keeps running: no error and no refusal on its row.
+    expect(open(r)).toEqual([]);
+    expect(await legs()).toMatchObject({ state: "ok" });
+    expect((await legs())?.refusals).toBeUndefined();
+    // A document with no `decisions` key leaves it; an empty list clears it.
+    r.outcome = exited({ v: 1, parts: [{ at: "belt", id: "belt", mark: { label: "10/12" } }] });
+    await r.service.tap(HOST, "legs", { rid: uuid(1), node: "belt", intent: "x" });
+    expect((await legs())?.decides).toBe(true);
+    r.outcome = exited(doc([]));
+    await r.service.tap(HOST, "legs", { rid: uuid(2), node: "belt", intent: "x" });
+    expect((await legs())?.decides).toBeUndefined();
   });
 
   test("switched off: every open decision of the trick is withdrawn at once", async () => {

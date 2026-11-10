@@ -139,6 +139,12 @@ export interface HomeData {
    * TYPE only, so hand-built fixtures stay valid.
    */
   hill?: boolean;
+  /**
+   * Whether the Hill is switched off on this bridge: the snapshot carries `hillOff` (and then no
+   * `hillRev`, so `hill` is false). The Hill's route and its row in Settings read it. Optional in the
+   * TYPE only, so hand-built fixtures stay valid.
+   */
+  hillOff?: boolean;
   /** The bridge's session registry (primary-first); empty on a single-session / older bridge. */
   sessions: SessionSummary[];
   /**
@@ -414,6 +420,7 @@ function toHomeData(
     tabs: ambientSpaces(split.tabs, scope, snap.servers),
     trickSessions: split.trickSessions,
     hill: snap.hillRev !== undefined,
+    hillOff: snap.hillOff === true,
     sessions: snap.sessions ?? [],
     servers: snap.servers ?? [],
     ts: snap.ts ?? 0,

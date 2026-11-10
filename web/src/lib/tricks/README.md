@@ -165,6 +165,56 @@ problem line and the tail of stderr.
 
 It never talks to the bridge and never posts: nothing reaches a phone or the hill.
 
+## Adding a trick from a repository: `collie trick add`
+
+No trick ships in the binary and none is installed by default; the person picks one.
+
+```
+collie trick add                                   # the official repository's tricks; adds nothing
+collie trick add legs                              # the folder legs of the official repository
+collie trick add https://github.com/o/r//legs#v1   # any https git repository, a folder, a ref
+collie trick update legs [--ref <ref>] [--dry-run]
+collie trick remove legs                           # only while it is off
+```
+
+The official repository is `https://github.com/AltanS/collie-tricks` (`OFFICIAL_TRICKS_REPO` in
+`cli/trick-add.ts`). A source is `<https-url>[//<folder>][#<ref>]`, and `#<ref>//<folder>` reads too; a
+ref is a branch, a tag or a full 40-digit commit. A URL with a user name or a password is refused. The
+list with no source names each folder of the official repository that holds a `trick.toml`, with the
+manifest's `name` and its first comment line as the description.
+
+**What a repository may not do.** Nothing from it runs, and git never writes a working tree. The fetch
+goes into a fresh bare repository in a temp folder under the state folder, depth 1, no tags, no
+submodules, https only, no hook, no LFS smudge, no prompt, with a timeout; the header of
+`cli/trick-add.ts` has the git lines. The tree is read from git's own objects, so a symlink or a
+submodule anywhere in the trick's folder refuses it on every platform, and Collie writes each regular
+file itself. Then the strict manifest reader must accept `trick.toml` at this contract, the caps must
+hold (300 files and 5 MB, `ADD_LIMITS`), and the id must be free. Dot files, dot folders and
+`node_modules/` are not copied: they are outside the code hash, so they would be code nobody approved.
+Every refusal exits 1 with one reason, and the temp folder goes on every path.
+
+**The trick stays off.** `add` prints what it copied, the commit, and the same warnings as `collie trick
+check`, then "The trick is off. Read it, then: collie trick on <id>". It writes one dot file,
+`.collie-origin.json` (`bridge/tricks/origin.ts`): the URL, the ref asked, the commit it resolved to,
+the folder and the time. The code hash leaves dot files out, so the record never stops a trick. The
+bridge shows it as the trick's provenance (`From AltanS/collie-tricks @ 9c41d07`), and `collie trick
+list` in its ORIGIN column.
+
+**`update` replaces the code and keeps your part.** It fetches the same source (the same ref unless
+`--ref`), checks it the same way, and prints the old and new commit, how many code files are added,
+changed and removed, and the warnings that are new. Then it swaps the folder in two renames, keeping
+`config.toml` and the trick's state folder, and rewrites the origin record. The new code hashes
+differently, so a trick that was on stops until the person switches it on again, and the verb says so.
+`--dry-run` prints the summary and changes nothing. A folder without an origin record has nothing to
+update from.
+
+**The warnings show at the switch.** The grep of `collie trick check` lives in `bridge/tricks/scan.ts`,
+read by the CLI and the bridge alike. `collie trick on` prints its warnings above the confirmation, with
+one line that they come from a text search and are not a proof, and still switches on. The bridge puts
+them on the row of a trick that is off or changed (`WireTrickInfo.warnings`: one `{ kind, text }` per
+kind, at most 8), and Settings → Tricks lists them under that trick before the switch. They never
+refuse, and the switch stays one tap.
+
 ## The run line
 
 `run` in `trick.toml` takes two forms (`bridge/tricks/run.ts`, `launchOf`, the one rule the bridge's
@@ -328,6 +378,11 @@ key (the facts' `id`, `memberId:paneId`) whose Chat the card opens. `replyTo` is
 the person's answer reaches it as the person's own walky message. `media` is up to 4 images, each `{
 file, caption? }`: `file` names an image in the trick's own folder by a relative path with no `..`
 (`shots/red.png`), and `caption` is up to 80 characters.
+
+With the Hill switched off (`bridge/hill/switch.ts`, Settings → Alerts, `collie hill on|off`) the
+bridge posts, replaces and withdraws none of a trick's Decisions and keeps its map of the posted ones
+as it was. The trick still runs, and its row in Settings → Tricks says its Decisions are not shown.
+The first run after the Hill is back on syncs the list again.
 
 ### Wording a Decision
 

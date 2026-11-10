@@ -1439,6 +1439,12 @@ export interface SnapshotResponse {
    * no Morph at all.
    */
   morphRev?: number;
+  /**
+   * The Hill is switched off on this bridge (bridge/hill/switch.ts): then the snapshot carries no
+   * `hillRev`, the phone shows no Hill item, and the Hill's route and Settings say it is off. Absent
+   * while the Hill is on, so an install that never switched it keeps its bytes.
+   */
+  hillOff?: true;
   ts: number;
 }
 

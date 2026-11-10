@@ -13,7 +13,8 @@ import { AgentList } from "@/components/agent-list";
 import { AppHeaderHost, RouteHeader } from "@/components/app-header";
 import { DecisionCard } from "@/components/decision-card";
 import { DashboardTabBar } from "@/components/dashboard-tab-bar";
-import { HillHeader, HillView } from "@/components/hill-view";
+import { HillHeader, HillOff, HillView } from "@/components/hill-view";
+import { HillSwitchCard } from "@/components/hill-switch-card";
 import { TrickDashboardStrip } from "@/components/trick-place-items";
 import { HILL_IDLE, type HillAnswerState } from "@/hooks/use-hill-answer";
 import type { HillDecision, HillReceipt } from "@/lib/hill/wire";
@@ -191,8 +192,36 @@ function HillPhone({ open, closed, kept = NO_KEPT, unfold = false }: { open: rea
   );
 }
 
-/** The Dashboard's bar with the Hill item, as `routes/home.tsx` builds it, with `open` Decisions. */
-function HillBar({ open }: { open: number }) {
+/** The Hill switched off: the route's header and its off state, the bar without the Hill item under it. */
+function HillOffPhone() {
+  const [on, setOn] = useState(false);
+  return (
+    <Phone height={620}>
+      <RootRouter data={homeSolo}>
+        <AppHeaderHost bridge="connected" error={false}>
+          <HillHeader count={0} nowCount={0} onBack={noSend} off={!on} />
+          <div data-pg-scroll className="min-h-0 flex-1 overflow-y-auto p-4">
+            {on ? <HillView open={[]} closed={[]} kept={NO_KEPT} renderCard={() => null} /> : <HillOff canWrite busy={false} onTurnOn={() => setOn(true)} />}
+          </div>
+          <HillBar open={on ? 0 : null} />
+        </AppHeaderHost>
+      </RootRouter>
+    </Phone>
+  );
+}
+
+/** The row in Settings → Alerts, in a 390px column, with a switch that flips in place. */
+function SwitchRow({ initial }: { initial: boolean }) {
+  const [on, setOn] = useState(initial);
+  return (
+    <div className="w-[390px] max-w-full bg-background p-4">
+      <HillSwitchCard on={on} disabled={false} onToggle={setOn} />
+    </div>
+  );
+}
+
+/** The Dashboard's bar with the Hill item, as `routes/home.tsx` builds it, with `open` Decisions (null: the Hill is off). */
+function HillBar({ open }: { open: number | null }) {
   return (
     <DashboardTabBar
       view="dashboard"
@@ -647,6 +676,21 @@ export function HillSection() {
         <Card state="hill-entry-dashboard" label="21: dashboard with the Hill">
           <CardHead n={21} title="Dashboard with the Hill" />
           <DashboardPhone />
+        </Card>
+      </Group>
+
+      <Group title="The switch">
+        <Card state="hill-switch-on" label="43: Settings row, on">
+          <CardHead n={43} title="Settings → Alerts: the Hill on" />
+          <SwitchRow initial />
+        </Card>
+        <Card state="hill-switch-off" label="44: Settings row, off">
+          <CardHead n={44} title="Settings → Alerts: the Hill off" />
+          <SwitchRow initial={false} />
+        </Card>
+        <Card state="hill-off" label="45: the Hill, switched off">
+          <CardHead n={45} title="The Hill switched off: no Hill item in the bar" />
+          <HillOffPhone />
         </Card>
       </Group>
 

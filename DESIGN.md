@@ -494,10 +494,6 @@ while its answer scrolls under it, wears the same side, cap, well and text size,
 message does not move sideways when it sticks or lets go. It also shows the turn's time, the same element
 (`USER_WELL_META`), at the well's right edge on its first line: the pin clamps its text to two lines, so a time
 after the last line would hide, and the two-line height does not change.
-The pin's row is a band: in that look the overlay row spans the chat column's full width in the page colour,
-fully opaque, so the thread disappears under one clean edge and never scrolls past, visible, beside the
-well. It ends in a `border-rule` hairline, the cut between two regions, and is exactly as tall as the room the
-thread keeps for it. It ignores the pointer; the well is its only button. The look before 1.29 draws the row as it was.
 
 **In Chat a new turn starts 20px under the block above, and blocks inside an agent run sit 8px apart.**
 Reason: the old 12px between everything made a question and the answer to the one before it look alike.

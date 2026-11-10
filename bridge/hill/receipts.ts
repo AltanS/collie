@@ -73,7 +73,7 @@ export function coerceHillReceipt(raw: JsonValue): HillReceiptRecord | null {
  * payload (409, nothing written), or a first receipt that could not be saved (503, nothing closed and
  * nothing typed).
  */
-export type HillAnswerOutcome = { readonly kind: "receipt"; readonly receipt: HillReceipt } | { readonly kind: "reused" } | { readonly kind: "unsaved" };
+export type HillAnswerOutcome = { readonly kind: "receipt"; readonly receipt: HillReceipt } | { readonly kind: "reused" } | { readonly kind: "unsaved" } | { readonly kind: "off" };
 
 /** What the answer path needs of the store: the surface, plus the write that comes before the close. */
 export type HillReceiptSurface = ReceiptSurface<HillReceiptRecord, HillAnswerOutcome> & {
