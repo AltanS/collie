@@ -29,19 +29,25 @@ import {
   brokenImage,
   busyOpen,
   closedRows,
+  compareShots,
+  diffCard,
   diffSummary,
   gateStrip,
   goneText,
   keptWords,
   mixedImages,
+  placedImage,
   oneImage,
   playgroundMedia,
   quietOpen,
   receipts,
   rich,
+  reviewCard,
   roughCard,
   sevenOpen,
+  sparkCard,
   stressCard,
+  tableCard,
   textOnly,
   textRequired,
   threeImages,
@@ -411,15 +417,16 @@ function MatchGroup() {
 
 // ── The rough card (2026-11-10) ─────────────────────────────────────────────────────────────────────
 // The owner's card on a 360 px phone, word for word, the stress card with every view kind in long
-// words, and a portrait shot beside a wide one. `?card=<rough|stress|mixed>#hill` draws one card over
+// words, a portrait shot beside a wide one, and the review card of 2026-11-10 (42).
+// `?card=<rough|stress|mixed|review>#hill` draws one card over
 // the whole screen at the window's own width, so a shot at 360 or 390 px is the phone's; `&open=1`
 // opens the view's fold first.
 
-const ROUGH_CARDS = { rough: roughCard, stress: stressCard, mixed: mixedImages } as const;
+const ROUGH_CARDS = { rough: roughCard, stress: stressCard, mixed: mixedImages, review: reviewCard } as const;
 type RoughId = keyof typeof ROUGH_CARDS;
 
 function isRoughId(word: string | null): word is RoughId {
-  return word === "rough" || word === "stress" || word === "mixed";
+  return word === "rough" || word === "stress" || word === "mixed" || word === "review";
 }
 
 /** The card with its view's "Show all" tapped once, as the person would, when `open` is set. */
@@ -526,6 +533,30 @@ export function HillSection() {
         <Card state="hill-card-view-diff" label="33: a diff summary">
           <CardHead n={33} title="A diff summary" />
           <OneCard decision={diffSummary} />
+        </Card>
+        <Card state="hill-card-view-image" label="37: one picture, zoomed in">
+          <CardHead n={37} title="One picture, zoomed in" />
+          <OneCard decision={placedImage} />
+        </Card>
+        <Card state="hill-card-view-compare" label="38: before and after">
+          <CardHead n={38} title="Before and after" />
+          <OneCard decision={compareShots} />
+        </Card>
+        <Card state="hill-card-view-table" label="39: a small table">
+          <CardHead n={39} title="A small table" />
+          <OneCard decision={tableCard} />
+        </Card>
+        <Card state="hill-card-view-diff-lines" label="40: a hunk as a diff">
+          <CardHead n={40} title="A hunk as a diff" />
+          <OneCard decision={diffCard} />
+        </Card>
+        <Card state="hill-card-view-spark" label="41: figures with a trend">
+          <CardHead n={41} title="Figures with a trend" />
+          <OneCard decision={sparkCard} />
+        </Card>
+        <Card state="hill-card-view-review" label="42: a review card">
+          <CardHead n={42} title="A review card, composed" />
+          <OneCard decision={reviewCard} />
         </Card>
       </Group>
 

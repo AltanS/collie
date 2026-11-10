@@ -544,3 +544,158 @@ export const mixedImages = decision({
   ],
   media: [shot("im_pgphoneoption001", "On the phone", PHONE), shot("im_pgafter000000001", "On a laptop")],
 });
+
+// ── The display kinds (2026-11-10) ──────────────────────────────────────────────────────────────────
+// A Decision's view places its own pictures (`image` by `ref`, cropped by `focus`; `compare`), and
+// draws a table, a diff and a trend. The pictures are the page's own phone panels above.
+
+/** 37: one picture placed among the facts, zoomed on its panel; the other stays in the row above. */
+export const placedImage = decision({
+  title: "Is the option panel big enough?",
+  summary: "The view zooms on the panel the person taps; the full shot is one tap away.",
+  sender: TRICKS,
+  ago: 1,
+  options: [
+    { intent: "yes", label: "Big enough" },
+    { intent: "bigger", label: "Make it bigger" },
+  ],
+  media: [shot("im_pgphoneoption001", "The option screen", PHONE), shot("im_pgphonebuild0001", "The build", PHONE)],
+  view: [
+    { kind: "image", attrs: { ref: "0", caption: "The panel, zoomed in from the option screen", fit: "cover", focus: "32 35 2.5" } },
+    { kind: "list", kids: [{ kind: "row", text: "Panel", attrs: { end: "200 × 140 px" } }] },
+  ],
+});
+
+/** 38: before and after, side by side at one height, cropped to the same point; a tap pages through both. */
+export const compareShots = decision({
+  title: "Ship the new option panel?",
+  summary: "The panel moved up and got its own colour.",
+  sender: TRICKS,
+  ago: 2,
+  options: [
+    { intent: "ship", label: "Ship it" },
+    { intent: "wait", label: "Not yet" },
+  ],
+  media: [shot("im_pgphoneoption001", "Before", PHONE), shot("im_pgphonebuild0001", "After", PHONE)],
+  view: [{ kind: "compare", kids: [{ kind: "image", attrs: { ref: "0", focus: "40 35 1.6" } }, { kind: "image", attrs: { ref: "1", focus: "40 35 1.6" } }] }],
+});
+
+/** 39: a small table, a column of figures on the end side, one cell in the warn ink. */
+export const tableCard = decision({
+  title: "Accept the slower typecheck?",
+  summary: "Typecheck got 1.4 s slower with the stricter config. The rest held.",
+  sender: LEAD,
+  ago: 4,
+  options: [
+    { intent: "accept", label: "Accept it" },
+    { intent: "revert", label: "Revert the config" },
+  ],
+  view: [
+    {
+      kind: "table",
+      kids: [
+        { kind: "col", text: "Check" },
+        { kind: "col", text: "Before" },
+        { kind: "col", text: "After" },
+        { kind: "cell", text: "lint" },
+        { kind: "cell", text: "8.1" },
+        { kind: "cell", text: "8.0" },
+        { kind: "cell", text: "typecheck" },
+        { kind: "cell", text: "21.3" },
+        { kind: "cell", text: "22.7", attrs: { tone: "warn" } },
+        { kind: "cell", text: "unit tests, web and bridge together" },
+        { kind: "cell", text: "96.4" },
+        { kind: "cell", text: "95.9" },
+      ],
+    },
+  ],
+});
+
+/** 40: a hunk as a diff: the lines tinted by their first characters, a long one scrolling inside its block. */
+export const diffCard = decision({
+  title: "Take the shorter refusal?",
+  summary: "One line of behaviour changes; the rest is the test.",
+  sender: LEAD,
+  ago: 5,
+  options: [
+    { intent: "take", label: "Take it" },
+    { intent: "keep", label: "Keep the old one" },
+  ],
+  view: [
+    {
+      kind: "diff",
+      attrs: { file: "bridge/send/path.ts" },
+      text: [
+        "@@ -41,6 +41,9 @@ export function sendPath(",
+        "   const pane = panes.get(id);",
+        "-  if (!pane) return null;",
+        "+  if (pane === undefined) {",
+        '+    return { refused: "gone", reason: "the pane closed while the send was on its way to it" };',
+        "+  }",
+        "   return pane.send(text);",
+      ].join("\n"),
+    },
+  ],
+});
+
+/** 41: two figures with their trend, side by side in the flow. */
+export const sparkCard = decision({
+  title: "Keep the nightly leg paused?",
+  summary: "Replays cost nothing; the live runs went down all week.",
+  sender: LEAD,
+  ago: 6,
+  options: [
+    { intent: "paused", label: "Keep it paused" },
+    { intent: "resume", label: "Resume it" },
+  ],
+  view: [
+    {
+      kind: "group",
+      kids: [
+        { kind: "number", text: "0.12", attrs: { label: "Live turns, dollars", tone: "ok" } },
+        { kind: "spark", attrs: { values: "0.65 0.61 0.44 0.30 0.21 0.12", label: "Last six runs", tone: "ok" } },
+      ],
+    },
+    { kind: "spark", attrs: { values: "4.2 4.4 4.1 4.6 4.3 4.2 4.0", label: "Minutes a run takes" } },
+  ],
+});
+
+/** 42: a review card, composed: before and after, the figure, the checks, and the hunk. */
+export const reviewCard = decision({
+  title: "Merge the option panel change?",
+  summary: "The panel moved up. Every check is green but one, which is a timing budget.",
+  sender: TRICKS,
+  ago: 1,
+  priority: "now",
+  priorityAsked: "now",
+  options: [
+    { intent: "merge", label: "Merge it" },
+    { intent: "rerun", label: "Rerun WebKit first" },
+  ],
+  recommends: { intent: "rerun", why: "The red case is a budget on a loaded runner, and it passed on the run before." },
+  media: [shot("im_pgphoneoption001", "Before", PHONE), shot("im_pgphonebuild0001", "After", PHONE)],
+  view: [
+    { kind: "compare", kids: [{ kind: "image", attrs: { ref: "0", focus: "40 35 1.6" } }, { kind: "image", attrs: { ref: "1", focus: "40 35 1.6" } }] },
+    { kind: "number", text: "33/34", attrs: { label: "Browser leg cases green", tone: "warn" } },
+    {
+      kind: "group",
+      attrs: { label: "Checks" },
+      kids: [
+        { kind: "row", text: "typecheck", attrs: { icon: "check", tone: "ok" } },
+        { kind: "row", text: "lint", attrs: { icon: "check", tone: "ok" } },
+        { kind: "row", text: "WebKit", attrs: { icon: "x", tone: "danger" }, kids: [{ kind: "para", text: "pane glide took 612 ms against a 400 ms budget" }] },
+      ],
+    },
+    {
+      kind: "group",
+      attrs: { label: "The change" },
+      kids: [
+        {
+          kind: "diff",
+          attrs: { file: "web/src/components/option-panel.tsx" },
+          text: ['@@ -12,4 +12,4 @@', '-<section className="mt-6">', '+<section className="mt-2 bg-status-working/10">', "   <OptionRows />"].join("\n"),
+        },
+      ],
+    },
+  ],
+});
