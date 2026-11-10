@@ -11,11 +11,17 @@
 // stores one, and a long title is still a title: the card truncates it. What is checked is what
 // would make a card lie: an unknown state, a priority or a text mode outside the closed lists, an
 // option without an intent, a link that is not http or https. A view (M96) is the one exception: it is
-// read with the same rules the bridge holds a post to (`parseDecisionView`), and one that fails is
-// dropped alone, so the card keeps its question and its options.
+// read with the same rules the bridge holds a post to (`parseDecisionView`). One that fails whole is
+// read again node by node (`readDecisionView`): a top-level node the rules refuse is dropped, the rest
+// draws, and the card keeps its question and its options either way.
+//
+// AN IMAGE NODE FOLLOWS ITS PICTURE (2026-11-10). A view's `image` names one of the decision's images by
+// its place in the bridge's list (`ref`). The phone may leave a picture out of that list (past the bytes
+// or the pixel cap), which moves the ones after it, so each `ref` is mapped onto the list the phone kept,
+// and an image whose picture was left out leaves the view with it (a `compare` missing one goes whole).
 
 import { asJsonBoolean, asJsonNumber, asJsonObject, asJsonString, type JsonObject, type JsonValue } from "@/lib/json";
-import { parseDecisionView } from "@/lib/tricks/schema";
+import { DECISION_VIEW_LIMITS, parseDecisionView, type View } from "@/lib/tricks/schema";
 
 import {
   HILL_MEDIA_BYTES_MAX,
@@ -248,10 +254,14 @@ export function readHillDecision(value: JsonValue): HillDecision | null {
   // An image that does not fit is left out and the decision stays, as a link is: the card loses a
   // picture, never a button. An older bridge sends `[]`; one before images, nothing.
   const rawMedia = arrayOf(o.media) ?? [];
-  const media = rawMedia
-    .map(readMedia)
-    .filter((item) => item !== null)
-    .slice(0, HILL_MEDIA_MAX);
+  const media: HillMedia[] = [];
+  // Where each of the bridge's images sits in the list the phone keeps, or null when it was left out.
+  const placeOf: (number | null)[] = rawMedia.map((raw) => {
+    const item = readMedia(raw);
+    if (item === null || media.length >= HILL_MEDIA_MAX) return null;
+    media.push(item);
+    return media.length - 1;
+  });
 
   const recommends = readRecommends(o.recommends, okOptions);
   const target = readTarget(o.target);
@@ -296,9 +306,63 @@ export function readHillDecision(value: JsonValue): HillDecision | null {
   };
   // A view that does not fit is left out and the decision stays: the facts under the summary go, the
   // question and its options do not. An older bridge sends none.
-  const view = o.view === undefined || o.view === null ? undefined : parseDecisionView(o.view).view;
+  const view = o.view === undefined || o.view === null ? undefined : readDecisionView(o.view, placeOf);
   if (view !== undefined) decision.view = view;
   return decision;
+}
+
+/** Every node of a view, kids counted, as `parseDecisionView` counts them against its cap. */
+function nodeCount(value: JsonValue | undefined): number {
+  const node = asJsonObject(value);
+  if (node === undefined) return 1;
+  const kids = arrayOf(node.kids) ?? [];
+  return 1 + kids.reduce<number>((sum, kid) => sum + nodeCount(kid), 0);
+}
+
+/**
+ * A node with each image's `ref` moved onto the phone's list of images (`placeOf`), or null when the node
+ * is an image whose picture the phone left out. A node with a kid list keeps the kids that stay; a
+ * `compare` that loses one keeps one, which its own rule then refuses, so it goes whole.
+ */
+function mapImageRefs(value: JsonValue, placeOf: readonly (number | null)[]): JsonValue | null {
+  const node = asJsonObject(value);
+  if (node === undefined) return value;
+  if (node.kind === "image") {
+    const attrs = asJsonObject(node.attrs);
+    const ref = asJsonString(attrs?.ref);
+    if (attrs === undefined || ref === undefined) return value;
+    const place = /^\d+$/.test(ref) ? placeOf[Number(ref)] : undefined;
+    if (place === null || place === undefined) return null;
+    return { ...node, attrs: { ...attrs, ref: String(place) } };
+  }
+  const kids = node.kids === undefined ? undefined : arrayOf(node.kids);
+  if (kids === undefined) return value;
+  return { ...node, kids: kids.map((kid) => mapImageRefs(kid, placeOf)).filter((kid) => kid !== null) };
+}
+
+/**
+ * A decision's view as the phone draws it, or undefined when nothing of it reads. Read whole first, with
+ * the bridge's rules; one that fails is read again one top-level node at a time, each node that passes
+ * kept in order while the whole stays inside the node cap. A view past the byte cap is not read at all.
+ */
+export function readDecisionView(raw: JsonValue, placeOf: readonly (number | null)[]): View | undefined {
+  const list = arrayOf(raw);
+  if (list === undefined) return undefined;
+  const images = placeOf.filter((place) => place !== null).length;
+  const mapped = list.map((node) => mapImageRefs(node, placeOf)).filter((node) => node !== null);
+  const whole = parseDecisionView(mapped, "/view", { images });
+  if (whole.view !== undefined) return whole.view;
+  if (whole.refusals.some((refusal) => refusal.code === "size")) return undefined;
+  const view: View = [];
+  let nodes = 0;
+  for (const node of mapped) {
+    const one = parseDecisionView([node], "/view", { images }).view;
+    const count = nodeCount(node);
+    if (one === undefined || nodes + count > DECISION_VIEW_LIMITS.nodes) continue;
+    nodes += count;
+    view.push(...one);
+  }
+  return view.length === 0 ? undefined : view;
 }
 
 /** The decisions of one list that fit, and how many did not. */
