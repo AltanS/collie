@@ -26,9 +26,9 @@ import type { MdMath } from "@/lib/markdown-math";
 // highlighting is a cross-cutting display concern, and the AST walk is already recursive.
 const QueryContext = createContext("");
 
-// A find hit, as text or as a whole formula. One literal for both, the one DESIGN.md §10 gap 6 lists
-// for a search highlight token.
-const FIND_MARK = "rounded-sm bg-amber-300/70 text-inherit dark:bg-amber-500/40";
+// A find hit, as text or as a whole formula. One class string for both, on the theme token `--find`
+// (DESIGN.md §13), the same ground `ui/match-text.tsx` marks matched letters with.
+const FIND_MARK = "rounded-sm bg-find text-inherit";
 
 /** Find searches the original TeX; paint the equation as a whole without breaking its layout. */
 function MathRun({ math, display = false }: { math: MdMath; display?: boolean }) {

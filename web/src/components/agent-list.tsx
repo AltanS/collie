@@ -1,9 +1,12 @@
-import { useEffect, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, type ReactNode } from "react";
 
 import { clockTime } from "@/lib/format";
 import { useMuxCapability } from "@/lib/mux-capability";
 import { SectionHeader } from "@/components/section-header";
 import { ListGroup } from "@/components/ui/list-group";
+import { Collapse } from "@/components/ui/collapse";
+import { ToggleButton } from "@/components/ui/toggle-button";
+import { SessionFilterEmpty, SessionFilterField } from "@/components/session-filter-field";
 import {
   groupPanesByWorkspace,
   resolveIsolatedPrefKeys,
@@ -18,11 +21,23 @@ import { paneRowKey, paneScope } from "@/lib/hosts";
 import { machinesHiddenFrom } from "@/lib/hidden-machines";
 import { pinMatcher, type Pin } from "@/lib/pins";
 import { inRankOrder, type PaneOrder } from "@/lib/pane-order";
+import {
+  byScore,
+  filterOffered,
+  matchPanes,
+  PANE_FILTER,
+  type PaneField,
+  type PaneFilterHidden,
+  type PaneFilterLevel,
+  type PaneFilterOrder,
+  type PaneMatch,
+} from "@/lib/pane-filter";
+import { DASH_FILTER_ENTRY, useDashFilter, type DashFilterControl, type DashFilterEntry } from "@/lib/dash-filter";
 import { NeedsYouSwitch } from "@/components/needs-you-switch";
 import { PaneOrderSelect, WorkspaceFilter } from "@/components/dash-selects";
 import { useFrozenRanks } from "@/hooks/use-frozen-ranks";
 import { showsPinHint, usePinHintRetired } from "@/lib/pin-hint";
-import type { Scope } from "@/lib/scope";
+import { scopeKey, type Scope } from "@/lib/scope";
 import { besideOf, type NewTabTarget } from "@/hooks/use-new-tab-or-sheet";
 import { tabCreateKey } from "@/hooks/use-spaces";
 import { AgentCard } from "./agent-card";
@@ -165,6 +180,22 @@ interface AgentListProps {
    * the summary line instead, never to `body`.
    */
   reveal?: { rowKey: string } | null;
+  /**
+   * The session filter (M97, README decisions 7, 10, 11, 12): how its field is reached (`button`, a
+   * magnifier in the control bar that opens it, or `always`), and the three switches of the playground
+   * round (`PANE_FILTER`): how a term matches, whether a query keeps the list's order, whether a field the
+   * row does not draw is searched. Props so the round can draw the variants side by side; the app passes none.
+   */
+  filterEntry?: DashFilterEntry;
+  filterLevel?: PaneFilterLevel;
+  filterOrder?: PaneFilterOrder;
+  filterHidden?: PaneFilterHidden;
+  /**
+   * Who holds the query and the field's open state. Omit and the list reads the module store of
+   * `lib/dash-filter.ts`, one entry per host scope, so a query survives a visit to a session and back and
+   * dies with the page. A caller that owns it (the playground round) passes its own.
+   */
+  filter?: DashFilterControl;
 }
 
 /** What a workspace heading's "+" needs from the route (AgentListProps.newTab). */
@@ -184,6 +215,9 @@ const NO_PANES: AgentView[] = [];
 const NO_KEYS: readonly string[] = [];
 const NO_PINS: readonly Pin[] = [];
 const NO_MACHINES: readonly string[] = [];
+
+/** The Dashboard row draws the name, the branch, the space (a pinned row's line 2) and the tab as text. */
+const DASH_DRAWN: ReadonlySet<PaneField> = new Set<PaneField>(["name", "branch", "space", "tab"]);
 
 /** The heading's mark, for the worst URGENT status inside the group; none when quiet. */
 function urgentMark(g: WorkspaceGroup): "blocked" | undefined {
@@ -293,8 +327,36 @@ export function AgentList({
   onOrderChange,
   onHold,
   reveal = null,
+  filterEntry = DASH_FILTER_ENTRY,
+  filterLevel = PANE_FILTER.level,
+  filterOrder = PANE_FILTER.order,
+  filterHidden = PANE_FILTER.hidden,
+  filter: filterOwn,
 }: AgentListProps) {
   useLocale();
+  // THE FILTER'S QUERY (M97): the module store by default, so it outlives this route (a session opens by
+  // remounting it) and is never stored on the device. Read above the early return, like every hook here.
+  const stored = useDashFilter(scopeKey(viewScope));
+  const filter = filterOwn ?? stored;
+  // The `button` entry asks for the keyboard when the person taps the magnifier: the field mounts a
+  // moment later (Collapse), so the ask waits in a ref for the input's own ref callback.
+  const focusAsked = useRef(false);
+  const inputEl = useRef<HTMLInputElement | null>(null);
+  const fieldRef = useCallback((el: HTMLInputElement | null) => {
+    inputEl.current = el;
+    if (el === null || !focusAsked.current) return;
+    focusAsked.current = false;
+    el.focus({ preventScroll: true });
+  }, []);
+  // The summary line's jump to an urgent row the query hid: the query is cleared first, and the jump runs
+  // in the commit that has the rows back.
+  const afterClear = useRef<(() => void) | null>(null);
+  useEffect(() => {
+    if (filter.query !== "" || afterClear.current === null) return;
+    const jump = afterClear.current;
+    afterClear.current = null;
+    jump();
+  });
   // THE FREEZE (ADR 0071 point 3, taken up by the dashboard 2026-10-05). Read once on mount, on an
   // order change, on a tap of the segment already selected, and when the page becomes visible again;
   // never on a poll. Above the early return, because a hook cannot sit behind one. It ranks the whole
@@ -441,6 +503,53 @@ export function AgentList({
   // groups already and are ranked with everything else, as in the switcher.
   const rankedRows = ranked && !renderBody ? inRankOrder(drawn.flatMap((d) => d.rows), ranks) : NO_PANES;
   const firstUrgentRow = rankedRows.find((p) => ATTENTION.has(bucketOf(p)));
+
+  // ── THE FILTER (M97) ──────────────────────────────────────────────────────────────────────────────
+  // It narrows what the controls above already narrowed: the workspace select, hidden machines and the
+  // needs-you switch have run, so `baseRows` is the list the eye would see with no query (the Pinned rows
+  // plus the rows of the groups left), and the query keeps the rows that match. Pinned and the workspace
+  // groups keep their order and lose the rows that do not match; a group left empty goes with its heading,
+  // which still counts every pane of its workspace. In a ranked order the one list is filtered in place;
+  // `best` instead draws one flat list, best match first. With no query (`hits` null) every list below is
+  // the very array it was before, so the list renders exactly as it did.
+  // Not on the Changes tab: its body lists workspaces, not session rows, and the controls stay as invisible
+  // slots there so a change of tab moves nothing (DESIGN.md §2).
+  const herdTotal = agents.length + shellPanes.length;
+  const offered = filterOffered(herdTotal);
+  const filterActive = offered && renderBody === undefined;
+  const baseRows = [...pinned, ...(ranked ? rankedRows : drawn.flatMap((d) => d.rows))];
+  const hits = matchPanes(baseRows, filterActive ? filter.query : "", {
+    level: filterLevel,
+    drawn: DASH_DRAWN,
+    hidden: filterHidden,
+    ctx: { servers },
+  });
+  const keep = (p: AgentView) => hits === null || hits.has(paneRowKey(p));
+  const pinnedShown = hits === null ? pinned : pinned.filter(keep);
+  const rankedShown = hits === null ? rankedRows : rankedRows.filter(keep);
+  const drawnShown =
+    hits === null ? drawn : drawn.map((d) => ({ ...d, rows: d.rows.filter(keep) })).filter((d) => d.rows.length > 0);
+  const bestRows = hits !== null && filterOrder === "best" ? byScore(baseRows, hits) : null;
+  const shownRows = bestRows ?? [...pinnedShown, ...(ranked ? rankedShown : drawnShown.flatMap((d) => d.rows))];
+  const hitOf = (p: AgentView): PaneMatch | undefined => hits?.get(paneRowKey(p));
+  // Enter, or the Go key: open the first row shown, through the row's own navigation (its element is the
+  // glide's origin). Only with a query, so a Go on an empty field never opens a pane by accident.
+  const goFirst = () => {
+    const first = hits === null ? undefined : shownRows[0];
+    if (first === undefined) return;
+    onOpen(first, document.getElementById(rowDomId(paneRowKey(first))) ?? undefined);
+  };
+  // The magnifier: closed, it opens the field and asks for the keyboard (a tap asked for it); open, it
+  // closes it. A query keeps filtering with the field closed, and the pressed look says so.
+  const toggleField = () => {
+    if (filter.open) {
+      filter.setOpen(false);
+      return;
+    }
+    focusAsked.current = true;
+    filter.setOpen(true);
+    inputEl.current?.focus({ preventScroll: true });
+  };
   const jumpTo = (g: WorkspaceGroup) => {
     // The target may be filtered out: add it to the chosen workspaces (or choose it alone when the
     // list shows everything), which is also the scroll.
@@ -460,15 +569,15 @@ export function AgentList({
   // The Dashboard with the switch off only: the other lists are narrower, and a list without a hold has nothing to teach.
   // It needs no pin stored, a device that never retired it, and enough rows on show to pin one above
   // the others; the count is the rows drawn after isolate and hide, the list the eye sees.
-  const pinHintHere = !needsYouOnly && renderBody === undefined && onHold !== undefined;
-  const shownRows = drawn.reduce((n, d) => n + d.rows.length, 0);
-  const pinHintOpen = showsPinHint(pinHintRetired, pins.length, shownRows);
+  const pinHintHere = !needsYouOnly && renderBody === undefined && onHold !== undefined && hits === null;
+  const drawnRowCount = drawn.reduce((n, d) => n + d.rows.length, 0);
+  const pinHintOpen = showsPinHint(pinHintRetired, pins.length, drawnRowCount);
   const firstShownRow = ranked ? rankedRows[0] : drawn[0]?.rows[0];
   const focusFirstRow = () => {
     if (firstShownRow === undefined) return;
     document.getElementById(rowDomId(paneRowKey(firstShownRow)))?.focus({ preventScroll: true });
   };
-  const onJump = renderBody
+  const jumpPlain = renderBody
     ? undefined
     : pinnedUrgent
       ? jumpToPinned
@@ -477,6 +586,18 @@ export function AgentList({
         : firstUrgent
           ? () => jumpTo(firstUrgent)
           : undefined;
+  // Under a query the line still counts the whole herd. Its jump goes to the first urgent row the list
+  // shows; when the query hides every urgent row it clears the query and jumps once the rows are back.
+  const firstUrgentShown = hits === null ? undefined : shownRows.find((p) => ATTENTION.has(bucketOf(p)));
+  const onJump =
+    hits === null || jumpPlain === undefined
+      ? jumpPlain
+      : firstUrgentShown !== undefined
+        ? () => jumpToRow(firstUrgentShown)
+        : () => {
+            afterClear.current = jumpPlain;
+            filter.setQuery("");
+          };
 
   // A workspace heading's "+", addressed to the heading's OWN machine and session, never the ambient
   // ones: this list holds every machine in a crew, and a crew's machines number their spaces from
@@ -528,6 +649,7 @@ export function AgentList({
       unseen={bucketOf(a) === "ready"}
       tint
       stale={stale}
+      match={hitOf(a)}
     />
   );
 
@@ -614,7 +736,41 @@ export function AgentList({
               {orderSlot}
             </div>
           )}
+          {/* THE MAGNIFIER (M97, the `button` entry): the filter's way in, at the bar's right end and 8px
+              into the gutter like the needs-you switch above it, so the two glyphs stand in one column.
+              Drawn only above five session rows, so a short list's bar is exactly what it was. It reads
+              pressed while a query is set, so a filtered list is never a mystery with the field closed. */}
+          {offered && filterEntry === "button" && (
+            <div className={cn("-mr-2 shrink-0", renderBody !== undefined && "invisible")} aria-hidden={renderBody !== undefined ? true : undefined}>
+              <ToggleButton
+                pressed={filter.query !== ""}
+                onPressedChange={toggleField}
+                label={t("sessionFilter.toggle")}
+                icon={<Icon name="search" className="size-4 shrink-0" />}
+              />
+            </div>
+          )}
         </div>
+        {/* THE FIELD, under the bar: opened by the magnifier through Collapse (a state arriving), or always
+            standing (`always`, no autofocus). On the Changes tab it stays in place, invisible. The
+            opened field closes on an Escape on an empty field; the first Escape only clears. */}
+        {offered && (
+          <FieldSlot
+            open={filterEntry === "always" || filter.open}
+            animated={filterEntry === "button"}
+            hidden={renderBody !== undefined}
+          >
+            <SessionFilterField
+              query={filter.query}
+              onQuery={filter.setQuery}
+              shown={shownRows.length}
+              total={baseRows.length}
+              onGo={goFirst}
+              inputRef={fieldRef}
+              onEscapeEmpty={filterEntry === "button" ? () => filter.setOpen(false) : undefined}
+            />
+          </FieldSlot>
+        )}
       </div>
 
       {/* PINNED, the first group on every pane tab (ADR 0070; the Crew tab lists machines and draws none): under the summary line, so the strip and the
@@ -624,14 +780,14 @@ export function AgentList({
           apart from a workspace that happens to be called "Pinned". No per-row glyph: the group is
           the mark. Nothing pinned, nothing drawn. On Changes these are panes, and a tap opens the
           pane; the workspace rows below keep their change rows. */}
-      {pinned.length > 0 && (
+      {bestRows === null && pinnedShown.length > 0 && (
         <section
           id={PINNED_ID}
           aria-labelledby={PINNED_HEADING_ID}
           className="flex scroll-mt-4 flex-col gap-2"
         >
           <SectionHeader id={PINNED_HEADING_ID} label={t("home.pinned.title")} />
-          <ListGroup>{pinned.map((a) => row(a, "herd"))}</ListGroup>
+          <ListGroup>{pinnedShown.map((a) => row(a, "herd"))}</ListGroup>
         </section>
       )}
 
@@ -659,20 +815,20 @@ export function AgentList({
           per-heading "+": a rank crosses every workspace, and a heading cannot answer a question
           asked across all of them. The strip above keeps its chips. Each row is a `herd` row, whose
           line 2 names its place (`space › tab`), so a row still says which workspace it is in. */}
-      {!renderBody && ranked && rankedRows.length > 0 && (
+      {!renderBody && bestRows === null && ranked && rankedShown.length > 0 && (
         <section id={RANKED_ID} aria-labelledby={RANKED_HEADING_ID} className="flex scroll-mt-4 flex-col gap-2">
           <SectionHeader
             id={RANKED_HEADING_ID}
             label={t(order === "cache" ? "paneOrder.coldest" : "paneOrder.recent")}
-            count={rankedRows.length}
+            count={rankedShown.length}
             tone="strong"
             className="min-h-7"
           />
-          <ListGroup>{rankedRows.map((a) => row(a, "herd"))}</ListGroup>
+          <ListGroup>{rankedShown.map((a) => row(a, "herd"))}</ListGroup>
         </section>
       )}
 
-      {!renderBody && !ranked && drawn.map(({ group: g, rows }) => (
+      {!renderBody && bestRows === null && !ranked && drawnShown.map(({ group: g, rows }) => (
         <section key={g.key} id={groupDomId(g.key)} className="flex scroll-mt-4 flex-col gap-2">
           <SectionHeader
             label={g.heading ?? g.label}
@@ -689,6 +845,44 @@ export function AgentList({
           <ListGroup>{rows.map((a) => row(a, workspaceGroupKey(a) === g.key ? "place" : "herd"))}</ListGroup>
         </section>
       ))}
+
+      {/* BEST MATCH FIRST (the playground round's alternative order): one flat list with no heading, the
+          count line above already saying how many it holds. */}
+      {!renderBody && bestRows !== null && bestRows.length > 0 && (
+        <div data-slot="dash-best" className="flex flex-col gap-2">
+          <ListGroup>{bestRows.map((a) => row(a, "herd"))}</ListGroup>
+        </div>
+      )}
+
+      {/* Nothing matches: one line and the way out, in the list's place. */}
+      {hits !== null && shownRows.length === 0 && (
+        <SessionFilterEmpty query={filter.query.trim()} onClear={() => filter.setQuery("")} />
+      )}
     </div>
   );
+}
+
+/**
+ * The filter field's place under the control bar. `animated` (the magnifier's entry) opens and closes it
+ * through `Collapse`, the sanctioned way for an in-flow surface to arrive; otherwise it stands. `hidden`
+ * keeps the room and draws nothing (the Changes tab, which has no session rows to filter), so a change of
+ * tab moves nothing.
+ */
+function FieldSlot({
+  open,
+  animated,
+  hidden,
+  children,
+}: {
+  open: boolean;
+  animated: boolean;
+  hidden: boolean;
+  children: ReactNode;
+}) {
+  const body = (
+    <div className={cn(hidden && "invisible")} aria-hidden={hidden ? true : undefined}>
+      {children}
+    </div>
+  );
+  return animated ? <Collapse open={open}>{body}</Collapse> : body;
 }

@@ -7,6 +7,8 @@ import { afterEach, beforeEach, vi } from "vitest";
 import { CrewProvider } from "@/components/crew-provider";
 import { ROOT_ROUTE_ID, type HomeData } from "@/lib/loaders";
 import { setPinned } from "@/lib/pins";
+import { __resetDashFilter } from "@/lib/dash-filter";
+import { recallScroll, rememberScroll } from "@/lib/scroll-memory";
 import { __resetBundleFocus, BUNDLE_FOCUS_TTL_MS, bundleFocusPending, requestBundleFocus } from "@/lib/bundle-apply";
 import {
   fixtureAgents,
@@ -1312,5 +1314,84 @@ describe("the tricks' places on the Dashboard (2026-11-10)", () => {
       (el) => el.dataset.trick ?? el.dataset.link ?? el.dataset.slot,
     );
     expect(order).toEqual(["tab", "tab", "tab", "hill", "tab-bar-divider", "legs"]);
+  });
+});
+
+// THE SESSION FILTER on the Dashboard (M97 spec 04): its query lives in memory, per machine, while the app is open.
+describe("the dashboard's session filter", () => {
+  const extra = (n: number, workspaceLabel: string, sessionName: string) => ({
+    ...fixtureAgents[0]!,
+    paneId: `w${n}:p1`,
+    workspaceId: `w${n}`,
+    workspaceNumber: n,
+    workspaceLabel,
+    tabId: `w${n}:t1`,
+    sessionName,
+    status: "idle" as const,
+    cwd: `/home/you/${workspaceLabel}`,
+  });
+  const many = () =>
+    homeData({
+      agents: [...fixtureAgents, extra(5, "moonward", "api server"), extra(6, "moonward", "migrations"), extra(7, "scratch", "notes"), extra(8, "scratch", "ideas")],
+      shellPanes: [],
+      sessions: fixtureSessions,
+    });
+  const magnifier = () => screen.getByRole("button", { name: "Filter sessions" });
+  const field = () => screen.getByRole("textbox", { name: "Filter sessions" });
+  /** The session rows on screen, by DOM id: the Spaces overview below draws workspace names too, and the filter leaves it alone. */
+  const rows = () => document.querySelectorAll("button[id^='pane-row-']").length;
+
+  beforeEach(() => __resetDashFilter());
+
+  it("keeps the query, and the open field, across a visit to a session and back", async () => {
+    const router = renderHome(many());
+    await settled();
+    await userEvent.click(magnifier());
+    await userEvent.type(await screen.findByRole("textbox", { name: "Filter sessions" }), "moon");
+    expect(rows()).toBe(2);
+
+    await act(async () => {
+      await router.navigate("/pane/w5%3Ap1");
+    });
+    await screen.findByTestId("pane");
+    await act(async () => {
+      await router.navigate("/");
+    });
+    await settled();
+    expect(field()).toHaveValue("moon");
+    expect(magnifier()).toHaveAttribute("aria-pressed", "true");
+    expect(rows()).toBe(2);
+  });
+
+  it("starts empty on a fresh page: the query is never stored on the device", async () => {
+    renderHome(many());
+    await settled();
+    await userEvent.click(magnifier());
+    await userEvent.type(await screen.findByRole("textbox", { name: "Filter sessions" }), "moon");
+    expect(JSON.stringify({ ...localStorage, ...sessionStorage })).not.toContain("moon");
+    cleanup();
+    // A page load empties the module's store; the same reset stands in for it here.
+    __resetDashFilter();
+    renderHome(many());
+    await settled();
+    expect(screen.queryByRole("textbox", { name: "Filter sessions" })).toBeNull();
+    expect(magnifier()).toHaveAttribute("aria-pressed", "false");
+    expect(rows()).toBe(6);
+  });
+
+  it("restores the scroll position of the list when it comes back filtered", async () => {
+    const key = `home:${"\u0000"}`;
+    rememberScroll(key, 120);
+    renderHome(many());
+    await settled();
+    await userEvent.click(magnifier());
+    await userEvent.type(await screen.findByRole("textbox", { name: "Filter sessions" }), "moon");
+    expect(recallScroll(key)).toBe(120);
+  });
+
+  it("offers no magnifier on a Dashboard of five rows or fewer", async () => {
+    renderHome(solo());
+    await settled();
+    expect(screen.queryByRole("button", { name: "Filter sessions" })).toBeNull();
   });
 });

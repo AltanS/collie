@@ -260,6 +260,7 @@ describe("stretches", () => {
     const { container } = withStretches("x {{short|a needle inside}} y", { query: "needle" });
     expect(screen.queryByRole("button", { name: "short" })).toBeNull();
     expect(container.querySelector("mark")?.textContent).toBe("needle");
+    expect(container.querySelector("mark")?.className).toBe("rounded-sm bg-find text-inherit");
   });
 
   it("reads the markup as written when this device does not draw stretches", () => {

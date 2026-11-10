@@ -50,7 +50,7 @@ import {
 } from "../fixtures";
 import { PackedRootRouter, RootRouter } from "../harness";
 import { Card, CardControls, Group, Section, Segmented, Stage, type SectionDef } from "../layout";
-import { PhoneFrameCard } from "./shared";
+import { PhoneFrameCard, useCardFilter } from "./shared";
 
 export const DEF: SectionDef = {
   id: "dashboard",
@@ -83,8 +83,10 @@ const herdWithBranches: AgentView[] = herd.map((pane, i) => {
  *  the route does, with the reading held between taps. */
 function OrderedAgentList({ initial }: { initial: PaneOrder }) {
   const [order, setOrder] = useState<PaneOrder>(initial);
+  const filter = useCardFilter();
   return (
     <AgentList
+      filter={filter}
       agents={herd}
       bridge="connected"
       onOpen={() => {}}
@@ -93,6 +95,12 @@ function OrderedAgentList({ initial }: { initial: PaneOrder }) {
       onOrderChange={setOrder}
     />
   );
+}
+
+/** The list with its own filter (a card's state, never the app's store), optionally opened on a query. */
+function FilteredAgentList({ agents, query = "", open = false }: { agents: AgentView[]; query?: string; open?: boolean }) {
+  const filter = useCardFilter({ query, open });
+  return <AgentList filter={filter} agents={agents} bridge="connected" onOpen={() => {}} newTab={HEADING_NEW_TAB} />;
 }
 
 /** A tab body this card does not build for real: one quiet line saying what the tab would hold. */
@@ -119,11 +127,13 @@ function DashboardTabsPhone({
   const [on, setOn] = useState(initialOn);
   const [view, setView] = useState<DashView>(initialView);
   const [order, setOrder] = useState<PaneOrder>("place");
+  const filter = useCardFilter();
   const blocked = countBlocked(herd);
   return (
     <>
       <div className="min-h-0 flex-1 overflow-y-auto">
         <AgentList
+          filter={filter}
           agents={herd}
           bridge="connected"
           onOpen={() => {}}
@@ -181,7 +191,7 @@ export function DashboardSection() {
           span={2}
         >
           <PhoneFrameCard>
-            <AgentList agents={herd} bridge="connected" onOpen={() => {}} newTab={HEADING_NEW_TAB} />
+            <FilteredAgentList agents={herd} />
           </PhoneFrameCard>
         </Card>
 
@@ -193,7 +203,31 @@ export function DashboardSection() {
           span={2}
         >
           <PhoneFrameCard>
-            <AgentList agents={herdWithBranches} bridge="connected" onOpen={() => {}} newTab={HEADING_NEW_TAB} />
+            <FilteredAgentList agents={herdWithBranches} />
+          </PhoneFrameCard>
+        </Card>
+
+        <Card
+          state="agent-list-filtered-branch"
+          label="agent list, filtered by branch"
+          reach="the dashboard on more than five rows: tap the magnifier at the bar's right end, then type."
+          note="Opened on `perf`. The matched letters are marked on the branch line, the groups left empty are gone with their headings, and the count line says how many rows are left. Type to try another."
+          span={2}
+        >
+          <PhoneFrameCard>
+            <FilteredAgentList agents={herdWithBranches} query="perf" open />
+          </PhoneFrameCard>
+        </Card>
+
+        <Card
+          state="agent-list-filtered-agent"
+          label="agent list, filtered by agent"
+          reach="a query that matches a field the row does not draw: the row's second line says it in place of the place."
+          note="Opened on `gemini`. The row says `agent gemini` on line 2, the letters marked, and keeps its 44px."
+          span={2}
+        >
+          <PhoneFrameCard>
+            <FilteredAgentList agents={herdWithBranches} query="gemini" open />
           </PhoneFrameCard>
         </Card>
 

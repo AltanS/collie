@@ -1,4 +1,5 @@
 import { hostHealth, type HostHealth } from "./host-health";
+import { hostName, serverFor } from "./hosts";
 import type { ServerSummary } from "./types";
 
 // MACHINES: the crew's members grouped by the physical host they run on (M77).
@@ -113,4 +114,26 @@ export function hasSharedHost(machines: readonly Machine[]): boolean {
 /** The machine that holds member `id`, if any. */
 export function machineOf(machines: readonly Machine[], id: string): Machine | undefined {
   return machines.find((m) => m.instances.some((s) => s.id === id));
+}
+
+/**
+ * What a crew member is called on screen: the plain member name, unless some machine of the crew runs
+ * two instances (the Herdr TUI and the Herdr core, say): then `<host> · <mux>`, so a pane says which
+ * instance of the machine it lives on. The rule is {@link hasSharedHost} and the second part is
+ * {@link instanceLabel}; there is no third. A member the roster no longer lists keeps its id. View
+ * only: `?h=`, scopes and API paths keep the member id. `HostChip` draws it, and the session filter
+ * matches it, so the filter never matches a machine name the row would spell differently.
+ */
+export function machineLabel(
+  servers: readonly ServerSummary[] | undefined,
+  machines: readonly Machine[],
+  host: string,
+): string {
+  const plain = hostName(servers, host) ?? host;
+  if (!hasSharedHost(machines)) return plain;
+  const member = serverFor(servers, host);
+  const machine = machineOf(machines, member?.id ?? host);
+  if (member === undefined || machine === undefined) return plain;
+  const instance = instanceLabel(member, machine.instances);
+  return instance === machine.name ? machine.name : `${machine.name} · ${instance}`;
 }

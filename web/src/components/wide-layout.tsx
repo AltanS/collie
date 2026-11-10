@@ -862,6 +862,8 @@ function SidebarList({ agent, paneId, scope, onSelect }: { agent: AgentView | un
         order={dash.prefs.paneOrder}
         onOrderChange={dash.setPaneOrder}
         className="px-2 py-2"
+        // The filter field sticks at the top of the sidebar's scroller, its rule across the sidebar.
+        filterClassName="top-0 -mx-2 px-2"
         roomy
       />
       {sheet}

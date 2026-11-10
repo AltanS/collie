@@ -146,6 +146,7 @@ describe("Markdown equations with KaTeX", () => {
   it("marks a source search hit without putting marks inside the formula", () => {
     const { container, rerender } = render(<MarkdownText text={String.raw`$\frac{a}{b}$`} query="FRAC" />);
     expect(container.querySelector("mark math")).not.toBeNull();
+    expect(container.querySelector("mark")?.className).toContain("bg-find");
     expect(container.querySelector("math mark")).toBeNull();
     rerender(<MarkdownText text={String.raw`$\frac{a}{b}$`} query="missing" />);
     expect(container.querySelector("mark")).toBeNull();

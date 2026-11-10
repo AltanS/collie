@@ -1,12 +1,14 @@
 import { PaneBadge } from "@/components/pane-badge";
 import { SectionHeader } from "@/components/section-header";
 import { ListGroup, LIST_ROW_CORNERS } from "@/components/ui/list-group";
+import { MatchText } from "@/components/ui/match-text";
 import { Progress } from "@/components/ui/progress";
 import { useLocale } from "@/hooks/use-locale";
 import { t } from "@/lib/i18n";
 import { trickIconOf } from "@/lib/tricks/icons";
 import { parseTrickSessionId } from "@/lib/tricks/schema";
 import { useTricksState } from "@/lib/tricks/store";
+import { viaLabelKey, type PaneField, type PaneMatch } from "@/lib/pane-filter";
 import { paneHeaderLine, paneProgress, paneSubtitle } from "@/lib/pane-marks";
 import { paneName } from "@/lib/pane-name";
 import type { AgentView } from "@/lib/types";
@@ -49,11 +51,15 @@ export function trickSessionLine(pane: AgentView): string | null {
   return paneHeaderLine(paneProgress(pane), paneSubtitle(pane));
 }
 
+/** What a trick session's row draws as text, for the session filter (lib/pane-filter.ts): its name only. */
+export const TRICK_ROW_DRAWN: ReadonlySet<PaneField> = new Set<PaneField>(["name"]);
+
 export function TrickSessionRow({
   pane,
   onOpen,
   variant = "list",
   active = false,
+  match,
 }: {
   pane: AgentView;
   onOpen: (pane: AgentView) => void;
@@ -61,11 +67,19 @@ export function TrickSessionRow({
   variant?: "list" | "switch";
   /** The session open now, in Switch session. */
   active?: boolean;
+  /**
+   * How Switch session's filter matched this row (M97). Absent with no query: the row is drawn as
+   * before. A match in a field the row does not draw takes line 2's slot, as on a pane row.
+   */
+  match?: PaneMatch | undefined;
 }) {
   useLocale();
   const progress = paneProgress(pane);
   const line = trickSessionLine(pane);
   const name = paneName(pane);
+  const marks = match?.hit.marks;
+  const via = match?.hit.via ?? null;
+  const viaLabel = via === null ? null : viaLabelKey(via);
   return (
     <button
       type="button"
@@ -85,13 +99,22 @@ export function TrickSessionRow({
         <div className="min-w-0 flex-1">
           <div className="flex h-5 min-w-0 items-center gap-1.5">
             <span data-slot="trick-session-name" className={cn("min-w-0 truncate font-medium", variant === "switch" && "text-sm")}>
-              {name}
+              <MatchText text={name} ranges={marks?.name} />
             </span>
             <PaneBadge pane={pane} className="shrink-0" />
           </div>
-          <div data-slot="trick-session-line" className="h-4 min-w-0 truncate text-xs leading-4 text-muted-foreground">
-            {line ?? ""}
-          </div>
+          {via !== null && match !== undefined ? (
+            <div data-slot="trick-session-line" className="flex h-4 min-w-0 items-baseline gap-1 text-xs leading-4 text-muted-foreground">
+              {viaLabel !== null && <span className="shrink-0 text-muted-foreground/70">{t(viaLabel)}</span>}
+              <span data-slot="trick-session-via" className="min-w-0 flex-1 truncate">
+                <MatchText text={match.fields[via]} ranges={marks?.[via]} />
+              </span>
+            </div>
+          ) : (
+            <div data-slot="trick-session-line" className="h-4 min-w-0 truncate text-xs leading-4 text-muted-foreground">
+              {line ?? ""}
+            </div>
+          )}
         </div>
       </div>
       {progress !== null && (

@@ -48,7 +48,8 @@
     "host-8": "oklch(0.45 0.108 241)",
     "host-9": "oklch(0.45 0.2 280)",
     "pane-active": "oklch(0.14 0 0)",
-    "tab-active": "oklch(0.14 0 0)"
+    "tab-active": "oklch(0.14 0 0)",
+    "find": "oklch(0.879 0.169 91.605 / 0.7)"
   },
   "dark": {
     "background": "oklch(0.17 0.003 80)",
@@ -95,7 +96,8 @@
     "host-8": "oklch(0.746 0.16 241)",
     "host-9": "oklch(0.7 0.18 280)",
     "pane-active": "oklch(0.985 0 0)",
-    "tab-active": "oklch(0.985 0 0)"
+    "tab-active": "oklch(0.985 0 0)",
+    "find": "oklch(0.769 0.188 70.08 / 0.4)"
   },
   "fonts": {
     "ui": "atkinson",

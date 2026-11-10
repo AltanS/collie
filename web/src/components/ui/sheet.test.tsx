@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 
 import { act } from "react";
 
-import { BottomSheet, useAnySheetOpen } from "./sheet";
+import { BottomSheet, SHEET_BODY_STICKY, useAnySheetOpen } from "./sheet";
 
 // Focus + labelling: the sheets are role=dialog/aria-modal, so they should be named by their title,
 // move focus inside on open, restore it on close, and expose exactly ONE accessible "Close" (the
@@ -448,5 +448,30 @@ describe("useAnySheetOpen", () => {
     expect(screen.getByRole("status")).toHaveTextContent("open");
     rerender(<Probe />);
     expect(screen.getByRole("status")).toHaveTextContent("none");
+  });
+});
+
+// SHEET_BODY_STICKY states the head's height as a sum of the head's own fixed boxes. jsdom lays out
+// nothing, so this reads the boxes the sum was made from off the rendered head (DESIGN.md §9).
+describe("SHEET_BODY_STICKY", () => {
+  it("is the sum of the head's stated boxes, and takes back the body's own gutter", () => {
+    render(
+      <BottomSheet open onClose={() => {}} title="Switch pane">
+        <p>body</p>
+      </BottomSheet>,
+    );
+    const head = document.querySelector<HTMLElement>(".sticky.top-0")!;
+    const grab = head.children[0];
+    const titleRow = head.children[1];
+    const classes = (el: Element | null | undefined) => (el?.getAttribute("class") ?? "").split(/\s+/u);
+    expect(classes(head)).toContain("border-b");
+    expect(classes(grab)).toEqual(expect.arrayContaining(["pt-2", "pb-1"]));
+    expect(classes(grab?.firstElementChild)).toContain("h-1");
+    expect(classes(titleRow)).toContain("pb-3");
+    expect(classes(titleRow?.querySelector("button"))).toContain("size-8");
+    // 0.5 + 0.25 + 0.25 (the grab row) + 2 + 0.75 (the title row) = 3.75rem, plus the 1px rule.
+    expect(SHEET_BODY_STICKY).toContain("top-[calc(3.75rem+1px)]");
+    expect(classes(head.nextElementSibling)).toContain("px-4");
+    expect(SHEET_BODY_STICKY).toContain("-mx-4 px-4");
   });
 });

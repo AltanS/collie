@@ -134,6 +134,7 @@ describe("TranscriptView", () => {
     const button = screen.getByRole("button", { name: /Bash/ });
     expect(button).toHaveAttribute("aria-expanded", "true");
     expect(container.querySelector("pre mark")).toHaveTextContent("SECRET_TOKEN");
+    expect(container.querySelector("pre mark")?.className).toBe("rounded-sm bg-find text-inherit");
   });
 
   it("a tool call auto-expanded by a search query can be collapsed by tapping its header, and clearing the query does not leave it stuck open", async () => {

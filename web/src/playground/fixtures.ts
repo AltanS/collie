@@ -1383,3 +1383,84 @@ export function manySubagents(n: number): PaneSubagent[] {
     spawnDepth: 1,
   }));
 }
+
+// ── The session switcher's crew (M97) ──────────────────────────────────────────────────────────────
+//
+// Fourteen session rows on a crew of two machines: the lead with its repo open and two worktree
+// workers beside it, the member with its own spaces, bare shells on both, and one pinned row. The list
+// the session filter is drawn over (playground `#switcher`), and the one the playground round flips the
+// filter's switches on. Paths are made up; nothing here is a real checkout.
+
+const SWITCHER_REPO = "/home/you/projects/collie-workspace";
+
+function switcherRow(over: Partial<AgentView> & Pick<AgentView, "paneId" | "workspaceId" | "workspaceLabel" | "workspaceNumber">): AgentView {
+  return {
+    tabId: `${over.workspaceId}:t1`,
+    agent: "claude",
+    status: "idle",
+    cwd: SWITCHER_REPO,
+    focused: false,
+    lastActiveAt: TS - 10 * MIN,
+    lastSeenAt: TS - 5 * MIN,
+    ...over,
+  };
+}
+
+const switcherSpace = (host: string, workspaceId: string, number: number, label: string, over: Partial<WorkspaceView> = {}): WorkspaceView => ({
+  workspaceId,
+  number,
+  label,
+  focused: false,
+  activeTabId: `${workspaceId}:t1`,
+  tabCount: 1,
+  paneCount: 1,
+  host,
+  ...over,
+});
+
+const switcherAgents: AgentView[] = [
+  switcherRow({ paneId: "w1:p1", host: "bluefin", workspaceId: "w1", workspaceLabel: "collie-workspace", workspaceNumber: 1, paneLabel: "release notes", status: "working", gitHead: { kind: "branch", name: "main" } }),
+  switcherRow({ paneId: "w1:p2", host: "bluefin", workspaceId: "w1", workspaceLabel: "collie-workspace", workspaceNumber: 1, paneLabel: "triage 1.29", status: "blocked", gitHead: { kind: "branch", name: "main" } }),
+  switcherRow({ paneId: "w2:p1", host: "bluefin", workspaceId: "w2", workspaceLabel: "fix-748", workspaceNumber: 2, paneLabel: "sheet drag glitch", status: "working", cwd: "/home/you/projects/fix-748", gitHead: { kind: "branch", name: "fix/748-sheet" } }),
+  switcherRow({ paneId: "w3:p1", host: "bluefin", workspaceId: "w3", workspaceLabel: "session-filter", workspaceNumber: 3, paneLabel: "the filter in the switcher", cwd: "/home/you/projects/session-filter", gitHead: { kind: "branch", name: "feat/session-filter" } }),
+  switcherRow({ paneId: "w3:p2", host: "bluefin", workspaceId: "w3", workspaceLabel: "session-filter", workspaceNumber: 3, agent: "codex", paneLabel: "review", lastActiveAt: TS - 2 * MIN, cwd: "/home/you/projects/session-filter", gitHead: { kind: "branch", name: "feat/session-filter" } }),
+  switcherRow({ paneId: "w4:p1", host: "bluefin", workspaceId: "w4", workspaceLabel: "collie-website", workspaceNumber: 4, agent: "pi", paneLabel: "hero copy", cwd: "/home/you/projects/collie-website", gitHead: { kind: "branch", name: "main" } }),
+  switcherRow({ paneId: "w1:p1", host: "minibuch", workspaceId: "w1", workspaceLabel: "collie-next", workspaceNumber: 1, paneLabel: "deputy rebuild", status: "working", cwd: "/home/you/apps/collie-next" }),
+  switcherRow({ paneId: "w1:p2", host: "minibuch", workspaceId: "w1", workspaceLabel: "collie-next", workspaceNumber: 1, agent: "omp", paneLabel: "nix flake check", cwd: "/home/you/apps/collie-next" }),
+  switcherRow({ paneId: "w2:p1", host: "minibuch", workspaceId: "w2", workspaceLabel: "showreel", workspaceNumber: 2, paneLabel: "render plates", status: "blocked", cwd: "/tmp/showreel" }),
+  switcherRow({ paneId: "w3:p1", host: "minibuch", workspaceId: "w3", workspaceLabel: "collie-hc", workspaceNumber: 3, agent: "opencode", paneLabel: "core leg", cwd: "/home/you/apps/collie-next" }),
+];
+
+const switcherShells: AgentView[] = [
+  switcherRow({ paneId: "w1:p9", host: "bluefin", workspaceId: "w1", workspaceLabel: "collie-workspace", workspaceNumber: 1, agent: "shell", kind: "shell", status: "unknown", paneLabel: "dev server" }),
+  switcherRow({ paneId: "w4:p9", host: "bluefin", workspaceId: "w4", workspaceLabel: "collie-website", workspaceNumber: 4, agent: "shell", kind: "shell", status: "unknown", cwd: "/home/you/projects/collie-website" }),
+  switcherRow({ paneId: "w1:p9", host: "minibuch", workspaceId: "w1", workspaceLabel: "collie-next", workspaceNumber: 1, agent: "shell", kind: "shell", status: "unknown", paneLabel: "journal", cwd: "/home/you/apps/collie-next" }),
+  switcherRow({ paneId: "w2:p9", host: "minibuch", workspaceId: "w2", workspaceLabel: "showreel", workspaceNumber: 2, agent: "shell", kind: "shell", status: "unknown", cwd: "/tmp/showreel" }),
+];
+
+const switcherServers: ServerSummary[] = [
+  { id: "bluefin", name: "bluefin", isLead: true, reachable: true, protocol: "ok", lastSeenAt: TS },
+  { id: "minibuch", name: "minibuch", isLead: false, reachable: true, protocol: "ok", lastSeenAt: TS },
+];
+
+/** The switcher's fourteen rows on two machines, with the snapshot facts the sheet is handed beside them. */
+export const switcherCrew = {
+  agents: switcherAgents,
+  shellPanes: switcherShells,
+  servers: switcherServers,
+  workspaces: [
+    switcherSpace("bluefin", "w1", 1, "collie-workspace", { repoRoot: SWITCHER_REPO, isWorktree: false }),
+    switcherSpace("bluefin", "w2", 2, "fix-748", { repoRoot: SWITCHER_REPO, isWorktree: true }),
+    switcherSpace("bluefin", "w3", 3, "session-filter", { repoRoot: SWITCHER_REPO, isWorktree: true }),
+    switcherSpace("bluefin", "w4", 4, "collie-website"),
+    switcherSpace("minibuch", "w1", 1, "collie-next"),
+    switcherSpace("minibuch", "w2", 2, "showreel"),
+    switcherSpace("minibuch", "w3", 3, "collie-hc"),
+  ] satisfies WorkspaceView[],
+  sessions: [
+    { name: "default", isPrimary: true, reachable: true, agents: 6, working: 2, blocked: 1, host: "bluefin" },
+    { name: "default", isPrimary: true, reachable: true, agents: 4, working: 1, blocked: 1, host: "minibuch" },
+  ] satisfies SessionSummary[],
+  /** The pinned row: the lead's blocked triage pane. */
+  pinned: switcherAgents[1]!,
+};

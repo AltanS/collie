@@ -1442,6 +1442,19 @@ export const en = {
   "status.detail.copied": "Copied",
   "status.detail.dismiss": "Dismiss",
 
+  // --- sessionFilter (the filter field over the session switcher and the Dashboard, M97) ---
+  // English only until the translation pass: listed in PENDING_TRANSLATION below. The field labels
+  // name the field a row matched in when the row does not draw it (`branch fix/748`), lower case.
+  "sessionFilter.placeholder": "Filter sessions",
+  "sessionFilter.noMatch": "No session matches “{query}”.",
+  "sessionFilter.count": "{shown} of {total}",
+  "sessionFilter.clear": "Clear filter",
+  "sessionFilter.field.branch": "branch",
+  "sessionFilter.field.folder": "folder",
+  "sessionFilter.field.agent": "agent",
+  "sessionFilter.field.machine": "machine",
+  "sessionFilter.toggle": "Filter sessions",
+
   // --- space (spaces overview/strip/view, tabs, panes, new-space) ---
   "space.overview.title": "Spaces",
   "space.overview.new.aria": "New space",
@@ -3557,6 +3570,17 @@ export const PENDING_TRANSLATION = [
   // A supervised bridge whose service manager did not answer starts no update (1.28.1).
   "apiError.update.manager_unreachable",
   "settings.updateBanner.updateNow",
+  // The session filter (M97, 2026-11-10).
+  "sessionFilter.placeholder",
+  "sessionFilter.noMatch",
+  "sessionFilter.count",
+  "sessionFilter.clear",
+  "sessionFilter.field.branch",
+  "sessionFilter.field.folder",
+  "sessionFilter.field.agent",
+  "sessionFilter.field.machine",
+  // The Dashboard's magnifier (M97 spec 04).
+  "sessionFilter.toggle",
 ] as const satisfies readonly MessageKey[];
 
 /** A key a bundle may leave out until the translation pass. */

@@ -44,7 +44,7 @@ describe("theme-init.js and lib/theme agree", () => {
   it("spells the closed token list, all of it and in order, the optional tokens last", () => {
     expect(listOf("TOKENS")).toEqual([...ALL_THEME_TOKENS]);
     expect(listOf("TOKENS").slice(0, 43)).toEqual([...THEME_TOKENS]);
-    expect(listOf("TOKENS")).toHaveLength(45);
+    expect(listOf("TOKENS")).toHaveLength(46);
   });
 
   it("holds the same colour pattern and the same length cap", () => {
