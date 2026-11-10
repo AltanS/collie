@@ -73,6 +73,7 @@ import { selectView, type SnapshotView } from "../sessions.ts";
 import type { MuxConfig, SessionCard, SnapshotResponse } from "../types.ts";
 import { WALKY_ACK_HEADER, WALKY_REPORT_FIELD, type CrewAnswer } from "../walky/crew.ts";
 import type { HillCrewAnswer } from "../hill/crew.ts";
+import { INPUT_REQUEST_MAX_BYTES } from "../tricks/inputs.ts";
 import type { WalkyReportBody } from "../walky/parse.ts";
 
 // The `/crew/v1/*` surface. This module exists **so that `bridge/server.ts` contains no crew route
@@ -221,6 +222,13 @@ export const CREW_HILL_MEDIA_PATH = "/crew/v1/hill/media";
 export const CREW_HILL_POST_PATH = "/crew/v1/hill/post";
 /** `POST` — a member asks its lead for a Decision's status, withdraws one, or lists its own (§22, added in 1.29.0). */
 export const CREW_HILL_OP_PATH = "/crew/v1/hill/op";
+/**
+ * `POST` — the lead asks a member for the files a trick's `inputs` globs match in that member's agent
+ * sessions' folders (§23, added in 1.29.0, M99). Lead → peer, so it rides the pinned handshake and the
+ * dial attestation like the walky outcomes push, is answered only by a collie that has a lead, to that
+ * lead, and only while the member's trick reads are on. A read: it writes nothing on the member.
+ */
+export const CREW_TRICKS_INPUTS_PATH = "/crew/v1/tricks/inputs";
 
 /**
  * The machine-readable `code` on §14.3's refusal of an unapproved leadership claim.
@@ -709,6 +717,14 @@ export interface CrewRouterDeps {
     readonly outcomes?: (body: JsonValue | undefined, from: string) => CrewAnswer;
     /** `POST /crew/v1/walky/who` on a LEAD (added in 1.29.0, M98): the crew's agent panes, for a signed member. */
     readonly who?: () => CrewAnswer;
+  };
+  /**
+   * A trick's inputs (§23, added in 1.29.0), on a MEMBER: the lead's `POST /crew/v1/tricks/inputs`. The
+   * handler holds the member's gate (`COLLIE_CREW_TRICK_READS`) and answers 403 when it is off. Absent ⇒
+   * the route 404s, which is what a member before 1.29.0 answers and the lead reads as `older`.
+   */
+  readonly tricks?: {
+    readonly inputs: (body: JsonValue | undefined) => Promise<{ readonly status: number; readonly body: JsonValue }>;
   };
   /**
    * The Hill across the crew (§22, added in 1.29.0), on a LEAD: a member's image, post and follow-up
@@ -1335,6 +1351,23 @@ export function createCrewRouter(deps: CrewRouterDeps): CrewHandler {
       if (verdict.member.memberId !== data.lead.memberId) return refuse(pathname, "certificate");
       const answer = deps.walky.outcomes(await readJson(req, signedBody), verdict.member.memberId);
       if (answer.status === 401) return refuse(pathname, "certificate");
+      return new Response(JSON.stringify(answer.body), { status: answer.status, headers: crewResponseHeaders(verdict.self) });
+    }
+    if (
+      pathname === CREW_TRICKS_INPUTS_PATH &&
+      req.method === "POST" &&
+      deps.tricks !== undefined &&
+      data !== null &&
+      data.lead !== null &&
+      data.lead.status === "enrolled"
+    ) {
+      // §23 (added in 1.29.0): only a collie that HAS a lead answers, and only to that lead, as the walky
+      // outcomes push above. A deputy's second anchor, any other member and a stranger are the uniform 401.
+      if (verdict.member.memberId !== data.lead.memberId) return refuse(pathname, "certificate");
+      // The body is read only up to its cap, never whole: the request is a few globs and pane ids.
+      const text = await readSignedBody(req, INPUT_REQUEST_MAX_BYTES);
+      if (text === null) return bodyTooLargeResponse(INPUT_REQUEST_MAX_BYTES);
+      const answer = await deps.tricks.inputs(await readJson(req, text));
       return new Response(JSON.stringify(answer.body), { status: answer.status, headers: crewResponseHeaders(verdict.self) });
     }
     if (pathname === CREW_LEAVE_PATH && req.method === "POST") {

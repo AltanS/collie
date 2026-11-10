@@ -26,6 +26,7 @@ import {
   CREW_SNAPSHOT_PATH,
   CREW_TAKEOVER_PATH,
   CREW_WALKY_OUTCOMES_PATH,
+  CREW_TRICKS_INPUTS_PATH,
   CREW_WALKY_PATH,
   CREW_WALKY_WHO_PATH,
   CREW_WARRANT_PATH,
@@ -3099,6 +3100,84 @@ describe("POST /crew/v1/walky/outcomes — the lead hands a member its outcomes 
     const h = harness(peerStore());
     const unwired = createCrewRouter({ store: h.store, audit: h.audit, transportPinned: true });
     expect((await call(unwired, CREW_WALKY_OUTCOMES_PATH, post({ receipts: [] })))!.status).toBe(404);
+  });
+});
+
+describe("POST /crew/v1/tricks/inputs — the lead reads a trick's inputs on a member (§23, added in 1.29.0)", () => {
+  const ask = { trick: "todo", run: "r1", globs: ["TODO.md"], panes: ["%1"] };
+
+  function inputsRig(store: TrustStoreData, answer: { status: number; body: JsonValue } = { status: 200, body: { panes: [] } }, deputyAnchor?: { memberId: string; certPem: string }) {
+    const h = harness(store);
+    const seen: (JsonValue | undefined)[] = [];
+    const handler = createCrewRouter({
+      store: h.store,
+      audit: h.audit,
+      transportPinned: true,
+      deputyAnchor,
+      now: () => T0,
+      tricks: {
+        inputs: async (body) => {
+          seen.push(body);
+          return answer;
+        },
+      },
+    });
+    return { h, handler, seen };
+  }
+
+  test("a member answers its own lead, and passes the handler's status through (403 when its trick reads are off)", async () => {
+    const { handler, seen } = inputsRig(peerStore(), { status: 200, body: { panes: [{ pane: "%1", state: "ok", files: [] }] } });
+    const res = (await call(handler, CREW_TRICKS_INPUTS_PATH, post(ask)))!;
+    expect(res.status).toBe(200);
+    expect(res.headers.get("x-crew-protocol")).toBe("2");
+    expect(await res.json()).toEqual({ panes: [{ pane: "%1", state: "ok", files: [] }] });
+    // SAFETY: `JSON.parse` output IS a JsonValue by construction.
+    expect(seen).toEqual([JSON.parse(JSON.stringify(ask)) as JsonValue]);
+    const off = inputsRig(peerStore(), { status: 403, body: { error: "trick reads are off on this machine", code: "trick_reads_off" } });
+    const refused = (await call(off.handler, CREW_TRICKS_INPUTS_PATH, post(ask)))!;
+    expect(refused.status).toBe(403);
+    expect(await refused.json()).toMatchObject({ code: "trick_reads_off" });
+  });
+
+  test("a body over 256 KiB is refused with 413 before the handler sees it", async () => {
+    const { handler, seen } = inputsRig(peerStore());
+    const big = { ...ask, run: "x".repeat(300 * 1024) };
+    const res = (await call(handler, CREW_TRICKS_INPUTS_PATH, post(big)))!;
+    expect(res.status).toBe(413);
+    expect(seen).toEqual([]);
+  });
+
+  test("who may ask: never a lead, never a member's signature, never the deputy this listener anchors; an unwired member answers 404", async () => {
+    // A lead has no lead: a member's signed request (the only way a lead admits one) reaches nothing.
+    const h0 = harness(leadStore({ peers: [member({ memberId: "laptop" })] }));
+    const seen: (JsonValue | undefined)[] = [];
+    const lead = createCrewRouter({ store: h0.store, audit: h0.audit, now: () => T0, tricks: { inputs: async (body) => (seen.push(body), { status: 200, body: { panes: [] } }) } });
+    expect((await call(lead, CREW_TRICKS_INPUTS_PATH, signedPost("laptop", CREW_TRICKS_INPUTS_PATH, ask, T0)))!.status).toBe(401);
+    expect(seen).toEqual([]);
+    // A deputy this peer anchored dials it with its own attestation: admitted as "nas", not the lead, so refused.
+    const w = mintWarrant(leadStore({ peers: [member({ memberId: "nas" })] }), "nas", T0)!.result;
+    const anchored = inputsRig(peerStore({ warrant: { warrant: w, deputyCertPem: material("nas").certPem } }), undefined, { memberId: "nas", certPem: material("nas").certPem });
+    const dialled = {
+      method: "POST",
+      headers: {
+        ...authed,
+        "content-type": "application/json",
+        [DIAL_HEADER]: signDial(material("nas").keyPem, { method: "POST", path: CREW_TRICKS_INPUTS_PATH, timestamp: T0, to: "laptop" }),
+        [TIMESTAMP_HEADER]: String(T0),
+      },
+      body: JSON.stringify(ask),
+    };
+    expect((await call(anchored.handler, CREW_TRICKS_INPUTS_PATH, dialled))!.status).toBe(401);
+    expect(anchored.seen).toEqual([]);
+    expect(anchored.h.lines.some((line) => line.action === "crew.refused")).toBe(true);
+    // No secret: the uniform 401 before routing.
+    const { handler, seen: none } = inputsRig(peerStore());
+    expect((await call(handler, CREW_TRICKS_INPUTS_PATH, { method: "POST", headers: { "x-crew-protocol": "2" }, body: JSON.stringify(ask) }))!.status).toBe(401);
+    expect(none).toEqual([]);
+    // A member build that does not wire it: 404, which the lead reads as an older member.
+    const h = harness(peerStore());
+    const unwired = createCrewRouter({ store: h.store, audit: h.audit, transportPinned: true });
+    expect((await call(unwired, CREW_TRICKS_INPUTS_PATH, post(ask)))!.status).toBe(404);
   });
 });
 

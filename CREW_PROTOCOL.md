@@ -483,6 +483,7 @@ than to anything it fronts. They exist because three operator verbs are otherwis
 | `POST` | `/crew/v1/hill/post` | any member | Added in 1.29.0 (§22). The caller posts one Decision for one of its own sessions on its lead's Hill. Signed per §8.6; the poster's machine is the signer, never a body field. Answered only by a collie that leads. Changes no roster and advances no floor: the post's request id is its replay key. |
 | `POST` | `/crew/v1/hill/op` | any member | Added in 1.29.0 (§22). The caller asks its lead for one Decision's status, withdraws one, or lists its own, for one of its own sessions. Signed per §8.6. Answered only by a collie that leads. Changes no roster and advances no floor. |
 | `POST` | `/crew/v1/walky/outcomes` | the lead | Added 2026-10-18 (§21). The lead hands a member the receipts it learned for messages that member sent to another machine, so the sender sees how they ended. Answered only by a collie that has a lead, and only to its own lead: any other caller is the uniform 401. The member writes a receipt only for a message its own log holds and that it sent itself. Changes no roster. |
+| `POST` | `/crew/v1/tricks/inputs` | the lead | Added in 1.29.0 (§23). The lead asks a member for the files a trick's `inputs` globs match in that member's agent sessions' folders, read through the member's Files view. Answered only by a collie that has a lead, and only to its own lead: any other caller is the uniform 401. Refused `403` with `code: "trick_reads_off"` while the member's trick reads are off. A read: changes no roster and writes nothing on the member. |
 | `POST` | `/crew/v1/pairing` | the lead | Syncs the lead's paired-device registry — **hashes only** — to the **deputy and to nobody else** (§18.14). Refused unless the caller is *this collie's own lead* AND this collie holds a verified warrant naming **itself**. A label that collides with one of this machine's own paired devices refuses the sync with `code: "pairing_label_collision"`, naming the labels; it is never silently renamed. |
 | `POST` | `/crew/v1/launchers-copy` | the lead | Added 2026-11-03 (§18.14, ADR 0127 point 5). Sends the lead's merged launcher rows to the **deputy and to nobody else**, as a read-only copy the deputy serves only once it leads. The same two role checks as `pairing`: the caller is *this collie's own lead*, and this collie holds a verified warrant naming **itself**. A deputy that `404`s it is a build before the route; the lead stops sending to it until the next connect. Changes no roster. |
 | `POST` | `/crew/v1/takeover` | the deputy | The witness question, then the re-pin (§18.16). **Two-phase**, with `phase` additive-optional and **absent meaning `probe`** — the reading that changes nothing. It is the one route a caller admitted **as the deputy** may use, and like `warrant` it has two kinds of recipient: arriving at a collie that still believes it leads, a `probe` answers `lead_is_alive` (it *is* the lead, and it *is* answering) and a `commit` is a deposition (§18.12). |
@@ -4189,3 +4190,91 @@ Additive inside protocol version 2 (§7.1). A lead before 1.29.0 answers the uni
 routes, read as above. A member before 1.29.0 never sends them. A phone before 1.29.0 ignores `machine` on a receipt
 and shows the reason as any refusal. A solo install registers none of these routes (§11).
 `CREW_PROTOCOL_VERSION` stays `2`.
+
+## 23. A trick on the lead reads files from every machine *(added in 1.29.0)*
+
+A trick is a small program the operator approves on one machine; its bridge runs it and draws what it
+prints on the phone (`web/src/lib/tricks/README.md`). Since 1.29.0 a trick on a crew's lead sees every
+member's sessions in its facts (§9 merges them), and a trick written for trick contract 2 may list
+`inputs`: globs of files to read from each agent session's folder. Before each run the lead fetches
+the matching files from each machine and copies them into the trick's folder. The trick reads them as
+data. It never reaches a member any other way: no socket, no token, no command.
+
+### The route
+
+| Method | Path | Sent by | Body | Answer | Body cap |
+|---|---|---|---|---|---|
+| `POST` | `/crew/v1/tricks/inputs` | the lead, to a member | `{ trick, run, globs, panes, have }` | `{ panes: [{ pane, state, files }] }` | 256 KiB asked, 8 MiB of files answered |
+
+- **Lead → member, like the walky outcomes push (§21).** It rides the proxy surface: the pinned mutual
+  TLS handshake, the crew secret and the dial attestation `X-Crew-Dial` (§8.1), and no §8.6 signature.
+  It is not in the signable set. Only a collie whose trust store holds an enrolled lead answers, and
+  only when the admitted caller is that lead. A deputy's second anchor, another member and a stranger
+  get the uniform 401. A lead or a solo install answers 404.
+- **The member's gate.** `COLLIE_CREW_TRICK_READS` on the member: `on` allows, `off` refuses, and any
+  other word refuses (it fails closed). Unset follows the member's device gate: allowed while
+  `COLLIE_DEVICE_HEADER` is off (like the Files view to a crew link today), refused while it is on.
+  Refused is `403` with `{ code: "trick_reads_off" }`, and the member reads nothing. The gate is read
+  before the body is parsed.
+- **The body.** `trick` is the trick's id (`isTrickId`), `run` a run id for the audit, `globs` the
+  trick's approved `inputs` (1 to 8, each read by the same `inputGlobProblem` on the member), `panes`
+  the member's pane ids the lead's facts list for that member (1 to 256, plain ids, no `/`), and `have`
+  the files the lead already holds: `[{ pane, files: [{ rel, sha256 }] }]`, only for a pane asked. Any
+  unknown key, any other shape, or a body over 256 KiB is `400` (or `413` past the cap), and nothing is
+  read.
+- **Who names what.** The trick's author names the globs, and the operator approves them with the
+  trick's code: they are part of its powers, so a change of them asks again. The lead names the panes,
+  from its own facts. The member decides which of them it serves: only a pane its own snapshot shows as
+  an **agent** pane, read under that pane's Files root (ADR 0083). A shell pane, a pane it does not
+  have, or one with no root answers `no-pane` or `no-folder` with no files. The member names each file
+  (`rel`), and the lead checks every name again (below). The member is never named by the body: the
+  lead files the answer under the member id of the link it dialled.
+- **The member's read** is the Files view's own: the same root, home bound, real-path containment, deny
+  list (`.git`, the state secrets, the bridge's own state and config folders) and no-follow open. A link
+  is never followed at any level. A `.env` file (`.env`, `.env.local`, `.envrc`, in any case) is never
+  read, whatever the glob says: the Files view shows one to a person who opens it, a trick reads
+  unattended. A file over 2 MB, or a text file over 256 KiB, is listed as `skipped: "too-large"`; a
+  file that is neither UTF-8 text without NUL nor a PNG, JPEG or WebP picture is `skipped: "type"`. At
+  most 32 files and 64 folder listings per pane. With `COLLIE_REDACT` on, a text file
+  leaves masked. A file whose SHA-256 the lead named in `have` travels as its hash only. The bytes of
+  one answer stop at 8 MiB; past it a file is `skipped: "cap"`.
+- **A file in the answer** is `{ rel, bytes, mtime, sha256, kind, b64 }`, or `{ rel, bytes, mtime,
+  skipped }` for one left out, or without `b64` for one the lead holds.
+
+### The lead's side
+
+- The lead calls a member only for a contract 2 trick with `inputs`, only for a member its facts list
+  sessions of, and only for that member's agent sessions. Its own sessions are read locally through the
+  same reader. A member whose release is below 1.29.0 (`TRICKS_CREW_FIRST_VERSION`) gets no call, and
+  its sessions say `older`; a member the last sweep did not reach gets no call either (`offline`).
+- One call per trick per member in 5 seconds at most. Inside that window the last answer stands, and
+  the files it brought stay. The call has 8 seconds and is never retried. A refused dial or a timeout
+  is `offline`; a `404` is `older` (a member built before the route); a `403 trick_reads_off` is
+  `refused`. The lead reads at most the answer's cap of the body and drops the rest.
+- **The lead trusts no word of the answer.** For each file it checks: `rel` is a relative path that
+  passes the same rule as a Files path, matches one of the trick's globs step by step, and names no
+  `.env`, `.git`, `.` or `..`; `b64` decodes strictly; the bytes' SHA-256 is `sha256`; the size is
+  `bytes` and within the kind's cap; a picture sniffs as PNG, JPEG or WebP; a text file is UTF-8 with no
+  NUL. A hash-only file counts only when the lead holds that file with that hash. A pane not asked is
+  ignored. Anything else is skipped and counted.
+- **Delivery.** The lead writes the files under the trick's approved copy, `inputs/<member>/<pane>/<rel>`,
+  each folder name one step encoded from the id (injective, hashed when long). It builds the whole tree
+  in a stage folder beside the old one, writes each file new (`wx`, never through a link), checks that
+  the joined path stays inside, then swaps the tree in and deletes the old one. A file kept from the
+  last run is copied only after a real-path and hash check. Whatever the program left in `inputs/` goes.
+  One run holds at most 24 MiB of files, the lead's own first.
+- **The facts.** Each session of a contract 2 trick with `inputs` gets `inputs: { state, files,
+  skipped? }`: `state` is `ok`, `offline`, `older`, `refused` or `none`, and each file names its `rel`,
+  its `path` relative to the trick folder, `bytes`, `sha256`, `mtime` and `kind`. The files are
+  untrusted data for the program, never code.
+
+### Audit
+
+One line per call on each side, action `tricks.inputs`, with the trick id, the number of files and their
+bytes. Never a file name and never a glob.
+
+### Compatibility
+
+Additive inside protocol version 2 (§7.1). A member before 1.29.0 never gets the call, and one that does
+answers 404, read as `older`. A trick written for contract 1 lists no `inputs` and triggers no call. A
+solo install and a lead register no handler for the route (§11). `CREW_PROTOCOL_VERSION` stays `2`.

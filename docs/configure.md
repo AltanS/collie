@@ -99,7 +99,7 @@ The config file groups every setting under a `[section]`. The environment name o
 | `push` | the three Web Push (VAPID) values |
 | `uploads` | the attachment size cap and the extra text types accepted |
 | `journal` | where each harness keeps its own session log |
-| `crew` | the budgets a lead gives a member, and a peer's own browser |
+| `crew` | the budgets a lead gives a member, a peer's own browser, and whether the lead's tricks may read a member's files (`crew_trick_reads`) |
 | `standby` | the deputy's second door: port, bind address, arming |
 | `update` | where releases come from, how many versions stay, a GitHub token for the release check |
 | `serve` | whether Collie publishes the front door, on what, and under which path (`base_path`) |

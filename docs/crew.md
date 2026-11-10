@@ -435,6 +435,43 @@ always keep a share.
 > session on the lead machine, or run `collie crew update --all` to level the crew
 > ([Update a crew](upgrading.md#updating-the-rest-of-the-crew)).
 
+## Tricks that read files on every machine
+
+A trick on the lead sees the sessions of every machine of the crew. A trick may also list files to
+read from its agent sessions' folders, in `trick.toml`:
+
+```toml
+contract = 2
+inputs = ["TODO.md", "shots/*.png"]
+```
+
+Before each run, the lead asks each member for the files those patterns match in the folders of that
+member's agent sessions, and copies them into the trick's folder. The trick reads them as data. It
+cannot run anything on a member, and it reads nothing outside a session's folder.
+
+The trick's row in Settings says what it reads: "Reads TODO.md, shots/*.png in your agent sessions'
+folders on every machine of the crew." A new version that changes the patterns waits for your yes.
+
+A member reads the files with the same rules as the Files view. It never reads a shell pane's folder,
+a link, a `.git` folder, a `.env` file, or Collie's own state and config folders. A text file is at
+most 256 KB and a picture (PNG, JPEG or WebP) at most 2 MB. Each member writes one audit line per
+read, with the trick, the number of files and their size, never a file name.
+
+Each member decides whether the lead's tricks may read its files, in that machine's `.env`:
+
+| `COLLIE_CREW_TRICK_READS` | what the member does |
+| --- | --- |
+| unset | allows the reads while `COLLIE_DEVICE_HEADER` is off, and refuses them while it is on |
+| `on` | allows the reads |
+| `off`, or any other word | refuses the reads |
+
+A session on a member that refuses shows `refused` to the trick, and one on a machine that is not
+answering shows `offline`.
+
+> **Note.** Reads from a member need Collie 1.29.0 on the lead and on that member. A session on an
+> older member shows `older` to the trick, and the lead does not ask that member. Run `collie crew
+> update --all` to level the crew ([Update a crew](upgrading.md#updating-the-rest-of-the-crew)).
+
 ## A machine can run several Collies
 
 A crew member is one Collie instance: one bridge and one multiplexer. One machine can run more than

@@ -5613,6 +5613,19 @@ export async function filesExist(
 }
 
 /**
+ * The Files root of one of this machine's AGENT panes, the one the Files view reads for it (a trick's
+ * inputs, M99): `{ root }`, `{ root: null }` when the pane has no folder narrow enough to read, or null
+ * when the id names no agent pane in any runtime here, or more than one: a shell pane, a trick's pane, a
+ * pane of another machine and an unknown id alike.
+ */
+export async function agentPaneFilesRoot(snaps: readonly RootSnapshot[], paneId: string, home: string): Promise<{ root: string | null } | null> {
+  const hits = snaps.flatMap((snap) => snap.agents.filter((a) => a.paneId === paneId && (a.kind ?? "agent") === "agent").map((pane) => ({ snap, pane })));
+  if (hits.length !== 1) return null;
+  const { snap, pane } = hits[0]!;
+  return { root: paneFilesRootOf(await paneWorkspaceRoot(rootOfWorkspace(snap, pane.workspaceId, home), pane.cwd), pane.cwd, home) };
+}
+
+/**
  * The Files root of a pane or a workspace, the one the Files read picks for the same subject: a
  * pane's workspace root as that pane sees it ({@link paneWorkspaceRoot}, #509), else its own cwd
  * when that is bounded; a workspace's root. `null` when there is none, or no such pane or workspace.

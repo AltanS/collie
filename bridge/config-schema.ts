@@ -786,6 +786,15 @@ export const CONFIG_SETTINGS: readonly ConfigSetting[] = [
     default: false,
     doc: "Keep this peer's own browser front door up. Peer mode only.",
   },
+  {
+    key: "crew_trick_reads",
+    env: "COLLIE_CREW_TRICK_READS",
+    section: "crew",
+    kind: "enum",
+    values: ["on", "off"],
+    default: "",
+    doc: "Whether the lead's tricks may read files from this member's agent sessions. Empty follows device_header: on while it is off.",
+  },
 
   // ── standby ────────────────────────────────────────────────────────────────
   {

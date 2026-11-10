@@ -206,7 +206,7 @@ import { currentWarrant, discardForeignWarrant, refreshWarrant, type WarrantPush
 import { CLEAR_BURST_MS, Push } from "./push.ts";
 import { currentNotesReader } from "./release-notes.ts";
 import { pluginRoot } from "./root.ts";
-import { buildId, filesPrivateFolders, startServer } from "./server.ts";
+import { agentPaneFilesRoot, buildId, filesPrivateFolders, startServer } from "./server.ts";
 import {
   DEFAULT_SESSION_NAME,
   herdTagFor,
@@ -287,6 +287,7 @@ import { holdSocketPath } from "./beacon/paths.ts";
 import { VersionCache } from "./surface/binary-version.ts";
 import { findProfile, loadProfiles, type Profile } from "../web/src/lib/surface/profile.ts";
 import { crewFactsWorld, factsWorldOf, type FactsWorld } from "./tricks/facts.ts";
+import { answerInputsRequest, INPUT_ANSWER_BODY_MAX_BYTES, readPaneInputs, TrickInputs, type InputsBudget, type InputsCallResult, type WirePaneInputs } from "./tricks/inputs.ts";
 import { isOwnId, resolveBridgeId } from "./bridge-id.ts";
 import { scopeKeyAddress, TrickHill } from "./tricks/hill.ts";
 import { TricksService } from "./tricks/service.ts";
@@ -2378,7 +2379,7 @@ const hill = new HillService({
   offline: crew.mode === "lead" ? (address) => hillOffline(address) : undefined,
 });
 hill.pruneMedia();
-versionCards = new VersionCards({ hill, tricks: () => tricks ?? null, warn: (line) => console.warn(`[tricks] ${line}`) });
+versionCards = new VersionCards({ hill, tricks: () => tricks ?? null, warn: (line) => console.warn(`[tricks] ${line}`), crew: () => crew.mode === "lead" });
 // The lead's half of §22: a member's images wait here by hash for the post that names them.
 const hillCrewLead = crew.mode === "lead" ? new HillCrewLead({ hill, held: new HillHeldMedia(), machineOf: (memberId) => memberId, walkyOn: () => cfg.walky }) : null;
 const walkyServer = new WalkyServer({
@@ -3439,6 +3440,70 @@ if (standbyServer !== null && standbyDoor !== null) {
 // Collie tricks (M94 slice 01): the runner over `<configDir>/tricks/`. It reads nothing but a missing
 // folder until the operator makes one, writes nothing until a trick is switched on and runs, and its
 // timers wait for a paired phone to look (bridge/tricks/service.ts).
+/**
+ * One of this machine's own agent panes, read for a trick's inputs (M99 slice 6): its Files root off the
+ * live snapshot of every runtime (bridge/server.ts `agentPaneFilesRoot`), then the Files view's walk and
+ * reads. Shared by the lead's own fetch and a member's answer to its lead.
+ */
+async function readOwnPaneInputs(paneId: string, globs: readonly string[], have: ReadonlyMap<string, string>, budget: InputsBudget): Promise<WirePaneInputs> {
+  const found = await agentPaneFilesRoot(registry.all().map((rt) => rt.engine.current()), paneId, homedir());
+  if (found === null) return { state: "no-pane", files: [] };
+  if (found.root === null) return { state: "no-folder", files: [] };
+  return readPaneInputs({ root: found.root, home: homedir(), privateFolders: filesPrivateFolders(cfg) }, globs, have, budget, cfg.redact);
+}
+
+/** A crew answer's body as text, read only up to `cap` bytes, or null past it. */
+async function readAnswerCapped(res: Response, cap: number): Promise<string | null> {
+  const declared = Number(res.headers.get("content-length"));
+  if (Number.isFinite(declared) && declared > cap) {
+    void res.body?.cancel();
+    return null;
+  }
+  if (res.body === null) return "";
+  const reader = res.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for (;;) {
+    const part = await reader.read();
+    if (part.done) break;
+    size += part.value.byteLength;
+    if (size > cap) {
+      void reader.cancel();
+      return null;
+    }
+    chunks.push(part.value);
+  }
+  return Buffer.concat(chunks).toString("utf8");
+}
+
+// A contract 2 trick's inputs (M99 slice 6): this machine's own sessions read locally, and on a crew's
+// lead each member's by one call (`POST /crew/v1/tricks/inputs`, CREW_PROTOCOL §23).
+const tricksInputs = new TrickInputs({
+  isOwn: (memberId) => isOwnId(bridgeId, memberId),
+  readLocal: readOwnPaneInputs,
+  member: (memberId) => {
+    const found = crewLead?.contributions().find((c) => c.state.memberId === memberId);
+    if (found === undefined) return null;
+    // A member below 1.29.0 never gets the call: it would not know the route (§23).
+    return { reachable: found.state.health === "reachable", older: olderThanTricksCrew(found.state.version ?? null, crewVersion, compareSemver) };
+  },
+  call:
+    crewLead === undefined
+      ? undefined
+      : async (memberId, body): Promise<InputsCallResult> => {
+          const lead = crewLead;
+          const client = crewLeadClient;
+          if (lead === undefined || client === null) return { kind: "failed" };
+          const resolved = lead.resolve({ kind: "member", id: memberId });
+          if (resolved === undefined || resolved.kind !== "peer") return { kind: "failed" };
+          const outcome = await client.tricksInputs(resolved.link, body);
+          if (!outcome.ok) return { kind: "failed" };
+          return { kind: "answer", status: outcome.status, text: await readAnswerCapped(outcome.value, INPUT_ANSWER_BODY_MAX_BYTES).catch(() => null) };
+        },
+  // One line per run: the trick id, the file count and the bytes, never a name.
+  audit: (detail) => audit.record({ action: "tricks.inputs", detail: { trick: detail.trick, files: detail.files, bytes: detail.bytes } }),
+});
+
 const tricksFolders = createSessionFolders(cfg.spacesFile ?? null);
 const tricksLabels = createSessionLabels(cfg.spacesFile ?? null);
 const tricks =
@@ -3459,6 +3524,8 @@ const tricks =
           // the lead's pane list, so a program cannot name a machine outside the crew.
           addressOf: (scopeKey, listed) => scopeKeyAddress(scopeKey, (memberId) => isOwnId(bridgeId, memberId), walkyMemberId ?? LOCAL_MEMBER, hillPlace, listed),
         }),
+        inputs: tricksInputs,
+        crewWide: () => crewLead !== undefined,
         world: (memberId) => {
           void tricksFolders.refresh();
           void tricksLabels.refresh();
@@ -3601,6 +3668,22 @@ const server = listenOrExit("front door", cfg.host, cfg.port, () => startServer(
               // §21 (added 2026-10-18): a member takes its lead's push of how its own messages ended.
               outcomes: crew.mode === "peer" ? (body, from) => walkyCrew.outcomes(body, from) : undefined,
             },
+            // §23 (added in 1.29.0, M99): a member reads a trick's inputs for its lead, while its trick
+            // reads are on (`COLLIE_CREW_TRICK_READS`, crew/config.ts). Only its own agent panes.
+            tricks:
+              crew.mode === "peer"
+                ? {
+                    inputs: (body) =>
+                      answerInputsRequest(body, {
+                        rootOf: (paneId) => agentPaneFilesRoot(registry.all().map((rt) => rt.engine.current()), paneId, homedir()),
+                        home: homedir(),
+                        privateFolders: filesPrivateFolders(cfg),
+                        redact: cfg.redact,
+                        allowed: () => crew.trickReads,
+                        audit: (detail) => audit.record({ action: "tricks.inputs", detail: { trick: detail.trick, files: detail.files, bytes: detail.bytes } }),
+                      }),
+                  }
+                : undefined,
             // §22 (added in 1.29.0): a lead takes a member's Decision, its images and its follow-up calls.
             hill:
               hillCrewLead === null
