@@ -9,9 +9,11 @@ import { asJsonBoolean, asJsonNumber, asJsonObject, asJsonString } from "../../w
 import { MEMBER_ID_RE } from "../crew/identity.ts";
 import { HILL_ID_RE } from "../../web/src/lib/hill/wire.ts";
 import { HILL_BAD_ID } from "../hill/parse.ts";
-import { parseAddress } from "./address.ts";
+import { LOCAL_MEMBER, parseAddress } from "./address.ts";
+import type { WalkySpace } from "./space.ts";
 import { BAD_ACK_IDS, BAD_MESSAGE_ID, BAD_REQUEST_LINE, bodyOverRaw, NO_ADDRESS, unknownOp, unreadAddress } from "./refusals.ts";
 import {
+  BORDER_VERDICTS,
   isPrintableAscii,
   RECEIPT_REASON_MAX,
   RECEIPT_STATES,
@@ -22,6 +24,7 @@ import {
   type WalkyReceipt,
   type WalkyReceiptState,
   type WalkySender,
+  type WalkyTarget,
   type WalkyVerified,
 } from "./types.ts";
 
@@ -44,6 +47,35 @@ export function isWalkyId(value: string | null | undefined): value is string {
   return value !== null && value !== undefined && WALKY_ID.test(value);
 }
 
+/** The longest space key or label a message may carry (M98). A space name is far shorter. */
+export const WALKY_SPACE_MAX = 1024;
+
+/** The separator of an unnamed space key (space.ts). */
+const UNNAMED_SEPARATOR = "\u0000";
+
+/**
+ * A sender's space (M98) as the wire or the log carries it: the space, null (an operator's), undefined
+ * when the field is absent (a bridge before 1.29.0), or false when it is there and not one. A space is
+ * `{ key, named, label }`, both strings within {@link WALKY_SPACE_MAX}. `named` must be the key's form:
+ * a named key holds no NUL, an unnamed key is `<member id>\u0000<space id>` with one NUL and a member
+ * id before it (space.ts `spaceOf`). Whose member id it is, is the crew check's (crew.ts).
+ */
+export function readSpace(value: JsonValue | undefined): WalkySpace | null | undefined | false {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  const row = asJsonObject(value);
+  if (row === undefined) return false;
+  const key = asJsonString(row.key);
+  const named = asJsonBoolean(row.named);
+  const label = asJsonString(row.label);
+  if (key === undefined || named === undefined || label === undefined) return false;
+  if (key === "" || key.length > WALKY_SPACE_MAX || label.length > WALKY_SPACE_MAX) return false;
+  const parts = key.split(UNNAMED_SEPARATOR);
+  if (named && parts.length !== 1) return false;
+  if (!named && (parts.length !== 2 || !(parts[0] === LOCAL_MEMBER || MEMBER_ID_RE.test(parts[0]!)))) return false;
+  return { key, named, label };
+}
+
 function readSender(value: JsonValue | undefined): WalkySender | null {
   const row = asJsonObject(value);
   if (row === undefined) return null;
@@ -51,10 +83,13 @@ function readSender(value: JsonValue | undefined): WalkySender | null {
   const address = textOrNull(row, "address");
   const harness = textOrNull(row, "harness");
   const label = text(row, "label");
-  if (memberId === undefined || address === undefined || harness === undefined || label === null) return null;
+  const space = readSpace(row.space);
+  if (memberId === undefined || address === undefined || harness === undefined || label === null || space === false) return null;
   if (address !== null && parseAddress(address)?.kind !== "pane") return null;
   if (harness !== null && !/^[a-z0-9][a-z0-9._-]{0,31}$/u.test(harness)) return null;
-  return { memberId, address, harness, label: label.slice(0, 200) };
+  const sender: WalkySender = { memberId, address, harness, label: label.slice(0, 200) };
+  // Absent stays absent: a message from an older bridge has no space, and its canonical string no line.
+  return space === undefined ? sender : { ...sender, space };
 }
 
 /** A message as the log stored it, or as a crew hop carries it (spec 03). Null when any field fails. */
@@ -75,7 +110,8 @@ export function readMessage(value: JsonValue | undefined): WalkyMessage | null {
   if (replyTo === undefined || (replyTo !== null && !isWalkyId(replyTo))) return null;
   if (at === undefined || !Number.isSafeInteger(at) || body === null || signer === undefined || signature === undefined) return null;
   const message: WalkyMessage = { v: 1, id, kind, from, to, replyTo, at, body, signer, signature };
-  return asJsonBoolean(row.wake) === true ? { ...message, wake: true } : message;
+  const woken: WalkyMessage = asJsonBoolean(row.wake) === true ? { ...message, wake: true } : message;
+  return asJsonBoolean(row.outside) === true ? { ...woken, outside: true } : woken;
 }
 
 const VERIFIED: readonly WalkyVerified[] = ["origin", "lead", "local", "none"];
@@ -103,7 +139,10 @@ export function readReceipt(value: JsonValue | undefined): WalkyReceipt | null {
   const rawSendId = text(row, "sendId");
   const sendId = rawSendId !== null && SEND_ID.test(rawSendId) ? rawSendId : null;
   const withReason = reason === null ? receipt : { ...receipt, reason };
-  return sendId === null ? withReason : { ...withReason, sendId };
+  const withSend = sendId === null ? withReason : { ...withReason, sendId };
+  // How the message passed the space border (M98): one of the five words, or dropped.
+  const via = BORDER_VERDICTS.find((candidate) => candidate === row.via);
+  return via === undefined ? withSend : { ...withSend, via };
 }
 
 // ── The local socket's requests ──────────────────────────────────────────────────────────────────
@@ -114,7 +153,17 @@ export type WalkyOp = "send" | "inbox" | "who" | "status" | "ack" | "cancel" | "
 export type HillOp = "hill.post" | "hill.status" | "hill.withdraw" | "hill.list";
 
 export type WalkyRequest =
-  | { readonly op: "send"; readonly markers: readonly BeaconMarker[]; readonly id: string; readonly to: string | null; readonly body: string; readonly replyTo: string | null; readonly wake: boolean }
+  | {
+      readonly op: "send";
+      readonly markers: readonly BeaconMarker[];
+      readonly id: string;
+      readonly to: string | null;
+      readonly body: string;
+      readonly replyTo: string | null;
+      readonly wake: boolean;
+      /** M98: the message may leave the sender's space. Absent or anything but `true` reads as false. */
+      readonly outside: boolean;
+    }
   | { readonly op: "inbox"; readonly markers: readonly BeaconMarker[]; readonly all: boolean; readonly ack: boolean; readonly id: string | null }
   | { readonly op: "who" | "off" | "on"; readonly markers: readonly BeaconMarker[] }
   | { readonly op: "status"; readonly markers: readonly BeaconMarker[]; readonly id: string }
@@ -199,7 +248,7 @@ export function readWalkyRequest(line: string): WalkyRequestRead {
   if (to !== null && parseAddress(to) === null) return unread(unreadAddress(to), markers);
   if (body === null) return unread(BAD_REQUEST_LINE, markers);
   if (body.length > RAW_BODY_MAX) return unread(bodyOverRaw(RAW_BODY_MAX), markers);
-  return done({ op, markers, id, to, body, replyTo, wake: asJsonBoolean(row.wake) === true });
+  return done({ op, markers, id, to, body, replyTo, wake: asJsonBoolean(row.wake) === true, outside: asJsonBoolean(row.outside) === true });
 }
 
 /** One request line, or null. `v` must be 1; an unknown op, a bad id or a bad address fails. */
@@ -260,6 +309,37 @@ export function readOutcomesPush(value: JsonValue | undefined): WalkyReceipt[] |
   const row = asJsonObject(value);
   if (row === undefined || !Array.isArray(row.receipts)) return null;
   return readReceiptList(row.receipts);
+}
+
+/** The most panes a lead's `who` answer holds. Far above any crew's agent panes. */
+export const WHO_ROWS_MAX = 2000;
+
+/**
+ * The lead's answer to a member's `who` (M98 spec 04, `POST /crew/v1/walky/who`): `{ targets }`, each row
+ * as `collie walky who` lists it. A row that is not a pane address, or has no well formed space, is
+ * dropped: it is display data, and the receiving bridge decides every send itself. Null when the body is
+ * not an object with a `targets` list.
+ */
+export function readWhoAnswer(value: JsonValue | undefined): WalkyTarget[] | null {
+  const row = asJsonObject(value);
+  if (row === undefined || !Array.isArray(row.targets)) return null;
+  const out: WalkyTarget[] = [];
+  for (const entry of row.targets.slice(0, WHO_ROWS_MAX)) {
+    const target = asJsonObject(entry);
+    if (target === undefined) continue;
+    const address = text(target, "address");
+    const memberId = text(target, "memberId");
+    const machine = text(target, "machine");
+    const label = text(target, "label");
+    const state = text(target, "state");
+    const harness = textOrNull(target, "harness");
+    const space = readSpace(target.space);
+    if (address === null || memberId === null || machine === null || label === null || state === null || harness === undefined) continue;
+    if (space === undefined || space === null || space === false || parseAddress(address)?.kind !== "pane") continue;
+    const base: WalkyTarget = { address, memberId, machine, harness, label, state, space };
+    out.push(target.walky === "off" ? { ...base, walky: "off" } : base);
+  }
+  return out;
 }
 
 /** The longest `sender.certPem` a delivery may carry. A P-256 certificate is well under 1,000. */

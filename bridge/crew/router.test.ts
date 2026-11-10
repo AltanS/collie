@@ -21,6 +21,7 @@ import {
   CREW_TAKEOVER_PATH,
   CREW_WALKY_OUTCOMES_PATH,
   CREW_WALKY_PATH,
+  CREW_WALKY_WHO_PATH,
   CREW_WARRANT_PATH,
   type SnapshotSource,
 } from "./router.ts";
@@ -2948,6 +2949,61 @@ describe("POST /crew/v1/walky — a member hands its lead a message (§21)", () 
     const handler = createCrewRouter({ store: h.store, audit: h.audit, transportPinned: true, walky: { fromMember: async () => ({ status: 200, body: { receipts: [] } }) } });
     const res = (await call(handler, CREW_WALKY_PATH, post({})))!;
     expect(res.status).toBe(404);
+  });
+});
+
+describe("POST /crew/v1/walky/who — a member asks its lead for the crew's panes (§21, M98)", () => {
+  const target = { address: "desk/w1:p1#d1d1", memberId: "desk", machine: "desk", harness: "claude", label: "repo#main", state: "idle", space: { key: "api", named: true, label: "api" } };
+
+  function whoRig() {
+    const h = harness(leadStore({ peers: [member({ memberId: "laptop" })] }));
+    let asked = 0;
+    const handler = createCrewRouter({
+      store: h.store,
+      audit: h.audit,
+      now: () => T0,
+      walky: {
+        who: () => {
+          asked += 1;
+          return { status: 200, body: { targets: [target] } };
+        },
+      },
+    });
+    return { h, handler, asked: () => asked };
+  }
+
+  test("a signed request from a pinned member is answered with the lead's list, and writes nothing", async () => {
+    const { h, handler } = whoRig();
+    const res = (await call(handler, CREW_WALKY_WHO_PATH, signedPost("laptop", CREW_WALKY_WHO_PATH, {}, T0)))!;
+    expect(res.status).toBe(200);
+    expect(res.headers.get("x-crew-protocol")).toBe("2");
+    expect(await res.json()).toEqual({ targets: [target] });
+    // A read: the replay floor is not advanced and the store is not written.
+    expect(h.data().peers[0]!.signedAt).toBe(0);
+    expect(h.writes()).toBe(0);
+  });
+
+  test("a bad signature, an unknown member and an unsigned request are the uniform 401, and the handler is not asked", async () => {
+    const { handler, asked } = whoRig();
+    const forged = signedPost("laptop", CREW_WALKY_WHO_PATH, {}, T0);
+    const tampered: RequestInit = { ...forged, body: JSON.stringify({ more: 1 }) };
+    for (const init of [tampered, signedPost("stranger", CREW_WALKY_WHO_PATH, {}, T0), post({})]) {
+      const res = (await call(handler, CREW_WALKY_WHO_PATH, init))!;
+      expect(res.status).toBe(401);
+    }
+    expect(asked()).toBe(0);
+  });
+
+  test("a collie that does not lead answers 404, even to its own lead", async () => {
+    const h = harness(peerStore());
+    const handler = createCrewRouter({ store: h.store, audit: h.audit, transportPinned: true, walky: { who: () => ({ status: 200, body: { targets: [] } }) } });
+    expect((await call(handler, CREW_WALKY_WHO_PATH, post({})))!.status).toBe(404);
+  });
+
+  test("a build without the handler answers 404 to a signed member, as a lead before 1.29.0 does", async () => {
+    const h = harness(leadStore({ peers: [member({ memberId: "laptop" })] }));
+    const handler = createCrewRouter({ store: h.store, audit: h.audit, now: () => T0, walky: { fromMember: async () => ({ status: 200, body: { receipts: [] } }) } });
+    expect((await call(handler, CREW_WALKY_WHO_PATH, signedPost("laptop", CREW_WALKY_WHO_PATH, {}, T0)))!.status).toBe(404);
   });
 });
 

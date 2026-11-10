@@ -476,6 +476,7 @@ than to anything it fronts. They exist because three operator verbs are otherwis
 | `POST` | `/crew/v1/lead` | the member being promoted | "The member calling you is the lead now" (§14). The old lead demotes itself and answers with its roster (the only way the new lead can pin members it has never spoken to); a peer re-pins and keeps its id and the crew secret. A member may only claim leadership **for itself** — and a claim is **not self-authorising**: the lead demotes only against a live operator approval (§14). |
 | `POST` | `/crew/v1/leave` | any member | The caller removes **itself** from this collie's roster (§8.4). The member id is the admitted one, never a body field, and a second call is still `200` — the operator's question has the same answer either way. |
 | `POST` | `/crew/v1/walky` | any member | Added 2026-10-17 (§21). The caller hands its lead one walky talky message, signed by the caller's key, to deliver to the lead's panes and route on to the members it names. Answered only by a collie that leads (a peer answers 404), and only to a §8.6-signed caller: the message must name that member as its sender and its signer. Changes no roster. |
+| `POST` | `/crew/v1/walky/who` | any member | Added in 1.29.0 (§21, M98). The caller asks its lead for the crew's agent panes, so a member's `collie walky who` lists what the lead's `send here` reaches. Body `{}`, signed per §8.6 like `walky`. Answered only by a collie that leads (a peer answers 404, so does a lead before 1.29.0), and only to a signed member of its roster. A read: it changes no roster and advances no floor. |
 | `POST` | `/crew/v1/walky/outcomes` | the lead | Added 2026-10-18 (§21). The lead hands a member the receipts it learned for messages that member sent to another machine, so the sender sees how they ended. Answered only by a collie that has a lead, and only to its own lead: any other caller is the uniform 401. The member writes a receipt only for a message its own log holds and that it sent itself. Changes no roster. |
 | `POST` | `/crew/v1/pairing` | the lead | Syncs the lead's paired-device registry — **hashes only** — to the **deputy and to nobody else** (§18.14). Refused unless the caller is *this collie's own lead* AND this collie holds a verified warrant naming **itself**. A label that collides with one of this machine's own paired devices refuses the sync with `code: "pairing_label_collision"`, naming the labels; it is never silently renamed. |
 | `POST` | `/crew/v1/launchers-copy` | the lead | Added 2026-11-03 (§18.14, ADR 0127 point 5). Sends the lead's merged launcher rows to the **deputy and to nobody else**, as a read-only copy the deputy serves only once it leads. The same two role checks as `pairing`: the caller is *this collie's own lead*, and this collie holds a verified warrant naming **itself**. A deputy that `404`s it is a build before the route; the lead stops sending to it until the next connect. Changes no roster. |
@@ -486,7 +487,7 @@ Everything except `enroll` sits behind the same two factors as the rest of the p
 carries a role check on top: *admitted* and *allowed to do this* are different questions.
 
 **Which routes may be authenticated by a §8.6 signature** is a closed set — `leave`, `lead`, `hello`,
-since 2026-08-20 `warrant` and `takeover`, and since 2026-10-17 `walky` (§21). It is exactly the routes that travel **peer → lead**, the one
+since 2026-08-20 `warrant` and `takeover`, since 2026-10-17 `walky` (§21), and since 1.29.0 `walky/who` (§21). It is exactly the routes that travel **peer → lead**, the one
 direction where the transport cannot pin (§8.1), and `warrant` joined it for the delivery that
 matters most: a new lead telling the old one that the crown has moved (§18.12). The proxy surface is
 not on the list and must not be — those calls run lead → peer over a pinned handshake, and admitting a
@@ -1432,6 +1433,12 @@ prevents (`web/src/lib/api.ts:201-203`).
 - **A pane may carry `walkyOff: true`** (additive-optional, §7.1, added 2026-11-06): the session
   turned its walky talky off. Only `true` means off; absent reads as on, which is what every older
   member sends. It only shows: the member that owns the pane refuses (§21, "Pane instances").
+- **A pane may carry `workspaceNamed`** (additive-optional, §7.1, added 2026-11-10, M98): whether the
+  pane's `workspaceLabel` is a name of the space's own, a boolean, sent only when it differs from the
+  default `workspaceLabel !== workspaceId`. Absent means the default, which is what every older member
+  sends. The lead keeps it only as a boolean and drops anything else. Walky talky reads it to key a
+  space: a named space joins the space of the same name on another member, an unnamed one stays on its
+  machine (§21).
 - **A pane may carry `pins`** (additive-optional, §7.1, added 2026-11-06, M90): how many pins the
   pane's session holds on the member that owns it, a whole number above zero. Absent means none,
   which is what every older member sends and what a session with no pins sends. The lead keeps the
@@ -3509,11 +3516,22 @@ is two hops, A to the lead and the lead to B.
 | `POST` | `/crew/v1/walky` | a member, to its lead | the signed message | `{ receipts }` |
 | `POST` | `/crew/v1/pane/:id/walky` | the lead, to a member | `{ message, attest, sender? }` | `{ receipts }` |
 | `POST` | `/crew/v1/walky/outcomes` | the lead, to a member | `{ receipts }` | `{ written }` |
+| `POST` | `/crew/v1/walky/who` | a member, to its lead | `{}` | `{ targets }` |
 | `GET` | `/crew/v1/pane/:id/walky?limit=` | the lead, to a member, for a phone | none | `{ messages }` |
 
 - `/crew/v1/walky` is a **membership-table route** (§5): it carries no pane data and is addressed to the
   collie. It joins the signed set (§8.6), because it travels peer → lead, where the transport cannot
   pin. Only a collie that leads answers it; a peer answers 404.
+- `/crew/v1/walky/who` (added in 1.29.0, M98) is a **membership-table route** like `/crew/v1/walky`: it
+  joins the signed set (§8.6) and only a collie that leads answers it. A member sends the empty object
+  `{}`; the lead answers `{ targets }`, the rows its own `collie walky who` prints: its own agent panes
+  and every member's from its last sweep, each with `address`, `memberId`, `machine`, `harness`,
+  `label`, `state`, `space` (the space of the message section below) and `walky: "off"` when the
+  session turned it off. It is a read for display. The member keeps its own panes as they are now and
+  takes only the other machines' rows from the answer; a row that is not a pane address or has no well
+  formed space is dropped. Every send is still decided by the bridge that owns the target pane. A
+  member that gets no usable answer (a lead before 1.29.0 answers 404, a refused or unknown dial, no
+  answer in 8 seconds) lists its own panes with the note it always printed.
 - `/crew/v1/pane/:id/walky` is a **forwarded write** (§5's table, `FORWARDABLE` in
   `bridge/crew/forward.ts`). `:id` is the pane id when the message names one pane, and `all` when it
   names `<member>/all` or `all`. For a scope it is the pane id of one pane the lead's expansion
@@ -3560,6 +3578,23 @@ Two signed objects, each behind its own fixed domain tag, LF between fields, `-`
 collie-walky-v1\n<id>\n<kind>\n<from.memberId>\n<from.address>\n<from.harness>\n<to>\n<replyTo>\n<at>\n<sha256(body) hex>
 ```
 
+Optional lines follow the ten fields, each only when it is set and always in this order, so a message
+without them keeps the string above and every older bridge still verifies it:
+
+```
+wake
+space "<from.space.key as a JSON string>"
+outside
+```
+
+- `wake` (added 2026-11-04, M85): the message has `wake: true`.
+- `space` (added 2026-11-10, M98): the message's `from.space` is an object. The key is written with
+  `JSON.stringify`, so the NUL of an unnamed key reads `\u0000` and the line stays one line whatever
+  the space is called. `named` and `label` are not signed: `named` is the key's form, checked where the
+  message is read, and the label is display data like `from.label`.
+- `outside` (added 2026-11-10, M98): the message has `outside: true`, the sender's word that it may
+  leave its space.
+
 The lead's attestation, signed by the lead's key, beside a message it routes to one member:
 
 ```
@@ -3580,8 +3615,8 @@ the value the trust store pins (`fingerprintOfCert`, `bridge/crew/identity.ts`).
 A walky message's `to` may also be a scope as the sender typed it (added 2026-10-30, M75): `<repo>`,
 `<repo>#<branch>` or `here`. It stays the signed `to` on every hop, so a recipient reads the group the
 message was addressed to, not its own pane address. A member that delivers a scope reads the label of
-the pane the route names at that moment, and delivers only while the label sits in the scope (for
-`here`, in the repo of the sender's `from.label`), so a pane outside the scope cannot ride it. The
+the pane the route names at that moment, and delivers only while the pane sits in the scope (for
+`here`, in the sender's signed space; from 1.29.0, M98), so a pane outside the scope cannot ride it. The
 attestation binds the crew and the receiver (§16's rule for a broadened pin), so a member cannot
 present an attested message at a sibling or in another crew. The voucher binds the crew and names the
 member and its certificate; it names no message, so the attestation is still what binds one message
@@ -3602,9 +3637,75 @@ Both receiving sides run ONE shape check on the message as it arrived, before th
   characters. Neither is signed; both reach a header line.
 - **The body** is one a second clean leaves unchanged, at most 4,000 characters, and **the address**
   names its member (`local/…` is a solo word).
+- **`from.space`** (added 2026-11-10, M98) is null or absent for an operator, a 400 otherwise. For an
+  agent, an unnamed key must start with the signer's member id and a NUL: a member cannot claim
+  another machine's unnamed space, and a claim that does not match the signer is the uniform 401. A
+  named key is taken as claimed, because the name is the operator's to give.
 
 A malformed field is a 400 that says why, because the caller passed both factors. A sender or a pane
 that does not match the signer is the uniform 401.
+
+### The space of a message *(added 2026-11-10, M98)*
+
+A walky message names the space it comes from, under the sender's signature, and may carry the
+sender's word that it may leave that space. Both fields are additive-optional (§7.1):
+
+- **`from.space`**: `{ key, named, label }` for an agent, the space of the sending pane
+  (`bridge/walky/space.ts`), or `null` for an operator. `key` is the space's raw name from the
+  multiplexer, NFC and trimmed, when the space is named; an unnamed space's key is
+  `<member id>\u0000<space id>`, so it is a space on that one machine and never joins one elsewhere.
+  `named` must match the key's form: a named key holds no NUL, an unnamed one holds exactly one, after a
+  member id. Both strings are at most 1,024 characters. A field that is there and not one fails the
+  message: a malformed body, a 400. Absent on a message from a bridge below 1.29.0.
+- **`outside`**: `true`, or absent. Any other value reads as absent.
+
+Both are signed (the optional lines above). A bridge below 1.29.0 drops both fields when it reads a
+message, and cannot verify a canonical string that holds either line.
+
+The skew rule (`SPACE_FIRST_VERSION`, 1.29.0, in `bridge/walky/crew.ts`, and `olderThanSpace`, which
+reads a version like `olderThanWalky`):
+
+1. **A member below 1.29.0 cannot enforce the border.** Its lead checks the border for it before the
+   hop, from that member's pane list (each `PaneWire` carries its space), and routes it a copy without
+   the space line and the `outside` line, attested over that copy.
+2. **A message signed by a bridge below 1.29.0 carries no space.** A receiver lets it pass as before
+   and its receipt notes the pass as `legacy`. A crew levels within a day.
+3. **A message signed by a bridge at or above 1.29.0, of kind agent, with no space**, is refused as a
+   bad request.
+
+### The border of a message *(added 2026-11-10, M98)*
+
+A message of kind agent reaches only panes of the sender's space, unless the sender said otherwise.
+The bridge that owns the target pane decides, in `place()` (`bridge/walky/deliver.ts`) and again when
+it types a held message. Nothing on the wire carries the verdict: it is each receiving bridge's own
+check, the lead's included, on the signed fields above (`bridge/walky/border.ts`). In order:
+
+1. **An operator's message passes.** The kind is the bridge's proof (§21's `kind`), not the sender's
+   word. A phone's message is not bound by a space.
+2. **A message with no `from.space` is not checked** when its signer is below 1.29.0 (the skew rule
+   above). From a signer at or above 1.29.0 it is a bad request.
+3. **The same space passes**: the sender's `space.key` equals the target pane's, exactly. A named key
+   joins across machines. An unnamed key holds its member id and so never equals a key elsewhere. This
+   check comes before the flag: a message with `outside: true` to a pane of the sender's own space
+   passes as `in`, and its header carries no `outside` word.
+4. **`outside: true` passes.** An agent's `all` and `<member>/all` are refused without it. With the flag
+   they reach every pane, and each pane of the sender's own space still passes as `in`; only the others
+   pass as `outside`.
+5. **A reply passes** when it answers a message the TARGET pane sent and that went to the sender. Both
+   facts come from the receiving bridge's own log, never from the message, so a pane cannot reply
+   across the border to an id it only knows.
+6. **Anything else is refused** with the receipt reason `outside your space`.
+
+A bridge that passes a message by the outside flag (rule 4, not rule 3) types its header with the word
+`outside` after the sender's parenthesis and before any `reply to`. A reader that predates the word takes it as part of
+the sender's text. The receipt records how the message passed (`via`: `operator`, `in`, `reply`,
+`outside` or `legacy`), an additive-optional field (§7.1).
+
+A lead runs the check for a member below 1.29.0, which cannot, before the hop and for a leg that names
+one pane. A leg to a whole machine needs none: an agent's `all` reached it only with the outside flag.
+A member that knows its lead is below 1.29.0 refuses a message with the space or `outside` line before
+it dials, with the reason `lead older than 1.29.0: update the lead`. A member that does not know its
+lead's release dials, and the lead's 401 reads as `signature`, as before.
 
 ### What the lead checks, in order
 
@@ -3627,7 +3728,8 @@ takes one token per pane and per member leg. A refusal is a receipt (`refused`, 
 `pair limit`) in a 200, never a 429.
 
 Every delivering bridge also refuses, before anything is logged: an agent's `all` or `<member>/all`
-(`only the operator may broadcast`), a message to its sender's own pane (`that is your own pane`), and
+without the outside flag (`outside your space`, from 1.29.0; before, `only the operator may broadcast`),
+a message to its sender's own pane (`that is your own pane`), and
 a reply chain deeper than 4 in its own log (`thread depth`; a link the log does not hold ends the walk
 and counts 0). The sender's own bridge refuses a reply to a message that did not reach the sender's
 pane (`unknown reply`) and sends a reply to the stored sender of what it answers. A pane id that two
@@ -3818,8 +3920,11 @@ An answer to the member's own `POST /crew/v1/walky` that arrives after a pushed 
 over it: neither its `accepted` nor, since 2026-10-18, the `unknown` of a dial that timed out.
 
 `collie walky who` on the lead lists every member's agent panes, from the bodies its sweep already
-holds, so it dials nobody. A member has no roster, so `who` there lists its own panes and the line
-"other machines: run `collie walky who` on the lead (<lead>), or use the phone".
+holds, so it dials nobody. A member has no roster, so since 1.29.0 it asks its lead with
+`POST /crew/v1/walky/who` and lists its own panes with every other machine's rows from the answer, in
+one list with the lead's, so `who` and `send here` agree. When the lead gives no usable answer (a lead
+before 1.29.0, a refused dial, 8 seconds), `who` lists its own panes and the line "other machines: run
+`collie walky who` on the lead (<lead>), or use the phone", as before.
 
 ### Pane instances (added 2026-10-18)
 

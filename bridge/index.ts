@@ -296,8 +296,11 @@ import {
   crewSkipped,
   crewTargets,
   CREW_WALKY_ROUTE,
+  CREW_WALKY_WHO_ROUTE,
   leadRouteRemote,
+  leadWhoRemote,
   memberRouteRemote,
+  olderThanSpace,
   olderThanWake,
   olderThanWalky,
   WalkyCrew,
@@ -311,6 +314,7 @@ import { WalkyLog } from "./walky/log.ts";
 import { PinStore } from "./pins/store.ts";
 import { WalkyOff } from "./walky/off.ts";
 import { RefusalCounter } from "./walky/refusals.ts";
+import { spaceOfPane } from "./walky/space.ts";
 import { WalkySeen } from "./walky/seen.ts";
 import { WalkyService } from "./walky/service.ts";
 import { siblingDirsOf, SiblingLogs } from "./walky/siblings.ts";
@@ -2164,7 +2168,8 @@ const walkyRawPanes = (): Omit<WalkyPane, "instance" | "off">[] =>
       const facts = { paneId: view.paneId, cwd: view.cwd, branch: head?.kind === "branch" ? head.name : null, paneLabel: view.paneLabel, terminalTitle: view.terminalTitle };
       // The last status change comes from the activity ledger: the engine's views carry no time (it rides the wire at serialise time).
       const activeAt = activity.get(rt.name, view.paneId)?.activeAt ?? null;
-      return { session: rt.name, paneId: view.paneId, agent, harness: agent ? view.agent : null, label: labelOf(facts, !cfg.redact), state: view.status, activeAt, terminal: rt.send !== undefined };
+      const space = spaceOfPane(walkyMemberId ?? LOCAL_MEMBER, view);
+      return { session: rt.name, paneId: view.paneId, agent, harness: agent ? view.agent : null, label: labelOf(facts, !cfg.redact), state: view.status, activeAt, terminal: rt.send !== undefined, space };
     };
     const out = agents.map((view) => of(view, true));
     for (const view of shellPanes) out.push(of(view, false));
@@ -2231,6 +2236,9 @@ const walkyRefusals = new RefusalCounter(join(cfg.stateDir, "walky"));
 let walkyLeadClient: PeerClient | null = null;
 // The lead runtime's own crew client, kept for the outcomes push (§21): assigned where the lead is built.
 let crewLeadClient: PeerClient | null = null;
+// On a lead, the version a member last reported on the sweep (§19), for the space rule's skew (M98):
+// assigned where the lead is built, read per message.
+let walkyMemberVersion: (memberId: string) => string | null = () => null;
 let walkyLeadHalf: {
   readonly route: RouteRemote;
   readonly targets: () => ReturnType<typeof crewTargets>;
@@ -2256,6 +2264,8 @@ const walky = new WalkyService({
   warn: (line) => console.warn(line),
   routeRemote: walkyRoute,
   remoteTargets: crew.mode === "lead" ? () => walkyLeadHalf?.targets() ?? [] : undefined,
+  // A member's `who` lists the crew as its lead does (M98 spec 04); the lead that does not answer leaves it its own panes.
+  leadTargets: crew.mode === "peer" && walkyMemberId !== null ? leadWhoRemote({ post: (payload) => walkyToLead(payload, CREW_WALKY_WHO_ROUTE) }) : undefined,
   outcomesOnLead: crew.mode === "peer",
   // A bare word that names one of these is a member, never a folder (M75): this machine, its lead, its roster.
   knownMembers: () => {
@@ -2265,6 +2275,15 @@ const walky = new WalkyService({
   },
   leadName: () => trustStore.current()?.lead?.memberId ?? null,
   remoteSkipped: crew.mode === "lead" ? () => walkyLeadHalf?.skipped() ?? [] : undefined,
+  // An agent's message with no space passes the border as `legacy` only from a signer below 1.29.0
+  // (M98, README decision 9b and 9c). A lead knows each member's reported version; a member knows its
+  // lead's stated release, and takes its lead's word for any other member's message: the lead refused
+  // such a message before routing it unless it knew that member to be older. Unknown is not older.
+  signerOlderThanSpace: (signer) => {
+    if (signer === null || signer === walkyMemberId) return false;
+    if (crew.mode === "lead") return olderThanSpace(walkyMemberVersion(signer), crewVersion, compareSemver);
+    return signer === trustStore.current()?.lead?.memberId ? olderThanSpace(heardLeadRelease, crewVersion, compareSemver) : true;
+  },
 });
 walkyReleaseCheck = (requestId, session, paneId) => walky.deliverer.stillMeant(requestId, session, paneId);
 // A member reports, on each snapshot answer, how the messages from elsewhere ended on its panes, until
@@ -2851,6 +2870,7 @@ const crewLead = (() => {
 // bodies the sweep already holds.
 if (crewLead !== undefined && walkyMemberId !== null) {
   const lead = crewLead;
+  walkyMemberVersion = (memberId) => lead.contributions().find((c) => c.state.memberId === memberId)?.state.version ?? null;
   walkyLeadHalf = {
     route: leadRouteRemote({
       self: walkyMemberId,
@@ -2858,6 +2878,10 @@ if (crewLead !== undefined && walkyMemberId !== null) {
       older: (memberId) => olderThanWalky(lead.contributions().find((c) => c.state.memberId === memberId)?.state.version ?? null, crewVersion, compareSemver),
       // A member below 1.26.1 never rests a pane: a `wake` message goes to it as a plain send.
       olderThanWake: (memberId) => olderThanWake(lead.contributions().find((c) => c.state.memberId === memberId)?.state.version ?? null, crewVersion, compareSemver),
+      // A member below 1.29.0 cannot check the space border (M98): this lead checks it for it, from the
+      // sweep's pane list and its own log, and sends it the message without the space and outside lines.
+      olderThanSpace: (memberId) => olderThanSpace(walkyMemberVersion(memberId), crewVersion, compareSemver),
+      border: (message, memberId, paneId) => walky.deliverer.remoteBorder(message, memberId, paneId),
       members: () => (trustStore.current()?.peers ?? []).filter((member) => member.status === "enrolled").map((member) => member.memberId),
       // A message from another member travels with that member's pinned certificate and this lead's
       // voucher, so the receiving member checks the origin itself (§21, added 2026-10-18).
@@ -3092,7 +3116,7 @@ if (crewLead) {
  * and attested on every dial, with no pin for the lead (its address is a front door that terminates
  * TLS, the CLI's rule). Built on first use and kept (`walkyLeadClient`): the store is read on every dial.
  */
-async function walkyToLead(payload: string): Promise<CrewDialAnswer> {
+async function walkyToLead(payload: string, route: string = CREW_WALKY_ROUTE): Promise<CrewDialAnswer> {
   const data = trustStore.current();
   const lead = data?.lead ?? null;
   if (data === null || lead === null) return { kind: "refused", reason: "this machine has no lead" };
@@ -3108,7 +3132,7 @@ async function walkyToLead(payload: string): Promise<CrewDialAnswer> {
   });
   const outcome = await walkyLeadClient.proxy(
     { memberId: lead.memberId, address: lead.address },
-    CREW_WALKY_ROUTE,
+    route,
     undefined,
     { method: "POST", headers: { "content-type": "application/json" }, body: payload },
     WRITE_BUDGET_MS,
@@ -3495,6 +3519,8 @@ const server = listenOrExit("front door", cfg.host, cfg.port, () => startServer(
             // §21: a lead takes a member's message; a member reports how messages from elsewhere ended.
             walky: {
               fromMember: (body, member) => walkyCrew.fromMember(body, member),
+              // §21 (added in 1.29.0, M98): a lead lists the crew's panes for a member that asks.
+              who: crew.mode === "lead" ? () => walkyCrew.who() : undefined,
               report:
                 walkyReport === null
                   ? undefined

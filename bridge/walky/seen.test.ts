@@ -10,6 +10,11 @@ import { SEEN_KEEP_MS, seenHash, WalkySeen } from "./seen.ts";
 import { WalkyService } from "./service.ts";
 import type { WalkyMessage } from "./types.ts";
 
+import { spaceOf } from "./space.ts";
+
+/** One unnamed space on one machine: every fixture pane shares it, and no rule reads it yet. */
+const SOLO_SPACE = spaceOf({ memberId: "local", spaceId: "w1", spaceLabel: "w1" });
+
 // File modes and Unix sockets are POSIX. Windows has no 0700 or 0600, so those checks sit in a test
 // that is skipped there, and the behaviour beside them still runs.
 const POSIX_ONLY = HOST.platform === "win32";
@@ -39,7 +44,7 @@ const message = (id: string, body = "hello"): WalkyMessage => ({
 });
 
 function pane(paneId: string): WalkyPane {
-  return { session: "main", paneId, agent: true, harness: "agent-x", label: `repo#${paneId}`, state: "idle", activeAt: null, instance: "aaaa", terminal: true, off: false };
+  return { session: "main", paneId, agent: true, harness: "agent-x", label: `repo#${paneId}`, state: "idle", activeAt: null, instance: "aaaa", terminal: true, off: false, space: SOLO_SPACE };
 }
 
 class Host implements WalkyHost {

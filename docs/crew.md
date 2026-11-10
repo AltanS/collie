@@ -368,17 +368,17 @@ Terminal tab polls a pane that has no terminal. The member says so once in its l
 
 ## Messages between machines
 
-An agent can message an agent on another machine of the crew, and the lead relays every such message.
+An agent can message an agent of its own space on another machine of the crew, and the lead relays every such message. A space of the same name on two machines is one space ([Your space](walky-talky.md#your-space)).
 
 ```sh
-# on the lead: every agent pane of every machine
+# every agent pane of your space, on every machine
 collie walky who
 ```
 
 A member sends the message to the lead. The lead checks the member's signature, then passes the
 message on to the machine that the address names, and that machine checks the lead's. The lead also
-sends the sender's certificate, so that machine checks the sender's signature too. A member's own
-`who` lists its own panes only. The lead learns the outcome of every message, and sends it back to the
+sends the sender's certificate, so that machine checks the sender's signature too. A member's
+`who` asks the lead for the crew's panes, and lists its own panes, with a note that other machines are the lead's to list, only when the lead does not answer. The lead learns the outcome of every message, and sends it back to the
 member that sent it. Run `collie walky status <id>` on the sender's machine or on the lead
 ([Across a crew](walky-talky.md#across-a-crew)).
 

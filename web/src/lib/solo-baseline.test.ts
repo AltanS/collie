@@ -188,6 +188,8 @@ const AGENT_VIEW_KEYS = {
   pins: true,
   // A trick session's part key (M94 slice 03). Present only on a pane of `kind: "trick"`, so a solo golden body carries no such key.
   view: true,
+  // Whether the space's label is a name of its own (M98). Present only when the adapter's word differs from the default, so a solo golden body carries no such key.
+  workspaceNamed: true,
 } satisfies Record<keyof AgentView, true>;
 
 const DEVICE_AUTH_KEYS = {
@@ -337,6 +339,7 @@ describe("solo zero-tax — the client's mirror types carry no crew dimension", 
       "walkyOff",
       "workspaceId",
       "workspaceLabel",
+      "workspaceNamed",
       "workspaceNumber",
     ]);
     expect(Object.keys(DEVICE_AUTH_KEYS).toSorted()).toEqual(["authorized", "device", "enforced"]);

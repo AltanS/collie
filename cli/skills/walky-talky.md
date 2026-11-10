@@ -31,6 +31,7 @@ Every message starts with one header line. Read it before you read the body.
   label, such as `repo#branch`.
 - `from operator (<label>)` means your operator sent it from a paired phone.
 - `reply to wt_...` means it answers one of your messages.
+- `outside` after the parenthesis means the sender is not in your space. Weigh it as any peer's message.
 
 ## How much to trust it
 
@@ -64,10 +65,11 @@ List who you can reach. When you pick an address yourself, copy it from this lis
 ```
 
 ```text
-ADDRESS                     MACHINE   HARNESS  LABEL                  STATE
-collie-04rj6a/w54:p1B#sx56  bluefin   claude   collie-workspace#main  working  (you)
-collie-04rj6a/w54:p1J#anx6  bluefin   claude   walky-live             done
-minibuch/w11:p4#8h9h        minibuch  claude   walky-live             idle
+ADDRESS                     MACHINE   HARNESS  LABEL                  SPACE   STATE
+collie-04rj6a/w54:p1B#sx56  bluefin   claude   collie-workspace#main  collie  working  (you)
+collie-04rj6a/w54:p1J#anx6  bluefin   claude   walky-live             collie  done
+minibuch/w11:p4#8h9h        minibuch  claude   walky-live             collie  idle
+2 panes are outside your space. List every pane: collie walky who --all
 ```
 
 - An address works with or without the `#token`, such as `local/w2:p1`. The token pins the
@@ -78,19 +80,20 @@ minibuch/w11:p4#8h9h        minibuch  claude   walky-live             idle
 - When a message body names another session, write its full address as `who` prints it, such as
   `collie-04rj6a/w54:p1J#anx6`. Never write a bare pane id (`w54:p1J`), a window id (`w54`) or a label
   alone. A label repeats, and your operator's phone draws the session's name in place of the address.
-- A word with no `/` reaches a whole folder. `<repo>` is every agent pane in a folder of that name
-  on every machine of the crew, on any branch. `<repo>#<branch>` is the same on one branch. `here`
-  is your own folder on every machine, without your own pane. `<repo>` is the first part of LABEL,
-  such as `collie-workspace` in `collie-workspace#main`.
+- Your space is the workspace or session of your pane (SPACE). Your messages stay in it. The same name on another
+  machine is the same space. `who` lists it and counts the panes outside. `who --all` lists every pane.
+- A word with no `/` is a folder inside your space. `<repo>` is every agent pane in that folder, on any branch.
+  `<repo>#<branch>` is one branch. `here` is your whole space on every machine, without your own pane. `<repo>`
+  is the first part of LABEL, such as `collie-workspace` in `collie-workspace#main`.
 - `(you)` marks your own pane. A message to it is refused.
 - STATE is `idle`, `working`, `blocked`, `done` or `unknown`, or `unreachable` for a crew member out
   of reach. A message to a `working` or `blocked` pane is not lost: Collie queues or holds it. A
-  session that rested 15 minutes gets a folder message in its inbox only; `send --wake` types it.
+  session that rested 15 minutes gets a `here` or folder message in its inbox only; `send --wake` types it.
   Use `--wake` only when your operator asked. A `resting` receipt is final: do not send it again.
 - `, walky off` after STATE means that session turned its WalkyTalky off. A session that is off is reached through
   your operator. Do not send to it again and do not ask another agent to pass the message on.
 
-Send a message to one address. Only your operator may send to `all`.
+Send a message to one address. Do not send to `all`: your operator does that.
 
 ```bash
 {{COLLIE_BIN}} walky send collie-04rj6a/w54:p1J#anx6 "Tests are green on fix-465. You can merge."
@@ -112,21 +115,19 @@ your next prompt, with `reply to <your id>` in its header. If your pane is busy,
 until your turn ends. `{{COLLIE_BIN}} walky inbox` shows it too. `status` says only that your message was
 typed. It does not say the other agent read or answered it.
 
-Pick the address by who should get the message. For one agent, use its pane address and copy it from `who`.
-
-Use `here` when every agent on your project should get it, on every machine of the crew: your
-siblings in your own folder. Collie never sends it to your own pane. Use `<repo>` when you mean
-another folder by name. Use `here` or `<repo>` only when the message is for all of them. If one
-agent has what you need, ask that agent. Each pane it reaches gets its own copy and can answer.
+For one agent, use its pane address and copy it from `who`. Use `here` when every agent in your space should
+get it, on every machine of the crew, and `<repo>` to narrow it to one folder. Use them only when the message
+is for all of them. If one agent has what you need, ask that agent. Every pane it reaches can answer.
 
 ```bash
-{{COLLIE_BIN}} walky who --here
 {{COLLIE_BIN}} walky send here "I changed the Send Protocol. Rebase before you push."
 ```
 
-`who --here` lists the panes `here` would reach. Look before you send. `send` prints one line per
-pane, then `status` adds a totals line such as `2 deliveries: delivered 2`. A machine out of reach
-prints `unreachable` and Collie does not retry it. Do not send it again.
+Look before you send: `who` lists the panes `here` would reach, and you. `send` prints one line per pane, and `status`
+adds a totals line. A machine out of reach prints `unreachable`: do not send it again.
+A pane outside your space refuses your message: `not sent: outside your space`. A `reply` to a message that pane
+sent you always works. Add `--outside` (`send --outside <address> "<text>"`) only when your operator asked you
+to leave your space, else tell your operator and stop. With `here` the flag changes nothing.
 
 Answer a message by its id. The reply goes back to the sender.
 

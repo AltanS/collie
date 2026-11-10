@@ -22,6 +22,11 @@ import { HillService, type HillAgentSender, type HillServiceDeps } from "./servi
 import { DECISIONS_FILE, HILL_CLOSED_KEPT, hillDir, HillStore } from "./store.ts";
 import { walkyPlace, walkySend } from "./walky.ts";
 
+import { spaceOf } from "../walky/space.ts";
+
+/** One unnamed space on one machine: every fixture pane shares it, and no rule reads it yet. */
+const SOLO_SPACE = spaceOf({ memberId: "local", spaceId: "w1", spaceLabel: "w1" });
+
 // Images on a Decision (M96): what the bridge agrees to read from a path an agent names, how it keeps
 // the bytes, when it lets them go, and how the phone reads them back.
 
@@ -641,7 +646,7 @@ const matcher: BeaconMatcher = {
   notesWithoutHooks: { agentDetection: "", agentSessionRef: "" },
 };
 const target: PlaceTarget = { session: "main", matcher, paneIds: () => ["%1"] };
-const panes: WalkyPane[] = [{ session: "main", paneId: "%1", agent: true, harness: "agent-x", label: "repo#one", state: "idle", activeAt: null, instance: "aaaa", terminal: true, off: false }];
+const panes: WalkyPane[] = [{ session: "main", paneId: "%1", agent: true, harness: "agent-x", label: "repo#one", state: "idle", activeAt: null, instance: "aaaa", terminal: true, off: false, space: SOLO_SPACE }];
 
 function overSocket(path: string, line: JsonObject): Promise<JsonObject | undefined> {
   return new Promise((resolve, reject) => {

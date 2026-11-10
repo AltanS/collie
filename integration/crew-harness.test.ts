@@ -154,6 +154,14 @@ async function rawGet(
   });
 }
 
+/**
+ * The one named space every fake Herdr workspace carries (M98). A walky talky message from an agent
+ * reaches only the panes of its own space, so the cases that send between machines need their panes in
+ * one space, and a named one: an unnamed space belongs to one machine and never joins another's. The
+ * border cases below sign a message from another space by hand.
+ */
+const SHARED_SPACE = "work";
+
 /** One end of the crew: a scratch state dir, a fake Herdr, and a child bridge we can respawn. */
 class Instance {
   readonly stateDir: string;
@@ -184,7 +192,7 @@ class Instance {
   startHerdr(): void {
     this.herdr = startFakeHerdr({
       socketPath: this.socketPath,
-      workspaceLabel: this.name,
+      workspaceLabel: SHARED_SPACE,
       panes: [{ paneId: this.paneId, tabId: "t1", workspaceId: "w1", label: this.name, text: this.paneText }],
     });
   }
@@ -911,7 +919,15 @@ describe("walky talky across the crew (CREW_PROTOCOL §21)", () => {
       10_000,
       "the lead's who never listed the member's pane",
     );
-    expect(await walky(peer, { op: "who" })).toMatchObject({ ok: true, note: expect.stringContaining("run `collie walky who` on the lead (") });
+    // A member asks its lead (M98 spec 04): its own list holds the lead's pane too, and no note says to go elsewhere.
+    await waitFor(
+      async () => JSON.stringify(await walky(peer, { op: "who" })).includes(`"${leadId}/${lead.paneId}#`),
+      10_000,
+      "the member's who never listed the lead's pane",
+    );
+    const memberWho = await walky(peer, { op: "who" });
+    expect(memberWho).toMatchObject({ ok: true, targets: expect.arrayContaining([expect.objectContaining({ address: expect.stringContaining(`${peerId}/${peer.paneId}`) })]) });
+    expect(asJsonObject(memberWho)?.note).toBeUndefined();
 
     // The lead to the member: signed by the lead, so the member verifies the origin too.
     const down = await operatorSend(lead, { id: "wt_crewdown0001", to: `${peerId}/${peer.paneId}`, body: "from the lead" });
@@ -2327,7 +2343,9 @@ describe("walky talky in a crew of four, on the real wire", () => {
   function startLiveHerdr(at: Instance, label = at.name): void {
     at.herdr = startFakeHerdr({
       socketPath: at.socketPath,
-      workspaceLabel: at.name,
+      // The old member predates walky talky: it keeps a space of its own, so `here` never lists it and the
+      // cases about it stay about the lead's `older member` refusal.
+      workspaceLabel: at === wo ? at.name : SHARED_SPACE,
       panes: [
         {
           paneId: at.paneId,
@@ -2377,8 +2395,10 @@ describe("walky talky in a crew of four, on the real wire", () => {
   ];
 
   /** An agent's send from `from`'s pane over `from`'s own walky socket, the way `collie walky send` does it. */
-  const agentSend = (from: Instance, id: string, to: string, body: string): Promise<JsonValue> =>
-    walky(from, { op: "send", id, to, body, replyTo: null, markers: markersOf(from) });
+  const agentSend = (from: Instance, id: string, to: string, body: string, outside = false): Promise<JsonValue> => {
+    const request = { op: "send", id, to, body, replyTo: null, markers: markersOf(from) };
+    return walky(from, outside ? { ...request, outside } : request);
+  };
 
   /** Every line the bridge typed into `at`'s pane, whole, in order. */
   const typedLines = (at: Instance): string[] =>
@@ -2421,7 +2441,7 @@ describe("walky talky in a crew of four, on the real wire", () => {
   let lastStamp = 0;
   async function postAsMember(
     member: Instance,
-    fields: { id: string; to: string; body: string; at: number; address?: string },
+    fields: { id: string; to: string; body: string; at: number; address?: string; outside?: boolean; space?: string },
   ): Promise<{ status: number; body: JsonValue }> {
     const store = member.store()!;
     const memberId = store.self.memberId;
@@ -2432,7 +2452,8 @@ describe("walky talky in a crew of four, on the real wire", () => {
       v: 1,
       id: fields.id,
       kind: "agent",
-      from: { memberId, address: fields.address ?? self ?? `${memberId}/${member.paneId}`, harness: "claude", label: "drill" },
+      // An agent's message names its space (M98): the shared one the panes sit in, unless a case signs another.
+      from: { memberId, address: fields.address ?? self ?? `${memberId}/${member.paneId}`, harness: "claude", label: "drill", space: { key: fields.space ?? SHARED_SPACE, named: true, label: fields.space ?? SHARED_SPACE } },
       to: fields.to,
       replyTo: null,
       at: fields.at,
@@ -2440,7 +2461,8 @@ describe("walky talky in a crew of four, on the real wire", () => {
       signer: null,
       signature: null,
     };
-    const payload = JSON.stringify(signMessage(unsigned, store.self.keyPem, memberId));
+    const message: WalkyMessage = fields.outside === true ? { ...unsigned, outside: true } : unsigned;
+    const payload = JSON.stringify(signMessage(message, store.self.keyPem, memberId));
     // Strictly increasing, so the request-signature monotonicity rule (§8.6) cannot refuse two probes in one millisecond.
     lastStamp = Math.max(Date.now(), lastStamp + 1);
     const res = await fetch(`${wl.origin()}${CREW_WALKY_PATH}`, {
@@ -2495,7 +2517,8 @@ describe("walky talky in a crew of four, on the real wire", () => {
       v: 1,
       id,
       kind: "agent",
-      from: { memberId, address: paneOf(from), harness: "claude", label: "drill" },
+      // An agent's message names its space (M98): the shared one its pane sits in.
+      from: { memberId, address: paneOf(from), harness: "claude", label: "drill", space: { key: SHARED_SPACE, named: true, label: SHARED_SPACE } },
       to,
       replyTo: null,
       at: Date.now(),
@@ -2548,10 +2571,18 @@ describe("walky talky in a crew of four, on the real wire", () => {
     const listed = JSON.stringify(await walky(wl, { op: "who" }));
     // Each one with its pane's instance token: the members send it on their snapshots.
     for (const m of [wl, wa, wb, wo]) expect(listed).toMatch(new RegExp(`"address":"${paneOf(m)}#[a-z0-9]{4}"`, "u"));
-    // A member lists its own pane only: the roster is the lead's, and the note says which command reaches it.
+    // A member asks its lead for the crew's panes (M98 spec 04): it lists all four, its own first and as it
+    // is now, and the note that sent it to the lead is gone.
     for (const m of [wa, wb]) {
-      const own = await walky(m, { op: "who" });
-      expect(own).toMatchObject({ ok: true, targets: [{ address: tokened(m) }], note: expect.stringContaining(`run \`collie walky who\` on the lead (${idOf(wl)})`) });
+      const crew = await walky(m, { op: "who", markers: markersOf(m) });
+      const rows = asJsonObject(crew)?.targets;
+      const addresses = (Array.isArray(rows) ? rows : []).map((row) => asJsonString(asJsonObject(row)?.address));
+      expect(addresses[0]).toMatch(new RegExp(`^${paneOf(m)}#[a-z0-9]{4}$`, "u"));
+      for (const other of [wl, wa, wb, wo]) expect(addresses.some((address) => address?.startsWith(`${paneOf(other)}#`))).toBe(true);
+      expect(addresses).toHaveLength(4);
+      expect(asJsonObject(crew)?.note).toBeUndefined();
+      // Asked from its pane, the bridge adds the asking pane's own space for the CLI; every row carries its space.
+      expect(crew).toMatchObject({ ownSpace: { key: SHARED_SPACE, named: true }, targets: expect.arrayContaining([expect.objectContaining({ space: expect.objectContaining({ key: SHARED_SPACE }) })]) });
     }
   }, 60_000);
 
@@ -2687,7 +2718,7 @@ describe("walky talky in a crew of four, on the real wire", () => {
 
   test("a scope send (M75) from a member's pane reaches the lead's pane in that folder and comes back `delivered`, and `here` from the lead reaches the member", async () => {
     // The lead's pane and A's share the folder label `scope-ws#main` (beforeAll); B's and the old member's do
-    // not. It runs before the phone-reply case, which stops A mid-send and leaves a draft in A's box.
+    // not, and a folder scope reaches only the sender's own space. It runs before the phone-reply case, which stops A mid-send and leaves a draft in A's box.
     await waitFor(
       async () => {
         const listed = JSON.stringify(await walky(wl, { op: "who" }));
@@ -2719,11 +2750,20 @@ describe("walky talky in a crew of four, on the real wire", () => {
     expect(typedFor(wa, up)).toEqual([]);
     expect(typedFor(wb, up)).toEqual([]);
 
-    // Lead to member: `here` from the lead's pane is its folder without itself, so A's pane, checked by A.
+    // Lead to member: `here` from the lead's pane is its space on every machine without itself (M98), so A's
+    // pane and B's, each checked by its own bridge. The old member sits in a space of its own.
     const down = "wt_scopedown001";
-    const back = await agentSend(wl, down, "here", "to my siblings in scope-ws");
-    expect(back).toMatchObject({ ok: true, receipts: [{ id: down, target: paneOf(wa), by: idOf(wa), verified: "origin" }] });
+    const back = await agentSend(wl, down, "here", "to my siblings in the space");
+    expect(readReceiptsAnswer(back)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: down, target: paneOf(wa), by: idOf(wa), verified: "origin" }),
+        expect.objectContaining({ id: down, target: paneOf(wb), by: idOf(wb), verified: "origin" }),
+      ]),
+    );
+    expect(readReceiptsAnswer(back)).toHaveLength(2);
     await settled(wa, down);
+    await settled(wb, down);
+    expect(typedFor(wb, down)).toHaveLength(1);
     expect(await walky(wa, { op: "status", id: down })).toMatchObject({ ok: true, receipts: [{ target: paneOf(wa), state: "delivered" }], message: { to: "here" } });
     // A's report carries the outcome to the lead's parent.
     await waitFor(
@@ -2740,7 +2780,8 @@ describe("walky talky in a crew of four, on the real wire", () => {
     // lane older than M75, which answered the bare `bad request` before it looked at the markers. Here a
     // stand-in for it is asked first, A's bridge (not B's pane) second, B's own bridge third. B sends: the
     // A-lead pair is spent by the cases around this one (6 per 10 minutes, either direction), so B's pane
-    // joins the folder for this case only, on another branch: `here` is the folder on any branch.
+    // joins the folder for this case only, on another branch. Since M98 `here` is the sender's space, so the label
+    // no longer decides who is reached; the case keeps it to prove that it does not.
     paneLabels.set(wb, "scope-ws#side");
     const listsB = async (label: string): Promise<boolean> => JSON.stringify(await walky(wl, { op: "who" })).includes(`"label":"${label}"`);
     await waitFor(() => listsB("scope-ws#side"), 20_000, async () => `the lead's who never listed B in the scope: ${JSON.stringify(await walky(wl, { op: "who" }))}`);
@@ -2768,7 +2809,7 @@ describe("walky talky in a crew of four, on the real wire", () => {
       expect(await cmdWalkySend(cli, ["here", "to my siblings in scope-ws, from member b"])).toBe(EXIT.OK);
       expect(captured.err).toEqual([]);
       expect(captured.out.slice(0, 2)).toEqual([id, "to here"]);
-      // The lead resolved `here` from B's label: its own pane and A's, never B's.
+      // The lead resolved `here` as B's space (M98): its own pane and A's, never B's, and not the old member's.
       const onLead = async () => walky(wl, { op: "status", id });
       await waitFor(
         async () => readReceiptsAnswer(await onLead()).filter((r) => r.state === "delivered").length === 2,
@@ -2924,19 +2965,54 @@ describe("walky talky in a crew of four, on the real wire", () => {
     expect(typedFor(wl, idLead)).toHaveLength(1);
   }, 60_000);
 
-  test("an agent may not broadcast and may not message its own pane, at its own bridge and at the lead", async () => {
+  test("an agent may not broadcast without the outside flag and may not message its own pane, at its own bridge and at the lead", async () => {
     // At the sender's bridge, over its socket.
-    expect(await agentSend(wa, "wt_broadcast001", "all", "to everyone")).toMatchObject({ ok: true, receipts: [{ state: "refused", reason: "only the operator may broadcast" }] });
-    expect(await agentSend(wa, "wt_broadcast002", `${idOf(wb)}/all`, "to one machine")).toMatchObject({ ok: true, receipts: [{ state: "refused", reason: "only the operator may broadcast" }] });
+    expect(await agentSend(wa, "wt_broadcast001", "all", "to everyone")).toMatchObject({ ok: true, receipts: [{ state: "refused", reason: "outside your space" }] });
+    expect(await agentSend(wa, "wt_broadcast002", `${idOf(wb)}/all`, "to one machine")).toMatchObject({ ok: true, receipts: [{ state: "refused", reason: "outside your space" }] });
     expect(await agentSend(wa, "wt_ownpane00001", paneOf(wa), "to myself")).toMatchObject({ ok: true, receipts: [{ state: "refused", reason: "that is your own pane" }] });
     // At the lead, for a sender that skipped its own checks: the refusal does not depend on the sender's honesty.
     const wire = await postAsMember(wa, { id: "wt_broadcast003", to: "all", body: "to everyone, by hand", at: Date.now() });
-    expect(wire).toMatchObject({ status: 200, body: { receipts: [{ id: "wt_broadcast003", state: "refused", reason: "only the operator may broadcast", by: idOf(wl), verified: "origin" }] } });
+    expect(wire).toMatchObject({ status: 200, body: { receipts: [{ id: "wt_broadcast003", state: "refused", reason: "outside your space", by: idOf(wl), verified: "origin" }] } });
     const own = await postAsMember(wa, { id: "wt_ownpane00002", to: paneOf(wa), body: "to myself, by hand", at: Date.now() });
     expect(own).toMatchObject({ status: 200, body: { receipts: [{ id: "wt_ownpane00002", state: "refused", reason: "that is your own pane", by: idOf(wl) }] } });
     for (const id of ["wt_broadcast001", "wt_broadcast002", "wt_broadcast003", "wt_ownpane00001", "wt_ownpane00002"]) {
       for (const at of [wl, wa, wb, wo]) expect(typedFor(at, id)).toEqual([]);
     }
+  }, 60_000);
+
+  test("an agent's broadcast with the outside flag is delivered across the crew; panes of its own space pass as `in`, so no nudge says outside (M98)", async () => {
+    const id = "wt_outsideall01";
+    const sent = await agentSend(wa, id, "all", "to everyone, on purpose", true);
+    // The sender's own bridge hands it to the lead, whose legs answer: the lead's pane and B's, and the
+    // old member refused by the lead (it predates walky talky). The sender and the two panes share the one space, so the
+    // border checks the space before the flag and every leg passes as `in`, not `outside`.
+    expect(readReceiptsAnswer(sent)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ target: paneOf(wl), state: "accepted", via: "in" }),
+        expect.objectContaining({ target: paneOf(wb), state: "accepted", via: "in" }),
+        expect.objectContaining({ target: `${idOf(wo)}/all`, state: "refused", reason: "older member" }),
+      ]),
+    );
+    await settled(wl, id);
+    await settled(wb, id);
+    // The receivers are of the sender's space, so the nudge carries no outside word.
+    for (const at of [wl, wb]) {
+      expect(typedFor(at, id)[0]).toContain(`)${NUDGE_MARK}`);
+      expect(typedFor(at, id)[0]).not.toContain(") outside");
+    }
+    // Not the sender's own pane.
+    expect(typedFor(wa, id)).toEqual([]);
+  }, 60_000);
+
+  test("a direct message from another space is refused by the pane's own bridge, and passes with the outside flag (M98)", async () => {
+    // Signed by hand as a member whose pane is in a space the target is not in: the receiving bridge decides, not the sender.
+    const refused = await postAsMember(wa, { id: "wt_borderdeny01", to: paneOf(wb), body: "from another space", at: Date.now(), space: "elsewhere" });
+    expect(refused).toMatchObject({ status: 200, body: { receipts: [{ id: "wt_borderdeny01", target: paneOf(wb), state: "refused", reason: "outside your space", by: idOf(wb) }] } });
+    expect(typedFor(wb, "wt_borderdeny01")).toEqual([]);
+    const passed = await postAsMember(wa, { id: "wt_borderpass01", to: paneOf(wb), body: "from another space, said outside", at: Date.now(), space: "elsewhere", outside: true });
+    expect(passed).toMatchObject({ status: 200, body: { receipts: [{ id: "wt_borderpass01", target: paneOf(wb), state: "accepted", by: idOf(wb) }] } });
+    await settled(wb, "wt_borderpass01");
+    expect(typedFor(wb, "wt_borderpass01")[0]).toContain(`) outside${NUDGE_MARK}`);
   }, 60_000);
 
   test("the phone reads a member pane's list through the lead, from the member's own log, and replies to a message in it", async () => {

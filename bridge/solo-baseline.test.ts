@@ -347,6 +347,10 @@ const PANE_WIRE_KEYS = {
   // its tab. Computed on the machine the pane lives on; an older peer omits both.
   soleTabName: true,
   tabPosition: true,
+  // Not a crew dimension: whether the space's label is a name of its own (MuxPane.spaceNamed, M98). Present
+  // only when the adapter's word differs from `workspaceLabel !== workspaceId`, and the fake mux here
+  // says nothing, so no golden byte moved. An older peer omits it.
+  workspaceNamed: true,
   // Not a crew dimension: what the checkout holding the pane's folder is on, read off that machine's
   // own disk. Attached at serialise time like `cache`, and absent here: this baseline builds its body
   // with no reader, so no golden byte moved.
@@ -587,6 +591,7 @@ describe("solo zero-tax — wire shapes carry no crew dimension", () => {
       "walkyOff",
       "workspaceId",
       "workspaceLabel",
+      "workspaceNamed",
       "workspaceNumber",
     ]);
   });

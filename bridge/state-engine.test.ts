@@ -1585,6 +1585,23 @@ describe("soleTabName and tabPosition", () => {
   });
 });
 
+// Whether the space's label is a name of its own rides only when it differs from the default
+// (`workspaceLabel !== workspaceId`), so a pane whose adapter agrees with the default is byte-identical (M98).
+describe("workspaceNamed", () => {
+  test("the adapter's word rides only when it differs from the default", async () => {
+    const { herdr, engine, poll } = makeEngine();
+    herdr.workspaces = [{ ...ws("w1", 1), label: "api" }, ws("w2", 2), { ...ws("w3", 3), label: "" }];
+    herdr.panes = [pane("p1", "w1", "idle", "claude"), pane("p2", "w2", "idle", "claude"), pane("p3", "w3", "idle", "claude")];
+    await poll();
+    const byId = new Map(engine.current().agents.map((a) => [a.paneId, a]));
+    // A label of its own, and an id for a label: the adapter agrees with the default, so nothing rides.
+    expect(Object.hasOwn(byId.get("p1") ?? {}, "workspaceNamed")).toBe(false);
+    expect(Object.hasOwn(byId.get("p2") ?? {}, "workspaceNamed")).toBe(false);
+    // An empty label is not an id, yet no name either: the adapter's `false` rides.
+    expect(byId.get("p3")?.workspaceNamed).toBe(false);
+  });
+});
+
 // The hot intent (state-engine.ts § noteInput, § noteNewAgents). Herdr announces nothing when an
 // agent reports its session, so a bridge relaxed to its idle cadence saw a fresh pi or Claude session
 // only on the next 12 s tick. Two intents now tighten the ONE interval for a bounded count of polls:

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import type { JsonValue } from "../json.ts";
-import { parsePhoneSend, parseWalkyRequest, readMessage, readCrewDelivery, readOutcomesPush, readReceipt, readWalkyCursor, SENDER_CERT_MAX, SIGNATURE_MAX } from "./parse.ts";
+import { parsePhoneSend, parseWalkyRequest, readMessage, readCrewDelivery, readOutcomesPush, readReceipt, readWhoAnswer, readWalkyCursor, SENDER_CERT_MAX, SIGNATURE_MAX } from "./parse.ts";
 import type { WalkyMessage, WalkyReceipt } from "./types.ts";
 
 // The crew readers added on 2026-10-18 (CREW_PROTOCOL §21): the report's ack cursor, the delivery's
@@ -75,6 +75,23 @@ describe("the outcomes push", () => {
   });
 });
 
+describe("the lead's pane list for a member's `who` (M98 spec 04)", () => {
+  const row = { address: "other/w1:p1#k3f9", memberId: "other", machine: "other", harness: "claude", label: "repo#main", state: "idle", space: { key: "api", named: true, label: "api" } };
+
+  test("reads each pane row, with the off flag, and drops a row that is not one", () => {
+    const off = { ...row, address: "other/w1:p2", harness: null, walky: "off", space: { key: "other\u0000w1", named: false, label: "w1" } };
+    expect(readWhoAnswer(wire({ targets: [row, off] }))).toEqual([row, { ...off, walky: "off" }]);
+    const bad = [{ ...row, address: "all" }, { ...row, address: "other/all" }, { ...row, space: null }, { ...row, space: { key: "api" } }, { ...row, state: 3 }, { ...row, harness: 3 }, 7, null];
+    expect(readWhoAnswer(wire({ targets: [...bad, row] }))).toEqual([row]);
+    expect(readWhoAnswer(wire({ targets: [{ ...row, walky: "yes" }] }))).toEqual([row]);
+  });
+
+  test("a body that is no list is null, never a throw", () => {
+    for (const body of [{}, { targets: "x" }, [row], null, "x"]) expect(readWhoAnswer(wire(body))).toBeNull();
+    expect(readWhoAnswer(undefined)).toBeNull();
+  });
+});
+
 describe("a receipt's text fields (§21, added 2026-10-18)", () => {
   const base = { id: "wt_aaaaaaaaaaa1", target: "other/w1:p9", state: "refused", verified: "lead", at: 1, by: "other" };
 
@@ -129,5 +146,56 @@ describe("wake on the wire (M85)", () => {
     expect(readMessage({ ...plain, wake: true })).toMatchObject({ wake: true });
     expect(readMessage(plain)).not.toHaveProperty("wake");
     expect(readMessage({ ...plain, wake: "yes" })).not.toHaveProperty("wake");
+  });
+});
+
+describe("the space and the outside flag on the wire (M98 spec 02)", () => {
+  const base = { v: 1, op: "send", markers: [], id: "wt_aaaaaaaaaaa1", to: "laptop/w1:p9", body: "hi", replyTo: null };
+  const agent = { v: 1, id: "wt_aaaaaaaaaaa1", kind: "agent", from: { memberId: "desk", address: "desk/w1:p1", harness: "agent-x", label: "repo#a" }, to: "laptop/w1:p9", replyTo: null, at: 1, body: "hi", signer: null, signature: null };
+  const withSpace = (space: JsonValue) => ({ ...agent, from: { ...agent.from, space } });
+
+  test("a send line carries `outside: true` through, and anything else reads as false", () => {
+    expect(parseWalkyRequest(JSON.stringify({ ...base, outside: true }))).toMatchObject({ op: "send", outside: true });
+    for (const outside of [false, "true", 1, null]) expect(parseWalkyRequest(JSON.stringify({ ...base, outside }))).toMatchObject({ outside: false });
+    expect(parseWalkyRequest(JSON.stringify(base))).toMatchObject({ outside: false });
+  });
+
+  test("a message keeps `outside: true` and no other value", () => {
+    expect(readMessage({ ...agent, outside: true })).toMatchObject({ outside: true });
+    expect(readMessage(agent)).not.toHaveProperty("outside");
+    expect(readMessage({ ...agent, outside: "yes" })).not.toHaveProperty("outside");
+  });
+
+  test("a named and an unnamed space read back whole; null is an operator's; absent stays absent", () => {
+    expect(readMessage(withSpace({ key: "api", named: true, label: "api" }))?.from.space).toEqual({ key: "api", named: true, label: "api" });
+    expect(readMessage(withSpace({ key: "desk\u0000w1", named: false, label: "w1" }))?.from.space).toEqual({ key: "desk\u0000w1", named: false, label: "w1" });
+    expect(readMessage(withSpace({ key: "local\u0000", named: false, label: "" }))?.from.space).toEqual({ key: "local\u0000", named: false, label: "" });
+    expect(readMessage(withSpace(null))?.from.space).toBeNull();
+    expect(readMessage(agent)?.from).not.toHaveProperty("space");
+  });
+
+  test("a space that is there and not one fails the message", () => {
+    for (const space of [
+      "api",
+      { key: "api", named: true },
+      { key: "", named: true, label: "" },
+      { key: "api", named: "yes", label: "api" },
+      // `named` must be the key's form.
+      { key: "desk\u0000w1", named: true, label: "w1" },
+      { key: "api", named: false, label: "api" },
+      // An unnamed key is one member id, one NUL, one space id.
+      { key: "desk\u0000w1\u0000w2", named: false, label: "w1" },
+      { key: "Not A Member\u0000w1", named: false, label: "w1" },
+      { key: "x".repeat(1025), named: true, label: "x" },
+      { key: "api", named: true, label: "x".repeat(1025) },
+    ]) {
+      expect(readMessage(withSpace(space))).toBeNull();
+    }
+  });
+
+  test("unknown fields of a space and of a sender are dropped", () => {
+    const spaced = withSpace({ key: "api", named: true, label: "api", colour: "red" });
+    const read = readMessage({ ...spaced, from: { ...spaced.from, extra: 1 } });
+    expect(read?.from).toEqual({ memberId: "desk", address: "desk/w1:p1", harness: "agent-x", label: "repo#a", space: { key: "api", named: true, label: "api" } });
   });
 });

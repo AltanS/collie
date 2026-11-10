@@ -20,6 +20,11 @@ import { HillService } from "../hill/service.ts";
 import { HillStore } from "../hill/store.ts";
 import { walkyPlace } from "../hill/walky.ts";
 
+import { spaceOf } from "./space.ts";
+
+/** One unnamed space on one machine: every fixture pane shares it, and no rule reads it yet. */
+const SOLO_SPACE = spaceOf({ memberId: "local", spaceId: "w1", spaceLabel: "w1" });
+
 // A Unix socket file with an owner-only mode is POSIX; Windows has no walky socket ("Windows has no
 // socket" below), so every part of this test is about that socket.
 const POSIX_ONLY = HOST.platform === "win32";
@@ -39,8 +44,8 @@ const target: PlaceTarget = { session: "main", matcher, paneIds: () => ["%1", "%
 const marker = (pane: string) => [{ namespace: "tmux", scope: "/tmp/tmux-1/default", pane }];
 
 const panes: WalkyPane[] = [
-  { session: "main", paneId: "%1", agent: true, harness: "agent-x", label: "repo#a", state: "idle", activeAt: null, instance: "aaaa", terminal: true, off: false },
-  { session: "main", paneId: "%2", agent: true, harness: "agent-y", label: "repo#b", state: "working", activeAt: null, instance: "bbbb", terminal: true, off: false },
+  { session: "main", paneId: "%1", agent: true, harness: "agent-x", label: "repo#a", state: "idle", activeAt: null, instance: "aaaa", terminal: true, off: false, space: SOLO_SPACE },
+  { session: "main", paneId: "%2", agent: true, harness: "agent-y", label: "repo#b", state: "working", activeAt: null, instance: "bbbb", terminal: true, off: false, space: SOLO_SPACE },
 ];
 
 const host: WalkyHost = {
@@ -185,6 +190,30 @@ describe("the requests", () => {
     expect(inbox).toMatchObject({ ok: true, pane: "local/%1#aaaa", messages: [{ id: "wt_aaaaaaaaaaa1" }] });
     expect(walky.inbox("main", "%1", "aaaa", false)).toEqual([]);
     expect(await answerRequest(walky, parseWalkyRequest(JSON.stringify({ v: 1, op: "ack", markers: [] }))!, [target])).toEqual({ ok: false, error: "needs a pane" });
+  });
+
+  test("who carries the asking pane's own space (M98 spec 04), and none for a caller that is no pane", async () => {
+    const walky = service();
+    const asked = await answerRequest(walky, parseWalkyRequest(JSON.stringify({ v: 1, op: "who", markers: marker("%1") }))!, [target]);
+    expect(asked).toMatchObject({ ok: true, ownSpace: { key: SOLO_SPACE.key, named: false, label: "w1" } });
+    const anon = await answerRequest(walky, parseWalkyRequest(JSON.stringify({ v: 1, op: "who", markers: [] }))!, [target]);
+    expect(anon).toMatchObject({ ok: true, self: null });
+    expect(anon).not.toHaveProperty("ownSpace");
+  });
+
+  test("who on a member lists what its lead lists, with no note; a lead that does not answer leaves its own panes and the note", async () => {
+    const root = mkdtempSync(join(tmpdir(), "walky-socket-"));
+    roots.push(root);
+    const lead = { address: "desk/w1:p1#d1d1", memberId: "desk", machine: "desk", harness: "claude", label: "repo#d", state: "idle", space: SOLO_SPACE };
+    const member = (leadTargets: () => Promise<readonly (typeof lead)[] | null>) =>
+      new WalkyService({ log: new WalkyLog(join(root, "walky")), host, memberId: "laptop", enabled: () => true, machine: "laptop", keyPem: () => null, outcomesOnLead: true, leadName: () => "desk", leadTargets });
+    const request = parseWalkyRequest(JSON.stringify({ v: 1, op: "who", markers: marker("%1") }))!;
+    const crew = await answerRequest(member(async () => [lead]), request, [target]);
+    expect(crew).toMatchObject({ ok: true, targets: [{ address: "laptop/%1#aaaa" }, { address: "laptop/%2#bbbb" }, { address: "desk/w1:p1#d1d1" }] });
+    expect(crew).not.toHaveProperty("note");
+    const alone = await answerRequest(member(async () => null), request, [target]);
+    expect(alone).toMatchObject({ ok: true, note: "other machines: run `collie walky who` on the lead (desk), or use the phone" });
+    expect(alone).toMatchObject({ targets: [{ address: "laptop/%1#aaaa" }, { address: "laptop/%2#bbbb" }] });
   });
 
   test("inbox reads the pane's current instance: a new session that took the pane id starts empty", async () => {

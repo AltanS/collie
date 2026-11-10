@@ -27,6 +27,8 @@ export interface SendInput {
   readonly replyTo: string | null;
   /** M85: a scope or `all` also types into panes that rest. Absent: they get the inbox only. */
   readonly wake?: boolean;
+  /** M98: the message may leave the sender's space. Signed on the message as `outside: true`. */
+  readonly outside?: boolean;
 }
 
 export type SendAnswer =
@@ -46,6 +48,11 @@ export interface WalkyServiceDeps extends DelivererDeps {
   // `remoteTargets` and `outcomesOnLead` sit on DelivererDeps (deliver.ts): a scope send reads them too (M75).
   /** On a member: its lead's member id, named in the `who` note. */
   readonly leadName?: () => string | null;
+  /**
+   * On a member (M98 spec 04): the crew's agent panes as its lead lists them, or null when the lead did
+   * not answer (an older lead, no link, too slow). Absent: this bridge asks nobody.
+   */
+  readonly leadTargets?: () => Promise<readonly WalkyTarget[] | null>;
   /** On a lead: the shell panes the crew's members report, which a broadcast skips. */
   readonly remoteSkipped?: () => readonly WalkySkipped[];
   /** The off flags, `<stateDir>/walky/off.json` (M89). The host's `panes()` reads the same store. Absent: in memory. */
@@ -206,10 +213,11 @@ export class WalkyService {
     const memberId = this.deps.memberId;
     const from =
       sender.kind === "agent"
-        ? { memberId, address: paneAddress(memberId, sender.pane.paneId, sender.pane.instance), harness: sender.pane.harness, label: sender.pane.label }
-        : { memberId, address: null, harness: null, label: headerField(sender.label, WALKY_LABEL_MAX) };
+        ? { memberId, address: paneAddress(memberId, sender.pane.paneId, sender.pane.instance), harness: sender.pane.harness, label: sender.pane.label, space: sender.pane.space }
+        : { memberId, address: null, harness: null, label: headerField(sender.label, WALKY_LABEL_MAX), space: null };
     const base: WalkyMessage = { v: 1, id: input.id, kind: sender.kind, from, to: input.to, replyTo: input.replyTo, at: this.now(), body: clean.body, signer: null, signature: null };
-    const message: WalkyMessage = input.wake === true ? { ...base, wake: true } : base;
+    const woken: WalkyMessage = input.wake === true ? { ...base, wake: true } : base;
+    const message: WalkyMessage = input.outside === true ? { ...woken, outside: true } : woken;
     const key = this.deps.keyPem();
     return key === null || memberId === null ? message : signMessage(message, key, memberId);
   }
@@ -265,6 +273,20 @@ export class WalkyService {
   }
 
   /**
+   * What `collie walky who` lists (M98 spec 04). On a lead or a solo install: {@link WalkyService.who} and
+   * the note. On a member: this machine's panes as they are now, then every other machine's panes as the
+   * lead lists them, so the list agrees with what `send here` reaches, and no note. When the lead does not
+   * answer, this machine's panes and the note it always printed.
+   */
+  async whoCrew(): Promise<{ readonly targets: WalkyTarget[]; readonly note: string | null }> {
+    const local = this.who();
+    const lead = this.deps.leadTargets === undefined ? null : await this.deps.leadTargets().catch(() => null);
+    if (lead === null) return { targets: local, note: this.whoNote() };
+    const own = this.deps.memberId ?? LOCAL_MEMBER;
+    return { targets: [...local, ...lead.filter((target) => target.memberId !== own)], note: null };
+  }
+
+  /**
    * The panes a broadcast does not type into by default: this machine's shell panes and, since M85, its
    * agent panes that rest ({@link isResting}); then what a lead knows of its members. `reason` says which.
    */
@@ -301,7 +323,7 @@ export class WalkyService {
 
   /** One pane of this bridge as `who` lists it. `walky` is there only while the session is off (M89). */
   private targetRow(pane: WalkyPane, memberId: string): WalkyTarget {
-    const target: WalkyTarget = { address: this.addressOf(pane.paneId, pane.instance), memberId, machine: this.deps.machine, harness: pane.harness, label: pane.label, state: pane.state };
+    const target: WalkyTarget = { address: this.addressOf(pane.paneId, pane.instance), memberId, machine: this.deps.machine, harness: pane.harness, label: pane.label, state: pane.state, space: pane.space };
     return pane.off ? { ...target, walky: "off" } : target;
   }
 

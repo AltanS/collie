@@ -27,6 +27,8 @@ export interface AgentView {
   pins?: number;
   workspaceId: string;
   workspaceLabel: string;
+  /** Whether `workspaceLabel` is a name of the space's own (M98). Present only when it differs from `workspaceLabel !== workspaceId`. Nothing in the app reads it. */
+  workspaceNamed?: boolean;
   workspaceNumber: number;
   tabId: string;
   agent: string;
