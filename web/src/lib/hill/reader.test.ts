@@ -190,6 +190,16 @@ describe("readHillDecision", () => {
     expect(readHillDecision(wire({ media: [shot("im_bbbbbbbbbbbbbbbb")], view: [{ kind: "image", attrs: { ref: "3" } }] }))).not.toHaveProperty("view");
   });
 
+  it("draws the rest of a stored view whose media the bridge pruned since the post", () => {
+    const shot = (id: string) => ({ id, kind: "image", mime: "image/png", bytes: 1800, width: 600, height: 360 });
+    // Posted with two pictures; the bridge reads the stored view without counting them, and holds one now.
+    const para = { kind: "para", text: "The fix." };
+    const view = [para, { kind: "image", attrs: { ref: "1", caption: "After" } }, { kind: "image", attrs: { ref: "0", caption: "Before" } }];
+    expect(readHillDecision(wire({ media: [shot("im_aaaaaaaaaaaaaaaa")], view }))?.view).toEqual([para, { kind: "image", attrs: { ref: "0", caption: "Before" } }]);
+    // With none left, the facts that are not pictures still draw.
+    expect(readHillDecision(wire({ media: [], view }))?.view).toEqual([para]);
+  });
+
   it("fills an absent body, text mode and priorityAsked", () => {
     const read = readHillDecision(wire({ body: undefined, text: undefined, priorityAsked: undefined, priority: "now" }));
     expect(read).toMatchObject({ body: "", text: "optional", priorityAsked: "now" });

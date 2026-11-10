@@ -334,10 +334,14 @@ function readStoredMedia(value: JsonValue | undefined): HillMedia[] | null {
  * A stored decision's view: absent reads as none (a file written before views). One the schema's
  * parser refuses now (a rule a later build tightened) is left out and the decision stays, as the phone
  * does with a view it cannot draw: the person still sees the question and its options.
+ *
+ * Its image `ref`s are NOT counted against the stored media here. The post checked them against its own
+ * images (strict at write); a media entry pruned or lost since must not drop the whole view on read.
+ * The phone leaves out an image node whose `ref` has no picture and draws the rest.
  */
-function storedView(value: JsonValue | undefined, images: number): View | undefined {
+function storedView(value: JsonValue | undefined): View | undefined {
   if (value === undefined) return undefined;
-  return parseDecisionView(value, "/view", { images }).view;
+  return parseDecisionView(value, "/view").view;
 }
 
 /** One decision as the file stored it, or null when any field fails. */
@@ -384,7 +388,7 @@ export function readDecision(value: JsonValue | undefined): HillDecision | null 
   if (links === null || replyTo === undefined || target === undefined || supersedes === undefined || supersededBy === undefined) return null;
   if (expiresAt === undefined || at === undefined || !Number.isSafeInteger(at) || !isState(stateText)) return null;
   if (closedAt === undefined || closedReason === undefined || answer === undefined) return null;
-  const view = storedView(row.view, media.length);
+  const view = storedView(row.view);
   const decision: HillDecision = {
     v: 1,
     id,

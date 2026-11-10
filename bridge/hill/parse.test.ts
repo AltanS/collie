@@ -206,6 +206,18 @@ describe("a stored decision", () => {
     expect(bad).not.toHaveProperty("view");
   });
 
+  test("a stored view keeps an image whose ref has no media any more: strict at post, tolerant on read", () => {
+    // Posted with two images; the second was pruned since, or the decision lost its media entirely.
+    const view: View = [
+      { kind: "para", text: "The fix." },
+      { kind: "compare", kids: [{ kind: "image", attrs: { ref: "0" } }, { kind: "image", attrs: { ref: "1" } }] },
+      { kind: "image", attrs: { ref: "1", caption: "After" } },
+    ];
+    const withView = decision("dc_aaaaaaaaaaa1", { view });
+    expect(withView.media).toEqual([]);
+    expect(readDecision(onDisk(withView))?.view).toEqual(view);
+  });
+
   test("a field that fails its rule fails the record", () => {
     const whole = decision("dc_aaaaaaaaaaa1");
     expect(readDecision(onDisk(whole, { v: 2 }))).toBeNull();
