@@ -130,7 +130,7 @@ import {
   WALKY_SUBCOMMANDS,
   type WalkyDeps,
 } from "./walky.ts";
-import { cmdHill, cmdHillList, cmdHillPost, cmdHillStatus, cmdHillSwitch, cmdHillWithdraw, HILL_SUBCOMMANDS, hillPostHelp, type HillDeps } from "./hill.ts";
+import { cmdHill, cmdHillClear, cmdHillList, cmdHillPost, cmdHillStatus, cmdHillSwitch, cmdHillWithdraw, HILL_SUBCOMMANDS, hillPostHelp, type HillDeps } from "./hill.ts";
 import { cmdUpdateCheck, updateCheckDeps, wantsCheck } from "./update-check.ts";
 import { cmdTheme, cmdThemeCheck, realThemeFiles, THEME_SUBCOMMANDS } from "./theme-check.ts";
 import { cmdThemeSkill } from "./theme-skill.ts";
@@ -333,6 +333,11 @@ const HILL_TREE: readonly Subcommand[] = [
     name: "list",
     summary: "your own decisions, open first",
     run: (args, s) => cmdHillList(hillDeps(s.io), args),
+  },
+  {
+    name: "clear",
+    summary: "remove every closed decision from the Hill (open ones stay): `hill clear`",
+    run: (args, s) => cmdHillClear(hillDeps(s.io), args),
   },
   // The Hill's switch: a file in this instance's state folder, read again by the running bridge.
   {

@@ -5,8 +5,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import type { BeaconMatcher } from "../beacon/decorate.ts";
+import type { AuditEntry } from "../audit.ts";
 import { HOST } from "../host.ts";
-import { HILL_LOCAL_TEXT, HILL_OFF_TEXT, HILL_RID_REUSED, HILL_UNSAVED_TEXT, hillAnswerRoute, hillListRoute, pairedDeviceId, withHillRev } from "../server.ts";
+import { HILL_CLEAR_UNSAVED_TEXT, HILL_LOCAL_TEXT, HILL_OFF_TEXT, HILL_RID_REUSED, HILL_UNSAVED_TEXT, hillAnswerRoute, hillClearRoute, hillListRoute, pairedDeviceId, withHillRev } from "../server.ts";
 import type { SnapshotResponse } from "../types.ts";
 import type { WalkyHost, WalkyPane } from "../walky/deliver.ts";
 import { WalkyLog } from "../walky/log.ts";
@@ -118,7 +119,7 @@ describe("GET /api/hill", () => {
   test("lists open and closed decisions with the revision; `since` equal to the revision answers unchanged", async () => {
     const r = rig();
     const empty = await hillListRoute(r.hill, null, null).json();
-    expect(empty).toEqual({ rev: 0, open: [], closed: [] });
+    expect(empty).toEqual({ rev: 0, open: [], closed: [], closedTotal: 0 });
     const id = await posted(r);
     const list = await hillListRoute(r.hill, null, null).json();
     expect(list).toMatchObject({ open: [{ id, state: "open", title: post.title }], closed: [] });
@@ -132,6 +133,84 @@ describe("GET /api/hill", () => {
     const res = hillListRoute(undefined, null, null);
     expect(res.status).toBe(404);
     expect(await res.text()).toBe(HILL_OFF_TEXT);
+  });
+});
+
+describe("POST /api/hill/clear", () => {
+  const ctx = { device: "Pixel 9", acceptEncoding: null };
+
+  /** One open and one answered decision. */
+  async function twoDecisions(r: Rig): Promise<{ open: string; answered: string }> {
+    const answered = await posted(r);
+    await hillAnswerRoute(r.hill, answerBody(answered, "yes", null), ctx);
+    const open = await posted(r, { ...post, requestId: OTHER_RID });
+    return { open, answered };
+  }
+
+  test("an empty body clears every closed decision, keeps the open one, and moves the revision", async () => {
+    const r = rig();
+    const { open, answered } = await twoDecisions(r);
+    const rev = r.hill.rev();
+    const res = hillClearRoute(r.hill, {}, ctx);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ cleared: 1, skipped: [] });
+    const list = await hillListRoute(r.hill, null, null).json();
+    expect(list).toMatchObject({ open: [{ id: open }], closed: [], closedTotal: 0 });
+    expect(r.hill.decision(answered)).toBeUndefined();
+    expect(r.hill.rev()).toBeGreaterThan(rev!);
+    // The phone that held the old revision reads the new list, not `unchanged`.
+    expect(await hillListRoute(r.hill, String(rev), null).json()).toMatchObject({ closed: [] });
+  });
+
+  test("ids: the named closed ones go; an open one and an unknown one come back skipped", async () => {
+    const r = rig();
+    const { open, answered } = await twoDecisions(r);
+    const res = hillClearRoute(r.hill, { ids: [answered, open, "dc_unknown00001"] }, ctx);
+    expect(await res.json()).toEqual({
+      cleared: 1,
+      skipped: [
+        { id: open, reason: "open" },
+        { id: "dc_unknown00001", reason: "missing" },
+      ],
+    });
+    expect(r.hill.decision(open)?.state).toBe("open");
+  });
+
+  test("a body of another shape is a 400 and clears nothing", async () => {
+    const r = rig();
+    const { answered } = await twoDecisions(r);
+    for (const body of [undefined, null, [], "all", { ids: "dc_aaaaaaaaaaa1" }, { ids: [1] }, { ids: ["not an id"] }, { all: true }, { ids: [], extra: 1 }, { ids: Array.from({ length: 201 }, () => answered) }]) {
+      expect(hillClearRoute(r.hill, body, ctx).status).toBe(400);
+    }
+    expect(r.hill.decision(answered)?.state).toBe("answered");
+  });
+
+  test("a bridge built without the hill answers 404; a write that fails is a 503 and clears nothing", async () => {
+    expect(hillClearRoute(undefined, {}, ctx).status).toBe(404);
+    const r = rig();
+    const { answered } = await twoDecisions(r);
+    const res = hillClearRoute({ clear: () => null }, {}, ctx);
+    expect(res.status).toBe(503);
+    expect(await res.text()).toBe(HILL_CLEAR_UNSAVED_TEXT);
+    expect(r.hill.decision(answered)?.state).toBe("answered");
+  });
+
+  test("it works with the Hill off: it types nothing and posts nothing, and the route still clears", async () => {
+    let on = true;
+    const r = rig({ hillSwitch: { on: () => on } });
+    const { answered } = await twoDecisions(r);
+    on = false;
+    expect(await hillClearRoute(r.hill, {}, ctx).json()).toEqual({ cleared: 1, skipped: [] });
+    expect(r.hill.decision(answered)).toBeUndefined();
+  });
+
+  test("it writes one audit line with the device label and counts, never a title", async () => {
+    const audit: AuditEntry[] = [];
+    const r = rig({ audit: (entry) => audit.push(entry) });
+    await twoDecisions(r);
+    audit.length = 0;
+    hillClearRoute(r.hill, {}, ctx);
+    expect(audit).toEqual([{ action: "hill.clear", device: "Pixel 9", detail: { count: 1, all: true, skipped: 0 } }]);
   });
 });
 
@@ -299,6 +378,23 @@ function overSocket(path: string, line: JsonObject): Promise<JsonObject | null> 
 }
 
 describe("end to end", () => {
+  test.skipIf(HOST.platform === "win32")("hill.clear over the socket needs no pane, clears every closed decision and answers the count", async () => {
+    const r = rig();
+    const server = new WalkyServer({ socketPath: walkySocketPath(r.stateDir), service: r.walky, targets: () => [target], log: () => undefined, hill: r.hill });
+    expect(await server.start()).toBe(true);
+    stops.push(() => server.stop());
+    const answered = await posted(r);
+    await hillAnswerRoute(r.hill, answerBody(answered, "yes", null), { device: "Pixel 9", acceptEncoding: null });
+    const open = await posted(r, { ...post, requestId: OTHER_RID });
+    const path = walkySocketPath(r.stateDir);
+    // Markers that name no pane here do not stop it either: the verb is the person's.
+    const stranger = [{ namespace: "tmux", scope: "/tmp/tmux-1/default", pane: "%9" }];
+    expect(await overSocket(path, { v: 1, op: "hill.clear", markers: stranger })).toEqual({ ok: true, cleared: 1 });
+    expect(await overSocket(path, { v: 1, op: "hill.clear", markers: [] })).toEqual({ ok: true, cleared: 0 });
+    expect(r.hill.decision(answered)).toBeUndefined();
+    expect(r.hill.decision(open)?.state).toBe("open");
+  });
+
   test.skipIf(HOST.platform === "win32")("post over the socket, read the hill, answer, and the walky send types the contract's body", async () => {
     const r = rig();
     const server = new WalkyServer({ socketPath: walkySocketPath(r.stateDir), service: r.walky, targets: () => [target], log: () => undefined, hill: r.hill });

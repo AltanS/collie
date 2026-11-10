@@ -96,6 +96,14 @@ export const ACK_MANIFEST = {
     channel: "inline",
     why: "The walky talky switch in a pane's Messages sheet (M89 spec 04): the switch itself is the receipt, it holds the new place while the call runs and the pane row's flag then confirms it; a failed call puts the switch back and lands as a line under it, because the operator asked for something that did not happen.",
   },
+  setHillSwitch: {
+    channel: "inline",
+    why: "The Hill's switch in Settings and on the Hill's own off state (M96): the switch itself is the receipt, it holds the new place while the call runs and the snapshot's `hillOff` then confirms it; a failed call puts the switch back and lands as a line under it, because the operator asked for something that did not happen.",
+  },
+  clearHillClosed: {
+    channel: "silent",
+    why: "Clear on the Hill's Answered group (the second tap of its arm): the closed rows leaving the list IS the receipt, and the group goes with them, so a success says nothing more; a failed call puts the rows back and is said on the status channel as `Could not clear. Try again.`",
+  },
   cancelHeldSend: {
     channel: "silent",
     why: "Cancel or Dismiss on a held send's queued row (M56 spec 15): the row leaving the composer IS the receipt, so a success says nothing more; a Cancel that came too late, and a failed call, land as a status line.",

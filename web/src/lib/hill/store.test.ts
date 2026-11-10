@@ -4,7 +4,7 @@ import { http, HttpResponse } from "msw";
 import { HILL_T0, hillDecision, hillReceipt } from "@/test/hill-fixtures";
 import { server } from "@/test/setup";
 
-import { __resetHill, __settleHill, noteHillAnswer, readHillNow, syncHill, useHillAnswerHeld, useHillCount, useHillKept, useHillOpen } from "./store";
+import { __resetHill, __settleHill, clearClosedLocally, noteHillAnswer, readHillNow, syncHill, useHillAnswerHeld, useHillClosed, useHillClosedTotal, useHillCount, useHillKept, useHillOpen } from "./store";
 import type { HillDecision } from "./wire";
 
 // The snapshot's hillRev says when to read. The same number reads nothing, a higher one reads with
@@ -213,5 +213,61 @@ describe("the hill store", () => {
     });
     expect(result.current.map((d) => d.title)).toEqual(["from the new one"]);
     expect(reads).toEqual([null, null]);
+  });
+});
+
+describe("clearing the closed rows on the phone", () => {
+  const closedRows = () => [hillDecision({ state: "answered", closedAt: 5 }), hillDecision({ state: "dismissed", closedAt: 4 })];
+
+  it("holds how many closed decisions the bridge has, never fewer than the rows it served", async () => {
+    serve(() => ({ ...list(1, [], closedRows()), closedTotal: 40 }));
+    const { result } = renderHook(() => ({ closed: useHillClosed(), total: useHillClosedTotal() }));
+    await sync(1);
+    expect(result.current.closed).toHaveLength(2);
+    expect(result.current.total).toBe(40);
+    serve(() => list(2, [], closedRows()));
+    await sync(2);
+    expect(result.current.total).toBe(2);
+  });
+
+  it("takes the rows off at once, and the way back puts them and the count back", async () => {
+    serve(() => ({ ...list(1, [], closedRows()), closedTotal: 9 }));
+    const { result } = renderHook(() => ({ closed: useHillClosed(), total: useHillClosedTotal() }));
+    await sync(1);
+    let putBack: () => void = () => undefined;
+    act(() => {
+      putBack = clearClosedLocally();
+    });
+    expect(result.current).toEqual({ closed: [], total: 0 });
+    act(() => putBack());
+    expect(result.current.closed).toHaveLength(2);
+    expect(result.current.total).toBe(9);
+  });
+
+  it("does not put old rows over a list that arrived while the clear was out", async () => {
+    serve((since) => (since === null ? list(1, [], closedRows()) : list(2, [hillDecision()], [])));
+    const { result } = renderHook(() => ({ closed: useHillClosed(), open: useHillOpen() }));
+    await sync(1);
+    let putBack: () => void = () => undefined;
+    act(() => {
+      putBack = clearClosedLocally();
+    });
+    await sync(2);
+    act(() => putBack());
+    expect(result.current.closed).toEqual([]);
+    expect(result.current.open).toHaveLength(1);
+  });
+
+  it("with nothing closed it changes nothing and its way back does nothing", async () => {
+    serve(() => list(1, [hillDecision()]));
+    const { result } = renderHook(() => useHillClosed());
+    await sync(1);
+    const before = result.current;
+    let putBack: () => void = () => undefined;
+    act(() => {
+      putBack = clearClosedLocally();
+    });
+    act(() => putBack());
+    expect(result.current).toBe(before);
   });
 });

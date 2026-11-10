@@ -52,6 +52,8 @@ interface HillHeld {
   open: readonly HillDecision[];
   /** Closed decisions, newest first, as the bridge serves them. */
   closed: readonly HillDecision[];
+  /** How many closed decisions the bridge holds, which may exceed `closed`. What Clear says it removes. */
+  closedTotal: number;
   receipts: ReadonlyMap<string, HillAnswerHeld>;
   /** The words of an answer that did not reach its target, per decision. */
   kept: ReadonlyMap<string, string>;
@@ -60,7 +62,7 @@ interface HillHeld {
 const NO_DECISIONS: readonly HillDecision[] = [];
 const NO_RECEIPTS: ReadonlyMap<string, HillAnswerHeld> = new Map();
 const NO_KEPT: ReadonlyMap<string, string> = new Map();
-const EMPTY: HillHeld = { rev: null, open: NO_DECISIONS, closed: NO_DECISIONS, receipts: NO_RECEIPTS, kept: NO_KEPT };
+const EMPTY: HillHeld = { rev: null, open: NO_DECISIONS, closed: NO_DECISIONS, closedTotal: 0, receipts: NO_RECEIPTS, kept: NO_KEPT };
 
 let held: HillHeld = EMPTY;
 /** The newest revision a snapshot named, or null when the last one named none. */
@@ -68,6 +70,8 @@ let wanted: number | null = null;
 let reading = false;
 /** True when `readHillNow` asked for one read whatever the numbers say; the read loop spends it. */
 let forced = false;
+/** Counts the lists taken, so a Clear's way back can tell whether a newer list replaced its rows. */
+let lists = 0;
 /**
  * Counts the times the store was emptied. A read that started under one number and lands under another
  * is the hill of a bridge that went away (or of a test that reset), and its answer is dropped.
@@ -100,6 +104,7 @@ function receiptsOfClosed(closed: readonly HillDecision[]): ReadonlyMap<string, 
 
 /** Take a list the bridge served. An `unchanged` answer moves the number only. */
 function take(list: HillList): void {
+  lists += 1;
   if (list.unchanged === true) {
     if (held.rev !== list.rev) publish({ ...held, rev: list.rev });
     return;
@@ -108,6 +113,7 @@ function take(list: HillList): void {
     rev: list.rev,
     open: list.open.length === 0 ? NO_DECISIONS : sortOpenDecisions(list.open),
     closed: list.closed.length === 0 ? NO_DECISIONS : list.closed,
+    closedTotal: Math.max(list.closedTotal ?? 0, list.closed.length),
     receipts: receiptsOfClosed(list.closed),
     kept: held.kept,
   });
@@ -157,6 +163,7 @@ export function syncHill(rev: number | undefined): void {
   if (rev === undefined) {
     wanted = null;
     generation += 1;
+    lists += 1;
     // The open and closed lists, the number and the receipts go; the words of a gone answer stay, because
     // they are the person's own and the bridge no longer has them.
     const holdsList = held.rev !== null || held.open.length > 0 || held.closed.length > 0 || held.receipts.size > 0;
@@ -193,6 +200,22 @@ export function noteHillAnswer(decisionId: string, answer: HillAnswerHeld): void
   publish({ ...held, receipts, kept });
 }
 
+/**
+ * Take the closed rows off the list at once, for a Clear that is on its way to the bridge. Answers the
+ * way back: a function that puts the rows and the count back, unless a newer list already replaced them.
+ * The next list the bridge serves (its number moved when it cleared) is the truth either way.
+ */
+export function clearClosedLocally(): () => void {
+  const before = { closed: held.closed, closedTotal: held.closedTotal };
+  if (before.closed.length === 0 && before.closedTotal === 0) return () => undefined;
+  publish({ ...held, closed: NO_DECISIONS, closedTotal: 0 });
+  const taken = lists;
+  return () => {
+    // Only while no list came in since: one that did is newer than these rows, whatever it holds.
+    if (lists === taken && held.closed.length === 0) publish({ ...held, ...before });
+  };
+}
+
 /** The open decisions, most urgent first (`sortOpenDecisions`). The same array until the list changes. */
 export function useHillOpen(): readonly HillDecision[] {
   return useSyncExternalStore(
@@ -208,6 +231,15 @@ export function useHillClosed(): readonly HillDecision[] {
     subscribe,
     () => held.closed,
     () => NO_DECISIONS,
+  );
+}
+
+/** How many closed decisions the bridge holds: at least as many as the rows `useHillClosed` lists. */
+export function useHillClosedTotal(): number {
+  return useSyncExternalStore(
+    subscribe,
+    () => held.closedTotal,
+    () => 0,
   );
 }
 
@@ -243,6 +275,7 @@ export function __resetHill(): void {
   wanted = null;
   forced = false;
   generation += 1;
+  lists += 1;
   reading = false;
   inFlight = null;
   publish(EMPTY);

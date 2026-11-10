@@ -5,7 +5,7 @@
 // The cards wear the machine tints of a two-machine crew (bluefin and minibuch), as `LiveDecisionCard`
 // would hand them on one.
 //
-// Cards are numbered 1 to 46.
+// Cards are numbered 1 to 48.
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 
@@ -187,6 +187,55 @@ function HillPhone({ open, closed, kept = NO_KEPT, unfold = false }: { open: rea
               />
             </div>
           </AppHeaderHost>
+        </RootRouter>
+      </Phone>
+    </div>
+  );
+}
+
+/**
+ * The Hill with Clear on its closed group: three closed rows, the button idle. The control is live in the
+ * page: the first tap arms it, the second clears the rows and the empty Hill shows (a reload brings them
+ * back). With `armed` the real first tap is made once mounted, and again on demand ("Arm again"), as
+ * `ArmedCard` does. The rows are held INSIDE the route (`ClearBody`): the router keeps the element it was
+ * first given, so state held above it would never reach the view.
+ */
+function ClearBody() {
+  const [closed, setClosed] = useState<readonly HillDecision[]>(closedRows.slice(0, 3));
+  return (
+    <AppHeaderHost bridge="connected" error={false}>
+      <HillHeader count={0} nowCount={0} onBack={noSend} />
+      <div data-pg-scroll className="min-h-0 flex-1 overflow-y-auto p-4">
+        <HillView
+          open={[]}
+          closed={closed}
+          kept={NO_KEPT}
+          renderCard={(decision) => <PlaygroundCard key={decision.id} decision={decision} />}
+          clear={{ canWrite: true, busy: false, onClear: () => setClosed([]) }}
+        />
+      </div>
+    </AppHeaderHost>
+  );
+}
+
+function ClearPhone({ armed = false }: { armed?: boolean }) {
+  const root = useRef<HTMLDivElement>(null);
+  const [round, setRound] = useState(0);
+  useEffect(() => {
+    if (armed) root.current?.querySelector<HTMLButtonElement>('[data-slot="hill-clear"]')?.click();
+  }, [armed, round]);
+  return (
+    <div ref={root}>
+      {armed && (
+        <CardControls>
+          <button type="button" className="rounded-md border border-border px-2 py-1 text-[11px] font-medium" onClick={() => setRound((n) => n + 1)}>
+            Arm again
+          </button>
+        </CardControls>
+      )}
+      <Phone height={560}>
+        <RootRouter data={homeSolo}>
+          <ClearBody />
         </RootRouter>
       </Phone>
     </div>
@@ -700,6 +749,17 @@ export function HillSection() {
         <Card state="hill-view-closed" label="19: closed rows">
           <CardHead n={19} title="Closed rows" />
           <HillPhone open={[]} closed={closedRows} kept={new Map([[undeliverableId, keptWords]])} unfold />
+        </Card>
+      </Group>
+
+      <Group title="Clear">
+        <Card state="hill-clear-idle" label="47: Clear, idle">
+          <CardHead n={47} title="Clear on the closed group, idle: two taps clear it" />
+          <ClearPhone />
+        </Card>
+        <Card state="hill-clear-armed" label="48: Clear, armed">
+          <CardHead n={48} title="Clear, armed: tap again to confirm" />
+          <ClearPhone armed />
         </Card>
       </Group>
 

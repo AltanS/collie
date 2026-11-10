@@ -1,4 +1,4 @@
-import { useId, useState, type ReactNode } from "react";
+import { useEffect, useId, useState, type ReactNode } from "react";
 
 import { RouteHeader } from "@/components/app-header";
 import { BrandMark } from "@/components/brand-mark";
@@ -11,7 +11,9 @@ import { SectionHeader } from "@/components/section-header";
 import { Button } from "@/components/ui/button";
 import { Collapse, CollapseSwap } from "@/components/ui/collapse";
 import { ListGroup } from "@/components/ui/list-group";
+import { OneOf } from "@/components/ui/one-of";
 import { PresenceList } from "@/components/ui/presence";
+import { useArm } from "@/hooks/use-arm";
 import { useHillAnswer } from "@/hooks/use-hill-answer";
 import { useLocale } from "@/hooks/use-locale";
 import { HILL_PRIORITIES, type HillDecision, type HillState } from "@/lib/hill/wire";
@@ -30,9 +32,9 @@ import { cn } from "@/lib/utils";
 // stood and the cards below glide up (`PresenceList`, ui/presence.tsx), taking its 12px gap with it; a
 // priority group whose last card it was leaves with it as one motion, its 28px gap with it; the closed
 // row arrives at the top of Answered by growing from nothing; the clear hill and the open cards trade
-// places in one band (`CollapseSwap`); and Answered itself arrives through `Collapse` the first time
-// there is something under it. The closed rows leave the same way, so a list that drops them (a clear)
-// gets the same collapse for free.
+// places in one band (`CollapseSwap`); and Answered itself is an item of the column's presence list, so
+// it grows in the first time there is something under it and, when the last closed row leaves (a Clear
+// removes them all at once), the header, its Clear button and the rows fold away as one motion.
 //
 // This file draws; it reads nothing but the crew roster and the tricks list, for a card's machine tint
 // and a trick's icon. The route hands it the store's lists (lib/hill/store.ts) and a card for each
@@ -125,6 +127,60 @@ function ClosedRow({ decision, kept }: { decision: HillDecision; kept: string | 
   );
 }
 
+/** What the view needs to offer Clear on the closed group: the way to clear, and whether this device may. */
+export interface HillClearControl {
+  canWrite: boolean;
+  busy: boolean;
+  onClear: () => void;
+}
+
+/**
+ * Clear, at the right end of the Answered header: one quiet text button that asks once in place. The
+ * first tap arms it ("Clear 12 entries?", in the armed tint, the Decision card's Dismiss pattern and its
+ * `useArm`), the second tap inside the window clears every closed entry. Both words sit in one slot,
+ * sized by the wider, so arming moves nothing (DESIGN.md §2). 44px tall, the tap floor.
+ */
+function ClearButton({ count, control }: { count: number; control: HillClearControl }) {
+  const { armed, tap, disarm } = useArm<"clear">();
+  const isArmed = armed === "clear";
+  const armedWords = tn("hill.clear.armed", count);
+  // An arm is for the entries as they stood: a new count (another phone cleared, a row closed) drops it.
+  useEffect(() => disarm(), [count, disarm]);
+  return (
+    <>
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        data-slot="hill-clear"
+        disabled={!control.canWrite || control.busy}
+        aria-label={isArmed ? t("hill.armed", { label: armedWords }) : undefined}
+        onClick={() => {
+          if (tap("clear") === "fire") control.onClear();
+        }}
+        className={cn(
+          "-mr-3 h-11 shrink-0 px-3",
+          // The armed tint on the box it already has: the border is reserved by the button's base string.
+          isArmed ? "border-destructive/40 bg-destructive/10 text-destructive hover:bg-destructive/10 hover:text-destructive" : "text-muted-foreground",
+        )}
+      >
+        <OneOf
+          active={isArmed ? "armed" : "rest"}
+          className="inline-grid"
+          options={[
+            { key: "rest", node: t("hill.clear.button") },
+            { key: "armed", node: armedWords },
+          ]}
+        />
+      </Button>
+      {/* A live region on the button itself is unreliable; this one announces the armed wording. */}
+      <span className="sr-only" aria-live="polite">
+        {isArmed ? t("hill.armed", { label: armedWords }) : ""}
+      </span>
+    </>
+  );
+}
+
 /** The ridge of the empty hill, one traced line; `mark` puts the resting mark on its top peak. */
 function HillRidge({ mark }: { mark: boolean }) {
   return (
@@ -198,7 +254,8 @@ function PriorityGroup({ priority, decisions, renderCard }: { priority: HillDeci
 /**
  * The view's body: the cards by priority, or the empty hill, then the Answered fold. `renderCard`
  * draws one open decision; `kept` holds the words of answers that did not reach their target, per
- * decision. `open` comes sorted (most urgent first, then oldest), and each group keeps that order.
+ * decision. `closedTotal` is how many closed ones the bridge holds (at least `closed.length`), what Clear
+ * says it removes; `clear` absent draws no button (a view that cannot write). `open` comes sorted (most urgent first, then oldest), and each group keeps that order.
  * With nothing open the fold starts open, because then it is all the hill has to show.
  */
 export function HillView({
@@ -206,11 +263,15 @@ export function HillView({
   closed,
   kept,
   renderCard,
+  closedTotal = closed.length,
+  clear,
 }: {
   open: readonly HillDecision[];
   closed: readonly HillDecision[];
   kept: ReadonlyMap<string, string>;
   renderCard: (decision: HillDecision) => ReactNode;
+  closedTotal?: number;
+  clear?: HillClearControl;
 }) {
   useLocale();
   const [answeredOpen, setAnsweredOpen] = useState(open.length === 0);
@@ -232,26 +293,36 @@ export function HillView({
           </PresenceList>
         </div>
       </CollapseSwap>
-      <Collapse open={closedRows.length > 0}>
-        <section data-slot="hill-answered" className="flex flex-col gap-2">
-          <SectionHeader
-            label={t("hill.answered")}
-            count={closedRows.length}
-            open={answeredOpen}
-            onToggle={setAnsweredOpen}
-            controls={answeredId}
-          />
-          <Collapse open={answeredOpen}>
-            <ListGroup as="ul" id={answeredId}>
-              <PresenceList itemAs="li">
-                {closedRows.map((decision) => (
-                  <ClosedRow key={decision.id} decision={decision} kept={kept.get(decision.id)} />
-                ))}
-              </PresenceList>
-            </ListGroup>
-          </Collapse>
-        </section>
-      </Collapse>
+      {/* Answered is one item of this column's own presence list (28 is the column's gap-7). The first
+          closed row grows it in; the last one leaving, a Clear above all, takes the whole group with it:
+          the header, the Clear button and the rows leave as one motion, drawing what they drew last
+          (the group is held while it goes, so the header does not show a count of 0 on the way out).
+          A clear that fails puts the rows back, and the group grows back with them. */}
+      <PresenceList gap={28}>
+        {closedRows.length === 0
+          ? []
+          : [
+              <section key="answered" data-slot="hill-answered" className="flex flex-col gap-2">
+                <SectionHeader
+                  label={t("hill.answered")}
+                  count={closedRows.length}
+                  open={answeredOpen}
+                  onToggle={setAnsweredOpen}
+                  controls={answeredId}
+                  trailing={clear === undefined ? undefined : <ClearButton count={Math.max(closedTotal, closed.length)} control={clear} />}
+                />
+                <Collapse open={answeredOpen}>
+                  <ListGroup as="ul" id={answeredId}>
+                    <PresenceList itemAs="li">
+                      {closedRows.map((decision) => (
+                        <ClosedRow key={decision.id} decision={decision} kept={kept.get(decision.id)} />
+                      ))}
+                    </PresenceList>
+                  </ListGroup>
+                </Collapse>
+              </section>,
+            ]}
+      </PresenceList>
     </div>
   );
 }
