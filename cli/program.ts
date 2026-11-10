@@ -52,6 +52,7 @@ import {
   type LifecycleDeps,
 } from "./lifecycle.ts";
 import { cmdLink, cmdUnlink, type LinkDeps, realLinkFs } from "./link.ts";
+import { cmdTrickDev } from "./trick-dev.ts";
 import { cmdTrick, cmdTrickCheck, cmdTrickHelper, cmdTrickInit, cmdTrickList, cmdTrickSkill, cmdTrickSwitch, TRICK_SUBCOMMANDS, type TrickDeps } from "./trick.ts";
 import { cmdMuxProbe } from "./mux-probe.ts";
 import {
@@ -1005,6 +1006,11 @@ export const COMMANDS: readonly Command[] = [
         name: "check",
         summary: "check a trick folder: its manifest, places and command lines (--run runs it once, --json)",
         run: async (args, s) => await cmdTrickCheck(trickVerbDeps(s.io), args),
+      },
+      {
+        name: "dev",
+        summary: "run a trick once with fixture facts and summarise what the phone gets: <folder|id> (--tap <intent>, --json, --watch)",
+        run: async (args, s) => await cmdTrickDev(trickVerbDeps(s.io), args),
       },
       {
         name: "init",

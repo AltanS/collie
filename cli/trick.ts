@@ -18,6 +18,8 @@ import {
   isTrickId,
   parseFacts,
   parseTrickDocumentText,
+  type FactsTrigger,
+  type ParsedTrickDocument,
   type TrickFacts,
   type TrickManifest,
   type Refusal,
@@ -39,6 +41,8 @@ import type { Files } from "./sys.ts";
 //                     every source file in the folder (a grep, not a proof). `--run` also runs the
 //                     provider once against fixture facts, with the bridge's environment rule, and
 //                     parses what it prints
+//   dev <folder>      `check --run` made friendly (cli/trick-dev.ts): one run, a short summary of each
+//                     part, Decision and refusal; `--tap`, `--json`, `--watch`
 //   init <id>         a new folder with `trick.toml`, a TypeScript program, the helper `trick.ts`, a
 //                     `config.toml` and an `AGENTS.md`; `--sh` writes the shell sample instead
 //   helper <id>       rewrite `trick.ts` in a trick folder with the helper this Collie carries
@@ -49,7 +53,7 @@ import type { Files } from "./sys.ts";
 // folder, or not a folder), like `config check`. `--json` prints one report document instead.
 // `add` and `update` are a later slice.
 
-export const TRICK_SUBCOMMANDS = ["list", "on", "off", "check", "init", "helper", "skill"] as const;
+export const TRICK_SUBCOMMANDS = ["list", "on", "off", "check", "dev", "init", "helper", "skill"] as const;
 
 export interface TrickDeps {
   ctx: Pick<CliContext, "configDir" | "stateDir" | "env" | "port">;
@@ -192,7 +196,8 @@ export const TRICK_WRITE_BRIEF = [
   "To write one:",
   "  1. Run `collie trick init <id>`. It makes the folder with a sample program and an AGENTS.md.",
   "  2. Read that AGENTS.md. It says what the program gets, what it may print, and the limits.",
-  "  3. Write the trick, then run `collie trick check --run <folder>`. It reads the folder and runs the program once.",
+  "  3. Write the trick. `collie trick dev <folder>` runs it once and says what the phone would get; `--watch` runs it on each change.",
+  "     Then run `collie trick check --run <folder>`. It reads the folder, runs the program once and greps it.",
   "  4. Fix what it reports, and run it again until it is clean.",
   "The trick stays off. Never switch it on yourself: `collie trick on <id>` is the person's approval of the code.",
   "To teach other agents what the trick asks of them, add a SKILL.md to the folder. `collie trick skill <id>` prints it while the trick is on. SKILL.md is part of the trick's code, so an edit stops the trick until a person switches it on again.",
@@ -565,38 +570,66 @@ export async function checkStatic(folder: string, files: Pick<Files, "read" | "e
   return report;
 }
 
-/** Fixture facts for a `--run`: the schema's timer facts, with this folder and a scratch state folder. */
-export function checkFacts(manifest: TrickManifest, folder: string, state: string): TrickFacts {
+/** Fixture facts for a `--run`: the schema's timer facts (or `trigger`), with this folder and a scratch state folder. */
+export function checkFacts(manifest: TrickManifest, folder: string, state: string, trigger?: FactsTrigger): TrickFacts {
   const parsed = parseFacts(FACTS.timer);
   if (parsed.facts === undefined) throw new Error("the fixture facts do not parse");
-  return { ...parsed.facts, trick: { id: manifest.id, dir: folder, state } };
+  const facts: TrickFacts = { ...parsed.facts, trick: { id: manifest.id, dir: folder, state } };
+  if (trigger !== undefined) facts.trigger = trigger;
+  return facts;
+}
+
+/** One run against fixture facts, as the bridge runs one: how it ended, and what the parser made of it. */
+export interface FixtureRun {
+  outcome: RunOutcome;
+  /** The masked line of a run that failed, or null. */
+  problem: string | null;
+  /** The bytes of stdout the parser read. */
+  stdoutBytes: number;
+  /** The parse of a run that exited 0, else null. */
+  parsed: ParsedTrickDocument | null;
+  /** Whether the document has a `decisions` key: absent means "leave them as they are". */
+  decisionsListed: boolean;
+}
+
+/**
+ * Run a trick's program once against fixture facts and parse what it prints, with the bridge's own
+ * rules: the environment scrub, the launch rule of run.ts, the caps, the parser against the manifest's
+ * places. The one run path `check --run` and `trick dev` share. The state folder is a scratch folder,
+ * so a check never writes the bridge's own state.
+ */
+export async function runAgainstFixture(manifest: TrickManifest, folder: string, env: CliContext["env"], trigger?: FactsTrigger): Promise<FixtureRun> {
+  const state = await mkdtemp(join(tmpdir(), `collie-trick-check-${manifest.id}-`));
+  try {
+    const outcome = await runProvider({
+      command: manifest.run,
+      cwd: folder,
+      env: scrubEnv(env, manifest.env ?? []),
+      stdin: JSON.stringify(checkFacts(manifest, folder, state, trigger)),
+    });
+    const problem = outcomeProblem(outcome, 400);
+    if (problem !== null || outcome.kind !== "exited") return { outcome, problem, stdoutBytes: 0, parsed: null, decisionsListed: false };
+    const parsed = parseTrickDocumentText(outcome.stdout, { declared: manifest.places });
+    const decisionsListed = asJsonObject(parseJson(outcome.stdout))?.decisions !== undefined;
+    return { outcome, problem, stdoutBytes: new TextEncoder().encode(outcome.stdout).length, parsed, decisionsListed };
+  } finally {
+    await rm(state, { recursive: true, force: true });
+  }
 }
 
 /** Run the provider once against fixture facts and parse its output, as the bridge would. */
 export async function checkRun(report: TrickCheckReport, env: CliContext["env"]): Promise<void> {
   const manifest = report.manifest;
   if (manifest === undefined) return;
-  // A scratch state folder, so a check never writes the bridge's own state.
-  const state = await mkdtemp(join(tmpdir(), `collie-trick-check-${manifest.id}-`));
-  try {
-    const outcome = await runProvider({
-      command: manifest.run,
-      cwd: report.folder,
-      env: scrubEnv(env, manifest.env ?? []),
-      stdin: JSON.stringify(checkFacts(manifest, report.folder, state)),
-    });
-    const problem = outcomeProblem(outcome, 400);
-    const stderr = outcome.kind === "spawn-failed" ? "" : outcome.stderr;
-    const run: NonNullable<TrickCheckReport["run"]> = { outcome: outcome.kind, ms: outcome.ms, problem, parts: [], refusals: [], stderr };
-    if (problem === null && outcome.kind === "exited") {
-      const parsed = parseTrickDocumentText(outcome.stdout, { declared: manifest.places });
-      run.parts = parsed.parts.map((p) => `${p.part.at} ${p.part.id}`);
-      run.refusals = parsed.refusals;
-    }
-    report.run = run;
-  } finally {
-    await rm(state, { recursive: true, force: true });
+  const ran = await runAgainstFixture(manifest, report.folder, env);
+  const { outcome, problem } = ran;
+  const stderr = outcome.kind === "spawn-failed" ? "" : outcome.stderr;
+  const run: NonNullable<TrickCheckReport["run"]> = { outcome: outcome.kind, ms: outcome.ms, problem, parts: [], refusals: [], stderr };
+  if (ran.parsed !== null) {
+    run.parts = ran.parsed.parts.map((p) => `${p.part.at} ${p.part.id}`);
+    run.refusals = ran.parsed.refusals;
   }
+  report.run = run;
 }
 
 /** Whether a report fails: a refusal that is not "later", a problem, or a run that failed or was refused. Warnings never fail it. */
@@ -750,8 +783,10 @@ function agentsTsLoop(id: string): string {
 1. Change \`program.ts\`. It imports \`./trick.ts\`, the helper. Collie runs the program with its own
    runtime and installs nothing, so it imports only files in this folder and the \`node:\` and \`bun:\`
    built-ins.
-2. Run \`collie trick check --run .\` and fix every error it prints. Read its warnings too.
-3. Switch the trick on with \`collie trick on ${id}\`. It runs while a phone watches.
+2. Run \`collie trick dev .\` to see what the phone would get: each part, each Decision, every refusal.
+   \`collie trick dev . --watch\` runs it again on each change; \`--tap <intent>\` runs it as a tap.
+3. Run \`collie trick check --run .\` and fix every error it prints. Read its warnings too.
+4. Switch the trick on with \`collie trick on ${id}\`. It runs while a phone watches.
 
 ## The helper
 
@@ -891,6 +926,7 @@ export async function cmdTrickInit(deps: TrickDeps, args: readonly string[]): Pr
     await writeFile(join(dir, CONFIG_FILE), sampleConfig(id));
     deps.io.out(`Made ${dir} with trick.toml, program.ts, trick.ts (the helper), config.toml and AGENTS.md. The trick is off.`);
   }
+  deps.io.out(`Try it: collie trick dev ${dir}`);
   deps.io.out(`Check it: collie trick check --run ${dir}`);
   deps.io.out(`Switch it on: collie trick on ${id}`);
   return EXIT.OK;

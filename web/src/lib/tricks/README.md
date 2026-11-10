@@ -63,6 +63,24 @@ bridge and `collie trick check` show.
 The schema's own tests never load the helper, so `cli/trick-kit/trick.test.ts` parses the output of
 every builder, every place method and the init sample with the real parser.
 
+## Trying a trick: `collie trick dev`
+
+`collie trick dev <folder|id>` is `check --run` made friendly (`cli/trick-dev.ts`). It runs the program
+once against the same fixture facts, through the same run path (`runAgainstFixture` in `cli/trick.ts`:
+the scrub, the launch rule, the caps, the one parser), and prints one line per part (place, id, and
+what the phone draws: `dashboard  dashboard  "Legs"  badge 3`), one line per Decision (key, title,
+options, recommends, images), whether the run lists Decisions at all, every refusal with its path and
+reason, and the run's time and stdout size against the 10 s and 64 KiB caps. A failed run adds its
+problem line and the tail of stderr.
+
+- `--tap <intent> [--text <words>] [--node <node>]` runs it as a tap. `--node` defaults to `main`; a
+  `hill/<key>` node carries `{ text }`, as a Decision's answer does.
+- `--json` prints the parsed result: the parts, the Decisions, the refusals, the outcome and the sizes.
+- `--watch` runs it again when a file in the folder changes, 300 ms after the last change (code and
+  `config.toml`; never a `*.log`, a dot file, `media/` or `captures/`). Ctrl-C stops it.
+
+It never talks to the bridge and never posts: nothing reaches a phone or the hill.
+
 ## The run line
 
 `run` in `trick.toml` takes two forms (`bridge/tricks/run.ts`, `launchOf`, the one rule the bridge's
