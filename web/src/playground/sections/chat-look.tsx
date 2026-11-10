@@ -82,16 +82,13 @@ interface Idea {
   readonly options: readonly IdeaOption[];
 }
 
-/** The pick for round Z, built from the rounds above it. */
+/** The operator's picks of 2026-11-10 (A1 B2 D2 E2 H1 K1; C, F, G, I, J stay today). */
 const RECOMMENDED: Partial<ChatLook> = {
   rhythm: "airy",
-  userTurn: "time-end",
-  steps: "quiet",
-  code: "neutral",
-  table: "rules",
-  prose: "15",
+  userTurn: "hug",
+  steps: "ground",
+  code: "neutral-12",
   quiet: "divided",
-  gutter: "16",
   cardLabel: "muted",
 };
 
@@ -157,7 +154,7 @@ const IDEAS: readonly Idea[] = [
   { id: "i", title: "I. Inline code", cases: ["long", "work", "short"], options: [{ title: "Neutral chips", look: { chip: "neutral" } }] },
   { id: "j", title: "J. Side gutter", cases: ["short", "long", "work", "code", "waiting"], options: [{ title: "16 px gutter", look: { gutter: "16" } }] },
   { id: "k", title: "K. Card labels", cases: ["work", "waiting"], options: [{ title: "Muted kind word", look: { cardLabel: "muted" } }] },
-  { id: "z", title: "Z. All together", cases: ["work", "short", "long", "code", "waiting"], options: [{ title: "Recommended set", look: RECOMMENDED }] },
+  { id: "z", title: "Z. All together", cases: ["work", "short", "long", "code", "waiting"], options: [{ title: "Your picks", look: RECOMMENDED }] },
 ];
 
 /** The Round hands its case back as a plain string; this finds it among the five, or the first. */
