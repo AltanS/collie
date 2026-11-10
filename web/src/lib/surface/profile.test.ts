@@ -477,6 +477,8 @@ interface Spec14Case {
   readonly queueKey?: string;
   /** The pause after the text write the profile names (`paste.settleMs`, #507), where it names one. */
   readonly pasteSettleMs?: number;
+  /** Whether the profile sends a multi-line or long text as one whole paste (`paste.block`). */
+  readonly pasteBlock?: boolean;
 }
 
 const SPEC14_CASES: readonly Spec14Case[] = [
@@ -501,6 +503,7 @@ const SPEC14_CASES: readonly Spec14Case[] = [
     submit: ["Enter"],
     probeStatus: "provisional",
     enterWhileRunning: "queues",
+    pasteBlock: true,
   },
   {
     id: "grok",
@@ -743,7 +746,8 @@ describe.each(SPEC14_CASES)("the $id profile (M56 spec 14)", (c) => {
     expect(p.keys.queueKey).toBe(c.queueKey);
     expect(p.reservedLeads).toEqual(c.reservedLeads ?? ["/", "!", "@"]);
     expect(p.probe.char.length).toBeGreaterThan(0);
-    expect(p.paste).toEqual(c.pasteSettleMs === undefined ? { bracketed: true } : { bracketed: true, settleMs: c.pasteSettleMs });
+    const basePaste: Profile["paste"] = c.pasteSettleMs === undefined ? { bracketed: true } : { bracketed: true, settleMs: c.pasteSettleMs };
+    expect(p.paste).toEqual(c.pasteBlock === true ? { ...basePaste, block: true } : basePaste);
     expect(p.hooks).toBeDefined();
   });
 

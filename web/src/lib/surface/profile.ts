@@ -816,6 +816,12 @@ export interface Profile {
      * the token as plain text. Collie's own pastes never carry the token in their text, so they pass.
      */
     readonly refuseLiteral?: boolean;
+    /**
+     * True when the `lines` group of `pattern` counts total lines rather than line breaks (opencode's
+     * `[Pasted ~N lines]` prints 1 for a single long line and 30 for 30 lines, whereas Claude Code's
+     * `+M lines` counts `\n`s). Optional: absent counts line breaks (`lines.length - 1`).
+     */
+    readonly countsLines?: boolean;
   };
   /**
    * The leads the harness reads as something other than text: a command (`/`), a shell line (`!`), or
@@ -1641,7 +1647,9 @@ export function parseProfile(raw: JsonValue): Profile {
   const collapseNode = object(field(root, "collapse", ""), "collapse");
   const collapseBase = { pattern: pattern(field(collapseNode, "pattern", "collapse"), "collapse.pattern").source };
   if (collapseNode.refuseLiteral !== undefined && collapseNode.refuseLiteral !== true && collapseNode.refuseLiteral !== false) fail("collapse.refuseLiteral", "must be true or false");
-  const collapse = collapseNode.refuseLiteral === true ? { ...collapseBase, refuseLiteral: true } : collapseBase;
+  if (collapseNode.countsLines !== undefined && collapseNode.countsLines !== true && collapseNode.countsLines !== false) fail("collapse.countsLines", "must be true or false");
+  const collapseWithRefuse = collapseNode.refuseLiteral === true ? { ...collapseBase, refuseLiteral: true } : collapseBase;
+  const collapse = collapseNode.countsLines === true ? { ...collapseWithRefuse, countsLines: true } : collapseWithRefuse;
 
   const reservedLeads = textList(field(root, "reservedLeads", ""), "reservedLeads", 1);
   let reservedLeadNotes: Readonly<Record<string, string>> | undefined;

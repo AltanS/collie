@@ -3792,6 +3792,23 @@ describe("pure helpers", () => {
     expect(wholePaste(null, ["a", "b"], isShot)).toBeNull();
   });
 
+  test("wholePaste and boxMatches on opencode (#749): collapse token counts total lines rather than line breaks", () => {
+    const match = profileFor("opencode", "2.2.6", { log: () => undefined });
+    expect(match?.profile.paste?.block).toBe(true);
+    expect(match?.profile.collapse.countsLines).toBe(true);
+    const collapse = new RegExp(match!.profile.collapse.pattern, "uy");
+    const thirty = Array.from({ length: 30 }, (_, i) => `line ${String(i + 1)}`);
+    const wholeThirty = wholePaste(match, thirty, () => false);
+    expect(wholeThirty).not.toBeNull();
+    expect(boxMatches("[Pasted ~30 lines]", "", thirty, collapse, wholeThirty)).toBe(true);
+    expect(boxMatches("[Pasted ~29 lines]", "", thirty, collapse, wholeThirty)).toBe(false);
+    const oneLong = ["x".repeat(1500)];
+    const wholeOne = wholePaste(match, oneLong, () => false);
+    expect(wholeOne).not.toBeNull();
+    expect(boxMatches("[Pasted ~1 lines]", "", oneLong, collapse, wholeOne)).toBe(true);
+    expect(boxMatches("[Pasted ~2 lines]", "", oneLong, collapse, wholeOne)).toBe(false);
+  });
+
   test("commandBoxMatches takes the text as written, with its lead cut, or with a mode marker for the lead", () => {
     for (const box of ["!echo ok", "! echo ok", "echo ok", "$ echo ok", "[!] echo ok", "! echo ok"]) expect(commandBoxMatches(box, "", ["!echo ok"], null)).toBe(true);
     for (const box of ["echo okay", "x echo ok", "!echo", ""]) expect(commandBoxMatches(box, "", ["!echo ok"], null)).toBe(false);

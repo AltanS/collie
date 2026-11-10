@@ -2002,6 +2002,10 @@ export interface WholePaste {
    * its box is not the typed text. Absent: the paste may fold.
    */
   readonly folds?: false;
+  /**
+   * True when the profile's collapse token counts total lines rather than line breaks (`collapse.countsLines`).
+   */
+  readonly countsLines?: boolean;
 }
 
 /**
@@ -2039,12 +2043,16 @@ export function wholePaste(match: ProfileMatch | null, lines: readonly string[],
   const text = lines.join("\n");
   if (lines.length === 1 && text.length <= WHOLE_PASTE_MIN_CHARS) return null;
   if (reservedLead(lines[0] ?? "", match.profile.reservedLeads) !== null) return null;
-  if (paste.image === undefined) return { images: 0, image: null, lines, literal: lines };
+  const countsLines = match.profile.collapse.countsLines === true;
+  if (paste.image === undefined) {
+    return countsLines ? { images: 0, image: null, lines, literal: lines, countsLines: true } : { images: 0, image: null, lines, literal: lines };
+  }
   const image = new RegExp(paste.image, "uy");
   const pieces = pastePieces(text);
   const kept = pieces.filter((piece) => !(isUploadImagePath(piece) && imageFile(piece.trim())));
   const images = pieces.length - kept.length;
-  return { images, image, lines: images === 0 ? lines : kept.join("\n").split("\n"), literal: lines };
+  const keptLines = images === 0 ? lines : kept.join("\n").split("\n");
+  return countsLines ? { images, image, lines: keptLines, literal: lines, countsLines: true } : { images, image, lines: keptLines, literal: lines };
 }
 
 /**
@@ -2163,7 +2171,8 @@ function boxMatchesForm(box: string, prefix: string, lines: readonly string[], c
     const after = q;
     const m = whole.folds === false ? null : take(collapse);
     const count = m?.groups?.lines;
-    if (m !== null && q === squeezed.length && (count === undefined ? lines.length === 1 : Number(count) === lines.length - 1)) return true;
+    const expectedLines = whole.countsLines === true ? lines.length : lines.length - 1;
+    if (m !== null && q === squeezed.length && (count === undefined ? lines.length === 1 : Number(count) === expectedLines)) return true;
     p = at[after]!;
   }
   for (const line of lines) {

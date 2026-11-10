@@ -8,6 +8,7 @@ import { cropRawColumns, type ColumnRange } from "../column-range";
 import { MAX_AUTOCOMPLETE_LINES } from "../harness/claude/autocomplete";
 import { displayWidth } from "../text-width";
 import { findInputFrame, frameAt, plainRows, type Frame, type FrameRow, type FrameRun } from "./frame";
+import { surfaceOfScreen } from "./fold";
 import { readAboveNotice } from "./notice";
 import { requireProfile } from "./profile";
 
@@ -1087,5 +1088,23 @@ describe("the draft of a soft-wrapped box joins the rows the way they were broke
     const cjk = "日本語のテキストをここに入力して、ボックスの幅を確認します。これは二行目以降です。";
     // 18 double-width characters fill 36 of the 37 cells: omp cuts the run one cell short.
     expect(draftOf([cjk.slice(0, 18), cjk.slice(18, 36), cjk.slice(36)], 40)).toBe(cjk);
+  });
+
+  it("opencode 2.2.6 (#749): a boxed slash-command row above the top edge does not swallow the frame and marks the modal unreadable", () => {
+    const opencode = requireProfile("opencode").idle;
+    const rows = plainRows([
+      "                      ┃ /review       review changes [commit|branch|pr], defaults to uncommitte ┃",
+      "                      ┃",
+      "                      ┃  /compact",
+      "                      ┃",
+      "                      ┃  Build auto · DeepSeek V4.1 Flash OpenCode Go · high",
+      "                      ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀",
+      "                      /tmp/opencode                             shift+tab agents  ctrl+p commands",
+    ]);
+    const frame = findInputFrame(rows, opencode);
+    expect(frame).not.toBeNull();
+    expect(frame?.top).toBe(1);
+    expect(frame?.interior.text).toBe("/compact");
+    expect(surfaceOfScreen({ seq: 1, source: "screen", at: 1000, revision: 1, rows, ask: null }, opencode).surface.modal).toBe("unreadable");
   });
 });

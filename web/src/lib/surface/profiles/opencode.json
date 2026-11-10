@@ -34,7 +34,7 @@
         "column": 2,
         "maxColumn": 200
       },
-      "rows": "^ *┃(?: .*)?$",
+      "rows": "^ *┃(?: {2}.*)?$",
       "trailer": {
         "row": "^ *┃ {2}\\S[^·]*·\\s?\\S.*$",
         "pad": "^ *┃$",
@@ -65,7 +65,8 @@
       "^\\s*[⬝⬞■▪□▫]*\\s*esc interrupt\\b"
     ],
     "overlayRows": [
-      "^[\\s┃]*\\S(?:.*\\S)?\\s{3,}esc\\s*$"
+      "^[\\s┃]*\\S(?:.*\\S)?\\s{3,}esc\\s*$",
+      "^ *┃ /\\S+\\s{2,}\\S.* ┃$"
     ]
   },
   "keys": {
@@ -92,7 +93,8 @@
     "enterWhileRunning": "queues"
   },
   "collapse": {
-    "pattern": "\\[Pasted ~(?<lines>\\d+) lines\\]"
+    "pattern": "\\[Pasted ~(?<lines>\\d+) lines\\]",
+    "countsLines": true
   },
   "reservedLeads": [
     "/",
@@ -105,7 +107,8 @@
     "note": "M56 spec 01 lab, 2026-10-15, opencode 1.18.35: inert after the type and after Backspace in the permission and question dialogs on Herdr, tmux and zellij; the box shows it as `┃  ⌁`; fallback ¤; live sends passed on opencode 1.19.2 only, above the ledger range 1.18.0 to 1.18.33, so the probe stays on until a send passes inside it"
   },
   "paste": {
-    "bracketed": true
+    "bracketed": true,
+    "block": true
   },
   "hooks": {}
 }
