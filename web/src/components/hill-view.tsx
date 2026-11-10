@@ -1,4 +1,4 @@
-import { useId, useState, type ReactNode } from "react";
+import { useEffect, useId, useState, type ReactNode } from "react";
 
 import { RouteHeader } from "@/components/app-header";
 import { BrandMark } from "@/components/brand-mark";
@@ -11,6 +11,8 @@ import { SectionHeader } from "@/components/section-header";
 import { Button } from "@/components/ui/button";
 import { Collapse } from "@/components/ui/collapse";
 import { ListGroup } from "@/components/ui/list-group";
+import { OneOf } from "@/components/ui/one-of";
+import { useArm } from "@/hooks/use-arm";
 import { useHillAnswer } from "@/hooks/use-hill-answer";
 import { useLocale } from "@/hooks/use-locale";
 import { HILL_PRIORITIES, type HillDecision, type HillState } from "@/lib/hill/wire";
@@ -115,6 +117,60 @@ function ClosedRow({ decision, kept }: { decision: HillDecision; kept: string | 
   );
 }
 
+/** What the view needs to offer Clear on the closed group: the way to clear, and whether this device may. */
+export interface HillClearControl {
+  canWrite: boolean;
+  busy: boolean;
+  onClear: () => void;
+}
+
+/**
+ * Clear, at the right end of the Answered header: one quiet text button that asks once in place. The
+ * first tap arms it ("Clear 12 entries?", in the armed tint, the Decision card's Dismiss pattern and its
+ * `useArm`), the second tap inside the window clears every closed entry. Both words sit in one slot,
+ * sized by the wider, so arming moves nothing (DESIGN.md §2). 44px tall, the tap floor.
+ */
+function ClearButton({ count, control }: { count: number; control: HillClearControl }) {
+  const { armed, tap, disarm } = useArm<"clear">();
+  const isArmed = armed === "clear";
+  const armedWords = tn("hill.clear.armed", count);
+  // An arm is for the entries as they stood: a new count (another phone cleared, a row closed) drops it.
+  useEffect(() => disarm(), [count, disarm]);
+  return (
+    <>
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        data-slot="hill-clear"
+        disabled={!control.canWrite || control.busy}
+        aria-label={isArmed ? t("hill.armed", { label: armedWords }) : undefined}
+        onClick={() => {
+          if (tap("clear") === "fire") control.onClear();
+        }}
+        className={cn(
+          "-mr-3 h-11 shrink-0 px-3",
+          // The armed tint on the box it already has: the border is reserved by the button's base string.
+          isArmed ? "border-destructive/40 bg-destructive/10 text-destructive hover:bg-destructive/10 hover:text-destructive" : "text-muted-foreground",
+        )}
+      >
+        <OneOf
+          active={isArmed ? "armed" : "rest"}
+          className="inline-grid"
+          options={[
+            { key: "rest", node: t("hill.clear.button") },
+            { key: "armed", node: armedWords },
+          ]}
+        />
+      </Button>
+      {/* A live region on the button itself is unreliable; this one announces the armed wording. */}
+      <span className="sr-only" aria-live="polite">
+        {isArmed ? t("hill.armed", { label: armedWords }) : ""}
+      </span>
+    </>
+  );
+}
+
 /** The ridge of the empty hill, one traced line; `mark` puts the resting mark on its top peak. */
 function HillRidge({ mark }: { mark: boolean }) {
   return (
@@ -187,7 +243,8 @@ function PriorityGroup({ priority, decisions, renderCard }: { priority: HillDeci
 /**
  * The view's body: the cards by priority, or the empty hill, then the Answered fold. `renderCard`
  * draws one open decision; `kept` holds the words of answers that did not reach their target, per
- * decision. `open` comes sorted (most urgent first, then oldest), and each group keeps that order.
+ * decision. `closedTotal` is how many closed ones the bridge holds (at least `closed.length`), what Clear
+ * says it removes; `clear` absent draws no button (a view that cannot write). `open` comes sorted (most urgent first, then oldest), and each group keeps that order.
  * With nothing open the fold starts open, because then it is all the hill has to show.
  */
 export function HillView({
@@ -195,11 +252,15 @@ export function HillView({
   closed,
   kept,
   renderCard,
+  closedTotal = closed.length,
+  clear,
 }: {
   open: readonly HillDecision[];
   closed: readonly HillDecision[];
   kept: ReadonlyMap<string, string>;
   renderCard: (decision: HillDecision) => ReactNode;
+  closedTotal?: number;
+  clear?: HillClearControl;
 }) {
   useLocale();
   const [answeredOpen, setAnsweredOpen] = useState(open.length === 0);
@@ -224,6 +285,7 @@ export function HillView({
             open={answeredOpen}
             onToggle={setAnsweredOpen}
             controls={answeredId}
+            trailing={clear === undefined ? undefined : <ClearButton count={Math.max(closedTotal, closed.length)} control={clear} />}
           />
           <Collapse open={answeredOpen}>
             <ListGroup as="ul" id={answeredId}>

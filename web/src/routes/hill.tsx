@@ -5,10 +5,11 @@ import { DashboardRouteBar, footAir } from "@/components/dashboard-route-bar";
 import { HillHeader, HillOff, HillView, LiveDecisionCard } from "@/components/hill-view";
 import { BandMain } from "@/components/ui/strip-host";
 import { useDashboardBar } from "@/hooks/use-dashboard-bar";
+import { useHillClear } from "@/hooks/use-hill-clear";
 import { useHillSwitch } from "@/hooks/use-hill-switch";
 import { useLocale } from "@/hooks/use-locale";
 import { useNav } from "@/hooks/use-nav";
-import { useHillClosed, useHillKept, useHillOpen } from "@/lib/hill/store";
+import { useHillClosed, useHillClosedTotal, useHillKept, useHillOpen } from "@/lib/hill/store";
 import type { HillDecision } from "@/lib/hill/wire";
 import { homePath } from "@/lib/nav";
 import { useScope } from "@/lib/session";
@@ -40,6 +41,8 @@ export function HillRoute() {
   const open = useHillOpen();
   const closed = useHillClosed();
   const kept = useHillKept();
+  const closedTotal = useHillClosedTotal();
+  const clearing = useHillClear();
   const bar = useDashboardBar();
   const sw = useHillSwitch();
   const off = !sw.on;
@@ -51,7 +54,7 @@ export function HillRoute() {
         {off ? (
           <HillOff canWrite={sw.canWrite} busy={sw.busy} onTurnOn={() => void sw.set(true)} />
         ) : (
-          <HillView open={open} closed={closed} kept={kept} renderCard={(decision) => <LiveDecisionCard key={decision.id} decision={decision} />} />
+          <HillView open={open} closed={closed} closedTotal={closedTotal} clear={{ canWrite: clearing.canWrite, busy: clearing.busy, onClear: () => void clearing.clear() }} kept={kept} renderCard={(decision) => <LiveDecisionCard key={decision.id} decision={decision} />} />
         )}
       </BandMain>
       <DashboardRouteBar bar={bar} at={AT_HILL} />
