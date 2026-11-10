@@ -1,10 +1,10 @@
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 import { postMorphSwitch } from "@/lib/api";
 import { describeThrownError } from "@/lib/api-error-message";
 import { t } from "@/lib/i18n";
 import { noteMorphSwitch, useMorphAvailable, useMorphSession } from "@/lib/morph/store";
-import { picksAfter, picksFor, requestAfter, type MorphPicks, type MorphRequest, type MorphRequestNote } from "@/lib/morph/reader";
+import { livePrefixes, picksAfter, picksFor, requestAfter, type MorphPicks, type MorphRequest, type MorphRequestNote } from "@/lib/morph/reader";
 import type { MorphDrawing, MorphView } from "@/lib/morph/wire";
 import type { PaneView } from "@/lib/pane-view";
 import { onBridgeClock } from "@/lib/server-clock";
@@ -20,8 +20,8 @@ import { onBridgeClock } from "@/lib/server-clock";
 // THE REQUEST AND THE PICKS LIVE HERE TOO, so a look at Terminal and back loses neither. The composer
 // tells the hook when a send that carried the hint starts and how it ended (`noteRequest`), per session;
 // the Morph body shows the text at once and the status under it. A tap the bridge confirmed is a pick
-// (`notePressed`): its button stays marked until the next screen (a new `rev`), and a pick in the same
-// bar moves the mark.
+// (`notePressed`): its button stays marked while its block holds the same content (lib/morph/reader.ts,
+// "controls, keyed by block"), and a pick in the same bar moves the mark.
 
 export interface MorphPane {
   /** The bridge has Morph and this session may use it. */
@@ -77,8 +77,9 @@ export function useMorphPane({
   const showing = on && aside === null;
   const hint = showing && session !== null && session.hint !== "" ? session.hint : undefined;
   const head = hint === undefined ? undefined : session?.head;
-  const rev = on ? session?.view?.rev : undefined;
-  const pressed = picksFor(picks, { address, rev });
+  const shown = on ? session?.view : undefined;
+  const live = useMemo(() => livePrefixes(shown), [shown]);
+  const pressed = picksFor(picks, { address, live });
 
   const setAside = useCallback(
     (view: PaneView | null) => setAsideHeld(view === null ? null : { address, view }),
@@ -93,10 +94,10 @@ export function useMorphPane({
 
   const notePressed = useCallback(
     (control: string) => {
-      if (rev === undefined) return;
-      setPicks((held) => picksAfter(held, { address, rev, control }));
+      if (shown === undefined) return;
+      setPicks((held) => picksAfter(held, { address, live, control }));
     },
-    [address, rev],
+    [address, live, shown],
   );
 
   const setOn = useCallback(
@@ -125,7 +126,7 @@ export function useMorphPane({
     noteRequest,
     pressed,
     notePressed,
-    view: on ? session?.view : undefined,
+    view: shown,
     aside,
     setAside,
     setOn,

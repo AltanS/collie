@@ -835,9 +835,14 @@ export const en = {
   "morph.request.sent": "Sent",
   "morph.request.working": "The agent is working",
   "morph.request.morphing": "Morphing…",
-  "morph.request.morphingNote": "Morphing… {note}",
   "morph.request.answered": "Answered",
   "morph.request.answeredAt": "Answered · {time}",
+  // The blocks the agent drew for an earlier request, folded under one row; the row, then the label inside.
+  "morph.earlier.row": "Earlier screen",
+  "morph.earlier.label": "Earlier",
+  // A pick or a tap the operator sent, settled: the badge, and what a screen reader hears for a settled choice.
+  "morph.receipt.answered": "Answered",
+  "morph.receipt.pickedLabel": "Picked: {label}",
 
   // --- chat.stream (the chat body itself) ---
   "chat.stream.empty": "Send a message to start.",
@@ -3649,9 +3654,12 @@ export const PENDING_TRANSLATION = [
   "morph.request.sent",
   "morph.request.working",
   "morph.request.morphing",
-  "morph.request.morphingNote",
   "morph.request.answered",
   "morph.request.answeredAt",
+  "morph.earlier.row",
+  "morph.earlier.label",
+  "morph.receipt.answered",
+  "morph.receipt.pickedLabel",
   // A trick's warnings at the switch (M94 review 15).
   "settings.tricks.warn.label",
   "settings.tricks.warn.spawn",

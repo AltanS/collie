@@ -2,6 +2,7 @@ import { useEffect } from "react";
 
 import { Icon } from "@/components/icons/icon";
 import { OptionButton, type OptionTone } from "@/components/option-button";
+import { Badge } from "@/components/ui/badge";
 import { useArm } from "@/hooks/use-arm";
 import { useLocale } from "@/hooks/use-locale";
 import { t } from "@/lib/i18n";
@@ -18,6 +19,11 @@ import { cn } from "@/lib/utils";
 // A PICK IS A MESSAGE. The block only says which option was tapped; the Morph body sends it through the
 // composer (`picked "<label>"`), marks it until the next screen, and holds every option while it is in
 // flight.
+//
+// A SETTLED CHOICE ({@link MorphChoiceDone}): a choice the agent sent with `picked`, or one the operator
+// picked that now stands in the "Earlier screen" fold. The picked option at full contrast with the check,
+// an "Answered" badge beside the question, every other option a plain quiet row, and nothing to tap. No
+// grey wash: the quiet rows are muted ink, never a lowered opacity.
 //
 // PREVIEWS. An option with a `preview` shows that picture above its button, as one card: a tap on the
 // picture opens it at full size (paging through every preview of the block), a tap on the button picks.
@@ -156,3 +162,58 @@ export function MorphChoiceBlock({ choice, pictures, media, picked, busy, canAct
     </section>
   );
 }
+
+export interface MorphChoiceDoneProps {
+  choice: MorphChoice;
+  /** The option settled on. */
+  picked: number;
+  pictures: ViewPictures | undefined;
+}
+
+/** A settled choice: the picked option marked, the others quiet, no control; see the header. */
+export function MorphChoiceDone({ choice, picked, pictures }: MorphChoiceDoneProps) {
+  useLocale();
+  const chosen = choice.options[picked];
+  return (
+    <section data-slot="morph-choice" data-done="" aria-label={choice.question} className="mt-4 flex min-w-0 flex-col gap-2">
+      <div className="flex min-w-0 items-center gap-2">
+        {choice.question !== undefined && (
+          <p data-slot="morph-choice-question" className="min-w-0 font-content text-sm font-semibold break-words">
+            {choice.question}
+          </p>
+        )}
+        <Badge variant="ok" data-slot="morph-answered-badge">
+          <Icon name="answered" aria-hidden />
+          {t("morph.receipt.answered")}
+        </Badge>
+      </div>
+      <ul data-slot="morph-choice-options" className="flex min-w-0 flex-col gap-1">
+        {choice.options.map((option, i) => {
+          const isPicked = i === picked;
+          return (
+            <li
+              key={`${String(i)}:${option.label}`}
+              data-slot="morph-option-done"
+              data-picked={isPicked ? "" : undefined}
+              // One border on every row, coloured only on the picked one, so the mark moves nothing (DESIGN.md §2).
+              className={cn("flex min-h-11 min-w-0 items-center gap-2 rounded-lg border px-3 py-2", isPicked ? "border-status-done/40 bg-card text-foreground" : "border-transparent text-muted-foreground")}
+            >
+              <span aria-hidden className="flex size-4 shrink-0 items-center justify-center text-status-done">
+                {isPicked && <Icon name="answered" className="size-3.5" />}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className={cn("block text-sm break-words", isPicked && "font-medium")}>{option.label}</span>
+                {option.detail !== undefined && <span className="block text-xs break-words text-muted-foreground">{option.detail}</span>}
+              </span>
+              {isPicked && option.preview !== undefined && pictures !== undefined && (
+                <span className="size-12 shrink-0 overflow-hidden rounded-md">{pictures.draw({ refs: [option.preview], index: 0, fit: "cover", ratio: "1 / 1", maxHeight: "48px" })}</span>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+      {chosen !== undefined && <span className="sr-only">{t("morph.receipt.pickedLabel", { label: chosen.label })}</span>}
+    </section>
+  );
+}
+

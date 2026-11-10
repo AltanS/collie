@@ -2,8 +2,12 @@ import type { JsonValue } from "@/lib/json";
 import type { TranscriptEntry } from "@/lib/types";
 
 import {
+  blockControl,
+  blockTapTextOf,
   choiceControl,
+  choicePrefix,
   isUnanswered,
+  livePrefixes,
   latestRequestIn,
   morphRequestOf,
   morphStateOf,
@@ -11,10 +15,16 @@ import {
   nodeAtControl,
   parentControl,
   pickedOption,
+  pickReceiptOf,
   picksAfter,
   pickTextOf,
   picksFor,
+  pressedNode,
+  renderedControl,
   requestAfter,
+  requestNotes,
+  screenBlocks,
+  splitScreen,
   stripMorphHint,
   tapTextOf,
   textAnswerAfter,
@@ -90,15 +100,14 @@ describe("textAnswerAfter", () => {
 
 describe("morphStateOf", () => {
   const view = screenOf([{ kind: "para", text: "Hi" }]);
-  const answer = { text: "words", ts: "2026-11-10T10:01:10.000Z" };
 
-  it("names the four states", () => {
-    expect(morphStateOf({ view: undefined, working: false, answer: null })).toBe("empty");
-    // A text answer with no screen is still an answer.
-    expect(morphStateOf({ view: undefined, working: false, answer })).toBe("text");
-    expect(morphStateOf({ view, working: true, answer })).toBe("working");
-    expect(morphStateOf({ view, working: false, answer })).toBe("text");
-    expect(morphStateOf({ view, working: false, answer: null })).toBe("view");
+  it("names the five states from where the request stands", () => {
+    expect(morphStateOf({ view: undefined, status: null })).toBe("empty");
+    expect(morphStateOf({ view, status: null })).toBe("view");
+    expect(morphStateOf({ view, status: { kind: "working" } })).toBe("working");
+    expect(morphStateOf({ view, status: { kind: "sending" } })).toBe("working");
+    expect(morphStateOf({ view: undefined, status: { kind: "answered", at: view.at } })).toBe("answered");
+    expect(morphStateOf({ view, status: { kind: "notSent", reason: null } })).toBe("notSent");
   });
 });
 
@@ -248,19 +257,27 @@ describe("morphStatusOf", () => {
     expect(morphStatusOf({ ...base, request: request("sent"), working: true })).toEqual({ kind: "working" });
   });
 
-  it("says Morphing, with the note, once the agent called start, newer than the request and the screen", () => {
+  it("says Morphing once the agent called start for this request, until a show ends it", () => {
     const drawing = { at: iso(T0 + 500), note: "Checking the tests" };
-    expect(morphStatusOf({ ...base, request: request("sent"), drawing, working: true })).toEqual({ kind: "morphing", note: "Checking the tests" });
-    expect(morphStatusOf({ ...base, request: request("sent"), drawing: { at: iso(T0 + 500) } })).toEqual({ kind: "morphing", note: null });
-    // A start from before this request, or older than the screen, or ten minutes old, is not this request's.
+    expect(morphStatusOf({ ...base, request: request("sent"), drawing, working: true })).toEqual({ kind: "morphing" });
+    expect(morphStatusOf({ ...base, request: request("sent"), drawing: { at: iso(T0 + 500) } })).toEqual({ kind: "morphing" });
+    // A set after the start keeps the run: the drawing outlives a block edit, and the turn still runs.
+    expect(morphStatusOf({ ...base, request: request("sent"), drawing, view: screen(T0 + 900), working: true })).toEqual({ kind: "morphing" });
+    // A start from before this request, or ten minutes old, is not this request's.
     expect(morphStatusOf({ ...base, request: request("sent"), drawing: { at: iso(T0 - 5000) } })).toEqual({ kind: "sent" });
     expect(morphStatusOf({ ...base, request: request("sent"), drawing, now: T0 + 500 + MORPH_DRAWING_MAX_MS })).toEqual({ kind: "sent" });
   });
 
-  it("says Answered with the screen's time once a screen newer than the request arrived", () => {
-    expect(morphStatusOf({ ...base, request: request("sent"), view: screen(T0 + 2000), working: true })).toEqual({ kind: "answered", at: iso(T0 + 2000) });
-    // An older screen is the old answer.
+  it("says Answered once the turn is over and a block is fresh; a fresh block while the turn runs is not yet the answer", () => {
+    expect(morphStatusOf({ ...base, request: request("sent"), view: screen(T0 + 2000) })).toEqual({ kind: "answered", at: iso(T0 + 2000) });
+    expect(morphStatusOf({ ...base, request: request("sent"), view: screen(T0 + 2000), working: true })).toEqual({ kind: "working" });
+    // An older screen is never promoted to the answer.
     expect(morphStatusOf({ ...base, request: request("sent"), view: screen(T0 - 2000) })).toEqual({ kind: "sent" });
+  });
+
+  it("a fresh choice alone is an answer too", () => {
+    const view: MorphView = { ...screen(T0 - 2000), choice: { options: [{ label: "Yes" }] }, choiceAt: iso(T0 + 3000) };
+    expect(morphStatusOf({ ...base, request: request("sent"), view })).toEqual({ kind: "answered", at: iso(T0 + 3000) });
   });
 
   it("says Answered when the turn ended with a text answer, and not while the agent still works", () => {
@@ -280,39 +297,129 @@ describe("morphStatusOf", () => {
     expect(isUnanswered({ kind: "sending" })).toBe(true);
     expect(isUnanswered({ kind: "sent" })).toBe(true);
     expect(isUnanswered({ kind: "working" })).toBe(true);
-    expect(isUnanswered({ kind: "morphing", note: null })).toBe(true);
+    expect(isUnanswered({ kind: "morphing" })).toBe(true);
     expect(isUnanswered({ kind: "notSent", reason: null })).toBe(false);
     expect(isUnanswered({ kind: "answered", at: iso(T0) })).toBe(false);
   });
 });
 
+describe("fresh and stale blocks", () => {
+  const view: MorphView = {
+    rev: 3,
+    at: iso(T0 + 2000),
+    view: [
+      { kind: "para", text: "old" },
+      { kind: "para", text: "new" },
+      { kind: "spacer" },
+    ],
+    blocks: [
+      { id: "old", at: iso(T0 - 1000) },
+      { id: "new", at: iso(T0 + 2000) },
+      { id: "tests", at: iso(T0 + 1000), pending: "Running the tests" },
+    ],
+    choice: { options: [{ label: "Yes" }] },
+    choiceAt: iso(T0 - 1000),
+  };
+
+  it("a block is fresh from the request's time on, stale before; the choice by its own time", () => {
+    const split = splitScreen(view, T0);
+    expect(split.fresh.map((block) => block.id)).toEqual(["new", "tests"]);
+    expect(split.stale.map((block) => block.id)).toEqual(["old"]);
+    expect(split.isChoiceFresh).toBe(false);
+    expect(split.isChoiceStale).toBe(true);
+    expect(split.freshAt).toBe(iso(T0 + 2000));
+    expect(split.fresh[1]?.pending).toBe("Running the tests");
+  });
+
+  it("with no request time nothing is stale", () => {
+    const split = splitScreen(view, null);
+    expect(split.stale).toEqual([]);
+    expect(split.isChoiceFresh).toBe(true);
+  });
+
+  it("a keep moves a block back to fresh; nothing fresh has no time", () => {
+    expect(splitScreen(view, T0 + 5000).freshAt).toBeNull();
+    const kept: MorphView = { ...view, blocks: [{ id: "old", at: iso(T0 + 6000) }, ...(view.blocks ?? []).slice(1)] };
+    expect(splitScreen(kept, T0 + 5000).fresh.map((block) => block.id)).toEqual(["old"]);
+  });
+
+  it("the notes of this request only, newest last, four at most", () => {
+    const notes = Array.from({ length: 6 }, (_, i) => ({ at: iso(T0 + i * 100), note: `Step ${String(i)}` }));
+    expect(requestNotes({ at: iso(T0), notes: [{ at: iso(T0 - 100), note: "Older" }, ...notes] }, T0).map((note) => note.note)).toEqual(["Step 2", "Step 3", "Step 4", "Step 5"]);
+    expect(requestNotes({ at: iso(T0 + 1), note: "Only one" }, T0)).toEqual([{ at: iso(T0 + 1), note: "Only one" }]);
+    expect(requestNotes(undefined, T0)).toEqual([]);
+  });
+});
+
+describe("controls, keyed by block", () => {
+  const view: MorphView = {
+    rev: 1,
+    at: iso(T0),
+    view: [
+      { kind: "para", text: "Pick" },
+      { kind: "group", attrs: { label: "Release" }, kids: [{ kind: "bar", kids: [{ kind: "button", attrs: { label: "Ship", intent: "reply" } }] }] },
+    ],
+    blocks: [
+      { id: "intro", at: iso(T0) },
+      { id: "ship", at: iso(T0) },
+    ],
+  };
+  const [, ship] = screenBlocks(view);
+
+  it("a tap inside a block's own render is filed under the block, and read back to that render's path", () => {
+    expect(ship?.prefix).toMatch(/^b:ship#[a-z0-9]+$/);
+    const control = blockControl(ship!.prefix, "v/0/0/0");
+    expect(control).toBe(`${ship!.prefix}/0/0`);
+    expect(renderedControl(ship!.prefix, control)).toBe("v/0/0/0");
+    expect(renderedControl("b:intro#x", control)).toBeNull();
+  });
+
+  it("the words of a tap are read at the block's place in the whole view, with its group", () => {
+    expect(blockTapTextOf({ view: view.view, block: ship!, rendered: "v/0/0/0" })).toBe('tapped "Ship" in "Release"');
+  });
+
+  it("a block's node is marked by the picks filed under it alone", () => {
+    const marked = pressedNode(ship!, [`${ship!.prefix}/0/0`, "b:intro#zz/0"]);
+    expect(JSON.stringify(marked)).toContain('"pressed":"true"');
+  });
+
+  it("the live prefixes are the blocks' and the choice's; a change of content is a new prefix", () => {
+    const withChoice: MorphView = { ...view, choice: { options: [{ label: "A" }] } };
+    const live = livePrefixes(withChoice);
+    expect(live.has(ship!.prefix)).toBe(true);
+    expect(live.has(choicePrefix(withChoice.choice!))).toBe(true);
+    const changed = screenBlocks({ ...view, view: [view.view[0]!, { kind: "para", text: "Shipped" }] })[1];
+    expect(changed?.prefix).not.toBe(ship!.prefix);
+  });
+});
+
 describe("the operator's picks", () => {
-  const here = { address: "local/w1:p1#ab12", rev: 3 };
+  const address = "local/w1:p1#ab12";
+  const live = new Set(["b:a#1", "b:b#2"]);
+  const here = { address, live };
 
   it("a tap the bridge confirmed marks that button", () => {
-    const picks = picksAfter(null, { ...here, control: "v/0/1" });
-    expect(picksFor(picks, here)).toEqual(["v/0/1"]);
+    const picks = picksAfter(null, { ...here, control: "b:a#1/1" });
+    expect(picksFor(picks, here)).toEqual(["b:a#1/1"]);
   });
 
   it("a tap on a sibling in the same bar moves the mark", () => {
-    const first = picksAfter(null, { ...here, control: "v/0/1" });
-    const moved = picksAfter(first, { ...here, control: "v/0/2" });
-    expect(picksFor(moved, here)).toEqual(["v/0/2"]);
+    const first = picksAfter(null, { ...here, control: "b:a#1/1" });
+    const moved = picksAfter(first, { ...here, control: "b:a#1/2" });
+    expect(picksFor(moved, here)).toEqual(["b:a#1/2"]);
   });
 
-  it("a tap in another group keeps both marks", () => {
-    const first = picksAfter(null, { ...here, control: "v/0/1" });
-    const both = picksAfter(first, { ...here, control: "v/1/0/0" });
-    expect(picksFor(both, here)).toEqual(["v/0/1", "v/1/0/0"]);
+  it("a tap in another block keeps both marks", () => {
+    const first = picksAfter(null, { ...here, control: "b:a#1/1" });
+    const both = picksAfter(first, { ...here, control: "b:b#2/0/0" });
+    expect(picksFor(both, here)).toEqual(["b:a#1/1", "b:b#2/0/0"]);
   });
 
-  it("a new rev clears every mark, and another session has none", () => {
-    const picks = picksAfter(picksAfter(null, { ...here, control: "v/0/1" }), { ...here, control: "v/1/0/0" });
-    expect(picksFor(picks, { ...here, rev: 4 })).toEqual([]);
-    expect(picksFor(picks, { address: "local/w2:p2#cd34", rev: 3 })).toEqual([]);
-    expect(picksFor(picks, { ...here, rev: undefined })).toEqual([]);
-    // A pick on the new screen starts again.
-    expect(picksFor(picksAfter(picks, { ...here, rev: 4, control: "v/0/0" }), { ...here, rev: 4 })).toEqual(["v/0/0"]);
+  it("a mark stays while its block holds the same content, through another rev, and goes with the block; another session has none", () => {
+    const picks = picksAfter(picksAfter(null, { ...here, control: "b:a#1/1" }), { ...here, control: "b:b#2/0/0" });
+    expect(picksFor(picks, { address, live: new Set(["b:a#1", "b:b#9"]) })).toEqual(["b:a#1/1"]);
+    expect(picksFor(picks, { address: "local/w2:p2#cd34", live })).toEqual([]);
+    expect(picksFor(picks, { address, live: new Set() })).toEqual([]);
   });
 });
 
@@ -342,10 +449,35 @@ describe("the decision block's words", () => {
     expect(pickTextOf(choice, 3)).toBeNull();
   });
 
-  it("files a pick beside the view's controls and reads it back", () => {
-    expect(choiceControl(2)).toBe("choice/2");
-    expect(pickedOption(["v/1/0", "choice/2"])).toBe(2);
-    expect(pickedOption(["v/1/0"])).toBeNull();
-    expect(parentControl(choiceControl(0))).toBe(parentControl(choiceControl(4)));
+  it("files a pick under the choice's own prefix and reads it back", () => {
+    expect(choiceControl(choice, 2)).toBe(`${choicePrefix(choice)}/2`);
+    expect(pickedOption(["b:a#1/0", choiceControl(choice, 2)])).toBe(2);
+    expect(pickedOption(["b:a#1/0"])).toBeNull();
+    expect(parentControl(choiceControl(choice, 0))).toBe(parentControl(choiceControl(choice, 4)));
+  });
+});
+
+describe("the receipt of a pick or a tap", () => {
+  const view: MorphView = {
+    rev: 1,
+    at: iso(T0),
+    title: "Header",
+    view: [{ kind: "para", text: "x" }],
+    choice: { question: "Which header?", options: [{ label: "Compact", value: "Use it.", preview: 1 }, { label: "Tall" }] },
+  };
+
+  it("a pick names the question and the option's preview", () => {
+    expect(pickReceiptOf('picked "Compact": Use it.', view)).toEqual({ kind: "pick", label: "Compact", context: "Which header?", preview: 1 });
+    expect(pickReceiptOf('picked "Tall"', view)).toEqual({ kind: "pick", label: "Tall", context: "Which header?", preview: null });
+  });
+
+  it("a tap names its group, or the screen's title", () => {
+    expect(pickReceiptOf('tapped "Ship" in "Release": Ship it now', view)).toEqual({ kind: "tap", label: "Ship", context: "Release", preview: null });
+    expect(pickReceiptOf('tapped "Wait"', view)).toEqual({ kind: "tap", label: "Wait", context: "Header", preview: null });
+  });
+
+  it("a typed request has none", () => {
+    expect(pickReceiptOf("Compare the two plans", view)).toBeNull();
+    expect(pickReceiptOf('picked "x" and more', view)).toBeNull();
   });
 });
