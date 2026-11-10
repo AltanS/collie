@@ -187,6 +187,25 @@ describe("the rate and the gates", () => {
     expect(renders(r)).toHaveLength(HILL_PUSH_RATE.perSender + 1);
   });
 
+  test(`past ${String(HILL_PUSH_RATE.perMember)} an hour from the agents of one crew member together the push is skipped (CREW_PROTOCOL §22)`, () => {
+    const r = rig();
+    // Three sessions of one member, posting through this lead, two `now` decisions each, then one more.
+    const panes = ["laptop/%1#aaaa", "laptop/%2#bbbb", "laptop/%3#cccc", "laptop/%4#dddd"];
+    let n = 0;
+    for (const address of panes) {
+      const sender: HillAgentSender = { kind: "agent", address, memberId: "laptop", harness: "agent-x", label: "repo", host: "laptop" };
+      const own: HillPlace = { address, label: "repo", host: "laptop", unattended: false };
+      for (let i = 0; i < (address === panes[3] ? 1 : 2); i += 1) posted(r.hill.postDecision(sender, input((n += 1)), { own, images: [] }));
+    }
+    expect(renders(r)).toHaveLength(HILL_PUSH_RATE.perMember);
+    expect(r.audit.filter((e) => e.action === "hill.push.skipped").map((e) => e.detail?.why)).toEqual(["more than 6 an hour from this machine"]);
+    // Another member, and this lead's own session, still ring.
+    const mini: HillAgentSender = { kind: "agent", address: "mini/%1#aaaa", memberId: "mini", harness: "agent-x", label: "repo", host: "mini" };
+    posted(r.hill.postDecision(mini, input(90), { own: { address: mini.address, label: "repo", host: "mini", unattended: false }, images: [] }));
+    posted(r.hill.post(POSTER, input(91)));
+    expect(renders(r)).toHaveLength(HILL_PUSH_RATE.perMember + 2);
+  });
+
   test(`past ${String(HILL_PUSH_RATE.total)} an hour from every sender together the push is skipped`, () => {
     const r = rig();
     for (let n = 1; n <= HILL_PUSH_RATE.total + 1; n += 1) posted(r.hill.postDecision(trick(`t${String(n)}`), input(n)));

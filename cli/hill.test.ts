@@ -384,6 +384,9 @@ describe("the Hill's switch", () => {
     expect(refusalExit(null)).toBe(EXIT.STATE);
     expect(refusalExit("bad_title")).toBe(EXIT.REFUSED);
     expect(refusalExit("walky_off")).toBe(EXIT.REFUSED);
+    // A member's lead that did not answer: a retry with the same request id may pass (CREW_PROTOCOL §22).
+    expect(refusalExit("lead_unreachable")).toBe(EXIT.UNREACHABLE);
+    expect(refusalExit("not_on_lead")).toBe(EXIT.REFUSED);
   });
 
   test("`collie hill on` and `off` are verbs of the tree", async () => {

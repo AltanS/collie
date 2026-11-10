@@ -518,6 +518,13 @@ describe("after the tap", () => {
     expect(slot("decision-receipt")).toHaveTextContent(words);
   });
 
+  it("says an answer to a crew machine that is not answering was not sent, and keeps the card answerable", () => {
+    const offline = hillReceipt({ code: "rejected", state: "open", delivery: null, reason: "laptop is not answering. Your answer was not sent.", machine: "laptop" });
+    const { slot, option } = renderCard(hillDecision(), answered(offline));
+    expect(slot("decision-receipt")?.textContent).toBe("laptop is not answering. Your answer was not sent.");
+    expect(option("yes")).toBeEnabled();
+  });
+
   it("locks the card after an answer that landed, and keeps it open after a refusal", () => {
     const landed = renderCard(hillDecision(), answered(hillReceipt()));
     expect(landed.option("yes")).toBeDisabled();

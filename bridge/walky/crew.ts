@@ -512,7 +512,12 @@ export function olderThanWalky(version: string | null, own: string, compare: (a:
   return olderThanFloor(version, own, compare, WALKY_FIRST_VERSION);
 }
 
-function olderThanFloor(version: string | null, own: string, compare: (a: string, b: string) => number, first: string): boolean {
+/**
+ * Whether a version is below a feature's first release `first`, or, on a build made before `first` that
+ * carries the feature, below that build's own version. Shared by every floor of the crew: walky's, wake's,
+ * the space's and the tricks-and-Hill floor (hill/crew.ts).
+ */
+export function olderThanFloor(version: string | null, own: string, compare: (a: string, b: string) => number, first: string): boolean {
   // A version that names no release (`unknown`, a hash) is not called older either.
   if (version === null || !/^\d+\.\d+\.\d+/u.test(version)) return false;
   const floor = /^\d+\.\d+\.\d+/u.test(own) && compare(own, first) < 0 ? own : first;

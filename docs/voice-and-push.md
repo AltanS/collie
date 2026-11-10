@@ -489,8 +489,9 @@ once. One alert is sent each time a value climbs and stays high, and a tap opens
 A Decision marked `now` sends one notification, with the Decision's title and summary and nothing
 else. A tap opens the Hill at that card. A newer version of the Decision replaces the notification,
 and the notification closes when the Decision is answered, withdrawn or expires. One session sends at
-most three an hour, and all of them together at most ten; past that the Decision still shows on the
-Hill, without a notification.
+most three an hour, and all of them together at most ten. In a crew, the agents of one member send at
+most six an hour together ([Decisions from any machine](crew.md#decisions-from-any-machine)). Past
+that the Decision still shows on the Hill, without a notification.
 
 The Hill has its own switch, first on Settings → Alerts, and it is on by default. Off, agents and
 tricks cannot post Decisions, nothing about a Decision is sent, and the Hill leaves the bar. Switching
