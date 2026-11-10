@@ -699,3 +699,118 @@ export const reviewCard = decision({
     },
   ],
 });
+
+/** Collie's own sender on a "new version" card: kind collie, the version's hash, no session. */
+function collieFrom(trickId: string, hash: string): HillDecision["from"] {
+  return { kind: "collie", address: null, trickId: null, trickKey: null, memberId: null, harness: null, label: "Collie", host: "bluefin", trickHost: null, ref: { type: "version", id: trickId, hash } };
+}
+
+/** 46: a trick's new version that asks for no new rights: three files, two hunks, Collie recommends it. */
+export const versionPlain = decision({
+  title: "Use the new version of Browser leg?",
+  summary: "3 files changed. It asks for no new rights.",
+  ago: 1,
+  from: collieFrom("legs", "4c".repeat(32)),
+  target: null,
+  text: "none",
+  options: [
+    { intent: "use", label: "Use the new version" },
+    { intent: "always", label: "Use it and stop asking", detail: "Later changes are taken without asking, unless they ask for new rights." },
+    { intent: "keep", label: "Keep the old version" },
+  ],
+  recommends: { intent: "use", why: "It asks for no new rights, and a text search of its code finds nothing new." },
+  view: [
+    {
+      kind: "table",
+      kids: [
+        { kind: "col", text: "File" },
+        { kind: "col", text: "Change" },
+        { kind: "col", text: "+", attrs: { align: "end" } },
+        { kind: "col", text: "−", attrs: { align: "end" } },
+        { kind: "cell", text: "trick.ts" },
+        { kind: "cell", text: "changed" },
+        { kind: "cell", text: "+6" },
+        { kind: "cell", text: "−2" },
+        { kind: "cell", text: "lib/report.ts" },
+        { kind: "cell", text: "changed" },
+        { kind: "cell", text: "+3" },
+        { kind: "cell", text: "−1" },
+        { kind: "cell", text: "lib/old-format.ts" },
+        { kind: "cell", text: "removed" },
+        { kind: "cell", text: "" },
+        { kind: "cell", text: "−18" },
+      ],
+    },
+    {
+      kind: "diff",
+      attrs: { file: "trick.ts" },
+      text: [
+        "@@ -14,6 +14,10 @@ export default trick(async (t) => {",
+        "   const last = await t.cached(\"last\", 60_000, readLast);",
+        "-  if (last.value === null) return t.view([]);",
+        "-  const red = last.value.cases.filter((c) => !c.ok);",
+        "+  if (last.value === null) {",
+        "+    return t.view([{ kind: \"line\", text: \"No run yet\", attrs: { role: \"note\" } }]);",
+        "+  }",
+        "+  const red = last.value.cases.filter((c) => !c.ok);",
+        "+  const flaky = red.filter((c) => c.retried);",
+        "+  t.state.flaky = flaky.length;",
+        "   return t.view(rows(red));",
+      ].join("\n"),
+    },
+    {
+      kind: "diff",
+      attrs: { file: "lib/report.ts" },
+      text: ["@@ -3,4 +3,6 @@ export function rows(red: Case[]) {", "-  return red.map((c) => ({ kind: \"row\", text: c.name }));", "+  return red.map((c) => ({", "+    kind: \"row\", text: c.name, attrs: { tone: \"danger\" },", "+  }));"].join("\n"),
+    },
+  ],
+});
+
+/** 47: a trick's new version that asks for a new right and reaches the network: no "stop asking", no recommendation. */
+export const versionRights = decision({
+  title: "Use the new version of Tracker?",
+  summary: "2 files changed. It now also asks for GITHUB_TOKEN, and reaches the network.",
+  ago: 3,
+  from: collieFrom("tracker", "9e".repeat(32)),
+  target: null,
+  text: "none",
+  options: [
+    { intent: "use", label: "Use the new version" },
+    { intent: "keep", label: "Keep the old version" },
+  ],
+  view: [
+    { kind: "bar", attrs: { label: "New rights" }, kids: [{ kind: "chip", text: "GITHUB_TOKEN", attrs: { tone: "warn" } }] },
+    { kind: "para", text: "This trick reaches the network." },
+    {
+      kind: "table",
+      kids: [
+        { kind: "col", text: "File" },
+        { kind: "col", text: "Change" },
+        { kind: "col", text: "+", attrs: { align: "end" } },
+        { kind: "col", text: "−", attrs: { align: "end" } },
+        { kind: "cell", text: "trick.ts" },
+        { kind: "cell", text: "changed" },
+        { kind: "cell", text: "+9" },
+        { kind: "cell", text: "−1" },
+        { kind: "cell", text: "trick.toml" },
+        { kind: "cell", text: "changed" },
+        { kind: "cell", text: "+1" },
+        { kind: "cell", text: "" },
+      ],
+    },
+    {
+      kind: "diff",
+      attrs: { file: "trick.ts" },
+      text: [
+        "@@ -8,3 +8,11 @@ export default trick(async (t) => {",
+        "-  const open = await readLocalIssues(t.dir);",
+        "+  const token = t.env(\"GITHUB_TOKEN\");",
+        "+  const res = await fetch(\"https://api.github.com/repos/owner/tracker/issues\", {",
+        "+    headers: { authorization: `Bearer ${token}` },",
+        "+  });",
+        "+  const open = await res.json();",
+        "   return t.view(rows(open));",
+      ].join("\n"),
+    },
+  ],
+});

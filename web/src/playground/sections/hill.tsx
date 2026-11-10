@@ -5,7 +5,7 @@
 // The cards wear the machine tints of a two-machine crew (bluefin and minibuch), as `LiveDecisionCard`
 // would hand them on one.
 //
-// Cards are numbered 1 to 36.
+// Cards are numbered 1 to 48.
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 
@@ -56,6 +56,8 @@ import {
   trickOpen,
   twoOptions,
   unattended,
+  versionPlain,
+  versionRights,
   withBody,
 } from "../fixtures/hill/decisions";
 import { RootRouter } from "../harness";
@@ -702,6 +704,21 @@ export function HillSection() {
         <Card state="hill-card-trick-ran" label="27: a trick recorded it">
           <CardHead n={27} title="A trick recorded it" />
           <OneCard decision={trickOpen} answer={answered({ ...receipts.typed, delivery: "none", trick: "ran" })} />
+        </Card>
+      </Group>
+
+      <Group title="Collie's own decision">
+        <Card state="hill-card-version" label="46: a new version, no new rights">
+          <CardHead n={46} title="A trick's new version, no new rights" />
+          <OneCard decision={versionPlain} />
+        </Card>
+        <Card state="hill-card-version-rights" label="47: a new version with a new right">
+          <CardHead n={47} title="A trick's new version asks for a new right" />
+          <OneCard decision={versionRights} />
+        </Card>
+        <Card state="hill-card-version-used" label="48: the new version used">
+          <CardHead n={48} title="The new version used" />
+          <OneCard decision={versionPlain} answer={answered({ ...receipts.typed, delivery: "none" }, "use")} />
         </Card>
       </Group>
     </Section>

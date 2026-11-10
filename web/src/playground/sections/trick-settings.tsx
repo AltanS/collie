@@ -54,13 +54,30 @@ function standIn(tricks: WireTrickInfo[]) {
   };
 }
 
+/** The stand-ins for the auto and undo routes: they answer after a moment, as the bridge would. */
+function autoStandIn(tricks: WireTrickInfo[]) {
+  return async (_host: string, id: string, on: boolean): Promise<WireTrickInfo> => {
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    const found = tricks.find((m) => m.id === id) ?? trick(id, id);
+    return { ...found, auto: on };
+  };
+}
+
+function undoStandIn(tricks: WireTrickInfo[]) {
+  return async (_host: string, id: string): Promise<WireTrickInfo> => {
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    const found = tricks.find((m) => m.id === id) ?? trick(id, id);
+    return { ...found, autoAt: undefined };
+  };
+}
+
 function ListCard({ n, state, label, tricks, readOnly, hillOff }: { n: number; state: string; label: string; tricks: WireTrickInfo[]; readOnly?: boolean; hillOff?: boolean }) {
   const store = useListStore(tricks);
   return (
     <Card state={state} label={`${n} · ${label}`}>
       <div className="w-[390px] max-w-full bg-background p-4">
         <RootRouter data={homeSolo}>
-          <TricksSettingsCard store={store} onSwitch={standIn(tricks)} now={NOW} readOnly={readOnly} hillOff={hillOff} />
+          <TricksSettingsCard store={store} onSwitch={standIn(tricks)} onAuto={autoStandIn(tricks)} onUndo={undoStandIn(tricks)} now={NOW} readOnly={readOnly} hillOff={hillOff} />
         </RootRouter>
       </div>
     </Card>
@@ -121,6 +138,17 @@ export function TrickSettingsSection(): ReactNode {
               ],
             }),
             trick("clock", "Clock", { on: false, state: "off", places: ["belt"], provenance: { via: "cli", at: "2026-11-08T09:38:00Z" } }),
+          ]}
+        />
+      </Group>
+      <Group title="Taking changes">
+        <ListCard
+          n={11}
+          state="trick-settings-auto"
+          label="one takes changes without asking, and took one"
+          tricks={[
+            trick("legs", "Browser leg", { auto: true, autoAt: "2026-11-08T09:38:00Z", provenance: { via: "agent", at: "2026-11-08T07:41:00Z" } }),
+            trick("tracker", "Tracker", { places: ["session"], provenance: { via: "repo", at: "2026-11-07T21:10:00Z", repo: "owner/tracker-trick", sha: "3f2a91c0d4e5" } }),
           ]}
         />
       </Group>
