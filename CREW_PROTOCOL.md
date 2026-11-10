@@ -3661,6 +3661,36 @@ reads a version like `olderThanWalky`):
 3. **A message signed by a bridge at or above 1.29.0, of kind agent, with no space**, is refused as a
    bad request.
 
+### The border of a message *(added 2026-11-10, M98)*
+
+A message of kind agent reaches only panes of the sender's space, unless the sender said otherwise.
+The bridge that owns the target pane decides, in `place()` (`bridge/walky/deliver.ts`) and again when
+it types a held message. Nothing on the wire carries the verdict: it is each receiving bridge's own
+check, the lead's included, on the signed fields above (`bridge/walky/border.ts`). In order:
+
+1. **An operator's message passes.** The kind is the bridge's proof (§21's `kind`), not the sender's
+   word. A phone's message is not bound by a space.
+2. **A message with no `from.space` is not checked** when its signer is below 1.29.0 (the skew rule
+   above). From a signer at or above 1.29.0 it is a bad request.
+3. **`outside: true` passes.** An agent's `all` and `<member>/all` are refused without it.
+4. **The same space passes**: the sender's `space.key` equals the target pane's, exactly. A named key
+   joins across machines. An unnamed key holds its member id and so never equals a key elsewhere.
+5. **A reply passes** when it answers a message the TARGET pane sent and that went to the sender. Both
+   facts come from the receiving bridge's own log, never from the message, so a pane cannot reply
+   across the border to an id it only knows.
+6. **Anything else is refused** with the receipt reason `outside your space`.
+
+A bridge that receives a message by the outside flag types its header with the word `outside` after
+the sender's parenthesis and before any `reply to`. A reader that predates the word takes it as part of
+the sender's text. The receipt records how the message passed (`via`: `operator`, `in`, `reply`,
+`outside` or `legacy`), an additive-optional field (§7.1).
+
+A lead runs the check for a member below 1.29.0, which cannot, before the hop and for a leg that names
+one pane. A leg to a whole machine needs none: an agent's `all` reached it only with the outside flag.
+A member that knows its lead is below 1.29.0 refuses a message with the space or `outside` line before
+it dials, with the reason `lead older than 1.29.0: update the lead`. A member that does not know its
+lead's release dials, and the lead's 401 reads as `signature`, as before.
+
 ### What the lead checks, in order
 
 1. The two factors, with §8.6's request signature over the four-field string. The signature names the
@@ -3682,7 +3712,8 @@ takes one token per pane and per member leg. A refusal is a receipt (`refused`, 
 `pair limit`) in a 200, never a 429.
 
 Every delivering bridge also refuses, before anything is logged: an agent's `all` or `<member>/all`
-(`only the operator may broadcast`), a message to its sender's own pane (`that is your own pane`), and
+without the outside flag (`outside your space`, from 1.29.0; before, `only the operator may broadcast`),
+a message to its sender's own pane (`that is your own pane`), and
 a reply chain deeper than 4 in its own log (`thread depth`; a link the log does not hold ends the walk
 and counts 0). The sender's own bridge refuses a reply to a message that did not reach the sender's
 pane (`unknown reply`) and sends a reply to the stored sender of what it answers. A pane id that two
