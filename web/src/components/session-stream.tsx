@@ -407,14 +407,6 @@ const EDGE_ROW =
  *  plus the 4px its overlay sits down from the scrollport's top (ChatMessageList). */
 const PIN_ROOM = "h-16";
 
-/** The pin's row in the hugging look: the overlay wrapper (`ChatMessageList`) over the scroller's full width,
- *  in the page colour and fully opaque, so thread content disappears under its bottom edge and never shows
- *  beside or above the well. It ends in the house cut between two regions, a `border-rule` hairline (DESIGN.md,
- *  "Two line tokens"). `pb-[3px]` plus the hairline make it exactly `PIN_ROOM` tall (4 + 56 + 3 + 1 = 64px),
- *  so the hairline lies on the room's last pixel and the band covers nothing the room does not hold. The
- *  wrapper keeps ignoring the pointer (it must not eat a scroll that starts on it); the well is the only button. */
-const PIN_BAND = "bg-background border-b border-rule pb-[3px]";
-
 /**
  * THE SAVED-COPY LINE (M46 specs 09 and 10), at the top of the scrolled content of either body.
  *
@@ -893,10 +885,8 @@ export function SessionStream({
       className={look.gutter === "16" ? "px-4 pt-0 pb-3" : "px-3 pt-0 pb-3"}
       style={textTokens(fontSize)}
       // The pin sits beside the scrollport, so it takes the gutter and the chat font size from here. Only the
-      // hugging look does: the look before it keeps the overlay as it was. In that look the overlay is also the
-      // pin's BAND (PIN_BAND): the well hugs the right, and without a ground across the row the thread would
-      // scroll past, visible, beside it.
-      overlayClassName={look.userTurn === "hug" ? cn(PIN_BAND, look.gutter === "16" && "px-4") : undefined}
+      // hugging look does: the look before it keeps the overlay as it was.
+      overlayClassName={look.userTurn === "hug" && look.gutter === "16" ? "px-4" : undefined}
       overlayStyle={look.userTurn === "hug" ? textTokens(fontSize) : undefined}
       overlay={pin !== null ? <PromptPin pin={pin} busy={seeking !== null || (pin.kind === "earlier" && loadingOlder)} onTap={onPinTap} /> : null}
     >
