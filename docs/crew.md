@@ -404,6 +404,33 @@ read well.
 > answers "That machine's Collie is older and cannot keep pins. Update it." Run `collie crew update --all`
 > to level the crew ([Update a crew](upgrading.md#updating-the-rest-of-the-crew)).
 
+## Decisions from any machine
+
+An agent on any machine of the crew can put a Decision on the Hill with `collie hill post`, and follow
+it up with `collie hill status`, `withdraw` and `list`. The crew has one Hill, on the lead. The phone
+shows every Decision there, with the machine it came from on its first line.
+
+A member checks its own switches first: with the Hill or WalkyTalky off on that machine, the post is
+refused there. It reads the images from its own disk, under the same rules as on the lead, and sends
+them to the lead before the post. The lead checks the member's signature, and takes the machine from
+it. A member cannot post for a session of another machine.
+
+Your answer goes back to the session as a WalkyTalky message, through the lead. When the session's
+machine is not answering, the phone says "laptop is not answering. Your answer was not sent." The
+card stays open, and you can answer again when the machine is back. A Decision is never closed
+because its machine went away.
+
+When the lead does not answer, `collie hill post` says so, exits 5, and posts nothing. Run the same
+command again with the `--request-id` it prints: the lead keeps one Decision for it.
+
+One machine's agents hold at most 40 open Decisions on the lead, and ring the phone at most six
+times an hour.
+
+> **Note.** Decisions from a member need Collie 1.29.0 on the lead and on that member. An older lead
+> is refused with "the lead runs a Collie older than 1.29.0", and the post is not sent. Post from a
+> session on the lead machine, or run `collie crew update --all` to level the crew
+> ([Update a crew](upgrading.md#updating-the-rest-of-the-crew)).
+
 ## A machine can run several Collies
 
 A crew member is one Collie instance: one bridge and one multiplexer. One machine can run more than
