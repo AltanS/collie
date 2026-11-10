@@ -260,6 +260,7 @@ import {
   offersFor,
   RECEIPT_DETAIL_MAX,
   reservedLead,
+  SCREEN,
   sendLines,
   surfaceWords,
   takesManualSend,
@@ -285,6 +286,7 @@ import { askOf, frameImageKey, isFree, shortHash, type Surface, type SurfaceTurn
 import { closingReceipt, normalizePrompt, receiptWindowMs, type OpenReceipt } from "../../web/src/lib/surface/edges.ts";
 import type { CapState, CounterKey, ExampleEntry, InboxEntry } from "./counters.ts";
 import { askLifetimeOf, type AskBook } from "./ask.ts";
+import { tryDoor, type DoorRegistry } from "../door/door.ts";
 import type { KeyGate } from "./key-gate.ts";
 import type { RequestStore, SendRecord } from "./requests.ts";
 import { HOLD_BRIDGE_MAX, HOLD_ENDED_KEEP_MS, HOLD_PANE_MAX, heldRow, type HeldEntry, type HoldCause, type HoldStore } from "./holds.ts";
@@ -587,6 +589,12 @@ export interface SendDeps {
    * Send and a Submit or Discard confirmed on the rows hash. A throw reads as no report. Absent: none.
    */
   readonly muxStatus?: ((paneId: string) => AgentStatus | undefined) | undefined;
+  /**
+   * The agents' own doors (ADR 0141), by the harness id the multiplexer reports: a plain message to a
+   * pane with one goes through it first, and by the screen only when it refuses before `submit`. Absent
+   * or empty: every send takes the screen path.
+   */
+  readonly doors?: DoorRegistry;
   /** Whether an upload path still names a file the harness can attach (`wholePaste`). Absent: a regular file on this disk. */
   readonly imageFile?: (path: string) => boolean;
   readonly now?: () => number;
@@ -2521,6 +2529,8 @@ interface RunState {
   readonly target: SendTarget;
   readonly match: PaneProfileMatch | null;
   readonly lockKey: string;
+  /** How the text went: `screen`, or the harness id of the door that took it (the receipt's `via`). */
+  via: string;
   /** The request's bound. Emptying a long draft moves it later by its own bound ({@link SendProtocol.stretch}). */
   deadline: number;
   readonly marks: { s0: Snap | null; s1: Snap | null; s2: Snap | null };
@@ -3743,6 +3753,7 @@ export class SendProtocol {
       target,
       match,
       lockKey: `${target.session}\u0000${target.paneId}`,
+      via: SCREEN,
       // A held request's release is bounded from its start, not from the accept (M56 spec 15). A steer
       // also gets the pause its profile names before the steer key (M69).
       deadline: (record.runAt ?? record.acceptedAt) + LOCK_BOUND_MS + (request.when === "steer" ? (match?.profile.keys.steerDelayMs ?? 0) : 0),
@@ -3804,7 +3815,7 @@ export class SendProtocol {
       keys: [...state.keys],
       outcome,
     };
-    const receipt: ReceiptDraft = { ...base };
+    const receipt: ReceiptDraft = { ...base, via: state.via };
     if (match?.binary !== undefined) receipt.binary = match.binary;
     if (reason !== undefined) receipt.reason = reason;
     if (cap !== undefined) receipt.cap = cap;
@@ -3874,6 +3885,8 @@ export class SendProtocol {
       // under the lock, right before anything is read or typed (agent views SECURITY rule 6).
       const moved = state.request.view?.check() ?? null;
       if (moved !== null) throw new Ended("refused", "stale_view", { detail: moved });
+      const door = await this.throughDoor(state);
+      if (door !== null) return door;
       await this.steps(state);
       const note: EndNote = { framed: true };
       if (state.heldOther && record.mode === "submit") note.detail = HELD_OTHER;
@@ -3895,6 +3908,38 @@ export class SendProtocol {
     } finally {
       locks.release(state.lockKey, record.id);
     }
+  }
+
+  /**
+   * The pane's door, tried before the screen (ADR 0141), under the pane lock and inside its bound. Only a
+   * plain message goes: a steer, a command and every mode that acts on the box (Submit, Discard, Add to
+   * it, Replace) are the screen's, and so is a text the screen would refuse. Null when the send goes on
+   * by the screen: no door, or one that refused before `submit` (point 2). Otherwise the answer, with no
+   * key pressed: the door's hint settles `sent` + `queued`, a card until the journal shows the turn
+   * (ADR 0122); a `submit` that may have reached the agent and gave no answer settles `unknown`, never
+   * typed again (point 2). The multiplexer's `blocked` is not asked (point 5): a door types no key.
+   */
+  private async throughDoor(state: RunState): Promise<SendAnswer | null> {
+    const { request, target, match } = state;
+    const door = this.deps.doors?.get(target.harness);
+    if (door === undefined || request.mode !== "send" || request.when === "steer") return null;
+    if (reservedLead(sendLines(request.text)[0] ?? "", match?.profile.reservedLeads ?? GENERIC_LEADS) !== null) return null;
+    if (textRefusal(request, match) !== null) return null;
+    const started = this.now();
+    const tried = await tryDoor(door, target, { requestId: request.id, text: request.text }, state.deadline - started, this.now);
+    state.gaps.door = this.now() - started;
+    if (tried.kind === "refused") {
+      console.log(`[send] ${request.id}: the ${door.id} door refused (${tried.why}); the screen path goes on`);
+      return null;
+    }
+    state.via = door.id;
+    state.queued = true;
+    state.witnessed = true;
+    if (tried.kind === "uncertain") {
+      console.warn(`[send] ${request.id}: the ${door.id} door may have taken the text (${tried.why}); it is not typed again`);
+      return this.settle(state, new Ended("unknown", "no_evidence"));
+    }
+    return this.settle(state, new Ended("sent", undefined));
   }
 
   /** The harness starting in the pane ({@link SendDeps.starting}), null, or {@link FOREGROUND_UNREAD}. A throw reads as null. */
@@ -4016,7 +4061,8 @@ export class SendProtocol {
     this.deps.store.settle(state.record.id, receipt);
     // A send the harness holds for after the turn: a card until the journal or the box closes it (ADR 0122).
     // A steer is kept too, with no card of its own: a Stop may give it back together with the queue.
-    if ((receipt.outcome === "sent" && receipt.queued === true) || receipt.outcome === "steered") {
+    // A door's send that may have arrived is a card too (ADR 0141 point 2): it is never typed again.
+    if ((receipt.outcome === "sent" && receipt.queued === true) || receipt.outcome === "steered" || (state.via !== SCREEN && receipt.outcome === "unknown")) {
       this.queuedSends.add({
         id: state.record.id,
         session: state.target.session,

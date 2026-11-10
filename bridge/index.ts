@@ -293,6 +293,7 @@ import { AskAnswerer, AskBook } from "./surface/ask.ts";
 import { ClearService } from "./surface/clear.ts";
 import { StopService, type StopDeps } from "./surface/stop.ts";
 import { gateFor } from "./surface/key-gate.ts";
+import { DOORS } from "./door/registry.ts";
 import { RowRing, SendProtocol, SessionLocks, type PaneProfileMatch } from "./surface/protocol.ts";
 import { ProgramDriver, type ProgramPort } from "./surface/durable-driver.ts";
 import { RequestStore } from "./surface/requests.ts";
@@ -2009,6 +2010,8 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
           staleFrame: (paneId, frame) => surface?.markStale(paneId, frame),
           // The multiplexer's `blocked` on the pane's agent refuses a send Collie cannot prove on the screen.
           muxStatus: (paneId) => engine.current().agents.find((agent) => agent.paneId === paneId)?.status,
+          // The agents' own doors, tried before the screen (ADR 0141).
+          doors: DOORS,
         })
       : undefined;
   // Each poll tells the launch window which panes the multiplexer names an agent on now: a newly named

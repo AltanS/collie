@@ -118,7 +118,7 @@ const PHASES = ["accepted", "submit-sent", "settled", "held"] as const;
 const PROFILE_STATUSES = ["verified", "provisional", "revoked"] as const;
 /** The longest `binary` path a stored receipt keeps; a longer one is dropped. */
 const RECEIPT_BINARY_MAX = 4_096;
-const STEPS = ["profile", "settle", "s0", "proof", "clear", "probe", "probeWrite", "write", "s1", "commandSettle", "commit", "s2"] as const;
+const STEPS = ["profile", "door", "settle", "s0", "proof", "clear", "probe", "probeWrite", "write", "s1", "commandSettle", "commit", "s2"] as const;
 
 function pick<const T extends string>(value: JsonValue | undefined, allowed: readonly T[]): T | undefined {
   return allowed.find((word) => word === value);
@@ -211,6 +211,9 @@ function parseReceipt(value: JsonValue | undefined): SendReceipt | undefined {
   const late = node.late === undefined ? undefined : pick(node.late, SEND_LATES);
   if (late !== undefined) whole.late = late;
   if (acknowledged !== undefined) whole.acknowledged = acknowledged;
+  // `via` is lenient like `detail`: a value that is not a short word is dropped, and the receipt stays.
+  const via = node.via === undefined ? undefined : asJsonString(node.via);
+  if (via !== undefined && /^[a-z0-9_-]{1,32}$/u.test(via)) whole.via = via;
   if (detail !== undefined) whole.detail = detail;
   if (saw !== undefined) whole.saw = saw;
   return whole;

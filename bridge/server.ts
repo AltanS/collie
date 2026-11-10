@@ -177,7 +177,7 @@ import type { StopService } from "./surface/stop.ts";
 import type { ReceiptQueued } from "./surface/queued.ts";
 import type { ProgramDriver } from "./surface/durable-driver.ts";
 import { parseAnswerBody, type AskReply } from "../web/src/lib/surface/ask.ts";
-import { REQUEST_ID, RETURNED_CARD_DROPPED, reservedLead, SEND_MODES, SEND_WHENS, type HeldCancelAnswer, type SendAnswer, type SendReceipt, type SendReceiptsAnswer } from "../web/src/lib/surface/send.ts";
+import { REQUEST_ID, RETURNED_CARD_DROPPED, reservedLead, SCREEN, SEND_MODES, SEND_WHENS, type HeldCancelAnswer, type SendAnswer, type SendReceipt, type SendReceiptsAnswer } from "../web/src/lib/surface/send.ts";
 import { isCommand } from "../web/src/lib/send-protocol.ts";
 import {
   maskChatBody,
@@ -9242,9 +9242,11 @@ export async function sendRoute(
     const detail: AuditDetail = { mode: sendRequest.mode, outcome: receipt.outcome, textLength: receipt.textLength, probed: receipt.keys.includes("probe") };
     if (resendOf !== undefined) detail.resend = true;
     if (receipt.reason !== undefined) detail.reason = receipt.reason;
+    if (receipt.via !== undefined) detail.via = receipt.via;
     context.audit.record({ action: "send", paneId, session: rt.name, device: context.device, detail });
     if (sendSpoke(sendRequest.mode, receipt.outcome)) context.spoke?.(paneId);
-    if (receipt.keys.length > 0) {
+    // A door's send presses no key, and its turn moves the pane all the same (ADR 0141).
+    if (receipt.keys.length > 0 || (receipt.via !== undefined && receipt.via !== SCREEN && !answer.replayed)) {
       rt.engine.noteInput();
       rt.engine.pokeNow();
     }

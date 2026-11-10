@@ -194,7 +194,7 @@ export interface ReadMark {
  * `probeWrite`: the multiplexer's time for the probe character's write and its Backspace (2026-10-30); the
  * probe's gap leaves it out, as the probe's read bound does.
  */
-export type SendStep = "profile" | "settle" | "s0" | "proof" | "clear" | "probe" | "probeWrite" | "write" | "s1" | "commandSettle" | "commit" | "s2";
+export type SendStep = "profile" | "door" | "settle" | "s0" | "proof" | "clear" | "probe" | "probeWrite" | "write" | "s1" | "commandSettle" | "commit" | "s2";
 
 /**
  * The receipt, a closed list of fields. It is written to disk, so it holds no screen text and no
@@ -249,6 +249,12 @@ export interface SendReceipt {
    */
   readonly acknowledged?: string;
   /**
+   * How the text went (ADR 0141): `screen` for the Send Protocol, or the harness id of the agent's own
+   * door that took it. The Send Protocol writes it on every receipt; absent on a program session's
+   * send and on a receipt from a bridge before doors.
+   */
+  readonly via?: string;
+  /**
    * Set on a refusal: the bridge's own line for it, the fixed sentence the phone was shown, cut to
    * {@link RECEIPT_DETAIL_MAX} characters. Set on a `typed_not_submitted` too: the rule that kept
    * Enter back (2026-10-17). Never the person's text and never a screen row.
@@ -261,6 +267,9 @@ export interface SendReceipt {
    */
   readonly saw?: SurfaceWords;
 }
+
+/** {@link SendReceipt.via} for a send typed into the screen by the Send Protocol. */
+export const SCREEN = "screen";
 
 /** What may happen to a settled receipt later (see {@link SendReceipt.late}). One word today. */
 export const SEND_LATES = ["returned"] as const;
