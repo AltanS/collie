@@ -52,6 +52,64 @@ function node(kind: string, text: string | undefined, attrs: Record<string, Num 
   return out;
 }
 
+/** A number as the schema writes one: up to six places, no exponent, no trailing zeros ("4.2", "-3", "0.125"). */
+function decimal(n: number): string {
+  const text = n.toFixed(6).replace(/\.?0+$/u, "");
+  return text === "-0" ? "0" : text;
+}
+
+/** The point of a picture to keep in view, in percent across (`x`) and down (`y`), and a zoom of 1 to 8 about it. */
+export interface Focus {
+  x: number;
+  y: number;
+  zoom?: number;
+}
+
+/** How a picture sits in its frame: its words under it, `cover` to fill the frame, and the point to keep. */
+export interface ImageLook {
+  caption?: string;
+  fit?: "contain" | "cover";
+  focus?: Focus;
+}
+
+/** A `focus` as the schema's text: "50 20", or "50 20 2" with a zoom. */
+function focusText(focus: Focus | undefined): string | undefined {
+  if (focus === undefined) return undefined;
+  const point = `${decimal(focus.x)} ${decimal(focus.y)}`;
+  return focus.zoom === undefined || focus.zoom === 1 ? point : `${point} ${decimal(focus.zoom)}`;
+}
+
+/**
+ * A picture. On a Decision's view, `image(ref)` names one of the Decision's own `media` by its place
+ * (0 is the first): the card draws it among the facts, and not again in the row above. In a Session,
+ * `image(src, alt, w, h)` is an image file of the trick folder (.png or .jpg), `w` by `h`. Both take a
+ * caption, a fit and a focus, which crops the picture on the phone: no image tool needed.
+ */
+function image(ref: number, look?: ImageLook): Node;
+function image(src: string, alt: string, w: Num, h: Num, look?: ImageLook): Node;
+function image(first: number | string, second?: string | ImageLook, w?: Num, h?: Num, look: ImageLook = {}): Node {
+  if (typeof first === "number") {
+    const own = typeof second === "object" ? second : {};
+    return node("image", undefined, { ref: first, caption: own.caption, fit: own.fit, focus: focusText(own.focus) });
+  }
+  const alt = typeof second === "string" ? second : "";
+  return node("image", undefined, { src: first, alt, w, h, caption: look.caption, fit: look.fit, focus: focusText(look.focus) });
+}
+
+/** One side of a `compare`: a Decision's picture by its place, with a label and a crop, or an image node of the trick folder. */
+export type CompareSide = number | { ref: number; label?: string; fit?: "contain" | "cover"; focus?: Focus } | Node;
+
+function compareSide(side: CompareSide): Node {
+  if (typeof side === "number") return image(side);
+  if ("kind" in side) return side;
+  return image(side.ref, { caption: side.label, fit: side.fit, focus: side.focus });
+}
+
+/** A table's column: its head, and `end` for a column of figures (a column whose cells all read as figures keeps the end side anyway). */
+export type TableColumn = string | { label: string; align?: "start" | "end" };
+/** A table's cell: its words or a figure, or words with a tone. */
+export type TableCell = string | number | { text: string; tone?: Tone };
+
 /** Text or inline kids (runs and links), for a para and a line. */
 function inline(kind: "para" | "line", body: string | Node[], attrs: Record<string, Num | boolean | undefined>): Node {
   return Array.isArray(body) ? node(kind, undefined, attrs, body) : node(kind, body, attrs);
@@ -59,9 +117,9 @@ function inline(kind: "para" | "line", body: string | Node[], attrs: Record<stri
 
 /** The view builders, one per node kind. Each returns a plain node; a view is a list of them. */
 export const v = {
-  /** A framed box. Holds para, line, chip, button, meter, image, bar, group, number, spacer. */
+  /** A framed box. Holds para, line, chip, button, meter, image, bar, group, number, spacer, compare, table, diff, spark. Not on a Decision's view. */
   card: (kids: Node[], attrs: { tone?: Tone } = {}): Node => node("card", undefined, attrs, kids),
-  /** A labelled section. Holds row, group, bar, para, line, link, meter, number, spacer. */
+  /** A labelled section (no label: a plain run of facts). Holds row, group, bar, para, line, link, meter, number, spacer, image, compare, table, diff, spark. */
   group: (kids: Node[], attrs: { label?: string; fold?: "open" | "closed"; badge?: Num } = {}): Node => node("group", undefined, attrs, kids),
   /** Rows framed together. Holds row and group. */
   list: (kids: Node[] = []): Node => node("list", undefined, {}, kids),
@@ -87,14 +145,49 @@ export const v = {
     node("code", undefined, attrs, Array.isArray(body) ? body : body.split("\n").map((l) => node("line", l.trim() === "" ? undefined : l))),
   /** A link: an https address, or a session's `id` from the facts. */
   link: (text: string, href: string, attrs: { rel?: "url" | "pane"; badge?: Num; icon?: Icon } = {}): Node => node("link", text, { href, ...attrs }),
-  /** An image file of the trick folder (.png or .jpg), `w` by `h`. Not on a Decision's view. */
-  image: (src: string, alt: string, w: Num, h: Num): Node => node("image", undefined, { src, alt, w, h }),
+  image,
+  /** Two pictures side by side at one height, labelled "Before" and "After" unless a side names its own label. They stack on a narrow phone; a tap pages through both. */
+  compare: (a: CompareSide, b: CompareSide): Node => node("compare", undefined, {}, [compareSide(a), compareSide(b)]),
+  /**
+   * A small table: 1 to 4 columns and at most 12 rows, every row as long as the heads. A cell takes at
+   * most two lines on the phone; it never scrolls sideways.
+   */
+  table: (t: { columns: TableColumn[]; rows: TableCell[][] }): Node =>
+    node("table", undefined, {}, [
+      ...t.columns.map((col) => (typeof col === "string" ? node("col", col) : node("col", col.label, { align: col.align }))),
+      ...t.rows.flat().map((cell) => {
+        if (typeof cell === "number") return node("cell", decimal(cell));
+        return typeof cell === "string" ? node("cell", cell) : node("cell", cell.text, { tone: cell.tone });
+      }),
+    ]),
+  /** A few lines of a diff (at most 40, each at most 200 characters): `+` added, `-` removed, `@@` a hunk's head. Mono; a long line scrolls inside its block. */
+  diff: (lines: string | string[], attrs: { file?: string } = {}): Node => node("diff", Array.isArray(lines) ? lines.join("\n") : lines, attrs),
+  /** A trend as a small line: 2 to 32 numbers, oldest first, the last one marked and written beside the label. */
+  spark: (values: number[], attrs: { tone?: Tone; label?: string } = {}): Node => node("spark", undefined, { values: values.map(decimal).join(" "), ...attrs }),
   /** An amount (`role` meter, the default) or a task (`role` progress). */
   meter: (attrs: { value?: Num; max?: Num; tone?: Tone; label?: string; role?: "progress" | "meter" }): Node => node("meter", undefined, attrs),
   /** Air between nodes; with a label, a divider with words. */
   spacer: (label?: string): Node => node("spacer", undefined, { label }),
   /** A big figure ("23/34") with a label. */
   number: (text: Num, attrs: { label?: string; tone?: Tone; unit?: string } = {}): Node => node("number", String(text), attrs),
+
+  // ── Recipes: the kinds above, put together ──
+  /** Two of the Decision's pictures as before and after, cropped to the same point. */
+  beforeAfter: (aRef: number, bRef: number, opts: { before?: string; after?: string; fit?: "contain" | "cover"; focus?: Focus } = {}): Node =>
+    node("compare", undefined, {}, [image(aRef, { caption: opts.before, fit: opts.fit, focus: opts.focus }), image(bRef, { caption: opts.after, fit: opts.fit, focus: opts.focus })]),
+  /** Checks as rows: a green check or a red cross, the note as the row's second line. */
+  checks: (list: { label: string; ok: boolean; note?: string }[]): Node =>
+    node(
+      "list",
+      undefined,
+      {},
+      list.map((c) => node("row", c.label, { icon: c.ok ? "check" : "x", tone: c.ok ? "ok" : "danger" }, c.note === undefined ? undefined : [node("para", c.note)])),
+    ),
+  /** A figure with its label, and its trend under it when `trend` gives the numbers. */
+  stat: (value: Num, label: string, opts: { trend?: number[]; tone?: Tone; unit?: string } = {}): Node => {
+    const figure = node("number", String(value), { label, tone: opts.tone, unit: opts.unit });
+    return opts.trend === undefined ? figure : node("group", undefined, {}, [figure, node("spark", undefined, { values: opts.trend.map(decimal).join(" "), tone: opts.tone })]);
+  },
 };
 
 // ── Time and words ──────────────────────────────────────────────────────────────────────────────
@@ -176,7 +269,7 @@ export interface Decision {
   body?: string; text?: "none" | "optional" | "required"; priority?: "now" | "today" | "later";
   about?: string; replyTo?: string; media?: { file: string; caption?: string }[];
   links?: { label: string; href: string }[];
-  /** Facts drawn under the summary: display kinds only (no button, card or image), 8 KiB, 100 nodes, depth 4. */
+  /** Facts drawn under the summary: display kinds only (no button, no card), 8 KiB, 100 nodes, depth 4. An `image(ref)` or a `compare` names a picture of `media` by its place. */
   view?: Node[];
 }
 export interface ShResult { ok: boolean; code: number; stdout: string; stderr: string }
