@@ -3,7 +3,7 @@ import { readFileSync, realpathSync, statSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 
 import { edgeStateDirs, readEnvMarkers } from "./beacon.ts";
-import { HILL_RULES } from "./hill-rules.ts";
+import { HILL_RULES, HILL_WRITING, hillWordingWarnings } from "./hill-rules.ts";
 import { holdSocketSafe } from "./hold.ts";
 import { EXIT } from "./io.ts";
 import { NO_SOCKET_TEXT, shown, type WalkyDeps } from "./walky.ts";
@@ -42,7 +42,7 @@ import { isRequestId } from "../bridge/worktree-receipts.ts";
 
 export const HILL_SUBCOMMANDS = ["post", "status", "withdraw", "list"] as const;
 
-export { HILL_RULES };
+export { HILL_RULES, HILL_WRITING };
 
 /** What the CLI prints when no bridge on this machine answered a hill operation as one it knows. */
 export const HILL_UNKNOWN = "no running Collie on this machine knows the hill";
@@ -72,16 +72,16 @@ const USAGE = {
   list: ["usage: collie hill list [--json]   (your own decisions, open first)"],
 } as const satisfies Record<(typeof HILL_SUBCOMMANDS)[number], readonly string[]>;
 
-/** `collie hill post --help`: the usage, then the rules. */
+/** `collie hill post --help`: the usage, how to word the card, then the rules. */
 export function hillPostHelp(): string[] {
-  return [...USAGE.post, "", ...HILL_RULES];
+  return [...USAGE.post, "", ...HILL_WRITING, "", ...HILL_RULES];
 }
 
-/** `collie hill --help` and a bare `collie hill`: every sub-verb's usage, then the rules. */
+/** `collie hill --help` and a bare `collie hill`: every sub-verb's usage, how to word the card, then the rules. */
 export function hillHelp(): string[] {
   const lines: string[] = [`usage: collie hill {${HILL_SUBCOMMANDS.join("|")}}`];
   for (const verb of HILL_SUBCOMMANDS) for (const line of USAGE[verb]) lines.push(`  ${line.replace(/^usage: /u, "")}`);
-  return [...lines, "", ...HILL_RULES];
+  return [...lines, "", ...HILL_WRITING, "", ...HILL_RULES];
 }
 
 /** What `collie hill` needs: walky's own deps (the socket, the markers, stdin), and a request id mint. */
@@ -411,6 +411,8 @@ export async function cmdHillPost(deps: HillDeps, args: readonly string[]): Prom
   if (windows(deps)) return EXIT.STATE;
   const parsed = parsePostArgs(args);
   if ("error" in parsed) return usage(deps, "post", parsed.error);
+  // Soft: the words are the poster's. Said before the post, so a refused or unanswered post shows them too.
+  for (const warning of hillWordingWarnings(parsed.fields)) deps.io.err(`warning: ${warning}`);
   const cwd = (deps.cwd ?? (() => process.cwd()))();
   const images: HillImageInput[] = [];
   for (const image of parsed.images) {

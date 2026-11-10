@@ -261,6 +261,23 @@ run((t) => {
     expect(body.refusals[0].path).toBe("/parts/0/mark/label");
   });
 
+  test("a Decision worded against HILL_WRITING gets a warn line under it and a wording list in --json, never a failure", async () => {
+    const d = await deps();
+    const doc = { v: 1, parts: [], decisions: [{ key: "look", title: "Yes by name: the composer ring", summary: "One. Two. Three.", options: [{ intent: "yes", label: "Yes" }] }] };
+    const dir = await trickWith(d, "worded", `console.log(${JSON.stringify(JSON.stringify(doc))});\n`, '["belt"]');
+    expect(await cmdTrickDev(d, [dir])).toBe(EXIT.OK);
+    const lines = d.out.join("\n").split("\n");
+    const at = lines.findIndex((line) => line.startsWith("  decision  look"));
+    expect(lines.slice(at + 1, at + 4)).toEqual([
+      "    warn  the title asks no question. Write the decision as a question the options answer.",
+      "    warn  the summary has 3 sentences. Keep it to two: what the recommended option does, then the fact that decides it.",
+      '    warn  option "yes" says only "Yes". Start it with a verb that says what happens, such as "Ship it".',
+    ]);
+    d.out.length = 0;
+    expect(await cmdTrickDev(d, [dir, "--json"])).toBe(EXIT.OK);
+    expect(JSON.parse(d.out.join("\n")).wording).toHaveLength(3);
+  });
+
   test("what the output holds that this Collie does not know is a note, never a failure, and in --json", async () => {
     const d = await deps();
     const doc = { v: 1, parts: [{ at: "sidebar", id: "x" }, { at: "belt", id: "belt", mark: { label: "1", shine: "x" } }] };

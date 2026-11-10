@@ -32,6 +32,7 @@ import {
   HILL_UNKNOWN,
   HILL_VIEW_DROPPED,
   HILL_VIEW_FILE_MAX,
+  hillHelp,
   hillPostHelp,
   imagePathOf,
   parseImageArg,
@@ -40,6 +41,7 @@ import {
   statusLines,
   type HillDeps,
 } from "./hill.ts";
+import { HILL_WRITING, hillWordingWarnings, sentenceCount } from "./hill-rules.ts";
 import { EXIT } from "./io.ts";
 import { run } from "./program.ts";
 import { realFiles } from "./sys.ts";
@@ -269,7 +271,8 @@ describe("post, status, withdraw and list against a bridge", () => {
     const b = await bridge();
     const d = deps([walkySocketPath(b.stateDir)]);
     expect(await cmdHillPost(d, ["--title", "t".repeat(121), "--summary", "s"])).toBe(EXIT.REFUSED);
-    expect(d.io.stderr).toEqual(["hill: the title is longer than 120 characters (bad_title)"]);
+    // The wording warnings come first, before the post; the refusal is the last line.
+    expect(d.io.stderr).toEqual(["warning: the title has 121 characters. Keep it to 60: the decision as a short question.", "warning: the title asks no question. Write the decision as a question the options answer.", "hill: the title is longer than 120 characters (bad_title)"]);
   });
 
   socketTest("outside a pane the bridge refuses: a decision belongs to a session", async () => {
@@ -398,6 +401,59 @@ describe("help", () => {
     expect(io.stdout[0]).toStartWith("usage: collie hill post");
     expect(io.stdout).toContain("  With no --expires, a decision closes as expired after 14 days.");
     expect(io.stdout.slice(-RULES.length)).toEqual(RULES);
+  });
+});
+
+describe("the wording warnings", () => {
+  const GOOD = { title: "Ship 1.28.1 to Stable now?", summary: "Stable users get the fix today. CI and the browser leg are green.", options: [{ intent: "ship", label: "Ship it" }, { intent: "hold", label: "Hold until CI" }] };
+
+  test("a card worded by the rules gets none", () => {
+    expect(hillWordingWarnings(GOOD)).toEqual([]);
+  });
+
+  test("a long title, a title that asks nothing, a long summary and a bare Yes each get one sentence", () => {
+    const out = hillWordingWarnings({
+      title: "The five new view kinds, and what they look like on the phone",
+      summary: "One. Two. Three.",
+      options: [{ intent: "yes", label: "Yes" }, { intent: "no", label: " no. " }, { intent: "ok", label: "OK!" }, { intent: "later", label: "Yes, after CI" }],
+    });
+    expect(out).toEqual([
+      "the title has 61 characters. Keep it to 60: the decision as a short question.",
+      "the title asks no question. Write the decision as a question the options answer.",
+      "the summary has 3 sentences. Keep it to two: what the recommended option does, then the fact that decides it.",
+      'option "yes" says only "Yes". Start it with a verb that says what happens, such as "Ship it".',
+      'option "no" says only "no.". Start it with a verb that says what happens, such as "Ship it".',
+      'option "ok" says only "OK!". Start it with a verb that says what happens, such as "Ship it".',
+    ]);
+  });
+
+  test("a summary past 200 characters is long even in two sentences; a question mark anywhere in the title counts", () => {
+    const summary = `${"a".repeat(150)}. ${"b".repeat(60)}.`;
+    expect(hillWordingWarnings({ ...GOOD, title: "Post reply to #712? (dry run)", summary })).toEqual(["the summary has 213 characters. Keep it under 200, and put the evidence in the view or the body."]);
+  });
+
+  test("sentences split after an end mark and white space, never inside a version or a path", () => {
+    expect(sentenceCount("Ship v1.28.1 to Stable. The leg is green.")).toBe(2);
+    expect(sentenceCount("It reads web/src/app.tsx and stops")).toBe(1);
+    expect(sentenceCount('He said "go." Then it ran! Done?')).toBe(3);
+    expect(sentenceCount("")).toBe(0);
+  });
+
+  socketTest("post says them on stderr and still posts: a warning never refuses", async () => {
+    const b = await bridge();
+    const d = deps([walkySocketPath(b.stateDir)]);
+    expect(await cmdHillPost(d, ["--title", "Are the new kinds right", "--summary", "s", "--option", "yes=Yes", "--option", "no=Hold until CI"])).toBe(EXIT.OK);
+    expect(d.io.stdout).toEqual(["dc_cli000000001"]);
+    expect(d.io.stderr).toEqual(["warning: the title asks no question. Write the decision as a question the options answer.", 'warning: option "yes" says only "Yes". Start it with a verb that says what happens, such as "Ship it".']);
+  });
+
+  test("both helps print how to word the card, above the rules", () => {
+    for (const help of [hillHelp(), hillPostHelp()]) {
+      const at = help.indexOf(HILL_WRITING[0]);
+      expect(at).toBeGreaterThan(0);
+      expect(help.slice(at, at + HILL_WRITING.length)).toEqual([...HILL_WRITING]);
+      expect(help.indexOf(HILL_RULES[0])).toBeGreaterThan(at);
+    }
   });
 });
 
