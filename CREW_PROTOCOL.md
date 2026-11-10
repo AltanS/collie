@@ -4114,7 +4114,13 @@ the same image. So a member may send a post again after any failure, and the lea
 The member's walky socket takes the agent's `collie hill` call as before. It checks its own switches
 first (the Hill off, WalkyTalky off) and reads each image from its own disk under every local rule.
 Then it uploads each image, then posts. Status, withdraw and list are one call each. The member dials
-with its crew client, signed, with 30 seconds per image and 8 seconds per call.
+with its crew client, signed, with at most 20 seconds per image and 8 seconds per call, and one budget
+of 45 seconds for the whole forward, images and post together (`HILL_FORWARD_BUDGET_MS`, beside the
+other numbers in `bridge/hill/crew.ts`). The post's 8 seconds are always kept free: an image that cannot
+have its time stops the forward before the post, so nothing is posted, and the answer is the refused
+dial's. `collie hill post` waits 60 seconds for its socket (`HILL_POST_ASK_MS`), longer than the whole
+forward, so the CLI does not give up on a post that is still on its way and the agent does not post a
+second card under a new request id.
 
 ### Skew
 
@@ -4131,6 +4137,10 @@ these routes and keeps answering `not_on_lead`.
 - A dial whose outcome is unknown (the post may have reached the lead): `lead_unreachable`, "the lead
   (<lead>) did not confirm the post. Post again with --request-id <id>: it posts once".
 - A 401: "the lead refused this machine's signature".
+- `collie hill post` prints the request id and the command that sends the same post again on every
+  failure: `hill: request id <id>; to send this post again, it posts once: collie hill post ...
+  --request-id <id>`. When its socket took the post and did not answer in time, it says the post "is
+  not confirmed and may still reach the Hill", exits 5, and asks no other bridge on the machine.
 - Status and list: "the lead (<lead>) is not answering; try again". A withdraw whose outcome is
   unknown says to check with `collie hill status <id>`.
 

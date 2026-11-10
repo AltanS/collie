@@ -59,10 +59,21 @@ export const HILL_HELD_MS = 15 * 60_000;
 export const HILL_HELD_MEMBER_BYTES = 16 * 1024 * 1024;
 /** The longest base64 text one image may be: {@link HILL_MEDIA_BYTES_MAX} bytes, written out. */
 export const HILL_MEDIA_B64_MAX = Math.ceil(HILL_MEDIA_BYTES_MAX / 3) * 4;
+// THE FORWARD'S TIME, in one place. `collie hill post` is a CLI call an agent waits on, so the whole
+// forward (every image, then the post) has one budget, and the CLI waits a margin longer than that, so it
+// never gives up on a post the member is still sending (a second post under a new request id would be a
+// second card). Past the budget the member stops before the post, so nothing is posted.
+
 /** How long the member waits for one image to reach its lead. A screenshot over a relayed link is slow. */
-export const HILL_MEDIA_BUDGET_MS = 30_000;
-/** How long the member waits for a post or a follow-up call. */
+export const HILL_MEDIA_BUDGET_MS = 20_000;
+/** How long the member waits for a post or a follow-up call. Always kept free for the post. */
 export const HILL_CALL_BUDGET_MS = 8000;
+/** The whole forward of one post, its images and the post together. */
+export const HILL_FORWARD_BUDGET_MS = 45_000;
+/** How long `collie hill post` waits for its answer: the forward's budget, plus reading the images and the socket. */
+export const HILL_POST_ASK_MS = HILL_FORWARD_BUDGET_MS + 15_000;
+/** The least time worth giving one more image; with less left, the forward stops before the post. */
+const HILL_MEDIA_MIN_MS = 2000;
 
 /** A Decision's answer as the routes carry it: what the router frames, a status and a JSON body. */
 export interface HillCrewAnswer {
@@ -401,10 +412,20 @@ function refusalOf(body: JsonObject): Extract<HillPostAnswer, { ok: false }> {
 }
 
 /** The member's forward: images first, then the post; status, withdraw and list in one call each. */
+/** The forward's budgets ({@link HILL_FORWARD_BUDGET_MS} and its parts) and its clock; a test passes small ones. */
+export interface HillForwardBudgets {
+  readonly mediaMs: number;
+  readonly callMs: number;
+  readonly totalMs: number;
+  readonly now?: () => number;
+}
+
+const FORWARD_BUDGETS: HillForwardBudgets = { mediaMs: HILL_MEDIA_BUDGET_MS, callMs: HILL_CALL_BUDGET_MS, totalMs: HILL_FORWARD_BUDGET_MS };
+
 export class HillMemberForward implements HillLeadForward {
   constructor(
     private readonly link: HillLeadLink,
-    private readonly budgets: { readonly mediaMs: number; readonly callMs: number } = { mediaMs: HILL_MEDIA_BUDGET_MS, callMs: HILL_CALL_BUDGET_MS },
+    private readonly budgets: HillForwardBudgets = FORWARD_BUDGETS,
   ) {}
 
   private lead(): string {
@@ -414,11 +435,17 @@ export class HillMemberForward implements HillLeadForward {
   async post(from: HillAgentSender, fields: JsonObject, requestId: string, images: readonly HillForwardImage[]): Promise<HillPostAnswer> {
     const lead = this.lead();
     if (this.link.leadOlder()) return { ok: false, code: "not_on_lead", error: hillLeadOlder(lead) };
-    // Each image first, by its hash: nothing is posted until every one is held on the lead.
+    // Each image first, by its hash: nothing is posted until every one is held on the lead. All of it
+    // inside one budget, with the post's own time kept free: an image that cannot have its time stops
+    // the forward before the post, so nothing is posted and the same request id may go again.
+    const now = this.budgets.now ?? Date.now;
+    const deadline = now() + this.budgets.totalMs;
     const named: JsonObject[] = [];
     for (const image of images) {
+      const left = deadline - now() - this.budgets.callMs;
+      if (left < Math.min(HILL_MEDIA_MIN_MS, this.budgets.mediaMs)) return { ok: false, code: LEAD_UNREACHABLE_CODE, error: hillLeadNotAnswering(lead, requestId) };
       const sha = sha256Hex(image.bytes);
-      const sent = readDial(await this.link.call(CREW_HILL_MEDIA_ROUTE, JSON.stringify({ sha256: sha, b64: Buffer.from(image.bytes).toString("base64") }), this.budgets.mediaMs));
+      const sent = readDial(await this.link.call(CREW_HILL_MEDIA_ROUTE, JSON.stringify({ sha256: sha, b64: Buffer.from(image.bytes).toString("base64") }), Math.min(this.budgets.mediaMs, left)));
       if (sent.kind === "older") return { ok: false, code: "not_on_lead", error: hillLeadOlder(lead) };
       if (sent.kind === "refused" || sent.kind === "unknown") return { ok: false, code: LEAD_UNREACHABLE_CODE, error: hillLeadNotAnswering(lead, requestId) };
       if (sent.kind === "failed") return { ok: false, code: null, error: sent.error };

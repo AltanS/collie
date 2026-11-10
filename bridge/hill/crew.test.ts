@@ -367,6 +367,31 @@ describe("a member's forward", () => {
     expect(await member.hill.askStatus(SENDER, "dc_crew00000001")).toEqual({ ok: false, missing: false, error: "the lead (desk) is not answering; try again" });
   });
 
+  test("the whole forward has one budget: an image that cannot have its time stops it before the post", async () => {
+    const lead = bridge("lead");
+    const crewLead = new HillCrewLead({ hill: lead.hill, held: new HillHeldMedia(() => lead.clock) });
+    const inner = wire(crewLead);
+    let clock = 0;
+    const budgets: number[] = [];
+    // Each dial takes 45 ms of a 100 ms forward, with 20 ms kept free for the post.
+    const slow: HillLeadLink = { ...inner, call: async (route, payload, budgetMs) => {
+      budgets.push(budgetMs);
+      clock += 45;
+      return inner.call(route, payload, budgetMs);
+    } };
+    const member = bridge("peer", { forward: new HillMemberForward(slow, { mediaMs: 50, callMs: 20, totalMs: 100, now: () => clock }), memberId: "m_laptop0000" });
+    const files = ["a.png", "b.png", "c.png"].map((name, i) => {
+      const file = join(member.work, name);
+      writeFileSync(file, png(390, 240, 64 + i));
+      return { path: file };
+    });
+    const row = fields({ images: files });
+    expect(await member.hill.postFields(SENDER, row)).toEqual({ ok: false, code: LEAD_UNREACHABLE_CODE, error: `the lead (desk) is not answering; nothing was posted. Post again with --request-id ${String(row.requestId)}: it posts once` });
+    expect(inner.calls).toEqual([CREW_HILL_MEDIA_ROUTE]);
+    expect(budgets).toEqual([50]);
+    expect(lead.store.all()).toHaveLength(0);
+  });
+
   test("a 401 from the lead is the signature, said plainly", async () => {
     const { member, link } = crew();
     link.status = 401;

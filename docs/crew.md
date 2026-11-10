@@ -422,8 +422,9 @@ card stays open, and you can answer again when the machine is back. A Decision i
 because its machine went away. Dismiss still closes the card: the phone then says the session was not
 told.
 
-When the lead does not answer, `collie hill post` says so, exits 5, and posts nothing. Run the same
-command again with the `--request-id` it prints: the lead keeps one Decision for it.
+When the lead does not answer, `collie hill post` says so, exits 5, and posts nothing. When the answer
+comes late, it says the post is not confirmed, and exits 5. Either way it prints the command to send
+the same post again, with its `--request-id`: the lead keeps one Decision for it.
 
 One machine's agents hold at most 40 open Decisions on the lead, and ring the phone at most six
 times an hour.
