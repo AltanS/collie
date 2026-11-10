@@ -205,6 +205,12 @@ export const CREW_WALKY_PATH = "/crew/v1/walky";
  * every such call, and it is answered only by a collie that has a lead, to that lead.
  */
 export const CREW_WALKY_OUTCOMES_PATH = "/crew/v1/walky/outcomes";
+/**
+ * `POST` — a member asks its lead for the crew's agent panes (§21, added in 1.29.0, M98). Signed per
+ * §8.6 like the message route, answered only by a collie that leads, and a read: it changes no roster
+ * and advances no floor.
+ */
+export const CREW_WALKY_WHO_PATH = "/crew/v1/walky/who";
 
 /**
  * The machine-readable `code` on §14.3's refusal of an unapproved leadership claim.
@@ -272,6 +278,9 @@ const SIGNABLE_PATHS: ReadonlySet<string> = new Set([
   // `MEMBERSHIP_PATHS`: it changes no roster, the message id is its replay key, and a replay returns
   // the stored receipts and types nothing, so it never advances the monotonic floor.
   CREW_WALKY_PATH,
+  // §21's pane list, member → lead (added in 1.29.0). The same direction and the same reasoning as the
+  // message route above; not in `MEMBERSHIP_PATHS` either, because it is a read.
+  CREW_WALKY_WHO_PATH,
 ]);
 
 /** The subset of {@link SIGNABLE_PATHS} that CHANGES STATE, and therefore advances the replay floor. */
@@ -586,6 +595,8 @@ export interface CrewRouterDeps {
     readonly fromMember?: (body: JsonValue | undefined, member: TrustedMember) => Promise<CrewAnswer>;
     readonly report?: (ack: string | null) => WalkyReportBody | null;
     readonly outcomes?: (body: JsonValue | undefined, from: string) => CrewAnswer;
+    /** `POST /crew/v1/walky/who` on a LEAD (added in 1.29.0, M98): the crew's agent panes, for a signed member. */
+    readonly who?: () => CrewAnswer;
   };
   readonly now?: () => number;
   readonly random?: RandomSource;
@@ -1130,6 +1141,12 @@ export function createCrewRouter(deps: CrewRouterDeps): CrewHandler {
       if (signed.member === null) return refuse(pathname, "certificate");
       const answer = await deps.walky.fromMember(await readJson(req, signedBody), verdict.member);
       if (answer.status === 401) return refuse(pathname, "certificate");
+      return new Response(JSON.stringify(answer.body), { status: answer.status, headers: crewResponseHeaders(verdict.self) });
+    }
+    if (pathname === CREW_WALKY_WHO_PATH && req.method === "POST" && deps.walky?.who !== undefined && data !== null && isLeading(data)) {
+      // §21 (added in 1.29.0): the pane list, to a SIGNED member of this lead's roster only.
+      if (signed.member === null) return refuse(pathname, "certificate");
+      const answer = deps.walky.who();
       return new Response(JSON.stringify(answer.body), { status: answer.status, headers: crewResponseHeaders(verdict.self) });
     }
     if (

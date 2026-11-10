@@ -18,6 +18,7 @@ import {
   crewSkipped,
   crewTargets,
   leadRouteRemote,
+  leadWhoRemote,
   LEAD_OLDER_THAN_SPACE,
   LEAD_OLDER_THAN_WAKE,
   LEAD_REFUSED_WAKE,
@@ -1888,5 +1889,78 @@ describe("the space border across a crew (M98 spec 03)", () => {
     await route(signed("wt_aaaaaaaaaaa2", "laptop", "desk/w1:p1", OPERATOR("laptop")), "desk");
     expect(payloads).toHaveLength(1);
     expect(isPrintableAscii(LEAD_OLDER_THAN_SPACE) && LEAD_OLDER_THAN_SPACE.length <= RECEIPT_REASON_MAX).toBe(true);
+  });
+});
+
+describe("`who` on a member asks the lead (M98 spec 04)", () => {
+  const API = spaceOf({ memberId: "local", spaceId: "w1", spaceLabel: "api" });
+  const rows = (memberId: string, panes: readonly WalkyPane[]): WalkyTarget[] =>
+    panes.map((p) => ({ address: `${memberId}/${p.paneId}#${p.instance}`, memberId, machine: memberId, harness: p.harness, label: p.label, state: "idle", space: p.space }));
+
+  /** A lead `desk` with its own pane and the sweep's rows for `laptop` (stale) and `other`. */
+  function leadAnswer(): CrewDialAnswer {
+    const lead = service("desk", [pane("w1:p1", { instance: "d1d1", space: API })], undefined, {
+      remoteTargets: () => [...rows("laptop", [pane("w1:p8", { label: "old", instance: "x1x1", space: API })]), ...rows("other", [pane("w2:p1", { instance: "o1o1", space: API })])],
+    });
+    const answer = new WalkyCrew({ service: lead.service, trust: () => leadStore(), now: () => AT }).who();
+    return { kind: "answer", status: answer.status, body: wire(answer.body) };
+  }
+
+  /** A member `laptop` whose `who` asks `post`. Its lead is named `desk` for the note. */
+  const asking = (post: (payload: string) => Promise<CrewDialAnswer>, legMs?: number) =>
+    service("laptop", [pane("w1:p8", { label: "live", instance: "l1l1", space: API })], undefined, {
+      outcomesOnLead: true,
+      leadName: () => "desk",
+      leadTargets: leadWhoRemote(legMs === undefined ? { post } : { post, legMs }),
+    }).service;
+
+  test("the lead answers its own panes and every member's from its sweep, with the space of each", () => {
+    const answer = leadAnswer();
+    expect(answer).toMatchObject({ kind: "answer", status: 200, body: { targets: [{ address: "desk/w1:p1#d1d1", space: { key: "api", named: true } }, { address: "laptop/w1:p8#x1x1" }, { address: "other/w2:p1#o1o1" }] } });
+  });
+
+  test("a member lists its own panes as they are now and the other machines' panes from the lead, with no note", async () => {
+    const posts: string[] = [];
+    const lister = asking(async (payload) => {
+      posts.push(payload);
+      return leadAnswer();
+    });
+    const { targets, note } = await lister.whoCrew();
+    // The lead's row for this member (`old`, from the last sweep) gives way to the live one.
+    expect(targets.map((target) => `${target.address} ${target.label}`)).toEqual(["laptop/w1:p8#l1l1 live", "desk/w1:p1#d1d1 repo#w1:p1", "other/w2:p1#o1o1 repo#w2:p1"]);
+    expect(note).toBeNull();
+    expect(posts).toEqual(["{}"]);
+  });
+
+  test("a lead that gives no usable answer leaves the member its own panes and the note it always printed", async () => {
+    const answers: (() => Promise<CrewDialAnswer>)[] = [
+      async () => ({ kind: "answer", status: 404, body: { error: "not found" } }),
+      async () => ({ kind: "answer", status: 401, body: { error: "unauthorized" } }),
+      async () => ({ kind: "refused", reason: "this machine has no lead" }),
+      async () => ({ kind: "unknown", reason: "crew: timed out" }),
+      async () => ({ kind: "answer", status: 200, body: { targets: "all of them" } }),
+      async () => ({ kind: "answer", status: 200, body: null }),
+      async () => {
+        throw new Error("boom");
+      },
+      () => new Promise<CrewDialAnswer>(() => undefined),
+    ];
+    for (const answer of answers) {
+      const { targets, note } = await asking(answer, 20).whoCrew();
+      expect(targets.map((target) => target.address)).toEqual(["laptop/w1:p8#l1l1"]);
+      expect(note).toBe("other machines: run `collie walky who` on the lead (desk), or use the phone");
+    }
+  });
+
+  test("a row that is not a pane address or has no well formed space is dropped; the rest stand", async () => {
+    const good = rows("other", [pane("w2:p1", { instance: "o1o1", space: API })])[0]!;
+    const body = wire({ targets: [good, { ...good, address: "all" }, { ...good, address: "other/w9:p9", space: undefined }, { ...good, address: "other/w9:p8", space: { key: "x", named: false, label: "x" } }, "nope"] });
+    const { targets } = await asking(async () => ({ kind: "answer", status: 200, body })).whoCrew();
+    expect(targets.map((target) => target.address)).toEqual(["laptop/w1:p8#l1l1", "other/w2:p1#o1o1"]);
+  });
+
+  test("a lead or a solo install asks nobody: its list and note are as they were", async () => {
+    const solo = service("desk", [pane("w1:p1", { instance: "d1d1", space: API })]);
+    expect(await solo.service.whoCrew()).toEqual({ targets: solo.service.who(), note: null });
   });
 });

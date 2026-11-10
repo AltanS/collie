@@ -24,6 +24,7 @@ import {
   type WalkyReceipt,
   type WalkyReceiptState,
   type WalkySender,
+  type WalkyTarget,
   type WalkyVerified,
 } from "./types.ts";
 
@@ -308,6 +309,37 @@ export function readOutcomesPush(value: JsonValue | undefined): WalkyReceipt[] |
   const row = asJsonObject(value);
   if (row === undefined || !Array.isArray(row.receipts)) return null;
   return readReceiptList(row.receipts);
+}
+
+/** The most panes a lead's `who` answer holds. Far above any crew's agent panes. */
+export const WHO_ROWS_MAX = 2000;
+
+/**
+ * The lead's answer to a member's `who` (M98 spec 04, `POST /crew/v1/walky/who`): `{ targets }`, each row
+ * as `collie walky who` lists it. A row that is not a pane address, or has no well formed space, is
+ * dropped: it is display data, and the receiving bridge decides every send itself. Null when the body is
+ * not an object with a `targets` list.
+ */
+export function readWhoAnswer(value: JsonValue | undefined): WalkyTarget[] | null {
+  const row = asJsonObject(value);
+  if (row === undefined || !Array.isArray(row.targets)) return null;
+  const out: WalkyTarget[] = [];
+  for (const entry of row.targets.slice(0, WHO_ROWS_MAX)) {
+    const target = asJsonObject(entry);
+    if (target === undefined) continue;
+    const address = text(target, "address");
+    const memberId = text(target, "memberId");
+    const machine = text(target, "machine");
+    const label = text(target, "label");
+    const state = text(target, "state");
+    const harness = textOrNull(target, "harness");
+    const space = readSpace(target.space);
+    if (address === null || memberId === null || machine === null || label === null || state === null || harness === undefined) continue;
+    if (space === undefined || space === null || space === false || parseAddress(address)?.kind !== "pane") continue;
+    const base: WalkyTarget = { address, memberId, machine, harness, label, state, space };
+    out.push(target.walky === "off" ? { ...base, walky: "off" } : base);
+  }
+  return out;
 }
 
 /** The longest `sender.certPem` a delivery may carry. A P-256 certificate is well under 1,000. */

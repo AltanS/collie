@@ -568,6 +568,9 @@ export function reasonWord(reason: string): string {
       return t("walky.reason.walkyOff");
     case "your walky talky is off":
       return t("walky.reason.senderOff");
+    // A message across the space border (M98): the bridge's reason, worded for a person.
+    case "outside your space":
+      return t("walky.reason.outsideSpace");
     default:
       return reason;
   }

@@ -40,13 +40,18 @@ import { attestationString, signMessage, verifyMessage, voucherString } from "./
 import { cleanBody } from "./clean.ts";
 import type { RouteRemote } from "./deliver.ts";
 import type { LogRecord, WalkyLog } from "./log.ts";
-import { readCrewDelivery, readErrorText, readMessage, readOutcomesPush, readReceiptsAnswer, readWalkyCursor, type CrewSenderBlock, type WalkyReportBody } from "./parse.ts";
+import { readCrewDelivery, readErrorText, readMessage, readOutcomesPush, readReceiptsAnswer, readWalkyCursor, readWhoAnswer, type CrewSenderBlock, type WalkyReportBody } from "./parse.ts";
 import type { WalkyService } from "./service.ts";
 import { spaceOfPane } from "./space.ts";
 import { movesForward, receiptReason, WALKY_BODY_MAX, WALKY_HARNESS_MAX, WALKY_LABEL_MAX, type WalkyMessage, type WalkyReceipt, type WalkyReceiptState, type WalkySkipped, type WalkyTarget, type WalkyVerified } from "./types.ts";
 
 /** The member-to-lead route, under the crew prefix: `POST /crew/v1/walky`. */
 export const CREW_WALKY_ROUTE = "walky";
+/**
+ * The member-to-lead route of the crew's pane list, under the crew prefix: `POST /crew/v1/walky/who`
+ * (M98 spec 04). Signed like the message route, answered only by a lead, and a read: it changes nothing.
+ */
+export const CREW_WALKY_WHO_ROUTE = "walky/who";
 /** The pane segment of the lead-to-member route when the message names a whole machine. */
 export const WALKY_ALL_SEGMENT = "all";
 /** The sibling of a member's snapshot body that carries its walky report (§21). */
@@ -72,7 +77,7 @@ export const WALKY_OUTBOX_MAX = 100;
 /** One answer of a crew route: a status and a JSON body. The router and the dispatch frame it. */
 export interface CrewAnswer {
   readonly status: number;
-  readonly body: { readonly error: string } | { readonly receipts: readonly WalkyReceipt[] } | { readonly written: number };
+  readonly body: { readonly error: string } | { readonly receipts: readonly WalkyReceipt[] } | { readonly written: number } | { readonly targets: readonly WalkyTarget[] };
 }
 
 const UNAUTHORIZED: CrewAnswer = { status: 401, body: { error: "unauthorized" } };
@@ -300,6 +305,15 @@ export class WalkyCrew {
     // Delivered here, and routed on to every other member it names: `localOnly` is false on a lead.
     // `via`: the member's outer bucket, 60 tokens per 10 minutes on this lead.
     return { status: 200, body: { receipts: await this.deps.service.receive(message, "origin", false, member.memberId) } };
+  }
+
+  /**
+   * `POST /crew/v1/walky/who` on the lead (M98 spec 04): the crew's agent panes, this lead's own and
+   * every member's from its last sweep (`WalkyService.who`), for the signed member that asked. The
+   * member's `who` and the lead's `send here` then read one list.
+   */
+  who(): CrewAnswer {
+    return { status: 200, body: { targets: this.deps.service.who() } };
   }
 
   /** `POST /crew/v1/pane/<segment>/walky` on a member, from the dispatch. `from` is the admitted caller. */
@@ -699,6 +713,28 @@ export function memberRouteRemote(deps: MemberRouteDeps): RouteRemote {
       return [ownReceipt(message, target, "refused", deps.self, now(), LEAD_REFUSED_WAKE)];
     }
     return receiptsOfAnswer(message, target, answer, deps.self, now(), "older lead");
+  };
+}
+
+/** What `leadWhoRemote` needs: one signed dial of the lead's `walky/who` route. */
+export interface LeadWhoDeps {
+  /** POST the (empty) body to the lead's `/crew/v1/walky/who`, signed per §8.6. */
+  readonly post: (payload: string) => Promise<CrewDialAnswer>;
+  /** How long the lead may take. Default {@link WALKY_LEG_MS}, the bound of a message's dial. */
+  readonly legMs?: number;
+}
+
+/**
+ * A member's read of the crew's panes from its lead (M98 spec 04): the rows, or null when it has none to
+ * show. Null is every way the lead did not answer: refused or unknown dial, a status that is not 200
+ * (an older lead answers 404), a body that is not a pane list, or no answer in time. The caller then
+ * lists its own panes with the note it always printed.
+ */
+export function leadWhoRemote(deps: LeadWhoDeps): () => Promise<WalkyTarget[] | null> {
+  return async () => {
+    const answer = await within(deps.post("{}"), deps.legMs ?? WALKY_LEG_MS).catch(() => null);
+    if (answer === null || answer.kind !== "answer" || answer.status !== 200) return null;
+    return readWhoAnswer(answer.body ?? undefined);
   };
 }
 

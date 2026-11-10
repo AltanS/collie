@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import type { JsonValue } from "../json.ts";
-import { parsePhoneSend, parseWalkyRequest, readMessage, readCrewDelivery, readOutcomesPush, readReceipt, readWalkyCursor, SENDER_CERT_MAX, SIGNATURE_MAX } from "./parse.ts";
+import { parsePhoneSend, parseWalkyRequest, readMessage, readCrewDelivery, readOutcomesPush, readReceipt, readWhoAnswer, readWalkyCursor, SENDER_CERT_MAX, SIGNATURE_MAX } from "./parse.ts";
 import type { WalkyMessage, WalkyReceipt } from "./types.ts";
 
 // The crew readers added on 2026-10-18 (CREW_PROTOCOL §21): the report's ack cursor, the delivery's
@@ -72,6 +72,23 @@ describe("the outcomes push", () => {
     expect(readOutcomesPush(wire({ receipts: [] }))).toEqual([]);
     for (const bad of [{}, { receipts: "all" }, [receipt], null, "x"]) expect(readOutcomesPush(wire(bad))).toBeNull();
     expect(readOutcomesPush(undefined)).toBeNull();
+  });
+});
+
+describe("the lead's pane list for a member's `who` (M98 spec 04)", () => {
+  const row = { address: "other/w1:p1#k3f9", memberId: "other", machine: "other", harness: "claude", label: "repo#main", state: "idle", space: { key: "api", named: true, label: "api" } };
+
+  test("reads each pane row, with the off flag, and drops a row that is not one", () => {
+    const off = { ...row, address: "other/w1:p2", harness: null, walky: "off", space: { key: "other\u0000w1", named: false, label: "w1" } };
+    expect(readWhoAnswer(wire({ targets: [row, off] }))).toEqual([row, { ...off, walky: "off" }]);
+    const bad = [{ ...row, address: "all" }, { ...row, address: "other/all" }, { ...row, space: null }, { ...row, space: { key: "api" } }, { ...row, state: 3 }, { ...row, harness: 3 }, 7, null];
+    expect(readWhoAnswer(wire({ targets: [...bad, row] }))).toEqual([row]);
+    expect(readWhoAnswer(wire({ targets: [{ ...row, walky: "yes" }] }))).toEqual([row]);
+  });
+
+  test("a body that is no list is null, never a throw", () => {
+    for (const body of [{}, { targets: "x" }, [row], null, "x"]) expect(readWhoAnswer(wire(body))).toBeNull();
+    expect(readWhoAnswer(undefined)).toBeNull();
   });
 });
 

@@ -3048,6 +3048,8 @@ export const en = {
   "walky.reason.resting": "that session rests",
   "walky.reason.walkyOff": "the session has its WalkyTalky off",
   "walky.reason.senderOff": "the sending session has its WalkyTalky off",
+  // The space border (M98): English only until the translation pass, listed in PENDING_TRANSLATION below.
+  "walky.reason.outsideSpace": "Outside its space",
   "walky.off.label": "WalkyTalky",
   "walky.off.hint": "Off: other agents cannot message this session. You still can.",
   "walky.off.row": "WalkyTalky off",
@@ -3581,6 +3583,8 @@ export const PENDING_TRANSLATION = [
   "sessionFilter.field.machine",
   // The Dashboard's magnifier (M97 spec 04).
   "sessionFilter.toggle",
+  // The space border's refusal word (M98, 2026-11-10).
+  "walky.reason.outsideSpace",
 ] as const satisfies readonly MessageKey[];
 
 /** A key a bundle may leave out until the translation pass. */

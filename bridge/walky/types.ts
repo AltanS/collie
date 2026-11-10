@@ -332,12 +332,15 @@ export function escapeBody(body: string): string {
  */
 export function formatEnvelope(message: Pick<WalkyMessage, "id" | "kind" | "from" | "replyTo" | "body">, via?: BorderVerdict): string {
   if (message.kind === "agent") return formatNudge(message, via === "outside");
-  return formatRead(message);
+  return formatRead(message, via);
 }
 
-/** A message as `collie walky inbox` prints it: the header line, then the body (escaped). */
-export function formatRead(message: Pick<WalkyMessage, "id" | "kind" | "from" | "replyTo" | "body">): string {
-  return `${formatHeader(message)}\n${escapeBody(message.body)}`;
+/**
+ * A message as `collie walky inbox` prints it: the header line, then the body (escaped). `via` is the
+ * receipt's border verdict (M98): `outside` puts {@link OUTSIDE_WORD} in the header, as the envelope does.
+ */
+export function formatRead(message: Pick<WalkyMessage, "id" | "kind" | "from" | "replyTo" | "body">, via?: BorderVerdict): string {
+  return `${formatHeader(message, message.kind === "agent" && via === "outside")}\n${escapeBody(message.body)}`;
 }
 
 export interface ParsedHeader {

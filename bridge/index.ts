@@ -296,7 +296,9 @@ import {
   crewSkipped,
   crewTargets,
   CREW_WALKY_ROUTE,
+  CREW_WALKY_WHO_ROUTE,
   leadRouteRemote,
+  leadWhoRemote,
   memberRouteRemote,
   olderThanSpace,
   olderThanWake,
@@ -2262,6 +2264,8 @@ const walky = new WalkyService({
   warn: (line) => console.warn(line),
   routeRemote: walkyRoute,
   remoteTargets: crew.mode === "lead" ? () => walkyLeadHalf?.targets() ?? [] : undefined,
+  // A member's `who` lists the crew as its lead does (M98 spec 04); the lead that does not answer leaves it its own panes.
+  leadTargets: crew.mode === "peer" && walkyMemberId !== null ? leadWhoRemote({ post: (payload) => walkyToLead(payload, CREW_WALKY_WHO_ROUTE) }) : undefined,
   outcomesOnLead: crew.mode === "peer",
   // A bare word that names one of these is a member, never a folder (M75): this machine, its lead, its roster.
   knownMembers: () => {
@@ -3112,7 +3116,7 @@ if (crewLead) {
  * and attested on every dial, with no pin for the lead (its address is a front door that terminates
  * TLS, the CLI's rule). Built on first use and kept (`walkyLeadClient`): the store is read on every dial.
  */
-async function walkyToLead(payload: string): Promise<CrewDialAnswer> {
+async function walkyToLead(payload: string, route: string = CREW_WALKY_ROUTE): Promise<CrewDialAnswer> {
   const data = trustStore.current();
   const lead = data?.lead ?? null;
   if (data === null || lead === null) return { kind: "refused", reason: "this machine has no lead" };
@@ -3128,7 +3132,7 @@ async function walkyToLead(payload: string): Promise<CrewDialAnswer> {
   });
   const outcome = await walkyLeadClient.proxy(
     { memberId: lead.memberId, address: lead.address },
-    CREW_WALKY_ROUTE,
+    route,
     undefined,
     { method: "POST", headers: { "content-type": "application/json" }, body: payload },
     WRITE_BUDGET_MS,
@@ -3515,6 +3519,8 @@ const server = listenOrExit("front door", cfg.host, cfg.port, () => startServer(
             // §21: a lead takes a member's message; a member reports how messages from elsewhere ended.
             walky: {
               fromMember: (body, member) => walkyCrew.fromMember(body, member),
+              // §21 (added in 1.29.0, M98): a lead lists the crew's panes for a member that asks.
+              who: crew.mode === "lead" ? () => walkyCrew.who() : undefined,
               report:
                 walkyReport === null
                   ? undefined

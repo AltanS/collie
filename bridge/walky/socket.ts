@@ -6,7 +6,7 @@
 // Requests (`v: 1`, plus `markers`: the raw multiplexer markers the CLI read from its environment):
 //   send    { id, to, body, replyTo, wake?, outside? }   → { ok, receipts, target? }
 //   inbox   { all, ack, id? }           → { ok, pane, messages }   (`id`: that one message)
-//   who     {}                          → { ok, self, targets, note?, selfOff? }
+//   who     {}                          → { ok, self, ownSpace?, targets, note?, selfOff? }   (`ownSpace`: the asking pane's space, M98)
 //   status  { id }                      → { ok, receipts, message, elsewhere, deliveries?, totals? }
 //   ack     { ids | null }              → { ok, acked }
 //   cancel  { id }                      → { ok, results }   (M62 spec 03: the sender takes a held message back)
@@ -37,6 +37,7 @@ import { isHillOp, readWalkyRequest, WALKY_LINE_MAX, type WalkyRequest, type Wal
 import { unknownOp } from "./refusals.ts";
 import type { WalkyDelivery, WalkyService } from "./service.ts";
 import type { TakeBack, WalkyPane } from "./deliver.ts";
+import type { WalkySpace } from "./space.ts";
 import type { WalkyEntry, WalkyMessage, WalkyReceipt, WalkyTarget } from "./types.ts";
 
 /** What the socket answers a send that names no pane. */
@@ -114,7 +115,7 @@ export type WalkyAnswer =
       readonly deliveries?: readonly WalkyDelivery[];
       readonly totals?: Readonly<Record<string, number>>;
     }
-  | { readonly ok: true; readonly self: string | null; readonly targets: readonly WalkyTarget[]; readonly note?: string; readonly selfOff?: true }
+  | { readonly ok: true; readonly self: string | null; readonly ownSpace?: WalkySpace; readonly targets: readonly WalkyTarget[]; readonly note?: string; readonly selfOff?: true }
   | { readonly ok: true; readonly pane: string | null; readonly messages: readonly WalkyEntry[] }
   | { readonly ok: true; readonly acked: number }
   | { readonly ok: true; readonly off: boolean }
@@ -156,9 +157,13 @@ export async function answerRequest(service: WalkyService, request: WalkyRequest
     }
     case "who": {
       const self = pane === null ? null : service.addressOf(pane.paneId, pane.instance);
-      const note = service.whoNote();
-      const answer = note === null ? { ok: true as const, self, targets: service.who() } : { ok: true as const, self, targets: service.who(), note };
-      return pane?.off === true ? { ...answer, selfOff: true } : answer;
+      // On a member the crew's panes come from its lead, else this machine's own with the note (service.whoCrew).
+      const crew = await service.whoCrew();
+      const base = { ok: true as const, self, targets: crew.targets };
+      // The asking pane's own space rides along, so the CLI need not find its row in a list it may have trimmed.
+      const answer = pane === null ? base : { ...base, ownSpace: pane.space };
+      const withNote = crew.note === null ? answer : { ...answer, note: crew.note };
+      return pane?.off === true ? { ...withNote, selfOff: true } : withNote;
     }
     case "status": {
       const { receipts, message, elsewhere, deliveries, totals } = service.status(request.id);

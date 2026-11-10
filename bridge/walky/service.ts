@@ -48,6 +48,11 @@ export interface WalkyServiceDeps extends DelivererDeps {
   // `remoteTargets` and `outcomesOnLead` sit on DelivererDeps (deliver.ts): a scope send reads them too (M75).
   /** On a member: its lead's member id, named in the `who` note. */
   readonly leadName?: () => string | null;
+  /**
+   * On a member (M98 spec 04): the crew's agent panes as its lead lists them, or null when the lead did
+   * not answer (an older lead, no link, too slow). Absent: this bridge asks nobody.
+   */
+  readonly leadTargets?: () => Promise<readonly WalkyTarget[] | null>;
   /** On a lead: the shell panes the crew's members report, which a broadcast skips. */
   readonly remoteSkipped?: () => readonly WalkySkipped[];
   /** The off flags, `<stateDir>/walky/off.json` (M89). The host's `panes()` reads the same store. Absent: in memory. */
@@ -265,6 +270,20 @@ export class WalkyService {
   /** The line `who` prints below this machine's targets, or null when it lists the whole crew. */
   whoNote(): string | null {
     return this.deps.outcomesOnLead === true ? whoElsewhereNote(this.deps.leadName?.() ?? null) : null;
+  }
+
+  /**
+   * What `collie walky who` lists (M98 spec 04). On a lead or a solo install: {@link WalkyService.who} and
+   * the note. On a member: this machine's panes as they are now, then every other machine's panes as the
+   * lead lists them, so the list agrees with what `send here` reaches, and no note. When the lead does not
+   * answer, this machine's panes and the note it always printed.
+   */
+  async whoCrew(): Promise<{ readonly targets: WalkyTarget[]; readonly note: string | null }> {
+    const local = this.who();
+    const lead = this.deps.leadTargets === undefined ? null : await this.deps.leadTargets().catch(() => null);
+    if (lead === null) return { targets: local, note: this.whoNote() };
+    const own = this.deps.memberId ?? LOCAL_MEMBER;
+    return { targets: [...local, ...lead.filter((target) => target.memberId !== own)], note: null };
   }
 
   /**

@@ -476,6 +476,7 @@ than to anything it fronts. They exist because three operator verbs are otherwis
 | `POST` | `/crew/v1/lead` | the member being promoted | "The member calling you is the lead now" (§14). The old lead demotes itself and answers with its roster (the only way the new lead can pin members it has never spoken to); a peer re-pins and keeps its id and the crew secret. A member may only claim leadership **for itself** — and a claim is **not self-authorising**: the lead demotes only against a live operator approval (§14). |
 | `POST` | `/crew/v1/leave` | any member | The caller removes **itself** from this collie's roster (§8.4). The member id is the admitted one, never a body field, and a second call is still `200` — the operator's question has the same answer either way. |
 | `POST` | `/crew/v1/walky` | any member | Added 2026-10-17 (§21). The caller hands its lead one walky talky message, signed by the caller's key, to deliver to the lead's panes and route on to the members it names. Answered only by a collie that leads (a peer answers 404), and only to a §8.6-signed caller: the message must name that member as its sender and its signer. Changes no roster. |
+| `POST` | `/crew/v1/walky/who` | any member | Added in 1.29.0 (§21, M98). The caller asks its lead for the crew's agent panes, so a member's `collie walky who` lists what the lead's `send here` reaches. Body `{}`, signed per §8.6 like `walky`. Answered only by a collie that leads (a peer answers 404, so does a lead before 1.29.0), and only to a signed member of its roster. A read: it changes no roster and advances no floor. |
 | `POST` | `/crew/v1/walky/outcomes` | the lead | Added 2026-10-18 (§21). The lead hands a member the receipts it learned for messages that member sent to another machine, so the sender sees how they ended. Answered only by a collie that has a lead, and only to its own lead: any other caller is the uniform 401. The member writes a receipt only for a message its own log holds and that it sent itself. Changes no roster. |
 | `POST` | `/crew/v1/pairing` | the lead | Syncs the lead's paired-device registry — **hashes only** — to the **deputy and to nobody else** (§18.14). Refused unless the caller is *this collie's own lead* AND this collie holds a verified warrant naming **itself**. A label that collides with one of this machine's own paired devices refuses the sync with `code: "pairing_label_collision"`, naming the labels; it is never silently renamed. |
 | `POST` | `/crew/v1/launchers-copy` | the lead | Added 2026-11-03 (§18.14, ADR 0127 point 5). Sends the lead's merged launcher rows to the **deputy and to nobody else**, as a read-only copy the deputy serves only once it leads. The same two role checks as `pairing`: the caller is *this collie's own lead*, and this collie holds a verified warrant naming **itself**. A deputy that `404`s it is a build before the route; the lead stops sending to it until the next connect. Changes no roster. |
@@ -486,7 +487,7 @@ Everything except `enroll` sits behind the same two factors as the rest of the p
 carries a role check on top: *admitted* and *allowed to do this* are different questions.
 
 **Which routes may be authenticated by a §8.6 signature** is a closed set — `leave`, `lead`, `hello`,
-since 2026-08-20 `warrant` and `takeover`, and since 2026-10-17 `walky` (§21). It is exactly the routes that travel **peer → lead**, the one
+since 2026-08-20 `warrant` and `takeover`, since 2026-10-17 `walky` (§21), and since 1.29.0 `walky/who` (§21). It is exactly the routes that travel **peer → lead**, the one
 direction where the transport cannot pin (§8.1), and `warrant` joined it for the delivery that
 matters most: a new lead telling the old one that the crown has moved (§18.12). The proxy surface is
 not on the list and must not be — those calls run lead → peer over a pinned handshake, and admitting a
@@ -3515,11 +3516,22 @@ is two hops, A to the lead and the lead to B.
 | `POST` | `/crew/v1/walky` | a member, to its lead | the signed message | `{ receipts }` |
 | `POST` | `/crew/v1/pane/:id/walky` | the lead, to a member | `{ message, attest, sender? }` | `{ receipts }` |
 | `POST` | `/crew/v1/walky/outcomes` | the lead, to a member | `{ receipts }` | `{ written }` |
+| `POST` | `/crew/v1/walky/who` | a member, to its lead | `{}` | `{ targets }` |
 | `GET` | `/crew/v1/pane/:id/walky?limit=` | the lead, to a member, for a phone | none | `{ messages }` |
 
 - `/crew/v1/walky` is a **membership-table route** (§5): it carries no pane data and is addressed to the
   collie. It joins the signed set (§8.6), because it travels peer → lead, where the transport cannot
   pin. Only a collie that leads answers it; a peer answers 404.
+- `/crew/v1/walky/who` (added in 1.29.0, M98) is a **membership-table route** like `/crew/v1/walky`: it
+  joins the signed set (§8.6) and only a collie that leads answers it. A member sends the empty object
+  `{}`; the lead answers `{ targets }`, the rows its own `collie walky who` prints: its own agent panes
+  and every member's from its last sweep, each with `address`, `memberId`, `machine`, `harness`,
+  `label`, `state`, `space` (the space of the message section below) and `walky: "off"` when the
+  session turned it off. It is a read for display. The member keeps its own panes as they are now and
+  takes only the other machines' rows from the answer; a row that is not a pane address or has no well
+  formed space is dropped. Every send is still decided by the bridge that owns the target pane. A
+  member that gets no usable answer (a lead before 1.29.0 answers 404, a refused or unknown dial, no
+  answer in 8 seconds) lists its own panes with the note it always printed.
 - `/crew/v1/pane/:id/walky` is a **forwarded write** (§5's table, `FORWARDABLE` in
   `bridge/crew/forward.ts`). `:id` is the pane id when the message names one pane, and `all` when it
   names `<member>/all` or `all`. For a scope it is the pane id of one pane the lead's expansion
@@ -3873,8 +3885,11 @@ An answer to the member's own `POST /crew/v1/walky` that arrives after a pushed 
 over it: neither its `accepted` nor, since 2026-10-18, the `unknown` of a dial that timed out.
 
 `collie walky who` on the lead lists every member's agent panes, from the bodies its sweep already
-holds, so it dials nobody. A member has no roster, so `who` there lists its own panes and the line
-"other machines: run `collie walky who` on the lead (<lead>), or use the phone".
+holds, so it dials nobody. A member has no roster, so since 1.29.0 it asks its lead with
+`POST /crew/v1/walky/who` and lists its own panes with every other machine's rows from the answer, in
+one list with the lead's, so `who` and `send here` agree. When the lead gives no usable answer (a lead
+before 1.29.0, a refused dial, 8 seconds), `who` lists its own panes and the line "other machines: run
+`collie walky who` on the lead (<lead>), or use the phone", as before.
 
 ### Pane instances (added 2026-10-18)
 

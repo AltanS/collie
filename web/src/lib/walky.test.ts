@@ -274,6 +274,11 @@ describe("the words", () => {
     expect(stateWord({ ...receipt, state: "refused", reason: "off" })).toBe("not sent: off");
   });
 
+  it("words the space border's refusal for a person (M98 spec 04)", () => {
+    expect(reasonWord("outside your space")).toBe("Outside its space");
+    expect(stateWord({ ...receipt, state: "refused", reason: "outside your space" })).toBe("not sent: Outside its space");
+  });
+
   it("gives a refusal its reason", () => {
     expect(stateWord({ ...receipt, state: "refused", reason: "rate limit" })).toBe("not sent: rate limit");
     expect(stateWord({ ...receipt, state: "refused" })).toBe("not sent");
