@@ -55,6 +55,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **A run of tool steps is one soft ground, and a card's kind word is muted.** In Chat, a working run is drawn as one panel with thin lines between its steps, not a stack of boxes, and the folded row has no frame of its own. The word that names a step, such as Edit or Run, takes the muted ink the other rows already use.
 - **Code blocks are neutral and set at 12px.** A fenced block stands on the grey ground with a thin edge, no longer on the info blue, and its text is one size larger. Inline code keeps its blue.
 - **A new turn starts further down, and quiet lines sit between two thin lines.** In Chat a new turn starts 20px under the block above, and the blocks of one agent run sit 8px apart. Notices, the compaction marker and the top-of-thread line, and History's day divider and compaction marker, are drawn the same way.
+- **The WalkyTalky skill teaches how to word a Decision.** The skill an agent reads now carries the same wording rules as `collie hill post --help`: a title that asks the decision as a question, a summary of two sentences, and options that start with a verb and are never a bare Yes or No. The skill's example Decision follows them. Run `collie skill sync` to replace an installed copy; `collie update` does it for you.
 
 ## [1.28.1] - 2026-11-10
 

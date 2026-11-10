@@ -35,7 +35,7 @@ import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, w
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
-import { HILL_RULES } from "../../../cli/hill-rules";
+import { HILL_RULES, HILL_WRITING } from "../../../cli/hill-rules";
 import { EMPTY_MCP_FILE } from "../../../scripts/harness-canary/lab/harnesses";
 import { seedClaude, seedClaudeReplay } from "../../../scripts/harness-canary/lab/seed";
 import type { JsonObject } from "../../src/lib/json";
@@ -166,7 +166,7 @@ function writeCollieShim(root: string, stateDir: string): string {
  * file. Written by hand rather than by `collie skill install`, which also writes into every real profile.
  */
 function writeWalkySkill(path: string, form: "file" | "block"): void {
-  const rendered = readFileSync(SKILL_TEMPLATE, "utf8").replaceAll("{{HILL_RULES}}", HILL_RULES.map((rule) => `- ${rule}`).join("\n")).replaceAll("{{COLLIE_BIN}}", "collie").replaceAll("{{COLLIE_VERSION}}", "rig").replace(/\n+$/u, "\n");
+  const rendered = readFileSync(SKILL_TEMPLATE, "utf8").replaceAll("{{HILL_WRITING}}", HILL_WRITING.join("\n")).replaceAll("{{HILL_RULES}}", HILL_RULES.map((rule) => `- ${rule}`).join("\n")).replaceAll("{{COLLIE_BIN}}", "collie").replaceAll("{{COLLIE_VERSION}}", "rig").replace(/\n+$/u, "\n");
   mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
   if (form === "file") {
     writeFileSync(path, rendered, { mode: 0o600 });

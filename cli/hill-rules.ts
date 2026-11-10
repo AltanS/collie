@@ -1,7 +1,7 @@
 /**
  * The rules every agent reads before it posts, in `collie hill --help` and `collie hill post --help`, and
  * in the "Decisions (the hill)" part of the installed WalkyTalky skill (`renderWalkySkill` in
- * cli/skill-install.ts fills `{{HILL_RULES}}` from this list). One source: edit the words here only. It
+ * cli/skill-install.ts fills `{{HILL_RULES}}` from this list, and `{{HILL_WRITING}}` from {@link HILL_WRITING} below). One source: edit the words here only. It
  * imports nothing, so the browser leg's rig (web/e2e/rig/harnesses.ts) can read it without pulling the
  * bridge into the web typecheck.
  */
@@ -18,10 +18,11 @@ export const HILL_RULES = [
 
 /**
  * How to word a Decision, for a person who opens the card cold. Printed by `collie hill post --help` and
- * `collie hill --help` above the rules, and written into the AGENTS.md of `collie trick init`. Kept apart
- * from {@link HILL_RULES} on purpose: that list is also the installed WalkyTalky skill's text, and a change
- * there makes every installed skill stale and the browser leg's recordings miss. The helper's `t.decide`
- * comment and web/src/lib/tricks/README.md say the same in fewer words; change them with this list.
+ * `collie hill --help` above the rules, written into the AGENTS.md of `collie trick init`, and filled into the
+ * installed WalkyTalky skill as `{{HILL_WRITING}}`, right before the rules. A change here makes every installed
+ * skill stale and the browser leg's recordings miss. Kept as its own list, apart from {@link HILL_RULES}, because
+ * the rules are not wording advice. The helper's `t.decide` comment and web/src/lib/tricks/README.md say the
+ * same in fewer words; change them with this list.
  */
 export const HILL_WRITING = [
   "Word the card for a person who opens it cold, between other things:",
