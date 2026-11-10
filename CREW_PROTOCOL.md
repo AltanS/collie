@@ -4060,8 +4060,9 @@ none. Before 1.29.0 a member refused every post with `not_on_lead`.
 
 - All three are **membership-table routes** (§5): they carry no pane data and are addressed to the
   collie. They join the signed set (§8.6), because they travel member → lead. They do not advance
-  the replay floor: they change no roster. Only a collie that leads answers them; a peer answers 404,
-  and so does a lead before 1.29.0.
+  the replay floor: they change no roster. Only a collie that leads answers them; a peer answers 404.
+  A lead before 1.29.0 answers the **uniform 401**, not 404: the paths are outside its signable set,
+  so its admission ignores the signature, and a member rides no pinned handshake into its lead.
 - **The member is the signer.** The lead takes the member from the §8.6 signature, never from the
   body. `from.address` in a post and `as` in an op must be a pane address of that member's own machine
   (`<member>/<pane>`, with or without `#<token>`). Any other address, `local/...`, a scope or `all` is
@@ -4127,7 +4128,8 @@ second card under a new request id.
 The floor is `TRICKS_CREW_FIRST_VERSION`, `1.29.0` (`bridge/hill/crew.ts`), read the way §21 reads its
 floors (`olderThanFloor`). A member that knows its lead's release is below it refuses before it dials,
 with `not_on_lead` and the words "the lead (<lead>) runs a Collie older than 1.29.0". A lead whose
-release it does not know is dialled; its 404 reads the same way. A member below 1.29.0 never calls
+release it does not know is dialled; its 401 (or a 404) reads the same way. Only a lead whose release
+is known and at or above the floor (`atTricksCrewFloor`) has its 401 read as a refused signature. A member below 1.29.0 never calls
 these routes and keeps answering `not_on_lead`.
 
 ### When the lead does not answer
@@ -4136,7 +4138,8 @@ these routes and keeps answering `not_on_lead`.
   again with --request-id <id>: it posts once". `collie hill post` exits 5.
 - A dial whose outcome is unknown (the post may have reached the lead): `lead_unreachable`, "the lead
   (<lead>) did not confirm the post. Post again with --request-id <id>: it posts once".
-- A 401: "the lead refused this machine's signature".
+- A 401 from a lead known to run 1.29.0 or later: "the lead refused this machine's signature". From
+  any other lead a 401 reads as the older lead above.
 - `collie hill post` prints the request id and the command that sends the same post again on every
   failure: `hill: request id <id>; to send this post again, it posts once: collie hill post ...
   --request-id <id>`. When its socket took the post and did not answer in time, it says the post "is
@@ -4164,7 +4167,7 @@ session was not told." The poster reads the dismiss with `collie hill status` wh
 
 ### Compatibility
 
-Additive inside protocol version 2 (§7.1). A lead before 1.29.0 answers 404 on the three routes, read
-as above. A member before 1.29.0 never sends them. A phone before 1.29.0 ignores `machine` on a receipt
+Additive inside protocol version 2 (§7.1). A lead before 1.29.0 answers the uniform 401 on the three
+routes, read as above. A member before 1.29.0 never sends them. A phone before 1.29.0 ignores `machine` on a receipt
 and shows the reason as any refusal. A solo install registers none of these routes (§11).
 `CREW_PROTOCOL_VERSION` stays `2`.

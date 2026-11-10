@@ -323,7 +323,7 @@ import { deniedFoldersSync, HillMediaStore } from "./hill/media.ts";
 import { HillPush } from "./hill/push.ts";
 import { HillReceiptStore } from "./hill/receipts.ts";
 import { HillService } from "./hill/service.ts";
-import { HillCrewLead, HillHeldMedia, HillMemberForward, olderThanTricksCrew } from "./hill/crew.ts";
+import { atTricksCrewFloor, HillCrewLead, HillHeldMedia, HillMemberForward, olderThanTricksCrew } from "./hill/crew.ts";
 import { hillDir, HillStore } from "./hill/store.ts";
 import { HillSwitch } from "./hill/switch.ts";
 import { hillSessionName, OneLook, walkyPlace, walkySend } from "./hill/walky.ts";
@@ -2359,13 +2359,14 @@ const hill = new HillService({
   hillSwitch: new HillSwitch(cfg.stateDir),
   // A crew member posts on its lead's Hill (CREW_PROTOCOL §22, 1.29.0): images read here, then uploaded,
   // then the post, over the member's signed dial of its lead. A lead below 1.29.0 is refused up front
-  // when its release is known, and by its 404 when not.
+  // when its release is known; when not, its uniform 401 (it does not sign these routes) reads as older.
   forward:
     crew.mode === "peer" && walkyMemberId !== null
       ? new HillMemberForward({
           call: (route, payload, budgetMs) => walkyToLead(payload, route, budgetMs),
           leadName: () => trustStore.current()?.lead?.memberId ?? null,
           leadOlder: () => olderThanTricksCrew(heardLeadRelease, crewVersion, compareSemver),
+          leadAtFloor: () => atTricksCrewFloor(heardLeadRelease, crewVersion, compareSemver),
         })
       : undefined,
   offline: crew.mode === "lead" ? (address) => hillOffline(address) : undefined,

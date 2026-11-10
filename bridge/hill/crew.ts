@@ -16,8 +16,10 @@
 // in the lead's sweep yet; the instance token is checked again on the member when the answer is typed.
 //
 // SKEW. A member below 1.29.0 never calls these routes and keeps refusing `not_on_lead`. A member that
-// knows its lead is below 1.29.0 refuses before it dials (`olderThanTricksCrew`), and a lead that does
-// not know the routes answers 404, read the same way. Nothing is half posted: the images wait on the
+// knows its lead is below 1.29.0 refuses before it dials (`olderThanTricksCrew`). A lead that does not
+// know the routes does not count them as signable either, so its admission answers the uniform 401: from
+// a lead whose release is not known that 401 reads as an older lead too, and only from a lead known to be
+// at the floor (`atTricksCrewFloor`) does it mean the signature was refused. Nothing is half posted: the images wait on the
 // lead for 15 minutes and are then dropped, and the post is idempotent by its request id.
 
 import { createHash } from "node:crypto";
@@ -42,10 +44,21 @@ export const TRICKS_CREW_FIRST_VERSION = "1.29.0";
  * Whether a lead's stated release is too old for Decisions from a member: below 1.29.0, or, on a build
  * made before 1.29.0 that carries the feature, below that build's own version. The rules of
  * `olderThanWalky`: a version that names no release, and no version at all, is never called older (the
- * lead's 404 answers for it).
+ * lead's uniform 401 answers for it, read by `atTricksCrewFloor`).
  */
 export function olderThanTricksCrew(version: string | null, own: string, compare: (a: string, b: string) => number): boolean {
   return olderThanFloor(version, own, compare, TRICKS_CREW_FIRST_VERSION);
+}
+
+/**
+ * Whether a lead's stated release is KNOWN to take Decisions from a member: it names a release, and that
+ * release is not below the floor. False for no version and for one that names no release. Only such a
+ * lead's 401 means it refused this machine's signature: a lead below the floor, or one whose release is
+ * not known, does not count the three routes as signable, so its admission refuses every call to them
+ * with the uniform 401 (§8.6), and that 401 reads as an older lead.
+ */
+export function atTricksCrewFloor(version: string | null, own: string, compare: (a: string, b: string) => number): boolean {
+  return version !== null && /^\d+\.\d+\.\d+/u.test(version) && !olderThanTricksCrew(version, own, compare);
 }
 
 /** The routes under `/crew/v1/`, as the member's crew client names them. */
@@ -326,6 +339,8 @@ export interface HillLeadLink {
   leadName(): string | null;
   /** Whether the lead's stated release is below {@link TRICKS_CREW_FIRST_VERSION}. False while it is not known. */
   leadOlder(): boolean;
+  /** Whether the lead's stated release is known and at or above the floor ({@link atTricksCrewFloor}). */
+  leadAtFloor(): boolean;
 }
 
 /** One image read on the member, to forward with its caption (already cleaned there). */
@@ -393,12 +408,22 @@ function leadWords(raw: string | undefined, fallback: string): string {
 /** What one dial came to, read the same way for every route. */
 type Read = { readonly kind: "body"; readonly body: JsonObject } | { readonly kind: "refused" } | { readonly kind: "unknown" } | { readonly kind: "older" } | { readonly kind: "failed"; readonly error: string };
 
-function readDial(answer: CrewDialAnswer): Read {
-  if (answer.kind === "refused") return answer.reason === "signature" ? { kind: "failed", error: "the lead refused this machine's signature" } : { kind: "refused" };
+/** The words of a 401 from a lead known to take Decisions from a member. */
+export const HILL_SIGNATURE_REFUSED = "the lead refused this machine's signature";
+
+/**
+ * One dial, read. A 401 (the crew client's `signature` refusal, or the status itself) is the signature
+ * refused only from a lead KNOWN to be at the floor (`atFloor`): a lead below 1.29.0 does not count these
+ * routes as signable and answers each call with the uniform 401, so from a lead whose release is not
+ * known, or older, it reads as an older lead. A 404 (a collie that does not lead, or a lead built without
+ * the routes) reads as older too.
+ */
+function readDial(answer: CrewDialAnswer, atFloor: boolean): Read {
+  const signature: Read = atFloor ? { kind: "failed", error: HILL_SIGNATURE_REFUSED } : { kind: "older" };
+  if (answer.kind === "refused") return answer.reason === "signature" ? signature : { kind: "refused" };
   if (answer.kind === "unknown") return { kind: "unknown" };
-  // A lead before 1.29.0 has no such route: the crew's own 404.
   if (answer.status === 404) return { kind: "older" };
-  if (answer.status === 401) return { kind: "failed", error: "the lead refused this machine's signature" };
+  if (answer.status === 401) return signature;
   const body = asJsonObject(answer.body ?? undefined);
   if (answer.status === 200 && body !== undefined) return { kind: "body", body };
   return { kind: "failed", error: `the lead answered HTTP ${String(answer.status)}: ${leadWords(asJsonString(body?.error), "no reason")}` };
@@ -445,7 +470,7 @@ export class HillMemberForward implements HillLeadForward {
       const left = deadline - now() - this.budgets.callMs;
       if (left < Math.min(HILL_MEDIA_MIN_MS, this.budgets.mediaMs)) return { ok: false, code: LEAD_UNREACHABLE_CODE, error: hillLeadNotAnswering(lead, requestId) };
       const sha = sha256Hex(image.bytes);
-      const sent = readDial(await this.link.call(CREW_HILL_MEDIA_ROUTE, JSON.stringify({ sha256: sha, b64: Buffer.from(image.bytes).toString("base64") }), Math.min(this.budgets.mediaMs, left)));
+      const sent = readDial(await this.link.call(CREW_HILL_MEDIA_ROUTE, JSON.stringify({ sha256: sha, b64: Buffer.from(image.bytes).toString("base64") }), Math.min(this.budgets.mediaMs, left)), this.link.leadAtFloor());
       if (sent.kind === "older") return { ok: false, code: "not_on_lead", error: hillLeadOlder(lead) };
       if (sent.kind === "refused" || sent.kind === "unknown") return { ok: false, code: LEAD_UNREACHABLE_CODE, error: hillLeadNotAnswering(lead, requestId) };
       if (sent.kind === "failed") return { ok: false, code: null, error: sent.error };
@@ -455,7 +480,7 @@ export class HillMemberForward implements HillLeadForward {
     const own: JsonObject = {};
     for (const [key, value] of Object.entries(fields)) if (!FRAME_KEYS.has(key)) own[key] = value;
     const payload = { from: { address: from.address, harness: from.harness, label: from.label, host: from.host }, fields: own, images: named };
-    const posted = readDial(await this.link.call(CREW_HILL_POST_ROUTE, JSON.stringify(payload), this.budgets.callMs));
+    const posted = readDial(await this.link.call(CREW_HILL_POST_ROUTE, JSON.stringify(payload), this.budgets.callMs), this.link.leadAtFloor());
     if (posted.kind === "older") return { ok: false, code: "not_on_lead", error: hillLeadOlder(lead) };
     if (posted.kind === "refused") return { ok: false, code: LEAD_UNREACHABLE_CODE, error: hillLeadNotAnswering(lead, requestId) };
     if (posted.kind === "unknown") return { ok: false, code: LEAD_UNREACHABLE_CODE, error: hillLeadNotConfirmed(lead, requestId) };
@@ -468,7 +493,7 @@ export class HillMemberForward implements HillLeadForward {
 
   /** One call of the op route, read as far as the dial goes. */
   private async call(body: JsonObject): Promise<Read> {
-    return readDial(await this.link.call(CREW_HILL_OP_ROUTE, JSON.stringify(body), this.budgets.callMs));
+    return readDial(await this.link.call(CREW_HILL_OP_ROUTE, JSON.stringify(body), this.budgets.callMs), this.link.leadAtFloor());
   }
 
   async one(op: "status" | "withdraw", from: HillAgentSender, id: string): Promise<HillOneAnswer> {

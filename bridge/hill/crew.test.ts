@@ -13,11 +13,13 @@ import {
   CREW_HILL_MEDIA_ROUTE,
   CREW_HILL_OP_ROUTE,
   CREW_HILL_POST_ROUTE,
+  atTricksCrewFloor,
   HILL_HELD_MEMBER_BYTES,
   HILL_HELD_MS,
   HillCrewLead,
   HillHeldMedia,
   HillMemberForward,
+  HILL_SIGNATURE_REFUSED,
   LEAD_UNREACHABLE_CODE,
   olderThanTricksCrew,
   ownAddress,
@@ -125,6 +127,10 @@ interface TestLink extends HillLeadLink {
   down: boolean;
   status: number | null;
   older: boolean;
+  /** The lead's release is known and at the floor. */
+  atFloor: boolean;
+  /** The crew client's refusal of the dial (its `signature` is a 401 with no protocol banner), or null. */
+  refusal: string | null;
 }
 
 function wire(lead: HillCrewLead, memberId = "laptop"): TestLink {
@@ -133,11 +139,15 @@ function wire(lead: HillCrewLead, memberId = "laptop"): TestLink {
     down: false,
     status: null,
     older: false,
+    atFloor: false,
+    refusal: null,
     leadName: () => "desk",
     leadOlder: () => link.older,
+    leadAtFloor: () => link.atFloor,
     call: async (route: string, payload: string): Promise<CrewDialAnswer> => {
       link.calls.push(route);
       if (link.down) return { kind: "refused", reason: "transport" };
+      if (link.refusal !== null) return { kind: "refused", reason: link.refusal };
       if (link.status !== null) return { kind: "answer", status: link.status, body: { error: "not found" } };
       const body = parseJson(payload);
       const handle = route === CREW_HILL_MEDIA_ROUTE ? lead.media.bind(lead) : route === CREW_HILL_POST_ROUTE ? lead.post.bind(lead) : lead.op.bind(lead);
@@ -175,6 +185,14 @@ describe("the floor", () => {
     expect(olderThanTricksCrew("1.28.3", "1.29.0", compareSemver)).toBe(true);
     expect(olderThanTricksCrew("1.29.0", "1.29.0", compareSemver)).toBe(false);
     expect(olderThanTricksCrew(null, "1.29.0", compareSemver)).toBe(false);
+  });
+
+  test("only a lead that names a release at or above the floor is known to take Decisions", () => {
+    expect(atTricksCrewFloor("1.29.0", "1.29.0", compareSemver)).toBe(true);
+    expect(atTricksCrewFloor("1.30.2", "1.29.0", compareSemver)).toBe(true);
+    expect(atTricksCrewFloor("1.28.3", "1.29.0", compareSemver)).toBe(false);
+    expect(atTricksCrewFloor(null, "1.29.0", compareSemver)).toBe(false);
+    expect(atTricksCrewFloor("unknown", "1.29.0", compareSemver)).toBe(false);
   });
 
   test("only a pane address of the signing member's own machine is its own", () => {
@@ -392,10 +410,27 @@ describe("a member's forward", () => {
     expect(lead.store.all()).toHaveLength(0);
   });
 
-  test("a 401 from the lead is the signature, said plainly", async () => {
-    const { member, link } = crew();
+  test("a lead before 1.29.0 answers the uniform 401 (it does not sign these routes): read as older while its release is not known", async () => {
+    const { member, link, lead } = crew();
+    // The crew client's reading of a bare 401 (`signature`), and the status itself: both shapes.
+    link.refusal = "signature";
+    expect(await member.hill.postFields(SENDER, fields())).toMatchObject({ ok: false, code: "not_on_lead", error: expect.stringContaining("older than 1.29.0") });
+    expect(await member.hill.askStatus(SENDER, "dc_crew00000001")).toMatchObject({ ok: false, error: expect.stringContaining("older than 1.29.0") });
+    link.refusal = null;
     link.status = 401;
-    expect(await member.hill.postFields(SENDER, fields())).toEqual({ ok: false, code: null, error: "the lead refused this machine's signature" });
+    expect(await member.hill.postFields(SENDER, fields())).toMatchObject({ ok: false, code: "not_on_lead" });
+    expect(await member.hill.askList(SENDER)).toMatchObject({ ok: false, error: expect.stringContaining("older than 1.29.0") });
+    expect(lead.store.all()).toHaveLength(0);
+  });
+
+  test("a 401 from a lead known to be at 1.29.0 or later is the signature, said plainly", async () => {
+    const { member, link } = crew();
+    link.atFloor = true;
+    link.refusal = "signature";
+    expect(await member.hill.postFields(SENDER, fields())).toEqual({ ok: false, code: null, error: HILL_SIGNATURE_REFUSED });
+    link.refusal = null;
+    link.status = 401;
+    expect(await member.hill.postFields(SENDER, fields())).toEqual({ ok: false, code: null, error: HILL_SIGNATURE_REFUSED });
   });
 
   test("the member's own switches hold before any dial", async () => {

@@ -3296,7 +3296,7 @@ describe("POST /crew/v1/hill/* — a member's Decision on its lead's Hill (§22,
     expect(h.lines.some((line) => line.action === "crew.refused")).toBe(true);
   });
 
-  test("a collie that does not lead answers 404, and so does a lead built without the routes (before 1.29.0)", async () => {
+  test("a collie that does not lead answers 404, and so does a lead of this build given no Hill", async () => {
     const peer = harness(peerStore());
     const answer = (): HillCrewAnswer => ({ status: 200, body: {} });
     const asPeer = createCrewRouter({ store: peer.store, audit: peer.audit, transportPinned: true, hill: { media: answer, post: answer, op: answer } });
@@ -3306,5 +3306,18 @@ describe("POST /crew/v1/hill/* — a member's Decision on its lead's Hill (§22,
     for (const path of [CREW_HILL_MEDIA_PATH, CREW_HILL_POST_PATH, CREW_HILL_OP_PATH]) {
       expect((await call(older, path, signedPost("laptop", path, {}, T0)))!.status).toBe(404);
     }
+  });
+
+  test("a lead before 1.29.0 answers the uniform 401, not 404: a path it does not sign admits no signed member", async () => {
+    // A lead before 1.29.0 has the three paths outside its signable set. Its admission ignores the
+    // signature on a path it does not sign, so a member (which rides no pinned handshake into the lead)
+    // is unknown there: the uniform 401, before any routing. A path this build does not sign stands in.
+    const h = harness(leadStore({ peers: [member({ memberId: "laptop" })] }));
+    const handler = createCrewRouter({ store: h.store, audit: h.audit, now: () => T0 });
+    const path = "/crew/v1/hill/next";
+    const res = (await call(handler, path, signedPost("laptop", path, {}, T0)))!;
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({ error: "unauthorized" });
+    expect(res.headers.get("x-crew-protocol")).toBeNull();
   });
 });

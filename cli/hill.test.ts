@@ -746,6 +746,7 @@ async function slowCrew(delayMs: number): Promise<{ readonly sock: string[]; rea
   const link: HillLeadLink = {
     leadName: () => "desk",
     leadOlder: () => false,
+    leadAtFloor: () => true,
     call: async (route, payload) => {
       await Bun.sleep(delayMs);
       const handle = route === CREW_HILL_POST_ROUTE ? crewLead.post.bind(crewLead) : route === CREW_HILL_MEDIA_ROUTE ? crewLead.media.bind(crewLead) : crewLead.op.bind(crewLead);
