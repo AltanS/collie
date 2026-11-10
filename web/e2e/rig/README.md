@@ -13,9 +13,9 @@ Tier 1's config ignores `e2e/rig/`.
 
 The leg is a gate. It runs in these places:
 
-- **Before every release tag**, on the release head. All forty-one cases pass on the first tap:
-  thirty-four on the solo leg (three harnesses with five cases each, fourteen walky talky cases, case 22, case 25, case 26, case 28, and case 29) and
-  seven on the crew leg (below). A case that fails, or is not reached, holds the tag.
+- **Before every release tag**, on the release head. All forty-seven cases pass on the first tap:
+  thirty-eight on the solo leg (three harnesses with five cases each, fourteen walky talky cases, case 22, case 25, case 26, case 28, case 29, and the four space cases 30 to 33) and
+  nine on the crew leg (below). A case that fails, or is not reached, holds the tag.
 - **Before every release tag**, patch tags included, also on herdr-core (M79, "On herdr-core" below):
   the solo leg with `make browser-leg DIR=... MUX=herdr-core` (replay, about 30 minutes), and the crew
   leg with the member on the core, `make browser-leg-crew DIR=... MUX=herdr,herdr-core` (about 4
@@ -111,8 +111,8 @@ a rig in `scripts/browser-leg-nightly.test.ts`, which `bun run test` runs.
 
 ## The cases
 
-Each harness runs the same five cases. The walky talky cases (6 to 11 and 16 to 24), the stop case (25), the steer case (26) and the queued case (29) run on the harnesses the
-last column names. Cases 12 to 15 and 19 to 21 run on the crew leg only (below).
+Each harness runs the same five cases. The walky talky cases (6 to 11 and 16 to 24), the space cases (30 to 33), the stop case (25), the steer case (26) and the queued case (29) run on the harnesses the
+last column names. Cases 12 to 15, 19 to 21, 34 and 35 run on the crew leg only (below).
 
 | # | Case | Harnesses | Spec |
 | --- | --- | --- | --- |
@@ -134,9 +134,9 @@ last column names. Cases 12 to 15 and 19 to 21 run on the crew leg only (below).
 | 16 | A message during a running turn. A long numbered list streams (160 items on Claude, 180 on pi, 80 on omp). The operator holds Send and taps "Send as message" while it runs. The list runs to its last line, the agent then answers the body, the header is on the screen once, and the receipt ends at `delivered`. The phone's line under the box goes from "queued" to "typed into the pane". Claude (Enter), pi (Alt+Enter) and omp (Ctrl+Q) may take it into their queue during the turn, so the note says when the header showed. A message must never steer the turn | claude, pi, omp | `walky.spec.ts`, `walky-harnesses.spec.ts` |
 | 17 | A message over a question card. Claude asks a pick-one question (no option has a preview). A message sent while the card shows is not typed into the dialog and its receipt stays `accepted`. The phone answers the question (Cherry), and then the message is typed once, the receipt says `delivered` and the agent answers the body. Case 9 does the same over a permission card | claude | `walky.spec.ts` |
 | 18 | An address of a pane that closed. A second Claude starts, `who` prints its address with a token, and its pane closes. After the bridge's 30 s sweep another Claude starts. A message to the old `#token` address is refused, and the new pane gets nothing. Herdr does not give a closed pane's id to the next pane, so the refusal is `no such pane` here. `pane replaced` needs a multiplexer that reuses ids (tmux, zellij), and the unit tests carry it | claude | `walky.spec.ts` |
-| 19 | Crew leg. Member to lead. pi on the member runs `collie walky who` (which lists its own machine and points to the lead), then sends to Claude's address on the lead, taken from the lead's `who` and put in the prompt. Claude's pane gets the one-line nudge with no body, reads it with `collie walky inbox <id>` and replies. The member's `collie walky status <id>` says `delivered` (the lead pushed the outcome back), and the lead's status of the reply says `delivered` (the member's report). Case 13 is the mirror image | claude (lead), pi (member) | `walky-crew.spec.ts` |
+| 19 | Crew leg. Member to lead. pi on the member runs `collie walky who` (which asks its lead and lists its space on every machine), then sends to Claude's address on the lead, taken from the lead's `who` and put in the prompt. Claude's pane gets the one-line nudge with no body, reads it with `collie walky inbox <id>` and replies. The member's `collie walky status <id>` says `delivered` (the lead pushed the outcome back), and the lead's status of the reply says `delivered` (the member's report). Case 13 is the mirror image | claude (lead), pi (member) | `walky-crew.spec.ts` |
 | 20 | Crew leg. Walky talky off on the member. The member's bridge restarts with `COLLIE_WALKY=off`. Claude on the lead sends to pi and reads `not sent: off`; the lead's status says `refused (off)`; pi's pane gets nothing. The Crew page's message to that machine (the sheet's "Send to" set to it) draws the receipt row `rig-member/all` with `not sent: off`, and the member counts the refusals in its own `refusals.json`. The lead's "Not sent on this machine" line counts only the lead's own refusals, so it stays empty. The member then restarts without the setting and is reachable | claude (lead), pi (member) | `walky-crew.spec.ts` |
-| 21 | Crew leg. The pair limit. A throwaway Claude on the lead sends seven messages to pi on the member through the CLI (`collie walky send` with that pane's markers). pi's box holds a draft, so the first six are held (`accepted`, and the lead reads the reason `draft present` from the member's report) and cost no model turn. Each send waits the CLI's 15 seconds for an outcome, so the six take about 90 seconds. The seventh is refused `pair limit` on the lead and never dialled, and the draft is untouched. The draft stays at the end: clearing it would type the six. This is the crew leg's last case, and the rig takes the holds down with it | claude (lead), pi (member) | `walky-crew.spec.ts` |
+| 21 | Crew leg. The pair limit. A throwaway Claude on the lead sends seven messages to pi on the member through the CLI (`collie walky send` with that pane's markers). pi's box holds a draft, so the first six are held (`accepted`, and the lead reads the reason `draft present` from the member's report) and cost no model turn. Each send waits the CLI's 15 seconds for an outcome, so the six take about 90 seconds. The seventh is refused `pair limit` on the lead and never dialled, and the draft is untouched. The draft stays at the end: clearing it would type the six. Cases 34 and 35 follow it and leave the draft alone, and the rig takes the holds down with it | claude (lead), pi (member) | `walky-crew.spec.ts` |
 | 22 | Model from the belt over a draft. A word typed into Claude's box outside the phone is a draft. The belt's Model is refused `draft_present`, and the phone offers Replace and Cancel, no Add, with the notice "Replace it, or cancel". One tap on Replace empties the box and sends `/model`: the picker opens on the pane and as a card on the phone, and the draft is gone. Escape outside the phone closes the picker. No model turn | claude | `claude.spec.ts` |
 | 23 | A held message cancelled by its sender (M62 spec 03). The operator's message over a draft is held (`accepted`, `draft present`). In the pane's Messages sheet the held row carries Cancel; a tap ends it as `inbox-only` with the reason `cancelled by sender`, the draft is untouched, and nothing is typed once the box is cleared | claude | `walky.spec.ts` |
 | 24 | A held message dropped by the pane's owner (M62 spec 03). A second Claude sends through the CLI over a draft, so the message is an agent's and held. The phone shows "1 message waits for the box to clear" above the box; a tap opens the Messages sheet on it, Drop ends it as `inbox-only` with the reason `dropped by the pane's owner`, the mark goes, and nothing is typed once the box is cleared | claude | `walky.spec.ts` |
@@ -145,6 +145,12 @@ last column names. Cases 12 to 15 and 19 to 21 run on the crew leg only (below).
 | 27 | Steer while working (Codex): case 26 on Codex, with the profile's `steerDelayMs` (1000) added to the 5 s window. Not built: this rig starts claude, pi and omp only, and a Codex harness needs a binary, a login seed, an entry in `harnesses.ts`, and a column in the nightly's table. `steer.spec.ts` carries the helper and its `steerDelayMs` parameter, so the case is one test line once the harness exists | none yet | `steer.spec.ts` |
 | 28 | Clear a draft from the Keys board (ADR 0116). A word is typed into pi's box outside the phone (the keys route, as case 22 types one) and never sent, so the Surface reads `draft` and the Keys board's Clear button is enabled. One tap posts one `POST /api/pane/:id/clear`, and the bridge presses pi's clear key as a person's tap. The receipt says `cleared`, the notice "Box cleared." shows under the box, the box reads free within 5 s and the word is gone from the screen. No prompt is sent: zero model turns, nothing on OpenRouter | pi | `clear.spec.ts` |
 | 29 | A queued send on omp (ADR 0122). Two passes over a long numbered list (80 items). In each, a send from the composer while the turn runs is queued: the receipt is `sent` + `queued`, and within one poll Chat shows the "Waiting to send" card with the text and no button. Stop (arm, then Stop) ends the turn, omp puts the text back into its box, and the card turns "Back in the box" with Send and Discard; the receipt carries `late: "returned"`. Pass 1 taps Send: the submit key goes alone, omp answers the text, the log holds it once and the card goes. Pass 2 taps Discard: the box reads empty, the card goes and the text never becomes a prompt. Three model turns | omp | `queued.spec.ts` |
+| 30 | The space border, inside (M98). A throwaway Claude in the run's own space sends to the session pane through the CLI, once plainly and once with `--outside`. A draft in the target's box holds both (`accepted`, `draft present`), and each receipt says it passed as `in`: a message to a pane of the sender's own space needs no flag, and the flag changes nothing. The `inbox` header of the `--outside` message has no `outside` word. Both are taken back with `collie walky cancel` before the draft is cleared. No model turn | claude | `walky.spec.ts` |
+| 31 | The space border, across. A throwaway Claude in another space sends to the idle session pane. The CLI exits 4 with the receipt `refused` (`outside your space`), and without `--json` prints `not sent: outside your space` with the three ways through. Nothing reaches the pane: not its screen, not its list, its box stays free. The bridge counts both refusals in `refusals.json`. No model turn | claude | `walky.spec.ts` |
+| 32 | The space border, a reply. The session pane writes first to the pane in the other space with `--outside`; that pane answers with a plain reply, which passes as `reply`; the session pane answers the reply, which passes as `reply` the other way. A fresh send from the other pane, not a reply, is refused `outside your space`. Both boxes hold a draft, so every message passed is held, and each is taken back before the drafts clear. No model turn | claude | `walky.spec.ts` |
+| 33 | The space border, `--outside`. A throwaway Claude in another space sends to the idle session pane with `--outside`. The receipt says `delivered` and `outside`. The nudge on the pane has the word `outside` after the sender's parenthesis and no body; the pane reads the body with `collie walky inbox <id>` and answers `OUTSIDE-OK`. One Claude turn | claude | `walky.spec.ts` |
+| 34 | Crew leg. The border across the crew. A throwaway Claude on the lead sends `here`. A named space is one space on every machine, so the receipts name Claude's pane on the lead and pi's pane on the member (the member's pane is in the space of the same name), not the sender. The member's own receipt for pi says `in`. A draft in each box holds the message, the lead's hold is taken back, and pi's draft is left alone. No model turn | claude (lead), pi (member) | `walky-crew.spec.ts` |
+| 35 | Crew leg. An unnamed space on the member. A second pi on the member is in a space with no name of its own, so it never joins a space elsewhere. `here` from the same sender does not name it, a message to its address is refused `outside your space` by the member (which owns the pane and counts the refusal), and nothing is typed into it. No model turn | claude (lead), pi (member) | `walky-crew.spec.ts` |
 
 The walky talky path is the same bridge code for every harness, so Claude carries most of the cases and
 pi and omp prove that their screens take the message. The table prints a row only for a harness a case
@@ -157,7 +163,7 @@ settings allow `Bash(collie walky:*)`, so the verbs ask no permission.
 
 ## The crew leg
 
-A second Playwright config, `crew.config.ts`, runs the walky talky cases that need a crew (12 to 14 and 19 to 21), and the release-line case (15)
+A second Playwright config, `crew.config.ts`, runs the walky talky cases that need a crew (12 to 14, 19 to 21, 34 and 35), and the release-line case (15)
 against two machines on this one host:
 
 - **The lead** is the solo rig: Herdr session `collie-rig`, its attached client, and a bridge on a
@@ -208,6 +214,28 @@ bun e2e/rig/rig.ts down --crew
 `crew stop-member` and `crew start-member` signal the rig's daemon, which owns every process and is
 the one writer of `rig.json`. The member's Herdr and its agents keep running, as on a machine whose
 Collie stopped.
+
+## Spaces
+
+A walky talky message of an agent stays in its space (M98), so the rig says which space each pane is in, on
+every multiplexer, through its own start (`startInPane` in `rig-lib.ts`) and never in a spec. A space is
+known by its name, on every machine.
+
+- **Every harness pane is in one named space**, `RIG_SPACE`, on the lead and on the member. So the agents of
+  different harnesses and machines message each other as the cases always had them do, without `--outside`:
+  cases 8, 13, 19, 20, 21 and 24 depend on it.
+- **A pane in another space** is started with `startExtraAgent(rig, id, { space: OTHER_SPACE })`. **A pane in
+  a space with no name of its own** is `{ space: null }`; `{ machine: "member" }` starts it on the member.
+- **On Herdr** a space is a workspace and its label is its name; two workspaces with one name are one space. A
+  space with no name has its workspace renamed to its own id, which the adapter reads as no name.
+- **On herdr-core** a space is named only when herdr-app's layout document names it. The rig has no herdr-app,
+  so it writes the few fields herdr-app would (`doc.set` on the document `herdr-app`, through the core's
+  socket, once per name) and puts the `herdr.space` and `herdr.tab` labels on the terminal. A terminal with
+  no such labels is in the core's implicit space, which is unnamed (the view shell is).
+- **Held, not delivered.** The border cases send through the CLI with a pane's own markers and hold what
+  passes behind a draft in the target's box, so they spend no model turn. A case takes its held messages
+  back (`collie walky cancel`, from the sender) before it clears a draft. The crew cases never clear pi's
+  draft, which holds case 21's messages.
 
 ## On herdr-core
 
@@ -559,13 +587,13 @@ On replay, pi, omp and Claude spend no model turn: the stub serves them. The tur
 leg asks of each harness, and on a live run (a new version, or forced) they are paid turns: OpenRouter
 for pi and omp, the subscription for Claude.
 
-- Claude: 24 model turns on Haiku (the count of `turns-claude` in the run folder): the permission
+- Claude: 25 model turns on Haiku (the count of `turns-claude` in the run folder; case 33 is the 25th, so the cap has no room left): the permission
   request, the pick-many question, the long list plus one message sent while it streams, seven prompts for the Load older history (each reads four tiny files and
-  replies with a marker), and 13 for walky talky: the operator's message (6), the nudge from pi (8), the
+  replies with a marker), and 14 for walky talky: the operator's message (6), the nudge from pi (8), the
   permission request, the message that waited behind it, the draft once sent and the message held behind
   it (9), the broadcast (10), the
   forged header (11, two), the long list and the message sent during it (16), and the question and the
-  message that waited behind it (17). The picker and case 18 need no turn. A run caps each harness at 25 turns (`TURN_CAP` in `leg.ts`), and every turn is logged in
+  message that waited behind it (17), and the nudge of `--outside` (33). The picker and cases 18, 30, 31 and 32 need no turn. A run caps each harness at 25 turns (`TURN_CAP` in `leg.ts`), and every turn is logged in
   `~/.cache/collie-lab/browser-leg-state/turns.log`.
 - pi and omp: 11 turns each, replayed from the recordings (no cost), or on Haiku 4.5 when live. Case 26 adds 1 on pi (the long turn; the steered line is answered inside it). Case 28 adds none. Walky talky adds 6 on pi (case 7,
   the send and the reply nudge of case 8, the broadcast, and the two of case 16) and 4 on omp (case 7, the
@@ -573,7 +601,7 @@ for pi and omp, the subscription for Claude.
   seven prompts ("Reply with exactly DONE-n") and 45 shell lines (`!echo`) after the first, which run
   without the model and pad the rows past the 40-row page floor. omp's permission case runs
   omp with `--approval-mode write`, so a bash call asks.
-- The crew leg (cases 12 to 15 and 19 to 21) adds 6 Claude turns and 4 pi turns, and about 4 minutes plus the rig's
+- The crew leg (cases 12 to 15, 19 to 21, 34 and 35; the last two spend no turn) adds 6 Claude turns and 4 pi turns, and about 4 minutes plus the rig's
   start. A nightly run is therefore about 15 minutes, 29 Claude turns, 21 pi turns and 15 omp turns.
 - Time: about 11 minutes for all three harnesses, about 3 of them for Claude alone. A case that waits
   out its reply timeouts adds up to 4 minutes.

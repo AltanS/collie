@@ -20,6 +20,7 @@ import {
   captureScreen,
   freeSurface,
   hold,
+  hostOf,
   jsonRows,
   message,
   phoneOn,
@@ -28,6 +29,7 @@ import {
   tap,
   tapWords,
   waitIdle,
+  type Host,
   type Rig,
   type ScenarioId,
   type ScenarioResult,
@@ -35,12 +37,15 @@ import {
   type TapRecorder,
   type Trail,
 } from "./leg";
-import { DEVICE_LABEL, machineDirs, memGuard, paneMarkers, readRun, sleep, startInPane, type Machine } from "./rig-lib";
+import { DEVICE_LABEL, RIG_SPACE, machineDirs, memGuard, paneMarkers, readRun, sleep, startInPane, type Machine, type RigSpace } from "./rig-lib";
 
 export const PHONE = devices[PHONE_DEVICE];
 
 /** How long a reply on Haiku may take before the case gives up on it. */
 export const REPLY_MS = 120_000;
+
+/** The one reason the space border refuses a message with (bridge/walky/border.ts OUTSIDE_YOUR_SPACE). */
+export const OUTSIDE_YOUR_SPACE = "outside your space";
 
 /** A literal string as a RegExp source. */
 export function escape(text: string): string {
@@ -338,18 +343,45 @@ export async function whoAddress(rig: Rig, paneId: string): Promise<string | nul
 /** Quote a word for /bin/sh. */
 const quoted = (word: string): string => `'${word.replaceAll("'", `'\\''`)}'`;
 
+export interface ExtraAgent {
+  /** The machine the agent runs on. The lead's by default. */
+  readonly machine?: Machine;
+  /** The agent's walky talky space (rig-lib.ts RigSpace). RIG_SPACE by default, which is where every harness pane of the rig is. */
+  readonly space?: RigSpace;
+}
+
 /**
  * Start one more agent of a harness in a fresh pane, from the start script the run already wrote
  * (`prepareHarness` ran when the session started, so the scratch config is not rewritten under a
  * running agent). Throws NotReached when it never comes up idle. The caller closes the pane.
+ *
+ * It is in the rig's own space, so it can message the session panes of the run and take their messages;
+ * a case that needs it outside passes `space` (`OTHER_SPACE`, or null for a space with no name of its
+ * own). On the crew rig, `machine: "member"` starts it on the member, and `harnessDirs` must hold that
+ * machine's start script (the crew leg's `openSession(id, "member")` wrote it).
  */
-export async function startExtraAgent(rig: Rig, id: HarnessId): Promise<string> {
+export async function startExtraAgent(rig: Rig, id: HarnessId, extra: ExtraAgent = {}): Promise<string> {
+  const machine = extra.machine ?? "lead";
   memGuard(`an extra ${id}`);
-  const dirs = harnessDirs(id);
-  const paneId = await startInPane(dirs.project, `leg-${id}-extra`, `exec ${quoted(dirs.start)}`);
-  const up = await rig.until(() => rig.pane(paneId), (pane) => pane !== null && pane.agent === SETUPS[id].agent && (freeSurface(pane) || (pane.surface === null && pane.status === "idle")), 90_000, 700);
+  const dirs = harnessDirs(id, machine);
+  const paneId = await startInPane(dirs.project, `leg-${id}-extra`, `exec ${quoted(dirs.start)}`, machine, extra.space ?? RIG_SPACE);
+  const host = hostOf(machine);
+  const up = await rig.until(() => rig.pane(paneId, host), (pane) => pane !== null && pane.agent === SETUPS[id].agent && (freeSurface(pane) || (pane.surface === null && pane.status === "idle")), 90_000, 700);
   if (up === null) throw new NotReached(`an extra ${id} did not come up idle in 90 s`);
   return paneId;
+}
+
+/**
+ * Put a draft in a pane's box (typed outside the phone, never sent) and wait until the Surface reads
+ * it. A draft holds every message to the pane (`accepted` with `draft present`, never typed), so a
+ * message a case sends costs the pane no model turn. Clear it with `resetBox` once the held messages
+ * are taken back (`cliCancel`): a draft cleared over a held message types it.
+ */
+export async function ensureDraft(rig: Rig, paneId: string, host?: Host): Promise<void> {
+  const reads = async (): Promise<boolean> => (await rig.pane(paneId, host).catch(() => null))?.surface?.composer === "draft";
+  if (await reads()) return;
+  await rig.keys(paneId, ["d", "r", "a", "f", "t"], host);
+  if ((await rig.until(reads, (drafted) => drafted, 15_000, 500)) !== true) throw new NotReached(`the box of ${paneId} never read as a draft`);
 }
 
 /** This checkout: web/e2e/rig/walky-lib.ts is three levels below it. */
@@ -363,17 +395,39 @@ export interface CliSend {
   readonly out: string;
 }
 
+export interface CliSendOptions {
+  /** `--outside`: the message may leave the sender's space (M98). The CLI refuses it from a shell that is no agent pane. */
+  readonly outside?: boolean;
+  /** Print the words an agent reads (`not sent: ...`) rather than the JSON the rig reads: `id` and `receipts` are then empty. True by default. */
+  readonly json?: boolean;
+}
+
 /**
  * `collie walky send` as an agent's Bash tool runs it, with no model turn: this checkout's CLI, the
  * sender pane's own mux markers (Herdr's `HERDR_PANE_ID` or the core's `HC_TERMINAL_ID`, and the machine's socket) and its machine's state dir.
  * The HOME is the bridge's empty one, so the CLI can reach no bridge but the rig's own. The bridge
  * proves the sender the way it proves an agent's: the markers name the pane.
  */
-export async function cliSend(senderPane: string, to: string, text: string, machine: Machine = "lead"): Promise<CliSend> {
-  const result = await runCli(senderPane, ["send", "--json", to, text], machine);
+export async function cliSend(senderPane: string, to: string, text: string, machine: Machine = "lead", options: CliSendOptions = {}): Promise<CliSend> {
+  const result = await runCli(senderPane, ["send", ...(options.json === false ? [] : ["--json"]), ...(options.outside === true ? ["--outside"] : []), to, text], machine);
   const doc = asJsonObject(parseJsonLine(result.out));
   return { code: result.code, id: asJsonString(doc?.id) ?? null, receipts: jsonRows(doc?.receipts), out: result.out.trim() };
 }
+
+/** `collie walky reply <id> <text>` from a pane, as `cliSend` runs `send`: the bridge sends it to the pane that sent `id`. */
+export async function cliReply(senderPane: string, id: string, text: string, machine: Machine = "lead", options: CliSendOptions = {}): Promise<CliSend> {
+  const result = await runCli(senderPane, ["reply", ...(options.json === false ? [] : ["--json"]), ...(options.outside === true ? ["--outside"] : []), id, text], machine);
+  const doc = asJsonObject(parseJsonLine(result.out));
+  return { code: result.code, id: asJsonString(doc?.id) ?? null, receipts: jsonRows(doc?.receipts), out: result.out.trim() };
+}
+
+/** `collie walky inbox --keep <id>` from a pane: the header line and the body, as the agent in that pane reads them, and the message stays unread. */
+export async function cliInbox(pane: string, id: string, machine: Machine = "lead"): Promise<string> {
+  return (await runCli(pane, ["inbox", "--keep", id], machine)).out.trim();
+}
+
+/** How a message passed the space border (`via`), from a row of a pane's list (the receipt inside it) or from a receipt itself, or null when it names none. */
+export const viaOf = (row: JsonObject | undefined): string | null => asJsonString(asJsonObject(row?.receipt)?.via) ?? asJsonString(row?.via) ?? null;
 
 export interface CliCancel {
   /** The exit code: 0 taken back (or already in the inbox), 3 nothing to take back, 4 not the sender. */

@@ -125,7 +125,7 @@ release. 1.14.2 was cut this way on 2026-09-28.
    set: `bunx playwright test -c e2e/rig/playwright.config.ts` (*Browser tests*; the prerequisites are
    in `web/e2e/rig/README.md`). It starts a scratch bridge and Herdr with real Claude Code, pi and omp,
    and takes about 5 minutes. Then run the crew leg, `bunx playwright test -c e2e/rig/crew.config.ts`:
-   a lead and a member, about 4 minutes. All forty-one cases (thirty-four solo, seven on the crew leg)
+   a lead and a member, about 4 minutes. All forty-seven cases (thirty-eight solo, nine on the crew leg)
    must pass on the first tap. A failed case holds the tag, and so does a case that was not reached.
 
    **Every tag, a patch tag too, also runs the legs on herdr-core** (M79, replay, no model turn on
@@ -420,7 +420,7 @@ component, not a spec. On 2026-10-17 the specs that did not pass that test moved
   crew leg** (`-c e2e/rig/crew.config.ts`): the same phone against a lead and a member, for the walky
   talky cases that need a crew. It is **the gate before
   every release tag**, and **the proof for a change to a harness reader, the Surface, the Send
-  Protocol or the ask code**: run it on the branch, and all forty-one cases (thirty-four solo, seven
+  Protocol or the ask code**: run it on the branch, and all forty-seven cases (thirty-eight solo, nine
   on the crew leg) pass on the first tap. Every tag also runs the solo leg on herdr-core
   (`make browser-leg DIR=... MUX=herdr-core`) and the crew leg with its member on the core
   (`make browser-leg-crew DIR=... MUX=herdr,herdr-core`), and a change to a harness reader, the Surface,

@@ -14,8 +14,9 @@ function cells(leg: Leg): string[] {
 }
 
 describe("the browser leg's cases per leg", () => {
-  test("the solo leg prints thirty-four cells: the twenty-two it printed before the crew leg, cases 16 to 18, case 22, the two take-backs, case 25, case 26, case 28, and case 29", () => {
-    expect(cells("solo")).toHaveLength(34);
+  test("the solo leg prints thirty-eight cells: the twenty-two it printed before the crew leg, cases 16 to 18, case 22, the two take-backs, case 25, case 26, case 28, case 29, and the four space cases 30 to 33", () => {
+    expect(cells("solo")).toHaveLength(38);
+    expect(cells("solo").filter((cell) => / walky-space-/.test(cell))).toEqual(["claude walky-space-in", "claude walky-space-refused", "claude walky-space-reply", "claude walky-space-outside"]);
     expect(cells("solo").filter((cell) => cell.endsWith(" queued-omp"))).toEqual(["omp queued-omp"]);
     expect(cells("solo").filter((cell) => cell.endsWith(" stop-pi"))).toEqual(["pi stop-pi"]);
     expect(cells("solo").filter((cell) => cell.endsWith(" belt-model-draft"))).toEqual(["claude belt-model-draft"]);
@@ -25,7 +26,7 @@ describe("the browser leg's cases per leg", () => {
     expect(cells("solo").every((cell) => !cell.includes("walky-crew"))).toBe(true);
   });
 
-  test("the crew leg prints cases 12 to 15 and 19 to 21, once each, under Claude", () => {
+  test("the crew leg prints cases 12 to 15, 19 to 21, 34 and 35, once each, under Claude", () => {
     expect(cells("crew")).toEqual([
       "claude walky-crew-broadcast",
       "claude walky-crew-agents",
@@ -34,6 +35,8 @@ describe("the browser leg's cases per leg", () => {
       "claude walky-crew-member-to-lead",
       "claude walky-crew-off",
       "claude walky-crew-pair-limit",
+      "claude walky-crew-space-here",
+      "claude walky-crew-space-unnamed",
     ]);
   });
 

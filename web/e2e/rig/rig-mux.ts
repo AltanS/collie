@@ -1,5 +1,5 @@
 // The multiplexer each machine of the rig runs, chosen by COLLIE_RIG_MUX (M78 spec 03). Pure: no
-// side effects, Node builtins only, so the rig CLI (bun), the Playwright runner (node) and the tests
+// side effects, Node builtins and the web's JSON readers only, so the rig CLI (bun), the Playwright runner (node) and the tests
 // import the same rules.
 //
 //   COLLIE_RIG_MUX unset or `herdr`      every machine runs a scratch Herdr TUI server (the gate as it was)
@@ -9,6 +9,8 @@
 // The driver itself (start, a pane, a harness, a close, the stop) is in rig-lib.ts for the panes and in
 // rig.ts for the server's life, one branch per mux. The herdr branch is the rig as it was before M78.
 import { join } from "node:path";
+
+import { asJsonObject, type JsonObject, type JsonValue } from "../../src/lib/json";
 
 export type RigMux = "herdr" | "herdr-core";
 export const RIG_MUXES: readonly RigMux[] = ["herdr", "herdr-core"];
@@ -64,7 +66,68 @@ export const beaconHookCommand = (collie: string): string => `${collie} beacon e
  */
 export const CORE_RIG_LABEL = "collie-rig.label";
 
-/** The `hc run` arguments of a new rig terminal: no name, the rig's label as an hc label. */
-export function coreRunArgs(cwd: string, label: string, argv: readonly string[]): string[] {
-  return ["run", "--bg", "--label", `${CORE_RIG_LABEL}=${label}`, "--cwd", cwd, "--no-parent", "--no-notify", ...(argv.length === 0 ? [] : ["--", ...argv])];
+/** The `hc run` arguments of a new rig terminal: no name, the rig's label as an hc label, then any more labels. */
+export function coreRunArgs(cwd: string, label: string, argv: readonly string[], labels: Readonly<Record<string, string>> = {}): string[] {
+  const more = Object.entries(labels).flatMap(([key, value]) => ["--label", `${key}=${value}`]);
+  return ["run", "--bg", "--label", `${CORE_RIG_LABEL}=${label}`, ...more, "--cwd", cwd, "--no-parent", "--no-notify", ...(argv.length === 0 ? [] : ["--", ...argv])];
+}
+
+// ── spaces on the core (M98 spec 06) ─────────────────────────────────────────────────────────────
+//
+// A walky talky message stays in its space, and a space is the multiplexer's own grouping. On Herdr a
+// space is a workspace and its label is its name (rig-lib.ts). On herdr-core the bridge reads a space
+// from herdr-app's layout document (`doc.get herdr-app`) and the `herdr.space` and `herdr.tab` labels of
+// a terminal (bridge/mux/herdr-core/layout.ts), and counts a space as named only when the DOCUMENT names
+// it. The rig has no herdr-app, so it writes the same few fields herdr-app would (`doc.set`, which the
+// core stores as an opaque value) and labels its terminals. A terminal with no such labels is in the
+// core's implicit space, which is unnamed: that is the shape of the rig's view shell.
+
+/** The labels herdr-app puts on a terminal to place it in a space and a tab (layout.ts SPACE_LABEL and TAB_LABEL). */
+export const CORE_SPACE_LABEL = "herdr.space";
+export const CORE_TAB_LABEL = "herdr.tab";
+
+/** The name of herdr-app's layout document on a core. */
+export const CORE_LAYOUT_DOC = "herdr-app";
+
+/** The ids a rig space has in the layout document: one tab holds every terminal of the space. */
+export interface CoreSpaceIds {
+  readonly space: string;
+  readonly tab: string;
+}
+
+/** A space's ids from its name: the same name gives the same ids on every machine and every run. */
+export function coreSpaceIds(name: string): CoreSpaceIds {
+  const slug = name.toLowerCase().replace(/[^a-z0-9]+/gu, "-").replace(/^-|-$/gu, "");
+  return { space: `sp-rig-${slug}`, tab: `tb-rig-${slug}` };
+}
+
+/** The labels that put a terminal in a rig space. */
+export const coreSpaceLabels = (ids: CoreSpaceIds) => ({ [CORE_SPACE_LABEL]: ids.space, [CORE_TAB_LABEL]: ids.tab });
+
+/** A fresh unnamed space: ids no document names, so the bridge reads it as a space of its own with no name. */
+export function coreUnnamedSpaceIds(stamp: string): CoreSpaceIds {
+  return { space: `sp-rig-unnamed-${stamp}`, tab: `tb-rig-unnamed-${stamp}` };
+}
+
+/** The layout document with a space in it, and whether the caller must write it. */
+export interface LayoutWithSpace {
+  readonly value: JsonObject;
+  readonly ids: CoreSpaceIds;
+  /** False when the document named the space already: write nothing. */
+  readonly changed: boolean;
+}
+
+/**
+ * The layout document with a space named `name` in it. The document as it was when it already holds
+ * one; else every other field kept and the space added, with one unnamed tab. Pure: the caller reads
+ * the document (`doc.get`) and writes the result (`doc.set`).
+ */
+export function layoutWithSpace(value: JsonValue | undefined, name: string): LayoutWithSpace {
+  const doc = asJsonObject(value) ?? {};
+  const spaces = Array.isArray(doc.spaces) ? doc.spaces : [];
+  const ids = coreSpaceIds(name);
+  const held = spaces.some((space) => asJsonObject(space)?.name === name && asJsonObject(space)?.id === ids.space);
+  if (held) return { value: doc, ids, changed: false };
+  const added = { id: ids.space, name, folder: "", tabs: [{ id: ids.tab, name: "" }] };
+  return { value: { ...doc, spaces: [...spaces, added] }, ids, changed: true };
 }
