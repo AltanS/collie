@@ -373,6 +373,15 @@
      draws its folder edge in ink. A pair and not var(--foreground), like --pane-active: the theme
      file for `collie` holds every optional token, and a theme that sets one half is filled from it. */
   --tab-active: light-dark(oklch(0.14 0 0), oklch(0.985 0 0));
+  /* The ground of a found or matched piece of text: Find in Chat, and the letters a list filter matches
+     (ui/match-text.tsx). A ground with alpha, laid over whatever the text sits on, so the ink on top
+     keeps its own colour (`text-inherit`) and a mark stays readable on a current or a blocked row.
+     The default is the amber the app drew as a literal before it had this token: Tailwind 4.3.1's
+     amber-300 at 70% in the light half (oklch(87.9% 0.169 91.605 / 0.7)) and amber-500 at 40% in the
+     dark half (oklch(76.9% 0.188 70.08 / 0.4)), written here as the same oklch with alpha, so the pixel
+     is the one it replaced. A pair, like --pane-active: the theme file for `collie` holds every optional
+     token, and a theme that sets one half is filled from it. */
+  --find: light-dark(oklch(0.879 0.169 91.605 / 0.7), oklch(0.769 0.188 70.08 / 0.4));
   --secondary: light-dark(oklch(0.915 0.004 80), oklch(0.28 0.003 80));
   --secondary-foreground: light-dark(oklch(0.16 0 0), oklch(0.985 0 0));
   /* The INERT fill — a well, a disabled track, a quiet chip on a card. Value unchanged (rgb 235
@@ -686,6 +695,7 @@
   --color-control-on-foreground: var(--control-on-foreground);
   --color-pane-active: var(--pane-active);
   --color-tab-active: var(--tab-active);
+  --color-find: var(--find);
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
   --color-muted: var(--muted);
