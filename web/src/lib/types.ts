@@ -995,6 +995,12 @@ export interface UpdateInfo {
    */
   packageCommand?: string;
   /**
+   * The build the lead answers the crew with (`<semver>` or `<semver>+<sha>`); `current` is its plain
+   * `package.json` version. A `-dev` build here leads no crew run (`leadLevelsCrew` in
+   * `lib/crew-level.ts`). Absent on an older bridge, which reads as a release.
+   */
+  build?: string;
+  /**
    * The release whose OFFER the operator closed, or null. Held by the BRIDGE, so the decision holds
    * on every screen (M17/08). Absent on an older bridge, which reads as "nothing dismissed".
    */

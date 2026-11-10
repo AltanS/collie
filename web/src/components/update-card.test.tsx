@@ -758,6 +758,27 @@ describe("single action button", () => {
   });
 });
 
+describe("a lead on a development build (2026-11-09)", () => {
+  const crew: UpdateCrewMember[] = [
+    { name: "minibuch", version: "1.27.0", verdict: "green", reasons: [], asOf: 1_700_000_000_000 },
+  ];
+
+  it("offers no crew run: it can hand nobody a turn", async () => {
+    const current = info({ current: "1.28.0", latest: "1.28.0", releaseAvailable: false, newerVersions: [], build: "1.28.0-dev+047ee5bbd0" });
+    serveCheck(current, GREEN, crew);
+    renderCard(current, LEAD_ROSTER);
+    expect(await screen.findByText("minibuch")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: RETRY })).not.toBeInTheDocument();
+  });
+
+  it("a release build of the same version still offers the retry", async () => {
+    const current = info({ current: "1.28.0", latest: "1.28.0", releaseAvailable: false, newerVersions: [], build: "1.28.0+b178eb63f2" });
+    serveCheck(current, GREEN, crew);
+    renderCard(current, LEAD_ROSTER);
+    expect(await screen.findByRole("button", { name: RETRY })).toBeInTheDocument();
+  });
+});
+
 /** What `startUpdate` puts on the wire. Named so the assertions below read against a contract
  *  rather than an anonymous bag. */
 interface StartBody {

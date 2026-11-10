@@ -447,7 +447,7 @@ export interface CrewFollowerDeps {
     down?: boolean;
     line?: ReleaseLine;
     step?: LeadStep;
-  }) => { ok: true } | { ok: false; reason: string };
+  }) => { ok: true } | { ok: false; reason: string } | Promise<{ ok: true } | { ok: false; reason: string }>;
   readonly now?: () => number;
   /**
    * Where a `[crew] follow:` line goes — `console.log`, this peer's own journal, unless a caller
@@ -608,7 +608,10 @@ export class CrewFollower {
       this.record(decision, mine);
       if (decision.kind === "follow") {
         const { kind: _kind, ...asked } = decision;
-        const started = this.deps.start(asked);
+        // Awaited for the LAUNCH decision only (the bridge may ask the service manager patiently);
+        // the update itself is never waited on. `deciding` stays set across it, so no second
+        // sweep starts a second updater meanwhile.
+        const started = await this.deps.start(asked);
         if (started.ok) {
           this.started = { runId: decision.runId, tag: decision.tag, at: this.now() };
         } else {

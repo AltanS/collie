@@ -270,6 +270,17 @@ export type SendOptions = { TTL: number; topic?: string; urgency?: "very-low" | 
 //      held, the clear already went, or the device's own page read the pane, closed its notification
 //      and zeroed its icon count ({@link Push.noteSeen}). A slot it knows nothing about (after a restart) still gets the clear.
 //   3. Clears that land in one burst go to each device as ONE push naming every slot.
+//
+// A fourth rule, since 2026-11-09, trades a little of what a person sees for the budget:
+//
+//   4. A subscription gets at most {@link SILENT_CLEAR_BUDGET} silent clears in any rolling day, a
+//      burst of rule 3 counting as one. Rules 1 to 3 do not reach a phone in a pocket while its panes
+//      come and go (measured on 2026-11-09: 24 clears to one phone in a day, nearly none skipped), so
+//      past the budget a clear is skipped and never queued. The notification it would have closed
+//      goes another way that costs no push: the slot's next render replaces it (same tag), or the
+//      page sweeps its own notifications against the snapshot when it is next open
+//      (`web/src/lib/notification-sweep.ts`). Unlike rules 1 to 3 this one is kept on disk, because
+//      the release lane restarts on every update and Chrome's count does not.
 /**
  * How long after its last poll a device still counts as looking. The page polls `/api/snapshot`
  * (and the open pane) only while it is visible, and its longest gap is `IDLE_MS`, 6 s, in
@@ -331,9 +342,21 @@ export interface PushOptions {
 
 /** One tally line's counters for one device. `clear` is the silent count: every clear sent ends
  *  with no notification shown by design. */
-type Tally = { render: number; clear: number; held: number; late: number; dropped: number; skipped: number };
-const emptyTally = (): Tally => ({ render: 0, clear: 0, held: 0, late: 0, dropped: 0, skipped: 0 });
+type Tally = { render: number; clear: number; held: number; late: number; dropped: number; skipped: number; overBudget: number };
+const emptyTally = (): Tally => ({ render: 0, clear: 0, held: 0, late: 0, dropped: 0, skipped: 0, overBudget: 0 });
 const HOUR_MS = 3_600_000;
+
+/**
+ * Rule 4: at most `clears` silent clears reach one subscription in any rolling `windowMs`. Chrome's
+ * rule (the note above rule 1): a push that ends with no notification on screen costs 2 points, a site
+ * earns at most 0.5 an hour from engagement and keeps 4 days of it, so a site used every day affords
+ * about 6 silent pushes a day before Chrome shows "This site has been updated in the background".
+ * Four leaves room for the renders a visible app suppresses, which the bridge cannot always see.
+ */
+export const SILENT_CLEAR_BUDGET = { clears: 4, windowMs: 24 * HOUR_MS } as const;
+
+/** Rule 4's memory, beside `push-subscriptions.json`: endpoint → when its silent clears went. */
+const CLEAR_BUDGET_FILE = "push-clear-budget.json";
 
 /** Delivers one payload to one subscription with the given options. Injectable so the prune/log
  *  logic is testable. */
@@ -488,6 +511,13 @@ export class Push {
   private tallySince: number;
   private readonly clock: PushClock;
   private readonly clearBurstMs: number;
+  // ── Rule 4's state, the one rule kept on disk ({@link CLEAR_BUDGET_FILE}). ──
+  /** Endpoint → when its silent clears went, oldest first, at most {@link SILENT_CLEAR_BUDGET}`.clears`. */
+  private clearSpends = new Map<string, number[]>();
+  private readonly budgetFile: string;
+  /** A row left the map since the file was written: the next {@link save} writes the budget too. */
+  private budgetDirty = false;
+  private budgetChain: Promise<void> = Promise.resolve();
 
   constructor(
     private readonly cfg: Config,
@@ -495,6 +525,7 @@ export class Push {
     opts: PushOptions = {},
   ) {
     this.file = join(cfg.stateDir, "push-subscriptions.json");
+    this.budgetFile = join(cfg.stateDir, CLEAR_BUDGET_FILE);
     this.sender = sender ?? ((sub, payload, options) => this.lib!.sendNotification(sub, payload, options));
     this.clock = opts.clock ?? realClock;
     this.clearBurstMs = opts.clearBurstMs ?? 0;
@@ -645,10 +676,28 @@ export class Push {
     const body = { ...msg, data };
     // A machine alert is the one push a visible app does not stand in for (web/src/lib/push-decision.ts),
     // so it is never held; a clear without a slot has nothing to hold.
-    if (msg.type === "machine" || msg.type === "clear") {
+    if (msg.type === "machine") {
       this.log(msg.type, msg.tag, [...this.subs.values()].map((sub) => `${deviceName(sub)} sent`));
-      for (const sub of this.subs.values()) this.count(sub, msg.type === "clear" ? "clear" : "render");
+      for (const sub of this.subs.values()) this.count(sub, "render");
       await this.broadcast(body, options, msg.tag);
+      return;
+    }
+    if (msg.type === "clear") {
+      // Silent like every clear, so it spends rule 4's budget like one.
+      const verdicts: string[] = [];
+      const out: Delivery[] = [];
+      for (const sub of this.subs.values()) {
+        if (!this.spendClear(sub.endpoint)) {
+          this.count(sub, "overBudget");
+          verdicts.push(`${deviceName(sub)} skipped (over the daily budget)`);
+          continue;
+        }
+        this.count(sub, "clear");
+        verdicts.push(`${deviceName(sub)} sent`);
+        out.push({ sub, body, options, names: [] });
+      }
+      this.log(msg.type, msg.tag, verdicts);
+      await Promise.all([this.deliver(out), out.length > 0 ? this.saveBudget() : undefined]);
       return;
     }
     await this.sendRender(body, options, msg.tag ?? "", msg.type ?? "render", msg.badge);
@@ -780,12 +829,38 @@ export class Push {
         verdicts.push(`${deviceName(sub)} skipped (closed)`);
         continue;
       }
+      // Rule 4, after rules 2 and 3: the whole burst is one spend, and only a push that would go spends.
+      if (!this.spendClear(sub.endpoint)) {
+        // The slots stay on that phone until a render replaces them or its page sweeps them. Their
+        // share of the icon count rides the next push it gets, as zero, which costs nothing.
+        for (const tag of due) this.oweBadge(sub.endpoint, tag, 0);
+        this.count(sub, "overBudget");
+        verdicts.push(`${deviceName(sub)} skipped ${due.length} (over the daily budget)`);
+        continue;
+      }
       this.count(sub, "clear");
       verdicts.push(`${deviceName(sub)} sent ${due.length}`);
       out.push({ sub, ...clearDelivery(due, burst) });
     }
     this.log("clear", tags.length === 1 ? tags[0] : `${tags.length} slots`, verdicts);
-    await this.deliver(out);
+    await Promise.all([this.deliver(out), out.length > 0 ? this.saveBudget() : undefined]);
+  }
+
+  /**
+   * Rule 4: spend one silent clear of this subscription's budget, or answer false when the last
+   * {@link SILENT_CLEAR_BUDGET}`.windowMs` already holds the whole budget. A refusal is final: the
+   * clear is skipped, never queued. The caller writes the file once per round ({@link saveBudget}).
+   */
+  private spendClear(endpoint: string): boolean {
+    const now = this.clock.now();
+    const spent = (this.clearSpends.get(endpoint) ?? []).filter((at) => now - at < SILENT_CLEAR_BUDGET.windowMs);
+    if (spent.length >= SILENT_CLEAR_BUDGET.clears) {
+      this.clearSpends.set(endpoint, spent);
+      return false;
+    }
+    spent.push(now);
+    this.clearSpends.set(endpoint, spent);
+    return true;
   }
 
   private slotOf(endpoint: string, tag: string): SlotState | undefined {
@@ -813,6 +888,8 @@ export class Push {
     this.slots.delete(endpoint);
     this.held.delete(endpoint);
     this.badgeDue.delete(endpoint);
+    // Every caller saves after a drop; the budget file follows only when it held a row for this one.
+    if (this.clearSpends.delete(endpoint)) this.budgetDirty = true;
   }
 
   /** Owe one device the icon count of one slot, to ride its next push. */
@@ -865,7 +942,7 @@ export class Push {
         const said = badges === undefined ? "" : badges ? " (badges)" : " (no badges)";
         console.log(
           `[push] last hour, ${name}${said}: ${t.render} rendered, ${t.clear} silent clears, ${t.skipped} clears skipped, ` +
-            `${t.held} held (${t.dropped} seen in the app, ${t.late} sent late)`,
+            `${t.overBudget} over the daily budget, ${t.held} held (${t.dropped} seen in the app, ${t.late} sent late)`,
         );
       }
       this.tally.clear();
@@ -976,6 +1053,35 @@ export class Push {
     } catch {
       /* no saved subs yet */
     }
+    await this.loadBudget();
+  }
+
+  /**
+   * Read rule 4's spends back, for the subscriptions just loaded only, and only the ones still inside
+   * the window, at most the budget per row. Writes nothing: a row for a subscription that is gone
+   * leaves the file at the next {@link save}, so `collie push list` stays a read.
+   */
+  private async loadBudget(): Promise<void> {
+    let raw: unknown;
+    try {
+      raw = await Bun.file(this.budgetFile).json();
+    } catch {
+      return; // never written: no clear has gone yet
+    }
+    if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return;
+    const now = this.clock.now();
+    for (const [endpoint, value] of Object.entries(raw)) {
+      if (!this.subs.has(endpoint)) {
+        this.budgetDirty = true;
+        continue;
+      }
+      if (!Array.isArray(value)) continue;
+      const spent = value
+        .filter((at): at is number => typeof at === "number" && Number.isFinite(at) && now - at < SILENT_CLEAR_BUDGET.windowMs)
+        .toSorted((a, b) => a - b)
+        .slice(-SILENT_CLEAR_BUDGET.clears);
+      if (spent.length > 0) this.clearSpends.set(endpoint, spent);
+    }
   }
 
   private save(): Promise<void> {
@@ -983,17 +1089,39 @@ export class Push {
     // behind any in-flight one. `then(write, write)` runs regardless of a prior failure; the
     // chain itself is reset to a swallowed promise so one bad write doesn't wedge future saves.
     const snapshot = JSON.stringify([...this.subs.values()], null, 2);
-    const write = () => this.writeState(snapshot);
+    const write = () => this.writeState(this.file, snapshot);
     const run = this.saveChain.then(write, write);
     this.saveChain = run.catch(() => {});
-    return run;
+    if (!this.budgetDirty) return run;
+    const budget = this.saveBudget();
+    return run.then(() => budget);
+  }
+
+  /**
+   * Write rule 4's spends, the same way and through a chain of its own. A failed write is logged and
+   * swallowed: the budget then counts from memory until the next restart, which is a smaller harm than
+   * failing a send over it. Written only after a clear went or a row left, so a bridge with nobody to
+   * push to never creates the file.
+   */
+  private saveBudget(): Promise<void> {
+    this.budgetDirty = false;
+    const snapshot = JSON.stringify(Object.fromEntries(this.clearSpends));
+    const write = async () => {
+      try {
+        await this.writeState(this.budgetFile, snapshot);
+      } catch (err) {
+        console.warn(`[push] could not save the clear budget: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    };
+    this.budgetChain = this.budgetChain.then(write, write);
+    return this.budgetChain;
   }
 
   /** Atomic, owner-only write: fresh temp file (mode 0600) then rename over the target. */
-  private async writeState(data: string): Promise<void> {
+  private async writeState(file: string, data: string): Promise<void> {
     await mkdir(this.cfg.stateDir, { recursive: true, mode: 0o700 });
-    const tmp = `${this.file}.tmp`;
+    const tmp = `${file}.tmp`;
     await writeFile(tmp, data, { mode: 0o600 });
-    await rename(tmp, this.file);
+    await rename(tmp, file);
   }
 }

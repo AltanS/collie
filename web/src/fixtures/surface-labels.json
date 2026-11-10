@@ -4065,6 +4065,96 @@
    "version": "unversioned",
    "state": "running"
   },
+  "oc--v226-fresh-idle.txt": {
+   "harness": "opencode",
+   "version": "2.2.6",
+   "state": "idle"
+  },
+  "oc--v226-narrow--fresh-idle.txt": {
+   "harness": "opencode",
+   "version": "2.2.6",
+   "state": "idle"
+  },
+  "oc--v226-session-idle.txt": {
+   "harness": "opencode",
+   "version": "2.2.6",
+   "state": "idle"
+  },
+  "oc--v226-slash-palette.txt": {
+   "harness": "opencode",
+   "version": "2.2.6",
+   "state": "dialog"
+  },
+  "oc--v226-narrow--slash-palette.txt": {
+   "harness": "opencode",
+   "version": "2.2.6",
+   "state": "dialog"
+  },
+  "oc--v226-slash-comp.txt": {
+   "harness": "opencode",
+   "version": "2.2.6",
+   "state": "dialog"
+  },
+  "oc--v226-narrow--slash-comp.txt": {
+   "harness": "opencode",
+   "version": "2.2.6",
+   "state": "dialog"
+  },
+  "oc--v226-slash-compact.txt": {
+   "harness": "opencode",
+   "version": "2.2.6",
+   "state": "popup"
+  },
+  "oc--v226-narrow--slash-compact.txt": {
+   "harness": "opencode",
+   "version": "2.2.6",
+   "state": "popup"
+  },
+  "oc--v226-herdr--slash-models.txt": {
+   "harness": "opencode",
+   "version": "2.2.6",
+   "state": "popup"
+  },
+  "oc--v226-paste-200.txt": {
+   "harness": "opencode",
+   "version": "2.2.6",
+   "state": "draft"
+  },
+  "oc--v226-narrow--paste-200.txt": {
+   "harness": "opencode",
+   "version": "2.2.6",
+   "state": "draft"
+  },
+  "oc--v226-paste-600.txt": {
+   "harness": "opencode",
+   "version": "2.2.6",
+   "state": "draft"
+  },
+  "oc--v226-narrow--paste-600.txt": {
+   "harness": "opencode",
+   "version": "2.2.6",
+   "state": "draft"
+  },
+  "oc--v226-command-palette.txt": {
+   "harness": "opencode",
+   "version": "2.2.6",
+   "state": "dialog"
+  },
+  "oc--v226-models-picker.txt": {
+   "harness": "opencode",
+   "version": "2.2.6",
+   "state": "dialog"
+  },
+  "oc--v1195-slash-comp.txt": {
+   "harness": "opencode",
+   "version": "1.19.5",
+   "state": "dialog"
+  },
+  "oc--v1195-paste-600.txt": {
+   "harness": "opencode",
+   "version": "1.19.5",
+   "state": "draft"
+  },
   "omp--answer-editor-empty.txt": {
    "harness": "omp",
    "version": "unversioned",
@@ -4723,6 +4813,36 @@
   "omp--v18-17-0-usage-dashboard--w120.txt": {
    "harness": "omp",
    "version": "18.17.0",
+   "state": "dialog"
+  },
+  "omp--v18-18-2-ask-batch--w120.txt": {
+   "harness": "omp",
+   "version": "18.18.2",
+   "state": "dialog"
+  },
+  "omp--v18-18-2-ask-batch-moved--w120.txt": {
+   "harness": "omp",
+   "version": "18.18.2",
+   "state": "dialog"
+  },
+  "omp--v18-18-2-ask-batch-review--w120.txt": {
+   "harness": "omp",
+   "version": "18.18.2",
+   "state": "dialog"
+  },
+  "omp--v18-18-2-ask-batch-review-unanswered--w120.txt": {
+   "harness": "omp",
+   "version": "18.18.2",
+   "state": "dialog"
+  },
+  "omp--v18-18-2-ask-batch-second--w120.txt": {
+   "harness": "omp",
+   "version": "18.18.2",
+   "state": "dialog"
+  },
+  "omp--v18-18-2-ask-batch-third--w120.txt": {
+   "harness": "omp",
+   "version": "18.18.2",
    "state": "dialog"
   },
   "omp--v18-4-approval-bash-moved.txt": {
@@ -6390,7 +6510,87 @@
    "version": "1.5.0",
    "state": "dialog"
   },
+  "pi--v150-herdr-system-theme-permission-gate--w119.txt": {
+   "harness": "pi",
+   "version": "1.5.0",
+   "state": "dialog"
+  },
   "pi--v150-gentle-quiet-two-line-draft.txt": {
+   "harness": "pi",
+   "version": "1.5.0",
+   "state": "draft"
+  },
+  "pi--v150-zentui-idle--w120.txt": {
+   "harness": "pi",
+   "version": "1.5.0",
+   "state": "idle"
+  },
+  "pi--v150-zentui-idle--w80.txt": {
+   "harness": "pi",
+   "version": "1.5.0",
+   "state": "idle"
+  },
+  "pi--v150-zentui-draft--w120.txt": {
+   "harness": "pi",
+   "version": "1.5.0",
+   "state": "draft"
+  },
+  "pi--v150-zentui-draft--w80.txt": {
+   "harness": "pi",
+   "version": "1.5.0",
+   "state": "draft"
+  },
+  "pi--v150-zentui-multiline-draft--w120.txt": {
+   "harness": "pi",
+   "version": "1.5.0",
+   "state": "draft"
+  },
+  "pi--v150-zentui-multiline-draft--w80.txt": {
+   "harness": "pi",
+   "version": "1.5.0",
+   "state": "draft"
+  },
+  "pi--v150-zentui-wrapped-draft--w120.txt": {
+   "harness": "pi",
+   "version": "1.5.0",
+   "state": "draft"
+  },
+  "pi--v150-zentui-pipe-draft--w80.txt": {
+   "harness": "pi",
+   "version": "1.5.0",
+   "state": "draft"
+  },
+  "pi--v150-zentui-model-selector--w120.txt": {
+   "harness": "pi",
+   "version": "1.5.0",
+   "state": "dialog"
+  },
+  "pi--v150-zentui-model-selector--w80.txt": {
+   "harness": "pi",
+   "version": "1.5.0",
+   "state": "dialog"
+  },
+  "pi--v150-zentui-nerd-idle--w120.txt": {
+   "harness": "pi",
+   "version": "1.5.0",
+   "state": "idle"
+  },
+  "pi--v150-zentui-nerd-draft--w120.txt": {
+   "harness": "pi",
+   "version": "1.5.0",
+   "state": "draft"
+  },
+  "pi--v150-zentui-echo-idle--w120.txt": {
+   "harness": "pi",
+   "version": "1.5.0",
+   "state": "idle"
+  },
+  "pi--v150-zentui-native-footer-idle--w120.txt": {
+   "harness": "pi",
+   "version": "1.5.0",
+   "state": "idle"
+  },
+  "pi--v150-zentui-native-footer-draft--w120.txt": {
    "harness": "pi",
    "version": "1.5.0",
    "state": "draft"

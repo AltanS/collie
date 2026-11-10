@@ -108,15 +108,14 @@ export const en = {
   "theme.update.storage": "This device could not save the new version, so your current theme is unchanged.",
   "theme.update.changed": "This theme changed after About checked it, so your current theme is unchanged; open About again.",
   "theme.export.title": "Copy this theme",
-  // Paste a theme (M59 spec 04). English only until the translation pass: every key here is listed in
-  // PENDING_TRANSLATION below.
+  // Paste a theme (M59 spec 04).
   "theme.paste": "Paste",
   "theme.paste.title": "Paste a theme",
   "theme.paste.label": "The text of a theme file",
   "theme.paste.hint": "Paste the JSON text of a theme file. Read shows the same preview as Import.",
   "theme.paste.read": "Read",
   "theme.paste.refusal.link": "Collie does not fetch a theme from a link. Open the link, copy the text of the file, and paste that.",
-  // Browse community themes (M59 spec 06). English only until the translation pass, like the paste keys.
+  // Browse community themes (M59 spec 06).
   "theme.browse": "Browse community themes",
   "theme.browse.title": "Community themes",
   "theme.browse.intro": "Themes people share on GitHub with the topic colliepwa-theme. The site, this host and this phone each check every file, and a theme can only change colours and words.",
@@ -159,7 +158,7 @@ export const en = {
   "theme.browse.starsAria": "Stars on GitHub: {count}",
   "theme.browse.report": "Report",
   "theme.browse.reportAria": "Report {name} on GitHub",
-  // Try a theme (M59 spec 08). English only until the translation pass, like the browse keys.
+  // Try a theme (M59 spec 08).
   "theme.trial.try": "Try",
   "theme.trial.trying": "Trying {name}",
   "theme.trial.keep": "Keep",
@@ -368,6 +367,9 @@ export const en = {
   "settings.updateBanner.copyAria": "Copy command: {command}",
   "settings.updateBanner.bundleProgress": "{percent}% downloaded",
   "settings.updateBanner.bundleReloads": "It reloads on its own once nothing is in progress.",
+  // The "card" look of the update line (2026-11-09), English only until the translation pass: listed
+  // in PENDING_TRANSLATION below.
+  "settings.updateBanner.updateNow": "Update now",
 
   // --- settings.typeface (the APP's own face — a per-device preference since ADR 0033) ---
   // FAMILY NAMES ARE NOT HERE, and must not be added: "Space Grotesk" and "Aldrich" are proper
@@ -398,8 +400,7 @@ export const en = {
   "settings.math.note.off": "Dollar signs stay text. Downloads nothing.",
   "settings.math.note.katex": "Fast and compact. Loads its fonts on first use.",
   "settings.math.note.mathjax": "Broader TeX support, drawn as SVG. A larger download.",
-  // The math pack on the host (ADR 0132). English only until the translation pass: every key here is
-  // listed in PENDING_TRANSLATION below.
+  // The math pack on the host (ADR 0132).
   "settings.appearance.math.download": "Download the math engines (about {size})",
   "settings.appearance.math.downloadNote": "One download holds both engines. The host keeps it for every device.",
   "settings.appearance.math.downloading": "Downloading the math engines to the host…",
@@ -2041,6 +2042,8 @@ export const en = {
   "apiError.update.none_available": "There is no newer release to take.",
   "apiError.update.peers_packaged": "{name} is a packaged install. Its updates come from its own package manager.",
   "apiError.update.packaged": "Updates come from your package manager. Collie won't replace this install's files.",
+  "apiError.update.dev_lead": "This machine runs a development build. It cannot lead an update. Deploy it from its checkout.",
+  "apiError.update.manager_unreachable": "The update could not start: the service manager did not answer. Run `collie update` in a shell on this machine.",
   "apiError.update.start_failed": "The update couldn't be started: {reason}",
   "apiError.update.request_id_required": "This action needs a request ID. Nothing was started.",
   "apiError.update.rollback_unavailable": "There's no previous build on this machine to roll back to.",
@@ -3624,6 +3627,11 @@ export const PENDING_TRANSLATION = [
   "tricks.spark.aria",
   "home.tabs.hill.one",
   "home.tabs.hill.other",
+  // A development build cannot lead an update (2026-11-09).
+  "apiError.update.dev_lead",
+  // A supervised bridge whose service manager did not answer starts no update (1.28.1).
+  "apiError.update.manager_unreachable",
+  "settings.updateBanner.updateNow",
 ] as const satisfies readonly MessageKey[];
 
 /** A key a bundle may leave out until the translation pass. */

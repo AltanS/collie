@@ -1,10 +1,13 @@
 import { describe, expect, test } from "bun:test";
 
 import { compareSemver } from "./update.ts";
-import { crewNeedsLevelling, legStillFailed, memberBehind, type CrewUpdateRow } from "./update-action.ts";
+import { crewNeedsLevelling, leadLevelsCrew, legStillFailed, memberBehind, type CrewUpdateRow } from "./update-action.ts";
+import { developmentBase } from "./version.ts";
 import { compareSemver as phoneCompareSemver } from "../web/src/lib/semver.ts";
 import {
   crewNeedsLevelling as phoneCrewNeedsLevelling,
+  developmentBase as phoneDevelopmentBase,
+  leadLevelsCrew as phoneLeadLevelsCrew,
   legStillFailed as phoneLegStillFailed,
   memberBehind as phoneMemberBehind,
 } from "../web/src/lib/crew-level.ts";
@@ -62,6 +65,16 @@ describe("memberBehind: strictly lower by semver, known, and not packaged", () =
       behind: false,
     },
     { case: "a member on a prerelease of the lead's version", member: member("minibuch", "1.9.1-rc.1"), behind: true },
+    // A DEVELOPMENT BUILD IS LEVELLED BY ITS BASE (2026-11-09): the lead's own release plus commits.
+    { case: "a development build of the lead's version", member: member("minibuch", "1.9.1-dev+b178eb63f2"), behind: false },
+    { case: "a development build with no sha", member: member("minibuch", "1.9.1-dev"), behind: false },
+    { case: "a development build of an OLDER version", member: member("minibuch", "1.9.0-dev+b178eb63f2"), behind: true },
+    { case: "a development build of a NEWER version", member: member("minibuch", "1.10.0-dev+b178eb63f2"), behind: false },
+    {
+      case: "a development build of an older Edge build",
+      member: member("minibuch", "1.9.1-edge.1-dev+b178eb63f2"),
+      behind: true,
+    },
   ];
   for (const c of CASES) {
     test(c.case, () => {
@@ -124,6 +137,18 @@ describe("legStillFailed: a failed leg counts until the census shows its member 
       counts: false,
     },
     {
+      case: "an unreachable leg whose member runs a development build of the lead's version",
+      leg: { name: "minibuch", state: "unreachable" },
+      crew: [member("minibuch", "1.9.1-dev+b178eb63f2")],
+      counts: false,
+    },
+    {
+      case: "an unreachable leg whose member runs a development build of an older version",
+      leg: { name: "minibuch", state: "unreachable" },
+      crew: [member("minibuch", "1.9.0-dev+b178eb63f2")],
+      counts: true,
+    },
+    {
       case: "a leg that arrived is not a failed leg",
       leg: { name: "minibuch", state: "done" },
       crew: [member("minibuch", "1.9.0")],
@@ -143,6 +168,7 @@ describe("crewNeedsLevelling: the button and the route agree on the whole crew",
     case: string;
     crew: CrewUpdateRow[];
     legs: { name: string; state: string }[];
+    build?: string;
     needs: boolean;
   }[] = [
     { case: "every member on the lead's version", crew: [member("a", LEAD), member("b", LEAD)], legs: [], needs: false },
@@ -160,11 +186,69 @@ describe("crewNeedsLevelling: the button and the route agree on the whole crew",
       legs: [{ name: "a", state: "rolled-back" }],
       needs: true,
     },
+    {
+      case: "a release lead over a member a release back",
+      crew: [member("a", "1.9.0")],
+      legs: [],
+      build: `${LEAD}+047ee5bbd0`,
+      needs: true,
+    },
+    {
+      case: "an Edge lead over a member a release back",
+      crew: [member("a", "1.9.0")],
+      legs: [],
+      build: `${LEAD}-edge.2+047ee5bbd0`,
+      needs: true,
+    },
+    {
+      // A DEVELOPMENT-BUILD LEAD STATES NO RELEASE, so no member takes a turn from it (2026-11-09).
+      case: "a development-build lead over a member a release back offers no run",
+      crew: [member("a", "1.9.0")],
+      legs: [{ name: "a", state: "unreachable" }],
+      build: `${LEAD}-dev+047ee5bbd0`,
+      needs: false,
+    },
+    {
+      case: "the live dev lane: a development lead, dev members, three unreachable legs",
+      crew: [member("a", `${LEAD}-dev+b178eb63f2`), member("b", `${LEAD}-dev+047ee5bbd0`), member("c", `${LEAD}-dev+b178eb63f2`)],
+      legs: [
+        { name: "a", state: "unreachable" },
+        { name: "b", state: "unreachable" },
+        { name: "c", state: "unreachable" },
+      ],
+      build: `${LEAD}-dev+047ee5bbd0`,
+      needs: false,
+    },
   ];
   for (const c of CASES) {
     test(c.case, () => {
-      expect(crewNeedsLevelling(c.crew, c.legs, LEAD)).toBe(c.needs);
-      expect(phoneCrewNeedsLevelling(c.crew, c.legs, LEAD)).toBe(c.needs);
+      const a = { crew: c.crew, legs: c.legs, current: LEAD, build: c.build };
+      expect(crewNeedsLevelling(a)).toBe(c.needs);
+      expect(phoneCrewNeedsLevelling(a)).toBe(c.needs);
     });
   }
+});
+
+describe("a development build is read the same way on both sides", () => {
+  const STAMPS: readonly string[] = [
+    "1.28.0-dev+047ee5bbd0",
+    "1.28.0-dev",
+    "1.28.0-edge.4-dev+9ef26fb6e",
+    "1.28.0",
+    "1.28.0+b178eb63f2",
+    "1.28.0-edge.4+9ef26fb6e",
+    "1.28.0+dev",
+    "-dev",
+    "unknown",
+  ];
+  for (const stamp of STAMPS) {
+    test(stamp, () => {
+      expect(phoneDevelopmentBase(stamp)).toBe(developmentBase(stamp));
+      expect(phoneLeadLevelsCrew(stamp)).toBe(leadLevelsCrew(stamp));
+    });
+  }
+  test("no build reported reads as a lead that levels", () => {
+    expect(leadLevelsCrew(undefined)).toBe(true);
+    expect(phoneLeadLevelsCrew(undefined)).toBe(true);
+  });
 });

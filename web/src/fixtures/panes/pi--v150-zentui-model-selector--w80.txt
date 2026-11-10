@@ -1,0 +1,26 @@
+
+[90m────────────────────────────────────────────────────────────────────────────────
+
+[38;5;3mOnly showing models from configured providers. Use /login to add providers.[39m
+
+> [7m [0m
+
+[38;5;5m→ ✓ moonshotai/kimi-k2.6[39m [2m[openrouter][0m
+    ~anthropic/claude-fable-latest [2m[openrouter][0m
+    ~anthropic/claude-haiku-latest [2m[openrouter][0m
+    ~anthropic/claude-opus-latest [2m[openrouter][0m
+    ~anthropic/claude-sonnet-latest [2m[openrouter][0m
+    anthropic/claude-fable-5 [2m[openrouter][0m
+    anthropic/claude-fable-5.1 [2m[openrouter][0m
+    anthropic/claude-haiku-4.5 [2m[openrouter][0m
+    anthropic/claude-haiku-5.5 [2m[openrouter][0m
+    anthropic/claude-opus-4.1 [2m[openrouter][0m
+[2m  (1/398)[0m
+
+[2m  Model Name: MoonshotAI: Kimi K2.6[0m
+
+[38;5;2m  Model catalogs refreshed.[39m
+
+[2m  Enter to select · Ctrl+S to set as default · Escape/Ctrl+C to cancel[0m
+[90m────────────────────────────────────────────────────────────────────────────────
+[39m [1m[36mproj[0m on [1m[35m*[0m [1m[35mmaster[0m [1m[31m[?][0m                         [90m0.0%/262k[39m [90m(auto) | ↑0 ↓0 | [1m[32m$0.000[0m

@@ -18,10 +18,11 @@ export function markState(root: ParentNode): MarkState | null {
   return state !== undefined && state !== null && isMarkState(state) ? state : null;
 }
 
-/** Whether the mark's orbit turns at the live pace: loading, applying or reconnected. */
+/** Whether the mark wears its live look: loading, applying or reconnected. (Applying turns at the calm
+ *  pace; the other two at the live pace.) */
 export function markIsLive(root: ParentNode): boolean {
   const state = markState(root);
-  return state !== null && MARK_STATE_LOOK[state].pace === "live";
+  return state !== null && MARK_STATE_LOOK[state].look === "live";
 }
 
 /**

@@ -35,6 +35,8 @@ interface CompiledCommandList {
   readonly above: boolean;
   readonly inside: boolean;
   readonly pointerBold: boolean;
+  readonly pointerFill: boolean;
+  readonly inEdgeRun: boolean;
   readonly footer: { readonly pattern: RegExp; readonly maxRows: number } | null;
   readonly notForText: RegExp | null;
 }
@@ -55,6 +57,8 @@ function listPatterns(list: CommandListRows): CompiledCommandList {
     above: sides.includes("above"),
     inside: sides.includes("inside"),
     pointerBold: list.pointerBold === true,
+    pointerFill: list.pointerFill === true,
+    inEdgeRun: list.inEdgeRun === true,
     footer: list.footer === undefined ? null : { pattern: new RegExp(list.footer.pattern, "u"), maxRows: list.footer.maxRows },
     notForText: list.notForText === undefined ? null : new RegExp(list.notForText, "u"),
   };
@@ -84,13 +88,42 @@ function paintsBold(row: FrameRow | undefined, command: string): boolean {
   if (row === undefined) return false;
   return row.segments.some((segment) => {
     if (segment.bold !== true) return false;
-    const text = segment.text.trim();
-    return text === command || text.startsWith(`${command} `);
+    return runOf(segment.text, command);
   });
 }
 
-function listRow(text: string, patterns: CompiledCommandList, row?: FrameRow): ListRow {
-  if (!patterns.pointerBold) {
+/** Whether a run's text is the command `command`, alone or followed by a space (its description). */
+function runOf(text: string, command: string): boolean {
+  const trimmed = text.trim();
+  return trimmed === command || trimmed.startsWith(`${command} `);
+}
+
+/** The background of the cell in column `column` (a UTF-16 index into the row's text), or undefined. */
+function backgroundAt(row: FrameRow, column: number): string | undefined {
+  let at = 0;
+  for (const segment of row.segments) {
+    if (column < at + segment.text.length) return segment.bg;
+    at += segment.text.length;
+  }
+  return undefined;
+}
+
+/**
+ * Whether a styled row paints `command` on a background other than the box's own fill: a
+ * `pointerFill` list's pointer (absent row = no pointer). The fill is what the box's top edge row
+ * `fill` paints in the column where the command starts, so the app's own background beside the box
+ * never stands for it. A command cell with no background, or no top edge row at hand, is no pointer.
+ */
+function paintsFill(row: FrameRow | undefined, text: string, command: string, fill: FrameRow | undefined): boolean {
+  if (row === undefined || fill === undefined) return false;
+  const column = text.indexOf(command);
+  if (column < 0) return false;
+  const background = backgroundAt(row, column);
+  return background !== undefined && background !== backgroundAt(fill, column);
+}
+
+function listRow(text: string, patterns: CompiledCommandList, row?: FrameRow, fill?: FrameRow): ListRow {
+  if (!patterns.pointerBold && !patterns.pointerFill) {
     const head = patterns.pointer.exec(text);
     if (head !== null) {
       const command = head.groups?.["command"];
@@ -102,7 +135,8 @@ function listRow(text: string, patterns: CompiledCommandList, row?: FrameRow): L
     const command = entry.groups?.["command"];
     if (command === undefined) return null;
     const named = patterns.lead + command;
-    return { kind: patterns.pointerBold && paintsBold(row, named) ? "pointer" : "entry", command: named };
+    const pointed = patterns.pointerBold ? paintsBold(row, named) : patterns.pointerFill && paintsFill(row, text, command, fill);
+    return { kind: pointed ? "pointer" : "entry", command: named };
   }
   if (patterns.wrapped.test(text)) return { kind: "wrapped" };
   return null;
@@ -128,7 +162,7 @@ function footerFrom(texts: readonly string[], at: number, footer: CompiledComman
  * screen's last row, or to the profile's footer under it. Anything else there (a dialog, a status row
  * the profile does not name, a second pointer, a gap right under the edge) is no list.
  */
-function listUnder(texts: readonly string[], bottom: number, patterns: CompiledCommandList, rows?: readonly FrameRow[]): CommandListRead | null {
+function listUnder(texts: readonly string[], bottom: number, patterns: CompiledCommandList, rows?: readonly FrameRow[], fill?: FrameRow): CommandListRead | null {
   let pointed: string | null = null;
   const entries: string[] = [];
   let last = bottom;
@@ -138,7 +172,7 @@ function listUnder(texts: readonly string[], bottom: number, patterns: CompiledC
       if (entries.length === 0) return null;
       continue;
     }
-    const row = listRow(text, patterns, rows?.[i]);
+    const row = listRow(text, patterns, rows?.[i], fill);
     if (row === null) {
       if (entries.length > 0 && footerFrom(texts, i, patterns.footer)) break;
       return null;
@@ -162,12 +196,12 @@ function listUnder(texts: readonly string[], bottom: number, patterns: CompiledC
  * up to the first blank row or a row that is no entry, pointer or wrapped row. It opens on an entry; a
  * wrapped row over its first entry belongs to the transcript. At most one entry carries the pointer.
  */
-function listAbove(texts: readonly string[], top: number, patterns: CompiledCommandList, styled?: readonly FrameRow[]): CommandListRead | null {
+function listAbove(texts: readonly string[], top: number, patterns: CompiledCommandList, styled?: readonly FrameRow[], fill?: FrameRow): CommandListRead | null {
   const rows: { at: number; row: Exclude<ListRow, null> }[] = [];
   for (let i = top - 1; i >= 0; i--) {
     const text = texts[i]!.trimEnd();
     if (isBlank(text)) break;
-    const row = listRow(text, patterns, styled?.[i]);
+    const row = listRow(text, patterns, styled?.[i], fill);
     if (row === null) break;
     rows.unshift({ at: i, row });
   }
@@ -186,11 +220,11 @@ function listAbove(texts: readonly string[], top: number, patterns: CompiledComm
  * dialog's rows, a second pointer — is no list: those rows stay the draft's, and every other read
  * of the box goes on as before.
  */
-function listInside(texts: readonly string[], prompt: number, bottom: number, patterns: CompiledCommandList, rows?: readonly FrameRow[]): CommandListRead | null {
+function listInside(texts: readonly string[], prompt: number, bottom: number, patterns: CompiledCommandList, rows?: readonly FrameRow[], fill?: FrameRow): CommandListRead | null {
   let pointed: string | null = null;
   const entries: string[] = [];
   for (let i = prompt + 1; i < bottom; i++) {
-    const row = listRow(texts[i]!.trimEnd(), patterns, rows?.[i]);
+    const row = listRow(texts[i]!.trimEnd(), patterns, rows?.[i], fill);
     if (row === null) return null;
     if (row.kind === "wrapped") {
       if (entries.length === 0) return null;
@@ -223,6 +257,19 @@ export function insideList(
 }
 
 /**
+ * Whether `text` is an entry row of a list drawn in the box's own edge run (`inEdgeRun`): the interior
+ * walk ends there, and the row under it is the box's top edge. A row that is no entry (a wrapped row
+ * alone) is not one. False on a profile whose list is not drawn in that run.
+ */
+export function edgeRunListRow(text: string, list: CommandListRows | undefined): boolean {
+  if (list === undefined) return false;
+  const patterns = listPatterns(list);
+  if (!patterns.inEdgeRun) return false;
+  const row = listRow(text.trimEnd(), patterns);
+  return row !== null && row.kind !== "wrapped";
+}
+
+/**
  * The profile's command list at a box with its top edge on row `top` and its bottom edge (or an open
  * box's last row) on row `bottom`, on the sides the profile names: all that stands under the bottom
  * edge, the run right over the top edge, where a tall pane draws it, or inside the box under its
@@ -245,11 +292,13 @@ export function commandListNear(
   if (list === undefined) return null;
   const patterns = listPatterns(list);
   if (opensNoList(patterns, text)) return null;
-  const under = patterns.under ? listUnder(texts, bottom, patterns, rows) : null;
+  // A `pointerFill` list's pointer is read against the box's top edge row: what it paints is the box's fill.
+  const fill = patterns.pointerFill ? rows?.[top] : undefined;
+  const under = patterns.under ? listUnder(texts, bottom, patterns, rows, fill) : null;
   if (under !== null && under.pointed !== null) return under;
-  const inside = patterns.inside && prompt !== undefined ? listInside(texts, prompt, bottom, patterns, rows) : null;
+  const inside = patterns.inside && prompt !== undefined ? listInside(texts, prompt, bottom, patterns, rows, fill) : null;
   if (inside !== null && inside.pointed !== null) return inside;
-  return (patterns.above ? listAbove(texts, top, patterns, rows) : null) ?? inside ?? under;
+  return (patterns.above ? listAbove(texts, top, patterns, rows, fill) : null) ?? inside ?? under;
 }
 
 /**

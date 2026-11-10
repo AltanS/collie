@@ -156,3 +156,13 @@ Status is unchanged: **Accepted**. Nothing above this line is rewritten. Testers
 
 **The clear.** Discard and Replace emptied the box in at most six rounds of 256 Backspaces, counted from what the box showed. On a scrolled box the visible part never shrinks until the end, so a draft over about 1,500 characters was not emptied, and a Replace of a 26-line draft (06 C5) pressed 1,536 Backspaces, sent nothing, and left 39 characters of the person's draft with no way back. The keys are now counted before the first one goes. A box that shows its whole draft takes what it shows plus the clear key's slack, read again after every batch. A scrolled box takes the length of the text Collie typed there: a Discard after `typed_not_submitted` names that text. With no length Collie knows (a Replace of the person's draft, or a Discard of a box that held another text), the request is refused `draft_present` before any key, offers the key pad, and says nothing was deleted. Collie chose the refusal over a clear that reads until the box is empty, because a draft of unknown length has no bound that is sure to be enough, and a clear that stops half way is the worst end. A draft over 16,384 characters is refused the same way. The bound is one read per batch of 256 plus two, at 500 ms each and never under the old six reads; the request's own bound and the pane lock grow by what that adds. A batch goes only after a read showed the last one took effect. The Clear route (ADR 0116) is not changed: its restore text on a scrolled box holds only the rows in view.
 
+
+## Addendum — 2026-11-09: opencode writes the one paste too, and its fold counts lines (#749)
+
+Status is unchanged: **Accepted**. Nothing above this line is rewritten. opencode now names
+`paste.block`. Typed line by line over Herdr, a long message lands literally, and past about 13 rows
+opencode's box shows only the end of the text, so the send ended `typed_not_submitted`. One paste
+folds instead. opencode counts its fold `[Pasted ~N lines]` by lines, not by line breaks (lab,
+2026-11-09, opencode 1.19.5 and 2.2.6: one line folds to `~1`, 30 lines to `~30`). The profile says
+so in `paste.foldLines: "lines"`, and S1 reads the count that way for that profile only. Claude keeps
+the line-break count, the default. Every other rule of the addendum above holds as written.

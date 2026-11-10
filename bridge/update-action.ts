@@ -5,8 +5,9 @@ import type { JsonObject, JsonValue } from "./json.ts";
 import type { UpdateStatus } from "./types.ts";
 import type { PeerHealth } from "./crew/registry.ts";
 import { apiError, type ApiErrorBody, type ApiErrorDetail, type ErrorCode } from "./error-codes.ts";
-import { compareSemver, RUNNER_ENV_KEYS, UPDATE_MIRROR_ENV } from "./update.ts";
+import { compareSemver, runnerSetenvArgs } from "./update.ts";
 import { inFlight, type UpdateRun, type UpdateRunState } from "./update-run.ts";
+import { developmentBase } from "./version.ts";
 import { isRequestId } from "./worktree-receipts.ts";
 
 // `POST /api/update` — the phone's one-tap-plus-one-confirm start, and the preflight it is gated on
@@ -793,6 +794,14 @@ export interface UpdateStartState {
    */
   readonly installKind?: UpdateStatus["installKind"];
   /**
+   * The BUILD this process answers with (`collieVersionBare`, `<semver>` or `<semver>+<sha>`), the
+   * string the crew reads. NOT {@link current}, which is `package.json`'s plain version and carries no
+   * `-dev`. Read for exactly one refusal: a development build states no release
+   * (`leadReleaseHeader` in `crew/follow.ts`), so no member would ever be handed a turn by it.
+   * Absent ⇒ not known, and nothing is refused on it.
+   */
+  readonly build?: string;
+  /**
    * Every member's row, as the sweep banked it (M16/03). Absent ⇒ solo, which is `[]` and green.
    *
    * One confirm covers the crew, so the gate covers the crew: a member that is red — or that nobody
@@ -844,6 +853,12 @@ export function updateStartVerdict(req: UpdateStartRequest, state: UpdateStartSt
   // renders: "An update is already running (levelling the crew). Nothing was started." The run is
   // bounded (`CREW_RUN_TTL_MS`), so this refusal is too.
   if (state.crewRunOpen === true) return refuse(409, "update.in_progress", { state: "levelling the crew" });
+
+  // ── A DEVELOPMENT BUILD CANNOT LEAD THE CREW (2026-11-09) ───────────────────
+  // A `-dev` build states no release, so a member never takes a turn from it and every leg waits for
+  // the twenty minute wall clock. Refused here, before any leg is queued, peers-only or not. A solo
+  // development build queues no leg, so its own start is left to the gates below.
+  if (leadsNoUpdate(req, state)) return refuse(409, "update.dev_lead");
 
   // ── THE PEERS-ONLY RUN (M16/04) ─────────────────────────────────────────────
   // Decided here, above the preflight, because the gates below are about THIS machine's own move and
@@ -917,6 +932,12 @@ export function updateStartVerdict(req: UpdateStartRequest, state: UpdateStartSt
     return refuse(409, "update.target_mismatch", { asked: req.target, would });
   }
   return { kind: "start", to: would, major: req.major };
+}
+
+/** Would this start queue crew legs on a lead whose build can never hand a member the turn? */
+function leadsNoUpdate(req: UpdateStartRequest, state: UpdateStartState): boolean {
+  if (leadLevelsCrew(state.build)) return false;
+  return req.peersOnly || (state.crew ?? []).length > 0;
 }
 
 // ── The rollback verdict (M60 spec 01) ───────────────────────────────────────
@@ -1100,7 +1121,22 @@ type LevelLeg = { readonly name: string; readonly state: string };
 export function memberBehind(member: LevelMember, current: string): boolean {
   if (current === "" || member.version === null) return false;
   if (member.installKind === "packaged") return false;
-  return compareSemver(member.version, current) < 0;
+  return compareSemver(levelVersion(member.version), current) < 0;
+}
+
+/**
+ * The version a member's report is LEVELLED by: a development build by the version it is built on
+ * (`1.28.0-dev+b178eb6` → `1.28.0`), anything else as it is. A `-dev` build is that release's code
+ * plus later commits, and no run can move it (it never self-levels, `crew/follow.ts`), so it is not
+ * behind its own base. A development build of an OLDER base is still behind. Twin of the phone's.
+ */
+function levelVersion(version: string): string {
+  return developmentBase(version) ?? version;
+}
+
+/** Can this lead's build hand a member the turn? A development build states no release, so never. */
+export function leadLevelsCrew(build: string | undefined): boolean {
+  return build === undefined || developmentBase(build) === null;
 }
 
 /**
@@ -1121,7 +1157,7 @@ export function legStillFailed(leg: LevelLeg, crew: readonly LevelMember[], curr
   if (current === "") return true;
   const version = member?.version ?? null;
   if (version === null) return true;
-  return compareSemver(version, current) < 0;
+  return compareSemver(levelVersion(version), current) < 0;
 }
 
 /**
@@ -1131,19 +1167,31 @@ export function legStillFailed(leg: LevelLeg, crew: readonly LevelMember[], curr
  */
 function packagedAndBehind(member: LevelMember, current: string): boolean {
   if (current === "" || member.version === null || member.installKind !== "packaged") return false;
-  return compareSemver(member.version, current) < 0;
+  return compareSemver(levelVersion(member.version), current) < 0;
 }
 
 /**
  * Is there anything for a retry to do — a member behind this lead's own version, or one the last run
- * failed that has not levelled since? The twin of `crewNeedsLevelling` on the phone.
+ * failed that has not levelled since? Never on a lead whose build is a development build: it can hand
+ * nobody a turn. The twin of `crewNeedsLevelling` on the phone.
  */
-export function crewNeedsLevelling(crew: readonly LevelMember[], legs: readonly LevelLeg[], current: string): boolean {
-  return crew.some((member) => memberBehind(member, current)) || legs.some((leg) => legStillFailed(leg, crew, current));
+export function crewNeedsLevelling(a: {
+  readonly crew: readonly LevelMember[];
+  readonly legs: readonly LevelLeg[];
+  /** The lead's `package.json` version, which members are compared against. */
+  readonly current: string;
+  /** The build the lead answers the crew with. Absent ⇒ not known, and read as a release. */
+  readonly build?: string;
+}): boolean {
+  if (!leadLevelsCrew(a.build)) return false;
+  return (
+    a.crew.some((member) => memberBehind(member, a.current)) ||
+    a.legs.some((leg) => legStillFailed(leg, a.crew, a.current))
+  );
 }
 
 function peersNeedLevelling(state: UpdateStartState): boolean {
-  return crewNeedsLevelling(state.crew ?? [], state.peers ?? [], state.current);
+  return crewNeedsLevelling({ crew: state.crew ?? [], legs: state.peers ?? [], current: state.current, build: state.build });
 }
 
 // ── The handoff ──────────────────────────────────────────────────────────────
@@ -1165,7 +1213,8 @@ function peersNeedLevelling(state: UpdateStartState): boolean {
  * least leaves the process group where there is no user manager; a bare spawn is the last resort on
  * a host with neither. That ladder is deliberately the same three tiers as `cli/update-run.ts`'s
  * `launchPlan`, for the same reasons written there — it is restated rather than imported because
- * nothing in `bridge/` may import from `cli/`.
+ * nothing in `bridge/` may import from `cli/`. The `--setenv=` arguments are NOT restated: both tiers
+ * call {@link runnerSetenvArgs} in `bridge/update.ts`, because the copy the handoff lacked was #754.
  *
  * **`detach` is the spawn's own `setsid()`, and it is on for every tier but `systemd-run`** (#213).
  * macOS has neither `systemd-run` nor a `setsid` binary, so the bare tier used to leave the runner in
@@ -1177,6 +1226,15 @@ function peersNeedLevelling(state: UpdateStartState): boolean {
 export interface UpdateStartPlan {
   readonly command: string[];
   readonly detach: boolean;
+  /**
+   * Session variables the LAUNCHER must layer over this process's environment for the CLIENT it
+   * spawns. The `systemd-run` tier is the only one with a client that talks to the bus, and this is
+   * set only when the manager was reachable through the derived session dir rather than the
+   * environment this process inherited (`bridge/systemd-user.ts`): without them the client cannot
+   * find the bus the probe just reached, and the update dies before a unit exists. `--setenv` is
+   * for the UNIT; the client is not a unit.
+   */
+  readonly env?: Readonly<Record<string, string>>;
 }
 
 export function updateStartCommand(a: {
@@ -1204,13 +1262,19 @@ export function updateStartCommand(a: {
    */
   readonly mirror?: string | null;
   /**
-   * The bridge's own environment. The systemd-run tier forwards the {@link RUNNER_ENV_KEYS} that are
-   * set in it, one `--setenv=` each, for the same reason the mirror is forwarded: the transient unit
+   * The bridge's own environment. The systemd-run tier forwards the runner keys that are set in it,
+   * one `--setenv=` each ({@link runnerSetenvArgs}), for the same reason the mirror is forwarded: the transient unit
    * has a bare environment, and without `COLLIE_INSTANCE`, `COLLIE_MUX` and `COLLIE_CONFIG_DIR` the
    * CLI there resolves the DEFAULT instance and updates and restarts the wrong service (seen
    * 2026-10-28: the Update tap on `next` took `collie.service`). The other tiers inherit it.
    */
   readonly env?: Readonly<Record<string, string | undefined>>;
+  /**
+   * The session variables the probe derived when only the derived default reached the manager
+   * (`bridge/systemd-user.ts`). Carried onto the plan for the launcher to give the `systemd-run`
+   * CLIENT — {@link env} above is what the transient UNIT gets, and the client is not a unit.
+   */
+  readonly envAdd?: Readonly<Record<string, string>> | null;
   /**
    * The phone's rollback (M60 spec 01): `update --rollback --run-id <id>`, which the CLI hands to the
    * same detached runner as a run with `action: "rollback"`. `major` and `toTag` mean nothing to it
@@ -1232,19 +1296,49 @@ export function updateStartCommand(a: {
   if (a.rollback !== true && a.line !== undefined && a.line !== null) verb.push("--line", a.line);
   if (a.runId !== undefined && a.runId !== null) verb.push("--run-id", a.runId);
   if (a.platform === "linux" && a.hasSystemdRun) {
-    const setenv: string[] = [];
-    for (const key of RUNNER_ENV_KEYS) {
-      const value = a.env?.[key];
-      if (value !== undefined && value !== "") setenv.push(`--setenv=${key}=${value}`);
-    }
-    if (a.mirror !== undefined && a.mirror !== null) setenv.push(`--setenv=${UPDATE_MIRROR_ENV}=${a.mirror}`);
-    return {
+    const setenv = runnerSetenvArgs({ env: a.env ?? {}, mirror: a.mirror ?? null });
+    const plan: UpdateStartPlan = {
       command: ["systemd-run", "--user", "--collect", "--unit", `collie-api-update-${a.stamp}`, ...setenv, a.binary, ...verb],
       detach: false,
     };
+    return a.envAdd === undefined || a.envAdd === null ? plan : { ...plan, env: a.envAdd };
   }
   if (a.hasSetsid) return { command: ["setsid", a.binary, ...verb], detach: true };
   return { command: [a.binary, ...verb], detach: true };
+}
+
+/**
+ * What one start of the detached updater answered. `refusal` is set when the bridge decided not to
+ * start anything at all, and names the code the route answers with in place of `update.start_failed`.
+ */
+export type UpdateStartResult =
+  | { readonly ok: true }
+  | { readonly ok: false; readonly reason: string; readonly refusal?: "update.manager_unreachable" };
+
+/**
+ * Whether the bridge must refuse to start the update, before anything is spawned or written.
+ *
+ * THE `setsid` TIER IS SAFE ONLY OUTSIDE THE BRIDGE'S OWN SERVICE (1.28.1 rehearsal, case d-B). A
+ * child keeps its parent's cgroup, so a `setsid collie update` spawned by a bridge that runs as its
+ * systemd unit is a member of that unit, and the restart it was spawned for stops it along with the
+ * service: on a checkout that updates in place the service was left inactive (dead), with nothing to
+ * start it again. Only `systemd-run` puts the runner in a unit of its own. So a SUPERVISED bridge with
+ * no reachable manager (`hasSystemdRun` false: no binary, or a probe that failed twice, the second
+ * time with the patient limit) starts nothing and says why; the operator's shell is outside the
+ * service and can run the same update.
+ *
+ * An UNSUPERVISED bridge keeps the fallback (`updateStartCommand`'s `setsid` and bare tiers): a host
+ * with no user manager at all, a bridge started from a shell, tmux or a Herdr plugin. Its restart
+ * does not stop the cgroup the runner is in. `supervised` is `insideOwnUnit` in
+ * `bridge/systemd-user.ts`, which only Linux can answer; every other platform reads false.
+ */
+export function updateLaunchRefusal(a: {
+  readonly platform: string;
+  readonly hasSystemdRun: boolean;
+  readonly supervised: boolean;
+}): "update.manager_unreachable" | null {
+  if (a.platform !== "linux" || !a.supervised) return null;
+  return a.hasSystemdRun ? null : "update.manager_unreachable";
 }
 
 /**
@@ -1259,6 +1353,12 @@ export interface UpdateRunnerSpawnOptions {
   readonly stdout: "ignore" | number;
   readonly stderr: "ignore" | number;
   readonly detached: boolean;
+  /**
+   * Variables to layer over this process's environment for the child. Present only on the
+   * `systemd-run` tier when the launcher must carry the derived session dir to the client
+   * ({@link UpdateStartPlan.env}); every other tier inherits the process environment unchanged.
+   */
+  readonly env?: Readonly<Record<string, string>>;
 }
 
 /** `<state dir>/update-runner.log`: the detached runner's own two streams, for one launch (#283). */
@@ -1326,13 +1426,14 @@ export function launchUpdateRunner(
 ): { ok: true } | { ok: false; reason: string } {
   const out = a.log?.fd ?? "ignore";
   try {
-    const child = a.spawn(plan.command, {
+    const options = {
       cwd: a.cwd,
       stdin: "ignore",
       stdout: out,
       stderr: out,
       detached: plan.detach,
-    });
+    } satisfies UpdateRunnerSpawnOptions;
+    const child = a.spawn(plan.command, plan.env === undefined ? options : { ...options, env: plan.env });
     child.unref();
     return { ok: true };
   } catch (err) {

@@ -73,8 +73,11 @@ function ruleColor(line: StyledLine): string | undefined {
   return line.segments.find((segment) => segment.text.trim() !== "")?.fg;
 }
 
+/** Whether a status row is painted: a foreground colour, a rule, or faint (SGR 2). pi's default "system"
+ *  theme paints the footer rows faint and nothing else. Only `paintedStatus` uses this, so faint counts for the
+ *  footer alone and never for a dialog's own rows. */
 function styled(line: StyledLine): boolean {
-  return line.segments.some((s) => s.text.trim() !== "" && (s.fg !== undefined || s.muted));
+  return line.segments.some((s) => s.text.trim() !== "" && (s.fg !== undefined || s.muted || s.dim));
 }
 
 /** A run of `─` shorter than the editor: text the operator pasted into the draft (the canary's

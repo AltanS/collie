@@ -1,10 +1,19 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { machineAlertMessage } from "./machine-alerts.ts";
-import { CLEAR_BURST_MS, LOOKING_MS, machineTopic, paneTopic, Push, redactPushMessage, topicIsSendable } from "./push.ts";
+import {
+  CLEAR_BURST_MS,
+  LOOKING_MS,
+  machineTopic,
+  paneTopic,
+  Push,
+  redactPushMessage,
+  SILENT_CLEAR_BUDGET,
+  topicIsSendable,
+} from "./push.ts";
 import { makeNotifySink, NotificationCoordinator, type NotifyClock } from "./notifications.ts";
 import { pushTitle } from "./push-titles.ts";
 import type { AgentStatus, AgentView } from "./types.ts";
@@ -930,6 +939,176 @@ describe("Push — silent pushes are cut per device", () => {
     // An older page re-registers without the promise, and the row goes back to every clear.
     await push.addSubscription(sub("e1"), { device: "pixel" });
     expect(push["subs"].get("e1")?.closesOwn).toBeUndefined();
+  });
+
+  // ── Rule 4: a daily budget of silent clears per subscription ──
+  const DAY = SILENT_CLEAR_BUDGET.windowMs;
+  const budgetFile = (dir: string) => join(dir, "push-clear-budget.json");
+  /** One rendered slot and its clear, alone in its burst: one silent clear spent, when it goes. */
+  async function renderThenClear(push: Push, tag: string): Promise<void> {
+    await push.send(render(tag));
+    await push.send({ type: "clear", tag });
+  }
+  const clearsTo = (sent: Sent[], endpoint: string) => sent.filter((x) => x.endpoint === endpoint && x.body.type === "clear");
+
+  test("rule 4: Chrome's rule is one named constant, four silent clears in a rolling day", () => {
+    expect(SILENT_CLEAR_BUDGET).toEqual({ clears: 4, windowMs: 24 * 3_600_000 });
+  });
+
+  test("rule 4: past the budget a clear is skipped, not queued, and the day rolls one spend at a time", async () => {
+    const { push, sent, clock } = await rig([{ endpoint: "phone", device: "pixel" }]);
+    for (let i = 0; i < SILENT_CLEAR_BUDGET.clears; i++) {
+      await renderThenClear(push, `collie:herd:p${i}`);
+      await clock.advance(3_600_000);
+    }
+    expect(clearsTo(sent, "phone")).toHaveLength(4);
+    await renderThenClear(push, "collie:herd:p4");
+    expect(clearsTo(sent, "phone")).toHaveLength(4);
+    expect(push.tallies().get("pixel")).toMatchObject({ overBudget: 1 });
+    // The first spend leaves the window 24 h after it went: one more clear fits, and only one.
+    await clock.advance(DAY - 4 * 3_600_000);
+    await renderThenClear(push, "collie:herd:p5");
+    await renderThenClear(push, "collie:herd:p6");
+    expect(clearsTo(sent, "phone").map((x) => x.body.tag)).toEqual([
+      "collie:herd:p0",
+      "collie:herd:p1",
+      "collie:herd:p2",
+      "collie:herd:p3",
+      "collie:herd:p5",
+    ]);
+    // Nothing skipped comes back later on its own.
+    await clock.advance(DAY * 2);
+    expect(clearsTo(sent, "phone")).toHaveLength(5);
+  });
+
+  test("rule 4: each subscription has its own budget", async () => {
+    const { push, sent } = await rig([
+      { endpoint: "phone", device: "pixel" },
+      { endpoint: "laptop", device: "mac", closesOwn: true },
+    ]);
+    // The laptop's page read each pane first, so only the phone spends on these four.
+    for (let i = 0; i < 4; i++) {
+      await push.send(render(`collie:herd:p${i}`));
+      push.noteSeen("mac", `collie:herd:p${i}`);
+      await push.send({ type: "clear", tag: `collie:herd:p${i}` });
+    }
+    await renderThenClear(push, "collie:herd:p9");
+    expect(clearsTo(sent, "phone")).toHaveLength(4);
+    expect(clearsTo(sent, "laptop").map((x) => x.body.tag)).toEqual(["collie:herd:p9"]);
+  });
+
+  test("rule 4: a burst the rule 3 merges is one spend, and a clear skipped as closed spends nothing", async () => {
+    const { push, sent } = await rig([{ endpoint: "phone", device: "pixel" }]);
+    const tags = Array.from({ length: 10 }, (_, i) => `collie:herd:w${i}:p1`);
+    for (const tag of tags) await push.send(render(tag));
+    await Promise.all(tags.map((tag) => push.send({ type: "clear", tag })));
+    // Already closed: rule 2 skips it and the budget does not move.
+    await push.send({ type: "clear", tag: tags[0] });
+    for (let i = 0; i < 3; i++) await renderThenClear(push, `collie:herd:p${i}`);
+    expect(clearsTo(sent, "phone")).toHaveLength(4);
+    await renderThenClear(push, "collie:herd:p3");
+    expect(clearsTo(sent, "phone")).toHaveLength(4);
+    expect(push.tallies().get("pixel")).toMatchObject({ clear: 4, skipped: 1, overBudget: 1 });
+  });
+
+  test("rule 4: a slot whose clear was over the budget owes a zero count to the next push", async () => {
+    const { push, to } = await rig([{ endpoint: "phone", device: "pixel" }]);
+    for (let i = 0; i < 4; i++) await renderThenClear(push, `collie:herd:p${i}`);
+    await renderThenClear(push, "collie:herd:p4");
+    await push.send(render("collie:herd:p5"));
+    expect(to("phone").at(-1)!.body.badgeSlots).toEqual({ "collie:herd:p4": 0 });
+  });
+
+  test("rule 4: the hourly line names the clears over the budget as their own reason", async () => {
+    const { push, clock } = await rig([{ endpoint: "phone", device: "pixel" }]);
+    const lines: string[] = [];
+    const log = console.log;
+    console.log = (line: string) => void lines.push(line);
+    try {
+      for (let i = 0; i < 6; i++) await renderThenClear(push, `collie:herd:p${i}`);
+      await clock.advance(3_600_000);
+      await push.send(render("collie:herd:p9"));
+    } finally {
+      console.log = log;
+    }
+    expect(lines).toContain(
+      "[push] last hour, pixel: 6 rendered, 4 silent clears, 0 clears skipped, 2 over the daily budget, 0 held (0 seen in the app, 0 sent late)",
+    );
+    expect(lines.filter((l) => l.includes("skipped 1 (over the daily budget)"))).toHaveLength(2);
+  });
+
+  test("rule 4: the budget survives a restart, in an owner-only file beside the subscriptions", async () => {
+    const cfg = await tempCfg();
+    const sent: Sent[] = [];
+    const sender: PushSender = (s, payload, options) => (sent.push({ endpoint: s.endpoint, body: JSON.parse(payload), options }), Promise.resolve());
+    const clock = new ManualClock();
+    const first = new Push(cfg, sender, { clock });
+    first["_enabled"] = true;
+    await first.addSubscription(sub("phone"), { device: "pixel" });
+    for (let i = 0; i < 4; i++) await renderThenClear(first, `collie:herd:p${i}`);
+    expect((await stat(budgetFile(cfg.stateDir))).mode & 0o777).toBe(0o600);
+
+    const second = new Push(cfg, sender, { clock });
+    second["_enabled"] = true;
+    await second.loadStore();
+    await renderThenClear(second, "collie:herd:p4");
+    expect(clearsTo(sent, "phone")).toHaveLength(4);
+    // The day still rolls across the restart.
+    await clock.advance(DAY);
+    await renderThenClear(second, "collie:herd:p5");
+    expect(clearsTo(sent, "phone")).toHaveLength(5);
+  });
+
+  test("rule 4: the file stays bounded: a row holds at most the budget, and old spends are not loaded", async () => {
+    const cfg = await tempCfg();
+    const clock = new ManualClock();
+    const now = clock.t;
+    await writeFile(join(cfg.stateDir, "push-subscriptions.json"), JSON.stringify([sub("phone")]));
+    // Ten spends in the file, eight of them older than a day, and a row for a subscription that is gone.
+    const spends = [...Array.from({ length: 8 }, (_, i) => now - DAY - i), now - 2, now - 1];
+    await writeFile(budgetFile(cfg.stateDir), JSON.stringify({ phone: spends, gone: [now - 1], junk: "x" }));
+    const push = new Push(cfg, () => Promise.resolve(), { clock });
+    push["_enabled"] = true;
+    await push.loadStore();
+    expect(push["clearSpends"].get("phone")).toEqual([now - 2, now - 1]);
+    expect(push["clearSpends"].has("gone")).toBe(false);
+    await renderThenClear(push, "collie:herd:p1");
+    const onDisk = JSON.parse(await readFile(budgetFile(cfg.stateDir), "utf8"));
+    expect(onDisk).toEqual({ phone: [now - 2, now - 1, now] });
+  });
+
+  test("rule 4: a subscription that goes takes its budget row with it", async () => {
+    const cfg = await tempCfg();
+    const clock = new ManualClock();
+    let refuse = false;
+    const push = new Push(cfg, (s) => (refuse && s.endpoint === "laptop" ? Promise.reject(gone(s.endpoint)) : Promise.resolve()), { clock });
+    push["_enabled"] = true;
+    await push.addSubscription(sub("phone"), { device: "pixel" });
+    await push.addSubscription(sub("laptop"), { device: "mac" });
+    await push.addSubscription(sub("tablet"), { device: "tab" });
+    await renderThenClear(push, "collie:herd:p1");
+    const rows = async () => Object.keys(JSON.parse(await readFile(budgetFile(cfg.stateDir), "utf8"))).toSorted();
+    expect(await rows()).toEqual(["laptop", "phone", "tablet"]);
+    // By hand,
+    expect(await push.forget("phone")).toBe(1);
+    expect(await rows()).toEqual(["laptop", "tablet"]);
+    // by the push service disowning it,
+    refuse = true;
+    await renderThenClear(push, "collie:herd:p2");
+    expect(await rows()).toEqual(["tablet"]);
+    // and by a successor naming it.
+    await push.addSubscription(sub("tablet-2"), { device: "tab", replaces: "tablet" });
+    expect(await rows()).toEqual([]);
+  });
+
+  test("rule 4: no subscription, no file: a bridge with nobody to push to writes nothing new", async () => {
+    const cfg = await tempCfg();
+    const push = new Push(cfg, () => Promise.resolve(), { clock: new ManualClock() });
+    push["_enabled"] = true;
+    await push.loadStore();
+    await renderThenClear(push, "collie:herd:p1");
+    await push.send({ type: "clear", tag: "collie:herd" });
+    expect(await readdir(cfg.stateDir)).toEqual([]);
   });
 
   test("looking outlasts the page's slowest poll gap (IDLE_MS in web/src/hooks/use-polling.ts)", async () => {

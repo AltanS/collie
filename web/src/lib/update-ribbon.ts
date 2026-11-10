@@ -1,4 +1,4 @@
-import { legStillFailed } from "./crew-level";
+import { leadLevelsCrew, legStillFailed } from "./crew-level";
 import { asJsonBoolean, asJsonNumber, asJsonString, parseJsonObject } from "./json";
 import { t, tn } from "./i18n";
 import type {
@@ -329,7 +329,10 @@ export function readRun(input: {
     settledAt,
     moving,
     movingLegs,
-    failed: legs.find((leg) => legStillFailed(leg, input.crew ?? [], input.update?.current ?? "")) ?? null,
+    // A lead on a development build can hand nobody a turn, so no leg of its is a failure to act on.
+    failed: leadLevelsCrew(input.update?.build)
+      ? (legs.find((leg) => legStillFailed(leg, input.crew ?? [], input.update?.current ?? "")) ?? null)
+      : null,
     managed: legs.filter((leg) => leg.state === "package-managed"),
     elapsedMs,
     slow: elapsedMs !== null && elapsedMs >= CREW_PATIENCE_MS,

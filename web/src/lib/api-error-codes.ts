@@ -161,6 +161,8 @@ export const API_ERROR_CODES = [
   "update.none_available",
   "update.peers_packaged",
   "update.packaged",
+  "update.dev_lead",
+  "update.manager_unreachable",
   "update.start_failed",
   "update.request_id_required",
   "update.rollback_unavailable",

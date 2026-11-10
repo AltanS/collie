@@ -477,6 +477,8 @@ interface Spec14Case {
   readonly queueKey?: string;
   /** The pause after the text write the profile names (`paste.settleMs`, #507), where it names one. */
   readonly pasteSettleMs?: number;
+  /** A whole-text paste the profile measured (`paste.block`) and what its fold counts (`paste.foldLines`), where it names one. */
+  readonly pasteBlock?: { readonly foldLines: "breaks" | "lines" };
 }
 
 const SPEC14_CASES: readonly Spec14Case[] = [
@@ -498,6 +500,7 @@ const SPEC14_CASES: readonly Spec14Case[] = [
       { anchor: "top", row: "  ┃  hello there" },
     ],
     collapse: { text: "[Pasted ~12 lines]", group: "lines", value: "12" },
+    pasteBlock: { foldLines: "lines" },
     submit: ["Enter"],
     probeStatus: "provisional",
     enterWhileRunning: "queues",
@@ -743,7 +746,8 @@ describe.each(SPEC14_CASES)("the $id profile (M56 spec 14)", (c) => {
     expect(p.keys.queueKey).toBe(c.queueKey);
     expect(p.reservedLeads).toEqual(c.reservedLeads ?? ["/", "!", "@"]);
     expect(p.probe.char.length).toBeGreaterThan(0);
-    expect(p.paste).toEqual(c.pasteSettleMs === undefined ? { bracketed: true } : { bracketed: true, settleMs: c.pasteSettleMs });
+    const written = c.pasteSettleMs === undefined ? { bracketed: true } : { bracketed: true, settleMs: c.pasteSettleMs };
+    expect(p.paste).toEqual(c.pasteBlock === undefined ? written : { ...written, block: true, foldLines: c.pasteBlock.foldLines });
     expect(p.hooks).toBeDefined();
   });
 
@@ -869,7 +873,8 @@ describe("the frame schema of the interior walk (M56 spec 14)", () => {
     expect(failure(change(own, ["idle", "frame", "rows"], undefined)).path).toBe("idle.frame.ownPrompt");
     const pi = parseProfile(parseJsonObject(readFileSync(join(PROFILES_DIR, "pi.json"), "utf8"))!);
     expect(pi.idle.frame.ownPrompt).toBeUndefined();
-    expect(pi.idle.frameAlternates?.map((frame) => frame.ownPrompt)).toEqual([true, true]);
+    // The rail layout (issue 747) names no glyph of its own: every row of it carries the rail.
+    expect(pi.idle.frameAlternates?.map((frame) => frame.ownPrompt)).toEqual([true, true, undefined]);
   });
 
   it("names a newline draft as the box's own lines (`draftLines`) on Muse alone, never on pi (#552)", () => {

@@ -43,7 +43,7 @@ import { readReleaseTag, stampPackageJson, stampToml } from "../scripts/release-
 import { STAGING_LOG_LINES, STAGING_LOG_PREFIX, stagingLogPath } from "../bridge/staging-log.ts";
 import { manifestVersionFrom, readBuildInfo } from "../bridge/version.ts";
 import { type BuildDeps, cmdBuild } from "./build.ts";
-import { logFilePath, systemdUserReachable } from "./lifecycle.ts";
+import { logFilePath, systemdUserSession } from "./lifecycle.ts";
 import {
   binaryLayout,
   type BinaryLayout,
@@ -76,6 +76,7 @@ import {
 } from "./sys.ts";
 import { tagRemote } from "./update-remote.ts";
 import { unitName } from "./unit.ts";
+import { insideOwnUnit } from "../bridge/systemd-user.ts";
 import {
   driveApply,
   HEALTH_POLL_MS,
@@ -1461,12 +1462,50 @@ function clockTime(ms: number): string {
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 
+/**
+ * Refuse an in-place update that runs inside this instance's own service, before anything moves.
+ * `null` means the way is clear.
+ *
+ * The in-place path restarts the service from inside its own process tree (`_apply-update` → stop,
+ * then start). A process in the service's cgroup is stopped with it, between the two, so nothing ever
+ * runs the start: the 1.28.1 rehearsal (case d-B) left the service inactive (dead) that way. And when
+ * the user manager did not answer this process either, the restart took the unsupervised tier, started
+ * a second bridge that died on the port the service still held, and the run still recorded `done`
+ * (cases d1, d2). Both were a `setsid` runner the bridge started inside its own unit; the bridge now
+ * refuses that launch (`updateLaunchRefusal`), and this is the same rule at the second door, so any
+ * other way into the unit's cgroup fails here, loudly, instead of after the build.
+ *
+ * Only the instance's OWN unit counts (`insideOwnUnit` says why): the detached runner's transient unit
+ * (`collie-api-update-<stamp>.service`) and an operator's shell are outside it, and update as before.
+ * The record ends `idle` with the reason, the shape {@link handOff}'s refusal writes, so a phone that
+ * started this run reads why instead of the previous run's `done`.
+ */
+function refuseInsideOwnUnit(deps: UpdateDeps, runId: string | null, from: string | null): number | null {
+  if (deps.host.platform !== "linux") return null;
+  const unit = unitName(deps.ctx.instance);
+  if (!insideOwnUnit(deps.files.read("/proc/self/cgroup"), unit)) return null;
+  const reason = `the update cannot run from inside ${unit}.service: its restart would stop the update with the service`;
+  try {
+    const now = deps.now();
+    const begun = reduce(idleRun(now), { kind: "begin", from, to: null, pid: deps.pid, runId }, now);
+    writeRun(deps.files, deps.ctx.stateDir, reduce(begun, { kind: "abort", reason }, now));
+  } catch {
+    /* a record nobody could write is a record the phone reads as absent; the refusal still stands */
+  }
+  deps.io.err(`error: ${reason}.`);
+  deps.io.err("       Nothing was changed. Run `collie update` in a shell on this machine.");
+  return EXIT.FAIL;
+}
+
 /** The in-place path: advance the checkout where it stands, then build and restart from it. */
 async function updateInPlace(deps: UpdateDeps, args: readonly string[]): Promise<number> {
   // Read BEFORE the advance rewrites the manifest — this is the version being left behind, and it is
   // the only moment it is still on disk. `handOff`'s callers get theirs from the `versions/` layout;
   // an in-place checkout has no previous directory to name, so the manifest is the whole record of it.
   const from = installedVersion(deps);
+  // Before the fetch, so a refusal leaves the checkout exactly where it is. See {@link refuseInsideOwnUnit}.
+  const inside = refuseInsideOwnUnit(deps, wantsRunId(args), from);
+  if (inside !== null) return inside;
   // The run's real start, for the record written at the end of it. Everything below this line is
   // the run: the fetch, the advance, the build, the restart.
   const startedAt = deps.now();
@@ -3226,15 +3265,22 @@ function handOff(
   const staging = reduce(reduce(idleRun(now), begin, now), { kind: "stage" }, now);
   writeRun(deps.files, deps.ctx.stateDir, staging);
 
+  // One probe, two answers from it: whether the systemd tier may be taken, and — when the manager
+  // was reachable only through the derived session dir — the variables the `systemd-run` CLIENT needs
+  // to find that same bus. The client is not a unit: `--setenv` cannot help it, and `runnerEnv` only
+  // forwards what this process already carries (#194).
+  const session = systemdUserSession(deps.exec, deps.ctx.env);
   const plan = launchPlan({
     host: deps.host,
     binary: runnerBinary(deps),
     args: applyArgv({ ...a, handoff: deps.pid }),
     unit: unitName(deps.ctx.instance),
     stamp: now.toString(36),
-    hasSystemdRun: deps.exec.which("systemd-run") !== null && systemdUserReachable(deps.exec, deps.ctx.env),
+    hasSystemdRun: deps.exec.which("systemd-run") !== null && session.reachable,
     hasSetsid: deps.exec.which("setsid") !== null,
+    env: deps.ctx.env,
   });
+  const runnerEnvironment = { ...runnerEnv(deps.ctx.env), ...session.envAdd };
   const logPath = logFilePath(deps.ctx.configDir, deps.ctx.instance);
   // A handoff that did not happen is a FAILURE, printed and recorded. Without this branch the record
   // sits at `staging` until the staleness rule reads it as `interrupted` ten minutes later, the phone
@@ -3257,7 +3303,7 @@ function handOff(
     // (`Exec.spawnDetached`, and ADR 0037).
     const client = deps.exec.runLogged(plan.command, {
       cwd: layout.installRoot,
-      env: runnerEnv(deps.ctx.env),
+      env: runnerEnvironment,
       logPath,
       timeoutMs: HANDOFF_CONFIRM_MS,
     });
@@ -3283,7 +3329,7 @@ function handOff(
     }
     const pid = deps.exec.spawnDetached(plan.command, {
       cwd: layout.installRoot,
-      env: runnerEnv(deps.ctx.env),
+      env: runnerEnvironment,
       logPath,
     });
     if (pid === null) {

@@ -58,7 +58,18 @@
       },
       "below": {
         "maxRows": 3,
-        "footerMaxRows": 2
+        "footerMaxRows": 2,
+        "commandList": {
+          "pointer": "^ *┃ (?<command>/[^\\s┃]+)(?: .*)? ┃$",
+          "entry": "^ *┃ (?<command>/[^\\s┃]+)(?: .*)? ┃$",
+          "wrapped": "(?!)",
+          "sides": [
+            "above"
+          ],
+          "pointerFill": true,
+          "inEdgeRun": true,
+          "pointerNote": "Lab 2026-11-09, opencode 1.19.5 and 2.2.6 (1.18.32 draws the same, oc--slash-palette): a text that starts with / opens a list of `┃ /command  description ┃` rows in the box's own edge run, right over the bare top edge row, with a closing ┃ of its own; the rows never wrap, a long description is cut. The highlighted entry has no glyph: it stands on the accent fill, every other entry on the box's fill. Enter runs the highlighted entry, so `/comp` with the highlight on /review would run /review (a fresh home screen has no /compact)."
+        }
       }
     },
     "runningRows": [
@@ -105,7 +116,10 @@
     "note": "M56 spec 01 lab, 2026-10-15, opencode 1.18.35: inert after the type and after Backspace in the permission and question dialogs on Herdr, tmux and zellij; the box shows it as `┃  ⌁`; fallback ¤; live sends passed on opencode 1.19.2 only, above the ledger range 1.18.0 to 1.18.33, so the probe stays on until a send passes inside it"
   },
   "paste": {
-    "bracketed": true
+    "bracketed": true,
+    "block": true,
+    "foldLines": "lines",
+    "blockNote": "Lab 2026-11-09, opencode 2.2.6 over herdr 0.9.5 and tmux, and 1.19.5 over tmux: one bracketed paste of the whole text folds to `[Pasted ~N lines]`, N the lines, not the line breaks (one 1,500-character line: ~1; 30 lines: ~30; 600 characters over 4 lines: ~4); 150 characters on one line or 2 short lines land literally (paste.ts, 1.19.0). The same text typed as raw bytes lands literally, and past about 13 rows the box shows only its tail, so a long send typed line by line could never be proven (#749)."
   },
   "hooks": {}
 }

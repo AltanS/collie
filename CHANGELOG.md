@@ -41,6 +41,36 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **A rollback keeps the Decisions a newer build wrote.** A Decision this build cannot read stays in the file as it was and goes back unchanged on every write, so the newer build finds it after the next update. An answer records which paired device gave it, and an answer the bridge took but never closed is settled on the retry. (M96)
 - **An agent learns tricks and the hill from Collie itself.** `collie trick skill <id>` prints the `SKILL.md` of a trick that is on and unchanged, and `collie trick skill` with no id prints how to write a trick. The installed WalkyTalky skill gains two short parts, "Decisions (the hill)" and "Tricks", and its format moves to 2, so `collie doctor` reports an older copy as behind until `collie skill sync`. (M94, M96)
 
+## [1.28.1] - 2026-11-10
+
+### Changed
+
+- **The strings 1.28.0 added now speak all twelve languages.** Community themes, pasting a theme, the theme About sheet and the Make Collie your own card, plus the composer's expand and collapse buttons and the Nunito note, are now translated in German, Spanish, French, Italian, Japanese, Korean, Portuguese, Russian, Turkish and both Chinese variants. Before, they showed in English.
+
+- **The update turn of the Collie mark is calm.** While a new app build downloads or waits for the reload, the orange beads now go round once in 20 seconds, not once in 1.8 seconds, so a long wait no longer looks like a race. The turn runs on the phone's graphics side alone, so a wait of many minutes costs the app's own work nothing. A tap on the mark still opens the dashboard's update line.
+
+- **The Collie mark drifts again while you use the app.** At rest its beads go round slowly, smooth, while you touch, scroll or type, and 20 seconds after the last touch they slow to a stop and hold. The next touch sets them going from where they stopped. A phone left alone draws no frame for the mark, as before. (#748)
+
+- **The dashboard's update line stands out while the app updates.** While a new app build downloads or waits for the reload, the line under the dashboard is a box in the update colour, edged on all four sides, at the same place in the list, and the reload is a real **Update now** button. A tap on the orange mark still brings this line into view. Every other update line looks as before.
+
+### Fixed
+
+- **An update started on a second instance restarts that instance.** On one install with two instances, an Update tap or `COLLIE_INSTANCE=core collie update` on `core` restarted the default `collie.service` instead, and left `core` on the old version with its update shown as interrupted. The runner that swaps and restarts starts in a fresh systemd unit that knows nothing of the instance, so it took the default one. It now gets the instance's name and paths the same way the first step of the update already did. The update that brings this fix still runs the old runner, so on a second instance run `COLLIE_INSTANCE=<name> collie restart` once after it. Thanks @triss-smith (#754).
+
+- **The Update tap works where the user manager is reached only through `/run/user/<uid>`.** When the bridge runs without `XDG_RUNTIME_DIR`, as under a Herdr plugin, the tap started `systemd-run`, which printed "Failed to connect to bus" and quit before any update began. The bridge now asks the user manager first, the same way `collie update` already did, and gives `systemd-run` the session values that reached it. `collie update` on a terminal passes the same values on in the same case. Where no user manager answers within 8 seconds, a bridge that does not run as a systemd service takes the `setsid` path. A bridge that runs as its own systemd service starts nothing and says why, because an update started inside the service would be stopped by its own restart: run `collie update` in a shell on that machine. `collie update` refuses the same way, before it changes anything, when it runs inside its own service. Thanks @thelinuxlich (#745).
+
+- **A crew of development builds no longer asks for an update it cannot run.** On a lead built from a checkout (`1.28.0-dev+…`) with members built the same way, the phone counted every member as behind 1.28.0 and offered to update the crew. The run then waited 20 minutes and failed, because a development build states no release, so no member takes its turn, and the failed row stayed for good. A development build now counts as level with the release it is built on, a lead on a development build offers no crew run, and a crew update started on one anyway is refused at once with the reason.
+
+- **Chrome stops showing "This site has been updated in the background" on a busy day too.** The 1.28.0 fix did not reach a phone in a pocket while agents came and went: each pane that stopped needing you still sent that phone a clear, about 24 in a day. Collie now sends each phone at most four clears in any 24 hours, and clears that come together count as one. Past that, a notification for something you already handled can stay until the same pane notifies again or until you next open Collie, which closes it then. The hourly log line counts the clears left out.
+
+- **pi's question cards and permission prompts read on pi's default theme.** On that theme the footer rows of pi's dialogs are only faint, and Collie did not see the dialog; now it does, and the card shows. Thanks @mithyer (#726).
+
+- **omp 18.18's batched questions show their answer buttons again.** With omp 18.18, a batch of questions moved its current tab onto a background without bold, and the card lost its buttons; the card now follows the batch, and a review with unanswered questions is never submitted. Thanks @minigold92 (#753).
+
+- **A pi pane with the pi-zentui editor takes sends again.** pi-zentui draws its input box with a rail on every row and the model name on the last row. Collie read the rails and the model row as a draft, so it refused every send to an empty box and held every WalkyTalky message. Collie now reads that box in its own shape: the text after the rail is the draft, and an empty box takes the send. Thanks @HickeyHsu (#747).
+
+- **Slash commands and long messages reach opencode 2.x again.** A command such as `/models` was typed but not sent, because opencode draws its command list over the top edge of the box. Collie now reads that list and presses Enter only when the list points at the command you typed. A message of more than about 150 characters was typed but not sent either: opencode shows it as `[Pasted ~N lines]`, where N counts the lines, not the line breaks. Collie now checks that count. Thanks @sigmanor (#749).
+
 ## [1.28.0] - 2026-11-09
 
 ### Added

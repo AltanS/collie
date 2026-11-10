@@ -6,7 +6,7 @@ import { LIBRARY_STORAGE_KEY, __resetThemeStore, setActiveTheme } from "@/lib/th
 import { clearStatus, setStatus } from "@/lib/status";
 import { collieMark, markIsLive, markState } from "@/test/collie-mark";
 import { savedAtLabel } from "@/lib/format";
-import { CollieHome, spinRate } from "./collie-home";
+import { CollieHome, markReading, spinRate } from "./collie-home";
 
 // The chunked marks are replaced by a marker each, so the header can be asked which mark it draws.
 vi.mock("./kawaii-mark", () => ({ KawaiiMark: () => <span data-mark="kawaii" /> }));
@@ -418,5 +418,29 @@ describe("CollieHome — the mark", () => {
     expect(collieMark(container)).toBeNull();
     act(() => setActiveTheme("plain"));
     expect(box()?.querySelector('svg[data-mark="collie"]')).not.toBeNull();
+  });
+});
+
+// THE MARK'S ONE READING: the state it draws and where a tap on it goes, decided together, so the
+// look and the tap cannot disagree. Only a state that is about a place points there.
+describe("markReading", () => {
+  const quiet = { lost: false, applying: false, reconnected: false, loading: false };
+
+  it.each([
+    ["nothing on", quiet, { state: "rest", target: "home" }],
+    ["loading", { ...quiet, loading: true }, { state: "loading", target: "home" }],
+    ["the link coming back", { ...quiet, reconnected: true, loading: true }, { state: "reconnected", target: "home" }],
+    ["the app updating", { ...quiet, applying: true, reconnected: true, loading: true }, { state: "applying", target: "update-line" }],
+    ["a dead link, over an update", { lost: true, applying: true, reconnected: true, loading: true }, { state: "idle", target: "home" }],
+  ] as const)("%s", (_name, input, expected) => {
+    expect(markReading(input)).toEqual(expected);
+  });
+
+  it("points away from home only while the mark draws the update", () => {
+    const flags = [false, true];
+    for (const lost of flags) for (const applying of flags) for (const reconnected of flags) for (const loading of flags) {
+      const reading = markReading({ lost, applying, reconnected, loading });
+      expect(reading.target === "update-line").toBe(reading.state === "applying");
+    }
   });
 });

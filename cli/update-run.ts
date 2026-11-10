@@ -1,6 +1,6 @@
 import { type Host } from "../bridge/host.ts";
 import { answersThisBuild } from "../bridge/version.ts";
-import { HEALTH_TIMEOUT_ENV } from "../bridge/update.ts";
+import { HEALTH_TIMEOUT_ENV, mirrorValue, runnerSetenvArgs } from "../bridge/update.ts";
 import {
   inFlight,
   LOCK_MAX_HOLD_MS,
@@ -715,6 +715,11 @@ export interface LaunchPlan {
  * **Linux without `systemd-run` falls back to the same double fork**, and the record says so — an
  * unsupervised host is a real deployment (`cli/lifecycle.ts`'s `unsupervised` tier), not a
  * misconfiguration to refuse.
+ *
+ * **The transient unit does not inherit the caller's environment** (#754): it starts with the user
+ * manager's, which has no `COLLIE_INSTANCE`, so a runner started for `collie-core` updated and
+ * restarted `collie.service` instead. The systemd-run tier therefore names the instance with the same
+ * `--setenv=` arguments the API runner passes ({@link runnerSetenvArgs}).
  */
 export function launchPlan(a: {
   readonly host: Host;
@@ -724,6 +729,8 @@ export function launchPlan(a: {
   readonly stamp: string;
   readonly hasSystemdRun: boolean;
   readonly hasSetsid: boolean;
+  /** The environment the caller runs under, `.env` and config layer applied (`CliContext.env`). */
+  readonly env: Environment;
 }): LaunchPlan {
   if (a.host.platform === "linux" && a.hasSystemdRun) {
     return {
@@ -734,6 +741,7 @@ export function launchPlan(a: {
         "--collect",
         "--unit",
         `${a.unit}-update-${a.stamp}`,
+        ...runnerSetenvArgs({ env: a.env, mirror: mirrorValue(a.env) }),
         a.binary,
         ...a.args,
       ],
@@ -741,6 +749,8 @@ export function launchPlan(a: {
       confirms: "manager",
     };
   }
+  // The two tiers below need no `--setenv`: their child is spawned directly, and the spawn hands it
+  // the runner's environment (`runnerEnv` in `cli/update.ts`), `COLLIE_INSTANCE` included.
   if (a.hasSetsid) {
     return {
       kind: "setsid",

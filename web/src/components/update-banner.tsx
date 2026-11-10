@@ -1,5 +1,7 @@
-import { useState, useSyncExternalStore, type Ref } from "react";
+import { useState, useSyncExternalStore, type ReactNode, type Ref } from "react";
 import { Icon } from "@/components/icons/icon";
+import { Button } from "@/components/ui/button";
+import { NOTICE_ACTION, Notice } from "@/components/ui/notice";
 
 import { useLocale } from "@/hooks/use-locale";
 import { useBundleApply, type BundleApply } from "@/lib/bundle-apply";
@@ -23,6 +25,44 @@ import { useOptionalRootData } from "@/lib/route-data";
 // says when a download counts). The download
 // outranks the release lines because it is happening now and is the answer the tap came for; a
 // release offer is still standing when it is done.
+
+/**
+ * HOW THE LINE LOOKS WHILE A NEW APP BUILD IS BEING APPLIED (2026-11-09). Altan: the line must be
+ * more apparent, "maybe an orange background or ribbon visual without being fixed". Three looks, all
+ * in flow at the line's own place, all in the status "working" tone (`Notice`'s `caution`):
+ *
+ *   band        the line on a full-width band, a soft working-tone ground with a rule above and below
+ *   card        an inset box with an edge on all four sides, and the reload as a real button
+ *   band-pulse  the band, plus one highlight when the mark's tap brings it into view
+ *
+ * ONE constant, so the pick is a one-line change. Every other state of the line looks as before.
+ */
+export type UpdateLineLook = "band" | "card" | "band-pulse";
+// Altan picked the card on 2026-11-09 (option 7 on the comparison page).
+export const UPDATE_LINE_LOOK: UpdateLineLook = "card";
+
+/** How long the arrival highlight of `band-pulse` lasts, in milliseconds. It runs once and ends. */
+export const UPDATE_LINE_PULSE_MS = 1200;
+
+/**
+ * Bring the update line into view, the way the header mark's tap asks for it (`routes/home.tsx`).
+ * Centred, because the New button floats over the foot of the list. Under `band-pulse` the band then
+ * lights up once: a Web Animation with one iteration and no fill, so it is gone when it ends and no
+ * animation is left running (issue 748). Under reduced motion there is no highlight.
+ */
+export function arriveAtUpdateLine(el: HTMLElement | null, look: UpdateLineLook = UPDATE_LINE_LOOK): void {
+  if (el === null) return;
+  el.scrollIntoView({ block: "center" });
+  if (look !== "band-pulse") return;
+  if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true) return;
+  const band = el.querySelector<HTMLElement>('[data-slot="notice"]');
+  if (band === null || !("animate" in band)) return;
+  const ground = getComputedStyle(band).backgroundColor;
+  band.animate(
+    [{ backgroundColor: "color-mix(in oklab, var(--status-working) 45%, transparent)" }, { backgroundColor: ground }],
+    { duration: UPDATE_LINE_PULSE_MS, easing: "ease-out" },
+  );
+}
 
 export interface UpdateNotice {
   /** The human line, e.g. "Bridge restart needed" / "Collie 0.12.0 available". */
@@ -151,7 +191,9 @@ export function UpdateBanner({ className, ref }: { className?: string; ref?: Ref
   const reloadHeld = useSyncExternalStore(subscribeReloadHeld, isReloadHeld, isReloadHeld);
   const notice = updateNotice(data?.update, { stage, progress, reloadHeld });
   if (!notice) return null;
-  return <UpdateNoticeLine notice={notice} className={className} ref={ref} />;
+  // A bundle stage outranks every release line (`updateNotice`), so while one is on, this notice is
+  // the bundle's.
+  return <UpdateNoticeLine notice={notice} applying={stage !== null} className={className} ref={ref} />;
 }
 
 /**
@@ -161,14 +203,21 @@ export function UpdateBanner({ className, ref }: { className?: string; ref?: Ref
  */
 export function UpdateNoticeLine({
   notice,
+  applying = false,
+  look = UPDATE_LINE_LOOK,
   className,
   ref,
 }: {
   notice: UpdateNotice;
+  /** The notice is the app bundle's (downloading, or waiting for the reload): drawn in `look`. */
+  applying?: boolean;
+  /** Which look the bundle's line takes. The app passes nothing; the comparison page passes each. */
+  look?: UpdateLineLook;
   className?: string;
   ref?: Ref<HTMLDivElement>;
 }) {
   const [copied, setCopied] = useState(false);
+  if (applying) return <ApplyingLine notice={notice} look={look} className={className} ref={ref} />;
 
   async function copy() {
     if (!notice.command) return;
@@ -237,6 +286,77 @@ export function UpdateNoticeLine({
           <span>{notice.detail}</span>
         </>
       )}
+    </div>
+  );
+}
+
+/** The bundle's line and its detail, as words. The reload stays today's text button unless `card`. */
+function ApplyingText({ notice, reloadAsText }: { notice: UpdateNotice; reloadAsText: boolean }): ReactNode {
+  const line =
+    notice.reload && reloadAsText ? (
+      <button
+        type="button"
+        onClick={() => void checkForUpdate()}
+        className="font-medium underline underline-offset-2"
+      >
+        {notice.line}
+      </button>
+    ) : (
+      <span className="font-medium">{notice.line}</span>
+    );
+  return (
+    <>
+      {line}
+      {notice.detail === undefined ? null : (
+        <>
+          {" · "}
+          <span className="font-normal">{notice.detail}</span>
+        </>
+      )}
+    </>
+  );
+}
+
+/**
+ * The bundle's line in the picked look ({@link UPDATE_LINE_LOOK}). In flow, at the line's own place:
+ * never fixed, never sticky, nothing over the list. Both looks are the one `Notice` surface in its
+ * `caution` tone, which is the status "working" tokens.
+ */
+function ApplyingLine({
+  notice,
+  look,
+  className,
+  ref,
+}: {
+  notice: UpdateNotice;
+  look: UpdateLineLook;
+  className?: string;
+  ref?: Ref<HTMLDivElement>;
+}) {
+  if (look === "card") {
+    const action = notice.reload ? (
+      <Button size="sm" variant="outline" className={NOTICE_ACTION} onClick={() => void checkForUpdate()}>
+        {t("settings.updateBanner.updateNow")}
+      </Button>
+    ) : undefined;
+    return (
+      <div ref={ref} className={className}>
+        <Notice tone="caution" variant="box" action={action}>
+          <p>
+            <ApplyingText notice={notice} reloadAsText={false} />
+          </p>
+        </Notice>
+      </div>
+    );
+  }
+  // The band runs edge to edge of the column, so the caller's side gutter goes and the band's own
+  // padding takes its place. A rule above as well as the strip's own below: in the middle of the
+  // footer a band needs both edges.
+  return (
+    <div ref={ref} className={cn(className, "px-0")}>
+      <Notice tone="caution" variant="strip" wrap className="border-t">
+        <ApplyingText notice={notice} reloadAsText />
+      </Notice>
     </div>
   );
 }

@@ -8,7 +8,7 @@ import { selfUpdateBannerVisible, subscribeBanner } from "@/lib/self-update";
 // Two things used to say "a new app build is coming" in the strip band under the header: the
 // download row (`bundle-installing`) and the reload row (`bundle`), both `lib/update-ribbon.ts`
 // kinds. Altan asked for the band to stop carrying them. The header mark says it instead, every
-// bead turning in the update colour at the loading rate, and a tap on the mark opens the dashboard,
+// bead turning in the update colour at the calm pace, and a tap on the mark opens the dashboard,
 // whose update line says what is happening (`components/update-banner.tsx`).
 //
 // So three surfaces now read the same fact: the mark (`components/collie-home.tsx`, fed by

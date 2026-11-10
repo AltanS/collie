@@ -30,6 +30,7 @@ import {
   preflightCommand,
   PREFLIGHT_TTL_MS,
   updateCadenceTick,
+  updateLaunchRefusal,
   updateStartCommand,
   type UpdateRunnerSpawn,
   type UpdateRunnerSpawnOptions,
@@ -41,6 +42,7 @@ import {
   type UpdateStartState,
   worstVerdict,
 } from "./update-action.ts";
+import { apiError } from "./error-codes.ts";
 import type { JsonObject, JsonValue } from "./json.ts";
 import type { UpdateRun, UpdateRunState } from "./update-run.ts";
 
@@ -410,6 +412,36 @@ describe("update hands off — the command that leaves this process's cgroup", (
     expect(mirrored.filter((part) => part.startsWith("--setenv="))).toEqual(["--setenv=COLLIE_UPDATE_MIRROR=http://127.0.0.1:1"]);
   });
 
+  test("the derived session dir rides the plan for the systemd client, and only there", () => {
+    // The probe reached the manager through /run/user/<uid> (#194), so the `systemd-run` CLIENT needs
+    // the same variables to find that bus. `--setenv` is for the unit, and the client is not a unit.
+    const envAdd = { XDG_RUNTIME_DIR: "/run/user/501", DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/501/bus" };
+    expect(updateStartCommand({ ...base, major: false, hasSystemdRun: true, hasSetsid: true, envAdd }).env).toEqual(envAdd);
+    // Every other tier inherits the process environment; it must not grow a field nothing reads.
+    expect(updateStartCommand({ ...base, major: false, hasSystemdRun: false, hasSetsid: true, envAdd }).env).toBeUndefined();
+    // A probe that answered in the inherited environment derives nothing, so there is nothing to add.
+    expect(updateStartCommand({ ...base, major: false, hasSystemdRun: true, hasSetsid: true, envAdd: null }).env).toBeUndefined();
+  });
+
+  test("the unit gets the instance's --setenv and the client gets the derived session dir, each only its own", () => {
+    // #754 and #745 together: `--setenv` names the instance to the transient UNIT, `env` lets the
+    // CLIENT find the bus. Neither may stand in for the other.
+    const envAdd = { XDG_RUNTIME_DIR: "/run/user/501", DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/501/bus" };
+    const plan = updateStartCommand({
+      ...base,
+      major: false,
+      hasSystemdRun: true,
+      hasSetsid: true,
+      env: { COLLIE_INSTANCE: "core", HOME: "/home/pat" },
+      envAdd,
+    });
+    expect(plan.command.filter((part) => part.startsWith("--setenv="))).toEqual([
+      "--setenv=HOME=/home/pat",
+      "--setenv=COLLIE_INSTANCE=core",
+    ]);
+    expect(plan.env).toEqual(envAdd);
+  });
+
   test("a major crossing hands the CLI its own consent flag (ADR 0020)", () => {
     const plan = updateStartCommand({ ...base, major: true, hasSystemdRun: true, hasSetsid: true });
     expect(plan.command.slice(-2)).toEqual(["update", "--major"]);
@@ -433,6 +465,40 @@ describe("update hands off — the command that leaves this process's cgroup", (
   test("it is `collie update` and nothing else — the operator's own verb, not a second recipe", () => {
     const plan = updateStartCommand({ ...base, major: false, hasSystemdRun: false, hasSetsid: false });
     expect(plan.command).toEqual(["/opt/collie/bin/collie", "update"]);
+  });
+});
+
+describe("updateLaunchRefusal: the setsid tier only outside the bridge's own service (1.28.1 d-B)", () => {
+  // The whole behaviour table of a tap on Linux, read with `updateStartCommand` beside it: what the
+  // bridge does for each pairing of "is it its unit's process" and "did the manager answer".
+  const base = { platform: "linux", binary: "/opt/collie/bin/collie", stamp: "42", major: false, hasSetsid: true };
+  const tierOf = (hasSystemdRun: boolean): string => updateStartCommand({ ...base, hasSystemdRun }).command[0] ?? "";
+  const rows: { supervised: boolean; reachable: boolean; action: string }[] = [
+    { supervised: true, reachable: true, action: "systemd-run" },
+    { supervised: true, reachable: false, action: "refuse" },
+    { supervised: false, reachable: true, action: "systemd-run" },
+    { supervised: false, reachable: false, action: "setsid" },
+  ];
+  for (const row of rows) {
+    test(`supervised ${row.supervised}, manager answered ${row.reachable} → ${row.action}`, () => {
+      const refusal = updateLaunchRefusal({ platform: "linux", hasSystemdRun: row.reachable, supervised: row.supervised });
+      expect(refusal === null ? tierOf(row.reachable) : "refuse").toBe(row.action);
+      if (row.action === "refuse") expect(refusal).toBe("update.manager_unreachable");
+    });
+  }
+
+  test("macOS and Windows never refuse on it: no cgroup, and their tiers are launchd's and the task's", () => {
+    for (const platform of ["darwin", "win32"]) {
+      expect(updateLaunchRefusal({ platform, hasSystemdRun: false, supervised: true })).toBeNull();
+    }
+  });
+
+  test("the refusal has its own code and sentence, and names the shell as the way out", () => {
+    const body = apiError("update.manager_unreachable");
+    expect(body.code).toBe("update.manager_unreachable");
+    expect(body.error).toContain("the service manager did not answer");
+    expect(body.error).toContain("`collie update` in a shell on this machine");
+    expect(body.error).not.toContain("—");
   });
 });
 
@@ -479,6 +545,24 @@ describe("the runner leaves the service's process group (#213)", () => {
     launchUpdateRunner(plan, { cwd: "/opt/collie", spawn: r.spawn });
     expect(r.calls[0]?.command[0]).toBe("systemd-run");
     expect(r.calls[0]?.options.detached).toBe(false);
+    // No derived session dir: the spawn inherits the process environment, field absent.
+    expect(r.calls[0]?.options.env).toBeUndefined();
+  });
+
+  test("a plan carrying the derived session dir hands it to the spawn as a layer", () => {
+    const env = { XDG_RUNTIME_DIR: "/run/user/501" };
+    const plan = updateStartCommand({
+      platform: "linux",
+      binary: "/opt/collie/bin/collie",
+      major: false,
+      stamp: "42",
+      hasSystemdRun: true,
+      hasSetsid: true,
+      envAdd: env,
+    });
+    const r = recorder();
+    launchUpdateRunner(plan, { cwd: "/opt/collie", spawn: r.spawn });
+    expect(r.calls[0]?.options.env).toEqual(env);
   });
 
   test("a spawn that throws is a refusal with its reason, not a crash", () => {
@@ -1023,6 +1107,58 @@ describe("updateStartVerdict — a peers-only start over a crew that may already
       lead({ crew: [row("minibuch", null)], peers: [{ name: "minibuch", state: "unreachable" }] }),
     );
     expect(v).toEqual({ kind: "peers", to: "1.5.0" });
+  });
+});
+
+// ── A DEVELOPMENT BUILD CANNOT LEAD AN UPDATE (2026-11-09) ─────────────────────
+// A `-dev` build states no release (`leadReleaseHeader` in `crew/follow.ts`), so no member is ever
+// handed the turn: the run's legs waited twenty minutes for the wall clock. The incident's versions:
+// the update monitor's `current` is `package.json`'s plain `1.28.0`, the build this process answers
+// with is `1.28.0-dev+047ee5bbd0`, and both members run dev builds, which read as behind `1.28.0`.
+
+describe("updateStartVerdict — a lead on a development build", () => {
+  const row = (name: string, version: string | null): CrewUpdateRow => ({
+    name,
+    version,
+    verdict: "green",
+    reasons: [],
+    asOf: 1,
+  });
+  const crew = [row("minibuch", "1.28.0-dev+b178eb63f2"), row("bluefin-hc", "1.28.0-dev+047ee5bbd0")];
+  const devLead = (over: Partial<UpdateStartState> = {}) =>
+    state({ current: "1.28.0", latest: "1.28.0", build: "1.28.0-dev+047ee5bbd0", crew, ...over });
+
+  test("the incident: a peers-only start is refused at once with update.dev_lead", () => {
+    const v = updateStartVerdict(ask({ peersOnly: true }), devLead());
+    expect(v).toEqual({ kind: "refuse", status: 409, body: { code: "update.dev_lead", error: expect.any(String) } });
+  });
+
+  test("an ordinary start that would queue the crew is refused the same way", () => {
+    const v = updateStartVerdict(ask(), devLead({ current: "1.27.4", latest: "1.28.0", build: "1.27.4-dev+ab12cd3" }));
+    expect(v).toMatchObject({ kind: "refuse", status: 409, body: { code: "update.dev_lead" } });
+  });
+
+  test("a solo development build queues no crew, so its own start is not this refusal", () => {
+    const v = updateStartVerdict(ask(), devLead({ current: "1.27.4", latest: "1.28.0", build: "1.27.4-dev+ab12cd3", crew: [] }));
+    expect(v).toEqual({ kind: "start", to: "1.28.0", major: false });
+  });
+
+  test("a double tap still names the running run first", () => {
+    const v = updateStartVerdict(ask({ peersOnly: true }), devLead({ crewRunOpen: true }));
+    expect(v).toMatchObject({ kind: "refuse", status: 409, body: { code: "update.in_progress" } });
+  });
+
+  test("a release build and an Edge build lead as before", () => {
+    const behind = [row("minibuch", "1.27.4+ab12cd3")];
+    for (const build of ["1.28.0+b178eb63f2", "1.28.0", "1.28.0-edge.4+9ef26fb6e"]) {
+      const v = updateStartVerdict(ask({ peersOnly: true }), devLead({ build, crew: behind }));
+      expect(v).toEqual({ kind: "peers", to: "1.28.0" });
+    }
+    // And a bridge that passes no build at all, as every caller did before the field.
+    expect(updateStartVerdict(ask({ peersOnly: true }), devLead({ build: undefined, crew: behind }))).toEqual({
+      kind: "peers",
+      to: "1.28.0",
+    });
   });
 });
 

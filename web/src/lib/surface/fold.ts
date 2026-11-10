@@ -45,7 +45,7 @@
 //
 // Pure: no DOM, no Bun API, no harness name. One log and one context always give one Surface.
 
-import { readCuesFor, runningSign, type CueRead } from "./cues";
+import { edgeListHolds, readCuesFor, runningSign, type CueRead } from "./cues";
 import { coveredFrame, findInputFrame, frameEdge, overlayInRows, rowText, type Frame, type FrameRow, type IdleProfile } from "./frame";
 import { LOST_STOP_READS, LOST_STOP_SPAN_MS, SETTLE_MS, type EdgeKind } from "./edges";
 import { isFree, type Ask, type Surface, type SurfaceComposer, type SurfaceModal, type SurfaceReason, type SurfaceTurn } from "./surface";
@@ -269,8 +269,9 @@ export function surfaceOfScreen(input: ScreenInput, idle: IdleProfile | null): S
 
   const turn: SurfaceTurn = frame === null || idle === null ? "unknown" : runningSign(rows, frame, idle.runningRows) ? "running" : "idle";
 
-  // A dialog the profile names drawn over the screen above a live box (`idle.overlayRows`).
-  const covered = frame !== null && idle !== null && coveredFrame(rows, frame, idle);
+  // A dialog the profile names drawn over the screen above a live box (`idle.overlayRows`), or a command
+  // list in the box's edge run that is not the box's own typeahead: Enter acts on it (`commandList.inEdgeRun`).
+  const covered = frame !== null && idle !== null && (coveredFrame(rows, frame, idle) || edgeListHolds(rows.map(rowText), frame, idle, rows));
   let modal: SurfaceModal;
   // A box that reads as a wrapped draft but for a row cut by an ellipsis (`cutWrap`, cues.ts `draftWrap`)
   // is unreadable: a draft or a menu cut to the box's width. No ask from it either, since a tap's Enter
