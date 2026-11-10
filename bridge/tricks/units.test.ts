@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import type { AgentView, WorkspaceView } from "../types.ts";
-import { FACT_SESSIONS_MAX, FACT_SESSIONS_MAX_BYTES, parseFacts, TRICK_CONTRACT } from "../../web/src/lib/tricks/schema.ts";
+import { FACT_SESSIONS_MAX, FACT_SESSIONS_MAX_BYTES, parseFacts, TRICK_CONTRACT, TRICK_CONTRACT_DEFAULT } from "../../web/src/lib/tricks/schema.ts";
 import { CODE_FILES_MAX, diskTrickFs, trickCodeHash, type TrickFs } from "./code-hash.ts";
 import { createTrickScanner, MANIFEST_BYTES_MAX, readManifestText, TRICKS_MAX } from "./discover.ts";
 import { buildFacts, crewFactsWorld, factsWorldOf } from "./facts.ts";
@@ -371,8 +371,9 @@ describe("the facts", () => {
     // The member id is the key a program keeps; `host` is the machine's name, for display only.
     expect(facts.memberId).toBe("bluefin-hc");
     expect(facts.host).toBe("bluefin");
-    // One contract number on the facts, no `v` beside it.
-    expect(facts.contract).toBe(TRICK_CONTRACT);
+    // One contract number on the facts, no `v` beside it: the trick's own, 1 when it names none.
+    expect(facts.contract).toBe(TRICK_CONTRACT_DEFAULT);
+    expect(buildFacts(world, { id: "legs", dir: "/c/tricks/legs", state: "/s/tricks/legs" }, { kind: "timer" }, TRICK_CONTRACT).contract).toBe(2);
     expect(Object.keys(facts)).not.toContain("v");
   });
 

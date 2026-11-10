@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
 import type { JsonObject } from "../json.ts";
-import { parseFacts, partKey, type TrickFacts, type TrickTapReply } from "../../web/src/lib/tricks/schema.ts";
+import { parseFacts, partKey, type FactsSession, type TrickFacts, type TrickTapReply } from "../../web/src/lib/tricks/schema.ts";
 import { trickCodeHash } from "./code-hash.ts";
 import { approvedCopyDir, pendingCopyDir, TRICKS_DIR } from "./paths.ts";
 import type { RunOutcome, RunSpec } from "./run.ts";
@@ -241,6 +241,54 @@ describe("discovery and the switch", () => {
     const reply = await r.service.reply(undefined);
     expect(reply.tricks).toEqual([]);
     expect(reply.present).toEqual([]);
+  });
+});
+
+describe("a contract 2 trick's inputs (M99 slice 6)", () => {
+  const INPUTS_MANIFEST = 'id = "todo"\nname = "TODO"\nrun = "./todo.sh"\ncontract = 2\ninputs = ["TODO.md"]\nplaces = ["belt"]\n';
+
+  test("fetched before each run into the copy, listed on each session, and the facts say contract 2", async () => {
+    const asked: { id: string; dir: string; globs: readonly string[] }[] = [];
+    const inputs = {
+      fetch: async (trick: { id: string; dir: string; globs: readonly string[] }, sessions: readonly FactsSession[]) => {
+        asked.push(trick);
+        return new Map(sessions.map((s) => [s.id, { state: "ok" as const, files: [{ rel: "TODO.md", path: "inputs/bluefin/w6X_3a3/TODO.md", bytes: 4, sha256: "a".repeat(64), mtime: "2026-11-10T09:00:00.000Z", kind: "text" as const }] }]));
+      },
+      forget: () => undefined,
+    };
+    const r = await rig([exited(JSON.stringify({ v: 2, parts: [{ at: "belt", id: "belt", mark: { label: "1" } }] }))], { inputs });
+    await makeTrick(r.configDir, "todo", INPUTS_MANIFEST);
+    await switchOn(r.stateDir, "todo");
+    await tickAt(r, T0);
+    const dir = await copyOf(r, "todo");
+    expect(asked).toEqual([{ id: "todo", dir, globs: ["TODO.md"] }]);
+    const facts = factsOf(r.specs[0]);
+    expect(facts.contract).toBe(2);
+    expect(facts.sessions[0]?.inputs).toEqual({ state: "ok", files: [{ rel: "TODO.md", path: "inputs/bluefin/w6X_3a3/TODO.md", bytes: 4, sha256: "a".repeat(64), mtime: "2026-11-10T09:00:00.000Z", kind: "text" }] });
+    expect((await r.service.reply(undefined)).tricks[0]?.state).toBe("ok");
+  });
+
+  test("a contract 1 trick gets no fetch, its facts say contract 1 and carry no inputs, and v 1 still reads", async () => {
+    let fetched = 0;
+    const r = await rig([exited(belt("1"))], { inputs: { fetch: async () => ((fetched += 1), new Map()), forget: () => undefined } });
+    await makeTrick(r.configDir, "legs", MANIFEST);
+    await switchOn(r.stateDir, "legs");
+    await tickAt(r, T0);
+    expect(fetched).toBe(0);
+    const facts = factsOf(r.specs[0]);
+    expect(facts.contract).toBe(1);
+    expect(facts.sessions[0]?.inputs).toBeUndefined();
+    expect((await r.service.reply(undefined)).tricks[0]?.state).toBe("ok");
+  });
+
+  test("a contract 1 trick that lists inputs is refused with one plain line, and never runs", async () => {
+    const r = await rig([exited(belt("1"))]);
+    await makeTrick(r.configDir, "todo", 'id = "todo"\nname = "TODO"\nrun = "./todo.sh"\ninputs = ["TODO.md"]\nplaces = ["belt"]\n');
+    await switchOn(r.stateDir, "todo");
+    await tickAt(r, T0);
+    expect(r.specs).toHaveLength(0);
+    const info = (await r.service.reply(undefined)).tricks[0];
+    expect(JSON.stringify(info)).toContain('\\"inputs\\" needs contract = 2');
   });
 });
 

@@ -219,8 +219,8 @@ export function checkWarnings(sources: readonly { file: string; text: string; sh
 
 /** The helper file a TypeScript trick imports. */
 export const HELPER_FILE = "trick.ts";
-/** The version of the helper this Collie writes. Its first line names it: `// collie trick helper v3`. */
-export const HELPER_VERSION = 3;
+/** The version of the helper this Collie writes. Its first line names it: `// collie trick helper v4`. */
+export const HELPER_VERSION = 4;
 /** The helper's source (cli/trick-kit/trick.ts), held in the binary as text. */
 export const TRICK_HELPER: string = trickHelperSource();
 
@@ -235,11 +235,13 @@ function sha256(text: string): string {
 }
 /**
  * The older helpers this Collie shipped, by the SHA-256 of their text: v1 (1.29.0-edge, M94 review 4) and
- * v2 (the facts' `v`, `t.hillAnswer` beside `t.tap`; M94 review 11 made it v3).
+ * v2 (the facts' `v`, `t.hillAnswer` beside `t.tap`; M94 review 11 made it v3), and v3 (contract 1 only; v4
+ * reads contract 2's `inputs` and prints the facts' own contract as `v`).
  */
 const OLDER_HELPERS: ReadonlyMap<string, number> = new Map([
   ["534f992f9aa2a4a6e53945c1b46e7b407ab9528b3839970e6552d83b23ed13bb", 1],
   ["ec9ce0acd1c1691f61bb63a0f9f136578c9bf9250c7aa66d3d1186ee030b98a9", 2],
+  ["15d022db6ff7efb5a19e148c7f29478b3cc50fd4d4dc9fb868ce576b84f03ad6", 3],
 ]);
 
 /** The version of a helper this Collie ships (this one, or one of `older`) whose bytes `text` are, or null for any other text. */

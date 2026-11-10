@@ -13,7 +13,7 @@ import { TRICKS_DIR } from "./paths.ts";
 import { PENDING_SETTLE_MS, TricksService, type TrickVersionSubject } from "./service.ts";
 import { trickCodeHash } from "./code-hash.ts";
 import { withSwitch, writeSwitches } from "./switches.ts";
-import { VERSION_CARD_GONE, VERSION_MOVED, VERSION_NEW_RIGHTS, VersionCards, versionCard, versionRequestId, versionTitle, versionView } from "./version-card.ts";
+import { VERSION_CARD_GONE, VERSION_MOVED, VERSION_NEW_RIGHTS, VersionCards, newInputs, versionCard, versionRequestId, versionTitle, versionView } from "./version-card.ts";
 import { diffArgv, readPatch, versionDiff, viewLine, type DiffRun, type VersionDiff } from "./version-diff.ts";
 
 // THE "NEW VERSION" CARD (crew slice 3): the diff of two copies, the card's words and view, and the
@@ -140,6 +140,23 @@ describe("the card's words and view", () => {
     const view = card?.view ?? [];
     expect(view[0]).toEqual({ kind: "bar", attrs: { label: "New rights" }, kids: [{ kind: "chip", text: "GITHUB_TOKEN", attrs: { tone: "warn" } }, { kind: "chip", text: "the status line", attrs: { tone: "warn" } }] });
     expect(view[1]).toEqual({ kind: "para", text: "This trick reaches the network." });
+  });
+
+  test("a new inputs glob (contract 2) is a new right: no always, and the view says the one sentence, crew or solo", () => {
+    const base = subject();
+    const pending = base.pending!;
+    const next: TrickVersionSubject = { ...base, pending: { ...pending, info: { ...pending.info, powersChanged: true }, manifest: { ...pending.manifest!, contract: 2, inputs: ["TODO.md", "notes/*.md"] } } };
+    const crew = versionCard(next, DIFF, true);
+    expect(crew?.summary).toBe("3 files changed. It now also reads files in your agent sessions' folders on every machine of the crew.");
+    expect(crew?.options?.map((option) => option.intent)).toEqual(["use", "keep"]);
+    expect(crew?.recommends).toBeNull();
+    expect(crew?.view?.[0]).toEqual({ kind: "para", text: "Reads TODO.md, notes/*.md in your agent sessions' folders on every machine of the crew." });
+    const solo = versionCard(next, DIFF);
+    expect(solo?.summary).toBe("3 files changed. It now also reads files in your agent sessions' folders.");
+    expect(solo?.view?.[0]).toEqual({ kind: "para", text: "Reads TODO.md, notes/*.md in your agent sessions' folders." });
+    // A glob the approved version already read is no new right.
+    const same: TrickVersionSubject = { ...next, base: { dir: "/y", manifest: { ...base.base!.manifest!, contract: 2, inputs: ["notes/*.md", "TODO.md"] } } };
+    expect(newInputs(same.base?.manifest, same.pending?.manifest)).toEqual([]);
   });
 
   test("a long name is cut so the title stays a short question; a big change fits 8 KiB, with 'and N more files'", () => {

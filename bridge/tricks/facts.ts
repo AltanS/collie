@@ -6,7 +6,7 @@ import {
   FACT_SPACES_MAX,
   FACT_TEXT_MAX_BYTES,
   isScopeKey,
-  TRICK_CONTRACT,
+  TRICK_CONTRACT_DEFAULT,
   type FactsSession,
   type FactsSpace,
   type FactsTrigger,
@@ -192,9 +192,12 @@ export function crewFactsWorld(world: FactsWorld, members: readonly CrewFactsMem
   return out;
 }
 
-/** The whole facts document for one run. `memberId` is the key a program may keep; `host` is display only. */
-export function buildFacts(world: FactsWorld, trick: { id: string; dir: string; state: string }, trigger: FactsTrigger): TrickFacts {
-  const facts: TrickFacts = { contract: TRICK_CONTRACT, trigger, trick, memberId: world.memberId, host: world.machine, sessions: world.sessions, spaces: world.spaces };
+/**
+ * The whole facts document for one run. `memberId` is the key a program may keep; `host` is display only.
+ * `contract` is the trick's own (its manifest's), so a contract 1 trick reads the facts it always read.
+ */
+export function buildFacts(world: FactsWorld, trick: { id: string; dir: string; state: string }, trigger: FactsTrigger, contract: number = TRICK_CONTRACT_DEFAULT): TrickFacts {
+  const facts: TrickFacts = { contract, trigger, trick, memberId: world.memberId, host: world.machine, sessions: world.sessions, spaces: world.spaces };
   if (world.sessionsOmitted !== undefined && world.sessionsOmitted > 0) facts.sessionsOmitted = world.sessionsOmitted;
   return facts;
 }

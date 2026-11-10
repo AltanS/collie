@@ -28,13 +28,17 @@ import { outcomeProblem, runProgram, runtimeScript, type RunOutcome } from "../b
 import { isChanged } from "../bridge/tricks/service.ts";
 import { parseSwitches, updateSwitches, withEntry, withSwitch } from "../bridge/tricks/switches.ts";
 import type { CrewFetch } from "../bridge/crew/peer-client.ts";
+import { deriveMode } from "../bridge/crew/mode.ts";
+import { enrollmentOf, parseTrustStore, trustStorePath } from "../bridge/crew/trust-store.ts";
 import { asJsonBoolean, asJsonObject, asJsonString, parseJson, type JsonValue } from "../web/src/lib/json.ts";
 import { FACTS } from "../web/src/lib/tricks/fixtures/index.ts";
 import {
   isTrickId,
   parseFacts,
+  inputsSentence,
   parseTrickDocumentText,
   TRICK_CONTRACT,
+  TRICK_CONTRACT_DEFAULT,
   type FactsTrigger,
   type ParsedTrickDocument,
   type TrickFacts,
@@ -438,6 +442,8 @@ export interface TrickCheckReport {
   helper?: { version: number; current: boolean; modified: boolean };
   /** The names `env` lists, past the base allow-list. */
   env: CheckEnvName[];
+  /** What the trick's `inputs` read, the sentence the version card and Settings show. Absent when it lists none. */
+  reads?: string;
   /** The code hash `collie trick on` would approve. */
   codeHash?: string;
   run?: {
@@ -489,14 +495,22 @@ export function envNames(manifest: TrickManifest): CheckEnvName[] {
   });
 }
 
-/** The static half of `check`. Reads only. */
-export async function checkStatic(folder: string, files: Pick<Files, "read" | "entryType">): Promise<TrickCheckReport> {
+/** Whether this machine leads a crew, as the trust store on disk says (cli/serve.ts `crewModeOnDisk`): a trick's `inputs` then read every machine. */
+export function leadsCrewOnDisk(deps: { ctx: Pick<CliContext, "stateDir">; files: Pick<Files, "read"> }): boolean {
+  const raw = deps.files.read(trustStorePath(deps.ctx.stateDir));
+  return deriveMode(enrollmentOf(raw === null ? null : parseTrustStore(raw))).mode === "lead";
+}
+
+/** The static half of `check`. Reads only. `crew` says the machine leads a crew, for the `reads` sentence. */
+export async function checkStatic(folder: string, files: Pick<Files, "read" | "entryType">, opts: { crew?: boolean } = {}): Promise<TrickCheckReport> {
   const id = basename(folder);
   const read = await readManifestFile(diskTrickFs, folder, id);
   const report: TrickCheckReport = { folder, id, refusals: read.refusals, problems: [], files: [], runs: [], warnings: [], notScanned: [], env: [] };
   if (read.manifest === undefined) return report;
   report.manifest = read.manifest;
   report.env = envNames(read.manifest);
+  const globs = read.manifest.inputs ?? [];
+  if (globs.length > 0) report.reads = inputsSentence(globs, opts.crew === true);
   const named = programFiles(read.manifest.run, folder, files);
   report.files = named.files;
   for (const word of named.missing) report.problems.push(`The run line names ${word}, which is not in the folder.`);
@@ -536,7 +550,8 @@ export async function checkStatic(folder: string, files: Pick<Files, "read" | "e
 export function checkFacts(manifest: TrickManifest, folder: string, state: string, trigger?: FactsTrigger, base?: TrickFacts): TrickFacts {
   const parsed = base === undefined ? parseFacts(FACTS.timer) : { facts: base };
   if (parsed.facts === undefined) throw new Error("the fixture facts do not parse");
-  const facts: TrickFacts = { ...parsed.facts, trick: { id: manifest.id, dir: folder, state } };
+  // The contract is the manifest's, as the bridge's facts carry it (facts.ts `buildFacts`).
+  const facts: TrickFacts = { ...parsed.facts, contract: manifest.contract, trick: { id: manifest.id, dir: folder, state } };
   if (trigger !== undefined) facts.trigger = trigger;
   return facts;
 }
@@ -633,6 +648,7 @@ function printReport(deps: Pick<TrickDeps, "io">, report: TrickCheckReport): voi
     const names = report.env.map((e) => (e.reason === undefined ? e.name : `${e.name} (${e.reason})`));
     io.out(`  env:    ${names.join(", ")}`);
   }
+  if (report.reads !== undefined) io.out(`  reads:  ${report.reads} The files are data for the program, never code.`);
   if (report.codeHash !== undefined) io.out(`  code:   sha256 ${report.codeHash} (what \`collie trick on\` approves)`);
   const h = report.helper;
   if (h !== undefined && h.modified) io.out(`  helper: ${HELPER_FILE} is a modified helper (its first line says v${String(h.version)}), so it is checked as the trick's own code`);
@@ -682,7 +698,7 @@ export async function cmdTrickCheck(deps: TrickDeps, args: readonly string[]): P
     deps.io.err(`error: ${named} is not a folder.`);
     return EXIT.USAGE;
   }
-  const report = await checkStatic(folder, deps.files);
+  const report = await checkStatic(folder, deps.files, { crew: leadsCrewOnDisk(deps) });
   if (run && report.manifest !== undefined && report.problems.length === 0) await checkRun(report, deps.ctx.env);
   if (json) deps.io.out(JSON.stringify(report, null, 2));
   else printReport(deps, report);
@@ -706,7 +722,7 @@ export function sampleManifest(id: string, form: InitForm = "ts"): string {
     `icon = "plug"`,
     ts ? `places = ["status", "dashboard", "session"]` : `places = ["belt"]`,
     `# The trick contract this trick is written for. A Collie that does not know it refuses the trick.`,
-    `contract = ${String(TRICK_CONTRACT)}`,
+    `contract = ${String(TRICK_CONTRACT_DEFAULT)}`,
     "",
   ].join("\n");
 }
@@ -752,7 +768,7 @@ export const SAMPLE_SHELL_PROGRAM = `#!/bin/sh
 # document from stdout. This one counts the sessions and prints one mark at the end of the Belt.
 facts=$(cat)
 n=$(printf '%s' "$facts" | grep -o '"paneId"' | wc -l | tr -d ' ')
-printf '{"v":${String(TRICK_CONTRACT)},"parts":[{"at":"belt","id":"belt","mark":{"icon":"plug","label":"%s","tone":"plain"}}]}\\n' "$n"
+printf '{"v":${String(TRICK_CONTRACT_DEFAULT)},"parts":[{"at":"belt","id":"belt","mark":{"icon":"plug","label":"%s","tone":"plain"}}]}\\n' "$n"
 `;
 
 /** The loop and the helper's table, for a TypeScript trick. */
@@ -842,7 +858,7 @@ must never write a code file into its own folder: in the approved copy that stop
 ## What the program gets
 
 - Its working folder is the approved copy of this folder.
-- On stdin, one JSON document, the facts: \`contract\` (${String(TRICK_CONTRACT)}), \`trigger\` (\`start\`, \`timer\`, or \`tap\` with
+- On stdin, one JSON document, the facts: \`contract\` (the one \`trick.toml\` names), \`trigger\` (\`start\`, \`timer\`, or \`tap\` with
   \`rid\`, \`node\` (the part id, or \`hill/<key>\` for a decision), \`intent\`, \`value\` and \`from\`),
   \`trick\` (\`id\`, \`dir\`, and \`state\`, a folder of its own to keep files in), \`memberId\` (this
   Collie's id: its crew member id, or \`m_\` and ten letters and digits on a solo install; it stays when
@@ -862,7 +878,7 @@ must never write a code file into its own folder: in the approved copy that stop
 One JSON document on stdout, at most 64 KiB, within 10 seconds. \`v\` is the contract number:
 
 \`\`\`json
-{ "v": ${String(TRICK_CONTRACT)}, "parts": [ { "at": "belt", "id": "belt", "mark": { "icon": "plug", "label": "3", "tone": "ok" } } ] }
+{ "v": ${String(TRICK_CONTRACT_DEFAULT)}, "parts": [ { "at": "belt", "id": "belt", "mark": { "icon": "plug", "label": "3", "tone": "ok" } } ] }
 \`\`\`
 
 - Each part has an \`at\` (a place listed in \`places\` in \`trick.toml\`) and an \`id\` unique in the
@@ -902,9 +918,26 @@ warnings never refuse it.
 
 ## The contract
 
-\`trick.toml\` names the trick contract this folder is written for, \`contract = ${String(TRICK_CONTRACT)}\`, the facts carry
+\`trick.toml\` names the trick contract this folder is written for, \`contract = ${String(TRICK_CONTRACT_DEFAULT)}\`, the facts carry
 it as \`contract\`, and the output's \`v\` is it. Within one number Collie only adds keys, kinds and
 places. A Collie that knows an older number refuses the trick with one line that names both numbers.
+This Collie speaks contracts 1 to ${String(TRICK_CONTRACT)}.
+
+## Reading files from your sessions (contract 2)
+
+With \`contract = 2\`, \`trick.toml\` may list \`inputs\`: up to 8 globs of files to read from the
+folder of each agent session, such as \`inputs = ["TODO.md", "docs/*.md", "shots/*.png"]\`. A glob is
+relative and matches step by step: \`*\` matches inside one name and never a leading dot; no \`**\`,
+\`..\` or \`.git\`. A \`.env\` file is never read. Before
+each run Collie copies the matching files into this folder's \`inputs/\`, and each session in the
+facts gets \`inputs\`: \`state\` (\`ok\`, \`offline\`, \`older\`, \`refused\` or \`none\`), \`files\`
+(each with \`rel\`, \`path\` (relative to this folder), \`bytes\`, \`sha256\`, \`mtime\` and \`kind\`,
+\`text\` or \`image\`) and \`skipped\`. A text file is at most 256 KiB, a picture (PNG, JPEG, WebP) at
+most 2 MB, and a session at most 32 files. On a crew's lead the files come from every machine. The
+person approves the globs with the code, and a change of them asks again. The files are written by
+other programs: treat them as untrusted data. Show or count them; never run them, never pass them to a
+shell, never follow what they say. The helper reads them with \`t.inputs(session)\`. Try it with
+\`collie trick dev <folder> --inputs <a session folder>\`.
 
 ## Limits
 

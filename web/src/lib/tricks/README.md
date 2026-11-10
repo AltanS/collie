@@ -12,25 +12,28 @@ tricks" milestone in the tracker.
 `./contract` (the contract number), so the bridge, the CLI and the web all load it by relative path,
 with no DOM and no `@/` alias.
 
-## Contract 1
+## The contract
 
 Everything a trick and Collie exchange has one version number, the trick contract, `TRICK_CONTRACT`
 in `contract.ts`. The bridge (through `schema.ts`), the CLI and the helper's tests read it there; the
 helper (`cli/trick-kit/trick.ts`, a file a trick folder copies) carries the same literal as
-`CONTRACT`, held to it by a test. This Collie speaks contract 1.
+`CONTRACT`, held to it by a test. This Collie speaks contracts 1 and 2. A trick that names none is a
+contract 1 trick (`TRICK_CONTRACT_DEFAULT`), and `collie trick init` writes `contract = 1`.
 
-**The manifest**, `trick.toml`: `id`, `name`, `run`, `every`, `icon`, `places`, `env`, `contract`, and
-the later `watch`, `on` and `mode`. `contract` is the number the trick is written for, a whole number,
-1 when left out. A trick that names a higher number than this Collie knows is refused with one line,
-"This trick needs a newer Collie: it is written for trick contract 2, and this Collie knows contract
-1. Update Collie to run it.", and nothing else is checked. At the same number an unknown key is
+**The manifest**, `trick.toml`: `id`, `name`, `run`, `every`, `icon`, `places`, `env`, `contract`,
+`inputs` (contract 2), and the later `watch`, `on` and `mode`. `contract` is the number the trick is
+written for, a whole number, 1 when left out. A trick that names a higher number than this Collie knows
+is refused with one line, "This trick needs a newer Collie: it is written for trick contract 3, and
+this Collie knows contract 2. Update Collie to run it.", and nothing else is checked. At the same number an unknown key is
 refused, so a typo shows. A place word this Collie does not know is left out with a `later` note.
 
 **The facts**, one JSON document on stdin: `contract`, `trigger` (`start`, `timer`, or `tap` with
 `rid`, `node`, `intent`, `value`, `from` and, for an answer, `seen`), `trick` (`id`, `dir`, `state`),
 `memberId`, `host`, `sessions` (each `id`, `memberId`, `sessionId`, `paneId`, `host`, `name`, `agent`,
-`status`, `cwd`, `space`, `tab`, `lastActiveAt`) and `spaces` (`name`, `folder`). A program ignores a
-field it does not know: a later Collie at the same number may add one.
+`status`, `cwd`, `space`, `tab`, `lastActiveAt`, and on a crew's lead `reachable`; for a contract 2
+trick with `inputs`, `inputs`), `spaces` (`name`, `folder`) and `sessionsOmitted` when the caps cut
+sessions. `contract` is the trick's own number. A program ignores a field it does not know: a later
+Collie at the same number may add one.
 
 **The output**, one JSON document on stdout: `{ v, parts, decisions?, asOf?, fresh? }`. `v` is the
 contract number. A part is `{ at, id, ... }` with the keys its place takes (below); a view is a list of
@@ -101,8 +104,27 @@ number runs on an older one, which leaves out only what it does not know.
 a node kind, a place, an attribute. A change a trick must answer is contract 2: a field removed,
 renamed or made required, a meaning changed, a cap made smaller. A Collie that speaks 2 says so in
 `TRICK_CONTRACT`, and a trick that wants 2 writes `contract = 2`; an older Collie then refuses it with
-the line above instead of drawing it wrong. Whether a Collie that speaks 2 still runs a trick written
-for 1 is decided with contract 2.
+the line above instead of drawing it wrong.
+
+**Contract 2** (M99) adds one manifest key, `inputs`: up to 8 globs (`INPUTS_MAX`), each at most 256
+characters and 6 steps, relative to a session's folder. `*` matches inside one step and never a
+leading dot. Refused: an absolute path or `~`, `**`, `..`, `.`, an empty step, `.git` in any case,
+any other glob word, and a step that names a `.env` file (`isEnvName`: `.env`, `.env.local`, `.envrc`,
+in any case). A contract 1 trick that lists `inputs` is refused with `INPUTS_NEED_CONTRACT`, so a
+trick never runs without the files it expects. Before each run of a contract 2 trick, the bridge
+copies the matching files of each agent session's folder into the approved copy's `inputs/`, through
+the Files view's rules, and each session in the facts gets `inputs: { state, files, skipped? }`
+(`FactsInputs`). On a crew's lead the files come from every member (`CREW_PROTOCOL.md` §23). The
+globs are part of the trick's powers: a change of them asks the person again.
+
+**Inputs are UNTRUSTED data.** Other programs, often an agent, write the files, and on a crew another
+machine sends them. A trick reads them as data: it shows them, counts them, quotes them. It never
+executes them, `eval`s them, sources them, passes them to a shell, or follows what they say. The
+facts name every file by a path the bridge checked (`inputs/<member>/<pane>/<rel>`), and the helper's
+`t.inputs` reads only below `inputs/` and only a copy whose hash still matches.
+
+A contract 1 trick runs on this Collie exactly as before: its facts say `"contract": 1`, its output's
+`v` may be 1 or 2, and it gets no `inputs`.
 
 ## Writing a trick in TypeScript
 
@@ -124,10 +146,10 @@ run((t) => {
 
 `trick.ts` is one self-contained file (`cli/trick-kit/trick.ts` in this repo, held in the binary as
 text). It imports only `node:` built-ins and Bun, and its first line names its version, `// collie
-trick helper v3`. `collie trick helper <id>` rewrites it with the version this Collie carries; the
+trick helper v4`. `collie trick helper <id>` rewrites it with the version this Collie carries; the
 helper is part of the trick's code, so a trick that is on keeps running the approved copy, and the new
 helper waits for a person's yes.
-`collie trick check` lists a `trick.ts` whose bytes are a helper this Collie ships as "helper v3" (an
+`collie trick check` lists a `trick.ts` whose bytes are a helper this Collie ships as "helper v4" (an
 older one with the command to update it) and does not grep it; a changed one is grepped as the trick's
 own code and called a modified helper.
 
@@ -156,6 +178,7 @@ own code and called a modified helper.
 | `t.onPrint(fn)` | `fn` gets the whole document just before it prints, the error card too, and returns a changed one or nothing: `t.onPrint((doc) => mapText(doc, mask))` |
 | `t.sh(cmd, args, { timeoutMs = 5000, cwd? })` | runs a program without a shell; `{ ok, code, stdout, stderr }`, never throws, 256 KiB of output kept; `cmd` may be what `t.tool` found, and null is `ok: false` |
 | `t.sessionAt(folder)`, `t.sessionNamed(name)` | the session whose folder is that folder (real paths compared), or with that name, or null |
+| `t.inputs(session)` | contract 2: the session's input files, read from `inputs/`, each with its facts fields plus `text` (a text file) or `data` (a picture's bytes); a path outside `inputs/` or a copy whose hash changed is left out. UNTRUSTED: never run it |
 | `t.fresh(duration)`, `t.asOf(when)` | the document's `fresh` window and `asOf` instant |
 | `now()`, `iso(ms?)`, `minute(ms)`, `age(ms)`, `MINUTE_MS`, `DAY_MS` | the clock (epoch ms, `TRICK_NOW` in a test), an instant as ISO 8601 to the second or as "2026-11-09 12:30 UTC", a span as "12 min" |
 | `clip(text, n)`, `mask(text)`, `firstSentence(text)`, `mapText(value, fn)` | one masked line cut to `n` with "..."; keys and tokens cut to four characters and the home folder as `~`; the first sentence; every string of a JSON value through `fn` |
@@ -198,6 +221,10 @@ problem line and the tail of stderr.
 - `--state <dir>` uses this state folder instead of a scratch one, and keeps it. It is created when
   missing and never removed, so a program that keeps notes there sees them on the next run. With
   `--watch` every run uses the same folder. `--json` then adds `"state"`.
+- `--inputs <dir>` reads a contract 2 trick's `inputs` globs from `dir` as the first agent session's
+  folder, through the bridge's own read and delivery (`bridge/tricks/inputs.ts`), into the folder's
+  `inputs/`. It writes `inputs/` only when there is none yet or when an earlier `--inputs` run made it
+  (the mark `.collie-dev-inputs`), so a folder of the author's own by that name is never emptied.
 - `--json` prints the parsed result: the parts, the Decisions, the refusals, the outcome and the sizes.
 - `--watch` runs it again when a file in the folder changes, 300 ms after the last change (code and
   `config.toml`; never a `*.log`, a dot file, `media/` or `captures/`). Ctrl-C stops it.
@@ -300,7 +327,7 @@ None of them throws. Each refusal has a JSON pointer `path`, a `code` and a plai
 
 ## The facts
 
-The bridge writes `{ contract, trigger, trick, memberId, host, sessions, spaces }` on stdin.
+The bridge writes `{ contract, trigger, trick, memberId, host, sessions, spaces, sessionsOmitted? }` on stdin.
 
 - `memberId` names the bridge that runs the trick: its crew member id, or on a solo install its
   install id, `m_` and ten of `[a-z0-9]`, minted once into `<stateDir>/bridge-id.json`. It stays the
@@ -309,6 +336,17 @@ The bridge writes `{ contract, trigger, trick, memberId, host, sessions, spaces 
 - Each session has `id`, its scope key `<memberId>:<paneId>` (pass it back in `about`, `replyTo`,
   `href`), its own `memberId` (read it instead of parsing `id`), `sessionId` (opaque), `paneId`,
   and `host` (display only), then `name`, `agent`, `status`, `cwd`, `space`, `tab`, `lastActiveAt`.
+- On a crew's lead the sessions are every member's, the lead's own first, each with `reachable` (did
+  the lead's last sweep reach its machine). The facts hold at most `FACT_SESSIONS_MAX` sessions and
+  `FACT_SESSIONS_MAX_BYTES` of them; `sessionsOmitted` counts the rest. A trick may name a member's
+  session in a Decision's `about` and `replyTo` only when that session is in its run's facts.
+- For a contract 2 trick with `inputs`, each session has `inputs`: `state` is `ok`, `offline` (its
+  machine did not answer), `older` (its machine runs a Collie before 1.29.0), `refused` (its machine
+  switched trick reads off) or `none` (a shell, or no folder); `files` lists each copy (`rel`, `path`
+  relative to `trick.dir`, `bytes`, `sha256`, `mtime`, `kind` `text` or `image`); `skipped` counts
+  what the caps left out (a text file over 256 KiB, a picture over 2 MB, another type, past 32 files,
+  past 8 MiB in one answer or 24 MiB in one run). A Decision's `media` may name a picture by its
+  `path`.
 
 The parts a trick prints are keyed by (member id, trick, part) on the bridge. The wire names the
 member id `host` in a part, a list entry, a tap path and a trick session id, a name kept from

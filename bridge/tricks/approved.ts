@@ -280,15 +280,16 @@ export async function syncConfig(src: string, copyDir: string, fs: TrickFs = dis
 // ── powers ───────────────────────────────────────────────────────────────────
 
 /**
- * The powers of a manifest as a short hash: what it may reach beyond the code itself. Today the
- * environment names (`env`) and the places it draws in (`places`), each sorted and once; the `inputs`
- * key of a later slice is hashed already, as an empty list, so a manifest without `inputs` hashes the
- * same before and after that key exists, and only a trick that declares inputs moves its powers.
+ * The powers of a manifest as a short hash: what it may reach beyond the code itself. The environment
+ * names (`env`), the globs it reads from its sessions' folders (`inputs`, contract 2) and the places it
+ * draws in (`places`), each sorted and once. `inputs` was hashed as an empty list before the key
+ * existed, so a manifest without it hashes the same as before, and only a trick that declares inputs
+ * moves its powers: a new glob asks for a new yes.
  */
-export function powersOf(manifest: Pick<TrickManifest, "env" | "places">): string {
+export function powersOf(manifest: Pick<TrickManifest, "env" | "places" | "inputs">): string {
   const env = [...new Set(manifest.env ?? [])].toSorted();
   const places = [...new Set<string>(manifest.places)].toSorted();
-  const inputs: string[] = [];
+  const inputs = [...new Set(manifest.inputs ?? [])].toSorted();
   return createHash("sha256").update(JSON.stringify({ env, inputs, places })).digest("hex").slice(0, 16);
 }
 

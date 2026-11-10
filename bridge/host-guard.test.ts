@@ -76,6 +76,7 @@ const NOT_REACHED_BY_WINDOWS: readonly Allowed[] = [
   { file: "cli/update.ts", pattern: "splitOnSlash", count: 2, why: "a literal list of payload names, joined by path.join; and a systemd unit path" },
   { file: "cli/fakes.ts", pattern: "splitOnSlash", count: 2, why: "test-only fake filesystem, keys are POSIX by design" },
   { file: "bridge/tricks/scan.ts", pattern: "startsWithSlash", count: 1, why: "`isBareImport` reads an import specifier, a module path written with `/` on every host, never a file path" },
+  { file: "bridge/tricks/inputs.ts", pattern: "splitOnSlash", count: 1, why: "`walkGlobs` counts the steps of an `inputs` glob, a manifest pattern written with `/` on every host (M99), never a file path" },
   { file: "bridge/tricks/scan.ts", pattern: "splitOnSlash", count: 1, why: "`isScannedFile` reads a path `walkTrickCode` built by joining names with `/` on every host (M94)" },
   { file: "cli/trick-add.ts", pattern: "splitOnSlash", count: 4, why: "a folder inside a git repository and the paths of a git tree, which git writes with `/` on every host (M94 review 15)" },
 ];

@@ -11,7 +11,9 @@ import { tricksFindings } from "./trick-findings.ts";
 import { agentPaneRefusal, checkStatic, runAgainstFixture, cmdTrick, cmdTrickAuto, cmdTrickCheck, cmdTrickHelper, cmdTrickInit, sampleProgram, cmdTrickList, cmdTrickSkill, cmdTrickSwitch, sampleAgents, SKILL_BYTES_MAX, TRICK_WRITE_BRIEF, TRICK_SUBCOMMANDS, type TrickCheckReport, type TrickDeps } from "./trick.ts";
 import { checkWarnings, HELPER_VERSION, helperVersion, isBareImport, isScannedFile, looksBinary, runsLines, shippedHelperVersion, TRICK_HELPER } from "../bridge/tricks/scan.ts";
 import { realFiles } from "./sys.ts";
-import { parseTrickDocument, TRICK_CONTRACT, type TricksReply } from "../web/src/lib/tricks/schema.ts";
+import { leadStore, member } from "../bridge/crew/fixtures.ts";
+import { serializeTrustStore, trustStorePath } from "../bridge/crew/trust-store.ts";
+import { inputsSentence, parseTrickDocument, TRICK_CONTRACT, TRICK_CONTRACT_DEFAULT, type TricksReply } from "../web/src/lib/tricks/schema.ts";
 
 const dirs: string[] = [];
 async function tempDir(): Promise<string> {
@@ -37,6 +39,10 @@ function capture(): Captured {
 const KEY = "sk-or-v1-0123456789abcdef0123456789abcdef";
 
 /** Deps over a fresh config and state folder. `answer` is what the bridge's `GET /api/tricks` says. */
+function fail(): never {
+  throw new Error("the manifest did not parse");
+}
+
 async function deps(answer: TricksReply | null = null): Promise<TrickDeps & Captured & { configDir: string; stateDir: string; asked: string[] }> {
   const root = await tempDir();
   const configDir = join(root, "config");
@@ -81,9 +87,13 @@ describe("collie trick init", () => {
   test("AGENTS.md agrees with contract 1: the number, the facts field, one tap shape, the tolerant read, media/", () => {
     for (const form of ["ts", "sh"] as const) {
       const text = sampleAgents("legs", form);
-      expect(text, form).toContain(`contract = ${String(TRICK_CONTRACT)}`);
-      expect(text, form).toContain(`\`contract\` (${String(TRICK_CONTRACT)})`);
-      expect(text, form).toContain(`{ "v": ${String(TRICK_CONTRACT)}, "parts"`);
+      // init writes contract 1; the guide names the newest contract and what contract 2 adds.
+      expect(text, form).toContain(`contract = ${String(TRICK_CONTRACT_DEFAULT)}`);
+      expect(text, form).toContain("`contract` (the one `trick.toml` names)");
+      expect(text, form).toContain(`{ "v": ${String(TRICK_CONTRACT_DEFAULT)}, "parts"`);
+      expect(text, form).toContain(`contracts 1 to ${String(TRICK_CONTRACT)}`);
+      expect(text, form).toContain("untrusted data");
+      expect(text, form).toContain("t.inputs(session)");
       expect(text, form).toContain("left out");
       expect(text, form).toContain("is ignored");
       expect(text, form).toContain("`media/`");
@@ -274,6 +284,26 @@ describe("collie trick check", () => {
     expect((await checkStatic(timed, realFiles)).warnings.map((w) => w.kind)).toEqual(["model"]);
   });
 
+  test("a contract 2 trick's inputs: check prints the reads sentence, with every machine on a crew's lead; the run's facts carry contract 2", async () => {
+    const manifest = 'id = "todo"\nname = "Todo"\nrun = "./p.sh"\nplaces = ["belt"]\ncontract = 2\ninputs = ["TODO.md", "shots/*.png"]\n';
+    const dir = await folder(manifest, { "p.sh": '#!/bin/sh\nread -r facts\ncase "$facts" in *\'"contract":2\'*) n=2;; *) n=1;; esac\nprintf \'{"v":%s,"parts":[{"at":"belt","id":"belt","mark":{"label":"c%s"}}]}\\n\' "$n" "$n"\n' });
+    const report = await checkStatic(dir, realFiles);
+    expect(report.reads).toBe(inputsSentence(["TODO.md", "shots/*.png"], false));
+    expect((await checkStatic(dir, realFiles, { crew: true })).reads).toBe("Reads TODO.md, shots/*.png in your agent sessions' folders on every machine of the crew.");
+    const d = await deps();
+    expect(await cmdTrickCheck(d, ["--run", dir])).toBe(EXIT.OK);
+    expect(d.out.join("\n")).toContain("reads:  Reads TODO.md, shots/*.png in your agent sessions' folders. The files are data for the program, never code.");
+    expect(d.out.join("\n")).toContain("parts: belt belt");
+    const lead = await deps();
+    await writeFile(trustStorePath(lead.stateDir), serializeTrustStore(leadStore({ peers: [member({ memberId: "laptop" })] })));
+    await cmdTrickCheck(lead, [dir]);
+    expect(lead.out.join("\n")).toContain("on every machine of the crew");
+    const ran = await runAgainstFixture((await checkStatic(dir, realFiles)).manifest ?? fail(), dir, d.ctx.env);
+    expect(ran.parsed?.parts[0]?.part).toMatchObject({ mark: { label: "c2" } });
+    const plain = await folder('id = "plain1"\nname = "P"\nrun = "./p.sh"\nplaces = ["belt"]\n', { "p.sh": '#!/bin/sh\nprintf \'{"v":1,"parts":[]}\\n\'\n' });
+    expect((await checkStatic(plain, realFiles)).reads).toBeUndefined();
+  });
+
   test("a trick.ts that is a helper this Collie ships is named, not grepped; a modified one is grepped and flagged", async () => {
     const dir = await folder('id = "kit"\nname = "Kit"\nrun = "program.ts"\nplaces = ["status"]\n', {
       "program.ts": 'import { run } from "./trick.ts";\nrun((t) => t.status({ text: "ok" }));\n',
@@ -293,7 +323,7 @@ describe("collie trick check", () => {
     expect(modified.warnings.some((w) => w.file === "trick.ts" && w.kind === "spawn")).toBe(true);
     const e = await deps();
     await cmdTrickCheck(e, [dir]);
-    expect(e.out.join("\n")).toContain("helper: trick.ts is a modified helper (its first line says v3), so it is checked as the trick's own code");
+    expect(e.out.join("\n")).toContain(`helper: trick.ts is a modified helper (its first line says v${String(HELPER_VERSION)}), so it is checked as the trick's own code`);
     expect(shippedHelperVersion(TRICK_HELPER)).toBe(HELPER_VERSION);
     expect(shippedHelperVersion("// collie trick helper v1\nexport {};\n")).toBeNull();
     const old = "// collie trick helper v1\nold text\n";

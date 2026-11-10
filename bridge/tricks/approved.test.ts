@@ -154,6 +154,13 @@ describe("powers", () => {
     expect(powersOf({ places: ["belt"] })).toBe(powersOf({ env: [], places: ["belt"] }));
     // Pinned: a manifest with no `inputs` key keeps this value when the key arrives in a later slice.
     expect(powersOf({ places: ["belt"] })).toBe(new Bun.CryptoHasher("sha256").update('{"env":[],"inputs":[],"places":["belt"]}').digest("hex").slice(0, 16));
+    // M99 slice 6: a trick with no inputs keeps the hash it had; a declared glob moves it, in any order once.
+    expect(powersOf({ places: ["belt"], inputs: [] })).toBe(powersOf({ places: ["belt"] }));
+    const read = powersOf({ places: ["belt"], inputs: ["TODO.md", "notes/*.md"] });
+    expect(read).not.toBe(powersOf({ places: ["belt"] }));
+    expect(powersOf({ places: ["belt"], inputs: ["notes/*.md", "TODO.md", "TODO.md"] })).toBe(read);
+    expect(powersOf({ places: ["belt"], inputs: ["notes/*.md"] })).not.toBe(read);
+    expect(read).toBe(new Bun.CryptoHasher("sha256").update('{"env":[],"inputs":["TODO.md","notes/*.md"],"places":["belt"]}').digest("hex").slice(0, 16));
   });
 });
 

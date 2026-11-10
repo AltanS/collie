@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 
 import { parseJson } from "../../web/src/lib/json.ts";
 import type { HillCollieRef, HillDecision, HillPostInput } from "../../web/src/lib/hill/wire.ts";
-import { DECISION_VIEW_LIMITS, DIFF_LIMITS, LINE_MAX, parseDecisionView, PLACE_KINDS, TABLE_LIMITS, type PlaceKind, type TrickManifest, type View, type ViewNode } from "../../web/src/lib/tricks/schema.ts";
+import { DECISION_VIEW_LIMITS, DIFF_LIMITS, inputsSentence, LINE_MAX, parseDecisionView, PLACE_KINDS, TABLE_LIMITS, TEXT_MAX, type PlaceKind, type TrickManifest, type View, type ViewNode } from "../../web/src/lib/tricks/schema.ts";
 import type { HillCollieSender, HillCollieVerdict, HillOneAnswer, HillPostAnswer } from "../hill/service.ts";
 import { WARN_PLAIN } from "./scan.ts";
 import type { TrickVersionsPort, TrickVersionSubject, VersionAnswer } from "./service.ts";
@@ -64,6 +64,8 @@ export interface VersionCardDeps {
   tricks: () => VersionCardTricks | null;
   /** The diff of two folders. Default: version-diff.ts `versionDiff`. */
   diff?: (base: string | null, next: string) => Promise<VersionDiff>;
+  /** Whether this bridge leads a crew: a new `inputs` glob then reads on every machine, and the card says so. */
+  crew?: () => boolean;
   warn?: (line: string) => void;
 }
 
@@ -102,6 +104,12 @@ export function newRights(base: Pick<TrickManifest, "env" | "places"> | undefine
   return [...rightsOf(next)].filter((right) => !was.has(right)).map((right) => (right.startsWith("env:") ? right.slice(4) : placeWords(right.slice(6))));
 }
 
+/** The `inputs` globs the new version reads that the approved one did not (contract 2, M99). */
+export function newInputs(base: Pick<TrickManifest, "inputs"> | undefined, next: Pick<TrickManifest, "inputs"> | undefined): string[] {
+  const was = new Set(base?.inputs ?? []);
+  return (next?.inputs ?? []).filter((glob) => !was.has(glob));
+}
+
 /** "a", "a and b", "a, b and c", "a, b and 2 more". */
 function listWords(items: readonly string[], max = 3): string {
   if (items.length <= 1) return items.join("");
@@ -127,15 +135,20 @@ function filesSentence(count: number): string {
 }
 
 /** The card for one waiting version: title, summary, options, recommendation and view. */
-export function versionCard(subject: TrickVersionSubject, diff: VersionDiff): Omit<HillPostInput, "requestId"> | null {
+export function versionCard(subject: TrickVersionSubject, diff: VersionDiff, crew = false): Omit<HillPostInput, "requestId"> | null {
   const pending = subject.pending;
   if (pending === null) return null;
   const rights = newRights(subject.base?.manifest, pending.manifest);
+  const reads = newInputs(subject.base?.manifest, pending.manifest);
   const warnings = pending.info.warnings.map((warning) => warning.kind).filter((kind): kind is keyof typeof WARN_PLAIN => kind in WARN_PLAIN);
   const counts = pending.info.files;
   const fileCount = counts.added + counts.changed + counts.removed;
-  const also = [...(rights.length > 0 ? [`asks for ${listWords(rights)}`] : []), ...warnings.map((kind) => WARN_VERBS[kind])];
-  const powersChanged = pending.info.powersChanged || rights.length > 0;
+  const also = [
+    ...(rights.length > 0 ? [`asks for ${listWords(rights)}`] : []),
+    ...(reads.length > 0 ? [crew ? "reads files in your agent sessions' folders on every machine of the crew" : "reads files in your agent sessions' folders"] : []),
+    ...warnings.map((kind) => WARN_VERBS[kind]),
+  ];
+  const powersChanged = pending.info.powersChanged || rights.length > 0 || reads.length > 0;
   // The outer list takes a comma before its last part, as a part may itself say "a and b".
   const alsoWords = also.length <= 1 ? also.join("") : `${also.slice(0, -1).join(", ")}, and ${also.at(-1) ?? ""}`;
   const fact = also.length > 0 ? `It now also ${alsoWords}.` : powersChanged ? "Its rights changed." : "It asks for no new rights.";
@@ -151,7 +164,7 @@ export function versionCard(subject: TrickVersionSubject, diff: VersionDiff): Om
     priority: "today",
     recommends: powersChanged || warnings.length > 0 ? null : { intent: "use", why: "It asks for no new rights, and a text search of its code finds nothing new." },
   };
-  const view = versionView(rights, warnings, diff);
+  const view = versionView(rights, warnings, diff, reads.length > 0 ? inputsSentence(reads, crew) : null);
   return view === null ? card : { ...card, view };
 }
 
@@ -201,9 +214,11 @@ function checked(view: View): View | undefined {
  * schema takes it: the second hunk first, then the first hunk's lines, then the table's rows. Null when
  * there is nothing to show or nothing fits.
  */
-export function versionView(rights: readonly string[], warnings: readonly (keyof typeof WARN_PLAIN)[], diff: VersionDiff): View | null {
+export function versionView(rights: readonly string[], warnings: readonly (keyof typeof WARN_PLAIN)[], diff: VersionDiff, reads: string | null = null): View | null {
   const head: ViewNode[] = [];
   if (rights.length > 0) head.push({ kind: "bar", attrs: { label: "New rights" }, kids: rights.slice(0, 8).map((right): ViewNode => ({ kind: "chip", text: [...right].slice(0, 60).join(""), attrs: { tone: "warn" } })) });
+  // Contract 2: the new globs in the one sentence Settings and `collie trick check` say too.
+  if (reads !== null) head.push({ kind: "para", text: [...reads].slice(0, TEXT_MAX).join("") });
   for (const kind of warnings) head.push({ kind: "para", text: WARN_PLAIN[kind] });
   const files = diff.files;
   const largest = files
@@ -313,7 +328,7 @@ export class VersionCards implements TrickVersionsPort {
     // The version may have moved while the diff ran: post only for the one still waiting.
     const now = this.latest.get(subject.id);
     if (now === undefined || !now.waiting || now.pending?.hash !== pending.hash || this.answered(subject.id, pending.hash)) return;
-    const card = versionCard(now, diff);
+    const card = versionCard(now, diff, this.deps.crew?.() ?? false);
     if (card === null) return;
     const mine = this.deps.hill.collieDecisions("version").filter((decision) => decision.from.ref?.id === subject.id);
     const older = mine.find((decision) => decision.state === "open");

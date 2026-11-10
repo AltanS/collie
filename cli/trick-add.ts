@@ -13,7 +13,7 @@ import { parseSwitches } from "../bridge/tricks/switches.ts";
 import type { JsonValue } from "../bridge/json.ts";
 import { asJsonObject, asJsonString } from "../web/src/lib/json.ts";
 import { isTrickId, type TrickManifest } from "../web/src/lib/tricks/schema.ts";
-import { checkStatic, type TrickDeps } from "./trick.ts";
+import { checkStatic, leadsCrewOnDisk, type TrickDeps } from "./trick.ts";
 import { EXIT } from "./io.ts";
 
 // `collie trick add`, `update` and `remove` (M94 review 15): a trick from a git repository, copied into
@@ -488,7 +488,8 @@ function sourceWords(source: TrickSource): string {
 
 /** The check scan's word on a folder: its warnings with the honesty line, and its problems. */
 async function printCheck(deps: TrickAddDeps, dir: string): Promise<void> {
-  const report = await checkStatic(dir, deps.files);
+  const report = await checkStatic(dir, deps.files, { crew: leadsCrewOnDisk(deps) });
+  if (report.reads !== undefined) deps.io.out(`It reads files: ${report.reads}`);
   if (report.warnings.length === 0) deps.io.out("The check scan found no warnings.");
   for (const line of warningLines(report.warnings)) deps.io.out(line);
   if (report.warnings.length > 0) deps.io.out(WARNINGS_HONESTY);

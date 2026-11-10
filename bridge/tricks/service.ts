@@ -7,6 +7,7 @@ import { asJsonObject, parseJson } from "../../web/src/lib/json.ts";
 import {
   freshWindowMs,
   HILL_NODE_PREFIX,
+  INPUTS_CONTRACT,
   parseTrickDocumentText,
   parseTapRequest,
   REFUSALS_MAX,
@@ -28,6 +29,7 @@ import { diskTrickFs } from "./code-hash.ts";
 import { createTrickScanner, scanTrickDir, SCAN_TIMEOUT_MS, within, type FoundTrick, type TricksScan } from "./discover.ts";
 import { scrubEnv, type ProgramEnv } from "./env.ts";
 import { buildFacts, type FactsWorld } from "./facts.ts";
+import type { TrickInputs } from "./inputs.ts";
 import { readTrickMedia, type TrickMediaFile } from "./media.ts";
 import { originRepoName } from "./origin.ts";
 import type { TrickHillRun, TrickHillTrick } from "./hill.ts";
@@ -257,6 +259,10 @@ export interface TricksServiceDeps {
    * display name (`machine`) the facts' `host` fields say.
    */
   world: (memberId: string) => Omit<FactsWorld, "memberId">;
+  /** Whether this bridge leads a crew, so a trick's inputs come from every machine (the Settings sentence says so). Absent: false. */
+  crewWide?: () => boolean;
+  /** The fetch of a contract 2 trick's inputs before each run (inputs.ts `TrickInputs`). Absent: no files, no `inputs` on the sessions. */
+  inputs?: Pick<TrickInputs, "fetch" | "forget">;
   /** The unit's environment; each run gets the allow-listed part of it (env.ts). */
   env: ProgramEnv;
   now?: () => number;
@@ -602,6 +608,7 @@ export class TricksService implements TricksSurface {
         this.runtimes.delete(id);
         this.store.removeTrick(host, id);
         this.deps.decisions?.off(this.hillTrick(rt));
+        this.deps.inputs?.forget(id);
       }
       // A trick removed while the bridge was down has its open decisions withdrawn too.
       this.deps.decisions?.prune(ids, host);
@@ -655,6 +662,7 @@ export class TricksService implements TricksSurface {
       old.settle = null;
       this.store.dropParts(host, found.id);
       this.deps.decisions?.off(this.hillTrick(old));
+      this.deps.inputs?.forget(found.id);
     }
     if (switched && on) this.restart(old);
     this.publish(found.id);
@@ -1054,6 +1062,7 @@ export class TricksService implements TricksSurface {
     if (rt.pending !== null) info.pending = rt.pending.info;
     if (rt.decides === true) info.decides = true;
     if (m?.env !== undefined) info.env = m.env;
+    if (m?.inputs !== undefined && m.inputs.length > 0) info.inputs = { globs: m.inputs, crew: this.deps.crewWide?.() ?? false };
     if (rt.on && rt.entry !== undefined) info.auto = rt.entry.auto;
     // Undo is offered only for a version taken without asking, while the one before it is there.
     if (rt.on && rt.entry?.by === "auto" && rt.entry.previous !== undefined) info.autoAt = rt.entry.at;
@@ -1179,7 +1188,17 @@ export class TricksService implements TricksSurface {
     // The program may keep the id in its own state: it is written down before the first run sees it.
     this.deps.keepId?.();
     const world = this.deps.world(host);
-    const facts = buildFacts({ memberId: host, ...world }, { id, dir: run.dir, state }, trigger);
+    // Contract 2: the files the trick's globs match in its agent sessions' folders, fetched into the
+    // copy's `inputs/` before the run, listed on each session (inputs.ts). Never for a contract 1 trick.
+    const globs = manifest.contract >= INPUTS_CONTRACT ? (manifest.inputs ?? []) : [];
+    if (globs.length > 0 && this.deps.inputs !== undefined) {
+      const got = await this.deps.inputs.fetch({ id, dir: run.dir, globs }, world.sessions);
+      world.sessions = world.sessions.map((session) => {
+        const inputs = got.get(session.id);
+        return inputs === undefined ? session : { ...session, inputs };
+      });
+    }
+    const facts = buildFacts({ memberId: host, ...world }, { id, dir: run.dir, state }, trigger, manifest.contract);
     const outcome = await (this.deps.run ?? runProgram)({
       command: manifest.run,
       cwd: run.dir,
