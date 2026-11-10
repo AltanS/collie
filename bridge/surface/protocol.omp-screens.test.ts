@@ -13,7 +13,7 @@ import type { SendAnswer } from "../../web/src/lib/surface/send.ts";
 import { KeyGate } from "./key-gate.ts";
 import { RowRing, SendProtocol, SessionLocks, type SendRequest } from "./protocol.ts";
 import { RequestStore } from "./requests.ts";
-import { LaunchWindow, harnessOfProcesses } from "../launch-window.ts";
+import { FOREGROUND_UNREAD, LaunchWindow, harnessOfProcesses, type ForegroundUnread } from "../launch-window.ts";
 
 const FIXTURES = join(import.meta.dir, "..", "..", "web", "src", "fixtures");
 /** The omp captures of the gang live in `surface/`, outside the phone's omp adapter corpus; the shell one is a pane fixture. */
@@ -113,7 +113,7 @@ let ids = 0;
 function rig(
   pane: OmpPane,
   extra: {
-    starting?: (paneId: string, named: string | null) => Promise<string | null> | string | null;
+    starting?: (paneId: string, named: string | null) => Promise<string | null | ForegroundUnread> | string | null | ForegroundUnread;
     framed?: (paneId: string, harness: string) => void;
     harness?: string;
     /** The profile as edited for this test, matched as the bridge would match it. */
@@ -295,14 +295,22 @@ describe("a pane where omp is starting that the bridge did not launch (gang thre
     return pane;
   };
 
-  /** The bridge's wiring of the launch window for one session, over a foreground that runs `argv`. */
-  function windowed(pane: OmpPane, foreground: { argv: string[] | null }, harness = "shell") {
+  /**
+   * The bridge's wiring of the launch window for one session, over a foreground that runs `argv`:
+   * `null` is a multiplexer with no foreground read, `unread` a read that gave no answer.
+   */
+  function windowed(pane: OmpPane, foreground: { argv: string[] | null | "unread" }, harness = "shell") {
     const window = new LaunchWindow();
     const framed: string[] = [];
     const { send } = rig(pane, {
       harness,
       starting: (paneId, named) =>
-        window.starting("main", paneId, named, () => Promise.resolve(foreground.argv === null ? undefined : harnessOfProcesses([{ argv: foreground.argv }], BINARIES))),
+        window.starting(
+          "main",
+          paneId,
+          named,
+          foreground.argv === null ? undefined : () => Promise.resolve(foreground.argv === "unread" ? FOREGROUND_UNREAD : harnessOfProcesses([{ argv: foreground.argv ?? [] }], BINARIES)),
+        ),
       framed: (paneId, name) => {
         framed.push(`${paneId}:${name}`);
         window.framed("main", paneId, name);
@@ -345,6 +353,41 @@ describe("a pane where omp is starting that the bridge did not launch (gang thre
     const pane = startingPane();
     const { send } = windowed(pane, { argv: null });
     expect((await send("ls -la")).receipt).toMatchObject({ outcome: "sent", keys: ["Enter"], profileId: null });
+  });
+
+  test("a foreground read with no answer is no shell: refused before any key, and the confirm on the same rows sends", async () => {
+    const pane = startingPane();
+    const { send } = windowed(pane, { argv: "unread" });
+    const first = await send("ls -la");
+    expect(first.receipt).toMatchObject({ outcome: "refused", reason: "unconfirmed", keys: [], profileId: null });
+    expect(first.receipt?.detail).toBe("Collie could not tell what runs in this pane. Check the pane, then tap Type here.");
+    expect(first.offers).toEqual(["commit", "keys"]);
+    expect(first.rowsHash).toBeString();
+    expect(pane.calls).toEqual([]);
+    expect(pane.keysSeen).toEqual([]);
+    const confirmed = await send("ls -la", { rowsHash: first.rowsHash });
+    expect(confirmed.receipt).toMatchObject({ outcome: "sent", keys: ["Enter"], profileId: null });
+    expect(pane.calls).toEqual(["type:ls -la"]);
+  });
+
+  test("a confirm on rows that moved since the person looked types nothing", async () => {
+    const pane = startingPane();
+    const { send } = windowed(pane, { argv: "unread" });
+    const first = await send("ls -la");
+    pane.load(OMP_UP);
+    const confirmed = await send("ls -la", { rowsHash: first.rowsHash });
+    expect(confirmed.receipt).toMatchObject({ outcome: "refused", reason: "stale_surface", keys: [] });
+    expect(pane.calls).toEqual([]);
+    expect(pane.keysSeen).toEqual([]);
+  });
+
+  test("a launch's open window outlives a foreground read with no answer: its harness's path, not the confirm", async () => {
+    const pane = startingPane();
+    const { send, window } = windowed(pane, { argv: "unread" });
+    window.mark("main", "%1", "omp");
+    const answer = await send("hello");
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "probe_failed", keys: [], profileId: "omp" });
+    expect(pane.keysSeen).toEqual([]);
   });
 
   test("a starting read that throws is no evidence: the shell takes the blind send", async () => {

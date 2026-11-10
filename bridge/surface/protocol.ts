@@ -240,6 +240,7 @@
 
 import { statSync } from "node:fs";
 import type { MuxAck, MuxGrid, MuxGridRequest, MuxOutcome } from "../mux/types.ts";
+import { FOREGROUND_UNREAD, type ForegroundUnread } from "../launch-window.ts";
 import { parseAnsi } from "../../web/src/lib/ansi.ts";
 import { splitLines } from "../../web/src/lib/blocks.ts";
 import { noEchoPromptIn } from "../../web/src/lib/no-echo.ts";
@@ -327,6 +328,11 @@ export const BLIND_SETTLE_MS = 350;
 const BLIND_SAW: SurfaceWords = { turn: "unknown", modal: "unknown", composer: "unknown", reason: "no-profile" };
 /** The refusal of a blind send at a password prompt. Never the prompt's row: it may name a user or a key file. */
 const NO_ECHO_REFUSAL = "A password prompt is waiting on the last row. Collie does not type into it from the text box. Use Type to answer it.";
+/**
+ * The first tap of a blind send whose foreground read gave no answer: an agent the multiplexer
+ * has not named yet may run there, so the person confirms the screen before any key.
+ */
+const FOREGROUND_UNREAD_DETAIL = "Collie could not tell what runs in this pane. Check the pane, then tap Type here.";
 
 /** The refusal of a box that does not take keys, after its second S0 read (2026-10-25); the phone reads the same words. */
 export { STALE_SCREEN };
@@ -523,8 +529,10 @@ export interface SendDeps {
    * `named` is the agent the multiplexer names, for a pane with a profile of its own, and null for a
    * pane with none. A pane that has one takes no key until that harness's input box is on screen
    * ({@link SendProtocol}, the launch window). A throw reads as null. Absent: no pane is starting.
+   * {@link FOREGROUND_UNREAD}: the pane's foreground read gave no answer, so a blind send asks the
+   * person to confirm the screen first.
    */
-  readonly starting?: ((paneId: string, named: string | null) => Promise<string | null> | string | null) | undefined;
+  readonly starting?: ((paneId: string, named: string | null) => Promise<string | null | ForegroundUnread> | string | null | ForegroundUnread) | undefined;
   /** The box of `harness` took a key on the pane while it was starting: its window ends. Never throws into a send. */
   readonly framed?: ((paneId: string, harness: string) => void) | undefined;
   /**
@@ -2458,6 +2466,8 @@ interface RunState {
   manual: boolean;
   /** The pane has no profile: the text went in blind, with no read ({@link SendProtocol.blindSend}). */
   blind: boolean;
+  /** The pane's foreground read gave no answer ({@link FOREGROUND_UNREAD}): a blind send needs the person's rows hash. */
+  unread: boolean;
   /**
    * A harness is starting in the pane ({@link SendDeps.starting}): `match` is its profile (the pane's
    * own, or the starting harness's on a pane with none), and nothing is typed or pressed until S0 finds
@@ -3671,6 +3681,7 @@ export class SendProtocol {
       probed: false,
       manual: false,
       blind: false,
+      unread: false,
       starting: false,
       startingNamed: false,
       generation: record.paneGeneration,
@@ -3762,11 +3773,13 @@ export class SendProtocol {
     const own = await this.deps.profile(target.harness, target.paneId);
     // A pane where a harness is starting is that harness's pane in waiting: its shell is not the place
     // for the text, and its input box is not there yet (the launch window).
-    const starting = await this.startingOf(target, own);
+    const read = await this.startingOf(target, own);
+    const starting = read === FOREGROUND_UNREAD ? null : read;
     const expected = own !== null || starting === null ? null : await this.deps.profile(starting, target.paneId);
     const match = own ?? expected;
     const state: RunState = {
       ...this.bareState(request, record, target, match),
+      unread: read === FOREGROUND_UNREAD,
       released: release,
       starting: own === null ? expected !== null : starting !== null,
       startingNamed: own !== null && starting !== null,
@@ -3812,8 +3825,8 @@ export class SendProtocol {
     }
   }
 
-  /** The harness starting in the pane ({@link SendDeps.starting}), or null. A throw reads as null. */
-  private async startingOf(target: SendTarget, own: ProfileMatch | null): Promise<string | null> {
+  /** The harness starting in the pane ({@link SendDeps.starting}), null, or {@link FOREGROUND_UNREAD}. A throw reads as null. */
+  private async startingOf(target: SendTarget, own: ProfileMatch | null): Promise<string | null | ForegroundUnread> {
     if (this.deps.starting === undefined) return null;
     try {
       const harness = await this.deps.starting(target.paneId, own === null ? null : target.harness);
@@ -4293,6 +4306,12 @@ export class SendProtocol {
     this.checkGeneration(state, "refused");
     if (noEchoPromptIn(snap.texts) !== null) {
       throw new Ended("refused", "not_free", { surface: snap.surface, framed: false, offers: ["keys"], detail: NO_ECHO_REFUSAL });
+    }
+    // A foreground read with no answer may hide an agent the multiplexer has not named: the person
+    // confirms the screen, and the confirm goes only on the rows they saw.
+    if (state.unread) {
+      if (state.request.rowsHash === undefined) throw new Ended("refused", "unconfirmed", { surface: snap.surface, framed: false, rowsHash: snap.rowsHash, detail: FOREGROUND_UNREAD_DETAIL });
+      if (state.request.rowsHash !== snap.rowsHash) throw new Ended("refused", "stale_surface", { surface: snap.surface, framed: false, rowsHash: snap.rowsHash, detail: "The screen moved since you looked." });
     }
     this.lap(state, "s0");
     await this.write(state, lines);

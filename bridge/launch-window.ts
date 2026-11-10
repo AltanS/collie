@@ -38,9 +38,11 @@
 // flushes its input when it starts) must not keep the pane from a send for two minutes, and the next
 // probe is how Collie learns the box reads keys now (2026-10-26).
 //
-// It fails open on missing evidence. A multiplexer with no foreground read (tmux, zellij and tuios
-// today) gets no `process` window, a read that fails or takes longer than {@link FOREGROUND_READ_MS}
-// counts as no read, and a plain shell in the foreground keeps the blind send.
+// A multiplexer with no foreground read (tmux, zellij and tuios today) gets no `process` window, and a
+// plain shell in the foreground keeps the blind send. A read that was tried and gave no answer (it
+// threw, the multiplexer refused it, or it took longer than {@link FOREGROUND_READ_MS}) is not a shell:
+// an agent the multiplexer has not named yet may run there. It answers {@link FOREGROUND_UNREAD}, and
+// the Send Protocol asks the person to confirm the screen before it types (2026-11-10).
 //
 // No harness is named here: the binaries come from the profiles (`identity.binary`), passed in.
 // Memory only, per bridge: a restart forgets the windows, and the first poll after it is a baseline.
@@ -143,11 +145,15 @@ export function harnessOfProcesses(processes: readonly ForegroundProcess[], bina
   return harnessProcessOf(processes, binaries)?.harness ?? null;
 }
 
+/** A foreground read that was tried and gave no answer: it threw, the multiplexer refused it, or it was too slow. */
+export const FOREGROUND_UNREAD: unique symbol = Symbol("foreground unread");
+export type ForegroundUnread = typeof FOREGROUND_UNREAD;
+
 /**
  * What a foreground read found: a harness id, `null` for a read that found no harness (a plain shell),
- * `undefined` for no read at all (the multiplexer has none, it refused, threw, or was too slow).
+ * {@link FOREGROUND_UNREAD} for a read that gave no answer. A multiplexer with no such read has none.
  */
-export type ForegroundHarness = () => Promise<string | null | undefined>;
+export type ForegroundHarness = () => Promise<string | null | ForegroundUnread>;
 
 /** One pane as a poll lists it: the agent the multiplexer names, or null for a shell. */
 export interface ObservedPane {
@@ -329,15 +335,18 @@ export class LaunchWindow {
    * profile of its own (`named` null), `foreground` reads its foreground processes first: a harness
    * there opens a `process` window (unless it settled), and a plain shell there ends a window the
    * process had confirmed and any settled mark. A launch's mark outlives a shell foreground until its
-   * process has been seen, since the line typed may not have run yet.
+   * process has been seen, since the line typed may not have run yet. A read that gave no answer
+   * changes nothing: an open window still names its harness, and with none the answer is
+   * {@link FOREGROUND_UNREAD}, never null, so the send does not take the pane for a shell.
    */
-  async starting(session: string, paneId: string, named: string | null, foreground?: ForegroundHarness): Promise<string | null> {
+  async starting(session: string, paneId: string, named: string | null, foreground?: ForegroundHarness): Promise<string | null | ForegroundUnread> {
     const key = LaunchWindow.keyOf(session, paneId);
     if (named !== null) {
       const harness = this.canonical(named);
       return this.open(key)?.harness === harness ? harness : null;
     }
     const seen = foreground === undefined ? undefined : await foreground();
+    if (seen === FOREGROUND_UNREAD) return this.open(key)?.harness ?? FOREGROUND_UNREAD;
     if (seen === null) {
       const window = this.open(key);
       if (window !== null && (window.source !== "launch" || window.processSeen)) this.windows.delete(key);
@@ -354,7 +363,7 @@ export class LaunchWindow {
 
 /**
  * A {@link ForegroundHarness} over a multiplexer's foreground read, bounded by {@link FOREGROUND_READ_MS}.
- * Undefined when the multiplexer has no such read. A refusal, a throw or a slow read answer `undefined`.
+ * Undefined when the multiplexer has no such read. A refusal, a throw or a slow read answer {@link FOREGROUND_UNREAD}.
  */
 export function foregroundHarnessOf(
   read: ((paneId: string) => Promise<{ readonly ok: true; readonly value: readonly ForegroundProcess[] } | { readonly ok: false }>) | undefined,
@@ -364,12 +373,12 @@ export function foregroundHarnessOf(
   if (read === undefined) return undefined;
   return (paneId) => async () => {
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const late = new Promise<undefined>((resolve) => {
-      timer = setTimeout(() => resolve(undefined), bound);
+    const late = new Promise<ForegroundUnread>((resolve) => {
+      timer = setTimeout(() => resolve(FOREGROUND_UNREAD), bound);
     });
     try {
-      const result = await Promise.race([read(paneId).catch(() => undefined), late]);
-      if (result === undefined || !result.ok) return undefined;
+      const result = await Promise.race([read(paneId).catch((): ForegroundUnread => FOREGROUND_UNREAD), late]);
+      if (result === FOREGROUND_UNREAD || !result.ok) return FOREGROUND_UNREAD;
       return harnessOfProcesses(result.value, binaries());
     } finally {
       clearTimeout(timer);

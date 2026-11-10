@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { FOREGROUND_READ_MS, LAUNCH_WINDOW_MS, LaunchWindow, PENDING_PROBE_MS, foregroundHarnessOf, harnessOfProcesses, type ForegroundHarness } from "./launch-window.ts";
+import { FOREGROUND_READ_MS, FOREGROUND_UNREAD, LAUNCH_WINDOW_MS, LaunchWindow, PENDING_PROBE_MS, foregroundHarnessOf, harnessOfProcesses, type ForegroundHarness, type ForegroundUnread } from "./launch-window.ts";
 
 /** The profiles' binaries as `bridge/index.ts` builds them: program name to harness id. */
 const BINARIES: ReadonlyMap<string, string> = new Map([
@@ -9,9 +9,9 @@ const BINARIES: ReadonlyMap<string, string> = new Map([
   ["kiro-cli", "kiro"],
 ]);
 
-/** What a fake foreground read answers now: a harness id, null for a plain shell, undefined for no read. */
+/** What a fake foreground read answers now: a harness id, null for a plain shell, or a read with no answer. */
 interface Seen {
-  now: string | null | undefined;
+  now: string | null | ForegroundUnread;
 }
 
 /** A foreground read that answers what `seen` holds now. */
@@ -92,12 +92,20 @@ describe("the launch window: the pane's foreground process", () => {
     expect(await window.starting("main", "%2", null, reader(seen))).toBe("omp");
   });
 
-  test("no foreground read (an adapter without one, a failed or slow read) keeps whatever stands: a shell pane stays a shell", async () => {
+  test("an adapter with no foreground read keeps whatever stands: a shell pane stays a shell", async () => {
     const window = new LaunchWindow();
     expect(await window.starting("main", "%3", null)).toBeNull();
-    expect(await window.starting("main", "%3", null, reader({ now: undefined }))).toBeNull();
     window.mark("main", "%3", "omp");
-    expect(await window.starting("main", "%3", null, reader({ now: undefined }))).toBe("omp");
+    expect(await window.starting("main", "%3", null)).toBe("omp");
+  });
+
+  test("a read with no answer (failed or slow) is no shell: unread with no window, the window's harness with one", async () => {
+    const window = new LaunchWindow();
+    expect(await window.starting("main", "%3", null, reader({ now: FOREGROUND_UNREAD }))).toBe(FOREGROUND_UNREAD);
+    window.mark("main", "%3", "omp");
+    expect(await window.starting("main", "%3", null, reader({ now: FOREGROUND_UNREAD }))).toBe("omp");
+    // A pane with a profile of its own is never read.
+    expect(await window.starting("main", "%4", "omp", reader({ now: FOREGROUND_UNREAD }))).toBeNull();
   });
 
   test("another harness in the foreground replaces the window", async () => {
@@ -210,11 +218,11 @@ describe("foregroundHarnessOf", () => {
     expect(await of("%2")()).toBeNull();
   });
 
-  test("a refusal, a throw and a slow read are no read", async () => {
-    expect(await foregroundHarnessOf(() => Promise.resolve({ ok: false as const }), binaries)!("%1")()).toBeUndefined();
-    expect(await foregroundHarnessOf(() => Promise.reject(new Error("socket gone")), binaries)!("%1")()).toBeUndefined();
+  test("a refusal, a throw and a slow read each answer unread, never a shell", async () => {
+    expect(await foregroundHarnessOf(() => Promise.resolve({ ok: false as const }), binaries)!("%1")()).toBe(FOREGROUND_UNREAD);
+    expect(await foregroundHarnessOf(() => Promise.reject(new Error("socket gone")), binaries)!("%1")()).toBe(FOREGROUND_UNREAD);
     const slow = foregroundHarnessOf(() => new Promise<never>(() => undefined), binaries, 5)!;
-    expect(await slow("%1")()).toBeUndefined();
+    expect(await slow("%1")()).toBe(FOREGROUND_UNREAD);
     expect(FOREGROUND_READ_MS).toBeLessThan(LAUNCH_WINDOW_MS);
   });
 });
