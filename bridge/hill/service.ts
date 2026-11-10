@@ -322,6 +322,13 @@ export function notAnswering(machine: string): string {
 export const HILL_DEFAULT_EXPIRY_DAYS = 14;
 /** {@link HILL_DEFAULT_EXPIRY_DAYS} in milliseconds: a post with no `expiresAt` gets `at` plus this. */
 export const HILL_DEFAULT_EXPIRY_MS = HILL_DEFAULT_EXPIRY_DAYS * 24 * 60 * 60 * 1000;
+/**
+ * The most days any decision stays open, a crew member's too: a later `expiresAt` is held to `at` plus
+ * this (never refused, so a trick's long expiry still posts). `collie hill post --expires` refuses more.
+ */
+export const HILL_MAX_EXPIRY_DAYS = 30;
+/** {@link HILL_MAX_EXPIRY_DAYS} in milliseconds. */
+export const HILL_MAX_EXPIRY_MS = HILL_MAX_EXPIRY_DAYS * 24 * 60 * 60 * 1000;
 
 /** Mint a decision id: `dc_` and 12 characters of [a-z0-9], from a uniform random source. */
 export function mintDecisionId(random: (n: number) => Uint8Array = (n) => randomBytes(n)): string {
@@ -804,8 +811,9 @@ export class HillService {
       target: target === null ? null : { label: this.nameOf(target.address, target.label), host: target.host, unattended: target.unattended },
       supersedes: superseded?.id ?? null,
       supersededBy: null,
-      // No expiry asked for: it closes `expired` after the default, so a forgotten decision does not stay forever.
-      expiresAt: input.expiresAt ?? now + HILL_DEFAULT_EXPIRY_MS,
+      // No expiry asked for: it closes `expired` after the default, so a forgotten decision does not stay
+      // forever; and none stays past the cap, whatever it asked for.
+      expiresAt: Math.min(input.expiresAt ?? now + HILL_DEFAULT_EXPIRY_MS, now + HILL_MAX_EXPIRY_MS),
       at: now,
       state: "open",
       closedAt: null,
@@ -827,7 +835,7 @@ export class HillService {
     this.deps.audit?.({ action: "hill.post", detail });
     if (push.skipped !== null) this.deps.audit?.({ action: "hill.push.skipped", detail: { decisionId: id, why: push.skipped } });
     // Only while it is still open: nothing between the write and here closes it, and a push is never late.
-    if (push.send && this.deps.store.get(id)?.state === "open") this.deps.push?.send(key, decision);
+    if (push.send && this.deps.store.get(id)?.state === "open") this.deps.push?.send(key, decision, crewMember);
     return { ok: true, decision: served(decision) };
   }
 
@@ -861,7 +869,9 @@ export class HillService {
         ? `more than ${String(HILL_PUSH_RATE.perSender)} an hour from this sender`
         : verdict === "member"
           ? `more than ${String(HILL_PUSH_RATE.perMember)} an hour from this machine`
-          : `more than ${String(HILL_PUSH_RATE.total)} an hour in total`;
+          : verdict === "crew"
+            ? `more than ${String(HILL_PUSH_RATE.crew)} an hour from the crew's other machines`
+            : `more than ${String(HILL_PUSH_RATE.total)} an hour in total`;
     return { tag: inherited, send: false, skipped: why };
   }
 
@@ -1223,9 +1233,12 @@ export class HillService {
     const to = decision.replyTo ?? decision.from.address;
     // A session on a crew machine that is not answering: refused BEFORE anything is closed or written, so
     // the card stays open and the same tap may go once the machine is back. Nothing is queued (§10.3).
+    // A dismiss is the exception: it always closes the card, typing nothing, and its receipt names the
+    // machine, so the phone says the session was not told (a card no tap could close would stay forever).
     const away = decision.target !== null && to !== null ? this.away(to) : null;
-    if (away !== null) return this.final(request, id, by, digest, { ...receiptOf(rid, now, "rejected", notAnswering(away), "open", null), machine: away }, false);
-    if (decision.target !== null && to !== null && this.deps.place(to)?.address !== to) {
+    const untold = away !== null && intent === "dismiss";
+    if (away !== null && !untold) return this.final(request, id, by, digest, { ...receiptOf(rid, now, "rejected", notAnswering(away), "open", null), machine: away }, false);
+    if (!untold && decision.target !== null && to !== null && this.deps.place(to)?.address !== to) {
       const gone = await this.final(request, id, by, digest, receiptOf(rid, now, "gone", TARGET_ENDED, "undeliverable", null));
       this.closeAs(id, now, "undeliverable", TARGET_ENDED);
       return gone;
@@ -1237,12 +1250,13 @@ export class HillService {
       if (refused !== null) return this.final(request, id, by, digest, receiptOf(rid, now, "rejected", refused, "open", null));
     }
     const state: HillState = intent === "dismiss" ? "dismissed" : "answered";
-    const typed = decision.target !== null && to !== null;
+    const typed = decision.target !== null && to !== null && !untold;
     const trick = trickOf(decision);
     // Written first, as not confirmed: a bridge that stops after this line never types the answer twice,
     // and never runs the trick's tap twice (it reads `failed`, the tap that did not run).
     const firstTrick = trick === null ? "none" : "failed";
-    const first = receiptOf(rid, now, "ok", null, state, typed ? "unknown" : "none", firstTrick);
+    const plain = receiptOf(rid, now, "ok", null, state, typed ? "unknown" : "none", firstTrick);
+    const first = untold && away !== null ? { ...plain, machine: away } : plain;
     const device = deviceId !== null && HILL_DEVICE_ID_RE.test(deviceId) ? deviceId : null;
     const record: HillReceiptRecord = { requestId: rid, payloadDigest: digest, receipt: device === null ? first : { ...first, deviceId: device } };
     if (!(await this.deps.receipts.recordFirst(record))) return { kind: "done", outcome: { kind: "unsaved" } };

@@ -1252,6 +1252,19 @@ instant nobody has pinned the caller (§8.2).
   many times what the route sends today: the largest walky talky message, 4,000 characters of body
   with its space line and every label at its maximum, is under 40 KiB as JSON, and a roster carries
   about 1.5 KB per member. A request without the signature header is never read here, as before.
+- **What needs no body is checked before the body is read** *(added in 1.29.0)*. The crew secret
+  (`Authorization`) is compared first: admission refuses every request without it whatever its
+  signature says, so a signed request with a wrong or absent secret is the uniform 401 (audited with
+  the factor `secret`) and not one byte of its body is read. A `X-Crew-Timestamp` that is not a
+  timestamp is the uniform 401 there too. The skew window is still checked after the signature, as
+  above. Telling "read" from "not read" apart only says whether a guessed secret is right, and the
+  secret is 256 random bits.
+- **At most 4 large signed bodies are read at once** *(added in 1.29.0)*: those of a route whose cap
+  is over 256 KiB (`hill/media`, `lead`, `warrant`, `takeover`; `SIGNED_READS_MAX` in
+  `bridge/crew/router.ts`), so at most 12 MiB sits unverified in memory. One more is answered `503`
+  with `Retry-After: 1` and `{ error, code: "signed_reads_busy" }`, its body unread, audited as
+  `crew.refused` with the factor `signed-reads-busy`. The routes with a smaller cap are not counted. A
+  member reads the 503 as a dial that did not land.
 
 **The warrant is a SECOND signed object under the same key** (§18, added 2026-08-20). It reuses these
 primitives unchanged — base64 ECDSA-P256-SHA256, made with the signer's own key and verified against
@@ -4060,16 +4073,27 @@ none. Before 1.29.0 a member refused every post with `not_on_lead`.
 
 - All three are **membership-table routes** (§5): they carry no pane data and are addressed to the
   collie. They join the signed set (§8.6), because they travel member → lead. They do not advance
-  the replay floor: they change no roster. Only a collie that leads answers them; a peer answers 404,
-  and so does a lead before 1.29.0.
+  the replay floor: they change no roster. Only a collie that leads answers them; a peer answers 404.
+  A lead before 1.29.0 answers the **uniform 401**, not 404: the paths are outside its signable set,
+  so its admission ignores the signature, and a member rides no pinned handshake into its lead.
 - **The member is the signer.** The lead takes the member from the §8.6 signature, never from the
   body. `from.address` in a post and `as` in an op must be a pane address of that member's own machine
   (`<member>/<pane>`, with or without `#<token>`). Any other address, `local/...`, a scope or `all` is
   the uniform 401, audited like any refusal. The labels in `from` (`harness`, `label`, `host`) are
   display data. The lead shows its own name for the member where it has one.
+- **A post names sessions of its own machine only.** The answer is typed where `replyTo` points, as
+  the operator, and the session it names may read the Decision with `collie hill status`. So
+  `replyTo`, and `about` (which only labels the card), must each be a pane address of the signing
+  member, as `from.address` must; `about` may also be `here`. Any other value is refused
+  `bad_target` ("... is not a session on this machine"), before the lead looks at which sessions are
+  live, so the refusal says nothing about the sessions of other machines. It is a content refusal,
+  not the 401: these are the agent's words, where `from` and `as` are the member bridge's own claim.
+  `supersedes` names a Decision of the same session only, on the lead as on one machine.
 - `hill/media` carries one image: `sha256` is the lowercase hex SHA-256 of the bytes, `b64` the bytes
   in standard base64. The lead decodes it strictly, checks the hash, and sniffs the first bytes: PNG,
-  JPEG or WebP only, at most 2 MB, the same rules as an image on the lead's own machine. It holds the
+  JPEG or WebP only, at most 2 MB, the same rules as an image on the lead's own machine. With the Hill
+  or WalkyTalky off on the lead, it refuses the image first (`hill_off`, `walky_off`) and neither
+  decodes nor holds it, since no post could follow. It holds the
   image in memory by member and hash, for 15 minutes from the last upload, at most 16 MiB per member.
   The same hash again refreshes the time and costs nothing. A lead restart drops them all.
 - `hill/post` carries the post's fields as `collie hill post` sends them, without the socket's frame,
@@ -4087,9 +4111,15 @@ none. Before 1.29.0 a member refused every post with `not_on_lead`.
 
 - One member's agents hold at most **40 open Decisions** on the lead, across all its sessions, beside
   the 20 per session and 200 in total. A post past it is refused `too_many_open`.
-- A `now` Decision rings the phone at most **6 times an hour from one member**, beside 3 an hour per
-  session and 10 in total. Past it, the Decision posts and shows, and only its push is skipped. The
-  lead's own sessions count only toward the per-session and total limits.
+- No Decision stays open past **30 days** (`HILL_MAX_EXPIRY_DAYS`), a member's or the lead's own: a
+  later `expiresAt` is held to 30 days from the post, never refused. `collie hill post --expires`
+  refuses a longer duration before it asks.
+- A `now` Decision rings the phone at most **4 times an hour from one member**, and at most **6 times
+  an hour from all members together**, beside 3 an hour per session and 10 in total
+  (`HILL_PUSH_RATE`, `bridge/hill/push.ts`). The crew share is below the total, so the lead's own
+  sessions and tricks always keep 4 of the hour, however many members post. Past a limit, the
+  Decision posts and shows, and only its push is skipped. The lead's own sessions count only toward
+  the per-session and total limits.
 
 ### Idempotency
 
@@ -4103,14 +4133,21 @@ the same image. So a member may send a post again after any failure, and the lea
 The member's walky socket takes the agent's `collie hill` call as before. It checks its own switches
 first (the Hill off, WalkyTalky off) and reads each image from its own disk under every local rule.
 Then it uploads each image, then posts. Status, withdraw and list are one call each. The member dials
-with its crew client, signed, with 30 seconds per image and 8 seconds per call.
+with its crew client, signed, with at most 20 seconds per image and 8 seconds per call, and one budget
+of 45 seconds for the whole forward, images and post together (`HILL_FORWARD_BUDGET_MS`, beside the
+other numbers in `bridge/hill/crew.ts`). The post's 8 seconds are always kept free: an image that cannot
+have its time stops the forward before the post, so nothing is posted, and the answer is the refused
+dial's. `collie hill post` waits 60 seconds for its socket (`HILL_POST_ASK_MS`), longer than the whole
+forward, so the CLI does not give up on a post that is still on its way and the agent does not post a
+second card under a new request id.
 
 ### Skew
 
 The floor is `TRICKS_CREW_FIRST_VERSION`, `1.29.0` (`bridge/hill/crew.ts`), read the way §21 reads its
 floors (`olderThanFloor`). A member that knows its lead's release is below it refuses before it dials,
 with `not_on_lead` and the words "the lead (<lead>) runs a Collie older than 1.29.0". A lead whose
-release it does not know is dialled; its 404 reads the same way. A member below 1.29.0 never calls
+release it does not know is dialled; its 401 (or a 404) reads the same way. Only a lead whose release
+is known and at or above the floor (`atTricksCrewFloor`) has its 401 read as a refused signature. A member below 1.29.0 never calls
 these routes and keeps answering `not_on_lead`.
 
 ### When the lead does not answer
@@ -4119,7 +4156,12 @@ these routes and keeps answering `not_on_lead`.
   again with --request-id <id>: it posts once". `collie hill post` exits 5.
 - A dial whose outcome is unknown (the post may have reached the lead): `lead_unreachable`, "the lead
   (<lead>) did not confirm the post. Post again with --request-id <id>: it posts once".
-- A 401: "the lead refused this machine's signature".
+- A 401 from a lead known to run 1.29.0 or later: "the lead refused this machine's signature". From
+  any other lead a 401 reads as the older lead above.
+- `collie hill post` prints the request id and the command that sends the same post again on every
+  failure: `hill: request id <id>; to send this post again, it posts once: collie hill post ...
+  --request-id <id>`. When its socket took the post and did not answer in time, it says the post "is
+  not confirmed and may still reach the Hill", exits 5, and asks no other bridge on the machine.
 - Status and list: "the lead (<lead>) is not answering; try again". A withdraw whose outcome is
   unknown says to check with `collie hill status <id>`.
 
@@ -4136,9 +4178,14 @@ the reason "<machine> is not answering. Your answer was not sent." and the addit
 `machine`. The card stays open, and the same tap may go once the machine is back. Nothing is queued
 (§10.3). The sweep never closes a Decision for a session whose machine is not answering.
 
+A **dismiss always closes**, even then: a card no tap could close would stay on the phone until it
+expires. The Decision closes `dismissed`, nothing is typed, the answer's `delivery` is `none`, and the
+`ok` receipt carries `machine` too, so the phone says "Dismissed. <machine> is not answering, so the
+session was not told." The poster reads the dismiss with `collie hill status` when its machine is back.
+
 ### Compatibility
 
-Additive inside protocol version 2 (§7.1). A lead before 1.29.0 answers 404 on the three routes, read
-as above. A member before 1.29.0 never sends them. A phone before 1.29.0 ignores `machine` on a receipt
+Additive inside protocol version 2 (§7.1). A lead before 1.29.0 answers the uniform 401 on the three
+routes, read as above. A member before 1.29.0 never sends them. A phone before 1.29.0 ignores `machine` on a receipt
 and shows the reason as any refusal. A solo install registers none of these routes (§11).
 `CREW_PROTOCOL_VERSION` stays `2`.

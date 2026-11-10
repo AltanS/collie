@@ -303,7 +303,7 @@ function walkyDeps(io: Io): WalkyDeps {
     platform: HOST.platform,
     readStdin: () => Bun.stdin.text(),
     stdinIsTty: process.stdin.isTTY === true,
-    ask: (path, line) => askSocket(path, line),
+    ask: (path, line, ms) => askSocket(path, line, ms),
   };
 }
 

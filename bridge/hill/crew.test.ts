@@ -13,11 +13,13 @@ import {
   CREW_HILL_MEDIA_ROUTE,
   CREW_HILL_OP_ROUTE,
   CREW_HILL_POST_ROUTE,
+  atTricksCrewFloor,
   HILL_HELD_MEMBER_BYTES,
   HILL_HELD_MS,
   HillCrewLead,
   HillHeldMedia,
   HillMemberForward,
+  HILL_SIGNATURE_REFUSED,
   LEAD_UNREACHABLE_CODE,
   olderThanTricksCrew,
   ownAddress,
@@ -27,8 +29,10 @@ import {
   type HillLeadLink,
 } from "./crew.ts";
 import { deniedFoldersSync, HillMediaStore } from "./media.ts";
+import { HILL_PUSH_RATE, HillPush } from "./push.ts";
+import type { PushMessage } from "../push.ts";
 import { memoryHillReceipts } from "./receipts.ts";
-import { HILL_OPEN_MEMBER_MAX, HillService, NOT_ON_LEAD, notAnswering, type HillAgentSender, type HillCrewMode, type HillPlace } from "./service.ts";
+import { HILL_MAX_EXPIRY_MS, HILL_OPEN_MEMBER_MAX, HillService, NOT_ON_LEAD, notAnswering, type HillAgentSender, type HillCrewMode, type HillPlace } from "./service.ts";
 import { hillDir, HillStore } from "./store.ts";
 
 // The Hill across a crew (CREW_PROTOCOL §22): a member's agent posts on its lead's Hill, the lead holds
@@ -83,7 +87,7 @@ interface Bridge {
 }
 
 /** One bridge's hill, on disk under a fresh folder: a lead, or a member with a forward. */
-function bridge(mode: HillCrewMode, opts: { forward?: HillMemberForward; memberId: string } = { memberId: "m_lead000000" }): Bridge {
+function bridge(mode: HillCrewMode, opts: { forward?: HillMemberForward; memberId: string; push?: HillPush; hillOn?: () => boolean } = { memberId: "m_lead000000" }): Bridge {
   const state = folder("hill-crew-state-");
   const work = folder("hill-crew-work-");
   const media = new HillMediaStore(hillDir(state), deniedFoldersSync([state]), () => undefined);
@@ -115,6 +119,8 @@ function bridge(mode: HillCrewMode, opts: { forward?: HillMemberForward; memberI
     audit: (entry) => b.audit.push(entry),
     forward: opts.forward,
     offline: mode === "lead" ? () => b.offline : undefined,
+    push: opts.push,
+    hillSwitch: opts.hillOn === undefined ? undefined : { on: opts.hillOn },
   });
   return Object.assign(b, { hill });
 }
@@ -125,6 +131,10 @@ interface TestLink extends HillLeadLink {
   down: boolean;
   status: number | null;
   older: boolean;
+  /** The lead's release is known and at the floor. */
+  atFloor: boolean;
+  /** The crew client's refusal of the dial (its `signature` is a 401 with no protocol banner), or null. */
+  refusal: string | null;
 }
 
 function wire(lead: HillCrewLead, memberId = "laptop"): TestLink {
@@ -133,11 +143,15 @@ function wire(lead: HillCrewLead, memberId = "laptop"): TestLink {
     down: false,
     status: null,
     older: false,
+    atFloor: false,
+    refusal: null,
     leadName: () => "desk",
     leadOlder: () => link.older,
+    leadAtFloor: () => link.atFloor,
     call: async (route: string, payload: string): Promise<CrewDialAnswer> => {
       link.calls.push(route);
       if (link.down) return { kind: "refused", reason: "transport" };
+      if (link.refusal !== null) return { kind: "refused", reason: link.refusal };
       if (link.status !== null) return { kind: "answer", status: link.status, body: { error: "not found" } };
       const body = parseJson(payload);
       const handle = route === CREW_HILL_MEDIA_ROUTE ? lead.media.bind(lead) : route === CREW_HILL_POST_ROUTE ? lead.post.bind(lead) : lead.op.bind(lead);
@@ -175,6 +189,14 @@ describe("the floor", () => {
     expect(olderThanTricksCrew("1.28.3", "1.29.0", compareSemver)).toBe(true);
     expect(olderThanTricksCrew("1.29.0", "1.29.0", compareSemver)).toBe(false);
     expect(olderThanTricksCrew(null, "1.29.0", compareSemver)).toBe(false);
+  });
+
+  test("only a lead that names a release at or above the floor is known to take Decisions", () => {
+    expect(atTricksCrewFloor("1.29.0", "1.29.0", compareSemver)).toBe(true);
+    expect(atTricksCrewFloor("1.30.2", "1.29.0", compareSemver)).toBe(true);
+    expect(atTricksCrewFloor("1.28.3", "1.29.0", compareSemver)).toBe(false);
+    expect(atTricksCrewFloor(null, "1.29.0", compareSemver)).toBe(false);
+    expect(atTricksCrewFloor("unknown", "1.29.0", compareSemver)).toBe(false);
   });
 
   test("only a pane address of the signing member's own machine is its own", () => {
@@ -260,6 +282,50 @@ describe("the lead's routes", () => {
     expect(missing.body).toMatchObject({ ok: false, code: "bad_image" });
   });
 
+  test("post: a replyTo on the lead or on another member is refused, and nothing is ever typed there", async () => {
+    const { crewLead, lead } = crew();
+    // A session of the lead's own, and one of another member, both live in the lead's sweep.
+    lead.live.push({ address: "desk/%1#aaaa", label: "lead session", host: "desk", unattended: false }, { address: "mini/%2#bbbb", label: "mini session", host: "mini", unattended: false });
+    for (const replyTo of ["desk/%1#aaaa", "desk/%1", "mini/%2#bbbb", "local/%1"]) {
+      const answer = crewLead.post({ from: { address: LAPTOP_PANE, label: "repo#main" }, fields: fields({ replyTo, options: [{ intent: "merge", label: "Merge" }] }) }, "laptop");
+      expect(answer).toEqual({ status: 200, body: { ok: false, code: "bad_target", error: expect.stringContaining("not a session on this machine") } });
+    }
+    expect(lead.store.all()).toHaveLength(0);
+    expect(lead.sent).toEqual([]);
+  });
+
+  test("post: an about on another machine is refused; here and an own session stand", () => {
+    const { crewLead, lead } = crew();
+    lead.live.push({ address: "desk/%1#aaaa", label: "lead session", host: "desk", unattended: false }, { address: "laptop/%4#dddd", label: "other pane", host: "laptop", unattended: false });
+    for (const about of ["desk/%1#aaaa", "mini/%2"]) {
+      const answer = crewLead.post({ from: { address: LAPTOP_PANE, label: "repo#main" }, fields: fields({ about }) }, "laptop");
+      expect(answer.body).toMatchObject({ ok: false, code: "bad_target" });
+    }
+    expect(crewLead.post({ from: { address: LAPTOP_PANE, label: "repo#main" }, fields: fields({ about: "here" }) }, "laptop").body).toMatchObject({ ok: true, decision: { about: LAPTOP_PANE } });
+    expect(crewLead.post({ from: { address: LAPTOP_PANE, label: "repo#main" }, fields: fields({ about: "laptop/%4#dddd" }) }, "laptop").body).toMatchObject({ ok: true, decision: { about: "laptop/%4#dddd" } });
+  });
+
+  test("post: a replyTo on the member's own machine still works, and the answer goes there", async () => {
+    const { crewLead, lead } = crew();
+    lead.live.push({ address: "laptop/%4#dddd", label: "other pane", host: "laptop", unattended: false });
+    const posted = crewLead.post({ from: { address: LAPTOP_PANE, label: "repo#main" }, fields: fields({ replyTo: "laptop/%4#dddd" }) }, "laptop");
+    const id = idOf(posted);
+    expect(posted.body).toMatchObject({ ok: true, decision: { replyTo: "laptop/%4#dddd" } });
+    const sent = await lead.hill.answer({ rid: uuid(), node: `hill/${id}`, intent: "yes", value: { text: null } }, id, "Pixel 9");
+    expect(sent).toMatchObject({ kind: "receipt", receipt: { code: "ok", state: "answered" } });
+    expect(lead.sent.map((s) => s.to)).toEqual(["laptop/%4#dddd"]);
+  });
+
+  test("post: a member cannot supersede a decision of the lead's own session or another member's", () => {
+    const { crewLead, lead } = crew();
+    lead.live.push({ address: "desk/%1#aaaa", label: "lead session", host: "desk", unattended: false });
+    const own = lead.hill.post({ kind: "agent", address: "desk/%1#aaaa", memberId: "m_lead000000", harness: null, label: "lead", host: "desk" }, { requestId: uuid(), title: "Lead's own", summary: "Mine.", options: [{ intent: "yes", label: "Yes" }] });
+    if (!own.ok) throw new Error(own.error);
+    const answer = crewLead.post({ from: { address: LAPTOP_PANE, label: "repo#main" }, fields: fields({ supersedes: own.decision.id }) }, "laptop");
+    expect(answer.body).toMatchObject({ ok: false, code: "bad_supersedes" });
+    expect(lead.store.get(own.decision.id)?.state).toBe("open");
+  });
+
   test("op: status, withdraw and list for the member's own session only", () => {
     const { crewLead } = crew();
     const posted = crewLead.post({ from: { address: LAPTOP_PANE, label: "repo#main" }, fields: fields() }, "laptop");
@@ -281,6 +347,68 @@ describe("the lead's routes", () => {
     }
     expect(crewLead.post({ from: { address: "laptop/%20#zzzz", label: "repo" }, fields: fields() }, "laptop").body).toMatchObject({ ok: false, code: "too_many_open" });
     expect(crewLead.post({ from: { address: "mini/%1#aaaa", label: "repo" }, fields: fields() }, "mini").body).toMatchObject({ ok: true });
+  });
+});
+
+describe("what the lead refuses of a member", () => {
+  test("an image while the Hill is off, or WalkyTalky is off, on the lead: refused before it is read or held", () => {
+    let on = false;
+    const lead = bridge("lead", { memberId: "m_lead000000", hillOn: () => on });
+    const held = new HillHeldMedia(() => lead.clock);
+    let walky = true;
+    const crewLead = new HillCrewLead({ hill: lead.hill, held, walkyOn: () => walky });
+    const bytes = png();
+    const image = { sha256: sha256Hex(bytes), b64: b64(bytes) };
+    expect(crewLead.media(image, "laptop")).toEqual({ status: 200, body: { ok: false, code: "hill_off", error: expect.stringContaining("the Hill is off") } });
+    // Even a body that is no image is not looked at.
+    expect(crewLead.media({ junk: true }, "laptop").body).toMatchObject({ ok: false, code: "hill_off" });
+    on = true;
+    walky = false;
+    expect(crewLead.media(image, "laptop").body).toMatchObject({ ok: false, code: "walky_off" });
+    expect(held.bytesOf("laptop")).toBe(0);
+    walky = true;
+    expect(crewLead.media(image, "laptop").body).toMatchObject({ ok: true });
+  });
+
+  test("a forwarded post whose view the parser refuses: a button, a javascript: link", () => {
+    const { crewLead, lead } = crew();
+    const button = [{ kind: "bar", kids: [{ kind: "button", text: "Merge", attrs: { intent: "merge" } }] }];
+    const script = [{ kind: "para", kids: [{ kind: "link", text: "Open", attrs: { href: "javascript:alert(1)" } }] }];
+    for (const [view, at] of [
+      [button, "/view/0/kids/0/kind"],
+      [script, "/view/0/kids/0/attrs/href"],
+    ] as const) {
+      const answer = crewLead.post({ from: { address: LAPTOP_PANE, label: "repo#main" }, fields: fields({ view }) }, "laptop");
+      expect(answer).toEqual({ status: 200, body: { ok: false, code: "bad_body", error: expect.stringContaining(`the view is refused at ${at}:`) } });
+    }
+    expect(lead.store.all()).toHaveLength(0);
+  });
+
+  test("now pushes from members: at most 4 an hour from one machine and 6 from all members together; the lead's own still ring", () => {
+    const pushes: PushMessage[] = [];
+    let clock = 1000;
+    const lead = bridge("lead", { memberId: "m_lead000000", push: new HillPush({ ready: () => true, send: (message) => pushes.push(message), now: () => clock }) });
+    clock = lead.clock;
+    const crewLead = new HillCrewLead({ hill: lead.hill, held: new HillHeldMedia(() => lead.clock) });
+    const rings = () => pushes.filter((p) => p.type === undefined).length;
+    const skipped = () => lead.audit.filter((e) => e.action === "hill.push.skipped").map((e) => e.detail?.why);
+    // One member, three sessions (each under its own 3 an hour): the fifth `now` is past 4 from this machine.
+    for (const [i, pane] of ["laptop/%1#aaaa", "laptop/%1#aaaa", "laptop/%2#bbbb", "laptop/%2#bbbb", "laptop/%3#cccc"].entries()) {
+      expect(crewLead.post({ from: { address: pane, label: "repo" }, fields: fields({ priority: "now", title: `Ship ${String(i)}?` }) }, "laptop").body).toMatchObject({ ok: true });
+    }
+    expect(rings()).toBe(HILL_PUSH_RATE.perMember);
+    expect(skipped()).toEqual(["more than 4 an hour from this machine"]);
+    // A second member rings until all members together reach 6.
+    for (const pane of ["mini/%1#aaaa", "mini/%2#bbbb", "mini/%3#cccc"]) {
+      expect(crewLead.post({ from: { address: pane, label: "repo" }, fields: fields({ priority: "now" }) }, "mini").body).toMatchObject({ ok: true });
+    }
+    expect(rings()).toBe(HILL_PUSH_RATE.crew);
+    expect(skipped().at(-1)).toBe("more than 6 an hour from the crew's other machines");
+    // The lead's own session keeps its share of the hour.
+    lead.live.push({ address: "desk/%1#aaaa", label: "lead", host: "desk", unattended: false });
+    const own = lead.hill.post({ kind: "agent", address: "desk/%1#aaaa", memberId: "m_lead000000", harness: null, label: "lead", host: "desk" }, { requestId: uuid(), title: "Mine?", summary: "Mine.", options: [{ intent: "yes", label: "Yes" }], priority: "now" });
+    expect(own.ok).toBe(true);
+    expect(rings()).toBe(HILL_PUSH_RATE.crew + 1);
   });
 });
 
@@ -332,10 +460,60 @@ describe("a member's forward", () => {
     expect(await member.hill.askStatus(SENDER, "dc_crew00000001")).toEqual({ ok: false, missing: false, error: "the lead (desk) is not answering; try again" });
   });
 
-  test("a 401 from the lead is the signature, said plainly", async () => {
-    const { member, link } = crew();
+  test("the whole forward has one budget: an image that cannot have its time stops it before the post", async () => {
+    const lead = bridge("lead");
+    const crewLead = new HillCrewLead({ hill: lead.hill, held: new HillHeldMedia(() => lead.clock) });
+    const inner = wire(crewLead);
+    let clock = 0;
+    const budgets: number[] = [];
+    // Each dial takes 45 ms of a 100 ms forward, with 20 ms kept free for the post.
+    const slow: HillLeadLink = { ...inner, call: async (route, payload, budgetMs) => {
+      budgets.push(budgetMs);
+      clock += 45;
+      return inner.call(route, payload, budgetMs);
+    } };
+    const member = bridge("peer", { forward: new HillMemberForward(slow, { mediaMs: 50, callMs: 20, totalMs: 100, now: () => clock }), memberId: "m_laptop0000" });
+    const files = ["a.png", "b.png", "c.png"].map((name, i) => {
+      const file = join(member.work, name);
+      writeFileSync(file, png(390, 240, 64 + i));
+      return { path: file };
+    });
+    const row = fields({ images: files });
+    expect(await member.hill.postFields(SENDER, row)).toEqual({ ok: false, code: LEAD_UNREACHABLE_CODE, error: `the lead (desk) is not answering; nothing was posted. Post again with --request-id ${String(row.requestId)}: it posts once` });
+    expect(inner.calls).toEqual([CREW_HILL_MEDIA_ROUTE]);
+    expect(budgets).toEqual([50]);
+    expect(lead.store.all()).toHaveLength(0);
+  });
+
+  test("a lead before 1.29.0 answers the uniform 401 (it does not sign these routes): read as older while its release is not known", async () => {
+    const { member, link, lead } = crew();
+    // The crew client's reading of a bare 401 (`signature`), and the status itself: both shapes.
+    link.refusal = "signature";
+    expect(await member.hill.postFields(SENDER, fields())).toMatchObject({ ok: false, code: "not_on_lead", error: expect.stringContaining("older than 1.29.0") });
+    expect(await member.hill.askStatus(SENDER, "dc_crew00000001")).toMatchObject({ ok: false, error: expect.stringContaining("older than 1.29.0") });
+    link.refusal = null;
     link.status = 401;
-    expect(await member.hill.postFields(SENDER, fields())).toEqual({ ok: false, code: null, error: "the lead refused this machine's signature" });
+    expect(await member.hill.postFields(SENDER, fields())).toMatchObject({ ok: false, code: "not_on_lead" });
+    expect(await member.hill.askList(SENDER)).toMatchObject({ ok: false, error: expect.stringContaining("older than 1.29.0") });
+    expect(lead.store.all()).toHaveLength(0);
+  });
+
+  test("a lead busy reading other uploads (503, the body unread) is a refused dial: nothing posted, the retry named", async () => {
+    const { member, link, lead } = crew();
+    link.status = 503;
+    const row = fields();
+    expect(await member.hill.postFields(SENDER, row)).toEqual({ ok: false, code: LEAD_UNREACHABLE_CODE, error: `the lead (desk) is not answering; nothing was posted. Post again with --request-id ${String(row.requestId)}: it posts once` });
+    expect(lead.store.all()).toHaveLength(0);
+  });
+
+  test("a 401 from a lead known to be at 1.29.0 or later is the signature, said plainly", async () => {
+    const { member, link } = crew();
+    link.atFloor = true;
+    link.refusal = "signature";
+    expect(await member.hill.postFields(SENDER, fields())).toEqual({ ok: false, code: null, error: HILL_SIGNATURE_REFUSED });
+    link.refusal = null;
+    link.status = 401;
+    expect(await member.hill.postFields(SENDER, fields())).toEqual({ ok: false, code: null, error: HILL_SIGNATURE_REFUSED });
   });
 
   test("the member's own switches hold before any dial", async () => {
@@ -378,6 +556,23 @@ describe("an answer for a machine that is not answering", () => {
     const sent = await lead.hill.answer(request, id, "Pixel 9");
     expect(sent).toMatchObject({ kind: "receipt", receipt: { code: "ok", state: "answered" } });
     expect(lead.sent.map((s) => s.to)).toEqual([LAPTOP_PANE]);
+  });
+
+  test("a dismiss always closes: with the machine away it closes with nothing sent, and the receipt names the machine", async () => {
+    const { lead, crewLead } = crew();
+    const posted = crewLead.post({ from: { address: LAPTOP_PANE, label: "repo#main" }, fields: fields({ expiresAt: 253_402_300_799_000 }) }, "laptop");
+    const id = idOf(posted);
+    lead.offline = "laptop";
+    const dismissed = await lead.hill.answer({ rid: uuid(), node: `hill/${id}`, intent: "dismiss", value: { text: null } }, id, "Pixel 9");
+    expect(dismissed).toMatchObject({ kind: "receipt", receipt: { code: "ok", state: "dismissed", delivery: "none", machine: "laptop" } });
+    expect(lead.store.get(id)).toMatchObject({ state: "dismissed", answer: { intent: "dismiss", delivery: "none" } });
+    expect(lead.sent).toEqual([]);
+  });
+
+  test("a forwarded post's expiry is held to 30 days too", () => {
+    const { lead, crewLead } = crew();
+    const posted = crewLead.post({ from: { address: LAPTOP_PANE, label: "repo#main" }, fields: fields({ expiresAt: 253_402_300_799_000 }) }, "laptop");
+    expect(lead.store.get(idOf(posted))?.expiresAt).toBe(lead.clock + HILL_MAX_EXPIRY_MS);
   });
 
   test("a session the sweep lists as unreachable is refused the same way, by its place", async () => {

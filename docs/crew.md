@@ -413,18 +413,22 @@ shows every Decision there, with the machine it came from on its first line.
 A member checks its own switches first: with the Hill or WalkyTalky off on that machine, the post is
 refused there. It reads the images from its own disk, under the same rules as on the lead, and sends
 them to the lead before the post. The lead checks the member's signature, and takes the machine from
-it. A member cannot post for a session of another machine.
+it. A member cannot post for a session of another machine, and its `--reply-to` and `--about` must
+name a session on that same machine.
 
 Your answer goes back to the session as a WalkyTalky message, through the lead. When the session's
 machine is not answering, the phone says "laptop is not answering. Your answer was not sent." The
 card stays open, and you can answer again when the machine is back. A Decision is never closed
-because its machine went away.
+because its machine went away. Dismiss still closes the card: the phone then says the session was not
+told.
 
-When the lead does not answer, `collie hill post` says so, exits 5, and posts nothing. Run the same
-command again with the `--request-id` it prints: the lead keeps one Decision for it.
+When the lead does not answer, `collie hill post` says so, exits 5, and posts nothing. When the answer
+comes late, it says the post is not confirmed, and exits 5. Either way it prints the command to send
+the same post again, with its `--request-id`: the lead keeps one Decision for it.
 
-One machine's agents hold at most 40 open Decisions on the lead, and ring the phone at most six
-times an hour.
+One machine's agents hold at most 40 open Decisions on the lead, and ring the phone at most four
+times an hour. All members together ring it at most six times an hour, so the lead's own sessions
+always keep a share.
 
 > **Note.** Decisions from a member need Collie 1.29.0 on the lead and on that member. An older lead
 > is refused with "the lead runs a Collie older than 1.29.0", and the post is not sent. Post from a

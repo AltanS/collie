@@ -9,13 +9,17 @@
 //
 // WHO POSTED. The lead takes the member from the §8.6 signature (the router's verdict), never from the
 // body. A body that names a session of another machine, as `from.address` or as `as`, is the uniform
-// 401. The labels a member sends are display data. The member's claim about its own pane stands in for
+// 401. A `replyTo` or an `about` that names a session of another machine is refused `bad_target`
+// (`foreignTarget`): the tap is typed where `replyTo` points, with the person's authority, so a member
+// may only point it at its own sessions. The labels a member sends are display data. The member's claim about its own pane stands in for
 // the lead's `place()` only for the poster's own session, because a pane opened a second ago may not be
 // in the lead's sweep yet; the instance token is checked again on the member when the answer is typed.
 //
 // SKEW. A member below 1.29.0 never calls these routes and keeps refusing `not_on_lead`. A member that
-// knows its lead is below 1.29.0 refuses before it dials (`olderThanTricksCrew`), and a lead that does
-// not know the routes answers 404, read the same way. Nothing is half posted: the images wait on the
+// knows its lead is below 1.29.0 refuses before it dials (`olderThanTricksCrew`). A lead that does not
+// know the routes does not count them as signable either, so its admission answers the uniform 401: from
+// a lead whose release is not known that 401 reads as an older lead too, and only from a lead known to be
+// at the floor (`atTricksCrewFloor`) does it mean the signature was refused. Nothing is half posted: the images wait on the
 // lead for 15 minutes and are then dropped, and the post is idempotent by its request id.
 
 import { createHash } from "node:crypto";
@@ -28,7 +32,7 @@ import { olderThanFloor, type CrewDialAnswer } from "../walky/crew.ts";
 import { headerField, WALKY_HARNESS_MAX, WALKY_LABEL_MAX } from "../walky/types.ts";
 import { hillImageMime, hillImageSize, type HillImageBytes } from "./media.ts";
 import { readDecision, readPostFields, HILL_RAW_MAX } from "./parse.ts";
-import type { HillAgentSender, HillOneAnswer, HillPlace, HillPostAnswer, HillService } from "./service.ts";
+import { HILL_OFF, HILL_WALKY_OFF, type HillAgentSender, type HillOneAnswer, type HillPlace, type HillPostAnswer, type HillService } from "./service.ts";
 
 /**
  * The first release whose lead takes Decisions from its members (§22), and whose crew carries the
@@ -40,10 +44,21 @@ export const TRICKS_CREW_FIRST_VERSION = "1.29.0";
  * Whether a lead's stated release is too old for Decisions from a member: below 1.29.0, or, on a build
  * made before 1.29.0 that carries the feature, below that build's own version. The rules of
  * `olderThanWalky`: a version that names no release, and no version at all, is never called older (the
- * lead's 404 answers for it).
+ * lead's uniform 401 answers for it, read by `atTricksCrewFloor`).
  */
 export function olderThanTricksCrew(version: string | null, own: string, compare: (a: string, b: string) => number): boolean {
   return olderThanFloor(version, own, compare, TRICKS_CREW_FIRST_VERSION);
+}
+
+/**
+ * Whether a lead's stated release is KNOWN to take Decisions from a member: it names a release, and that
+ * release is not below the floor. False for no version and for one that names no release. Only such a
+ * lead's 401 means it refused this machine's signature: a lead below the floor, or one whose release is
+ * not known, does not count the three routes as signable, so its admission refuses every call to them
+ * with the uniform 401 (§8.6), and that 401 reads as an older lead.
+ */
+export function atTricksCrewFloor(version: string | null, own: string, compare: (a: string, b: string) => number): boolean {
+  return version !== null && /^\d+\.\d+\.\d+/u.test(version) && !olderThanTricksCrew(version, own, compare);
 }
 
 /** The routes under `/crew/v1/`, as the member's crew client names them. */
@@ -57,10 +72,21 @@ export const HILL_HELD_MS = 15 * 60_000;
 export const HILL_HELD_MEMBER_BYTES = 16 * 1024 * 1024;
 /** The longest base64 text one image may be: {@link HILL_MEDIA_BYTES_MAX} bytes, written out. */
 export const HILL_MEDIA_B64_MAX = Math.ceil(HILL_MEDIA_BYTES_MAX / 3) * 4;
+// THE FORWARD'S TIME, in one place. `collie hill post` is a CLI call an agent waits on, so the whole
+// forward (every image, then the post) has one budget, and the CLI waits a margin longer than that, so it
+// never gives up on a post the member is still sending (a second post under a new request id would be a
+// second card). Past the budget the member stops before the post, so nothing is posted.
+
 /** How long the member waits for one image to reach its lead. A screenshot over a relayed link is slow. */
-export const HILL_MEDIA_BUDGET_MS = 30_000;
-/** How long the member waits for a post or a follow-up call. */
+export const HILL_MEDIA_BUDGET_MS = 20_000;
+/** How long the member waits for a post or a follow-up call. Always kept free for the post. */
 export const HILL_CALL_BUDGET_MS = 8000;
+/** The whole forward of one post, its images and the post together. */
+export const HILL_FORWARD_BUDGET_MS = 45_000;
+/** How long `collie hill post` waits for its answer: the forward's budget, plus reading the images and the socket. */
+export const HILL_POST_ASK_MS = HILL_FORWARD_BUDGET_MS + 15_000;
+/** The least time worth giving one more image; with less left, the forward stops before the post. */
+const HILL_MEDIA_MIN_MS = 2000;
 
 /** A Decision's answer as the routes carry it: what the router frames, a status and a JSON body. */
 export interface HillCrewAnswer {
@@ -102,6 +128,32 @@ export function ownAddress(raw: string, memberId: string): string | null {
   if (raw !== raw.trim()) return null;
   const address = parseAddress(raw);
   return address !== null && address.kind === "pane" && address.memberId === memberId ? raw : null;
+}
+
+/**
+ * Why a forwarded post's `replyTo` or `about` is refused, or null when both name nothing, `here` (for
+ * `about`), or a pane of the signing member's own machine. Checked before the lead's `place()` is asked,
+ * so a member learns nothing about which sessions of other machines are live.
+ *
+ * `replyTo` is where the person's tap is typed, with the person's authority, and the session it names
+ * may read the Decision (`collie hill status`): a member naming a pane of the lead or of another member
+ * would type an operator message of its choosing there. `about` only labels the card, but a label that
+ * names another machine's session is a claim this member cannot make. Both are the agent's own words,
+ * so the refusal is `bad_target` with words, not the 401 an identity claim (`from.address`, `as`) gets.
+ */
+export function foreignTarget(fields: JsonObject, memberId: string): string | null {
+  for (const key of ["replyTo", "about"] as const) {
+    const raw = fields[key];
+    if (raw === undefined || raw === null) continue;
+    const text = asJsonString(raw);
+    // Not a string: the reader refuses the shape with its own words.
+    if (text === undefined) continue;
+    if (key === "about" && (text.trim() === "" || text.trim() === "here")) continue;
+    if (ownAddress(text, memberId) === null) {
+      return `\`${headerField(text, 80)}\` is not a session on this machine: a Decision from a crew member answers to, and is about, a session on that member only`;
+    }
+  }
+  return null;
 }
 
 // ── On the lead: images held for a post ─────────────────────────────────────────────────────────────
@@ -171,8 +223,10 @@ export class HillHeldMedia {
 // ── On the lead: the three routes ───────────────────────────────────────────────────────────────────
 
 export interface HillCrewLeadDeps {
-  readonly hill: Pick<HillService, "postDecision" | "status" | "withdraw" | "mineList">;
+  readonly hill: Pick<HillService, "postDecision" | "status" | "withdraw" | "mineList" | "isOn">;
   readonly held: HillHeldMedia;
+  /** False with COLLIE_WALKY=off on the lead: no answer could be typed, so no image is held. Absent: on. */
+  readonly walkyOn?: () => boolean;
   /** The lead's own name for a member, from its sweep (the Crew page's), or null to keep the member's word. */
   readonly machineOf?: (memberId: string) => string | null;
 }
@@ -189,6 +243,9 @@ export class HillCrewLead {
 
   /** `POST /crew/v1/hill/media`: one image, sniffed and held by its hash for the post that names it. */
   media(body: JsonValue | undefined, memberId: string): HillCrewAnswer {
+    // First: with the Hill or WalkyTalky off here no post can follow, so nothing is decoded or held.
+    if (!this.deps.hill.isOn()) return refused("hill_off", HILL_OFF);
+    if (this.deps.walkyOn?.() === false) return refused("walky_off", HILL_WALKY_OFF);
     const row = asJsonObject(body);
     const sha = asJsonString(row?.sha256);
     const b64 = asJsonString(row?.b64);
@@ -217,6 +274,8 @@ export class HillCrewLead {
     const address = asJsonString(from?.address);
     if (row === undefined || from === undefined || fields === undefined || address === undefined) return badRequest("a post is { from: { address, harness, label, host }, fields, images }");
     if (ownAddress(address, memberId) === null) return UNAUTHORIZED;
+    const foreign = foreignTarget(fields, memberId);
+    if (foreign !== null) return refused("bad_target", foreign);
     // Images ride by hash, uploaded first: a path in the fields names a file on the member, never here.
     if (fields.images !== undefined) return badRequest("a forwarded post names its images by hash, never by path");
     const rawImages = row.images ?? [];
@@ -285,6 +344,8 @@ export interface HillLeadLink {
   leadName(): string | null;
   /** Whether the lead's stated release is below {@link TRICKS_CREW_FIRST_VERSION}. False while it is not known. */
   leadOlder(): boolean;
+  /** Whether the lead's stated release is known and at or above the floor ({@link atTricksCrewFloor}). */
+  leadAtFloor(): boolean;
 }
 
 /** One image read on the member, to forward with its caption (already cleaned there). */
@@ -352,12 +413,24 @@ function leadWords(raw: string | undefined, fallback: string): string {
 /** What one dial came to, read the same way for every route. */
 type Read = { readonly kind: "body"; readonly body: JsonObject } | { readonly kind: "refused" } | { readonly kind: "unknown" } | { readonly kind: "older" } | { readonly kind: "failed"; readonly error: string };
 
-function readDial(answer: CrewDialAnswer): Read {
-  if (answer.kind === "refused") return answer.reason === "signature" ? { kind: "failed", error: "the lead refused this machine's signature" } : { kind: "refused" };
+/** The words of a 401 from a lead known to take Decisions from a member. */
+export const HILL_SIGNATURE_REFUSED = "the lead refused this machine's signature";
+
+/**
+ * One dial, read. A 401 (the crew client's `signature` refusal, or the status itself) is the signature
+ * refused only from a lead KNOWN to be at the floor (`atFloor`): a lead below 1.29.0 does not count these
+ * routes as signable and answers each call with the uniform 401, so from a lead whose release is not
+ * known, or older, it reads as an older lead. A 404 (a collie that does not lead, or a lead built without
+ * the routes) reads as older too. A 503 is a body the lead did not read: refused, nothing landed.
+ */
+function readDial(answer: CrewDialAnswer, atFloor: boolean): Read {
+  const signature: Read = atFloor ? { kind: "failed", error: HILL_SIGNATURE_REFUSED } : { kind: "older" };
+  if (answer.kind === "refused") return answer.reason === "signature" ? signature : { kind: "refused" };
   if (answer.kind === "unknown") return { kind: "unknown" };
-  // A lead before 1.29.0 has no such route: the crew's own 404.
   if (answer.status === 404) return { kind: "older" };
-  if (answer.status === 401) return { kind: "failed", error: "the lead refused this machine's signature" };
+  if (answer.status === 401) return signature;
+  // The lead turned the body away unread (busy reading other uploads, §8.6): nothing landed there.
+  if (answer.status === 503) return { kind: "refused" };
   const body = asJsonObject(answer.body ?? undefined);
   if (answer.status === 200 && body !== undefined) return { kind: "body", body };
   return { kind: "failed", error: `the lead answered HTTP ${String(answer.status)}: ${leadWords(asJsonString(body?.error), "no reason")}` };
@@ -371,10 +444,20 @@ function refusalOf(body: JsonObject): Extract<HillPostAnswer, { ok: false }> {
 }
 
 /** The member's forward: images first, then the post; status, withdraw and list in one call each. */
+/** The forward's budgets ({@link HILL_FORWARD_BUDGET_MS} and its parts) and its clock; a test passes small ones. */
+export interface HillForwardBudgets {
+  readonly mediaMs: number;
+  readonly callMs: number;
+  readonly totalMs: number;
+  readonly now?: () => number;
+}
+
+const FORWARD_BUDGETS: HillForwardBudgets = { mediaMs: HILL_MEDIA_BUDGET_MS, callMs: HILL_CALL_BUDGET_MS, totalMs: HILL_FORWARD_BUDGET_MS };
+
 export class HillMemberForward implements HillLeadForward {
   constructor(
     private readonly link: HillLeadLink,
-    private readonly budgets: { readonly mediaMs: number; readonly callMs: number } = { mediaMs: HILL_MEDIA_BUDGET_MS, callMs: HILL_CALL_BUDGET_MS },
+    private readonly budgets: HillForwardBudgets = FORWARD_BUDGETS,
   ) {}
 
   private lead(): string {
@@ -384,11 +467,17 @@ export class HillMemberForward implements HillLeadForward {
   async post(from: HillAgentSender, fields: JsonObject, requestId: string, images: readonly HillForwardImage[]): Promise<HillPostAnswer> {
     const lead = this.lead();
     if (this.link.leadOlder()) return { ok: false, code: "not_on_lead", error: hillLeadOlder(lead) };
-    // Each image first, by its hash: nothing is posted until every one is held on the lead.
+    // Each image first, by its hash: nothing is posted until every one is held on the lead. All of it
+    // inside one budget, with the post's own time kept free: an image that cannot have its time stops
+    // the forward before the post, so nothing is posted and the same request id may go again.
+    const now = this.budgets.now ?? Date.now;
+    const deadline = now() + this.budgets.totalMs;
     const named: JsonObject[] = [];
     for (const image of images) {
+      const left = deadline - now() - this.budgets.callMs;
+      if (left < Math.min(HILL_MEDIA_MIN_MS, this.budgets.mediaMs)) return { ok: false, code: LEAD_UNREACHABLE_CODE, error: hillLeadNotAnswering(lead, requestId) };
       const sha = sha256Hex(image.bytes);
-      const sent = readDial(await this.link.call(CREW_HILL_MEDIA_ROUTE, JSON.stringify({ sha256: sha, b64: Buffer.from(image.bytes).toString("base64") }), this.budgets.mediaMs));
+      const sent = readDial(await this.link.call(CREW_HILL_MEDIA_ROUTE, JSON.stringify({ sha256: sha, b64: Buffer.from(image.bytes).toString("base64") }), Math.min(this.budgets.mediaMs, left)), this.link.leadAtFloor());
       if (sent.kind === "older") return { ok: false, code: "not_on_lead", error: hillLeadOlder(lead) };
       if (sent.kind === "refused" || sent.kind === "unknown") return { ok: false, code: LEAD_UNREACHABLE_CODE, error: hillLeadNotAnswering(lead, requestId) };
       if (sent.kind === "failed") return { ok: false, code: null, error: sent.error };
@@ -398,7 +487,7 @@ export class HillMemberForward implements HillLeadForward {
     const own: JsonObject = {};
     for (const [key, value] of Object.entries(fields)) if (!FRAME_KEYS.has(key)) own[key] = value;
     const payload = { from: { address: from.address, harness: from.harness, label: from.label, host: from.host }, fields: own, images: named };
-    const posted = readDial(await this.link.call(CREW_HILL_POST_ROUTE, JSON.stringify(payload), this.budgets.callMs));
+    const posted = readDial(await this.link.call(CREW_HILL_POST_ROUTE, JSON.stringify(payload), this.budgets.callMs), this.link.leadAtFloor());
     if (posted.kind === "older") return { ok: false, code: "not_on_lead", error: hillLeadOlder(lead) };
     if (posted.kind === "refused") return { ok: false, code: LEAD_UNREACHABLE_CODE, error: hillLeadNotAnswering(lead, requestId) };
     if (posted.kind === "unknown") return { ok: false, code: LEAD_UNREACHABLE_CODE, error: hillLeadNotConfirmed(lead, requestId) };
@@ -411,7 +500,7 @@ export class HillMemberForward implements HillLeadForward {
 
   /** One call of the op route, read as far as the dial goes. */
   private async call(body: JsonObject): Promise<Read> {
-    return readDial(await this.link.call(CREW_HILL_OP_ROUTE, JSON.stringify(body), this.budgets.callMs));
+    return readDial(await this.link.call(CREW_HILL_OP_ROUTE, JSON.stringify(body), this.budgets.callMs), this.link.leadAtFloor());
   }
 
   async one(op: "status" | "withdraw", from: HillAgentSender, id: string): Promise<HillOneAnswer> {

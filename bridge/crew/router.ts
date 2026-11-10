@@ -43,7 +43,7 @@ import {
   type DemotionRefused,
   type EnrollRefusal,
 } from "./enrollment.ts";
-import { randomToken, type RandomSource } from "./identity.ts";
+import { bearerToken, randomToken, secretEquals, type RandomSource } from "./identity.ts";
 import {
   parseTimestamp,
   timestampVerdict,
@@ -331,6 +331,30 @@ export const SIGNED_BODY_CAPS: ReadonlyMap<string, number> = new Map([
 
 /** The machine-readable `code` on a signed body refused for its size before it was read. */
 export const BODY_TOO_LARGE = "body_too_large";
+
+/**
+ * How many signed bodies with a large cap (over {@link SIGNED_READS_LARGE_CAP}: `hill/media`, `lead`,
+ * `warrant`, `takeover`) are read at once, before their signature is known (§8.6, added in 1.29.0). At
+ * most 4 × 3 MiB unverified in memory. One more is answered `503` with `Retry-After` and no byte read;
+ * the routes with a small cap (`walky`, `hello`, `hill/post`, ...) are not counted.
+ */
+export const SIGNED_READS_MAX = 4;
+/** A cap above this is a large one, counted against {@link SIGNED_READS_MAX}. */
+export const SIGNED_READS_LARGE_CAP = 256 * 1024;
+/** The machine-readable `code` on a signed body not read because {@link SIGNED_READS_MAX} were being read. */
+export const SIGNED_READS_BUSY = "signed_reads_busy";
+
+/** The 503 for a large signed body while {@link SIGNED_READS_MAX} are read. Said before the signature is known. */
+function signedReadsBusyResponse(): Response {
+  return new Response(JSON.stringify({ error: "the lead is reading other uploads; try again", code: SIGNED_READS_BUSY }), {
+    status: 503,
+    headers: {
+      "content-type": "application/json; charset=utf-8",
+      "retry-after": "1",
+      [PROTOCOL_HEADER]: String(CREW_PROTOCOL_VERSION),
+    },
+  });
+}
 
 /**
  * A signed request's body as text, read only up to `cap` bytes, or null when it is larger. A declared
@@ -1014,6 +1038,9 @@ export function createCrewRouter(deps: CrewRouterDeps): CrewHandler {
   const now = deps.now ?? Date.now;
   const random = deps.random ?? randomToken;
 
+  // The large signed bodies being read now, before their signature is known (SIGNED_READS_MAX).
+  let largeReads = 0;
+
   const refuse = (path: string, factor: RefusedFactor): Response => {
     // Audited locally with the real cause; the caller is told only "unauthorized" (§8.1). The two
     // are not in tension: the log is the peer operator's own record on their own disk (§12).
@@ -1051,12 +1078,34 @@ export function createCrewRouter(deps: CrewRouterDeps): CrewHandler {
     const signature = SIGNABLE_PATHS.has(pathname) ? req.headers.get(SIGNATURE_HEADER) : null;
     let signedBody: string | null = null;
     let signed: SignedCaller = { member: null };
-    if (signature !== null && data !== null) {
+    if (signature !== null && data !== null && data.crew !== null) {
+      // What can be checked without the body is checked before it is read (added in 1.29.0). The crew
+      // secret travels beside the signature, and admission refuses every request without it whatever
+      // the signature says, so a caller without it is refused here and nothing is read: a tailnet caller
+      // with a junk signature can no longer make this collie buffer megabytes. The answer is the same
+      // uniform 401. What it does tell apart (read or not) is only whether a guessed 256-bit secret is
+      // right, which is no oracle. A timestamp that is no timestamp is refused here too; its window is
+      // still checked after the signature, so a caller who cannot sign learns nothing about the clock.
+      if (!secretEquals(bearerToken(req.headers.get("authorization")), data.crew.secret)) return refuse(pathname, "secret");
+      if (parseTimestamp(req.headers.get(TIMESTAMP_HEADER)) === null) return refuse(pathname, "certificate");
       // Capped per route (SIGNED_BODY_CAPS): a body over its cap is refused before it is read, so an
       // unadmitted caller cannot make this collie buffer it. A signable path with no row is a bug, and
       // reads as the smallest cap rather than none.
       const cap = SIGNED_BODY_CAPS.get(pathname) ?? 0;
-      const read = req.method === "GET" || req.method === "HEAD" ? "" : await readSignedBody(req, cap);
+      const bodied = req.method !== "GET" && req.method !== "HEAD";
+      // At most SIGNED_READS_MAX large bodies are read at once; one more is turned away unread.
+      const large = bodied && cap > SIGNED_READS_LARGE_CAP;
+      if (large && largeReads >= SIGNED_READS_MAX) {
+        deps.audit?.record({ action: "crew.refused", detail: { path: pathname, factor: "signed-reads-busy" } });
+        return signedReadsBusyResponse();
+      }
+      if (large) largeReads += 1;
+      let read: string | null;
+      try {
+        read = bodied ? await readSignedBody(req, cap) : "";
+      } finally {
+        if (large) largeReads -= 1;
+      }
       if (read === null) {
         deps.audit?.record({ action: "crew.refused", detail: { path: pathname, factor: "body-too-large", cap } });
         return bodyTooLargeResponse(cap);

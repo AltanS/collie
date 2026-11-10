@@ -91,6 +91,8 @@ function reasonWords(reason: string | null): string | null {
 export function receiptWords(receipt: HillReceipt, intent: string, label: string, trickName: string | null = null): string {
   switch (receipt.code) {
     case "ok":
+      // A dismiss that closed the card while the session's machine was away: nothing reached the session.
+      if (receipt.machine !== undefined) return t("hill.receipt.dismissedOffline", { machine: receipt.machine });
       if (trickName !== null && receipt.trick === "failed") return t("hill.receipt.trickFailed", { trick: trickName });
       if (trickName !== null && receipt.trick === "ran") return okWithTrick(receipt, intent, label, trickName);
       return okWords(receipt, intent, label);

@@ -6,11 +6,12 @@ import { edgeStateDirs, readEnvMarkers } from "./beacon.ts";
 import { HILL_RULES, HILL_WRITING, hillWordingWarnings } from "./hill-rules.ts";
 import { holdSocketSafe } from "./hold.ts";
 import { EXIT } from "./io.ts";
-import { NO_SOCKET_TEXT, shown, type WalkyDeps } from "./walky.ts";
+import { AskLate, NO_SOCKET_TEXT, shown, type WalkyDeps } from "./walky.ts";
 import type { JsonObject, JsonValue } from "../bridge/json.ts";
 import { asJsonObject, asJsonString, parseJson, parseJsonObject } from "../web/src/lib/json.ts";
+import { HILL_POST_ASK_MS } from "../bridge/hill/crew.ts";
 import { readDecision } from "../bridge/hill/parse.ts";
-import { HILL_DEFAULT_EXPIRY_DAYS } from "../bridge/hill/service.ts";
+import { HILL_DEFAULT_EXPIRY_DAYS, HILL_MAX_EXPIRY_DAYS, HILL_MAX_EXPIRY_MS } from "../bridge/hill/service.ts";
 import { readHillSwitch, writeHillSwitch } from "../bridge/hill/switch.ts";
 import { parseAddress } from "../bridge/walky/address.ts";
 import { BARE_BAD_REQUEST, unknownOp } from "../bridge/walky/refusals.ts";
@@ -47,6 +48,8 @@ export { HILL_RULES, HILL_WRITING };
 
 /** What the CLI prints when no bridge on this machine answered a hill operation as one it knows. */
 export const HILL_UNKNOWN = "no running Collie on this machine knows the hill";
+/** What it prints when a bridge took the post and gave no answer in time: it may still post. */
+export const HILL_NOT_CONFIRMED = `the bridge took the post and did not answer within ${String(HILL_POST_ASK_MS / 1000)} s; the post is not confirmed and may still reach the Hill`;
 /** What it prints when a bridge that knows the hill answered, and none of them drives this pane. */
 export const HILL_NOT_HERE = "no Collie bridge on this machine knows this pane";
 
@@ -60,7 +63,7 @@ const USAGE = {
     '         [--image shots/a.png[="<caption>"] ...]   (PNG, JPEG or WebP, up to 4, 2 MB each) \\',
     "         [--view view.json]   (a small view under the summary, see below) \\",
     '         [-- "<body in Markdown>"]   (no body after --: read from stdin when it is not a terminal)',
-    `  With no --expires, a decision closes as expired after ${String(HILL_DEFAULT_EXPIRY_DAYS)} days.`,
+    `  With no --expires, a decision closes as expired after ${String(HILL_DEFAULT_EXPIRY_DAYS)} days. --expires is at most ${String(HILL_MAX_EXPIRY_DAYS)} days.`,
     "  To retry a post, send it again with the same --request-id: it posts once. Other content under that id is refused.",
     "  --view names a JSON file (at most 16 KiB) with a list of nodes, drawn under the summary: group, list, row, bar, chip,",
     "  para, line, run, code, link, meter, spacer, number, image, compare, table, diff and spark, as a trick writes them,",
@@ -113,7 +116,7 @@ export function unknownToBridge(error: string, op: string): boolean {
  * that does not know the op (an older bridge); a `missing` sentence is kept and printed only when no
  * bridge held the decision. With `all`, every bridge is asked and the ok answers are all returned.
  */
-async function walk(deps: HillDeps, body: JsonObject, all = false): Promise<{ readonly answers: Extract<Answer, { ok: true }>[]; readonly failure: Extract<Answer, { ok: false }> }> {
+async function walk(deps: HillDeps, body: JsonObject, all = false, ms?: number): Promise<{ readonly answers: Extract<Answer, { ok: true }>[]; readonly failure: Extract<Answer, { ok: false }> }> {
   const op = asJsonString(body.op) ?? "";
   const line = `${JSON.stringify({ v: 1, markers: readEnvMarkers(deps.ctx.env), ...body })}\n`;
   const answers: Extract<Answer, { ok: true }>[] = [];
@@ -121,7 +124,13 @@ async function walk(deps: HillDeps, body: JsonObject, all = false): Promise<{ re
   let notHere = false;
   let missing: string | null = null;
   for (const path of socketPaths(deps)) {
-    const raw = await deps.ask(path, line).catch(() => null);
+    const { raw, late } = await deps.ask(path, line, ms).then(
+      (text) => ({ raw: text, late: false }),
+      (err) => ({ raw: null, late: err instanceof AskLate }),
+    );
+    // A bridge took the request and did not answer in time: it may still be posting. Asking the next
+    // bridge could post twice, and "no Collie answers" would be untrue, so the walk ends here.
+    if (late) return { answers, failure: { ok: false, error: HILL_NOT_CONFIRMED, code: null, exit: EXIT.UNREACHABLE } };
     const answer = raw === null ? undefined : parseJsonObject(raw);
     if (answer === undefined) continue;
     if (answer.ok === true) {
@@ -158,8 +167,8 @@ export function refusalExit(code: string | null): number {
   return code === null || code === "hill_off" ? EXIT.STATE : EXIT.REFUSED;
 }
 
-async function request(deps: HillDeps, body: JsonObject): Promise<Answer> {
-  const { answers, failure } = await walk(deps, body);
+async function request(deps: HillDeps, body: JsonObject, ms?: number): Promise<Answer> {
+  const { answers, failure } = await walk(deps, body, false, ms);
   return answers[0] ?? failure;
 }
 
@@ -332,6 +341,7 @@ export function parsePostArgs(args: readonly string[]): PostArgs | { readonly er
   const expires = one.get("--expires");
   const expiresInMs = expires === undefined ? null : durationMs(expires);
   if (expires !== undefined && expiresInMs === null) return { error: `\`--expires ${expires}\` is a duration such as 30m, 2h, 3d or 1w` };
+  if (expiresInMs !== null && expiresInMs > HILL_MAX_EXPIRY_MS) return { error: `\`--expires ${expires ?? ""}\` is longer than ${String(HILL_MAX_EXPIRY_DAYS)} days, the most a decision stays open` };
   const requestId = one.get("--request-id") ?? null;
   if (requestId !== null && !isRequestId(requestId)) return { error: `\`--request-id ${requestId}\` is not a UUID` };
   return {
@@ -422,6 +432,30 @@ export const HILL_IMAGES_DROPPED = "the bridge posted the decision without its i
 /** What the CLI says when a bridge took the post without its view: a build from before views. */
 export const HILL_VIEW_DROPPED = "the bridge posted the decision without its view: it is older than views on the hill";
 
+/** One word as a POSIX shell reads it back: bare when it is plain, else single-quoted. */
+function shellWord(word: string): string {
+  return /^[A-Za-z0-9_./:=@%+,-]+$/u.test(word) ? word : `'${word.replaceAll("'", `'\\''`)}'`;
+}
+
+/** The `collie hill post` command that sends the same post again: the same flags, with `--request-id` before any body. */
+export function retryCommand(args: readonly string[], requestId: string): string {
+  // Read as `parsePostArgs` reads them: a flag's value is never taken for a flag, nor for the `--` before the body.
+  let end = args.length;
+  let named = false;
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === "--") {
+      end = i;
+      break;
+    }
+    if (!VALUE_FLAGS.has(args[i]!)) continue;
+    if (args[i] === "--request-id") named = true;
+    i += 1;
+  }
+  const flags = args.slice(0, end);
+  const words = [...(named ? flags : [...flags, "--request-id", requestId]), ...args.slice(end)];
+  return ["collie", "hill", "post", ...words.map(shellWord)].join(" ");
+}
+
 /** `hill post ...`: post one decision and print its id. It never waits for the answer. */
 export async function cmdHillPost(deps: HillDeps, args: readonly string[]): Promise<number> {
   if (windows(deps)) return EXIT.STATE;
@@ -445,8 +479,15 @@ export async function cmdHillPost(deps: HillDeps, args: readonly string[]): Prom
   const body = await bodyOf(deps, parsed.body);
   const requestId = parsed.requestId ?? (deps.mintRequestId ?? randomUUID)();
   const expiresAt = parsed.expiresInMs === null ? null : (deps.now ?? Date.now)() + parsed.expiresInMs;
-  const answer = await request(deps, postLine(parsed.fields, requestId, body, expiresAt, images, view));
-  if (!answer.ok) return failed(deps, answer);
+  // The wait covers a crew member's whole forward to its lead (CREW_PROTOCOL §22), so the CLI does not
+  // give up on a post that is still on its way.
+  const answer = await request(deps, postLine(parsed.fields, requestId, body, expiresAt, images, view), HILL_POST_ASK_MS);
+  if (!answer.ok) {
+    const exit = failed(deps, answer);
+    // Every failure names the request id and the command that sends the same post once.
+    deps.io.err(`hill: request id ${requestId}; to send this post again, it posts once: ${shown(retryCommand(args, requestId))}${parsed.body === null && body !== "" ? " (with the same body on stdin)" : ""}`);
+    return exit;
+  }
   const decision = readDecision(answer.body.decision);
   if (decision === null) return failed(deps, { ok: false, error: "the bridge answered without a decision", code: null, exit: EXIT.FAIL });
   if (images.length > 0 && decision.media.length === 0) deps.io.err(`hill: ${HILL_IMAGES_DROPPED}`);

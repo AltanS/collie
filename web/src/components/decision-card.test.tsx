@@ -541,6 +541,12 @@ describe("after the tap", () => {
     expect(option("yes")).toBeEnabled();
   });
 
+  it("says a dismiss closed the card while the session's machine was away, and that the session was not told", () => {
+    const untold = hillReceipt({ code: "ok", state: "dismissed", delivery: "none", machine: "laptop" });
+    const { slot } = renderCard(hillDecision(), answered(untold, "dismiss"));
+    expect(slot("decision-receipt")?.textContent).toBe("Dismissed. laptop is not answering, so the session was not told.");
+  });
+
   it("locks the card after an answer that landed, and keeps it open after a refusal", () => {
     const landed = renderCard(hillDecision(), answered(hillReceipt()));
     expect(landed.option("yes")).toBeDisabled();

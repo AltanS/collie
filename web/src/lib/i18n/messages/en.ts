@@ -3408,6 +3408,8 @@ export const en = {
   "hill.receipt.versionUsed": "Now running the new version.",
   "hill.receipt.versionKept": "Kept the old version.",
   "hill.receipt.collieDone": "Done.",
+  // A dismiss that closed the card while the session's crew machine was not answering (CREW_PROTOCOL §22).
+  "hill.receipt.dismissedOffline": "Dismissed. {machine} is not answering, so the session was not told.",
   "hill.retry": "Try again",
   "hill.reason.textRequired": "an answer in words is required",
   "hill.reason.notAnOption": "that is not an option of this Decision",
@@ -3656,6 +3658,7 @@ export const PENDING_TRANSLATION = [
   "settings.tricks.undo",
   "settings.tricks.undoArmed",
   "settings.tricks.undoFailed",
+  "hill.receipt.dismissedOffline",
 ] as const satisfies readonly MessageKey[];
 
 /** A key a bundle may leave out until the translation pass. */

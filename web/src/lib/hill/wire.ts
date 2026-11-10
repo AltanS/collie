@@ -292,8 +292,9 @@ export interface HillReceipt {
   /** On an `ok` receipt: the paired device it came from, as the stored answer's `deviceId`. Absent when unknown. */
   deviceId?: string;
   /**
-   * On a `rejected` receipt only: the crew machine the answer goes to, which is not answering (1.29.0).
-   * Nothing was sent and the Decision stays open. Absent from an older bridge, which never refuses so.
+   * The crew machine the answer goes to, which is not answering (1.29.0). On a `rejected` receipt:
+   * nothing was sent and the Decision stays open. On an `ok` dismiss: the card closed and nothing was
+   * typed, so the session was not told. Absent from an older bridge, which never answers so.
    */
   machine?: string;
 }
