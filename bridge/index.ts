@@ -3438,6 +3438,11 @@ const tricks =
           return { machine: world.machine, sessions: world.sessions, spaces: world.spaces };
         },
         env: process.env,
+        // Only a lead or a solo bridge that is not deposed schedules tricks (§18.12): a peer, a deputy and
+        // a deposed lead run no timer, so one trick never runs on two machines of a crew.
+        active: () => crew.mode !== "peer" && deposed === null,
+        // Every version the bridge approves, declines or undoes, `auto` included, leaves an audit line.
+        audit: (entry) => audit.record({ action: entry.action, detail: entry.detail }),
       });
 tricks?.start();
 

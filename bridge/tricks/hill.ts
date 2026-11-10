@@ -120,7 +120,7 @@ export interface TrickHillTrick {
   readonly name: string;
   /** This bridge's stable id (bridge/bridge-id.ts): where the answer's tap goes. */
   readonly memberId: string;
-  /** The trick's own folder, `<configDir>/tricks/<id>`: where its decisions' images are. */
+  /** The folder the trick's program ran in, its approved copy (approved.ts): where its decisions' images are. */
   readonly dir: string;
 }
 

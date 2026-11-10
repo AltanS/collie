@@ -6,6 +6,7 @@ import { redactText } from "../bridge/redact.ts";
 import { CONFIG_FILE, diskTrickFs, skippedName, trickCodeHash, walkTrickCode } from "../bridge/tricks/code-hash.ts";
 import { MANIFEST_BYTES_MAX, readManifestFile, readManifestText } from "../bridge/tricks/discover.ts";
 import { ORIGIN_FILE, readOrigin, renderOrigin, type TrickOrigin } from "../bridge/tricks/origin.ts";
+import { removeTrickCopies } from "../bridge/tricks/approved.ts";
 import { MANIFEST_FILE, switchesPath, trickStateDir, tricksConfigDir, tricksStateDir } from "../bridge/tricks/paths.ts";
 import { trickWarnings, warningLines, WARNINGS_HONESTY, type CheckWarning } from "../bridge/tricks/scan.ts";
 import { parseSwitches } from "../bridge/tricks/switches.ts";
@@ -692,7 +693,7 @@ export async function cmdTrickUpdate(deps: TrickAddDeps, args: readonly string[]
         await swapFolder(root, id, dir, staged);
         deps.io.out(`Updated ${id} to ${candidate.commit}. config.toml and the trick's state folder are kept.`);
         const on = parseSwitches(deps.files.read(switchesPath(deps.ctx.stateDir))).switches.on.has(id);
-        if (codeMoved && on) deps.io.out(`The code changed, so ${id} stops until you switch it on again. Read it, then: collie trick on ${id}`);
+        if (codeMoved && on) deps.io.out(`The code changed. ${id} keeps running the version you approved; the new one waits for your yes. Read it, then approve it on the phone or: collie trick on ${id}`);
         else if (on) deps.io.out(`The code did not change, so ${id} stays on.`);
         else deps.io.out(`The trick is off. Read it, then: collie trick on ${id}`);
         return EXIT.OK;
@@ -726,7 +727,7 @@ async function swapFolder(root: string, id: string, dir: string, staged: string)
 
 // ── remove ───────────────────────────────────────────────────────────────────
 
-/** `collie trick remove <id>`: only while it is off. The folder and its state folder go; nothing is kept. */
+/** `collie trick remove <id>`: only while it is off. The folder, its state folder and its approved and pending copies go; nothing is kept. */
 export async function cmdTrickRemove(deps: TrickDeps, args: readonly string[]): Promise<number> {
   const id = args.find((a) => !a.startsWith("-"));
   if (id === undefined || !isTrickId(id) || args.length !== 1) {
@@ -743,6 +744,7 @@ export async function cmdTrickRemove(deps: TrickDeps, args: readonly string[]): 
   const state = trickStateDir(deps.ctx.stateDir, id);
   await rm(dir, { recursive: true, force: true });
   await rm(state, { recursive: true, force: true });
-  deps.io.out(`Removed ${id}: ${dir} and its state folder ${state}.`);
+  await removeTrickCopies(deps.ctx.configDir, id);
+  deps.io.out(`Removed ${id}: ${dir}, its state folder ${state} and its approved copies.`);
   return EXIT.OK;
 }

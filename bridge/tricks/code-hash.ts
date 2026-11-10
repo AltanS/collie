@@ -5,13 +5,14 @@ import { join } from "node:path";
 
 // THE CODE OF A TRICK, AS ONE HASH (M94): what a person approves when they switch a trick on.
 //
-// The switch stores this hash (switches.ts), and a trick runs only while its folder still hashes the
-// same. So an edited program, a swapped `run` line or a new helper file stops the trick until a person
-// switches it on again. The hash is a SHA-256 over every file of the folder that is code: the sorted
+// The switch stores this hash (switches.ts), and the bridge runs a copy of exactly those bytes
+// (approved.ts). So an edited program, a swapped `run` line or a new helper file is a new version that
+// waits for a person's yes, and the copy holds the walk's files and no others. The hash is a SHA-256 over every file of the folder that is code: the sorted
 // relative paths, each with its kind and its bytes. Not code, so never hashed:
 //
 //   * `config.toml` at the top: the person's settings for the program. Editing it never turns a trick off.
-//   * a top-level `media/` and `captures/` folder: pictures the program makes or shows.
+//   * a top-level `media/`, `captures/` and `inputs/` folder: pictures the program makes or shows, and the
+//     files a later slice hands it. In the approved copy (approved.ts) these three are the writable ones.
 //   * any `*.log` file: what a program appends to as it runs.
 //   * every dot file and dot folder, and every `node_modules/` folder.
 //
@@ -32,8 +33,12 @@ export const CODE_DIRS_MAX = 2000;
 export const CODE_BYTES_MAX = 20 * 1024 * 1024;
 /** The settings file beside `trick.toml`, outside the hash. */
 export const CONFIG_FILE = "config.toml";
-/** Top-level folders outside the hash. */
-const SKIPPED_TOP_DIRS = new Set(["media", "captures"]);
+/**
+ * Top-level folders outside the hash: the program's pictures (`media/`, `captures/`) and the files a later
+ * slice fetches for it (`inputs/`). The approved copy (approved.ts) makes these three writable.
+ */
+export const WRITABLE_TOP_DIRS = ["media", "captures", "inputs"] as const;
+const SKIPPED_TOP_DIRS: ReadonlySet<string> = new Set(WRITABLE_TOP_DIRS);
 
 export type EntryKind = "file" | "dir" | "symlink" | "other";
 

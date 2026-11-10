@@ -12,7 +12,7 @@ import { buildFacts, factsWorldOf } from "./facts.ts";
 import { switchesPath } from "./paths.ts";
 import { TRICKS_ROUTE_RIGHTS, tricksMediaRoute, tricksSwitchRoute, tricksTapRoute, parseSince } from "./routes.ts";
 import type { TricksSurface } from "./service.ts";
-import { createSwitchReader, parseSwitches, renderSwitches, SWITCH_LOCK_STALE_MS, updateSwitches, withSwitch, writeSwitches } from "./switches.ts";
+import { createSwitchReader, parseSwitches, renderSwitches, SWITCH_LOCK_STALE_MS, updateSwitches, withApproval, withEntry, withSwitch, writeSwitches } from "./switches.ts";
 
 const HASH = "a".repeat(64);
 const HASH2 = "b".repeat(64);
@@ -36,7 +36,7 @@ describe("the switch file", () => {
     await writeSwitches(stateDir, withSwitch({ on: new Map() }, "legs", true, "2026-11-08T09:00:00.000Z", HASH));
     expect((await stat(switchesPath(stateDir))).mode & 0o777).toBe(0o600);
     expect((await stat(join(stateDir, "tricks"))).mode & 0o777).toBe(0o700);
-    expect([...(await read()).on.entries()]).toEqual([["legs", { at: "2026-11-08T09:00:00.000Z", hash: HASH }]]);
+    expect([...(await read()).on.entries()]).toEqual([["legs", { at: "2026-11-08T09:00:00.000Z", hash: HASH, auto: false, by: "cli", powers: null }]]);
     expect(warnings).toEqual([]);
   });
 
@@ -51,19 +51,40 @@ describe("the switch file", () => {
     expect(warnings.length).toBe(1);
   });
 
-  test("render is stable, on/off round-trips, and switching on again stores the new hash", () => {
+  test("render is version 3 and stable, on/off round-trips, and switching on again stores the new hash", () => {
     const one = withSwitch({ on: new Map() }, "b", true, "t1", HASH);
     const two = withSwitch(one, "a", true, "t2");
-    expect(renderSwitches(two)).toBe(`{\n  "v": 2,\n  "on": {\n    "a": {\n      "at": "t2",\n      "hash": null\n    },\n    "b": {\n      "at": "t1",\n      "hash": "${HASH}"\n    }\n  }\n}\n`);
-    expect(parseSwitches(renderSwitches(two)).switches.on.get("b")).toEqual({ at: "t1", hash: HASH });
-    expect(withSwitch(two, "b", true, "later", HASH2).on.get("b")).toEqual({ at: "later", hash: HASH2 });
+    const entry = (at: string, hash: string | null) => `{\n      "at": "${at}",\n      "hash": ${hash === null ? "null" : `"${hash}"`},\n      "auto": false,\n      "by": "cli",\n      "powers": null\n    }`;
+    expect(renderSwitches(two)).toBe(`{\n  "v": 3,\n  "on": {\n    "a": ${entry("t2", null)},\n    "b": ${entry("t1", HASH)}\n  }\n}\n`);
+    expect(parseSwitches(renderSwitches(two)).switches.on.get("b")).toEqual({ at: "t1", hash: HASH, auto: false, by: "cli", powers: null });
+    expect(parseSwitches(renderSwitches(two)).switches.version).toBe(3);
+    expect(withSwitch(two, "b", true, "later", HASH2).on.get("b")).toEqual({ at: "later", hash: HASH2, auto: false, by: "cli", powers: null });
     expect([...withSwitch(two, "a", false, "x").on.keys()]).toEqual(["b"]);
   });
 
-  test("a version 1 file reads as on with no hash, so its tricks read as changed", () => {
-    const parsed = parseSwitches('{ "v": 1, "on": { "legs": "2026-11-08T09:00:00Z" } }');
-    expect(parsed.problem).toBeNull();
-    expect(parsed.switches.on.get("legs")).toEqual({ at: "2026-11-08T09:00:00Z", hash: null });
+  test("a version 3 entry keeps auto, by, powers, previous and declined through a round trip", () => {
+    const set = withApproval({ on: new Map() }, "legs", { at: "t1", hash: HASH, by: "cli", powers: "0123456789abcdef" });
+    const auto = withEntry(set, "legs", { ...set.on.get("legs")!, auto: true });
+    const next = withApproval(auto, "legs", { at: "t2", hash: HASH2, by: "auto", powers: "0123456789abcdef" });
+    const declined = withEntry(next, "legs", { ...next.on.get("legs")!, declined: HASH });
+    const back = parseSwitches(renderSwitches(declined)).switches.on.get("legs");
+    expect(back).toEqual({ at: "t2", hash: HASH2, auto: true, by: "auto", powers: "0123456789abcdef", previous: { hash: HASH, at: "t1", by: "cli", powers: "0123456789abcdef" }, declined: HASH });
+    // Approving the same hash again keeps the earlier `previous`; a new approval clears a decline.
+    expect(withApproval(declined, "legs", { at: "t3", hash: HASH2, by: "phone", powers: null }).on.get("legs")?.previous?.hash).toBe(HASH);
+    expect(withApproval(declined, "legs", { at: "t3", hash: HASH2, by: "phone", powers: null }).on.get("legs")?.declined).toBeUndefined();
+  });
+
+  test("a version 1 and a version 2 file still read, with their version; a newer one reads as all off", () => {
+    const v1 = parseSwitches('{ "v": 1, "on": { "legs": "2026-11-08T09:00:00Z" } }');
+    expect(v1.problem).toBeNull();
+    expect(v1.switches.version).toBe(1);
+    expect(v1.switches.on.get("legs")).toEqual({ at: "2026-11-08T09:00:00Z", hash: null, auto: false, by: "cli", powers: null });
+    const v2 = parseSwitches(`{ "v": 2, "on": { "legs": { "at": "t", "hash": "${HASH}" } } }`);
+    expect(v2.switches.version).toBe(2);
+    expect(v2.switches.on.get("legs")?.hash).toBe(HASH);
+    const v4 = parseSwitches('{ "v": 4, "on": { "legs": { "at": "t" } } }');
+    expect(v4.switches.on.size).toBe(0);
+    expect(v4.problem).toContain("not a version 1, 2 or 3");
   });
 
   test("two writers at once both land: each re-reads the file under the lock", async () => {

@@ -1,17 +1,17 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { appendFile, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { appendFile, chmod, mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
 import type { JsonObject } from "../json.ts";
 import { parseFacts, partKey, type TrickFacts, type TrickTapReply } from "../../web/src/lib/tricks/schema.ts";
 import { trickCodeHash } from "./code-hash.ts";
-import { TRICKS_DIR } from "./paths.ts";
+import { approvedCopyDir, pendingCopyDir, TRICKS_DIR } from "./paths.ts";
 import type { RunOutcome, RunSpec } from "./run.ts";
 import { payloadDigest } from "../worktree-receipts.ts";
 import { memoryTrickReceipts, TrickReceiptStore } from "./receipts.ts";
-import { backoffAfter, BACKOFF_MS, CHANGED_LINE, RUNS_MAX, TAP_LOST_LINE, TricksService, WATCH_WINDOW_MS, type TricksServiceDeps, type TapAnswer } from "./service.ts";
-import { withSwitch, writeSwitches, type Switches } from "./switches.ts";
+import { backoffAfter, BACKOFF_MS, NOT_APPROVED_LINE, PENDING_LINE, PENDING_SETTLE_MS, RUNS_MAX, TAMPERED_LINE, TAP_LOST_LINE, TricksService, WATCH_WINDOW_MS, type TricksServiceDeps, type TapAnswer } from "./service.ts";
+import { updateSwitches, withEntry, withSwitch, writeSwitches, type Switches } from "./switches.ts";
 
 const dirs: string[] = [];
 async function tempDir(): Promise<string> {
@@ -57,6 +57,19 @@ async function switchOn(stateDir: string, ...ids: string[]): Promise<void> {
     switches = withSwitch(switches, id, true, "2026-11-08T09:00:00Z", code.ok ? code.hash : null);
   }
   await writeSwitches(stateDir, switches);
+}
+
+/** The code hash of a trick folder; a folder that does not hash fails the test. */
+async function codeHashOf(dir: string): Promise<string> {
+  const code = await trickCodeHash(dir);
+  if (!code.ok) throw new Error(`the trick folder does not hash: ${dir}`);
+  return code.hash;
+}
+
+/** The approved copy a trick's switch entry names now. */
+async function copyOf(r: Pick<Rig, "stateDir" | "configDir">, id: string): Promise<string> {
+  const file = JSON.parse(await readFile(join(r.stateDir, TRICKS_DIR, "switches.json"), "utf8"));
+  return approvedCopyDir(r.configDir, id, file.on[id].hash);
 }
 
 /** One scripted run: an outcome at once, or one that comes when the test lets it. */
@@ -174,13 +187,14 @@ describe("discovery and the switch", () => {
     expect(r.specs).toEqual([]);
   });
 
-  test("switched on: a start run with scrubbed env, cwd the folder, the facts on stdin, and a 0700 state folder", async () => {
+  test("switched on: a start run from the approved copy with scrubbed env, the facts on stdin, and a 0700 state folder", async () => {
     const r = await rig([exited(belt("23/34"))]);
-    const dir = await makeTrick(r.configDir, "legs", MANIFEST);
+    await makeTrick(r.configDir, "legs", MANIFEST);
     await switchOn(r.stateDir, "legs");
     await tickAt(r, T0);
     expect(r.specs.length).toBe(1);
     const spec = r.specs[0];
+    const dir = await copyOf(r, "legs");
     expect(spec?.command).toBe("./legs.sh");
     expect(spec?.cwd).toBe(dir);
     expect(spec?.env.COLLIE_TOKEN).toBeUndefined();
@@ -243,11 +257,13 @@ describe("the switch route", () => {
     expect(on.body.state).not.toBe("off");
     expect((await r.service.reply(undefined)).rev).toBeGreaterThan(before);
     const file = JSON.parse(await readFile(join(r.stateDir, "tricks", "switches.json"), "utf8"));
-    expect(file.v).toBe(2);
+    expect(file.v).toBe(3);
     expect(Object.keys(file.on)).toEqual(["legs"]);
-    // On approves the code as it is now: the file holds its hash.
+    // On approves the code as it is now: the file holds its hash, and the copy of those bytes exists.
     const code = await trickCodeHash(join(r.configDir, TRICKS_DIR, "legs"));
-    expect(file.on.legs.hash).toBe(code.ok ? code.hash : "");
+    expect(file.on.legs).toMatchObject({ hash: code.ok ? code.hash : "", auto: false, by: "phone" });
+    expect(file.on.legs.powers).toMatch(/^[0-9a-f]{16}$/);
+    expect(await trickCodeHash(approvedCopyDir(r.configDir, "legs", file.on.legs.hash))).toEqual(code);
     const off = await r.service.setSwitch(HOST, "legs", false);
     expect(off).toMatchObject({ status: 200, body: { id: "legs", on: false, state: "off" } });
     expect(JSON.parse(await readFile(join(r.stateDir, "tricks", "switches.json"), "utf8")).on).toEqual({});
@@ -690,29 +706,43 @@ describe("consent tied to the code", () => {
   }
   const ASK = { key: "a", title: "Rerun?", summary: "Case 8 failed." };
 
-  test("an edited program stops the trick until it is switched on again; its parts go stale and its decisions stay", async () => {
+  test("an edited program keeps running its approved copy; a new version waits, and the switch approves it", async () => {
     const spy = hillSpy();
     const r = await rig([exited(belt("1", { decisions: [ASK] }))], { decisions: spy.port });
     const dir = await makeTrick(r.configDir, "legs", MANIFEST, { "program.ts": "console.log(1)\n" });
     await switchOn(r.stateDir, "legs");
     await tickAt(r, T0);
     expect(r.specs.length).toBe(1);
+    const first = r.specs[0]?.cwd;
     await writeFile(join(dir, "program.ts"), "console.log(2)\n");
-    await tickAt(r, T0 + 60_000);
-    expect(r.specs.length).toBe(1);
-    const reply = await r.service.reply(undefined);
-    expect(reply.tricks[0]).toMatchObject({ on: true, changed: true, state: "stopped", error: CHANGED_LINE });
-    expect(reply.parts[0]).toMatchObject({ stale: true, problem: CHANGED_LINE });
+    await tickAt(r, T0 + 30_000);
+    // Still on its timer, from the same copy, with the old code.
+    expect(r.specs.length).toBe(2);
+    expect(r.specs[1]?.cwd).toBe(first);
+    expect(await readFile(join(first ?? "", "program.ts"), "utf8")).toBe("console.log(1)\n");
+    let row = (await r.service.reply(undefined)).tricks[0];
+    expect(row).toMatchObject({ on: true, changed: true, state: "ok" });
+    expect(row?.pending).toBeUndefined();
     expect(spy.offs).toEqual([]);
-    // A tap is refused the same way, and runs nothing.
-    expect(ok200(await r.service.tap(HOST, "legs", { rid: REQ, node: "belt", intent: "x" }))).toEqual({ rid: REQ, code: "rejected", message: CHANGED_LINE });
-    // Switched on again: the new code is approved and runs at once.
+    // A tap still runs, on the approved copy.
+    expect(ok200(await r.service.tap(HOST, "legs", { rid: REQ, node: "belt", intent: "x" })).code).toBe("ok");
+    // Once the folder sat still for the settle time, the snapshot is taken and the row says what waits.
+    await tickAt(r, T0 + 30_000 + PENDING_SETTLE_MS);
+    row = (await r.service.reply(undefined)).tricks[0];
+    const code = await trickCodeHash(dir);
+    expect(row?.pending).toEqual({ hash: code.ok ? code.hash : "", files: { added: 0, changed: 1, removed: 0 }, powersChanged: false, warnings: [] });
+    expect(row?.error).toBeUndefined();
+    // Switched on again: the waiting version is approved and runs at once, from its own copy.
     const on = await r.service.setSwitch(HOST, "legs", true);
     expect(on).toMatchObject({ status: 200, body: { on: true, state: "ok" } });
-    if (on.status === 200) expect(on.body.changed).toBeUndefined();
-    await tickAt(r, T0 + 61_000);
-    expect(r.specs.length).toBe(2);
-    expect(factsOf(r.specs[1]).trigger).toEqual({ kind: "start" });
+    if (on.status === 200) {
+      expect(on.body.changed).toBeUndefined();
+      expect(on.body.pending).toBeUndefined();
+    }
+    await tickAt(r, T0 + 36_000);
+    expect(factsOf(r.specs.at(-1)).trigger).toEqual({ kind: "start" });
+    expect(r.specs.at(-1)?.cwd).toBe(await copyOf(r, "legs"));
+    expect(await readFile(join(r.specs.at(-1)?.cwd ?? "", "program.ts"), "utf8")).toBe("console.log(2)\n");
   });
 
   test("a config.toml edit never turns a trick off: it reruns at once with the new settings", async () => {
@@ -724,25 +754,32 @@ describe("consent tied to the code", () => {
     await tickAt(r, T0 + 1000);
     expect(r.specs.length).toBe(2);
     expect((await r.service.reply(undefined)).tricks[0]?.changed).toBeUndefined();
+    // The edit reached the approved copy, where the program reads it.
+    expect(await readFile(join(r.specs[1]?.cwd ?? "", "config.toml"), "utf8")).toBe("a = 2\n");
   });
 
-  test("an entry with no hash (a version 1 file) reads as changed", async () => {
+  test("an entry with no hash approves nothing: the trick is on, stopped, and waits for a yes", async () => {
     const r = await rig([exited(belt("1"))]);
     await makeTrick(r.configDir, "legs", MANIFEST);
     await writeSwitches(r.stateDir, withSwitch({ on: new Map() }, "legs", true, "t"));
     await tickAt(r, T0);
     expect(r.specs.length).toBe(0);
-    expect((await r.service.reply(undefined)).tricks[0]?.changed).toBe(true);
+    expect((await r.service.reply(undefined)).tricks[0]).toMatchObject({ changed: true, state: "stopped", error: NOT_APPROVED_LINE });
+    await tickAt(r, T0 + PENDING_SETTLE_MS);
+    expect((await r.service.reply(undefined)).tricks[0]).toMatchObject({ state: "stopped", error: PENDING_LINE, pending: { files: { added: 1, changed: 0, removed: 0 }, powersChanged: true } });
+    expect(r.specs.length).toBe(0);
   });
 
   test("a program that appends to ./run.log keeps its interval and its backoff", async () => {
     let dir = "";
     let fail = false;
     const r = await rig(null, {
+      // The program writes where it runs, the approved copy: a log and a picture never trip the tamper check.
       run: async (spec) => {
+        await appendFile(join(spec.cwd, "run.log"), "ran\n");
         await appendFile(join(dir, "run.log"), "ran\n");
-        await mkdir(join(dir, "media"), { recursive: true });
-        await writeFile(join(dir, "media", "shot.png"), String(Math.random()));
+        await mkdir(join(spec.cwd, "media"), { recursive: true });
+        await writeFile(join(spec.cwd, "media", "shot.png"), String(Math.random()));
         r.specs.push(spec);
         return fail ? exited("", 1) : exited(belt("1"));
       },
@@ -956,5 +993,214 @@ describe("warnings at the switch (review 15)", () => {
     const row = (await r.service.reply(undefined)).tricks.find((t) => t.id === "legs");
     expect(row && "warnings" in row).toBe(false);
     expect(row?.provenance).toEqual({ via: "repo", at: "2026-11-10T09:41:00.000Z", repo: "AltanS/collie-tricks", sha: commit });
+  });
+});
+
+describe("the approved copy (crew slice 2)", () => {
+  /** Edit the program, then let the folder settle so the pending snapshot is taken. */
+  async function newVersion(r: Rig, dir: string, at: number, text: string, extraFiles: Record<string, string> = {}): Promise<string> {
+    await writeFile(join(dir, "legs.sh"), text);
+    for (const [name, body] of Object.entries(extraFiles)) await writeFile(join(dir, name), body);
+    await tickAt(r, at);
+    await tickAt(r, at + PENDING_SETTLE_MS);
+    const code = await trickCodeHash(dir);
+    if (!code.ok) throw new Error(code.reason);
+    return code.hash;
+  }
+
+  test("the copy holds the code read only, config.toml, and writable media/, captures/ and inputs/", async () => {
+    const r = await rig([exited(belt("1"))]);
+    await makeTrick(r.configDir, "legs", MANIFEST, { "legs.sh": "#!/bin/sh\n", "config.toml": "a = 1\n", ".env": "SECRET=1\n" });
+    await switchOn(r.stateDir, "legs");
+    await tickAt(r, T0);
+    const copy = await copyOf(r, "legs");
+    expect(r.specs[0]?.cwd).toBe(copy);
+    expect(factsOf(r.specs[0]).trick.dir).toBe(copy);
+    // A file mode is POSIX; on Windows the copy is not made read only, and the hash check alone guards it.
+    if (process.platform !== "win32") {
+      expect((await stat(join(copy, "trick.toml"))).mode & 0o777).toBe(0o400);
+      expect((await stat(join(copy, "legs.sh"))).mode & 0o777).toBe(0o500);
+    }
+    expect(await readFile(join(copy, "config.toml"), "utf8")).toBe("a = 1\n");
+    for (const name of ["media", "captures", "inputs"]) expect((await stat(join(copy, name))).isDirectory()).toBe(true);
+    // A dot file is outside the code, so it is not copied.
+    expect(await Bun.file(join(copy, ".env")).exists()).toBe(false);
+  });
+
+  test("approvePending refuses a stale hash and a folder that moved again; declinePending is not asked again", async () => {
+    const r = await rig([exited(belt("1"))]);
+    const dir = await makeTrick(r.configDir, "legs", MANIFEST, { "legs.sh": "#!/bin/sh\necho 1\n" });
+    await switchOn(r.stateDir, "legs");
+    await tickAt(r, T0);
+    const v2 = await newVersion(r, dir, T0 + 1000, "#!/bin/sh\necho 2\n");
+    expect((await r.service.reply(undefined)).tricks[0]?.pending?.hash).toBe(v2);
+    expect(await r.service.approvePending("legs", "f".repeat(64))).toMatchObject({ ok: false, code: "no-pending" });
+    expect(await r.service.approvePending("nope", v2)).toMatchObject({ ok: false, code: "unknown-trick" });
+    // The folder moves after the snapshot: the yes is refused, nothing changes.
+    await writeFile(join(dir, "legs.sh"), "#!/bin/sh\necho 3\n");
+    expect(await r.service.approvePending("legs", v2)).toMatchObject({ ok: false, code: "moved" });
+    expect(await r.service.declinePending("legs", v2)).toMatchObject({ ok: false, code: "moved" });
+    // It settles as version 3; a no to it keeps the approved copy running and is not offered again.
+    const v3 = await newVersion(r, dir, T0 + 20_000, "#!/bin/sh\necho 3\n");
+    const before = await copyOf(r, "legs");
+    const no = await r.service.declinePending("legs", v3);
+    expect(no).toMatchObject({ ok: true, info: { changed: true, state: "ok" } });
+    if (no.ok) expect(no.info.pending).toBeUndefined();
+    await tickAt(r, T0 + 40_000);
+    await tickAt(r, T0 + 40_000 + PENDING_SETTLE_MS);
+    expect((await r.service.reply(undefined)).tricks[0]?.pending).toBeUndefined();
+    expect(await copyOf(r, "legs")).toBe(before);
+    const file = JSON.parse(await readFile(join(r.stateDir, TRICKS_DIR, "switches.json"), "utf8"));
+    expect(file.on.legs.declined).toBe(v3);
+  });
+
+  test("approvePending promotes the snapshot and keeps the old version for undo; undo goes back and declines the undone one", async () => {
+    const audits: string[] = [];
+    const r = await rig([exited(belt("1"))], { audit: (e) => audits.push(`${e.action} ${e.detail.by ?? ""}`.trim()) });
+    const dir = await makeTrick(r.configDir, "legs", MANIFEST, { "legs.sh": "#!/bin/sh\necho 1\n" });
+    await switchOn(r.stateDir, "legs");
+    await tickAt(r, T0);
+    const v1 = { hash: await codeHashOf(dir) };
+    const v2 = await newVersion(r, dir, T0 + 1000, "#!/bin/sh\necho 2\n");
+    const yes = await r.service.approvePending("legs", v2, "phone");
+    expect(yes).toMatchObject({ ok: true, info: { state: "ok" } });
+    if (yes.ok) expect(yes.info.changed).toBeUndefined();
+    let file = JSON.parse(await readFile(join(r.stateDir, TRICKS_DIR, "switches.json"), "utf8"));
+    expect(file.on.legs).toMatchObject({ hash: v2, by: "phone", previous: { hash: v1.hash } });
+    expect(await Bun.file(join(pendingCopyDir(r.configDir, "legs", v2), "legs.sh")).exists()).toBe(false);
+    await tickAt(r, T0 + 8000);
+    expect(r.specs.at(-1)?.cwd).toBe(approvedCopyDir(r.configDir, "legs", v2));
+    const back = await r.service.undo("legs");
+    expect(back).toMatchObject({ ok: true });
+    file = JSON.parse(await readFile(join(r.stateDir, TRICKS_DIR, "switches.json"), "utf8"));
+    expect(file.on.legs.hash).toBe(v1.hash);
+    expect(file.on.legs.declined).toBe(v2);
+    expect(file.on.legs.previous).toBeUndefined();
+    expect(await r.service.undo("legs")).toMatchObject({ ok: false, code: "no-previous" });
+    await tickAt(r, T0 + 9000);
+    expect(r.specs.at(-1)?.cwd).toBe(approvedCopyDir(r.configDir, "legs", v1.hash));
+    expect(audits).toEqual(["trick.approve phone", "trick.undo"]);
+  });
+
+  test("auto takes a code change whose powers did not move, with an audit line; a change of powers waits", async () => {
+    const audits: string[] = [];
+    const r = await rig([exited(belt("1"))], { audit: (e) => audits.push(`${e.action} ${e.detail.by ?? ""}`.trim()) });
+    const dir = await makeTrick(r.configDir, "legs", MANIFEST, { "legs.sh": "#!/bin/sh\necho 1\n" });
+    await switchOn(r.stateDir, "legs");
+    await tickAt(r, T0);
+    await updateSwitches(r.stateDir, (now) => withEntry(now, "legs", { ...now.on.get("legs")!, auto: true }));
+    const v1 = { hash: await codeHashOf(dir) };
+    const v2 = await newVersion(r, dir, T0 + 1000, "#!/bin/sh\necho 2\n");
+    let file = JSON.parse(await readFile(join(r.stateDir, TRICKS_DIR, "switches.json"), "utf8"));
+    expect(file.on.legs).toMatchObject({ hash: v2, by: "auto", auto: true, previous: { hash: v1.hash } });
+    expect(audits).toEqual(["trick.approve auto"]);
+    expect(r.warnings.some((line) => line.includes("without asking (auto)"))).toBe(true);
+    // A manifest that asks for a new environment name moves the powers: it waits, auto or not.
+    await writeFile(join(dir, "trick.toml"), `${MANIFEST}env = ["GH_TOKEN"]\n`);
+    const v3 = await newVersion(r, dir, T0 + 20_000, "#!/bin/sh\necho 3\n");
+    file = JSON.parse(await readFile(join(r.stateDir, TRICKS_DIR, "switches.json"), "utf8"));
+    expect(file.on.legs.hash).toBe(v2);
+    expect((await r.service.reply(undefined)).tricks[0]?.pending).toMatchObject({ hash: v3, powersChanged: true });
+  });
+
+  test("a copy that changed on disk stops the trick with a plain line; switching on again approves the folder anew", async () => {
+    const r = await rig([exited(belt("1"))]);
+    await makeTrick(r.configDir, "legs", MANIFEST, { "legs.sh": "#!/bin/sh\necho 1\n" });
+    await switchOn(r.stateDir, "legs");
+    await tickAt(r, T0);
+    const copy = await copyOf(r, "legs");
+    await chmod(join(copy, "legs.sh"), 0o700);
+    await writeFile(join(copy, "legs.sh"), "#!/bin/sh\necho evil\n");
+    expect(ok200(await r.service.tap(HOST, "legs", { rid: REQ, node: "belt", intent: "x" }))).toMatchObject({ code: "rejected", message: TAMPERED_LINE });
+    expect(r.specs.length).toBe(1);
+    const reply = await r.service.reply(undefined);
+    expect(reply.tricks[0]).toMatchObject({ on: true, state: "stopped", error: TAMPERED_LINE });
+    expect(reply.parts[0]).toMatchObject({ stale: true, problem: TAMPERED_LINE });
+    expect(r.warnings.filter((line) => line.includes(TAMPERED_LINE)).length).toBe(1);
+    await tickAt(r, T0 + 60_000);
+    expect(r.specs.length).toBe(1);
+    const on = await r.service.setSwitch(HOST, "legs", true);
+    expect(on).toMatchObject({ status: 200, body: { state: "ok" } });
+    await tickAt(r, T0 + 61_000);
+    expect(r.specs.length).toBe(2);
+    expect(await readFile(join(copy, "legs.sh"), "utf8")).toBe("#!/bin/sh\necho 1\n");
+  });
+
+  test("a missing copy of a version the folder still holds is copied again, and the trick runs", async () => {
+    const r = await rig([exited(belt("1"))]);
+    await makeTrick(r.configDir, "legs", MANIFEST, { "legs.sh": "#!/bin/sh\n" });
+    await switchOn(r.stateDir, "legs");
+    await tickAt(r, T0);
+    const copy = await copyOf(r, "legs");
+    await rm(copy, { recursive: true, force: true });
+    expect(ok200(await r.service.tap(HOST, "legs", { rid: REQ, node: "belt", intent: "x" })).code).toBe("ok");
+    expect(await Bun.file(join(copy, "trick.toml")).exists()).toBe(true);
+  });
+
+  test("a peer, a deputy or a deposed lead (deps.active false) schedules nothing; the lead does", async () => {
+    let active = false;
+    const r = await rig([exited(belt("1"))], { active: () => active });
+    await makeTrick(r.configDir, "legs", MANIFEST);
+    await switchOn(r.stateDir, "legs");
+    await tickAt(r, T0);
+    await tickAt(r, T0 + 60_000);
+    expect(r.specs.length).toBe(0);
+    active = true;
+    await tickAt(r, T0 + 61_000);
+    expect(r.specs.length).toBe(1);
+    active = false;
+    await tickAt(r, T0 + 120_000);
+    expect(r.specs.length).toBe(1);
+  });
+});
+
+describe("migrating switches.json from version 2 at boot", () => {
+  const v2 = (entries: Record<string, string | { at: string; hash: string | null }>): string => `${JSON.stringify({ v: entries.legacy === undefined ? 2 : 1, on: entries })}\n`;
+
+  test("a folder that still hashes to its consent is copied and keeps running; v3 is written after the copy exists", async () => {
+    const r = await rig([exited(belt("1"))]);
+    const dir = await makeTrick(r.configDir, "legs", MANIFEST, { "legs.sh": "#!/bin/sh\n" });
+    const code = { hash: await codeHashOf(dir) };
+    await mkdir(join(r.stateDir, TRICKS_DIR), { recursive: true });
+    await writeFile(join(r.stateDir, TRICKS_DIR, "switches.json"), v2({ legs: { at: "2026-11-01T00:00:00.000Z", hash: code.hash } }));
+    await tickAt(r, T0);
+    expect(r.specs.length).toBe(1);
+    expect(r.specs[0]?.cwd).toBe(approvedCopyDir(r.configDir, "legs", code.hash));
+    const file = JSON.parse(await readFile(join(r.stateDir, TRICKS_DIR, "switches.json"), "utf8"));
+    expect(file.v).toBe(3);
+    expect(file.on.legs).toMatchObject({ at: "2026-11-01T00:00:00.000Z", hash: code.hash, auto: false, by: "migrated" });
+    expect(file.on.legs.powers).toMatch(/^[0-9a-f]{16}$/);
+    expect(r.warnings.some((line) => line.includes("version 3 now: 1 trick(s) run from an approved copy, 0 wait"))).toBe(true);
+  });
+
+  test("a folder that changed since its consent stays stopped behind a yes; so does a version 1 entry", async () => {
+    const r = await rig([exited(belt("1"))]);
+    await makeTrick(r.configDir, "legs", MANIFEST, { "legs.sh": "#!/bin/sh\n" });
+    await makeTrick(r.configDir, "old", MANIFEST.replace('id = "legs"', 'id = "old"'), { "legs.sh": "#!/bin/sh\n" });
+    await mkdir(join(r.stateDir, TRICKS_DIR), { recursive: true });
+    await writeFile(join(r.stateDir, TRICKS_DIR, "switches.json"), `${JSON.stringify({ v: 2, on: { legs: { at: "t", hash: "c".repeat(64) }, old: { at: "t", hash: null } } })}\n`);
+    await tickAt(r, T0);
+    expect(r.specs.length).toBe(0);
+    const file = JSON.parse(await readFile(join(r.stateDir, TRICKS_DIR, "switches.json"), "utf8"));
+    expect(file.v).toBe(3);
+    expect(file.on.legs).toMatchObject({ hash: null, by: "migrated" });
+    expect(file.on.old).toMatchObject({ hash: null, by: "migrated" });
+    const rows = (await r.service.reply(undefined)).tricks;
+    for (const row of rows) expect(row).toMatchObject({ on: true, state: "stopped", error: NOT_APPROVED_LINE });
+    // Approving the current folder starts it.
+    expect(await r.service.setSwitch(HOST, "legs", true)).toMatchObject({ status: 200, body: { state: "ok" } });
+    await tickAt(r, T0 + 1000);
+    expect(r.specs.length).toBe(1);
+  });
+
+  test("a version 1 file migrates its plain entries to a stopped trick waiting for a yes", async () => {
+    const r = await rig([exited(belt("1"))]);
+    await makeTrick(r.configDir, "legs", MANIFEST);
+    await mkdir(join(r.stateDir, TRICKS_DIR), { recursive: true });
+    await writeFile(join(r.stateDir, TRICKS_DIR, "switches.json"), '{ "v": 1, "on": { "legs": "2026-11-01T00:00:00Z" } }\n');
+    await tickAt(r, T0);
+    expect(r.specs.length).toBe(0);
+    const file = JSON.parse(await readFile(join(r.stateDir, TRICKS_DIR, "switches.json"), "utf8"));
+    expect(file).toEqual({ v: 3, on: { legs: { at: "2026-11-01T00:00:00Z", hash: null, auto: false, by: "migrated", powers: null } } });
   });
 });

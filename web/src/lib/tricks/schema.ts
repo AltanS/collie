@@ -1236,10 +1236,16 @@ export interface WireTrickInfo {
   /** Who added the trick, when and from where. */
   provenance?: TrickProvenance;
   /**
-   * True when the trick is on but its code no longer hashes as it did when it was switched on: it does
-   * not run until it is switched on again.
+   * True when the trick is on and its folder no longer hashes to the version a person approved. Since the
+   * approved copy (bridge/tricks/approved.ts) the trick keeps running that version, and `pending` says
+   * what waits; an older bridge stopped the trick instead.
    */
   changed?: boolean;
+  /**
+   * The new version of an on trick that waits for a person's yes: a snapshot of its folder taken once the
+   * folder settled. Absent when there is none, and from an older bridge.
+   */
+  pending?: WireTrickPending;
   /**
    * True when the trick's last good document listed at least one Decision. With the Hill switched off
    * (the snapshot's `hillOff`), its row in Settings says those Decisions are not shown.
@@ -1264,6 +1270,17 @@ export interface WireTrickWarning {
 }
 /** The most warnings a trick's row carries. */
 export const TRICK_WARNINGS_MAX = 8;
+/** A new version of a trick that waits for a person's yes (`WireTrickInfo.pending`). */
+export interface WireTrickPending {
+  /** The code hash of the waiting version, 64 hex: what a yes approves. */
+  hash: string;
+  /** How many code files it adds, changes and removes against the version that runs. */
+  files: { added: number; changed: number; removed: number };
+  /** Whether the rights its manifest asks for (environment names, places) differ from the version that runs. */
+  powersChanged: boolean;
+  /** The warnings of the check scan that are new since the version that runs, one per kind. */
+  warnings: WireTrickWarning[];
+}
 /**
  * How a trick came to be on the machine. `folder` is a folder made by hand or by `collie trick init`;
  * `cli`, `agent` and `repo` are for `collie trick add`, which records `at`, `repo` and `sha`.

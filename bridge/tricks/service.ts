@@ -18,37 +18,46 @@ import {
   type Refusal,
   type TapRequest,
   type WireTrickInfo,
+  type WireTrickPending,
   type WireTrickWarning,
 } from "../../web/src/lib/tricks/schema.ts";
 import type { HillTrickTap } from "../hill/service.ts";
-import { trickCodeHash } from "./code-hash.ts";
-import { createTrickScanner, SCAN_TIMEOUT_MS, within, type FoundTrick, type TricksScan } from "./discover.ts";
+import { approveFolder, copyListing, fileCounts, migrateSwitches, powersOf, promoteCopy, pruneCopies, snapshotTrick, syncConfig, verifyCopy } from "./approved.ts";
+import { diskTrickFs } from "./code-hash.ts";
+import { createTrickScanner, scanTrickDir, SCAN_TIMEOUT_MS, within, type FoundTrick, type TricksScan } from "./discover.ts";
 import { scrubEnv, type ProgramEnv } from "./env.ts";
 import { buildFacts, type FactsWorld } from "./facts.ts";
 import { readTrickMedia, type TrickMediaFile } from "./media.ts";
 import { originRepoName } from "./origin.ts";
 import type { TrickHillRun, TrickHillTrick } from "./hill.ts";
-import { tricksConfigDir, trickStateDir } from "./paths.ts";
+import { approvedCopyDir, approvedTrickDir, pendingTrickDir, tricksConfigDir, trickStateDir } from "./paths.ts";
 import { trickSessionPanes, type TrickSessionPanes } from "./panes.ts";
 import { receiptFrame, TrickReceiptStore, type TrickReceiptRecord, type TrickReceiptSurface } from "./receipts.ts";
 import { outcomeProblem, runProgram, type RunOutcome, type RunSpec } from "./run.ts";
-import { trickWarnings, wireWarnings } from "./scan.ts";
+import { trickWarnings, wireWarnings, type CheckWarning } from "./scan.ts";
 import { TricksStore, problemLine } from "./store.ts";
-import { createSwitchReader, updateSwitches, withSwitch, type SwitchEntry, type Switches } from "./switches.ts";
+import { createSwitchReader, updateSwitches, withApproval, withEntry, withSwitch, type SwitchEntry, type Switches } from "./switches.ts";
 
 // THE TRICKS RUNNER (M94 slice 01): which trick runs when, and what its run leaves behind.
 //
 // ── WHEN A TRICK RUNS ─────────────────────────────────────────────────────────────
-//   * Only while ON (the switch file), with a manifest that parsed, and with the code a person approved:
-//     the switch stores the code hash (code-hash.ts) of the folder when it was switched on, and a trick
-//     whose folder no longer hashes the same is "changed". A changed trick does not run, its parts go
-//     stale with {@link CHANGED_LINE}, its open decisions stay, and the list says `changed: true`. Switching
-//     it on again approves the code as it is now. A `config.toml` edit is not code and never stops it.
+//   * Only while ON (the switch file), from the APPROVED COPY (approved.ts): the switch stores the code
+//     hash of the version a person said yes to, and `<configDir>/tricks/.collie-approved/<id>/<hash16>/` holds
+//     exactly those bytes. The program runs there: its working folder, `facts.trick.dir`, its manifest
+//     (the run line, `every`, `env`, the places), its pictures and the images of its decisions all come
+//     from the copy. An edit of the trick's folder never stops it (see THE NEW VERSION below). A
+//     `config.toml` edit is copied into the copy with no question and restarts the trick.
+//   * The copy is checked before every run and on each scan: its listing against the one verified last,
+//     and when that moved, its hash again. A copy that no longer hashes right stops the trick with
+//     {@link TAMPERED_LINE}. A switch entry whose copy is missing is copied again from the folder when the
+//     folder still hashes to the approved hash, the same bytes; otherwise the trick waits for a yes.
+//   * Only on a bridge that may schedule (`deps.active`): a lead or a solo bridge that is not deposed.
+//     A peer, a deputy and a deposed lead run no timer, so a crew never runs one trick on two machines.
 //   * Timers run only while a phone has watched in the last five minutes ({@link WATCH_WINDOW_MS}):
 //     "watched" is a `/api/snapshot` or `/api/tricks` request from a paired phone (server.ts stamps it).
 //     The host's own CLI and a lead's sweep of this machine do not count. A `gh` trick on `30s` makes no
 //     call while the phone is in a pocket.
-//   * The first run after the trick is loaded, switched on, or its code or `config.toml` changed has the
+//   * The first run after the trick is loaded, switched on, a new version approved or its `config.toml` changed has the
 //     trigger `start`; later ones `timer`, every `every` (at least 5 s) after the last run. A trick with
 //     no `every` runs once at start and then on taps only. Any other change in its folder (a log it
 //     appends to, a picture in `media/`) changes nothing in the schedule.
@@ -59,8 +68,8 @@ import { createSwitchReader, updateSwitches, withSwitch, type SwitchEntry, type 
 //     queue per trick (up to {@link HILL_QUEUE_MAX}), one at a time, before any timer run.
 //   * Before every spawn the trick is read again: still present, on, not changed, and its manifest
 //     parses. A tap that waited for a trick that went off answers `rejected`.
-//   * After a failed run: 1, 5, then 30 minutes, then the trick stops ({@link BACKOFF_MS}). A change of
-//     its code or `config.toml`, switching it on again, or a tap restarts it. A broken program never
+//   * After a failed run: 1, 5, then 30 minutes, then the trick stops ({@link BACKOFF_MS}). A new version
+//     approved, a change of its `config.toml`, switching it on again, or a tap restarts it. A broken program never
 //     runs 1,440 times a day against a paid API.
 //
 // ── WHAT A RUN LEAVES ───────────────────────────────────────────────────────────
@@ -71,6 +80,17 @@ import { createSwitchReader, updateSwitches, withSwitch, type SwitchEntry, type 
 // other nodes and parts draw; the decisions are read strictly. A failed run keeps the last good parts,
 // stale. The error line is masked and capped, and goes to the list entry, the doctor row and one log
 // line when it changes, never once per run.
+//
+// ── THE NEW VERSION (crew slice 2) ──────────────────────────────────────────────
+// A trick that is on and whose folder no longer hashes to the approved version keeps running the copy,
+// and its row says `changed: true` and carries `pending`: once the folder has not moved for
+// {@link PENDING_SETTLE_MS}, a snapshot of it lands in `.collie-pending/<id>/<hash16>/` with how many code files
+// it adds, changes and removes against the copy, whether its powers moved (approved.ts `powersOf`), and
+// the warnings that are new since the approved version. {@link TricksService.approvePending},
+// {@link TricksService.declinePending} and {@link TricksService.undo} are the seam a card builds on; each
+// refuses when the folder moved again after the snapshot. With `auto` on (`collie trick auto <id> on`) a
+// new version whose powers did not move is approved on its own, with an audit line and `previous` kept
+// for undo; a change of powers always waits. A declined version is not offered again.
 //
 // ── WARNINGS AT THE SWITCH (review 15) ─────────────────────────────────────────
 // The row of a trick that is off, or on and changed, carries the check scan's warnings (scan.ts), one per
@@ -93,7 +113,7 @@ import { createSwitchReader, updateSwitches, withSwitch, type SwitchEntry, type 
 // After a run that succeeded, the document's decisions go to the hill through `deps.decisions`
 // (hill.ts): posted, superseded or withdrawn by key. A document with no `decisions` key leaves them as
 // they are; an empty list withdraws them. Its refusals join the document's. A trick switched off or
-// removed has every open decision withdrawn; a changed one keeps them. The answer comes back from the
+// removed has every open decision withdrawn; one with a new version waiting keeps them, and keeps running. The answer comes back from the
 // hill as a tap on `hill/<key>` (`tapFromHill`), with the answer's own rid and `seen`, the content hash
 // of the version the person saw. The phone's tap route refuses a `hill/` node: a decision is answered
 // on the Hill.
@@ -112,8 +132,16 @@ export const TAP_RECEIPTS_MAX = 200;
 export const RUNS_MAX = 4;
 /** The most decision answers waiting for one trick. One more is refused as busy. */
 export const HILL_QUEUE_MAX = 32;
-/** The line a changed trick's parts and list entry carry. */
-export const CHANGED_LINE = "This trick changed. Switch it on again to run the new code.";
+/** The row's line while a new version of an on trick waits for a person's yes. */
+export const PENDING_LINE = "A new version waits for your yes.";
+/** The line of a trick that is on but has no approved version (a version 1 entry, a migration of a changed folder). */
+export const NOT_APPROVED_LINE = "No version of this trick is approved yet. Switch it on again to approve its code as it is now.";
+/** The line of a trick whose approved copy changed on disk. */
+export const TAMPERED_LINE = "The approved copy changed on disk, so the trick stopped. Switch it on again to approve its code as it is now.";
+/** How long a changed folder must stay still before its snapshot is taken. */
+export const PENDING_SETTLE_MS = 5000;
+/** How often the unreferenced copies are pruned. */
+export const PRUNE_EVERY_MS = 60_000;
 /** The message of a retried tap whose run started before the bridge restarted. */
 export const TAP_LOST_LINE = "The bridge restarted while this tap ran. It may have done its work; nothing ran again.";
 
@@ -207,7 +235,37 @@ export interface TricksServiceDeps {
   decisions?: TricksHillPort;
   /** The tap receipt file. Default `<stateDir>/tricks/receipts.json`. */
   receipts?: TrickReceiptSurface;
+  /**
+   * Whether this bridge may schedule tricks now: a lead or a solo bridge that is not deposed. A peer, a
+   * deputy and a deposed lead run no timer (bridge/index.ts wires the crew mode and the deposed state).
+   * Absent: always.
+   */
+  active?: () => boolean;
+  /** One audit line per version the bridge approves, declines or undoes (bridge/audit.ts). Absent in a test. */
+  audit?: (entry: { action: string; detail: Record<string, string> }) => void;
 }
+
+/** The approved copy a trick runs from, as read and verified. */
+interface ApprovedRun {
+  hash: string;
+  dir: string;
+  /** The copy read as a trick: its manifest, its config hash, its origin record. */
+  found: FoundTrick;
+  /** The copy's code listing when it was last verified (approved.ts `copyListing`). */
+  listing: string;
+}
+
+/** A snapshot of a changed folder, waiting for a yes. */
+interface PendingVersion {
+  hash: string;
+  dir: string;
+  info: WireTrickPending;
+}
+
+/** What a version change answers: the trick as the list now shows it, or why not. */
+export type VersionAnswer =
+  | { ok: true; info: WireTrickInfo }
+  | { ok: false; code: "unknown-trick" | "off" | "no-pending" | "moved" | "no-previous" | "copy-failed"; message: string };
 
 interface QueuedTap {
   request: TapRequest;
@@ -226,10 +284,23 @@ function tapTrigger(tap: Pick<QueuedTap, "request" | "seen">): FactsTrigger {
 }
 
 interface TrickRuntime {
+  /** The trick's folder, as the scan last read it. */
   found: FoundTrick;
   on: boolean;
-  /** On, but the code no longer hashes as it did when it was switched on. */
+  /** The switch entry, while on. */
+  entry: SwitchEntry | undefined;
+  /** On, and the folder no longer hashes to the approved version: a new version is there. */
   changed: boolean;
+  /** The approved copy that runs, or null when none does. */
+  approved: ApprovedRun | null;
+  /** Why the approved copy cannot run (it changed on disk, or it is gone), or null. */
+  copyProblem: string | null;
+  /** The approval (`<hash>@<at>`) whose copy was found changed: not checked again until a new approval. */
+  tampered: string | null;
+  /** The snapshot of a changed folder, waiting for a yes. */
+  pending: PendingVersion | null;
+  /** The folder's fingerprint and since when it has not moved, for the pending snapshot's wait. */
+  settle: { fingerprint: string; since: number } | null;
   /** Failed runs in a row. */
   failures: number;
   stopped: boolean;
@@ -259,15 +330,18 @@ interface Receipt {
   reply: TrickTapReply;
 }
 
-/** A trick's state on the wire. A changed trick reads as stopped, with {@link CHANGED_LINE} as its error. */
-export function trickStateOf(rt: Pick<TrickRuntime, "on" | "found" | "stopped" | "failures"> & { changed?: boolean }): TrickState {
+/**
+ * A trick's state on the wire. `found` is what the row shows (the approved copy while one runs, else the
+ * folder); `blocked` is a trick that is on but cannot run (no approved copy, or a copy that changed).
+ */
+export function trickStateOf(rt: Pick<TrickRuntime, "on" | "found" | "stopped" | "failures"> & { blocked?: boolean }): TrickState {
   if (rt.found.manifest === undefined) return "skipped";
   if (!rt.on) return "off";
-  if (rt.stopped || rt.changed === true) return "stopped";
+  if (rt.stopped || rt.blocked === true) return "stopped";
   return rt.failures > 0 ? "failing" : "ok";
 }
 
-/** Whether a switch entry approves this code: on, with the hash the folder has now. */
+/** Whether a switch entry's approved version differs from the folder as it is now: a new version is there. */
 export function isChanged(entry: SwitchEntry | undefined, found: FoundTrick): boolean {
   if (entry === undefined || found.manifest === undefined) return false;
   return entry.hash === null || entry.hash !== found.codeHash;
@@ -281,6 +355,11 @@ export function backoffAfter(failures: number): number | null {
 /** A fresh window as the `fresh` string a part carries, so the phone needs no manifest. */
 export function freshString(ms: number): string {
   return `${Math.max(1, Math.round(ms / 1000))}s`;
+}
+
+/** One warning as a key, to tell the warnings a new version adds from the ones its approved copy had. */
+function warningKey(w: CheckWarning): string {
+  return `${w.kind}\0${w.file}\0${w.text}`;
 }
 
 /**
@@ -362,6 +441,8 @@ export class TricksService implements TricksSurface {
   private readonly warningsOf = new Map<string, { codeHash: string; warnings: WireTrickWarning[] }>();
   /** The warnings read in flight, one at a time. */
   private warningRead: Promise<void> | null = null;
+  /** When the unreferenced copies were last pruned. */
+  private prunedAt = -Infinity;
 
   constructor(deps: TricksServiceDeps) {
     this.deps = deps;
@@ -421,6 +502,7 @@ export class TricksService implements TricksSurface {
       host: this.deps.memberId,
       tricks: all.tricks,
       parts: all.parts,
+      // The session's folder is the trick's own, where a person edits it, not the copy that runs.
       dirOf: (id) => this.runtimes.get(id)?.found.dir,
       now: this.now(),
     });
@@ -437,10 +519,21 @@ export class TricksService implements TricksSurface {
     const mine = this.scansStarted;
     this.scanning = (async () => {
       try {
-        const switches = await this.readSwitches();
+        let switches = await this.readSwitches();
+        // A version 1 or 2 switch file is migrated before anything runs (approved.ts `migrateSwitches`).
+        if (switches.version === 1 || switches.version === 2) {
+          const done = await migrateSwitches({ stateDir: this.deps.stateDir, configDir: this.deps.configDir, platform: this.deps.platform });
+          if (done !== null) this.warn(`switches.json is version 3 now: ${done.kept.length} trick(s) run from an approved copy, ${done.waiting.length} wait for a yes`);
+          switches = await this.readSwitches();
+        }
         const scan = await this.scanner.scan(new Set(switches.on.keys()));
         this.apply(scan, switches);
+        // A snapshot of the runtimes: each step awaits, and the loop must not see the map move under it.
+        const runtimes = [...this.runtimes.values()];
+        for (const rt of runtimes) await this.ensureApproved(rt);
+        for (const rt of runtimes) await this.notePending(rt);
         await this.readWarnings();
+        await this.prune(switches);
       } catch (err) {
         this.warn(`the tricks folder could not be read: ${err instanceof Error ? err.message : String(err)}`);
       } finally {
@@ -488,7 +581,13 @@ export class TricksService implements TricksSurface {
       this.runtimes.set(found.id, {
         found,
         on,
+        entry,
         changed,
+        approved: null,
+        copyProblem: null,
+        tampered: null,
+        pending: null,
+        settle: null,
         failures: 0,
         stopped: false,
         pendingStart: true,
@@ -503,29 +602,285 @@ export class TricksService implements TricksSurface {
       this.publish(found.id);
       return;
     }
-    if (old.found.fingerprint !== found.fingerprint) {
-      // Only a change of the code or of config.toml restarts the trick: a log or a picture changes nothing.
-      const restarts = old.found.codeHash !== found.codeHash || old.found.configHash !== found.configHash;
-      old.found = found;
-      if (restarts) this.restart(old);
-      if (found.manifest === undefined) this.store.markStale(host, found.id, problemLine(found.refusals[0]?.reason ?? "trick.toml is refused."));
-    }
+    // A change of the folder restarts nothing: the trick runs its approved copy, and a new version waits
+    // (notePending). A config.toml edit restarts it once it reaches the copy (ensureApproved).
+    old.found = found;
     const switched = old.on !== on;
-    const approvalMoved = old.changed !== changed;
     old.on = on;
+    old.entry = entry;
     old.changed = changed;
     if (switched && !on) {
+      old.approved = null;
+      old.copyProblem = null;
+      old.tampered = null;
+      old.pending = null;
+      old.settle = null;
       this.store.dropParts(host, found.id);
       this.deps.decisions?.off(this.hillTrick(old));
     }
-    // Switched on, or approved again (switched on over a changed trick, or the code went back): a start run.
-    if ((switched || approvalMoved) && on && !changed) this.restart(old);
-    // Changed: the parts stay, stale, and the decisions stay open.
-    if (changed && (switched || approvalMoved)) this.store.markStale(host, found.id, CHANGED_LINE);
+    if (switched && on) this.restart(old);
     this.publish(found.id);
   }
 
-  /** Whether a trick's row shows its warnings: a manifest that parsed, and off or changed. */
+  /**
+   * Bring a trick's approved copy in line with its switch entry: load and verify a newly approved copy (or
+   * copy it again from a folder that still hashes the same), check a loaded one against its listing and
+   * hash it again when the listing moved, and copy a changed `config.toml` in. A copy that no longer
+   * hashes right stops the trick. Never throws.
+   */
+  private async ensureApproved(rt: TrickRuntime): Promise<void> {
+    const want = rt.on ? (rt.entry?.hash ?? null) : null;
+    const id = rt.found.id;
+    if (want === null) {
+      const had = rt.approved !== null || rt.copyProblem !== null;
+      rt.approved = null;
+      rt.copyProblem = null;
+      rt.tampered = null;
+      if (had) this.publish(id);
+      return;
+    }
+    const dir = approvedCopyDir(this.deps.configDir, id, want);
+    try {
+      if (rt.approved?.hash === want && rt.copyProblem === null) {
+        const loaded = rt.approved;
+        let holds = (await copyListing(dir)) === loaded.listing;
+        if (!holds) {
+          const check = await verifyCopy(dir, want);
+          // A copy that is gone is loaded again below (and copied again from a folder that still matches).
+          if (!check.ok && !check.missing) return this.copyFailed(rt, TAMPERED_LINE, check.reason, `${want}@${rt.entry?.at ?? ""}`);
+          if (check.ok) loaded.listing = check.listing;
+          holds = check.ok;
+        }
+        if (holds) {
+          await this.syncConfigOf(rt, loaded);
+          return;
+        }
+        rt.approved = null;
+      }
+      const approval = `${want}@${rt.entry?.at ?? ""}`;
+      if (rt.tampered === approval) return;
+      let check = await verifyCopy(dir, want);
+      // A missing copy of a version the folder still holds is the same bytes: copy it again.
+      if (!check.ok && check.missing && rt.found.codeHash === want) {
+        const snap = await snapshotTrick({ src: rt.found.dir, parent: approvedTrickDir(this.deps.configDir, id), expect: want, platform: this.deps.platform });
+        if (snap.ok) check = await verifyCopy(dir, want);
+      }
+      if (!check.ok) return this.copyFailed(rt, check.missing ? NOT_APPROVED_LINE : TAMPERED_LINE, check.reason, check.missing ? null : approval);
+      await syncConfig(rt.found.dir, dir);
+      const found = await scanTrickDir(diskTrickFs, dir, id, undefined);
+      rt.approved = { hash: want, dir, found, listing: check.listing };
+      rt.copyProblem = null;
+      rt.tampered = null;
+      this.restart(rt);
+      this.publish(id);
+    } catch (err) {
+      this.copyFailed(rt, TAMPERED_LINE, err instanceof Error ? err.message : String(err), null);
+    }
+  }
+
+  /** Copy a changed config.toml into the approved copy, read it again, and restart the trick. */
+  private async syncConfigOf(rt: TrickRuntime, run: ApprovedRun): Promise<void> {
+    if (rt.found.configHash === run.found.configHash) return;
+    if (!(await syncConfig(rt.found.dir, run.dir))) return;
+    run.found = await scanTrickDir(diskTrickFs, run.dir, rt.found.id, undefined);
+    this.restart(rt);
+    this.publish(rt.found.id);
+  }
+
+  /** The approved copy cannot run: stop the trick with a plain line, once. */
+  private copyFailed(rt: TrickRuntime, line: string, why: string, tampered: string | null): void {
+    const fresh = rt.copyProblem !== line;
+    rt.approved = null;
+    rt.tampered = tampered;
+    rt.copyProblem = line;
+    if (!fresh) return;
+    this.warn(`${rt.found.id}: ${line} (${why})`);
+    this.store.markStale(this.deps.memberId, rt.found.id, line);
+    this.publish(rt.found.id);
+  }
+
+  /**
+   * Take the snapshot of a changed folder once it settled, and take it on its own when `auto` allows.
+   * Nothing for a trick that is off, a folder that equals the approved version, a version the person
+   * declined, or a folder whose manifest is refused. Never throws.
+   */
+  private async notePending(rt: TrickRuntime): Promise<void> {
+    const hash = rt.found.codeHash;
+    const entry = rt.entry;
+    if (!rt.on || entry === undefined || hash === undefined || rt.found.manifest === undefined || hash === entry.hash || hash === entry.declined) {
+      this.dropPending(rt);
+      return;
+    }
+    if (rt.pending?.hash === hash) return;
+    const now = this.now();
+    if (rt.settle?.fingerprint !== rt.found.fingerprint) {
+      rt.settle = { fingerprint: rt.found.fingerprint, since: now };
+      return;
+    }
+    if (now - rt.settle.since < PENDING_SETTLE_MS) return;
+    try {
+      const snap = await snapshotTrick({ src: rt.found.dir, parent: pendingTrickDir(this.deps.configDir, rt.found.id), expect: hash, platform: this.deps.platform });
+      if (!snap.ok) {
+        // It moved while it was copied: wait for it to settle again.
+        rt.settle = null;
+        return;
+      }
+      rt.pending = { hash, dir: snap.dir, info: await this.pendingInfo(rt, snap.dir, hash) };
+      this.publish(rt.found.id);
+      if (entry.auto && rt.approved !== null && rt.copyProblem === null && !rt.pending.info.powersChanged) {
+        const took = await this.promote(rt, hash, "auto");
+        if (took.ok) this.warn(`${rt.found.id}: took the new version ${hash.slice(0, 16)} without asking (auto); undo restores ${entry.hash?.slice(0, 16) ?? "nothing"}`);
+      }
+    } catch (err) {
+      this.warn(`${rt.found.id}: the new version could not be copied: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  private dropPending(rt: TrickRuntime): void {
+    rt.settle = null;
+    if (rt.pending === null) return;
+    rt.pending = null;
+    this.publish(rt.found.id);
+  }
+
+  /** What the row says of a pending snapshot: the file counts, whether its powers moved, its new warnings. */
+  private async pendingInfo(rt: TrickRuntime, dir: string, hash: string): Promise<WireTrickPending> {
+    const next = await scanTrickDir(diskTrickFs, dir, rt.found.id, undefined);
+    const base = rt.approved !== null && rt.copyProblem === null ? rt.approved : null;
+    const files = await fileCounts(base?.dir ?? null, dir);
+    const was = base?.found.manifest;
+    const now = next.manifest;
+    const powersChanged = was === undefined || now === undefined || powersOf(was) !== powersOf(now);
+    const before = new Set((was === undefined || base === null ? [] : await trickWarnings(base.dir, was).catch(() => [])).map(warningKey));
+    const after = now === undefined ? [] : await trickWarnings(dir, now).catch(() => []);
+    return { hash, files, powersChanged, warnings: wireWarnings(after.filter((w) => !before.has(warningKey(w)))) };
+  }
+
+  /**
+   * Promote the pending snapshot `hash` to the approved copy: refused unless it is the snapshot held and
+   * the folder still hashes to it, and the snapshot still hashes right. Writes the switch (by `by`), audits
+   * it, and folds the new approval in.
+   */
+  private async promote(rt: TrickRuntime, hash: string, by: string): Promise<VersionAnswer> {
+    const id = rt.found.id;
+    const pending = rt.pending;
+    if (pending === null || pending.hash !== hash) return { ok: false, code: "no-pending", message: "That version is not the one waiting." };
+    const fresh = await this.scanner.one(id);
+    if (fresh === null || fresh.codeHash !== hash) return { ok: false, code: "moved", message: "The trick's folder changed again after this version was taken. Look at the new one." };
+    const check = await verifyCopy(pending.dir, hash);
+    if (!check.ok) return { ok: false, code: "copy-failed", message: "The waiting version changed on disk. Look at the folder again." };
+    const target = approvedCopyDir(this.deps.configDir, id, hash);
+    const placed = await promoteCopy(pending.dir, target, hash);
+    if (!placed) return { ok: false, code: "copy-failed", message: "The waiting version could not be moved into place." };
+    await syncConfig(fresh.dir, target);
+    const powers = (await scanTrickDir(diskTrickFs, target, id, undefined)).manifest;
+    const at = new Date(this.now()).toISOString();
+    const written = await updateSwitches(this.deps.stateDir, (now) => withApproval(now, id, { at, hash, by, powers: powers === undefined ? null : powersOf(powers) }));
+    rt.pending = null;
+    rt.settle = null;
+    this.deps.audit?.({ action: "trick.approve", detail: { trick: id, hash: hash.slice(0, 16), by } });
+    return await this.foldIn(rt, fresh, written);
+  }
+
+  /** Fold a switch file just written into the runtime, and answer the row. */
+  private async foldIn(rt: TrickRuntime, found: FoundTrick, switches: Switches): Promise<VersionAnswer> {
+    this.applyOne(found, switches.on.get(found.id));
+    await this.ensureApproved(rt);
+    this.publish(found.id);
+    const info = this.store.reply(this.store.rev).tricks.find((trick) => trick.id === found.id);
+    if (info === undefined) return { ok: false, code: "unknown-trick", message: "The trick is gone." };
+    return { ok: true, info };
+  }
+
+  /** Run one version change after the switch writes before it, and after any scan in flight. */
+  private serial(work: () => Promise<VersionAnswer>): Promise<VersionAnswer> {
+    const turn = this.switching.then(async () => {
+      await this.scanning;
+      return await work();
+    });
+    this.switching = turn.catch(() => {});
+    return turn;
+  }
+
+  /** The runtime of a trick that is on, or why not. */
+  private onRuntime(id: string): TrickRuntime | VersionAnswer {
+    const rt = this.runtimes.get(id);
+    if (rt === undefined) return { ok: false, code: "unknown-trick", message: "There is no such trick." };
+    if (!rt.on || rt.entry === undefined) return { ok: false, code: "off", message: "The trick is off." };
+    return rt;
+  }
+
+  /**
+   * Say yes to the version waiting (the seam the "new version" card builds on): the snapshot `hash` becomes
+   * the approved copy, and the trick restarts on it. Refused when it is not the version waiting, or the
+   * folder moved again after the snapshot.
+   */
+  async approvePending(id: string, hash: string, by = "phone"): Promise<VersionAnswer> {
+    return await this.serial(async () => {
+      const rt = this.onRuntime(id);
+      if (!("found" in rt)) return rt;
+      return await this.promote(rt, hash, by);
+    });
+  }
+
+  /**
+   * Say no to the version waiting: it is recorded as `declined` and not offered again while the folder
+   * holds it. The approved copy keeps running. Refused like {@link approvePending}.
+   */
+  async declinePending(id: string, hash: string): Promise<VersionAnswer> {
+    return await this.serial(async () => {
+      const rt = this.onRuntime(id);
+      if (!("found" in rt)) return rt;
+      if (rt.pending === null || rt.pending.hash !== hash) return { ok: false, code: "no-pending", message: "That version is not the one waiting." };
+      const fresh = await this.scanner.one(id);
+      if (fresh === null || fresh.codeHash !== hash) return { ok: false, code: "moved", message: "The trick's folder changed again after this version was taken. Look at the new one." };
+      const written = await updateSwitches(this.deps.stateDir, (now) => {
+        const held = now.on.get(id);
+        return held === undefined ? now : withEntry(now, id, { ...held, declined: hash });
+      });
+      rt.pending = null;
+      rt.settle = null;
+      this.deps.audit?.({ action: "trick.decline", detail: { trick: id, hash: hash.slice(0, 16) } });
+      return await this.foldIn(rt, fresh, written);
+    });
+  }
+
+  /**
+   * Go back to the version approved before the last one (`previous`): its copy must still hash right. The
+   * version undone is recorded as declined, so `auto` does not take it again at once.
+   */
+  async undo(id: string): Promise<VersionAnswer> {
+    return await this.serial(async () => {
+      const rt = this.onRuntime(id);
+      if (!("found" in rt)) return rt;
+      const previous = rt.entry?.previous;
+      const undone = rt.entry?.hash ?? null;
+      if (previous === undefined) return { ok: false, code: "no-previous", message: "There is no earlier version to go back to." };
+      const check = await verifyCopy(approvedCopyDir(this.deps.configDir, id, previous.hash), previous.hash);
+      if (!check.ok) return { ok: false, code: "copy-failed", message: "The earlier version's copy is gone or changed on disk." };
+      const written = await updateSwitches(this.deps.stateDir, (now) => {
+        const held = now.on.get(id);
+        if (held === undefined) return now;
+        const entry: SwitchEntry = { at: previous.at, hash: previous.hash, auto: held.auto, by: previous.by, powers: previous.powers };
+        if (undone !== null) entry.declined = undone;
+        return withEntry(now, id, entry);
+      });
+      this.deps.audit?.({ action: "trick.undo", detail: { trick: id, hash: previous.hash.slice(0, 16) } });
+      return await this.foldIn(rt, rt.found, written);
+    });
+  }
+
+  /** Remove the copies nothing names, at most once a minute. */
+  private async prune(switches: Switches): Promise<void> {
+    const now = this.now();
+    if (now - this.prunedAt < PRUNE_EVERY_MS) return;
+    this.prunedAt = now;
+    const pending = new Map<string, string>();
+    for (const [id, rt] of this.runtimes) if (rt.pending !== null) pending.set(id, rt.pending.hash);
+    await pruneCopies(this.deps.configDir, switches, { pending, now: Date.now() });
+  }
+
+  /** Whether a trick's row shows the folder's warnings: a manifest that parsed, and off or with a new version. */
   private wantsWarnings(rt: TrickRuntime): boolean {
     return rt.found.manifest !== undefined && rt.found.codeHash !== undefined && (!rt.on || rt.changed);
   }
@@ -553,9 +908,15 @@ export class TricksService implements TricksSurface {
     await within(this.warningRead, SCAN_TIMEOUT_MS);
   }
 
-  /** The trick as the hill's sender names it. */
+  /** The trick as the hill's sender names it: its decisions' images are read where its program ran, the approved copy. */
   private hillTrick(rt: TrickRuntime): TrickHillTrick {
-    return { id: rt.found.id, name: rt.found.manifest?.name ?? rt.found.id, memberId: this.deps.memberId, dir: rt.found.dir };
+    const shown = this.shownOf(rt);
+    return { id: rt.found.id, name: shown.manifest?.name ?? rt.found.id, memberId: this.deps.memberId, dir: rt.approved?.dir ?? rt.found.dir };
+  }
+
+  /** What a trick's row and runs read: the approved copy while one runs, else the folder. */
+  private shownOf(rt: TrickRuntime): FoundTrick {
+    return rt.on && rt.approved !== null ? rt.approved.found : rt.found;
   }
 
   /** Whether a route's host segment names this bridge: its id, or the id it served before a crew join. */
@@ -574,25 +935,30 @@ export class TricksService implements TricksSurface {
   private publish(id: string): void {
     const rt = this.runtimes.get(id);
     if (rt === undefined) return;
-    const m = rt.found.manifest;
+    const shown = this.shownOf(rt);
+    const m = shown.manifest;
+    const blocked = rt.on && !this.runnable(rt);
     const info: WireTrickInfo = {
       host: this.deps.memberId,
       id,
       name: m?.name ?? id,
       icon: m?.icon ?? "plug",
       on: rt.on,
-      state: trickStateOf(rt),
+      state: trickStateOf({ on: rt.on, found: shown, stopped: rt.stopped, failures: rt.failures, blocked: blocked && m !== undefined }),
       places: m?.places ?? [],
       provenance: { via: "folder" },
     };
-    const origin = rt.found.origin;
+    // The provenance of what runs: the approved copy keeps the origin record of the version approved.
+    const origin = shown.origin;
     if (origin !== undefined) info.provenance = { via: "repo", at: origin.at, repo: originRepoName(origin.url), sha: origin.commit };
-    const error = m === undefined ? rt.found.refusals[0]?.reason : rt.changed ? CHANGED_LINE : rt.lastError;
+    const waiting = rt.pending === null ? NOT_APPROVED_LINE : PENDING_LINE;
+    const error = m === undefined ? shown.refusals[0]?.reason : blocked ? (rt.copyProblem ?? waiting) : rt.lastError;
     if (error !== undefined) info.error = problemLine(error);
     if (rt.lastRunAt !== undefined) info.lastRunAt = new Date(rt.lastRunAt).toISOString();
-    const refusals = [...rt.found.refusals, ...rt.docRefusals].slice(0, REFUSALS_MAX);
+    const refusals = [...shown.refusals, ...rt.docRefusals].slice(0, REFUSALS_MAX);
     if (refusals.length > 0) info.refusals = refusals;
     if (rt.changed) info.changed = true;
+    if (rt.pending !== null) info.pending = rt.pending.info;
     if (rt.decides === true) info.decides = true;
     if (m?.env !== undefined) info.env = m.env;
     const taken = this.warningsOf.get(id);
@@ -600,9 +966,9 @@ export class TricksService implements TricksSurface {
     this.store.setInfo(info);
   }
 
-  /** Whether the trick may run at all: on, approved and with a manifest. */
+  /** Whether the trick may run at all: on, with an approved copy that holds and whose manifest parsed. */
   private runnable(rt: TrickRuntime): boolean {
-    return rt.on && !rt.changed && rt.found.manifest !== undefined;
+    return rt.on && rt.approved !== null && rt.copyProblem === null && rt.approved.found.manifest !== undefined;
   }
 
   /** Whether a start or timer run is due now. */
@@ -612,7 +978,7 @@ export class TricksService implements TricksSurface {
     if (now < rt.nextAt) return false;
     // A failed start run keeps `pendingStart`, so it is tried again after its backoff; a trick with no
     // `every` never runs on the clock otherwise.
-    return rt.pendingStart || rt.found.manifest?.everyMs !== undefined;
+    return rt.pendingStart || rt.approved?.found.manifest?.everyMs !== undefined;
   }
 
   /**
@@ -620,7 +986,8 @@ export class TricksService implements TricksSurface {
    * run started. Resolves when the runs it started are done, which is what a test waits on.
    */
   async tick(): Promise<void> {
-    if (!this.watched()) return;
+    // A peer, a deputy and a deposed lead schedule nothing (`deps.active`), so no trick runs twice in a crew.
+    if (!this.watched() || this.deps.active?.() === false) return;
     await this.refresh();
     const now = this.now();
     const started: Promise<void>[] = [];
@@ -633,8 +1000,9 @@ export class TricksService implements TricksSurface {
   }
 
   /**
-   * Read one trick again before its program starts. Answers why it may not run, or null. A folder
-   * that changed is folded in on the way, so a code change stops this very run.
+   * Read one trick again before its program starts. Answers why it may not run, or null. The switch is
+   * read again and the approved copy checked (its listing, and its hash when that moved), so a copy that
+   * changed on disk stops this very run. A change of the folder does not: the copy runs.
    */
   private async recheck(rt: TrickRuntime): Promise<string | null> {
     const id = rt.found.id;
@@ -643,9 +1011,10 @@ export class TricksService implements TricksSurface {
     if (found === null) return "The trick's folder could not be read again before the run.";
     if (this.runtimes.get(id) !== rt) return "The trick is gone.";
     this.applyOne(found, switches.on.get(id));
-    if (rt.found.manifest === undefined) return "The trick's trick.toml is refused. Run `collie trick check` on its folder.";
+    await this.ensureApproved(rt);
     if (!rt.on) return "The trick is off.";
-    if (rt.changed) return CHANGED_LINE;
+    if (rt.approved === null || rt.copyProblem !== null) return rt.copyProblem ?? (rt.pending === null ? NOT_APPROVED_LINE : PENDING_LINE);
+    if (rt.approved.found.manifest === undefined) return "The trick's trick.toml is refused. Run `collie trick check` on its folder.";
     return null;
   }
 
@@ -699,12 +1068,14 @@ export class TricksService implements TricksSurface {
 
   /** Run the program once and store what it left. The reply is the tap's, when the trigger is a tap. */
   private async runOnce(rt: TrickRuntime, trigger: FactsTrigger): Promise<TrickTapReply> {
-    const manifest = rt.found.manifest;
+    // Everything a run reads comes from the approved copy: the manifest, the working folder, `trick.dir`.
+    const run = rt.approved;
+    const manifest = run?.found.manifest;
     const host = this.deps.memberId;
     const id = rt.found.id;
     const rid = trigger.kind === "tap" ? trigger.rid : "";
     const revBefore = this.store.rev;
-    if (manifest === undefined) return { rid, code: "rejected", message: "The trick's trick.toml is refused." };
+    if (run === null || manifest === undefined) return { rid, code: "rejected", message: "The trick's trick.toml is refused." };
     const startedAt = this.now();
     const state = trickStateDir(this.deps.stateDir, id);
     // The program's own folder under <stateDir>/tricks, owner only like the rest of the state folder.
@@ -712,10 +1083,10 @@ export class TricksService implements TricksSurface {
     // The program may keep the id in its own state: it is written down before the first run sees it.
     this.deps.keepId?.();
     const world = this.deps.world(host);
-    const facts = buildFacts({ memberId: host, ...world }, { id, dir: rt.found.dir, state }, trigger);
+    const facts = buildFacts({ memberId: host, ...world }, { id, dir: run.dir, state }, trigger);
     const outcome = await (this.deps.run ?? runProgram)({
       command: manifest.run,
-      cwd: rt.found.dir,
+      cwd: run.dir,
       env: scrubEnv(this.deps.env, manifest.env ?? []),
       stdin: JSON.stringify(facts),
       platform: this.deps.platform,
@@ -726,7 +1097,8 @@ export class TricksService implements TricksSurface {
     if (this.runtimes.get(id) !== rt || !rt.on) {
       return { rid, code: "rejected", message: "The trick was switched off while it ran." };
     }
-    if (rt.changed) return { rid, code: "rejected", message: CHANGED_LINE };
+    // A copy that stopped while the program ran (it changed on disk) keeps nothing of that run.
+    if (!this.runnable(rt)) return { rid, code: "rejected", message: rt.copyProblem ?? NOT_APPROVED_LINE };
     let problem = outcomeProblem(outcome, 200);
     let parsed: ParsedTrickDocument | null = null;
     let decisionsListed = false;
@@ -791,7 +1163,7 @@ export class TricksService implements TricksSurface {
     rt.pendingStart = false;
     rt.lastError = undefined;
     rt.docRefusals = refusals;
-    const every = rt.found.manifest?.everyMs;
+    const every = rt.approved?.found.manifest?.everyMs;
     rt.nextAt = every === undefined ? Infinity : startedAt + every;
   }
 
@@ -846,9 +1218,9 @@ export class TricksService implements TricksSurface {
     const rt = this.runtimes.get(id);
     if (rt === undefined) return { status: 404, body: { error: "unknown-trick" } };
     const refuse = (message: string): TapAnswer => ({ status: 200, body: { rid: request.rid, code: "rejected", message } });
-    if (rt.found.manifest === undefined) return refuse("The trick's trick.toml is refused. Run `collie trick check` on its folder.");
     if (!rt.on) return refuse("The trick is off.");
-    if (rt.changed) return refuse(CHANGED_LINE);
+    if (rt.approved === null || rt.copyProblem !== null) return refuse(rt.copyProblem ?? (rt.pending === null ? NOT_APPROVED_LINE : PENDING_LINE));
+    if (rt.approved.found.manifest === undefined) return refuse("The trick's trick.toml is refused. Run `collie trick check` on its folder.");
     const answer = request.node.startsWith(HILL_NODE_PREFIX);
     // A decision's answer waits in its own queue; a phone tap queues one deep.
     if (answer && rt.hillQueue.length >= HILL_QUEUE_MAX) return refuse("The trick has too many answers waiting. Try again in a moment.");
@@ -881,22 +1253,23 @@ export class TricksService implements TricksSurface {
     }
   }
 
-  /**
-   * Switch a trick on or off: the same file `collie trick on|off` writes, through the one locked writer
-   * (switches.ts). On stores the code hash of the folder as it is now. Then the answer waits for a scan
-   * that started after the write, so the list, the runtime and `tricksRev` move before it. Works for a
-   * trick whose manifest is refused or that keeps failing: the switch is Collie's, not the trick's
-   * (design §7).
-   */
   async media(host: string, id: string, rel: string): Promise<TrickMediaFile | null> {
     if (!this.isOwn(host)) return null;
     await this.refresh();
     const rt = this.runtimes.get(id);
-    // A trick the person never switched on gets nothing served, whatever its folder holds.
-    if (rt === undefined || !rt.on) return null;
-    return readTrickMedia(rt.found.dir, rel);
+    // A trick the person never switched on gets nothing served, whatever its folder holds. The pictures
+    // are the approved copy's: its program writes them there.
+    if (rt === undefined || !rt.on || rt.approved === null || rt.copyProblem !== null) return null;
+    return readTrickMedia(rt.approved.dir, rel);
   }
 
+  /**
+   * Switch a trick on or off: the same file `collie trick on|off` writes, through the one locked writer
+   * (switches.ts). On approves a version: the one waiting when there is one, else the folder as it is
+   * now, copied into `.collie-approved/` (approved.ts). Then the answer waits for a scan that started after the
+   * write, so the list, the runtime and `tricksRev` move before it. Works for a trick whose manifest is
+   * refused or that keeps failing: the switch is Collie's, not the trick's (design §7).
+   */
   async setSwitch(host: string, id: string, on: boolean): Promise<SwitchAnswer> {
     if (!this.isOwn(host)) return { status: 404, body: { error: "unknown-host" } };
     const turn = this.switching.then(() => this.writeSwitch(id, on));
@@ -908,13 +1281,17 @@ export class TricksService implements TricksSurface {
     await this.refresh(true);
     const rt = this.runtimes.get(id);
     if (rt === undefined) return { status: 404, body: { error: "unknown-trick" } };
-    let hash: string | null = null;
-    if (on) {
-      const code = await trickCodeHash(rt.found.dir);
-      hash = code.ok ? code.hash : null;
-    }
     const at = new Date(this.now()).toISOString();
-    await updateSwitches(this.deps.stateDir, (switches) => withSwitch(switches, id, on, at, hash));
+    if (!on) await updateSwitches(this.deps.stateDir, (switches) => withSwitch(switches, id, false, at));
+    // On with a version waiting: that snapshot is what the row showed, so it is what is approved. Else the
+    // folder as it is now is copied, and the copy's hash approved.
+    const promoted = on && rt.pending !== null ? await this.promote(rt, rt.pending.hash, "phone") : null;
+    if (on && promoted?.ok !== true) {
+      const approved = await approveFolder({ stateDir: this.deps.stateDir, configDir: this.deps.configDir, id, by: "phone", at, platform: this.deps.platform });
+      // A folder that cannot be copied is still switched on, with nothing approved: the row says why.
+      if (!approved.ok) await updateSwitches(this.deps.stateDir, (switches) => withSwitch(switches, id, true, at, null));
+      else this.deps.audit?.({ action: "trick.approve", detail: { trick: id, hash: approved.hash.slice(0, 16), by: "phone" } });
+    }
     await this.freshScan();
     const info = this.store.reply(this.store.rev).tricks.find((trick) => trick.id === id);
     if (info === undefined) return { status: 404, body: { error: "unknown-trick" } };

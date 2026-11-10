@@ -107,7 +107,15 @@ function statStamp(st: FsStat | null): string {
 
 /** Read one trick folder: reuse `known` when the fingerprint did not move. */
 async function scanFolder(fs: TrickFs, root: string, id: string, known: FoundTrick | undefined): Promise<FoundTrick> {
-  const dir = join(root, id);
+  return await scanTrickDir(fs, join(root, id), id, known);
+}
+
+/**
+ * Read the trick in `dir` (a trick folder, or an approved copy of one, approved.ts) for the trick `id`:
+ * its manifest, its code hash, its `config.toml` hash and its origin record. Reuses `known` when the
+ * fingerprint did not move.
+ */
+export async function scanTrickDir(fs: TrickFs, dir: string, id: string, known: FoundTrick | undefined): Promise<FoundTrick> {
   const walk = await walkTrickCode(fs, dir);
   const config = await fs.lstat(join(dir, CONFIG_FILE));
   const origin = await fs.lstat(join(dir, ORIGIN_FILE));

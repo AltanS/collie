@@ -54,7 +54,7 @@ import {
 import { cmdLink, cmdUnlink, type LinkDeps, realLinkFs } from "./link.ts";
 import { cmdTrickDev } from "./trick-dev.ts";
 import { cmdTrickAdd, cmdTrickRemove, cmdTrickUpdate } from "./trick-add.ts";
-import { cmdTrick, cmdTrickCheck, cmdTrickHelper, cmdTrickInit, cmdTrickList, cmdTrickSkill, cmdTrickSwitch, TRICK_SUBCOMMANDS, type TrickDeps } from "./trick.ts";
+import { cmdTrick, cmdTrickAuto, cmdTrickCheck, cmdTrickHelper, cmdTrickInit, cmdTrickList, cmdTrickSkill, cmdTrickSwitch, TRICK_SUBCOMMANDS, type TrickDeps } from "./trick.ts";
 import { cmdMuxProbe } from "./mux-probe.ts";
 import {
   cmdJoin,
@@ -1021,13 +1021,18 @@ export const COMMANDS: readonly Command[] = [
       },
       {
         name: "on",
-        summary: "switch a trick on: <id>",
+        summary: "switch a trick on, approving its code as it is now: <id> (refused inside an agent's pane)",
         run: async (args, s) => await cmdTrickSwitch(trickVerbDeps(s.io), args, true),
       },
       {
         name: "off",
         summary: "switch a trick off: <id>",
         run: async (args, s) => await cmdTrickSwitch(trickVerbDeps(s.io), args, false),
+      },
+      {
+        name: "auto",
+        summary: "take a trick's new versions without asking while its powers do not change: <id> on|off",
+        run: async (args, s) => await cmdTrickAuto(trickVerbDeps(s.io), args),
       },
       {
         name: "check",
