@@ -1267,12 +1267,16 @@ instant nobody has pinned the caller (§8.2).
   timestamp is the uniform 401 there too. The skew window is still checked after the signature, as
   above. Telling "read" from "not read" apart only says whether a guessed secret is right, and the
   secret is 256 random bits.
-- **At most 4 large signed bodies are read at once** *(added in 1.29.0)*: those of a route whose cap
-  is over 256 KiB (`hill/media`, `lead`, `warrant`, `takeover`; `SIGNED_READS_MAX` in
-  `bridge/crew/router.ts`), so at most 12 MiB sits unverified in memory. One more is answered `503`
-  with `Retry-After: 1` and `{ error, code: "signed_reads_busy" }`, its body unread, audited as
-  `crew.refused` with the factor `signed-reads-busy`. The routes with a smaller cap are not counted. A
-  member reads the 503 as a dial that did not land.
+- **At most 4 large signed bodies are read at once, and at most 4 uploads beside them** *(added in
+  1.29.0)*: the routes whose cap is over 256 KiB are counted, `hill/media` in its own count
+  (`SIGNED_MEDIA_READS_MAX`) and `lead`, `warrant` and `takeover` in another (`SIGNED_READS_MAX`, both
+  in `bridge/crew/router.ts`). A member's uploads, stalled or not, therefore never turn away the crew's
+  own lead, warrant or takeover calls, and at most 16 MiB sits unverified in memory. One more in a full
+  count is answered `503` with `Retry-After: 1` and `{ error, code: "signed_reads_busy" }`, its body
+  unread, audited as `crew.refused` with the factor `signed-reads-busy`. The routes with a smaller cap
+  are not counted. A member reads the 503 as a dial that did not land. A body whose stream breaks off
+  gives its slot back and is answered `400` with `{ error, code: "body_unread" }`, audited with the
+  factor `body-unread`.
 
 **The warrant is a SECOND signed object under the same key** (§18, added 2026-08-20). It reuses these
 primitives unchanged — base64 ECDSA-P256-SHA256, made with the signer's own key and verified against
