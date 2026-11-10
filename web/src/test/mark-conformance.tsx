@@ -286,6 +286,64 @@ export function describeMarkConformance(entries: readonly MarkEntry[]): void {
       unmount();
     });
 
+    it("is not armed by a scroll alone, even inside a nested scroller", () => {
+      vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "setTimeout", "clearTimeout", "performance", "Date"] });
+      const { container, unmount } = render(
+        <div data-testid="thread">
+          <Mark />
+        </div>,
+      );
+      const root = rootOf(container);
+      // A scroll no person made: a chat that follows new output, scroll anchoring, scrollIntoView.
+      act(() => {
+        window.dispatchEvent(new Event("scroll"));
+        document.dispatchEvent(new Event("scroll"));
+        container.firstElementChild?.dispatchEvent(new Event("scroll"));
+      });
+      expect(root.hasAttribute("data-still")).toBe(true);
+      // Real input inside the nested scroller reaches the capture listener on window and arms the window.
+      act(() => {
+        container.firstElementChild?.dispatchEvent(new Event("touchstart", { bubbles: true }));
+      });
+      expect(root.hasAttribute("data-still")).toBe(false);
+      unmount();
+    });
+
+    it("starts at rest on a page that opens hidden, and stays there after it shows with no input", () => {
+      vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "setTimeout", "clearTimeout", "performance", "Date"] });
+      const visibility = vi.spyOn(document, "visibilityState", "get");
+      visibility.mockReturnValue("hidden");
+      const { container, unmount } = render(<Mark />);
+      const root = rootOf(container);
+      expect(root.hasAttribute("data-still")).toBe(true);
+      visibility.mockReturnValue("visible");
+      act(() => {
+        document.dispatchEvent(new Event("visibilitychange"));
+      });
+      act(() => vi.advanceTimersByTime(MARK_DRIFT.windowMs));
+      expect(root.hasAttribute("data-still")).toBe(true);
+      unmount();
+    });
+
+    it("stops at once on pagehide, and a quiet timer left over cannot start the drift again", () => {
+      vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "setTimeout", "clearTimeout", "performance", "Date"] });
+      const { container, unmount } = render(<Mark />);
+      const root = rootOf(container);
+      act(() => {
+        window.dispatchEvent(new Event("pointerdown"));
+      });
+      expect(root.hasAttribute("data-still")).toBe(false);
+      // The page is still "visible" as pagehide fires, as a page going into the back-forward cache can be.
+      act(() => {
+        window.dispatchEvent(new Event("pagehide"));
+      });
+      act(() => vi.advanceTimersByTime(MARK_DRIFT.easeMs + 200));
+      expect(root.hasAttribute("data-still")).toBe(true);
+      act(() => vi.advanceTimersByTime(MARK_DRIFT.windowMs * 2));
+      expect(root.hasAttribute("data-still")).toBe(true);
+      unmount();
+    });
+
     it("counts no input as use on a hidden page, and stops at once when the page turns hidden", () => {
       vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "setTimeout", "clearTimeout", "performance", "Date"] });
       const visibility = vi.spyOn(document, "visibilityState", "get");
