@@ -178,18 +178,17 @@ describe("discovery", () => {
     expect((await trickCodeHash(dir)).ok && (await trickCodeHash(dir))).toEqual({ ok: true, hash: edited.codeHash! });
   });
 
-  test("a symlink is hashed by its target and never followed", async () => {
+  test("B3: a symlink is refused, never followed: the row says why and the trick has no code hash", async () => {
     const root = await tempDir();
     const dir = await trickDir(root, "legs");
     const outside = join(root, "outside.sh");
     await writeFile(outside, "one\n");
     await symlink(outside, join(dir, "p.sh"));
-    const before = await trickCodeHash(dir);
-    await writeFile(outside, "two\n");
-    expect(await trickCodeHash(dir)).toEqual(before);
-    await rm(join(dir, "p.sh"));
-    await symlink(join(root, "elsewhere.sh"), join(dir, "p.sh"));
-    expect(await trickCodeHash(dir)).not.toEqual(before);
+    expect(await trickCodeHash(dir)).toMatchObject({ ok: false, code: "link" });
+    const found = (await createTrickScanner(root).scan()).tricks[0]!;
+    expect(found.codeHash).toBeUndefined();
+    expect(found.manifest).toBeUndefined();
+    expect(found.refusals.map((r) => r.reason)).toContain("p.sh is a symbolic link. A trick holds regular files only: put the file itself there.");
   });
 
   test("more than 2000 files refuses the trick with a reason", async () => {

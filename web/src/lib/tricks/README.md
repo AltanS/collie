@@ -59,8 +59,15 @@ trick has `collie trick auto <id> on`, or the switch "Take changes without askin
 into its own code folder: the copy's code files are read-only (not on Windows, where the hash check
 alone catches it), and a change there stops the trick with "The approved copy changed on disk". It keeps its notes in `trick.state`, the
 state folder, which is never copied. `media/` and `captures/` are seeded into the copy once (at most
-500 files and 64 MiB) and stay writable; `inputs/` starts empty. Dot files, dot folders and
-`node_modules/` are not copied, as with `collie trick add`. `collie trick on` and `collie trick auto
+500 files and 64 MiB) with their pictures only: a file named `.png`, `.jpg`, `.jpeg` or `.webp` whose first
+bytes are a PNG, JPEG or WebP picture. Anything else in those two folders stays behind, so a program in the
+copy can never import a file the hash and the card left out; the rule an author reads is "media/ and
+captures/ hold pictures, code goes anywhere else". They stay writable; `inputs/` starts empty. Dot files,
+dot folders and `node_modules/` are not copied, as with `collie trick add`. A symbolic link anywhere the
+code hash looks (a top-level `media/` or `captures/` link included) refuses the trick with a plain reason,
+as `collie trick add` refuses one, and a file name with a control or invisible character does too: the
+card could not show it. A copy made before links were refused stops with "The approved copy holds a
+symbolic link". `collie trick on` and `collie trick auto
 <id> on` refuse in a multiplexer pane where the running bridge sees an agent (the walky socket's `pane`
 op): an agent does not approve its own trick. In a shell pane they work. With no bridge, or a bridge
 that does not know the op or the pane, they do not refuse. It is a speed bump, not a lock: the user

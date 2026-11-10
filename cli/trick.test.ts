@@ -658,13 +658,14 @@ describe("collie trick skill", () => {
     const link = await onTrick(null);
     await writeFile(join(link.configDir, "secret.txt"), "private\n");
     await symlink(join(link.configDir, "secret.txt"), join(link.configDir, "tricks", "legs", "SKILL.md"));
-    // The symlink is part of the code: switch on again so the trick is not "changed", then ask.
-    await cmdTrickSwitch(link, ["legs"], true);
+    // B3: a trick folder with a link is not approved, so the approved copy never holds the link.
+    expect(await cmdTrickSwitch(link, ["legs"], true)).not.toBe(EXIT.OK);
+    expect(link.err.join("\n")).toContain("SKILL.md is a symbolic link");
     link.out.length = 0;
     link.err.length = 0;
     expect(await cmdTrickSkill(link, ["legs"])).toBe(EXIT.FAIL);
     expect(link.out).toEqual([]);
-    expect(link.err[0]).toBe("legs has no SKILL.md (it is not a regular file)");
+    expect(link.err[0]).toBe("legs has no SKILL.md");
 
     const big = await onTrick("x".repeat(SKILL_BYTES_MAX + 1));
     expect(await cmdTrickSkill(big, ["legs"])).toBe(EXIT.FAIL);

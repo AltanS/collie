@@ -139,6 +139,8 @@ export const PENDING_LINE = "A new version waits for your yes.";
 export const NOT_APPROVED_LINE = "No version of this trick is approved yet. Switch it on again to approve its code as it is now.";
 /** The line of a trick whose approved copy changed on disk. */
 export const TAMPERED_LINE = "The approved copy changed on disk, so the trick stopped. Switch it on again to approve its code as it is now.";
+/** The row's line when the approved copy holds a symbolic link (one made before links were refused). */
+export const LINK_LINE = "The approved copy holds a symbolic link, so the trick stopped. A trick holds regular files only: replace the link in its folder, then switch it on again.";
 /** How long a changed folder must stay still before its snapshot is taken. */
 export const PENDING_SETTLE_MS = 5000;
 /** How often the unreferenced copies are pruned. */
@@ -685,7 +687,7 @@ export class TricksService implements TricksSurface {
         if (!holds) {
           const check = await verifyCopy(dir, want);
           // A copy that is gone is loaded again below (and copied again from a folder that still matches).
-          if (!check.ok && !check.missing) return this.copyFailed(rt, TAMPERED_LINE, check.reason, `${want}@${rt.entry?.at ?? ""}`);
+          if (!check.ok && !check.missing) return this.copyFailed(rt, check.link === true ? LINK_LINE : TAMPERED_LINE, check.reason, `${want}@${rt.entry?.at ?? ""}`);
           if (check.ok) loaded.listing = check.listing;
           holds = check.ok;
         }
@@ -703,7 +705,7 @@ export class TricksService implements TricksSurface {
         const snap = await snapshotTrick({ src: rt.found.dir, parent: approvedTrickDir(this.deps.configDir, id), expect: want, platform: this.deps.platform });
         if (snap.ok) check = await verifyCopy(dir, want);
       }
-      if (!check.ok) return this.copyFailed(rt, check.missing ? NOT_APPROVED_LINE : TAMPERED_LINE, check.reason, check.missing ? null : approval);
+      if (!check.ok) return this.copyFailed(rt, check.missing ? NOT_APPROVED_LINE : check.link === true ? LINK_LINE : TAMPERED_LINE, check.reason, check.missing ? null : approval);
       await syncConfig(rt.found.dir, dir);
       const found = await scanTrickDir(diskTrickFs, dir, id, undefined);
       rt.approved = { hash: want, dir, found, listing: check.listing };

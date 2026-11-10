@@ -835,9 +835,11 @@ and the new version waits for a person's yes. \`collie trick on\` refuses inside
 Not part of the code, so free to change: \`config.toml\` (settings for the program; an edit reaches
 the running copy at once), a top-level \`media/\`, \`captures/\` and \`inputs/\` folder, any \`*.log\`
 file, dot files and dot folders, and \`node_modules/\`. Only the code and \`config.toml\` are copied,
-with what \`media/\` and \`captures/\` held at the moment of the yes; \`node_modules/\` and dot files
-are not, so the program cannot rely on them. Keep state in \`trick.state\` (see below). The program
-must never write a code file into its own folder: in the approved copy that stops the trick.
+with the PNG, JPEG and WebP pictures \`media/\` and \`captures/\` held at the moment of the yes. Any
+other file in those two folders is not copied, so code never goes there. \`node_modules/\` and dot
+files are not copied either, so the program cannot rely on them. A symbolic link anywhere in the
+folder refuses the trick: a trick holds regular files only. Keep state in \`trick.state\` (see below).
+The program must never write a code file into its own folder: in the approved copy that stops the trick.
 
 ## What the program gets
 

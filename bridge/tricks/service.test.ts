@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { appendFile, chmod, mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { appendFile, chmod, mkdir, mkdtemp, readdir, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -10,7 +10,7 @@ import { approvedCopyDir, pendingCopyDir, TRICKS_DIR } from "./paths.ts";
 import type { RunOutcome, RunSpec } from "./run.ts";
 import { payloadDigest } from "../worktree-receipts.ts";
 import { memoryTrickReceipts, TrickReceiptStore } from "./receipts.ts";
-import { backoffAfter, BACKOFF_MS, NOT_APPROVED_LINE, PENDING_LINE, PENDING_SETTLE_MS, RUNS_MAX, TAMPERED_LINE, TAP_LOST_LINE, TricksService, WATCH_WINDOW_MS, type TricksServiceDeps, type TapAnswer } from "./service.ts";
+import { backoffAfter, BACKOFF_MS, LINK_LINE, NOT_APPROVED_LINE, PENDING_LINE, PENDING_SETTLE_MS, RUNS_MAX, TAMPERED_LINE, TAP_LOST_LINE, TricksService, WATCH_WINDOW_MS, type TricksServiceDeps, type TapAnswer } from "./service.ts";
 import { updateSwitches, withEntry, withSwitch, writeSwitches, type Switches } from "./switches.ts";
 
 const dirs: string[] = [];
@@ -1124,6 +1124,19 @@ describe("the approved copy (crew slice 2)", () => {
     await tickAt(r, T0 + 61_000);
     expect(r.specs.length).toBe(2);
     expect(await readFile(join(copy, "legs.sh"), "utf8")).toBe("#!/bin/sh\necho 1\n");
+  });
+
+  test("B3: an approved copy that holds a symbolic link stops the trick with its own plain line", async () => {
+    const r = await rig([exited(belt("1"))]);
+    await makeTrick(r.configDir, "legs", MANIFEST, { "legs.sh": "#!/bin/sh\necho 1\n" });
+    await switchOn(r.stateDir, "legs");
+    await tickAt(r, T0);
+    expect(r.specs.length).toBe(1);
+    const copy = await copyOf(r, "legs");
+    await symlink(join(r.configDir, TRICKS_DIR, "legs", "legs.sh"), join(copy, "live.sh"));
+    expect(ok200(await r.service.tap(HOST, "legs", { rid: REQ, node: "belt", intent: "x" }))).toMatchObject({ code: "rejected", message: LINK_LINE });
+    expect(r.specs.length).toBe(1);
+    expect((await r.service.reply(undefined)).tricks[0]).toMatchObject({ on: true, state: "stopped", error: LINK_LINE });
   });
 
   test("a missing copy of a version the folder still holds is copied again, and the trick runs", async () => {
