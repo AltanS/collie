@@ -518,6 +518,22 @@ describe("after the tap", () => {
     expect(slot("decision-receipt")).toHaveTextContent(words);
   });
 
+  it("says what Collie did for its own Decision, wears the app's mark, and says nothing of a trick", () => {
+    const from: HillDecision["from"] = { kind: "collie", address: null, trickId: null, trickKey: null, memberId: "bluefin", harness: null, label: "Collie", host: "bluefin", trickHost: null, ref: { type: "version", id: "legs", hash: "a".repeat(64) } };
+    const decision = hillDecision({ from, target: null, options: [{ intent: "use", label: "Use the new version" }, { intent: "keep", label: "Keep the old version" }] });
+    const used = renderCard(decision, answered(hillReceipt({ delivery: "none" }), "use"));
+    expect(used.slot("decision-receipt")?.textContent).toBe("Now running the new version.");
+    expect(used.container.querySelector('[data-slot="decision-collie-mark"]')).not.toBeNull();
+    expect(used.container.querySelector('[data-slot="decision-trick-word"]')).toBeNull();
+    used.unmount();
+    const kept = renderCard(decision, answered(hillReceipt({ delivery: "none" }), "keep"));
+    expect(kept.slot("decision-receipt")?.textContent).toBe("Kept the old version.");
+    kept.unmount();
+    const moved = renderCard(decision, answered(hillReceipt({ code: "rejected", state: "open", delivery: null, reason: "The trick changed again. A new card replaces this one." }), "use"));
+    expect(moved.slot("decision-receipt")?.textContent).toBe("Not accepted: The trick changed again. A new card replaces this one.");
+    expect(moved.option("use")).toBeEnabled();
+  });
+
   it("says an answer to a crew machine that is not answering was not sent, and keeps the card answerable", () => {
     const offline = hillReceipt({ code: "rejected", state: "open", delivery: null, reason: "laptop is not answering. Your answer was not sent.", machine: "laptop" });
     const { slot, option } = renderCard(hillDecision(), answered(offline));

@@ -388,6 +388,15 @@ describe("the hill operations (M96)", () => {
     expect(answer).toMatchObject({ ok: true, decision: { id: "dc_aaaaaaaaaaa1", from: { kind: "agent", address: "local/%1#aaaa", harness: "agent-x", label: "repo#a", host: "desk" }, target: { label: "repo#a" } } });
   });
 
+  test("a post that claims to be Collie's own is an agent's post: the socket cannot mint kind collie (crew slice 3)", async () => {
+    const { walky, hill } = withHill();
+    const ref = { type: "version", id: "legs", hash: "a".repeat(64) };
+    const answer = await ask(walky, hill, { op: "hill.post", markers: marker("%1"), ...post, kind: "collie", ref, from: { kind: "collie", ref } });
+    expect(answer).toMatchObject({ ok: true, decision: { from: { kind: "agent", address: "local/%1#aaaa" } } });
+    expect(hill.collieDecisions("version")).toEqual([]);
+    expect(hill.list().open.every((decision) => decision.from.kind === "agent" && decision.from.ref === undefined)).toBe(true);
+  });
+
   test("no pane, or a shell pane: refused, with the hill's mark; markers that name no pane here are `not here`", async () => {
     const { walky, hill } = withHill();
     expect(await ask(walky, hill, { op: "hill.post", markers: [], ...post })).toEqual({ ok: false, error: HILL_NEEDS_A_PANE, hill: true });

@@ -13,7 +13,7 @@ import { hillDir, HillStore } from "../hill/store.ts";
 import { hillAnswerRoute, hillListRoute, hillMediaRoute } from "../server.ts";
 import type { HillDecision, HillReceipt } from "../../web/src/lib/hill/wire.ts";
 import { parseJsonObject } from "../../web/src/lib/json.ts";
-import { parseFacts, type Refusal, type TrickDecision, type TrickFacts, type TrickTapReply } from "../../web/src/lib/tricks/schema.ts";
+import { parseFacts, parseTrickDocument, type Refusal, type TrickDecision, type TrickFacts, type TrickTapReply } from "../../web/src/lib/tricks/schema.ts";
 import { decisionContentHash, imageFileDigest, REASK_AFTER_MS, scopeKeyAddress, TrickHill, TRICKS_MAP_FILE, trickRequestId, type TrickHillTrick } from "./hill.ts";
 import { trickCodeHash } from "./code-hash.ts";
 import { TRICKS_DIR } from "./paths.ts";
@@ -321,6 +321,27 @@ describe("the diff by key", () => {
     expect(open(r)).toHaveLength(1);
     expect(open(r)[0]?.summary).toBe(a.summary);
     expect(r.store.all()).toHaveLength(3);
+  });
+});
+
+describe("a trick cannot speak as Collie (crew slice 3)", () => {
+  test("a decision naming kind collie, a ref or a from is refused by the parser, and the rest posts as the trick's", () => {
+    const r = rig();
+    const ref = { type: "version", id: "legs", hash: "a".repeat(64) };
+    const parsed = parseTrickDocument({
+      v: 1,
+      parts: [],
+      decisions: [
+        { key: "forged-from", title: "Use the new version of legs?", summary: "No new rights.", from: { kind: "collie", ref } },
+        { key: "forged-kind", title: "Use the new version of legs?", summary: "No new rights.", kind: "collie", ref },
+        { key: "plain", title: "Rerun case 8?", summary: "Case 8 failed." },
+      ],
+    });
+    expect(parsed.refusedDecisions).toEqual(["forged-from", "forged-kind"]);
+    expect(sync(r, parsed.decisions, parsed.refusedDecisions)).toEqual([]);
+    expect(open(r).map((held) => held.from.kind)).toEqual(["trick"]);
+    expect(open(r)[0]?.from.ref).toBeUndefined();
+    expect(r.hill.collieDecisions("version")).toEqual([]);
   });
 });
 

@@ -3342,6 +3342,15 @@ export const en = {
   "settings.tricks.warn.honesty": "Found by a text search of its code, not a proof.",
   "settings.tricks.hillOff": "The Hill is off: this trick's Decisions are not shown.",
   "settings.tricks.pending": "A new version waits for your yes.",
+  // Take changes without asking, and the undo of an automatic change (crew slice 3). English only until
+  // the translation pass, listed in PENDING_TRANSLATION below.
+  "settings.tricks.auto.label": "Take changes without asking",
+  "settings.tricks.auto.hint": "A change that asks for new rights still asks.",
+  "settings.tricks.auto.failed": "Could not change {name}. Try again.",
+  "settings.tricks.autoAt": "Updated {ago}, automatically.",
+  "settings.tricks.undo": "Undo",
+  "settings.tricks.undoArmed": "Undo?",
+  "settings.tricks.undoFailed": "Could not undo {name}. Try again.",
 
   // --- hill: the Decisions agents post, and the view that answers them (M96) ---
   // "Hill" is the view's name, a Collie word like a brand: the same in every language, never
@@ -3394,6 +3403,11 @@ export const en = {
   // An answer to a session on a crew machine that is not answering (CREW_PROTOCOL §22): English only
   // until the translation pass, listed in PENDING_TRANSLATION below.
   "hill.receipt.offline": "{machine} is not answering. Your answer was not sent.",
+  // An answer to a Decision of Collie's own (crew slice 3): Collie acted itself, nothing was typed.
+  // English only until the translation pass, listed in PENDING_TRANSLATION below.
+  "hill.receipt.versionUsed": "Now running the new version.",
+  "hill.receipt.versionKept": "Kept the old version.",
+  "hill.receipt.collieDone": "Done.",
   "hill.retry": "Try again",
   "hill.reason.textRequired": "an answer in words is required",
   "hill.reason.notAnOption": "that is not an option of this Decision",
@@ -3631,6 +3645,17 @@ export const PENDING_TRANSLATION = [
   "hill.off.turnOn",
   // An answer refused for a crew machine that is not answering (2026-11-10).
   "hill.receipt.offline",
+  // A trick's new version on the Hill and in Settings (crew slice 3).
+  "hill.receipt.versionUsed",
+  "hill.receipt.versionKept",
+  "hill.receipt.collieDone",
+  "settings.tricks.auto.label",
+  "settings.tricks.auto.hint",
+  "settings.tricks.auto.failed",
+  "settings.tricks.autoAt",
+  "settings.tricks.undo",
+  "settings.tricks.undoArmed",
+  "settings.tricks.undoFailed",
 ] as const satisfies readonly MessageKey[];
 
 /** A key a bundle may leave out until the translation pass. */

@@ -34,6 +34,16 @@ describe("readHillDecision", () => {
     expect(readHillDecision(wire({ from: { ...from, trickHost: 5 } }))).toBeNull();
   });
 
+  it("reads Collie's own decision with its ref, and drops one whose ref is missing or malformed", () => {
+    const ref = { type: "version", id: "legs", hash: "a".repeat(64) };
+    const from = { ...asJsonObject(wire({}).from), kind: "collie", address: null, label: "Browser leg", ref };
+    expect(readHillDecision(wire({ from, replyTo: null, target: null }))?.from).toMatchObject({ kind: "collie", ref });
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    expect(readHillDecision(wire({ from: { ...from, ref: null }, replyTo: null, target: null }))).toBeNull();
+    expect(readHillDecision(wire({ from: { ...from, ref: { ...ref, hash: "abc" } }, replyTo: null, target: null }))).toBeNull();
+    expect(readHillDecision(wire({ from: { ...from, ref: { ...ref, type: "pane" } }, replyTo: null, target: null }))).toBeNull();
+  });
+
   it("drops an answer or a receipt without its trick delivery, which every bridge sends", () => {
     const answered = asJsonObject(JSON.parse(JSON.stringify(hillDecision({ state: "answered", answer: { rid: "r", intent: "yes", label: "Yes", text: null, by: "phone", at: 1, delivery: "typed", trick: "none" } }))));
     expect(answered === undefined ? null : readHillDecision(answered)?.answer).toMatchObject({ trick: "none" });

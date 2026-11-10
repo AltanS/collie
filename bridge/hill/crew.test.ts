@@ -239,6 +239,15 @@ describe("the lead's routes", () => {
     expect(lead.store.all()).toHaveLength(1);
   });
 
+  test("post: a member cannot mint Collie's own Decision; `from` and `fields` naming kind collie post an agent's (crew slice 3)", () => {
+    const { crewLead, lead } = crew();
+    const ref = { type: "version", id: "legs", hash: "a".repeat(64) };
+    const answer = crewLead.post({ from: { kind: "collie", ref, address: LAPTOP_PANE, label: "repo#main" }, fields: { ...fields(), kind: "collie", ref, from: { kind: "collie", ref } } }, "laptop");
+    expect(answer.body).toMatchObject({ ok: true, decision: { from: { kind: "agent", address: LAPTOP_PANE, memberId: "laptop" } } });
+    expect(lead.store.all().map((decision) => decision.from.kind)).toEqual(["agent"]);
+    expect(lead.store.all()[0]?.from.ref).toBeUndefined();
+  });
+
   test("post: a repeated request id is the same decision; an image not held is refused", () => {
     const { crewLead, lead } = crew();
     const row = fields();

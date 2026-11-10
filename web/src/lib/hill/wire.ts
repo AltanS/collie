@@ -78,6 +78,32 @@ export const HILL_IMAGE_PATH_MAX = 4096;
 /** Where the phone reads an image's bytes: `${HILL_MEDIA_ROUTE}<decision id>/<media id>`. */
 export const HILL_MEDIA_ROUTE = "/api/hill/media/";
 
+/** What a Decision of Collie's own is about (crew slice 3): a trick's new version, or (later) a proposal. */
+export type HillCollieRefType = "version" | "proposal";
+export const HILL_COLLIE_REF_TYPES: readonly HillCollieRefType[] = ["version", "proposal"];
+/** The id inside a Collie Decision's `ref`: a trick id for `version`. */
+export const HILL_COLLIE_REF_ID_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
+/** The hash inside a Collie Decision's `ref`: the sha256 of the code the answer is about, in hex. */
+export const HILL_COLLIE_REF_HASH_RE = /^[0-9a-f]{64}$/;
+
+/**
+ * What a Collie Decision is about. Only code inside the bridge mints one (bridge/hill/service.ts
+ * `postCollie`); the answer acts on exactly this `hash` and refuses when the thing moved since.
+ */
+export interface HillCollieRef {
+  type: HillCollieRefType;
+  id: string;
+  hash: string;
+}
+
+/** A Collie Decision's `ref` from its three read fields, or null when any is missing or malformed. */
+export function hillCollieRef(type: string | undefined, id: string | undefined, hash: string | undefined): HillCollieRef | null {
+  const kind = HILL_COLLIE_REF_TYPES.find((candidate) => candidate === type);
+  if (kind === undefined || id === undefined || hash === undefined) return null;
+  if (!HILL_COLLIE_REF_ID_RE.test(id) || !HILL_COLLIE_REF_HASH_RE.test(hash)) return null;
+  return { type: kind, id, hash };
+}
+
 /** One button on a decision card. */
 export interface HillOption {
   /** What the poster reads back. Lowercase, see HILL_INTENT_RE. */
@@ -113,8 +139,11 @@ export interface HillDecision {
   requestId: string;
   /** Who posted it. The bridge fills this from the socket, never from the post. */
   from: {
-    /** "agent" posts on the socket. "trick" posts only through code inside the bridge. */
-    kind: "agent" | "trick";
+    /**
+     * "agent" posts on the socket. "trick" posts only through code inside the bridge. "collie" is
+     * Collie itself (a trick's new version): only bridge code mints it, and its answer types nothing.
+     */
+    kind: "agent" | "trick" | "collie";
     /** The poster's walky address. Null for a trick. */
     address: string | null;
     trickId: string | null;
@@ -135,6 +164,8 @@ export interface HillDecision {
      * trick's decision, and the same value as `memberId` there; null for an agent.
      */
     trickHost: string | null;
+    /** What a Collie Decision is about. Present on kind `collie` only, and required there. */
+    ref?: HillCollieRef;
   };
   /** A walky address. The card opens that session's Chat. */
   about: string | null;
