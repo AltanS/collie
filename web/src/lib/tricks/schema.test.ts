@@ -963,7 +963,8 @@ describe("the status place", () => {
 
   it("refuses a part with no chip, and ignores a view, a mark or an intent on the part", () => {
     expect(refusalsOf(parseTrickDocument({ v: 1, parts: [{ at: "status", id: "s" }] }))).toEqual([["missing", "/parts/0/chip"]]);
-    for (const [key, value] of [["mark", { label: "x" }], ["view", []], ["intent", "open"]] as const) {
+    const extras: [string, JsonValue][] = [["mark", { label: "x" }], ["view", []], ["intent", "open"]];
+    for (const [key, value] of extras) {
       const read = status({ text: "ok" }, { [key]: value });
       expect(read.refusals, key).toEqual([]);
       expect(notesOf(read), key).toEqual([["ignored", `/parts/0/${key}`]]);
