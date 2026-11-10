@@ -819,6 +819,15 @@ export const en = {
   // `{reason}` is a whole sentence of its own and leading with a clause would read as one sentence
   // interrupted by another.
   "chat.mode.noChat": "{reason} The terminal stays here.",
+  // Morph (prototype, 2026-11-10): English only until the translation pass, listed in PENDING_TRANSLATION
+  // below. `{name}` is the word Morph, a name that is never translated (lib/morph/reader.ts `MORPH_NAME`).
+  "chat.mode.morph": "{name} view",
+  "morph.switch.hint": "The agent answers by drawing one screen.",
+  "morph.switch.failed": "Not changed: {error}",
+  "morph.empty": "Ask for something. The agent draws the answer here.",
+  "morph.drawn": "Drawn by the agent",
+  "morph.drawnAt": "Drawn by the agent · {time}",
+  "morph.textAnswer": "The agent answered in text",
 
   // --- chat.stream (the chat body itself) ---
   "chat.stream.empty": "Send a message to start.",
@@ -3591,6 +3600,14 @@ export const PENDING_TRANSLATION = [
   // The Hill's push switch (M96, 2026-11-10).
   "settings.notify.decisions.label",
   "settings.notify.decisions.hint",
+  // Morph (prototype, 2026-11-10).
+  "chat.mode.morph",
+  "morph.switch.hint",
+  "morph.switch.failed",
+  "morph.empty",
+  "morph.drawn",
+  "morph.drawnAt",
+  "morph.textAnswer",
 ] as const satisfies readonly MessageKey[];
 
 /** A key a bundle may leave out until the translation pass. */

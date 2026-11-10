@@ -252,6 +252,8 @@ import { PinStore } from "./pins/store.ts";
 import { readAnswerRequest } from "./hill/parse.ts";
 import { HILL_ID_RE, HILL_MEDIA_ID_RE } from "../web/src/lib/hill/wire.ts";
 import { hillDeviceId, type HillService } from "./hill/service.ts";
+import type { MorphService } from "./morph/service.ts";
+import { readMorphSwitchBody } from "../web/src/lib/morph/wire.ts";
 import { isPaneId, parseAddress } from "./walky/address.ts";
 import { isWalkyId, parsePhoneSend } from "./walky/parse.ts";
 import { NOT_THE_SENDER, type TakeBackAnswer, type WalkyService } from "./walky/service.ts";
@@ -1254,6 +1256,11 @@ export function startServer(opts: {
    */
   hill?: HillService;
   /**
+   * Morph: the one screen an agent drew per session (`collie morph show`), and the per-session switch.
+   * Absent, `GET /api/morph` and `POST /api/morph/switch` answer 404 and the snapshot carries no `morphRev`.
+   */
+  morph?: MorphService;
+  /**
    * Walky talky's crew half (CREW_PROTOCOL.md §21): on a member, the handler of the lead's
    * `POST /crew/v1/pane/<pane | all>/walky`, reached through the crew dispatch only. Absent (solo, a
    * test) ⇒ that POST answers 404, which the lead reads as an older member.
@@ -1559,6 +1566,7 @@ export function startServer(opts: {
   };
   const walky = opts.walky;
   const hill = opts.hill;
+  const morph = opts.morph;
   const pairing = opts.pairing;
   const localCredential = opts.localCredential;
   /**
@@ -3115,7 +3123,8 @@ export function startServer(opts: {
         // and a member refuses posts (`not_on_lead`). The revision below is this bridge's own store.
         const merged = crewLead ? crewLead.merge(body, plan) : body;
         const out = crewLead && cfg.redact ? maskSnapshotTitles(merged) : merged;
-        return withBuildHeader(json(withHillRev(out, hill?.rev()), req.headers.get("accept-encoding")), await buildId());
+        // Morph's revision rides beside the hill's, this bridge's own, lead-local as the hill.
+        return withBuildHeader(json(withMorphRev(withHillRev(out, hill?.rev()), morph?.rev()), req.headers.get("accept-encoding")), await buildId());
       }
 
       // ── Surface shadow mode's debug route (M56 spec 04) ──────────────────
@@ -3308,6 +3317,28 @@ export function startServer(opts: {
           body = undefined;
         }
         return hillAnswerRoute(hill, body, { device: whois(req).device, deviceId: pairedDeviceId(req, pairingGate), acceptEncoding: req.headers.get("accept-encoding") });
+      }
+      // ── Morph ─────────────────────────────────────────────────────────────
+      // The screens agents drew on this bridge (a read), and the phone's per-session switch: a write
+      // under the same gate as the hill's answer. This machine only, as the hill.
+      if (pathname === "/api/morph" && req.method === "GET") {
+        const denied = browserGate("read");
+        if (denied) return denied;
+        if (host.kind === "member") return text(MORPH_LOCAL_TEXT, 400);
+        return morphListRoute(morph, url.searchParams.get("since"), req.headers.get("accept-encoding"));
+      }
+      if (pathname === "/api/morph/switch" && req.method === "POST") {
+        const denied = browserGate("write");
+        if (denied) return denied;
+        if (host.kind === "member") return text(MORPH_LOCAL_TEXT, 400);
+        let body: JsonValue | undefined;
+        try {
+          // SAFETY: `Request.json()` output IS a JsonValue by construction; `readMorphSwitchBody` checks every field.
+          body = (await req.json()) as JsonValue;
+        } catch {
+          body = undefined;
+        }
+        return morphSwitchRoute(morph, body, req.headers.get("accept-encoding"));
       }
       const hillImage = pathname.match(HILL_IMAGE_ROUTE);
       if (hillImage && req.method === "GET") {
@@ -9020,6 +9051,43 @@ export const HILL_UNSAVED_TEXT = "the answer could not be recorded on this machi
 /** The snapshot with the hill's revision (M96) when there is one. Absent, the body is unchanged, byte for byte. */
 export function withHillRev(body: SnapshotResponse, rev: number | undefined): SnapshotResponse {
   return rev === undefined ? body : { ...body, hillRev: rev };
+}
+
+/** What a Morph route answers on a bridge built without it. */
+export const MORPH_OFF_TEXT = "Morph is not running on this bridge";
+/** What a Morph route answers with `?host=`: Morph is not merged across the crew. */
+export const MORPH_LOCAL_TEXT = "Morph reads this machine only for now; ask the machine itself";
+/** What the switch answers a body of another shape. */
+export const MORPH_BAD_SWITCH = 'the body is { "session": "<walky address>", "on": true | false }';
+
+/** The snapshot with Morph's revision when there is one. Absent, the body is unchanged, byte for byte. */
+export function withMorphRev(body: SnapshotResponse, rev: number | undefined): SnapshotResponse {
+  return rev === undefined ? body : { ...body, morphRev: rev };
+}
+
+/**
+ * `GET /api/morph?since=<rev>`: every session Morph holds, with its switch, its hint and its screen.
+ * With `since` equal to the revision, only `{ rev, unchanged: true, sessions: [] }`.
+ */
+export function morphListRoute(morph: MorphService | undefined, since: string | null, acceptEncoding: string | null): Response {
+  if (morph === undefined) return text(MORPH_OFF_TEXT, 404);
+  const answer = morph.answer();
+  if (since !== null && since === String(answer.rev)) return json({ rev: answer.rev, unchanged: true, sessions: [] }, acceptEncoding);
+  return json(answer, acceptEncoding);
+}
+
+/**
+ * `POST /api/morph/switch`: turn one session's Morph on or off. 200 with the session as served, 400 for
+ * a body of another shape, 404 for an address that names no live agent session here, 503 when the
+ * state could not be written. The gates' own 401 and 403 come before this.
+ */
+export function morphSwitchRoute(morph: MorphService | undefined, body: JsonValue | undefined, acceptEncoding: string | null): Response {
+  if (morph === undefined) return text(MORPH_OFF_TEXT, 404);
+  const read = readMorphSwitchBody(body);
+  if (read === null) return text(MORPH_BAD_SWITCH, 400);
+  const answer = morph.switch(read);
+  if (!answer.ok) return text(answer.error, answer.status);
+  return json(answer.session, acceptEncoding);
 }
 
 /**

@@ -18,6 +18,11 @@
 //   hill.withdraw { id }                       → { ok, decision }   (now `withdrawn`, "by the poster")
 //   hill.list     { mine: true }               → { ok, decisions }  (the asker's own, open first)
 // Every hill refusal carries `hill: true`, so the CLI tells a bridge that knows the hill from an older one.
+// Morph, five operations beside these, answered only by a bridge built with it, always for the asking
+// pane's own session (bridge/morph/service.ts):
+//   morph.show    { view, title? }  → { ok, morph } | { ok: false, error, code, refusals? }
+//   morph.clear | morph.on | morph.off | morph.status  {}  → { ok, morph }
+// Every Morph refusal carries `morph: true`, as the hill's carry `hill: true`.
 // A refusal is `{ ok: false, error }`. `not here` means the markers name no pane of this bridge, so
 // the CLI asks the next bridge on the machine; a request this bridge cannot read answers the same when
 // its markers name no pane here, else `bad request: <reason>` (refusals.ts). A send with no markers
@@ -33,7 +38,10 @@ import type { BeaconMarker } from "../beacon/types.ts";
 import { HOST, type Host } from "../host.ts";
 import type { HillDecision, HillRefusalCode } from "../../web/src/lib/hill/wire.ts";
 import type { HillService } from "../hill/service.ts";
-import { isHillOp, readWalkyRequest, WALKY_LINE_MAX, type WalkyRequest, type WalkyRequestRead } from "./parse.ts";
+import { readShowFields, type MorphRefusalCode, type MorphService } from "../morph/service.ts";
+import type { MorphSession } from "../../web/src/lib/morph/wire.ts";
+import type { Refusal } from "../../web/src/lib/tricks/schema.ts";
+import { isHillOp, isMorphOp, readWalkyRequest, WALKY_LINE_MAX, type WalkyRequest, type WalkyRequestRead } from "./parse.ts";
 import { unknownOp } from "./refusals.ts";
 import type { WalkyDelivery, WalkyService } from "./service.ts";
 import type { TakeBack, WalkyPane } from "./deliver.ts";
@@ -48,6 +56,12 @@ export const CANCEL_NEEDS_A_PANE = "run this inside the pane that sent it, or ca
 export const SWITCH_NEEDS_A_PANE = "run this inside an agent pane";
 /** What the socket answers a hill operation from outside an agent pane (M96): a decision belongs to a session. */
 export const HILL_NEEDS_A_PANE = "run this inside an agent's pane: a decision belongs to the session that posts it";
+
+/** What the socket answers a Morph operation from outside an agent pane: a screen belongs to a session. */
+export const MORPH_NEEDS_A_PANE = "run this inside an agent's pane: a Morph screen belongs to the session that draws it";
+
+/** What the socket needs of Morph. Absent: the bridge answers the five operations as unknown. */
+export type MorphSocket = Pick<MorphService, "show" | "clear" | "setOn" | "status">;
 
 /** What the socket needs of the hill (M96). Absent: the bridge answers the four operations as unknown. */
 export type HillSocket = Pick<HillService, "agentSender" | "postFields" | "status" | "withdraw" | "mineList">;
@@ -100,6 +114,8 @@ export interface WalkyServerDeps {
   readonly log?: (line: string) => void;
   /** The hill (M96). Absent: its operations are answered as an older bridge answers them. */
   readonly hill?: HillSocket;
+  /** Morph. Absent: its operations are answered as an older bridge answers them. */
+  readonly morph?: MorphSocket;
 }
 
 /** What one request is answered with. */
@@ -123,7 +139,10 @@ export type WalkyAnswer =
   // The hill (M96).
   | { readonly ok: false; readonly error: string; readonly hill: true; readonly code?: HillRefusalCode; readonly missing?: string }
   | { readonly ok: true; readonly decision: HillDecision }
-  | { readonly ok: true; readonly decisions: readonly HillDecision[] };
+  | { readonly ok: true; readonly decisions: readonly HillDecision[] }
+  // Morph.
+  | { readonly ok: false; readonly error: string; readonly morph: true; readonly code?: MorphRefusalCode; readonly refusals?: readonly Refusal[] }
+  | { readonly ok: true; readonly morph: MorphSession };
 
 /**
  * A bridge that knows the pane but holds no message with the id (added 2026-10-30). It answers `not here`,
@@ -135,11 +154,13 @@ export function noMessageHere(sentence: string): WalkyAnswer {
 }
 
 /** Answer one parsed request. Exported for its test: the server only frames it. */
-export async function answerRequest(service: WalkyService, request: WalkyRequest, targets: readonly PlaceTarget[], hill?: HillSocket): Promise<WalkyAnswer> {
+export async function answerRequest(service: WalkyService, request: WalkyRequest, targets: readonly PlaceTarget[], hill?: HillSocket, morph?: MorphSocket): Promise<WalkyAnswer> {
   // A bridge built without the hill answers its operations as it answers any op it does not know.
   if (hill === undefined && isHillOp(request.op)) return answerUnread(service, { ok: false, markers: request.markers, reason: unknownOp(request.op) }, targets);
+  // And so does a bridge built without Morph.
+  if (morph === undefined && isMorphOp(request.op)) return answerUnread(service, { ok: false, markers: request.markers, reason: unknownOp(request.op) }, targets);
   const placed = request.markers.length === 0 ? null : await placeMarkers(request.markers, targets);
-  const notHere: WalkyAnswer = hill !== undefined && isHillOp(request.op) ? { ok: false, error: "not here", hill: true } : { ok: false, error: "not here" };
+  const notHere = notHereFor(request.op, hill !== undefined, morph !== undefined);
   if (request.markers.length > 0 && placed === null) return notHere;
   const pane = placed === null ? null : service.paneAt(placed.session, placed.paneId);
   if (placed !== null && pane === null) return notHere;
@@ -212,6 +233,61 @@ export async function answerRequest(service: WalkyService, request: WalkyRequest
     case "hill.withdraw":
     case "hill.list":
       return answerHill(service, request, pane, hill);
+    case "morph.show":
+    case "morph.clear":
+    case "morph.on":
+    case "morph.off":
+    case "morph.status":
+      return answerMorph(service, request, pane, morph);
+  }
+}
+
+/** `not here`, marked for the hill or Morph when the op is theirs and this bridge knows it. */
+function notHereFor(op: WalkyRequest["op"], knowsHill: boolean, knowsMorph: boolean): WalkyAnswer {
+  if (knowsHill && isHillOp(op)) return { ok: false, error: "not here", hill: true };
+  if (knowsMorph && isMorphOp(op)) return { ok: false, error: "not here", morph: true };
+  return { ok: false, error: "not here" };
+}
+
+/**
+ * One Morph operation, for the session of the pane the markers placed, never a session an argument
+ * names: its walky address with the instance token, the key the hill names a session with.
+ */
+function answerMorph(
+  service: WalkyService,
+  request: Extract<WalkyRequest, { op: "morph.show" | "morph.clear" | "morph.on" | "morph.off" | "morph.status" }>,
+  pane: WalkyPane | null,
+  morph: MorphSocket | undefined,
+): WalkyAnswer {
+  if (morph === undefined) return { ok: false, error: unknownOp(request.op) };
+  if (pane === null || !pane.agent) {
+    service.noteRefusal("no pane");
+    return { ok: false, error: MORPH_NEEDS_A_PANE, morph: true };
+  }
+  const session = service.addressOf(pane.paneId, pane.instance);
+  const answer = morphAnswerOf(request, session, morph);
+  if (answer.ok) return { ok: true, morph: answer.session };
+  return answer.refusals === undefined ? { ok: false, error: answer.error, morph: true, code: answer.code } : { ok: false, error: answer.error, morph: true, code: answer.code, refusals: answer.refusals };
+}
+
+function morphAnswerOf(
+  request: Extract<WalkyRequest, { op: "morph.show" | "morph.clear" | "morph.on" | "morph.off" | "morph.status" }>,
+  session: string,
+  morph: MorphSocket,
+): ReturnType<MorphSocket["show"]> {
+  switch (request.op) {
+    case "morph.show": {
+      const fields = readShowFields(request.fields);
+      if ("error" in fields) return { ok: false, error: fields.error, code: "bad_title" };
+      return morph.show(session, fields);
+    }
+    case "morph.clear":
+      return morph.clear(session);
+    case "morph.on":
+    case "morph.off":
+      return morph.setOn(session, request.op === "morph.on");
+    case "morph.status":
+      return { ok: true, session: morph.status(session) };
   }
 }
 
@@ -355,7 +431,7 @@ export class WalkyServer {
     try {
       const read = readWalkyRequest(line);
       if (!read.ok) return this.reply(socket, await answerUnread(this.deps.service, read, this.deps.targets()));
-      this.reply(socket, await answerRequest(this.deps.service, read.request, this.deps.targets(), this.deps.hill));
+      this.reply(socket, await answerRequest(this.deps.service, read.request, this.deps.targets(), this.deps.hill, this.deps.morph));
     } catch (err) {
       this.log(`[walky] request failed: ${err instanceof Error ? err.message : String(err)}`);
       this.reply(socket, { ok: false, error: "failed" });

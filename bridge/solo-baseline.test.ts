@@ -274,6 +274,9 @@ const SNAPSHOT_KEYS = {
   // Not a crew dimension: the hill's revision (M96), absent until a session posts a decision on this
   // bridge, so a solo body with no decisions carries no such key and no golden byte moved.
   hillRev: true,
+  // Not a crew dimension: Morph's revision, absent until a session's Morph is switched on or a screen
+  // is shown on this bridge, so a solo body that never used Morph carries no such key.
+  morphRev: true,
 } satisfies Record<keyof SnapshotResponse, true>;
 
 const SESSION_SUMMARY_KEYS = {
@@ -508,6 +511,9 @@ describe("solo zero-tax — wire shapes carry no crew dimension", () => {
       // The hill's revision (M96): present only on a bridge built with the hill, a number and nothing
       // of the crew; the phone refetches `GET /api/hill` when it moves.
       "hillRev",
+      // Morph's revision: present only once Morph was used on this bridge, a number and nothing of the
+      // crew; the phone refetches `GET /api/morph` when it moves.
+      "morphRev",
       "muxFault",
       "notifications",
       "servers",
@@ -928,6 +934,11 @@ describe("solo zero-tax — routes", () => {
       // than exempted. Lead-local like the Whistle route, gated like it, and not forwardable. A bridge
       // whose operator never taps "Download the math engines" fetches nothing and writes nothing.
       "/api/math",
+      // Morph: the one screen an agent drew per session (a read) and the phone's per-session switch (a
+      // write under the device gate, like the hill's answer). Two SOLO routes, named here rather than
+      // exempted, lead-local like the hill. A bridge that never used Morph answers an empty list.
+      "/api/morph",
+      "/api/morph/switch",
       // The prompt-cache watch list (M28/03, ADR 0042). Three SOLO routes in the notifications family,
       // named here rather than exempted: the preference lives on the collie holding the subscription, so
       // none of the three is forwardable and `bridge/crew/router.test.ts` pins all three as 404 across a
@@ -1357,6 +1368,9 @@ const STATE_DIR_ENTRIES = [
   // The math pack (ADR 0132): `<stateDir>/math/<version>/`, the engines a tap in Settings fetched.
   // Written by that tap and by nothing else: absent on every bridge whose operator never taps it.
   "math",
+  // Morph: `<stateDir>/morph/state.json`, each session's switch and screen. Written by use and by
+  // nothing else: absent until the first switch from a phone or the first `collie morph` write.
+  "morph",
   "notify-prefs.json",
   // Device pairing. Both are absent until the operator runs `collie pair`, and an install that
   // never does keeps writing exactly the six entries above it.

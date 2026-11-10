@@ -913,6 +913,11 @@ export interface SnapshotResponse {
    * never took a post serves the same body, and the same ETag, as a build without the hill.
    */
   hillRev?: number;
+  /**
+   * Morph's revision: it moves on every switch, show and clear on this bridge, and the phone refetches
+   * `GET /api/morph` when it does. Absent until Morph's state file exists, as `hillRev`.
+   */
+  morphRev?: number;
   ts: number;
 }
 

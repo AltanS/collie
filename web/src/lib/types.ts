@@ -1433,6 +1433,12 @@ export interface SnapshotResponse {
    * reads as no hill at all.
    */
   hillRev?: number;
+  /**
+   * The Morph revision: it moves on every switch and every screen an agent draws, and the phone reads
+   * `GET /api/morph` when it does (lib/morph/store.ts). Absent on a bridge without Morph, which reads as
+   * no Morph at all.
+   */
+  morphRev?: number;
   ts: number;
 }
 

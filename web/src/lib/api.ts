@@ -42,6 +42,7 @@ import { WALKY_LIST_LIMIT, type WalkyReceipt, type WalkyRefusals, type WalkyRow,
 import { CHAT_UNCHANGED, type ChatAnswer } from "./chat-window";
 import { readHillList, readHillReceipt } from "./hill/reader";
 import type { HillAnswerRequest, HillList, HillReceipt } from "./hill/wire";
+import { MORPH_ROUTE, MORPH_SWITCH_ROUTE, readMorphAnswer, readMorphSession, type MorphAnswer, type MorphSession, type MorphSwitchBody } from "./morph/wire";
 import { decidedOf, parseAsk, type AnswerResult, type AskAnswer } from "./ask";
 import type { ColumnRange } from "./column-range";
 import type {
@@ -1738,6 +1739,32 @@ export async function fetchHill(since?: number, signal?: AbortSignal): Promise<H
   const list = readHillList(got);
   if (list === null) throw new ApiError("The hill route sent a body this phone cannot read.", 502);
   return list;
+}
+
+/**
+ * GET /api/morph (Morph): every session's Morph switch, its hint and the screen its agent drew last.
+ * `since` is the revision this phone holds; the bridge answers `unchanged` when nothing moved. Omit it
+ * for a whole read, after a bridge restart put the revision below the one held. Carries no scope, as
+ * the hill's read does. Every session is read by `lib/morph/wire.ts`, and a body that is no answer at
+ * all throws.
+ */
+export async function fetchMorph(since?: number, signal?: AbortSignal): Promise<MorphAnswer> {
+  const query = since === undefined ? "" : `?since=${Math.max(0, Math.floor(since))}`;
+  const got = await req<JsonValue>(`${MORPH_ROUTE}${query}`, { signal });
+  const answer = readMorphAnswer(got);
+  if (answer === null) throw new ApiError("The Morph route sent a body this phone cannot read.", 502);
+  return answer;
+}
+
+/**
+ * POST /api/morph/switch (Morph): turn one session's Morph on or off. An idempotent set, a paired
+ * device's write, on this bridge's own sessions only (a crew member's answers 400). The bridge answers
+ * 200 with the session as it now holds it; null when that body does not read, and the next read brings
+ * it. A 400, a 404 (no live agent session) and a 503 (not saved) throw.
+ */
+export async function postMorphSwitch(body: MorphSwitchBody): Promise<MorphSession | null> {
+  const got = await req<JsonValue>(MORPH_SWITCH_ROUTE, { method: "POST", body: JSON.stringify(body) });
+  return readMorphSession(got);
 }
 
 /** The words of a refused answer: a JSON body's `reason`, else the plain text the bridge sends, else none. */

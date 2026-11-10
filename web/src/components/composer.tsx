@@ -34,6 +34,7 @@ import { SendOfferStrip } from "@/components/send-offer-strip";
 import { HeldCard, type HeldAction } from "@/components/composer-held";
 import { offerMode, type SendNote } from "@/lib/send-protocol";
 import { modeFor, sendText } from "@/lib/reply-action";
+import { withMorphHint } from "@/lib/morph/reader";
 import { fieldLocked, sendSlot, unreachable } from "@/lib/send-slot";
 import { wayOut } from "@/lib/way-out";
 import type { Surface } from "@/lib/surface/surface";
@@ -144,6 +145,12 @@ export interface ComposerHandle {
    * until the person turns it off or the message leaves.
    */
   startMessage: (aim: WalkyAim) => void;
+  /**
+   * Send one line through this composer's own send path (`send`), as a quick reply does: the same Send
+   * Protocol request with its request id, the same refusal notice at the thumb, the same Morph hint.
+   * True only on a send the bridge confirmed. A Morph button's tap (components/morph-view.tsx).
+   */
+  sendLine: (text: string) => Promise<boolean>;
 }
 
 interface ComposerProps {
@@ -374,6 +381,12 @@ interface ComposerProps {
     /** Show in Chat. False when the block is not loaded. */
     onShow: (pin: PinRow) => boolean;
   };
+  /**
+   * The session's Morph hint, while the Morph view is on screen (lib/morph/store.ts). Every text this
+   * composer sends then carries it, appended after one space on the same line (`withMorphHint`), except
+   * a text with a reserved lead and a send with attachments. Absent: sending is exactly as before.
+   */
+  morphHint?: string | undefined;
 }
 
 // The composer cluster at the bottom of the pane view — everything a phone keyboard can't do on its
@@ -524,7 +537,7 @@ function moveCaret(from: HTMLTextAreaElement | null, to: HTMLTextAreaElement | n
 }
 
 export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
-  { paneId, instance, surface, starting = false, unreachableNote, scope, stopOffered = false, agent, canSteer, returnedDraft = false, isShell, cwd, gone, readOnly, composing, onAnswerDialog, dialogCard = false, text, terminalDraft, rawTerminalDraft, prefs, display, onSent, onOpenMessages, held: heldRows, chatEntries, pullHandle, draftNoticeSlot, expandArea, changesPill, zoomPill, stale, hand = "right", layout = "field", aboveBelt, beltMarks, floatingHint, screen, todos, subagents, jobs, pins },
+  { paneId, instance, surface, starting = false, unreachableNote, scope, stopOffered = false, agent, canSteer, returnedDraft = false, isShell, cwd, gone, readOnly, composing, onAnswerDialog, dialogCard = false, text, terminalDraft, rawTerminalDraft, prefs, display, onSent, onOpenMessages, held: heldRows, chatEntries, pullHandle, draftNoticeSlot, expandArea, changesPill, zoomPill, stale, hand = "right", layout = "field", aboveBelt, beltMarks, floatingHint, screen, todos, subagents, jobs, pins, morphHint },
   ref,
 ) {
   const revalidator = useRevalidator();
@@ -1232,6 +1245,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const effectiveRaw = suppressEcho(rawTerminalDraft);
 
   const startMessage = walky.startMessage;
+  // The latest `send`, for the handle's `sendLine`: the handle is made once per `startMessage`, and a
+  // send must read this render's gates (sending, locked, the Surface), never the first render's.
+  const sendLineRef = useRef<(line: string) => Promise<boolean>>(() => Promise.resolve(false));
   useImperativeHandle(
     ref,
     () => ({
@@ -1240,6 +1256,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         startMessage(aim);
         focusInputImmediately();
       },
+      sendLine: (line) => sendLineRef.current(line),
     }),
     [startMessage],
   );
@@ -1685,8 +1702,12 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       setSendRefusal(phoneRefusal(translate("composer.status.dialogWaiting"), true));
       return false;
     }
-    return sendThroughProtocol(t, isDraft, modeFor(trimmed), null, false, undefined, when);
+    // MORPH: while the Morph view shows, the text carries the session's hint (lib/morph/reader.ts). The
+    // mode is read from the text as typed, so the hint never turns a send into a command.
+    const words = withMorphHint({ text: t, hint: morphHint, attachments: isDraft ? attachmentsRef.current.length : 0 });
+    return sendThroughProtocol(words, isDraft, modeFor(trimmed), null, false, undefined, when);
   }
+  sendLineRef.current = (line) => send(line, false);
 
   // One Send Protocol request (lib/reply-action.ts). The id is kept for a retry of the same intent
   // (mode, rows hash, text) until an answer arrives, so a lost answer never sends twice; an answer

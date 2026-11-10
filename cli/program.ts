@@ -129,6 +129,7 @@ import {
   WALKY_SUBCOMMANDS,
   type WalkyDeps,
 } from "./walky.ts";
+import { cmdMorph, cmdMorphClear, cmdMorphHelp, cmdMorphOff, cmdMorphOn, cmdMorphShow, cmdMorphStatus, MORPH_SUBCOMMANDS, morphHelp, type MorphDeps } from "./morph.ts";
 import { cmdHill, cmdHillList, cmdHillPost, cmdHillStatus, cmdHillWithdraw, HILL_SUBCOMMANDS, hillPostHelp, type HillDeps } from "./hill.ts";
 import { cmdUpdateCheck, updateCheckDeps, wantsCheck } from "./update-check.ts";
 import { cmdTheme, cmdThemeCheck, realThemeFiles, THEME_SUBCOMMANDS } from "./theme-check.ts";
@@ -332,6 +333,46 @@ const HILL_TREE: readonly Subcommand[] = [
     name: "list",
     summary: "your own decisions, open first",
     run: (args, s) => cmdHillList(hillDeps(s.io), args),
+  },
+];
+
+/** `morph`: walky's own deps, since Morph speaks over the walky socket. */
+function morphDeps(io: Io): MorphDeps {
+  return walkyDeps(io);
+}
+
+/** The sub-verbs of `morph`. `help` prints what an agent reads first: the rules, the kinds, an example. */
+const MORPH_TREE: readonly Subcommand[] = [
+  {
+    name: "show",
+    summary: "draw one screen for this session: `morph show <file.json | -> [--title ...]`",
+    run: (args, s) => cmdMorphShow(morphDeps(s.io), args),
+  },
+  {
+    name: "clear",
+    summary: "take this session's screen away; the switch stays",
+    run: (args, s) => cmdMorphClear(morphDeps(s.io), args),
+  },
+  {
+    name: "on",
+    summary: "turn Morph on for this session",
+    run: (args, s) => cmdMorphOn(morphDeps(s.io), args),
+  },
+  {
+    name: "off",
+    summary: "turn Morph off for this session",
+    run: (args, s) => cmdMorphOff(morphDeps(s.io), args),
+  },
+  {
+    name: "status",
+    summary: "this session's switch, screen and hint line",
+    run: (args, s) => cmdMorphStatus(morphDeps(s.io), args),
+  },
+  {
+    name: "help",
+    summary: "what Morph is, the rules, the kinds and one example",
+    usage: morphHelp,
+    run: (_args, s) => cmdMorphHelp({ io: s.io }),
   },
 ];
 
@@ -1096,6 +1137,15 @@ export const COMMANDS: readonly Command[] = [
     summary: `the hill, decisions an agent asks its person: ${HILL_SUBCOMMANDS.join(", ")}`,
     subcommands: HILL_TREE,
     run: (args, s) => cmdHill({ io: s.io }, args),
+  },
+  // ── Morph ──────────────────────────────────────────────────────────────────
+  // An agent draws one screen for its session's Morph view over the walky socket. Declared after
+  // `hill`, whose socket and markers it shares.
+  {
+    name: "morph",
+    summary: `Morph, the one screen an agent draws for its session: ${MORPH_SUBCOMMANDS.join(", ")}`,
+    subcommands: MORPH_TREE,
+    run: (args, s) => cmdMorph({ io: s.io }, args),
   },
   // ── Themes (M59 spec 05) ───────────────────────────────────────────────────
   // `theme check` runs the app's own theme parser and contrast report over files on disk, for a

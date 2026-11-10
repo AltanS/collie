@@ -73,6 +73,9 @@ import { isLive, useLive } from "@/lib/liveness";
 import { FindBar } from "@/components/find-bar";
 import { LatestReply } from "@/components/latest-reply";
 import { Composer, type ComposerHandle } from "@/components/composer";
+import { MorphView } from "@/components/morph-view";
+import { useMorphPane } from "@/hooks/use-morph-pane";
+import { useTrickHandlers } from "@/hooks/use-trick-handlers";
 import { DurableComposer } from "@/components/durable-composer";
 import { ThreadSidebar } from "@/components/agent-sidebar";
 import { AgentIcon } from "@/components/agent-icon";
@@ -823,6 +826,18 @@ export function AgentChat({
   const experimental = wearsExperimental(useSessionCard(scope));
   const gridless = !paneGrid.capable;
   const paneLive = useLive(paneId, scope);
+  // MORPH, the session's third body (components/morph-view.tsx, hooks/use-morph-pane.ts): a real agent
+  // session with a screen, on this bridge's own machine (Morph is one machine only for now; a crew
+  // member's routes answer 400). `morph.aside` is the body the operator looks at instead, Morph staying on.
+  const morph = useMorphPane({
+    address: walkySelf,
+    eligible: !gridless && !isShell && agent !== undefined && isLead(scope),
+    onChanged: () => revalidator.revalidate(),
+  });
+  const { linkFor } = useTrickHandlers();
+  const morphLink = useMemo(() => linkFor(scope?.host ?? crewLead ?? ""), [linkFor, scope?.host, crewLead]);
+  // A Morph tap sends through the composer's own send path: the request id, the refusal notice, the hint.
+  const sendFromMorph = useCallback((line: string) => composerRef.current?.sendLine(line) ?? Promise.resolve(false), []);
   // A launch this phone started: Send waits for the bridge to read the agent's first screen, the read
   // that also ends the bridge's launch window, so the button never offers a send the bridge refuses.
   const startup = useStartupReadiness({
@@ -1159,7 +1174,10 @@ export function AgentChat({
   // closed", the controls locked, and a step back to the list once connected). No ghost row, no
   // history kept on the phone, no recovery verb. A dropped conversation that comes back in a later
   // snapshot is simply a pane again.
-  const chatChosen = gridless || (dash.prefs.paneView === "chat" && !screenForced);
+  const chatChosen = gridless || ((morph.aside ?? dash.prefs.paneView) === "chat" && !screenForced);
+  // Where a pick of Terminal or Chat goes: the device's standing choice, or, with Morph on, a look for
+  // this session that leaves Morph on (hooks/use-morph-pane.ts).
+  const paneViewChange = morph.on ? morph.setAside : dash.setPaneView;
   // The chat route is asked only where a session exists to read: a pane with none has nothing for
   // it to answer. The poll that already exists moves it (ADR 0073); disabled is free.
   const chatFetch = chatChosen && historyAvailable;
@@ -1176,7 +1194,8 @@ export function AgentChat({
     paneId,
     scope,
     instance: agent?.instance,
-    enabled: chatFetch || warming,
+    // The Morph body reads the same window for the agent's text answer (no fetch of its own).
+    enabled: chatFetch || warming || (morph.showing && historyAvailable),
     savedCopy: stale,
   });
   const chatStatus = chatFeed.window.status;
@@ -2865,7 +2884,19 @@ export function AgentChat({
                 and the notice floats over both bodies alike (ADR 0061). Both bodies draw agent
                 replies, so whether this device draws their stretches is read once, here. */}
             <StretchTextContext.Provider value={prefs.stretchText}>
-            {chatShown ? (
+            {/* THE THIRD BODY, Morph: it stands in for both while it shows. */}
+            {morph.showing && (
+              <MorphView
+                session={walkySelf}
+                view={morph.view}
+                working={agent?.status === "working" && !connecting}
+                entries={chatEntries}
+                canAct={!(readOnly || hostBlock !== undefined || actsDisabledByCache || connecting || !paneLive || gone)}
+                onSend={sendFromMorph}
+                onLink={morphLink}
+              />
+            )}
+            {!morph.showing && (chatShown ? (
               <WalkyPanesProvider value={walkyPanes}>
               <WalkyOpenProvider open={messagesSheet ? openWalkyMessage : null} self={walkySelf}>
               <CardWaitingCtx.Provider value={questionNotes}>
@@ -3094,7 +3125,7 @@ export function AgentChat({
                 </>
               )}
             </ChatMessageList>
-            )}
+            ))}
             </StretchTextContext.Provider>
             {/* THE TERMINAL-DRAFT NOTICE FLOATS HERE (ADR 0061). The composer portals the notice
                 into this box, pinned to the mirror's bottom edge: above the card dock when a card
@@ -3393,6 +3424,8 @@ export function AgentChat({
                   // The Chat window's turns: the composer reads them only to settle a send that
                   // ended `unknown` once its text lands as a user turn (#511).
                   chatEntries={chatEntries}
+                  // While the Morph body shows, every text this composer sends carries the session's hint.
+                  morphHint={morph.hint}
                   // NO `status` AND NO `stale` GO DOWN ANY MORE. The composer drew the state as a
                   // word on a 14px band above its controls row; Altan asked for that band's status
                   // half to go, so the prop went with it. The state is stated up here instead — the
@@ -3600,9 +3633,11 @@ export function AgentChat({
             // and `showing` are both passed because they differ on a pane with no journal, and the
             // sheet draws rows for what is on screen, not for what was picked.
             paneView={{
-              chosen: dash.prefs.paneView,
+              chosen: morph.aside ?? dash.prefs.paneView,
               showing: chatShown ? "chat" : "terminal",
-              onChange: dash.setPaneView,
+              // With Morph on, Terminal and Chat are a look for this session, never a device preference.
+              onChange: paneViewChange,
+              morph: morph.on ? { selected: morph.showing, onPick: () => morph.setAside(null) } : undefined,
               note: chatNote,
               terminalOffered: !gridless,
               showToolCalls: dash.prefs.showToolCalls,
@@ -3652,7 +3687,7 @@ export function AgentChat({
           // Find searches the MIRROR, and highlights its hits there. In chat mode the mirror is
           // not on screen, so the row would open a bar over a surface with nothing to show —
           // withheld, the way the sheet withholds every row it was given nothing for.
-          onFind={display && !chatShown ? openFind : undefined}
+          onFind={display && !chatShown && !morph.showing ? openFind : undefined}
           // No History row on a pane with no screen (M53 spec 12): the conversation list on the dashboard is
           // the program's history, a tap away on the back arrow. `/pane/:id/history` stays reachable by URL.
           onHistory={!gridless && historyAvailable ? () => nav.down(historyPath(paneId, scope)) : undefined}
@@ -3696,9 +3731,20 @@ export function AgentChat({
           // THE BODY SWITCH. `chatNote` is why this pane keeps the terminal when it does. One
           // standing per-device value, written here and nowhere else.
           // No Terminal row on a pane with no screen: Chat is its only view.
-          paneView={gridless ? undefined : dash.prefs.paneView}
-          onPaneViewChange={gridless ? undefined : dash.setPaneView}
+          paneView={gridless ? undefined : (morph.aside ?? dash.prefs.paneView)}
+          onPaneViewChange={gridless ? undefined : paneViewChange}
           paneViewNote={chatNote}
+          // Morph: the way back to it, and its switch, a write behind the gates the WalkyTalky switch rides.
+          morph={
+            morph.available
+              ? {
+                  on: morph.on,
+                  showing: morph.showing,
+                  onShowMorph: () => morph.setAside(null),
+                  onSwitch: !readOnly && !savedCopyWrites && hostBlock === undefined && !gone ? morph.setOn : undefined,
+                }
+              : undefined
+          }
           // Pin to top / Unpin, the last read row (ADR 0070). No `onPinChange`: the Pinned group is
           // on the dashboard and in the switcher, not on this screen, so the sheet says it in a toast.
           herd={herd}

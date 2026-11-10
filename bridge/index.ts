@@ -323,6 +323,8 @@ import { deniedFoldersSync, HillMediaStore } from "./hill/media.ts";
 import { HillPush } from "./hill/push.ts";
 import { HillReceiptStore } from "./hill/receipts.ts";
 import { HillService } from "./hill/service.ts";
+import { MorphService } from "./morph/service.ts";
+import { morphDir, MorphStore } from "./morph/store.ts";
 import { hillDir, HillStore } from "./hill/store.ts";
 import { hillSessionName, OneLook, walkyPlace, walkySend } from "./hill/walky.ts";
 
@@ -2351,11 +2353,29 @@ const hill = new HillService({
   }),
 });
 hill.pruneMedia();
+// Morph: the one screen an agent draws per session (`collie morph show`), and the phone's per-session
+// switch. `<stateDir>/morph/` is made by the first use, never at boot. The hint names this bridge's own
+// binary; a path no one-line hint can hold leaves the bridge without Morph, with one warning.
+const morph = ((): MorphService | undefined => {
+  try {
+    return new MorphService({
+      store: new MorphStore(morphDir(cfg.stateDir)),
+      place: hillPlace,
+      sessionsKnown: () => walky.who().length > 0,
+      crewMode: () => crew.mode,
+      binary: collieBinary,
+    });
+  } catch (err) {
+    console.warn(`[morph] off: ${err instanceof Error ? err.message : String(err)}`);
+    return undefined;
+  }
+})();
 const walkyServer = new WalkyServer({
   socketPath: walkySocketPath(cfg.stateDir),
   host: HOST,
   service: walky,
   hill,
+  morph,
   targets: () => {
     const live = new Set(registry.ordered().map((runtime) => runtime.name));
     return [...edgeTargets].filter(([name]) => live.has(name)).map(([, target]) => target);
@@ -3480,6 +3500,7 @@ const server = listenOrExit("front door", cfg.host, cfg.port, () => startServer(
   },
   walky,
   hill,
+  morph,
   pins: pinStore,
   cacheWatch,
   folders,

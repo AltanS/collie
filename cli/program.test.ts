@@ -7,6 +7,7 @@ import { PUSH_SUBCOMMANDS } from "./push.ts";
 import { STT_SUBCOMMANDS } from "./stt.ts";
 import { CONFIG_SUBCOMMANDS } from "./config.ts";
 import { HILL_SUBCOMMANDS } from "./hill.ts";
+import { MORPH_SUBCOMMANDS } from "./morph.ts";
 import { WALKY_SUBCOMMANDS } from "./walky.ts";
 import { DURABLE_SUBCOMMANDS } from "./durable-attach.ts";
 import { MUX_SUBCOMMANDS } from "./mux-list.ts";
@@ -110,6 +111,8 @@ const SESSIONS_VERBS = [SESSIONS_VERB];
 const WALKY_VERBS = ["walky"];
 // The hill (M96), declared right after `walky`: an agent posts a decision over the same socket.
 const HILL_VERBS = ["hill"];
+// Morph, declared right after `hill`: an agent draws its session's screen over the same socket.
+const MORPH_VERBS = ["morph"];
 // `theme check` (M59 spec 05), declared after `walky`. It reads files and touches no state.
 const THEME_VERBS = ["theme"];
 // The manual, printed out of the binary: `collie skill` for an AI agent, `collie docs` for the
@@ -139,6 +142,7 @@ describe("the verb table", () => {
       ...SESSIONS_VERBS,
       ...WALKY_VERBS,
       ...HILL_VERBS,
+      ...MORPH_VERBS,
       ...THEME_VERBS,
       ...CREW_VERBS,
       ...MANUAL_VERBS,
@@ -443,6 +447,10 @@ describe("the subcommand trees", () => {
     expect(findCommand("hill")?.subcommands?.map((s) => s.name)).toEqual([...HILL_SUBCOMMANDS]);
   });
 
+  test("`morph` declares exactly `cli/morph.ts`'s sub-verbs, in its order", () => {
+    expect(findCommand("morph")?.subcommands?.map((s) => s.name)).toEqual([...MORPH_SUBCOMMANDS]);
+  });
+
   test("`durable` declares exactly `cli/durable-attach.ts`'s sub-verbs, in its order", () => {
     expect(findCommand("durable")?.subcommands?.map((s) => s.name)).toEqual([...DURABLE_SUBCOMMANDS]);
   });
@@ -470,6 +478,7 @@ describe("the subcommand trees", () => {
       "mux",
       "walky",
       "hill",
+      "morph",
       "theme",
       "crew",
       // The alias carries the SAME array — that is what `cli/crew.test.ts` pins.
@@ -609,6 +618,9 @@ describe("exit codes", () => {
       // `hill` talks to the same sockets, and a `post` puts a decision on a running bridge's hill.
       // cli/hill.test.ts drives every sub-verb against a temp socket.
       ...HILL_VERBS,
+      // `morph` talks to the same sockets, and a `show` puts a screen on a running bridge.
+      // cli/morph.test.ts drives every sub-verb against a fake socket.
+      ...MORPH_VERBS,
       // `sessions` dials this host's own running bridge for its snapshot. cli/sessions.test.ts drives it against a fake fetch.
       ...SESSIONS_VERBS,
     ];
