@@ -15,11 +15,13 @@ import { CopyableBlock } from "@/components/ui/copyable-block";
 import { FoldPanel, MoreToggle, NoteToggle } from "@/components/ui/fold-toggle";
 import { Notice, type NoticeTone } from "@/components/ui/notice";
 import { OneOf } from "@/components/ui/one-of";
+import { HeightSwap } from "@/components/ui/presence";
 import { useArm } from "@/hooks/use-arm";
 import type { HillAnswerState } from "@/hooks/use-hill-answer";
 import { useLocale } from "@/hooks/use-locale";
 import { cacheClockNow, subscribeCacheClock } from "@/lib/cache-clock";
 import { hasResizeObserver, pageFonts } from "@/lib/env";
+import { HILL_ACK_MS } from "@/lib/hill/motion";
 import { linkHost } from "@/lib/hill/reader";
 import type { HillDecision, HillOption, HillReceipt } from "@/lib/hill/wire";
 import { HILL_ANSWER_TEXT_MAX } from "@/lib/hill/wire";
@@ -80,7 +82,14 @@ import { cn } from "@/lib/utils";
 //
 // ── THE CARD SAYS WHAT HAPPENED, IN PLACE ──────────────────────────────────────────────────────────
 // After a tap the card says "Sending…", then the receipt in words. An answer that landed leaves the
-// open list when the next list arrives. A refusal, and the bridge's `denied` (this device may not
+// open list when the next list arrives.
+//
+// THE MOMENT OF ANSWERING IS ONE MOTION (2026-11-10, lib/hill/motion.ts). The tapped option (or Dismiss)
+// takes the chosen look in place and the others dim, for HILL_ACK_MS; then the options and the field give
+// way to the one status line in the same band (`HeightSwap`), its height easing between the two, and
+// "Sending…" gives way to the receipt the same way. The list then lets the card leave
+// (ui/presence.tsx). A card that takes answers again (a refusal, `denied`, a request that got no answer)
+// gets its options back the same way, with the notice under them. A refusal, and the bridge's `denied` (this device may not
 // answer), keep the card open and take a new answer. A gone target keeps the person's words on screen
 // with Copy, so nothing they wrote is lost. A request that got no answer says "Not sent." with Try
 // again, which sends the same attempt with the same request id (`useHillAnswer`). The card owns no
@@ -226,6 +235,24 @@ function receiptTone(receipt: HillReceipt): NoticeTone {
   return "danger";
 }
 
+/**
+ * `locked`, a moment late: true HILL_ACK_MS after `locked` turns true, so the chosen option is seen in
+ * place before the options give way; false the moment it turns false. True at once when the card is
+ * born locked, which is part of its first frame.
+ */
+function useSettled(locked: boolean): boolean {
+  const [settled, setSettled] = useState(locked);
+  useEffect(() => {
+    if (!locked) {
+      setSettled(false);
+      return;
+    }
+    const timer = window.setTimeout(() => setSettled(true), HILL_ACK_MS);
+    return () => clearTimeout(timer);
+  }, [locked]);
+  return settled && locked;
+}
+
 /** True when the card takes no more answers: one is in flight, or the bridge took or closed it. */
 function lockedBy(answer: HillAnswerState): boolean {
   if (answer.phase === "sending") return true;
@@ -249,8 +276,16 @@ export function KeptWords({ text }: { text: string }) {
 }
 
 /** What happened after the tap, in the card's own chrome. Null while nothing has been sent. */
-function AnswerStatus({ decision, answer, onRetry }: { decision: HillDecision; answer: HillAnswerState; onRetry: () => void }) {
+function AnswerStatus({ decision, answer, onRetry, slot }: { decision: HillDecision; answer: HillAnswerState; onRetry: () => void; slot: string }) {
   if (answer.phase === "idle") return null;
+  return (
+    <div data-slot={slot}>
+      <AnswerNotice decision={decision} answer={answer} onRetry={onRetry} />
+    </div>
+  );
+}
+
+function AnswerNotice({ decision, answer, onRetry }: { decision: HillDecision; answer: Exclude<HillAnswerState, { phase: "idle" }>; onRetry: () => void }) {
   if (answer.phase === "sending") {
     return (
       <Notice variant="box" tone="neutral" announce="status" icon={<Icon name="busy" className="animate-spin" />}>
@@ -328,6 +363,7 @@ export function DecisionCard({
   const noteId = useId();
   const hintId = useId();
   const locked = lockedBy(answer);
+  const settled = useSettled(locked);
   // An image the view places among its facts is drawn there, not again in the row above it.
   const stripMedia = useMemo(() => {
     const placed = decision.view === undefined ? new Set<number>() : viewImageRefs(decision.view);
@@ -384,6 +420,13 @@ export function DecisionCard({
   }
 
   const dismissArmed = armed === "dismiss";
+  // Dismiss was the answer: it keeps the armed tint, undimmed, as the chosen option keeps its own.
+  const dismissChosen = locked && answer.phase !== "idle" && answer.phase !== "failed" && answer.intent === "dismiss";
+  // The options and the field are the band the status line takes over. A card with neither keeps the
+  // status in its own Collapse under everything, as before.
+  const hasAnswerBlock = hasOptions || fieldOpen;
+  const band = !settled ? "answer" : answer.phase === "sending" ? "sending" : "receipt";
+  const statusBelow = answer.phase !== "idle" && !(hasAnswerBlock && locked);
 
   const field = (
     <textarea
@@ -529,66 +572,95 @@ export function DecisionCard({
         </div>
       )}
 
-      {hasOptions && (
-        <div data-slot="decision-options" className="flex flex-col gap-2">
-          {decision.options.map((option, i) => {
-            const isArmed = armed === `option:${option.intent}`;
-            const busy = sendingIntent === option.intent;
-            const isRecommended = recommended?.intent === option.intent;
-            return (
-              <OptionButton
-                key={`${i}:${option.intent}`}
-                data-slot="decision-option"
-                data-intent={option.intent}
-                tone={busy ? "busy" : isArmed ? "armed" : "default"}
-                // The terminal menu's own numbers. Display only: no key sends one.
-                keyLabel={i + 1}
-                label={isArmed && option.confirm !== undefined ? option.confirm : option.label}
-                aria-label={isArmed && option.confirm !== undefined ? t("hill.armed", { label: option.confirm }) : undefined}
-                aria-describedby={required ? hintId : undefined}
-                description={option.detail}
-                disabled={optionsBlocked}
-                onClick={() => choose(option)}
-                className="min-h-12 items-center px-3"
-                trailing={
-                  // One 16px slot on every option, so the spinner or the mark arriving moves no label.
-                  // The star in the warm accent, as B1 draws it (DESIGN.md §4, "The Hill's warm accent").
-                  <span aria-hidden className="flex size-4 shrink-0 items-center justify-center text-status-working">
-                    {busy ? (
-                      <Icon name="busy" className="size-3.5 animate-spin text-muted-foreground" />
-                    ) : isRecommended ? (
-                      <Icon name="recommended" data-slot="decision-recommended-mark" className="size-3.5" />
-                    ) : null}
-                  </span>
-                }
-              />
-            );
-          })}
-          {/* The mark is decorative; a reader hears which option it is here. */}
-          {recommended !== undefined && <span className="sr-only">{t("hill.recommended", { label: recommended.label })}</span>}
-        </div>
+      {hasAnswerBlock && (
+        <HeightSwap
+          data-slot="decision-answer"
+          active={band}
+          options={[
+            {
+              key: "answer",
+              node: (
+                <div className="flex flex-col gap-4">
+                  {hasOptions && (
+                    <div data-slot="decision-options" className="flex flex-col gap-2">
+                      {decision.options.map((option, i) => {
+                        const isArmed = armed === `option:${option.intent}`;
+                        const busy = sendingIntent === option.intent;
+                        const isRecommended = recommended?.intent === option.intent;
+                        return (
+                          <OptionButton
+                            key={`${i}:${option.intent}`}
+                            data-slot="decision-option"
+                            data-intent={option.intent}
+                            tone={busy ? "busy" : isArmed ? "armed" : "default"}
+                            // The terminal menu's own numbers. Display only: no key sends one.
+                            keyLabel={i + 1}
+                            label={
+                              option.confirm === undefined ? (
+                                option.label
+                              ) : (
+                                // The label and the confirm word in one slot, sized by the larger, cross-fading
+                                // in place: arming never changes the row's height (DESIGN.md §2).
+                                <OneOf
+                                  active={isArmed ? "confirm" : "label"}
+                                  layerClassName="transition-opacity duration-150 ease-out motion-reduce:transition-none"
+                                  options={[
+                                    { key: "label", node: option.label },
+                                    { key: "confirm", node: option.confirm },
+                                  ]}
+                                />
+                              )
+                            }
+                            aria-label={isArmed && option.confirm !== undefined ? t("hill.armed", { label: option.confirm }) : undefined}
+                            aria-describedby={required ? hintId : undefined}
+                            description={option.detail}
+                            disabled={optionsBlocked}
+                            onClick={() => choose(option)}
+                            className="min-h-12 items-center px-3"
+                            trailing={
+                              // One 16px slot on every option, so the spinner or the mark arriving moves no label.
+                              // The star in the warm accent, as B1 draws it (DESIGN.md §4, "The Hill's warm accent").
+                              <span aria-hidden className="flex size-4 shrink-0 items-center justify-center text-status-working">
+                                {busy ? (
+                                  <Icon name="busy" className="size-3.5 animate-spin text-muted-foreground" />
+                                ) : isRecommended ? (
+                                  <Icon name="recommended" data-slot="decision-recommended-mark" className="size-3.5" />
+                                ) : null}
+                              </span>
+                            }
+                          />
+                        );
+                      })}
+                      {/* The mark is decorative; a reader hears which option it is here. */}
+                      {recommended !== undefined && <span className="sr-only">{t("hill.recommended", { label: recommended.label })}</span>}
+                    </div>
+                  )}
+                  {fieldOpen && (
+                    <div className="flex flex-col gap-2">
+                      {field}
+                      {required && hasOptions && (
+                        <p id={hintId} data-slot="decision-required-hint" className="text-xs text-muted-foreground">
+                          {t("hill.text.requiredHint")}
+                        </p>
+                      )}
+                      {send}
+                    </div>
+                  )}
+                </div>
+              ),
+            },
+            { key: "sending", node: <AnswerStatus decision={decision} answer={answer} onRetry={retry} slot="decision-status" /> },
+            { key: "receipt", node: <AnswerStatus decision={decision} answer={answer} onRetry={retry} slot="decision-status" /> },
+          ]}
+        />
       )}
       {/* A live region on the button itself is unreliable; this one announces the armed wording. */}
       <span className="sr-only" aria-live="polite">
         {armed === null ? "" : armed === "dismiss" ? t("hill.dismissArmed") : t("hill.armed", { label: decision.options.find((o) => `option:${o.intent}` === armed)?.confirm ?? "" })}
       </span>
 
-      {fieldOpen && (
-        <div className="flex flex-col gap-2">
-          {field}
-          {required && hasOptions && (
-            <p id={hintId} data-slot="decision-required-hint" className="text-xs text-muted-foreground">
-              {t("hill.text.requiredHint")}
-            </p>
-          )}
-          {send}
-        </div>
-      )}
-
-      <Collapse open={answer.phase !== "idle"}>
-        <div data-slot="decision-status">
-          <AnswerStatus decision={decision} answer={answer} onRetry={retry} />
-        </div>
+      <Collapse open={statusBelow}>
+        <AnswerStatus decision={decision} answer={answer} onRetry={retry} slot="decision-status" />
       </Collapse>
 
       <div className="-mb-2 flex min-w-0 items-center gap-2">
@@ -610,13 +682,17 @@ export function DecisionCard({
           className={cn(
             "-mr-3 h-11 shrink-0 px-3",
             // The armed tint on the box it already has: the border is reserved by the button's base string.
-            dismissArmed ? "border-destructive/40 bg-destructive/10 text-destructive hover:bg-destructive/10 hover:text-destructive" : "text-muted-foreground",
+            dismissArmed || dismissChosen ? "border-destructive/40 bg-destructive/10 text-destructive hover:bg-destructive/10 hover:text-destructive" : "text-muted-foreground",
+            // The chosen answer is not dimmed while the card is locked, as the chosen option is not.
+            dismissChosen && "disabled:opacity-100",
           )}
         >
-          {/* Both words in one slot, sized by the wider, so arming moves nothing beside it (DESIGN.md §2). */}
+          {/* Both words in one slot, sized by the wider, so arming moves nothing beside it (DESIGN.md §2),
+              and the two cross-fade in place. */}
           <OneOf
             active={dismissArmed ? "armed" : "rest"}
             className="inline-grid"
+            layerClassName="transition-opacity duration-150 ease-out motion-reduce:transition-none"
             options={[
               { key: "rest", node: t("hill.dismiss") },
               { key: "armed", node: t("hill.dismissArmed") },

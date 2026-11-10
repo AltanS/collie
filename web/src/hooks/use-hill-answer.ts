@@ -1,7 +1,8 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { postHillAnswer } from "@/lib/api";
-import { noteHillAnswer, useHillAnswerHeld } from "@/lib/hill/store";
+import { HILL_LIST_READ_AFTER_MS } from "@/lib/hill/motion";
+import { noteHillAnswer, readHillNow, useHillAnswerHeld } from "@/lib/hill/store";
 import { hillNode, type HillReceipt } from "@/lib/hill/wire";
 import { mintRequestId } from "@/lib/worktree-name";
 
@@ -38,13 +39,17 @@ export interface HillAnswer {
  *
  * The receipt goes into the store (lib/hill/store.ts) beside the decision, so it holds until the next
  * list, whichever component asks. `sending` is a ref-backed guard as well as state, so two quick taps
- * are one answer.
+ * are one answer. A receipt that closed the decision asks the store to read the list at
+ * {@link HILL_LIST_READ_AFTER_MS} after the tap (lib/hill/motion.ts), so the card leaves right after
+ * it settles instead of on the next poll.
  */
 export function useHillAnswer(decisionId: string): HillAnswer {
   const attempt = useRef<{ key: string; rid: string } | null>(null);
   const inFlight = useRef(false);
   const [local, setLocal] = useState<HillAnswerState>(HILL_IDLE);
   const held = useHillAnswerHeld(decisionId);
+  const readTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(readTimer.current), []);
 
   const send = useCallback(
     async (intent: string, text: string | null) => {
@@ -53,12 +58,18 @@ export function useHillAnswer(decisionId: string): HillAnswer {
       if (attempt.current?.key !== key) attempt.current = { key, rid: mintRequestId() };
       const rid = attempt.current.rid;
       inFlight.current = true;
+      const tappedAt = Date.now();
       setLocal({ phase: "sending", intent, text });
       try {
         const receipt = await postHillAnswer({ rid, node: hillNode(decisionId), intent, value: { text } });
         attempt.current = null;
         noteHillAnswer(decisionId, { receipt, intent, text });
         setLocal(HILL_IDLE);
+        // The bridge closed it: read the list once the card has settled on its receipt, so it leaves then.
+        if (receipt.state !== null && receipt.state !== "open") {
+          clearTimeout(readTimer.current);
+          readTimer.current = setTimeout(readHillNow, Math.max(0, tappedAt + HILL_LIST_READ_AFTER_MS - Date.now()));
+        }
       } catch {
         setLocal({ phase: "failed", intent, text });
       } finally {
