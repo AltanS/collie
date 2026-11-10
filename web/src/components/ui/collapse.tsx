@@ -113,7 +113,7 @@ function isEmpty(children: ReactNode): boolean {
  * invisible is its own small lie (a screen reader can still be walking it). Under reduced motion
  * the whole thing snaps: no transition, no delay.
  */
-function usePrefersReducedMotion(): boolean {
+export function usePrefersReducedMotion(): boolean {
   const [reduced, setReduced] = useState(
     () => window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false,
   );
@@ -319,15 +319,27 @@ export function CollapseSwap({ open, children, standIn, className }: CollapseSwa
     }
     if (!open) {
       setMountedStandIn(true);
-      // One tick later, so the browser paints the transparent state first and has something to
-      // transition FROM — the same reason Collapse defers its own `expanded`.
-      const start = window.setTimeout(() => setShownStandIn(true), 0);
-      return () => clearTimeout(start);
+      // Two painted frames later, so the browser paints the transparent state first and has something
+      // to transition FROM: Collapse's own reason, and its own fix (one macrotask fires before any
+      // paint, and the stand-in popped in at full strength). Under reduced motion there is nothing
+      // to fade, and one tick is enough.
+      if (reduced) {
+        const start = window.setTimeout(() => setShownStandIn(true), 0);
+        return () => clearTimeout(start);
+      }
+      let second = 0;
+      const first = requestAnimationFrame(() => {
+        second = requestAnimationFrame(() => setShownStandIn(true));
+      });
+      return () => {
+        cancelAnimationFrame(first);
+        cancelAnimationFrame(second);
+      };
     }
     setShownStandIn(false);
     const leave = window.setTimeout(() => setMountedStandIn(false), ms);
     return () => clearTimeout(leave);
-  }, [open, ms]);
+  }, [open, ms, reduced]);
 
   return (
     // `shrink-0` for the same reason every strip in these columns carries one: this is a child of a

@@ -353,6 +353,8 @@ describe("Notice — enforcement, so the alert family does not regrow", () => {
     // set of timings to keep in step with the first.
     const allowed = new Set([
       "components/ui/collapse.tsx",
+      // Collapse's sanctioned siblings (DESIGN.md §11, hard rule 1): keyed list items, on its timings' twin.
+      "components/ui/presence.tsx",
       "components/connection-banner.tsx", // migration step 4 deletes its private copy
     ]);
     const offenders = sources().filter(
