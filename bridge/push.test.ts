@@ -1039,6 +1039,10 @@ describe("Push — silent pushes are cut per device", () => {
 
   test("rule 4: the budget survives a restart, in an owner-only file beside the subscriptions", async () => {
     const cfg = await tempCfg();
+    // Windows: NTFS has no 0600 and Node ignores the mode there, so the file is owner-only through the
+    // access list the state dir gets at bridge start (M43 spec 04), which it inherits. Set that list
+    // first, as the subscriptions test above does, and read it back below instead of the mode.
+    if (HOST.platform === "win32") ensureOwnerOnlyDir(cfg.stateDir, HOST, { root: privateRoot("state"), repair: true });
     const sent: Sent[] = [];
     const sender: PushSender = (s, payload, options) => (sent.push({ endpoint: s.endpoint, body: JSON.parse(payload), options }), Promise.resolve());
     const clock = new ManualClock();
@@ -1046,7 +1050,11 @@ describe("Push — silent pushes are cut per device", () => {
     first["_enabled"] = true;
     await first.addSubscription(sub("phone"), { device: "pixel" });
     for (let i = 0; i < 4; i++) await renderThenClear(first, `collie:herd:p${i}`);
-    expect((await stat(budgetFile(cfg.stateDir))).mode & 0o777).toBe(0o600);
+    if (HOST.platform === "win32") {
+      expect(isOwnerOnly(budgetFile(cfg.stateDir), HOST)).toEqual({ state: "private" });
+    } else {
+      expect((await stat(budgetFile(cfg.stateDir))).mode & 0o777).toBe(0o600);
+    }
 
     const second = new Push(cfg, sender, { clock });
     second["_enabled"] = true;
