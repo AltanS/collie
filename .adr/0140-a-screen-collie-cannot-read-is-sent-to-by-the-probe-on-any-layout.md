@@ -98,8 +98,10 @@ the bridge's reads were never cut.
    signs stay in `pi/panel.ts`.
 2. **Ticking is observed, never listed.** S0 already reads twice. A row that differs between the two
    reads only in its digits is a ticking row: the stability check and the rows hash read its digits
-   as a fixed mark. A row that changed in anything but digits still moves the screen. No profile names
-   a clock.
+   as a fixed mark. The two taps of a manual Send are two reads too: the rows hash is a raw hash and a
+   hash with the digits of every row but the box's own read as a fixed mark, and the confirm passes if
+   either agrees. A row that changed in anything but digits still moves the screen, and so does a
+   digit in the box. No profile names a clock.
 3. **The launch window also ends on the multiplexer's word.** It ends when the multiplexer reports
    the starting harness `idle` or `working`. pi reports that from Herdr's own pi extension
    (`herdr-agent-state.ts`), not from the screen. Without such a report it ends as it does today.
@@ -124,9 +126,10 @@ picker.
 - **Both panes send after one confirm tap**, probed, with the text read back before Enter.
 - **The confirm tap stays on every screen Collie cannot read.** That is the price of not trusting a
   state Collie cannot see. A Hermes Ink profile removes it for Hermes alone.
-- **A changed number reads as the same screen** when it changed between S0's two reads and nothing
-  else on its row did. A countdown in a dialog option is such a number. Only rows seen ticking are
-  masked, never a row read once.
+- **A changed number reads as the same screen** when nothing else on its row changed: between S0's
+  two reads, and between the two taps of a confirm on any row outside the box. That is the price: a
+  countdown in a dialog option, a cost or a token count that moved after the person looked no longer
+  stales the confirm. A word that changed still does.
 - **The cut can claim a real two-column program** whose divider spans every row. Its right column is
   dropped. If the input box sits in that column, the pane reads unknown, as it does today.
 - **An agent the multiplexer has not named yet costs a tap.** A send in the first seconds of a

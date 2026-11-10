@@ -747,7 +747,7 @@ interface Snap {
   readonly hash: string;
   /** {@link plain} as the rows hash reads it: the rows above the box tick-marked when the profile says they tick. */
   readonly checked: readonly string[];
-  /** A short hash of the bottom window, the rows a person checks before a two-tap send. */
+  /** The rows token of the bottom window, the rows a person checks before a two-tap send: raw hash, then digit-masked hash ({@link rowsTokenOf}). */
   readonly rowsHash: string;
 }
 
@@ -876,10 +876,31 @@ export function tickingRows(first: readonly string[], second: readonly string[],
   return rows;
 }
 
-/** The rows hash of a read's checked rows: the bottom window of its texts. */
-function rowsHashOf(checked: readonly string[], texts: readonly string[]): string {
+/** The length of each half of a rows token: one {@link shortHash}. */
+const ROWS_HALF = 14;
+
+/**
+ * The rows token of a read's checked rows, the bottom window of its texts: the raw hash, then the hash
+ * with every digit run read as a fixed mark ({@link digitsMarked}) on each row but the box's own (ADR
+ * 0140 pt 2). The two taps of a send are two reads too: a clock that ticked between them moves the
+ * raw half alone, so {@link rowsAgree} still holds. A draft that changed is a change, digits or not.
+ */
+export function rowsTokenOf(checked: readonly string[], texts: readonly string[], box: { readonly top: number; readonly bottom: number } | null): string {
   const win = bottomWindow(texts);
-  return shortHash(checked.slice(win.first, win.end).join("\n"));
+  const rows = checked.slice(win.first, win.end);
+  const masked = rows.map((row, i) => (box !== null && win.first + i >= box.top && win.first + i <= box.bottom ? row : digitsMarked(row)));
+  return `${shortHash(rows.join("\n"))}${shortHash(masked.join("\n"))}`;
+}
+
+/** The raw half of a rows token: what the lab's frame clusters key on. */
+function rawRows(token: string): string {
+  return token.slice(0, ROWS_HALF);
+}
+
+/** Whether the rows token the person confirmed agrees with this read's: raw half to raw half, or masked half to masked half. */
+export function rowsAgree(asked: string, token: string): boolean {
+  if (asked.length !== 2 * ROWS_HALF || token.length !== 2 * ROWS_HALF) return false;
+  return asked.slice(0, ROWS_HALF) === token.slice(0, ROWS_HALF) || asked.slice(ROWS_HALF) === token.slice(ROWS_HALF);
 }
 
 function mark(snap: Snap | null): ReadMark | null {
@@ -4025,7 +4046,7 @@ export class SendProtocol {
           ...key,
           outcome: receipt.outcome,
           cluster: s0.plainRaw.slice(win.first, win.end),
-          frame: s0.rowsHash,
+          frame: rawRows(s0.rowsHash),
           textLength: receipt.textLength,
         });
       }
@@ -4058,7 +4079,7 @@ export class SendProtocol {
         row: snap.texts[cue.row] ?? "",
       })),
       cluster: snap.plainRaw.slice(win.first, win.end),
-      frame: snap.rowsHash,
+      frame: rawRows(snap.rowsHash),
       textLength: receipt.textLength,
     });
   }
@@ -4352,7 +4373,7 @@ export class SendProtocol {
     // confirms the screen, and the confirm goes only on the rows they saw.
     if (state.unread) {
       if (state.request.rowsHash === undefined) throw new Ended("refused", "unconfirmed", { surface: snap.surface, framed: false, rowsHash: snap.rowsHash, detail: FOREGROUND_UNREAD_DETAIL });
-      if (state.request.rowsHash !== snap.rowsHash) throw new Ended("refused", "stale_surface", { surface: snap.surface, framed: false, rowsHash: snap.rowsHash, detail: "The screen moved since you looked." });
+      if (!rowsAgree(state.request.rowsHash, snap.rowsHash)) throw new Ended("refused", "stale_surface", { surface: snap.surface, framed: false, rowsHash: snap.rowsHash, detail: "The screen moved since you looked." });
     }
     this.lap(state, "s0");
     await this.write(state, lines);
@@ -4663,7 +4684,7 @@ export class SendProtocol {
       if (cause !== undefined) note.cause = cause;
       throw new Ended("refused", "unconfirmed", note);
     }
-    if (state.request.rowsHash !== s0.rowsHash) {
+    if (!rowsAgree(state.request.rowsHash, s0.rowsHash)) {
       throw new Ended("refused", "stale_surface", { surface, rowsHash: s0.rowsHash, detail: "The screen moved since you looked." });
     }
     // The cap counts sends typed past a screen Collie cannot read; a notice's digit is no such screen.
@@ -4704,7 +4725,7 @@ export class SendProtocol {
     try {
       const cap = ledger.capState(key.harness, key.version);
       if (cap.reached && state.request.capAck !== true) {
-        ledger.inbox({ harness: key.harness, version: key.version, profileId: key.profileId, status: key.status, frame: s0.rowsHash, count: cap.count });
+        ledger.inbox({ harness: key.harness, version: key.version, profileId: key.profileId, status: key.status, frame: rawRows(s0.rowsHash), count: cap.count });
         throw new Ended("refused", "unconfirmed", {
           surface: s0.surface,
           rowsHash: s0.rowsHash,
@@ -4736,7 +4757,7 @@ export class SendProtocol {
     if (frame === null && !takesManualSend(surface) && !isFree(surface)) throw new Ended("refused", "not_free", { surface, detail: "The input box is not free." });
     const hash = state.request.rowsHash;
     if (hash === undefined) throw new Ended("refused", "not_free", { surface, detail: BOX_CHANGED });
-    if (hash !== s0.rowsHash) {
+    if (!rowsAgree(hash, s0.rowsHash)) {
       throw new Ended("refused", "stale_surface", { surface, rowsHash: s0.rowsHash, offers: ["submit", "discard", "keys"], detail: "The screen moved since you looked. Check it, then tap Submit or Discard again." });
     }
     if (frame !== null) return null;
@@ -5046,7 +5067,7 @@ export class SendProtocol {
       hash: shortHash(texts.join("\n")),
       checked,
       // A running row's timer is masked (steadyRow): a ticking timer is not a screen the person did not see.
-      rowsHash: rowsHashOf(checked, texts),
+      rowsHash: rowsTokenOf(checked, texts, frame),
     };
     const snap = ghostView(state.ghost, read);
     state.previousRead = state.lastRead;
@@ -5101,7 +5122,7 @@ export class SendProtocol {
       throw moved;
     }
     if (ticking.size === 0) return second;
-    const held: Snap = { ...second, rowsHash: rowsHashOf(steady(second.checked), second.texts) };
+    const held: Snap = { ...second, rowsHash: rowsTokenOf(steady(second.checked), second.texts, second.frame) };
     if (state.lastRead === second) state.lastRead = held;
     return held;
   }
