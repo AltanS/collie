@@ -59,9 +59,12 @@ import { cn } from "@/lib/utils";
 //
 // ── THE LOOK IS THE OPTION'S, TO THE PIXEL ─────────────────────────────────────────────────────────
 // Sizes, inks and spacing are option B1's own (web/src/playground/hill-look/cards.tsx), free sizes
-// included (the 19px title, the 15px summary and quote, the 11px caption): the owner chose that card by
-// name, so a nearest Tailwind step is a deviation. The summary shows three lines; the rest opens with
-// More, which is offered whenever the three lines hide some of it.
+// included (the 15px summary and quote, the 11px caption): the owner chose that card by name, so a
+// nearest Tailwind step is a deviation. One change since, on the owner's word of 2026-11-10 ("this needs
+// your attention, it's a question/summary"): the head reads as one unit, a question with its why. The
+// title is 17px (B1 had 19px), semibold, with tight leading and balanced lines; the summary sits 4px
+// under it in the foreground ink at 1.5 leading (B1 had the muted ink, 6px and 1.625). The summary shows
+// three lines; the rest opens with More, which is offered whenever the three lines hide some of it.
 //
 // ── A NOTE IS OFFERED, AN ANSWER IN WORDS IS ASKED ─────────────────────────────────────────────────
 // An optional note sits behind "Add a note"; a required answer, and the words of a Decision with no
@@ -428,15 +431,15 @@ export function DecisionCard({
     >
       <MetaLine decision={decision} hostSlot={hostSlot} trickIcon={trickIcon} />
 
-      <div className="flex flex-col gap-1.5">
-        <h3 data-slot="decision-title" className="font-content break-words text-[19px] font-semibold leading-snug tracking-tight text-balance">
+      <div className="flex flex-col gap-1">
+        <h3 data-slot="decision-title" className="font-content break-words text-[17px] font-semibold leading-tight text-balance">
           {decision.title}
         </h3>
         <p
           ref={summary.ref}
           id={summaryId}
           data-slot="decision-summary"
-          className={cn("font-content whitespace-pre-wrap break-words text-[15px] leading-relaxed text-muted-foreground", !moreOpen && "line-clamp-3")}
+          className={cn("font-content whitespace-pre-wrap break-words text-[15px] leading-normal text-foreground", !moreOpen && "line-clamp-3")}
         >
           {decision.summary}
         </p>

@@ -329,6 +329,23 @@ the person's answer reaches it as the person's own walky message. `media` is up 
 file, caption? }`: `file` names an image in the trick's own folder by a relative path with no `..`
 (`shots/red.png`), and `caption` is up to 80 characters.
 
+### Wording a Decision
+
+The person opens the card cold, between other things. The words are `HILL_WRITING` in
+`cli/hill-rules.ts`, which `collie hill post --help` prints and `collie trick init` writes into
+AGENTS.md:
+
+- **Title**: the decision itself, as a question the options answer, about 8 words, at most 60
+  characters, with no inner names the person would not know. "Ship 1.28.1 to Stable now?", not "Are
+  the new kinds right?".
+- **Summary**: at most two sentences. The first says what the recommended option does, the second gives
+  the one fact that decides it. The evidence goes in the view or the body.
+- **Options** start with a verb and say what happens: "Hold until CI", never a bare Yes or No.
+
+`collie hill post` (on stderr), `collie trick dev` and `collie trick check --run` warn about a title
+past 60 characters or with no question mark, a summary past two sentences or 200 characters, and an
+option that is only Yes, No or OK (`hillWordingWarnings`). A warning never refuses.
+
 ### A Decision's view
 
 `view` (M96) puts the facts behind the question on the card, under the summary and under the images

@@ -5,6 +5,7 @@ import { dirname, join } from "node:path";
 
 import { trickCodeHash } from "../bridge/tricks/code-hash.ts";
 import { switchesPath } from "../bridge/tricks/paths.ts";
+import { HILL_WRITING } from "./hill-rules.ts";
 import { EXIT, type Io } from "./io.ts";
 import { tricksFindings } from "./trick-findings.ts";
 import { checkStatic, checkWarnings, runAgainstFixture, isBareImport, isScannedFile, shippedHelperVersion, cmdTrick, cmdTrickCheck, cmdTrickHelper, cmdTrickInit, HELPER_VERSION, helperVersion, sampleProgram, TRICK_HELPER, cmdTrickList, cmdTrickSkill, cmdTrickSwitch, looksBinary, runsLines, sampleAgents, SKILL_BYTES_MAX, TRICK_WRITE_BRIEF, TRICK_SUBCOMMANDS, type TrickCheckReport, type TrickDeps } from "./trick.ts";
@@ -90,6 +91,8 @@ describe("collie trick init", () => {
       expect(text, form).not.toMatch(/`v` \(1\)/u);
     }
     expect(sampleAgents("legs")).toContain("`decision` (its key)");
+    // How to word a Decision, from the one list `collie hill post --help` prints too.
+    for (const form of ["ts", "sh"] as const) for (const line of HILL_WRITING) expect(sampleAgents("legs", form), form).toContain(line);
     // The output example in AGENTS.md parses clean.
     const example = /```json\n(.+)\n```/u.exec(sampleAgents("legs"))?.[1];
     expect(parseTrickDocument(JSON.parse(example ?? "null")).refusals).toEqual([]);
@@ -447,6 +450,22 @@ describe("collie trick check, a script Collie's runtime runs", () => {
     const d = await deps();
     expect(await cmdTrickCheck(d, ["--run", dir])).toBe(EXIT.OK);
     expect(d.out.join("\n")).toContain("parts: belt belt");
+  });
+
+  test("--run warns about a Decision's wording as `collie hill post` does, and the check still passes", async () => {
+    const doc = { v: 1, parts: [], decisions: [{ key: "kinds", title: "Are the new kinds right", summary: "Fine.", options: [{ intent: "yes", label: "Yes" }, { intent: "change", label: "Change them" }] }] };
+    const dir = await scriptFolder({ "program.ts": `console.log(${JSON.stringify(JSON.stringify(doc))});\n` });
+    const d = await deps();
+    expect(await cmdTrickCheck(d, ["--run", dir])).toBe(EXIT.OK);
+    const text = d.out.join("\n");
+    expect(text).toContain("  warn: decision kinds: the title asks no question. Write the decision as a question the options answer.");
+    expect(text).toContain('  warn: decision kinds: option "yes" says only "Yes". Start it with a verb that says what happens, such as "Ship it".');
+    expect(text).toContain("ok: no problems.");
+    d.out.length = 0;
+    expect(await cmdTrickCheck(d, ["--run", "--json", dir])).toBe(EXIT.OK);
+    // SAFETY: `--json` prints exactly one TrickCheckReport, and the fields read below are checked by value.
+    const report = JSON.parse(d.out.join("\n")) as TrickCheckReport;
+    expect(report.run?.wording.map((w) => w.key)).toEqual(["kinds", "kinds"]);
   });
 });
 

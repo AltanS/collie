@@ -454,7 +454,13 @@ export class Trick {
     this.sessionId = id;
     this.parts.push({ at: "session", id, ...rest });
   }
-  /** Ask the person on the Hill. The answer comes back as a tap with `t.tap.decision` set to the key. */
+  /**
+   * Ask the person on the Hill. The answer comes back as a tap with `t.tap.decision` set to the key.
+   * The person opens the card cold. `title` is the decision as a question the options answer, about 8
+   * words: "Ship 1.28.1 to Stable now?", not "Are the new kinds right?". `summary` is at most two
+   * sentences: what the recommended option does, then the one fact that decides it; evidence goes in
+   * `view` or `body`. Each option label starts with a verb: "Hold until CI", never a bare "Yes".
+   */
   decide(decision: Decision): void {
     this.decisions.push(decision);
   }

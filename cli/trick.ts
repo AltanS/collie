@@ -23,11 +23,13 @@ import {
   type FactsTrigger,
   type ParsedTrickDocument,
   type TrickFacts,
+  type TrickDecision,
   type TrickManifest,
   type Refusal,
 } from "../web/src/lib/tricks/schema.ts";
 import type { CliContext } from "./context.ts";
 import { trickHelperSource } from "./trick-kit/source.ts" with { type: "macro" };
+import { hillWordingWarnings, HILL_WRITING } from "./hill-rules.ts";
 import { EXIT, type Io } from "./io.ts";
 import { identityHeader, readOwnSnapshot } from "./snapshot-read.ts";
 import type { Files } from "./sys.ts";
@@ -354,6 +356,8 @@ export interface TrickCheckReport {
     refusals: Refusal[];
     /** What the tolerant read left out (`dropped`) or ignored (`ignored`). Never fails the check. */
     notes: Refusal[];
+    /** The soft wording warnings of each Decision (`hillWordingWarnings`), by its key. Never fails the check. */
+    wording: { key: string; text: string }[];
     stderr: string;
   };
 }
@@ -694,6 +698,11 @@ export async function runAgainstFixture(manifest: TrickManifest, folder: string,
   }
 }
 
+/** The soft wording warnings of a run's Decisions, by key: what `collie hill post` says on stderr for a post. */
+export function decisionWording(decisions: readonly TrickDecision[]): { key: string; text: string }[] {
+  return decisions.flatMap((d) => hillWordingWarnings(d).map((text) => ({ key: d.key, text })));
+}
+
 /** Run the program once against fixture facts and parse its output, as the bridge would. */
 export async function checkRun(report: TrickCheckReport, env: CliContext["env"]): Promise<void> {
   const manifest = report.manifest;
@@ -701,11 +710,12 @@ export async function checkRun(report: TrickCheckReport, env: CliContext["env"])
   const ran = await runAgainstFixture(manifest, report.folder, env);
   const { outcome, problem } = ran;
   const stderr = outcome.kind === "spawn-failed" ? "" : outcome.stderr;
-  const run: NonNullable<TrickCheckReport["run"]> = { outcome: outcome.kind, ms: outcome.ms, problem, parts: [], refusals: [], notes: [], stderr };
+  const run: NonNullable<TrickCheckReport["run"]> = { outcome: outcome.kind, ms: outcome.ms, problem, parts: [], refusals: [], notes: [], wording: [], stderr };
   if (ran.parsed !== null) {
     run.parts = ran.parsed.parts.map((p) => `${p.part.at} ${p.part.id}`);
     run.refusals = ran.parsed.refusals;
     run.notes = ran.parsed.notes;
+    run.wording = decisionWording(ran.parsed.decisions);
   }
   report.run = run;
 }
@@ -757,6 +767,8 @@ function printReport(deps: Pick<TrickDeps, "io">, report: TrickCheckReport): voi
     for (const r of run.refusals) io.err(`error: output ${r.path === "" ? "" : `${r.path} `}${r.reason}`);
     // Notes never fail the check: a node or a part this Collie leaves out, a key it ignores.
     for (const n of run.notes) io.out(`  note: output ${n.path === "" ? "" : `${n.path} `}${n.reason}`);
+    // Soft too: how a Decision is worded is the author's call (HILL_WRITING).
+    for (const w of run.wording) io.out(`  warn: decision ${w.key}: ${w.text}`);
     if (run.problem !== null && run.stderr.trim() !== "") {
       io.err("  stderr:");
       for (const line of run.stderr.trimEnd().split(/\r?\n/).slice(-10)) io.err(`    ${line}`);
@@ -998,6 +1010,13 @@ One JSON document on stdout, at most 64 KiB, within 10 seconds. \`v\` is the con
   is dropped with one note on the trick's row, and an unknown key or attribute is ignored. \`collie
   trick dev\` and \`collie trick check --run\` print each one as a note; read them, they are often a typo.
   \`trick.toml\` and a Decision stay strict: an unknown key there is refused.
+
+## Wording a Decision
+
+${HILL_WRITING.join("\n")}
+
+\`collie trick dev\` and \`collie trick check --run\` warn when a Decision breaks one of these. The
+warnings never refuse it.
 
 ## The contract
 

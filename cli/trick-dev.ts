@@ -7,8 +7,9 @@ import { tricksConfigDir } from "../bridge/tricks/paths.ts";
 import { RUN_TIMEOUT_MS, STDOUT_CAP_BYTES } from "../bridge/tricks/run.ts";
 import { parseJson } from "../web/src/lib/json.ts";
 import { HILL_NODE_PREFIX, isRequestId, isTrickId, parseFacts, type FactsTrigger, type ParsedPart, type Refusal, type TrickDecision, type TrickFacts, type View, type ViewNode } from "../web/src/lib/tricks/schema.ts";
+import { hillWordingWarnings } from "./hill-rules.ts";
 import { EXIT } from "./io.ts";
-import { checkStatic, runAgainstFixture, type FixtureOptions, type FixtureRun, type TrickDeps } from "./trick.ts";
+import { checkStatic, decisionWording, runAgainstFixture, type FixtureOptions, type FixtureRun, type TrickDeps } from "./trick.ts";
 
 // `collie trick dev <folder|id>` (M94 review 4): `check --run` made friendly. It runs the program once
 // against the same fixture facts `check --run` uses, through the same run path (`runAgainstFixture`:
@@ -175,7 +176,11 @@ export function devSummary(ran: FixtureRun, refusals: readonly Refusal[]): strin
     else out.push("  no parts");
     if (!ran.decisionsListed) out.push("  decisions: none listed, so the open ones stay as they are");
     else if (parsed.decisions.length === 0) out.push("  decisions: none, so the open ones are withdrawn");
-    for (const decision of parsed.decisions) out.push(`  decision  ${decisionLine(decision)}`);
+    for (const decision of parsed.decisions) {
+      out.push(`  decision  ${decisionLine(decision)}`);
+      // Soft: the words are the author's (HILL_WRITING); said under the line, never a refusal.
+      for (const warning of hillWordingWarnings(decision)) out.push(`    warn  ${warning}`);
+    }
   }
   for (const refusal of refusals) out.push(`  refused  ${refusal.path === "" ? "(the document)" : refusal.path}  ${refusal.reason}`);
   // What the tolerant read left out or ignored: never a failure, said so the author sees a typo.
@@ -256,7 +261,7 @@ async function devOnce(deps: TrickDeps, folder: string, args: DevArgs, inputs: D
     const stderr = ran.outcome.kind === "spawn-failed" ? "" : ran.outcome.stderr;
     const parsed = ran.parsed;
     const kind = args.tap === null ? (inputs.facts?.value.trigger.kind ?? "timer") : "tap";
-    const body = { folder, trigger: kind, outcome: ran.outcome.kind, ms: ran.outcome.ms, stdoutBytes: ran.stdoutBytes, problem: ran.problem, stderr, decisionsListed: ran.decisionsListed, parts: parsed?.parts ?? [], decisions: parsed?.decisions ?? [], refusals, notes: parsed?.notes ?? [] };
+    const body = { folder, trigger: kind, outcome: ran.outcome.kind, ms: ran.outcome.ms, stdoutBytes: ran.stdoutBytes, problem: ran.problem, stderr, decisionsListed: ran.decisionsListed, parts: parsed?.parts ?? [], decisions: parsed?.decisions ?? [], refusals, notes: parsed?.notes ?? [], wording: decisionWording(parsed?.decisions ?? []) };
     deps.io.out(JSON.stringify(inputs.state === undefined ? body : { ...body, state: inputs.state }, null, 2));
   } else {
     const source = inputs.facts === undefined ? "fixture facts" : `facts from ${inputs.facts.file}`;
