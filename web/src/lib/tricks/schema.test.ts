@@ -56,6 +56,7 @@ import {
   TONE_TEXT_CLASS,
   TONE_TOKENS,
   TRICK_ICONS,
+  TRICK_CONTRACT,
   TRICK_ICON_LUCIDE,
   VIEW_ROOT_KINDS,
   freshWindowMs,
@@ -63,6 +64,7 @@ import {
   isTapNode,
   isTrickSessionId,
   isTrickUrl,
+  newerContractReason,
   isScopeKey,
   matchesSession,
   matchesTab,
@@ -153,11 +155,13 @@ const link = (attrs: JsonObject) => inView({ kind: "para", kids: [{ kind: "link"
 const row = (node: JsonObject) => inView({ kind: "list", kids: [{ kind: "row", text: "x", ...node }] });
 
 describe("the module", () => {
-  it("imports only the JSON helpers, so the bridge and the CLI load it without a DOM", () => {
+  it("imports only the JSON helpers and the contract number, so the bridge and the CLI load it without a DOM", () => {
     const source = readRepo("web/src/lib/tricks/schema.ts");
     const imports = [...source.matchAll(/^import .* from "([^"]+)";$/gm)].map((m) => m[1]);
-    expect(imports).toEqual(["../json"]);
+    expect(imports).toEqual(["../json", "./contract"]);
     expect(source).not.toContain(`from "@/`);
+    // The contract module is one number and imports nothing.
+    expect(readRepo("web/src/lib/tricks/contract.ts")).not.toMatch(/^import /m);
   });
 
   it("lists sixteen kinds, the tree's names plus number, each with its attributes", () => {
@@ -1244,7 +1248,7 @@ describe("parseManifest", () => {
       every: "30s",
       everyMs: 30_000,
       mode: "once",
-      facts: 1,
+      contract: 1,
       icon: "flask",
       places: ["belt", "session"],
     });
@@ -1270,12 +1274,30 @@ describe("parseManifest", () => {
     expect(on.manifest?.on).toEqual(["turn.end"]);
   });
 
+  it("names one contract number: the default 1, a higher one refused with both numbers, an unknown key still a typo", () => {
+    const base = { id: "legs", name: "Legs", run: "./legs.sh", places: ["belt"] };
+    expect(parseManifest(base).manifest?.contract).toBe(TRICK_CONTRACT);
+    expect(parseManifest({ ...base, contract: 1 }).manifest?.contract).toBe(1);
+    const newer = parseManifest({ ...base, contract: 2, shiny: "a key of contract 2" });
+    expect(newer.manifest).toBeUndefined();
+    // Only the one sentence: a newer contract may hold keys this Collie never heard of.
+    expect(newer.refusals).toEqual([{ code: "version", path: "/contract", reason: newerContractReason(2) }]);
+    expect(newer.refusals[0]?.reason).toBe("This trick needs a newer Collie: it is written for trick contract 2, and this Collie knows contract 1. Update Collie to run it.");
+    // At the same number an unknown key is a typo, and it refuses.
+    expect(parseManifest({ ...base, contract: 1, plcaes: ["belt"] }).refusals.map((r) => [r.code, r.path])).toEqual([["unknown-key", "/plcaes"]]);
+    expect(parseManifest({ ...base, contract: 1, plcaes: ["belt"] }).manifest).toBeUndefined();
+    // The old `facts` key is gone, with no alias; its refusal names the new one.
+    const old = parseManifest({ ...base, facts: 1 });
+    expect(old.manifest).toBeUndefined();
+    expect(old.refusals.map((r) => [r.code, r.path])).toEqual([["unknown-key", "/facts"]]);
+    expect(old.refusals[0]?.reason).toContain('"contract"');
+    for (const bad of [0, -1, 1.5, "1", 1000]) expect(parseManifest({ ...base, contract: bad }).refusals.map((r) => [r.code, r.path]), String(bad)).toEqual([["range", "/contract"]]);
+  });
+
   it("refuses what it cannot run", () => {
     const base = { id: "legs", name: "Legs", run: "./legs.sh", places: ["belt"] };
     const bad = (extra: JsonObject, opts = {}) => parseManifest({ ...base, ...extra }, opts);
     expect(bad({}, { folder: "other" }).refusals.map((r) => r.path)).toEqual(["/id"]);
-    expect(bad({ facts: 2 }).refusals.map((r) => r.code)).toEqual(["version"]);
-    expect(bad({ facts: 2 }).manifest).toBeUndefined();
     expect(bad({ every: "4s" }).refusals.map((r) => r.path)).toEqual(["/every"]);
     expect(bad({ every: "5s" }).manifest?.everyMs).toBe(5000);
     expect(bad({ every: "24h" }).refusals).toEqual([]);
@@ -1299,7 +1321,7 @@ describe("parseFacts", () => {
   it.each(Object.entries(FACTS))("the %s facts parse clean", (_name, facts) => {
     const result = parseFacts(facts);
     expect(result.refusals).toEqual([]);
-    expect(result.facts?.v).toBe(1);
+    expect(result.facts?.contract).toBe(TRICK_CONTRACT);
   });
 
   it("refuses a session id that is a name", () => {

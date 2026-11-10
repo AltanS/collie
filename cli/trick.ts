@@ -19,6 +19,7 @@ import {
   isTrickId,
   parseFacts,
   parseTrickDocumentText,
+  TRICK_CONTRACT,
   type FactsTrigger,
   type ParsedTrickDocument,
   type TrickFacts,
@@ -513,8 +514,14 @@ export function isScannedFile(rel: string): boolean {
 function sha256(text: string): string {
   return createHash("sha256").update(text).digest("hex");
 }
-/** The older helpers this Collie shipped, by the SHA-256 of their text: v1 (1.29.0-edge, M94 review 4). */
-const OLDER_HELPERS: ReadonlyMap<string, number> = new Map([["534f992f9aa2a4a6e53945c1b46e7b407ab9528b3839970e6552d83b23ed13bb", 1]]);
+/**
+ * The older helpers this Collie shipped, by the SHA-256 of their text: v1 (1.29.0-edge, M94 review 4) and
+ * v2 (the facts' `v`, `t.hillAnswer` beside `t.tap`; M94 review 11 made it v3).
+ */
+const OLDER_HELPERS: ReadonlyMap<string, number> = new Map([
+  ["534f992f9aa2a4a6e53945c1b46e7b407ab9528b3839970e6552d83b23ed13bb", 1],
+  ["ec9ce0acd1c1691f61bb63a0f9f136578c9bf9250c7aa66d3d1186ee030b98a9", 2],
+]);
 
 /** The version of a helper this Collie ships (this one, or one of `older`) whose bytes `text` are, or null for any other text. */
 export function shippedHelperVersion(text: string, older: ReadonlyMap<string, number> = OLDER_HELPERS): number | null {
@@ -777,8 +784,8 @@ export async function cmdTrickCheck(deps: TrickDeps, args: readonly string[]): P
 
 /** The helper file a TypeScript trick imports. */
 export const HELPER_FILE = "trick.ts";
-/** The version of the helper this Collie writes. Its first line names it: `// collie trick helper v2`. */
-export const HELPER_VERSION = 2;
+/** The version of the helper this Collie writes. Its first line names it: `// collie trick helper v3`. */
+export const HELPER_VERSION = 3;
 /** The helper's source (cli/trick-kit/trick.ts), held in the binary as text. */
 export const TRICK_HELPER: string = trickHelperSource();
 
@@ -798,10 +805,12 @@ export function sampleManifest(id: string, form: InitForm = "ts"): string {
     `# Collie trick "${id}". Check it with: collie trick check --run <this folder>`,
     `id = "${id}"`,
     `name = "${id}"`,
-    ts ? `run = "program.ts"` : `run = "./provider.sh"`,
+    ts ? `run = "program.ts"` : `run = "./program.sh"`,
     `every = "30s"`,
     `icon = "plug"`,
     ts ? `places = ["status", "dashboard", "session"]` : `places = ["belt"]`,
+    `# The trick contract this trick is written for. A Collie that does not know it refuses the trick.`,
+    `contract = ${String(TRICK_CONTRACT)}`,
     "",
   ].join("\n");
 }
@@ -829,7 +838,7 @@ run((t) => {
     view: [v.list(sessions.slice(0, rows).map((s) => v.row((s.name ?? s.paneId).slice(0, 60), { end: s.status })))],
   });
 
-  // Ask the person on the Hill. The answer comes back as a tap: read it in t.hillAnswer.
+  // Ask the person on the Hill. The answer comes back as a tap: t.tap.decision is the key, t.tap.intent the option.
   // t.decide({
   //   key: "tidy",
   //   title: "Close the idle sessions?",
@@ -847,7 +856,7 @@ export const SAMPLE_SHELL_PROGRAM = `#!/bin/sh
 # document from stdout. This one counts the sessions and prints one mark at the end of the Belt.
 facts=$(cat)
 n=$(printf '%s' "$facts" | grep -o '"paneId"' | wc -l | tr -d ' ')
-printf '{"v":1,"parts":[{"at":"belt","id":"belt","mark":{"icon":"plug","label":"%s","tone":"plain"}}]}\\n' "$n"
+printf '{"v":${String(TRICK_CONTRACT)},"parts":[{"at":"belt","id":"belt","mark":{"icon":"plug","label":"%s","tone":"plain"}}]}\\n' "$n"
 `;
 
 /** The loop and the helper's table, for a TypeScript trick. */
@@ -903,7 +912,7 @@ trick has no session.
 function agentsShLoop(id: string): string {
   return `## The loop
 
-1. Change \`provider.sh\` (or point \`run\` at another program in this folder).
+1. Change \`program.sh\` (or point \`run\` at another program in this folder).
 2. Run \`collie trick check --run .\` and fix every error it prints. Read its warnings too.
 3. Switch the trick on with \`collie trick on ${id}\`. It runs while a phone watches.
 `;
@@ -1006,8 +1015,8 @@ export async function cmdTrickInit(deps: TrickDeps, args: readonly string[]): Pr
   await writeFile(join(dir, MANIFEST_FILE), sampleManifest(id, form));
   await writeFile(join(dir, "AGENTS.md"), sampleAgents(id, form));
   if (form === "sh") {
-    await writeFile(join(dir, "provider.sh"), SAMPLE_SHELL_PROGRAM, { mode: 0o755 });
-    deps.io.out(`Made ${dir} with trick.toml, provider.sh and AGENTS.md. The trick is off.`);
+    await writeFile(join(dir, "program.sh"), SAMPLE_SHELL_PROGRAM, { mode: 0o755 });
+    deps.io.out(`Made ${dir} with trick.toml, program.sh and AGENTS.md. The trick is off.`);
   } else {
     await writeFile(join(dir, "program.ts"), sampleProgram(id));
     await writeFile(join(dir, HELPER_FILE), TRICK_HELPER);

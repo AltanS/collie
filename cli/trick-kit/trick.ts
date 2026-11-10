@@ -1,4 +1,4 @@
-// collie trick helper v2
+// collie trick helper v3
 // The helper of a Collie trick: it reads the facts, collects the parts and the Decisions, and prints the
 // one document the bridge reads. `collie trick init` writes it into the trick folder, and
 // `collie trick helper <id>` rewrites it with the newest version. It imports only node: built-ins and
@@ -15,6 +15,8 @@ import { delimiter, dirname, join } from "node:path";
 delete process.env.BUN_BE_BUN;
 
 // ── The words of the schema (web/src/lib/tricks/schema.ts in Collie) ───────────────────────────────
+/** The trick contract this helper speaks: Collie's TRICK_CONTRACT (web/src/lib/tricks/contract.ts), the output's "v". */
+export const CONTRACT = 1;
 export type Tone = "plain" | "accent" | "warn" | "danger" | "ok" | "muted";
 export type Icon =
   | "archive" | "back" | "bell" | "branch" | "camera" | "chat" | "check" | "clock" | "close" | "copy" | "crew" | "delete"
@@ -152,13 +154,53 @@ export interface Session {
   cwd?: string; space?: string; tab?: string; lastActiveAt?: string;
 }
 export type TapValue = string | { text: string | null };
-export type Trigger = { kind: "start" } | { kind: "timer" } | { kind: "tap"; rid: string; node: string; intent: string; value?: TapValue; seen?: string };
+export type Trigger =
+  | { kind: "start" }
+  | { kind: "timer" }
+  | { kind: "tap"; rid: string; node: string; intent: string; value?: TapValue; from?: { session?: string }; seen?: string };
 export interface Facts {
-  v: 1; trigger: Trigger; trick: { id: string; dir: string; state: string };
+  contract: typeof CONTRACT; trigger: Trigger; trick: { id: string; dir: string; state: string };
   host: string; memberId: string; sessions: Session[]; spaces: { name: string; folder?: string }[];
 }
-export interface Tap { intent: string; value: TapValue | null; node: string; rid: string; seen?: string }
-export interface HillAnswer { key: string; intent: string; text: string | null }
+/**
+ * The tap that started a run, one shape from every place: a button or an action in the trick's session,
+ * the Belt mark, and the person's answer to one of the trick's Decisions on the Hill.
+ */
+export interface Tap {
+  /** The request id. A retried tap carries the same one: key a record on it, `t.log(name).once(rid, ...)`. */
+  rid: string;
+  /** The part the control sits in (`main`, `belt`), or `hill/<key>` for an answer. */
+  node: string;
+  /** The button's, the action's or the mark's intent; an answer's option, `answer` for words alone, or `dismiss`. */
+  intent: string;
+  /** The button's or the action's `value`, or null. */
+  value: string | null;
+  /** The key of the Decision this answers, or null for a tap on a part. */
+  decision: string | null;
+  /** The person's words with an answer, or null. */
+  text: string | null;
+  /** The session the phone had open, its `id` from the facts, or null. */
+  from: string | null;
+  /** With an answer: the content hash of the version of the Decision the person saw, or null. */
+  seen: string | null;
+}
+
+/** The facts' tap trigger as the one `Tap`, or null for any other trigger. */
+function tapOf(t: Trigger): Tap | null {
+  if (t.kind !== "tap") return null;
+  const answer = t.node.startsWith("hill/");
+  const words = t.value instanceof Object ? t.value.text : null;
+  return {
+    rid: t.rid,
+    node: t.node,
+    intent: t.intent,
+    value: typeof t.value === "string" ? t.value : null,
+    decision: answer ? t.node.slice("hill/".length) : null,
+    text: answer ? words : null,
+    from: t.from?.session ?? null,
+    seen: t.seen ?? null,
+  };
+}
 
 // ── Parts and Decisions ─────────────────────────────────────────────────────────────────────────
 export interface Item { label: string; icon?: Icon; badge?: Num; tone?: Tone }
@@ -181,7 +223,7 @@ export interface Decision {
 }
 export interface ShResult { ok: boolean; code: number; stdout: string; stderr: string }
 /** What a run prints. `decisions` is left out only after `keepDecisions()`. */
-export interface Document { v: 1; parts: Part[]; decisions?: Decision[]; asOf?: string; fresh?: string }
+export interface Document { v: typeof CONTRACT; parts: Part[]; decisions?: Decision[]; asOf?: string; fresh?: string }
 /** An append-only JSON-lines file in the state folder (`t.log`). A torn line from a killed run is skipped. */
 export interface Log<T extends object> {
   append(entry: T): void;
@@ -259,10 +301,8 @@ export class Trick {
   readonly facts: Facts;
   /** `config.toml` of the trick folder, parsed; {} when there is none. */
   readonly config: { [key: string]: TomlValue };
-  /** The tap that started this run, or null. */
+  /** The tap that started this run, from any place, a Decision's answer included (`decision` set), or null. */
   readonly tap: Tap | null;
-  /** The person's answer to one of this trick's Decisions, or null. */
-  readonly hillAnswer: HillAnswer | null;
   /** Small JSON files in the trick's own state folder. A name may hold folders: `cache/ci`. */
   readonly state: { get<T extends Json>(name: string, fallback: T): T; set(name: string, value: Json): void };
   /** What this run collected, in order. `document()` prints them. */
@@ -281,13 +321,7 @@ export class Trick {
     const text = readText(join(facts.trick.dir, "config.toml"));
     // SAFETY: Bun.TOML.parse answers with a table; the program reads each setting it names.
     this.config = text === null ? {} : (Bun.TOML.parse(text) as { [key: string]: TomlValue });
-    const t = facts.trigger;
-    const tap: Tap | null = t.kind === "tap" ? { intent: t.intent, value: t.value ?? null, node: t.node, rid: t.rid } : null;
-    if (tap !== null && t.kind === "tap" && t.seen !== undefined) tap.seen = t.seen;
-    this.tap = tap;
-    // An answer's value is always `{ text }`: the person's words, or null.
-    const words = tap?.value ?? null;
-    this.hillAnswer = tap?.node.startsWith("hill/") === true ? { key: tap.node.slice(5), intent: tap.intent, text: words instanceof Object ? words.text : null } : null;
+    this.tap = tapOf(facts.trigger);
     const root = facts.trick.state;
     this.state = {
       get<T extends Json>(name: string, fallback: T): T {
@@ -325,7 +359,7 @@ export class Trick {
     this.sessionId = id;
     this.parts.push({ at: "session", id, ...rest });
   }
-  /** Ask the person on the Hill. The answer comes back as a tap: read it in `t.hillAnswer`. */
+  /** Ask the person on the Hill. The answer comes back as a tap with `t.tap.decision` set to the key. */
   decide(decision: Decision): void {
     this.decisions.push(decision);
   }
@@ -486,7 +520,7 @@ export class Trick {
     const at = this.parts.findIndex((p) => p.at === "session" && p.id === (this.sessionId ?? "main"));
     if (problems.length > 0 && at < 0) process.stderr.write(`config.toml: ${clip(problems.join(". "), 400)}\n`);
     const parts = this.parts.map((p, i) => (i === at && p.at === "session" && problems.length > 0 ? { ...p, view: [...p.view, row] } : p));
-    const doc: Document = { v: 1, parts };
+    const doc: Document = { v: CONTRACT, parts };
     if (!this.keep) doc.decisions = this.decisions;
     if (this.asOfAt !== undefined) doc.asOf = this.asOfAt;
     if (this.freshFor !== undefined) doc.fresh = this.freshFor;
@@ -522,7 +556,7 @@ export function run(handler: (t: Trick) => void | Promise<void>): void {
       const id = t?.sessionId ?? (facts !== null && declaredPlaces(facts.trick.dir).includes("session") ? "main" : null);
       if (id === null) process.exit(1);
       const card = v.card([v.para(message.slice(0, 2000))], { tone: "warn" });
-      let doc: Document = { v: 1, parts: [{ at: "session", id, subtitle: message.slice(0, 120), tone: "warn", view: [card] }] };
+      let doc: Document = { v: CONTRACT, parts: [{ at: "session", id, subtitle: message.slice(0, 120), tone: "warn", view: [card] }] };
       try {
         if (t !== null) doc = t.printed(doc);
       } catch {

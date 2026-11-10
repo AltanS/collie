@@ -60,13 +60,17 @@ import {
   type HillTextMode,
 } from "../hill/wire";
 import { asJsonNumber, asJsonObject, asJsonString, asJsonBoolean, parseJson, type JsonObject, type JsonValue } from "../json";
+import { TRICK_CONTRACT } from "./contract";
+
+export { TRICK_CONTRACT };
 
 // ── Versions and byte caps ───────────────────────────────────────────────────────────────────
 
-/** The output document version this build reads (`"v": 1`). The tree re-cut is v1: no outside trick existed before it. */
-export const DOCUMENT_VERSION = 1;
-/** The facts document version this build writes. A manifest that needs a higher one is skipped. */
-export const FACTS_VERSION = 1;
+/**
+ * The output document's `"v"`: the trick contract number (contract.ts), the same one the manifest's
+ * `contract` and the facts' `contract` name. One number, not three.
+ */
+export const DOCUMENT_VERSION = TRICK_CONTRACT;
 
 /** One part, serialised as compact JSON, at most this many UTF-8 bytes. */
 export const PART_MAX_BYTES = 16 * 1024;
@@ -1028,8 +1032,8 @@ export interface TrickManifest {
   watch?: string[];
   on?: TrickEvent[];
   mode: TrickMode;
-  /** The facts version the program needs. */
-  facts: number;
+  /** The trick contract the trick was written for (contract.ts). At most this Collie's `TRICK_CONTRACT`. */
+  contract: number;
   icon: TrickIcon;
   places: PlaceKind[];
   /** Environment names past the base allow-list the program asks for (bridge/tricks/env.ts). */
@@ -1094,7 +1098,8 @@ export interface FactsSpace {
   folder?: string;
 }
 export interface TrickFacts {
-  v: 1;
+  /** The trick contract these facts follow (contract.ts). */
+  contract: typeof TRICK_CONTRACT;
   trigger: FactsTrigger;
   trick: { id: string; dir: string; state: string };
   /** The bridge that runs the trick: the key a program keeps (see `FactsSession.memberId`). */
@@ -1176,7 +1181,7 @@ export interface WireTrickPart extends TrickPartKey {
 export const TRICK_STATES = ["ok", "failing", "stopped", "off", "skipped"] as const;
 /**
  * A trick's state on the wire: `ok`; `failing` (backing off); `stopped` (backoff ran out); `off` (the
- * switch); `skipped` (the manifest was refused, or needs a newer facts version).
+ * switch); `skipped` (the manifest was refused, or asks for a newer trick contract).
  */
 export type TrickState = (typeof TRICK_STATES)[number];
 /** One trick as the phone lists it: belt order, Settings → Tricks, the doctor row's summary. */
@@ -3285,7 +3290,18 @@ export const ENV_NAME_MAX = 64;
 const ENV_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 /** Every key `trick.toml` takes. */
-export const MANIFEST_KEYS = ["id", "name", "run", "every", "watch", "on", "mode", "facts", "icon", "places", "env"] as const;
+export const MANIFEST_KEYS = ["id", "name", "run", "every", "watch", "on", "mode", "contract", "icon", "places", "env"] as const;
+
+/** The highest `contract` a manifest may write before it is refused as a typo rather than a newer Collie. */
+const CONTRACT_MAX = 999;
+
+/**
+ * The refusal of a manifest that asks for a contract this Collie does not speak. Exported so the CLI
+ * and the bridge say the same sentence, naming both numbers.
+ */
+export function newerContractReason(asked: number): string {
+  return `This trick needs a newer Collie: it is written for trick contract ${asked}, and this Collie knows contract ${TRICK_CONTRACT}. Update Collie to run it.`;
+}
 
 export interface ParseManifestOptions {
   /** The folder's name. A manifest whose `id` differs is refused. */
@@ -3311,7 +3327,13 @@ export function parseManifest(doc: JsonValue | undefined, opts: ParseManifestOpt
   if (obj === undefined) return { refusals: [{ code: "type", path: "", reason: "trick.toml must be a table of keys." }] };
   const refusals: Refusal[] = [];
   const f = new Fields(obj, "", refusals, "trick.toml");
-  f.keys(MANIFEST_KEYS);
+  // The contract first: a trick written for a newer contract may use keys this Collie has never heard
+  // of, so it is refused with the one sentence that names both numbers, never with a list of unknown keys.
+  const contract = f.int("contract", { min: 1, max: CONTRACT_MAX }) ?? (f.has("contract") ? undefined : TRICK_CONTRACT);
+  if (contract !== undefined && contract > TRICK_CONTRACT) {
+    return { refusals: [{ code: "version", path: "/contract", reason: newerContractReason(contract) }] };
+  }
+  f.keys(MANIFEST_KEYS, (key) => (key === "facts" ? { code: "unknown-key", reason: '"facts" is "contract" now: the trick contract number, 1, or leave it out.' } : undefined));
   const triggers = opts.triggers ?? [];
   const enabled = opts.places ?? NEAR_PLACES;
 
@@ -3352,10 +3374,6 @@ export function parseManifest(doc: JsonValue | undefined, opts: ParseManifestOpt
   const mode = f.word("mode", TRICK_MODES);
   if (mode === "serve" && !triggers.includes("serve")) f.push("later", "mode", '"mode = serve" is not in this Collie yet. The trick runs once per trigger.');
 
-  const facts = f.int("facts", { min: 1, max: 999 });
-  if (facts !== undefined && facts > FACTS_VERSION) {
-    f.push("version", "facts", `The trick needs facts version ${facts}. This Collie gives version ${FACTS_VERSION}. Update Collie to run it.`);
-  }
   const icon = f.icon("icon");
   const env = readStrings(f, "env", { min: 0, max: ENV_NAMES_MAX, what: "names", text: { max: ENV_NAME_MAX } });
   env?.forEach((envName, i) => {
@@ -3393,8 +3411,8 @@ export function parseManifest(doc: JsonValue | undefined, opts: ParseManifestOpt
   }
 
   const fatal = refusals.some((r) => r.code !== "later");
-  if (fatal || id === undefined || name === undefined || run === undefined) return { refusals: capRefusals(refusals) };
-  const manifest: TrickManifest = { id, name, run, mode: "once", facts: facts ?? 1, icon: icon ?? DEFAULT_TRICK_ICON, places };
+  if (fatal || id === undefined || name === undefined || run === undefined || contract === undefined) return { refusals: capRefusals(refusals) };
+  const manifest: TrickManifest = { id, name, run, mode: "once", contract, icon: icon ?? DEFAULT_TRICK_ICON, places };
   if (every !== undefined && everyMs !== undefined && everyOk) {
     manifest.every = every;
     manifest.everyMs = everyMs;
@@ -3409,7 +3427,7 @@ export function parseManifest(doc: JsonValue | undefined, opts: ParseManifestOpt
 // ── The facts ────────────────────────────────────────────────────────────────────────────────
 
 /** Every key of the facts document, of a session in it, of a space, of the trick, and of each trigger. */
-export const FACTS_KEYS = ["v", "trigger", "trick", "memberId", "host", "sessions", "spaces", "session"] as const;
+export const FACTS_KEYS = ["contract", "trigger", "trick", "memberId", "host", "sessions", "spaces", "session"] as const;
 export const SESSION_FACT_KEYS = ["id", "memberId", "sessionId", "paneId", "host", "name", "agent", "status", "cwd", "space", "tab", "lastActiveAt"] as const;
 export const SPACE_FACT_KEYS = ["name", "folder"] as const;
 export const TRICK_FACT_KEYS = ["id", "dir", "state"] as const;
@@ -3437,7 +3455,7 @@ export function parseFacts(raw: JsonValue | undefined): ParsedFacts {
   const refusals: Refusal[] = [];
   const f = new Fields(obj, "", refusals, "the facts");
   f.keys(FACTS_KEYS);
-  if (asJsonNumber(obj.v) !== FACTS_VERSION) f.push("version", "v", `The facts must say "v": ${FACTS_VERSION}.`);
+  if (asJsonNumber(obj.contract) !== TRICK_CONTRACT) f.push("version", "contract", `The facts must say "contract": ${TRICK_CONTRACT}.`);
   const trigger = readTrigger(f);
   const trickFields = f.object("trick", 'an object with "id", "dir" and "state"', true);
   trickFields?.keys(TRICK_FACT_KEYS);
@@ -3472,7 +3490,7 @@ export function parseFacts(raw: JsonValue | undefined): ParsedFacts {
   if (refusals.length > 0 || trigger === undefined || trickId === undefined || dir === undefined || state === undefined || memberId === undefined || host === undefined) {
     return { refusals: capRefusals(refusals) };
   }
-  const facts: TrickFacts = { v: 1, trigger, trick: { id: trickId, dir, state }, memberId, host, sessions, spaces };
+  const facts: TrickFacts = { contract: TRICK_CONTRACT, trigger, trick: { id: trickId, dir, state }, memberId, host, sessions, spaces };
   if (session !== undefined) facts.session = session;
   return { facts, refusals };
 }

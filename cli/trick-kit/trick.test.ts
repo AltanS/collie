@@ -5,9 +5,9 @@ import { join } from "node:path";
 
 import { FACTS } from "../../web/src/lib/tricks/fixtures/index.ts";
 import { parseJson } from "../../web/src/lib/json.ts";
-import { PLACE_KINDS, parseDecisionView, parseFacts, parseTrickDocumentText, type TrickFacts } from "../../web/src/lib/tricks/schema.ts";
+import { PLACE_KINDS, parseDecisionView, parseFacts, parseTrickDocumentText, TRICK_CONTRACT, type TrickFacts } from "../../web/src/lib/tricks/schema.ts";
 import { sampleConfig, sampleManifest, sampleProgram, TRICK_HELPER } from "../trick.ts";
-import { age, clip, firstSentence, iso, mapText, mask, minute, now, Trick, v, type Facts, type Node } from "./trick.ts";
+import { age, clip, CONTRACT, firstSentence, iso, mapText, mask, minute, now, Trick, v, type Facts, type Node } from "./trick.ts";
 
 // The helper (cli/trick-kit/trick.ts) is copied into a trick folder as text, so nothing in the schema's
 // own tests sees it. These tests hold it to the schema: every builder's node and every place's part
@@ -66,6 +66,13 @@ async function runProgram(dir: string, facts: TrickFacts, env: Record<string, st
 const ALL_PLACES = [...PLACE_KINDS];
 
 describe("the builders cannot drift from the schema", () => {
+  test("the helper speaks the contract this Collie speaks: one number", () => {
+    expect(CONTRACT).toBe(TRICK_CONTRACT);
+    const facts: Facts = factsFor("/nonexistent", "/nonexistent");
+    expect(facts.contract).toBe(CONTRACT);
+    expect(new Trick(facts).document().v).toBe(TRICK_CONTRACT);
+  });
+
   test("every builder's node parses with the real parser, inside the container that holds it", () => {
     const inline = [v.run("plain "), v.run("bold", { style: "bold" }), v.run("now", { at: 1794130692000, clock: "ago" }), v.link("docs", "https://colliepwa.dev")];
     const view: Node[] = [
@@ -154,11 +161,13 @@ run((t) => {
     expect(JSON.parse(tapped.stdout)).not.toHaveProperty("decisions");
   });
 
-  test("decide adds a Decision the parser takes; a hill tap reads as hillAnswer, another tap as tap", async () => {
+  test("decide adds a Decision the parser takes; a tap from any place reads as the one t.tap", async () => {
     const program = `import { run } from "./trick.ts";
 run((t) => {
   t.decide({ key: "case-24", title: "Rerun case 24?", summary: "It failed twice.", options: [{ intent: "rerun", label: "Rerun" }, { intent: "skip", label: "Skip", confirm: "Skip it" }], recommends: { intent: "rerun", why: "It passed yesterday." }, priority: "now" });
-  t.status({ text: t.hillAnswer === null ? (t.tap === null ? "none" : "tap:" + t.tap.intent) : t.hillAnswer.key + ":" + t.hillAnswer.intent + ":" + t.hillAnswer.text });
+  const tap = t.tap;
+  t.status({ text: tap === null ? "none" : tap.decision === null ? "tap:" + tap.intent : tap.decision + ":" + tap.intent + ":" + tap.text });
+  t.state.set("tap", tap);
 });
 `;
     const { dir, state } = await trickFolder(program);
@@ -169,8 +178,12 @@ run((t) => {
     expect(JSON.parse(plain.stdout).parts[0].chip.text).toBe("none");
     const answer = await runProgram(dir, factsFor(dir, state, { kind: "tap", rid: "0b9e8d7c-1111-4222-8333-444455556666", node: "hill/case-24", intent: "rerun", value: { text: "go" }, seen: "944a71314b332828" }));
     expect(JSON.parse(answer.stdout).parts[0].chip.text).toBe("case-24:rerun:go");
-    const tap = await runProgram(dir, factsFor(dir, state, { kind: "tap", rid: "0b9e8d7c-1111-4222-8333-444455556667", node: "belt", intent: "rerun" }));
+    const answerTap: unknown = JSON.parse(await readFile(join(state, "tap.json"), "utf8"));
+    expect(answerTap).toEqual({ rid: "0b9e8d7c-1111-4222-8333-444455556666", node: "hill/case-24", intent: "rerun", value: null, decision: "case-24", text: "go", from: null, seen: "944a71314b332828" });
+    const tap = await runProgram(dir, factsFor(dir, state, { kind: "tap", rid: "0b9e8d7c-1111-4222-8333-444455556667", node: "main", intent: "rerun", value: "fast", from: { session: "bluefin:w6X:3" } }));
     expect(JSON.parse(tap.stdout).parts[0].chip.text).toBe("tap:rerun");
+    const partTap: unknown = JSON.parse(await readFile(join(state, "tap.json"), "utf8"));
+    expect(partTap).toEqual({ rid: "0b9e8d7c-1111-4222-8333-444455556667", node: "main", intent: "rerun", value: "fast", decision: null, text: null, from: "bluefin:w6X:3", seen: null });
   });
 
   test("a thrown error: one warn card in the session and exit 0 when the trick has a session; exit 1 without one", async () => {

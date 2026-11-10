@@ -94,12 +94,12 @@ describe("collie trick init", () => {
     expect(await cmdTrickInit(d, ["Bad_Id"])).toBe(EXIT.USAGE);
   });
 
-  test("--sh writes the shell sample: an executable provider.sh, no helper", async () => {
+  test("--sh writes the shell sample: an executable program.sh, no helper", async () => {
     const d = await deps();
     expect(await cmdTrickInit(d, ["--sh", "legs"])).toBe(EXIT.OK);
     const dir = join(d.configDir, "tricks", "legs");
     expect(await readFile(join(dir, "trick.toml"), "utf8")).toContain('places = ["belt"]');
-    expect((await stat(join(dir, "provider.sh"))).mode & 0o111).not.toBe(0);
+    expect((await stat(join(dir, "program.sh"))).mode & 0o111).not.toBe(0);
     expect(await readFile(join(dir, "AGENTS.md"), "utf8")).toContain("collie trick check --run .");
     expect(await Bun.file(join(dir, "trick.ts")).exists()).toBe(false);
   });
@@ -191,7 +191,7 @@ describe("collie trick check", () => {
     expect(e.out.join("\n")).toContain("note: trick.toml /watch");
   });
 
-  test("runs: lists the command lines of the provider; a missing or binary provider is refused", async () => {
+  test("runs: lists the command lines of the program; a missing or binary program is refused", async () => {
     const dir = await folder('id = "gh"\nname = "GH"\nrun = "./gh.sh"\nplaces = ["belt"]\n', {
       "gh.sh": "#!/bin/sh\n# lists my PRs\nprs=$(gh pr list --json number)\ncurl -s https://example.com\necho '{}'\n",
     });
@@ -267,7 +267,7 @@ describe("collie trick check", () => {
     expect(modified.warnings.some((w) => w.file === "trick.ts" && w.kind === "spawn")).toBe(true);
     const e = await deps();
     await cmdTrickCheck(e, [dir]);
-    expect(e.out.join("\n")).toContain("helper: trick.ts is a modified helper (its first line says v2), so it is checked as the trick's own code");
+    expect(e.out.join("\n")).toContain("helper: trick.ts is a modified helper (its first line says v3), so it is checked as the trick's own code");
     expect(shippedHelperVersion(TRICK_HELPER)).toBe(HELPER_VERSION);
     expect(shippedHelperVersion("// collie trick helper v1\nexport {};\n")).toBeNull();
     const old = "// collie trick helper v1\nold text\n";
@@ -316,9 +316,9 @@ describe("collie trick check", () => {
     expect(runsLines([{ file: "p.sh", text: "#!/bin/sh\nnode x.js\necho hi\n" }]).map((r) => r.line)).toEqual([2]);
   });
 
-  test("--run runs the provider with the env scrub: no COLLIE_ variable, no key", async () => {
-    const dir = await folder('id = "env"\nname = "Env"\nrun = "bun provider.ts"\nplaces = ["belt"]\n', {
-      "provider.ts": [
+  test("--run runs the program with the env scrub: no COLLIE_ variable, no key", async () => {
+    const dir = await folder('id = "env"\nname = "Env"\nrun = "bun program.ts"\nplaces = ["belt"]\n', {
+      "program.ts": [
         'const leaked = Object.keys(process.env).filter((k) => k.startsWith("COLLIE_") || k.includes("KEY"));',
         "const facts = JSON.parse(await Bun.stdin.text());",
         'if (leaked.length > 0 || facts.trick.id !== "env") process.exit(7);',
@@ -430,7 +430,7 @@ describe("collie trick on, off and list", () => {
     expect(await cmdTrickSwitch(d, ["legs"], true)).toBe(EXIT.OK);
     expect(d.out.at(-1)).toBe(`legs is already on, with this code approved (sha256 ${hash}).`);
     // An edit, then on again: the new code is approved.
-    await writeFile(join(d.configDir, "tricks", "legs", "provider.sh"), "#!/bin/sh\necho changed\n");
+    await writeFile(join(d.configDir, "tricks", "legs", "program.sh"), "#!/bin/sh\necho changed\n");
     expect(await cmdTrickSwitch(d, ["legs"], true)).toBe(EXIT.OK);
     expect(JSON.parse(await readFile(path, "utf8")).on.legs.hash).not.toBe(hash);
     expect(await cmdTrickSwitch(d, ["legs"], false)).toBe(EXIT.OK);
@@ -448,7 +448,7 @@ describe("collie trick on, off and list", () => {
   test("list shows the bridge's state, last run and error when it answers", async () => {
     const d = await deps({
       rev: 5,
-      tricks: [{ host: "bluefin", id: "legs", name: "legs", icon: "plug", on: true, state: "failing", places: ["belt"], error: "The provider exited with 1", lastRunAt: "2026-11-08T09:41:00.000Z" }],
+      tricks: [{ host: "bluefin", id: "legs", name: "legs", icon: "plug", on: true, state: "failing", places: ["belt"], error: "The program exited with 1", lastRunAt: "2026-11-08T09:41:00.000Z" }],
       parts: [],
       present: [],
       path: "/usr/bin",
@@ -458,7 +458,7 @@ describe("collie trick on, off and list", () => {
     d.out.length = 0;
     expect(await cmdTrickList(d, [])).toBe(EXIT.OK);
     expect(d.out[0]).toMatch(/^ID\s+NAME\s+SWITCH\s+SKILL\s+STATE\s+LAST RUN\s+LAST ERROR$/);
-    expect(d.out[1]).toMatch(/^legs\s+legs\s+on\s+-\s+failing\s+2026-11-08T09:41:00.000Z\s+The provider exited with 1$/);
+    expect(d.out[1]).toMatch(/^legs\s+legs\s+on\s+-\s+failing\s+2026-11-08T09:41:00.000Z\s+The program exited with 1$/);
     expect(d.asked[0]).toBe("http://127.0.0.1:18999/api/tricks");
   });
 
@@ -525,7 +525,7 @@ describe("collie trick skill", () => {
   test("a trick that is off, changed, unknown or without a manifest teaches nothing, in one line, exit 1", async () => {
     const d = await onTrick();
     // changed: an edit to the code after the switch
-    await writeFile(join(d.configDir, "tricks", "legs", "provider.sh"), "#!/bin/sh\necho changed\n");
+    await writeFile(join(d.configDir, "tricks", "legs", "program.sh"), "#!/bin/sh\necho changed\n");
     expect(await cmdTrickSkill(d, ["legs"])).toBe(EXIT.FAIL);
     expect(d.err).toEqual(["legs changed since it was switched on, so it teaches nothing until you switch it on again"]);
     expect(d.out).toEqual([]);

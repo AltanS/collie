@@ -242,7 +242,7 @@ describe("one run", () => {
       `import { run } from "./trick.ts";
 run((t) => {
   t.belt({ label: "far too long a face word" });
-  t.status({ text: t.hillAnswer === null ? "asking" : "got " + t.hillAnswer.intent });
+  t.status({ text: t.tap?.decision == null ? "asking" : "got " + t.tap.intent });
   t.decide({ key: "case-24", title: "Rerun case 24?", summary: "It failed twice.", options: [{ intent: "rerun", label: "Rerun" }, { intent: "skip", label: "Skip" }], recommends: { intent: "rerun", why: "It passed yesterday." }, media: [{ file: "media/a.png" }] });
 });
 `,
@@ -265,7 +265,7 @@ run((t) => {
     const d = await deps();
     const dir = await trickWith(d, "boom", `import { run } from "./trick.ts";\nrun(() => { throw new Error("no gh on PATH"); });\n`, '["belt"]');
     expect(await cmdTrickDev(d, [dir])).toBe(EXIT.FAIL);
-    expect(d.out.join("\n")).toContain("problem: The provider exited with 1: error: no gh on PATH");
+    expect(d.out.join("\n")).toContain("problem: The program exited with 1: error: no gh on PATH");
     const e = await deps();
     const kept = await trickWith(e, "keep", `import { run } from "./trick.ts";\nrun((t) => { t.belt({ label: "ok" }); t.keepDecisions(); });\n`, '["belt"]');
     expect(await cmdTrickDev(e, [kept])).toBe(EXIT.OK);

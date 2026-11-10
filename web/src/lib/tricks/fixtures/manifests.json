@@ -4,7 +4,7 @@
     "name": "Browser leg",
     "run": "./legs.sh",
     "every": "30s",
-    "facts": 1,
+    "contract": 1,
     "icon": "flask",
     "places": [
       "belt",

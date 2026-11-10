@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import type { AgentView, WorkspaceView } from "../types.ts";
-import { parseFacts } from "../../web/src/lib/tricks/schema.ts";
+import { parseFacts, TRICK_CONTRACT } from "../../web/src/lib/tricks/schema.ts";
 import { CODE_FILES_MAX, diskTrickFs, trickCodeHash, type TrickFs } from "./code-hash.ts";
 import { createTrickScanner, MANIFEST_BYTES_MAX, readManifestText, TRICKS_MAX } from "./discover.ts";
 import { buildFacts, factsWorldOf } from "./facts.ts";
@@ -350,6 +350,9 @@ describe("the facts", () => {
     // The member id is the key a program keeps; `host` is the machine's name, for display only.
     expect(facts.memberId).toBe("bluefin-hc");
     expect(facts.host).toBe("bluefin");
+    // One contract number on the facts, no `v` beside it.
+    expect(facts.contract).toBe(TRICK_CONTRACT);
+    expect(Object.keys(facts)).not.toContain("v");
   });
 
   test("a solo install keys its sessions on its install id, never on the host name", () => {
