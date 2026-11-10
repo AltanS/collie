@@ -16,6 +16,7 @@ import {
   type CardWaiting,
 } from "./chat-cards";
 import type { ChatItem, ChatToolCall } from "@/lib/chat-items";
+import { CHAT_LOOK_BEFORE, ChatLookContext } from "@/lib/chat-look";
 import { testFileOpener } from "@/test/file-links";
 import { FileLinksProvider } from "./file-links";
 
@@ -485,10 +486,27 @@ describe("ToolGroup", () => {
 });
 
 describe("ItemView", () => {
-  it("draws the reader's own turn with a You caption", () => {
+  it("draws the reader's own turn as a well that hugs its text, named for the screen reader alone", () => {
     render(<ItemView item={{ id: "u", kind: "user", text: "please continue" }} />);
-    expect(screen.getByText("You")).toBeInTheDocument();
-    expect(screen.getByText("please continue")).toBeInTheDocument();
+    const well = screen.getByText("please continue").parentElement!;
+    expect(well).toHaveClass("w-fit", "ml-auto", "max-w-[85%]", "bg-status-working/8");
+    // The caption row is gone: the one "You" is the visually hidden first child of the well.
+    const you = screen.getAllByText("You");
+    expect(you).toHaveLength(1);
+    expect(you[0]).toHaveClass("sr-only");
+    expect(well.firstElementChild).toBe(you[0]);
+  });
+
+  it("draws the caption row of the look before 1.29.0 under that look's provider", () => {
+    render(
+      <ChatLookContext.Provider value={CHAT_LOOK_BEFORE}>
+        <ItemView item={{ id: "u", kind: "user", text: "please continue" }} />
+      </ChatLookContext.Provider>,
+    );
+    const you = screen.getByText("You");
+    expect(you).not.toHaveClass("sr-only");
+    expect(you.closest(".sr-only")).toBeNull();
+    expect(screen.getByText("please continue").parentElement).not.toHaveClass("w-fit");
   });
 
   it("keeps thinking behind a fold", async () => {

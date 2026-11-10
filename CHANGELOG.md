@@ -43,6 +43,13 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **The session switcher has a filter field.** On a list of more than five sessions, the Switch pane sheet and the large screen's sidebar start with a field that narrows the list as you type. A loose match finds a session by its name, space, tab, branch, folder, agent or machine, and the matched letters are marked. The list keeps its order and its sections. A session found by a field its row does not show, such as the branch, shows that field on its second line. Enter opens the first session shown, and the field is empty again the next time the sheet opens.
 - **The dashboard has a filter field too.** On a dashboard of more than five sessions, a magnifier at the right end of the controls opens a field under them. Typing narrows the rows with the same loose match, marks the matched letters, keeps the order and the workspace groups, and says what is left (`3 of 14`). A session found by its folder, agent or machine, which its row does not show, shows that field on its second line. It combines with the workspace choice and the needs-you switch, Enter opens the first session shown, and the query stays while you visit a session and come back. The magnifier reads pressed while a query is set.
 
+### Changed
+
+- **Your own messages in Chat and History are a right-aligned well with no caption.** The orange well now hugs its text, at most 85 percent of the column wide, and the "You" row is gone, so a short question costs one line. The time sits at the end of the last line in Chat and on the well's last row in History, and a screen reader still hears "You" first.
+- **A run of tool steps is one soft ground, and a card's kind word is muted.** In Chat, a working run is drawn as one panel with thin lines between its steps, not a stack of boxes, and the folded row has no frame of its own. The word that names a step, such as Edit or Run, takes the muted ink the other rows already use.
+- **Code blocks are neutral and set at 12px.** A fenced block stands on the grey ground with a thin edge, no longer on the info blue, and its text is one size larger. Inline code keeps its blue.
+- **A new turn starts further down, and quiet lines sit between two thin lines.** In Chat a new turn starts 20px under the block above, and the blocks of one agent run sit 8px apart. Notices, the compaction marker and the top-of-thread line, and History's day divider and compaction marker, are drawn the same way.
+
 ## [1.28.1] - 2026-11-10
 
 ### Changed

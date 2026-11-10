@@ -39,6 +39,7 @@ afterwards. A copy-paste gives you six places to remember instead.
 | `ui/collapse.tsx` → `CollapseSwap` | Two surfaces taking turns in ONE band, as one motion: a single-cell grid, one height animation (the tall one's), and the short stand-in pinned in the cell fading over it. The fix for two sibling collapses on opposite gates, where the leaving surface is pushed the height of the band by the arriving one. The stand-in must be the shorter of the two. |
 | `ui/copyable-block.tsx` | Any block with a caller-supplied literal to copy. Owns an always-visible, opaque Copy icon over the block's top-right corner and the success or failure status, never the content's formatting. The icon itself confirms the outcome on every screen, including History and Files, which have no status line: a check (`--status-working`) or an X (`--status-blocked`) for 1.5s, then the Copy glyph again, in the same 24px box. Its transparent 44px tap target may extend beyond the block; it reserves no gutter or height and deliberately covers text beneath it. Without a clipboard API it draws the content alone. |
 | `ui/diff-lines.tsx` | A few lines of a diff as one mono block: `+` added, `-` removed, `@@` a hunk head, the rest context, in the Changes view's own tints and sign inks (`DIFF_ROW_TONE`, `DIFF_SIGN_TONE`, a minus drawn as `−`). Long lines never wrap: the block scrolls sideways inside its own frame and the page never overflows. An optional file name sits small over the lines. Owns no words. A trick's and a Decision view's `diff` (2026-11-10). The Changes view and Chat's diff card still carry their own copy of the tints. |
+| `ui/divided-line.tsx` | A quiet line of the thread: centred 11px muted text between two hairlines. Chat's notices, compaction marker and top-of-thread line, and History's day divider and compaction marker. Owns no words. |
 | `ui/fab.tsx` | The floating New button: a 48px-tall "+ New" pill in the outline-button look (page fill, a uniform 1px `--border` edge, foreground ink, `shadow-md`; `dark:bg-card` lifts it off the near-black page; hover and press take `--accent`) with the house 2px corner, that folds to a 48px round "+" once the list scrolls (`collapsed`) and opens out again at the top; width and corner move on one transition that `motion-reduce` turns off. It is `fixed` at the right edge of the content column, portalled to `<body>`, at `z-30` (under the toast's `z-40` and the sheets' `z-50`). The ONE exception to "the sheet is the app's only floating layer", and only on the dashboard's Dashboard tab. It owns the look, the busy spinner swap and the name; the caller owns whether it is drawn and the `bottom-` that clears its footer. Exception rules below the table. |
 | `ui/focus-image.tsx` | A picture in a frame of a stated ratio and an optional height cap, on the muted ground with a thin border and the house corner (`FocusFrame`), filled by `FocusImage`: `fit` contain or cover, and a focus point in percent with a zoom about it (`focusStyle`), so a crop keeps the named point in view. With `onOpen` the frame is a button named by `label`. A trick's `image`, and a Decision view's placed `image` and `compare` (2026-11-10). |
 | `ui/fold-toggle.tsx` | A quiet tap that opens a part of a card in place, and the part: `MoreToggle` ("More" and "Less" in one `OneOf` slot, the chevron that turns), `NoteToggle` (the note glyph and the caller's words, for an optional text answer; a required one is drawn open, never behind it) and `FoldPanel` (the part, through `Collapse`). A 44px ghost button in muted ink with `aria-expanded`, and `aria-controls` only while the part is drawn. Owns no words. The Decision card's More and Add a note (M96). |
@@ -471,6 +472,28 @@ problem; ask first whether the surface can stand on the page.
 Every top-level block on a route — section label, group frame, notice, footer — begins and
 ends on the same x. The page gutter is **16px** (`px-4`). Nothing in the content column is
 full-bleed; only viewport chrome under the header bar is — the two-placement rule in §1.
+
+### Chat's thread: steps, code, your turn, spacing (1.29.0)
+
+**A run of tool steps in Chat is ONE ground.** The run stands on `bg-muted/40` with one radius and
+`divide-border` hairlines between its rows. A card inside a run drops its own frame; a card outside a run
+keeps it. Reason: a work run read as a stack of boxes, each with its own edge, and the eye counted the boxes
+instead of reading the work.
+
+**A fenced code block stands on `--muted` with a `--border` edge, at 12px mono.** The inline code chip keeps
+the info blue, because the blue says "this is literal". Reason: a blue ground on every block out-shouted the
+prose around it.
+
+**The person's own turn is a well that hugs its text.** It is at most 85 percent of the column wide, sits at
+the right, carries no caption row and shows its time on its last line. Orange stays its colour. The speaker is
+named for the screen reader only, by a visually hidden label as the well's first child. Chat
+(`chat-cards.tsx`) and History (`transcript-view.tsx`) draw the same well. Reason: the colour and the side
+already say whose turn it is, and a caption row spent a line on it.
+
+**In Chat a new turn starts 20px under the block above, and blocks inside an agent run sit 8px apart.**
+Reason: the old 12px between everything made a question and the answer to the one before it look alike.
+Notices, the compaction marker and the top-of-thread line are quiet lines between two hairlines
+(`ui/divided-line.tsx`), as History's day divider is.
 
 ---
 

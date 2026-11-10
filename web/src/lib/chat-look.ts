@@ -1,12 +1,12 @@
-// THE LOOK OF CHAT, AS A SET OF SWITCHES. A design round, not a setting.
+// THE LOOK OF CHAT, AS A SET OF SWITCHES. A design round that landed.
 //
-// Each field names one idea from the chat look round (experiments/chat-look) and its options. The
-// word `today` is what Chat draws now, and `CHAT_LOOK` holds `today` in every field, so a component
-// that reads it with no provider above draws exactly what it drew before this file existed. Only
-// the playground's "Chat look" section mounts a provider with other words.
+// `CHAT_LOOK` is the look Chat draws since 1.29.0, and every component that reads it with no provider
+// above draws exactly that. The word `today` in a field names the drawing Chat had BEFORE 1.29.0, and
+// `CHAT_LOOK_BEFORE` holds it in every field. The switch object remains for one reason: the playground's
+// "Chat look" section mounts a provider so the two looks, and each word between them, can be shown side
+// by side. Nothing else reads a word other than the default.
 //
-// Nothing here is an operator preference and nothing persists it. When a word is picked, the pick
-// lands in the components as the new default and its switch goes away.
+// Nothing here is an operator preference and nothing persists it.
 
 import { createContext, useContext } from "react";
 
@@ -35,7 +35,23 @@ export interface ChatLook {
   readonly cardLabel: "today" | "muted";
 }
 
+/** The look Chat draws since 1.29.0. Four fields stay `today`: the operator did not pick a word for them. */
 export const CHAT_LOOK: ChatLook = {
+  rhythm: "airy",
+  userTurn: "hug",
+  agentHead: "today",
+  steps: "ground",
+  code: "neutral-12",
+  table: "today",
+  prose: "today",
+  quiet: "divided",
+  chip: "today",
+  gutter: "today",
+  cardLabel: "muted",
+};
+
+/** The look before 1.29.0, every field `today`. For the playground's compare only; no component defaults to it. */
+export const CHAT_LOOK_BEFORE: ChatLook = {
   rhythm: "today",
   userTurn: "today",
   agentHead: "today",
@@ -48,17 +64,6 @@ export const CHAT_LOOK: ChatLook = {
   gutter: "today",
   cardLabel: "today",
 };
-
-/**
- * A class an element wears only while a word other than `today` changed it, and no stylesheet of the app reads.
- * The playground's Mark changes switch outlines it, so a compare can show WHERE an option differs. With every word
- * at `today` no element wears it, so the app's markup is unchanged.
- */
-export const LOOK_MARK = "chat-look-mark";
-/** The same, for a block whose only change is the space around it: the switch marks its left edge. */
-export const LOOK_MARK_GAP = "chat-look-mark-gap";
-/** The same, for the stream's side gutter: the switch tints the gutter itself. */
-export const LOOK_MARK_GUTTER = "chat-look-mark-gutter";
 
 export const ChatLookContext = createContext<ChatLook>(CHAT_LOOK);
 

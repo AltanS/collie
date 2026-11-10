@@ -72,6 +72,23 @@ function renderStream(
 }
 
 describe("SessionStream", () => {
+  it("draws the 1.29 look by default and carries no chat-look marker class into the app's markup", () => {
+    const { container } = renderStream(
+      feedOf({
+        status: { kind: "live" },
+        entries: [
+          entry("u", BASE, "a question", { role: "user" }),
+          entry("a", BASE + 1, "an answer with `code`\n\n```\nblock\n```"),
+        ],
+      }),
+    );
+    expect(container.querySelector("[class*='chat-look-mark']")).toBeNull();
+    expect(Array.from(container.querySelectorAll("*")).some((el) => Array.from(el.classList).some((c) => c.startsWith("chat-look-mark")))).toBe(false);
+    // The hug well, and a code block on the neutral ground at 12px.
+    expect(screen.getByText("a question").parentElement).toHaveClass("w-fit");
+    expect(container.querySelector("pre")).toHaveClass("bg-muted", "text-xs");
+  });
+
   it("draws the turns it holds, oldest first", () => {
     renderStream(
       feedOf({

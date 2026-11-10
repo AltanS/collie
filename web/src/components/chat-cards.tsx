@@ -48,11 +48,12 @@ import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Collapse } from "@/components/ui/collapse";
 import { CopyableBlock } from "@/components/ui/copyable-block";
+import { DividedLine } from "@/components/ui/divided-line";
 import { OneOf } from "@/components/ui/one-of";
 import { SectionLabel } from "@/components/ui/section-label";
 import { useLocale } from "@/hooks/use-locale";
 import type { ChatItem, ChatToolCall, ChatToolStatus } from "@/lib/chat-items";
-import { LOOK_MARK, useChatLook, type ChatLook } from "@/lib/chat-look";
+import { useChatLook, type ChatLook } from "@/lib/chat-look";
 import { findFilePaths } from "@/lib/file-paths";
 import type { PendingState } from "@/lib/durable-pending";
 import { clockTime } from "@/lib/format";
@@ -217,24 +218,24 @@ export const LIVE_TAIL = 6;
 
 /** Chat look D (lib/chat-look.ts): a fold row's edge. Reserved in every word, so only its colour changes. */
 function foldEdge(steps: ChatLook["steps"]): string {
-  return steps === "today" ? "rounded-md border border-border" : `rounded-md border border-transparent ${LOOK_MARK}`;
+  return steps === "today" ? "rounded-md border border-border" : "rounded-md border border-transparent";
 }
 
 /** Chat look D: the folded run's one row. `today` is the string the row has always worn. */
 const FOLDED_RUN = {
   today: "rounded-md border border-border",
-  quiet: `rounded-md border border-transparent ${LOOK_MARK}`,
-  ground: `rounded-md border border-transparent bg-muted/40 ${LOOK_MARK}`,
+  quiet: "rounded-md border border-transparent",
+  ground: "rounded-md border border-transparent bg-muted/40",
   // Square, because a left accent is never drawn with a rounded corner.
-  rail: `rounded-none border border-transparent border-l-rule ${LOOK_MARK}`,
+  rail: "rounded-none border border-transparent border-l-rule",
 } as const;
 
 /** Chat look D: an open run's frame. */
 const OPEN_RUN = {
   today: "flex flex-col gap-1.5",
   quiet: "flex flex-col gap-1.5",
-  ground: `flex flex-col divide-y divide-border rounded-md bg-muted/40 ${LOOK_MARK}`,
-  rail: `flex flex-col gap-1.5 border-l border-rule pl-2 ${LOOK_MARK}`,
+  ground: "flex flex-col divide-y divide-border rounded-md bg-muted/40",
+  rail: "flex flex-col gap-1.5 border-l border-rule pl-2",
 } as const;
 
 /**
@@ -247,7 +248,7 @@ const InRunCtx = createContext(false);
 function useRunFrame(): string | false {
   const inRun = useContext(InRunCtx);
   const steps = useChatLook().steps;
-  return inRun && (steps === "ground" || steps === "rail") && `border-transparent bg-transparent shadow-none ${LOOK_MARK}`;
+  return inRun && (steps === "ground" || steps === "rail") && "border-transparent bg-transparent shadow-none";
 }
 
 /**
@@ -507,20 +508,6 @@ function Notice({ item }: { item: Extract<ChatItem, { kind: "notice" }> }) {
 }
 
 /**
- * Chat look H (lib/chat-look.ts): a quiet line as History's day divider draws one, centred 11px muted
- * text between two hairlines. Shared by a short notice, the compaction marker and the thread's top line.
- */
-export function DividedLine({ partial = false, children }: { partial?: boolean; children: ReactNode }) {
-  return (
-    <div data-partial={partial ? "true" : undefined} className={`flex items-center gap-2 py-1 ${LOOK_MARK}`}>
-      <div aria-hidden className="h-px min-w-4 flex-1 bg-border" />
-      <p className="max-w-[80%] text-center text-[11px] font-medium leading-snug text-muted-foreground">{children}</p>
-      <div aria-hidden className="h-px min-w-4 flex-1 bg-border" />
-    </div>
-  );
-}
-
-/**
  * A compaction. Claude Code draws one rule and a label; so does this, and the recap behind it is
  * the reader's to ask for (Settings → Appearance). With the recap withheld there is no text to
  * build, only the marker. With it, the recap folds behind the same label and its body enters the
@@ -579,7 +566,7 @@ function UserTurn({ text, ts, pending, notInLog = false }: { text: string; ts?: 
       data-slot={pending === undefined ? undefined : "pending-turn"}
       data-pending={pending}
       className={cn(
-        neutral ? `rounded-md border border-border bg-muted px-3 py-2 ${LOOK_MARK}` : "rounded-md border border-status-working/25 bg-status-working/8 px-3 py-2",
+        neutral ? "rounded-md border border-border bg-muted px-3 py-2" : "rounded-md border border-status-working/25 bg-status-working/8 px-3 py-2",
         // A line the program has not written back yet: the same well at a lower weight, so it reads as "mine, on its way".
         pending !== undefined && "opacity-70",
       )}
@@ -674,11 +661,12 @@ function BareUserTurn({
       data-pending={pending}
       className={cn(
         "rounded-md border border-status-working/25 bg-status-working/8 px-3 py-2",
-        LOOK_MARK,
         hug && "ml-auto w-fit max-w-[85%]",
         pending !== undefined && "opacity-70",
       )}
     >
+      {/* The caption row is gone, so the speaker is named for the screen reader alone. */}
+      <span className="sr-only">{t("transcript.youLabel")}</span>
       <p className="font-content whitespace-pre-wrap break-words text-sm">
         {text}
         {meta && (
@@ -822,7 +810,7 @@ function ToolHead({
   return (
     <div className="flex min-h-9 min-w-0 items-center gap-2 px-3 py-1.5 text-xs">
       <Icon name={icon} className="size-3.5 shrink-0 text-muted-foreground" />
-      <span className={muted ? `shrink-0 font-medium text-muted-foreground ${LOOK_MARK}` : "shrink-0 font-medium"}>{label}</span>
+      <span className={muted ? "shrink-0 font-medium text-muted-foreground" : "shrink-0 font-medium"}>{label}</span>
       {badge}
       <span className="flex min-w-0 flex-1 items-center">{children}</span>
       {trailing}
