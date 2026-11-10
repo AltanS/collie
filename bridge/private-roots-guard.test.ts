@@ -20,6 +20,13 @@ const ROOT = join(import.meta.dir, "..");
 const SCANNED = ["bridge", "cli"];
 /** How far above a site its private root may be named: the function that computes the path. */
 const LOOK_BACK = 12;
+/**
+ * Files in the scanned folders that are not Collie code. `cli/trick-kit/trick.ts` is the trick helper
+ * (M94): `collie trick init` copies it as text into a trick folder, where it runs under plain bun, outside
+ * this repo. Its 0600 and 0700 writes go to the trick's own state folder, which the bridge hands it, not to
+ * Collie's state or config folder. It is user-side code shipped as a file, so this rule does not reach it.
+ */
+const SHIPPED_AS_TEXT: ReadonlySet<string> = new Set(["cli/trick-kit/trick.ts"]);
 
 const SITE = /mode: 0o700|mode: 0o600|[(,]\s*0o600\)|[(,]\s*0o700\)|BEACON_DIR_MODE\)/;
 
@@ -43,6 +50,7 @@ const ELSEWHERE: readonly Elsewhere[] = [
   { file: "bridge/math/store.ts", count: 7, why: "every path is under `mathPackDir(deps.stateDir)`, `<stateDir>/math` (ADR 0132): the folder, a download's part file, and a version's temporary folder with its files and `pack.json`" },
   { file: "bridge/themes/registry.ts", count: 3, why: "every path is under `themesDir(deps.stateDir)`, `<stateDir>/themes` (M59 spec 06): the folder at 0700 and the registry copy's part file at 0600, renamed onto `registry.json`" },
   { file: "bridge/tricks/switches.ts", count: 1, why: "the lock file is `${path}.lock`, a sibling of `<stateDir>/tricks/switches.json`, inside the state folder (M94)" },
+  { file: "cli/trick.ts", count: 1, why: "`runAgainstFixture` makes the state folder of one fixture run: a `mkdtemp` folder under the OS temp dir, or the scratch folder the person names with `collie trick dev --state <dir>`; never the bridge's own state (M94)" },
   { file: "bridge/stt/whistle-model.ts", count: 6, why: "every path is `whistlePaths(deps.stateDir)`, the model's folder inside the state folder" },
   { file: "bridge/stt/local-cli.ts", count: 2, why: "one recording's mkdtemp folder under the OS temp dir, the user's own; removed in finally" },
   { file: "bridge/durable/log.ts", count: 8, why: "every path is `<stateDir>/durable/<source>/<pane>.jsonl` or the cursor beside it, `<pane>.cursor.json` (the two chmods hold the folder at 0700 and the file at 0600 when they were there before): `DurableLogs` is handed `sourceLogDir(cfg.stateDir, source.name)` by index.ts for each program, and `moveFlatLogs` makes `durable/default/` once, at boot" },
@@ -68,7 +76,7 @@ function sourceFiles(dir: string): string[] {
   const out: string[] = [];
   for (const entry of readdirSync(join(ROOT, dir), { withFileTypes: true, recursive: true })) {
     const full = join(entry.parentPath, entry.name);
-    if (entry.isFile() && /\.tsx?$/.test(entry.name) && !/\.test\.tsx?$/.test(entry.name)) out.push(full);
+    if (entry.isFile() && /\.tsx?$/.test(entry.name) && !/\.test\.tsx?$/.test(entry.name) && !SHIPPED_AS_TEXT.has(rel(full))) out.push(full);
   }
   return out;
 }

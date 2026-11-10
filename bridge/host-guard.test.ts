@@ -30,6 +30,13 @@ const RAW_PLATFORM_READS: ReadonlyMap<string, number> = new Map([
   ["cli/sys.ts", 5],
 ]);
 const SCANNED = ["bridge", "cli", "scripts"];
+/**
+ * Files in the scanned folders that are not Collie code. `cli/trick-kit/trick.ts` is the trick helper
+ * (M94): `collie trick init` copies it as text into a trick folder, where it runs under plain bun, outside
+ * this repo and without `bridge/host.ts`. It is user-side code shipped as a file, so the host rule for
+ * Collie's own source does not reach it.
+ */
+const SHIPPED_AS_TEXT: ReadonlySet<string> = new Set(["cli/trick-kit/trick.ts"]);
 
 const PATTERNS = {
   startsWithSlash: /\.startsWith\(\s*"\/"\s*\)/,
@@ -68,6 +75,8 @@ const NOT_REACHED_BY_WINDOWS: readonly Allowed[] = [
   { file: "cli/install-kind.ts", pattern: "splitOnSlash", count: 2, why: "git remote URLs, always slashes" },
   { file: "cli/update.ts", pattern: "splitOnSlash", count: 2, why: "a literal list of payload names, joined by path.join; and a systemd unit path" },
   { file: "cli/fakes.ts", pattern: "splitOnSlash", count: 2, why: "test-only fake filesystem, keys are POSIX by design" },
+  { file: "cli/trick.ts", pattern: "startsWithSlash", count: 1, why: "`isBareImport` reads an import specifier, a module path written with `/` on every host, never a file path" },
+  { file: "cli/trick.ts", pattern: "splitOnSlash", count: 1, why: "`isScannedFile` reads a path `walkTrickCode` built by joining names with `/` on every host (M94)" },
 ];
 
 /**
@@ -108,6 +117,7 @@ function hitsByFile(): Map<string, number> {
   for (const top of SCANNED) {
     for (const file of sourceFiles(join(ROOT, top))) {
       const name = relative(ROOT, file).split(sep).join("/");
+      if (SHIPPED_AS_TEXT.has(name)) continue;
       for (const line of readFileSync(file, "utf8").split("\n")) {
         if (isCommentLine(line)) continue;
         for (const [id, re] of Object.entries(PATTERNS)) {
