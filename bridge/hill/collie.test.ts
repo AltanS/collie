@@ -6,7 +6,7 @@ import { join } from "node:path";
 import type { HillCollieRef, HillDecision, HillPostInput } from "../../web/src/lib/hill/wire.ts";
 import { readDecision } from "./parse.ts";
 import { memoryHillReceipts } from "./receipts.ts";
-import { COLLIE_BEING_ANSWERED, COLLIE_CANNOT_ACT, HillService, type HillAgentSender, type HillCollieSender, type HillCollieVerdict, type HillPostAnswer } from "./service.ts";
+import { HILL_ANSWER_RUNNING, HILL_NO_ANSWER_HANDLER, HillService, type HillAgentSender, type HillCollieSender, type HillCollieVerdict, type HillPostAnswer } from "./service.ts";
 import { HillStore } from "./store.ts";
 
 // COLLIE'S OWN DECISION (crew slice 3): kind `collie`, minted only by bridge code. Its answer types
@@ -140,7 +140,7 @@ describe("answering Collie's own Decision", () => {
     expect(await tap(r, decision, 10, "use")).toMatchObject({ code: "rejected", reason: "The trick changed again. A new card replaces this one.", state: "open" });
     expect(r.store.get(decision.id)?.state).toBe("open");
     r.verdict = "throw";
-    expect(await tap(r, decision, 11, "keep")).toMatchObject({ code: "rejected", reason: COLLIE_CANNOT_ACT, state: "open" });
+    expect(await tap(r, decision, 11, "keep")).toMatchObject({ code: "rejected", reason: HILL_NO_ANSWER_HANDLER, state: "open" });
     r.verdict = { ok: true };
     expect(await tap(r, decision, 12, "keep")).toMatchObject({ code: "ok", state: "answered" });
   });
@@ -152,7 +152,7 @@ describe("answering Collie's own Decision", () => {
     expect(r.calls).toEqual([]);
     const bare = rig(null, false);
     const other = posted(bare.hill.postCollie(SENDER, card(1)));
-    expect(await tap(bare, other, 10, "use")).toMatchObject({ code: "rejected", reason: COLLIE_CANNOT_ACT });
+    expect(await tap(bare, other, 10, "use")).toMatchObject({ code: "rejected", reason: HILL_NO_ANSWER_HANDLER });
     expect(await tap(bare, other, 11, "answer")).toMatchObject({ code: "rejected", state: "open" });
   });
 
@@ -166,8 +166,8 @@ describe("answering Collie's own Decision", () => {
     };
     expect(await tap(r, decision, 10, "use")).toMatchObject({ code: "ok", state: "answered" });
     expect(seen).toEqual([
-      { ok: false, missing: false, error: COLLIE_BEING_ANSWERED },
-      { ok: false, code: "bad_supersedes", error: COLLIE_BEING_ANSWERED },
+      { ok: false, missing: false, error: HILL_ANSWER_RUNNING },
+      { ok: false, code: "bad_supersedes", error: HILL_ANSWER_RUNNING },
     ]);
     // After the answer the guard is gone: the closed card answers as closed, not as being answered.
     expect(r.hill.withdrawCollie(SENDER, decision.id, "x")).toMatchObject({ ok: false, error: `${decision.id} is answered, nothing to withdraw` });

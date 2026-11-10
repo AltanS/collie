@@ -498,9 +498,9 @@ function keyOf(decision: HillDecision): string {
 }
 
 /** The message a Collie answer refused with, when no handler is wired. */
-export const COLLIE_CANNOT_ACT = "Collie cannot act on this answer here.";
+export const HILL_NO_ANSWER_HANDLER = "Collie cannot act on this answer here.";
 /** The reason a withdraw is refused while that Collie Decision's answer runs. */
-export const COLLIE_BEING_ANSWERED = "the decision is being answered";
+export const HILL_ANSWER_RUNNING = "the decision is being answered";
 
 function refuse(code: HillRefusalCode | null, error: string): HillPostAnswer {
   return { ok: false, code, error };
@@ -742,13 +742,13 @@ export class HillService {
    */
   postCollie(from: HillCollieSender, input: HillPostInput): HillPostAnswer {
     if ((input.images ?? []).length > 0) return refuse("too_many_images", "a Collie decision carries no image");
-    if (input.supersedes !== undefined && input.supersedes !== null && this.answering.has(input.supersedes)) return refuse("bad_supersedes", COLLIE_BEING_ANSWERED);
+    if (input.supersedes !== undefined && input.supersedes !== null && this.answering.has(input.supersedes)) return refuse("bad_supersedes", HILL_ANSWER_RUNNING);
     return this.postAny(from, { ...input, about: null, replyTo: null, images: [] }, {});
   }
 
   /** Collie takes back one of its open Decisions: it closes `withdrawn` with `reason`. Never while its answer runs. */
   withdrawCollie(from: HillCollieSender, id: string, reason: string): HillOneAnswer {
-    if (this.answering.has(id)) return { ok: false, missing: false, error: COLLIE_BEING_ANSWERED };
+    if (this.answering.has(id)) return { ok: false, missing: false, error: HILL_ANSWER_RUNNING };
     return this.withdrawAny(from, id, reason);
   }
 
@@ -1235,12 +1235,12 @@ export class HillService {
    */
   private async actForCollie(decision: HillDecision, intent: string): Promise<string | null> {
     const ref = decision.from.ref;
-    if (ref === undefined || this.deps.onCollieAnswer === undefined) return COLLIE_CANNOT_ACT;
+    if (ref === undefined || this.deps.onCollieAnswer === undefined) return HILL_NO_ANSWER_HANDLER;
     try {
       const verdict = await this.deps.onCollieAnswer(ref, intent);
       return verdict.ok ? null : verdict.reason;
     } catch {
-      return COLLIE_CANNOT_ACT;
+      return HILL_NO_ANSWER_HANDLER;
     }
   }
 
