@@ -497,6 +497,20 @@ describe("images leave with their decision", () => {
     expect(existsSync(mediaFolder(r, first.decision.id))).toBe(false);
   });
 
+  test("a clear removes the folder of every closed decision and leaves an open decision's images", () => {
+    const r = rig();
+    const a = file(r.work, "a.png", png());
+    const closed = r.hill.post(POSTER, input([{ path: a }]));
+    const open = r.hill.post(POSTER, input([{ path: a }]));
+    if (!closed.ok || !open.ok) throw new Error("post");
+    r.hill.withdraw(POSTER, closed.decision.id);
+    expect(existsSync(mediaFolder(r, closed.decision.id))).toBe(true);
+    expect(r.hill.clear(null)?.cleared).toEqual([closed.decision.id]);
+    expect(existsSync(mediaFolder(r, closed.decision.id))).toBe(false);
+    expect(existsSync(mediaFolder(r, open.decision.id))).toBe(true);
+    expect(r.hill.mediaFile(closed.decision.id, closed.decision.media[0]!.id)).toBeNull();
+  });
+
   test("the sweep, and the start, remove a folder whose decision is gone", () => {
     const r = rig();
     const a = file(r.work, "a.png", png());

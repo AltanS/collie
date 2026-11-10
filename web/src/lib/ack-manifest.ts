@@ -98,7 +98,11 @@ export const ACK_MANIFEST = {
   },
   setHillSwitch: {
     channel: "inline",
-    why: "The Hill's switch on Settings → Alerts and on the Hill's own off state (hooks/use-hill-switch.ts): the switch itself is the receipt, it holds the new place while the call runs and the snapshot's hillOff then confirms it on every phone; a failed call puts the switch back and says so on the status line, because the operator asked for something that did not happen.",
+    why: "The Hill's switch in Settings and on the Hill's own off state (M96): the switch itself is the receipt, it holds the new place while the call runs and the snapshot's `hillOff` then confirms it; a failed call puts the switch back and lands as a line under it, because the operator asked for something that did not happen.",
+  },
+  clearHillClosed: {
+    channel: "silent",
+    why: "Clear on the Hill's Answered group (the second tap of its arm): the closed rows leaving the list IS the receipt, and the group goes with them, so a success says nothing more; a failed call puts the rows back and is said on the status channel as `Could not clear. Try again.`",
   },
   cancelHeldSend: {
     channel: "silent",

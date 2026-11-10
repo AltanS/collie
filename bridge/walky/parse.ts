@@ -150,7 +150,7 @@ export function readReceipt(value: JsonValue | undefined): WalkyReceipt | null {
 export type WalkyOp = "send" | "inbox" | "who" | "status" | "ack" | "cancel" | "off" | "on" | "pane" | HillOp;
 
 /** The hill's operations (M96), beside walky's own. Added, never a change to one of them. */
-export type HillOp = "hill.post" | "hill.status" | "hill.withdraw" | "hill.list";
+export type HillOp = "hill.post" | "hill.status" | "hill.withdraw" | "hill.list" | "hill.clear";
 
 export type WalkyRequest =
   | {
@@ -172,11 +172,13 @@ export type WalkyRequest =
   // The hill (M96): a post's fields are read by bridge/hill/parse.ts, which owns their shape.
   | { readonly op: "hill.post"; readonly markers: readonly BeaconMarker[]; readonly fields: JsonObject }
   | { readonly op: "hill.status" | "hill.withdraw"; readonly markers: readonly BeaconMarker[]; readonly id: string }
-  | { readonly op: "hill.list"; readonly markers: readonly BeaconMarker[] };
+  | { readonly op: "hill.list"; readonly markers: readonly BeaconMarker[] }
+  // Clear every closed decision, from the person's terminal: it names no pane and no id.
+  | { readonly op: "hill.clear"; readonly markers: readonly BeaconMarker[] };
 
 /** Whether a request is one of the hill's operations (M96). */
 export function isHillOp(op: string | null): op is HillOp {
-  return op === "hill.post" || op === "hill.status" || op === "hill.withdraw" || op === "hill.list";
+  return op === "hill.post" || op === "hill.status" || op === "hill.withdraw" || op === "hill.list" || op === "hill.clear";
 }
 
 /**
@@ -234,7 +236,7 @@ export function readWalkyRequest(line: string): WalkyRequestRead {
     const id = text(row, "id");
     return id !== null && HILL_ID_RE.test(id) ? done({ op, markers, id }) : unread(HILL_BAD_ID, markers);
   }
-  if (op === "hill.list") return done({ op, markers });
+  if (op === "hill.list" || op === "hill.clear") return done({ op, markers });
   if (op !== "send") return unread(op === null ? BAD_REQUEST_LINE : unknownOp(op), markers);
   const id = text(row, "id");
   // The address as the bridge spells it: `parseAddress` reads past blanks, and the signed `to` must not

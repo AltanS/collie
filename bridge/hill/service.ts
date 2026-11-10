@@ -48,6 +48,14 @@
 // `pushTag` in the same write; every write goes through `save`, which closes the notification of a
 // decision that closed holding a slot no successor took.
 //
+// CLEAR (the phone's and the CLI's Clear). A person clears the closed decisions: `clear` removes them from
+// the store with their images, bumps the revision so every phone updates, writes one `hill.clear` audit
+// line, and never touches an open decision. It works with the Hill off, because it types nothing, posts
+// nothing and rings nothing, as status, list and withdraw do. What stays of a cleared decision is a
+// tombstone (store.ts): a repeated post request id is refused instead of posting twice, a late answer
+// reads `gone` with the state it closed in, and a trick's answered key stays closed. The answer receipts
+// are a file of their own and are not touched, so a retried answer `rid` still gets its stored receipt.
+//
 // THE SWITCH (switch.ts). With the Hill off, a post from an agent or a trick is refused (`hill_off`) and
 // an answer from the phone is refused too (`off`), so nothing pushes, nothing is typed and no tap runs.
 // The open decisions stay as they are: nothing withdraws or closes them, and they show again when the
@@ -100,7 +108,7 @@ import { readPostFields } from "./parse.ts";
 import { mintMediaId, type HillImageBytes, type HillMediaStore } from "./media.ts";
 import { HILL_PUSH_RATE, hillPushTag, type HillPushPort } from "./push.ts";
 import { hillAnswerDigest, type HillAnswerOutcome, type HillReceiptRecord, type HillReceiptSurface } from "./receipts.ts";
-import type { HillStore } from "./store.ts";
+import type { HillStore, HillTombstone } from "./store.ts";
 import type { HillLeadForward, HillListAnswer } from "./crew.ts";
 
 /** An agent in a pane this bridge placed: what the socket can name. */
@@ -286,6 +294,17 @@ export type HillOneAnswer = { readonly ok: true; readonly decision: HillDecision
 
 /** The sentence a crew member answers a post with. */
 export const NOT_ON_LEAD = "the hill is not merged across the crew yet; post from a session on the lead machine";
+/** What a post says when its request id already posted a decision that a person has since cleared. */
+export function clearedRepost(id: string): string {
+  return `this request id already posted ${id}, which was cleared from the Hill; post with a new --request-id to ask again`;
+}
+
+/** What a clear came to: the ids removed, and the ids it left alone with why. */
+export interface HillClearAnswer {
+  readonly cleared: readonly string[];
+  readonly skipped: ReadonlyArray<{ readonly id: string; readonly reason: "open" | "missing" }>;
+}
+
 /** The sentence a bridge with the Hill switched off answers a post with: what is off, and the way back on. */
 export const HILL_OFF = "the Hill is off on this Collie; your person can switch it on in Settings, Alerts, on the phone, or with: collie hill on";
 /** The sentence a bridge with WalkyTalky off answers a post with. */
@@ -751,6 +770,10 @@ export class HillService {
     const repeat = this.deps.store.all().find((decision) => decision.requestId === input.requestId && keyOf(decision) === key);
     if (repeat !== undefined && repeat.postDigest !== undefined && repeat.postDigest !== digest) return refuse("request_id_reused", `this request id already posted ${repeat.id} with other content; post with a new --request-id`);
     if (repeat !== undefined) return { ok: true, decision: served(repeat) };
+    // A decision a person cleared: the same request id must not post it a second time.
+    const cleared = this.deps.store.tombstoneOfRequest(input.requestId, key);
+    if (cleared !== undefined && cleared.digest !== null && cleared.digest !== digest) return refuse("request_id_reused", `this request id already posted ${cleared.id} with other content; post with a new --request-id`);
+    if (cleared !== undefined) return refuse(null, clearedRepost(cleared.id));
     const cleaned = cleanPost(input);
     if (!cleaned.ok) return cleaned;
     const now = this.now();
@@ -1024,6 +1047,51 @@ export class HillService {
     return { ok: true, decision: served(closed) };
   }
 
+  /**
+   * The state a cleared decision closed in, or undefined when this id was never cleared (or its
+   * tombstone aged out). The tricks runner reads it, so an answered key stays closed after a clear.
+   */
+  clearedState(id: string): HillState | undefined {
+    return this.deps.store.tombstone(id)?.state;
+  }
+
+  /**
+   * Clear closed decisions from the Hill: `ids` names them, null means every closed one. An open
+   * decision is never removed: its id comes back in `skipped` as `open`, an id this bridge does not hold
+   * as `missing`. Removal deletes the decision and its images, leaves a tombstone, and moves the
+   * revision. One `hill.clear` audit line for a clear that removed something, with counts and no words.
+   * Answers null when the write failed: nothing was removed.
+   */
+  clear(ids: readonly string[] | null, device: string | null = null): HillClearAnswer | null {
+    const held = this.deps.store.all();
+    const skipped: Array<{ id: string; reason: "open" | "missing" }> = [];
+    let chosen: HillDecision[];
+    if (ids === null) chosen = held.filter((decision) => decision.state !== "open");
+    else {
+      chosen = [];
+      for (const id of new Set(ids)) {
+        const decision = held.find((candidate) => candidate.id === id);
+        if (decision === undefined) skipped.push({ id, reason: "missing" });
+        else if (decision.state === "open") skipped.push({ id, reason: "open" });
+        else chosen.push(decision);
+      }
+    }
+    if (chosen.length === 0) return { cleared: [], skipped };
+    const stones = chosen.map((decision): HillTombstone => ({
+      id: decision.id,
+      requestId: decision.requestId,
+      key: keyOf(decision),
+      digest: decision.postDigest ?? null,
+      // `chosen` holds closed decisions only.
+      state: decision.state === "open" ? "withdrawn" : decision.state,
+      closedAt: decision.closedAt ?? decision.at,
+    }));
+    const removed = this.deps.store.forget(stones);
+    if (removed === null) return null;
+    this.deps.audit?.({ action: "hill.clear", device, detail: { count: removed.length, all: ids === null, skipped: skipped.length } });
+    return { cleared: removed, skipped };
+  }
+
   /** The sender's own decisions: open first (as the phone sorts them), then closed, newest first. */
   mineList(sender: HillSender): HillDecision[] {
     const key = senderKey(sender);
@@ -1209,7 +1277,12 @@ export class HillService {
     const now = this.now();
     const decision = this.deps.store.get(id);
     // No receipt for an id this bridge never held: junk ids must not push real receipts out of the capped file.
-    if (decision === undefined) return this.final(request, id, by, digest, receiptOf(rid, now, "gone", "no such decision", null, null), false);
+    if (decision === undefined) {
+      // A cleared decision answers as it did while it was held: gone, with the state it closed in.
+      const stone = this.deps.store.tombstone(id);
+      if (stone !== undefined) return this.final(request, id, by, digest, receiptOf(rid, now, "gone", `the decision is ${stone.state}`, stone.state, null));
+      return this.final(request, id, by, digest, receiptOf(rid, now, "gone", "no such decision", null, null), false);
+    }
     if (decision.state !== "open") return this.final(request, id, by, digest, receiptOf(rid, now, "gone", `the decision is ${decision.state}`, decision.state, null));
     // Past its expiry and not swept yet: it is expired now, as the sweep would close it.
     if (decision.expiresAt !== null && decision.expiresAt <= now) {

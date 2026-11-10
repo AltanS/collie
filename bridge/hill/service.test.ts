@@ -1036,3 +1036,145 @@ describe("answering a trick's decision (M94)", () => {
     expect(during).toBe("failed");
   });
 });
+
+describe("clearing closed decisions", () => {
+  /** Three decisions of POSTER: one open, one answered, one withdrawn. */
+  async function held(r: Rig) {
+    const open = posted(r.hill.post(POSTER, input(1)));
+    const answered = posted(r.hill.post(POSTER, input(2)));
+    const withdrawn = posted(r.hill.post(POSTER, input(3)));
+    await receiptOf(r, answerOf(answered, 200, "yes"));
+    r.hill.withdraw(POSTER, withdrawn.id);
+    return { open, answered, withdrawn };
+  }
+
+  test("clearing all removes every closed decision, keeps the open one, moves the revision and writes one audit line", async () => {
+    const r = rig();
+    const { open, answered, withdrawn } = await held(r);
+    r.clock = 5000;
+    const before = r.store.rev();
+    r.audit.length = 0;
+    const out = r.hill.clear(null, "Pixel 9");
+    expect(out).toEqual({ cleared: [answered.id, withdrawn.id], skipped: [] });
+    expect(r.store.all().map((d) => d.id)).toEqual([open.id]);
+    expect(r.store.rev()).toBeGreaterThan(before ?? 0);
+    expect(r.hill.list().closed).toEqual([]);
+    expect(r.hill.list().closedTotal).toBe(0);
+    expect(r.audit).toEqual([{ action: "hill.clear", device: "Pixel 9", detail: { count: 2, all: true, skipped: 0 } }]);
+  });
+
+  test("the list says how many closed decisions are held, beyond the rows it serves", async () => {
+    const r = rig();
+    await held(r);
+    expect(r.hill.list()).toMatchObject({ closedTotal: 2 });
+    expect(r.hill.list().closed).toHaveLength(2);
+  });
+
+  test("with ids: a closed one goes, an open one is skipped as open, an unknown one as missing, a repeat id counts once", async () => {
+    const r = rig();
+    const { open, answered, withdrawn } = await held(r);
+    const out = r.hill.clear([answered.id, open.id, "dc_unknown00001", answered.id], null);
+    expect(out).toEqual({
+      cleared: [answered.id],
+      skipped: [
+        { id: open.id, reason: "open" },
+        { id: "dc_unknown00001", reason: "missing" },
+      ],
+    });
+    expect(r.store.get(open.id)?.state).toBe("open");
+    expect(r.store.get(withdrawn.id)?.state).toBe("withdrawn");
+    // Clearing the same id again finds nothing: missing, and no second audit line.
+    r.audit.length = 0;
+    expect(r.hill.clear([answered.id], null)).toEqual({ cleared: [], skipped: [{ id: answered.id, reason: "missing" }] });
+    expect(r.audit).toEqual([]);
+  });
+
+  test("an open decision is never removed, whatever clear is asked", async () => {
+    const r = rig();
+    const open = posted(r.hill.post(POSTER, input(1)));
+    expect(r.hill.clear(null)).toEqual({ cleared: [], skipped: [] });
+    expect(r.hill.clear([open.id])).toEqual({ cleared: [], skipped: [{ id: open.id, reason: "open" }] });
+    expect(r.store.get(open.id)?.state).toBe("open");
+  });
+
+  test("a retried post with a cleared decision's request id is refused, never posted a second time", async () => {
+    const r = rig();
+    const { answered } = await held(r);
+    r.hill.clear(null);
+    const count = r.store.all().length;
+    expect(r.hill.post(POSTER, input(2))).toEqual({ ok: false, code: null, error: `this request id already posted ${answered.id}, which was cleared from the Hill; post with a new --request-id to ask again` });
+    // Another payload under the same id is the reuse refusal, as before the clear.
+    expect(r.hill.post(POSTER, input(2, { title: "Changed?" }))).toMatchObject({ ok: false, code: "request_id_reused" });
+    // Another sender's post under that id, and a new request id, are their own posts.
+    expect(posted(r.hill.post(OTHER, input(2))).id).not.toBe(answered.id);
+    expect(posted(r.hill.post(POSTER, input(9))).state).toBe("open");
+    expect(r.store.all().length).toBe(count + 2);
+  });
+
+  test("a late retry of an answer: the same rid gets its stored receipt, a new rid reads gone with the state it closed in", async () => {
+    const r = rig();
+    const { answered } = await held(r);
+    const stored = r.receipts.get(uuid(200))?.receipt;
+    expect(stored).toMatchObject({ code: "ok", state: "answered" });
+    r.hill.clear(null);
+    expect(await receiptOf(r, answerOf(answered, 200, "yes"))).toEqual(stored!);
+    expect(await receiptOf(r, answerOf(answered, 201, "no"))).toMatchObject({ code: "gone", reason: "the decision is answered", state: "answered" });
+    // Nothing was typed again.
+    expect(r.sent).toHaveLength(1);
+  });
+
+  test("an id that was never held still answers gone, no such decision, and stores no receipt", async () => {
+    const r = rig();
+    expect(await receiptOf(r, { rid: uuid(300), node: "hill/dc_never0000001", intent: "yes", value: { text: null } })).toMatchObject({ code: "gone", reason: "no such decision" });
+    expect(r.receipts.get(uuid(300))).toBeUndefined();
+  });
+
+  test("the tombstone keeps the state, for a trick's answered key", async () => {
+    const r = rig();
+    const { answered, withdrawn } = await held(r);
+    r.hill.clear(null);
+    expect(r.hill.decision(answered.id)).toBeUndefined();
+    expect(r.hill.clearedState(answered.id)).toBe("answered");
+    expect(r.hill.clearedState(withdrawn.id)).toBe("withdrawn");
+    expect(r.hill.clearedState("dc_unknown00001")).toBeUndefined();
+  });
+
+  test("a write that fails removes nothing, says null and writes no audit line", async () => {
+    const r = rig();
+    await held(r);
+    r.audit.length = 0;
+    const real = r.store.forget.bind(r.store);
+    r.store.forget = () => null;
+    expect(r.hill.clear(null)).toBeNull();
+    expect(r.store.all()).toHaveLength(3);
+    expect(r.audit).toEqual([]);
+    r.store.forget = real;
+  });
+
+  test("it works with the Hill switched off: it types nothing, posts nothing and rings nothing", async () => {
+    const store = new HillStore(null, () => 1000);
+    const audit: AuditEntry[] = [];
+    let on = true;
+    const hill = new HillService({
+      store,
+      receipts: memoryHillReceipts(),
+      place: (address) => PLACES.find((place) => place.address.split("#")[0] === address.split("#")[0]) ?? null,
+      send: async () => {
+        throw new Error("nothing may be typed");
+      },
+      crewMode: () => "solo",
+      walkyOn: () => true,
+      memberId: "m_aaaaaaaaaa",
+      machine: "desk",
+      now: () => 1000,
+      hillSwitch: { on: () => on },
+      audit: (entry) => audit.push(entry),
+    });
+    const decision = posted(hill.post(POSTER, input(1)));
+    expect(hill.withdraw(POSTER, decision.id).ok).toBe(true);
+    on = false;
+    expect(hill.clear(null)).toEqual({ cleared: [decision.id], skipped: [] });
+    expect(store.all()).toEqual([]);
+    expect(audit.at(-1)).toMatchObject({ action: "hill.clear", detail: { count: 1 } });
+  });
+});

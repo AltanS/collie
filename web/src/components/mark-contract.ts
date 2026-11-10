@@ -1,4 +1,4 @@
-// generated: sha256=5101e2c931f62b3bcf860662f2c7af82c684f750ccbc19331a076b3ac752ba61 from=collie-brand/src/mark-contract.ts@8da1d99bd937
+// generated: sha256=aa94304eaf994fce022a48e3f3cc43b2c45bb59f8c7efa432ab73a4e6d70b492 from=collie-brand/src/mark-contract.ts@91cac63e5e56
 // COPIED WHOLE from collie-brand/src/mark-contract.ts. Edit it there, in collie-brand, and nowhere else.
 /**
  * THE MARK CONTRACT. One file that every Collie brand mark implements, the Collie mark included.
@@ -44,7 +44,7 @@ import { useEffect, useId, useImperativeHandle, useRef, useState, useSyncExterna
  * lights up, pixel beads hop), and the meaning is shared:
  *
  *   rest         nothing is happening. The mark drifts, one turn in 48 s, while the page is in use,
- *                and rests until the first touch, key, wheel or scroll after the page opened.
+ *                and rests until the first touch, key or wheel after the page opened.
  *   loading      something is being fetched or worked on. Fast, and the mark's live colours.
  *   applying     the app itself is updating. Calm, one turn in 20 s, every bead in the status
  *                "working" colour.
@@ -62,7 +62,8 @@ import { useEffect, useId, useImperativeHandle, useRef, useState, useSyncExterna
  *   - At the two slow paces (`data-slow`) a mark pauses what its compositor cannot run (the Collie
  *     mark's ball turn). The orbit itself runs, smooth.
  *   - A resting mark drifts only while the page is IN USE (`MARK_DRIFT`): a touch, a key, a wheel or
- *     a scroll in the last 20 s. Then it eases to a stop over 2 s and holds, so a page left alone
+ *     in the last 20 s (a scroll alone is not use: a chat that follows new output scrolls with no one
+ *     there). Then it eases to a stop over 2 s and holds, so a page left alone
  *     draws no frame at all. Opening a page is NOT use: a page nobody has touched, and a page in a
  *     background tab, rests from the first frame (1.28.1 counted a fresh page as in use for 20 s, and
  *     WebKit ran multi-page tests 1.5 to 3 times slower for it). Any input sets it going again from
@@ -97,7 +98,7 @@ export const MARK_TURN = { rest: 48, calm: 20, live: 1.8 } as const;
 export const ORBIT_TURN_MS = MARK_TURN.live * 1000;
 
 /**
- * When a resting mark drifts. `in-use`: while the page has had a touch, a key, a wheel or a scroll in
+ * When a resting mark drifts. `in-use`: while the page has had a touch, a key or a wheel in
  * the last `windowMs`; then the drift eases to a stop over `easeMs` and holds until the next input.
  * A page that has had no input since it opened, or that is hidden, is not in use.
  * `always`: whenever the mark rests (a page that is only ever looked at, like a landing page).
@@ -233,13 +234,18 @@ function paced(el: SVGSVGElement, pattern: RegExp): Animation[] {
 const EASE_STEP_MS = 100;
 
 /**
- * WHETHER THE PAGE IS IN USE: a touch, a key, a wheel or a scroll in the last `MARK_DRIFT.windowMs`.
+ * WHETHER THE PAGE IS IN USE: a touch, a key or a wheel in the last `MARK_DRIFT.windowMs`.
  * One reading for the page, shared by every mark. Listening costs nothing per event (it stores a
  * time); one timer runs while a mark listens and re-arms itself only when it fires. A page that has
  * just been opened does NOT count as in use: it is in use from its first input on. A hidden page is
  * never in use: an input a hidden page reports is ignored, and a page that turns hidden stops at once.
+ *
+ * NO `scroll`. A scroll event also fires with no person there: a chat thread that follows new output,
+ * scroll anchoring, `scrollIntoView`. Counting it would keep the page in use for as long as an agent
+ * streams. A person's scroll always comes with a touchstart, a pointerdown, a wheel or a keydown.
+ * The listeners are on `window` in the capture phase, so an input inside a nested scroller reaches them.
  */
-const INPUTS = ["pointerdown", "keydown", "wheel", "touchstart", "scroll"] as const;
+const INPUTS = ["pointerdown", "keydown", "wheel", "touchstart"] as const;
 const inUseListeners = new Set<() => void>();
 let inUse = false;
 let lastInput = Number.NEGATIVE_INFINITY;
@@ -274,13 +280,17 @@ function endUse(): void {
   for (const listener of inUseListeners) listener();
 }
 
-/** A page that turns hidden is no longer in use, whatever the last input was. */
-function noteVisibility(): void {
-  if (visible() || !inUse) return;
+/** A page that is hidden or leaving is no longer in use, whatever the last input was. */
+function noteHide(): void {
+  if (!inUse) return;
   if (quietTimer !== null) clearTimeout(quietTimer);
   quietTimer = null;
   lastInput = Number.NEGATIVE_INFINITY;
   endUse();
+}
+
+function noteVisibility(): void {
+  if (!visible()) noteHide();
 }
 
 function subscribeInUse(listener: () => void): () => void {
@@ -288,6 +298,8 @@ function subscribeInUse(listener: () => void): () => void {
   if (inUseListeners.size === 1) {
     for (const type of INPUTS) window.addEventListener(type, noteInput, { capture: true, passive: true });
     document.addEventListener("visibilitychange", noteVisibility);
+    // `pagehide` too: a page that goes into the back-forward cache (iOS) is not always reported hidden first.
+    window.addEventListener("pagehide", noteHide);
     inUse = false;
     lastInput = Number.NEGATIVE_INFINITY;
   }
@@ -296,6 +308,7 @@ function subscribeInUse(listener: () => void): () => void {
     if (inUseListeners.size > 0) return;
     for (const type of INPUTS) window.removeEventListener(type, noteInput, { capture: true });
     document.removeEventListener("visibilitychange", noteVisibility);
+    window.removeEventListener("pagehide", noteHide);
     if (quietTimer !== null) clearTimeout(quietTimer);
     quietTimer = null;
     inUse = false;
@@ -305,6 +318,7 @@ function subscribeInUse(listener: () => void): () => void {
 
 const getInUse = (): boolean => inUse;
 const alwaysInUse = (): boolean => true;
+const neverInUse = (): boolean => false;
 const subscribeNever = (): (() => void) => () => {};
 
 /** How the orbit moves, from the state's motion and what the host and the page say over it. */
@@ -353,7 +367,8 @@ export function useMark(spec: MarkSpec, props: MarkProps): MarkRoot {
   const pageInUse = useSyncExternalStore(
     watching ? subscribeInUse : subscribeNever,
     watching ? getInUse : alwaysInUse,
-    alwaysInUse,
+    // The server draws what the client draws first: a page nobody has touched rests.
+    watching ? neverInUse : alwaysInUse,
   );
   const awake = look.motion !== "drift" || pageInUse;
   // THE EASE TO A STOP. When the page stops being in use, a drifting mark keeps running while its rate

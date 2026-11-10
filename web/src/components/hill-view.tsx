@@ -1,4 +1,4 @@
-import { useId, useState, type ReactNode } from "react";
+import { useEffect, useId, useState, type ReactNode } from "react";
 
 import { RouteHeader } from "@/components/app-header";
 import { BrandMark } from "@/components/brand-mark";
@@ -9,8 +9,11 @@ import { Icon } from "@/components/icons/icon";
 import type { IconKey } from "@/components/icons/keys";
 import { SectionHeader } from "@/components/section-header";
 import { Button } from "@/components/ui/button";
-import { Collapse } from "@/components/ui/collapse";
+import { Collapse, CollapseSwap } from "@/components/ui/collapse";
 import { ListGroup } from "@/components/ui/list-group";
+import { OneOf } from "@/components/ui/one-of";
+import { PresenceList } from "@/components/ui/presence";
+import { useArm } from "@/hooks/use-arm";
 import { useHillAnswer } from "@/hooks/use-hill-answer";
 import { useLocale } from "@/hooks/use-locale";
 import { HILL_PRIORITIES, type HillDecision, type HillState } from "@/lib/hill/wire";
@@ -24,6 +27,14 @@ import { cn } from "@/lib/utils";
 // Today, Later), and under them a fold "Answered" with the closed ones the bridge serves. One view, its
 // own route (`/hill`), reached from the Hill item, the fixed fourth item of the Dashboard's bottom bar. "Hill" is the view's
 // name, the same in every language. The look is calm, by priority (the owner's pick, C1, 2026-11-09).
+//
+// NOTHING ARRIVES OR LEAVES WITH A JUMP (2026-11-10). A card that leaves the open list collapses where it
+// stood and the cards below glide up (`PresenceList`, ui/presence.tsx), taking its 12px gap with it; a
+// priority group whose last card it was leaves with it as one motion, its 28px gap with it; the closed
+// row arrives at the top of Answered by growing from nothing; the clear hill and the open cards trade
+// places in one band (`CollapseSwap`); and Answered itself is an item of the column's presence list, so
+// it grows in the first time there is something under it and, when the last closed row leaves (a Clear
+// removes them all at once), the header, its Clear button and the rows fold away as one motion.
 //
 // This file draws; it reads nothing but the crew roster and the tricks list, for a card's machine tint
 // and a trick's icon. The route hands it the store's lists (lib/hill/store.ts) and a card for each
@@ -94,7 +105,8 @@ function ClosedRow({ decision, kept }: { decision: HillDecision; kept: string | 
   const word = stateWord(decision.state);
   const line = decision.state === "answered" && decision.answer !== null ? `${word} · ${answerLine(decision)}` : word;
   return (
-    <li data-slot="hill-closed-row" data-state={decision.state} className="flex min-w-0 items-start gap-3 px-3.5 py-2.5">
+    // The list item is the presence wrapper around this (`PresenceList itemAs="li"`), so a row can leave.
+    <div data-slot="hill-closed-row" data-state={decision.state} className="flex min-w-0 items-start gap-3 px-3.5 py-2.5">
       <Icon
         name={STATE_GLYPH[decision.state]}
         aria-hidden
@@ -111,7 +123,61 @@ function ClosedRow({ decision, kept }: { decision: HillDecision; kept: string | 
           </div>
         )}
       </div>
-    </li>
+    </div>
+  );
+}
+
+/** What the view needs to offer Clear on the closed group: the way to clear, and whether this device may. */
+export interface HillClearControl {
+  canWrite: boolean;
+  busy: boolean;
+  onClear: () => void;
+}
+
+/**
+ * Clear, at the right end of the Answered header: one quiet text button that asks once in place. The
+ * first tap arms it ("Clear 12 entries?", in the armed tint, the Decision card's Dismiss pattern and its
+ * `useArm`), the second tap inside the window clears every closed entry. Both words sit in one slot,
+ * sized by the wider, so arming moves nothing (DESIGN.md §2). 44px tall, the tap floor.
+ */
+function ClearButton({ count, control }: { count: number; control: HillClearControl }) {
+  const { armed, tap, disarm } = useArm<"clear">();
+  const isArmed = armed === "clear";
+  const armedWords = tn("hill.clear.armed", count);
+  // An arm is for the entries as they stood: a new count (another phone cleared, a row closed) drops it.
+  useEffect(() => disarm(), [count, disarm]);
+  return (
+    <>
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        data-slot="hill-clear"
+        disabled={!control.canWrite || control.busy}
+        aria-label={isArmed ? t("hill.armed", { label: armedWords }) : undefined}
+        onClick={() => {
+          if (tap("clear") === "fire") control.onClear();
+        }}
+        className={cn(
+          "-mr-3 h-11 shrink-0 px-3",
+          // The armed tint on the box it already has: the border is reserved by the button's base string.
+          isArmed ? "border-destructive/40 bg-destructive/10 text-destructive hover:bg-destructive/10 hover:text-destructive" : "text-muted-foreground",
+        )}
+      >
+        <OneOf
+          active={isArmed ? "armed" : "rest"}
+          className="inline-grid"
+          options={[
+            { key: "rest", node: t("hill.clear.button") },
+            { key: "armed", node: armedWords },
+          ]}
+        />
+      </Button>
+      {/* A live region on the button itself is unreliable; this one announces the armed wording. */}
+      <span className="sr-only" aria-live="polite">
+        {isArmed ? t("hill.armed", { label: armedWords }) : ""}
+      </span>
+    </>
   );
 }
 
@@ -179,7 +245,8 @@ function PriorityGroup({ priority, decisions, renderCard }: { priority: HillDeci
         <span className={PRIORITY_WORD_INK[priority]}>{priorityWord(priority)}</span>
         <span className="tabular-nums text-muted-foreground">{decisions.length}</span>
       </h2>
-      {decisions.map((decision) => renderCard(decision))}
+      {/* The cards come and go with an eased collapse; 12 is the section's own gap-3. */}
+      <PresenceList gap={12}>{decisions.map((decision) => renderCard(decision))}</PresenceList>
     </section>
   );
 }
@@ -187,7 +254,8 @@ function PriorityGroup({ priority, decisions, renderCard }: { priority: HillDeci
 /**
  * The view's body: the cards by priority, or the empty hill, then the Answered fold. `renderCard`
  * draws one open decision; `kept` holds the words of answers that did not reach their target, per
- * decision. `open` comes sorted (most urgent first, then oldest), and each group keeps that order.
+ * decision. `closedTotal` is how many closed ones the bridge holds (at least `closed.length`), what Clear
+ * says it removes; `clear` absent draws no button (a view that cannot write). `open` comes sorted (most urgent first, then oldest), and each group keeps that order.
  * With nothing open the fold starts open, because then it is all the hill has to show.
  */
 export function HillView({
@@ -195,45 +263,66 @@ export function HillView({
   closed,
   kept,
   renderCard,
+  closedTotal = closed.length,
+  clear,
 }: {
   open: readonly HillDecision[];
   closed: readonly HillDecision[];
   kept: ReadonlyMap<string, string>;
   renderCard: (decision: HillDecision) => ReactNode;
+  closedTotal?: number;
+  clear?: HillClearControl;
 }) {
   useLocale();
   const [answeredOpen, setAnsweredOpen] = useState(open.length === 0);
   const answeredId = useId();
+  // The closed list holds closed decisions only (lib/hill/reader.ts); an open one would draw an empty row.
+  const closedRows = closed.filter((d) => d.state !== "open");
   return (
     <div className="flex flex-col gap-7">
-      {open.length === 0 ? (
-        <HillClear answered={closed.filter((d) => d.state === "answered").length} />
-      ) : (
+      {/* The open cards and the clear hill take turns in one band: the last card collapses while the
+          ridge fades in where it stood, and back. The ridge is always the shorter of the two. */}
+      <CollapseSwap open={open.length > 0} standIn={<HillClear answered={closed.filter((d) => d.state === "answered").length} />}>
         <div data-slot="hill-open" className="flex flex-col gap-7">
-          {HILL_PRIORITIES.map((priority) => {
-            const group = open.filter((d) => d.priority === priority);
-            return group.length === 0 ? null : <PriorityGroup key={priority} priority={priority} decisions={group} renderCard={renderCard} />;
-          })}
+          {/* 28 is this column's own gap-7: a group that leaves takes it along. */}
+          <PresenceList gap={28}>
+            {HILL_PRIORITIES.flatMap((priority) => {
+              const group = open.filter((d) => d.priority === priority);
+              return group.length === 0 ? [] : [<PriorityGroup key={priority} priority={priority} decisions={group} renderCard={renderCard} />];
+            })}
+          </PresenceList>
         </div>
-      )}
-      {closed.length > 0 && (
-        <section data-slot="hill-answered" className="flex flex-col gap-2">
-          <SectionHeader
-            label={t("hill.answered")}
-            count={closed.length}
-            open={answeredOpen}
-            onToggle={setAnsweredOpen}
-            controls={answeredId}
-          />
-          <Collapse open={answeredOpen}>
-            <ListGroup as="ul" id={answeredId}>
-              {closed.map((decision) => (
-                <ClosedRow key={decision.id} decision={decision} kept={kept.get(decision.id)} />
-              ))}
-            </ListGroup>
-          </Collapse>
-        </section>
-      )}
+      </CollapseSwap>
+      {/* Answered is one item of this column's own presence list (28 is the column's gap-7). The first
+          closed row grows it in; the last one leaving, a Clear above all, takes the whole group with it:
+          the header, the Clear button and the rows leave as one motion, drawing what they drew last
+          (the group is held while it goes, so the header does not show a count of 0 on the way out).
+          A clear that fails puts the rows back, and the group grows back with them. */}
+      <PresenceList gap={28}>
+        {closedRows.length === 0
+          ? []
+          : [
+              <section key="answered" data-slot="hill-answered" className="flex flex-col gap-2">
+                <SectionHeader
+                  label={t("hill.answered")}
+                  count={closedRows.length}
+                  open={answeredOpen}
+                  onToggle={setAnsweredOpen}
+                  controls={answeredId}
+                  trailing={clear === undefined ? undefined : <ClearButton count={Math.max(closedTotal, closed.length)} control={clear} />}
+                />
+                <Collapse open={answeredOpen}>
+                  <ListGroup as="ul" id={answeredId}>
+                    <PresenceList itemAs="li">
+                      {closedRows.map((decision) => (
+                        <ClosedRow key={decision.id} decision={decision} kept={kept.get(decision.id)} />
+                      ))}
+                    </PresenceList>
+                  </ListGroup>
+                </Collapse>
+              </section>,
+            ]}
+      </PresenceList>
     </div>
   );
 }

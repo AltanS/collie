@@ -22,7 +22,9 @@ import { walkySocketPath, WalkyServer, type PlaceTarget } from "../bridge/walky/
 import { parseJsonObject } from "../web/src/lib/json.ts";
 import { capture, context } from "./fakes.ts";
 import {
+  clearedWords,
   cmdHill,
+  cmdHillClear,
   cmdHillList,
   cmdHillPost,
   cmdHillStatus,
@@ -343,6 +345,67 @@ describe("post, status, withdraw and list against a bridge", () => {
   });
 });
 
+describe("clear", () => {
+  /** Post three decisions from pane %1, answer one and withdraw one: two closed, one open. */
+  async function threeDecisions(b: Bridge): Promise<void> {
+    const sock = [walkySocketPath(b.stateDir)];
+    for (const rid of ["0f8b5c1e-5a7d-4b8e-9f00-1a2b3c4d5e71", "0f8b5c1e-5a7d-4b8e-9f00-1a2b3c4d5e72", "0f8b5c1e-5a7d-4b8e-9f00-1a2b3c4d5e73"]) {
+      expect(await cmdHillPost(deps(sock, inPane("%1"), { mintRequestId: () => rid }), POST)).toBe(EXIT.OK);
+    }
+    await b.hill.answer({ rid: "11111111-1111-4111-8111-111111111111", node: "hill/dc_cli000000001", intent: "yes", value: { text: null } }, "dc_cli000000001", "Pixel 9");
+    expect(await cmdHillWithdraw(deps(sock), ["dc_cli000000002"])).toBe(EXIT.OK);
+  }
+
+  socketTest("removes every closed decision, keeps the open one, and prints one line with the count", async () => {
+    const b = await bridge();
+    await threeDecisions(b);
+    const d = deps([walkySocketPath(b.stateDir)], {});
+    expect(await cmdHillClear(d, [])).toBe(EXIT.OK);
+    expect(d.io.stdout).toEqual(["Cleared 2 closed decisions."]);
+    expect(b.hill.list().open.map((x) => x.id)).toEqual(["dc_cli000000003"]);
+    expect(b.hill.list().closed).toEqual([]);
+    const again = deps([walkySocketPath(b.stateDir)], {});
+    expect(await cmdHillClear(again, [])).toBe(EXIT.OK);
+    expect(again.io.stdout).toEqual(["Nothing to clear: no closed decisions."]);
+  });
+
+  socketTest("needs no pane: it runs from a pane too, and --json prints the count", async () => {
+    const b = await bridge();
+    await threeDecisions(b);
+    const d = deps([walkySocketPath(b.stateDir)], inPane("%2"));
+    expect(await cmdHillClear(d, ["--json"])).toBe(EXIT.OK);
+    expect(d.io.stdout).toEqual(['{"cleared":2}']);
+  });
+
+  socketTest("an older bridge first leads to the next socket; with none that knows the hill, it says so", async () => {
+    const older = await olderBridge();
+    const b = await bridge();
+    await threeDecisions(b);
+    const d = deps([older.path, walkySocketPath(b.stateDir)], {});
+    expect(await cmdHillClear(d, [])).toBe(EXIT.OK);
+    expect(d.io.stdout).toEqual(["Cleared 2 closed decisions."]);
+    const none = deps([older.path], {});
+    expect(await cmdHillClear(none, [])).toBe(EXIT.UNREACHABLE);
+    expect(none.io.stderr).toEqual([`hill: ${HILL_UNKNOWN}`]);
+  });
+
+  test("the words, an unknown argument and Windows", async () => {
+    expect(clearedWords(0)).toBe("Nothing to clear: no closed decisions.");
+    expect(clearedWords(1)).toBe("Cleared 1 closed decision.");
+    expect(clearedWords(7)).toBe("Cleared 7 closed decisions.");
+    const d = deps([]);
+    expect(await cmdHillClear(d, ["--all"])).toBe(EXIT.USAGE);
+    expect(d.io.stderr[0]).toBe("error: unknown argument `--all`");
+    expect(await cmdHillClear(deps([], {}, { platform: "win32" }), [])).toBe(EXIT.STATE);
+  });
+
+  test("`collie hill clear` is a verb of the program, and `collie hill --help` lists it", async () => {
+    const help = capture();
+    expect(await run(["hill", "--help"], help)).toBe(EXIT.OK);
+    expect(help.stdout).toContain("  collie hill clear [--json]   (remove every closed decision from the Hill; open ones stay)");
+  });
+});
+
 describe("the Hill's switch", () => {
   socketTest("off: a post is refused with the way back on and exits STATE; status, list and withdraw keep working; on again: it posts", async () => {
     const b = await bridge();
@@ -482,7 +545,7 @@ describe("help", () => {
   test("`collie hill --help` prints the usage and the rules and exits 0; a bare `collie hill` exits 2", async () => {
     const help = capture();
     expect(await run(["hill", "--help"], help)).toBe(EXIT.OK);
-    expect(help.stdout[0]).toBe("usage: collie hill {post|status|withdraw|list|on|off}");
+    expect(help.stdout[0]).toBe("usage: collie hill {post|status|withdraw|list|clear|on|off}");
     expect(help.stdout.slice(-RULES.length)).toEqual(RULES);
     const bare = capture();
     expect(cmdHill({ io: bare }, [])).toBe(EXIT.USAGE);

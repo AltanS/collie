@@ -97,6 +97,8 @@ export interface TrickHillPort {
   postDecision(from: HillTrickSender, input: HillPostInput, opts?: HillPostOptions): HillPostAnswer;
   withdraw(from: HillTrickSender, id: string, reason: string): HillOneAnswer;
   decision(id: string): HillDecision | undefined;
+  /** The state a cleared decision closed in (hill/service.ts `clearedState`). Absent: nothing is ever cleared. */
+  clearedState?(id: string): HillState | undefined;
   /** Whether the Hill is switched on (hill/service.ts `isOn`). Absent: always on. */
   isOn?(): boolean;
 }
@@ -303,7 +305,12 @@ export class TrickHill {
    */
   private refreshed(entry: TrickHillEntry): TrickHillEntry | undefined {
     const held = this.deps.hill.decision(entry.decisionId);
-    if (held === undefined) return entry.state === "open" ? undefined : entry;
+    if (held === undefined) {
+      // A decision a person cleared: the map may still say `open` (no run saw it close), so the tombstone's state wins.
+      const cleared = this.deps.hill.clearedState?.(entry.decisionId);
+      if (cleared !== undefined) return cleared === entry.state ? entry : { ...entry, state: cleared };
+      return entry.state === "open" ? undefined : entry;
+    }
     return held.state === entry.state ? entry : { ...entry, state: held.state };
   }
 

@@ -37,6 +37,8 @@ afterwards. A copy-paste gives you six places to remember instead.
 | `ui/chip.tsx` | The pill in a strip: label, optional leading glyph and status dot, 44px hit box, and an optional name that says its act (the status words then become its description). `radio` makes it one choice of a set: `role="radio"` and `aria-checked` instead of `aria-current`, same box. Space and tab strips. |
 | `ui/collapse.tsx` | The only sanctioned way an in-flow surface appears or disappears: an eased 240ms height+opacity slide that holds its last child through the exit. Styles nothing. |
 | `ui/collapse.tsx` → `CollapseSwap` | Two surfaces taking turns in ONE band, as one motion: a single-cell grid, one height animation (the tall one's), and the short stand-in pinned in the cell fading over it. The fix for two sibling collapses on opposite gates, where the leaving surface is pushed the height of the band by the arriving one. The stand-in must be the shorter of the two. |
+| `ui/presence.tsx` → `PresenceList` | Keyed items that arrive and leave a list without a jump: `<PresenceList gap={12} itemAs="div"\|"li">{items.map((x) => <Row key={x.id} …/>)}</PresenceList>` inside the caller's own flex column. An item whose key leaves stays drawn in its old place, showing its last drawing and out of reach (`inert`), while its height (`grid-template-rows` 1fr→0fr), its opacity and a 2 percent scale toward its top ease out over 240ms on the standard curve `cubic-bezier(0.4, 0, 0.2, 1)` (`PRESENCE_MS`, `PRESENCE_EASE`); `gap` is the container's gap in px, which the item takes along as an easing negative bottom margin, so nothing below moves at the unmount and the item's own top stays put. A new key grows in the same way; the first paint does not animate. A group whose last item leaves is an item of an outer list and leaves with it as one motion. Reduced motion: opacity only, 120ms, and the layout settles in one step. Renders the item wrappers only (`li` in a `ul`). The Hill's cards, priority groups and closed rows; a list that removes rows (a clear) gets the same collapse by rendering through it. |
+| `ui/presence.tsx` → `HeightSwap` | One band, several contents, one shown, and the band's height eased between theirs (measured at the swap, eased on the same 240ms curve, handed back to `auto` after): `<HeightSwap active="receipt" options={[{ key, node }…]}/>`. Either side may be the taller, unlike `CollapseSwap`; the leaving content fades out on top in 120ms (held, `inert`) while the new one fades in. Reduced motion: no height motion, a 120ms fade-in. The Decision card's options giving way to "Sending…" and the receipt. |
 | `ui/copyable-block.tsx` | Any block with a caller-supplied literal to copy. Owns an always-visible, opaque Copy icon over the block's top-right corner and the success or failure status, never the content's formatting. The icon itself confirms the outcome on every screen, including History and Files, which have no status line: a check (`--status-working`) or an X (`--status-blocked`) for 1.5s, then the Copy glyph again, in the same 24px box. Its transparent 44px tap target may extend beyond the block; it reserves no gutter or height and deliberately covers text beneath it. Without a clipboard API it draws the content alone. |
 | `ui/diff-lines.tsx` | A few lines of a diff as one mono block: `+` added, `-` removed, `@@` a hunk head, the rest context, in the Changes view's own tints and sign inks (`DIFF_ROW_TONE`, `DIFF_SIGN_TONE`, a minus drawn as `−`). Long lines never wrap: the block scrolls sideways inside its own frame and the page never overflows. An optional file name sits small over the lines. Owns no words. A trick's and a Decision view's `diff` (2026-11-10). The Changes view and Chat's diff card still carry their own copy of the tints. |
 | `ui/divided-line.tsx` | A quiet line of the thread: centred 11px muted text between two hairlines. Chat's notices, compaction marker and top-of-thread line, and History's day divider and compaction marker. Owns no words. |
@@ -494,11 +496,6 @@ while its answer scrolls under it, wears the same side, cap, well and text size,
 message does not move sideways when it sticks or lets go. It also shows the turn's time, the same element
 (`USER_WELL_META`), at the well's right edge on its first line: the pin clamps its text to two lines, so a time
 after the last line would hide, and the two-line height does not change.
-The pin's row has a ground that fades: in that look a layer in the page colour spans the chat column's full width
-behind the well, solid down past the well's middle, then dissolving to transparent about 16px under the well's
-bottom edge, with no rule. Reason: a hard opaque slab with a hairline covered too much of the thread and cut it
-hard, and the fade still hides the thread beside the well while text slides out under a soft edge. The layer is out of flow and
-ignores the pointer, the row keeps the room the thread leaves for it, and the well is the only button. The look before 1.29 draws the row as it was.
 
 **In Chat a new turn starts 20px under the block above, and blocks inside an agent run sit 8px apart.**
 Reason: the old 12px between everything made a question and the answer to the one before it look alike.
@@ -918,6 +915,9 @@ losing fact is not lost — the update offer keeps its footer line and its setti
    height change is then continuous and eased, so neighbouring content (the mirror included)
    animates instead of teleporting. It holds its last child through the exit, so a box closes on
    the sentence that explained it. No bare conditional mount, no `hidden`, no unanimated pop.
+   Its two siblings in `ui/presence.tsx` follow the same rule for the cases one Collapse cannot
+   reach: `PresenceList` for keyed items of a list, `HeightSwap` for one band whose content is
+   replaced (2026-11-10, the Hill).
 2. **A dismissible standing condition needs a permanent second surface.** Dismissal must not be
    able to leave the operator misinformed. The update strip may be dismissed because the same fact
    also sits in the footer and in Settings. The connection and auth strips may not: the remedy

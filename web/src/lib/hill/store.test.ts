@@ -4,7 +4,7 @@ import { http, HttpResponse } from "msw";
 import { HILL_T0, hillDecision, hillReceipt } from "@/test/hill-fixtures";
 import { server } from "@/test/setup";
 
-import { __resetHill, __settleHill, noteHillAnswer, syncHill, useHillAnswerHeld, useHillCount, useHillKept, useHillOpen } from "./store";
+import { __resetHill, __settleHill, clearClosedLocally, noteHillAnswer, readHillNow, syncHill, useHillAnswerHeld, useHillClosed, useHillClosedTotal, useHillCount, useHillKept, useHillOpen } from "./store";
 import type { HillDecision } from "./wire";
 
 // The snapshot's hillRev says when to read. The same number reads nothing, a higher one reads with
@@ -112,6 +112,60 @@ describe("the hill store", () => {
     expect(result.current.kept.get(decision.id)).toBe("my words");
   });
 
+  it("keeps the receipt of a decision the next list serves as closed, so its card leaves showing it", async () => {
+    const decision = hillDecision();
+    const other = hillDecision({ title: "refused, open again" });
+    serve((since) => (since === null ? list(1, [decision, other]) : list(2, [other], [{ ...decision, state: "answered" }])));
+    const { result } = renderHook(() => ({ closed: useHillAnswerHeld(decision.id), open: useHillAnswerHeld(other.id) }));
+    await sync(1);
+    act(() => noteHillAnswer(decision.id, { receipt: hillReceipt(), intent: "yes", text: null }));
+    act(() => noteHillAnswer(other.id, { receipt: hillReceipt({ code: "rejected", state: null, delivery: null }), intent: "yes", text: null }));
+    await sync(2);
+    expect(result.current.closed?.receipt.code).toBe("ok");
+    // An open card has nothing to say after a new list: it takes a new answer.
+    expect(result.current.open).toBeNull();
+  });
+
+  it("reads the list at once on readHillNow, with since, whatever the last snapshot said", async () => {
+    const decision = hillDecision();
+    serve((since) => (since === null ? list(1, [decision]) : list(2, [])));
+    const { result } = renderHook(() => useHillOpen());
+    await sync(1);
+    await act(async () => {
+      readHillNow();
+      await __settleHill();
+    });
+    expect(reads).toEqual([null, "1"]);
+    expect(result.current).toEqual([]);
+    // The snapshot that names the number the read already brought reads nothing more.
+    await sync(2);
+    expect(reads).toEqual([null, "1"]);
+  });
+
+  it("reads nothing on readHillNow while no snapshot named a hill", async () => {
+    serve(() => list(1, []));
+    await act(async () => {
+      readHillNow();
+      await __settleHill();
+    });
+    expect(reads).toEqual([]);
+  });
+
+  it("does not read again and again for a snapshot older than the list it holds", async () => {
+    // The bridge is at 3 after the answer; only the very first read saw 1.
+    serve(() => (reads.length === 1 ? list(1, [hillDecision()]) : list(3, [])));
+    await sync(1);
+    await act(async () => {
+      readHillNow();
+      await __settleHill();
+    });
+    // A snapshot that was on its way before the forced read lands with the older number 2.
+    await sync(2);
+    // One whole read to be sure (a lower number may be a restarted bridge), then it stops: the list it
+    // holds is newer than the snapshot. Before, it read until its four passes ran out.
+    expect(reads).toEqual([null, "1", null]);
+  });
+
   it("keeps no words for an answer that reached its target", () => {
     const { result } = renderHook(() => useHillKept());
     act(() => noteHillAnswer("dc_x", { receipt: hillReceipt({ at: HILL_T0 }), intent: "yes", text: "fine" }));
@@ -159,5 +213,61 @@ describe("the hill store", () => {
     });
     expect(result.current.map((d) => d.title)).toEqual(["from the new one"]);
     expect(reads).toEqual([null, null]);
+  });
+});
+
+describe("clearing the closed rows on the phone", () => {
+  const closedRows = () => [hillDecision({ state: "answered", closedAt: 5 }), hillDecision({ state: "dismissed", closedAt: 4 })];
+
+  it("holds how many closed decisions the bridge has, never fewer than the rows it served", async () => {
+    serve(() => ({ ...list(1, [], closedRows()), closedTotal: 40 }));
+    const { result } = renderHook(() => ({ closed: useHillClosed(), total: useHillClosedTotal() }));
+    await sync(1);
+    expect(result.current.closed).toHaveLength(2);
+    expect(result.current.total).toBe(40);
+    serve(() => list(2, [], closedRows()));
+    await sync(2);
+    expect(result.current.total).toBe(2);
+  });
+
+  it("takes the rows off at once, and the way back puts them and the count back", async () => {
+    serve(() => ({ ...list(1, [], closedRows()), closedTotal: 9 }));
+    const { result } = renderHook(() => ({ closed: useHillClosed(), total: useHillClosedTotal() }));
+    await sync(1);
+    let putBack: () => void = () => undefined;
+    act(() => {
+      putBack = clearClosedLocally();
+    });
+    expect(result.current).toEqual({ closed: [], total: 0 });
+    act(() => putBack());
+    expect(result.current.closed).toHaveLength(2);
+    expect(result.current.total).toBe(9);
+  });
+
+  it("does not put old rows over a list that arrived while the clear was out", async () => {
+    serve((since) => (since === null ? list(1, [], closedRows()) : list(2, [hillDecision()], [])));
+    const { result } = renderHook(() => ({ closed: useHillClosed(), open: useHillOpen() }));
+    await sync(1);
+    let putBack: () => void = () => undefined;
+    act(() => {
+      putBack = clearClosedLocally();
+    });
+    await sync(2);
+    act(() => putBack());
+    expect(result.current.closed).toEqual([]);
+    expect(result.current.open).toHaveLength(1);
+  });
+
+  it("with nothing closed it changes nothing and its way back does nothing", async () => {
+    serve(() => list(1, [hillDecision()]));
+    const { result } = renderHook(() => useHillClosed());
+    await sync(1);
+    const before = result.current;
+    let putBack: () => void = () => undefined;
+    act(() => {
+      putBack = clearClosedLocally();
+    });
+    act(() => putBack());
+    expect(result.current).toBe(before);
   });
 });

@@ -216,6 +216,15 @@ describe("readHillDecision", () => {
   });
 });
 
+describe("readHillList closedTotal", () => {
+  it("reads how many closed decisions the bridge holds, never fewer than the rows sent, and leaves it out when absent", () => {
+    expect(readHillList({ rev: 3, open: [], closed: [] })).toEqual({ rev: 3, open: [], closed: [] });
+    expect(readHillList({ rev: 3, open: [], closed: [], closedTotal: 25 })).toEqual({ rev: 3, open: [], closed: [], closedTotal: 25 });
+    expect(readHillList({ rev: 3, open: [], closed: [], closedTotal: "many" })).not.toHaveProperty("closedTotal");
+    expect(readHillList({ rev: 3, open: [], closed: [], closedTotal: 2.5 })).not.toHaveProperty("closedTotal");
+  });
+});
+
 describe("readHillList", () => {
   it("returns null for a body with no rev", () => {
     expect(readHillList({ open: [] })).toBeNull();

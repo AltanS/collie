@@ -19,6 +19,7 @@
 //   hill.status   { id }                       → { ok, decision }   (the poster, and the session its replyTo names)
 //   hill.withdraw { id }                       → { ok, decision }   (now `withdrawn`, "by the poster")
 //   hill.list     { mine: true }               → { ok, decisions }  (the asker's own, open first)
+//   hill.clear    {}                           → { ok, cleared }    (every closed decision; no pane needed, never an open one)
 // Every hill refusal carries `hill: true`, so the CLI tells a bridge that knows the hill from an older one.
 // On a crew member from 1.29.0 the four go to the lead, which holds the one Hill (CREW_PROTOCOL §22).
 // A refusal is `{ ok: false, error }`. `not here` means the markers name no pane of this bridge, so
@@ -56,7 +57,7 @@ export const HILL_NEEDS_A_PANE = "run this inside an agent's pane: a decision be
  * What the socket needs of the hill (M96). Absent: the bridge answers the four operations as unknown. The
  * `ask` calls answer from this bridge, or on a crew member from its lead (CREW_PROTOCOL §22).
  */
-export type HillSocket = Pick<HillService, "agentSender" | "postFields" | "askStatus" | "askWithdraw" | "askList">;
+export type HillSocket = Pick<HillService, "agentSender" | "postFields" | "askStatus" | "askWithdraw" | "askList" | "clear">;
 
 /** The socket of one state dir. */
 export function walkySocketPath(stateDir: string): string {
@@ -130,7 +131,8 @@ export type WalkyAnswer =
   // The hill (M96).
   | { readonly ok: false; readonly error: string; readonly hill: true; readonly code?: HillRefusalCode; readonly missing?: string }
   | { readonly ok: true; readonly decision: HillDecision }
-  | { readonly ok: true; readonly decisions: readonly HillDecision[] };
+  | { readonly ok: true; readonly decisions: readonly HillDecision[] }
+  | { readonly ok: true; readonly cleared: number };
 
 /**
  * A bridge that knows the pane but holds no message with the id (added 2026-10-30). It answers `not here`,
@@ -145,6 +147,8 @@ export function noMessageHere(sentence: string): WalkyAnswer {
 export async function answerRequest(service: WalkyService, request: WalkyRequest, targets: readonly PlaceTarget[], hill?: HillSocket): Promise<WalkyAnswer> {
   // A bridge built without the hill answers its operations as it answers any op it does not know.
   if (hill === undefined && isHillOp(request.op)) return answerUnread(service, { ok: false, markers: request.markers, reason: unknownOp(request.op) }, targets);
+  // Clear is the person's verb from a terminal: it names no pane, so the markers are not placed.
+  if (request.op === "hill.clear" && hill !== undefined) return answerClear(hill);
   const placed = request.markers.length === 0 ? null : await placeMarkers(request.markers, targets);
   const notHere: WalkyAnswer = hill !== undefined && isHillOp(request.op) ? { ok: false, error: "not here", hill: true } : { ok: false, error: "not here" };
   if (request.markers.length > 0 && placed === null) return notHere;
@@ -224,7 +228,17 @@ export async function answerRequest(service: WalkyService, request: WalkyRequest
     case "hill.withdraw":
     case "hill.list":
       return await answerHill(service, request, pane, hill);
+    case "hill.clear":
+      // Answered above, before any pane is placed; kept so the switch stays exhaustive.
+      return hill === undefined ? { ok: false, error: unknownOp(request.op) } : answerClear(hill);
   }
+}
+
+/** Clear every closed decision: the count, or a refusal when the write failed (nothing was cleared). */
+function answerClear(hill: HillSocket): WalkyAnswer {
+  const cleared = hill.clear(null);
+  if (cleared === null) return { ok: false, error: "the Hill could not be saved on this machine; nothing was cleared", hill: true };
+  return { ok: true, cleared: cleared.cleared.length };
 }
 
 /**

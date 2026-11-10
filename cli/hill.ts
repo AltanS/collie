@@ -8,7 +8,7 @@ import { holdSocketSafe } from "./hold.ts";
 import { EXIT } from "./io.ts";
 import { AskLate, NO_SOCKET_TEXT, shown, type WalkyDeps } from "./walky.ts";
 import type { JsonObject, JsonValue } from "../bridge/json.ts";
-import { asJsonObject, asJsonString, parseJson, parseJsonObject } from "../web/src/lib/json.ts";
+import { asJsonNumber, asJsonObject, asJsonString, parseJson, parseJsonObject } from "../web/src/lib/json.ts";
 import { HILL_POST_ASK_MS } from "../bridge/hill/crew.ts";
 import { readDecision } from "../bridge/hill/parse.ts";
 import { HILL_DEFAULT_EXPIRY_DAYS, HILL_MAX_EXPIRY_DAYS, HILL_MAX_EXPIRY_MS } from "../bridge/hill/service.ts";
@@ -42,7 +42,7 @@ import { isRequestId } from "../bridge/worktree-receipts.ts";
 // bridge that does not know the pane answers `not here`, and one that does not know the hill answers as
 // it answers any op it cannot read; both lead to the next. When no bridge knows the hill, it says so.
 
-export const HILL_SUBCOMMANDS = ["post", "status", "withdraw", "list", "on", "off"] as const;
+export const HILL_SUBCOMMANDS = ["post", "status", "withdraw", "list", "clear", "on", "off"] as const;
 
 export { HILL_RULES, HILL_WRITING };
 
@@ -74,6 +74,7 @@ const USAGE = {
   status: ["usage: collie hill status <dc_id> [--json]   (yours, or one whose answer goes to this session)"],
   withdraw: ["usage: collie hill withdraw <dc_id> [--json]"],
   list: ["usage: collie hill list [--json]   (your own decisions, open first)"],
+  clear: ["usage: collie hill clear [--json]   (remove every closed decision from the Hill; open ones stay)"],
   on: ["usage: collie hill on    (switch the Hill on for this Collie; it is on unless switched off)"],
   off: ["usage: collie hill off   (switch the Hill off: every post is refused, the open decisions stay)"],
 } as const satisfies Record<(typeof HILL_SUBCOMMANDS)[number], readonly string[]>;
@@ -584,6 +585,28 @@ export async function cmdHillList(deps: HillDeps, args: readonly string[]): Prom
     const to = decision.target === null ? "" : `  (to ${targetWords(decision.target)})`;
     deps.io.out(`${decision.id}  ${decision.state.padEnd(13)}  ${decision.priority.padEnd(5)}  ${shown(decision.title)}${to}`);
   }
+  return EXIT.OK;
+}
+
+/** What `collie hill clear` prints for a count. */
+export function clearedWords(count: number): string {
+  if (count === 0) return "Nothing to clear: no closed decisions.";
+  return `Cleared ${String(count)} closed ${count === 1 ? "decision" : "decisions"}.`;
+}
+
+/**
+ * `hill clear`: remove every closed decision from the Hill, through the running bridge's socket. It names
+ * no pane and no id, and never removes an open decision. Prints one line with the count.
+ */
+export async function cmdHillClear(deps: HillDeps, args: readonly string[]): Promise<number> {
+  if (windows(deps)) return EXIT.STATE;
+  const unknown = args.find((arg) => arg !== "--json");
+  if (unknown !== undefined) return usage(deps, "clear", `unknown argument \`${unknown}\``);
+  const answer = await request(deps, { op: "hill.clear" });
+  if (!answer.ok) return failed(deps, answer);
+  const count = asJsonNumber(answer.body.cleared);
+  if (count === undefined) return failed(deps, { ok: false, error: "the bridge answered without a count", code: null, exit: EXIT.FAIL });
+  deps.io.out(args.includes("--json") ? JSON.stringify({ cleared: count }) : clearedWords(count));
   return EXIT.OK;
 }
 

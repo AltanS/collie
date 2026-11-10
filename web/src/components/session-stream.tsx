@@ -407,19 +407,6 @@ const EDGE_ROW =
  *  plus the 4px its overlay sits down from the scrollport's top (ChatMessageList). */
 const PIN_ROOM = "h-16";
 
-/** The pin's row in the hugging look: the overlay wrapper (`ChatMessageList`) over the scroller's full width.
- *  It has no ground of its own; PIN_FADE, its first child, is the ground. `pb-1` makes the row exactly
- *  `PIN_ROOM` tall (4 + 56 + 4 = 64px) with the well at its place. The wrapper keeps ignoring the pointer
- *  (it must not eat a scroll that starts on it); the well is the only button. */
-const PIN_BAND = "pb-1";
-
-/** The pin's ground in the hugging look: the page colour, solid down to 55 percent of its height (42px, a bit
- *  below the well's middle, so no thread text shows beside the well's two text lines at full contrast), then a
- *  fade to transparent. `-bottom-3` lets it hang 12px below the room, 16px under the well's bottom edge, so text
- *  slides out under a soft edge, not a cut. `-z-10` keeps it behind the well inside the wrapper's stacking
- *  context; it is out of flow and ignores the pointer, so it takes no layout space, no tap and no scroll. */
-const PIN_FADE = "pointer-events-none absolute inset-x-0 top-0 -bottom-3 -z-10 bg-gradient-to-b from-background from-55% to-transparent";
-
 /**
  * THE SAVED-COPY LINE (M46 specs 09 and 10), at the top of the scrolled content of either body.
  *
@@ -898,19 +885,10 @@ export function SessionStream({
       className={look.gutter === "16" ? "px-4 pt-0 pb-3" : "px-3 pt-0 pb-3"}
       style={textTokens(fontSize)}
       // The pin sits beside the scrollport, so it takes the gutter and the chat font size from here. Only the
-      // hugging look does: the look before it keeps the overlay as it was. In that look the overlay also carries
-      // the pin's fade (PIN_FADE): the well hugs the right, and without a ground across the row the thread would
-      // scroll past, visible, beside it.
-      overlayClassName={look.userTurn === "hug" ? cn(PIN_BAND, look.gutter === "16" && "px-4") : undefined}
+      // hugging look does: the look before it keeps the overlay as it was.
+      overlayClassName={look.userTurn === "hug" && look.gutter === "16" ? "px-4" : undefined}
       overlayStyle={look.userTurn === "hug" ? textTokens(fontSize) : undefined}
-      overlay={
-        pin !== null ? (
-          <>
-            {look.userTurn === "hug" && <div aria-hidden data-slot="pin-fade" className={PIN_FADE} />}
-            <PromptPin pin={pin} busy={seeking !== null || (pin.kind === "earlier" && loadingOlder)} onTap={onPinTap} />
-          </>
-        ) : null
-      }
+      overlay={pin !== null ? <PromptPin pin={pin} busy={seeking !== null || (pin.kind === "earlier" && loadingOlder)} onTap={onPinTap} /> : null}
     >
       {/* Top of the window. Older turns come off `hasOlder` and nothing else: what the live window
           has trimmed is the History read's job, reached through `?before=`, and the bridge holds

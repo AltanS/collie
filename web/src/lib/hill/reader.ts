@@ -406,7 +406,11 @@ export function readHillList(value: JsonValue | undefined): HillList | null {
   const closed = readDecisions(o.closed, (state) => state !== "open");
   const dropped = open.dropped + closed.dropped;
   if (dropped > 0) console.warn(`hill: dropped ${dropped} decision(s) this build cannot read`);
-  return { rev, open: open.list, closed: closed.list };
+  const total = asJsonNumber(o.closedTotal);
+  const list: HillList = { rev, open: open.list, closed: closed.list };
+  // How many closed ones the bridge holds: never fewer than the rows it sent.
+  if (total !== undefined && Number.isInteger(total)) list.closedTotal = Math.max(total, closed.list.length);
+  return list;
 }
 
 /** A receipt as the contract shapes it, or null when it does not fit. */
