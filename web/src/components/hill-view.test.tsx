@@ -1,6 +1,5 @@
 import { fireEvent, render } from "@testing-library/react";
 import { createMemoryRouter, RouterProvider } from "react-router";
-import { vi } from "vitest";
 
 import { HILL_IDLE } from "@/hooks/use-hill-answer";
 import { sortOpenDecisions, type HillDecision } from "@/lib/hill/wire";
@@ -8,7 +7,7 @@ import { withHeaderHost } from "@/test/header-host";
 import { HILL_T0, hillDecision, trickDecision } from "@/test/hill-fixtures";
 
 import { DecisionCard } from "./decision-card";
-import { HillEntryRow, HillHeader, HillView } from "./hill-view";
+import { HillHeader, HillView } from "./hill-view";
 
 // The Hill's header, body and the Dashboard's way in (M96): the count line, the cards grouped by
 // priority and most urgent first, the empty hill, the Answered fold with the state glyphs, the state
@@ -154,23 +153,5 @@ describe("the Hill's header", () => {
 
   it("wears the Hill's mountain through its icon key", () => {
     expect(header(1, 0).querySelector('[data-slot="hill-mark"] [data-icon="hill"]')).not.toBeNull();
-  });
-});
-
-describe("the Dashboard's row", () => {
-  it("says one Decision in the singular and several in the plural, with the title", () => {
-    const one = render(<HillEntryRow count={1} title="Ship the zoom fix?" onOpen={() => {}} />);
-    expect(one.container.querySelector('[data-slot="hill-entry-count"]')).toHaveTextContent("1 Decision needs you");
-    expect(one.container.querySelector('[data-slot="hill-entry-title"]')).toHaveTextContent("Ship the zoom fix?");
-    one.unmount();
-    const three = render(<HillEntryRow count={3} title="Ship the zoom fix?" onOpen={() => {}} />);
-    expect(three.container.querySelector('[data-slot="hill-entry-count"]')).toHaveTextContent("3 Decisions need you");
-  });
-
-  it("opens the Hill on a tap", () => {
-    const onOpen = vi.fn();
-    const { container } = render(<HillEntryRow count={2} title="t" onOpen={onOpen} />);
-    fireEvent.click(container.querySelector('[data-slot="hill-entry"]')!);
-    expect(onOpen).toHaveBeenCalledOnce();
   });
 });

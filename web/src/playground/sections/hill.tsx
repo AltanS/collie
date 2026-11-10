@@ -1,6 +1,6 @@
 // The hill section of the states playground (M96): the Decision card in each state, the Hill view, and
 // the Dashboard's way in. Every card mounts the REAL component (`DecisionCard`, `HillView`,
-// `HillHeader`, `HillEntryRow`) with fixtures shaped by the wire (`fixtures/hill/decisions.ts`). There
+// `HillHeader`, `DashboardTabBar`) with fixtures shaped by the wire (`fixtures/hill/decisions.ts`). There
 // is no bridge behind this page: a card's state is fixed, and a tap on a live card answers nothing.
 // The cards wear the machine tints of a two-machine crew (bluefin and minibuch), as `LiveDecisionCard`
 // would hand them on one.
@@ -12,7 +12,8 @@ import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 
 import { AgentList } from "@/components/agent-list";
 import { AppHeaderHost, RouteHeader } from "@/components/app-header";
 import { DecisionCard } from "@/components/decision-card";
-import { HillEntryRow, HillHeader, HillView } from "@/components/hill-view";
+import { DashboardTabBar } from "@/components/dashboard-tab-bar";
+import { HillHeader, HillView } from "@/components/hill-view";
 import { HILL_IDLE, type HillAnswerState } from "@/hooks/use-hill-answer";
 import type { HillDecision, HillReceipt } from "@/lib/hill/wire";
 import { sortOpenDecisions } from "@/lib/hill/wire";
@@ -174,19 +175,34 @@ function HillPhone({ open, closed, kept = NO_KEPT, unfold = false }: { open: rea
   );
 }
 
-/** The Dashboard with the hill's row above the list, as `routes/home.tsx` draws it. */
+/** The Dashboard's bar with the Hill item, as `routes/home.tsx` builds it, with `open` Decisions. */
+function HillBar({ open }: { open: number }) {
+  return (
+    <DashboardTabBar
+      view="dashboard"
+      onSelect={noSend}
+      crew
+      files
+      blockedCount={herd.filter((pane) => pane.status === "blocked").length}
+      readyUnseen={false}
+      hill={open}
+      onOpenHill={noSend}
+      tabbarParts={[]}
+      sessions={[]}
+      onOpenSession={noSend}
+    />
+  );
+}
+
+/** The Dashboard with the Hill item in its bar, as `routes/home.tsx` draws it. */
 function DashboardPhone() {
   const [order, setOrder] = useState<PaneOrder>("place");
-  const top = sortOpenDecisions([...sevenOpen])[0]!;
   return (
     <Phone height={720}>
       <RootRouter data={homeSolo}>
         <AppHeaderHost bridge="connected" error={false}>
           <RouteHeader wordmark width="column" />
           <div data-pg-scroll className="min-h-0 flex-1 overflow-y-auto">
-            <div className="px-4 pt-3">
-              <HillEntryRow count={sevenOpen.length} title={top.title} onOpen={noSend} />
-            </div>
             <AgentList
               agents={herd}
               shellPanes={[]}
@@ -203,6 +219,7 @@ function DashboardPhone() {
               onNeedsYouOnlyChange={noSend}
             />
           </div>
+          <HillBar open={sevenOpen.length} />
         </AppHeaderHost>
       </RootRouter>
     </Phone>
@@ -338,17 +355,18 @@ export function HillSection() {
       </Group>
 
       <Group title="The way in">
-        <Card state="hill-entry-row" label="20: dashboard row">
-          <CardHead n={20} title="Dashboard row" />
+        <Card state="hill-entry-bar" label="20: the Hill in the bar">
+          <CardHead n={20} title="The Hill in the bar: none, 1 and 7 open" />
           <Phone>
-            <div className="flex flex-col gap-3 p-4">
-              <HillEntryRow count={1} title={twoOptions.title} onOpen={noSend} />
-              <HillEntryRow count={7} title={twoOptions.title} onOpen={noSend} />
+            <div className="flex flex-col gap-3 py-4">
+              <HillBar open={0} />
+              <HillBar open={1} />
+              <HillBar open={7} />
             </div>
           </Phone>
         </Card>
-        <Card state="hill-entry-dashboard" label="21: dashboard with row">
-          <CardHead n={21} title="Dashboard with row" />
+        <Card state="hill-entry-dashboard" label="21: dashboard with the Hill">
+          <CardHead n={21} title="Dashboard with the Hill" />
           <DashboardPhone />
         </Card>
       </Group>

@@ -27,6 +27,8 @@ import { withHeaderHost } from "@/test/header-host";
 import { server } from "@/test/setup";
 import { __resetHill, __settleHill, syncHill } from "@/lib/hill/store";
 import { hillDecision } from "@/test/hill-fixtures";
+import { partKey, type PlaceItem, type TricksReply, type WireTrickPart } from "@/lib/tricks/schema";
+import { tricksStore } from "@/lib/tricks/store";
 import { HomeRoute } from "./home";
 
 // The dashboard, one machine and several. The point of the pair is that the FIRST one is unchanged:
@@ -1175,7 +1177,7 @@ describe("the dashboard's update line after a tap on the updating mark", () => {
   });
 });
 
-describe("the hill's row on the Dashboard (M96)", () => {
+describe("the Hill in the Dashboard's bar (M96)", () => {
   beforeEach(() => __resetHill());
   afterEach(() => __resetHill());
 
@@ -1188,29 +1190,92 @@ describe("the hill's row on the Dashboard (M96)", () => {
     });
   }
 
-  it("draws nothing while no Decision is open", async () => {
+  const bar = () => document.querySelector<HTMLElement>('[data-slot="tab-bar"]')!;
+  const hillItem = () => bar().querySelector<HTMLElement>('[data-slot="tab-link"][data-link="hill"]');
+
+  it("has no Hill item where the snapshot carries no hill, and no row above the list", async () => {
     renderHome(solo());
     await settled();
+    expect(hillItem()).toBeNull();
     expect(document.querySelector('[data-slot="hill-entry"]')).toBeNull();
   });
 
-  it("says one Decision in the singular, with its title", async () => {
-    await openOnHill(1);
-    renderHome(solo());
+  it("is the fourth item at the bar's right end, with no badge while nothing is open, and never selected", async () => {
+    renderHome({ ...packed(), hill: true });
     await settled();
-    const row = document.querySelector<HTMLElement>('[data-slot="hill-entry"]')!;
-    expect(row).toHaveTextContent("1 Decision needs you");
-    expect(row).toHaveTextContent("Decision 1");
+    const cells = [...bar().querySelectorAll<HTMLElement>('[data-slot="tab"], [data-slot="tab-link"]')];
+    expect(cells.map((cell) => cell.querySelector(".truncate")?.textContent)).toEqual(["Crew", "Dashboard", "Files", "Hill"]);
+    expect(hillItem()!.querySelector('[data-icon="hill"]')).not.toBeNull();
+    expect(hillItem()!.querySelector('[data-slot="tab-badge"]')).toBeNull();
+    expect(hillItem()).not.toHaveAttribute("aria-current");
+    // Today's bar otherwise: equal widths, nothing scrolls.
+    expect(bar().dataset.mode).toBe("equal");
   });
 
-  it("says several in the plural, the most urgent title under it, and opens the hill", async () => {
+  it("carries the open count in the bar's red badge, and a tap opens the Hill without selecting it", async () => {
     await openOnHill(3);
-    const router = renderHome(solo());
+    const router = renderHome({ ...solo(), hill: true });
     await settled();
-    const row = document.querySelector<HTMLElement>('[data-slot="hill-entry"]')!;
-    expect(row).toHaveTextContent("3 Decisions need you");
-    expect(row.querySelector('[data-slot="hill-entry-title"]')).toHaveTextContent("Decision 3");
-    await userEvent.click(row);
+    const item = hillItem()!;
+    expect(item.querySelector('[data-slot="tab-badge"]')).toHaveTextContent("3");
+    expect(item).toHaveAccessibleName("Hill, 3 Decisions wait on you");
+    await userEvent.click(item);
     await waitFor(() => expect(url(router)).toBe("/hill"));
+  });
+});
+
+describe("the tricks' places on the Dashboard (2026-11-10)", () => {
+  let rev = 100;
+  const item = (trick: string, at: "dashboard" | "tabbar", it: PlaceItem): WireTrickPart => ({
+    host: "bluefin",
+    trick,
+    part: at,
+    rev: 1,
+    asOf: new Date().toISOString(),
+    value: { at, id: at, item: it },
+  });
+  async function seed(parts: WireTrickPart[]) {
+    rev += 1;
+    const tricks = [...new Set(parts.map((p) => p.trick))].map((id) => ({ host: "bluefin", id, name: id, icon: "flask" as const, on: true, state: "ok" as const, places: ["dashboard" as const, "tabbar" as const] }));
+    const reply: TricksReply = { rev, tricks, parts, present: parts.map(partKey) };
+    server.use(http.get(/\/api\/tricks/, () => HttpResponse.json(reply)));
+    await act(() => tricksStore.syncTricks(rev));
+  }
+  afterEach(async () => seed([]));
+
+  const strip = () => document.querySelector<HTMLElement>('[data-slot="trick-dashboard-strip"]');
+  const bar = () => document.querySelector<HTMLElement>('[data-slot="tab-bar"]')!;
+
+  it("draws no strip and today's bar while no trick has a place there", async () => {
+    renderHome({ ...packed(), hill: true });
+    await settled();
+    expect(strip()).toBeNull();
+    expect(bar().dataset.mode).toBe("equal");
+    expect(bar().querySelector('[data-slot="tab-bar-divider"]')).toBeNull();
+  });
+
+  it("draws the tiles above the summary line on the Dashboard, in manifest order, and not on Crew", async () => {
+    await seed([item("legs", "dashboard", { label: "Legs", badge: 3 }), item("tracker", "dashboard", { label: "Tracker", tone: "accent" })]);
+    renderHome(packed());
+    await settled();
+    const tiles = [...strip()!.querySelectorAll<HTMLElement>('[data-slot="tile"]')];
+    expect(tiles.map((tile) => tile.dataset.trick)).toEqual(["legs", "tracker"]);
+    const summary = document.getElementById("dash-summary-line")!;
+    expect(strip()!.compareDocumentPosition(summary) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    await userEvent.click(within(bar()).getByRole("button", { name: /^Crew$/ }));
+    expect(strip()).toBeNull();
+    await userEvent.click(within(bar()).getByRole("button", { name: /^Files$/ }));
+    expect(strip()).toBeNull();
+  });
+
+  it("puts the tabbar items after the Hill and a divider, and pins the tabs", async () => {
+    await seed([item("legs", "tabbar", { label: "Legs", badge: "23/34" })]);
+    renderHome({ ...packed(), hill: true });
+    await settled();
+    expect(bar().dataset.mode).toBe("scroll");
+    const order = [...bar().querySelectorAll<HTMLElement>('[data-slot="tab"], [data-slot="tab-link"], [data-slot="tab-bar-divider"], [data-slot="tab-extra"]')].map(
+      (el) => el.dataset.trick ?? el.dataset.link ?? el.dataset.slot,
+    );
+    expect(order).toEqual(["tab", "tab", "tab", "hill", "tab-bar-divider", "legs"]);
   });
 });

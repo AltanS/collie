@@ -1,5 +1,4 @@
-import { Icon } from "@/components/icons/icon";
-import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { useRevalidator } from "react-router";
 
 import { RouteHeader, SettingsGear } from "@/components/app-header";
@@ -22,10 +21,9 @@ import { CrewTab } from "@/components/crew-tab";
 import { TelemetryNotice } from "@/components/telemetry-notice";
 import { UpdateBanner } from "@/components/update-banner";
 import { Fab } from "@/components/ui/fab";
-import { Collapse } from "@/components/ui/collapse";
-import { HillEntryRow } from "@/components/hill-view";
 import { useAnySheetOpen } from "@/components/ui/sheet";
-import { TabBar } from "@/components/ui/tab-bar";
+import { DashboardTabBar } from "@/components/dashboard-tab-bar";
+import { TrickDashboardStrip } from "@/components/trick-place-items";
 import { WorkspaceChangesList, type WorkspaceChangesRow } from "@/components/workspace-changes-list";
 import { useDashPrefs, openForCount } from "@/hooks/use-dash-prefs";
 import { useKeyboardOpen } from "@/hooks/use-keyboard";
@@ -47,7 +45,7 @@ import { ambientHost, ambientPanes, isMultiHost, paneRowKey, paneScope, sessions
 import { setMachineHidden, useHiddenMachines } from "@/lib/hidden-machines";
 import type { ChangesLookup } from "@/lib/api";
 import type { DashView } from "@/lib/dash-view";
-import { t, tn } from "@/lib/i18n";
+import { t } from "@/lib/i18n";
 import { prefetchFolders } from "@/lib/folders";
 import { glideForward } from "@/lib/glide";
 import { hillPath, homePath, trickSessionPath, newPath, spaceChangesPath, spacePath } from "@/lib/nav";
@@ -61,7 +59,8 @@ import { programScope, programSessions, programsAbove, waitingPrograms } from "@
 import { cn } from "@/lib/utils";
 import { isReadOnly, type AgentView, type ServerSummary, type SessionSummary } from "@/lib/types";
 import { useRootData } from "@/lib/route-data";
-import { useHillOpen } from "@/lib/hill/store";
+import { useHillCount } from "@/lib/hill/store";
+import { useTrickParts } from "@/lib/tricks/store";
 
 const NO_TRICK_SESSIONS: readonly AgentView[] = [];
 
@@ -250,7 +249,7 @@ export function HomeRoute() {
   // takes above Launch when a question waits, and draws nothing when none does.
   const programsWaiting = useMemo(() => waitingPrograms(programs), [programs]);
   const openProgram = (session: SessionSummary) => nav.down(homePath(programScope(session, data.servers)));
-  const openTrickSession = (pane: AgentView) => nav.down(trickSessionPath(pane.paneId));
+  const openTrickSession = useCallback((pane: AgentView) => nav.down(trickSessionPath(pane.paneId)), [nav]);
 
   // THE ROW HOLD (ADR 0070): a hold on a dashboard row opens that pane's own actions sheet, Pin to
   // top / Unpin first, then the writes. The sheet writes with the PANE's scope, for the reason a tap
@@ -310,12 +309,18 @@ export function HomeRoute() {
   }, [focusPending]);
   // "+ New" shrinks to the round "+" once the list has scrolled, and grows back at the top (card 3.2).
   const scrolled = useScrolledPast(scrollRef, 24);
-  // The footer's tabs: Crew while a crew is configured, the Dashboard, and Files on a machine with a screen.
-  // A bar with one tab switches to nothing, so a solo machine with no screen draws none, and the New
-  // button, the toasts and the list's last row sit on the safe area instead (durable-simple, 2026-10-13).
-  const tabsShown = multi || !screenless;
-  // The open Decisions on the hill (M96), most urgent first. Empty without a hill, which draws no row.
-  const hillOpen = useHillOpen();
+  // THE HILL (M96): the open Decisions, counted on the footer's Hill item. `null` where the snapshot
+  // carries no `hillRev` (a bridge older than the hill, a crew member's own scope): no Hill item there.
+  const hillCount = useHillCount();
+  const hill = data.hill === true ? hillCount : null;
+  // The tricks' bottom bar items (the `tabbar` place), after the Hill.
+  const tabbarParts = useTrickParts("tabbar");
+  // The footer's tabs: Crew while a crew is configured, the Dashboard, and Files on a machine with a screen,
+  // then the Hill and the tricks' items. A bar with one tab and nothing else switches to nothing, so a solo
+  // machine with no screen and no hill draws none, and the New button, the toasts and the list's last row
+  // sit on the safe area instead (durable-simple, 2026-10-13). The Hill alone is reason enough for a bar:
+  // it is the hill's only way in.
+  const tabsShown = multi || !screenless || hill !== null || tabbarParts.length > 0;
 
   return (
     <div className="mx-auto flex min-h-0 w-full max-w-screen-sm flex-1 flex-col">
@@ -349,16 +354,10 @@ export function HomeRoute() {
         <TelemetryNotice />
 
         <main className="flex-1">
-          {/* THE HILL'S WAY IN (M96): one row above the list, on the Dashboard tab only, while at least
-              one Decision is open. It arrives and leaves through Collapse (DESIGN.md §11), and with none
-              open it renders nothing at all, so the Dashboard is what it was before the hill. */}
-          <Collapse open={view === "dashboard" && hillOpen.length > 0}>
-            {view === "dashboard" && hillOpen[0] !== undefined ? (
-              <div className="px-4 pt-3">
-                <HillEntryRow count={hillOpen.length} title={hillOpen[0].title} onOpen={() => nav.down(hillPath(data.scope))} />
-              </div>
-            ) : null}
-          </Collapse>
+          {/* THE TRICKS' TILES (the `dashboard` place, 2026-11-10): one per trick, in a strip at the top
+              of the Dashboard view, above the summary line. Not on Crew or Files. Nothing at all while
+              no trick has a tile; it arrives and leaves through Collapse (DESIGN.md §11). */}
+          {view === "dashboard" && <TrickDashboardStrip sessions={data.trickSessions ?? NO_TRICK_SESSIONS} onOpenSession={openTrickSession} />}
           {/* One list: every pane under the workspace it lives in, or one ranked list in Activity and
               Cache order (components/agent-list.tsx). Bare shells go in with the agents — grouped by
               place they sit beside the work they belong to, which is what stopped them being a pen
@@ -484,35 +483,27 @@ export function HomeRoute() {
         />
       </div>
 
-      {/* The dashboard's footer (ADR 0066, ADR 0085): lists, each named for what it holds. Crew
-          first while a crew is configured, then Dashboard, the default, in the middle under the
-          thumb, then Files. It sits OUTSIDE the scroller, so the content scrolls above it and a
-          switch moves neither it nor the strip and summary line at the top of the list. At every width: the dashboard has no sidebar on a wide screen (it is one
-          centred column), so nothing else offers these views. */}
+      {/* The dashboard's footer (ADR 0066, ADR 0085, both amended 2026-11-10): lists, each named for what
+          it holds. Crew first while a crew is configured, then Dashboard, the default, then Files, then
+          the Hill, a fixed item that opens its own route, and the tricks' items after it. It sits OUTSIDE
+          the scroller, so the content scrolls above it and a switch moves neither it nor the strip and
+          summary line at the top of the list. At every width: the dashboard has no sidebar on a wide
+          screen (it is one centred column), so nothing else offers these views. Its height is the same
+          56px row in both of its modes, so the sums below hold. */}
       {tabsShown && (
-      <TabBar<DashView>
-        label={t("home.tabs.aria")}
-        active={view}
-        onSelect={setDashView}
-        items={[
-          // Crew leads, drawn only while a crew is configured (ADR 0085). Network is the Crew icon
-          // the Settings card, the switcher sheet and the footer line wear.
-          ...(multi ? [{ value: "crew" as const, label: t("crew.title"), icon: <Icon name="crew" className="size-5" /> }] : []),
-          // The Dashboard tab carries the corner mark the Focus tab wore (ADR 0066 point 7), always:
-          // it is information about the herd, not a nag, so it shows with the switch on or off.
-          {
-            value: "dashboard",
-            label: t("home.tabs.dashboard"),
-            icon: <Icon name="tab-dashboard" className="size-5" />,
-            badge: blockedCount,
-            dot: readyUnseen,
-            badgeLabel: blockedCount > 0 ? tn("home.tabs.blocked", blockedCount) : t("home.tabs.unseen"),
-          },
-          // The Files tab (2026-10-06, ADR 0085): the stored value stays `changes`. ListTree is the
-          // one Files icon: the pane belt's pill and the Files screen's Tree toggle wear it.
-          ...(screenless ? [] : [{ value: "changes" as const, label: t("files.title"), icon: <Icon name="files" className="size-5" /> }]),
-        ]}
-      />
+        <DashboardTabBar
+          view={view}
+          onSelect={setDashView}
+          crew={multi}
+          files={!screenless}
+          blockedCount={blockedCount}
+          readyUnseen={readyUnseen}
+          hill={hill}
+          onOpenHill={() => nav.down(hillPath(data.scope))}
+          tabbarParts={tabbarParts}
+          sessions={data.trickSessions ?? NO_TRICK_SESSIONS}
+          onOpenSession={openTrickSession}
+        />
       )}
 
       {/* Status overlay, anchored to the bottom of the viewport (no input here) — same slim line,

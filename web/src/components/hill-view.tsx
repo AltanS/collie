@@ -8,10 +8,9 @@ import { HillPriorityGlyph, PRIORITY_INK } from "@/components/hill-priority";
 import { Icon } from "@/components/icons/icon";
 import type { IconKey } from "@/components/icons/keys";
 import { SectionHeader } from "@/components/section-header";
-import { StatusDot } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
 import { Collapse } from "@/components/ui/collapse";
-import { ListGroup, LIST_ROW_CORNERS } from "@/components/ui/list-group";
+import { ListGroup } from "@/components/ui/list-group";
 import { useHillAnswer } from "@/hooks/use-hill-answer";
 import { useLocale } from "@/hooks/use-locale";
 import { HILL_PRIORITIES, type HillDecision, type HillState } from "@/lib/hill/wire";
@@ -214,38 +213,5 @@ export function LiveDecisionCard({ decision }: { decision: HillDecision }) {
       hostSlot={hostSlot(servers, from.memberId ?? undefined)}
       trickIcon={trickIcon}
     />
-  );
-}
-
-/**
- * The Dashboard's way in (M96): one row at the top of the list, drawn only while a Decision is open.
- * "3 Decisions need you", the most urgent one's title under it, and a chevron; a tap opens the Hill.
- * The row is the Programs section's own flat row in a `ListGroup`, the needs-you mark in front.
- * Whether it is drawn at all is the caller's (`routes/home.tsx`, through `Collapse`).
- */
-export function HillEntryRow({ count, title, onOpen }: { count: number; title: string; onOpen: () => void }) {
-  useLocale();
-  return (
-    <ListGroup>
-      <button
-        type="button"
-        data-slot="hill-entry"
-        onClick={onOpen}
-        className={cn("w-full text-left transition-colors hover:bg-muted/50 active:scale-[0.99]", LIST_ROW_CORNERS)}
-      >
-        <div className={cn("flex flex-row items-center gap-3 px-3.5 py-2.5", LIST_ROW_CORNERS)}>
-          <StatusDot status="blocked" className="size-2.5" />
-          <div className="min-w-0 flex-1">
-            <div data-slot="hill-entry-count" className="flex h-5 min-w-0 items-center truncate font-medium tabular-nums">
-              {tn("hill.entry", count)}
-            </div>
-            <div data-slot="hill-entry-title" className="font-content h-4 min-w-0 truncate text-xs leading-4 text-muted-foreground">
-              {title}
-            </div>
-          </div>
-          <Icon name="row-go" aria-hidden className="size-4 shrink-0 text-muted-foreground" />
-        </div>
-      </button>
-    </ListGroup>
   );
 }

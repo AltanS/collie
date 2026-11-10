@@ -1,17 +1,19 @@
 // Part A of the "Hill look" round: the Dashboard strip. The Hill as a mountain, then one item per
 // trick, scrolling sideways with the house fade when it overflows (`OverflowEdges`, cue "none", as the
-// Belt has it). A0 is today's row. A tap here only highlights. DEV-ONLY.
+// Belt has it). A0 is the row the app drew before the pick (a frozen copy below: the app's own
+// `HillEntryRow` left with the A5 build, 2026-11-10). A tap here only highlights. DEV-ONLY.
 
 import { LayoutGrid, Mountain, MountainSnow } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
 import { AgentList } from "@/components/agent-list";
 import { AppHeaderHost, RouteHeader } from "@/components/app-header";
-import { HillEntryRow } from "@/components/hill-view";
 import { NeedsYouSwitch } from "@/components/needs-you-switch";
+import { StatusDot } from "@/components/status-badge";
 import { StatusCounts } from "@/components/status-counts";
 import { Collapse } from "@/components/ui/collapse";
 import { Icon } from "@/components/icons/icon";
+import { ListGroup, LIST_ROW_CORNERS } from "@/components/ui/list-group";
 import { BottomSheet } from "@/components/ui/sheet";
 import { TabBar, type TabBarItem } from "@/components/ui/tab-bar";
 import { STRIP_TAP_TARGET } from "@/components/ui/labelled-strip";
@@ -40,6 +42,24 @@ function hillFacts(c: HillCase) {
   const now = c.open.some((d) => d.priority === "now");
   const top = c.open[0];
   return { count, now, top };
+}
+
+/** A0: the Dashboard row the app drew before the pick, frozen here for the comparison. */
+function HillEntryRow({ count, title, onOpen }: { count: number; title: string; onOpen: () => void }) {
+  return (
+    <ListGroup>
+      <button type="button" onClick={onOpen} className={cn("w-full text-left transition-colors hover:bg-muted/50 active:scale-[0.99]", LIST_ROW_CORNERS)}>
+        <div className={cn("flex flex-row items-center gap-3 px-3.5 py-2.5", LIST_ROW_CORNERS)}>
+          <StatusDot status="blocked" className="size-2.5" />
+          <div className="min-w-0 flex-1">
+            <div className="flex h-5 min-w-0 items-center truncate font-medium tabular-nums">{count === 1 ? "1 Decision needs you" : `${count} Decisions need you`}</div>
+            <div className="font-content h-4 min-w-0 truncate text-xs leading-4 text-muted-foreground">{title}</div>
+          </div>
+          <Icon name="row-go" aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+        </div>
+      </button>
+    </ListGroup>
+  );
 }
 
 /** A sideways scroller that runs to the screen edge and starts on the page gutter. */

@@ -90,8 +90,8 @@ describe("plurals", () => {
   it("reads a pending plural set in English, with English's rule, where a bundle lacks it", async () => {
     setLocale("ru");
     await whenLocaleReady("ru");
-    expect(tn("hill.entry", 1)).toBe("1 Decision needs you");
-    expect(tn("hill.entry", 3)).toBe("3 Decisions need you");
+    expect(tn("home.tabs.hill", 1)).toBe("1 Decision waits on you");
+    expect(tn("home.tabs.hill", 3)).toBe("3 Decisions wait on you");
   });
 
   it("picks one/few/many for Russian", async () => {

@@ -132,6 +132,12 @@ export interface HomeData {
    * valid; every loader return sets it, empty on a body with no trick session.
    */
   trickSessions?: AgentView[];
+  /**
+   * Whether this view has a hill (M96): the snapshot carries `hillRev`. False on a bridge older than the
+   * hill and on a crew member's own scope, where the Dashboard's bar draws no Hill item. Optional in the
+   * TYPE only, so hand-built fixtures stay valid.
+   */
+  hill?: boolean;
   /** The bridge's session registry (primary-first); empty on a single-session / older bridge. */
   sessions: SessionSummary[];
   /**
@@ -406,6 +412,7 @@ function toHomeData(
     herdWorkspaces: split.workspaces,
     tabs: ambientSpaces(split.tabs, scope, snap.servers),
     trickSessions: split.trickSessions,
+    hill: snap.hillRev !== undefined,
     sessions: snap.sessions ?? [],
     servers: snap.servers ?? [],
     ts: snap.ts ?? 0,

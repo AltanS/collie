@@ -105,3 +105,23 @@ control bar": the strip and the order toggle took two rows and a scroller to say
 native select draws the phone's own picker with no sheet of ours. The strip's tap-to-isolate is the
 select's choice, its long-press hide is gone because a native select has no long press, and a hide
 stored on a device still applies.
+
+## Amended 2026-11-10: the Hill is a fourth item, and tricks may follow it
+
+The operator decided this on 2026-11-10, after he compared the options on the phone and picked the
+one called "A5". The footer gains two kinds of item that are not tabs.
+
+- **The Hill is a fixed fourth item at the right end.** It wears the `hill` glyph and the footer's
+  own red count, which counts the open Decisions. That is point 7's meaning: something waits on the
+  operator. A tap opens the Hill's route one level down, so it is never drawn as the selected tab and
+  never sets `aria-current`. It is there with nothing open too, with no count, so the footer does not
+  change shape when a Decision arrives. A Decision marked `now` says so with the red count alone. Where
+  no hill exists (the snapshot carries no `hillRev`), there is no Hill item. The row that said how many
+  Decisions wait, at the top of the Dashboard, is gone.
+- **A trick's `tabbar` items may follow the Hill.** With one or more, the footer changes mode: the tabs
+  and the Hill keep a fixed 64px width and stay pinned at the left, a thin divider follows, and the
+  items scroll sideways after it under the house edge fade. Their badge is quiet and outlined, never
+  the red count, because a trick's figure does not wait on anyone. With none, the footer is the
+  equal-width row it was, plus the Hill. The height is 56px in both modes.
+- **"Revisit" is answered.** A fourth item fits at 375px because the Hill's word is short, and the
+  items past it scroll instead of crowding the translations.
