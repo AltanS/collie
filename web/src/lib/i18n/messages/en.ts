@@ -3390,6 +3390,9 @@ export const en = {
   "hill.receipt.gone": "This Decision is closed",
   "hill.receipt.denied": "This device may not answer",
   "hill.receipt.failed": "Not sent.",
+  // An answer to a session on a crew machine that is not answering (CREW_PROTOCOL §22): English only
+  // until the translation pass, listed in PENDING_TRANSLATION below.
+  "hill.receipt.offline": "{machine} is not answering. Your answer was not sent.",
   "hill.retry": "Try again",
   "hill.reason.textRequired": "an answer in words is required",
   "hill.reason.notAnOption": "that is not an option of this Decision",
@@ -3624,6 +3627,8 @@ export const PENDING_TRANSLATION = [
   "hill.off.title",
   "hill.off.body",
   "hill.off.turnOn",
+  // An answer refused for a crew machine that is not answering (2026-11-10).
+  "hill.receipt.offline",
 ] as const satisfies readonly MessageKey[];
 
 /** A key a bundle may leave out until the translation pass. */

@@ -86,6 +86,7 @@ export function receiptWords(receipt: HillReceipt, intent: string, label: string
     case "unknown":
       return t("hill.receipt.unknown");
     case "rejected": {
+      if (receipt.machine !== undefined) return t("hill.receipt.offline", { machine: receipt.machine });
       const why = reasonWords(receipt.reason);
       return why === null ? t("hill.receipt.rejected") : t("hill.receipt.rejectedWhy", { reason: why });
     }

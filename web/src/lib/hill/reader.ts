@@ -416,5 +416,11 @@ export function readHillReceipt(value: JsonValue | undefined): HillReceipt | nul
   const trick = o.trick === null ? null : oneOf(HILL_TRICK_DELIVERIES, o.trick);
   if (rid === undefined || code === undefined || reason === undefined || at === undefined) return null;
   if (state === undefined || delivery === undefined || trick === undefined) return null;
-  return { rid, code, reason, state, delivery, trick, at };
+  const receipt: HillReceipt = { rid, code, reason, state, delivery, trick, at };
+  // The crew machine that is not answering (CREW_PROTOCOL §22): a short printable name, else left out.
+  const machine = asJsonString(o.machine);
+  return machine !== undefined && MACHINE_NAME.test(machine) ? { ...receipt, machine } : receipt;
 }
+
+/** A crew machine's name as a receipt may carry it: a member id or a host name, short and printable. */
+const MACHINE_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;

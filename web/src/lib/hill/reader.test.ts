@@ -243,6 +243,15 @@ describe("readHillReceipt", () => {
     expect(readHillReceipt(json)).toMatchObject({ code: "gone", reason: "target session ended", delivery: null });
   });
 
+  it("keeps the crew machine of a refusal when it is a short printable name, and leaves out any other", () => {
+    const base = { rid: "r", code: "rejected", reason: "laptop is not answering. Your answer was not sent.", state: "open", delivery: null, trick: null, at: 1 };
+    expect(readHillReceipt({ ...base, machine: "laptop" })).toMatchObject({ code: "rejected", machine: "laptop" });
+    expect(readHillReceipt({ ...base, machine: "lap\u202etop" })).not.toHaveProperty("machine");
+    expect(readHillReceipt({ ...base, machine: "x".repeat(65) })).not.toHaveProperty("machine");
+    expect(readHillReceipt({ ...base, machine: 7 })).not.toHaveProperty("machine");
+    expect(readHillReceipt(base)).not.toHaveProperty("machine");
+  });
+
   it("returns null for an unknown code or a missing rid", () => {
     expect(readHillReceipt({ rid: "r", code: "maybe", reason: null, at: 1 })).toBeNull();
     expect(readHillReceipt({ code: "ok", reason: null, at: 1 })).toBeNull();
