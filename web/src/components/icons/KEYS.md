@@ -6,7 +6,7 @@ Every glyph the app draws is named by what it means. A theme's `glyphs` picks th
 them (ADR 0137). A family with no fitting glyph for a key draws the lucide one, shown as `(lucide)`.
 Phosphor's three sets share one map; the fill and duotone files add `-fill` and `-duotone`.
 
-332 keys.
+334 keys.
 
 Phosphor Fill draws these keys in the regular weight, so a cross stays a cross and an empty or
 not-started state stays empty: `action-check`, `action-x`, `answered`, `clear`, `close`, `confirm`, `copied`, `copy-failed`, `decision-dismissed`, `dismiss`, `done`, `mod-icon-check`, `mod-icon-x`, `mod-step-done`, `mod-step-failed`, `mod-step-todo`, `ok`, `plan-done`, `plan-pending`, `remove`, `selected`, `sent-ok`, `update-step-done`, `update-step-failed`, `update-step-skipped`, `voice-setup`, `zoom-out`.
@@ -345,6 +345,8 @@ not-started state stays empty: `action-check`, `action-x`, `answered`, `clear`, 
 | --- | --- | --- | --- | --- |
 | `branch` | a git branch | `GitBranch` | `git-branch` | `git-branch` |
 | `detached-head` | HEAD is on a commit, not a branch | `GitCommitHorizontal` | `git-commit` | `git-commit` |
+| `image-next` | the next picture in the picture sheet | `ChevronRight` | `caret-right` | `nav-arrow-right` |
+| `image-prev` | the previous picture in the picture sheet | `ChevronLeft` | `caret-left` | `nav-arrow-left` |
 | `scroll-hint-left` | more content to the left | `ChevronLeft` | `caret-left` | `nav-arrow-left` |
 | `scroll-hint-right` | more content to the right | `ChevronRight` | `caret-right` | `nav-arrow-right` |
 | `search` | search | `Search` | `magnifying-glass` | `search` |

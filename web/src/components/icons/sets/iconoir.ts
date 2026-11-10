@@ -108,6 +108,8 @@ export const ICONOIR = {
   "hill-now": null, // the Hill while a `now` Decision is open · lucide MountainSnow
   "history-screen": "journal-page", // the scrollback history screen · lucide ScrollText
   "image": "media-image", // an image · lucide Image
+  "image-next": "nav-arrow-right", // the next picture in the picture sheet · lucide ChevronRight
+  "image-prev": "nav-arrow-left", // the previous picture in the picture sheet · lucide ChevronLeft
   "info": "info-circle", // information, or the facts of an option · lucide Info
   "install-app": "download-data-window", // install the app · lucide MonitorDown
   "jobs": "timer", // running jobs · lucide Timer

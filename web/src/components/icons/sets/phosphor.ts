@@ -108,6 +108,8 @@ export const PHOSPHOR = {
   "hill-now": "mountains", // the Hill while a `now` Decision is open · lucide MountainSnow
   "history-screen": "scroll", // the scrollback history screen · lucide ScrollText
   "image": "image", // an image · lucide Image
+  "image-next": "caret-right", // the next picture in the picture sheet · lucide ChevronRight
+  "image-prev": "caret-left", // the previous picture in the picture sheet · lucide ChevronLeft
   "info": "info", // information, or the facts of an option · lucide Info
   "install-app": "tray-arrow-down", // install the app · lucide MonitorDown
   "jobs": "timer", // running jobs · lucide Timer
