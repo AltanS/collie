@@ -1,4 +1,4 @@
-// generated: sha256=775832920e999e82d1bf42c75fb8428fdcb8b409d360eecbcdb8db2b68d8e006 from=collie-brand/src/mark-contract.ts@e51f6910085a
+// generated: sha256=5101e2c931f62b3bcf860662f2c7af82c684f750ccbc19331a076b3ac752ba61 from=collie-brand/src/mark-contract.ts@8da1d99bd937
 // COPIED WHOLE from collie-brand/src/mark-contract.ts. Edit it there, in collie-brand, and nowhere else.
 /**
  * THE MARK CONTRACT. One file that every Collie brand mark implements, the Collie mark included.
@@ -43,7 +43,8 @@ import { useEffect, useId, useImperativeHandle, useRef, useState, useSyncExterna
  * What the mark says, never how it says it. Each mark draws each state in its own idiom (glass
  * lights up, pixel beads hop), and the meaning is shared:
  *
- *   rest         nothing is happening. The mark drifts, one turn in 48 s, while the page is in use.
+ *   rest         nothing is happening. The mark drifts, one turn in 48 s, while the page is in use,
+ *                and rests until the first touch, key, wheel or scroll after the page opened.
  *   loading      something is being fetched or worked on. Fast, and the mark's live colours.
  *   applying     the app itself is updating. Calm, one turn in 20 s, every bead in the status
  *                "working" colour.
@@ -62,7 +63,10 @@ import { useEffect, useId, useImperativeHandle, useRef, useState, useSyncExterna
  *     mark's ball turn). The orbit itself runs, smooth.
  *   - A resting mark drifts only while the page is IN USE (`MARK_DRIFT`): a touch, a key, a wheel or
  *     a scroll in the last 20 s. Then it eases to a stop over 2 s and holds, so a page left alone
- *     draws no frame at all. Any input sets it going again from the pose it held.
+ *     draws no frame at all. Opening a page is NOT use: a page nobody has touched, and a page in a
+ *     background tab, rests from the first frame (1.28.1 counted a fresh page as in use for 20 s, and
+ *     WebKit ran multi-page tests 1.5 to 3 times slower for it). Any input sets it going again from
+ *     the pose it held.
  *   - `applying` always turns while it lasts; `loading` and `reconnected` are short.
  *
  * ONE PHASE. A state change never restarts an animation, so nothing jumps: a mark that starts or
@@ -95,6 +99,7 @@ export const ORBIT_TURN_MS = MARK_TURN.live * 1000;
 /**
  * When a resting mark drifts. `in-use`: while the page has had a touch, a key, a wheel or a scroll in
  * the last `windowMs`; then the drift eases to a stop over `easeMs` and holds until the next input.
+ * A page that has had no input since it opened, or that is hidden, is not in use.
  * `always`: whenever the mark rests (a page that is only ever looked at, like a landing page).
  */
 export const MARK_DRIFT = { mode: "in-use", windowMs: 20_000, easeMs: 2_000 } as const;
@@ -231,15 +236,19 @@ const EASE_STEP_MS = 100;
  * WHETHER THE PAGE IS IN USE: a touch, a key, a wheel or a scroll in the last `MARK_DRIFT.windowMs`.
  * One reading for the page, shared by every mark. Listening costs nothing per event (it stores a
  * time); one timer runs while a mark listens and re-arms itself only when it fires. A page that has
- * just been opened counts as in use.
+ * just been opened does NOT count as in use: it is in use from its first input on. A hidden page is
+ * never in use: an input a hidden page reports is ignored, and a page that turns hidden stops at once.
  */
 const INPUTS = ["pointerdown", "keydown", "wheel", "touchstart", "scroll"] as const;
 const inUseListeners = new Set<() => void>();
-let inUse = true;
-let lastInput = 0;
+let inUse = false;
+let lastInput = Number.NEGATIVE_INFINITY;
 let quietTimer: ReturnType<typeof setTimeout> | null = null;
 
+const visible = (): boolean => document.visibilityState === "visible";
+
 function noteInput(): void {
+  if (!visible()) return;
   lastInput = performance.now();
   if (inUse) return;
   inUse = true;
@@ -256,26 +265,41 @@ function armQuiet(delay: number): void {
       armQuiet(left);
       return;
     }
-    inUse = false;
-    for (const listener of inUseListeners) listener();
+    endUse();
   }, delay);
+}
+
+function endUse(): void {
+  inUse = false;
+  for (const listener of inUseListeners) listener();
+}
+
+/** A page that turns hidden is no longer in use, whatever the last input was. */
+function noteVisibility(): void {
+  if (visible() || !inUse) return;
+  if (quietTimer !== null) clearTimeout(quietTimer);
+  quietTimer = null;
+  lastInput = Number.NEGATIVE_INFINITY;
+  endUse();
 }
 
 function subscribeInUse(listener: () => void): () => void {
   inUseListeners.add(listener);
   if (inUseListeners.size === 1) {
     for (const type of INPUTS) window.addEventListener(type, noteInput, { capture: true, passive: true });
-    lastInput = performance.now();
-    inUse = true;
-    armQuiet(MARK_DRIFT.windowMs);
+    document.addEventListener("visibilitychange", noteVisibility);
+    inUse = false;
+    lastInput = Number.NEGATIVE_INFINITY;
   }
   return () => {
     inUseListeners.delete(listener);
     if (inUseListeners.size > 0) return;
     for (const type of INPUTS) window.removeEventListener(type, noteInput, { capture: true });
+    document.removeEventListener("visibilitychange", noteVisibility);
     if (quietTimer !== null) clearTimeout(quietTimer);
     quietTimer = null;
-    inUse = true;
+    inUse = false;
+    lastInput = Number.NEGATIVE_INFINITY;
   };
 }
 
@@ -314,7 +338,8 @@ export interface MarkRoot {
  * the way.
  *
  * NO LAST LAP. A mark that leaves a live state goes on from the pose it is in: at the drift's pace in
- * `rest`, at the calm pace in `applying`, held in `idle`. A resting mark on a page nobody uses eases
+ * `rest` while the page is in use (held, on a page nobody has touched), at the calm pace in
+ * `applying`, held in `idle`. A resting mark on a page nobody uses eases
  * its rate down to nothing over `MARK_DRIFT.easeMs`, then holds.
  */
 export function useMark(spec: MarkSpec, props: MarkProps): MarkRoot {
