@@ -9,7 +9,9 @@
 //
 // WHO POSTED. The lead takes the member from the §8.6 signature (the router's verdict), never from the
 // body. A body that names a session of another machine, as `from.address` or as `as`, is the uniform
-// 401. The labels a member sends are display data. The member's claim about its own pane stands in for
+// 401. A `replyTo` or an `about` that names a session of another machine is refused `bad_target`
+// (`foreignTarget`): the tap is typed where `replyTo` points, with the person's authority, so a member
+// may only point it at its own sessions. The labels a member sends are display data. The member's claim about its own pane stands in for
 // the lead's `place()` only for the poster's own session, because a pane opened a second ago may not be
 // in the lead's sweep yet; the instance token is checked again on the member when the answer is typed.
 //
@@ -102,6 +104,32 @@ export function ownAddress(raw: string, memberId: string): string | null {
   if (raw !== raw.trim()) return null;
   const address = parseAddress(raw);
   return address !== null && address.kind === "pane" && address.memberId === memberId ? raw : null;
+}
+
+/**
+ * Why a forwarded post's `replyTo` or `about` is refused, or null when both name nothing, `here` (for
+ * `about`), or a pane of the signing member's own machine. Checked before the lead's `place()` is asked,
+ * so a member learns nothing about which sessions of other machines are live.
+ *
+ * `replyTo` is where the person's tap is typed, with the person's authority, and the session it names
+ * may read the Decision (`collie hill status`): a member naming a pane of the lead or of another member
+ * would type an operator message of its choosing there. `about` only labels the card, but a label that
+ * names another machine's session is a claim this member cannot make. Both are the agent's own words,
+ * so the refusal is `bad_target` with words, not the 401 an identity claim (`from.address`, `as`) gets.
+ */
+export function foreignTarget(fields: JsonObject, memberId: string): string | null {
+  for (const key of ["replyTo", "about"] as const) {
+    const raw = fields[key];
+    if (raw === undefined || raw === null) continue;
+    const text = asJsonString(raw);
+    // Not a string: the reader refuses the shape with its own words.
+    if (text === undefined) continue;
+    if (key === "about" && (text.trim() === "" || text.trim() === "here")) continue;
+    if (ownAddress(text, memberId) === null) {
+      return `\`${headerField(text, 80)}\` is not a session on this machine: a Decision from a crew member answers to, and is about, a session on that member only`;
+    }
+  }
+  return null;
 }
 
 // ── On the lead: images held for a post ─────────────────────────────────────────────────────────────
@@ -217,6 +245,8 @@ export class HillCrewLead {
     const address = asJsonString(from?.address);
     if (row === undefined || from === undefined || fields === undefined || address === undefined) return badRequest("a post is { from: { address, harness, label, host }, fields, images }");
     if (ownAddress(address, memberId) === null) return UNAUTHORIZED;
+    const foreign = foreignTarget(fields, memberId);
+    if (foreign !== null) return refused("bad_target", foreign);
     // Images ride by hash, uploaded first: a path in the fields names a file on the member, never here.
     if (fields.images !== undefined) return badRequest("a forwarded post names its images by hash, never by path");
     const rawImages = row.images ?? [];

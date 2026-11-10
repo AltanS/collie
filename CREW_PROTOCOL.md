@@ -4067,6 +4067,14 @@ none. Before 1.29.0 a member refused every post with `not_on_lead`.
   (`<member>/<pane>`, with or without `#<token>`). Any other address, `local/...`, a scope or `all` is
   the uniform 401, audited like any refusal. The labels in `from` (`harness`, `label`, `host`) are
   display data. The lead shows its own name for the member where it has one.
+- **A post names sessions of its own machine only.** The answer is typed where `replyTo` points, as
+  the operator, and the session it names may read the Decision with `collie hill status`. So
+  `replyTo`, and `about` (which only labels the card), must each be a pane address of the signing
+  member, as `from.address` must; `about` may also be `here`. Any other value is refused
+  `bad_target` ("... is not a session on this machine"), before the lead looks at which sessions are
+  live, so the refusal says nothing about the sessions of other machines. It is a content refusal,
+  not the 401: these are the agent's words, where `from` and `as` are the member bridge's own claim.
+  `supersedes` names a Decision of the same session only, on the lead as on one machine.
 - `hill/media` carries one image: `sha256` is the lowercase hex SHA-256 of the bytes, `b64` the bytes
   in standard base64. The lead decodes it strictly, checks the hash, and sniffs the first bytes: PNG,
   JPEG or WebP only, at most 2 MB, the same rules as an image on the lead's own machine. It holds the

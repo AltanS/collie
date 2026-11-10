@@ -413,7 +413,8 @@ shows every Decision there, with the machine it came from on its first line.
 A member checks its own switches first: with the Hill or WalkyTalky off on that machine, the post is
 refused there. It reads the images from its own disk, under the same rules as on the lead, and sends
 them to the lead before the post. The lead checks the member's signature, and takes the machine from
-it. A member cannot post for a session of another machine.
+it. A member cannot post for a session of another machine, and its `--reply-to` and `--about` must
+name a session on that same machine.
 
 Your answer goes back to the session as a WalkyTalky message, through the lead. When the session's
 machine is not answering, the phone says "laptop is not answering. Your answer was not sent." The

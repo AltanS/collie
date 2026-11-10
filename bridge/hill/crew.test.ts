@@ -251,6 +251,50 @@ describe("the lead's routes", () => {
     expect(missing.body).toMatchObject({ ok: false, code: "bad_image" });
   });
 
+  test("post: a replyTo on the lead or on another member is refused, and nothing is ever typed there", async () => {
+    const { crewLead, lead } = crew();
+    // A session of the lead's own, and one of another member, both live in the lead's sweep.
+    lead.live.push({ address: "desk/%1#aaaa", label: "lead session", host: "desk", unattended: false }, { address: "mini/%2#bbbb", label: "mini session", host: "mini", unattended: false });
+    for (const replyTo of ["desk/%1#aaaa", "desk/%1", "mini/%2#bbbb", "local/%1"]) {
+      const answer = crewLead.post({ from: { address: LAPTOP_PANE, label: "repo#main" }, fields: fields({ replyTo, options: [{ intent: "merge", label: "Merge" }] }) }, "laptop");
+      expect(answer).toEqual({ status: 200, body: { ok: false, code: "bad_target", error: expect.stringContaining("not a session on this machine") } });
+    }
+    expect(lead.store.all()).toHaveLength(0);
+    expect(lead.sent).toEqual([]);
+  });
+
+  test("post: an about on another machine is refused; here and an own session stand", () => {
+    const { crewLead, lead } = crew();
+    lead.live.push({ address: "desk/%1#aaaa", label: "lead session", host: "desk", unattended: false }, { address: "laptop/%4#dddd", label: "other pane", host: "laptop", unattended: false });
+    for (const about of ["desk/%1#aaaa", "mini/%2"]) {
+      const answer = crewLead.post({ from: { address: LAPTOP_PANE, label: "repo#main" }, fields: fields({ about }) }, "laptop");
+      expect(answer.body).toMatchObject({ ok: false, code: "bad_target" });
+    }
+    expect(crewLead.post({ from: { address: LAPTOP_PANE, label: "repo#main" }, fields: fields({ about: "here" }) }, "laptop").body).toMatchObject({ ok: true, decision: { about: LAPTOP_PANE } });
+    expect(crewLead.post({ from: { address: LAPTOP_PANE, label: "repo#main" }, fields: fields({ about: "laptop/%4#dddd" }) }, "laptop").body).toMatchObject({ ok: true, decision: { about: "laptop/%4#dddd" } });
+  });
+
+  test("post: a replyTo on the member's own machine still works, and the answer goes there", async () => {
+    const { crewLead, lead } = crew();
+    lead.live.push({ address: "laptop/%4#dddd", label: "other pane", host: "laptop", unattended: false });
+    const posted = crewLead.post({ from: { address: LAPTOP_PANE, label: "repo#main" }, fields: fields({ replyTo: "laptop/%4#dddd" }) }, "laptop");
+    const id = idOf(posted);
+    expect(posted.body).toMatchObject({ ok: true, decision: { replyTo: "laptop/%4#dddd" } });
+    const sent = await lead.hill.answer({ rid: uuid(), node: `hill/${id}`, intent: "yes", value: { text: null } }, id, "Pixel 9");
+    expect(sent).toMatchObject({ kind: "receipt", receipt: { code: "ok", state: "answered" } });
+    expect(lead.sent.map((s) => s.to)).toEqual(["laptop/%4#dddd"]);
+  });
+
+  test("post: a member cannot supersede a decision of the lead's own session or another member's", () => {
+    const { crewLead, lead } = crew();
+    lead.live.push({ address: "desk/%1#aaaa", label: "lead session", host: "desk", unattended: false });
+    const own = lead.hill.post({ kind: "agent", address: "desk/%1#aaaa", memberId: "m_lead000000", harness: null, label: "lead", host: "desk" }, { requestId: uuid(), title: "Lead's own", summary: "Mine.", options: [{ intent: "yes", label: "Yes" }] });
+    if (!own.ok) throw new Error(own.error);
+    const answer = crewLead.post({ from: { address: LAPTOP_PANE, label: "repo#main" }, fields: fields({ supersedes: own.decision.id }) }, "laptop");
+    expect(answer.body).toMatchObject({ ok: false, code: "bad_supersedes" });
+    expect(lead.store.get(own.decision.id)?.state).toBe("open");
+  });
+
   test("op: status, withdraw and list for the member's own session only", () => {
     const { crewLead } = crew();
     const posted = crewLead.post({ from: { address: LAPTOP_PANE, label: "repo#main" }, fields: fields() }, "laptop");
