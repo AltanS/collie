@@ -2010,11 +2010,12 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
         })
       : undefined;
   // Each poll tells the launch window which panes the multiplexer names an agent on now: a newly named
-  // one opens a window, a gone one is forgotten. The poll's Surface ends a window above.
+  // one opens a window, a gone one is forgotten, and one it reports `idle` or `working` ends its window
+  //. The poll's Surface ends a window above.
   if (send !== undefined) {
     engine.onUpdate((s) => {
       launchWindow.observe(name, [
-        ...s.agents.map((agent) => ({ paneId: agent.paneId, agent: agent.kind === "shell" ? null : agent.agent })),
+        ...s.agents.map((agent) => ({ paneId: agent.paneId, agent: agent.kind === "shell" ? null : agent.agent, status: agent.status })),
         ...s.shellPanes.map((shell) => ({ paneId: shell.paneId, agent: null })),
       ]);
     });

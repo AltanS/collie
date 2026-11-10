@@ -23,7 +23,9 @@
 // While the window is open the Send Protocol reads the screen with that harness's profile and presses
 // no key until the harness's input box is on screen (`SendDeps.starting`). The window ends when that
 // box takes a key ({@link LaunchWindow.framed}: a send's probe showed in it), when the poll's Surface
-// reads the box ({@link LaunchWindow.drawn}), after {@link LAUNCH_WINDOW_MS}, or when the harness is gone
+// reads the box ({@link LaunchWindow.drawn}), when the multiplexer reports that harness `idle` or `working`
+// on the pane (a report from the harness, such as Herdr's pi extension or a beacon hook; read as a drawn
+// box), after {@link LAUNCH_WINDOW_MS}, or when the harness is gone
 // from the pane: the foreground is a plain shell again, or the multiplexer stops naming it. A window
 // that ended is not opened again by the same harness on the same pane (`settled`) until that harness
 // leaves the pane: a started agent goes back to what the pane did before this module existed.
@@ -48,6 +50,7 @@
 // Memory only, per bridge: a restart forgets the windows, and the first poll after it is a baseline.
 
 import type { ForegroundProcess } from "./journal/types.ts";
+import type { AgentStatus } from "./types.ts";
 
 /** How long a pane may take to show its agent's input box: omp 18.12.6 takes about 20 s. */
 export const LAUNCH_WINDOW_MS = 120_000;
@@ -155,11 +158,15 @@ export type ForegroundUnread = typeof FOREGROUND_UNREAD;
  */
 export type ForegroundHarness = () => Promise<string | null | ForegroundUnread>;
 
-/** One pane as a poll lists it: the agent the multiplexer names, or null for a shell. */
+/** One pane as a poll lists it: the agent the multiplexer names, or null for a shell, and the status it reports. */
 export interface ObservedPane {
   readonly paneId: string;
   readonly agent: string | null;
+  readonly status?: AgentStatus;
 }
+
+/** The multiplexer's words that say a harness is up: its start is over. `blocked`, `done` and `unknown` say nothing of it. */
+const STARTED: ReadonlySet<AgentStatus> = new Set(["idle", "working"]);
 
 export class LaunchWindow {
   private readonly windows = new Map<string, Window>();
@@ -242,8 +249,10 @@ export class LaunchWindow {
    * One poll's panes of a session (agent panes and shells). A pane whose agent the multiplexer names now
    * and did not name on the poll before opens an `agent` window, unless a window for that harness is
    * open (a launch's mark keeps its earlier start) or the harness already settled there. A pane whose
-   * agent went (a shell now) and a pane the poll no longer lists are forgotten. The first call per
-   * session only records the panes.
+   * agent went (a shell now) and a pane the poll no longer lists are forgotten. A pane the multiplexer
+   * reports `idle` or `working` as the harness of its open window ends that window as a drawn box does
+   * ({@link drawn}): unless a probe went unseen there. That holds for a window this poll opened too. The
+   * first call per session opens no window, and ends windows on the multiplexer's word all the same.
    */
   observe(session: string, panes: readonly ObservedPane[]): void {
     const next = new Map<string, string>(panes.map((pane) => [pane.paneId, pane.agent === null || pane.agent === "" ? "" : this.canonical(pane.agent)]));
@@ -253,17 +262,24 @@ export class LaunchWindow {
     for (const map of [this.windows, this.settled]) {
       for (const key of map.keys()) if (key.startsWith(prefix) && !next.has(key.slice(prefix.length))) map.delete(key);
     }
-    if (before === undefined) return;
-    for (const [paneId, agent] of next) {
-      const was = before.get(paneId);
-      if (agent === was) continue;
-      const key = LaunchWindow.keyOf(session, paneId);
-      if (agent === "") {
-        if (was !== undefined) this.left(key);
-        continue;
+    if (before !== undefined) {
+      for (const [paneId, agent] of next) {
+        const was = before.get(paneId);
+        if (agent === was) continue;
+        const key = LaunchWindow.keyOf(session, paneId);
+        if (agent === "") {
+          if (was !== undefined) this.left(key);
+          continue;
+        }
+        if (this.open(key)?.harness === agent || this.settledAs(key) === agent) continue;
+        this.openWindow(key, agent, "agent");
       }
-      if (this.open(key)?.harness === agent || this.settledAs(key) === agent) continue;
-      this.openWindow(key, agent, "agent");
+    }
+    for (const pane of panes) {
+      if (pane.status === undefined || !STARTED.has(pane.status)) continue;
+      const agent = next.get(pane.paneId);
+      if (agent === undefined || agent === "") continue;
+      if (this.open(LaunchWindow.keyOf(session, pane.paneId))?.harness === agent) this.drawn(session, pane.paneId, agent);
     }
   }
 

@@ -289,3 +289,66 @@ describe("the launch window: a drawn box that reads no keys (gang three, 2026-10
     expect(window.expecting("main", "%3")).toBeNull();
   });
 });
+
+describe("the launch window: the multiplexer's word ends it", () => {
+  /** A window opened by the multiplexer naming `omp` on %1 on the second poll, the baseline before it a shell. */
+  function opened(): LaunchWindow {
+    const window = new LaunchWindow(() => 1_000);
+    window.observe("main", [{ paneId: "%1", agent: null }]);
+    window.observe("main", [{ paneId: "%1", agent: "omp", status: "unknown" }]);
+    expect(window.expecting("main", "%1")).toBe("omp");
+    return window;
+  }
+
+  test.each(["idle", "working"] as const)("%s on the window's harness ends it, and the next poll does not open it again", (status) => {
+    const window = opened();
+    // The same name as the poll before: the status alone changed.
+    window.observe("main", [{ paneId: "%1", agent: "omp", status }]);
+    expect(window.expecting("main", "%1")).toBeNull();
+    window.observe("main", [{ paneId: "%1", agent: "omp", status }]);
+    expect(window.expecting("main", "%1")).toBeNull();
+  });
+
+  test.each(["blocked", "done", "unknown"] as const)("%s keeps the window open", (status) => {
+    const window = opened();
+    window.observe("main", [{ paneId: "%1", agent: "omp", status }]);
+    expect(window.expecting("main", "%1")).toBe("omp");
+  });
+
+  test("a report on the poll that first names the agent ends its window at once", () => {
+    const window = new LaunchWindow(() => 1_000);
+    window.observe("main", [{ paneId: "%1", agent: null }]);
+    window.observe("main", [{ paneId: "%1", agent: "pi", status: "idle" }]);
+    expect(window.expecting("main", "%1")).toBeNull();
+  });
+
+  test("a launch's mark on a pane still listed as a shell is not ended by the shell's status", () => {
+    const window = new LaunchWindow(() => 1_000);
+    window.observe("main", [{ paneId: "%1", agent: null, status: "idle" }]);
+    window.mark("main", "%1", "omp");
+    window.observe("main", [{ paneId: "%1", agent: null, status: "idle" }]);
+    expect(window.expecting("main", "%1")).toBe("omp");
+  });
+
+  test("a launch's mark ends on the first poll's report: no baseline is needed for the word", () => {
+    const window = new LaunchWindow(() => 1_000);
+    window.mark("main", "%1", "omp");
+    window.observe("main", [{ paneId: "%1", agent: "omp", status: "working" }]);
+    expect(window.expecting("main", "%1")).toBeNull();
+  });
+
+  test("a probe that went unseen keeps the window open through the report, as a drawn box does", () => {
+    const window = opened();
+    expect(window.deaf("main", "%1", "omp")).toBe(1);
+    window.observe("main", [{ paneId: "%1", agent: "omp", status: "idle" }]);
+    expect(window.expecting("main", "%1")).toBe("omp");
+  });
+
+  test("the multiplexer's name and the window's harness compare canonically", () => {
+    const window = new LaunchWindow(() => 1_000, (name) => (name === "oh-my-pi" ? "omp" : name));
+    window.observe("main", [{ paneId: "%1", agent: null }]);
+    window.mark("main", "%1", "omp");
+    window.observe("main", [{ paneId: "%1", agent: "oh-my-pi", status: "idle" }]);
+    expect(window.expecting("main", "%1")).toBeNull();
+  });
+});
