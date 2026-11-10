@@ -85,3 +85,81 @@ export function systemdUserSession(
     ? { reachable: true, envAdd }
     : { reachable: false, envAdd: null };
 }
+
+/** {@link SystemctlProbe}, awaited: the bridge's patient second pass must not park its event loop. */
+export type SystemctlProbeAsync = (envAdd: Readonly<Record<string, string>> | null) => Promise<SystemctlAnswer>;
+
+/**
+ * {@link systemdUserSession}, step for step, with a probe that is awaited.
+ *
+ * The bridge asks a second time, with a longer limit, when the first pass found no manager: a bus
+ * that answers in three seconds is a slow manager, not an absent one, and reading it as absent sent
+ * a supervised bridge down the `setsid` tier that dies with its own service (1.28.1 rehearsal, case
+ * d-B). That pass may take seconds, so it runs as a child the event loop awaits rather than a
+ * `spawnSync` that freezes every other request for its whole length. The rule is the same one, in
+ * the same order; only the waiting differs.
+ */
+export async function systemdUserSessionAsync(
+  probe: SystemctlProbeAsync,
+  env: Readonly<Record<string, string | undefined>>,
+  uid: number,
+): Promise<SystemdUserSession> {
+  const first = await probe(null);
+  if (first.found && first.code === 0) return { reachable: true, envAdd: null };
+  if (env.XDG_RUNTIME_DIR !== undefined) return { reachable: false, envAdd: null };
+  const envAdd = derivedSessionEnv(uid, env.DBUS_SESSION_BUS_ADDRESS === undefined);
+  const retried = await probe(envAdd);
+  return retried.found && retried.code === 0
+    ? { reachable: true, envAdd }
+    : { reachable: false, envAdd: null };
+}
+
+// ── IS THIS PROCESS INSIDE ITS OWN SERVICE? ─────────────────────────────────────────────────────
+//
+// The question behind the `setsid` tier's safety. A child keeps its parent's cgroup whatever its
+// process group or session says, and systemd stops a service by its cgroup (`KillMode=control-group`,
+// the default and the one `cli/unit.ts` writes). So a `setsid collie update` spawned by a bridge that
+// runs as `collie-core.service` is still a member of `collie-core.service`, and the restart it was
+// spawned to carry out (`systemctl --user stop`, then `start`) kills it between the two. The 1.28.1
+// rehearsal left the service inactive (dead) exactly that way. A bridge that is NOT its unit's
+// process (started from a shell, from tmux, by a Herdr plugin) has no such restart to die in.
+//
+// WHY THE CGROUP AND NOT `INVOCATION_ID`. systemd sets `INVOCATION_ID` for the processes it starts
+// for a unit, and every descendant inherits it: a terminal launched as a transient unit hands it to
+// every shell, tmux and bridge started inside, and a herdr-core pane's shell inherits the holder
+// unit's. Seen on a desktop host 2026-11-10: a shell in `claude.slice/claude-<n>.scope` carries one. It says
+// "something above me was started by systemd", which is nearly always true on a systemd desktop.
+// `/proc/self/cgroup` names the cgroup this process is in NOW, which is the one systemd will kill.
+//
+// WHY THE INSTANCE'S OWN UNIT AND NOT "ANY `.service`". The update stops ONE unit: this instance's
+// (`unitName` in `cli/unit.ts`, `collie` or `collie-<instance>`). A process in another service's cgroup
+// survives that stop, and two of those are ordinary here: a herdr-core pane's shell lives in
+// `hc-hold-<hex>.service`, and the detached runner the bridge starts lives in
+// `collie-api-update-<stamp>.service`, the transient unit whose whole point is to be outside the
+// bridge's cgroup. Reading either as "inside the service" would refuse the healthy path. And
+// `user@<uid>.service` is the user MANAGER, the ancestor of every user process, never a leaf this
+// test matches. A `.scope` (a login session, a terminal, tmux) is never a service.
+//
+// Only the LEAF of the path counts, compared by its full name, so `collie.service` never matches
+// `collie-core.service` or the reverse. A system-level unit of the same name counts too: its stop
+// kills the child just the same. No file (macOS, Windows, a jail without `/proc`) is `null`: no cgroup,
+// no service, not inside.
+
+/**
+ * Whether the cgroup text (`/proc/self/cgroup`, or `null` when there is none) puts this process in
+ * the cgroup of `unit` (`collie`, `collie-core`; without `.service`). Pure; see the block above.
+ *
+ * cgroup v2 writes one line, `0::<path>`. A v1 or hybrid host writes one line per hierarchy,
+ * `<id>:<controllers>:<path>`. The path is everything after the second colon, on any line.
+ */
+export function insideOwnUnit(cgroup: string | null, unit: string): boolean {
+  if (cgroup === null) return false;
+  const leaf = `${unit}.service`;
+  return cgroup.split("\n").some((line) => {
+    const first = line.indexOf(":");
+    const second = first < 0 ? -1 : line.indexOf(":", first + 1);
+    if (second < 0) return false;
+    const path = line.slice(second + 1).trim();
+    return path.slice(path.lastIndexOf("/") + 1) === leaf;
+  });
+}

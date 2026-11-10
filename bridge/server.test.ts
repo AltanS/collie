@@ -87,6 +87,7 @@ import {
   arrivedOverHttps,
   chatBodyForMux,
   telemetryTroubleRoute,
+  updateNotStarted,
 } from "./server.ts";
 import { createTelemetry, readTelemetryRecord, telemetryPath, type TroubleSignal } from "./telemetry.ts";
 import {
@@ -3797,10 +3798,12 @@ describe("the update write gate — POST api/update rides the pane path's own ga
     const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
     const updateAt = src.indexOf('if (pathname === "/api/update" && req.method === "POST")');
     const handler = src.slice(updateAt, src.indexOf("\n      }\n", updateAt));
-    // The handoff is a plain call — nothing here awaits the child, and the answer carries the 202
-    // that says "started", not the 200 that would say "finished".
-    expect(handler).toContain("const started = action.start({ major: verdict.major, runId });");
-    expect(handler).not.toContain("await action.start");
+    // Nothing here awaits the child, and the answer carries the 202 that says "started", not the 200
+    // that would say "finished". The `await` is the LAUNCH decision (the bridge asks the service
+    // manager, patiently, before it picks a tier: 1.28.1 rehearsal d-B); `start` never waits on the
+    // runner itself, and its own seam (`launchUpdateRunner`) spawns and returns.
+    expect(handler).toContain("const started = await action.start({ major: verdict.major, runId });");
+    expect(handler).not.toContain(".exited");
     expect(handler).toContain("202,");
   });
 
@@ -3815,8 +3818,7 @@ describe("the update write gate — POST api/update rides the pane path's own ga
     // Forced preflight, the pure verdict, and a plain call into the spawn.
     expect(handler).toContain("await action.preflight(true)");
     expect(handler).toContain("rollbackVerdict(parsed, {");
-    expect(handler).toContain("const started = action.rollback({ runId: verdict.runId });");
-    expect(handler).not.toContain("await action.rollback");
+    expect(handler).toContain("const started = await action.rollback({ runId: verdict.runId });");
     // No crew run: a rollback levels nobody.
     expect(handler).not.toContain("beginCrewRun");
     expect(handler).toContain("202,");
@@ -3830,10 +3832,37 @@ describe("the update write gate — POST api/update rides the pane path's own ga
     expect(handler).toContain('const denied = browserGate("write");');
     expect(handler).toContain("await action.preflight(true)");
     expect(handler).toContain("backVerdict(parsed, {");
-    expect(handler).toContain("const started = action.back({ runId: verdict.runId, to: verdict.to });");
-    expect(handler).not.toContain("await action.back");
+    expect(handler).toContain("const started = await action.back({ runId: verdict.runId, to: verdict.to });");
     expect(handler).not.toContain("beginCrewRun");
     expect(handler).toContain("202,");
+  });
+
+  test("the three update starts hold their connection past Bun's idle cut and answer a refusal by its own code", () => {
+    // The forced preflight plus the launch's patient manager probe can outlast Bun's 10 s idle cut,
+    // which would drop the connection and the refusal with it (1.28.1 rehearsal d-B).
+    const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
+    for (const route of ['"/api/update"', '"/api/update/rollback"', '"/api/update/back"']) {
+      const at = src.indexOf(`if (pathname === ${route} && req.method === "POST")`);
+      expect(at).toBeGreaterThan(0);
+      const handler = src.slice(at, src.indexOf("\n      }\n", at));
+      expect(handler).toContain("server.timeout(req, UPDATE_ROUTE_BUDGET_S);");
+      expect(handler).toContain("const refused = updateNotStarted(started);");
+      expect(handler).not.toContain('apiError("update.start_failed"');
+    }
+  });
+
+  test("updateNotStarted: the launcher's refusal is a 503 with its code; a failed spawn stays update.start_failed", () => {
+    expect(updateNotStarted({ reason: "ignored", refusal: "update.manager_unreachable" })).toEqual({
+      status: 503,
+      body: {
+        code: "update.manager_unreachable",
+        error: "the update could not start: the service manager did not answer; run `collie update` in a shell on this machine",
+      },
+    });
+    expect(updateNotStarted({ reason: "spawn ENOENT" })).toEqual({
+      status: 500,
+      body: { code: "update.start_failed", error: "the update could not be started: spawn ENOENT", detail: { reason: "spawn ENOENT" } },
+    });
   });
 
   test("api/update/line: a read-gated GET, a write-gated POST with a receipt, and the switch installs nothing (M60 spec 01)", () => {

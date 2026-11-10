@@ -30,6 +30,7 @@ import {
   preflightCommand,
   PREFLIGHT_TTL_MS,
   updateCadenceTick,
+  updateLaunchRefusal,
   updateStartCommand,
   type UpdateRunnerSpawn,
   type UpdateRunnerSpawnOptions,
@@ -41,6 +42,7 @@ import {
   type UpdateStartState,
   worstVerdict,
 } from "./update-action.ts";
+import { apiError } from "./error-codes.ts";
 import type { JsonObject, JsonValue } from "./json.ts";
 import type { UpdateRun, UpdateRunState } from "./update-run.ts";
 
@@ -463,6 +465,40 @@ describe("update hands off — the command that leaves this process's cgroup", (
   test("it is `collie update` and nothing else — the operator's own verb, not a second recipe", () => {
     const plan = updateStartCommand({ ...base, major: false, hasSystemdRun: false, hasSetsid: false });
     expect(plan.command).toEqual(["/opt/collie/bin/collie", "update"]);
+  });
+});
+
+describe("updateLaunchRefusal: the setsid tier only outside the bridge's own service (1.28.1 d-B)", () => {
+  // The whole behaviour table of a tap on Linux, read with `updateStartCommand` beside it: what the
+  // bridge does for each pairing of "is it its unit's process" and "did the manager answer".
+  const base = { platform: "linux", binary: "/opt/collie/bin/collie", stamp: "42", major: false, hasSetsid: true };
+  const tierOf = (hasSystemdRun: boolean): string => updateStartCommand({ ...base, hasSystemdRun }).command[0] ?? "";
+  const rows: { supervised: boolean; reachable: boolean; action: string }[] = [
+    { supervised: true, reachable: true, action: "systemd-run" },
+    { supervised: true, reachable: false, action: "refuse" },
+    { supervised: false, reachable: true, action: "systemd-run" },
+    { supervised: false, reachable: false, action: "setsid" },
+  ];
+  for (const row of rows) {
+    test(`supervised ${row.supervised}, manager answered ${row.reachable} → ${row.action}`, () => {
+      const refusal = updateLaunchRefusal({ platform: "linux", hasSystemdRun: row.reachable, supervised: row.supervised });
+      expect(refusal === null ? tierOf(row.reachable) : "refuse").toBe(row.action);
+      if (row.action === "refuse") expect(refusal).toBe("update.manager_unreachable");
+    });
+  }
+
+  test("macOS and Windows never refuse on it: no cgroup, and their tiers are launchd's and the task's", () => {
+    for (const platform of ["darwin", "win32"]) {
+      expect(updateLaunchRefusal({ platform, hasSystemdRun: false, supervised: true })).toBeNull();
+    }
+  });
+
+  test("the refusal has its own code and sentence, and names the shell as the way out", () => {
+    const body = apiError("update.manager_unreachable");
+    expect(body.code).toBe("update.manager_unreachable");
+    expect(body.error).toContain("the service manager did not answer");
+    expect(body.error).toContain("`collie update` in a shell on this machine");
+    expect(body.error).not.toContain("—");
   });
 });
 

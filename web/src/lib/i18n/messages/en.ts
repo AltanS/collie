@@ -2038,6 +2038,7 @@ export const en = {
   "apiError.update.peers_packaged": "{name} is a packaged install. Its updates come from its own package manager.",
   "apiError.update.packaged": "Updates come from your package manager. Collie won't replace this install's files.",
   "apiError.update.dev_lead": "This machine runs a development build. It cannot lead an update. Deploy it from its checkout.",
+  "apiError.update.manager_unreachable": "The update could not start: the service manager did not answer. Run `collie update` in a shell on this machine.",
   "apiError.update.start_failed": "The update couldn't be started: {reason}",
   "apiError.update.request_id_required": "This action needs a request ID. Nothing was started.",
   "apiError.update.rollback_unavailable": "There's no previous build on this machine to roll back to.",
@@ -3272,6 +3273,8 @@ export type Messages = typeof en;
 export const PENDING_TRANSLATION = [
   // A development build cannot lead an update (2026-11-09).
   "apiError.update.dev_lead",
+  // A supervised bridge whose service manager did not answer starts no update (1.28.1).
+  "apiError.update.manager_unreachable",
   "settings.updateBanner.updateNow",
 ] as const satisfies readonly MessageKey[];
 

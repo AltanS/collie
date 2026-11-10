@@ -1308,6 +1308,40 @@ export function updateStartCommand(a: {
 }
 
 /**
+ * What one start of the detached updater answered. `refusal` is set when the bridge decided not to
+ * start anything at all, and names the code the route answers with in place of `update.start_failed`.
+ */
+export type UpdateStartResult =
+  | { readonly ok: true }
+  | { readonly ok: false; readonly reason: string; readonly refusal?: "update.manager_unreachable" };
+
+/**
+ * Whether the bridge must refuse to start the update, before anything is spawned or written.
+ *
+ * THE `setsid` TIER IS SAFE ONLY OUTSIDE THE BRIDGE'S OWN SERVICE (1.28.1 rehearsal, case d-B). A
+ * child keeps its parent's cgroup, so a `setsid collie update` spawned by a bridge that runs as its
+ * systemd unit is a member of that unit, and the restart it was spawned for stops it along with the
+ * service: on a checkout that updates in place the service was left inactive (dead), with nothing to
+ * start it again. Only `systemd-run` puts the runner in a unit of its own. So a SUPERVISED bridge with
+ * no reachable manager (`hasSystemdRun` false: no binary, or a probe that failed twice, the second
+ * time with the patient limit) starts nothing and says why; the operator's shell is outside the
+ * service and can run the same update.
+ *
+ * An UNSUPERVISED bridge keeps the fallback (`updateStartCommand`'s `setsid` and bare tiers): a host
+ * with no user manager at all, a bridge started from a shell, tmux or a Herdr plugin. Its restart
+ * does not stop the cgroup the runner is in. `supervised` is `insideOwnUnit` in
+ * `bridge/systemd-user.ts`, which only Linux can answer; every other platform reads false.
+ */
+export function updateLaunchRefusal(a: {
+  readonly platform: string;
+  readonly hasSystemdRun: boolean;
+  readonly supervised: boolean;
+}): "update.manager_unreachable" | null {
+  if (a.platform !== "linux" || !a.supervised) return null;
+  return a.hasSystemdRun ? null : "update.manager_unreachable";
+}
+
+/**
  * The options the runner is spawned with. stdin is ignored; stdout and stderr go to the runner log
  * ({@link openRunnerLog}) when it could be opened, and are ignored when it could not. A file
  * descriptor ties nothing to the bridge: the child holds its own copy, and the bridge closes its

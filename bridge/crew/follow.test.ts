@@ -251,7 +251,7 @@ describe("the follower spawns the one updater there is", () => {
     own?: string;
     installKind?: FollowFacts["installKind"];
     record?: UpdateRun | null;
-    start?: (a: { tag: string; runId: string }) => { ok: true } | { ok: false; reason: string };
+    start?: CrewFollowerDeps["start"];
   } = {}) => {
     const started: { tag: string; runId: string }[] = [];
     const lines: string[] = [];
@@ -373,6 +373,19 @@ describe("the follower spawns the one updater there is", () => {
     await Promise.resolve();
     await Promise.resolve();
     expect(f.last()?.kind).toBe("refuse");
+  });
+
+  test("a start that refuses after its patient manager probe is awaited, and recorded as a refusal", async () => {
+    // The bridge's start may wait seconds on the service manager before it decides (1.28.1 d-B), and
+    // a supervised member whose manager never answered starts nothing: the follow must read that.
+    const { f } = follower({
+      start: () =>
+        new Promise((resolve) => setTimeout(() => resolve({ ok: false, reason: "the service manager did not answer" }), 5)),
+    });
+    f.observe({ leadRelease: "1.4.1", turn: formatTurn("attic", RUN_ID) });
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(f.last()?.kind).toBe("refuse");
+    expect(JSON.stringify(f.last())).toContain("the service manager did not answer");
   });
 });
 

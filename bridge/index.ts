@@ -259,9 +259,17 @@ import {
   PreflightCache,
   preflightCommand,
   updateCadenceTick,
+  updateLaunchRefusal,
   updateStartCommand,
+  type UpdateStartResult,
 } from "./update-action.ts";
-import { systemdUserSession, type SystemdUserSession } from "./systemd-user.ts";
+import { apiError } from "./error-codes.ts";
+import {
+  insideOwnUnit,
+  systemdUserSession,
+  systemdUserSessionAsync,
+  type SystemdUserSession,
+} from "./systemd-user.ts";
 import { collieVersion, collieVersionBare } from "./version.ts";
 import { SurfaceShadow, type ShadowOptions } from "./surface/shadow.ts";
 import { AskAnswerer, AskBook } from "./surface/ask.ts";
@@ -1176,6 +1184,15 @@ const preflightCache = new PreflightCache({
 const SYSTEMD_PROBE_TIMEOUT_MS = 2_000;
 
 /**
+ * The whole time the launch may spend asking the manager, the first pass above included. A first
+ * pass that found nothing is asked again ONCE, awaited, with what is left of this (1.28.1 rehearsal
+ * d-B: a wedged bus answered in 3 s, against the 2 s limit, and was read as "no manager"). Under the
+ * update route's own hold on the connection (`UPDATE_ROUTE_BUDGET_S` in `server.ts`) with room for
+ * the forced preflight, and under the phone's 20 s mutation deadline in the common case.
+ */
+const SYSTEMD_PROBE_BUDGET_MS = 8_000;
+
+/**
  * Can this process ask the systemd user manager for a transient unit — and, when only the derived
  * session dir reaches it, what must the spawned `systemd-run` client carry?
  *
@@ -1185,7 +1202,7 @@ const SYSTEMD_PROBE_TIMEOUT_MS = 2_000;
  * died without ever creating a unit: a Herdr plugin's environment carries no login shell, and
  * `XDG_RUNTIME_DIR` can be a live-but-wrong value (WSLg's) that no user manager answers on.
  */
-function systemdSessionForLaunch(): SystemdUserSession {
+function systemdSessionFirstPass(): SystemdUserSession {
   return systemdUserSession(
     (envAdd) => {
       if (Bun.which("systemctl") === null) return { found: false, code: 127 };
@@ -1209,6 +1226,71 @@ function systemdSessionForLaunch(): SystemdUserSession {
 }
 
 /**
+ * One `systemctl --user show-environment`, awaited and killed at `deadline` (an epoch ms). The
+ * patient pass's probe: the same command and the same environment layering as the first pass, as a
+ * child the event loop waits on instead of a `spawnSync` that would freeze every other request.
+ */
+async function probeSystemctlUntil(
+  envAdd: Readonly<Record<string, string>> | null,
+  deadline: number,
+): Promise<{ found: boolean; code: number }> {
+  if (Bun.which("systemctl") === null) return { found: false, code: 127 };
+  const left = deadline - Date.now();
+  if (left <= 0) return { found: true, code: 124 };
+  let child;
+  try {
+    child = Bun.spawn(["systemctl", "--user", "show-environment"], {
+      env: { ...process.env, ...envAdd },
+      stdin: "ignore",
+      stdout: "ignore",
+      stderr: "ignore",
+    });
+  } catch {
+    return { found: false, code: 127 };
+  }
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    child.kill("SIGKILL");
+  }, left);
+  try {
+    const code = await child.exited;
+    return { found: true, code: timedOut ? 124 : code };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * {@link systemdSessionFirstPass}, then, when it reached no manager and `systemd-run` is on disk, ONE
+ * more pass with the rest of {@link SYSTEMD_PROBE_BUDGET_MS}, awaited. Without `systemd-run` a second
+ * answer could not change the plan, so it is not asked. A host with no user manager fails both
+ * passes in milliseconds ("Failed to connect to bus"); only a manager that is slow pays the wait.
+ */
+async function systemdSessionForLaunch(): Promise<SystemdUserSession> {
+  const deadline = Date.now() + SYSTEMD_PROBE_BUDGET_MS;
+  const first = systemdSessionFirstPass();
+  if (first.reachable || Bun.which("systemd-run") === null) return first;
+  return systemdUserSessionAsync((envAdd) => probeSystemctlUntil(envAdd, deadline), process.env, process.getuid?.() ?? 0);
+}
+
+/**
+ * Whether this bridge is the process of its own systemd unit (`collie.service`, `collie-<instance>
+ * .service`): read off `/proc/self/cgroup` by `insideOwnUnit`, which says why that file and not
+ * `INVOCATION_ID`. No file (macOS, Windows) reads as not supervised.
+ */
+function bridgeInsideOwnUnit(): boolean {
+  if (HOST.platform !== "linux") return false;
+  let cgroup: string | null;
+  try {
+    cgroup = readFileSync("/proc/self/cgroup", "utf8");
+  } catch {
+    cgroup = null;
+  }
+  return insideOwnUnit(cgroup, `collie${instanceSuffixOf(collieInstance)}`);
+}
+
+/**
  * Start the detached updater. **The one spawner in this process** — the phone's button takes it, and
  * so does a peer following its lead (M16/04), because two spawners would be two answers to "what
  * does an update do on this machine".
@@ -1219,17 +1301,26 @@ function systemdSessionForLaunch(): SystemdUserSession {
  * a binary install checks the release manifest and this platform's `sha256`, and on a checkout
  * fetches `refs/tags/<tag>` explicitly. Nothing here adds a second mechanism.
  */
-const startDetachedUpdate = (a: {
+const startDetachedUpdate = async (a: {
   major: boolean;
   runId: string;
   toTag?: string | null;
   rollback?: boolean;
   downgrade?: boolean;
   line?: ReleaseLine | null;
-}) => {
+}): Promise<UpdateStartResult> => {
   // One probe, two answers: whether the systemd tier may be taken, and the session variables the
   // `systemd-run` client needs when only the derived default reached the manager.
-  const session = systemdSessionForLaunch();
+  const session = await systemdSessionForLaunch();
+  const hasSystemdRun = Bun.which("systemd-run") !== null && session.reachable;
+  // A bridge that IS its unit's process and cannot reach the manager starts nothing: the `setsid`
+  // runner would stay in this cgroup and be stopped with the service by its own restart (1.28.1
+  // rehearsal d-B). Answered before the runner log is opened, so nothing on disk moves.
+  const refusal = updateLaunchRefusal({ platform: HOST.platform, hasSystemdRun, supervised: bridgeInsideOwnUnit() });
+  if (refusal !== null) {
+    console.warn("[update] not started: this bridge runs as its systemd unit and the user manager did not answer");
+    return { ok: false, reason: apiError(refusal).error, refusal };
+  }
   const plan = updateStartCommand({
     platform: process.platform,
     binary: collieBinary,
@@ -1238,7 +1329,7 @@ const startDetachedUpdate = (a: {
     downgrade: a.downgrade === true,
     line: a.line ?? null,
     stamp: String(Date.now()),
-    hasSystemdRun: Bun.which("systemd-run") !== null && session.reachable,
+    hasSystemdRun,
     hasSetsid: Bun.which("setsid") !== null,
     runId: a.runId,
     toTag: a.toTag ?? null,
