@@ -492,6 +492,11 @@ and the notification closes when the Decision is answered, withdrawn or expires.
 most three an hour, and all of them together at most ten; past that the Decision still shows on the
 Hill, without a notification.
 
+The Hill has its own switch, first on Settings → Alerts, and it is on by default. Off, agents and
+tricks cannot post Decisions, nothing about a Decision is sent, and the Hill leaves the bar. Switching
+it off closes the notifications of the open Decisions. Those Decisions stay on the bridge and show
+again when you switch the Hill on. `collie hill off` and `collie hill on` move the same switch.
+
 Each device shows an alert's title in its own [language](configure.md#language), and English on a
 device that has not opened Collie since it was updated. The body stays as the bridge wrote it, and a
 Decision's title stays in the words its poster wrote.
