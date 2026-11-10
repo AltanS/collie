@@ -54,13 +54,13 @@ function standIn(tricks: WireTrickInfo[]) {
   };
 }
 
-function ListCard({ n, state, label, tricks, readOnly }: { n: number; state: string; label: string; tricks: WireTrickInfo[]; readOnly?: boolean }) {
+function ListCard({ n, state, label, tricks, readOnly, hillOff }: { n: number; state: string; label: string; tricks: WireTrickInfo[]; readOnly?: boolean; hillOff?: boolean }) {
   const store = useListStore(tricks);
   return (
     <Card state={state} label={`${n} · ${label}`}>
       <div className="w-[390px] max-w-full bg-background p-4">
         <RootRouter data={homeSolo}>
-          <TricksSettingsCard store={store} onSwitch={standIn(tricks)} now={NOW} readOnly={readOnly} />
+          <TricksSettingsCard store={store} onSwitch={standIn(tricks)} now={NOW} readOnly={readOnly} hillOff={hillOff} />
         </RootRouter>
       </div>
     </Card>
@@ -107,6 +107,15 @@ export function TrickSettingsSection(): ReactNode {
       <Group title="Nothing to list">
         <ListCard n={6} state="trick-settings-empty" label="folder, no trick" tricks={[]} />
         <ListCard n={7} state="trick-settings-read-only" label="a device that may only read" tricks={HEALTHY.slice(0, 2)} readOnly />
+      </Group>
+      <Group title="The Hill switched off">
+        <ListCard
+          n={8}
+          state="trick-settings-hill-off"
+          label="Hill off, one trick asks"
+          tricks={[trick("legs", "Browser leg", { decides: true, provenance: { via: "agent", at: "2026-11-08T07:41:00Z" } }), HEALTHY[2] ?? trick("x", "x")]}
+          hillOff
+        />
       </Group>
     </Section>
   );

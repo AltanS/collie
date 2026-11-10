@@ -19,6 +19,7 @@ import { SpeechControl } from "@/components/speech-control";
 import { HapticsControl } from "@/components/haptics-control";
 import { HarnessBarControl } from "@/components/harness-bar-control";
 import { HarnessPrefsControl } from "@/components/harness-prefs-control";
+import { HillSwitchControl } from "@/components/hill-switch-card";
 import { LanguageControl } from "@/components/language-control";
 import { NotifyPrefsControl } from "@/components/notify-prefs-control";
 import { PaneNavControl } from "@/components/pane-nav-control";
@@ -209,6 +210,10 @@ export function SettingsAlertsRoute() {
   const availability = usePushAvailability();
   return (
     <SettingsPage title="settings.section.alerts.title">
+      {/* The Hill's switch (bridge/hill/switch.ts): first, because it decides whether agents and tricks
+          may ask at all, and drawn from the snapshot, so it never waits on push state like the cards
+          below. Bridge-wide, like the notification switches. */}
+      <HillSwitchControl />
       <PushControl />
       {/* Mounted while push state is still UNKNOWN, and only removed once we positively learn the
           bridge has no VAPID keys. Gating on truthiness instead inserted ~400px into the middle of

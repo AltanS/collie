@@ -79,14 +79,19 @@ export interface SlotLine {
   trouble: boolean;
 }
 
-/** The third line: the reason a trick is not well, or else where it came from. */
-export function slotLine(trick: WireTrickInfo, now: number): SlotLine {
+/**
+ * The third line: the reason a trick is not well, else the one note that the Hill is off for a trick
+ * that is on and asks Decisions (`hillOff`, the snapshot's; bridge/tricks/hill.ts: they are not posted,
+ * the trick keeps running), else where it came from.
+ */
+export function slotLine(trick: WireTrickInfo, now: number, hillOff = false): SlotLine {
   if (trick.state === "skipped") {
     const reason = trick.refusals?.[0]?.reason ?? trick.error;
     return { text: reason === undefined ? t("settings.tricks.refusedBare") : t("settings.tricks.refused", { reason }), trouble: true };
   }
   const failing = trick.state === "failing" || trick.state === "stopped";
   if (failing && trick.error !== undefined) return { text: trick.error, trouble: true };
+  if (hillOff && trick.on && trick.decides === true) return { text: t("settings.tricks.hillOff"), trouble: false };
   return { text: provenanceLine(trick, now), trouble: false };
 }
 
@@ -101,6 +106,8 @@ export interface TricksSettingsCardProps {
   now?: number;
   /** Draw the switches as one that may not write, for the playground. Default: the device's own say. */
   readOnly?: boolean;
+  /** Draw the rows as with the Hill switched off, for the playground. Default: the snapshot's `hillOff`. */
+  hillOff?: boolean;
 }
 
 /** The Tricks card, or nothing while the phone holds no tricks reply. */
@@ -111,8 +118,8 @@ export function TricksSettingsCard(props: TricksSettingsCardProps) {
   return <TricksList {...props} tricks={state.tricks} />;
 }
 
-function TrickRow({ trick, clock, checked, canWrite, onFlip }: { trick: WireTrickInfo; clock: number; checked: boolean; canWrite: boolean; onFlip: (on: boolean) => void }) {
-  const slot = slotLine(trick, clock);
+function TrickRow({ trick, clock, checked, canWrite, hillOff, onFlip }: { trick: WireTrickInfo; clock: number; checked: boolean; canWrite: boolean; hillOff: boolean; onFlip: (on: boolean) => void }) {
+  const slot = slotLine(trick, clock, hillOff);
   return (
     <div data-trick={trick.id} className="flex min-h-11 items-center justify-between gap-4 px-4 py-3">
       <div className="min-w-0 flex-1">
@@ -143,10 +150,11 @@ function SwitchOnlyRow({ id, checked, canWrite, onFlip }: { id: string; checked:
   );
 }
 
-function TricksList({ tricks, onSwitch = switchTrick, now, readOnly }: TricksSettingsCardProps & { tricks: readonly WireTrickInfo[] }) {
+function TricksList({ tricks, onSwitch = switchTrick, now, readOnly, hillOff }: TricksSettingsCardProps & { tricks: readonly WireTrickInfo[] }) {
   useLocale();
   const clock = useBridgeNow(now);
   const root = useOptionalRootData();
+  const offHill = hillOff ?? root?.hillOff === true;
   const { refused } = usePairing();
   const canWrite = readOnly === undefined ? !isReadOnly(root?.device) && !refused : !readOnly;
   // The position a flipped switch holds until the list agrees, and the switches with a post in flight
@@ -225,7 +233,7 @@ function TricksList({ tricks, onSwitch = switchTrick, now, readOnly }: TricksSet
               fallbackNode={<SwitchOnlyRow id={String(trick.id)} checked={checked} canWrite={canWrite} onFlip={onFlip} />}
               resetKey={trick}
             >
-              <TrickRow trick={trick} clock={clock} checked={checked} canWrite={canWrite} onFlip={onFlip} />
+              <TrickRow trick={trick} clock={clock} checked={checked} canWrite={canWrite} hillOff={offHill} onFlip={onFlip} />
             </TrickBoundary>
           );
         })}

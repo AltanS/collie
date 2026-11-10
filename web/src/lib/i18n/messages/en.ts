@@ -3332,6 +3332,7 @@ export const en = {
   "settings.tricks.withTime": "{what} · {time}",
   "settings.tricks.refused": "Manifest refused: {reason}",
   "settings.tricks.refusedBare": "Manifest refused",
+  "settings.tricks.hillOff": "The Hill is off: this trick's Decisions are not shown.",
 
   // --- hill: the Decisions agents post, and the view that answers them (M96) ---
   // "Hill" is the view's name, a Collie word like a brand: the same in every language, never
@@ -3386,6 +3387,13 @@ export const en = {
   "hill.reason.notAnOption": "that is not an option of this Decision",
   "hill.kept": "Your answer, not delivered",
   "hill.copy": "Copy your answer",
+  "hill.off.line": "Off",
+  "hill.off.title": "The Hill is off.",
+  "hill.off.body": "Agents and tricks cannot ask you here. Open Decisions come back when you switch it on.",
+  "hill.off.turnOn": "Switch the Hill on",
+  "settings.hill.label": "The Hill",
+  "settings.hill.hint": "Agents and tricks ask you here. Off: they cannot post, and the Hill leaves the bar.",
+  "settings.hill.switchFailed": "Could not switch the Hill. Try again.",
   "hill.state.answered": "Answered",
   "hill.state.dismissed": "Dismissed",
   "hill.state.expired": "Expired",
@@ -3591,6 +3599,15 @@ export const PENDING_TRANSLATION = [
   // The Hill's push switch (M96, 2026-11-10).
   "settings.notify.decisions.label",
   "settings.notify.decisions.hint",
+  // The Hill's switch (2026-11-10).
+  "settings.hill.label",
+  "settings.hill.hint",
+  "settings.hill.switchFailed",
+  "settings.tricks.hillOff",
+  "hill.off.line",
+  "hill.off.title",
+  "hill.off.body",
+  "hill.off.turnOn",
 ] as const satisfies readonly MessageKey[];
 
 /** A key a bundle may leave out until the translation pass. */

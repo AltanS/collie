@@ -311,3 +311,27 @@ describe("a trick entry that is broken", () => {
     vi.restoreAllMocks();
   });
 });
+
+// The Hill switched off (bridge/tricks/hill.ts): a trick that asks Decisions keeps running, and its row
+// says once that they are not shown. The note takes the provenance's slot, never a trouble report's.
+describe("the Hill switched off", () => {
+  const ASKS: WireTrickInfo = { ...LEGS, decides: true };
+
+  it("slotLine: the note for a trick that is on and asks, only while the Hill is off", () => {
+    expect(slotLine(ASKS, NOW, true)).toEqual({ text: "The Hill is off: this trick's Decisions are not shown.", trouble: false });
+    expect(slotLine(ASKS, NOW, false).text).toBe("Added by agent · 2 h ago");
+    expect(slotLine(LEGS, NOW, true).text).toBe("Added by agent · 2 h ago");
+    expect(slotLine({ ...ASKS, on: false, state: "off" }, NOW, true).text).toBe("Added by agent · 2 h ago");
+    // A failing trick's own error wins: the row says what is wrong first.
+    expect(slotLine({ ...ASKS, state: "failing", error: "exit 2" }, NOW, true)).toEqual({ text: "exit 2", trouble: true });
+  });
+
+  it("the row reads the snapshot's hillOff from the root data", async () => {
+    const store = await storeWith([ASKS, TRACKER]);
+    const router = createMemoryRouter([{ id: ROOT_ROUTE_ID, path: "/", element: <TricksSettingsCard store={store} now={NOW} />, loader: () => ({ hillOff: true }) }], { initialEntries: ["/"] });
+    render(<RouterProvider router={router} />);
+    await screen.findByText("Browser leg");
+    expect(rowOf("legs").querySelector('[data-line="slot"]')).toHaveTextContent("The Hill is off: this trick's Decisions are not shown.");
+    expect(rowOf("tracker").querySelector('[data-line="slot"]')).not.toHaveTextContent("The Hill is off");
+  });
+});
