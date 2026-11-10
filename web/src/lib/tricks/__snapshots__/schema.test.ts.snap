@@ -100,6 +100,35 @@ exports[`valid fixtures > the card node reads back as written, as its snapshot 1
 ]
 `;
 
+exports[`valid fixtures > the cell node reads back as written, as its snapshot 1`] = `
+[
+  {
+    "kids": [
+      {
+        "kind": "col",
+        "text": "Gate",
+      },
+      {
+        "kind": "col",
+        "text": "Runs",
+      },
+      {
+        "attrs": {
+          "tone": "danger",
+        },
+        "kind": "cell",
+        "text": "e2e",
+      },
+      {
+        "kind": "cell",
+        "text": "18",
+      },
+    ],
+    "kind": "table",
+  },
+]
+`;
+
 exports[`valid fixtures > the chip node reads back as written, as its snapshot 1`] = `
 [
   {
@@ -172,6 +201,72 @@ exports[`valid fixtures > the code node reads back as written, as its snapshot 1
       },
     ],
     "kind": "code",
+  },
+]
+`;
+
+exports[`valid fixtures > the col node reads back as written, as its snapshot 1`] = `
+[
+  {
+    "kids": [
+      {
+        "attrs": {
+          "align": "start",
+        },
+        "kind": "col",
+        "text": "Gate",
+      },
+      {
+        "kind": "cell",
+        "text": "e2e",
+      },
+    ],
+    "kind": "table",
+  },
+]
+`;
+
+exports[`valid fixtures > the compare node reads back as written, as its snapshot 1`] = `
+[
+  {
+    "kids": [
+      {
+        "attrs": {
+          "alt": "The reply box before the fix",
+          "caption": "Before",
+          "h": "844",
+          "src": "shots/before.png",
+          "w": "390",
+        },
+        "kind": "image",
+      },
+      {
+        "attrs": {
+          "alt": "The reply box after the fix",
+          "focus": "50 80 2",
+          "h": "844",
+          "src": "shots/after.png",
+          "w": "390",
+        },
+        "kind": "image",
+      },
+    ],
+    "kind": "compare",
+  },
+]
+`;
+
+exports[`valid fixtures > the diff node reads back as written, as its snapshot 1`] = `
+[
+  {
+    "attrs": {
+      "file": "web/e2e/pane-glide.spec.ts",
+    },
+    "kind": "diff",
+    "text": "@@ -12,3 +12,3 @@
+ const budget = 400;
+-const wait = 612;
++const wait = 380;",
   },
 ]
 `;
@@ -483,6 +578,71 @@ exports[`valid fixtures > the spacer node reads back as written, as its snapshot
       "label": "Yesterday",
     },
     "kind": "spacer",
+  },
+]
+`;
+
+exports[`valid fixtures > the spark node reads back as written, as its snapshot 1`] = `
+[
+  {
+    "attrs": {
+      "label": "pane glide, ms",
+      "tone": "ok",
+      "values": "612 580 540 455 380",
+    },
+    "kind": "spark",
+  },
+]
+`;
+
+exports[`valid fixtures > the table node reads back as written, as its snapshot 1`] = `
+[
+  {
+    "kids": [
+      {
+        "kind": "col",
+        "text": "Case",
+      },
+      {
+        "kind": "col",
+        "text": "Before",
+      },
+      {
+        "attrs": {
+          "align": "end",
+        },
+        "kind": "col",
+        "text": "After",
+      },
+      {
+        "kind": "cell",
+        "text": "pane glide",
+      },
+      {
+        "kind": "cell",
+        "text": "612 ms",
+      },
+      {
+        "attrs": {
+          "tone": "ok",
+        },
+        "kind": "cell",
+        "text": "380 ms",
+      },
+      {
+        "kind": "cell",
+        "text": "first paint",
+      },
+      {
+        "kind": "cell",
+        "text": "1.2 s",
+      },
+      {
+        "kind": "cell",
+        "text": "",
+      },
+    ],
+    "kind": "table",
   },
 ]
 `;

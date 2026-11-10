@@ -191,6 +191,21 @@ export const VIEW_LIMITS = {
   nodes: { min: 1, max: 300 },
 } as const;
 
+/** A `table`: 1 to 4 columns, 1 to 12 rows of cells. */
+export const TABLE_LIMITS = { cols: { min: 1, max: 4 }, rows: { min: 1, max: 12 } } as const;
+/** A `diff`: at most 40 lines of at most 200 characters each. */
+export const DIFF_LIMITS = { lines: 40, lineChars: 200 } as const;
+/** A `spark`: 2 to 32 values. */
+export const SPARK_LIMITS = { values: { min: 2, max: 32 } } as const;
+/** An image's `focus`: the point (0 to 100 across and down, in percent) and the zoom (1 to 8). */
+export const FOCUS_LIMITS = { point: { min: 0, max: 100 }, zoom: { min: 1, max: 8 } } as const;
+/** How an image fills its frame: whole (`contain`, the default) or filling it and cut at the edges (`cover`). */
+export const IMAGE_FITS = ["contain", "cover"] as const;
+export type ImageFit = (typeof IMAGE_FITS)[number];
+/** Which side of its column a table's words keep. A column of figures keeps the end side by default. */
+export const COL_ALIGNS = ["start", "end"] as const;
+export type ColAlign = (typeof COL_ALIGNS)[number];
+
 // ── Durations ────────────────────────────────────────────────────────────────────────────────
 
 /** `every` in the manifest: at least 5 s, at most a day. */
@@ -502,7 +517,9 @@ export const REMOVED_PLACES = {
 
 /**
  * The kinds a trick's view may hold: sixteen of the tree's thirty, with its names, plus `number`, the
- * one kind of its own (a big figure with a label; not in the tree yet).
+ * one kind of its own (a big figure with a label; not in the tree yet), and the five display kinds of
+ * the just-in-time round (2026-11-10): `compare` (two images side by side), `table` with its `col` and
+ * `cell` kids, `diff` and `spark`. `col` and `cell` live only inside a `table`.
  */
 export const NODE_KINDS = [
   "card",
@@ -521,6 +538,12 @@ export const NODE_KINDS = [
   "meter",
   "spacer",
   "number",
+  "compare",
+  "table",
+  "col",
+  "cell",
+  "diff",
+  "spark",
 ] as const;
 export type NodeKind = (typeof NODE_KINDS)[number];
 
@@ -541,34 +564,47 @@ export const NODE_ATTRS = {
   run: ["style", "code", "href", "at", "clock"],
   code: ["lang", "max"],
   link: ["href", "rel", "badge", "icon"],
-  image: ["src", "alt", "w", "h"],
+  image: ["src", "alt", "w", "h", "ref", "caption", "fit", "focus"],
   meter: ["value", "max", "tone", "label", "role"],
   spacer: ["label"],
   number: ["label", "tone", "unit"],
+  compare: [],
+  table: [],
+  col: ["align"],
+  cell: ["tone"],
+  diff: ["file"],
+  spark: ["values", "tone", "label"],
 } as const satisfies { readonly [K in NodeKind]: readonly string[] };
 
-/** The attributes a kind must carry. */
+/**
+ * The attributes a kind must carry. An `image` is not listed: what it must carry depends on where it is
+ * (`src`, `alt`, `w` and `h` in a part, `ref` in a Decision's view), which `checkImage` holds.
+ */
 export const NODE_REQUIRED_ATTRS = {
   button: ["label"],
   link: ["href"],
-  image: ["src", "alt", "w", "h"],
+  spark: ["values"],
 } as const satisfies { readonly [K in NodeKind]?: readonly (typeof NODE_ATTRS)[K][number][] };
 
 /** The kinds each container holds, in the tree's words (VOCABULARY.md 2, 2.12). A kind not listed holds no kids. */
 export const NODE_KIDS = {
-  card: ["para", "line", "chip", "button", "meter", "image", "bar", "group", "number", "spacer"],
-  group: ["row", "group", "bar", "para", "line", "link", "meter", "number", "spacer"],
+  card: ["para", "line", "chip", "button", "meter", "image", "bar", "group", "number", "spacer", "compare", "table", "diff", "spark"],
+  group: ["row", "group", "bar", "para", "line", "link", "meter", "number", "spacer", "image", "compare", "table", "diff", "spark"],
   list: ["group", "row"],
   row: ["para", "chip", "button"],
   bar: ["button", "chip", "link"],
   para: ["run", "link"],
   line: ["run", "link"],
   code: ["line"],
+  /** Exactly two images: the first is "Before", the second "After", unless a `caption` names them. */
+  compare: ["image"],
+  /** Its column heads first (1 to 4 `col`), then its cells row by row (`cell`), a whole row at a time. */
+  table: ["col", "cell"],
 } as const satisfies { readonly [K in NodeKind]?: readonly NodeKind[] };
 export type ContainerKind = keyof typeof NODE_KIDS;
 
 /** The kinds a part's `view` lists, the kids of the place's frame. They flow down the frame; there is no `stack`. */
-export const VIEW_ROOT_KINDS = ["card", "group", "list", "bar", "para", "line", "code", "meter", "image", "spacer", "number"] as const satisfies readonly NodeKind[];
+export const VIEW_ROOT_KINDS = ["card", "group", "list", "bar", "para", "line", "code", "meter", "image", "spacer", "number", "compare", "table", "diff", "spark"] as const satisfies readonly NodeKind[];
 
 /** What a kind's `text` is: its cap, whether it is required, and the characters it allows. A kind not listed takes no text. */
 export const NODE_TEXT = {
@@ -579,6 +615,10 @@ export const NODE_TEXT = {
   run: { max: TEXT_MAX, required: true, blank: true },
   link: { max: LINE_MAX, required: true },
   number: { max: NUMBER_TEXT_MAX, required: true },
+  col: { max: LABEL_MAX, required: true },
+  cell: { max: LINE_MAX, empty: true },
+  // The lines of a diff, one text with a line break between two lines; `checkDiff` holds each line's cap.
+  diff: { max: DIFF_LIMITS.lines * (DIFF_LIMITS.lineChars + 1), required: true, multiline: true },
 } as const satisfies { readonly [K in NodeKind]?: TextRule };
 
 /**
@@ -587,8 +627,7 @@ export const NODE_TEXT = {
  */
 export const REMOVED_KINDS = {
   stack: "the nodes of a view, a card or a group flow down on their own; list them there",
-  grid: "use a list of row with end",
-  table: "use a list of row with end",
+  grid: "use a table, or a list of row with end",
   kv: "use a list of row with end",
   steps: "use a bar of chip with state and current",
   time: "use a chip or a run with at and clock",
@@ -599,8 +638,7 @@ export const REMOVED_KINDS = {
   progress: 'use a meter with role "progress"',
   badge: "badge is an attribute now, on row, button, link and group",
   icon: "icon is an attribute now, on row, chip, button and link",
-  spark: "figures come later, as an image the bridge draws",
-  ring: "figures come later, as an image the bridge draws",
+  ring: "use a meter, or a spark for a trend",
   mark: "mark is Collie's working mark; a trick's mark is the part's mark, or a button in a bar",
   screen: "a trick part is not a screen; the place gives the frame",
   sheet: "sheets are Collie's own",
@@ -728,10 +766,49 @@ export interface LinkNode {
   text: string;
   attrs: { href: string; rel?: LinkRel; badge?: string; icon?: TrickIcon };
 }
-/** A file of the trick folder, PNG or JPEG. The bridge serves it under a signed URL. `w` and `h` reserve its box. */
+/**
+ * An image, in one of two forms by where it sits. In a part: a file of the trick folder, PNG or JPEG,
+ * `src`, `alt`, `w` and `h` (which reserve its box), all four required. In a Decision's view: `ref`, the
+ * index of one of the Decision's own images (from 0). Both take a `caption` (in a `compare`, the frame's
+ * label), `fit` and `focus`, "<x> <y>" or "<x> <y> <zoom>": the point of the picture to keep in the
+ * middle of its frame, in percent across and down, and how far to zoom in on it, a crop drawn by CSS alone.
+ */
 export interface ImageNode {
   kind: "image";
-  attrs: { src: string; alt: string; w: string; h: string };
+  attrs: { src?: string; alt?: string; w?: string; h?: string; ref?: string; caption?: string; fit?: ImageFit; focus?: string };
+}
+/** Two images of the Decision side by side at one height, "Before" and "After" unless their captions say otherwise. */
+export interface CompareNode {
+  kind: "compare";
+  kids: ViewNode[];
+}
+/** A small table: its `col` heads, then its `cell`s row by row. No sideways scroll: a cell takes at most two lines. */
+export interface TableNode {
+  kind: "table";
+  kids: ViewNode[];
+}
+/** A column head of a `table`. `align` defaults to `end` for a column of figures, `start` for words. */
+export interface ColNode {
+  kind: "col";
+  text: string;
+  attrs?: { align?: ColAlign };
+}
+/** One cell of a `table`. An empty cell is `""`, or no `text` at all. */
+export interface CellNode {
+  kind: "cell";
+  text?: string;
+  attrs?: { tone?: Tone };
+}
+/** A hunk of a diff: its lines in one `text`, `+` added, `-` removed, `@@` a hunk head. `file` names the file. */
+export interface DiffNode {
+  kind: "diff";
+  text: string;
+  attrs?: { file?: string };
+}
+/** A trend as a small line, no axes, the last point marked: `values` is 2 to 32 numbers with a space between. */
+export interface SparkNode {
+  kind: "spark";
+  attrs: { values: string; tone?: Tone; label?: string };
 }
 /** An amount (`role` `meter`) or a task (`role` `progress`; no `value` is indeterminate). `max` defaults to 1. */
 export interface MeterNode {
@@ -766,7 +843,13 @@ export type ViewNode =
   | ImageNode
   | MeterNode
   | SpacerNode
-  | NumberNode;
+  | NumberNode
+  | CompareNode
+  | TableNode
+  | ColNode
+  | CellNode
+  | DiffNode
+  | SparkNode;
 
 /** A part's view: the nodes of the place's frame, top to bottom. */
 export type View = ViewNode[];
@@ -2026,6 +2109,8 @@ interface ViewContext {
   maxDepth: number;
   /** A Decision's view: display only (`parseDecisionView`). */
   display: boolean;
+  /** How many images the Decision holds, when the reader knows: an image's `ref` must name one of them. */
+  images?: number;
 }
 
 /** The caps of a view other than a part's own. */
@@ -2033,6 +2118,7 @@ interface ViewCaps {
   nodes: number;
   depth: number;
   display: boolean;
+  images?: number;
 }
 
 type AttrRule =
@@ -2051,7 +2137,9 @@ type AttrRule =
   | { readonly kind: "url" }
   | { readonly kind: "href" }
   | { readonly kind: "src" }
-  | { readonly kind: "lang" };
+  | { readonly kind: "lang" }
+  | { readonly kind: "focus" }
+  | { readonly kind: "values" };
 
 const TONE_RULE = { kind: "tone" } as const;
 const ICON_RULE = { kind: "icon" } as const;
@@ -2109,6 +2197,10 @@ const NODE_ATTR_RULES = {
     alt: { kind: "text", rule: { max: LINE_MAX, empty: true } },
     w: { kind: "whole", ...VIEW_LIMITS.imageSide },
     h: { kind: "whole", ...VIEW_LIMITS.imageSide },
+    ref: { kind: "whole", min: 0, max: HILL_MEDIA_MAX - 1 },
+    caption: { kind: "text", rule: { max: HILL_MEDIA_CAPTION_MAX } },
+    fit: { kind: "word", list: IMAGE_FITS },
+    focus: { kind: "focus" },
   },
   meter: {
     value: { kind: "decimal" },
@@ -2119,6 +2211,12 @@ const NODE_ATTR_RULES = {
   },
   spacer: { label: { kind: "text", rule: { max: LABEL_MAX } } },
   number: { label: { kind: "text", rule: { max: LABEL_MAX } }, tone: TONE_RULE, unit: { kind: "text", rule: { max: WORD_MAX } } },
+  compare: {},
+  table: {},
+  col: { align: { kind: "word", list: COL_ALIGNS } },
+  cell: { tone: TONE_RULE },
+  diff: { file: { kind: "text", rule: { max: LINE_MAX } } },
+  spark: { values: { kind: "values" }, tone: TONE_RULE, label: { kind: "text", rule: { max: LABEL_MAX } } },
 } as const satisfies { readonly [K in NodeKind]: { readonly [A in (typeof NODE_ATTRS)[K][number]]: AttrRule } };
 
 /** The kids count each container takes. */
@@ -2131,6 +2229,8 @@ const KIDS_COUNT = {
   para: VIEW_LIMITS.runs,
   line: VIEW_LIMITS.runs,
   code: VIEW_LIMITS.codeLines,
+  compare: { min: 2, max: 2 },
+  table: { min: 2, max: TABLE_LIMITS.cols.max * (TABLE_LIMITS.rows.max + 1) },
 } as const satisfies { readonly [K in ContainerKind]: { min: number; max: number } };
 
 /** What a parent is, in words, for a refusal about its kids. */
@@ -2162,6 +2262,7 @@ function readView(value: JsonValue | undefined, path: string, sink: Refusal[], k
     return undefined;
   }
   const ctx: ViewContext = { kinds, nodes: 0, overflow: false, maxNodes: caps?.nodes ?? VIEW_LIMITS.nodes.max, maxDepth: caps?.depth ?? VIEW_LIMITS.depth.max, display: caps?.display ?? false };
+  if (caps?.images !== undefined) ctx.images = caps.images;
   const before = sink.length;
   const out: ViewNode[] = [];
   value.forEach((item, i) => {
@@ -2219,7 +2320,7 @@ function readNode(value: JsonValue | undefined, path: string, sink: Refusal[], c
     sink.push({ code: "removed", path: kindPath, reason: `A Decision's view takes no "${kind}": ${notShown}.` });
     return undefined;
   }
-  // A Decision's view names only the kinds it draws, so the hint never offers a card or an image.
+  // A Decision's view names only the kinds it draws, so the hint never offers a card or a button.
   const allowed = ctx.display ? kindsUnder(parent).filter((k) => reasonOf(DECISION_VIEW_REFUSED, k) === undefined) : kindsUnder(parent);
   if (!allowed.includes(kind)) {
     sink.push({ code: "parent", path: kindPath, reason: `A "${kind}" cannot sit in ${parentWords(parent)}. ${capital(parentWords(parent))} holds: ${quoteList(allowed)}.` });
@@ -2240,7 +2341,7 @@ function readNode(value: JsonValue | undefined, path: string, sink: Refusal[], c
   const attrsClean = sink.length === beforeAttrs;
   const kids = readKids(kind, f, ctx, depth);
   if (kids !== undefined) node.kids = kids;
-  checkNode(kind, f, attrsClean ? (attrs ?? {}) : undefined, kids);
+  checkNode(kind, f, attrsClean ? (attrs ?? {}) : undefined, kids, ctx);
   if (ctx.display) checkDisplayOnly(kind, f);
   // SAFETY: every key of `node` passed its kind's rule above (the text, each attribute, each kid), and a
   // refusal of any of them returns `undefined` here, so what is left is exactly the kind's node type.
@@ -2257,6 +2358,9 @@ function nodeKeyHint(kind: NodeKind, key: string): { code: RefusalCode; reason: 
   if (names.includes(key)) return { code: "unknown-key", reason: `"${key}" is an attribute: put it in "attrs", as text.` };
   if (key === "children") return { code: "unknown-key", reason: '"children" is "kids" in the tree vocabulary.' };
   if (key === "id") return { code: "unknown-key", reason: '"id" is the bridge\'s to set; it gives every node its id.' };
+  if (kind === "table" && (key === "columns" || key === "rows" || key === "items")) {
+    return { code: "unknown-key", reason: `"${key}" is not a table's: it lists its "col" heads, then its "cell"s row by row, in "kids".` };
+  }
   return undefined;
 }
 
@@ -2276,10 +2380,15 @@ function textHome(kind: NodeKind): string {
     case "button":
       return 'A button takes no "text"; its words are the "label" attribute.';
     case "image":
-      return 'An image takes no "text"; its words are the "alt" attribute.';
+      return 'An image takes no "text"; its words are the "alt" attribute in a part, and "caption" in a Decision\'s view.';
     case "meter":
     case "spacer":
+    case "spark":
       return `A ${kind} takes no "text"; its words are the "label" attribute.`;
+    case "compare":
+      return 'A compare takes no "text"; its two images name themselves with "caption".';
+    case "table":
+      return 'A table takes no "text"; its words are its "col" heads and its "cell"s.';
     default:
       return `A ${kind} takes no "text". Put a para or a line in its kids.`;
   }
@@ -2381,7 +2490,47 @@ function attrProblem(rule: AttrRule, value: string): { code: RefusalCode; reason
       return isImageSrc(value) ? undefined : { code: "target", reason: 'must be a .png, .jpg or .jpeg file inside the trick folder, as a relative path with no "..".' };
     case "lang":
       return LANG.test(value) ? undefined : { code: "word", reason: 'must be a language word of 1 to 24 of a-z, 0-9, "+", "#", ".", "_", "-".' };
+    case "focus":
+      return readFocus(value) === undefined
+        ? { code: "range", reason: `is "<x> <y>" or "<x> <y> <zoom>" with a space between: x and y from ${FOCUS_LIMITS.point.min} to ${FOCUS_LIMITS.point.max} (percent across and down), zoom from ${FOCUS_LIMITS.zoom.min} to ${FOCUS_LIMITS.zoom.max}, such as "50 30 2".` }
+        : undefined;
+    case "values":
+      return readSparkValues(value) === undefined
+        ? { code: "range", reason: `is ${SPARK_LIMITS.values.min} to ${SPARK_LIMITS.values.max} numbers with one space between, such as "3 5 4.5 -2".` }
+        : undefined;
   }
+}
+
+/** A number of a `focus` or a spark's `values`: digits, an optional point and fraction, and for a value an optional minus. */
+const SIGNED_DECIMAL = /^-?(0|[1-9]\d{0,14})(\.\d{1,6})?$/;
+
+/** An image's crop, read from its `focus` text. */
+export interface Focus {
+  /** The point to keep in the middle, in percent across (`x`) and down (`y`) the picture. */
+  x: number;
+  y: number;
+  /** How far in: 1 is the whole picture. */
+  zoom: number;
+}
+
+/** A `focus` text as numbers, or `undefined` when it is not one ("50 30" or "50 30 2"). The renderer reads it with this too. */
+export function readFocus(text: string): Focus | undefined {
+  const parts = text.split(" ");
+  if (parts.length !== 2 && parts.length !== 3) return undefined;
+  if (!parts.every((part) => DECIMAL.test(part))) return undefined;
+  const [x, y, zoom] = parts.map(Number);
+  const inPoint = (n: number | undefined) => n !== undefined && n >= FOCUS_LIMITS.point.min && n <= FOCUS_LIMITS.point.max;
+  const z = zoom ?? 1;
+  if (!inPoint(x) || !inPoint(y) || z < FOCUS_LIMITS.zoom.min || z > FOCUS_LIMITS.zoom.max) return undefined;
+  return { x: x ?? 0, y: y ?? 0, zoom: z };
+}
+
+/** A spark's `values` text as numbers, or `undefined` when it is not 2 to 32 numbers with one space between. */
+export function readSparkValues(text: string): number[] | undefined {
+  const parts = text.split(" ");
+  if (parts.length < SPARK_LIMITS.values.min || parts.length > SPARK_LIMITS.values.max) return undefined;
+  if (!parts.every((part) => SIGNED_DECIMAL.test(part))) return undefined;
+  return parts.map(Number);
 }
 
 function readKids(kind: NodeKind, f: Fields, ctx: ViewContext, depth: number): ViewNode[] | undefined {
@@ -2405,7 +2554,7 @@ function readKids(kind: NodeKind, f: Fields, ctx: ViewContext, depth: number): V
  * The rules that hold between a node's text, attributes and kids. `attrs` is undefined when one of
  * them was refused already: the rules between attributes then wait for the author's next try.
  */
-function checkNode(kind: NodeKind, f: Fields, attrs: JsonObject | undefined, kids: ViewNode[] | undefined): void {
+function checkNode(kind: NodeKind, f: Fields, attrs: JsonObject | undefined, kids: ViewNode[] | undefined, ctx: ViewContext): void {
   const attrsPath = f.at("attrs");
   const pushAttr = (code: RefusalCode, name: string, reason: string) => f.sink.push({ code, path: pointer(attrsPath, name), reason });
   const attr = (name: string) => asJsonString(attrs?.[name]);
@@ -2446,16 +2595,102 @@ function checkNode(kind: NodeKind, f: Fields, attrs: JsonObject | undefined, kid
     case "meter":
       if (attrs !== undefined) checkMeter(pushAttr, attrs);
       return;
+    case "image":
+      checkImage(f, pushAttr, ctx);
+      return;
+    case "table":
+      // A kid refused on its own rule already says what is wrong; the rows are counted once every kid passed.
+      if (kids !== undefined && Array.isArray(f.obj.kids) && kids.length === f.obj.kids.length) checkTable(f, kids);
+      return;
+    case "diff":
+      checkDiff(f);
+      return;
     case "card":
     case "group":
     case "list":
     case "bar":
     case "code":
-    case "image":
     case "spacer":
     case "number":
+    case "compare":
+    case "col":
+    case "cell":
+    case "spark":
       return;
   }
+}
+
+/** The attributes an image takes in a part only, and in a Decision's view only. `caption`, `fit` and `focus` are both's. */
+const PART_IMAGE_ATTRS = ["src", "alt", "w", "h"] as const;
+const VIEW_IMAGE_ATTRS = ["ref"] as const;
+
+/**
+ * An image in its place's form: in a part a file of the trick folder (`src`, `alt`, `w`, `h`, all four),
+ * in a Decision's view one of the Decision's images (`ref`, and `caption` and `fit` if it likes). A
+ * `ref` past the Decision's images is refused when the reader knows how many it holds.
+ */
+function checkImage(f: Fields, push: (code: RefusalCode, name: string, reason: string) => void, ctx: ViewContext): void {
+  const raw = f.has("attrs") ? asJsonObject(f.obj.attrs) : undefined;
+  const has = (name: string) => raw?.[name] !== undefined;
+  const [needs, other] = ctx.display ? [["ref"] as const, PART_IMAGE_ATTRS] : [PART_IMAGE_ATTRS, VIEW_IMAGE_ATTRS];
+  for (const name of other) {
+    if (!has(name)) continue;
+    push(
+      "unknown-key",
+      name,
+      ctx.display
+        ? `A Decision's image takes no "${name}": it names one of the Decision's images with "ref" (0 is the first), and may add "caption", "fit" and "focus".`
+        : `A part's image takes no "${name}": it names a file of the trick folder with "src", "alt", "w" and "h", and may add "caption", "fit" and "focus".`,
+    );
+  }
+  for (const name of needs) {
+    if (has(name)) continue;
+    if (raw === undefined) f.push("missing", "attrs", `An image needs the attribute "${name}".`);
+    else push("missing", name, `An image needs the attribute "${name}".`);
+  }
+  const ref = asJsonString(raw?.ref);
+  if (!ctx.display || ref === undefined || ctx.images === undefined || !WHOLE.test(ref)) return;
+  if (Number(ref) >= ctx.images) {
+    const held = ctx.images === 0 ? "holds no images" : `holds ${String(ctx.images)} image${ctx.images === 1 ? "" : "s"}, "ref" 0 to ${String(ctx.images - 1)}`;
+    push("target", "ref", `"ref" is ${ref}, but the Decision ${held}.`);
+  }
+}
+
+/**
+ * A table: its column heads first, 1 to 4, then its cells row by row, a whole row at a time, 1 to 12
+ * rows. A head after a cell, a row cut short and a table with no row are refused.
+ */
+function checkTable(f: Fields, kids: ViewNode[]): void {
+  const firstCell = kids.findIndex((kid) => kid.kind === "cell");
+  const cols = firstCell === -1 ? kids.length : firstCell;
+  const cells = kids.length - cols;
+  if (kids.slice(cols).some((kid) => kid.kind === "col")) {
+    f.push("target", "kids", 'A table lists its "col" heads first, then its cells: a "col" after a "cell" is refused.');
+    return;
+  }
+  if (cols < TABLE_LIMITS.cols.min || cols > TABLE_LIMITS.cols.max) {
+    f.push("count", "kids", `A table has ${String(cols)} columns. It takes ${String(TABLE_LIMITS.cols.min)} to ${String(TABLE_LIMITS.cols.max)} "col" heads.`);
+    return;
+  }
+  if (cells === 0 || cells % cols !== 0) {
+    f.push("count", "kids", `A table's ${String(cells)} cells do not fill rows of ${String(cols)}. List each row whole, one "cell" per column; an empty cell is "".`);
+    return;
+  }
+  const rows = cells / cols;
+  if (rows > TABLE_LIMITS.rows.max) f.push("count", "kids", `A table has ${String(rows)} rows. It takes at most ${String(TABLE_LIMITS.rows.max)}.`);
+}
+
+/** A diff's lines: at most 40, each at most 200 characters. */
+function checkDiff(f: Fields): void {
+  const text = asJsonString(f.obj.text);
+  if (text === undefined) return;
+  const lines = text.split("\n");
+  if (lines.length > DIFF_LIMITS.lines) {
+    f.push("count", "text", `A diff holds ${String(lines.length)} lines. It shows at most ${String(DIFF_LIMITS.lines)}: cut it to the hunk that matters.`);
+    return;
+  }
+  const long = lines.findIndex((line) => codePoints(line) > DIFF_LIMITS.lineChars);
+  if (long !== -1) f.push("text", "text", `A diff's line ${String(long + 1)} is ${String(codePoints(lines[long] ?? ""))} characters. Each line holds at most ${String(DIFF_LIMITS.lineChars)}.`);
 }
 
 /** A row: at most one `para`, any `chip`, at most one `button`, and the button last (VOCABULARY.md 2.12). */
@@ -2518,13 +2753,35 @@ function checkMeter(push: (code: RefusalCode, name: string, reason: string) => v
 // A Decision may carry a small view under its summary: a few rows, a strip of chips, a code hunk, the
 // facts a person reads before they choose. It is DISPLAY ONLY. The options are the Decision's taps, so
 // its view holds no control: no `button`, no `intent`, `does`, `confirm` or `href` on any node but a
-// `link` or a `row`, and those open a web page only. No `card` (the Decision's card is its frame) and no `image`
-// (pictures are the Decision's `media`). It is the part view's parser, the same function, with these
-// rules and smaller caps on top: the bridge refuses a post that breaks one, and the phone drops a view
-// that does not pass them and keeps the Decision.
+// `link` or a `row`, and those open a web page only. No `card` (the Decision's card is its frame). An
+// `image` or a `compare` names the Decision's own images by `ref` (2026-11-10), so a poster places a
+// picture among the facts, cropped by `focus`, and needs no image tool. It is the part view's parser,
+// the same function, with these rules and smaller caps on top: the bridge refuses a post that breaks
+// one, and the phone drops what it cannot read and keeps the rest and the Decision.
 
 /** The kinds a Decision's view may hold. */
-export const DECISION_VIEW_KINDS = ["group", "list", "row", "bar", "chip", "para", "line", "run", "code", "link", "meter", "spacer", "number"] as const satisfies readonly NodeKind[];
+export const DECISION_VIEW_KINDS = [
+  "group",
+  "list",
+  "row",
+  "bar",
+  "chip",
+  "para",
+  "line",
+  "run",
+  "code",
+  "link",
+  "meter",
+  "spacer",
+  "number",
+  "image",
+  "compare",
+  "table",
+  "col",
+  "cell",
+  "diff",
+  "spark",
+] as const satisfies readonly NodeKind[];
 
 /** The caps of a Decision's view: its compact JSON, every node counted, and the nesting. */
 export const DECISION_VIEW_LIMITS = { bytes: 8 * 1024, nodes: 100, depth: 4 } as const;
@@ -2533,7 +2790,6 @@ export const DECISION_VIEW_LIMITS = { bytes: 8 * 1024, nodes: 100, depth: 4 } as
 const DECISION_VIEW_REFUSED = {
   button: "no buttons, the options are the taps",
   card: "the Decision's card is its frame; list the nodes without one",
-  image: 'pictures go in the Decision\'s "media"',
 } as const satisfies Readonly<Record<string, string>>;
 
 /** The attributes that act. On a Decision's view a `link` and a `row` keep one, their `href`, as a web address. */
@@ -2576,19 +2832,27 @@ export interface ParsedDecisionView {
   refusals: Refusal[];
 }
 
+/** What `parseDecisionView` may know of the Decision around the view. */
+export interface DecisionViewOptions {
+  /** How many images the Decision holds. Given, an image's `ref` past them is refused; absent, any `ref` from 0 to 3 passes. */
+  images?: number;
+}
+
 /**
  * Read a Decision's `view`: a list of nodes of {@link DECISION_VIEW_KINDS}, display only, at most
  * {@link DECISION_VIEW_LIMITS}. The one reader of it, for a trick's document, an agent's post and the
  * phone. Total: garbage is a refusal, never a throw.
  */
-export function parseDecisionView(value: JsonValue | undefined, path = "/view"): ParsedDecisionView {
+export function parseDecisionView(value: JsonValue | undefined, path = "/view", opts: DecisionViewOptions = {}): ParsedDecisionView {
   const refusals: Refusal[] = [];
   const bytes = value === undefined ? 0 : utf8Bytes(JSON.stringify(value));
   if (bytes > DECISION_VIEW_LIMITS.bytes) {
     refusals.push({ code: "size", path, reason: `The view is ${String(bytes)} bytes. A Decision's view holds at most ${String(DECISION_VIEW_LIMITS.bytes / 1024)} KiB.` });
     return { refusals };
   }
-  const view = readView(value, path, refusals, DECISION_VIEW_KINDS, { nodes: DECISION_VIEW_LIMITS.nodes, depth: DECISION_VIEW_LIMITS.depth, display: true });
+  const caps: ViewCaps = { nodes: DECISION_VIEW_LIMITS.nodes, depth: DECISION_VIEW_LIMITS.depth, display: true };
+  if (opts.images !== undefined) caps.images = opts.images;
+  const view = readView(value, path, refusals, DECISION_VIEW_KINDS, caps);
   return view === undefined || refusals.length > 0 ? { refusals } : { view, refusals };
 }
 
@@ -3170,7 +3434,7 @@ function readDecision(value: JsonValue, path: string, sink: Refusal[]): Decision
   const media = readMedia(f);
   const links = readLinks(f);
   const expiresAt = f.int("expiresAt", { min: 1, max: EPOCH_MAX_MS });
-  const view = f.has("view") ? parseDecisionView(f.obj.view, f.at("view")) : undefined;
+  const view = f.has("view") ? parseDecisionView(f.obj.view, f.at("view"), { images: media?.length ?? 0 }) : undefined;
   if (view !== undefined) f.sink.push(...view.refusals);
   if (key === undefined || title === undefined || summary === undefined) return { key };
   const decision: TrickDecision = { key, title, summary };

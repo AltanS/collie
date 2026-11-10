@@ -70,6 +70,8 @@ import {
   trickSpaceId,
   parseAt,
   parseDecisionView,
+  readFocus,
+  readSparkValues,
   parseDuration,
   parseFacts,
   parseManifest,
@@ -115,7 +117,15 @@ const TREE_ATTRS = {
   image: ["src", "alt", "w", "h", "href", "anchor"],
   meter: ["value", "max", "tone", "label", "role"],
   spacer: ["label"],
-} as const satisfies Record<Exclude<NodeKind, "number">, readonly string[]>;
+} as const satisfies Record<Exclude<NodeKind, (typeof OWN_KINDS)[number]>, readonly string[]>;
+/** Collie's own kinds, not in the tree yet: `number`, and the display kinds of 2026-11-10. */
+const OWN_KINDS = ["number", "compare", "table", "col", "cell", "diff", "spark"] as const;
+/** Collie's own attributes on a tree kind: a Decision image's `ref`, and the crop of 2026-11-10. */
+const OWN_ATTRS = { image: ["ref", "caption", "fit", "focus"] } as const;
+
+function hasKey<T extends object>(obj: T, key: PropertyKey): key is keyof T {
+  return Object.hasOwn(obj, key);
+}
 const TREE_ICONS = [
   "back", "up", "down", "next", "close", "plus", "minus", "check", "copy", "search", "settings", "star", "pin",
   "folder", "file", "image", "terminal", "chat", "machine", "crew", "branch", "edit", "delete", "move", "share",
@@ -160,20 +170,24 @@ describe("the module", () => {
     expect(source).not.toContain(`from "@/`);
   });
 
-  it("lists sixteen kinds, the tree's names plus number, each with its attributes", () => {
+  it("lists twenty-two kinds, the tree's names plus number and the six display kinds, each with its attributes", () => {
     expect(new Set(NODE_KINDS).size).toBe(NODE_KINDS.length);
-    expect(NODE_KINDS).toHaveLength(16);
+    expect(NODE_KINDS).toHaveLength(22);
     expect(Object.keys(NODE_ATTRS).toSorted()).toEqual([...NODE_KINDS].toSorted());
     for (const kind of Object.keys(NODE_KIDS)) expect(NODE_KINDS).toContain(kind);
     for (const kind of Object.keys(NODE_TEXT)) expect(NODE_KINDS).toContain(kind);
     for (const kind of VIEW_ROOT_KINDS) expect(NODE_KINDS).toContain(kind);
   });
 
-  it("keeps the tree's names: every kind but number is a tree kind, and every attribute is its kind's there", () => {
+  it("keeps the tree's names: every kind but Collie's own is a tree kind, and every attribute is its kind's there", () => {
     for (const kind of NODE_KINDS) {
-      if (kind === "number") continue;
+      if (!hasKey(TREE_ATTRS, kind)) {
+        expect(OWN_KINDS, kind).toContain(kind);
+        continue;
+      }
       const tree: readonly string[] = TREE_ATTRS[kind];
-      for (const name of NODE_ATTRS[kind]) expect(tree, `${kind}.${name}`).toContain(name);
+      const own: readonly string[] = hasKey(OWN_ATTRS, kind) ? OWN_ATTRS[kind] : [];
+      for (const name of NODE_ATTRS[kind]) expect([...tree, ...own], `${kind}.${name}`).toContain(name);
     }
     for (const kind of Object.keys(REMOVED_KINDS)) expect(NODE_KINDS).not.toContain(kind);
   });
@@ -677,8 +691,8 @@ describe("a Decision's view (M96)", () => {
   };
   const nest = (depth: number): JsonObject => (depth === 1 ? { kind: "para", text: "deep" } : { kind: "group", kids: [nest(depth - 1)] });
 
-  it("draws the display kinds and nothing that acts: no button, card or image", () => {
-    expect(DECISION_VIEW_KINDS).toEqual(["group", "list", "row", "bar", "chip", "para", "line", "run", "code", "link", "meter", "spacer", "number"]);
+  it("draws the display kinds and nothing that acts: no button or card", () => {
+    expect(DECISION_VIEW_KINDS).toEqual(["group", "list", "row", "bar", "chip", "para", "line", "run", "code", "link", "meter", "spacer", "number", "image", "compare", "table", "col", "cell", "diff", "spark"]);
     expect(DECISION_VIEW_LIMITS).toEqual({ bytes: 8 * 1024, nodes: 100, depth: 4 });
     const gate = [
       { kind: "bar", kids: [{ kind: "chip", text: "unit", attrs: { tone: "ok", icon: "check" } }] },
@@ -693,7 +707,8 @@ describe("a Decision's view (M96)", () => {
     expect(where([{ kind: "button", text: "Merge", attrs: { intent: "merge" } }])).toEqual(["/view/0/kind"]);
     expect(reason([{ kind: "button", text: "Merge", attrs: { intent: "merge" } }])).toContain('takes no "button"');
     expect(where([{ kind: "card", kids: [{ kind: "para", text: "x" }] }])).toEqual(["/view/0/kind"]);
-    expect(where([{ kind: "image", attrs: { src: "media/a.png" } }])).toEqual(["/view/0/kind"]);
+    // An image names one of the Decision's own images; a file path is a part's.
+    expect(where([{ kind: "image", attrs: { src: "media/a.png" } }])).toEqual(["/view/0/attrs/src", "/view/0/attrs/ref"]);
   });
 
   it("refuses intent, does, confirm and href on every node but the web href of a link and a row", () => {
@@ -754,6 +769,117 @@ describe("a Decision's view (M96)", () => {
     expect(read.decisions[0]?.view).toEqual([{ kind: "para", text: "fine" }]);
     expect(paths(read)).toEqual(["/decisions/1/view/0/kind"]);
     expect(read.parts).toHaveLength(1);
+  });
+});
+
+describe("the display kinds of 2026-11-10: image, compare, table, diff, spark", () => {
+  const where = (value: JsonValue, images?: number) => parseDecisionView(value, "/view", images === undefined ? {} : { images }).refusals.map((r) => r.path);
+  const reason = (value: JsonValue, images?: number) => parseDecisionView(value, "/view", images === undefined ? {} : { images }).refusals[0]?.reason ?? "";
+  const img = (attrs: JsonObject) => ({ kind: "image", attrs });
+  const table = (cols: number, cells: number, extra: JsonObject[] = []) => ({
+    kind: "table",
+    kids: [...Array.from({ length: cols }, (_, i) => ({ kind: "col", text: `c${String(i)}` })), ...Array.from({ length: cells }, () => ({ kind: "cell", text: "1" })), ...extra],
+  });
+
+  it("an image in a Decision's view names one of its images by ref, with a caption, a fit and a focus", () => {
+    const view = [img({ ref: "0", caption: "The card", fit: "cover", focus: "50 30 2" })];
+    expect(parseDecisionView(view, "/view", { images: 1 })).toEqual({ view, refusals: [] });
+    expect(where([img({ ref: "1" })], 1)).toEqual(["/view/0/attrs/ref"]);
+    expect(reason([img({ ref: "1" })], 1)).toContain('"ref" 0 to 0');
+    expect(where([img({ ref: "0" })], 0)).toEqual(["/view/0/attrs/ref"]);
+    // Without the count (the phone before it knows), any ref the hill can hold passes; past 3 never.
+    expect(where([img({ ref: "3" })])).toEqual([]);
+    expect(where([img({ ref: "4" })])).toEqual(["/view/0/attrs/ref"]);
+    expect(where([img({ caption: "x" })])).toEqual(["/view/0/attrs/ref"]);
+    expect(where([{ kind: "image" }])).toEqual(["/view/0/attrs"]);
+    expect(where([img({ ref: "0", w: "10" })])).toEqual(["/view/0/attrs/w"]);
+    expect(where([img({ ref: "0", fit: "fill" })])).toEqual(["/view/0/attrs/fit"]);
+  });
+
+  it("a focus is a point in percent and a zoom from 1 to 8", () => {
+    for (const ok of ["0 0", "100 100", "50 30 2", "12.5 87.5 8", "50 50 1"]) expect(where([img({ ref: "0", focus: ok })]), ok).toEqual([]);
+    for (const bad of ["50", "50 30 2 1", "101 0", "50 30 9", "50 30 0.5", "-1 0", "50,30", " 50 30", "a b"]) {
+      expect(where([img({ ref: "0", focus: bad })]), bad).toEqual(["/view/0/attrs/focus"]);
+    }
+    expect(readFocus("50 30")).toEqual({ x: 50, y: 30, zoom: 1 });
+    expect(readFocus("10 90 4")).toEqual({ x: 10, y: 90, zoom: 4 });
+  });
+
+  it("a part's image keeps src, alt, w and h, takes focus, and refuses a ref", () => {
+    const part = img({ src: "shots/a.png", alt: "a", w: "390", h: "844", focus: "50 80 2", caption: "Before", fit: "cover" });
+    expect(parse(inView(part))).toEqual([]);
+    expect(parse(inView(img({ src: "shots/a.png", alt: "a", w: "390", h: "844", ref: "0" })))).toEqual(["/parts/0/view/0/attrs/ref"]);
+  });
+
+  it("a compare holds exactly two images, in a Decision's view and in a part", () => {
+    const view = [{ kind: "compare", kids: [img({ ref: "0" }), img({ ref: "1", caption: "Fixed", focus: "50 80 2" })] }];
+    expect(parseDecisionView(view, "/view", { images: 2 })).toEqual({ view, refusals: [] });
+    expect(where([{ kind: "compare", kids: [img({ ref: "0" })] }])).toEqual(["/view/0/kids"]);
+    expect(where([{ kind: "compare", kids: [img({ ref: "0" }), img({ ref: "1" }), img({ ref: "2" })] }])).toEqual(["/view/0/kids"]);
+    expect(where([{ kind: "compare", kids: [img({ ref: "0" }), { kind: "para", text: "x" }] }])).toEqual(["/view/0/kids/1/kind"]);
+    expect(where([{ kind: "group", attrs: { label: "Look" }, kids: [view[0] ?? {}] }])).toEqual([]);
+    expect(where([{ kind: "compare", kids: [img({ ref: "0" }), img({ ref: "2" })] }], 2)).toEqual(["/view/0/kids/1/attrs/ref"]);
+  });
+
+  it("a table lists 1 to 4 heads, then whole rows of cells, 1 to 12 of them", () => {
+    expect(where([table(3, 6)])).toEqual([]);
+    expect(where([table(4, 48)])).toEqual([]);
+    expect(where([table(1, 1)])).toEqual([]);
+    expect(where([table(5, 5)])).toEqual(["/view/0/kids"]);
+    expect(where([table(2, 3)])).toEqual(["/view/0/kids"]);
+    expect(reason([table(2, 3)])).toContain("do not fill rows of 2");
+    expect(where([table(2, 0)])).toEqual(["/view/0/kids"]);
+    expect(where([table(1, 13)])).toEqual(["/view/0/kids"]);
+    expect(where([table(2, 2, [{ kind: "col", text: "late" }])])).toEqual(["/view/0/kids"]);
+    expect(where([{ kind: "table", kids: [{ kind: "col", text: "a", attrs: { align: "middle" } }, { kind: "cell", text: "1" }] }])).toEqual(["/view/0/kids/0/attrs/align"]);
+    const toned = { kind: "table", kids: [{ kind: "col", text: "a", attrs: { align: "end" } }, { kind: "cell", text: "", attrs: { tone: "ok" } }, { kind: "cell" }] };
+    expect(where([toned])).toEqual([]);
+    expect(where([{ kind: "table", kids: [{ kind: "col", text: "a" }, { kind: "cell", text: "1", attrs: { tone: "working" } }] }])).toEqual(["/view/0/kids/1/attrs/tone"]);
+    // A col or a cell lives in a table only.
+    expect(where([{ kind: "col", text: "a" }])).toEqual(["/view/0/kind"]);
+    expect(where([{ kind: "group", kids: [{ kind: "cell", text: "a" }] }])).toEqual(["/view/0/kids/0/kind"]);
+    // The first schema's table shape says where its words go now.
+    expect(reason([{ kind: "table", columns: [{ label: "a" }], kids: [{ kind: "col", text: "a" }, { kind: "cell", text: "1" }] }])).toContain('"col" heads');
+  });
+
+  it("a 12 by 4 table fits a Decision's 100 nodes with room beside it", () => {
+    const view = [table(4, 48), { kind: "number", text: "380", attrs: { label: "ms" } }];
+    expect(where(view)).toEqual([]);
+  });
+
+  it("a diff holds at most 40 lines of 200 characters, with an optional file", () => {
+    const lines = (n: number, width = 10) => Array.from({ length: n }, (_, i) => `${i % 2 === 0 ? "+" : "-"}${"x".repeat(width)}`).join("\n");
+    expect(where([{ kind: "diff", text: lines(40), attrs: { file: "web/src/a.ts" } }])).toEqual([]);
+    expect(where([{ kind: "diff", text: lines(41) }])).toEqual(["/view/0/text"]);
+    expect(where([{ kind: "diff", text: `@@ -1 +1 @@\n+${"y".repeat(200)}` }])).toEqual(["/view/0/text"]);
+    expect(reason([{ kind: "diff", text: `@@ -1 +1 @@\n+${"y".repeat(200)}` }])).toContain("line 2");
+    expect(where([{ kind: "diff" }])).toEqual(["/view/0/text"]);
+    expect(where([{ kind: "diff", text: "+a\u0007" }])).toEqual(["/view/0/text"]);
+  });
+
+  it("a spark holds 2 to 32 numbers with one space between", () => {
+    expect(where([{ kind: "spark", attrs: { values: "3 5 4.5 -2", tone: "ok", label: "p95" } }])).toEqual([]);
+    expect(where([{ kind: "spark", attrs: { values: "3" } }])).toEqual(["/view/0/attrs/values"]);
+    expect(where([{ kind: "spark", attrs: { values: Array.from({ length: 33 }, () => "1").join(" ") } }])).toEqual(["/view/0/attrs/values"]);
+    expect(where([{ kind: "spark", attrs: { values: "1  2" } }])).toEqual(["/view/0/attrs/values"]);
+    expect(where([{ kind: "spark", attrs: { values: "1 NaN" } }])).toEqual(["/view/0/attrs/values"]);
+    expect(where([{ kind: "spark" }])).toEqual(["/view/0/attrs"]);
+    expect(readSparkValues("1 -2.5 3")).toEqual([1, -2.5, 3]);
+  });
+
+  it("a trick decision's image refs count its media", () => {
+    const doc = {
+      v: 1,
+      parts: [],
+      decisions: [
+        { key: "one", title: "T", summary: "S", media: [{ file: "shots/a.png" }], view: [img({ ref: "0" })] },
+        { key: "two", title: "T", summary: "S", media: [{ file: "shots/a.png" }], view: [img({ ref: "1" })] },
+        { key: "none", title: "T", summary: "S", view: [img({ ref: "0" })] },
+      ],
+    };
+    const read = parseTrickDocument(doc);
+    expect(read.decisions.map((x) => x.key)).toEqual(["one"]);
+    expect(paths(read)).toEqual(["/decisions/1/view/0/attrs/ref", "/decisions/2/view/0/attrs/ref"]);
   });
 });
 

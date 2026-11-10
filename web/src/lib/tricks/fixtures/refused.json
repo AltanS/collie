@@ -80,7 +80,7 @@
       "belt"
     ]
   },
-  "removed-table": {
+  "table-first-schema": {
     "doc": {
       "v": 1,
       "parts": [
@@ -115,7 +115,10 @@
       ]
     },
     "paths": [
-      "/parts/1/view/1/kind"
+      "/parts/1/view/1/columns",
+      "/parts/1/view/1/rows",
+      "/parts/1/view/1/items",
+      "/parts/1/view/1/kids"
     ],
     "keeps": [
       "belt"
@@ -488,7 +491,7 @@
       "belt"
     ]
   },
-  "removed-spark": {
+  "spark-first-schema": {
     "doc": {
       "v": 1,
       "parts": [
@@ -520,7 +523,8 @@
       ]
     },
     "paths": [
-      "/parts/1/view/1/kind"
+      "/parts/1/view/1/values",
+      "/parts/1/view/1/attrs"
     ],
     "keeps": [
       "belt"
