@@ -68,6 +68,16 @@ export function useAnySheetOpen(): boolean {
  */
 export const TALL_SHEET_CLEARANCE = "pb-[calc(env(safe-area-inset-bottom)_+_1.5rem)]";
 
+/**
+ * Where a block in the sheet's body sticks: right under the sticky head, and across the panel's whole
+ * width (the body's 16px gutter taken back), so its own rule meets both edges as the head's does. The
+ * session switcher's filter field. The offset is the head's stated height, a sum of fixed boxes, in rem
+ * so it grows with the text size: the grab handle's row (`pt-2 pb-1` around the `h-1` handle, 1rem),
+ * the title row (the `size-8` close button, taller than the `text-sm` title, plus `pb-3`, 2.75rem) and
+ * the head's 1px `border-b`. Change one of those and this sum with it; `sheet.test.tsx` reads both.
+ */
+export const SHEET_BODY_STICKY = "top-[calc(3.75rem+1px)] -mx-4 px-4";
+
 // A minimal bottom sheet — no Radix, no portals, no extra deps. Renders nothing when closed.
 // Dismisses on backdrop tap or Escape. Animations come from tw-animate-css (already imported).
 interface BottomSheetProps {

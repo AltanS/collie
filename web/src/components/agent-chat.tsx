@@ -41,7 +41,7 @@ import { useMediaQuery } from "@/hooks/use-media-query";
 import { setStripsCollapsed, useStripsCollapsed } from "@/lib/strips-collapsed";
 import { ChatMessageList, type ChatMessageListHandle } from "@/components/ui/chat/chat-message-list";
 import { StretchTextContext } from "@/components/markdown-text";
-import { BottomSheet } from "@/components/ui/sheet";
+import { BottomSheet, SHEET_BODY_STICKY } from "@/components/ui/sheet";
 import { DisplayPrefsContent } from "@/components/display-prefs";
 import { Collapse, CollapseSwap } from "@/components/ui/collapse";
 import { AuthedImageCard } from "@/components/authed-image-card";
@@ -3526,6 +3526,8 @@ export function AgentChat({
             order={dash.prefs.paneOrder}
             onOrderChange={dash.setPaneOrder}
             className="px-0 py-1"
+            // The filter field sticks under the sheet's own sticky head, across the panel's width.
+            filterClassName={SHEET_BODY_STICKY}
           />
         </BottomSheet>
 
