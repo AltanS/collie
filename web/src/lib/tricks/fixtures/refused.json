@@ -32,11 +32,13 @@
         }
       ]
     },
-    "paths": [
+    "paths": [],
+    "notes": [
       "/parts/1/view/1/kind"
     ],
     "keeps": [
-      "belt"
+      "belt",
+      "s"
     ]
   },
   "removed-grid": {
@@ -73,11 +75,13 @@
         }
       ]
     },
-    "paths": [
+    "paths": [],
+    "notes": [
       "/parts/1/view/1/kind"
     ],
     "keeps": [
-      "belt"
+      "belt",
+      "s"
     ]
   },
   "removed-table": {
@@ -114,11 +118,13 @@
         }
       ]
     },
-    "paths": [
+    "paths": [],
+    "notes": [
       "/parts/1/view/1/kind"
     ],
     "keeps": [
-      "belt"
+      "belt",
+      "s"
     ]
   },
   "removed-kv": {
@@ -154,11 +160,13 @@
         }
       ]
     },
-    "paths": [
+    "paths": [],
+    "notes": [
       "/parts/1/view/1/kind"
     ],
     "keeps": [
-      "belt"
+      "belt",
+      "s"
     ]
   },
   "removed-steps": {
@@ -194,11 +202,13 @@
         }
       ]
     },
-    "paths": [
+    "paths": [],
+    "notes": [
       "/parts/1/view/1/kind"
     ],
     "keeps": [
-      "belt"
+      "belt",
+      "s"
     ]
   },
   "removed-time": {
@@ -229,11 +239,13 @@
         }
       ]
     },
-    "paths": [
+    "paths": [],
+    "notes": [
       "/parts/1/view/1/kind"
     ],
     "keeps": [
-      "belt"
+      "belt",
+      "s"
     ]
   },
   "removed-section": {
@@ -270,11 +282,13 @@
         }
       ]
     },
-    "paths": [
+    "paths": [],
+    "notes": [
       "/parts/1/view/1/kind"
     ],
     "keeps": [
-      "belt"
+      "belt",
+      "s"
     ]
   },
   "removed-divider": {
@@ -304,11 +318,13 @@
         }
       ]
     },
-    "paths": [
+    "paths": [],
+    "notes": [
       "/parts/1/view/1/kind"
     ],
     "keeps": [
-      "belt"
+      "belt",
+      "s"
     ]
   },
   "removed-log": {
@@ -340,11 +356,13 @@
         }
       ]
     },
-    "paths": [
+    "paths": [],
+    "notes": [
       "/parts/1/view/1/kind"
     ],
     "keeps": [
-      "belt"
+      "belt",
+      "s"
     ]
   },
   "removed-text": {
@@ -376,11 +394,13 @@
         }
       ]
     },
-    "paths": [
+    "paths": [],
+    "notes": [
       "/parts/1/view/1/kind"
     ],
     "keeps": [
-      "belt"
+      "belt",
+      "s"
     ]
   },
   "removed-progress": {
@@ -411,11 +431,13 @@
         }
       ]
     },
-    "paths": [
+    "paths": [],
+    "notes": [
       "/parts/1/view/1/kind"
     ],
     "keeps": [
-      "belt"
+      "belt",
+      "s"
     ]
   },
   "removed-badge": {
@@ -446,11 +468,13 @@
         }
       ]
     },
-    "paths": [
+    "paths": [],
+    "notes": [
       "/parts/1/view/1/kind"
     ],
     "keeps": [
-      "belt"
+      "belt",
+      "s"
     ]
   },
   "removed-icon": {
@@ -481,11 +505,13 @@
         }
       ]
     },
-    "paths": [
+    "paths": [],
+    "notes": [
       "/parts/1/view/1/kind"
     ],
     "keeps": [
-      "belt"
+      "belt",
+      "s"
     ]
   },
   "removed-spark": {
@@ -519,11 +545,13 @@
         }
       ]
     },
-    "paths": [
+    "paths": [],
+    "notes": [
       "/parts/1/view/1/kind"
     ],
     "keeps": [
-      "belt"
+      "belt",
+      "s"
     ]
   },
   "removed-ring": {
@@ -554,11 +582,13 @@
         }
       ]
     },
-    "paths": [
+    "paths": [],
+    "notes": [
       "/parts/1/view/1/kind"
     ],
     "keeps": [
-      "belt"
+      "belt",
+      "s"
     ]
   },
   "removed-mark": {
@@ -589,11 +619,13 @@
         }
       ]
     },
-    "paths": [
+    "paths": [],
+    "notes": [
       "/parts/1/view/1/kind"
     ],
     "keeps": [
-      "belt"
+      "belt",
+      "s"
     ]
   },
   "removed-screen": {
@@ -624,11 +656,13 @@
         }
       ]
     },
-    "paths": [
+    "paths": [],
+    "notes": [
       "/parts/1/view/1/kind"
     ],
     "keeps": [
-      "belt"
+      "belt",
+      "s"
     ]
   },
   "removed-sheet": {
@@ -659,11 +693,13 @@
         }
       ]
     },
-    "paths": [
+    "paths": [],
+    "notes": [
       "/parts/1/view/1/kind"
     ],
     "keeps": [
-      "belt"
+      "belt",
+      "s"
     ]
   },
   "removed-toast": {
@@ -694,11 +730,13 @@
         }
       ]
     },
-    "paths": [
+    "paths": [],
+    "notes": [
       "/parts/1/view/1/kind"
     ],
     "keeps": [
-      "belt"
+      "belt",
+      "s"
     ]
   },
   "removed-form": {
@@ -729,11 +767,13 @@
         }
       ]
     },
-    "paths": [
+    "paths": [],
+    "notes": [
       "/parts/1/view/1/kind"
     ],
     "keeps": [
-      "belt"
+      "belt",
+      "s"
     ]
   },
   "removed-field": {
@@ -763,11 +803,13 @@
         }
       ]
     },
-    "paths": [
+    "paths": [],
+    "notes": [
       "/parts/1/view/1/kind"
     ],
     "keeps": [
-      "belt"
+      "belt",
+      "s"
     ]
   },
   "removed-select": {
@@ -798,11 +840,13 @@
         }
       ]
     },
-    "paths": [
+    "paths": [],
+    "notes": [
       "/parts/1/view/1/kind"
     ],
     "keeps": [
-      "belt"
+      "belt",
+      "s"
     ]
   },
   "removed-composer": {
@@ -832,11 +876,13 @@
         }
       ]
     },
-    "paths": [
+    "paths": [],
+    "notes": [
       "/parts/1/view/1/kind"
     ],
     "keeps": [
-      "belt"
+      "belt",
+      "s"
     ]
   },
   "removed-prompt": {
@@ -867,11 +913,13 @@
         }
       ]
     },
-    "paths": [
+    "paths": [],
+    "notes": [
       "/parts/1/view/1/kind"
     ],
     "keeps": [
-      "belt"
+      "belt",
+      "s"
     ]
   },
   "removed-tool": {
@@ -902,11 +950,13 @@
         }
       ]
     },
-    "paths": [
+    "paths": [],
+    "notes": [
       "/parts/1/view/1/kind"
     ],
     "keeps": [
-      "belt"
+      "belt",
+      "s"
     ]
   },
   "removed-turn": {
@@ -937,11 +987,13 @@
         }
       ]
     },
-    "paths": [
+    "paths": [],
+    "notes": [
       "/parts/1/view/1/kind"
     ],
     "keeps": [
-      "belt"
+      "belt",
+      "s"
     ]
   },
   "removed-chat": {
@@ -972,11 +1024,13 @@
         }
       ]
     },
-    "paths": [
+    "paths": [],
+    "notes": [
       "/parts/1/view/1/kind"
     ],
     "keeps": [
-      "belt"
+      "belt",
+      "s"
     ]
   },
   "removed-pane": {
@@ -1007,11 +1061,13 @@
         }
       ]
     },
-    "paths": [
+    "paths": [],
+    "notes": [
       "/parts/1/view/1/kind"
     ],
     "keeps": [
-      "belt"
+      "belt",
+      "s"
     ]
   },
   "removed-think": {
@@ -1042,11 +1098,13 @@
         }
       ]
     },
-    "paths": [
+    "paths": [],
+    "notes": [
       "/parts/1/view/1/kind"
     ],
     "keeps": [
-      "belt"
+      "belt",
+      "s"
     ]
   },
   "removed-option": {
@@ -1077,11 +1135,13 @@
         }
       ]
     },
-    "paths": [
+    "paths": [],
+    "notes": [
       "/parts/1/view/1/kind"
     ],
     "keeps": [
-      "belt"
+      "belt",
+      "s"
     ]
   },
   "unknown-kind": {
@@ -1115,11 +1175,13 @@
         }
       ]
     },
-    "paths": [
+    "paths": [],
+    "notes": [
       "/parts/1/view/1/kind"
     ],
     "keeps": [
-      "belt"
+      "belt",
+      "s"
     ]
   },
   "view-not-a-list": {
@@ -1194,10 +1256,13 @@
         }
       ]
     },
-    "paths": [
+    "paths": [],
+    "notes": [
       "/parts/0/view/0/tone"
     ],
-    "keeps": []
+    "keeps": [
+      "s"
+    ]
   },
   "attr-not-text": {
     "doc": {
@@ -1246,10 +1311,13 @@
         }
       ]
     },
-    "paths": [
+    "paths": [],
+    "notes": [
       "/parts/0/view/0/kids/0/attrs/state"
     ],
-    "keeps": []
+    "keeps": [
+      "s"
+    ]
   },
   "button-does-wipe": {
     "doc": {
@@ -1305,10 +1373,13 @@
         }
       ]
     },
-    "paths": [
+    "paths": [],
+    "notes": [
       "/parts/0/view/0/kids/0/attrs/pref"
     ],
-    "keeps": []
+    "keeps": [
+      "s"
+    ]
   },
   "button-no-intent": {
     "doc": {
@@ -1640,26 +1711,6 @@
     ],
     "keeps": []
   },
-  "tab-mark-status": {
-    "doc": {
-      "v": 1,
-      "parts": [
-        {
-          "at": "tab:fix",
-          "id": "fix",
-          "mark": {
-            "icon": "flask",
-            "tone": "warn",
-            "status": "blocked"
-          }
-        }
-      ]
-    },
-    "paths": [
-      "/parts/0/mark/status"
-    ],
-    "keeps": []
-  },
   "draft-is-gone": {
     "doc": {
       "v": 1,
@@ -1678,7 +1729,8 @@
         "text": "fix case 24"
       }
     },
-    "paths": [
+    "paths": [],
+    "notes": [
       "/draft"
     ],
     "keeps": [
@@ -1702,7 +1754,8 @@
         "url": "https://example.com/"
       }
     },
-    "paths": [
+    "paths": [],
+    "notes": [
       "/open"
     ],
     "keeps": [
@@ -1724,10 +1777,13 @@
         }
       ]
     },
-    "paths": [
+    "paths": [],
+    "notes": [
       "/parts/0/color"
     ],
-    "keeps": []
+    "keeps": [
+      "belt"
+    ]
   },
   "unknown-top-key": {
     "doc": {
@@ -1744,7 +1800,8 @@
       ],
       "theme": "dark"
     },
-    "paths": [
+    "paths": [],
+    "notes": [
       "/theme"
     ],
     "keeps": [
@@ -1775,7 +1832,8 @@
         }
       ]
     },
-    "paths": [
+    "paths": [],
+    "notes": [
       "/parts/0/at"
     ],
     "keeps": [
@@ -1795,25 +1853,8 @@
         }
       ]
     },
-    "paths": [
-      "/parts/0/at"
-    ],
-    "keeps": []
-  },
-  "tab-mark-at-is-gone": {
-    "doc": {
-      "v": 1,
-      "parts": [
-        {
-          "at": "tab-mark",
-          "id": "t",
-          "mark": {
-            "label": "3"
-          }
-        }
-      ]
-    },
-    "paths": [
+    "paths": [],
+    "notes": [
       "/parts/0/at"
     ],
     "keeps": []
@@ -1839,34 +1880,13 @@
         }
       ]
     },
-    "paths": [
+    "paths": [],
+    "notes": [
       "/parts/0/at"
     ],
     "keeps": [
       "belt"
     ]
-  },
-  "bad-match": {
-    "doc": {
-      "v": 1,
-      "parts": [
-        {
-          "at": "view:agent:Claude",
-          "id": "v",
-          "title": "V",
-          "view": [
-            {
-              "kind": "para",
-              "text": "ok"
-            }
-          ]
-        }
-      ]
-    },
-    "paths": [
-      "/parts/0/at"
-    ],
-    "keeps": []
   },
   "wrong-version": {
     "doc": {
@@ -2056,29 +2076,13 @@
         }
       ]
     },
-    "paths": [
+    "paths": [],
+    "notes": [
       "/parts/0/mark/face"
     ],
-    "keeps": []
-  },
-  "tab-mark-intent": {
-    "doc": {
-      "v": 1,
-      "parts": [
-        {
-          "at": "tab:*",
-          "id": "t",
-          "mark": {
-            "badge": "2",
-            "intent": "open"
-          }
-        }
-      ]
-    },
-    "paths": [
-      "/parts/0/mark/intent"
-    ],
-    "keeps": []
+    "keeps": [
+      "belt"
+    ]
   },
   "list-kids-51": {
     "doc": {
@@ -2474,8 +2478,10 @@
       ]
     },
     "paths": [
-      "/parts/0/progress/kind",
       "/parts/0/progress/value"
+    ],
+    "notes": [
+      "/parts/0/progress/kind"
     ],
     "keeps": []
   },
@@ -2624,10 +2630,13 @@
         }
       ]
     },
-    "paths": [
+    "paths": [],
+    "notes": [
       "/parts/0/actions/0/args"
     ],
-    "keeps": []
+    "keeps": [
+      "s"
+    ]
   },
   "many-faults": {
     "doc": {
@@ -2656,9 +2665,11 @@
     },
     "paths": [
       "/parts/0/view/0/text",
-      "/parts/0/view/1/kind",
       "/parts/0/view/2/kids",
       "/parts/0/subtitle"
+    ],
+    "notes": [
+      "/parts/0/view/1/kind"
     ],
     "keeps": []
   },

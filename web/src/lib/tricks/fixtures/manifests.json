@@ -18,8 +18,7 @@
     "every": "5m",
     "icon": "flag",
     "places": [
-      "session",
-      "tab"
+      "session"
     ]
   },
   "later": {

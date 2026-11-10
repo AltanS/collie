@@ -68,7 +68,9 @@ const ALL_PLACES = [...PLACE_KINDS];
 describe("the builders cannot drift from the schema", () => {
   test("the helper speaks the contract this Collie speaks: one number", () => {
     expect(CONTRACT).toBe(TRICK_CONTRACT);
-    const facts: Facts = factsFor("/nonexistent", "/nonexistent");
+    // SAFETY: the bridge's facts, through JSON, are exactly what a program reads on stdin, and the helper
+    // reads that text as its Facts; the round trip drops the bridge-side types the helper does not name.
+    const facts = JSON.parse(JSON.stringify(factsFor("/nonexistent", "/nonexistent"))) as Facts;
     expect(facts.contract).toBe(CONTRACT);
     expect(new Trick(facts).document().v).toBe(TRICK_CONTRACT);
   });

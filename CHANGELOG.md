@@ -76,6 +76,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 - **A trick's run problems name its program.** The lines on a trick's row, in `collie trick check` and `collie trick dev` say "The program did not start", "The program exited with 1" and so on, and `collie trick init --sh` writes `program.sh`. (M94)
 
+- **A trick's output is checked strictly when it is written and read tolerantly when it is shown.** A node of a kind this Collie does not know, or a part in a place it does not know, is left out with one note on the trick's row, and the rest of the view and the other parts still draw. An attribute or key this Collie does not know is ignored. `collie trick check --run` and `collie trick dev` print each of these as a note and still pass. A bad value of a known field is still refused, and `trick.toml`, `collie hill post` and a trick's Decisions stay strict. (M94)
+
+- **A trick draws only where Collie draws it.** The `tab`, `tab:<match>` and `view:<match>` places are gone: they were read but drawn nowhere. A trick draws in the belt, a session, the Dashboard, the status bar and the bottom bar, and a place word this Collie does not know is left out of `places` with a note. The facts no longer carry the `session` field of a view run. (M94)
+
 ## [1.28.0] - 2026-11-09
 
 ### Added

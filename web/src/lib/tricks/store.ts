@@ -19,6 +19,7 @@ import { apiErrorStatus, fetchTricks, tapTrick } from "../api";
 import { t } from "../i18n";
 import { mintRequestId } from "../worktree-name";
 import {
+  PLACE_KINDS,
   parsePartKey,
   partKey,
   type TrickPartKey,
@@ -267,12 +268,9 @@ export function useTricksState(store: TricksStore = tricksStore): TricksState {
   return useSyncExternalStore(store.subscribe, store.getState, store.getState);
 }
 
-/** The place an `at` names, read by its prefix. The match inside it is the place's own business. A bare `tab` and `tab:<match>` are both `tab`. */
+/** The place an `at` names, or undefined for a place this phone does not know (a crew member on a newer Collie). */
 export function placeOfAt(at: string): PlaceKind | undefined {
-  if (at === "belt" || at === "session" || at === "dashboard" || at === "tab" || at === "status" || at === "tabbar") return at;
-  if (at.startsWith("tab:")) return "tab";
-  if (at.startsWith("view:")) return "view";
-  return undefined;
+  return PLACE_KINDS.find((place) => place === at);
 }
 
 /**

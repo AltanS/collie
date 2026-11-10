@@ -352,6 +352,8 @@ export interface TrickCheckReport {
     problem: string | null;
     parts: string[];
     refusals: Refusal[];
+    /** What the tolerant read left out (`dropped`) or ignored (`ignored`). Never fails the check. */
+    notes: Refusal[];
     stderr: string;
   };
 }
@@ -699,10 +701,11 @@ export async function checkRun(report: TrickCheckReport, env: CliContext["env"])
   const ran = await runAgainstFixture(manifest, report.folder, env);
   const { outcome, problem } = ran;
   const stderr = outcome.kind === "spawn-failed" ? "" : outcome.stderr;
-  const run: NonNullable<TrickCheckReport["run"]> = { outcome: outcome.kind, ms: outcome.ms, problem, parts: [], refusals: [], stderr };
+  const run: NonNullable<TrickCheckReport["run"]> = { outcome: outcome.kind, ms: outcome.ms, problem, parts: [], refusals: [], notes: [], stderr };
   if (ran.parsed !== null) {
     run.parts = ran.parsed.parts.map((p) => `${p.part.at} ${p.part.id}`);
     run.refusals = ran.parsed.refusals;
+    run.notes = ran.parsed.notes;
   }
   report.run = run;
 }
@@ -752,6 +755,8 @@ function printReport(deps: Pick<TrickDeps, "io">, report: TrickCheckReport): voi
     io.out(`  ran in ${run.ms} ms: ${run.problem ?? "exit 0"}`);
     if (run.parts.length > 0) io.out(`  parts: ${run.parts.join(", ")}`);
     for (const r of run.refusals) io.err(`error: output ${r.path === "" ? "" : `${r.path} `}${r.reason}`);
+    // Notes never fail the check: a node or a part this Collie leaves out, a key it ignores.
+    for (const n of run.notes) io.out(`  note: output ${n.path === "" ? "" : `${n.path} `}${n.reason}`);
     if (run.problem !== null && run.stderr.trim() !== "") {
       io.err("  stderr:");
       for (const line of run.stderr.trimEnd().split(/\r?\n/).slice(-10)) io.err(`    ${line}`);

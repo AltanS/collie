@@ -183,7 +183,10 @@ describe("collie trick check", () => {
     const d = await deps();
     const bad = await folder('id = "bad"\nname = "Bad"\nrun = "./p.sh"\nplaces = ["nowhere"]\ncolour = "red"\n', { "p.sh": "#!/bin/sh\n" });
     expect(await cmdTrickCheck(d, [bad])).toBe(EXIT.FAIL);
-    expect(d.err.join("\n")).toContain("/places/0");
+    // An unknown place word is left out with a note; with no place left, the manifest is refused.
+    expect(d.out.join("\n")).toContain("note: trick.toml /places/0");
+    expect(d.err.join("\n")).toContain("trick.toml /places: The trick lists no place");
+    // The manifest stays strict: an unknown key is a typo, and it refuses.
     expect(d.err.join("\n")).toContain("/colour");
     const later = await folder('id = "later"\nname = "Later"\nrun = "./p.sh"\nwatch = ["~/x.log"]\nplaces = ["belt"]\n', { "p.sh": "#!/bin/sh\necho '{}'\n" });
     const e = await deps();
@@ -367,6 +370,18 @@ describe("collie trick check", () => {
     const printed = e.err.join("\n");
     expect(printed).toContain("darius: not found");
     expect(printed).not.toContain(KEY);
+  });
+
+  test("--run prints a note for what the output holds that this Collie does not know, and stays 0", async () => {
+    const d = await deps();
+    const doc = { v: 1, glow: true, parts: [{ at: "sidebar", id: "x" }, { at: "belt", id: "belt", mark: { label: "1" } }, { at: "session", id: "s", view: [{ kind: "line", text: "a" }, { kind: "chart" }] }] };
+    const newer = await folder('id = "n"\nname = "N"\nrun = "./p.sh"\nplaces = ["belt", "session"]\n', { "p.sh": `#!/bin/sh\necho '${JSON.stringify(doc)}'\n` });
+    expect(await cmdTrickCheck(d, ["--run", newer])).toBe(EXIT.OK);
+    const out = d.out.join("\n");
+    expect(out).toContain("note: output /glow");
+    expect(out).toContain("note: output /parts/0/at");
+    expect(out).toContain("note: output /parts/2/view/1/kind");
+    expect(d.err.join("\n")).not.toContain("error:");
   });
 });
 

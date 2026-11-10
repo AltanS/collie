@@ -103,7 +103,7 @@ describe("TricksSettingsCard: the rows", () => {
 
   it("says no parts for a manifest with no places, and the CLI and hand provenances in words", () => {
     expect(placesLine([])).toBe("No parts");
-    expect(placesLine(["belt", "belt", "tab", "dashboard", "tabbar"])).toBe("belt, tab, Dashboard, Bottom bar");
+    expect(placesLine(["belt", "belt", "status", "dashboard", "tabbar"])).toBe("belt, status, Dashboard, Bottom bar");
     expect(provenanceLine({ ...LEGS, provenance: { via: "cli" } }, NOW)).toBe("Added by CLI");
     expect(provenanceLine({ ...LEGS, provenance: { via: "folder" } }, NOW)).toBe("Added by hand");
     expect(provenanceLine({ ...LEGS, provenance: undefined }, NOW)).toBe("Added by hand");

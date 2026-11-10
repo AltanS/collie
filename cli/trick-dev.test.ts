@@ -261,6 +261,25 @@ run((t) => {
     expect(body.refusals[0].path).toBe("/parts/0/mark/label");
   });
 
+  test("what the output holds that this Collie does not know is a note, never a failure, and in --json", async () => {
+    const d = await deps();
+    const doc = { v: 1, parts: [{ at: "sidebar", id: "x" }, { at: "belt", id: "belt", mark: { label: "1", shine: "x" } }] };
+    const dir = await trickWith(d, "newer", `console.log(${JSON.stringify(JSON.stringify(doc))});\n`, '["belt"]');
+    expect(await cmdTrickDev(d, [dir])).toBe(EXIT.OK);
+    const text = d.out.join("\n");
+    expect(text).toMatch(/dropped {2}\/parts\/0\/at {2}/u);
+    expect(text).toMatch(/ignored {2}\/parts\/1\/mark\/shine {2}/u);
+    d.out.length = 0;
+    expect(await cmdTrickDev(d, [dir, "--json"])).toBe(EXIT.OK);
+    const body = JSON.parse(d.out.join("\n"));
+    expect(body.refusals).toEqual([]);
+    expect(body.notes.map((n: { code: string; path: string }) => [n.code, n.path])).toEqual([
+      ["dropped", "/parts/0/at"],
+      ["ignored", "/parts/1/mark/shine"],
+    ]);
+    expect(body.parts.map((p: { part: { id: string } }) => p.part.id)).toEqual(["belt"]);
+  });
+
   test("a failed run prints the problem and the stderr tail; keepDecisions says they stay", async () => {
     const d = await deps();
     const dir = await trickWith(d, "boom", `import { run } from "./trick.ts";\nrun(() => { throw new Error("no gh on PATH"); });\n`, '["belt"]');

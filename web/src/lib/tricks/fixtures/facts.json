@@ -104,41 +104,5 @@
         "name": "collie"
       }
     ]
-  },
-  "view": {
-    "contract": 1,
-    "trigger": {
-      "kind": "timer"
-    },
-    "trick": {
-      "id": "touched",
-      "dir": "/var/home/altan/.config/collie/tricks/touched",
-      "state": "/var/home/altan/.local/state/collie/tricks/touched"
-    },
-    "memberId": "bluefin",
-    "host": "bluefin",
-    "sessions": [
-      {
-        "id": "bluefin:w6X:3",
-        "memberId": "bluefin",
-        "sessionId": "bluefin:w6X:3",
-        "paneId": "w6X:3",
-        "host": "bluefin",
-        "name": "composer",
-        "agent": "claude",
-        "status": "idle"
-      }
-    ],
-    "spaces": [],
-    "session": {
-      "id": "bluefin:w6X:3",
-      "memberId": "bluefin",
-      "sessionId": "bluefin:w6X:3",
-      "paneId": "w6X:3",
-      "host": "bluefin",
-      "name": "composer",
-      "agent": "claude",
-      "status": "idle"
-    }
   }
 }

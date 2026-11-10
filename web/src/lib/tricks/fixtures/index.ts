@@ -1,5 +1,6 @@
 // The tricks fixtures, by name, for the schema's tests, the runner and the renderer. Each valid
-// document parses with zero refusals; each refused one names the exact paths its refusals carry. Every
+// document parses with zero refusals; each refused one names the exact paths its refusals carry, and
+// the exact paths of the notes a tolerant read leaves (a node or part left out, a key ignored). Every
 // view is in the Tree UI vocabulary (the re-cut of 2026-11-08). Load with relative imports only, like
 // the schema, so the bridge can use them.
 
@@ -45,7 +46,7 @@ export const DECISION_DOCUMENT = decisions.good satisfies JsonValue;
 /** `trick.toml` after the TOML parse. `later` uses `watch`, `on`, `serve` and a later place. */
 export const MANIFESTS = manifests satisfies { readonly [name: string]: JsonValue };
 
-/** Facts documents as the bridge writes them, one per trigger, one for a decision's answer and one for a `view:<match>` run. */
+/** Facts documents as the bridge writes them, one per trigger, and one for a decision's answer. */
 export const FACTS = facts satisfies { readonly [name: string]: JsonValue };
 
 /** A document the parser refuses, and what it must say. */
@@ -53,6 +54,11 @@ export interface RefusedFixture {
   doc: JsonValue;
   /** The refusal paths, exactly and in order. */
   paths: string[];
+  /**
+   * The note paths of the tolerant read (a node or a part left out, a key ignored), exactly and in
+   * order. Absent: none.
+   */
+  notes?: string[];
   /** The ids of the parts that still draw. */
   keeps: string[];
   /** The keys of the decisions refused alone. Absent: none. */

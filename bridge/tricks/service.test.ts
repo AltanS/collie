@@ -170,7 +170,7 @@ describe("discovery and the switch", () => {
     const info = (await r.service.reply(undefined)).tricks[0];
     expect(info?.state).toBe("skipped");
     expect(info?.refusals?.[0]?.path).toBe("/places/0");
-    expect(info?.error).toStartWith("A place is one of");
+    expect(info?.error).toStartWith('"nowhere" is not a place this Collie knows');
     expect(r.specs).toEqual([]);
   });
 
@@ -472,15 +472,35 @@ describe("last good, per part, and the rev", () => {
     expect((await r.service.reply(undefined)).present).toEqual(["bluefin/legs/belt"]);
   });
 
-  test("a removed kind is refused by name, and the runner keeps nothing of that part", async () => {
-    const doc = JSON.stringify({ v: 1, parts: [{ at: "session", id: "s", view: [{ kind: "divider" }] }] });
+  test("a node of a kind this Collie does not know is left out by name, with one note on the row; the rest draws", async () => {
+    const view = [{ kind: "line", text: "kept" }, { kind: "divider" }, { kind: "sparkline", values: [1, 2] }];
+    const doc = JSON.stringify({ v: 1, parts: [{ at: "session", id: "s", view }, { at: "belt", id: "belt", mark: { label: "1" } }] });
     const r = await rig([exited(doc)]);
     await makeTrick(r.configDir, "legs", MANIFEST);
     await switchOn(r.stateDir, "legs");
     await tickAt(r, T0);
     const reply = await r.service.reply(undefined);
-    expect(reply.parts).toEqual([]);
-    expect(reply.tricks[0]?.refusals?.[0]?.code).toBe("removed");
+    expect(reply.parts.map((p) => p.value)).toEqual([
+      { at: "session", id: "s", view: [{ kind: "line", text: "kept" }] },
+      { at: "belt", id: "belt", mark: { label: "1" } },
+    ]);
+    expect(reply.tricks[0]?.state).toBe("ok");
+    expect(reply.tricks[0]?.refusals?.map((x) => [x.code, x.path])).toEqual([
+      ["dropped", "/parts/0/view/1/kind"],
+      ["dropped", "/parts/0/view/2/kind"],
+    ]);
+    expect(reply.tricks[0]?.refusals?.[0]?.reason).toContain('"divider"');
+  });
+
+  test("a part in a place this Collie does not know is left out, with one note on the row; the other parts draw", async () => {
+    const doc = JSON.stringify({ v: 1, parts: [{ at: "sidebar", id: "x", panel: {} }, { at: "belt", id: "belt", mark: { label: "1" } }] });
+    const r = await rig([exited(doc)]);
+    await makeTrick(r.configDir, "legs", MANIFEST);
+    await switchOn(r.stateDir, "legs");
+    await tickAt(r, T0);
+    const reply = await r.service.reply(undefined);
+    expect(reply.present).toEqual(["bluefin/legs/belt"]);
+    expect(reply.tricks[0]?.refusals?.map((x) => [x.code, x.path])).toEqual([["dropped", "/parts/0/at"]]);
   });
 });
 
@@ -616,12 +636,12 @@ describe("taps", () => {
     expect(kept).toBeGreaterThan(0);
   });
 
-  test("a draft is refused as removed, from any run; the parts still draw", async () => {
+  test("a draft is ignored, from any run: no note on the row, and the parts still draw", async () => {
     const r = await onRig([exited(belt("1", { draft: { session: "bluefin:w6X:3", text: "x" } }))]);
     await tickAt(r, T0);
     const reply = await r.service.reply(undefined);
     expect(reply.present).toEqual(["bluefin/legs/belt"]);
-    expect(reply.tricks[0]?.refusals?.map((x) => x.code)).toEqual(["removed"]);
+    expect(reply.tricks[0]?.refusals).toBeUndefined();
   });
 });
 
