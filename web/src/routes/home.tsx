@@ -16,7 +16,6 @@ import { StatusArea } from "@/components/status-area";
 import { ToastViewport } from "@/components/ui/toast-viewport";
 import { BuildStamp } from "@/components/build-stamp";
 import { CrewFooterLink } from "@/components/crew-footer-link";
-import { useCrew } from "@/components/crew-provider";
 import { CrewTab } from "@/components/crew-tab";
 import { TelemetryNotice } from "@/components/telemetry-notice";
 import { UpdateBanner } from "@/components/update-banner";
@@ -26,6 +25,7 @@ import { DashboardTabBar } from "@/components/dashboard-tab-bar";
 import { TrickDashboardStrip } from "@/components/trick-place-items";
 import { WorkspaceChangesList, type WorkspaceChangesRow } from "@/components/workspace-changes-list";
 import { useDashPrefs, openForCount } from "@/hooks/use-dash-prefs";
+import { useDashboardBar } from "@/hooks/use-dashboard-bar";
 import { useKeyboardOpen } from "@/hooks/use-keyboard";
 import { useLocale } from "@/hooks/use-locale";
 import { useNotifyPrefs } from "@/hooks/use-notify-prefs";
@@ -44,7 +44,6 @@ import { isolateSpaces } from "@/lib/spaces";
 import { ambientHost, ambientPanes, isMultiHost, paneRowKey, paneScope, sessionsOnHost } from "@/lib/hosts";
 import { setMachineHidden, useHiddenMachines } from "@/lib/hidden-machines";
 import type { ChangesLookup } from "@/lib/api";
-import type { DashView } from "@/lib/dash-view";
 import { t } from "@/lib/i18n";
 import { prefetchFolders } from "@/lib/folders";
 import { glideForward } from "@/lib/glide";
@@ -52,15 +51,13 @@ import { hillPath, homePath, trickSessionPath, newPath, spaceChangesPath, spaceP
 import { resolveIsolatedPrefKeys, workspaceGroupKey, type WorkspaceGroup } from "@/lib/pane-groups";
 import { panePlaceParts } from "@/lib/pane-name";
 import { scopeKey, type Scope } from "@/lib/scope";
-import { countAlerting, countBlocked, hasReady } from "@/lib/triage";
+import { countAlerting } from "@/lib/triage";
 import { usePairing } from "@/lib/pairing";
 import { usePins } from "@/lib/pins";
 import { programScope, programSessions, programsAbove, waitingPrograms } from "@/lib/session-cards";
 import { cn } from "@/lib/utils";
 import { isReadOnly, type AgentView, type ServerSummary, type SessionSummary } from "@/lib/types";
 import { useRootData } from "@/lib/route-data";
-import { useHillCount, useHillOpen } from "@/lib/hill/store";
-import { useTrickParts } from "@/lib/tricks/store";
 
 const NO_TRICK_SESSIONS: readonly AgentView[] = [];
 
@@ -154,27 +151,18 @@ export function HomeRoute() {
     setNeedsYouOnly,
     setPaneOrder,
   } = useDashPrefs();
-  // The Crew tab exists only while a crew is configured, the condition CrewFooterLink uses. A device
-  // that stored "crew" and then lost its crew sees the Dashboard, and the stored choice is left alone,
-  // so the tab is back where it was when the crew returns (ADR 0085).
-  const { multi } = useCrew();
-  // THE DURABLE HOME (M53 spec 12). A machine with no screen (its multiplexer declared `paneGrid` false, the
-  // test the New page's `startersOnly` makes) runs a durable program, and the Dashboard tab draws that
-  // program's conversations instead of the card grid. Asked of the machine on screen. Every multiplexer with
-  // a screen, and every bridge that has not answered, keeps the list below exactly as it was.
-  const screenless = !useMuxCapability("paneGrid", data.scope).capable;
-  // A program has no folder on this machine to show, so a machine with no screen has no Files tab
-  // (durable-simple, 2026-10-13), and a device that stored that tab sees the Dashboard there.
-  const view: DashView =
-    (prefs.dashView === "crew" && !multi) || (prefs.dashView === "changes" && screenless) ? "dashboard" : prefs.dashView;
+  // THE BOTTOM BAR'S READING (hooks/use-dashboard-bar.ts), shared with the Hill and a trick's Session: the
+  // tabs (Crew while a crew is configured, Files on a machine with a screen), the view the stored choice
+  // resolves to, the Dashboard tab's mark (ADR 0066 point 7: a red count of the panes blocked on you, else a
+  // quiet dot for finished panes nobody opened), the Hill item and its count, the tricks' items, and
+  // whether the bar is drawn at all. A device that stored "crew" and then lost its crew sees the Dashboard
+  // (ADR 0085).
+  const bar = useDashboardBar(prefs.dashView);
+  const { view, screenless, blockedCount, readyUnseen } = bar;
+  const multi = bar.crew;
+  const tabsShown = bar.shown;
   // The needs-you switch filters the Dashboard list only: Crew and Changes draw their own bodies.
   const needsYouOnly = view === "dashboard" && prefs.needsYouOnly;
-  // The Dashboard tab's corner mark (ADR 0066, carried by the Focus tab until ADR 0085 moved it): a red count of the panes
-  // blocked on you, or, when none is blocked, a quiet dot for finished panes you have not opened. A
-  // count means something waits on you; the dot only says there is something new. The list itself
-  // still holds both kinds.
-  const blockedCount = countBlocked(data.agents);
-  const readyUnseen = blockedCount === 0 && hasReady(data.agents);
   // The installed app's icon counts what has an alert out instead (lib/app-badge.ts), so it waits for
   // the bridge's notification kinds rather than guess them.
   const { prefs: notifyKinds } = useNotifyPrefs();
@@ -309,21 +297,6 @@ export function HomeRoute() {
   }, [focusPending]);
   // "+ New" shrinks to the round "+" once the list has scrolled, and grows back at the top (card 3.2).
   const scrolled = useScrolledPast(scrollRef, 24);
-  // THE HILL (M96): the open Decisions, counted on the footer's Hill item. `null` where the snapshot
-  // carries no `hillRev` (a bridge older than the hill, a crew member's own scope): no Hill item there.
-  const hillCount = useHillCount();
-  const hill = data.hill === true ? hillCount : null;
-  // A `now` Decision gives the Hill item its snow cap in the warm accent (the owner's pick A5).
-  const hillNow = useHillOpen().some((d) => d.priority === "now");
-  // The tricks' bottom bar items (the `tabbar` place), after the Hill.
-  const tabbarParts = useTrickParts("tabbar");
-  // The footer's tabs: Crew while a crew is configured, the Dashboard, and Files on a machine with a screen,
-  // then the Hill and the tricks' items. A bar with one tab and nothing else switches to nothing, so a solo
-  // machine with no screen and no hill draws none, and the New button, the toasts and the list's last row
-  // sit on the safe area instead (durable-simple, 2026-10-13). The Hill alone is reason enough for a bar:
-  // it is the hill's only way in.
-  const tabsShown = multi || !screenless || hill !== null || tabbarParts.length > 0;
-
   return (
     <div className="mx-auto flex min-h-0 w-full max-w-screen-sm flex-1 flex-col">
       {/* The dashboard header: wordmark + the session switcher (dashboard-only), then the shared pill
@@ -500,11 +473,11 @@ export function HomeRoute() {
           files={!screenless}
           blockedCount={blockedCount}
           readyUnseen={readyUnseen}
-          hill={hill}
-          hillNow={hill !== null && hillNow}
+          hill={bar.hill}
+          hillNow={bar.hillNow}
           onOpenHill={() => nav.down(hillPath(data.scope))}
-          tabbarParts={tabbarParts}
-          sessions={data.trickSessions ?? NO_TRICK_SESSIONS}
+          tabbarParts={bar.tabbarParts}
+          sessions={bar.sessions}
           onOpenSession={openTrickSession}
         />
       )}

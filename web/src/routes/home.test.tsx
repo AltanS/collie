@@ -1200,7 +1200,7 @@ describe("the Hill in the Dashboard's bar (M96)", () => {
     expect(document.querySelector('[data-slot="hill-entry"]')).toBeNull();
   });
 
-  it("is the fourth item at the bar's right end, with no badge while nothing is open, and never selected", async () => {
+  it("is the fourth item at the bar's right end, with no badge while nothing is open, and not selected on the Dashboard", async () => {
     renderHome({ ...packed(), hill: true });
     await settled();
     const cells = [...bar().querySelectorAll<HTMLElement>('[data-slot="tab"], [data-slot="tab-link"]')];
@@ -1209,6 +1209,15 @@ describe("the Hill in the Dashboard's bar (M96)", () => {
     expect(hillItem()!.querySelector('[data-slot="tab-badge"]')).toBeNull();
     expect(hillItem()).not.toHaveAttribute("aria-current");
     // Today's bar otherwise: equal widths, nothing scrolls.
+    expect(bar().dataset.mode).toBe("equal");
+  });
+
+  it("a solo bridge with a hill and no tricks draws the bar: Dashboard, Files and the Hill, with nothing open", async () => {
+    renderHome({ ...solo(), hill: true });
+    await settled();
+    const cells = [...bar().querySelectorAll<HTMLElement>('[data-slot="tab"], [data-slot="tab-link"]')];
+    expect(cells.map((cell) => cell.querySelector(".truncate")?.textContent)).toEqual(["Dashboard", "Files", "Hill"]);
+    expect(hillItem()!.querySelector('[data-slot="tab-badge"]')).toBeNull();
     expect(bar().dataset.mode).toBe("equal");
   });
 
@@ -1268,6 +1277,30 @@ describe("the tricks' places on the Dashboard (2026-11-10)", () => {
     expect(strip()).toBeNull();
     await userEvent.click(within(bar()).getByRole("button", { name: /^Files$/ }));
     expect(strip()).toBeNull();
+  });
+
+  it("draws today's bar with the Hill when every trick is switched off: their bar items are not drawn", async () => {
+    rev += 1;
+    const parts = [item("legs", "tabbar", { label: "Legs" }), item("tracker", "tabbar", { label: "Tracker" })];
+    const tricks = ["legs", "tracker"].map((id) => ({ host: "bluefin", id, name: id, icon: "flask" as const, on: false, state: "ok" as const, places: ["tabbar" as const] }));
+    const reply: TricksReply = { rev, tricks, parts, present: parts.map(partKey) };
+    server.use(http.get(/\/api\/tricks/, () => HttpResponse.json(reply)));
+    await act(() => tricksStore.syncTricks(rev));
+    renderHome({ ...solo(), hill: true });
+    await settled();
+    expect(bar().dataset.mode).toBe("equal");
+    expect(bar().querySelector('[data-slot="tab-extra"]')).toBeNull();
+    expect(bar().querySelector('[data-slot="tab-link"][data-link="hill"]')).not.toBeNull();
+  });
+
+  it("draws the bar, in its equal mode, for a trick with only a dashboard tile", async () => {
+    await seed([item("legs", "dashboard", { label: "Legs", badge: 3 })]);
+    renderHome({ ...solo(), hill: true });
+    await settled();
+    expect(strip()).not.toBeNull();
+    expect(bar().dataset.mode).toBe("equal");
+    expect(bar().querySelector('[data-slot="tab-extra"]')).toBeNull();
+    expect([...bar().querySelectorAll<HTMLElement>('[data-slot="tab"], [data-slot="tab-link"]')].map((cell) => cell.querySelector(".truncate")?.textContent)).toEqual(["Dashboard", "Files", "Hill"]);
   });
 
   it("puts the tabbar items after the Hill and a divider, and pins the tabs", async () => {

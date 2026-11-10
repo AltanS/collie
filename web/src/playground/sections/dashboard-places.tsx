@@ -4,6 +4,10 @@
 // (`DashboardTabBar`): Crew, Dashboard, Files, the Hill with its count, and the tricks' `tabbar` items
 // scrolling after a divider. Each card runs over a tricks store of its own, so nothing reaches a bridge.
 //
+// The bar stays on the Hill's route and on a trick's Session (amended 2026-11-10): the `hill-route*`
+// and `trick-route` cases draw those routes as `routes/hill.tsx` and `routes/trick-session.tsx` compose
+// them, with no tab selected and the route's own item current.
+//
 // `?place=<case>#dashboard-places` draws one case over the whole screen, for a phone and for the shots;
 // `&shot=1` hides the close button.
 //
@@ -13,16 +17,24 @@ import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from
 
 import { AgentList } from "@/components/agent-list";
 import { AppHeaderHost, RouteHeader } from "@/components/app-header";
+import { footAir } from "@/components/dashboard-route-bar";
 import { DashboardTabBar } from "@/components/dashboard-tab-bar";
+import { DecisionCard } from "@/components/decision-card";
+import { HillHeader, HillView } from "@/components/hill-view";
 import { TrickDashboardStrip } from "@/components/trick-place-items";
+import { HILL_IDLE } from "@/hooks/use-hill-answer";
 import type { DashView } from "@/lib/dash-view";
+import { sortOpenDecisions, type HillDecision } from "@/lib/hill/wire";
 import type { PaneOrder } from "@/lib/pane-order";
 import { countBlocked } from "@/lib/triage";
 import { partKey, type PlaceItem, type TrickIcon, type WireTrickInfo, type WireTrickPart } from "@/lib/tricks/schema";
 import { createTricksStore, useTrickParts, type TricksStore } from "@/lib/tricks/store";
 import type { AgentView } from "@/lib/types";
+import { cn } from "@/lib/utils";
+import { TrickSessionBody, TrickSessionHeaderRow } from "@/routes/trick-session";
 
 import { herd, homeSolo, tabs } from "../fixtures";
+import { playgroundMedia, quietOpen, sevenOpen } from "../fixtures/hill/decisions";
 import { RootRouter } from "../harness";
 import { Card, Group, Section, type SectionDef } from "../layout";
 
@@ -64,6 +76,10 @@ interface PlaceCase {
   bar: number;
   /** The open Decisions on the Hill. */
   hill: number;
+  /** A route of its own the bar is drawn on, instead of the Dashboard: the Hill, or the legs trick's Session. */
+  route?: "hill" | "trick";
+  /** The Hill route's open Decisions (`hill` is their count). */
+  open?: readonly HillDecision[];
 }
 
 const CASES: readonly PlaceCase[] = [
@@ -75,7 +91,45 @@ const CASES: readonly PlaceCase[] = [
   { id: "hill-0", label: "Hill, none open", tiles: 0, bar: 0, hill: 0 },
   { id: "hill-12", label: "Hill, 12 open", tiles: 0, bar: 0, hill: 12 },
   { id: "busy", label: "6 tiles, 12 open (A5 busy)", tiles: 6, bar: 0, hill: 12 },
+  { id: "hill-route", label: "Hill route, 2 open, one now, 2 bar items", tiles: 0, bar: 2, hill: quietOpen.length, route: "hill", open: quietOpen },
+  { id: "hill-route-empty", label: "Hill route, none open", tiles: 0, bar: 0, hill: 0, route: "hill", open: [] },
+  { id: "hill-route-bar-6", label: "Hill route, 7 open, 6 bar items", tiles: 0, bar: 6, hill: sevenOpen.length, route: "hill", open: sevenOpen },
+  { id: "trick-route", label: "trick Session, its bar item current", tiles: 0, bar: 3, hill: quietOpen.length, route: "trick" },
 ];
+
+const NO_KEPT: ReadonlyMap<string, string> = new Map();
+
+/** The legs trick's Session part, for the `trick-route` case: a view and two actions at the foot. */
+const LEGS_SESSION_PART: WireTrickPart = {
+  host: "bluefin",
+  trick: "legs",
+  part: "legs",
+  rev: 1,
+  asOf: AS_OF,
+  fresh: "24h",
+  value: {
+    at: "session",
+    id: "legs",
+    name: "Browser leg",
+    tone: "accent",
+    subtitle: "case 24 red",
+    actions: [
+      { id: "rerun", label: "Rerun red", intent: "rerun", icon: "refresh" },
+      { id: "fix", label: "Ask for a fix", intent: "fix" },
+    ],
+    view: [
+      { kind: "number", text: "23/34", attrs: { label: "cases green", tone: "accent" } },
+      { kind: "meter", attrs: { role: "progress", value: "2", max: "3" } },
+      {
+        kind: "list",
+        kids: [
+          { kind: "row", text: "Case 24: send a long draft", attrs: { end: "red", tone: "danger" } },
+          { kind: "row", text: "Case 31: stop mid-turn", attrs: { end: "slow", tone: "warn" } },
+        ],
+      },
+    ],
+  },
+};
 
 function part(trick: Fixture, at: "dashboard" | "tabbar"): WireTrickPart {
   const item: PlaceItem = { icon: trick.icon, label: trick.name };
@@ -100,9 +154,17 @@ function trickSession(trick: Fixture): AgentView {
   };
 }
 const SESSIONS: readonly AgentView[] = TRICKS.slice(0, 2).map(trickSession);
+/** The legs trick's Session as the snapshot lists it, with its view: the `trick-route` case's pane. */
+const LEGS_PANE: AgentView = { ...SESSIONS[0]!, paneLabel: "Browser leg", sessionName: "Browser leg", subtitle: "case 24 red", status: "working", view: partKey(LEGS_SESSION_PART) };
+/** The bar's current trick on the `trick-route` case. */
+const LEGS_REF = { host: "bluefin", trick: "legs" } as const;
 
 function storeFor(c: PlaceCase): TricksStore {
-  const parts = [...TRICKS.slice(0, c.tiles).map((t) => part(t, "dashboard")), ...TRICKS.slice(0, c.bar).map((t) => part(t, "tabbar"))];
+  const parts = [
+    ...TRICKS.slice(0, c.tiles).map((t) => part(t, "dashboard")),
+    ...TRICKS.slice(0, c.bar).map((t) => part(t, "tabbar")),
+    ...(c.route === "trick" ? [LEGS_SESSION_PART] : []),
+  ];
   const tricks = TRICKS.map((t): WireTrickInfo => ({ host: "bluefin", id: t.id, name: t.name, icon: t.icon, on: true, state: "ok", places: ["dashboard", "tabbar"] }));
   return createTricksStore({
     fetchTricks: () => Promise.resolve({ rev: 1, tricks, parts, present: parts.map(partKey) }),
@@ -123,7 +185,7 @@ function PlacesDashboard({ c }: { c: PlaceCase }) {
   }, [store]);
   return (
     <RootRouter data={homeSolo}>
-      <PlacesScreen c={c} store={store} />
+      {c.route === "hill" ? <HillRouteScreen c={c} store={store} /> : c.route === "trick" ? <TrickRouteScreen c={c} store={store} /> : <PlacesScreen c={c} store={store} />}
     </RootRouter>
   );
 }
@@ -163,6 +225,72 @@ function PlacesScreen({ c, store }: { c: PlaceCase; store: TricksStore }) {
         readyUnseen={false}
         hill={c.hill}
         onOpenHill={noop}
+        tabbarParts={tabbarParts}
+        sessions={SESSIONS}
+        onOpenSession={noop}
+        store={store}
+      />
+    </AppHeaderHost>
+  );
+}
+
+/**
+ * The Hill's route as `routes/hill.tsx` composes it: the header, the list in a scroller that ends above
+ * the bar, and the Dashboard's bar with no tab selected and the Hill item current.
+ */
+function HillRouteScreen({ c, store }: { c: PlaceCase; store: TricksStore }) {
+  const tabbarParts = useTrickParts("tabbar", undefined, store);
+  const open = useMemo(() => sortOpenDecisions([...(c.open ?? [])]), [c]);
+  const nowCount = open.filter((d) => d.priority === "now").length;
+  return (
+    <AppHeaderHost bridge="connected" error={false}>
+      <HillHeader count={open.length} nowCount={nowCount} onBack={noop} />
+      <div data-pg-scroll className={cn("relative flex min-h-0 flex-1 flex-col overflow-y-auto px-4 pt-4", footAir(true, "pb-4"))}>
+        <HillView
+          open={open}
+          closed={[]}
+          kept={NO_KEPT}
+          renderCard={(decision) => <DecisionCard key={decision.id} decision={decision} answer={HILL_IDLE} onSend={noop} mediaSource={playgroundMedia} />}
+        />
+      </div>
+      <DashboardTabBar
+        view={null}
+        onSelect={noop}
+        crew
+        files
+        blockedCount={countBlocked(herd)}
+        readyUnseen={false}
+        hill={c.hill}
+        hillNow={nowCount > 0}
+        onOpenHill={noop}
+        hillCurrent
+        tabbarParts={tabbarParts}
+        sessions={SESSIONS}
+        onOpenSession={noop}
+        store={store}
+      />
+    </AppHeaderHost>
+  );
+}
+
+/** A trick's Session as `routes/trick-session.tsx` composes it, with the Dashboard's bar and the trick's own item current. */
+function TrickRouteScreen({ c, store }: { c: PlaceCase; store: TricksStore }) {
+  const tabbarParts = useTrickParts("tabbar", undefined, store);
+  return (
+    <AppHeaderHost bridge="connected" error={false}>
+      <RouteHeader width="column" override={<TrickSessionHeaderRow pane={LEGS_PANE} onBack={noop} />} />
+      <TrickSessionBody pane={LEGS_PANE} onLink={noop} barBelow store={store} />
+      <DashboardTabBar
+        view={null}
+        onSelect={noop}
+        crew
+        files
+        blockedCount={countBlocked(herd)}
+        readyUnseen={false}
+        hill={c.hill}
+        hillNow
+        onOpenHill={noop}
+        currentTrick={LEGS_REF}
         tabbarParts={tabbarParts}
         sessions={SESSIONS}
         onOpenSession={noop}

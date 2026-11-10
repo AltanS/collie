@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 
 import { Icon } from "@/components/icons/icon";
-import { trickTabbarExtras } from "@/components/trick-place-items";
+import { trickTabbarExtras, type TrickRef } from "@/components/trick-place-items";
 import { TabBar, type TabBarItem, type TabBarLink } from "@/components/ui/tab-bar";
 import { useLocale } from "@/hooks/use-locale";
 import type { DashView } from "@/lib/dash-view";
@@ -17,8 +17,12 @@ import type { AgentView } from "@/lib/types";
 //
 // THE HILL IS A FOURTH FIXED ITEM, NOT A VIEW (M96, the owner's pick "A5"). The mountain, at the bar's
 // right end under the thumb, and the bar's own red count of the open Decisions. A tap opens the Hill's
-// route one level down, so it is never drawn as the selected tab. It is there with nothing open too (no
-// badge then), so the bar does not change shape when a Decision arrives. While a `now` Decision is open
+// route one level down, so on the Dashboard it is never drawn as the selected tab. It is there with
+// nothing open too (no badge then), so the bar does not change shape when a Decision arrives.
+//
+// THE BAR STAYS ON THE HILL AND ON A TRICK'S SESSION (amended 2026-11-10, components/dashboard-route-bar.tsx).
+// There no tab is selected (`view` null): on the Hill the Hill item is the current one (`hillCurrent`),
+// and on a trick's Session that trick's own item when it has one (`currentTrick`). While a `now` Decision is open
 // the mountain wears its snow cap in the warm accent, as A5 draws it (DESIGN.md §4, "The Hill's warm
 // accent"); the word stays the bar's muted ink. Where the hill does not exist (the snapshot carries
 // no `hillRev`: a bridge older than the hill, or a crew member's own scope) there is no Hill item.
@@ -28,7 +32,8 @@ import type { AgentView } from "@/lib/types";
 // scroll after a thin divider. With none the bar is today's equal-width bar plus the Hill.
 
 export interface DashboardTabBarProps {
-  view: DashView;
+  /** The selected tab, or null on a route of its own (the Hill, a trick's Session): no tab is selected there. */
+  view: DashView | null;
   onSelect: (view: DashView) => void;
   /** Whether the Crew tab is drawn: a crew is configured. */
   crew: boolean;
@@ -43,6 +48,10 @@ export interface DashboardTabBarProps {
   /** Whether one of them is `now`: the mountain then wears its snow cap in the warm accent. */
   hillNow?: boolean;
   onOpenHill: () => void;
+  /** The bar is drawn on the Hill's own route: the Hill item is the current one. */
+  hillCurrent?: boolean;
+  /** The bar is drawn on this trick's Session: its `tabbar` item, when it has one, is the current one. */
+  currentTrick?: TrickRef;
   /** The held `tabbar` parts, in manifest order (`useTrickParts("tabbar")`). */
   tabbarParts: readonly WireTrickPart[];
   /** The trick sessions (`HomeData.trickSessions`), where a trick item's tap goes. */
@@ -52,7 +61,23 @@ export interface DashboardTabBarProps {
   store?: TricksStore;
 }
 
-export function DashboardTabBar({ view, onSelect, crew, files, blockedCount, readyUnseen, hill, hillNow = false, onOpenHill, tabbarParts, sessions, onOpenSession, store }: DashboardTabBarProps) {
+export function DashboardTabBar({
+  view,
+  onSelect,
+  crew,
+  files,
+  blockedCount,
+  readyUnseen,
+  hill,
+  hillNow = false,
+  onOpenHill,
+  hillCurrent = false,
+  currentTrick,
+  tabbarParts,
+  sessions,
+  onOpenSession,
+  store,
+}: DashboardTabBarProps) {
   useLocale();
   const items: TabBarItem<DashView>[] = [
     // Crew leads, drawn only while a crew is configured (ADR 0085). Network is the Crew icon
@@ -82,9 +107,13 @@ export function DashboardTabBar({ view, onSelect, crew, files, blockedCount, rea
             icon: <Icon name={hillNow ? "hill-now" : "hill"} className={cn("size-5", hillNow && "text-status-working")} />,
             badge: hill,
             badgeLabel: tn("home.tabs.hill", hill),
+            current: hillCurrent,
             onSelect: onOpenHill,
           },
         ];
-  const extras = useMemo(() => trickTabbarExtras({ parts: tabbarParts, sessions, onOpenSession, store }), [tabbarParts, sessions, onOpenSession, store]);
+  const extras = useMemo(
+    () => trickTabbarExtras({ parts: tabbarParts, sessions, onOpenSession, current: currentTrick, store }),
+    [tabbarParts, sessions, onOpenSession, currentTrick, store],
+  );
   return <TabBar<DashView> label={t("home.tabs.aria")} active={view} onSelect={onSelect} items={items} links={links} extras={extras} />;
 }

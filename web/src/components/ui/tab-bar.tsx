@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useLayoutEffect, useRef, type ReactNode } from "react";
 
 import { OverflowEdges } from "@/components/ui/overflow-edges";
 import { UnseenMark } from "@/components/ui/unseen-mark";
@@ -21,9 +21,10 @@ export interface TabBarItem<V extends string> {
 }
 
 /**
- * An item that is NOT a view of the bar: a tap goes one level down to a route of its own (the Hill),
- * so it is never the selected tab. It wears a tab's look and a tab's red count, with the same meaning:
- * something waits on the operator (ADR 0066).
+ * An item that is NOT a view of the bar: a tap opens a route of its own (the Hill). It wears a tab's
+ * look and a tab's red count, with the same meaning: something waits on the operator (ADR 0066). It is
+ * drawn as the current item only on its own route, where the bar is drawn too (`current`, amended
+ * 2026-11-10); on the Dashboard it is never the selected tab.
  */
 export interface TabBarLink {
   id: string;
@@ -33,6 +34,8 @@ export interface TabBarLink {
   badge?: number;
   /** ALREADY TRANSLATED. What the badge says to a screen reader. */
   badgeLabel?: string;
+  /** The bar is drawn on this link's own route: the link wears the selected look and `aria-current`. */
+  current?: boolean;
   onSelect: () => void;
 }
 
@@ -98,7 +101,8 @@ function AlertBadge({ n }: { n: number }) {
  *
  * NOTHING MOVES ON A SWITCH (DESIGN.md §2). The active mark is a 2px top edge that every tab
  * reserves, transparent, so a switch recolours an edge and re-lays-out nothing. A link and an extra
- * reserve it too and never fill it: neither is ever the selected tab. The word never changes weight.
+ * reserve it too, and fill it only on their own route (the Hill's, a trick's Session), where the bar is
+ * drawn with no tab selected (amended 2026-11-10). The word never changes weight.
  * A badge floats on the icon's corner, absolutely placed, so a count arriving, changing width or
  * leaving moves no label. The quiet dot takes the same absolutely placed corner slot, so a count
  * turning into a dot, or either leaving, moves nothing either. The row is `min-h-14` (56px, above the
@@ -110,8 +114,21 @@ function AlertBadge({ n }: { n: number }) {
 export function TabBar<V extends string>({ items, active, onSelect, label, links = NO_LINKS, extras = NO_EXTRAS, className }: TabBarProps<V>) {
   const scrolling = extras.length > 0;
   const width = scrolling ? PINNED_WIDTH : "flex-1";
+  // A current item of the run (a trick's Session, whose own item it is) is brought into view when the
+  // run is drawn: the route's bar is a fresh one, and an item tapped past the run's first screen would
+  // otherwise sit scrolled out of sight on the screen it opened. Only when it is not already in view,
+  // and again only when the run gains or loses an item, so a scroll by hand is left alone.
+  const bar = useRef<HTMLElement>(null);
+  useLayoutEffect(() => {
+    const run = bar.current?.querySelector<HTMLElement>('[data-slot="tab-bar-extras"]');
+    const cell = run?.querySelector<HTMLElement>('[data-slot="tab-extra"][aria-current="page"]');
+    if (run === null || run === undefined || cell === null || cell === undefined) return;
+    const end = cell.getBoundingClientRect().right - run.getBoundingClientRect().left + run.scrollLeft;
+    if (end > run.scrollLeft + run.clientWidth) run.scrollLeft = end - run.clientWidth;
+  }, [extras.length]);
   return (
     <nav
+      ref={bar}
       aria-label={label}
       data-slot="tab-bar"
       data-mode={scrolling ? "scroll" : "equal"}
@@ -155,15 +172,18 @@ export function TabBar<V extends string>({ items, active, onSelect, label, links
         })}
         {links.map((link) => {
           const badge = link.badge !== undefined && link.badge > 0 ? link.badge : undefined;
+          const on = link.current === true;
           return (
             <button
               key={link.id}
               type="button"
               data-slot="tab-link"
               data-link={link.id}
+              // The filled edge and `aria-current` only on the link's own route: on the Dashboard a link
+              // opens a route, it is not a view (amended 2026-11-10).
+              aria-current={on ? "page" : undefined}
               onClick={link.onSelect}
-              // Never `aria-current` and never the filled edge: a link opens a route, it is not a view.
-              className={cn(CELL, "-mt-px text-muted-foreground", width)}
+              className={cn(CELL, "-mt-px", width, on ? "border-foreground text-foreground" : "text-muted-foreground")}
             >
               <span className="relative flex size-5 items-center justify-center" aria-hidden>
                 {link.icon}
@@ -212,6 +232,8 @@ export interface TabBarExtraItemProps {
   name: string;
   /** The tap. Absent: the item is drawn, inert, and is no control at all. */
   onSelect?: () => void;
+  /** The bar is drawn on this item's own route (its trick's Session): the selected look and `aria-current`. */
+  current?: boolean;
   className?: string;
   /** Data attributes for the caller's own handle (`data-trick`). */
   data?: Readonly<Record<`data-${string}`, string | undefined>>;
@@ -222,8 +244,9 @@ export interface TabBarExtraItemProps {
  * a quiet outlined badge (ADR 0066: the red count means something waits on you, and a trick's figure
  * does not). With a tap it is a button; without one it is a span that takes no tap.
  */
-export function TabBarExtraItem({ label, icon, badge, name, onSelect, className, data }: TabBarExtraItemProps) {
+export function TabBarExtraItem({ label, icon, badge, name, onSelect, current = false, className, data }: TabBarExtraItemProps) {
   const shown = badge === undefined || badge === 0 ? undefined : String(badge);
+  const ink = current ? "border-foreground text-foreground" : "text-muted-foreground";
   const face = (
     <>
       <span className="relative flex size-5 items-center justify-center" aria-hidden>
@@ -244,14 +267,14 @@ export function TabBarExtraItem({ label, icon, badge, name, onSelect, className,
   );
   if (onSelect === undefined) {
     return (
-      <span data-slot="tab-extra" {...data} className={cn(CELL, EXTRA_WIDTH, "text-muted-foreground", className)}>
+      <span data-slot="tab-extra" {...data} aria-current={current ? "page" : undefined} className={cn(CELL, EXTRA_WIDTH, ink, className)}>
         <span className="sr-only">{name}</span>
         {face}
       </span>
     );
   }
   return (
-    <button type="button" data-slot="tab-extra" {...data} aria-label={name} onClick={onSelect} className={cn(CELL, EXTRA_WIDTH, "text-muted-foreground", className)}>
+    <button type="button" data-slot="tab-extra" {...data} aria-label={name} aria-current={current ? "page" : undefined} onClick={onSelect} className={cn(CELL, EXTRA_WIDTH, ink, className)}>
       {face}
     </button>
   );

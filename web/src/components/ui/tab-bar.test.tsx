@@ -124,7 +124,7 @@ describe("TabBar's links and its scrolling run (2026-11-10)", () => {
     expect([...run.querySelectorAll('[data-slot="tab-extra"]')].map((el) => el.querySelector(".max-w-full.truncate")?.textContent)).toEqual(["legs", "tracker"]);
   });
 
-  it("never draws the link as the selected tab, in either mode", () => {
+  it("does not draw the link as the selected tab unless it is current, in either mode", () => {
     for (const extras of [undefined, [extra("legs")]]) {
       const { link } = renderModes({ badge: 2, extras });
       expect(link).not.toHaveAttribute("aria-current");
@@ -132,6 +132,36 @@ describe("TabBar's links and its scrolling run (2026-11-10)", () => {
       expect(link.className).toMatch(/\bborder-t-2\b/u);
       cleanup();
     }
+  });
+
+  it("draws a current link, on its own route, as the selected item, with no tab selected (2026-11-10)", () => {
+    const hill: TabBarLink = { id: "hill", label: "Hill", icon: <span />, current: true, onSelect: vi.fn() };
+    const { container } = render(<TabBar<"panes" | "focus"> label="Views" active={null} onSelect={vi.fn()} items={ITEMS} links={[hill]} />);
+    const link = container.querySelector<HTMLElement>('[data-slot="tab-link"]')!;
+    expect(link).toHaveAttribute("aria-current", "page");
+    expect(link.className).toMatch(/\bborder-foreground\b/u);
+    expect(link.className).toMatch(/\btext-foreground\b/u);
+    for (const tab of container.querySelectorAll('[data-slot="tab"]')) {
+      expect(tab).not.toHaveAttribute("aria-current");
+      expect(tab.className).not.toMatch(/\bborder-foreground\b/u);
+    }
+  });
+
+  it("draws a current extra, on its trick's own Session, as the selected item, as a button and as an inert item", () => {
+    const { nav } = renderModes({
+      extras: [
+        { key: "legs", node: <TabBarExtraItem label="legs" icon={<span />} name="legs" onSelect={vi.fn()} current /> },
+        { key: "quiet", node: <TabBarExtraItem label="quiet" icon={<span />} name="quiet" current /> },
+        { key: "other", node: <TabBarExtraItem label="other" icon={<span />} name="other" onSelect={vi.fn()} /> },
+      ],
+    });
+    const [legs, quiet, other] = [...nav.querySelectorAll<HTMLElement>('[data-slot="tab-extra"]')];
+    for (const el of [legs!, quiet!]) {
+      expect(el).toHaveAttribute("aria-current", "page");
+      expect(el.className).toMatch(/\bborder-foreground\b/u);
+    }
+    expect(other).not.toHaveAttribute("aria-current");
+    expect(other!.className).toMatch(/\btext-muted-foreground\b/u);
   });
 
   it("gives the link the red count only while it is above zero, and its words to a screen reader", () => {

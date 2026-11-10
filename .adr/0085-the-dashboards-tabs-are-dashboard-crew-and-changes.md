@@ -131,8 +131,10 @@ segments, read the summary line with the switch, and a second row for the two se
 The operator decided this on 2026-11-10, after he compared the options on the phone and picked the
 one called "A5". The footer reads Crew, Dashboard, Files, then the Hill at the right end
 ([ADR 0066](./0066-the-dashboard-has-a-footer-panes-needs-you-changes.md), amended the same day).
-The Hill opens a route of its own and is never the selected tab. A trick's `tabbar` items may follow it
-and scroll, with the tabs and the Hill pinned at a fixed width.
+The Hill opens a route of its own and is never the selected tab on the Dashboard. A trick's `tabbar`
+items may follow it and scroll, with the tabs and the Hill pinned at a fixed width. The footer stays on
+the Hill's route and on a trick's Session, with no tab selected and that route's own item drawn as the
+current one (ADR 0066's amendment says how its taps move).
 
 - **The decision's "Dashboard sits in the middle under the thumb" no longer holds.** With a crew the
   Dashboard is second of four, and on a solo Collie first of three. The Hill takes the right end under

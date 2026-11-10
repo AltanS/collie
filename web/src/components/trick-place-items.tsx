@@ -116,12 +116,24 @@ export function TrickDashboardStrip({
   );
 }
 
-function TabbarItem({ partKey: key, session, onOpenSession, store }: { partKey: string; session: AgentView | undefined; onOpenSession: (pane: AgentView) => void; store: TricksStore }) {
+function TabbarItem({
+  partKey: key,
+  session,
+  onOpenSession,
+  current,
+  store,
+}: {
+  partKey: string;
+  session: AgentView | undefined;
+  onOpenSession: (pane: AgentView) => void;
+  current: boolean;
+  store: TricksStore;
+}) {
   useLocale();
   const facts = useItemFacts(key, "tabbar", store, "size-5");
   if (facts === null) return null;
   const data = { "data-trick": facts.trickId, "data-stale": facts.stale ? "true" : undefined };
-  if (session === undefined) return <TabBarExtraItem label={facts.item.label} icon={facts.glyph} badge={facts.item.badge} name={facts.name} data={data} />;
+  if (session === undefined) return <TabBarExtraItem label={facts.item.label} icon={facts.glyph} badge={facts.item.badge} name={facts.name} current={current} data={data} />;
   return (
     <TabBarExtraItem
       label={facts.item.label}
@@ -129,27 +141,41 @@ function TabbarItem({ partKey: key, session, onOpenSession, store }: { partKey: 
       badge={facts.item.badge}
       name={`${facts.name}. ${t("tricks.mark.open", { trick: facts.trickName })}`}
       onSelect={() => onOpenSession(session)}
+      current={current}
       data={data}
     />
   );
 }
 
-/** The bar's scrolling run of `tabbar` items, ready for `TabBar` `extras`, in the caller's order (the manifest order of `useTrickParts`). */
+/** A trick by its address: the host that runs it and its id. */
+export interface TrickRef {
+  host: string;
+  trick: string;
+}
+
+/**
+ * The bar's scrolling run of `tabbar` items, ready for `TabBar` `extras`, in the caller's order (the
+ * manifest order of `useTrickParts`). `current` names the trick whose Session the bar is drawn on: its
+ * item wears the selected look.
+ */
 export function trickTabbarExtras(opts: {
   parts: readonly WireTrickPart[];
   sessions: readonly AgentView[];
   onOpenSession: (pane: AgentView) => void;
+  current?: TrickRef;
   store?: TricksStore;
 }): TabBarExtra[] {
   const store = opts.store ?? tricksStore;
+  const { current } = opts;
   return opts.parts.map((part) => {
     const key = partKey(part);
+    const on = current !== undefined && current.host === part.host && current.trick === part.trick;
     return {
       key,
       // One boundary per item: an item that throws leaves the bar's other items drawn, and draws nothing itself.
       node: (
         <TrickBoundary fallback="none" resetKey={`${key}@${part.rev}`}>
-          <TabbarItem partKey={key} session={sessionOfMark(part, opts.sessions)} onOpenSession={opts.onOpenSession} store={store} />
+          <TabbarItem partKey={key} session={sessionOfMark(part, opts.sessions)} onOpenSession={opts.onOpenSession} current={on} store={store} />
         </TrickBoundary>
       ),
     };

@@ -113,8 +113,8 @@ one called "A5". The footer gains two kinds of item that are not tabs.
 
 - **The Hill is a fixed fourth item at the right end.** It wears the `hill` glyph and the footer's
   own red count, which counts the open Decisions. That is point 7's meaning: something waits on the
-  operator. A tap opens the Hill's route one level down, so it is never drawn as the selected tab and
-  never sets `aria-current`. It is there with nothing open too, with no count, so the footer does not
+  operator. A tap opens the Hill's route one level down, so on the Dashboard it is never drawn as the
+  selected tab and never sets `aria-current`. It is there with nothing open too, with no count, so the footer does not
   change shape when a Decision arrives. A Decision marked `now` says so with the red count alone. Where
   no hill exists (the snapshot carries no `hillRev`), there is no Hill item. The row that said how many
   Decisions wait, at the top of the Dashboard, is gone.
@@ -123,5 +123,17 @@ one called "A5". The footer gains two kinds of item that are not tabs.
   items scroll sideways after it under the house edge fade. Their badge is quiet and outlined, never
   the red count, because a trick's figure does not wait on anyone. With none, the footer is the
   equal-width row it was, plus the Hill. The height is 56px in both modes.
+- **The footer stays on the Hill and on a trick's Session.** The operator looked at the Hill on the
+  phone the same day and found the footer gone: "for tricks that use this area it should be displayed".
+  Both routes are opened from the footer, so they draw it too, with the same items, the same count and
+  the same rule for whether it is drawn (`hooks/use-dashboard-bar.ts`). No tab is selected there. On the
+  Hill the Hill item is the current item: the filled top edge and `aria-current`. On a trick's Session
+  that trick's own item is, when it has one; otherwise nothing is. A tab stores its view and goes up to
+  the Dashboard ([ADR 0067](./0067-back-goes-up-one-level.md) `upTo`): a step back onto the Dashboard's
+  entry when that is behind, else a replace, so a swipe from the Dashboard never lands on the Hill. The
+  current item does nothing. The Hill item on a trick's Session, and a trick's item on the Hill or on
+  another trick's Session, move sideways, so Back still goes up to the Dashboard. The footer hides while
+  the on-screen keyboard is up on these two routes, as the Back bar and the New button do, because the
+  Hill's note field raises it.
 - **"Revisit" is answered.** A fourth item fits at 375px because the Hill's word is short, and the
   items past it scroll instead of crowding the translations.

@@ -4,10 +4,12 @@ import { useParams } from "react-router";
 import { RouteHeader } from "@/components/app-header";
 import { Icon as KeyIcon } from "@/components/icons/icon";
 import { TrickSessionIcon, trickSessionLine } from "@/components/trick-session";
+import { DashboardRouteBar, footAir } from "@/components/dashboard-route-bar";
 import { PaneBadge } from "@/components/pane-badge";
 import { Button } from "@/components/ui/button";
 import { BandMain } from "@/components/ui/strip-host";
 import { useLocale } from "@/hooks/use-locale";
+import { useDashboardBar } from "@/hooks/use-dashboard-bar";
 import { useTrickHandlers } from "@/hooks/use-trick-handlers";
 import { useNav } from "@/hooks/use-nav";
 import { t } from "@/lib/i18n";
@@ -28,7 +30,7 @@ import { cn } from "@/lib/utils";
 // What it shows: the real Header (the back arrow, the trick's icon in its frame, the session's name, its
 // badge, and the step, percent or subtitle under the name), the part's view in its frame (lib/tricks/
 // part-frame.tsx), scrollable and laid out for 390px first, and up to four of the part's actions as
-// buttons at the foot.
+// buttons at the foot. Under them, the Dashboard's bottom bar (amended 2026-11-10).
 //
 // What it does NOT show: a Composer. A trick session has no terminal and no reply box, so there is no
 // Send, no Stop, no Dock and no belt. A tap in the view or on an action goes to the trick's provider and
@@ -69,14 +71,24 @@ export function TrickSessionHeaderRow({ pane, onBack }: { pane: AgentView | unde
 }
 
 /** The part's actions at the foot, at most four, each a 44px button. A tap goes to the provider. */
-function Actions({ partKey, onTap, store }: { partKey: string; onTap: (key: string, intent: string, value: TrickAction["value"], control: string) => void; store: TricksStore }) {
+function Actions({
+  partKey,
+  onTap,
+  barBelow,
+  store,
+}: {
+  partKey: string;
+  onTap: (key: string, intent: string, value: TrickAction["value"], control: string) => void;
+  barBelow: boolean;
+  store: TricksStore;
+}) {
   const { part, tap } = useTrickPart(partKey, store);
   const value = part?.value;
   const actions = value?.at === "session" ? (value.actions ?? []).slice(0, ACTIONS_MAX) : [];
   if (actions.length === 0) return null;
   const busyControl = tap?.phase === "busy" ? tap.control : undefined;
   return (
-    <div data-slot="trick-session-actions" className="grid shrink-0 grid-cols-2 gap-2 border-t border-border px-4 pt-3 pb-[calc(0.75rem_+_env(safe-area-inset-bottom))]">
+    <div data-slot="trick-session-actions" className={cn("grid shrink-0 grid-cols-2 gap-2 border-t border-border px-4 pt-3", footAir(barBelow, "pb-3"))}>
       {actions.map((action) => {
         const busy = busyControl === actionControl(action.id);
         const Icon = action.icon === undefined ? null : trickIconOf(action.icon);
@@ -101,31 +113,38 @@ function Actions({ partKey, onTap, store }: { partKey: string; onTap: (key: stri
   );
 }
 
-/** The screen below the Header: the view, scrollable, and the actions at the foot. No Composer. */
+/**
+ * The screen below the Header: the view, scrollable, and the actions at the foot. No Composer.
+ * `barBelow`: the Dashboard's bar is drawn under it, and owns the safe area (amended 2026-11-10).
+ */
 export function TrickSessionBody({
   pane,
   onLink,
+  barBelow = false,
   store = tricksStore,
   now,
 }: {
   pane: AgentView | undefined;
   onLink: (target: LinkTarget) => void;
+  barBelow?: boolean;
   store?: TricksStore;
   /** Pin the clock, for a playground card. */
   now?: number;
 }) {
   useLocale();
   const onTap = useMemo(() => trickTapper({}, store), [store]);
+  const actions = pane?.view !== undefined;
   return (
     <>
-      <BandMain base={16} className="relative flex min-h-0 flex-1 flex-col overflow-y-auto p-4">
+      {/* With the actions at the foot, they keep the safe area (or the bar does); the view keeps its own air. */}
+      <BandMain base={16} data-slot="trick-session-scroll" className={cn("relative flex min-h-0 flex-1 flex-col overflow-y-auto px-4 pt-4", actions ? "pb-4" : footAir(barBelow, "pb-4"))}>
         {pane?.view === undefined ? (
           <p className="py-16 text-center text-sm text-muted-foreground">{t("tricks.session.gone")}</p>
         ) : (
           <TrickView partKey={pane.view} onLink={onLink} store={store} now={now} />
         )}
       </BandMain>
-      {pane?.view !== undefined && <Actions partKey={pane.view} onTap={onTap} store={store} />}
+      {pane?.view !== undefined && <Actions partKey={pane.view} onTap={onTap} barBelow={barBelow} store={store} />}
     </>
   );
 }
@@ -139,10 +158,18 @@ export function TrickSessionRoute() {
   const { linkFor } = useTrickHandlers();
   const onLink = useMemo(() => linkFor(host), [linkFor, host]);
   const back = () => nav.up(homePath(data.scope));
+  // The Dashboard's bar stays under a trick's Session, with this trick's own item as the current one
+  // when it has one (amended 2026-11-10, components/dashboard-route-bar.tsx).
+  const bar = useDashboardBar();
+  const at = useMemo(() => {
+    const address = parseTrickSessionId(paneId);
+    return { kind: "trick" as const, trick: address === undefined ? undefined : { host: address.host, trick: address.trick } };
+  }, [paneId]);
   return (
     <div data-slot="trick-session-screen" className="mx-auto flex min-h-0 w-full max-w-screen-sm flex-1 flex-col">
       <RouteHeader width="column" override={<TrickSessionHeaderRow pane={pane} onBack={back} />} />
-      <TrickSessionBody pane={pane} onLink={onLink} />
+      <TrickSessionBody pane={pane} onLink={onLink} barBelow={bar.shown} />
+      <DashboardRouteBar bar={bar} at={at} />
     </div>
   );
 }

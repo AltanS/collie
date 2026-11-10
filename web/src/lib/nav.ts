@@ -316,7 +316,7 @@ export function crewPath(scope?: Scope): string {
 }
 
 /**
- * The hill (M96): the Decisions agents posted. A CHILD of the Dashboard, its only way in. Carries the
+ * The hill (M96): the Decisions agents posted. A CHILD of the Dashboard, opened from the bottom bar. Carries the
  * scope like the others, so Back returns to the machine and session the Dashboard was showing.
  */
 export function hillPath(scope?: Scope): string {
@@ -505,7 +505,9 @@ export function ancestorsOf(pathname: string): string[] {
   // a belt mark), and a trick's own view may open another trick's session.
   if (head === "trick" && seg.length === 2) return ["/", ANY_PANE, ANY_TRICK];
   if (head === "settings" && seg.length === 1) return ["/"];
-  // The hill is opened from the Dashboard's bottom bar alone, its fixed Hill item (M96).
+  // The hill is opened from the bottom bar's fixed Hill item (M96): down from the Dashboard, or sideways
+  // from a trick's Session, where the bar stays too (amended 2026-11-10). A sideways move carries `from`,
+  // so the Dashboard is its only parent either way.
   if (head === "hill" && seg.length === 1) return ["/"];
   // A durable program's conversations are opened from a space's sheet (dashboard or space page) and
   // from a pane's menu; one conversation sits below the list.
