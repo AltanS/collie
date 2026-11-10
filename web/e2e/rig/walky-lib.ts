@@ -364,7 +364,9 @@ export async function startExtraAgent(rig: Rig, id: HarnessId, extra: ExtraAgent
   const machine = extra.machine ?? "lead";
   memGuard(`an extra ${id}`);
   const dirs = harnessDirs(id, machine);
-  const paneId = await startInPane(dirs.project, `leg-${id}-extra`, `exec ${quoted(dirs.start)}`, machine, extra.space ?? RIG_SPACE);
+  // `space: null` is a space with no name of its own, never the default: `??` would turn it into RIG_SPACE.
+  const space = extra.space === undefined ? RIG_SPACE : extra.space;
+  const paneId = await startInPane(dirs.project, `leg-${id}-extra`, `exec ${quoted(dirs.start)}`, machine, space);
   const host = hostOf(machine);
   const up = await rig.until(() => rig.pane(paneId, host), (pane) => pane !== null && pane.agent === SETUPS[id].agent && (freeSurface(pane) || (pane.surface === null && pane.status === "idle")), 90_000, 700);
   if (up === null) throw new NotReached(`an extra ${id} did not come up idle in 90 s`);
@@ -432,7 +434,7 @@ export const viaOf = (row: JsonObject | undefined): string | null => asJsonStrin
 export interface CliCancel {
   /** The exit code: 0 taken back (or already in the inbox), 3 nothing to take back, 4 not the sender. */
   readonly code: number;
-  /** One result per target: `taken`, `repeat`, `already typed`, `not held` or `elsewhere`, with the receipt. */
+  /** One result per target: `{ result, receipt }`, the result `taken`, `repeat`, `already typed`, `not held` or `elsewhere`. The target is the receipt's (`takeBackFor`). */
   readonly results: JsonObject[];
   readonly out: string;
 }
@@ -442,6 +444,11 @@ export async function cliCancel(senderPane: string, id: string, machine: Machine
   const result = await runCli(senderPane, ["cancel", id, "--json"], machine);
   const doc = asJsonObject(parseJsonLine(result.out));
   return { code: result.code, results: jsonRows(doc?.results), out: result.out.trim() };
+}
+
+/** The result of a take-back for the target `matches` accepts: each row of `cliCancel` names its target inside its receipt. */
+export function takeBackFor(back: CliCancel | null, matches: (target: string) => boolean): string | null {
+  return asJsonString(back?.results.find((row) => matches(asJsonString(asJsonObject(row.receipt)?.target) ?? ""))?.result) ?? null;
 }
 
 /** One `collie walky` verb from a pane's own environment, as `cliSend` describes it. */

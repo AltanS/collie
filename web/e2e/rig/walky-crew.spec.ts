@@ -77,7 +77,7 @@ import {
   type TapLog,
 } from "./leg";
 import { DEVICE_LABEL, LEAD_ID, MEMBER_ID, askWalky, paneClose, sleep } from "./rig-lib";
-import { OUTSIDE_YOUR_SPACE, PHONE, REPLY_MS, cliCancel, cliSend, ensureDraft, escape, firstRow, mintId, operatorHeader, refusalCount, settledWalky, startExtraAgent, viaOf, wrapped } from "./walky-lib";
+import { OUTSIDE_YOUR_SPACE, PHONE, REPLY_MS, cliCancel, cliSend, ensureDraft, escape, firstRow, mintId, operatorHeader, refusalCount, settledWalky, startExtraAgent, takeBackFor, viaOf, wrapped } from "./walky-lib";
 
 const RIG_TS = join(import.meta.dirname, "rig.ts");
 
@@ -753,10 +753,10 @@ test.describe("walky talky across a crew", () => {
         const untouched = /draft\s*$/m.test(leadBox) && !leadBox.includes(mark) && /draft\s*$/m.test(piBox) && !piBox.includes(mark);
         notes.push(untouched ? "both drafts are untouched, nothing typed" : "a BOX CHANGED");
         const back = sent.id === null ? null : await cliCancel(sender, sent.id);
-        const leadBack = back?.results.find((r) => sameTarget(asJsonString(r.target) ?? "", LEAD_ID, claudePane));
-        notes.push(`the lead's hold taken back: ${asJsonString(leadBack?.result) ?? "no answer"}`);
+        const leadBack = takeBackFor(back, (target) => sameTarget(target, LEAD_ID, claudePane));
+        notes.push(`the lead's hold taken back: ${leadBack ?? "no answer"}`);
         trail.captures.push(await captureScreen(rig, claudePane, "walky-34-claude"), await captureScreen(rig, piPane, "walky-34-pi", MEMBER_ID));
-        const verdict = sent.id !== null && wasTaken(toLead) && wasTaken(toMember) && toSelf === undefined && memberVia === "in" && untouched && leadBack?.result === "taken" ? "pass" : "fail";
+        const verdict = sent.id !== null && wasTaken(toLead) && wasTaken(toMember) && toSelf === undefined && memberVia === "in" && untouched && leadBack === "taken" ? "pass" : "fail";
         return { verdict, taps: 0, note: notes.join("; "), taps_log: trail.log, captures: trail.captures };
       } finally {
         await resetBox(rig, claudePane);
@@ -782,6 +782,11 @@ test.describe("walky talky across a crew", () => {
         await ensureDraft(rig, piPane, MEMBER_ID);
         const mark = mintId().slice(3, 9);
         const refusedBefore = refusalCount("member", OUTSIDE_YOUR_SPACE);
+        // The lead's merged list carries the member's word for the pane's space: unnamed, its key under the member's id.
+        const listedRow = await rig.until(async () => jsonRows((await askWalky("lead", { op: "who" }))?.targets).find((t) => sameTarget(asJsonString(t.address) ?? "", MEMBER_ID, unnamed)), (row) => row !== undefined, 30_000, 1000);
+        const listedSpace = asJsonObject(listedRow?.space);
+        const listedUnnamed = listedSpace?.named === false && (asJsonString(listedSpace.key) ?? "").startsWith(`${MEMBER_ID}\u0000`);
+        notes.push(listedSpace === undefined ? "the lead's who does not list the unnamed pane" : listedUnnamed ? "the lead lists it in an unnamed space of the member" : `the lead lists it in space ${JSON.stringify(listedSpace)}`);
 
         // `here` reaches the two panes of the rig's space, and not the unnamed one.
         const sent = await cliSend(sender, "here", `Walky space check ${mark}: here.`);
@@ -803,10 +808,10 @@ test.describe("walky talky across a crew", () => {
 
         // The lead's hold is taken back; the member's pi keeps its draft and what it holds.
         const back = sent.id === null ? null : await cliCancel(sender, sent.id);
-        const leadBack = back?.results.find((r) => sameTarget(asJsonString(r.target) ?? "", LEAD_ID, claudePane));
-        notes.push(`the lead's hold taken back: ${asJsonString(leadBack?.result) ?? "no answer"}`);
+        const leadBack = takeBackFor(back, (target) => sameTarget(target, LEAD_ID, claudePane));
+        notes.push(`the lead's hold taken back: ${leadBack ?? "no answer"}`);
         trail.captures.push(await captureScreen(rig, unnamed, "walky-35-unnamed", MEMBER_ID));
-        return { verdict: reached && skipped && refused && !typed && counted && leadBack?.result === "taken" ? "pass" : "fail", taps: 0, note: notes.join("; "), taps_log: trail.log, captures: trail.captures };
+        return { verdict: listedUnnamed && reached && skipped && refused && !typed && counted && leadBack === "taken" ? "pass" : "fail", taps: 0, note: notes.join("; "), taps_log: trail.log, captures: trail.captures };
       } finally {
         await resetBox(rig, claudePane);
         for (const open of opened) paneClose(open.pane, open.machine);
