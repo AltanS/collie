@@ -3486,6 +3486,12 @@ const tricks =
         // Only a lead or a solo bridge that is not deposed schedules tricks (§18.12): a peer, a deputy and
         // a deposed lead run no timer, so one trick never runs on two machines of a crew.
         active: () => crew.mode !== "peer" && deposed === null,
+        // And says so: Settings → Tricks and `collie trick list` on such a machine name the lead that runs them.
+        runsOn: () => {
+          if (crew.mode !== "peer" && deposed === null) return null;
+          const lead = crew.mode === "peer" ? trustStore.current()?.lead?.memberId : deposed?.leadMemberId;
+          return lead === undefined || lead === null ? {} : { lead };
+        },
         // Every version the bridge approves, declines or undoes, `auto` included, leaves an audit line.
         audit: (entry) => audit.record({ action: entry.action, detail: entry.detail }),
         // A new version that waits gets its card on the Hill; the card goes when nothing waits any more.

@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
 import type { JsonObject } from "../json.ts";
-import { parseFacts, partKey, type TrickFacts, type TrickTapReply } from "../../web/src/lib/tricks/schema.ts";
+import { parseFacts, partKey, type TrickFacts, type TrickTapReply, type TricksRunsOn } from "../../web/src/lib/tricks/schema.ts";
 import { trickCodeHash } from "./code-hash.ts";
 import { approvedCopyDir, pendingCopyDir, TRICKS_DIR } from "./paths.ts";
 import type { RunOutcome, RunSpec } from "./run.ts";
@@ -1185,6 +1185,17 @@ describe("the approved copy (crew slice 2)", () => {
     active = false;
     await tickAt(r, T0 + 120_000);
     expect(r.specs.length).toBe(1);
+  });
+
+  test("B7: a bridge that schedules no tricks says in its reply where they run; a lead's reply says nothing", async () => {
+    let runsOn: TricksRunsOn | null = { lead: "desk" };
+    const r = await rig([], { active: () => runsOn === null, runsOn: () => runsOn });
+    await makeTrick(r.configDir, "legs", MANIFEST);
+    expect((await r.service.reply(undefined)).runsOn).toEqual({ lead: "desk" });
+    runsOn = {};
+    expect((await r.service.reply(undefined)).runsOn).toEqual({});
+    runsOn = null;
+    expect((await r.service.reply(undefined)).runsOn).toBeUndefined();
   });
 });
 

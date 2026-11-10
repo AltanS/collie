@@ -14,6 +14,7 @@ import {
   type TrickState,
   type TrickTapReply,
   type TricksReply,
+  type TricksRunsOn,
   type ParsedTrickDocument,
   type Refusal,
   type TapRequest,
@@ -283,6 +284,12 @@ export interface TricksServiceDeps {
    * Absent: always.
    */
   active?: () => boolean;
+  /**
+   * Where tricks run when this bridge schedules none (`active` false because another machine of the
+   * crew does): `{ lead }`, or `{}` when the lead is not known. Null on a lead or a solo bridge. The reply
+   * carries it, so Settings and `collie trick list` say that this machine runs none. Absent: never set.
+   */
+  runsOn?: () => TricksRunsOn | null;
   /** One audit line per version the bridge approves, declines or undoes (bridge/audit.ts). Absent in a test. */
   audit?: (entry: { action: string; detail: Record<string, string> }) => void;
   /** The "new version" card on the Hill (version-card.ts). Absent: no card, Settings alone says it. */
@@ -538,7 +545,7 @@ export class TricksService implements TricksSurface {
 
   async reply(since: number | undefined): Promise<TricksReply> {
     await this.refresh();
-    return this.store.reply(since, this.folderExists ? this.runnerPath() : undefined);
+    return this.store.reply(since, this.folderExists ? this.runnerPath() : undefined, this.deps.runsOn?.());
   }
 
   sessionPanes(): TrickSessionPanes | undefined {

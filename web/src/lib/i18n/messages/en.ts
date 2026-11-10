@@ -3313,6 +3313,8 @@ export const en = {
   // --- Settings → Tricks (M94 slice 04) ---
   "settings.tricks.none": "No tricks yet",
   "settings.tricks.foot": "A trick runs as you.",
+  "settings.tricks.runsOn": "Tricks run on the lead of this crew. This machine runs none.",
+  "settings.tricks.runsOn.lead": "Tricks run on the lead of this crew ({lead}). This machine runs none.",
   "settings.tricks.switchFailed": "Could not switch {name}. Try again.",
   "settings.tricks.places.none": "No parts",
   "settings.tricks.place.belt": "belt",
@@ -3509,6 +3511,8 @@ export const PENDING_TRANSLATION = [
   "settings.section.tricks.blurb",
   "settings.tricks.none",
   "settings.tricks.foot",
+  "settings.tricks.runsOn",
+  "settings.tricks.runsOn.lead",
   "settings.tricks.switchFailed",
   "settings.tricks.places.none",
   "settings.tricks.place.belt",

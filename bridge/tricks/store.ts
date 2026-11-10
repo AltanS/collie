@@ -3,6 +3,7 @@ import {
   partKey,
   PROBLEM_MAX,
   type TricksReply,
+  type TricksRunsOn,
   type ParsedTrickDocument,
   type WireTrickInfo,
   type WireTrickPart,
@@ -153,7 +154,7 @@ export class TricksStore {
   }
 
   /** `GET /api/tricks?since=`: the changed parts, the keys present, the list. Absent or a future `since` is everything. */
-  reply(since: number | undefined, path?: string): TricksReply {
+  reply(since: number | undefined, path?: string, runsOn?: TricksRunsOn | null): TricksReply {
     const from = since === undefined || since > this.counter ? -Infinity : since;
     const all = [...this.parts.values()];
     const out: TricksReply = {
@@ -163,6 +164,7 @@ export class TricksStore {
       present: all.map((p) => partKey(p)),
     };
     if (path !== undefined) out.path = path;
+    if (runsOn !== undefined && runsOn !== null) out.runsOn = runsOn;
     return out;
   }
 }

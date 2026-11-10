@@ -1316,6 +1316,16 @@ export interface TricksReply {
   present: string[];
   /** The PATH the bridge's runner gives programs, for `collie doctor`. The phone may ignore it. */
   path?: string;
+  /**
+   * Set when this bridge schedules no tricks because another machine of its crew does: a crew member,
+   * a deputy or a deposed lead (bridge/index.ts). Absent on a lead and a solo bridge.
+   */
+  runsOn?: TricksRunsOn;
+}
+
+/** Where a bridge that schedules no tricks says they run: the lead's member id, when it knows it. */
+export interface TricksRunsOn {
+  lead?: string;
 }
 
 /** The string key of a stored part. None of the three may hold `/`, so it splits back. */

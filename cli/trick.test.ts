@@ -540,6 +540,25 @@ describe("collie trick on, off and list", () => {
     expect(d.asked[0]).toBe("http://127.0.0.1:18999/api/tricks");
   });
 
+  test("B7: list on a machine whose crew's lead runs the tricks says so, by name, in text and in --json", async () => {
+    const d = await deps({ rev: 5, tricks: [], parts: [], present: [], runsOn: { lead: "desk" } });
+    await cmdTrickInit(d, ["legs"]);
+    await cmdTrickSwitch(d, ["legs"], true);
+    d.out.length = 0;
+    expect(await cmdTrickList(d, [])).toBe(EXIT.OK);
+    expect(d.out).toContain("Tricks run on the lead of this crew (desk). This machine runs none.");
+    d.out.length = 0;
+    await cmdTrickList(d, ["--json"]);
+    // SAFETY: `list --json` prints one document, checked by value below.
+    const doc = JSON.parse(d.out.join("\n")) as { runsOn?: { lead?: string } };
+    expect(doc.runsOn).toEqual({ lead: "desk" });
+    const solo = await deps({ rev: 5, tricks: [], parts: [], present: [] });
+    await cmdTrickInit(solo, ["legs"]);
+    solo.out.length = 0;
+    await cmdTrickList(solo, []);
+    expect(solo.out.join("\n")).not.toContain("This machine runs none");
+  });
+
   test("list without a bridge says so, and with no folder points at init", async () => {
     const d = await deps(null);
     expect(await cmdTrickList(d, [])).toBe(EXIT.OK);

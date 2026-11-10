@@ -12,11 +12,13 @@
 
 import { asJsonBoolean, asJsonNumber, asJsonObject, asJsonString, type JsonObject, type JsonValue } from "../json";
 import {
+  isHostName,
   TAP_CODES,
   TRICK_WARNINGS_MAX,
   type TrickPart,
   type TrickTapReply,
   type TricksReply,
+  type TricksRunsOn,
   type TapCode,
   type WireTrickInfo,
   type WireTrickPart,
@@ -161,7 +163,21 @@ export function readTricksReply(raw: JsonValue | undefined): TricksReply | undef
     if (trick === undefined) return undefined;
     tricks.push(trick);
   }
-  return { rev, tricks, parts, present };
+  const reply: TricksReply = { rev, tricks, parts, present };
+  const runsOn = readRunsOn(body.runsOn);
+  if (runsOn !== undefined) reply.runsOn = runsOn;
+  return reply;
+}
+
+/**
+ * Where a bridge that runs no tricks says they run, read tolerantly: a word of another shape is left
+ * out and the reply kept, and a lead that is no host name reads as not known (`{}`).
+ */
+function readRunsOn(raw: JsonValue | undefined): TricksRunsOn | undefined {
+  const body = asJsonObject(raw);
+  if (body === undefined) return undefined;
+  const lead = asJsonString(body.lead);
+  return lead !== undefined && isHostName(lead) ? { lead } : {};
 }
 
 function isTapCode(text: string | undefined): text is TapCode {
