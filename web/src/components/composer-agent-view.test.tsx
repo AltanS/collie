@@ -97,6 +97,8 @@ function renderScreen(overrides: Partial<ComponentProps<typeof Composer>> = {}) 
         canAct
         onTap={(tap) => ref.current?.sendViewTap(tap) ?? Promise.resolve({ sent: false, line: null, code: null })}
         onLink={vi.fn()}
+        // The screen has stood still: the settle window is the screen's own test (review 10 W3).
+        settleMs={0}
       />
       <Composer ref={ref} {...props} />
     </>

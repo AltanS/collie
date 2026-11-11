@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { ViewEarlier, ViewPendingBlock, ViewReceiptCard, ViewSentLine } from "@/components/agent-view-blocks";
 import { ViewChoiceBlock, ViewChoiceDone } from "@/components/agent-view-choice";
@@ -124,6 +124,29 @@ export interface AgentViewScreenProps {
   onLink: (target: LinkTarget) => void;
   /** Pin the clock (epoch ms on the bridge's clock), for a test. */
   now?: number;
+  /** The settle window in ms, for a test. Absent: {@link VIEW_SETTLE_MS}. */
+  settleMs?: number;
+}
+
+/**
+ * How long a control must stand still before a tap on it counts, in ms (review 10 W3). The rev a tap
+ * names is current, so the bridge would send it: the phone alone knows that the button under the finger
+ * mounted, faded in (`ui/keyed-flow.tsx` staggers a first screen in, 350 ms at most) or moved a moment
+ * ago, so the person may have aimed at another one.
+ */
+export const VIEW_SETTLE_MS = 500;
+
+/**
+ * Whether the screen has stood still for `settleMs`: `layout` names everything that places a control (the
+ * screen's rev, the request block and its lines, the text answer), and any change to it starts the window
+ * again. The answer is read at the tap, from the clock, so no timer runs.
+ */
+function useSettled(layout: string, settleMs: number): () => boolean {
+  const since = useRef<number | null>(null);
+  useLayoutEffect(() => {
+    since.current = Date.now();
+  }, [layout]);
+  return useCallback(() => since.current !== null && Date.now() - since.current >= settleMs, [settleMs]);
 }
 
 /** Where a view's picture bytes are: the set id stands where the hill's source takes a decision id. */
@@ -311,6 +334,7 @@ function ChoicePart({
   pressed,
   busy,
   canAct,
+  canTap,
   onPick,
 }: {
   view: ViewScreen;
@@ -319,6 +343,7 @@ function ChoicePart({
   busy: number | null;
   /** A pick may send. Stale (in the Earlier fold): never. */
   canAct: boolean | "stale";
+  canTap: () => boolean;
   onPick: (index: number) => void;
 }) {
   const choice = view.choice;
@@ -333,6 +358,7 @@ function ChoicePart({
       picked={pickedOption(pressed)}
       busy={busy}
       canAct={canAct === true}
+      canTap={canTap}
       onPick={canAct === "stale" ? () => undefined : onPick}
     />
   );
@@ -365,6 +391,7 @@ export function AgentViewScreen({
   onStale,
   onLink,
   now,
+  settleMs = VIEW_SETTLE_MS,
 }: AgentViewScreenProps) {
   useLocale();
   const clock = useBridgeNow(now);
@@ -391,6 +418,10 @@ export function AgentViewScreen({
   const linkText = useViewLinkText();
   // Every button waits: nothing may act here, a turn runs, a question waits, or the screen is old.
   const held = !canAct || working || question || stale;
+  // A tap counts only on a screen that stood still (review 10 W3): a new rev, a request block, its sent
+  // line, the agent's notes or a text answer may each move a control under the finger.
+  const layout = JSON.stringify([view?.rev ?? null, request?.at ?? null, request?.phase ?? null, request?.line ?? null, status?.kind ?? null, notes.length, answer?.ts ?? null]);
+  const canTap = useSettled(layout, settleMs);
 
   /** Send one tap, mark the control once the bridge confirmed it, read again on a stale refusal. */
   const send = useCallback(
@@ -448,6 +479,7 @@ export function AgentViewScreen({
         wrap: true,
         linkText,
         armedLabel: (label, rendered) => armedWordsOf(view, block, label, rendered),
+        canTap,
       };
       const busyHere = busyControl === null ? null : renderedControl(block.prefix, busyControl);
       if (isLive && busyHere !== null) ctx.tap = { phase: "busy", rid: "agent-view", control: busyHere, intent: "" };
@@ -462,7 +494,7 @@ export function AgentViewScreen({
         </div>
       );
     },
-    [partKey, view, onBlockTap, onLink, busyControl, held, now, pictures, pressed, linkText],
+    [partKey, view, onBlockTap, onLink, busyControl, held, now, pictures, pressed, linkText, canTap],
   );
 
   const freshItems = useMemo(
@@ -508,7 +540,7 @@ export function AgentViewScreen({
         {view !== undefined && (
           <div data-slot="view-screen" className={cn("mt-2 min-w-0", VIEW_SCREEN_CLASS)}>
             <KeyedFlow items={freshItems} gap={BLOCK_GAP} data-slot="view-blocks" />
-            {split.isChoiceFresh && <ChoicePart key={view.rev} view={view} pictures={pictures} pressed={pressed} busy={busyOption} canAct={!held} onPick={onPick} />}
+            {split.isChoiceFresh && <ChoicePart key={view.rev} view={view} pictures={pictures} pressed={pressed} busy={busyOption} canAct={!held} canTap={canTap} onPick={onPick} />}
           </div>
         )}
         {answer !== null && (
@@ -527,7 +559,7 @@ export function AgentViewScreen({
                 </div>
               ))}
             </div>
-            {split.isChoiceStale && <ChoicePart view={view} pictures={pictures} pressed={pressed} busy={null} canAct="stale" onPick={onPick} />}
+            {split.isChoiceStale && <ChoicePart view={view} pictures={pictures} pressed={pressed} busy={null} canAct="stale" canTap={canTap} onPick={onPick} />}
           </ViewEarlier>
         )}
       </div>

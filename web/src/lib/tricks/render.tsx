@@ -186,6 +186,12 @@ export interface RenderCtx {
    * armed button shows its `confirm` word, as it always did.
    */
   armedLabel?: (label: string, path: string) => string;
+  /**
+   * Whether a tap counts now, asked at the tap before anything else: false, the tap does nothing at all
+   * (no send, no arm). An agent view answers false while a control has stood still under the finger for
+   * less than its settle window (review 10 W3). Absent: every tap counts.
+   */
+  canTap?: () => boolean;
 }
 
 /** The words of a free text as the place draws them: through `ctx.linkText` when it has one, else as they are. */
@@ -357,6 +363,7 @@ function ButtonView({ node, ctx, path, compact = false }: { node: ButtonNode; ct
   const ink = armed ? inkOf("danger", false) : inkOf(attrs.tone, ctx.stale);
   const disabled = attrs.disabled !== undefined;
   const onClick = () => {
+    if (ctx.canTap?.() === false) return;
     if (attrs.does === "copy") {
       if (attrs.value !== undefined) copyValue(attrs.value);
       return;

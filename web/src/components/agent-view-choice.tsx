@@ -53,10 +53,12 @@ export interface ViewChoiceBlockProps {
   busy: number | null;
   /** A pick may send: a live pane on a device that may write, no turn running, no question waiting. */
   canAct: boolean;
+  /** Whether a tap counts now: false while the block has not stood still for the view's settle window. Absent: always. */
+  canTap?: (() => boolean) | undefined;
   onPick: (index: number) => void;
 }
 
-export function ViewChoiceBlock({ choice, pictures, media, picked, busy, canAct, onPick }: ViewChoiceBlockProps) {
+export function ViewChoiceBlock({ choice, pictures, media, picked, busy, canAct, canTap, onPick }: ViewChoiceBlockProps) {
   useLocale();
   const { armed, tap, disarm } = useArm<string>();
   const blocked = !canAct || busy !== null;
@@ -69,7 +71,8 @@ export function ViewChoiceBlock({ choice, pictures, media, picked, busy, canAct,
   }, [blocked, disarm]);
 
   function choose(option: ViewOption, index: number) {
-    if (blocked) return;
+    // A tap on a row that just mounted or moved is no pick and no arm (review 10 W3).
+    if (blocked || canTap?.() === false) return;
     if (option.confirm !== undefined && tap(`option:${String(index)}`) !== "fire") return;
     if (option.confirm === undefined) disarm();
     onPick(index);

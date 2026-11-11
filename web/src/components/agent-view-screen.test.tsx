@@ -8,7 +8,7 @@ import type { TranscriptEntry } from "@/lib/types";
 
 import { choiceControl, screenBlocks, type ViewRequest } from "@/lib/agent-view/reader";
 import type { ViewSendResult, ViewTap } from "./composer";
-import { AgentViewScreen, VIEW_SCREEN_CLASS, type AgentViewScreenProps } from "./agent-view-screen";
+import { AgentViewScreen, VIEW_SCREEN_CLASS, VIEW_SETTLE_MS, type AgentViewScreenProps } from "./agent-view-screen";
 import { PRESENCE_MS } from "./ui/presence";
 
 // An agent view: Collie's band over it, its states (no screen, a screen alone, a request in work,
@@ -62,6 +62,8 @@ function draw(overrides: Partial<AgentViewScreenProps> = {}) {
     onTap: vi.fn(tapped),
     onLink: vi.fn(),
     now: NOW,
+    // Taps in these tests land on a screen that has stood still: the settle window has its own tests (W3).
+    settleMs: 0,
     ...overrides,
   };
   const result = render(<AgentViewScreen {...props} />);
@@ -792,5 +794,91 @@ describe("review 10 W2: an armed button shows and announces the words its second
     expect(live?.textContent).toBe(words);
     // The button holds the whole sentence: nothing cuts it.
     for (const shown of screen.getAllByText(words)) expect(cutsWords(shown)).toBe(false);
+  });
+});
+
+describe("review 10 W3: a control is inert until it has stood still for 500 ms", () => {
+  /** The screen with its production settle window: the prop left out. */
+  function drawSettling(overrides: Partial<AgentViewScreenProps> = {}) {
+    const drawn = draw(overrides);
+    const props: AgentViewScreenProps = { ...drawn.props };
+    delete props.settleMs;
+    drawn.rerender(<AgentViewScreen {...props} />);
+    return { ...drawn, props };
+  }
+
+  it("W3: the window is 500 ms", () => {
+    expect(VIEW_SETTLE_MS).toBe(500);
+  });
+
+  it("W3: a tap on a button that just mounted sends nothing; the same tap 500 ms later sends", () => {
+    vi.useFakeTimers();
+    const { props } = drawSettling();
+    fireEvent.click(screen.getByRole("button", { name: "Ship" }));
+    act(() => vi.advanceTimersByTime(VIEW_SETTLE_MS - 1));
+    fireEvent.click(screen.getByRole("button", { name: "Ship" }));
+    expect(props.onTap).not.toHaveBeenCalled();
+    act(() => vi.advanceTimersByTime(1));
+    fireEvent.click(screen.getByRole("button", { name: "Ship" }));
+    expect(props.onTap).toHaveBeenCalledExactlyOnceWith(tapOf(1, "v/1/0", 'tapped "Ship"'));
+  });
+
+  it("W3: a confirm that just mounted does not arm", () => {
+    vi.useFakeTimers();
+    drawSettling();
+    fireEvent.click(screen.getByRole("button", { name: "Drop" }));
+    expect(screen.getByRole("button", { name: "Drop" })).not.toHaveAttribute("data-armed");
+  });
+
+  it("W3: a redraw that moves another button into the tapped spot makes it inert for 500 ms", () => {
+    vi.useFakeTimers();
+    const { props, rerender } = drawSettling();
+    act(() => vi.advanceTimersByTime(VIEW_SETTLE_MS));
+    // The agent redraws the bar with Drop first: the finger that went for Ship now lands on Drop.
+    const moved = screenOf([
+      { kind: "para", text: "Ready to ship?" },
+      {
+        kind: "bar",
+        kids: [
+          { kind: "button", attrs: { label: "Drop", intent: "drop" } },
+          { kind: "button", attrs: { label: "Ship", intent: "ship" } },
+        ],
+      },
+    ]);
+    rerender(<AgentViewScreen {...props} view={{ ...moved, rev: 2 }} />);
+    const first = screen.getAllByRole("button")[0];
+    expect(first).toHaveAccessibleName("Drop");
+    if (first === undefined) throw new Error("no button");
+    fireEvent.click(first);
+    act(() => vi.advanceTimersByTime(VIEW_SETTLE_MS - 1));
+    fireEvent.click(first);
+    expect(props.onTap).not.toHaveBeenCalled();
+    act(() => vi.advanceTimersByTime(1));
+    fireEvent.click(first);
+    expect(props.onTap).toHaveBeenCalledExactlyOnceWith(tapOf(2, "v/1/0", 'tapped "Drop"'));
+  });
+
+  it("W3: a line arriving above the screen (the sent line) makes the buttons inert for 500 ms", () => {
+    vi.useFakeTimers();
+    const request: ViewRequest = { text: "go on", at: Date.parse(AT) - 60_000, phase: "sending", reason: null, line: null };
+    const { props, rerender } = drawSettling({ request });
+    act(() => vi.advanceTimersByTime(VIEW_SETTLE_MS));
+    rerender(<AgentViewScreen {...props} request={{ ...request, phase: "sent", line: "[view:morph local/w1:p1#ab12] from operator: go on" }} />);
+    fireEvent.click(screen.getByRole("button", { name: "Ship" }));
+    expect(props.onTap).not.toHaveBeenCalled();
+    act(() => vi.advanceTimersByTime(VIEW_SETTLE_MS));
+    fireEvent.click(screen.getByRole("button", { name: "Ship" }));
+    expect(props.onTap).toHaveBeenCalledTimes(1);
+  });
+
+  it("W3: an option of the decision block that just mounted takes no pick", () => {
+    vi.useFakeTimers();
+    const view: ViewScreen = { ...BUTTONS, choice: { question: "Which?", options: [{ label: "Lean" }, { label: "Full" }] } };
+    const { props } = drawSettling({ view });
+    fireEvent.click(screen.getByRole("button", { name: "Lean" }));
+    expect(props.onTap).not.toHaveBeenCalled();
+    act(() => vi.advanceTimersByTime(VIEW_SETTLE_MS));
+    fireEvent.click(screen.getByRole("button", { name: "Lean" }));
+    expect(props.onTap).toHaveBeenCalledExactlyOnceWith(tapOf(1, "choice/0", 'picked "Lean"'));
   });
 });
