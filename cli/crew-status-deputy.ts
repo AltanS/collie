@@ -563,6 +563,16 @@ export function pairingCollisionLines(marker: CrewRuntimeMarker | null, now: num
 
 // ── The deputy's copy of the tricks (CREW_PROTOCOL §25) ─────────────────────
 
+/** "1 open question" or "3 open questions": the open Decisions of the lead's Hill the deputy holds a copy of. */
+function questionsWord(n: number): string {
+  return n === 1 ? "1 open question" : `${String(n)} open questions`;
+}
+
+/** " and N open questions on the Hill", or nothing. */
+function andQuestions(n: number | undefined): string {
+  return n === undefined || n === 0 ? "" : ` and ${questionsWord(n)} on the Hill`;
+}
+
 /** "1 trick" or "3 tricks". */
 function tricksWord(n: number): string {
   return n === 1 ? "1 trick" : `${String(n)} tricks`;
@@ -584,9 +594,12 @@ export function deputyTricksLines(marker: CrewRuntimeMarker | null, now: number)
       line(`  A takeover there starts none of the ${tricksWord(fact.tricks)} this lead runs. Update it to carry them.`, "dim"),
     ];
   }
-  if (fact.tricks === 0) return [];
+  const questions = fact.questions ?? 0;
+  if (fact.tricks === 0 && questions === 0) return [];
+  // `questions` rides the fact only while the Hill copy is whole, so a lead with no trick has nothing behind.
+  if (fact.tricks === 0) return [line(`  deputy "${deputy}" holds a copy of the ${questionsWord(questions)} on this lead's Hill; a takeover there brings them along`, "dim")];
   if (fact.state === "behind") return [line(`  deputy "${deputy}" is still taking its copy of the ${tricksWord(fact.tricks)} this lead runs ${seen}`, "dim")];
-  return [line(`  deputy "${deputy}" holds a copy of the ${tricksWord(fact.tricks)} this lead runs; a takeover there starts them again`, "dim")];
+  return [line(`  deputy "${deputy}" holds a copy of the ${tricksWord(fact.tricks)} this lead runs${andQuestions(fact.questions)}; a takeover there starts them again`, "dim")];
 }
 
 /**
@@ -596,8 +609,13 @@ export function deputyTricksLines(marker: CrewRuntimeMarker | null, now: number)
  */
 export function promoteTricksLines(marker: CrewRuntimeMarker | null, memberId: string): TonedLine[] {
   const fact = marker?.deputyTricks;
-  if (fact === undefined || fact.tricks === 0) return [];
+  if (fact === undefined) return [];
   const who = escapeLabelForTerminal(memberId);
+  if (fact.tricks === 0) {
+    const questions = fact.questions ?? 0;
+    if (questions === 0 || fact.member !== memberId) return [];
+    return [line(`  "${who}" holds a copy of the ${questionsWord(questions)} on this lead's Hill; \`collie promote\` there brings them along.`, "dim")];
+  }
   const count = tricksWord(fact.tricks);
   if (fact.member !== memberId) {
     return [
@@ -607,7 +625,7 @@ export function promoteTricksLines(marker: CrewRuntimeMarker | null, memberId: s
   }
   if (fact.state === "older") return [line(`  "${who}" runs an older Collie and keeps no copy of the ${count} this lead runs; they do not start there.`, "warn")];
   if (fact.state === "behind") return [line(`  "${who}" is still taking its copy of the ${count} this lead runs; a trick it lacks does not start there.`, "warn")];
-  return [line(`  "${who}" holds a copy of the ${count} this lead runs; \`collie promote\` there starts them again.`, "dim")];
+  return [line(`  "${who}" holds a copy of the ${count} this lead runs${andQuestions(fact.questions)}; \`collie promote\` there starts them again.`, "dim")];
 }
 
 // ── The new lead's unfinished business (RFC §7.1, §9) ────────────────────────

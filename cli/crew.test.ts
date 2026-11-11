@@ -4,6 +4,9 @@ import { join } from "node:path";
 import { carryAll, machine, putOnTrick, removeCarryDirs } from "../bridge/crew/carry-fixtures.ts";
 import { crewRuntimePath, formatMarker, NO_RUNTIME_FACTS } from "../bridge/crew/staleness.ts";
 import { StandbyTricksStore } from "../bridge/crew/standby-tricks.ts";
+import { parseHillList, StandbyHillStore } from "../bridge/crew/standby-hill.ts";
+import { decision } from "../bridge/hill/fixtures.ts";
+import { hillDir, HillStore } from "../bridge/hill/store.ts";
 import { switchesPath } from "../bridge/tricks/paths.ts";
 import { parseSwitches } from "../bridge/tricks/switches.ts";
 
@@ -2963,6 +2966,20 @@ describe("the lead's tricks at a handover (CREW_PROTOCOL §25)", () => {
     expect(switches.on.get("legs")).toMatchObject({ by: "handover", from: "desk", auto: true });
     // The copy is gone: this machine leads now.
     expect(await new StandbyTricksStore(deputy.stateDir).load()).toBeNull();
+  });
+
+  test("promote on the deputy brings the open questions of the lead's Hill into this machine's Hill", async () => {
+    const deputy = await machine("deputy");
+    const list = parseHillList({ seq: 1, on: true, decisions: [JSON.parse(JSON.stringify(decision("dc_carried00001")))], closed: [], tricks: {} });
+    if (list === null) throw new Error("bad list");
+    await new StandbyHillStore(deputy.stateDir).applyList({ from: "desk", crewId: CREW.crewId, list });
+    const h = harness(peerStore(), [jsonReply({ demoted: "desk", roster: [] }, 200, "desk")], {
+      ctx: context({ COLLIE_CREW_TIMEOUT_MS: "60000" }, { socket: HERDR_SOCKET, stateDir: deputy.stateDir, configDir: deputy.configDir }),
+    });
+    expect(await cmdPromote(h.deps, [])).toBe(EXIT.OK);
+    expect(text(h.io)).toContain(`✓ brought 1 open question of "desk"'s Hill here`);
+    expect(new HillStore(hillDir(deputy.stateDir)).get("dc_carried00001")?.state).toBe("open");
+    expect(await new StandbyHillStore(deputy.stateDir).load()).toBeNull();
   });
 
   test("promote on a machine with no copy says nothing about tricks", async () => {
