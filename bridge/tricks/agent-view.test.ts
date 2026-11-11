@@ -248,7 +248,7 @@ describe("the powers", () => {
 
 describe("the whole diff of two rules texts", () => {
   test("keeps every line: common lines as context, taken out as -, put in as +, in order", () => {
-    expect(rulesDiffRows("a\nb\nc\n", "a\nx\nc\nd\n")).toEqual(["@@ -1,3 +1,4 @@", " a", "+x", "-b", " c", "+d"]);
+    expect(rulesDiffRows("a\nb\nc\n", "a\nx\nc\nd\n")).toEqual(["@@ -1,3 +1,4 @@", " a", "-b", "+x", " c", "+d"]);
     expect(rulesDiffRows(null, "a\nb\n")).toEqual(["@@ -0,0 +1,2 @@", "+a", "+b"]);
     expect(rulesDiffRows("a\n", null)).toEqual(["@@ -1,1 +0,0 @@", "-a"]);
     // A blank line is a row too.

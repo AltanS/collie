@@ -44,12 +44,13 @@ function middleRows(old: readonly string[], now: readonly string[]): string[] {
       rows.push(` ${old[i] ?? ""}`);
       i += 1;
       j += 1;
-    } else if (j < now.length && (i >= old.length || (lcs[i * cols + j + 1] ?? 0) >= (lcs[(i + 1) * cols + j] ?? 0))) {
-      rows.push(`+${now[j] ?? ""}`);
-      j += 1;
-    } else {
+    } else if (i < old.length && (j >= now.length || (lcs[(i + 1) * cols + j] ?? 0) >= (lcs[i * cols + j + 1] ?? 0))) {
+      // A line taken out comes before the line put in its place, as in git's diff.
       rows.push(`-${old[i] ?? ""}`);
       i += 1;
+    } else {
+      rows.push(`+${now[j] ?? ""}`);
+      j += 1;
     }
   }
   return rows;
