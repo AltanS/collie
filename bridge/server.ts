@@ -9328,12 +9328,6 @@ export const HILL_CLEAR_UNSAVED_TEXT = "the Hill could not be saved on this mach
 export const HILL_CLEAR_IDS_MAX = 200;
 
 /**
- * `POST /api/hill/clear`: remove closed decisions. The body is `{}` (every closed decision) or
- * `{ "ids": ["dc_..."] }` (those, when closed). 200 `{ cleared, skipped }`: `cleared` is how many went,
- * `skipped` the ids left alone, `open` for an open decision and `missing` for one this bridge does not
- * hold. 400 for another body, 503 when the write failed. Works with the Hill off.
- */
-/**
  * `POST /api/hill/clear/spoken` (1.29.0): `{}` or `{ "ids": [...] }` in (the cards the phone showed, C-N5),
  * `{ cleared }` out. Withdraws and clears every open
  * Decision the person answered in its session (`spokeAfter`); nothing is typed into any session. 409 on a
@@ -9370,6 +9364,12 @@ function readClearIds(body: JsonValue | undefined): string[] | null | undefined 
   return ids;
 }
 
+/**
+ * `POST /api/hill/clear`: remove closed decisions. The body is `{}` (every closed decision) or
+ * `{ "ids": ["dc_..."] }` (those, when closed). 200 `{ cleared, skipped }`: `cleared` is how many went,
+ * `skipped` the ids left alone, `open` for an open decision and `missing` for one this bridge does not
+ * hold. 400 for another body, 503 when the write failed. Works with the Hill off.
+ */
 export function hillClearRoute(
   hill: Pick<HillService, "clear"> | undefined,
   body: JsonValue | undefined,
