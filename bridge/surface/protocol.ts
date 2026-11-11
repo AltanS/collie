@@ -244,7 +244,7 @@ import { parseAnsi } from "../../web/src/lib/ansi.ts";
 import { splitLines } from "../../web/src/lib/blocks.ts";
 import { noEchoPromptIn } from "../../web/src/lib/no-echo.ts";
 import { isUploadImagePath, pastePieces } from "../../web/src/lib/upload-path.ts";
-import { BAD_HEAD, hasViewHead } from "../../web/src/lib/agent-view/wire.ts";
+import { BAD_HEAD, hasViewHead, VIEW_NO_PROFILE } from "../../web/src/lib/agent-view/wire.ts";
 import { pointsAt, staleListUnder } from "../../web/src/lib/surface/command-list.ts";
 import type { PopupRead } from "../../web/src/lib/surface/popup.ts";
 import { commandListAnyText, commandListAt, isRunningRow, noticeOver, ownCommandList, popupAt, readCues, readCuesFor, runningSign, withoutCommandList, withoutPopup, withoutPromptEchoes, type CommandListRead, type Cue } from "../../web/src/lib/surface/cues.ts";
@@ -621,7 +621,7 @@ export interface SendRequest {
   readonly view?: { readonly head: boolean; readonly check: () => string | null };
 }
 
-export { BAD_HEAD };
+export { BAD_HEAD, VIEW_NO_PROFILE };
 /** Why a send from a view is refused while held sends wait on the pane: a view send never queues. */
 export const VIEW_BEHIND_HELD = "Sends are waiting on this session; a send from a view does not queue behind them.";
 /** Why a send from a view is refused while the turn runs. */
@@ -4049,6 +4049,8 @@ export class SendProtocol {
       return held !== null;
     };
 
+    // A send with a view's head goes only where S0 can prove the session free (rule 5): never blind.
+    if (match === null && request.view?.head === true) throw new Ended("refused", "not_free", { detail: VIEW_NO_PROFILE });
     if (match === null && (request.mode === "send" || request.mode === "command")) {
       await this.blindSend(state, lines);
       return;

@@ -141,6 +141,12 @@ export function neutraliseViewHeads(text: string): string {
   });
 }
 
+/**
+ * Why a send with a view's head, and the switch that would turn a view on, are refused for a pane with no
+ * profile (review 9 M1): Collie types there blind, with no read of a dialog, an answer box or a turn.
+ */
+export const VIEW_NO_PROFILE = "This session's program is not one Collie can read, so a view cannot send to it.";
+
 /** Why a text with an agent view's head is refused on every door but the view's own send (one head, one door). */
 export const BAD_HEAD = "A line that starts with an agent view's head is sent only from that view on the phone. Rewrite the line.";
 

@@ -54,6 +54,7 @@ import {
   VIEW_HINT_MAX,
   VIEW_MEDIA_ID_RE,
   VIEW_MEDIA_MAX,
+  VIEW_NO_PROFILE,
   VIEW_NOTE_MAX,
   VIEW_NOTES_MAX,
   VIEW_SENDS_PER_MINUTE,
@@ -114,7 +115,9 @@ export type ViewRefusalCode =
   // A tap that names no button or option a tap could reach on the stored screen.
   | "bad_control"
   // A tap while a question, a dialog or an answer box shows (rule 5).
-  | "question";
+  | "question"
+  // The pane's program has no profile: Collie types there blind and cannot keep rule 5 (review 9 M1).
+  | "no_profile";
 
 /** The sentence a crew member answers a write or a switch with. */
 export const VIEW_NOT_ON_LEAD = "agent views work on the lead machine only; run it in a session on the lead";
@@ -204,6 +207,11 @@ export interface AgentViewServiceDeps {
   readonly paneMark?: (session: string) => string | null;
   /** Whether a question, a dialog or an answer box shows in the session now. Absent: never. */
   readonly question?: (session: string) => boolean;
+  /**
+   * Whether the session's pane runs a program Collie has a profile for, so the Send Protocol reads it
+   * before a key (review 9 M1). False refuses the switch on. Absent: every session reads.
+   */
+  readonly readable?: (session: string) => Promise<boolean>;
   /** Whether a turn runs in the session now. Typed text then goes plain, as the person's own send. Absent: never. */
   readonly working?: (session: string) => boolean;
   /** One audit line per switch, send and refusal. Absent: none. */
@@ -738,6 +746,10 @@ export class AgentViewService {
       if (!gate.ok) {
         this.audit("trick.view.refused", session, device, { trick: body.trick, reason: gate.code, switch: true });
         return { ok: false, status: 409, error: gate.error, code: gate.code };
+      }
+      if (this.deps.readable !== undefined && !(await this.deps.readable(session))) {
+        this.audit("trick.view.refused", session, device, { trick: body.trick, reason: "no_profile", switch: true });
+        return { ok: false, status: 409, error: VIEW_NO_PROFILE, code: "no_profile" };
       }
     }
     this.proofs.delete(viewKey(body.trick, session));

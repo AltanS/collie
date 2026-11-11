@@ -19,6 +19,7 @@ import {
   VIEW_SENDS_PER_MINUTE,
   VIEW_TAP_GROUP_MAX,
   VIEW_TAP_LABEL_MAX,
+  VIEW_NO_PROFILE,
   VIEW_WRITES_PER_MINUTE,
   viewTapWords,
   type TrickViewSession,
@@ -200,6 +201,17 @@ describe("rule 1: gate at every use", () => {
     expect(await r.service.help(T, ONE)).toMatchObject({ ok: false, code: "not_on_lead" });
     expect(await r.service.switch({ trick: T, session: ONE, on: true }, null)).toMatchObject({ ok: false, code: "not_on_lead", status: 400 });
     expect(await tap(r, rev, PLAIN)).toMatchObject({ ok: false, code: "not_on_lead" });
+  });
+
+  test("review 9 M1: the switch does not turn a view on for a pane whose program Collie cannot read, with the protocol's words", async () => {
+    const r = rig({ readable: async (session) => session !== TWO });
+    const refused = await r.service.switch({ trick: T, session: TWO, on: true }, "Pixel 9");
+    expect(refused).toMatchObject({ ok: false, status: 409, code: "no_profile", error: VIEW_NO_PROFILE });
+    expect(r.store.get(T, TWO)).toBeUndefined();
+    expect(r.audits.at(-1)).toMatchObject({ action: "trick.view.refused", detail: { trick: T, reason: "no_profile", switch: true } });
+    expect((await r.service.switch({ trick: T, session: ONE, on: true }, "Pixel 9")).ok).toBe(true);
+    // Off needs no read: a view is always switched off.
+    expect((await r.service.switch({ trick: T, session: TWO, on: false }, "Pixel 9")).ok).toBe(true);
   });
 
   test("rule 1: a send must name the session of the pane it goes to", async () => {

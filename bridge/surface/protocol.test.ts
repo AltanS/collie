@@ -17,7 +17,7 @@ import { findInputFrame } from "../../web/src/lib/surface/frame.ts";
 import { surfaceOfScreen } from "../../web/src/lib/surface/fold.ts";
 import { isFree, type Surface, type SurfaceTurn } from "../../web/src/lib/surface/surface.ts";
 import { KeyGate } from "./key-gate.ts";
-import { BOUNDS, BOX_CHANGED, LATE_PROBE, boxMatches, COMMAND_SETTLE_MS, boxMatchesTail, commandBoxMatches, GENERIC_PROBE, uploadAlone, wholePaste, LOCK_BOUND_MS, locateText, neverHeldEntry, probeLanding, RowRing, runsInTurnEntry, SendProtocol, SessionLocks, STALE_SCREEN, steadyRow, type SendDeps, type SendLedger, type SendRequest } from "./protocol.ts";
+import { BOUNDS, BOX_CHANGED, LATE_PROBE, VIEW_NO_PROFILE, boxMatches, COMMAND_SETTLE_MS, boxMatchesTail, commandBoxMatches, GENERIC_PROBE, uploadAlone, wholePaste, LOCK_BOUND_MS, locateText, neverHeldEntry, probeLanding, RowRing, runsInTurnEntry, SendProtocol, SessionLocks, STALE_SCREEN, steadyRow, type SendDeps, type SendLedger, type SendRequest } from "./protocol.ts";
 import { RequestStore } from "./requests.ts";
 import { SurfaceLedger } from "./counters.ts";
 import { HOLD_ENDED_KEEP_MS, HoldStore } from "./holds.ts";
@@ -11401,6 +11401,31 @@ describe("agent views at the Send Protocol", () => {
   test("lead addition 2: a typed send that goes plain (head false) is the person's own send, and passes", async () => {
     const { send } = rig();
     const answer = await send("yes, go on", { fromPhone: true, view: { head: false, check: () => null } });
+    expect(answer.receipt?.outcome).toBe("sent");
+  });
+});
+
+// Review 9 M1: a pane with no profile is typed blind, with no S0 rule; a send with a view's head never goes there.
+describe("review 9 M1: a view send to a pane with no profile", () => {
+  const HEAD = "[view:morph local/%1#aaaa] from operator:";
+  test("rule 5: a view send with a head is refused on a pane with no profile, at a dialog, in a turn and when free, and nothing is typed", async () => {
+    for (const setup of ["dialog", "turn", "free"] as const) {
+      const pane = new FakePane("claude");
+      if (setup === "dialog") pane.dialog = DIALOG;
+      if (setup === "turn") pane.over = ["✻ Thinking… (12s · esc to interrupt)"];
+      const { send } = rig({ pane, harness: NO_PROFILE });
+      const answer = await send(`${HEAD} tapped "Yes"`, { view: { head: true, check: () => null } });
+      expect(answer.receipt, setup).toMatchObject({ outcome: "refused", reason: "not_free", detail: VIEW_NO_PROFILE });
+      expect(pane.keysSeen, setup).toEqual([]);
+      expect(pane.calls, setup).toEqual([]);
+    }
+  });
+
+  test("the person's own plain send from the view still goes to a pane with no profile, as any send does", async () => {
+    const pane = new FakePane("generic");
+    pane.fixed = readFileSync(join(import.meta.dir, `../../web/src/fixtures/panes/${SHELL_SCREEN}`), "utf8");
+    const { send } = rig({ pane, harness: NO_PROFILE });
+    const answer = await send("ls", { fromPhone: true, view: { head: false, check: () => null } });
     expect(answer.receipt?.outcome).toBe("sent");
   });
 });
