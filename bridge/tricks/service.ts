@@ -1496,9 +1496,9 @@ export class TricksService implements TricksSurface {
 
   /**
    * After the person's yes to a new version's proposal card: the trick must still be the one the card was
-   * made against (same approved hash, folder unchanged). Then its code is replaced (staged, the old
-   * folder set aside until the new one is in place, config.toml, pictures and inputs/ kept), and exactly
-   * the code written is approved. The trick stays on. No scan runs between the write and the approval,
+   * made against (same approved hash, folder unchanged). Then only its code files change, in place
+   * (proposal-install.ts `replaceTrickCode`: every file the code hash does not read stays byte for
+   * byte), and exactly the code written is approved. The trick stays on. No scan runs between the write and the approval,
    * so the runner never sees the written code as a version waiting.
    */
   async installProposedVersion(id: string, files: readonly ProposedFile[], origin: ProposalOrigin, baseHash: string): Promise<ProposalPlaced> {

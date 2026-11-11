@@ -321,20 +321,26 @@ bridge checks with. `--json` prints `{ guide, manifestKeys, places }`.
 **Propose** reads the folder as `collie trick check` reads it (a trick it refuses is never sent), then
 reads the files the hardened way (`readTrickFolder`): regular files only, a symbolic link anywhere
 refuses the folder, at most 300 files, 5 MB and 8 folders deep, the caps of `collie trick add`. Dot
-files and dot folders, `node_modules/`, `*.log`, the top `inputs/` folder and anything in `media/` or
-`captures/` that is not a picture stay behind, and the verb says how many. The files go as one line on
-the walky socket, `{"op":"trick.propose",...}`, which may be up to 8 MiB because it opens with that
-op; a line that does not is held to the walky cap. The bridge reads at most two such lines at once,
-each within 30 seconds.
+files and dot folders, `node_modules/`, `*.log`, the top `inputs/`, `media/` and `captures/` folders
+and `config.toml` stay behind (a proposal carries code only: the person adds pictures and settings on
+the machine), and the verb says how many. The files go as one line on the walky socket,
+`{"op":"trick.propose",...}`, which may be up to 8 MiB because it opens with that op; a line that does
+not is held to the walky cap. The bridge reads at most two such lines at once, each within 30 seconds;
+a line's slot comes back once the line is read, and the answer closes the connection. Before
+`JSON.parse`, the line's structure outside strings is counted: more than 4096 `{`, `[`, `,` or `:`, or
+nesting deeper than 8, is refused unread ("The proposal has more parts than a trick's files need, so
+it was not read."). A proposal of 300 files needs about 2400.
 
 **Where it goes.** A lead or a solo bridge keeps the proposal (`bridge/tricks/proposals.ts`). A crew
 member reads every file with the same reader and forwards the proposal to its lead over the signed
 `POST /crew/v1/tricks/propose` (`CREW_PROTOCOL.md` §24), and keeps no copy. All three use one reader,
 `readProposal` in `bridge/tricks/propose-wire.ts`: a relative path of at most 256 characters and 8
-steps, no `.` or `..` step, no dot step, no `node_modules`, no backslash or colon, no control, bidi or
-invisible character, NFC only; no two names that fold to one (case and Unicode compatibility forms,
-`NFKC` then lower case), files and folders alike; no name used as a file and a folder; pictures only in
-`media/` and `captures/`, by name and by their first bytes; `trick.toml` at most 64 KiB, read by the
+steps, no `.` or `..` step, no dot step, no `node_modules` or `inputs` step, no backslash or colon, no
+control, bidi or invisible character, NFC only; no two names that fold to one (case and Unicode
+compatibility forms, `NFKC` then lower case), files and folders alike, and the reserved names compared
+folded too; no name used as a file and a folder; nothing in `media/` or `captures/` and no
+`config.toml` ("A proposal cannot carry a config.toml. Your person sets the trick up on the
+machine."); `trick.toml` at most 64 KiB, read by the
 strict manifest reader; an id Collie does not keep for itself (`collie`, `trick`, `tricks`, `hill`,
 `settings`).
 
@@ -347,14 +353,20 @@ agent and no crew member reaches (`HillService.postCollie`):
 - title `Switch on the trick <id>?`, no recommendation, options "Switch it on" (asks twice: "Yes,
   switch on") and "Not now", no text box, priority today, and it closes after 3 days;
 - the summary says who proposes ("An agent session (repo#one) on minibuch proposes it.", "An agent
-  session on minibuch proposes it." or "A terminal on minibuch proposes it."), how many files, and the
-  rights the manifest asks for; the view lists the rights and the warnings of the code search, the
-  author's name, description and About under "Its author's words. Collie did not check them.", a note
-  when it brings a `config.toml` ("It brings its own config.toml, which is not shown."), and the code,
-  cut to fit as the new version card cuts it.
+  session on minibuch proposes it." or, with no agent pane placed, "Someone on minibuch proposes it.
+  Collie could not confirm which session."), "It replaces an earlier proposal from the same session."
+  when it does, how many files, and the rights the manifest asks for; the view lists every right,
+  every `inputs` glob and every warning of the code search in full (as chips when each fits a chip and
+  one bar holds them all, else as paragraphs), then the author's name, description and About under
+  "Its author's words. Collie did not check them." (at most 3 paragraphs and 400 characters), and the
+  code, cut to fit as the new version card cuts it. The author's words go before any code when they
+  would cost code, and the facts are never cut: when they alone do not fit a Decision's view, the
+  proposal is refused (`card_too_large`, "This trick asks for more than a card can show, so it was not
+  proposed. Ask your person to add it on the machine.").
 
 The session's name on the card is the lead's own word for that session, or none; a member cannot name
-it. The proposer may read the card (`collie hill status`) and is told the answer in WalkyTalky, but it
+it. A session named "Collie" (folded) is named by its machine only, and on any Decision a session or a
+trick of that name shows as "Collie (a session)" or "Collie (a trick)". The proposer may read the card (`collie hill status`) and is told the answer in WalkyTalky, but it
 can neither answer nor withdraw it: the card is Collie's, and every answer comes from the phone.
 
 **The yes.** "Switch it on" reads the stored bytes back, hashes them, and installs only a hash equal to
@@ -364,8 +376,9 @@ is and switched on, by `proposal` in the switch file and the audit. A dot file
 `.collie-origin.json` records the proposal (`by`, `host`, `label`, `at`): `collie trick list` shows it as
 `proposed by agent on minibuch`, and the wire's `provenance` carries `proposed: { by, host }`, so the
 Settings row says "Proposed by an agent on minibuch" and the About sheet "Proposed by an agent session
-on minibuch." ("from a terminal" for a terminal). "Not now", a dismiss, the expiry, or a newer proposal
-from the same sender removes the stored copy.
+on minibuch." With no agent pane placed they say "Proposed from minibuch, session not confirmed" and
+"Proposed from minibuch. The session is not confirmed." "Not now", a dismiss, the expiry, or a newer
+proposal from the same session removes the stored copy.
 
 **A trick that exists.** Only a trick a proposal made takes a new version by proposal. Before the
 person's yes, nothing a proposer sends changes a file outside `.collie-proposed/` and
@@ -376,13 +389,16 @@ first, the changed files against the approved copy fitted as the runner's versio
 new rights and new warnings, no "Use it and stop asking", never a recommendation. Options "Use the new
 version" (asks twice: "Yes, use it") and "Keep the old version". On the yes the stored bytes are hashed
 again, the trick must still be the one the card was made against (the same approved hash, its folder
-unchanged), then its code is replaced in a staged folder, the old folder set aside until the new one is
-in place and put back on a failure, and exactly the code written is approved. The trick stays on, and
-"Undo" in Settings goes back to the version before. The trick keeps its own `config.toml` (a proposal's
-is dropped, and the card says "It brings its own config.toml. The trick keeps yours."), its pictures,
-`inputs/` and dot files. No scan runs between the write and the approval, so the runner never posts a
-version card of its own for it. "Keep the old version", a dismiss and the expiry remove the stored copy
-and change nothing else.
+unchanged), then only its code files change, in place: old code files the new version lacks are
+removed, and each new one is written to a temp file beside it and renamed. Every file the code hash
+does not read (`config.toml`, `media/`, `captures/`, `inputs/`, logs, dot files, `node_modules/`) stays
+byte for byte. A new file whose name the person's own files hold refuses the yes ("The new version needs
+the name <x>, where the trick's folder holds something of your own, so nothing was changed."). Exactly
+the code written is approved. The trick stays on, and "Undo" in Settings goes back to the version
+before. No scan runs between the write and the approval, so the runner never posts a version card of
+its own for it. "Keep the old version", a dismiss and the expiry remove the stored copy and change
+nothing else. When the bridge starts, it cleans up after a write a crash cut short: a staged folder or
+a temp file goes, and a set-aside trick folder whose place is empty comes back.
 
 A proposal is refused, in plain words, for a trick from a repository ("This trick comes from <repo>.
 Change it there."), one added on this machine ("<id> was added on this machine. Change it there.": the
@@ -391,8 +407,11 @@ DECISION: a trick on auto takes a proposal. Auto takes the person's own folder e
 a proposal comes from an agent, so it still waits for the yes on its card, and auto stays as it was.
 
 **The limits** (`proposals.ts`): one sender (a session, or one machine's terminal) at most 2 open
-proposals and 6 in an hour; one crew machine 4 open; the lead 8 open and 32 MiB stored. One open
-proposal per trick id: the same sender's next one replaces it, anybody else's is refused. A request id
+proposals and 6 in an hour; one crew machine 4 open and 12 in an hour, its sessions and its terminal
+together; the lead 8 open and 32 MiB stored. One open proposal per trick id: the same session's next
+one replaces it, anybody else's is refused. A proposal with no agent pane placed never replaces one
+("A proposal of <id> from this machine already waits for your person's answer. Collie cannot confirm
+which session sent it, so it is not replaced."): the lead cannot tell who sent it. A request id
 answers what it answered for 24 hours; with other files it is refused. While the person has the card
 open in the answer sheet, a replacement is refused (`answering`). The refresh timer sweeps closed cards
 and copies no proposal names.
@@ -807,6 +826,19 @@ written as what a trick, or a person who controls one, can do today.
 - **Any agent can propose a new version of a trick a proposal made.** That includes an agent on a crew
   member, and a different agent from the one that proposed the trick. Nothing is written before the
   person's yes, and the card names the proposer, but the person must read who it is.
+- **The session on a proposal card is a claim checked against a live pane, not a proof.** The machine
+  is known: the walky socket is that machine's, and a member's call is signed. The session is placed
+  by the pane markers the caller sends. Any process of the same user can send another live pane's
+  markers, so it can propose, or replace a proposal, as that session. The card says when it replaces
+  one. A call with no markers has no session, says so, and never replaces.
+- **A pane label reaches the card.** The session's name (folder and branch, or the Dashboard's name)
+  is agent-influenced. It is cleaned and cut to 40 characters, and a name that folds to "Collie" is
+  marked, but a look-alike such as "Colli3" is not.
+- **A proposal costs memory before it is checked.** Each machine's walky socket reads up to 2 lines of
+  8 MiB at once, and the lead's crew route up to 2 bodies of 8 MiB, apart from the other routes. The
+  structure is counted before `JSON.parse`, so the parsed form stays near the text's size. On the crew
+  route a slot is taken after the crew secret is checked but before the signature is, because the
+  signature covers the body: only an enrolled machine can take one, for at most 60 seconds.
 
 ## Places in the app
 

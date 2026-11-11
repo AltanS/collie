@@ -19,17 +19,17 @@ import { MANIFEST_FILE } from "./paths.ts";
 //   * `rel` is a relative path of 1 to {@link PROPOSE_LIMITS}.depth + 1 steps split by `/`, at most
 //     {@link PROPOSE_LIMITS}.pathChars characters, each step at most 255 bytes. Refused: an empty step,
 //     `.` and `..`, a step that starts with a dot (dot files and dot folders, `.git`, `.env`, `.collie-*`),
-//     `node_modules`, a top-level `inputs/` (the bridge fills it), a `*.log` (outside the code hash), a
+//     `node_modules` and `inputs` (folded), a `*.log` (outside the code hash), a
 //     backslash, a colon, any `\p{C}` character (control, format such as a bidi or zero-width mark,
 //     private use, unassigned) and anything `unsafeText` refuses, and a name not in Unicode NFC.
 //   * Two names that fold to one (NFKC, then lower case) are refused, so a case-folding file system or a
 //     normalising one never writes one file over another. So is a name used as a file and as a folder.
-//   * `media/` and `captures/` take pictures only: a `.png`, `.jpg`, `.jpeg` or `.webp` name whose first
-//     bytes are a PNG, JPEG or WebP picture, as the approved copy seeds them (approved.ts).
+//   * Nothing in `media/` or `captures/`, and no `config.toml` at the top, in any case: a proposal
+//     carries code only, and the person adds pictures and settings on the machine (review F2, F3).
 //   * `b64` is standard base64 that writes back to itself. `x: true` marks an executable file; the
 //     proposed store never sets the bit, the installed folder does.
 //   * At most {@link PROPOSE_LIMITS}.files files and {@link PROPOSE_LIMITS}.bytes bytes, the caps of
-//     `collie trick add`. `trick.toml` is required, and with `config.toml` at most 64 KiB; the manifest
+//     `collie trick add`. `trick.toml` is required and at most 64 KiB; the manifest
 //     is read by the strict reader, and its `id` names the trick.
 
 /** Every cap of a proposal. The file and byte caps are `collie trick add`'s (`ADD_LIMITS`, held to it by a test). */
