@@ -12,6 +12,7 @@ import {
   type HookTarget,
 } from "./hooks.ts";
 import { skillReport } from "./skill-install.ts";
+import { oldMorphSkillCopies, oldMorphSteps } from "./old-morph-skill.ts";
 import { HOST, type Host } from "../bridge/host.ts";
 import { beaconReader } from "../bridge/beacon-io.ts";
 import { readBeacons, type BeaconSweepDeps } from "../bridge/beacon/reader.ts";
@@ -306,6 +307,7 @@ export async function cmdDoctor(deps: DoctorDeps, args: readonly string[]): Prom
     beaconHooks(deps, hookEntries, declaration?.supports.agentDetection ?? true, sessionsFromHooks),
     await beacons(deps, hookEntries.length > 0),
     skillWalkyTalky(deps),
+    ...skillOldMorph(deps),
     ...walkyRefusals(deps),
     accountWindowsFinding(deps),
     // Whether the anonymous install ping is on and which switch decided (M86 spec 01). Info only.
@@ -1928,6 +1930,25 @@ function skillWalkyTalky(deps: DoctorDeps): Finding {
   const refused = report.filter((r) => r.state.kind === "refused").length;
   const left = refused > 0 ? `; ${String(refused)} target${refused === 1 ? "" : "s"} refused, see \`collie skill status\`` : "";
   return ok(check, `current in ${installed.map((r) => r.file.target.harness).join(", ")}${left}`);
+}
+
+/**
+ * `skill-old-morph` — the Morph skill an earlier build installed (review 9 R8). It tells an agent to obey a
+ * prompt that starts `[morph `, a head this build never sends and refuses on every door. This build's
+ * skill code no longer knows that skill, so it cannot remove it: one warning with the steps by hand. No
+ * row when no copy is found, so a machine that never had Morph reads as before.
+ */
+function skillOldMorph(deps: DoctorDeps): Finding[] {
+  const copies = oldMorphSkillCopies({ ctx: deps.ctx, files: deps.files });
+  if (copies.length === 0) return [];
+  const where = [...new Set(copies.map((copy) => copy.harness))].join(", ");
+  return [
+    warn(
+      "skill-old-morph",
+      `an earlier build installed the Morph skill (${where}); it tells agents to obey prompts that start \`[morph \`, which Collie no longer sends`,
+      oldMorphSteps(copies).join("; "),
+    ),
+  ];
 }
 
 /**
