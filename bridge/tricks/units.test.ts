@@ -584,7 +584,7 @@ describe("the routes", () => {
     const src = readFileSync(join(import.meta.dir, "..", "server.ts"), "utf8");
     const list = src.slice(src.indexOf('if (pathname === "/api/tricks" && req.method === "GET")'));
     // The rights live in one table in routes.ts; server.ts reads each route's level from it.
-    expect(TRICKS_ROUTE_RIGHTS).toEqual({ reply: "read", tap: "write", switch: "write", media: "read", auto: "write", undo: "write" });
+    expect(TRICKS_ROUTE_RIGHTS).toEqual({ reply: "read", tap: "write", switch: "write", media: "read", auto: "write", undo: "write", official: "read", officialAdd: "write" });
     expect(list.slice(0, 400)).toContain("guard(req, cfg, TRICKS_ROUTE_RIGHTS.reply, pairingGate)");
     expect(list.slice(0, 600)).toContain("if (pairedLabel(req, pairingGate) !== null) tricks.noteWatched();");
     const tap = src.slice(src.indexOf("const tricksTap = TRICKS_TAP_ROUTE.exec(pathname);"));
@@ -599,6 +599,13 @@ describe("the routes", () => {
     expect(media.slice(0, 200)).toContain('req.method === "GET"');
     expect(media.slice(0, 300)).toContain("guard(req, cfg, TRICKS_ROUTE_RIGHTS.media, pairingGate)");
     expect(media.slice(0, 900)).toContain("secure(new Response(file.bytes, { headers: { \"content-type\": file.mime, ...HILL_MEDIA_HEADERS } }))");
+    // The From Collie list: its read gated like the list, its add and update like the switch.
+    expect(src).toContain("const TRICKS_OFFICIAL_ROUTE = /^\\/api\\/tricks\\/official\\/([^/]+)\\/(add|update)$/;");
+    const officialList = src.slice(src.indexOf('if (pathname === "/api/tricks/official" && req.method === "GET")'));
+    expect(officialList.slice(0, 300)).toContain("guard(req, cfg, TRICKS_ROUTE_RIGHTS.official, pairingGate)");
+    const officialAdd = src.slice(src.indexOf("const tricksOfficial = TRICKS_OFFICIAL_ROUTE.exec(pathname);"));
+    expect(officialAdd.slice(0, 200)).toContain('req.method === "POST"');
+    expect(officialAdd.slice(0, 300)).toContain("guard(req, cfg, TRICKS_ROUTE_RIGHTS.officialAdd, pairingGate)");
     expect(src).toContain("if (poller !== null) opts.tricks?.noteWatched();");
     expect(src).toContain("if (tricksRev !== undefined) body.tricksRev = tricksRev;");
   });

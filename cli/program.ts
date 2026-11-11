@@ -1009,7 +1009,7 @@ export const COMMANDS: readonly Command[] = [
     subcommands: [
       {
         name: "list",
-        summary: "every trick folder: its switch, state, last run and last error (--json)",
+        summary: "every trick folder: its switch, state, last run and last error (--json); --official lists the tricks this Collie can add from the phone",
         run: async (args, s) => await cmdTrickList(trickVerbDeps(s.io), args),
       },
       {

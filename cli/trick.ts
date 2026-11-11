@@ -5,7 +5,8 @@ import { basename, isAbsolute, join, resolve } from "node:path";
 import { redactText } from "../bridge/redact.ts";
 import { approvedDirOf, approveFolder, pruneCopies, verifyCopy } from "../bridge/tricks/approved.ts";
 import { CONFIG_FILE, diskTrickFs, trickCodeHash, walkTrickCode } from "../bridge/tricks/code-hash.ts";
-import { originShort, proposalShort } from "../bridge/tricks/origin.ts";
+import { officialStateOf, shippedOfficialList } from "../bridge/tricks/official.ts";
+import { originRepoName, originShort, proposalShort } from "../bridge/tricks/origin.ts";
 import {
   HELPER_FILE,
   HELPER_VERSION,
@@ -45,6 +46,7 @@ import {
   type TrickFacts,
   type TrickDecision,
   type TrickManifest,
+  type OfficialState,
   type TricksRunsOn,
   type Refusal,
 } from "../web/src/lib/tricks/schema.ts";
@@ -59,7 +61,8 @@ import type { Files } from "./sys.ts";
 // `collie trick` (M94 slice 01): the machine's half of Collie tricks. A trick is added on the machine and
 // switched on from here (or, later, the phone); the bridge runs it.
 //
-//   list              every trick folder, its switch, its origin and what the running bridge says of it
+//   list              every trick folder, its switch, its origin and what the running bridge says of it;
+//                     `--official` prints the From Collie list this release carries and each entry's state
 //   add [<source>]    copy a trick from a git repository into the tricks folder, OFF (cli/trick-add.ts);
 //                     with no source, list the tricks of the official repository
 //   update <id>       fetch a trick added with `add` again and replace its code, keeping config.toml
@@ -239,8 +242,48 @@ function table(rows: readonly (readonly string[])[]): string[] {
   return rows.map((r) => r.map((cell, i) => (i === r.length - 1 ? cell : cell.padEnd(widths[i] ?? 0))).join("  ").trimEnd());
 }
 
+/** How `trick list --official` names an entry's state on this machine. */
+const OFFICIAL_STATE_TEXT = {
+  absent: "not added",
+  added: "added",
+  update: "newer version in this Collie",
+  taken: "taken: another trick has this id",
+} as const satisfies Record<OfficialState, string>;
+
+/**
+ * `collie trick list --official`: the From Collie list this binary carries (bridge/tricks/official.ts), each
+ * entry's state on this machine. Read-only: it reads the list from the binary and the tricks folder, and
+ * asks the running bridge only whether its crew's lead runs the tricks. It fetches nothing; an add from the
+ * list is a tap on the phone (Settings, Tricks, From Collie), never a verb here.
+ */
+async function cmdTrickListOfficial(deps: TrickDeps, json: boolean): Promise<number> {
+  const list = shippedOfficialList();
+  if (!list.ok) {
+    deps.io.err(`error: this Collie's From Collie list is refused: ${list.reason}`);
+    return EXIT.FAIL;
+  }
+  const states = await Promise.all(list.entries.map(async (e) => await officialStateOf(deps.ctx.configDir, e)));
+  const rows = list.entries.map((e, i) => ({ id: e.id, name: e.name, description: e.description, repo: e.repo, commit: e.commit, state: states[i] ?? "absent" }));
+  const runsOn = (await bridgeTricks(deps))?.runsOn;
+  if (json) {
+    const doc = { official: rows };
+    deps.io.out(JSON.stringify(runsOn === undefined ? doc : { ...doc, runsOn }, null, 2));
+    return EXIT.OK;
+  }
+  if (rows.length === 0) {
+    deps.io.out("This Collie carries no tricks on its From Collie list.");
+    return EXIT.OK;
+  }
+  const lines = table([["ID", "NAME", "COMMIT", "STATE", "WHAT IT DOES"], ...rows.map((r) => [r.id, r.name, r.commit.slice(0, 7), OFFICIAL_STATE_TEXT[r.state], r.description])]);
+  for (const line of lines) deps.io.out(line);
+  if (runsOn !== undefined) deps.io.out(runsOnText(runsOn));
+  deps.io.out(`From ${originRepoName(list.entries[0]?.repo ?? "")}, at the commits this Collie release names. Add one on the phone: Settings, Tricks, From Collie.`);
+  return EXIT.OK;
+}
+
 export async function cmdTrickList(deps: TrickDeps, args: readonly string[]): Promise<number> {
   const json = args.includes("--json");
+  if (args.includes("--official")) return await cmdTrickListOfficial(deps, json);
   const { exists, rows, bridge, runsOn } = await trickListRows(deps);
   if (json) {
     const doc = { folder: tricksConfigDir(deps.ctx.configDir), exists, bridge, tricks: rows };

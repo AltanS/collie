@@ -22,6 +22,7 @@ import {
   type PairingGate,
   requestDevice,
 } from "./server.ts";
+import { TRICKS_ROUTE_RIGHTS } from "./tricks/routes.ts";
 import { MUX_LOGO_PATH, OPERATOR_FONTS_PATH } from "./types.ts";
 
 // ── DENY BY DEFAULT, PINNED (ADR 0086) ────────────────────────────────────────────────────────
@@ -556,6 +557,26 @@ describe("the local credential: reads only, from this host through nothing", () 
       expect({ bind, status: cleared?.status }).toEqual({ bind, status: 403 });
       const steer = guard(request("POST", "/api/send", headers), config(), "write", gate);
       expect({ bind, status: steer?.status }).toEqual({ bind, status: 403 });
+    }
+  });
+
+  // From Collie (M94): an add or an update from the list fetches code onto this machine, so it is a
+  // person's tap only, like the trick switch. The local credential (an agent beside the bridge can hold it)
+  // is refused at the level server.ts asks for the route (pinned in bridge/tricks/units.test.ts).
+  test("an add or an update from the From Collie list with the local credential is 403", async () => {
+    expect(TRICKS_ROUTE_RIGHTS.officialAdd).toBe("write");
+    for (const [bind, peer] of [
+      [LOOPBACK_BIND, "127.0.0.1"],
+      [CONCRETE_BIND, "100.64.0.8"],
+    ] as const) {
+      const { gate } = await gateFrom(() => peer, bind);
+      const headers = { ...bearer, origin: "http://127.0.0.1:8787", "content-type": "application/json" };
+      for (const path of ["/api/tricks/official/design-review/add", "/api/tricks/official/design-review/update"]) {
+        const denied = guard(request("POST", path, headers), config(), TRICKS_ROUTE_RIGHTS.officialAdd, gate);
+        expect({ bind, path, status: denied?.status }).toEqual({ bind, path, status: 403 });
+      }
+      // The list itself is a read, as the tricks list is.
+      expect(guard(request("GET", "/api/tricks/official", bearer), config(), TRICKS_ROUTE_RIGHTS.official, gate)).toBeNull();
     }
   });
 

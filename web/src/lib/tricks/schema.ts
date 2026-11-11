@@ -1414,6 +1414,35 @@ export interface TricksRunsOn {
   lead?: string;
 }
 
+/**
+ * Where one entry of the From Collie list stands on this machine (bridge/tricks/official.ts): `absent`
+ * (no folder of its id), `added` (a folder from the same repository and folder at the list's commit),
+ * `update` (the same, at another commit) or `taken` (a folder of its id from anywhere else, never written over).
+ */
+export const OFFICIAL_STATES = ["absent", "added", "update", "taken"] as const;
+export type OfficialState = (typeof OFFICIAL_STATES)[number];
+
+/** One entry of the From Collie list as the phone reads it (`GET /api/tricks/official`). */
+export interface WireOfficialTrick {
+  id: string;
+  name: string;
+  /** One line, at most `DESCRIPTION_MAX` characters. */
+  description: string;
+  /** The repository's https URL. */
+  repo: string;
+  /** The repository's short name, `owner/repo`. */
+  repoName: string;
+  /** The commit this Collie release expects, 40 hex. */
+  commit: string;
+  state: OfficialState;
+}
+
+/** `GET /api/tricks/official`: the list with each entry's state, empty with `runsOn` on a machine that runs no tricks. */
+export interface OfficialTricksReply {
+  tricks: WireOfficialTrick[];
+  runsOn?: TricksRunsOn;
+}
+
 /** The string key of a stored part. None of the three may hold `/`, so it splits back. */
 export function partKey(key: TrickPartKey): string {
   return `${key.host}/${key.trick}/${key.part}`;

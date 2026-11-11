@@ -292,6 +292,8 @@ import { crewFactsWorld, factsWorldOf, type FactsWorld } from "./tricks/facts.ts
 import { answerInputsRequest, INPUT_ANSWER_BODY_MAX_BYTES, readPaneInputs, TrickInputs, type InputsBudget, type InputsCallResult, type WirePaneInputs } from "./tricks/inputs.ts";
 import { isOwnId, resolveBridgeId } from "./bridge-id.ts";
 import { scopeKeyAddress, TrickHill } from "./tricks/hill.ts";
+import { OfficialTricks } from "./tricks/official-install.ts";
+import type { TricksRunsOn } from "../web/src/lib/tricks/schema.ts";
 import { TricksService } from "./tricks/service.ts";
 import { VersionCards } from "./tricks/version-card.ts";
 import { createSessionFolders, createSessionLabels } from "./operator-space-labels.ts";
@@ -3554,6 +3556,12 @@ const tricksInputs = new TrickInputs({
 });
 
 const tricksFolders = createSessionFolders(cfg.spacesFile ?? null);
+// Where tricks run when this bridge schedules none: a peer names its lead, a deposed lead the one that deposed it.
+const tricksRunsOn = (): TricksRunsOn | null => {
+  if (crew.mode !== "peer" && deposed === null) return null;
+  const lead = crew.mode === "peer" ? trustStore.current()?.lead?.memberId : deposed?.leadMemberId;
+  return lead === undefined || lead === null ? {} : { lead };
+};
 const tricksLabels = createSessionLabels(cfg.spacesFile ?? null);
 const tricks =
   cfg.tricksDir === undefined
@@ -3609,17 +3617,27 @@ const tricks =
         // a deposed lead run no timer, so one trick never runs on two machines of a crew.
         active: () => crew.mode !== "peer" && deposed === null,
         // And says so: Settings → Tricks and `collie trick list` on such a machine name the lead that runs them.
-        runsOn: () => {
-          if (crew.mode !== "peer" && deposed === null) return null;
-          const lead = crew.mode === "peer" ? trustStore.current()?.lead?.memberId : deposed?.leadMemberId;
-          return lead === undefined || lead === null ? {} : { lead };
-        },
+        runsOn: tricksRunsOn,
         // Every version the bridge approves, declines or undoes, `auto` included, leaves an audit line.
         audit: (entry) => audit.record({ action: entry.action, detail: entry.detail }),
         // A new version that waits gets its card on the Hill; the card goes when nothing waits any more.
         versions: versionCards,
       });
 tricks?.start();
+
+// The From Collie list (bridge/tricks/official-install.ts): what this release can add with a tap, and the
+// add itself, in the runner's lane. Nothing is fetched until the person taps Add.
+const officialTricks =
+  tricks === undefined || cfg.tricksDir === undefined
+    ? undefined
+    : new OfficialTricks({
+        configDir: dirname(cfg.tricksDir),
+        stateDir: cfg.stateDir,
+        env: process.env,
+        runsOn: tricksRunsOn,
+        lane: (work) => tricks.officialLane(work),
+        audit: (entry) => audit.record({ action: entry.action, detail: entry.detail }),
+      });
 
 const server = listenOrExit("front door", cfg.host, cfg.port, () => startServer({
   cfg,
@@ -3687,6 +3705,7 @@ const server = listenOrExit("front door", cfg.host, cfg.port, () => startServer(
   // Every machine's load and its alert rules (ADR 0084). Undefined on a peer, whose routes then 404.
   machines: machineWatch,
   tricks,
+  officialTricks,
   crew,
   pairing,
   launcherCopy: launcherCopySeam,

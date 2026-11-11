@@ -304,6 +304,51 @@ kind, at most 8; a waiting version carries the ones new since the approved copy 
 `WireTrickInfo.pending.warnings`), and Settings → Tricks lists them under that trick before the switch. They never
 refuse, and the switch stays one tap.
 
+## From Collie: the official list on the phone
+
+Each Collie release carries a short list of official tricks: `bridge/tricks/official.json`, built into
+the binary, read strictly by `bridge/tricks/official.ts`. An entry is a trick id, its name, one line
+about it, the repository (`https://github.com/AltanS/collie-tricks`, the only one the reader accepts),
+the folder in it, a full commit and the code hash that folder has at that commit. Settings, Tricks shows
+the entries that are not added under "From Collie", each with an Add button. Nothing ships switched on,
+and no trick code ships in the binary.
+
+**What a tap does.** `POST /api/tricks/official/<id>/add` (write, like the switch: a paired phone only,
+never the local credential an agent can hold, and no WalkyTalky op reaches it). The bridge fetches that
+one commit with the fetch of `collie trick add` (`bridge/tricks/fetch.ts`), reads the folder by the same
+rules, and takes its code hash. Only when the hash is the list's does it write the folder, off, with an
+origin record `{ url, commit, subdir, official: true }` and no approved copy. The person's switch makes
+the approved copy, as for any trick. A hash that differs adds nothing: "The trick did not match what this
+Collie release expects, so nothing was added." One add runs at a time, the whole add has a two-minute
+cap, and the temp folder under `<stateDir>/tricks/` goes on every path.
+
+**The one network request.** A tap on Add or Update makes one git fetch over https from
+`github.com/AltanS/collie-tricks`: depth 1, the listed commit only, no redirects, no credential helper,
+no global git config. Nothing else in this feature touches the network: the list comes from the
+binary, `GET /api/tricks/official` reads only the tricks folder, and there is no background check and
+no count. Offline, the tap says "Could not reach GitHub, so nothing was added."
+
+**The trust root is the binary.** The commit pins what git fetches, and the hash pins what Collie
+writes. A repository that serves other content at that commit fails git's own object check or the hash.
+Changing the list on a machine means changing the binary.
+
+**States.** `GET /api/tricks/official` answers each entry's state on this machine: `absent` (no folder of
+that id), `added` (a folder whose origin is this repository and folder at the listed commit), `update`
+(the same repository and folder at another commit, newer or older), and `taken` (any other folder of
+that id, a link or a file: a proposal, a hand-made trick, another repository). A taken folder is never
+written over, also when one appears during the fetch. A trick added from the same folder with `collie
+trick add` counts as added from the list. A crew member answers an empty list with `runsOn`.
+
+**Update.** On a new release the list may name another commit; the installed row then offers Update
+(`POST /api/tricks/official/<id>/update`). The bridge fetches and checks the same way, then replaces the
+folder's code and keeps `config.toml`. A trick that is on keeps running the approved copy, and the new
+version waits for the yes on its version card, the path every changed trick takes. Remove stays as it is.
+
+**The maintainer script.** `bun scripts/official-tricks.ts --repo-dir <checkout> --commit <sha>` writes
+the commit, each hash (the real hash function, over the folder git holds at that commit) and each
+manifest's name into the list; `--check` writes nothing and fails when the list is stale. `collie trick
+list --official` prints the list and each state here; it fetches nothing.
+
 ## Handing a trick to the person: `collie trick propose` and `collie trick guide`
 
 An agent writes a trick; only the person switches it on. Two verbs connect the two (crew slice 8).
@@ -807,6 +852,17 @@ written as what a trick, or a person who controls one, can do today.
 - **Any agent can propose a new version of a trick a proposal made.** That includes an agent on a crew
   member, and a different agent from the one that proposed the trick. Nothing is written before the
   person's yes, and the card names the proposer, but the person must read who it is.
+
+- **The From Collie states trust the origin record.** An agent on the lead that writes a false
+  `.collie-origin.json` naming the official repository can make a hand-made folder read as `added` or
+  `update`. An Update then replaces that folder's code with the listed, hash-checked code; it never
+  runs anything, and a trick that is on waits for the yes.
+- **An Update from the list replaces local edits of an official trick's folder.** Only `config.toml`
+  stays. A trick that is off gets no version card for this, as it runs nothing.
+- **The From Collie fetch has a time cap, not a byte cap.** It fetches one pinned commit at depth 1, so
+  the repository decides its size; a slow or large answer ends at two minutes.
+- **"Could not reach GitHub" also covers a commit the repository no longer serves.** git does not tell
+  the two apart in a way the bridge reads.
 
 ## Places in the app
 

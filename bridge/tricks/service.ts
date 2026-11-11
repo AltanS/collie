@@ -1448,6 +1448,21 @@ export class TricksService implements TricksSurface {
   }
 
   /**
+   * Run a From Collie write (official-install.ts) in the lane switch writes and version changes take, after
+   * a scan of its own, then wait for a scan that started after it, so the list and `tricksRev` move before
+   * the answer. A folder written here is read like any other: off and new, or, for a trick that is on, a
+   * new version the runner's own path takes (a pending copy and its card).
+   */
+  async officialLane<T>(work: () => Promise<T>): Promise<T> {
+    return await this.lane(async () => {
+      await this.refresh(true);
+      const out = await work();
+      await this.freshScan();
+      return out;
+    });
+  }
+
+  /**
    * What a proposal for `id` would be now (crew slice 8): new, a new version, or refused. Only a trick a
    * proposal made takes a new version by proposal: a trick from a repository is changed there, and one
    * added on this machine is the person's folder. A trick that is off, has a change waiting, or runs no

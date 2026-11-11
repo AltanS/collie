@@ -260,7 +260,8 @@ export async function fetchSource(source: { url: string; ref: string | null }, t
   const hard = [...gitHardening(opts.allowFile), ...(opts.extraConfig ?? []).flatMap((kv) => ["-c", kv])];
   const git = async (args: readonly string[], stdin?: Uint8Array): Promise<GitResult> => {
     const left = opts.deadline === undefined ? ADD_LIMITS.gitTimeoutMs : Math.min(ADD_LIMITS.gitTimeoutMs, opts.deadline - now());
-    if (left <= 0) return { code: 1, stdout: new Uint8Array(0), stderr: "", timedOut: true, capped: false };
+    // Past the caller's deadline nothing more runs: the whole fetch took too long, as a slow source does.
+    if (left <= 0) throw new FetchRefused("the fetch took longer than Collie waits", "fetch");
     const base: GitRunOptions = { cwd: tmp, env, timeoutMs: left };
     return await run([...hard, ...args], stdin === undefined ? base : { ...base, stdin });
   };

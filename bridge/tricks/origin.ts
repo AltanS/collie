@@ -14,6 +14,11 @@ import { diskTrickFs, type TrickFs } from "./code-hash.ts";
 // so the code hash leaves it out (code-hash.ts `skippedName`): writing it never stops a trick, and the
 // consent stays with the code. `update` is refused for a folder without one, and the bridge shows it on
 // the trick's row as its provenance. A file that does not parse reads as no origin.
+//
+// A trick added from the From Collie list (official-install.ts) carries the same record with
+// `"official": true`, its `ref` the list's commit. The key is absent from every other record, so a record
+// `collie trick add` wrote reads byte for byte as before. It is a label: the state of a list entry is
+// read from `url`, `subdir` and `commit` (official.ts), and nothing is allowed by it.
 
 /** The origin record inside a trick folder. A dot file: outside the code hash. */
 export const ORIGIN_FILE = ".collie-origin.json";
@@ -30,12 +35,15 @@ export interface TrickOrigin {
   subdir: string | null;
   /** When it was added or last updated, an instant. */
   at: string;
+  /** Added or updated from the From Collie list of this Collie (official-install.ts). Absent otherwise. */
+  official?: true;
 }
 
 /** The record's text. */
 export function renderOrigin(origin: TrickOrigin): string {
   const { url, ref, commit, subdir, at } = origin;
-  return `${JSON.stringify({ v: 1, url, ref, commit, subdir, at }, null, 2)}\n`;
+  const doc = origin.official === true ? { v: 1, url, ref, commit, subdir, at, official: true } : { v: 1, url, ref, commit, subdir, at };
+  return `${JSON.stringify(doc, null, 2)}\n`;
 }
 
 /** The record from its text, or null when it is not one. */
@@ -50,7 +58,7 @@ export function parseOrigin(text: string | null): TrickOrigin | null {
   const ref = doc.ref === null ? null : asJsonString(doc.ref);
   const subdir = doc.subdir === null ? null : asJsonString(doc.subdir);
   if (ref === undefined || subdir === undefined) return null;
-  return { url, ref, commit, subdir, at };
+  return doc.official === true ? { url, ref, commit, subdir, at, official: true } : { url, ref, commit, subdir, at };
 }
 
 /** Read a trick folder's origin record: a regular file of at most 8 KiB, never through a symlink. */

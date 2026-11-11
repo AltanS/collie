@@ -2,6 +2,7 @@ import { asJsonBoolean, asJsonObject } from "../../web/src/lib/json.ts";
 import type { GateLevel } from "../crew/peer-gate.ts";
 import type { JsonValue } from "../json.ts";
 import type { TrickMediaFile } from "./media.ts";
+import type { OfficialAnswer, OfficialTricksSurface } from "./official-install.ts";
 import type { TricksSurface, SwitchAnswer, TapAnswer, VersionRouteAnswer } from "./service.ts";
 
 // The tricks routes' request halves (M94 slices 01 and 04), kept out of server.ts so that file only
@@ -14,6 +15,9 @@ import type { TricksSurface, SwitchAnswer, TapAnswer, VersionRouteAnswer } from 
 //                                         reads, or 400 `switch-invalid`, 404 `unknown-host` / `unknown-trick`
 //   GET  /api/tricks/<host>/<id>/media/<file> → one picture of the trick's `media/` folder (media.ts), or
 //                                         404 "no such image" for every miss
+//   GET  /api/tricks/official             → OfficialTricksReply: the From Collie list with each entry's state
+//   POST /api/tricks/official/<id>/add    → body `{}`; fetch the listed commit, check its hash, install it
+//   POST /api/tricks/official/<id>/update   off (official-install.ts); `{ id, state }`, or a refusal
 //
 // Both are this bridge's own for now: a host that is not this one is 404, and the crew merge is a
 // later slice.
@@ -31,7 +35,11 @@ export const TRICKS_ROUTE_RIGHTS = {
   // Take changes without asking, and go back a version (crew slice 3): both change what code runs.
   auto: "write",
   undo: "write",
-} as const satisfies Readonly<Record<"reply" | "tap" | "switch" | "media" | "auto" | "undo", GateLevel>>;
+  // The From Collie list (official.ts) is read only. Adding or updating from it fetches code onto the
+  // machine on a tap: a write, like the switch, so only a paired phone with the write right reaches it.
+  official: "read",
+  officialAdd: "write",
+} as const satisfies Readonly<Record<"reply" | "tap" | "switch" | "media" | "auto" | "undo" | "official" | "officialAdd", GateLevel>>;
 
 /** `since` as a rev, or undefined (every part) when absent or not a whole number at or above 0. */
 export function parseSince(raw: string | null): number | undefined {
@@ -91,6 +99,20 @@ export async function tricksUndoRoute(tricks: TricksSurface, match: RegExpExecAr
   const doc = asJsonObject(body);
   if (doc === undefined || Object.keys(doc).length !== 0) return { status: 400, body: { error: "undo-invalid" } };
   return await tricks.undoRoute(host, id);
+}
+
+/**
+ * `POST /api/tricks/official/<id>/add` or `/update` with `{}`, matched by server.ts's `TRICKS_OFFICIAL_ROUTE`:
+ * group 1 the trick id, group 2 the verb. The body must be an empty object, so a stray field is never read
+ * as a source, a commit or a hash: those come from the list this binary carries, and from nowhere else.
+ */
+export async function tricksOfficialRoute(official: OfficialTricksSurface, match: RegExpExecArray, body: JsonValue | undefined): Promise<OfficialAnswer> {
+  const id = segment(match[1] ?? "");
+  const verb = match[2];
+  if (id === null || (verb !== "add" && verb !== "update")) return { status: 404, body: { error: "unknown-official" } };
+  const doc = asJsonObject(body);
+  if (doc === undefined || Object.keys(doc).length !== 0) return { status: 400, body: { error: "official-invalid" } };
+  return await official.install(id, verb);
 }
 
 /**

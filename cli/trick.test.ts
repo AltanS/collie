@@ -1,11 +1,14 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { chmod, mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readdir, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
 import { trickCodeHash } from "../bridge/tricks/code-hash.ts";
+import { OFFICIAL_REPOS, shippedOfficialList } from "../bridge/tricks/official.ts";
+import { ORIGIN_FILE, renderOrigin } from "../bridge/tricks/origin.ts";
 import { approvedCopyDir, switchesPath } from "../bridge/tricks/paths.ts";
 import { HILL_WRITING } from "./hill-rules.ts";
+import { OFFICIAL_TRICKS_REPO } from "./trick-add.ts";
 import { EXIT, type Io } from "./io.ts";
 import { tricksFindings } from "./trick-findings.ts";
 import { agentPaneRefusal, checkStatic, runAgainstFixture, cmdTrick, cmdTrickAuto, cmdTrickCheck, cmdTrickHelper, cmdTrickInit, sampleProgram, cmdTrickList, cmdTrickSkill, cmdTrickSwitch, sampleAgents, SKILL_BYTES_MAX, TRICK_WRITE_BRIEF, TRICK_SUBCOMMANDS, type TrickCheckReport, type TrickDeps } from "./trick.ts";
@@ -617,6 +620,43 @@ describe("collie trick on, off and list", () => {
     const doc = JSON.parse(d.out.join("\n")) as { bridge: boolean; tricks: { state: string }[] };
     expect(doc.bridge).toBe(false);
     expect(doc.tricks[0]?.state).toBe("off");
+  });
+
+  test("list --official prints the From Collie list and each entry's state here; it fetches nothing", async () => {
+    const list = shippedOfficialList();
+    if (!list.ok) throw new Error(list.reason);
+    const first = list.entries[0];
+    const second = list.entries[1];
+    if (first === undefined || second === undefined) throw new Error("the list holds fewer than two entries");
+    const d = await deps(null);
+    // One added at the listed commit, one by hand under the same id: taken.
+    await mkdir(join(d.configDir, "tricks", first.id), { recursive: true });
+    await writeFile(join(d.configDir, "tricks", first.id, ORIGIN_FILE), renderOrigin({ url: first.repo, ref: first.commit, commit: first.commit, subdir: first.dir, at: "2026-11-11T09:00:00.000Z", official: true }));
+    await mkdir(join(d.configDir, "tricks", second.id), { recursive: true });
+    expect(await cmdTrickList(d, ["--official"])).toBe(EXIT.OK);
+    expect(d.out[0]).toMatch(/^ID\s+NAME\s+COMMIT\s+STATE\s+WHAT IT DOES$/);
+    expect(d.out[1]).toStartWith(first.id);
+    expect(d.out[1]).toContain("  added  ");
+    expect(d.out[2]).toContain("taken: another trick has this id");
+    expect(d.out.at(-1)).toBe("From AltanS/collie-tricks, at the commits this Collie release names. Add one on the phone: Settings, Tricks, From Collie.");
+    // The only request is the local bridge's own tricks list, for the crew line: nothing reaches GitHub.
+    expect(d.asked).toEqual(["http://127.0.0.1:18999/api/tricks"]);
+    d.out.length = 0;
+    await cmdTrickList(d, ["--official", "--json"]);
+    // SAFETY: `list --official --json` prints one document, checked by value below.
+    const doc = JSON.parse(d.out.join("\n")) as { official: { id: string; state: string }[] };
+    expect(doc.official.map((e) => e.state)).toEqual(list.entries.map((e) => (e.id === first.id ? "added" : e.id === second.id ? "taken" : "absent")));
+    expect(await readdir(join(d.configDir, "tricks"))).toEqual([first.id, second.id].toSorted());
+  });
+
+  test("list --official on a crew member names the lead", async () => {
+    const d = await deps({ rev: 5, tricks: [], parts: [], present: [], runsOn: { lead: "desk" } });
+    expect(await cmdTrickList(d, ["--official"])).toBe(EXIT.OK);
+    expect(d.out).toContain("Tricks run on the lead of this crew (desk). This machine runs none.");
+  });
+
+  test("the From Collie list names the repository a bare `collie trick add <name>` reads", () => {
+    expect(OFFICIAL_REPOS).toEqual([OFFICIAL_TRICKS_REPO]);
   });
 
   test("a bare or unknown subcommand is usage", async () => {

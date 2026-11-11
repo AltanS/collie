@@ -22,25 +22,49 @@ import type { ProposedFile } from "./propose-wire.ts";
 //
 // Folders are 0700 and files 0644, or 0755 for a file the proposal marked executable, as `collie trick
 // add` writes them (cli/trick-add.ts). A path written twice is a bug, never an overwrite (`wx`).
+//
+// The From Collie list (official-install.ts) writes through the same two functions, with its own origin
+// record and the code hash the list expects (`expect`): a stage that hashes otherwise is removed and
+// nothing in the tricks folder changes.
 
 /** A staged or set-aside sibling in the tricks folder. The scanner never reads a dot folder. */
 export function proposalSideName(root: string, what: "add" | "old", id: string): string {
   return join(root, `.collie-${what}-${id}-${randomBytes(4).toString("hex")}`);
 }
 
-/** Write the files and the record into a fresh folder `dir`. */
-async function writeStage(dir: string, files: readonly ProposedFile[], origin: ProposalOrigin): Promise<void> {
+/** Write the files and the origin record's text into a fresh folder `dir`. */
+async function writeStage(dir: string, files: readonly ProposedFile[], originText: string): Promise<void> {
   await mkdir(dir, { mode: 0o700 });
   for (const file of files) {
     const path = join(dir, file.rel);
     await mkdir(dirname(path), { recursive: true, mode: 0o700 });
     await writeFile(path, file.bytes, { flag: "wx", mode: file.executable ? 0o755 : 0o644 });
   }
-  await writeFile(join(dir, ORIGIN_FILE), renderProposalOrigin(origin), { flag: "wx", mode: 0o600 });
+  await writeFile(join(dir, ORIGIN_FILE), originText, { flag: "wx", mode: 0o600 });
 }
 
-/** What a write into the tricks folder came to: the code hash the new folder holds, or why not. */
-export type ProposalWrite = { ok: true; codeHash: string } | { ok: false; reason: string };
+/**
+ * What a write into the tricks folder came to: the code hash the new folder holds, or why not. `code` names
+ * the refusals a caller words on its own: `exists` (a folder of that name is there), `mismatch` (the stage
+ * did not hash to `expect`).
+ */
+export type ProposalWrite = { ok: true; codeHash: string } | { ok: false; reason: string; code?: "exists" | "mismatch" };
+
+/** The options of a write: the code hash the stage must have, or any. */
+export interface CodeWriteOptions {
+  expect?: string;
+}
+
+/** A stage that hashed otherwise than expected. Thrown inside a write, answered as `mismatch`. */
+class StageMismatch extends Error {}
+
+/** Hash a stage and hold it to `expect`. */
+async function stageHash(stage: string, opts: CodeWriteOptions): Promise<string> {
+  const hashed = await trickCodeHash(stage);
+  if (!hashed.ok) throw new Error(hashed.reason);
+  if (opts.expect !== undefined && hashed.hash !== opts.expect) throw new StageMismatch("The code does not hash to what was expected.");
+  return hashed.hash;
+}
 
 /** The message of a thrown value. */
 function why<T>(err: T): string {
@@ -52,20 +76,35 @@ function why<T>(err: T): string {
  * the staged folder's, taken before the rename, so the approval that follows can insist on exactly it.
  */
 export async function writeProposedTrick(root: string, id: string, files: readonly ProposedFile[], origin: ProposalOrigin): Promise<ProposalWrite> {
+  return await writeNewTrick(root, id, files, renderProposalOrigin(origin));
+}
+
+/** A folder of that name that appeared after the first look. Answered as `exists`. */
+class AppearedMeanwhile extends Error {}
+
+/**
+ * Make `<root>/<id>` from `files` and an origin record's text, through a staged sibling and one rename.
+ * Refused when anything named `<id>` is there, before the write or just before the rename, so nothing is
+ * ever written over a folder. With `expect`, a stage that hashes otherwise is removed and nothing is made.
+ */
+export async function writeNewTrick(root: string, id: string, files: readonly ProposedFile[], originText: string, opts: CodeWriteOptions = {}): Promise<ProposalWrite> {
   const target = join(root, id);
-  if ((await lstat(target).catch(() => null)) !== null) return { ok: false, reason: `A trick named ${id} is here now, so nothing was written over it.` };
+  if ((await lstat(target).catch(() => null)) !== null) return { ok: false, code: "exists", reason: `A trick named ${id} is here now, so nothing was written over it.` };
   await mkdir(root, { recursive: true, mode: 0o700 });
   const stage = proposalSideName(root, "add", id);
   try {
-    await writeStage(stage, files, origin);
-    const hashed = await trickCodeHash(stage);
-    if (!hashed.ok) throw new Error(hashed.reason);
+    await writeStage(stage, files, originText);
+    const codeHash = await stageHash(stage, opts);
     // A rename onto a folder that appeared meanwhile fails when it holds anything; an empty one is replaced.
-    if ((await lstat(target).catch(() => null)) !== null) throw new Error(`a trick named ${id} appeared meanwhile`);
+    if ((await lstat(target).catch(() => null)) !== null) throw new AppearedMeanwhile(`a trick named ${id} appeared meanwhile`);
     await rename(stage, target);
-    return { ok: true, codeHash: hashed.hash };
+    return { ok: true, codeHash };
   } catch (err) {
     await rm(stage, { recursive: true, force: true });
+    if (err instanceof StageMismatch) return { ok: false, code: "mismatch", reason: err.message };
+    // A rename that lost the race to a folder with content says ENOTEMPTY or EEXIST: the same answer.
+    const raced = err instanceof AppearedMeanwhile || (err instanceof Error && "code" in err && (err.code === "ENOTEMPTY" || err.code === "EEXIST"));
+    if (raced) return { ok: false, code: "exists", reason: `A trick named ${id} is here now, so nothing was written over it.` };
     return { ok: false, reason: `The trick could not be written: ${why(err)}` };
   }
 }
@@ -82,6 +121,15 @@ function kept(name: string): boolean {
  * folder is set aside and removed once the new one is in place; on a failure it is put back.
  */
 export async function replaceTrickCode(root: string, id: string, proposed: readonly ProposedFile[], origin: ProposalOrigin): Promise<ProposalWrite> {
+  return await replaceCode(root, id, proposed, renderProposalOrigin(origin));
+}
+
+/**
+ * Replace the code of `<root>/<id>` with `proposed` and an origin record's text, keeping what
+ * {@link replaceTrickCode} keeps. With `expect`, a stage that hashes otherwise is removed before anything
+ * of the old folder moves.
+ */
+export async function replaceCode(root: string, id: string, proposed: readonly ProposedFile[], originText: string, opts: CodeWriteOptions = {}): Promise<ProposalWrite> {
   const target = join(root, id);
   const st = await lstat(target).catch(() => null);
   if (st === null || !st.isDirectory()) return { ok: false, reason: `There is no trick folder ${id} to change.` };
@@ -90,10 +138,9 @@ export async function replaceTrickCode(root: string, id: string, proposed: reado
   const stage = proposalSideName(root, "add", id);
   const carried = new Set(files.map((file) => file.rel.split("/")[0] ?? ""));
   try {
-    await writeStage(stage, files, origin);
+    await writeStage(stage, files, originText);
     // The code hash is the proposal's alone: the kept names are outside it (code-hash.ts `skippedName`).
-    const hashed = await trickCodeHash(stage);
-    if (!hashed.ok) throw new Error(hashed.reason);
+    const codeHash = await stageHash(stage, opts);
     const names = await readdir(target);
     for (const name of names) {
       if (!kept(name) || carried.has(name)) continue;
@@ -109,12 +156,13 @@ export async function replaceTrickCode(root: string, id: string, proposed: reado
     }
     await chmod(target, 0o700).catch(() => {});
     await rm(aside, { recursive: true, force: true });
-    return { ok: true, codeHash: hashed.hash };
+    return { ok: true, codeHash };
   } catch (err) {
     // What was moved into the stage goes back first, so the old folder keeps its settings and pictures.
     const moved = await readdir(stage).catch((): string[] => []);
     for (const name of moved) if (kept(name) && !carried.has(name)) await rename(join(stage, name), join(target, name)).catch(() => {});
     await rm(stage, { recursive: true, force: true });
+    if (err instanceof StageMismatch) return { ok: false, code: "mismatch", reason: err.message };
     return { ok: false, reason: `The new version could not be written: ${why(err)}` };
   }
 }

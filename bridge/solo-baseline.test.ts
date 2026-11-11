@@ -847,6 +847,10 @@ describe("solo zero-tax — routes", () => {
       "/^\\/api\\/tricks\\/([^/]+)\\/([^/]+)\\/switch$/",
       "/^\\/api\\/tricks\\/([^/]+)\\/([^/]+)\\/tap$/",
       "/^\\/api\\/tricks\\/([^/]+)\\/([^/]+)\\/undo$/",
+      // From Collie (M94): add or update a trick on the list this release carries. A SOLO route that
+      // legitimately extends this list, named here rather than exempted: write-gated like the switch,
+      // this bridge's own tricks folder only, and a crew member answers `runs-on` and fetches nothing.
+      "/^\\/api\\/tricks\\/official\\/([^/]+)\\/(add|update)$/",
       // The operator's Cancel on a held walky talky message it sent (M62 spec 03): a write, solo; a
       // record held on a member answers `elsewhere`, never a route of its own.
       "/^\\/api\\/walky\\/([^/]+)\\/cancel$/",
@@ -1007,6 +1011,9 @@ describe("solo zero-tax — routes", () => {
       // Collie tricks (M94 slice 01): the tricks list and the parts changed since a rev. A read, gated like
       // the snapshot, and its body is empty of tricks on an install with no `<configDir>/tricks/`.
       "/api/tricks",
+      // From Collie (M94): the list this release carries, each entry's state on this machine. A read, gated
+      // like the tricks list; it reads the list from the binary and the tricks folder, and fetches nothing.
+      "/api/tricks/official",
       // Starting an update from the phone (M15/05) — a SOLO route that legitimately extends this
       // list, named here rather than exempted. Write-gated through the same closure a send rides,
       // and it registers no crew sibling: a peer is levelled from the lead's terminal
