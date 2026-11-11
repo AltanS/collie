@@ -39,6 +39,9 @@ Using Herdr? Read about the
   files, and provides a read-only view of git diffs and the latest commit. [Changes](./docs/changes.md)
 - **Crews.** Cluster multiple Collie hosts behind one URL with manual failover.
   [Crews](./docs/crew.md)
+- **Tricks, and the Hill.** Add small programs that put counts, marks and screens in Collie. Let
+  an agent or a trick ask you one question, and answer it with one tap.
+  [Tricks](./docs/tricks.md), [The Hill](./docs/hill.md)
 
 Other features: output search, full conversation history, image and file attachments,
 [durable agents](./docs/durable-agents.md) (experimental), four [themes](./docs/themes.md), twelve
@@ -164,6 +167,14 @@ runs the client in your browser against mock data without requiring installation
 | [**The durable SDK (experimental)**](./docs/durable-sdk.md) | The npm package `@colliepwa/durable-sdk`, part by part: its entries and runtimes, `openCollie`, the pane methods, the four kinds of question and `requireApproval`, hooks, history, caps, the helpers, the Pi glue and the versions |
 | [**The durable wire (experimental)**](./docs/durable-wire.md) | What travels between Collie and a durable agent, for a builder: the routes, hello and the epoch, the life of an ask and the request ids, the socket and token transports, the limits and the version rule, with a link to `WIRE.md` for the exact rules |
 
+### Tricks and the Hill
+
+| | |
+| --- | --- |
+| [**Tricks**](./docs/tricks.md) | What a trick is, where it draws, adding one with `collie trick add`, switching it on, off or removing it, what it may and may not do, the About sheet, tricks in a crew, and troubleshooting |
+| [**Writing a trick**](./docs/tricks-authoring.md) | The folder, every key of `trick.toml`, what a program receives and prints, every node kind, posting a Decision, inputs, `collie trick dev` and `check`, a worked example, and the limits |
+| [**The Hill**](./docs/hill.md) | Where agents and tricks ask you a question: what a Decision is, `collie hill post` and its flags, how you answer, receipts, Clear, pictures, and the rules agents get |
+
 ### Reference
 
 | | |
@@ -180,7 +191,7 @@ runs the client in your browser against mock data without requiring installation
 | [**Voice input and Web Push**](./docs/voice-and-push.md) | The microphone in the composer, Whistle speech to text on your phone or your computer, and notifications when an agent is waiting on you |
 | [**Manage & update**](./docs/upgrading.md) | Update from the phone or the terminal, roll back, update a crew, cross a major, stop, uninstall, and upgrading a 0.x install to 1.0 |
 | [**Troubleshooting**](./docs/troubleshooting.md) | Symptoms in the words you would actually search for |
-| [**Terminology**](./docs/terminology.md) | Collie's words in plain words, beside the names other tools use: session, space, tab, pane, terminal, durable agent, harness, crew, lead, and more |
+| [**Terminology**](./docs/terminology.md) | Collie's words in plain words, beside the names other tools use: session, space, tab, pane, terminal, durable agent, harness, crew, lead, trick, Decision, and more |
 | **For an AI coding agent in your terminal** | `collie skill` prints a brief on how Collie works, and `collie docs` prints the pages above, both out of the binary and with no network |
 
 Root specifications: [`ARCHITECTURE.md`](./ARCHITECTURE.md),

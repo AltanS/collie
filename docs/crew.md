@@ -437,6 +437,7 @@ always keep a share.
 
 ## Tricks that read files on every machine
 
+A trick runs on the lead of a crew, and a member runs none ([Tricks in a crew](tricks.md#tricks-in-a-crew)).
 A trick on the lead sees the sessions of every machine of the crew. A trick may also list files to
 read from its agent sessions' folders, in `trick.toml`:
 

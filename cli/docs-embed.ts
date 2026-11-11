@@ -30,12 +30,15 @@ import durableAgentsTroubleshooting from "../docs/durable-agents-troubleshooting
 import durableSdk from "../docs/durable-sdk.md" with { type: "text" };
 import durableWire from "../docs/durable-wire.md" with { type: "text" };
 import fiveMinuteInstall from "../docs/five-minute-install.md" with { type: "text" };
+import hill from "../docs/hill.md" with { type: "text" };
 import install from "../docs/install.md" with { type: "text" };
 import multiplexers from "../docs/multiplexers.md" with { type: "text" };
 import security from "../docs/security.md" with { type: "text" };
 import sessions from "../docs/sessions.md" with { type: "text" };
 import terminology from "../docs/terminology.md" with { type: "text" };
 import themes from "../docs/themes.md" with { type: "text" };
+import tricks from "../docs/tricks.md" with { type: "text" };
+import tricksAuthoring from "../docs/tricks-authoring.md" with { type: "text" };
 import troubleshooting from "../docs/troubleshooting.md" with { type: "text" };
 import upgrading from "../docs/upgrading.md" with { type: "text" };
 import voiceAndPush from "../docs/voice-and-push.md" with { type: "text" };
@@ -166,6 +169,21 @@ export const DOC_PAGES: readonly DocPage[] = [
     name: "walky-talky",
     purpose: "Messages between agent sessions: who, send, reply, inbox, receipts, the phone, the skill and limits",
     text: walkyTalky,
+  },
+  {
+    name: "hill",
+    purpose: "Where agents and tricks ask you a question: Decisions, collie hill post, how you answer, receipts and Clear",
+    text: hill,
+  },
+  {
+    name: "tricks",
+    purpose: "Small programs that add parts to Collie: where they draw, adding one, switching it on, what it may do, and troubleshooting",
+    text: tricks,
+  },
+  {
+    name: "tricks-authoring",
+    purpose: "Writing a trick: the folder, trick.toml, what a program receives and prints, node kinds, Decisions, collie trick dev and check",
+    text: tricksAuthoring,
   },
   {
     name: "voice-and-push",
