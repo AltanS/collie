@@ -164,21 +164,24 @@ describe("the route table read off server.ts", () => {
 });
 
 describe("apiFrontGate: every /api/ path but the allowlist is refused without a token", () => {
-  test("the allowlist is GET|HEAD /api/health, POST /api/pair, the pairing request and its poll, and nothing else", () => {
+  test("the allowlist is GET|HEAD /api/health, POST /api/pair, the pairing request, its poll and its cancel, and nothing else", () => {
     expect(OPEN_API_ROUTES).toEqual([
       { path: "/api/health", methods: ["GET", "HEAD"] },
       { path: "/api/pair", methods: ["POST"] },
       { path: "/api/pair/request", methods: ["POST"] },
     ]);
     expect(OPEN_API_PATTERNS.map((p) => ({ pattern: p.pattern.source, methods: p.methods }))).toEqual([
-      { pattern: "^\\/api\\/pair\\/request\\/([^/]+)$", methods: ["GET"] },
+      { pattern: "^\\/api\\/pair\\/request\\/([^/]+)$", methods: ["GET", "DELETE"] },
     ]);
     expect(isOpenApiRoute("/api/pair", "GET")).toBe(false);
     expect(isOpenApiRoute("/api/health", "POST")).toBe(false);
     expect(isOpenApiRoute("/api/health/", "GET")).toBe(false);
-    // The poll is open for GET on one segment, and for nothing else.
+    // The poll (GET) and the cancel (DELETE) are open on one segment, and nothing else is.
     expect(isOpenApiRoute("/api/pair/request/abc", "GET")).toBe(true);
+    expect(isOpenApiRoute("/api/pair/request/abc", "DELETE")).toBe(true);
     expect(isOpenApiRoute("/api/pair/request/abc", "POST")).toBe(false);
+    expect(isOpenApiRoute("/api/pair/request/abc", "PUT")).toBe(false);
+    expect(isOpenApiRoute("/api/pair/request", "DELETE")).toBe(false);
     expect(isOpenApiRoute("/api/pair/request/", "GET")).toBe(false);
     expect(isOpenApiRoute("/api/pair/request/a/b", "GET")).toBe(false);
     expect(isOpenApiRoute("/api/pair/request", "GET")).toBe(false);

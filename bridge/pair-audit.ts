@@ -136,9 +136,12 @@ export function pairApproveAuditEntry(args: {
 }
 
 /** Why a request ended without a device, or was never made. */
-export type PairRequestRefusal = "wrong-code" | "refused" | "expired" | "rate";
+export type PairRequestRefusal = "wrong-code" | "refused" | "expired" | "rate" | "cancelled" | "replaced";
 
-/** One request that ended without a device (`wrong-code`, `refused`, `expired`), or was refused at the door (`rate`). */
+/**
+ * One request that ended without a device (`wrong-code`, `refused`, `expired`; `cancelled` by its own
+ * browser; `replaced` by a newer request from the same source), or was refused at the door (`rate`).
+ */
 export function pairRequestRefusedAuditEntry(reason: PairRequestRefusal, approver?: string): AuditEntry {
   const entry: AuditEntry = { action: "pair-request-refused", detail: { reason } };
   if (approver !== undefined) entry.device = approver;

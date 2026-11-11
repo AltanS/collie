@@ -480,12 +480,25 @@ export function enrolDevice(
  * replaces an entry the way a claim may ({@link enrolDevice}). The base is cut so the result stays
  * within the label rule's 48 characters.
  */
+/**
+ * `text` cut to at most `max` UTF-16 units (the unit `LABEL_MAX` counts in), on a code point boundary:
+ * a cut never leaves half of a surrogate pair, which would be a hidden character in the label.
+ */
+function cutToLength(text: string, max: number): string {
+  let out = "";
+  for (const point of text) {
+    if (out.length + point.length > max) break;
+    out += point;
+  }
+  return out;
+}
+
 export function uniqueLabel(registry: PairedRegistry, label: string): string {
   const taken = new Set(registry.devices.map((d) => d.label));
   if (!taken.has(label)) return label;
   for (let n = 2; n <= registry.devices.length + 2; n++) {
     const suffix = ` ${n}`;
-    const candidate = `${label.slice(0, LABEL_MAX - suffix.length).trimEnd()}${suffix}`;
+    const candidate = `${cutToLength(label, LABEL_MAX - suffix.length).trimEnd()}${suffix}`;
     if (!taken.has(candidate)) return candidate;
   }
   // n runs one past the number of devices and every candidate is distinct, so one is always free.
@@ -884,11 +897,14 @@ export class PairingStore {
     registry: PairedRegistry,
     label: string,
     lifetimeMs: number | undefined,
+    expiresAt?: number,
   ): Promise<{ token: string; replaced: boolean } | null> {
     const token = generateToken(this.random);
     const now = this.now();
     const enrolment: Enrolment = { label, tokenHash: sha256Hex(token), now };
     if (lifetimeMs !== undefined) enrolment.expiresAt = now + lifetimeMs;
+    // An absolute end, given as is: an approved device ends with its approver (ADR 0139), never later.
+    if (expiresAt !== undefined) enrolment.expiresAt = expiresAt;
     const enrolled = enrolDevice(registry, enrolment);
     if (!enrolled) return null;
     await this.io.writeRegistry(enrolled.registry);
@@ -902,16 +918,34 @@ export class PairingStore {
    * list can set one after. The token is returned once, as a claim returns it. THROWS
    * {@link RegistryUnreadableError} when the registry is there and unreadable, and writes nothing.
    */
-  async enrolApproved(label: string): Promise<{ token: string; label: string }> {
+  async enrolApproved(label: string, expiresAt?: number): Promise<{ token: string; label: string; expiresAt?: number }> {
     return this.serialize(async () => {
       const registry = coerceRegistry(await this.io.readRegistry());
       const unique = uniqueLabel(registry, label);
-      const enrolled = await this.enrolInQueue(registry, unique, undefined);
+      const enrolled = await this.enrolInQueue(registry, unique, undefined, expiresAt);
       // `uniqueLabel` picked a name no entry holds, so `enrolDevice` cannot refuse it.
       if (!enrolled) throw new Error("pairing: a unique label was refused");
-      return { token: enrolled.token, label: unique };
+      return expiresAt === undefined ? { token: enrolled.token, label: unique } : { token: enrolled.token, label: unique, expiresAt };
     });
   }
+
+  /**
+   * Revoke the device that holds the token with this hash, and say which label it had, or null when no
+   * device holds it. The pairing request's sweep revokes a token nobody collected this way (ADR 0139):
+   * by the credential itself, so a label that changed hands in between is never the one removed.
+   */
+  async revokeByTokenHash(tokenHash: string): Promise<string | null> {
+    return this.serialize(async () => {
+      const registry = coerceRegistry(await this.io.readRegistry());
+      const device = registry.devices.find((d) => hashesEqual(d.tokenHash, tokenHash));
+      if (device === undefined) return null;
+      const next = removeDevice(registry, device.label);
+      if (!next) return null;
+      await this.io.writeRegistry(next);
+      return device.label;
+    });
+  }
+
 
   /**
    * Whether at least one paired device could approve a request right now: a device whose token has

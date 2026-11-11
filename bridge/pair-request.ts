@@ -58,8 +58,17 @@ export const MAX_TOMBSTONES = 64;
 export const MAX_OPEN_REQUESTS = 3;
 /** Requests one source address may create inside {@link REQUEST_SOURCE_WINDOW_MS}. */
 export const REQUESTS_PER_SOURCE = 6;
-/** The per-source window. */
+/** The per-source window. Also the window of the global cap and of the global refusal's audit line. */
 export const REQUEST_SOURCE_WINDOW_MS = 10 * 60 * 1000;
+/**
+ * Requests the bridge makes in one window, whatever the source. 30 is five sources at their own cap of
+ * six, far above what a person pairing a few browsers needs, and low enough that a spray of sources
+ * (an IPv6 range, a botnet behind an open door) makes at most three a minute: three audit lines and
+ * three small entries a minute, not an unbounded stream.
+ */
+export const REQUESTS_PER_WINDOW = 30;
+/** How long past its expiry a request may stay `answering` (an enrol that hangs) before the sweep ends it. */
+export const ANSWER_MARGIN_MS = 30 * 1000;
 /** The code on the new device's screen is this many characters of `CODE_ALPHABET`. */
 export const REQUEST_CODE_LENGTH = 6;
 /** A decoy differs from the real code, and from the other decoy, in at least this many positions. */
@@ -77,6 +86,24 @@ export function pairApproveGateLevel(method: string): GateLevel {
   // A same-origin GET carries no `Origin`, so it cannot meet the write level's Origin rule; `device-read`
   // asks the same device factors (pairing token AND the header gate) with the read's access rule.
   return method === "GET" ? "device-read" : "write";
+}
+
+/**
+ * The key a request is counted and replaced under: the `/api/pair` source key, with an IPv6 address cut
+ * to its /64. One host commonly holds a whole /64, so a per-address key would let it walk past the cap
+ * by changing the low 64 bits. An IPv4-mapped address, IPv4 and the bare `loopback` key pass unchanged.
+ */
+export function requestSourceKey(source: string): string {
+  const address = source.split("%")[0]!.trim().toLowerCase();
+  if (!address.includes(":") || !/^[0-9a-f:.]+$/.test(address)) return source;
+  if (/^::ffff:\d+\.\d+\.\d+\.\d+$/.test(address)) return address.slice(7);
+  const halves = address.split("::");
+  if (halves.length > 2) return source;
+  const head = halves[0] === "" ? [] : halves[0]!.split(":");
+  const tail = halves.length === 2 && halves[1] !== "" ? halves[1]!.split(":") : [];
+  const groups = halves.length === 2 ? [...head, ...Array.from({ length: 8 - head.length - tail.length }, () => "0"), ...tail] : head;
+  if (groups.length !== 8 || groups.some((g) => !/^[0-9a-f]{1,4}$/.test(g))) return source;
+  return `${groups.slice(0, 4).map((g) => g.replace(/^0+(?=.)/, "")).join(":")}::/64`;
 }
 
 // ── What the bridge says about the asker ─────────────────────────────────────────────────────
@@ -175,6 +202,8 @@ type RequestState = "waiting" | "answering" | "approved" | "refused" | "expired"
 
 interface Entry {
   readonly publicId: string;
+  /** {@link requestSourceKey} of the browser that asked: one open request per source. */
+  readonly source: string;
   readonly pollHash: string;
   readonly code: string;
   readonly choices: readonly [string, string, string];
@@ -185,6 +214,8 @@ interface Entry {
   state: RequestState;
   /** Held from the right tap to the first poll. Never logged, never in an audit line. */
   token?: string;
+  /** The token's hash, for a revoke of a device nobody collected (by credential, never by label). */
+  tokenHash?: string;
   label?: string;
   /** Approved: the token must be collected by then, or the sweep revokes the device. */
   collectBy?: number;
@@ -192,14 +223,41 @@ interface Entry {
   endedAt?: number;
 }
 
+/** A refusal at the door: how long until a try counts again, and whether to write the audit line. */
+export interface RateRefusal {
+  readonly ok: false;
+  readonly retryAfterMs: number;
+  /** First refusal of its burst (one source) or of its window (the global caps): audit it once. */
+  readonly audit: boolean;
+}
+
 /** What {@link PairRequestBook.create} answers. */
 export type CreateOutcome =
-  | { ok: true; publicId: string; pollSecret: string; code: string; expiresAt: number }
-  | { ok: false; reason: "rate"; retryAfterMs: number; first: boolean };
+  | {
+      ok: true;
+      publicId: string;
+      pollSecret: string;
+      code: string;
+      expiresAt: number;
+      /** This source's earlier requests that the new one replaced (one open request per source). */
+      replaced: number;
+      /** Token hashes of devices approved for a replaced request and never collected: revoke them. */
+      revoke: readonly string[];
+    }
+  | RateRefusal;
+
+/** What {@link PairRequestBook.cancel} did: null for an unknown id or a wrong secret. */
+export interface CancelOutcome {
+  /** The request was still open, so its end is worth an audit line. */
+  readonly wasOpen: boolean;
+  /** The hash of a token approved and never collected, to revoke. */
+  readonly revoke: string | null;
+}
 
 /** What {@link PairRequestBook.sweep} found: requests that ran out, and approved devices nobody collected. */
 export interface SweepResult {
   readonly expired: number;
+  /** Token hashes of approved devices nobody collected. */
   readonly uncollected: readonly string[];
 }
 
@@ -207,11 +265,17 @@ export interface SweepResult {
 export class PairRequestBook {
   private readonly entries = new Map<string, Entry>();
   private readonly limiter: PairLimiter;
+  /** When each request of the last window was made, for {@link REQUESTS_PER_WINDOW}. */
+  private creations: number[] = [];
+  /** When the last global refusal was audited: one line per window, however many refusals. */
+  private lastGlobalAuditAt: number | null = null;
 
   constructor(
     private readonly now: () => number = Date.now,
     private readonly random: (n: number) => Buffer = randomBytes,
     limiter?: PairLimiter,
+    /** {@link REQUESTS_PER_WINDOW}; a test that is about another bound lifts it. */
+    private readonly perWindow: number = REQUESTS_PER_WINDOW,
   ) {
     this.limiter = limiter ?? createPairLimiter(REQUESTS_PER_SOURCE, REQUEST_SOURCE_WINDOW_MS);
   }
@@ -243,8 +307,15 @@ export class PairRequestBook {
         expired++;
         continue;
       }
+      // An enrol that hangs past the request's life (a registry write that never returns) does not
+      // keep its place for ever: the request ends, and a late approve finds it gone (`approve`).
+      if (e.state === "answering" && now >= e.expiresAt + ANSWER_MARGIN_MS) {
+        end(e, "expired", now);
+        expired++;
+        continue;
+      }
       if (e.state === "approved" && e.collectBy !== undefined && now >= e.collectBy) {
-        if (e.label !== undefined) uncollected.push(e.label);
+        if (e.tokenHash !== undefined) uncollected.push(e.tokenHash);
         end(e, "expired", now);
         continue;
       }
@@ -262,19 +333,46 @@ export class PairRequestBook {
   }
 
   /**
-   * Make a request for a browser at `source` (the `/api/pair` limiter's key, `pairSourceKey`), or say
-   * why not: more than {@link REQUESTS_PER_SOURCE} from that source in the window, or
-   * {@link MAX_OPEN_REQUESTS} open already. A refused request counts against the source, so a flood
-   * from one address stops at the source cap.
+   * Count one try from `source` against its own cap, {@link REQUESTS_PER_SOURCE} in the window, keyed by
+   * {@link requestSourceKey}. Every try counts, a refused one and one with nobody to approve it too, so a
+   * flood from one source stops here.
+   */
+  admit(source: string): { ok: true } | RateRefusal {
+    const hit = this.limiter.hit(requestSourceKey(source), this.now());
+    if (hit.allowed) return { ok: true };
+    return { ok: false, retryAfterMs: hit.retryAfterMs ?? REQUEST_SOURCE_WINDOW_MS, audit: hit.first };
+  }
+
+  /**
+   * Make a request for a browser at `source`, or say why not: {@link REQUESTS_PER_WINDOW} made in the
+   * window whatever the source, or {@link MAX_OPEN_REQUESTS} open already. A new request replaces the
+   * same source's open one first (one per source), so a browser that asks again never fills the cap
+   * with its own old codes. A request being answered right now is left to its answer.
    */
   create(args: { source: string; route: PairRoute; asker: AskerInfo }): CreateOutcome {
     const now = this.now();
-    const hit = this.limiter.hit(args.source, now);
-    if (!hit.allowed) return { ok: false, reason: "rate", retryAfterMs: hit.retryAfterMs ?? REQUEST_SOURCE_WINDOW_MS, first: hit.first };
+    const source = requestSourceKey(args.source);
+    this.creations = this.creations.filter((t) => now - t < REQUEST_SOURCE_WINDOW_MS);
+    if (this.creations.length >= this.perWindow) {
+      return this.globalRefusal(now, this.creations[0]! + REQUEST_SOURCE_WINDOW_MS - now);
+    }
+    let replaced = 0;
+    const revoke: string[] = [];
+    for (const e of this.entries.values()) {
+      if (e.source !== source) continue;
+      if (e.state === "waiting") {
+        end(e, "expired", now);
+        replaced++;
+      } else if (e.state === "approved") {
+        if (e.tokenHash !== undefined) revoke.push(e.tokenHash);
+        end(e, "expired", now);
+        replaced++;
+      }
+    }
     if (this.openCount() >= MAX_OPEN_REQUESTS) {
       // The soonest open request to end frees a place.
       const soonest = Math.min(...[...this.entries.values()].filter(isOpen).map((e) => e.collectBy ?? e.expiresAt));
-      return { ok: false, reason: "rate", retryAfterMs: Math.max(1000, soonest - now), first: true };
+      return this.globalRefusal(now, soonest - now);
     }
     const publicId = this.random(16).toString("base64url");
     const pollSecret = this.random(16).toString("base64url");
@@ -282,6 +380,7 @@ export class PairRequestBook {
     const expiresAt = now + REQUEST_TTL_MS;
     this.entries.set(publicId, {
       publicId,
+      source,
       pollHash: sha256Hex(pollSecret),
       code,
       choices,
@@ -291,7 +390,45 @@ export class PairRequestBook {
       expiresAt,
       state: "waiting",
     });
-    return { ok: true, publicId, pollSecret, code, expiresAt };
+    this.creations.push(now);
+    return { ok: true, publicId, pollSecret, code, expiresAt, replaced, revoke };
+  }
+
+  /** A refusal by one of the two global caps, audited once per window. */
+  private globalRefusal(now: number, retryAfterMs: number): RateRefusal {
+    const audit = this.lastGlobalAuditAt === null || now - this.lastGlobalAuditAt >= REQUEST_SOURCE_WINDOW_MS;
+    if (audit) this.lastGlobalAuditAt = now;
+    return { ok: false, retryAfterMs: Math.max(1000, retryAfterMs), audit };
+  }
+
+  /**
+   * The asking browser ends its own request (Cancel, or it left the page): null for an unknown id or a
+   * wrong secret, after the same constant-time compare as {@link poll}. An open request ends; a device
+   * approved for it and not yet collected is handed back to revoke.
+   */
+  cancel(publicId: string, secret: string | null): CancelOutcome | null {
+    const e = this.matching(publicId, secret);
+    if (e === null) return null;
+    const now = this.now();
+    if (e.state === "approved") {
+      const revoke = e.tokenHash ?? null;
+      end(e, "expired", now);
+      return { wasOpen: true, revoke };
+    }
+    if (e.state === "waiting" || e.state === "answering") {
+      end(e, "expired", now);
+      return { wasOpen: true, revoke: null };
+    }
+    return { wasOpen: false, revoke: null };
+  }
+
+  /** The entry for `publicId` when `secret` is its poll secret, else null; constant time either way. */
+  private matching(publicId: string, secret: string | null): Entry | null {
+    const e = SECRET_FORM.test(publicId) ? this.entries.get(publicId) : undefined;
+    const given = sha256Hex(secret ?? "");
+    const match = hashesEqual(e?.pollHash ?? DUMMY_HASH, given);
+    if (e === undefined || !match || secret === null || secret === "") return null;
+    return e;
   }
 
   /**
@@ -300,10 +437,8 @@ export class PairRequestBook {
    * deleted in the same call, so the next poll is an unknown id.
    */
   poll(publicId: string, secret: string | null): PollView | null {
-    const e = SECRET_FORM.test(publicId) ? this.entries.get(publicId) : undefined;
-    const given = sha256Hex(secret ?? "");
-    const match = hashesEqual(e?.pollHash ?? DUMMY_HASH, given);
-    if (e === undefined || !match || secret === null || secret === "") return null;
+    const e = this.matching(publicId, secret);
+    if (e === null) return null;
     const now = this.now();
     switch (e.state) {
       case "waiting":
@@ -366,14 +501,20 @@ export class PairRequestBook {
     if (e !== undefined && e.state === "answering") e.state = "waiting";
   }
 
-  /** The taken request was enrolled: hold the token for the first poll. */
-  approve(publicId: string, token: string, label: string): void {
+  /**
+   * The taken request was enrolled: hold the token for the first poll. False when the request ended
+   * while the enrol ran (cancelled, replaced, or swept past its margin): the caller then revokes the
+   * device it just made, since no poll will ever collect it.
+   */
+  approve(publicId: string, token: string, label: string): boolean {
     const e = this.entries.get(publicId);
-    if (e === undefined) return;
+    if (e === undefined || e.state !== "answering") return false;
     e.state = "approved";
     e.token = token;
+    e.tokenHash = sha256Hex(token);
     e.label = label;
     e.collectBy = Math.max(e.expiresAt, this.now() + COLLECT_GRACE_MS);
+    return true;
   }
 }
 
@@ -386,6 +527,7 @@ function end(e: Entry, state: "refused" | "expired", now: number): void {
   e.state = state;
   e.endedAt = now;
   delete e.token;
+  delete e.tokenHash;
   delete e.label;
   delete e.collectBy;
 }
@@ -422,11 +564,14 @@ export interface PairRequestDeps {
   readonly pairing:
     | {
         hasLiveDevice(): boolean;
-        enrolApproved(label: string): Promise<{ token: string; label: string }>;
+        enrolApproved(label: string, expiresAt?: number): Promise<{ token: string; label: string }>;
       }
     | undefined;
-  /** Revoke a device the sweep found never collected, and forget what it added. */
-  readonly revoke: (label: string) => Promise<void>;
+  /**
+   * Revoke the device holding the token with this hash (approved, never collected), through the same
+   * path the device list's revoke takes, so its effects run once.
+   */
+  readonly revoke: (tokenHash: string) => Promise<void>;
   readonly audit: (entry: AuditEntry) => void;
   /** A crew member: it serves no browser door, so every route answers 404. */
   readonly isPeer: boolean;
@@ -450,14 +595,18 @@ const UNAVAILABLE = (): Response =>
 export async function settlePairRequests(deps: PairRequestDeps): Promise<void> {
   const { expired, uncollected } = deps.book.sweep();
   for (let i = 0; i < expired; i++) deps.audit(pairRequestRefusedAuditEntry("expired"));
-  for (const label of uncollected) {
+  for (const tokenHash of uncollected) {
     deps.audit(pairRequestRefusedAuditEntry("expired"));
-    try {
-      await deps.revoke(label);
-    } catch (err) {
-      // The device stays listed with a token nobody holds; the operator can revoke it by hand.
-      console.warn(`[pair-request] could not revoke an uncollected device: ${err instanceof Error ? err.message : String(err)}`);
-    }
+    await revokeQuietly(deps, tokenHash);
+  }
+}
+
+/** Revoke a device nobody holds the token of. A failure leaves it listed for the person to remove. */
+async function revokeQuietly(deps: PairRequestDeps, tokenHash: string): Promise<void> {
+  try {
+    await deps.revoke(tokenHash);
+  } catch (err) {
+    console.warn(`[pair-request] could not revoke an uncollected device: ${err instanceof Error ? err.message : String(err)}`);
   }
 }
 
@@ -469,8 +618,10 @@ export async function pairRequestCreateRoute(
   if (deps.isPeer) return NOT_FOUND();
   if (deps.pairing === undefined) return UNAVAILABLE();
   await settlePairRequests(deps);
-  // Nobody could approve: say so before the request counts against the source, so the browser can
-  // send the operator to `collie pair` and a later try is not a spent one.
+  // The source's cap first: every try counts, one with nobody to approve it too, so a script cannot
+  // probe the bridge for free.
+  const admitted = deps.book.admit(ctx.source);
+  if (!admitted.ok) return rateAnswer(deps, admitted);
   let approver: boolean;
   try {
     approver = deps.pairing.hasLiveDevice();
@@ -480,11 +631,9 @@ export async function pairRequestCreateRoute(
   }
   if (!approver) return answer({ error: "no-approver" }, 409);
   const made = deps.book.create({ source: ctx.source, route: ctx.route, asker: askerFromUserAgent(ctx.userAgent) });
-  if (!made.ok) {
-    if (made.first) deps.audit(pairRequestRefusedAuditEntry("rate"));
-    const seconds = Math.max(1, Math.ceil(made.retryAfterMs / 1000));
-    return answer({ error: "rate-limited", retryAfter: seconds }, 429, { "retry-after": String(seconds) });
-  }
+  if (!made.ok) return rateAnswer(deps, made);
+  for (let i = 0; i < made.replaced; i++) deps.audit(pairRequestRefusedAuditEntry("replaced"));
+  for (const tokenHash of made.revoke) await revokeQuietly(deps, tokenHash);
   deps.audit(pairRequestAuditEntry(ctx.route));
   return answer({
     publicId: made.publicId,
@@ -493,6 +642,26 @@ export async function pairRequestCreateRoute(
     expiresAt: made.expiresAt,
     expiresInMs: REQUEST_TTL_MS,
   });
+}
+
+function rateAnswer(deps: PairRequestDeps, refusal: RateRefusal): Response {
+  if (refusal.audit) deps.audit(pairRequestRefusedAuditEntry("rate"));
+  const seconds = Math.max(1, Math.ceil(refusal.retryAfterMs / 1000));
+  return answer({ error: "rate-limited", retryAfter: seconds }, 429, { "retry-after": String(seconds) });
+}
+
+/**
+ * `DELETE /api/pair/request/<publicId>` with the poll secret in {@link POLL_HEADER}: the asking browser
+ * ends its own request (Cancel, or it left the page). A wrong secret is the same 404 as an unknown id.
+ */
+export async function pairRequestCancelRoute(deps: PairRequestDeps, publicId: string, secret: string | null): Promise<Response> {
+  if (deps.isPeer) return NOT_FOUND();
+  await settlePairRequests(deps);
+  const done = deps.book.cancel(publicId, secret);
+  if (done === null) return NOT_FOUND();
+  if (done.wasOpen) deps.audit(pairRequestRefusedAuditEntry("cancelled"));
+  if (done.revoke !== null) await revokeQuietly(deps, done.revoke);
+  return answer({ state: "cancelled" });
 }
 
 /** `GET /api/pair/request/<publicId>` with the poll secret in {@link POLL_HEADER}. */
@@ -505,7 +674,11 @@ export async function pairRequestPollRoute(deps: PairRequestDeps, publicId: stri
 }
 
 /** `GET /api/pair/approve/<publicId>`, behind the approver's gate. */
-export async function pairApproveReadRoute(deps: PairRequestDeps, publicId: string): Promise<Response> {
+export async function pairApproveReadRoute(
+  deps: PairRequestDeps,
+  publicId: string,
+  ctx: { readonly approverExpiresAt: number | undefined } = { approverExpiresAt: undefined },
+): Promise<Response> {
   if (deps.isPeer) return NOT_FOUND();
   await settlePairRequests(deps);
   const view = deps.book.approverView(publicId);
@@ -520,6 +693,8 @@ export async function pairApproveReadRoute(deps: PairRequestDeps, publicId: stri
     choices: [...view.choices],
     expiresAt: view.expiresAt,
     expiresInMs: view.expiresInMs,
+    // When the approver's own access ends, the new device's ends with it (ADR 0139). Null: no end.
+    endsAt: ctx.approverExpiresAt ?? null,
   });
 }
 
@@ -541,7 +716,7 @@ export async function pairApproveAnswerRoute(
   deps: PairRequestDeps,
   publicId: string,
   body: JsonValue | undefined,
-  ctx: { readonly approver: string; readonly approverRoute: PairRoute },
+  ctx: { readonly approver: string; readonly approverRoute: PairRoute; readonly approverExpiresAt?: number },
 ): Promise<Response> {
   if (deps.isPeer) return NOT_FOUND();
   if (deps.pairing === undefined) return UNAVAILABLE();
@@ -568,7 +743,8 @@ export async function pairApproveAnswerRoute(
   }
   let enrolled: { token: string; label: string };
   try {
-    enrolled = await deps.pairing.enrolApproved(label);
+    // Never longer than the approver's own access: a device with an expiry cannot mint one without.
+    enrolled = await deps.pairing.enrolApproved(label, ctx.approverExpiresAt);
   } catch (err) {
     // Nothing was written. The request waits again, so the approver can tap once more after the
     // outage; it still ends at its own expiry.
@@ -576,7 +752,13 @@ export async function pairApproveAnswerRoute(
     if (err instanceof RegistryUnreadableError) return UNAVAILABLE();
     throw err;
   }
-  deps.book.approve(publicId, enrolled.token, enrolled.label);
+  if (!deps.book.approve(publicId, enrolled.token, enrolled.label)) {
+    // The request ended while the enrol ran (the asker cancelled or asked again, or the sweep ended a
+    // hung answer): nobody will collect this token, so the device goes now.
+    await revokeQuietly(deps, sha256Hex(enrolled.token));
+    deps.audit(pairRequestRefusedAuditEntry("expired", ctx.approver));
+    return answer({ error: "gone" }, 404);
+  }
   deps.audit(
     pairApproveAuditEntry({ approver: ctx.approver, label: enrolled.label, asker: taken.route, approverRoute: ctx.approverRoute }),
   );

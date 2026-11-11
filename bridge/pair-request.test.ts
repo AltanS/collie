@@ -26,8 +26,12 @@ import {
   parseApproveBody,
   REQUEST_CODE_LENGTH,
   REQUEST_SOURCE_WINDOW_MS,
+  ANSWER_MARGIN_MS,
+  pairRequestCancelRoute,
   REQUEST_TTL_MS,
   REQUESTS_PER_SOURCE,
+  REQUESTS_PER_WINDOW,
+  requestSourceKey,
   settlePairRequests,
   TOMBSTONE_MS,
   type PairRequestDeps,
@@ -107,9 +111,10 @@ function rig(opts: { registry?: PairedRegistry; isPeer?: boolean; withStore?: bo
   const deps: PairRequestDeps = {
     book,
     pairing: opts.withStore === false ? undefined : store,
-    revoke: async (label) => {
-      revoked.push(label);
-      await store.revoke(label);
+    // By hash, as server.ts does; the label it removed is what the cases read back.
+    revoke: async (tokenHash) => {
+      const label = await store.revokeByTokenHash(tokenHash);
+      if (label !== null) revoked.push(label);
     },
     audit: (e) => audits.push(e),
     isPeer: opts.isPeer ?? false,
@@ -237,15 +242,17 @@ describe("POST /api/pair/request", () => {
     expect(r.audits).toEqual([{ action: "pair-request", detail: { route: "loopback", forwardedFrom: "tailnet" } }]);
   });
 
-  test("with no paired device nobody can approve: 409 no-approver, and the try is not spent", async () => {
+  test("with no paired device nobody can approve: 409 no-approver, and each try still counts", async () => {
     const r = rig({ registry: { devices: [] } });
-    for (let i = 0; i < REQUESTS_PER_SOURCE + 2; i++) {
+    for (let i = 0; i < REQUESTS_PER_SOURCE; i++) {
       const { res, json } = await create(r);
       expect(res.status).toBe(409);
       expect(json).toEqual({ error: "no-approver" });
     }
+    // The seventh is refused by the source's cap before the registry is asked at all.
+    expect((await create(r)).res.status).toBe(429);
     expect(r.book.openCount()).toBe(0);
-    expect(r.audits).toEqual([]);
+    expect(r.audits).toEqual([{ action: "pair-request-refused", detail: { reason: "rate" } }]);
   });
 
   test("a registry whose every device expired has no approver either", async () => {
@@ -328,11 +335,16 @@ describe("GET /api/pair/request/<id>", () => {
 
   test("the secret is compared in constant time, against a stand-in when the id is unknown", () => {
     const src = readFileSync(join(import.meta.dir, "pair-request.ts"), "utf8");
-    const at = src.indexOf("  poll(publicId: string, secret: string | null): PollView | null {");
+    // `poll` and `cancel` both find their entry through `matching`.
+    const at = src.indexOf("  private matching(publicId: string, secret: string | null): Entry | null {");
     const method = src.slice(at, src.indexOf("\n  }\n", at));
     expect(method).toContain("hashesEqual(e?.pollHash ?? DUMMY_HASH, given)");
     // The compare runs before any early return on the id.
     expect(method.indexOf("hashesEqual(")).toBeLessThan(method.indexOf("return null"));
+    for (const name of ["  poll(publicId", "  cancel(publicId"]) {
+      const start = src.indexOf(name);
+      expect(src.slice(start, src.indexOf("\n  }\n", start))).toContain("this.matching(publicId, secret)");
+    }
     // And the bridge keeps the secret's hash, never the secret.
     expect(src).toContain("pollHash: sha256Hex(pollSecret)");
   });
@@ -647,7 +659,7 @@ describe("PairRequestBook", () => {
   test("tombstones are bounded, oldest first", () => {
     const clock = { now: T0 };
     // A limiter that never refuses, so the bound is what is tested.
-    const book = new PairRequestBook(() => clock.now, randomBytes, createPairLimiter(10_000, 1));
+    const book = new PairRequestBook(() => clock.now, randomBytes, createPairLimiter(10_000, 1), 10_000);
     for (let i = 0; i < MAX_TOMBSTONES + 20; i++) {
       const one = book.create({ source: `s${i}`, route: { route: "loopback" }, asker: { browser: null, os: null } });
       if (!one.ok) throw new Error("refused");
@@ -687,3 +699,215 @@ describe("PairRequestBook", () => {
     expect(next.endsWith(" 2")).toBe(true);
   });
 });
+
+// ── Review round (lead, 2026-11-11): N2, N3, N4, A2, A5, A7 ──────────────────────────────────
+
+async function cancel(r: Rig, id: string, secret: string | null) {
+  const res = await pairRequestCancelRoute(r.deps, id, secret);
+  return { status: res.status, json: await body(res) };
+}
+
+describe("N3: sources are keyed by /64, and the global caps hold", () => {
+  test("an IPv6 address is cut to its /64; IPv4, mapped IPv4 and loopback pass unchanged", () => {
+    expect(requestSourceKey("2001:db8:1:2:aaaa:bbbb:cccc:dddd")).toBe("2001:db8:1:2::/64");
+    expect(requestSourceKey("2001:0db8:0001:0002::1")).toBe("2001:db8:1:2::/64");
+    expect(requestSourceKey("2001:db8::1")).toBe("2001:db8:0:0::/64");
+    expect(requestSourceKey("fe80::1%eth0")).toBe("fe80:0:0:0::/64");
+    expect(requestSourceKey("::ffff:192.0.2.7")).toBe("192.0.2.7");
+    expect(requestSourceKey("100.64.0.9")).toBe("100.64.0.9");
+    expect(requestSourceKey("loopback")).toBe("loopback");
+    expect(requestSourceKey("not an address")).toBe("not an address");
+  });
+
+  test("addresses in one /64 share the cap of six", async () => {
+    const r = rig();
+    for (let i = 0; i < REQUESTS_PER_SOURCE; i++) expect((await create(r, `2001:db8:1:2::${i + 1}`)).res.status).toBe(200);
+    expect((await create(r, "2001:db8:1:2:ffff::7")).res.status).toBe(429);
+    expect((await create(r, "2001:db8:1:3::1")).res.status).toBe(200);
+  });
+
+  test(`at most ${REQUESTS_PER_WINDOW} requests in ten minutes, whatever the source, and one audit line for the burst`, async () => {
+    const r = rig();
+    for (let i = 0; i < REQUESTS_PER_WINDOW; i++) {
+      const m = await made(r, `10.0.${Math.floor(i / 200)}.${i % 200}`);
+      await cancel(r, m.publicId, m.pollSecret);
+    }
+    for (let i = 0; i < 5; i++) {
+      const refused = await create(r, `10.9.9.${i}`);
+      expect(refused.res.status).toBe(429);
+      expect(Number(refused.res.headers.get("retry-after"))).toBe(600);
+    }
+    expect(r.audits.filter((a) => a.detail?.reason === "rate")).toHaveLength(1);
+    r.clock.now += 600_000;
+    expect((await create(r, "10.9.9.9")).res.status).toBe(200);
+  });
+
+  test("the open cap's refusals are audited once per window, not once each", async () => {
+    const r = rig();
+    for (let i = 0; i < MAX_OPEN_REQUESTS; i++) await made(r, `100.64.0.${i + 1}`);
+    for (let i = 0; i < 5; i++) expect((await create(r, `100.64.1.${i}`)).res.status).toBe(429);
+    expect(r.audits.filter((a) => a.detail?.reason === "rate")).toHaveLength(1);
+  });
+});
+
+describe("N4: cancel, and one open request per source", () => {
+  test("DELETE with the secret ends the request: audited, the poll reads expired, the approver gone", async () => {
+    const r = rig();
+    const m = await made(r);
+    expect(await cancel(r, m.publicId, m.pollSecret)).toEqual({ status: 200, json: { state: "cancelled" } });
+    expect(r.audits.at(-1)).toEqual({ action: "pair-request-refused", detail: { reason: "cancelled" } });
+    expect(await poll(r, m.publicId, m.pollSecret)).toEqual({ status: 200, json: { state: "expired" } });
+    expect((await pairApproveReadRoute(r.deps, m.publicId)).status).toBe(404);
+    expect(r.book.openCount()).toBe(0);
+    // A second cancel finds an ended request: no second audit line.
+    expect((await cancel(r, m.publicId, m.pollSecret)).status).toBe(200);
+    expect(r.audits.filter((a) => a.detail?.reason === "cancelled")).toHaveLength(1);
+  });
+
+  test("a wrong, missing or empty secret, or an unknown id, is the same 404, and changes nothing", async () => {
+    const r = rig();
+    const m = await made(r);
+    for (const [id, secret] of [
+      [m.publicId, "B".repeat(22)],
+      [m.publicId, null],
+      [m.publicId, ""],
+      ["A".repeat(22), m.pollSecret],
+    ] as const) {
+      expect(await cancel(r, id, secret)).toEqual({ status: 404, json: { error: "not found" } });
+    }
+    expect((await poll(r, m.publicId, m.pollSecret)).json.state).toBe("waiting");
+  });
+
+  test("a cancel after the approval revokes the device nobody will collect", async () => {
+    const r = rig();
+    const m = await made(r);
+    await approve(r, m.publicId, { code: m.code, label: "desk" });
+    await cancel(r, m.publicId, m.pollSecret);
+    expect(r.revoked).toEqual(["desk"]);
+    expect(coerceRegistry(r.mem.state.registry).devices.map((d) => d.label)).toEqual(["pixel"]);
+  });
+
+  test("a crew member answers the cancel with 404", async () => {
+    const r = rig({ isPeer: true });
+    expect((await cancel(r, "x".repeat(22), "y".repeat(22))).status).toBe(404);
+  });
+
+  test("a new request from the same source replaces its open one", async () => {
+    const r = rig();
+    const first = await made(r, "100.64.0.9");
+    const second = await made(r, "100.64.0.9");
+    expect(r.book.openCount()).toBe(1);
+    expect(await poll(r, first.publicId, first.pollSecret)).toEqual({ status: 200, json: { state: "expired" } });
+    expect((await poll(r, second.publicId, second.pollSecret)).json.state).toBe("waiting");
+    expect(r.audits.filter((a) => a.detail?.reason === "replaced")).toHaveLength(1);
+  });
+
+  test("so three Cancels in a row never fill the open cap", async () => {
+    const r = rig();
+    for (let i = 0; i < 5; i++) await made(r, "100.64.0.9");
+    expect(r.book.openCount()).toBe(1);
+  });
+
+  test("a replaced request whose device was approved and not collected takes that device with it", async () => {
+    const r = rig();
+    const first = await made(r, "100.64.0.9");
+    await approve(r, first.publicId, { code: first.code, label: "desk" });
+    await made(r, "100.64.0.9");
+    expect(r.revoked).toEqual(["desk"]);
+  });
+
+  test("an enrol that finishes after the request ended leaves no device behind", async () => {
+    const r = rig();
+    const m = await made(r);
+    // The asker cancels while the approver's enrol is in the registry queue.
+    const original = r.store.enrolApproved.bind(r.store);
+    r.store.enrolApproved = async (label, expiresAt) => {
+      await cancel(r, m.publicId, m.pollSecret);
+      return original(label, expiresAt);
+    };
+    expect(await approve(r, m.publicId, { code: m.code, label: "desk" })).toEqual({ status: 404, json: { error: "gone" } });
+    expect(r.revoked).toEqual(["desk"]);
+    expect(coerceRegistry(r.mem.state.registry).devices.map((d) => d.label)).toEqual(["pixel"]);
+    expect(r.audits.some((a) => a.action === "pair-approve")).toBe(false);
+  });
+});
+
+describe("A7: a hung answer does not hold its place", () => {
+  test("the sweep ends an `answering` request past its expiry and the margin", () => {
+    const clock = { now: T0 };
+    const book = new PairRequestBook(() => clock.now);
+    const one = book.create({ source: "a", route: { route: "loopback" }, asker: { browser: null, os: null } });
+    if (!one.ok) throw new Error("refused");
+    expect(book.take(one.publicId).kind).toBe("taken");
+    clock.now += REQUEST_TTL_MS;
+    expect(book.sweep().expired).toBe(0);
+    expect(book.openCount()).toBe(1);
+    clock.now += ANSWER_MARGIN_MS;
+    expect(book.sweep().expired).toBe(1);
+    expect(book.openCount()).toBe(0);
+    // And the late approve is refused, so the route revokes what it made.
+    expect(book.approve(one.publicId, "tok", "desk")).toBe(false);
+  });
+});
+
+describe("N2: the new device ends with its approver", () => {
+  const ENDS = T0 + 30 * 86_400_000;
+
+  test("the read names the approver's end; the enrolled device carries it", async () => {
+    const r = rig();
+    const m = await made(r);
+    const view = await body(await pairApproveReadRoute(r.deps, m.publicId, { approverExpiresAt: ENDS }));
+    expect(view.endsAt).toBe(ENDS);
+    const res = await pairApproveAnswerRoute(r.deps, m.publicId, { code: m.code, label: "desk" }, { ...APPROVER, approverExpiresAt: ENDS });
+    expect(res.status).toBe(200);
+    const desk = coerceRegistry(r.mem.state.registry).devices.find((d) => d.label === "desk")!;
+    expect(desk.expiresAt).toBe(ENDS);
+  });
+
+  test("an approver with no end gives none, and the read says null", async () => {
+    const r = rig();
+    const m = await made(r);
+    expect((await body(await pairApproveReadRoute(r.deps, m.publicId))).endsAt).toBeNull();
+    await approve(r, m.publicId, { code: m.code, label: "desk" });
+    expect(coerceRegistry(r.mem.state.registry).devices.find((d) => d.label === "desk")).not.toHaveProperty("expiresAt");
+  });
+});
+
+describe("A5: an uncollected device is revoked by its token's hash", () => {
+  test("a device that took the label in between is not the one removed", async () => {
+    const r = rig();
+    const m = await made(r);
+    await approve(r, m.publicId, { code: m.code, label: "desk" });
+    // Somebody revokes "desk" by hand and pairs another device under the same name.
+    await r.store.revoke("desk");
+    const other = sha256Hex("tok-other");
+    r.mem.state.registry = { devices: [...coerceRegistry(r.mem.state.registry).devices, { label: "desk", tokenHash: other, createdAt: T0, lastSeenAt: T0 }] };
+    r.clock.now += REQUEST_TTL_MS;
+    await settlePairRequests(r.deps);
+    expect(r.revoked).toEqual([]);
+    expect(coerceRegistry(r.mem.state.registry).devices.find((d) => d.label === "desk")?.tokenHash).toBe(other);
+  });
+
+  test("server.ts revokes through one path: the device list and the sweep share `deviceRevoked`", () => {
+    const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
+    expect(src).toContain("const deviceRevoked = async (label: string");
+    expect(src).toContain("await pairing.revokeByTokenHash(tokenHash)");
+    expect(src).toContain('await deviceRevoked(label, undefined, "never-collected")');
+    expect(src).toContain("await deviceRevoked(label, whois(req).device)");
+    // The body names the watch once, so the label is not reported a second time.
+    const at = src.indexOf("const deviceRevoked = async");
+    const fn = src.slice(at, src.indexOf("\n  };\n", at));
+    expect(fn).toContain('forgetDevice(label, "device-revoked")');
+    expect(fn).toContain("revokeWatch(pairedLabels())");
+  });
+
+  test("server.ts routes DELETE of a request to the cancel, behind the write's access rule", () => {
+    const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
+    const at = src.indexOf('if (pairRequestMatch && req.method === "DELETE")');
+    expect(at).toBeGreaterThan(0);
+    const block = src.slice(at, src.indexOf("\n      }\n", at));
+    expect(block).toContain('checkAccess(req, cfg, "write")');
+    expect(block).toContain("pairRequestCancelRoute(pairRequestDeps, pairRequestMatch[1]!, req.headers.get(POLL_HEADER))");
+  });
+});
+

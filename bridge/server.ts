@@ -213,6 +213,7 @@ import {
   pairApproveAnswerRoute,
   pairApproveGateLevel,
   pairApproveReadRoute,
+  pairRequestCancelRoute,
   pairRequestCreateRoute,
   pairRequestPollRoute,
   PairRequestBook,
@@ -1723,6 +1724,16 @@ export function startServer(opts: {
     await forgetDeviceRows(addedLaunchers, label, "local", audit, reason);
     if (crewLead !== undefined) void forgetOnMembers(label);
   };
+  /**
+   * What follows a revoke, whoever made it: one `device.revoke` audit line, the rows the device added go
+   * (here and on the crew), and the watch learns the label is gone, so it does not report it again. The
+   * device list's revoke and a pairing request's never-collected device both come through here.
+   */
+  const deviceRevoked = async (label: string, by: string | null | undefined, reason?: string): Promise<void> => {
+    audit.record({ action: "device.revoke", device: by, detail: reason === undefined ? { label } : { label, reason } });
+    await forgetDevice(label, "device-revoked");
+    revokeWatch(pairedLabels());
+  };
   const noticeRevokes = async (): Promise<void> => {
     for (const label of revokeWatch(pairedLabels())) await forgetDevice(label, "device-revoked");
   };
@@ -2879,10 +2890,10 @@ export function startServer(opts: {
   const pairRequestDeps: PairRequestDeps = {
     book: new PairRequestBook(),
     pairing,
-    revoke: async (label) => {
-      if (pairing === undefined || !(await pairing.revoke(label))) return;
-      audit.record({ action: "device.revoke", device: label, detail: { label, reason: "never-collected" } });
-      await forgetDevice(label, "never-collected");
+    // By the token's hash, never by label, and through the device list's own revoke effects.
+    revoke: async (tokenHash) => {
+      const label = pairing === undefined ? null : await pairing.revokeByTokenHash(tokenHash);
+      if (label !== null) await deviceRevoked(label, undefined, "never-collected");
     },
     audit: (entry) => audit.record(entry),
     isPeer: crew.mode === "peer",
@@ -4501,6 +4512,12 @@ export function startServer(opts: {
         if (!gate.ok) return text(gate.reason, 403);
         return secure(await pairRequestPollRoute(pairRequestDeps, pairRequestMatch[1]!, req.headers.get(POLL_HEADER)));
       }
+      // Its cancel: the same secret, the same 404, and the write's `Origin` rule.
+      if (pairRequestMatch && req.method === "DELETE") {
+        const gate = checkAccess(req, cfg, "write");
+        if (!gate.ok) return text(gate.reason, 403);
+        return secure(await pairRequestCancelRoute(pairRequestDeps, pairRequestMatch[1]!, req.headers.get(POLL_HEADER)));
+      }
       // The approver: a paired device's token with the write right, the trick switch's gate (a read is
       // `device-read`, the same device factors without the write's Origin rule). The host's local
       // credential, an unpaired browser, a header-allowlisted device with no token and a crew forward
@@ -4509,7 +4526,11 @@ export function startServer(opts: {
       if (pairApproveMatch && (req.method === "GET" || req.method === "POST")) {
         const denied = guard(req, cfg, pairApproveGateLevel(req.method), pairingGate);
         if (denied) return denied;
-        if (req.method === "GET") return secure(await pairApproveReadRoute(pairRequestDeps, pairApproveMatch[1]!));
+        // The approver's own device: its label for the audit line, and its expiry, which the new device
+        // inherits (never longer than the approver's access).
+        const approverDevice = pairing?.resolve(bearerToken(req.headers)) ?? null;
+        const approverExpiresAt = approverDevice?.expiresAt;
+        if (req.method === "GET") return secure(await pairApproveReadRoute(pairRequestDeps, pairApproveMatch[1]!, { approverExpiresAt }));
         let body: JsonValue | undefined;
         try {
           // SAFETY: `Request.json()` output IS a JsonValue by construction; `parseApproveBody` checks every field.
@@ -4520,8 +4541,9 @@ export function startServer(opts: {
         const peer = peerAddress(req);
         return secure(
           await pairApproveAnswerRoute(pairRequestDeps, pairApproveMatch[1]!, body, {
-            approver: pairedLabel(req, pairingGate) ?? "unknown",
+            approver: approverDevice?.label ?? pairedLabel(req, pairingGate) ?? "unknown",
             approverRoute: pairRoute(peer, isLoopbackPeer(peer), req.headers.get("x-forwarded-for")),
+            approverExpiresAt,
           }),
         );
       }
@@ -4613,11 +4635,9 @@ export function startServer(opts: {
         if (!revoked) {
           return jsonError(apiError("device.unknown"), 404, req.headers.get("accept-encoding"));
         }
-        audit.record({ action: "device.revoke", device: whois(req).device, detail: { label } });
-        // The rows that device added from its phone go with it, here and on every crew member (ADR 0094).
-        await forgetDevice(label, "device-revoked");
-        // Seen now, so the watch does not report the same label a second time.
-        revokeWatch(pairedLabels());
+        // The audit line, the rows that device added from its phone (here and on every crew member,
+        // ADR 0094), and the watch told, so it does not report the same label a second time.
+        await deviceRevoked(label, whois(req).device);
         let after: DevicesResponseBody;
         try {
           const current = pairing.resolve(bearerToken(req.headers))?.label ?? null;
@@ -8658,12 +8678,12 @@ export const OPEN_API_ROUTES: readonly { readonly path: string; readonly methods
 ];
 
 /**
- * The open routes with an id in the path: `GET /api/pair/request/<id>`, the asking browser's poll
- * (ADR 0139). Its credential is the poll secret in a header, which only the request's creator holds;
- * an unknown id and a wrong secret are the same 404.
+ * The open routes with an id in the path: `GET /api/pair/request/<id>`, the asking browser's poll, and
+ * `DELETE` of the same path, its cancel (ADR 0139). Their credential is the poll secret in a header,
+ * which only the request's creator holds; an unknown id and a wrong secret are the same 404.
  */
 export const OPEN_API_PATTERNS: readonly { readonly pattern: RegExp; readonly methods: readonly string[] }[] = [
-  { pattern: PAIR_REQUEST_ROUTE, methods: ["GET"] },
+  { pattern: PAIR_REQUEST_ROUTE, methods: ["GET", "DELETE"] },
 ];
 
 /** Whether this method and path are one of {@link OPEN_API_ROUTES} (exact path, exact method) or {@link OPEN_API_PATTERNS}. */
