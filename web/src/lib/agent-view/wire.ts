@@ -596,10 +596,23 @@ export const VIEW_NO_DOES = 'A button in an agent view has no "does": a tap only
 /** The sentence a link whose text reads as an address other than its own is refused with (SECURITY N1). */
 export const VIEW_LINK_TEXT = "A link whose text reads as a web address must show its own address: write the address as the text, or words that are no address.";
 
-/** Whether a link text reads as a web address: a scheme, `www.`, or a host with a dot and no blank. */
-function readsAsAddress(text: string): boolean {
-  const t = text.trim();
-  return /^[a-z][a-z0-9+.-]*:\/\//iu.test(t) || /^www\./iu.test(t) || /^[a-z0-9-]+(\.[a-z0-9-]+)+(\/\S*)?$/iu.test(t);
+/** The dots a browser reads in a host: the full stop, and the ideographic one (U+3002), which NFKC leaves. */
+const HOST_DOT = String.raw`[.\u3002]`;
+/** One name of a host in any script: letters, digits, marks and the hyphen. */
+const HOST_NAME = String.raw`[\p{L}\p{N}\p{M}-]+`;
+const ADDRESS_SCHEME = /^[\p{L}][\p{L}\p{N}+.-]*:\/\//u;
+const ADDRESS_WWW = new RegExp(`^www${HOST_DOT}`, "u");
+const ADDRESS_HOST = new RegExp(`^${HOST_NAME}(?:${HOST_DOT}${HOST_NAME})+(?:[/:?#]\\S*)?$`, "u");
+
+/**
+ * Whether a link's text reads as a web address to a person: a scheme, `www.`, or a host with a dot and
+ * no blank. Read on the FOLDED text ({@link foldViewLine}: hidden characters out, NFKC, look-alikes
+ * folded), so a Cyrillic letter, a fullwidth or an ideographic dot, a zero-width space or a host in
+ * another script reads as the address it shows (review 10 W4). The bridge's write and the phone share it.
+ */
+export function readsAsAddress(text: string): boolean {
+  const folded = foldViewLine(text).trim();
+  return ADDRESS_SCHEME.test(folded) || ADDRESS_WWW.test(folded) || ADDRESS_HOST.test(folded);
 }
 
 /** Whether a tap word (a label, a group's label) is one line of shown characters. */

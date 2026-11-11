@@ -36,7 +36,7 @@ import { kidsOf } from "@/lib/tricks/layout";
 import type { View, ViewNode } from "@/lib/tricks/schema";
 import type { TranscriptEntry } from "@/lib/types";
 
-import { isViewHeadLine, VIEW_DRAWING_MAX_MS, VIEW_NO_PROFILE, viewBlocksOf, type ViewChoice, type ViewDrawing, type ViewNote, type ViewScreen, type ViewSent } from "./wire";
+import { isViewHeadLine, readsAsAddress, VIEW_DRAWING_MAX_MS, VIEW_NO_PROFILE, viewBlocksOf, type ViewChoice, type ViewDrawing, type ViewNote, type ViewScreen, type ViewSent } from "./wire";
 
 /** The longest trick name the switch row and the View choice show, in characters, the cut included. */
 export const VIEW_NAME_SHOWN = 12;
@@ -118,12 +118,6 @@ export function withPressed(view: View, controls: readonly string[]): View {
       return kids.length === 0 ? node : Object.assign({}, node, { kids: walk(kids, path) });
     });
   return walk(view, "v");
-}
-
-/** Whether a link text reads as a web address: a scheme, `www.`, or a host with a dot and no blank. The wire's rule. */
-function readsAsAddress(text: string): boolean {
-  const trimmed = text.trim();
-  return /^[a-z][a-z0-9+.-]*:\/\//iu.test(trimmed) || /^www\./iu.test(trimmed) || /^[a-z0-9-]+(\.[a-z0-9-]+)+(\/\S*)?$/iu.test(trimmed);
 }
 
 /**

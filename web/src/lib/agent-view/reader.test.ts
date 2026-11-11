@@ -83,6 +83,12 @@ describe("shownLinkText and withTrueLinks", () => {
     expect(shownLinkText("good.example/docs", "https://evil.example/x")).toBe("https://evil.example/x");
   });
 
+  it("review 10 W4: reads the folded words, so a look-alike, a fullwidth dot or another script reads as an address too", () => {
+    for (const text of ["p\u0430ypal.com", "paypal\uff0ecom", "paypal\u3002com", "\u4f8b\u3048.jp", "pay\u200bpal.com"]) {
+      expect(shownLinkText(text, "https://evil.example/x"), JSON.stringify(text)).toBe("https://evil.example/x");
+    }
+  });
+
   it("keeps words that are no address, and an address that is the target itself", () => {
     expect(shownLinkText("Read the docs", "https://good.example/docs")).toBe("Read the docs");
     expect(shownLinkText("https://good.example/docs", "https://good.example/docs")).toBe("https://good.example/docs");

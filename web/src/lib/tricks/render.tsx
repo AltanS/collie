@@ -779,10 +779,19 @@ function RunView({ node, ctx }: { node: RunNode; ctx: RenderCtx }) {
   const className = cn(styleClass(attrs?.style, ctx.stale), attrs?.code !== undefined && "rounded-sm bg-muted px-1 font-mono text-[0.9em]");
   const words = attrs?.at !== undefined && attrs.clock !== undefined ? <TrickClock at={attrs.at} clock={attrs.clock} now={ctx.now} /> : node.text;
   if (attrs?.href !== undefined) {
-    return (
+    const target = (
       <Target href={attrs.href} ctx={ctx} className={cn(className, LINK_INK)}>
         {words}
       </Target>
+    );
+    // A linked run says where it goes as a link does, where the place shows hosts (review 10 W4).
+    const host = ctx.hostOf?.(attrs.href) ?? "";
+    if (host === "") return target;
+    return (
+      <>
+        {target}
+        <HostWords host={host} />
+      </>
     );
   }
   return (

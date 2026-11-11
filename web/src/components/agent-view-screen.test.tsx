@@ -882,3 +882,18 @@ describe("review 10 W3: a control is inert until it has stood still for 500 ms",
     expect(props.onTap).toHaveBeenCalledExactlyOnceWith(tapOf(1, "choice/0", 'picked "Lean"'));
   });
 });
+
+describe("review 10 W4: a linked run shows where it goes", () => {
+  it("W4: a run with an href is followed by its host, as a link is", () => {
+    const { container } = draw({ view: screenOf([{ kind: "para", kids: [{ kind: "run", text: "Read the notes", attrs: { href: "https://notes.example/x" } }] }]) });
+    const anchor = screen.getByRole("link", { name: "Read the notes" });
+    expect(anchor).toHaveAttribute("href", "https://notes.example/x");
+    const host = container.querySelector("[data-trick-link-host]");
+    expect(host?.textContent).toBe("notes.example");
+  });
+
+  it("W4: a host in another script shows as the browser reads it (punycode), whole", () => {
+    const { container } = draw({ view: screenOf([{ kind: "para", kids: [{ kind: "run", text: "Notes", attrs: { href: "https://b\u00fccher.example/x" } }] }]) });
+    expect(container.querySelector("[data-trick-link-host]")?.textContent).toBe("xn--bcher-kva.example");
+  });
+});

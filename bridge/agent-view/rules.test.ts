@@ -630,6 +630,22 @@ describe("rule 8: Collie's frame", () => {
     expect(parseAgentView([{ kind: "para", kids: [{ kind: "link", text: "the docs", attrs: { href: "https://docs.example/x" } }] }]).view).toBeDefined();
     expect(parseAgentView([{ kind: "para", kids: [{ kind: "link", text: "https://docs.example/x", attrs: { href: "https://docs.example/x" } }] }]).view).toBeDefined();
   });
+
+  test("review 10 W4: the address check reads the folded text, not ASCII alone", () => {
+    // A Cyrillic a, a fullwidth dot, an ideographic full stop, a host in another script, fullwidth
+    // letters, on a link and on a linked run: each reads as an address to a person, so each must be its
+    // own href. (A zero-width space the schema refuses before this rule, as a hidden character.)
+    const forged = ["p\u0430ypal.com", "paypal\uff0ecom", "paypal\u3002com", "\u4f8b\u3048.jp", "\uff57\uff57\uff57.paypal.com", "HTTPS://paypal.com"];
+    for (const text of forged) {
+      for (const node of [{ kind: "link", text, attrs: { href: "https://evil.example/x" } }, { kind: "run", text, attrs: { href: "https://evil.example/x" } }]) {
+        const parsed = parseAgentView([{ kind: "para", kids: [node] }]);
+        expect(parsed.view, `${node.kind} ${JSON.stringify(text)}`).toBeUndefined();
+        expect(parsed.refusals.map((x) => x.reason)).toContain(VIEW_LINK_TEXT);
+      }
+    }
+    // Words that are no address still pass.
+    expect(parseAgentView([{ kind: "para", kids: [{ kind: "run", text: "\u8cc7\u6599", attrs: { href: "https://docs.example/x" } }] }]).view).toBeDefined();
+  });
 });
 
 // ── rules 9, 10, 11 and V-A2 ──────────────────────────────────────────────────────────────────────
