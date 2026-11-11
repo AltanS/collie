@@ -117,7 +117,7 @@ describe("a run of spaces a phone would push out of sight (review 7 R2)", () => 
   });
 
   test("a proposal with a longer run is refused, on one card and on a group; a proposed version too", () => {
-    const refused = { ok: false, code: "cannot_show", error: GROUP_WIDE_GAP };
+    const refused = { ok: false, code: "cannot_show", error: GROUP_WIDE_GAP } as const;
     expect(card(`const a = 1;${" ".repeat(VIEW_GAP_MAX + 1)}evil();\n`)).toEqual(refused);
     expect(card(`${lines(300)}const a = 1;${" ".repeat(VIEW_GAP_MAX + 1)}evil();\n`)).toEqual(refused);
     expect(card(`const a = 1;${" ".repeat(VIEW_GAP_MAX)}ok();\n`).ok).toBe(true);
