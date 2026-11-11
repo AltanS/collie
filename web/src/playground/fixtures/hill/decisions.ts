@@ -951,10 +951,10 @@ export function proposalGroup(): HillDecision {
   });
 }
 
-/** 66: a trick stopped because it asks for a right the person's yes did not cover (fault B), OK alone. */
+/** 66: a trick stopped because its rights changed since the person's yes (fault B), OK alone. */
 export const rightsMoved = decision({
-  title: "Browser leg asks for a new right",
-  summary: "This Collie reads a right in the trick that your yes did not cover, so the trick stopped. Read its rights in Settings → Tricks, and switch it on again if you want it.",
+  title: "Browser leg changed its rights",
+  summary: "Collie now reads other rights in this trick than the ones you said yes to, so the trick stopped. Read its rights in Settings → Tricks, and switch it on again if you want it.",
   ago: 1,
   from: { kind: "collie", address: null, trickId: null, trickKey: null, memberId: null, harness: null, label: "Collie", host: "lodge", trickHost: null, ref: { type: "rights", id: "legs", hash: "7f".repeat(32) } },
   target: null,

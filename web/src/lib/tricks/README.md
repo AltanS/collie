@@ -468,7 +468,7 @@ parts, serves its pictures, posts its Decisions and opens its view only while th
 `powersOf` of the approved copy as THIS Collie reads it. A newer Collie can read a right an older one did
 not (a place word it did not know, rules it did not hash), so after an update the two may differ. When
 the two differ, the trick stops: no run, its parts and open Decisions
-go, a tap is refused, and the row says "Asks for a new right. Switch it on again." (`rightsMoved: true` on
+go, a tap is refused, and the row says "Its rights changed. Switch it on again." (`rightsMoved: true` on
 the wire, so the phone says it in its own words). Stopped is not on: the wire says `on: false` for such a
 trick while its switch entry stays, so the switch shows off, the row shows the rights a yes approves (its
 places, reads and warnings, as for a first switch on), and ONE tap on is the normal approval of the

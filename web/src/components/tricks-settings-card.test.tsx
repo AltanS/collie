@@ -441,7 +441,7 @@ describe("the Hill switched off", () => {
 
   it("fault B: a trick stopped for its rights says so in the phone's words, ahead of every other line", () => {
     const stopped: WireTrickInfo = { ...ASKS, state: "stopped", error: "the bridge's English line", rightsMoved: true, pending: { hash: "a".repeat(64), files: { added: 0, changed: 1, removed: 0 }, powersChanged: false, warnings: [] } };
-    expect(slotLine(stopped, NOW, true)).toEqual({ text: "Asks for a new right. Switch it on again.", trouble: true });
+    expect(slotLine(stopped, NOW, true)).toEqual({ text: "Its rights changed. Switch it on again.", trouble: true });
     // An older bridge sends no flag: its own line stands.
     const { rightsMoved: _flag, ...older } = stopped;
     expect(slotLine(older, NOW, true)).toEqual({ text: "the bridge's English line", trouble: true });
@@ -456,7 +456,7 @@ describe("the Hill switched off", () => {
     render(<RouterProvider router={router} />);
     const sw = await screen.findByRole("switch", { name: "Browser leg" });
     expect(sw).not.toBeChecked();
-    expect(rowOf("legs").querySelector('[data-line="slot"]')).toHaveTextContent("Asks for a new right. Switch it on again.");
+    expect(rowOf("legs").querySelector('[data-line="slot"]')).toHaveTextContent("Its rights changed. Switch it on again.");
     // The rights a yes approves are on the row before the tap, as for a first switch on.
     expect(await within(rowOf("legs")).findByText("This trick reaches the network.")).toBeInTheDocument();
     await user.click(sw);

@@ -124,8 +124,8 @@ describe("fault B: the Hill card of a trick stopped for its rights", () => {
     const card = cards(one)[0];
     expect(card).toMatchObject({
       state: "open",
-      title: "Browser leg asks for a new right",
-      summary: "This Collie reads a right in the trick that your yes did not cover, so the trick stopped. Read its rights in Settings → Tricks, and switch it on again if you want it.",
+      title: "Browser leg changed its rights",
+      summary: "Collie now reads other rights in this trick than the ones you said yes to, so the trick stopped. Read its rights in Settings → Tricks, and switch it on again if you want it.",
       options: [{ intent: "ok", label: "OK" }],
       from: { kind: "collie", label: "Collie", ref: { type: "rights", id: "legs" } },
     });
@@ -136,6 +136,15 @@ describe("fault B: the Hill card of a trick stopped for its rights", () => {
     expect(cards(two)).toHaveLength(1);
     expect(cards(two)[0]?.id).toBe(card?.id);
     expect(two.runs).toEqual([]);
+  });
+
+  test("N8b: the row and the card say the rights changed, since the hash cannot tell more rights from fewer", async () => {
+    const f = await folders(OLDER_READER);
+    const l = life(f);
+    await scan(l, T0);
+    expect(RIGHTS_LINE).toBe("Its rights changed. Switch it on again.");
+    expect(cards(l)[0]?.title).toBe("Browser leg changed its rights");
+    expect(cards(l)[0]?.summary).not.toContain("new right");
   });
 
   test("fault B: OK closes it, and the closed card is not posted again, after a restart either", async () => {
@@ -215,7 +224,7 @@ describe("fault B: the Hill card of a trick stopped for its rights", () => {
     await scan(l, T0 + 60_000);
     expect(cards(l)).toEqual([]);
     expect((await l.service.reply(undefined)).tricks[0]).toMatchObject({ error: RIGHTS_LINE, rightsMoved: true });
-    expect(l.warnings.filter((line) => line.includes("asks for a new right was not posted"))).toHaveLength(1);
+    expect(l.warnings.filter((line) => line.includes("its rights changed was not posted"))).toHaveLength(1);
     l.hillOn.value = true;
     await scan(l, T0 + 120_000);
     await scan(l, T0 + 180_000);

@@ -174,7 +174,7 @@ export const TAMPERED_LINE = "The approved copy changed on disk, so the trick st
  * this Collie reads it (fault B): a newer reader names a right the older one did not, or the stored powers
  * are unknown. The trick stops until a person switches it on again, which approves it with the rights read now.
  */
-export const RIGHTS_LINE = "Asks for a new right. Switch it on again.";
+export const RIGHTS_LINE = "Its rights changed. Switch it on again.";
 /** The row's line when the approved copy holds a symbolic link (one made before links were refused). */
 export const LINK_LINE = "The approved copy holds a symbolic link, so the trick stopped. A trick holds regular files only: replace the link in its folder, then switch it on again.";
 /** How long a changed folder must stay still before its snapshot is taken. */

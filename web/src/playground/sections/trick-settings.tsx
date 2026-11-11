@@ -452,12 +452,12 @@ export function TrickSettingsSection(): ReactNode {
         />
       </Group>
       {/* Fault B: a trick whose approval did not hold a right its copy asks for stops; its switch shows off and its row says so. */}
-      <Group title="A trick stopped for a new right">
+      <Group title="A trick stopped because its rights changed">
         <ListCard
           n={35}
           state="trick-settings-rights-moved"
-          label="stopped for a new right, beside a healthy one"
-          tricks={[trick("legs", "Browser leg", { on: false, state: "stopped", error: "Asks for a new right. Switch it on again.", rightsMoved: true, approves: "b".repeat(64), warnings: [{ kind: "network", text: "This trick reaches the network." }], provenance: { via: "agent", at: "2026-11-08T07:41:00Z" } }), HEALTHY[1] ?? trick("x", "x")]}
+          label="stopped because its rights changed, beside a healthy one"
+          tricks={[trick("legs", "Browser leg", { on: false, state: "stopped", error: "Its rights changed. Switch it on again.", rightsMoved: true, approves: "b".repeat(64), warnings: [{ kind: "network", text: "This trick reaches the network." }], provenance: { via: "agent", at: "2026-11-08T07:41:00Z" } }), HEALTHY[1] ?? trick("x", "x")]}
         />
       </Group>
     </Section>

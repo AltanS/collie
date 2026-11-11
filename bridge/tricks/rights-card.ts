@@ -65,8 +65,8 @@ export function rightsRequestId(id: string, moved: RightsMoved): string {
 export function rightsCard(subject: TrickRightsSubject): HillPostInput {
   return {
     requestId: rightsRequestId(subject.id, subject.moved),
-    title: `${subject.name} asks for a new right`,
-    summary: "This Collie reads a right in the trick that your yes did not cover, so the trick stopped. Read its rights in Settings → Tricks, and switch it on again if you want it.",
+    title: `${subject.name} changed its rights`,
+    summary: "Collie now reads other rights in this trick than the ones you said yes to, so the trick stopped. Read its rights in Settings → Tricks, and switch it on again if you want it.",
     options: [{ intent: RIGHTS_OK, label: "OK" }],
     text: "none",
   };
@@ -117,7 +117,7 @@ export class RightsCards implements TrickRightsPort {
       const said = `${subject.id}@${hash}@${posted.code ?? "plain"}`;
       if (this.said.has(said)) continue;
       this.said.add(said);
-      this.warn(`${subject.id}: the card that says it asks for a new right was not posted: ${posted.error}`);
+      this.warn(`${subject.id}: the card that says its rights changed was not posted: ${posted.error}`);
     }
   }
 }
