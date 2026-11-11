@@ -121,11 +121,31 @@ export type PaneKind = "agent" | "shell" | "unknown";
  * what that means. `collie trick on` treats it as a shell, a speed bump and not a wall.
  */
 export async function askPaneKind(deps: WalkyDeps): Promise<PaneKind> {
-  if (readEnvMarkers(deps.ctx.env).length === 0) return "unknown";
+  return (await askPanePlace(deps)).kind;
+}
+
+/**
+ * Where the bridge placed this pane, with {@link PaneKind}. `session` and `paneId` are set only when the
+ * bridge named them (a bridge before 2026-11-11 answers `agent` alone): `collie pair` writes them on the
+ * pending code so the pairing's audit line can say which pane made it.
+ */
+export interface PanePlace {
+  readonly kind: PaneKind;
+  readonly session?: string;
+  readonly paneId?: string;
+}
+
+/** {@link askPaneKind}, and the pane's session and id when the bridge names them. */
+export async function askPanePlace(deps: WalkyDeps): Promise<PanePlace> {
+  if (readEnvMarkers(deps.ctx.env).length === 0) return { kind: "unknown" };
   const answer = await request(deps, { op: "pane" }).catch(() => null);
-  const agent = answer?.ok === true ? asJsonBoolean(answer.body.agent) : undefined;
-  if (agent === undefined) return "unknown";
-  return agent ? "agent" : "shell";
+  if (answer?.ok !== true) return { kind: "unknown" };
+  const agent = asJsonBoolean(answer.body.agent);
+  if (agent === undefined) return { kind: "unknown" };
+  const session = asJsonString(answer.body.session);
+  const paneId = asJsonString(answer.body.paneId);
+  const kind = agent ? "agent" : "shell";
+  return session === undefined || paneId === undefined ? { kind } : { kind, session, paneId };
 }
 
 /**

@@ -118,6 +118,7 @@ import { cmdSupervise, realSuperviseDeps } from "./task-scheduler.ts";
 import { cmdApplyUpdate, cmdUpdate } from "./update.ts";
 import {
   askPaneKind,
+  askPanePlace,
   askSocket,
   cmdWalky,
   cmdWalkyCancel,
@@ -250,6 +251,8 @@ function pairingDeps(io: Io): PairingDeps {
     exec: realExec(ctx.env, ctx.home),
     // The bridge's own trail: `devices revoke` records the launcher rows it removes there (ADR 0094).
     appendAudit: (line) => appendFileSync(join(ctx.stateDir, "audit.log"), `${line}\n`, { mode: 0o600 }),
+    // `pair` asks the running bridge whether its pane runs an agent, as `trick on` does.
+    panePlace: () => askPanePlace(walkyDeps(io)),
   };
 }
 
