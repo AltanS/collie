@@ -101,9 +101,9 @@ async function writeFolder(ready: CarriedReady, dir: string): Promise<void> {
   const origin = ready.trick.origin;
   // Only a record one of the two readers takes: anything else would be a dot file nobody reads.
   if (origin !== null && (parseOrigin(origin) !== null || parseProposalOrigin(origin) !== null)) await writeFile(join(dir, ORIGIN_FILE), origin, { mode: 0o600 });
-  if (ready.stateDir !== null) {
+  if (ready.heldState !== null) {
     for (const part of ["media", "captures"]) {
-      if (await exists(join(ready.stateDir, part))) await copyTree(join(ready.stateDir, part), join(dir, part));
+      if (await exists(join(ready.heldState, part))) await copyTree(join(ready.heldState, part), join(dir, part));
     }
   }
 }
@@ -129,9 +129,9 @@ async function adoptOne(opts: AdoptTricksOptions, ready: CarriedReady, at: strin
       return entry === undefined ? approved : withEntry(approved, id, { ...entry, auto: ready.trick.auto, from: opts.lead });
     });
     const state = trickStateDir(opts.stateDir, id);
-    if (ready.stateDir !== null && !(await exists(state)) && (await exists(join(ready.stateDir, "state")))) {
+    if (ready.heldState !== null && !(await exists(state)) && (await exists(join(ready.heldState, "state")))) {
       await mkdir(tricksStateDir(opts.stateDir), { recursive: true, mode: 0o700 });
-      await copyTree(join(ready.stateDir, "state"), state);
+      await copyTree(join(ready.heldState, "state"), state);
       await chmod(state, 0o700).catch(() => {});
     }
     return { ok: true, keptFolder };

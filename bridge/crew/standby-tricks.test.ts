@@ -131,7 +131,7 @@ describe("the deputy's store", () => {
     const ready = await store.ready();
     expect(ready.map((r) => [r.trick.id, r.name, r.trick.auto])).toEqual([["legs", "Leg day", true]]);
     expect(await readFile(join(ready[0]?.codeDir ?? "", "lib", "a.ts"), "utf8")).toBe("export const a = 1;\n");
-    expect(await readFile(join(ready[0]?.stateDir ?? "", "state", "notes.json"), "utf8")).toBe("{}\n");
+    expect(await readFile(join(ready[0]?.heldState ?? "", "state", "notes.json"), "utf8")).toBe("{}\n");
     // The x bit rides the index, never the disk.
     expect(ready[0]?.trick.files.find((f) => f.rel === "p.sh")?.x).toBe(true);
     if (process.platform !== "win32") {

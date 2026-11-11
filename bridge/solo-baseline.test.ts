@@ -1493,6 +1493,10 @@ const CREW_STATE_DIR_ENTRIES = [
   // structural reason as the registry above: it is written only by a `POST /crew/v1/launchers-copy`
   // from this collie's own lead while a warrant names this machine, which a solo instance cannot reach.
   "standby-launchers.json",
+  // The lead's tricks, kept as an inert copy on the DEPUTY (CREW_PROTOCOL §25). The same structural
+  // reason: written only by the §25 routes from this collie's own lead while a warrant names this
+  // machine, which a solo instance cannot reach.
+  "standby-tricks",
 ];
 
 /** Every `.ts` module under `dir`, recursively, excluding tests. */

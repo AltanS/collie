@@ -499,8 +499,8 @@ export interface CarriedReady {
   readonly codeDir: string;
   /** The trick's name from the held code's own trick.toml, or its id when that does not read. */
   readonly name: string;
-  /** The held state folder, or null with none. */
-  readonly stateDir: string | null;
+  /** The held state folder of this trick (`state/`, `media/`, `captures/`), or null with none. */
+  readonly heldState: string | null;
 }
 
 /**
@@ -751,8 +751,7 @@ export class StandbyTricksStore {
       const codeDir = this.codeDir(trick.id, trick.hash);
       const read = await readManifestFile(diskTrickFs, codeDir, trick.id);
       const kept = (index.state.get(trick.id)?.bytes ?? 0) > 0 && (await lstat(this.stateDirOf(trick.id)).catch(() => null))?.isDirectory() === true;
-      const stateDir = kept ? this.stateDirOf(trick.id) : null;
-      out.push({ trick, codeDir, name: read.manifest?.name ?? trick.id, stateDir });
+      out.push({ trick, codeDir, name: read.manifest?.name ?? trick.id, heldState: kept ? this.stateDirOf(trick.id) : null });
     }
     return out;
   }
