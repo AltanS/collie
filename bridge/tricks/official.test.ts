@@ -352,7 +352,7 @@ describe.if(posix)("adding from the list", () => {
     const r = await rig([fixtureEntry(repo.url, repo.shas[0] ?? "", "b".repeat(64))]);
     const answer = await r.official.install("legs", "add");
     expect(answer).toEqual({ status: 422, body: { error: "mismatch", message: OFFICIAL_LINES.mismatch } });
-    expect(OFFICIAL_LINES.mismatch).toBe("The code did not match this release. Nothing was added.");
+    expect(OFFICIAL_LINES.mismatch).toBe("The code did not match. Nothing was added.");
     expect(await stat(trickDir(r, "legs")).catch(() => null)).toBeNull();
     expect(r.audit).toEqual([]);
     await expectNoLeftovers(r);
@@ -580,7 +580,8 @@ describe.if(posix)("updating an added trick to the list's commit", () => {
     const V3_LEGS = { "trick.toml": V2["legs/trick.toml"], "program.sh": V2["legs/program.sh"], "run.log/x.sh": { text: "# never\n" } };
     blocked.entries = [fixtureEntry(repo3.url, repo3.shas[1] ?? "", await hashOf(V3_LEGS))];
     const answer = await blocked.official.install("legs", "update");
-    expect(answer).toMatchObject({ status: 500, body: { error: "failed" } });
+    expect(answer).toEqual({ status: 409, body: { error: "blocked", message: "Your own files block it. Nothing was changed." } });
+    expect(OFFICIAL_LINES.blocked).toBe("Your own files block it. Nothing was changed.");
     expect(await readFile(join(trickDir(blocked, "legs"), "run.log"), "utf8")).toBe("mine");
     expect(await readFile(join(trickDir(blocked, "legs"), "program.sh"), "utf8")).toContain("# one");
   });

@@ -45,7 +45,7 @@ async function writeStage(dir: string, files: readonly ProposedFile[], originTex
  * the refusals a caller words on its own: `exists` (a folder of that name is there), `mismatch` (the stage
  * did not hash to `expect`).
  */
-export type ProposalWrite = { ok: true; codeHash: string } | { ok: false; reason: string; code?: "exists" | "mismatch" };
+export type ProposalWrite = { ok: true; codeHash: string } | { ok: false; reason: string; code?: "exists" | "mismatch" | "blocked" };
 
 /** The options of a write: the code hash the stage must have, or any. */
 export interface CodeWriteOptions {
@@ -192,7 +192,7 @@ export async function replaceCode(root: string, id: string, files: readonly Prop
     });
     const here = stays(rel);
     const blocked = clash ?? (here?.kind === "theirs" || (here?.kind === "dir" && theirsUnder(rel)) ? rel : undefined);
-    if (blocked !== undefined) return { ok: false, reason: `The new version needs the name ${blocked}, where the trick's folder holds something of your own, so nothing was changed.` };
+    if (blocked !== undefined) return { ok: false, code: "blocked", reason: `The new version needs the name ${blocked}, where the trick's folder holds something of your own, so nothing was changed.` };
   }
   try {
     for (const rel of gone) await rm(join(target, rel), { force: true });

@@ -193,8 +193,8 @@ describe("From Collie: Add", () => {
     renderCard(store);
     const cases: [number, string, string][] = [
       [502, "unreachable", "GitHub did not answer. Nothing was added."],
-      [422, "mismatch", "The code did not match this release. Nothing was added."],
-      [422, "too-large", "The code did not match this release. Nothing was added."],
+      [422, "mismatch", "The code did not match. Nothing was added."],
+      [422, "too-large", "The code did not match. Nothing was added."],
       [409, "busy", "Collie is adding another trick. Try again in a moment."],
       [409, "taken", "A trick with this name is already here."],
       [500, "failed", "Could not add Design Review. Try again."],
@@ -285,11 +285,16 @@ describe("From Collie: Update", () => {
     const { store } = await liveStore([installed(BUILDS)]);
     renderCard(store);
     await user.click(await screen.findByRole("button", { name: "Update Running Builds" }));
-    await vi.waitFor(() => expect(currentStatus()?.text).toBe("The code did not match this release. Nothing was changed."));
+    await vi.waitFor(() => expect(currentStatus()?.text).toBe("The code did not match. Nothing was changed."));
     server.use(http.post("/api/tricks/official/:id/:mode", () => HttpResponse.json({ error: "unreachable", message: "x" }, { status: 502 })));
     await vi.waitFor(() => expect(screen.getByRole("button", { name: "Update Running Builds" })).toBeEnabled());
     await user.click(screen.getByRole("button", { name: "Update Running Builds" }));
     await vi.waitFor(() => expect(currentStatus()?.text).toBe("GitHub did not answer. Nothing was changed."));
+    // The new code needs a name the person's own files hold: its own line, not the generic one.
+    server.use(http.post("/api/tricks/official/:id/:mode", () => HttpResponse.json({ error: "blocked", message: "x" }, { status: 409 })));
+    await vi.waitFor(() => expect(screen.getByRole("button", { name: "Update Running Builds" })).toBeEnabled());
+    await user.click(screen.getByRole("button", { name: "Update Running Builds" }));
+    await vi.waitFor(() => expect(currentStatus()).toMatchObject({ text: "Your own files block it. Nothing was changed.", tone: "error" }));
   });
 });
 

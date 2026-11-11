@@ -318,7 +318,7 @@ never the local credential an agent can hold, and no WalkyTalky op reaches it). 
 one commit with the fetch of `collie trick add` (`bridge/tricks/fetch.ts`), reads the folder by the same
 rules, and takes its code hash. Only when the hash is the list's does it write the folder, off, with an
 origin record `{ url, commit, subdir, official: true }` and no approved copy. The person's switch makes
-the approved copy, as for any trick. A hash that differs adds nothing: "The code did not match this release.
+the approved copy, as for any trick. A hash that differs adds nothing: "The code did not match.
 Nothing was added." One add runs at a time, the whole add has a two-minute cap, and the temp folder under
 `<stateDir>/tricks/` goes on every path.
 
@@ -352,7 +352,8 @@ code, by the rule of a proposal's version write: each file the code hash walks i
 and every other entry of the folder, at any depth, stays untouched (`config.toml`, `media/`,
 `captures/`, `inputs/`, logs, dot files). The new version's own `config.toml` and pictures are not taken.
 **A code edit you made in an official trick's folder is replaced by an update.** A name the new code
-needs where an entry of yours stands refuses the update, and nothing changes. A trick that is on keeps
+needs where an entry of yours stands refuses the update (409 `blocked`, "Your own files block it.
+Nothing was changed."), and nothing changes. A trick that is on keeps
 running the approved copy, and the new version waits for the yes on its version card, the path every
 changed trick takes. Remove stays as it is.
 

@@ -3382,11 +3382,12 @@ export const en = {
   "settings.tricks.official.updateAria": "Update {name}",
   "settings.tricks.official.checks": "Collie checks that the code matches this release before it adds it.",
   "settings.tricks.official.unreachable": "GitHub did not answer. Nothing was added.",
-  "settings.tricks.official.mismatch": "The code did not match this release. Nothing was added.",
+  "settings.tricks.official.mismatch": "The code did not match. Nothing was added.",
   "settings.tricks.official.busy": "Collie is adding another trick. Try again in a moment.",
   "settings.tricks.official.failed": "Could not add {name}. Try again.",
   "settings.tricks.official.updateUnreachable": "GitHub did not answer. Nothing was changed.",
-  "settings.tricks.official.updateMismatch": "The code did not match this release. Nothing was changed.",
+  "settings.tricks.official.updateMismatch": "The code did not match. Nothing was changed.",
+  "settings.tricks.official.updateBlocked": "Your own files block it. Nothing was changed.",
   "settings.tricks.official.updateFailed": "Could not update {name}. Try again.",
 
   // --- hill: the Decisions agents post, and the view that answers them (M96) ---
@@ -3736,6 +3737,7 @@ export const PENDING_TRANSLATION = [
   "settings.tricks.official.failed",
   "settings.tricks.official.updateUnreachable",
   "settings.tricks.official.updateMismatch",
+  "settings.tricks.official.updateBlocked",
   "settings.tricks.official.updateFailed",
   "hill.receipt.dismissedOffline",
 ] as const satisfies readonly MessageKey[];

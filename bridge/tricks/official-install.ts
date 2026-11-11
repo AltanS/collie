@@ -28,7 +28,7 @@ import { updateSwitches, withSwitch } from "./switches.ts";
 //      5 MB, 8 levels, safe names, a manifest the strict reader takes, and its id must be the entry's.
 //   3. HASH what would land: the files are written into a staged sibling in the tricks folder and hashed by
 //      code-hash.ts `trickCodeHash`, the hash a switch approves. Another hash than the list's removes the
-//      stage and answers "The code did not match this release. Nothing was added."
+//      stage and answers "The code did not match. Nothing was added."
 //   4. INSTALL by one rename (proposal-install.ts `writeNewTrick`), never over a folder of that name, with the
 //      origin record `{ url, ref: commit, commit, subdir, at, official: true }`, SWITCHED OFF: a switch entry
 //      left for that id is written off first. No approved copy is made: the switch makes it, as for any trick.
@@ -39,7 +39,9 @@ import { updateSwitches, withSwitch } from "./switches.ts";
 // hash before anything changes. Every other entry of the folder, at any depth (`config.toml`, `media/`,
 // `captures/`, `inputs/`, logs, dot files, a file Collie does not know), stays where it is, untouched; the
 // new version's own config.toml and pictures are not taken. A code edit the person made in the folder is
-// replaced. A trick that is off runs nothing, so that is all.
+// replaced. When the new code needs a name the person's own files hold (a file of theirs where it puts a
+// folder, or a folder with their files where it puts a file), nothing changes and the answer is `blocked`.
+// A trick that is off runs nothing, so that is all.
 // A trick that is on keeps running its approved copy: its folder now differs from it, so the runner's own
 // new version path takes it (a pending copy and the card on the Hill, or `auto` when the person chose it).
 // There is no second consent path.
@@ -65,9 +67,10 @@ export const OFFICIAL_GIT: readonly string[] = ["http.followRedirects=false", "c
 /** The plain refusals, as the bridge says them; the phone says them in its own words by `error`. */
 export const OFFICIAL_LINES = {
   unreachable: "GitHub did not answer. Nothing was added.",
-  mismatch: "The code did not match this release. Nothing was added.",
+  mismatch: "The code did not match. Nothing was added.",
   updateUnreachable: "GitHub did not answer. Nothing was changed.",
-  updateMismatch: "The code did not match this release. Nothing was changed.",
+  updateMismatch: "The code did not match. Nothing was changed.",
+  blocked: "Your own files block it. Nothing was changed.",
   busy: "Collie is adding another trick. Try again in a moment.",
   taken: "A trick with this name is already here.",
   added: "This trick is already added.",
@@ -80,7 +83,7 @@ export type OfficialAnswer =
   | { status: 200; body: { id: string; state: OfficialState } }
   | { status: 400; body: { error: "official-invalid" } }
   | { status: 404; body: { error: "unknown-official" } }
-  | { status: 409; body: { error: "runs-on" | "busy" | "taken" | "added" | "no-update" | "not-added"; message: string } }
+  | { status: 409; body: { error: "runs-on" | "busy" | "taken" | "added" | "no-update" | "not-added" | "blocked"; message: string } }
   | { status: 422; body: { error: "mismatch" | "too-large"; message: string } }
   | { status: 502; body: { error: "unreachable"; message: string } }
   | { status: 500; body: { error: "failed"; message: string } };
@@ -245,6 +248,7 @@ export class OfficialTricks implements OfficialTricksSurface {
     }
     if (!written.ok && written.code === "mismatch") return mismatch(mode);
     if (!written.ok && written.code === "exists") return { status: 409, body: { error: "taken", message: OFFICIAL_LINES.taken } };
+    if (!written.ok && written.code === "blocked") return { status: 409, body: { error: "blocked", message: OFFICIAL_LINES.blocked } };
     if (!written.ok) {
       this.deps.warn?.(`${entry.id}: the From Collie ${mode} could not write: ${written.reason}`);
       return { status: 500, body: { error: "failed", message: `The trick could not be ${mode === "add" ? "added" : "updated"}. Nothing was changed.` } };
