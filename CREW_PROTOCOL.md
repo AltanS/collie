@@ -4537,9 +4537,11 @@ it reconnects".
   trick map record comes along where this machine has none, so the trick does not post it a second
   time. The Hill switch is written from the copy only when this machine has never set its own. The
   copy is removed after.
-- **The old lead takes no answer.** A deposed lead (§18.12) refuses an answer to any Decision with the
-  receipt `denied` and the reason "This machine is not the crew's lead any more. Answer on the new
-  lead." Nothing is typed and nothing closes there, so a carried Decision is not answered twice.
+- **The old lead takes no answer.** A deposed lead (§18.12), a lead whose trust store already names a
+  new lead (after `approve-promote`, before its restart), and any peer refuse an answer to any Decision
+  with the receipt `denied` and the reason "This machine is not the crew's lead any more. Answer on the
+  new lead." Nothing is typed and nothing closes there, so a carried Decision is not answered twice.
+  Posts there are refused as a peer's are.
 
 ### What the lead says
 

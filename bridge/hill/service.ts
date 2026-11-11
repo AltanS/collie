@@ -1253,9 +1253,9 @@ export class HillService {
   answer(request: HillAnswerRequest, id: string, by: string, deviceId: string | null = null): Promise<HillAnswerOutcome> {
     // With the Hill off nothing is typed and no tap runs; the decision stays open for when it is back.
     if (!this.isOn()) return Promise.resolve({ kind: "off" });
-    // §25: a deposed lead's Decisions went to the machine that took over; an answer here would be a
-    // second one. Refused, nothing typed, nothing closed, nothing stored.
-    if (this.deps.deposed?.() === true) {
+    // §25: a deposed lead's Decisions went to the machine that took over, and a peer's Hill is not the
+    // crew's; an answer here could be a second one. Refused, nothing typed, nothing closed, nothing stored.
+    if (this.deps.crewMode() === "peer" || this.deps.deposed?.() === true) {
       const state = this.deps.store.get(id)?.state ?? null;
       return Promise.resolve({ kind: "receipt", receipt: { rid: request.rid, code: "denied", reason: HILL_DEPOSED, state, delivery: null, trick: null, at: this.now() } });
     }

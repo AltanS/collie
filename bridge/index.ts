@@ -106,6 +106,7 @@ import { runBootGate } from "./crew/boot-gate.ts";
 import { PEER_BROWSER_ENV, resolveCrewRuntime, warnsOnWildcardBind } from "./crew/config.ts";
 import {
   deposedAnswer,
+  hillMovedAway,
   deposedStateFrom,
   isDepositionProof,
   outcomeNow,
@@ -2369,8 +2370,9 @@ const hill = new HillService({
   // The sweep closes a decision whose target ended only once the bridge lists sessions at all.
   sessionsKnown: () => walky.who().length > 0,
   crewMode: () => crew.mode,
-  // §25: a deposed lead's Hill is nobody's; the crown and its Decisions moved to the deputy.
-  deposed: () => deposed !== null,
+  // §25: a deposed lead's Hill is nobody's; the crown and its Decisions moved to the deputy. So is the
+  // Hill of a lead whose store already names a new lead (after approve-promote, before its restart).
+  deposed: () => hillMovedAway(deposed, trustStore.current()),
   walkyOn: () => cfg.walky,
   memberId: bridgeId.id,
   keepId: bridgeId.keep,

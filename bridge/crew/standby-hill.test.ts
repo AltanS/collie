@@ -6,6 +6,8 @@ import { join } from "node:path";
 import type { JsonObject, JsonValue } from "../json.ts";
 import type { HillDecision, HillMedia } from "../../web/src/lib/hill/wire.ts";
 import { decision } from "../hill/fixtures.ts";
+import { hillMovedAway } from "./deposed.ts";
+import { leadStore, peerStore } from "./fixtures.ts";
 import { HillMediaStore } from "../hill/media.ts";
 import { HillPush } from "../hill/push.ts";
 import { memoryHillReceipts } from "../hill/receipts.ts";
@@ -44,7 +46,7 @@ const collieCard = (type: "version" | "proposal" | "carried", n: number) =>
   });
 
 /** A Hill with a disk for its pictures, and every push it would send. */
-async function hillOn(label: string, opts: { deposed?: boolean } = {}) {
+async function hillOn(label: string, opts: { deposed?: () => boolean; mode?: "lead" | "peer" } = {}) {
   const m = await machine(label);
   const store = new HillStore(hillDir(m.stateDir), () => T0);
   const media = new HillMediaStore(hillDir(m.stateDir), []);
@@ -56,8 +58,8 @@ async function hillOn(label: string, opts: { deposed?: boolean } = {}) {
     receipts: memoryHillReceipts(),
     place: () => null,
     send: async () => "typed",
-    crewMode: () => "lead",
-    deposed: () => opts.deposed ?? false,
+    crewMode: () => opts.mode ?? "lead",
+    deposed: opts.deposed ?? (() => false),
     walkyOn: () => true,
     memberId: label,
     machine: label,
@@ -268,10 +270,31 @@ describe("the takeover tap brings the open Decisions along (§25)", () => {
 
 describe("the old lead after the takeover (§25)", () => {
   test("a deposed lead refuses an answer: the second answer to a carried Decision is never typed", async () => {
-    const old = await hillOn("desk", { deposed: true });
+    const old = await hillOn("desk", { deposed: () => true });
     old.store.put(agent(1));
     const outcome = await old.hill.answer({ rid: "0f8b5c1e-5a7d-4b8e-9f00-1a2b3c4d5e70", node: `hill/${agent(1).id}`, intent: "yes", value: { text: null } }, agent(1).id, "Pixel 9");
     expect(outcome).toMatchObject({ kind: "receipt", receipt: { code: "denied", reason: HILL_DEPOSED, state: "open" } });
+    expect(old.store.get(agent(1).id)?.state).toBe("open");
+  });
+
+  const answerOne = (hill: HillService) => hill.answer({ rid: "0f8b5c1e-5a7d-4b8e-9f00-1a2b3c4d5e71", node: `hill/${agent(1).id}`, intent: "yes", value: { text: null } }, agent(1).id, "Pixel 9");
+
+  test("after approve-promote the old lead still runs as a lead, but its store names the new lead: answers are refused", async () => {
+    // The handover rewrote the trust store in this process; the process restarts as a peer only later.
+    let held = leadStore();
+    const old = await hillOn("desk", { deposed: () => hillMovedAway(null, held) });
+    old.store.put(agent(1));
+    held = peerStore();
+    expect(await answerOne(old.hill)).toMatchObject({ kind: "receipt", receipt: { code: "denied", reason: HILL_DEPOSED } });
+    expect(old.store.get(agent(1).id)?.state).toBe("open");
+    expect(hillMovedAway(null, leadStore())).toBe(false);
+    expect(hillMovedAway(null, null)).toBe(false);
+  });
+
+  test("an old lead that booted again as a peer, its Decisions still on disk, refuses an answer", async () => {
+    const old = await hillOn("desk", { mode: "peer" });
+    old.store.put(agent(1));
+    expect(await answerOne(old.hill)).toMatchObject({ kind: "receipt", receipt: { code: "denied", reason: HILL_DEPOSED } });
     expect(old.store.get(agent(1).id)?.state).toBe("open");
   });
 });
