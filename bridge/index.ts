@@ -343,7 +343,8 @@ import { deniedFoldersSync, HillMediaStore } from "./hill/media.ts";
 import { HillPush } from "./hill/push.ts";
 import { HillReceiptStore } from "./hill/receipts.ts";
 import { HillService } from "./hill/service.ts";
-import { viewPaneMark, viewQuestion, viewWorking } from "./agent-view/mark.ts";
+import { viewPaneMark, viewPaneOf, viewQuestion, viewWorking } from "./agent-view/mark.ts";
+import { listenPersonTurns } from "./agent-view/person-turns.ts";
 import { AgentViewService } from "./agent-view/service.ts";
 import { trickViewsDir, AgentViewStore } from "./agent-view/store.ts";
 import { atTricksCrewFloor, HillCrewLead, HillHeldMedia, HillMemberForward, olderThanTricksCrew } from "./hill/crew.ts";
@@ -2501,6 +2502,12 @@ const views = ((): AgentViewService | undefined => {
       paneMark: viewPaneMark(viewPane),
       question: viewQuestion(viewPane),
       working: viewWorking(viewPane),
+      // Review 9 M1: a view turns on only for a pane whose program has a send profile, the one the
+      // Send Protocol reads before a key; a pane typed blind cannot keep rule 5.
+      readable: async (session) => {
+        const pane = viewPaneOf(viewPane)(session);
+        return pane !== null && (await sendProfile(pane.agent, pane.paneId)) !== null;
+      },
       audit: (entry) => audit.record({ action: entry.action, device: entry.device, detail: { ...entry.detail, address: entry.session } }),
     });
   } catch (err) {
@@ -2509,6 +2516,9 @@ const views = ((): AgentViewService | undefined => {
   }
 })();
 views?.pruneMedia();
+// Rule 6 (review 9 R3): a WalkyTalky message from the person (a Hill answer or tell is one) typed into a
+// pane here is a person turn in that session.
+if (views !== undefined) listenPersonTurns({ log: walkyLog, addressOf: (paneId, instance) => walky.addressOf(paneId, instance), note: (session) => views.notePersonTurn(session) });
 versionCards = new VersionCards({
   hill,
   tricks: () => tricks ?? null,

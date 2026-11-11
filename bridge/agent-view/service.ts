@@ -47,13 +47,16 @@ import type { JsonObject, JsonValue } from "../json.ts";
 import { asJsonObject, asJsonString } from "../../web/src/lib/json.ts";
 import { LOCAL_MEMBER, parseAddress } from "../walky/address.ts";
 import {
+  BAD_HEAD,
   cleanViewLine,
+  hasViewHead,
   VIEW_CHOICE_BLOCK,
   VIEW_DRAWING_MAX_MS,
   VIEW_HEAD_MAX,
   VIEW_HINT_MAX,
   VIEW_MEDIA_ID_RE,
   VIEW_MEDIA_MAX,
+  VIEW_NO_PROFILE,
   VIEW_NOTE_MAX,
   VIEW_NOTES_MAX,
   VIEW_SENDS_PER_MINUTE,
@@ -75,6 +78,7 @@ import {
   type ViewScreen,
   type ViewSendField,
   type ViewSent,
+  type ViewSentOutcome,
 } from "../../web/src/lib/agent-view/wire.ts";
 import { isCommand } from "../../web/src/lib/send-protocol.ts";
 import type { Refusal } from "../../web/src/lib/tricks/schema.ts";
@@ -114,7 +118,25 @@ export type ViewRefusalCode =
   // A tap that names no button or option a tap could reach on the stored screen.
   | "bad_control"
   // A tap while a question, a dialog or an answer box shows (rule 5).
-  | "question";
+  | "question"
+  // The pane's program has no profile: Collie types there blind and cannot keep rule 5 (review 9 M1).
+  | "no_profile"
+  // Typed text that holds a view head on any line (rule 7, review 9 R1): the view's request skips the protocol's check.
+  | "bad_head";
+
+/** One refused agent write's audit line per reason per (trick, session) in this time (review 9 R5). */
+export const VIEW_REFUSAL_AUDIT_MS = 60_000;
+/** How many (trick, session, reason) keys the refusal line cap remembers at most. */
+export const VIEW_REFUSAL_KEYS_MAX = 1024;
+
+/**
+ * How long after a view's own send a turn start is taken as the turn that send started, not a person's
+ * (rule 6, review 9 R3). The bridge sees a turn start on its next poll, at most 12 s apart when idle.
+ */
+export const VIEW_OWN_TURN_MS = 30_000;
+
+/** The words a second tap on a screen whose tap was sent gets (review 9 R6). */
+export const VIEW_PICKED_WORDS = "this screen was answered already; wait for the agent's next screen";
 
 /** The sentence a crew member answers a write or a switch with. */
 export const VIEW_NOT_ON_LEAD = "agent views work on the lead machine only; run it in a session on the lead";
@@ -204,6 +226,11 @@ export interface AgentViewServiceDeps {
   readonly paneMark?: (session: string) => string | null;
   /** Whether a question, a dialog or an answer box shows in the session now. Absent: never. */
   readonly question?: (session: string) => boolean;
+  /**
+   * Whether the session's pane runs a program Collie has a profile for, so the Send Protocol reads it
+   * before a key (review 9 M1). False refuses the switch on. Absent: every session reads.
+   */
+  readonly readable?: (session: string) => Promise<boolean>;
   /** Whether a turn runs in the session now. Typed text then goes plain, as the person's own send. Absent: never. */
   readonly working?: (session: string) => boolean;
   /** One audit line per switch, send and refusal. Absent: none. */
@@ -346,7 +373,11 @@ export interface ViewSendPlan {
   readonly plain: boolean;
   /** Under the pane lock: null while the stored screen still yields this exact line, else the sentence why not. */
   readonly check: () => string | null;
-  readonly done: (end: { readonly rid: string; readonly sent: boolean; readonly reason: string | null }) => void;
+  /**
+   * How the send ended: `sent`, or `landed` when the keys reached the pane but the send ended
+   * `typed_not_submitted` or `unknown` (review 9 R7), else a refusal with its reason.
+   */
+  readonly done: (end: { readonly rid: string; readonly sent: boolean; readonly reason: string | null; readonly landed?: ViewSentOutcome }) => void;
 }
 
 /** A send's refusal before anything was typed. */
@@ -367,6 +398,12 @@ export class AgentViewService {
   private readonly sends: MinuteWindow;
   /** Sessions with a view send going out now: one at a time per session. */
   private readonly sending = new Set<string>();
+  /** When each (trick, session, reason) last wrote a refused agent write's audit line (review 9 R5). */
+  private readonly refusalLines = new Map<string, number>();
+  /** Whether a turn ran in each session with a screen at the last look (rule 6, review 9 R3). */
+  private readonly turnSeen = new Map<string, boolean>();
+  /** Sessions a view's own send went to, until when the turn it starts is the view's and not a person's. */
+  private readonly ownTurns = new Map<string, number>();
 
   constructor(private readonly deps: AgentViewServiceDeps) {
     // Probed once, so a path that fits no wording leaves the bridge without agent views at boot, not at a serve.
@@ -422,18 +459,43 @@ export class AgentViewService {
    * conversation, or is gone, ends; a gate, a stale mark or a question that moved moves the view's rev.
    */
   noteMarks(): void {
+    this.noteTurnStarts();
     for (const entry of this.deps.store.all()) this.servedNoting(entry);
   }
 
   /**
-   * A person turn reached a session, and it did not come from a view: a phone send, a walky message from
-   * the person, typed text sent plain. A screen of that session whose pane reports no conversation goes
-   * stale (rule 6): the bridge cannot see a `/clear` there, so the next person turn ends the screen's
-   * conversation for it.
+   * A turn that started in a session with a screen since the last look, and that no send of the view
+   * started, is a person turn (rule 6, review 9 R3): the person typed at the desk, or something else
+   * prompted the agent. The view's own send excuses the first turn start within {@link VIEW_OWN_TURN_MS}.
+   * The first look at a session only learns its state.
+   */
+  private noteTurnStarts(): void {
+    const working = this.deps.working;
+    if (working === undefined) return;
+    const sessions = new Set(this.deps.store.all().filter((entry) => entry.view !== undefined).map((entry) => entry.session));
+    for (const session of this.turnSeen.keys()) if (!sessions.has(session)) this.turnSeen.delete(session);
+    for (const session of sessions) {
+      const now = working(session);
+      const before = this.turnSeen.get(session);
+      this.turnSeen.set(session, now);
+      if (!now || before !== false) continue;
+      const own = this.ownTurns.get(session);
+      this.ownTurns.delete(session);
+      if (own !== undefined && own >= this.now()) continue;
+      this.notePersonTurn(session);
+    }
+  }
+
+  /**
+   * A person turn reached a session, and it did not come from a view: a phone send, an ask answer, a
+   * WalkyTalky message from the person (a Hill answer or tell is one), typed text sent plain, or a turn
+   * start no view send caused ({@link noteTurnStarts}). A screen of that session whose pane reports no
+   * conversation goes stale (rule 6). `/clear` typed at the desk starts no turn, so on such a harness the
+   * screen stays until the next turn starts; a harness that reports its conversation changes its mark.
    */
   notePersonTurn(session: string): void {
     for (const entry of this.deps.store.all()) {
-      if (entry.session !== session || entry.view === undefined || entry.staleTurn === true) continue;
+      if (!sameSession({ own: entry.session, given: session }) || entry.view === undefined || entry.staleTurn === true) continue;
       if (entry.mark !== undefined && markHasConversation(entry.mark)) continue;
       this.deps.store.put(viewEntry({ ...entry, staleTurn: true }));
     }
@@ -506,6 +568,25 @@ export class AgentViewService {
   }
 
   // ── the agent's writes ─────────────────────────────────────────────────────────────────────────
+
+  /**
+   * An agent's write the socket refused (rule 12, review 9 R5): one audit line per reason per minute per
+   * (trick, session), so a loop of refused writes cannot flood the audit log. The device is null: an agent.
+   * The memory is bounded: when {@link VIEW_REFUSAL_KEYS_MAX} keys are fresh, a new key writes no line.
+   */
+  noteRefusedWrite(op: string, trick: string, session: string, code: ViewRefusalCode | undefined): void {
+    const reason = code ?? "refused";
+    const key = `${viewKey(trick, session)}\u0000${reason}`;
+    const now = this.now();
+    const last = this.refusalLines.get(key);
+    if (last !== undefined && now - last < VIEW_REFUSAL_AUDIT_MS) return;
+    if (last === undefined && this.refusalLines.size >= VIEW_REFUSAL_KEYS_MAX) {
+      for (const [held, at] of this.refusalLines) if (now - at >= VIEW_REFUSAL_AUDIT_MS) this.refusalLines.delete(held);
+      if (this.refusalLines.size >= VIEW_REFUSAL_KEYS_MAX) return;
+    }
+    this.refusalLines.set(key, now);
+    this.audit("trick.view.refused", session, null, { trick, reason, op, agent: true });
+  }
 
   /**
    * Whether an agent write may run: the session is on this lead, the (trick, session) is under its cap, the
@@ -743,6 +824,10 @@ export class AgentViewService {
         this.audit("trick.view.refused", session, device, { trick: body.trick, reason: gate.code, switch: true });
         return { ok: false, status: 409, error: gate.error, code: gate.code };
       }
+      if (this.deps.readable !== undefined && !(await this.deps.readable(session))) {
+        this.audit("trick.view.refused", session, device, { trick: body.trick, reason: "no_profile", switch: true });
+        return { ok: false, status: 409, error: VIEW_NO_PROFILE, code: "no_profile" };
+      }
     }
     this.proofs.delete(viewKey(body.trick, session));
     const held = this.deps.store.get(body.trick, session);
@@ -792,13 +877,18 @@ export class AgentViewService {
     let words: string | null = null;
     if (tap) {
       if (entry.view === undefined || this.isStale(entry) || entry.view.rev !== field.rev) return refuse("stale_view", VIEW_STALE_WORDS);
+      if (entry.picked === field.rev) return refuse("stale_view", VIEW_PICKED_WORDS);
       words = viewTapWords(entry.view, field.control ?? "");
       if (words === null) return refuse("bad_control", VIEW_BAD_CONTROL_WORDS);
+      if (hasViewHead(words)) return refuse("bad_head", BAD_HEAD);
       if (question) return refuse("question", VIEW_QUESTION_WORDS);
       line = this.withHeadAndTail(entry, gate.rules, words);
     } else {
       const typed = (input.typed ?? "").trim();
       if (typed === "") return refuse("bad_control", "a send from a view carries a tap or typed text");
+      // The view's own request carries a head, so the Send Protocol does not read its text for one: a head
+      // on any line of the typed words would be a second head typed through the one door (review 9 R1).
+      if (hasViewHead(typed)) return refuse("bad_head", BAD_HEAD);
       // The person's own typing is never refused for the session's state (lead addition 2): with a
       // question open, a turn running or a command, it goes as their plain send, with no head.
       plain = question || this.deps.working?.(session) === true || isCommand(typed);
@@ -826,19 +916,29 @@ export class AgentViewService {
         if (now?.on !== true) return VIEW_OFF_WORDS;
         if (!tap) return null;
         if (now.view === undefined || now.view.rev !== rev || this.isStale(now) || viewTapWords(now.view, control) !== words) return VIEW_STALE_WORDS;
+        if (now.picked === rev) return VIEW_PICKED_WORDS;
         return null;
       },
       done: (end) => {
         if (ended) return;
         ended = true;
         this.sending.delete(session);
-        if (!end.sent) {
+        const landed = end.sent ? undefined : end.landed;
+        if (!end.sent && landed === undefined) {
           this.audit("trick.view.refused", session, device, { trick, reason: end.reason ?? "refused", rid: end.rid });
           return;
         }
-        this.keepSent(trick, session, { rid: end.rid, at: new Date(this.now()).toISOString(), kind: tap ? "tap" : "text", line });
-        if (plain) this.notePersonTurn(session);
-        this.audit("trick.view.send", session, device, { trick, rid: end.rid, kind: tap ? "tap" : "text", plain });
+        // Keys that landed are kept with how they ended, and their screen takes no second tap: a second
+        // tap would type the line again behind the first (review 9 R7).
+        const kept: ViewSent = { rid: end.rid, at: new Date(this.now()).toISOString(), kind: tap ? "tap" : "text", line };
+        this.keepSent(trick, session, landed === undefined ? kept : { ...kept, outcome: landed }, tap ? rev : undefined);
+        // Text left in the box started no turn; `unknown` may have.
+        if (landed !== "typed_not_submitted") {
+          if (plain) this.notePersonTurn(session);
+          else this.ownTurns.set(session, this.now() + VIEW_OWN_TURN_MS);
+        }
+        const detail: ViewAuditEntry["detail"] = { trick, rid: end.rid, kind: tap ? "tap" : "text", plain };
+        this.audit("trick.view.send", session, device, landed === undefined ? detail : { ...detail, outcome: landed });
       },
     };
   }
@@ -851,10 +951,11 @@ export class AgentViewService {
   }
 
   /** Keep one sent line on its view, newest last. A write that fails keeps the send: it went out. */
-  private keepSent(trick: string, session: string, sent: ViewSent): void {
+  /** Keeps a typed line; `picked` is the rev of the screen a tap went from, which then takes no second tap. */
+  private keepSent(trick: string, session: string, sent: ViewSent, picked: number | undefined): void {
     const entry = this.deps.store.get(trick, session);
     if (entry === undefined) return;
-    this.deps.store.put(viewEntry({ ...entry, sent: [...(entry.sent ?? []), sent].slice(-VIEW_SENT_MAX), changedAt: this.now() }));
+    this.deps.store.put(viewEntry({ ...entry, picked: picked ?? entry.picked, sent: [...(entry.sent ?? []), sent].slice(-VIEW_SENT_MAX), changedAt: this.now() }));
   }
 
   private audit(action: ViewAuditEntry["action"], session: string, device: string | null, detail: ViewAuditEntry["detail"]): void {

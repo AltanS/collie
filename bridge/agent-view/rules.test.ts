@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { framedRulesLines, VIEW_FRAME, viewHelpWithRules, viewRulesIdOf } from "../../cli/trick-view-help.ts";
@@ -8,6 +9,7 @@ import { AuditLog } from "../audit.ts";
 import { sendRoute, viewWriteGate, VIEW_PAIRED_ONLY, type PairingGate, type SendRouteRuntime } from "../server.ts";
 import { powersOf } from "../tricks/approved.ts";
 import {
+  BAD_HEAD,
   hasViewHead,
   neutraliseViewHeads,
   parseAgentView,
@@ -19,14 +21,61 @@ import {
   VIEW_SENDS_PER_MINUTE,
   VIEW_TAP_GROUP_MAX,
   VIEW_TAP_LABEL_MAX,
+  VIEW_NO_PROFILE,
   VIEW_WRITES_PER_MINUTE,
   viewTapWords,
   type TrickViewSession,
 } from "../../web/src/lib/agent-view/wire.ts";
 import { rulesTextProblems, type View } from "../../web/src/lib/tricks/schema.ts";
-import type { JsonValue } from "../json.ts";
-import { AgentViewService, viewHead, VIEW_STALE_WORDS, type AgentViewServiceDeps, type ViewAuditEntry, type ViewCrewMode, type ViewGate, type ViewSendPlan } from "./service.ts";
+import type { JsonObject, JsonValue } from "../json.ts";
+import { AgentViewService, viewHead, VIEW_OWN_TURN_MS, VIEW_PICKED_WORDS, VIEW_STALE_WORDS, type AgentViewServiceDeps, type ViewAuditEntry, type ViewCrewMode, type ViewGate, type ViewSendPlan } from "./service.ts";
 import { AgentViewStore } from "./store.ts";
+import { HEAD_CASES } from "./testdata/head-cases.ts";
+import { listenPersonTurns } from "./person-turns.ts";
+import { walkySend } from "../hill/walky.ts";
+import { WalkyLog } from "../walky/log.ts";
+import { WalkyService } from "../walky/service.ts";
+import { answerRequest, type PlaceTarget, type WalkyAnswer } from "../walky/socket.ts";
+import { parseWalkyRequest } from "../walky/parse.ts";
+import type { BeaconMatcher } from "../beacon/decorate.ts";
+import type { WalkyHost, WalkyPane } from "../walky/deliver.ts";
+import { spaceOf } from "../walky/space.ts";
+
+/** One unnamed space on one machine, for the WalkyTalky door of rule 6. */
+const SOLO_SPACE = spaceOf({ memberId: "local", spaceId: "w1", spaceLabel: "w1" });
+
+/**
+ * The real local socket in front of a rig's service: a WalkyService over two agent panes (`%1` is ONE,
+ * `%2` is TWO) and `answerRequest`, the function the socket server frames. A call names the pane its
+ * markers place, as the CLI's environment does.
+ */
+interface ViewSocketRig {
+  readonly ask: (pane: string, line: JsonObject) => Promise<WalkyAnswer>;
+  readonly done: () => void;
+}
+
+function socketOf(r: Rig): ViewSocketRig {
+  const root = mkdtempSync(join(tmpdir(), "view-socket-"));
+  const panes: WalkyPane[] = [
+    { session: "main", paneId: "%1", agent: true, harness: "pi", label: "repo#one", state: "idle", activeAt: null, instance: "aaaa", terminal: true, off: false, space: SOLO_SPACE },
+    { session: "main", paneId: "%2", agent: true, harness: "pi", label: "repo#two", state: "idle", activeAt: null, instance: "bbbb", terminal: true, off: false, space: SOLO_SPACE },
+  ];
+  const host: WalkyHost = { panes: () => panes, send: async () => ({ outcome: "sent" }), sendState: () => ({ outcome: "sent" }), cancelHeld: () => undefined };
+  const walky = new WalkyService({ log: new WalkyLog(join(root, "walky")), host, memberId: null, enabled: () => true, machine: "desk", keyPem: () => null });
+  const matcher: BeaconMatcher = {
+    namespace: "tmux",
+    scope: async () => "/tmp/tmux-1/default",
+    matches: (pane, marker, scope) => marker.scope === scope && pane.paneId === marker.pane,
+    notesWithoutHooks: { agentDetection: "", agentSessionRef: "" },
+  };
+  const target: PlaceTarget = { session: "main", matcher, paneIds: () => ["%1", "%2"] };
+  const ask = async (pane: string, line: JsonObject): Promise<WalkyAnswer> => {
+    const request = parseWalkyRequest(JSON.stringify({ v: 1, markers: [{ namespace: "tmux", scope: "/tmp/tmux-1/default", pane }], ...line }));
+    if (request === null) throw new Error("the socket line did not parse");
+    return answerRequest(walky, request, [target], undefined, r.service);
+  };
+  return { ask, done: () => rmSync(root, { recursive: true, force: true }) };
+}
 
 // THE AGENT VIEW CONTRACT'S RULES, one test (or more) per rule, named after it: the twelve rules of the
 // security read (section 3), the lead's seven additions (section 5) and V-A2. Doors of rule 7 that live in
@@ -202,6 +251,17 @@ describe("rule 1: gate at every use", () => {
     expect(await tap(r, rev, PLAIN)).toMatchObject({ ok: false, code: "not_on_lead" });
   });
 
+  test("review 9 M1: the switch does not turn a view on for a pane whose program Collie cannot read, with the protocol's words", async () => {
+    const r = rig({ readable: async (session) => session !== TWO });
+    const refused = await r.service.switch({ trick: T, session: TWO, on: true }, "Pixel 9");
+    expect(refused).toMatchObject({ ok: false, status: 409, code: "no_profile", error: VIEW_NO_PROFILE });
+    expect(r.store.get(T, TWO)).toBeUndefined();
+    expect(r.audits.at(-1)).toMatchObject({ action: "trick.view.refused", detail: { trick: T, reason: "no_profile", switch: true } });
+    expect((await r.service.switch({ trick: T, session: ONE, on: true }, "Pixel 9")).ok).toBe(true);
+    // Off needs no read: a view is always switched off.
+    expect((await r.service.switch({ trick: T, session: TWO, on: false }, "Pixel 9")).ok).toBe(true);
+  });
+
   test("rule 1: a send must name the session of the pane it goes to", async () => {
     const r = rig();
     const rev = await drawn(r);
@@ -218,8 +278,8 @@ describe("rule 2: the bridge writes the line", () => {
     const sending = plan(await tap(r, rev, PLAIN));
     expect(sending.line).toBe(`${viewHead(T, ONE)} tapped "Revert" [rules: ${BIN} trick view ${T} help --session ${ONE}]`);
     expect(sending.plain).toBe(false);
-    // After a start that proves the rules, the tail goes.
-    sending.done({ rid: "r1", sent: true, reason: null });
+    // After a start that proves the rules, the tail goes. (Not sent, so the screen still takes a tap: review 9 R6.)
+    sending.done({ rid: "r1", sent: false, reason: "busy" });
     await r.service.start(T, ONE, { note: null, rules: viewRulesIdOf(T, RULES) });
     expect(plan(await tap(r, rev, "choice/1")).line).toBe(`${viewHead(T, ONE)} picked "Tall"`);
   });
@@ -306,6 +366,15 @@ describe("rule 4: the receipt is exact", () => {
     second.done({ rid: "rid-2", sent: false, reason: "not_free" });
     expect(served(r).sent).toHaveLength(1);
   });
+
+  test("rule 4 (review 9 R7): typed text whose keys landed with an `unknown` end is kept with that outcome and audited so", async () => {
+    const r = rig();
+    await drawn(r);
+    const sending = plan(await typed(r, "and the other one"));
+    sending.done({ rid: "rid-9", sent: false, reason: null, landed: "unknown" });
+    expect(served(r).sent).toEqual([{ rid: "rid-9", at: expect.any(String), kind: "text", line: sending.line, outcome: "unknown" }]);
+    expect(r.audits.at(-1)).toMatchObject({ action: "trick.view.send", detail: { rid: "rid-9", outcome: "unknown" } });
+  });
 });
 
 // ── rule 5 and lead additions 2 and 4 ─────────────────────────────────────────────────────────────
@@ -347,7 +416,7 @@ describe("rule 5: never an answer", () => {
     expect(await tap(r, rev, PLAIN)).toMatchObject({ ok: false, code: "busy" });
     expect(await typed(r, "x")).toMatchObject({ ok: false, code: "busy" });
     first.done({ rid: "rid-1", sent: true, reason: null });
-    expect((await tap(r, rev, PLAIN)).ok).toBe(true);
+    expect((await typed(r, "x")).ok).toBe(true);
   });
 });
 
@@ -368,6 +437,37 @@ describe("rule 6: no stale taps", () => {
     expect(await tap(r, rev, PLAIN)).toMatchObject({ ok: false, code: "stale_view" });
     r.marks.delete(ONE);
     expect(await tap(r, rev, PLAIN)).toMatchObject({ ok: false, code: "stale_view" });
+  });
+
+  test("rule 6 (review 9 R6): a tap whose send went marks its screen answered: the same rev takes no second tap, kept across a restart; the next screen does", async () => {
+    const folder = mkdtempSync(join(tmpdir(), "view-picked-"));
+    try {
+      const r = rig({ store: new AgentViewStore(folder, () => 1) });
+      const rev = await drawn(r);
+      plan(await tap(r, rev, PLAIN)).done({ rid: "rid-1", sent: true, reason: null });
+      expect(await tap(r, rev, PLAIN)).toMatchObject({ ok: false, code: "stale_view", error: VIEW_PICKED_WORDS });
+      expect(await tap(r, rev, "choice/1")).toMatchObject({ ok: false, code: "stale_view", error: VIEW_PICKED_WORDS });
+      // A bridge restart reads the mark back from disk.
+      const again = rig({ store: new AgentViewStore(folder, () => 1) });
+      expect(await tap(again, rev, PLAIN)).toMatchObject({ ok: false, code: "stale_view", error: VIEW_PICKED_WORDS });
+      // A refused send does not mark it: the person may tap again.
+      const next = await again.service.show(T, ONE, { view: SCREEN, title: null, choice: CHOICE });
+      if (!next.ok) throw new Error(next.error);
+      const nextRev = next.session.view!.rev;
+      plan(await tap(again, nextRev, PLAIN)).done({ rid: "rid-2", sent: false, reason: "busy" });
+      plan(await tap(again, nextRev, PLAIN)).done({ rid: "rid-3", sent: true, reason: null });
+      expect(await tap(again, nextRev, PLAIN)).toMatchObject({ ok: false, error: VIEW_PICKED_WORDS });
+    } finally {
+      rmSync(folder, { recursive: true, force: true });
+    }
+  });
+
+  test("rule 6 (review 9 R6): a plan made before another tap's send went is refused under the lock", async () => {
+    const r = rig();
+    const rev = await drawn(r);
+    const first = plan(await tap(r, rev, PLAIN));
+    first.done({ rid: "rid-1", sent: true, reason: null });
+    expect(first.check()).toBe(VIEW_PICKED_WORDS);
   });
 
   test("lead addition 5: a redraw between the draw and the tap, same control, another label: the old rev is refused, and a plan made before is refused under the lock", async () => {
@@ -399,6 +499,62 @@ describe("rule 6: no stale taps", () => {
     expect(await tap(r, rev, PLAIN)).toMatchObject({ ok: false, code: "stale_view" });
   });
 
+  test("rule 6 (review 9 R3, turn starts): on a harness with no conversation, a turn no view send started makes the screen stale; the turn a view send starts does not, within VIEW_OWN_TURN_MS", async () => {
+    const r = rig();
+    r.marks.set(ONE, "pi\u0000");
+    const rev = await drawn(r);
+    r.service.noteMarks();
+    // The view's own send: the turn it starts is the view's.
+    plan(await tap(r, rev, PLAIN)).done({ rid: "rid-1", sent: true, reason: null });
+    r.working.add(ONE);
+    r.service.noteMarks();
+    expect(served(r).stale).toBeUndefined();
+    r.working.delete(ONE);
+    r.service.noteMarks();
+    // A turn nothing of the view started: the person at the desk.
+    r.working.add(ONE);
+    r.service.noteMarks();
+    expect(served(r).stale).toBe(true);
+    expect(await tap(r, rev, PLAIN)).toMatchObject({ ok: false, code: "stale_view" });
+  });
+
+  test("rule 6 (review 9 R3, turn starts): a view send excuses one turn start only, and only for VIEW_OWN_TURN_MS", async () => {
+    const r = rig();
+    r.marks.set(ONE, "pi\u0000");
+    const rev = await drawn(r);
+    r.service.noteMarks();
+    plan(await tap(r, rev, PLAIN)).done({ rid: "rid-1", sent: true, reason: null });
+    r.advance(VIEW_OWN_TURN_MS + 1);
+    r.working.add(ONE);
+    r.service.noteMarks();
+    expect(served(r).stale).toBe(true);
+  });
+
+  test("rule 6 (review 9 R3, WalkyTalky door): a message from the person typed into the session, a Hill tell among them, makes its screen stale; an agent's message does not", async () => {
+    for (const door of ["walky", "hill", "agent"] as const) {
+      const r = rig();
+      r.marks.set(ONE, "pi\u0000");
+      await drawn(r);
+      const root = mkdtempSync(join(tmpdir(), "view-person-turn-"));
+      try {
+        const panes: WalkyPane[] = [
+          { session: "main", paneId: "%1", agent: true, harness: "pi", label: "repo#one", state: "idle", activeAt: null, instance: "aaaa", terminal: true, off: false, space: SOLO_SPACE },
+          { session: "main", paneId: "%2", agent: true, harness: "pi", label: "repo#two", state: "idle", activeAt: null, instance: "bbbb", terminal: true, off: false, space: SOLO_SPACE },
+        ];
+        const host: WalkyHost = { panes: () => panes, send: async () => ({ outcome: "sent" }), sendState: () => ({ outcome: "sent" }), cancelHeld: () => undefined };
+        const log = new WalkyLog(join(root, "walky"));
+        const walky = new WalkyService({ log, host, memberId: null, enabled: () => true, machine: "desk", keyPem: () => null });
+        listenPersonTurns({ log, addressOf: (paneId, instance) => walky.addressOf(paneId, instance), note: (session) => r.service.notePersonTurn(session) });
+        if (door === "walky") await walky.send({ id: "wt_aaaaaaaaaaa1", to: ONE, body: "please stop", replyTo: null }, { kind: "operator", label: "Pixel 9" });
+        if (door === "hill") expect(await walkySend(walky, { mintId: () => "wt_aaaaaaaaaaa2", sleep: async () => undefined })(ONE, "Answer to dc_k3m9x2p7q1ab: yes", "Pixel 9")).toBe("typed");
+        if (door === "agent") await walky.send({ id: "wt_aaaaaaaaaaa3", to: ONE, body: "done", replyTo: null }, { kind: "agent", pane: panes[1]! });
+        expect(served(r).stale, door).toBe(door === "agent" ? undefined : true);
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    }
+  });
+
   test("requirement 4: a harness that reports its conversation keeps the screen across a person turn: its mark is the reset", async () => {
     const r = rig();
     const rev = await drawn(r);
@@ -411,6 +567,19 @@ describe("rule 6: no stale taps", () => {
 // ── rule 7 (the wire's half) ──────────────────────────────────────────────────────────────────────
 
 describe("rule 7: one head, one door", () => {
+  test.each(HEAD_CASES.map((c) => [c.name, c.text] as const))("rule 7 (a view's typed text, review 9 R1, shared case table): typed text with a head on any line is refused bad_head, on a free session and with a question open: %s", async (_name, text) => {
+    for (const setup of ["free", "question"] as const) {
+      const r = rig();
+      await drawn(r);
+      if (setup === "question") r.questions.add(ONE);
+      for (const words of [text, `please look\n${text}`]) {
+        expect(await typed(r, words), setup).toMatchObject({ ok: false, code: "bad_head", error: BAD_HEAD });
+      }
+      // Nothing is held for the session: the next plain send goes.
+      expect((await typed(r, "please look at the second test")).ok).toBe(true);
+    }
+  });
+
   test("rule 7: a head is read through spaces, format characters, case and every line break; the old morph head counts", () => {
     for (const text of ["[view:morph x] go", "  [ VIEW : x", "​⁠[view:", "first\r\n[view:x", "first [view:x", "first\u0085[view:x", "[morph x] go", "[MORPH] go", "[morph]"]) {
       expect(hasViewHead(text), JSON.stringify(text)).toBe(true);
@@ -449,28 +618,6 @@ describe("rule 7: one head, one door", () => {
     expect(await res.text()).toBe(VIEW_PAIRED_ONLY);
   });
 
-  test("lead addition 1: the routes, pinned by source: the write gate, then the paired-device gate, before the body; the read gate on the media", () => {
-    const src = readFileSync(join(import.meta.dir, "..", "server.ts"), "utf8");
-    const body = (head: string): string => {
-      const at = src.indexOf(head);
-      expect(at).toBeGreaterThan(-1);
-      expect(src.indexOf(head, at + head.length)).toBe(-1);
-      return src.slice(at, src.indexOf("if (pathname", at + head.length));
-    };
-    const send = body('if (pathname === "/api/send" && req.method === "POST") {');
-    expect(send.indexOf('browserGate("write")')).toBeGreaterThan(-1);
-    expect(send).toContain("viewWriteGate(req, pairingGate)");
-    expect(send.indexOf('browserGate("write")')).toBeLessThan(send.indexOf("viewWriteGate(req, pairingGate)"));
-    const switchRoute = body('if (pathname === "/api/trick-views/switch" && req.method === "POST") {');
-    expect(switchRoute).toContain('browserGate("write") ?? viewWriteGate(req, pairingGate)');
-    expect(switchRoute.indexOf("viewWriteGate")).toBeLessThan(switchRoute.indexOf("req.json()"));
-    const list = body('if (pathname === "/api/trick-views" && req.method === "GET") {');
-    expect(list).toContain('browserGate("read")');
-    const media = src.slice(src.indexOf("const viewImage = pathname.match(VIEW_IMAGE_ROUTE);"), src.indexOf("trickViewsMediaRoute(views,"));
-    expect(media).toContain('browserGate("read")');
-    // The views reach `sendRoute` from the one paired-device dispatch only.
-    expect(src.match(/\{ service: views, addressOf \}/gu)).toHaveLength(1);
-  });
 });
 
 // ── rule 8 ────────────────────────────────────────────────────────────────────────────────────────
@@ -530,6 +677,29 @@ describe("rules 9 to 11: the rules", () => {
     expect(await r.service.help(T, ONE)).toMatchObject({ ok: false, code: "trick_off" });
   });
 
+  test("rule 10 (review 9, the socket door): help reaches the session the caller's markers place, never one an argument names", async () => {
+    const r = rig();
+    await on(r);
+    const socket = socketOf(r);
+    try {
+      // From ONE's pane (%1), whose view is on: the rules, for ONE.
+      const own = await socket.ask("%1", { op: "trick.view.help", trick: T });
+      expect(own).toMatchObject({ ok: true, trickView: { session: ONE, on: true } });
+      expect(JSON.stringify(own)).toContain("Draw one screen.");
+      expect(JSON.stringify(own)).toContain(ONE);
+      // From TWO's pane (%2), whose view is off: nothing, though ONE's view is on.
+      expect(await socket.ask("%2", { op: "trick.view.help", trick: T })).toMatchObject({ ok: false, code: "view_off" });
+      // From TWO's pane, naming ONE: refused, nothing read.
+      const named = await socket.ask("%2", { op: "trick.view.help", trick: T, session: ONE });
+      expect(named).toMatchObject({ ok: false, code: "wrong_session" });
+      expect(JSON.stringify(named)).not.toContain("Draw one screen.");
+      // Markers that place no pane here: not here.
+      expect(await socket.ask("%9", { op: "trick.view.help", trick: T })).toMatchObject({ ok: false });
+    } finally {
+      socket.done();
+    }
+  });
+
   test("rule 11: the rules text is a power: a changed text changes the powers, so the trick waits for a yes", () => {
     const base = { places: [], agentView: true as const, rules: "rules.md", rulesSha256: "a".repeat(64) };
     expect(powersOf(base)).not.toBe(powersOf({ ...base, rulesSha256: "b".repeat(64) }));
@@ -554,10 +724,40 @@ describe("rule 12: caps and record", () => {
   test(`rule 12: one send in flight per session and ${String(VIEW_SENDS_PER_MINUTE)} sends a minute`, async () => {
     const r = rig();
     const rev = await drawn(r);
-    for (let i = 0; i < VIEW_SENDS_PER_MINUTE; i++) plan(await tap(r, rev, PLAIN)).done({ rid: `rid-${String(i)}`, sent: true, reason: null });
-    expect(await tap(r, rev, PLAIN)).toMatchObject({ ok: false, code: "rate" });
+    // One tap (its screen then takes no second tap, review 9 R6), then typed sends: both count.
+    plan(await tap(r, rev, PLAIN)).done({ rid: "rid-tap", sent: true, reason: null });
+    for (let i = 1; i < VIEW_SENDS_PER_MINUTE; i++) plan(await typed(r, `note ${String(i)}`)).done({ rid: `rid-${String(i)}`, sent: true, reason: null });
+    expect(await typed(r, "one more")).toMatchObject({ ok: false, code: "rate" });
     r.advance(61_000);
-    expect((await tap(r, rev, PLAIN)).ok).toBe(true);
+    expect((await typed(r, "one more")).ok).toBe(true);
+  });
+
+  test("rule 12 (review 9 R5): an agent write refused at the socket writes an audit line, one per reason per minute per (trick, session)", async () => {
+    const r = rig();
+    const socket = socketOf(r);
+    try {
+      // The view is off: every write is refused view_off, and only the first of the minute is a line.
+      for (let i = 0; i < 5; i++) expect(await socket.ask("%1", { op: "trick.view.show", trick: T, view: SCREEN })).toMatchObject({ ok: false, code: "view_off" });
+      // Another reason is its own line; a write naming another session is refused wrong_session.
+      expect(await socket.ask("%1", { op: "trick.view.clear", trick: T, session: TWO })).toMatchObject({ ok: false, code: "wrong_session" });
+      expect(await socket.ask("%1", { op: "trick.view.clear", trick: T, session: TWO })).toMatchObject({ ok: false, code: "wrong_session" });
+      // Another session is its own key.
+      expect(await socket.ask("%2", { op: "trick.view.start", trick: T })).toMatchObject({ ok: false, code: "view_off" });
+      expect(r.audits).toEqual([
+        { action: "trick.view.refused", session: ONE, device: null, detail: { trick: T, reason: "view_off", op: "trick.view.show", agent: true } },
+        { action: "trick.view.refused", session: ONE, device: null, detail: { trick: T, reason: "wrong_session", op: "trick.view.clear", agent: true } },
+        { action: "trick.view.refused", session: TWO, device: null, detail: { trick: T, reason: "view_off", op: "trick.view.start", agent: true } },
+      ]);
+      r.advance(61_000);
+      await socket.ask("%1", { op: "trick.view.show", trick: T, view: SCREEN });
+      expect(r.audits).toHaveLength(4);
+      // A write that goes writes no refusal line.
+      await on(r);
+      expect((await socket.ask("%1", { op: "trick.view.show", trick: T, view: SCREEN })).ok).toBe(true);
+      expect(r.audits.filter((line) => line.action === "trick.view.refused")).toHaveLength(4);
+    } finally {
+      socket.done();
+    }
   });
 
   test("rule 12: a switch, a send and a refusal each write one audit line with the device, trick, session and reason", async () => {

@@ -1029,21 +1029,38 @@ The bridge builds the line from its own stored screen, under the pane lock:
 `[view:<trick> <address>] from operator: tapped "<label>"`, then ` in "<group>"` when the button sits in a
 labelled group, then ` [rules: ...]` while the session does not hold the rules. Labels have `"` and `\`
 escaped. A button carries no `value` and no `does`, so every word a tap sends is on the screen. The rev
-must equal the stored one, and the screen must not be stale (`stale_view`). A tap is refused at a
-question, a dialog or an answer box (`question`, `not_free`), and any view send while a turn runs
+must equal the stored one, and the screen must not be stale (`stale_view`). Once a tap's send went,
+that screen takes no second tap (`stale_view`, "answered already"), also after a restart. A tap is refused at a
+question, a dialog or an answer box (`question`, `not_free`), over the person's draft in the box
+(`draft_present`, before any key touches it), on a pane whose program has no profile (`not_free`), and
+any view send while a turn runs
 (`busy`): nothing queues, nothing steers. Typed text gets the head only while the session is free; with a
 question open, a turn running or a command, it goes plain, as the person's own send. A refusal before
 the protocol is HTTP 409 `{ error, code, view: true }`; a send that reached it answers its receipt and
-`view: { line }`, the exact text typed, which the view also keeps in `sent`.
+`view: { line }`, the exact text typed, which the view also keeps in `sent`. When the keys landed but
+the send ended `typed_not_submitted` or `unknown`, both carry `outcome` with that word, and a tap's
+screen takes no second tap.
 
 **Stale screens.** A screen is bound to the pane mark at its write: the harness and the conversation the
 harness reported. Another mark makes it stale. A harness that reports no conversation cannot show a
-`/clear`, so its screen goes stale at the first person turn that did not come from the view.
+`/clear`, so its screen goes stale at the first person turn that did not come from the view: a phone
+send, an ask answer, a WalkyTalky message from the person (a Hill answer or tell is one), typed text
+sent plain, or a turn the bridge sees start that no view send started (the view's own send excuses one
+turn start for 30 seconds). A `/clear` typed at the desk starts no turn, so on such a harness the old
+screen stays until the next turn starts.
 
 **One head, one door.** Only the view's own send may type a line that starts with a view head or the old
 `[morph` head. The Send Protocol refuses it `bad_head` for every other request (the composer, a steer, a
-held send, a crew-forwarded send, the bridge's own callers), WalkyTalky refuses it in a message and in a
-crew hop, and a Hill receipt or tell turns its bracket into a parenthesis.
+held send, a crew-forwarded send, the bridge's own callers), the reply route refuses it in the raw text
+it types with `submit: false`, the view refuses it on any line of the person's typed text (`bad_head`),
+the program driver refuses it, WalkyTalky refuses it in a message and in a crew hop, and a Hill receipt
+or tell turns its bracket into a parenthesis. One function decides, for
+every door (`isViewHeadLine` in `web/src/lib/agent-view/wire.ts`): each line, after any kind of line
+break, is read as the typing path would leave it (every hidden character and control byte removed, read
+once more with control sequences removed), then folded with NFKC, lower case, no combining marks and a
+small map of look-alike letters, brackets and colons. It is a head when, after a lead-in of blanks, quote
+or list marks, emphasis or a list number, it starts `[view:` or `[morph`, or when a `[` in its first 80
+characters is followed later on the line by `] from operator:`.
 
 **The rules.** `collie trick view <trick> help --session <address>` asks the bridge, which answers only
 to a session whose view is on: Collie's core view rules, then the trick's APPROVED `rules.md` between two
@@ -1173,6 +1190,15 @@ written as what a trick, or a person who controls one, can do today.
   an address must be that address; the person still looks before tapping.
 - **Any program of the user can draw.** The walky socket takes a view write from any process that runs as
   the user on that machine, in any session's view that is on. The rest of Collie has the same limit.
+- **Any program of the user can speak as a session.** The socket knows a session by the pane markers
+  the caller sends, and any process of the same user can send another live pane's markers. It can then
+  read that session's view (`status`, with the lines the person typed from it), read its `help`, and
+  spend that session's write cap, so the agent's own writes are refused `rate` for a minute.
+- **The key mask does not cover a view.** `redact` masks the pane mirror; it does not mask a screen's
+  words or the lines kept in `sent`, as it does not mask the Hill.
+- **The gate under the lock reads the cached scan.** Right before the first key the bridge asks again
+  whether the trick is approved and on, from the scan it holds; a trick folder changed on disk since that
+  scan counts from the next scan.
 - **The lead only.** Agent views work only for sessions on the lead machine in this version.
 
 ## Places in the app

@@ -257,7 +257,7 @@ import { readAnswerRequest } from "./hill/parse.ts";
 import { HILL_ID_RE, HILL_MEDIA_ID_RE, isHillCrewState } from "../web/src/lib/hill/wire.ts";
 import { HILL_STATE_ON_LEAD, hillDeviceId, type HillService } from "./hill/service.ts";
 import type { AgentViewService } from "./agent-view/service.ts";
-import { VIEW_MEDIA_ID_RE, VIEW_SESSION_MAX, VIEW_SET_RE, readTrickViewSwitchBody, readViewSendField, type ViewSendField } from "../web/src/lib/agent-view/wire.ts";
+import { BAD_HEAD, hasViewHead, VIEW_MEDIA_ID_RE, VIEW_SESSION_MAX, VIEW_SET_RE, readTrickViewSwitchBody, readViewSendField, type ViewSendField, type ViewSentOutcome } from "../web/src/lib/agent-view/wire.ts";
 import { isPaneId, parseAddress } from "./walky/address.ts";
 import { isWalkyId, parsePhoneSend } from "./walky/parse.ts";
 import { NOT_THE_SENDER, type TakeBackAnswer, type WalkyService } from "./walky/service.ts";
@@ -2130,7 +2130,11 @@ export function startServer(opts: {
       } catch {
         body = undefined;
       }
-      return askRoute(rt, askMatch[1]!, body, { audit: caller.audit, device: caller.device(), redact: cfg.redact, acceptEncoding: req.headers.get("accept-encoding") });
+      const personTurn = (paneId: string): void => {
+        const pane = walky?.paneAt(rt.name, paneId) ?? null;
+        if (walky !== undefined && pane !== null && pane.agent) views?.notePersonTurn(walky.addressOf(pane.paneId, pane.instance));
+      };
+      return askRoute(rt, askMatch[1]!, body, { audit: caller.audit, device: caller.device(), redact: cfg.redact, acceptEncoding: req.headers.get("accept-encoding"), personTurn });
     }
 
     // ── Walky talky off for one session (M89 spec 04) ─────────────────────
@@ -6203,6 +6207,14 @@ export async function replyPane(
     return replyThroughProtocol(send, paneId, session, fields, { audit, device, redact: cfg.redact, acceptEncoding: ae });
   }
   if (submit && binding === null) return text("a submit with no text needs expected_prompt", 400);
+  // One head, one door (agent views SECURITY rule 7, review 9 R2): the raw text this route types with
+  // `submit: false` never passes the Send Protocol, so it is read for a view head here, before any key.
+  // A crew member answers its lead's forwarded reply through this same function.
+  if (txt !== "" && hasViewHead(txt)) {
+    audit.record({ action: "reply", paneId, session, device, detail: { submit, submitted: false, textDelivered: false, reason: "bad_head" } });
+    const refusal: ActionResponse = { ok: false, textDelivered: false, ...apiError("reply.send_failed", { reason: BAD_HEAD }) };
+    return json(refusal, ae);
+  }
   const outcome = await sendReplySteps(herdr, paneId, txt, submit, cfg.submitKeys);
   const replyDetail: AuditDetail = {
     text: txt,
@@ -9171,7 +9183,7 @@ async function viewSendRoute(
     answer = await rt.send.handle(sendRequest, { session: rt.name, paneId, harness });
     receipt = answer.receipt;
   } finally {
-    plan.done({ rid: id, sent: receipt !== undefined && SPOKE_OUTCOMES.has(receipt.outcome), reason: receipt?.reason ?? (receipt === undefined ? "crash" : null) });
+    plan.done({ rid: id, sent: receipt !== undefined && SPOKE_OUTCOMES.has(receipt.outcome), reason: receipt?.reason ?? (receipt === undefined ? "crash" : null), landed: viewLanded(receipt) });
   }
   if (receipt !== undefined) {
     const detail: AuditDetail = { mode, outcome: receipt.outcome, textLength: receipt.textLength, view: plan.trick };
@@ -9184,7 +9196,15 @@ async function viewSendRoute(
     }
   }
   const out = context.redact && answer.surface !== undefined ? { ...answer, surface: maskSurface(answer.surface) } : answer;
-  return json({ ...out, view: { line: plan.line } }, context.acceptEncoding);
+  // The receipt says how the keys ended: a line that landed but did not end `sent` carries its outcome (review 9 R7).
+  const landed = viewLanded(receipt);
+  return json({ ...out, view: landed === undefined ? { line: plan.line } : { line: plan.line, outcome: landed } }, context.acceptEncoding);
+}
+
+/** A view send whose keys landed but that did not end `sent`: its outcome, else undefined. */
+function viewLanded(receipt: SendReceipt | undefined): ViewSentOutcome | undefined {
+  if (receipt === undefined) return undefined;
+  return receipt.outcome === "typed_not_submitted" || receipt.outcome === "unknown" ? receipt.outcome : undefined;
 }
 
 /** What `stopRoute` reads of a session runtime: a {@link SessionRuntime} is one. */
@@ -9875,6 +9895,19 @@ function maskAskReply(reply: AskReply): AskReply {
   return masked;
 }
 
+/** What `POST /api/ask/<id>` writes beside its answer. */
+export interface AskRouteContext {
+  readonly audit: AuditLog;
+  readonly device: string | null;
+  readonly redact: boolean;
+  readonly acceptEncoding: string | null;
+  /**
+   * An answer that reached the pane is a person turn in its session (agent views rule 6, review 9 R3):
+   * a view's screen there, on a harness that reports no conversation, goes stale. A replay is no turn.
+   */
+  readonly personTurn?: (paneId: string) => void;
+}
+
 /**
  * `POST /api/ask/<id>` once the write gate passed and the session resolved (M56 spec 08). With the
  * Send Protocol off (no answerer on the runtime) the route is not there. Every outcome is a 200 with
@@ -9885,7 +9918,7 @@ export async function askRoute(
   rt: AskRouteRuntime,
   askId: string,
   body: JsonValue | undefined,
-  context: { readonly audit: AuditLog; readonly device: string | null; readonly redact: boolean; readonly acceptEncoding: string | null },
+  context: AskRouteContext,
 ): Promise<Response> {
   if (rt.driver !== undefined) return programAskRoute(rt, rt.driver, askId, body, context);
   if (rt.asks === undefined) return text(ASK_OFF_TEXT, 404);
@@ -9907,6 +9940,7 @@ export async function askRoute(
     if (receipt.keys.length > 0 && reply.replayed !== true) {
       rt.engine.noteInput();
       rt.engine.pokeNow();
+      context.personTurn?.(paneId);
     }
   }
   return json(context.redact ? maskAskReply(reply) : reply, context.acceptEncoding);
@@ -9922,7 +9956,7 @@ async function programAskRoute(
   driver: ProgramDriver,
   askId: string,
   body: JsonValue | undefined,
-  context: { readonly audit: AuditLog; readonly device: string | null; readonly redact: boolean; readonly acceptEncoding: string | null },
+  context: AskRouteContext,
 ): Promise<Response> {
   const parsed = parseAnswerBody(askId, body);
   if (parsed === null) return text("bad ask answer", 400);
@@ -9936,7 +9970,10 @@ async function programAskRoute(
     if (receipt.reason !== undefined) detail.reason = receipt.reason;
     if (reply.replayed === true) detail.replayed = true;
     context.audit.record({ action: "ask", paneId, session: rt.name, device: context.device, detail });
-    if (receipt.outcome === "sent" && reply.replayed !== true) rt.engine.pokeNow();
+    if (receipt.outcome === "sent" && reply.replayed !== true) {
+      rt.engine.pokeNow();
+      context.personTurn?.(paneId);
+    }
   }
   return json(context.redact ? maskAskReply(reply) : reply, context.acceptEncoding);
 }

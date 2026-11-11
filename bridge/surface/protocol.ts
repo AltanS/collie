@@ -244,7 +244,7 @@ import { parseAnsi } from "../../web/src/lib/ansi.ts";
 import { splitLines } from "../../web/src/lib/blocks.ts";
 import { noEchoPromptIn } from "../../web/src/lib/no-echo.ts";
 import { isUploadImagePath, pastePieces } from "../../web/src/lib/upload-path.ts";
-import { BAD_HEAD, hasViewHead } from "../../web/src/lib/agent-view/wire.ts";
+import { BAD_HEAD, hasViewHead, VIEW_NO_PROFILE } from "../../web/src/lib/agent-view/wire.ts";
 import { pointsAt, staleListUnder } from "../../web/src/lib/surface/command-list.ts";
 import type { PopupRead } from "../../web/src/lib/surface/popup.ts";
 import { commandListAnyText, commandListAt, isRunningRow, noticeOver, ownCommandList, popupAt, readCues, readCuesFor, runningSign, withoutCommandList, withoutPopup, withoutPromptEchoes, type CommandListRead, type Cue } from "../../web/src/lib/surface/cues.ts";
@@ -621,13 +621,15 @@ export interface SendRequest {
   readonly view?: { readonly head: boolean; readonly check: () => string | null };
 }
 
-export { BAD_HEAD };
+export { BAD_HEAD, VIEW_NO_PROFILE };
 /** Why a send from a view is refused while held sends wait on the pane: a view send never queues. */
 export const VIEW_BEHIND_HELD = "Sends are waiting on this session; a send from a view does not queue behind them.";
 /** Why a send from a view is refused while the turn runs. */
 export const VIEW_IN_TURN = "The agent is working; a send from a view goes only to a free session.";
 /** Why a send from a view is refused while a dialog or an answer box shows. */
 export const VIEW_AT_QUESTION = "A question or a dialog is open in this session; answer it first.";
+/** Why a send from a view is refused while the person's draft is in the box: no key touches it. */
+export const VIEW_AT_DRAFT = "Your draft is in this session's box; send it or clear it first.";
 
 // ── The lock and the ring ────────────────────────────────────────────────────────────────────────
 
@@ -4049,6 +4051,8 @@ export class SendProtocol {
       return held !== null;
     };
 
+    // A send with a view's head goes only where S0 can prove the session free (rule 5): never blind.
+    if (match === null && request.view?.head === true) throw new Ended("refused", "not_free", { detail: VIEW_NO_PROFILE });
     if (match === null && (request.mode === "send" || request.mode === "command")) {
       await this.blindSend(state, lines);
       return;
@@ -4319,6 +4323,8 @@ export class SendProtocol {
     if (state.request.view?.head === true) {
       if (answersQuestion(state.match, s0) || s0.surface.modal !== "none") throw new Ended("refused", "not_free", { surface: s0.surface, detail: VIEW_AT_QUESTION });
       if (s0.surface.turn !== "idle") throw new Ended("refused", "busy", { surface: s0.surface, detail: VIEW_IN_TURN });
+      // The person's own draft is theirs: a view send neither joins it nor probes it (review 9, rule 5).
+      if (s0.surface.composer === "draft") throw new Ended("refused", "draft_present", { surface: s0.surface, detail: VIEW_AT_DRAFT });
     }
     if (answersQuestion(state.match, s0)) {
       if (state.released === true || state.request.fromPhone !== true) {
@@ -5312,6 +5318,10 @@ export class SendProtocol {
    */
   private async write(state: RunState, lines: readonly string[]): Promise<void> {
     state.phase = "write";
+    // A send from an agent view (review 9 R4): the screen, the switch and the gate, read once more right
+    // before the first key, since S0's reads and settles may have waited while the agent redrew.
+    const moved = state.request.view?.check() ?? null;
+    if (moved !== null) throw new Ended("refused", "stale_view", { detail: moved });
     const { mux } = this.deps;
     if (state.whole !== null && mux.pasteBlock !== undefined) {
       this.guard(state);

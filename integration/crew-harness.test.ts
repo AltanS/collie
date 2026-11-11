@@ -10,7 +10,7 @@ import { HOST } from "../bridge/host.ts";
 import type { JsonValue } from "../bridge/json.ts";
 import { EXIT } from "../cli/io.ts";
 import { askSocket, cmdWalkySend, cmdWalkyStatus, type WalkyDeps } from "../cli/walky.ts";
-import { asJsonObject, asJsonString } from "../web/src/lib/json.ts";
+import { asJsonObject, asJsonString, parseJsonObject, type JsonObject } from "../web/src/lib/json.ts";
 import type { AskReply } from "../web/src/lib/surface/ask.ts";
 import { signMessage } from "../bridge/walky/canonical.ts";
 import { walkySocketPath } from "../bridge/walky/socket.ts";
@@ -586,6 +586,70 @@ describe("solo zero-tax, measured rather than inferred", () => {
 });
 
 // ── Enrollment over the real transport ───────────────────────────────────────
+
+// Agent views, lead addition 1 (review 9): who may switch a view and send from one, as REAL requests to a
+// running bridge. A send with a `view` field and the switch need a paired device's own token with write
+// access; the host's local credential and no credential are refused before any body is read. A request
+// that passes the gates reaches the view service, which answers with its own code: proof the gate let it
+// through and nothing else did. Nothing reaches the pane on any of them.
+describe("agent views: the write gate, through real requests (lead addition 1)", () => {
+  const session = "local/w1:p1";
+  const sendBody = JSON.stringify({ id: "view-gate-000001", pane: "w1:p1", text: "hello", view: { trick: "morph", session } });
+  const switchBody = JSON.stringify({ trick: "morph", session, on: true });
+  const post = (path: string, body: string, headers: Record<string, string>): Promise<Response> =>
+    fetch(`${lead.origin()}${path}`, { method: "POST", headers: { "content-type": "application/json", ...headers }, body });
+
+  test("no credential and the host's local credential are refused 401 or 403 on the send and the switch, and nothing is typed", async () => {
+    const writes = lead.herdr!.writes.length;
+    for (const path of ["/api/send", "/api/trick-views/switch"]) {
+      const body = path === "/api/send" ? sendBody : switchBody;
+      const none = await post(path, body, { origin: lead.origin() });
+      expect([401, 403], `${path} with no credential`).toContain(none.status);
+      const local = await post(path, body, { ...(await lead.localAuth()), origin: lead.origin() });
+      expect(local.status, `${path} with the local credential`).toBe(403);
+    }
+    expect(lead.herdr!.writes.length).toBe(writes);
+  });
+
+  test("a paired device's token passes both gates and reaches the view service, which answers with its own code", async () => {
+    const writes = lead.herdr!.writes.length;
+    const auth = await lead.pairingAuth();
+    const sent = await post("/api/send", sendBody, auth);
+    expect(sent.status).toBe(409);
+    // No trick named `morph` is installed here: the service's gate answers, after both route gates.
+    expect(await sent.json()).toMatchObject({ view: true, code: "no_trick" });
+    const switched = await post("/api/trick-views/switch", switchBody, auth);
+    expect(switched.status).toBe(409);
+    expect(await switched.json()).toMatchObject({ view: true, code: "no_trick" });
+    expect(lead.herdr!.writes.length).toBe(writes);
+  });
+
+  test("rule 12 (review 9, the index.ts wiring): the view service's refusal reaches the bridge's audit.log with the trick, the reason and the address", async () => {
+    const auth = await lead.pairingAuth();
+    const before = readFileSync(join(lead.stateDir, "audit.log"), "utf8").split("\n").length;
+    expect((await post("/api/trick-views/switch", switchBody, auth)).status).toBe(409);
+    let line: JsonObject | undefined;
+    await waitFor(
+      () => {
+        const lines = readFileSync(join(lead.stateDir, "audit.log"), "utf8").split("\n").slice(before - 1).filter((raw) => raw.trim() !== "");
+        line = lines.map((raw) => parseJsonObject(raw)).find((parsed) => parsed?.action === "trick.view.refused");
+        return Promise.resolve(line !== undefined);
+      },
+      10_000,
+      "no trick.view.refused line in audit.log",
+    );
+    // The address is the pane's, with its instance token; the device is the paired one.
+    expect(line).toMatchObject({ action: "trick.view.refused", device: "drill", detail: { trick: "morph", reason: "no_trick", switch: true, address: expect.stringMatching(/^local\/w1:p1#[a-z0-9]+$/u) } });
+  });
+
+  test("the list and a picture take the read gate: no credential is refused, the local credential reads, and an unknown picture is 404", async () => {
+    expect([401, 403]).toContain((await fetch(`${lead.origin()}/api/trick-views`)).status);
+    expect((await lead.api("/api/trick-views")).status).toBe(200);
+    const path = "/api/trick-views/media/vs_aaaaaaaaaaaaaaaa/vm_aaaaaaaaaaaaaaaa";
+    expect([401, 403]).toContain((await fetch(`${lead.origin()}${path}`)).status);
+    expect((await lead.api(path)).status).toBe(404);
+  });
+});
 
 describe("invite → join, end to end", () => {
   let token = "";
