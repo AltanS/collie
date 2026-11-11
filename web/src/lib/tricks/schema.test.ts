@@ -62,6 +62,8 @@ import {
   inputGlobMatches,
   inputGlobProblem,
   inputsSentence,
+  ABOUT_MAX,
+  DESCRIPTION_MAX,
   isEnvName,
   TRICK_ICON_LUCIDE,
   VIEW_ROOT_KINDS,
@@ -1436,7 +1438,7 @@ describe("parseManifest", () => {
     expect(bad({ every: "5s" }).manifest?.everyMs).toBe(5000);
     expect(bad({ every: "24h" }).refusals).toEqual([]);
     expect(bad({ every: "25h" }).refusals.map((r) => r.path)).toEqual(["/every"]);
-    expect(bad({ description: "x" }).refusals.map((r) => r.code)).toEqual(["unknown-key"]);
+    expect(bad({ colour: "x" }).refusals.map((r) => r.code)).toEqual(["unknown-key"]);
     expect(bad({ icon: "rocket" }).refusals.map((r) => r.path)).toEqual(["/icon"]);
     expect(bad({ places: ["belt", "belt"] }).refusals.map((r) => r.code)).toEqual(["duplicate"]);
     expect(bad({ places: ["dashboard"] }).refusals).toEqual([]);
@@ -1455,6 +1457,45 @@ describe("parseManifest", () => {
     expect(bad({ places: ["menu"] }).refusals[0]?.reason).toContain('"menu:<match>"');
     expect(bad({ id: "Legs" }).refusals.map((r) => r.path)).toEqual(["/id"]);
     expect(parseManifest({ id: "legs" }).refusals.map((r) => r.path)).toEqual(["/name", "/run", "/places"]);
+  });
+});
+
+describe("the manifest's description and about", () => {
+  const base = { id: "gates", name: "Release Gates", run: "./gates.sh", places: ["belt"] };
+  const about = "It shows which release checks are green.\n\nIt reads nothing from your sessions.";
+
+  it("are optional plain text, kept as written, in a contract 1 and a contract 2 manifest", () => {
+    expect(DESCRIPTION_MAX).toBe(140);
+    expect(ABOUT_MAX).toBe(1200);
+    expect(parseManifest(base).manifest?.description).toBeUndefined();
+    expect(parseManifest(base).manifest?.about).toBeUndefined();
+    for (const contract of [1, 2]) {
+      const read = parseManifest({ ...base, contract, description: "Green checks.", about });
+      expect(read.refusals).toEqual([]);
+      expect(read.manifest?.description).toBe("Green checks.");
+      expect(read.manifest?.about).toBe(about);
+    }
+  });
+
+  it("refuse past the cap with the same plain sentence as a name, and at the cap pass", () => {
+    expect(parseManifest({ ...base, description: "d".repeat(DESCRIPTION_MAX) }).manifest?.description).toHaveLength(DESCRIPTION_MAX);
+    expect(parseManifest({ ...base, about: "a".repeat(ABOUT_MAX) }).manifest?.about).toHaveLength(ABOUT_MAX);
+    const long = parseManifest({ ...base, description: "d".repeat(DESCRIPTION_MAX + 1) });
+    expect(long.manifest).toBeUndefined();
+    expect(long.refusals.map((r) => [r.code, r.path, r.reason])).toEqual([["text", "/description", `"description" is ${DESCRIPTION_MAX + 1} characters. At most ${DESCRIPTION_MAX}.`]]);
+    const longAbout = parseManifest({ ...base, about: "a".repeat(ABOUT_MAX + 1) });
+    expect(longAbout.manifest).toBeUndefined();
+    expect(longAbout.refusals[0]?.reason).toBe(`"about" is ${ABOUT_MAX + 1} characters. At most ${ABOUT_MAX}.`);
+  });
+
+  it("refuse a direction mark and a control character; only about may hold a line break", () => {
+    expect(parseManifest({ ...base, description: "gr\u202Eeen" }).manifest).toBeUndefined();
+    expect(parseManifest({ ...base, about: "gr\u200Eeen" }).manifest).toBeUndefined();
+    expect(parseManifest({ ...base, about: "bell\u0007" }).manifest).toBeUndefined();
+    expect(parseManifest({ ...base, description: "two\nlines" }).manifest).toBeUndefined();
+    expect(parseManifest({ ...base, about: "one\n\ntwo" }).manifest?.about).toBe("one\n\ntwo");
+    expect(parseManifest({ ...base, description: 3 }).refusals[0]?.reason).toBe('"description" must be text.');
+    expect(parseManifest({ ...base, about: "" }).manifest).toBeUndefined();
   });
 });
 

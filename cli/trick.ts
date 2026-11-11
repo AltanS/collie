@@ -443,6 +443,9 @@ export async function cmdTrickAuto(deps: TrickDeps, args: readonly string[]): Pr
 
 // ── check ────────────────────────────────────────────────────────────────────
 
+/** The soft note `check` gives for a manifest with no `about`. Never fails the check. */
+export const ABOUT_NOTE = "Add an `about` text so a person can read what this trick does before they switch it on.";
+
 /** One environment name the manifest lists, and whether the bridge passes it. */
 export interface CheckEnvName {
   name: string;
@@ -676,6 +679,7 @@ function printReport(deps: Pick<TrickDeps, "io">, report: TrickCheckReport): voi
     const names = report.env.map((e) => (e.reason === undefined ? e.name : `${e.name} (${e.reason})`));
     io.out(`  env:    ${names.join(", ")}`);
   }
+  if (m !== undefined && m.about === undefined) io.out(`  note: ${ABOUT_NOTE}`);
   if (report.reads !== undefined) io.out(`  reads:  ${report.reads} The files are data for the program, never code.`);
   if (report.codeHash !== undefined) io.out(`  code:   sha256 ${report.codeHash} (what \`collie trick on\` approves)`);
   const h = report.helper;

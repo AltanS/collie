@@ -6,13 +6,15 @@ import { Card } from "@/components/ui/card";
 import { Collapse } from "@/components/ui/collapse";
 import { OneOf } from "@/components/ui/one-of";
 import { Switch } from "@/components/ui/switch";
+import { TrickAboutSheet } from "@/components/trick-about-sheet";
 import { useArm } from "@/hooks/use-arm";
 import { useLocale } from "@/hooks/use-locale";
 import { setTrickAuto, switchTrick, undoTrick } from "@/lib/api";
-import { t, type MessageKey } from "@/lib/i18n";
+import { t } from "@/lib/i18n";
 import { TrickBoundary } from "@/lib/tricks/boundary";
 import { useBridgeNow } from "@/lib/tricks/clock";
-import { TRICK_WARNING_KINDS, TRICK_WARNINGS_MAX, type PlaceKind, type TrickWarningKind, type TricksRunsOn, type WireTrickInfo } from "@/lib/tricks/schema";
+import { placesLine, readsLine, runsOnLine, warningLines, type WarningLine } from "@/lib/tricks/row-words";
+import type { TricksRunsOn, WireTrickInfo } from "@/lib/tricks/schema";
 import { tricksStore, useTricksState, type TricksStore } from "@/lib/tricks/store";
 import { trickTimeText } from "@/lib/tricks/time";
 import { usePairing } from "@/lib/pairing";
@@ -53,15 +55,22 @@ import { cn } from "@/lib/utils";
 // bridge's list on the snapshot's cadence). A refused or lost post puts it back and says so in the
 // status line, which is the app's one transient channel (lib/status.ts).
 //
-// UNDER A TRICK THAT IS ON, ITS CHANGES (crew slice 3). One more row, drawn for every trick that is on and
-// for none that is off, so a row keeps its height while its trick stays on: "Take changes without asking"
-// with its hint and a switch (the field `collie trick auto` writes; it flips at once and holds like the
-// trick's own switch). When the version that runs was taken without asking (`autoAt`, from a bridge since
-// crew slice 3), a quiet line says when, with Undo beside it: one tap arms it ("Undo?"), a second one
-// goes back to the version before (`useArm`, the Hill's Dismiss rule). A bridge that sends no `auto`
-// draws the switch off; one that sends no `autoAt` draws no Undo line.
+// UNDER A TRICK THAT TOOK A CHANGE WITHOUT ASKING (crew slice 3). When the version that runs was taken without
+// asking (`autoAt`, from a bridge since crew slice 3), a quiet line says when, with Undo beside it: one tap
+// arms it ("Undo?"), a second one goes back to the version before (`useArm`, the Hill's Dismiss rule). A
+// bridge that sends no `autoAt` draws no such row. The "Take changes without asking" switch itself is not on
+// the card: it is the last group of the trick's About sheet. The card still owns that write (`flipAuto`),
+// which flips at once and holds like the trick's own switch, so a failed post goes back and says so once.
+//
+// A TRICK'S NAME IS A BUTTON (About sheet), with a muted chevron after it as the cue. A tap on the name opens
+// a bottom sheet with the trick's full description (components/trick-about-sheet.tsx). The switch stays its
+// own tap target. A trick whose manifest has a `description` shows that one muted line (at most two lines)
+// under its name; a row without one is drawn as before.
 //
 // NO PROSE but the one muted line at the foot. What a trick may do is the docs' to say.
+
+// The words of a row live in lib/tricks/row-words.ts, shared with the About sheet; they stay importable from here.
+export { placesLine, readsLine, runsOnLine, warningLines, type WarningLine };
 
 /** How long a flipped switch keeps its position while the store's list has not caught up. */
 export const HOLD_MS = 20_000;
@@ -69,14 +78,6 @@ export const HOLD_MS = 20_000;
 /** Whether the phone holds a tricks reply: the one condition for the card and for its index row. */
 export function useTricksPresent(store: TricksStore = tricksStore): boolean {
   return useTricksState(store).rev !== null;
-}
-
-/** The place words of a trick, each kind once, in the manifest's order. */
-export function placesLine(places: readonly PlaceKind[] | undefined): string {
-  // A trick entry with no `places` (an older bridge, a broken reply) is a manifest that declares none.
-  const held: readonly PlaceKind[] = Array.isArray(places) ? places : [];
-  const words = [...new Set(held)].map((place) => t(`settings.tricks.place.${place}` satisfies MessageKey));
-  return words.length === 0 ? t("settings.tricks.places.none") : words.join(", ");
 }
 
 /** Who added the trick, from where and when: "Added by agent · 2 h ago", "From owner/repo @ 3f2a91c · 8 Nov, 09:38". */
@@ -118,25 +119,6 @@ export function slotLine(trick: WireTrickInfo, now: number, hillOff = false): Sl
   if (trick.on && trick.pending !== undefined) return { text: t("settings.tricks.pending"), trouble: false };
   if (hillOff && trick.on && trick.decides === true) return { text: t("settings.tricks.hillOff"), trouble: false };
   return { text: provenanceLine(trick, now), trouble: false };
-}
-
-/** One warning as the row shows it: the phone's own words for a kind it knows, the bridge's for another. */
-export interface WarningLine {
-  kind: string;
-  text: string;
-}
-
-function isKnownKind(kind: string): kind is TrickWarningKind {
-  return TRICK_WARNING_KINDS.some((known) => known === kind);
-}
-
-/**
- * The warnings a trick's row carries, in the phone's own words for a kind it knows and the bridge's for
- * another. The wire reader (lib/tricks/wire.ts `readWarnings`) already left out a malformed entry.
- */
-export function warningLines(trick: Pick<WireTrickInfo, "warnings">): WarningLine[] {
-  const held = Array.isArray(trick.warnings) ? trick.warnings.slice(0, TRICK_WARNINGS_MAX) : [];
-  return held.map(({ kind, text }) => ({ kind, text: isKnownKind(kind) ? t(`settings.tricks.warn.${kind}` satisfies MessageKey) : text }));
 }
 
 const trickKey = (trick: Pick<WireTrickInfo, "host" | "id">): string => `${trick.host}/${trick.id}`;
@@ -190,64 +172,50 @@ export function autoLine(trick: Pick<WireTrickInfo, "on" | "autoAt">, now: numbe
   return ago === null ? null : t("settings.tricks.autoAt", { ago });
 }
 
-/** The changes row under a trick that is on: the auto switch with its hint, and the Undo line when there is one. */
+/** The row under a trick that is on and took a change without asking: when, and the Undo beside it. */
 function TrickChanges({
   trick,
-  clock,
-  auto,
+  line,
   canWrite,
   undoing,
-  onAuto,
   onUndo,
 }: {
   trick: WireTrickInfo;
-  clock: number;
-  auto: boolean;
+  line: string;
   canWrite: boolean;
   undoing: boolean;
-  onAuto: (on: boolean) => void;
   onUndo: () => void;
 }) {
   const { armed, tap, disarm } = useArm<"undo">();
-  const line = autoLine(trick, clock);
   const undoArmed = armed === "undo";
   // An arm was for the version as it read when it was armed: a new one needs a new first tap.
   useEffect(() => disarm(), [trick.autoAt, disarm]);
   return (
     <div data-line="changes" className="mt-3 border-t border-border pt-3">
-      <div className="flex min-h-11 items-center justify-between gap-4">
-        <div className="min-w-0 flex-1">
-          <div className="text-sm">{t("settings.tricks.auto.label")}</div>
-          <p className="text-xs text-muted-foreground">{t("settings.tricks.auto.hint")}</p>
-        </div>
-        <Switch checked={auto} onCheckedChange={onAuto} disabled={!canWrite} aria-label={t("settings.tricks.auto.label")} />
+      <div data-line="auto-at" className="flex min-h-11 items-center justify-between gap-4">
+        <p className="min-w-0 truncate text-xs text-muted-foreground">{line}</p>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          data-slot="trick-undo"
+          disabled={!canWrite || undoing}
+          onClick={() => {
+            if (tap("undo") === "fire") onUndo();
+          }}
+          className={cn("-mr-3 h-11 shrink-0 px-3", undoArmed ? "border-destructive/40 bg-destructive/10 text-destructive hover:bg-destructive/10 hover:text-destructive" : "text-muted-foreground")}
+        >
+          {/* Both words in one slot, sized by the wider, so arming moves nothing beside it (DESIGN.md §2). */}
+          <OneOf
+            active={undoArmed ? "armed" : "rest"}
+            className="inline-grid"
+            options={[
+              { key: "rest", node: t("settings.tricks.undo") },
+              { key: "armed", node: t("settings.tricks.undoArmed") },
+            ]}
+          />
+        </Button>
       </div>
-      {line !== null && (
-        <div data-line="auto-at" className="flex min-h-11 items-center justify-between gap-4">
-          <p className="min-w-0 truncate text-xs text-muted-foreground">{line}</p>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            data-slot="trick-undo"
-            disabled={!canWrite || undoing}
-            onClick={() => {
-              if (tap("undo") === "fire") onUndo();
-            }}
-            className={cn("-mr-3 h-11 shrink-0 px-3", undoArmed ? "border-destructive/40 bg-destructive/10 text-destructive hover:bg-destructive/10 hover:text-destructive" : "text-muted-foreground")}
-          >
-            {/* Both words in one slot, sized by the wider, so arming moves nothing beside it (DESIGN.md §2). */}
-            <OneOf
-              active={undoArmed ? "armed" : "rest"}
-              className="inline-grid"
-              options={[
-                { key: "rest", node: t("settings.tricks.undo") },
-                { key: "armed", node: t("settings.tricks.undoArmed") },
-              ]}
-            />
-          </Button>
-        </div>
-      )}
     </div>
   );
 }
@@ -256,23 +224,17 @@ interface TrickRowProps {
   trick: WireTrickInfo;
   clock: number;
   checked: boolean;
-  auto: boolean;
   canWrite: boolean;
   hillOff: boolean;
   undoing: boolean;
   onFlip: (on: boolean) => void;
-  onAuto: (on: boolean) => void;
   onUndo: () => void;
+  onAbout: () => void;
 }
 
-/** What a contract 2 trick reads, in one sentence: schema.ts `inputsSentence` in the phone's words. */
-export function readsLine(inputs: NonNullable<WireTrickInfo["inputs"]>): string {
-  const globs = inputs.globs.join(", ");
-  return inputs.crew ? t("settings.tricks.reads.crew", { globs }) : t("settings.tricks.reads.solo", { globs });
-}
-
-function TrickRow({ trick, clock, checked, auto, canWrite, hillOff, undoing, onFlip, onAuto, onUndo }: TrickRowProps) {
+function TrickRow({ trick, clock, checked, canWrite, hillOff, undoing, onFlip, onUndo, onAbout }: TrickRowProps) {
   const slot = slotLine(trick, clock, hillOff);
+  const changed = autoLine(trick, clock);
   const warnings = warningLines(trick);
   // Before the switch: off, or on with code nobody approved yet. A tap on the switch closes the list.
   const showWarnings = warnings.length > 0 && (!checked || trick.changed === true);
@@ -280,7 +242,25 @@ function TrickRow({ trick, clock, checked, auto, canWrite, hillOff, undoing, onF
     <div data-trick={trick.id} className="px-4 py-3">
       <div className="flex min-h-11 items-center justify-between gap-4">
         <div className="min-w-0 flex-1">
-          <div className="truncate font-medium">{trick.name}</div>
+          {/* The name is the About button. The `::before` reaches the 44px floor above and below the 24px line
+              (DESIGN.md §6) without growing the row: the places line under it is not a control. */}
+          <button
+            type="button"
+            data-slot="trick-about"
+            aria-label={t("settings.tricks.about.open", { name: trick.name })}
+            aria-haspopup="dialog"
+            onClick={onAbout}
+            className="relative flex w-full items-center gap-1 text-left font-medium before:absolute before:inset-x-0 before:-inset-y-2.5 before:content-['']"
+          >
+            <span className="min-w-0 truncate">{trick.name}</span>
+            {/* The cue that the name opens something: the app's own "this row opens another screen" glyph. */}
+            <Icon name="row-go" className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+          </button>
+          {trick.description !== undefined && (
+            <p data-line="description" className="line-clamp-2 break-words text-sm text-muted-foreground">
+              {trick.description}
+            </p>
+          )}
           <p data-line="places" className="truncate text-sm text-muted-foreground">
             {placesLine(trick.places)}
           </p>
@@ -296,7 +276,7 @@ function TrickRow({ trick, clock, checked, auto, canWrite, hillOff, undoing, onF
         </div>
         <Switch checked={checked} onCheckedChange={onFlip} disabled={!canWrite} aria-label={trick.name} />
       </div>
-      {trick.on && <TrickChanges trick={trick} clock={clock} auto={auto} canWrite={canWrite} undoing={undoing} onAuto={onAuto} onUndo={onUndo} />}
+      {trick.on && changed !== null && <TrickChanges trick={trick} line={changed} canWrite={canWrite} undoing={undoing} onUndo={onUndo} />}
     </div>
   );
 }
@@ -313,11 +293,6 @@ function SwitchOnlyRow({ id, checked, canWrite, onFlip }: { id: string; checked:
       <Switch checked={checked} onCheckedChange={onFlip} disabled={!canWrite} aria-label={id} />
     </div>
   );
-}
-
-/** "Tricks run on the lead of this crew (desk). This machine runs none." for a bridge that runs none. */
-export function runsOnLine(runsOn: TricksRunsOn): string {
-  return runsOn.lead === undefined ? t("settings.tricks.runsOn") : t("settings.tricks.runsOn.lead", { lead: runsOn.lead });
 }
 
 function TricksList({
@@ -342,6 +317,9 @@ function TricksList({
   // The same for the take-changes-without-asking switch, and the Undo posts in flight.
   const [heldAuto, setHeldAuto] = useState<ReadonlyMap<string, boolean>>(new Map());
   const [undoing, setUndoing] = useState<ReadonlySet<string>>(new Set());
+  // The trick whose About sheet is open, by key. The list's own entry is read at draw time, so the sheet
+  // follows a new version of the row, and closes by itself when the trick leaves the list.
+  const [aboutKey, setAboutKey] = useState<string | null>(null);
   const flying = useRef(new Set<string>());
   const timers = useRef(new Set<ReturnType<typeof setTimeout>>());
 
@@ -453,51 +431,67 @@ function TricksList({
     }
   }
 
+  const aboutTrick = aboutKey === null ? undefined : tricks.find((trick) => trickKey(trick) === aboutKey);
+
   return (
-    <Card className="gap-0 py-0" data-testid="tricks-settings">
-      {/* A crew member, a deputy or a deposed lead schedules no trick: the lead does (bridge/index.ts). */}
-      {runsOn !== undefined && (
-        <p data-line="runs-on" className="border-b border-border px-4 py-3 text-sm text-muted-foreground">
-          {runsOnLine(runsOn)}
-        </p>
-      )}
-      <div data-slot="list-group">
-        {tricks.length === 0 && (
-          <div className="px-4 py-3">
-            <p className="text-sm text-muted-foreground">{t("settings.tricks.none")}</p>
-            {/* The command is a literal, not a sentence: it is typed on the machine, so it is never translated. */}
-            <p className="truncate font-mono text-xs text-muted-foreground">collie trick init &lt;id&gt;</p>
-          </div>
+    <>
+      <Card className="gap-0 py-0" data-testid="tricks-settings">
+        {/* A crew member, a deputy or a deposed lead schedules no trick: the lead does (bridge/index.ts). */}
+        {runsOn !== undefined && (
+          <p data-line="runs-on" className="border-b border-border px-4 py-3 text-sm text-muted-foreground">
+            {runsOnLine(runsOn)}
+          </p>
         )}
-        {tricks.map((trick) => {
-          const checked = held.get(trickKey(trick)) ?? trick.on;
-          const auto = heldAuto.get(trickKey(trick)) ?? trick.auto === true;
-          const onFlip = (on: boolean) => void flip(trick, on);
-          // One boundary per row: a row that throws leaves the others drawn, and keeps its own switch.
-          return (
-            <TrickBoundary
-              key={trickKey(trick)}
-              fallback="none"
-              fallbackNode={<SwitchOnlyRow id={String(trick.id)} checked={checked} canWrite={canWrite} onFlip={onFlip} />}
-              resetKey={trick}
-            >
-              <TrickRow
-                trick={trick}
-                clock={clock}
-                checked={checked}
-                auto={auto}
-                canWrite={canWrite}
-                hillOff={offHill}
-                undoing={undoing.has(trickKey(trick))}
-                onFlip={onFlip}
-                onAuto={(on) => void flipAuto(trick, on)}
-                onUndo={() => void undo(trick)}
-              />
-            </TrickBoundary>
-          );
-        })}
-      </div>
-      <p className="border-t border-border px-4 py-3 text-xs text-muted-foreground">{t("settings.tricks.foot")}</p>
-    </Card>
+        <div data-slot="list-group">
+          {tricks.length === 0 && (
+            <div className="px-4 py-3">
+              <p className="text-sm text-muted-foreground">{t("settings.tricks.none")}</p>
+              {/* The command is a literal, not a sentence: it is typed on the machine, so it is never translated. */}
+              <p className="truncate font-mono text-xs text-muted-foreground">collie trick init &lt;id&gt;</p>
+            </div>
+          )}
+          {tricks.map((trick) => {
+            const checked = held.get(trickKey(trick)) ?? trick.on;
+            const onFlip = (on: boolean) => void flip(trick, on);
+            // One boundary per row: a row that throws leaves the others drawn, and keeps its own switch.
+            return (
+              <TrickBoundary
+                key={trickKey(trick)}
+                fallback="none"
+                fallbackNode={<SwitchOnlyRow id={String(trick.id)} checked={checked} canWrite={canWrite} onFlip={onFlip} />}
+                resetKey={trick}
+              >
+                <TrickRow
+                  trick={trick}
+                  clock={clock}
+                  checked={checked}
+                  canWrite={canWrite}
+                  hillOff={offHill}
+                  undoing={undoing.has(trickKey(trick))}
+                  onFlip={onFlip}
+                  onUndo={() => void undo(trick)}
+                  onAbout={() => setAboutKey(trickKey(trick))}
+                />
+              </TrickBoundary>
+            );
+          })}
+        </div>
+        <p className="border-t border-border px-4 py-3 text-xs text-muted-foreground">{t("settings.tricks.foot")}</p>
+      </Card>
+      {/* Its own boundary: a sheet that throws closes, and the card and its switches stay drawn. */}
+      {aboutTrick !== undefined && (
+        <TrickBoundary fallback="none" resetKey={aboutTrick}>
+          <TrickAboutSheet
+            trick={aboutTrick}
+            runsOn={runsOn}
+            open
+            onClose={() => setAboutKey(null)}
+            auto={heldAuto.get(trickKey(aboutTrick)) ?? aboutTrick.auto === true}
+            canWrite={canWrite}
+            onAuto={(on) => void flipAuto(aboutTrick, on)}
+          />
+        </TrickBoundary>
+      )}
+    </>
   );
 }

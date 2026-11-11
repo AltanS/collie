@@ -7,9 +7,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { HOLD_MS, TricksSettingsCard, autoLine, placesLine, provenanceLine, readsLine, slotLine, useTricksPresent, warningLines } from "@/components/tricks-settings-card";
 import { setTrickAuto, switchTrick, undoTrick } from "@/lib/api";
 import { ROOT_ROUTE_ID } from "@/lib/loaders";
-import { inputsSentence, type TricksReply, type WireTrickInfo } from "@/lib/tricks/schema";
+import { ABOUT_MAX, DESCRIPTION_MAX, inputsSentence, type TricksReply, type WireTrickInfo } from "@/lib/tricks/schema";
 import { createTricksStore, type TricksStore } from "@/lib/tricks/store";
-import { readTrick } from "@/lib/tricks/wire";
+import { readTrick, readTrickText } from "@/lib/tricks/wire";
 import { clearStatus, currentStatus } from "@/lib/status";
 import { server } from "@/test/setup";
 
@@ -171,10 +171,10 @@ describe("TricksSettingsCard: the rows", () => {
     await screen.findByText("Bad");
     for (const id of ["legs", "tracker", "bad"]) {
       const row = rowOf(id);
-      // The three lines; a trick that is on adds its changes row below them (crew slice 3), whatever its state.
+      // The three lines; a trick that took a change without asking adds its changes row below them (crew slice 3).
       const lines = [...row.querySelectorAll<HTMLElement>("[data-line]")].filter((el) => el.closest('[data-line="changes"]') === null);
       expect(lines.length).toBe(2);
-      expect(row.querySelector('[data-line="changes"]') !== null).toBe(id !== "tracker");
+      expect(row.querySelector('[data-line="changes"]')).toBeNull();
       expect(row.querySelector('[data-line="places"]')?.textContent).not.toBe("");
       expect(row.querySelector('[data-line="slot"]')?.textContent).not.toBe("");
     }
@@ -218,7 +218,8 @@ describe("TricksSettingsCard: the warnings before the switch (review 15)", () =>
     expect(onSwitch).toHaveBeenCalledTimes(1);
     expect(onSwitch).toHaveBeenCalledWith("bluefin", "tracker", true);
     expect(screen.getByRole("switch", { name: "Tracker" })).toBeChecked();
-    expect(screen.queryByRole("button")).toBeNull();
+    // The one button on the card is the name, which opens the About sheet.
+    expect(screen.getAllByRole("button").map((b) => b.getAttribute("data-slot"))).toEqual(["trick-about"]);
   });
 
   it("shows them for a changed trick that is on, and the bridge's own words for a kind it does not know", async () => {
@@ -469,7 +470,7 @@ describe("a new version waits", () => {
     await screen.findByText("Browser leg");
     expect(rowOf("legs").querySelector('[data-line="slot"]')).toHaveTextContent("A new version waits for your yes.");
     expect(rowOf("tracker").querySelector('[data-line="slot"]')).not.toHaveTextContent("A new version waits");
-    expect(within(rowOf("legs")).queryByRole("button")).toBeNull();
+    expect(within(rowOf("legs")).getAllByRole("button").map((b) => b.getAttribute("data-slot"))).toEqual(["trick-about"]);
   });
 
   it("readTrick keeps a well-formed pending and drops a malformed one", () => {
@@ -491,28 +492,31 @@ describe("take changes without asking, and undo an automatic change (crew slice 
     return render(<RouterProvider router={router} />);
   }
 
-  it("draws the switch with its hint under a trick that is on, and nothing under one that is off", async () => {
+  it("draws no auto switch and no hint on the card, for a trick that is on or off: the switch lives in the About sheet", async () => {
     renderWith(await storeWith([{ ...LEGS, auto: false }, TRACKER]), {});
     await screen.findByText("Browser leg");
-    const changes = rowOf("legs").querySelector<HTMLElement>('[data-line="changes"]');
-    expect(changes).toHaveTextContent("Take changes without asking");
-    expect(changes).toHaveTextContent("A change that asks for new rights, or does something new such as reaching the network, still asks.");
-    expect(within(changes!).getByRole("switch", { name: "Take changes without asking" })).not.toBeChecked();
-    expect(rowOf("tracker").querySelector('[data-line="changes"]')).toBeNull();
+    expect(screen.queryByText("Take changes without asking")).toBeNull();
+    expect(screen.queryByText(/still asks\./)).toBeNull();
+    // The two rows' own switches are the only ones.
+    expect(screen.getAllByRole("switch").map((sw) => sw.getAttribute("aria-label"))).toEqual(["Browser leg", "Tracker"]);
+    expect(rowOf("legs").querySelector('[data-line="changes"]')).toBeNull();
     expect(rowOf("legs").querySelector('[data-line="auto-at"]')).toBeNull();
   });
 
-  it("posts the new position, flips at once, and goes back with a status line when the bridge refuses", async () => {
+  it("posts the new position from the sheet, flips at once, and goes back with a status line when the bridge refuses", async () => {
     const user = userEvent.setup();
     const onAuto = vi.fn(async (_host: string, _id: string, on: boolean) => ({ ...LEGS, auto: on }));
     renderWith(await storeWith([LEGS]), { onAuto });
-    const sw = await screen.findByRole("switch", { name: "Take changes without asking" });
-    await user.click(sw);
+    await user.click(await screen.findByRole("button", { name: "About Browser leg" }));
+    const sw = () => within(screen.getByRole("dialog")).getByRole("switch", { name: "Take changes without asking" });
+    await user.click(sw());
     expect(onAuto).toHaveBeenCalledWith("bluefin", "legs", true);
-    expect(screen.getByRole("switch", { name: "Take changes without asking" })).toBeChecked();
+    expect(sw()).toBeChecked();
     onAuto.mockRejectedValueOnce(new Error("409"));
-    await user.click(screen.getByRole("switch", { name: "Take changes without asking" }));
-    expect(currentStatus()?.text).toBe("Could not change Browser leg. Try again.");
+    await user.click(sw());
+    await vi.waitFor(() => expect(currentStatus()?.text).toBe("Could not change Browser leg. Try again."));
+    // Back to what the bridge's list says, which has not moved.
+    expect(sw()).not.toBeChecked();
   });
 
   it("says when a version was taken without asking, and Undo asks for a second tap before it goes back", async () => {
@@ -572,5 +576,100 @@ describe("the auto and undo calls (crew slice 3)", () => {
     ]);
     server.use(http.post(/\/undo$/, () => HttpResponse.json({ error: "no-previous", message: "There is no earlier version to go back to." }, { status: 409 })));
     await expect(undoTrick("bluefin", "legs")).rejects.toThrow();
+  });
+});
+
+describe("TricksSettingsCard: a trick's About sheet", () => {
+  const TOLD: WireTrickInfo = { ...LEGS, description: "Shows the browser leg.", about: "First paragraph.\n\nSecond paragraph." };
+
+  it("draws the description under the name, and no line for a trick without one", async () => {
+    renderCard(await storeWith([TOLD, TRACKER]));
+    await screen.findByText("Browser leg");
+    expect(rowOf("legs").querySelector('[data-line="description"]')).toHaveTextContent("Shows the browser leg.");
+    expect(rowOf("tracker").querySelector('[data-line="description"]')).toBeNull();
+  });
+
+  it("gives the name a muted chevron inside the button, hidden from assistive tech, and the description the places line's muted style", async () => {
+    renderCard(await storeWith([TOLD]));
+    const button = await screen.findByRole("button", { name: "About Browser leg" });
+    const glyph = button.querySelector("svg");
+    expect(glyph).not.toBeNull();
+    expect(glyph?.getAttribute("aria-hidden")).toBe("true");
+    expect(glyph?.getAttribute("class")).toContain("text-muted-foreground");
+    expect(button.textContent).toBe("Browser leg");
+    const description = rowOf("legs").querySelector('[data-line="description"]');
+    expect(description?.className).toContain("text-muted-foreground");
+    expect(description?.className).toContain("line-clamp-2");
+    expect(rowOf("legs").querySelector('[data-line="places"]')?.className).toContain("text-muted-foreground");
+  });
+
+  it("opens the sheet from the name, and the switch stays its own tap target", async () => {
+    const user = userEvent.setup();
+    const onSwitch = vi.fn(async (_host: string, _id: string, on: boolean) => ({ ...TOLD, on, state: "ok" as const }));
+    renderCard(await storeWith([TOLD]), onSwitch);
+    await user.click(await screen.findByRole("switch", { name: "Browser leg" }));
+    expect(onSwitch).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("dialog")).toBeNull();
+    await user.click(screen.getByRole("button", { name: "About Browser leg" }));
+    const dialog = screen.getByRole("dialog", { name: "Browser leg" });
+    expect(within(dialog).getByText("First paragraph.")).toBeInTheDocument();
+    expect(onSwitch).toHaveBeenCalledTimes(1);
+    await user.click(within(dialog).getByRole("button", { name: "Close" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  describe("the Updates switch in the sheet", () => {
+    const sheetSwitch = () => within(screen.getByRole("dialog")).getByRole("switch", { name: "Take changes without asking" });
+
+    it("holds the position the sheet's switch was flipped to, while the write is in flight and after", async () => {
+      const user = userEvent.setup();
+      const onAutoPost = vi.fn();
+      server.use(
+        http.post("/api/tricks/:host/:id/auto", async ({ request }) => {
+          const on = (await request.text()).includes('"on":true');
+          onAutoPost(on);
+          return HttpResponse.json({ ...TOLD, auto: on });
+        }),
+      );
+      renderCard(await storeWith([TOLD]));
+      await user.click(await screen.findByRole("button", { name: "About Browser leg" }));
+      expect(within(rowOf("legs")).queryByText("Take changes without asking")).toBeNull();
+      expect(sheetSwitch()).not.toBeChecked();
+      await user.click(sheetSwitch());
+      await vi.waitFor(() => expect(onAutoPost).toHaveBeenCalledWith(true));
+      expect(sheetSwitch()).toBeChecked();
+    });
+
+    it("goes back and says it in the status line when the write fails, as the trick's own switch does", async () => {
+      const user = userEvent.setup();
+      server.use(http.post("/api/tricks/:host/:id/auto", () => HttpResponse.json({ error: "no" }, { status: 500 })));
+      renderCard(await storeWith([TOLD]));
+      await user.click(await screen.findByRole("button", { name: "About Browser leg" }));
+      await user.click(sheetSwitch());
+      await vi.waitFor(() => expect(currentStatus()?.text).toBe("Could not change Browser leg. Try again."));
+      expect(sheetSwitch()).not.toBeChecked();
+    });
+
+    it("is not in the sheet of a trick that is off", async () => {
+      const user = userEvent.setup();
+      renderCard(await storeWith([{ ...TOLD, on: false, state: "off" }]));
+      await user.click(await screen.findByRole("button", { name: "About Browser leg" }));
+      const dialog = screen.getByRole("dialog");
+      expect(within(dialog).queryByText("Updates")).toBeNull();
+      expect(within(dialog).queryByRole("switch")).toBeNull();
+    });
+  });
+
+  it("reads description and about off the wire tolerantly", () => {
+    const base = { host: "bluefin", id: "legs", name: "Browser leg", icon: "flask", on: true, state: "ok", places: ["belt"] };
+    expect(readTrick({ ...base, description: "One line.", about: "a\n\nb" })).toMatchObject({ description: "One line.", about: "a\n\nb" });
+    expect(readTrick(base)).not.toHaveProperty("about");
+    expect(readTrick({ ...base, about: 4, description: ["x"] })).not.toHaveProperty("about");
+    expect(readTrick({ ...base, about: 4, description: ["x"] })).not.toHaveProperty("description");
+    expect(readTrick({ ...base, description: "d".repeat(DESCRIPTION_MAX + 1) })).not.toHaveProperty("description");
+    expect(readTrickText("a".repeat(ABOUT_MAX), "about")).toHaveLength(ABOUT_MAX);
+    expect(readTrickText("a".repeat(ABOUT_MAX + 1), "about")).toBeUndefined();
+    expect(readTrickText("hidden\u202Emark", "about")).toBeUndefined();
+    expect(readTrickText("two\nlines", "description")).toBeUndefined();
   });
 });

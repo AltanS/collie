@@ -1084,6 +1084,8 @@ export class TricksService implements TricksSurface {
     if (rt.decides === true) info.decides = true;
     if (m?.env !== undefined) info.env = m.env;
     if (m?.inputs !== undefined && m.inputs.length > 0) info.inputs = { globs: m.inputs, crew: this.deps.crewWide?.() ?? false };
+    if (m?.description !== undefined) info.description = m.description;
+    if (m?.about !== undefined) info.about = m.about;
     if (rt.on && rt.entry !== undefined) info.auto = rt.entry.auto;
     // Undo is offered only for a version taken without asking, while the one before it is there.
     if (rt.on && rt.entry?.by === "auto" && rt.entry.previous !== undefined) info.autoAt = rt.entry.at;

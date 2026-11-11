@@ -21,7 +21,13 @@ helper (`cli/trick-kit/trick.ts`, a file a trick folder copies) carries the same
 contract 1 trick (`TRICK_CONTRACT_DEFAULT`), and `collie trick init` writes `contract = 1`.
 
 **The manifest**, `trick.toml`: `id`, `name`, `run`, `every`, `icon`, `places`, `env`, `contract`,
-`inputs` (contract 2), and the later `watch`, `on` and `mode`. `contract` is the number the trick is
+`inputs` (contract 2), the later `watch`, `on` and `mode`, and two texts for a person, `description` (one
+line, at most 140 characters, shown under the name in Settings → Tricks) and `about` (at most 1200
+characters, paragraphs split by a blank line, shown in the trick's About sheet). Both are plain text, with
+no markdown, HTML or link drawn, and both are allowed in contract 1 and 2. They are text, not rights: they
+stay out of `powersOf` and are part of the code hash like any manifest change. A value past its cap, or
+with a control or direction character, refuses the manifest like a long `name`; `collie trick check` gives
+a soft note when `about` is missing. `contract` is the number the trick is
 written for, a whole number, 1 when left out. A trick that names a higher number than this Collie knows
 is refused with one line, "This trick needs a newer Collie: it is written for trick contract 3, and
 this Collie knows contract 2. Update Collie to run it.", and nothing else is checked. At the same number an unknown key is
@@ -697,6 +703,10 @@ written as what a trick, or a person who controls one, can do today.
   read. A secret in any other file the glob names, such as a key file or a credentials JSON, is read
   and handed to the trick. Text files are masked only when the bridge's key mask is on, and a
   picture is never masked. The person approves the globs, not the files they match.
+- **The `description` and `about` texts are the author's claim, and nothing checks them against the
+  code.** A trick can say it only reads and still write. The About sheet says so under the text
+  ("Written by the trick's author. Collie did not check it."). The rows under "What it does" and the
+  warnings are the bridge's own facts, from the manifest and the code search.
 
 ## Places in the app
 

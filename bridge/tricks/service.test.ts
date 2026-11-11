@@ -187,6 +187,34 @@ describe("discovery and the switch", () => {
     expect(r.specs).toEqual([]);
   });
 
+  test("description and about ride the row, are text and not rights, and a change of them is a new version with the same powers", async () => {
+    const r = await rig([exited(belt("x"))]);
+    const text = 'description = "Green release checks."\nabout = """\nIt shows which checks are green.\n\nIt reads nothing from your sessions."""\n';
+    const dir = await makeTrick(r.configDir, "legs", MANIFEST + text, { "legs.sh": "#!/bin/sh\n" });
+    await switchOn(r.stateDir, "legs");
+    await tickAt(r, T0);
+    const row = (await r.service.reply(undefined)).tricks[0];
+    expect(row?.description).toBe("Green release checks.");
+    expect(row?.about).toBe("It shows which checks are green.\n\nIt reads nothing from your sessions.");
+    // The words changed, the rights did not: the code hash moves (a file changed), the powers do not.
+    await writeFile(join(dir, "trick.toml"), MANIFEST + 'description = "Green release checks."\nabout = "Now one paragraph."\n');
+    await tickAt(r, T0 + 30_000);
+    await tickAt(r, T0 + 30_000 + PENDING_SETTLE_MS);
+    const next = (await r.service.reply(undefined)).tricks[0];
+    expect(next?.about).toBe("It shows which checks are green.\n\nIt reads nothing from your sessions.");
+    expect(next?.pending).toMatchObject({ files: { added: 0, changed: 1, removed: 0 }, powersChanged: false });
+  });
+
+  test("an about past its cap refuses the manifest like any long text, with the plain sentence", async () => {
+    const r = await rig([exited(belt("x"))]);
+    await makeTrick(r.configDir, "legs", MANIFEST + `about = "${"a".repeat(1201)}"\n`, { "legs.sh": "#!/bin/sh\n" });
+    await tickAt(r, T0);
+    const info = (await r.service.reply(undefined)).tricks[0];
+    expect(info?.state).toBe("skipped");
+    expect(info?.refusals?.[0]).toMatchObject({ path: "/about", reason: '"about" is 1201 characters. At most 1200.' });
+    expect(info?.about).toBeUndefined();
+  });
+
   test("switched on: a start run from the approved copy with scrubbed env, the facts on stdin, and a 0700 state folder", async () => {
     const r = await rig([exited(belt("23/34"))]);
     await makeTrick(r.configDir, "legs", MANIFEST);
