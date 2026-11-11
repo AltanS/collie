@@ -134,6 +134,9 @@ export const VIEW_REFUSAL_KEYS_MAX = 1024;
  */
 export const VIEW_OWN_TURN_MS = 30_000;
 
+/** The words a second tap on a screen whose tap was sent gets (review 9 R6). */
+export const VIEW_PICKED_WORDS = "this screen was answered already; wait for the agent's next screen";
+
 /** The sentence a crew member answers a write or a switch with. */
 export const VIEW_NOT_ON_LEAD = "agent views work on the lead machine only; run it in a session on the lead";
 /** The sentence when the state could not be written. */
@@ -865,6 +868,7 @@ export class AgentViewService {
     let words: string | null = null;
     if (tap) {
       if (entry.view === undefined || this.isStale(entry) || entry.view.rev !== field.rev) return refuse("stale_view", VIEW_STALE_WORDS);
+      if (entry.picked === field.rev) return refuse("stale_view", VIEW_PICKED_WORDS);
       words = viewTapWords(entry.view, field.control ?? "");
       if (words === null) return refuse("bad_control", VIEW_BAD_CONTROL_WORDS);
       if (hasViewHead(words)) return refuse("bad_head", BAD_HEAD);
@@ -903,6 +907,7 @@ export class AgentViewService {
         if (now?.on !== true) return VIEW_OFF_WORDS;
         if (!tap) return null;
         if (now.view === undefined || now.view.rev !== rev || this.isStale(now) || viewTapWords(now.view, control) !== words) return VIEW_STALE_WORDS;
+        if (now.picked === rev) return VIEW_PICKED_WORDS;
         return null;
       },
       done: (end) => {
@@ -913,7 +918,7 @@ export class AgentViewService {
           this.audit("trick.view.refused", session, device, { trick, reason: end.reason ?? "refused", rid: end.rid });
           return;
         }
-        this.keepSent(trick, session, { rid: end.rid, at: new Date(this.now()).toISOString(), kind: tap ? "tap" : "text", line });
+        this.keepSent(trick, session, { rid: end.rid, at: new Date(this.now()).toISOString(), kind: tap ? "tap" : "text", line }, tap ? rev : undefined);
         if (plain) this.notePersonTurn(session);
         else this.ownTurns.set(session, this.now() + VIEW_OWN_TURN_MS);
         this.audit("trick.view.send", session, device, { trick, rid: end.rid, kind: tap ? "tap" : "text", plain });
@@ -929,10 +934,11 @@ export class AgentViewService {
   }
 
   /** Keep one sent line on its view, newest last. A write that fails keeps the send: it went out. */
-  private keepSent(trick: string, session: string, sent: ViewSent): void {
+  /** Keeps a typed line; `picked` is the rev of the screen a tap went from, which then takes no second tap. */
+  private keepSent(trick: string, session: string, sent: ViewSent, picked: number | undefined): void {
     const entry = this.deps.store.get(trick, session);
     if (entry === undefined) return;
-    this.deps.store.put(viewEntry({ ...entry, sent: [...(entry.sent ?? []), sent].slice(-VIEW_SENT_MAX), changedAt: this.now() }));
+    this.deps.store.put(viewEntry({ ...entry, picked: picked ?? entry.picked, sent: [...(entry.sent ?? []), sent].slice(-VIEW_SENT_MAX), changedAt: this.now() }));
   }
 
   private audit(action: ViewAuditEntry["action"], session: string, device: string | null, detail: ViewAuditEntry["detail"]): void {

@@ -1,7 +1,7 @@
 // The agent views' state, kept on the machine whose bridge took the write.
 //
 //   <stateDir>/trick-views/views/<key>.json     one file per (trick, session), folder 0700, file 0600
-//   { "v": 1, "trick", "session", "on", "shows", "changedAt", "view"?, "drawing"?, "mark"?, "staleTurn"?, "sent"? }
+//   { "v": 1, "trick", "session", "on", "shows", "changedAt", "view"?, "drawing"?, "mark"?, "staleTurn"?, "picked"?, "sent"? }
 //
 // ONE FILE PER VIEW. A write rewrites the one view it changed, never the others (agent views SECURITY N7):
 // `<key>` is the first 32 hex characters of the SHA-256 of `<trick>\0<session>`, so neither the trick id
@@ -59,6 +59,8 @@ export interface ViewEntry {
   readonly mark?: string;
   /** A person turn that did not come from the view reached a pane whose harness reports no conversation. */
   readonly staleTurn?: true;
+  /** The rev of the screen a tap was sent from: that screen takes no second tap (review 9 R6). */
+  readonly picked?: number;
   /** The lines the bridge typed for this view, newest last. */
   readonly sent?: readonly ViewSent[];
 }
@@ -101,6 +103,7 @@ function readEntry(raw: JsonValue): ViewEntry | null {
     drawing: drawing ?? undefined,
     mark: mark !== undefined && mark.length <= MARK_MAX ? mark : undefined,
     staleTurn: obj.staleTurn === true,
+    picked: asJsonNumber(obj.picked),
     sent,
   });
 }
@@ -116,6 +119,7 @@ export function viewEntry(parts: {
   drawing?: ViewDrawing | undefined;
   mark?: string | undefined;
   staleTurn?: boolean | undefined;
+  picked?: number | undefined;
   sent?: readonly ViewSent[] | undefined;
 }): ViewEntry {
   let out: ViewEntry = { trick: parts.trick, session: parts.session, on: parts.on, shows: parts.shows, changedAt: parts.changedAt };
@@ -123,6 +127,8 @@ export function viewEntry(parts: {
   if (parts.drawing !== undefined) out = { ...out, drawing: parts.drawing };
   if (parts.view !== undefined && parts.mark !== undefined) out = { ...out, mark: parts.mark };
   if (parts.view !== undefined && parts.staleTurn === true) out = { ...out, staleTurn: true };
+  // Only the screen it names: a new screen has a new rev and takes taps again.
+  if (parts.view !== undefined && parts.picked === parts.view.rev) out = { ...out, picked: parts.picked };
   if (parts.sent !== undefined && parts.sent.length > 0) out = { ...out, sent: [...parts.sent] };
   return out;
 }

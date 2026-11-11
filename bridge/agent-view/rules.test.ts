@@ -28,7 +28,7 @@ import {
 } from "../../web/src/lib/agent-view/wire.ts";
 import { rulesTextProblems, type View } from "../../web/src/lib/tricks/schema.ts";
 import type { JsonObject, JsonValue } from "../json.ts";
-import { AgentViewService, viewHead, VIEW_OWN_TURN_MS, VIEW_STALE_WORDS, type AgentViewServiceDeps, type ViewAuditEntry, type ViewCrewMode, type ViewGate, type ViewSendPlan } from "./service.ts";
+import { AgentViewService, viewHead, VIEW_OWN_TURN_MS, VIEW_PICKED_WORDS, VIEW_STALE_WORDS, type AgentViewServiceDeps, type ViewAuditEntry, type ViewCrewMode, type ViewGate, type ViewSendPlan } from "./service.ts";
 import { AgentViewStore } from "./store.ts";
 import { HEAD_CASES } from "./testdata/head-cases.ts";
 import { listenPersonTurns } from "./person-turns.ts";
@@ -278,8 +278,8 @@ describe("rule 2: the bridge writes the line", () => {
     const sending = plan(await tap(r, rev, PLAIN));
     expect(sending.line).toBe(`${viewHead(T, ONE)} tapped "Revert" [rules: ${BIN} trick view ${T} help --session ${ONE}]`);
     expect(sending.plain).toBe(false);
-    // After a start that proves the rules, the tail goes.
-    sending.done({ rid: "r1", sent: true, reason: null });
+    // After a start that proves the rules, the tail goes. (Not sent, so the screen still takes a tap: review 9 R6.)
+    sending.done({ rid: "r1", sent: false, reason: "busy" });
     await r.service.start(T, ONE, { note: null, rules: viewRulesIdOf(T, RULES) });
     expect(plan(await tap(r, rev, "choice/1")).line).toBe(`${viewHead(T, ONE)} picked "Tall"`);
   });
@@ -407,7 +407,7 @@ describe("rule 5: never an answer", () => {
     expect(await tap(r, rev, PLAIN)).toMatchObject({ ok: false, code: "busy" });
     expect(await typed(r, "x")).toMatchObject({ ok: false, code: "busy" });
     first.done({ rid: "rid-1", sent: true, reason: null });
-    expect((await tap(r, rev, PLAIN)).ok).toBe(true);
+    expect((await typed(r, "x")).ok).toBe(true);
   });
 });
 
@@ -428,6 +428,37 @@ describe("rule 6: no stale taps", () => {
     expect(await tap(r, rev, PLAIN)).toMatchObject({ ok: false, code: "stale_view" });
     r.marks.delete(ONE);
     expect(await tap(r, rev, PLAIN)).toMatchObject({ ok: false, code: "stale_view" });
+  });
+
+  test("rule 6 (review 9 R6): a tap whose send went marks its screen answered: the same rev takes no second tap, kept across a restart; the next screen does", async () => {
+    const folder = mkdtempSync(join(tmpdir(), "view-picked-"));
+    try {
+      const r = rig({ store: new AgentViewStore(folder, () => 1) });
+      const rev = await drawn(r);
+      plan(await tap(r, rev, PLAIN)).done({ rid: "rid-1", sent: true, reason: null });
+      expect(await tap(r, rev, PLAIN)).toMatchObject({ ok: false, code: "stale_view", error: VIEW_PICKED_WORDS });
+      expect(await tap(r, rev, "choice/1")).toMatchObject({ ok: false, code: "stale_view", error: VIEW_PICKED_WORDS });
+      // A bridge restart reads the mark back from disk.
+      const again = rig({ store: new AgentViewStore(folder, () => 1) });
+      expect(await tap(again, rev, PLAIN)).toMatchObject({ ok: false, code: "stale_view", error: VIEW_PICKED_WORDS });
+      // A refused send does not mark it: the person may tap again.
+      const next = await again.service.show(T, ONE, { view: SCREEN, title: null, choice: CHOICE });
+      if (!next.ok) throw new Error(next.error);
+      const nextRev = next.session.view!.rev;
+      plan(await tap(again, nextRev, PLAIN)).done({ rid: "rid-2", sent: false, reason: "busy" });
+      plan(await tap(again, nextRev, PLAIN)).done({ rid: "rid-3", sent: true, reason: null });
+      expect(await tap(again, nextRev, PLAIN)).toMatchObject({ ok: false, error: VIEW_PICKED_WORDS });
+    } finally {
+      rmSync(folder, { recursive: true, force: true });
+    }
+  });
+
+  test("rule 6 (review 9 R6): a plan made before another tap's send went is refused under the lock", async () => {
+    const r = rig();
+    const rev = await drawn(r);
+    const first = plan(await tap(r, rev, PLAIN));
+    first.done({ rid: "rid-1", sent: true, reason: null });
+    expect(first.check()).toBe(VIEW_PICKED_WORDS);
   });
 
   test("lead addition 5: a redraw between the draw and the tap, same control, another label: the old rev is refused, and a plan made before is refused under the lock", async () => {
@@ -683,10 +714,12 @@ describe("rule 12: caps and record", () => {
   test(`rule 12: one send in flight per session and ${String(VIEW_SENDS_PER_MINUTE)} sends a minute`, async () => {
     const r = rig();
     const rev = await drawn(r);
-    for (let i = 0; i < VIEW_SENDS_PER_MINUTE; i++) plan(await tap(r, rev, PLAIN)).done({ rid: `rid-${String(i)}`, sent: true, reason: null });
-    expect(await tap(r, rev, PLAIN)).toMatchObject({ ok: false, code: "rate" });
+    // One tap (its screen then takes no second tap, review 9 R6), then typed sends: both count.
+    plan(await tap(r, rev, PLAIN)).done({ rid: "rid-tap", sent: true, reason: null });
+    for (let i = 1; i < VIEW_SENDS_PER_MINUTE; i++) plan(await typed(r, `note ${String(i)}`)).done({ rid: `rid-${String(i)}`, sent: true, reason: null });
+    expect(await typed(r, "one more")).toMatchObject({ ok: false, code: "rate" });
     r.advance(61_000);
-    expect((await tap(r, rev, PLAIN)).ok).toBe(true);
+    expect((await typed(r, "one more")).ok).toBe(true);
   });
 
   test("rule 12 (review 9 R5): an agent write refused at the socket writes an audit line, one per reason per minute per (trick, session)", async () => {

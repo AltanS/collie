@@ -1027,7 +1027,8 @@ The bridge builds the line from its own stored screen, under the pane lock:
 `[view:<trick> <address>] from operator: tapped "<label>"`, then ` in "<group>"` when the button sits in a
 labelled group, then ` [rules: ...]` while the session does not hold the rules. Labels have `"` and `\`
 escaped. A button carries no `value` and no `does`, so every word a tap sends is on the screen. The rev
-must equal the stored one, and the screen must not be stale (`stale_view`). A tap is refused at a
+must equal the stored one, and the screen must not be stale (`stale_view`). Once a tap's send went,
+that screen takes no second tap (`stale_view`, "answered already"), also after a restart. A tap is refused at a
 question, a dialog or an answer box (`question`, `not_free`), and any view send while a turn runs
 (`busy`): nothing queues, nothing steers. Typed text gets the head only while the session is free; with a
 question open, a turn running or a command, it goes plain, as the person's own send. A refusal before
