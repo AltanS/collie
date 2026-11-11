@@ -476,5 +476,8 @@ export function readDecision(value: JsonValue | undefined, opts: ReadDecisionOpt
     decision.group = group;
   }
   if (pushTag !== undefined) decision.pushTag = pushTag;
+  // Absent until the person wrote to the posting session (1.29.0): kept absent; a bad value drops only the mark.
+  const spokeAfter = asJsonNumber(row.spokeAfter);
+  if (spokeAfter !== undefined && Number.isSafeInteger(spokeAfter) && spokeAfter > 0 && decision.state === "open") decision.spokeAfter = spokeAfter;
   return postDigest === undefined ? decision : { ...decision, postDigest };
 }

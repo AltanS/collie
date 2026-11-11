@@ -47,6 +47,14 @@ const withConfirm = () =>
   });
 
 describe("the Decision card, at rest", () => {
+  it("says so in words when the person wrote to the session after it asked, and stays answerable (1.29.0)", () => {
+    const { slot, option } = renderCard(hillDecision({ spokeAfter: 2_000 }));
+    expect(slot("decision-spoke")).toHaveTextContent("You wrote to this session after it asked.");
+    expect(option("yes")).toBeEnabled();
+    const fresh = renderCard(hillDecision());
+    expect(fresh.slot("decision-spoke")).toBeNull();
+  });
+
   it("shows the meta line, the title and the summary", () => {
     const { slot } = renderCard(hillDecision({ priority: "now", title: "Merge it?", summary: "CI is green." }));
     expect(slot("decision-priority")).toHaveTextContent("Now");

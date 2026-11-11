@@ -738,6 +738,24 @@ export class HillService {
     return stored + this.namesMoved + this.crewMoved;
   }
 
+  /**
+   * The person sent into one of this bridge's sessions from the phone's composer (1.29.0). Every open agent
+   * Decision posted from exactly that address before `at`, and not marked yet, gets `spokeAfter: at`: the
+   * card says the person wrote to the session after it asked, and sinks below the fresh cards of its
+   * priority. It stays open and answerable; nothing is typed and nothing pushes. Answers how many were marked.
+   * A member's Hill is not here, so a member marks nothing.
+   */
+  noteSpoke(address: string, at: number = this.now()): number {
+    if (this.deps.crewMode() === "peer" || this.deps.deposed?.() === true) return 0;
+    const marked: HillDecision[] = [];
+    for (const decision of this.deps.store.all()) {
+      if (decision.state !== "open" || decision.from.kind !== "agent" || decision.from.address !== address || decision.at >= at || decision.spokeAfter !== undefined) continue;
+      marked.push({ ...decision, spokeAfter: at });
+    }
+    if (marked.length === 0 || !this.save(...marked)) return 0;
+    return marked.length;
+  }
+
   /** The crew state now (crew-state.ts): `here` when this bridge keeps none. */
   crewState(): HillCrewStateView {
     return this.deps.crewState?.read() ?? HILL_CREW_STATE_DEFAULT;

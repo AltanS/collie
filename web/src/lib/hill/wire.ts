@@ -288,6 +288,13 @@ export interface HillDecision {
    * also why a decision id is never pushed twice. Absent: no notification.
    */
   pushTag?: string;
+  /**
+   * When the person last sent into the posting session from the phone's composer after this Decision was
+   * posted (1.29.0), ms since the epoch. Set on an open agent Decision only, by the lead whose session it
+   * is; absent until then. The card says "You wrote to this session after it asked." and sorts below the
+   * fresh cards of its priority, and it stays open and answerable.
+   */
+  spokeAfter?: number;
 }
 
 /**
@@ -429,10 +436,18 @@ export function isHillOptionIntent(s: string): boolean {
   return HILL_INTENT_RE.test(s) && !HILL_RESERVED_INTENTS.includes(s);
 }
 
-/** Open decisions in the order the phone shows them: now, today, later; oldest first inside one priority. Does not mutate. */
+/** 1 for a card the person wrote to the session about (`spokeAfter`), 0 for a fresh one. */
+function sunk(decision: HillDecision): number {
+  return decision.spokeAfter === undefined ? 0 : 1;
+}
+
+/**
+ * Open decisions in the order the phone shows them: now, today, later; inside one priority the fresh ones
+ * first, then those the person wrote to the session about (`spokeAfter`), each oldest first. Does not mutate.
+ */
 export function sortOpenDecisions(list: HillDecision[]): HillDecision[] {
   const rank = (p: HillPriority): number => HILL_PRIORITIES.indexOf(p);
-  return list.toSorted((a, b) => rank(a.priority) - rank(b.priority) || a.at - b.at);
+  return list.toSorted((a, b) => rank(a.priority) - rank(b.priority) || sunk(a) - sunk(b) || a.at - b.at);
 }
 
 // ── THE CREW STATE (1.29.0) ─────────────────────────────────────────────────────────────────────────

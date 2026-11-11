@@ -3282,7 +3282,12 @@ export function startServer(opts: {
         } catch {
           body = undefined;
         }
-        return sendRoute(rt, body, { audit, device: whois(req).device, redact: cfg.redact, acceptEncoding: req.headers.get("accept-encoding") });
+        // The Hill's quiet mark (1.29.0): a send that reached an agent's pane marks the open Decisions it posted.
+        const spoke = (paneId: string) => {
+          const pane = walky?.paneAt(rt.name, paneId) ?? null;
+          if (walky !== undefined && pane !== null && pane.agent) hill?.noteSpoke(walky.addressOf(pane.paneId, pane.instance));
+        };
+        return sendRoute(rt, body, { audit, device: whois(req).device, redact: cfg.redact, acceptEncoding: req.headers.get("accept-encoding"), spoke });
       }
       // `DELETE /api/send/<id>?session=<name>&pane=<id>` (M56 spec 15): the Cancel on a queued row. A held
       // request ends `cancelled`, an ended row is dismissed, one going out now is refused `busy`.
@@ -8951,10 +8956,31 @@ export interface SendRouteRuntime {
   };
 }
 
+/** The send modes that put the person's words into the session, as against staging them in the box. */
+const SPOKE_MODES: ReadonlySet<SendRequest["mode"]> = new Set(["send", "command", "submit"]);
+/** The outcomes of a send whose words reached the session, or will once it is free. */
+const SPOKE_OUTCOMES: ReadonlySet<string> = new Set(["effective", "sent", "held", "steered"]);
+
+/**
+ * Whether one phone send counts as the person writing to the session (1.29.0, the Hill's quiet mark): a
+ * mode that submits, with an outcome that reached the session or waits for it. A discard, a staged
+ * `append`/`replace`/`prepare` and a refusal do not.
+ */
+export function sendSpoke(mode: SendRequest["mode"], outcome: string): boolean {
+  return SPOKE_MODES.has(mode) && SPOKE_OUTCOMES.has(outcome);
+}
+
 export async function sendRoute(
   rt: SendRouteRuntime,
   body: JsonValue | undefined,
-  context: { readonly audit: AuditLog; readonly device: string | null; readonly redact: boolean; readonly acceptEncoding: string | null },
+  context: {
+    readonly audit: AuditLog;
+    readonly device: string | null;
+    readonly redact: boolean;
+    readonly acceptEncoding: string | null;
+    /** Told once per send whose words reached a pane (`sendSpoke`): the Hill marks that session's open cards. */
+    readonly spoke?: (paneId: string) => void;
+  },
 ): Promise<Response> {
   if (rt.driver !== undefined) return programSendRoute(rt, rt.driver, body, context);
   if (rt.send === undefined) return text(SEND_OFF_TEXT, 404);
@@ -9002,6 +9028,7 @@ export async function sendRoute(
     if (resendOf !== undefined) detail.resend = true;
     if (receipt.reason !== undefined) detail.reason = receipt.reason;
     context.audit.record({ action: "send", paneId, session: rt.name, device: context.device, detail });
+    if (sendSpoke(sendRequest.mode, receipt.outcome)) context.spoke?.(paneId);
     if (receipt.keys.length > 0) {
       rt.engine.noteInput();
       rt.engine.pokeNow();

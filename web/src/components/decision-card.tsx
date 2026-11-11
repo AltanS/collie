@@ -524,6 +524,13 @@ export function DecisionCard({
       className="gap-4 p-5"
     >
       <MetaLine decision={decision} hostSlot={hostSlot} trickIcon={trickIcon} />
+      {/* The quiet mark (1.29.0): the person wrote to the posting session after it asked. Words, not a
+          tint, and the card stays open and answerable; the list sorts it below the fresh cards. */}
+      {decision.spokeAfter !== undefined && (
+        <p data-slot="decision-spoke" className="-mt-2 text-xs text-muted-foreground">
+          {t("hill.spoke")}
+        </p>
+      )}
 
       <div className="flex flex-col gap-1">
         <h3 data-slot="decision-title" className="font-content break-words text-[17px] font-semibold leading-tight text-balance">
