@@ -103,7 +103,7 @@ describe("links in an agent view's text", () => {
   });
 });
 
-describe("rule 6: a link in an agent view shows where it goes", () => {
+describe("rule 8: a link in an agent view shows where it goes", () => {
   it("shows the link's host beside its words, as a Decision's view does", () => {
     const { container } = draw(null, screenOf([{ kind: "para", kids: [{ kind: "link", text: "The release notes", attrs: { href: "https://example.org/notes" } }] }]));
     const link = screen.getByRole("link", { name: /The release notes/ });
