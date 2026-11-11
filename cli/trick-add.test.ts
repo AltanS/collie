@@ -193,6 +193,17 @@ describe("collie trick add: the source", () => {
     expect("error" in parseTrickSource(`${OFFICIAL_TRICKS_REPO}//legs#${sha}`)).toBe(true);
   });
 
+  test("the official repository with a user name, over ssh, or in git's short ssh form is refused, and no form takes a commit id", () => {
+    const sha = "9".repeat(40);
+    const user = "https://user@github.com/AltanS/collie-tricks";
+    expect(parseTrickSource(`${user}//legs#v1`)).toEqual({ error: "The URL holds a user name or a password. Leave them out: they would be stored in the trick's origin record." });
+    for (const url of ["ssh://git@github.com/AltanS/collie-tricks.git", "git@github.com:AltanS/collie-tricks.git"]) {
+      expect(parseTrickSource(`${url}#v1`)).toEqual({ error: `${url} is not an https URL. Collie adds a trick from an https git URL only.` });
+    }
+    // On its own, the commit rule reads each form as the official repository.
+    for (const url of [user, "ssh://git@github.com/AltanS/collie-tricks.git", "git@github.com:AltanS/collie-tricks.git"]) expect(sourceRefProblem({ url, ref: sha })).toContain("not by a commit id");
+  });
+
   test("a local path is a source only under the tests' seam", () => {
     expect("error" in parseTrickSource("/tmp/repo")).toBe(true);
     expect(parseTrickSource("/tmp/repo//legs", { allowLocal: true })).toEqual({ url: "/tmp/repo", ref: null, subdir: "legs" });
