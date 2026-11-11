@@ -339,7 +339,17 @@ describe("the crew state crosses with the Hill copy (1.29.0)", () => {
     expect(parseHillList({ seq: 1, on: true, decisions, closed: [], tricks: {}, crewState: { state: "asleep", at: T0, by: "x" } })?.crewState).toBeNull();
   });
 
-  test("the takeover writes the lead's crew state on a deputy that holds none, and keeps the deputy's own", async () => {
+  test("the takeover keeps the newer crew state: a deputy's stale own file gives way to the lead's (C-N2)", async () => {
+    const deputy = await hillOn("laptop-stale");
+    const copy = new StandbyHillStore(deputy.m.stateDir);
+    const routes = hillCarryRoutes(copy);
+    writeHillCrewState(deputy.m.stateDir, { state: "here", by: "terminal" }, T0 - 50_000);
+    await routes.handle(CREW_HILL_COPY_PATH, { from: "desk", crewId: "crew-1" }, { seq: 1, on: true, decisions: [], closed: [], tricks: {}, crewState: { state: "away", at: T0 - 9, by: "Pixel 9" } });
+    await adoptCarriedHill({ store: copy, hill: deputy.hill, lead: "desk", self: "laptop", machine: "laptop", started: new Set(), stateDir: deputy.m.stateDir, now: () => T0 });
+    expect(readHillCrewState(deputy.m.stateDir).view).toEqual({ state: "away", at: T0 - 9, by: "Pixel 9", told: null });
+  });
+
+  test("the takeover writes the lead's crew state on a deputy that holds none, and keeps the deputy's own when newer", async () => {
     for (const own of [false, true]) {
       const deputy = await hillOn(own ? "laptop-own" : "laptop");
       const copy = new StandbyHillStore(deputy.m.stateDir);

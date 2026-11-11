@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import { HILL_BODY_MAX, type HillDecision } from "../../web/src/lib/hill/wire.ts";
 import type { HillMediaFile } from "../hill/media.ts";
 import { hillSwitchPath, writeHillSwitch } from "../hill/switch.ts";
-import { hillCrewStatePath, writeHillCrewState } from "../hill/crew-state.ts";
+import { readHillCrewState, writeHillCrewState } from "../hill/crew-state.ts";
 import { mergeCarriedMap } from "../tricks/hill.ts";
 import type { StandbyHillStore } from "./standby-hill.ts";
 
@@ -96,8 +96,10 @@ export async function adoptCarriedHill(opts: AdoptHillOptions): Promise<AdoptHil
   // The switch moves with the crown; a machine that already chose for itself keeps its own choice.
   if (!existsSync(hillSwitchPath(opts.stateDir))) writeHillSwitch(opts.stateDir, index.on, at);
   // The crew state too (1.29.0), with the lead's time and setter, so "Tell all sessions now" is offered
-  // again here for a quiet or away the sessions of this machine were never told of.
-  if (index.crewState !== null && !existsSync(hillCrewStatePath(opts.stateDir))) writeHillCrewState(opts.stateDir, { state: index.crewState.state, by: index.crewState.by, at: index.crewState.at }, at);
+  // again here for a quiet or away the sessions of this machine were never told of. The newer one wins:
+  // a file this machine kept from its own days as a lead is stale beside the lead's (C-N2, review 8).
+  const own = readHillCrewState(opts.stateDir).view;
+  if (index.crewState !== null && (own.at === null || own.at < index.crewState.at)) writeHillCrewState(opts.stateDir, { state: index.crewState.state, by: index.crewState.by, at: index.crewState.at }, at);
   const closedStored = out.filter((d) => d.state !== "open" && stored.has(d.id)).length;
   return { open: stored.size - closedStored, closed: closedStored, dropped: index.dropped };
 }
