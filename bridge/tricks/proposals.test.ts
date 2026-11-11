@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readdir, readFile, realpath, rm, stat, utimes, writeFile } from "node:fs/promises";
+import { lstat, mkdir, mkdtemp, readdir, readFile, readlink, realpath, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -15,13 +15,16 @@ import {
   PROPOSAL_ORPHAN_MS,
   PROPOSALS_MEMBER_OPEN_MAX,
   PROPOSALS_OPEN_MAX,
+  PROPOSALS_MACHINE_HOUR_MAX,
   PROPOSALS_SENDER_HOUR_MAX,
   PROPOSALS_SENDER_OPEN_MAX,
   PROPOSED_BYTES_MAX,
   PROPOSED_DIR,
+  PROPOSALS_FILE,
   TrickProposals,
   type Proposer,
 } from "./proposals.ts";
+import { ProposeDoor } from "./propose-door.ts";
 import { readProposal, wireFiles, type ProposalRead, type ProposedFile } from "./propose-wire.ts";
 import { PENDING_SETTLE_MS, TricksService } from "./service.ts";
 import { withSwitch, writeSwitches } from "./switches.ts";
@@ -276,6 +279,29 @@ describe("a proposal for a new trick", () => {
   });
 });
 
+describe("a write a crash cut short", () => {
+  test("is cleaned up at start: a stage goes, a temp goes, a set-aside folder comes back, the person's files stay", async () => {
+    const l = await lead();
+    const root = join(l.configDir, TRICKS_DIR);
+    await mkdir(join(root, ".collie-add-legs-0123abcd", "lib"), { recursive: true });
+    await writeFile(join(root, ".collie-add-legs-0123abcd", "program.ts"), "staged\n");
+    await mkdir(join(root, ".collie-old-gone-89abcdef", "media"), { recursive: true });
+    await writeFile(join(root, ".collie-old-gone-89abcdef", "media", "a.png"), "theirs");
+    await mkdir(join(root, ".collie-old-here-89abcdef"), { recursive: true });
+    await writeFile(join(root, ".collie-old-here-89abcdef", "keep.txt"), "theirs");
+    await mkdir(join(root, "here", "lib"), { recursive: true });
+    await writeFile(join(root, "here", "lib", ".collie-new-0123456789ab"), "half");
+    await writeFile(join(root, "here", ".notes"), "mine");
+    const fresh = new TrickProposals({ configDir: l.configDir, stateDir: l.stateDir, hill: l.hill, tricks: () => l.service, warn: () => undefined });
+    await fresh.start();
+    expect(await stat(join(root, ".collie-add-legs-0123abcd")).catch(() => null)).toBeNull();
+    expect(await readFile(join(root, "gone", "media", "a.png"), "utf8")).toBe("theirs");
+    expect(await readFile(join(root, ".collie-old-here-89abcdef", "keep.txt"), "utf8")).toBe("theirs");
+    expect(await stat(join(root, "here", "lib", ".collie-new-0123456789ab")).catch(() => null)).toBeNull();
+    expect(await readFile(join(root, "here", ".notes"), "utf8")).toBe("mine");
+  });
+});
+
 describe("one open proposal per trick id", () => {
   test("the same sender's next one replaces it; the same files again answer as before", async () => {
     const l = await lead();
@@ -286,6 +312,11 @@ describe("one open proposal per trick id", () => {
     expect(two).toMatchObject({ ok: true, kind: "proposal", replaced: one.ok ? one.decision : "" });
     expect(proposalCards(l).map((d) => d.state)).toEqual(["superseded", "open"]);
     expect(await stat(l.proposals.storeDir("legs", first.hash)).catch(() => null)).toBeNull();
+    // S2: the new card says it replaces an earlier one; the first did not.
+    const [old, now] = proposalCards(l);
+    expect(old?.summary).not.toContain("It replaces");
+    expect(now?.summary).toStartWith("An agent session (repo#one) on minibuch proposes it. It replaces an earlier proposal from the same session.");
+    expect(now?.view?.[0]).toEqual({ kind: "para", text: "It replaces an earlier proposal from the same session." });
     const again = await l.proposals.propose(proposal("legs", "2\n"), AGENT);
     expect(again).toMatchObject({ ok: true, decision: two.ok ? two.decision : "", replaced: null });
     expect(openCards(l)).toHaveLength(1);
@@ -295,6 +326,18 @@ describe("one open proposal per trick id", () => {
     const l = await lead();
     await l.proposals.propose(proposal("legs", "1\n"), AGENT);
     expect(await l.proposals.propose(proposal("legs", "2\n"), OTHER)).toMatchObject({ ok: false, code: "open_elsewhere" });
+  });
+
+  test("F5: with no session placed, a second proposal of the same id never replaces the first", async () => {
+    const l = await lead();
+    const first = proposal("legs", "1\n");
+    expect((await l.proposals.propose(first, TERMINAL)).ok).toBe(true);
+    const second = await l.proposals.propose(proposal("legs", "2\n"), TERMINAL);
+    expect(second).toEqual({ ok: false, code: "open_elsewhere", error: "A proposal of legs from this machine already waits for your person's answer. Collie cannot confirm which session sent it, so it is not replaced." });
+    expect(proposalCards(l).map((d) => d.state)).toEqual(["open"]);
+    expect((await stat(l.proposals.storeDir("legs", first.hash))).isDirectory()).toBe(true);
+    // The same files again still answer as before.
+    expect(await l.proposals.propose(proposal("legs", "1\n"), TERMINAL)).toMatchObject({ ok: true, replaced: null });
   });
 
   test("a replacement while the person answers the open one is refused", async () => {
@@ -334,6 +377,21 @@ describe("the limits", () => {
     expect(await l.proposals.propose(proposal("late"), AGENT)).toMatchObject({ ok: false, code: "rate" });
     l.clock.t += 61 * 60_000;
     expect((await l.proposals.propose(proposal("late"), AGENT)).ok).toBe(true);
+  });
+
+  test("F5: per crew machine per hour, however many session addresses it names", async () => {
+    const l = await lead();
+    const sender = (i: number): Proposer => ({ by: "agent", host: "minibuch", label: null, memberId: "minibuch", address: `minibuch/%${String(i)}#aaaa` });
+    for (let i = 0; i < PROPOSALS_MACHINE_HOUR_MAX; i += 1) {
+      expect((await l.proposals.propose(proposal(`r${String(i)}`), sender(i))).ok).toBe(true);
+      for (const card of openCards(l)) await tap(l, card, "later");
+    }
+    expect(await l.proposals.propose(proposal("late"), sender(99))).toEqual({ ok: false, code: "rate", error: `This machine proposed ${String(PROPOSALS_MACHINE_HOUR_MAX)} tricks in the last hour. Try again later.` });
+    expect(await l.proposals.propose(proposal("late"), { ...TERMINAL, memberId: "minibuch", host: "minibuch" })).toMatchObject({ ok: false, code: "rate" });
+    // Another machine is not held by it.
+    expect((await l.proposals.propose(proposal("late"), TERMINAL)).ok).toBe(true);
+    l.clock.t += 61 * 60_000;
+    expect((await l.proposals.propose(proposal("later"), sender(99))).ok).toBe(true);
   });
 
   test("per crew machine, and on the whole lead", async () => {
@@ -465,7 +523,7 @@ describe("a trick id that exists", () => {
     const dir = await proposedOn(l, "legs");
     const before = await snapshot(l);
     // Proposed: one card, nothing written.
-    const v2 = proposal("legs", "new\n", { extra: [{ rel: "config.toml", bytes: enc("rows = 99\n"), executable: false }] });
+    const v2 = proposal("legs", "new\n");
     const answer = await l.proposals.propose(v2, AGENT);
     expect(answer).toMatchObject({ ok: true, kind: "version", id: "legs", hash: v2.hash, decision: expect.stringMatching(/^dc_/u) });
     await settle(l);
@@ -478,7 +536,6 @@ describe("a trick id that exists", () => {
       ["on", "Use the new version"],
       ["later", "Keep the old version"],
     ]);
-    expect(JSON.stringify(card?.view ?? null)).toContain("The trick keeps yours.");
     expect(l.hill.collieDecisions("version").filter((d) => d.state === "open")).toEqual([]);
     // Declined: the stored copy goes, nothing else moved.
     expect(await tap(l, card!, "later")).toMatchObject({ code: "ok" });
@@ -495,7 +552,7 @@ describe("a trick id that exists", () => {
     expect(await snapshot(l)).toEqual(before);
     expect(await stat(l.proposals.storeDir("legs", v3.hash)).catch(() => null)).toBeNull();
     // The yes: exactly the stored code is written and approved, the person's config.toml stays, the trick stays on.
-    const v4 = proposal("legs", "newest\n", { extra: [{ rel: "config.toml", bytes: enc("rows = 99\n"), executable: false }] });
+    const v4 = proposal("legs", "newest\n");
     await l.proposals.propose(v4, AGENT);
     const [yes] = openCards(l);
     expect(await tap(l, yes!, "on")).toMatchObject({ code: "ok", state: "answered" });
@@ -510,6 +567,57 @@ describe("a trick id that exists", () => {
     // The runner never saw the write as a version waiting: no card of its own.
     expect(l.hill.collieDecisions("version")).toEqual([]);
     expect((await l.service.reply(undefined)).tricks.find((t) => t.id === "legs")).toMatchObject({ on: true });
+  });
+
+  test("the yes replaces only code: every file the code hash does not read stays byte for byte", async () => {
+    const l = await lead();
+    const dir = await proposedOn(l, "legs");
+    const person = {
+      "media/a.png": "png bytes",
+      "captures/b.png": "capture bytes",
+      "run.log": "a log",
+      "node_modules/pkg/index.js": "module",
+      ".notes": "my notes",
+      ".cache/z.bin": "cache",
+      "lib/.keep": "keep",
+      "lib/debug.log": "nested log",
+      "inputs/minibuch/p/a.md": "input",
+    } satisfies Record<string, string>;
+    for (const [rel, text] of Object.entries(person)) {
+      await mkdir(join(dir, rel, ".."), { recursive: true });
+      await writeFile(join(dir, rel), text);
+    }
+    await writeFile(join(dir, "lib", "old.ts"), "old helper\n");
+    // The helper is code: approve the folder as it is, as the person would.
+    const code = await trickCodeHash(dir);
+    if (!code.ok) throw new Error(code.reason);
+    await writeSwitches(l.stateDir, withSwitch({ on: new Map() }, "legs", true, "2026-11-10T09:00:00Z", code.hash));
+    await l.service.refresh(true);
+    await l.proposals.propose(proposal("legs", "v2\n", { extra: [{ rel: "lib/new.ts", bytes: enc("new helper\n"), executable: false }] }), AGENT);
+    const [card] = openCards(l);
+    expect(await tap(l, card!, "on")).toMatchObject({ code: "ok", state: "answered" });
+    for (const [rel, text] of Object.entries(person)) expect(await readFile(join(dir, rel), "utf8")).toBe(text);
+    expect(await readFile(join(dir, "config.toml"), "utf8")).toBe("rows = 3\n");
+    expect(await readFile(join(dir, "program.ts"), "utf8")).toBe("v2\n");
+    expect(await readFile(join(dir, "lib", "new.ts"), "utf8")).toBe("new helper\n");
+    // A code file the new version does not have is gone; it stays in the approved copy of the old version.
+    expect(await stat(join(dir, "lib", "old.ts")).catch(() => null)).toBeNull();
+    const after = await trickCodeHash(dir);
+    const switches = JSON.parse(await readFile(join(l.stateDir, TRICKS_DIR, "switches.json"), "utf8"));
+    expect(after.ok && switches.on.legs.hash === after.hash).toBe(true);
+  });
+
+  test("a new file where the person keeps a folder of their own refuses the yes, and nothing is written", async () => {
+    const l = await lead();
+    const dir = await proposedOn(l, "legs");
+    await mkdir(join(dir, "lib"), { recursive: true });
+    await writeFile(join(dir, "lib", ".keep"), "mine");
+    await l.service.refresh(true);
+    await l.proposals.propose(proposal("legs", "v2\n", { extra: [{ rel: "lib", bytes: enc("a file now\n"), executable: false }] }), AGENT);
+    const [card] = openCards(l);
+    expect(await tap(l, card!, "on")).toMatchObject({ code: "rejected", reason: "The new version needs the name lib, where the trick's folder holds something of your own, so nothing was changed." });
+    expect(await readFile(join(dir, "lib", ".keep"), "utf8")).toBe("mine");
+    expect(await readFile(join(dir, "program.ts"), "utf8")).toBe("old\n");
   });
 
   test("a folder changed by hand since the card refuses the yes, and the hand edit stays", async () => {
@@ -560,11 +668,105 @@ describe("the card belongs to Collie and to the person", () => {
     expect(l.sent).toEqual([]);
   });
 
+  test("Q1: a session named Collie is named by its machine only, so the card's words stay Collie's own", async () => {
+    const l = await lead();
+    await l.proposals.propose(proposal("legs"), { ...AGENT, label: "ｃｏｌｌｉｅ" });
+    const [card] = openCards(l);
+    expect(card?.summary).toStartWith("An agent session on minibuch proposes it.");
+  });
+
   test("a terminal's proposal names no session", async () => {
     const l = await lead();
     await l.proposals.propose(proposal("legs"), TERMINAL);
     const [card] = openCards(l);
     expect(card?.replyTo).toBeNull();
-    expect(card?.summary).toStartWith("A terminal on bluefin proposes it.");
+    expect(card?.summary).toStartWith("Someone on bluefin proposes it. Collie could not confirm which session.");
+  });
+});
+
+// Review S5: before the person's yes, nothing a proposer sends changes a file on the lead outside the
+// proposals' own store and their state file, read with lstat over the WHOLE config and state folders.
+describe("nothing outside the store moves before the yes (review S5)", () => {
+  const STORE = `${TRICKS_DIR}/${PROPOSED_DIR}`;
+  /** Every entry under the lead's config and state folders, by lstat: kind, mode, bytes or link target. */
+  async function wholeTree(l: Lead, skip: (rel: string) => boolean): Promise<string[]> {
+    const out: string[] = [];
+    const go = async (top: string, base: string, rel: string): Promise<void> => {
+      for (const name of (await readdir(join(base, rel))).toSorted()) {
+        const sub = rel === "" ? name : `${rel}/${name}`;
+        if (skip(sub)) continue;
+        const path = join(base, sub);
+        const st = await lstat(path);
+        const mode = (st.mode & 0o7777).toString(8);
+        if (st.isSymbolicLink()) out.push(`${top}:${sub} link ${await readlink(path)}`);
+        else if (st.isDirectory()) {
+          out.push(`${top}:${sub}/ ${mode}`);
+          await go(top, base, sub);
+        } else out.push(`${top}:${sub} ${mode} ${st.size} ${(await readFile(path)).toString("base64")}`);
+      }
+    };
+    await go("config", l.configDir, "");
+    await go("state", l.stateDir, "");
+    return out;
+  }
+  const outsideStore = (rel: string): boolean => rel === STORE || rel === `${TRICKS_DIR}/${PROPOSALS_FILE}`;
+  /** Files (not folders) left in the store. */
+  async function storeFiles(l: Lead): Promise<string[]> {
+    const tree = await wholeTree(l, () => false);
+    return tree.filter((row) => row.startsWith(`config:${STORE}/`) && !row.split(" ")[0]!.endsWith("/"));
+  }
+
+  test("a new trick, then the same session's replacement: only the store and its state file change", async () => {
+    const l = await lead();
+    await l.service.refresh(true);
+    // A lead's tricks state folder exists; the proposals' state file is the one thing written in it.
+    await mkdir(join(l.stateDir, TRICKS_DIR), { recursive: true, mode: 0o700 });
+    const before = await wholeTree(l, outsideStore);
+    const first = proposal("legs", "1\n");
+    expect((await l.proposals.propose(first, AGENT)).ok).toBe(true);
+    await l.service.refresh(true);
+    expect(await wholeTree(l, outsideStore)).toEqual(before);
+    expect((await lstat(l.proposals.storeDir("legs", first.hash))).isDirectory()).toBe(true);
+    const second = proposal("legs", "2\n");
+    expect(await l.proposals.propose(second, AGENT)).toMatchObject({ ok: true, replaced: expect.stringMatching(/^dc_/u) });
+    await l.service.refresh(true);
+    expect(await wholeTree(l, outsideStore)).toEqual(before);
+    expect(await lstat(l.proposals.storeDir("legs", first.hash)).catch(() => null)).toBeNull();
+    expect(await listed(l)).toEqual([]);
+  });
+
+  test("a post the Hill refuses after the store leaves no file behind, and no state", async () => {
+    const l = await lead();
+    await l.service.refresh(true);
+    const before = await wholeTree(l, (rel) => rel === STORE);
+    l.hill.postCollie = () => ({ ok: false, code: null, error: "no room" });
+    expect(await l.proposals.propose(proposal("legs"), AGENT)).toEqual({ ok: false, code: "failed", error: "The Hill did not take the card, so nothing was proposed: no room" });
+    expect(await storeFiles(l)).toEqual([]);
+    expect(await wholeTree(l, (rel) => rel === STORE)).toEqual(before);
+  });
+
+  test("a member's door forwards and keeps no copy, even with a proposals store of its own", async () => {
+    const l = await lead();
+    await l.service.refresh(true);
+    const before = await wholeTree(l, () => false);
+    let local = 0;
+    const own = { propose: async (...args: Parameters<TrickProposals["propose"]>) => ((local += 1), await l.proposals.propose(...args)) };
+    const sent: string[] = [];
+    const door = new ProposeDoor({
+      mode: () => "peer",
+      proposals: () => own,
+      memberId: "laptop",
+      machine: "laptop",
+      leadName: () => "desk",
+      call: async (_route, payload) => {
+        sent.push(payload);
+        return { kind: "answer", status: 200, body: { ok: true, kind: "proposal", id: "legs", hash: "h", decision: "dc_k3m9x2p7q1ab", replaced: null } };
+      },
+    });
+    const fields = { requestId: nextRid(), files: wireFiles(proposal("legs").files) };
+    expect(await door.local(fields, { kind: "agent", address: "laptop/%1#abcd", label: "repo#one" })).toMatchObject({ ok: true, decision: "dc_k3m9x2p7q1ab" });
+    expect(sent).toHaveLength(1);
+    expect(local).toBe(0);
+    expect(await wholeTree(l, () => false)).toEqual(before);
   });
 });

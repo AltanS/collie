@@ -192,6 +192,16 @@ export function skippedName(name: string, kind: EntryKind, depth: number): boole
   return name.endsWith(".log");
 }
 
+/**
+ * Whether a regular file at `rel` (relative to a trick folder, `/`-separated) is code: a file the code hash
+ * walks, by {@link skippedName} at each step. `config.toml`, `media/`, a `.log`, a dot name, `node_modules/`
+ * are not.
+ */
+export function isCodePath(rel: string): boolean {
+  const steps = rel.split("/");
+  return steps.every((step, depth) => !skippedName(step, depth === steps.length - 1 ? "file" : "dir", depth));
+}
+
 /** Byte order, so the same folder sorts the same on every machine and locale. */
 function byPath(a: { rel: string }, b: { rel: string }): number {
   if (a.rel === b.rel) return 0;
@@ -267,6 +277,22 @@ export async function hashCodeEntries(fs: TrickFs, dir: string, entries: readonl
       }
     }
     if (e.kind === "symlink") h.update(`${(await fs.readlink(join(dir, e.rel))) ?? ""}\0`);
+    h.update("\n");
+  }
+  return h.digest("hex");
+}
+
+/**
+ * The code hash a folder holding exactly `files` (regular files, every one of them code) would have: the
+ * format of {@link hashCodeEntries}, from memory. A proposal's new version is approved only when the folder
+ * written hashes to this (crew slice 8); a test holds the two equal.
+ */
+export function codeHashOfFiles(files: readonly { rel: string; bytes: Uint8Array }[]): string {
+  const h = createHash("sha256");
+  for (const file of [...files].toSorted(byPath)) {
+    h.update(`file\0${file.rel}\0`);
+    h.update(`${String(file.bytes.length)}\0`);
+    h.update(file.bytes);
     h.update("\n");
   }
   return h.digest("hex");

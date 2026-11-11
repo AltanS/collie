@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import { ADD_LIMITS } from "../../cli/trick-add.ts";
 import type { JsonObject } from "../json.ts";
-import { checkProposedFiles, foldKey, proposalHash, proposedPathProblem, PROPOSE_LIMITS, readProposal, RESERVED_PROPOSAL_IDS, wireFiles, type ProposedFile } from "./propose-wire.ts";
+import { checkProposedFiles, foldKey, proposalHash, proposedPathProblem, PROPOSE_LIMITS, PROPOSE_NO_CONFIG, readProposal, RESERVED_PROPOSAL_IDS, wireFiles, type ProposedFile } from "./propose-wire.ts";
 
 // THE ONE READER OF A PROPOSAL'S FILES (crew slice 8): the CLI, the member and the lead all read with it,
 // and the lead treats every byte as hostile. Each refusal below is one a hostile member could try.
@@ -58,8 +58,34 @@ describe("the paths a proposal may carry", () => {
     expect(refusedWith(wire([...base(), file(rel)]))).toContain(words);
   });
 
-  test("ordinary names, a nested folder and config.toml are taken", () => {
-    for (const rel of ["program.ts", "lib/util.ts", "config.toml", "README.md", "a-b_c.d.ts"]) expect(proposedPathProblem(rel)).toBeNull();
+  test.each([
+    ["Inputs/a.md", "inputs/"],
+    ["INPUTS/a.md", "inputs/"],
+    ["NODE_MODULES/x.js", "node_modules"],
+    ["lib/Node_Modules/x.js", "node_modules"],
+  ])("a reserved name in another case is refused too: %p", (rel, words) => {
+    expect(proposedPathProblem(rel)).toContain(words);
+  });
+
+  test("media, captures and inputs, as a folder or a file, in any case, are refused", () => {
+    for (const rel of ["media/a.png", "Media/run.ts", "CAPTURES/x.png", "media", "captures", "Inputs"]) {
+      expect(proposedPathProblem(rel)).not.toBeNull();
+    }
+    expect(refusedWith(wire([...base(), { rel: "media/a.png", bytes: PNG, executable: false }]))).toContain("your person adds pictures on the machine");
+    expect(refusedWith(wire([...base(), file("media", "x")]))).toContain("your person adds pictures on the machine");
+  });
+
+  test("ordinary names and a nested folder are taken", () => {
+    for (const rel of ["program.ts", "lib/util.ts", "README.md", "a-b_c.d.ts", "lib/config.toml"]) expect(proposedPathProblem(rel)).toBeNull();
+  });
+
+  test("a config.toml, in any case, is refused with its own words, by the reader and by the file check", () => {
+    for (const rel of ["config.toml", "Config.TOML"]) {
+      expect(refusedWith(wire([...base(), file(rel, "a = 1\n")]))).toBe(PROPOSE_NO_CONFIG);
+      const checked = checkProposedFiles([...base(), file(rel, "a = 1\n")]);
+      expect(checked.ok === false && checked.refusal.error).toBe(PROPOSE_NO_CONFIG);
+    }
+    expect(PROPOSE_NO_CONFIG).toBe("A proposal cannot carry a config.toml. Your person sets the trick up on the machine.");
   });
 
   test("names that fold to one are refused: case, Unicode compatibility forms", () => {
@@ -75,10 +101,8 @@ describe("the paths a proposal may carry", () => {
     expect(refusedWith(wire([...base(), file("lib"), file("lib/a.ts")]))).toContain("as a file and as a folder");
   });
 
-  test("media/ and captures/ carry pictures only, by name and by their first bytes", () => {
-    expect(readProposal(wire([...base(), { rel: "media/a.png", bytes: PNG, executable: false }])).ok).toBe(true);
-    expect(refusedWith(wire([...base(), file("media/run.ts", "code")]))).toContain("picture folder");
-    expect(refusedWith(wire([...base(), file("captures/fake.png", "#!/bin/sh")]))).toContain("picture folder");
+  test("a folder named media below the top is ordinary code", () => {
+    expect(proposedPathProblem("lib/media/a.ts")).toBeNull();
   });
 });
 

@@ -122,7 +122,7 @@ describe("TrickAboutSheet", () => {
     expect(screen.queryByText("Added on this machine.")).toBeNull();
     unmount();
     open({ ...BASE, provenance: { via: "cli", proposed: { by: "terminal", host: "bluefin" } } });
-    expect(screen.getByText("Proposed from a terminal on bluefin.")).toBeInTheDocument();
+    expect(screen.getByText("Proposed from bluefin. The session is not confirmed.")).toBeInTheDocument();
   });
 
   it("adds the one line a bridge that runs no tricks says", () => {

@@ -190,6 +190,18 @@ describe("the card's words and view", () => {
     expect(card?.view?.[1]).toMatchObject({ kind: "diff", attrs: { file: "evil?gnp.ts" } });
   });
 
+  test("F1: fourteen new environment names of 64 characters all show in full, none cut, none dropped", () => {
+    const env = Array.from({ length: 14 }, (_, i) => `TOKEN_${String(i).padStart(2, "0")}_${"X".repeat(55)}`);
+    const base = subject();
+    const pending = base.pending;
+    if (pending === null) throw new Error("no pending");
+    const card = versionCard({ ...base, pending: { ...pending, manifest: { id: "legs", name: "Browser leg", run: "./legs.sh", mode: "once", contract: 1, icon: "plug", places: ["belt"], env } } }, DIFF);
+    const words = JSON.stringify(card?.view);
+    for (const name of env) expect(words).toContain(`${name}`);
+    expect(card?.view?.[0]).toMatchObject({ kind: "para" });
+    expect(card?.recommends).toBeNull();
+  });
+
   test("B2: a card whose view could not be made carries no recommendation and says to read the change on the machine", () => {
     const card = versionCard(subject(), { counted: false, files: [] });
     expect(card?.view).toBeUndefined();

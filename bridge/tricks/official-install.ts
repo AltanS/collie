@@ -3,7 +3,7 @@ import { devNull } from "node:os";
 import { join } from "node:path";
 
 import type { OfficialState, OfficialTricksReply, TricksRunsOn } from "../../web/src/lib/tricks/schema.ts";
-import { trickCodeHash } from "./code-hash.ts";
+import { isCodePath, trickCodeHash } from "./code-hash.ts";
 import { fetchSource, FetchRefused, readCandidate, writeCandidateFiles, type Candidate, type FetchOptions, type GitRunner } from "./fetch.ts";
 import { officialStateOf, officialWire, shippedOfficialList, type OfficialEntry } from "./official.ts";
 import { renderOrigin } from "./origin.ts";
@@ -34,8 +34,12 @@ import { updateSwitches, withSwitch } from "./switches.ts";
 //      left for that id is written off first. No approved copy is made: the switch makes it, as for any trick.
 //
 // UPDATE (state `update`: the folder came from this repository and folder at another commit, older or newer)
-// runs 1 to 3 the same way, then replaces the folder's code (proposal-install.ts `replaceCode`), keeping the
-// person's `config.toml`, pictures, `inputs/` and dot files. A trick that is off runs nothing, so that is all.
+// runs 1 to 2 the same way, then replaces ONLY the folder's code (proposal-install.ts `replaceCode`, the rule
+// of a proposal's version write): each file the code hash walks is written or removed, held to the list's
+// hash before anything changes. Every other entry of the folder, at any depth (`config.toml`, `media/`,
+// `captures/`, `inputs/`, logs, dot files, a file Collie does not know), stays where it is, untouched; the
+// new version's own config.toml and pictures are not taken. A code edit the person made in the folder is
+// replaced. A trick that is off runs nothing, so that is all.
 // A trick that is on keeps running its approved copy: its folder now differs from it, so the runner's own
 // new version path takes it (a pending copy and the card on the Hill, or `auto` when the person chose it).
 // There is no second consent path.
@@ -235,7 +239,9 @@ export class OfficialTricks implements OfficialTricksSurface {
       await updateSwitches(this.deps.stateDir, (now) => (now.on.has(entry.id) ? withSwitch(now, entry.id, false, at) : now));
       written = await writeNewTrick(root, entry.id, candidate.files, originText, { expect: entry.hash });
     } else {
-      written = await replaceCode(root, entry.id, candidate.files, originText, { expect: entry.hash });
+      // Only code moves (the proposal version write's rule): the new version's config.toml, pictures and
+      // other files the hash does not read are left out, and the person's stay where they are.
+      written = await replaceCode(root, entry.id, candidate.files.filter((file) => isCodePath(file.rel)), originText, { expect: entry.hash });
     }
     if (!written.ok && written.code === "mismatch") return mismatch(mode);
     if (!written.ok && written.code === "exists") return { status: 409, body: { error: "taken", message: OFFICIAL_LINES.taken } };

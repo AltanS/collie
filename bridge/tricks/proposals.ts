@@ -7,11 +7,12 @@ import type { HillCollieRef, HillDecision, HillPostInput } from "../../web/src/l
 import type { JsonObject } from "../json.ts";
 import type { TrickManifest } from "../../web/src/lib/tricks/schema.ts";
 import { HILL_OFF, type HillCollieSender, type HillCollieVerdict, type HillOneAnswer, type HillPostAnswer, type HillPostOptions } from "../hill/service.ts";
-import { CONFIG_FILE, unsafeText } from "./code-hash.ts";
+import { unsafeText } from "./code-hash.ts";
 import type { ProposalOrigin } from "./origin.ts";
 import { hash16, tricksConfigDir, tricksStateDir } from "./paths.ts";
-import { proposalCard, proposalRequestId, proposalVersionCard, PROPOSAL_CARD_SENDER, PROPOSAL_LATER, PROPOSAL_ON, type ProposerFacts } from "./proposal-card.ts";
-import { checkProposedFiles, proposalHash, PROPOSE_LIMITS, type ProposalRead, type ProposedFile, type ProposeRefusalCode } from "./propose-wire.ts";
+import { recoverProposalWrites } from "./proposal-install.ts";
+import { proposalCard, proposalRequestId, proposalVersionCard, PROPOSAL_CARD_SENDER, PROPOSAL_LATER, PROPOSAL_ON, PROPOSAL_TOO_LARGE, type ProposerFacts } from "./proposal-card.ts";
+import { checkProposedFiles, foldKey, proposalHash, PROPOSE_LIMITS, type ProposalRead, type ProposedFile, type ProposeRefusalCode } from "./propose-wire.ts";
 import { trickWarnings, WARN_PLAIN } from "./scan.ts";
 import type { ProposalPlaced, ProposalTarget } from "./service.ts";
 import { versionDiff, type VersionDiff } from "./version-diff.ts";
@@ -43,9 +44,19 @@ import { versionDiff, type VersionDiff } from "./version-diff.ts";
 // ── LIMITS ─────────────────────────────────────────────────────────────────────────────────────────
 // A sender is one session (its walky address on its machine) or one machine's terminal. Per sender at
 // most {@link PROPOSALS_SENDER_OPEN_MAX} open and {@link PROPOSALS_SENDER_HOUR_MAX} in an hour; per crew
-// machine {@link PROPOSALS_MEMBER_OPEN_MAX} open; on this lead {@link PROPOSALS_OPEN_MAX} open and
-// {@link PROPOSED_BYTES_MAX} stored. One open proposal per trick id: the same sender's next one replaces
-// it (the old card closes as replaced), anybody else's is refused. A request id is the proposal's replay
+// machine (this lead's own included) {@link PROPOSALS_MEMBER_OPEN_MAX} open and
+// {@link PROPOSALS_MACHINE_HOUR_MAX} in an hour, so new session addresses do not lift the hourly cap; on
+// this lead {@link PROPOSALS_OPEN_MAX} open and {@link PROPOSED_BYTES_MAX} stored. One open proposal per
+// trick id: the same session's next one replaces it (the old card closes as replaced, and the new card
+// says so), anybody else's is refused.
+//
+// WHAT IS CONFIRMED (review F5). The machine is: the walky socket is this machine's, and a member's call
+// is signed with the crew secret. The session is placed by the pane markers the caller sends, against a
+// live agent pane (on a crew the lead resolves the address to one of that member's own panes): a check,
+// not a proof, as any process of the same user can send another pane's markers. A call with no markers,
+// or none that place an agent pane, has no session at all: its card says "Someone on <host> proposes it.
+// Collie could not confirm which session.", and such a "terminal" proposal never replaces an open one of
+// the same id; it is refused until the person answers the first. A request id is the proposal's replay
 // key for {@link PROPOSAL_RID_KEEP_MS}: the same sender, request id and hash answers what it answered; the
 // same request id with other files is refused.
 
@@ -55,6 +66,8 @@ export const PROPOSALS_SENDER_OPEN_MAX = 2;
 export const PROPOSALS_SENDER_HOUR_MAX = 6;
 /** Open proposals from one crew machine, its sessions and its terminal together. */
 export const PROPOSALS_MEMBER_OPEN_MAX = 4;
+/** Proposals one crew machine may make in an hour, its sessions and its terminal together. */
+export const PROPOSALS_MACHINE_HOUR_MAX = 12;
 /** Open proposals on this lead. */
 export const PROPOSALS_OPEN_MAX = 8;
 /** Bytes stored for open proposals on this lead. */
@@ -323,8 +336,12 @@ export class TrickProposals {
     await rename(tmp, path);
   }
 
-  /** Read the state once, then sweep. */
+  /** Clean up after a write a crash cut short, read the state once, then sweep. */
   async start(): Promise<void> {
+    const done = await this.turn(() => recoverProposalWrites(tricksConfigDir(this.deps.configDir)));
+    const moved = done.stagesRemoved.length + done.tempsRemoved.length + done.restored.length;
+    if (moved > 0) this.warn(`recovered after an interrupted proposal write: ${String(done.stagesRemoved.length)} stage(s) removed, ${String(done.tempsRemoved.length)} temp file(s) removed, ${String(done.restored.length)} folder(s) put back`);
+    for (const name of done.keptAside) this.warn(`${name} is a set-aside trick folder beside one of the same name; it is left in place for you to look at`);
     await this.turn(() => this.load());
     await this.sweep();
   }
@@ -359,6 +376,8 @@ export class TrickProposals {
     const same = live.find((row) => row.id === id);
     if (same !== undefined && same.sender !== sender) return refused("open_elsewhere", `Somebody else already proposed a trick named ${id}. It waits for your person's answer.`);
     if (same !== undefined && same.hash === hash) return { ok: true, kind: same.kind === "version" ? "version" : "proposal", id, hash, decision: same.decision, replaced: null };
+    // With no session placed, "the same sender" is anybody on that machine: never a silent replace.
+    if (same !== undefined && proposer.address === null) return refused("open_elsewhere", `A proposal of ${id} from this machine already waits for your person's answer. Collie cannot confirm which session sent it, so it is not replaced.`);
     if (same !== undefined && this.deps.hill.isAnswering(same.decision)) return refused("answering", "Your person is answering your last proposal of this trick right now. Try again in a moment.");
     const target = await tricks.proposalTarget(id);
     if (target.kind === "refused") return refused("exists", target.reason);
@@ -366,6 +385,7 @@ export class TrickProposals {
     const self = proposer.by === "agent" ? "This session" : "This terminal";
     if (others.filter((row) => row.sender === sender).length >= PROPOSALS_SENDER_OPEN_MAX) return refused("too_many_open", `${self} has ${String(PROPOSALS_SENDER_OPEN_MAX)} proposals waiting. Wait for your person's answers.`);
     if (state.recent.filter((row) => row.sender === sender).length >= PROPOSALS_SENDER_HOUR_MAX) return refused("rate", `${self} proposed ${String(PROPOSALS_SENDER_HOUR_MAX)} tricks in the last hour. Try again later.`);
+    if (state.recent.filter((row) => row.sender.startsWith(`${proposer.memberId}\u0000`)).length >= PROPOSALS_MACHINE_HOUR_MAX) return refused("rate", `This machine proposed ${String(PROPOSALS_MACHINE_HOUR_MAX)} tricks in the last hour. Try again later.`);
     if (others.filter((row) => row.memberId === proposer.memberId).length >= PROPOSALS_MEMBER_OPEN_MAX) return refused("too_many_open", `This machine has ${String(PROPOSALS_MEMBER_OPEN_MAX)} proposals waiting. Wait for your person's answers.`);
     if (others.length >= PROPOSALS_OPEN_MAX) return refused("too_many_open", `${String(PROPOSALS_OPEN_MAX)} proposals wait already on this Collie. Wait for your person's answers.`);
     if (others.reduce((sum, row) => sum + row.bytes, 0) + proposal.bytes > PROPOSED_BYTES_MAX) return refused("too_many_bytes", "The proposals waiting on this Collie hold too much already. Wait for your person's answers.");
@@ -380,18 +400,17 @@ export class TrickProposals {
   }
 
   /** The card for a stored proposal: a new trick, or a new version shown against the approved copy. */
-  private async cardOf(dir: string, proposal: ProposalRead, proposer: Proposer, base: Extract<ProposalTarget, { kind: "version" }> | null): Promise<Omit<HillPostInput, "requestId">> {
+  private async cardOf(dir: string, proposal: ProposalRead, proposer: Proposer, base: Extract<ProposalTarget, { kind: "version" }> | null, replaces: boolean): Promise<Omit<HillPostInput, "requestId"> | null> {
     const id = proposal.manifest.id;
     const crew = this.deps.crew?.() ?? false;
-    const hasConfig = proposal.files.some((file) => file.rel === CONFIG_FILE);
     const kinds = await this.warningKinds(dir, proposal.manifest);
     if (base === null) {
       const diff = await this.diff(null, dir).catch((): VersionDiff => ({ files: [], counted: false }));
-      return proposalCard({ id, manifest: proposal.manifest, proposer: facts(proposer), diff, warnings: kinds, hasConfig, crew });
+      return proposalCard({ id, manifest: proposal.manifest, proposer: facts(proposer), diff, warnings: kinds, crew, replaces });
     }
     const diff = await this.diff(base.baseDir, dir).catch((): VersionDiff => ({ files: [], counted: false }));
     const had = new Set(base.baseManifest === undefined ? [] : await this.warningKinds(base.baseDir, base.baseManifest));
-    return proposalVersionCard({ id, manifest: proposal.manifest, baseManifest: base.baseManifest, proposer: facts(proposer), diff, warnings: kinds.filter((kind) => !had.has(kind)), hasConfig, crew });
+    return proposalVersionCard({ id, manifest: proposal.manifest, baseManifest: base.baseManifest, proposer: facts(proposer), diff, warnings: kinds.filter((kind) => !had.has(kind)), crew, replaces });
   }
 
   private async newProposal(state: ProposalsState, proposal: ProposalRead, proposer: Proposer, old: OpenProposal | null, base: Extract<ProposalTarget, { kind: "version" }> | null, now: number): Promise<ProposeAnswer> {
@@ -399,7 +418,11 @@ export class TrickProposals {
     const { hash } = proposal;
     const dir = await this.store(id, hash, proposal.files);
     if (dir === null) return refused("failed", "The proposal could not be kept on this machine, so nothing was proposed.");
-    const card = await this.cardOf(dir, proposal, proposer, base);
+    const card = await this.cardOf(dir, proposal, proposer, base, old !== null);
+    if (card === null) {
+      await rm(dir, { recursive: true, force: true });
+      return refused("card_too_large", PROPOSAL_TOO_LARGE);
+    }
     const input: HillPostInput = { ...card, requestId: proposalRequestId(id, hash, proposal.requestId), expiresAt: now + PROPOSAL_EXPIRY_MS };
     if (old !== null) input.supersedes = old.decision;
     const posted = this.deps.hill.postCollie(senderOf(id, hash), input, proposer.address === null ? {} : { tellOf: proposer.address });
@@ -574,7 +597,9 @@ function clean(raw: string): string {
 
 /** The proposer's facts for a card and a record: display words, cleaned. */
 function facts(proposer: Proposer): ProposerFacts {
-  return { by: proposer.by, host: clean(proposer.host), label: proposer.label === null ? null : clean(proposer.label) };
+  // A session named "Collie" is named by its machine only: the card speaks as Collie (review Q1).
+  const label = proposer.label === null ? null : clean(proposer.label);
+  return { by: proposer.by, host: clean(proposer.host), label: label === null || foldKey(label).trim() === "collie" ? null : label };
 }
 
 /** The sender of a proposal card. */

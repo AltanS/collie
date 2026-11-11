@@ -1,8 +1,8 @@
 import { randomBytes } from "node:crypto";
-import { chmod, lstat, mkdir, readdir, rename, rm, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readdir, rename, rm, rmdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
-import { CONFIG_FILE, PICTURE_DIRS, trickCodeHash } from "./code-hash.ts";
+import { CODE_DIRS_MAX, CODE_FILES_MAX, codeHashOfFiles, diskTrickFs, skippedName, trickCodeHash, walkTrickCode, type EntryKind } from "./code-hash.ts";
 import { ORIGIN_FILE, renderProposalOrigin, type ProposalOrigin } from "./origin.ts";
 import type { ProposedFile } from "./propose-wire.ts";
 
@@ -14,18 +14,15 @@ import type { ProposedFile } from "./propose-wire.ts";
 //     are written into a staged sibling (`.collie-add-<id>-<hex>`, a dot folder the scanner never reads),
 //     with the proposal record (origin.ts) beside them, then renamed into place. A folder of that name
 //     that appeared since the card was made stops it: nothing is written over.
-//   * A NEW VERSION of a trick a proposal made, after the person's "Use the new version": the proposal
-//     replaces the folder's code. The folder's `config.toml` (always: the proposal's is dropped), its
-//     pictures and its `inputs/` stay, and so do its dot files, except the origin record, which the
-//     proposal's replaces. The staged folder is swapped in by two renames; the old folder is set aside
-//     until the new one is in place, and put back on a failure.
+//   * A NEW VERSION of a trick a proposal made, after the person's "Use the new version": only the code
+//     moves, file by file (`replaceTrickCode`). Everything the code hash does not read stays untouched.
 //
 // Folders are 0700 and files 0644, or 0755 for a file the proposal marked executable, as `collie trick
 // add` writes them (cli/trick-add.ts). A path written twice is a bug, never an overwrite (`wx`).
 //
-// The From Collie list (official-install.ts) writes through the same two functions, with its own origin
-// record and the code hash the list expects (`expect`): a stage that hashes otherwise is removed and
-// nothing in the tricks folder changes.
+// The From Collie list (official-install.ts) writes through the same two ways in (`writeNewTrick`,
+// `replaceCode`), with its own origin record and the code hash the list expects (`expect`): code that
+// hashes otherwise is refused, and nothing in the tricks folder changes.
 
 /** A staged or set-aside sibling in the tricks folder. The scanner never reads a dot folder. */
 export function proposalSideName(root: string, what: "add" | "old", id: string): string {
@@ -109,60 +106,180 @@ export async function writeNewTrick(root: string, id: string, files: readonly Pr
   }
 }
 
-/** The top-level names a new version keeps from the folder it replaces. */
-function kept(name: string): boolean {
-  if (name === ORIGIN_FILE) return false;
-  return name === CONFIG_FILE || name === "inputs" || PICTURE_DIRS.some((dir) => dir === name) || name.startsWith(".");
+/** One entry of a trick folder as the version write sees it: a code file, or anything else (the person's). */
+type FolderEntry = { kind: "dir" | "code" | "theirs" };
+
+/** The most entries the version write looks at in a folder. */
+const FOLDER_ENTRIES_MAX = CODE_FILES_MAX + CODE_DIRS_MAX;
+
+/**
+ * Every entry of `dir` by its relative path, `lstat` only, never through a link. A folder the code hash
+ * walks is entered; anything the walk does not read (a dot name, `node_modules`, a `.log`, the top-level
+ * `config.toml`, `media/`, `captures/`, `inputs/`, a link it passes over) is one opaque entry of the
+ * person's, never entered. A code file is one `codeRels` lists. Null past the cap or on a read error.
+ */
+async function folderEntries(dir: string, codeRels: ReadonlySet<string>): Promise<Map<string, FolderEntry> | null> {
+  const out = new Map<string, FolderEntry>();
+  const queue: { rel: string; depth: number }[] = [{ rel: "", depth: 0 }];
+  for (let n = 0; queue.length > 0 && n < FOLDER_ENTRIES_MAX; n += 1) {
+    const next = queue.shift();
+    if (next === undefined) break;
+    const listed = await readdir(next.rel === "" ? dir : join(dir, next.rel), { withFileTypes: true }).catch(() => null);
+    if (listed === null) return null;
+    for (const item of listed) {
+      const rel = next.rel === "" ? item.name : `${next.rel}/${item.name}`;
+      const st = await lstat(join(dir, rel)).catch(() => null);
+      if (st === null) return null;
+      const kind: EntryKind = st.isSymbolicLink() ? "symlink" : st.isDirectory() ? "dir" : st.isFile() ? "file" : "other";
+      if (out.size >= FOLDER_ENTRIES_MAX) return null;
+      if (kind === "dir" && !skippedName(item.name, kind, next.depth)) {
+        out.set(rel, { kind: "dir" });
+        queue.push({ rel, depth: next.depth + 1 });
+        continue;
+      }
+      out.set(rel, { kind: codeRels.has(rel) ? "code" : "theirs" });
+    }
+  }
+  return queue.length === 0 ? out : null;
+}
+
+/** The folders above a relative path, nearest last: `a/b/c.ts` → `a`, `a/b`. */
+function ancestors(rel: string): string[] {
+  const steps = rel.split("/");
+  return steps.slice(1).map((_, i) => steps.slice(0, i + 1).join("/"));
 }
 
 /**
- * Replace the code of `<root>/<id>` with a proposal's, keeping its config.toml, pictures, `inputs/` and dot
- * files. A kept name the proposal also carries (a picture folder it brings) is the proposal's. The old
- * folder is set aside and removed once the new one is in place; on a failure it is put back.
+ * Write a new version into `<root>/<id>`, after the person's yes (crew slice 8, security review F3). Only
+ * code moves: each file the proposal carries is written (a temp dot file in the trick folder, renamed into
+ * place), and each code file of the old version the new one does not have is removed. "Code" is exactly
+ * what the code hash walks (code-hash.ts `walkTrickCode`); every other entry of the folder, at any depth,
+ * stays where it is, untouched. The old code stays in the approved copy of the old version, so "Undo"
+ * brings it back. Refused before anything is written when the new code needs a name the person's own
+ * entry holds (a file where a folder must go, or the other way round), or when the folder cannot be read
+ * whole. A failure half way leaves the folder as a change that waits for the person's yes: the trick keeps
+ * running the approved copy, which this never touches.
  */
-export async function replaceTrickCode(root: string, id: string, proposed: readonly ProposedFile[], origin: ProposalOrigin): Promise<ProposalWrite> {
-  return await replaceCode(root, id, proposed, renderProposalOrigin(origin));
+export async function replaceTrickCode(root: string, id: string, files: readonly ProposedFile[], origin: ProposalOrigin): Promise<ProposalWrite> {
+  return await replaceCode(root, id, files, renderProposalOrigin(origin));
 }
 
 /**
- * Replace the code of `<root>/<id>` with `proposed` and an origin record's text, keeping what
- * {@link replaceTrickCode} keeps. With `expect`, a stage that hashes otherwise is removed before anything
- * of the old folder moves.
+ * {@link replaceTrickCode} with an origin record's text of the caller's, shared with the From Collie update
+ * (official-install.ts). `files` must be code only. With `expect`, files that would hash otherwise are
+ * refused as `mismatch` before anything in the folder changes.
  */
-export async function replaceCode(root: string, id: string, proposed: readonly ProposedFile[], originText: string, opts: CodeWriteOptions = {}): Promise<ProposalWrite> {
+export async function replaceCode(root: string, id: string, files: readonly ProposedFile[], originText: string, opts: CodeWriteOptions = {}): Promise<ProposalWrite> {
+  if (opts.expect !== undefined && codeHashOfFiles(files) !== opts.expect) return { ok: false, code: "mismatch", reason: "The code does not hash to what was expected." };
   const target = join(root, id);
   const st = await lstat(target).catch(() => null);
   if (st === null || !st.isDirectory()) return { ok: false, reason: `There is no trick folder ${id} to change.` };
-  // The trick's config.toml is the person's: a new version never brings its own.
-  const files = proposed.filter((file) => file.rel !== CONFIG_FILE);
-  const stage = proposalSideName(root, "add", id);
-  const carried = new Set(files.map((file) => file.rel.split("/")[0] ?? ""));
+  const walk = await walkTrickCode(diskTrickFs, target);
+  if (!walk.ok) return { ok: false, reason: `The trick's folder cannot be read whole, so nothing was changed: ${walk.reason}` };
+  const oldCode = new Set(walk.entries.map((entry) => entry.rel));
+  const entries = await folderEntries(target, oldCode);
+  if (entries === null) return { ok: false, reason: "The trick's folder cannot be read whole, so nothing was changed." };
+  const next = new Set(files.map((file) => file.rel));
+  const gone = [...oldCode].filter((rel) => !next.has(rel));
+  const goneSet = new Set(gone);
+  // What stays after the removals: the person's entries, the code kept, the folders.
+  const stays = (rel: string): FolderEntry | undefined => (goneSet.has(rel) ? undefined : entries.get(rel));
+  const theirsUnder = (rel: string): boolean => [...entries].some(([path, entry]) => entry.kind === "theirs" && path.startsWith(`${rel}/`));
+  for (const rel of next) {
+    const clash = ancestors(rel).find((up) => {
+      const there = stays(up);
+      return there !== undefined && there.kind !== "dir";
+    });
+    const here = stays(rel);
+    const blocked = clash ?? (here?.kind === "theirs" || (here?.kind === "dir" && theirsUnder(rel)) ? rel : undefined);
+    if (blocked !== undefined) return { ok: false, reason: `The new version needs the name ${blocked}, where the trick's folder holds something of your own, so nothing was changed.` };
+  }
   try {
-    await writeStage(stage, files, originText);
-    // The code hash is the proposal's alone: the kept names are outside it (code-hash.ts `skippedName`).
-    const codeHash = await stageHash(stage, opts);
-    const names = await readdir(target);
-    for (const name of names) {
-      if (!kept(name) || carried.has(name)) continue;
-      await rename(join(target, name), join(stage, name));
+    for (const rel of gone) await rm(join(target, rel), { force: true });
+    for (const file of files) {
+      const path = join(target, file.rel);
+      // A folder of old code only, where the new version puts a file: its code is gone, so it is empty.
+      if (entries.get(file.rel)?.kind === "dir") await rm(path, { recursive: true, force: true });
+      const fileDir = dirname(path);
+      await mkdir(fileDir, { recursive: true, mode: 0o700 });
+      // A dot name beside the file: the code hash never reads it, so a crash leaves no code behind.
+      const tmp = join(fileDir, `.collie-new-${randomBytes(6).toString("hex")}`);
+      await writeFile(tmp, file.bytes, { flag: "wx", mode: file.executable ? 0o755 : 0o644 });
+      await rename(tmp, path);
     }
-    const aside = proposalSideName(root, "old", id);
-    await rename(target, aside);
-    try {
-      await rename(stage, target);
-    } catch (err) {
-      await rename(aside, target);
-      throw err;
-    }
-    await chmod(target, 0o700).catch(() => {});
-    await rm(aside, { recursive: true, force: true });
-    return { ok: true, codeHash };
+    const trickDir = target;
+    const tmp = join(trickDir, `.collie-new-${randomBytes(6).toString("hex")}`);
+    await writeFile(tmp, originText, { flag: "wx", mode: 0o600 });
+    await rename(tmp, join(target, ORIGIN_FILE));
+    // The folders that held only removed code, deepest first; a folder with anything left is kept.
+    const emptied = [...new Set(gone.flatMap((rel) => ancestors(rel)))].toSorted((a, b) => b.length - a.length);
+    for (const folder of emptied) await rmdir(join(target, folder)).catch(() => {});
+    return { ok: true, codeHash: codeHashOfFiles(files) };
   } catch (err) {
-    // What was moved into the stage goes back first, so the old folder keeps its settings and pictures.
-    const moved = await readdir(stage).catch((): string[] => []);
-    for (const name of moved) if (kept(name) && !carried.has(name)) await rename(join(stage, name), join(target, name)).catch(() => {});
-    await rm(stage, { recursive: true, force: true });
-    if (err instanceof StageMismatch) return { ok: false, code: "mismatch", reason: err.message };
-    return { ok: false, reason: `The new version could not be written: ${why(err)}` };
+    return { ok: false, reason: `The new version could not be written: ${why(err)}. The trick still runs the version you approved.` };
+  }
+}
+
+/** A temp file of the version write: a dot name, so the code hash never reads it. */
+const NEW_TEMP = /^\.collie-new-[0-9a-f]{12}$/u;
+const ADD_STAGE = /^\.collie-add-[a-z0-9][a-z0-9-]{0,31}-[0-9a-f]{8}$/u;
+const OLD_ASIDE = /^\.collie-old-([a-z0-9][a-z0-9-]{0,31})-[0-9a-f]{8}$/u;
+
+/** What {@link recoverProposalWrites} did, for its log line and its test. */
+export interface ProposalRecovery {
+  stagesRemoved: string[];
+  tempsRemoved: string[];
+  restored: string[];
+  /** Set-aside folders left in place, because a trick folder of that name exists: the person decides. */
+  keptAside: string[];
+}
+
+/**
+ * At bridge start, before any proposal is answered: clean up after a write a crash cut short (security
+ * review S1). A `.collie-add-*` stage holds only a proposal's own files and its record, never the person's,
+ * so it goes. A `.collie-new-*` temp file in a trick folder is a version write's, and goes. A
+ * `.collie-old-<id>-*` folder (a set-aside folder of an earlier build of this slice) is put back when
+ * `<id>` is missing, and otherwise left where it is: it is never removed. Never throws.
+ */
+export async function recoverProposalWrites(root: string): Promise<ProposalRecovery> {
+  const done: ProposalRecovery = { stagesRemoved: [], tempsRemoved: [], restored: [], keptAside: [] };
+  const top = await readdir(root, { withFileTypes: true }).catch(() => null);
+  if (top === null) return done;
+  for (const entry of top) {
+    const path = join(root, entry.name);
+    if (entry.isDirectory() && ADD_STAGE.test(entry.name)) {
+      await rm(path, { recursive: true, force: true }).catch(() => {});
+      done.stagesRemoved.push(entry.name);
+      continue;
+    }
+    const aside = entry.isDirectory() ? OLD_ASIDE.exec(entry.name) : null;
+    if (aside !== null) {
+      const target = join(root, aside[1] ?? "");
+      const there = await lstat(target).catch(() => null);
+      if (there === null && (await rename(path, target).then(() => true, () => false))) done.restored.push(entry.name);
+      else done.keptAside.push(entry.name);
+      continue;
+    }
+    if (entry.isDirectory() && !entry.name.startsWith(".")) await removeTemps(path, done.tempsRemoved, entry.name);
+  }
+  return done;
+}
+
+/** Remove the version write's temp files in one trick folder, never through a link, within the walk's caps. */
+async function removeTemps(dir: string, removed: string[], label: string): Promise<void> {
+  const queue = [""];
+  for (let n = 0; queue.length > 0 && n < CODE_DIRS_MAX; n += 1) {
+    const rel = queue.shift() ?? "";
+    const listed = await readdir(rel === "" ? dir : join(dir, rel), { withFileTypes: true }).catch(() => null);
+    if (listed === null) continue;
+    for (const entry of listed) {
+      const sub = rel === "" ? entry.name : `${rel}/${entry.name}`;
+      if (entry.isFile() && NEW_TEMP.test(entry.name)) {
+        await rm(join(dir, sub), { force: true }).catch(() => {});
+        removed.push(`${label}/${sub}`);
+        continue;
+      }
+      if (entry.isDirectory() && !skippedName(entry.name, "dir", rel === "" ? 0 : 1)) queue.push(sub);
+    }
   }
 }

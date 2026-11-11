@@ -4,9 +4,8 @@ import type { JsonObject, JsonValue } from "../json.ts";
 import { asJsonBoolean, asJsonObject, asJsonString } from "../../web/src/lib/json.ts";
 import { isTrickId, type TrickManifest } from "../../web/src/lib/tricks/schema.ts";
 import { isRequestId } from "../worktree-receipts.ts";
-import { CONFIG_FILE, isPictureName, PICTURE_DIRS, unsafeText } from "./code-hash.ts";
+import { CONFIG_FILE, PICTURE_DIRS, unsafeText } from "./code-hash.ts";
 import { MANIFEST_BYTES_MAX, readManifestText } from "./discover.ts";
-import { isPictureBytes } from "./approved.ts";
 import { MANIFEST_FILE } from "./paths.ts";
 
 // A TRICK PROPOSAL ON THE WIRE (crew slice 8): the one reader of the files a proposal carries.
@@ -20,17 +19,17 @@ import { MANIFEST_FILE } from "./paths.ts";
 //   * `rel` is a relative path of 1 to {@link PROPOSE_LIMITS}.depth + 1 steps split by `/`, at most
 //     {@link PROPOSE_LIMITS}.pathChars characters, each step at most 255 bytes. Refused: an empty step,
 //     `.` and `..`, a step that starts with a dot (dot files and dot folders, `.git`, `.env`, `.collie-*`),
-//     `node_modules`, a top-level `inputs/` (the bridge fills it), a `*.log` (outside the code hash), a
+//     `node_modules` and `inputs` (folded), a `*.log` (outside the code hash), a
 //     backslash, a colon, any `\p{C}` character (control, format such as a bidi or zero-width mark,
 //     private use, unassigned) and anything `unsafeText` refuses, and a name not in Unicode NFC.
 //   * Two names that fold to one (NFKC, then lower case) are refused, so a case-folding file system or a
 //     normalising one never writes one file over another. So is a name used as a file and as a folder.
-//   * `media/` and `captures/` take pictures only: a `.png`, `.jpg`, `.jpeg` or `.webp` name whose first
-//     bytes are a PNG, JPEG or WebP picture, as the approved copy seeds them (approved.ts).
+//   * Nothing in `media/` or `captures/`, and no `config.toml` at the top, in any case: a proposal
+//     carries code only, and the person adds pictures and settings on the machine (review F2, F3).
 //   * `b64` is standard base64 that writes back to itself. `x: true` marks an executable file; the
 //     proposed store never sets the bit, the installed folder does.
 //   * At most {@link PROPOSE_LIMITS}.files files and {@link PROPOSE_LIMITS}.bytes bytes, the caps of
-//     `collie trick add`. `trick.toml` is required, and with `config.toml` at most 64 KiB; the manifest
+//     `collie trick add`. `trick.toml` is required and at most 64 KiB; the manifest
 //     is read by the strict reader, and its `id` names the trick.
 
 /** Every cap of a proposal. The file and byte caps are `collie trick add`'s (`ADD_LIMITS`, held to it by a test). */
@@ -82,6 +81,7 @@ export type ProposeRefusalCode =
   | "answering"
   | "too_many_open"
   | "too_many_bytes"
+  | "card_too_large"
   | "rate"
   | "request_id_reused"
   | "no_tricks"
@@ -100,6 +100,7 @@ export const PROPOSE_REFUSAL_CODES: readonly ProposeRefusalCode[] = [
   "answering",
   "too_many_open",
   "too_many_bytes",
+  "card_too_large",
   "rate",
   "request_id_reused",
   "no_tricks",
@@ -107,6 +108,43 @@ export const PROPOSE_REFUSAL_CODES: readonly ProposeRefusalCode[] = [
   "lead_unreachable",
   "failed",
 ];
+
+/**
+ * The most JSON tokens (`{`, `[`, `,`, `:` outside strings) and the deepest nesting a proposal's text may
+ * have before it is parsed (review S3). A proposal of {@link PROPOSE_LIMITS} files needs about 8 tokens a
+ * file and a depth of 4; an 8 MB line of `[0,0,…]` would build millions of values in `JSON.parse`.
+ */
+export const PROPOSE_PARSE_LIMITS = { tokens: 4096, depth: 8 } as const;
+
+/**
+ * Whether a proposal's JSON text is small enough in shape to parse: one pass over the characters, no
+ * values built. Strings may be long (a file's base64); only the structure outside them is counted.
+ */
+export function proposalParseable(text: string): boolean {
+  let tokens = 0;
+  let depth = 0;
+  let inString = false;
+  for (let i = 0; i < text.length; i += 1) {
+    const ch = text.charCodeAt(i);
+    if (inString) {
+      if (ch === 0x5c) i += 1;
+      else if (ch === 0x22) inString = false;
+      continue;
+    }
+    if (ch === 0x22) inString = true;
+    else if (ch === 0x7b || ch === 0x5b) {
+      depth += 1;
+      tokens += 1;
+      if (depth > PROPOSE_PARSE_LIMITS.depth) return false;
+    } else if (ch === 0x7d || ch === 0x5d) depth -= 1;
+    else if (ch === 0x2c || ch === 0x3a) tokens += 1;
+    if (tokens > PROPOSE_PARSE_LIMITS.tokens) return false;
+  }
+  return true;
+}
+
+/** The refusal of a proposal whose text has more structure than any proposal needs. */
+export const PROPOSE_TOO_MANY_PARTS = "The proposal has more parts than a trick's files need, so it was not read.";
 
 const BASE64_RE = /^[A-Za-z0-9+/]*={0,2}$/u;
 const BAD_CHARS = /[\p{C}\\:]/u;
@@ -131,6 +169,14 @@ export function shownPath(rel: string): string {
     .join("");
 }
 
+/** The words for a proposal that carries a config.toml: the program reads it, and nobody would see it. */
+export const PROPOSE_NO_CONFIG = "A proposal cannot carry a config.toml. Your person sets the trick up on the machine.";
+
+/** Whether a path is the trick's top-level config.toml, in any case. */
+export function isConfigPath(rel: string): boolean {
+  return foldKey(rel) === CONFIG_FILE;
+}
+
 /** Why a relative path is refused, or null when a proposal may carry it. */
 export function proposedPathProblem(rel: string): string | null {
   if (rel === "" || [...rel].length > PROPOSE_LIMITS.pathChars) return `is empty or longer than ${String(PROPOSE_LIMITS.pathChars)} characters`;
@@ -143,18 +189,17 @@ export function proposedPathProblem(rel: string): string | null {
     if (step === "") return "has an empty step";
     if (step === "." || step === "..") return "has a . or .. step";
     if (step.startsWith(".")) return "names a dot file or a dot folder, which a trick does not carry";
-    if (step === "node_modules") return "names node_modules, which a trick does not carry";
+    // Reserved names are compared folded: on a case-insensitive disk `Node_Modules` is `node_modules`.
+    if (foldKey(step) === "node_modules") return "names node_modules, which a trick does not carry";
     if (Buffer.byteLength(step, "utf8") > PROPOSE_LIMITS.stepBytes) return `has a step longer than ${String(PROPOSE_LIMITS.stepBytes)} bytes`;
   }
-  if (steps[0] === "inputs") return "is under inputs/, which the bridge fills";
+  const top = foldKey(steps[0] ?? "");
+  if (top === "inputs") return "is under inputs/, which the bridge fills";
+  // A proposal carries code only (security review F3): the person's pictures stay theirs, and a new trick
+  // gets its pictures from the person on the machine. A file of that name is refused too.
+  if (PICTURE_DIRS.some((dir) => dir === top)) return "is in media/ or captures/: a proposal carries code only, and your person adds pictures on the machine";
   if (rel.endsWith(".log")) return "is a .log file, which is not code";
   return null;
-}
-
-/** Whether a path is in one of the picture folders, `media/` or `captures/`. */
-export function inPictureDir(rel: string): boolean {
-  const top = rel.split("/")[0] ?? "";
-  return rel.includes("/") && PICTURE_DIRS.some((dir) => dir === top);
 }
 
 /** The key two names collide on: NFKC, then lower case. */
@@ -202,6 +247,7 @@ export function checkProposedFiles(files: readonly ProposedFile[]): { ok: true; 
   // Each folder's folded name, and the one spelling it was first seen with.
   const folders = new Map<string, string>();
   for (const file of files) {
+    if (isConfigPath(file.rel)) return refuse("bad_files", PROPOSE_NO_CONFIG);
     const problem = proposedPathProblem(file.rel);
     if (problem !== null) return refuse("bad_files", `The file name "${shownPath(file.rel)}" ${problem}.`);
     const key = foldKey(file.rel);
@@ -216,10 +262,7 @@ export function checkProposedFiles(files: readonly ProposedFile[]): { ok: true; 
       if (seen !== undefined && seen !== spelling) return refuse("bad_files", `Two folders are named "${shownPath(spelling)}" once case and Unicode form are set aside.`);
       folders.set(folder, spelling);
     }
-    if (inPictureDir(file.rel) && (!isPictureName(file.rel) || !isPictureBytes(file.bytes))) {
-      return refuse("bad_files", `"${shownPath(file.rel)}" is in a picture folder and is not a PNG, JPEG or WebP picture.`);
-    }
-    if ((file.rel === MANIFEST_FILE || file.rel === CONFIG_FILE) && file.bytes.length > MANIFEST_BYTES_MAX) {
+    if (file.rel === MANIFEST_FILE && file.bytes.length > MANIFEST_BYTES_MAX) {
       return refuse("bad_files", `${file.rel} is larger than ${String(MANIFEST_BYTES_MAX / 1024)} KiB.`);
     }
     bytes += file.bytes.length;
@@ -270,6 +313,7 @@ export function readProposal(fields: JsonObject | undefined): { ok: true; propos
     if (Object.keys(row).some((key) => key !== "rel" && key !== "b64" && key !== "x")) return refuse("bad_request", "A file is { rel, b64, x? }.");
     b64Left -= b64.length;
     if (b64Left < 0) return refuse("bad_files", `The trick holds more than ${String(PROPOSE_LIMITS.bytes / (1024 * 1024))} MB.`);
+    if (isConfigPath(rel)) return refuse("bad_files", PROPOSE_NO_CONFIG);
     const problem = proposedPathProblem(rel);
     if (problem !== null) return refuse("bad_files", `The file name "${shownPath(rel)}" ${problem}.`);
     const bytes = strictBase64(b64);
