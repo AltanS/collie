@@ -1388,8 +1388,8 @@ export interface TrickProvenance {
    */
   proposed?: { by: "agent" | "terminal"; host: string };
   /**
-   * Set when `repo` is an official repository of the From Collie list but this folder is not a version of
-   * the list (official.ts `isUnlistedOfficialOrigin`): the phone says it is not on the Collie list.
+   * Set when `repo` is an official repository of the official list but this folder is not a version of
+   * the list (official.ts `isUnlistedOfficialOrigin`): the phone says it is not on the official list.
    */
   unlisted?: true;
 }
@@ -1421,14 +1421,14 @@ export interface TricksRunsOn {
 }
 
 /**
- * Where one entry of the From Collie list stands on this machine (bridge/tricks/official.ts): `absent`
+ * Where one entry of the official list stands on this machine (bridge/tricks/official.ts): `absent`
  * (no folder of its id), `added` (a folder from the same repository and folder at the list's commit),
  * `update` (the same, at another commit) or `taken` (a folder of its id from anywhere else, never written over).
  */
 export const OFFICIAL_STATES = ["absent", "added", "update", "taken"] as const;
 export type OfficialState = (typeof OFFICIAL_STATES)[number];
 
-/** One entry of the From Collie list as the phone reads it (`GET /api/tricks/official`). */
+/** One entry of the official list as the phone reads it (`GET /api/tricks/official`). */
 export interface WireOfficialTrick {
   id: string;
   name: string;

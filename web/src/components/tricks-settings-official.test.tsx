@@ -13,7 +13,7 @@ import { readOfficialAddReply, readOfficialTricksReply } from "@/lib/tricks/wire
 import { clearStatus, currentStatus } from "@/lib/status";
 import { server } from "@/test/setup";
 
-// From Collie in Settings → Tricks (M94): the official tricks this release can add, under the installed
+// Official tricks in Settings → Tricks (M94): the official tricks this release can add, under the installed
 // ones. The routes are the real api.ts calls against msw, so the paths and bodies are checked too.
 
 const NOW = Date.parse("2026-11-11T09:41:00Z");
@@ -81,7 +81,7 @@ function renderCard(store: TricksStore, readOnly = false) {
 const section = (): HTMLElement | null => document.querySelector<HTMLElement>('[data-section="official"]');
 const officialRow = (id: string) => {
   const row = document.querySelector(`[data-official="${id}"]`);
-  if (!(row instanceof HTMLElement)) throw new Error(`no From Collie row for ${id}`);
+  if (!(row instanceof HTMLElement)) throw new Error(`no official row for ${id}`);
   return row;
 };
 
@@ -91,15 +91,15 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe("From Collie: the section", () => {
+describe("Official tricks: the section", () => {
   it("lists each entry not added under the installed tricks: name, its line and Add; a taken one is muted and says so", async () => {
     serveList(() => ({ tricks: [REVIEW, { ...INBOX, state: "taken" }, { ...BUILDS, state: "added" }] }));
     const { store } = await liveStore([LEGS, installed(BUILDS)]);
     renderCard(store);
     await vi.waitFor(() => expect(section()).not.toBeNull());
     const listed = section();
-    if (listed === null) throw new Error("no From Collie section");
-    expect(within(listed).getByText("From Collie")).toBeInTheDocument();
+    if (listed === null) throw new Error("no official section");
+    expect(within(listed).getByText("Official tricks")).toBeInTheDocument();
     // After the installed rows, before the foot.
     const card = screen.getByTestId("tricks-settings");
     const order = [...card.querySelectorAll("[data-trick], [data-section='official']")].map((el) => el.getAttribute("data-trick") ?? "official");
@@ -123,7 +123,7 @@ describe("From Collie: the section", () => {
     renderCard(store);
     await vi.waitFor(() => expect(section()).not.toBeNull());
     const inbox = officialRow("pr-inbox");
-    expect(within(inbox).getByText("Added from the repository, not from the Collie list.")).toBeInTheDocument();
+    expect(within(inbox).getByText("Added from the repository, not from the official list.")).toBeInTheDocument();
     expect(within(inbox).queryByText("A trick with this name is already here.")).toBeNull();
     expect(within(inbox).queryByRole("button")).toBeNull();
     // The wire keeps the mark only on a taken entry.
@@ -159,7 +159,7 @@ describe("From Collie: the section", () => {
   });
 });
 
-describe("From Collie: a fresh install", () => {
+describe("Official tricks: a fresh install", () => {
   it("with no trick yet the card holds only the list; an add lands the trick, off, and its row appears", async () => {
     const user = userEvent.setup();
     let state: WireOfficialTrick["state"] = "absent";
@@ -197,7 +197,7 @@ describe("From Collie: a fresh install", () => {
   });
 });
 
-describe("From Collie: Add", () => {
+describe("Official tricks: Add", () => {
   it("posts {} to the entry's add route, spins in place, takes no second tap, and leaves the section once the trick is installed", async () => {
     const user = userEvent.setup();
     let state: WireOfficialTrick["state"] = "absent";
@@ -261,7 +261,7 @@ describe("From Collie: Add", () => {
   });
 });
 
-describe("From Collie: the About sheet before the add", () => {
+describe("Official tricks: the About sheet before the add", () => {
   it("shows the name, the line and where it comes from, no invented facts, and Add at the foot; it closes once the bridge took the add", async () => {
     const user = userEvent.setup();
     serveList(() => ({ tricks: [REVIEW] }));
@@ -301,7 +301,7 @@ describe("From Collie: the About sheet before the add", () => {
   });
 });
 
-describe("From Collie: Update", () => {
+describe("Official tricks: Update", () => {
   it("puts a quiet line with Update under an installed trick this release has a newer version of, and posts to the update route", async () => {
     const user = userEvent.setup();
     let state: WireOfficialTrick["state"] = "update";
@@ -366,12 +366,12 @@ describe("From Collie: Update", () => {
   });
 });
 
-describe("From Collie: the wire", () => {
+describe("Official tricks: the wire", () => {
   it("fetchOfficialTricks reads the list tolerantly: an odd entry is left out, a body of another shape throws", async () => {
     serveList(() => HttpResponse.json({ tricks: [REVIEW, { ...INBOX, commit: "abc" }, { ...BUILDS, state: "gone" }], runsOn: { lead: "desk" } }));
     expect(await fetchOfficialTricks()).toEqual({ tricks: [REVIEW], runsOn: { lead: "desk" } });
     serveList(() => HttpResponse.json({ list: [] }));
-    await expect(fetchOfficialTricks()).rejects.toThrow(/not the From Collie list/);
+    await expect(fetchOfficialTricks()).rejects.toThrow(/not the official list/);
     expect(readOfficialTricksReply({ tricks: [{ ...REVIEW, name: "Le‮gs" }] })).toEqual({ tricks: [] });
     expect(readOfficialTricksReply({ tricks: [{ ...REVIEW, id: "../x" }] })).toEqual({ tricks: [] });
   });

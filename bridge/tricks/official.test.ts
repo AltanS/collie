@@ -17,7 +17,7 @@ import { tricksOfficialRoute } from "./routes.ts";
 import { PENDING_SETTLE_MS, TricksService } from "./service.ts";
 import { parseSwitches, withSwitch, writeSwitches } from "./switches.ts";
 
-// The From Collie list (official.ts) and the add from it (official-install.ts). Every source is a bare
+// The official list (official.ts) and the add from it (official-install.ts). Every source is a bare
 // repository under the test's temp dir, reached as `file://` through the test seam: nothing here touches
 // the network. Each case runs real git a few times, so the limit is longer than the default.
 
@@ -604,7 +604,7 @@ describe.if(posix)("adding from the list", () => {
     await mkdir(join(root, ".fetch-official-abc123", "repo.git", "objects"), { recursive: true });
     await writeFile(join(root, ".fetch-official-abc123", "repo.git", "objects", "pack"), "half a pack");
     await mkdir(join(root, ".fetch-official-def456"));
-    // Not a From Collie fetch: a `collie trick add` running now, and a trick's own state folder.
+    // Not an official fetch: a `collie trick add` running now, and a trick's own state folder.
     await mkdir(join(root, ".fetch-cli1"));
     await mkdir(join(root, "legs"));
     expect(await r.official.sweep()).toBe(2);

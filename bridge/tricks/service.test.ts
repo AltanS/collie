@@ -142,7 +142,7 @@ function factsOf(spec: RunSpec | undefined): TrickFacts {
 }
 
 describe("zero tricks", () => {
-  test("no folder and no From Collie list: no rev, an empty reply, no log line, no file", async () => {
+  test("no folder and no official list: no rev, an empty reply, no log line, no file", async () => {
     const r = await rig([exited(belt("x"))], { officialEntries: () => [] });
     r.service.noteWatched();
     await r.service.refresh(true);
@@ -1078,7 +1078,7 @@ describe("warnings at the switch (review 15)", () => {
     await writeFile(join(dir, ".collie-origin.json"), JSON.stringify({ v: 1, url: "https://github.com/AltanS/collie-tricks", ref: null, commit, subdir: "legs", at: "2026-11-10T09:41:00.000Z" }));
     const row = (await r.service.reply(undefined)).tricks.find((t) => t.id === "legs");
     expect(row && "warnings" in row).toBe(false);
-    // The official repository at a commit the From Collie list never named: the row must not read as the list.
+    // The official repository at a commit the official list never named: the row must not read as the list.
     expect(row?.provenance).toEqual({ via: "repo", at: "2026-11-10T09:41:00.000Z", repo: "AltanS/collie-tricks", sha: commit, unlisted: true });
   });
 });

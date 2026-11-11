@@ -27,7 +27,7 @@ import type { ProposedFile } from "./propose-wire.ts";
 // the stage already holds is a failed write, never "a trick of that name is here": only the final rename
 // answers `exists`. And the add hashes the stage as it is on disk before that rename (`stageHash`).
 //
-// The From Collie list (official-install.ts) writes through the same two ways in (`writeNewTrick`,
+// The official list (official-install.ts) writes through the same two ways in (`writeNewTrick`,
 // `replaceCode`), with its own origin record and the code hash the list expects (`expect`): code that
 // hashes otherwise is refused, and nothing in the tricks folder changes.
 
@@ -208,7 +208,7 @@ export async function replaceTrickCode(root: string, id: string, files: readonly
 }
 
 /**
- * {@link replaceTrickCode} with an origin record's text of the caller's, shared with the From Collie update
+ * {@link replaceTrickCode} with an origin record's text of the caller's, shared with the official update
  * (official-install.ts). `files` must be code only. With `expect`, files that would hash otherwise are
  * refused as `mismatch` before anything in the folder changes.
  */

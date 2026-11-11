@@ -3625,7 +3625,7 @@ const tricks =
       });
 tricks?.start();
 
-// The From Collie list (bridge/tricks/official-install.ts): what this release can add with a tap, and the
+// The official list (bridge/tricks/official-install.ts): what this release can add with a tap, and the
 // add itself, in the runner's lane. Nothing is fetched until the person taps Add.
 const officialTricks =
   tricks === undefined || cfg.tricksDir === undefined

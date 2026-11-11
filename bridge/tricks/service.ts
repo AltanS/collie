@@ -263,7 +263,7 @@ export type SwitchAnswer =
 export interface TricksServiceDeps {
   configDir: string;
   stateDir: string;
-  /** The From Collie list, for the row of a trick from its repository that is not on it. Default: the one this binary carries. */
+  /** The official list, for the row of a trick from its repository that is not on it. Default: the one this binary carries. */
   officialEntries?: () => readonly OfficialEntry[];
   /**
    * This bridge's stable id for facts, part keys and trick session ids (bridge/bridge-id.ts): the crew
@@ -546,7 +546,7 @@ export class TricksService implements TricksSurface {
 
   /**
    * The tricks rev the snapshot carries, or undefined to send nothing: while the tricks folder exists, and,
-   * on a bridge that runs tricks (no `runsOn`), also while the From Collie list offers something. So a
+   * on a bridge that runs tricks (no `runsOn`), also while the official list offers something. So a
    * fresh install with no tricks folder shows Settings, Tricks with only the list, and the first add makes
    * the folder (proposal-install.ts `writeNewTrick`), which the next scan reads with no restart.
    */
@@ -1080,7 +1080,7 @@ export class TricksService implements TricksSurface {
     rt.nextAt = 0;
   }
 
-  /** The From Collie list's entries: the deps' or the one this binary carries, none when it is refused. */
+  /** The official list's entries: the deps' or the one this binary carries, none when it is refused. */
   private officialEntries(): readonly OfficialEntry[] {
     if (this.deps.officialEntries !== undefined) return this.deps.officialEntries();
     const list = shippedOfficialList();
@@ -1107,7 +1107,7 @@ export class TricksService implements TricksSurface {
     // The provenance of what runs: the approved copy keeps the origin record of the version approved.
     const origin = shown.origin;
     if (origin !== undefined) info.provenance = { via: "repo", at: origin.at, repo: originRepoName(origin.url), sha: origin.commit };
-    // From the official repository, but not a version of the From Collie list: the row must not read as the list.
+    // From the official repository, but not a version of the official list: the row must not read as the list.
     if (origin !== undefined && info.provenance !== undefined && isUnlistedOfficialOrigin(this.officialEntries(), id, origin, shown.codeHash)) info.provenance.unlisted = true;
     // A proposed trick (`collie trick propose`, crew slice 8): the web reads `proposed` and says "Proposed …"
     // ("Proposed from <host>. The session is not confirmed." when no agent pane was placed); `via` is only
@@ -1470,7 +1470,7 @@ export class TricksService implements TricksSurface {
   }
 
   /**
-   * Run a From Collie write (official-install.ts) in the lane switch writes and version changes take, after
+   * Run an official write (official-install.ts) in the lane switch writes and version changes take, after
    * a scan of its own, then wait for a scan that started after it, so the list and `tricksRev` move before
    * the answer. A folder written here is read like any other: off and new, or, for a trick that is on, a
    * new version the runner's own path takes (a pending copy and its card).

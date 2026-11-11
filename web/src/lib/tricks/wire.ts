@@ -234,7 +234,7 @@ function isOfficialState(text: string | undefined): text is OfficialState {
   return OFFICIAL_STATES.some((state) => state === text);
 }
 
-/** One entry of the From Collie list, or `undefined` when a field is of another shape. */
+/** One entry of the official list, or `undefined` when a field is of another shape. */
 function readOfficialTrick(raw: JsonValue | undefined): WireOfficialTrick | undefined {
   const body = asJsonObject(raw);
   if (body === undefined) return undefined;
@@ -255,7 +255,7 @@ function readOfficialTrick(raw: JsonValue | undefined): WireOfficialTrick | unde
 }
 
 /**
- * `GET /api/tricks/official` (the From Collie list), or `undefined` for a body of another shape. An entry
+ * `GET /api/tricks/official` (the official list), or `undefined` for a body of another shape. An entry
  * of another shape is left out and the rest kept: the list only offers, so one odd entry hides itself.
  */
 export function readOfficialTricksReply(raw: JsonValue | undefined): OfficialTricksReply | undefined {

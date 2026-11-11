@@ -142,11 +142,11 @@ function SheetBox({ n, state, label, trick: info, updates = false }: { n: number
   );
 }
 
-// From Collie (M94): the official tricks this release can add, under the installed ones. Each card has a list
+// Official tricks (M94): the official tricks this release can add, under the installed ones. Each card has a list
 // of its own and a stand-in for the add route; the one that shows a failure goes through the real api.ts call
 // and a stand-in for the bridge's refusal (`useRefusedAdd`), so the status line reads the bridge's own word.
 
-/** The cards above show no From Collie section: an empty list, read without the network. */
+/** The cards above show no official section: an empty list, read without the network. */
 const NO_OFFICIAL = async (): Promise<OfficialTricksReply> => ({ tricks: [] });
 
 const OFFICIAL_COMMIT = "0d8039936aef44961a5641f4bfdc4583ed0c3e60";
@@ -357,7 +357,7 @@ export function TrickSettingsSection(): ReactNode {
           })}
         />
       </Group>
-      <Group title="From Collie">
+      <Group title="Official tricks">
         <OfficialCard n={25} state="trick-settings-official-fresh" label="a fresh install: no trick yet, the list alone; tap Add, the trick lands, off" tricks={[]} entries={[REVIEW, INBOX, BUILDS]} />
         <OfficialCard n={17} state="trick-settings-official" label="two not added: tap Add, the trick lands among yours, off" tricks={HEALTHY.slice(0, 2)} entries={[REVIEW, INBOX, { ...BUILDS, state: "added" }]} />
         <OfficialCard n={18} state="trick-settings-official-adding" label="adding: tap Add, the spinner stays" tricks={HEALTHY.slice(0, 1)} entries={[REVIEW, INBOX]} answer="hangs" />

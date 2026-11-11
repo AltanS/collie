@@ -599,7 +599,7 @@ describe("the routes", () => {
     expect(media.slice(0, 200)).toContain('req.method === "GET"');
     expect(media.slice(0, 300)).toContain("guard(req, cfg, TRICKS_ROUTE_RIGHTS.media, pairingGate)");
     expect(media.slice(0, 900)).toContain("secure(new Response(file.bytes, { headers: { \"content-type\": file.mime, ...HILL_MEDIA_HEADERS } }))");
-    // The From Collie list: its read gated like the list, its add and update like the switch.
+    // The official list: its read gated like the list, its add and update like the switch.
     expect(src).toContain("const TRICKS_OFFICIAL_ROUTE = /^\\/api\\/tricks\\/official\\/([^/]+)\\/(add|update)$/;");
     const officialList = src.slice(src.indexOf('if (pathname === "/api/tricks/official" && req.method === "GET")'));
     expect(officialList.slice(0, 300)).toContain("guard(req, cfg, TRICKS_ROUTE_RIGHTS.official, pairingGate)");

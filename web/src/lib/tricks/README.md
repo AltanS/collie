@@ -308,14 +308,14 @@ kind, at most 8; a waiting version carries the ones new since the approved copy 
 `WireTrickInfo.pending.warnings`), and Settings → Tricks lists them under that trick before the switch. They never
 refuse, and the switch stays one tap.
 
-## From Collie: the official list on the phone
+## Official tricks: the list on the phone
 
 Each Collie release carries a short list of official tricks: `bridge/tricks/official.json`, built into
 the binary, read strictly by `bridge/tricks/official.ts`. An entry is a trick id, its name, one line
 about it, the repository (`https://github.com/AltanS/collie-tricks`, the only one the reader accepts),
 the folder in it, a full commit, the code hash that folder has at that commit, and an extras hash over what
 an add installs beside the code (`config.toml` and `media/`, code-hash.ts `officialExtrasHash`). Settings, Tricks shows
-the entries that are not added under "From Collie", each with an Add button. On a fresh install, with no tricks
+the entries that are not added under "Official tricks", each with an Add button. On a fresh install, with no tricks
 folder yet, the card shows too when the list is not empty (the bridge sends `tricksRev` for it), and holds
 only the list and the foot line; the first add makes `<configDir>/tricks/` (0700), and the next scan reads
 it with no restart. A crew member, which runs no tricks, shows no card without a folder, as before. Nothing ships switched on,
@@ -358,8 +358,8 @@ id, a link or a file: a proposal, a hand-made trick, another repository). A take
 over, also when one appears during the fetch. A folder from this repository and folder that is not a
 version of the list (`collie trick add` at a branch or tag nobody listed, a record without `official`, or
 `official` written by hand at a commit the list never named) is `taken` with `unlisted: true`: its row says
-"Added from the repository, not from the Collie list.", and its trick row reads "From AltanS/collie-tricks
-@ 5e1f00d, not on the Collie list", never as the list. A crew member answers an empty list with `runsOn`.
+"Added from the repository, not from the official list.", and its trick row reads "From AltanS/collie-tricks
+@ 5e1f00d, not on the official list", never as the list. A crew member answers an empty list with `runsOn`.
 
 **Update.** On a new release the list may name another commit; the installed row then offers Update
 (`POST /api/tricks/official/<id>/update`). The bridge fetches and checks the same way, then moves only
@@ -924,7 +924,7 @@ written as what a trick, or a person who controls one, can do today.
   route a slot is taken after the crew secret is checked but before the signature is, because the
   signature covers the body: only an enrolled machine can take one, for at most 60 seconds.
 
-- **The From Collie states read the origin record, and check it.** A false `.collie-origin.json` with
+- **The official states read the origin record, and check it.** A false `.collie-origin.json` with
   `official: true` makes a folder from the list only at a commit the list names, and only while the
   folder's code hash is that commit's listed hash: a hand-made folder under a forged record reads
   `taken` (`unlisted`, or `changed`), and an update of it is refused. What is left: someone who can write

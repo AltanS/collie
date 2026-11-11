@@ -33,7 +33,7 @@ import type { TricksRunsOn, WireOfficialTrick, WireTrickInfo } from "@/lib/trick
 //      write state (`flipAuto`): it flips at once, holds its position until the list agrees, and says a failed
 //      write in the status line, as the trick's own switch does.
 //
-// NOT ADDED YET (`OfficialTrickAboutSheet`, From Collie): the same sheet for an entry of the official list
+// NOT ADDED YET (`OfficialTrickAboutSheet`, Official tricks): the same sheet for an entry of the official list
 // that is not on this machine. Only what the list knows: the name, its one line, and "Where it comes from"
 // (the repository and short commit, and that Collie checks the code before it adds it). No "What it does":
 // the manifest is not here yet, so there is nothing true to say. One primary Add at the foot; the card owns
@@ -169,7 +169,7 @@ export interface OfficialTrickAboutSheetProps {
   onAdd: () => void;
 }
 
-/** The About sheet of a From Collie entry that is not added yet. */
+/** The About sheet of an official entry that is not added yet. */
 export function OfficialTrickAboutSheet({ entry, open, onClose, busy, canWrite, onAdd }: OfficialTrickAboutSheetProps) {
   useLocale();
   const comes: FactRow[] = [

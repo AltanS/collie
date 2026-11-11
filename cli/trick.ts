@@ -62,7 +62,7 @@ import type { Files } from "./sys.ts";
 // switched on from here (or, later, the phone); the bridge runs it.
 //
 //   list              every trick folder, its switch, its origin and what the running bridge says of it;
-//                     `--official` prints the From Collie list this release carries and each entry's state
+//                     `--official` prints the official list this release carries and each entry's state
 //   add [<source>]    copy a trick from a git repository into the tricks folder, OFF (cli/trick-add.ts);
 //                     with no source, list the tricks of the official repository
 //   update <id>       fetch a trick added with `add` again and replace its code, keeping config.toml
@@ -253,20 +253,20 @@ const OFFICIAL_STATE_TEXT = {
 /** The STATE column: a taken folder from the list's repository says which kind it is. */
 function officialStateText(row: { state: OfficialState; changed?: true; unlisted?: true }): string {
   if (row.changed === true) return "taken: its files were edited, update it with collie trick update";
-  if (row.unlisted === true) return "taken: from the repository, not from the Collie list";
+  if (row.unlisted === true) return "taken: from the repository, not from the official list";
   return OFFICIAL_STATE_TEXT[row.state];
 }
 
 /**
- * `collie trick list --official`: the From Collie list this binary carries (bridge/tricks/official.ts), each
+ * `collie trick list --official`: the official list this binary carries (bridge/tricks/official.ts), each
  * entry's state on this machine. Read-only: it reads the list from the binary and the tricks folder, and
  * asks the running bridge only whether its crew's lead runs the tricks. It fetches nothing; an add from the
- * list is a tap on the phone (Settings, Tricks, From Collie), never a verb here.
+ * list is a tap on the phone (Settings, Tricks, Official tricks), never a verb here.
  */
 async function cmdTrickListOfficial(deps: TrickDeps, json: boolean): Promise<number> {
   const list = shippedOfficialList();
   if (!list.ok) {
-    deps.io.err(`error: this Collie's From Collie list is refused: ${list.reason}`);
+    deps.io.err(`error: this Collie's official list is refused: ${list.reason}`);
     return EXIT.FAIL;
   }
   const standings = await Promise.all(list.entries.map(async (e) => await officialStanding(deps.ctx.configDir, e)));
@@ -285,13 +285,13 @@ async function cmdTrickListOfficial(deps: TrickDeps, json: boolean): Promise<num
     return EXIT.OK;
   }
   if (rows.length === 0) {
-    deps.io.out("This Collie carries no tricks on its From Collie list.");
+    deps.io.out("This Collie carries no tricks on its official list.");
     return EXIT.OK;
   }
   const lines = table([["ID", "NAME", "COMMIT", "STATE", "WHAT IT DOES"], ...rows.map((r) => [r.id, r.name, r.commit.slice(0, 7), officialStateText(r), r.description])]);
   for (const line of lines) deps.io.out(line);
   if (runsOn !== undefined) deps.io.out(runsOnText(runsOn));
-  deps.io.out(`From ${originRepoName(list.entries[0]?.repo ?? "")}, at the commits this Collie release names. Add one on the phone: Settings, Tricks, From Collie.`);
+  deps.io.out(`From ${originRepoName(list.entries[0]?.repo ?? "")}, at the commits this Collie release names. Add one on the phone: Settings, Tricks, Official tricks.`);
   return EXIT.OK;
 }
 

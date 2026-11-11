@@ -15,7 +15,7 @@ import type { TricksSurface, SwitchAnswer, TapAnswer, VersionRouteAnswer } from 
 //                                         reads, or 400 `switch-invalid`, 404 `unknown-host` / `unknown-trick`
 //   GET  /api/tricks/<host>/<id>/media/<file> → one picture of the trick's `media/` folder (media.ts), or
 //                                         404 "no such image" for every miss
-//   GET  /api/tricks/official             → OfficialTricksReply: the From Collie list with each entry's state
+//   GET  /api/tricks/official             → OfficialTricksReply: the official list with each entry's state
 //   POST /api/tricks/official/<id>/add    → body `{}`; fetch the listed commit, check its hash, install it
 //   POST /api/tricks/official/<id>/update   off (official-install.ts); `{ id, state }`, or a refusal
 //
@@ -35,7 +35,7 @@ export const TRICKS_ROUTE_RIGHTS = {
   // Take changes without asking, and go back a version (crew slice 3): both change what code runs.
   auto: "write",
   undo: "write",
-  // The From Collie list (official.ts) is read only. Adding or updating from it fetches code onto the
+  // The official list (official.ts) is read only. Adding or updating from it fetches code onto the
   // machine on a tap: a write, like the switch, so only a paired phone with the write right reaches it.
   official: "read",
   officialAdd: "write",

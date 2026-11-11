@@ -10,7 +10,7 @@ import { MANIFEST_BYTES_MAX, readManifestText } from "./discover.ts";
 import { MANIFEST_FILE } from "./paths.ts";
 
 // THE HARDENED GIT FETCH OF A TRICK (M94 review 15), shared by `collie trick add` and `update`
-// (cli/trick-add.ts) and the From Collie list (official-install.ts). Moved here from the CLI so the
+// (cli/trick-add.ts) and the official list (official-install.ts). Moved here from the CLI so the
 // bridge runs the very same lines; `collie trick add` behaves as it did.
 //
 // ── WHAT A REPOSITORY MAY NOT DO ──────────────────────────────────────────────────────────────────
@@ -32,11 +32,11 @@ import { MANIFEST_FILE } from "./paths.ts";
 // `GIT_LFS_SKIP_SMUDGE=1` are set. Each git run is argv, never a shell, killed at {@link ADD_LIMITS}
 // `gitTimeoutMs` (or sooner, at the caller's deadline), its output capped. On POSIX each run starts its own
 // process group and a kill takes the whole group, so `git-remote-https` and any other helper git starts go
-// with it. With `maxBytes` (the From Collie list), the temp repository is measured while the fetch runs and
+// with it. With `maxBytes` (the official list), the temp repository is measured while the fetch runs and
 // once after it: past the cap the fetch is killed and refused, before anything is read from it. git itself
 // offers no size limit on a fetch (`receive.maxInputSize` is the push side only). For `collie trick add` the
 // operator's own global git config is trusted, as their shell is (a credential helper for a private
-// repository keeps working); the From Collie list reads none (official-install.ts `OFFICIAL_GIT`).
+// repository keeps working); the official list reads none (official-install.ts `OFFICIAL_GIT`).
 //
 // The tree is read from git's own objects, so its modes are git's: a symlink (120000) or a submodule
 // (160000) anywhere in the trick's folder refuses the trick, on every platform. Collie writes each
@@ -44,7 +44,7 @@ import { MANIFEST_FILE } from "./paths.ts";
 // caps hold, and the id is free. Dot files and dot folders and `node_modules/` are not copied: they are
 // outside the code hash (code-hash.ts), so they would be code the person never approved.
 //
-// WHICH REF (security review of the From Collie list): only a branch or a tag, or a full commit id. A ref
+// WHICH REF (security review of the official list): only a branch or a tag, or a full commit id. A ref
 // that starts with `refs/` must be `refs/heads/...` or `refs/tags/...`: `refs/pull/N/head` on GitHub is a
 // stranger's pull request served through the repository's own URL, and is refused. A short name is never
 // handed to git as it is, because git's own lookup would also try `refs/<name>` (so `pull/5/head` would be
@@ -56,7 +56,7 @@ import { MANIFEST_FILE } from "./paths.ts";
 // A local folder or `file://` URL is accepted only with `allowFile`, which only a test seam and the
 // maintainer script (scripts/official-tricks.ts, reading a local checkout) set.
 
-/** Every cap of a fetched trick, in one place: `collie trick add`, `update` and the From Collie list. */
+/** Every cap of a fetched trick, in one place: `collie trick add`, `update` and the official list. */
 export const ADD_LIMITS = {
   /** Files in the trick's folder, all of them, dot files included. */
   files: 300,
@@ -250,9 +250,9 @@ export interface FetchOptions {
   git?: GitRunner;
   /** A local folder or `file://` URL may be the source: the tests' seam and the maintainer script only. */
   allowFile: boolean;
-  /** More `-c` settings after the hardening (the From Collie list's). */
+  /** More `-c` settings after the hardening (the official list's). */
   extraConfig?: readonly string[];
-  /** More environment after {@link gitRunEnv} (the From Collie list's). */
+  /** More environment after {@link gitRunEnv} (the official list's). */
   extraEnv?: Readonly<Record<string, string>>;
   /** An instant (epoch ms) by which every git run must have ended: each run is killed at the sooner of it and its own cap. */
   deadline?: number;

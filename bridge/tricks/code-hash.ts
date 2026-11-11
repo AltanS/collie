@@ -299,7 +299,7 @@ export function codeHashOfFiles(files: readonly { rel: string; bytes: Uint8Array
 }
 
 /**
- * THE EXTRAS OF AN OFFICIAL TRICK (security review N3): the files an add from the From Collie list installs
+ * THE EXTRAS OF AN OFFICIAL TRICK (security review N3): the files an add from the official list installs
  * that the code hash leaves out. Only two kinds may be there: `config.toml` at the top and files under a
  * top-level `media/`. Their hash is the code hash's format over those files, with its own first line, so the
  * two can never be equal. The list names it (`extras`, official.ts), the maintainer script takes it with

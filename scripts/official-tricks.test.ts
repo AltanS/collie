@@ -8,7 +8,7 @@ import { parseOfficialList, renderOfficialList, type OfficialEntry } from "../br
 import { parseJson } from "../web/src/lib/json.ts";
 import { LIST_FILE, parseArgs, rolled, runOfficial } from "./official-tricks.ts";
 
-// The maintainer script that keeps the From Collie list in step with the tricks repository. The
+// The maintainer script that keeps the official list in step with the tricks repository. The
 // repository is a temp git repository; the script reads it through `file://`. No network.
 
 setDefaultTimeout(30_000);

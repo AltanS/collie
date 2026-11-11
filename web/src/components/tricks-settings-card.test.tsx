@@ -135,9 +135,9 @@ describe("TricksSettingsCard: the rows", () => {
     expect(provenanceLine({ ...LEGS, provenance: { via: "folder" } }, NOW)).toBe("Added by hand");
     expect(provenanceLine({ ...LEGS, provenance: undefined }, NOW)).toBe("Added by hand");
     expect(provenanceLine({ ...LEGS, provenance: { via: "repo", repo: "o/r" } }, NOW)).toBe("From o/r");
-    // From the official repository, but not a version of the From Collie list (a pull request's commit).
-    expect(provenanceLine({ ...LEGS, provenance: { via: "repo", repo: "AltanS/collie-tricks", sha: "9c41d07aa", unlisted: true } }, NOW)).toBe("From AltanS/collie-tricks @ 9c41d07, not on the Collie list");
-    expect(originLine({ via: "repo", repo: "AltanS/collie-tricks", sha: "9c41d07aa", unlisted: true })).toBe("From AltanS/collie-tricks @ 9c41d07, not on the Collie list");
+    // From the official repository, but not a version of the official list (a pull request's commit).
+    expect(provenanceLine({ ...LEGS, provenance: { via: "repo", repo: "AltanS/collie-tricks", sha: "9c41d07aa", unlisted: true } }, NOW)).toBe("From AltanS/collie-tricks @ 9c41d07, not on the official list");
+    expect(originLine({ via: "repo", repo: "AltanS/collie-tricks", sha: "9c41d07aa", unlisted: true })).toBe("From AltanS/collie-tricks @ 9c41d07, not on the official list");
     expect(originLine({ via: "repo", repo: "AltanS/collie-tricks", sha: "9c41d07aa" })).toBe("From AltanS/collie-tricks @ 9c41d07");
     expect(provenanceLine({ ...LEGS, provenance: { via: "repo" } }, NOW)).toBe("Added from a repository");
     expect(provenanceLine({ ...LEGS, provenance: { via: "agent", proposed: { by: "agent", host: "minibuch" } } }, NOW)).toBe("Proposed by an agent on minibuch");

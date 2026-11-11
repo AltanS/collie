@@ -82,7 +82,7 @@ const NOT_REACHED_BY_WINDOWS: readonly Allowed[] = [
   { file: "bridge/tricks/proposal-install.ts", pattern: "splitOnSlash", count: 1, why: "the folders above a wire path or a code walk path, both written with `/` on every host (crew slice 8)" },
   { file: "cli/trick-propose.ts", pattern: "splitOnSlash", count: 1, why: "`leftBehind` reads the wire path the walk built by joining names with `/` on every host (crew slice 8)" },
   { file: "bridge/tricks/scan.ts", pattern: "splitOnSlash", count: 1, why: "`isScannedFile` reads a path `walkTrickCode` built by joining names with `/` on every host (M94)" },
-  { file: "bridge/tricks/code-hash.ts", pattern: "splitOnSlash", count: 1, why: "`isCodePath` reads a git tree path or a `walkTrickCode` path, both written with `/` on every host (From Collie update)" },
+  { file: "bridge/tricks/code-hash.ts", pattern: "splitOnSlash", count: 1, why: "`isCodePath` reads a git tree path or a `walkTrickCode` path, both written with `/` on every host (official update)" },
   { file: "cli/trick-add.ts", pattern: "splitOnSlash", count: 2, why: "a folder inside a git repository and the paths of a git tree, which git writes with `/` on every host (M94 review 15)" },
   { file: "bridge/tricks/fetch.ts", pattern: "splitOnSlash", count: 2, why: "the paths of a fetched git tree, which git writes with `/` on every host (M94 review 15, moved from cli/trick-add.ts)" },
 ];

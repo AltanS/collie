@@ -34,7 +34,7 @@ import { EXIT } from "./io.ts";
 // the tricks folder OFF. No trick ships in the binary and none is installed by default; the person picks.
 //
 // The fetch itself, its hardening and the checks of the folder fetched live in bridge/tricks/fetch.ts,
-// shared with the From Collie list (bridge/tricks/official-install.ts): that file's header has the git
+// shared with the official list (bridge/tricks/official-install.ts): that file's header has the git
 // lines and what a repository may not do.
 //
 // A local folder or `file://` URL is accepted only under {@link TrickAddSeam}, the tests' seam, which the

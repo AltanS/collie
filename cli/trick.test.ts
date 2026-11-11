@@ -622,7 +622,7 @@ describe("collie trick on, off and list", () => {
     expect(doc.tricks[0]?.state).toBe("off");
   });
 
-  test("list --official prints the From Collie list and each entry's state here; it fetches nothing", async () => {
+  test("list --official prints the official list and each entry's state here; it fetches nothing", async () => {
     const list = shippedOfficialList();
     if (!list.ok) throw new Error(list.reason);
     const first = list.entries[0];
@@ -643,8 +643,8 @@ describe("collie trick on, off and list", () => {
     expect(d.out[1]).toStartWith(first.id);
     expect(d.out[1]).toContain("taken: its files were edited, update it with collie trick update");
     expect(d.out[2]).toContain("taken: another trick has this id");
-    expect(d.out[3]).toContain("taken: from the repository, not from the Collie list");
-    expect(d.out.at(-1)).toBe("From AltanS/collie-tricks, at the commits this Collie release names. Add one on the phone: Settings, Tricks, From Collie.");
+    expect(d.out[3]).toContain("taken: from the repository, not from the official list");
+    expect(d.out.at(-1)).toBe("From AltanS/collie-tricks, at the commits this Collie release names. Add one on the phone: Settings, Tricks, Official tricks.");
     // The only request is the local bridge's own tricks list, for the crew line: nothing reaches GitHub.
     expect(d.asked).toEqual(["http://127.0.0.1:18999/api/tricks"]);
     d.out.length = 0;
@@ -661,7 +661,7 @@ describe("collie trick on, off and list", () => {
     expect(d.out).toContain("Tricks run on the lead of this crew (desk). This machine runs none.");
   });
 
-  test("the From Collie list names the repository a bare `collie trick add <name>` reads", () => {
+  test("the official list names the repository a bare `collie trick add <name>` reads", () => {
     expect(OFFICIAL_REPOS).toEqual([OFFICIAL_TRICKS_REPO]);
   });
 

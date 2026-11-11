@@ -15,7 +15,7 @@ import { diskTrickFs, type TrickFs } from "./code-hash.ts";
 // consent stays with the code. `update` is refused for a folder without one, and the bridge shows it on
 // the trick's row as its provenance. A file that does not parse reads as no origin.
 //
-// A trick added from the From Collie list (official-install.ts) carries the same record with
+// A trick added from the official list (official-install.ts) carries the same record with
 // `"official": true`, its `ref` the list's commit. The key is absent from every other record, so a record
 // `collie trick add` wrote reads byte for byte as before. It is read (official.ts `isListedOrigin`), but it
 // is never enough alone: a hand can write it, so a folder counts as from the list only when the record
@@ -37,7 +37,7 @@ export interface TrickOrigin {
   subdir: string | null;
   /** When it was added or last updated, an instant. */
   at: string;
-  /** Added or updated from the From Collie list of this Collie (official-install.ts). Absent otherwise. */
+  /** Added or updated from the official list of this Collie (official-install.ts). Absent otherwise. */
   official?: true;
 }
 

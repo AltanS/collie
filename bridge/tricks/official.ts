@@ -162,7 +162,7 @@ export function isListedOrigin(entry: Pick<OfficialEntry, "repo" | "dir" | "comm
 /**
  * Whether a trick's origin names an official repository without being a version of the list: a pull
  * request's ref, a fork's commit, a branch nobody listed, or, given `codeHash`, a listed version whose code
- * is not that version's code any more. Its row says it is not on the Collie list.
+ * is not that version's code any more. Its row says it is not on the official list.
  */
 export function isUnlistedOfficialOrigin(entries: readonly OfficialEntry[], id: string, origin: TrickOrigin, codeHash?: string): boolean {
   if (!OFFICIAL_REPOS.includes(origin.url) && !entries.some((e) => e.repo === origin.url)) return false;

@@ -57,16 +57,16 @@ import { updateSwitches, withSwitch } from "./switches.ts";
 export const OFFICIAL_ADD_TIMEOUT_MS = 120_000;
 
 /**
- * The most bytes a From Collie fetch may bring into its temp repository: one commit at depth 1. The tricks
+ * The most bytes an official fetch may bring into its temp repository: one commit at depth 1. The tricks
  * themselves are capped at 5 MB (fetch.ts `ADD_LIMITS.bytes`); the rest is room for the other folders of
  * the repository at that commit.
  */
 export const OFFICIAL_FETCH_BYTES_MAX = 20 * 1024 * 1024;
 
-/** The name every From Collie temp folder under `<stateDir>/tricks/` starts with. */
+/** The name every official temp folder under `<stateDir>/tricks/` starts with. */
 export const OFFICIAL_FETCH_PREFIX = ".fetch-official-";
 
-/** The `-c` settings a From Collie fetch adds to fetch.ts's hardening. */
+/** The `-c` settings an official fetch adds to fetch.ts's hardening. */
 export const OFFICIAL_GIT: readonly string[] = ["http.followRedirects=false", "credential.helper="];
 
 /** The plain refusals, as the bridge says them; the phone says them in its own words by `error`. */
@@ -152,7 +152,7 @@ export async function candidateHash(candidate: Candidate, dir: string): Promise<
   return hashed.hash;
 }
 
-/** The fetch options of a From Collie fetch: the hardening, {@link OFFICIAL_GIT}, no global config, the deadline. */
+/** The fetch options of an official fetch: the hardening, {@link OFFICIAL_GIT}, no global config, the deadline. */
 export function officialFetchOptions(deps: Pick<OfficialTricksDeps, "env" | "git" | "allowFile" | "now" | "maxBytes">, deadline: number): FetchOptions {
   const opts: FetchOptions = {
     env: deps.env,
@@ -178,7 +178,7 @@ export class OfficialTricks implements OfficialTricksSurface {
     if (this.deps.entries !== undefined) return this.deps.entries();
     const list = shippedOfficialList();
     if (list.ok) return list.entries;
-    if (!this.warned) (this.deps.warn ?? ((line) => console.warn(`[tricks] ${line}`)))(`the From Collie list is refused, so it offers nothing: ${list.reason}`);
+    if (!this.warned) (this.deps.warn ?? ((line) => console.warn(`[tricks] ${line}`)))(`the official list is refused, so it offers nothing: ${list.reason}`);
     this.warned = true;
     return [];
   }
@@ -226,7 +226,7 @@ export class OfficialTricks implements OfficialTricksSurface {
     } catch (err) {
       if (err instanceof Stop) return err.answer;
       const message = err instanceof Error ? err.message : String(err);
-      this.deps.warn?.(`${id}: the From Collie ${mode} failed: ${message}`);
+      this.deps.warn?.(`${id}: the official ${mode} failed: ${message}`);
       return { status: 500, body: { error: "failed", message: `The trick could not be ${mode === "add" ? "added" : "updated"}. Nothing was changed.` } };
     } finally {
       if (fetchDir !== null) await rm(fetchDir, { recursive: true, force: true }).catch(() => {});
@@ -241,7 +241,7 @@ export class OfficialTricks implements OfficialTricksSurface {
       candidate = await fetchOfficial(entry, fetchDir, officialFetchOptions(this.deps, deadline));
     } catch (err) {
       if (!(err instanceof FetchRefused)) throw err;
-      this.deps.warn?.(`${entry.id}: the From Collie fetch was refused (${err.step}): ${err.message}`);
+      this.deps.warn?.(`${entry.id}: the official fetch was refused (${err.step}): ${err.message}`);
       if (err.step === "fetch") throw new Stop(unreachable(mode));
       if (err.step === "local") throw err;
       // More than a listed commit can be: the same answer class as a mismatch, with its own code.
@@ -253,7 +253,7 @@ export class OfficialTricks implements OfficialTricksSurface {
     if (mode === "add") {
       const extras = officialExtrasHash(candidate.files);
       if (!extras.ok || extras.hash !== entry.extras) {
-        this.deps.warn?.(`${entry.id}: the From Collie add was refused: ${extras.ok ? "the extras hash differs from the list's" : `${extras.rel} is neither code, config.toml nor under media/`}`);
+        this.deps.warn?.(`${entry.id}: the official add was refused: ${extras.ok ? "the extras hash differs from the list's" : `${extras.rel} is neither code, config.toml nor under media/`}`);
         throw new Stop(mismatch(mode));
       }
     }
@@ -282,7 +282,7 @@ export class OfficialTricks implements OfficialTricksSurface {
     if (!written.ok && written.code === "exists") return { status: 409, body: { error: "taken", message: OFFICIAL_LINES.taken } };
     if (!written.ok && written.code === "blocked") return { status: 409, body: { error: "blocked", message: OFFICIAL_LINES.blocked } };
     if (!written.ok) {
-      this.deps.warn?.(`${entry.id}: the From Collie ${mode} could not write: ${written.reason}`);
+      this.deps.warn?.(`${entry.id}: the official ${mode} could not write: ${written.reason}`);
       return { status: 500, body: { error: "failed", message: `The trick could not be ${mode === "add" ? "added" : "updated"}. Nothing was changed.` } };
     }
     this.deps.audit?.({ action: `trick.official.${mode}`, detail: { trick: entry.id, commit: entry.commit.slice(0, 12), hash: written.codeHash.slice(0, 16) } });
