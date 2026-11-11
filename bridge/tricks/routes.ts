@@ -1,4 +1,4 @@
-import { asJsonBoolean, asJsonObject } from "../../web/src/lib/json.ts";
+import { asJsonBoolean, asJsonObject, asJsonString } from "../../web/src/lib/json.ts";
 import type { GateLevel } from "../crew/peer-gate.ts";
 import type { JsonValue } from "../json.ts";
 import type { TrickMediaFile } from "./media.ts";
@@ -66,7 +66,7 @@ export async function tricksTapRoute(tricks: TricksSurface, match: RegExpExecArr
   return await tricks.tap(host, id, body);
 }
 
-/** Run a switch whose path matched server.ts's `TRICKS_SWITCH_ROUTE`; the body is `{ "on": boolean }` and nothing else. */
+/** Run a switch whose path matched server.ts's `TRICKS_SWITCH_ROUTE`; the body is `{ "on": boolean }`, with `"hash"` the code read. */
 export async function tricksSwitchRoute(tricks: TricksSurface, match: RegExpExecArray, body: JsonValue | undefined): Promise<SwitchAnswer> {
   const host = segment(match[1] ?? "");
   const id = segment(match[2] ?? "");
@@ -74,8 +74,11 @@ export async function tricksSwitchRoute(tricks: TricksSurface, match: RegExpExec
   if (id === null) return { status: 404, body: { error: "unknown-trick" } };
   const doc = asJsonObject(body);
   const on = asJsonBoolean(doc?.on);
-  if (doc === undefined || on === undefined || Object.keys(doc).length !== 1) return { status: 400, body: { error: "switch-invalid" } };
-  return await tricks.setSwitch(host, id, on);
+  // Review 8 V-N1: `{ on, hash }`, the hash the code the person read (64 hex); `{ on }` names none.
+  const hash = doc?.hash === undefined ? null : asJsonString(doc.hash);
+  const keys = doc === undefined ? [] : Object.keys(doc);
+  if (doc === undefined || on === undefined || hash === undefined || (hash !== null && !/^[0-9a-f]{64}$/u.test(hash)) || keys.length !== (doc.hash === undefined ? 1 : 2)) return { status: 400, body: { error: "switch-invalid" } };
+  return await tricks.setSwitch(host, id, on, hash);
 }
 
 /** `POST /api/tricks/<host>/<id>/auto` with `{ "on": true|false }` and nothing else. */

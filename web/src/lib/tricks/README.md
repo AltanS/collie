@@ -180,6 +180,10 @@ shape changes moves to the next number. `AGENT_VIEW_CONTRACT` in `contract.ts` h
   `has_rules`, "A trick that gives agents instructions cannot be proposed by an agent. Ask your person
   to add it on the machine."
 - The ids `walky-talky`, `hill`, `collie` and `view` are reserved (`RESERVED_TRICK_IDS`).
+- Approve what you read (every trick, not only one with rules): a row carries `approves`, the code hash
+  a switch on takes (the waiting version's, else the folder's). The phone sends it back with the switch,
+  and the bridge refuses another (409 `moved`, `SWITCH_MOVED`) and copies only code that hashes to it.
+  `collie trick on` approves the code it hashed and prints the rules' sha256 and where to read them.
 
 ## Writing a trick in TypeScript
 

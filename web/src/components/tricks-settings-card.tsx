@@ -142,7 +142,7 @@ export interface TricksSettingsCardProps {
   /** The store the list is read from. The app's own by default; a test or the playground passes its own. */
   store?: TricksStore;
   /** The switch call. The real route by default. */
-  onSwitch?: (host: string, id: string, on: boolean) => Promise<WireTrickInfo>;
+  onSwitch?: (host: string, id: string, on: boolean, hash?: string) => Promise<WireTrickInfo>;
   /** The take-changes-without-asking call. The real route by default. */
   onAuto?: (host: string, id: string, on: boolean) => Promise<WireTrickInfo>;
   /** The undo call. The real route by default. */
@@ -549,16 +549,18 @@ function TricksList({
     hold(key, on);
     flying.current.add(key);
     try {
-      const info = await onSwitch(trick.host, trick.id, on);
+      const info = on && trick.approves !== undefined ? await onSwitch(trick.host, trick.id, on, trick.approves) : await onSwitch(trick.host, trick.id, on);
       hold(key, info.on);
       const timer = setTimeout(() => {
         timers.current.delete(timer);
         hold(key, null);
       }, HOLD_MS);
       timers.current.add(timer);
-    } catch {
+    } catch (thrown) {
       hold(key, null);
-      setStatus(t("settings.tricks.switchFailed", { name: trick.name }), "error");
+      // The trick changed after the person read it (review 8 V-N1): read it again, nothing was approved.
+      const moved = apiErrorFields(thrown)?.error === "moved";
+      setStatus(moved ? t("settings.tricks.switchMoved") : t("settings.tricks.switchFailed", { name: trick.name }), "error");
     } finally {
       flying.current.delete(key);
     }

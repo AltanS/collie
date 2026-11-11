@@ -367,6 +367,8 @@ export interface ApproveOptions {
   at: string;
   fs?: TrickFs;
   platform?: NodeJS.Platform;
+  /** The code hash the person read (review 8 V-N1): a copy that hashes otherwise is refused. */
+  expect?: string;
 }
 
 /**
@@ -379,7 +381,9 @@ export async function approveFolder(opts: ApproveOptions): Promise<ApproveResult
   const fs = opts.fs ?? diskTrickFs;
   await migrateSwitches({ stateDir: opts.stateDir, configDir: opts.configDir, fs, platform: opts.platform });
   const src = join(tricksConfigDir(opts.configDir), opts.id);
-  const snap = await snapshotTrick({ src, parent: approvedTrickDir(opts.configDir, opts.id), fs, platform: opts.platform });
+  const snapOpts: SnapshotOptions = { src, parent: approvedTrickDir(opts.configDir, opts.id), fs, platform: opts.platform };
+  if (opts.expect !== undefined) snapOpts.expect = opts.expect;
+  const snap = await snapshotTrick(snapOpts);
   if (!snap.ok) return snap;
   const read = await readManifestFile(fs, snap.dir, opts.id);
   const powers = read.manifest === undefined ? null : powersOf(read.manifest);

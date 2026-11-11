@@ -10,7 +10,7 @@ import { approvedCopyDir, pendingCopyDir, TRICKS_DIR } from "./paths.ts";
 import type { RunOutcome, RunSpec } from "./run.ts";
 import { payloadDigest } from "../worktree-receipts.ts";
 import { memoryTrickReceipts, TrickReceiptStore } from "./receipts.ts";
-import { backoffAfter, BACKOFF_MS, LINK_LINE, NO_PROGRAM_LINE, NOT_APPROVED_LINE, PENDING_LINE, PENDING_SETTLE_MS, RUNS_MAX, TAMPERED_LINE, TAP_LOST_LINE, TricksService, WATCH_WINDOW_MS, type TricksServiceDeps, type TapAnswer } from "./service.ts";
+import { backoffAfter, BACKOFF_MS, LINK_LINE, NO_PROGRAM_LINE, SWITCH_MOVED, NOT_APPROVED_LINE, PENDING_LINE, PENDING_SETTLE_MS, RUNS_MAX, TAMPERED_LINE, TAP_LOST_LINE, TricksService, WATCH_WINDOW_MS, type TricksServiceDeps, type TapAnswer } from "./service.ts";
 import { updateSwitches, withEntry, withSwitch, writeSwitches, type Switches } from "./switches.ts";
 
 const dirs: string[] = [];
@@ -180,7 +180,7 @@ describe("discovery and the switch", () => {
     await tickAt(r, T0);
     const reply = await r.service.reply(undefined);
     expect(reply.tricks).toEqual([
-      { host: HOST, id: "legs", name: "Browser leg", icon: "plug", on: false, state: "off", places: ["belt", "session"], provenance: { via: "folder" } },
+      { host: HOST, id: "legs", name: "Browser leg", icon: "plug", on: false, state: "off", places: ["belt", "session"], provenance: { via: "folder" }, approves: expect.stringMatching(/^[0-9a-f]{64}$/u) },
     ]);
     expect(r.specs).toEqual([]);
   });
@@ -1425,5 +1425,27 @@ describe("review 8 V-N6: approving a trick with rules clears take changes withou
     expect(await r.service.setSwitch(HOST, "morph", true)).toMatchObject({ status: 200 });
     const file = JSON.parse(await readFile(join(r.stateDir, TRICKS_DIR, "switches.json"), "utf8"));
     expect(file.on.morph.auto).toBe(false);
+  });
+});
+
+describe("review 8 V-N1: a switch on approves the code the person read", () => {
+  test("the row names the hash a switch on approves; another hash is refused and nothing is approved", async () => {
+    const r = await rig([exited(belt("x"))]);
+    const dir = await makeTrick(r.configDir, "legs", MANIFEST, { "legs.sh": "#!/bin/sh\n" });
+    await tickAt(r, T0);
+    const read = (await r.service.reply(undefined)).tricks[0];
+    expect(read?.approves).toBe(await codeHashOf(dir));
+    // The folder changes after the person read it: the hash they read no longer names it.
+    await writeFile(join(dir, "legs.sh"), "#!/bin/sh\necho changed\n");
+    await r.service.refresh(true);
+    expect(await r.service.setSwitch(HOST, "legs", true, read?.approves ?? null)).toEqual({ status: 409, body: { error: "moved", message: SWITCH_MOVED } });
+    expect(SWITCH_MOVED).toBe("The trick changed after you read it. Read it again, then switch it on.");
+    expect(await readdir(r.stateDir)).toEqual([]);
+    // A switch on that names no hash is refused the same way while there is code to approve.
+    expect((await r.service.setSwitch(HOST, "legs", true, null)).status).toBe(409);
+    const now = (await r.service.reply(undefined)).tricks[0]?.approves ?? null;
+    expect(await r.service.setSwitch(HOST, "legs", true, now)).toMatchObject({ status: 200, body: { on: true } });
+    const file = JSON.parse(await readFile(join(r.stateDir, TRICKS_DIR, "switches.json"), "utf8"));
+    expect(file.on.legs.hash).toBe(now);
   });
 });

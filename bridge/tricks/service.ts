@@ -27,7 +27,7 @@ import {
   type WireTrickWarning,
 } from "../../web/src/lib/tricks/schema.ts";
 import type { HillTrickTap } from "../hill/service.ts";
-import { approveFolder, copyListing, fileCounts, migrateSwitches, powersOf, promoteCopy, pruneCopies, snapshotTrick, syncConfig, verifyCopy } from "./approved.ts";
+import { approveFolder, copyListing, fileCounts, migrateSwitches, powersOf, promoteCopy, pruneCopies, snapshotTrick, syncConfig, verifyCopy, type ApproveOptions } from "./approved.ts";
 import { diskTrickFs, unsafeText } from "./code-hash.ts";
 import { createTrickScanner, scanTrickDir, SCAN_TIMEOUT_MS, within, type FoundTrick, type TricksScan } from "./discover.ts";
 import { scrubEnv, type ProgramEnv } from "./env.ts";
@@ -176,8 +176,11 @@ export interface TricksSurface {
    * body it always was.
    */
   sessionPanes(): TrickSessionPanes | undefined;
-  /** `POST /api/tricks/<host>/<id>/switch`: write the switch file, as `collie trick on|off` does. */
-  setSwitch(host: string, id: string, on: boolean): Promise<SwitchAnswer>;
+  /**
+   * `POST /api/tricks/<host>/<id>/switch`: write the switch file, as `collie trick on|off` does. `hash`: the
+   * code the person read (the row's `approves`), null when the phone named none; the route always passes it.
+   */
+  setSwitch(host: string, id: string, on: boolean, hash?: string | null): Promise<SwitchAnswer>;
   /** `POST /api/tricks/<host>/<id>/auto`: take changes without asking, as `collie trick auto` does (crew slice 3). */
   autoRoute(host: string, id: string, on: boolean): Promise<VersionRouteAnswer>;
   /** `POST /api/tricks/<host>/<id>/undo`: go back to the version before the last one (crew slice 3). */
@@ -261,6 +264,7 @@ export type ProposalPlaced = { ok: true; codeHash: string } | { ok: false; messa
 export type SwitchAnswer =
   | { status: 200; body: WireTrickInfo }
   | { status: 400; body: { error: "switch-invalid" } }
+  | { status: 409; body: { error: "moved"; message: string } }
   | { status: 404; body: { error: "unknown-host" | "unknown-trick" } };
 
 export interface TricksServiceDeps {
@@ -424,6 +428,14 @@ interface Receipt {
  * Whether a trick gives agents instructions (`rules`, contract 2) in the folder, in the approved copy or in
  * the version waiting: such a trick never takes a change without asking.
  */
+/** The code hash a switch on approves now: the waiting version's, else the folder's (review 8 V-N1). */
+function approvesOf(rt: Pick<TrickRuntime, "found" | "pending">): string | undefined {
+  return rt.pending?.hash ?? rt.found.codeHash;
+}
+
+/** The words of a switch on that names code other than the trick's now. */
+export const SWITCH_MOVED = "The trick changed after you read it. Read it again, then switch it on.";
+
 export function hasRules(rt: Pick<TrickRuntime, "found" | "approved" | "pending">): boolean {
   return rt.found.manifest?.rules !== undefined || rt.approved?.found.manifest?.rules !== undefined || rt.pending?.manifest?.rules !== undefined;
 }
@@ -1144,6 +1156,8 @@ export class TricksService implements TricksSurface {
     if (m?.description !== undefined) info.description = m.description;
     if (m?.about !== undefined) info.about = m.about;
     // Contract 2: an agent view and its rules, whole, for the About sheet; this build draws no view yet.
+    const approves = approvesOf(rt);
+    if (approves !== undefined) info.approves = approves;
     if (m?.agentView === true) info.agentView = true;
     if (m?.rules !== undefined && m.rulesText !== undefined) info.rules = { file: m.rules, text: m.rulesText };
     // A trick with rules never takes a change without asking, whatever an older switch file says.
@@ -1474,9 +1488,9 @@ export class TricksService implements TricksSurface {
    * write, so the list, the runtime and `tricksRev` move before it. Works for a trick whose manifest is
    * refused or that keeps failing: the switch is Collie's, not the trick's (design §7).
    */
-  async setSwitch(host: string, id: string, on: boolean): Promise<SwitchAnswer> {
+  async setSwitch(host: string, id: string, on: boolean, hash?: string | null): Promise<SwitchAnswer> {
     if (!this.isOwn(host)) return { status: 404, body: { error: "unknown-host" } };
-    const turn = this.switching.then(() => this.writeSwitch(id, on));
+    const turn = this.switching.then(() => this.writeSwitch(id, on, hash));
     this.switching = turn.catch(() => {});
     return await turn;
   }
@@ -1591,17 +1605,23 @@ export class TricksService implements TricksSurface {
     return { ok: true, codeHash: snap.hash };
   }
 
-  private async writeSwitch(id: string, on: boolean): Promise<SwitchAnswer> {
+  private async writeSwitch(id: string, on: boolean, hash: string | null | undefined): Promise<SwitchAnswer> {
     await this.refresh(true);
     const rt = this.runtimes.get(id);
     if (rt === undefined) return { status: 404, body: { error: "unknown-trick" } };
+    // Approve what the person read (review 8 V-N1): a switch on from the route names the code the row showed.
+    // Another hash, or none while there is code to approve, is refused, and the copy must hash to it.
+    const expect = approvesOf(rt);
+    if (on && hash !== undefined && expect !== undefined && hash !== expect) return { status: 409, body: { error: "moved", message: SWITCH_MOVED } };
     const at = new Date(this.now()).toISOString();
     if (!on) await updateSwitches(this.deps.stateDir, (switches) => withSwitch(switches, id, false, at));
     // On with a version waiting: that snapshot is what the row showed, so it is what is approved. Else the
     // folder as it is now is copied, and the copy's hash approved.
     const promoted = on && rt.pending !== null ? await this.promote(rt, rt.pending.hash, "phone") : null;
     if (on && promoted?.ok !== true) {
-      const approved = await approveFolder({ stateDir: this.deps.stateDir, configDir: this.deps.configDir, id, by: "phone", at, platform: this.deps.platform });
+      const approve: ApproveOptions = { stateDir: this.deps.stateDir, configDir: this.deps.configDir, id, by: "phone", at, platform: this.deps.platform };
+      if (hash !== undefined && expect !== undefined) approve.expect = expect;
+      const approved = await approveFolder(approve);
       // A folder that cannot be copied is still switched on, with nothing approved: the row says why.
       if (!approved.ok) await updateSwitches(this.deps.stateDir, (switches) => withSwitch(switches, id, true, at, null));
       else this.deps.audit?.({ action: "trick.approve", detail: { trick: id, hash: approved.hash.slice(0, 16), by: "phone" } });

@@ -1376,6 +1376,12 @@ export interface WireTrickInfo {
    */
   rulesUnshown?: true;
   /**
+   * The code hash (64 hex) a switch on approves, as the row and the About sheet show the trick now: the
+   * waiting version's, else the folder's (review 8 V-N1). The switch sends it back, and the bridge refuses
+   * a switch on that names another. Absent: nothing to approve (a folder that does not hash), or an older bridge.
+   */
+  approves?: string;
+  /**
    * What a text search of the code flags (bridge/tricks/scan.ts), one entry per kind, for a trick that is
    * off or changed, so the person sees them before the switch. Absent when there is none, on a trick that
    * is on and unchanged, and from an older bridge. A warning never refuses: the switch stays one tap.

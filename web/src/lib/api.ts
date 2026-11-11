@@ -3092,9 +3092,10 @@ export async function clearHillClosed(): Promise<number> {
  * trick or host that is gone, 403 for a device that may not write) throws with its status; a body of
  * another shape throws too, so the caller reverts rather than showing a switch the bridge did not take.
  */
-export async function switchTrick(host: string, trick: string, on: boolean): Promise<WireTrickInfo> {
+export async function switchTrick(host: string, trick: string, on: boolean, hash?: string): Promise<WireTrickInfo> {
   const path = `/api/tricks/${encodeURIComponent(host)}/${encodeURIComponent(trick)}/switch`;
-  const raw = await req<JsonValue>(path, { method: "POST", body: JSON.stringify({ on }) });
+  // Review 8 V-N1: a switch on names the code the person read (the row's `approves`); the bridge refuses another.
+  const raw = await req<JsonValue>(path, { method: "POST", body: JSON.stringify(on && hash !== undefined ? { on, hash } : { on }) });
   const info = readTrick(raw);
   if (info === undefined) throw new Error(`${path} answered with a body that is not a trick`);
   return info;

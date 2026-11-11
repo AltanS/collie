@@ -757,3 +757,27 @@ describe("review 8 V-N5: rules the phone cannot show", () => {
     expect(within(rowOf("morph-on")).getByRole("switch", { name: "Morph on" })).toBeEnabled();
   });
 });
+
+describe("review 8 V-N1: a switch on names the code the person read", () => {
+  it("sends the hash the row shows, and when the trick changed since, says so and stays off", async () => {
+    const user = userEvent.setup();
+    const hash = "a".repeat(64);
+    const bodies: unknown[] = [];
+    server.use(
+      http.post("/api/tricks/lodge/legs/switch", async ({ request }) => {
+        bodies.push(await request.json());
+        return HttpResponse.json({ error: "moved", message: "The trick changed after you read it. Read it again, then switch it on." }, { status: 409 });
+      }),
+    );
+    renderCard(await storeWith([{ ...LEGS, on: false, state: "off", approves: hash }]));
+    await user.click(await screen.findByRole("switch", { name: "Browser leg" }));
+    await vi.waitFor(() => expect(currentStatus()?.text).toBe("The trick changed after you read it. Read it again, then switch it on."));
+    expect(bodies).toEqual([{ on: true, hash }]);
+    expect(screen.getByRole("switch", { name: "Browser leg" })).not.toBeChecked();
+  });
+
+  it("the wire keeps approves only as 64 hex", () => {
+    expect(readTrick(JSON.parse(JSON.stringify({ ...LEGS, approves: "b".repeat(64) })))?.approves).toBe("b".repeat(64));
+    expect(readTrick(JSON.parse(JSON.stringify({ ...LEGS, approves: "nope" })))?.approves).toBeUndefined();
+  });
+});

@@ -467,7 +467,8 @@ export async function cmdTrickSwitch(deps: TrickDeps, args: readonly string[], o
     return EXIT.OK;
   }
   // The copy is what is approved: its hash, and the warnings of its code, read at the moment of consent.
-  const approved = await approveFolder({ stateDir: deps.ctx.stateDir, configDir: deps.ctx.configDir, id, by: "cli", at: new Date(deps.now()).toISOString() });
+  // The copy must be the code hashed above (review 8 V-N1): a folder that moved in between is refused.
+  const approved = await approveFolder({ stateDir: deps.ctx.stateDir, configDir: deps.ctx.configDir, id, by: "cli", at: new Date(deps.now()).toISOString(), expect: code.hash });
   if (!approved.ok) {
     deps.io.err(`error: ${approved.reason}`);
     deps.io.err(`error: ${id} stays as it was.`);
@@ -480,6 +481,12 @@ export async function cmdTrickSwitch(deps: TrickDeps, args: readonly string[], o
   }
   deps.io.out(`${id} is on. The bridge picks it up within seconds; its timer runs while a phone watches.`);
   deps.io.out(`Approved the code of ${id} as it is now: sha256 ${approved.hash}. The bridge runs this copy; an edit of the folder waits for your yes.`);
+  // Agent instructions are approved with the code: name the bytes, and where to read them.
+  const rules = approved.manifest;
+  if (rules?.rules !== undefined && rules.rulesSha256 !== undefined) {
+    deps.io.out(`It gives your agents instructions: ${rules.rules}, sha256 ${rules.rulesSha256}.`);
+    deps.io.out(`Read them before an agent view uses them: ${join(approved.dir, rules.rules)}`);
+  }
   return EXIT.OK;
 }
 

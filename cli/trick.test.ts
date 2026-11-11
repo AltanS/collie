@@ -1041,3 +1041,18 @@ describe("an agent view (contract 2)", () => {
     expect(await cmdTrickAuto(d, ["morph", "off"])).toBe(EXIT.OK);
   });
 });
+
+describe("review 8 V-N1: collie trick on names the rules it approves", () => {
+  test("prints the rules' sha256 and where to read them, from the copy it approved", async () => {
+    const d = await deps();
+    const dir = join(d.configDir, "tricks", "morph");
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, "trick.toml"), 'id = "morph"\nname = "Morph"\ncontract = 2\nplaces = ["agent-view"]\nrules = "rules.md"\n');
+    await writeFile(join(dir, "rules.md"), "Draw one screen.\n");
+    expect(await cmdTrickSwitch(d, ["morph"], true)).toBe(EXIT.OK);
+    const sha = new Bun.CryptoHasher("sha256").update("Draw one screen.\n").digest("hex");
+    const out = d.out.join("\n");
+    expect(out).toContain(`It gives your agents instructions: rules.md, sha256 ${sha}.`);
+    expect(out).toMatch(/Read them before an agent view uses them: .*\.collie-approved.*rules\.md/u);
+  });
+});
