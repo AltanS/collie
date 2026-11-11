@@ -275,6 +275,9 @@ const SNAPSHOT_KEYS = {
   // Not a crew dimension: the hill's revision (M96), absent until a session posts a decision on this
   // bridge, so a solo body with no decisions carries no such key and no golden byte moved.
   hillRev: true,
+  // Not a crew dimension: Morph's revision, absent until a session's Morph is switched on or a screen
+  // is shown on this bridge, so a solo body that never used Morph carries no such key.
+  trickViewsRev: true,
   // Not a crew dimension: the Hill's switch, present only while it is off, so a solo body that never
   // switched it carries no such key and no golden byte moved.
   hillOff: true,
@@ -520,6 +523,9 @@ describe("solo zero-tax — wire shapes carry no crew dimension", () => {
       "sessions",
       "shellPanes",
       "tabs",
+      // The agent views' revision: present only once a view was used on this bridge, a number and
+      // nothing of the crew; the phone refetches `GET /api/trick-views` when it moves.
+      "trickViewsRev",
       "tricksRev",
       "ts",
       "update",
@@ -836,6 +842,9 @@ describe("solo zero-tax — routes", () => {
       // with the held file's and never made into a path. Lead-local, not forwardable.
       "/^\\/api\\/stt\\/model\\/([^/]+)$/",
       "/^\\/api\\/tab\\/([^/]+)\\/(rename|close)$/",
+      // One picture of an agent view's screen: a read, both ids checked against their patterns before any
+      // path is built, lead-local like the hill's image route. A bridge that never kept a picture answers 404.
+      "/^\\/api\\/trick-views\\/media\\/([^/]+)\\/([^/]+)$/",
       // Collie tricks (M94 slice 01): a tap on a trick's control. A SOLO route that legitimately extends
       // this list, named here rather than exempted: this bridge's own host only (another host is 404
       // until the crew merge), write-gated because it runs the program, and 404 with no runner.
@@ -1017,6 +1026,11 @@ describe("solo zero-tax — routes", () => {
       "/api/themes/registry",
       // Collie tricks (M94 slice 01): the tricks list and the parts changed since a rev. A read, gated like
       // the snapshot, and its body is empty of tricks on an install with no `<configDir>/tricks/`.
+      // Agent views: the screens agents drew per (trick, session) (a read) and the person's per-session
+      // switch (a write that needs a paired device's own token). Two SOLO routes, named here rather than
+      // exempted, lead-local like the hill. A bridge that never used a view answers an empty list.
+      "/api/trick-views",
+      "/api/trick-views/switch",
       "/api/tricks",
       // Official tricks (M94): the list this release carries, each entry's state on this machine. A read, gated
       // like the tricks list; it reads the list from the binary and the tricks folder, and fetches nothing.
@@ -1423,6 +1437,9 @@ const STATE_DIR_ENTRIES = [
   // The community theme registry (M59 spec 06): `<stateDir>/themes/registry.json`, the copy a tap on
   // Refresh in the Theme card fetched. Written by that tap and by nothing else.
   "themes",
+  // Agent views: `<stateDir>/trick-views/views/<key>.json`, one file per (trick, session), and
+  // `media/`. Written by use and by nothing else: absent until the first switch from a phone.
+  "trick-views",
   // Collie tricks (M94, bridge/tricks/paths.ts): `switches.json` and one state folder per trick that ran.
   // Written only by `collie trick on`/`off` and by a trick's run, so an install with no tricks has none.
   "tricks",

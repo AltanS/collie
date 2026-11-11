@@ -72,14 +72,15 @@ describe("collie trick guide", () => {
     expect(text).toContain("7 cards hold the code, about 6 KB each (42 KB in all).");
   });
 
-  test("has a short agent-view section: the keys, the content rule, never auto, no proposal, the later note", () => {
+  test("has a short agent-view section: the keys, the content rule, never auto, no proposal, where the rules are read", () => {
     const text = trickGuide().join("\n");
     expect(text).toContain("AGENT VIEWS\n");
     expect(text).toContain('It needs contract = 2 and rules = "rules.md"');
     expect(text).toContain("no run of more than 2 spaces, no more than 2 blank lines in a row.");
     expect(text).toContain("A trick with rules never takes a new version without asking.");
     expect(text).toContain("An agent cannot propose a trick with an agent view or rules.");
-    expect(text).toContain("Agent views come with a later build of this version.");
+    expect(text).not.toContain("later build");
+    expect(text).toContain("collie trick view <id> help --session <address>");
   });
 
   test("prints the lines, or one JSON object with the lists; needs no bridge", () => {

@@ -2203,6 +2203,30 @@ describe("skill-walky-talky", () => {
   });
 });
 
+// Review 9 R8: the Morph skill an earlier build installed tells agents to obey `[morph ` heads. This build
+// cannot remove it (its skill code no longer knows the skill); doctor names each copy and the steps.
+describe("skill-old-morph", () => {
+  const FILE = join(HOME, ".claude", "skills", "collie-morph", "SKILL.md");
+  const AGENTS = join(HOME, ".config", "opencode", "AGENTS.md");
+  const BLOCK = "<!-- collie:morph v1 begin -->\n# Morph\n<!-- collie:morph v1 end -->\n";
+
+  test("no old copy writes no row: a machine that never had Morph reads as before", async () => {
+    expect((await findings(harness(null))).byCheck.has("skill-old-morph")).toBe(false);
+  });
+
+  test("a stamped file and a block each warn, with the manual steps; a person's own file of that name is not named", async () => {
+    const files = { ...healthyFiles(), [FILE]: "---\nname: collie-morph\n---\n<!-- collie-skill morph v1 collie 1.29.0 -->\n", [AGENTS]: `# mine\n${BLOCK}` };
+    const finding = (await findings(harness(null, [], { files }))).byCheck.get("skill-old-morph")!;
+    expect(finding.status).toBe("warn");
+    expect(finding.detail).toContain("claude, opencode");
+    expect(finding.detail).toContain("[morph");
+    expect(finding.remedy).toContain(`delete the folder ${join(HOME, ".claude", "skills", "collie-morph")}`);
+    expect(finding.remedy).toContain(`in ${AGENTS}, delete the lines from`);
+    const own = (await findings(harness(null, [], { files: { ...healthyFiles(), [FILE]: "# my own morph notes\n" } }))).byCheck;
+    expect(own.has("skill-old-morph")).toBe(false);
+  });
+});
+
 describe("walky-refusals", () => {
   const FILE = `${STATE}/walky/refusals.json`;
 

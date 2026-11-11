@@ -1106,8 +1106,7 @@ export interface TrickManifest {
   /**
    * Contract 2: the manifest lists the place word `agent-view`, a view of a session that the session's own
    * agent draws ({@link AGENT_VIEW_PLACE}). Kept apart from `places`, which are the places a document's
-   * parts draw in. A right: it is in the powers. This build answers it with a `later` note
-   * ({@link AGENT_VIEW_LATER}).
+   * parts draw in. A right: it is in the powers. The bridge draws the view (bridge/agent-view/service.ts).
    */
   agentView?: true;
   /**
@@ -1361,7 +1360,7 @@ export interface WireTrickInfo {
   about?: string;
   /**
    * Contract 2: the manifest lists `agent-view`. The About sheet says the two lines of that right, and the
-   * row carries the one `later` note: this build draws no agent view yet. Absent: none, or an older bridge.
+   * row names the agent view as the trick's place. Absent: none, or an older bridge.
    */
   agentView?: true;
   /**
@@ -3643,9 +3642,6 @@ export const MANIFEST_KEYS = ["id", "name", "run", "every", "watch", "on", "mode
  */
 export const AGENT_VIEW_PLACE = "agent-view";
 
-/** The one `later` note of a trick that lists `agent-view`: this build reads the keys and draws no view yet. */
-export const AGENT_VIEW_LATER = "Agent views come with a later build of this version.";
-
 /**
  * The words a person reads for these rights, the same on the version card, in `collie trick check` and in
  * the About sheet (whose English strings are `settings.tricks.about.agentView*` and `.rules`, held equal by a test).
@@ -3981,8 +3977,7 @@ export function parseManifest(doc: JsonValue | undefined, opts: ParseManifestOpt
   placeList?.forEach((value, i) => {
     const word = asJsonString(value);
     const path = pointer("/places", i);
-    // Contract 2: an agent view. Read and kept as a right, and answered with the one `later` note, since
-    // this build draws no agent view yet.
+    // Contract 2: an agent view. Read and kept as a right; the bridge draws it (bridge/agent-view/).
     if (word === AGENT_VIEW_PLACE) {
       if (agentView) {
         refusals.push({ code: "duplicate", path, reason: `"${word}" is listed twice.` });
@@ -3991,9 +3986,7 @@ export function parseManifest(doc: JsonValue | undefined, opts: ParseManifestOpt
       agentView = true;
       if (contract !== undefined && contract < AGENT_VIEW_CONTRACT) {
         refusals.push({ code: "version", path, reason: AGENT_VIEW_NEEDS_CONTRACT });
-        return;
       }
-      refusals.push({ code: "later", path, reason: AGENT_VIEW_LATER });
       return;
     }
     const later = word === undefined ? undefined : reasonOf(LATER_PLACE_WORDS, word);

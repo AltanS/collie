@@ -1,7 +1,10 @@
-// THE ZOOMED OUTPUT'S GESTURE MATH, pure, so every rule the fingers meet is a table test and not a
-// guess about touch events (components/output-zoom.tsx is the one caller).
+// THE ZOOM GESTURE MATH, pure, so every rule the fingers meet is a table test and not a guess about
+// touch events. Two callers: the zoomed output (components/output-zoom.tsx) and a picture in its
+// sheet (components/ui/zoom-picture.tsx). The picture is the simpler case of the same model: its
+// content is its own box at 1×, so content and viewport are one size (`clampToBox`), and it pans by
+// its own transform (`panMove`) where the output lets the browser's scroller pan.
 //
-// The view is a native scroller over a sized box: the text is laid out ONCE at the phone's width,
+// The output's view is a native scroller over a sized box: the text is laid out ONCE at the phone's width,
 // drawn scaled by a transform, and the box around it is the scaled size, so the browser's own scroll
 // does every one-finger pan, momentum included, and bounds it. Zoom is then two numbers, the scale
 // and the scroll offset, and every gesture below is a function from the old pair to the new one.
@@ -110,6 +113,31 @@ export function pinchMove(start: PinchStart, a: Point, b: Point): ZoomView {
   const scale = clampScale(start.scale * ratio);
   const mid = midpoint(a, b);
   return { scale, scroll: { x: start.anchor.x * scale - mid.x, y: start.anchor.y * scale - mid.y } };
+}
+
+/**
+ * A view whose content fills its own box at 1× (a picture fitted to its frame), its scroll clamped so
+ * the scaled content always covers the box: the edges of the picture are the edges of a pan.
+ */
+export function clampToBox(view: ZoomView, box: Size): ZoomView {
+  return { scale: view.scale, scroll: clampScroll(view.scroll, box, box, view.scale) };
+}
+
+/** What a one-finger pan remembers from the moment it began: the view then and the finger then. */
+export interface PanStart {
+  readonly view: ZoomView;
+  readonly at: Point;
+}
+
+/**
+ * One move of a one-finger pan: the content follows the finger, so the scroll moves against it.
+ * Not clamped; the caller clamps against its box, as after a pinch.
+ */
+export function panMove(start: PanStart, at: Point): ZoomView {
+  return {
+    scale: start.view.scale,
+    scroll: { x: start.view.scroll.x - (at.x - start.at.x), y: start.view.scroll.y - (at.y - start.at.y) },
+  };
 }
 
 /** A tap, as the double-tap test needs it: when and where it landed. */

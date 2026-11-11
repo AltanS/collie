@@ -1,8 +1,9 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { WALKY_TALKY_SKILL_TEMPLATE } from "./docs-embed.ts";
-import type { Environment } from "./context.ts";
+import { collieVersion, type Environment } from "./context.ts";
 import { capture, context, fakeFiles, fakeLinkFs, HOME, ROOT, STATE } from "./fakes.ts";
 import { HILL_RULES, HILL_WRITING, hillHelp, hillPostHelp } from "./hill.ts";
 import { hillWordingWarnings } from "./hill-rules.ts";
@@ -563,5 +564,18 @@ describe("sync", () => {
     const d = deps();
     expect(cmdSkillVerb(d, "sync", ["--json"])).toBe(EXIT.OK);
     expect(JSON.parse(d.io.stdout[0]!)).toMatchObject({ changed: [], refused: [] });
+  });
+});
+
+// ── The golden copy ──────────────────────────────────────────────────────────
+
+describe("the WalkyTalky skill is byte for byte its golden copy", () => {
+  /** The stamp's collie version as a placeholder, so a release bump does not move the comparison. */
+  const norm = (body: string, version: string): string => body.replaceAll(` collie ${version} -->`, " collie {{VERSION}} -->");
+
+  test("the rendered text equals cli/testdata/walky-skill-v2.golden.md", () => {
+    const d = deps();
+    const golden = readFileSync(join(import.meta.dir, "testdata", "walky-skill-v2.golden.md"), "utf8");
+    expect(norm(rendered(d), collieVersion(d.ctx.root))).toBe(golden);
   });
 });

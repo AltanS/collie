@@ -1434,6 +1434,12 @@ export interface SnapshotResponse {
    */
   hillRev?: number;
   /**
+   * The agent views' revision: it moves on every switch and every screen an agent draws, and the phone
+   * reads `GET /api/trick-views` when it does (lib/agent-view/store.ts). Absent on a
+   * bridge without agent views, which reads as none at all.
+   */
+  trickViewsRev?: number;
+  /**
    * The Hill is switched off on this bridge (bridge/hill/switch.ts): then the snapshot carries no
    * `hillRev`, the phone shows no Hill item, and the Hill's route and Settings say it is off. Absent
    * while the Hill is on, so an install that never switched it keeps its bytes.

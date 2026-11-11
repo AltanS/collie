@@ -6,6 +6,7 @@ import { dirname, join } from "node:path";
 import { liveHookTargets } from "../cli/beacon.ts";
 import { classifyInstall, probeInstall } from "../cli/install-kind.ts";
 import { realLinkFs } from "../cli/link.ts";
+import { viewHelpWithRules, viewRulesIdOf } from "../cli/trick-view-help.ts";
 import { packageCommand } from "../cli/package-command.ts";
 import { sendsReportRows } from "../cli/send-findings.ts";
 import { realExec, realFiles } from "../cli/sys.ts";
@@ -342,6 +343,10 @@ import { deniedFoldersSync, HillMediaStore } from "./hill/media.ts";
 import { HillPush } from "./hill/push.ts";
 import { HillReceiptStore } from "./hill/receipts.ts";
 import { HillService } from "./hill/service.ts";
+import { viewPaneMark, viewPaneOf, viewQuestion, viewWorking } from "./agent-view/mark.ts";
+import { listenPersonTurns } from "./agent-view/person-turns.ts";
+import { AgentViewService } from "./agent-view/service.ts";
+import { trickViewsDir, AgentViewStore } from "./agent-view/store.ts";
 import { atTricksCrewFloor, HillCrewLead, HillHeldMedia, HillMemberForward, olderThanTricksCrew } from "./hill/crew.ts";
 import { TrickProposals } from "./tricks/proposals.ts";
 import { ProposeDoor } from "./tricks/propose-door.ts";
@@ -2459,6 +2464,61 @@ const hill = new HillService({
   offline: crew.mode === "lead" ? (address) => hillOffline(address) : undefined,
 });
 hill.pruneMedia();
+// Agent views: the screen an agent draws per (trick, session) (`collie trick view <trick> show`), and the
+// phone's per-session switch. `<stateDir>/trick-views/` is made by the first use, never at boot. The tail
+// names this bridge's own binary; a path no one-line tail can hold leaves the bridge without agent views,
+// with one warning. The gate asks the tricks service, built further down, at every use (SECURITY rule 1):
+// until it exists, every trick reads as not found here.
+const views = ((): AgentViewService | undefined => {
+  try {
+    const viewPane = { place: hillPlace, views: hillViews.read, memberId: walkyMemberId };
+    // `tricks` is declared further down: a timer or a request before that line reads it as absent,
+    // never as a ReferenceError out of a timer.
+    const tricksNow = (): typeof tricks | undefined => {
+      try {
+        return tricks;
+      } catch {
+        return undefined;
+      }
+    };
+    return new AgentViewService({
+      store: new AgentViewStore(trickViewsDir(cfg.stateDir)),
+      // Pictures: a second instance of the hill's media store, rooted at the views' own folder
+      // (`<stateDir>/trick-views/media/`), with the same denied folders. Made by the first picture, never at boot.
+      media: new HillMediaStore(trickViewsDir(cfg.stateDir), deniedFoldersSync(filesPrivateFolders(cfg))),
+      place: hillPlace,
+      sessionsKnown: () => walky.who().length > 0,
+      crewMode: () => crew.mode,
+      binary: collieBinary,
+      gate: {
+        check: (trick) => tricksNow()?.viewGate(trick) ?? { ok: false, code: "no_trick", error: `no trick "${trick}" on this machine` },
+        fresh: async (trick) => (await tricksNow()?.viewGateFresh(trick)) ?? { ok: false, code: "no_trick", error: `no trick "${trick}" on this machine` },
+        settle: async () => await tricksNow()?.refresh(),
+      },
+      // The rules handshake: a `trick view <trick> start --rules <id>` with the trick's current id drops the
+      // request's tail, while the pane runs the harness and conversation it ran then (bridge/agent-view/mark.ts).
+      rulesIdOf: viewRulesIdOf,
+      helpOf: viewHelpWithRules,
+      paneMark: viewPaneMark(viewPane),
+      question: viewQuestion(viewPane),
+      working: viewWorking(viewPane),
+      // Review 9 M1: a view turns on only for a pane whose program has a send profile, the one the
+      // Send Protocol reads before a key; a pane typed blind cannot keep rule 5.
+      readable: async (session) => {
+        const pane = viewPaneOf(viewPane)(session);
+        return pane !== null && (await sendProfile(pane.agent, pane.paneId)) !== null;
+      },
+      audit: (entry) => audit.record({ action: entry.action, device: entry.device, detail: { ...entry.detail, address: entry.session } }),
+    });
+  } catch (err) {
+    console.warn(`[trick-views] off: ${err instanceof Error ? err.message : String(err)}`);
+    return undefined;
+  }
+})();
+views?.pruneMedia();
+// Rule 6 (review 9 R3): a WalkyTalky message from the person (a Hill answer or tell is one) typed into a
+// pane here is a person turn in that session.
+if (views !== undefined) listenPersonTurns({ log: walkyLog, addressOf: (paneId, instance) => walky.addressOf(paneId, instance), note: (session) => views.notePersonTurn(session) });
 versionCards = new VersionCards({
   hill,
   tricks: () => tricks ?? null,
@@ -2502,6 +2562,7 @@ const walkyServer = new WalkyServer({
   service: walky,
   hill,
   propose: proposeDoor,
+  views,
   targets: () => {
     const live = new Set(registry.ordered().map((runtime) => runtime.name));
     return [...edgeTargets].filter(([name]) => live.has(name)).map(([, target]) => target);
@@ -2516,6 +2577,9 @@ const refreshTimer = setInterval(() => {
   hill.sweep(Date.now());
   // A proposal whose card closed (answered elsewhere, dismissed, expired) loses its stored copy.
   void trickProposals?.sweep();
+  // The views' rules proofs end when their pane runs another harness or conversation, or is gone; a
+  // gate, a stale mark or a question that moved moves the view's revision.
+  views?.noteMarks();
 }, SESSION_REFRESH_MS);
 refreshTimer.unref();
 
@@ -3849,6 +3913,7 @@ const server = listenOrExit("front door", cfg.host, cfg.port, () => startServer(
   },
   walky,
   hill,
+  views,
   pins: pinStore,
   cacheWatch,
   folders,

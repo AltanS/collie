@@ -34,13 +34,14 @@ import { SendOfferStrip } from "@/components/send-offer-strip";
 import { HeldCard, type HeldAction } from "@/components/composer-held";
 import { offerMode, type SendNote } from "@/lib/send-protocol";
 import { modeFor, sendText } from "@/lib/reply-action";
+import { viewRefusalKey, type ViewRequestNote } from "@/lib/agent-view/reader";
 import { fieldLocked, sendSlot, unreachable } from "@/lib/send-slot";
 import { wayOut } from "@/lib/way-out";
 import type { Surface } from "@/lib/surface/surface";
 import { parseAnsi } from "@/lib/ansi";
 import { splitLines } from "@/lib/blocks";
 import { detectNoEchoPrompt } from "@/lib/no-echo";
-import type { HeldRow, SendMode, SendOffer, SendWhen } from "@/lib/surface/send";
+import type { HeldRow, SendMode, SendOffer, SendRequestBody, SendWhen } from "@/lib/surface/send";
 import type { IntentId } from "@/lib/durable-control";
 import { Notice, NOTICE_ACTION } from "@/components/ui/notice";
 import { ActionRow } from "@/components/action-sheet-rows";
@@ -144,6 +145,33 @@ export interface ComposerHandle {
    * until the person turns it off or the message leaves.
    */
   startMessage: (aim: WalkyAim) => void;
+  /**
+   * Send a tap in the agent view on screen through this composer's own send path (`send`): the same Send
+   * Protocol request with its request id and the same refusal notice at the thumb. The request carries
+   * the view's key, the screen's rev and the control and no text: the bridge builds the line from its own
+   * stored screen (agent views SECURITY rule 2). Answers how it ended (components/agent-view-screen.tsx).
+   */
+  sendViewTap: (tap: ViewTap) => Promise<ViewSendResult>;
+}
+
+/** A tap in an agent view: the screen's rev and the control path the bridge reads, and the words it names (display only). */
+export interface ViewTap {
+  readonly rev: number;
+  readonly control: string;
+  /** What the tap names on the screen the phone holds (`tapped "<label>"`), for the view's receipt while it is in flight. Never sent. */
+  readonly words: string;
+  /** What the tap answered on that screen (`tapAbout`: the question or the title), for the receipt. Never sent. */
+  readonly about: string | null;
+}
+
+/** How a send from an agent view ended. */
+export interface ViewSendResult {
+  /** The bridge took it. */
+  readonly sent: boolean;
+  /** The exact text the bridge typed (its answer's `view.line`), or null. */
+  readonly line: string | null;
+  /** The bridge's refusal code before the Send Protocol (`stale_view`, `busy`...), or null. */
+  readonly code: string | null;
 }
 
 interface ComposerProps {
@@ -374,6 +402,18 @@ interface ComposerProps {
     /** Show in Chat. False when the block is not loaded. */
     onShow: (pin: PinRow) => boolean;
   };
+  /**
+   * The agent view on screen, `{ trick, session }` (hooks/use-agent-view-pane.ts). While it is set, every
+   * text this composer sends goes as typed with a `view` field: the bridge puts the head and the tail on
+   * it (a head typed by any other door is refused `bad_head`). The phone adds nothing. Absent (no view, or
+   * a question waits in the session, so the text answers it): sending is exactly as before.
+   */
+  agentView?: { readonly trick: string; readonly session: string } | undefined;
+  /**
+   * Told when a send from the view starts, and how it ended: the text as typed (or the words a tap names),
+   * the phase, the refusal's own words for a send that failed, and the exact line the bridge typed.
+   */
+  onViewRequest?: ((note: ViewRequestNote) => void) | undefined;
 }
 
 // The composer cluster at the bottom of the pane view — everything a phone keyboard can't do on its
@@ -524,7 +564,7 @@ function moveCaret(from: HTMLTextAreaElement | null, to: HTMLTextAreaElement | n
 }
 
 export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
-  { paneId, instance, surface, starting = false, unreachableNote, scope, stopOffered = false, agent, canSteer, returnedDraft = false, isShell, cwd, gone, readOnly, composing, onAnswerDialog, dialogCard = false, text, terminalDraft, rawTerminalDraft, prefs, display, onSent, onOpenMessages, held: heldRows, chatEntries, pullHandle, draftNoticeSlot, expandArea, changesPill, zoomPill, stale, hand = "right", layout = "field", aboveBelt, beltMarks, floatingHint, screen, todos, subagents, jobs, pins },
+  { paneId, instance, surface, starting = false, unreachableNote, scope, stopOffered = false, agent, canSteer, returnedDraft = false, isShell, cwd, gone, readOnly, composing, onAnswerDialog, dialogCard = false, text, terminalDraft, rawTerminalDraft, prefs, display, onSent, onOpenMessages, held: heldRows, chatEntries, pullHandle, draftNoticeSlot, expandArea, changesPill, zoomPill, stale, hand = "right", layout = "field", aboveBelt, beltMarks, floatingHint, screen, todos, subagents, jobs, pins, agentView, onViewRequest },
   ref,
 ) {
   const revalidator = useRevalidator();
@@ -846,6 +886,10 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // (field case 2026-10-15, M56 spec 07): a refusal, a text left in the box, a send that ended unknown,
   // no answer, a link that is down, a dialog that owns the keys.
   const [sendRefusal, setSendRefusalState] = useState<SendRefusal | null>(null);
+  // The sentence of the notice just raised, for the agent view's "Not sent" line to mirror (`onViewRequest`).
+  const refusalWordsRef = useRef<string | null>(null);
+  // What the bridge said of the last send from an agent view: the line it typed, or its refusal code.
+  const viewAnswerRef = useRef<{ line: string | null; code: string | null }>({ line: null, code: null });
   // Which notice that is (send-notice.tsx `refusalKey`: the screen it is about and its words), and
   // the one the person hid with its ✕ or the offers' ✕. A hidden notice stays hidden until a refusal
   // reads another Surface (its hash or its revision) or says other words, or a tap meets the same
@@ -858,6 +902,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
    * the notice is the tap's only visible answer (review of 2026-10-16). With offers, the strip answers.
    */
   function setSendRefusal(next: SendRefusal | null, on: Surface | null = shownSurface, offers = false) {
+    refusalWordsRef.current = next?.sentence ?? null;
     setSendRefusalState(next);
     const key = next === null ? null : refusalKey(next, on);
     setShownRefusalKey(key);
@@ -1232,6 +1277,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const effectiveRaw = suppressEcho(rawTerminalDraft);
 
   const startMessage = walky.startMessage;
+  // The latest `send`, for the handle's `sendViewTap`: the handle is made once per `startMessage`, and a
+  // send must read this render's gates (sending, locked, the Surface), never the first render's.
+  const sendViewTapRef = useRef<(tap: ViewTap) => Promise<ViewSendResult>>(() => Promise.resolve({ sent: false, line: null, code: null }));
   useImperativeHandle(
     ref,
     () => ({
@@ -1240,6 +1288,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         startMessage(aim);
         focusInputImmediately();
       },
+      sendViewTap: (tap) => sendViewTapRef.current(tap),
     }),
     [startMessage],
   );
@@ -1667,26 +1716,52 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // no key of its own: no pre-flight, no type-then-verify, no sweep of a stranded draft (a draft in
   // the box is refused `draft_present` and offered Add, Replace or Cancel). A text that starts with a
   // reserved lead (`/`, `!`, `@`) goes as a `command`, whose popup under the box is expected.
-  async function send(value: string, isDraft: boolean, when?: SendWhen): Promise<boolean> {
+  async function send(value: string, isDraft: boolean, when?: SendWhen, tap?: ViewTap): Promise<boolean> {
     // A shell line keeps its leading space or tab, which keeps it out of Sent (M61): the bridge checks
     // the raw text. An agent pane's text is trimmed at both ends, as it always was. The emptiness
     // check and the mode read the fully trimmed text on both, so neither sees a difference.
     const trimmed = value.trim();
     const t = isShell ? value.trimEnd() : trimmed;
     if (!trimmed || starting || locked || sending) return false;
+    // AN AGENT VIEW ON SCREEN: the text goes as typed with the view's key, and a tap goes with the
+    // screen's rev and its control and no text at all. The bridge builds the line, head and tail included,
+    // from its own stored screen (agent views SECURITY rule 2); the phone adds nothing. A send from the view
+    // is a request to it: the view is told the words now, and how it ended, with the line the bridge typed.
+    const view = agentView === undefined ? undefined : tap === undefined ? { trick: agentView.trick, session: agentView.session } : { trick: agentView.trick, session: agentView.session, rev: tap.rev, control: tap.control };
+    if (tap !== undefined && view === undefined) return false;
+    viewAnswerRef.current = { line: null, code: null };
+    const tell = (phase: ViewRequestNote["phase"], reason: string | null = null): void => {
+      if (view !== undefined) onViewRequest?.({ text: t, phase, reason, line: phase === "sent" ? viewAnswerRef.current.line : null, about: tap?.about ?? null });
+    };
     if (offlineRef.current) {
-      setSendRefusal(phoneRefusal(translate("composer.send.reconnect")));
+      const refusal = phoneRefusal(translate("composer.send.reconnect"));
+      setSendRefusal(refusal);
+      tell("failed", refusal.sentence);
       return false;
     }
     // A modal ask is a parsed fact: its own buttons answer it, and its word stands in the Send slot.
     // A typed text would be refused by the bridge anyway; the phone does not ask (spec 10). A send that
     // comes from elsewhere (a quick reply, a harness command) is told so at the Send slot.
     if (slot === "answer") {
-      setSendRefusal(phoneRefusal(translate("composer.status.dialogWaiting"), true));
+      const refusal = phoneRefusal(translate("composer.status.dialogWaiting"), true);
+      setSendRefusal(refusal);
+      tell("failed", refusal.sentence);
       return false;
     }
-    return sendThroughProtocol(t, isDraft, modeFor(trimmed), null, false, undefined, when);
+    tell("sending");
+    try {
+      const sent = await sendThroughProtocol(tap === undefined ? t : "", isDraft, tap === undefined ? modeFor(trimmed) : "send", null, false, undefined, view === undefined ? when : undefined, view, t);
+      tell(sent ? "sent" : "failed", sent ? null : refusalWordsRef.current);
+      return sent;
+    } catch (thrown) {
+      tell("failed", thrown instanceof Error ? thrown.message : String(thrown));
+      throw thrown;
+    }
   }
+  sendViewTapRef.current = async (tap) => {
+    const sent = await send(tap.words, false, undefined, tap);
+    return { sent, ...viewAnswerRef.current };
+  };
 
   // One Send Protocol request (lib/reply-action.ts). The id is kept for a retry of the same intent
   // (mode, rows hash, text) until an answer arrives, so a lost answer never sends twice; an answer
@@ -1694,7 +1769,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // `sent`, `effective` or a `discarded` the bridge took.
   // `resend` is a resend of an ended held row: the request carries the old id and an empty text, the
   // bridge takes the row's own text, and `shown` (the row's text, maybe masked) is only for the preview.
-  async function sendThroughProtocol(t: string, isDraft: boolean, mode: SendMode, rowsHash: string | null, capAck = false, resend?: { oldId: string; shown: string }, when?: SendWhen): Promise<boolean> {
+  // `shown` is the text the person sees as sent when it is not `t`: a tap's words, whose request carries no text.
+  async function sendThroughProtocol(t: string, isDraft: boolean, mode: SendMode, rowsHash: string | null, capAck = false, resend?: { oldId: string; shown: string }, when?: SendWhen, view?: SendRequestBody["view"], shown?: string): Promise<boolean> {
     if (starting) return false;
     setSending(true);
     setSendRefusal(null);
@@ -1711,7 +1787,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     // The operator has just acted on this pane, so the poller should watch it land, from the tap on.
     stampSend(paneId);
     try {
-      const res = await sendText({ paneId, text: t, scope, mode, rowsHash, capAck, resendOf: resend?.oldId, when, held: protocolIntent.current });
+      const base: Parameters<typeof sendText>[0] = { paneId, text: t, scope, mode, rowsHash, capAck, resendOf: resend?.oldId, when, held: protocolIntent.current };
+      const res = await sendText(view === undefined ? base : { ...base, view });
       if (res.status === "noAnswer") {
         // No answer: the id stays, so the next tap on the same text asks for the same request.
         protocolIntent.current = res.intent;
@@ -1720,10 +1797,27 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       }
       protocolIntent.current = null;
       if (res.status === "refused") {
+        if (res.reason === "view") {
+          // A refusal of a send from a view, before the protocol: Collie's words for its code, never the code.
+          viewAnswerRef.current = { line: null, code: res.code };
+          setSendRefusal(phoneRefusal(translate(viewRefusalKey(res.code))));
+          return false;
+        }
         setSendRefusal(phoneRefusal(res.error));
         return false;
       }
       const { reply, reading } = res;
+      if (view !== undefined) viewAnswerRef.current = { line: reply.viewLine ?? null, code: null };
+      // A send from a view the protocol refused (over the person's draft, at a question, a pane with no
+      // profile, a turn, a screen that moved): one quiet line in Collie's words and no offer. The draft in
+      // the session's box and the text in this box stay as they are; nothing retries.
+      if (view !== undefined && reply.outcome === "refused") {
+        viewAnswerRef.current = { line: null, code: reply.reason };
+        setProtocolOffer(null);
+        const words = phoneRefusal(translate(viewRefusalKey(reply.reason, reply.detail)));
+        setSendRefusal(reply.reason === "draft_present" ? { ...words, tone: "neutral" } : words, reply.surface ?? shownSurface, false);
+        return false;
+      }
       // Report a problem (ADR 0123): the answer joins this pane's streak. Plain rules over the outcome and
       // reason (lib/report/trouble.ts); nothing is sent and nothing is retried. This machine's panes only.
       if (reportOn && reply.outcome !== null) {
@@ -1732,7 +1826,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       }
       if (reading.clear) {
         setProtocolOffer(null);
-        afterVerifiedSend(resend?.shown ?? t, isDraft, verifiedNote(reading.note, when));
+        afterVerifiedSend(resend?.shown ?? shown ?? t, isDraft, verifiedNote(reading.note, when));
         return true;
       }
       // A resend makes no offer: an offer would carry the row's text, which may be masked.

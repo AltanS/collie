@@ -71,6 +71,12 @@ export const SEND_REASONS = [
   // refused (M69): a steer from a caller that is not a person's send from the phone (walky talky, a
   // hook, the CLI): an agent's text never steers a turn
   "steer_not_allowed",
+  // refused (agent views): a text whose line starts with an agent view's head, `[view:<id> <address>]
+  // from operator:` or the old `[morph `, on any door but the view's own send (one head, one door)
+  "bad_head",
+  // refused (agent views): a send from a view whose screen, switch or trick moved before the first key,
+  // read under the pane lock; nothing was typed, and nothing retries it
+  "stale_view",
 ] as const;
 export type SendReason = (typeof SEND_REASONS)[number];
 
@@ -116,6 +122,12 @@ export interface SendRequestBody {
   readonly id: string;
   readonly pane: string;
   readonly text: string;
+  /**
+   * A send from an agent view (lib/agent-view/wire.ts `ViewSendField`): `{ trick, session }` with typed
+   * text, `{ trick, session, rev, control }` for a tap. The bridge builds the line itself; a tap's `text`
+   * is never read. Only `POST /api/send` on the lead takes it.
+   */
+  readonly view?: { readonly trick: string; readonly session: string; readonly rev?: number; readonly control?: string } | undefined;
   readonly mode?: SendMode;
   /** The hash of the rows the person saw, from a `prepare` or an `unconfirmed` answer. */
   readonly rowsHash?: string | undefined;

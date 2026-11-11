@@ -135,6 +135,7 @@ import {
   type WalkyDeps,
 } from "./walky.ts";
 import { cmdHill, cmdHillClear, cmdHillList, cmdHillPost, cmdHillState, cmdHillStatus, cmdHillSwitch, cmdHillWithdraw, HILL_SUBCOMMANDS, hillPostHelp, type HillDeps } from "./hill.ts";
+import { cmdTrickView, viewTopLines, type ViewDeps } from "./trick-view.ts";
 import { cmdUpdateCheck, updateCheckDeps, wantsCheck } from "./update-check.ts";
 import { cmdTheme, cmdThemeCheck, realThemeFiles, THEME_SUBCOMMANDS } from "./theme-check.ts";
 import { cmdThemeSkill } from "./theme-skill.ts";
@@ -364,6 +365,11 @@ const HILL_TREE: readonly Subcommand[] = [
     run: (args, s) => cmdHillSwitch(hillDeps(s.io), "off", args),
   },
 ];
+
+/** `trick view`: walky's own deps, since an agent view speaks over the walky socket. */
+function viewDeps(io: Io): ViewDeps {
+  return walkyDeps(io);
+}
 
 /** The sub-verbs of `walky`. */
 const WALKY_TREE: readonly Subcommand[] = [
@@ -1086,6 +1092,12 @@ export const COMMANDS: readonly Command[] = [
         name: "propose",
         summary: "hand a trick folder to your person: a card on the lead's Hill, nothing runs before their yes: <folder> (--json)",
         run: async (args, s) => await cmdTrickPropose(walkyDeps(s.io), args),
+      },
+      {
+        name: "view",
+        summary: "an agent view, from the agent's pane: `trick view <trick> <start|show|set|pending|remove|choice|keep|clear|status|help> ...`",
+        usage: () => viewTopLines(),
+        run: async (args, s) => await cmdTrickView(viewDeps(s.io), args),
       },
     ],
     run: (args, s) => cmdTrick({ io: s.io }, args),

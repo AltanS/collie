@@ -4,7 +4,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
-  AGENT_VIEW_LATER,
   AGENT_VIEW_NEEDS_CONTRACT,
   AGENT_VIEW_NEEDS_RULES,
   parseManifest,
@@ -23,8 +22,8 @@ import { diskTrickFs, trickCodeHash, unsafeText } from "./code-hash.ts";
 import { readManifestFile, readRulesFile } from "./discover.ts";
 import { RULES_DIFF_CELLS_MAX, rulesChange, rulesDiffRows } from "./rules-diff.ts";
 
-// THE AGENT VIEW CONTRACT (contract 2, task 3a): the keys are read and hashed, the rights are words, and the
-// view itself answers "later". The machine that draws the view comes in a later build.
+// THE AGENT VIEW CONTRACT (contract 2, task 3a): the keys are read and hashed and the rights are words. The
+// view itself is drawn by bridge/agent-view/, so a manifest that lists it carries no `later` note.
 
 const dirs: string[] = [];
 async function tempDir(): Promise<string> {
@@ -62,11 +61,10 @@ describe("the contract number", () => {
 });
 
 describe("the place word agent-view", () => {
-  test("reads, is kept apart from the drawing places, and carries the one later note", () => {
+  test("reads, is kept apart from the drawing places, and carries no later note: this build draws the view", () => {
     const read = parseManifest(VIEW);
     expect(read.manifest).toEqual({ id: "morph", name: "Morph", mode: "once", contract: 2, icon: "plug", places: [], agentView: true, rules: "rules.md" });
-    expect(read.refusals).toEqual([{ code: "later", path: "/places/0", reason: AGENT_VIEW_LATER }]);
-    expect(AGENT_VIEW_LATER).toBe("Agent views come with a later build of this version.");
+    expect(read.refusals).toEqual([]);
   });
 
   test("beside drawing places, they stay, and so does the program", () => {
@@ -79,16 +77,14 @@ describe("the place word agent-view", () => {
   test("is refused without rules", () => {
     const { rules: _, ...bare } = VIEW;
     expect(codes(bare)).toEqual([
-      ["later", "/places/0"],
       ["missing", "/places"],
     ]);
-    expect(parseManifest(bare).refusals[1]?.reason).toBe(AGENT_VIEW_NEEDS_RULES);
+    expect(parseManifest(bare).refusals[0]?.reason).toBe(AGENT_VIEW_NEEDS_RULES);
     expect(parseManifest(bare).manifest).toBeUndefined();
   });
 
   test("is refused when listed twice", () => {
     expect(codes({ ...VIEW, run: "./p.sh", places: ["agent-view", "agent-view"] })).toEqual([
-      ["later", "/places/0"],
       ["duplicate", "/places/1"],
     ]);
   });
@@ -108,7 +104,6 @@ describe("the key rules", () => {
       expect(codes({ ...VIEW, rules: bad }).map(([code]) => code), bad).toContain(bad.length > 64 ? "text" : "target");
     }
     expect(codes({ ...VIEW, rules: 3 })).toEqual([
-      ["later", "/places/0"],
       ["type", "/rules"],
     ]);
   });
@@ -203,7 +198,7 @@ describe("reading the folder", () => {
     expect(Buffer.from(read.manifest?.rulesText ?? "", "latin1").equals(bytes)).toBe(true);
     expect(read.manifest?.rulesSha256).toBe(new Bun.CryptoHasher("sha256").update(bytes).digest("hex"));
     expect(read.manifest?.run).toBeUndefined();
-    expect(read.refusals).toEqual([{ code: "later", path: "/places/0", reason: AGENT_VIEW_LATER }]);
+    expect(read.refusals).toEqual([]);
   });
 
   test("a missing, linked or broken rules file refuses the manifest, each break its own refusal", async () => {

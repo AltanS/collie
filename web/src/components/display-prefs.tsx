@@ -65,6 +65,13 @@ export interface PaneViewControl {
   /** The stream's own text size in px, and its stepper. Its own number, never the mirror's. */
   chatFontSize: number;
   stepChatFontSize: (delta: number) => void;
+  /**
+   * An agent view of the session is on (components/agent-view-screen.tsx): the View row offers it as a
+   * third choice, named by its trick's `name` (cut for the row, `label`). `selected` while the view shows;
+   * picking Terminal or Chat then calls `onChange` and the view stays on, picking the view calls `onPick`.
+   * Absent: the row is the two-way it always was.
+   */
+  agentView?: { label: string; selected: boolean; onPick: () => void };
 }
 
 interface DisplayPrefsContentProps {
@@ -168,16 +175,25 @@ function TextSizeRow({
  * app is broken.
  */
 function ViewRow({ view }: { view: PaneViewControl }) {
-  const options: { value: PaneView; label: string }[] = [
+  const options: { value: PaneView | "agent-view"; label: string }[] = [
     { value: "terminal", label: t("chat.mode.option.terminal") },
     { value: "chat", label: t("chat.mode.option.chat") },
+    ...(view.agentView === undefined ? [] : [{ value: "agent-view" as const, label: view.agentView.label }]),
   ];
+  const picked = view.agentView?.selected === true ? "agent-view" : view.chosen;
+  const pick = (value: PaneView | "agent-view") => {
+    if (value === "agent-view") {
+      view.agentView?.onPick();
+      return;
+    }
+    view.onChange(value);
+  };
   return (
     <div className="py-1.5">
       <div className="mb-1.5 text-sm font-medium">{t("chat.mode.view.label")}</div>
       <div role="radiogroup" aria-label={t("chat.mode.view.label")} className="flex gap-1">
         {options.map((option) => {
-          const selected = option.value === view.chosen;
+          const selected = option.value === picked;
           const blocked = option.value === "chat" && view.note !== undefined;
           return (
             <button
@@ -186,7 +202,7 @@ function ViewRow({ view }: { view: PaneViewControl }) {
               role="radio"
               aria-checked={selected}
               disabled={blocked}
-              onClick={() => view.onChange(option.value)}
+              onClick={() => pick(option.value)}
               className={cn(
                 "flex min-h-11 flex-1 items-center justify-center rounded-md px-3 py-2 text-sm font-medium transition-colors",
                 "disabled:opacity-50",

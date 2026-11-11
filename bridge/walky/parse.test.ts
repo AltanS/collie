@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
-import type { JsonValue } from "../json.ts";
-import { parsePhoneSend, parseWalkyRequest, readMessage, readCrewDelivery, readOutcomesPush, readReceipt, readWhoAnswer, readWalkyCursor, SENDER_CERT_MAX, SIGNATURE_MAX } from "./parse.ts";
+import type { JsonObject, JsonValue } from "../json.ts";
+import { parsePhoneSend, parseWalkyRequest, readWalkyRequest, readMessage, readCrewDelivery, readOutcomesPush, readReceipt, readWhoAnswer, readWalkyCursor, SENDER_CERT_MAX, SIGNATURE_MAX } from "./parse.ts";
 import type { WalkyMessage, WalkyReceipt } from "./types.ts";
 
 // The crew readers added on 2026-10-18 (CREW_PROTOCOL §21): the report's ack cursor, the delivery's
@@ -197,5 +197,39 @@ describe("the space and the outside flag on the wire (M98 spec 02)", () => {
     const spaced = withSpace({ key: "api", named: true, label: "api", colour: "red" });
     const read = readMessage({ ...spaced, from: { ...spaced.from, extra: 1 } });
     expect(read?.from).toEqual({ memberId: "desk", address: "desk/w1:p1", harness: "agent-x", label: "repo#a", space: { key: "api", named: true, label: "api" } });
+  });
+});
+
+describe("the agent view requests on the socket", () => {
+  const line = (row: JsonObject): string => JSON.stringify({ v: 1, markers: [], ...row });
+
+  test("start, show and the plain ops carry the trick and the session they name, or null", () => {
+    expect(readWalkyRequest(line({ op: "trick.view.start", trick: "morph", note: "Drawing", session: "local/%1#aaaa" }))).toMatchObject({ ok: true, request: { op: "trick.view.start", trick: "morph", session: "local/%1#aaaa" } });
+    expect(readWalkyRequest(line({ op: "trick.view.start", trick: "morph" }))).toMatchObject({ ok: true, request: { op: "trick.view.start", session: null } });
+    expect(readWalkyRequest(line({ op: "trick.view.show", trick: "morph", view: [], session: null }))).toMatchObject({ ok: true, request: { op: "trick.view.show", session: null } });
+    expect(readWalkyRequest(line({ op: "trick.view.clear", trick: "morph", session: "local/%1" }))).toMatchObject({ ok: true, request: { op: "trick.view.clear", session: "local/%1" } });
+    expect(readWalkyRequest(line({ op: "trick.view.status", trick: "morph" }))).toMatchObject({ ok: true, request: { op: "trick.view.status", session: null } });
+    expect(readWalkyRequest(line({ op: "trick.view.help", trick: "morph" }))).toMatchObject({ ok: true, request: { op: "trick.view.help", trick: "morph" } });
+    // The block verbs carry their row as fields, for the view service's own readers.
+    for (const op of ["trick.view.set", "trick.view.pending", "trick.view.remove", "trick.view.keep", "trick.view.choice"]) {
+      expect(readWalkyRequest(line({ op, trick: "morph", id: "b1", session: "local/%1" }))).toMatchObject({ ok: true, request: { op, session: "local/%1", fields: { id: "b1" } } });
+    }
+  });
+
+  test("rule 9 addition: no op turns a view on or off, and the old morph ops are unknown", () => {
+    for (const op of ["trick.view.on", "trick.view.off", "morph.on", "morph.off", "morph.show"]) {
+      expect(readWalkyRequest(line({ op, trick: "morph" }))).toMatchObject({ ok: false });
+    }
+  });
+
+  test("a view op names its trick: no trick, or one that is not a trick id, is not read", () => {
+    expect(readWalkyRequest(line({ op: "trick.view.show", view: [] }))).toMatchObject({ ok: false });
+    expect(readWalkyRequest(line({ op: "trick.view.show", trick: "../etc", view: [] }))).toMatchObject({ ok: false });
+    expect(readWalkyRequest(line({ op: "trick.view.show", trick: 7, view: [] }))).toMatchObject({ ok: false });
+  });
+
+  test("a session that is not text is a request this bridge cannot read", () => {
+    expect(readWalkyRequest(line({ op: "trick.view.start", trick: "morph", session: 7 }))).toMatchObject({ ok: false });
+    expect(readWalkyRequest(line({ op: "trick.view.clear", trick: "morph", session: ["x"] }))).toMatchObject({ ok: false });
   });
 });

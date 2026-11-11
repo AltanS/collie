@@ -156,9 +156,7 @@ shape changes moves to the next number. `AGENT_VIEW_CONTRACT` in `contract.ts` h
 
 - `agent-view` in `places` says the trick adds a view of a session that the session's own agent draws.
   It is kept apart from the drawing places (`manifest.agentView`, never in `places`), at most once, and
-  it needs `rules`. This build reads it and answers with one `later` note,
-  `AGENT_VIEW_LATER`: "Agent views come with a later build of this version." No session UI, no socket
-  op and no route draws it yet.
+  it needs `rules`. The view itself is drawn by `bridge/agent-view/`: see "Agent views" below.
 - `rules = "rules.md"` names the instructions the agent reads: one step, `*.md`, no leading dot, a
   regular file (never a link), at most 8 KiB. Its content rule, `rulesTextProblems`, takes bytes 0x20 to
   0x7E and `\n` only, no tab, no line over 160 characters, no space at a line's end, no run of more than
@@ -991,10 +989,133 @@ regular file of at most 2 MB, opened without following a link, and PNG, JPEG or 
 bytes, never its name. Every miss is the same 404, and the answer carries `no-store` and a sandboxed
 CSP. Until the bytes arrive, and when they fail, the box keeps its size and says its `alt`.
 
+## Agent views
+
+A trick that lists `agent-view` lets the agent of one session draw one screen on the phone, in the trick
+node kinds, in place of Chat or the terminal. The machine is `bridge/agent-view/` (service, store, media,
+mark), the agent's verbs are `collie trick view <trick> <verb>` (`cli/trick-view.ts`), and the wire is
+`web/src/lib/agent-view/wire.ts`. A view is keyed by (trick, session); the session is the walky address.
+
+**The gate, at every use.** Every agent write and every send from a view asks the tricks service
+(`viewGate`, `viewGateFresh`): the trick is known, switched on, approved at its current hash, has no
+version waiting, and its approved manifest lists `agent-view`. Then the person's switch for that
+(trick, session) must be on. Else the answer is refused with a typed code (`no_trick`, `trick_off`,
+`not_a_view`, `view_off`) and nothing is stored or typed. A view whose trick is shut reads off on the
+phone (`off: "trick_off"`), with no screen and no head. The gate is asked again under the pane lock,
+right before the first key of a send.
+
+**Only the person switches a view.** `POST /api/trick-views/switch { trick, session, on }`. There is no
+socket op for on or off. Turning one trick's view on turns every other trick's view of that session off.
+
+**The socket ops** (one JSON line on the walky socket, each with `trick` and `session`):
+`trick.view.start { note?, rules? }`, `trick.view.show { view, title?, images?, choice? }`,
+`trick.view.set { id, node, place, images? }`, `trick.view.pending { id, label, place }`,
+`trick.view.remove { id }`, `trick.view.keep { ids | all }`, `trick.view.choice { choice | null }`,
+`trick.view.clear`, `trick.view.status`, `trick.view.help`. A success answers `{ ok: true, trickView }`;
+a refusal answers `{ ok: false, error, code, trickView: true }`.
+
+**The routes.** `GET /api/trick-views?since=<rev>` answers `{ rev, views: [...] }`; with `since` equal to
+the rev, `{ rev, unchanged: true, views: [] }`; with an older one, the views that moved and `keys`, the
+(trick, session) of every view held. `&session=<address>`, once per session and at most 16, narrows the
+answer and its keys to those sessions (the phone asks only for the sessions it shows); none is every
+session. The snapshot carries `trickViewsRev`. `GET /api/trick-views/media/
+<set>/<id>` serves a picture of a view that is on, passes the gate and is not stale, behind the read gate;
+every miss is the same 404. Set ids and picture ids are minted at random by the bridge.
+
+**A send from a view.** `POST /api/send` with `view: { trick, session, rev, control }` for a tap, or
+`text` and `view: { trick, session }` for typed text. Only a paired device's own token may send it; the
+host's local credential, a device known by its header alone, a crew route and a read-only device get 403.
+The bridge builds the line from its own stored screen, under the pane lock:
+`[view:<trick> <address>] from operator: tapped "<label>"`, then ` in "<group>"` when the button sits in a
+labelled group, then ` [rules: ...]` while the session does not hold the rules. Labels have `"` and `\`
+escaped. A button carries no `value` and no `does`, so every word a tap sends is on the screen. The rev
+must equal the stored one, and the screen must not be stale (`stale_view`). Once a tap's send went,
+that screen takes no second tap (`stale_view`, "answered already"), also after a restart. A tap is refused at a
+question, a dialog or an answer box (`question`, `not_free`), over the person's draft in the box
+(`draft_present`, before any key touches it), on a pane whose program has no profile (`not_free`), and
+any view send while a turn runs
+(`busy`): nothing queues, nothing steers. Typed text gets the head only while the session is free; with a
+question open, a turn running or a command, it goes plain, as the person's own send. A refusal before
+the protocol is HTTP 409 `{ error, code, view: true }`; a send that reached it answers its receipt and
+`view: { line }`, the exact text typed, which the view also keeps in `sent`. When the keys landed but
+the send ended `typed_not_submitted` or `unknown`, both carry `outcome` with that word, and a tap's
+screen takes no second tap.
+
+**Stale screens.** A screen is bound to the pane mark at its write: the harness and the conversation the
+harness reported. Another mark makes it stale. A harness that reports no conversation cannot show a
+`/clear`, so its screen goes stale at the first person turn that did not come from the view: a phone
+send, an ask answer, a WalkyTalky message from the person (a Hill answer or tell is one), typed text
+sent plain, or a turn the bridge sees start that no view send started (the view's own send excuses one
+turn start for 30 seconds). A `/clear` typed at the desk starts no turn, so on such a harness the old
+screen stays until the next turn starts.
+
+**One head, one door.** Only the view's own send may type a line that starts with a view head or the old
+`[morph` head. The Send Protocol refuses it `bad_head` for every other request (the composer, a steer, a
+held send, a crew-forwarded send, the bridge's own callers), the reply route refuses it in the raw text
+it types with `submit: false`, the view refuses it on any line of the person's typed text (`bad_head`),
+the program driver refuses it, WalkyTalky refuses it in a message and in a crew hop, and a Hill receipt
+or tell turns its bracket into a parenthesis. One function decides, for
+every door (`isViewHeadLine` in `web/src/lib/agent-view/wire.ts`): each line, after any kind of line
+break, is read as the typing path would leave it (every hidden character and control byte removed, read
+once more with control sequences removed), then folded with NFKC, lower case, no combining marks and a
+small map of look-alike letters, brackets and colons. It is a head when, after a lead-in of blanks, quote
+or list marks, emphasis or a list number, it starts `[view:` or `[morph`, or when a `[` in its first 80
+characters is followed later on the line by `] from operator:`.
+
+**The rules.** `collie trick view <trick> help --session <address>` asks the bridge, which answers only
+to a session whose view is on: Collie's core view rules, then the trick's APPROVED `rules.md` between two
+frame lines of Collie's that start with three U+2501 characters. A rules file is printable ASCII, so no
+author line can hold the frame. A line before the frame gives the rules' length in lines, and a sentence
+after it says they apply only to a message whose first line starts with that session's head. The rules id
+is the first 8 hex characters of the SHA-256 of the core help and the rules bytes; `start --rules <id>`
+with the current id drops the `[rules: ...]` tail until the pane's mark changes.
+
+**Caps and record.** One send in flight per session and 20 a minute; 120 agent writes a minute per
+(trick, session). Each switch, send and refusal writes one audit line (`trick.view.switch`,
+`trick.view.send`, `trick.view.refused`) with the device, trick, session and reason.
+
+**Collie marks the pick (review 10).** An agent cannot set a button's `pressed` or a choice's
+`picked`: the write refuses both ("Collie marks the pick"). When the keys of a tap or a pick landed,
+the bridge writes `picks` on the screen it went from, `{ block, path }`: the block id and the button's
+steps under it, or `choice` and the option's index. A redraw keeps a mark while a block of the same id
+holds a button at the same steps, and the decision block's while it asks the same question with the same
+options; a removed block, a new block id or a new decision shows none. A settled choice takes no pick.
+
+**Collie's own words (review 10).** No text an agent draws may say one of `VIEW_COLLIE_PHRASES`
+(`web/src/lib/agent-view/wire.ts`): "From Collie", the band's words, "Sent to this session", the band's
+lines for a held button, "Tap again to send", "Earlier screen". `collieWordsIn` folds both sides as the
+head rule does, turns every run of other characters into one blank and matches whole words. Collie's
+bare name is not on the list: "Restart Collie" passes. It reads a node's text and every attribute's words (not `href`, `src`, `ref`,
+`intent`), the choice, the title, a pending label and a start note.
+
+**Links (review 10).** A link, a row or a run goes to a web address only; a session `href` is refused.
+Whether a link's words read as an address is decided on the folded text, in any script. The phone shows
+the host after every link, linked run and bare address, whole, as the URL reads it (punycode for a host
+in another script, the real host after a user part).
+
+**The phone (review 10).** A button's label and an armed button's words wrap whole; the armed words say
+what the second tap sends, label and group, and are announced. A control is inert until the screen has
+stood still for 500 ms (a new rev, the request block, its sent line, the agent's notes, a text answer).
+A button is named by the words its tap sends; its hint describes it. The receipt of a tap names what it
+answered when it went (`about` on the sent line), never the screen shown now.
+
+**The lead only.** Views exist on the lead (or a solo Collie). A crew member answers every op, the
+switch and every send `not_on_lead`, and a deputy carries no views: its state folder holds no
+`trick-views/`, and a promoted deputy starts with every view off.
+
 ## Known limits (security)
 
 These gaps are known and still open. The next security review starts from this list. Each one is
 written as what a trick, or a person who controls one, can do today.
+
+- **Agent views, accepted in review 10.** The picture sheet covers Collie's band while it is open;
+  nothing in it sends. A screen the phone holds stays on screen after a 401 or 403 until the next read.
+  `?session=` on the views route narrows the answer; it is no boundary. The view switch row cuts a
+  trick's name to 12 characters. A pick reaches the agent as `picked "<label>"` with no question; the
+  agent knows which question it drew. Collie's own words are matched in English, as whole words after
+  the fold: the same words in another language, or spelled with blanks between the letters, pass. The
+  settle window reads what places a control from the screen's facts, not from the layout: a picture
+  that loads late and grows its box is not counted.
 
 - **A relative import can reach outside the approved copy.** The approved copy holds only code a
   person saw, but a program in it can still import `../../somewhere/else.ts`. That file is not in the
@@ -1087,6 +1208,32 @@ written as what a trick, or a person who controls one, can do today.
   compromised CA) can stream data until the byte cap or the two-minute cap ends the fetch, using memory,
   disk under `<stateDir>/tricks/` and one git process group meanwhile. What it sends is refused unless the
   commit, the code hash and the extras hash are the list's; nothing of it is written into the tricks folder.
+
+- **An agent view shows what an agent drew, not what is true.** The agent can be wrong, or steered by a
+  page or a file it read. Collie draws the buttons and checks every line a tap sends, but not that the
+  screen's words are true.
+- **A tap speaks for the person.** It sends a message in their name to that agent. The view keeps the
+  exact line the bridge typed; it is the person's to read, as any message they send.
+- **A trick's rules are its author's words to your agents.** Collie shows every word before the switch
+  and asks again when the words change. It cannot tell whether the words are honest.
+- **An agent keeps the rules it read.** After `help`, the agent holds a trick's rules until its
+  conversation ends, also after the view is switched off. A new conversation forgets them.
+- **A picture is any file the user can read.** An agent can show any picture the user account reads,
+  except Collie's own files and `.git` folders, and every paired device with read access can see it.
+- **A link opens on the phone's network.** A link in a view shows its host, and a link text that reads as
+  an address must be that address; the person still looks before tapping.
+- **Any program of the user can draw.** The walky socket takes a view write from any process that runs as
+  the user on that machine, in any session's view that is on. The rest of Collie has the same limit.
+- **Any program of the user can speak as a session.** The socket knows a session by the pane markers
+  the caller sends, and any process of the same user can send another live pane's markers. It can then
+  read that session's view (`status`, with the lines the person typed from it), read its `help`, and
+  spend that session's write cap, so the agent's own writes are refused `rate` for a minute.
+- **The key mask does not cover a view.** `redact` masks the pane mirror; it does not mask a screen's
+  words or the lines kept in `sent`, as it does not mask the Hill.
+- **The gate under the lock reads the cached scan.** Right before the first key the bridge asks again
+  whether the trick is approved and on, from the scan it holds; a trick folder changed on disk since that
+  scan counts from the next scan.
+- **The lead only.** Agent views work only for sessions on the lead machine in this version.
 
 ## Places in the app
 

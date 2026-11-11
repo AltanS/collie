@@ -38,6 +38,7 @@ import { paneGridOf, settleSessionCapabilities } from "@/lib/mux-capability";
 import { ambientSpaces, findPane } from "@/lib/hosts";
 import { noteSessionCards } from "@/lib/session-cards";
 import { syncHill } from "@/lib/hill/store";
+import { syncAgentViews } from "@/lib/agent-view/store";
 import {
   loadLastPaneText,
   loadLastSnapshot,
@@ -527,6 +528,8 @@ export async function rootLoader({ request }: { request?: Request } = {}): Promi
     // The hill reads its list when the snapshot's number moved (lib/hill/store.ts). Live snapshots
     // only: a saved copy's number is as old as the copy, and the store keeps what it last read.
     syncHill(snap.hillRev);
+    // The agent views are read the same way, on their own number (lib/agent-view/store.ts).
+    syncAgentViews(snap.trickViewsRev);
     lastSnapshot.set(snapshotKey(scope, viewAll), snap);
     lastSnapshotAt.set(snapshotKey(scope, viewAll), Date.now());
     // Write-through: the same body, dated, in a store that outlives this page (lib/last-seen.ts).

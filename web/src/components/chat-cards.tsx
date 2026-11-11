@@ -58,6 +58,7 @@ import { findFilePaths } from "@/lib/file-paths";
 import type { PendingState } from "@/lib/durable-pending";
 import { clockTimeOf } from "@/lib/format";
 import { t, tn, type PluralKey } from "@/lib/i18n";
+import { useViewTurnText } from "@/lib/agent-view/store";
 import { useScope } from "@/lib/session";
 import {
   directionOf,
@@ -427,7 +428,9 @@ export const ItemView = memo(function ItemView({ item }: { item: ChatItem }) {
     case "user":
       // A turn that opens with an envelope header is a CLAIM to be a message; only the pane's own log
       // can make it one. The other user turns never subscribe to the log, so a poll redraws none of them.
-      return item.walky === undefined ? <UserTurn text={item.text} ts={item.ts} /> : <EnvelopeTurn text={item.text} ts={item.ts} header={item.walky} />;
+      // A turn the bridge typed for an agent view carries Collie's head and tail around the person's words:
+      // drawn without them, and only on a turn the bridge marks as sent through the view (display only).
+      return item.walky === undefined ? <ViewUserTurn text={item.text} ts={item.ts} /> : <EnvelopeTurn text={item.text} ts={item.ts} header={item.walky} />;
     case "reply":
       // Agent prose: MarkdownText wears `font-content`, never the app face (DESIGN.md §5).
       return <Growing partial={item.partial === true}><MarkdownText text={item.text} stretches /></Growing>;
@@ -541,6 +544,16 @@ function Compacted({ item }: { item: Extract<ChatItem, { kind: "compacted" }> })
 }
 
 /**
+ * A person's turn in the stream that may be a line the bridge typed for an agent view: the head and the
+ * tail come off for display only, and only when the line is one the bridge lists as sent through a view
+ * (lib/agent-view/store.ts `useViewTurnText`). Any other turn draws as it was typed.
+ */
+function ViewUserTurn({ text, ts }: { text: string; ts?: string }) {
+  const shown = useViewTurnText(text);
+  return ts === undefined ? <UserTurn text={shown} /> : <UserTurn text={shown} ts={ts} />;
+}
+
+/**
  * The reader's own turn, as collie's transcript draws one (transcript-view.tsx): a bordered well
  * with a "You" caption. The caption is chrome; the words are content (`font-content`, §5).
  *
@@ -554,11 +567,11 @@ function Compacted({ item }: { item: Extract<ChatItem, { kind: "compacted" }> })
  * on a ground of its own hue and had only its edge left to separate it. Two colours, two jobs: the
  * blue is "this is literal", the orange is "this is yours".
  */
-function UserTurn({ text, ts, pending, notInLog = false }: { text: string; ts?: string; pending?: PendingState; notInLog?: boolean }) {
+export function UserTurn({ text, ts, pending, notInLog = false, clamp = false }: { text: string; ts?: string; pending?: PendingState; notInLog?: boolean; clamp?: boolean }) {
   const look = useChatLook().userTurn;
   const time = ts && pending === undefined ? clockTimeOf(ts) : "";
   if (look === "time-end" || look === "hug") {
-    return <BareUserTurn text={text} time={time} pending={pending} notInLog={notInLog} hug={look === "hug"} />;
+    return <BareUserTurn text={text} time={time} pending={pending} notInLog={notInLog} hug={look === "hug"} clamp={clamp} />;
   }
   // Chat look B3 (lib/chat-look.ts): the well on the neutral ground, the orange left on the icon alone.
   const neutral = look === "neutral";
@@ -602,7 +615,7 @@ function UserTurn({ text, ts, pending, notInLog = false }: { text: string; ts?: 
           </span>
         )}
       </div>
-      <p className="font-content whitespace-pre-wrap break-words text-sm">{text}</p>
+      <p className={cn("font-content whitespace-pre-wrap break-words text-sm", clamp && "line-clamp-4")}>{text}</p>
     </div>
   );
 }
@@ -648,12 +661,15 @@ function BareUserTurn({
   pending,
   notInLog,
   hug,
+  clamp,
 }: {
   text: string;
   time: string;
   pending?: PendingState;
   notInLog: boolean;
   hug: boolean;
+  /** At most four lines, the agent view's request block's (components/agent-view-screen.tsx). */
+  clamp: boolean;
 }) {
   const meta = time !== "" || notInLog || pending !== undefined;
   return (
@@ -668,7 +684,7 @@ function BareUserTurn({
     >
       {/* The caption row is gone, so the speaker is named for the screen reader alone. */}
       <span className="sr-only">{t("transcript.youLabel")}</span>
-      <p className={USER_WELL_TEXT}>
+      <p className={cn(USER_WELL_TEXT, clamp && "line-clamp-4")}>
         {text}
         {meta && (
           <span className={USER_WELL_META}>

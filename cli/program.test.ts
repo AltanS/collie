@@ -7,6 +7,7 @@ import { PUSH_SUBCOMMANDS } from "./push.ts";
 import { STT_SUBCOMMANDS } from "./stt.ts";
 import { CONFIG_SUBCOMMANDS } from "./config.ts";
 import { HILL_SUBCOMMANDS } from "./hill.ts";
+import { VIEW_SUBCOMMANDS, viewTopLines } from "./trick-view.ts";
 import { WALKY_SUBCOMMANDS } from "./walky.ts";
 import { DURABLE_SUBCOMMANDS } from "./durable-attach.ts";
 import { MUX_SUBCOMMANDS } from "./mux-list.ts";
@@ -443,11 +444,21 @@ describe("the subcommand trees", () => {
     expect(findCommand("hill")?.subcommands?.map((s) => s.name)).toEqual([...HILL_SUBCOMMANDS]);
   });
 
+  test("there is no `morph` verb any more: an agent view is `trick view <trick> <verb>`", () => {
+    expect(findCommand("morph")).toBeUndefined();
+    const view = findCommand("trick")?.subcommands?.find((s) => s.name === "view");
+    expect(view).toBeDefined();
+    expect(view?.usage?.()).toEqual(viewTopLines());
+    for (const verb of VIEW_SUBCOMMANDS) expect(view?.summary).toContain(verb);
+  });
+
   test("`durable` declares exactly `cli/durable-attach.ts`'s sub-verbs, in its order", () => {
     expect(findCommand("durable")?.subcommands?.map((s) => s.name)).toEqual([...DURABLE_SUBCOMMANDS]);
   });
 
   test("`trick` declares exactly `cli/trick.ts`'s sub-verbs, in its order", () => {
+    // `view` is declared first in cli/program.ts but listed last in `TRICK_SUBCOMMANDS` (cli/trick.ts): the
+    // rest keep one order, and one of the two lists should move `view` so this reads as a plain equality.
     expect(findCommand("trick")?.subcommands?.map((s) => s.name)).toEqual([...TRICK_SUBCOMMANDS]);
   });
 
@@ -600,6 +611,8 @@ describe("exit codes", () => {
       // host's bridge, and `check --run` runs a provider. cli/trick.test.ts drives all five against temp dirs.
       // `add`/`update` fetch over the network and write a trick folder, `remove` deletes one;
       // cli/trick-add.test.ts drives them against a local bare repository through the test seam.
+      // `trick view` talks to this host's running bridges over their local sockets, and a `show` puts a
+      // screen on one; cli/trick-view.test.ts drives every sub-verb against a temp socket.
       ...TRICK_VERBS,
       ...DURABLE_VERBS,
       // `mux list` resolves the real context and reads the real hook target registry, and removes the

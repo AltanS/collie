@@ -27,6 +27,7 @@ import {
   type WireTrickWarning,
 } from "../../web/src/lib/tricks/schema.ts";
 import type { HillTrickTap } from "../hill/service.ts";
+import type { ViewGate } from "../agent-view/service.ts";
 import { approveFolder, copyListing, fileCounts, migrateSwitches, powersOf, promoteCopy, pruneCopies, snapshotTrick, syncConfig, verifyCopy, type ApproveOptions } from "./approved.ts";
 import { diskTrickFs, unsafeText } from "./code-hash.ts";
 import { createTrickScanner, scanTrickDir, SCAN_TIMEOUT_MS, within, type FoundTrick, type TricksScan } from "./discover.ts";
@@ -615,6 +616,34 @@ export class TricksService implements TricksSurface {
       dirOf: (id) => this.runtimes.get(id)?.found.dir,
       now: this.now(),
     });
+  }
+
+  /**
+   * The agent view gate of one trick, as the bridge knows it now (agent views SECURITY rule 1): the trick
+   * is on, approved at the hash its switch names, its approved copy is whole, no new version of its folder
+   * waits for a yes, and the approved copy's manifest lists `agent-view` with a rules text. Anything else
+   * is a refusal: `no_trick` for a trick not found here, `trick_off` for one off, not approved, broken or
+   * waiting, `not_a_view` for one whose approved manifest lists no agent view. A read: it never scans.
+   */
+  viewGate(id: string): ViewGate {
+    const rt = this.runtimes.get(id);
+    if (rt === undefined) return { ok: false, code: "no_trick", error: `no trick "${id}" on this machine` };
+    const entry = rt.entry;
+    if (!rt.on || entry === undefined) return { ok: false, code: "trick_off", error: `the trick "${id}" is off; only the person turns it on, on the phone` };
+    const approved = rt.approved;
+    if (approved === null || rt.copyProblem !== null || approved.hash !== entry.hash) return { ok: false, code: "trick_off", error: `the trick "${id}" is not approved as it is now; the person approves it on the phone` };
+    const hash = rt.found.codeHash;
+    const waiting = rt.found.manifest !== undefined && hash !== undefined && hash !== entry.hash && hash !== entry.declined;
+    if (waiting || rt.pending !== null) return { ok: false, code: "trick_off", error: `a new version of the trick "${id}" waits for the person's yes; its view is off until then` };
+    const manifest = approved.found.manifest;
+    if (manifest?.agentView !== true || manifest.rulesText === undefined) return { ok: false, code: "not_a_view", error: `the trick "${id}" adds no agent view` };
+    return { ok: true, name: manifest.name, rules: manifest.rulesText };
+  }
+
+  /** The agent view gate after a scan inside the usual cadence: for an agent's write and a person's send. */
+  async viewGateFresh(id: string): Promise<ViewGate> {
+    await this.refresh();
+    return this.viewGate(id);
   }
 
   /**

@@ -12,6 +12,8 @@ const badgeVariants = cva(
         secondary: "border-transparent bg-secondary text-secondary-foreground",
         destructive: "border-transparent bg-destructive text-white",
         outline: "text-foreground",
+        // Settled: the done token, on a ground of itself. An agent view's "Answered".
+        ok: "border-transparent bg-status-done/15 text-status-done",
       },
     },
     defaultVariants: { variant: "default" },

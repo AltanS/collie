@@ -615,6 +615,8 @@ export const en = {
   "composer.protocol.unknown": "Collie cannot tell if this was sent. Read the screen, then send again if it did not go. Your draft is kept.",
   "composer.protocol.busy": "Another send on this pane is still running. Wait, then try again.",
   "composer.protocol.notFree": "The input box is not free. Nothing was typed.",
+  // A line of the text reads like a view head (`bad_head`): only Collie writes one, from the view itself.
+  "composer.protocol.badHead": "A line of this message reads like a message head that only Collie writes. Change that line.",
   "composer.protocol.agentBusy": "The agent is working. Send again when it is done.",
   "composer.protocol.bound": "The screen did not hold still long enough to read. Nothing was typed. Try again.",
   "composer.protocol.probeFailed": "Typing did not land in the input box, so nothing was typed. Check the pane.",
@@ -819,6 +821,55 @@ export const en = {
   // `{reason}` is a whole sentence of its own and leading with a clause would read as one sentence
   // interrupted by another.
   "chat.mode.noChat": "{reason} The terminal stays here.",
+  // Agent views (a trick's view of a session that the session's own agent draws): English only until the
+  // translation pass, listed in PENDING_TRANSLATION below. `{name}` is the trick's own name, never translated.
+  "view.back": "{name} view",
+  "view.switch.hint": "Drawn by this session's agent. A tap sends a message in your name.",
+  "view.switch.failed": "Not changed: {error}",
+  "view.empty": "Ask for something. The agent draws the answer here.",
+  // Collie's band over every drawn screen: its first line beside the trick's name, then the one line under it
+  // that says why the buttons wait (agent views SECURITY rule 8).
+  "view.band.by": "Drawn by this session's agent",
+  "view.band.question": "A question waits in this session. Your typing answers the question, not this screen.",
+  "view.band.old": "Drawn in an earlier conversation",
+  "view.band.changed": "The screen changed. Look at it, then tap again.",
+  "view.band.working": "The agent is working. The buttons wait until it is done.",
+  // Over the exact line the bridge typed for a tap or a typed request (rule 4).
+  "view.sent.label": "Sent to this session",
+  // An armed `confirm` option: Collie's words with the label the second tap sends. A button in the screen
+  // is a third of the width, so it takes the short words; its label is the one the person just tapped.
+  "view.armed": "Tap again to send \"{label}\"",
+  "view.armed.in": "Tap again to send \"{label}\" in \"{group}\"",
+  "view.tap.name": "{label}, in {group}",
+  // Why the bridge refused a send from a view, or a switch, in Collie's words: one per refusal code, so no
+  // code reaches the screen (lib/agent-view/reader.ts `viewRefusalKey`). Nothing was typed in any of them.
+  "view.refused.noProfile": "Collie cannot read this session's program, so a view cannot send to it.",
+  "view.refused.draft": "Your draft is in this session's box. Send it or clear it, then try again.",
+  "view.refused.question": "A question waits in this session. Answer it first.",
+  "view.refused.busy": "The agent is working. Try again when it is done.",
+  "view.refused.changed": "This screen changed or was answered already. Look at it again.",
+  "view.refused.off": "This view is off. Nothing was sent.",
+  "view.refused.rate": "Too many sends from this view. Wait a minute, then try again.",
+  "view.refused.badControl": "That button is not on the screen any more. Nothing was sent.",
+  "view.refused.notOnLead": "Agent views work only for sessions on the lead machine.",
+  "view.refused.wrongSession": "This view cannot send to this session.",
+  "view.refused.other": "The view could not send this. Nothing was typed.",
+  "view.textAnswer": "The agent answered in text",
+  // The status line under the operator's own request in an agent view. Exactly one shows at a time.
+  "view.request.sending": "Sending…",
+  "view.request.notSent": "Not sent",
+  "view.request.notSentWhy": "Not sent: {reason}",
+  "view.request.sent": "Sent",
+  "view.request.working": "The agent is working",
+  "view.request.drawing": "Drawing…",
+  "view.request.answered": "Answered",
+  "view.request.answeredAt": "Answered · {time}",
+  // The blocks the agent drew for an earlier request, folded under one row; the row, then the label inside.
+  "view.earlier.row": "Earlier screen",
+  "view.earlier.label": "Earlier",
+  // A pick or a tap the operator sent, settled: the badge, and what a screen reader hears for a settled choice.
+  "view.receipt.answered": "Answered",
+  "view.receipt.pickedLabel": "Picked: {label}",
 
   // --- chat.stream (the chat body itself) ---
   "chat.stream.empty": "Send a message to start.",
@@ -3373,10 +3424,9 @@ export const en = {
   "settings.tricks.about.auto.label": "Take changes without asking",
   "settings.tricks.about.auto.hint": "A change that asks for new rights, or does something new such as reaching the network, still asks.",
   // An agent view and its rules (contract 2): English only until the translation pass, listed in
-  // PENDING_TRANSLATION below. The rights lines and the later note are schema.ts's own words
-  // (AGENT_VIEW_WORDS, AGENT_VIEW_TAP_WORDS, RULES_WORDS, AGENT_VIEW_LATER), held there by a test.
+  // PENDING_TRANSLATION below. The rights lines are schema.ts's own words
+  // (AGENT_VIEW_WORDS, AGENT_VIEW_TAP_WORDS, RULES_WORDS), held there by a test.
   "settings.tricks.place.agentView": "agent view",
-  "settings.tricks.agentView.later": "Agent views come with a later build of this version.",
   "settings.tricks.about.agentView": "Adds a view of a session that the session's own agent draws. You switch it on per session.",
   "settings.tricks.about.agentViewTap": "A tap in that view sends a message in your name to that session only.",
   "settings.tricks.about.rules": "Gives your agents instructions written by its author.",
@@ -3500,6 +3550,18 @@ export const en = {
   "settings.hill.label": "The Hill",
   "settings.hill.hint": "Agents and tricks ask you here. Off: they cannot post, and the Hill leaves the bar.",
   "settings.hill.switchFailed": "Could not switch the Hill. Try again.",
+  // The Hill as a built-in entry on the Tricks card, its About sheet and the armed second tap on its switch:
+  // English only until the translation pass, listed in PENDING_TRANSLATION below.
+  "settings.tricks.hill.name": "Hill",
+  "settings.tricks.hill.description": "Questions from your agents and tricks that wait for your tap.",
+  "settings.tricks.hill.badge": "Built in",
+  "settings.tricks.hill.about.what": "The Hill is where Collie keeps the questions that wait for your tap.",
+  "settings.tricks.hill.about.post": "Agents and tricks post a question there, with options and a recommendation.",
+  "settings.tricks.hill.about.nothing": "Nothing is chosen for you, and your tap goes back to the one that asked.",
+  "settings.tricks.hill.about.collie": "Collie itself asks there before a trick's code changes or a proposed trick is switched on.",
+  "settings.tricks.hill.builtIn": "Built in. It comes with Collie and cannot be removed.",
+  "settings.tricks.hill.waits.one": "{count} question waits on the Hill. You cannot answer it while it is off.",
+  "settings.tricks.hill.waits.other": "{count} questions wait on the Hill. You cannot answer them while it is off.",
   "hill.state.answered": "Answered",
   "hill.state.dismissed": "Dismissed",
   "hill.state.expired": "Expired",
@@ -3722,6 +3784,45 @@ export const PENDING_TRANSLATION = [
   // The Hill's push switch (M96, 2026-11-10).
   "settings.notify.decisions.label",
   "settings.notify.decisions.hint",
+  // Agent views.
+  "view.back",
+  "view.switch.hint",
+  "view.switch.failed",
+  "view.empty",
+  "view.band.by",
+  "view.band.question",
+  "view.band.old",
+  "view.band.changed",
+  "view.band.working",
+  "view.sent.label",
+  "view.armed",
+  "view.armed.in",
+  "view.tap.name",
+  "view.refused.noProfile",
+  "view.refused.draft",
+  "view.refused.question",
+  "view.refused.busy",
+  "view.refused.changed",
+  "view.refused.off",
+  "view.refused.rate",
+  "view.refused.badControl",
+  "view.refused.notOnLead",
+  "view.refused.wrongSession",
+  "view.refused.other",
+  "composer.protocol.badHead",
+  "view.textAnswer",
+  "view.request.sending",
+  "view.request.notSent",
+  "view.request.notSentWhy",
+  "view.request.sent",
+  "view.request.working",
+  "view.request.drawing",
+  "view.request.answered",
+  "view.request.answeredAt",
+  "view.earlier.row",
+  "view.earlier.label",
+  "view.receipt.answered",
+  "view.receipt.pickedLabel",
   // A trick's warnings at the switch (M94 review 15).
   "settings.tricks.warn.label",
   "settings.tricks.warn.spawn",
@@ -3734,6 +3835,16 @@ export const PENDING_TRANSLATION = [
   "settings.hill.label",
   "settings.hill.hint",
   "settings.hill.switchFailed",
+  "settings.tricks.hill.name",
+  "settings.tricks.hill.description",
+  "settings.tricks.hill.badge",
+  "settings.tricks.hill.about.what",
+  "settings.tricks.hill.about.post",
+  "settings.tricks.hill.about.nothing",
+  "settings.tricks.hill.about.collie",
+  "settings.tricks.hill.builtIn",
+  "settings.tricks.hill.waits.one",
+  "settings.tricks.hill.waits.other",
   "settings.tricks.hillOff",
   "hill.off.line",
   "hill.off.title",
@@ -3791,7 +3902,6 @@ export const PENDING_TRANSLATION = [
   "settings.tricks.about.auto.hint",
   // An agent view and its rules (contract 2).
   "settings.tricks.place.agentView",
-  "settings.tricks.agentView.later",
   "settings.tricks.about.agentView",
   "settings.tricks.about.agentViewTap",
   "settings.tricks.about.rules",
