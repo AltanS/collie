@@ -171,10 +171,10 @@ runs the client in your browser against mock data without requiring installation
 
 | | |
 | --- | --- |
-| [**Tricks**](./docs/tricks.md) | What a trick is, where it draws, adding one with `collie trick add`, switching it on, off or removing it, what it may and may not do, the About sheet, tricks in a crew, and troubleshooting |
-| [**Writing a trick**](./docs/tricks-authoring.md) | The folder, every key of `trick.toml`, what a program receives and prints, every node kind, posting a Decision, inputs, `collie trick dev` and `check`, a worked example, and the limits |
+| [**Tricks**](./docs/tricks.md) | How tricks work: where a trick can show, the two kinds, the parts, three examples, where the thinking comes from, who is trusted with what, adding and switching a trick, tricks in a crew, and troubleshooting |
+| [**Write a trick**](./docs/tricks-authoring.md) | A short tutorial: the folder, one program trick, one agent view with its rules file, proposing a trick to the person, and several tricks in one repository |
 | [**Tricks reference**](./docs/tricks-reference.md) | Every place, part, manifest key, limit and command of a trick, complete and generated from the code |
-| [**The Hill**](./docs/hill.md) | Where agents and tricks ask you a question: what a Decision is, `collie hill post` and its flags, how you answer, receipts, Clear, pictures, and the rules agents get |
+| [**The Hill**](./docs/hill.md) | Where agents and tricks ask you a question: what a Decision is, how an agent posts, how you answer, receipts, Clear, Here, Quiet and Away, a trick an agent proposes, and the Hill switch |
 
 ### Reference
 

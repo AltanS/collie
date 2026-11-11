@@ -1,6 +1,6 @@
 # The Hill
 
-The Hill is the place on your phone where an agent or a trick asks you a question. One question is
+The Hill is the place in ColliePWA where an agent or a trick asks you a question. One question is
 one Decision. You tap an answer, and the answer goes back to the session that asked.
 
 ```sh
@@ -28,7 +28,9 @@ soon each one needs you.
 | Later | Can wait |
 | Answered | The Decisions that are closed, newest first, up to 20 |
 
-The header says how many Decisions are open and how many are Now. With nothing open the page says
+Above the cards, the Crew state control says how much you want to hear now
+([Here, Quiet and Away](#here-quiet-and-away)). The header says how many Decisions are open and how
+many are Now. With nothing open the page says
 "The hill is clear." and "Nothing waits on you."
 
 A card holds, from top to bottom:
@@ -42,31 +44,31 @@ A card holds, from top to bottom:
 - the options, numbered 1, 2, 3, and
 - the line that says where your answer goes, with Dismiss beside it.
 
+A card of Collie's own that shows code is a group of cards. It opens at "Card 1 of 4", with Back
+and Next, and its options show on the last card. The yes stays off until every card was on screen
+([A trick an agent proposes](#a-trick-an-agent-proposes)).
+
+When you wrote to a session after its agent asked, the card says "You wrote to this session after it
+asked." ([Clear](#clear) takes such cards away.)
+
 The recommended option carries a star. Collie never preselects it, and never focuses it. A
 recommendation that you do not read must not become the answer by default.
 
 ## What a Decision is
 
-A Decision is one question with its choices. The sender writes all of it.
+A Decision is one question with its choices. The sender writes all of it: a title, a summary, a
+longer body behind "More", up to five options, one recommendation with its reason, links, pictures,
+a small view of facts, a priority and an expiry. Every key, with its limit, is in
+[The Hill](tricks-reference.md#the-hill) of the Tricks reference.
 
-| Part | What it is | Limit |
-| --- | --- | --- |
-| Title | The question, as a sentence the options answer | 120 characters. Aim for 60 |
-| Summary | What the recommended option does, and the one fact that decides it | 280 characters. Aim for two sentences |
-| Body | Longer text in Markdown, behind "More" | 4000 characters |
-| Options | The choices. Each has a word the sender reads back, a label, and optionally a detail and a confirm word | Up to 5. Label 40, detail 120, confirm 24 characters |
-| Recommendation | One option, with a reason | Reason 200 characters |
-| Text | Whether you may or must add words | `optional` (default), `required` or `none` |
-| Links | Web pages that give more | Up to 5. Label 40, address 500 characters |
-| Pictures | PNG, JPEG or WebP | Up to 4, 2 MB each, caption 80 characters |
-| View | A small set of facts under the summary | 8 KiB, 100 nodes, 4 levels |
-| Priority | `now`, `today` or `later` | One sender holds at most 3 open `now` Decisions. A further one shows as `today` |
-| Expiry | When it closes by itself | 14 days by default, at most 30 |
+Three kinds of sender post a Decision.
 
-Three kinds of sender post a Decision. An agent posts with `collie hill post`, and the bridge names
-the agent from its pane. A [trick](tricks-authoring.md#posting-a-decision-from-a-trick) posts with its
-`decisions` list. Collie itself posts one kind of card, "Use the new version of <name>?", when a trick
-has new code ([A new version of a trick](tricks.md#a-new-version-of-a-trick)).
+- **An agent** posts with `collie hill post`, and the bridge names the agent from its pane.
+- **A trick** posts with its `decisions` list
+  ([A program trick](tricks-authoring.md#a-program-trick)).
+- **Collie itself** posts its own cards. "Use the new version of <name>?" asks about a trick's new
+  code ([A new version of a trick](tricks.md#a-new-version-of-a-trick)). "Switch on the trick <id>?"
+  asks about a trick an agent proposed ([A trick an agent proposes](#a-trick-an-agent-proposes)).
 
 A Decision is in one of seven states. A closed one keeps its state and shows it.
 
@@ -82,17 +84,24 @@ A Decision is in one of seven states. A closed one keeps its state and shows it.
 
 ## How an agent posts
 
-An agent runs these verbs in its own pane. They talk to the running bridge over a private socket, and
-Collie asks for no token. `collie hill --help` prints every verb, how to word a card, and the rules.
+```sh
+collie hill post ...
+collie hill status dc_k3f9x2m8q1a0
+collie hill withdraw dc_k3f9x2m8q1a0
+collie hill list
+collie hill state
+```
 
-| Verb | What it does |
-| --- | --- |
-| `collie hill post ...` | Post one Decision and print its id. It never waits for the answer |
-| `collie hill status <id> [--json]` | Print the state, where the answer goes, and the answer when there is one. Works for the poster and for the session the answer goes to, and nobody else |
-| `collie hill withdraw <id> [--json]` | Take an open Decision back |
-| `collie hill list [--json]` | List your own Decisions, open first |
-| `collie hill clear [--json]` | Remove every closed Decision from the Hill. Open ones stay. Prints how many went |
-| `collie hill on`, `collie hill off` | Switch the Hill on or off for this Collie |
+An agent runs these verbs in its own pane. They talk to the running bridge over a private socket, and
+Collie asks for no token. `post` prints the new id and never waits for the answer. `status` prints the
+state, where the answer goes, and the answer when there is one. It works for the poster and for the
+session the answer goes to, and nobody else. `withdraw` takes an open Decision back, and `list` lists
+your own Decisions, open first. `state` reads the crew state.
+
+`collie hill --help` prints every verb, how to word a card, and the rules. Every verb and flag is in
+[`collie hill`](tricks-reference.md#collie-hill) of the Tricks reference. `clear`, `on`, `off`, and
+`state` with a word are the person's ([Clear](#clear), [Switch the Hill off](#switch-the-hill-off),
+[Here, Quiet and Away](#here-quiet-and-away)).
 
 `status` prints the format below. This is the output on a Decision that is answered, with a test
 fixture's names:
@@ -109,28 +118,19 @@ delivery: typed
 
 ### The flags of `post`
 
-`--title` and `--summary` are required.
+`--title` and `--summary` are required, and each option is one `--option <intent>="<label>"`. An intent
+is a lower-case word of at most 32 characters of `a-z`, `0-9` and `-`, starting with a letter.
+`answer` and `dismiss` are Collie's own. The body goes after `--`, in Markdown. With no body after
+`--`, it is read from stdin when stdin is not a terminal.
 
-| Flag | What it does |
-| --- | --- |
-| `--title "<question>"` | The question |
-| `--summary "<plain words>"` | The summary |
-| `--option <intent>="<label>"` | One option. Repeat it for each. An intent is a lower-case word of at most 32 characters of `a-z`, `0-9` and `-`, starting with a letter. `answer` and `dismiss` are Collie's own |
-| `--recommend <intent> --why "<reason>"` | The recommendation. The two go together |
-| `--confirm <intent>="<word>"` | The option needs a second tap, and this word shows on the first |
-| `--detail <intent>="<line>"` | A line under the option |
-| `--priority now\|today\|later` | Default `today`. `now` sends a notification |
-| `--text none\|optional\|required` | Default `optional`. `none` needs at least one option |
-| `--link "<label>=https://..."` | A link. Repeat it, up to 5 |
-| `--about here\|<address>` | The session whose Chat the card opens. `here` is your own |
-| `--reply-to <address>` | Send the answer to this session, not to you. Use an address from `collie walky who` |
-| `--supersedes dc_...` | Replace an open Decision of yours. Post again with this flag, and never repost |
-| `--expires 2h\|3d` | Close as expired after this time. A number and `m`, `h`, `d` or `w`. At most 30 days |
-| `--request-id <uuid>` | Retry a post. The same id posts once. The same id with other content is refused |
-| `--image <path>[="<caption>"]` | A picture, up to 4 |
-| `--view <file.json>` | A small view of facts. At most 16 KiB of file, then 8 KiB of compact JSON |
-| `--json` | Print the whole Decision as JSON, not only its id |
-| `-- "<body>"` | The body in Markdown. With no body after `--`, it is read from stdin when stdin is not a terminal |
+- `--priority now` sends a notification. The default is `today`.
+- `--reply-to <address>` sends the answer to another session. Use an address from `collie walky who`.
+- `--supersedes dc_...` replaces an open Decision of yours. Post again with this flag, and never
+  repost.
+- `--request-id <uuid>` makes a retry safe: the same id posts once, and the same id with other content
+  is refused.
+
+The [reference](tricks-reference.md#collie-hill) lists every flag.
 
 Before it posts, `collie hill post` warns on stderr when the words are weak: a title past 60
 characters or with no question mark, a summary past two sentences or 200 characters, and an option
@@ -163,6 +163,13 @@ them ([Install the skill](walky-talky.md#install-the-skill)).
    option word. Read the rest with `collie hill status <id>`.
 7. A worker with a lead asks its lead first.
 8. A `--view` only shows facts. No buttons: the options are the taps.
+9. When your operator settles the question in your session, take the card back:
+   `collie hill withdraw <id>`.
+10. Before you post, read the crew state: `collie hill state`. here: post as usual. quiet: post, but
+    do not wait for a fast answer. away: post nothing that needs an answer now; do work that needs no
+    answer, then end your turn.
+11. A typed answer or a post result can end with a line such as "Crew state: away." It is the state
+    at that moment.
 
 ### Pictures
 
@@ -237,6 +244,8 @@ After a tap the card says "Sending…", then one line that says what came of it.
 | "Sent, not confirmed" | The send did not confirm. The session can read the answer with `collie hill status` |
 | "Dismissed" | The card is closed, and nothing was sent |
 | "Recorded by <trick>" | A trick took your answer |
+| "Now running the new version." | You said yes to a trick's new version or to a proposed trick |
+| "Kept the old version." | You kept the version that runs |
 | "Sent, but <trick> did not take it" | The message went, and the trick's program failed on the answer. Collie does not retry it |
 | "Not accepted" or "Not accepted: <reason>" | The bridge refused it. For example "an answer in words is required" |
 | "This Decision was already answered" | Someone answered first |
@@ -262,21 +271,106 @@ Clear removes the Decisions that are closed.
 - In a terminal, run `collie hill clear`. It prints "Cleared 3 closed decisions." or "Nothing to clear:
   no closed decisions."
 
-Clear never touches an open Decision, and it works with the Hill off. Collie keeps a small marker of
+A second Clear, "Clear cards you answered in the session", handles the open cards marked "You wrote
+to this session after it asked." It withdraws them and clears them, and types nothing. In a terminal
+it is `collie hill clear --spoken`, which refuses in a pane where an agent works.
+
+`collie hill clear` without `--spoken` never touches an open Decision, and it works with the Hill off. Collie keeps a small marker of
 each cleared Decision, so a repeated post with the same request id is refused and not posted twice,
 and a late answer still reads as gone.
 
 ## Switch the Hill off
 
-In Settings → Alerts, the **The Hill** switch turns it off. `collie hill off` moves the same switch.
+```sh
+collie hill off
+collie hill on
+```
 
-With the Hill off, agents and tricks cannot post, and nothing about a Decision is sent. The phone
-answers nothing, so no message is typed and no trick runs. The Hill leaves the bar. The open
-Decisions stay as they are, and show again when you switch it on. A page you reach from an old
-notification says "The Hill is off." and offers "Switch the Hill on".
+In Settings → Alerts, the first card is the switch **The Hill**: "Agents and tricks ask you here.
+Off: they cannot post, and the Hill leaves the bar." The commands move the same switch, for every
+phone of this Collie, and the bridge reads it with no restart.
+
+With the Hill off:
+
+- Agents and tricks cannot post, and agents cannot propose a trick. Nothing about a Decision is
+  pushed.
+- The phone takes no answer, so no message is typed and no trick runs.
+- The Hill leaves the bar. Its page says "The Hill is off." and offers "Switch the Hill on".
+- The open Decisions stay, and their expiry still runs. They show again when you switch it on.
+- An agent can still run `status`, `list` and `withdraw`, so it can clean up.
+- The crew state and "Tell all sessions now" are off too.
+
+A post is refused with: "the Hill is off on this Collie; your person can switch it on in Settings,
+Alerts, on the phone, or with: collie hill on".
 
 Notifications for Decisions marked `now` are in
 [Voice input and Web Push](voice-and-push.md#web-push-optional).
+
+## Here, Quiet and Away
+
+The crew state tells your agents how much you want to hear now. Only you set it.
+
+```sh
+collie hill state
+collie hill state quiet
+```
+
+The Crew state control sits at the top of the Hill. It has three states:
+
+| State | The phone says | What changes |
+| --- | --- | --- |
+| Here | "Agents post as usual." | Nothing. This is the default |
+| Quiet | "No push. Agents post but do not wait." | No Decision sends a notification. Agents post, and do not wait for a fast answer |
+| Away | "No push. Agents hold questions that need an answer now." | No Decision sends a notification. Agents post nothing that needs an answer now |
+
+The bridge refuses no post because of the state. The agents read it with `collie hill state` before
+they post, as their rules say, and an answer or a post result ends with a line such as "Crew state:
+away." Under Quiet and Away the control says who set it and when. It stays until you tap Here, or run
+`collie hill state here`.
+
+`collie hill state` with a word refuses in a pane where an agent works. On a crew member it is
+refused too: the state lives on the lead.
+
+### Tell all sessions now
+
+Under Quiet or Away, the control shows **Tell all sessions now**. One tap types the line "Crew state:
+away." (or "quiet") into each agent session that waits on the Hill, as a message from you. Those are
+the sessions with an open Decision, or one posted in the last hour, at most 20 of them, newest first.
+A busy session gets the line when its turn ends.
+
+The button then says "Told 3 sessions", or "No session was waiting", and stays off until the state
+changes again. It uses a budget of its own, so it never uses up the messages that carry your answers.
+
+## A trick an agent proposes
+
+An agent can hand you a trick it wrote. It arrives as a card of Collie's own, and nothing of it runs
+before your yes.
+
+```sh
+collie trick propose ~/work/disk-space
+```
+
+The card's title is "Switch on the trick <id>?". Its summary is Collie's own facts: who proposed it,
+how many files it has, and what it asks for. Below come the powers it asks for, the warnings of the
+text search, the author's words under "Its author's words. Collie did not check them.", and then
+every file of its code, as a group of cards.
+
+- **Switch it on** asks for a second tap, "Yes, switch on". Collie reads the stored files again and
+  installs them only when their hash matches the card. The trick is then on, approved as exactly that
+  code.
+- **Not now** drops the stored copy. So do Dismiss, an expiry, and a newer proposal from the same
+  session.
+
+Collie never recommends either option. A proposal is code from an agent, and your own reading is the
+whole check. So the yes stays off until every card of the code was on screen.
+
+A trick that a proposal made can get a new version the same way. Its card asks "Use the new version
+of <id>?" and replaces the code only on your yes.
+
+An agent cannot propose a trick that has rules or an agent view: "A trick that gives agents
+instructions cannot be proposed by an agent. Ask your person to add it on the machine." The limits on
+files and on how many proposals wait are in
+[A proposal from an agent](tricks-reference.md#a-proposal-from-an-agent) of the Tricks reference.
 
 ## The Hill in a crew
 
@@ -288,5 +382,5 @@ from a member need Collie 1.29.0 on the lead and on that member
 ## Where to go next
 
 - [Tricks](tricks.md), for the tricks that ask you here.
-- [Writing a trick](tricks-authoring.md#posting-a-decision-from-a-trick), to post from a trick.
+- [Write a trick](tricks-authoring.md#a-program-trick), to post from a trick.
 - [WalkyTalky](walky-talky.md), for the messages that carry your answer.

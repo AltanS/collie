@@ -195,37 +195,65 @@ It is not a Collie instance: that word means one running bridge ([Collie (an ins
 
 ## Trick
 
-A small program on your machine that adds its own parts to Collie, and may ask you questions. It is a
-folder with a `trick.toml` and a program. Collie runs the program, reads one JSON document from what
-it prints, and draws that with its own parts. A trick is off until you switch it on, and it runs as
-you ([Tricks](tricks.md)). You write one with the manifest and the helper in
-[Writing a trick](tricks-authoring.md). The old word for a trick was "mod". The mods folder of
-herdr-app is a different thing, a panel of that app
+A folder that adds its own parts to Collie: a small program, rules for an agent, or both. Collie draws
+what it shows, in Collie's own look. A trick is off until you switch it on, and its program runs as
+you ([Tricks](tricks.md)). There are two kinds, a [program trick](#program-trick) and an
+[agent view](#agent-view). The old word for a trick was "mod". The mods folder of herdr-app is a
+different thing, a panel of that app
 ([The Collie panel for herdr-app](multiplexers.md#the-collie-panel-for-herdr-app)).
 
-An **official trick** is one in the official repository, which `collie trick add <name>` reads by its
-folder name. A **community trick** is one written by someone else and kept in a repository of its own.
+## Program trick
+
+A trick with a program on your machine. The bridge runs it on a timer or on your tap, reads the one
+JSON document it prints, and the phone draws the parts in it. It can also ask you on the Hill
+([Example 1: a program trick](tricks.md#example-1-a-program-trick)).
+
+## Agent view
+
+A trick that one agent session's own agent draws: one screen, in a view beside Terminal and Chat. It
+has no program, only a [rules file](#rules-file). You switch it on per session, and a tap sends the
+agent the words you saw on the screen
+([Example 3: Morph, an agent view](tricks.md#example-3-morph-an-agent-view)).
+
+## Rules file
+
+The plain text file, named by `rules` in an agent view's manifest, that tells the agent how to draw.
+The agent reads it with the command at the end of the first message a view sends. The About sheet
+shows it whole, and a change to it always asks you again
+([How an agent learns the rules](tricks.md#how-an-agent-learns-the-rules)).
+
+## Official tricks
+
+The tricks in Collie's own repository. Each release names the exact version of each one, and Add, in
+Settings → Tricks or with `collie trick add <name>`, fetches that version and nothing else. They
+arrive off, like every trick ([Official and community tricks](tricks.md#official-and-community-tricks)).
+
+## Community tricks
+
+The tricks anyone else writes, each in a repository of its own. The app never fetches a list of them:
+you add one by its address, and its row says "ColliePWA did not check this code."
+([Official and community tricks](tricks.md#official-and-community-tricks)).
 
 ## Place
 
-Where a trick can draw. There are five: `belt`, `session`, `dashboard`, `status` and `tabbar`. The
-manifest's `places` lists the ones a trick uses. Settings → Tricks shows them as "belt", "session",
-"Dashboard", "status" and "Bottom bar" ([What a trick can show](tricks.md#what-a-trick-can-show-and-where)).
-A place is not a [space](#space).
+A spot on the phone where a trick can show (a surface). A program trick draws in five: `belt`,
+`session`, `dashboard`, `status` and `tabbar`. An agent view is the sixth, `agent-view`. The Hill is
+built in, and a trick posts there without naming it. A place is not a [space](#space). Each place is
+described in [Places](tricks-reference.md#places).
 
 ## Part
 
 What a trick draws in one place: one mark on the Belt, one chip, one tile, one bottom bar item, or one
-session screen. A trick prints a list of parts, and the phone draws each in its place. A part is
-checked on its own, so one bad part does not hide the others
-([Parts](tricks-authoring.md#parts)).
+session screen. The word also names the pieces a screen is built from, such as a row, a chip or a
+button, from a closed list of 22 kinds. A part is data, never code, and one bad part does not hide the
+others ([The parts](tricks.md#the-parts), [Parts](tricks-reference.md#parts)).
 
 ## Power
 
 What a trick may reach beyond its own code: the environment names it asks for (`env`), the places it
 draws in (`places`), and the files it reads from your agent sessions (`inputs`). The About sheet lists
 them. A new version that changes a power always waits for your yes. Settings and `collie trick on`
-sometimes say "rights" for the same thing ([What a trick may and may not do](tricks.md#what-a-trick-may-and-may-not-do)).
+sometimes say "rights" for the same thing ([What a trick may and may not do](tricks.md#powers-the-environment-and-the-warnings)).
 
 ## About sheet
 
