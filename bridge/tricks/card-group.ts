@@ -1,4 +1,4 @@
-import { HILL_GROUP_PARTS } from "../../web/src/lib/hill/wire.ts";
+import { GROUP_CARD_CODE_BYTES, GROUP_CODE_BYTES, GROUP_CODE_CARDS, GROUP_FILES_MAX } from "../../web/src/lib/tricks/limits.ts";
 import { DECISION_VIEW_LIMITS, DIFF_LIMITS, TABLE_LIMITS, VIEW_LIMITS, type View, type ViewNode } from "../../web/src/lib/tricks/schema.ts";
 import { looksBinary } from "../changes.ts";
 import { MANIFEST_FILE } from "./paths.ts";
@@ -34,14 +34,8 @@ import { readViewLine, VIEW_GAP_MAX, type ChangedFile, type VersionDiff } from "
 // its version, and no card shows its 42 KB. Any other `trick.ts`, a changed helper included, is the
 // author's code and shows line by line.
 
-/** Cards of code in a group: every card but card 1. */
-export const GROUP_CODE_CARDS = HILL_GROUP_PARTS.max - 1;
-/** Bytes of code text one card holds, as the view's JSON text counts them (a quote or a backslash twice). */
-export const GROUP_CARD_CODE_BYTES = 6 * 1024;
-/** The most code a group shows: {@link GROUP_CODE_CARDS} cards of {@link GROUP_CARD_CODE_BYTES}, 42 KiB. */
-export const GROUP_CODE_BYTES = GROUP_CODE_CARDS * GROUP_CARD_CODE_BYTES;
-/** The most files a group shows; each needs its own diff, and card 1 lists them all. */
-export const GROUP_FILES_MAX = 64;
+// The group caps live in web/src/lib/tricks/limits.ts, which the tricks catalogue reads too.
+export { GROUP_CARD_CODE_BYTES, GROUP_CODE_BYTES, GROUP_CODE_CARDS, GROUP_FILES_MAX };
 
 /** Card 1's words for Collie's own helper, in the Card column and below the file count. */
 export function helperCell(version: number): string {

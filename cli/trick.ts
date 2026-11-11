@@ -66,6 +66,7 @@ import { hillWordingWarnings, HILL_WRITING } from "./hill-rules.ts";
 import { EXIT, type Io } from "./io.ts";
 import { identityHeader, readOwnSnapshot } from "./snapshot-read.ts";
 import type { Files } from "./sys.ts";
+import { SKILL_BYTES_MAX } from "../web/src/lib/tricks/limits.ts";
 
 // `collie trick` (M94 slice 01): the machine's half of Collie tricks. A trick is added on the machine and
 // switched on from here (or, later, the phone); the bridge runs it.
@@ -333,8 +334,9 @@ export async function cmdTrickList(deps: TrickDeps, args: readonly string[]): Pr
 
 /** The file in a trick folder that says what the trick asks of an agent. */
 export const SKILL_FILE = "SKILL.md";
-/** The most `collie trick skill <id>` reads and prints. A larger file is refused, never cut. */
-export const SKILL_BYTES_MAX = 32 * 1024;
+// The most `collie trick skill <id>` reads and prints lives in `web/src/lib/tricks/limits.ts`, so the
+// reference page names the same number. A larger file is refused, never cut.
+export { SKILL_BYTES_MAX };
 
 /** The brief `collie trick skill` prints with no id: for an agent that wants to write a trick. */
 export const TRICK_WRITE_BRIEF = [

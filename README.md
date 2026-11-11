@@ -173,6 +173,7 @@ runs the client in your browser against mock data without requiring installation
 | --- | --- |
 | [**Tricks**](./docs/tricks.md) | What a trick is, where it draws, adding one with `collie trick add`, switching it on, off or removing it, what it may and may not do, the About sheet, tricks in a crew, and troubleshooting |
 | [**Writing a trick**](./docs/tricks-authoring.md) | The folder, every key of `trick.toml`, what a program receives and prints, every node kind, posting a Decision, inputs, `collie trick dev` and `check`, a worked example, and the limits |
+| [**Tricks reference**](./docs/tricks-reference.md) | Every place, part, manifest key, limit and command of a trick, complete and generated from the code |
 | [**The Hill**](./docs/hill.md) | Where agents and tricks ask you a question: what a Decision is, `collie hill post` and its flags, how you answer, receipts, Clear, pictures, and the rules agents get |
 
 ### Reference

@@ -3,6 +3,7 @@ import { chmod, lstat, mkdir, readdir, rename, rm, writeFile } from "node:fs/pro
 import { dirname, join } from "node:path";
 
 import { HOST } from "../host.ts";
+import { SEED_BYTES_MAX, SEED_FILES_MAX } from "../../web/src/lib/tricks/limits.ts";
 import { AGENT_VIEW_PLACE, isTrickId, type TrickManifest } from "../../web/src/lib/tricks/schema.ts";
 import { hillImageMime } from "../hill/media.ts";
 import { CODE_BYTES_MAX, CONFIG_FILE, diskTrickFs, hashCodeEntries, isPictureName, linkRefusal, PICTURE_DIRS, walkFingerprint, walkTrickCode, WRITABLE_TOP_DIRS, type CodeEntry, type TrickFs } from "./code-hash.ts";
@@ -49,10 +50,8 @@ import { parseSwitches, updateSwitches, withApproval, type SwitchEntry, type Swi
 // mismatch stops the trick. A program that writes a code file into its own working folder therefore stops
 // itself. It keeps its state in `trick.state`.
 
-/** The most files seeded into `media/` and `captures/` together. */
-export const SEED_FILES_MAX = 500;
-/** The most bytes seeded into `media/` and `captures/` together. */
-export const SEED_BYTES_MAX = 64 * 1024 * 1024;
+// The two seed caps live in `web/src/lib/tricks/limits.ts`, so the reference page names the same numbers.
+export { SEED_BYTES_MAX, SEED_FILES_MAX };
 /** The most bytes of the origin record copied. */
 const ORIGIN_BYTES_MAX = 8 * 1024;
 /** An unreferenced copy or a stage folder younger than this is left alone by a prune: a writer may be about to name it. */

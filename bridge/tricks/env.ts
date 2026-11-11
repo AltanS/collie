@@ -1,4 +1,5 @@
 import { redactText } from "../redact.ts";
+import { BASE_ENV_NAMES } from "../../web/src/lib/tricks/limits.ts";
 
 // THE PROGRAM'S ENVIRONMENT (M94 slice 01): an allow-list.
 //
@@ -22,25 +23,8 @@ import { redactText } from "../redact.ts";
 // rights of the user: it can read any file the user can, the config folder too (its own folder is
 // inside it, and the facts carry that path as `trick.dir`).
 
-/** The variables every program gets, when the bridge has them. */
-export const BASE_ENV_NAMES = [
-  "PATH",
-  "HOME",
-  "USER",
-  "LOGNAME",
-  "SHELL",
-  "LANG",
-  "TZ",
-  "TERM",
-  "TMPDIR",
-  "XDG_RUNTIME_DIR",
-  "XDG_CONFIG_HOME",
-  "XDG_DATA_HOME",
-  "XDG_STATE_HOME",
-  "XDG_CACHE_HOME",
-  "NVM_DIR",
-  "BUN_INSTALL",
-] as const;
+// The base list lives in web/src/lib/tricks/limits.ts, which the tricks catalogue reads too.
+export { BASE_ENV_NAMES };
 
 const BASE = new Set<string>(BASE_ENV_NAMES);
 

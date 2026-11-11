@@ -122,6 +122,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **A picture in its sheet zooms, and the page does not.** A picture opened from Chat, a Decision or a Morph screen now zooms with two fingers, pans with one while zoomed and toggles with a double tap. A pinch there no longer zooms the whole app, and a zoomed picture never pulls the sheet closed.
 - **A slash command typed in the terminal is no Morph request.** With Morph on, running `/model` or a shell line such as `!ls` in the terminal showed it as your request, Sent, with the live mark, for good. Morph now skips a turn that starts with `/` or `!`, and a request sent from the phone is not replaced by one.
 
+### Docs
+
+- **One complete reference for tricks, generated from the code.** `docs/tricks-reference.md` lists every place, part, manifest key, limit and `collie trick` and `collie hill` verb, each with a working example, and `collie docs tricks-reference` prints it. A script writes the page from a catalogue in the code, and a test fails when the page is stale, an example fails the real parser, or a place, part, key or verb is missing. `collie trick guide` reads its keys and places from the same catalogue and names the page. Writing a trick and Tricks now link to it instead of repeating its tables.
+
 ## [1.28.2] - 2026-11-11
 
 ### Fixed

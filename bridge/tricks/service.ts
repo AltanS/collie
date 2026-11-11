@@ -47,6 +47,10 @@ import { outcomeProblem, runProgram, type RunOutcome, type RunSpec } from "./run
 import { trickWarnings, wireWarnings } from "./scan.ts";
 import { TricksStore, problemLine } from "./store.ts";
 import { createSwitchReader, updateSwitches, withApproval, withEntry, withSwitch, type SwitchEntry, type Switches } from "./switches.ts";
+import { BACKOFF_MS, HILL_QUEUE_MAX, RUNS_MAX } from "../../web/src/lib/tricks/limits.ts";
+
+// The run caps live in web/src/lib/tricks/limits.ts, which the tricks catalogue reads too.
+export { BACKOFF_MS, HILL_QUEUE_MAX, RUNS_MAX };
 
 // THE TRICKS RUNNER (M94 slice 01): which trick runs when, and what its run leaves behind.
 //
@@ -132,18 +136,12 @@ import { createSwitchReader, updateSwitches, withApproval, withEntry, withSwitch
 
 /** How long a phone's look keeps timers running. */
 export const WATCH_WINDOW_MS = 5 * 60_000;
-/** The wait after the first, second and third failure in a row. The fourth stops the trick. */
-export const BACKOFF_MS = [60_000, 5 * 60_000, 30 * 60_000] as const;
 /** The scheduler's tick. A timer of 5 s therefore runs within a second of its due time. */
 export const TICK_MS = 1000;
 /** The least time between two scans of the tricks folder. */
 export const SCAN_EVERY_MS = 2000;
 /** The tap receipts kept in memory with their parts, newest last. The file keeps its own. */
 export const TAP_RECEIPTS_MAX = 200;
-/** The most trick programs running at once, across all tricks. */
-export const RUNS_MAX = 4;
-/** The most decision answers waiting for one trick. One more is refused as busy. */
-export const HILL_QUEUE_MAX = 32;
 /** The row's line while a new version of an on trick waits for a person's yes. */
 export const PENDING_LINE = "A new version waits for your yes.";
 /** The line of a trick that is on but has no approved version (a version 1 entry, a migration of a changed folder). */

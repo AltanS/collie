@@ -46,20 +46,7 @@ notes in `trick.state`, a state folder that is never copied.
 
 `trick.toml` holds these keys. A key that is not in the table is refused, so a typo shows.
 
-| Key | Type | Required | Limit and rule |
-| --- | --- | --- | --- |
-| `id` | string | yes | 1 to 32 of `a-z`, `0-9` and `-`, starting with a letter or a digit. It equals the folder's name |
-| `name` | string | yes | At most 40 characters. The name Settings shows |
-| `run` | string | yes | At most 1024 characters. A script or a shell command line (see [The program](#the-program)) |
-| `every` | string | no | `5s` to `24h`, such as `30s`, `5m` or `1h`. Left out, the trick runs at start and on taps only |
-| `icon` | word | no | One of the [icons](#icons). Default `plug` |
-| `places` | list | yes | 1 to 16 words from `belt`, `session`, `dashboard`, `status` and `tabbar`. Each once |
-| `env` | list | no | Up to 32 names, each at most 64 characters: letters, digits and `_`, not starting with a digit |
-| `contract` | whole number | no | 1 to 999. Default 1. Write 2 to use `inputs` |
-| `inputs` | list | no | Contract 2 only. Up to 8 globs (see [Inputs](#inputs)) |
-| `description` | string | no | One line, at most 140 characters. Plain text. Settings shows it under the name |
-| `about` | string | no | At most 1200 characters. Plain text. A blank line splits paragraphs. The About sheet shows it |
-| `watch`, `on`, `mode` | | no | Reserved. This Collie accepts them, leaves them out with a note, and runs the trick on its timer and taps |
+Every key, with its type, its limit, the contract it needs and an example, is in the [Tricks reference](tricks-reference.md#manifest-keys). The words `watch`, `on` and `mode` are kept for a later Collie: this Collie leaves them out with a note and runs the trick on its timer and taps.
 
 `description` and `about` are plain text, with no Markdown, HTML or link drawn. A value with a control
 or direction character is refused, like a long `name`. `collie trick check` gives a soft note when
@@ -163,15 +150,7 @@ phone. What a trick wants to show is a `link`. What it wants to tell the person 
 
 ### Limits of a run
 
-| Limit | Value |
-| --- | --- |
-| Time | 10 seconds. After that Collie stops the program |
-| Output on stdout | 64 KiB |
-| Output on stderr | 8 KiB kept. Its last line is the line the phone and `collie trick check` show |
-| Programs at once | 4, across all tricks. Taps and answers go before timers |
-| Runs of one trick | One at a time. A timer tick while one runs is skipped. A phone tap queues one deep |
-| Waiting answers | Up to 32 per trick |
-| After a failed run | Collie waits 1 minute, then 5, then 30, then stops the trick. A new version, a change to `config.toml`, switching it on again or a tap starts it |
+The limits of a run are in the [Tricks reference](tricks-reference.md#a-run). A trick runs one at a time: a timer tick while one runs is skipped, and a phone tap queues one deep.
 
 A run that exits with a failure, times out or prints a document Collie refuses as a whole is a failed
 run. The phone keeps the last good parts and says they are old. The error line is masked and capped.
@@ -220,12 +199,7 @@ A part is `{ at, id, ... }`. `at` is the place. `id` is 1 to 32 of `a-z`, `0-9` 
 needs its own. A trick has one `belt`, one `status`, one `dashboard` and one `tabbar` part, and any
 number of `session` parts, 24 parts in all.
 
-| `at` | Keys | Limits |
-| --- | --- | --- |
-| `belt` | `mark`: `icon`, `label`, `badge`, `tone`, `intent` | A mark needs `icon`, `label` or `badge`. `label` is at most 12 characters. `badge` is text, or `""` for a dot. `intent` makes a tap run the trick |
-| `status` | `chip`: `text`, `icon`, `tone`, `at`, `clock` | `text` is 1 to 12 characters. Not a control. A tap opens the trick's session when it has one |
-| `dashboard`, `tabbar` | `item`: `label`, `icon`, `badge`, `tone` | `label` is 1 to 16 characters. `badge` is a count from 0 to 9999 (0 draws none), or text of 1 to 12 characters. Not a control. A tap opens the session when there is one |
-| `session` | `name`, `icon`, `tone`, `subtitle`, `badge`, `progress`, `actions`, `view` | `name` at most 40, `subtitle` at most 120, `badge` is `{ count }` or `{ text }` with text at most 12, `progress` is `{ value, max }` with `max` at most 12, up to 4 `actions` (`id`, `label` at most 16, `intent`, `value`, `icon`, `disabled`) |
+Each place, with its keys, limits and an example, is in the [Tricks reference](tricks-reference.md#places).
 
 A `view` is a list of nodes that flow down the place's frame. A mark is always the same control, and
 a mark with nothing to do is the same button, disabled. A part past its `fresh` window draws every
@@ -237,44 +211,9 @@ A node is `{ kind, text?, attrs?, kids? }`, and every attribute is a string. The
 view holds at most 24 nodes at its top, 6 levels and 300 nodes in all. A Decision's view is smaller
 (see [Posting a Decision](#posting-a-decision-from-a-trick)).
 
-| Kind | Holds | Text | Attributes |
-| --- | --- | --- | --- |
-| `card` | para, line, chip, button, meter, image, bar, group, number, spacer, compare, table, diff, spark (1 to 24) | | `tone` |
-| `group` | row, group, bar, para, line, link, meter, number, spacer, image, compare, table, diff, spark (1 to 24) | | `label` (60), `fold` (`open` or `closed`), `badge` |
-| `list` | row, group (0 to 50) | | |
-| `row` | para (its second line), chip, button (0 to 24) | required, 120 | `href`, `end` (24), `badge`, `tone`, `cut` (`end` or `mid`), `icon`, `disabled` (a reason, 120) |
-| `bar` | button, chip, link (1 to 12) | | `role` (`strip`), `scroll` (`x`), `label` (40) |
-| `chip` | | 60 | `tone`, `icon`, `at`, `clock`, `state`, `current`, `short` (12) |
-| `button` | | | `label` (required, 24), `intent`, `value` (1024 bytes), `confirm` (24), `tone`, `disabled`, `pressed` (`true`, `false` or `mixed`), `badge`, `icon`, `hint` (120), `does` (`copy`) |
-| `para` | run, link (1 to 64) | 2000 | `role` (`heading` or `quote`), `bullet` (4), `term` (40) |
-| `line` | run, link (1 to 64) | 240 | `style`, `role` (`text`, `status` or `note`) |
-| `run` | | required, 2000 | `style`, `code`, `href`, `at`, `clock` |
-| `code` | line (1 to 200) | | `lang`, `max` (1 to 40 lines shown) |
-| `link` | | required, 120 | `href` (required), `rel` (`url` or `pane`), `badge`, `icon` |
-| `image` | | | In a part: `src`, `alt` (120), `w`, `h` (1 to 4096). On a Decision: `ref` (0 to 3). Both: `caption` (80), `fit` (`contain` or `cover`), `focus` |
-| `meter` | | | `value`, `max`, `tone`, `label` (40), `role` (`meter` or `progress`) |
-| `spacer` | | | `label` (40) |
-| `number` | | required, 12 | `label` (40), `tone`, `unit` (24) |
-| `compare` | exactly two `image` | | |
-| `table` | `col` (1 to 4), then `cell`, row by row, at most 12 rows | | |
-| `col` | | required, 40 | `align` (`start` or `end`) |
-| `cell` | | 120, may be empty | `tone` |
-| `diff` | | required. At most 40 lines of 200 characters | `file` (120) |
-| `spark` | | | `values` (required, 2 to 32 numbers with one space between, oldest first), `tone`, `label` (40) |
+Every kind, with what it holds, its text, each attribute with its type and limit, and an example, is in the [Tricks reference](tricks-reference.md#parts).
 
-The numbers in brackets are the most characters, unless the text says otherwise. These words are the
-values the attributes take.
-
-| Attribute | Values |
-| --- | --- |
-| `tone` | `plain`, `accent`, `warn`, `danger`, `ok`, `muted`. On a `card` it draws as an edge, never a fill |
-| `icon` | One of the [icons](#icons) |
-| `badge` | A count from 0 to 9999 as text, such as `"3"`, or `""` for a dot, or text of 1 to 12 characters |
-| `state` | `working`, `waiting`, `idle`, `done`, `gone`. Chips with `state` in a `bar` draw a step strip |
-| `clock` | `ago`, `elapsed`, `left`, `time`. It goes with `at`, an instant in epoch milliseconds as digits |
-| `style` | `bold`, `dim`, `italic`, `underline`, `inverse`, `strike`, `box`, `fg-<colour>`, `bg-<colour>` and `syn-keyword`, `syn-string`, `syn-comment`, `syn-number`, `syn-type`, `syn-func`, `syn-const`, `syn-punct`. A colour is `black`, `red`, `green`, `yellow`, `blue`, `magenta`, `cyan` or `white`, with an optional `bright-` before it |
-| `intent` | A lower-case word of up to 32 characters of `a-z`, `0-9` and `-`, starting with a letter |
-| `focus` | `"x y"` or `"x y zoom"`: the point to keep in view, 0 to 100 percent across and down, and a zoom from 1 to 8 |
+The words that attributes take (tones, icons, states, clocks, styles, intents and the focus point) are in the [Tricks reference](tricks-reference.md#shared-values).
 
 `href` takes only an `http://` or `https://` address, or a session's scope key. Anything else,
 `javascript:` included, is refused. `rel` `file` is refused: a trick opens no file. An `image` names a
@@ -304,22 +243,7 @@ A session action's icon is one of `play`, `pause`, `check`, `x`, `refresh`, `arc
 A trick asks the person with `decisions`. Each one is a card on the [Hill](hill.md) under the trick's
 name.
 
-| Key | Type | Limit and rule |
-| --- | --- | --- |
-| `key` | string | Required. 1 to 64 of `a-z`, `0-9` and `-`, unique in the document |
-| `title` | string | Required. At most 120 characters. Aim for 60 |
-| `summary` | string | Required. At most 280 characters. Aim for two sentences |
-| `body` | string | At most 4000 characters, shown behind "More" |
-| `options` | list | Up to 5. Each has `intent`, `label` (40), `detail` (120) and `confirm` (24). An `intent` is a lower-case word as above, never `answer` or `dismiss`, and each is used once |
-| `recommends` | object | `{ intent, why }`. `intent` is one of the options. `why` is at most 200 characters. It shows as "Recommended" and is never preselected |
-| `text` | word | `optional` (the default), `required` or `none`. `none` needs at least one option |
-| `priority` | word | `now`, `today` or `later`. `now` rings the person's phone, so use it only for what cannot wait |
-| `about` | string | A session's scope key, whose Chat the card opens |
-| `replyTo` | string | A session's scope key. The person's answer reaches it as the person's own message |
-| `media` | list | Up to 4 pictures, each `{ file, caption? }`. `file` is a path inside the trick's folder, with no `..`. A caption is at most 80 characters |
-| `links` | list | Up to 5, each `{ label, href }`, with `label` at most 40 and `href` an `http` or `https` address of at most 500 characters |
-| `expiresAt` | whole number | When it stops being offered, in epoch milliseconds, in the future |
-| `view` | list | Display nodes under the summary (below) |
+Every key of a Decision, with its type and limit, is in the [Tricks reference](tricks-reference.md#the-hill).
 
 A trick holds at most 20 open Decisions. A Decision's `about` and `replyTo` must name a session that is
 in the run's facts, and on a crew's lead that may be a member's session.
@@ -386,12 +310,11 @@ Before each run, Collie copies the files that match from each agent session's fo
 
 | Rule | Value |
 | --- | --- |
-| Globs | Up to 8, each at most 256 characters and 6 steps, relative to a session's folder |
 | `*` | Matches inside one step, never a leading dot |
 | Refused | An absolute path or `~`, `**`, `..`, `.`, an empty step, `.git` in any case, any other glob word, and a step that names a `.env` file (`.env`, `.env.local`, `.envrc`, in any case) |
 | `state` | `ok`, `offline` (the session's machine did not answer), `older` (its Collie is before 1.29.0), `refused` (its machine switched trick reads off) or `none` (a shell, or no folder) |
-| Per session | Text files at most 256 KiB, pictures at most 2 MB, at most 32 files |
-| Per run | At most 8 MiB in one answer and 24 MiB in one run |
+
+The limits of globs, files and bytes are in the [Tricks reference](tricks-reference.md#inputs).
 
 A contract 1 trick that lists `inputs` is refused with: "inputs" needs contract = 2. Add contract = 2
 to trick.toml to read files from your sessions' folders.
@@ -642,20 +565,4 @@ repository. Anyone adds it with `collie trick add <https-url>//<folder>`
 
 ## Limits
 
-| What | Limit |
-| --- | --- |
-| A run | 10 seconds, 64 KiB on stdout, 8 KiB on stderr |
-| Programs at once | 4, across all tricks |
-| A document | 24 parts, each at most 16 KiB. 20 Decisions |
-| A view | 24 nodes at the top, 6 levels, 300 nodes. Kids of a card, group or row: 24. A list: 50. A bar: 12. A table: 4 columns, 12 rows. A diff: 40 lines of 200 characters. A spark: 2 to 32 values |
-| `every`, `fresh` | 5 seconds to 24 hours |
-| `env` | 32 names |
-| Facts | 256 sessions and 512 KiB of them, 64 spaces. `sessionsOmitted` counts the rest |
-| A part's `value`, an action's `value` | 1024 bytes |
-| Pictures | 2 MB each, from the trick's `media/` folder. 4 on a Decision |
-| `collie trick add` | 300 files, 5 MB, 8 folder levels |
-| Approved copy | `media/` and `captures/` are copied once, up to 500 files and 64 MiB |
-| A `SKILL.md` | 32 KiB. A larger file is refused, never cut |
-| A manifest `run` line | 1024 characters |
-
-The caps for each text are in the tables above, beside the field they limit.
+Every limit is in the [Tricks reference](tricks-reference.md#limits). The caps for each text are in its tables, beside the field they limit.

@@ -10,6 +10,7 @@ import { redactText } from "../redact.ts";
 import type { FileEntry } from "../types.ts";
 import { unsafeText } from "./code-hash.ts";
 import { asJsonNumber, asJsonObject, asJsonString } from "../../web/src/lib/json.ts";
+import { INPUT_ANSWER_MAX_BYTES, INPUT_IMAGE_MAX_BYTES, INPUT_RUN_MAX_BYTES, INPUT_TEXT_MAX_BYTES } from "../../web/src/lib/tricks/limits.ts";
 import {
   FACT_SESSIONS_MAX,
   INPUT_FILES_MAX,
@@ -55,12 +56,8 @@ import {
 //     type off the bytes, and that a text file is UTF-8 with no NUL. Nothing is ever executed: the
 //     program reads them as data (the tricks README says so).
 
-/** The most bytes of one text file, and of one picture (PNG, JPEG or WebP, sniffed off its bytes). */
-export const INPUT_TEXT_MAX_BYTES = 256 * 1024;
-export const INPUT_IMAGE_MAX_BYTES = 2 * 1024 * 1024;
-/** The most file bytes one answer carries (one member, every pane), and one run takes in all. */
-export const INPUT_ANSWER_MAX_BYTES = 8 * 1024 * 1024;
-export const INPUT_RUN_MAX_BYTES = 24 * 1024 * 1024;
+// The four byte caps live in web/src/lib/tricks/limits.ts, which the tricks catalogue reads too.
+export { INPUT_ANSWER_MAX_BYTES, INPUT_IMAGE_MAX_BYTES, INPUT_RUN_MAX_BYTES, INPUT_TEXT_MAX_BYTES };
 /** One call to a member: 8 s, no retry. And at most one call per trick per member per 5 s. */
 export const INPUT_CALL_MS = 8000;
 export const INPUT_RATE_MS = 5000;

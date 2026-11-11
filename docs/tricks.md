@@ -23,13 +23,8 @@ one mark at the end of the Belt, with the number of sessions on it.
 
 A trick draws in five places, and its manifest names which ones it uses.
 
-| Place | Where it is on the phone | One per trick |
-| --- | --- | --- |
-| `belt` | A mark at the end of the scrolling strip of the Belt. It never takes fixed room | yes |
-| `status` | One chip in the status line above the Belt, after Collie's own items | yes |
-| `dashboard` | A round tile in the strip at the top of the Dashboard. The strip is hidden while no trick has a tile | yes |
-| `tabbar` | An item in the Dashboard's bottom bar, after the Hill | yes |
-| `session` | A session of the trick's own: a row on the Dashboard under Tricks, and a screen of its own | no |
+The [Tricks reference](tricks-reference.md#places) lists each place: where it shows on the phone, what a tap does there,
+its limits and an example. A trick has one `belt`, one `status`, one `dashboard` and one `tabbar` part, and any number of `session` parts.
 
 Settings → Tricks lists these words in a trick's row, as "Draws in: belt, Dashboard".
 The words there are `belt`, `session`, `Dashboard`, `status` and `Bottom bar`.

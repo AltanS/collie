@@ -39,6 +39,7 @@ import terminology from "../docs/terminology.md" with { type: "text" };
 import themes from "../docs/themes.md" with { type: "text" };
 import tricks from "../docs/tricks.md" with { type: "text" };
 import tricksAuthoring from "../docs/tricks-authoring.md" with { type: "text" };
+import tricksReference from "../docs/tricks-reference.md" with { type: "text" };
 import troubleshooting from "../docs/troubleshooting.md" with { type: "text" };
 import upgrading from "../docs/upgrading.md" with { type: "text" };
 import voiceAndPush from "../docs/voice-and-push.md" with { type: "text" };
@@ -184,6 +185,11 @@ export const DOC_PAGES: readonly DocPage[] = [
     name: "tricks-authoring",
     purpose: "Writing a trick: the folder, trick.toml, what a program receives and prints, node kinds, Decisions, collie trick dev and check",
     text: tricksAuthoring,
+  },
+  {
+    name: "tricks-reference",
+    purpose: "Every place, part, manifest key, limit and command of a trick, complete, generated from the code",
+    text: tricksReference,
   },
   {
     name: "voice-and-push",

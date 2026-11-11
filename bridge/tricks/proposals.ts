@@ -17,6 +17,10 @@ import { trickWarnings, WARN_PLAIN } from "./scan.ts";
 import type { ProposalPlaced, ProposalTarget } from "./service.ts";
 import { versionDiff, type VersionDiff } from "./version-diff.ts";
 import { addedDiff, GROUP_FILES_MAX, shippedHelpers } from "./card-group.ts";
+import { PROPOSALS_MACHINE_HOUR_MAX, PROPOSALS_MEMBER_OPEN_MAX, PROPOSALS_OPEN_MAX, PROPOSALS_SENDER_HOUR_MAX, PROPOSALS_SENDER_OPEN_MAX, PROPOSAL_EXPIRY_MS } from "../../web/src/lib/tricks/limits.ts";
+
+// The proposal caps live in web/src/lib/tricks/limits.ts, which the tricks catalogue reads too.
+export { PROPOSALS_MACHINE_HOUR_MAX, PROPOSALS_MEMBER_OPEN_MAX, PROPOSALS_OPEN_MAX, PROPOSALS_SENDER_HOUR_MAX, PROPOSALS_SENDER_OPEN_MAX, PROPOSAL_EXPIRY_MS };
 
 // TRICK PROPOSALS ON THE LEAD (crew slice 8). `collie trick propose <folder>` hands a trick's files to this
 // bridge, from a session or a terminal on this machine (the walky socket) or on a crew member (the signed
@@ -61,20 +65,8 @@ import { addedDiff, GROUP_FILES_MAX, shippedHelpers } from "./card-group.ts";
 // key for {@link PROPOSAL_RID_KEEP_MS}: the same sender, request id and hash answers what it answered; the
 // same request id with other files is refused.
 
-/** Open proposals one sender may have. */
-export const PROPOSALS_SENDER_OPEN_MAX = 2;
-/** Proposals one sender may make in an hour, replacements included. */
-export const PROPOSALS_SENDER_HOUR_MAX = 6;
-/** Open proposals from one crew machine, its sessions and its terminal together. */
-export const PROPOSALS_MEMBER_OPEN_MAX = 4;
-/** Proposals one crew machine may make in an hour, its sessions and its terminal together. */
-export const PROPOSALS_MACHINE_HOUR_MAX = 12;
-/** Open proposals on this lead. */
-export const PROPOSALS_OPEN_MAX = 8;
 /** Bytes stored for open proposals on this lead. */
 export const PROPOSED_BYTES_MAX = 32 * 1024 * 1024;
-/** How long a proposal card waits for an answer before it closes `expired` and its copy goes. */
-export const PROPOSAL_EXPIRY_MS = 3 * 24 * 60 * 60_000;
 /** How long a request id answers as it did. */
 export const PROPOSAL_RID_KEEP_MS = 24 * 60 * 60_000;
 /** The most request ids kept. */
