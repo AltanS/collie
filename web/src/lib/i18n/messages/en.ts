@@ -3350,6 +3350,13 @@ export const en = {
   "tricks.frame.stopped": "Stopped after repeated failures",
   "tricks.frame.tapFailed": "The tap failed",
   "tricks.frame.tapUnknown": "No answer. It may have run.",
+  // Fault A: the bridge refused a tap before anything ran. One line each, in the part's frame line or,
+  // for a belt mark, as a status event. None names the bridge's word.
+  "tricks.frame.refused.part": "This is gone from the trick. Nothing ran.",
+  "tricks.frame.refused.intent": "The trick does not take that tap. Nothing ran.",
+  "tricks.frame.refused.value": "The trick does not take that value. Nothing ran.",
+  "tricks.frame.refused.changed": "This changed before your tap. Nothing ran.",
+  "tricks.frame.refused.session": "No open agent session here. Nothing ran.",
   "tricks.frame.why": "Why",
   "tricks.frame.hide": "Hide",
   "tricks.frame.fix": "Copy for an agent",
@@ -3942,6 +3949,11 @@ export const PENDING_TRANSLATION = [
   "hill.group.card",
   // A single card of code (review 7 R1).
   "hill.single.readEnd",
+  "tricks.frame.refused.part",
+  "tricks.frame.refused.intent",
+  "tricks.frame.refused.value",
+  "tricks.frame.refused.changed",
+  "tricks.frame.refused.session",
 ] as const satisfies readonly MessageKey[];
 
 /** A key a bundle may leave out until the translation pass. */

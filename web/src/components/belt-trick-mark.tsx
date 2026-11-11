@@ -1,5 +1,3 @@
-import { useMemo } from "react";
-
 import type { BeltMark } from "@/components/actions-row";
 import { useLocale } from "@/hooks/use-locale";
 import { t } from "@/lib/i18n";
@@ -8,7 +6,8 @@ import { isPastWindow } from "@/lib/tricks/frame";
 import { TrickBoundary } from "@/lib/tricks/boundary";
 import { TrickMark } from "@/lib/tricks/mark";
 import { parseTrickSessionId, partKey, type WireTrickPart } from "@/lib/tricks/schema";
-import { useTrickPart, type TricksStore, tricksStore, type TapHandlers, trickTapper } from "@/lib/tricks/store";
+import { setStatus } from "@/lib/status";
+import { tapRefusalLine, useTrickPart, type TricksStore, tricksStore, type TapHandlers } from "@/lib/tricks/store";
 import type { AgentView } from "@/lib/types";
 
 // THE BELT'S TRICK MARKS (M94 slice 03): one per `belt` part of a trick that is on, in manifest order
@@ -20,6 +19,21 @@ import type { AgentView } from "@/lib/types";
 // in its icon's box while the tap is in flight. A mark without an intent opens the trick's own session
 // when it has one, one level down. A mark with neither is the same control, which does nothing and
 // says so (lib/tricks/mark.tsx, ONE CONTROL): it never drops to a span that shrinks.
+//
+// A REFUSED TAP (fault A) has no frame line to say it on: a mark is one control on the belt. Collie's
+// line for it goes out as an Event (lib/status.ts), which floats and holds no space, so nothing on the
+// belt moves. The mark itself draws the trick's parts the reply brought, as any tap does.
+
+/**
+ * What travels beside a belt tap from a pane: the agent session open on the phone, by its scope key. A
+ * shell or a trick's own pane is no agent session, so a tap from it names none (fault A: the bridge refuses a session
+ * its facts do not list as an agent's).
+ */
+export function beltTapHandlers(pane: Pick<AgentView, "host" | "paneId" | "kind"> | undefined, host: string): TapHandlers {
+  // A pane with no kind comes from a bridge before kinds: it lists agent panes only.
+  if (pane === undefined || (pane.kind !== undefined && pane.kind !== "agent")) return {};
+  return { from: { session: `${pane.host ?? host}:${pane.paneId}` } };
+}
 
 /** The session a mark without an intent opens: the trick's first session part. */
 export function sessionOfMark(part: Pick<WireTrickPart, "host" | "trick">, sessions: readonly AgentView[]): AgentView | undefined {
@@ -45,7 +59,6 @@ function BeltTrickMark({
   useLocale();
   const { part, trick, tap } = useTrickPart(key, store);
   const now = useBridgeNow();
-  const onTap = useMemo(() => trickTapper(handlers, store), [handlers, store]);
   const value = part?.value;
   if (part === undefined || value?.at !== "belt") return null;
   const mark = value.mark;
@@ -57,7 +70,12 @@ function BeltTrickMark({
   const unknown = tap?.phase === "unknown";
   if (mark.intent !== undefined) {
     const intent = mark.intent;
-    return <TrickMark mark={mark} trickName={trickName} stale={stale} busy={busy} unknown={unknown} onTap={() => onTap(key, intent, undefined, "mark")} />;
+    const onTap = async (): Promise<void> => {
+      await store.tap({ host: part.host, trick: part.trick, part: part.part, intent, control: "mark" }, handlers);
+      const last = store.getState().taps.get(key);
+      if (last?.phase === "failed" && last.refused !== undefined) setStatus(tapRefusalLine(last.refused), last.refused === "changed" ? "info" : "warn");
+    };
+    return <TrickMark mark={mark} trickName={trickName} stale={stale} busy={busy} unknown={unknown} onTap={onTap} />;
   }
   if (session === undefined) return <TrickMark mark={mark} trickName={trickName} stale={stale} />;
   return <TrickMark mark={mark} trickName={trickName} stale={stale} actionLabel={t("tricks.mark.open", { trick: trickName })} onTap={() => onOpenSession(session)} />;

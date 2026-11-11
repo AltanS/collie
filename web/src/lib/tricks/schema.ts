@@ -1300,6 +1300,13 @@ export interface TapRequest {
   from?: TapFrom;
 }
 /**
+ * The body a phone posts: the request, and the rev of the part as the phone drew it (fault A). The
+ * bridge checks the rev and strips it, so a program's trigger is the {@link TapRequest} alone.
+ */
+export interface TapBody extends TapRequest {
+  rev?: number;
+}
+/**
  * The receipt codes, the tree's (VOCABULARY.md 5). The first schema's codes map onto them: `applied`
  * is `ok`; `replayed` is the same receipt again, from the receipt log; `failed` (the program exited
  * badly, its output was refused, the trick is off) is `rejected`; a timeout is `unknown`. `changed`,

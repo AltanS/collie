@@ -30,7 +30,7 @@ import { problemOf, readFrame, type FrameLine } from "./frame";
 import { viewForm } from "./layout";
 import { Placeholder, renderView, type LinkTarget, type RenderCtx } from "./render";
 import { parsePartKey, partKey as keyOfPart, trickMediaPath, type TrickPart, type View, type ViewNode, type WireTrickInfo, type WireTrickPart } from "./schema";
-import { trickTapper, tricksStore, useTrickPart, type TricksStore, type TapHandlers, type TapState } from "./store";
+import { tapRefusalLine, trickTapper, tricksStore, useTrickPart, type TricksStore, type TapHandlers, type TapState } from "./store";
 import { trickTimeText, spanText } from "./time";
 
 export interface PartFrameProps {
@@ -70,6 +70,8 @@ function lineWords(line: FrameLine, now: number): string {
       return t("tricks.frame.tapFailed");
     case "tap-unknown":
       return t("tricks.frame.tapUnknown");
+    case "tap-refused":
+      return tapRefusalLine(line.refused);
   }
 }
 
@@ -77,7 +79,8 @@ function LineGlyph({ line }: { line: FrameLine }) {
   const glyph = "size-3.5 shrink-0";
   if (line.kind === "age") return <Icon name="mod-age" aria-hidden className={glyph} />;
   if (line.kind === "paused") return <Icon name="mod-paused" aria-hidden className={glyph} />;
-  if (line.kind === "none" || line.kind === "tap-unknown") return null;
+  // A tap on a face that moved is a race, not a fault: its line carries no trouble mark.
+  if (line.kind === "none" || line.kind === "tap-unknown" || (line.kind === "tap-refused" && line.refused === "changed")) return null;
   return <Icon name="mod-trouble" aria-hidden className={glyph} />;
 }
 

@@ -6,8 +6,8 @@ import { server } from "@/test/setup";
 import { fetchTricks, tapTrick } from "../api";
 import type { JsonObject, JsonValue } from "../json";
 import { LEGS_DOCUMENT, TRACKER_DOCUMENT } from "./fixtures";
-import { isRequestId, parseTrickDocument, partKey, type TrickPart, type TricksReply, type WireTrickInfo, type WireTrickPart } from "./schema";
-import { createTricksStore, SYNC_RETRY_MS, useTrickParts, type TricksStore, type TapInput } from "./store";
+import { isRequestId, parseTrickDocument, partKey, type TapRefusal, type TrickPart, type TricksReply, type WireTrickInfo, type WireTrickPart } from "./schema";
+import { createTricksStore, SYNC_RETRY_MS, tapRefusalLine, useTrickParts, type TricksStore, type TapInput } from "./store";
 import { readTricksReply, readTapReply } from "./wire";
 
 /** The parts of a fixture document, as the bridge's parser accepted them. */
@@ -257,7 +257,7 @@ describe("a tap", () => {
     const bodies = serveTaps(receipt(ID1, "ok", { rev: 6, parts: JSON.parse(JSON.stringify([after])), present: [partKey(BELT), partKey(LEGS)] }));
     const outcome = await store.tap(RERUN);
     expect(outcome).toBe("ok");
-    expect(bodies).toEqual([{ rid: ID1, node: "legs", intent: "rerun", value: "red" }]);
+    expect(bodies).toEqual([{ rid: ID1, node: "legs", intent: "rerun", value: "red", rev: 2 }]);
     expect(isRequestId(ID1)).toBe(true);
     expect(store.getState().parts.get(partKey(LEGS))?.value).toEqual(after.value);
     // Only this trick's parts answer to its `present`; the tracker's part stays.
@@ -360,6 +360,52 @@ describe("a tap", () => {
     await store.tap(RERUN);
     await store.syncTricks(4);
     expect(store.getState().taps.size).toBe(0);
+  });
+});
+
+describe("fault A: a refused tap", () => {
+  it("fault A: sends the rev of the part as the phone drew it, and none for a part it holds no copy of", async () => {
+    const store = await heldStore();
+    const bodies = serveTaps(receipt(ID1, "ok"), receipt(ID2, "changed", { refused: "changed" }));
+    await store.tap(RERUN);
+    await store.tap({ ...RERUN, part: "ghost" });
+    expect(bodies[0]).toMatchObject({ rev: LEGS.rev });
+    expect(bodies[1]).not.toHaveProperty("rev");
+  });
+
+  it("fault A: keeps each refusal word for the frame line, with Collie's own words and never the bridge's", async () => {
+    const lines: [TapRefusal, string][] = [
+      ["part", "This is gone from the trick. Nothing ran."],
+      ["intent", "The trick does not take that tap. Nothing ran."],
+      ["value", "The trick does not take that value. Nothing ran."],
+      ["session", "No open agent session here. Nothing ran."],
+    ];
+    for (const [word, line] of lines) {
+      const store = await heldStore();
+      serveTaps(receipt(ID1, "rejected", { refused: word, message: "The bridge's English line" }));
+      await expect(store.tap(RERUN)).resolves.toBe("rejected");
+      expect(store.getState().taps.get(partKey(LEGS))).toEqual({ phase: "failed", rid: ID1, control: "v/6", intent: "rerun", value: "red", refused: word, message: line });
+      expect(tapRefusalLine(word)).toBe(line);
+    }
+  });
+
+  it("fault A: changed draws the trick's parts now, keeps its line until the part moves again, and sends nothing again by itself", async () => {
+    const store = await heldStore();
+    const now = wire("legs", legsSaying("moved"), 7);
+    const bodies = serveTaps(receipt(ID1, "changed", { refused: "changed", rev: 7, parts: JSON.parse(JSON.stringify([now])), present: [partKey(BELT), partKey(LEGS)] }), receipt(ID2, "ok"));
+    await expect(store.tap(RERUN)).resolves.toBe("changed");
+    expect(store.getState().parts.get(partKey(LEGS))?.value).toEqual(now.value);
+    expect(store.getState().taps.get(partKey(LEGS))).toMatchObject({ phase: "failed", refused: "changed", message: "This changed before your tap. Nothing ran." });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(bodies).toHaveLength(1);
+    // A tap on the new face goes out with a new request id and the new rev.
+    await expect(store.tap(RERUN)).resolves.toBe("ok");
+    expect(bodies[1]).toMatchObject({ rid: ID2, rev: 7 });
+  });
+
+  it("fault A: reads a refusal word this phone does not know as a plain receipt", () => {
+    expect(readTapReply({ rid: ID1, code: "rejected", refused: "planet", message: "x" })).toEqual({ rid: ID1, code: "rejected", message: "x" });
+    expect(readTapReply({ rid: ID1, code: "changed", refused: "changed" })).toEqual({ rid: ID1, code: "changed", refused: "changed" });
   });
 });
 

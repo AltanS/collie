@@ -27,7 +27,7 @@ import { readAskTapReply, type AskTapReply } from "./ask-reply";
 import { authHeader, clearNotPaired, EXPIRED_BODY, markExpired, markNotPaired, NOT_PAIRED_BODY } from "./pairing";
 import { pairingRefused } from "./wipe";
 import { mintRequestId } from "./worktree-name";
-import type { OfficialState, OfficialTricksReply, TrickTapReply, TricksReply, TapRequest, WireTrickInfo } from "./tricks/schema";
+import type { OfficialState, OfficialTricksReply, TrickTapReply, TricksReply, TapBody, WireTrickInfo } from "./tricks/schema";
 import { readTapReplyTolerant, readTricksReplyTolerant } from "./tricks/read";
 import { readOfficialAddReply, readOfficialTricksReply, readTrick } from "./tricks/wire";
 import { fileVersionOf } from "./file-image-cache";
@@ -3086,7 +3086,7 @@ function recoverTapReceipt(_status: number, detail: string): JsonValue | null {
  * refusal that carries a receipt on a non-2xx status is the same value; any other refusal throws an
  * error with its status, and the store reads that as `failed` (4xx, nothing ran) or `unknown` (5xx).
  */
-export async function tapTrick(host: string, trick: string, body: TapRequest): Promise<TrickTapReply> {
+export async function tapTrick(host: string, trick: string, body: TapBody): Promise<TrickTapReply> {
   const path = `/api/tricks/${encodeURIComponent(host)}/${encodeURIComponent(trick)}/tap`;
   const raw = await req<JsonValue>(path, { method: "POST", body: JSON.stringify(body) }, recoverTapReceipt);
   const reply = readTapReplyTolerant(raw);

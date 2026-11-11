@@ -24,6 +24,7 @@ import {
   rulesNameProblem,
   rulesTextProblems,
   TAP_CODES,
+  TAP_REFUSALS,
   TRICK_WARNINGS_MAX,
   type OfficialState,
   type OfficialTricksReply,
@@ -33,6 +34,7 @@ import {
   type WireTrickRules,
   type TricksRunsOn,
   type TapCode,
+  type TapRefusal,
   type WireTrickInfo,
   type WireTrickPart,
   type WireTrickPending,
@@ -311,6 +313,10 @@ function isTapCode(text: string | undefined): text is TapCode {
   return TAP_CODES.some((code) => code === text);
 }
 
+function isTapRefusal(text: string | undefined): text is TapRefusal {
+  return TAP_REFUSALS.some((word) => word === text);
+}
+
 /**
  * A tap's receipt, or `undefined` when the body is not one. A refusal may come back on a non-2xx
  * status with a receipt in it, so the transport hands every body here before it throws.
@@ -324,6 +330,9 @@ export function readTapReply(raw: JsonValue | undefined): TrickTapReply | undefi
   const reply: TrickTapReply = { rid, code };
   const message = asJsonString(body.message);
   if (message !== undefined) reply.message = message;
+  // A word a later bridge adds is no refusal this phone can name: the receipt still reads, without it.
+  const refused = asJsonString(body.refused);
+  if (isTapRefusal(refused)) reply.refused = refused;
   const rev = asJsonNumber(body.rev);
   if (rev !== undefined) reply.rev = rev;
   if (body.parts !== undefined) {

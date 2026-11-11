@@ -5,7 +5,7 @@ import type { Mark, TrickTapReply, TricksReply, WireTrickInfo, WireTrickPart } f
 import { createTricksStore, type TricksStore, type TapHandlers } from "@/lib/tricks/store";
 import type { AgentView } from "@/lib/types";
 import { ActionsRow, type BeltMark } from "./actions-row";
-import { beltMarksOf } from "./belt-trick-mark";
+import { beltMarksOf, beltTapHandlers } from "./belt-trick-mark";
 
 // THE BELT'S END-BLOCK MARKS (M94 slice 03): between the pins mark and Changes, in manifest order, each
 // in its own frame; a tap with an intent goes to the program and shows busy; a mark with no intent
@@ -91,6 +91,32 @@ describe("the tricks' marks on the belt", () => {
     expect(legs.querySelector('[data-slot="trick-mark-busy"]')).not.toBeNull();
     await act(async () => finish({ rid: "00000000-0000-4000-8000-000000000001", code: "ok" }));
     expect(legs.getAttribute("aria-busy")).toBe("false");
+  });
+
+  it("fault A: says a refused tap as a status event in Collie's words, so nothing on the belt moves", async () => {
+    const status = await import("@/lib/status");
+    const said = vi.spyOn(status, "setStatus");
+    const tap = vi.fn(async (): Promise<TrickTapReply> => ({ rid: "00000000-0000-4000-8000-000000000001", code: "rejected", refused: "session", message: "The bridge's English line" }));
+    const store = storeWith([LEGS, TRACKER, QUIET], tap);
+    await store.syncTricks(1);
+    mount(store, vi.fn(), { from: { session: "lodge:w6X:3" } });
+    const legs = screen.getByRole("button", { name: "legs: 23/34" });
+    const before = row().innerHTML;
+    await act(async () => {
+      fireEvent.click(legs);
+    });
+    expect(tap).toHaveBeenCalledWith("lodge", "legs", expect.objectContaining({ intent: "rerun", rev: 1, from: { session: "lodge:w6X:3" } }));
+    expect(said).toHaveBeenCalledWith("No open agent session here. Nothing ran.", "warn");
+    expect(row().innerHTML).toBe(before);
+    said.mockRestore();
+  });
+
+  it("fault A: names the agent session open on the phone, and none from a shell pane or no pane", () => {
+    expect(beltTapHandlers({ paneId: "w6X:3", kind: "agent" }, "lodge")).toEqual({ from: { session: "lodge:w6X:3" } });
+    expect(beltTapHandlers({ paneId: "w6X:3", kind: "agent", host: "workshop" }, "lodge")).toEqual({ from: { session: "workshop:w6X:3" } });
+    expect(beltTapHandlers({ paneId: "w6X:4", kind: "shell" }, "lodge")).toEqual({});
+    expect(beltTapHandlers({ paneId: "trick:lodge:legs:due", kind: "trick" }, "lodge")).toEqual({});
+    expect(beltTapHandlers(undefined, "lodge")).toEqual({});
   });
 
   it("opens the trick's session from a mark with no intent, and draws a mark with neither as the same control, aria-disabled", async () => {

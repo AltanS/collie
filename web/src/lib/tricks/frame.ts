@@ -4,7 +4,7 @@
 // One line under the part, always reserved, so a part going stale or failing repaints the line and
 // moves nothing. The line names ONE thing, the most pressing:
 //
-//   1. The last tap on this part failed, or got no answer.      (the person just acted here)
+//   1. The last tap on this part failed, was refused, or got no answer.  (the person just acted here)
 //   2. The trick stopped after repeated failures, or is paused.  (nothing will change on its own soon)
 //   3. The last run failed and this is the last good version.
 //   4. The part is older than its fresh window.                 (the tone goes)
@@ -14,7 +14,7 @@
 // A part past its window loses its tone whatever the line says, so a bridge that is down cannot leave
 // "deploy green" on the glass.
 
-import { freshWindowMs, parseDuration, type WireTrickInfo, type WireTrickPart } from "./schema";
+import { freshWindowMs, parseDuration, type TapRefusal, type WireTrickInfo, type WireTrickPart } from "./schema";
 import type { TapState } from "./store";
 
 export type FrameLine =
@@ -25,6 +25,8 @@ export type FrameLine =
   | { kind: "paused"; retryAt: string | undefined; problem: string | undefined }
   | { kind: "stopped"; problem: string | undefined }
   | { kind: "tap-failed"; problem: string }
+  /** The bridge refused the last tap before anything ran (fault A): the line says why, in Collie's words. */
+  | { kind: "tap-refused"; refused: TapRefusal }
   | { kind: "tap-unknown" };
 
 export interface FrameReading {
@@ -58,6 +60,7 @@ export function isPastWindow(part: WireTrickPart, now: number): boolean {
 /** Read a part's frame. `trick` is its entry in the trick list; `retryAt` is when a paused trick runs again, when known. */
 export function readFrame(part: WireTrickPart, trick: WireTrickInfo | undefined, tap: TapState | undefined, now: number, retryAt?: string): FrameReading {
   const stale = isPastWindow(part, now);
+  if (tap?.phase === "failed" && tap.refused !== undefined) return { stale, line: { kind: "tap-refused", refused: tap.refused } };
   if (tap?.phase === "failed") return { stale, line: { kind: "tap-failed", problem: tap.message } };
   if (tap?.phase === "unknown") return { stale, line: { kind: "tap-unknown" } };
   const problem = cleanProblem(part.problem ?? trick?.error);

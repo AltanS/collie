@@ -150,9 +150,9 @@ import { useSessionCard, wearsExperimental } from "@/lib/session-cards";
 import { usePins } from "@/lib/pins";
 import { paneFilesDir } from "@/lib/file-paths";
 import { changesPath, filesPath, historyPath, trickSessionPath, newPath, panePath, spacePath } from "@/lib/nav";
-import { beltMarksOf } from "@/components/belt-trick-mark";
+import { beltMarksOf, beltTapHandlers } from "@/components/belt-trick-mark";
 import { statusItemsOf } from "@/components/trick-status-item";
-import { useTrickParts, type TapHandlers } from "@/lib/tricks/store";
+import { useTrickParts } from "@/lib/tricks/store";
 import { isReadOnly, statusLabel } from "@/lib/types";
 import { usePairing } from "@/lib/pairing";
 import type { AgentView, BridgeStatus, DeviceAuth, PinRow, ServerSummary, TabView } from "@/lib/types";
@@ -632,12 +632,7 @@ export function AgentChat({
     if (beltParts.length === 0) return undefined;
     return beltMarksOf({
       parts: beltParts,
-      handlersFor: (host) => {
-        const handlers: TapHandlers = {};
-        // The tap says which session is open on the phone: this pane, by its scope key.
-        if (agent !== undefined) handlers.from = { session: `${agent.host ?? host}:${agent.paneId}` };
-        return handlers;
-      },
+      handlersFor: (host) => beltTapHandlers(agent, host),
       sessions: trickSessions ?? [],
       onOpenSession: openTrickSession,
     });

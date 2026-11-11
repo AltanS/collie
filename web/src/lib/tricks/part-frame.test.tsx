@@ -1,4 +1,4 @@
-import { act, fireEvent, render, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import type { JsonObject } from "../json";
@@ -147,6 +147,23 @@ describe("failure", () => {
     failed.unmount();
     const unknown = frame(stored(GREEN), T0, { tap: { phase: "unknown", rid: "r", control: "v", intent: "x" } });
     expect(lineOf(unknown.container).textContent).toBe("No answer. It may have run.");
+  });
+
+  it("fault A: says a refused tap in Collie's words in the same reserved line, offers no Why, and moves nothing", () => {
+    const fresh = frame(stored(GREEN), T0);
+    const height = lineOf(fresh.container).className;
+    fresh.unmount();
+    const refused = frame(stored(GREEN), T0, { tap: { phase: "failed", rid: "r", control: "v", intent: "x", message: "m", refused: "intent" } });
+    expect(lineOf(refused.container).textContent).toBe("The trick does not take that tap. Nothing ran.");
+    expect(lineOf(refused.container).className).toBe(height);
+    expect(refused.container.querySelector('[data-line="tap-refused"]')).not.toBeNull();
+    expect(screen.queryByRole("button", { name: "Why" })).toBeNull();
+    expect(refused.container.textContent).not.toContain("intent");
+    refused.unmount();
+    const changed = frame(stored(GREEN), T0, { tap: { phase: "failed", rid: "r", control: "v", intent: "x", message: "m", refused: "changed" } });
+    expect(lineOf(changed.container).textContent).toBe("This changed before your tap. Nothing ran.");
+    // A race, not a fault: no trouble mark beside it.
+    expect(lineOf(changed.container).querySelector("svg")).toBeNull();
   });
 
   it("reads one thing, the most pressing", () => {

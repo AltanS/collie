@@ -12,6 +12,12 @@
 // same part while one is in flight does nothing. When the operator taps the same control again after an
 // `unknown`, the tap goes out with the SAME rid, so a run that did happen the first time answers the
 // same receipt from the bridge's log and runs nothing twice.
+//
+// A TAP NAMES WHAT WAS DRAWN (fault A). The body also carries the rev of the part as the phone holds it,
+// so the bridge can refuse a tap on a face it no longer draws. A refusal ran nothing: its word (`refused`)
+// becomes one quiet line in Collie's own words ({@link tapRefusalLine}) where the part says how its last
+// tap went, never the bridge's code. `changed` brings the trick's parts now and they are drawn at once;
+// the tap is never sent again by itself, the person taps the new face if they still want to.
 
 import { useMemo, useSyncExternalStore } from "react";
 
@@ -27,9 +33,10 @@ import {
   type TricksReply,
   type TricksRunsOn,
   type PlaceKind,
+  type TapBody,
   type TapCode,
   type TapFrom,
-  type TapRequest,
+  type TapRefusal,
   type TapValue,
   type WireTrickInfo,
   type WireTrickPart,
@@ -38,7 +45,7 @@ import {
 /** The state of the last tap on one part. A part with no entry has no tap to show. */
 export type TapState =
   | { phase: "busy"; rid: string; control: string; intent: string; value?: TapValue }
-  | { phase: "failed"; rid: string; control: string; intent: string; value?: TapValue; message: string }
+  | { phase: "failed"; rid: string; control: string; intent: string; value?: TapValue; message: string; refused?: TapRefusal }
   | { phase: "unknown"; rid: string; control: string; intent: string; value?: TapValue };
 
 export interface TricksState {
@@ -57,7 +64,7 @@ export interface TricksState {
 /** The two routes and the id source, so a test or the playground can stand in for the bridge. */
 export interface TricksTransport {
   fetchTricks: (since: number) => Promise<TricksReply>;
-  tapTrick: (host: string, trick: string, body: TapRequest) => Promise<TrickTapReply>;
+  tapTrick: (host: string, trick: string, body: TapBody) => Promise<TrickTapReply>;
   mintRequestId: () => string;
 }
 
@@ -94,6 +101,22 @@ const SYNC_ROUNDS = 3;
 export const SYNC_RETRY_MS = 30_000;
 
 const EMPTY: TricksState = { rev: null, tricks: [], parts: new Map(), taps: new Map() };
+
+/** Collie's line for a tap the bridge refused before anything ran. One per word, none names the word. */
+export function tapRefusalLine(word: TapRefusal): string {
+  switch (word) {
+    case "part":
+      return t("tricks.frame.refused.part");
+    case "intent":
+      return t("tricks.frame.refused.intent");
+    case "value":
+      return t("tricks.frame.refused.value");
+    case "changed":
+      return t("tricks.frame.refused.changed");
+    case "session":
+      return t("tricks.frame.refused.session");
+  }
+}
 
 function sameValue(a: TapValue | undefined, b: TapValue | undefined): boolean {
   return JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
@@ -221,9 +244,12 @@ export function createTricksStore(transport: TricksTransport, clock: () => numbe
     commit({ ...state, taps: withTap(key, busy) });
 
     // STEP 3: a decision's answer taps `hill/<key>`; the store keys taps by part, so it sends the part id.
-    const body: TapRequest = { rid, node: input.part, intent: input.intent };
+    const body: TapBody = { rid, node: input.part, intent: input.intent };
     if (input.value !== undefined) body.value = input.value;
     if (handlers.from !== undefined) body.from = handlers.from;
+    // The face the person tapped. A part the phone holds no copy of sends none, and the bridge says `changed`.
+    const drawn = state.parts.get(key)?.rev;
+    if (drawn !== undefined) body.rev = drawn;
     let reply: TrickTapReply;
     try {
       reply = await transport.tapTrick(input.host, input.trick, body);
@@ -236,6 +262,12 @@ export function createTricksStore(transport: TricksTransport, clock: () => numbe
     }
     if (reply.rid !== rid) return settle(key, input, rid, "unknown");
     applyTapReply(input, reply);
+    if (reply.refused !== undefined) {
+      const refused: TapState = { phase: "failed", rid, control: input.control, intent: input.intent, message: tapRefusalLine(reply.refused), refused: reply.refused };
+      if (input.value !== undefined) refused.value = input.value;
+      commit({ ...state, taps: withTap(key, refused) });
+      return reply.code;
+    }
     if (reply.code !== "ok" && reply.code !== "changed") return settle(key, input, rid, reply.code, reply.message);
     commit({ ...state, taps: withTap(key, undefined) });
     return reply.code;
