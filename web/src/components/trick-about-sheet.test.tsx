@@ -242,6 +242,11 @@ describe("an agent view and its rules (contract 2)", () => {
     expect(pre?.children.length).toBe(0);
   });
 
+  it("the playground's Morph rules are the bridge fixture's bytes", async () => {
+    const { MORPH_RULES } = await import("@/playground/fixtures/morph");
+    expect(MORPH_RULES).toBe(RULES_TEXT);
+  });
+
   it("a markdown-looking line stays text", async () => {
     const user = userEvent.setup();
     const text = "# Not a heading\n**not bold** [not a link](https://example.com)\n<b>not html</b>\n";

@@ -62,6 +62,7 @@ import {
   versionGroup,
   versionPlain,
   versionRights,
+  versionRules,
   withBody,
 } from "../fixtures/hill/decisions";
 import { RootRouter } from "../harness";
@@ -844,6 +845,10 @@ export function HillSection() {
         <Card state="hill-card-version-rights" label="50: a new version with a new right">
           <CardHead n={50} title="A trick's new version asks for a new right" />
           <OneCard decision={versionRights} />
+        </Card>
+        <Card state="hill-card-version-rules" label="59: an agent view's new rules, the whole diff">
+          <CardHead n={59} title="A new version changes the agent instructions" />
+          <OneCard decision={versionRules} />
         </Card>
         <Card state="hill-card-version-used" label="51: the new version used">
           <CardHead n={51} title="The new version used" />

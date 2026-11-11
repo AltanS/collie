@@ -13,6 +13,7 @@ import { TricksSettingsCard } from "@/components/tricks-settings-card";
 import { addOfficialTrick } from "@/lib/api";
 import { clearStatus } from "@/lib/status";
 import { homeSolo } from "../fixtures";
+import { MORPH } from "../fixtures/morph";
 import { ABOUT_MAX, type OfficialState, type OfficialTricksReply, type TricksReply, type WireOfficialTrick, type WireTrickInfo } from "@/lib/tricks/schema";
 import { createTricksStore, type TricksStore } from "@/lib/tricks/store";
 
@@ -356,6 +357,11 @@ export function TrickSettingsSection(): ReactNode {
             provenance: { via: "repo", at: "2026-11-08T09:38:00Z", repo: "AltanS/collie-tricks", sha: "9c41d07e2b6a" },
           })}
         />
+      </Group>
+      <Group title="An agent view (contract 2)">
+        <ListCard n={26} state="trick-settings-agent-view" label="a view-only trick: agent view, the later note, a switch" tricks={[MORPH, HEALTHY[2] ?? trick("x", "x")]} />
+        <SheetBox n={27} state="trick-settings-agent-view-about" label="its About sheet: the rights, the rules line, the fold (tap it to open)" trick={MORPH} />
+        <SheetBox n={28} state="trick-settings-agent-view-about-on" label="switched on: still no Updates switch" updates trick={{ ...MORPH, on: true, state: "ok" }} />
       </Group>
       <Group title="Official tricks">
         <OfficialCard n={25} state="trick-settings-official-fresh" label="a fresh install: no trick yet, the list alone; tap Add, the trick lands, off" tricks={[]} entries={[REVIEW, INBOX, BUILDS]} />
