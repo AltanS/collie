@@ -362,15 +362,33 @@ the card's (`PROPOSAL_CHANGED` otherwise). The files become `<configDir>/tricks/
 sibling and one rename, never over a folder that appeared meanwhile; the code written is approved as it
 is and switched on, by `proposal` in the switch file and the audit. A dot file
 `.collie-origin.json` records the proposal (`by`, `host`, `label`, `at`): `collie trick list` shows it as
-`proposed by agent on minibuch`, and the wire's `provenance` says `agent` or `cli`. "Not now", a dismiss, the expiry, or a newer proposal
+`proposed by agent on minibuch`, and the wire's `provenance` carries `proposed: { by, host }`, so the
+Settings row says "Proposed by an agent on minibuch" and the About sheet "Proposed by an agent session
+on minibuch." ("from a terminal" for a terminal). "Not now", a dismiss, the expiry, or a newer proposal
 from the same sender removes the stored copy.
 
-**A trick that exists.** A proposal for a trick that is on, came from no repository, takes no version
-without asking, and has nothing waiting replaces its code at once and keeps its `config.toml`,
-pictures, `inputs/` and dot files: the runner's own "new version" card then asks, and that card says
-who proposed it. Every other trick of that id refuses the proposal in plain words: one from a
-repository ("This trick comes from <repo>. Change it there."), one that is off, one on auto, one with a
-version waiting.
+**A trick that exists.** Only a trick a proposal made takes a new version by proposal. Before the
+person's yes, nothing a proposer sends changes a file outside `.collie-proposed/` and
+`proposals.json`: the new version is stored inert like a new trick, and the trick's folder, its approved
+copy and the switch file stay as they are. Its card is minted by the proposals module with the
+`proposal` ref, so there is one answer path: title "Use the new version of <id>?", the proposer named
+first, the changed files against the approved copy fitted as the runner's version card fits them, the
+new rights and new warnings, no "Use it and stop asking", never a recommendation. Options "Use the new
+version" (asks twice: "Yes, use it") and "Keep the old version". On the yes the stored bytes are hashed
+again, the trick must still be the one the card was made against (the same approved hash, its folder
+unchanged), then its code is replaced in a staged folder, the old folder set aside until the new one is
+in place and put back on a failure, and exactly the code written is approved. The trick stays on, and
+"Undo" in Settings goes back to the version before. The trick keeps its own `config.toml` (a proposal's
+is dropped, and the card says "It brings its own config.toml. The trick keeps yours."), its pictures,
+`inputs/` and dot files. No scan runs between the write and the approval, so the runner never posts a
+version card of its own for it. "Keep the old version", a dismiss and the expiry remove the stored copy
+and change nothing else.
+
+A proposal is refused, in plain words, for a trick from a repository ("This trick comes from <repo>.
+Change it there."), one added on this machine ("<id> was added on this machine. Change it there.": the
+person owns that folder), one that is off, one with a change waiting, one that runs no approved copy.
+DECISION: a trick on auto takes a proposal. Auto takes the person's own folder edits without asking;
+a proposal comes from an agent, so it still waits for the yes on its card, and auto stays as it was.
 
 **The limits** (`proposals.ts`): one sender (a session, or one machine's terminal) at most 2 open
 proposals and 6 in an hour; one crew machine 4 open; the lead 8 open and 32 MiB stored. One open
@@ -786,12 +804,9 @@ written as what a trick, or a person who controls one, can do today.
 - **A proposal's origin record is a dot file in the trick's folder, and an agent on the lead can write
   it.** `.collie-origin.json` is outside the code hash, like the repository record. An agent with write
   access to the tricks folder could put a false "proposed by" there. It is a label, never a right.
-- **A crew member's agent can propose a new version of a trick that is on.** The runner's own version
-  card asks the person, and it names the proposer, but the code in the folder changes at once, as an
-  edit on disk would. The running copy stays the approved one until the yes.
-- **The About sheet on the phone does not say a trick was proposed.** `collie trick list` shows the
-  proposal record; the About sheet still says "Added on this machine." for a proposed trick, also for
-  one a crew member proposed.
+- **Any agent can propose a new version of a trick a proposal made.** That includes an agent on a crew
+  member, and a different agent from the one that proposed the trick. Nothing is written before the
+  person's yes, and the card names the proposer, but the person must read who it is.
 
 ## Places in the app
 
