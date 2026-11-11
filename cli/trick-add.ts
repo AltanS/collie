@@ -21,7 +21,7 @@ import {
   type GitRunner,
   type GitRunOptions,
 } from "../bridge/tricks/fetch.ts";
-import { ORIGIN_FILE, readOrigin, renderOrigin, type TrickOrigin } from "../bridge/tricks/origin.ts";
+import { ORIGIN_FILE, readOrigin, renderOrigin, sameRepo, type TrickOrigin } from "../bridge/tricks/origin.ts";
 import { removeTrickCopies } from "../bridge/tricks/approved.ts";
 import { switchesPath, trickStateDir, tricksConfigDir, tricksStateDir } from "../bridge/tricks/paths.ts";
 import { trickWarnings, warningLines, WARNINGS_HONESTY, type CheckWarning } from "../bridge/tricks/scan.ts";
@@ -91,7 +91,8 @@ export function sourceRefProblem(source: Pick<TrickSource, "url" | "ref">, seam?
   if (source.ref === null) return null;
   const bad = refProblem(source.ref);
   if (bad !== null) return bad;
-  const official = source.url === (seam?.officialRepo ?? OFFICIAL_TRICKS_REPO);
+  // Any spelling of the official repository is the official repository (review 7 M2).
+  const official = sameRepo(source.url, seam?.officialRepo ?? OFFICIAL_TRICKS_REPO);
   if (official && /^[0-9a-f]{40}$/u.test(source.ref)) {
     return "The official repository is added by a branch or a tag, not by a commit id: a commit there may be a pull request's or a fork's. Name a branch or a tag.";
   }
@@ -119,7 +120,18 @@ export function urlProblem(url: string, seam: TrickAddSeam | undefined): string 
   }
   if (parsed.username !== "" || parsed.password !== "") return "The URL holds a user name or a password. Leave them out: they would be stored in the trick's origin record.";
   if (parsed.search !== "" || parsed.hash !== "" || parsed.hostname === "" || /\s/u.test(url)) return `${url} is not a plain https git URL.`;
-  return null;
+  return officialSpellingProblem(url, seam);
+}
+
+/**
+ * Why a URL that names the official repository in another spelling is refused, or null (review 7 M2):
+ * the origin record keeps the URL as written, and every check of "is this the official repository"
+ * compares the one form, so only the official spelling is taken.
+ */
+export function officialSpellingProblem(url: string, seam: TrickAddSeam | undefined): string | null {
+  const official = seam?.officialRepo ?? OFFICIAL_TRICKS_REPO;
+  if (url === official || !sameRepo(url, official)) return null;
+  return `${url} is the official repository of tricks, written another way. Write it as ${official}`;
 }
 
 /**

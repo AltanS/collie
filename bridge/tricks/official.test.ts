@@ -10,7 +10,7 @@ import { isCodePath, officialExtrasHash, trickCodeHash } from "./code-hash.ts";
 import { folderBytes, spawnGit, type GitRunner } from "./fetch.ts";
 import { OFFICIAL_FETCH_BYTES_MAX, OFFICIAL_GIT, OFFICIAL_LINES, OfficialTricks, type OfficialTricksDeps } from "./official-install.ts";
 import { isUnlistedOfficialOrigin, officialStanding, officialStateOf, officialWire, parseOfficialList, renderOfficialList, shippedOfficialList, OFFICIAL_ENTRIES_MAX, OFFICIAL_PREVIOUS_MAX, OFFICIAL_REPOS, type OfficialEntry } from "./official.ts";
-import { ORIGIN_FILE, parseOrigin, renderOrigin, renderProposalOrigin } from "./origin.ts";
+import { canonicalRepoUrl, ORIGIN_FILE, parseOrigin, renderOrigin, renderProposalOrigin, sameRepo } from "./origin.ts";
 import { caseClash } from "./proposal-install.ts";
 import { APPROVED_DIR, approvedCopyDir, switchesPath, TRICKS_DIR } from "./paths.ts";
 import { tricksOfficialRoute } from "./routes.ts";
@@ -347,6 +347,44 @@ describe("an entry's state on this machine", () => {
     expect(isUnlistedOfficialOrigin(list, "legs", { url: REPO, ref: null, commit: C1, subdir: "legs", at })).toBe(true);
     expect(isUnlistedOfficialOrigin(list, "arms", { url: REPO, ref: null, commit: C1, subdir: "arms", at, official: true })).toBe(true);
     expect(isUnlistedOfficialOrigin(list, "legs", { url: "https://github.com/o/r", ref: null, commit: C1, subdir: "legs", at })).toBe(false);
+  });
+
+  // Review 7 M2: GitHub serves a fork's or a pull request's commit through every spelling of the URL.
+  const SPELLINGS = [
+    `${OFFICIAL_REPOS[0]!}.git`,
+    `${OFFICIAL_REPOS[0]!}/`,
+    `${OFFICIAL_REPOS[0]!}.git/`,
+    OFFICIAL_REPOS[0]!.toLowerCase(),
+    OFFICIAL_REPOS[0]!.replace("github.com", "www.github.com"),
+    OFFICIAL_REPOS[0]!.replace("github.com", "GitHub.COM"),
+    OFFICIAL_REPOS[0]!.replace("github.com", "github.com."),
+    OFFICIAL_REPOS[0]!.replace("AltanS", "%41ltanS"),
+    OFFICIAL_REPOS[0]!.replace("/collie-tricks", "//collie-tricks"),
+  ];
+
+  test("every spelling of an official repository is that repository, in one form", () => {
+    for (const url of SPELLINGS) {
+      expect(canonicalRepoUrl(url)).toBe("https://github.com/altans/collie-tricks");
+      expect(sameRepo(url, OFFICIAL_REPOS[0]!)).toBe(true);
+    }
+    expect(sameRepo("https://github.com/AltanS/collie-tricks-fork", OFFICIAL_REPOS[0]!)).toBe(false);
+    expect(sameRepo("https://gitlab.com/AltanS/collie-tricks", OFFICIAL_REPOS[0]!)).toBe(false);
+  });
+
+  test("a record that spells an official repository another way is unlisted, its row and its standing", async () => {
+    const list: OfficialEntry[] = [{ ...e, repo: OFFICIAL_REPOS[0]!, name: "Legs", description: "Counts legs.", contract: 1 }];
+    const at = "2026-11-11T09:00:00.000Z";
+    const configDir = await tempDir();
+    const dir = join(configDir, TRICKS_DIR, "legs");
+    await mkdir(dir, { recursive: true });
+    for (const url of SPELLINGS) {
+      const fork = { url, ref: "9".repeat(40), commit: "9".repeat(40), subdir: "legs", at };
+      expect(isUnlistedOfficialOrigin(list, "legs", fork)).toBe(true);
+      // Even a listed commit with `official: true` is not the list's in another spelling.
+      expect(isUnlistedOfficialOrigin(list, "legs", { ...fork, ref: C1, commit: C1, official: true })).toBe(true);
+      await writeFile(join(dir, ORIGIN_FILE), renderOrigin(fork));
+      expect(await officialStanding(configDir, list[0]!)).toMatchObject({ state: "taken", unlisted: true });
+    }
   });
 
   test.if(posix)("a link or a file by that name is taken, never followed", async () => {

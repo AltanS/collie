@@ -5,7 +5,7 @@ import { TRICK_CONTRACT } from "../../web/src/lib/tricks/contract.ts";
 import { DESCRIPTION_MAX, isTrickId, isTrickText, NAME_MAX, type OfficialState, type WireOfficialTrick } from "../../web/src/lib/tricks/schema.ts";
 import { diskTrickFs, trickCodeHash, type TrickFs } from "./code-hash.ts";
 import shipped from "./official.json";
-import { originRepoName, readOrigin, type TrickOrigin } from "./origin.ts";
+import { originRepoName, readOrigin, sameRepo, type TrickOrigin } from "./origin.ts";
 import { tricksConfigDir } from "./paths.ts";
 
 // THE FROM COLLIE LIST (M94): the official tricks this Collie release can add with a tap. Collie ships no
@@ -39,6 +39,10 @@ import { tricksConfigDir } from "./paths.ts";
 
 /** The repositories a list entry may name. One, on purpose. */
 export const OFFICIAL_REPOS: readonly string[] = ["https://github.com/AltanS/collie-tricks"];
+/** Whether a URL names an official repository in any spelling (origin.ts `canonicalRepoUrl`). */
+export function isOfficialRepoUrl(url: string, repos: readonly string[] = OFFICIAL_REPOS): boolean {
+  return repos.some((repo) => sameRepo(repo, url));
+}
 /** The most entries a list holds. */
 export const OFFICIAL_ENTRIES_MAX = 32;
 /** The most earlier versions an entry keeps. */
@@ -165,7 +169,8 @@ export function isListedOrigin(entry: Pick<OfficialEntry, "repo" | "dir" | "comm
  * is not that version's code any more. Its row says it is not on the official list.
  */
 export function isUnlistedOfficialOrigin(entries: readonly OfficialEntry[], id: string, origin: TrickOrigin, codeHash?: string): boolean {
-  if (!OFFICIAL_REPOS.includes(origin.url) && !entries.some((e) => e.repo === origin.url)) return false;
+  // Any spelling of an official repository counts (review 7 M2): GitHub serves a fork's commit through each.
+  if (!isOfficialRepoUrl(origin.url) && !entries.some((e) => sameRepo(e.repo, origin.url))) return false;
   const entry = entries.find((e) => e.id === id);
   if (entry === undefined || !isListedOrigin(entry, origin)) return true;
   return codeHash !== undefined && listedVersion(entry, origin.commit)?.hash !== codeHash;
@@ -233,7 +238,8 @@ export async function officialStanding(configDir: string, entry: EntryKeys, fs: 
   const origin = await readOrigin(dir, fs);
   // Only a folder from this repository and this folder in it is a candidate. Any other, a proposal's or one
   // made by hand included, is the person's: never written over.
-  if (origin === null || origin.url !== entry.repo || origin.subdir !== entry.dir) return { state: "taken", unlisted: false, changed: false, origin };
+  // The repository in any spelling (review 7 M2); only the list's own spelling can then be a listed version.
+  if (origin === null || !sameRepo(origin.url, entry.repo) || origin.subdir !== entry.dir) return { state: "taken", unlisted: false, changed: false, origin };
   // From the repository, but not a version of the list: `collie trick add` at another ref, or a record by hand.
   const version = isListedOrigin(entry, origin) ? listedVersion(entry, origin.commit) : undefined;
   if (version === undefined) return { state: "taken", unlisted: true, changed: false, origin };

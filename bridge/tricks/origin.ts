@@ -133,6 +133,45 @@ export function proposalShort(origin: ProposalOrigin): string {
   return `proposed by ${origin.by} on ${origin.host}`;
 }
 
+/**
+ * The one form of a repository URL every comparison of two sources uses (review 7 M2): `https://`, the
+ * host in lower case without `www.` and without a trailing dot, the path decoded and in lower case, no
+ * doubled `/`, no `.git` and no `/` at its end. `https://www.GitHub.com/altans/Collie-Tricks.git/` and
+ * `https://github.com/AltanS/collie-tricks` are one repository: GitHub serves both, and a fork's or a
+ * pull request's commit through either. A text that is not an http or https URL (a local path under the
+ * tests' seam) is its own form.
+ */
+export function canonicalRepoUrl(url: string): string {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return url;
+  }
+  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return url;
+  const host = parsed.hostname.toLowerCase().replace(/\.+$/u, "").replace(/^www\./u, "");
+  let path = parsed.pathname;
+  try {
+    path = decodeURIComponent(path);
+  } catch {
+    // A broken escape stays as it is: it then names no repository the official one could be.
+  }
+  path = path.toLowerCase().replace(/\/{2,}/gu, "/");
+  // Bounded: each pass takes one `/` run or one `.git` off the end, or stops.
+  for (let i = 0; i < 16; i += 1) {
+    const next = path.replace(/\/+$/u, "").replace(/\.git$/u, "");
+    if (next === path) break;
+    path = next;
+  }
+  const port = parsed.port === "" ? "" : `:${parsed.port}`;
+  return `https://${host}${port}${path}`;
+}
+
+/** Whether two repository URLs name one repository ({@link canonicalRepoUrl}). */
+export function sameRepo(a: string, b: string): boolean {
+  return canonicalRepoUrl(a) === canonicalRepoUrl(b);
+}
+
 /** A short name for the repository: `owner/repo` on GitHub, else the host and path, no `.git`. */
 export function originRepoName(url: string): string {
   const bare = url.replace(/^https:\/\//u, "").replace(/\.git$/u, "").replace(/\/+$/u, "");

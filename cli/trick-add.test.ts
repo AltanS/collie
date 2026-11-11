@@ -9,7 +9,7 @@ import { APPROVED_DIR, approvedTrickDir, PENDING_DIR, switchesPath, trickStateDi
 import { parseSwitches } from "../bridge/tricks/switches.ts";
 import { EXIT, type Io } from "./io.ts";
 import { realFiles } from "./sys.ts";
-import { ADD_LIMITS, cmdTrickAdd, cmdTrickRemove, cmdTrickUpdate, GIT_HARDENING, manifestBlurb, OFFICIAL_TRICKS_REPO, parseTrickSource, spawnGit, type GitRunner, type TrickAddDeps } from "./trick-add.ts";
+import { ADD_LIMITS, cmdTrickAdd, cmdTrickRemove, cmdTrickUpdate, GIT_HARDENING, manifestBlurb, OFFICIAL_TRICKS_REPO, parseTrickSource, sourceRefProblem, spawnGit, type GitRunner, type TrickAddDeps } from "./trick-add.ts";
 import { cmdTrickList, cmdTrickSwitch } from "./trick.ts";
 
 // `collie trick add`, `update` and `remove` (review 15), against a local bare repository through the test
@@ -165,6 +165,32 @@ describe("collie trick add: the source", () => {
     ]) {
       expect("error" in parseTrickSource(raw)).toBe(true);
     }
+  });
+
+  test("the official repository in another spelling is refused, and the sentence names its URL (review 7 M2)", () => {
+    const sha = "9".repeat(40);
+    for (const url of [
+      `${OFFICIAL_TRICKS_REPO}.git`,
+      `${OFFICIAL_TRICKS_REPO}/`,
+      `${OFFICIAL_TRICKS_REPO}.git/`,
+      OFFICIAL_TRICKS_REPO.toLowerCase(),
+      OFFICIAL_TRICKS_REPO.replace("github.com", "www.github.com"),
+      OFFICIAL_TRICKS_REPO.replace("github.com", "GitHub.COM"),
+      OFFICIAL_TRICKS_REPO.replace("github.com", "github.com."),
+      OFFICIAL_TRICKS_REPO.replace("AltanS", "%41ltanS"),
+    ]) {
+      // The probe's form: refused (a trailing `/` before `//legs` makes a folder name that is refused too).
+      for (const raw of [`${url}//legs#${sha}`, `${url}//legs`]) expect("error" in parseTrickSource(raw)).toBe(true);
+      for (const raw of [`${url}#${sha}`, `${url}#v1`]) {
+        const read = parseTrickSource(raw);
+        expect("error" in read ? read.error : "taken").toBe(`${url} is the official repository of tricks, written another way. Write it as ${OFFICIAL_TRICKS_REPO}`);
+      }
+      // The commit rule holds for every spelling on its own too.
+      expect(sourceRefProblem({ url, ref: sha })).toContain("not by a commit id");
+    }
+    // The official spelling still takes a branch or a tag, and refuses a commit id.
+    expect(parseTrickSource(`${OFFICIAL_TRICKS_REPO}//legs#v1`)).toEqual({ url: OFFICIAL_TRICKS_REPO, ref: "v1", subdir: "legs" });
+    expect("error" in parseTrickSource(`${OFFICIAL_TRICKS_REPO}//legs#${sha}`)).toBe(true);
   });
 
   test("a local path is a source only under the tests' seam", () => {

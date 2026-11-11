@@ -272,7 +272,11 @@ ref is a branch, a tag or a full 40-digit commit. A `refs/` name must be `refs/h
 `refs/tags/...`: `refs/pull/N/head`, which GitHub serves through the repository's own URL, is refused. A
 short name is looked up as exactly a tag or a branch of that name, so `pull/5/head` never reaches a pull
 request through git's own lookup. The official repository takes no commit id at all: a fork's commit is
-reachable there by its id too. A URL with a user name or a password is refused. The
+reachable there by its id too. The official repository is written one way only,
+`https://github.com/AltanS/collie-tricks`: a spelling GitHub also serves (`.git`, a trailing `/`, another
+case, `www.`) is refused with a sentence that names the URL, and every check of "is this the official
+repository" compares one form (`bridge/tricks/origin.ts` `canonicalRepoUrl`), so a record written another
+way by hand reads as not on the list. A URL with a user name or a password is refused. The
 list with no source names each folder of the official repository that holds a `trick.toml`, with the
 manifest's `name` and its first comment line as the description.
 
