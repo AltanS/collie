@@ -60,6 +60,7 @@ import {
   unattended,
   later,
   proposalGroup,
+  rightsMoved,
   versionGroup,
   versionPlain,
   versionRights,
@@ -957,6 +958,10 @@ export function HillSection() {
         <Card state="hill-group-version" label="57: a new version on 2 cards">
           <CardHead n={57} title="A proposed new version on 2 cards" />
           <OneCard decision={versionGroup} />
+        </Card>
+        <Card state="hill-rights-moved" label="66: a trick stopped for a new right">
+          <CardHead n={66} title="A trick asks for a new right: Collie's card, OK alone" />
+          <OneCard decision={rightsMoved} />
         </Card>
       </Group>
 

@@ -14,6 +14,7 @@ import { TrickView, PartFrame } from "@/lib/tricks/part-frame";
 import { Placeholder, renderView, type RenderCtx } from "@/lib/tricks/render";
 import {
   NODE_KINDS,
+  TAP_REFUSALS,
   TONES,
   parseTrickDocument,
   partKey,
@@ -190,6 +191,20 @@ export function TrickRenderSection(): ReactNode {
             </div>
           </Glass>
         </Card>
+      </Group>
+      {/* Fault A: the bridge refused a tap before anything ran; the frame's reserved line says why, in Collie's words. */}
+      <Group title="Taps the bridge refused">
+        {TAP_REFUSALS.map((word, i) => (
+          <FramedCard
+            key={word}
+            n={kinds + 17 + i}
+            state={`trick-tap-refused-${word}`}
+            label={`refused: ${word}`}
+            part={stored(LEGS)}
+            tap={{ phase: "failed", rid: "r", control: RERUN_CONTROL, intent: "rerun", message: "m", refused: word }}
+            now={FIXTURE_NOW}
+          />
+        ))}
       </Group>
     </Section>
   );
