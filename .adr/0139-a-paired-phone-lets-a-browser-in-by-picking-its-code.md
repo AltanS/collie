@@ -29,7 +29,11 @@ fix Collie"). A screen with a Yes on it would then pair the stranger's browser o
    polls `GET /api/pair/request/<id>` with the secret in the `x-collie-pair-poll` header.
 2. **The approver picks the code; there is no Yes.** The approver page shows the asker's browser and
    system family (from a fixed list, never the raw User-Agent), the network class it asked from, and
-   three codes in an order fixed per request. Exactly one is the code on the new device's screen; the
+   three codes in an order fixed per request, under "Only if you started this on a screen in front of
+   you." The network line states the socket's class only. A loopback socket with an `X-Forwarded-For`
+   reads "through a front door on this computer", and the class the door passed on is shown as its
+   word, which Collie cannot check; `tailnet` is never stated as a guarantee. An `internet` or `unknown`
+   class, socket or claim, adds a warning line. Exactly one is the code on the new device's screen; the
    two decoys differ from it, and from each other, in at least three of six places. A stranger who sent
    the link cannot make the owner see the right code, so a tap on it proves that the person holding the
    paired phone sees the other screen. A wrong tap ends the request for good, as does "Not my device".
@@ -40,21 +44,36 @@ fix Collie"). A screen with a Yes on it would then pair the stranger's browser o
    at `device-read` because a same-origin GET carries no `Origin`; the POST at `write`. The CLI's local
    read credential, an unpaired browser, a header-only device and a crew forward are refused.
 4. **The right code enrols through the claim's own code.** `PairingStore.enrolApproved` shares
-   `enrolInQueue` with a code claim: the same token form, the hash only on disk, no expiry (as
-   `collie pair` without `--expires`). The label is the approver's, checked like a `collie pair` label;
+   `enrolInQueue` with a code claim: the same token form, the hash only on disk. The new device takes
+   the approver's `expiresAt` when the approver has one, so a device never outlives the one that let it
+   in, and the approver page says so ("This device's access ends with yours, on <date>."). An approver
+   with no expiry gives none, as `collie pair` without `--expires`. The label is the approver's, checked like a `collie pair` label;
    a label in use gets a number instead of replacing a device. The token goes to the new device on its
    next poll, once; the entry is gone after that read.
 5. **Bounds.** A request lives two minutes. At most three are open at once, and one source (the
-   `/api/pair` source key) may ask six times in ten minutes; past either, `429` with `Retry-After`. With
-   no paired device, the request is refused with `409 no-approver` before it counts, and the browser
-   says to run `collie pair`. A wrong or missing poll secret reads as an unknown id, compared in
+   `/api/pair` source key, an IPv6 address cut to its /64) may ask six times in ten minutes. Every try
+   counts, one refused with `409 no-approver` too (the browser then says to run `collie pair`). The
+   bridge makes at most 30 requests in ten minutes whatever the source: five sources at their own cap,
+   enough for any person pairing a few browsers, and a spray of sources then costs three small entries
+   and three audit lines a minute, not an unbounded stream. Past any cap, `429` with `Retry-After`. One
+   source has one open request: a new one replaces its waiting one (and revokes a device approved for
+   it and not collected). `DELETE /api/pair/request/<id>` with the poll secret ends a request, under the
+   same open-route rules and the same `404` for a wrong secret; the browser sends it on Cancel and when
+   the block goes away. A request stuck `answering` (an enrol that hangs) ends 30 seconds after its
+   expiry, and an enrol that finishes after its request ended is revoked at once. A wrong or missing poll secret reads as an unknown id, compared in
    constant time against a stand-in hash when the id is unknown. A token nobody collected within its
-   window is revoked (`device.revoke`, reason `never-collected`). Everything lives in memory; a restart
-   drops every request.
+   window is revoked by its token's hash, never by label, through the device list's own revoke path
+   (one `device.revoke` line with reason `never-collected`, one `device-revoked` effect). Everything
+   lives in memory; a restart drops every request. A restart between the tap and the collect therefore
+   leaves a listed device whose token nobody holds; the person removes it in the device list.
 6. **Audit.** `pair-request` (route), `pair-approve` (approver, new label, both routes) and
-   `pair-request-refused` (`wrong-code`, `refused`, `expired`, `rate`). No line holds a code, an id, the
-   secret or the token.
-7. **No crew, no CLI, no WalkyTalky.** A crew member serves no browser door and answers `404`. There is
+   `pair-request-refused` (`wrong-code`, `refused`, `expired`, `cancelled`, `replaced`, `rate`). A run of
+   `rate` refusals writes one line: per burst for one source, per window for the global caps. No line
+   holds a code, an id, the secret or the token.
+7. **No crew, no CLI, no WalkyTalky.** A crew member serves no browser door and answers `404`. The
+   standby door serves its three `/standby/*` routes and no `/api/*`, so no request reaches it there.
+   A device made here is an ordinary registry entry, so the lead's sync to the deputy
+   (`syncedDevicesOf` over the whole registry) carries it, with its expiry, like any other. There is
    no CLI verb, no walky op, and no Settings entry on the approving side: the QR is the one way in.
 
 ## Consequences
@@ -62,11 +81,17 @@ fix Collie"). A screen with a Yes on it would then pair the stranger's browser o
 - An unpaired browser can make a request, which costs it nothing: a request holds no credential, and
   only a paired device's tap turns it into one. The three-open cap means a busy asker can keep a
   second one waiting for up to two minutes; the source cap keeps one source from doing it for long.
-- Cancel on the new device forgets the secret in that tab; the bridge keeps the request until it runs
-  out, since there is no cancel route. Three cancels in two minutes reach the open cap.
+- Cancel on the new device ends the request on the bridge and forgets the secret in that tab. A cancel
+  that does not arrive (a closed tab offline) leaves the request to run out; the one-per-source rule
+  keeps it from filling the open cap.
 - The QR encoder is the app's own (`web/src/lib/qr.ts`), because the CLI's (`qrcode-terminal`) is a
   CommonJS root dependency. `scripts/qr-web.test.ts` holds it to that encoder module for module and to
   jsQR.
 - A program that runs as the user and drives a paired browser can tap the code as the user does. That is
-  the same reach the paired browser's profile already gives ([What a program running as you can still
-  do](../docs/security.md#what-a-program-running-as-you-can-still-do)), so the table gains no row.
+  the same reach the paired browser's profile already gives. A local program can also ask for a request,
+  show its code in a pane and write the front door's header to choose the network line; it still needs
+  the tap on a paired device. That row is in [What a program running as you can still
+  do](../docs/security.md#what-a-program-running-as-you-can-still-do).
+- The code proves someone sees the other screen, not who. A stranger who can reach Collie can start a
+  request and read the owner its code over a call; the approver line and the docs say to tap only for a
+  request started on a screen in front of you.
