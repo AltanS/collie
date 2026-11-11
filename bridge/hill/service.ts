@@ -111,6 +111,7 @@ import {
   type HillRefusalCode,
   type HillState,
 } from "../../web/src/lib/hill/wire.ts";
+import { singleCodeCard } from "../../web/src/lib/hill/code-card.ts";
 import { parseAddress } from "../walky/address.ts";
 import { cleanBody } from "../walky/clean.ts";
 import type { WalkyPane } from "../walky/deliver.ts";
@@ -631,6 +632,10 @@ export function hillGroupOpenAll(count: number): string {
 export const HILL_GROUP_CHANGED = "These cards changed since this phone showed them. Open them again from card 1.";
 /** The refusal of a yes to a group from an app that does not send which cards it showed. */
 export const HILL_GROUP_OLD_APP = "This app does not show a group of cards yet. Reload Collie on this phone, then open every card and answer again.";
+/** The refusal of a yes to a single card of code from an app that does not say it showed the code (C-A2). */
+export const HILL_CODE_OLD_APP = "This app does not show this card's code yet. Reload Collie on this phone, read the code to its end, and answer again.";
+/** The refusal of a yes to a single card of code whose end was not on screen (C-A2). */
+export const HILL_CODE_READ_FIRST = "Read the code to its end first.";
 
 function refuse(code: HillRefusalCode | null, error: string): HillPostAnswer {
   return { ok: false, code, error };
@@ -1588,12 +1593,26 @@ export class HillService {
   /** Why a yes to a group of cards is refused, or null. */
   private groupRule(decision: HillDecision, request: HillAnswerRequest): string | null {
     const group = decision.group;
-    if (group === undefined || request.intent === "dismiss" || request.intent === group.decline) return null;
+    if (group === undefined) return this.singleCodeRule(decision, request);
+    if (request.intent === "dismiss" || request.intent === group.decline) return null;
     const asked = request.group;
     if (asked === undefined) return HILL_GROUP_OLD_APP;
     if (asked.digest !== group.digest) return HILL_GROUP_CHANGED;
     const opened = new Set(asked.opened);
     return group.parts.every((_, i) => opened.has(i + 1)) ? null : hillGroupOpenAll(group.parts.length);
+  }
+
+  /**
+   * Why a yes to a single card of code is refused, or null (C-A2, review 8): the group's rule for one card.
+   * The answer names the ref's hash as its digest and card 1 as opened; the decline and a dismiss need neither.
+   */
+  private singleCodeRule(decision: HillDecision, request: HillAnswerRequest): string | null {
+    const single = singleCodeCard(decision);
+    if (single === null || request.intent === "dismiss" || request.intent === single.decline) return null;
+    const asked = request.group;
+    if (asked === undefined) return HILL_CODE_OLD_APP;
+    if (asked.digest !== single.digest) return HILL_GROUP_CHANGED;
+    return asked.opened.includes(1) ? null : HILL_CODE_READ_FIRST;
   }
 
   /** Run one claim; while it runs, a Collie Decision it answers cannot be withdrawn or superseded. */

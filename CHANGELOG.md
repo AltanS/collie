@@ -97,7 +97,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Fixed
 
-- **A proposal or new-version card whose code fits one card waits for you to read it.** It no longer folds, and its yes stays off until its end was on screen, with "Scroll to the end of the code first." "Not now" and "Keep the old version" stay open.
+- **A proposal or new-version card whose code fits one card waits for you to read it.** It no longer folds, and its yes stays off until its end was on screen, with "Scroll to the end of the code first." "Not now" and "Keep the old version" stay open. The bridge checks it too: a yes from an app that did not show the code to its end is not accepted.
 - **A new version you changed by hand says which lines it shows masked.** For each file, card 1 says how many lines Collie could not show as they are, and names the file.
 - **A proposal with a stray carriage return says so.** A carriage return inside a line now gets its own words about line ends and names the file. Plain Windows line ends were already accepted.
 - **The ssh forms of the official tricks repository are never read as official.** `ssh://` and `git@github.com:` sources, and an address with a user name in it, are not on the official list, and `collie trick add` refuses them.

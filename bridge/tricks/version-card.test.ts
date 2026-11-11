@@ -16,6 +16,7 @@ import { withSwitch, writeSwitches } from "./switches.ts";
 import { GROUP_MASKED_NOTE } from "./card-group.ts";
 import { VERSION_CARD_GONE, VERSION_MOVED, VERSION_NEW_RIGHTS, VERSION_NOT_SHOWN, VersionCards, newInputs, versionCard, versionRequestId, versionTitle, versionView } from "./version-card.ts";
 import { diffArgv, readPatch, versionDiff, viewLine, type DiffRun, type VersionDiff } from "./version-diff.ts";
+import { singleCodeCard } from "../../web/src/lib/hill/code-card.ts";
 
 // THE "NEW VERSION" CARD (crew slice 3): the diff of two copies, the card's words and view, and the
 // card's life on a real Hill beside a real tricks runner.
@@ -479,8 +480,11 @@ async function edit(l: Life, at: number, text: string, manifest = MANIFEST): Pro
 const cardsOf = (l: Life): HillDecision[] => l.hill.collieDecisions("version");
 const openCard = (l: Life): HillDecision | undefined => cardsOf(l).find((decision) => decision.state === "open");
 
+/** A tap from a phone that showed the card's code to its end: a single card of code names its hash and card 1 (C-A2). */
 async function tap(l: Life, decision: HillDecision, rid: number, intent: string): Promise<HillReceipt> {
-  const outcome = await l.hill.answer({ rid: `00000000-0000-4000-8000-${String(rid).padStart(12, "0")}`, node: `hill/${decision.id}`, intent, value: { text: null } }, decision.id, "Pixel 9");
+  const request = { rid: `00000000-0000-4000-8000-${String(rid).padStart(12, "0")}`, node: `hill/${decision.id}`, intent, value: { text: null } };
+  const one = singleCodeCard(decision);
+  const outcome = await l.hill.answer(one === null ? request : { ...request, group: { digest: one.digest, opened: [1] } }, decision.id, "Pixel 9");
   if (outcome.kind !== "receipt") throw new Error(outcome.kind);
   return outcome.receipt;
 }

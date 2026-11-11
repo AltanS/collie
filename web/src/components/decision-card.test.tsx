@@ -1005,7 +1005,7 @@ describe("the Decision card, a single card of Collie's own with code", () => {
     expect(option("on")).toBeDisabled();
     expect(option("later")).toBeEnabled();
     expect(slot("decision-code-unread")).toHaveTextContent("Scroll to the end of the code first.");
-    // The end comes on screen: the yes is offered, the hint goes, and the answer carries no group.
+    // The end comes on screen: the yes is offered, the hint goes, and the answer names the hash and card 1 (C-A2).
     act(() => watched()[0]!.callback([{ isIntersecting: true }]));
     expect(option("on")).toBeEnabled();
     expect(slot("decision-code-unread")).toBeNull();
@@ -1016,7 +1016,7 @@ describe("the Decision card, a single card of Collie's own with code", () => {
     fireEvent.click(option("on"));
     act(() => vi.advanceTimersByTime(ARM_DWELL_MS + 1));
     fireEvent.click(option("on"));
-    expect(onSend).toHaveBeenLastCalledWith("on", null);
+    expect(onSend).toHaveBeenLastCalledWith("on", null, { digest: "a".repeat(64), opened: [1] });
   });
 
   it("a version's single code card waits the same way: Use and Use it and stop asking wait, Keep does not", () => {

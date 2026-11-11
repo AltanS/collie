@@ -407,7 +407,9 @@ export function DecisionCard({
   const lastCard = group === undefined || page >= cardCount - 1;
   const unopened = group === undefined ? (single === null || opened.has(1) ? [] : [1]) : group.parts.map((_, i) => i + 1).filter((card) => !opened.has(card));
   const decline = group?.decline ?? single?.decline;
-  const groupAnswer: HillGroupAnswer | undefined = group === undefined ? undefined : { digest: group.digest, opened: [...opened].toSorted((a, b) => a - b) };
+  // A single card of code names its hash and card 1 once its end was on screen; the bridge needs both for its yes (C-A2).
+  const singleAnswer: HillGroupAnswer | undefined = single !== null && opened.has(1) ? { digest: single.digest, opened: [1] } : undefined;
+  const groupAnswer: HillGroupAnswer | undefined = group === undefined ? singleAnswer : { digest: group.digest, opened: [...opened].toSorted((a, b) => a - b) };
   const declineOption = group === undefined ? undefined : decision.options.find((option) => option.intent === group.decline);
   // An image the view places among its facts is drawn there, not again in the row above it.
   const stripMedia = useMemo(() => {

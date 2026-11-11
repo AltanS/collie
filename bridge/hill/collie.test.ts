@@ -8,7 +8,7 @@ import type { View } from "../../web/src/lib/tricks/schema.ts";
 import { groupDigest, groupPartHash } from "./group.ts";
 import { HILL_GROUP_NOT_YOURS, readAnswerRequest, readDecision, readPostFields } from "./parse.ts";
 import { memoryHillReceipts } from "./receipts.ts";
-import { HILL_ANSWER_RUNNING, HILL_GROUP_CHANGED, HILL_GROUP_OLD_APP, HILL_NO_ANSWER_HANDLER, hillGroupOpenAll, HillService, type HillAgentSender, type HillCollieSender, type HillCollieVerdict, type HillPostAnswer } from "./service.ts";
+import { HILL_ANSWER_RUNNING, HILL_CODE_OLD_APP, HILL_CODE_READ_FIRST, HILL_GROUP_CHANGED, HILL_GROUP_OLD_APP, HILL_NO_ANSWER_HANDLER, hillGroupOpenAll, HillService, type HillAgentSender, type HillCollieSender, type HillCollieVerdict, type HillPostAnswer } from "./service.ts";
 import { HillStore } from "./store.ts";
 
 // COLLIE'S OWN DECISION (crew slice 3): kind `collie`, minted only by bridge code. Its answer types
@@ -317,5 +317,28 @@ describe("a group of cards", () => {
     const other = posted(r.hill.postCollie({ ...SENDER, ref: { ...REF, id: "other" } }, card(9, { group: GROUP })));
     const outcome = await r.hill.answer({ rid: uuid(14), node: `hill/${other.id}`, intent: "keep", value: { text: null } }, other.id, "Pixel 9");
     expect(outcome).toMatchObject({ kind: "receipt", receipt: { code: "ok" } });
+  });
+
+  test("a single card of code is held to the group's rule: the yes needs its hash and opened [1] (C-A2)", async () => {
+    const r = rig();
+    const code: View = [{ kind: "para", text: "The change." }, { kind: "diff", text: "@@ -1 +1 @@\n-a\n+b", attrs: { file: "a.ts" } }];
+    const decision = posted(r.hill.postCollie(SENDER, card(20, { view: code })));
+    const answer = async (rid: number, intent: string, group?: { digest: string; opened: number[] }) => {
+      const request = { rid: uuid(rid), node: `hill/${decision.id}`, intent, value: { text: null } };
+      const outcome = await r.hill.answer(group === undefined ? request : { ...request, group }, decision.id, "Pixel 9");
+      if (outcome.kind !== "receipt") throw new Error(outcome.kind);
+      return outcome.receipt;
+    };
+    expect(await answer(21, "use")).toMatchObject({ code: "rejected", reason: HILL_CODE_OLD_APP });
+    expect(await answer(22, "use", { digest: "b".repeat(64), opened: [1] })).toMatchObject({ code: "rejected", reason: HILL_GROUP_CHANGED });
+    expect(await answer(28, "use", { digest: REF.hash, opened: [2] })).toMatchObject({ code: "rejected", reason: HILL_CODE_READ_FIRST });
+    expect(r.calls).toEqual([]);
+    expect(await answer(23, "use", { digest: REF.hash, opened: [1] })).toMatchObject({ code: "ok", state: "answered" });
+    expect(r.calls).toEqual([{ ref: REF, intent: "use" }]);
+    // Its decline needs nothing opened; a card with no code is answered as before.
+    const kept = posted(r.hill.postCollie({ ...SENDER, ref: { ...REF, id: "kept" } }, card(24, { view: code })));
+    expect(await r.hill.answer({ rid: uuid(25), node: `hill/${kept.id}`, intent: "keep", value: { text: null } }, kept.id, "Pixel 9")).toMatchObject({ receipt: { code: "ok" } });
+    const words = posted(r.hill.postCollie({ ...SENDER, ref: { ...REF, id: "words" } }, card(26, { view: [{ kind: "para", text: "No code." }] })));
+    expect(await r.hill.answer({ rid: uuid(27), node: `hill/${words.id}`, intent: "use", value: { text: null } }, words.id, "Pixel 9")).toMatchObject({ receipt: { code: "ok" } });
   });
 });
