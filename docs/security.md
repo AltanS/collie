@@ -93,9 +93,10 @@ the claim came by, and the pane that made the code. The route is an address clas
 `tailscale serve`, `forwardedFrom` gives the class of the address that door passed on. A local
 program can write that header itself, so `route` is the fact and `forwardedFrom` is a claim. The
 pane is `mintSession` and `mintPane`, or `not placed` when `collie pair` ran outside a pane or no
-bridge placed it. The label is the device's only id: `collie devices revoke` takes it. A refused
-`collie pair` writes a `pair-refused` line with the reason `agent-pane`. The log never holds the
-code or the token.
+bridge placed it. `collie pair` writes that pane into the pending code's file, and any program
+that runs as you can write that file too, so the pane is a hint, not proof. The label is the
+device's only id: `collie devices revoke` takes it. A refused `collie pair` writes a `pair-refused`
+line with the reason `agent-pane`. The log never holds the code or the token.
 
 ```json
 {"ts":"2026-11-11T09:30:00.000Z","action":"pair","device":"pixel","detail":{"label":"pixel","route":"loopback","forwardedFrom":"tailnet","mintSession":"main","mintPane":"w1:p3"}}

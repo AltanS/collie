@@ -5,8 +5,8 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { collieBinary, hostFor } from "../bridge/host.ts";
-import { capture, fakeFiles, fakeLinkFs } from "./fakes.ts";
-import { POWERSHELL_UTF8 } from "./sys.ts";
+import { capture, fakeExec, fakeFiles, fakeLinkFs, type Scripted } from "./fakes.ts";
+import { POWERSHELL_UTF8, PROCESS_QUERY_SLOW_START_MS } from "./sys.ts";
 import { EXIT } from "./io.ts";
 import {
   cmdSupervise,
@@ -27,6 +27,8 @@ import {
   parseSuperviseArgs,
   parseTaskQuery,
   parseTaskRecord,
+  parseTaskXml,
+  queryTask,
   realLiveness,
   answersAtAll,
   HEALTHY_RUN_MS,
@@ -35,6 +37,8 @@ import {
   RESTART_MARKER_TTL_MS,
   type SuperviseDeps,
   supervisePipeName,
+  SCHTASKS_QUERY_TIMEOUT_MS,
+  TASK_STATE_REGISTERED,
   taskOwner,
   taskQueryScript,
   taskRecordPath,
@@ -912,5 +916,124 @@ describe("the registered task, read back", () => {
     // A binary install's task from an earlier version is still this install's.
     const at = (v: string): string => `C:\\Users\\pat\\.collie\\versions\\${v}`;
     expect(taskOwner(query(collieBinary(at("1.15.0"), WIN), "_supervise"), at("1.16.0"), WIN)).toBe("collie");
+  });
+});
+
+// ── queryTask: three results, schtasks first (#762) ──────────────────────────
+
+describe("queryTask: found, absent or unknown (#762)", () => {
+  const CONHOST = "C:\\WINDOWS\\system32\\conhost.exe";
+  const SCHTASKS = "schtasks /Query /TN herdr.collie /XML";
+  const POWERSHELL = "powershell -NoProfile -NonInteractive -Command";
+  // What `schtasks /Query /XML` prints: the schema's elements, the header's encoding, no run state.
+  const xml = (over: { enabled?: string; priority?: string; command?: string; args?: string } = {}): string =>
+    [
+      '<?xml version="1.0" encoding="UTF-16"?>',
+      '<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">',
+      "  <Triggers><LogonTrigger><Enabled>true</Enabled></LogonTrigger></Triggers>",
+      `  <Settings><Enabled>${over.enabled ?? "true"}</Enabled>${over.priority === undefined ? "" : `<Priority>${over.priority}</Priority>`}</Settings>`,
+      '  <Actions Context="Author"><Exec>',
+      `    <Command>${over.command ?? CONHOST}</Command>`,
+      `    <Arguments>${over.args ?? `--headless ${BINARY} _supervise COLLIE_PORT=8787`}</Arguments>`,
+      "  </Exec></Actions>",
+      "</Task>",
+    ].join("\r\n");
+  const PS_FOUND = `Running\r\n${CONHOST}\r\n--headless ${BINARY} _supervise\r\n4\r\n`;
+  const ask = (scripted: Scripted, timeoutMs = PROCESS_QUERY_SLOW_START_MS) => {
+    const exec = fakeExec(scripted);
+    return { exec, lookup: queryTask(exec, "herdr.collie", WIN, timeoutMs) };
+  };
+  const powershellCalls = (exec: ReturnType<typeof fakeExec>): string[] => exec.calls.filter((c) => c.startsWith("powershell"));
+
+  test("schtasks answers with the task's XML: found, and PowerShell is never started", () => {
+    const { exec, lookup } = ask({ answers: [[SCHTASKS, { stdout: xml({ priority: "4" }) }]] });
+    expect(lookup).toEqual({
+      kind: "found",
+      task: { state: TASK_STATE_REGISTERED, program: BINARY, args: ["_supervise", "COLLIE_PORT=8787"], priority: 4 },
+    });
+    expect(powershellCalls(exec)).toEqual([]);
+    expect(exec.timeouts).toEqual([{ call: SCHTASKS, ms: SCHTASKS_QUERY_TIMEOUT_MS }]);
+  });
+
+  test("the XML says Disabled when the task is switched off, and 7 when it names no priority", () => {
+    const { lookup } = ask({ answers: [[SCHTASKS, { stdout: xml({ enabled: "false" }) }]] });
+    expect(lookup).toMatchObject({ kind: "found", task: { state: "Disabled", priority: 7 } });
+  });
+
+  test("the XML text is decoded, and an action that is not under conhost is read as it is", () => {
+    const q = parseTaskXml(xml({ command: "C:\\a &amp; b\\x.exe", args: "&quot;one two&quot; &#x41;" }), WIN);
+    expect(q).toMatchObject({ program: "C:\\a & b\\x.exe", args: ["one two", "A"] });
+    expect(parseTaskXml("", WIN)).toBeNull();
+    expect(parseTaskXml("ERROR: The system cannot find the file specified.", WIN)).toBeNull();
+  });
+
+  test("an action with a letter outside ASCII is not trusted from the XML, so PowerShell answers instead", () => {
+    // `schtasks` prints the OEM code page under a UTF-16 header, so `Jürgen` arrives changed.
+    const garbled = xml({ command: "C:\\Users\\J\uFFFDrgen\\collie.exe" });
+    expect(parseTaskXml(garbled, WIN)).toBeNull();
+    const { exec, lookup } = ask({
+      answers: [
+        [SCHTASKS, { stdout: garbled }],
+        [POWERSHELL, { stdout: PS_FOUND }],
+      ],
+    });
+    expect(lookup).toMatchObject({ kind: "found", task: { state: "Running", priority: 4 } });
+    expect(powershellCalls(exec)).toHaveLength(1);
+  });
+
+  test("garbage on stdout is not a task: PowerShell is asked, and its timeout is unknown", () => {
+    const { exec, lookup } = ask({
+      answers: [
+        [SCHTASKS, { stdout: "<html>proxy says no</html>" }],
+        [POWERSHELL, { code: 124 }],
+      ],
+    });
+    expect(lookup).toEqual({ kind: "unknown", why: "PowerShell did not answer within 60s" });
+    expect(exec.timeouts.at(-1)?.ms).toBe(PROCESS_QUERY_SLOW_START_MS);
+  });
+
+  test("schtasks timing out falls back to PowerShell, which found the task", () => {
+    const { lookup } = ask({
+      answers: [
+        [SCHTASKS, { code: 124 }],
+        [POWERSHELL, { stdout: PS_FOUND }],
+      ],
+    });
+    expect(lookup).toMatchObject({ kind: "found", task: { state: "Running", program: BINARY } });
+  });
+
+  test("schtasks that cannot be run falls back to PowerShell", () => {
+    const { lookup } = ask({ absent: ["schtasks"], answers: [[POWERSHELL, { stdout: PS_FOUND }]] });
+    expect(lookup.kind).toBe("found");
+  });
+
+  test("a schtasks exit 1 is not trusted as absent: a missing task and an access-denied one both give 1", () => {
+    // Absent only when PowerShell, which names no locale's words either, exits 1 as well.
+    const missing = ask({
+      answers: [
+        [SCHTASKS, { code: 1, stderr: "FEHLER: Das System kann die angegebene Datei nicht finden." }],
+        [POWERSHELL, { code: 1 }],
+      ],
+    });
+    expect(missing.lookup).toEqual({ kind: "absent" });
+    expect(powershellCalls(missing.exec)).toHaveLength(1);
+
+    // The same schtasks answer, and a PowerShell that never finishes: unknown, never absent.
+    const denied = ask({
+      answers: [
+        [SCHTASKS, { code: 1, stderr: "ERROR: Access is denied." }],
+        [POWERSHELL, { code: 124 }],
+      ],
+    });
+    expect(denied.lookup.kind).toBe("unknown");
+  });
+
+  test("PowerShell that is killed, exits oddly, prints nothing, or is not installed is unknown", () => {
+    const base: [string, Partial<{ code: number }>][] = [[SCHTASKS, { code: 1 }]];
+    expect(ask({ answers: [...base, [POWERSHELL, { code: 124 }]] }).lookup).toEqual({ kind: "unknown", why: "PowerShell did not answer within 60s" });
+    expect(ask({ answers: [...base, [POWERSHELL, { code: 3 }]] }).lookup).toEqual({ kind: "unknown", why: "PowerShell exited 3" });
+    expect(ask({ answers: [...base, [POWERSHELL, { stdout: "" }]] }).lookup).toEqual({ kind: "unknown", why: "PowerShell printed no task state" });
+    expect(ask({ absent: ["schtasks", "powershell"] }).lookup).toEqual({ kind: "unknown", why: "neither schtasks nor PowerShell could be run" });
+    expect(ask({ answers: [...base, [POWERSHELL, { code: 124 }]] }, 12_000).lookup).toEqual({ kind: "unknown", why: "PowerShell did not answer within 12s" });
   });
 });

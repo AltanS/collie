@@ -27,6 +27,8 @@ yarn-error.log*
 .env
 .env.*
 !.env.example
+# The machine config: `~/.collie/config.toml` lands here when the checkout is `~/.collie`.
+/config.toml
 
 # Bun / Node
 .bun/
