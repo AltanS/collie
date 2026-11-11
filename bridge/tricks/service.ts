@@ -30,6 +30,7 @@ import {
 } from "../../web/src/lib/tricks/schema.ts";
 import type { HillTrickTap } from "../hill/service.ts";
 import type { ViewGate } from "../agent-view/service.ts";
+import type { TrickRightsPort, TrickRightsSubject } from "./rights-card.ts";
 import { approveFolder, copyListing, fileCounts, migrateSwitches, powersOf, promoteCopy, pruneCopies, snapshotTrick, syncConfig, verifyCopy, type ApproveOptions } from "./approved.ts";
 import { diskTrickFs, unsafeText } from "./code-hash.ts";
 import { createTrickScanner, scanTrickDir, SCAN_TIMEOUT_MS, within, type FoundTrick, type TricksScan } from "./discover.ts";
@@ -361,6 +362,8 @@ export interface TricksServiceDeps {
   audit?: (entry: { action: string; detail: Record<string, string> }) => void;
   /** The "new version" card on the Hill (version-card.ts). Absent: no card, Settings alone says it. */
   versions?: TrickVersionsPort;
+  /** Fault B: the card that says a trick stopped for its rights (rights-card.ts). Absent: the row alone says it. */
+  rights?: TrickRightsPort;
 }
 
 /** The approved copy a trick runs from, as read and verified. */
@@ -720,6 +723,7 @@ export class TricksService implements TricksSurface {
         for (const rt of runtimes) await this.ensureApproved(rt);
         for (const rt of runtimes) await this.notePending(rt);
         this.syncVersions();
+        this.syncRights();
         await this.readWarnings();
         await this.prune(switches);
       } catch (err) {
@@ -852,7 +856,9 @@ export class TricksService implements TricksSurface {
         rt.approved = null;
       }
       const approval = `${want}@${rt.entry?.at ?? ""}`;
-      if (rt.tampered === approval) return;
+      // A trick stopped for its rights is read again when the powers its entry stores move, whatever wrote them.
+      const powersMoved = rt.rightsMoved !== null && rt.rightsMoved.stored !== (rt.entry?.powers ?? null);
+      if (rt.tampered === approval && !powersMoved) return;
       let check = await verifyCopy(dir, want);
       // A missing copy of a version the folder still holds is the same bytes: copy it again.
       if (!check.ok && check.missing && rt.found.codeHash === want) {
@@ -907,7 +913,8 @@ export class TricksService implements TricksSurface {
   private stopForRights(rt: TrickRuntime, run: ApprovedRun, approval: string): void {
     const moved = this.rightsMovedOf(rt, run);
     if (moved === null) return;
-    const fresh = rt.copyProblem !== RIGHTS_LINE || rt.tampered !== approval;
+    const was = rt.rightsMoved;
+    const fresh = rt.copyProblem !== RIGHTS_LINE || rt.tampered !== approval || was?.stored !== moved.stored || was.now !== moved.now;
     rt.approved = null;
     rt.tampered = approval;
     rt.copyProblem = RIGHTS_LINE;
@@ -1002,6 +1009,22 @@ export class TricksService implements TricksSurface {
     return now === undefined ? { info, doesMore } : { info, manifest: now, doesMore };
   }
 
+  /** Fault B: tell the rights card every trick that is on and stopped for its rights now. Never throws. */
+  private syncRights(): void {
+    const port = this.deps.rights;
+    if (port === undefined) return;
+    const subjects: TrickRightsSubject[] = [];
+    for (const rt of this.runtimes.values()) {
+      if (!rt.on || rt.rightsMoved === null) continue;
+      subjects.push({ id: rt.found.id, name: this.shownOf(rt).manifest?.name ?? rt.found.id, moved: rt.rightsMoved });
+    }
+    try {
+      port.sync(subjects);
+    } catch (err) {
+      this.warn(`the rights card could not be updated: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
   /** Tell the "new version" card every trick that is on, as it is now. Never throws. */
   private syncVersions(): void {
     const port = this.deps.versions;
@@ -1055,6 +1078,7 @@ export class TricksService implements TricksSurface {
     await this.ensureApproved(rt);
     this.publish(found.id);
     this.syncVersions();
+    this.syncRights();
     const info = this.store.reply(this.store.rev).tricks.find((trick) => trick.id === found.id);
     if (info === undefined) return { ok: false, code: "unknown-trick", message: "The trick is gone." };
     return { ok: true, info };

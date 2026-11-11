@@ -198,6 +198,7 @@ import { adoptAtBoot, carriedSeen, holdCopies, holdForTap, readAdoptMarker, writ
 import { TricksCopySync } from "./crew/carry-sync.ts";
 import { tricksStartingAtTap } from "./crew/carry-adopt.ts";
 import { answerCarried, postCarryNotices } from "./crew/carry-notices.ts";
+import { answerRights, RightsCards } from "./tricks/rights-card.ts";
 import {
   adoptLeadership,
   clearRePin,
@@ -2436,7 +2437,9 @@ const hill = new HillService({
   onCollieAnswer: (ref, intent) =>
     ref.type === "carried"
       ? Promise.resolve(answerCarried(intent))
-      : ((ref.type === "proposal" ? trickProposals?.answer(ref, intent) : versionCards?.answer(ref, intent)) ?? Promise.resolve({ ok: false, reason: "Tricks are not running on this bridge." })),
+      : ref.type === "rights"
+        ? Promise.resolve(answerRights(intent))
+        : ((ref.type === "proposal" ? trickProposals?.answer(ref, intent) : versionCards?.answer(ref, intent)) ?? Promise.resolve({ ok: false, reason: "Tricks are not running on this bridge." })),
   // A `now` Decision rings the phone once (hill/push.ts): push live, its switch on, not snoozed. A crew
   // member refuses posts anyway; the lead holds the subscriptions, as for every other push.
   push: new HillPush({
@@ -3850,6 +3853,8 @@ const tricks =
         audit: (entry) => audit.record({ action: entry.action, detail: entry.detail }),
         // A new version that waits gets its card on the Hill; the card goes when nothing waits any more.
         versions: versionCards,
+        // Fault B: a trick stopped for its rights says so on the Hill too, once per trick and mismatch.
+        rights: new RightsCards({ hill, warn: (line) => console.warn(`[tricks] ${line}`) }),
       });
 tricks?.start();
 

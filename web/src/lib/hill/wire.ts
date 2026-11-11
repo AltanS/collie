@@ -81,10 +81,11 @@ export const HILL_MEDIA_ROUTE = "/api/hill/media/";
 
 /**
  * What a Decision of Collie's own is about: a trick's new version (crew slice 3), a proposal (crew slice
- * 8), or a carried trick that did not start after a takeover (crew slice 10, OK only).
+ * 8), a carried trick that did not start after a takeover (crew slice 10, OK only), or a trick stopped
+ * because it asks for a right its approval did not hold (fault B, bridge/tricks/rights-card.ts, OK only).
  */
-export type HillCollieRefType = "version" | "proposal" | "carried";
-export const HILL_COLLIE_REF_TYPES: readonly HillCollieRefType[] = ["version", "proposal", "carried"];
+export type HillCollieRefType = "version" | "proposal" | "carried" | "rights";
+export const HILL_COLLIE_REF_TYPES: readonly HillCollieRefType[] = ["version", "proposal", "carried", "rights"];
 /** The id inside a Collie Decision's `ref`: a trick id for `version`. */
 export const HILL_COLLIE_REF_ID_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
 /** The hash inside a Collie Decision's `ref`: the sha256 of the code the answer is about, in hex. */
