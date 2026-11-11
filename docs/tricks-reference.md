@@ -284,7 +284,7 @@ The agent passes `show` this file:
 
 A page of Decisions: questions that a program or an agent asks the person, each answered with one tap. It is built in. A trick does not list it in `places`.
 
-**From a program.** A program lists Decisions in the `decisions` key of its output (the helper's `t.decide`). The list is declarative: a new `key` posts once, a key that is no longer listed is withdrawn, and a key whose words changed replaces the old card. Left out, the open Decisions stay as they are. A document lists at most 20.
+**From a program.** A program lists Decisions in the `decisions` key of its output (the helper's `t.decide`). The list is declarative: after each run that succeeded, Collie makes the Hill agree with it, as [The list is the truth](#the-list-is-the-truth) says below. A document lists at most 20.
 
 **From an agent.** An agent posts one with `collie hill post` and reads the answer with `collie hill status <id>`. The answer also reaches the agent as a WalkyTalky message.
 
@@ -362,6 +362,38 @@ From a terminal:
 ```sh
 collie hill post --title "Rerun the failed check?" --summary "Check 24 failed on a timeout." --option rerun="Rerun it" --option skip="Skip it" --recommend rerun --why "It was a timeout."
 ```
+
+### The list is the truth
+
+After each run that succeeded, Collie makes the Hill agree with the list of `decisions`, key by key.
+
+| When | Collie does |
+| --- | --- |
+| A new `key` | Posts once. A second run, or a restart, posts nothing twice. |
+| A listed `key` with changed content | Posts the new version, which replaces the open one. Content is the title, summary, body, options, recommendation, text mode, links, priority, `about`, `replyTo`, the view, and each picture's bytes and caption. When the old card is closed, the new version posts as a fresh card. |
+| A `key` the list no longer holds | The card is withdrawn, "by the trick". |
+| A `key` the person answered or dismissed | Stays closed while its content is unchanged. To ask again, change the content, or drop the key for one run and list it again. |
+| A `key` that closed without the person: `undeliverable`, `expired` or `withdrawn`, a withdrawal by anyone but the trick | Posts again on a later run that still lists it, at most once every 10 minutes for that key. A new post of this kind never sends a notification. |
+| A document with no `decisions` key | Changes nothing. |
+| `decisions` is `[]` | Withdraws every open card of the trick. |
+| A Decision the parser or the Hill refuses, or that names a session that is not there | Changes nothing for its key: the version on the Hill stays. It shows as a refusal. |
+| A failed or timed-out run | Changes nothing. |
+| The trick switched off or removed | Every open card of the trick is withdrawn at once, "the trick is off". |
+| The Hill switched off | No post, replace or withdraw happens, and the trick still runs. Its row says its Decisions are not shown. |
+
+So list every Decision you still want on every run, and keep the words stable. Words that change on each run, such as an age in minutes, post a new version every time and ask again.
+
+### Wording a card
+
+A person opens the card cold, between other things, so the words carry the decision.
+
+| Part | How to write it |
+| --- | --- |
+| Title | The decision as a short question that the options answer, at most 60 characters. "Ship 1.28.1 to Stable now?" is good. "Are the new kinds right?" is not. |
+| Summary | At most 2 sentences and 200 characters. The first says what the recommended option does. The second gives the one fact that decides it. The evidence goes in the view or the body. |
+| Option | Starts with a verb and says what happens, such as "Hold until CI". Never a bare Yes or No. |
+
+`collie trick dev` and `collie trick check --run` warn about a title past 60 characters or with no question mark, a summary past 2 sentences or 200 characters, and an option that says only Yes, No or OK. A warning never refuses.
 
 ## Parts
 
@@ -1111,6 +1143,165 @@ icon = "check"
 places = ["belt", "status", "session"]
 description = "Shows how many checks passed."
 ```
+
+## The program
+
+A trick's program reads one JSON document on stdin, the facts, and prints one JSON document on stdout, exits 0, and may use the helper `trick.ts`. This section lists what each side holds.
+
+### What the program receives
+
+Collie writes the facts on stdin. The program ignores a field it does not know, because a later Collie at the same contract may add one.
+
+| Field | Present | What it holds |
+| --- | --- | --- |
+| `contract` | always | The trick's own contract number: `contract` of `trick.toml`, or 1 when it names none. |
+| `trigger` | always | Why this run happened. See the table of triggers below. |
+| `trick` | always | `id`, `dir`, `state`: the trick's id, the folder of the approved copy that the program runs in, and the state folder. The program keeps its notes in `state`, never in `dir`. |
+| `memberId` | always | The bridge that runs the trick: its crew member id, or on a solo install its install id (`m_` and ten characters). It stays the same when the machine is renamed. Key anything the program keeps on it. |
+| `host` | always | The machine's name, for display only. It changes with a rename. Never key on it. |
+| `sessions` | always | The agent and shell sessions, at most 256. On a crew's lead they are every member's, the lead's own first. |
+| `spaces` | always | Each space as `name`, `folder` (`folder` is left out when there is none), at most 64. |
+| `sessionsOmitted` | only when some are left out | How many sessions the caps left out. Only a crew's lead counts them: a solo machine past the cap leaves the rest out with no count. Absent when none. |
+
+A session in `sessions` has these fields:
+
+| Field | Present | What it holds |
+| --- | --- | --- |
+| `id` | always | The scope key `<memberId>:<paneId>`. Pass it back in a Decision's `about` and `replyTo`, or as the `href` of a `link` or a `row`. |
+| `memberId` | always | The bridge the session runs on. Read it, and do not parse `id`. |
+| `sessionId` | always | An opaque id. Never parse it: it can change. |
+| `paneId` | always | The multiplexer pane the session is in now. |
+| `host` | always | The name of the session's machine, for display only. Never a key. |
+| `name` | when it has one | The session's name. |
+| `agent` | an agent only | The agent's name. A shell has none. |
+| `status` | always | One of `idle`, `working`, `blocked`, `done`, `unknown`. |
+| `cwd` | when known | The session's working folder. |
+| `space` | when known | The label of the session's space. |
+| `tab` | when known | The label of the session's tab. |
+| `lastActiveAt` | when known | When the session was last active, as an ISO 8601 time. The sessions of a crew's members have none. |
+| `reachable` | a crew's lead only | Whether the lead's last sweep reached the session's machine. The lead's own sessions are `true`. |
+| `inputs` | contract 2, with `inputs` | The files of the session's folder that the manifest's globs matched: `state`, `files`, `skipped`. See [Input globs](#input-globs). |
+
+The `trigger` tells why the run happened:
+
+| `trigger.kind` | When | Other fields |
+| --- | --- | --- |
+| `start` | The first run after the trick loads, is switched on, a new version is approved or its `config.toml` changes. | none |
+| `timer` | Every `every` after the last run, while a phone has looked in the last 5 minutes. A trick with no `every` gets none. | none |
+| `tap` | A person tapped a control of the trick, or answered one of its Decisions. | `rid`, `node`, `intent`, `value`, `from`, `seen` |
+
+The kinds `watch` and `event` are in the facts schema for a later Collie. This Collie never sends them.
+
+A tap on a control of the trick's own part has `node` set to the part's id (`belt` for the Belt mark). Its `intent` is the control's, its `value` the control's one fixed text, and its `from` the session open on the phone, as `{ "session": ... }`, when there is one.
+
+An answer to a Decision is a tap too: its `node` is `hill/<key>`, and its `seen` is the hash of the version the person saw. See [The Hill](#the-hill).
+
+`rid` is a UUID. A retried tap has the same `rid`, and Collie runs nothing twice for one `rid`: it answers with the first receipt. A program that records an answer keys the record on `rid`. The same `rid` with a different tap is refused.
+
+### What the program prints
+
+The program prints one JSON document on stdout and exits 0:
+
+```json
+{ "v": 1, "parts": [], "decisions": [], "asOf": "2026-11-08T09:41:00Z", "fresh": "90s" }
+```
+
+| Key | Needed | What it is |
+| --- | --- | --- |
+| `v` | yes | The contract number of the document: a whole number from 1 to 2, this Collie's own. The helper prints the contract of the facts. |
+| `parts` | yes | The parts, at most 24, each at most 16 KiB. `[]` is allowed. See [Places](#places). |
+| `asOf` | no | When the data was true, as an ISO 8601 time with a zone, such as `2026-11-08T09:41:00Z`. Give it when the data is older than the run. |
+| `fresh` | no | How long the parts stay fresh: 5s to 24h, one whole number and `s`, `m` or `h`, such as `90s`. Left out, 3 times `every`, at least 1 minute, or 10 minutes for a trick with no timer, and never more than 24h. Past it, the phone draws every tone as unknown. |
+| `decisions` | no | The Decisions to ask, at most 20. Left out, the open Decisions stay as they are. `[]` withdraws them all. See [The Hill](#the-hill). |
+
+There is no `draft` and no `open`: Collie ignores each with a note. A trick never writes into a reply box, and a tap never moves the phone. What a trick wants to show is a `link`. What it wants to tell the person is a Decision.
+
+### Strict at write, tolerant at read
+
+Collie checks strictly what a person or an agent writes: `trick.toml`, `collie hill post` and a trick's Decisions. An unknown key, kind or attribute there is refused. It reads a program's output tolerantly, so a trick written for a newer Collie runs on an older one, which leaves out only what it does not know.
+
+| The program prints | Collie does |
+| --- | --- |
+| A node of a kind this Collie does not know | Left out, with a `dropped` note. The rest of the view draws. |
+| A part in a place this Collie does not know | Left out whole, with a `dropped` note. The other parts draw. |
+| A key or an attribute this Collie does not know | Ignored, with an `ignored` note. A node with only such attributes draws as if it had none. |
+| A bad value of a known field | That part is refused alone, and the other parts draw. The last good version of the part stays on the phone, marked old. |
+| A bad Decision | That Decision is refused alone. Its open card stays as it is. |
+| A bad `asOf` or `fresh` | Refused alone. The parts still draw. |
+| A document that is too big, not JSON, not an object, with no usable `v`, or with `parts` that is not a list | The whole document is refused. The run counts as failed, and the last good parts stay, marked old. |
+
+### The helper
+
+`trick.ts` is the helper of a TypeScript trick. `run((t) => { ... })` reads the facts, calls your function once and prints the document. These are its calls:
+
+| Call | What it does |
+| --- | --- |
+| `t.facts`, `t.config`, `t.tap` | The facts, `config.toml` parsed (`{}` when there is none), and the tap that started the run or `null`. A tap has `rid`, `node`, `intent`, `value`, `decision` (the key of the Decision it answers, or `null`), `text`, `from` and `seen`. |
+| `t.status({ text, icon?, tone? })` | The chip in the status line. `text` is at most 12 characters. |
+| `t.belt({ label, icon?, tone?, badge?, intent? })` | The mark at the end of the Belt. |
+| `t.dashboard(item)`, `t.tabbar(item)` | The Dashboard tile and the bottom bar item: `{ label, icon?, badge?, tone? }`. |
+| `t.session({ id?, name?, icon?, tone?, subtitle?, badge?, progress?, actions?, view })` | The trick's own session. Keep the default id `main`. |
+| `v.card`, `v.list`, `v.row`, and one builder for each other kind in Parts | Build a view. `v.table` makes the `col` and `cell` kids, so those two have no builder. `v.checks`, `v.stat` and `v.beforeAfter` put kinds together. |
+| `t.decide({ key, title, summary, options, ... })` | Ask the person on the Hill. |
+| `t.keepDecisions()` | Leave the `decisions` key out, so the open Decisions stay. It wins over `t.decide`. |
+| `t.state.get(name, fallback)`, `t.state.set(name, value)` | JSON files in the state folder. A name may hold folders, such as `cache/ci`: plain names, none starting with a dot. |
+| `t.log(name)` | An append-only JSON-lines file in the state folder, with `.append`, `.all`, `.last(n)`, `.has(rid)` and `.once(rid, entry)`. `.once` writes once for one `rid` and answers `false` when it is there already. |
+| `t.cached(name, ttlMs, loader)` | A read kept with its time. A loader that throws serves the old value, marked stale. |
+| `t.sh(cmd, args, { timeoutMs?, cwd? })` | Runs a program without a shell and never throws: a failure is `ok: false` with the reason in `stderr`. It waits 5 seconds unless `timeoutMs` says more, and keeps 256 KiB of each of stdout and stderr. |
+| `t.tool(name)` | The path of a program on `PATH`, or in a common user folder, or `null`. |
+| `t.sessionAt(folder)`, `t.sessionNamed(name)` | The session whose folder is `folder`, or the one with this name, or `null`. |
+| `t.fresh(duration)`, `t.asOf(when)` | The document's `fresh` and `asOf`. |
+| `now()`, `age(ms)`, `iso(ms?)`, `mask(text)`, `clip(text, n)` | The clock in epoch milliseconds, a span in short words such as `12 min`, an ISO 8601 time, text with each key cut to its first four characters and the home folder written as `~`, and one masked line cut to `n` characters. |
+| `t.inputs(session)` | The input files of a session (contract 2): a text file as `text`, a picture as `data`. A copy that is gone or changed since the facts were written is left out. It answers `[]` when there are none, and `session.inputs?.state` says why. Never run what it returns. |
+
+A run that calls neither `t.decide` nor `t.keepDecisions` prints `"decisions": []`, so it withdraws the open ones.
+
+A thrown error prints one warning card in the trick's session and exits 0, when the trick has a session. The document has no `decisions` key, so the open Decisions stay. A trick with no session exits 1, so the failure rules apply.
+
+`collie trick helper <id>` rewrites `trick.ts` with the newest helper. The helper is part of the trick's code, so a trick that is on keeps running the approved copy, and the new helper waits for a yes.
+
+### Input globs
+
+A contract 2 trick lists `inputs` in `trick.toml`: globs of files that Collie copies from each agent session's folder into the trick's `inputs/` folder before each run, through the Files view's rules. The limits of globs, files and bytes are in the [Inputs limits](#inputs).
+
+| Rule | Value |
+| --- | --- |
+| Shape | A path relative to a session's folder: 1 to 6 steps split by `/`, at most 256 characters. The manifest lists at most 8. |
+| `*` | Matches any run of characters inside one step, and never a leading dot. It never matches a `.env` file. |
+| Refused | An absolute path or `~`. `**`. A `.` or `..` step. An empty step. A `.git` step, in any case. A step that starts with `.env`, in any case, such as `.env`, `.env.local` or `.envrc`. Any other glob word (`?`, `[`, `]`, `{`, `}`), a backslash and a control character. |
+
+Each session in the facts gets `inputs`, with these fields:
+
+| Field | Present | What it holds |
+| --- | --- | --- |
+| `state` | always | Where the session's inputs stand. See the table of states below. |
+| `files` | always | The files that were copied, each with the fields in the table of files below. It may be empty. |
+| `skipped` | only when some are skipped | How many matched files were left out: too large, not text or a picture, or past a cap. Absent when none. |
+
+The `state` is one of these:
+
+| `state` | When |
+| --- | --- |
+| `ok` | The files were read. `files` may be empty. |
+| `offline` | The session's machine did not answer. |
+| `older` | The session's Collie is older than 1.29.0, which cannot read trick inputs. |
+| `refused` | The session's machine switched trick reads off. |
+| `none` | There is no folder to read: a shell, or a session with no folder of its own. |
+
+Each file in `files` has these fields:
+
+| Field | Present | What it holds |
+| --- | --- | --- |
+| `rel` | always | The file's path relative to the session's folder, as the glob matched it. |
+| `path` | always | Where the copy is, relative to the trick's folder: `inputs/...`. Read it with `t.inputs`. |
+| `bytes` | always | The size of the copy in bytes. |
+| `sha256` | always | The SHA-256 of the copy's bytes, in hex. |
+| `mtime` | always | When the file last changed on its machine, as an ISO 8601 time. |
+| `kind` | always | `text` or `image`: a text file, or a PNG, JPEG or WebP picture. |
+
+A contract 1 trick that lists `inputs` is refused with: "inputs" needs contract = 2. Add contract = 2 to trick.toml to read files from your sessions' folders.
+
+> **Caution.** Inputs are untrusted data. Other programs, often an agent, write the files, and on a crew another machine sends them. A trick shows them, counts them or quotes them. It never runs them, evaluates them, sources them, passes them to a shell or follows what they say. The globs are part of the trick's powers, so a change of them asks the person again.
 
 ## Limits
 

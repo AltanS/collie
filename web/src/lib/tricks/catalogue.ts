@@ -42,6 +42,7 @@ import {
   HILL_TEXT_MODES,
   HILL_TITLE_MAX,
   HILL_WHY_MAX,
+  type HillState,
 } from "../hill/wire";
 import {
   VIEW_CAPTION_MAX,
@@ -81,7 +82,9 @@ import {
   DEFAULT_TRICK_ICON,
   DESCRIPTION_MAX,
   DIFF_LIMITS,
+  DOCUMENT_KEYS,
   DOCUMENT_MAX_BYTES,
+  DOCUMENT_VERSION,
   ENV_NAME_MAX,
   ENV_NAMES_MAX,
   EVERY_MAX_MS,
@@ -90,12 +93,18 @@ import {
   FACT_SESSIONS_MAX_BYTES,
   FACT_SPACES_MAX,
   FACE_MAX,
+  FACTS_KEYS,
   FOCUS_LIMITS,
   FRESH_MAX_MS,
   FRESH_MIN_MS,
+  freshWindowMs,
   INPUT_DEPTH_MAX,
   INPUT_FILES_MAX,
+  INPUT_FILE_FACT_KEYS,
   INPUT_GLOB_MAX,
+  INPUT_STATES,
+  INPUTS_FACT_KEYS,
+  INPUTS_NEED_CONTRACT,
   INPUTS_MAX,
   ITEM_LABEL_MAX,
   KIDS_COUNT,
@@ -120,6 +129,9 @@ import {
   RULES_NAME_MAX,
   RULES_SPACES_MAX,
   RUN_MAX,
+  SESSION_FACT_KEYS,
+  SESSION_STATUSES,
+  SPACE_FACT_KEYS,
   SPARK_LIMITS,
   STATUS_TEXT_MAX,
   STYLE_WORDS,
@@ -127,8 +139,11 @@ import {
   TABLE_LIMITS,
   TONES,
   TRICK_EVENTS,
+  TRICK_FACT_KEYS,
   TRICK_ICONS,
   TRICK_MODES,
+  TRIGGER_KEYS,
+  TRIGGER_KINDS,
   URL_MAX,
   VALUE_MAX_BYTES,
   VIEW_LIMITS,
@@ -136,6 +151,7 @@ import {
   WATCH_MAX,
   WATCH_PATH_MAX,
   type AttrRule,
+  type InputState,
   type NodeKind,
   type PlaceKind,
 } from "./schema";
@@ -766,7 +782,7 @@ export interface HillEntry {
 export const HILL: HillEntry = {
   name: "The Hill",
   what: "A page of Decisions: questions that a program or an agent asks the person, each answered with one tap. It is built in. A trick does not list it in `places`.",
-  program: `A program lists Decisions in the \`decisions\` key of its output (the helper's \`t.decide\`). The list is declarative: a new \`key\` posts once, a key that is no longer listed is withdrawn, and a key whose words changed replaces the old card. Left out, the open Decisions stay as they are. A document lists at most ${String(DECISIONS_MAX)}.`,
+  program: `A program lists Decisions in the \`decisions\` key of its output (the helper's \`t.decide\`). The list is declarative: after each run that succeeded, Collie makes the Hill agree with it, as [The list is the truth](#the-list-is-the-truth) says below. A document lists at most ${String(DECISIONS_MAX)}.`,
   agent: "An agent posts one with `collie hill post` and reads the answer with `collie hill status <id>`. The answer also reaches the agent as a WalkyTalky message.",
   keys: DECISION_KEYS.map((key) => Object.assign({ key }, DECISION_KEY_WORDS[key])),
   limits: [
@@ -799,6 +815,292 @@ export const HILL: HillEntry = {
     { kind: "command", text: 'collie hill post --title "Rerun the failed check?" --summary "Check 24 failed on a timeout." --option rerun="Rerun it" --option skip="Skip it" --recommend rerun --why "It was a timeout."' },
   ],
 };
+
+// ── The program ──────────────────────────────────────────────────────────────────────────────
+
+/**
+ * The numbers of the program's side that live outside this folder: the bridge, the CLI and the helper
+ * file each own one. This file is imported by the web app, so it cannot import them. The generator reads
+ * each from the constant that owns it (or, for the helper, from the helper's own source) and hands them
+ * over, and the test holds each to its owner.
+ */
+export interface ProgramNumbers {
+  /** How long after a phone looked the timer keeps running: `WATCH_WINDOW_MS` (bridge/tricks/service.ts). */
+  readonly watchWindowMs: number;
+  /** The least time between two posts of a key that closed without the person: `REASK_AFTER_MS` (bridge/tricks/hill.ts). */
+  readonly reaskAfterMs: number;
+  /** The first Collie that reads a trick's inputs over a crew link: `TRICKS_CREW_FIRST_VERSION` (bridge/hill/crew.ts). */
+  readonly tricksCrewFirstVersion: string;
+  /** The soft limits of a card's wording: `HILL_TITLE_SOFT_MAX`, `HILL_SUMMARY_SOFT_SENTENCES`, `HILL_SUMMARY_SOFT_MAX` (cli/hill-rules.ts). */
+  readonly titleSoftMax: number;
+  readonly summarySoftSentences: number;
+  readonly summarySoftMax: number;
+  /** The most bytes of each of stdout and stderr that `t.sh` keeps, and its default time: `SH_CAP` and the `timeoutMs` default of cli/trick-kit/trick.ts. */
+  readonly helperShCapBytes: number;
+  readonly helperShTimeoutMs: number;
+}
+
+/** A row of a table of fields: the name, whether it is always there, and what it holds. */
+export interface FieldRow {
+  readonly field: string;
+  readonly present: string;
+  readonly what: string;
+}
+
+export interface TriggerRow {
+  readonly kind: (typeof TRIGGER_KINDS)[number];
+  readonly when: string;
+  /** The other fields of the trigger, read from the schema's own list. */
+  readonly fields: string;
+}
+
+export interface OutputRow {
+  readonly key: (typeof DOCUMENT_KEYS)[number];
+  readonly required: string;
+  readonly what: string;
+}
+
+/** One case of the tolerant read: what the program printed, and what Collie does with it. */
+export interface ReadingRow {
+  readonly case: string;
+  readonly result: string;
+}
+
+export interface HelperRow {
+  /** The calls this row covers, as they are written in a program. */
+  readonly call: string;
+  /** The names a test finds in the helper's source: each must be a real call. */
+  readonly names: readonly string[];
+  readonly what: string;
+}
+
+export interface GlobRow {
+  readonly rule: string;
+  readonly value: string;
+}
+
+export interface InputStateRow {
+  readonly state: InputState;
+  readonly when: string;
+}
+
+export interface ProgramEntry {
+  /** The facts' own fields, and the fields of a session in them. */
+  readonly facts: readonly FieldRow[];
+  readonly session: readonly FieldRow[];
+  readonly triggers: readonly TriggerRow[];
+  /** The trigger kinds that the facts' schema names and this Collie never sends. */
+  readonly triggersLater: readonly string[];
+  readonly tap: readonly string[];
+  readonly output: readonly OutputRow[];
+  /** The keys of the first schema, which are refused with a hint. */
+  readonly removedOutputKeys: readonly string[];
+  readonly reading: readonly ReadingRow[];
+  readonly helper: readonly HelperRow[];
+  readonly helperAfter: readonly string[];
+  readonly globs: readonly GlobRow[];
+  readonly inputStates: readonly InputStateRow[];
+  /** The fields of a session's `inputs`, and of each file in it. */
+  readonly inputsFields: readonly FieldRow[];
+  readonly inputFiles: readonly FieldRow[];
+  readonly inputsContractLine: string;
+  readonly inputsTrust: string;
+}
+
+/** The keys of the first schema's document that are refused now. The test holds each to the parser. */
+const REMOVED_OUTPUT_KEYS = ["draft", "open"] as const;
+
+const FACTS_WORDS = {
+  contract: { present: "always", what: "The trick's own contract number: `contract` of `trick.toml`, or 1 when it names none." },
+  trigger: { present: "always", what: "Why this run happened. See the table of triggers below." },
+  trick: { present: "always", what: `${codeList(TRICK_FACT_KEYS)}: the trick's id, the folder of the approved copy that the program runs in, and the state folder. The program keeps its notes in \`state\`, never in \`dir\`.` },
+  memberId: { present: "always", what: "The bridge that runs the trick: its crew member id, or on a solo install its install id (`m_` and ten characters). It stays the same when the machine is renamed. Key anything the program keeps on it." },
+  host: { present: "always", what: "The machine's name, for display only. It changes with a rename. Never key on it." },
+  sessions: { present: "always", what: `The agent and shell sessions, at most ${String(FACT_SESSIONS_MAX)}. On a crew's lead they are every member's, the lead's own first.` },
+  spaces: { present: "always", what: `Each space as ${codeList(SPACE_FACT_KEYS)} (\`folder\` is left out when there is none), at most ${String(FACT_SPACES_MAX)}.` },
+  sessionsOmitted: { present: "only when some are left out", what: "How many sessions the caps left out. Only a crew's lead counts them: a solo machine past the cap leaves the rest out with no count. Absent when none." },
+} as const satisfies { readonly [K in (typeof FACTS_KEYS)[number]]: Omit<FieldRow, "field"> };
+
+const SESSION_WORDS = {
+  id: { present: "always", what: "The scope key `<memberId>:<paneId>`. Pass it back in a Decision's `about` and `replyTo`, or as the `href` of a `link` or a `row`." },
+  memberId: { present: "always", what: "The bridge the session runs on. Read it, and do not parse `id`." },
+  sessionId: { present: "always", what: "An opaque id. Never parse it: it can change." },
+  paneId: { present: "always", what: "The multiplexer pane the session is in now." },
+  host: { present: "always", what: "The name of the session's machine, for display only. Never a key." },
+  name: { present: "when it has one", what: "The session's name." },
+  agent: { present: "an agent only", what: "The agent's name. A shell has none." },
+  status: { present: "always", what: `One of ${codeList(SESSION_STATUSES)}.` },
+  cwd: { present: "when known", what: "The session's working folder." },
+  space: { present: "when known", what: "The label of the session's space." },
+  tab: { present: "when known", what: "The label of the session's tab." },
+  lastActiveAt: { present: "when known", what: "When the session was last active, as an ISO 8601 time. The sessions of a crew's members have none." },
+  reachable: { present: "a crew's lead only", what: "Whether the lead's last sweep reached the session's machine. The lead's own sessions are `true`." },
+  inputs: { present: "contract 2, with `inputs`", what: `The files of the session's folder that the manifest's globs matched: ${codeList(INPUTS_FACT_KEYS)}. See [Input globs](#input-globs).` },
+} as const satisfies { readonly [K in (typeof SESSION_FACT_KEYS)[number]]: Omit<FieldRow, "field"> };
+
+const INPUT_FILE_WORDS = {
+  rel: { present: "always", what: "The file's path relative to the session's folder, as the glob matched it." },
+  path: { present: "always", what: "Where the copy is, relative to the trick's folder: `inputs/...`. Read it with `t.inputs`." },
+  bytes: { present: "always", what: "The size of the copy in bytes." },
+  sha256: { present: "always", what: "The SHA-256 of the copy's bytes, in hex." },
+  mtime: { present: "always", what: "When the file last changed on its machine, as an ISO 8601 time." },
+  kind: { present: "always", what: "`text` or `image`: a text file, or a PNG, JPEG or WebP picture." },
+} as const satisfies { readonly [K in (typeof INPUT_FILE_FACT_KEYS)[number]]: Omit<FieldRow, "field"> };
+
+const INPUTS_FIELD_WORDS = {
+  state: "Where the session's inputs stand. See the table of states below.",
+  files: "The files that were copied, each with the fields in the table of files below. It may be empty.",
+  skipped: "How many matched files were left out: too large, not text or a picture, or past a cap. Absent when none.",
+} as const satisfies { readonly [K in (typeof INPUTS_FACT_KEYS)[number]]: string };
+
+/** One entry per trigger kind of the facts' schema. A new kind there is a compile error until it is here. */
+const TRIGGER_WORDS = {
+  start: { sent: true, when: () => "The first run after the trick loads, is switched on, a new version is approved or its `config.toml` changes." },
+  timer: { sent: true, when: (n: ProgramNumbers) => `Every \`every\` after the last run, while a phone has looked in the last ${spanWords(n.watchWindowMs)}. A trick with no \`every\` gets none.` },
+  tap: { sent: true, when: () => "A person tapped a control of the trick, or answered one of its Decisions." },
+  watch: { sent: false, when: () => "A watched file changed." },
+  event: { sent: false, when: () => "An event of the bus, such as `session.status`." },
+} as const satisfies { readonly [K in (typeof TRIGGER_KINDS)[number]]: { readonly sent: boolean; readonly when: (n: ProgramNumbers) => string } };
+
+/** One entry per key of a program's output document. A new key in `DOCUMENT_KEYS` is a compile error until it is here. */
+function outputWords() {
+  const floor = freshWindowMs(undefined, EVERY_MIN_MS);
+  const probe = FRESH_MAX_MS / 24;
+  const factor = freshWindowMs(undefined, probe) / probe;
+  return {
+    v: { required: "yes", what: `The contract number of the document: a whole number from 1 to ${String(DOCUMENT_VERSION)}, this Collie's own. The helper prints the contract of the facts.` },
+    parts: { required: "yes", what: `The parts, at most ${String(PARTS_MAX)}, each at most ${sizeWords(PART_MAX_BYTES)}. \`[]\` is allowed. See [Places](#places).` },
+    decisions: { required: "no", what: `The Decisions to ask, at most ${String(DECISIONS_MAX)}. Left out, the open Decisions stay as they are. \`[]\` withdraws them all. See [The Hill](#the-hill).` },
+    asOf: { required: "no", what: "When the data was true, as an ISO 8601 time with a zone, such as `2026-11-08T09:41:00Z`. Give it when the data is older than the run." },
+    fresh: {
+      required: "no",
+      what: `How long the parts stay fresh: ${durationWord(FRESH_MIN_MS)} to ${durationWord(FRESH_MAX_MS)}, one whole number and \`s\`, \`m\` or \`h\`, such as \`90s\`. Left out, ${String(factor)} times \`every\`, at least ${spanWords(floor)}, or ${spanWords(freshWindowMs(undefined, undefined))} for a trick with no timer, and never more than ${durationWord(FRESH_MAX_MS)}. Past it, the phone draws every tone as unknown.`,
+    },
+  } as const satisfies { readonly [K in (typeof DOCUMENT_KEYS)[number]]: Omit<OutputRow, "key"> };
+}
+
+/** The one sentence per kind of the facts, for a person who reads the table of triggers. */
+function triggerRows(n: ProgramNumbers): TriggerRow[] {
+  return TRIGGER_KINDS.filter((kind) => TRIGGER_WORDS[kind].sent).map((kind) => ({
+    kind,
+    when: TRIGGER_WORDS[kind].when(n),
+    fields: codeList(TRIGGER_KEYS[kind].filter((key) => key !== "kind")) || "none",
+  }));
+}
+
+const INPUT_STATE_WORDS = {
+  ok: () => "The files were read. `files` may be empty.",
+  offline: () => "The session's machine did not answer.",
+  older: (n: ProgramNumbers) => `The session's Collie is older than ${n.tricksCrewFirstVersion}, which cannot read trick inputs.`,
+  refused: () => "The session's machine switched trick reads off.",
+  none: () => "There is no folder to read: a shell, or a session with no folder of its own.",
+} as const satisfies { readonly [K in InputState]: (n: ProgramNumbers) => string };
+
+/** The helper's calls, by the names a program writes. `names` are the words a test finds in the helper's source. */
+function helperRows(n: ProgramNumbers): HelperRow[] {
+  return [
+    { call: "`t.facts`, `t.config`, `t.tap`", names: ["t.facts", "t.config", "t.tap"], what: "The facts, `config.toml` parsed (`{}` when there is none), and the tap that started the run or `null`. A tap has `rid`, `node`, `intent`, `value`, `decision` (the key of the Decision it answers, or `null`), `text`, `from` and `seen`." },
+    { call: "`t.status({ text, icon?, tone? })`", names: ["t.status"], what: `The chip in the status line. \`text\` is at most ${String(STATUS_TEXT_MAX)} characters.` },
+    { call: "`t.belt({ label, icon?, tone?, badge?, intent? })`", names: ["t.belt"], what: "The mark at the end of the Belt." },
+    { call: "`t.dashboard(item)`, `t.tabbar(item)`", names: ["t.dashboard", "t.tabbar"], what: "The Dashboard tile and the bottom bar item: `{ label, icon?, badge?, tone? }`." },
+    { call: "`t.session({ id?, name?, icon?, tone?, subtitle?, badge?, progress?, actions?, view })`", names: ["t.session"], what: "The trick's own session. Keep the default id `main`." },
+    { call: "`v.card`, `v.list`, `v.row`, and one builder for each other kind in Parts", names: ["v.card", "v.list", "v.row", "v.table", "v.checks", "v.stat", "v.beforeAfter"], what: "Build a view. `v.table` makes the `col` and `cell` kids, so those two have no builder. `v.checks`, `v.stat` and `v.beforeAfter` put kinds together." },
+    { call: "`t.decide({ key, title, summary, options, ... })`", names: ["t.decide"], what: "Ask the person on the Hill." },
+    { call: "`t.keepDecisions()`", names: ["t.keepDecisions"], what: "Leave the `decisions` key out, so the open Decisions stay. It wins over `t.decide`." },
+    { call: "`t.state.get(name, fallback)`, `t.state.set(name, value)`", names: ["t.state"], what: "JSON files in the state folder. A name may hold folders, such as `cache/ci`: plain names, none starting with a dot." },
+    { call: "`t.log(name)`", names: ["t.log"], what: "An append-only JSON-lines file in the state folder, with `.append`, `.all`, `.last(n)`, `.has(rid)` and `.once(rid, entry)`. `.once` writes once for one `rid` and answers `false` when it is there already." },
+    { call: "`t.cached(name, ttlMs, loader)`", names: ["t.cached"], what: "A read kept with its time. A loader that throws serves the old value, marked stale." },
+    { call: "`t.sh(cmd, args, { timeoutMs?, cwd? })`", names: ["t.sh"], what: `Runs a program without a shell and never throws: a failure is \`ok: false\` with the reason in \`stderr\`. It waits ${spanWords(n.helperShTimeoutMs)} unless \`timeoutMs\` says more, and keeps ${sizeWords(n.helperShCapBytes)} of each of stdout and stderr.` },
+    { call: "`t.tool(name)`", names: ["t.tool"], what: "The path of a program on `PATH`, or in a common user folder, or `null`." },
+    { call: "`t.sessionAt(folder)`, `t.sessionNamed(name)`", names: ["t.sessionAt", "t.sessionNamed"], what: "The session whose folder is `folder`, or the one with this name, or `null`." },
+    { call: "`t.fresh(duration)`, `t.asOf(when)`", names: ["t.fresh", "t.asOf"], what: "The document's `fresh` and `asOf`." },
+    { call: "`now()`, `age(ms)`, `iso(ms?)`, `mask(text)`, `clip(text, n)`", names: ["now", "age", "iso", "mask", "clip"], what: "The clock in epoch milliseconds, a span in short words such as `12 min`, an ISO 8601 time, text with each key cut to its first four characters and the home folder written as `~`, and one masked line cut to `n` characters." },
+    { call: "`t.inputs(session)`", names: ["t.inputs"], what: "The input files of a session (contract 2): a text file as `text`, a picture as `data`. A copy that is gone or changed since the facts were written is left out. It answers `[]` when there are none, and `session.inputs?.state` says why. Never run what it returns." },
+  ];
+}
+
+/** What the program receives, prints and calls, as tables and sentences. The numbers outside this folder come in as `n`. */
+export function programOf(n: ProgramNumbers): ProgramEntry {
+  const output = outputWords();
+  return {
+    facts: FACTS_KEYS.map((key) => Object.assign({ field: key }, FACTS_WORDS[key])),
+    session: SESSION_FACT_KEYS.map((key) => Object.assign({ field: key }, SESSION_WORDS[key])),
+    triggers: triggerRows(n),
+    triggersLater: TRIGGER_KINDS.filter((kind) => !TRIGGER_WORDS[kind].sent),
+    tap: [
+      "A tap on a control of the trick's own part has `node` set to the part's id (`belt` for the Belt mark). Its `intent` is the control's, its `value` the control's one fixed text, and its `from` the session open on the phone, as `{ \"session\": ... }`, when there is one.",
+      `An answer to a Decision is a tap too: its \`node\` is \`${HILL_NODE_PREFIX}<key>\`, and its \`seen\` is the hash of the version the person saw. See [The Hill](#the-hill).`,
+      "`rid` is a UUID. A retried tap has the same `rid`, and Collie runs nothing twice for one `rid`: it answers with the first receipt. A program that records an answer keys the record on `rid`. The same `rid` with a different tap is refused.",
+    ],
+    output: DOCUMENT_KEYS.map((key) => Object.assign({ key }, output[key])),
+    removedOutputKeys: REMOVED_OUTPUT_KEYS,
+    reading: [
+      { case: "A node of a kind this Collie does not know", result: "Left out, with a `dropped` note. The rest of the view draws." },
+      { case: "A part in a place this Collie does not know", result: "Left out whole, with a `dropped` note. The other parts draw." },
+      { case: "A key or an attribute this Collie does not know", result: "Ignored, with an `ignored` note. A node with only such attributes draws as if it had none." },
+      { case: "A bad value of a known field", result: "That part is refused alone, and the other parts draw. The last good version of the part stays on the phone, marked old." },
+      { case: "A bad Decision", result: "That Decision is refused alone. Its open card stays as it is." },
+      { case: "A bad `asOf` or `fresh`", result: "Refused alone. The parts still draw." },
+      { case: "A document that is too big, not JSON, not an object, with no usable `v`, or with `parts` that is not a list", result: "The whole document is refused. The run counts as failed, and the last good parts stay, marked old." },
+    ],
+    helper: helperRows(n),
+    helperAfter: [
+      "A run that calls neither `t.decide` nor `t.keepDecisions` prints `\"decisions\": []`, so it withdraws the open ones.",
+      "A thrown error prints one warning card in the trick's session and exits 0, when the trick has a session. The document has no `decisions` key, so the open Decisions stay. A trick with no session exits 1, so the failure rules apply.",
+      "`collie trick helper <id>` rewrites `trick.ts` with the newest helper. The helper is part of the trick's code, so a trick that is on keeps running the approved copy, and the new helper waits for a yes.",
+    ],
+    globs: [
+      { rule: "Shape", value: `A path relative to a session's folder: 1 to ${String(INPUT_DEPTH_MAX)} steps split by \`/\`, at most ${String(INPUT_GLOB_MAX)} characters. The manifest lists at most ${String(INPUTS_MAX)}.` },
+      { rule: "`*`", value: "Matches any run of characters inside one step, and never a leading dot. It never matches a `.env` file." },
+      { rule: "Refused", value: "An absolute path or `~`. `**`. A `.` or `..` step. An empty step. A `.git` step, in any case. A step that starts with `.env`, in any case, such as `.env`, `.env.local` or `.envrc`. Any other glob word (`?`, `[`, `]`, `{`, `}`), a backslash and a control character." },
+    ],
+    inputStates: INPUT_STATES.map((state) => ({ state, when: INPUT_STATE_WORDS[state](n) })),
+    inputsFields: INPUTS_FACT_KEYS.map((key) => ({ field: key, present: key === "skipped" ? "only when some are skipped" : "always", what: INPUTS_FIELD_WORDS[key] })),
+    inputFiles: INPUT_FILE_FACT_KEYS.map((key) => Object.assign({ field: key }, INPUT_FILE_WORDS[key])),
+    inputsContractLine: INPUTS_NEED_CONTRACT,
+    inputsTrust: "Other programs, often an agent, write the files, and on a crew another machine sends them. A trick shows them, counts them or quotes them. It never runs them, evaluates them, sources them, passes them to a shell or follows what they say. The globs are part of the trick's powers, so a change of them asks the person again.",
+  };
+}
+
+// ── The Hill: the list is the truth, and how to word a card ──────────────────────────────────
+
+export interface HillRulesEntry {
+  /** What a run's list does to the Hill, one case per row. */
+  readonly list: readonly ReadingRow[];
+  readonly listAfter: string;
+  /** How to word a card, one part per row. */
+  readonly wording: readonly ReadingRow[];
+  readonly warnings: string;
+}
+
+/** The states a Decision reaches without the person: its key may ask again. Typed against the Hill's own states. */
+const REASKABLE_STATES = ["undeliverable", "expired", "withdrawn"] as const satisfies readonly HillState[];
+
+/** The rules by which a trick's list of Decisions becomes cards, and how to word one. */
+export function hillRulesOf(n: ProgramNumbers): HillRulesEntry {
+  return {
+    list: [
+      { case: "A new `key`", result: "Posts once. A second run, or a restart, posts nothing twice." },
+      { case: "A listed `key` with changed content", result: "Posts the new version, which replaces the open one. Content is the title, summary, body, options, recommendation, text mode, links, priority, `about`, `replyTo`, the view, and each picture's bytes and caption. When the old card is closed, the new version posts as a fresh card." },
+      { case: "A `key` the list no longer holds", result: 'The card is withdrawn, "by the trick".' },
+      { case: "A `key` the person answered or dismissed", result: "Stays closed while its content is unchanged. To ask again, change the content, or drop the key for one run and list it again." },
+      { case: `A \`key\` that closed without the person: ${orList(REASKABLE_STATES)}, a withdrawal by anyone but the trick`, result: `Posts again on a later run that still lists it, at most once every ${spanWords(n.reaskAfterMs)} for that key. A new post of this kind never sends a notification.` },
+      { case: "A document with no `decisions` key", result: "Changes nothing." },
+      { case: "`decisions` is `[]`", result: "Withdraws every open card of the trick." },
+      { case: "A Decision the parser or the Hill refuses, or that names a session that is not there", result: "Changes nothing for its key: the version on the Hill stays. It shows as a refusal." },
+      { case: "A failed or timed-out run", result: "Changes nothing." },
+      { case: "The trick switched off or removed", result: 'Every open card of the trick is withdrawn at once, "the trick is off".' },
+      { case: "The Hill switched off", result: "No post, replace or withdraw happens, and the trick still runs. Its row says its Decisions are not shown." },
+    ],
+    listAfter: "So list every Decision you still want on every run, and keep the words stable. Words that change on each run, such as an age in minutes, post a new version every time and ask again.",
+    wording: [
+      { case: "Title", result: `The decision as a short question that the options answer, at most ${String(n.titleSoftMax)} characters. "Ship 1.28.1 to Stable now?" is good. "Are the new kinds right?" is not.` },
+      { case: "Summary", result: `At most ${String(n.summarySoftSentences)} sentences and ${String(n.summarySoftMax)} characters. The first says what the recommended option does. The second gives the one fact that decides it. The evidence goes in the view or the body.` },
+      { case: "Option", result: 'Starts with a verb and says what happens, such as "Hold until CI". Never a bare Yes or No.' },
+    ],
+    warnings: `\`collie trick dev\` and \`collie trick check --run\` warn about a title past ${String(n.titleSoftMax)} characters or with no question mark, a summary past ${String(n.summarySoftSentences)} sentences or ${String(n.summarySoftMax)} characters, and an option that says only Yes, No or OK. A warning never refuses.`,
+  };
+}
 
 // ── The manifest ─────────────────────────────────────────────────────────────────────────────
 

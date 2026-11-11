@@ -174,17 +174,17 @@ export const DOC_PAGES: readonly DocPage[] = [
   },
   {
     name: "hill",
-    purpose: "Where agents and tricks ask you a question: Decisions, collie hill post, how you answer, receipts and Clear",
+    purpose: "Where agents and tricks ask you a question: Decisions, collie hill post, how you answer, receipts, Clear, Here, Quiet and Away, proposals",
     text: hill,
   },
   {
     name: "tricks",
-    purpose: "Small programs that add parts to Collie: where they draw, adding one, switching it on, what it may do, and troubleshooting",
+    purpose: "How tricks work: where a trick can show, the two kinds, the parts, three examples, trust, adding one, and troubleshooting",
     text: tricks,
   },
   {
     name: "tricks-authoring",
-    purpose: "Writing a trick: the folder, trick.toml, what a program receives and prints, node kinds, Decisions, collie trick dev and check",
+    purpose: "Write a trick: the folder, one program trick, one agent view, proposing it, several tricks in one repository",
     text: tricksAuthoring,
   },
   {
