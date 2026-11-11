@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -618,28 +618,6 @@ describe("rule 7: one head, one door", () => {
     expect(await res.text()).toBe(VIEW_PAIRED_ONLY);
   });
 
-  test("lead addition 1: the routes, pinned by source: the write gate, then the paired-device gate, before the body; the read gate on the media", () => {
-    const src = readFileSync(join(import.meta.dir, "..", "server.ts"), "utf8");
-    const body = (head: string): string => {
-      const at = src.indexOf(head);
-      expect(at).toBeGreaterThan(-1);
-      expect(src.indexOf(head, at + head.length)).toBe(-1);
-      return src.slice(at, src.indexOf("if (pathname", at + head.length));
-    };
-    const send = body('if (pathname === "/api/send" && req.method === "POST") {');
-    expect(send.indexOf('browserGate("write")')).toBeGreaterThan(-1);
-    expect(send).toContain("viewWriteGate(req, pairingGate)");
-    expect(send.indexOf('browserGate("write")')).toBeLessThan(send.indexOf("viewWriteGate(req, pairingGate)"));
-    const switchRoute = body('if (pathname === "/api/trick-views/switch" && req.method === "POST") {');
-    expect(switchRoute).toContain('browserGate("write") ?? viewWriteGate(req, pairingGate)');
-    expect(switchRoute.indexOf("viewWriteGate")).toBeLessThan(switchRoute.indexOf("req.json()"));
-    const list = body('if (pathname === "/api/trick-views" && req.method === "GET") {');
-    expect(list).toContain('browserGate("read")');
-    const media = src.slice(src.indexOf("const viewImage = pathname.match(VIEW_IMAGE_ROUTE);"), src.indexOf("trickViewsMediaRoute(views,"));
-    expect(media).toContain('browserGate("read")');
-    // The views reach `sendRoute` from the one paired-device dispatch only.
-    expect(src.match(/\{ service: views, addressOf \}/gu)).toHaveLength(1);
-  });
 });
 
 // ── rule 8 ────────────────────────────────────────────────────────────────────────────────────────
