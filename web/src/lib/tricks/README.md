@@ -344,11 +344,15 @@ writes. A repository that serves other content at that commit fails git's own ob
 Changing the list on a machine means changing the binary.
 
 **States.** `GET /api/tricks/official` answers each entry's state on this machine: `absent` (no folder of
-that id), `added` (a folder whose origin is this repository and folder at the listed commit), `update`
-(the same repository and folder at another commit, newer or older), and `taken` (any other folder of
-that id, a link or a file: a proposal, a hand-made trick, another repository). A taken folder is never
-written over, also when one appears during the fetch. A trick added from the same folder with `collie
-trick add` counts as added from the list. A crew member answers an empty list with `runsOn`.
+that id), `added` (a folder the list put there: its origin record says `official: true` and names this
+repository and folder at the listed commit), `update` (the same, at a commit an earlier release listed:
+the entry's `previous`, kept by the maintainer script, at most 8), and `taken` (any other folder of that
+id, a link or a file: a proposal, a hand-made trick, another repository). A taken folder is never written
+over, also when one appears during the fetch. A folder from this repository and folder that is not a
+version of the list (`collie trick add` at a branch or tag nobody listed, a record without `official`, or
+`official` written by hand at a commit the list never named) is `taken` with `unlisted: true`: its row says
+"Added from the repository, not from the Collie list.", and its trick row reads "From AltanS/collie-tricks
+@ 5e1f00d, not on the Collie list", never as the list. A crew member answers an empty list with `runsOn`.
 
 **Update.** On a new release the list may name another commit; the installed row then offers Update
 (`POST /api/tricks/official/<id>/update`). The bridge fetches and checks the same way, then moves only

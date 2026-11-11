@@ -17,8 +17,10 @@ import { diskTrickFs, type TrickFs } from "./code-hash.ts";
 //
 // A trick added from the From Collie list (official-install.ts) carries the same record with
 // `"official": true`, its `ref` the list's commit. The key is absent from every other record, so a record
-// `collie trick add` wrote reads byte for byte as before. It is a label: the state of a list entry is
-// read from `url`, `subdir` and `commit` (official.ts), and nothing is allowed by it.
+// `collie trick add` wrote reads byte for byte as before. It is read (official.ts `isListedOrigin`), but it
+// is never enough alone: a hand can write it, so a folder counts as from the list only when the record
+// also names a commit the list knows for that id, and an update first checks the folder's code hash
+// against that commit's listed hash (official-install.ts). Nothing else is allowed by it.
 
 /** The origin record inside a trick folder. A dot file: outside the code hash. */
 export const ORIGIN_FILE = ".collie-origin.json";

@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { trickCodeHash } from "../bridge/tricks/code-hash.ts";
 import { parseOfficialList, renderOfficialList, type OfficialEntry } from "../bridge/tricks/official.ts";
 import { parseJson } from "../web/src/lib/json.ts";
-import { LIST_FILE, parseArgs, runOfficial } from "./official-tricks.ts";
+import { LIST_FILE, parseArgs, rolled, runOfficial } from "./official-tricks.ts";
 
 // The maintainer script that keeps the From Collie list in step with the tricks repository. The
 // repository is a temp git repository; the script reads it through `file://`. No network.
@@ -79,6 +79,7 @@ const START: OfficialEntry = {
   commit: "0".repeat(40),
   hash: "0".repeat(64),
   contract: 1,
+  previous: [],
 };
 
 async function listFile(entries: OfficialEntry[]): Promise<string> {
@@ -102,7 +103,7 @@ describe.if(posix)("scripts/official-tricks.ts", () => {
     expect(run.code).toBe(0);
     expect(run.lines.at(-1)).toBe(`wrote ${file}`);
     const [entry] = await entriesOf(file);
-    expect(entry).toEqual({ ...START, name: "Legs Counter", commit: sha, hash: await hashOf(MANIFEST("Legs Counter"), PROGRAM("one")) });
+    expect(entry).toEqual({ ...START, name: "Legs Counter", commit: sha, hash: await hashOf(MANIFEST("Legs Counter"), PROGRAM("one")), previous: [{ commit: START.commit, hash: START.hash }] });
     // The description is the list's own line: the manifest has none.
     expect(entry?.description).toBe("Counts legs.");
     expect(await runOfficial({ repoDir: r.dir, commit: sha, check: true, file })).toEqual({ code: 0, lines: [`ok: ${file} is in step with ${sha.slice(0, 12)}`] });
@@ -121,6 +122,27 @@ describe.if(posix)("scripts/official-tricks.ts", () => {
     expect(run.lines.some((l) => l.startsWith("legs: hash is"))).toBe(true);
     expect(run.lines.at(-1)).toContain("stale:");
     expect(await readFile(file, "utf8")).toBe(before);
+  });
+
+  test("a move to another commit keeps the old one in previous, newest first, capped, and never the current one", async () => {
+    const r = await repo();
+    const first = await r.commit({ "legs/trick.toml": MANIFEST("Legs"), "legs/program.sh": PROGRAM("one") });
+    const file = await listFile([START]);
+    expect((await runOfficial({ repoDir: r.dir, commit: first, check: false, file })).code).toBe(0);
+    const h1 = (await entriesOf(file))[0]?.hash ?? "";
+    const second = await r.commit({ "legs/program.sh": PROGRAM("two") });
+    expect((await runOfficial({ repoDir: r.dir, commit: second, check: false, file })).code).toBe(0);
+    expect((await entriesOf(file))[0]?.previous).toEqual([
+      { commit: first, hash: h1 },
+      { commit: START.commit, hash: START.hash },
+    ]);
+    // The same commit again changes nothing; a step back to the first drops it from previous.
+    expect((await runOfficial({ repoDir: r.dir, commit: second, check: true, file })).code).toBe(0);
+    expect((await runOfficial({ repoDir: r.dir, commit: first, check: false, file })).code).toBe(0);
+    expect((await entriesOf(file))[0]?.previous.map((v) => v.commit)).toEqual([second, START.commit]);
+    const many = Array.from({ length: 12 }, (_, i) => ({ commit: String(i + 1).padStart(40, "a"), hash: "c".repeat(64) }));
+    expect(rolled({ commit: first, hash: h1, previous: many.slice(0, 8) }, second)).toHaveLength(8);
+    expect(rolled({ commit: first, hash: h1, previous: many.slice(0, 8) }, second)[0]).toEqual({ commit: first, hash: h1 });
   });
 
   test("an uncommitted edit never reaches a hash: the script reads git, not the working tree", async () => {

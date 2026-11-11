@@ -9,7 +9,8 @@
       "dir": "design-review",
       "commit": "0d8039936aef44961a5641f4bfdc4583ed0c3e60",
       "hash": "9e3f1daaa37aa4f3ce47a4403480b071748fca15645a9ab94762da28110115c2",
-      "contract": 1
+      "contract": 1,
+      "previous": []
     },
     {
       "id": "pr-inbox",
@@ -19,7 +20,8 @@
       "dir": "pr-inbox",
       "commit": "0d8039936aef44961a5641f4bfdc4583ed0c3e60",
       "hash": "ff264bf1eda649a9ccfdbce11e063c3ffe3de104fa06f32d6dd0eecdba1be6d1",
-      "contract": 1
+      "contract": 1,
+      "previous": []
     },
     {
       "id": "running-builds",
@@ -29,7 +31,8 @@
       "dir": "running-builds",
       "commit": "0d8039936aef44961a5641f4bfdc4583ed0c3e60",
       "hash": "2d583928a4dc6a1d60c2ce4ef41173be8cad32af18e66dff03a3e1ff98bbebe1",
-      "contract": 1
+      "contract": 1,
+      "previous": []
     }
   ]
 }

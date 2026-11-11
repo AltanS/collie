@@ -359,6 +359,13 @@ export function TrickSettingsSection(): ReactNode {
         <OfficialCard n={20} state="trick-settings-official-update" label="this release names a newer version" tricks={[HEALTHY[0] ?? trick("x", "x"), fromList(BUILDS, { on: true, state: "ok" })]} entries={[{ ...BUILDS, state: "update" }, REVIEW]} />
         <OfficialCard n={21} state="trick-settings-official-taken" label="an id another trick holds" tricks={[trick("pr-inbox", "My PR list", { places: ["session"], provenance: { via: "cli", at: "2026-11-08T09:38:00Z" } })]} entries={[REVIEW, { ...INBOX, state: "taken" }]} />
         <OfficialSheetBox n={22} state="trick-settings-official-about" label="the About sheet before the add" entry={REVIEW} />
+        <OfficialCard
+          n={23}
+          state="trick-settings-official-unlisted"
+          label="from the repository, not from the list: a pull request's commit"
+          tricks={[trick("pr-inbox", "PR Inbox", { on: false, state: "off", places: ["session"], provenance: { via: "repo", at: "2026-11-08T09:38:00Z", repo: "AltanS/collie-tricks", sha: "5e1f00d3a9b2", unlisted: true } })]}
+          entries={[REVIEW, { ...INBOX, state: "taken", unlisted: true }]}
+        />
       </Group>
       <Group title="Nothing to list">
         <ListCard n={6} state="trick-settings-empty" label="folder, no trick" tricks={[]} />

@@ -108,7 +108,8 @@ function whoWords(by: WireTrickInfo["provenance"]): string {
   if (by.via === "agent") return t("settings.tricks.by.agent");
   if (by.repo === undefined) return t("settings.tricks.by.repoNone");
   if (by.sha === undefined) return t("settings.tricks.by.repoBare", { repo: by.repo });
-  return t("settings.tricks.by.repo", { repo: by.repo, sha: by.sha.slice(0, 7) });
+  // From the official repository, but not a version of the From Collie list: never read as the list.
+  return t(by.unlisted === true ? "settings.tricks.by.repoUnlisted" : "settings.tricks.by.repo", { repo: by.repo, sha: by.sha.slice(0, 7) });
 }
 
 /** The third line of a row, and whether it is a trouble report rather than a provenance. */
@@ -304,7 +305,7 @@ function OfficialRow({ entry, busy, canWrite, onAdd, onAbout }: { entry: WireOff
           </p>
           {taken && (
             <p data-line="taken" className="text-xs text-muted-foreground">
-              {t("settings.tricks.official.taken")}
+              {t(entry.unlisted === true ? "settings.tricks.official.takenRepo" : "settings.tricks.official.taken")}
             </p>
           )}
         </div>

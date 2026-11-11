@@ -117,6 +117,20 @@ describe("From Collie: the section", () => {
     expect(document.querySelector('[data-official="running-builds"]')).toBeNull();
   });
 
+  it("a taken entry whose folder came from the repository but not from the list says so, and never reads as the list", async () => {
+    serveList(() => ({ tricks: [REVIEW, { ...INBOX, state: "taken", unlisted: true }] }));
+    const { store } = await liveStore([LEGS]);
+    renderCard(store);
+    await vi.waitFor(() => expect(section()).not.toBeNull());
+    const inbox = officialRow("pr-inbox");
+    expect(within(inbox).getByText("Added from the repository, not from the Collie list.")).toBeInTheDocument();
+    expect(within(inbox).queryByText("A trick with this name is already here.")).toBeNull();
+    expect(within(inbox).queryByRole("button")).toBeNull();
+    // The wire keeps the mark only on a taken entry.
+    expect(readOfficialTricksReply({ tricks: [{ ...INBOX, state: "taken", unlisted: true }] })?.tricks[0]?.unlisted).toBe(true);
+    expect(readOfficialTricksReply({ tricks: [{ ...INBOX, state: "update", unlisted: true }] })?.tricks[0]?.unlisted).toBeUndefined();
+  });
+
   it("draws no section for an empty list, a crew member's, or a list the phone could not read", async () => {
     const replies: (() => OfficialTricksReply | Response)[] = [
       () => ({ tricks: [] }),

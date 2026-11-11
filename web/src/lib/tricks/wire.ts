@@ -248,7 +248,9 @@ function readOfficialTrick(raw: JsonValue | undefined): WireOfficialTrick | unde
   if (id === undefined || !isTrickId(id) || name === undefined || !isTrickText(name, { max: NAME_MAX })) return undefined;
   if (description === undefined || repo === undefined || repoName === undefined || !isTrickText(repoName, { max: NAME_MAX * 2 })) return undefined;
   if (commit === undefined || !/^[0-9a-f]{40}$/u.test(commit) || !isOfficialState(state)) return undefined;
-  return { id, name, description, repo, repoName, commit, state };
+  const out: WireOfficialTrick = { id, name, description, repo, repoName, commit, state };
+  if (body.unlisted === true && state === "taken") out.unlisted = true;
+  return out;
 }
 
 /**

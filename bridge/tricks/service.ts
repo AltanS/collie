@@ -33,6 +33,7 @@ import { scrubEnv, type ProgramEnv } from "./env.ts";
 import { buildFacts, type FactsWorld } from "./facts.ts";
 import type { TrickInputs } from "./inputs.ts";
 import { readTrickMedia, type TrickMediaFile } from "./media.ts";
+import { isUnlistedOfficialOrigin, shippedOfficialList, type OfficialEntry } from "./official.ts";
 import { originRepoName, type ProposalOrigin } from "./origin.ts";
 import { replaceTrickCode, writeProposedTrick } from "./proposal-install.ts";
 import type { ProposedFile } from "./propose-wire.ts";
@@ -262,6 +263,8 @@ export type SwitchAnswer =
 export interface TricksServiceDeps {
   configDir: string;
   stateDir: string;
+  /** The From Collie list, for the row of a trick from its repository that is not on it. Default: the one this binary carries. */
+  officialEntries?: () => readonly OfficialEntry[];
   /**
    * This bridge's stable id for facts, part keys and trick session ids (bridge/bridge-id.ts): the crew
    * member id, or the install id. Resolved once at boot: a bridge that joins a crew while it runs keeps
@@ -1069,6 +1072,13 @@ export class TricksService implements TricksSurface {
     rt.nextAt = 0;
   }
 
+  /** The From Collie list's entries: the deps' or the one this binary carries, none when it is refused. */
+  private officialEntries(): readonly OfficialEntry[] {
+    if (this.deps.officialEntries !== undefined) return this.deps.officialEntries();
+    const list = shippedOfficialList();
+    return list.ok ? list.entries : [];
+  }
+
   /** Put a trick's list entry in the store, which takes a rev only when it changed. */
   private publish(id: string): void {
     const rt = this.runtimes.get(id);
@@ -1089,6 +1099,8 @@ export class TricksService implements TricksSurface {
     // The provenance of what runs: the approved copy keeps the origin record of the version approved.
     const origin = shown.origin;
     if (origin !== undefined) info.provenance = { via: "repo", at: origin.at, repo: originRepoName(origin.url), sha: origin.commit };
+    // From the official repository, but not a version of the From Collie list: the row must not read as the list.
+    if (origin !== undefined && info.provenance !== undefined && isUnlistedOfficialOrigin(this.officialEntries(), id, origin)) info.provenance.unlisted = true;
     // A proposed trick (`collie trick propose`, crew slice 8): the web reads `proposed` and says "Proposed …"
     // ("Proposed from <host>. The session is not confirmed." when no agent pane was placed); `via` is only
     // for a reader that predates `proposed`.

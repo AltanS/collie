@@ -1387,6 +1387,11 @@ export interface TrickProvenance {
    * agent pane was placed: the machine is known, the session is not confirmed.
    */
   proposed?: { by: "agent" | "terminal"; host: string };
+  /**
+   * Set when `repo` is an official repository of the From Collie list but this folder is not a version of
+   * the list (official.ts `isUnlistedOfficialOrigin`): the phone says it is not on the Collie list.
+   */
+  unlisted?: true;
 }
 /**
  * `GET /api/tricks?since=<rev>`. The snapshot carries `tricksRev`; when it moves, the phone asks for the
@@ -1436,6 +1441,11 @@ export interface WireOfficialTrick {
   /** The commit this Collie release expects, 40 hex. */
   commit: string;
   state: OfficialState;
+  /**
+   * Set on a `taken` entry whose folder came from this repository and folder, but not from the list: another
+   * ref (a pull request's, a branch nobody listed) or a record without `official`. Absent otherwise.
+   */
+  unlisted?: true;
 }
 
 /** `GET /api/tricks/official`: the list with each entry's state, empty with `runsOn` on a machine that runs no tricks. */
