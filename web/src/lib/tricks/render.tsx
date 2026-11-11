@@ -717,7 +717,7 @@ function HostText({ host, className }: { host: string; className?: string }) {
  * A host as words: it may break after each dot, and anywhere only when a name is longer than the line.
  * Inline after a link's words in a para, or `line`: a line of its own under a row's title.
  */
-function HostWords({ host, line = false }: { host: string; line?: boolean }) {
+export function HostWords({ host, line = false }: { host: string; line?: boolean }) {
   const names = host.split(".");
   return (
     <span data-trick-link-host="" title={host} className={cn("font-mono text-[11px] break-words text-muted-foreground", line ? "block leading-4" : "ml-1.5")}>

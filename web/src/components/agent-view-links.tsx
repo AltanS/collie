@@ -1,9 +1,11 @@
-import { useMemo, type ReactNode } from "react";
+import { Fragment, useMemo, type ReactNode } from "react";
 
 import { isPlainClick, useFileLinks, type FileLinkOpener } from "@/components/file-links";
 import { LINK_CLASS, breakClass } from "@/components/markdown-text";
 import { codeSpanPath, findFilePaths, type FoundPath } from "@/lib/file-paths";
+import { linkHost } from "@/lib/hill/reader";
 import { findBareUrls } from "@/lib/markdown";
+import { HostWords } from "@/lib/tricks/render";
 
 // LINKS IN AN AGENT VIEW'S TEXT. The agent draws a line, a row's title, a table cell or a caption as
 // plain words, and the same words in Chat carry links: a web address opens in a new tab, and a printed
@@ -47,15 +49,23 @@ function pathsIn(text: string): FoundPath[] {
  * existence check, as drawing a path in Chat does.
  */
 export function linkViewText(text: string, open: FileLinkOpener | null): ReactNode {
-  const pieces: Piece[] = findBareUrls(text).map((u) => ({
-    start: u.start,
-    end: u.end,
-    node: (
-      <a key={`u${String(u.start)}`} href={u.href} target="_blank" rel="noopener noreferrer" className={URL_CLASS(text.slice(u.start, u.end))}>
-        {text.slice(u.start, u.end)}
-      </a>
-    ),
-  }));
+  // A bare address shows where it really goes, as a link node does (review 10 W10): the host the browser
+  // opens, after the words, so `https://bank.example@evil.example` reads "evil.example".
+  const pieces: Piece[] = findBareUrls(text).map((u) => {
+    const host = linkHost(u.href);
+    return {
+      start: u.start,
+      end: u.end,
+      node: (
+        <Fragment key={`u${String(u.start)}`}>
+          <a href={u.href} target="_blank" rel="noopener noreferrer" className={URL_CLASS(text.slice(u.start, u.end))}>
+            {text.slice(u.start, u.end)}
+          </a>
+          {host !== "" && <HostWords host={host} />}
+        </Fragment>
+      ),
+    };
+  });
   if (open !== null) {
     for (const f of pathsIn(text)) {
       if (pieces.some((p) => f.start < p.end && p.start < f.end)) continue;

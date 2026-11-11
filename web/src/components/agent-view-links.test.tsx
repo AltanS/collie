@@ -128,3 +128,21 @@ describe("rule 8: a link in an agent view shows where it goes", () => {
     expect(parseAgentView([{ kind: "para", kids: [{ kind: "link", text: "https://other.example", attrs: { href: "https://other.example" } }] }]).view).toBeDefined();
   });
 });
+
+describe("review 10 W10: a bare web address in an agent view's text shows where it goes", () => {
+  it("W10: a bare address is followed by its host", () => {
+    const { container } = draw(null, screenOf([{ kind: "line", text: "The notes are at https://docs.example/notes/today now." }]));
+    const link = screen.getByRole("link", { name: "https://docs.example/notes/today" });
+    const host = link.nextElementSibling;
+    expect(host?.hasAttribute("data-trick-link-host")).toBe(true);
+    expect(host?.textContent).toBe("docs.example");
+    expect(container.querySelector("[data-slot=view-screen]")?.textContent).toContain("now.");
+  });
+
+  it("W10: an address with a user part (https://bank@evil) shows the host it really goes to", () => {
+    draw(null, screenOf([{ kind: "line", text: "Log in at https://bank.example@evil.example/login please." }]));
+    const link = screen.getByRole("link", { name: /bank\.example@evil\.example/ });
+    expect(link.getAttribute("href")).toContain("evil.example");
+    expect(link.nextElementSibling?.textContent).toBe("evil.example");
+  });
+});
