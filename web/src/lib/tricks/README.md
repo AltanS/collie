@@ -144,7 +144,7 @@ parse (`ParseTrickDocumentOptions.contract`); a view an agent draws (`agent-view
 strict reader and does not take this path. An agent view is contract 2 only and read closed whole: an
 unknown key on a node, a node's `attrs` or the decision block refuses the write (`bad_view`,
 `bad_choice`), and so does an unknown field of the write itself (`show`, `set`, `pending`, `remove`,
-`keep`, `choice`, `start`; bridge/agent-view/blocks.ts `unknownViewField`), with a reason that names the
+`keep`, `choice`, `start`, `clear`; bridge/agent-view/blocks.ts `unknownViewField`), with a reason that names the
 key. Nothing changes, and the agent writes again without it.
 
 **What contract 2 means.** Inside contract 1 Collie only adds: an optional manifest key, a facts field,

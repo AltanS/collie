@@ -201,8 +201,8 @@ export type WalkyRequest =
   // `session` is the address the caller names with `--session`, or null: the bridge checks it against
   // the pane the markers placed and never takes it in their place. There is no `on` and no `off`: only
   // the person turns a view on or off, on the phone (agent views SECURITY N9).
-  | { readonly op: "trick.view.show" | "trick.view.start" | ViewBlockOp; readonly markers: readonly BeaconMarker[]; readonly trick: string; readonly session: string | null; readonly fields: JsonObject }
-  | { readonly op: "trick.view.clear" | "trick.view.status" | "trick.view.help"; readonly markers: readonly BeaconMarker[]; readonly trick: string; readonly session: string | null };
+  | { readonly op: "trick.view.show" | "trick.view.start" | "trick.view.clear" | ViewBlockOp; readonly markers: readonly BeaconMarker[]; readonly trick: string; readonly session: string | null; readonly fields: JsonObject }
+  | { readonly op: "trick.view.status" | "trick.view.help"; readonly markers: readonly BeaconMarker[]; readonly trick: string; readonly session: string | null };
 
 /** The agent view operations, beside walky's own and the hill's. Added, never a change to one of them. */
 export type ViewOp = "trick.view.start" | "trick.view.show" | "trick.view.clear" | "trick.view.status" | "trick.view.help" | ViewBlockOp;
@@ -297,7 +297,8 @@ export function readWalkyRequest(line: string, max: number = WALKY_LINE_MAX): Wa
     if (session === undefined) return unread(BAD_REQUEST_LINE, markers);
     const trick = asJsonString(row.trick);
     if (trick === undefined || !isTrickId(trick)) return unread(VIEW_BAD_TRICK, markers);
-    if (op === "trick.view.show" || op === "trick.view.start" || isViewBlockOp(op)) return done({ op, markers, trick, session, fields: row });
+    // A write carries its fields, so the bridge refuses one it does not know (fault C, N6 of review 11).
+    if (op === "trick.view.show" || op === "trick.view.start" || op === "trick.view.clear" || isViewBlockOp(op)) return done({ op, markers, trick, session, fields: row });
     return done({ op, markers, trick, session });
   }
   if (op !== "send") return unread(op === null ? BAD_REQUEST_LINE : unknownOp(op), markers);

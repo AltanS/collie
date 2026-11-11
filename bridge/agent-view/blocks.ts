@@ -119,7 +119,8 @@ export const VIEW_REQUEST_KEYS: readonly string[] = ["v", "op", "markers", "tric
 export function unknownViewField(fields: JsonObject, own: readonly string[], code: ViewRefusalCode): ViewFieldError | null {
   const extra = Object.keys(fields).find((key) => !VIEW_REQUEST_KEYS.includes(key) && !own.includes(key));
   if (extra === undefined) return null;
-  return { error: `this write takes ${own.map((key) => `"${key}"`).join(", ")}, not "${extra}"; an agent view uses only the keys this Collie knows, so nothing was changed`, code };
+  const takes = own.length === 0 ? "no fields" : own.map((key) => `"${key}"`).join(", ");
+  return { error: `this write takes ${takes}, not "${extra}"; an agent view uses only the keys this Collie knows, so nothing was changed`, code };
 }
 
 /** A block id field: the pattern, and never the word that names the decision block. */

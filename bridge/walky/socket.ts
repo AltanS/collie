@@ -68,7 +68,7 @@ import type { LocalProposer } from "../tricks/propose-door.ts";
 import type { ProposeAnswer } from "../tricks/proposals.ts";
 import { PROPOSE_TOO_MANY_PARTS, proposalParseable, type ProposeRefusalCode } from "../tricks/propose-wire.ts";
 import type { JsonObject } from "../json.ts";
-import { readChoiceFields, readKeepFields, readPendingFields, readRemoveFields, readSetFields } from "../agent-view/blocks.ts";
+import { readChoiceFields, readKeepFields, readPendingFields, readRemoveFields, readSetFields, unknownViewField } from "../agent-view/blocks.ts";
 import { readShowFields, readStartFields, sameSession, wrongSessionWords, type AgentViewService, type ViewOpAnswer, type ViewRefusalCode } from "../agent-view/service.ts";
 import type { TrickViewSession } from "../../web/src/lib/agent-view/wire.ts";
 import type { Refusal } from "../../web/src/lib/tricks/schema.ts";
@@ -389,8 +389,10 @@ async function viewAnswerOf({ request, trick, session, views }: { request: Extra
       if ("error" in fields) return { ok: false, error: fields.error, code: fields.code };
       return await views.show(trick, session, fields);
     }
-    case "trick.view.clear":
-      return await views.clear(trick, session);
+    case "trick.view.clear": {
+      const unknown = unknownViewField(request.fields, [], "bad_view");
+      return unknown === null ? await views.clear(trick, session) : { ok: false, error: unknown.error, code: unknown.code };
+    }
     case "trick.view.status":
     case "trick.view.help":
       return { ok: true, session: views.status(trick, session) };

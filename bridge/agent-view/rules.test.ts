@@ -1001,6 +1001,22 @@ describe("fault C: an agent view write is read closed", () => {
     }
   });
 
+  test("N6: clear with a field it does not take is refused, names the key, and the screen stays", async () => {
+    const r = rig();
+    const socket = socketOf(r);
+    try {
+      await on(r);
+      expect((await socket.ask("%1", { op: "trick.view.show", trick: T, view: SCREEN })).ok).toBe(true);
+      const cleared = await socket.ask("%1", { op: "trick.view.clear", trick: T, keep: ["one"] });
+      expect(cleared).toMatchObject({ ok: false, code: "bad_view", trickView: true });
+      expect(JSON.stringify(cleared)).toContain('not \\"keep\\"');
+      expect(r.service.status(T, ONE).view).toBeDefined();
+      expect((await socket.ask("%1", { op: "trick.view.clear", trick: T })).ok).toBe(true);
+    } finally {
+      socket.done();
+    }
+  });
+
   test("M1: an attribute named like an inherited Object member refuses an agent view's show", async () => {
     const r = rig();
     const socket = socketOf(r);
