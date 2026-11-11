@@ -506,12 +506,17 @@ version you approved on the lead.
 
 The lead keeps a copy of each trick that is on, on its deputy: the trick's code, its switch and
 timer setting, its `config.toml`, and its small state with its pictures, up to 32 tricks. The deputy
-runs none of it while the lead is alive. Its standby page lists the tricks that the Take over button
-starts again, and only that button starts them. `collie promote` typed on the deputy starts them too.
-Either way the deputy starts them as it restarts as the lead.
+runs none of it while the lead is alive. Its standby page lists every trick that the Take over button
+starts again: eight in a sentence, and all of them under "Show all". Only that button starts them.
+`collie promote` typed on the deputy starts them too. Either way the deputy starts them as it restarts
+as the lead.
 
-Before a trick starts, the deputy checks its code against the version you approved. A trick that does
-not match does not start, and the Hill says so after the takeover, with an OK button. When the deputy
+The deputy trusts what its lead says you approved. It cannot see your yes on the lead. Before a trick
+starts, the deputy checks that its code is the version the lead names. A trick that does not match does
+not start, and the Hill says so after the takeover, with an OK button. It also checks that the trick
+asks for the rights the lead says you approved. A trick that asks for other rights stays off, and the
+Hill says "The trick <name> is off after the takeover". Read its rights in Settings → Tricks before you
+switch it on. When the deputy
 already has a trick folder of that name, Collie leaves the folder as it is, runs the approved version,
 and shows the folder's own code as a new version that waits for your yes.
 

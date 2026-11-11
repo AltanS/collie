@@ -6,7 +6,8 @@ import { trickCodeHash } from "../tricks/code-hash.ts";
 import { createTrickScanner } from "../tricks/discover.ts";
 import { approvedCopyDir, switchesPath, trickStateDir, tricksConfigDir, tricksStateDir } from "../tricks/paths.ts";
 import { parseSwitches, withEntry, writeSwitches } from "../tricks/switches.ts";
-import { adoptCarriedTricks, TAKEOVER_NOTICES_FILE, tricksStartingAtTap, writeCarryNotices } from "./carry-adopt.ts";
+import { adoptCarriedTricks, CARRY_RIGHTS_REASON, TAKEOVER_NOTICES_FILE, tricksStartingAtTap, writeCarryNotices } from "./carry-adopt.ts";
+import { carriedCard, parseCarryNotices } from "./carry-notices.ts";
 import { carryAll, machine, PNG, putOnTrick, removeCarryDirs, type LeadMachine } from "./carry-fixtures.ts";
 import { StandbyTricksStore } from "./standby-tricks.ts";
 
@@ -48,6 +49,31 @@ describe("the person's tap starts the carried tricks", () => {
     expect(scan.tricks.map((t) => t.id)).toEqual(["legs"]);
     // No staging folder is left beside it.
     expect((await readdir(tricksConfigDir(deputy.configDir))).filter((n) => n.startsWith(".collie-carry-"))).toEqual([]);
+  });
+
+  test("rights the lead's record names that are not the carried code's: the trick is written but stays off, with its card (review 7 R6)", async () => {
+    const lead = await machine("lead");
+    const hash = await putOnTrick(lead, { id: "legs", name: "Leg day", auto: true });
+    // The lead's record says another set of rights was approved than the code asks for.
+    const held = await switchesOf(lead);
+    const entry = held.on.get("legs");
+    if (entry === undefined) throw new Error("no switch");
+    await writeSwitches(lead.stateDir, withEntry(held, "legs", { ...entry, powers: "0".repeat(16) }));
+    const { deputy, store } = await deputyWith(lead);
+    const result = await adoptCarriedTricks({ stateDir: deputy.stateDir, configDir: deputy.configDir, store, lead: "desk", by: "takeover", now: () => TAP });
+    expect(result.started).toEqual([]);
+    expect(result.failed).toEqual([{ id: "legs", name: "Leg day", hash, reason: CARRY_RIGHTS_REASON, kind: "rights" }]);
+    // Off: no switch, no approved copy; the folder is there for the person to read.
+    expect((await switchesOf(deputy)).on.has("legs")).toBe(false);
+    expect(await stat(approvedCopyDir(deputy.configDir, "legs", hash)).catch(() => null)).toBeNull();
+    expect(await trickCodeHash(join(tricksConfigDir(deputy.configDir), "legs"))).toEqual({ ok: true, hash });
+    const card = carriedCard("desk", TAP, result.failed[0]!);
+    expect(card.title).toBe("The trick Leg day is off after the takeover");
+    expect(card.summary).toBe("It ran on desk, but the rights its code asks for are not the rights your lead says you approved. Collie left it off on this machine. Read its rights in Settings → Tricks before you switch it on.");
+    // The notice keeps its kind through the file.
+    await writeCarryNotices(deputy.stateDir, "desk", TAP, result.failed);
+    const notices = parseCarryNotices(await readFile(join(tricksStateDir(deputy.stateDir), TAKEOVER_NOTICES_FILE), "utf8"));
+    expect(notices?.failed[0]?.kind).toBe("rights");
   });
 
   test("held code changed on the deputy's disk does not start, and is answered for the Hill", async () => {

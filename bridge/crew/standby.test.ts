@@ -260,6 +260,18 @@ describe("the page", () => {
     expect(carriedLines({ tricks: many })[0]).toContain(" and 3 more.</p>");
   });
 
+  test("the page names every carried trick: the first 8 in the sentence, all of them behind Show all (review 7 R6)", () => {
+    const all = Array.from({ length: 32 }, (_, i) => `trick ${String(i + 1)}`);
+    const lines = carriedLines({ tricks: all });
+    expect(lines[0]).toContain(" and 24 more.</p>");
+    expect(lines[1]).toStartWith("<details><summary>Show all 32</summary><p>");
+    for (const name of all) expect(lines[1]).toContain(`<code>${name}</code>`);
+    // Eight or fewer: the sentence names them all, and no control.
+    expect(carriedLines({ tricks: all.slice(0, CARRIED_NAMES_SHOWN) }).join("")).not.toContain("<details>");
+    // No script: the control is plain HTML, under the page's one hashed script.
+    expect(standbyPage(facts(), { tricks: all })).toContain("<details><summary>Show all 32</summary>");
+  });
+
   test("COLD never lists what a tap would start: there is no tap", () => {
     expect(standbyPage(facts({ silentForMs: 3000 }), { tricks: ["Leg day"] })).not.toContain("Leg day");
   });

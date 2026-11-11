@@ -30,6 +30,14 @@ import type { CarriedReady, StandbyTricksStore } from "./standby-tricks.ts";
 //   4. The trick's state folder is written only where this machine has none.
 // A trick whose check fails is not started and is answered in `failed`, so the bridge can put a Decision
 // on the Hill that says so (`TAKEOVER_NOTICES_FILE`).
+//
+// THE RIGHTS (review 7 R6). The deputy trusts what its lead says was approved: the hash and the powers in
+// the carried list are the lead's word, and nothing here can check that a person said yes to them on the
+// lead. What it can check is that the two agree: the powers the lead says were approved must be the
+// powers of the carried code (`powersOfDir`). When they are not (another Collie's rule, a record by
+// hand, a lead that lies about one of them), the trick starts OFF: its folder is written where there is
+// none, no approved copy and no switch, and its card says so (`kind: "rights"`), so the person reads its
+// rights in Settings before a yes on this machine.
 
 /** The file a takeover leaves for the next boot: the tricks that did not start, for the Hill to say so. */
 export const TAKEOVER_NOTICES_FILE = "carried-notices.json";
@@ -40,7 +48,12 @@ export interface CarryFailure {
   readonly name: string;
   readonly hash: string;
   readonly reason: string;
+  /** `rights`: its code asks for other rights than the lead says were approved, so it was left off (R6). */
+  readonly kind?: "rights";
 }
+
+/** Why a carried trick whose rights do not agree with the lead's record is off. */
+export const CARRY_RIGHTS_REASON = "the rights its code asks for are not the rights your lead says you approved";
 
 export interface AdoptTricksResult {
   readonly started: readonly { readonly id: string; readonly name: string }[];
@@ -108,11 +121,33 @@ async function writeFolder(ready: CarriedReady, dir: string): Promise<void> {
   }
 }
 
-/** Start one carried trick, or say why not. */
-async function adoptOne(opts: AdoptTricksOptions, ready: CarriedReady, at: string): Promise<{ ok: true; keptFolder: boolean } | { ok: false; reason: string }> {
+/** Write a carried trick's folder where this machine has none, and nothing else: it stays off (R6). */
+async function writeOff(opts: AdoptTricksOptions, ready: CarriedReady): Promise<void> {
+  const target = join(tricksConfigDir(opts.configDir), ready.trick.id);
+  if (await exists(target)) return;
+  const src = join(tricksConfigDir(opts.configDir), `.collie-carry-${randomBytes(6).toString("hex")}`);
+  try {
+    await writeFolder(ready, src);
+    if (!(await exists(target))) await rename(src, target);
+  } finally {
+    await removeTree(src);
+  }
+}
+
+/** Start one carried trick, leave it off, or say why not. */
+async function adoptOne(opts: AdoptTricksOptions, ready: CarriedReady, at: string): Promise<{ ok: true; keptFolder: boolean } | { ok: false; reason: string; kind?: "rights" }> {
   const { id, hash } = ready.trick;
   const held = await trickCodeHash(ready.codeDir);
   if (!held.ok || held.hash !== hash) return { ok: false, reason: "its copy on this machine does not match the version you approved" };
+  // The lead's word on the rights must agree with the code it sent (R6); else the trick stays off.
+  if ((await powersOfDir(ready.codeDir, id)) !== ready.trick.powers) {
+    try {
+      await writeOff(opts, ready);
+    } catch (err) {
+      return { ok: false, reason: `it could not be written: ${err instanceof Error ? err.message : String(err)}` };
+    }
+    return { ok: false, reason: CARRY_RIGHTS_REASON, kind: "rights" };
+  }
   const target = join(tricksConfigDir(opts.configDir), id);
   const keptFolder = await exists(target);
   const src = keptFolder ? join(opts.store.dir, `.adopt-${randomBytes(6).toString("hex")}`) : join(tricksConfigDir(opts.configDir), `.collie-carry-${randomBytes(6).toString("hex")}`);
@@ -169,7 +204,7 @@ export async function adoptCarriedTricks(opts: AdoptTricksOptions): Promise<Adop
       if (outcome.keptFolder) keptFolder.push(ready.trick.id);
       continue;
     }
-    failed.push({ id: ready.trick.id, name: ready.name, hash: ready.trick.hash, reason: outcome.reason });
+    failed.push(outcome.kind === undefined ? { id: ready.trick.id, name: ready.name, hash: ready.trick.hash, reason: outcome.reason } : { id: ready.trick.id, name: ready.name, hash: ready.trick.hash, reason: outcome.reason, kind: outcome.kind });
   }
   // A trick the copy refused (its hash did not match when it arrived) does not start either; say so.
   for (const trick of index.tricks) {

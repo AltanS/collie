@@ -319,7 +319,9 @@ const PAGE_STYLE =
   "p{margin:0 0 1rem}code{background:#222;padding:.1em .35em;border-radius:.25em}" +
   ".warn{color:#f5c451}.out{margin-top:1rem;min-height:1.5rem}" +
   "button{width:100%;padding:1rem;font-size:1.1rem;border:0;border-radius:.5rem;background:#c0392b;color:#fff}" +
-  "button[disabled]{opacity:.5}";
+  "button[disabled]{opacity:.5}" +
+  "details{margin:0 0 1rem}summary{min-height:44px;display:flex;align-items:center;color:#9ecbff}" +
+  "details p{margin:.25rem 0 0}";
 
 /**
  * The page, server-rendered from the bridge (RFC §6.2, §14.3 step 3).
@@ -349,7 +351,10 @@ export const CARRIED_CHANGED = "The list changed. Read it again.";
 /** The header the tap names the shown list in (`carriedSeen`, crew/carry-boot.ts). */
 export const CARRIED_SEEN_HEADER = "x-collie-carried";
 
-/** The most trick names the page lists; the rest read "and N more". */
+/**
+ * The trick names the sentence lists; with more, "and N more" and a control under it that opens the whole
+ * list, every name (review 7 R6). A plain `<details>`: no script, which the page's CSP keeps to its one.
+ */
 export const CARRIED_NAMES_SHOWN = 8;
 /** The longest trick name the page shows. */
 export const CARRIED_NAME_MAX = 40;
@@ -365,15 +370,17 @@ export function cleanCarriedName(name: string): string {
   return chars.length > CARRIED_NAME_MAX ? `${chars.slice(0, CARRIED_NAME_MAX - 1).join("")}…` : kept;
 }
 
-/** The page's lines about what the tap also starts: none, one or two. Escaped here. */
+/** The page's lines about what the tap also starts: none, one, two or three. Escaped here. */
 export function carriedLines(carried: CarriedSummary | null): string[] {
   if (carried === null) return [];
   const out: string[] = [];
   const names = carried.tricks.map(cleanCarriedName).filter((n) => n !== "");
   if (names.length > 0) {
-    const shown = names.slice(0, CARRIED_NAMES_SHOWN).map((n) => `<code>${escapeHtml(n)}</code>`);
+    const boxed = names.map((n) => `<code>${escapeHtml(n)}</code>`);
+    const shown = boxed.slice(0, CARRIED_NAMES_SHOWN);
     const more = names.length - shown.length;
     out.push(`<p>This also starts these tricks again: ${shown.join(", ")}${more > 0 ? ` and ${String(more)} more` : ""}.</p>`);
+    if (more > 0) out.push(`<details><summary>Show all ${String(names.length)}</summary><p>${boxed.join(", ")}.</p></details>`);
   }
   const questions = carried.questions ?? 0;
   if (questions > 0) out.push(questions === 1 ? "<p>1 open question on the Hill comes along.</p>" : `<p>${String(questions)} open questions on the Hill come along.</p>`);

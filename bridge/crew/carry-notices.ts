@@ -45,7 +45,7 @@ export function parseCarryNotices(raw: string | null): CarryNotices | null {
     const hash = asJsonString(row?.hash);
     const reason = asJsonString(row?.reason);
     if (id === undefined || !isTrickId(id) || name === undefined || hash === undefined || !HASH_RE.test(hash) || reason === undefined) continue;
-    failed.push({ id, name, hash, reason });
+    failed.push(asJsonString(row?.kind) === "rights" ? { id, name, hash, reason, kind: "rights" } : { id, name, hash, reason });
   }
   return { lead, at, failed };
 }
@@ -57,8 +57,17 @@ export function carriedRequestId(lead: string, at: number, failure: CarryFailure
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-${variant}${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
 }
 
-/** The card for one trick that did not start. */
+/** The card for one trick that did not start, or that was left off for its rights (review 7 R6). */
 export function carriedCard(lead: string, at: number, failure: CarryFailure): HillPostInput {
+  if (failure.kind === "rights") {
+    return {
+      requestId: carriedRequestId(lead, at, failure),
+      title: `The trick ${failure.name} is off after the takeover`,
+      summary: `It ran on ${lead}, but the rights its code asks for are not the rights your lead says you approved. Collie left it off on this machine. Read its rights in Settings → Tricks before you switch it on.`,
+      options: [{ intent: CARRIED_OK, label: "OK" }],
+      text: "none",
+    };
+  }
   return {
     requestId: carriedRequestId(lead, at, failure),
     title: `The trick ${failure.name} did not start after the takeover`,
