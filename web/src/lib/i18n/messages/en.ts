@@ -3346,8 +3346,6 @@ export const en = {
   "settings.tricks.pending": "A new version waits for your yes.",
   // Take changes without asking, and the undo of an automatic change (crew slice 3). English only until
   // the translation pass, listed in PENDING_TRANSLATION below.
-  "settings.tricks.auto.label": "Take changes without asking",
-  "settings.tricks.auto.hint": "A change that asks for new rights, or does something new such as reaching the network, still asks.",
   "settings.tricks.auto.failed": "Could not change {name}. Try again.",
   "settings.tricks.autoAt": "Updated {ago}, automatically.",
   "settings.tricks.undo": "Undo",
@@ -3679,8 +3677,6 @@ export const PENDING_TRANSLATION = [
   "hill.receipt.versionUsed",
   "hill.receipt.versionKept",
   "hill.receipt.collieDone",
-  "settings.tricks.auto.label",
-  "settings.tricks.auto.hint",
   "settings.tricks.auto.failed",
   "settings.tricks.autoAt",
   "settings.tricks.undo",

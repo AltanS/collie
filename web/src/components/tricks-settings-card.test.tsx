@@ -171,10 +171,10 @@ describe("TricksSettingsCard: the rows", () => {
     await screen.findByText("Bad");
     for (const id of ["legs", "tracker", "bad"]) {
       const row = rowOf(id);
-      // The three lines; a trick that is on adds its changes row below them (crew slice 3), whatever its state.
+      // The three lines; a trick that took a change without asking adds its changes row below them (crew slice 3).
       const lines = [...row.querySelectorAll<HTMLElement>("[data-line]")].filter((el) => el.closest('[data-line="changes"]') === null);
       expect(lines.length).toBe(2);
-      expect(row.querySelector('[data-line="changes"]') !== null).toBe(id !== "tracker");
+      expect(row.querySelector('[data-line="changes"]')).toBeNull();
       expect(row.querySelector('[data-line="places"]')?.textContent).not.toBe("");
       expect(row.querySelector('[data-line="slot"]')?.textContent).not.toBe("");
     }
@@ -492,28 +492,31 @@ describe("take changes without asking, and undo an automatic change (crew slice 
     return render(<RouterProvider router={router} />);
   }
 
-  it("draws the switch with its hint under a trick that is on, and nothing under one that is off", async () => {
+  it("draws no auto switch and no hint on the card, for a trick that is on or off: the switch lives in the About sheet", async () => {
     renderWith(await storeWith([{ ...LEGS, auto: false }, TRACKER]), {});
     await screen.findByText("Browser leg");
-    const changes = rowOf("legs").querySelector<HTMLElement>('[data-line="changes"]');
-    expect(changes).toHaveTextContent("Take changes without asking");
-    expect(changes).toHaveTextContent("A change that asks for new rights, or does something new such as reaching the network, still asks.");
-    expect(within(changes!).getByRole("switch", { name: "Take changes without asking" })).not.toBeChecked();
-    expect(rowOf("tracker").querySelector('[data-line="changes"]')).toBeNull();
+    expect(screen.queryByText("Take changes without asking")).toBeNull();
+    expect(screen.queryByText(/still asks\./)).toBeNull();
+    // The two rows' own switches are the only ones.
+    expect(screen.getAllByRole("switch").map((sw) => sw.getAttribute("aria-label"))).toEqual(["Browser leg", "Tracker"]);
+    expect(rowOf("legs").querySelector('[data-line="changes"]')).toBeNull();
     expect(rowOf("legs").querySelector('[data-line="auto-at"]')).toBeNull();
   });
 
-  it("posts the new position, flips at once, and goes back with a status line when the bridge refuses", async () => {
+  it("posts the new position from the sheet, flips at once, and goes back with a status line when the bridge refuses", async () => {
     const user = userEvent.setup();
     const onAuto = vi.fn(async (_host: string, _id: string, on: boolean) => ({ ...LEGS, auto: on }));
     renderWith(await storeWith([LEGS]), { onAuto });
-    const sw = await screen.findByRole("switch", { name: "Take changes without asking" });
-    await user.click(sw);
+    await user.click(await screen.findByRole("button", { name: "About Browser leg" }));
+    const sw = () => within(screen.getByRole("dialog")).getByRole("switch", { name: "Take changes without asking" });
+    await user.click(sw());
     expect(onAuto).toHaveBeenCalledWith("bluefin", "legs", true);
-    expect(screen.getByRole("switch", { name: "Take changes without asking" })).toBeChecked();
+    expect(sw()).toBeChecked();
     onAuto.mockRejectedValueOnce(new Error("409"));
-    await user.click(screen.getByRole("switch", { name: "Take changes without asking" }));
-    expect(currentStatus()?.text).toBe("Could not change Browser leg. Try again.");
+    await user.click(sw());
+    await vi.waitFor(() => expect(currentStatus()?.text).toBe("Could not change Browser leg. Try again."));
+    // Back to what the bridge's list says, which has not moved.
+    expect(sw()).not.toBeChecked();
   });
 
   it("says when a version was taken without asking, and Undo asks for a second tap before it goes back", async () => {
@@ -586,6 +589,20 @@ describe("TricksSettingsCard: a trick's About sheet", () => {
     expect(rowOf("tracker").querySelector('[data-line="description"]')).toBeNull();
   });
 
+  it("gives the name a muted chevron inside the button, hidden from assistive tech, and the description the places line's muted style", async () => {
+    renderCard(await storeWith([TOLD]));
+    const button = await screen.findByRole("button", { name: "About Browser leg" });
+    const glyph = button.querySelector("svg");
+    expect(glyph).not.toBeNull();
+    expect(glyph?.getAttribute("aria-hidden")).toBe("true");
+    expect(glyph?.getAttribute("class")).toContain("text-muted-foreground");
+    expect(button.textContent).toBe("Browser leg");
+    const description = rowOf("legs").querySelector('[data-line="description"]');
+    expect(description?.className).toContain("text-muted-foreground");
+    expect(description?.className).toContain("line-clamp-2");
+    expect(rowOf("legs").querySelector('[data-line="places"]')?.className).toContain("text-muted-foreground");
+  });
+
   it("opens the sheet from the name, and the switch stays its own tap target", async () => {
     const user = userEvent.setup();
     const onSwitch = vi.fn(async (_host: string, _id: string, on: boolean) => ({ ...TOLD, on, state: "ok" as const }));
@@ -604,7 +621,7 @@ describe("TricksSettingsCard: a trick's About sheet", () => {
   describe("the Updates switch in the sheet", () => {
     const sheetSwitch = () => within(screen.getByRole("dialog")).getByRole("switch", { name: "Take changes without asking" });
 
-    it("keeps the card's own switch and adds one in the sheet that holds the same position", async () => {
+    it("holds the position the sheet's switch was flipped to, while the write is in flight and after", async () => {
       const user = userEvent.setup();
       const onAutoPost = vi.fn();
       server.use(
@@ -616,13 +633,11 @@ describe("TricksSettingsCard: a trick's About sheet", () => {
       );
       renderCard(await storeWith([TOLD]));
       await user.click(await screen.findByRole("button", { name: "About Browser leg" }));
-      expect(within(rowOf("legs")).getByText("Take changes without asking")).toBeInTheDocument();
+      expect(within(rowOf("legs")).queryByText("Take changes without asking")).toBeNull();
       expect(sheetSwitch()).not.toBeChecked();
       await user.click(sheetSwitch());
       await vi.waitFor(() => expect(onAutoPost).toHaveBeenCalledWith(true));
       expect(sheetSwitch()).toBeChecked();
-      // The card's own switch reads the same held position.
-      expect(within(rowOf("legs")).getByRole("switch", { name: "Take changes without asking" })).toBeChecked();
     });
 
     it("goes back and says it in the status line when the write fails, as the trick's own switch does", async () => {
