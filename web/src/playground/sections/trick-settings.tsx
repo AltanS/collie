@@ -5,11 +5,12 @@
 //
 // DEV-ONLY, unreachable from the app entry: see ../app.tsx and web/playground.html.
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 
+import { TrickAboutSheet } from "@/components/trick-about-sheet";
 import { TricksSettingsCard } from "@/components/tricks-settings-card";
 import { homeSolo } from "../fixtures";
-import type { TricksReply, WireTrickInfo } from "@/lib/tricks/schema";
+import { ABOUT_MAX, type TricksReply, type WireTrickInfo } from "@/lib/tricks/schema";
 import { createTricksStore, type TricksStore } from "@/lib/tricks/store";
 
 import { RootRouter } from "../harness";
@@ -84,6 +85,51 @@ function ListCard({ n, state, label, tricks, readOnly, hillOff }: { n: number; s
   );
 }
 
+// A trick's About sheet. The sheet is a fixed overlay, so each case sits in a 390 by 844 box (a phone) that is its own
+// containing block (`transform`) and its own viewport height (`--app-h`): the sheet opens inside the box.
+
+const ABOUT_TWO_PARAGRAPHS = [
+  "Release Gates shows which release checks are green for the release branch you are on, one line for each check.",
+  "It reads the check results from your agent sessions' folders and never changes a file.",
+].join("\n\n");
+
+/** An `about` of exactly `ABOUT_MAX` characters: four paragraphs of plain sentences, cut at the cap. */
+function aboutAtCap(): string {
+  const sentence = "Running Builds lists the builds and the long commands that run in your sessions right now. ";
+  const paragraph = sentence.repeat(3).trim();
+  const text = Array.from({ length: 5 }, () => paragraph).join("\n\n");
+  const cut = text.slice(0, ABOUT_MAX);
+  return cut.length === ABOUT_MAX ? cut : cut.padEnd(ABOUT_MAX, ".");
+}
+
+const GATES: WireTrickInfo = trick("gates", "Release Gates", {
+  on: false,
+  state: "off",
+  places: ["belt", "dashboard"],
+  description: "Which release checks are green for this branch.",
+  about: ABOUT_TWO_PARAGRAPHS,
+  inputs: { globs: ["RELEASE.md"], crew: false },
+  warnings: [{ kind: "network", text: "This trick reaches the network." }],
+  provenance: { via: "repo", at: "2026-11-08T09:38:00Z", repo: "AltanS/collie-tricks", sha: "9c41d07e2b6a" },
+});
+
+function SheetBox({ n, state, label, trick: info, updates = false }: { n: number; state: string; label: string; trick: WireTrickInfo; updates?: boolean }) {
+  const [open, setOpen] = useState(true);
+  // The Updates switch of a trick that is on: flips at once, as the card holds it.
+  const [auto, setAuto] = useState(info.auto === true);
+  const style: CSSProperties & { "--app-h"?: string } = { width: 390, height: 844, transform: "translate(0)", "--app-h": "844px" };
+  return (
+    <Card state={state} label={`${n} · ${label}`}>
+      <div data-pg-frame="" className="relative isolate overflow-hidden rounded-xl border border-border bg-background" style={style}>
+        <button type="button" className="m-4 min-h-11 text-sm underline" onClick={() => setOpen(true)}>
+          About {info.name}
+        </button>
+        <TrickAboutSheet trick={info} open={open} onClose={() => setOpen(false)} auto={auto} onAuto={updates ? setAuto : undefined} />
+      </div>
+    </Card>
+  );
+}
+
 export function TrickSettingsSection(): ReactNode {
   return (
     <Section def={DEF}>
@@ -150,6 +196,42 @@ export function TrickSettingsSection(): ReactNode {
             trick("legs", "Browser leg", { auto: true, autoAt: "2026-11-08T09:38:00Z", provenance: { via: "agent", at: "2026-11-08T07:41:00Z" } }),
             trick("tracker", "Tracker", { places: ["session"], provenance: { via: "repo", at: "2026-11-07T21:10:00Z", repo: "owner/tracker-trick", sha: "3f2a91c0d4e5" } }),
           ]}
+        />
+      </Group>
+      <Group title="The About sheet">
+        <ListCard
+          n={12}
+          state="trick-settings-about-card"
+          label="the name is a button, a description sits under it (tap a name)"
+          tricks={[
+            GATES,
+            trick("builds", "Running Builds", { on: true, description: "Builds and long commands running in sessions now.", provenance: { via: "agent", at: "2026-11-08T07:41:00Z" } }),
+            trick("clock", "Clock", { places: ["belt"], provenance: { via: "cli", at: "2026-11-08T09:38:00Z" } }),
+          ]}
+        />
+        <SheetBox n={13} state="trick-settings-about-full" label="description, two paragraphs, inputs, one warning, origin" trick={GATES} />
+        <SheetBox
+          n={14}
+          state="trick-settings-about-none"
+          label="no about"
+          trick={trick("clock", "Clock", { on: false, state: "off", places: ["belt"], provenance: { via: "cli", at: "2026-11-08T09:38:00Z" } })}
+        />
+        <SheetBox
+          n={15}
+          state="trick-settings-about-long"
+          label="about at the cap (1200 characters)"
+          trick={trick("builds", "Running Builds", { places: ["belt", "session", "dashboard"], description: "Builds and long commands running in sessions now.", about: aboutAtCap(), env: ["GH_TOKEN"] })}
+        />
+        <SheetBox
+          n={16}
+          state="trick-settings-about-updates"
+          label="switched on: the Updates switch last"
+          updates
+          trick={trick("gates", "Release Gates", {
+            description: "Which release checks are green for this branch.",
+            about: ABOUT_TWO_PARAGRAPHS,
+            provenance: { via: "repo", at: "2026-11-08T09:38:00Z", repo: "AltanS/collie-tricks", sha: "9c41d07e2b6a" },
+          })}
         />
       </Group>
       <Group title="Nothing to list">

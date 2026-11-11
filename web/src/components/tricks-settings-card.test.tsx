@@ -7,9 +7,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { HOLD_MS, TricksSettingsCard, autoLine, placesLine, provenanceLine, readsLine, slotLine, useTricksPresent, warningLines } from "@/components/tricks-settings-card";
 import { setTrickAuto, switchTrick, undoTrick } from "@/lib/api";
 import { ROOT_ROUTE_ID } from "@/lib/loaders";
-import { inputsSentence, type TricksReply, type WireTrickInfo } from "@/lib/tricks/schema";
+import { ABOUT_MAX, DESCRIPTION_MAX, inputsSentence, type TricksReply, type WireTrickInfo } from "@/lib/tricks/schema";
 import { createTricksStore, type TricksStore } from "@/lib/tricks/store";
-import { readTrick } from "@/lib/tricks/wire";
+import { readTrick, readTrickText } from "@/lib/tricks/wire";
 import { clearStatus, currentStatus } from "@/lib/status";
 import { server } from "@/test/setup";
 
@@ -218,7 +218,8 @@ describe("TricksSettingsCard: the warnings before the switch (review 15)", () =>
     expect(onSwitch).toHaveBeenCalledTimes(1);
     expect(onSwitch).toHaveBeenCalledWith("bluefin", "tracker", true);
     expect(screen.getByRole("switch", { name: "Tracker" })).toBeChecked();
-    expect(screen.queryByRole("button")).toBeNull();
+    // The one button on the card is the name, which opens the About sheet.
+    expect(screen.getAllByRole("button").map((b) => b.getAttribute("data-slot"))).toEqual(["trick-about"]);
   });
 
   it("shows them for a changed trick that is on, and the bridge's own words for a kind it does not know", async () => {
@@ -469,7 +470,7 @@ describe("a new version waits", () => {
     await screen.findByText("Browser leg");
     expect(rowOf("legs").querySelector('[data-line="slot"]')).toHaveTextContent("A new version waits for your yes.");
     expect(rowOf("tracker").querySelector('[data-line="slot"]')).not.toHaveTextContent("A new version waits");
-    expect(within(rowOf("legs")).queryByRole("button")).toBeNull();
+    expect(within(rowOf("legs")).getAllByRole("button").map((b) => b.getAttribute("data-slot"))).toEqual(["trick-about"]);
   });
 
   it("readTrick keeps a well-formed pending and drops a malformed one", () => {
@@ -572,5 +573,88 @@ describe("the auto and undo calls (crew slice 3)", () => {
     ]);
     server.use(http.post(/\/undo$/, () => HttpResponse.json({ error: "no-previous", message: "There is no earlier version to go back to." }, { status: 409 })));
     await expect(undoTrick("bluefin", "legs")).rejects.toThrow();
+  });
+});
+
+describe("TricksSettingsCard: a trick's About sheet", () => {
+  const TOLD: WireTrickInfo = { ...LEGS, description: "Shows the browser leg.", about: "First paragraph.\n\nSecond paragraph." };
+
+  it("draws the description under the name, and no line for a trick without one", async () => {
+    renderCard(await storeWith([TOLD, TRACKER]));
+    await screen.findByText("Browser leg");
+    expect(rowOf("legs").querySelector('[data-line="description"]')).toHaveTextContent("Shows the browser leg.");
+    expect(rowOf("tracker").querySelector('[data-line="description"]')).toBeNull();
+  });
+
+  it("opens the sheet from the name, and the switch stays its own tap target", async () => {
+    const user = userEvent.setup();
+    const onSwitch = vi.fn(async (_host: string, _id: string, on: boolean) => ({ ...TOLD, on, state: "ok" as const }));
+    renderCard(await storeWith([TOLD]), onSwitch);
+    await user.click(await screen.findByRole("switch", { name: "Browser leg" }));
+    expect(onSwitch).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("dialog")).toBeNull();
+    await user.click(screen.getByRole("button", { name: "About Browser leg" }));
+    const dialog = screen.getByRole("dialog", { name: "Browser leg" });
+    expect(within(dialog).getByText("First paragraph.")).toBeInTheDocument();
+    expect(onSwitch).toHaveBeenCalledTimes(1);
+    await user.click(within(dialog).getByRole("button", { name: "Close" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  describe("the Updates switch in the sheet", () => {
+    const sheetSwitch = () => within(screen.getByRole("dialog")).getByRole("switch", { name: "Take changes without asking" });
+
+    it("keeps the card's own switch and adds one in the sheet that holds the same position", async () => {
+      const user = userEvent.setup();
+      const onAutoPost = vi.fn();
+      server.use(
+        http.post("/api/tricks/:host/:id/auto", async ({ request }) => {
+          const on = (await request.text()).includes('"on":true');
+          onAutoPost(on);
+          return HttpResponse.json({ ...TOLD, auto: on });
+        }),
+      );
+      renderCard(await storeWith([TOLD]));
+      await user.click(await screen.findByRole("button", { name: "About Browser leg" }));
+      expect(within(rowOf("legs")).getByText("Take changes without asking")).toBeInTheDocument();
+      expect(sheetSwitch()).not.toBeChecked();
+      await user.click(sheetSwitch());
+      await vi.waitFor(() => expect(onAutoPost).toHaveBeenCalledWith(true));
+      expect(sheetSwitch()).toBeChecked();
+      // The card's own switch reads the same held position.
+      expect(within(rowOf("legs")).getByRole("switch", { name: "Take changes without asking" })).toBeChecked();
+    });
+
+    it("goes back and says it in the status line when the write fails, as the trick's own switch does", async () => {
+      const user = userEvent.setup();
+      server.use(http.post("/api/tricks/:host/:id/auto", () => HttpResponse.json({ error: "no" }, { status: 500 })));
+      renderCard(await storeWith([TOLD]));
+      await user.click(await screen.findByRole("button", { name: "About Browser leg" }));
+      await user.click(sheetSwitch());
+      await vi.waitFor(() => expect(currentStatus()?.text).toBe("Could not change Browser leg. Try again."));
+      expect(sheetSwitch()).not.toBeChecked();
+    });
+
+    it("is not in the sheet of a trick that is off", async () => {
+      const user = userEvent.setup();
+      renderCard(await storeWith([{ ...TOLD, on: false, state: "off" }]));
+      await user.click(await screen.findByRole("button", { name: "About Browser leg" }));
+      const dialog = screen.getByRole("dialog");
+      expect(within(dialog).queryByText("Updates")).toBeNull();
+      expect(within(dialog).queryByRole("switch")).toBeNull();
+    });
+  });
+
+  it("reads description and about off the wire tolerantly", () => {
+    const base = { host: "bluefin", id: "legs", name: "Browser leg", icon: "flask", on: true, state: "ok", places: ["belt"] };
+    expect(readTrick({ ...base, description: "One line.", about: "a\n\nb" })).toMatchObject({ description: "One line.", about: "a\n\nb" });
+    expect(readTrick(base)).not.toHaveProperty("about");
+    expect(readTrick({ ...base, about: 4, description: ["x"] })).not.toHaveProperty("about");
+    expect(readTrick({ ...base, about: 4, description: ["x"] })).not.toHaveProperty("description");
+    expect(readTrick({ ...base, description: "d".repeat(DESCRIPTION_MAX + 1) })).not.toHaveProperty("description");
+    expect(readTrickText("a".repeat(ABOUT_MAX), "about")).toHaveLength(ABOUT_MAX);
+    expect(readTrickText("a".repeat(ABOUT_MAX + 1), "about")).toBeUndefined();
+    expect(readTrickText("hidden\u202Emark", "about")).toBeUndefined();
+    expect(readTrickText("two\nlines", "description")).toBeUndefined();
   });
 });

@@ -117,6 +117,10 @@ export const PROGRESS_MAX = 12;
 export const FACE_MAX = 12;
 /** The trick's `name` in the manifest, and a trick session's `name`. */
 export const NAME_MAX = 40;
+/** The manifest's `description`: the one line a trick's row shows under its name. */
+export const DESCRIPTION_MAX = 140;
+/** The manifest's `about`: the full plain text of a trick's About sheet, paragraphs split by a blank line. */
+export const ABOUT_MAX = 1200;
 /** A `group`'s `label`. */
 export const TITLE_MAX = 60;
 /** A `para`'s text, and a `run`'s. One paragraph: no line break (the tree strips control characters). */
@@ -1084,6 +1088,16 @@ export interface TrickManifest {
    * approved copy. Untrusted data: a program reads them, never runs them.
    */
   inputs?: string[];
+  /**
+   * One plain line saying what the trick does, at most `DESCRIPTION_MAX` characters. Text, not a right: it is
+   * not in the powers (`powersOf`), and it is part of the code hash like any manifest change.
+   */
+  description?: string;
+  /**
+   * The full plain text of the trick's About sheet, at most `ABOUT_MAX` characters, paragraphs split by a
+   * blank line. No markdown, no HTML, no link is drawn. Text, not a right, like `description`.
+   */
+  about?: string;
 }
 
 /**
@@ -1316,6 +1330,10 @@ export interface WireTrickInfo {
    * ({@link inputsSentence}). Absent: no inputs, or an older bridge.
    */
   inputs?: { globs: string[]; crew: boolean };
+  /** The manifest's one-line `description`, at most `DESCRIPTION_MAX` characters. Absent: none, or an older bridge. */
+  description?: string;
+  /** The manifest's `about` text for the About sheet, at most `ABOUT_MAX` characters. Absent: none, or an older bridge. */
+  about?: string;
   /**
    * What a text search of the code flags (bridge/tricks/scan.ts), one entry per kind, for a trick that is
    * off or changed, so the person sees them before the switch. Absent when there is none, on a trick that
@@ -1957,6 +1975,15 @@ function textProblem(value: string, rule: TextRule): string | undefined {
   }
   if (hasInvisible(value)) return "holds an invisible direction or tag character. Remove it.";
   return undefined;
+}
+
+/**
+ * Whether a text a trick's row carries (`description`, `about`) is fit to draw: a string within `max`
+ * characters that holds no control or invisible character (a line break and a tab only when `multiline`).
+ * The phone reads a crew member's reply with this, as the bridge's manifest parser checked it.
+ */
+export function isTrickText(value: string, rule: { max: number; multiline?: boolean }): boolean {
+  return textProblem(value, rule) === undefined;
 }
 
 function valueProblem(value: string): { code: RefusalCode; reason: string } | undefined {
@@ -3487,7 +3514,7 @@ export const ENV_NAME_MAX = 64;
 const ENV_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 /** Every key `trick.toml` takes. */
-export const MANIFEST_KEYS = ["id", "name", "run", "every", "watch", "on", "mode", "contract", "icon", "places", "env", "inputs"] as const;
+export const MANIFEST_KEYS = ["id", "name", "run", "every", "watch", "on", "mode", "contract", "icon", "places", "env", "inputs", "description", "about"] as const;
 
 // ── The inputs: files a trick reads from its agent sessions' folders (contract 2, M99) ───────────────
 
@@ -3684,6 +3711,11 @@ export function parseManifest(doc: JsonValue | undefined, opts: ParseManifestOpt
     if (problem !== undefined) refusals.push({ code: "target", path: pointer("/inputs", i), reason: `This glob ${problem}` });
   });
 
+  // Text for a person, not rights: they stay out of `powersOf`. Both contracts take them, and a manifest
+  // without them reads as before. Over the cap is a refusal, like the name's.
+  const description = f.text("description", { max: DESCRIPTION_MAX });
+  const about = f.text("about", { max: ABOUT_MAX, multiline: true });
+
   // Room for the places of a newer Collie at the same contract: the words this one does not know are left out.
   const placeList = f.array("places", { min: 1, max: PLACES_LISTED_MAX, required: true, what: "places" });
   const places: PlaceKind[] = [];
@@ -3732,6 +3764,8 @@ export function parseManifest(doc: JsonValue | undefined, opts: ParseManifestOpt
   if (mode === "serve" && triggers.includes("serve")) manifest.mode = "serve";
   if (env !== undefined && env.length > 0) manifest.env = [...new Set(env)];
   if (inputs !== undefined && inputs.length > 0) manifest.inputs = [...new Set(inputs)];
+  if (description !== undefined) manifest.description = description;
+  if (about !== undefined) manifest.about = about;
   return { manifest, refusals: capRefusals(refusals) };
 }
 

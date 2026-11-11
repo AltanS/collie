@@ -12,9 +12,12 @@
 
 import { asJsonBoolean, asJsonNumber, asJsonObject, asJsonString, type JsonObject, type JsonValue } from "../json";
 import {
+  ABOUT_MAX,
+  DESCRIPTION_MAX,
   INPUTS_MAX,
   INPUT_GLOB_MAX,
   isHostName,
+  isTrickText,
   TAP_CODES,
   TRICK_WARNINGS_MAX,
   type TrickPart,
@@ -144,6 +147,17 @@ export function readInputs(raw: JsonValue | undefined): WireTrickInfo["inputs"] 
   return { globs, crew };
 }
 
+/**
+ * A trick's `description` or `about`, read tolerantly: kept only as a string within its cap with no control
+ * or invisible character. Anything else is left out, as from an older bridge. `about` may hold line breaks.
+ */
+export function readTrickText(raw: JsonValue | undefined, kind: "description" | "about"): string | undefined {
+  const text = asJsonString(raw);
+  if (text === undefined) return undefined;
+  const rule = kind === "about" ? { max: ABOUT_MAX, multiline: true } : { max: DESCRIPTION_MAX };
+  return isTrickText(text, rule) ? text : undefined;
+}
+
 /** One trick entry as the list and the switch route give it, or `undefined` for a body of another shape. */
 export function readTrick(raw: JsonValue | undefined): WireTrickInfo | undefined {
   // The closed words (`icon`, `state`, `places`) were written by the bridge from the schema's lists; the
@@ -154,19 +168,25 @@ export function readTrick(raw: JsonValue | undefined): WireTrickInfo | undefined
   const sent = body.warnings;
   const waiting = body.pending;
   const reads = body.inputs;
+  const described = body.description;
+  const told = body.about;
   const auto = asJsonBoolean(body.auto);
   const autoAt = asJsonString(body.autoAt);
   if (!isTrickValue(body)) return undefined;
-  if (sent === undefined && waiting === undefined && reads === undefined && body.auto === undefined && body.autoAt === undefined) return body;
+  if (sent === undefined && waiting === undefined && reads === undefined && body.auto === undefined && body.autoAt === undefined && described === undefined && told === undefined) return body;
   // The fields read past the frame: the Tricks card lists them, so their shapes are held here. One of
   // another shape is left out, as from an older bridge.
   const warnings = readWarnings(sent);
   const pending = readPending(waiting);
   const inputs = readInputs(reads);
-  const { warnings: _sent, pending: _waiting, auto: _auto, autoAt: _autoAt, inputs: _reads, ...rest } = body;
+  const description = readTrickText(described, "description");
+  const about = readTrickText(told, "about");
+  const { warnings: _sent, pending: _waiting, auto: _auto, autoAt: _autoAt, inputs: _reads, description: _described, about: _told, ...rest } = body;
   const out: WireTrickInfo = warnings.length === 0 ? rest : { ...rest, warnings };
   if (pending !== undefined) out.pending = pending;
   if (inputs !== undefined) out.inputs = inputs;
+  if (description !== undefined) out.description = description;
+  if (about !== undefined) out.about = about;
   if (auto !== undefined) out.auto = auto;
   if (autoAt !== undefined && Number.isFinite(Date.parse(autoAt))) out.autoAt = autoAt;
   return out;

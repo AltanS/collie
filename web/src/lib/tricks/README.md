@@ -21,7 +21,13 @@ helper (`cli/trick-kit/trick.ts`, a file a trick folder copies) carries the same
 contract 1 trick (`TRICK_CONTRACT_DEFAULT`), and `collie trick init` writes `contract = 1`.
 
 **The manifest**, `trick.toml`: `id`, `name`, `run`, `every`, `icon`, `places`, `env`, `contract`,
-`inputs` (contract 2), and the later `watch`, `on` and `mode`. `contract` is the number the trick is
+`inputs` (contract 2), the later `watch`, `on` and `mode`, and two texts for a person, `description` (one
+line, at most 140 characters, shown under the name in Settings → Tricks) and `about` (at most 1200
+characters, paragraphs split by a blank line, shown in the trick's About sheet). Both are plain text, with
+no markdown, HTML or link drawn, and both are allowed in contract 1 and 2. They are text, not rights: they
+stay out of `powersOf` and are part of the code hash like any manifest change. A value past its cap, or
+with a control or direction character, refuses the manifest like a long `name`; `collie trick check` gives
+a soft note when `about` is missing. `contract` is the number the trick is
 written for, a whole number, 1 when left out. A trick that names a higher number than this Collie knows
 is refused with one line, "This trick needs a newer Collie: it is written for trick contract 3, and
 this Collie knows contract 2. Update Collie to run it.", and nothing else is checked. At the same number an unknown key is

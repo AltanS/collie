@@ -3357,6 +3357,17 @@ export const en = {
   // PENDING_TRANSLATION below. The same words as schema.ts `inputsSentence`, held there by a test.
   "settings.tricks.reads.solo": "Reads {globs} in your agent sessions' folders.",
   "settings.tricks.reads.crew": "Reads {globs} in your agent sessions' folders on every machine of the crew.",
+  // A trick's About sheet: English only until the translation pass, listed in PENDING_TRANSLATION below.
+  "settings.tricks.about.open": "About {name}",
+  "settings.tricks.about.none": "This trick has no description.",
+  "settings.tricks.about.does": "What it does",
+  "settings.tricks.about.draws": "Draws in: {places}.",
+  "settings.tricks.about.env": "Asks for the environment names {names}.",
+  "settings.tricks.about.from": "Where it comes from",
+  "settings.tricks.about.local": "Added on this machine.",
+  "settings.tricks.about.updates": "Updates",
+  "settings.tricks.about.auto.label": "Take changes without asking",
+  "settings.tricks.about.auto.hint": "A change that asks for new rights, or does something new such as reaching the network, still asks.",
 
   // --- hill: the Decisions agents post, and the view that answers them (M96) ---
   // "Hill" is the view's name, a Collie word like a brand: the same in every language, never
@@ -3677,6 +3688,16 @@ export const PENDING_TRANSLATION = [
   "settings.tricks.undoFailed",
   "settings.tricks.reads.solo",
   "settings.tricks.reads.crew",
+  "settings.tricks.about.open",
+  "settings.tricks.about.none",
+  "settings.tricks.about.does",
+  "settings.tricks.about.draws",
+  "settings.tricks.about.env",
+  "settings.tricks.about.from",
+  "settings.tricks.about.local",
+  "settings.tricks.about.updates",
+  "settings.tricks.about.auto.label",
+  "settings.tricks.about.auto.hint",
   "hill.receipt.dismissedOffline",
 ] as const satisfies readonly MessageKey[];
 

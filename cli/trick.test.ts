@@ -227,6 +227,22 @@ describe("collie trick check", () => {
     expect(e.out.join("\n")).toContain("note: trick.toml /watch");
   });
 
+  test("a manifest with no about gets one soft note; with an about it gets none; a long one is an error", async () => {
+    const d = await deps();
+    const without = await folder('id = "a"\nname = "A"\nrun = "./p.sh"\nplaces = ["belt"]\n', { "p.sh": "#!/bin/sh\n" });
+    expect(await cmdTrickCheck(d, [without])).toBe(EXIT.OK);
+    expect(d.out.join("\n")).toContain("note: Add an `about` text so a person can read what this trick does before they switch it on.");
+    expect(d.out.at(-1)).toBe("ok: no problems.");
+    const e = await deps();
+    const withAbout = await folder('id = "b"\nname = "B"\nrun = "./p.sh"\nplaces = ["belt"]\ndescription = "One line."\nabout = "Two\\n\\nparagraphs."\n', { "p.sh": "#!/bin/sh\n" });
+    expect(await cmdTrickCheck(e, [withAbout])).toBe(EXIT.OK);
+    expect(e.out.join("\n")).not.toContain("`about`");
+    const f = await deps();
+    const long = await folder(`id = "c"\nname = "C"\nrun = "./p.sh"\nplaces = ["belt"]\nabout = "${"a".repeat(1201)}"\n`, { "p.sh": "#!/bin/sh\n" });
+    expect(await cmdTrickCheck(f, [long])).toBe(EXIT.FAIL);
+    expect(f.err.join("\n")).toContain('trick.toml /about: "about" is 1201 characters. At most 1200.');
+  });
+
   test("runs: lists the command lines of the program; a missing or binary program is refused", async () => {
     const dir = await folder('id = "gh"\nname = "GH"\nrun = "./gh.sh"\nplaces = ["belt"]\n', {
       "gh.sh": "#!/bin/sh\n# lists my PRs\nprs=$(gh pr list --json number)\ncurl -s https://example.com\necho '{}'\n",
