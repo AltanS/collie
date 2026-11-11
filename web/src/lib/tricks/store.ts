@@ -82,6 +82,12 @@ export interface TapInput extends TrickPartKey {
   intent: string;
   value?: TapValue;
   control: string;
+  /**
+   * The rev of the part as DRAWN on the control the person tapped (N4, review 11): the rendered copy's,
+   * never the store's at send time, which may already be newer than what the person saw. Undefined: the
+   * control was drawn from no held part, and the bridge answers `changed`.
+   */
+  rev: number | undefined;
 }
 
 /** What a tap came to: the receipt's code, or `ignored` for a second tap while one is in flight. */
@@ -247,9 +253,8 @@ export function createTricksStore(transport: TricksTransport, clock: () => numbe
     const body: TapBody = { rid, node: input.part, intent: input.intent };
     if (input.value !== undefined) body.value = input.value;
     if (handlers.from !== undefined) body.from = handlers.from;
-    // The face the person tapped. A part the phone holds no copy of sends none, and the bridge says `changed`.
-    const drawn = state.parts.get(key)?.rev;
-    if (drawn !== undefined) body.rev = drawn;
+    // The face the person tapped, as the control was drawn. None: the bridge says `changed`.
+    if (input.rev !== undefined) body.rev = input.rev;
     let reply: TrickTapReply;
     try {
       reply = await transport.tapTrick(input.host, input.trick, body);
@@ -340,13 +345,18 @@ export function useTrickPart(key: string, store: TricksStore = tricksStore): { p
 
 /**
  * The tap function a renderer's context takes: it reads the part key back into host, trick and part
- * and sends the tap with `handlers.from`.
+ * and sends the tap with `handlers.from`, and `rev`, the rev of the part the renderer drew (N4).
  */
-export function trickTapper(handlers: TapHandlers, store: TricksStore = tricksStore): (key: string, intent: string, value: TapValue | undefined, control: string) => void {
-  return (key, intent, value, control) => {
+export function trickTapper(
+  handlers: TapHandlers,
+  store: TricksStore = tricksStore,
+  rev?: number,
+): (key: string, intent: string, value: TapValue | undefined, control: string, drawnRev?: number) => void {
+  return (key, intent, value, control, drawnRev) => {
     const parsed = parsePartKey(key);
     if (parsed === undefined) return;
-    const input: TapInput = { ...parsed, intent, control };
+    // The rev of the part the control was drawn from: the caller's, else the one this tapper was made with.
+    const input: TapInput = { ...parsed, intent, control, rev: drawnRev ?? rev };
     if (value !== undefined) input.value = value;
     void store.tap(input, handlers);
   };

@@ -78,7 +78,7 @@ function Actions({
   store,
 }: {
   partKey: string;
-  onTap: (key: string, intent: string, value: TrickAction["value"], control: string) => void;
+  onTap: (key: string, intent: string, value: TrickAction["value"], control: string, drawnRev?: number) => void;
   barBelow: boolean;
   store: TricksStore;
 }) {
@@ -100,7 +100,7 @@ function Actions({
             data-slot="trick-session-action"
             disabled={action.disabled === true || busyControl !== undefined}
             aria-busy={busy}
-            onClick={() => onTap(partKey, action.intent, action.value, actionControl(action.id))}
+            onClick={() => onTap(partKey, action.intent, action.value, actionControl(action.id), part?.rev)}
             className={cn("h-11 min-w-0 rounded-sm", actions.length === 1 && "col-span-2")}
           >
             {/* The glyph's box turns into the spinner; the label stays, so the button never changes width. */}

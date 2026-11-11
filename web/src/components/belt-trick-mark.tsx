@@ -71,7 +71,7 @@ function BeltTrickMark({
   if (mark.intent !== undefined) {
     const intent = mark.intent;
     const onTap = async (): Promise<void> => {
-      await store.tap({ host: part.host, trick: part.trick, part: part.part, intent, control: "mark" }, handlers);
+      await store.tap({ host: part.host, trick: part.trick, part: part.part, intent, control: "mark", rev: part.rev }, handlers);
       const last = store.getState().taps.get(key);
       if (last?.phase === "failed" && last.refused !== undefined) setStatus(tapRefusalLine(last.refused), last.refused === "changed" ? "info" : "warn");
     };

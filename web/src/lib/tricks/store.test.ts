@@ -234,7 +234,7 @@ function serveTaps(...answers: (JsonValue | Promise<JsonValue>)[]): JsonObject[]
   return bodies;
 }
 
-const RERUN: TapInput = { host: "lodge", trick: "legs", part: "legs", intent: "rerun", value: "red", control: "v/6" };
+const RERUN: TapInput = { host: "lodge", trick: "legs", part: "legs", intent: "rerun", value: "red", control: "v/6", rev: 2 };
 
 function receipt(rid: string, code: string, extra: JsonObject = {}): JsonValue {
   return { rid, code, ...extra };
@@ -364,11 +364,11 @@ describe("a tap", () => {
 });
 
 describe("fault A: a refused tap", () => {
-  it("fault A: sends the rev of the part as the phone drew it, and none for a part it holds no copy of", async () => {
+  it("fault A: sends the rev of the part as the phone drew it, and none for a control drawn from no held part", async () => {
     const store = await heldStore();
     const bodies = serveTaps(receipt(ID1, "ok"), receipt(ID2, "changed", { refused: "changed" }));
     await store.tap(RERUN);
-    await store.tap({ ...RERUN, part: "ghost" });
+    await store.tap({ ...RERUN, part: "ghost", rev: undefined });
     expect(bodies[0]).toMatchObject({ rev: LEGS.rev });
     expect(bodies[1]).not.toHaveProperty("rev");
   });
@@ -399,8 +399,19 @@ describe("fault A: a refused tap", () => {
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(bodies).toHaveLength(1);
     // A tap on the new face goes out with a new request id and the new rev.
-    await expect(store.tap(RERUN)).resolves.toBe("ok");
+    await expect(store.tap({ ...RERUN, rev: 7 })).resolves.toBe("ok");
     expect(bodies[1]).toMatchObject({ rid: ID2, rev: 7 });
+  });
+
+  it("N4: a tap sends the rev of the part its control was drawn from, not the newer one the store holds", async () => {
+    const store = await heldStore();
+    // The store moved on (a newer copy arrived) while the person's finger was on the old face.
+    serveTricks(reply(4, [BELT, wire("legs", legsSaying("newer"), 9), TRACKER]));
+    await store.syncTricks(4);
+    expect(store.getState().parts.get(partKey(LEGS))?.rev).toBe(9);
+    const bodies = serveTaps(receipt(ID1, "ok"));
+    await store.tap(RERUN);
+    expect(bodies[0]).toMatchObject({ rid: ID1, rev: 2 });
   });
 
   it("fault A: reads a refusal word this phone does not know as a plain receipt", () => {

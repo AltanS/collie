@@ -141,11 +141,19 @@ export function viewOf(value: TrickPart): View | undefined {
  */
 interface HeldView {
   view: View | undefined;
+  /** The rev of the part the shown view came from: a tap names it (N4). */
+  rev: number;
   onPointerDown: () => void;
 }
 
-function useHeldView(view: View | undefined): HeldView {
-  const [held, setHeld] = useState(view);
+/** A view and the rev of the part it came from. */
+interface DrawnView {
+  view: View | undefined;
+  rev: number;
+}
+
+function useHeldView(drawn: DrawnView): HeldView {
+  const [held, setHeld] = useState(drawn);
   const [down, setDown] = useState(false);
   useEffect(() => {
     if (!down) return;
@@ -159,9 +167,11 @@ function useHeldView(view: View | undefined): HeldView {
   }, [down]);
   // React's "adjust state while rendering": the shown view follows the live one, except a new form
   // while a finger is down, which waits for the lift.
-  const waits = down && view !== undefined && held !== undefined && viewForm(view) !== viewForm(held);
-  if (held !== view && !waits) setHeld(view);
-  return { view: waits ? held : view, onPointerDown: () => setDown(true) };
+  const view = drawn.view;
+  const waits = down && view !== undefined && held.view !== undefined && viewForm(view) !== viewForm(held.view);
+  if (held !== drawn && !waits) setHeld(drawn);
+  const shown = waits ? held : drawn;
+  return { view: shown.view, rev: shown.rev, onPointerDown: () => setDown(true) };
 }
 
 /** Every image `src` in a view, in order, each once. */
@@ -252,15 +262,17 @@ interface TrickViewBodyProps extends Omit<TrickViewProps, "store"> {
 function TrickViewBody({ partKey, part, trick, tap, onLink, imageUrl, from, store, now }: TrickViewBodyProps) {
   const partValue = part.value;
   // Read once per version of the part, so the held view keeps one identity between redraws.
-  const live = useMemo(() => viewOf(partValue), [partValue]);
-  const { view, onPointerDown } = useHeldView(live);
+  const partRev = part.rev;
+  const live = useMemo((): DrawnView => ({ view: viewOf(partValue), rev: partRev }), [partValue, partRev]);
+  const { view, rev, onPointerDown } = useHeldView(live);
   const fetched = useTrickImages(partKey, part.rev, view);
   const images = imageUrl ?? fetched;
   const onTap = useMemo(() => {
     const handlers: TapHandlers = {};
     if (from !== undefined) handlers.from = { session: from };
-    return trickTapper(handlers, store);
-  }, [from, store]);
+    // N4: the rev of the view drawn now (a held one while a finger is down), not the store's newest.
+    return trickTapper(handlers, store, rev);
+  }, [from, store, rev]);
   const draw = useMemo(
     () =>
       ({ stale }: { stale: boolean }) => {
