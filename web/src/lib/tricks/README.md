@@ -164,8 +164,9 @@ shape changes moves to the next number. `AGENT_VIEW_CONTRACT` in `contract.ts` h
   0x7E and `\n` only, no tab, no line over 160 characters, no space at a line's end, no run of more than
   2 spaces, no more than 2 blank lines in a row, not empty, and a line break at the end; each break is its own refusal that names
   the line. `rules` without `agent-view` is refused, and so is either one at contract 1.
-- `run` may be left out only when `places` is exactly `["agent-view"]` and there is no `every`,
-  `inputs` or `env`. Such a trick never starts anything: no timer, no tap, no program.
+- A trick whose `places` is exactly `["agent-view"]` has no program: `run`, `every`, `inputs` and
+  `env` are refused (`VIEW_ONLY_REFUSED`). It never starts anything: no timer, no tap, no program. A
+  place this Collie does not know beside it counts as another place, so a newer trick keeps its `run`.
 - The rules file is in the code hash, so an edit is a new version. Its SHA-256 is in the powers
   (`powersOf` adds `rules` only when the manifest names it, so every other trick's powers hash is the
   same as before), so a change of the rules is a change of rights. A trick with rules never takes a

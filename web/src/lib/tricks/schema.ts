@@ -3846,6 +3846,11 @@ export const INPUTS_NEED_CONTRACT = `"inputs" needs contract = ${String(INPUTS_C
 /** The lines an agent view's keys are refused with: an older contract, a place without its rules, rules without the place. */
 export const AGENT_VIEW_NEEDS_CONTRACT = `"agent-view" needs contract = ${String(AGENT_VIEW_CONTRACT)}. Add contract = ${String(AGENT_VIEW_CONTRACT)} to trick.toml.`;
 export const RULES_NEEDS_CONTRACT = `"rules" needs contract = ${String(AGENT_VIEW_CONTRACT)}. Add contract = ${String(AGENT_VIEW_CONTRACT)} to trick.toml.`;
+/** The keys a trick whose only place is `agent-view` may not name: it has no program. */
+export const VIEW_ONLY_REFUSED = ["run", "every", "inputs", "env"] as const;
+export function viewOnlyRefusal(key: (typeof VIEW_ONLY_REFUSED)[number]): string {
+  return `A trick whose only place is "agent-view" has no program, so it takes no "${key}". Remove it, or add a place it draws in.`;
+}
 export const AGENT_VIEW_NEEDS_RULES = `"agent-view" needs "rules": the file of instructions the session's agent reads. Add rules = "rules.md" to trick.toml.`;
 export const RULES_NEED_AGENT_VIEW = `"rules" goes with the place "agent-view": they are the instructions of the agent that draws the view. Add "agent-view" to places, or remove "rules".`;
 
@@ -3902,9 +3907,12 @@ export function parseManifest(doc: JsonValue | undefined, opts: ParseManifestOpt
   }
   if (id !== undefined && RESERVED_TRICK_IDS.includes(id)) f.push("id", "id", `"${id}" is a name Collie keeps for itself. Give the trick another id.`);
   const name = f.text("name", { max: NAME_MAX, required: true });
-  // A trick that is only an agent view has no program: `run` may then be left out, and nothing ever starts.
+  // A trick that is only an agent view has no program (review 8 V-N2): `run`, `every`, `inputs` and `env`
+  // are refused, so nothing ever starts and no program draws nowhere. A place this Collie does not know
+  // still counts as another place, so a newer trick keeps its program.
   const placesRaw = obj.places;
-  const viewOnly = Array.isArray(placesRaw) && placesRaw.length === 1 && placesRaw[0] === AGENT_VIEW_PLACE && !f.has("every") && !f.has("inputs") && !f.has("env");
+  const viewOnly = Array.isArray(placesRaw) && placesRaw.length === 1 && placesRaw[0] === AGENT_VIEW_PLACE;
+  if (viewOnly) for (const key of VIEW_ONLY_REFUSED) if (f.has(key)) f.push("place", key, viewOnlyRefusal(key));
   const run = f.text("run", { max: RUN_MAX, required: !viewOnly });
 
   const every = f.text("every", { max: 8 });

@@ -75,7 +75,7 @@ export function trickGuide(): string[] {
     "AGENT VIEWS",
     `A trick may add a view of a session that the session's own agent draws: list "${AGENT_VIEW_PLACE}" in places.`,
     `It needs contract = ${String(AGENT_VIEW_CONTRACT)} and rules = "rules.md": a file of instructions the agent reads.`,
-    `A trick whose places are only ["${AGENT_VIEW_PLACE}"], with no every, inputs or env, needs no run line. It has no program.`,
+    `A trick whose places are only ["${AGENT_VIEW_PLACE}"] has no program: it names no run, every, inputs or env.`,
     "The rules file is one .md file at the top of the folder, a regular file, not a link.",
     `It holds plain ASCII and line breaks only: no tab, no other character, at most ${String(RULES_MAX_BYTES / 1024)} KiB, a line break at the end.`,
     `No line over ${String(RULES_LINE_MAX)} characters, no space at a line's end, no run of more than ${String(RULES_SPACES_MAX)} spaces, no more than ${String(RULES_BLANK_LINES_MAX)} blank lines in a row.`,

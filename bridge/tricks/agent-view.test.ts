@@ -112,13 +112,26 @@ describe("the key rules", () => {
 });
 
 describe("run may be left out", () => {
-  test("only when places is exactly agent-view and there is no every, inputs or env", () => {
+  test("only when places is exactly agent-view; beside another place it is needed", () => {
     expect(parseManifest(VIEW).manifest?.run).toBeUndefined();
-    for (const extra of [{ every: "1m" }, { inputs: ["TODO.md"] }, { env: ["GH_TOKEN"] }]) {
-      expect(codes({ ...VIEW, ...extra }), JSON.stringify(extra)).toContainEqual(["missing", "/run"]);
-    }
     expect(codes({ ...VIEW, places: ["agent-view", "belt"] })).toContainEqual(["missing", "/run"]);
     expect(codes({ id: "legs", name: "Legs", places: ["belt"] })).toEqual([["missing", "/run"]]);
+  });
+
+  test("V-N2: a trick whose only place is agent-view has no program: run, every, env and inputs are refused", () => {
+    const cases: [string, Record<string, string | string[]>][] = [
+      ["run", { run: "./p.sh" }],
+      ["every", { every: "1m" }],
+      ["inputs", { inputs: ["TODO.md"] }],
+      ["env", { env: ["GH_TOKEN"] }],
+    ];
+    for (const [key, extra] of cases) {
+      const read = parseManifest({ ...VIEW, ...extra });
+      expect(read.manifest, key).toBeUndefined();
+      expect(read.refusals, key).toContainEqual({ code: "place", path: `/${key}`, reason: `A trick whose only place is "agent-view" has no program, so it takes no "${key}". Remove it, or add a place it draws in.` });
+    }
+    // A place this Collie does not know still counts as another place: a newer trick keeps its program.
+    expect(parseManifest({ ...VIEW, run: "./p.sh", places: ["agent-view", "orbit"] }).manifest?.run).toBe("./p.sh");
   });
 });
 
