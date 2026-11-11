@@ -1324,6 +1324,18 @@ export type TapCode = (typeof TAP_CODES)[number];
 export const TAP_REFUSALS = ["part", "intent", "value", "changed", "session"] as const;
 export type TapRefusal = (typeof TAP_REFUSALS)[number];
 /**
+ * The bridge's line for each refused tap, in the reply's `message` (bridge/tricks/service.ts), for
+ * `collie trick` and a phone that predates `refused`; a phone that reads `refused` says it in its own
+ * words. It lives here so the tricks catalogue names the same lines on the reference page.
+ */
+export const TAP_REFUSED_LINES = {
+  part: "The trick holds no such part now, so nothing ran.",
+  intent: "No control of this part sends that intent, so nothing ran.",
+  value: "No control of this part sends that value, so nothing ran.",
+  changed: "The part changed since the phone drew it, so nothing ran. Look at it again.",
+  session: "The tap names no agent session that is open here now, so nothing ran.",
+} as const satisfies Readonly<Record<TapRefusal, string>>;
+/**
  * The tap reply: the receipt and the trick's new parts, which the phone applies at once. A repeat
  * `rid` returns the first reply and runs nothing. `unknown` is shown and never resent.
  */

@@ -155,6 +155,11 @@ import {
   type InputState,
   type NodeKind,
   type PlaceKind,
+  CLOSED_KEY_LINE,
+  TAP_REFUSALS,
+  TAP_REFUSED_LINES,
+  type TapCode,
+  type TapRefusal,
 } from "./schema";
 import {
   BACKOFF_MS,
@@ -889,6 +894,22 @@ export interface InputStateRow {
   readonly when: string;
 }
 
+export interface TapRefusalRow {
+  readonly refused: TapRefusal;
+  readonly receipt: TapCode;
+  readonly line: string;
+  readonly when: string;
+}
+
+/** When the bridge refuses a tap with each word. Typed against the schema's own list of them. */
+const TAP_REFUSAL_WORDS = {
+  part: "The trick holds no part with that `node` now. A trick that has drawn nothing since Collie started answers `changed` instead.",
+  intent: "No control of the part sends that `intent`.",
+  value: "No control of the part sends that `value` with that intent.",
+  changed: `The part changed since the phone drew it: the tap's \`rev\` is older than the part, or missing. The reply carries the trick's parts now, and the phone draws them.`,
+  session: "`from.session` names no agent session that is open here now, or one on a crew member this Collie cannot reach.",
+} as const satisfies { readonly [K in TapRefusal]: string };
+
 export interface ProgramEntry {
   /** The facts' own fields, and the fields of a session in them. */
   readonly facts: readonly FieldRow[];
@@ -897,6 +918,10 @@ export interface ProgramEntry {
   /** The trigger kinds that the facts' schema names and this Collie never sends. */
   readonly triggersLater: readonly string[];
   readonly tap: readonly string[];
+  /** Each tap the bridge refuses before the program runs: the word, the receipt, the bridge's line, and when. */
+  readonly tapRefusals: readonly TapRefusalRow[];
+  /** What `from.session` proves, and what it does not. */
+  readonly tapProof: string;
   readonly output: readonly OutputRow[];
   /** The keys of the first schema, which are refused with a hint. */
   readonly removedOutputKeys: readonly string[];
@@ -1037,12 +1062,16 @@ export function programOf(n: ProgramNumbers): ProgramEntry {
       `An answer to a Decision is a tap too: its \`node\` is \`${HILL_NODE_PREFIX}<key>\`, and its \`seen\` is the hash of the version the person saw. See [The Hill](#the-hill).`,
       "`rid` is a UUID. A retried tap has the same `rid`, and Collie runs nothing twice for one `rid`: it answers with the first receipt. A program that records an answer keys the record on `rid`. The same `rid` with a different tap is refused.",
     ],
+    tapRefusals: TAP_REFUSALS.map((refused) => ({ refused, receipt: refused === "changed" ? "changed" : "rejected", line: TAP_REFUSED_LINES[refused], when: TAP_REFUSAL_WORDS[refused] })),
+    tapProof: "`from.session` is not proof of who tapped, nor of the session the part was drawn for. Collie checks only that it is an agent session open here now. A program never lets it decide who may do what.",
     output: DOCUMENT_KEYS.map((key) => Object.assign({ key }, output[key])),
     removedOutputKeys: REMOVED_OUTPUT_KEYS,
     reading: [
       { case: "A node of a kind this Collie does not know", result: "Left out, with a `dropped` note. The rest of the view draws." },
       { case: "A part in a place this Collie does not know", result: "Left out whole, with a `dropped` note. The other parts draw." },
-      { case: "A key or an attribute this Collie does not know", result: "Ignored, with an `ignored` note. A node with only such attributes draws as if it had none." },
+      { case: `A key or an attribute this Collie does not know, inside a part, at contract ${String(TRICK_CONTRACT_DEFAULT)}`, result: "Ignored, with an `ignored` note. A node with only such attributes draws as if it had none." },
+      { case: `A key or an attribute this Collie does not know, at any depth of a part, at contract ${String(TRICK_CONTRACT)}`, result: `That part is refused alone, with an \`unknown-key\` refusal that names the key and ends: "${CLOSED_KEY_LINE}" Collie keeps no last good version of it.` },
+      { case: "A key this Collie does not know at the top of the document, beside `v`, `parts`, `asOf`, `fresh` and `decisions`", result: "Ignored, with an `ignored` note, at every contract. Every part draws. A key that changes how a part draws or what a tap does goes in the part, never at the top." },
       { case: "A bad value of a known field", result: "That part is refused alone, and the other parts draw. The last good version of the part stays on the phone, marked old." },
       { case: "A bad Decision", result: "That Decision is refused alone. Its open card stays as it is." },
       { case: "A bad `asOf` or `fresh`", result: "Refused alone. The parts still draw." },

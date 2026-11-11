@@ -51,8 +51,11 @@ import {
   TRIGGER_KINDS,
   parseFacts,
   parseManifest,
+  CLOSED_KEY_LINE,
   parseTrickDocument,
   parseTrickDocumentText,
+  TAP_REFUSALS,
+  TAP_REFUSED_LINES,
   type PlaceKind,
 } from "../web/src/lib/tricks/schema.ts";
 import type { JsonValue } from "../web/src/lib/json.ts";
@@ -465,6 +468,25 @@ describe("the reading rules are what the parser does", () => {
       expect(parsed.notes.map((note) => note.code)).toEqual(["ignored"]);
       expect(parsed.parts.length).toBe(1);
     }
+  });
+
+  test("at contract 2 an unknown key in a part leaves that part out with the closed-key line; the document's own keys stay open", () => {
+    const closed = parseTrickDocument(parts({ ...ok, zzz: 1 }, { at: "status", id: "ok", chip: { text: "ok" } }), { contract: 2 });
+    expect(closed.parts.length).toBe(1);
+    expect(closed.refusals.map((refusal) => [refusal.code, refusal.part])).toEqual([["unknown-key", "ci"]]);
+    expect(closed.refusals[0]?.reason.endsWith(CLOSED_KEY_LINE)).toBe(true);
+    const top = parseTrickDocument({ v: 2, parts: [ok], zzz: 1 }, { contract: 2 });
+    expect(top.refusals).toEqual([]);
+    expect(top.notes.map((note) => note.code)).toEqual(["ignored"]);
+    expect(top.parts.length).toBe(1);
+    expect(PAGE).toContain(CLOSED_KEY_LINE);
+    expect(PAGE).toContain("at the top of the document");
+  });
+
+  test("the page names every tap refusal with the bridge's own line, and that from.session is not proof", () => {
+    for (const refused of TAP_REFUSALS) expect(PAGE).toContain(`| \`${refused}\` | \`${refused === "changed" ? "changed" : "rejected"}\` |`);
+    for (const line of Object.values(TAP_REFUSED_LINES)) expect(PAGE).toContain(line);
+    expect(PAGE).toContain("`from.session` is not proof of who tapped");
   });
 
   test("a bad value refuses its part alone, a bad Decision refuses itself alone, and a bad asOf leaves the parts", () => {

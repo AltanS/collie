@@ -1203,6 +1203,18 @@ An answer to a Decision is a tap too: its `node` is `hill/<key>`, and its `seen`
 
 `rid` is a UUID. A retried tap has the same `rid`, and Collie runs nothing twice for one `rid`: it answers with the first receipt. A program that records an answer keys the record on `rid`. The same `rid` with a different tap is refused.
 
+Collie checks a tap before the program runs. It refuses one that names a part or a control the trick did not draw, or a session this Collie does not list, runs nothing, and answers with one of these words in `refused`:
+
+| `refused` | Receipt | When | Collie's line |
+| --- | --- | --- | --- |
+| `part` | `rejected` | The trick holds no part with that `node` now. A trick that has drawn nothing since Collie started answers `changed` instead. | The trick holds no such part now, so nothing ran. |
+| `intent` | `rejected` | No control of the part sends that `intent`. | No control of this part sends that intent, so nothing ran. |
+| `value` | `rejected` | No control of the part sends that `value` with that intent. | No control of this part sends that value, so nothing ran. |
+| `changed` | `changed` | The part changed since the phone drew it: the tap's `rev` is older than the part, or missing. The reply carries the trick's parts now, and the phone draws them. | The part changed since the phone drew it, so nothing ran. Look at it again. |
+| `session` | `rejected` | `from.session` names no agent session that is open here now, or one on a crew member this Collie cannot reach. | The tap names no agent session that is open here now, so nothing ran. |
+
+`from.session` is not proof of who tapped, nor of the session the part was drawn for. Collie checks only that it is an agent session open here now. A program never lets it decide who may do what.
+
 ### What the program prints
 
 The program prints one JSON document on stdout and exits 0:
@@ -1223,13 +1235,15 @@ There is no `draft` and no `open`: Collie ignores each with a note. A trick neve
 
 ### Strict at write, tolerant at read
 
-Collie checks strictly what a person or an agent writes: `trick.toml`, `collie hill post` and a trick's Decisions. An unknown key, kind or attribute there is refused. It reads a program's output tolerantly, so a trick written for a newer Collie runs on an older one, which leaves out only what it does not know.
+Collie checks strictly what a person or an agent writes: `trick.toml`, `collie hill post` and a trick's Decisions. An unknown key, kind or attribute there is refused. It reads a program's output tolerantly, so a trick written for a newer Collie runs on an older one, which leaves out only what it does not know. From contract 2 a part is read closed: an unknown key inside it leaves that part out, since it may carry a meaning this Collie cannot keep. The document's own keys stay open.
 
 | The program prints | Collie does |
 | --- | --- |
 | A node of a kind this Collie does not know | Left out, with a `dropped` note. The rest of the view draws. |
 | A part in a place this Collie does not know | Left out whole, with a `dropped` note. The other parts draw. |
-| A key or an attribute this Collie does not know | Ignored, with an `ignored` note. A node with only such attributes draws as if it had none. |
+| A key or an attribute this Collie does not know, inside a part, at contract 1 | Ignored, with an `ignored` note. A node with only such attributes draws as if it had none. |
+| A key or an attribute this Collie does not know, at any depth of a part, at contract 2 | That part is refused alone, with an `unknown-key` refusal that names the key and ends: "A contract 2 trick uses only the keys this Collie knows, so the part is left out; the other parts draw." Collie keeps no last good version of it. |
+| A key this Collie does not know at the top of the document, beside `v`, `parts`, `asOf`, `fresh` and `decisions` | Ignored, with an `ignored` note, at every contract. Every part draws. A key that changes how a part draws or what a tap does goes in the part, never at the top. |
 | A bad value of a known field | That part is refused alone, and the other parts draw. The last good version of the part stays on the phone, marked old. |
 | A bad Decision | That Decision is refused alone. Its open card stays as it is. |
 | A bad `asOf` or `fresh` | Refused alone. The parts still draw. |

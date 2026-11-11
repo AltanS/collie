@@ -21,6 +21,7 @@ import {
   type TricksRunsOn,
   type ParsedTrickDocument,
   type Refusal,
+  TAP_REFUSED_LINES,
   type TapRefusal,
   type TapRequest,
   type TrickManifest,
@@ -249,10 +250,6 @@ export interface TrickVersionsPort {
 export const HILL_NODE_TAP_REFUSED = "A decision is answered on the Hill, not with a tap.";
 
 /**
- * The bridge's words for a refused phone tap (fault A), for `collie trick` and a phone that predates
- * `refused`. A phone that reads `refused` says it in its own words.
- */
-/**
  * N5 (review 11): a refused tap writes its audit line at most once a minute per trick and reason, the
  * rule of the agent view's refused writes (agent-view/service.ts `noteRefusedWrite`), so a phone or a
  * forger tapping in a loop cannot fill the audit log. Past this many keys, a new one waits for a free slot.
@@ -260,13 +257,8 @@ export const HILL_NODE_TAP_REFUSED = "A decision is answered on the Hill, not wi
 export const TAP_REFUSAL_AUDIT_MS = 60_000;
 export const TAP_REFUSAL_KEYS_MAX = 1024;
 
-export const TAP_REFUSED_LINES = {
-  part: "The trick holds no such part now, so nothing ran.",
-  intent: "No control of this part sends that intent, so nothing ran.",
-  value: "No control of this part sends that value, so nothing ran.",
-  changed: "The part changed since the phone drew it, so nothing ran. Look at it again.",
-  session: "The tap names no agent session that is open here now, so nothing ran.",
-} as const satisfies Readonly<Record<TapRefusal, string>>;
+/** The bridge's words for a refused phone tap (fault A); they live in the schema, which the tricks catalogue reads too. */
+export { TAP_REFUSED_LINES };
 
 /** A tap route's answer: the HTTP status and the JSON body. */
 export type TapAnswer =
