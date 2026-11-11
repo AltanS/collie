@@ -183,6 +183,8 @@ describe("reading Collie's own Decision", () => {
     const raw = JSON.parse(JSON.stringify(decision));
     expect(readDecision(raw)).toBeNull();
     expect(readDecision(raw, { collie: true })?.from.ref).toEqual(REF);
+    // C-A7 (review 8): only an agent's card is marked "you wrote to this session"; Collie's own never.
+    expect(readDecision({ ...raw, spokeAfter: 5000 }, { collie: true })).not.toHaveProperty("spokeAfter");
   });
 
   test("a collie decision with a bad ref, or naming a session or a trick, does not read; an agent's with a ref does not either", () => {

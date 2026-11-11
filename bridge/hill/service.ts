@@ -1359,6 +1359,8 @@ export class HillService {
     for (const decision of this.deps.store.all()) {
       if (decision.state !== "open" || decision.spokeAfter === undefined) continue;
       if (shown !== null && !shown.has(decision.id)) continue;
+      // An answer in flight for it finishes first; the card is left to that answer (C-A7).
+      if (this.answering.has(decision.id)) continue;
       closed.push({ ...decision, state: "withdrawn", closedAt: now, closedReason: HILL_ANSWERED_IN_SESSION });
     }
     if (closed.length === 0) return { ok: true, cleared: 0 };

@@ -29,4 +29,12 @@ describe("the quiet mark", () => {
     expect(closed?.spokeAfter).toBeUndefined();
     expect(readHillDecision(wire({}))).not.toHaveProperty("spokeAfter");
   });
+
+  it("reads the mark on an agent's card only: a trick's card never carries one (C-A7)", () => {
+    // SAFETY: a JSON round trip of a fixture is a JsonValue.
+    const wire = JSON.parse(JSON.stringify(hillDecision({ spokeAfter: 1234 })));
+    const trick = readHillDecision({ ...wire, from: { ...wire.from, kind: "trick", address: null, trickId: "look", trickKey: "ship-zoom", harness: null, host: null } });
+    expect(trick?.from.kind).toBe("trick");
+    expect(trick).not.toHaveProperty("spokeAfter");
+  });
 });

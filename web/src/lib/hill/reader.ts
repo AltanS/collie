@@ -323,9 +323,9 @@ export function readHillDecision(value: JsonValue): HillDecision | null {
   // would hide code, so a group with any card the reader refuses is dropped, and the yes is then refused.
   const group = from.kind === "collie" && o.group !== undefined ? readHillGroup(o.group, okOptions) : null;
   if (group !== null) decision.group = group;
-  // The person wrote to the posting session after it asked (1.29.0): a time, on an open card only.
+  // The person wrote to the posting session after it asked (1.29.0): a time, on an agent's open card only.
   const spokeAfter = asJsonNumber(o.spokeAfter);
-  if (spokeAfter !== undefined && Number.isSafeInteger(spokeAfter) && spokeAfter > 0 && state === "open") decision.spokeAfter = spokeAfter;
+  if (spokeAfter !== undefined && Number.isSafeInteger(spokeAfter) && spokeAfter > 0 && state === "open" && from.kind === "agent") decision.spokeAfter = spokeAfter;
   return decision;
 }
 
