@@ -372,7 +372,10 @@ update` on the machine is the way. A name the new code needs where an entry of y
 update (409 `blocked`, "Your own files block it. Nothing was changed."), and nothing changes. The check
 runs again in the runner's lane, right before the write. A trick that is on keeps
 running the approved copy, and the new version waits for the yes on its version card, the path every
-changed trick takes. Remove stays as it is.
+changed trick takes. **With `auto` on for that trick, a tap on Update is the yes:** the runner takes the
+new version with no card once the folder settles, unless its powers change (its `env`, `places` or `inputs`)
+or a warning of a new kind appears; then the card waits as without `auto`. Undo on the row restores the
+version before. Remove stays as it is.
 
 **The maintainer script.** `bun scripts/official-tricks.ts --repo-dir <checkout> --commit <sha>` writes
 the commit, each hash (the real hash function, over the folder git holds at that commit), each extras
